@@ -1,41 +1,62 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# dependencies
+# ===========================
+# Node / npm / Yarn
+# ===========================
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+.pnpm-debug.log*
 
-# Expo
+# ===========================
+# Expo / React Native
+# ===========================
 .expo/
+.expo-shared/
 dist/
 web-build/
-expo-env.d.ts
+android/
+ios/
+build/
+*.apk
+*.aab
 
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
+# ===========================
+# Environment / secrets
+# ===========================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macOS
+# ===========================
+# macOS / system junk
+# ===========================
 .DS_Store
-*.pem
+.AppleDouble
+.LSOverride
+__MACOSX/
 
-# local env files
-.env*.local
+# ===========================
+# VSCode / IDEs
+# ===========================
+.vscode/
+.idea/
+*.iml
 
-# typescript
-*.tsbuildinfo
-
-# generated native folders
-/ios
-/android
+# ===========================
+# Temporary / cache
+# ===========================
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+.cache/
+coverage/
+.expo-dev-client/
+metro-cache/
+babel-cache/
+jest-cache/
+tmp/
