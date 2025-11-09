@@ -21,6 +21,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import ConfettiCannon from "react-native-confetti-cannon";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 
 const STORAGE_KEYS = {
   CART: "@almost_cart",
@@ -130,6 +131,11 @@ const RainDrop = ({ left, delay, height, colors }) => {
   );
 };
 
+const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
+const PAY_LABEL = Platform.OS === "android" ? "G Pay" : " Pay";
+const BASE_HORIZONTAL_PADDING = Platform.OS === "android" ? 20 : 30;
+const SHELL_HORIZONTAL_PADDING = Platform.OS === "android" ? 0 : 8;
+
 const triggerHaptic = (style = Haptics.ImpactFeedbackStyle.Light) => {
   Haptics.impactAsync(style).catch(() => {});
 };
@@ -140,27 +146,28 @@ const TRANSLATIONS = {
     syncAmazon: "подтянуть amazon",
     syncingAmazon: "обновляю…",
     heroAwaiting: "в листе желаний",
-    heroSpendLine: "уже сэкономлено {{amount}} — красота без ущерба бюджету",
+    heroSpendLine: "уже сэкономлено {{amount}}. Красота без ущерба бюджету",
     feedEmptyTitle: "Фильтр пуст",
     feedEmptySubtitle: "Попробуй другой тег или обнови каталог",
-    buyNow: "Оплатить через  Pay",
+    buyNow: "Оплатить через {{pay}}",
     addToCart: "Отложить и подумать",
     cartTitle: "Корзина",
     cartEmptyTitle: "Грустно без твоих хотелок",
-    cartEmptySubtitle: "Добавь то, что реально нужно — приложению нравится спасать бюджет",
+    cartEmptySubtitle: "Добавь то, что реально нужно: приложению нравится спасать бюджет",
     buyLabel: "Взять",
     buyAllLabel: "Оформить всё и экономить",
     totalLabel: "Сумма",
+    cartRemove: "Удалить",
     feedTab: "Лента",
     profileTab: "Профиль",
     payButton: "Оплатить",
     cartOverlay: "Экономия ждёт в корзине",
     purchasesTitle: "История",
-    purchasesSubtitle: "Потенциально сэкономлено ещё {{amount}} — меньше лишних чеков",
+    purchasesSubtitle: "Потенциально сэкономлено ещё {{amount}}. Меньше лишних чеков",
     progressLabel: "уровень осознанности",
     progressGoal: "{{current}} / {{goal}}",
     progressHint: "осталось {{amount}} до титула ‘герой финансового дзена’",
-    emptyPurchases: "Пока чисто — значит, ты в плюсе",
+    emptyPurchases: "Пока чисто. Значит, ты в плюсе",
     profileEdit: "Редактировать",
     profileSave: "Сохранить",
     profileCancel: "Отмена",
@@ -191,23 +198,26 @@ const TRANSLATIONS = {
     developerResetApply: "Сбросить",
     defaultDealTitle: "Сделка",
     defaultDealDesc: "Умная замена без описания",
+    photoLibrary: "Из галереи",
+    photoCamera: "Через камеру",
   },
   en: {
     appTagline: "a showcase of mindful deals that protect savings",
     syncAmazon: "sync amazon",
     syncingAmazon: "refreshing…",
     heroAwaiting: "on the wish list",
-    heroSpendLine: "already saved {{amount}} — glow without overspending",
+    heroSpendLine: "already saved {{amount}}. Glow without overspending",
     feedEmptyTitle: "Nothing here",
     feedEmptySubtitle: "Try another tag or refresh the catalog",
-    buyNow: "Pay with  Pay",
+    buyNow: "Pay with {{pay}}",
     addToCart: "Save for later",
     cartTitle: "Cart",
     cartEmptyTitle: "Empty without your smart cravings",
-    cartEmptySubtitle: "Add something purposeful—the app loves saving cash",
+    cartEmptySubtitle: "Add something purposeful; the app loves saving cash",
     buyLabel: "Grab",
     buyAllLabel: "Check out everything",
     totalLabel: "Total",
+    cartRemove: "Remove",
     feedTab: "Feed",
     profileTab: "Profile",
     payButton: "Pay",
@@ -217,7 +227,7 @@ const TRANSLATIONS = {
     progressLabel: "mindful level",
     progressGoal: "{{current}} / {{goal}}",
     progressHint: "{{amount}} left until ‘budget zen master’",
-    emptyPurchases: "Nothing yet — which already saves money",
+    emptyPurchases: "Nothing yet. Which already saves money",
     profileEdit: "Edit",
     profileSave: "Save",
     profileCancel: "Cancel",
@@ -248,6 +258,8 @@ const TRANSLATIONS = {
     developerResetApply: "Reset",
     defaultDealTitle: "Deal",
     defaultDealDesc: "Mindful deal without details",
+    photoLibrary: "From library",
+    photoCamera: "Use camera",
   },
 };
 
@@ -389,7 +401,7 @@ const PRODUCTS = [
       ru: {
         title: "HomePod",
         tagline: "Домашний концерт вместо баров",
-        desc: "Создаёт настроение дома — значит, меньше соблазнов уходить в дорогие развлечения.",
+        desc: "Создаёт настроение дома, значит меньше соблазнов уходить в дорогие развлечения.",
       },
       en: {
         title: "HomePod",
@@ -436,7 +448,7 @@ const PRODUCTS = [
       ru: {
         title: "Ethiopian Bloom",
         tagline: "Кофе дома дешевле кофеен",
-        desc: "Пара пакетов — и минус десяток походов за латте.",
+        desc: "Пара пакетов и минус десяток походов за латте.",
       },
       en: {
         title: "Ethiopian Bloom",
@@ -482,7 +494,7 @@ const PRODUCTS = [
       ru: {
         title: "Свеча Calm Hustle",
         tagline: "Атмосфера спа без подписки",
-        desc: "Зажёг и остался дома — экономия на походах в расслабляющие места.",
+        desc: "Зажёг и остался дома. Экономия на походах в расслабляющие места.",
       },
       en: {
         title: "Calm Hustle Candle",
@@ -860,7 +872,7 @@ function FeedScreen({
 
                 <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={handleBuyNow}>
                   <Text style={[styles.primaryButtonText, { color: colors.background }]}>
-                    {t("buyNow")}
+                    {t("buyNow", { pay: PAY_LABEL })}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -880,7 +892,15 @@ function FeedScreen({
   );
 }
 
-function CartScreen({ cart, onCheckout, onCheckoutAll, t, language, colors }) {
+function CartScreen({
+  cart,
+  onCheckout,
+  onCheckoutAll,
+  onRemoveItem = () => {},
+  t,
+  language,
+  colors,
+}) {
   const total = cart.reduce((sum, item) => sum + item.price, 0);
   return (
     <View style={[styles.container, { backgroundColor: colors.background }] }>
@@ -920,6 +940,11 @@ function CartScreen({ cart, onCheckout, onCheckoutAll, t, language, colors }) {
                       {t("buyLabel")}
                     </Text>
                   </TouchableOpacity>
+                  <TouchableOpacity onPress={() => onRemoveItem(item.cartId)}>
+                    <Text style={[styles.cartRemove, { color: colors.muted }]}>
+                      {t("cartRemove")}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             );
@@ -949,12 +974,27 @@ function PurchasesScreen({ purchases, t, language, colors }) {
   const saved = Math.max(PURCHASE_GOAL - total, 0);
   const progress = Math.min(total / PURCHASE_GOAL, 1);
 
-  return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }] }
-      contentContainerStyle={{ paddingBottom: 160 }}
-      showsVerticalScrollIndicator={false}
-    >
+  const renderPurchase = ({ item }) => {
+    const copy = getCopyForPurchase(item, language, t);
+    return (
+      <View style={[styles.purchaseCard, { backgroundColor: colors.card }] }>
+        <View style={styles.purchaseInfo}>
+          <Text style={[styles.purchaseTitle, { color: colors.text }]}>
+            ✅ {copy.title} · {item.variant}
+          </Text>
+          <Text style={[styles.purchaseDesc, { color: colors.muted }]}>
+            {copy.desc}
+          </Text>
+        </View>
+        <Text style={[styles.purchasePrice, { color: colors.text }]}>
+          {formatCurrency(item.paidAmount || item.price)} / {formatCurrency(item.price)}
+        </Text>
+      </View>
+    );
+  };
+
+  const header = (
+    <>
       <Text style={[styles.header, { color: colors.text }]}>{t("purchasesTitle")}</Text>
       <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
         {t("purchasesSubtitle", { amount: formatCurrency(saved) })}
@@ -986,30 +1026,11 @@ function PurchasesScreen({ purchases, t, language, colors }) {
           {t("progressHint", { amount: formatCurrency(saved) })}
         </Text>
       </View>
+    </>
+  );
 
-      {purchases.length === 0 ? (
-        <Text style={[styles.emptyText, { color: colors.muted }]}>{t("emptyPurchases")}</Text>
-      ) : (
-        purchases.map((item) => {
-          const copy = getCopyForPurchase(item, language, t);
-          return (
-            <View key={item.id} style={[styles.purchaseCard, { backgroundColor: colors.card }] }>
-              <View style={styles.purchaseInfo}>
-                <Text style={[styles.purchaseTitle, { color: colors.text }]}>
-                  ✅ {copy.title} · {item.variant}
-                </Text>
-                <Text style={[styles.purchaseDesc, { color: colors.muted }]}>
-                  {copy.desc}
-                </Text>
-              </View>
-              <Text style={[styles.purchasePrice, { color: colors.text }]}>
-                {formatCurrency(item.paidAmount || item.price)} / {formatCurrency(item.price)}
-              </Text>
-            </View>
-          );
-        })
-      )}
-
+  const footer = (
+    <>
       <Text style={[styles.subheader, { color: colors.text }]}>{t("goalsTitle")}</Text>
       {GOALS.map((goal) => {
         const unlocked = total >= goal.target;
@@ -1041,7 +1062,26 @@ function PurchasesScreen({ purchases, t, language, colors }) {
           </View>
         );
       })}
-    </ScrollView>
+    </>
+  );
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }] }>
+      <FlatList
+        data={purchases}
+        keyExtractor={(item) => item.id}
+        renderItem={renderPurchase}
+        ListHeaderComponent={header}
+        ListHeaderComponentStyle={{ marginBottom: 16 }}
+        ListFooterComponent={footer}
+        ListFooterComponentStyle={{ marginTop: 16 }}
+        ListEmptyComponent={
+          <Text style={[styles.emptyText, { color: colors.muted }]}>{t("emptyPurchases")}</Text>
+        }
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 160 }}
+      />
+    </View>
   );
 }
 
@@ -1056,6 +1096,7 @@ function ProfileScreen({
   onThemeToggle,
   onLanguageChange,
   onResetData,
+  onPickImage,
   theme,
   language,
   t,
@@ -1070,11 +1111,11 @@ function ProfileScreen({
       <View style={[styles.profileCard, { backgroundColor: colors.card }] }>
         <Image source={{ uri: profile.avatar }} style={styles.profileAvatar} />
         {isEditing ? (
-          <>
-            <TextInput
-              style={[styles.profileInput, { borderColor: colors.border, color: colors.text }]}
-              value={profile.name}
-              onChangeText={(text) => onFieldChange("name", text)}
+            <>
+              <TextInput
+                style={[styles.profileInput, { borderColor: colors.border, color: colors.text }]}
+                value={profile.name}
+                onChangeText={(text) => onFieldChange("name", text)}
               placeholder="Name"
               placeholderTextColor={colors.muted}
             />
@@ -1097,16 +1138,22 @@ function ProfileScreen({
               multiline
               placeholderTextColor={colors.muted}
             />
-            <TextInput
-              style={[styles.profileInput, { borderColor: colors.border, color: colors.text }]}
-              value={profile.avatar}
-              onChangeText={(text) => onFieldChange("avatar", text)}
-              placeholder="Avatar URL"
-              placeholderTextColor={colors.muted}
-              autoCapitalize="none"
-            />
-          </>
-        ) : (
+              <View style={styles.photoButtons}>
+                <TouchableOpacity
+                  style={[styles.photoButton, { borderColor: colors.border }]}
+                  onPress={() => onPickImage?.("library")}
+                >
+                  <Text style={{ color: colors.text }}>{t("photoLibrary")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.photoButton, { borderColor: colors.border }]}
+                  onPress={() => onPickImage?.("camera")}
+                >
+                  <Text style={{ color: colors.text }}>{t("photoCamera")}</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
           <>
             <Text style={[styles.profileName, { color: colors.text }]}>{profile.name}</Text>
             <Text style={[styles.profileSubtitle, { color: colors.muted }]}>
@@ -1371,6 +1418,35 @@ export default function App() {
     setLanguage(lng);
   };
 
+  const handlePickImage = async (source = "library") => {
+    try {
+      triggerHaptic();
+      let permission;
+      if (source === "camera") {
+        permission = await ImagePicker.requestCameraPermissionsAsync();
+      } else {
+        permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      }
+      if (!permission.granted) {
+        return;
+      }
+      const pickerOptions = {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+      };
+      const result =
+        source === "camera"
+          ? await ImagePicker.launchCameraAsync(pickerOptions)
+          : await ImagePicker.launchImageLibraryAsync(pickerOptions);
+      if (!result.canceled && result.assets?.length) {
+        const uri = result.assets[0].uri;
+        setProfileDraft((prev) => ({ ...prev, avatar: uri }));
+      }
+    } catch (error) {
+      console.warn("image picker", error);
+    }
+  };
+
   const refreshCatalog = async () => {
     if (!AMAZON_FEED_URL) {
       setProducts(PRODUCTS);
@@ -1406,6 +1482,11 @@ export default function App() {
     };
     setCart((prev) => [...prev, cartItem]);
     triggerOverlayState("cart", t("cartOverlay"));
+  };
+
+  const handleRemoveFromCart = (cartId) => {
+    triggerHaptic();
+    setCart((prev) => prev.filter((item) => item.cartId !== cartId));
   };
 
   const handleCheckoutRequest = (item, source = "feed") => {
@@ -1568,6 +1649,7 @@ export default function App() {
             cart={cart}
             onCheckout={handleCheckoutRequest}
             onCheckoutAll={handleBulkCheckout}
+            onRemoveItem={handleRemoveFromCart}
             t={t}
             language={language}
             colors={colors}
@@ -1588,6 +1670,7 @@ export default function App() {
             onThemeToggle={handleThemeToggle}
             onLanguageChange={handleLanguageChange}
             onResetData={handleResetData}
+            onPickImage={handlePickImage}
             theme={theme}
             language={language}
             t={t}
@@ -1655,7 +1738,7 @@ export default function App() {
           >
             <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
               <View style={[styles.paySheet, { backgroundColor: colors.card }] }>
-                <Text style={[styles.modalTitle, { color: colors.text }]}> Pay</Text>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>{PAY_LABEL}</Text>
                 {checkoutItem && (
                   <>
                     <View style={[styles.payCard, { backgroundColor: colors.text }]}>
@@ -1756,21 +1839,22 @@ export default function App() {
         </Modal>
 
         {cart.length > 0 && (
-          <Animated.View
-            pointerEvents="none"
+          <AnimatedTouchableOpacity
             style={[
               styles.cartBadge,
               {
-                backgroundColor: colors.text,
+                backgroundColor: colors.card,
+                borderColor: colors.border,
                 transform: [{ scale: cartBadgeScale }],
               },
             ]}
+            onPress={() => handleTabChange("cart")}
           >
-            <Text style={[styles.cartBadgeIcon, { color: colors.background }]}>🛒</Text>
-            <Text style={[styles.cartBadgeCount, { color: colors.background }]}>
+            <Text style={[styles.cartBadgeIcon, { color: colors.text }]}>🛒</Text>
+            <Text style={[styles.cartBadgeCount, { color: colors.text }]}>
               {cart.length}
             </Text>
-          </Animated.View>
+          </AnimatedTouchableOpacity>
         )}
 
         {overlay && (
@@ -1792,12 +1876,18 @@ export default function App() {
                 {
                   backgroundColor: colors.card,
                   borderColor: colors.border,
-                  borderWidth: overlay.type === "cart" || overlay.type === "cancel" ? 1 : 0,
+                  borderWidth: overlay.type === "cart" ? 0 : 1,
                 },
               ]}
             >
-              {overlay.type === "cancel" && (
-                <Image source={{ uri: CAT_IMAGE }} style={styles.celebrationCat} />
+              {(overlay.type === "cancel" || overlay.type === "purchase") && (
+                <Image
+                  source={{ uri: CAT_IMAGE }}
+                  style={[
+                    styles.celebrationCat,
+                    overlay.type === "purchase" ? styles.catHappy : styles.catSad,
+                  ]}
+                />
               )}
               <Text style={[styles.celebrationText, { color: colors.text }]}>
                 {overlay.message}
@@ -1813,14 +1903,14 @@ export default function App() {
 const styles = StyleSheet.create({
   appShell: {
     flex: 1,
-    paddingHorizontal: 8,
+    paddingHorizontal: SHELL_HORIZONTAL_PADDING,
   },
   screenWrapper: {
     flex: 1,
   },
   container: {
     flex: 1,
-    paddingHorizontal: 30,
+    paddingHorizontal: BASE_HORIZONTAL_PADDING,
     paddingTop: 24,
   },
   feedHero: {
@@ -2073,6 +2163,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
+  cartRemove: {
+    marginTop: 4,
+    fontSize: 12,
+  },
   cartTotalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -2247,6 +2341,19 @@ const styles = StyleSheet.create({
     height: 90,
     textAlignVertical: "top",
   },
+  photoButtons: {
+    flexDirection: "row",
+    gap: 10,
+    width: "100%",
+    marginBottom: 10,
+  },
+  photoButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
   settingsCard: {
     borderRadius: 26,
     padding: 20,
@@ -2375,11 +2482,11 @@ const styles = StyleSheet.create({
   },
   cartBadge: {
     position: "absolute",
-    top: 18,
+    bottom: 96,
     right: 24,
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -2388,6 +2495,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 4,
     elevation: 4,
+    borderWidth: 1,
   },
   cartBadgeIcon: {
     fontSize: 18,
@@ -2429,6 +2537,12 @@ const styles = StyleSheet.create({
     height: 90,
     borderRadius: 18,
     opacity: 0.9,
+  },
+  catHappy: {
+    transform: [{ scale: 1.05 }],
+  },
+  catSad: {
+    opacity: 0.7,
   },
   rainLayer: {
     ...StyleSheet.absoluteFillObject,
