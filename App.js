@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -17,11 +17,13 @@ import {
   Platform,
   Dimensions,
   Animated,
+  Linking,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import ConfettiCannon from "react-native-confetti-cannon";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
+import * as WebBrowser from "expo-web-browser";
 
 const STORAGE_KEYS = {
   CART: "@almost_cart",
@@ -29,7 +31,10 @@ const STORAGE_KEYS = {
   PROFILE: "@almost_profile",
   THEME: "@almost_theme",
   LANGUAGE: "@almost_language",
+  ONBOARDING: "@almost_onboarded",
 };
+
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE || "http://192.168.8.167:8080";
 
 const PURCHASE_GOAL = 20000;
 const CAT_IMAGE = "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?auto=format&fit=crop&w=600&q=80";
@@ -140,17 +145,31 @@ const triggerHaptic = (style = Haptics.ImpactFeedbackStyle.Light) => {
   Haptics.impactAsync(style).catch(() => {});
 };
 
+const useFadeIn = () => {
+  const fade = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(fade, {
+      toValue: 1,
+      duration: 350,
+      useNativeDriver: true,
+    }).start();
+  }, [fade]);
+  return fade;
+};
+
 const TRANSLATIONS = {
   ru: {
     appTagline: "витрина умных замен, которые экономят бюджет",
     syncAmazon: "подтянуть amazon",
     syncingAmazon: "обновляю…",
+    remoteSourceLabel: "Источник: {{source}}",
     heroAwaiting: "в листе желаний",
     heroSpendLine: "уже сэкономлено {{amount}}. Красота без ущерба бюджету",
     feedEmptyTitle: "Фильтр пуст",
     feedEmptySubtitle: "Попробуй другой тег или обнови каталог",
     buyNow: "Оплатить через {{pay}}",
     addToCart: "Отложить и подумать",
+    buyExternal: "Перейти к товару",
     cartTitle: "Корзина",
     cartEmptyTitle: "Грустно без твоих хотелок",
     cartEmptySubtitle: "Добавь то, что реально нужно: приложению нравится спасать бюджет",
@@ -200,17 +219,32 @@ const TRANSLATIONS = {
     defaultDealDesc: "Умная замена без описания",
     photoLibrary: "Из галереи",
     photoCamera: "Через камеру",
+    registrationTitle: "Познакомимся",
+    registrationSubtitle: "Расскажи о себе, чтобы Almost говорил на твоём языке",
+    languageTitle: "Выбери язык",
+    languageSubtitle: "Чтобы подсказки звучали естественно",
+    inputFirstName: "Имя",
+    inputLastName: "Фамилия",
+    inputMotto: "Девиз дня",
+    currencyLabel: "Валюта накоплений",
+    nextButton: "Дальше",
+    goalTitle: "Определим цель",
+    goalSubtitle: "Выбери главное направление экономии",
+    goalButton: "Готово",
+    goalCompleteMessage: "Всё готово, погнали копить!",
   },
   en: {
     appTagline: "a showcase of mindful deals that protect savings",
     syncAmazon: "sync amazon",
     syncingAmazon: "refreshing…",
+    remoteSourceLabel: "Source: {{source}}",
     heroAwaiting: "on the wish list",
     heroSpendLine: "already saved {{amount}}. Glow without overspending",
     feedEmptyTitle: "Nothing here",
     feedEmptySubtitle: "Try another tag or refresh the catalog",
     buyNow: "Pay with {{pay}}",
     addToCart: "Save for later",
+    buyExternal: "Open product page",
     cartTitle: "Cart",
     cartEmptyTitle: "Empty without your smart cravings",
     cartEmptySubtitle: "Add something purposeful; the app loves saving cash",
@@ -260,6 +294,19 @@ const TRANSLATIONS = {
     defaultDealDesc: "Mindful deal without details",
     photoLibrary: "From library",
     photoCamera: "Use camera",
+    registrationTitle: "Let’s set things up",
+    registrationSubtitle: "Tell us who you are so Almost speaks your language",
+    languageTitle: "Choose a language",
+    languageSubtitle: "We’ll tailor every hint to you",
+    inputFirstName: "First name",
+    inputLastName: "Last name",
+    inputMotto: "Personal motto",
+    currencyLabel: "Savings currency",
+    nextButton: "Continue",
+    goalTitle: "Pick a goal",
+    goalSubtitle: "Where should your mindful deals lead?",
+    goalButton: "Start saving",
+    goalCompleteMessage: "You’re set—let’s start saving!",
   },
 };
 
@@ -286,11 +333,39 @@ const CATEGORY_LABELS = {
   stationery: { ru: "бумага", en: "stationery" },
 };
 
+const CURRENCIES = ["USD", "EUR", "RUB"];
+
+const CURRENCY_LOCALES = {
+  USD: "en-US",
+  EUR: "de-DE",
+  RUB: "ru-RU",
+};
+
+const GOAL_PRESETS = [
+  { id: "travel", ru: "Путешествия", en: "Travel", emoji: "✈️" },
+  { id: "tech", ru: "Техника", en: "Tech upgrade", emoji: "💻" },
+  { id: "daily", ru: "Ежедневные хотелки", en: "Daily treats", emoji: "🍩" },
+  { id: "save", ru: "Просто копить", en: "Rainy-day fund", emoji: "💰" },
+];
+
 const DEFAULT_PROFILE = {
   name: "Nina Cleanova",
+  firstName: "Nina",
+  lastName: "Cleanova",
   subtitle: "Управляю хотелками и бюджетом",
+  motto: "Управляю хотелками и бюджетом",
   bio: "Люблю красивые вещи, но больше люблю финансовый план",
   avatar: "https://i.pravatar.cc/150?img=47",
+  currency: "USD",
+  goal: "save",
+};
+
+const INITIAL_REGISTRATION = {
+  firstName: "",
+  lastName: "",
+  motto: "",
+  avatar: "",
+  currency: "USD",
 };
 
 const PRODUCTS = [
@@ -574,6 +649,11 @@ const PRODUCTS = [
   },
 ];
 
+let activeCurrency = DEFAULT_PROFILE.currency;
+const setActiveCurrency = (code) => {
+  activeCurrency = CURRENCIES.includes(code) ? code : DEFAULT_PROFILE.currency;
+};
+
 const GOALS = [
   {
     id: "starter",
@@ -601,7 +681,20 @@ const GOALS = [
   },
 ];
 
-const formatCurrency = (value = 0) => `$${Number(value || 0).toLocaleString("en-US")}`;
+const formatCurrency = (value = 0, currency = activeCurrency) => {
+  const locale = CURRENCY_LOCALES[currency] || "en-US";
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(value || 0);
+  } catch {
+    const symbol = currency === "EUR" ? "€" : currency === "RUB" ? "₽" : "$";
+    return `${symbol}${Number(value || 0).toLocaleString(locale)}`;
+  }
+};
 
 const getCopyForPurchase = (item, language, t) => {
   if (item.copy?.[language]) return item.copy[language];
@@ -668,25 +761,39 @@ function CategoryChip({ label, isActive, onPress, colors }) {
   );
 }
 
-function ProductCard({ product, onPress, language, colors }) {
+function ProductCard({ product, onPress, language }) {
+  const copy = product.copy?.[language];
+  const title = copy?.title || product.title;
+  const tagline = copy?.tagline || product.tagline;
+  const primaryPrice =
+    product.price ||
+    (product.variants?.[0] ? formatCurrency(product.variants[0].price) : null);
+
   return (
     <TouchableOpacity
-      style={[styles.productCard, { backgroundColor: product.colors.card }]}
+      style={[styles.productCard, { backgroundColor: product.colors?.card || "#fff" }]}
       onPress={() => onPress(product)}
       activeOpacity={0.85}
     >
-      <Text style={styles.productTagline}>{product.copy[language].tagline}</Text>
-      <Image source={{ uri: product.image }} style={styles.productImage} />
-      <Text style={styles.productTitle}>{product.copy[language].title}</Text>
-      <Text style={styles.productPrice}>
-        от {formatCurrency(product.variants?.[0]?.price || 0)}
-      </Text>
+      {tagline && <Text style={styles.productTagline}>{tagline}</Text>}
+      {product.image && <Image source={{ uri: product.image }} style={styles.productImage} />}
+      <Text style={styles.productTitle}>{title}</Text>
+      {primaryPrice && <Text style={styles.productPrice}>{primaryPrice}</Text>}
+      {product.rating && (
+        <Text style={styles.productMeta}>
+          ⭐️ {product.rating}
+          {product.ratings_total ? ` (${product.ratings_total})` : ""}
+        </Text>
+      )}
     </TouchableOpacity>
   );
 }
 
 function FeedScreen({
   products,
+  remoteItems,
+  remoteSource,
+  loadingRemote,
   categories,
   activeCategory,
   onCategorySelect,
@@ -695,8 +802,10 @@ function FeedScreen({
   onAddToCart,
   onCheckoutRequest,
   onCancelDetail,
-  onRefreshCatalog,
-  loadingCatalog,
+  onOpenExternal,
+  searchQuery,
+  onSearchChange,
+  onSearchSubmit,
   t,
   language,
   colors,
@@ -712,7 +821,7 @@ function FeedScreen({
 
   const openProduct = (product) => {
     setActiveProduct(product);
-    setSelectedVariant(product.variants[0]);
+    setSelectedVariant(product.variants?.[0] || null);
     setShowDetail(true);
   };
 
@@ -731,7 +840,13 @@ function FeedScreen({
   };
 
   const handleBuyNow = () => {
-    if (!activeProduct || !selectedVariant) return;
+    if (!activeProduct) return;
+    if (activeProduct.url) {
+      onOpenExternal?.(activeProduct.url);
+      closeDetail(false);
+      return;
+    }
+    if (!selectedVariant) return;
     onCheckoutRequest(
       {
         productId: activeProduct.id,
@@ -745,11 +860,14 @@ function FeedScreen({
     closeDetail(false);
   };
 
+  const listData = remoteItems?.length ? remoteItems : products;
+  const isRemote = remoteItems?.length > 0;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }] }>
       <FlatList
-        data={products}
-        keyExtractor={(item) => item.id}
+        data={listData}
+        keyExtractor={(item, index) => item.id || item.asin || item.productId || `${item.title}-${index}`}
         numColumns={2}
         showsVerticalScrollIndicator={false}
         columnWrapperStyle={{ justifyContent: "space-between", marginBottom: 18 }}
@@ -769,15 +887,6 @@ function FeedScreen({
                 <Text style={[styles.appName, { color: colors.text }]}>Almost</Text>
                 <Text style={[styles.heroTagline, { color: colors.muted }]}>{t("appTagline")}</Text>
               </View>
-              <TouchableOpacity
-                style={[styles.syncButton, { backgroundColor: colors.text }]}
-                onPress={onRefreshCatalog}
-                disabled={loadingCatalog}
-              >
-                <Text style={styles.syncButtonText}>
-                  {loadingCatalog ? t("syncingAmazon") : t("syncAmazon")}
-                </Text>
-              </TouchableOpacity>
             </View>
             <View style={[styles.heroStatCard, { backgroundColor: colors.card }] }>
               <View style={styles.heroStatRow}>
@@ -788,6 +897,34 @@ function FeedScreen({
                 {t("heroSpendLine", { amount: formatCurrency(totalSaved) })}
               </Text>
             </View>
+            <View style={styles.searchRow}>
+              <TextInput
+                style={[
+                  styles.searchInput,
+                  { borderColor: colors.border, color: colors.text },
+                ]}
+                placeholder={language === "ru" ? "Что ищем на Amazon?" : "Search Amazon deals"}
+                placeholderTextColor={colors.muted}
+                value={searchQuery}
+                onChangeText={onSearchChange}
+                returnKeyType="search"
+                onSubmitEditing={() => onSearchSubmit(searchQuery)}
+              />
+              <TouchableOpacity
+                style={[styles.searchButton, { backgroundColor: colors.text }]}
+                onPress={() => onSearchSubmit(searchQuery)}
+                disabled={loadingRemote}
+              >
+                <Text style={[styles.searchButtonText, { color: colors.background }]}>
+                  {loadingRemote ? "..." : t("syncAmazon")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {remoteSource && isRemote && (
+              <Text style={[styles.remoteBadge, { color: colors.muted }]}>
+                {t("remoteSourceLabel", { source: remoteSource })}
+              </Text>
+            )}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 16 }}>
               {categories.map((cat) => (
                 <CategoryChip
@@ -802,12 +939,7 @@ function FeedScreen({
           </View>
         }
         renderItem={({ item }) => (
-          <ProductCard
-            product={item}
-            onPress={openProduct}
-            language={language}
-            colors={colors}
-          />
+          <ProductCard product={item} onPress={openProduct} language={language} />
         )}
       />
 
@@ -820,69 +952,102 @@ function FeedScreen({
             {activeProduct && (
               <>
                 <View
-                  style={[styles.detailHero, { backgroundColor: activeProduct.colors.card }]}
+                  style={[
+                    styles.detailHero,
+                    { backgroundColor: activeProduct.colors?.card || "#F3F3F3" },
+                  ]}
                 >
-                  <Image source={{ uri: activeProduct.image }} style={styles.detailImage} />
+                  {activeProduct.image && (
+                    <Image source={{ uri: activeProduct.image }} style={styles.detailImage} />
+                  )}
                 </View>
                 <Text style={[styles.detailTitle, { color: colors.text }]}>
-                  {activeProduct.copy[language].title}
+                  {activeProduct.copy?.[language]?.title || activeProduct.title}
                 </Text>
                 <Text style={[styles.detailTagline, { color: colors.text }]}>
-                  {activeProduct.copy[language].tagline}
+                  {activeProduct.copy?.[language]?.tagline || activeProduct.tagline}
                 </Text>
+                <Text style={[styles.detailPrice, { color: colors.text }]}>
+                  {activeProduct.price ||
+                    (selectedVariant
+                      ? formatCurrency(selectedVariant.price)
+                      : activeProduct.variants?.[0]
+                      ? formatCurrency(activeProduct.variants[0].price)
+                      : "")}
+                </Text>
+                {activeProduct.rating && (
+                  <Text style={[styles.detailRating, { color: colors.muted }]}>
+                    ⭐️ {activeProduct.rating}
+                    {activeProduct.ratings_total ? ` (${activeProduct.ratings_total})` : ""}
+                  </Text>
+                )}
                 <Text style={[styles.detailDesc, { color: colors.muted }]}>
-                  {activeProduct.copy[language].desc}
+                  {activeProduct.copy?.[language]?.desc || activeProduct.desc}
                 </Text>
 
-                <View style={styles.variantRow}>
-                  {activeProduct.variants.map((variant) => (
-                    <TouchableOpacity
-                      key={variant.label}
-                      style={[
-                        styles.variantPill,
-                        {
-                          backgroundColor:
-                            selectedVariant?.label === variant.label
-                              ? colors.text
-                              : colors.card,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                      onPress={() => setSelectedVariant(variant)}
-                    >
-                      <Text
+                {Array.isArray(activeProduct.variants) && activeProduct.variants.length > 0 && (
+                  <View style={styles.variantRow}>
+                    {activeProduct.variants.map((variant) => (
+                      <TouchableOpacity
+                        key={variant.label}
                         style={[
-                          styles.variantText,
+                          styles.variantPill,
                           {
-                            color:
+                            backgroundColor:
                               selectedVariant?.label === variant.label
-                                ? colors.background
-                                : colors.text,
+                                ? colors.text
+                                : colors.card,
+                            borderColor: colors.border,
                           },
                         ]}
+                        onPress={() => setSelectedVariant(variant)}
                       >
-                        {variant.label}
-                      </Text>
-                      <Text style={[styles.variantPrice, { color: colors.muted }]}>
-                        {formatCurrency(variant.price)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                        <Text
+                          style={[
+                            styles.variantText,
+                            {
+                              color:
+                                selectedVariant?.label === variant.label
+                                  ? colors.background
+                                  : colors.text,
+                            },
+                          ]}
+                        >
+                          {variant.label}
+                        </Text>
+                        <Text style={[styles.variantPrice, { color: colors.muted }]}>
+                          {formatCurrency(variant.price)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
 
-                <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={handleBuyNow}>
-                  <Text style={[styles.primaryButtonText, { color: colors.background }]}>
-                    {t("buyNow", { pay: PAY_LABEL })}
-                  </Text>
-                </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.secondaryButton, { borderColor: colors.text }]}
-                  onPress={handleAddToCart}
+                  style={[styles.primaryButton, { backgroundColor: colors.text }]}
+                  onPress={() => {
+                    if (activeProduct.url) {
+                      onOpenExternal?.(activeProduct.url);
+                      closeDetail(false);
+                    } else {
+                      handleBuyNow();
+                    }
+                  }}
                 >
-                  <Text style={[styles.secondaryButtonText, { color: colors.text }]}>
-                    {t("addToCart")}
+                  <Text style={[styles.primaryButtonText, { color: colors.background }]}>
+                    {activeProduct.url ? t("buyExternal") : t("buyNow", { pay: PAY_LABEL })}
                   </Text>
                 </TouchableOpacity>
+                {Array.isArray(activeProduct.variants) && activeProduct.variants.length > 0 && (
+                  <TouchableOpacity
+                    style={[styles.secondaryButton, { borderColor: colors.text }]}
+                    onPress={handleAddToCart}
+                  >
+                    <Text style={[styles.secondaryButtonText, { color: colors.text }]}>
+                      {t("addToCart")}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </>
             )}
           </View>
@@ -1138,20 +1303,20 @@ function ProfileScreen({
               multiline
               placeholderTextColor={colors.muted}
             />
-              <View style={styles.photoButtons}>
-                <TouchableOpacity
-                  style={[styles.photoButton, { borderColor: colors.border }]}
-                  onPress={() => onPickImage?.("library")}
-                >
-                  <Text style={{ color: colors.text }}>{t("photoLibrary")}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.photoButton, { borderColor: colors.border }]}
-                  onPress={() => onPickImage?.("camera")}
-                >
-                  <Text style={{ color: colors.text }}>{t("photoCamera")}</Text>
-                </TouchableOpacity>
-              </View>
+            <View style={styles.photoButtons}>
+              <TouchableOpacity
+                style={[styles.photoButton, { borderColor: colors.border }]}
+                onPress={() => onPickImage?.("library")}
+              >
+                <Text style={{ color: colors.text }}>{t("photoLibrary")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.photoButton, { borderColor: colors.border }]}
+                onPress={() => onPickImage?.("camera")}
+              >
+                <Text style={{ color: colors.text }}>{t("photoCamera")}</Text>
+              </TouchableOpacity>
+            </View>
             </>
           ) : (
           <>
@@ -1285,9 +1450,8 @@ export default function App() {
   const [showApplePay, setShowApplePay] = useState(false);
   const [purchaseType, setPurchaseType] = useState("full");
   const [partialAmount, setPartialAmount] = useState("");
-  const [products, setProducts] = useState(PRODUCTS);
+  const products = PRODUCTS;
   const [activeCategory, setActiveCategory] = useState("all");
-  const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [profile, setProfile] = useState({ ...DEFAULT_PROFILE });
   const [profileDraft, setProfileDraft] = useState({ ...DEFAULT_PROFILE });
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -1297,6 +1461,13 @@ export default function App() {
   const [confettiKey, setConfettiKey] = useState(0);
   const overlayTimer = useRef(null);
   const cartBadgeScale = useRef(new Animated.Value(0)).current;
+  const [onboardingStep, setOnboardingStep] = useState("logo");
+  const [registrationData, setRegistrationData] = useState(INITIAL_REGISTRATION);
+  const [selectedGoal, setSelectedGoal] = useState(null);
+  const [remoteProducts, setRemoteProducts] = useState([]);
+  const [remoteSource, setRemoteSource] = useState(null);
+  const [remoteLoading, setRemoteLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("iphone");
 
   const categories = useMemo(() => {
     const set = new Set(["all"]);
@@ -1330,21 +1501,43 @@ export default function App() {
 
   const loadStoredData = async () => {
     try {
-      const [cartRaw, purchasesRaw, profileRaw, themeRaw, languageRaw] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEYS.CART),
-        AsyncStorage.getItem(STORAGE_KEYS.PURCHASES),
-        AsyncStorage.getItem(STORAGE_KEYS.PROFILE),
-        AsyncStorage.getItem(STORAGE_KEYS.THEME),
-        AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
-      ]);
+      const [cartRaw, purchasesRaw, profileRaw, themeRaw, languageRaw, onboardingRaw] =
+        await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEYS.CART),
+          AsyncStorage.getItem(STORAGE_KEYS.PURCHASES),
+          AsyncStorage.getItem(STORAGE_KEYS.PROFILE),
+          AsyncStorage.getItem(STORAGE_KEYS.THEME),
+          AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
+          AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
+        ]);
       if (cartRaw) setCart(JSON.parse(cartRaw));
       if (purchasesRaw) setPurchases(JSON.parse(purchasesRaw));
+      let parsedProfile = null;
       if (profileRaw) {
-        setProfile(JSON.parse(profileRaw));
-        setProfileDraft(JSON.parse(profileRaw));
+        parsedProfile = JSON.parse(profileRaw);
+        setProfile(parsedProfile);
+        setProfileDraft(parsedProfile);
+        setRegistrationData((prev) => ({
+          ...prev,
+          firstName: parsedProfile.firstName || prev.firstName,
+          lastName: parsedProfile.lastName || prev.lastName,
+          motto: parsedProfile.motto || parsedProfile.subtitle || prev.motto,
+          avatar: parsedProfile.avatar || prev.avatar,
+          currency: parsedProfile.currency || prev.currency,
+        }));
+        setActiveCurrency(parsedProfile.currency || DEFAULT_PROFILE.currency);
+      } else {
+        setActiveCurrency(DEFAULT_PROFILE.currency);
       }
       if (themeRaw) setTheme(themeRaw);
       if (languageRaw) setLanguage(languageRaw);
+      if (onboardingRaw === "done" || parsedProfile?.goal) {
+        setOnboardingStep("done");
+      } else if (parsedProfile?.firstName) {
+        setOnboardingStep("logo");
+      } else {
+        setOnboardingStep("logo");
+      }
     } catch (error) {
       console.warn("load error", error);
     }
@@ -1352,7 +1545,6 @@ export default function App() {
 
   useEffect(() => {
     loadStoredData();
-    refreshCatalog();
   }, []);
 
   useEffect(() => {
@@ -1368,12 +1560,61 @@ export default function App() {
   }, [profile]);
 
   useEffect(() => {
+    setActiveCurrency(profile.currency || DEFAULT_PROFILE.currency);
+  }, [profile.currency]);
+
+  useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.THEME, theme).catch(() => {});
   }, [theme]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.LANGUAGE, language).catch(() => {});
   }, [language]);
+
+  const fetchRemoteProducts = useCallback(async (queryValue = "iphone") => {
+    const query = (queryValue || "iphone").trim() || "iphone";
+    if (!API_BASE) {
+      setRemoteProducts([]);
+      return;
+    }
+    setRemoteLoading(true);
+    const url = `${API_BASE}/api/search?q=${encodeURIComponent(query)}&domain=amazon.com`;
+    const attempts = 3;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const items = Array.isArray(json.products) ? json.products : [];
+        setRemoteProducts(items);
+        setRemoteSource(json.source || null);
+        setRemoteLoading(false);
+        return;
+      } catch (error) {
+        console.warn("remote products", error.message || error);
+        if (attempt < attempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+          continue;
+        }
+        setRemoteProducts([]);
+        setRemoteSource(null);
+        setRemoteLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRemoteProducts("iphone");
+  }, [fetchRemoteProducts]);
+
+  const handleRemoteRefresh = useCallback(
+    (queryValue) => {
+      const nextQuery = (queryValue ?? searchQuery ?? "iphone").trim() || "iphone";
+      setSearchQuery(nextQuery);
+      fetchRemoteProducts(nextQuery);
+    },
+    [fetchRemoteProducts, searchQuery]
+  );
 
   useEffect(() => {
     return () => {
@@ -1418,7 +1659,79 @@ export default function App() {
     setLanguage(lng);
   };
 
-  const handlePickImage = async (source = "library") => {
+  const handleLanguageSelect = (lng) => {
+    handleLanguageChange(lng);
+    setTimeout(() => setOnboardingStep("register"), 150);
+  };
+
+  const updateRegistrationData = (field, value) => {
+    if (field === "currency") {
+      setActiveCurrency(value);
+    }
+    setRegistrationData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleRegistrationPickImage = async (source = "library") => {
+    pickImage(source, (uri) =>
+      setRegistrationData((prev) => ({
+        ...prev,
+        avatar: uri,
+      }))
+    );
+  };
+
+  const handleRegistrationSubmit = () => {
+    if (!registrationData.firstName.trim()) {
+      Alert.alert("Almost", t("inputFirstName"));
+      return;
+    }
+    if (!registrationData.currency) {
+      Alert.alert("Almost", t("currencyLabel"));
+      return;
+    }
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    setOnboardingStep("goal");
+  };
+
+  const handleGoalSelect = (goalId) => {
+    triggerHaptic();
+    setSelectedGoal(goalId);
+  };
+
+  const handleGoalComplete = async () => {
+    if (!selectedGoal) {
+      Alert.alert("Almost", t("goalTitle"));
+      return;
+    }
+    const displayName = `${registrationData.firstName} ${registrationData.lastName}`.trim()
+      || registrationData.firstName.trim()
+      || DEFAULT_PROFILE.name;
+    const updatedProfile = {
+      ...profile,
+      name: displayName,
+      firstName: registrationData.firstName,
+      lastName: registrationData.lastName,
+      subtitle: registrationData.motto || profile.subtitle,
+      motto: registrationData.motto || profile.motto,
+      avatar: registrationData.avatar || profile.avatar,
+      currency: registrationData.currency,
+      goal: selectedGoal,
+    };
+    setProfile(updatedProfile);
+    setProfileDraft(updatedProfile);
+    await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(updatedProfile)).catch(() => {});
+    await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, "done").catch(() => {});
+    setActiveCurrency(updatedProfile.currency);
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    triggerOverlayState("completion", t("goalCompleteMessage"), 2400);
+    setTimeout(() => {
+      setOnboardingStep("done");
+      setSelectedGoal(null);
+      setRegistrationData(INITIAL_REGISTRATION);
+    }, 500);
+  };
+
+  const pickImage = async (source = "library", onPicked) => {
     try {
       triggerHaptic();
       let permission;
@@ -1440,37 +1753,24 @@ export default function App() {
           : await ImagePicker.launchImageLibraryAsync(pickerOptions);
       if (!result.canceled && result.assets?.length) {
         const uri = result.assets[0].uri;
-        setProfileDraft((prev) => ({ ...prev, avatar: uri }));
+        onPicked?.(uri);
       }
     } catch (error) {
       console.warn("image picker", error);
     }
   };
 
-  const refreshCatalog = async () => {
-    if (!AMAZON_FEED_URL) {
-      setProducts(PRODUCTS);
-      return;
-    }
-    try {
-      setLoadingCatalog(true);
-      const response = await fetch(AMAZON_FEED_URL);
-      const json = await response.json();
-      setProducts(normalizeAmazonItems(json));
-    } catch (error) {
-      console.warn("catalog", error);
-      setProducts(PRODUCTS);
-    } finally {
-      setLoadingCatalog(false);
-    }
-  };
-
-  const handleManualSync = () => {
-    triggerHaptic();
-    refreshCatalog();
+  const handlePickImage = async (source = "library") => {
+    pickImage(source, (uri) =>
+      setProfileDraft((prev) => ({
+        ...prev,
+        avatar: uri,
+      }))
+    );
   };
 
   const handleAddToCart = (product, variant) => {
+    if (!variant) return;
     triggerHaptic();
     const cartItem = {
       cartId: `${product.id}-${variant.label}-${Date.now()}`,
@@ -1487,6 +1787,15 @@ export default function App() {
   const handleRemoveFromCart = (cartId) => {
     triggerHaptic();
     setCart((prev) => prev.filter((item) => item.cartId !== cartId));
+  };
+
+  const openExternalLink = async (url) => {
+    if (!url) return;
+    try {
+      await WebBrowser.openBrowserAsync(url);
+    } catch {
+      Linking.openURL(url);
+    }
   };
 
   const handleCheckoutRequest = (item, source = "feed") => {
@@ -1557,12 +1866,16 @@ export default function App() {
             setPurchases([]);
             setProfile({ ...DEFAULT_PROFILE });
             setProfileDraft({ ...DEFAULT_PROFILE });
+            setRegistrationData(INITIAL_REGISTRATION);
+            setSelectedGoal(null);
+            setOnboardingStep("logo");
             setActiveCategory("all");
             setActiveTab("feed");
             setCheckoutItem(null);
             setOverlay(null);
             setTheme("light");
             setLanguage("ru");
+            setActiveCurrency(DEFAULT_PROFILE.currency);
           },
         },
       ]
@@ -1681,6 +1994,9 @@ export default function App() {
         return (
           <FeedScreen
             products={filteredProducts}
+            remoteItems={remoteProducts}
+            remoteSource={remoteSource}
+            loadingRemote={remoteLoading}
             categories={categories}
             activeCategory={activeCategory}
             onCategorySelect={handleCategorySelect}
@@ -1689,8 +2005,10 @@ export default function App() {
             onAddToCart={handleAddToCart}
             onCheckoutRequest={handleCheckoutRequest}
             onCancelDetail={handleCancelDetail}
-            onRefreshCatalog={handleManualSync}
-            loadingCatalog={loadingCatalog}
+            onOpenExternal={openExternalLink}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onSearchSubmit={handleRemoteRefresh}
             t={t}
             language={language}
             colors={colors}
@@ -1698,6 +2016,43 @@ export default function App() {
         );
     }
   };
+
+  if (onboardingStep !== "done") {
+    let onboardContent = null;
+    if (onboardingStep === "logo") {
+      onboardContent = <LogoSplash onDone={() => setOnboardingStep("language")} />;
+    } else if (onboardingStep === "language") {
+      onboardContent = <LanguageScreen colors={colors} t={t} onSelect={handleLanguageSelect} />;
+    } else if (onboardingStep === "register") {
+      onboardContent = (
+        <RegistrationScreen
+          data={registrationData}
+          onChange={updateRegistrationData}
+          onSubmit={handleRegistrationSubmit}
+          onPickImage={handleRegistrationPickImage}
+          colors={colors}
+          t={t}
+        />
+      );
+    } else if (onboardingStep === "goal") {
+      onboardContent = (
+        <GoalScreen
+          selectedGoal={selectedGoal}
+          onSelect={handleGoalSelect}
+          onSubmit={handleGoalComplete}
+          colors={colors}
+          t={t}
+          language={language}
+        />
+      );
+    }
+    const onboardingBackground = onboardingStep === "logo" ? "#fff" : colors.background;
+    return (
+      <SafeAreaView style={[styles.appShell, { backgroundColor: onboardingBackground }] }>
+        {onboardContent || <LogoSplash onDone={() => setOnboardingStep("language")} />}
+      </SafeAreaView>
+    );
+  }
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
@@ -1880,12 +2235,12 @@ export default function App() {
                 },
               ]}
             >
-              {(overlay.type === "cancel" || overlay.type === "purchase") && (
+              {(overlay.type === "cancel" || overlay.type === "purchase" || overlay.type === "completion") && (
                 <Image
                   source={{ uri: CAT_IMAGE }}
                   style={[
                     styles.celebrationCat,
-                    overlay.type === "purchase" ? styles.catHappy : styles.catSad,
+                    overlay.type === "purchase" || overlay.type === "completion" ? styles.catHappy : styles.catSad,
                   ]}
                 />
               )}
@@ -1933,18 +2288,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginTop: 6,
   },
-  syncButton: {
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: 22,
-    flexShrink: 0,
-    marginLeft: 12,
-  },
-  syncButtonText: {
-    color: "#fff",
-    fontSize: 12,
-    textTransform: "uppercase",
-  },
   heroStatCard: {
     padding: 16,
     borderRadius: 24,
@@ -1967,6 +2310,32 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     marginTop: 10,
+  },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 18,
+    gap: 10,
+  },
+  searchInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === "android" ? 6 : 10,
+  },
+  searchButton: {
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  searchButtonText: {
+    fontWeight: "600",
+  },
+  remoteBadge: {
+    marginTop: 8,
+    fontSize: 12,
+    textTransform: "uppercase",
   },
   categoryChip: {
     marginRight: 12,
@@ -2032,6 +2401,15 @@ const styles = StyleSheet.create({
   detailTagline: {
     marginTop: 6,
     fontWeight: "600",
+  },
+  detailPrice: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginTop: 8,
+  },
+  detailRating: {
+    marginTop: 4,
+    fontSize: 14,
   },
   detailDesc: {
     marginTop: 12,
@@ -2337,9 +2715,18 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 10,
   },
+  profileInputHalf: {
+    flex: 1,
+    width: "auto",
+  },
   profileBioInput: {
     height: 90,
     textAlignVertical: "top",
+  },
+  inputRow: {
+    flexDirection: "row",
+    gap: 10,
+    width: "100%",
   },
   photoButtons: {
     flexDirection: "row",
@@ -2553,4 +2940,301 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 0,
   },
+  onboardContainer: {
+    flex: 1,
+    paddingHorizontal: BASE_HORIZONTAL_PADDING,
+    paddingTop: 40,
+    gap: 20,
+  },
+  onboardContent: {
+    gap: 16,
+    paddingBottom: 60,
+  },
+  onboardTitle: {
+    fontSize: 32,
+    fontWeight: "800",
+  },
+  onboardSubtitle: {
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  avatarPreview: {
+    borderWidth: 1,
+    borderRadius: 24,
+    padding: 16,
+    alignItems: "center",
+  },
+  avatarImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    marginBottom: 8,
+  },
+  avatarPlaceholder: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  currencyLabel: {
+    fontSize: 14,
+    textTransform: "uppercase",
+    marginTop: 4,
+  },
+  currencyGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  currencyChipLarge: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  goalGrid: {
+    flex: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  goalOption: {
+    width: "48%",
+    borderWidth: 1,
+    borderRadius: 22,
+    padding: 16,
+    alignItems: "center",
+    gap: 8,
+  },
+  goalEmoji: {
+    fontSize: 28,
+  },
+  goalText: {
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  languageButtons: {
+    flexDirection: "row",
+    gap: 14,
+  },
+  languageButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingVertical: 18,
+    alignItems: "center",
+  },
+  logoSplash: {
+    flex: 1,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  logoSplashText: {
+    fontSize: 48,
+    fontWeight: "900",
+    letterSpacing: 2,
+    color: "#111",
+  },
 });
+function RegistrationScreen({ data, onChange, onSubmit, onPickImage, colors, t }) {
+  const fade = useFadeIn();
+
+  return (
+    <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
+      <ScrollView
+        contentContainerStyle={styles.onboardContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("registrationTitle")}</Text>
+        <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("registrationSubtitle")}</Text>
+
+        <TouchableOpacity
+          style={[styles.avatarPreview, { borderColor: colors.border }]}
+          onPress={() => onPickImage("library")}
+        >
+          {data.avatar ? (
+            <Image source={{ uri: data.avatar }} style={styles.avatarImage} />
+          ) : (
+            <View style={[styles.avatarPlaceholder, { borderColor: colors.border }]}>
+              <Text style={{ color: colors.muted, fontSize: 32 }}>+</Text>
+            </View>
+          )}
+          <Text style={{ color: colors.muted }}>{t("photoLibrary")}</Text>
+        </TouchableOpacity>
+        <View style={styles.photoButtons}>
+          <TouchableOpacity
+            style={[styles.photoButton, { borderColor: colors.border }]}
+            onPress={() => onPickImage("library")}
+          >
+            <Text style={{ color: colors.text }}>{t("photoLibrary")}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.photoButton, { borderColor: colors.border }]}
+            onPress={() => onPickImage("camera")}
+          >
+            <Text style={{ color: colors.text }}>{t("photoCamera")}</Text>
+          </TouchableOpacity>
+        </View>
+
+      <View style={styles.inputRow}>
+        <TextInput
+          style={[
+            styles.profileInput,
+            styles.profileInputHalf,
+            { borderColor: colors.border, color: colors.text },
+          ]}
+          placeholder={t("inputFirstName")}
+          placeholderTextColor={colors.muted}
+          value={data.firstName}
+          onChangeText={(text) => onChange("firstName", text)}
+        />
+        <TextInput
+          style={[
+            styles.profileInput,
+            styles.profileInputHalf,
+            { borderColor: colors.border, color: colors.text },
+          ]}
+          placeholder={t("inputLastName")}
+          placeholderTextColor={colors.muted}
+          value={data.lastName}
+          onChangeText={(text) => onChange("lastName", text)}
+        />
+      </View>
+
+        <TextInput
+          style={[styles.profileInput, { borderColor: colors.border, color: colors.text }]}
+          placeholder={t("inputMotto")}
+          placeholderTextColor={colors.muted}
+          value={data.motto}
+          onChangeText={(text) => onChange("motto", text)}
+        />
+
+        <Text style={[styles.currencyLabel, { color: colors.muted }]}>{t("currencyLabel")}</Text>
+        <View style={styles.currencyGrid}>
+          {CURRENCIES.map((currency) => {
+            const active = currency === data.currency;
+            return (
+              <TouchableOpacity
+                key={currency}
+                style={[
+                  styles.currencyChipLarge,
+                  {
+                    backgroundColor: active ? colors.text : "transparent",
+                    borderColor: colors.border,
+                  },
+                ]}
+                onPress={() => onChange("currency", currency)}
+              >
+                <Text
+                  style={{
+                    color: active ? colors.background : colors.text,
+                    fontWeight: "600",
+                  }}
+                >
+                  {currency}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
+          <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("nextButton")}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </Animated.View>
+  );
+}
+
+function GoalScreen({ selectedGoal, onSelect, onSubmit, colors, t, language }) {
+  const fade = useFadeIn();
+  return (
+    <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
+      <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false}>
+        <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("goalTitle")}</Text>
+        <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("goalSubtitle")}</Text>
+
+        <View style={styles.goalGrid}>
+          {GOAL_PRESETS.map((goal) => {
+            const active = goal.id === selectedGoal;
+            return (
+              <TouchableOpacity
+                key={goal.id}
+                style={[
+                  styles.goalOption,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: active ? colors.card : "transparent",
+                  },
+                ]}
+                onPress={() => onSelect(goal.id)}
+              >
+                <Text style={styles.goalEmoji}>{goal.emoji}</Text>
+                <Text style={[styles.goalText, { color: colors.text }]}>
+                  {goal[language] || goal.en}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
+          <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("goalButton")}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </Animated.View>
+  );
+}
+function LanguageScreen({ colors, t, onSelect }) {
+  const fade = useFadeIn();
+  return (
+    <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
+      <View style={styles.onboardContent}>
+        <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("languageTitle")}</Text>
+        <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("languageSubtitle")}</Text>
+        <View style={styles.languageButtons}>
+          {[
+            { key: "ru", label: t("languageRussian") },
+            { key: "en", label: t("languageEnglish") },
+          ].map((lang) => (
+            <TouchableOpacity
+              key={lang.key}
+              style={[styles.languageButton, { borderColor: colors.border }]}
+              onPress={() => onSelect(lang.key)}
+            >
+              <Text style={{ color: colors.text, fontWeight: "700" }}>{lang.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
+
+function LogoSplash({ onDone }) {
+  const [text, setText] = useState("");
+  useEffect(() => {
+    const word = "almost";
+    let index = 0;
+    const interval = setInterval(() => {
+      index += 1;
+      setText(word.slice(0, index));
+      if (index === word.length) {
+        clearInterval(interval);
+        setTimeout(() => onDone?.(), 600);
+      }
+    }, 140);
+    return () => clearInterval(interval);
+  }, [onDone]);
+
+  return (
+    <View style={styles.logoSplash}>
+      <Text style={styles.logoSplashText}>{text}</Text>
+    </View>
+  );
+}
