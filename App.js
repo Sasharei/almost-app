@@ -23,7 +23,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import ConfettiCannon from "react-native-confetti-cannon";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import * as WebBrowser from "expo-web-browser";
 
 const STORAGE_KEYS = {
   CART: "@almost_cart",
@@ -34,7 +33,7 @@ const STORAGE_KEYS = {
   ONBOARDING: "@almost_onboarded",
 };
 
-const API_BASE = process.env.EXPO_PUBLIC_API_BASE || "http://192.168.8.167:8080";
+const API_URL = process.env.EXPO_PUBLIC_API_BASE || "http://192.168.8.167:8080/api";
 
 const PURCHASE_GOAL = 20000;
 const CAT_IMAGE = "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?auto=format&fit=crop&w=600&q=80";
@@ -76,6 +75,10 @@ const CELEBRATION_MESSAGES = {
 };
 
 const RAIN_DROPS = 20;
+const PASTEL_COLORS = ["#FDEBD0", "#E3F6E8", "#E0F7FA", "#F8E1F4", "#FFF5CC", "#E6E6FA"];
+const CURRENCY_RATES = { USD: 1, EUR: 0.92, RUB: 92 };
+const DEFAULT_REMOTE_IMAGE =
+  "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=600&q=80";
 
 const RainOverlay = ({ colors }) => {
   const drops = useMemo(
@@ -145,6 +148,12 @@ const triggerHaptic = (style = Haptics.ImpactFeedbackStyle.Light) => {
   Haptics.impactAsync(style).catch(() => {});
 };
 
+const convertToCurrency = (valueUSD = 0, currency = activeCurrency) => {
+  if (!valueUSD) return 0;
+  const rate = CURRENCY_RATES[currency] || 1;
+  return valueUSD * rate;
+};
+
 const useFadeIn = () => {
   const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -163,6 +172,9 @@ const TRANSLATIONS = {
     syncAmazon: "подтянуть amazon",
     syncingAmazon: "обновляю…",
     remoteSourceLabel: "Источник: {{source}}",
+    clearAmazon: "Сбросить",
+    remoteEmptyTitle: "Не нашли на Amazon",
+    remoteEmptySubtitle: "Попробуй другой запрос или сбрось подборку",
     heroAwaiting: "в листе желаний",
     heroSpendLine: "уже сэкономлено {{amount}}. Красота без ущерба бюджету",
     feedEmptyTitle: "Фильтр пуст",
@@ -215,10 +227,18 @@ const TRANSLATIONS = {
     developerResetConfirm: "Очистить корзину, покупки и профиль?",
     developerResetCancel: "Оставить",
     developerResetApply: "Сбросить",
+    openSettings: "Настройки",
     defaultDealTitle: "Сделка",
     defaultDealDesc: "Умная замена без описания",
     photoLibrary: "Из галереи",
     photoCamera: "Через камеру",
+    photoTapHint: "Тапни, чтобы добавить фото",
+    photoPromptTitle: "Добавим фото?",
+    photoPromptSubtitle: "Выбери: камера или галерея",
+    photoPermissionDenied: "Нужно разрешение на доступ к камере или фото, чтобы добавить аватар.",
+    photoPermissionSettings: "Открой настройки, чтобы дать доступ Almost к камере и фото.",
+    photoPickerError: "Что-то пошло не так. Попробуй ещё раз.",
+    searchRequired: "Введи запрос, чтобы подтянуть Amazon",
     registrationTitle: "Познакомимся",
     registrationSubtitle: "Расскажи о себе, чтобы Almost говорил на твоём языке",
     languageTitle: "Выбери язык",
@@ -238,6 +258,9 @@ const TRANSLATIONS = {
     syncAmazon: "sync amazon",
     syncingAmazon: "refreshing…",
     remoteSourceLabel: "Source: {{source}}",
+    clearAmazon: "Clear",
+    remoteEmptyTitle: "No Amazon matches",
+    remoteEmptySubtitle: "Try another query or clear the feed",
     heroAwaiting: "on the wish list",
     heroSpendLine: "already saved {{amount}}. Glow without overspending",
     feedEmptyTitle: "Nothing here",
@@ -290,10 +313,18 @@ const TRANSLATIONS = {
     developerResetConfirm: "Clear cart, purchases and profile?",
     developerResetCancel: "Keep",
     developerResetApply: "Reset",
+    openSettings: "Settings",
     defaultDealTitle: "Deal",
     defaultDealDesc: "Mindful deal without details",
     photoLibrary: "From library",
     photoCamera: "Use camera",
+    photoTapHint: "Tap to add a photo",
+    photoPromptTitle: "Add a photo?",
+    photoPromptSubtitle: "Choose camera or library",
+    photoPermissionDenied: "We need camera or photo access to update your avatar.",
+    photoPermissionSettings: "Open Settings to let Almost access the camera and photos.",
+    photoPickerError: "Something went wrong. Please try again.",
+    searchRequired: "Type a query to fetch Amazon results",
     registrationTitle: "Let’s set things up",
     registrationSubtitle: "Tell us who you are so Almost speaks your language",
     languageTitle: "Choose a language",
@@ -696,6 +727,86 @@ const formatCurrency = (value = 0, currency = activeCurrency) => {
   }
 };
 
+const parsePriceString = (priceString) => {
+  if (!priceString) return null;
+  const digits = priceString.replace(/[^0-9.,]/g, "").replace(",", ".");
+  const value = parseFloat(digits);
+  return Number.isFinite(value) ? value : null;
+};
+
+const extractPriceValue = (item) => {
+  if (!item) return null;
+  if (typeof item.price_value === "number") return item.price_value;
+  if (typeof item.price === "number") return item.price;
+  if (typeof item.price?.extracted === "number") return item.price.extracted;
+  if (typeof item.price?.value === "number") return item.price.value;
+  if (typeof item.price?.amount === "number") return item.price.amount;
+  if (typeof item.price?.raw === "string") return parsePriceString(item.price.raw);
+  if (typeof item.price?.label === "string") return parsePriceString(item.price.label);
+  return parsePriceString(item.price);
+};
+
+const sanitizeRemoteImage = (image) => {
+  if (!image) return DEFAULT_REMOTE_IMAGE;
+  if (typeof image === "string") return image;
+  if (typeof image === "object") {
+    return image.link || image.url || image.high_res || image.high || DEFAULT_REMOTE_IMAGE;
+  }
+  return DEFAULT_REMOTE_IMAGE;
+};
+
+const extractRawPriceLabel = (price) => {
+  if (!price) return null;
+  if (typeof price === "string") return price;
+  if (typeof price.raw === "string") return price.raw;
+  if (typeof price.label === "string") return price.label;
+  return null;
+};
+
+const buildRemoteProduct = (item, idx, currency = activeCurrency) => {
+  const color = PASTEL_COLORS[idx % PASTEL_COLORS.length];
+  const priceUSD = extractPriceValue(item);
+  const rawPriceLabel = extractRawPriceLabel(item.price) || item.price_label || item.price;
+  const fallbackUSD = priceUSD ?? parsePriceString(rawPriceLabel);
+  const convertedPrice = fallbackUSD ? convertToCurrency(fallbackUSD, currency) : 0;
+  const roundedPrice = fallbackUSD ? Math.round(convertedPrice * 100) / 100 : 0;
+  const shouldUseOriginalLabel = currency === "USD" && !!rawPriceLabel && !priceUSD;
+  const priceLabel =
+    (shouldUseOriginalLabel && rawPriceLabel) ||
+    (fallbackUSD ? formatCurrency(convertedPrice, currency) : rawPriceLabel);
+  const title = item.title || "Amazon find";
+  const ratingRu = item.rating ? `Рейтинг ${item.rating}★ на Amazon` : "Найдено на Amazon";
+  const ratingEn = item.rating ? `Rated ${item.rating}★ on Amazon` : "Found on Amazon";
+  const fakeDescRu = priceLabel
+    ? `Сейчас около ${priceLabel}. Добавь сюда вместо реальной траты и сохрани бюджет.`
+    : "Добавь сюда и фиксируй экономию вместо импульсной покупки.";
+  const fakeDescEn = priceLabel
+    ? `Roughly ${priceLabel}. Log it here and protect your budget plan.`
+    : "Park it here instead of impulse spending.";
+  const variant = {
+    label: "Amazon",
+    price: roundedPrice || 0,
+  };
+  return {
+    id: `remote-${item.asin || idx}`,
+    productId: item.asin || `remote-${idx}`,
+    colors: { card: color },
+    image: sanitizeRemoteImage(item.image),
+    price: priceLabel,
+    rawPriceUSD: fallbackUSD || 0,
+    rating: item.rating || null,
+    ratings_total: item.ratings_total || null,
+    copy: {
+      ru: { title, tagline: ratingRu, desc: item.description || fakeDescRu },
+      en: { title, tagline: ratingEn, desc: item.description || fakeDescEn },
+    },
+    variants: [variant],
+  };
+};
+
+const hydrateRemoteProducts = (items = [], currency = activeCurrency) =>
+  items.map((item, index) => buildRemoteProduct(item, index, currency));
+
 const getCopyForPurchase = (item, language, t) => {
   if (item.copy?.[language]) return item.copy[language];
   const product = PRODUCTS.find((prod) => prod.id === item.productId);
@@ -767,7 +878,9 @@ function ProductCard({ product, onPress, language }) {
   const tagline = copy?.tagline || product.tagline;
   const primaryPrice =
     product.price ||
-    (product.variants?.[0] ? formatCurrency(product.variants[0].price) : null);
+    (product.variants?.[0]
+      ? `${language === "ru" ? "от " : "from "}${formatCurrency(product.variants[0].price)}`
+      : null);
 
   return (
     <TouchableOpacity
@@ -776,7 +889,9 @@ function ProductCard({ product, onPress, language }) {
       activeOpacity={0.85}
     >
       {tagline && <Text style={styles.productTagline}>{tagline}</Text>}
-      {product.image && <Image source={{ uri: product.image }} style={styles.productImage} />}
+      {product.image && (
+        <Image source={{ uri: product.image }} style={styles.productImage} resizeMode="contain" />
+      )}
       <Text style={styles.productTitle}>{title}</Text>
       {primaryPrice && <Text style={styles.productPrice}>{primaryPrice}</Text>}
       {product.rating && (
@@ -793,6 +908,7 @@ function FeedScreen({
   products,
   remoteItems,
   remoteSource,
+  remoteActive,
   loadingRemote,
   categories,
   activeCategory,
@@ -802,7 +918,7 @@ function FeedScreen({
   onAddToCart,
   onCheckoutRequest,
   onCancelDetail,
-  onOpenExternal,
+  onClearRemote,
   searchQuery,
   onSearchChange,
   onSearchSubmit,
@@ -840,19 +956,13 @@ function FeedScreen({
   };
 
   const handleBuyNow = () => {
-    if (!activeProduct) return;
-    if (activeProduct.url) {
-      onOpenExternal?.(activeProduct.url);
-      closeDetail(false);
-      return;
-    }
-    if (!selectedVariant) return;
+    if (!activeProduct || !selectedVariant) return;
     onCheckoutRequest(
       {
         productId: activeProduct.id,
         variant: selectedVariant.label,
         price: selectedVariant.price,
-        image: activeProduct.image,
+        image: activeProduct.image || DEFAULT_REMOTE_IMAGE,
         copy: activeProduct.copy,
       },
       "feed"
@@ -860,8 +970,8 @@ function FeedScreen({
     closeDetail(false);
   };
 
-  const listData = remoteItems?.length ? remoteItems : products;
-  const isRemote = remoteItems?.length > 0;
+  const listData = remoteActive && remoteItems.length ? remoteItems : products;
+  const isRemote = remoteActive && remoteItems.length > 0;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }] }>
@@ -874,9 +984,11 @@ function FeedScreen({
         contentContainerStyle={{ paddingBottom: 160, paddingTop: 4 }}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={[styles.emptyStateTitle, { color: colors.text }]}>{t("feedEmptyTitle")}</Text>
+            <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
+              {remoteActive ? t("remoteEmptyTitle") : t("feedEmptyTitle")}
+            </Text>
             <Text style={[styles.emptyStateText, { color: colors.muted }]}>
-              {t("feedEmptySubtitle")}
+              {remoteActive ? t("remoteEmptySubtitle") : t("feedEmptySubtitle")}
             </Text>
           </View>
         }
@@ -907,8 +1019,9 @@ function FeedScreen({
                 placeholderTextColor={colors.muted}
                 value={searchQuery}
                 onChangeText={onSearchChange}
-                returnKeyType="search"
-                onSubmitEditing={() => onSearchSubmit(searchQuery)}
+                returnKeyType="done"
+                clearButtonMode="while-editing"
+                onSubmitEditing={Keyboard.dismiss}
               />
               <TouchableOpacity
                 style={[styles.searchButton, { backgroundColor: colors.text }]}
@@ -919,8 +1032,18 @@ function FeedScreen({
                   {loadingRemote ? "..." : t("syncAmazon")}
                 </Text>
               </TouchableOpacity>
+              {remoteActive && (
+                <TouchableOpacity
+                  style={[styles.clearButton, { borderColor: colors.border }]}
+                  onPress={onClearRemote}
+                >
+                  <Text style={[styles.clearButtonText, { color: colors.muted }]}>
+                    {t("clearAmazon")}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
-            {remoteSource && isRemote && (
+            {remoteSource && remoteActive && (
               <Text style={[styles.remoteBadge, { color: colors.muted }]}>
                 {t("remoteSourceLabel", { source: remoteSource })}
               </Text>
@@ -958,7 +1081,11 @@ function FeedScreen({
                   ]}
                 >
                   {activeProduct.image && (
-                    <Image source={{ uri: activeProduct.image }} style={styles.detailImage} />
+                    <Image
+                      source={{ uri: activeProduct.image }}
+                      style={styles.detailImage}
+                      resizeMode="contain"
+                    />
                   )}
                 </View>
                 <Text style={[styles.detailTitle, { color: colors.text }]}>
@@ -967,14 +1094,16 @@ function FeedScreen({
                 <Text style={[styles.detailTagline, { color: colors.text }]}>
                   {activeProduct.copy?.[language]?.tagline || activeProduct.tagline}
                 </Text>
-                <Text style={[styles.detailPrice, { color: colors.text }]}>
-                  {activeProduct.price ||
-                    (selectedVariant
-                      ? formatCurrency(selectedVariant.price)
-                      : activeProduct.variants?.[0]
-                      ? formatCurrency(activeProduct.variants[0].price)
-                      : "")}
-                </Text>
+                {(activeProduct.price ||
+                  selectedVariant ||
+                  activeProduct.variants?.[0]) && (
+                  <Text style={[styles.detailPrice, { color: colors.text }]}>
+                    {activeProduct.price ||
+                      formatCurrency(
+                        selectedVariant?.price ?? activeProduct.variants?.[0]?.price ?? 0
+                      )}
+                  </Text>
+                )}
                 {activeProduct.rating && (
                   <Text style={[styles.detailRating, { color: colors.muted }]}>
                     ⭐️ {activeProduct.rating}
@@ -1025,17 +1154,10 @@ function FeedScreen({
 
                 <TouchableOpacity
                   style={[styles.primaryButton, { backgroundColor: colors.text }]}
-                  onPress={() => {
-                    if (activeProduct.url) {
-                      onOpenExternal?.(activeProduct.url);
-                      closeDetail(false);
-                    } else {
-                      handleBuyNow();
-                    }
-                  }}
+                  onPress={handleBuyNow}
                 >
                   <Text style={[styles.primaryButtonText, { color: colors.background }]}>
-                    {activeProduct.url ? t("buyExternal") : t("buyNow", { pay: PAY_LABEL })}
+                    {t("buyNow", { pay: PAY_LABEL })}
                   </Text>
                 </TouchableOpacity>
                 {Array.isArray(activeProduct.variants) && activeProduct.variants.length > 0 && (
@@ -1085,7 +1207,11 @@ function CartScreen({
             return (
               <View key={item.cartId} style={[styles.cartCard, { backgroundColor: colors.card }] }>
                 <View style={styles.cartImageWrap}>
-                  <Image source={{ uri: item.image }} style={{ width: 48, height: 48 }} />
+                  <Image
+                    source={{ uri: item.image || DEFAULT_REMOTE_IMAGE }}
+                    style={{ width: 48, height: 48 }}
+                    resizeMode="contain"
+                  />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.cartTitleText, { color: colors.text }]}>
@@ -1244,7 +1370,7 @@ function PurchasesScreen({ purchases, t, language, colors }) {
           <Text style={[styles.emptyText, { color: colors.muted }]}>{t("emptyPurchases")}</Text>
         }
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 160 }}
+        contentContainerStyle={{ paddingBottom: 160, flexGrow: 1 }}
       />
     </View>
   );
@@ -1260,22 +1386,42 @@ function ProfileScreen({
   onSaveEdit,
   onThemeToggle,
   onLanguageChange,
+  onCurrencyChange,
   onResetData,
   onPickImage,
   theme,
   language,
+  currencyValue,
   t,
   colors,
 }) {
+  const currentCurrency = currencyValue || profile.currency || DEFAULT_PROFILE.currency;
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }] }
-      contentContainerStyle={{ paddingBottom: 200 }}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={[styles.profileCard, { backgroundColor: colors.card }] }>
-        <Image source={{ uri: profile.avatar }} style={styles.profileAvatar} />
-        {isEditing ? (
+    <View style={[styles.container, { backgroundColor: colors.background }] }>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.profileScrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.profileCard, { backgroundColor: colors.card }] }>
+          <TouchableOpacity
+            style={styles.profileAvatarWrap}
+            activeOpacity={isEditing ? 0.85 : 1}
+            onPress={() => isEditing && onPickImage?.()}
+          >
+            <Image
+              source={{ uri: profile.avatar || DEFAULT_REMOTE_IMAGE }}
+              style={styles.profileAvatar}
+              resizeMode="cover"
+            />
+            {isEditing && (
+              <Text style={[styles.profileAvatarHint, { color: colors.muted }]}>
+                {t("photoTapHint")}
+              </Text>
+            )}
+          </TouchableOpacity>
+          {isEditing ? (
             <>
               <TextInput
                 style={[styles.profileInput, { borderColor: colors.border, color: colors.text }]}
@@ -1299,24 +1445,10 @@ function ProfileScreen({
               ]}
               value={profile.bio}
               onChangeText={(text) => onFieldChange("bio", text)}
-              placeholder="About you"
-              multiline
-              placeholderTextColor={colors.muted}
-            />
-            <View style={styles.photoButtons}>
-              <TouchableOpacity
-                style={[styles.photoButton, { borderColor: colors.border }]}
-                onPress={() => onPickImage?.("library")}
-              >
-                <Text style={{ color: colors.text }}>{t("photoLibrary")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.photoButton, { borderColor: colors.border }]}
-                onPress={() => onPickImage?.("camera")}
-              >
-                <Text style={{ color: colors.text }}>{t("photoCamera")}</Text>
-              </TouchableOpacity>
-            </View>
+                placeholder="About you"
+                multiline
+                placeholderTextColor={colors.muted}
+              />
             </>
           ) : (
           <>
@@ -1328,51 +1460,51 @@ function ProfileScreen({
           </>
         )}
 
-        <View style={styles.profileStatsRow}>
-          {stats.map((stat) => (
-            <View key={stat.label} style={styles.profileStat}>
-              <Text style={[styles.profileStatValue, { color: colors.text }]}>{stat.value}</Text>
-              <Text style={[styles.profileStatLabel, { color: colors.muted }]}>
-                {stat.label}
-              </Text>
-            </View>
-          ))}
-        </View>
+          <View style={styles.profileStatsRow}>
+            {stats.map((stat) => (
+              <View key={stat.label} style={styles.profileStat}>
+                <Text style={[styles.profileStatValue, { color: colors.text }]}>{stat.value}</Text>
+                <Text style={[styles.profileStatLabel, { color: colors.muted }]}>
+                  {stat.label}
+                </Text>
+              </View>
+            ))}
+          </View>
 
-        <View style={styles.profileActions}>
-          {isEditing ? (
-            <>
+          <View style={styles.profileActions}>
+            {isEditing ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.profileActionPrimary, { backgroundColor: colors.text }]}
+                  onPress={onSaveEdit}
+                >
+                  <Text style={[styles.profileActionPrimaryText, { color: colors.background }]}>
+                    {t("profileSave")}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.profileActionSecondary, { borderColor: colors.border }]}
+                  onPress={onCancelEdit}
+                >
+                  <Text style={[styles.profileActionSecondaryText, { color: colors.muted }]}>
+                    {t("profileCancel")}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
               <TouchableOpacity
                 style={[styles.profileActionPrimary, { backgroundColor: colors.text }]}
-                onPress={onSaveEdit}
+                onPress={onEditPress}
               >
                 <Text style={[styles.profileActionPrimaryText, { color: colors.background }]}>
-                  {t("profileSave")}
+                  {t("profileEdit")}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.profileActionSecondary, { borderColor: colors.border }]}
-                onPress={onCancelEdit}
-              >
-                <Text style={[styles.profileActionSecondaryText, { color: colors.muted }]}>
-                  {t("profileCancel")}
-                </Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <TouchableOpacity
-              style={[styles.profileActionPrimary, { backgroundColor: colors.text }]}
-              onPress={onEditPress}
-            >
-              <Text style={[styles.profileActionPrimaryText, { color: colors.background }]}>
-                {t("profileEdit")}
-              </Text>
-            </TouchableOpacity>
-          )}
+            )}
+          </View>
         </View>
-      </View>
 
-      <View style={[styles.settingsCard, { backgroundColor: colors.card }] }>
+        <View style={[styles.settingsCard, { backgroundColor: colors.card }] }>
         <Text style={[styles.settingsTitle, { color: colors.text }]}>{t("settingsTitle")}</Text>
         <View style={styles.settingRow}>
           <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("themeLabel")}</Text>
@@ -1428,6 +1560,33 @@ function ProfileScreen({
             ))}
           </View>
         </View>
+        <View style={styles.settingRow}>
+          <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("currencyLabel")}</Text>
+          <View style={styles.settingChoices}>
+            {CURRENCIES.map((code) => (
+              <TouchableOpacity
+                key={code}
+                style={[
+                  styles.settingChip,
+                  {
+                    backgroundColor: currentCurrency === code ? colors.text : "transparent",
+                    borderColor: colors.border,
+                  },
+                ]}
+                onPress={() => onCurrencyChange?.(code)}
+              >
+                <Text
+                  style={{
+                    color: currentCurrency === code ? colors.background : colors.muted,
+                    fontWeight: "600",
+                  }}
+                >
+                  {code}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
         <TouchableOpacity
           style={[styles.resetButton, { borderColor: colors.border }]}
           onPress={onResetData}
@@ -1436,8 +1595,9 @@ function ProfileScreen({
             {t("developerReset")}
           </Text>
         </TouchableOpacity>
-      </View>
-    </ScrollView>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -1465,9 +1625,13 @@ export default function App() {
   const [registrationData, setRegistrationData] = useState(INITIAL_REGISTRATION);
   const [selectedGoal, setSelectedGoal] = useState(null);
   const [remoteProducts, setRemoteProducts] = useState([]);
+  const [remoteRawItems, setRemoteRawItems] = useState([]);
   const [remoteSource, setRemoteSource] = useState(null);
+  const [remoteActive, setRemoteActive] = useState(false);
   const [remoteLoading, setRemoteLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("iphone");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showImageSourceSheet, setShowImageSourceSheet] = useState(false);
+  const imagePickerResolver = useRef(null);
 
   const categories = useMemo(() => {
     const set = new Set(["all"]);
@@ -1571,23 +1735,34 @@ export default function App() {
     AsyncStorage.setItem(STORAGE_KEYS.LANGUAGE, language).catch(() => {});
   }, [language]);
 
-  const fetchRemoteProducts = useCallback(async (queryValue = "iphone") => {
-    const query = (queryValue || "iphone").trim() || "iphone";
-    if (!API_BASE) {
+  const fetchRemoteProducts = useCallback(async (queryValue = "") => {
+    const query = (queryValue || "").trim();
+    if (!API_URL) {
       setRemoteProducts([]);
+      setRemoteRawItems([]);
       return;
     }
     setRemoteLoading(true);
-    const url = `${API_BASE}/api/search?q=${encodeURIComponent(query)}&domain=amazon.com`;
+    const url = `${API_URL}/search?q=${encodeURIComponent(query)}&domain=amazon.com&nocache=${Date.now()}`;
     const attempts = 3;
+    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         const items = Array.isArray(json.products) ? json.products : [];
-        setRemoteProducts(items);
-        setRemoteSource(json.source || null);
+        if (items.length) {
+          setRemoteRawItems(items);
+          setRemoteProducts(hydrateRemoteProducts(items, currencyCode));
+          setRemoteSource(json.source || null);
+          setRemoteActive(true);
+        } else {
+          setRemoteRawItems([]);
+          setRemoteProducts([]);
+          setRemoteSource(json.source || null);
+          setRemoteActive(false);
+        }
         setRemoteLoading(false);
         return;
       } catch (error) {
@@ -1596,25 +1771,54 @@ export default function App() {
           await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
           continue;
         }
+        setRemoteRawItems([]);
         setRemoteProducts([]);
         setRemoteSource(null);
+        setRemoteActive(false);
         setRemoteLoading(false);
       }
     }
-  }, []);
-
-  useEffect(() => {
-    fetchRemoteProducts("iphone");
-  }, [fetchRemoteProducts]);
+  }, [profile.currency]);
 
   const handleRemoteRefresh = useCallback(
     (queryValue) => {
-      const nextQuery = (queryValue ?? searchQuery ?? "iphone").trim() || "iphone";
-      setSearchQuery(nextQuery);
-      fetchRemoteProducts(nextQuery);
+      const rawValue = queryValue ?? searchQuery ?? "";
+      const trimmed = rawValue.trim();
+      if (!trimmed) {
+        const message =
+          TRANSLATIONS[language]?.searchRequired || "Type a query to fetch Amazon results";
+        Alert.alert("Almost", message);
+        return;
+      }
+      setSearchQuery(rawValue);
+      fetchRemoteProducts(trimmed);
     },
-    [fetchRemoteProducts, searchQuery]
+    [fetchRemoteProducts, searchQuery, language]
   );
+
+  const clearRemoteResults = useCallback(() => {
+    setRemoteActive(false);
+    setRemoteProducts([]);
+    setRemoteRawItems([]);
+    setRemoteSource(null);
+    setSearchQuery("");
+  }, []);
+
+  const handleSearchInputChange = useCallback(
+    (text) => {
+      setSearchQuery(text);
+      if (!text.trim().length && remoteActive) {
+        clearRemoteResults();
+      }
+    },
+    [clearRemoteResults, remoteActive]
+  );
+
+  useEffect(() => {
+    if (!remoteActive || !remoteRawItems.length) return;
+    const currency = profile.currency || DEFAULT_PROFILE.currency;
+    setRemoteProducts(hydrateRemoteProducts(remoteRawItems, currency));
+  }, [remoteActive, remoteRawItems, profile.currency]);
 
   useEffect(() => {
     return () => {
@@ -1659,6 +1863,15 @@ export default function App() {
     setLanguage(lng);
   };
 
+  const handleProfileCurrencyChange = (code) => {
+    if (!CURRENCIES.includes(code) || profile.currency === code) return;
+    triggerHaptic();
+    setProfile((prev) => ({ ...prev, currency: code }));
+    setProfileDraft((prev) => ({ ...prev, currency: code }));
+    setRegistrationData((prev) => ({ ...prev, currency: code }));
+    setActiveCurrency(code);
+  };
+
   const handleLanguageSelect = (lng) => {
     handleLanguageChange(lng);
     setTimeout(() => setOnboardingStep("register"), 150);
@@ -1671,8 +1884,37 @@ export default function App() {
     setRegistrationData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleRegistrationPickImage = async (source = "library") => {
-    pickImage(source, (uri) =>
+  const openImagePickerSheet = (resolver) => {
+    imagePickerResolver.current = resolver;
+    setShowImageSourceSheet(true);
+  };
+
+  const closeImagePickerSheet = () => {
+    setShowImageSourceSheet(false);
+    imagePickerResolver.current = null;
+  };
+
+  const handleImageSourceChoice = async (source) => {
+    const resolver = imagePickerResolver.current;
+    closeImagePickerSheet();
+    if (!resolver) return;
+    await pickImage(source, (uri) => {
+      if (!uri) return;
+      resolver(uri);
+    });
+  };
+
+  const handlePickImage = () => {
+    openImagePickerSheet((uri) =>
+      setProfileDraft((prev) => ({
+        ...prev,
+        avatar: uri,
+      }))
+    );
+  };
+
+  const handleRegistrationPickImage = () => {
+    openImagePickerSheet((uri) =>
       setRegistrationData((prev) => ({
         ...prev,
         avatar: uri,
@@ -1731,20 +1973,48 @@ export default function App() {
     }, 500);
   };
 
+  const ensureMediaPermission = async (type) => {
+    const getter =
+      type === "camera"
+        ? ImagePicker.getCameraPermissionsAsync
+        : ImagePicker.getMediaLibraryPermissionsAsync;
+    const requester =
+      type === "camera"
+        ? ImagePicker.requestCameraPermissionsAsync
+        : ImagePicker.requestMediaLibraryPermissionsAsync;
+
+    const current = await getter();
+    if (current?.granted) return true;
+    const requestResult = await requester();
+    if (requestResult?.granted) return true;
+
+    Alert.alert(
+      "Almost",
+      requestResult?.canAskAgain ? t("photoPermissionDenied") : t("photoPermissionSettings"),
+      [
+        {
+          text: t("profileCancel"),
+          style: "cancel",
+        },
+        !requestResult?.canAskAgain
+          ? {
+              text: t("openSettings"),
+              onPress: () => Linking.openSettings?.(),
+            }
+          : null,
+      ].filter(Boolean)
+    );
+    return false;
+  };
+
   const pickImage = async (source = "library", onPicked) => {
     try {
       triggerHaptic();
-      let permission;
-      if (source === "camera") {
-        permission = await ImagePicker.requestCameraPermissionsAsync();
-      } else {
-        permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      }
-      if (!permission.granted) {
-        return;
-      }
+      const type = source === "camera" ? "camera" : "library";
+      const permitted = await ensureMediaPermission(type);
+      if (!permitted) return;
       const pickerOptions = {
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ["images"],
         quality: 0.8,
       };
       const result =
@@ -1756,17 +2026,15 @@ export default function App() {
         onPicked?.(uri);
       }
     } catch (error) {
+      const errorMessage =
+        error?.message && error.message.includes("canceled")
+          ? null
+          : `${t("photoPickerError")}\n${error?.message || ""}`.trim();
+      if (errorMessage) {
+        Alert.alert("Almost", errorMessage);
+      }
       console.warn("image picker", error);
     }
-  };
-
-  const handlePickImage = async (source = "library") => {
-    pickImage(source, (uri) =>
-      setProfileDraft((prev) => ({
-        ...prev,
-        avatar: uri,
-      }))
-    );
   };
 
   const handleAddToCart = (product, variant) => {
@@ -1777,7 +2045,7 @@ export default function App() {
       productId: product.id,
       variant: variant.label,
       price: variant.price,
-      image: product.image,
+      image: product.image || DEFAULT_REMOTE_IMAGE,
       copy: product.copy,
     };
     setCart((prev) => [...prev, cartItem]);
@@ -1787,15 +2055,6 @@ export default function App() {
   const handleRemoveFromCart = (cartId) => {
     triggerHaptic();
     setCart((prev) => prev.filter((item) => item.cartId !== cartId));
-  };
-
-  const openExternalLink = async (url) => {
-    if (!url) return;
-    try {
-      await WebBrowser.openBrowserAsync(url);
-    } catch {
-      Linking.openURL(url);
-    }
   };
 
   const handleCheckoutRequest = (item, source = "feed") => {
@@ -1982,10 +2241,12 @@ export default function App() {
             onSaveEdit={saveProfileEdit}
             onThemeToggle={handleThemeToggle}
             onLanguageChange={handleLanguageChange}
+            onCurrencyChange={handleProfileCurrencyChange}
             onResetData={handleResetData}
             onPickImage={handlePickImage}
             theme={theme}
             language={language}
+            currencyValue={profile.currency}
             t={t}
             colors={colors}
           />
@@ -1996,6 +2257,7 @@ export default function App() {
             products={filteredProducts}
             remoteItems={remoteProducts}
             remoteSource={remoteSource}
+            remoteActive={remoteActive}
             loadingRemote={remoteLoading}
             categories={categories}
             activeCategory={activeCategory}
@@ -2005,9 +2267,9 @@ export default function App() {
             onAddToCart={handleAddToCart}
             onCheckoutRequest={handleCheckoutRequest}
             onCancelDetail={handleCancelDetail}
-            onOpenExternal={openExternalLink}
+            onClearRemote={clearRemoteResults}
             searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
+            onSearchChange={handleSearchInputChange}
             onSearchSubmit={handleRemoteRefresh}
             t={t}
             language={language}
@@ -2250,6 +2512,40 @@ export default function App() {
             </View>
           </View>
         )}
+
+        <Modal
+          visible={showImageSourceSheet}
+          transparent
+          animationType="fade"
+          onRequestClose={closeImagePickerSheet}
+        >
+          <TouchableWithoutFeedback onPress={closeImagePickerSheet}>
+            <View style={styles.sheetBackdrop}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={[styles.sheetCard, { backgroundColor: colors.card }] }>
+                  <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+                  <Text style={[styles.sheetTitle, { color: colors.text }]}>{t("photoPromptTitle")}</Text>
+                  <Text style={[styles.sheetSubtitle, { color: colors.muted }]}>{t("photoPromptSubtitle")}</Text>
+                  <TouchableOpacity
+                    style={[styles.sheetButton, { borderColor: colors.border }]}
+                    onPress={() => handleImageSourceChoice("library")}
+                  >
+                    <Text style={{ color: colors.text }}>{t("photoLibrary")}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.sheetButton, { borderColor: colors.border }]}
+                    onPress={() => handleImageSourceChoice("camera")}
+                  >
+                    <Text style={{ color: colors.text }}>{t("photoCamera")}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={closeImagePickerSheet}>
+                    <Text style={[styles.sheetCancel, { color: colors.muted }]}>{t("profileCancel")}</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
       </SafeAreaView>
     </TouchableWithoutFeedback>
   );
@@ -2316,6 +2612,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 18,
     gap: 10,
+    flexWrap: "wrap",
   },
   searchInput: {
     flex: 1,
@@ -2331,6 +2628,16 @@ const styles = StyleSheet.create({
   },
   searchButtonText: {
     fontWeight: "600",
+  },
+  clearButton: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  clearButtonText: {
+    fontWeight: "600",
+    fontSize: 12,
   },
   remoteBadge: {
     marginTop: 8,
@@ -2649,11 +2956,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
+  profileScrollContent: {
+    paddingTop: 4,
+    paddingBottom: 200,
+    flexGrow: 1,
+  },
+  profileAvatarWrap: {
+    alignItems: "center",
+    marginBottom: 12,
+  },
   profileAvatar: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    marginBottom: 16,
+  },
+  profileAvatarHint: {
+    fontSize: 12,
+    marginTop: 8,
   },
   profileName: {
     fontSize: 28,
@@ -2728,22 +3047,10 @@ const styles = StyleSheet.create({
     gap: 10,
     width: "100%",
   },
-  photoButtons: {
-    flexDirection: "row",
-    gap: 10,
-    width: "100%",
-    marginBottom: 10,
-  },
-  photoButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 18,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
   settingsCard: {
     borderRadius: 26,
     padding: 20,
+    marginBottom: 40,
   },
   settingsTitle: {
     fontSize: 20,
@@ -2940,6 +3247,46 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 0,
   },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "flex-end",
+  },
+  sheetCard: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 36,
+    gap: 14,
+  },
+  sheetHandle: {
+    width: 60,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 6,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  sheetSubtitle: {
+    fontSize: 14,
+    textAlign: "center",
+  },
+  sheetButton: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  sheetCancel: {
+    textAlign: "center",
+    fontWeight: "600",
+    marginTop: 4,
+  },
   onboardContainer: {
     flex: 1,
     paddingHorizontal: BASE_HORIZONTAL_PADDING,
@@ -3055,7 +3402,7 @@ function RegistrationScreen({ data, onChange, onSubmit, onPickImage, colors, t }
 
         <TouchableOpacity
           style={[styles.avatarPreview, { borderColor: colors.border }]}
-          onPress={() => onPickImage("library")}
+          onPress={() => onPickImage?.()}
         >
           {data.avatar ? (
             <Image source={{ uri: data.avatar }} style={styles.avatarImage} />
@@ -3064,22 +3411,8 @@ function RegistrationScreen({ data, onChange, onSubmit, onPickImage, colors, t }
               <Text style={{ color: colors.muted, fontSize: 32 }}>+</Text>
             </View>
           )}
-          <Text style={{ color: colors.muted }}>{t("photoLibrary")}</Text>
+          <Text style={{ color: colors.muted }}>{t("photoTapHint")}</Text>
         </TouchableOpacity>
-        <View style={styles.photoButtons}>
-          <TouchableOpacity
-            style={[styles.photoButton, { borderColor: colors.border }]}
-            onPress={() => onPickImage("library")}
-          >
-            <Text style={{ color: colors.text }}>{t("photoLibrary")}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.photoButton, { borderColor: colors.border }]}
-            onPress={() => onPickImage("camera")}
-          >
-            <Text style={{ color: colors.text }}>{t("photoCamera")}</Text>
-          </TouchableOpacity>
-        </View>
 
       <View style={styles.inputRow}>
         <TextInput

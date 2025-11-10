@@ -33,6 +33,7 @@ const localProductsPath = path.resolve(__dirname, "products.json");
 
 const appendAffiliateTag = (url) => {
   if (!url) return null;
+  if (/\btag=/.test(url)) return url;
   const separator = url.includes("?") ? "&" : "?";
   return `${url}${separator}tag=${encodeURIComponent(AFFILIATE_TAG)}`;
 };
@@ -42,22 +43,95 @@ const extractAsin = (url) => {
   return match ? match[1].toUpperCase() : null;
 };
 
-const normalizeProduct = (item) => {
+const coercePrice = (price) => {
+  if (price === null || price === undefined) return { label: null, value: null };
+  if (typeof price === "number") {
+    return { label: `$${price}`, value: price };
+  }
+  if (typeof price === "string") {
+    const numeric = parseFloat(price.replace(/[^0-9.,]/g, "").replace(",", "."));
+    return { label: price, value: Number.isFinite(numeric) ? numeric : null };
+  }
+  if (typeof price === "object") {
+    if (typeof price.extracted === "number") {
+      return { label: price.raw || price.display || `$${price.extracted}`, value: price.extracted };
+    }
+    if (typeof price.value === "number") {
+      return { label: price.raw || `$${price.value}`, value: price.value };
+    }
+    if (typeof price.amount === "number") {
+      const symbol = price.symbol || price.currency || "$";
+      return { label: price.raw || `${symbol}${price.amount}`, value: price.amount };
+    }
+    if (price.raw) {
+      const numeric = parseFloat(price.raw.replace(/[^0-9.,]/g, "").replace(",", "."));
+      return { label: price.raw, value: Number.isFinite(numeric) ? numeric : null };
+    }
+  }
+  return { label: null, value: null };
+};
+
+const pickImageUrl = (item) =>
+  item?.image ||
+  item?.thumbnail ||
+  item?.image_url ||
+  item?.main_image?.link ||
+  item?.main_image ||
+  null;
+
+const normalizeProduct = (item, domain = DEFAULT_DOMAIN) => {
   if (!item) return null;
+  const asin = item.asin || extractAsin(item.url) || extractAsin(item.link);
+  const { label: priceLabel, value: priceValue } = coercePrice(item.price);
+  const rawUrl = item.url || item.link || (asin ? `https://${domain}/dp/${asin}` : null);
   return {
-    asin: item.asin || null,
-    title: item.title || "",
-    image: item.image || null,
-    price: item.price || null,
-    rating: item.rating || null,
-    ratings_total: item.ratings_total || null,
-    url: item.url ? appendAffiliateTag(item.url) : null,
+    asin: asin || null,
+    title: item.title || item.name || "",
+    image: pickImageUrl(item),
+    price: item.price_label || priceLabel,
+    price_value: priceValue,
+    rating: item.rating ?? item.stars ?? item.reviews_rating ?? null,
+    ratings_total: item.ratings_total ?? item.reviews_total ?? item.reviews ?? item.reviews_count ?? null,
+    url: rawUrl ? appendAffiliateTag(rawUrl) : null,
   };
 };
 
 async function searchSerpApi(query, domain) {
   const apiKey = process.env.SERPAPI_KEY;
   if (!apiKey) return null;
+
+  const tryAmazonEngine = async () => {
+    const params = {
+      engine: "amazon",
+      amazon_domain: domain,
+      search_term: query,
+      api_key: apiKey,
+    };
+    const { data } = await axios.get("https://serpapi.com/search.json", { params, timeout: 8000 });
+    const results = (data.search_results || data.organic_results || []).map((result) => {
+      const asin = result.asin || extractAsin(result.link);
+      return normalizeProduct(
+        {
+          asin,
+          title: result.title,
+          image: result.image || result.thumbnail,
+          price: result.price,
+          rating: result.rating,
+          ratings_total: result.reviews,
+          url: result.link || result.product_link,
+        },
+        domain
+      );
+    });
+    return { products: results.filter(Boolean), source: "serpapi-amazon" };
+  };
+
+  try {
+    const amazonData = await tryAmazonEngine();
+    if (amazonData.products.length) return amazonData;
+  } catch (error) {
+    console.warn(`[serpapi-amazon] ${error.message}`);
+  }
 
   const params = {
     engine: "google",
@@ -70,18 +144,25 @@ async function searchSerpApi(query, domain) {
   const results = (data.organic_results || []).map((result) => {
     const url = result.link || result.cached_page_link || result.formatted_url;
     const asin = extractAsin(url);
-    return normalizeProduct({
-      asin,
-      title: result.title,
-      image: result.thumbnail,
-      price: result.price?.raw || null,
-      rating: result.rating,
-      ratings_total: result.reviews,
-      url,
-    });
+    const snippetPrice =
+      result.price ||
+      result.inline_price ||
+      result.rich_snippet?.top?.extensions?.find((ext) => /\$\d/.test(ext));
+    return normalizeProduct(
+      {
+        asin,
+        title: result.title,
+        image: result.thumbnail,
+        price: snippetPrice,
+        rating: result.rating,
+        ratings_total: result.reviews,
+        url,
+      },
+      domain
+    );
   });
 
-  return { products: results.filter(Boolean), source: "serpapi" };
+  return { products: results.filter(Boolean), source: "serpapi-google" };
 }
 
 async function searchRainforest(query, domain) {
@@ -98,15 +179,18 @@ async function searchRainforest(query, domain) {
   const { data } = await axios.get("https://api.rainforestapi.com/request", { params, timeout: 8000 });
   const results = (data.search_results || []).map((result) => {
     const asin = result.asin || extractAsin(result.link);
-    return normalizeProduct({
-      asin,
-      title: result.title,
-      image: result.image,
-      price: result.price?.raw,
-      rating: result.rating,
-      ratings_total: result.reviews,
-      url: result.link,
-    });
+    return normalizeProduct(
+      {
+        asin,
+        title: result.title,
+        image: result.image,
+        price: result.price,
+        rating: result.rating,
+        ratings_total: result.reviews,
+        url: result.link,
+      },
+      domain
+    );
   });
 
   return { products: results.filter(Boolean), source: "rainforest" };
@@ -120,10 +204,16 @@ async function searchFallback(query) {
     const products = data
       .filter((product) => product.title?.toLowerCase().includes(normalizedQuery))
       .map((product) =>
-        normalizeProduct({
-          ...product,
-          url: product.url,
-        })
+        normalizeProduct(
+          {
+            ...product,
+            price: product.price_value
+              ? { raw: product.price, value: product.price_value }
+              : product.price,
+            url: product.url,
+          },
+          DEFAULT_DOMAIN
+        )
       );
     return { products, source: "local" };
   } catch {
@@ -138,13 +228,14 @@ app.get("/api/health", (_, res) => {
 app.get("/api/search", async (req, res) => {
   const query = (req.query.q || "").trim();
   const domain = (req.query.domain || DEFAULT_DOMAIN).trim();
+  const skipCache = Boolean(req.query.nocache);
 
   if (!query) {
     return res.status(400).json({ error: "missing q" });
   }
 
   const cacheKey = `search:${domain}:${query}`;
-  const cached = cache.get(cacheKey);
+  const cached = !skipCache ? cache.get(cacheKey) : null;
   if (cached) {
     return res.json(cached);
   }
@@ -159,7 +250,9 @@ app.get("/api/search", async (req, res) => {
     try {
       const result = await provider();
       if (result) {
-        cache.set(cacheKey, result);
+        if (!skipCache) {
+          cache.set(cacheKey, result);
+        }
         return res.json(result);
       }
     } catch (error) {
