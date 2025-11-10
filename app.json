@@ -13,7 +13,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Almost lets you snap a portrait so your savings profile feels personal.",
+        "NSPhotoLibraryUsageDescription": "Almost accesses your photos to update the avatar that keeps you motivated."
+      }
     },
     "android": {
       "package": "com.sasarei.almostclean",
@@ -21,11 +25,24 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Almost needs access to your photos to personalise your savings profile.",
+          "cameraPermission": "Allow Almost to use the camera for quick profile snapshots."
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "f2adb262-e091-47a0-bb3a-09b067fd148a"

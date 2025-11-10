@@ -4,6 +4,7 @@
     "title": "Demo iPhone 15",
     "image": null,
     "price": "$799",
+    "price_value": 799,
     "rating": 4.7,
     "ratings_total": 1200,
     "url": "https://amazon.com/dp/B0TEST0001"
@@ -13,6 +14,7 @@
     "title": "Demo MacBook Air",
     "image": null,
     "price": "$999",
+    "price_value": 999,
     "rating": 4.8,
     "ratings_total": 800,
     "url": "https://amazon.com/dp/B0TEST0002"
@@ -22,6 +24,7 @@
     "title": "Demo AirPods Pro",
     "image": null,
     "price": "$249",
+    "price_value": 249,
     "rating": 4.6,
     "ratings_total": 2100,
     "url": "https://amazon.com/dp/B0TEST0003"
