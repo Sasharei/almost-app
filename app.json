@@ -41,7 +41,8 @@
           "photosPermission": "Almost needs access to your photos to personalise your savings profile.",
           "cameraPermission": "Allow Almost to use the camera for quick profile snapshots."
         }
-      ]
+      ],
+      "expo-notifications"
     ],
     "extra": {
       "eas": {

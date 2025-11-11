@@ -13,7 +13,6 @@ import {
   Alert,
   Keyboard,
   TouchableWithoutFeedback,
-  KeyboardAvoidingView,
   Platform,
   Dimensions,
   Animated,
@@ -23,21 +22,34 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import ConfettiCannon from "react-native-confetti-cannon";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
+import * as Notifications from "expo-notifications";
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
 
 const STORAGE_KEYS = {
-  CART: "@almost_cart",
   PURCHASES: "@almost_purchases",
   PROFILE: "@almost_profile",
   THEME: "@almost_theme",
   LANGUAGE: "@almost_language",
   ONBOARDING: "@almost_onboarded",
+  CATALOG: "@almost_catalog_overrides",
+  WISHES: "@almost_wishes",
+  SAVED_TOTAL: "@almost_saved_total",
+  DECLINES: "@almost_declines",
+  PENDING: "@almost_pending",
+  FREE_DAY: "@almost_free_day_stats",
+  DECISION_STATS: "@almost_decision_stats",
+  HISTORY: "@almost_history",
 };
-
-const API_URL = process.env.EXPO_PUBLIC_API_BASE || "http://192.168.8.167:8080/api";
 
 const PURCHASE_GOAL = 20000;
 const CAT_IMAGE = "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?auto=format&fit=crop&w=600&q=80";
-const AMAZON_FEED_URL = null; // plug your backend endpoint once ready.
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
 const THEMES = {
@@ -75,10 +87,17 @@ const CELEBRATION_MESSAGES = {
 };
 
 const RAIN_DROPS = 20;
-const PASTEL_COLORS = ["#FDEBD0", "#E3F6E8", "#E0F7FA", "#F8E1F4", "#FFF5CC", "#E6E6FA"];
 const CURRENCY_RATES = { USD: 1, EUR: 0.92, RUB: 92 };
 const DEFAULT_REMOTE_IMAGE =
   "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=600&q=80";
+const REMINDER_DAYS = 14;
+const DAY_MS = 1000 * 60 * 60 * 24;
+const REMINDER_MS = REMINDER_DAYS * DAY_MS;
+const MAX_HISTORY_EVENTS = 200;
+const INITIAL_DECISION_STATS = {
+  resolvedToWishes: 0,
+  resolvedToDeclines: 0,
+};
 
 const RainOverlay = ({ colors }) => {
   const drops = useMemo(
@@ -140,7 +159,6 @@ const RainDrop = ({ left, delay, height, colors }) => {
 };
 
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
-const PAY_LABEL = Platform.OS === "android" ? "G Pay" : " Pay";
 const BASE_HORIZONTAL_PADDING = Platform.OS === "android" ? 20 : 30;
 const SHELL_HORIZONTAL_PADDING = Platform.OS === "android" ? 0 : 8;
 
@@ -168,13 +186,7 @@ const useFadeIn = () => {
 
 const TRANSLATIONS = {
   ru: {
-    appTagline: "витрина умных замен, которые экономят бюджет",
-    syncAmazon: "подтянуть amazon",
-    syncingAmazon: "обновляю…",
-    remoteSourceLabel: "Источник: {{source}}",
-    clearAmazon: "Сбросить",
-    remoteEmptyTitle: "Не нашли на Amazon",
-    remoteEmptySubtitle: "Попробуй другой запрос или сбрось подборку",
+    appTagline: "витрина искушений, которые помогают копить",
     heroAwaiting: "в листе желаний",
     heroSpendLine: "уже сэкономлено {{amount}}. Красота без ущерба бюджету",
     feedEmptyTitle: "Фильтр пуст",
@@ -189,12 +201,43 @@ const TRANSLATIONS = {
     buyAllLabel: "Оформить всё и экономить",
     totalLabel: "Сумма",
     cartRemove: "Удалить",
+    wishlistTitle: "Мои хотелки",
+    wishlistEmptyTitle: "Пока нет целей",
+    wishlistEmptySubtitle: "Добавь мечту из ленты и начинай копить в своём темпе",
+    wishlistTab: "Хотелки",
+    wishlistProgress: "{{current}} из {{target}}",
+    wishlistSavedHint: "Сколько уже отложено",
+    wishlistSaveProgress: "Обновить прогресс",
+    wishlistRemove: "Убрать",
+    wishlistRemoveConfirm: "Убрать эту хотелку?",
+    wishlistDoneLabel: "Готово",
+    wishlistSummary: "Всего целей на {{amount}}",
+    freeDayButton: "Бесплатный день",
+    freeDayLocked: "После 18:00",
+    freeDayLoggedToday: "Сегодня уже засчитано",
+    freeDayConfirm: "Удалось прожить день без лишних трат?",
+    freeDayCongrats: "Серия {{days}} дня(ей)! Отличный фокус.",
+    freeDayMilestone: "Серия {{days}} дней! Новый титул!",
+    freeDayStreakLabel: "Серия бесплатных дней",
+    freeDayTotalLabel: "Всего: {{total}}",
+    pendingTab: "Холодильник",
+    pendingTitle: "Холодильник",
+    pendingEmptyTitle: "В холодильнике пусто",
+    pendingEmptySubtitle: "Отправляй хотелки «в холодильник» — вернёмся через 14 дней.",
+    pendingDaysLeft: "осталось {{days}} д.",
+    pendingExpired: "срок вышел",
+    pendingDueToday: "реши сегодня",
+    pendingActionWant: "Начать копить",
+    pendingActionDecline: "Сэкономить",
+    pendingNotificationTitle: "Прошло 14 дней",
+    pendingNotificationBody: "Готов(а) решить, что делать с «{{title}}»?",
+    pendingAdded: "Улетело в холодильник. Напомним вовремя.",
     feedTab: "Лента",
     profileTab: "Профиль",
     payButton: "Оплатить",
-    cartOverlay: "Экономия ждёт в корзине",
-    purchasesTitle: "История",
-    purchasesSubtitle: "Потенциально сэкономлено ещё {{amount}}. Меньше лишних чеков",
+    cartOverlay: "Экономия пополнена",
+    purchasesTitle: "Награды",
+    purchasesSubtitle: "Следи за достижениями и напоминай себе, зачем копишь",
     progressLabel: "уровень осознанности",
     progressGoal: "{{current}} / {{goal}}",
     progressHint: "осталось {{amount}} до титула ‘герой финансового дзена’",
@@ -215,21 +258,62 @@ const TRANSLATIONS = {
     buyFull: "Купить целиком",
     buyPartial: "Купить часть",
     thinkLater: "Подумаю позже",
-    statsSpent: "сэкономлено",
-    statsSaved: "буфер",
-    statsItems: "сделок",
+    wantAction: "Хочу",
+    declineAction: "Откажусь",
+    maybeAction: "Подумаю",
+    spendAction: "Потратить",
+    editPrice: "Изменить цену",
+    actionSoon: "Скоро добавим действие",
+    priceEditTitle: "Настрой цену",
+    priceEditPlaceholder: "Сумма в текущей валюте",
+    priceEditSave: "Сохранить",
+    priceEditReset: "Сбросить",
+    priceEditCancel: "Отмена",
+    priceEditError: "Введи сумму больше нуля",
+    wishAdded: "Добавлено в хотелки: {{title}}",
+    wishDeclined: "+{{amount}} к копилке. Отличное решение!",
+    statsSpent: "закрыто целей",
+    statsSaved: "спасено",
+    statsItems: "хотелок",
     statsCart: "в листе",
+    statsDeclines: "отказов",
+    statsFreeDays: "серия дней",
+    analyticsTitle: "Прогресс",
+    analyticsPendingToBuy: "Хотелки",
+    analyticsPendingToDecline: "Отказы",
+    analyticsBestStreak: "Бесплатных дней",
+    historyTitle: "История событий",
+    historyEmpty: "Тишина — добавь цель или отметь бесплатный день.",
+    historyWishAdded: "Добавлена хотелка: {{title}}",
+    historyWishProgress: "Прогресс по «{{title}}»: {{amount}} из {{target}}",
+    historyWishDone: "Цель достигнута: {{title}}",
+    historyDecline: "Отказ от {{title}} (+{{amount}})",
+    historyPendingAdded: "Отложено на 14 дней: {{title}}",
+    historyPendingWant: "После паузы решили копить: {{title}}",
+    historyPendingDecline: "После паузы отказ: {{title}} (+{{amount}})",
+    historyFreeDay: "Бесплатный день №{{total}}",
+    historySpend: "Потратил(а): {{title}} (-{{amount}})",
+    historyTimestamp: "{{date}} · {{time}}",
+    historyUnknown: "событие",
+    progressHeroTitle: "Спасено",
+    progressHeroLevel: "уровень {{level}}",
+    progressHeroNext: "До следующей цели {{amount}}",
+    tileProgressLabel: "{{current}} из {{target}}",
+    tileReady: "Можно брать",
+    tileLocked: "Пока копим",
+    spendWarning: "Потратишь {{amount}} — точно готов(а)?",
+    rewardsEmpty: "Собери достижения — попробуй отказаться от пары лишних хотелок или отметь бесплатный день.",
     goalsTitle: "Цели и награды",
     rewardUnlocked: "достигнуто",
     rewardLocked: "осталось {{amount}}",
     rainMessage: "Как же так? Спаси денежки.",
     developerReset: "Сбросить данные",
-    developerResetConfirm: "Очистить корзину, покупки и профиль?",
+    developerResetConfirm: "Очистить хотелки, историю и профиль?",
     developerResetCancel: "Оставить",
     developerResetApply: "Сбросить",
     openSettings: "Настройки",
-    defaultDealTitle: "Сделка",
-    defaultDealDesc: "Умная замена без описания",
+    defaultDealTitle: "Цель",
+    defaultDealDesc: "Опиши, зачем ты копишь",
     photoLibrary: "Из галереи",
     photoCamera: "Через камеру",
     photoTapHint: "Тапни, чтобы добавить фото",
@@ -238,7 +322,6 @@ const TRANSLATIONS = {
     photoPermissionDenied: "Нужно разрешение на доступ к камере или фото, чтобы добавить аватар.",
     photoPermissionSettings: "Открой настройки, чтобы дать доступ Almost к камере и фото.",
     photoPickerError: "Что-то пошло не так. Попробуй ещё раз.",
-    searchRequired: "Введи запрос, чтобы подтянуть Amazon",
     registrationTitle: "Познакомимся",
     registrationSubtitle: "Расскажи о себе, чтобы Almost говорил на твоём языке",
     languageTitle: "Выбери язык",
@@ -254,13 +337,7 @@ const TRANSLATIONS = {
     goalCompleteMessage: "Всё готово, погнали копить!",
   },
   en: {
-    appTagline: "a showcase of mindful deals that protect savings",
-    syncAmazon: "sync amazon",
-    syncingAmazon: "refreshing…",
-    remoteSourceLabel: "Source: {{source}}",
-    clearAmazon: "Clear",
-    remoteEmptyTitle: "No Amazon matches",
-    remoteEmptySubtitle: "Try another query or clear the feed",
+    appTagline: "an offline temptation board that keeps savings safe",
     heroAwaiting: "on the wish list",
     heroSpendLine: "already saved {{amount}}. Glow without overspending",
     feedEmptyTitle: "Nothing here",
@@ -268,19 +345,47 @@ const TRANSLATIONS = {
     buyNow: "Pay with {{pay}}",
     addToCart: "Save for later",
     buyExternal: "Open product page",
-    cartTitle: "Cart",
-    cartEmptyTitle: "Empty without your smart cravings",
-    cartEmptySubtitle: "Add something purposeful; the app loves saving cash",
+    wishlistTitle: "Wish list",
+    wishlistEmptyTitle: "No goals yet",
+    wishlistEmptySubtitle: "Pick a temptation from the feed and start saving for it",
     buyLabel: "Grab",
     buyAllLabel: "Check out everything",
     totalLabel: "Total",
     cartRemove: "Remove",
+    wishlistTab: "Wishes",
+    wishlistProgress: "{{current}} of {{target}}",
+    wishlistSavedHint: "How much you’ve already saved",
+    wishlistSaveProgress: "Update progress",
+    wishlistRemove: "Remove",
+    wishlistRemoveConfirm: "Remove this wish?",
+    wishlistDoneLabel: "Done",
+    wishlistSummary: "Total targets worth {{amount}}",
+    freeDayButton: "Free day",
+    freeDayLocked: "After 6 pm",
+    freeDayLoggedToday: "Already logged today",
+    freeDayConfirm: "Stayed away from impulse buys today?",
+    freeDayCongrats: "{{days}} day streak! Budget loves it.",
+    freeDayMilestone: "{{days}} days in a row! New badge unlocked.",
+    freeDayStreakLabel: "Free-day streak",
+    freeDayTotalLabel: "Total: {{total}}",
+    pendingTab: "Fridge",
+    pendingTitle: "Fridge",
+    pendingEmptyTitle: "Nothing in the fridge",
+    pendingEmptySubtitle: "Park temptations in the fridge — we’ll remind you in 14 days.",
+    pendingDaysLeft: "{{days}} days left",
+    pendingExpired: "decision overdue",
+    pendingDueToday: "decide today",
+    pendingActionWant: "Start saving",
+    pendingActionDecline: "Save it",
+    pendingNotificationTitle: "14 days passed",
+    pendingNotificationBody: "Ready to decide what to do with “{{title}}”?",
+    pendingAdded: "Sent to the fridge. We’ll remind you in 2 weeks.",
     feedTab: "Feed",
     profileTab: "Profile",
     payButton: "Pay",
-    cartOverlay: "Savings are waiting in the cart",
-    purchasesTitle: "History",
-    purchasesSubtitle: "Another {{amount}} can stay in your pocket",
+    cartOverlay: "Savings updated",
+    purchasesTitle: "Rewards",
+    purchasesSubtitle: "Track achievements and remind yourself why you save",
     progressLabel: "mindful level",
     progressGoal: "{{current}} / {{goal}}",
     progressHint: "{{amount}} left until ‘budget zen master’",
@@ -301,21 +406,70 @@ const TRANSLATIONS = {
     buyFull: "Pay full",
     buyPartial: "Pay partially",
     thinkLater: "Think later",
-    statsSpent: "saved",
-    statsSaved: "buffer",
-    statsItems: "deals",
-    statsCart: "wishlist",
+    wantAction: "Start saving",
+    declineAction: "Skip it",
+    maybeAction: "Think later",
+    spendAction: "Spend it",
+    editPrice: "Edit price",
+    actionSoon: "Detailed flow is coming in the next update.",
+    priceEditTitle: "Adjust the target amount",
+    priceEditPlaceholder: "Enter amount",
+    priceEditSave: "Save",
+    priceEditReset: "Reset",
+    priceEditCancel: "Cancel",
+    priceEditError: "Enter a positive number",
+    wishAdded: "Added to wishes: {{title}}",
+    wishDeclined: "+{{amount}} safely tucked away",
+    freeDayButton: "Free day",
+    freeDayLocked: "After 6 pm",
+    freeDayLoggedToday: "Already logged today",
+    freeDayConfirm: "Stayed away from impulse buys today?",
+    freeDayCongrats: "{{days}} day streak! Budget loves it.",
+    freeDayMilestone: "{{days}} days in a row! New badge unlocked.",
+    freeDayStreakLabel: "Free-day streak",
+    freeDayTotalLabel: "Total: {{total}}",
+    statsSpent: "finished goals",
+    statsSaved: "saved",
+    statsItems: "wishes",
+    statsCart: "in list",
+    statsDeclines: "declines",
+    statsFreeDays: "streak",
+    analyticsTitle: "Progress",
+    analyticsPendingToBuy: "Wishes",
+    analyticsPendingToDecline: "Declines",
+    analyticsBestStreak: "Free days",
+    historyTitle: "Event log",
+    historyEmpty: "Nothing yet — add a goal or mark a free day.",
+    historyWishAdded: "Wish added: {{title}}",
+    historyWishProgress: "Progress “{{title}}”: {{amount}} of {{target}}",
+    historyWishDone: "Goal completed: {{title}}",
+    historyDecline: "Declined {{title}} (+{{amount}} saved)",
+    historyPendingAdded: "Queued for later: {{title}}",
+    historyPendingWant: "Later decision → saving: {{title}}",
+    historyPendingDecline: "Later decision → decline: {{title}} (+{{amount}})",
+    historyFreeDay: "Free day #{{total}}",
+    historySpend: "Spent on {{title}} (-{{amount}})",
+    historyTimestamp: "{{date}} · {{time}}",
+    historyUnknown: "event",
+    progressHeroTitle: "Saved",
+    progressHeroLevel: "level {{level}}",
+    progressHeroNext: "Next target {{amount}}",
+    tileProgressLabel: "{{current}} of {{target}}",
+    tileReady: "Ready to enjoy",
+    tileLocked: "Still saving",
+    spendWarning: "Spending {{amount}} — sure about it?",
+    rewardsEmpty: "Earn achievements by skipping temptations or logging a free day.",
     goalsTitle: "Goals & rewards",
     rewardUnlocked: "unlocked",
     rewardLocked: "{{amount}} to go",
     rainMessage: "Oh no! Protect the cash.",
     developerReset: "Reset data",
-    developerResetConfirm: "Clear cart, purchases and profile?",
+    developerResetConfirm: "Clear wishes, history and profile?",
     developerResetCancel: "Keep",
     developerResetApply: "Reset",
     openSettings: "Settings",
-    defaultDealTitle: "Deal",
-    defaultDealDesc: "Mindful deal without details",
+    defaultDealTitle: "Goal",
+    defaultDealDesc: "Describe what you’re saving for",
     photoLibrary: "From library",
     photoCamera: "Use camera",
     photoTapHint: "Tap to add a photo",
@@ -324,7 +478,6 @@ const TRANSLATIONS = {
     photoPermissionDenied: "We need camera or photo access to update your avatar.",
     photoPermissionSettings: "Open Settings to let Almost access the camera and photos.",
     photoPickerError: "Something went wrong. Please try again.",
-    searchRequired: "Type a query to fetch Amazon results",
     registrationTitle: "Let’s set things up",
     registrationSubtitle: "Tell us who you are so Almost speaks your language",
     languageTitle: "Choose a language",
@@ -362,6 +515,9 @@ const CATEGORY_LABELS = {
   retro: { ru: "retro", en: "retro" },
   lifestyle: { ru: "лайф", en: "lifestyle" },
   stationery: { ru: "бумага", en: "stationery" },
+  phone: { ru: "телефон", en: "phone" },
+  travel: { ru: "путешествия", en: "travel" },
+  dream: { ru: "мечты", en: "dream" },
 };
 
 const CURRENCIES = ["USD", "EUR", "RUB"];
@@ -399,286 +555,314 @@ const INITIAL_REGISTRATION = {
   currency: "USD",
 };
 
-const PRODUCTS = [
+const DEFAULT_TEMPTATIONS = [
   {
-    id: "iphone",
+    id: "coffee_to_go",
+    emoji: "☕️",
     image:
-      "https://images.unsplash.com/photo-1504275107627-0c2ba7a43dba?auto=format&fit=crop&w=600&q=80",
-    colors: { card: "#F6DFFF" },
-    categories: ["tech", "flagship", "iphone"],
-    variants: [
-      { label: "128 GB", price: 4499 },
-      { label: "256 GB", price: 4899 },
-      { label: "1 TB", price: 5799 },
-    ],
-    copy: {
-      ru: {
-        title: "iPhone 15 Pro",
-        tagline: "Титановые нервы бюджета",
-        desc: "Меняем импульсный апгрейд на плановый: выбери память и знай, что это осознанная инвестиция, а не лишний чек.",
-      },
-      en: {
-        title: "iPhone 15 Pro",
-        tagline: "Titan-level self control",
-        desc: "Pick the storage, skip the impulse. This deal keeps the plan on track instead of draining the wallet.",
-      },
+      "https://images.unsplash.com/photo-1517705008128-361805f42e86?auto=format&fit=crop&w=600&q=80",
+    color: "#FFF3E0",
+    categories: ["coffee", "food"],
+    basePriceUSD: 5,
+    priceUSD: 5,
+    title: {
+      ru: "Кофе навынос",
+      en: "Coffee to-go",
+    },
+    description: {
+      ru: "Самая мелкая трата, которая, если её не заметить, съедает бюджет каждый день.",
+      en: "Tiny daily swipe that quietly eats the budget if you don’t watch it.",
     },
   },
   {
-    id: "macbook",
+    id: "croissant_break",
+    emoji: "🥐",
     image:
-      "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=600&q=80",
-    colors: { card: "#D9F7FF" },
-    categories: ["tech", "laptop", "work"],
-    variants: [
-      { label: "8/256", price: 5299 },
-      { label: "16/512", price: 6499 },
-    ],
-    copy: {
-      ru: {
-        title: "MacBook Air M3",
-        tagline: "Лёгкий способ не тратить лишнего",
-        desc: "Работает шустрее, чем появляются желания купить что-то ещё. Берёшь один гаджет вместо кучи мелких.",
-      },
-      en: {
-        title: "MacBook Air M3",
-        tagline: "Lightweight, heavy on savings",
-        desc: "One strong laptop beats many random buys. Upgrade once and ignore every tiny temptation after.",
-      },
+      "https://images.unsplash.com/photo-1464306076886-da185f6a9d12?auto=format&fit=crop&w=600&q=80",
+    color: "#FFFBEA",
+    categories: ["food", "coffee"],
+    basePriceUSD: 8,
+    priceUSD: 8,
+    title: {
+      ru: "Утренний круассан",
+      en: "Morning croissant",
+    },
+    description: {
+      ru: "Маленькое удовольствие, которое запускает большой прогресс, если его отложить.",
+      en: "A tiny treat that becomes a big level boost once you skip it.",
     },
   },
   {
-    id: "airpods",
+    id: "fancy_latte",
+    emoji: "🥤",
     image:
-      "https://images.unsplash.com/photo-1585386959984-a4155224a1ad?auto=format&fit=crop&w=600&q=80",
-    colors: { card: "#FFE8D7" },
-    categories: ["audio", "tech", "style"],
-    variants: [
-      { label: "Basalt Grey", price: 2899 },
-      { label: "Candy Pink", price: 2999 },
-    ],
-    copy: {
-      ru: {
-        title: "AirPods Max",
-        tagline: "Изоляция от ненужных трат",
-        desc: "Фокус на любимой музыке и бюджете. Эта покупка заменяет десяток импульсных аксессуаров.",
-      },
-      en: {
-        title: "AirPods Max",
-        tagline: "Noise canceling for impulsive buys",
-        desc: "Dial into sound and out of FOMO. One premium accessory instead of a drawer full of meh.",
-      },
+      "https://images.unsplash.com/photo-1509043759401-136742328bb3?auto=format&fit=crop&w=600&q=80",
+    color: "#E8F5E9",
+    categories: ["coffee", "lifestyle"],
+    basePriceUSD: 12,
+    priceUSD: 12,
+    title: {
+      ru: "Матча-латте",
+      en: "Matcha latte",
+    },
+    description: {
+      ru: "Стеклянный стакан + топинг = почти абонемент в спортзал за месяц.",
+      en: "Glass cup + topping = nearly a gym pass per month if you bank it.",
+    },
+  },
+  {
+    id: "phone",
+    emoji: "📱",
+    image:
+      "https://images.unsplash.com/photo-1501426026826-31c667bdf23d?auto=format&fit=crop&w=600&q=80",
+    color: "#F6DFFF",
+    categories: ["tech", "flagship", "phone"],
+    basePriceUSD: 1199,
+    priceUSD: 1199,
+    title: {
+      ru: "Новый смартфон",
+      en: "New smartphone",
+    },
+    description: {
+      ru: "Свежий гаджет с двойной камерой, который так легко оправдать. Проверим, стоит ли он эмоций?",
+      en: "Shiny dual-camera flagship tempting every scroll. Is the hype worth your savings?",
+    },
+  },
+  {
+    id: "sneakers",
+    emoji: "👟",
+    image:
+      "https://images.unsplash.com/photo-1528701800489-20be3cbe2c05?auto=format&fit=crop&w=600&q=80",
+    color: "#E3F6E8",
+    categories: ["style", "sport"],
+    basePriceUSD: 260,
+    priceUSD: 260,
+    title: {
+      ru: "Лимитированные кроссы",
+      en: "Limited sneakers",
+    },
+    description: {
+      ru: "Редкий дроп с очередью из желающих. Иногда вместо очереди лучше пополнить копилку.",
+      en: "Rare drop everyone chases. Maybe the real flex is topping up your stash.",
     },
   },
   {
     id: "watch",
+    emoji: "⌚️",
     image:
       "https://images.unsplash.com/photo-1523475472560-d2df97ec485c?auto=format&fit=crop&w=600&q=80",
-    colors: { card: "#FFE5F1" },
-    categories: ["tech", "wearable", "sport"],
-    variants: [
-      { label: "Trail Loop", price: 3299 },
-      { label: "Ocean Band", price: 3499 },
-    ],
-    copy: {
-      ru: {
-        title: "Apple Watch Ultra",
-        tagline: "Контроль не только пульса",
-        desc: "Следит за шагами и тратами. Один гаджет заменяет фитнес-подписку, новый трекер и кучу оправданий.",
-      },
-      en: {
-        title: "Apple Watch Ultra",
-        tagline: "Coaching your budget too",
-        desc: "Tracks runs and receipts. One wearable instead of subscriptions, trackers, and excuses.",
-      },
+    color: "#FFE5F1",
+    categories: ["tech", "wearable"],
+    basePriceUSD: 799,
+    priceUSD: 799,
+    title: {
+      ru: "Премиальные часы",
+      en: "Premium watch",
+    },
+    description: {
+      ru: "Отслеживает пульс и расходы, если враг не носит их каждый день.",
+      en: "Tracks your pulse and spending—if you resist wearing it daily.",
     },
   },
   {
-    id: "speaker",
+    id: "console",
+    emoji: "🎮",
     image:
-      "https://images.unsplash.com/photo-1484704849700-f032a568e944?auto=format&fit=crop&w=600&q=80",
-    colors: { card: "#E3F6E8" },
-    categories: ["audio", "home", "wow"],
-    variants: [
-      { label: "White Aura", price: 1599 },
-      { label: "Midnight Mood", price: 1699 },
-    ],
-    copy: {
-      ru: {
-        title: "HomePod",
-        tagline: "Домашний концерт вместо баров",
-        desc: "Создаёт настроение дома, значит меньше соблазнов уходить в дорогие развлечения.",
-      },
-      en: {
-        title: "HomePod",
-        tagline: "House parties over pricey nights",
-        desc: "Fill the living room with sound and skip a few expensive outings.",
-      },
+      "https://images.unsplash.com/photo-1486401899868-0e435ed85128?auto=format&fit=crop&w=600&q=80",
+    color: "#D9F7FF",
+    categories: ["wow", "home"],
+    basePriceUSD: 549,
+    priceUSD: 549,
+    title: {
+      ru: "Игровая приставка",
+      en: "Game console",
+    },
+    description: {
+      ru: "Лучший способ вечерами спасать мир и бюджет. До тех пор, пока ты не нажал «купить».",
+      en: "Saves worlds at night and your budget if you pause before checkout.",
     },
   },
   {
-    id: "card",
+    id: "pizza",
+    emoji: "🍕",
     image:
-      "https://images.unsplash.com/photo-1511988617509-a57c8a288659?auto=format&fit=crop&w=600&q=80",
-    colors: { card: "#FFF4D5" },
-    categories: ["gift", "wow"],
-    variants: [
-      { label: "$500", price: 500 },
-      { label: "$1000", price: 1000 },
-      { label: "$2000", price: 2000 },
-    ],
-    copy: {
-      ru: {
-        title: "Almost Gift Card",
-        tagline: "Подушка для будущих свопов",
-        desc: "Пополняй баланс сам себе и закрывай желания, когда это вписывается в план.",
-      },
-      en: {
-        title: "Almost Gift Card",
-        tagline: "Budget buffer for later",
-        desc: "Top up your own wish-fund and deal when it makes sense.",
-      },
+      "https://images.unsplash.com/photo-1542281286-9e0a16bb7366?auto=format&fit=crop&w=600&q=80",
+    color: "#FFF4D5",
+    categories: ["food", "wow"],
+    basePriceUSD: 25,
+    priceUSD: 25,
+    title: {
+      ru: "Сет пицц и роллов",
+      en: "Pizza & rolls night",
+    },
+    description: {
+      ru: "Пятничный ритуал, который легко превращается в тысячу рублей, улетевших в никуда.",
+      en: "Friday ritual that quickly becomes a $40 habit. Maybe cook tonight?",
+    },
+  },
+  {
+    id: "vacation",
+    emoji: "🏝️",
+    image:
+      "https://images.unsplash.com/photo-1496417263034-38ec4f0b665a?auto=format&fit=crop&w=600&q=80",
+    color: "#E0F7FA",
+    categories: ["travel", "dream"],
+    basePriceUSD: 1800,
+    priceUSD: 1800,
+    title: {
+      ru: "Экспресс-путешествие",
+      en: "Flash vacation",
+    },
+    description: {
+      ru: "Ловим билеты на море до зарплаты. Или копим заранее и летим без стресса.",
+      en: "Spontaneous seaside flights before payday—or a mindful trip later.",
     },
   },
   {
     id: "coffee",
+    emoji: "☕️",
     image:
-      "https://images.unsplash.com/photo-1459257868276-5e65389e2722?auto=format&fit=crop&w=600&q=80",
-    colors: { card: "#FDEBD0" },
-    categories: ["coffee", "home", "eco"],
-    variants: [
-      { label: "250 g", price: 39 },
-      { label: "1 kg", price: 99 },
-    ],
-    copy: {
-      ru: {
-        title: "Ethiopian Bloom",
-        tagline: "Кофе дома дешевле кофеен",
-        desc: "Пара пакетов и минус десяток походов за латте.",
-      },
-      en: {
-        title: "Ethiopian Bloom",
-        tagline: "Cafe taste, home budget",
-        desc: "Brew at home and skip a week of pricey lattes.",
-      },
+      "https://images.unsplash.com/photo-1481391032119-d89fee407e44?auto=format&fit=crop&w=600&q=80",
+    color: "#FAF0E6",
+    categories: ["home", "coffee"],
+    basePriceUSD: 320,
+    priceUSD: 320,
+    title: {
+      ru: "Домашняя кофемашина",
+      en: "Home coffee setup",
+    },
+    description: {
+      ru: "Бариста на кухне и минус десяток походов в кофейню каждую неделю.",
+      en: "Barista on the countertop and fewer pricey coffee runs.",
     },
   },
   {
-    id: "croissant",
+    id: "bag",
+    emoji: "👜",
     image:
-      "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=600&q=80",
-    colors: { card: "#F8F1FF" },
-    categories: ["food", "wow", "coffee"],
-    variants: [
-      { label: "1 pc", price: 12 },
-      { label: "6 pack", price: 65 },
-    ],
-    copy: {
-      ru: {
-        title: "Матча круассан",
-        tagline: "Дессерт вместо спонтанного ужина",
-        desc: "Маленькая радость, которая напоминает: можно баловать себя без марафона из ресторанов.",
-      },
-      en: {
-        title: "Matcha Croissant",
-        tagline: "Treat, not overspend",
-        desc: "Sweet ritual that replaces yet another overpriced dinner.",
-      },
+      "https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=600&q=80",
+    color: "#F8F1FF",
+    categories: ["style", "gift"],
+    basePriceUSD: 950,
+    priceUSD: 950,
+    title: {
+      ru: "Дизайнерская сумка",
+      en: "Designer bag",
+    },
+    description: {
+      ru: "Вещь мечты, которая либо вдохновляет, либо возвращает к списку финансовых целей.",
+      en: "Statement piece that either inspires or reminds you of bigger goals.",
     },
   },
   {
-    id: "candle",
+    id: "city_escape",
+    emoji: "🌆",
     image:
-      "https://images.unsplash.com/photo-1503602642458-232111445657?auto=format&fit=crop&w=600&q=80",
-    colors: { card: "#FAF0E6" },
-    categories: ["home", "wellness"],
-    variants: [
-      { label: "Medium", price: 49 },
-      { label: "Large", price: 69 },
-    ],
-    copy: {
-      ru: {
-        title: "Свеча Calm Hustle",
-        tagline: "Атмосфера спа без подписки",
-        desc: "Зажёг и остался дома. Экономия на походах в расслабляющие места.",
-      },
-      en: {
-        title: "Calm Hustle Candle",
-        tagline: "Spa vibes minus subscription",
-        desc: "Light it, stay in, save on fancy wellness trips.",
-      },
+      "https://images.unsplash.com/photo-1505765050516-f72dcac9c60e?auto=format&fit=crop&w=600&q=80",
+    color: "#E3E5FF",
+    categories: ["travel", "dream"],
+    basePriceUSD: 1200,
+    priceUSD: 1200,
+    title: {
+      ru: "Уикенд в европейском городе",
+      en: "Weekend city escape",
+    },
+    description: {
+      ru: "Два дня архитектуры и кофе — или месячный запас сбережений.",
+      en: "Two days of architecture and espresso — or a month of savings momentum.",
     },
   },
   {
-    id: "vinyl",
+    id: "road_trip",
+    emoji: "🚐",
     image:
-      "https://images.unsplash.com/photo-1454922915609-78549ad709bb?auto=format&fit=crop&w=600&q=80",
-    colors: { card: "#FEECEC" },
-    categories: ["audio", "home", "retro"],
-    variants: [
-      { label: "Classic", price: 499 },
-      { label: "Studio", price: 699 },
-    ],
-    copy: {
-      ru: {
-        title: "Виниловый проигрыватель",
-        tagline: "Ретро-настроение вместо шопинга",
-        desc: "Один предмет, который украшает дом и отвлекает от бессмысленных покупок.",
-      },
-      en: {
-        title: "Retro Vinyl Player",
-        tagline: "Retro mood over retail therapy",
-        desc: "Let analog beats replace random checkout sessions.",
-      },
+      "https://images.unsplash.com/photo-1503736334956-4c8f8e92946d?auto=format&fit=crop&w=900&q=80",
+    color: "#E0FFF6",
+    categories: ["travel", "wow"],
+    basePriceUSD: 3200,
+    priceUSD: 3200,
+    title: {
+      ru: "Путешествие на машине мечты",
+      en: "Dream road trip",
+    },
+    description: {
+      ru: "Бензин, дом на колёсах и свобода. Всё это может подождать до полного прогресса.",
+      en: "Fuel, van life and freedom — all waiting once the progress bar hits max.",
     },
   },
   {
-    id: "bottle",
+    id: "dream_car",
+    emoji: "🚗",
     image:
-      "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=600&q=80",
-    colors: { card: "#E6F7FF" },
-    categories: ["eco", "lifestyle"],
-    variants: [
-      { label: "500 ml", price: 59 },
-      { label: "1 L", price: 79 },
-    ],
-    copy: {
-      ru: {
-        title: "Стальная бутылка",
-        tagline: "Забота, которая окупается",
-        desc: "Пей чаще воду, покупай реже одноразовое. Осознанность за копейки.",
-      },
-      en: {
-        title: "Steel Bottle",
-        tagline: "Hydration that pays back",
-        desc: "Reusable style that cuts random cafe bottle buys.",
-      },
+      "https://images.unsplash.com/photo-1503736334956-4c8f8e92946d?auto=format&fit=crop&w=1200&q=80",
+    color: "#FFE0E3",
+    categories: ["dream", "travel"],
+    basePriceUSD: 28000,
+    priceUSD: 28000,
+    title: {
+      ru: "Автомобиль мечты",
+      en: "Dream car",
+    },
+    description: {
+      ru: "Каждый «сэкономить» переводит топливо из чата хотелок в гараж будущего.",
+      en: "Every “save it” reroutes fuel from impulse chats into the future garage.",
     },
   },
   {
-    id: "notebook",
+    id: "dream_home",
+    emoji: "🏡",
     image:
-      "https://images.unsplash.com/photo-1488190211105-8b0e65b80b4e?auto=format&fit=crop&w=600&q=80",
-    colors: { card: "#FFF1E0" },
-    categories: ["work", "stationery"],
-    variants: [
-      { label: "Daily", price: 35 },
-      { label: "Undated", price: 38 },
-    ],
-    copy: {
-      ru: {
-        title: "Планер Minimal",
-        tagline: "Планируй траты красиво",
-        desc: "Каждая запись напоминает: у тебя есть стратегия, а не хаос.",
-      },
-      en: {
-        title: "Minimal Planner",
-        tagline: "Plan spending beautifully",
-        desc: "Writing goals beats doom-shopping.",
-      },
+      "https://images.unsplash.com/photo-1568605114967-8130f3a36994?auto=format&fit=crop&w=1200&q=80",
+    color: "#FFF1E6",
+    categories: ["dream", "home"],
+    basePriceUSD: 90000,
+    priceUSD: 90000,
+    title: {
+      ru: "Взнос за квартиру",
+      en: "Home down payment",
+    },
+    description: {
+      ru: "Пусть отказ от доставок превращается в кирпичи твоего будущего адреса.",
+      en: "Every skipped delivery becomes a brick in your future address.",
+    },
+  },
+  {
+    id: "private_jet",
+    emoji: "🛩️",
+    image:
+      "https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1200&q=80",
+    color: "#EDF7FF",
+    categories: ["dream", "wow"],
+    basePriceUSD: 250000,
+    priceUSD: 250000,
+    title: {
+      ru: "Частный самолёт (мечта)",
+      en: "Private jet (why not)",
+    },
+    description: {
+      ru: "Чистая геймификация: уровень «самолёт» показывает безлимитную дисциплину.",
+      en: "Pure gamification: the jet tier proves your discipline is first class.",
     },
   },
 ];
+
+const findTemplateById = (id) => DEFAULT_TEMPTATIONS.find((item) => item.id === id);
+
+const INITIAL_FREE_DAY_STATS = {
+  total: 0,
+  current: 0,
+  best: 0,
+  lastDate: null,
+  achievements: [],
+};
+
+const FREE_DAY_MILESTONES = [3, 7, 30];
+
+const getDayKey = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().split("T")[0];
+};
 
 let activeCurrency = DEFAULT_PROFILE.currency;
 const setActiveCurrency = (code) => {
@@ -712,6 +896,8 @@ const GOALS = [
   },
 ];
 
+const SAVINGS_TIERS = [10, 20, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000, 50000, 100000, 250000];
+
 const formatCurrency = (value = 0, currency = activeCurrency) => {
   const locale = CURRENCY_LOCALES[currency] || "en-US";
   try {
@@ -727,90 +913,15 @@ const formatCurrency = (value = 0, currency = activeCurrency) => {
   }
 };
 
-const parsePriceString = (priceString) => {
-  if (!priceString) return null;
-  const digits = priceString.replace(/[^0-9.,]/g, "").replace(",", ".");
-  const value = parseFloat(digits);
-  return Number.isFinite(value) ? value : null;
-};
-
-const extractPriceValue = (item) => {
-  if (!item) return null;
-  if (typeof item.price_value === "number") return item.price_value;
-  if (typeof item.price === "number") return item.price;
-  if (typeof item.price?.extracted === "number") return item.price.extracted;
-  if (typeof item.price?.value === "number") return item.price.value;
-  if (typeof item.price?.amount === "number") return item.price.amount;
-  if (typeof item.price?.raw === "string") return parsePriceString(item.price.raw);
-  if (typeof item.price?.label === "string") return parsePriceString(item.price.label);
-  return parsePriceString(item.price);
-};
-
-const sanitizeRemoteImage = (image) => {
-  if (!image) return DEFAULT_REMOTE_IMAGE;
-  if (typeof image === "string") return image;
-  if (typeof image === "object") {
-    return image.link || image.url || image.high_res || image.high || DEFAULT_REMOTE_IMAGE;
-  }
-  return DEFAULT_REMOTE_IMAGE;
-};
-
-const extractRawPriceLabel = (price) => {
-  if (!price) return null;
-  if (typeof price === "string") return price;
-  if (typeof price.raw === "string") return price.raw;
-  if (typeof price.label === "string") return price.label;
-  return null;
-};
-
-const buildRemoteProduct = (item, idx, currency = activeCurrency) => {
-  const color = PASTEL_COLORS[idx % PASTEL_COLORS.length];
-  const priceUSD = extractPriceValue(item);
-  const rawPriceLabel = extractRawPriceLabel(item.price) || item.price_label || item.price;
-  const fallbackUSD = priceUSD ?? parsePriceString(rawPriceLabel);
-  const convertedPrice = fallbackUSD ? convertToCurrency(fallbackUSD, currency) : 0;
-  const roundedPrice = fallbackUSD ? Math.round(convertedPrice * 100) / 100 : 0;
-  const shouldUseOriginalLabel = currency === "USD" && !!rawPriceLabel && !priceUSD;
-  const priceLabel =
-    (shouldUseOriginalLabel && rawPriceLabel) ||
-    (fallbackUSD ? formatCurrency(convertedPrice, currency) : rawPriceLabel);
-  const title = item.title || "Amazon find";
-  const ratingRu = item.rating ? `Рейтинг ${item.rating}★ на Amazon` : "Найдено на Amazon";
-  const ratingEn = item.rating ? `Rated ${item.rating}★ on Amazon` : "Found on Amazon";
-  const fakeDescRu = priceLabel
-    ? `Сейчас около ${priceLabel}. Добавь сюда вместо реальной траты и сохрани бюджет.`
-    : "Добавь сюда и фиксируй экономию вместо импульсной покупки.";
-  const fakeDescEn = priceLabel
-    ? `Roughly ${priceLabel}. Log it here and protect your budget plan.`
-    : "Park it here instead of impulse spending.";
-  const variant = {
-    label: "Amazon",
-    price: roundedPrice || 0,
-  };
-  return {
-    id: `remote-${item.asin || idx}`,
-    productId: item.asin || `remote-${idx}`,
-    colors: { card: color },
-    image: sanitizeRemoteImage(item.image),
-    price: priceLabel,
-    rawPriceUSD: fallbackUSD || 0,
-    rating: item.rating || null,
-    ratings_total: item.ratings_total || null,
-    copy: {
-      ru: { title, tagline: ratingRu, desc: item.description || fakeDescRu },
-      en: { title, tagline: ratingEn, desc: item.description || fakeDescEn },
-    },
-    variants: [variant],
-  };
-};
-
-const hydrateRemoteProducts = (items = [], currency = activeCurrency) =>
-  items.map((item, index) => buildRemoteProduct(item, index, currency));
-
 const getCopyForPurchase = (item, language, t) => {
   if (item.copy?.[language]) return item.copy[language];
-  const product = PRODUCTS.find((prod) => prod.id === item.productId);
-  if (product?.copy?.[language]) return product.copy[language];
+  const product = DEFAULT_TEMPTATIONS.find((prod) => prod.id === item.productId);
+  if (product) {
+    return {
+      title: product.title?.[language] || product.title?.en || product.id,
+      desc: product.description?.[language] || product.description?.en || t("defaultDealDesc"),
+    };
+  }
   return {
     title: t("defaultDealTitle"),
     desc: t("defaultDealDesc"),
@@ -851,6 +962,41 @@ const normalizeAmazonItems = (payload) => {
   });
 };
 
+const lightenColor = (hex, amount = 0.25) => {
+  if (typeof hex !== "string" || !hex.startsWith("#") || (hex.length !== 7 && hex.length !== 4)) {
+    return hex;
+  }
+  const full = hex.length === 4
+    ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
+    : hex;
+  const num = parseInt(full.slice(1), 16);
+  if (Number.isNaN(num)) return hex;
+  const r = Math.min(255, Math.round(((num >> 16) & 255) + 255 * amount));
+  const g = Math.min(255, Math.round(((num >> 8) & 255) + 255 * amount));
+  const b = Math.min(255, Math.round((num & 255) + 255 * amount));
+  return `rgb(${r}, ${g}, ${b})`;
+};
+
+const getTierProgress = (savedUSD = 0) => {
+  let previousTarget = 0;
+  for (let i = 0; i < SAVINGS_TIERS.length; i += 1) {
+    const target = SAVINGS_TIERS[i];
+    if (savedUSD < target) {
+      return {
+        level: i + 1,
+        prevTargetUSD: previousTarget,
+        nextTargetUSD: target,
+      };
+    }
+    previousTarget = target;
+  }
+  return {
+    level: SAVINGS_TIERS.length + 1,
+    prevTargetUSD: previousTarget,
+    nextTargetUSD: null,
+  };
+};
+
 function CategoryChip({ label, isActive, onPress, colors }) {
   return (
     <TouchableOpacity
@@ -872,124 +1018,170 @@ function CategoryChip({ label, isActive, onPress, colors }) {
   );
 }
 
-function ProductCard({ product, onPress, language }) {
-  const copy = product.copy?.[language];
-  const title = copy?.title || product.title;
-  const tagline = copy?.tagline || product.tagline;
-  const primaryPrice =
-    product.price ||
-    (product.variants?.[0]
-      ? `${language === "ru" ? "от " : "from "}${formatCurrency(product.variants[0].price)}`
-      : null);
+function TemptationCard({
+  item,
+  language,
+  colors,
+  onEditPrice,
+  onAction,
+  t,
+  savedTotalUSD = 0,
+  currency = activeCurrency,
+}) {
+  const title = item.title?.[language] || item.title?.en || item.title || "Wish";
+  const desc = item.description?.[language] || item.description?.en || "";
+  const priceUSD = item.priceUSD || item.basePriceUSD || 0;
+  const priceLabel = formatCurrency(convertToCurrency(priceUSD, currency), currency);
+  const savedTowardUSD = Math.min(savedTotalUSD, priceUSD);
+  const savedLabel = formatCurrency(convertToCurrency(savedTowardUSD, currency), currency);
+  const progress = priceUSD ? Math.min(savedTotalUSD / priceUSD, 1) : 0;
+  const unlocked = savedTotalUSD >= priceUSD && priceUSD > 0;
+  const highlight = unlocked;
+  const statusLabel = unlocked ? t("tileReady") : t("tileLocked");
+  const progressLabel = t("tileProgressLabel", { current: savedLabel, target: priceLabel });
+  const cardBackground =
+    !highlight && !unlocked
+      ? lightenColor(item.color || colors.card, 0.35)
+      : item.color || colors.card;
+  const actionConfig = unlocked
+    ? [
+        { type: "decline", label: t("declineAction"), variant: "ghost" },
+        { type: "spend", label: t("spendAction"), variant: "ghost" },
+        { type: "maybe", label: t("maybeAction"), variant: "outline" },
+      ]
+    : [
+        { type: "decline", label: t("declineAction"), variant: "ghost" },
+        { type: "want", label: t("wantAction"), variant: "ghost" },
+        { type: "maybe", label: t("maybeAction"), variant: "outline" },
+      ];
 
   return (
-    <TouchableOpacity
-      style={[styles.productCard, { backgroundColor: product.colors?.card || "#fff" }]}
-      onPress={() => onPress(product)}
-      activeOpacity={0.85}
+    <View
+      style={[
+        styles.temptationCard,
+        {
+          backgroundColor: cardBackground,
+          borderColor: highlight ? colors.text : "transparent",
+          borderWidth: highlight ? 2 : 1,
+        },
+      ]}
     >
-      {tagline && <Text style={styles.productTagline}>{tagline}</Text>}
-      {product.image && (
-        <Image source={{ uri: product.image }} style={styles.productImage} resizeMode="contain" />
-      )}
-      <Text style={styles.productTitle}>{title}</Text>
-      {primaryPrice && <Text style={styles.productPrice}>{primaryPrice}</Text>}
-      {product.rating && (
-        <Text style={styles.productMeta}>
-          ⭐️ {product.rating}
-          {product.ratings_total ? ` (${product.ratings_total})` : ""}
-        </Text>
-      )}
-    </TouchableOpacity>
+      <View style={styles.temptationHeader}>
+        <Text style={styles.temptationEmoji}>{item.emoji || "✨"}</Text>
+        <Text style={[styles.temptationTitle, { color: colors.text }]}>{title}</Text>
+        <View
+          style={[
+            styles.temptationBadge,
+            { backgroundColor: colors.background, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.temptationBadgeText, { color: colors.text }]}>{statusLabel}</Text>
+        </View>
+      </View>
+      {desc ? <Text style={[styles.temptationDesc, { color: colors.muted }]}>{desc}</Text> : null}
+      <View style={styles.temptationPriceRow}>
+        <Text style={[styles.temptationPrice, { color: colors.text }]}>{priceLabel}</Text>
+        <TouchableOpacity onPress={onEditPrice}>
+          <Text style={[styles.editPriceText, { color: colors.muted }]}>{t("editPrice")}</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.tileProgressWrap}>
+        <View style={[styles.tileProgressBar, { backgroundColor: colors.border }]}>
+          <View
+            style={[
+              styles.tileProgressFill,
+              {
+                width: `${progress * 100}%`,
+                backgroundColor: highlight ? colors.text : colors.muted,
+              },
+            ]}
+          />
+        </View>
+        <Text style={[styles.tileProgressLabel, { color: colors.muted }]}>{progressLabel}</Text>
+      </View>
+      <View style={styles.temptationActions}>
+        {actionConfig.map((action) => {
+          const buttonStyle =
+            action.variant === "ghost"
+              ? [styles.temptationButtonGhost, { borderColor: colors.text }]
+              : [styles.temptationButtonOutline, { borderColor: colors.border }];
+          const textStyle = [styles.temptationButtonGhostText, { color: colors.text }];
+          if (action.variant === "outline") {
+            textStyle.push({ color: colors.muted });
+          }
+          return (
+            <TouchableOpacity
+              key={action.type}
+              style={buttonStyle}
+              onPress={() => onAction(action.type, item)}
+            >
+              <Text style={textStyle}>{action.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
 function FeedScreen({
   products,
-  remoteItems,
-  remoteSource,
-  remoteActive,
-  loadingRemote,
   categories,
   activeCategory,
   onCategorySelect,
-  cartCount,
-  purchases,
-  onAddToCart,
-  onCheckoutRequest,
-  onCancelDetail,
-  onClearRemote,
-  searchQuery,
-  onSearchChange,
-  onSearchSubmit,
+  savedTotalUSD,
+  onTemptationAction,
+  onEditPrice,
   t,
   language,
   colors,
+  currency,
+  freeDayStats,
+  onFreeDayLog,
+  analyticsStats = [],
 }) {
-  const [activeProduct, setActiveProduct] = useState(null);
-  const [selectedVariant, setSelectedVariant] = useState(null);
-  const [showDetail, setShowDetail] = useState(false);
-
-  const totalSaved = useMemo(
-    () => purchases.reduce((sum, item) => sum + (item.paidAmount || 0), 0),
-    [purchases]
+  const heroSavedLabel = useMemo(
+    () => formatCurrency(convertToCurrency(savedTotalUSD || 0, currency), currency),
+    [savedTotalUSD, currency]
   );
+  const tierInfo = getTierProgress(savedTotalUSD || 0);
+  const span = Math.max(
+    (tierInfo.nextTargetUSD ?? tierInfo.prevTargetUSD ?? 1) -
+      (tierInfo.prevTargetUSD ?? 0),
+    1
+  );
+  const tierProgress = tierInfo.nextTargetUSD
+    ? (savedTotalUSD - tierInfo.prevTargetUSD) / span
+    : 1;
+  const progressPercent = Math.min(Math.max(tierProgress, 0), 1);
+  const levelLabel = t("progressHeroLevel", { level: tierInfo.level });
+  const nextLabel = tierInfo.nextTargetUSD
+    ? t("progressHeroNext", {
+        amount: formatCurrency(convertToCurrency(tierInfo.nextTargetUSD, currency), currency),
+      })
+    : t("tileReady");
+  const todayKey = getDayKey(new Date());
+  const isEvening = new Date().getHours() >= 18;
+  const canLogFreeDay = isEvening && freeDayStats.lastDate !== todayKey;
+  const bestLabel = `${freeDayStats.current} / ${freeDayStats.best}`;
 
-  const openProduct = (product) => {
-    setActiveProduct(product);
-    setSelectedVariant(product.variants?.[0] || null);
-    setShowDetail(true);
-  };
-
-  const closeDetail = (withSad = false) => {
-    setShowDetail(false);
-    setActiveProduct(null);
-    if (withSad && onCancelDetail) {
-      onCancelDetail();
-    }
-  };
-
-  const handleAddToCart = () => {
-    if (!activeProduct || !selectedVariant) return;
-    onAddToCart(activeProduct, selectedVariant);
-    closeDetail(false);
-  };
-
-  const handleBuyNow = () => {
-    if (!activeProduct || !selectedVariant) return;
-    onCheckoutRequest(
-      {
-        productId: activeProduct.id,
-        variant: selectedVariant.label,
-        price: selectedVariant.price,
-        image: activeProduct.image || DEFAULT_REMOTE_IMAGE,
-        copy: activeProduct.copy,
-      },
-      "feed"
-    );
-    closeDetail(false);
-  };
-
-  const listData = remoteActive && remoteItems.length ? remoteItems : products;
-  const isRemote = remoteActive && remoteItems.length > 0;
+  const filteredProducts = useMemo(() => {
+    if (activeCategory === "all") return products;
+    return products.filter((product) => product.categories?.includes(activeCategory));
+  }, [activeCategory, products]);
+  const analyticsPreview = analyticsStats.slice(0, 3);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }] }>
       <FlatList
-        data={listData}
-        keyExtractor={(item, index) => item.id || item.asin || item.productId || `${item.title}-${index}`}
-        numColumns={2}
+        data={filteredProducts}
+        keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
-        columnWrapperStyle={{ justifyContent: "space-between", marginBottom: 18 }}
         contentContainerStyle={{ paddingBottom: 160, paddingTop: 4 }}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
-              {remoteActive ? t("remoteEmptyTitle") : t("feedEmptyTitle")}
-            </Text>
-            <Text style={[styles.emptyStateText, { color: colors.muted }]}>
-              {remoteActive ? t("remoteEmptySubtitle") : t("feedEmptySubtitle")}
-            </Text>
+            <Text style={[styles.emptyStateTitle, { color: colors.text }]}>{t("feedEmptyTitle")}</Text>
+            <Text style={[styles.emptyStateText, { color: colors.muted }]}>{t("feedEmptySubtitle")}</Text>
           </View>
         }
         ListHeaderComponent={
@@ -1000,53 +1192,50 @@ function FeedScreen({
                 <Text style={[styles.heroTagline, { color: colors.muted }]}>{t("appTagline")}</Text>
               </View>
             </View>
-            <View style={[styles.heroStatCard, { backgroundColor: colors.card }] }>
-              <View style={styles.heroStatRow}>
-                <Text style={[styles.heroStatLabel, { color: colors.muted }]}>{t("heroAwaiting")}</Text>
-                <Text style={[styles.heroStatValue, { color: colors.text }]}>{cartCount}</Text>
-              </View>
-              <Text style={[styles.heroSpendLine, { color: colors.text }]}>
-                {t("heroSpendLine", { amount: formatCurrency(totalSaved) })}
-              </Text>
-            </View>
-            <View style={styles.searchRow}>
-              <TextInput
-                style={[
-                  styles.searchInput,
-                  { borderColor: colors.border, color: colors.text },
-                ]}
-                placeholder={language === "ru" ? "Что ищем на Amazon?" : "Search Amazon deals"}
-                placeholderTextColor={colors.muted}
-                value={searchQuery}
-                onChangeText={onSearchChange}
-                returnKeyType="done"
-                clearButtonMode="while-editing"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-              <TouchableOpacity
-                style={[styles.searchButton, { backgroundColor: colors.text }]}
-                onPress={() => onSearchSubmit(searchQuery)}
-                disabled={loadingRemote}
-              >
-                <Text style={[styles.searchButtonText, { color: colors.background }]}>
-                  {loadingRemote ? "..." : t("syncAmazon")}
+            <View
+              style={[
+                styles.progressHeroCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <View style={styles.progressHeroHeader}>
+                <Text style={[styles.progressHeroTitle, { color: colors.text }]}>
+                  {t("progressHeroTitle")}
                 </Text>
-              </TouchableOpacity>
-              {remoteActive && (
-                <TouchableOpacity
-                  style={[styles.clearButton, { borderColor: colors.border }]}
-                  onPress={onClearRemote}
-                >
-                  <Text style={[styles.clearButtonText, { color: colors.muted }]}>
-                    {t("clearAmazon")}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            {remoteSource && remoteActive && (
-              <Text style={[styles.remoteBadge, { color: colors.muted }]}>
-                {t("remoteSourceLabel", { source: remoteSource })}
+                <Text style={[styles.progressHeroLevel, { color: colors.muted }]}>{levelLabel}</Text>
+              </View>
+              <Text style={[styles.progressHeroAmount, { color: colors.text }]}>
+                {heroSavedLabel}
               </Text>
+              <View style={[styles.progressHeroBar, { backgroundColor: colors.border }]}>
+                <View
+                  style={[
+                    styles.progressHeroFill,
+                    { backgroundColor: colors.text, width: `${progressPercent * 100}%` },
+                  ]}
+                />
+              </View>
+              <Text style={[styles.progressHeroNext, { color: colors.muted }]}>{nextLabel}</Text>
+            </View>
+            {analyticsPreview.length > 0 && (
+              <View style={styles.feedAnalyticsRow}>
+                {analyticsPreview.map((stat) => (
+                  <View
+                    key={stat.label}
+                    style={[
+                      styles.feedAnalyticsItem,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.feedAnalyticsValue, { color: colors.text }]}>
+                      {stat.value}
+                    </Text>
+                    <Text style={[styles.feedAnalyticsLabel, { color: colors.muted }]}>
+                      {stat.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             )}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 16 }}>
               {categories.map((cat) => (
@@ -1059,320 +1248,331 @@ function FeedScreen({
                 />
               ))}
             </ScrollView>
+            <View style={[styles.freeDayCard, { backgroundColor: colors.card, borderColor: colors.border }] }>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.freeDayLabel, { color: colors.muted }]}>
+                  {t("freeDayStreakLabel")}
+                </Text>
+                <Text style={[styles.freeDayValue, { color: colors.text }]}>{bestLabel}</Text>
+                <Text style={{ color: colors.muted }}>
+                  {t("freeDayTotalLabel", { total: freeDayStats.total })}
+                </Text>
+              </View>
+              {canLogFreeDay ? (
+                <TouchableOpacity
+                  style={[styles.freeDayButton, { backgroundColor: colors.text }]}
+                  onPress={onFreeDayLog}
+                >
+                  <Text style={[styles.freeDayButtonText, { color: colors.background }]}>
+                    {t("freeDayButton")}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={[styles.freeDayLocked, { color: colors.muted }]}>
+                  {freeDayStats.lastDate === todayKey
+                    ? t("freeDayLoggedToday")
+                    : t("freeDayLocked")}
+                </Text>
+              )}
+            </View>
           </View>
         }
         renderItem={({ item }) => (
-          <ProductCard product={item} onPress={openProduct} language={language} />
+          <TemptationCard
+            item={item}
+            language={language}
+            colors={colors}
+            t={t}
+            onEditPrice={() => onEditPrice(item)}
+            savedTotalUSD={savedTotalUSD}
+            currency={currency}
+            onAction={async (type) => {
+              await onTemptationAction(type, item);
+            }}
+          />
         )}
       />
-
-      <Modal visible={showDetail} transparent animationType="fade">
-        <View style={styles.detailBackdrop}>
-          <View style={[styles.detailCard, { backgroundColor: colors.card }] }>
-            <TouchableOpacity style={styles.closeButton} onPress={() => closeDetail(true)}>
-              <Text style={[styles.closeButtonText, { color: colors.muted }]}>×</Text>
-            </TouchableOpacity>
-            {activeProduct && (
-              <>
-                <View
-                  style={[
-                    styles.detailHero,
-                    { backgroundColor: activeProduct.colors?.card || "#F3F3F3" },
-                  ]}
-                >
-                  {activeProduct.image && (
-                    <Image
-                      source={{ uri: activeProduct.image }}
-                      style={styles.detailImage}
-                      resizeMode="contain"
-                    />
-                  )}
-                </View>
-                <Text style={[styles.detailTitle, { color: colors.text }]}>
-                  {activeProduct.copy?.[language]?.title || activeProduct.title}
-                </Text>
-                <Text style={[styles.detailTagline, { color: colors.text }]}>
-                  {activeProduct.copy?.[language]?.tagline || activeProduct.tagline}
-                </Text>
-                {(activeProduct.price ||
-                  selectedVariant ||
-                  activeProduct.variants?.[0]) && (
-                  <Text style={[styles.detailPrice, { color: colors.text }]}>
-                    {activeProduct.price ||
-                      formatCurrency(
-                        selectedVariant?.price ?? activeProduct.variants?.[0]?.price ?? 0
-                      )}
-                  </Text>
-                )}
-                {activeProduct.rating && (
-                  <Text style={[styles.detailRating, { color: colors.muted }]}>
-                    ⭐️ {activeProduct.rating}
-                    {activeProduct.ratings_total ? ` (${activeProduct.ratings_total})` : ""}
-                  </Text>
-                )}
-                <Text style={[styles.detailDesc, { color: colors.muted }]}>
-                  {activeProduct.copy?.[language]?.desc || activeProduct.desc}
-                </Text>
-
-                {Array.isArray(activeProduct.variants) && activeProduct.variants.length > 0 && (
-                  <View style={styles.variantRow}>
-                    {activeProduct.variants.map((variant) => (
-                      <TouchableOpacity
-                        key={variant.label}
-                        style={[
-                          styles.variantPill,
-                          {
-                            backgroundColor:
-                              selectedVariant?.label === variant.label
-                                ? colors.text
-                                : colors.card,
-                            borderColor: colors.border,
-                          },
-                        ]}
-                        onPress={() => setSelectedVariant(variant)}
-                      >
-                        <Text
-                          style={[
-                            styles.variantText,
-                            {
-                              color:
-                                selectedVariant?.label === variant.label
-                                  ? colors.background
-                                  : colors.text,
-                            },
-                          ]}
-                        >
-                          {variant.label}
-                        </Text>
-                        <Text style={[styles.variantPrice, { color: colors.muted }]}>
-                          {formatCurrency(variant.price)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-
-                <TouchableOpacity
-                  style={[styles.primaryButton, { backgroundColor: colors.text }]}
-                  onPress={handleBuyNow}
-                >
-                  <Text style={[styles.primaryButtonText, { color: colors.background }]}>
-                    {t("buyNow", { pay: PAY_LABEL })}
-                  </Text>
-                </TouchableOpacity>
-                {Array.isArray(activeProduct.variants) && activeProduct.variants.length > 0 && (
-                  <TouchableOpacity
-                    style={[styles.secondaryButton, { borderColor: colors.text }]}
-                    onPress={handleAddToCart}
-                  >
-                    <Text style={[styles.secondaryButtonText, { color: colors.text }]}>
-                      {t("addToCart")}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
 
-function CartScreen({
-  cart,
-  onCheckout,
-  onCheckoutAll,
-  onRemoveItem = () => {},
+function WishListScreen({
+  wishes,
+  currency = DEFAULT_PROFILE.currency,
+  t,
+  colors,
+  onRemoveWish,
+}) {
+  if (wishes.length === 0) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }] }>
+        <Text style={[styles.header, { color: colors.text }]}>{t("wishlistTitle")}</Text>
+        <View style={styles.cartEmptyState}>
+          <Image source={{ uri: CAT_IMAGE }} style={styles.catImage} />
+          <Text style={[styles.cartEmptyTitle, { color: colors.text }]}>{t("wishlistEmptyTitle")}</Text>
+          <Text style={[styles.cartEmptySubtitle, { color: colors.muted }]}>
+            {t("wishlistEmptySubtitle")}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const totalTarget = formatCurrency(
+    convertToCurrency(wishes.reduce((sum, wish) => sum + (wish.targetUSD || 0), 0), currency),
+    currency
+  );
+
+  return (
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }] }
+      contentContainerStyle={{ paddingBottom: 160 }}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text style={[styles.header, { color: colors.text }]}>{t("wishlistTitle")}</Text>
+      <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
+        {t("wishlistSummary", { amount: totalTarget })}
+      </Text>
+      {wishes.map((wish) => {
+        const targetLocal = formatCurrency(
+          convertToCurrency(wish.targetUSD || 0, currency),
+          currency
+        );
+        const progress = Math.min((wish.savedUSD || 0) / (wish.targetUSD || 1), 1);
+        const progressLabel = t("wishlistProgress", {
+          current: formatCurrency(convertToCurrency(wish.savedUSD || 0, currency), currency),
+          target: targetLocal,
+        });
+        return (
+          <View key={wish.id} style={[styles.wishCard, { backgroundColor: colors.card }] }>
+            <View style={styles.wishHeader}>
+              <Text style={[styles.wishTitle, { color: colors.text }]}>{wish.title}</Text>
+              <View style={styles.wishBadge}>
+                <Text style={{ color: colors.muted }}>
+                  {wish.status === "done" ? t("wishlistDoneLabel") : `${Math.round(progress * 100)}%`}
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.wishMeta, { color: colors.muted }]}>{progressLabel}</Text>
+            <View style={[styles.wishProgressBar, { backgroundColor: colors.border }]}>
+              <View
+                style={[
+                  styles.wishProgressFill,
+                  { backgroundColor: colors.text, width: `${progress * 100}%` },
+                ]}
+              />
+            </View>
+            <TouchableOpacity
+              style={[styles.wishButtonGhost, { borderColor: colors.border, marginTop: 12 }]}
+              onPress={() => onRemoveWish(wish.id)}
+            >
+              <Text style={{ color: colors.muted }}>{t("wishlistRemove")}</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+function PendingScreen({ items, currency, t, colors, onResolve }) {
+  const sorted = useMemo(
+    () => [...items].sort((a, b) => (a.decisionDue || 0) - (b.decisionDue || 0)),
+    [items]
+  );
+
+  if (!sorted.length) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }] }>
+        <Text style={[styles.header, { color: colors.text }]}>{t("pendingTitle")}</Text>
+        <View style={styles.cartEmptyState}>
+          <Image source={{ uri: CAT_IMAGE }} style={styles.catImage} />
+          <Text style={[styles.cartEmptyTitle, { color: colors.text }]}>{t("pendingEmptyTitle")}</Text>
+          <Text style={[styles.cartEmptySubtitle, { color: colors.muted }]}>
+            {t("pendingEmptySubtitle")}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }] }
+      contentContainerStyle={{ paddingBottom: 160, gap: 16 }}
+    >
+      <Text style={[styles.header, { color: colors.text }]}>{t("pendingTitle")}</Text>
+      {sorted.map((item) => {
+        const diff = (item.decisionDue || 0) - Date.now();
+        const daysLeft = Math.ceil(diff / DAY_MS);
+        const overdue = diff <= 0;
+        const dueLabel = overdue
+          ? t("pendingExpired")
+          : daysLeft <= 1
+          ? t("pendingDueToday")
+          : t("pendingDaysLeft", { days: daysLeft });
+        const priceLabel = formatCurrency(convertToCurrency(item.priceUSD || 0, currency), currency);
+        return (
+          <View key={item.id} style={[styles.pendingCard, { backgroundColor: colors.card }] }>
+            <View style={styles.pendingHeader}>
+              <Text style={[styles.pendingTitle, { color: colors.text }]}>{item.title}</Text>
+              <Text
+                style={[
+                  styles.pendingDue,
+                  { color: overdue ? "#D9534F" : colors.muted },
+                ]}
+              >
+                {dueLabel}
+              </Text>
+            </View>
+            <Text style={[styles.pendingPrice, { color: colors.text }]}>{priceLabel}</Text>
+            <View style={styles.pendingButtons}>
+              <TouchableOpacity
+                style={[styles.pendingButtonPrimary, { backgroundColor: colors.text }]}
+                onPress={() => onResolve(item, "want")}
+              >
+                <Text style={[styles.pendingButtonPrimaryText, { color: colors.background }]}>
+                  {t("pendingActionWant")}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.pendingButtonSecondary, { borderColor: colors.border }]}
+                onPress={() => onResolve(item, "decline")}
+              >
+                <Text style={{ color: colors.muted }}>{t("pendingActionDecline")}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+const ACHIEVEMENT_DEFS = [
+  {
+    id: "saved_50",
+    type: "savedUSD",
+    threshold: 50,
+    emoji: "💾",
+    copy: {
+      ru: { title: "Первые 50$", desc: "Ты уже отложил(а) на мини-подарок." },
+      en: { title: "First $50", desc: "That's a mini gift already banked." },
+    },
+  },
+  {
+    id: "saved_500",
+    type: "savedUSD",
+    threshold: 500,
+    emoji: "💎",
+    copy: {
+      ru: { title: "Полтысячи в копилке", desc: "Можно мечтать о крупной покупке." },
+      en: { title: "Half a grand", desc: "Major purchase territory unlocked." },
+    },
+  },
+  {
+    id: "decline_10",
+    type: "declines",
+    threshold: 10,
+    emoji: "🧊",
+    copy: {
+      ru: { title: "Ледяное сердце", desc: "10 хотелок в холодильнике и счёт растёт." },
+      en: { title: "Ice cold focus", desc: "10 temptations declined already." },
+    },
+  },
+  {
+    id: "free_7",
+    type: "freeDays",
+    threshold: 7,
+    emoji: "🗓️",
+    copy: {
+      ru: { title: "Неделя без трат", desc: "Серия бесплатных дней — гордимся." },
+      en: { title: "7 free days", desc: "A whole week of mindful restraint." },
+    },
+  },
+];
+
+function RewardsScreen({
+  savedTotalUSD,
+  declineCount,
+  freeDayStats,
+  currency = DEFAULT_PROFILE.currency,
   t,
   language,
   colors,
 }) {
-  const total = cart.reduce((sum, item) => sum + item.price, 0);
+  const achievements = useMemo(() => {
+    const stats = {
+      savedUSD: savedTotalUSD,
+      declines: declineCount,
+      freeDays: freeDayStats.total,
+    };
+    return ACHIEVEMENT_DEFS.map((def) => {
+      const value = stats[def.type] || 0;
+      const unlocked = value >= def.threshold;
+      const progress = def.threshold ? Math.min(value / def.threshold, 1) : 1;
+      const copy = def.copy[language] || def.copy.en;
+      return {
+        id: def.id,
+        title: copy.title,
+        desc: copy.desc,
+        emoji: def.emoji,
+        unlocked,
+        threshold: def.threshold,
+        value,
+        progress,
+      };
+    });
+  }, [savedTotalUSD, declineCount, freeDayStats.total, language]);
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }] }>
-      <Text style={[styles.header, { color: colors.text }]}>{t("cartTitle")}</Text>
-      {cart.length === 0 ? (
-        <View style={styles.cartEmptyState}>
-          <Image source={{ uri: CAT_IMAGE }} style={styles.catImage} />
-          <Text style={[styles.cartEmptyTitle, { color: colors.text }]}>{t("cartEmptyTitle")}</Text>
-          <Text style={[styles.cartEmptySubtitle, { color: colors.muted }]}>
-            {t("cartEmptySubtitle")}
-          </Text>
-        </View>
-      ) : (
-        <>
-          {cart.map((item) => {
-            const copy = getCopyForPurchase(item, language, t);
-            return (
-              <View key={item.cartId} style={[styles.cartCard, { backgroundColor: colors.card }] }>
-                <View style={styles.cartImageWrap}>
-                  <Image
-                    source={{ uri: item.image || DEFAULT_REMOTE_IMAGE }}
-                    style={{ width: 48, height: 48 }}
-                    resizeMode="contain"
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.cartTitleText, { color: colors.text }]}>
-                    {copy.title}
-                  </Text>
-                  <Text style={[styles.cartVariant, { color: colors.muted }]}>{item.variant}</Text>
-                </View>
-                <View style={styles.cartRight}>
-                  <Text style={[styles.cartPrice, { color: colors.text }]}>
-                    {formatCurrency(item.price)}
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.cartBuyButton, { backgroundColor: colors.text }]}
-                    onPress={() => onCheckout(item, "cart")}
-                  >
-                    <Text style={[styles.cartBuyText, { color: colors.background }]}>
-                      {t("buyLabel")}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => onRemoveItem(item.cartId)}>
-                    <Text style={[styles.cartRemove, { color: colors.muted }]}>
-                      {t("cartRemove")}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })}
-          <View style={styles.cartTotalRow}>
-            <Text style={[styles.cartTotalText, { color: colors.text }]}>{t("totalLabel")}</Text>
-            <Text style={[styles.cartTotalAmount, { color: colors.text }]}>
-              {formatCurrency(total)}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.buyAllButton, { backgroundColor: colors.text }]}
-            onPress={onCheckoutAll}
-          >
-            <Text style={[styles.buyAllButtonText, { color: colors.background }]}>
-              {t("buyAllLabel")}
-            </Text>
-          </TouchableOpacity>
-        </>
-      )}
-    </View>
-  );
-}
-
-function PurchasesScreen({ purchases, t, language, colors }) {
-  const total = purchases.reduce((sum, item) => sum + (item.paidAmount || 0), 0);
-  const saved = Math.max(PURCHASE_GOAL - total, 0);
-  const progress = Math.min(total / PURCHASE_GOAL, 1);
-
-  const renderPurchase = ({ item }) => {
-    const copy = getCopyForPurchase(item, language, t);
-    return (
-      <View style={[styles.purchaseCard, { backgroundColor: colors.card }] }>
-        <View style={styles.purchaseInfo}>
-          <Text style={[styles.purchaseTitle, { color: colors.text }]}>
-            ✅ {copy.title} · {item.variant}
-          </Text>
-          <Text style={[styles.purchaseDesc, { color: colors.muted }]}>
-            {copy.desc}
-          </Text>
-        </View>
-        <Text style={[styles.purchasePrice, { color: colors.text }]}>
-          {formatCurrency(item.paidAmount || item.price)} / {formatCurrency(item.price)}
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      contentContainerStyle={{ paddingBottom: 200, gap: 16 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <View>
+        <Text style={[styles.header, { color: colors.text }]}>{t("purchasesTitle")}</Text>
+        <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
+          {t("purchasesSubtitle")}
         </Text>
       </View>
-    );
-  };
-
-  const header = (
-    <>
-      <Text style={[styles.header, { color: colors.text }]}>{t("purchasesTitle")}</Text>
-      <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
-        {t("purchasesSubtitle", { amount: formatCurrency(saved) })}
-      </Text>
-
-      <View style={[styles.progressCard, { backgroundColor: colors.card }] }>
-        <View style={styles.progressTextRow}>
-          <View>
-            <Text style={[styles.progressLabel, { color: colors.muted }]}>
-              {t("progressLabel")}
-            </Text>
-            <Text style={[styles.progressValue, { color: colors.text }]}>
-              {Math.round(progress * 100)}%
-            </Text>
-          </View>
-          <Text style={[styles.progressGoal, { color: colors.text }]}>
-            {t("progressGoal", {
-              current: formatCurrency(total),
-              goal: formatCurrency(PURCHASE_GOAL),
-            })}
-          </Text>
-        </View>
-        <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
-          <View
-            style={[styles.progressFill, { width: `${progress * 100}%`, backgroundColor: colors.text }]}
-          />
-        </View>
-        <Text style={[styles.progressHint, { color: colors.muted }]}>
-          {t("progressHint", { amount: formatCurrency(saved) })}
-        </Text>
-      </View>
-    </>
-  );
-
-  const footer = (
-    <>
-      <Text style={[styles.subheader, { color: colors.text }]}>{t("goalsTitle")}</Text>
-      {GOALS.map((goal) => {
-        const unlocked = total >= goal.target;
-        const remaining = Math.max(goal.target - total, 0);
+      {achievements.map((reward) => {
+        const remaining = Math.max(reward.threshold - reward.value, 0);
         return (
-          <View key={goal.id} style={[styles.goalCard, { backgroundColor: colors.card }] }>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.goalTitle, { color: colors.text }]}>
-                {goal.copy[language].title}
-              </Text>
-              <Text style={[styles.goalDesc, { color: colors.muted }]}>
-                {goal.copy[language].desc}
-              </Text>
+          <View key={reward.id} style={[styles.goalCard, { backgroundColor: colors.card }] }>
+            <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+              <Text style={{ fontSize: 28 }}>{reward.emoji}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.goalTitle, { color: colors.text }]}>{reward.title}</Text>
+                <Text style={[styles.goalDesc, { color: colors.muted }]}>{reward.desc}</Text>
+              </View>
             </View>
-            <Text
-              style={[
-                styles.goalBadge,
-                {
-                  backgroundColor: unlocked ? colors.text : "transparent",
-                  color: unlocked ? colors.background : colors.muted,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              {unlocked
+            <View style={[styles.goalProgressBar, { backgroundColor: colors.border }]}>
+              <View
+                style={[
+                  styles.goalProgressFill,
+                  {
+                    width: `${reward.progress * 100}%`,
+                    backgroundColor: reward.unlocked ? colors.text : colors.muted,
+                  },
+                ]}
+              />
+            </View>
+            <Text style={[styles.goalDesc, { color: colors.muted }]}>
+              {reward.unlocked
                 ? t("rewardUnlocked")
-                : t("rewardLocked", { amount: formatCurrency(remaining) })}
+                : t("rewardLocked", {
+                    amount: formatCurrency(convertToCurrency(remaining, currency), currency),
+                  })}
             </Text>
           </View>
         );
       })}
-    </>
-  );
-
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }] }>
-      <FlatList
-        data={purchases}
-        keyExtractor={(item) => item.id}
-        renderItem={renderPurchase}
-        ListHeaderComponent={header}
-        ListHeaderComponentStyle={{ marginBottom: 16 }}
-        ListFooterComponent={footer}
-        ListFooterComponentStyle={{ marginTop: 16 }}
-        ListEmptyComponent={
-          <Text style={[styles.emptyText, { color: colors.muted }]}>{t("emptyPurchases")}</Text>
-        }
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 160, flexGrow: 1 }}
-      />
-    </View>
+      {!achievements.some((item) => item.unlocked) && (
+        <Text style={[styles.historyEmpty, { color: colors.muted }]}>{t("rewardsEmpty")}</Text>
+      )}
+    </ScrollView>
   );
 }
 
@@ -1392,10 +1592,58 @@ function ProfileScreen({
   theme,
   language,
   currencyValue,
+  history = [],
+  freeDayStats = INITIAL_FREE_DAY_STATS,
   t,
   colors,
 }) {
   const currentCurrency = currencyValue || profile.currency || DEFAULT_PROFILE.currency;
+  const historyPreview = (history || []).slice(0, 5);
+  const locale = language === "ru" ? "ru-RU" : "en-US";
+  const formatLocalAmount = (valueUSD = 0) =>
+    formatCurrency(convertToCurrency(valueUSD || 0, currentCurrency), currentCurrency);
+  const describeHistory = (entry) => {
+    if (!entry) return t("historyUnknown");
+    const { kind, meta = {} } = entry;
+    const title = meta.title || t("historyUnknown");
+    switch (kind) {
+      case "wish_added":
+        return t("historyWishAdded", { title });
+      case "wish_progress":
+        return t("historyWishProgress", {
+          title,
+          amount: formatLocalAmount(meta.savedUSD),
+          target: formatLocalAmount(meta.targetUSD),
+        });
+      case "wish_completed":
+        return t("historyWishDone", { title });
+      case "decline":
+        return t("historyDecline", { title, amount: formatLocalAmount(meta.amountUSD) });
+      case "pending_added":
+        return t("historyPendingAdded", { title });
+      case "pending_to_wish":
+        return t("historyPendingWant", { title });
+      case "pending_to_decline":
+        return t("historyPendingDecline", { title, amount: formatLocalAmount(meta.amountUSD) });
+      case "free_day":
+        return t("historyFreeDay", { total: meta.total || 0 });
+      case "spend":
+        return t("historySpend", { title, amount: formatLocalAmount(meta.amountUSD) });
+      default:
+        return t("historyUnknown");
+    }
+  };
+  const formatHistoryMeta = (entry) => {
+    if (!entry?.timestamp) return "";
+    try {
+      const date = new Date(entry.timestamp);
+      const dateLabel = date.toLocaleDateString(locale, { day: "numeric", month: "short" });
+      const timeLabel = date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+      return t("historyTimestamp", { date: dateLabel, time: timeLabel });
+    } catch {
+      return "";
+    }
+  };
   return (
     <View style={[styles.container, { backgroundColor: colors.background }] }>
       <ScrollView
@@ -1596,21 +1844,52 @@ function ProfileScreen({
           </Text>
         </TouchableOpacity>
         </View>
+
+        <View style={[styles.historyCard, { backgroundColor: colors.card }] }>
+          <Text style={[styles.historyTitle, { color: colors.text }]}>{t("historyTitle")}</Text>
+          {historyPreview.length === 0 ? (
+            <Text style={[styles.historyEmpty, { color: colors.muted }]}>{t("historyEmpty")}</Text>
+          ) : (
+            historyPreview.map((entry, index) => (
+              <View
+                key={entry.id}
+                style={[
+                  styles.historyItem,
+                  {
+                    borderColor: colors.border,
+                    borderBottomWidth: index === historyPreview.length - 1 ? 0 : StyleSheet.hairlineWidth,
+                  },
+                ]}
+              >
+                <Text style={[styles.historyItemTitle, { color: colors.text }]}>
+                  {describeHistory(entry)}
+                </Text>
+                <Text style={[styles.historyItemMeta, { color: colors.muted }]}>
+                  {formatHistoryMeta(entry)}
+                </Text>
+              </View>
+            ))
+          )}
+        </View>
       </ScrollView>
     </View>
   );
 }
 
 export default function App() {
-  const [cart, setCart] = useState([]);
+  const [wishes, setWishes] = useState([]);
   const [purchases, setPurchases] = useState([]);
   const [activeTab, setActiveTab] = useState("feed");
-  const [checkoutItem, setCheckoutItem] = useState(null);
-  const [checkoutSource, setCheckoutSource] = useState("feed");
-  const [showApplePay, setShowApplePay] = useState(false);
-  const [purchaseType, setPurchaseType] = useState("full");
-  const [partialAmount, setPartialAmount] = useState("");
-  const products = PRODUCTS;
+  const [catalogOverrides, setCatalogOverrides] = useState({});
+  const [temptations, setTemptations] = useState(DEFAULT_TEMPTATIONS);
+  const [priceEditor, setPriceEditor] = useState({ visible: false, item: null, value: "" });
+  const [savedTotalUSD, setSavedTotalUSD] = useState(0);
+  const [declineCount, setDeclineCount] = useState(0);
+  const [pendingList, setPendingList] = useState([]);
+  const [freeDayStats, setFreeDayStats] = useState({ ...INITIAL_FREE_DAY_STATS });
+  const [decisionStats, setDecisionStats] = useState({ ...INITIAL_DECISION_STATS });
+  const [historyEvents, setHistoryEvents] = useState([]);
+  const products = temptations;
   const [activeCategory, setActiveCategory] = useState("all");
   const [profile, setProfile] = useState({ ...DEFAULT_PROFILE });
   const [profileDraft, setProfileDraft] = useState({ ...DEFAULT_PROFILE });
@@ -1624,14 +1903,51 @@ export default function App() {
   const [onboardingStep, setOnboardingStep] = useState("logo");
   const [registrationData, setRegistrationData] = useState(INITIAL_REGISTRATION);
   const [selectedGoal, setSelectedGoal] = useState(null);
-  const [remoteProducts, setRemoteProducts] = useState([]);
-  const [remoteRawItems, setRemoteRawItems] = useState([]);
-  const [remoteSource, setRemoteSource] = useState(null);
-  const [remoteActive, setRemoteActive] = useState(false);
-  const [remoteLoading, setRemoteLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [showImageSourceSheet, setShowImageSourceSheet] = useState(false);
   const imagePickerResolver = useRef(null);
+  const ensureNotificationPermission = useCallback(async () => {
+    try {
+      let settings = await Notifications.getPermissionsAsync();
+      let granted =
+        settings.granted ||
+        settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+      if (!granted) {
+        settings = await Notifications.requestPermissionsAsync();
+        granted =
+          settings.granted ||
+          settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+      }
+      return granted;
+    } catch (error) {
+      console.warn("notifications", error);
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    ensureNotificationPermission();
+  }, [ensureNotificationPermission]);
+
+  const schedulePendingReminder = useCallback(
+    async (title, dueDate) => {
+      try {
+        const allowed = await ensureNotificationPermission();
+        if (!allowed) return null;
+        const trigger = new Date(dueDate);
+        return await Notifications.scheduleNotificationAsync({
+          content: {
+            title: t("pendingNotificationTitle"),
+            body: t("pendingNotificationBody", { title }),
+          },
+          trigger,
+        });
+      } catch (error) {
+        console.warn("pending reminder", error);
+        return null;
+      }
+    },
+    [ensureNotificationPermission, t]
+  );
 
   const categories = useMemo(() => {
     const set = new Set(["all"]);
@@ -1655,26 +1971,62 @@ export default function App() {
   };
 
   const profileStats = useMemo(() => {
-    const totalSaved = purchases.reduce((sum, item) => sum + (item.paidAmount || 0), 0);
+    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+    const totalSavedConverted = formatCurrency(
+      convertToCurrency(savedTotalUSD, currencyCode),
+      currencyCode
+    );
+    const completed = wishes.filter((wish) => wish.status === "done").length;
     return [
-      { label: t("statsSpent"), value: formatCurrency(totalSaved) },
-      { label: t("statsItems"), value: `${purchases.length}` },
-      { label: t("statsCart"), value: `${cart.length}` },
+      { label: t("statsSaved"), value: totalSavedConverted },
+      { label: t("statsItems"), value: `${completed}/${wishes.length}` },
+      { label: t("statsDeclines"), value: `${declineCount}` },
+      { label: t("statsFreeDays"), value: `${freeDayStats.current}🔥` },
     ];
-  }, [purchases, cart, t]);
+  }, [savedTotalUSD, wishes, declineCount, freeDayStats.current, t, profile.currency]);
+
+  const analyticsStats = useMemo(
+    () => [
+      { label: t("analyticsPendingToBuy"), value: `${wishes.length}` },
+      { label: t("analyticsPendingToDecline"), value: `${declineCount}` },
+      { label: t("analyticsBestStreak"), value: `${freeDayStats.total}` },
+    ],
+    [wishes.length, declineCount, freeDayStats.total, t]
+  );
 
   const loadStoredData = async () => {
     try {
-      const [cartRaw, purchasesRaw, profileRaw, themeRaw, languageRaw, onboardingRaw] =
-        await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEYS.CART),
-          AsyncStorage.getItem(STORAGE_KEYS.PURCHASES),
-          AsyncStorage.getItem(STORAGE_KEYS.PROFILE),
-          AsyncStorage.getItem(STORAGE_KEYS.THEME),
-          AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
-          AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
-        ]);
-      if (cartRaw) setCart(JSON.parse(cartRaw));
+      const [
+        wishesRaw,
+        pendingRaw,
+        purchasesRaw,
+        profileRaw,
+        themeRaw,
+        languageRaw,
+        onboardingRaw,
+        catalogRaw,
+        savedTotalRaw,
+        declinesRaw,
+        freeDayRaw,
+        decisionStatsRaw,
+        historyRaw,
+      ] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEYS.WISHES),
+        AsyncStorage.getItem(STORAGE_KEYS.PENDING),
+        AsyncStorage.getItem(STORAGE_KEYS.PURCHASES),
+        AsyncStorage.getItem(STORAGE_KEYS.PROFILE),
+        AsyncStorage.getItem(STORAGE_KEYS.THEME),
+        AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
+        AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
+        AsyncStorage.getItem(STORAGE_KEYS.CATALOG),
+        AsyncStorage.getItem(STORAGE_KEYS.SAVED_TOTAL),
+        AsyncStorage.getItem(STORAGE_KEYS.DECLINES),
+        AsyncStorage.getItem(STORAGE_KEYS.FREE_DAY),
+        AsyncStorage.getItem(STORAGE_KEYS.DECISION_STATS),
+        AsyncStorage.getItem(STORAGE_KEYS.HISTORY),
+      ]);
+      if (wishesRaw) setWishes(JSON.parse(wishesRaw));
+      if (pendingRaw) setPendingList(JSON.parse(pendingRaw));
       if (purchasesRaw) setPurchases(JSON.parse(purchasesRaw));
       let parsedProfile = null;
       if (profileRaw) {
@@ -1695,6 +2047,18 @@ export default function App() {
       }
       if (themeRaw) setTheme(themeRaw);
       if (languageRaw) setLanguage(languageRaw);
+      if (catalogRaw) setCatalogOverrides(JSON.parse(catalogRaw));
+      if (savedTotalRaw) setSavedTotalUSD(Number(savedTotalRaw) || 0);
+      if (declinesRaw) setDeclineCount(Number(declinesRaw) || 0);
+      if (freeDayRaw) {
+        setFreeDayStats({ ...INITIAL_FREE_DAY_STATS, ...JSON.parse(freeDayRaw) });
+      }
+      if (decisionStatsRaw) {
+        setDecisionStats({ ...INITIAL_DECISION_STATS, ...JSON.parse(decisionStatsRaw) });
+      }
+      if (historyRaw) {
+        setHistoryEvents(JSON.parse(historyRaw));
+      }
       if (onboardingRaw === "done" || parsedProfile?.goal) {
         setOnboardingStep("done");
       } else if (parsedProfile?.firstName) {
@@ -1712,8 +2076,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    AsyncStorage.setItem(STORAGE_KEYS.CART, JSON.stringify(cart)).catch(() => {});
-  }, [cart]);
+    AsyncStorage.setItem(STORAGE_KEYS.WISHES, JSON.stringify(wishes)).catch(() => {});
+  }, [wishes]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(purchases)).catch(() => {});
@@ -1735,90 +2099,65 @@ export default function App() {
     AsyncStorage.setItem(STORAGE_KEYS.LANGUAGE, language).catch(() => {});
   }, [language]);
 
-  const fetchRemoteProducts = useCallback(async (queryValue = "") => {
-    const query = (queryValue || "").trim();
-    if (!API_URL) {
-      setRemoteProducts([]);
-      setRemoteRawItems([]);
-      return;
-    }
-    setRemoteLoading(true);
-    const url = `${API_URL}/search?q=${encodeURIComponent(query)}&domain=amazon.com&nocache=${Date.now()}`;
-    const attempts = 3;
-    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
-    for (let attempt = 0; attempt < attempts; attempt += 1) {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        const items = Array.isArray(json.products) ? json.products : [];
-        if (items.length) {
-          setRemoteRawItems(items);
-          setRemoteProducts(hydrateRemoteProducts(items, currencyCode));
-          setRemoteSource(json.source || null);
-          setRemoteActive(true);
-        } else {
-          setRemoteRawItems([]);
-          setRemoteProducts([]);
-          setRemoteSource(json.source || null);
-          setRemoteActive(false);
-        }
-        setRemoteLoading(false);
-        return;
-      } catch (error) {
-        console.warn("remote products", error.message || error);
-        if (attempt < attempts - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
-          continue;
-        }
-        setRemoteRawItems([]);
-        setRemoteProducts([]);
-        setRemoteSource(null);
-        setRemoteActive(false);
-        setRemoteLoading(false);
-      }
-    }
-  }, [profile.currency]);
-
-  const handleRemoteRefresh = useCallback(
-    (queryValue) => {
-      const rawValue = queryValue ?? searchQuery ?? "";
-      const trimmed = rawValue.trim();
-      if (!trimmed) {
-        const message =
-          TRANSLATIONS[language]?.searchRequired || "Type a query to fetch Amazon results";
-        Alert.alert("Almost", message);
-        return;
-      }
-      setSearchQuery(rawValue);
-      fetchRemoteProducts(trimmed);
-    },
-    [fetchRemoteProducts, searchQuery, language]
-  );
-
-  const clearRemoteResults = useCallback(() => {
-    setRemoteActive(false);
-    setRemoteProducts([]);
-    setRemoteRawItems([]);
-    setRemoteSource(null);
-    setSearchQuery("");
-  }, []);
-
-  const handleSearchInputChange = useCallback(
-    (text) => {
-      setSearchQuery(text);
-      if (!text.trim().length && remoteActive) {
-        clearRemoteResults();
-      }
-    },
-    [clearRemoteResults, remoteActive]
-  );
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.CATALOG, JSON.stringify(catalogOverrides)).catch(() => {});
+  }, [catalogOverrides]);
 
   useEffect(() => {
-    if (!remoteActive || !remoteRawItems.length) return;
-    const currency = profile.currency || DEFAULT_PROFILE.currency;
-    setRemoteProducts(hydrateRemoteProducts(remoteRawItems, currency));
-  }, [remoteActive, remoteRawItems, profile.currency]);
+    AsyncStorage.setItem(STORAGE_KEYS.SAVED_TOTAL, String(savedTotalUSD)).catch(() => {});
+  }, [savedTotalUSD]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.DECLINES, String(declineCount)).catch(() => {});
+  }, [declineCount]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.PENDING, JSON.stringify(pendingList)).catch(() => {});
+  }, [pendingList]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.FREE_DAY, JSON.stringify(freeDayStats)).catch(() => {});
+  }, [freeDayStats]);
+
+  useEffect(() => {
+    setWishes((prev) => {
+      let remaining = savedTotalUSD;
+      let changed = false;
+      const next = prev.map((wish) => {
+        const autoManaged = wish.autoManaged !== false;
+        if (!autoManaged) return wish;
+        const target = wish.targetUSD || 0;
+        const newSaved = Math.min(target, Math.max(remaining, 0));
+        remaining = Math.max(0, remaining - newSaved);
+        const status = newSaved >= target ? "done" : "active";
+        if (newSaved !== (wish.savedUSD || 0) || status !== wish.status) {
+          changed = true;
+          return { ...wish, savedUSD: newSaved, status };
+        }
+        return wish;
+      });
+      return changed ? next : prev;
+    });
+  }, [savedTotalUSD, wishes]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.DECISION_STATS, JSON.stringify(decisionStats)).catch(() => {});
+  }, [decisionStats]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(historyEvents)).catch(() => {});
+  }, [historyEvents]);
+
+  useEffect(() => {
+    const nextList = DEFAULT_TEMPTATIONS.map((item) => ({
+      ...item,
+      priceUSD: catalogOverrides[item.id] ?? item.basePriceUSD,
+    })).sort(
+      (a, b) =>
+        (a.priceUSD ?? a.basePriceUSD ?? 0) - (b.priceUSD ?? b.basePriceUSD ?? 0)
+    );
+    setTemptations(nextList);
+  }, [catalogOverrides]);
 
   useEffect(() => {
     return () => {
@@ -1827,7 +2166,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (cart.length > 0) {
+    if (wishes.length > 0) {
       Animated.spring(cartBadgeScale, {
         toValue: 1,
         useNativeDriver: true,
@@ -1841,7 +2180,7 @@ export default function App() {
         useNativeDriver: true,
       }).start();
     }
-  }, [cart.length, cartBadgeScale]);
+  }, [wishes.length, cartBadgeScale]);
 
   const handleCategorySelect = (category) => {
     triggerHaptic();
@@ -2037,51 +2376,250 @@ export default function App() {
     }
   };
 
-  const handleAddToCart = (product, variant) => {
-    if (!variant) return;
-    triggerHaptic();
-    const cartItem = {
-      cartId: `${product.id}-${variant.label}-${Date.now()}`,
-      productId: product.id,
-      variant: variant.label,
-      price: variant.price,
-      image: product.image || DEFAULT_REMOTE_IMAGE,
-      copy: product.copy,
-    };
-    setCart((prev) => [...prev, cartItem]);
-    triggerOverlayState("cart", t("cartOverlay"));
-  };
-
-  const handleRemoveFromCart = (cartId) => {
-    triggerHaptic();
-    setCart((prev) => prev.filter((item) => item.cartId !== cartId));
-  };
-
-  const handleCheckoutRequest = (item, source = "feed") => {
-    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    setCheckoutItem({
-      ...item,
-      id: item.id || item.cartId || `${Date.now()}`,
+  const logHistoryEvent = useCallback((kind, meta = {}) => {
+    setHistoryEvents((prev) => {
+      const entry = {
+        id: `history-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+        kind,
+        meta,
+        timestamp: Date.now(),
+      };
+      const next = [entry, ...prev];
+      return next.slice(0, MAX_HISTORY_EVENTS);
     });
-    setCheckoutSource(source);
-    setPurchaseType("full");
-    setPartialAmount("");
-    setShowApplePay(true);
+  }, []);
+
+  const handleTemptationAction = useCallback(
+    async (type, item) => {
+      const priceUSD = item.priceUSD || item.basePriceUSD || 0;
+      const priceLocal = formatCurrency(convertToCurrency(priceUSD));
+      const title = `${item.emoji || "✨"} ${
+        item.title?.[language] || item.title?.en || item.title || "wish"
+      }`;
+      if (type === "spend") {
+        const localAmount = formatCurrency(convertToCurrency(priceUSD));
+        logHistoryEvent("spend", { title, amountUSD: priceUSD });
+        triggerOverlayState("cart", t("spendWarning", { amount: localAmount }));
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+        setSavedTotalUSD((prev) => Math.max(prev - priceUSD, 0));
+        setPurchases((prev) => [
+          {
+            id: `spend-${item.id}-${Date.now()}`,
+            title,
+            price: priceUSD,
+            paidAmount: priceUSD,
+            createdAt: Date.now(),
+          },
+          ...prev,
+        ]);
+        return;
+      }
+      if (type === "want") {
+        const newWish = {
+          id: `wish-${item.id}-${Date.now()}`,
+          templateId: item.id,
+          title,
+          targetUSD: priceUSD,
+          savedUSD: 0,
+          status: "active",
+          createdAt: Date.now(),
+          autoManaged: true,
+        };
+        setWishes((prev) => [newWish, ...prev]);
+        logHistoryEvent("wish_added", { title, targetUSD: priceUSD, templateId: item.id });
+        triggerOverlayState("purchase", t("wishAdded", { title }));
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+        return;
+      }
+      if (type === "decline") {
+        setSavedTotalUSD((prev) => prev + priceUSD);
+        setDeclineCount((prev) => prev + 1);
+        logHistoryEvent("decline", { title, amountUSD: priceUSD, source: "feed" });
+        triggerOverlayState("cart", t("wishDeclined", { amount: priceLocal }));
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+        return;
+      }
+      if (type === "maybe") {
+        const now = Date.now();
+        const pendingEntry = {
+          id: `pending-${item.id}-${now}`,
+          templateId: item.id,
+          title,
+          priceUSD,
+          createdAt: now,
+          decisionDue: now + REMINDER_MS,
+          notificationId: null,
+        };
+        const reminderId = await schedulePendingReminder(title, pendingEntry.decisionDue);
+        if (reminderId) pendingEntry.notificationId = reminderId;
+        setPendingList((prev) => [pendingEntry, ...prev]);
+        logHistoryEvent("pending_added", { title, amountUSD: priceUSD });
+        triggerOverlayState("cart", t("pendingAdded"));
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+        return;
+      }
+      Alert.alert("Almost", t("actionSoon"));
+    },
+    [language, t, schedulePendingReminder, logHistoryEvent]
+  );
+
+  const handleLogFreeDay = useCallback(() => {
+    const today = new Date();
+    const todayKey = getDayKey(today);
+    if (freeDayStats.lastDate === todayKey) {
+      Alert.alert("Almost", t("freeDayLoggedToday"));
+      return;
+    }
+    Alert.alert("Almost", t("freeDayConfirm"), [
+      { text: t("priceEditCancel"), style: "cancel" },
+      {
+        text: t("freeDayButton"),
+        onPress: () => {
+          const yesterdayKey = getDayKey(new Date(today.getTime() - DAY_MS));
+          const continues = freeDayStats.lastDate === yesterdayKey;
+          const current = continues ? freeDayStats.current + 1 : 1;
+          const best = Math.max(freeDayStats.best, current);
+          const total = freeDayStats.total + 1;
+          let achievements = [...freeDayStats.achievements];
+          const newMilestones = FREE_DAY_MILESTONES.filter(
+            (m) => current >= m && !achievements.includes(m)
+          );
+          achievements = [...achievements, ...newMilestones];
+          setFreeDayStats({
+            total,
+            current,
+            best,
+            lastDate: todayKey,
+            achievements,
+          });
+          logHistoryEvent("free_day", { total, current, best });
+          const message =
+            newMilestones.length > 0
+              ? t("freeDayMilestone", { days: current })
+              : t("freeDayCongrats", { days: current });
+          triggerOverlayState("purchase", message);
+          triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+        },
+      },
+    ]);
+  }, [freeDayStats, t, logHistoryEvent]);
+
+  const openPriceEditor = (item) => {
+    const currentValue = convertToCurrency(item.priceUSD || item.basePriceUSD || 0);
+    setPriceEditor({
+      visible: true,
+      item,
+      value: String(Math.round(currentValue * 100) / 100),
+    });
   };
 
-  const handleBulkCheckout = () => {
-    if (!cart.length) return;
-    handleCheckoutRequest(
-      {
-        id: `bulk-${Date.now()}`,
-        price: cart.reduce((sum, item) => sum + item.price, 0),
-        variant: `${cart.length} items`,
-        title: "Cart bundle",
-        items: cart.map((item) => ({ ...item })),
-      },
-      "cart"
-    );
+  const closePriceEditor = () => {
+    setPriceEditor({ visible: false, item: null, value: "" });
   };
+
+  const handlePriceInputChange = (value) => {
+    setPriceEditor((prev) => ({ ...prev, value }));
+  };
+
+  const persistPriceOverride = (valueUSD = null) => {
+    const targetId = priceEditor.item?.id;
+    if (!targetId) return;
+    setCatalogOverrides((prev) => {
+      const next = { ...prev };
+      if (valueUSD) {
+        next[targetId] = valueUSD;
+      } else {
+        delete next[targetId];
+      }
+      return next;
+    });
+  };
+
+  const savePriceEdit = () => {
+    if (!priceEditor.item) return;
+    const parsed = parseFloat((priceEditor.value || "").replace(",", "."));
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      Alert.alert("Almost", t("priceEditError"));
+      return;
+    }
+    const usdValue = parsed / (CURRENCY_RATES[activeCurrency] || 1);
+    persistPriceOverride(usdValue);
+    closePriceEditor();
+  };
+
+  const resetPriceEdit = () => {
+    persistPriceOverride(null);
+    closePriceEditor();
+  };
+
+  const handleRemoveWish = useCallback(
+    (wishId) => {
+      Alert.alert(t("wishlistTitle"), t("wishlistRemoveConfirm"), [
+        { text: t("priceEditCancel"), style: "cancel" },
+        {
+          text: t("wishlistRemove"),
+          style: "destructive",
+          onPress: () => setWishes((prev) => prev.filter((wish) => wish.id !== wishId)),
+        },
+      ]);
+    },
+    [t]
+  );
+
+  const handlePendingDecision = useCallback(
+    async (pendingItem, decision) => {
+      if (!pendingItem) return;
+      if (pendingItem.notificationId) {
+        try {
+          await Notifications.cancelScheduledNotificationAsync(pendingItem.notificationId);
+        } catch (error) {
+          console.warn("cancel reminder", error);
+        }
+      }
+      setPendingList((prev) => prev.filter((entry) => entry.id !== pendingItem.id));
+      const template = findTemplateById(pendingItem.templateId);
+      const title =
+        pendingItem.title || template?.title?.[language] || template?.title?.en || "Wish";
+      if (decision === "want") {
+        const targetUSD = pendingItem.priceUSD || template?.basePriceUSD || 0;
+        const newWish = {
+          id: `wish-${pendingItem.templateId}-${Date.now()}`,
+          templateId: pendingItem.templateId,
+          title,
+          targetUSD,
+          savedUSD: 0,
+          status: "active",
+          createdAt: Date.now(),
+          autoManaged: true,
+        };
+        setWishes((prev) => [newWish, ...prev]);
+        setDecisionStats((prev) => ({
+          ...prev,
+          resolvedToWishes: prev.resolvedToWishes + 1,
+        }));
+        logHistoryEvent("pending_to_wish", { title, targetUSD });
+        triggerOverlayState("purchase", t("wishAdded", { title }));
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+        return;
+      }
+      if (decision === "decline") {
+        const price = pendingItem.priceUSD || 0;
+        const localAmount = formatCurrency(
+          convertToCurrency(price, profile.currency || DEFAULT_PROFILE.currency)
+        );
+        setSavedTotalUSD((prev) => prev + price);
+        setDeclineCount((prev) => prev + 1);
+        setDecisionStats((prev) => ({
+          ...prev,
+          resolvedToDeclines: prev.resolvedToDeclines + 1,
+        }));
+        logHistoryEvent("pending_to_decline", { title, amountUSD: price });
+        triggerOverlayState("cart", t("wishDeclined", { amount: localAmount }));
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+      }
+    },
+    [language, profile.currency, t, logHistoryEvent]
+  );
 
   const triggerOverlayState = (type, message, duration) => {
     if (overlayTimer.current) {
@@ -2101,10 +2639,6 @@ export default function App() {
     triggerOverlayState("purchase", messages[Math.floor(Math.random() * messages.length)]);
   };
 
-  const handleCancelDetail = () => {
-    triggerOverlayState("cancel", t("rainMessage"));
-  };
-
   const handleResetData = () => {
     Alert.alert(
       t("developerReset"),
@@ -2121,8 +2655,24 @@ export default function App() {
             } catch (error) {
               console.warn("reset", error);
             }
-            setCart([]);
+            try {
+              await Promise.all(
+                pendingList
+                  .filter((entry) => entry.notificationId)
+                  .map((entry) =>
+                    Notifications.cancelScheduledNotificationAsync(entry.notificationId).catch(() => {})
+                  )
+              );
+            } catch {}
+            setWishes([]);
+            setPendingList([]);
             setPurchases([]);
+            setSavedTotalUSD(0);
+            setDeclineCount(0);
+            setCatalogOverrides({});
+            setFreeDayStats({ ...INITIAL_FREE_DAY_STATS });
+            setDecisionStats({ ...INITIAL_DECISION_STATS });
+            setHistoryEvents([]);
             setProfile({ ...DEFAULT_PROFILE });
             setProfileDraft({ ...DEFAULT_PROFILE });
             setRegistrationData(INITIAL_REGISTRATION);
@@ -2130,7 +2680,6 @@ export default function App() {
             setOnboardingStep("logo");
             setActiveCategory("all");
             setActiveTab("feed");
-            setCheckoutItem(null);
             setOverlay(null);
             setTheme("light");
             setLanguage("ru");
@@ -2139,57 +2688,6 @@ export default function App() {
         },
       ]
     );
-  };
-
-  const confirmPurchase = () => {
-    if (!checkoutItem) return;
-    triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
-    const isBulk = checkoutItem.items && checkoutItem.items.length > 0;
-
-    if (isBulk) {
-      const bulkRecords = checkoutItem.items.map((item, index) => ({
-        ...item,
-        id: `${item.productId || item.cartId}-${Date.now()}-${index}`,
-        paidAmount: item.price,
-      }));
-      setPurchases((prev) => [...prev, ...bulkRecords]);
-      if (checkoutSource === "cart") {
-        const removeIds = new Set(checkoutItem.items.map((item) => item.cartId));
-        setCart((prev) => prev.filter((item) => !removeIds.has(item.cartId)));
-      }
-      triggerCelebration();
-      Keyboard.dismiss();
-      setShowApplePay(false);
-      setCheckoutItem(null);
-      return;
-    }
-
-    let paid = checkoutItem.price;
-    if (purchaseType === "partial") {
-      const parsed = Number(partialAmount);
-      if (!parsed || parsed <= 0 || parsed > checkoutItem.price) {
-        Alert.alert("Oops", t("partialError"));
-        return;
-      }
-      paid = parsed;
-    }
-
-    const record = {
-      ...checkoutItem,
-      id: `${checkoutItem.id}-${Date.now()}`,
-      paidAmount: Math.round(paid * 100) / 100,
-      copy: checkoutItem.copy,
-    };
-    setPurchases((prev) => [...prev, record]);
-
-    if (checkoutSource === "cart" && checkoutItem.cartId) {
-      setCart((prev) => prev.filter((item) => item.cartId !== checkoutItem.cartId));
-    }
-
-    triggerCelebration();
-    Keyboard.dismiss();
-    setShowApplePay(false);
-    setCheckoutItem(null);
   };
 
   const startProfileEdit = () => {
@@ -2211,24 +2709,40 @@ export default function App() {
     Keyboard.dismiss();
   };
 
-  const canUsePartial = !checkoutItem?.items || checkoutItem.items.length === 0;
-
   const renderActiveScreen = () => {
     switch (activeTab) {
       case "cart":
         return (
-          <CartScreen
-            cart={cart}
-            onCheckout={handleCheckoutRequest}
-            onCheckoutAll={handleBulkCheckout}
-            onRemoveItem={handleRemoveFromCart}
+          <WishListScreen
+            wishes={wishes}
+            currency={profile.currency || DEFAULT_PROFILE.currency}
+            onRemoveWish={handleRemoveWish}
+            t={t}
+            colors={colors}
+          />
+        );
+      case "pending":
+        return (
+          <PendingScreen
+            items={pendingList}
+            currency={profile.currency || DEFAULT_PROFILE.currency}
+            t={t}
+            colors={colors}
+            onResolve={handlePendingDecision}
+          />
+        );
+      case "purchases":
+        return (
+          <RewardsScreen
+            savedTotalUSD={savedTotalUSD}
+            declineCount={declineCount}
+            freeDayStats={freeDayStats}
+            currency={profile.currency || DEFAULT_PROFILE.currency}
             t={t}
             language={language}
             colors={colors}
           />
         );
-      case "purchases":
-        return <PurchasesScreen purchases={purchases} t={t} language={language} colors={colors} />;
       case "profile":
         return (
           <ProfileScreen
@@ -2246,7 +2760,9 @@ export default function App() {
             onPickImage={handlePickImage}
             theme={theme}
             language={language}
-            currencyValue={profile.currency}
+            currencyValue={profile.currency || DEFAULT_PROFILE.currency}
+            history={historyEvents}
+            freeDayStats={freeDayStats}
             t={t}
             colors={colors}
           />
@@ -2255,25 +2771,19 @@ export default function App() {
         return (
           <FeedScreen
             products={filteredProducts}
-            remoteItems={remoteProducts}
-            remoteSource={remoteSource}
-            remoteActive={remoteActive}
-            loadingRemote={remoteLoading}
             categories={categories}
             activeCategory={activeCategory}
             onCategorySelect={handleCategorySelect}
-            cartCount={cart.length}
-            purchases={purchases}
-            onAddToCart={handleAddToCart}
-            onCheckoutRequest={handleCheckoutRequest}
-            onCancelDetail={handleCancelDetail}
-            onClearRemote={clearRemoteResults}
-            searchQuery={searchQuery}
-            onSearchChange={handleSearchInputChange}
-            onSearchSubmit={handleRemoteRefresh}
+            savedTotalUSD={savedTotalUSD}
+            onTemptationAction={handleTemptationAction}
+            onEditPrice={openPriceEditor}
             t={t}
             language={language}
             colors={colors}
+            currency={profile.currency || DEFAULT_PROFILE.currency}
+            freeDayStats={freeDayStats}
+            onFreeDayLog={handleLogFreeDay}
+            analyticsStats={analyticsStats}
           />
         );
     }
@@ -2321,7 +2831,7 @@ export default function App() {
       <SafeAreaView style={[styles.appShell, { backgroundColor: colors.background }] }>
         <View style={styles.screenWrapper}>{renderActiveScreen()}</View>
         <View style={[styles.tabBar, { backgroundColor: colors.card, borderTopColor: colors.border }] }>
-          {["feed", "cart", "purchases", "profile"].map((tab) => (
+          {["feed", "cart", "pending", "purchases", "profile"].map((tab) => (
             <TouchableOpacity
               key={tab}
               style={styles.tabButton}
@@ -2339,7 +2849,9 @@ export default function App() {
                 {tab === "feed"
                   ? t("feedTab")
                   : tab === "cart"
-                  ? t("cartTitle")
+                  ? t("wishlistTab")
+                  : tab === "pending"
+                  ? t("pendingTab")
                   : tab === "purchases"
                   ? t("purchasesTitle")
                   : t("profileTab")}
@@ -2348,114 +2860,7 @@ export default function App() {
           ))}
         </View>
 
-        <Modal visible={showApplePay} transparent animationType="slide">
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
-            style={styles.modalContainer}
-          >
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-              <View style={[styles.paySheet, { backgroundColor: colors.card }] }>
-                <Text style={[styles.modalTitle, { color: colors.text }]}>{PAY_LABEL}</Text>
-                {checkoutItem && (
-                  <>
-                    <View style={[styles.payCard, { backgroundColor: colors.text }]}>
-                      <View>
-                        <Text style={[styles.payLabel, { color: colors.background }]}>
-                          {checkoutItem.copy?.[language]?.title || t("defaultDealTitle")}
-                        </Text>
-                        <Text style={[styles.payDigits, { color: colors.background }]}>
-                          {checkoutItem.variant}
-                        </Text>
-                      </View>
-                      <Text style={[styles.payAmount, { color: colors.background }]}>
-                        {formatCurrency(checkoutItem.price)}
-                      </Text>
-                    </View>
-                    {canUsePartial ? (
-                      <>
-                        <View style={styles.payOptions}>
-                          <TouchableOpacity
-                            style={[
-                              styles.payOptionChip,
-                              {
-                                backgroundColor: purchaseType === "full" ? colors.text : "transparent",
-                                borderColor: colors.border,
-                              },
-                            ]}
-                            onPress={() => setPurchaseType("full")}
-                          >
-                            <Text
-                              style={{
-                                color: purchaseType === "full" ? colors.background : colors.text,
-                                fontWeight: "600",
-                              }}
-                            >
-                              {t("buyFull")}
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[
-                              styles.payOptionChip,
-                              {
-                                backgroundColor: purchaseType === "partial" ? colors.text : "transparent",
-                                borderColor: colors.border,
-                              },
-                            ]}
-                            onPress={() => setPurchaseType("partial")}
-                          >
-                            <Text
-                              style={{
-                                color: purchaseType === "partial" ? colors.background : colors.text,
-                                fontWeight: "600",
-                              }}
-                            >
-                              {t("buyPartial")}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                        {purchaseType === "partial" && (
-                          <View style={styles.partialInputWrap}>
-                            <Text style={[styles.partialLabel, { color: colors.muted }]}>
-                              {t("partialLabel", { amount: formatCurrency(checkoutItem.price) })}
-                            </Text>
-                            <TextInput
-                              style={[styles.partialInput, { borderColor: colors.border, color: colors.text }]}
-                              value={partialAmount}
-                              onChangeText={setPartialAmount}
-                              placeholder="$0.00"
-                              keyboardType="numeric"
-                              placeholderTextColor={colors.muted}
-                            />
-                          </View>
-                        )}
-                      </>
-                    ) : (
-                      <Text style={[styles.partialInfo, { color: colors.muted }]}>{t("partialInfo")}</Text>
-                    )}
-                    <TouchableOpacity
-                      style={[styles.appleButton, { backgroundColor: colors.text }]}
-                      onPress={confirmPurchase}
-                    >
-                      <Text style={[styles.appleButtonText, { color: colors.background }]}>
-                        {t("payButton")}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => {
-                        Keyboard.dismiss();
-                        setShowApplePay(false);
-                      }}
-                    >
-                      <Text style={[styles.payCancel, { color: colors.muted }]}>{t("thinkLater")}</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-              </View>
-            </TouchableWithoutFeedback>
-          </KeyboardAvoidingView>
-        </Modal>
-
-        {cart.length > 0 && (
+        {wishes.length > 0 && (
           <AnimatedTouchableOpacity
             style={[
               styles.cartBadge,
@@ -2467,9 +2872,9 @@ export default function App() {
             ]}
             onPress={() => handleTabChange("cart")}
           >
-            <Text style={[styles.cartBadgeIcon, { color: colors.text }]}>🛒</Text>
+            <Text style={[styles.cartBadgeIcon, { color: colors.text }]}>🧊</Text>
             <Text style={[styles.cartBadgeCount, { color: colors.text }]}>
-              {cart.length}
+              {wishes.length}
             </Text>
           </AnimatedTouchableOpacity>
         )}
@@ -2512,6 +2917,58 @@ export default function App() {
             </View>
           </View>
         )}
+
+        <Modal visible={priceEditor.visible} transparent animationType="fade">
+          <TouchableWithoutFeedback onPress={closePriceEditor}>
+            <View style={styles.priceModalBackdrop}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={[styles.priceModalCard, { backgroundColor: colors.card }] }>
+                  <Text style={[styles.priceModalTitle, { color: colors.text }]}>
+                    {priceEditor.item
+                      ? priceEditor.item.title?.[language] ||
+                        priceEditor.item.title?.en ||
+                        t("priceEditTitle")
+                      : t("priceEditTitle")}
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.priceModalInput,
+                      { borderColor: colors.border, color: colors.text },
+                    ]}
+                    value={priceEditor.value}
+                    onChangeText={handlePriceInputChange}
+                    placeholder={t("priceEditPlaceholder")}
+                    placeholderTextColor={colors.muted}
+                    keyboardType="numeric"
+                  />
+                  <View style={styles.priceModalButtons}>
+                    <TouchableOpacity
+                      style={[styles.priceModalPrimary, { backgroundColor: colors.text }]}
+                      onPress={savePriceEdit}
+                    >
+                      <Text style={[styles.priceModalPrimaryText, { color: colors.background }]}>
+                        {t("priceEditSave")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.priceModalSecondary, { borderColor: colors.border }]}
+                      onPress={resetPriceEdit}
+                    >
+                      <Text style={[styles.priceModalSecondaryText, { color: colors.muted }]}>
+                        {t("priceEditReset")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={closePriceEditor}>
+                      <Text style={[styles.priceModalCancel, { color: colors.muted }]}>
+                        {t("priceEditCancel")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
 
         <Modal
           visible={showImageSourceSheet}
@@ -2607,42 +3064,64 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 10,
   },
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  progressHeroCard: {
     marginTop: 18,
-    gap: 10,
-    flexWrap: "wrap",
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
   },
-  searchInput: {
+  progressHeroHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  progressHeroTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  progressHeroAmount: {
+    fontSize: 26,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  progressHeroLevel: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  progressHeroBar: {
+    height: 10,
+    borderRadius: 999,
+    overflow: "hidden",
+    marginBottom: 8,
+  },
+  progressHeroFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  progressHeroNext: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  feedAnalyticsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 16,
+  },
+  feedAnalyticsItem: {
     flex: 1,
+    borderRadius: 18,
     borderWidth: 1,
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: Platform.OS === "android" ? 6 : 10,
-  },
-  searchButton: {
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  searchButtonText: {
-    fontWeight: "600",
-  },
-  clearButton: {
-    borderWidth: 1,
-    borderRadius: 18,
+    paddingVertical: 14,
     paddingHorizontal: 12,
-    paddingVertical: 10,
   },
-  clearButtonText: {
-    fontWeight: "600",
-    fontSize: 12,
+  feedAnalyticsValue: {
+    fontSize: 20,
+    fontWeight: "800",
   },
-  remoteBadge: {
-    marginTop: 8,
+  feedAnalyticsLabel: {
     fontSize: 12,
-    textTransform: "uppercase",
+    marginTop: 6,
   },
   categoryChip: {
     marginRight: 12,
@@ -2654,6 +3133,39 @@ const styles = StyleSheet.create({
   categoryChipText: {
     fontSize: 12,
     textTransform: "uppercase",
+  },
+  freeDayCard: {
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 24,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  freeDayLabel: {
+    fontSize: 12,
+    textTransform: "uppercase",
+  },
+  freeDayValue: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  freeDayButton: {
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  freeDayButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+  freeDayLocked: {
+    fontSize: 12,
+    textAlign: "right",
+    flexShrink: 1,
   },
   productCard: {
     width: "48%",
@@ -2680,6 +3192,93 @@ const styles = StyleSheet.create({
   productPrice: {
     marginTop: 4,
     color: "#1C1A2A",
+  },
+  temptationCard: {
+    borderRadius: 28,
+    padding: 20,
+    gap: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  temptationHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  temptationEmoji: {
+    fontSize: 28,
+  },
+  temptationTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    flex: 1,
+    flexWrap: "wrap",
+  },
+  temptationDesc: {
+    lineHeight: 20,
+  },
+  temptationPriceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  temptationPrice: {
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  editPriceText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  tileProgressWrap: {
+    gap: 6,
+  },
+  tileProgressBar: {
+    height: 8,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  tileProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  tileProgressLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  temptationBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  temptationBadgeText: {
+    fontSize: 12,
+    fontWeight: "600",
+    textTransform: "uppercase",
+  },
+  temptationActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  temptationButtonGhost: {
+    flexGrow: 1,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  temptationButtonGhostText: {
+    fontWeight: "600",
+  },
+  temptationButtonOutline: {
+    flexGrow: 1,
+    borderRadius: 16,
+    paddingVertical: 10,
+    borderWidth: 1,
+    alignItems: "center",
   },
   detailBackdrop: {
     flex: 1,
@@ -2852,6 +3451,99 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 12,
   },
+  wishCard: {
+    borderRadius: 28,
+    padding: 18,
+    marginBottom: 16,
+    gap: 10,
+  },
+  wishHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  wishTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    flex: 1,
+    paddingRight: 12,
+  },
+  wishBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "transparent",
+    backgroundColor: "rgba(0,0,0,0.04)",
+  },
+  wishMeta: {
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  wishProgressBar: {
+    height: 10,
+    borderRadius: 999,
+    overflow: "hidden",
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  wishProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  wishButtonGhost: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  pendingCard: {
+    borderRadius: 24,
+    padding: 18,
+    gap: 12,
+  },
+  pendingHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  pendingTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    flex: 1,
+  },
+  pendingDue: {
+    fontSize: 13,
+    fontWeight: "600",
+    textTransform: "uppercase",
+  },
+  pendingPrice: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  pendingButtons: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  pendingButtonPrimary: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  pendingButtonPrimaryText: {
+    fontWeight: "700",
+  },
+  pendingButtonSecondary: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
   cartTotalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -2928,10 +3620,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   goalCard: {
-    flexDirection: "row",
-    alignItems: "center",
     borderRadius: 24,
-    padding: 16,
+    padding: 20,
     marginBottom: 12,
     gap: 12,
   },
@@ -2941,6 +3631,17 @@ const styles = StyleSheet.create({
   },
   goalDesc: {
     marginTop: 4,
+  },
+  goalProgressBar: {
+    height: 8,
+    borderRadius: 999,
+    overflow: "hidden",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  goalProgressFill: {
+    height: "100%",
+    borderRadius: 999,
   },
   goalBadge: {
     paddingHorizontal: 14,
@@ -3079,6 +3780,61 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 18,
     alignItems: "center",
+  },
+  analyticsCard: {
+    borderRadius: 26,
+    padding: 20,
+    marginBottom: 24,
+  },
+  analyticsTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+  analyticsRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  analyticsItem: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    alignItems: "center",
+  },
+  analyticsValue: {
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  analyticsLabel: {
+    marginTop: 6,
+    fontSize: 12,
+    textAlign: "center",
+  },
+  historyCard: {
+    borderRadius: 26,
+    padding: 20,
+    marginBottom: 80,
+  },
+  historyTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+  historyEmpty: {
+    fontSize: 14,
+  },
+  historyItem: {
+    paddingVertical: 12,
+  },
+  historyItemTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  historyItemMeta: {
+    fontSize: 12,
+    marginTop: 4,
   },
   resetButtonText: {
     fontWeight: "600",
@@ -3283,6 +4039,57 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   sheetCancel: {
+    textAlign: "center",
+    fontWeight: "600",
+    marginTop: 4,
+  },
+  priceModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  priceModalCard: {
+    width: "100%",
+    borderRadius: 28,
+    padding: 20,
+    gap: 16,
+  },
+  priceModalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  priceModalInput: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontSize: 18,
+    textAlign: "center",
+  },
+  priceModalButtons: {
+    gap: 10,
+  },
+  priceModalPrimary: {
+    borderRadius: 18,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  priceModalPrimaryText: {
+    fontWeight: "700",
+  },
+  priceModalSecondary: {
+    borderRadius: 18,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  priceModalSecondaryText: {
+    fontWeight: "600",
+  },
+  priceModalCancel: {
     textAlign: "center",
     fontWeight: "600",
     marginTop: 4,
