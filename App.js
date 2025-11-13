@@ -16,6 +16,7 @@ import {
   Platform,
   Dimensions,
   Animated,
+  Easing,
   Linking,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -46,6 +47,7 @@ const STORAGE_KEYS = {
   FREE_DAY: "@almost_free_day_stats",
   DECISION_STATS: "@almost_decision_stats",
   HISTORY: "@almost_history",
+  REFUSE_STATS: "@almost_refuse_stats",
 };
 
 const PURCHASE_GOAL = 20000;
@@ -201,10 +203,10 @@ const TRANSLATIONS = {
     buyAllLabel: "Оформить всё и экономить",
     totalLabel: "Сумма",
     cartRemove: "Удалить",
-    wishlistTitle: "Мои хотелки",
+    wishlistTitle: "Мои цели",
     wishlistEmptyTitle: "Пока нет целей",
     wishlistEmptySubtitle: "Добавь мечту из ленты и начинай копить в своём темпе",
-    wishlistTab: "Хотелки",
+    wishlistTab: "Цели",
     wishlistProgress: "{{current}} из {{target}}",
     wishlistSavedHint: "Сколько уже отложено",
     wishlistSaveProgress: "Обновить прогресс",
@@ -258,8 +260,8 @@ const TRANSLATIONS = {
     buyFull: "Купить целиком",
     buyPartial: "Купить часть",
     thinkLater: "Подумаю позже",
-    wantAction: "Хочу",
-    declineAction: "Откажусь",
+    wantAction: "В цели",
+    saveAction: "Копить",
     maybeAction: "Подумаю",
     spendAction: "Потратить",
     editPrice: "Изменить цену",
@@ -288,6 +290,7 @@ const TRANSLATIONS = {
     historyWishProgress: "Прогресс по «{{title}}»: {{amount}} из {{target}}",
     historyWishDone: "Цель достигнута: {{title}}",
     historyDecline: "Отказ от {{title}} (+{{amount}})",
+    historyRefuseSpend: "Сохранено на «{{title}}» (+{{amount}})",
     historyPendingAdded: "Отложено на 14 дней: {{title}}",
     historyPendingWant: "После паузы решили копить: {{title}}",
     historyPendingDecline: "После паузы отказ: {{title}} (+{{amount}})",
@@ -298,7 +301,8 @@ const TRANSLATIONS = {
     progressHeroTitle: "Спасено",
     progressHeroLevel: "уровень {{level}}",
     progressHeroNext: "До следующей цели {{amount}}",
-    tileProgressLabel: "{{current}} из {{target}}",
+    tileRefuseCount: "Отказался уже {{count}} раз · +{{amount}}",
+    tileRefuseMessage: "Точно не покупай это сегодня — это в твоих интересах",
     tileReady: "Можно брать",
     tileLocked: "Пока копим",
     spendWarning: "Потратишь {{amount}} — точно готов(а)?",
@@ -306,6 +310,12 @@ const TRANSLATIONS = {
     goalsTitle: "Цели и награды",
     rewardUnlocked: "достигнуто",
     rewardLocked: "осталось {{amount}}",
+    rewardRemainingAmount: "Осталось {{amount}}",
+    rewardRemainingDays: "Осталось {{count}} дней",
+    rewardRemainingRefuse: "Осталось {{count}} отказов",
+    rewardRemainingFridge: "Осталось {{count}} хотелок в холодильнике",
+    rewardRemainingDecisions: "Осталось {{count}} решений из холодильника",
+    rewardLockedGeneric: "Осталось {{count}} шагов",
     rainMessage: "Как же так? Спаси денежки.",
     developerReset: "Сбросить данные",
     developerResetConfirm: "Очистить хотелки, историю и профиль?",
@@ -345,14 +355,14 @@ const TRANSLATIONS = {
     buyNow: "Pay with {{pay}}",
     addToCart: "Save for later",
     buyExternal: "Open product page",
-    wishlistTitle: "Wish list",
+    wishlistTitle: "Goals",
     wishlistEmptyTitle: "No goals yet",
     wishlistEmptySubtitle: "Pick a temptation from the feed and start saving for it",
     buyLabel: "Grab",
     buyAllLabel: "Check out everything",
     totalLabel: "Total",
     cartRemove: "Remove",
-    wishlistTab: "Wishes",
+    wishlistTab: "Goals",
     wishlistProgress: "{{current}} of {{target}}",
     wishlistSavedHint: "How much you’ve already saved",
     wishlistSaveProgress: "Update progress",
@@ -406,8 +416,8 @@ const TRANSLATIONS = {
     buyFull: "Pay full",
     buyPartial: "Pay partially",
     thinkLater: "Think later",
-    wantAction: "Start saving",
-    declineAction: "Skip it",
+    wantAction: "Add to goals",
+    saveAction: "Save it",
     maybeAction: "Think later",
     spendAction: "Spend it",
     editPrice: "Edit price",
@@ -444,6 +454,7 @@ const TRANSLATIONS = {
     historyWishProgress: "Progress “{{title}}”: {{amount}} of {{target}}",
     historyWishDone: "Goal completed: {{title}}",
     historyDecline: "Declined {{title}} (+{{amount}} saved)",
+    historyRefuseSpend: "Skipped {{title}} (+{{amount}} saved)",
     historyPendingAdded: "Queued for later: {{title}}",
     historyPendingWant: "Later decision → saving: {{title}}",
     historyPendingDecline: "Later decision → decline: {{title}} (+{{amount}})",
@@ -454,7 +465,8 @@ const TRANSLATIONS = {
     progressHeroTitle: "Saved",
     progressHeroLevel: "level {{level}}",
     progressHeroNext: "Next target {{amount}}",
-    tileProgressLabel: "{{current}} of {{target}}",
+    tileRefuseCount: "Already skipped {{count}}× · +{{amount}}",
+    tileRefuseMessage: "Skip it today — your savings will thank you",
     tileReady: "Ready to enjoy",
     tileLocked: "Still saving",
     spendWarning: "Spending {{amount}} — sure about it?",
@@ -462,6 +474,12 @@ const TRANSLATIONS = {
     goalsTitle: "Goals & rewards",
     rewardUnlocked: "unlocked",
     rewardLocked: "{{amount}} to go",
+    rewardRemainingAmount: "{{amount}} to go",
+    rewardRemainingDays: "{{count}} days remaining",
+    rewardRemainingRefuse: "{{count}} more skips",
+    rewardRemainingFridge: "{{count}} more fridge items",
+    rewardRemainingDecisions: "{{count}} fridge decisions left",
+    rewardLockedGeneric: "{{count}} steps remaining",
     rainMessage: "Oh no! Protect the cash.",
     developerReset: "Reset data",
     developerResetConfirm: "Clear wishes, history and profile?",
@@ -864,6 +882,11 @@ const getDayKey = (date) => {
   return d.toISOString().split("T")[0];
 };
 
+const isSameDay = (tsA, tsB = Date.now()) => {
+  if (!tsA) return false;
+  return getDayKey(tsA) === getDayKey(tsB);
+};
+
 let activeCurrency = DEFAULT_PROFILE.currency;
 const setActiveCurrency = (code) => {
   activeCurrency = CURRENCIES.includes(code) ? code : DEFAULT_PROFILE.currency;
@@ -926,40 +949,6 @@ const getCopyForPurchase = (item, language, t) => {
     title: t("defaultDealTitle"),
     desc: t("defaultDealDesc"),
   };
-};
-
-const normalizeAmazonItems = (payload) => {
-  const items = payload?.items || payload || [];
-  return items.map((item, index) => {
-    const price = Number(item?.price?.amount ?? item?.price ?? 0);
-    const label = item?.variantLabel || item?.price?.currency || "USD";
-    const defaultCopy = {
-      ru: {
-        title: item.title || "Amazon товар",
-        tagline: item.brand || "Найдена замена",
-        desc: item.description || "Добавьте описание в своём API, чтобы вдохновлять осознанные покупки.",
-      },
-      en: {
-        title: item.title || "Amazon item",
-        tagline: item.brand || "Smart deal",
-        desc: item.description || "Provide copy in your API to inspire mindful deals.",
-      },
-    };
-    return {
-      id: item.asin || item.id || `amazon-${index}`,
-      image:
-        item.image ||
-        item.thumbnail ||
-        "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=600&q=80",
-      colors: { card: AMAZON_DEFAULT_COLOR },
-      categories: item.categories || ["tech"],
-      variants:
-        item.variants?.length > 0
-          ? item.variants.map((v) => ({ label: v.label || label, price: Number(v.price || price || 0) }))
-          : [{ label, price }],
-      copy: defaultCopy,
-    };
-  });
 };
 
 const lightenColor = (hex, amount = 0.25) => {
@@ -1027,33 +1016,89 @@ function TemptationCard({
   t,
   savedTotalUSD = 0,
   currency = activeCurrency,
+  stats = {},
+  feedback,
 }) {
   const title = item.title?.[language] || item.title?.en || item.title || "Wish";
   const desc = item.description?.[language] || item.description?.en || "";
   const priceUSD = item.priceUSD || item.basePriceUSD || 0;
   const priceLabel = formatCurrency(convertToCurrency(priceUSD, currency), currency);
-  const savedTowardUSD = Math.min(savedTotalUSD, priceUSD);
-  const savedLabel = formatCurrency(convertToCurrency(savedTowardUSD, currency), currency);
-  const progress = priceUSD ? Math.min(savedTotalUSD / priceUSD, 1) : 0;
   const unlocked = savedTotalUSD >= priceUSD && priceUSD > 0;
   const highlight = unlocked;
   const statusLabel = unlocked ? t("tileReady") : t("tileLocked");
-  const progressLabel = t("tileProgressLabel", { current: savedLabel, target: priceLabel });
   const cardBackground =
     !highlight && !unlocked
       ? lightenColor(item.color || colors.card, 0.35)
       : item.color || colors.card;
+  const refuseCount = stats?.count || 0;
+  const totalRefusedLabel = formatCurrency(
+    convertToCurrency(stats?.totalUSD || 0, currency),
+    currency
+  );
   const actionConfig = unlocked
     ? [
-        { type: "decline", label: t("declineAction"), variant: "ghost" },
+        { type: "save", label: t("saveAction"), variant: "primary" },
         { type: "spend", label: t("spendAction"), variant: "ghost" },
         { type: "maybe", label: t("maybeAction"), variant: "outline" },
       ]
     : [
-        { type: "decline", label: t("declineAction"), variant: "ghost" },
-        { type: "want", label: t("wantAction"), variant: "ghost" },
+        { type: "want", label: t("wantAction"), variant: "primary" },
         { type: "maybe", label: t("maybeAction"), variant: "outline" },
       ];
+  const feedbackOpacity = useRef(new Animated.Value(0)).current;
+  const feedbackScale = useRef(new Animated.Value(0.9)).current;
+  const [coinBursts, setCoinBursts] = useState([]);
+  const messageActive = feedback?.message;
+  const burstKey = feedback?.burstKey;
+
+  useEffect(() => {
+    if (messageActive) {
+      feedbackOpacity.setValue(0);
+      feedbackScale.setValue(0.9);
+      Animated.parallel([
+        Animated.timing(feedbackOpacity, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.spring(feedbackScale, {
+          toValue: 1,
+          friction: 5,
+          tension: 120,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.timing(feedbackOpacity, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [messageActive, feedbackOpacity, feedbackScale]);
+
+  useEffect(() => {
+    if (!burstKey) return;
+    const coins = Array.from({ length: 5 }).map((_, index) => ({
+      id: `${burstKey}-${index}`,
+      progress: new Animated.Value(0),
+      offsetX: (Math.random() - 0.5) * 80,
+      rotation: (Math.random() > 0.5 ? 1 : -1) * (200 + Math.random() * 160),
+      delay: index * 80,
+    }));
+    setCoinBursts(coins);
+    coins.forEach((coin) => {
+      Animated.timing(coin.progress, {
+        toValue: 1,
+        duration: 900,
+        delay: coin.delay,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start();
+    });
+    const timeout = setTimeout(() => setCoinBursts([]), 1100);
+    return () => clearTimeout(timeout);
+  }, [burstKey]);
 
   return (
     <View
@@ -1079,35 +1124,33 @@ function TemptationCard({
         </View>
       </View>
       {desc ? <Text style={[styles.temptationDesc, { color: colors.muted }]}>{desc}</Text> : null}
+      {refuseCount > 0 && (
+        <Text style={[styles.temptationRefuseMeta, { color: colors.muted }]}>
+          {t("tileRefuseCount", { count: refuseCount, amount: totalRefusedLabel })}
+        </Text>
+      )}
       <View style={styles.temptationPriceRow}>
         <Text style={[styles.temptationPrice, { color: colors.text }]}>{priceLabel}</Text>
         <TouchableOpacity onPress={onEditPrice}>
           <Text style={[styles.editPriceText, { color: colors.muted }]}>{t("editPrice")}</Text>
         </TouchableOpacity>
       </View>
-      <View style={styles.tileProgressWrap}>
-        <View style={[styles.tileProgressBar, { backgroundColor: colors.border }]}>
-          <View
-            style={[
-              styles.tileProgressFill,
-              {
-                width: `${progress * 100}%`,
-                backgroundColor: highlight ? colors.text : colors.muted,
-              },
-            ]}
-          />
-        </View>
-        <Text style={[styles.tileProgressLabel, { color: colors.muted }]}>{progressLabel}</Text>
-      </View>
       <View style={styles.temptationActions}>
         {actionConfig.map((action) => {
-          const buttonStyle =
-            action.variant === "ghost"
-              ? [styles.temptationButtonGhost, { borderColor: colors.text }]
-              : [styles.temptationButtonOutline, { borderColor: colors.border }];
-          const textStyle = [styles.temptationButtonGhostText, { color: colors.text }];
-          if (action.variant === "outline") {
-            textStyle.push({ color: colors.muted });
+          let buttonStyle;
+          let textStyle;
+          if (action.variant === "primary") {
+            buttonStyle = [
+              styles.temptationButtonPrimary,
+              { backgroundColor: colors.text, opacity: action.disabled ? 0.35 : 1 },
+            ];
+            textStyle = [styles.temptationButtonPrimaryText, { color: colors.background }];
+          } else if (action.variant === "ghost") {
+            buttonStyle = [styles.temptationButtonGhost, { borderColor: colors.text }];
+            textStyle = [styles.temptationButtonGhostText, { color: colors.text }];
+          } else {
+            buttonStyle = [styles.temptationButtonOutline, { borderColor: colors.border }];
+            textStyle = [styles.temptationButtonOutlineText, { color: colors.muted }];
           }
           return (
             <TouchableOpacity
@@ -1120,6 +1163,60 @@ function TemptationCard({
           );
         })}
       </View>
+      {coinBursts.map((coin) => {
+        const translateY = coin.progress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -140],
+        });
+        const translateX = coin.progress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, coin.offsetX],
+        });
+        const rotate = coin.progress.interpolate({
+          inputRange: [0, 1],
+          outputRange: ["0deg", `${coin.rotation}deg`],
+        });
+        const scale = coin.progress.interpolate({
+          inputRange: [0, 0.3, 1],
+          outputRange: [0.3, 1, 0.6],
+        });
+        const opacity = coin.progress.interpolate({
+          inputRange: [0, 0.6, 1],
+          outputRange: [1, 1, 0],
+        });
+        return (
+          <Animated.View
+            key={coin.id}
+            pointerEvents="none"
+            style={[
+              styles.coinBurst,
+              {
+                opacity,
+                transform: [{ translateX }, { translateY }, { rotate }, { scale }],
+              },
+            ]}
+          >
+            <View style={styles.coinBurstInner} />
+          </Animated.View>
+        );
+      })}
+      {messageActive && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.temptationFeedbackOverlay,
+            {
+              backgroundColor: colors.text,
+              opacity: feedbackOpacity,
+              transform: [{ scale: feedbackScale }],
+            },
+          ]}
+        >
+          <Text style={[styles.temptationFeedbackText, { color: colors.background }]}>
+              {t("tileRefuseMessage")}
+            </Text>
+          </Animated.View>
+        )}
     </View>
   );
 }
@@ -1139,6 +1236,8 @@ function FeedScreen({
   freeDayStats,
   onFreeDayLog,
   analyticsStats = [],
+  refuseStats = {},
+  cardFeedback = {},
 }) {
   const heroSavedLabel = useMemo(
     () => formatCurrency(convertToCurrency(savedTotalUSD || 0, currency), currency),
@@ -1286,6 +1385,8 @@ function FeedScreen({
             onEditPrice={() => onEditPrice(item)}
             savedTotalUSD={savedTotalUSD}
             currency={currency}
+            stats={refuseStats[item.id]}
+            feedback={cardFeedback[item.id]}
             onAction={async (type) => {
               await onTemptationAction(type, item);
             }}
@@ -1449,81 +1550,169 @@ function PendingScreen({ items, currency, t, colors, onResolve }) {
   );
 }
 
+const ACHIEVEMENT_METRIC_TYPES = {
+  SAVED_AMOUNT: "SAVED_AMOUNT",
+  FREE_DAYS_TOTAL: "FREE_DAYS_TOTAL",
+  FREE_DAYS_STREAK: "FREE_DAYS_STREAK",
+  REFUSE_COUNT: "REFUSE_COUNT",
+  FRIDGE_ITEMS_COUNT: "FRIDGE_ITEMS_COUNT",
+  FRIDGE_DECISIONS: "FRIDGE_DECISIONS",
+};
+
 const ACHIEVEMENT_DEFS = [
   {
     id: "saved_50",
-    type: "savedUSD",
-    threshold: 50,
+    metricType: ACHIEVEMENT_METRIC_TYPES.SAVED_AMOUNT,
+    targetValue: 50,
     emoji: "💾",
     copy: {
-      ru: { title: "Первые 50$", desc: "Ты уже отложил(а) на мини-подарок." },
-      en: { title: "First $50", desc: "That's a mini gift already banked." },
+      ru: { title: "Первые 50$", desc: "Отложено первые 50$ на мини-подарок." },
+      en: { title: "First $50", desc: "Already banked enough for a mini gift." },
     },
   },
   {
     id: "saved_500",
-    type: "savedUSD",
-    threshold: 500,
+    metricType: ACHIEVEMENT_METRIC_TYPES.SAVED_AMOUNT,
+    targetValue: 500,
     emoji: "💎",
     copy: {
-      ru: { title: "Полтысячи в копилке", desc: "Можно мечтать о крупной покупке." },
-      en: { title: "Half a grand", desc: "Major purchase territory unlocked." },
+      ru: { title: "Полтысячи в копилке", desc: "Можно строить планы на крупную цель." },
+      en: { title: "Half a grand", desc: "Big-ticket dreams are officially on the table." },
     },
   },
   {
-    id: "decline_10",
-    type: "declines",
-    threshold: 10,
-    emoji: "🧊",
+    id: "refuse_10",
+    metricType: ACHIEVEMENT_METRIC_TYPES.REFUSE_COUNT,
+    targetValue: 10,
+    emoji: "🧠",
     copy: {
-      ru: { title: "Ледяное сердце", desc: "10 хотелок в холодильнике и счёт растёт." },
-      en: { title: "Ice cold focus", desc: "10 temptations declined already." },
+      ru: { title: "Осознанный герой", desc: "10 осознанных отказов подряд — дисциплина на месте." },
+      en: { title: "Mindful hero", desc: "10 deliberate skips keep savings safe." },
     },
   },
   {
-    id: "free_7",
-    type: "freeDays",
-    threshold: 7,
+    id: "free_total_14",
+    metricType: ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_TOTAL,
+    targetValue: 14,
     emoji: "🗓️",
     copy: {
-      ru: { title: "Неделя без трат", desc: "Серия бесплатных дней — гордимся." },
-      en: { title: "7 free days", desc: "A whole week of mindful restraint." },
+      ru: { title: "14 дней без импульсов", desc: "Две недели фокуса — кошелёк доволен." },
+      en: { title: "14 impulse-free days", desc: "Two solid weeks of mindful focus." },
+    },
+  },
+  {
+    id: "free_streak_7",
+    metricType: ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_STREAK,
+    targetValue: 7,
+    emoji: "⚡️",
+    copy: {
+      ru: { title: "Серия из 7 дней", desc: "Неделя без трат — ты в потоке." },
+      en: { title: "7-day streak", desc: "A full week in the mindful zone." },
+    },
+  },
+  {
+    id: "fridge_items_10",
+    metricType: ACHIEVEMENT_METRIC_TYPES.FRIDGE_ITEMS_COUNT,
+    targetValue: 10,
+    emoji: "🧊",
+    copy: {
+      ru: { title: "Ледяное сердце", desc: "10 хотелок в холодильнике, и счёт растёт." },
+      en: { title: "Ice cold heart", desc: "10 temptations chilling in the fridge." },
+    },
+  },
+  {
+    id: "fridge_decisions_5",
+    metricType: ACHIEVEMENT_METRIC_TYPES.FRIDGE_DECISIONS,
+    targetValue: 5,
+    emoji: "🥶",
+    copy: {
+      ru: { title: "Холодный расчёт", desc: "Разобрался с 5 хотелками из холодильника." },
+      en: { title: "Cool-headed", desc: "Closed out 5 fridge decisions with intent." },
     },
   },
 ];
+
+const getAchievementRemainingLabel = (metricType, remaining, currency, t) => {
+  if (!remaining || remaining <= 0) return "";
+  const count = Math.max(1, Math.ceil(remaining));
+  switch (metricType) {
+    case ACHIEVEMENT_METRIC_TYPES.SAVED_AMOUNT:
+      return t("rewardRemainingAmount", {
+        amount: formatCurrency(convertToCurrency(remaining, currency), currency),
+      });
+    case ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_TOTAL:
+    case ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_STREAK:
+      return t("rewardRemainingDays", { count });
+    case ACHIEVEMENT_METRIC_TYPES.REFUSE_COUNT:
+      return t("rewardRemainingRefuse", { count });
+    case ACHIEVEMENT_METRIC_TYPES.FRIDGE_ITEMS_COUNT:
+      return t("rewardRemainingFridge", { count });
+    case ACHIEVEMENT_METRIC_TYPES.FRIDGE_DECISIONS:
+      return t("rewardRemainingDecisions", { count });
+    default:
+      return t("rewardLockedGeneric", { count });
+  }
+};
 
 function RewardsScreen({
   savedTotalUSD,
   declineCount,
   freeDayStats,
+  pendingCount = 0,
+  decisionStats = INITIAL_DECISION_STATS,
   currency = DEFAULT_PROFILE.currency,
   t,
   language,
   colors,
 }) {
+  const fridgeDecisionsResolved =
+    (decisionStats?.resolvedToDeclines || 0) + (decisionStats?.resolvedToWishes || 0);
   const achievements = useMemo(() => {
-    const stats = {
-      savedUSD: savedTotalUSD,
-      declines: declineCount,
-      freeDays: freeDayStats.total,
+    const metricValues = {
+      [ACHIEVEMENT_METRIC_TYPES.SAVED_AMOUNT]: savedTotalUSD,
+      [ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_TOTAL]: freeDayStats.total,
+      [ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_STREAK]: freeDayStats.current,
+      [ACHIEVEMENT_METRIC_TYPES.REFUSE_COUNT]: declineCount,
+      [ACHIEVEMENT_METRIC_TYPES.FRIDGE_ITEMS_COUNT]: pendingCount,
+      [ACHIEVEMENT_METRIC_TYPES.FRIDGE_DECISIONS]: fridgeDecisionsResolved,
     };
     return ACHIEVEMENT_DEFS.map((def) => {
-      const value = stats[def.type] || 0;
-      const unlocked = value >= def.threshold;
-      const progress = def.threshold ? Math.min(value / def.threshold, 1) : 1;
+      const value = metricValues[def.metricType] || 0;
+      const target = def.targetValue || 0;
+      const unlocked = target ? value >= target : true;
+      const progress = target ? Math.min(value / target, 1) : 1;
+      const remaining = target ? Math.max(target - value, 0) : 0;
       const copy = def.copy[language] || def.copy.en;
+      const remainingLabel = getAchievementRemainingLabel(
+        def.metricType,
+        remaining,
+        currency,
+        t
+      );
       return {
         id: def.id,
         title: copy.title,
         desc: copy.desc,
         emoji: def.emoji,
         unlocked,
-        threshold: def.threshold,
-        value,
         progress,
+        currentValue: value,
+        targetValue: target,
+        metricType: def.metricType,
+        remainingLabel,
       };
     });
-  }, [savedTotalUSD, declineCount, freeDayStats.total, language]);
+  }, [
+    savedTotalUSD,
+    declineCount,
+    freeDayStats.total,
+    freeDayStats.current,
+    pendingCount,
+    fridgeDecisionsResolved,
+    language,
+    currency,
+    t,
+  ]);
 
   return (
     <ScrollView
@@ -1538,7 +1727,6 @@ function RewardsScreen({
         </Text>
       </View>
       {achievements.map((reward) => {
-        const remaining = Math.max(reward.threshold - reward.value, 0);
         return (
           <View key={reward.id} style={[styles.goalCard, { backgroundColor: colors.card }] }>
             <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
@@ -1562,9 +1750,7 @@ function RewardsScreen({
             <Text style={[styles.goalDesc, { color: colors.muted }]}>
               {reward.unlocked
                 ? t("rewardUnlocked")
-                : t("rewardLocked", {
-                    amount: formatCurrency(convertToCurrency(remaining, currency), currency),
-                  })}
+                : reward.remainingLabel || t("rewardLockedGeneric", { count: 1 })}
             </Text>
           </View>
         );
@@ -1619,6 +1805,8 @@ function ProfileScreen({
         return t("historyWishDone", { title });
       case "decline":
         return t("historyDecline", { title, amount: formatLocalAmount(meta.amountUSD) });
+      case "refuse_spend":
+        return t("historyRefuseSpend", { title, amount: formatLocalAmount(meta.amountUSD) });
       case "pending_added":
         return t("historyPendingAdded", { title });
       case "pending_to_wish":
@@ -1901,10 +2089,13 @@ export default function App() {
   const overlayTimer = useRef(null);
   const cartBadgeScale = useRef(new Animated.Value(0)).current;
   const [onboardingStep, setOnboardingStep] = useState("logo");
-  const [registrationData, setRegistrationData] = useState(INITIAL_REGISTRATION);
+const [registrationData, setRegistrationData] = useState(INITIAL_REGISTRATION);
   const [selectedGoal, setSelectedGoal] = useState(null);
   const [showImageSourceSheet, setShowImageSourceSheet] = useState(false);
   const imagePickerResolver = useRef(null);
+  const [refuseStats, setRefuseStats] = useState({});
+  const [cardFeedback, setCardFeedback] = useState({});
+  const cardFeedbackTimers = useRef({});
   const ensureNotificationPermission = useCallback(async () => {
     try {
       let settings = await Notifications.getPermissionsAsync();
@@ -2010,6 +2201,7 @@ export default function App() {
         freeDayRaw,
         decisionStatsRaw,
         historyRaw,
+        refuseStatsRaw,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.WISHES),
         AsyncStorage.getItem(STORAGE_KEYS.PENDING),
@@ -2024,6 +2216,7 @@ export default function App() {
         AsyncStorage.getItem(STORAGE_KEYS.FREE_DAY),
         AsyncStorage.getItem(STORAGE_KEYS.DECISION_STATS),
         AsyncStorage.getItem(STORAGE_KEYS.HISTORY),
+        AsyncStorage.getItem(STORAGE_KEYS.REFUSE_STATS),
       ]);
       if (wishesRaw) setWishes(JSON.parse(wishesRaw));
       if (pendingRaw) setPendingList(JSON.parse(pendingRaw));
@@ -2058,6 +2251,9 @@ export default function App() {
       }
       if (historyRaw) {
         setHistoryEvents(JSON.parse(historyRaw));
+      }
+      if (refuseStatsRaw) {
+        setRefuseStats(JSON.parse(refuseStatsRaw));
       }
       if (onboardingRaw === "done" || parsedProfile?.goal) {
         setOnboardingStep("done");
@@ -2120,6 +2316,10 @@ export default function App() {
   }, [freeDayStats]);
 
   useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.REFUSE_STATS, JSON.stringify(refuseStats)).catch(() => {});
+  }, [refuseStats]);
+
+  useEffect(() => {
     setWishes((prev) => {
       let remaining = savedTotalUSD;
       let changed = false;
@@ -2162,6 +2362,7 @@ export default function App() {
   useEffect(() => {
     return () => {
       if (overlayTimer.current) clearTimeout(overlayTimer.current);
+      Object.values(cardFeedbackTimers.current).forEach((timer) => clearTimeout(timer));
     };
   }, []);
 
@@ -2389,6 +2590,45 @@ export default function App() {
     });
   }, []);
 
+  const triggerCardFeedback = useCallback((templateId) => {
+    if (!templateId) return;
+    const burstKey = Date.now();
+    setCardFeedback((prev) => ({
+      ...prev,
+      [templateId]: {
+        ...(prev[templateId] || {}),
+        message: true,
+        burstKey,
+      },
+    }));
+    if (cardFeedbackTimers.current[templateId]) {
+      clearTimeout(cardFeedbackTimers.current[templateId]);
+    }
+    cardFeedbackTimers.current[templateId] = setTimeout(() => {
+      setCardFeedback((prev) => {
+        const entry = prev[templateId];
+        if (!entry) return prev;
+        return {
+          ...prev,
+          [templateId]: {
+            ...entry,
+            message: false,
+          },
+        };
+      });
+      delete cardFeedbackTimers.current[templateId];
+    }, 2000);
+  }, []);
+
+  const triggerCoinHaptics = useCallback(() => {
+    const pulses = [0, 90, 180, 270];
+    pulses.forEach((delay) => {
+      setTimeout(() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      }, delay);
+    });
+  }, []);
+
   const handleTemptationAction = useCallback(
     async (type, item) => {
       const priceUSD = item.priceUSD || item.basePriceUSD || 0;
@@ -2431,12 +2671,31 @@ export default function App() {
         triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
         return;
       }
-      if (type === "decline") {
+      if (type === "save") {
+        const timestamp = Date.now();
         setSavedTotalUSD((prev) => prev + priceUSD);
         setDeclineCount((prev) => prev + 1);
-        logHistoryEvent("decline", { title, amountUSD: priceUSD, source: "feed" });
-        triggerOverlayState("cart", t("wishDeclined", { amount: priceLocal }));
-        triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+        setRefuseStats((prev) => {
+          const current = prev[item.id] || {};
+          const count = (current.count || 0) + 1;
+          const totalUSD = (current.totalUSD || 0) + priceUSD;
+          return {
+            ...prev,
+            [item.id]: {
+              count,
+              totalUSD,
+              lastSavedAt: timestamp,
+              lastSavedAmountUSD: priceUSD,
+            },
+          };
+        });
+        logHistoryEvent("refuse_spend", {
+          title,
+          amountUSD: priceUSD,
+          templateId: item.id,
+        });
+        triggerCardFeedback(item.id);
+        triggerCoinHaptics();
         return;
       }
       if (type === "maybe") {
@@ -2460,7 +2719,7 @@ export default function App() {
       }
       Alert.alert("Almost", t("actionSoon"));
     },
-    [language, t, schedulePendingReminder, logHistoryEvent]
+    [language, t, schedulePendingReminder, logHistoryEvent, triggerCardFeedback, triggerCoinHaptics]
   );
 
   const handleLogFreeDay = useCallback(() => {
@@ -2673,6 +2932,7 @@ export default function App() {
             setFreeDayStats({ ...INITIAL_FREE_DAY_STATS });
             setDecisionStats({ ...INITIAL_DECISION_STATS });
             setHistoryEvents([]);
+            setRefuseStats({});
             setProfile({ ...DEFAULT_PROFILE });
             setProfileDraft({ ...DEFAULT_PROFILE });
             setRegistrationData(INITIAL_REGISTRATION);
@@ -2737,6 +2997,8 @@ export default function App() {
             savedTotalUSD={savedTotalUSD}
             declineCount={declineCount}
             freeDayStats={freeDayStats}
+            pendingCount={pendingList.length}
+            decisionStats={decisionStats}
             currency={profile.currency || DEFAULT_PROFILE.currency}
             t={t}
             language={language}
@@ -2784,6 +3046,8 @@ export default function App() {
             freeDayStats={freeDayStats}
             onFreeDayLog={handleLogFreeDay}
             analyticsStats={analyticsStats}
+            refuseStats={refuseStats}
+            cardFeedback={cardFeedback}
           />
         );
     }
@@ -2820,9 +3084,18 @@ export default function App() {
     }
     const onboardingBackground = onboardingStep === "logo" ? "#fff" : colors.background;
     return (
-      <SafeAreaView style={[styles.appShell, { backgroundColor: onboardingBackground }] }>
-        {onboardContent || <LogoSplash onDone={() => setOnboardingStep("language")} />}
-      </SafeAreaView>
+      <>
+        <SafeAreaView style={[styles.appShell, { backgroundColor: onboardingBackground }] }>
+          {onboardContent || <LogoSplash onDone={() => setOnboardingStep("language")} />}
+        </SafeAreaView>
+        <ImageSourceSheet
+          visible={showImageSourceSheet}
+          colors={colors}
+          t={t}
+          onClose={closeImagePickerSheet}
+          onSelect={handleImageSourceChoice}
+        />
+      </>
     );
   }
 
@@ -2970,39 +3243,13 @@ export default function App() {
           </TouchableWithoutFeedback>
         </Modal>
 
-        <Modal
+        <ImageSourceSheet
           visible={showImageSourceSheet}
-          transparent
-          animationType="fade"
-          onRequestClose={closeImagePickerSheet}
-        >
-          <TouchableWithoutFeedback onPress={closeImagePickerSheet}>
-            <View style={styles.sheetBackdrop}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View style={[styles.sheetCard, { backgroundColor: colors.card }] }>
-                  <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
-                  <Text style={[styles.sheetTitle, { color: colors.text }]}>{t("photoPromptTitle")}</Text>
-                  <Text style={[styles.sheetSubtitle, { color: colors.muted }]}>{t("photoPromptSubtitle")}</Text>
-                  <TouchableOpacity
-                    style={[styles.sheetButton, { borderColor: colors.border }]}
-                    onPress={() => handleImageSourceChoice("library")}
-                  >
-                    <Text style={{ color: colors.text }}>{t("photoLibrary")}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.sheetButton, { borderColor: colors.border }]}
-                    onPress={() => handleImageSourceChoice("camera")}
-                  >
-                    <Text style={{ color: colors.text }}>{t("photoCamera")}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={closeImagePickerSheet}>
-                    <Text style={[styles.sheetCancel, { color: colors.muted }]}>{t("profileCancel")}</Text>
-                  </TouchableOpacity>
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
+          colors={colors}
+          t={t}
+          onClose={closeImagePickerSheet}
+          onSelect={handleImageSourceChoice}
+        />
       </SafeAreaView>
     </TouchableWithoutFeedback>
   );
@@ -3200,6 +3447,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: "transparent",
+    position: "relative",
   },
   temptationHeader: {
     flexDirection: "row",
@@ -3231,21 +3479,49 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
   },
-  tileProgressWrap: {
-    gap: 6,
-  },
-  tileProgressBar: {
-    height: 8,
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  tileProgressFill: {
-    height: "100%",
-    borderRadius: 999,
-  },
-  tileProgressLabel: {
+  temptationRefuseMeta: {
     fontSize: 12,
-    fontWeight: "600",
+  },
+  temptationFeedbackOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  temptationFeedbackText: {
+    fontSize: 18,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  coinBurst: {
+    position: "absolute",
+    bottom: 32,
+    left: "50%",
+    marginLeft: -8,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E9A600",
+    backgroundColor: "#FFD766",
+    shadowColor: "#E9A600",
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  coinBurstInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FFF4B3",
   },
   temptationBadge: {
     paddingHorizontal: 12,
@@ -3263,6 +3539,16 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
   },
+  temptationButtonPrimary: {
+    flexGrow: 1,
+    borderRadius: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  temptationButtonPrimaryText: {
+    fontWeight: "700",
+    fontSize: 14,
+  },
   temptationButtonGhost: {
     flexGrow: 1,
     borderWidth: 1,
@@ -3279,6 +3565,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderWidth: 1,
     alignItems: "center",
+  },
+  temptationButtonOutlineText: {
+    fontWeight: "600",
   },
   detailBackdrop: {
     flex: 1,
@@ -4194,6 +4483,39 @@ const styles = StyleSheet.create({
     color: "#111",
   },
 });
+function ImageSourceSheet({ visible, colors, t, onClose, onSelect }) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.sheetBackdrop}>
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View style={[styles.sheetCard, { backgroundColor: colors.card }] }>
+              <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+              <Text style={[styles.sheetTitle, { color: colors.text }]}>{t("photoPromptTitle")}</Text>
+              <Text style={[styles.sheetSubtitle, { color: colors.muted }]}>{t("photoPromptSubtitle")}</Text>
+              <TouchableOpacity
+                style={[styles.sheetButton, { borderColor: colors.border }]}
+                onPress={() => onSelect("library")}
+              >
+                <Text style={{ color: colors.text }}>{t("photoLibrary")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sheetButton, { borderColor: colors.border }]}
+                onPress={() => onSelect("camera")}
+              >
+                <Text style={{ color: colors.text }}>{t("photoCamera")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onClose}>
+                <Text style={[styles.sheetCancel, { color: colors.muted }]}>{t("profileCancel")}</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
 function RegistrationScreen({ data, onChange, onSubmit, onPickImage, colors, t }) {
   const fade = useFadeIn();
 
