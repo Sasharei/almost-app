@@ -18,6 +18,7 @@ import {
   Animated,
   Easing,
   Linking,
+  PanResponder,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import ConfettiCannon from "react-native-confetti-cannon";
@@ -40,6 +41,7 @@ const STORAGE_KEYS = {
   LANGUAGE: "@almost_language",
   ONBOARDING: "@almost_onboarded",
   CATALOG: "@almost_catalog_overrides",
+  TITLE_OVERRIDES: "@almost_title_overrides",
   WISHES: "@almost_wishes",
   SAVED_TOTAL: "@almost_saved_total",
   DECLINES: "@almost_declines",
@@ -51,7 +53,10 @@ const STORAGE_KEYS = {
 };
 
 const PURCHASE_GOAL = 20000;
-const CAT_IMAGE = "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?auto=format&fit=crop&w=600&q=80";
+const CAT_IMAGE = require("./assets/Cat_mascot.png");
+const CAT_CURIOUS = require("./assets/Cat_curious.gif");
+const CAT_HAPPY_GIF = require("./assets/Cat_happy.gif");
+const CAT_WAVING = require("./assets/Cat_waving.gif");
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
 const THEMES = {
@@ -73,19 +78,41 @@ const THEMES = {
   },
 };
 
+const CELEBRATION_BASE_RU = [
+  "Хоп! Ещё одна осознанная экономия",
+  "Меньше лишних покупок, больше плана",
+  "Кошелёк вздохнул спокойно",
+];
+
 const CELEBRATION_MESSAGES = {
-  ru: [
-    "Хоп! Ещё одна осознанная экономия",
-    "Меньше лишних покупок, больше плана",
-    "Кошелёк вздохнул спокойно",
-    "Ты снова выбрала умный своп вместо растрат",
-  ],
-  en: [
-    "Boom! Another mindful deal",
-    "Less impulse, more plan",
-    "Wallet just sighed with relief",
-    "Smart deal locked – savings are safe",
-  ],
+  ru: {
+    female: [...CELEBRATION_BASE_RU, "Ты снова выбрала умный своп вместо растрат"],
+    male: [...CELEBRATION_BASE_RU, "Ты снова выбрал умный своп вместо растрат"],
+    none: [...CELEBRATION_BASE_RU, "Снова выбран умный своп вместо растрат"],
+    level: "Уровень {{level}}! Экономия становится привычкой 💎",
+  },
+  en: {
+    default: [
+      "Boom! Another mindful deal",
+      "Less impulse, more plan",
+      "Wallet just sighed with relief",
+      "Smart deal locked – savings are safe",
+    ],
+    level: "Level {{level}}! Savings armor upgraded ✨",
+  },
+};
+
+const getCelebrationMessages = (language, gender = "none") => {
+  const entry = CELEBRATION_MESSAGES[language];
+  if (!entry) return [];
+  if (Array.isArray(entry)) return entry;
+  if (Array.isArray(entry.default)) return entry.default;
+  const variant =
+    (gender && entry[gender]) ||
+    entry.none ||
+    entry.default ||
+    Object.values(entry)[0];
+  return Array.isArray(variant) ? variant : [];
 };
 
 const RAIN_DROPS = 20;
@@ -204,12 +231,34 @@ const createPersonaTemptation = (preset) => {
   };
 };
 
-const createCustomHabitTemptation = (customSpend) => {
-  if (!customSpend?.title || !customSpend?.amountUSD) return null;
-  const price = Number(customSpend.amountUSD) || 0;
+const parseAmountValue = (value) => {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+};
+
+const resolveCustomPriceUSD = (customSpend, fallbackCurrency = DEFAULT_PROFILE.currency) => {
+  const direct = parseAmountValue(customSpend?.amountUSD);
+  if (direct > 0) return direct;
+  const local = parseAmountValue(customSpend?.amount ?? customSpend?.amountLocal ?? customSpend?.price);
+  if (local > 0) {
+    const currencyCode = customSpend?.currency || fallbackCurrency || DEFAULT_PROFILE.currency;
+    return convertFromCurrency(local, currencyCode);
+  }
+  return 0;
+};
+
+const createCustomHabitTemptation = (customSpend, fallbackCurrency) => {
+  if (!customSpend?.title) return null;
+  const price = resolveCustomPriceUSD(customSpend, fallbackCurrency);
+  if (!price) return null;
   const title = customSpend.title;
   return {
-    id: "custom_habit",
+    id: customSpend.id || "custom_habit",
     emoji: customSpend.emoji || "💡",
     color: "#FFF5E6",
     categories: ["habit", "custom"],
@@ -228,25 +277,25 @@ const createCustomHabitTemptation = (customSpend) => {
 
 const buildPersonalizedTemptations = (profile, baseList = DEFAULT_TEMPTATIONS) => {
   const preset = getPersonaPreset(profile?.persona);
-  const customFirst = createCustomHabitTemptation(profile?.customSpend);
-  const personaCard = customFirst ? null : createPersonaTemptation(preset);
-  const seen = new Set();
-  const personalized = [];
-  if (customFirst) {
-    personalized.push(customFirst);
-    seen.add(customFirst.id);
+  const customFirst = createCustomHabitTemptation(profile?.customSpend, profile?.currency);
+  const personaCard = createPersonaTemptation(preset);
+  const seen = new Set(customFirst ? [customFirst.id] : []);
+  const pool = [...baseList];
+  if (personaCard) {
+    pool.push(personaCard);
   }
-  if (personaCard && !seen.has(personaCard.id)) {
-    personalized.push(personaCard);
-    seen.add(personaCard.id);
-  }
-  baseList.forEach((item) => {
-    if (!seen.has(item.id)) {
-      personalized.push(item);
+  const sortedPool = pool
+    .filter((item) => {
+      if (!item || seen.has(item.id)) return false;
       seen.add(item.id);
-    }
-  });
-  return personalized;
+      return true;
+    })
+    .sort((a, b) => {
+      const priceA = a.priceUSD ?? a.basePriceUSD ?? Number.POSITIVE_INFINITY;
+      const priceB = b.priceUSD ?? b.basePriceUSD ?? Number.POSITIVE_INFINITY;
+      return priceA - priceB;
+    });
+  return customFirst ? [customFirst, ...sortedPool] : sortedPool;
 };
 
 const useFadeIn = () => {
@@ -265,7 +314,16 @@ const TRANSLATIONS = {
   ru: {
     appTagline: "витрина искушений, которые помогают копить",
     heroAwaiting: "в листе желаний",
-    heroSpendLine: "уже сэкономлено {{amount}}. Красота без ущерба бюджету",
+    heroSpendLine: {
+      female: "Удержалась от «{{title}}» — фокус сохраняется",
+      male: "Удержался от «{{title}}» — фокус сохраняется",
+      none: "Удержаться от «{{title}}» — фокус сохраняется",
+    },
+    heroSpendFallback: {
+      female: "Каждый отказ — шаг к осознанной свободе",
+      male: "Каждый отказ — шаг к осознанной свободе",
+      none: "Каждый отказ — шаг к осознанной свободе",
+    },
     heroExpand: "Показать детали",
     heroCollapse: "Скрыть детали",
     heroDailyTitle: "Неделя экономии",
@@ -319,7 +377,11 @@ const TRANSLATIONS = {
     pendingActionWant: "Начать копить",
     pendingActionDecline: "Сэкономить",
     pendingNotificationTitle: "Прошло 14 дней",
-    pendingNotificationBody: "Готов(а) решить, что делать с «{{title}}»?",
+    pendingNotificationBody: {
+      female: "Готова решить, что делать с «{{title}}»?",
+      male: "Готов решить, что делать с «{{title}}»?",
+      none: "Готовы решить, что делать с «{{title}}»?",
+    },
     pendingAdded: "Добавлено в «думаем». Напомним вовремя.",
     feedTab: "Лента",
     profileTab: "Профиль",
@@ -359,8 +421,12 @@ const TRANSLATIONS = {
     priceEditReset: "Сбросить",
     priceEditCancel: "Отмена",
     priceEditError: "Введи сумму больше нуля",
+    priceEditNameLabel: "Название карточки",
+    priceEditAmountLabel: "Стоимость ({{currency}})",
     wishAdded: "Добавлено в хотелки: {{title}}",
     wishDeclined: "+{{amount}} к копилке. Отличное решение!",
+    saveCelebrateTitle: "Сэкономлено на «{{title}}»",
+    saveCelebrateSubtitle: "Кот радуется — счёт пополнен!",
     statsSpent: "закрыто целей",
     statsSaved: "спасено",
     statsItems: "хотелок",
@@ -383,17 +449,34 @@ const TRANSLATIONS = {
     historyPendingWant: "После паузы решили копить: {{title}}",
     historyPendingDecline: "После паузы отказ: {{title}} (+{{amount}})",
     historyFreeDay: "Бесплатный день №{{total}}",
-    historySpend: "Потратил(а): {{title}} (-{{amount}})",
+    historySpend: {
+      female: "Потратила: {{title}} (-{{amount}})",
+      male: "Потратил: {{title}} (-{{amount}})",
+      none: "Потрачено: {{title}} (-{{amount}})",
+    },
     historyTimestamp: "{{date}} · {{time}}",
     historyUnknown: "событие",
     progressHeroTitle: "Спасено",
     progressHeroLevel: "уровень {{level}}",
     progressHeroNext: "До следующего уровня {{amount}}",
-    tileRefuseCount: "Отказался уже {{count}} раз · +{{amount}}",
+    levelCelebrate: {
+      female: "Ты достигла уровня {{level}}! Экономия становится привычкой.",
+      male: "Ты достиг уровня {{level}}! Экономия становится привычкой.",
+      none: "Новый уровень {{level}}! Экономия становится привычкой.",
+    },
+    tileRefuseCount: {
+      female: "Отказалась уже {{count}} раз · +{{amount}}",
+      male: "Отказался уже {{count}} раз · +{{amount}}",
+      none: "Отказались уже {{count}} раз · +{{amount}}",
+    },
     tileRefuseMessage: "Точно не покупай это сегодня — это в твоих интересах",
     tileReady: "Можно брать",
     tileLocked: "Пока копим",
-    spendWarning: "Потратишь {{amount}} — точно готов(а)?",
+    spendWarning: {
+      female: "Потратишь {{amount}} — точно готова?",
+      male: "Потратишь {{amount}} — точно готов?",
+      none: "Потратишь {{amount}} — точно готов(а)?",
+    },
     spendSheetTitle: "Almost Pay",
     spendSheetSubtitle: "Шутливый Pay напоминает: экономия любит терпение.",
     spendSheetHint: "Дважды нажми (мысленно) на кнопку, если всё-таки тратишь.",
@@ -430,6 +513,7 @@ const TRANSLATIONS = {
     registrationSubtitle: "Расскажи о себе, чтобы Almost говорил на твоём языке",
     languageTitle: "Выбери язык",
     languageSubtitle: "Чтобы подсказки звучали естественно",
+    languageCurrencyHint: "Язык и валюту можно поменять позже в профиле.",
     inputFirstName: "Имя",
     inputLastName: "Фамилия",
     inputMotto: "Девиз дня",
@@ -439,11 +523,43 @@ const TRANSLATIONS = {
     goalSubtitle: "Выбери главное направление экономии",
     goalButton: "Готово",
     goalCompleteMessage: "Всё готово, погнали копить!",
+    goalPrimaryBadge: "Главная цель",
+    primaryGoalLabel: "Главная цель",
+    primaryGoalLocked: "Эту цель можно поменять только в профиле.",
+    primaryGoalRemaining: "Осталось {{amount}}",
+    onboardingGuideTitle: "Смысл Almost",
+    onboardingGuideSubtitle: "Первые шаги в борьбе с потребительством и импульсивными тратами.",
+    onboardingGuideButton: "Продолжить",
+    guideStepTrackTitle: "Главная цель — осознанность",
+    guideStepTrackDesc: "Мы помогаем тратить деньги только на важное, сохраняя бюджет и фокус на крупных целях.",
+    guideStepDecisionTitle: "Меню искушений",
+    guideStepDecisionDesc: "Отмечай каждое искушение и уставай перед ним — так деньги остаются в кошельке, а Almost фиксирует победы.",
+    guideStepRewardTitle: "Визуализация прогресса",
+    guideStepRewardDesc: "Не забывай отмечать, на чём сэкономила: приложение показывает путь к глобальной цели и даёт мотивацию.",
+    personaTitle: "Расскажи про себя",
+    personaSubtitle: "Выбери, что хочешь прокачать в первую очередь",
+    personaGenderLabel: "Как к тебе обращаться?",
+    personaHabitLabel: "Профиль, который ближе всего",
+    personaConfirm: "Продолжить",
+    customSpendTitle: "Твоя ежедневная трата",
+    customSpendSubtitle: "Дай ей имя — мы превратим её в первую мини-цель",
+    customSpendNamePlaceholder: "Матча, сигареты, маникюр...",
+    customSpendAmountLabel: "Сколько стоит один раз?",
+    customSpendAmountPlaceholder: "например 550",
+    customSpendHint: "Это всегда можно поменять в профиле.",
+    customSpendSkip: "Пропустить",
+    quickCustomTitle: "Новое искушение",
+    quickCustomSubtitle: "Опиши траты, от которых хочешь отказаться первой",
+    quickCustomNameLabel: "Название",
+    quickCustomAmountLabel: "Стоимость ({{currency}})",
+    quickCustomConfirm: "Добавить",
+    quickCustomCancel: "Отмена",
   },
   en: {
     appTagline: "an offline temptation board that keeps savings safe",
     heroAwaiting: "on the wish list",
-    heroSpendLine: "already saved {{amount}}. Glow without overspending",
+    heroSpendLine: "Skipped “{{title}}” — focus stays sharp",
+    heroSpendFallback: "Every mindful pause fuels the freedom fund",
     heroExpand: "Show details",
     heroCollapse: "Hide details",
     heroDailyTitle: "Weekly savings",
@@ -534,8 +650,12 @@ const TRANSLATIONS = {
     priceEditReset: "Reset",
     priceEditCancel: "Cancel",
     priceEditError: "Enter a positive number",
+    priceEditNameLabel: "Card name",
+    priceEditAmountLabel: "Amount ({{currency}})",
     wishAdded: "Added to wishes: {{title}}",
     wishDeclined: "+{{amount}} safely tucked away",
+    saveCelebrateTitle: "Skipped “{{title}}” — bankroll is grateful",
+    saveCelebrateSubtitle: "Cat mascot purrs: savings up!",
     freeDayButton: "Free day",
     freeDayLocked: "After 6 pm",
     freeDayLoggedToday: "Already logged today",
@@ -572,6 +692,7 @@ const TRANSLATIONS = {
     progressHeroTitle: "Saved",
     progressHeroLevel: "level {{level}}",
     progressHeroNext: "To next level {{amount}}",
+    levelCelebrate: "Level {{level}} unlocked — savings armor upgraded!",
     tileRefuseCount: "Already skipped {{count}}× · +{{amount}}",
     tileRefuseMessage: "Skip it today — your savings will thank you",
     tileReady: "Ready to enjoy",
@@ -613,6 +734,7 @@ const TRANSLATIONS = {
     registrationSubtitle: "Tell us who you are so Almost speaks your language",
     languageTitle: "Choose a language",
     languageSubtitle: "We’ll tailor every hint to you",
+    languageCurrencyHint: "You can adjust language and currency later in Profile.",
     inputFirstName: "First name",
     inputLastName: "Last name",
     inputMotto: "Personal motto",
@@ -622,18 +744,19 @@ const TRANSLATIONS = {
     goalSubtitle: "Where should your mindful deals lead?",
     goalButton: "Start saving",
     goalCompleteMessage: "You’re set—let’s start saving!",
-    personaTitle: "Расскажи про себя",
-    personaSubtitle: "Выбери, что хочешь прокачать в первую очередь",
-    personaGenderLabel: "Как к тебе обращаться?",
-    personaHabitLabel: "Профиль, который ближе всего",
-    personaConfirm: "Продолжить",
-    customSpendTitle: "Твоя ежедневная трата",
-    customSpendSubtitle: "Дай ей имя — мы превратим её в первую мини-цель",
-    customSpendNamePlaceholder: "Матча, сигареты, маникюр...",
-    customSpendAmountLabel: "Сколько стоит один раз?",
-    customSpendAmountPlaceholder: "например 550",
-    customSpendHint: "Это всегда можно поменять в профиле.",
-    customSpendSkip: "Пропустить",
+    goalPrimaryBadge: "Primary goal",
+    primaryGoalLabel: "Primary goal",
+    primaryGoalLocked: "Change this goal later from your profile.",
+    primaryGoalRemaining: "Remaining {{amount}}",
+    onboardingGuideTitle: "What Almost is about",
+    onboardingGuideSubtitle: "A mindful antidote to consumerism and impulse buys.",
+    onboardingGuideButton: "Got it",
+    guideStepTrackTitle: "Your main mission",
+    guideStepTrackDesc: "Spend consciously, protect the budget, and focus on the goals that actually matter.",
+    guideStepDecisionTitle: "Temptation menu",
+    guideStepDecisionDesc: "Log each temptation and resist it — Almost records the win and keeps that cash untouched.",
+    guideStepRewardTitle: "See the big picture",
+    guideStepRewardDesc: "Check off every saved item and watch the app visualize the bigger goal you’re working toward.",
     personaTitle: "Tell us about you",
     personaSubtitle: "Choose what you want to rein in first",
     personaGenderLabel: "How should we address you?",
@@ -646,6 +769,12 @@ const TRANSLATIONS = {
     customSpendAmountPlaceholder: "e.g. 7.50",
     customSpendHint: "You can change this anytime in the profile.",
     customSpendSkip: "Skip for now",
+    quickCustomTitle: "Add temptation",
+    quickCustomSubtitle: "Name the impulse and set a price to add it to the deck",
+    quickCustomNameLabel: "Name",
+    quickCustomAmountLabel: "Cost ({{currency}})",
+    quickCustomConfirm: "Add",
+    quickCustomCancel: "Cancel",
   },
 };
 
@@ -682,6 +811,12 @@ const CURRENCY_LOCALES = {
   EUR: "de-DE",
   RUB: "ru-RU",
 };
+
+const HOW_IT_WORKS_STEPS = [
+  { id: "track", emoji: "📸", titleKey: "guideStepTrackTitle", descKey: "guideStepTrackDesc" },
+  { id: "decide", emoji: "🎯", titleKey: "guideStepDecisionTitle", descKey: "guideStepDecisionDesc" },
+  { id: "reward", emoji: "🏆", titleKey: "guideStepRewardTitle", descKey: "guideStepRewardDesc" },
+];
 
 const PERSONA_PRESETS = {
   mindful_coffee: {
@@ -841,15 +976,31 @@ const DEFAULT_PERSONA_ID = "mindful_coffee";
 const GENDER_OPTIONS = [
   { id: "female", label: { ru: "Женщина", en: "Female" }, emoji: "💁‍♀️" },
   { id: "male", label: { ru: "Мужчина", en: "Male" }, emoji: "🧑‍🦱" },
-  { id: "neutral", label: { ru: "Другое", en: "Other" }, emoji: "🌈" },
+  { id: "none", label: { ru: "Не указывать", en: "Prefer not to say" }, emoji: "🤫" },
 ];
 
 const GOAL_PRESETS = [
-  { id: "travel", ru: "Путешествия", en: "Travel", emoji: "✈️" },
-  { id: "tech", ru: "Техника", en: "Tech upgrade", emoji: "💻" },
-  { id: "daily", ru: "Ежедневные хотелки", en: "Daily treats", emoji: "🍩" },
-  { id: "save", ru: "Просто копить", en: "Rainy-day fund", emoji: "💰" },
+  { id: "travel", ru: "Путешествия", en: "Travel", emoji: "✈️", targetUSD: 1500 },
+  { id: "tech", ru: "Техника", en: "Tech upgrade", emoji: "💻", targetUSD: 900 },
+  { id: "daily", ru: "Ежедневные хотелки", en: "Daily treats", emoji: "🍩", targetUSD: 250 },
+  { id: "save", ru: "Просто копить", en: "Rainy-day fund", emoji: "💰", targetUSD: 600 },
 ];
+
+const PRIMARY_GOAL_KIND = "primary_goal";
+const PRIMARY_GOAL_WISH_ID = "wish_primary_goal";
+
+const getGoalPreset = (goalId) => GOAL_PRESETS.find((goal) => goal.id === goalId);
+
+const insertWishAfterPrimary = (list = [], newWish) => {
+  if (!newWish) return list;
+  const primaryIndex = list.findIndex((wish) => wish?.kind === PRIMARY_GOAL_KIND);
+  if (primaryIndex === -1) {
+    return [newWish, ...list];
+  }
+  const primary = list[primaryIndex];
+  const rest = list.filter((_, idx) => idx !== primaryIndex);
+  return [primary, newWish, ...rest];
+};
 
 const DEFAULT_PROFILE = {
   name: "Nina Cleanova",
@@ -858,11 +1009,11 @@ const DEFAULT_PROFILE = {
   subtitle: "Управляю хотелками и бюджетом",
   motto: "Управляю хотелками и бюджетом",
   bio: "Люблю красивые вещи, но больше люблю финансовый план",
-  avatar: "https://i.pravatar.cc/150?img=47",
+  avatar: "",
   currency: "USD",
   goal: "save",
   persona: "mindful_coffee",
-  gender: "female",
+  gender: "none",
   customSpend: null,
 };
 
@@ -872,7 +1023,7 @@ const INITIAL_REGISTRATION = {
   motto: "",
   avatar: "",
   currency: "USD",
-  gender: "female",
+  gender: "none",
   persona: "mindful_coffee",
   customSpendTitle: "",
   customSpendAmount: "",
@@ -1312,6 +1463,19 @@ function CategoryChip({ label, isActive, onPress, colors }) {
   );
 }
 
+const resolveTemptationTitle = (item, language, override) => {
+  if (override) return override;
+  if (item.titleOverride) return item.titleOverride;
+  const source = item.title;
+  if (typeof source === "string") return source;
+  return (
+    source?.[language] ||
+    source?.en ||
+    (typeof source === "object" ? Object.values(source)[0] : null) ||
+    "Wish"
+  );
+};
+
 function TemptationCard({
   item,
   language,
@@ -1324,8 +1488,9 @@ function TemptationCard({
   stats = {},
   feedback,
   starterPriceUSD = null,
+  titleOverride,
 }) {
-  const title = item.title?.[language] || item.title?.en || item.title || "Wish";
+  const title = resolveTemptationTitle(item, language, titleOverride);
   const desc = item.description?.[language] || item.description?.en || "";
   const priceUSD = item.priceUSD || item.basePriceUSD || 0;
   const priceLabel = formatCurrency(convertToCurrency(priceUSD, currency), currency);
@@ -1353,37 +1518,50 @@ function TemptationCard({
         { type: "want", label: t("wantAction"), variant: "primary" },
         { type: "maybe", label: t("maybeAction"), variant: "outline" },
       ];
-  const feedbackOpacity = useRef(new Animated.Value(0)).current;
-  const feedbackScale = useRef(new Animated.Value(0.9)).current;
   const [coinBursts, setCoinBursts] = useState([]);
   const messageActive = feedback?.message;
   const burstKey = feedback?.burstKey;
+  const translateX = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (messageActive) {
-      feedbackOpacity.setValue(0);
-      feedbackScale.setValue(0.9);
-      Animated.parallel([
-        Animated.timing(feedbackOpacity, {
-          toValue: 1,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.spring(feedbackScale, {
-          toValue: 1,
-          friction: 5,
-          tension: 120,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      Animated.timing(feedbackOpacity, {
+    translateX.setValue(0);
+  }, [item.id, translateX]);
+
+  const handleSwipeRelease = useCallback(
+    (shouldTrigger) => {
+      if (shouldTrigger && onEditPrice) {
+        onEditPrice(item);
+      }
+      Animated.timing(translateX, {
         toValue: 0,
-        duration: 150,
+        duration: 160,
+        easing: Easing.out(Easing.quad),
         useNativeDriver: true,
       }).start();
-    }
-  }, [messageActive, feedbackOpacity, feedbackScale]);
+    },
+    [item, onEditPrice, translateX]
+  );
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 6,
+        onPanResponderMove: (_, gestureState) => {
+          const dx = Math.max(0, gestureState.dx);
+          translateX.setValue(Math.min(dx, 140));
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          const shouldTrigger = gestureState.dx > 80;
+          handleSwipeRelease(shouldTrigger);
+        },
+        onPanResponderTerminate: () => handleSwipeRelease(false),
+      }),
+    [handleSwipeRelease, translateX]
+  );
+
+  useEffect(() => {
+  }, [messageActive]);
 
   useEffect(() => {
     if (!burstKey) return;
@@ -1409,16 +1587,31 @@ function TemptationCard({
   }, [burstKey]);
 
   return (
-    <View
-      style={[
-        styles.temptationCard,
-        {
-          backgroundColor: cardBackground,
-          borderColor: highlight ? colors.text : "transparent",
-          borderWidth: highlight ? 2 : 1,
-        },
-      ]}
-    >
+    <View style={styles.temptationSwipeWrapper}>
+      <View
+        style={[
+          styles.temptationSwipeBackground,
+          {
+            borderColor: colors.border,
+            backgroundColor: lightenColor(colors.background, 0.18),
+          },
+        ]}
+        pointerEvents="none"
+      >
+        <Text style={[styles.temptationSwipeIcon, { color: colors.text }]}>✏️</Text>
+      </View>
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={[
+          styles.temptationCard,
+          {
+            backgroundColor: cardBackground,
+            borderColor: highlight ? colors.text : "transparent",
+            borderWidth: highlight ? 2 : 1,
+            transform: [{ translateX }],
+          },
+        ]}
+      >
       <View style={styles.temptationHeader}>
         <Text style={styles.temptationEmoji}>{item.emoji || "✨"}</Text>
         <Text style={[styles.temptationTitle, { color: colors.text }]}>{title}</Text>
@@ -1439,9 +1632,6 @@ function TemptationCard({
       )}
       <View style={styles.temptationPriceRow}>
         <Text style={[styles.temptationPrice, { color: colors.text }]}>{priceLabel}</Text>
-        <TouchableOpacity onPress={onEditPrice}>
-          <Text style={[styles.editPriceText, { color: colors.muted }]}>{t("editPrice")}</Text>
-        </TouchableOpacity>
       </View>
       <View style={styles.temptationActions}>
         {actionConfig.map((action) => {
@@ -1476,7 +1666,7 @@ function TemptationCard({
           inputRange: [0, 1],
           outputRange: [0, -140],
         });
-        const translateX = coin.progress.interpolate({
+        const translateXCoin = coin.progress.interpolate({
           inputRange: [0, 1],
           outputRange: [0, coin.offsetX],
         });
@@ -1500,7 +1690,7 @@ function TemptationCard({
               styles.coinBurst,
               {
                 opacity,
-                transform: [{ translateX }, { translateY }, { rotate }, { scale }],
+                transform: [{ translateX: translateXCoin }, { translateY }, { rotate }, { scale }],
               },
             ]}
           >
@@ -1508,23 +1698,8 @@ function TemptationCard({
           </Animated.View>
         );
       })}
-      {messageActive && (
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.temptationFeedbackOverlay,
-            {
-              backgroundColor: colors.text,
-              opacity: feedbackOpacity,
-              transform: [{ scale: feedbackScale }],
-            },
-          ]}
-        >
-          <Text style={[styles.temptationFeedbackText, { color: colors.background }]}>
-              {t("tileRefuseMessage")}
-            </Text>
-          </Animated.View>
-        )}
+      {messageActive && null}
+      </Animated.View>
     </View>
   );
 }
@@ -1616,17 +1791,19 @@ function SavingsHeroCard({
           </Text>
         </View>
       </View>
-      <Text style={[styles.progressHeroNext, styles.savedHeroNextText, { color: goldPalette.subtext }]}>
-        {nextLabel}
-      </Text>
-      <TouchableOpacity
-        style={styles.savedHeroToggleRow}
-        onPress={() => setExpanded((prev) => !prev)}
-      >
-        <Text style={[styles.savedHeroToggleText, { color: goldPalette.subtext }]}>
-          {expanded ? t("heroCollapse") : t("heroExpand")}
+      <View style={styles.savedHeroNextRow}>
+        <Text style={[styles.progressHeroNext, styles.savedHeroNextText, { color: goldPalette.subtext }]}>
+          {nextLabel}
         </Text>
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.savedHeroToggleButton}
+          onPress={() => setExpanded((prev) => !prev)}
+        >
+          <Text style={[styles.savedHeroToggleText, { color: goldPalette.subtext }]}>
+            {expanded ? t("heroCollapse") : t("heroExpand")}
+          </Text>
+        </TouchableOpacity>
+      </View>
       {expanded && (
         <View style={styles.savedHeroDaily}>
           <Text style={[styles.savedHeroDailyTitle, { color: goldPalette.text }]}>
@@ -1692,6 +1869,7 @@ function FreeDayCard({
         border: colors.border,
         accent: colors.text,
       };
+  const buttonColor = streakActive ? palette.accent : "#20A36B";
   const subtitle = streakActive
     ? t("freeDayActiveLabel", { days: freeDayStats.current })
     : t("freeDayInactiveLabel");
@@ -1717,12 +1895,10 @@ function FreeDayCard({
         </View>
         {canLog ? (
           <TouchableOpacity
-            style={[styles.freeDayButton, { backgroundColor: colors.text }]}
+            style={[styles.freeDayButton, { backgroundColor: buttonColor }]}
             onPress={onLog}
           >
-            <Text style={[styles.freeDayButtonText, { color: colors.background }]}>
-              {t("freeDayButton")}
-            </Text>
+            <Text style={styles.freeDayButtonText}>{t("freeDayButton")}</Text>
           </TouchableOpacity>
         ) : (
           <View
@@ -1830,7 +2006,6 @@ function SpendConfirmSheet({
             </View>
             <View style={styles.payCardTexts}>
               <Text style={[styles.payCardTitle, { color: colors.text }]}>{displayTitle}</Text>
-              <Text style={[styles.payCardMeta, { color: colors.muted }]}>{t("tileLocked")}</Text>
             </View>
             <Text style={[styles.payCardAmount, { color: colors.text }]}>{priceLabel}</Text>
           </View>
@@ -1901,19 +2076,28 @@ function FeedScreen({
   cardFeedback = {},
   historyEvents = [],
   profile,
+  titleOverrides = {},
+  onLevelCelebrate,
 }) {
   const heroSavedLabel = useMemo(
     () => formatCurrency(convertToCurrency(savedTotalUSD || 0, currency), currency),
     [savedTotalUSD, currency]
   );
   const personaPreset = useMemo(() => getPersonaPreset(profile?.persona), [profile?.persona]);
+  const latestSaving = useMemo(
+    () => historyEvents.find((entry) => entry.kind === "refuse_spend"),
+    [historyEvents]
+  );
   const heroSpendCopy = useMemo(() => {
+    if (latestSaving?.meta?.title) {
+      return t("heroSpendLine", { title: latestSaving.meta.title });
+    }
     const template = personaPreset?.tagline?.[language];
     if (template) {
       return template.replace("{{amount}}", heroSavedLabel);
     }
-    return t("heroSpendLine", { amount: heroSavedLabel });
-  }, [heroSavedLabel, personaPreset, language, t]);
+    return t("heroSpendFallback");
+  }, [heroSavedLabel, personaPreset, language, t, latestSaving]);
   const isDarkMode = colors === THEMES.dark;
   const goldPalette = useMemo(
     () =>
@@ -1952,9 +2136,16 @@ function FeedScreen({
       (tierInfo.prevTargetUSD ?? 0),
     1
   );
+  const previousTierInfo = useRef(tierInfo.level);
   const tierProgress = tierInfo.nextTargetUSD
     ? (savedTotalUSD - tierInfo.prevTargetUSD) / span
     : 1;
+  useEffect(() => {
+    if (tierInfo.level > previousTierInfo.current) {
+      onLevelCelebrate?.(tierInfo.level);
+    }
+    previousTierInfo.current = tierInfo.level;
+  }, [tierInfo.level, onLevelCelebrate]);
   const progressPercent = Math.min(Math.max(tierProgress, 0), 1);
   const progressPercentLabel = Math.round(progressPercent * 100);
   const levelLabel = t("progressHeroLevel", { level: tierInfo.level });
@@ -2140,6 +2331,7 @@ function FeedScreen({
             stats={refuseStats[item.id]}
             feedback={cardFeedback[item.id]}
             starterPriceUSD={starterPriceUSD}
+            titleOverride={titleOverrides[item.id]}
             onAction={async (type) => {
               await onTemptationAction(type, item);
             }}
@@ -2156,13 +2348,15 @@ function WishListScreen({
   t,
   colors,
   onRemoveWish,
+  primaryGoalId,
 }) {
+  const isDarkTheme = colors.background === THEMES.dark.background;
   if (wishes.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }] }>
         <Text style={[styles.header, { color: colors.text }]}>{t("wishlistTitle")}</Text>
         <View style={styles.cartEmptyState}>
-          <Image source={{ uri: CAT_IMAGE }} style={styles.catImage} />
+          <Image source={CAT_CURIOUS} style={[styles.catImage, styles.catImageLarge]} />
           <Text style={[styles.cartEmptyTitle, { color: colors.text }]}>{t("wishlistEmptyTitle")}</Text>
           <Text style={[styles.cartEmptySubtitle, { color: colors.muted }]}>
             {t("wishlistEmptySubtitle")}
@@ -2181,8 +2375,8 @@ function WishListScreen({
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }] }
       contentContainerStyle={{ paddingBottom: 160 }}
-      keyboardShouldPersistTaps="handled"
-    >
+            keyboardShouldPersistTaps="handled"
+          >
       <Text style={[styles.header, { color: colors.text }]}>{t("wishlistTitle")}</Text>
       <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
         {t("wishlistSummary", { amount: totalTarget })}
@@ -2197,14 +2391,108 @@ function WishListScreen({
           current: formatCurrency(convertToCurrency(wish.savedUSD || 0, currency), currency),
           target: targetLocal,
         });
+        const isPrimaryGoal =
+          wish.kind === PRIMARY_GOAL_KIND || wish.id === PRIMARY_GOAL_WISH_ID;
+        const badgeText = isPrimaryGoal
+          ? t("goalPrimaryBadge")
+          : wish.status === "done"
+          ? t("wishlistDoneLabel")
+          : `${Math.round(progress * 100)}%`;
+        const remainingUSD = Math.max((wish.targetUSD || 0) - (wish.savedUSD || 0), 0);
+        const remainingLabel = formatCurrency(convertToCurrency(remainingUSD, currency), currency);
+        if (isPrimaryGoal) {
+          const preset = getGoalPreset(wish.goalId || primaryGoalId);
+          const emblem = preset?.emoji || "🎯";
+          const secondaryColor = isDarkTheme
+            ? "rgba(14,15,22,0.65)"
+            : "rgba(246,247,251,0.8)";
+          const badgeStyle = isDarkTheme
+            ? {
+                borderColor: "rgba(14,15,22,0.25)",
+                backgroundColor: "rgba(14,15,22,0.08)",
+              }
+            : {
+                borderColor: "rgba(246,247,251,0.35)",
+                backgroundColor: "rgba(246,247,251,0.15)",
+              };
+          const trackColor = isDarkTheme
+            ? "rgba(14,15,22,0.15)"
+            : "rgba(246,247,251,0.2)";
+          const fillColor = isDarkTheme
+            ? "rgba(14,15,22,0.85)"
+            : "rgba(246,247,251,0.95)";
+          const auraColor = isDarkTheme
+            ? "rgba(0,0,0,0.06)"
+            : "rgba(255,255,255,0.18)";
+          return (
+            <View key={wish.id} style={[styles.primaryGoalCard, { backgroundColor: colors.text }]}>
+              <View style={[styles.primaryGoalAura, { backgroundColor: auraColor }]} />
+              <View style={styles.primaryGoalTop}>
+                <View style={{ flex: 1, gap: 8 }}>
+                  <View
+                    style={[
+                      styles.primaryGoalBadge,
+                      badgeStyle,
+                    ]}
+                  >
+                    <Text style={[styles.primaryGoalBadgeText, { color: colors.background }]}>
+                      {t("goalPrimaryBadge")}
+                    </Text>
+                  </View>
+                  <Text style={[styles.primaryGoalTitle, { color: colors.background }]}>
+                    {wish.title}
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.primaryGoalEmblem,
+                    {
+                      borderColor: badgeStyle.borderColor,
+                      backgroundColor: badgeStyle.backgroundColor,
+                    },
+                  ]}
+                >
+                  <Text style={{ fontSize: 30 }}>{emblem}</Text>
+                </View>
+              </View>
+              <Text style={[styles.primaryGoalSubtitle, { color: secondaryColor }]}>
+                {t("primaryGoalRemaining", { amount: remainingLabel })}
+              </Text>
+              <Text style={[styles.primaryGoalSubtitle, { color: secondaryColor }]}>
+                {progressLabel}
+              </Text>
+              <View style={styles.primaryGoalProgressRow}>
+                <View
+                  style={[
+                    styles.primaryGoalProgressTrack,
+                    {
+                      backgroundColor: trackColor,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.primaryGoalProgressFill,
+                      {
+                        width: `${progress * 100}%`,
+                        backgroundColor: fillColor,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={[styles.primaryGoalPercent, { color: colors.background }]}>
+                  {`${Math.round(progress * 100)}%`}
+                </Text>
+              </View>
+            </View>
+          );
+        }
         return (
           <View key={wish.id} style={[styles.wishCard, { backgroundColor: colors.card }] }>
             <View style={styles.wishHeader}>
               <Text style={[styles.wishTitle, { color: colors.text }]}>{wish.title}</Text>
               <View style={styles.wishBadge}>
-                <Text style={{ color: colors.muted }}>
-                  {wish.status === "done" ? t("wishlistDoneLabel") : `${Math.round(progress * 100)}%`}
-                </Text>
+                <Text style={{ color: colors.muted }}>{badgeText}</Text>
               </View>
             </View>
             <Text style={[styles.wishMeta, { color: colors.muted }]}>{progressLabel}</Text>
@@ -2216,12 +2504,14 @@ function WishListScreen({
                 ]}
               />
             </View>
-            <TouchableOpacity
-              style={[styles.wishButtonGhost, { borderColor: colors.border, marginTop: 12 }]}
-              onPress={() => onRemoveWish(wish.id)}
-            >
-              <Text style={{ color: colors.muted }}>{t("wishlistRemove")}</Text>
-            </TouchableOpacity>
+            {!isPrimaryGoal && (
+              <TouchableOpacity
+                style={[styles.wishButtonGhost, { borderColor: colors.border, marginTop: 12 }]}
+                onPress={() => onRemoveWish(wish.id)}
+              >
+                <Text style={{ color: colors.muted }}>{t("wishlistRemove")}</Text>
+              </TouchableOpacity>
+            )}
           </View>
         );
       })}
@@ -2240,7 +2530,7 @@ function PendingScreen({ items, currency, t, colors, onResolve }) {
       <View style={[styles.container, { backgroundColor: colors.background }] }>
         <Text style={[styles.header, { color: colors.text }]}>{t("pendingTitle")}</Text>
         <View style={styles.cartEmptyState}>
-          <Image source={{ uri: CAT_IMAGE }} style={styles.catImage} />
+          <Image source={CAT_CURIOUS} style={[styles.catImage, styles.catImageLarge]} />
           <Text style={[styles.cartEmptyTitle, { color: colors.text }]}>{t("pendingEmptyTitle")}</Text>
           <Text style={[styles.cartEmptySubtitle, { color: colors.muted }]}>
             {t("pendingEmptySubtitle")}
@@ -2526,6 +2816,7 @@ function ProfileScreen({
   onThemeToggle,
   onLanguageChange,
   onCurrencyChange,
+  onGoalChange,
   onResetData,
   onPickImage,
   theme,
@@ -2537,6 +2828,7 @@ function ProfileScreen({
   colors,
 }) {
   const currentCurrency = currencyValue || profile.currency || DEFAULT_PROFILE.currency;
+  const activeGoalId = profile.goal || DEFAULT_PROFILE.goal;
   const historyPreview = (history || []).slice(0, 5);
   const locale = language === "ru" ? "ru-RU" : "en-US";
   const formatLocalAmount = (valueUSD = 0) =>
@@ -2600,7 +2892,7 @@ function ProfileScreen({
             onPress={() => isEditing && onPickImage?.()}
           >
             <Image
-              source={{ uri: profile.avatar || DEFAULT_REMOTE_IMAGE }}
+              source={profile.avatar ? { uri: profile.avatar } : CAT_IMAGE}
               style={styles.profileAvatar}
               resizeMode="cover"
             />
@@ -2776,6 +3068,37 @@ function ProfileScreen({
             ))}
           </View>
         </View>
+        <View style={styles.settingRow}>
+          <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("primaryGoalLabel")}</Text>
+          <View style={styles.profileGoalGrid}>
+            {GOAL_PRESETS.map((goal) => {
+              const active = goal.id === activeGoalId;
+              return (
+                <TouchableOpacity
+                  key={goal.id}
+                  style={[
+                    styles.profileGoalOption,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: active ? colors.text : "transparent",
+                    },
+                  ]}
+                  onPress={() => onGoalChange?.(goal.id)}
+                >
+                  <Text style={styles.profileGoalEmoji}>{goal.emoji}</Text>
+                  <Text
+                    style={[
+                      styles.profileGoalText,
+                      { color: active ? colors.background : colors.text },
+                    ]}
+                  >
+                    {goal[language] || goal.en}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
         <TouchableOpacity
           style={[styles.resetButton, { borderColor: colors.border }]}
           onPress={onResetData}
@@ -2822,8 +3145,10 @@ export default function App() {
   const [purchases, setPurchases] = useState([]);
   const [activeTab, setActiveTab] = useState("feed");
   const [catalogOverrides, setCatalogOverrides] = useState({});
+  const [titleOverrides, setTitleOverrides] = useState({});
   const [temptations, setTemptations] = useState(DEFAULT_TEMPTATIONS);
-  const [priceEditor, setPriceEditor] = useState({ visible: false, item: null, value: "" });
+  const [quickTemptations, setQuickTemptations] = useState([]);
+  const [priceEditor, setPriceEditor] = useState({ visible: false, item: null, value: "", title: "" });
   const [savedTotalUSD, setSavedTotalUSD] = useState(0);
   const [declineCount, setDeclineCount] = useState(0);
   const [pendingList, setPendingList] = useState([]);
@@ -2840,11 +3165,13 @@ export default function App() {
   const [overlay, setOverlay] = useState(null);
   const [confettiKey, setConfettiKey] = useState(0);
   const overlayTimer = useRef(null);
-  const cartBadgeScale = useRef(new Animated.Value(0)).current;
+  const cartBadgeScale = useRef(new Animated.Value(1)).current;
   const [onboardingStep, setOnboardingStep] = useState("logo");
   const [registrationData, setRegistrationData] = useState(INITIAL_REGISTRATION);
   const [selectedGoal, setSelectedGoal] = useState(null);
   const [showImageSourceSheet, setShowImageSourceSheet] = useState(false);
+  const [showCustomSpend, setShowCustomSpend] = useState(false);
+  const [quickSpendDraft, setQuickSpendDraft] = useState({ title: "", amount: "" });
   const imagePickerResolver = useRef(null);
   const [refuseStats, setRefuseStats] = useState({});
   const [cardFeedback, setCardFeedback] = useState({});
@@ -2926,9 +3253,23 @@ export default function App() {
   }, [products, activeCategory]);
 
   const colors = THEMES[theme];
+  const activeGender = profile.gender || registrationData.gender || DEFAULT_PROFILE.gender || "none";
 
   const t = (key, replacements = {}) => {
-    let text = TRANSLATIONS[language][key] || key;
+    let raw = TRANSLATIONS[language][key];
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const genderValue = raw[activeGender];
+      if (typeof genderValue === "string") {
+        raw = genderValue;
+      } else if (typeof raw.none === "string") {
+        raw = raw.none;
+      } else {
+        const fallbackValue = Object.values(raw).find((value) => typeof value === "string");
+        raw = fallbackValue !== undefined ? fallbackValue : undefined;
+      }
+    }
+    let text = raw || key;
+    text = String(text);
     Object.entries(replacements).forEach(([token, value]) => {
       text = text.replace(`{{${token}}}`, value);
     });
@@ -2970,6 +3311,7 @@ export default function App() {
         languageRaw,
         onboardingRaw,
         catalogRaw,
+        titleRaw,
         savedTotalRaw,
         declinesRaw,
         freeDayRaw,
@@ -2985,6 +3327,7 @@ export default function App() {
         AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
         AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
         AsyncStorage.getItem(STORAGE_KEYS.CATALOG),
+        AsyncStorage.getItem(STORAGE_KEYS.TITLE_OVERRIDES),
         AsyncStorage.getItem(STORAGE_KEYS.SAVED_TOTAL),
         AsyncStorage.getItem(STORAGE_KEYS.DECLINES),
         AsyncStorage.getItem(STORAGE_KEYS.FREE_DAY),
@@ -3017,6 +3360,7 @@ export default function App() {
       if (themeRaw) setTheme(themeRaw);
       if (languageRaw) setLanguage(languageRaw);
       if (catalogRaw) setCatalogOverrides(JSON.parse(catalogRaw));
+      if (titleRaw) setTitleOverrides(JSON.parse(titleRaw));
       if (savedTotalRaw) setSavedTotalUSD(Number(savedTotalRaw) || 0);
       if (declinesRaw) setDeclineCount(Number(declinesRaw) || 0);
       if (freeDayRaw) {
@@ -3048,6 +3392,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (onboardingStep === "done" && profile.goal) {
+      ensurePrimaryGoalWish(profile.goal, language);
+    }
+  }, [ensurePrimaryGoalWish, onboardingStep, profile.goal, language]);
+
+  useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.WISHES, JSON.stringify(wishes)).catch(() => {});
   }, [wishes]);
 
@@ -3074,6 +3424,10 @@ export default function App() {
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.CATALOG, JSON.stringify(catalogOverrides)).catch(() => {});
   }, [catalogOverrides]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.TITLE_OVERRIDES, JSON.stringify(titleOverrides)).catch(() => {});
+  }, [titleOverrides]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.SAVED_TOTAL, String(savedTotalUSD)).catch(() => {});
@@ -3128,12 +3482,22 @@ export default function App() {
     const nextList = DEFAULT_TEMPTATIONS.map((item) => ({
       ...item,
       priceUSD: catalogOverrides[item.id] ?? item.basePriceUSD,
+      titleOverride: titleOverrides[item.id] || null,
     })).sort(
       (a, b) =>
         (a.priceUSD ?? a.basePriceUSD ?? 0) - (b.priceUSD ?? b.basePriceUSD ?? 0)
     );
-    setTemptations(buildPersonalizedTemptations(profile, nextList));
-  }, [catalogOverrides, profile]);
+    const personalized = buildPersonalizedTemptations(profile, nextList).map((card) => ({
+      ...card,
+      titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
+    }));
+    const quickAdjusted = quickTemptations.map((card) => ({
+      ...card,
+      priceUSD: catalogOverrides[card.id] ?? card.priceUSD ?? card.basePriceUSD,
+      titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
+    }));
+    setTemptations([...quickAdjusted, ...personalized]);
+  }, [catalogOverrides, profile, titleOverrides, quickTemptations]);
 
   useEffect(() => {
     return () => {
@@ -3141,23 +3505,6 @@ export default function App() {
       Object.values(cardFeedbackTimers.current).forEach((timer) => clearTimeout(timer));
     };
   }, []);
-
-  useEffect(() => {
-    if (wishes.length > 0) {
-      Animated.spring(cartBadgeScale, {
-        toValue: 1,
-        useNativeDriver: true,
-        friction: 5,
-        tension: 140,
-      }).start();
-    } else {
-      Animated.timing(cartBadgeScale, {
-        toValue: 0,
-        duration: 150,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [wishes.length, cartBadgeScale]);
 
   const handleCategorySelect = (category) => {
     triggerHaptic();
@@ -3188,9 +3535,22 @@ export default function App() {
     setActiveCurrency(code);
   };
 
-  const handleLanguageSelect = (lng) => {
-    handleLanguageChange(lng);
-    setTimeout(() => setOnboardingStep("register"), 150);
+  const handleProfileGoalChange = (goalId) => {
+    if (!goalId || profile.goal === goalId) return;
+    triggerHaptic();
+    setProfile((prev) => ({ ...prev, goal: goalId }));
+    setProfileDraft((prev) => ({ ...prev, goal: goalId }));
+    ensurePrimaryGoalWish(goalId, language);
+  };
+
+  const handleLanguageContinue = () => {
+    triggerHaptic();
+    setOnboardingStep("guide");
+  };
+
+  const handleGuideContinue = () => {
+    triggerHaptic();
+    setOnboardingStep("register");
   };
 
   const updateRegistrationData = (field, value) => {
@@ -3199,6 +3559,44 @@ export default function App() {
     }
     setRegistrationData((prev) => ({ ...prev, [field]: value }));
   };
+
+  const ensurePrimaryGoalWish = useCallback(
+    (goalId, lng) => {
+      if (!goalId) return;
+      const goalPreset = getGoalPreset(goalId);
+      if (!goalPreset) return;
+      const languageKey = lng || "en";
+      const title = `${goalPreset.emoji} ${goalPreset[languageKey] || goalPreset.en}`;
+      const targetUSD = goalPreset.targetUSD || 500;
+      setWishes((prev) => {
+        const existingIndex = prev.findIndex(
+          (wish) => wish.kind === PRIMARY_GOAL_KIND || wish.id === PRIMARY_GOAL_WISH_ID
+        );
+        const existing = existingIndex >= 0 ? prev[existingIndex] : null;
+        const needsUpdate =
+          !existing ||
+          existing.goalId !== goalPreset.id ||
+          existing.title !== title ||
+          existing.targetUSD !== targetUSD;
+        if (!needsUpdate) return prev;
+        const baseList = existing ? prev.filter((_, idx) => idx !== existingIndex) : prev;
+        const nextWish = {
+          id: PRIMARY_GOAL_WISH_ID,
+          templateId: `goal_${goalPreset.id}`,
+          title,
+          targetUSD,
+          savedUSD: existing?.savedUSD || 0,
+          status: existing?.status || "active",
+          createdAt: existing?.createdAt || Date.now(),
+          autoManaged: existing?.autoManaged !== undefined ? existing.autoManaged : true,
+          kind: PRIMARY_GOAL_KIND,
+          goalId: goalPreset.id,
+        };
+        return [nextWish, ...baseList];
+      });
+    },
+    [setWishes]
+  );
 
   const openImagePickerSheet = (resolver) => {
     imagePickerResolver.current = resolver;
@@ -3251,6 +3649,39 @@ export default function App() {
     setOnboardingStep("persona");
   };
 
+  const handleQuickCustomChange = (field, value) => {
+    setQuickSpendDraft((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleQuickCustomSubmit = (customData) => {
+    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+    const parsedAmount = parseFloat((customData.amount || "").replace(",", "."));
+    if (!customData.title?.trim() || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      Alert.alert("Almost", t("customSpendTitle"));
+      return;
+    }
+    const amountUSD = convertFromCurrency(parsedAmount, currencyCode);
+    const newCustom = {
+      title: customData.title.trim(),
+      amountUSD,
+      currency: currencyCode,
+      emoji: customData.emoji || "✨",
+      id: customData.id || `custom_habit_${Date.now()}`,
+    };
+    const card = createCustomHabitTemptation(newCustom, currencyCode);
+    if (card) {
+      setQuickTemptations((prev) => [card, ...prev]);
+    }
+    setQuickSpendDraft({ title: "", amount: "" });
+    setShowCustomSpend(false);
+    triggerOverlayState("cart", t("wishAdded", { title: newCustom.title }));
+  };
+
+  const handleQuickCustomCancel = () => {
+    setQuickSpendDraft({ title: "", amount: "" });
+    setShowCustomSpend(false);
+  };
+
   const handlePersonaSubmit = () => {
     if (!registrationData.persona) {
       Alert.alert("Almost", t("personaHabitLabel"));
@@ -3296,7 +3727,7 @@ export default function App() {
       || registrationData.firstName.trim()
       || DEFAULT_PROFILE.name;
     const personaId = registrationData.persona || DEFAULT_PERSONA_ID;
-    const gender = registrationData.gender || "neutral";
+    const gender = registrationData.gender || "none";
     let customSpend = null;
     const customName = registrationData.customSpendTitle?.trim();
     const customAmount = parseFloat((registrationData.customSpendAmount || "").replace(",", "."));
@@ -3327,6 +3758,7 @@ export default function App() {
     await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(updatedProfile)).catch(() => {});
     await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, "done").catch(() => {});
     setActiveCurrency(updatedProfile.currency);
+    ensurePrimaryGoalWish(selectedGoal, language);
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     triggerOverlayState("completion", t("goalCompleteMessage"), 2400);
     setTimeout(() => {
@@ -3517,7 +3949,7 @@ export default function App() {
           createdAt: Date.now(),
           autoManaged: true,
         };
-        setWishes((prev) => [newWish, ...prev]);
+        setWishes((prev) => insertWishAfterPrimary(prev, newWish));
         logHistoryEvent("wish_added", { title, targetUSD: priceUSD, templateId: item.id });
         triggerOverlayState("purchase", t("wishAdded", { title }));
         triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
@@ -3548,6 +3980,7 @@ export default function App() {
         });
         triggerCardFeedback(item.id);
         triggerCoinHaptics();
+        triggerOverlayState("save", title);
         return;
       }
       if (type === "maybe") {
@@ -3621,15 +4054,20 @@ export default function App() {
       visible: true,
       item,
       value: String(Math.round(currentValue * 100) / 100),
+      title: resolveTemptationTitle(item, language, titleOverrides[item.id]),
     });
   };
 
   const closePriceEditor = () => {
-    setPriceEditor({ visible: false, item: null, value: "" });
+    setPriceEditor({ visible: false, item: null, value: "", title: "" });
   };
 
   const handlePriceInputChange = (value) => {
     setPriceEditor((prev) => ({ ...prev, value }));
+  };
+
+  const handlePriceTitleChange = (value) => {
+    setPriceEditor((prev) => ({ ...prev, title: value }));
   };
 
   const persistPriceOverride = (valueUSD = null) => {
@@ -3646,6 +4084,20 @@ export default function App() {
     });
   };
 
+  const persistTitleOverride = (value = null) => {
+    const targetId = priceEditor.item?.id;
+    if (!targetId) return;
+    setTitleOverrides((prev) => {
+      const next = { ...prev };
+      if (value && value.length) {
+        next[targetId] = value;
+      } else {
+        delete next[targetId];
+      }
+      return next;
+    });
+  };
+
   const savePriceEdit = () => {
     if (!priceEditor.item) return;
     const parsed = parseFloat((priceEditor.value || "").replace(",", "."));
@@ -3655,16 +4107,24 @@ export default function App() {
     }
     const usdValue = parsed / (CURRENCY_RATES[activeCurrency] || 1);
     persistPriceOverride(usdValue);
+    const titleValue = (priceEditor.title || "").trim();
+    persistTitleOverride(titleValue || null);
     closePriceEditor();
   };
 
   const resetPriceEdit = () => {
     persistPriceOverride(null);
+    persistTitleOverride(null);
     closePriceEditor();
   };
 
   const handleRemoveWish = useCallback(
     (wishId) => {
+      const targetWish = wishes.find((wish) => wish.id === wishId);
+      if (targetWish?.kind === PRIMARY_GOAL_KIND || wishId === PRIMARY_GOAL_WISH_ID) {
+        Alert.alert(t("wishlistTitle"), t("primaryGoalLocked"));
+        return;
+      }
       Alert.alert(t("wishlistTitle"), t("wishlistRemoveConfirm"), [
         { text: t("priceEditCancel"), style: "cancel" },
         {
@@ -3674,7 +4134,7 @@ export default function App() {
         },
       ]);
     },
-    [t]
+    [t, wishes]
   );
 
   const handlePendingDecision = useCallback(
@@ -3703,7 +4163,7 @@ export default function App() {
           createdAt: Date.now(),
           autoManaged: true,
         };
-        setWishes((prev) => [newWish, ...prev]);
+        setWishes((prev) => insertWishAfterPrimary(prev, newWish));
         setDecisionStats((prev) => ({
           ...prev,
           resolvedToWishes: prev.resolvedToWishes + 1,
@@ -3742,11 +4202,12 @@ export default function App() {
     setOverlay({ type, message });
     overlayTimer.current = setTimeout(() => {
       setOverlay(null);
-    }, duration ?? (type === "cart" ? 1800 : 2600));
+    }, duration ?? (type === "cart" ? 1800 : type === "level" ? 3200 : 2600));
   };
 
   const triggerCelebration = () => {
-    const messages = CELEBRATION_MESSAGES[language];
+    const messages = getCelebrationMessages(language, activeGender);
+    if (!messages.length) return;
     triggerOverlayState("purchase", messages[Math.floor(Math.random() * messages.length)]);
   };
 
@@ -3781,6 +4242,8 @@ export default function App() {
             setSavedTotalUSD(0);
             setDeclineCount(0);
             setCatalogOverrides({});
+            setTitleOverrides({});
+            setQuickTemptations([]);
             setFreeDayStats({ ...INITIAL_FREE_DAY_STATS });
             setDecisionStats({ ...INITIAL_DECISION_STATS });
             setHistoryEvents([]);
@@ -3831,6 +4294,7 @@ export default function App() {
             onRemoveWish={handleRemoveWish}
             t={t}
             colors={colors}
+            primaryGoalId={profile.goal}
           />
         );
       case "pending":
@@ -3870,6 +4334,7 @@ export default function App() {
             onThemeToggle={handleThemeToggle}
             onLanguageChange={handleLanguageChange}
             onCurrencyChange={handleProfileCurrencyChange}
+            onGoalChange={handleProfileGoalChange}
             onResetData={handleResetData}
             onPickImage={handlePickImage}
             theme={theme}
@@ -3902,6 +4367,8 @@ export default function App() {
             cardFeedback={cardFeedback}
             historyEvents={historyEvents}
             profile={profile}
+            titleOverrides={titleOverrides}
+            onLevelCelebrate={(level) => triggerOverlayState("level", level)}
           />
         );
     }
@@ -3912,7 +4379,21 @@ export default function App() {
     if (onboardingStep === "logo") {
       onboardContent = <LogoSplash onDone={() => setOnboardingStep("language")} />;
     } else if (onboardingStep === "language") {
-      onboardContent = <LanguageScreen colors={colors} t={t} onSelect={handleLanguageSelect} />;
+      onboardContent = (
+        <LanguageScreen
+          colors={colors}
+          t={t}
+          selectedLanguage={language}
+          selectedCurrency={registrationData.currency || DEFAULT_PROFILE.currency}
+          onLanguageChange={handleLanguageChange}
+          onCurrencyChange={(code) => updateRegistrationData("currency", code)}
+          onContinue={handleLanguageContinue}
+        />
+      );
+    } else if (onboardingStep === "guide") {
+      onboardContent = (
+        <HowItWorksScreen colors={colors} t={t} onContinue={handleGuideContinue} />
+      );
     } else if (onboardingStep === "register") {
       onboardContent = (
         <RegistrationScreen
@@ -4013,26 +4494,37 @@ export default function App() {
           ))}
         </View>
 
-        {wishes.length > 0 && (
-          <AnimatedTouchableOpacity
-            style={[
-              styles.cartBadge,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-                transform: [{ scale: cartBadgeScale }],
-              },
-            ]}
-            onPress={() => handleTabChange("cart")}
-          >
-            <Text style={[styles.cartBadgeIcon, { color: colors.text }]}>🧊</Text>
-            <Text style={[styles.cartBadgeCount, { color: colors.text }]}>
-              {wishes.length}
-            </Text>
-          </AnimatedTouchableOpacity>
-        )}
+        <AnimatedTouchableOpacity
+          style={[
+            styles.cartBadge,
+            {
+              backgroundColor: colors.text,
+              borderColor: colors.border,
+              transform: [{ scale: cartBadgeScale }],
+            },
+          ]}
+          onPress={() => {
+            Keyboard.dismiss();
+            triggerHaptic();
+            setQuickSpendDraft({ title: "", amount: "" });
+            setShowCustomSpend(true);
+          }}
+        >
+          <Text style={[styles.cartBadgeIcon, { color: colors.background }]}>+</Text>
+        </AnimatedTouchableOpacity>
 
-        {overlay && (
+        <QuickCustomModal
+          visible={showCustomSpend}
+          colors={colors}
+          t={t}
+          currency={profile.currency || DEFAULT_PROFILE.currency}
+          data={quickSpendDraft}
+          onChange={handleQuickCustomChange}
+          onSubmit={handleQuickCustomSubmit}
+          onCancel={handleQuickCustomCancel}
+        />
+
+        {overlay && overlay.type !== "level" && overlay.type !== "save" && (
           <View style={styles.confettiLayer} pointerEvents="none">
             {overlay.type === "cancel" && <RainOverlay colors={colors} />}
             {overlay.type === "purchase" && (
@@ -4057,7 +4549,7 @@ export default function App() {
             >
               {(overlay.type === "cancel" || overlay.type === "purchase" || overlay.type === "completion") && (
                 <Image
-                  source={{ uri: CAT_IMAGE }}
+                  source={CAT_IMAGE}
                   style={[
                     styles.celebrationCat,
                     overlay.type === "purchase" || overlay.type === "completion" ? styles.catHappy : styles.catSad,
@@ -4068,6 +4560,20 @@ export default function App() {
                 {overlay.message}
               </Text>
             </View>
+          </View>
+        )}
+        {overlay?.type === "level" && (
+          <LevelUpCelebration colors={colors} message={overlay.message} level={overlay.message} t={t} />
+        )}
+        {overlay?.type === "save" && (
+          <View style={styles.saveOverlay} pointerEvents="none">
+            <Image source={CAT_HAPPY_GIF} style={styles.saveGif} />
+            <Text style={[styles.saveTitle, { color: colors.text }]}>
+              {t("saveCelebrateTitle", { title: overlay.message })}
+            </Text>
+            <Text style={[styles.saveSubtitle, { color: colors.muted }]}>
+              {t("saveCelebrateSubtitle")}
+            </Text>
           </View>
         )}
 
@@ -4082,6 +4588,24 @@ export default function App() {
                         priceEditor.item.title?.en ||
                         t("priceEditTitle")
                       : t("priceEditTitle")}
+                  </Text>
+                  <Text style={[styles.priceModalLabel, { color: colors.muted, marginTop: 0 }]}>
+                    {t("priceEditNameLabel")}
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.priceModalInput,
+                      { borderColor: colors.border, color: colors.text },
+                    ]}
+                    value={priceEditor.title}
+                    onChangeText={handlePriceTitleChange}
+                    placeholder={t("priceEditNameLabel")}
+                    placeholderTextColor={colors.muted}
+                  />
+                  <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
+                    {t("priceEditAmountLabel", {
+                      currency: profile.currency || DEFAULT_PROFILE.currency,
+                    })}
                   </Text>
                   <TextInput
                     style={[
@@ -4284,11 +4808,16 @@ const styles = StyleSheet.create({
   savedHeroNextText: {
     marginTop: 6,
   },
-  savedHeroToggleRow: {
-    marginTop: 12,
-    paddingTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.4)",
+  savedHeroNextRow: {
+    marginTop: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  savedHeroToggleButton: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
   },
   savedHeroToggleText: {
     fontSize: 12,
@@ -4456,10 +4985,6 @@ const styles = StyleSheet.create({
   payCardTitle: {
     fontSize: 16,
     fontWeight: "600",
-  },
-  payCardMeta: {
-    fontSize: 13,
-    marginTop: 2,
   },
   payCardAmount: {
     fontSize: 18,
@@ -4681,10 +5206,29 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     padding: 20,
     gap: 12,
-    marginBottom: 16,
     borderWidth: 1,
     borderColor: "transparent",
     position: "relative",
+  },
+  temptationSwipeWrapper: {
+    marginBottom: 16,
+    position: "relative",
+  },
+  temptationSwipeBackground: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderRadius: 32,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    justifyContent: "center",
+    alignItems: "flex-start",
+    paddingLeft: 24,
+  },
+  temptationSwipeIcon: {
+    fontSize: 28,
   },
   temptationHeader: {
     flexDirection: "row",
@@ -4934,6 +5478,11 @@ const styles = StyleSheet.create({
     opacity: 0.4,
     borderRadius: 32,
   },
+  catImageLarge: {
+    width: 220,
+    height: 220,
+    opacity: 0.9,
+  },
   cartEmptyTitle: {
     fontSize: 22,
     fontWeight: "700",
@@ -5032,6 +5581,74 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     justifyContent: "center",
     alignItems: "center",
+  },
+  primaryGoalCard: {
+    borderRadius: 36,
+    padding: 28,
+    marginBottom: 20,
+    overflow: "hidden",
+  },
+  primaryGoalAura: {
+    position: "absolute",
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    top: -60,
+    right: -40,
+  },
+  primaryGoalTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 16,
+  },
+  primaryGoalBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderWidth: 1,
+    alignSelf: "flex-start",
+  },
+  primaryGoalBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  primaryGoalTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  primaryGoalSubtitle: {
+    fontSize: 13,
+    marginTop: 6,
+  },
+  primaryGoalEmblem: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  primaryGoalProgressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 18,
+  },
+  primaryGoalProgressTrack: {
+    flex: 1,
+    height: 14,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  primaryGoalProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  primaryGoalPercent: {
+    fontSize: 16,
+    fontWeight: "800",
   },
   pendingCard: {
     borderRadius: 24,
@@ -5301,6 +5918,48 @@ const styles = StyleSheet.create({
   settingChoices: {
     flexDirection: "row",
     gap: 12,
+    flexWrap: "wrap",
+  },
+  profileGoalGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  profileGoalOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  profileGoalEmoji: {
+    fontSize: 18,
+  },
+  profileGoalText: {
+    fontWeight: "600",
+  },
+  guideCards: {
+    width: "100%",
+    gap: 12,
+  },
+  guideCard: {
+    borderRadius: 22,
+    padding: 18,
+    borderWidth: 1,
+    gap: 8,
+  },
+  guideEmoji: {
+    fontSize: 28,
+  },
+  guideTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  guideDesc: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   settingChip: {
     paddingHorizontal: 14,
@@ -5468,12 +6127,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 96,
     right: 24,
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    flexDirection: "row",
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: "center",
     alignItems: "center",
-    gap: 6,
     shadowColor: "#000",
     shadowOpacity: 0.2,
     shadowOffset: { width: 0, height: 2 },
@@ -5482,11 +6140,60 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   cartBadgeIcon: {
-    fontSize: 18,
+    fontSize: 32,
   },
-  cartBadgeCount: {
+  quickModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  quickModalCard: {
+    width: "100%",
+    borderRadius: 28,
+    padding: 20,
+    gap: 14,
+  },
+  quickModalTitle: {
+    fontSize: 20,
     fontWeight: "700",
-    fontSize: 16,
+  },
+  quickModalSubtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  quickModalActions: {
+    flexDirection: "row",
+    gap: 12,
+    width: "100%",
+  },
+  quickModalSecondary: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  quickModalSecondaryText: {
+    fontWeight: "600",
+  },
+  quickModalPrimary: {
+    flex: 1,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  quickModalPrimaryText: {
+    fontWeight: "700",
+  },
+  languageMascot: {
+    width: 240,
+    height: 240,
+    alignSelf: "center",
+    marginBottom: 10,
   },
   confettiLayer: {
     position: "absolute",
@@ -5527,6 +6234,67 @@ const styles = StyleSheet.create({
   },
   catSad: {
     opacity: 0.7,
+  },
+  levelOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  levelBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255,247,214,0.95)",
+  },
+  levelContent: {
+    padding: 28,
+    borderRadius: 32,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderWidth: 2,
+    borderColor: "rgba(255,186,0,0.4)",
+    alignItems: "center",
+    gap: 12,
+  },
+  levelTitle: {
+    fontSize: 28,
+    fontWeight: "900",
+  },
+  levelSubtitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  levelCoin: {
+    position: "absolute",
+    borderRadius: 999,
+    backgroundColor: "#FFD93D",
+  },
+  saveOverlay: {
+    position: "absolute",
+    top: "40%",
+    left: 30,
+    right: 30,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderRadius: 28,
+    padding: 24,
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderColor: "rgba(18,15,40,0.08)",
+  },
+  saveGif: {
+    width: 120,
+    height: 120,
+    borderRadius: 28,
+    resizeMode: "contain",
+  },
+  saveTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  saveSubtitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
   },
   rainLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -5594,6 +6362,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
     textAlign: "center",
+  },
+  priceModalLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 12,
+    marginBottom: 4,
+    textTransform: "uppercase",
   },
   priceModalInput: {
     borderWidth: 1,
@@ -5764,6 +6539,11 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     alignItems: "center",
   },
+  languageHint: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 16,
+  },
   logoSplash: {
     flex: 1,
     backgroundColor: "#fff",
@@ -5830,9 +6610,7 @@ function RegistrationScreen({ data, onChange, onSubmit, onPickImage, colors, t }
           {data.avatar ? (
             <Image source={{ uri: data.avatar }} style={styles.avatarImage} />
           ) : (
-            <View style={[styles.avatarPlaceholder, { borderColor: colors.border }]}>
-              <Text style={{ color: colors.muted, fontSize: 32 }}>+</Text>
-            </View>
+            <Image source={CAT_IMAGE} style={styles.avatarImage} />
           )}
           <Text style={{ color: colors.muted }}>{t("photoTapHint")}</Text>
         </TouchableOpacity>
@@ -6057,11 +6835,111 @@ function CustomHabitScreen({ data, onChange, onSubmit, colors, t, currency }) {
     </Animated.View>
   );
 }
-function LanguageScreen({ colors, t, onSelect }) {
+
+function QuickCustomModal({ visible, colors, t, currency, data, onChange, onSubmit, onCancel }) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <TouchableWithoutFeedback onPress={onCancel}>
+        <View style={styles.quickModalBackdrop}>
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View style={[styles.quickModalCard, { backgroundColor: colors.card }] }>
+              <Text style={[styles.quickModalTitle, { color: colors.text }]}>{t("quickCustomTitle")}</Text>
+              <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>{t("quickCustomSubtitle")}</Text>
+              <View style={{ gap: 8, width: "100%" }}>
+                <TextInput
+                  style={[styles.primaryInput, { borderColor: colors.border, color: colors.text }]}
+                  placeholder={t("quickCustomNameLabel")}
+                  placeholderTextColor={colors.muted}
+                  value={data.title}
+                  onChangeText={(text) => onChange("title", text)}
+                />
+                <TextInput
+                  style={[styles.primaryInput, { borderColor: colors.border, color: colors.text }]}
+                  placeholder={t("quickCustomAmountLabel", { currency })}
+                  placeholderTextColor={colors.muted}
+                  keyboardType="decimal-pad"
+                  value={data.amount}
+                  onChangeText={(text) => onChange("amount", text)}
+                />
+              </View>
+              <View style={styles.quickModalActions}>
+                <TouchableOpacity
+                  style={[styles.quickModalSecondary, { borderColor: colors.border }]}
+                  onPress={onCancel}
+                >
+                  <Text style={[styles.quickModalSecondaryText, { color: colors.muted }]}>
+                    {t("quickCustomCancel")}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.quickModalPrimary, { backgroundColor: colors.text }]}
+                  onPress={() => onSubmit(data)}
+                >
+                  <Text style={[styles.quickModalPrimaryText, { color: colors.background }]}>
+                    {t("quickCustomConfirm")}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
+function HowItWorksScreen({ colors, t, onContinue }) {
+  const fade = useFadeIn();
+  return (
+    <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
+      <ScrollView
+        contentContainerStyle={[styles.onboardContent, { gap: 18 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("onboardingGuideTitle")}</Text>
+        <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("onboardingGuideSubtitle")}</Text>
+        <View style={styles.guideCards}>
+          {HOW_IT_WORKS_STEPS.map((step) => (
+            <View
+              key={step.id}
+              style={[
+                styles.guideCard,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Text style={styles.guideEmoji}>{step.emoji}</Text>
+              <Text style={[styles.guideTitle, { color: colors.text }]}>{t(step.titleKey)}</Text>
+              <Text style={[styles.guideDesc, { color: colors.muted }]}>{t(step.descKey)}</Text>
+            </View>
+          ))}
+        </View>
+        <TouchableOpacity
+          style={[styles.primaryButton, { backgroundColor: colors.text }]}
+          onPress={onContinue}
+        >
+          <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("onboardingGuideButton")}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </Animated.View>
+  );
+}
+function LanguageScreen({
+  colors,
+  t,
+  selectedLanguage,
+  selectedCurrency,
+  onLanguageChange,
+  onCurrencyChange,
+  onContinue,
+}) {
   const fade = useFadeIn();
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <View style={styles.onboardContent}>
+        <Image source={CAT_WAVING} style={styles.languageMascot} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("languageTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("languageSubtitle")}</Text>
         <View style={styles.languageButtons}>
@@ -6071,13 +6949,56 @@ function LanguageScreen({ colors, t, onSelect }) {
           ].map((lang) => (
             <TouchableOpacity
               key={lang.key}
-              style={[styles.languageButton, { borderColor: colors.border }]}
-              onPress={() => onSelect(lang.key)}
+              style={[
+                styles.languageButton,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: selectedLanguage === lang.key ? colors.card : "transparent",
+                },
+              ]}
+              onPress={() => onLanguageChange?.(lang.key)}
             >
               <Text style={{ color: colors.text, fontWeight: "700" }}>{lang.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
+        <View style={{ width: "100%", marginTop: 32 }}>
+          <Text style={[styles.currencyLabel, { color: colors.muted }]}>{t("currencyLabel")}</Text>
+          <View style={[styles.currencyGrid, { marginTop: 12 }]}>
+            {CURRENCIES.map((currency) => {
+              const active = currency === selectedCurrency;
+              return (
+                <TouchableOpacity
+                  key={currency}
+                  style={[
+                    styles.currencyChipLarge,
+                    {
+                      backgroundColor: active ? colors.text : "transparent",
+                      borderColor: colors.border,
+                    },
+                  ]}
+                  onPress={() => onCurrencyChange?.(currency)}
+                >
+                  <Text
+                    style={{
+                      color: active ? colors.background : colors.text,
+                      fontWeight: "600",
+                    }}
+                  >
+                    {currency}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={[styles.languageHint, { color: colors.muted }]}>{t("languageCurrencyHint")}</Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.primaryButton, { backgroundColor: colors.text, marginTop: 32 }]}
+          onPress={onContinue}
+        >
+          <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("nextButton")}</Text>
+        </TouchableOpacity>
       </View>
     </Animated.View>
   );
@@ -6105,3 +7026,77 @@ function LogoSplash({ onDone }) {
     </View>
   );
 }
+const LevelUpCelebration = ({ colors, message, t }) => {
+  const coins = useMemo(
+    () =>
+      Array.from({ length: 28 }).map((_, index) => ({
+        id: `level_coin_${index}`,
+        delay: Math.random() * 400,
+        left: Math.random() * SCREEN_WIDTH,
+        size: 14 + Math.random() * 20,
+        duration: 1500 + Math.random() * 600,
+      })),
+    []
+  );
+  const levelNumber = Number(message) || 1;
+  return (
+    <View style={styles.levelOverlay} pointerEvents="none">
+      <View style={styles.levelBackdrop} />
+      <View style={styles.levelContent}>
+        <Text style={[styles.levelTitle, { color: colors.text }]}>{t("progressHeroLevel", { level: levelNumber })}</Text>
+        <Text style={[styles.levelSubtitle, { color: colors.text }]}>
+          {t("levelCelebrate", { level: levelNumber })}
+        </Text>
+      </View>
+      {coins.map((coin) => (
+        <FallingCoin key={coin.id} {...coin} />
+      ))}
+    </View>
+  );
+};
+
+const FallingCoin = ({ left, size, delay, duration }) => {
+  const progress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const animation = Animated.sequence([
+      Animated.delay(delay),
+      Animated.timing(progress, {
+        toValue: 1,
+        duration,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]);
+    animation.start();
+    return () => animation.stop();
+  }, [delay, duration, progress]);
+
+  const translateY = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-80, Dimensions.get("window").height],
+  });
+  const rotate = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["-40deg", "40deg"],
+  });
+  const opacity = progress.interpolate({
+    inputRange: [0, 0.1, 0.9, 1],
+    outputRange: [0, 1, 1, 0],
+  });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.levelCoin,
+        {
+          width: size,
+          height: size,
+          left,
+          opacity,
+          transform: [{ translateY }, { rotate }],
+        },
+      ]}
+    />
+  );
+};
