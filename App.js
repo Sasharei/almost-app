@@ -101,6 +101,11 @@ const INITIAL_DECISION_STATS = {
   resolvedToDeclines: 0,
 };
 
+const WEEKDAY_LABELS = {
+  ru: ["пн", "вт", "ср", "чт", "пт", "сб", "вс"],
+  en: ["M", "T", "W", "T", "F", "S", "S"],
+};
+
 const RainOverlay = ({ colors }) => {
   const drops = useMemo(
     () =>
@@ -191,6 +196,10 @@ const TRANSLATIONS = {
     appTagline: "витрина искушений, которые помогают копить",
     heroAwaiting: "в листе желаний",
     heroSpendLine: "уже сэкономлено {{amount}}. Красота без ущерба бюджету",
+    heroExpand: "Показать детали",
+    heroCollapse: "Скрыть детали",
+    heroDailyTitle: "Неделя экономии",
+    heroDailyEmpty: "Пока пусто — попробуй отказать себе хотя бы раз",
     feedEmptyTitle: "Фильтр пуст",
     feedEmptySubtitle: "Попробуй другой тег или обнови каталог",
     buyNow: "Оплатить через {{pay}}",
@@ -220,12 +229,20 @@ const TRANSLATIONS = {
     freeDayConfirm: "Удалось прожить день без лишних трат?",
     freeDayCongrats: "Серия {{days}} дня(ей)! Отличный фокус.",
     freeDayMilestone: "Серия {{days}} дней! Новый титул!",
-    freeDayStreakLabel: "Серия бесплатных дней",
+    freeDayCardTitle: "Серия бесплатных дней",
+    freeDayActiveLabel: "Серия {{days}} дня",
+    freeDayInactiveLabel: "Отметь вечер без трат",
+    freeDayCurrentLabel: "Текущая",
+    freeDayBestLabel: "Лучшая",
+    freeDayTotalShort: "Всего",
+    freeDayWeekTitle: "Эта неделя",
+    freeDayExpand: "Показать детали",
+    freeDayCollapse: "Скрыть",
     freeDayTotalLabel: "Всего: {{total}}",
-    pendingTab: "Холодильник",
-    pendingTitle: "Холодильник",
-    pendingEmptyTitle: "В холодильнике пусто",
-    pendingEmptySubtitle: "Отправляй хотелки «в холодильник» — вернёмся через 14 дней.",
+    pendingTab: "Думаем",
+    pendingTitle: "Думаем",
+    pendingEmptyTitle: "В «думаем» пусто",
+    pendingEmptySubtitle: "Отправляй хотелки в «думаем» — вернёмся через 14 дней.",
     pendingDaysLeft: "осталось {{days}} д.",
     pendingExpired: "срок вышел",
     pendingDueToday: "реши сегодня",
@@ -233,7 +250,7 @@ const TRANSLATIONS = {
     pendingActionDecline: "Сэкономить",
     pendingNotificationTitle: "Прошло 14 дней",
     pendingNotificationBody: "Готов(а) решить, что делать с «{{title}}»?",
-    pendingAdded: "Улетело в холодильник. Напомним вовремя.",
+    pendingAdded: "Добавлено в «думаем». Напомним вовремя.",
     feedTab: "Лента",
     profileTab: "Профиль",
     payButton: "Оплатить",
@@ -283,6 +300,7 @@ const TRANSLATIONS = {
     analyticsTitle: "Прогресс",
     analyticsPendingToBuy: "Хотелки",
     analyticsPendingToDecline: "Отказы",
+    analyticsFridgeCount: "В «думаем»",
     analyticsBestStreak: "Бесплатных дней",
     historyTitle: "История событий",
     historyEmpty: "Тишина — добавь цель или отметь бесплатный день.",
@@ -300,12 +318,18 @@ const TRANSLATIONS = {
     historyUnknown: "событие",
     progressHeroTitle: "Спасено",
     progressHeroLevel: "уровень {{level}}",
-    progressHeroNext: "До следующей цели {{amount}}",
+    progressHeroNext: "До следующего уровня {{amount}}",
     tileRefuseCount: "Отказался уже {{count}} раз · +{{amount}}",
     tileRefuseMessage: "Точно не покупай это сегодня — это в твоих интересах",
     tileReady: "Можно брать",
     tileLocked: "Пока копим",
     spendWarning: "Потратишь {{amount}} — точно готов(а)?",
+    spendSheetTitle: "Almost Pay",
+    spendSheetSubtitle: "Шутливый Pay напоминает: экономия любит терпение.",
+    spendSheetHint: "Дважды нажми (мысленно) на кнопку, если всё-таки тратишь.",
+    spendSheetCancel: "Продолжить копить",
+    spendSheetConfirm: "Потратить всё равно",
+    stormOverlayMessage: "Гроза трат гремит. Может, спрячем карту?",
     rewardsEmpty: "Собери достижения — попробуй отказаться от пары лишних хотелок или отметь бесплатный день.",
     goalsTitle: "Цели и награды",
     rewardUnlocked: "достигнуто",
@@ -313,8 +337,8 @@ const TRANSLATIONS = {
     rewardRemainingAmount: "Осталось {{amount}}",
     rewardRemainingDays: "Осталось {{count}} дней",
     rewardRemainingRefuse: "Осталось {{count}} отказов",
-    rewardRemainingFridge: "Осталось {{count}} хотелок в холодильнике",
-    rewardRemainingDecisions: "Осталось {{count}} решений из холодильника",
+    rewardRemainingFridge: "Осталось {{count}} хотелок в «думаем»",
+    rewardRemainingDecisions: "Осталось {{count}} решений из «думаем»",
     rewardLockedGeneric: "Осталось {{count}} шагов",
     rainMessage: "Как же так? Спаси денежки.",
     developerReset: "Сбросить данные",
@@ -350,6 +374,10 @@ const TRANSLATIONS = {
     appTagline: "an offline temptation board that keeps savings safe",
     heroAwaiting: "on the wish list",
     heroSpendLine: "already saved {{amount}}. Glow without overspending",
+    heroExpand: "Show details",
+    heroCollapse: "Hide details",
+    heroDailyTitle: "Weekly savings",
+    heroDailyEmpty: "No skips yet — try saving once this week",
     feedEmptyTitle: "Nothing here",
     feedEmptySubtitle: "Try another tag or refresh the catalog",
     buyNow: "Pay with {{pay}}",
@@ -376,12 +404,20 @@ const TRANSLATIONS = {
     freeDayConfirm: "Stayed away from impulse buys today?",
     freeDayCongrats: "{{days}} day streak! Budget loves it.",
     freeDayMilestone: "{{days}} days in a row! New badge unlocked.",
-    freeDayStreakLabel: "Free-day streak",
+    freeDayCardTitle: "Free-day streak",
+    freeDayActiveLabel: "Streak {{days}} days",
+    freeDayInactiveLabel: "Log an impulse-free evening",
+    freeDayCurrentLabel: "Current",
+    freeDayBestLabel: "Best",
+    freeDayTotalShort: "Total",
+    freeDayWeekTitle: "This week",
+    freeDayExpand: "Show details",
+    freeDayCollapse: "Hide",
     freeDayTotalLabel: "Total: {{total}}",
-    pendingTab: "Fridge",
-    pendingTitle: "Fridge",
-    pendingEmptyTitle: "Nothing in the fridge",
-    pendingEmptySubtitle: "Park temptations in the fridge — we’ll remind you in 14 days.",
+    pendingTab: "Thinking",
+    pendingTitle: "Thinking",
+    pendingEmptyTitle: "Nothing in Thinking",
+    pendingEmptySubtitle: "Park temptations in Thinking — we’ll remind you in 14 days.",
     pendingDaysLeft: "{{days}} days left",
     pendingExpired: "decision overdue",
     pendingDueToday: "decide today",
@@ -389,7 +425,7 @@ const TRANSLATIONS = {
     pendingActionDecline: "Save it",
     pendingNotificationTitle: "14 days passed",
     pendingNotificationBody: "Ready to decide what to do with “{{title}}”?",
-    pendingAdded: "Sent to the fridge. We’ll remind you in 2 weeks.",
+    pendingAdded: "Sent to Thinking. We’ll remind you in 2 weeks.",
     feedTab: "Feed",
     profileTab: "Profile",
     payButton: "Pay",
@@ -447,6 +483,7 @@ const TRANSLATIONS = {
     analyticsTitle: "Progress",
     analyticsPendingToBuy: "Wishes",
     analyticsPendingToDecline: "Declines",
+    analyticsFridgeCount: "Thinking list",
     analyticsBestStreak: "Free days",
     historyTitle: "Event log",
     historyEmpty: "Nothing yet — add a goal or mark a free day.",
@@ -464,12 +501,18 @@ const TRANSLATIONS = {
     historyUnknown: "event",
     progressHeroTitle: "Saved",
     progressHeroLevel: "level {{level}}",
-    progressHeroNext: "Next target {{amount}}",
+    progressHeroNext: "To next level {{amount}}",
     tileRefuseCount: "Already skipped {{count}}× · +{{amount}}",
     tileRefuseMessage: "Skip it today — your savings will thank you",
     tileReady: "Ready to enjoy",
     tileLocked: "Still saving",
     spendWarning: "Spending {{amount}} — sure about it?",
+    spendSheetTitle: "Almost Pay",
+    spendSheetSubtitle: "Our playful Pay suggests saving just a bit longer.",
+    spendSheetHint: "Double-press (in spirit) to go ahead anyway.",
+    spendSheetCancel: "Keep saving",
+    spendSheetConfirm: "Spend anyway",
+    stormOverlayMessage: "Stormy spending vibes. Still want to swipe?",
     rewardsEmpty: "Earn achievements by skipping temptations or logging a free day.",
     goalsTitle: "Goals & rewards",
     rewardUnlocked: "unlocked",
@@ -477,8 +520,8 @@ const TRANSLATIONS = {
     rewardRemainingAmount: "{{amount}} to go",
     rewardRemainingDays: "{{count}} days remaining",
     rewardRemainingRefuse: "{{count}} more skips",
-    rewardRemainingFridge: "{{count}} more fridge items",
-    rewardRemainingDecisions: "{{count}} fridge decisions left",
+    rewardRemainingFridge: "{{count}} more Thinking items",
+    rewardRemainingDecisions: "{{count}} Thinking decisions left",
     rewardLockedGeneric: "{{count}} steps remaining",
     rainMessage: "Oh no! Protect the cash.",
     developerReset: "Reset data",
@@ -1018,12 +1061,15 @@ function TemptationCard({
   currency = activeCurrency,
   stats = {},
   feedback,
+  starterPriceUSD = null,
 }) {
   const title = item.title?.[language] || item.title?.en || item.title || "Wish";
   const desc = item.description?.[language] || item.description?.en || "";
   const priceUSD = item.priceUSD || item.basePriceUSD || 0;
   const priceLabel = formatCurrency(convertToCurrency(priceUSD, currency), currency);
-  const unlocked = savedTotalUSD >= priceUSD && priceUSD > 0;
+  const isStarterCard =
+    Number.isFinite(starterPriceUSD) && starterPriceUSD > 0 && priceUSD === starterPriceUSD;
+  const unlocked = (savedTotalUSD >= priceUSD && priceUSD > 0) || isStarterCard;
   const highlight = unlocked;
   const statusLabel = unlocked ? t("tileReady") : t("tileLocked");
   const cardBackground =
@@ -1221,6 +1267,359 @@ function TemptationCard({
   );
 }
 
+function SavingsHeroCard({
+  goldPalette,
+  heroSpendCopy,
+  levelLabel,
+  heroSavedLabel,
+  progressPercent,
+  progressPercentLabel,
+  nextLabel,
+  t,
+  dailySavings = [],
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const maxAmount = Math.max(...dailySavings.map((day) => day.amountUSD), 0);
+  return (
+    <View
+      style={[
+        styles.progressHeroCard,
+        styles.savedHeroCard,
+        {
+          backgroundColor: goldPalette.background,
+          borderColor: goldPalette.border,
+          shadowColor: goldPalette.shadow,
+        },
+      ]}
+    >
+      <View style={[styles.savedHeroGlow, { backgroundColor: goldPalette.glow }]} />
+      <View
+        style={[
+          styles.savedHeroGlow,
+          styles.savedHeroGlowBottom,
+          { backgroundColor: goldPalette.glow },
+        ]}
+      />
+      <View style={styles.savedHeroHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.progressHeroTitle, { color: goldPalette.text }]}>
+            {t("progressHeroTitle")}
+          </Text>
+          <Text style={[styles.savedHeroSubtitle, { color: goldPalette.subtext }]}>
+            {heroSpendCopy}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.savedHeroLevelBadge,
+            {
+              backgroundColor: goldPalette.badgeBg,
+              borderColor: goldPalette.badgeBorder,
+            },
+          ]}
+        >
+          <Text style={[styles.savedHeroLevelText, { color: goldPalette.badgeText }]}>
+            {levelLabel}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.savedHeroAmountWrap}>
+        <Text style={[styles.progressHeroAmount, { color: goldPalette.text }]}>
+          {heroSavedLabel}
+        </Text>
+      </View>
+      <View style={styles.savedHeroProgressRow}>
+        <View
+          style={[
+            styles.progressHeroBar,
+            styles.savedHeroBar,
+            { backgroundColor: goldPalette.barBg },
+          ]}
+        >
+          <View
+            style={[
+              styles.progressHeroFill,
+              { backgroundColor: goldPalette.accent, width: `${progressPercent * 100}%` },
+            ]}
+          />
+        </View>
+        <View
+          style={[
+            styles.savedHeroPercentTag,
+            { backgroundColor: goldPalette.badgeBg, borderColor: goldPalette.border },
+          ]}
+        >
+          <Text style={[styles.savedHeroPercentText, { color: goldPalette.text }]}>
+            {progressPercentLabel}%
+          </Text>
+        </View>
+      </View>
+      <Text style={[styles.progressHeroNext, styles.savedHeroNextText, { color: goldPalette.subtext }]}>
+        {nextLabel}
+      </Text>
+      <TouchableOpacity
+        style={styles.savedHeroToggleRow}
+        onPress={() => setExpanded((prev) => !prev)}
+      >
+        <Text style={[styles.savedHeroToggleText, { color: goldPalette.subtext }]}>
+          {expanded ? t("heroCollapse") : t("heroExpand")}
+        </Text>
+      </TouchableOpacity>
+      {expanded && (
+        <View style={styles.savedHeroDaily}>
+          <Text style={[styles.savedHeroDailyTitle, { color: goldPalette.text }]}>
+            {t("heroDailyTitle")}
+          </Text>
+          {maxAmount > 0 ? (
+            <View style={styles.savedHeroBars}>
+              {dailySavings.map((day) => (
+                <View key={day.key} style={styles.savedHeroBarItem}>
+                  <View style={styles.savedHeroBarAmountWrap}>
+                    <Text style={[styles.savedHeroBarAmount, { color: goldPalette.text }]}>
+                      {day.amountUSD ? day.amountLabel : ""}
+                    </Text>
+                  </View>
+                  <View style={styles.savedHeroBarTrack}>
+                    <View
+                      style={[
+                        styles.savedHeroBarColumn,
+                        {
+                          height: `${day.percent}%`,
+                          backgroundColor: goldPalette.accent,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={[styles.savedHeroBarLabel, { color: goldPalette.subtext }]}>
+                    {day.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={[styles.savedHeroDailyEmpty, { color: goldPalette.subtext }]}>
+              {t("heroDailyEmpty")}
+            </Text>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function FreeDayCard({
+  colors,
+  t,
+  canLog,
+  onLog,
+  freeDayStats = INITIAL_FREE_DAY_STATS,
+  todayKey,
+  weekDays = [],
+  weekCount = 0,
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const streakActive = (freeDayStats.current || 0) > 0;
+  const palette = streakActive
+    ? {
+        background: "#E6F8EE",
+        border: "#A8E5C5",
+        accent: "#105B31",
+      }
+    : {
+        background: colors.card,
+        border: colors.border,
+        accent: colors.text,
+      };
+  const subtitle = streakActive
+    ? t("freeDayActiveLabel", { days: freeDayStats.current })
+    : t("freeDayInactiveLabel");
+  const stats = [
+    { label: t("freeDayCurrentLabel"), value: `${freeDayStats.current || 0}` },
+    { label: t("freeDayBestLabel"), value: `${freeDayStats.best || 0}` },
+    { label: t("freeDayTotalShort"), value: `${freeDayStats.total || 0}` },
+  ];
+  return (
+    <View
+      style={[
+        styles.freeDayCard,
+        {
+          backgroundColor: palette.background,
+          borderColor: palette.border,
+        },
+      ]}
+    >
+      <View style={styles.freeDayHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.freeDayLabel, { color: colors.muted }]}>{t("freeDayCardTitle")}</Text>
+          <Text style={[styles.freeDayValue, { color: palette.accent }]}>{subtitle}</Text>
+        </View>
+        {canLog ? (
+          <TouchableOpacity
+            style={[styles.freeDayButton, { backgroundColor: colors.text }]}
+            onPress={onLog}
+          >
+            <Text style={[styles.freeDayButtonText, { color: colors.background }]}>
+              {t("freeDayButton")}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <View
+            style={[
+              styles.freeDayLockedPill,
+              {
+                borderColor: colors.border,
+                backgroundColor: colors.background,
+              },
+            ]}
+          >
+            <Text style={[styles.freeDayLockedText, { color: colors.muted }]}>
+              {freeDayStats.lastDate === todayKey ? t("freeDayLoggedToday") : t("freeDayLocked")}
+            </Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.freeDaySummaryRow}>
+        <View style={styles.freeDayChip}>
+          <Text style={[styles.freeDayChipText, { color: palette.accent }]}>
+            {t("freeDayWeekTitle")} · {weekCount}/7
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.freeDayToggle} onPress={() => setExpanded((prev) => !prev)}>
+          <Text style={[styles.freeDayToggleText, { color: colors.muted }]}>
+            {expanded ? t("freeDayCollapse") : t("freeDayExpand")}
+          </Text>
+        </TouchableOpacity>
+      </View>
+      {expanded && (
+        <>
+          <View style={styles.freeDayStatsRow}>
+            {stats.map((stat) => (
+              <View key={stat.label} style={styles.freeDayStat}>
+                <Text style={[styles.freeDayStatLabel, { color: colors.muted }]}>{stat.label}</Text>
+                <Text style={[styles.freeDayStatValue, { color: palette.accent }]}>
+                  {stat.value}
+                </Text>
+              </View>
+            ))}
+          </View>
+          <View
+            style={[
+              styles.freeDayCalendar,
+              { backgroundColor: streakActive ? "rgba(255,255,255,0.4)" : colors.card },
+            ]}
+          >
+            <View style={styles.freeDayCalendarHeader}>
+              <Text style={[styles.freeDayCalendarTitle, { color: colors.muted }]}>
+                {t("freeDayWeekTitle")}
+              </Text>
+              <Text style={[styles.freeDayCalendarTitle, { color: colors.muted }]}>
+                {weekCount}/7
+              </Text>
+            </View>
+            <View style={styles.freeDayCalendarDays}>
+              {weekDays.map((day) => (
+                <View key={day.key} style={styles.freeDayCalendarDay}>
+                  <Text style={[styles.freeDayCalendarLabel, { color: colors.muted }]}>
+                    {day.label}
+                  </Text>
+                  <View
+                    style={[
+                      styles.freeDayCalendarDot,
+                      day.active && styles.freeDayCalendarDotActive,
+                      day.isToday && styles.freeDayCalendarDotToday,
+                    ]}
+                  />
+                </View>
+              ))}
+            </View>
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+function SpendConfirmSheet({
+  visible,
+  item,
+  currency = DEFAULT_PROFILE.currency,
+  language = "ru",
+  onCancel,
+  onConfirm,
+  colors,
+  t,
+}) {
+  const priceUSD = item?.priceUSD || item?.basePriceUSD || 0;
+  const priceLabel = formatCurrency(convertToCurrency(priceUSD, currency), currency);
+  const displayTitle =
+    item?.title?.[language] || item?.title?.en || item?.title || t("defaultDealTitle");
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={styles.payBackdrop}>
+        <TouchableWithoutFeedback onPress={onCancel}>
+          <View style={styles.payBackdropHit} />
+        </TouchableWithoutFeedback>
+        <View style={[styles.paySheet, { backgroundColor: colors.card }] }>
+          <View style={styles.paySheetHandle} />
+          <Text style={[styles.payBrand, { color: colors.text }]}>{t("spendSheetTitle")}</Text>
+          <View style={[styles.payCard, { backgroundColor: colors.background }]}>
+            <View style={styles.payCardIcon}>
+              <Text style={styles.payCardEmoji}>{item?.emoji || "💳"}</Text>
+            </View>
+            <View style={styles.payCardTexts}>
+              <Text style={[styles.payCardTitle, { color: colors.text }]}>{displayTitle}</Text>
+              <Text style={[styles.payCardMeta, { color: colors.muted }]}>{t("tileLocked")}</Text>
+            </View>
+            <Text style={[styles.payCardAmount, { color: colors.text }]}>{priceLabel}</Text>
+          </View>
+          <Text style={[styles.paySheetSubtitle, { color: colors.muted }]}>
+            {t("spendSheetSubtitle")}
+          </Text>
+          <View style={styles.paySheetHintRow}>
+            <View style={styles.paySheetHintDot} />
+            <Text style={[styles.paySheetHint, { color: colors.muted }]}>{t("spendSheetHint")}</Text>
+          </View>
+          <TouchableOpacity style={[styles.payConfirm, { backgroundColor: colors.text }]} onPress={onConfirm}>
+            <Text style={[styles.payConfirmText, { color: colors.background }]}>
+              {t("spendSheetConfirm")}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.payCancel} onPress={onCancel}>
+            <Text style={[styles.payCancelText, { color: colors.muted }]}>{t("spendSheetCancel")}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function StormOverlay({ t }) {
+  const flash = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(600),
+        Animated.timing(flash, { toValue: 0.75, duration: 120, useNativeDriver: true }),
+        Animated.timing(flash, { toValue: 0, duration: 320, useNativeDriver: true }),
+        Animated.delay(700),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [flash]);
+
+  return (
+    <View style={styles.stormOverlay} pointerEvents="auto">
+      <RainOverlay colors={{ muted: "rgba(173,196,255,0.5)" }} />
+      <Animated.View style={[styles.stormFlash, { opacity: flash }]} />
+      <View style={styles.stormMessageWrap}>
+        <Text style={styles.stormMessage}>{t("stormOverlayMessage")}</Text>
+      </View>
+    </View>
+  );
+}
+
 function FeedScreen({
   products,
   categories,
@@ -1238,10 +1637,47 @@ function FeedScreen({
   analyticsStats = [],
   refuseStats = {},
   cardFeedback = {},
+  historyEvents = [],
 }) {
   const heroSavedLabel = useMemo(
     () => formatCurrency(convertToCurrency(savedTotalUSD || 0, currency), currency),
     [savedTotalUSD, currency]
+  );
+  const heroSpendCopy = useMemo(
+    () => t("heroSpendLine", { amount: heroSavedLabel }),
+    [t, heroSavedLabel]
+  );
+  const isDarkMode = colors === THEMES.dark;
+  const goldPalette = useMemo(
+    () =>
+      isDarkMode
+        ? {
+            background: "#2B1A00",
+            border: "rgba(255,214,143,0.5)",
+            glow: "rgba(255,184,0,0.25)",
+            accent: "#FFCF6B",
+            text: "#FFEED0",
+            subtext: "rgba(255,238,208,0.8)",
+            badgeBg: "rgba(0,0,0,0.35)",
+            badgeBorder: "rgba(255,223,165,0.5)",
+            badgeText: "#FFEED0",
+            barBg: "rgba(0,0,0,0.3)",
+            shadow: "#1B1100",
+          }
+        : {
+            background: "#FFF6D5",
+            border: "rgba(240,196,92,0.8)",
+            glow: "rgba(255,255,255,0.8)",
+            accent: "#D8960B",
+            text: "#5C3300",
+            subtext: "rgba(92,51,0,0.75)",
+            badgeBg: "rgba(255,255,255,0.75)",
+            badgeBorder: "rgba(255,255,255,0.9)",
+            badgeText: "#7A4A00",
+            barBg: "rgba(255,255,255,0.6)",
+            shadow: "#F3C75A",
+          },
+    [isDarkMode]
   );
   const tierInfo = getTierProgress(savedTotalUSD || 0);
   const span = Math.max(
@@ -1253,22 +1689,102 @@ function FeedScreen({
     ? (savedTotalUSD - tierInfo.prevTargetUSD) / span
     : 1;
   const progressPercent = Math.min(Math.max(tierProgress, 0), 1);
+  const progressPercentLabel = Math.round(progressPercent * 100);
   const levelLabel = t("progressHeroLevel", { level: tierInfo.level });
+  const remainingUSD = tierInfo.nextTargetUSD
+    ? Math.max(tierInfo.nextTargetUSD - savedTotalUSD, 0)
+    : 0;
   const nextLabel = tierInfo.nextTargetUSD
     ? t("progressHeroNext", {
-        amount: formatCurrency(convertToCurrency(tierInfo.nextTargetUSD, currency), currency),
+        amount: formatCurrency(convertToCurrency(remainingUSD, currency), currency),
       })
     : t("tileReady");
-  const todayKey = getDayKey(new Date());
+  const todayDate = new Date();
+  const todayTimestamp = todayDate.getTime();
+  const todayKey = getDayKey(todayDate);
   const isEvening = new Date().getHours() >= 18;
   const canLogFreeDay = isEvening && freeDayStats.lastDate !== todayKey;
-  const bestLabel = `${freeDayStats.current} / ${freeDayStats.best}`;
 
   const filteredProducts = useMemo(() => {
     if (activeCategory === "all") return products;
     return products.filter((product) => product.categories?.includes(activeCategory));
   }, [activeCategory, products]);
   const analyticsPreview = analyticsStats.slice(0, 3);
+  const freeDayEventKeys = useMemo(() => {
+    const keys = new Set();
+    historyEvents.forEach((entry) => {
+      if (entry.kind === "free_day") {
+        keys.add(getDayKey(entry.timestamp));
+      }
+    });
+    return keys;
+  }, [historyEvents]);
+  const weekLabels = WEEKDAY_LABELS[language] || WEEKDAY_LABELS.en;
+  const weekDays = useMemo(() => {
+    const today = new Date(todayTimestamp);
+    const start = new Date(today);
+    const weekday = (today.getDay() + 6) % 7;
+    start.setDate(today.getDate() - weekday);
+    return Array.from({ length: 7 }).map((_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      const key = getDayKey(date);
+      return {
+        key,
+        label: weekLabels[index],
+        active: freeDayEventKeys.has(key),
+        isToday: key === todayKey,
+      };
+    });
+  }, [freeDayEventKeys, todayTimestamp, todayKey, weekLabels]);
+  const weekSuccessCount = useMemo(
+    () => weekDays.filter((day) => day.active).length,
+    [weekDays]
+  );
+  const savingsDaily = useMemo(() => {
+    const today = new Date(todayTimestamp);
+    const start = new Date(today);
+    start.setDate(today.getDate() - 6);
+    const minTimestamp = start.getTime();
+    const map = new Map();
+    historyEvents.forEach((entry) => {
+      if (entry.kind !== "refuse_spend") return;
+      if (!entry.timestamp || entry.timestamp < minTimestamp) return;
+      const key = getDayKey(entry.timestamp);
+      const amount = entry.meta?.amountUSD || 0;
+      map.set(key, (map.get(key) || 0) + amount);
+    });
+    let max = 0;
+    const result = Array.from({ length: 7 }).map((_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      const key = getDayKey(date);
+      const amountUSD = map.get(key) || 0;
+      if (amountUSD > max) max = amountUSD;
+      const weekdayIndex = (date.getDay() + 6) % 7;
+      const label = WEEKDAY_LABELS[language]?.[weekdayIndex] || WEEKDAY_LABELS.en[weekdayIndex];
+      const amountLocal = convertToCurrency(amountUSD, currency);
+      return {
+        key,
+        amountUSD,
+        label,
+        amountLabel: amountUSD ? formatCurrency(amountLocal, currency) : "",
+      };
+    });
+    const maxValue = Math.max(max, 0.01);
+    return result.map((item) => ({
+      ...item,
+      percent: item.amountUSD > 0 ? Math.max((item.amountUSD / maxValue) * 100, 8) : 0,
+    }));
+  }, [currency, historyEvents, language, todayTimestamp]);
+  const starterPriceUSD = useMemo(() => {
+    if (!products?.length) return null;
+    return products.reduce((min, product) => {
+      const price = product.priceUSD ?? product.basePriceUSD ?? Infinity;
+      if (!Number.isFinite(price) || price <= 0) return min;
+      return price < min ? price : min;
+    }, Infinity);
+  }, [products]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }] }>
@@ -1291,31 +1807,27 @@ function FeedScreen({
                 <Text style={[styles.heroTagline, { color: colors.muted }]}>{t("appTagline")}</Text>
               </View>
             </View>
-            <View
-              style={[
-                styles.progressHeroCard,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-            >
-              <View style={styles.progressHeroHeader}>
-                <Text style={[styles.progressHeroTitle, { color: colors.text }]}>
-                  {t("progressHeroTitle")}
-                </Text>
-                <Text style={[styles.progressHeroLevel, { color: colors.muted }]}>{levelLabel}</Text>
-              </View>
-              <Text style={[styles.progressHeroAmount, { color: colors.text }]}>
-                {heroSavedLabel}
-              </Text>
-              <View style={[styles.progressHeroBar, { backgroundColor: colors.border }]}>
-                <View
-                  style={[
-                    styles.progressHeroFill,
-                    { backgroundColor: colors.text, width: `${progressPercent * 100}%` },
-                  ]}
-                />
-              </View>
-              <Text style={[styles.progressHeroNext, { color: colors.muted }]}>{nextLabel}</Text>
-            </View>
+            <SavingsHeroCard
+              goldPalette={goldPalette}
+              heroSpendCopy={heroSpendCopy}
+              levelLabel={levelLabel}
+              heroSavedLabel={heroSavedLabel}
+              progressPercent={progressPercent}
+              progressPercentLabel={progressPercentLabel}
+              nextLabel={nextLabel}
+              t={t}
+              dailySavings={savingsDaily}
+            />
+            <FreeDayCard
+              colors={colors}
+              t={t}
+              canLog={canLogFreeDay}
+              onLog={onFreeDayLog}
+              freeDayStats={freeDayStats}
+              todayKey={todayKey}
+              weekDays={weekDays}
+              weekCount={weekSuccessCount}
+            />
             {analyticsPreview.length > 0 && (
               <View style={styles.feedAnalyticsRow}>
                 {analyticsPreview.map((stat) => (
@@ -1336,7 +1848,7 @@ function FeedScreen({
                 ))}
               </View>
             )}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 16 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
               {categories.map((cat) => (
                 <CategoryChip
                   key={cat}
@@ -1347,33 +1859,6 @@ function FeedScreen({
                 />
               ))}
             </ScrollView>
-            <View style={[styles.freeDayCard, { backgroundColor: colors.card, borderColor: colors.border }] }>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.freeDayLabel, { color: colors.muted }]}>
-                  {t("freeDayStreakLabel")}
-                </Text>
-                <Text style={[styles.freeDayValue, { color: colors.text }]}>{bestLabel}</Text>
-                <Text style={{ color: colors.muted }}>
-                  {t("freeDayTotalLabel", { total: freeDayStats.total })}
-                </Text>
-              </View>
-              {canLogFreeDay ? (
-                <TouchableOpacity
-                  style={[styles.freeDayButton, { backgroundColor: colors.text }]}
-                  onPress={onFreeDayLog}
-                >
-                  <Text style={[styles.freeDayButtonText, { color: colors.background }]}>
-                    {t("freeDayButton")}
-                  </Text>
-                </TouchableOpacity>
-              ) : (
-                <Text style={[styles.freeDayLocked, { color: colors.muted }]}>
-                  {freeDayStats.lastDate === todayKey
-                    ? t("freeDayLoggedToday")
-                    : t("freeDayLocked")}
-                </Text>
-              )}
-            </View>
           </View>
         }
         renderItem={({ item }) => (
@@ -1387,6 +1872,7 @@ function FeedScreen({
             currency={currency}
             stats={refuseStats[item.id]}
             feedback={cardFeedback[item.id]}
+            starterPriceUSD={starterPriceUSD}
             onAction={async (type) => {
               await onTemptationAction(type, item);
             }}
@@ -1616,8 +2102,8 @@ const ACHIEVEMENT_DEFS = [
     targetValue: 10,
     emoji: "🧊",
     copy: {
-      ru: { title: "Ледяное сердце", desc: "10 хотелок в холодильнике, и счёт растёт." },
-      en: { title: "Ice cold heart", desc: "10 temptations chilling in the fridge." },
+      ru: { title: "Глубокие мысли", desc: "10 хотелок в «думаем», и список растёт." },
+      en: { title: "Thinking stash", desc: "10 temptations parked in Thinking." },
     },
   },
   {
@@ -1626,8 +2112,8 @@ const ACHIEVEMENT_DEFS = [
     targetValue: 5,
     emoji: "🥶",
     copy: {
-      ru: { title: "Холодный расчёт", desc: "Разобрался с 5 хотелками из холодильника." },
-      en: { title: "Cool-headed", desc: "Closed out 5 fridge decisions with intent." },
+      ru: { title: "Взвешенный выбор", desc: "Разобрался с 5 хотелками из «думаем»." },
+      en: { title: "Clear-headed", desc: "Closed out 5 Thinking decisions with intent." },
     },
   },
 ];
@@ -2097,6 +2583,9 @@ export default function App() {
   const [cardFeedback, setCardFeedback] = useState({});
   const cardFeedbackTimers = useRef({});
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [spendPrompt, setSpendPrompt] = useState({ visible: false, item: null });
+  const [stormActive, setStormActive] = useState(false);
+  const stormTimerRef = useRef(null);
   const ensureNotificationPermission = useCallback(async () => {
     try {
       let settings = await Notifications.getPermissionsAsync();
@@ -2126,6 +2615,14 @@ export default function App() {
     return () => {
       showSub.remove();
       hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (stormTimerRef.current) {
+        clearTimeout(stormTimerRef.current);
+      }
     };
   }, []);
 
@@ -2190,9 +2687,9 @@ export default function App() {
     () => [
       { label: t("analyticsPendingToBuy"), value: `${wishes.length}` },
       { label: t("analyticsPendingToDecline"), value: `${declineCount}` },
-      { label: t("analyticsBestStreak"), value: `${freeDayStats.total}` },
+      { label: t("analyticsFridgeCount"), value: `${pendingList.length}` },
     ],
-    [wishes.length, declineCount, freeDayStats.total, t]
+    [wishes.length, declineCount, pendingList.length, t]
   );
 
   const loadStoredData = async () => {
@@ -2639,29 +3136,58 @@ export default function App() {
     });
   }, []);
 
+  const closeSpendPrompt = useCallback(() => {
+    setSpendPrompt({ visible: false, item: null });
+  }, []);
+
+  const triggerStormEffect = useCallback(() => {
+    if (stormTimerRef.current) {
+      clearTimeout(stormTimerRef.current);
+    }
+    setStormActive(true);
+    stormTimerRef.current = setTimeout(() => setStormActive(false), 2400);
+  }, []);
+
+  const executeSpend = useCallback(
+    (item) => {
+      if (!item) return;
+      const priceUSD = item.priceUSD || item.basePriceUSD || 0;
+      const title = `${item.emoji || "✨"} ${
+        item.title?.[language] || item.title?.en || item.title || "wish"
+      }`;
+      logHistoryEvent("spend", { title, amountUSD: priceUSD });
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+      setSavedTotalUSD((prev) => Math.max(prev - priceUSD, 0));
+      setPurchases((prev) => [
+        {
+          id: `spend-${item.id}-${Date.now()}`,
+          title,
+          price: priceUSD,
+          paidAmount: priceUSD,
+          createdAt: Date.now(),
+        },
+        ...prev,
+      ]);
+    },
+    [language, logHistoryEvent]
+  );
+
+  const handleSpendConfirm = useCallback(() => {
+    if (!spendPrompt.item) return;
+    const item = spendPrompt.item;
+    closeSpendPrompt();
+    triggerStormEffect();
+    executeSpend(item);
+  }, [closeSpendPrompt, executeSpend, spendPrompt.item, triggerStormEffect]);
+
   const handleTemptationAction = useCallback(
     async (type, item) => {
       const priceUSD = item.priceUSD || item.basePriceUSD || 0;
-      const priceLocal = formatCurrency(convertToCurrency(priceUSD));
       const title = `${item.emoji || "✨"} ${
         item.title?.[language] || item.title?.en || item.title || "wish"
       }`;
       if (type === "spend") {
-        const localAmount = formatCurrency(convertToCurrency(priceUSD));
-        logHistoryEvent("spend", { title, amountUSD: priceUSD });
-        triggerOverlayState("cart", t("spendWarning", { amount: localAmount }));
-        triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-        setSavedTotalUSD((prev) => Math.max(prev - priceUSD, 0));
-        setPurchases((prev) => [
-          {
-            id: `spend-${item.id}-${Date.now()}`,
-            title,
-            price: priceUSD,
-            paidAmount: priceUSD,
-            createdAt: Date.now(),
-          },
-          ...prev,
-        ]);
+        setSpendPrompt({ visible: true, item });
         return;
       }
       if (type === "want") {
@@ -3058,6 +3584,7 @@ export default function App() {
             analyticsStats={analyticsStats}
             refuseStats={refuseStats}
             cardFeedback={cardFeedback}
+            historyEvents={historyEvents}
           />
         );
     }
@@ -3264,6 +3791,17 @@ export default function App() {
           onClose={closeImagePickerSheet}
           onSelect={handleImageSourceChoice}
         />
+        <SpendConfirmSheet
+          visible={spendPrompt.visible}
+          item={spendPrompt.item}
+          currency={profile.currency || DEFAULT_PROFILE.currency}
+          language={language}
+          onCancel={closeSpendPrompt}
+          onConfirm={handleSpendConfirm}
+          colors={colors}
+          t={t}
+        />
+        {stormActive && <StormOverlay t={t} />}
       </SafeAreaView>
     </TouchableWithoutFeedback>
   );
@@ -3283,7 +3821,7 @@ const styles = StyleSheet.create({
     paddingTop: 24,
   },
   feedHero: {
-    paddingBottom: 20,
+    paddingBottom: 12,
   },
   feedHeroTop: {
     flexDirection: "row",
@@ -3331,6 +3869,139 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
   },
+  savedHeroCard: {
+    marginTop: 12,
+    padding: 18,
+    borderRadius: 26,
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+    overflow: "hidden",
+  },
+  savedHeroGlow: {
+    position: "absolute",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    top: -40,
+    right: -30,
+    opacity: 0.6,
+  },
+  savedHeroGlowBottom: {
+    width: 120,
+    height: 120,
+    bottom: -30,
+    left: -10,
+  },
+  savedHeroHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 12,
+    gap: 12,
+  },
+  savedHeroSubtitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  savedHeroLevelBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderWidth: 1,
+  },
+  savedHeroLevelText: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  savedHeroAmountWrap: {
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  savedHeroProgressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 10,
+  },
+  savedHeroBar: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  savedHeroPercentTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  savedHeroPercentText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  savedHeroNextText: {
+    marginTop: 6,
+  },
+  savedHeroToggleRow: {
+    marginTop: 12,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.4)",
+  },
+  savedHeroToggleText: {
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "right",
+  },
+  savedHeroDaily: {
+    marginTop: 12,
+    gap: 12,
+  },
+  savedHeroDailyTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  savedHeroBars: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    gap: 8,
+  },
+  savedHeroBarItem: {
+    flex: 1,
+    alignItems: "center",
+    gap: 4,
+  },
+  savedHeroBarAmountWrap: {
+    minHeight: 18,
+    justifyContent: "flex-end",
+  },
+  savedHeroBarAmount: {
+    fontSize: 10,
+    textAlign: "center",
+  },
+  savedHeroBarTrack: {
+    width: 20,
+    height: 70,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.4)",
+    justifyContent: "flex-end",
+    overflow: "hidden",
+  },
+  savedHeroBarColumn: {
+    width: "100%",
+    borderRadius: 10,
+  },
+  savedHeroBarLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  savedHeroDailyEmpty: {
+    fontSize: 12,
+  },
   progressHeroHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -3342,9 +4013,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   progressHeroAmount: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: "800",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   progressHeroLevel: {
     fontSize: 14,
@@ -3366,23 +4037,23 @@ const styles = StyleSheet.create({
   },
   feedAnalyticsRow: {
     flexDirection: "row",
-    gap: 12,
-    marginTop: 16,
+    gap: 10,
+    marginTop: 12,
   },
   feedAnalyticsItem: {
     flex: 1,
     borderRadius: 18,
     borderWidth: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
   },
   feedAnalyticsValue: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "800",
   },
   feedAnalyticsLabel: {
     fontSize: 12,
-    marginTop: 6,
+    marginTop: 4,
   },
   categoryChip: {
     marginRight: 12,
@@ -3395,38 +4066,251 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textTransform: "uppercase",
   },
-  freeDayCard: {
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 24,
-    borderWidth: 1,
+  payBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  payBackdropHit: {
+    flex: 1,
+  },
+  paySheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 24,
+    gap: 16,
+  },
+  paySheetHandle: {
+    width: 60,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    alignSelf: "center",
+    marginBottom: 4,
+  },
+  payBrand: {
+    fontSize: 18,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  payCard: {
     flexDirection: "row",
     alignItems: "center",
+    borderRadius: 18,
+    padding: 16,
     gap: 12,
+  },
+  payCardIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.05)",
+  },
+  payCardEmoji: {
+    fontSize: 26,
+  },
+  payCardTexts: {
+    flex: 1,
+  },
+  payCardTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  payCardMeta: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  payCardAmount: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  paySheetSubtitle: {
+    fontSize: 14,
+    textAlign: "center",
+  },
+  paySheetHintRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    justifyContent: "center",
+  },
+  paySheetHintDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FFD93D",
+  },
+  paySheetHint: {
+    fontSize: 12,
+    textAlign: "center",
+  },
+  payConfirm: {
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  payConfirmText: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  payCancel: {
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  payCancelText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  freeDayCard: {
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 10,
+  },
+  freeDayHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
   },
   freeDayLabel: {
     fontSize: 12,
     textTransform: "uppercase",
   },
   freeDayValue: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
-    marginTop: 4,
+  },
+  freeDayStatsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  freeDayStat: {
+    flex: 1,
+  },
+  freeDayStatLabel: {
+    fontSize: 12,
     marginBottom: 2,
   },
+  freeDayStatValue: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
   freeDayButton: {
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
   freeDayButtonText: {
     color: "#fff",
     fontWeight: "700",
-  },
-  freeDayLocked: {
     fontSize: 12,
-    textAlign: "right",
-    flexShrink: 1,
+  },
+  freeDaySummaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  freeDayChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.05)",
+  },
+  freeDayChipText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  freeDayToggle: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  freeDayToggleText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  freeDayLockedPill: {
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderWidth: 1,
+  },
+  freeDayLockedText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  freeDayCalendar: {
+    marginTop: 4,
+    borderRadius: 16,
+    padding: 12,
+    backgroundColor: "rgba(255,255,255,0.35)",
+  },
+  freeDayCalendarHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  freeDayCalendarTitle: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  freeDayCalendarDays: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  freeDayCalendarDay: {
+    alignItems: "center",
+    gap: 4,
+    flex: 1,
+  },
+  freeDayCalendarLabel: {
+    fontSize: 11,
+    textTransform: "uppercase",
+  },
+  freeDayCalendarDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
+  },
+  freeDayCalendarDotActive: {
+    backgroundColor: "#1EB25F",
+    borderColor: "#1EB25F",
+  },
+  freeDayCalendarDotToday: {
+    borderColor: "#1EB25F",
+    borderWidth: 2,
+  },
+  stormOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(4,6,15,0.92)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 99,
+  },
+  stormFlash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255,255,255,0.5)",
+  },
+  stormMessageWrap: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 18,
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  stormMessage: {
+    color: "#F5F6FF",
+    fontWeight: "700",
+    textAlign: "center",
+    fontSize: 14,
   },
   productCard: {
     width: "48%",
