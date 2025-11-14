@@ -179,6 +179,76 @@ const convertToCurrency = (valueUSD = 0, currency = activeCurrency) => {
   return valueUSD * rate;
 };
 
+const convertFromCurrency = (valueLocal = 0, currency = activeCurrency) => {
+  if (!valueLocal) return 0;
+  const rate = CURRENCY_RATES[currency] || 1;
+  if (!rate) return valueLocal;
+  return valueLocal / rate;
+};
+
+const getPersonaPreset = (personaId) => PERSONA_PRESETS[personaId] || PERSONA_PRESETS[DEFAULT_PERSONA_ID];
+
+const createPersonaTemptation = (preset) => {
+  if (!preset?.habit) return null;
+  const habit = preset.habit;
+  return {
+    id: `persona_${preset.id}`,
+    emoji: habit.emoji || preset.emoji || "✨",
+    image: habit.image,
+    color: habit.color || "#FFF5E6",
+    categories: habit.categories || ["habit"],
+    basePriceUSD: habit.basePriceUSD || 5,
+    priceUSD: habit.basePriceUSD || 5,
+    title: habit.title,
+    description: habit.description,
+  };
+};
+
+const createCustomHabitTemptation = (customSpend) => {
+  if (!customSpend?.title || !customSpend?.amountUSD) return null;
+  const price = Number(customSpend.amountUSD) || 0;
+  const title = customSpend.title;
+  return {
+    id: "custom_habit",
+    emoji: customSpend.emoji || "💡",
+    color: "#FFF5E6",
+    categories: ["habit", "custom"],
+    basePriceUSD: price,
+    priceUSD: price,
+    title: {
+      ru: title,
+      en: title,
+    },
+    description: {
+      ru: "Твоя основная ежедневная трата, с которой начнём экономию.",
+      en: "Your main daily spend — the first habit we’ll tackle.",
+    },
+  };
+};
+
+const buildPersonalizedTemptations = (profile, baseList = DEFAULT_TEMPTATIONS) => {
+  const preset = getPersonaPreset(profile?.persona);
+  const customFirst = createCustomHabitTemptation(profile?.customSpend);
+  const personaCard = customFirst ? null : createPersonaTemptation(preset);
+  const seen = new Set();
+  const personalized = [];
+  if (customFirst) {
+    personalized.push(customFirst);
+    seen.add(customFirst.id);
+  }
+  if (personaCard && !seen.has(personaCard.id)) {
+    personalized.push(personaCard);
+    seen.add(personaCard.id);
+  }
+  baseList.forEach((item) => {
+    if (!seen.has(item.id)) {
+      personalized.push(item);
+      seen.add(item.id);
+    }
+  });
+  return personalized;
+};
+
 const useFadeIn = () => {
   const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -552,6 +622,30 @@ const TRANSLATIONS = {
     goalSubtitle: "Where should your mindful deals lead?",
     goalButton: "Start saving",
     goalCompleteMessage: "You’re set—let’s start saving!",
+    personaTitle: "Расскажи про себя",
+    personaSubtitle: "Выбери, что хочешь прокачать в первую очередь",
+    personaGenderLabel: "Как к тебе обращаться?",
+    personaHabitLabel: "Профиль, который ближе всего",
+    personaConfirm: "Продолжить",
+    customSpendTitle: "Твоя ежедневная трата",
+    customSpendSubtitle: "Дай ей имя — мы превратим её в первую мини-цель",
+    customSpendNamePlaceholder: "Матча, сигареты, маникюр...",
+    customSpendAmountLabel: "Сколько стоит один раз?",
+    customSpendAmountPlaceholder: "например 550",
+    customSpendHint: "Это всегда можно поменять в профиле.",
+    customSpendSkip: "Пропустить",
+    personaTitle: "Tell us about you",
+    personaSubtitle: "Choose what you want to rein in first",
+    personaGenderLabel: "How should we address you?",
+    personaHabitLabel: "Pick a starter profile",
+    personaConfirm: "Continue",
+    customSpendTitle: "Your daily temptation",
+    customSpendSubtitle: "Give it a short name — we’ll turn it into the first mini goal",
+    customSpendNamePlaceholder: "Morning latte, cigarettes, nail art…",
+    customSpendAmountLabel: "Cost per attempt",
+    customSpendAmountPlaceholder: "e.g. 7.50",
+    customSpendHint: "You can change this anytime in the profile.",
+    customSpendSkip: "Skip for now",
   },
 };
 
@@ -589,6 +683,167 @@ const CURRENCY_LOCALES = {
   RUB: "ru-RU",
 };
 
+const PERSONA_PRESETS = {
+  mindful_coffee: {
+    id: "mindful_coffee",
+    emoji: "☕️",
+    title: {
+      ru: "Любитель кофе",
+      en: "Coffee devotee",
+    },
+    description: {
+      ru: "Первая цель — замедлить походы за кофе навынос.",
+      en: "Goal one: slow down the take-away coffee habit.",
+    },
+    tagline: {
+      ru: "Каждая некупленная чашка дарит +{{amount}} копилке.",
+      en: "Every skipped cup adds +{{amount}} to the stash.",
+    },
+    habit: {
+      emoji: "☕️",
+      color: "#FFF3E0",
+      categories: ["habit", "daily"],
+      basePriceUSD: 5,
+      title: {
+        ru: "Кофе навынос",
+        en: "Coffee run",
+      },
+      description: {
+        ru: "Сладкий момент слабости каждое утро.",
+        en: "Sweet little impulse every morning.",
+      },
+    },
+  },
+  habit_smoking: {
+    id: "habit_smoking",
+    emoji: "🚬",
+    title: {
+      ru: "Отказ от сигарет",
+      en: "Quit smoking",
+    },
+    description: {
+      ru: "Первая ступень — меньше случайных сигарет и перекуров.",
+      en: "First tier: fewer casual cigarettes and smoke breaks.",
+    },
+    tagline: {
+      ru: "Каждая пропущенная сигарета держит бюджет в тонусе.",
+      en: "Every skipped cigarette keeps the budget sharp.",
+    },
+    habit: {
+      emoji: "🚬",
+      color: "#FFE8E0",
+      categories: ["habit", "health"],
+      basePriceUSD: 7,
+      title: {
+        ru: "Пачка сигарет",
+        en: "Pack of cigarettes",
+      },
+      description: {
+        ru: "Пропустить перекур — значит ускорить прогресс.",
+        en: "Skip the smoke break, speed up the progress.",
+      },
+    },
+  },
+  glam_beauty: {
+    id: "glam_beauty",
+    emoji: "💄",
+    title: {
+      ru: "Бьюти-фанат",
+      en: "Beauty fan",
+    },
+    description: {
+      ru: "Контролируем спонтанные бьюти-покупки и подписки.",
+      en: "Keep beauty splurges and subs in check.",
+    },
+    tagline: {
+      ru: "Один пропущенный бьюти-дроп = {{amount}} для большой цели.",
+      en: "One skipped beauty drop = {{amount}} toward the big goal.",
+    },
+    habit: {
+      emoji: "💄",
+      color: "#FFE5F1",
+      categories: ["style", "habit"],
+      basePriceUSD: 18,
+      title: {
+        ru: "Мини бьюти-дроп",
+        en: "Mini beauty haul",
+      },
+      description: {
+        ru: "Тени, помада и ещё один «нужный» уход.",
+        en: "Shadow, lipstick and yet another “needed” serum.",
+      },
+    },
+  },
+  gamer_loot: {
+    id: "gamer_loot",
+    emoji: "🎮",
+    title: {
+      ru: "Геймер",
+      en: "Gamer",
+    },
+    description: {
+      ru: "Замедляем донаты, лутбоксы и ночные DLC.",
+      en: "Cool down loot boxes, microtransactions and DLC binges.",
+    },
+    tagline: {
+      ru: "Каждый пропущенный донат = {{amount}} на мечту IRL.",
+      en: "Every skipped microtransaction frees {{amount}} for IRL goals.",
+    },
+    habit: {
+      emoji: "🎮",
+      color: "#D9F7FF",
+      categories: ["wow", "habit"],
+      basePriceUSD: 10,
+      title: {
+        ru: "Игровой донат",
+        en: "Game microtransaction",
+      },
+      description: {
+        ru: "Пару скинов минус — прогресс плюс.",
+        en: "Skip a couple skins, gain momentum.",
+      },
+    },
+  },
+  foodie_delivery: {
+    id: "foodie_delivery",
+    emoji: "🍕",
+    title: {
+      ru: "Любитель доставки",
+      en: "Delivery lover",
+    },
+    description: {
+      ru: "Первая миссия — меньше спонтанной еды из приложения.",
+      en: "Mission one: fewer random delivery orders.",
+    },
+    tagline: {
+      ru: "Перескочил доставку — сохранил {{amount}} на реальную цель.",
+      en: "Skip delivery, unlock {{amount}} for real goals.",
+    },
+    habit: {
+      emoji: "🍕",
+      color: "#FFF8E3",
+      categories: ["food", "habit"],
+      basePriceUSD: 15,
+      title: {
+        ru: "Доставка вечерком",
+        en: "Night delivery",
+      },
+      description: {
+        ru: "Пицца, поке или суши — выбираешь прогресс.",
+        en: "Pizza, poke or sushi — you choose progress.",
+      },
+    },
+  },
+};
+
+const DEFAULT_PERSONA_ID = "mindful_coffee";
+
+const GENDER_OPTIONS = [
+  { id: "female", label: { ru: "Женщина", en: "Female" }, emoji: "💁‍♀️" },
+  { id: "male", label: { ru: "Мужчина", en: "Male" }, emoji: "🧑‍🦱" },
+  { id: "neutral", label: { ru: "Другое", en: "Other" }, emoji: "🌈" },
+];
+
 const GOAL_PRESETS = [
   { id: "travel", ru: "Путешествия", en: "Travel", emoji: "✈️" },
   { id: "tech", ru: "Техника", en: "Tech upgrade", emoji: "💻" },
@@ -606,6 +861,9 @@ const DEFAULT_PROFILE = {
   avatar: "https://i.pravatar.cc/150?img=47",
   currency: "USD",
   goal: "save",
+  persona: "mindful_coffee",
+  gender: "female",
+  customSpend: null,
 };
 
 const INITIAL_REGISTRATION = {
@@ -614,6 +872,10 @@ const INITIAL_REGISTRATION = {
   motto: "",
   avatar: "",
   currency: "USD",
+  gender: "female",
+  persona: "mindful_coffee",
+  customSpendTitle: "",
+  customSpendAmount: "",
 };
 
 const DEFAULT_TEMPTATIONS = [
@@ -1638,15 +1900,20 @@ function FeedScreen({
   refuseStats = {},
   cardFeedback = {},
   historyEvents = [],
+  profile,
 }) {
   const heroSavedLabel = useMemo(
     () => formatCurrency(convertToCurrency(savedTotalUSD || 0, currency), currency),
     [savedTotalUSD, currency]
   );
-  const heroSpendCopy = useMemo(
-    () => t("heroSpendLine", { amount: heroSavedLabel }),
-    [t, heroSavedLabel]
-  );
+  const personaPreset = useMemo(() => getPersonaPreset(profile?.persona), [profile?.persona]);
+  const heroSpendCopy = useMemo(() => {
+    const template = personaPreset?.tagline?.[language];
+    if (template) {
+      return template.replace("{{amount}}", heroSavedLabel);
+    }
+    return t("heroSpendLine", { amount: heroSavedLabel });
+  }, [heroSavedLabel, personaPreset, language, t]);
   const isDarkMode = colors === THEMES.dark;
   const goldPalette = useMemo(
     () =>
@@ -2730,7 +2997,7 @@ export default function App() {
       if (purchasesRaw) setPurchases(JSON.parse(purchasesRaw));
       let parsedProfile = null;
       if (profileRaw) {
-        parsedProfile = JSON.parse(profileRaw);
+        parsedProfile = { ...DEFAULT_PROFILE, ...JSON.parse(profileRaw) };
         setProfile(parsedProfile);
         setProfileDraft(parsedProfile);
         setRegistrationData((prev) => ({
@@ -2740,6 +3007,8 @@ export default function App() {
           motto: parsedProfile.motto || parsedProfile.subtitle || prev.motto,
           avatar: parsedProfile.avatar || prev.avatar,
           currency: parsedProfile.currency || prev.currency,
+          gender: parsedProfile.gender || prev.gender,
+          persona: parsedProfile.persona || prev.persona,
         }));
         setActiveCurrency(parsedProfile.currency || DEFAULT_PROFILE.currency);
       } else {
@@ -2863,8 +3132,8 @@ export default function App() {
       (a, b) =>
         (a.priceUSD ?? a.basePriceUSD ?? 0) - (b.priceUSD ?? b.basePriceUSD ?? 0)
     );
-    setTemptations(nextList);
-  }, [catalogOverrides]);
+    setTemptations(buildPersonalizedTemptations(profile, nextList));
+  }, [catalogOverrides, profile]);
 
   useEffect(() => {
     return () => {
@@ -2979,6 +3248,37 @@ export default function App() {
       return;
     }
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    setOnboardingStep("persona");
+  };
+
+  const handlePersonaSubmit = () => {
+    if (!registrationData.persona) {
+      Alert.alert("Almost", t("personaHabitLabel"));
+      return;
+    }
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    setOnboardingStep("habit");
+  };
+
+  const handleHabitSubmit = (skip = false) => {
+    if (!skip) {
+      if (!registrationData.customSpendTitle.trim()) {
+        Alert.alert("Almost", t("customSpendTitle"));
+        return;
+      }
+      const parsed = parseFloat((registrationData.customSpendAmount || "").replace(",", "."));
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        Alert.alert("Almost", t("customSpendAmountLabel"));
+        return;
+      }
+    } else {
+      setRegistrationData((prev) => ({
+        ...prev,
+        customSpendTitle: "",
+        customSpendAmount: "",
+      }));
+    }
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
     setOnboardingStep("goal");
   };
 
@@ -2995,6 +3295,19 @@ export default function App() {
     const displayName = `${registrationData.firstName} ${registrationData.lastName}`.trim()
       || registrationData.firstName.trim()
       || DEFAULT_PROFILE.name;
+    const personaId = registrationData.persona || DEFAULT_PERSONA_ID;
+    const gender = registrationData.gender || "neutral";
+    let customSpend = null;
+    const customName = registrationData.customSpendTitle?.trim();
+    const customAmount = parseFloat((registrationData.customSpendAmount || "").replace(",", "."));
+    if (customName && Number.isFinite(customAmount) && customAmount > 0) {
+      const amountUSD = convertFromCurrency(customAmount, registrationData.currency);
+      customSpend = {
+        title: customName,
+        amountUSD,
+        currency: registrationData.currency,
+      };
+    }
     const updatedProfile = {
       ...profile,
       name: displayName,
@@ -3005,6 +3318,9 @@ export default function App() {
       avatar: registrationData.avatar || profile.avatar,
       currency: registrationData.currency,
       goal: selectedGoal,
+      persona: personaId,
+      gender,
+      customSpend,
     };
     setProfile(updatedProfile);
     setProfileDraft(updatedProfile);
@@ -3585,6 +3901,7 @@ export default function App() {
             refuseStats={refuseStats}
             cardFeedback={cardFeedback}
             historyEvents={historyEvents}
+            profile={profile}
           />
         );
     }
@@ -3605,6 +3922,28 @@ export default function App() {
           onPickImage={handleRegistrationPickImage}
           colors={colors}
           t={t}
+        />
+      );
+    } else if (onboardingStep === "persona") {
+      onboardContent = (
+        <PersonaScreen
+          data={registrationData}
+          onChange={updateRegistrationData}
+          onSubmit={handlePersonaSubmit}
+          colors={colors}
+          t={t}
+          language={language}
+        />
+      );
+    } else if (onboardingStep === "habit") {
+      onboardContent = (
+        <CustomHabitScreen
+          data={registrationData}
+          onChange={updateRegistrationData}
+          onSubmit={handleHabitSubmit}
+          colors={colors}
+          t={t}
+          currency={registrationData.currency || profile.currency || DEFAULT_PROFILE.currency}
         />
       );
     } else if (onboardingStep === "goal") {
@@ -4537,6 +4876,14 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 16,
   },
+  secondaryButtonClear: {
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  secondaryButtonClearText: {
+    fontWeight: "600",
+    fontSize: 14,
+  },
   secondaryButton: {
     borderRadius: 24,
     paddingVertical: 14,
@@ -5305,6 +5652,13 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: "center",
   },
+  primaryInput: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+  },
   avatarImage: {
     width: 120,
     height: 120,
@@ -5350,6 +5704,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
+  personaGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  personaCard: {
+    width: "48%",
+    borderWidth: 1,
+    borderRadius: 22,
+    padding: 16,
+    gap: 6,
+  },
+  personaEmoji: {
+    fontSize: 24,
+  },
+  personaTitle: {
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  personaSubtitleCard: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
   goalEmoji: {
     fontSize: 28,
   },
@@ -5360,6 +5737,25 @@ const styles = StyleSheet.create({
   languageButtons: {
     flexDirection: "row",
     gap: 14,
+  },
+  genderGrid: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  genderChip: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingVertical: 12,
+    alignItems: "center",
+    gap: 6,
+  },
+  genderEmoji: {
+    fontSize: 20,
+  },
+  genderLabel: {
+    fontWeight: "600",
   },
   languageButton: {
     flex: 1,
@@ -5545,6 +5941,117 @@ function GoalScreen({ selectedGoal, onSelect, onSubmit, colors, t, language }) {
 
         <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
           <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("goalButton")}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </Animated.View>
+  );
+}
+
+function PersonaScreen({ data, onChange, onSubmit, colors, t, language }) {
+  const fade = useFadeIn();
+  const personaList = Object.values(PERSONA_PRESETS);
+  return (
+    <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
+      <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false}>
+        <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("personaTitle")}</Text>
+        <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("personaSubtitle")}</Text>
+
+        <Text style={[styles.currencyLabel, { color: colors.muted }]}>{t("personaGenderLabel")}</Text>
+        <View style={styles.genderGrid}>
+          {GENDER_OPTIONS.map((option) => {
+            const active = option.id === data.gender;
+            return (
+              <TouchableOpacity
+                key={option.id}
+                style={[
+                  styles.genderChip,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: active ? colors.card : "transparent",
+                  },
+                ]}
+                onPress={() => onChange("gender", option.id)}
+              >
+                <Text style={styles.genderEmoji}>{option.emoji}</Text>
+                <Text style={[styles.genderLabel, { color: colors.text }]}>
+                  {option.label[language] || option.label.en}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={[styles.currencyLabel, { color: colors.muted, marginTop: 16 }]}>
+          {t("personaHabitLabel")}
+        </Text>
+        <View style={styles.personaGrid}>
+          {personaList.map((persona) => {
+            const active = data.persona === persona.id;
+            return (
+              <TouchableOpacity
+                key={persona.id}
+                style={[
+                  styles.personaCard,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: active ? colors.card : "transparent",
+                  },
+                ]}
+                onPress={() => onChange("persona", persona.id)}
+              >
+                <Text style={styles.personaEmoji}>{persona.emoji}</Text>
+                <Text style={[styles.personaTitle, { color: colors.text }]}>
+                  {persona.title[language] || persona.title.en}
+                </Text>
+                <Text style={[styles.personaSubtitleCard, { color: colors.muted }]}>
+                  {persona.description[language] || persona.description.en}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
+          <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("personaConfirm")}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </Animated.View>
+  );
+}
+
+function CustomHabitScreen({ data, onChange, onSubmit, colors, t, currency }) {
+  const fade = useFadeIn();
+  return (
+    <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
+      <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false}>
+        <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("customSpendTitle")}</Text>
+        <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("customSpendSubtitle")}</Text>
+
+        <TextInput
+          style={[styles.primaryInput, { borderColor: colors.border, color: colors.text }]}
+          placeholder={t("customSpendNamePlaceholder")}
+          placeholderTextColor={colors.muted}
+          value={data.customSpendTitle}
+          onChangeText={(text) => onChange("customSpendTitle", text)}
+        />
+        <View style={{ gap: 6 }}>
+          <Text style={[styles.currencyLabel, { color: colors.muted }]}>{t("customSpendAmountLabel")}</Text>
+          <TextInput
+            style={[styles.primaryInput, { borderColor: colors.border, color: colors.text }]}
+            placeholder={`${t("customSpendAmountPlaceholder")} (${currency})`}
+            placeholderTextColor={colors.muted}
+            keyboardType="decimal-pad"
+            value={data.customSpendAmount}
+            onChangeText={(text) => onChange("customSpendAmount", text)}
+          />
+        </View>
+        <Text style={{ color: colors.muted }}>{t("customSpendHint")}</Text>
+
+        <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={() => onSubmit(false)}>
+          <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("personaConfirm")}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.secondaryButtonClear} onPress={() => onSubmit(true)}>
+          <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>{t("customSpendSkip")}</Text>
         </TouchableOpacity>
       </ScrollView>
     </Animated.View>
