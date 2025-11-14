@@ -2089,13 +2089,14 @@ export default function App() {
   const overlayTimer = useRef(null);
   const cartBadgeScale = useRef(new Animated.Value(0)).current;
   const [onboardingStep, setOnboardingStep] = useState("logo");
-const [registrationData, setRegistrationData] = useState(INITIAL_REGISTRATION);
+  const [registrationData, setRegistrationData] = useState(INITIAL_REGISTRATION);
   const [selectedGoal, setSelectedGoal] = useState(null);
   const [showImageSourceSheet, setShowImageSourceSheet] = useState(false);
   const imagePickerResolver = useRef(null);
   const [refuseStats, setRefuseStats] = useState({});
   const [cardFeedback, setCardFeedback] = useState({});
   const cardFeedbackTimers = useRef({});
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const ensureNotificationPermission = useCallback(async () => {
     try {
       let settings = await Notifications.getPermissionsAsync();
@@ -2118,6 +2119,15 @@ const [registrationData, setRegistrationData] = useState(INITIAL_REGISTRATION);
   useEffect(() => {
     ensureNotificationPermission();
   }, [ensureNotificationPermission]);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const schedulePendingReminder = useCallback(
     async (title, dueDate) => {
@@ -3100,7 +3110,11 @@ const [registrationData, setRegistrationData] = useState(INITIAL_REGISTRATION);
   }
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+    <TouchableWithoutFeedback
+      onPress={Keyboard.dismiss}
+      accessible={false}
+      disabled={!keyboardVisible}
+    >
       <SafeAreaView style={[styles.appShell, { backgroundColor: colors.background }] }>
         <View style={styles.screenWrapper}>{renderActiveScreen()}</View>
         <View style={[styles.tabBar, { backgroundColor: colors.card, borderTopColor: colors.border }] }>
