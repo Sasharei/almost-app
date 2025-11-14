@@ -4,7 +4,7 @@
     "slug": "almost_clean",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/Almost_logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "splash": {
@@ -22,7 +22,7 @@
     "android": {
       "package": "com.sasarei.almostclean",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/Almost_logo.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
@@ -33,7 +33,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/Almost_logo.png"
     },
     "plugins": [
       [
