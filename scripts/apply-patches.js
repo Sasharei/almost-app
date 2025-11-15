@@ -34,6 +34,10 @@ const patches = [
     src: 'patches/expo-constants/scripts/get-app-config-android.gradle',
     dest: 'node_modules/expo-constants/scripts/get-app-config-android.gradle',
   },
+  {
+    src: 'patches/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt',
+    dest: 'node_modules/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt',
+  },
 ];
 
 let applied = 0;
