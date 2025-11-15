@@ -3591,8 +3591,6 @@ function ProfileScreen({
             thumbColor={colors.card}
           />
         </View>
-<<<<<<< ours
-=======
         <View style={styles.settingRow}>
           <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("primaryGoalLabel")}</Text>
           <View style={styles.profileGoalGrid}>
@@ -3668,7 +3666,6 @@ function ProfileScreen({
           </Text>
         </TouchableOpacity>
         </View>
->>>>>>> theirs
 
         <View style={[styles.historyCard, { backgroundColor: colors.card }] }>
           <Text style={[styles.historyTitle, { color: colors.text }]}>{t("historyTitle")}</Text>
