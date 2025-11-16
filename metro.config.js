@@ -1,3 +1,4 @@
+process.env.METRO_DISABLE_FS_EVENTS = process.env.METRO_DISABLE_FS_EVENTS || "1";
 const os = require("os");
 const path = require("path");
 const { getDefaultConfig } = require("expo/metro-config");
