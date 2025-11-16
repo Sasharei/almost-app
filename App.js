@@ -60,6 +60,7 @@ const STORAGE_KEYS = {
   REFUSE_STATS: "@almost_refuse_stats",
   REWARDS_CELEBRATED: "@almost_rewards_celebrated",
   ANALYTICS_OPT_OUT: "@almost_analytics_opt_out",
+  TEMPTATION_GOALS: "@almost_temptation_goals",
 };
 
 const PURCHASE_GOAL = 20000;
@@ -580,6 +581,29 @@ const TRANSLATIONS = {
     goalWidgetComplete: "Цель достигнута",
     goalWidgetTitle: "Цель",
     goalWidgetCompleteTagline: "Экономия продолжалась — и цель закрыта.",
+    goalAssignPromptTitle: "Куда зачесть экономию?",
+    goalAssignPromptSubtitle: "Выбери цель, которую наполняет «{{title}}».",
+    goalAssignNone: "Пока без цели",
+    goalAssignTemptationTitle: "Назначить искушение",
+    goalAssignTemptationSubtitle: "Что будет пополнять «{{goal}}»?",
+    goalAssignClear: "Сбросить назначение",
+    goalAssignFieldLabel: "Куда копим",
+    goalEditAction: "Изменить",
+    goalDeleteAction: "Удалить",
+    goalEditModalTitle: "Редактировать цель",
+    goalEditNameLabel: "Название цели",
+    goalEditTargetLabel: "Сумма цели",
+    goalEditSave: "Сохранить",
+    goalEditCancel: "Отмена",
+    goalEditNameError: "Введи название цели",
+    goalEditTargetError: "Введи сумму цели",
+    goalAssignPromptTitle: "Куда зачесть экономию?",
+    goalAssignPromptSubtitle: "Выбери цель, которую наполняет «{{title}}».",
+    goalAssignNone: "Пока без цели",
+    goalAssignTemptationTitle: "Назначить искушение",
+    goalAssignTemptationSubtitle: "Что будет пополнять «{{goal}}»?",
+    goalAssignClear: "Сбросить назначение",
+    goalAssignFieldLabel: "Куда копим",
     goalCelebrationTitle: "Главная цель достигнута!",
     goalCelebrationSubtitle: "Алми гордится тобой. Можно выбрать новую мечту.",
     goalCelebrationTarget: "Собрано {{amount}}",
@@ -848,6 +872,22 @@ const TRANSLATIONS = {
     goalWidgetComplete: "Goal completed",
     goalWidgetTitle: "Goal",
     goalWidgetCompleteTagline: "Savings kept rolling — mission accomplished.",
+    goalAssignPromptTitle: "Where should this savings go?",
+    goalAssignPromptSubtitle: "Pick the goal that “{{title}}” will fund.",
+    goalAssignNone: "No goal yet",
+    goalAssignTemptationTitle: "Assign temptation",
+    goalAssignTemptationSubtitle: "Which habit fills “{{goal}}”?",
+    goalAssignClear: "Clear assignment",
+    goalAssignFieldLabel: "Sends savings to",
+    goalEditAction: "Edit",
+    goalDeleteAction: "Remove",
+    goalEditModalTitle: "Edit goal",
+    goalEditNameLabel: "Goal name",
+    goalEditTargetLabel: "Goal amount",
+    goalEditSave: "Save",
+    goalEditCancel: "Cancel",
+    goalEditNameError: "Enter a goal name",
+    goalEditTargetError: "Set a goal amount",
     goalCelebrationTitle: "Main goal complete!",
     goalCelebrationSubtitle: "Almi is proud — time to pick the next dream.",
     goalCelebrationTarget: "Saved {{amount}}",
@@ -1159,6 +1199,36 @@ const insertWishAfterPrimary = (list = [], newWish) => {
   const before = list.slice(0, lastPrimaryIndex + 1);
   const after = list.slice(lastPrimaryIndex + 1);
   return [...before, newWish, ...after];
+};
+
+const sumPrimaryGoalTargets = (goals = []) =>
+  goals.reduce((sum, goal) => sum + (Number(goal?.targetUSD) || 0), 0);
+
+const removePrimaryGoalFromProfile = (profileState = {}, goalId) => {
+  if (!goalId) return profileState;
+  const currentGoals = Array.isArray(profileState.primaryGoals) ? profileState.primaryGoals : [];
+  const filtered = currentGoals.filter((goal) => goal.id !== goalId);
+  const nextGoalId = filtered[0]?.id || "";
+  return {
+    ...profileState,
+    primaryGoals: filtered,
+    goal: nextGoalId,
+    goalTargetUSD: sumPrimaryGoalTargets(filtered),
+    goalCelebrated: filtered.length ? profileState.goalCelebrated : false,
+  };
+};
+
+const updatePrimaryGoalTargetInProfile = (profileState = {}, goalId, targetUSD) => {
+  if (!goalId) return profileState;
+  const currentGoals = Array.isArray(profileState.primaryGoals) ? profileState.primaryGoals : [];
+  const updated = currentGoals.map((goal) =>
+    goal.id === goalId ? { ...goal, targetUSD } : goal
+  );
+  return {
+    ...profileState,
+    primaryGoals: updated,
+    goalTargetUSD: sumPrimaryGoalTargets(updated),
+  };
 };
 
 const DEFAULT_PROFILE = {
@@ -1695,6 +1765,7 @@ function TemptationCard({
   feedback,
   starterPriceUSD = null,
   titleOverride,
+  goalLabel = null,
 }) {
   const title = resolveTemptationTitle(item, language, titleOverride);
   const desc = item.description?.[language] || item.description?.en || "";
@@ -1888,6 +1959,11 @@ function TemptationCard({
           {priceLabel}
         </Text>
       </View>
+      {goalLabel ? (
+        <Text style={[styles.temptationGoalLabel, { color: cardMutedColor }]}>
+          {t("goalAssignFieldLabel")}: {goalLabel}
+        </Text>
+      ) : null}
       <View style={styles.temptationActions}>
         {actionConfig.map((action) => {
           let buttonStyle;
@@ -2465,6 +2541,7 @@ function FeedScreen({
   titleOverrides = {},
   onLevelCelebrate,
   onBaselineSetup,
+  goalAssignments = {},
 }) {
   const handleBaselineSetup = onBaselineSetup || (() => {});
   const realSavedUSD = useRealSavedAmount();
@@ -2770,28 +2847,139 @@ function FeedScreen({
             </ScrollView>
           </View>
         }
-        renderItem={({ item }) => (
-          <TemptationCard
-            item={item}
-            language={language}
-            colors={colors}
-            t={t}
-            onEditPrice={() => onEditPrice(item)}
-            savedTotalUSD={savedTotalUSD}
-            currency={currency}
-            stats={refuseStats[item.id]}
-            feedback={cardFeedback[item.id]}
-            starterPriceUSD={starterPriceUSD}
-            titleOverride={titleOverrides[item.id]}
-            onAction={async (type) => {
-              await onTemptationAction(type, item);
-            }}
-          />
-        )}
+        renderItem={({ item }) => {
+          const assignedGoalId = goalAssignments?.[item.id];
+          const assignedGoal =
+            assignedGoalId && (wishes || []).find((wish) => wish.id === assignedGoalId);
+          return (
+            <TemptationCard
+              item={item}
+              language={language}
+              colors={colors}
+              t={t}
+              onEditPrice={() => onEditPrice(item)}
+              savedTotalUSD={savedTotalUSD}
+              currency={currency}
+              stats={refuseStats[item.id]}
+              feedback={cardFeedback[item.id]}
+              starterPriceUSD={starterPriceUSD}
+              titleOverride={titleOverrides[item.id]}
+              goalLabel={assignedGoal?.title || null}
+              onAction={async (type) => {
+                await onTemptationAction(type, item);
+              }}
+            />
+          );
+        }}
       />
     </SafeAreaView>
   );
 }
+
+const SwipeableGoalRow = ({
+  children,
+  colors,
+  t,
+  onEdit,
+  onDelete,
+  onSwipeOpen,
+  onSwipeClose,
+}) => {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const ACTION_WIDTH = 160;
+  const gestureStartOffset = useRef(0);
+  const externalCloserRef = useRef(null);
+  const closeRow = useCallback(
+    (notify = true) => {
+      Animated.timing(translateX, {
+        toValue: 0,
+        duration: 150,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start(() => {
+        if (notify) {
+          onSwipeClose?.(externalCloserRef.current);
+          externalCloserRef.current = null;
+        }
+      });
+    },
+    [onSwipeClose, translateX]
+  );
+  const notifyOpen = useCallback(() => {
+    const closer = () => closeRow();
+    externalCloserRef.current = closer;
+    onSwipeOpen?.(closer);
+  }, [closeRow, onSwipeOpen]);
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 6,
+        onPanResponderGrant: () => {
+          translateX.stopAnimation((value) => {
+            gestureStartOffset.current = value;
+          });
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const base = gestureStartOffset.current || 0;
+          const next = Math.max(0, Math.min(base + gestureState.dx, ACTION_WIDTH));
+          translateX.setValue(next);
+        },
+        onPanResponderRelease: () => {
+          translateX.stopAnimation((value) => {
+            const shouldOpen = value > ACTION_WIDTH * 0.35;
+            Animated.timing(translateX, {
+              toValue: shouldOpen ? ACTION_WIDTH : 0,
+              duration: 180,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: true,
+            }).start(() => {
+              if (shouldOpen) {
+                notifyOpen();
+              } else {
+                closeRow();
+              }
+            });
+          });
+        },
+        onPanResponderTerminate: () => {
+          closeRow();
+        },
+      }),
+    [ACTION_WIDTH, closeRow, notifyOpen, translateX]
+  );
+  const handleEdit = () => {
+    closeRow();
+    onEdit?.();
+  };
+  const handleDelete = () => {
+    closeRow();
+    onDelete?.();
+  };
+  return (
+    <View style={[styles.goalSwipeRow, { backgroundColor: colors.background }]}>
+      <View style={[styles.goalSwipeActions, { backgroundColor: colors.background }]}>
+        <TouchableOpacity
+          style={[styles.goalSwipeButton, !onEdit && styles.goalSwipeButtonDisabled]}
+          onPress={handleEdit}
+          disabled={!onEdit}
+        >
+          <Text style={[styles.goalSwipeButtonText, { color: colors.text }]}>{t("goalEditAction")}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.goalSwipeButton, !onDelete && styles.goalSwipeButtonDisabled]}
+          onPress={handleDelete}
+          disabled={!onDelete}
+        >
+          <Text style={[styles.goalSwipeButtonText, { color: colors.text }]}>{t("goalDeleteAction")}</Text>
+        </TouchableOpacity>
+      </View>
+      <Animated.View style={[styles.goalSwipeContent, { transform: [{ translateX }] }]} {...panResponder.panHandlers}>
+        {children}
+      </Animated.View>
+    </View>
+  );
+};
 
 function WishListScreen({
   wishes,
@@ -2800,11 +2988,25 @@ function WishListScreen({
   colors,
   onRemoveWish,
   primaryGoals = [],
+  onGoalLongPress = null,
+  onGoalEdit = null,
 }) {
   const isDarkTheme = colors.background === THEMES.dark.background;
   const primaryGoalIds = Array.isArray(primaryGoals)
     ? primaryGoals.map((goal) => goal?.id).filter(Boolean)
     : [];
+  const swipeCloserRef = useRef(null);
+  const handleSwipeOpen = useCallback((closeFn) => {
+    if (swipeCloserRef.current && swipeCloserRef.current !== closeFn) {
+      swipeCloserRef.current();
+    }
+    swipeCloserRef.current = closeFn;
+  }, []);
+  const handleSwipeClose = useCallback((closeFn) => {
+    if (!closeFn || swipeCloserRef.current === closeFn) {
+      swipeCloserRef.current = null;
+    }
+  }, []);
   if (wishes.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }] }>
@@ -2826,11 +3028,11 @@ function WishListScreen({
   );
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }] }
-      contentContainerStyle={{ paddingBottom: 160 }}
-            keyboardShouldPersistTaps="handled"
-          >
+    <View style={[styles.container, { backgroundColor: colors.background }] }>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 160 }}
+        keyboardShouldPersistTaps="handled"
+      >
       <Text style={[styles.header, { color: colors.text }]}>{t("wishlistTitle")}</Text>
       <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
         {t("wishlistSummary", { amount: totalTarget })}
@@ -2856,6 +3058,16 @@ function WishListScreen({
           : `${Math.round(progress * 100)}%`;
         const remainingUSD = Math.max((wish.targetUSD || 0) - (wish.savedUSD || 0), 0);
         const remainingLabel = formatCurrency(convertToCurrency(remainingUSD, currency), currency);
+        const renderWithLongPress = (content) => {
+          if (typeof onGoalLongPress === "function") {
+            return (
+              <TouchableOpacity activeOpacity={0.96} delayLongPress={320} onLongPress={() => onGoalLongPress(wish)}>
+                {content}
+              </TouchableOpacity>
+            );
+          }
+          return content;
+        };
         if (isPrimaryGoal) {
           const preset = getGoalPreset(wish.goalId || primaryGoalIds[0]);
           const emblem = preset?.emoji || "🎯";
@@ -2880,8 +3092,8 @@ function WishListScreen({
           const auraColor = isDarkTheme
             ? "rgba(0,0,0,0.06)"
             : "rgba(255,255,255,0.18)";
-          return (
-            <View key={wish.id} style={[styles.primaryGoalCard, { backgroundColor: colors.text }]}>
+          const cardContent = (
+            <View style={[styles.primaryGoalCard, { backgroundColor: colors.text }]}>
               <View style={[styles.primaryGoalAura, { backgroundColor: auraColor }]} />
               <View style={styles.primaryGoalTop}>
                 <View style={{ flex: 1, gap: 8 }}>
@@ -2942,9 +3154,22 @@ function WishListScreen({
               </View>
             </View>
           );
+          return (
+            <SwipeableGoalRow
+              key={wish.id}
+              colors={colors}
+              t={t}
+              onEdit={onGoalEdit ? () => onGoalEdit(wish) : undefined}
+              onDelete={() => onRemoveWish(wish.id)}
+              onSwipeOpen={handleSwipeOpen}
+              onSwipeClose={handleSwipeClose}
+            >
+              {renderWithLongPress(cardContent)}
+            </SwipeableGoalRow>
+          );
         }
-        return (
-          <View key={wish.id} style={[styles.wishCard, { backgroundColor: colors.card }] }>
+        const cardContent = (
+          <View style={[styles.wishCard, { backgroundColor: colors.card }] }>
             <View style={styles.wishHeader}>
               <Text style={[styles.wishTitle, { color: colors.text }]}>{wish.title}</Text>
               <View style={styles.wishBadge}>
@@ -2970,8 +3195,22 @@ function WishListScreen({
             )}
           </View>
         );
+        return (
+          <SwipeableGoalRow
+            key={wish.id}
+            colors={colors}
+            t={t}
+            onEdit={onGoalEdit ? () => onGoalEdit(wish) : undefined}
+            onDelete={() => onRemoveWish(wish.id)}
+            onSwipeOpen={handleSwipeOpen}
+            onSwipeClose={handleSwipeClose}
+          >
+            {renderWithLongPress(cardContent)}
+          </SwipeableGoalRow>
+        );
       })}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -3869,6 +4108,10 @@ function App() {
   const stormTimerRef = useRef(null);
   const [rewardCelebratedMap, setRewardCelebratedMap] = useState({});
   const [rewardsReady, setRewardsReady] = useState(false);
+  const [temptationGoalMap, setTemptationGoalMap] = useState({});
+  const [goalLinkPrompt, setGoalLinkPrompt] = useState({ visible: false, item: null, intent: null });
+  const [goalTemptationPrompt, setGoalTemptationPrompt] = useState({ visible: false, wish: null });
+  const [goalEditorPrompt, setGoalEditorPrompt] = useState({ visible: false, wish: null, name: "", target: "" });
   const ensureNotificationPermission = useCallback(async () => {
     try {
       let settings = await Notifications.getPermissionsAsync();
@@ -3946,6 +4189,86 @@ function App() {
   const overlayDimColor = isDarkTheme ? "rgba(0,0,0,0.65)" : "rgba(5,6,15,0.2)";
   const overlayCardBackground = isDarkTheme ? lightenColor(colors.card, 0.18) : colors.card;
   const overlayBorderColor = isDarkTheme ? lightenColor(colors.border, 0.25) : colors.border;
+  const assignableGoals = useMemo(
+    () => (wishes || []).filter((wish) => wish.status !== "done"),
+    [wishes]
+  );
+  const resolveTemptationGoalId = useCallback(
+    (templateId) => {
+      if (!templateId) return null;
+      const assigned = temptationGoalMap[templateId];
+      if (assigned && wishes.some((wish) => wish.id === assigned)) {
+        return assigned;
+      }
+      return null;
+    },
+    [temptationGoalMap, wishes]
+  );
+  const getFallbackGoalId = useCallback(() => {
+    if (assignableGoals.length > 0) return assignableGoals[0].id;
+    return wishes[0]?.id || null;
+  }, [assignableGoals, wishes]);
+  const assignTemptationGoal = useCallback((templateId, wishId = null) => {
+    if (!templateId) return;
+    setTemptationGoalMap((prev) => {
+      const next = { ...prev };
+      if (wishId) {
+        next[templateId] = wishId;
+      } else {
+        delete next[templateId];
+      }
+      return next;
+    });
+  }, []);
+  const applySavingsToWish = useCallback((wishId, amountUSD) => {
+    if (!wishId || !Number.isFinite(amountUSD) || amountUSD <= 0) return 0;
+    let applied = 0;
+    setWishes((prev) => {
+      let changed = false;
+      const next = prev.map((wish) => {
+        if (wish.id !== wishId) return wish;
+        const current = wish.savedUSD || 0;
+        const target = wish.targetUSD || 0;
+        const desired = current + amountUSD;
+        const nextSaved = Math.min(desired, target);
+        applied = nextSaved - current;
+        const status = nextSaved >= target ? "done" : "active";
+        if (
+          nextSaved !== current ||
+          wish.status !== status ||
+          wish.autoManaged !== false
+        ) {
+          changed = true;
+          return {
+            ...wish,
+            savedUSD: nextSaved,
+            status,
+            autoManaged: false,
+          };
+        }
+        return wish;
+      });
+      return changed ? next : prev;
+    });
+    return applied;
+  }, []);
+  const getWishTitleById = useCallback(
+    (wishId) => wishes.find((wish) => wish.id === wishId)?.title || "",
+    [wishes]
+  );
+  const goalSelectionList = useMemo(
+    () => (assignableGoals.length > 0 ? assignableGoals : wishes),
+    [assignableGoals, wishes]
+  );
+  const priceEditorAssignedGoalId = priceEditor.item
+    ? resolveTemptationGoalId(priceEditor.item.id)
+    : null;
+  const priceEditorAssignedGoalTitle = priceEditorAssignedGoalId
+    ? getWishTitleById(priceEditorAssignedGoalId)
+    : "";
+  const goalLinkCurrentGoalId = goalLinkPrompt.item
+    ? resolveTemptationGoalId(goalLinkPrompt.item.id)
+    : null;
   const activeGender = profile.gender || registrationData.gender || DEFAULT_PROFILE.gender || "none";
 
   const t = (key, replacements = {}) => {
@@ -4045,6 +4368,7 @@ function App() {
         refuseStatsRaw,
         rewardsCelebratedRaw,
         analyticsOptOutRaw,
+        goalMapRaw,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.WISHES),
         AsyncStorage.getItem(STORAGE_KEYS.PENDING),
@@ -4063,6 +4387,7 @@ function App() {
         AsyncStorage.getItem(STORAGE_KEYS.REFUSE_STATS),
         AsyncStorage.getItem(STORAGE_KEYS.REWARDS_CELEBRATED),
         AsyncStorage.getItem(STORAGE_KEYS.ANALYTICS_OPT_OUT),
+        AsyncStorage.getItem(STORAGE_KEYS.TEMPTATION_GOALS),
       ]);
       if (wishesRaw) setWishes(JSON.parse(wishesRaw));
       if (pendingRaw) setPendingList(JSON.parse(pendingRaw));
@@ -4145,6 +4470,13 @@ function App() {
       if (analyticsOptOutRaw) {
         setAnalyticsOptOutState(analyticsOptOutRaw === "1");
       }
+      if (goalMapRaw) {
+        try {
+          setTemptationGoalMap(JSON.parse(goalMapRaw));
+        } catch (err) {
+          console.warn("goal map parse", err);
+        }
+      }
       if (onboardingRaw === "done" || parsedProfile?.goal) {
         setOnboardingStep("done");
       } else if (parsedProfile?.firstName) {
@@ -4210,6 +4542,13 @@ function App() {
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.WISHES, JSON.stringify(wishes)).catch(() => {});
   }, [wishes]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(
+      STORAGE_KEYS.TEMPTATION_GOALS,
+      JSON.stringify(temptationGoalMap)
+    ).catch(() => {});
+  }, [temptationGoalMap]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(purchases)).catch(() => {});
@@ -4292,21 +4631,56 @@ function App() {
 
   useEffect(() => {
     setWishes((prev) => {
-      let remaining = savedTotalUSD;
+      if (!prev.length) return prev;
       let changed = false;
-      const next = prev.map((wish) => {
-        const autoManaged = wish.autoManaged !== false;
-        if (!autoManaged) return wish;
+      const next = prev.slice();
+      let manualReserved = 0;
+      const manualEntries = [];
+      prev.forEach((wish, index) => {
+        if (wish.autoManaged === false) {
+          const saved = Math.max(0, wish.savedUSD || 0);
+          manualReserved += saved;
+          manualEntries.push({ index, saved });
+        }
+      });
+      if (manualReserved > savedTotalUSD) {
+        let deficit = manualReserved - savedTotalUSD;
+        for (let i = manualEntries.length - 1; i >= 0 && deficit > 0; i--) {
+          const entry = manualEntries[i];
+          const currentWish = next[entry.index];
+          const savedValue = currentWish.savedUSD || 0;
+          if (savedValue <= 0) continue;
+          const deduction = Math.min(savedValue, deficit);
+          if (deduction > 0) {
+            const newSaved = savedValue - deduction;
+            const status = newSaved >= (currentWish.targetUSD || 0) ? "done" : "active";
+            next[entry.index] = { ...currentWish, savedUSD: newSaved, status };
+            changed = true;
+            deficit -= deduction;
+          }
+        }
+        manualReserved = Math.min(manualReserved, savedTotalUSD);
+      }
+      let remaining = Math.max(0, savedTotalUSD - manualReserved);
+      for (let i = 0; i < next.length; i++) {
+        const wish = next[i];
+        if (wish.autoManaged === false) {
+          const status = (wish.savedUSD || 0) >= (wish.targetUSD || 0) ? "done" : "active";
+          if (wish.status !== status) {
+            next[i] = { ...wish, status };
+            changed = true;
+          }
+          continue;
+        }
         const target = wish.targetUSD || 0;
         const newSaved = Math.min(target, Math.max(remaining, 0));
         remaining = Math.max(0, remaining - newSaved);
         const status = newSaved >= target ? "done" : "active";
         if (newSaved !== (wish.savedUSD || 0) || status !== wish.status) {
+          next[i] = { ...wish, savedUSD: newSaved, status };
           changed = true;
-          return { ...wish, savedUSD: newSaved, status };
         }
-        return wish;
-      });
+      }
       return changed ? next : prev;
     });
   }, [savedTotalUSD, wishes]);
@@ -5000,7 +5374,8 @@ function App() {
   );
 
   const handleTemptationAction = useCallback(
-    async (type, item) => {
+    async (type, item, options = {}) => {
+      const { skipPrompt = false, goalId: forcedGoalId = null, shouldAssign = false } = options || {};
       const priceUSD = item.priceUSD || item.basePriceUSD || 0;
       const title = `${item.emoji || "✨"} ${
         item.title?.[language] || item.title?.en || item.title || "wish"
@@ -5029,6 +5404,27 @@ function App() {
         return;
       }
       if (type === "save") {
+        const storedGoalId = resolveTemptationGoalId(item.id);
+        const desiredGoalId = forcedGoalId || storedGoalId;
+        const shouldPrompt =
+          !skipPrompt && assignableGoals.length > 1 && !desiredGoalId;
+        if (shouldPrompt) {
+          setGoalLinkPrompt({ visible: true, item, intent: "save" });
+          return;
+        }
+        let targetGoalId = desiredGoalId || getFallbackGoalId();
+        if (!targetGoalId && assignableGoals.length === 0 && wishes.length > 0) {
+          targetGoalId = wishes[0].id;
+        }
+        const shouldStoreGoal =
+          (shouldAssign && !!targetGoalId) ||
+          (!storedGoalId && !forcedGoalId && !!targetGoalId);
+        if (shouldStoreGoal) {
+          assignTemptationGoal(item.id, targetGoalId);
+        }
+        if (targetGoalId) {
+          applySavingsToWish(targetGoalId, priceUSD);
+        }
         const timestamp = Date.now();
         setSavedTotalUSD((prev) => prev + priceUSD);
         setDeclineCount((prev) => prev + 1);
@@ -5105,8 +5501,130 @@ function App() {
       buildTemptationPayload,
       savedTotalUSD,
       refuseStats,
+      resolveTemptationGoalId,
+      assignableGoals.length,
+      assignTemptationGoal,
+      applySavingsToWish,
+      setGoalLinkPrompt,
+      getFallbackGoalId,
+      wishes.length,
     ]
   );
+
+  const closeGoalLinkPrompt = useCallback(() => {
+    setGoalLinkPrompt({ visible: false, item: null, intent: null });
+  }, []);
+
+  const handleGoalLinkSelect = useCallback(
+    (wishId) => {
+      const sourceItem = goalLinkPrompt.item;
+      const intent = goalLinkPrompt.intent;
+      closeGoalLinkPrompt();
+      if (!wishId || !sourceItem) return;
+      if (intent === "save") {
+        handleTemptationAction("save", sourceItem, {
+          skipPrompt: true,
+          goalId: wishId,
+          shouldAssign: true,
+        });
+        return;
+      }
+      assignTemptationGoal(sourceItem.id, wishId);
+    },
+    [assignTemptationGoal, closeGoalLinkPrompt, goalLinkPrompt, handleTemptationAction]
+  );
+
+  const handleGoalLongPress = useCallback(
+    (wish) => {
+      if (!wish) return;
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+      setGoalTemptationPrompt({ visible: true, wish });
+    },
+    [triggerHaptic]
+  );
+
+  const closeGoalTemptationPrompt = useCallback(() => {
+    setGoalTemptationPrompt({ visible: false, wish: null });
+  }, []);
+
+  const handleGoalTemptationAssign = useCallback(
+    (templateId) => {
+      const targetWish = goalTemptationPrompt.wish;
+      closeGoalTemptationPrompt();
+      if (!templateId || !targetWish) return;
+      assignTemptationGoal(templateId, targetWish.id);
+    },
+    [assignTemptationGoal, closeGoalTemptationPrompt, goalTemptationPrompt]
+  );
+
+  const openGoalEditorPrompt = useCallback(
+    (wish) => {
+      if (!wish) return;
+      const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+      const targetLocal = formatNumberInputValue(convertToCurrency(wish.targetUSD || 0, currencyCode));
+      setGoalEditorPrompt({
+        visible: true,
+        wish,
+        name: wish.title || "",
+        target: targetLocal,
+      });
+    },
+    [profile.currency]
+  );
+
+  const closeGoalEditorPrompt = useCallback(() => {
+    setGoalEditorPrompt({ visible: false, wish: null, name: "", target: "" });
+  }, []);
+
+  const handleGoalEditorNameChange = useCallback((value) => {
+    setGoalEditorPrompt((prev) => ({ ...prev, name: value }));
+  }, []);
+
+  const handleGoalEditorTargetChange = useCallback((value) => {
+    setGoalEditorPrompt((prev) => ({ ...prev, target: value }));
+  }, []);
+
+  const saveGoalEditorPrompt = useCallback(() => {
+    if (!goalEditorPrompt.wish) return;
+    const trimmedName = goalEditorPrompt.name?.trim();
+    if (!trimmedName) {
+      Alert.alert("Almost", t("goalEditNameError"));
+      return;
+    }
+    const parsed = parseNumberInputValue(goalEditorPrompt.target);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      Alert.alert("Almost", t("goalEditTargetError"));
+      return;
+    }
+    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+    const nextTargetUSD = convertFromCurrency(parsed, currencyCode);
+    setWishes((prev) =>
+      prev.map((wish) => {
+        if (wish.id !== goalEditorPrompt.wish.id) return wish;
+        const nextSaved = Math.min(wish.savedUSD || 0, nextTargetUSD);
+        const nextStatus = nextSaved >= nextTargetUSD ? "done" : "active";
+        return {
+          ...wish,
+          title: trimmedName,
+          targetUSD: nextTargetUSD,
+          savedUSD: nextSaved,
+          status: nextStatus,
+        };
+      })
+    );
+    if (
+      goalEditorPrompt.wish.kind === PRIMARY_GOAL_KIND &&
+      goalEditorPrompt.wish.goalId
+    ) {
+      setProfile((prev) =>
+        updatePrimaryGoalTargetInProfile(prev, goalEditorPrompt.wish.goalId, nextTargetUSD)
+      );
+      setProfileDraft((prev) =>
+        updatePrimaryGoalTargetInProfile(prev, goalEditorPrompt.wish.goalId, nextTargetUSD)
+      );
+    }
+    closeGoalEditorPrompt();
+  }, [closeGoalEditorPrompt, goalEditorPrompt, profile.currency, setProfile, setProfileDraft, t]);
 
   const handleLogFreeDay = useCallback(() => {
     const today = new Date();
@@ -5236,24 +5754,27 @@ function App() {
   const handleRemoveWish = useCallback(
     (wishId) => {
       const targetWish = wishes.find((wish) => wish.id === wishId);
-      if (
-        targetWish?.kind === PRIMARY_GOAL_KIND ||
-        wishId === PRIMARY_GOAL_WISH_ID_LEGACY ||
-        (typeof wishId === "string" && wishId.startsWith("wish_primary_goal_"))
-      ) {
-        Alert.alert(t("wishlistTitle"), t("primaryGoalLocked"));
-        return;
-      }
+      if (!targetWish) return;
+      const performRemoval = () => {
+        setWishes((prev) => prev.filter((wish) => wish.id !== wishId));
+        if (
+          targetWish.kind === PRIMARY_GOAL_KIND &&
+          targetWish.goalId
+        ) {
+          setProfile((prev) => removePrimaryGoalFromProfile(prev, targetWish.goalId));
+          setProfileDraft((prev) => removePrimaryGoalFromProfile(prev, targetWish.goalId));
+        }
+      };
       Alert.alert(t("wishlistTitle"), t("wishlistRemoveConfirm"), [
         { text: t("priceEditCancel"), style: "cancel" },
         {
           text: t("wishlistRemove"),
           style: "destructive",
-          onPress: () => setWishes((prev) => prev.filter((wish) => wish.id !== wishId)),
+          onPress: performRemoval,
         },
       ]);
     },
-    [t, wishes]
+    [setProfile, setProfileDraft, t, wishes]
   );
 
   const handlePendingDecision = useCallback(
@@ -5481,6 +6002,8 @@ function App() {
             t={t}
             colors={colors}
             primaryGoals={profile.primaryGoals}
+            onGoalLongPress={handleGoalLongPress}
+            onGoalEdit={openGoalEditorPrompt}
           />
         );
       case "pending":
@@ -5548,15 +6071,16 @@ function App() {
             currency={profile.currency || DEFAULT_PROFILE.currency}
             freeDayStats={freeDayStats}
             onFreeDayLog={handleLogFreeDay}
-          analyticsStats={analyticsStats}
-          refuseStats={refuseStats}
-          cardFeedback={cardFeedback}
-          historyEvents={historyEvents}
-          profile={profile}
-          titleOverrides={titleOverrides}
-          onLevelCelebrate={(level) => triggerOverlayState("level", level)}
-          onBaselineSetup={handleBaselineSetupPrompt}
-        />
+            goalAssignments={temptationGoalMap}
+            analyticsStats={analyticsStats}
+            refuseStats={refuseStats}
+            cardFeedback={cardFeedback}
+            historyEvents={historyEvents}
+            profile={profile}
+            titleOverrides={titleOverrides}
+            onLevelCelebrate={(level) => triggerOverlayState("level", level)}
+            onBaselineSetup={handleBaselineSetupPrompt}
+          />
         );
     }
   };
@@ -5895,6 +6419,30 @@ function App() {
                     placeholderTextColor={colors.muted}
                     keyboardType="numeric"
                   />
+                  <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
+                    {t("goalAssignFieldLabel")}
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.goalPickerButton, { borderColor: colors.border }]}
+                    onPress={() => {
+                      if (!priceEditor.item) return;
+                      setGoalLinkPrompt({ visible: true, item: priceEditor.item, intent: "edit" });
+                    }}
+                  >
+                    <Text style={[styles.goalPickerButtonText, { color: colors.text }]}>
+                      {priceEditorAssignedGoalTitle || t("goalAssignNone")}
+                    </Text>
+                  </TouchableOpacity>
+                  {priceEditorAssignedGoalId && priceEditor.item && (
+                    <TouchableOpacity
+                      style={styles.goalPickerReset}
+                      onPress={() => assignTemptationGoal(priceEditor.item.id, null)}
+                    >
+                      <Text style={[styles.goalPickerResetText, { color: colors.muted }]}>
+                        {t("goalAssignClear")}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                   <View style={styles.priceModalButtons}>
                     <TouchableOpacity
                       style={[styles.priceModalPrimary, { backgroundColor: colors.text }]}
@@ -5915,6 +6463,230 @@ function App() {
                     <TouchableOpacity onPress={closePriceEditor}>
                       <Text style={[styles.priceModalCancel, { color: colors.muted }]}>
                         {t("priceEditCancel")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        <Modal visible={goalLinkPrompt.visible} transparent animationType="fade">
+          <TouchableWithoutFeedback onPress={closeGoalLinkPrompt}>
+            <View style={styles.priceModalBackdrop}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={[styles.goalModalCard, { backgroundColor: colors.card }] }>
+                  <Text style={[styles.goalModalTitle, { color: colors.text }]}>
+                    {t("goalAssignPromptTitle")}
+                  </Text>
+                  {goalLinkPrompt.item && (
+                    <Text style={[styles.goalModalSubtitle, { color: colors.muted }]}>
+                      {t("goalAssignPromptSubtitle", {
+                        title: resolveTemptationTitle(
+                          goalLinkPrompt.item,
+                          language,
+                          titleOverrides[goalLinkPrompt.item.id]
+                        ),
+                      })}
+                    </Text>
+                  )}
+                  <ScrollView style={{ maxHeight: 360 }}>
+                    {goalSelectionList.map((goal) => {
+                      const active = goalLinkCurrentGoalId === goal.id;
+                      const currentLocal = formatCurrency(
+                        convertToCurrency(goal.savedUSD || 0, profile.currency || DEFAULT_PROFILE.currency),
+                        profile.currency || DEFAULT_PROFILE.currency
+                      );
+                      const targetLocal = formatCurrency(
+                        convertToCurrency(goal.targetUSD || 0, profile.currency || DEFAULT_PROFILE.currency),
+                        profile.currency || DEFAULT_PROFILE.currency
+                      );
+                      return (
+                        <TouchableOpacity
+                          key={goal.id}
+                          style={[
+                            styles.goalOptionButton,
+                            {
+                              borderColor: colors.border,
+                              backgroundColor: active ? colors.text : "transparent",
+                            },
+                          ]}
+                          onPress={() => handleGoalLinkSelect(goal.id)}
+                        >
+                          <Text
+                            style={[
+                              styles.goalOptionTitle,
+                              { color: active ? colors.background : colors.text },
+                            ]}
+                          >
+                            {goal.title}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.goalOptionSubtitle,
+                              { color: active ? colors.background : colors.muted },
+                            ]}
+                          >
+                            {t("wishlistProgress", { current: currentLocal, target: targetLocal })}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                  {goalLinkPrompt.intent !== "save" && goalLinkPrompt.item && (
+                    <TouchableOpacity
+                      style={styles.goalPickerReset}
+                      onPress={() => {
+                        assignTemptationGoal(goalLinkPrompt.item.id, null);
+                        closeGoalLinkPrompt();
+                      }}
+                    >
+                      <Text style={[styles.goalPickerResetText, { color: colors.muted }]}>
+                        {t("goalAssignClear")}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity onPress={closeGoalLinkPrompt}>
+                    <Text style={[styles.priceModalCancel, { color: colors.muted }]}>
+                      {t("priceEditCancel")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        <Modal visible={goalTemptationPrompt.visible} transparent animationType="fade">
+          <TouchableWithoutFeedback onPress={closeGoalTemptationPrompt}>
+            <View style={styles.priceModalBackdrop}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={[styles.goalModalCard, { backgroundColor: colors.card }] }>
+                  <Text style={[styles.goalModalTitle, { color: colors.text }]}>
+                    {t("goalAssignTemptationTitle")}
+                  </Text>
+                  <Text style={[styles.goalModalSubtitle, { color: colors.muted }]}>
+                    {t("goalAssignTemptationSubtitle", {
+                      goal: goalTemptationPrompt.wish?.title || "",
+                    })}
+                  </Text>
+                  <ScrollView style={{ maxHeight: 360 }}>
+                    {temptations.map((template) => {
+                      const templateTitle = resolveTemptationTitle(
+                        template,
+                        language,
+                        titleOverrides[template.id]
+                      );
+                      const assignedGoalId = temptationGoalMap[template.id];
+                      const isActive =
+                        assignedGoalId && goalTemptationPrompt.wish
+                          ? assignedGoalId === goalTemptationPrompt.wish.id
+                          : false;
+                      const assignedLabel = assignedGoalId
+                        ? getWishTitleById(assignedGoalId)
+                        : t("goalAssignNone");
+                      return (
+                        <TouchableOpacity
+                          key={template.id}
+                          style={[
+                            styles.goalOptionButton,
+                            {
+                              borderColor: colors.border,
+                              backgroundColor: isActive ? colors.text : "transparent",
+                            },
+                          ]}
+                          onPress={() => handleGoalTemptationAssign(template.id)}
+                        >
+                          <Text
+                            style={[
+                              styles.goalOptionTitle,
+                              { color: isActive ? colors.background : colors.text },
+                            ]}
+                          >
+                            {templateTitle}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.goalOptionSubtitle,
+                              { color: isActive ? colors.background : colors.muted },
+                            ]}
+                          >
+                            {assignedLabel}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                  <TouchableOpacity onPress={closeGoalTemptationPrompt}>
+                    <Text style={[styles.priceModalCancel, { color: colors.muted }]}>
+                      {t("priceEditCancel")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        <Modal visible={goalEditorPrompt.visible} transparent animationType="fade">
+          <TouchableWithoutFeedback onPress={closeGoalEditorPrompt}>
+            <View style={styles.priceModalBackdrop}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={[styles.priceModalCard, { backgroundColor: colors.card }] }>
+                  <Text style={[styles.priceModalTitle, { color: colors.text }]}>
+                    {t("goalEditModalTitle")}
+                  </Text>
+                  <Text style={[styles.priceModalLabel, { color: colors.muted, marginTop: 0 }]}>
+                    {t("goalEditNameLabel")}
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.priceModalInput,
+                      {
+                        borderColor: colors.border,
+                        color: colors.text,
+                        backgroundColor: colors.card,
+                      },
+                    ]}
+                    value={goalEditorPrompt.name}
+                    onChangeText={handleGoalEditorNameChange}
+                    placeholder={t("goalEditNameLabel")}
+                    placeholderTextColor={colors.muted}
+                  />
+                  <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
+                    {t("goalEditTargetLabel")}
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.priceModalInput,
+                      {
+                        borderColor: colors.border,
+                        color: colors.text,
+                        backgroundColor: colors.card,
+                      },
+                    ]}
+                    value={goalEditorPrompt.target}
+                    onChangeText={handleGoalEditorTargetChange}
+                    placeholder={t("goalEditTargetLabel")}
+                    placeholderTextColor={colors.muted}
+                    keyboardType="numeric"
+                  />
+                  <View style={styles.priceModalButtons}>
+                    <TouchableOpacity
+                      style={[styles.priceModalPrimary, { backgroundColor: colors.text }]}
+                      onPress={saveGoalEditorPrompt}
+                    >
+                      <Text style={[styles.priceModalPrimaryText, { color: colors.background }]}>
+                        {t("goalEditSave")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.priceModalSecondary, { borderColor: colors.border }]}
+                      onPress={closeGoalEditorPrompt}
+                    >
+                      <Text style={[styles.priceModalSecondaryText, { color: colors.muted }]}>
+                        {t("goalEditCancel")}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -5962,6 +6734,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: BASE_HORIZONTAL_PADDING,
     paddingTop: 24,
+    position: "relative",
   },
   feedHero: {
     paddingBottom: 12,
@@ -6619,6 +7392,10 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
   },
+  temptationGoalLabel: {
+    fontSize: 12,
+    marginTop: 6,
+  },
   editPriceText: {
     fontSize: 13,
     fontWeight: "600",
@@ -6945,10 +7722,44 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  goalSwipeRow: {
+    marginBottom: 20,
+    overflow: "hidden",
+    position: "relative",
+  },
+  goalSwipeActions: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 160,
+    justifyContent: "center",
+    alignItems: "flex-start",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    gap: 10,
+    zIndex: 0,
+  },
+  goalSwipeButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  goalSwipeButtonDisabled: {
+    opacity: 0.4,
+  },
+  goalSwipeButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  goalSwipeContent: {
+    width: "100%",
+    zIndex: 1,
+  },
   primaryGoalCard: {
     borderRadius: 36,
     padding: 28,
-    marginBottom: 20,
     overflow: "hidden",
   },
   primaryGoalAura: {
@@ -7954,6 +8765,23 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: "center",
   },
+  goalPickerButton: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  goalPickerButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  goalPickerReset: {
+    marginTop: 6,
+  },
+  goalPickerResetText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
   priceModalButtons: {
     gap: 10,
   },
@@ -7978,6 +8806,37 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontWeight: "600",
     marginTop: 4,
+  },
+  goalModalCard: {
+    width: "100%",
+    borderRadius: 28,
+    padding: 20,
+    gap: 10,
+  },
+  goalModalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  goalModalSubtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  goalOptionButton: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginTop: 10,
+  },
+  goalOptionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  goalOptionSubtitle: {
+    fontSize: 13,
+    marginTop: 2,
   },
   onboardContainer: {
     flex: 1,
