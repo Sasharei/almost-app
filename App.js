@@ -61,6 +61,8 @@ const STORAGE_KEYS = {
   REWARDS_CELEBRATED: "@almost_rewards_celebrated",
   ANALYTICS_OPT_OUT: "@almost_analytics_opt_out",
   TEMPTATION_GOALS: "@almost_temptation_goals",
+  CUSTOM_TEMPTATIONS: "@almost_custom_temptations",
+  HIDDEN_TEMPTATIONS: "@almost_hidden_temptations",
 };
 
 const PURCHASE_GOAL = 20000;
@@ -68,6 +70,7 @@ const CAT_IMAGE = require("./assets/Cat_mascot.png");
 const CAT_CURIOUS = require("./assets/Cat_curious.gif");
 const CAT_HAPPY_GIF = require("./assets/Cat_happy.gif");
 const CAT_WAVING = require("./assets/Cat_waving.gif");
+const CAT_FOLLOWS = require("./assets/Cat_follows.gif");
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
 const THEMES = {
@@ -133,6 +136,8 @@ const DEFAULT_REMOTE_IMAGE =
 const REMINDER_DAYS = 14;
 const DAY_MS = 1000 * 60 * 60 * 24;
 const REMINDER_MS = REMINDER_DAYS * DAY_MS;
+const DEFAULT_TEMPTATION_EMOJI = "✨";
+const DEFAULT_GOAL_EMOJI = "🎯";
 const MAX_HISTORY_EVENTS = 200;
 const INITIAL_DECISION_STATS = {
   resolvedToWishes: 0,
@@ -224,6 +229,7 @@ const convertFromCurrency = (valueLocal = 0, currency = activeCurrency) => {
   return valueLocal / rate;
 };
 
+
 const formatNumberInputValue = (value) => {
   if (!Number.isFinite(value)) return "";
   const formatted = value.toFixed(2).replace(/\.?0+$/, "");
@@ -235,6 +241,20 @@ const parseNumberInputValue = (value = "") => {
   const normalized = value.replace(/[^\d,.\s]/g, "").replace(",", ".");
   const parsed = parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : NaN;
+};
+
+const normalizeEmojiValue = (value, fallback) => {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return fallback;
+  const firstGrapheme = Array.from(trimmed)[0];
+  return firstGrapheme || fallback;
+};
+
+const limitEmojiInput = (value) => {
+  if (!value) return "";
+  const trimmed = value.trim();
+  const firstGrapheme = Array.from(trimmed)[0];
+  return firstGrapheme || "";
 };
 
 const getPersonaPreset = (personaId) => PERSONA_PRESETS[personaId] || PERSONA_PRESETS[DEFAULT_PERSONA_ID];
@@ -457,13 +477,18 @@ const TRANSLATIONS = {
     priceEditSave: "Сохранить",
     priceEditReset: "Сбросить",
     priceEditCancel: "Отмена",
+    priceEditDelete: "Удалить искушение",
+    priceEditDeleteConfirm: "Удалить это искушение?",
     priceEditError: "Введи сумму больше нуля",
     priceEditNameLabel: "Название карточки",
     priceEditAmountLabel: "Стоимость ({{currency}})",
     wishAdded: "Добавлено в хотелки: {{title}}",
     wishDeclined: "+{{amount}} к копилке. Отличное решение!",
+    customTemptationAdded: "Добавлено в искушения: {{title}}",
     saveCelebrateTitle: "Сэкономлено на «{{title}}»",
     saveCelebrateSubtitle: "Алми радуется, счёт пополнен!",
+    saveGoalRemaining: "Примерно {{count}} таких решений до цели «{{goal}}».",
+    saveGoalComplete: "Цель «{{goal}}» достигнута! Можно праздновать.",
     statsSpent: "Закрыто целей",
     statsSaved: "Спасено",
     statsItems: "Хотелок",
@@ -493,7 +518,7 @@ const TRANSLATIONS = {
     },
     historyTimestamp: "{{date}} · {{time}}",
     historyUnknown: "Событие",
-    progressHeroTitle: "Спасено",
+    progressHeroTitle: "Реально спасено",
     progressHeroLevel: "Уровень {{level}}",
     progressHeroNext: "До следующего уровня {{amount}}",
     levelCelebrate: {
@@ -579,7 +604,7 @@ const TRANSLATIONS = {
     goalWidgetTargetLabel: "Цель: {{amount}}",
     goalWidgetRemaining: "Осталось {{amount}}",
     goalWidgetComplete: "Цель достигнута",
-    goalWidgetTitle: "Цель",
+    goalWidgetTitle: "Общая цель",
     goalWidgetCompleteTagline: "Экономия продолжалась — и цель закрыта.",
     goalAssignPromptTitle: "Куда зачесть экономию?",
     goalAssignPromptSubtitle: "Выбери цель, которую наполняет «{{title}}».",
@@ -640,7 +665,8 @@ const TRANSLATIONS = {
     baselineHint: "Это ориентир, позже можно обновить его в профиле.",
     baselineInputError: "Введи сумму ежемесячных необязательных трат",
     potentialBlockTitle: "Потенциал экономии",
-    potentialBlockSubtitle: "Ты мог бы уже спасти {{potential}}, а реально спас {{actual}}.",
+    potentialBlockSubtitle: "",
+    potentialBlockStatusAhead: "Ого! Ты опережаешь прогноз. Держи темп!",
     potentialBlockStatusStart: "Начни отмечать отказы — потенциал ждёт.",
     potentialBlockStatusBehind: "Ты на пути, но потенциал выше.",
     potentialBlockStatusOnTrack: "Ты почти полностью используешь потенциал. Продолжай!",
@@ -652,8 +678,18 @@ const TRANSLATIONS = {
     quickCustomSubtitle: "Опиши траты, от которых хочешь отказаться первой",
     quickCustomNameLabel: "Название",
     quickCustomAmountLabel: "Стоимость ({{currency}})",
+    quickCustomEmojiLabel: "Эмодзи карточки",
     quickCustomConfirm: "Добавить",
     quickCustomCancel: "Отмена",
+    fabNewGoal: "Новая цель",
+    fabNewTemptation: "Новая трата",
+    newGoalTitle: "Новая цель",
+    newGoalSubtitle: "Как назовём мечту и сколько она стоит?",
+    newGoalNameLabel: "Название цели",
+    newGoalTargetLabel: "Сумма ({{currency}})",
+    newGoalEmojiLabel: "Эмодзи цели",
+    newGoalCreate: "Создать цель",
+    newGoalCancel: "Отмена",
   },
   en: {
     appTagline: "An offline temptation board that keeps savings safe",
@@ -756,13 +792,18 @@ const TRANSLATIONS = {
     priceEditSave: "Save",
     priceEditReset: "Reset",
     priceEditCancel: "Cancel",
+    priceEditDelete: "Delete temptation",
+    priceEditDeleteConfirm: "Remove this temptation?",
     priceEditError: "Enter a positive number",
     priceEditNameLabel: "Card name",
     priceEditAmountLabel: "Amount ({{currency}})",
     wishAdded: "Added to wishes: {{title}}",
     wishDeclined: "+{{amount}} safely tucked away",
+    customTemptationAdded: "Added to temptations: {{title}}",
     saveCelebrateTitle: "Skipped “{{title}}” and the bankroll is grateful",
     saveCelebrateSubtitle: "Almi purrs: savings up!",
+    saveGoalRemaining: "Roughly {{count}} more skips to reach “{{goal}}”.",
+    saveGoalComplete: "Goal “{{goal}}” reached! Celebrate the win.",
     freeDayButton: "Free day",
     freeDayLocked: "After 6 pm",
     freeDayLoggedToday: "Already logged today",
@@ -796,7 +837,7 @@ const TRANSLATIONS = {
     historySpend: "Spent on {{title}} (-{{amount}})",
     historyTimestamp: "{{date}} · {{time}}",
     historyUnknown: "Event",
-    progressHeroTitle: "Saved",
+    progressHeroTitle: "Real savings",
     progressHeroLevel: "Level {{level}}",
     progressHeroNext: "To next level {{amount}}",
     levelCelebrate: "Level {{level}} unlocked, savings armor upgraded!",
@@ -924,7 +965,8 @@ const TRANSLATIONS = {
     baselineHint: "Rough number is fine — you can tweak it later in Profile.",
     baselineInputError: "Enter your rough monthly spend on non‑essentials",
     potentialBlockTitle: "Potential vs real savings",
-    potentialBlockSubtitle: "You could have saved {{potential}}, and you actually saved {{actual}}.",
+    potentialBlockSubtitle: "",
+    potentialBlockStatusAhead: "Whoa, you’re beating the forecast!",
     potentialBlockStatusStart: "Start logging wins — the potential is waiting.",
     potentialBlockStatusBehind: "You're on track, but there’s even more potential.",
     potentialBlockStatusOnTrack: "You’re tapping almost all the potential. Keep going!",
@@ -936,8 +978,18 @@ const TRANSLATIONS = {
     quickCustomSubtitle: "Name the impulse and set a price to add it to the deck",
     quickCustomNameLabel: "Name",
     quickCustomAmountLabel: "Cost ({{currency}})",
+    quickCustomEmojiLabel: "Card emoji",
     quickCustomConfirm: "Add",
     quickCustomCancel: "Cancel",
+    fabNewGoal: "New goal",
+    fabNewTemptation: "New spend",
+    newGoalTitle: "New goal",
+    newGoalSubtitle: "Name the dream and set its target.",
+    newGoalNameLabel: "Goal name",
+    newGoalTargetLabel: "Target ({{currency}})",
+    newGoalEmojiLabel: "Goal emoji",
+    newGoalCreate: "Create goal",
+    newGoalCancel: "Cancel",
   },
 };
 
@@ -1816,6 +1868,9 @@ function TemptationCard({
   const cardTextColor = isDarkTheme ? darkCardPalette.text : colors.text;
   const cardMutedColor = isDarkTheme ? darkCardPalette.muted : colors.muted;
   const coinBurstColor = isDarkTheme ? "#FFD78B" : "#FFF4B3";
+  const goalBadgeBackground = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)";
+  const goalBadgeBorder = isDarkTheme ? "rgba(255,255,255,0.24)" : "rgba(0,0,0,0.08)";
+  const goalBadgeText = isDarkTheme ? "#FFF7E1" : colors.text;
   const refuseCount = stats?.count || 0;
   const totalRefusedLabel = formatCurrency(
     convertToCurrency(stats?.totalUSD || 0, currency),
@@ -1939,6 +1994,18 @@ function TemptationCard({
           <Text style={[styles.temptationBadgeText, { color: cardTextColor }]}>{statusLabel}</Text>
         </View>
       </View>
+      {goalLabel ? (
+        <View
+          style={[
+            styles.temptationGoalBadge,
+            { backgroundColor: goalBadgeBackground, borderColor: goalBadgeBorder },
+          ]}
+        >
+          <Text style={[styles.temptationGoalBadgeText, { color: goalBadgeText }]}>
+            {t("goalAssignFieldLabel")}: {goalLabel}
+          </Text>
+        </View>
+      ) : null}
       {desc ? (
         <Text style={[styles.temptationDesc, { color: isDarkTheme ? "#FFFFFF" : cardMutedColor }]}>
           {desc}
@@ -1959,11 +2026,6 @@ function TemptationCard({
           {priceLabel}
         </Text>
       </View>
-      {goalLabel ? (
-        <Text style={[styles.temptationGoalLabel, { color: cardMutedColor }]}>
-          {t("goalAssignFieldLabel")}: {goalLabel}
-        </Text>
-      ) : null}
       <View style={styles.temptationActions}>
         {actionConfig.map((action) => {
           let buttonStyle;
@@ -2063,7 +2125,9 @@ function SavingsHeroCard({
   const potentialRatio = potentialSavedUSD > 0 ? Math.min(actualSavedUSD / potentialSavedUSD, 1) : 0;
   const missedUSD = Math.max(0, potentialSavedUSD - actualSavedUSD);
   const statusKey =
-    actualSavedUSD <= 0
+    actualSavedUSD > potentialSavedUSD
+      ? "potentialBlockStatusAhead"
+      : actualSavedUSD <= 0
       ? "potentialBlockStatusStart"
       : potentialRatio >= 0.8
       ? "potentialBlockStatusOnTrack"
@@ -2138,32 +2202,9 @@ function SavingsHeroCard({
                 {potentialLocal}
               </Text>
             </View>
-            <Text style={[styles.heroPotentialSubtitle, { color: goldPalette.subtext }]}>
-              {t("potentialBlockActualLabel")} · {actualLocal}
-            </Text>
-            <View
-              style={[
-                styles.heroPotentialTrack,
-                { backgroundColor: goldPalette.barBg || "rgba(255,255,255,0.4)" },
-              ]}
-            >
-              <View
-                style={[
-                  styles.heroPotentialFill,
-                  { width: `${Math.max(0, Math.min(potentialRatio, 1)) * 100}%`, backgroundColor: goldPalette.accent },
-                ]}
-              />
-            </View>
             <Text style={[styles.heroPotentialStatus, { color: goldPalette.subtext }]}>
               {t(statusKey)}
             </Text>
-            {missedUSD > 0 && (
-              <Text style={[styles.heroPotentialHint, { color: goldPalette.subtext }]}>
-                {t("potentialBlockHint", {
-                  amount: formatCurrency(convertToCurrency(missedUSD, currency), currency),
-                })}
-              </Text>
-            )}
           </>
         ) : (
           <>
@@ -2981,6 +3022,18 @@ const SwipeableGoalRow = ({
   );
 };
 
+const resolveWishEmoji = (wish) => {
+  if (wish?.emoji) return wish.emoji;
+  const title = (wish?.title || "").trim();
+  if (title) {
+    const firstChar = Array.from(title)[0];
+    if (firstChar && !/[A-Za-zА-Яа-я0-9]/.test(firstChar)) {
+      return firstChar;
+    }
+  }
+  return DEFAULT_GOAL_EMOJI;
+};
+
 function WishListScreen({
   wishes,
   currency = DEFAULT_PROFILE.currency,
@@ -3168,10 +3221,14 @@ function WishListScreen({
             </SwipeableGoalRow>
           );
         }
+        const wishEmoji = resolveWishEmoji(wish);
         const cardContent = (
           <View style={[styles.wishCard, { backgroundColor: colors.card }] }>
             <View style={styles.wishHeader}>
-              <Text style={[styles.wishTitle, { color: colors.text }]}>{wish.title}</Text>
+              <View style={styles.wishTitleWrap}>
+                <Text style={[styles.wishEmoji, { color: colors.text }]}>{wishEmoji}</Text>
+                <Text style={[styles.wishTitle, { color: colors.text }]}>{wish.title}</Text>
+              </View>
               <View style={styles.wishBadge}>
                 <Text style={{ color: colors.muted }}>{badgeText}</Text>
               </View>
@@ -4071,6 +4128,7 @@ function App() {
   const [titleOverrides, setTitleOverrides] = useState({});
   const [temptations, setTemptations] = useState(DEFAULT_TEMPTATIONS);
   const [quickTemptations, setQuickTemptations] = useState([]);
+  const [hiddenTemptations, setHiddenTemptations] = useState([]);
   const [priceEditor, setPriceEditor] = useState({ visible: false, item: null, value: "", title: "" });
   const [savedTotalUSD, setSavedTotalUSD] = useState(0);
   const [declineCount, setDeclineCount] = useState(0);
@@ -4096,7 +4154,46 @@ function App() {
   const [selectedGoals, setSelectedGoals] = useState([]);
   const [showImageSourceSheet, setShowImageSourceSheet] = useState(false);
   const [showCustomSpend, setShowCustomSpend] = useState(false);
-  const [quickSpendDraft, setQuickSpendDraft] = useState({ title: "", amount: "" });
+  const [quickSpendDraft, setQuickSpendDraft] = useState({
+    title: "",
+    amount: "",
+    emoji: DEFAULT_TEMPTATION_EMOJI,
+  });
+  const [fabMenuVisible, setFabMenuVisible] = useState(false);
+  const fabMenuAnim = useRef(new Animated.Value(0)).current;
+  const [newGoalModal, setNewGoalModal] = useState({
+    visible: false,
+    name: "",
+    target: "",
+    emoji: DEFAULT_GOAL_EMOJI,
+  });
+  const openFabMenu = useCallback(() => {
+    if (fabMenuVisible) return;
+    setFabMenuVisible(true);
+    Animated.spring(fabMenuAnim, {
+      toValue: 1,
+      friction: 7,
+      tension: 120,
+      useNativeDriver: true,
+    }).start();
+  }, [fabMenuAnim, fabMenuVisible]);
+  const closeFabMenu = useCallback(() => {
+    Animated.timing(fabMenuAnim, {
+      toValue: 0,
+      duration: 160,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start(() => setFabMenuVisible(false));
+  }, [fabMenuAnim]);
+  const handleFabPress = useCallback(() => {
+    Keyboard.dismiss();
+    triggerHaptic();
+    if (fabMenuVisible) {
+      closeFabMenu();
+    } else {
+      openFabMenu();
+    }
+  }, [closeFabMenu, fabMenuVisible, openFabMenu, triggerHaptic]);
   const imagePickerResolver = useRef(null);
   const [refuseStats, setRefuseStats] = useState({});
   const [cardFeedback, setCardFeedback] = useState({});
@@ -4189,6 +4286,13 @@ function App() {
   const overlayDimColor = isDarkTheme ? "rgba(0,0,0,0.65)" : "rgba(5,6,15,0.2)";
   const overlayCardBackground = isDarkTheme ? lightenColor(colors.card, 0.18) : colors.card;
   const overlayBorderColor = isDarkTheme ? lightenColor(colors.border, 0.25) : colors.border;
+  const saveOverlayPayload =
+    overlay?.type === "save"
+      ? typeof overlay.message === "object" && overlay.message !== null
+        ? overlay.message
+        : { title: overlay.message }
+      : null;
+  const saveGlowAnim = useRef(new Animated.Value(0)).current;
   const assignableGoals = useMemo(
     () => (wishes || []).filter((wish) => wish.status !== "done"),
     [wishes]
@@ -4294,6 +4398,65 @@ function App() {
     });
     return text;
   };
+  useEffect(() => {
+    if (overlay?.type !== "save") {
+      saveGlowAnim.stopAnimation?.();
+      return;
+    }
+    saveGlowAnim.setValue(0);
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(saveGlowAnim, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: false,
+        }),
+        Animated.timing(saveGlowAnim, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: false,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [overlay?.type, saveGlowAnim]);
+
+  const saveGlowHighlight = useMemo(
+    () => blendColors(overlayCardBackground, isDarkTheme ? "#F5C978" : "#FFE8BA", isDarkTheme ? 0.45 : 0.35),
+    [overlayCardBackground, isDarkTheme]
+  );
+  const saveGlowBorderHighlight = useMemo(
+    () => blendColors(overlayBorderColor, "#F2A93B", 0.6),
+    [overlayBorderColor]
+  );
+
+  const saveOverlayGoalText =
+    saveOverlayPayload && saveOverlayPayload.goalTitle
+      ? saveOverlayPayload.goalComplete
+        ? t("saveGoalComplete", { goal: saveOverlayPayload.goalTitle })
+        : Number.isFinite(saveOverlayPayload.remainingTemptations)
+        ? t("saveGoalRemaining", {
+            goal: saveOverlayPayload.goalTitle,
+            count: saveOverlayPayload.remainingTemptations,
+          })
+        : null
+      : null;
+  const saveCardBackgroundStyle =
+    overlay?.type === "save"
+      ? {
+          backgroundColor: saveGlowAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [overlayCardBackground, saveGlowHighlight],
+          }),
+          borderColor: saveGlowAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [overlayBorderColor, saveGlowBorderHighlight],
+          }),
+        }
+      : { backgroundColor: overlayCardBackground, borderColor: overlayBorderColor };
 
   const achievements = useMemo(
     () =>
@@ -4369,6 +4532,8 @@ function App() {
         rewardsCelebratedRaw,
         analyticsOptOutRaw,
         goalMapRaw,
+        customTemptationsRaw,
+        hiddenTemptationsRaw,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.WISHES),
         AsyncStorage.getItem(STORAGE_KEYS.PENDING),
@@ -4388,6 +4553,8 @@ function App() {
         AsyncStorage.getItem(STORAGE_KEYS.REWARDS_CELEBRATED),
         AsyncStorage.getItem(STORAGE_KEYS.ANALYTICS_OPT_OUT),
         AsyncStorage.getItem(STORAGE_KEYS.TEMPTATION_GOALS),
+        AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_TEMPTATIONS),
+        AsyncStorage.getItem(STORAGE_KEYS.HIDDEN_TEMPTATIONS),
       ]);
       if (wishesRaw) setWishes(JSON.parse(wishesRaw));
       if (pendingRaw) setPendingList(JSON.parse(pendingRaw));
@@ -4475,6 +4642,20 @@ function App() {
           setTemptationGoalMap(JSON.parse(goalMapRaw));
         } catch (err) {
           console.warn("goal map parse", err);
+        }
+      }
+      if (customTemptationsRaw) {
+        try {
+          setQuickTemptations(JSON.parse(customTemptationsRaw));
+        } catch (err) {
+          console.warn("custom temptations parse", err);
+        }
+      }
+      if (hiddenTemptationsRaw) {
+        try {
+          setHiddenTemptations(JSON.parse(hiddenTemptationsRaw));
+        } catch (err) {
+          console.warn("hidden temptations parse", err);
         }
       }
       if (onboardingRaw === "done" || parsedProfile?.goal) {
@@ -4694,6 +4875,18 @@ function App() {
   }, [historyEvents]);
 
   useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.CUSTOM_TEMPTATIONS, JSON.stringify(quickTemptations)).catch(
+      () => {}
+    );
+  }, [quickTemptations]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.HIDDEN_TEMPTATIONS, JSON.stringify(hiddenTemptations)).catch(
+      () => {}
+    );
+  }, [hiddenTemptations]);
+
+  useEffect(() => {
     const nextList = DEFAULT_TEMPTATIONS.map((item) => ({
       ...item,
       priceUSD: catalogOverrides[item.id] ?? item.basePriceUSD,
@@ -4706,13 +4899,17 @@ function App() {
       ...card,
       titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
     }));
-    const quickAdjusted = quickTemptations.map((card) => ({
-      ...card,
-      priceUSD: catalogOverrides[card.id] ?? card.priceUSD ?? card.basePriceUSD,
-      titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
-    }));
-    setTemptations([...quickAdjusted, ...personalized]);
-  }, [catalogOverrides, profile, titleOverrides, quickTemptations]);
+    const hiddenSet = new Set(hiddenTemptations);
+    const quickAdjusted = quickTemptations
+      .filter((card) => !hiddenSet.has(card.id))
+      .map((card) => ({
+        ...card,
+        priceUSD: catalogOverrides[card.id] ?? card.priceUSD ?? card.basePriceUSD,
+        titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
+      }));
+    const personalizedVisible = personalized.filter((card) => !hiddenSet.has(card.id));
+    setTemptations([...quickAdjusted, ...personalizedVisible]);
+  }, [catalogOverrides, profile, titleOverrides, quickTemptations, hiddenTemptations]);
 
   useEffect(() => {
     return () => {
@@ -4924,7 +5121,10 @@ function App() {
   };
 
   const handleQuickCustomChange = (field, value) => {
-    setQuickSpendDraft((prev) => ({ ...prev, [field]: value }));
+    setQuickSpendDraft((prev) => ({
+      ...prev,
+      [field]: field === "emoji" ? limitEmojiInput(value) : value,
+    }));
   };
 
   const handleQuickCustomSubmit = (customData) => {
@@ -4935,26 +5135,83 @@ function App() {
       return;
     }
     const amountUSD = convertFromCurrency(parsedAmount, currencyCode);
+    const emojiValue = normalizeEmojiValue(customData.emoji, DEFAULT_TEMPTATION_EMOJI);
     const newCustom = {
       title: customData.title.trim(),
       amountUSD,
       currency: currencyCode,
-      emoji: customData.emoji || "✨",
+      emoji: emojiValue,
       id: customData.id || `custom_habit_${Date.now()}`,
     };
     const card = createCustomHabitTemptation(newCustom, currencyCode);
     if (card) {
       setQuickTemptations((prev) => [card, ...prev]);
     }
-    setQuickSpendDraft({ title: "", amount: "" });
+    setQuickSpendDraft({ title: "", amount: "", emoji: DEFAULT_TEMPTATION_EMOJI });
     setShowCustomSpend(false);
-    triggerOverlayState("cart", t("wishAdded", { title: newCustom.title }));
+    triggerOverlayState("custom_temptation", newCustom.title);
   };
 
   const handleQuickCustomCancel = () => {
-    setQuickSpendDraft({ title: "", amount: "" });
+    setQuickSpendDraft({ title: "", amount: "", emoji: DEFAULT_TEMPTATION_EMOJI });
     setShowCustomSpend(false);
   };
+
+  const handleFabNewTemptation = useCallback(() => {
+    triggerHaptic();
+    closeFabMenu();
+    setQuickSpendDraft({ title: "", amount: "", emoji: DEFAULT_TEMPTATION_EMOJI });
+    setShowCustomSpend(true);
+  }, [closeFabMenu, triggerHaptic]);
+
+  const handleFabNewGoal = useCallback(() => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    closeFabMenu();
+    setNewGoalModal({ visible: true, name: "", target: "", emoji: DEFAULT_GOAL_EMOJI });
+  }, [closeFabMenu, triggerHaptic]);
+
+  const handleNewGoalChange = useCallback((field, value) => {
+    setNewGoalModal((prev) => ({
+      ...prev,
+      [field]: field === "emoji" ? limitEmojiInput(value) : value,
+    }));
+  }, []);
+
+  const handleNewGoalCancel = useCallback(() => {
+    setNewGoalModal({ visible: false, name: "", target: "", emoji: DEFAULT_GOAL_EMOJI });
+  }, []);
+
+  const handleNewGoalSubmit = useCallback(() => {
+    const trimmedName = (newGoalModal.name || "").trim();
+    if (!trimmedName) {
+      Alert.alert("Almost", t("goalEditNameError"));
+      return;
+    }
+    const parsedLocal = parseNumberInputValue(newGoalModal.target);
+    if (!Number.isFinite(parsedLocal) || parsedLocal <= 0) {
+      Alert.alert("Almost", t("goalEditTargetError"));
+      return;
+    }
+    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+    const targetUSD = convertFromCurrency(parsedLocal, currencyCode);
+    const emoji = normalizeEmojiValue(newGoalModal.emoji, DEFAULT_GOAL_EMOJI);
+    const newWish = {
+      id: `wish-manual-${Date.now()}`,
+      templateId: null,
+      title: trimmedName,
+      targetUSD,
+      savedUSD: 0,
+      status: "active",
+      createdAt: Date.now(),
+      autoManaged: false,
+      emoji,
+    };
+    setWishes((prev) => insertWishAfterPrimary(prev, newWish));
+    logHistoryEvent("wish_added", { title: trimmedName, targetUSD, templateId: "manual_goal" });
+    triggerOverlayState("purchase", t("wishAdded", { title: trimmedName }));
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    setNewGoalModal({ visible: false, name: "", target: "", emoji: DEFAULT_GOAL_EMOJI });
+  }, [logHistoryEvent, newGoalModal, profile.currency, setWishes, t, triggerHaptic, triggerOverlayState]);
 
   const handlePersonaSubmit = () => {
     if (!registrationData.persona) {
@@ -5396,6 +5653,7 @@ function App() {
           status: "active",
           createdAt: Date.now(),
           autoManaged: true,
+          emoji: item.emoji || DEFAULT_GOAL_EMOJI,
         };
         setWishes((prev) => insertWishAfterPrimary(prev, newWish));
         logHistoryEvent("wish_added", { title, targetUSD: priceUSD, templateId: item.id });
@@ -5422,8 +5680,24 @@ function App() {
         if (shouldStoreGoal) {
           assignTemptationGoal(item.id, targetGoalId);
         }
+        const targetWish = targetGoalId ? wishes.find((wish) => wish.id === targetGoalId) : null;
+        let appliedAmount = 0;
         if (targetGoalId) {
-          applySavingsToWish(targetGoalId, priceUSD);
+          appliedAmount = applySavingsToWish(targetGoalId, priceUSD);
+        }
+        let saveOverlayPayload = { title };
+        if (targetWish && targetWish.targetUSD > 0 && priceUSD > 0) {
+          const previousSavedUSD = targetWish.savedUSD || 0;
+          const targetUSD = targetWish.targetUSD || 0;
+          const nextSavedUSD = Math.min(previousSavedUSD + appliedAmount, targetUSD);
+          const remainingUSD = Math.max(targetUSD - nextSavedUSD, 0);
+          const remainingTemptations = Math.max(Math.ceil(remainingUSD / priceUSD), 0);
+          saveOverlayPayload = {
+            ...saveOverlayPayload,
+            goalTitle: targetWish.title || "",
+            remainingTemptations,
+            goalComplete: remainingUSD <= 0,
+          };
         }
         const timestamp = Date.now();
         setSavedTotalUSD((prev) => prev + priceUSD);
@@ -5457,7 +5731,7 @@ function App() {
         );
         triggerCardFeedback(item.id);
         triggerCoinHaptics();
-        triggerOverlayState("save", title);
+        triggerOverlayState("save", saveOverlayPayload);
         return;
       }
       if (type === "maybe") {
@@ -5507,7 +5781,7 @@ function App() {
       applySavingsToWish,
       setGoalLinkPrompt,
       getFallbackGoalId,
-      wishes.length,
+      wishes,
     ]
   );
 
@@ -5703,6 +5977,69 @@ function App() {
     setPriceEditor((prev) => ({ ...prev, title: value }));
   };
 
+  const patchTemptationDisplay = useCallback((templateId, patch = {}) => {
+    if (!templateId || !patch || typeof patch !== "object") return;
+    setTemptations((prev) =>
+      prev.map((card) => (card.id === templateId ? { ...card, ...patch } : card))
+    );
+    setQuickTemptations((prev) => {
+      let changed = false;
+      const next = prev.map((card) => {
+        if (card.id !== templateId) return card;
+        changed = true;
+        return { ...card, ...patch };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const removeTemptationTemplate = useCallback(
+    (templateId) => {
+      if (!templateId) return;
+      const existsInQuick = quickTemptations.some((card) => card.id === templateId);
+      if (existsInQuick) {
+        setQuickTemptations((prev) => prev.filter((card) => card.id !== templateId));
+      } else {
+        setHiddenTemptations((prev) => (prev.includes(templateId) ? prev : [...prev, templateId]));
+      }
+      setTemptationGoalMap((prev) => {
+        if (!prev[templateId]) return prev;
+        const next = { ...prev };
+        delete next[templateId];
+        return next;
+      });
+      setCatalogOverrides((prev) => {
+        if (!(templateId in prev)) return prev;
+        const next = { ...prev };
+        delete next[templateId];
+        return next;
+      });
+      setTitleOverrides((prev) => {
+        if (!(templateId in prev)) return prev;
+        const next = { ...prev };
+        delete next[templateId];
+        return next;
+      });
+      setRefuseStats((prev) => {
+        if (!prev[templateId]) return prev;
+        const next = { ...prev };
+        delete next[templateId];
+        return next;
+      });
+      setPendingList((prev) => prev.filter((entry) => entry.templateId !== templateId));
+    },
+    [
+      quickTemptations,
+      setQuickTemptations,
+      setHiddenTemptations,
+      setTemptationGoalMap,
+      setCatalogOverrides,
+      setTitleOverrides,
+      setRefuseStats,
+      setPendingList,
+    ]
+  );
+
   const persistPriceOverride = (valueUSD = null) => {
     const targetId = priceEditor.item?.id;
     if (!targetId) return;
@@ -5742,6 +6079,10 @@ function App() {
     persistPriceOverride(usdValue);
     const titleValue = (priceEditor.title || "").trim();
     persistTitleOverride(titleValue || null);
+    patchTemptationDisplay(priceEditor.item.id, {
+      priceUSD: usdValue,
+      titleOverride: titleValue || null,
+    });
     closePriceEditor();
   };
 
@@ -5750,6 +6091,21 @@ function App() {
     persistTitleOverride(null);
     closePriceEditor();
   };
+
+  const handlePriceDelete = useCallback(() => {
+    if (!priceEditor.item) return;
+    Alert.alert(t("priceEditDelete"), t("priceEditDeleteConfirm"), [
+      { text: t("priceEditCancel"), style: "cancel" },
+      {
+        text: t("priceEditDelete"),
+        style: "destructive",
+        onPress: () => {
+          removeTemptationTemplate(priceEditor.item.id);
+          closePriceEditor();
+        },
+      },
+    ]);
+  }, [closePriceEditor, priceEditor.item, removeTemptationTemplate, t]);
 
   const handleRemoveWish = useCallback(
     (wishId) => {
@@ -5808,6 +6164,7 @@ function App() {
           status: "active",
           createdAt: Date.now(),
           autoManaged: true,
+          emoji: template?.emoji || DEFAULT_GOAL_EMOJI,
         };
         setWishes((prev) => insertWishAfterPrimary(prev, newWish));
         setDecisionStats((prev) => ({
@@ -6267,12 +6624,7 @@ function App() {
               transform: [{ scale: cartBadgeScale }],
             },
           ]}
-          onPress={() => {
-            Keyboard.dismiss();
-            triggerHaptic();
-            setQuickSpendDraft({ title: "", amount: "" });
-            setShowCustomSpend(true);
-          }}
+          onPress={handleFabPress}
         >
           <Text style={[styles.cartBadgeIcon, { color: colors.background }]}>+</Text>
         </AnimatedTouchableOpacity>
@@ -6288,9 +6640,83 @@ function App() {
           onCancel={handleQuickCustomCancel}
         />
 
+        <NewGoalModal
+          visible={newGoalModal.visible}
+          colors={colors}
+          t={t}
+          currency={profile.currency || DEFAULT_PROFILE.currency}
+          data={newGoalModal}
+          onChange={handleNewGoalChange}
+          onSubmit={handleNewGoalSubmit}
+          onCancel={handleNewGoalCancel}
+        />
+
+        {fabMenuVisible && (
+          <View pointerEvents="box-none" style={styles.fabMenuOverlay}>
+            <TouchableWithoutFeedback onPress={closeFabMenu}>
+              <View style={styles.fabMenuBackdrop} />
+            </TouchableWithoutFeedback>
+            <Animated.View
+              style={[
+                styles.fabOption,
+                styles.fabOptionGoal,
+                {
+                  opacity: fabMenuAnim,
+                  transform: [
+                    {
+                      translateY: fabMenuAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [20, 0],
+                      }),
+                    },
+                    { scale: fabMenuAnim },
+                  ],
+                },
+              ]}
+            >
+              <TouchableOpacity
+                style={[styles.fabCircle, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={handleFabNewGoal}
+              >
+                <Text style={[styles.fabOptionText, { color: colors.text }]} numberOfLines={2}>
+                  {t("fabNewGoal")}
+                </Text>
+              </TouchableOpacity>
+            </Animated.View>
+            <Animated.View
+              style={[
+                styles.fabOption,
+                styles.fabOptionTemptation,
+                {
+                  opacity: fabMenuAnim,
+                  transform: [
+                    {
+                      translateY: fabMenuAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [20, 0],
+                      }),
+                    },
+                    { scale: fabMenuAnim },
+                  ],
+                },
+              ]}
+            >
+              <TouchableOpacity
+                style={[styles.fabCircle, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={handleFabNewTemptation}
+              >
+                <Text style={[styles.fabOptionText, { color: colors.text }]} numberOfLines={2}>
+                  {t("fabNewTemptation")}
+                </Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+        )}
+
         {overlay &&
           overlay.type !== "level" &&
           overlay.type !== "save" &&
+          overlay.type !== "custom_temptation" &&
           overlay.type !== "reward" &&
           overlay.type !== "goal_complete" && (
           <View style={styles.confettiLayer} pointerEvents="none">
@@ -6347,18 +6773,44 @@ function App() {
                 { backgroundColor: overlayDimColor },
               ]}
             />
-            <View
+            <Animated.View
               style={[
                 styles.saveCard,
+                saveCardBackgroundStyle,
+              ]}
+            >
+              <Text style={[styles.saveTitle, { color: colors.text }]}>
+                {t("saveCelebrateTitle", { title: saveOverlayPayload?.title || "" })}
+              </Text>
+              {saveOverlayGoalText ? (
+                <Text style={[styles.saveGoalText, { color: colors.text }]}>
+                  {saveOverlayGoalText}
+                </Text>
+              ) : null}
+              <Text style={[styles.saveSubtitle, { color: colors.muted }]}>
+                {t("saveCelebrateSubtitle")}
+              </Text>
+              <Image source={CAT_HAPPY_GIF} style={styles.saveGif} />
+            </Animated.View>
+          </View>
+        )}
+        {overlay?.type === "custom_temptation" && (
+          <View style={styles.saveOverlay} pointerEvents="none">
+            <View
+              style={[
+                styles.overlayDim,
+                { backgroundColor: overlayDimColor },
+              ]}
+            />
+            <View
+              style={[
+                styles.customTemptationCard,
                 { backgroundColor: overlayCardBackground, borderColor: overlayBorderColor },
               ]}
             >
-              <Image source={CAT_HAPPY_GIF} style={styles.saveGif} />
-              <Text style={[styles.saveTitle, { color: colors.text }]}>
-                {t("saveCelebrateTitle", { title: overlay.message })}
-              </Text>
-              <Text style={[styles.saveSubtitle, { color: colors.muted }]}>
-                {t("saveCelebrateSubtitle")}
+              <Image source={CAT_FOLLOWS} style={styles.customTemptationGif} />
+              <Text style={[styles.customTemptationText, { color: colors.text }]}>
+                {t("customTemptationAdded", { title: overlay.message || "" })}
               </Text>
             </View>
           </View>
@@ -6463,6 +6915,11 @@ function App() {
                     <TouchableOpacity onPress={closePriceEditor}>
                       <Text style={[styles.priceModalCancel, { color: colors.muted }]}>
                         {t("priceEditCancel")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handlePriceDelete}>
+                      <Text style={[styles.priceModalDeleteText, { color: "#E15555" }]}>
+                        {t("priceEditDelete")}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -6865,18 +7322,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
-  heroPotentialSubtitle: {
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  heroPotentialTrack: {
-    height: 6,
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  heroPotentialFill: {
-    height: "100%",
-  },
   heroPotentialHint: {
     fontSize: 12,
     fontWeight: "600",
@@ -7013,12 +7458,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   progressHeroTitle: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 22,
+    fontWeight: "900",
   },
   progressHeroAmount: {
-    fontSize: 24,
-    fontWeight: "800",
+    fontSize: 28,
+    fontWeight: "900",
     marginBottom: 6,
   },
   progressHeroLevel: {
@@ -7392,9 +7837,17 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
   },
-  temptationGoalLabel: {
-    fontSize: 12,
-    marginTop: 6,
+  temptationGoalBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginBottom: 6,
+  },
+  temptationGoalBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
   },
   editPriceText: {
     fontSize: 13,
@@ -7685,11 +8138,21 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  wishTitleWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    marginRight: 12,
+    gap: 8,
+  },
+  wishEmoji: {
+    fontSize: 22,
+  },
   wishTitle: {
     fontSize: 18,
     fontWeight: "700",
     flex: 1,
-    paddingRight: 12,
+    paddingRight: 0,
   },
   wishBadge: {
     paddingHorizontal: 12,
@@ -8446,6 +8909,41 @@ const styles = StyleSheet.create({
   cartBadgeIcon: {
     fontSize: 32,
   },
+  fabMenuOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "flex-end",
+    alignItems: "flex-end",
+  },
+  fabMenuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.15)",
+  },
+  fabOption: {
+    position: "absolute",
+    right: 24,
+    alignItems: "flex-end",
+  },
+  fabOptionGoal: {
+    bottom: 280,
+  },
+  fabOptionTemptation: {
+    bottom: 185,
+  },
+  fabCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    paddingHorizontal: 8,
+  },
+  fabOptionText: {
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "center",
+    lineHeight: 16,
+  },
   quickModalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
@@ -8683,6 +9181,34 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textAlign: "center",
   },
+  saveGoalText: {
+    fontSize: 20,
+    fontWeight: "800",
+    textAlign: "center",
+    marginTop: 18,
+  },
+  customTemptationCard: {
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderRadius: 24,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    gap: 16,
+    borderWidth: 1,
+    borderColor: "rgba(18,15,40,0.08)",
+    marginHorizontal: 24,
+  },
+  customTemptationGif: {
+    width: 160,
+    height: 160,
+    borderRadius: 32,
+    resizeMode: "contain",
+  },
+  customTemptationText: {
+    fontSize: 18,
+    fontWeight: "800",
+    textAlign: "center",
+  },
   rainLayer: {
     ...StyleSheet.absoluteFillObject,
   },
@@ -8806,6 +9332,11 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontWeight: "600",
     marginTop: 4,
+  },
+  priceModalDeleteText: {
+    textAlign: "center",
+    fontWeight: "700",
+    marginTop: 10,
   },
   goalModalCard: {
     width: "100%",
@@ -9416,6 +9947,17 @@ function QuickCustomModal({ visible, colors, t, currency, data, onChange, onSubm
                   value={data.amount}
                   onChangeText={(text) => onChange("amount", text)}
                 />
+                <TextInput
+                  style={[
+                    styles.primaryInput,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  placeholder={t("quickCustomEmojiLabel")}
+                  placeholderTextColor={colors.muted}
+                  value={data.emoji || ""}
+                  onChangeText={(text) => onChange("emoji", text)}
+                  maxLength={2}
+                />
               </View>
               <View style={styles.quickModalActions}>
                 <TouchableOpacity
@@ -9432,6 +9974,75 @@ function QuickCustomModal({ visible, colors, t, currency, data, onChange, onSubm
                 >
                   <Text style={[styles.quickModalPrimaryText, { color: colors.background }]}>
                     {t("quickCustomConfirm")}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
+function NewGoalModal({ visible, colors, t, currency, data, onChange, onSubmit, onCancel }) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <TouchableWithoutFeedback onPress={onCancel}>
+        <View style={styles.quickModalBackdrop}>
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View style={[styles.quickModalCard, { backgroundColor: colors.card }] }>
+              <Text style={[styles.quickModalTitle, { color: colors.text }]}>{t("newGoalTitle")}</Text>
+              <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>{t("newGoalSubtitle")}</Text>
+              <View style={{ gap: 8, width: "100%" }}>
+                <TextInput
+                  style={[
+                    styles.primaryInput,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  placeholder={t("newGoalNameLabel")}
+                  placeholderTextColor={colors.muted}
+                  value={data.name}
+                  onChangeText={(text) => onChange("name", text)}
+                />
+                <TextInput
+                  style={[
+                    styles.primaryInput,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  placeholder={t("newGoalTargetLabel", { currency })}
+                  placeholderTextColor={colors.muted}
+                  keyboardType="decimal-pad"
+                  value={data.target}
+                  onChangeText={(text) => onChange("target", text)}
+                />
+                <TextInput
+                  style={[
+                    styles.primaryInput,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  placeholder={t("newGoalEmojiLabel")}
+                  placeholderTextColor={colors.muted}
+                  value={data.emoji || ""}
+                  onChangeText={(text) => onChange("emoji", text)}
+                  maxLength={2}
+                />
+              </View>
+              <View style={styles.quickModalActions}>
+                <TouchableOpacity
+                  style={[styles.quickModalSecondary, { borderColor: colors.border }]}
+                  onPress={onCancel}
+                >
+                  <Text style={[styles.quickModalSecondaryText, { color: colors.muted }]}>
+                    {t("newGoalCancel")}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.quickModalPrimary, { backgroundColor: colors.text }]}
+                  onPress={onSubmit}
+                >
+                  <Text style={[styles.quickModalPrimaryText, { color: colors.background }]}>
+                    {t("newGoalCreate")}
                   </Text>
                 </TouchableOpacity>
               </View>
