@@ -59,6 +59,8 @@ const STORAGE_KEYS = {
   HISTORY: "@almost_history",
   REFUSE_STATS: "@almost_refuse_stats",
   REWARDS_CELEBRATED: "@almost_rewards_celebrated",
+  HEALTH: "@almost_health_points",
+  CLAIMED_REWARDS: "@almost_claimed_rewards",
   ANALYTICS_OPT_OUT: "@almost_analytics_opt_out",
   TEMPTATION_GOALS: "@almost_temptation_goals",
   CUSTOM_TEMPTATIONS: "@almost_custom_temptations",
@@ -214,6 +216,10 @@ const SHELL_HORIZONTAL_PADDING = Platform.OS === "android" ? 0 : 8;
 
 const triggerHaptic = (style = Haptics.ImpactFeedbackStyle.Light) => {
   Haptics.impactAsync(style).catch(() => {});
+};
+
+const triggerSuccessHaptic = () => {
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 };
 
 const convertToCurrency = (valueUSD = 0, currency = activeCurrency) => {
@@ -414,7 +420,7 @@ const TRANSLATIONS = {
     freeDayMilestone: "Серия {{days}} дней! Новый титул!",
     freeDayCardTitle: "Серия бесплатных дней",
     freeDayActiveLabel: "Серия {{days}} дня",
-    freeDayInactiveLabel: "Отметь вечер без трат",
+    freeDayInactiveLabel: "Отметь день без трат",
     freeDayCurrentLabel: "Текущая",
     freeDayBestLabel: "Лучшая",
     freeDayTotalShort: "Всего",
@@ -422,6 +428,12 @@ const TRANSLATIONS = {
     freeDayExpand: "Показать детали",
     freeDayCollapse: "Скрыть",
     freeDayTotalLabel: "Всего: {{total}}",
+    freeDayRescueTitle: "Пропущен день?",
+    freeDayRescueSubtitle: "Потрать {{cost}} здоровья, чтобы серия жила.",
+    freeDayRescueButton: "Спасти серию",
+    freeDayRescueNeedHealth: "Нужно {{cost}} здоровья",
+    freeDayRescueNeedTime: "Доступно после 18:00",
+    freeDayRescueOverlay: "Серия спасена",
     pendingTab: "Думаем",
     pendingTitle: "Думаем",
     pendingEmptyTitle: "В «думаем» пусто",
@@ -557,8 +569,18 @@ const TRANSLATIONS = {
     rewardLockedGeneric: "Осталось {{count}} шагов",
     rewardBadgeLabel: "Награда",
     rewardBadgeClaimed: "Получено!",
+    rewardClaimCta: "Собрать",
+    rewardClaimHint: "Собери и получи {{amount}} здоровья",
+    rewardClaimedStatus: "Здоровье получено",
+    rewardHealthBonus: "+{{amount}} здоровья",
+    freeDayHealthTitle: "Запас здоровья",
+    freeDayHealthSubtitle: "Используй, чтобы спасти серию.",
     rewardCelebrateTitle: "Награда «{{title}}» получена!",
     rewardCelebrateSubtitle: "Алми ликует: продолжай накапливать достижения.",
+    healthCelebrateTitle: "+{{amount}} здоровья",
+    healthCelebrateSubtitle: "Сохраняй серию бесплатных дней.",
+    healthCelebrateLevel: "Новый уровень — здоровье пополнено.",
+    healthCelebrateReward: "Награда собрана — здоровье пополнено.",
     rainMessage: "Как же так? Спаси денежки.",
     developerReset: "Сбросить данные",
     developerResetConfirm: "Очистить хотелки, историю и профиль?",
@@ -618,6 +640,7 @@ const TRANSLATIONS = {
     goalEditModalTitle: "Редактировать цель",
     goalEditNameLabel: "Название цели",
     goalEditTargetLabel: "Сумма цели",
+    goalEditEmojiLabel: "Эмодзи цели",
     goalEditSave: "Сохранить",
     goalEditCancel: "Отмена",
     goalEditNameError: "Введи название цели",
@@ -741,6 +764,12 @@ const TRANSLATIONS = {
     freeDayExpand: "Show details",
     freeDayCollapse: "Hide",
     freeDayTotalLabel: "Total: {{total}}",
+    freeDayRescueTitle: "Missed a day?",
+    freeDayRescueSubtitle: "Spend {{cost}} health to keep the streak alive.",
+    freeDayRescueButton: "Rescue streak",
+    freeDayRescueNeedHealth: "Need {{cost}} health",
+    freeDayRescueNeedTime: "Available after 6 pm",
+    freeDayRescueOverlay: "Streak rescued",
     pendingTab: "Thinking",
     pendingTitle: "Thinking",
     pendingEmptyTitle: "Nothing in Thinking",
@@ -864,8 +893,18 @@ const TRANSLATIONS = {
     rewardLockedGeneric: "{{count}} steps remaining",
     rewardBadgeLabel: "Reward",
     rewardBadgeClaimed: "Claimed!",
+    rewardClaimCta: "Collect",
+    rewardClaimHint: "Collect to gain {{amount}} health",
+    rewardClaimedStatus: "Health banked",
+    rewardHealthBonus: "+{{amount}} health",
+    freeDayHealthTitle: "Health bank",
+    freeDayHealthSubtitle: "Spend to rescue the streak.",
     rewardCelebrateTitle: "“{{title}}” unlocked!",
     rewardCelebrateSubtitle: "Almi is proud—keep the streak going.",
+    healthCelebrateTitle: "+{{amount}} health",
+    healthCelebrateSubtitle: "Use it to rescue your free-day streak.",
+    healthCelebrateLevel: "Level up bonus — health restored.",
+    healthCelebrateReward: "Reward collected — health restored.",
     rainMessage: "Oh no! Protect the cash.",
     developerReset: "Reset data",
     developerResetConfirm: "Clear wishes, history and profile?",
@@ -925,6 +964,7 @@ const TRANSLATIONS = {
     goalEditModalTitle: "Edit goal",
     goalEditNameLabel: "Goal name",
     goalEditTargetLabel: "Goal amount",
+    goalEditEmojiLabel: "Goal emoji",
     goalEditSave: "Save",
     goalEditCancel: "Cancel",
     goalEditNameError: "Enter a goal name",
@@ -1625,6 +1665,9 @@ const INITIAL_FREE_DAY_STATS = {
 };
 
 const FREE_DAY_MILESTONES = [3, 7, 30];
+const HEALTH_PER_LEVEL = 1;
+const HEALTH_PER_REWARD = 1;
+const FREE_DAY_RESCUE_COST = 1;
 
 const getDayKey = (date) => {
   const d = new Date(date);
@@ -2357,6 +2400,12 @@ function FreeDayCard({
   todayKey,
   weekDays = [],
   weekCount = 0,
+  healthPoints = 0,
+  canRescue = false,
+  needsRescue = false,
+  rescueStatus = null,
+  rescueCost = FREE_DAY_RESCUE_COST,
+  onRescue = () => {},
 }) {
   const [expanded, setExpanded] = useState(false);
   const streakActive = (freeDayStats.current || 0) > 0;
@@ -2391,9 +2440,17 @@ function FreeDayCard({
       ]}
     >
       <View style={styles.freeDayHeader}>
-        <View style={{ flex: 1 }}>
+        <View style={styles.freeDayHeaderText}>
           <Text style={[styles.freeDayLabel, { color: colors.muted }]}>{t("freeDayCardTitle")}</Text>
-          <Text style={[styles.freeDayValue, { color: palette.accent }]}>{subtitle}</Text>
+          <Text
+            style={[
+              styles.freeDayValue,
+              !streakActive && styles.freeDayValueInactive,
+              { color: palette.accent },
+            ]}
+          >
+            {subtitle}
+          </Text>
         </View>
         {canLog ? (
           <TouchableOpacity
@@ -2430,8 +2487,59 @@ function FreeDayCard({
           </Text>
         </TouchableOpacity>
       </View>
+      {needsRescue && (
+        <View
+          style={[
+            styles.freeDayRescueBanner,
+            { borderColor: colors.border, backgroundColor: colors.background },
+          ]}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.freeDayRescueTitle, { color: colors.text }]}>
+              {t("freeDayRescueTitle")}
+            </Text>
+            <Text style={[styles.freeDayRescueSubtitle, { color: colors.muted }]}>
+              {canRescue
+                ? t("freeDayRescueSubtitle", { cost: rescueCost })
+                : rescueStatus || t("freeDayRescueSubtitle", { cost: rescueCost })}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.freeDayRescueButton,
+              { backgroundColor: palette.accent },
+              !canRescue && styles.freeDayRescueButtonDisabled,
+            ]}
+            onPress={onRescue}
+            disabled={!canRescue}
+          >
+            <Text
+              style={[
+                styles.freeDayRescueButtonText,
+                !canRescue && { color: palette.accent, opacity: 0.6 },
+              ]}
+            >
+              {t("freeDayRescueButton")}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
       {expanded && (
         <>
+          <View style={[styles.freeDayHealthRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.freeDayHealthIcon}>
+              <Text style={{ fontSize: 22 }}>💚</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.freeDayHealthLabel, { color: colors.text }]}>
+                {t("freeDayHealthTitle")}
+              </Text>
+              <Text style={[styles.freeDayHealthSubtitle, { color: colors.muted }]}>
+                {t("freeDayHealthSubtitle")}
+              </Text>
+            </View>
+            <Text style={[styles.freeDayHealthValue, { color: palette.accent }]}>{healthPoints}</Text>
+          </View>
           <View style={styles.freeDayStatsRow}>
             {stats.map((stat) => (
               <View key={stat.label} style={styles.freeDayStat}>
@@ -2574,6 +2682,9 @@ function FeedScreen({
   currency,
   freeDayStats,
   onFreeDayLog,
+  healthPoints = 0,
+  onFreeDayRescue,
+  freeDayRescueCost = FREE_DAY_RESCUE_COST,
   analyticsStats = [],
   refuseStats = {},
   cardFeedback = {},
@@ -2732,8 +2843,22 @@ function FeedScreen({
   const todayDate = new Date();
   const todayTimestamp = todayDate.getTime();
   const todayKey = getDayKey(todayDate);
+  const dayBeforeYesterdayKey = getDayKey(new Date(todayDate.getTime() - DAY_MS * 2));
   const isEvening = new Date().getHours() >= 18;
   const canLogFreeDay = isEvening && freeDayStats.lastDate !== todayKey;
+  const streakNeedsRescue =
+    freeDayStats.current > 0 &&
+    freeDayStats.lastDate === dayBeforeYesterdayKey &&
+    freeDayStats.lastDate !== todayKey;
+  const hasRescueHealth = healthPoints >= freeDayRescueCost;
+  const canRescueFreeDay = isEvening && streakNeedsRescue && hasRescueHealth;
+  const rescueStatus = !streakNeedsRescue
+    ? null
+    : !hasRescueHealth
+    ? t("freeDayRescueNeedHealth", { cost: freeDayRescueCost })
+    : !isEvening
+    ? t("freeDayRescueNeedTime")
+    : null;
   const potentialSavedUSD = useSavingsSimulation(
     profile?.spendingProfile?.baselineMonthlyWasteUSD || 0,
     profile?.spendingProfile?.baselineStartAt || null
@@ -2874,6 +2999,12 @@ function FeedScreen({
               todayKey={todayKey}
               weekDays={weekDays}
               weekCount={weekSuccessCount}
+              healthPoints={healthPoints}
+              canRescue={canRescueFreeDay}
+              needsRescue={streakNeedsRescue}
+              rescueStatus={rescueStatus}
+              rescueCost={freeDayRescueCost}
+              onRescue={onFreeDayRescue}
             />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
               {categories.map((cat) => (
@@ -3034,6 +3165,21 @@ const resolveWishEmoji = (wish) => {
   return DEFAULT_GOAL_EMOJI;
 };
 
+const getWishTitleWithoutEmoji = (wish) => {
+  const title = typeof wish?.title === "string" ? wish.title : "";
+  if (!title) return "";
+  const trimmed = title.trimStart();
+  if (!trimmed) return "";
+  const firstChar = Array.from(trimmed)[0];
+  if (!firstChar) return trimmed;
+  const isSymbol = !/[A-Za-zА-Яа-я0-9]/.test(firstChar);
+  const wishEmoji = resolveWishEmoji(wish);
+  if (isSymbol && wishEmoji && firstChar === wishEmoji) {
+    return Array.from(trimmed).slice(1).join("").trimStart();
+  }
+  return trimmed;
+};
+
 function WishListScreen({
   wishes,
   currency = DEFAULT_PROFILE.currency,
@@ -3121,6 +3267,7 @@ function WishListScreen({
           }
           return content;
         };
+        const displayTitle = getWishTitleWithoutEmoji(wish);
         if (isPrimaryGoal) {
           const preset = getGoalPreset(wish.goalId || primaryGoalIds[0]);
           const emblem = preset?.emoji || "🎯";
@@ -3161,7 +3308,7 @@ function WishListScreen({
                     </Text>
                   </View>
                   <Text style={[styles.primaryGoalTitle, { color: colors.background }]}>
-                    {wish.title}
+                    {displayTitle}
                   </Text>
                 </View>
                 <View
@@ -3222,12 +3369,13 @@ function WishListScreen({
           );
         }
         const wishEmoji = resolveWishEmoji(wish);
+        const wishTitle = displayTitle;
         const cardContent = (
           <View style={[styles.wishCard, { backgroundColor: colors.card }] }>
             <View style={styles.wishHeader}>
               <View style={styles.wishTitleWrap}>
                 <Text style={[styles.wishEmoji, { color: colors.text }]}>{wishEmoji}</Text>
-                <Text style={[styles.wishTitle, { color: colors.text }]}>{wish.title}</Text>
+                <Text style={[styles.wishTitle, { color: colors.text }]}>{wishTitle}</Text>
               </View>
               <View style={styles.wishBadge}>
                 <Text style={{ color: colors.muted }}>{badgeText}</Text>
@@ -3505,6 +3653,8 @@ function RewardsScreen({
   colors,
   savedTotalUSD = 0,
   currency = DEFAULT_PROFILE.currency,
+  onRewardClaim = () => {},
+  healthRewardAmount = HEALTH_PER_REWARD,
 }) {
   const isDarkTheme = colors.background === THEMES.dark.background;
   const tierInfo = getTierProgress(savedTotalUSD || 0);
@@ -3618,7 +3768,6 @@ function RewardsScreen({
             };
         return (
           <View
-            key={reward.id}
             style={[
               styles.goalCard,
               {
@@ -3644,7 +3793,9 @@ function RewardsScreen({
               {reward.unlocked && (
                 <View style={[styles.rewardBadge, { backgroundColor: rewardPalette.badgeBg }]}>
                   <Text style={[styles.rewardBadgeText, { color: rewardPalette.badgeText }]}>
-                    {t("rewardBadgeClaimed")}
+                    {reward.claimed
+                      ? t("rewardBadgeClaimed")
+                      : t("rewardHealthBonus", { amount: healthRewardAmount })}
                   </Text>
                 </View>
               )}
@@ -3662,10 +3813,39 @@ function RewardsScreen({
             </View>
             <Text style={[styles.goalDesc, { color: colors.muted }]}>
               {reward.unlocked
-                ? t("rewardUnlocked")
+                ? reward.claimed
+                  ? t("rewardClaimedStatus")
+                  : t("rewardClaimHint", { amount: healthRewardAmount })
                 : reward.remainingLabel || t("rewardLockedGeneric", { count: 1 })}
             </Text>
+            {reward.unlocked && !reward.claimed && (
+              <TouchableOpacity
+                style={[
+                  styles.rewardClaimButton,
+                  { backgroundColor: rewardPalette.badgeText },
+                ]}
+                onPress={(event) => {
+                  event?.stopPropagation?.();
+                  onRewardClaim?.(reward);
+                }}
+              >
+                <Text style={[styles.rewardClaimButtonText, { color: rewardPalette.background }]}>
+                  {t("rewardClaimCta")}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
+        );
+        const isClaimable = reward.unlocked && !reward.claimed;
+        return (
+          <TouchableOpacity
+            key={reward.id}
+            activeOpacity={isClaimable ? 0.85 : 1}
+            onPress={() => (isClaimable ? onRewardClaim?.(reward) : undefined)}
+            disabled={!isClaimable}
+          >
+            {cardContent}
+          </TouchableOpacity>
         );
       })}
       {!achievements.some((item) => item.unlocked) && (
@@ -4134,6 +4314,8 @@ function App() {
   const [declineCount, setDeclineCount] = useState(0);
   const [pendingList, setPendingList] = useState([]);
   const [freeDayStats, setFreeDayStats] = useState({ ...INITIAL_FREE_DAY_STATS });
+  const [healthPoints, setHealthPoints] = useState(0);
+  const [claimedRewards, setClaimedRewards] = useState({});
   const [decisionStats, setDecisionStats] = useState({ ...INITIAL_DECISION_STATS });
   const [historyEvents, setHistoryEvents] = useState([]);
   const products = temptations;
@@ -4208,7 +4390,13 @@ function App() {
   const [temptationGoalMap, setTemptationGoalMap] = useState({});
   const [goalLinkPrompt, setGoalLinkPrompt] = useState({ visible: false, item: null, intent: null });
   const [goalTemptationPrompt, setGoalTemptationPrompt] = useState({ visible: false, wish: null });
-  const [goalEditorPrompt, setGoalEditorPrompt] = useState({ visible: false, wish: null, name: "", target: "" });
+  const [goalEditorPrompt, setGoalEditorPrompt] = useState({
+    visible: false,
+    wish: null,
+    name: "",
+    target: "",
+    emoji: DEFAULT_GOAL_EMOJI,
+  });
   const ensureNotificationPermission = useCallback(async () => {
     try {
       let settings = await Notifications.getPermissionsAsync();
@@ -4458,29 +4646,32 @@ function App() {
         }
       : { backgroundColor: overlayCardBackground, borderColor: overlayBorderColor };
 
-  const achievements = useMemo(
-    () =>
-      buildAchievements({
-        savedTotalUSD,
-        declineCount,
-        freeDayStats,
-        pendingCount: pendingList.length,
-        decisionStats,
-        currency: profile.currency || DEFAULT_PROFILE.currency,
-        t,
-        language,
-      }),
-    [
+  const achievements = useMemo(() => {
+    const built = buildAchievements({
       savedTotalUSD,
       declineCount,
       freeDayStats,
-      pendingList.length,
+      pendingCount: pendingList.length,
       decisionStats,
-      profile.currency,
+      currency: profile.currency || DEFAULT_PROFILE.currency,
       t,
       language,
-    ]
-  );
+    });
+    return built.map((reward) => ({
+      ...reward,
+      claimed: !!claimedRewards[reward.id],
+    }));
+  }, [
+    savedTotalUSD,
+    declineCount,
+    freeDayStats,
+    pendingList.length,
+    decisionStats,
+    profile.currency,
+    t,
+    language,
+    claimedRewards,
+  ]);
 
   const unlockedRewards = useMemo(
     () => achievements.filter((item) => item.unlocked),
@@ -4534,6 +4725,8 @@ function App() {
         goalMapRaw,
         customTemptationsRaw,
         hiddenTemptationsRaw,
+        healthRaw,
+        claimedRewardsRaw,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.WISHES),
         AsyncStorage.getItem(STORAGE_KEYS.PENDING),
@@ -4555,6 +4748,8 @@ function App() {
         AsyncStorage.getItem(STORAGE_KEYS.TEMPTATION_GOALS),
         AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_TEMPTATIONS),
         AsyncStorage.getItem(STORAGE_KEYS.HIDDEN_TEMPTATIONS),
+        AsyncStorage.getItem(STORAGE_KEYS.HEALTH),
+        AsyncStorage.getItem(STORAGE_KEYS.CLAIMED_REWARDS),
       ]);
       if (wishesRaw) setWishes(JSON.parse(wishesRaw));
       if (pendingRaw) setPendingList(JSON.parse(pendingRaw));
@@ -4658,6 +4853,21 @@ function App() {
           console.warn("hidden temptations parse", err);
         }
       }
+      if (healthRaw) {
+        setHealthPoints(Number(healthRaw) || 0);
+      } else {
+        setHealthPoints(0);
+      }
+      if (claimedRewardsRaw) {
+        try {
+          setClaimedRewards(JSON.parse(claimedRewardsRaw));
+        } catch (err) {
+          console.warn("claimed rewards parse", err);
+          setClaimedRewards({});
+        }
+      } else {
+        setClaimedRewards({});
+      }
       if (onboardingRaw === "done" || parsedProfile?.goal) {
         setOnboardingStep("done");
       } else if (parsedProfile?.firstName) {
@@ -4750,6 +4960,14 @@ function App() {
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.LANGUAGE, language).catch(() => {});
   }, [language]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.HEALTH, String(healthPoints)).catch(() => {});
+  }, [healthPoints]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.CLAIMED_REWARDS, JSON.stringify(claimedRewards)).catch(() => {});
+  }, [claimedRewards]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.CATALOG, JSON.stringify(catalogOverrides)).catch(() => {});
@@ -5839,15 +6057,22 @@ function App() {
       setGoalEditorPrompt({
         visible: true,
         wish,
-        name: wish.title || "",
+        name: getWishTitleWithoutEmoji(wish) || "",
         target: targetLocal,
+        emoji: normalizeEmojiValue(wish.emoji || resolveWishEmoji(wish), DEFAULT_GOAL_EMOJI),
       });
     },
     [profile.currency]
   );
 
   const closeGoalEditorPrompt = useCallback(() => {
-    setGoalEditorPrompt({ visible: false, wish: null, name: "", target: "" });
+    setGoalEditorPrompt({
+      visible: false,
+      wish: null,
+      name: "",
+      target: "",
+      emoji: DEFAULT_GOAL_EMOJI,
+    });
   }, []);
 
   const handleGoalEditorNameChange = useCallback((value) => {
@@ -5856,6 +6081,10 @@ function App() {
 
   const handleGoalEditorTargetChange = useCallback((value) => {
     setGoalEditorPrompt((prev) => ({ ...prev, target: value }));
+  }, []);
+
+  const handleGoalEditorEmojiChange = useCallback((value) => {
+    setGoalEditorPrompt((prev) => ({ ...prev, emoji: limitEmojiInput(value) }));
   }, []);
 
   const saveGoalEditorPrompt = useCallback(() => {
@@ -5870,6 +6099,11 @@ function App() {
       Alert.alert("Almost", t("goalEditTargetError"));
       return;
     }
+    const fallbackEmoji = resolveWishEmoji(goalEditorPrompt.wish);
+    const normalizedEmoji = normalizeEmojiValue(
+      goalEditorPrompt.emoji,
+      fallbackEmoji || DEFAULT_GOAL_EMOJI
+    );
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
     const nextTargetUSD = convertFromCurrency(parsed, currencyCode);
     setWishes((prev) =>
@@ -5880,6 +6114,7 @@ function App() {
         return {
           ...wish,
           title: trimmedName,
+          emoji: normalizedEmoji,
           targetUSD: nextTargetUSD,
           savedUSD: nextSaved,
           status: nextStatus,
@@ -6249,6 +6484,50 @@ function App() {
     triggerOverlayState("purchase", messages[Math.floor(Math.random() * messages.length)]);
   };
 
+  const handleLevelCelebrate = useCallback(
+    (level) => {
+      setHealthPoints((prev) => prev + HEALTH_PER_LEVEL);
+      triggerOverlayState("level", level);
+      triggerOverlayState("health", {
+        amount: HEALTH_PER_LEVEL,
+        reason: t("healthCelebrateLevel"),
+      }, 3200);
+      triggerSuccessHaptic();
+    },
+    [t, triggerOverlayState]
+  );
+
+  const handleRewardClaim = useCallback(
+    (reward) => {
+      if (!reward?.id || !reward.unlocked || reward.claimed || claimedRewards[reward.id]) return;
+      setClaimedRewards((prev) => ({ ...prev, [reward.id]: true }));
+    setHealthPoints((prev) => prev + HEALTH_PER_REWARD);
+    triggerOverlayState("health", {
+      amount: HEALTH_PER_REWARD,
+      reason: t("healthCelebrateReward"),
+    }, 3200);
+      triggerSuccessHaptic();
+      logEvent("reward_claimed", { reward_id: reward.id });
+    },
+    [claimedRewards, t, triggerOverlayState]
+  );
+
+  const handleFreeDayRescue = useCallback(() => {
+    const now = new Date();
+    if (now.getHours() < 18 || !freeDayStats.lastDate || healthPoints < FREE_DAY_RESCUE_COST) return;
+    const yesterdayKey = getDayKey(new Date(now.getTime() - DAY_MS));
+    const dayBeforeYesterdayKey = getDayKey(new Date(now.getTime() - DAY_MS * 2));
+    if (freeDayStats.lastDate !== dayBeforeYesterdayKey) return;
+    setHealthPoints((prev) => Math.max(prev - FREE_DAY_RESCUE_COST, 0));
+    setFreeDayStats((prev) => ({ ...prev, lastDate: yesterdayKey }));
+    triggerOverlayState("reward", t("freeDayRescueOverlay"));
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    logEvent("free_day_rescue", {
+      current_streak: freeDayStats.current,
+      health_remaining: Math.max(healthPoints - FREE_DAY_RESCUE_COST, 0),
+    });
+  }, [freeDayStats.lastDate, freeDayStats.current, healthPoints, triggerOverlayState, t]);
+
   const handleResetData = () => {
     Alert.alert(
       t("developerReset"),
@@ -6297,6 +6576,9 @@ function App() {
             setTheme("light");
             setLanguage("ru");
             setActiveCurrency(DEFAULT_PROFILE.currency);
+            setHealthPoints(0);
+            setClaimedRewards({});
+            setRewardCelebratedMap({});
           },
         },
       ]
@@ -6376,12 +6658,14 @@ function App() {
       case "purchases":
         return (
           <RewardsScreen
-            achievements={achievements}
-            t={t}
-            colors={colors}
-            savedTotalUSD={savedTotalUSD}
-            currency={profile.currency || DEFAULT_PROFILE.currency}
-          />
+          achievements={achievements}
+          t={t}
+          colors={colors}
+          savedTotalUSD={savedTotalUSD}
+          currency={profile.currency || DEFAULT_PROFILE.currency}
+          onRewardClaim={handleRewardClaim}
+          healthRewardAmount={HEALTH_PER_REWARD}
+        />
         );
       case "profile":
         return (
@@ -6432,12 +6716,15 @@ function App() {
             analyticsStats={analyticsStats}
             refuseStats={refuseStats}
             cardFeedback={cardFeedback}
-            historyEvents={historyEvents}
-            profile={profile}
-            titleOverrides={titleOverrides}
-            onLevelCelebrate={(level) => triggerOverlayState("level", level)}
-            onBaselineSetup={handleBaselineSetupPrompt}
-          />
+          historyEvents={historyEvents}
+          profile={profile}
+          titleOverrides={titleOverrides}
+          onLevelCelebrate={handleLevelCelebrate}
+          onBaselineSetup={handleBaselineSetupPrompt}
+          healthPoints={healthPoints}
+          onFreeDayRescue={handleFreeDayRescue}
+          freeDayRescueCost={FREE_DAY_RESCUE_COST}
+        />
         );
     }
   };
@@ -6718,6 +7005,7 @@ function App() {
           overlay.type !== "save" &&
           overlay.type !== "custom_temptation" &&
           overlay.type !== "reward" &&
+          overlay.type !== "health" &&
           overlay.type !== "goal_complete" && (
           <View style={styles.confettiLayer} pointerEvents="none">
             <View
@@ -6817,6 +7105,9 @@ function App() {
         )}
         {overlay?.type === "reward" && (
           <RewardCelebration colors={colors} message={overlay.message} t={t} />
+        )}
+        {overlay?.type === "health" && (
+          <HealthCelebration colors={colors} payload={overlay.message} t={t} />
         )}
         {overlay?.type === "goal_complete" && (
           <GoalCelebration colors={colors} payload={overlay.message} t={t} />
@@ -7128,6 +7419,24 @@ function App() {
                     placeholder={t("goalEditTargetLabel")}
                     placeholderTextColor={colors.muted}
                     keyboardType="numeric"
+                  />
+                  <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
+                    {t("goalEditEmojiLabel")}
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.priceModalInput,
+                      {
+                        borderColor: colors.border,
+                        color: colors.text,
+                        backgroundColor: colors.card,
+                      },
+                    ]}
+                    value={goalEditorPrompt.emoji}
+                    onChangeText={handleGoalEditorEmojiChange}
+                    placeholder={t("goalEditEmojiLabel")}
+                    placeholderTextColor={colors.muted}
+                    maxLength={2}
                   />
                   <View style={styles.priceModalButtons}>
                     <TouchableOpacity
@@ -7614,12 +7923,19 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     gap: 10,
+    position: "relative",
   },
   freeDayHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     marginBottom: 6,
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  freeDayHeaderText: {
+    flex: 1,
+    gap: 2,
   },
   freeDayLabel: {
     fontSize: 12,
@@ -7629,6 +7945,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
   },
+  freeDayValueInactive: {
+    fontSize: 16,
+    lineHeight: 20,
+  },
   freeDayStatsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -7637,19 +7957,23 @@ const styles = StyleSheet.create({
   },
   freeDayStat: {
     flex: 1,
+    alignItems: "center",
   },
   freeDayStatLabel: {
     fontSize: 12,
     marginBottom: 2,
+    textAlign: "center",
   },
   freeDayStatValue: {
     fontSize: 16,
     fontWeight: "700",
+    textAlign: "center",
   },
   freeDayButton: {
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 8,
+    alignSelf: "flex-start",
   },
   freeDayButtonText: {
     color: "#fff",
@@ -7661,34 +7985,112 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginTop: 4,
+    flexWrap: "wrap",
+    gap: 8,
   },
   freeDayChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: "rgba(0,0,0,0.05)",
+    alignItems: "center",
+    flexDirection: "row",
+    flexShrink: 1,
   },
   freeDayChipText: {
     fontSize: 12,
     fontWeight: "600",
+    textAlign: "center",
   },
   freeDayToggle: {
     paddingHorizontal: 8,
     paddingVertical: 4,
+    alignItems: "center",
   },
   freeDayToggleText: {
     fontSize: 12,
     fontWeight: "600",
+    textAlign: "center",
   },
   freeDayLockedPill: {
     borderRadius: 999,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderWidth: 1,
+    alignSelf: "flex-start",
+    alignItems: "center",
   },
   freeDayLockedText: {
     fontSize: 12,
     fontWeight: "600",
+    textAlign: "center",
+  },
+  freeDayHealthBadge: {
+    display: "none",
+  },
+  freeDayRescueBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 12,
+  },
+  freeDayRescueTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 2,
+  },
+  freeDayRescueSubtitle: {
+    fontSize: 12,
+  },
+  freeDayRescueButton: {
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  freeDayRescueButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 12,
+    textAlign: "center",
+  },
+  freeDayRescueButtonDisabled: {
+    backgroundColor: "rgba(0,0,0,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
+  },
+  freeDayHealthRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 10,
+    gap: 12,
+  },
+  freeDayHealthIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(16,91,49,0.08)",
+  },
+  freeDayHealthLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  freeDayHealthSubtitle: {
+    fontSize: 12,
+  },
+  freeDayHealthValue: {
+    fontSize: 20,
+    fontWeight: "800",
+    minWidth: 40,
+    textAlign: "right",
   },
   freeDayCalendar: {
     marginTop: 4,
@@ -8478,6 +8880,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textTransform: "uppercase",
   },
+  rewardClaimButton: {
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    marginTop: 6,
+  },
+  rewardClaimButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "center",
+    width: "100%",
+  },
   goalProgressBar: {
     height: 8,
     borderRadius: 999,
@@ -9101,6 +9515,44 @@ const styles = StyleSheet.create({
   rewardSubtitle: {
     fontSize: 16,
     fontWeight: "600",
+    textAlign: "center",
+  },
+  healthOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  healthBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  healthHeartWrap: {
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  healthHeart: {
+    fontSize: 110,
+  },
+  healthCard: {
+    paddingHorizontal: 28,
+    paddingVertical: 24,
+    borderRadius: 30,
+    borderWidth: 1,
+    alignItems: "center",
+    width: "80%",
+    maxWidth: 360,
+  },
+  healthTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  healthSubtitle: {
+    fontSize: 16,
+    marginTop: 8,
     textAlign: "center",
   },
   goalCelebrateOverlay: {
@@ -10301,6 +10753,60 @@ const RewardCelebration = ({ colors, message, t }) => {
         <Text style={[styles.rewardSubtitle, { color: colors.muted }]}>
           {t("rewardCelebrateSubtitle")}
         </Text>
+      </View>
+    </View>
+  );
+};
+
+const HealthCelebration = ({ colors, payload, t }) => {
+  const scale = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scale, {
+          toValue: 1.2,
+          duration: 460,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 1,
+          duration: 460,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [scale]);
+  const data = payload && typeof payload === "object" ? payload : { reason: payload };
+  const amount =
+    typeof data.amount === "number" && Number.isFinite(data.amount) ? data.amount : HEALTH_PER_REWARD;
+  const baseSubtitle = t("healthCelebrateSubtitle");
+  const reason = data.reason || baseSubtitle;
+  const isDarkTheme = colors.background === THEMES.dark.background;
+  const backdropColor = isDarkTheme ? "rgba(0,0,0,0.85)" : "rgba(6,9,19,0.35)";
+  const cardBg = isDarkTheme ? lightenColor(colors.card, 0.15) : colors.card;
+  const cardBorder = isDarkTheme ? lightenColor(colors.border, 0.25) : "rgba(0,0,0,0.1)";
+  const heartBackground = isDarkTheme ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.8)";
+  return (
+    <View style={styles.healthOverlay} pointerEvents="none">
+      <View style={[styles.healthBackdrop, { backgroundColor: backdropColor }]} />
+      <Animated.View
+        style={[
+          styles.healthHeartWrap,
+          { transform: [{ scale }], backgroundColor: heartBackground },
+        ]}
+      >
+        <Text style={styles.healthHeart}>💚</Text>
+      </Animated.View>
+      <View style={[styles.healthCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+        <Text style={[styles.healthTitle, { color: colors.text }]}>
+          {t("healthCelebrateTitle", { amount })}
+        </Text>
+        <Text style={[styles.healthSubtitle, { color: colors.muted }]}>{reason}</Text>
+        {reason !== baseSubtitle && (
+          <Text style={[styles.healthSubtitle, { color: colors.muted }]}>{baseSubtitle}</Text>
+        )}
       </View>
     </View>
   );
