@@ -65,6 +65,8 @@ const STORAGE_KEYS = {
   TEMPTATION_GOALS: "@almost_temptation_goals",
   CUSTOM_TEMPTATIONS: "@almost_custom_temptations",
   HIDDEN_TEMPTATIONS: "@almost_hidden_temptations",
+  IMPULSE_TRACKER: "@almost_impulse_tracker",
+  MOOD_STATE: "@almost_mood_state",
 };
 
 const PURCHASE_GOAL = 20000;
@@ -138,12 +140,701 @@ const DEFAULT_REMOTE_IMAGE =
 const REMINDER_DAYS = 14;
 const DAY_MS = 1000 * 60 * 60 * 24;
 const REMINDER_MS = REMINDER_DAYS * DAY_MS;
+const SAVE_SPAM_WINDOW_MS = 1000 * 60 * 5;
+const SAVE_SPAM_ITEM_LIMIT = 3;
+const SAVE_SPAM_GLOBAL_LIMIT = 5;
+const SAVE_ACTION_COLOR = "#2EB873";
+const SPEND_ACTION_COLOR = "#D94862";
+
+const getDayKey = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().split("T")[0];
+};
+
+const isSameDay = (tsA, tsB = Date.now()) => {
+  if (!tsA) return false;
+  return getDayKey(tsA) === getDayKey(tsB);
+};
 const DEFAULT_TEMPTATION_EMOJI = "✨";
 const DEFAULT_GOAL_EMOJI = "🎯";
 const MAX_HISTORY_EVENTS = 200;
 const INITIAL_DECISION_STATS = {
   resolvedToWishes: 0,
   resolvedToDeclines: 0,
+};
+
+const MOOD_IDS = {
+  NEUTRAL: "neutral",
+  FOCUSED: "focused",
+  IMPULSIVE: "impulsive",
+  DOUBTER: "doubter",
+  TIRED: "tired",
+  DREAMER: "dreamer",
+};
+const MOOD_MAX_EVENTS = 24;
+const MOOD_ACTION_WINDOW_MS = 1000 * 60 * 60 * 48;
+const MOOD_EVENT_THRESHOLD = 3;
+const MOOD_PENDING_THRESHOLD = 4;
+const MOOD_DREAM_WISH_THRESHOLD = 3;
+const MOOD_INACTIVITY_THRESHOLD_MS = 1000 * 60 * 60 * 72;
+const createMoodStateForToday = (overrides = {}) => ({
+  current: MOOD_IDS.NEUTRAL,
+  events: [],
+  lastInteractionAt: null,
+  lastVisitAt: null,
+  pendingSnapshot: 0,
+  dayKey: getDayKey(Date.now()),
+  ...overrides,
+});
+
+const INITIAL_MOOD_STATE = createMoodStateForToday();
+
+const MOOD_PRESETS = {
+  [MOOD_IDS.NEUTRAL]: {
+    label: { ru: "Режим баланса", en: "Balanced mode" },
+    hero: {
+      ru: "Баланс держится, просто продолжай отмечать победы.",
+      en: "Balance holds steady—keep logging the wins.",
+    },
+    heroComplete: {
+      ru: "Режим спокойствия фиксирует каждое достижение.",
+      en: "Calm mode celebrates each milestone.",
+    },
+    motivation: {
+      ru: "Небольшой шаг сегодня спасает завтрашний план.",
+      en: "A tiny step today protects tomorrow’s plan.",
+    },
+    saveOverlay: {
+      ru: "Баланс усилен ещё одним отказом.",
+      en: "Balance reinforced with another skip.",
+    },
+    impulseOverlay: {
+      ru: "Сохраняем спокойствие даже при штормах.",
+      en: "Staying calm even when urges spike.",
+    },
+    pushPendingTitle: {
+      ru: "Баланс проверяет хотелку",
+      en: "Balance check-in",
+    },
+    pushPendingBody: {
+      ru: "«{{title}}» ждет решения. Подумай, стоит ли держать курс.",
+      en: "“{{title}}” is waiting. Decide if it fits the plan.",
+    },
+    pushImpulseTitle: {
+      ru: "Баланс в деле",
+      en: "Balance alert",
+    },
+    pushImpulseBody: {
+      ru: "В это время хочется {{temptation}}, но баланс предлагает спасти {{amount}}.",
+      en: "This hour usually tempts {{temptation}}, but balance can bank {{amount}}.",
+    },
+  },
+  [MOOD_IDS.FOCUSED]: {
+    label: { ru: "Волевой режим", en: "Focused mode" },
+    hero: {
+      ru: "Волевой режим активен — искушения сами пугаются.",
+      en: "Focused mode is on—temptations get nervous.",
+    },
+    heroComplete: {
+      ru: "Волевой режим и цель сделаны! Можно планировать больше.",
+      en: "Focused mode + goal complete! Time to plan even bigger.",
+    },
+    motivation: {
+      ru: "Режим силы: собери ещё одно подтверждение дисциплины.",
+      en: "Power mode: lock in one more proof of discipline.",
+    },
+    saveOverlay: {
+      ru: "Волевое решение сохранено. Так держать!",
+      en: "Willpower locked in. Keep it going!",
+    },
+    impulseOverlay: {
+      ru: "Волевой режим умеет тормозить импульсы.",
+      en: "Focused mode crushes impulse spikes.",
+    },
+    pushPendingTitle: {
+      ru: "Волевой пинг",
+      en: "Focused ping",
+    },
+    pushPendingBody: {
+      ru: "Ты в волевом режиме — реши, идем ли дальше с «{{title}}».",
+      en: "Focused mode speaking—decide what to do with “{{title}}”.",
+    },
+    pushImpulseTitle: {
+      ru: "Волевой сигнал",
+      en: "Focused alert",
+    },
+    pushImpulseBody: {
+      ru: "Сейчас чаще хочется {{temptation}}, но волевой режим может отправить {{amount}} в копилку.",
+      en: "This hour begs for {{temptation}}, but focused mode can stash {{amount}}.",
+    },
+  },
+  [MOOD_IDS.IMPULSIVE]: {
+    label: { ru: "Импульсивный режим", en: "Impulse mode" },
+    hero: {
+      ru: "Импульсивный режим включён — стоит поймать пару побед.",
+      en: "Impulse mode detected—time to capture a few wins.",
+    },
+    heroComplete: {
+      ru: "Импульсы были сильными, но цель всё равно закрыта.",
+      en: "Impulses were strong, yet you still hit the target.",
+    },
+    motivation: {
+      ru: "Маленький отказ прямо сейчас вернёт контроль.",
+      en: "One tiny skip right now resets control.",
+    },
+    saveOverlay: {
+      ru: "Импульсы медлят — ты перехватил управление.",
+      en: "Impulse paused—you took the controls back.",
+    },
+    impulseOverlay: {
+      ru: "Поймай ещё один момент и переведи его в копилку.",
+      en: "Catch the next urge and reroute it into savings.",
+    },
+    pushPendingTitle: {
+      ru: "Импульс проверяет «{{title}}»",
+      en: "Impulse check-in",
+    },
+    pushPendingBody: {
+      ru: "Импульсивный режим просит ясности: оставляем «{{title}}» или копим?",
+      en: "Impulse mode needs clarity: keep “{{title}}” or bank it?",
+    },
+    pushImpulseTitle: {
+      ru: "Импульс на подходе",
+      en: "Impulse incoming",
+    },
+    pushImpulseBody: {
+      ru: "Чаще всего сейчас берешь {{temptation}}. Попробуй отправить {{amount}} в копилку.",
+      en: "{{temptation}} usually wins now. Try sending {{amount}} to savings instead.",
+    },
+  },
+  [MOOD_IDS.DOUBTER]: {
+    label: { ru: "Режим сомнений", en: "Doubter mode" },
+    hero: {
+      ru: "Режим сомнений активен — выбери хотя бы одно уверенное решение.",
+      en: "Doubter mode is on—choose one confident move.",
+    },
+    heroComplete: {
+      ru: "Сомневаешься, но цели достигаются. Значит, курс верный.",
+      en: "Doubts aside, goals still get reached. The course works.",
+    },
+    motivation: {
+      ru: "Выбери одну мысль «копить» и закрепи уверенность.",
+      en: "Pick one “save it” thought and lock it in.",
+    },
+    saveOverlay: {
+      ru: "Это решение снимает сомнения.",
+      en: "That choice dissolves doubts.",
+    },
+    impulseOverlay: {
+      ru: "Сомнения лучше переводить в цифры, а не покупки.",
+      en: "Turn doubts into numbers, not purchases.",
+    },
+    pushPendingTitle: {
+      ru: "Сомнения просят ответа",
+      en: "Doubter check",
+    },
+    pushPendingBody: {
+      ru: "«{{title}}» висит в сомнениях. Реши, куда его направить.",
+      en: "“{{title}}” is stuck in limbo. Decide where it belongs.",
+    },
+    pushImpulseTitle: {
+      ru: "Сомневаешься?",
+      en: "Feeling unsure?",
+    },
+    pushImpulseBody: {
+      ru: "Когда тянет к {{temptation}}, попробуй направить {{amount}} в копилку — уверенность вернётся.",
+      en: "When {{temptation}} calls, redirect {{amount}} to savings to regain certainty.",
+    },
+  },
+  [MOOD_IDS.TIRED]: {
+    label: { ru: "Режим отдыха", en: "Recharge mode" },
+    hero: {
+      ru: "Давно не виделись — режим отдыха напоминает о мягком старте.",
+      en: "Long time no see—recharge mode suggests a gentle restart.",
+    },
+    heroComplete: {
+      ru: "Паузы тоже часть пути. Возвращайся, когда готов.",
+      en: "Breaks are part of the path. Return when ready.",
+    },
+    motivation: {
+      ru: "Начни с одного отказа сегодня и посмотри, что изменится.",
+      en: "Start with one skip today and see the shift.",
+    },
+    saveOverlay: {
+      ru: "Вот и мягкий рестарт. Так держать.",
+      en: "There’s the gentle restart. Nice.",
+    },
+    impulseOverlay: {
+      ru: "Отдохнувшая версия тебя умеет говорить «потом».",
+      en: "Rested-you can say “later” with ease.",
+    },
+    pushPendingTitle: {
+      ru: "Вернись к «{{title}}»",
+      en: "Come back to “{{title}}”",
+    },
+    pushPendingBody: {
+      ru: "Режим отдыха не вечный. Реши, что делать с «{{title}}».",
+      en: "Recharge mode isn’t forever. Decide what to do with “{{title}}”.",
+    },
+    pushImpulseTitle: {
+      ru: "Мягкий сигнал",
+      en: "Gentle alert",
+    },
+    pushImpulseBody: {
+      ru: "Паузы были длинными, но даже сейчас можно сберечь {{amount}} от {{temptation}}.",
+      en: "Breaks ran long, yet this minute can still save {{amount}} from {{temptation}}.",
+    },
+  },
+  [MOOD_IDS.DREAMER]: {
+    label: { ru: "Мечтательный режим", en: "Dreamer mode" },
+    hero: {
+      ru: "Мечтательный режим активен — в «думаем» уже целая галерея.",
+      en: "Dreamer mode is on—your Thinking shelf is a gallery.",
+    },
+    heroComplete: {
+      ru: "Даже мечтатели доводят планы до конца.",
+      en: "Even dreamers finish their plans.",
+    },
+    motivation: {
+      ru: "Выбери одну мечту и нажми «копить» сегодня.",
+      en: "Pick one dream and tap “save it” today.",
+    },
+    saveOverlay: {
+      ru: "Мечта зафиксирована реальным действием.",
+      en: "Dream locked in with a real action.",
+    },
+    impulseOverlay: {
+      ru: "Пусть мечты копятся в цифрах, а не расходах.",
+      en: "Let dreams live in numbers, not expenses.",
+    },
+    pushPendingTitle: {
+      ru: "Мечты ждут старта",
+      en: "Dreams are waiting",
+    },
+    pushPendingBody: {
+      ru: "В «думаем» уже очередь. Реши, что делать с «{{title}}».",
+      en: "Thinking is crowded. Decide what to do with “{{title}}”.",
+    },
+    pushImpulseTitle: {
+      ru: "Мечтательный сигнал",
+      en: "Dreamer alert",
+    },
+    pushImpulseBody: {
+      ru: "Лучше добавить {{amount}} в мечту, чем снова брать {{temptation}}.",
+      en: "Add {{amount}} to the dream instead of grabbing {{temptation}} again.",
+    },
+  },
+};
+
+const MOOD_GRADIENTS = {
+  [MOOD_IDS.NEUTRAL]: {
+    start: "#CDE6FF",
+    end: "#F3F7FF",
+    accent: "#A2C9FF",
+  },
+  [MOOD_IDS.FOCUSED]: {
+    start: "#FFE8C7",
+    end: "#FFD6E7",
+    accent: "#FFB973",
+  },
+  [MOOD_IDS.IMPULSIVE]: {
+    start: "#FFD1CC",
+    end: "#FFF0DA",
+    accent: "#FF8A7F",
+  },
+  [MOOD_IDS.DOUBTER]: {
+    start: "#E3D8FF",
+    end: "#F7E9FF",
+    accent: "#C7B1FF",
+  },
+  [MOOD_IDS.TIRED]: {
+    start: "#D5E0FF",
+    end: "#ECEFF5",
+    accent: "#9AB0FF",
+  },
+  [MOOD_IDS.DREAMER]: {
+    start: "#CFF7F1",
+    end: "#E9E2FF",
+    accent: "#94D8C7",
+  },
+};
+
+const getMoodGradient = (moodId = MOOD_IDS.NEUTRAL) =>
+  MOOD_GRADIENTS[moodId] || MOOD_GRADIENTS[MOOD_IDS.NEUTRAL];
+
+const MoodGradientBlock = ({ colors: palette, style, children }) => {
+  const gradientColors = palette || MOOD_GRADIENTS[MOOD_IDS.NEUTRAL];
+  return (
+    <View
+      style={[
+        styles.moodGradientBlock,
+        { backgroundColor: gradientColors.start },
+        style,
+      ]}
+    >
+      <View
+        pointerEvents="none"
+        style={[
+          styles.moodGradientOverlay,
+          { backgroundColor: gradientColors.end },
+        ]}
+      />
+      {children}
+    </View>
+  );
+};
+const MAX_IMPULSE_EVENTS = 180;
+const IMPULSE_ALERT_COOLDOWN_MS = 1000 * 60 * 45;
+const IMPULSE_CATEGORY_DEFS = {
+  food: { id: "food", ru: "Еда", en: "Food", emoji: "🍜" },
+  things: { id: "things", ru: "Вещи", en: "Things", emoji: "🎁" },
+  fun: { id: "fun", ru: "Развлечения", en: "Entertainment", emoji: "🎉" },
+  vices: { id: "vices", ru: "Вредные мелочи", en: "Small vices", emoji: "⚡️" },
+};
+const IMPULSE_CATEGORY_ORDER = ["food", "things", "fun", "vices"];
+const INITIAL_IMPULSE_TRACKER = {
+  events: [],
+  lastAlerts: {},
+};
+
+const padHour = (value) => value.toString().padStart(2, "0");
+const formatImpulseWindowLabel = (hour, span = 2) => {
+  if (!Number.isInteger(hour)) return null;
+  const start = padHour(hour);
+  const end = padHour((hour + span) % 24);
+  return `${start}:00–${end}:00`;
+};
+
+const resolveImpulseCategory = (item = {}) => {
+  const categories = Array.isArray(item.categories)
+    ? item.categories.map((entry) => (entry || "").toLowerCase())
+    : [];
+  const price = Number(item.priceUSD ?? item.basePriceUSD ?? 0) || 0;
+  const matches = (...keys) => categories.some((cat) => keys.includes(cat));
+  if (matches("food", "groceries", "meal", "dining")) return "food";
+  if (matches("coffee", "tea", "habit") && price <= 30) return "vices";
+  if (matches("travel", "wow", "game", "gaming", "fun", "experience", "movie", "concert")) return "fun";
+  if (matches("style", "tech", "phone", "wearable", "fashion", "beauty", "home", "sport", "flagship")) return "things";
+  if (matches("lifestyle", "custom", "gift") && price <= 60) return "vices";
+  if (price <= 18) return "vices";
+  if (price <= 90) return "food";
+  return "things";
+};
+
+const buildImpulseInsights = (events = []) => {
+  if (!Array.isArray(events) || !events.length) {
+    const categories = IMPULSE_CATEGORY_ORDER.reduce((acc, id) => {
+      acc[id] = { save: 0, spend: 0 };
+      return acc;
+    }, {});
+    return { categories, hotLose: null, hotWin: null, activeRisk: null, hottestCategory: null };
+  }
+  const categories = IMPULSE_CATEGORY_ORDER.reduce((acc, id) => {
+    acc[id] = { save: 0, spend: 0 };
+    return acc;
+  }, {});
+  const templateStats = new Map();
+  events.forEach((event) => {
+    if (!event || !event.templateId) return;
+    const category = event.category || "things";
+    if (!categories[category]) {
+      categories[category] = { save: 0, spend: 0 };
+    }
+    if (event.action === "save") {
+      categories[category].save += 1;
+    } else if (event.action === "spend") {
+      categories[category].spend += 1;
+    }
+    const stat =
+      templateStats.get(event.templateId) || {
+        templateId: event.templateId,
+        title: event.title,
+        emoji: event.emoji,
+        category,
+        saveCount: 0,
+        spendCount: 0,
+        saveHours: Array(24).fill(0),
+        spendHours: Array(24).fill(0),
+        lastAmountUSD: event.amountUSD || 0,
+      };
+    if (event.action === "save") {
+      stat.saveCount += 1;
+      if (Number.isInteger(event.hour)) {
+        stat.saveHours[event.hour] = (stat.saveHours[event.hour] || 0) + 1;
+      }
+    } else if (event.action === "spend") {
+      stat.spendCount += 1;
+      if (Number.isInteger(event.hour)) {
+        stat.spendHours[event.hour] = (stat.spendHours[event.hour] || 0) + 1;
+      }
+      stat.lastAmountUSD = event.amountUSD || stat.lastAmountUSD;
+    }
+    templateStats.set(event.templateId, stat);
+  });
+  const selectHotHour = (hours = []) => {
+    let chosen = null;
+    let best = 0;
+    hours.forEach((value, hour) => {
+      if (value > best) {
+        best = value;
+        chosen = hour;
+      }
+    });
+    return {
+      hour: Number.isInteger(chosen) ? chosen : null,
+      count: best,
+      label: Number.isInteger(chosen) ? formatImpulseWindowLabel(chosen) : null,
+    };
+  };
+  let hotLose = null;
+  let hotWin = null;
+  templateStats.forEach((stat) => {
+    const total = stat.saveCount + stat.spendCount;
+    if (!total) return;
+    const loseRate = stat.spendCount / total;
+    if (stat.spendCount >= 1 && loseRate >= 0.5) {
+      if (!hotLose || stat.spendCount > hotLose.spendCount || loseRate > hotLose.lossRate) {
+        hotLose = {
+          ...stat,
+          lossRate: loseRate,
+          hotspot: selectHotHour(stat.spendHours),
+        };
+      }
+    }
+    const winRate = stat.saveCount / total;
+    if (stat.saveCount >= 1 && winRate >= 0.5) {
+      if (!hotWin || stat.saveCount > hotWin.saveCount || winRate > hotWin.winRate) {
+        hotWin = {
+          ...stat,
+          winRate,
+          hotspot: selectHotHour(stat.saveHours),
+        };
+      }
+    }
+  });
+  const nowHour = new Date().getHours();
+  let activeRisk = null;
+  templateStats.forEach((stat) => {
+    const spendHits = stat.spendHours[nowHour] || 0;
+    if (spendHits < 2) return;
+    const saveHits = stat.saveHours[nowHour] || 0;
+    if (saveHits >= spendHits) return;
+    const total = stat.saveCount + stat.spendCount;
+    if (!total) return;
+    const lossRate = stat.spendCount / total;
+    if (lossRate < 0.6) return;
+    if (!activeRisk || spendHits > activeRisk.spendHits) {
+      activeRisk = {
+        templateId: stat.templateId,
+        title: stat.title,
+        emoji: stat.emoji,
+        category: stat.category,
+        spendHits,
+        hour: nowHour,
+        windowLabel: formatImpulseWindowLabel(nowHour),
+        amountUSD: stat.lastAmountUSD,
+      };
+    }
+  });
+  const hottestCategory = IMPULSE_CATEGORY_ORDER.reduce(
+    (best, id) => {
+      const entry = categories[id];
+      const delta = (entry?.spend || 0) - (entry?.save || 0);
+      if (!best || delta > best.delta) {
+        return { id, delta };
+      }
+      return best;
+    },
+    null
+  );
+  return {
+    categories,
+    hotLose: hotLose
+      ? {
+          templateId: hotLose.templateId,
+          title: hotLose.title,
+          emoji: hotLose.emoji,
+          category: hotLose.category,
+          count: hotLose.spendCount,
+          rate: hotLose.lossRate,
+          windowLabel: hotLose.hotspot?.label || null,
+        }
+      : null,
+    hotWin: hotWin
+      ? {
+          templateId: hotWin.templateId,
+          title: hotWin.title,
+          emoji: hotWin.emoji,
+          category: hotWin.category,
+          count: hotWin.saveCount,
+          rate: hotWin.winRate,
+          windowLabel: hotWin.hotspot?.label || null,
+        }
+      : null,
+    activeRisk,
+    hottestCategory,
+  };
+};
+
+const renderTemplateString = (template, params = {}) => {
+  if (!template || typeof template !== "string") return "";
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) =>
+    params[key] !== undefined && params[key] !== null ? String(params[key]) : ""
+  );
+};
+
+const getMoodPreset = (moodId = MOOD_IDS.NEUTRAL, language = "ru") => {
+  const preset = MOOD_PRESETS[moodId] || MOOD_PRESETS[MOOD_IDS.NEUTRAL];
+  const localize = (value) => {
+    if (!value) return "";
+    if (typeof value === "string") return value;
+    return value[language] || value.en || "";
+  };
+  return {
+    id: preset.id || moodId,
+    label: localize(preset.label),
+    hero: localize(preset.hero),
+    heroComplete: localize(preset.heroComplete),
+    motivation: localize(preset.motivation),
+    saveOverlay: localize(preset.saveOverlay),
+    impulseOverlay: localize(preset.impulseOverlay),
+    pushPendingTitle: localize(preset.pushPendingTitle),
+    pushPendingBody: localize(preset.pushPendingBody),
+    pushImpulseTitle: localize(preset.pushImpulseTitle),
+    pushImpulseBody: localize(preset.pushImpulseBody),
+  };
+};
+
+const getLatestEventTimestamp = (events = [], type) => {
+  for (let i = 0; i < events.length; i += 1) {
+    const event = events[i];
+    if (event?.type === type && event.timestamp) {
+      return event.timestamp;
+    }
+  }
+  return null;
+};
+
+const evaluateMoodState = (state = createMoodStateForToday(), context = {}) => {
+  const now = context.now || Date.now();
+  const pendingCount =
+    context.pendingCount !== undefined ? context.pendingCount : state.pendingSnapshot || 0;
+  const filteredEvents = (state.events || []).filter(
+    (event) => now - (event.timestamp || 0) <= MOOD_ACTION_WINDOW_MS
+  );
+  const counts = filteredEvents.reduce(
+    (acc, event) => {
+      if (event?.type && acc[event.type] !== undefined) {
+        acc[event.type] += 1;
+      }
+      return acc;
+    },
+    { save: 0, spend: 0, maybe: 0, dream: 0 }
+  );
+  let nextMood = state.current || MOOD_IDS.NEUTRAL;
+  const lastInteraction = state.lastInteractionAt || state.lastVisitAt || 0;
+  if (lastInteraction && now - lastInteraction >= MOOD_INACTIVITY_THRESHOLD_MS) {
+    nextMood = MOOD_IDS.TIRED;
+  } else {
+    const candidates = [];
+    if (counts.spend >= MOOD_EVENT_THRESHOLD) {
+      const timestamp = getLatestEventTimestamp(filteredEvents, "spend");
+      if (timestamp) candidates.push({ mood: MOOD_IDS.IMPULSIVE, timestamp });
+    }
+    if (counts.save >= MOOD_EVENT_THRESHOLD) {
+      const timestamp = getLatestEventTimestamp(filteredEvents, "save");
+      if (timestamp) candidates.push({ mood: MOOD_IDS.FOCUSED, timestamp });
+    }
+    if (counts.maybe >= MOOD_EVENT_THRESHOLD) {
+      const timestamp = getLatestEventTimestamp(filteredEvents, "maybe");
+      if (timestamp) candidates.push({ mood: MOOD_IDS.DOUBTER, timestamp });
+    }
+    if (counts.dream >= MOOD_DREAM_WISH_THRESHOLD) {
+      const timestamp = getLatestEventTimestamp(filteredEvents, "dream");
+      if (timestamp) candidates.push({ mood: MOOD_IDS.DREAMER, timestamp });
+    }
+    if (pendingCount >= MOOD_PENDING_THRESHOLD) {
+      candidates.push({ mood: MOOD_IDS.DREAMER, timestamp: now });
+    }
+    if (candidates.length) {
+      candidates.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      nextMood = candidates[0].mood;
+    } else {
+      nextMood = MOOD_IDS.NEUTRAL;
+    }
+  }
+  return {
+    ...state,
+    current: nextMood,
+    events: filteredEvents,
+    pendingSnapshot: pendingCount,
+  };
+};
+
+const mapHistoryEventsToMoodEvents = (history = [], now = Date.now()) =>
+  history
+    .filter((entry) => entry?.timestamp && now - entry.timestamp <= MOOD_ACTION_WINDOW_MS)
+    .map((entry) => {
+      if (entry.kind === "refuse_spend") return { type: "save", timestamp: entry.timestamp };
+      if (entry.kind === "spend") return { type: "spend", timestamp: entry.timestamp };
+      if (entry.kind === "pending_added") return { type: "maybe", timestamp: entry.timestamp };
+      if (entry.kind === "wish_added") return { type: "dream", timestamp: entry.timestamp };
+      return null;
+    })
+    .filter(Boolean)
+    .slice(0, MOOD_MAX_EVENTS);
+
+const deriveMoodFromState = (state = createMoodStateForToday(), pendingCount = 0, now = Date.now()) => {
+  const events = Array.isArray(state.events) ? state.events : [];
+  const filtered = events.filter(
+    (event) => event?.timestamp && now - event.timestamp <= MOOD_ACTION_WINDOW_MS
+  );
+  const counts = filtered.reduce(
+    (acc, event) => {
+      if (event?.type && acc[event.type] !== undefined) {
+        acc[event.type] += 1;
+      }
+      return acc;
+    },
+    { save: 0, spend: 0, maybe: 0, dream: 0 }
+  );
+  const lastInteraction = state.lastInteractionAt || state.lastVisitAt || filtered[0]?.timestamp || 0;
+  if (lastInteraction && now - lastInteraction >= MOOD_INACTIVITY_THRESHOLD_MS) {
+    return MOOD_IDS.TIRED;
+  }
+  const candidates = [];
+  if (counts.spend >= MOOD_EVENT_THRESHOLD) {
+    const timestamp = getLatestEventTimestamp(filtered, "spend");
+    if (timestamp) candidates.push({ mood: MOOD_IDS.IMPULSIVE, timestamp });
+  }
+  if (counts.save >= MOOD_EVENT_THRESHOLD) {
+    const timestamp = getLatestEventTimestamp(filtered, "save");
+    if (timestamp) candidates.push({ mood: MOOD_IDS.FOCUSED, timestamp });
+  }
+  if (counts.maybe >= MOOD_EVENT_THRESHOLD) {
+    const timestamp = getLatestEventTimestamp(filtered, "maybe");
+    if (timestamp) candidates.push({ mood: MOOD_IDS.DOUBTER, timestamp });
+  }
+  if (counts.dream >= MOOD_DREAM_WISH_THRESHOLD) {
+    const timestamp = getLatestEventTimestamp(filtered, "dream");
+    if (timestamp) candidates.push({ mood: MOOD_IDS.DREAMER, timestamp });
+  }
+  if (pendingCount >= MOOD_PENDING_THRESHOLD) {
+    candidates.push({ mood: MOOD_IDS.DREAMER, timestamp: now });
+  }
+  if (candidates.length) {
+    candidates.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    return candidates[0].mood;
+  }
+  return MOOD_IDS.NEUTRAL;
+};
+
+const getImpulseCategoryLabel = (id, language = "en") => {
+  const entry = IMPULSE_CATEGORY_DEFS[id];
+  if (!entry) return id;
+  const localeKey = language === "ru" ? "ru" : "en";
+  return `${entry.emoji} ${entry[localeKey]}`;
 };
 
 const WEEKDAY_LABELS = {
@@ -434,6 +1125,25 @@ const TRANSLATIONS = {
     freeDayRescueNeedHealth: "Нужно {{cost}} здоровья",
     freeDayRescueNeedTime: "Доступно после 18:00",
     freeDayRescueOverlay: "Серия спасена",
+    impulseCardTitle: "Импульс-карта",
+    impulseCardSubtitle: "Фиксируем, где искушения чаще всего побеждают или проигрывают.",
+    impulseLoseLabel: "Чаще сдаёшься",
+    impulseLoseCopy: "{{temptation}} чаще цепляет в окно {{time}}.",
+    impulseLoseEmpty: "Слабых зон пока нет — отметь несколько решений.",
+    impulseWinLabel: "Чаще побеждаешь",
+    impulseWinCopy: "На {{temptation}} чаще всего отказываешь себе в {{time}}.",
+    impulseWinEmpty: "Пока нет данных о победах — попробуй нажать «копить».",
+    impulseTrendLabel: "Больше всего импульсов в категории {{category}}",
+    impulseCategorySave: "Спасения: {{count}}",
+    impulseCategorySpend: "Срывы: {{count}}",
+    impulseAnytimeLabel: "любое время",
+    impulseExpand: "Развернуть",
+    impulseCollapse: "Скрыть карту",
+    impulseAlertTitle: "Зона импульса",
+    impulseAlertMessage:
+      "Ты в зоне импульсивных трат на {{temptation}} ({{window}}). Откажись и отправь {{amount}} в копилку!",
+    impulseNotificationTitle: "Импульс на {{temptation}}",
+    impulseNotificationBody: "В это время ты обычно тратишься. Отправь {{amount}} в копилку и сохрани курс.",
     pendingTab: "Думаем",
     pendingTitle: "Думаем",
     pendingEmptyTitle: "В «думаем» пусто",
@@ -463,6 +1173,7 @@ const TRANSLATIONS = {
     profileEdit: "Редактировать",
     profileSave: "Сохранить",
     profileCancel: "Отмена",
+    profileOk: "ок",
     settingsTitle: "Настройки и персонализация",
     analyticsOptInLabel: "Отправлять анонимную аналитику",
     analyticsOptInHint: "Помогает улучшать Almost без передачи личных данных",
@@ -484,6 +1195,8 @@ const TRANSLATIONS = {
     spendAction: "Потратить",
     editPrice: "Изменить цену",
     actionSoon: "Скоро добавим действие",
+    saveSpamWarningItem: "Кажется, вы уже трижды подряд нажали «копить» на этой карточке за последние пять минут. Сделайте паузу, чтобы избежать случайных нажатий.",
+    saveSpamWarningGlobal: "Слишком много быстрых нажатий «копить». Проверьте, что это не случайность, и попробуйте чуть позже.",
     priceEditTitle: "Настрой цену",
     priceEditPlaceholder: "Сумма в текущей валюте",
     priceEditSave: "Сохранить",
@@ -696,6 +1409,8 @@ const TRANSLATIONS = {
     potentialBlockActualLabel: "Реально спасено",
     potentialBlockPotentialLabel: "Потенциал",
     potentialBlockHint: "Потенциал ещё {{amount}}. Не всё потеряно 🙂",
+    potentialBlockDetails:
+      "Он берёт ваш ежемесячный бюджет на искушения (тот, что вы указали при регистрации), делит сумму на секунды и показывает, сколько денег можно было бы спасти прямо сейчас.",
     potentialBlockCta: "Расскажи, сколько уходит на мелкие траты, и мы покажем, сколько ты мог бы уже спасти.",
     quickCustomTitle: "Новое искушение",
     quickCustomSubtitle: "Опиши траты, от которых хочешь отказаться первой",
@@ -770,6 +1485,25 @@ const TRANSLATIONS = {
     freeDayRescueNeedHealth: "Need {{cost}} health",
     freeDayRescueNeedTime: "Available after 6 pm",
     freeDayRescueOverlay: "Streak rescued",
+    impulseCardTitle: "Impulse map",
+    impulseCardSubtitle: "See when temptations usually win or when you stay strong.",
+    impulseLoseLabel: "Weak spot",
+    impulseLoseCopy: "{{temptation}} usually wins around {{time}}.",
+    impulseLoseEmpty: "No weak spots yet — log a few actions.",
+    impulseWinLabel: "Winning streak",
+    impulseWinCopy: "You resist {{temptation}} most often around {{time}}.",
+    impulseWinEmpty: "Wins will show up once you log more saves.",
+    impulseTrendLabel: "Most impulses land in {{category}}",
+    impulseCategorySave: "Saves: {{count}}",
+    impulseCategorySpend: "Splurges: {{count}}",
+    impulseAnytimeLabel: "any time",
+    impulseExpand: "Expand",
+    impulseCollapse: "Hide map",
+    impulseAlertTitle: "Impulse alert",
+    impulseAlertMessage:
+      "You’re entering a high-impulse zone for {{temptation}} ({{window}}). Skip it and stash {{amount}}!",
+    impulseNotificationTitle: "Impulse for {{temptation}}",
+    impulseNotificationBody: "You usually cave now. Send {{amount}} to savings instead.",
     pendingTab: "Thinking",
     pendingTitle: "Thinking",
     pendingEmptyTitle: "Nothing in Thinking",
@@ -795,6 +1529,7 @@ const TRANSLATIONS = {
     profileEdit: "Edit",
     profileSave: "Save",
     profileCancel: "Cancel",
+    profileOk: "Ok",
     settingsTitle: "Settings & personalisation",
     analyticsOptInLabel: "Send anonymous analytics",
     analyticsOptInHint: "Helps improve Almost without sharing personal data",
@@ -816,6 +1551,8 @@ const TRANSLATIONS = {
     spendAction: "Spend it",
     editPrice: "Edit price",
     actionSoon: "Detailed flow is coming in the next update.",
+    saveSpamWarningItem: "Looks like you tapped “Save it” on this card several times within five minutes. Take a short pause to avoid accidental taps.",
+    saveSpamWarningGlobal: "Lots of fast “Save it” taps in a row. Double-check that it’s intentional and try again in a moment.",
     priceEditTitle: "Adjust the target amount",
     priceEditPlaceholder: "Enter amount",
     priceEditSave: "Save",
@@ -1013,6 +1750,8 @@ const TRANSLATIONS = {
     potentialBlockActualLabel: "Actually saved",
     potentialBlockPotentialLabel: "Potential",
     potentialBlockHint: "There’s still {{amount}} of potential left. Keep it up 🙂",
+    potentialBlockDetails:
+      "It grabs the monthly temptation budget you set during onboarding, slices it into seconds, and shows how much you could have already saved right now.",
     potentialBlockCta: "Tell us how much usually slips on small extras and we’ll show the potential savings.",
     quickCustomTitle: "Add temptation",
     quickCustomSubtitle: "Name the impulse and set a price to add it to the deck",
@@ -1669,17 +2408,6 @@ const HEALTH_PER_LEVEL = 1;
 const HEALTH_PER_REWARD = 1;
 const FREE_DAY_RESCUE_COST = 1;
 
-const getDayKey = (date) => {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString().split("T")[0];
-};
-
-const isSameDay = (tsA, tsB = Date.now()) => {
-  if (!tsA) return false;
-  return getDayKey(tsA) === getDayKey(tsB);
-};
-
 let activeCurrency = DEFAULT_PROFILE.currency;
 const setActiveCurrency = (code) => {
   activeCurrency = CURRENCIES.includes(code) ? code : DEFAULT_PROFILE.currency;
@@ -2073,7 +2801,19 @@ function TemptationCard({
         {actionConfig.map((action) => {
           let buttonStyle;
           let textStyle;
-          if (action.variant === "primary") {
+          if (action.type === "save") {
+            buttonStyle = [
+              styles.temptationButtonPrimary,
+              { backgroundColor: SAVE_ACTION_COLOR, opacity: action.disabled ? 0.4 : 1 },
+            ];
+            textStyle = [styles.temptationButtonPrimaryText, { color: "#FFFFFF" }];
+          } else if (action.type === "spend") {
+            buttonStyle = [
+              styles.temptationButtonGhost,
+              { borderColor: SPEND_ACTION_COLOR, opacity: action.disabled ? 0.4 : 1 },
+            ];
+            textStyle = [styles.temptationButtonGhostText, { color: SPEND_ACTION_COLOR }];
+          } else if (action.variant === "primary") {
             buttonStyle = [
               styles.temptationButtonPrimary,
               { backgroundColor: colors.text, opacity: action.disabled ? 0.35 : 1 },
@@ -2160,6 +2900,7 @@ function SavingsHeroCard({
   currency,
   hasBaseline = false,
   onBaselineSetup = () => {},
+  onPotentialDetailsOpen = null,
 }) {
   const [expanded, setExpanded] = useState(false);
   const maxAmount = Math.max(...dailySavings.map((day) => day.amountUSD), 0);
@@ -2175,6 +2916,12 @@ function SavingsHeroCard({
       : potentialRatio >= 0.8
       ? "potentialBlockStatusOnTrack"
       : "potentialBlockStatusBehind";
+  const handlePotentialDetailsOpen = useCallback(() => {
+    if (!hasBaseline) return;
+    if (typeof onPotentialDetailsOpen === "function") {
+      onPotentialDetailsOpen();
+    }
+  }, [hasBaseline, onPotentialDetailsOpen]);
   return (
     <View
       style={[
@@ -2200,11 +2947,8 @@ function SavingsHeroCard({
           <Text style={[styles.progressHeroTitle, { color: goldPalette.text }]}>
             {t("progressHeroTitle")}
           </Text>
-          <Text
-            style={[styles.savedHeroSubtitle, { color: goldPalette.subtext }]}
-            numberOfLines={2}
-          >
-            {`${heroSpendCopy} ${heroEncouragementLine}`}
+          <Text style={[styles.savedHeroSubtitle, { color: goldPalette.subtext }]}>
+            {heroSpendCopy}
           </Text>
         </View>
         <View
@@ -2226,7 +2970,7 @@ function SavingsHeroCard({
           {heroSavedLabel}
         </Text>
       </View>
-      <View
+      <TouchableOpacity
         style={[
           styles.heroPotentialCard,
           {
@@ -2234,6 +2978,8 @@ function SavingsHeroCard({
             borderColor: goldPalette.badgeBorder,
           },
         ]}
+        activeOpacity={0.9}
+        onPress={handlePotentialDetailsOpen}
       >
         {hasBaseline ? (
           <>
@@ -2269,7 +3015,7 @@ function SavingsHeroCard({
             </TouchableOpacity>
           </>
         )}
-      </View>
+      </TouchableOpacity>
       <View style={styles.savedHeroProgressRow}>
         <View
           style={[
@@ -2667,6 +3413,149 @@ function StormOverlay({ t }) {
   );
 }
 
+const hasImpulseHistory = (insights) => {
+  if (!insights?.categories) return false;
+  return IMPULSE_CATEGORY_ORDER.some((id) => {
+    const entry = insights.categories[id];
+    return (entry?.save || 0) + (entry?.spend || 0) > 0;
+  });
+};
+
+function ImpulseMapCard({ insights, colors, t, language, expanded = false, onToggle }) {
+  if (!insights) return null;
+  const fallbackTime = t("impulseAnytimeLabel");
+  const loseText = insights.hotLose
+    ? t("impulseLoseCopy", {
+        temptation: insights.hotLose.title,
+        time: insights.hotLose.windowLabel || fallbackTime,
+      })
+    : t("impulseLoseEmpty");
+  const winText = insights.hotWin
+    ? t("impulseWinCopy", {
+        temptation: insights.hotWin.title,
+        time: insights.hotWin.windowLabel || fallbackTime,
+      })
+    : t("impulseWinEmpty");
+  const trendText =
+    insights.hottestCategory && insights.hottestCategory.delta > 0
+      ? t("impulseTrendLabel", {
+          category: getImpulseCategoryLabel(insights.hottestCategory.id, language),
+        })
+      : null;
+  const isDarkMode = colors.background === THEMES.dark.background;
+  const dangerBg = isDarkMode ? "rgba(255,108,108,0.25)" : "#FFE5E5";
+  const dangerBorder = isDarkMode ? "rgba(255,108,108,0.5)" : "rgba(255,108,108,0.45)";
+  const successBg = isDarkMode ? "rgba(33,209,160,0.22)" : "#E5F8EE";
+  const successBorder = isDarkMode ? "rgba(33,209,160,0.45)" : "rgba(33,209,160,0.4)";
+  const neutralBg = isDarkMode ? "rgba(250,204,21,0.22)" : "#FFF4D5";
+  const neutralBorder = isDarkMode ? "rgba(250,204,21,0.4)" : "rgba(250,204,21,0.45)";
+  const toggleLabel = expanded ? t("impulseCollapse") : t("impulseExpand");
+  const categories = IMPULSE_CATEGORY_ORDER.map((id) => {
+    const entry = insights.categories?.[id] || { save: 0, spend: 0 };
+    return {
+      id,
+      label: getImpulseCategoryLabel(id, language),
+      save: entry.save || 0,
+      spend: entry.spend || 0,
+    };
+  });
+  return (
+    <View style={[styles.impulseCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={styles.impulseHeaderRow}>
+        <View style={styles.impulseHeader}>
+          <Text style={[styles.impulseCardTitle, { color: colors.text }]}>{t("impulseCardTitle")}</Text>
+          <Text style={[styles.impulseCardSubtitle, { color: colors.muted }]}>
+            {t("impulseCardSubtitle")}
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={onToggle}
+          style={[
+            styles.impulseToggle,
+            { borderColor: colors.border, backgroundColor: lightenColor(colors.card, isDarkMode ? 0.1 : 0.25) },
+          ]}
+        >
+          <Text style={[styles.impulseToggleText, { color: colors.text }]}>{toggleLabel}</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.impulseSummaryGrid}>
+        <View
+          style={[
+            styles.impulseBadge,
+            { backgroundColor: dangerBg, borderColor: dangerBorder },
+          ]}
+        >
+          <Text style={[styles.impulseSummaryLabel, { color: colors.text }]}>{t("impulseLoseLabel")}</Text>
+          <Text style={[styles.impulseSummaryValue, { color: colors.text }]}>{loseText}</Text>
+        </View>
+        <View
+          style={[
+            styles.impulseBadge,
+            { backgroundColor: successBg, borderColor: successBorder },
+          ]}
+        >
+          <Text style={[styles.impulseSummaryLabel, { color: colors.text }]}>{t("impulseWinLabel")}</Text>
+          <Text style={[styles.impulseSummaryValue, { color: colors.text }]}>{winText}</Text>
+        </View>
+      </View>
+      {expanded && (
+        <>
+          {trendText ? (
+            <View
+              style={[
+                styles.impulseTrendRow,
+                { backgroundColor: neutralBg, borderColor: neutralBorder },
+              ]}
+            >
+              <Text style={[styles.impulseTrendText, { color: colors.text }]}>{trendText}</Text>
+            </View>
+          ) : null}
+          <View style={styles.impulseCategoryList}>
+            {categories.map((category) => {
+              const hasData = (category.save || 0) + (category.spend || 0) > 0;
+              const isRisk = hasData && category.spend > category.save;
+              const isWin = hasData && category.save > category.spend;
+              let categoryBg = colors.card;
+              let categoryBorder = colors.border;
+              if (isRisk) {
+                categoryBg = dangerBg;
+                categoryBorder = dangerBorder;
+              } else if (isWin) {
+                categoryBg = successBg;
+                categoryBorder = successBorder;
+              }
+              return (
+                <View
+                  key={category.id}
+                  style={[
+                    styles.impulseCategoryRow,
+                    {
+                      borderColor: categoryBorder,
+                      backgroundColor: categoryBg,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.impulseCategoryLabel, { color: colors.text }]}>
+                    {category.label}
+                  </Text>
+                  <View style={styles.impulseCategoryStats}>
+                    <Text style={[styles.impulseCategoryStat, { color: colors.text }]}>
+                      {t("impulseCategorySave", { count: category.save })}
+                    </Text>
+                    <Text style={[styles.impulseCategoryStatSecondary, { color: colors.muted }]}>
+                      {t("impulseCategorySpend", { count: category.spend })}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
 function FeedScreen({
   products,
   categories,
@@ -2694,33 +3583,32 @@ function FeedScreen({
   onLevelCelebrate,
   onBaselineSetup,
   goalAssignments = {},
+  impulseInsights = null,
+  moodPreset = null,
+  onMoodDetailsOpen = () => {},
+  onPotentialDetailsOpen = null,
+  heroGoalTargetUSD = 0,
+  heroGoalSavedUSD = 0,
 }) {
+  const [impulseExpanded, setImpulseExpanded] = useState(false);
   const handleBaselineSetup = onBaselineSetup || (() => {});
   const realSavedUSD = useRealSavedAmount();
   const heroSavedLabel = useMemo(
-    () => formatCurrency(convertToCurrency(savedTotalUSD || 0, currency), currency),
-    [savedTotalUSD, currency]
+    () => formatCurrency(convertToCurrency(heroGoalSavedUSD || 0, currency), currency),
+    [heroGoalSavedUSD, currency]
   );
-  const resolvedGoalTargetUSD =
-    Number.isFinite(profile?.goalTargetUSD) && profile.goalTargetUSD > 0
-      ? profile.goalTargetUSD
-      : getGoalDefaultTargetUSD(profile?.goal || DEFAULT_PROFILE.goal);
-  const activeWishlistTargets = (wishes || [])
-    .filter((wish) => wish.status !== "done")
-    .reduce((sum, wish) => sum + (Number.isFinite(wish.targetUSD) ? wish.targetUSD : 0), 0);
-  const aggregatedTargetUSD = activeWishlistTargets || resolvedGoalTargetUSD || 0;
-  const aggregatedTargetLocal = formatCurrency(
-    convertToCurrency(aggregatedTargetUSD, currency),
-    currency
+  const heroTargetLabel = useMemo(
+    () => formatCurrency(convertToCurrency(heroGoalTargetUSD || 0, currency), currency),
+    [heroGoalTargetUSD, currency]
   );
-  const isGoalComplete = aggregatedTargetUSD > 0 && savedTotalUSD >= aggregatedTargetUSD;
-  const goalProgress = aggregatedTargetUSD > 0 ? savedTotalUSD / aggregatedTargetUSD : 0;
+  const isGoalComplete = heroGoalTargetUSD > 0 && heroGoalSavedUSD >= heroGoalTargetUSD;
+  const goalProgress = heroGoalTargetUSD > 0 ? heroGoalSavedUSD / heroGoalTargetUSD : 0;
   const remainingLocal = formatCurrency(
-    convertToCurrency(Math.max(aggregatedTargetUSD - savedTotalUSD, 0), currency),
+    convertToCurrency(Math.max(heroGoalTargetUSD - heroGoalSavedUSD, 0), currency),
     currency
   );
-  const goalProgressLabel = aggregatedTargetUSD
-    ? t("progressGoal", { current: heroSavedLabel, goal: aggregatedTargetLocal })
+  const goalProgressLabel = heroGoalTargetUSD
+    ? t("progressGoal", { current: heroSavedLabel, goal: heroTargetLabel })
     : t("progressGoal", { current: heroSavedLabel, goal: heroSavedLabel });
   const personaPreset = useMemo(() => getPersonaPreset(profile?.persona), [profile?.persona]);
   const latestSaving = useMemo(
@@ -2737,9 +3625,16 @@ function FeedScreen({
     }
     return t("heroSpendFallback");
   }, [heroSavedLabel, personaPreset, language, t, latestSaving]);
-  const heroEncouragementLine = isGoalComplete
-    ? t("goalWidgetCompleteTagline")
-    : t("heroEconomyContinues");
+  const heroEncouragementLine = useMemo(() => {
+    const heroLine = isGoalComplete
+      ? moodPreset?.heroComplete || t("goalWidgetCompleteTagline")
+      : moodPreset?.hero || t("heroEconomyContinues");
+    if (moodPreset?.motivation) {
+      return `${heroLine} ${moodPreset.motivation}`;
+    }
+    return heroLine;
+  }, [isGoalComplete, moodPreset, t]);
+  const moodGradient = useMemo(() => getMoodGradient(moodPreset?.id), [moodPreset?.id]);
   const isDarkMode = colors === THEMES.dark;
   const goldPalette = useMemo(
     () =>
@@ -2835,11 +3730,11 @@ function FeedScreen({
   const progressPercent = Math.min(Math.max(goalProgress, 0), 1);
   const progressPercentLabel = Math.round(progressPercent * 100);
   const levelLabel = t("progressHeroLevel", { level: tierInfo.level });
-  const nextLabel = aggregatedTargetUSD
+  const nextLabel = heroGoalTargetUSD
     ? isGoalComplete
       ? t("goalWidgetComplete")
       : t("goalWidgetRemaining", { amount: remainingLocal })
-    : t("goalWidgetTargetLabel", { amount: aggregatedTargetLocal });
+    : t("goalWidgetTargetLabel", { amount: heroTargetLabel });
   const todayDate = new Date();
   const todayTimestamp = todayDate.getTime();
   const todayKey = getDayKey(todayDate);
@@ -2866,6 +3761,24 @@ function FeedScreen({
   const hasBaseline = !!(
     profile?.spendingProfile?.baselineMonthlyWasteUSD && profile?.spendingProfile?.baselineStartAt
   );
+  const potentialDescription = useMemo(() => {
+    const currencyCode = profile?.currency || DEFAULT_PROFILE.currency;
+    const formatLocal = (valueUSD = 0) =>
+      formatCurrency(convertToCurrency(Math.max(valueUSD, 0), currencyCode), currencyCode);
+    const potentialLocal = formatLocal(potentialSavedUSD);
+    const actualLocal = formatLocal(realSavedUSD);
+    const deltaLocal = formatLocal(Math.max(potentialSavedUSD - realSavedUSD, 0));
+    return t("potentialBlockDetails", {
+      potential: potentialLocal,
+      actual: actualLocal,
+      delta: deltaLocal,
+    });
+  }, [profile?.currency, potentialSavedUSD, realSavedUSD, t]);
+  const handlePotentialDetailsOpen = useCallback(() => {
+    if (typeof onPotentialDetailsOpen === "function") {
+      onPotentialDetailsOpen(potentialDescription);
+    }
+  }, [onPotentialDetailsOpen, potentialDescription]);
 
   const filteredProducts = useMemo(() => {
     if (activeCategory === "all") return products;
@@ -2947,6 +3860,7 @@ function FeedScreen({
       return price < min ? price : min;
     }, Infinity);
   }, [products]);
+  const showImpulseCard = useMemo(() => hasImpulseHistory(impulseInsights), [impulseInsights]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }] }>
@@ -2964,10 +3878,24 @@ function FeedScreen({
         ListHeaderComponent={
           <View style={styles.feedHero}>
             <View style={styles.feedHeroTop}>
-              <View style={styles.heroTextWrap}>
-                <Text style={[styles.appName, { color: colors.text }]}>Almost</Text>
-                <Text style={[styles.heroTagline, { color: colors.muted }]}>{t("appTagline")}</Text>
-              </View>
+              <MoodGradientBlock colors={moodGradient} style={styles.heroMoodGradient}>
+                <View style={styles.heroTextWrap}>
+                  <Text style={[styles.appName, { color: colors.text }]}>Almost</Text>
+                  <Text style={[styles.heroTagline, { color: colors.muted }]}>
+                    {t("appTagline")}
+                  </Text>
+                </View>
+                {moodPreset?.label && (
+                  <TouchableOpacity
+                    style={styles.moodBadge}
+                    onPress={onMoodDetailsOpen}
+                  >
+                    <Text style={[styles.moodBadgeText, { color: moodGradient.accent }]}>
+                      {moodPreset.label}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </MoodGradientBlock>
             </View>
             <SavingsHeroCard
               goldPalette={goldPalette}
@@ -2989,6 +3917,7 @@ function FeedScreen({
               currency={currency}
               hasBaseline={hasBaseline}
               onBaselineSetup={handleBaselineSetup}
+              onPotentialDetailsOpen={handlePotentialDetailsOpen}
             />
             <FreeDayCard
               colors={colors}
@@ -3006,6 +3935,16 @@ function FeedScreen({
               rescueCost={freeDayRescueCost}
               onRescue={onFreeDayRescue}
             />
+            {showImpulseCard && (
+              <ImpulseMapCard
+                insights={impulseInsights}
+                colors={colors}
+                t={t}
+                language={language}
+                expanded={impulseExpanded}
+                onToggle={() => setImpulseExpanded((prev) => !prev)}
+              />
+            )}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
               {categories.map((cat) => (
                 <CategoryChip
@@ -3061,6 +4000,7 @@ const SwipeableGoalRow = ({
   const ACTION_WIDTH = 160;
   const gestureStartOffset = useRef(0);
   const externalCloserRef = useRef(null);
+
   const closeRow = useCallback(
     (notify = true) => {
       Animated.timing(translateX, {
@@ -3077,11 +4017,13 @@ const SwipeableGoalRow = ({
     },
     [onSwipeClose, translateX]
   );
+
   const notifyOpen = useCallback(() => {
     const closer = () => closeRow();
     externalCloserRef.current = closer;
     onSwipeOpen?.(closer);
   }, [closeRow, onSwipeOpen]);
+
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -3120,14 +4062,17 @@ const SwipeableGoalRow = ({
       }),
     [ACTION_WIDTH, closeRow, notifyOpen, translateX]
   );
+
   const handleEdit = () => {
     closeRow();
     onEdit?.();
   };
+
   const handleDelete = () => {
     closeRow();
     onDelete?.();
   };
+
   return (
     <View style={[styles.goalSwipeRow, { backgroundColor: colors.background }]}>
       <View style={[styles.goalSwipeActions, { backgroundColor: colors.background }]}>
@@ -3180,6 +4125,15 @@ const getWishTitleWithoutEmoji = (wish) => {
   return trimmed;
 };
 
+const selectMainGoalWish = (wishes = []) => {
+  const list = Array.isArray(wishes) ? wishes : [];
+  const primaryActive = list.find(
+    (wish) => wish?.kind === PRIMARY_GOAL_KIND && wish.status !== "done"
+  );
+  if (primaryActive) return primaryActive;
+  return list.find((wish) => wish?.status !== "done") || null;
+};
+
 function WishListScreen({
   wishes,
   currency = DEFAULT_PROFILE.currency,
@@ -3194,6 +4148,7 @@ function WishListScreen({
   const primaryGoalIds = Array.isArray(primaryGoals)
     ? primaryGoals.map((goal) => goal?.id).filter(Boolean)
     : [];
+  const listData = Array.isArray(wishes) ? wishes : [];
   const swipeCloserRef = useRef(null);
   const handleSwipeOpen = useCallback((closeFn) => {
     if (swipeCloserRef.current && swipeCloserRef.current !== closeFn) {
@@ -3206,7 +4161,7 @@ function WishListScreen({
       swipeCloserRef.current = null;
     }
   }, []);
-  if (wishes.length === 0) {
+  if (listData.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }] }>
         <Text style={[styles.header, { color: colors.text }]}>{t("wishlistTitle")}</Text>
@@ -3222,21 +4177,30 @@ function WishListScreen({
   }
 
   const totalTarget = formatCurrency(
-    convertToCurrency(wishes.reduce((sum, wish) => sum + (wish.targetUSD || 0), 0), currency),
+    convertToCurrency(listData.reduce((sum, wish) => sum + (wish.targetUSD || 0), 0), currency),
     currency
   );
 
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }] }>
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 160 }}
-        keyboardShouldPersistTaps="handled"
-      >
-      <Text style={[styles.header, { color: colors.text }]}>{t("wishlistTitle")}</Text>
-      <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
-        {t("wishlistSummary", { amount: totalTarget })}
-      </Text>
-      {wishes.map((wish) => {
+  const renderWithLongPress = useCallback(
+    (wish, content) => {
+      if (typeof onGoalLongPress === "function") {
+        return (
+          <TouchableOpacity
+            activeOpacity={0.96}
+            delayLongPress={320}
+            onLongPress={() => onGoalLongPress(wish)}
+          >
+            {content}
+          </TouchableOpacity>
+        );
+      }
+      return content;
+    },
+    [onGoalLongPress]
+  );
+
+  const renderWishRow = useCallback(
+    ({ item: wish }) => {
         const targetLocal = formatCurrency(
           convertToCurrency(wish.targetUSD || 0, currency),
           currency
@@ -3257,16 +4221,6 @@ function WishListScreen({
           : `${Math.round(progress * 100)}%`;
         const remainingUSD = Math.max((wish.targetUSD || 0) - (wish.savedUSD || 0), 0);
         const remainingLabel = formatCurrency(convertToCurrency(remainingUSD, currency), currency);
-        const renderWithLongPress = (content) => {
-          if (typeof onGoalLongPress === "function") {
-            return (
-              <TouchableOpacity activeOpacity={0.96} delayLongPress={320} onLongPress={() => onGoalLongPress(wish)}>
-                {content}
-              </TouchableOpacity>
-            );
-          }
-          return content;
-        };
         const displayTitle = getWishTitleWithoutEmoji(wish);
         if (isPrimaryGoal) {
           const preset = getGoalPreset(wish.goalId || primaryGoalIds[0]);
@@ -3356,7 +4310,6 @@ function WishListScreen({
           );
           return (
             <SwipeableGoalRow
-              key={wish.id}
               colors={colors}
               t={t}
               onEdit={onGoalEdit ? () => onGoalEdit(wish) : undefined}
@@ -3364,45 +4317,63 @@ function WishListScreen({
               onSwipeOpen={handleSwipeOpen}
               onSwipeClose={handleSwipeClose}
             >
-              {renderWithLongPress(cardContent)}
+              {renderWithLongPress(wish, cardContent)}
             </SwipeableGoalRow>
           );
         }
         const wishEmoji = resolveWishEmoji(wish);
         const wishTitle = displayTitle;
         const cardContent = (
-          <View style={[styles.wishCard, { backgroundColor: colors.card }] }>
+          <View style={[styles.wishCard, { backgroundColor: colors.card }]}>
             <View style={styles.wishHeader}>
               <View style={styles.wishTitleWrap}>
                 <Text style={[styles.wishEmoji, { color: colors.text }]}>{wishEmoji}</Text>
-                <Text style={[styles.wishTitle, { color: colors.text }]}>{wishTitle}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.wishTitle, { color: colors.text }]}>{wishTitle}</Text>
+                  <Text style={[styles.wishSavedHint, { color: colors.muted }]}>
+                    {t("wishlistSavedHint")}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.wishBadge}>
-                <Text style={{ color: colors.muted }}>{badgeText}</Text>
+              <View style={styles.goalBadge}>
+                <Text style={[styles.goalBadgeText, { color: colors.text }]}>{badgeText}</Text>
               </View>
             </View>
-            <Text style={[styles.wishMeta, { color: colors.muted }]}>{progressLabel}</Text>
-            <View style={[styles.wishProgressBar, { backgroundColor: colors.border }]}>
-              <View
-                style={[
-                  styles.wishProgressFill,
-                  { backgroundColor: colors.text, width: `${progress * 100}%` },
-                ]}
-              />
+            <Text style={[styles.pendingPrice, { color: colors.text }]}>{targetLocal}</Text>
+            <View style={styles.wishProgressRow}>
+              <View style={[styles.wishProgressTrack, { backgroundColor: colors.border }]}>
+                <View
+                  style={[
+                    styles.wishProgressFill,
+                    {
+                      width: `${progress * 100}%`,
+                      backgroundColor: colors.text,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={[styles.wishProgressLabel, { color: colors.muted }]}>{progressLabel}</Text>
             </View>
-            {!isPrimaryGoal && (
+            <View style={styles.pendingButtons}>
               <TouchableOpacity
-                style={[styles.wishButtonGhost, { borderColor: colors.border, marginTop: 12 }]}
+                style={[styles.pendingButtonPrimary, { backgroundColor: colors.text }]}
+                onPress={() => onGoalEdit?.(wish)}
+              >
+                <Text style={[styles.pendingButtonPrimaryText, { color: colors.background }]}>
+                  {t("wishlistSaveProgress")}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.pendingButtonSecondary, { borderColor: colors.border }]}
                 onPress={() => onRemoveWish(wish.id)}
               >
                 <Text style={{ color: colors.muted }}>{t("wishlistRemove")}</Text>
               </TouchableOpacity>
-            )}
+            </View>
           </View>
         );
         return (
           <SwipeableGoalRow
-            key={wish.id}
             colors={colors}
             t={t}
             onEdit={onGoalEdit ? () => onGoalEdit(wish) : undefined}
@@ -3410,11 +4381,41 @@ function WishListScreen({
             onSwipeOpen={handleSwipeOpen}
             onSwipeClose={handleSwipeClose}
           >
-            {renderWithLongPress(cardContent)}
+            {renderWithLongPress(wish, cardContent)}
           </SwipeableGoalRow>
         );
-      })}
-      </ScrollView>
+      },
+      [
+        colors,
+        currency,
+        handleSwipeClose,
+        handleSwipeOpen,
+        isDarkTheme,
+        onGoalEdit,
+        onGoalLongPress,
+        onRemoveWish,
+        primaryGoalIds,
+        renderWithLongPress,
+        t,
+      ]
+    );
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }] }>
+      <FlatList
+        data={listData}
+        keyExtractor={(item) => item.id}
+        renderItem={renderWishRow}
+        contentContainerStyle={{ paddingBottom: 200 }}
+        ListHeaderComponent={
+          <>
+            <Text style={[styles.header, { color: colors.text }]}>{t("wishlistTitle")}</Text>
+            <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
+              {t("wishlistSummary", { amount: totalTarget })}
+            </Text>
+          </>
+        }
+      />
     </View>
   );
 }
@@ -3879,6 +4880,7 @@ function ProfileScreen({
   onAnalyticsToggle = () => {},
   t,
   colors,
+  moodPreset = null,
 }) {
   const currentCurrency = currencyValue || profile.currency || DEFAULT_PROFILE.currency;
   const activeGoalId = profile.goal || DEFAULT_PROFILE.goal;
@@ -3962,6 +4964,10 @@ function ProfileScreen({
       return "";
     }
   };
+  const profileMoodGradient = useMemo(
+    () => getMoodGradient(moodPreset?.id),
+    [moodPreset?.id]
+  );
   return (
     <View style={[styles.container, { backgroundColor: colors.background }] }>
       <ScrollView
@@ -3971,22 +4977,31 @@ function ProfileScreen({
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.profileCard, { backgroundColor: colors.card }] }>
-          <TouchableOpacity
-            style={styles.profileAvatarWrap}
-            activeOpacity={isEditing ? 0.85 : 1}
-            onPress={() => isEditing && onPickImage?.()}
-          >
-            <Image
-              source={profile.avatar ? { uri: profile.avatar } : CAT_IMAGE}
-              style={styles.profileAvatar}
-              resizeMode="cover"
-            />
-            {isEditing && (
-              <Text style={[styles.profileAvatarHint, { color: colors.muted }]}>
-                {t("photoTapHint")}
+          <View style={styles.profileMoodAura}>
+            <MoodGradientBlock colors={profileMoodGradient} style={styles.profileMoodGradient}>
+              <TouchableOpacity
+                style={styles.profileAvatarWrap}
+                activeOpacity={isEditing ? 0.85 : 1}
+                onPress={() => isEditing && onPickImage?.()}
+              >
+                <Image
+                  source={profile.avatar ? { uri: profile.avatar } : CAT_IMAGE}
+                  style={styles.profileAvatar}
+                  resizeMode="cover"
+                />
+                {isEditing && (
+                  <Text style={[styles.profileAvatarHint, { color: colors.muted }]}>
+                    {t("photoTapHint")}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </MoodGradientBlock>
+            {moodPreset?.label && (
+              <Text style={[styles.profileMoodStatus, { color: profileMoodGradient.accent }]}>
+                {moodPreset.label}
               </Text>
             )}
-          </TouchableOpacity>
+          </View>
           {isEditing ? (
             <>
               <TextInput
@@ -4330,6 +5345,7 @@ function App() {
   const overlayTimer = useRef(null);
   const overlayQueueRef = useRef([]);
   const overlayActiveRef = useRef(false);
+  const saveActionLogRef = useRef([]);
   const cartBadgeScale = useRef(new Animated.Value(1)).current;
   const [onboardingStep, setOnboardingStep] = useState("logo");
   const [registrationData, setRegistrationData] = useState(INITIAL_REGISTRATION);
@@ -4378,8 +5394,12 @@ function App() {
   }, [closeFabMenu, fabMenuVisible, openFabMenu, triggerHaptic]);
   const imagePickerResolver = useRef(null);
   const [refuseStats, setRefuseStats] = useState({});
+  const [impulseTracker, setImpulseTracker] = useState({ ...INITIAL_IMPULSE_TRACKER });
+  const [moodState, setMoodState] = useState(() => createMoodStateForToday());
   const [cardFeedback, setCardFeedback] = useState({});
+  const [moodHydrated, setMoodHydrated] = useState(false);
   const cardFeedbackTimers = useRef({});
+  const impulseAlertCooldownRef = useRef({});
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [spendPrompt, setSpendPrompt] = useState({ visible: false, item: null });
   const [stormActive, setStormActive] = useState(false);
@@ -4397,6 +5417,145 @@ function App() {
     target: "",
     emoji: DEFAULT_GOAL_EMOJI,
   });
+  const [moodDetailsVisible, setMoodDetailsVisible] = useState(false);
+  const [potentialDetailsVisible, setPotentialDetailsVisible] = useState(false);
+  const [potentialDetailsText, setPotentialDetailsText] = useState("");
+  const [moodGradient, setMoodGradient] = useState(getMoodGradient());
+  const mainGoalWish = useMemo(() => selectMainGoalWish(wishes), [wishes]);
+  const fallbackGoalTargetUSD = useMemo(() => {
+    if (Number.isFinite(profile?.goalTargetUSD) && profile.goalTargetUSD > 0) {
+      return profile.goalTargetUSD;
+    }
+    return getGoalDefaultTargetUSD(profile?.goal || DEFAULT_PROFILE.goal);
+  }, [profile?.goalTargetUSD, profile?.goal]);
+  const heroGoalTargetUSD = mainGoalWish?.targetUSD || fallbackGoalTargetUSD;
+  const heroGoalSavedUSD = mainGoalWish?.savedUSD ?? Math.min(savedTotalUSD, heroGoalTargetUSD);
+  const activeGender = profile.gender || registrationData.gender || DEFAULT_PROFILE.gender || "none";
+  const t = (key, replacements = {}) => {
+    let raw = TRANSLATIONS[language][key];
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const genderValue = raw[activeGender];
+      if (typeof genderValue === "string") {
+        raw = genderValue;
+      } else if (typeof raw.none === "string") {
+        raw = raw.none;
+      } else {
+        const fallbackValue = Object.values(raw).find((value) => typeof value === "string");
+        raw = fallbackValue !== undefined ? fallbackValue : undefined;
+      }
+    }
+    let text = raw;
+    if (text === undefined || text === null) {
+      text = key;
+    }
+    text = String(text);
+    Object.entries(replacements).forEach(([token, value]) => {
+      text = text.replace(`{{${token}}}`, value);
+    });
+    return text;
+  };
+  const currentMood = useMemo(
+    () => deriveMoodFromState(moodState, pendingList.length),
+    [moodState.events, moodState.lastInteractionAt, moodState.lastVisitAt, pendingList.length]
+  );
+  const moodPreset = useMemo(() => getMoodPreset(currentMood, language), [currentMood, language]);
+  useEffect(() => {
+    setMoodGradient(getMoodGradient(moodPreset?.id));
+  }, [moodPreset?.id]);
+  const moodGoalInfo = useMemo(() => {
+    const aggregatedTargetUSD = heroGoalTargetUSD || 0;
+    const savedUSD = heroGoalSavedUSD || 0;
+    const isComplete = aggregatedTargetUSD > 0 && savedUSD >= aggregatedTargetUSD;
+    return { aggregatedTargetUSD, savedUSD, isComplete };
+  }, [heroGoalTargetUSD, heroGoalSavedUSD]);
+  const moodDescription = useMemo(() => {
+    if (!moodPreset) return "";
+    const baseLine = moodGoalInfo.isComplete
+      ? moodPreset.heroComplete || t("goalWidgetCompleteTagline")
+      : moodPreset.hero || t("heroEconomyContinues");
+    return moodPreset.motivation ? `${baseLine} ${moodPreset.motivation}` : baseLine;
+  }, [moodGoalInfo.isComplete, moodPreset, t]);
+  const moodSessionRecordedRef = useRef(false);
+  useEffect(() => {
+    if (moodSessionRecordedRef.current) return;
+    moodSessionRecordedRef.current = true;
+    const now = Date.now();
+    setMoodState((prev) =>
+      evaluateMoodState(
+        {
+          ...prev,
+          lastVisitAt: now,
+        },
+        { now, pendingCount: pendingList.length }
+      )
+    );
+  }, [pendingList.length]);
+  useEffect(() => {
+    if (!moodHydrated) return;
+    AsyncStorage.setItem(STORAGE_KEYS.MOOD_STATE, JSON.stringify(moodState)).catch(() => {});
+  }, [moodState, moodHydrated]);
+
+  useEffect(() => {
+    const now = Date.now();
+    const mappedEvents = mapHistoryEventsToMoodEvents(historyEvents, now);
+    const latestTimestamp = mappedEvents[0]?.timestamp || null;
+    setMoodState((prev) =>
+      evaluateMoodState(
+        {
+          ...prev,
+          events: mappedEvents,
+          lastInteractionAt: latestTimestamp || prev.lastInteractionAt,
+        },
+        { now, pendingCount: pendingList.length }
+      )
+    );
+  }, [historyEvents, pendingList.length]);
+
+  useEffect(() => {
+    setMoodState((prev) =>
+      evaluateMoodState(
+        { ...prev, pendingSnapshot: pendingList.length },
+        { pendingCount: pendingList.length }
+      )
+    );
+  }, [pendingList.length]);
+
+  const refreshMoodForToday = useCallback(() => {
+    const todayKey = getDayKey(Date.now());
+    setMoodState((prev) => {
+      if (prev.dayKey === todayKey) return prev;
+      const refreshed = evaluateMoodState(
+        createMoodStateForToday({
+          pendingSnapshot: pendingList.length,
+          lastVisitAt: Date.now(),
+          dayKey: todayKey,
+        }),
+        { pendingCount: pendingList.length }
+      );
+      return refreshed;
+    });
+  }, [pendingList.length]);
+
+  useEffect(() => {
+    let timer = null;
+    const scheduleNextUpdate = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now);
+      nextMidnight.setHours(24, 0, 0, 0);
+      const delay = Math.max(nextMidnight.getTime() - now.getTime() + 1000, 60 * 1000);
+      timer = setTimeout(() => {
+        refreshMoodForToday();
+        scheduleNextUpdate();
+      }, delay);
+    };
+    refreshMoodForToday();
+    scheduleNextUpdate();
+    return () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [refreshMoodForToday]);
   const ensureNotificationPermission = useCallback(async () => {
     try {
       let settings = await Notifications.getPermissionsAsync();
@@ -4421,6 +5580,11 @@ function App() {
   }, [ensureNotificationPermission]);
 
   useEffect(() => {
+    impulseAlertCooldownRef.current = impulseTracker.lastAlerts || {};
+  }, [impulseTracker.lastAlerts]);
+
+
+  useEffect(() => {
     const showSub = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
     const hideSub = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
     return () => {
@@ -4443,10 +5607,18 @@ function App() {
         const allowed = await ensureNotificationPermission();
         if (!allowed) return null;
         const trigger = new Date(dueDate);
+        const pendingTitle =
+          moodPreset?.pushPendingTitle && moodPreset.pushPendingTitle.trim()
+            ? renderTemplateString(moodPreset.pushPendingTitle, { title })
+            : t("pendingNotificationTitle");
+        const pendingBody =
+          moodPreset?.pushPendingBody && moodPreset.pushPendingBody.trim()
+            ? renderTemplateString(moodPreset.pushPendingBody, { title })
+            : t("pendingNotificationBody", { title });
         return await Notifications.scheduleNotificationAsync({
           content: {
-            title: t("pendingNotificationTitle"),
-            body: t("pendingNotificationBody", { title }),
+            title: pendingTitle,
+            body: pendingBody,
           },
           trigger,
         });
@@ -4455,7 +5627,7 @@ function App() {
         return null;
       }
     },
-    [ensureNotificationPermission, t]
+    [ensureNotificationPermission, t, moodPreset]
   );
 
   const categories = useMemo(() => {
@@ -4561,31 +5733,7 @@ function App() {
   const goalLinkCurrentGoalId = goalLinkPrompt.item
     ? resolveTemptationGoalId(goalLinkPrompt.item.id)
     : null;
-  const activeGender = profile.gender || registrationData.gender || DEFAULT_PROFILE.gender || "none";
 
-  const t = (key, replacements = {}) => {
-    let raw = TRANSLATIONS[language][key];
-    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-      const genderValue = raw[activeGender];
-      if (typeof genderValue === "string") {
-        raw = genderValue;
-      } else if (typeof raw.none === "string") {
-        raw = raw.none;
-      } else {
-        const fallbackValue = Object.values(raw).find((value) => typeof value === "string");
-        raw = fallbackValue !== undefined ? fallbackValue : undefined;
-      }
-    }
-    let text = raw;
-    if (text === undefined || text === null) {
-      text = key;
-    }
-    text = String(text);
-    Object.entries(replacements).forEach(([token, value]) => {
-      text = text.replace(`{{${token}}}`, value);
-    });
-    return text;
-  };
   useEffect(() => {
     if (overlay?.type !== "save") {
       saveGlowAnim.stopAnimation?.();
@@ -4701,6 +5849,15 @@ function App() {
     ],
     [wishes.length, declineCount, pendingList.length, t]
   );
+  const impulseInsights = useMemo(
+    () => buildImpulseInsights(impulseTracker.events),
+    [impulseTracker.events]
+  );
+
+  useEffect(() => {
+    if (!impulseInsights.activeRisk) return;
+    notifyImpulseRisk(impulseInsights.activeRisk);
+  }, [impulseInsights.activeRisk, notifyImpulseRisk]);
 
   const loadStoredData = async () => {
     try {
@@ -4727,6 +5884,8 @@ function App() {
         hiddenTemptationsRaw,
         healthRaw,
         claimedRewardsRaw,
+        impulseTrackerRaw,
+        moodRaw,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.WISHES),
         AsyncStorage.getItem(STORAGE_KEYS.PENDING),
@@ -4750,6 +5909,8 @@ function App() {
         AsyncStorage.getItem(STORAGE_KEYS.HIDDEN_TEMPTATIONS),
         AsyncStorage.getItem(STORAGE_KEYS.HEALTH),
         AsyncStorage.getItem(STORAGE_KEYS.CLAIMED_REWARDS),
+        AsyncStorage.getItem(STORAGE_KEYS.IMPULSE_TRACKER),
+        AsyncStorage.getItem(STORAGE_KEYS.MOOD_STATE),
       ]);
       if (wishesRaw) setWishes(JSON.parse(wishesRaw));
       if (pendingRaw) setPendingList(JSON.parse(pendingRaw));
@@ -4868,6 +6029,42 @@ function App() {
       } else {
         setClaimedRewards({});
       }
+      if (impulseTrackerRaw) {
+        try {
+          const parsed = JSON.parse(impulseTrackerRaw);
+          setImpulseTracker({
+            ...INITIAL_IMPULSE_TRACKER,
+            ...parsed,
+            events: Array.isArray(parsed?.events) ? parsed.events.slice(0, MAX_IMPULSE_EVENTS) : [],
+            lastAlerts: parsed?.lastAlerts || {},
+          });
+        } catch (err) {
+          console.warn("impulse tracker parse", err);
+        }
+      }
+      if (moodRaw) {
+        try {
+          const parsed = JSON.parse(moodRaw);
+          const normalizedEvents = Array.isArray(parsed?.events)
+            ? parsed.events.slice(0, MOOD_MAX_EVENTS)
+            : [];
+          const todayKey = getDayKey(Date.now());
+          if (parsed?.dayKey === todayKey) {
+            setMoodState({
+              ...parsed,
+              dayKey: todayKey,
+              events: normalizedEvents,
+              current: parsed.current || MOOD_IDS.NEUTRAL,
+              pendingSnapshot:
+                typeof parsed.pendingSnapshot === "number" ? parsed.pendingSnapshot : pendingList.length,
+            });
+          } else {
+            setMoodState(createMoodStateForToday());
+          }
+        } catch (err) {
+          console.warn("mood state parse", err);
+        }
+      }
       if (onboardingRaw === "done" || parsedProfile?.goal) {
         setOnboardingStep("done");
       } else if (parsedProfile?.firstName) {
@@ -4879,6 +6076,7 @@ function App() {
       console.warn("load error", error);
     } finally {
       setRewardsReady(true);
+      setMoodHydrated(true);
     }
   };
 
@@ -5103,6 +6301,12 @@ function App() {
       () => {}
     );
   }, [hiddenTemptations]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.IMPULSE_TRACKER, JSON.stringify(impulseTracker)).catch(
+      () => {}
+    );
+  }, [impulseTracker]);
 
   useEffect(() => {
     const nextList = DEFAULT_TEMPTATIONS.map((item) => ({
@@ -5821,8 +7025,9 @@ function App() {
         },
         ...prev,
       ]);
+      logImpulseEvent("spend", item, priceUSD, title);
     },
-    [language, logHistoryEvent]
+    [language, logHistoryEvent, logImpulseEvent]
   );
 
   const handleSpendConfirm = useCallback(() => {
@@ -5846,6 +7051,37 @@ function App() {
       };
     },
     [profile.currency, profile.persona]
+  );
+
+  const logImpulseEvent = useCallback(
+    (action, item, amountUSD = 0, overrideTitle = null) => {
+      if (!item || (action !== "save" && action !== "spend")) return;
+      const timestamp = Date.now();
+      const entryTitle =
+        overrideTitle ||
+        `${item.emoji || "✨"} ${
+          item.title?.[language] || item.title?.en || item.title || t("defaultDealTitle")
+        }`;
+      const event = {
+        id: `impulse-${timestamp}-${Math.random().toString(16).slice(2, 6)}`,
+        templateId: item.id,
+        title: entryTitle,
+        emoji: item.emoji || "✨",
+        category: resolveImpulseCategory(item),
+        action,
+        amountUSD: amountUSD || item.priceUSD || item.basePriceUSD || 0,
+        timestamp,
+        hour: new Date(timestamp).getHours(),
+      };
+      setImpulseTracker((prev) => {
+        const nextEvents = [event, ...(prev?.events || [])].slice(0, MAX_IMPULSE_EVENTS);
+        return {
+          ...(prev || INITIAL_IMPULSE_TRACKER),
+          events: nextEvents,
+        };
+      });
+    },
+    [language, t]
   );
 
   const handleTemptationAction = useCallback(
@@ -5880,6 +7116,21 @@ function App() {
         return;
       }
       if (type === "save") {
+        const saveTimestamp = Date.now();
+        const windowStart = saveTimestamp - SAVE_SPAM_WINDOW_MS;
+        const recentSaves = saveActionLogRef.current.filter(
+          (entry) => entry.timestamp >= windowStart
+        );
+        const sameItemCount = recentSaves.filter((entry) => entry.itemId === item.id).length;
+        const totalSaveCount = recentSaves.length;
+        if (sameItemCount >= SAVE_SPAM_ITEM_LIMIT) {
+          Alert.alert("Almost", t("saveSpamWarningItem"));
+          return;
+        }
+        if (totalSaveCount >= SAVE_SPAM_GLOBAL_LIMIT) {
+          Alert.alert("Almost", t("saveSpamWarningGlobal"));
+          return;
+        }
         const storedGoalId = resolveTemptationGoalId(item.id);
         const desiredGoalId = forcedGoalId || storedGoalId;
         const shouldPrompt =
@@ -5903,7 +7154,7 @@ function App() {
         if (targetGoalId) {
           appliedAmount = applySavingsToWish(targetGoalId, priceUSD);
         }
-        let saveOverlayPayload = { title };
+        let saveOverlayPayload = { title, moodLine: moodPreset?.saveOverlay || null };
         if (targetWish && targetWish.targetUSD > 0 && priceUSD > 0) {
           const previousSavedUSD = targetWish.savedUSD || 0;
           const targetUSD = targetWish.targetUSD || 0;
@@ -5917,7 +7168,7 @@ function App() {
             goalComplete: remainingUSD <= 0,
           };
         }
-        const timestamp = Date.now();
+        const timestamp = saveTimestamp;
         setSavedTotalUSD((prev) => prev + priceUSD);
         setDeclineCount((prev) => prev + 1);
         setRefuseStats((prev) => {
@@ -5947,9 +7198,11 @@ function App() {
             refuse_count_for_item: (refuseStatsEntry.count || 0) + 1,
           })
         );
+        logImpulseEvent("save", item, priceUSD, title);
         triggerCardFeedback(item.id);
         triggerCoinHaptics();
         triggerOverlayState("save", saveOverlayPayload);
+        saveActionLogRef.current = [...recentSaves, { itemId: item.id, timestamp: saveTimestamp }];
         return;
       }
       if (type === "maybe") {
@@ -5993,6 +7246,7 @@ function App() {
       buildTemptationPayload,
       savedTotalUSD,
       refuseStats,
+      logImpulseEvent,
       resolveTemptationGoalId,
       assignableGoals.length,
       assignTemptationGoal,
@@ -6000,6 +7254,7 @@ function App() {
       setGoalLinkPrompt,
       getFallbackGoalId,
       wishes,
+      moodPreset,
     ]
   );
 
@@ -6321,12 +7576,6 @@ function App() {
     closePriceEditor();
   };
 
-  const resetPriceEdit = () => {
-    persistPriceOverride(null);
-    persistTitleOverride(null);
-    closePriceEditor();
-  };
-
   const handlePriceDelete = useCallback(() => {
     if (!priceEditor.item) return;
     Alert.alert(t("priceEditDelete"), t("priceEditDeleteConfirm"), [
@@ -6478,6 +7727,83 @@ function App() {
     [processOverlayQueue]
   );
 
+  const dismissOverlay = useCallback(() => {
+    if (overlayTimer.current) {
+      clearTimeout(overlayTimer.current);
+      overlayTimer.current = null;
+    }
+    if (overlayActiveRef.current) {
+      overlayActiveRef.current = false;
+    }
+    setOverlay(null);
+    processOverlayQueue();
+  }, [processOverlayQueue]);
+
+  const notifyImpulseRisk = useCallback(
+    async (risk) => {
+      if (!risk?.templateId) return;
+      const now = Date.now();
+      const lastShown = impulseAlertCooldownRef.current?.[risk.templateId] || 0;
+      if (now - lastShown < IMPULSE_ALERT_COOLDOWN_MS) return;
+      const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+      const amountLabel = formatCurrency(
+        convertToCurrency(Math.max(risk.amountUSD || 0, 0), currencyCode),
+        currencyCode
+      );
+      const baseOverlayMessage = t("impulseAlertMessage", {
+        temptation: risk.title,
+        window: risk.windowLabel || "",
+        amount: amountLabel,
+      });
+      const overlayMessage = moodPreset?.impulseOverlay
+        ? `${baseOverlayMessage}\n${moodPreset.impulseOverlay}`
+        : baseOverlayMessage;
+      const pushTitle =
+        moodPreset?.pushImpulseTitle && moodPreset.pushImpulseTitle.trim()
+          ? renderTemplateString(moodPreset.pushImpulseTitle, { temptation: risk.title })
+          : t("impulseNotificationTitle", { temptation: risk.title });
+      const pushBody =
+        moodPreset?.pushImpulseBody && moodPreset.pushImpulseBody.trim()
+          ? renderTemplateString(moodPreset.pushImpulseBody, {
+              temptation: risk.title,
+              amount: amountLabel,
+            })
+          : t("impulseNotificationBody", { temptation: risk.title, amount: amountLabel });
+      triggerOverlayState("impulse_alert", {
+        title: t("impulseAlertTitle"),
+        body: overlayMessage,
+        moodLine: moodPreset?.impulseOverlay || null,
+      });
+      try {
+        const allowed = await ensureNotificationPermission();
+        if (allowed) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: pushTitle,
+              body: pushBody,
+            },
+            trigger: null,
+          });
+        }
+      } catch (error) {
+        console.warn("impulse notify", error);
+      }
+      impulseAlertCooldownRef.current = {
+        ...(impulseAlertCooldownRef.current || {}),
+        [risk.templateId]: now,
+      };
+      setImpulseTracker((prev) => ({
+        ...(prev || INITIAL_IMPULSE_TRACKER),
+        lastAlerts: {
+          ...(prev?.lastAlerts || {}),
+          [risk.templateId]: now,
+        },
+        events: prev?.events || [],
+      }));
+    },
+    [ensureNotificationPermission, profile.currency, t, triggerOverlayState, moodPreset]
+  );
+
   const triggerCelebration = () => {
     const messages = getCelebrationMessages(language, activeGender);
     if (!messages.length) return;
@@ -6579,6 +7905,9 @@ function App() {
             setHealthPoints(0);
             setClaimedRewards({});
             setRewardCelebratedMap({});
+            setImpulseTracker({ ...INITIAL_IMPULSE_TRACKER });
+            setMoodState(createMoodStateForToday());
+            impulseAlertCooldownRef.current = {};
           },
         },
       ]
@@ -6689,12 +8018,13 @@ function App() {
             history={historyEvents}
             freeDayStats={freeDayStats}
             rewardBadges={unlockedRewards}
-            analyticsOptOut={analyticsOptOut}
-            onAnalyticsToggle={handleAnalyticsToggle}
-            t={t}
-            colors={colors}
-          />
-        );
+          analyticsOptOut={analyticsOptOut}
+          onAnalyticsToggle={handleAnalyticsToggle}
+          t={t}
+          colors={colors}
+          moodPreset={moodPreset}
+        />
+      );
       default:
         return (
           <FeedScreen
@@ -6716,14 +8046,23 @@ function App() {
             analyticsStats={analyticsStats}
             refuseStats={refuseStats}
             cardFeedback={cardFeedback}
-          historyEvents={historyEvents}
-          profile={profile}
+            historyEvents={historyEvents}
+            profile={profile}
           titleOverrides={titleOverrides}
           onLevelCelebrate={handleLevelCelebrate}
           onBaselineSetup={handleBaselineSetupPrompt}
           healthPoints={healthPoints}
           onFreeDayRescue={handleFreeDayRescue}
           freeDayRescueCost={FREE_DAY_RESCUE_COST}
+          impulseInsights={impulseInsights}
+          moodPreset={moodPreset}
+          onMoodDetailsOpen={() => setMoodDetailsVisible(true)}
+          onPotentialDetailsOpen={(description) => {
+            setPotentialDetailsText(description);
+            setPotentialDetailsVisible(true);
+          }}
+          heroGoalTargetUSD={heroGoalTargetUSD}
+          heroGoalSavedUSD={heroGoalSavedUSD}
         />
         );
     }
@@ -6938,6 +8277,77 @@ function App() {
           onCancel={handleNewGoalCancel}
         />
 
+        {moodDetailsVisible && moodPreset && (
+          <Modal
+            visible
+            transparent
+            animationType="fade"
+            onRequestClose={() => setMoodDetailsVisible(false)}
+          >
+            <TouchableWithoutFeedback onPress={() => setMoodDetailsVisible(false)}>
+              <View style={styles.moodDetailsBackdrop}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <MoodGradientBlock colors={moodGradient} style={styles.moodDetailsCard}>
+                    <Text style={[styles.moodDetailsLabel, { color: colors.text }]}>
+                      {moodPreset.label}
+                    </Text>
+                    {moodDescription ? (
+                      <Text style={[styles.moodDetailsDescription, { color: colors.text }]}>
+                        {moodDescription}
+                      </Text>
+                    ) : null}
+                    <TouchableOpacity
+                      style={[styles.moodDetailsButton, { borderColor: colors.text }]}
+                      onPress={() => setMoodDetailsVisible(false)}
+                    >
+                      <Text style={[styles.moodDetailsButtonText, { color: colors.text }]}>
+                        {t("profileOk") || "Ок"}
+                      </Text>
+                    </TouchableOpacity>
+                  </MoodGradientBlock>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+
+        {potentialDetailsVisible && (
+          <Modal
+            visible
+            transparent
+            animationType="fade"
+            onRequestClose={() => setPotentialDetailsVisible(false)}
+          >
+            <TouchableWithoutFeedback onPress={() => setPotentialDetailsVisible(false)}>
+              <View style={styles.moodDetailsBackdrop}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
+                    style={[
+                      styles.moodDetailsCard,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.moodDetailsLabel, { color: colors.text }]}>
+                      {t("potentialBlockTitle")}
+                    </Text>
+                    <Text style={[styles.moodDetailsDescription, { color: colors.muted }]}>
+                      {potentialDetailsText}
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.moodDetailsButton, { borderColor: colors.text }]}
+                      onPress={() => setPotentialDetailsVisible(false)}
+                    >
+                      <Text style={[styles.moodDetailsButtonText, { color: colors.text }]}>
+                        {t("profileOk") || "Ок"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+
         {fabMenuVisible && (
           <View pointerEvents="box-none" style={styles.fabMenuOverlay}>
             <TouchableWithoutFeedback onPress={closeFabMenu}>
@@ -7006,111 +8416,192 @@ function App() {
           overlay.type !== "custom_temptation" &&
           overlay.type !== "reward" &&
           overlay.type !== "health" &&
-          overlay.type !== "goal_complete" && (
-          <View style={styles.confettiLayer} pointerEvents="none">
-            <View
-              style={[
-                styles.overlayDim,
-                { backgroundColor: overlayDimColor },
-              ]}
-            />
-            {overlay.type === "cancel" && <RainOverlay colors={colors} />}
-            {overlay.type === "purchase" && (
-              <ConfettiCannon
-                key={confettiKey}
-                count={90}
-                origin={{ x: SCREEN_WIDTH / 2, y: 0 }}
-                fadeOut
-                explosionSpeed={350}
-                fallSpeed={2600}
-              />
-            )}
-              <View
-                style={[
-                  styles.celebrationBanner,
-                  {
-                    backgroundColor: overlayCardBackground,
-                    borderColor: overlayBorderColor,
-                    borderWidth: overlay.type === "cart" ? 0 : 1,
-                  },
-                ]}
-            >
-              {(overlay.type === "cancel" || overlay.type === "purchase" || overlay.type === "completion") && (
-                <Image
-                  source={CAT_IMAGE}
-                  style={[
-                    styles.celebrationCat,
-                    overlay.type === "purchase" || overlay.type === "completion" ? styles.catHappy : styles.catSad,
-                  ]}
-                />
-              )}
-              <Text style={[styles.celebrationText, { color: colors.text }]}>
-                {overlay.message}
-              </Text>
-            </View>
-          </View>
-        )}
+          overlay.type !== "goal_complete" &&
+          overlay.type !== "impulse_alert" && (
+            <Modal visible transparent animationType="fade">
+              <TouchableWithoutFeedback onPress={dismissOverlay}>
+                <View style={styles.confettiLayer}>
+                  <View
+                    style={[
+                      styles.overlayDim,
+                      { backgroundColor: overlayDimColor },
+                    ]}
+                  />
+                  {overlay.type === "cancel" && <RainOverlay colors={colors} />}
+                  {overlay.type === "purchase" && (
+                    <ConfettiCannon
+                      key={confettiKey}
+                      count={90}
+                      origin={{ x: SCREEN_WIDTH / 2, y: 0 }}
+                      fadeOut
+                      explosionSpeed={350}
+                      fallSpeed={2600}
+                    />
+                  )}
+                  <View
+                    style={[
+                      styles.celebrationBanner,
+                      {
+                        backgroundColor: overlayCardBackground,
+                        borderColor: overlayBorderColor,
+                        borderWidth: overlay.type === "cart" ? 0 : 1,
+                      },
+                    ]}
+                  >
+                    {(overlay.type === "cancel" ||
+                      overlay.type === "purchase" ||
+                      overlay.type === "completion") && (
+                      <Image
+                        source={CAT_IMAGE}
+                        style={[
+                          styles.celebrationCat,
+                          overlay.type === "purchase" || overlay.type === "completion"
+                            ? styles.catHappy
+                            : styles.catSad,
+                        ]}
+                      />
+                    )}
+                    <Text style={[styles.celebrationText, { color: colors.text }]}>
+                      {overlay.message}
+                    </Text>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </Modal>
+          )}
         {overlay?.type === "level" && (
-          <LevelUpCelebration colors={colors} message={overlay.message} level={overlay.message} t={t} />
+          <Modal visible transparent animationType="fade">
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View style={styles.overlayFullScreen}>
+                <LevelUpCelebration colors={colors} message={overlay.message} level={overlay.message} t={t} />
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
         )}
         {overlay?.type === "save" && (
-          <View style={styles.saveOverlay} pointerEvents="none">
-            <View
-              style={[
-                styles.overlayDim,
-                { backgroundColor: overlayDimColor },
-              ]}
-            />
-            <Animated.View
-              style={[
-                styles.saveCard,
-                saveCardBackgroundStyle,
-              ]}
-            >
-              <Text style={[styles.saveTitle, { color: colors.text }]}>
-                {t("saveCelebrateTitle", { title: saveOverlayPayload?.title || "" })}
-              </Text>
-              {saveOverlayGoalText ? (
-                <Text style={[styles.saveGoalText, { color: colors.text }]}>
-                  {saveOverlayGoalText}
-                </Text>
-              ) : null}
-              <Text style={[styles.saveSubtitle, { color: colors.muted }]}>
-                {t("saveCelebrateSubtitle")}
-              </Text>
-              <Image source={CAT_HAPPY_GIF} style={styles.saveGif} />
-            </Animated.View>
-          </View>
+          <Modal visible transparent animationType="fade">
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View style={styles.saveOverlay}>
+                <View
+                  style={[
+                    styles.overlayDim,
+                    { backgroundColor: overlayDimColor },
+                  ]}
+                />
+                <Animated.View
+                  style={[
+                    styles.saveCard,
+                    saveCardBackgroundStyle,
+                  ]}
+                >
+                  <Text style={[styles.saveTitle, { color: colors.text }]}>
+                    {t("saveCelebrateTitle", { title: saveOverlayPayload?.title || "" })}
+                  </Text>
+                  {saveOverlayGoalText ? (
+                    <Text style={[styles.saveGoalText, { color: colors.text }]}>
+                      {saveOverlayGoalText}
+                    </Text>
+                  ) : null}
+                  {saveOverlayPayload?.moodLine ? (
+                    <Text style={[styles.saveMoodLine, { color: colors.text }]}>
+                      {saveOverlayPayload.moodLine}
+                    </Text>
+                  ) : null}
+                  <Text style={[styles.saveSubtitle, { color: colors.muted }]}>
+                    {t("saveCelebrateSubtitle")}
+                  </Text>
+                  <Image source={CAT_HAPPY_GIF} style={styles.saveGif} />
+                </Animated.View>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
         )}
         {overlay?.type === "custom_temptation" && (
-          <View style={styles.saveOverlay} pointerEvents="none">
-            <View
-              style={[
-                styles.overlayDim,
-                { backgroundColor: overlayDimColor },
-              ]}
-            />
-            <View
-              style={[
-                styles.customTemptationCard,
-                { backgroundColor: overlayCardBackground, borderColor: overlayBorderColor },
-              ]}
-            >
-              <Image source={CAT_FOLLOWS} style={styles.customTemptationGif} />
-              <Text style={[styles.customTemptationText, { color: colors.text }]}>
-                {t("customTemptationAdded", { title: overlay.message || "" })}
-              </Text>
-            </View>
-          </View>
+          <Modal visible transparent animationType="fade">
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View style={styles.saveOverlay}>
+                <View
+                  style={[
+                    styles.overlayDim,
+                    { backgroundColor: overlayDimColor },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.customTemptationCard,
+                    { backgroundColor: overlayCardBackground, borderColor: overlayBorderColor },
+                  ]}
+                >
+                  <Image source={CAT_FOLLOWS} style={styles.customTemptationGif} />
+                  <Text style={[styles.customTemptationText, { color: colors.text }]}>
+                    {t("customTemptationAdded", { title: overlay.message || "" })}
+                  </Text>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
         )}
         {overlay?.type === "reward" && (
-          <RewardCelebration colors={colors} message={overlay.message} t={t} />
+          <Modal visible transparent animationType="fade">
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View style={styles.overlayFullScreen}>
+                <RewardCelebration colors={colors} message={overlay.message} t={t} />
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
         )}
         {overlay?.type === "health" && (
-          <HealthCelebration colors={colors} payload={overlay.message} t={t} />
+          <Modal visible transparent animationType="fade">
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View style={styles.overlayFullScreen}>
+                <HealthCelebration colors={colors} payload={overlay.message} t={t} />
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
         )}
         {overlay?.type === "goal_complete" && (
-          <GoalCelebration colors={colors} payload={overlay.message} t={t} />
+          <Modal visible transparent animationType="fade">
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View style={styles.overlayFullScreen}>
+                <GoalCelebration colors={colors} payload={overlay.message} t={t} />
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+        {overlay?.type === "impulse_alert" && (
+          <Modal visible transparent animationType="fade">
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View
+                style={[
+                  styles.overlayDim,
+                  { backgroundColor: overlayDimColor },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.impulseAlertCard,
+                    { backgroundColor: overlayCardBackground, borderColor: overlayBorderColor },
+                  ]}
+                >
+                  <Text style={[styles.impulseAlertTitle, { color: colors.text }]}>
+                    {typeof overlay.message === "object" && overlay.message?.title
+                      ? overlay.message.title
+                      : t("impulseAlertTitle")}
+                  </Text>
+                  <Text style={[styles.impulseAlertBody, { color: colors.muted }]}>
+                    {typeof overlay.message === "object" && overlay.message?.body
+                      ? overlay.message.body
+                      : overlay.message}
+                  </Text>
+                  {typeof overlay.message === "object" && overlay.message?.moodLine ? (
+                    <Text style={[styles.impulseAlertMood, { color: colors.text }]}>
+                      {overlay.message.moodLine}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
         )}
 
         <Modal visible={priceEditor.visible} transparent animationType="fade">
@@ -7193,14 +8684,6 @@ function App() {
                     >
                       <Text style={[styles.priceModalPrimaryText, { color: colors.background }]}>
                         {t("priceEditSave")}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.priceModalSecondary, { borderColor: colors.border }]}
-                      onPress={resetPriceEdit}
-                    >
-                      <Text style={[styles.priceModalSecondaryText, { color: colors.muted }]}>
-                        {t("priceEditReset")}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={closePriceEditor}>
@@ -7509,6 +8992,74 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+  },
+  moodGradientBlock: {
+    position: "relative",
+    overflow: "hidden",
+  },
+  moodGradientOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.55,
+    transform: [{ rotate: "-10deg" }],
+  },
+  heroMoodGradient: {
+    flex: 1,
+    width: "100%",
+    borderRadius: 28,
+    padding: 18,
+    paddingBottom: 20,
+    position: "relative",
+    overflow: "hidden",
+  },
+  moodBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.85)",
+    marginTop: 16,
+  },
+  moodBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  moodDetailsBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  moodDetailsCard: {
+    width: "100%",
+    borderRadius: 32,
+    padding: 24,
+    alignItems: "center",
+    gap: 12,
+  },
+  moodDetailsLabel: {
+    fontSize: 20,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  moodDetailsDescription: {
+    fontSize: 16,
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  moodDetailsButton: {
+    marginTop: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  moodDetailsButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    textTransform: "uppercase",
   },
   heroTextWrap: {
     flex: 1,
@@ -8062,6 +9613,99 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.08)",
   },
+  impulseCard: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 12,
+  },
+  impulseHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  impulseHeader: {
+    gap: 4,
+    flex: 1,
+  },
+  impulseCardTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  impulseCardSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  impulseToggle: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  impulseToggleText: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  impulseSummaryGrid: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  impulseBadge: {
+    flex: 1,
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    gap: 6,
+  },
+  impulseSummaryLabel: {
+    fontSize: 12,
+    textTransform: "uppercase",
+    fontWeight: "700",
+  },
+  impulseSummaryValue: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "600",
+  },
+  impulseTrendRow: {
+    paddingVertical: 4,
+  },
+  impulseTrendText: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  impulseCategoryList: {
+    marginTop: 8,
+    gap: 10,
+  },
+  impulseCategoryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  impulseCategoryLabel: {
+    fontWeight: "700",
+    flex: 1,
+    marginRight: 12,
+  },
+  impulseCategoryStats: {
+    alignItems: "flex-end",
+    gap: 2,
+  },
+  impulseCategoryStat: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  impulseCategoryStatSecondary: {
+    fontSize: 12,
+  },
   freeDayHealthRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -8535,58 +10179,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     gap: 10,
   },
-  wishHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  wishTitleWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    marginRight: 12,
-    gap: 8,
-  },
-  wishEmoji: {
-    fontSize: 22,
-  },
-  wishTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    flex: 1,
-    paddingRight: 0,
-  },
-  wishBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "transparent",
-    backgroundColor: "rgba(0,0,0,0.04)",
-  },
-  wishMeta: {
-    fontSize: 13,
-    marginBottom: 4,
-  },
-  wishProgressBar: {
-    height: 10,
-    borderRadius: 999,
-    overflow: "hidden",
-    marginTop: 8,
-    marginBottom: 12,
-  },
-  wishProgressFill: {
-    height: "100%",
-    borderRadius: 999,
-  },
-  wishButtonGhost: {
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    justifyContent: "center",
-    alignItems: "center",
-  },
   goalSwipeRow: {
     marginBottom: 20,
     overflow: "hidden",
@@ -8621,6 +10213,102 @@ const styles = StyleSheet.create({
   goalSwipeContent: {
     width: "100%",
     zIndex: 1,
+  },
+  wishHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  wishTitleWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    marginRight: 12,
+    gap: 8,
+  },
+  wishEmoji: {
+    fontSize: 22,
+  },
+  wishTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    flex: 1,
+    paddingRight: 0,
+  },
+  wishSavedHint: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  wishBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "transparent",
+    backgroundColor: "rgba(0,0,0,0.04)",
+  },
+  wishMeta: {
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  wishProgressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 6,
+  },
+  wishProgressTrack: {
+    flex: 1,
+    height: 10,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  wishProgressBar: {
+    height: 10,
+    borderRadius: 999,
+    overflow: "hidden",
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  wishProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  wishProgressLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  wishButtonGhost: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  goalDragWrapper: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 10,
+    paddingVertical: 4,
+  },
+  goalDragWrapperActive: {
+    opacity: 0.94,
+  },
+  goalDragHandle: {
+    width: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+    paddingVertical: 18,
+    marginRight: 4,
+  },
+  goalDragHandleDots: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  goalDragCardActive: {
+    transform: [{ scale: 0.995 }],
   },
   primaryGoalCard: {
     borderRadius: 36,
@@ -8911,11 +10599,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textTransform: "uppercase",
   },
+  goalBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
   profileCard: {
     borderRadius: 30,
     padding: 24,
     alignItems: "center",
     marginBottom: 20,
+  },
+  profileMoodAura: {
+    alignItems: "center",
+    width: "100%",
+    marginBottom: 12,
+  },
+  profileMoodGradient: {
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 8,
+  },
+  profileMoodStatus: {
+    marginTop: 10,
+    fontSize: 13,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   profileScrollContent: {
     paddingTop: 4,
@@ -9420,6 +11133,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  overlayFullScreen: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   overlayDim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(5, 6, 15, 0.2)",
@@ -9442,6 +11160,26 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 14,
     textAlign: "center",
+  },
+  impulseAlertCard: {
+    marginHorizontal: 32,
+    borderRadius: 26,
+    padding: 22,
+    borderWidth: 1,
+    gap: 8,
+  },
+  impulseAlertTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  impulseAlertBody: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  impulseAlertMood: {
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 20,
   },
   celebrationCat: {
     width: 90,
@@ -9638,6 +11376,12 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "center",
     marginTop: 18,
+  },
+  saveMoodLine: {
+    fontSize: 15,
+    fontWeight: "600",
+    textAlign: "center",
+    marginTop: 10,
   },
   customTemptationCard: {
     backgroundColor: "rgba(255,255,255,0.95)",
@@ -10088,35 +11832,6 @@ function RegistrationScreen({ data, onChange, onSubmit, onPickImage, colors, t }
           value={data.motto}
           onChangeText={(text) => onChange("motto", text)}
         />
-
-        <Text style={[styles.currencyLabel, { color: colors.muted }]}>{t("currencyLabel")}</Text>
-        <View style={styles.currencyGrid}>
-          {CURRENCIES.map((currency) => {
-            const active = currency === data.currency;
-            return (
-              <TouchableOpacity
-                key={currency}
-                style={[
-                  styles.currencyChipLarge,
-                  {
-                    backgroundColor: active ? colors.text : "transparent",
-                    borderColor: colors.border,
-                  },
-                ]}
-                onPress={() => onChange("currency", currency)}
-              >
-                <Text
-                  style={{
-                    color: active ? colors.background : colors.text,
-                    fontWeight: "600",
-                  }}
-                >
-                  {currency}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
 
         <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
           <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("nextButton")}</Text>

@@ -38,6 +38,22 @@ const patches = [
     src: 'patches/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt',
     dest: 'node_modules/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt',
   },
+  {
+    src: 'patches/react-native-gesture-handler/android/build.gradle',
+    dest: 'node_modules/react-native-gesture-handler/android/build.gradle',
+  },
+  {
+    src: 'patches/expo-modules-core/android/src/main/java/expo/modules/kotlin/jni/JavaScriptValue.kt',
+    dest: 'node_modules/expo-modules-core/android/src/main/java/expo/modules/kotlin/jni/JavaScriptValue.kt',
+  },
+  {
+    src: 'patches/expo-modules-core/android/src/main/java/expo/modules/kotlin/views/decorators/CSSProps.kt',
+    dest: 'node_modules/expo-modules-core/android/src/main/java/expo/modules/kotlin/views/decorators/CSSProps.kt',
+  },
+  {
+    src: 'patches/expo-modules-core/android/src/main/java/expo/modules/rncompatibility/ReactNativeFeatureFlags.kt',
+    dest: 'node_modules/expo-modules-core/android/src/main/java/expo/modules/rncompatibility/ReactNativeFeatureFlags.kt',
+  },
 ];
 
 let applied = 0;
