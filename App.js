@@ -20,6 +20,8 @@ import {
   Linking,
   PanResponder,
   Switch,
+  LayoutAnimation,
+  UIManager,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import ConfettiCannon from "react-native-confetti-cannon";
@@ -50,6 +52,7 @@ const STORAGE_KEYS = {
   ONBOARDING: "@almost_onboarded",
   CATALOG: "@almost_catalog_overrides",
   TITLE_OVERRIDES: "@almost_title_overrides",
+  EMOJI_OVERRIDES: "@almost_emoji_overrides",
   WISHES: "@almost_wishes",
   SAVED_TOTAL: "@almost_saved_total",
   DECLINES: "@almost_declines",
@@ -145,6 +148,9 @@ const SAVE_SPAM_ITEM_LIMIT = 3;
 const SAVE_SPAM_GLOBAL_LIMIT = 5;
 const SAVE_ACTION_COLOR = "#2EB873";
 const SPEND_ACTION_COLOR = "#D94862";
+const GOAL_HIGHLIGHT_COLOR = "#F6C16B";
+const GOAL_SWIPE_THRESHOLD = 80;
+const DELETE_SWIPE_THRESHOLD = 130;
 
 const getDayKey = (date) => {
   const d = new Date(date);
@@ -905,6 +911,10 @@ const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpaci
 const BASE_HORIZONTAL_PADDING = Platform.OS === "android" ? 20 : 30;
 const SHELL_HORIZONTAL_PADDING = Platform.OS === "android" ? 0 : 8;
 
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 const triggerHaptic = (style = Haptics.ImpactFeedbackStyle.Light) => {
   Haptics.impactAsync(style).catch(() => {});
 };
@@ -1015,6 +1025,28 @@ const createCustomHabitTemptation = (customSpend, fallbackCurrency) => {
       en: "Your main daily spend is the first habit we’ll tackle together.",
     },
   };
+};
+
+const hasValidCustomPrice = (entry) => {
+  if (!entry || typeof entry !== "object") return false;
+  const price = Number(entry.priceUSD);
+  if (Number.isFinite(price) && price > 0) return true;
+  const basePrice = Number(entry.basePriceUSD);
+  return Number.isFinite(basePrice) && basePrice > 0;
+};
+
+const normalizeCustomTemptationEntry = (
+  entry,
+  fallbackCurrency = DEFAULT_PROFILE.currency
+) => {
+  if (!entry || typeof entry !== "object") return null;
+  if (hasValidCustomPrice(entry)) return entry;
+  const rebuilt = createCustomHabitTemptation(entry, fallbackCurrency);
+  if (!rebuilt) return null;
+  const merged = { ...rebuilt, ...entry };
+  merged.priceUSD = rebuilt.priceUSD;
+  merged.basePriceUSD = rebuilt.basePriceUSD;
+  return merged;
 };
 
 const matchesGenderAudience = (card, gender = "none") => {
@@ -1348,6 +1380,11 @@ const TRANSLATIONS = {
     goalAssignTemptationSubtitle: "Что будет пополнять «{{goal}}»?",
     goalAssignClear: "Сбросить назначение",
     goalAssignFieldLabel: "Куда копим",
+    goalStatusInWishlist: "в цели",
+    goalSwipeAdd: "в цели",
+    goalSwipeDelete: "Удалить",
+    goalPinnedBadge: "Цель",
+    goalRemoved: "Карточка убрана из целей",
     goalEditAction: "Изменить",
     goalDeleteAction: "Удалить",
     goalEditModalTitle: "Редактировать цель",
@@ -1696,6 +1733,11 @@ const TRANSLATIONS = {
     goalAssignTemptationSubtitle: "Which habit fills “{{goal}}”?",
     goalAssignClear: "Clear assignment",
     goalAssignFieldLabel: "Sends savings to",
+    goalStatusInWishlist: "Add to goal",
+    goalSwipeAdd: "Add to goal",
+    goalSwipeDelete: "Delete",
+    goalPinnedBadge: "Goal",
+    goalRemoved: "Goal removed",
     goalEditAction: "Edit",
     goalDeleteAction: "Remove",
     goalEditModalTitle: "Edit goal",
@@ -2579,28 +2621,38 @@ function TemptationCard({
   item,
   language,
   colors,
-  onEditPrice,
   onAction,
   t,
-  savedTotalUSD = 0,
   currency = activeCurrency,
   stats = {},
   feedback,
-  starterPriceUSD = null,
   titleOverride,
   goalLabel = null,
+  isWishlistGoal = false,
+  onToggleEdit,
+  isEditing = false,
+  editTitleValue = "",
+  editPriceValue = "",
+  editGoalLabel = "",
+  editEmojiValue = "",
+  onEditTitleChange,
+  onEditPriceChange,
+  onEditEmojiChange,
+  onEditSave,
+  onEditCancel,
+  onEditDelete,
+  onEditGoalSelect,
+  onSwipeDelete,
+  onQuickGoalToggle,
+  showEditorInline = false,
+  cardStyle = null,
 }) {
   const title = resolveTemptationTitle(item, language, titleOverride);
   const desc = item.description?.[language] || item.description?.en || "";
   const priceUSD = item.priceUSD || item.basePriceUSD || 0;
   const priceLabel = formatCurrency(convertToCurrency(priceUSD, currency), currency);
-  const isStarterCard =
-    Number.isFinite(starterPriceUSD) && starterPriceUSD > 0 && priceUSD === starterPriceUSD;
-  const isCustomHabitCard = Array.isArray(item.categories) && item.categories.includes("custom");
-  const unlocked =
-    (savedTotalUSD >= priceUSD && priceUSD > 0) || isStarterCard || isCustomHabitCard;
-  const highlight = unlocked;
-  const statusLabel = unlocked ? t("tileReady") : t("tileLocked");
+  const highlightPinned = isWishlistGoal && !showEditorInline;
+  const highlight = true;
   const isDarkTheme = colors.background === THEMES.dark.background;
   const baseColor = item.color || colors.card;
   const darkCardPalette = highlight
@@ -2624,52 +2676,51 @@ function TemptationCard({
         swipeBg: "rgba(255,255,255,0.04)",
         swipeBorder: "rgba(255,255,255,0.08)",
       };
-  const cardBackground = isDarkTheme
-    ? darkCardPalette.background
-    : !highlight
-    ? lightenColor(baseColor, 0.35)
-    : baseColor;
-  const cardBorderColor = isDarkTheme
+  const baseCardBackground = isDarkTheme ? darkCardPalette.background : baseColor;
+  const cardBackground = baseCardBackground;
+  const cardBorderColor = highlightPinned
+    ? GOAL_HIGHLIGHT_COLOR
+    : isDarkTheme
     ? darkCardPalette.border
     : highlight
     ? colors.text
     : "transparent";
-  const badgeBackground = isDarkTheme ? darkCardPalette.badgeBg : colors.background;
-  const badgeBorder = isDarkTheme ? darkCardPalette.badgeBorder : colors.border;
   const cardTextColor = isDarkTheme ? darkCardPalette.text : colors.text;
   const cardMutedColor = isDarkTheme ? darkCardPalette.muted : colors.muted;
   const coinBurstColor = isDarkTheme ? "#FFD78B" : "#FFF4B3";
-  const goalBadgeBackground = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)";
-  const goalBadgeBorder = isDarkTheme ? "rgba(255,255,255,0.24)" : "rgba(0,0,0,0.08)";
-  const goalBadgeText = isDarkTheme ? "#FFF7E1" : colors.text;
+  const defaultGoalBadgeBackground = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)";
+  const defaultGoalBadgeBorder = isDarkTheme ? "rgba(255,255,255,0.24)" : "rgba(0,0,0,0.08)";
+  const defaultGoalBadgeText = isDarkTheme ? "#FFF7E1" : colors.text;
   const refuseCount = stats?.count || 0;
   const totalRefusedLabel = formatCurrency(
     convertToCurrency(stats?.totalUSD || 0, currency),
     currency
   );
-  const actionConfig = unlocked
-    ? [
-        { type: "save", label: t("saveAction"), variant: "primary" },
-        { type: "spend", label: t("spendAction"), variant: "ghost" },
-        { type: "maybe", label: t("maybeAction"), variant: "outline" },
-      ]
-    : [
-        { type: "want", label: t("wantAction"), variant: "primary" },
-        { type: "maybe", label: t("maybeAction"), variant: "outline" },
-      ];
+  const actionConfig = [
+    { type: "save", label: t("saveAction"), variant: "primary" },
+    { type: "spend", label: t("spendAction"), variant: "ghost" },
+    { type: "maybe", label: t("maybeAction"), variant: "outline" },
+  ];
   const [coinBursts, setCoinBursts] = useState([]);
   const messageActive = feedback?.message;
   const burstKey = feedback?.burstKey;
   const translateX = useRef(new Animated.Value(0)).current;
+  const swipeActionRef = useRef(false);
 
   useEffect(() => {
     translateX.setValue(0);
   }, [item.id, translateX]);
 
   const handleSwipeRelease = useCallback(
-    (shouldTrigger) => {
-      if (shouldTrigger && onEditPrice) {
-        onEditPrice(item);
+    (dx = 0) => {
+      if (!showEditorInline) {
+        if (dx > GOAL_SWIPE_THRESHOLD && onQuickGoalToggle) {
+          swipeActionRef.current = true;
+          onQuickGoalToggle(item);
+        } else if (dx < -DELETE_SWIPE_THRESHOLD && onSwipeDelete) {
+          swipeActionRef.current = true;
+          onSwipeDelete(item);
+        }
       }
       Animated.timing(translateX, {
         toValue: 0,
@@ -2678,25 +2729,29 @@ function TemptationCard({
         useNativeDriver: true,
       }).start();
     },
-    [item, onEditPrice, translateX]
+    [item, onQuickGoalToggle, onSwipeDelete, showEditorInline, translateX]
   );
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
+        onStartShouldSetPanResponder: () => !showEditorInline,
         onMoveShouldSetPanResponder: (_, gestureState) =>
-          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 6,
+          !showEditorInline &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) &&
+          Math.abs(gestureState.dx) > 6,
         onPanResponderMove: (_, gestureState) => {
-          const dx = Math.max(0, gestureState.dx);
-          translateX.setValue(Math.min(dx, 140));
+          if (showEditorInline) return;
+          const dx = Math.max(Math.min(gestureState.dx, 150), -180);
+          translateX.setValue(dx);
         },
         onPanResponderRelease: (_, gestureState) => {
-          const shouldTrigger = gestureState.dx > 80;
-          handleSwipeRelease(shouldTrigger);
+          handleSwipeRelease(gestureState.dx);
         },
-        onPanResponderTerminate: () => handleSwipeRelease(false),
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderTerminate: () => handleSwipeRelease(0),
       }),
-    [handleSwipeRelease, translateX]
+    [handleSwipeRelease, showEditorInline, translateX]
   );
 
   useEffect(() => {
@@ -2725,26 +2780,51 @@ function TemptationCard({
     return () => clearTimeout(timeout);
   }, [burstKey]);
 
+  const handleCardPress = useCallback(() => {
+    if (swipeActionRef.current) {
+      swipeActionRef.current = false;
+      return;
+    }
+    onToggleEdit?.(item);
+  }, [item, onToggleEdit]);
+
   return (
     <View style={styles.temptationSwipeWrapper}>
-      <View
-        style={[
-          styles.temptationSwipeBackground,
-          {
-            borderColor: isDarkTheme ? darkCardPalette.swipeBorder : colors.border,
-            backgroundColor: isDarkTheme
-              ? darkCardPalette.swipeBg
-              : lightenColor(colors.background, 0.18),
-          },
-        ]}
-        pointerEvents="none"
-      >
-        <Text style={[styles.temptationSwipeIcon, { color: cardTextColor }]}>✏️</Text>
+      <View style={styles.temptationSwipeBackground} pointerEvents="none">
+        <View
+          style={[
+            styles.swipeHint,
+            styles.swipeHintLeft,
+            {
+              borderColor: isDarkTheme ? "rgba(255,255,255,0.12)" : colors.border,
+              backgroundColor: isDarkTheme ? "rgba(246,193,107,0.2)" : "rgba(246,193,107,0.12)",
+            },
+          ]}
+        >
+          <Text style={[styles.swipeHintIcon, { color: GOAL_HIGHLIGHT_COLOR }]}>🎯</Text>
+          <Text style={[styles.swipeHintText, { color: GOAL_HIGHLIGHT_COLOR }]}>
+            {isWishlistGoal ? t("goalAssignClear") : t("goalSwipeAdd")}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.swipeHint,
+            styles.swipeHintRight,
+            {
+              borderColor: isDarkTheme ? "rgba(255,255,255,0.12)" : colors.border,
+              backgroundColor: isDarkTheme ? "rgba(255,87,115,0.15)" : "rgba(233,61,87,0.12)",
+            },
+          ]}
+        >
+          <Text style={[styles.swipeHintIcon, { color: "#E15555" }]}>🗑️</Text>
+          <Text style={[styles.swipeHintText, { color: "#E15555" }]}>{t("goalSwipeDelete")}</Text>
+        </View>
       </View>
       <Animated.View
         {...panResponder.panHandlers}
         style={[
           styles.temptationCard,
+          cardStyle,
           {
             backgroundColor: cardBackground,
             borderColor: cardBorderColor,
@@ -2753,26 +2833,91 @@ function TemptationCard({
           },
         ]}
       >
+        <TouchableWithoutFeedback onPress={handleCardPress}>
+          <View>
       <View style={styles.temptationHeader}>
-        <Text style={[styles.temptationEmoji, { color: cardTextColor }]}>{item.emoji || "✨"}</Text>
-        <Text style={[styles.temptationTitle, { color: cardTextColor }]}>{title}</Text>
+        {showEditorInline ? (
+          <View style={styles.titleEditWrapper}>
+            <View
+              style={[
+                styles.emojiEditWrapper,
+                { borderColor: colors.border, backgroundColor: colors.card },
+              ]}
+            >
+              <TextInput
+                style={[styles.emojiEditInput, { color: colors.text }]}
+                value={editEmojiValue ?? ""}
+                onChangeText={onEditEmojiChange}
+                placeholder={item.emoji || DEFAULT_TEMPTATION_EMOJI}
+                placeholderTextColor={colors.muted}
+                maxLength={2}
+              />
+              <Text style={[styles.emojiEditIcon, { color: colors.muted }]}>✏️</Text>
+            </View>
+            <View style={styles.titleEditInputContainer}>
+              <TextInput
+                style={[
+                  styles.titleEditInput,
+                  {
+                    borderColor: colors.border,
+                    color: colors.text,
+                    backgroundColor: colors.card,
+                  },
+                ]}
+                value={editTitleValue}
+                onChangeText={onEditTitleChange}
+                placeholder={t("priceEditNameLabel")}
+                placeholderTextColor={colors.muted}
+              />
+              <Text style={[styles.titleEditIcon, { color: colors.muted }]}>✏️</Text>
+            </View>
+          </View>
+        ) : (
+          <>
+            <View style={styles.emojiDisplayWrapper}>
+              <Text style={[styles.temptationEmoji, { color: cardTextColor }]}>{item.emoji || "✨"}</Text>
+            </View>
+            <Text style={[styles.temptationTitle, { color: cardTextColor }]}>{title}</Text>
+          </>
+        )}
+      </View>
+      {!showEditorInline && isWishlistGoal && (
         <View
           style={[
-            styles.temptationBadge,
-            { backgroundColor: badgeBackground, borderColor: badgeBorder },
+            styles.temptationPinnedBadge,
+            {
+              borderColor: GOAL_HIGHLIGHT_COLOR,
+              backgroundColor: isDarkTheme ? "rgba(246,193,107,0.2)" : "rgba(246,193,107,0.12)",
+            },
           ]}
         >
-          <Text style={[styles.temptationBadgeText, { color: cardTextColor }]}>{statusLabel}</Text>
+          <Text style={[styles.temptationPinnedBadgeText, { color: GOAL_HIGHLIGHT_COLOR }]}>
+            {t("goalPinnedBadge")}
+          </Text>
         </View>
-      </View>
-      {goalLabel ? (
+      )}
+      {showEditorInline ? (
+        <TouchableOpacity
+          style={[
+            styles.temptationGoalBadge,
+            styles.temptationGoalBadgeEditable,
+            { borderColor: colors.border, backgroundColor: colors.card },
+          ]}
+          onPress={onEditGoalSelect}
+        >
+          <Text style={[styles.temptationGoalBadgeText, { color: colors.text }]}>
+            {goalLabel || t("goalAssignFieldLabel")}
+          </Text>
+          <Text style={[styles.editorHintIcon, { color: colors.muted, marginLeft: 6 }]}>✏️</Text>
+        </TouchableOpacity>
+      ) : goalLabel ? (
         <View
           style={[
             styles.temptationGoalBadge,
-            { backgroundColor: goalBadgeBackground, borderColor: goalBadgeBorder },
+            { backgroundColor: defaultGoalBadgeBackground, borderColor: defaultGoalBadgeBorder },
           ]}
         >
-          <Text style={[styles.temptationGoalBadgeText, { color: goalBadgeText }]}>
+          <Text style={[styles.temptationGoalBadgeText, { color: defaultGoalBadgeText }]}>
             {t("goalAssignFieldLabel")}: {goalLabel}
           </Text>
         </View>
@@ -2788,16 +2933,39 @@ function TemptationCard({
         </Text>
       )}
       <View style={styles.temptationPriceRow}>
-        <Text
-          style={[
-            styles.temptationPrice,
-            { color: isDarkTheme ? "#FFFFFF" : colors.text },
-          ]}
-        >
-          {priceLabel}
-        </Text>
+        {showEditorInline ? (
+          <View
+            style={[
+              styles.temptationPricePill,
+              { borderColor: colors.border, backgroundColor: colors.card },
+            ]}
+          >
+            <TextInput
+              style={[
+                styles.pricePillInput,
+                { color: colors.text },
+              ]}
+              value={editPriceValue ?? ""}
+              onChangeText={onEditPriceChange}
+              keyboardType="decimal-pad"
+              placeholder={t("priceEditAmountLabel", { currency })}
+              placeholderTextColor={colors.muted}
+            />
+            <Text style={[styles.editorHintIcon, { color: colors.muted }]}>✏️</Text>
+          </View>
+        ) : (
+          <Text
+            style={[
+              styles.temptationPrice,
+              { color: isDarkTheme ? "#FFFFFF" : colors.text },
+            ]}
+          >
+            {priceLabel}
+          </Text>
+        )}
       </View>
-      <View style={styles.temptationActions}>
+      {!showEditorInline && (
+        <View style={styles.temptationActions}>
         {actionConfig.map((action) => {
           let buttonStyle;
           let textStyle;
@@ -2836,7 +3004,8 @@ function TemptationCard({
             </TouchableOpacity>
           );
         })}
-      </View>
+        </View>
+      )}
       {coinBursts.map((coin) => {
         const translateY = coin.progress.interpolate({
           inputRange: [0, 1],
@@ -2875,6 +3044,32 @@ function TemptationCard({
         );
       })}
       {messageActive && null}
+      {showEditorInline && isEditing && (
+        <View style={[styles.temptationEditor, { borderTopColor: colors.border }]}>
+          <View style={styles.temptationEditorActions}>
+            <TouchableOpacity
+              style={[styles.priceModalPrimary, { backgroundColor: colors.text }]}
+              onPress={onEditSave}
+            >
+              <Text style={[styles.priceModalPrimaryText, { color: colors.background }]}>
+                {t("priceEditSave")}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onEditCancel}>
+              <Text style={[styles.priceModalCancel, { color: colors.muted }]}>
+                {t("priceEditCancel")}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onEditDelete}>
+              <Text style={[styles.priceModalDeleteText, { color: "#E15555" }]}>
+                {t("priceEditDelete")}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+          </View>
+        </TouchableWithoutFeedback>
       </Animated.View>
     </View>
   );
@@ -3564,7 +3759,8 @@ function FeedScreen({
   savedTotalUSD,
   wishes = [],
   onTemptationAction,
-  onEditPrice,
+  onTemptationEditToggle,
+  onTemptationQuickGoalToggle,
   t,
   language,
   colors,
@@ -3589,6 +3785,19 @@ function FeedScreen({
   onPotentialDetailsOpen = null,
   heroGoalTargetUSD = 0,
   heroGoalSavedUSD = 0,
+  editingTemptationId = null,
+  editingTitleValue = "",
+  editingPriceValue = "",
+  editingGoalLabel = "",
+  editingEmojiValue = "",
+  onTemptationEditTitleChange,
+  onTemptationEditPriceChange,
+  onTemptationEditEmojiChange,
+  onTemptationEditSave,
+  onTemptationEditCancel,
+  onTemptationEditDelete,
+  onTemptationGoalSelect,
+  onTemptationSwipeDelete,
 }) {
   const [impulseExpanded, setImpulseExpanded] = useState(false);
   const handleBaselineSetup = onBaselineSetup || (() => {});
@@ -3852,14 +4061,6 @@ function FeedScreen({
       percent: item.amountUSD > 0 ? Math.max((item.amountUSD / maxValue) * 100, 8) : 0,
     }));
   }, [currency, historyEvents, language, todayTimestamp]);
-  const starterPriceUSD = useMemo(() => {
-    if (!products?.length) return null;
-    return products.reduce((min, product) => {
-      const price = product.priceUSD ?? product.basePriceUSD ?? Infinity;
-      if (!Number.isFinite(price) || price <= 0) return min;
-      return price < min ? price : min;
-    }, Infinity);
-  }, [products]);
   const showImpulseCard = useMemo(() => hasImpulseHistory(impulseInsights), [impulseInsights]);
 
   return (
@@ -3962,20 +4163,37 @@ function FeedScreen({
           const assignedGoalId = goalAssignments?.[item.id];
           const assignedGoal =
             assignedGoalId && (wishes || []).find((wish) => wish.id === assignedGoalId);
+          const wishlistEntry = (wishes || []).find(
+            (wish) => wish.templateId === item.id && wish.pinnedSource === "swipe"
+          );
+          const isWishlistGoal = !!wishlistEntry;
           return (
             <TemptationCard
               item={item}
               language={language}
               colors={colors}
               t={t}
-              onEditPrice={() => onEditPrice(item)}
-              savedTotalUSD={savedTotalUSD}
+              onToggleEdit={() => onTemptationEditToggle?.(item)}
               currency={currency}
               stats={refuseStats[item.id]}
               feedback={cardFeedback[item.id]}
-              starterPriceUSD={starterPriceUSD}
               titleOverride={titleOverrides[item.id]}
               goalLabel={assignedGoal?.title || null}
+              isWishlistGoal={isWishlistGoal}
+              isEditing={editingTemptationId === item.id}
+              editTitleValue={editingTemptationId === item.id ? editingTitleValue : ""}
+              editPriceValue={editingTemptationId === item.id ? editingPriceValue : ""}
+              editGoalLabel={editingTemptationId === item.id ? editingGoalLabel : ""}
+              editEmojiValue={editingTemptationId === item.id ? editingEmojiValue : ""}
+              onEditTitleChange={onTemptationEditTitleChange}
+              onEditPriceChange={onTemptationEditPriceChange}
+              onEditEmojiChange={onTemptationEditEmojiChange}
+              onEditSave={onTemptationEditSave}
+              onEditCancel={onTemptationEditCancel}
+              onEditDelete={() => onTemptationEditDelete?.(item)}
+              onEditGoalSelect={() => onTemptationGoalSelect?.(item)}
+              onSwipeDelete={() => onTemptationSwipeDelete?.(item)}
+              onQuickGoalToggle={() => onTemptationQuickGoalToggle?.(item)}
               onAction={async (type) => {
                 await onTemptationAction(type, item);
               }}
@@ -5321,10 +5539,11 @@ function App() {
   const [activeTab, setActiveTab] = useState("feed");
   const [catalogOverrides, setCatalogOverrides] = useState({});
   const [titleOverrides, setTitleOverrides] = useState({});
+  const [emojiOverrides, setEmojiOverrides] = useState({});
   const [temptations, setTemptations] = useState(DEFAULT_TEMPTATIONS);
   const [quickTemptations, setQuickTemptations] = useState([]);
   const [hiddenTemptations, setHiddenTemptations] = useState([]);
-  const [priceEditor, setPriceEditor] = useState({ visible: false, item: null, value: "", title: "" });
+  const [priceEditor, setPriceEditor] = useState({ item: null, value: "", title: "", emoji: "" });
   const [savedTotalUSD, setSavedTotalUSD] = useState(0);
   const [declineCount, setDeclineCount] = useState(0);
   const [pendingList, setPendingList] = useState([]);
@@ -5398,6 +5617,8 @@ function App() {
   const [moodState, setMoodState] = useState(() => createMoodStateForToday());
   const [cardFeedback, setCardFeedback] = useState({});
   const [moodHydrated, setMoodHydrated] = useState(false);
+  const editOverlayAnim = useRef(new Animated.Value(0)).current;
+  const [editOverlayVisible, setEditOverlayVisible] = useState(false);
   const cardFeedbackTimers = useRef({});
   const impulseAlertCooldownRef = useRef({});
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -5871,6 +6092,7 @@ function App() {
         onboardingRaw,
         catalogRaw,
         titleRaw,
+        emojiOverridesRaw,
         savedTotalRaw,
         declinesRaw,
         freeDayRaw,
@@ -5896,6 +6118,7 @@ function App() {
         AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
         AsyncStorage.getItem(STORAGE_KEYS.CATALOG),
         AsyncStorage.getItem(STORAGE_KEYS.TITLE_OVERRIDES),
+        AsyncStorage.getItem(STORAGE_KEYS.EMOJI_OVERRIDES),
         AsyncStorage.getItem(STORAGE_KEYS.SAVED_TOTAL),
         AsyncStorage.getItem(STORAGE_KEYS.DECLINES),
         AsyncStorage.getItem(STORAGE_KEYS.FREE_DAY),
@@ -5973,6 +6196,7 @@ function App() {
       if (languageRaw) setLanguage(languageRaw);
       if (catalogRaw) setCatalogOverrides(JSON.parse(catalogRaw));
       if (titleRaw) setTitleOverrides(JSON.parse(titleRaw));
+      if (emojiOverridesRaw) setEmojiOverrides(JSON.parse(emojiOverridesRaw));
       if (savedTotalRaw) setSavedTotalUSD(Number(savedTotalRaw) || 0);
       if (declinesRaw) setDeclineCount(Number(declinesRaw) || 0);
       if (freeDayRaw) {
@@ -6002,7 +6226,12 @@ function App() {
       }
       if (customTemptationsRaw) {
         try {
-          setQuickTemptations(JSON.parse(customTemptationsRaw));
+          const parsedCustom = JSON.parse(customTemptationsRaw);
+          const fallbackCurrency = parsedProfile?.currency || DEFAULT_PROFILE.currency;
+          const normalizedCustom = (Array.isArray(parsedCustom) ? parsedCustom : [parsedCustom])
+            .map((entry) => normalizeCustomTemptationEntry(entry, fallbackCurrency))
+            .filter(Boolean);
+          setQuickTemptations(normalizedCustom);
         } catch (err) {
           console.warn("custom temptations parse", err);
         }
@@ -6176,6 +6405,10 @@ function App() {
   }, [titleOverrides]);
 
   useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.EMOJI_OVERRIDES, JSON.stringify(emojiOverrides)).catch(() => {});
+  }, [emojiOverrides]);
+
+  useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.SAVED_TOTAL, String(savedTotalUSD)).catch(() => {});
   }, [savedTotalUSD]);
 
@@ -6313,6 +6546,7 @@ function App() {
       ...item,
       priceUSD: catalogOverrides[item.id] ?? item.basePriceUSD,
       titleOverride: titleOverrides[item.id] || null,
+      emoji: emojiOverrides[item.id] || item.emoji,
     })).sort(
       (a, b) =>
         (a.priceUSD ?? a.basePriceUSD ?? 0) - (b.priceUSD ?? b.basePriceUSD ?? 0)
@@ -6320,6 +6554,7 @@ function App() {
     const personalized = buildPersonalizedTemptations(profile, nextList).map((card) => ({
       ...card,
       titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
+      emoji: emojiOverrides[card.id] || card.emoji,
     }));
     const hiddenSet = new Set(hiddenTemptations);
     const quickAdjusted = quickTemptations
@@ -6328,10 +6563,11 @@ function App() {
         ...card,
         priceUSD: catalogOverrides[card.id] ?? card.priceUSD ?? card.basePriceUSD,
         titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
+        emoji: emojiOverrides[card.id] || card.emoji,
       }));
     const personalizedVisible = personalized.filter((card) => !hiddenSet.has(card.id));
     setTemptations([...quickAdjusted, ...personalizedVisible]);
-  }, [catalogOverrides, profile, titleOverrides, quickTemptations, hiddenTemptations]);
+  }, [catalogOverrides, profile, titleOverrides, emojiOverrides, quickTemptations, hiddenTemptations]);
 
   useEffect(() => {
     return () => {
@@ -7086,7 +7322,12 @@ function App() {
 
   const handleTemptationAction = useCallback(
     async (type, item, options = {}) => {
-      const { skipPrompt = false, goalId: forcedGoalId = null, shouldAssign = false } = options || {};
+  const {
+    skipPrompt = false,
+    goalId: forcedGoalId = null,
+    shouldAssign = false,
+    pinnedBy = null,
+  } = options || {};
       const priceUSD = item.priceUSD || item.basePriceUSD || 0;
       const title = `${item.emoji || "✨"} ${
         item.title?.[language] || item.title?.en || item.title || "wish"
@@ -7108,6 +7349,7 @@ function App() {
           createdAt: Date.now(),
           autoManaged: true,
           emoji: item.emoji || DEFAULT_GOAL_EMOJI,
+          pinnedSource: pinnedBy,
         };
         setWishes((prev) => insertWishAfterPrimary(prev, newWish));
         logHistoryEvent("wish_added", { title, targetUSD: priceUSD, templateId: item.id });
@@ -7445,26 +7687,90 @@ function App() {
     ]);
   }, [freeDayStats, t, logHistoryEvent, profile.goal, profile.persona]);
 
-  const openPriceEditor = (item) => {
-    const currentValue = convertToCurrency(item.priceUSD || item.basePriceUSD || 0);
-    setPriceEditor({
-      visible: true,
-      item,
-      value: String(Math.round(currentValue * 100) / 100),
-      title: resolveTemptationTitle(item, language, titleOverrides[item.id]),
-    });
-  };
+  const toggleTemptationEditor = useCallback(
+    (item) => {
+      if (!item) return;
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+      setPriceEditor((prev) => {
+        if (prev.item?.id === item.id) {
+          return { item: null, value: "", title: "", emoji: "" };
+        }
+        const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+        const currentValue = convertToCurrency(item.priceUSD || item.basePriceUSD || 0, currencyCode);
+        return {
+          item,
+          value: formatNumberInputValue(Number(currentValue) || 0),
+          title: resolveTemptationTitle(item, language, titleOverrides[item.id]),
+          emoji: item.emoji || DEFAULT_TEMPTATION_EMOJI,
+        };
+      });
+    },
+    [language, profile.currency, titleOverrides]
+  );
 
-  const closePriceEditor = () => {
-    setPriceEditor({ visible: false, item: null, value: "", title: "" });
-  };
+  const closePriceEditor = useCallback(() => {
+    if (!priceEditor.item) return;
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setPriceEditor({ item: null, value: "", title: "", emoji: "" });
+  }, [priceEditor.item]);
 
-  const handlePriceInputChange = (value) => {
-    setPriceEditor((prev) => ({ ...prev, value }));
-  };
+  useEffect(() => {
+    if (priceEditor.item) {
+      if (!editOverlayVisible) setEditOverlayVisible(true);
+      Animated.timing(editOverlayAnim, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    } else if (editOverlayVisible) {
+      Animated.timing(editOverlayAnim, {
+        toValue: 0,
+        duration: 180,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) setEditOverlayVisible(false);
+      });
+    }
+  }, [priceEditor.item, editOverlayAnim, editOverlayVisible]);
 
   const handlePriceTitleChange = (value) => {
     setPriceEditor((prev) => ({ ...prev, title: value }));
+  };
+
+  const handlePriceEmojiChange = (value) => {
+    setPriceEditor((prev) => ({ ...prev, emoji: limitEmojiInput(value) }));
+  };
+
+  const handleQuickGoalToggle = useCallback(
+    (item) => {
+      if (!item) return;
+      const existing = (wishes || []).find((wish) => wish.templateId === item.id);
+      if (existing) {
+        setWishes((prev) => prev.filter((wish) => wish.id !== existing.id));
+        assignTemptationGoal(item.id, null);
+        logHistoryEvent("wish_removed", { title: existing.title });
+        triggerOverlayState("cart", t("goalRemoved"));
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+        return;
+      }
+      handleTemptationAction("want", item, { pinnedBy: "swipe" });
+    },
+    [
+      assignTemptationGoal,
+      handleTemptationAction,
+      logHistoryEvent,
+      t,
+      triggerHaptic,
+      triggerOverlayState,
+      wishes,
+    ]
+  );
+
+  const handlePriceInputChange = (value) => {
+    setPriceEditor((prev) => ({ ...prev, value }));
   };
 
   const patchTemptationDisplay = useCallback((templateId, patch = {}) => {
@@ -7510,6 +7816,12 @@ function App() {
         delete next[templateId];
         return next;
       });
+      setEmojiOverrides((prev) => {
+        if (!(templateId in prev)) return prev;
+        const next = { ...prev };
+        delete next[templateId];
+        return next;
+      });
       setRefuseStats((prev) => {
         if (!prev[templateId]) return prev;
         const next = { ...prev };
@@ -7525,6 +7837,7 @@ function App() {
       setTemptationGoalMap,
       setCatalogOverrides,
       setTitleOverrides,
+      setEmojiOverrides,
       setRefuseStats,
       setPendingList,
     ]
@@ -7558,6 +7871,20 @@ function App() {
     });
   };
 
+  const persistEmojiOverride = (value = null) => {
+    const targetId = priceEditor.item?.id;
+    if (!targetId) return;
+    setEmojiOverrides((prev) => {
+      const next = { ...prev };
+      if (value && value.length) {
+        next[targetId] = value;
+      } else {
+        delete next[targetId];
+      }
+      return next;
+    });
+  };
+
   const savePriceEdit = () => {
     if (!priceEditor.item) return;
     const parsed = parseFloat((priceEditor.value || "").replace(",", "."));
@@ -7569,27 +7896,39 @@ function App() {
     persistPriceOverride(usdValue);
     const titleValue = (priceEditor.title || "").trim();
     persistTitleOverride(titleValue || null);
+    const hasCustomEmoji = !!priceEditor.emoji?.trim();
+    const resolvedEmoji = hasCustomEmoji
+      ? normalizeEmojiValue(priceEditor.emoji, priceEditor.item.emoji || DEFAULT_TEMPTATION_EMOJI)
+      : priceEditor.item.emoji || DEFAULT_TEMPTATION_EMOJI;
+    persistEmojiOverride(hasCustomEmoji ? resolvedEmoji : null);
     patchTemptationDisplay(priceEditor.item.id, {
       priceUSD: usdValue,
       titleOverride: titleValue || null,
+      emoji: resolvedEmoji,
     });
     closePriceEditor();
   };
 
-  const handlePriceDelete = useCallback(() => {
-    if (!priceEditor.item) return;
-    Alert.alert(t("priceEditDelete"), t("priceEditDeleteConfirm"), [
-      { text: t("priceEditCancel"), style: "cancel" },
-      {
-        text: t("priceEditDelete"),
-        style: "destructive",
-        onPress: () => {
-          removeTemptationTemplate(priceEditor.item.id);
-          closePriceEditor();
+  const promptTemptationDelete = useCallback(
+    (targetItem = null) => {
+      const item = targetItem || priceEditor.item;
+      if (!item) return;
+      Alert.alert(t("priceEditDelete"), t("priceEditDeleteConfirm"), [
+        { text: t("priceEditCancel"), style: "cancel" },
+        {
+          text: t("priceEditDelete"),
+          style: "destructive",
+          onPress: () => {
+            removeTemptationTemplate(item.id);
+            if (priceEditor.item?.id === item.id) {
+              closePriceEditor();
+            }
+          },
         },
-      },
-    ]);
-  }, [closePriceEditor, priceEditor.item, removeTemptationTemplate, t]);
+      ]);
+    },
+    [closePriceEditor, priceEditor.item, removeTemptationTemplate, t]
+  );
 
   const handleRemoveWish = useCallback(
     (wishId) => {
@@ -7886,6 +8225,7 @@ function App() {
             setDeclineCount(0);
             setCatalogOverrides({});
             setTitleOverrides({});
+            setEmojiOverrides({});
             setQuickTemptations([]);
             setFreeDayStats({ ...INITIAL_FREE_DAY_STATS });
             setDecisionStats({ ...INITIAL_DECISION_STATS });
@@ -8035,7 +8375,8 @@ function App() {
             savedTotalUSD={savedTotalUSD}
             wishes={wishes}
             onTemptationAction={handleTemptationAction}
-            onEditPrice={openPriceEditor}
+            onTemptationEditToggle={toggleTemptationEditor}
+            onTemptationQuickGoalToggle={handleQuickGoalToggle}
             t={t}
             language={language}
             colors={colors}
@@ -8048,22 +8389,38 @@ function App() {
             cardFeedback={cardFeedback}
             historyEvents={historyEvents}
             profile={profile}
-          titleOverrides={titleOverrides}
-          onLevelCelebrate={handleLevelCelebrate}
-          onBaselineSetup={handleBaselineSetupPrompt}
-          healthPoints={healthPoints}
-          onFreeDayRescue={handleFreeDayRescue}
-          freeDayRescueCost={FREE_DAY_RESCUE_COST}
-          impulseInsights={impulseInsights}
-          moodPreset={moodPreset}
-          onMoodDetailsOpen={() => setMoodDetailsVisible(true)}
-          onPotentialDetailsOpen={(description) => {
-            setPotentialDetailsText(description);
-            setPotentialDetailsVisible(true);
-          }}
-          heroGoalTargetUSD={heroGoalTargetUSD}
-          heroGoalSavedUSD={heroGoalSavedUSD}
-        />
+            titleOverrides={titleOverrides}
+            onLevelCelebrate={handleLevelCelebrate}
+            onBaselineSetup={handleBaselineSetupPrompt}
+            healthPoints={healthPoints}
+            onFreeDayRescue={handleFreeDayRescue}
+            freeDayRescueCost={FREE_DAY_RESCUE_COST}
+            impulseInsights={impulseInsights}
+            moodPreset={moodPreset}
+            onMoodDetailsOpen={() => setMoodDetailsVisible(true)}
+            onPotentialDetailsOpen={(description) => {
+              setPotentialDetailsText(description);
+              setPotentialDetailsVisible(true);
+            }}
+            heroGoalTargetUSD={heroGoalTargetUSD}
+            heroGoalSavedUSD={heroGoalSavedUSD}
+            editingTemptationId={priceEditor.item?.id || null}
+            editingTitleValue={priceEditor.title}
+            editingPriceValue={priceEditor.value}
+            editingGoalLabel={priceEditorAssignedGoalTitle}
+            editingEmojiValue={priceEditor.emoji}
+            onTemptationEditTitleChange={handlePriceTitleChange}
+            onTemptationEditPriceChange={handlePriceInputChange}
+            onTemptationEditEmojiChange={handlePriceEmojiChange}
+            onTemptationEditSave={savePriceEdit}
+            onTemptationEditCancel={closePriceEditor}
+            onTemptationEditDelete={(item) => promptTemptationDelete(item)}
+            onTemptationGoalSelect={(item) => {
+              if (!item) return;
+              setGoalLinkPrompt({ visible: true, item, intent: "edit" });
+            }}
+            onTemptationSwipeDelete={(item) => promptTemptationDelete(item)}
+          />
         );
     }
   };
@@ -8276,6 +8633,83 @@ function App() {
           onSubmit={handleNewGoalSubmit}
           onCancel={handleNewGoalCancel}
         />
+
+        {editOverlayVisible && (
+          <TouchableWithoutFeedback onPress={closePriceEditor}>
+            <View style={styles.temptationEditOverlay} pointerEvents="box-none">
+              <Animated.View
+                style={[
+                  styles.temptationEditBackdrop,
+                  {
+                    opacity: editOverlayAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 0.6],
+                    }),
+                  },
+                ]}
+              />
+              {priceEditor.item && (
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <Animated.View
+                    style={[
+                      styles.temptationEditCardContainer,
+                      {
+                        opacity: editOverlayAnim,
+                        transform: [
+                          {
+                            scale: editOverlayAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.92, 1],
+                            }),
+                          },
+                          {
+                            translateY: editOverlayAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [40, 0],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  >
+                    <TemptationCard
+                      item={priceEditor.item}
+                      language={language}
+                      colors={colors}
+                      t={t}
+                      currency={profile.currency || DEFAULT_PROFILE.currency}
+                      stats={refuseStats[priceEditor.item.id]}
+                      feedback={cardFeedback[priceEditor.item.id]}
+                      titleOverride={titleOverrides[priceEditor.item.id]}
+                      goalLabel={priceEditorAssignedGoalTitle || null}
+                      isEditing
+                      showEditorInline
+                      cardStyle={styles.temptationOverlayCard}
+                      editTitleValue={priceEditor.title}
+                      editPriceValue={priceEditor.value}
+                      editGoalLabel={priceEditorAssignedGoalTitle || ""}
+                      editEmojiValue={priceEditor.emoji}
+                      onEditTitleChange={handlePriceTitleChange}
+                      onEditPriceChange={handlePriceInputChange}
+                      onEditEmojiChange={handlePriceEmojiChange}
+                      onEditSave={savePriceEdit}
+                      onEditCancel={closePriceEditor}
+                      onEditDelete={() => promptTemptationDelete(priceEditor.item)}
+                      onEditGoalSelect={() => {
+                        setGoalLinkPrompt({ visible: true, item: priceEditor.item, intent: "edit" });
+                      }}
+                      onQuickGoalToggle={handleQuickGoalToggle}
+                      onSwipeDelete={() => promptTemptationDelete(priceEditor.item)}
+                      onAction={async (type) => {
+                        await handleTemptationAction(type, priceEditor.item);
+                      }}
+                    />
+                  </Animated.View>
+                </TouchableWithoutFeedback>
+              )}
+            </View>
+          </TouchableWithoutFeedback>
+        )}
 
         {moodDetailsVisible && moodPreset && (
           <Modal
@@ -8603,105 +9037,6 @@ function App() {
             </TouchableWithoutFeedback>
           </Modal>
         )}
-
-        <Modal visible={priceEditor.visible} transparent animationType="fade">
-          <TouchableWithoutFeedback onPress={closePriceEditor}>
-            <View style={styles.priceModalBackdrop}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View style={[styles.priceModalCard, { backgroundColor: colors.card }] }>
-                  <Text style={[styles.priceModalTitle, { color: colors.text }]}>
-                    {priceEditor.item
-                      ? priceEditor.item.title?.[language] ||
-                        priceEditor.item.title?.en ||
-                        t("priceEditTitle")
-                      : t("priceEditTitle")}
-                  </Text>
-                  <Text style={[styles.priceModalLabel, { color: colors.muted, marginTop: 0 }]}>
-                    {t("priceEditNameLabel")}
-                  </Text>
-                  <TextInput
-                    style={[
-                      styles.priceModalInput,
-                      {
-                        borderColor: colors.border,
-                        color: colors.text,
-                        backgroundColor: colors.card,
-                      },
-                    ]}
-                    value={priceEditor.title}
-                    onChangeText={handlePriceTitleChange}
-                    placeholder={t("priceEditNameLabel")}
-                    placeholderTextColor={colors.muted}
-                  />
-                  <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
-                    {t("priceEditAmountLabel", {
-                      currency: profile.currency || DEFAULT_PROFILE.currency,
-                    })}
-                  </Text>
-                  <TextInput
-                    style={[
-                      styles.priceModalInput,
-                      {
-                        borderColor: colors.border,
-                        color: colors.text,
-                        backgroundColor: colors.card,
-                      },
-                    ]}
-                    value={priceEditor.value}
-                    onChangeText={handlePriceInputChange}
-                    placeholder={t("priceEditPlaceholder")}
-                    placeholderTextColor={colors.muted}
-                    keyboardType="numeric"
-                  />
-                  <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
-                    {t("goalAssignFieldLabel")}
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.goalPickerButton, { borderColor: colors.border }]}
-                    onPress={() => {
-                      if (!priceEditor.item) return;
-                      setGoalLinkPrompt({ visible: true, item: priceEditor.item, intent: "edit" });
-                    }}
-                  >
-                    <Text style={[styles.goalPickerButtonText, { color: colors.text }]}>
-                      {priceEditorAssignedGoalTitle || t("goalAssignNone")}
-                    </Text>
-                  </TouchableOpacity>
-                  {priceEditorAssignedGoalId && priceEditor.item && (
-                    <TouchableOpacity
-                      style={styles.goalPickerReset}
-                      onPress={() => assignTemptationGoal(priceEditor.item.id, null)}
-                    >
-                      <Text style={[styles.goalPickerResetText, { color: colors.muted }]}>
-                        {t("goalAssignClear")}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                  <View style={styles.priceModalButtons}>
-                    <TouchableOpacity
-                      style={[styles.priceModalPrimary, { backgroundColor: colors.text }]}
-                      onPress={savePriceEdit}
-                    >
-                      <Text style={[styles.priceModalPrimaryText, { color: colors.background }]}>
-                        {t("priceEditSave")}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={closePriceEditor}>
-                      <Text style={[styles.priceModalCancel, { color: colors.muted }]}>
-                        {t("priceEditCancel")}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handlePriceDelete}>
-                      <Text style={[styles.priceModalDeleteText, { color: "#E15555" }]}>
-                        {t("priceEditDelete")}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
 
         <Modal visible={goalLinkPrompt.visible} transparent animationType="fade">
           <TouchableWithoutFeedback onPress={closeGoalLinkPrompt}>
@@ -9847,15 +10182,32 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    borderRadius: 32,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    justifyContent: "center",
-    alignItems: "flex-start",
-    paddingLeft: 24,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
   },
-  temptationSwipeIcon: {
-    fontSize: 28,
+  swipeHint: {
+    borderWidth: 1,
+    borderRadius: 24,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  swipeHintLeft: {
+    justifyContent: "flex-start",
+  },
+  swipeHintRight: {
+    justifyContent: "flex-end",
+  },
+  swipeHintIcon: {
+    fontSize: 14,
+  },
+  swipeHintText: {
+    fontSize: 12,
+    fontWeight: "600",
   },
   temptationHeader: {
     flexDirection: "row",
@@ -9865,11 +10217,76 @@ const styles = StyleSheet.create({
   temptationEmoji: {
     fontSize: 28,
   },
+  emojiDisplayWrapper: {
+    width: 40,
+    alignItems: "center",
+  },
+  temptationPinnedBadge: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  temptationPinnedBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
   temptationTitle: {
     fontSize: 18,
     fontWeight: "700",
     flex: 1,
     flexWrap: "wrap",
+  },
+  titleEditWrapper: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  titleEditInputContainer: {
+    flex: 1,
+    position: "relative",
+  },
+  titleEditInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  titleEditIcon: {
+    position: "absolute",
+    right: 12,
+    top: "50%",
+    transform: [{ translateY: -10 }],
+    fontSize: 14,
+  },
+  emojiEditWrapper: {
+    width: 60,
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    justifyContent: "center",
+    position: "relative",
+  },
+  emojiEditInput: {
+    textAlign: "center",
+    fontSize: 18,
+    fontWeight: "700",
+    paddingRight: 14,
+  },
+  emojiEditIcon: {
+    position: "absolute",
+    right: 6,
+    top: "50%",
+    transform: [{ translateY: -9 }],
+    fontSize: 12,
   },
   temptationDesc: {
     lineHeight: 20,
@@ -9878,6 +10295,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+  },
+  temptationPricePill: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  pricePillInput: {
+    minWidth: 60,
+    fontSize: 20,
+    fontWeight: "700",
+    borderWidth: 0,
+    backgroundColor: "transparent",
   },
   temptationPrice: {
     fontSize: 20,
@@ -9890,6 +10323,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     marginBottom: 6,
+  },
+  temptationGoalBadgeEditable: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   temptationGoalBadgeText: {
     fontSize: 11,
@@ -9942,6 +10379,26 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: "#FFF4B3",
+  },
+  temptationEditor: {
+    marginTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    gap: 14,
+  },
+  temptationEditorField: {
+    gap: 6,
+  },
+  editorLabelRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  editorHintIcon: {
+    fontSize: 14,
+  },
+  temptationEditorActions: {
+    gap: 8,
   },
   temptationBadge: {
     paddingHorizontal: 12,
@@ -11487,6 +11944,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: "center",
   },
+  priceModalInputCompact: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 16,
+    textAlign: "left",
+  },
   goalPickerButton: {
     borderWidth: 1,
     borderRadius: 18,
@@ -11503,6 +11968,37 @@ const styles = StyleSheet.create({
   goalPickerResetText: {
     fontSize: 13,
     fontWeight: "600",
+  },
+  temptationEditOverlay: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 400,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  temptationEditBackdrop: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "#05060F",
+  },
+  temptationEditCardContainer: {
+    width: "86%",
+    maxWidth: 360,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+  },
+  temptationOverlayCard: {
+    width: "100%",
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderRadius: 24,
   },
   priceModalButtons: {
     gap: 10,
