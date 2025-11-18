@@ -15,10 +15,10 @@
     "@react-native-firebase/analytics": "^23.5.0",
     "@react-native-firebase/app": "^23.5.0",
     "@sentry/react-native": "^5.0.0",
-    "expo": "~54.0.23",
+    "expo": "^54.0.24",
     "expo-haptics": "^15.0.7",
     "expo-image-picker": "~17.0.8",
-    "expo-notifications": "^0.32.12",
+    "expo-notifications": "^0.28.19",
     "expo-status-bar": "~3.0.8",
     "expo-web-browser": "~15.0.9",
     "react": "18.3.1",
@@ -27,7 +27,8 @@
   },
   "devDependencies": {
     "@react-native-community/cli": "latest",
-    "@react-native/metro-config": "^0.82.1"
+    "@react-native/metro-config": "^0.82.1",
+    "babel-preset-expo": "^54.0.7"
   },
   "expo": {
     "install": {
