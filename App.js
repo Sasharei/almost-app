@@ -22,12 +22,15 @@ import {
   Switch,
   LayoutAnimation,
   UIManager,
+  StatusBar as RNStatusBar,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import ConfettiCannon from "react-native-confetti-cannon";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
+import * as NavigationBar from "expo-navigation-bar";
+import { StatusBar } from "expo-status-bar";
 import Sentry, { initSentry } from "./sentry";
 import { initAnalytics, logEvent, logScreenView, setAnalyticsOptOut as setAnalyticsOptOutFlag } from "./analytics";
 import { SavingsProvider, useRealSavedAmount } from "./src/hooks/useRealSavedAmount";
@@ -70,6 +73,8 @@ const STORAGE_KEYS = {
   HIDDEN_TEMPTATIONS: "@almost_hidden_temptations",
   IMPULSE_TRACKER: "@almost_impulse_tracker",
   MOOD_STATE: "@almost_mood_state",
+  CHALLENGES: "@almost_challenges",
+  CUSTOM_REMINDER: "@almost_custom_reminder",
 };
 
 const PURCHASE_GOAL = 20000;
@@ -151,6 +156,7 @@ const SPEND_ACTION_COLOR = "#D94862";
 const GOAL_HIGHLIGHT_COLOR = "#F6C16B";
 const GOAL_SWIPE_THRESHOLD = 80;
 const DELETE_SWIPE_THRESHOLD = 130;
+const CHALLENGE_SWIPE_ACTION_WIDTH = 120;
 
 const getDayKey = (date) => {
   const d = new Date(date);
@@ -165,6 +171,10 @@ const isSameDay = (tsA, tsB = Date.now()) => {
 const DEFAULT_TEMPTATION_EMOJI = "✨";
 const DEFAULT_GOAL_EMOJI = "🎯";
 const MAX_HISTORY_EVENTS = 200;
+const HISTORY_RETENTION_MS = DAY_MS * 31;
+const HISTORY_VIEWPORT_ROWS = 5;
+const HISTORY_ITEM_HEIGHT = 60;
+const HISTORY_VIEWPORT_HEIGHT = HISTORY_VIEWPORT_ROWS * HISTORY_ITEM_HEIGHT;
 const INITIAL_DECISION_STATS = {
   resolvedToWishes: 0,
   resolvedToDeclines: 0,
@@ -690,6 +700,101 @@ const renderTemplateString = (template, params = {}) => {
   );
 };
 
+const SwipeableChallengeCard = ({
+  children,
+  colors,
+  cancelLabel,
+  onCancel,
+  onSwipeOpen,
+  onSwipeClose,
+}) => {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const gestureStartOffset = useRef(0);
+  const closerRef = useRef(null);
+
+  const closeRow = useCallback(
+    (notify = true) => {
+      Animated.timing(translateX, {
+        toValue: 0,
+        duration: 150,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start(() => {
+        if (notify) {
+          onSwipeClose?.(closerRef.current);
+          closerRef.current = null;
+        }
+      });
+    },
+    [onSwipeClose, translateX]
+  );
+
+  const notifyOpen = useCallback(() => {
+    const closer = () => closeRow();
+    closerRef.current = closer;
+    onSwipeOpen?.(closer);
+  }, [closeRow, onSwipeOpen]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && gestureState.dx < -6,
+        onPanResponderGrant: () => {
+          translateX.stopAnimation((value) => {
+            gestureStartOffset.current = value;
+          });
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const base = gestureStartOffset.current || 0;
+          const next = Math.max(-CHALLENGE_SWIPE_ACTION_WIDTH, Math.min(base + gestureState.dx, 0));
+          translateX.setValue(next);
+        },
+        onPanResponderRelease: () => {
+          translateX.stopAnimation((value) => {
+            const shouldOpen = value < -CHALLENGE_SWIPE_ACTION_WIDTH * 0.35;
+            Animated.timing(translateX, {
+              toValue: shouldOpen ? -CHALLENGE_SWIPE_ACTION_WIDTH : 0,
+              duration: 180,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: true,
+            }).start(() => {
+              if (shouldOpen) {
+                notifyOpen();
+              } else {
+                closeRow();
+              }
+            });
+          });
+        },
+        onPanResponderTerminate: () => {
+          closeRow();
+        },
+      }),
+    [closeRow, notifyOpen, translateX]
+  );
+
+  return (
+    <View style={styles.challengeSwipeWrapper}>
+      <View style={[styles.challengeSwipeActions, { backgroundColor: SPEND_ACTION_COLOR }]}>
+        <TouchableOpacity
+          style={[styles.challengeSwipeButton, { backgroundColor: SPEND_ACTION_COLOR }]}
+          onPress={() => {
+            closeRow();
+            onCancel?.();
+          }}
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.challengeSwipeButtonText, { color: colors.background }]}>{cancelLabel}</Text>
+        </TouchableOpacity>
+      </View>
+      <Animated.View style={{ transform: [{ translateX }] }} {...panResponder.panHandlers}>
+        {children}
+      </Animated.View>
+    </View>
+  );
+};
+
 const getMoodPreset = (moodId = MOOD_IDS.NEUTRAL, language = "ru") => {
   const preset = MOOD_PRESETS[moodId] || MOOD_PRESETS[MOOD_IDS.NEUTRAL];
   const localize = (value) => {
@@ -1206,6 +1311,7 @@ const TRANSLATIONS = {
     profileSave: "Сохранить",
     profileCancel: "Отмена",
     profileOk: "ок",
+    profileJoinDate: "В осознанной экономии с {{date}}",
     settingsTitle: "Настройки и персонализация",
     analyticsOptInLabel: "Отправлять анонимную аналитику",
     analyticsOptInHint: "Помогает улучшать Almost без передачи личных данных",
@@ -1248,7 +1354,7 @@ const TRANSLATIONS = {
     saveGoalComplete: "Цель «{{goal}}» достигнута! Можно праздновать.",
     statsSpent: "Закрыто целей",
     statsSaved: "Спасено",
-    statsItems: "Хотелок",
+    statsItems: "Целей",
     statsCart: "В листе",
     statsDeclines: "Отказов",
     statsFreeDays: "Серия дней",
@@ -1257,6 +1363,12 @@ const TRANSLATIONS = {
     analyticsPendingToDecline: "Отказы",
     analyticsFridgeCount: "В «думаем»",
     analyticsBestStreak: "Бесплатных дней",
+    analyticsConsentTitle: "Поможешь нам стать лучше?",
+    analyticsConsentBody:
+      "Мы собираем анонимную аналитику, чтобы понимать, какие решения помогают экономить чаще. Никакие персональные данные не сохраняем.",
+    analyticsConsentAgree: "Делиться аналитикой",
+    analyticsConsentSkip: "Продолжить без аналитики",
+    onboardingBack: "Назад",
     historyTitle: "История событий",
     historyEmpty: "Тишина. Добавь цель или отметь бесплатный день.",
     historyWishAdded: "Добавлена хотелка: {{title}}",
@@ -1273,6 +1385,11 @@ const TRANSLATIONS = {
       male: "Потратил: {{title}} (-{{amount}})",
       none: "Потрачено: {{title}} (-{{amount}})",
     },
+    historyWishRemoved: "Удалена цель: {{title}}",
+    historyGoalStarted: "Начата цель: {{title}}",
+    historyGoalCancelled: "Отменена цель: {{title}}",
+    historyRewardClaimed: "Получено достижение: {{title}}",
+    historyMoodChanged: "Режим настроения: {{label}}",
     historyTimestamp: "{{date}} · {{time}}",
     historyUnknown: "Событие",
     progressHeroTitle: "Реально спасено",
@@ -1322,6 +1439,41 @@ const TRANSLATIONS = {
     freeDayHealthSubtitle: "Используй, чтобы спасти серию.",
     rewardCelebrateTitle: "Награда «{{title}}» получена!",
     rewardCelebrateSubtitle: "Алми ликует: продолжай накапливать достижения.",
+    challengeTabTitle: "Челленджи",
+    challengeRewardsTabTitle: "Награды",
+    challengeStartCta: "Взять челлендж",
+    challengeClaimCta: "Собрать награду",
+    challengeActiveCta: "В процессе",
+    challengeStatusAvailable: "Готов к старту",
+    challengeStatusActive: "Активен",
+    challengeStatusCompleted: "Готов к выдаче",
+    challengeStatusExpired: "Просрочен",
+    challengeStatusClaimed: "Пройден",
+    challengeRewardLabel: "Награда",
+    challengeRewardHealth: "+{{amount}} здоровья",
+    challengeProgressLabel: "{{current}} / {{target}}",
+    challengeDurationLabel: "Длительность: {{days}} дн.",
+    challengeTimeLeftLabel: "Осталось {{time}}",
+    challengeTimeDayShort: "д",
+    challengeTimeHourShort: "ч",
+    challengeTimeMinuteShort: "м",
+    challengeTimeExpired: "Время вышло",
+    challengeReadyToClaim: "Готов к выдаче",
+    challengeRestartHint: "Можно повторить — длительность {{days}} дн.",
+    challengeStartedOverlay: "Челлендж «{{title}}» запущен",
+    challengeCompletedOverlay: "«{{title}}» выполнен — забери награду!",
+    challengeClaimedOverlay: "За челлендж «{{title}}»",
+    challengeReminderTitle: "Челлендж «{{title}}»",
+    challengeReminderBody: "Продолжай — совсем скоро финиш у «{{title}}».",
+    challengeCancelAction: "Отменить",
+    challengeAcceptConfirmTitle: "Начать челлендж?",
+    challengeAcceptConfirmMessage: "Запустить «{{title}}»? Время пойдёт сразу.",
+    challengeAcceptConfirmYes: "Начать",
+    challengeAcceptConfirmNo: "Не сейчас",
+    challengeCancelConfirmTitle: "Отменить челлендж?",
+    challengeCancelConfirmMessage: "Прервать «{{title}}»? Прогресс обнулится.",
+    challengeCancelConfirmYes: "Отменить",
+    challengeCancelConfirmNo: "Продолжить",
     healthCelebrateTitle: "+{{amount}} здоровья",
     healthCelebrateSubtitle: "Сохраняй серию бесплатных дней.",
     healthCelebrateLevel: "Новый уровень — здоровье пополнено.",
@@ -1354,6 +1506,8 @@ const TRANSLATIONS = {
     nextButton: "Дальше",
     goalTitle: "Определим цель",
     goalSubtitle: "Выбери главное направление экономии",
+    goalCustomSectionTitle: "Свои цели",
+    goalCustomCreate: "Добавить свою цель",
     goalButton: "Готово",
     goalCompleteMessage: "Всё готово, погнали копить!",
     goalPrimaryBadge: "Главная цель",
@@ -1362,7 +1516,6 @@ const TRANSLATIONS = {
     goalTargetPlaceholder: "Например 1200",
     goalTargetHint: "Сумму можно поменять позже в профиле.",
     goalTargetCTA: "Запомнить",
-    goalTargetBack: "Назад к целям",
     goalTargetError: "Введи сумму цели",
     goalTargetLabel: "Сумма главной цели",
     primaryGoalLabel: "Главная цель",
@@ -1405,6 +1558,10 @@ const TRANSLATIONS = {
     goalCelebrationTitle: "Главная цель достигнута!",
     goalCelebrationSubtitle: "Алми гордится тобой. Можно выбрать новую мечту.",
     goalCelebrationTarget: "Собрано {{amount}}",
+    goalRenewalTitle: "Новая главная цель?",
+    goalRenewalSubtitle: "Зафиксируй следующую мечту, чтобы Almost продолжал вести тебя к ней.",
+    goalRenewalCreate: "Создать цель",
+    goalRenewalLater: "Позже",
     levelWidgetTitle: "Прогресс уровней",
     levelWidgetCurrent: "Уровень {{level}}",
     levelWidgetSubtitle: "До следующего уровня {{amount}}",
@@ -1424,13 +1581,17 @@ const TRANSLATIONS = {
     personaGenderLabel: "Как к тебе обращаться?",
     personaHabitLabel: "Профиль, который ближе всего",
     personaConfirm: "Продолжить",
-    customSpendTitle: "Твоя ежедневная трата",
-    customSpendSubtitle: "Дай ей имя, и мы превратим её в первую мини-цель",
+    customSpendTitle: "Твоё ежедневное искушение",
+    customSpendSubtitle: "Дай ему имя — Almost поможет отказываться чаще.",
     customSpendNamePlaceholder: "Матча, сигареты, маникюр...",
     customSpendAmountLabel: "Сколько стоит один раз?",
     customSpendAmountPlaceholder: "Например 550",
+    customSpendFrequencyLabel: "Сколько раз в неделю поддаёшься?",
+    customSpendFrequencyPlaceholder: "Например 4",
     customSpendHint: "Это всегда можно поменять в профиле.",
     customSpendSkip: "Пропустить",
+    smartReminderTitle: "Пауза перед «{{temptation}}»",
+    smartReminderBody: "Ты решил копить вместо «{{temptation}}». Хочешь удержать фокус?",
     baselineTitle: "Сколько уходит на мелкие импульсы?",
     baselineSubtitle: "Прикинь месячную сумму — Almost сравнит её с реальными победами.",
     baselinePlaceholder: "Например 4300",
@@ -1567,6 +1728,7 @@ const TRANSLATIONS = {
     profileSave: "Save",
     profileCancel: "Cancel",
     profileOk: "Ok",
+    profileJoinDate: "Mindful saving since {{date}}",
     settingsTitle: "Settings & personalisation",
     analyticsOptInLabel: "Send anonymous analytics",
     analyticsOptInHint: "Helps improve Almost without sharing personal data",
@@ -1617,7 +1779,7 @@ const TRANSLATIONS = {
     freeDayTotalLabel: "Total: {{total}}",
     statsSpent: "Finished goals",
     statsSaved: "Saved",
-    statsItems: "Wishes",
+    statsItems: "Goals",
     statsCart: "In list",
     statsDeclines: "Declines",
     statsFreeDays: "Streak",
@@ -1626,6 +1788,12 @@ const TRANSLATIONS = {
     analyticsPendingToDecline: "Declines",
     analyticsFridgeCount: "Thinking list",
     analyticsBestStreak: "Free days",
+    analyticsConsentTitle: "Help us improve?",
+    analyticsConsentBody:
+      "We collect anonymous analytics to see which moments inspire more saving. No personal data is stored.",
+    analyticsConsentAgree: "Share analytics",
+    analyticsConsentSkip: "Skip for now",
+    onboardingBack: "Back",
     historyTitle: "Event log",
     historyEmpty: "Nothing yet. Add a goal or mark a free day.",
     historyWishAdded: "Wish added: {{title}}",
@@ -1638,6 +1806,11 @@ const TRANSLATIONS = {
     historyPendingDecline: "Later decision → decline: {{title}} (+{{amount}})",
     historyFreeDay: "Free day #{{total}}",
     historySpend: "Spent on {{title}} (-{{amount}})",
+    historyWishRemoved: "Goal removed: {{title}}",
+    historyGoalStarted: "Goal started: {{title}}",
+    historyGoalCancelled: "Goal cancelled: {{title}}",
+    historyRewardClaimed: "Reward claimed: {{title}}",
+    historyMoodChanged: "Mood mode: {{label}}",
     historyTimestamp: "{{date}} · {{time}}",
     historyUnknown: "Event",
     progressHeroTitle: "Real savings",
@@ -1675,6 +1848,41 @@ const TRANSLATIONS = {
     freeDayHealthSubtitle: "Spend to rescue the streak.",
     rewardCelebrateTitle: "“{{title}}” unlocked!",
     rewardCelebrateSubtitle: "Almi is proud—keep the streak going.",
+    challengeTabTitle: "Challenges",
+    challengeRewardsTabTitle: "Rewards",
+    challengeStartCta: "Start challenge",
+    challengeClaimCta: "Collect reward",
+    challengeActiveCta: "In progress",
+    challengeStatusAvailable: "Ready to start",
+    challengeStatusActive: "Active",
+    challengeStatusCompleted: "Ready to claim",
+    challengeStatusExpired: "Expired",
+    challengeStatusClaimed: "Completed",
+    challengeRewardLabel: "Reward",
+    challengeRewardHealth: "+{{amount}} health",
+    challengeProgressLabel: "{{current}} / {{target}}",
+    challengeDurationLabel: "Duration: {{days}} days",
+    challengeTimeLeftLabel: "{{time}} left",
+    challengeTimeDayShort: "d",
+    challengeTimeHourShort: "h",
+    challengeTimeMinuteShort: "m",
+    challengeTimeExpired: "Time is up",
+    challengeReadyToClaim: "Reward ready",
+    challengeRestartHint: "Repeat anytime ({{days}}-day run)",
+    challengeStartedOverlay: "Challenge “{{title}}” started",
+    challengeCompletedOverlay: "“{{title}}” complete — collect the bonus!",
+    challengeClaimedOverlay: "Challenge “{{title}}”",
+    challengeReminderTitle: "Challenge “{{title}}”",
+    challengeReminderBody: "You're close to finishing “{{title}}”. Keep going!",
+    challengeCancelAction: "Cancel",
+    challengeAcceptConfirmTitle: "Start challenge?",
+    challengeAcceptConfirmMessage: "Kick off “{{title}}”? The timer starts right away.",
+    challengeAcceptConfirmYes: "Start",
+    challengeAcceptConfirmNo: "Not now",
+    challengeCancelConfirmTitle: "Cancel this challenge?",
+    challengeCancelConfirmMessage: "Stop “{{title}}”? All progress will reset.",
+    challengeCancelConfirmYes: "Cancel",
+    challengeCancelConfirmNo: "Keep going",
     healthCelebrateTitle: "+{{amount}} health",
     healthCelebrateSubtitle: "Use it to rescue your free-day streak.",
     healthCelebrateLevel: "Level up bonus — health restored.",
@@ -1707,6 +1915,8 @@ const TRANSLATIONS = {
     nextButton: "Continue",
     goalTitle: "Pick a goal",
     goalSubtitle: "Where should your mindful deals lead?",
+    goalCustomSectionTitle: "Your goals",
+    goalCustomCreate: "Add your own goal",
     goalButton: "Start saving",
     goalCompleteMessage: "You’re set. Let’s start saving!",
     goalPrimaryBadge: "Primary goal",
@@ -1715,7 +1925,6 @@ const TRANSLATIONS = {
     goalTargetPlaceholder: "E.g. 1200",
     goalTargetHint: "You can edit the amount later in the profile.",
     goalTargetCTA: "Save amount",
-    goalTargetBack: "Back to goals",
     goalTargetError: "Enter a goal amount",
     goalTargetLabel: "Goal amount",
     primaryGoalLabel: "Primary goal",
@@ -1751,6 +1960,10 @@ const TRANSLATIONS = {
     goalCelebrationTitle: "Main goal complete!",
     goalCelebrationSubtitle: "Almi is proud — time to pick the next dream.",
     goalCelebrationTarget: "Saved {{amount}}",
+    goalRenewalTitle: "Pick a new main goal",
+    goalRenewalSubtitle: "You finished this one — lock in a fresh target to keep the streak alive.",
+    goalRenewalCreate: "Set new goal",
+    goalRenewalLater: "Later",
     levelWidgetTitle: "Level progress",
     levelWidgetCurrent: "Level {{level}}",
     levelWidgetSubtitle: "{{amount}} to the next level",
@@ -1771,12 +1984,16 @@ const TRANSLATIONS = {
     personaHabitLabel: "Pick a starter profile",
     personaConfirm: "Continue",
     customSpendTitle: "Your daily temptation",
-    customSpendSubtitle: "Give it a short name and we’ll turn it into the first mini goal",
+    customSpendSubtitle: "Give it a short name and Almost will help you resist it more often.",
     customSpendNamePlaceholder: "Morning latte, cigarettes, nail art…",
     customSpendAmountLabel: "Cost per attempt",
     customSpendAmountPlaceholder: "E.g. 7.50",
+    customSpendFrequencyLabel: "How many times per week does it usually win?",
+    customSpendFrequencyPlaceholder: "E.g. 4",
     customSpendHint: "You can change this anytime in the profile.",
     customSpendSkip: "Skip for now",
+    smartReminderTitle: "Pause before “{{temptation}}”",
+    smartReminderBody: "You planned to save instead of “{{temptation}}”. Stay on track?",
     baselineTitle: "How much slips on small stuff?",
     baselineSubtitle: "Estimate one month of coffees, snacks and impulse buys to compare with real wins.",
     baselinePlaceholder: "E.g. 120",
@@ -2091,11 +2308,11 @@ const removePrimaryGoalFromProfile = (profileState = {}, goalId) => {
   };
 };
 
-const updatePrimaryGoalTargetInProfile = (profileState = {}, goalId, targetUSD) => {
+const updatePrimaryGoalTargetInProfile = (profileState = {}, goalId, targetUSD, extra = {}) => {
   if (!goalId) return profileState;
   const currentGoals = Array.isArray(profileState.primaryGoals) ? profileState.primaryGoals : [];
   const updated = currentGoals.map((goal) =>
-    goal.id === goalId ? { ...goal, targetUSD } : goal
+    goal.id === goalId ? { ...goal, targetUSD, ...extra } : goal
   );
   return {
     ...profileState,
@@ -2108,8 +2325,8 @@ const DEFAULT_PROFILE = {
   name: "Nina Cleanova",
   firstName: "Nina",
   lastName: "Cleanova",
-  subtitle: "Управляю хотелками и бюджетом",
-  motto: "Управляю хотелками и бюджетом",
+  subtitle: "",
+  motto: "",
   bio: "Люблю красивые вещи, но больше люблю финансовый план",
   avatar: "",
   currency: "USD",
@@ -2124,6 +2341,7 @@ const DEFAULT_PROFILE = {
     baselineMonthlyWasteUSD: 0,
     baselineStartAt: null,
   },
+  joinedAt: null,
 };
 
 const INITIAL_REGISTRATION = {
@@ -2136,10 +2354,12 @@ const INITIAL_REGISTRATION = {
   persona: "mindful_coffee",
   customSpendTitle: "",
   customSpendAmount: "",
+  customSpendFrequency: "",
   baselineMonthlyWaste: "",
   baselineCapturedAt: null,
   goalSelections: [],
   goalTargetMap: {},
+  customGoals: [],
 };
 
 const DEFAULT_TEMPTATIONS = [
@@ -2646,6 +2866,7 @@ function TemptationCard({
   onQuickGoalToggle,
   showEditorInline = false,
   cardStyle = null,
+  isPrimaryTemptation = false,
 }) {
   const title = resolveTemptationTitle(item, language, titleOverride);
   const desc = item.description?.[language] || item.description?.en || "";
@@ -2678,13 +2899,17 @@ function TemptationCard({
       };
   const baseCardBackground = isDarkTheme ? darkCardPalette.background : baseColor;
   const cardBackground = baseCardBackground;
-  const cardBorderColor = highlightPinned
+  const primaryHighlightColor = "#FF4D5A";
+  const cardBorderColor = isPrimaryTemptation
+    ? primaryHighlightColor
+    : highlightPinned
     ? GOAL_HIGHLIGHT_COLOR
     : isDarkTheme
     ? darkCardPalette.border
     : highlight
     ? colors.text
     : "transparent";
+  const borderWidth = isPrimaryTemptation ? 3 : highlight ? 2 : 1;
   const cardTextColor = isDarkTheme ? darkCardPalette.text : colors.text;
   const cardMutedColor = isDarkTheme ? darkCardPalette.muted : colors.muted;
   const coinBurstColor = isDarkTheme ? "#FFD78B" : "#FFF4B3";
@@ -2828,14 +3053,19 @@ function TemptationCard({
           {
             backgroundColor: cardBackground,
             borderColor: cardBorderColor,
-            borderWidth: highlight ? 2 : 1,
+            borderWidth,
             transform: [{ translateX }],
           },
         ]}
       >
         <TouchableWithoutFeedback onPress={handleCardPress}>
           <View>
-      <View style={styles.temptationHeader}>
+      <View
+        style={[
+          styles.temptationHeader,
+          !showEditorInline && (isWishlistGoal || goalLabel) ? { paddingRight: 64 } : null,
+        ]}
+      >
         {showEditorInline ? (
           <View style={styles.titleEditWrapper}>
             <View
@@ -2881,19 +3111,36 @@ function TemptationCard({
           </>
         )}
       </View>
-      {!showEditorInline && isWishlistGoal && (
-        <View
-          style={[
-            styles.temptationPinnedBadge,
-            {
-              borderColor: GOAL_HIGHLIGHT_COLOR,
-              backgroundColor: isDarkTheme ? "rgba(246,193,107,0.2)" : "rgba(246,193,107,0.12)",
-            },
-          ]}
-        >
-          <Text style={[styles.temptationPinnedBadgeText, { color: GOAL_HIGHLIGHT_COLOR }]}>
-            {t("goalPinnedBadge")}
-          </Text>
+      {!showEditorInline && (isWishlistGoal || goalLabel) && (
+        <View style={styles.temptationBadgeStack} pointerEvents="none">
+          {goalLabel && (
+            <View
+              style={[
+                styles.temptationGoalBadge,
+                styles.temptationGoalBadgeFloating,
+                { backgroundColor: defaultGoalBadgeBackground, borderColor: defaultGoalBadgeBorder },
+              ]}
+            >
+              <Text style={[styles.temptationGoalBadgeText, { color: defaultGoalBadgeText }]}>
+                {t("goalPinnedBadge")}
+              </Text>
+            </View>
+          )}
+          {isWishlistGoal && (
+            <View
+              style={[
+                styles.temptationPinnedBadge,
+                {
+                  borderColor: GOAL_HIGHLIGHT_COLOR,
+                  backgroundColor: isDarkTheme ? "rgba(246,193,107,0.2)" : "rgba(246,193,107,0.12)",
+                },
+              ]}
+            >
+              <Text style={[styles.temptationPinnedBadgeText, { color: GOAL_HIGHLIGHT_COLOR }]}>
+                {t("goalPinnedBadge")}
+              </Text>
+            </View>
+          )}
         </View>
       )}
       {showEditorInline ? (
@@ -3096,8 +3343,13 @@ function SavingsHeroCard({
   hasBaseline = false,
   onBaselineSetup = () => {},
   onPotentialDetailsOpen = null,
+  levelHasNext = false,
+  levelRemainingLabel = "",
+  levelTargetLabel = "",
+  levelProgressValue = 0,
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [levelExpanded, setLevelExpanded] = useState(false);
   const maxAmount = Math.max(...dailySavings.map((day) => day.amountUSD), 0);
   const potentialLocal = formatCurrency(convertToCurrency(potentialSavedUSD || 0, currency), currency);
   const actualLocal = formatCurrency(convertToCurrency(actualSavedUSD || 0, currency), currency);
@@ -3146,20 +3398,60 @@ function SavingsHeroCard({
             {heroSpendCopy}
           </Text>
         </View>
+        <TouchableOpacity
+          style={styles.savedHeroLevelButton}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          activeOpacity={0.85}
+          onPress={() => setLevelExpanded((prev) => !prev)}
+        >
+          <View
+            style={[
+              styles.savedHeroLevelBadge,
+              {
+                backgroundColor: goldPalette.badgeBg,
+                borderColor: goldPalette.badgeBorder,
+              },
+            ]}
+          >
+            <Text style={[styles.savedHeroLevelText, { color: goldPalette.badgeText }]}>
+              {levelLabel}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+      {levelExpanded && (
         <View
           style={[
-            styles.savedHeroLevelBadge,
+            styles.heroLevelDetails,
             {
               backgroundColor: goldPalette.badgeBg,
               borderColor: goldPalette.badgeBorder,
             },
           ]}
         >
-          <Text style={[styles.savedHeroLevelText, { color: goldPalette.badgeText }]}>
-            {levelLabel}
+          <Text style={[styles.heroLevelTitle, { color: goldPalette.text }]}>
+            {t("levelWidgetTitle")}
           </Text>
+          <Text style={[styles.heroLevelSubtitle, { color: goldPalette.subtext }]}>
+            {levelHasNext
+              ? t("levelWidgetSubtitle", { amount: levelRemainingLabel })
+              : t("levelWidgetMaxed")}
+          </Text>
+          <View style={[styles.levelWidgetBar, { backgroundColor: goldPalette.barBg }]}>
+            <View
+              style={[
+                styles.levelWidgetFill,
+                { backgroundColor: goldPalette.accent, width: `${Math.min(Math.max(levelProgressValue, 0), 1) * 100}%` },
+              ]}
+            />
+          </View>
+          {levelHasNext && (
+            <Text style={[styles.heroLevelMeta, { color: goldPalette.subtext }]}>
+              {t("levelWidgetTarget", { amount: levelTargetLabel })}
+            </Text>
+          )}
         </View>
-      </View>
+      )}
       <View style={styles.savedHeroAmountWrap}>
         <Text style={[styles.progressHeroAmount, { color: goldPalette.text }]}>
           {heroSavedLabel}
@@ -3543,7 +3835,7 @@ function SpendConfirmSheet({
   const displayTitle =
     item?.title?.[language] || item?.title?.en || item?.title || t("defaultDealTitle");
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
       <View style={styles.payBackdrop}>
         <TouchableWithoutFeedback onPress={onCancel}>
           <View style={styles.payBackdropHit} />
@@ -3844,6 +4136,10 @@ function FeedScreen({
     return heroLine;
   }, [isGoalComplete, moodPreset, t]);
   const moodGradient = useMemo(() => getMoodGradient(moodPreset?.id), [moodPreset?.id]);
+  const mainTemptationId = useMemo(() => {
+    if (!profile?.customSpend) return null;
+    return profile.customSpend.id || "custom_habit";
+  }, [profile?.customSpend]);
   const isDarkMode = colors === THEMES.dark;
   const goldPalette = useMemo(
     () =>
@@ -3914,6 +4210,18 @@ function FeedScreen({
   const tierProgress = tierInfo.nextTargetUSD
     ? (savedTotalUSD - tierInfo.prevTargetUSD) / span
     : 1;
+  const heroLevelHasNext = !!tierInfo.nextTargetUSD;
+  const heroLevelCurrency = profile?.currency || DEFAULT_PROFILE.currency;
+  const heroLevelRemainingUSD = heroLevelHasNext
+    ? Math.max(tierInfo.nextTargetUSD - savedTotalUSD, 0)
+    : 0;
+  const heroLevelRemainingLabel = heroLevelHasNext
+    ? formatCurrency(convertToCurrency(heroLevelRemainingUSD, heroLevelCurrency), heroLevelCurrency)
+    : "";
+  const heroLevelTargetLabel = heroLevelHasNext
+    ? formatCurrency(convertToCurrency(tierInfo.nextTargetUSD, heroLevelCurrency), heroLevelCurrency)
+    : "";
+  const heroLevelProgress = Math.min(Math.max(tierProgress, 0), 1);
   const previousSavedTotal = useRef(savedTotalUSD);
   useEffect(() => {
     if (savedTotalUSD > previousSavedTotal.current) {
@@ -3939,6 +4247,18 @@ function FeedScreen({
   const progressPercent = Math.min(Math.max(goalProgress, 0), 1);
   const progressPercentLabel = Math.round(progressPercent * 100);
   const levelLabel = t("progressHeroLevel", { level: tierInfo.level });
+  const levelCurrency = profile?.currency || DEFAULT_PROFILE.currency;
+  const levelProgress = Math.min(Math.max(tierProgress, 0), 1);
+  const levelRemainingUSD = tierInfo.nextTargetUSD
+    ? Math.max(tierInfo.nextTargetUSD - savedTotalUSD, 0)
+    : 0;
+  const levelRemainingLabel = formatCurrency(
+    convertToCurrency(levelRemainingUSD, levelCurrency),
+    levelCurrency
+  );
+  const levelTargetLabel = tierInfo.nextTargetUSD
+    ? formatCurrency(convertToCurrency(tierInfo.nextTargetUSD, levelCurrency), levelCurrency)
+    : "";
   const nextLabel = heroGoalTargetUSD
     ? isGoalComplete
       ? t("goalWidgetComplete")
@@ -4112,14 +4432,18 @@ function FeedScreen({
               completionLabel={t("goalWidgetComplete")}
               t={t}
               dailySavings={savingsDaily}
-              analyticsPreview={analyticsPreview}
-              potentialSavedUSD={potentialSavedUSD}
-              actualSavedUSD={realSavedUSD}
-              currency={currency}
-              hasBaseline={hasBaseline}
-              onBaselineSetup={handleBaselineSetup}
-              onPotentialDetailsOpen={handlePotentialDetailsOpen}
-            />
+            analyticsPreview={analyticsPreview}
+            potentialSavedUSD={potentialSavedUSD}
+            actualSavedUSD={realSavedUSD}
+            currency={currency}
+            hasBaseline={hasBaseline}
+            onBaselineSetup={handleBaselineSetup}
+            onPotentialDetailsOpen={handlePotentialDetailsOpen}
+            levelHasNext={heroLevelHasNext}
+            levelRemainingLabel={heroLevelRemainingLabel}
+            levelTargetLabel={heroLevelTargetLabel}
+            levelProgressValue={heroLevelProgress}
+          />
             <FreeDayCard
               colors={colors}
               t={t}
@@ -4194,6 +4518,7 @@ function FeedScreen({
               onEditGoalSelect={() => onTemptationGoalSelect?.(item)}
               onSwipeDelete={() => onTemptationSwipeDelete?.(item)}
               onQuickGoalToggle={() => onTemptationQuickGoalToggle?.(item)}
+              isPrimaryTemptation={item.id === mainTemptationId}
               onAction={async (type) => {
                 await onTemptationAction(type, item);
               }}
@@ -4442,7 +4767,7 @@ function WishListScreen({
         const displayTitle = getWishTitleWithoutEmoji(wish);
         if (isPrimaryGoal) {
           const preset = getGoalPreset(wish.goalId || primaryGoalIds[0]);
-          const emblem = preset?.emoji || "🎯";
+          const emblem = wish.emoji || resolveWishEmoji(wish) || preset?.emoji || "🎯";
           const secondaryColor = isDarkTheme
             ? "rgba(14,15,22,0.65)"
             : "rgba(246,247,251,0.8)";
@@ -4553,8 +4878,16 @@ function WishListScreen({
                   </Text>
                 </View>
               </View>
-              <View style={styles.goalBadge}>
-                <Text style={[styles.goalBadgeText, { color: colors.text }]}>{badgeText}</Text>
+              <View
+                style={[
+                  styles.wishBadge,
+                  {
+                    borderColor: isDarkTheme ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.08)",
+                    backgroundColor: isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)",
+                  },
+                ]}
+              >
+                <Text style={[styles.wishBadgeText, { color: colors.text }]}>{badgeText}</Text>
               </View>
             </View>
             <Text style={[styles.pendingPrice, { color: colors.text }]}>{targetLocal}</Text>
@@ -4794,6 +5127,590 @@ const ACHIEVEMENT_DEFS = [
   },
 ];
 
+const CHALLENGE_METRIC_TYPES = {
+  SAVE_COUNT: "SAVE_COUNT",
+  SAVE_AMOUNT: "SAVE_AMOUNT",
+  FREE_DAY_STREAK: "FREE_DAY_STREAK",
+  REFUSE_DAY_STREAK: "REFUSE_DAY_STREAK",
+  PENDING_DECISIONS: "PENDING_DECISIONS",
+  WISH_ADDED: "WISH_ADDED",
+  PENDING_ADDED: "PENDING_ADDED",
+  WEEKEND_SAVES: "WEEKEND_SAVES",
+  MORNING_FREE_DAY: "MORNING_FREE_DAY",
+  HIGH_VALUE_SAVE: "HIGH_VALUE_SAVE",
+};
+
+const CHALLENGE_STATUS = {
+  IDLE: "idle",
+  ACTIVE: "active",
+  COMPLETED: "completed",
+  CLAIMED: "claimed",
+  EXPIRED: "expired",
+};
+
+const CHALLENGE_STATUS_ORDER = {
+  [CHALLENGE_STATUS.COMPLETED]: 0,
+  [CHALLENGE_STATUS.ACTIVE]: 1,
+  [CHALLENGE_STATUS.IDLE]: 2,
+  [CHALLENGE_STATUS.EXPIRED]: 3,
+  [CHALLENGE_STATUS.CLAIMED]: 4,
+};
+
+const CHALLENGE_DEFS = [
+  {
+    id: "coffee_free_week",
+    emoji: "🛡️",
+    metricType: CHALLENGE_METRIC_TYPES.REFUSE_DAY_STREAK,
+    targetValue: 7,
+    durationDays: 12,
+    rewardHealth: 24,
+    reminderOffsetsHours: [24, 96, 168],
+    copy: {
+      ru: {
+        title: "Неделя привычки",
+        desc: "Каждый день в течение недели отметь хотя бы один отказ.",
+      },
+      en: {
+        title: "Habit week",
+        desc: "Log at least one refusal every day for a full week.",
+      },
+    },
+  },
+  {
+    id: "micro_detox",
+    emoji: "🌀",
+    metricType: CHALLENGE_METRIC_TYPES.FREE_DAY_STREAK,
+    targetValue: 3,
+    durationDays: 5,
+    rewardHealth: 12,
+    reminderOffsetsHours: [24, 72],
+    copy: {
+      ru: {
+        title: "Три дня ясности",
+        desc: "Собери {{count}} бесплатных дня подряд и встряхни бюджет.",
+      },
+      en: {
+        title: "Clarity streak",
+        desc: "Log {{count}} impulse-free days in a row for a quick reset.",
+      },
+    },
+  },
+  {
+    id: "refuse_sprint",
+    emoji: "⚔️",
+    metricType: CHALLENGE_METRIC_TYPES.SAVE_COUNT,
+    targetValue: 6,
+    durationDays: 4,
+    rewardHealth: 10,
+    reminderOffsetsHours: [24, 72],
+    copy: {
+      ru: {
+        title: "Спринт отказов",
+        desc: "Зафиксируй {{count}} осознанных «нет» подряд и укрепи привычку.",
+      },
+      en: {
+        title: "Decline sprint",
+        desc: "Record {{count}} mindful refusals in a row to lock the habit.",
+      },
+    },
+  },
+  {
+    id: "health_boost",
+    emoji: "💰",
+    metricType: CHALLENGE_METRIC_TYPES.SAVE_AMOUNT,
+    targetValue: 80,
+    durationDays: 7,
+    rewardHealth: 18,
+    reminderOffsetsHours: [24, 96],
+    copy: {
+      ru: {
+        title: "Ускоритель накоплений",
+        desc: "Направь в копилку {{amount}} отказами всего за неделю.",
+      },
+      en: {
+        title: "Savings boost",
+        desc: "Route {{amount}} into savings through refusals this week.",
+      },
+    },
+  },
+  {
+    id: "fridge_cleaner",
+    emoji: "🧊",
+    metricType: CHALLENGE_METRIC_TYPES.PENDING_DECISIONS,
+    targetValue: 3,
+    durationDays: 6,
+    rewardHealth: 12,
+    reminderOffsetsHours: [24, 72, 120],
+    copy: {
+      ru: {
+        title: "Разгрузи «думаем»",
+        desc: "Разрули {{count}} отложенных решений и освободи голову.",
+      },
+      en: {
+        title: "Clear the shelf",
+        desc: "Resolve {{count}} items from the thinking list and free up focus.",
+      },
+    },
+  },
+  {
+    id: "goal_creator",
+    emoji: "🧭",
+    metricType: CHALLENGE_METRIC_TYPES.WISH_ADDED,
+    targetValue: 2,
+    durationDays: 4,
+    rewardHealth: 10,
+    reminderOffsetsHours: [24, 48],
+    copy: {
+      ru: {
+        title: "Новая карта целей",
+        desc: "Добавь {{count}} свежих целей и напомни себе, ради чего экономишь.",
+      },
+      en: {
+        title: "Goal-mapping",
+        desc: "Add {{count}} new wishes to remember why you save.",
+      },
+    },
+  },
+  {
+    id: "weekend_focus",
+    emoji: "🛡️",
+    metricType: CHALLENGE_METRIC_TYPES.WEEKEND_SAVES,
+    targetValue: 3,
+    durationDays: 8,
+    rewardHealth: 14,
+    reminderOffsetsHours: [48, 96],
+    copy: {
+      ru: {
+        title: "Выходные под защитой",
+        desc: "Сделай {{count}} отказа именно в выходные и сохрани спокойствие.",
+      },
+      en: {
+        title: "Weekend shield",
+        desc: "Log {{count}} refusals during the weekend rush.",
+      },
+    },
+  },
+  {
+    id: "morning_free",
+    emoji: "🌅",
+    metricType: CHALLENGE_METRIC_TYPES.MORNING_FREE_DAY,
+    targetValue: 2,
+    durationDays: 5,
+    rewardHealth: 12,
+    reminderOffsetsHours: [12, 48],
+    copy: {
+      ru: {
+        title: "Утренний фокус",
+        desc: "Отмечай бесплатный день до полудня {{count}} раза — начни день с победы.",
+      },
+      en: {
+        title: "Morning focus",
+        desc: "Log a free day before noon {{count}} times.",
+      },
+    },
+  },
+  {
+    id: "high_roller_shield",
+    emoji: "💎",
+    metricType: CHALLENGE_METRIC_TYPES.HIGH_VALUE_SAVE,
+    targetValue: 2,
+    durationDays: 7,
+    rewardHealth: 16,
+    minAmountUSD: 35,
+    reminderOffsetsHours: [48, 120],
+    copy: {
+      ru: {
+        title: "Щит от больших трат",
+        desc: "Откажись от {{count}} крупных покупок (от {{limit}}) и держи курс.",
+      },
+      en: {
+        title: "High-roller shield",
+        desc: "Decline {{count}} big spends (over {{limit}}) to stay on track.",
+      },
+    },
+  },
+  {
+    id: "fridge_collector",
+    emoji: "📥",
+    metricType: CHALLENGE_METRIC_TYPES.PENDING_ADDED,
+    targetValue: 3,
+    durationDays: 5,
+    rewardHealth: 9,
+    reminderOffsetsHours: [24, 72],
+    copy: {
+      ru: {
+        title: "Коллекционер пауз",
+        desc: "Отправь {{count}} импульсов в «подумать позже», чтобы выиграть время.",
+      },
+      en: {
+        title: "Pause collector",
+        desc: "Park {{count}} temptations into “decide later” to buy yourself time.",
+      },
+    },
+  },
+];
+
+const CHALLENGE_DEF_MAP = CHALLENGE_DEFS.reduce((acc, def) => {
+  acc[def.id] = def;
+  return acc;
+}, {});
+
+const CHALLENGE_STATUS_LABELS = {
+  [CHALLENGE_STATUS.IDLE]: "challengeStatusAvailable",
+  [CHALLENGE_STATUS.ACTIVE]: "challengeStatusActive",
+  [CHALLENGE_STATUS.COMPLETED]: "challengeStatusCompleted",
+  [CHALLENGE_STATUS.EXPIRED]: "challengeStatusExpired",
+  [CHALLENGE_STATUS.CLAIMED]: "challengeStatusClaimed",
+};
+
+const createChallengeEntry = (id) => ({
+  id,
+  status: CHALLENGE_STATUS.IDLE,
+  progress: 0,
+  startedAt: null,
+  expiresAt: null,
+  completedAt: null,
+  claimedAt: null,
+  reminderNotificationIds: [],
+  extra: {},
+});
+
+const createInitialChallengesState = () => {
+  const base = {};
+  CHALLENGE_DEFS.forEach((def) => {
+    base[def.id] = createChallengeEntry(def.id);
+  });
+  return base;
+};
+
+const normalizeChallengesState = (rawState) => {
+  const base = createInitialChallengesState();
+  if (!rawState || typeof rawState !== "object") return base;
+  Object.keys(base).forEach((id) => {
+    const entry = rawState[id];
+    if (!entry || typeof entry !== "object") return;
+    base[id] = {
+      ...base[id],
+      ...entry,
+      id,
+      status: entry.status || CHALLENGE_STATUS.IDLE,
+      progress: Number(entry.progress) || 0,
+      extra: entry.extra && typeof entry.extra === "object" ? entry.extra : {},
+      reminderNotificationIds: Array.isArray(entry.reminderNotificationIds)
+        ? entry.reminderNotificationIds
+        : [],
+    };
+  });
+  return base;
+};
+
+const getChallengeCopy = (def, language = "ru") => {
+  const locale = language === "ru" ? "ru" : "en";
+  return def.copy?.[locale] || def.copy?.en || {};
+};
+
+const isSaveEvent = (kind) => kind === "refuse_spend" || kind === "pending_to_decline";
+
+const getDayIndexFromTimestamp = (timestamp) => {
+  const date = new Date(timestamp);
+  date.setHours(0, 0, 0, 0);
+  return Math.floor(date.getTime() / DAY_MS);
+};
+
+const isWeekendTimestamp = (timestamp) => {
+  const day = new Date(timestamp).getDay();
+  return day === 0 || day === 6;
+};
+
+const isMorningTimestamp = (timestamp) => {
+  const hours = new Date(timestamp).getHours();
+  return hours < 12;
+};
+
+const finalizeChallengeEntry = (entry, def, timestamp) => {
+  if ((entry.progress || 0) >= def.targetValue) {
+    return {
+      ...entry,
+      progress: def.targetValue,
+      status: CHALLENGE_STATUS.COMPLETED,
+      completedAt: timestamp,
+    };
+  }
+  return entry;
+};
+
+const applyChallengeEvent = (state = createInitialChallengesState(), event) => {
+  if (!event) return state;
+  let changed = false;
+  const now = event.timestamp || Date.now();
+  const nextState = { ...state };
+  Object.keys(nextState).forEach((id) => {
+    const entry = state[id] || createChallengeEntry(id);
+    const def = CHALLENGE_DEF_MAP[id];
+    if (!def || entry.status !== CHALLENGE_STATUS.ACTIVE) return;
+    if (entry.expiresAt && now > entry.expiresAt) return;
+    const updated = processChallengeEvent(entry, def, event, now);
+    if (updated !== entry) {
+      nextState[id] = updated;
+      changed = true;
+    }
+  });
+  return changed ? nextState : state;
+};
+
+const processChallengeEvent = (entry, def, event, now) => {
+  const timestamp = event.timestamp || now;
+  const meta = event.meta || {};
+  let delta = 0;
+  switch (def.metricType) {
+    case CHALLENGE_METRIC_TYPES.SAVE_COUNT:
+      if (isSaveEvent(event.kind)) {
+        delta = 1;
+      }
+      break;
+    case CHALLENGE_METRIC_TYPES.SAVE_AMOUNT:
+      if (isSaveEvent(event.kind)) {
+        const amount = Number(meta.amountUSD) || 0;
+        if (amount > 0) {
+          delta = amount;
+        }
+      }
+      break;
+    case CHALLENGE_METRIC_TYPES.PENDING_DECISIONS:
+      if (event.kind === "pending_to_decline") {
+        delta = 1;
+      }
+      break;
+    case CHALLENGE_METRIC_TYPES.WISH_ADDED:
+      if (event.kind === "wish_added") {
+        delta = 1;
+      }
+      break;
+    case CHALLENGE_METRIC_TYPES.PENDING_ADDED:
+      if (event.kind === "pending_added") {
+        delta = 1;
+      }
+      break;
+    case CHALLENGE_METRIC_TYPES.WEEKEND_SAVES:
+      if (isSaveEvent(event.kind) && isWeekendTimestamp(timestamp)) {
+        delta = 1;
+      }
+      break;
+    case CHALLENGE_METRIC_TYPES.HIGH_VALUE_SAVE:
+      if (isSaveEvent(event.kind)) {
+        const highAmount = Number(meta.amountUSD) || 0;
+        if (highAmount >= (def.minAmountUSD || 0)) {
+          delta = 1;
+        }
+      }
+      break;
+    case CHALLENGE_METRIC_TYPES.FREE_DAY_STREAK:
+      if (event.kind === "free_day") {
+        const dayIndex = getDayIndexFromTimestamp(timestamp);
+        const lastDay =
+          typeof entry.extra?.lastDayIndex === "number" ? entry.extra.lastDayIndex : null;
+        const prevStreak = entry.extra?.currentStreak || 0;
+        let nextStreak = 1;
+        if (lastDay === dayIndex) {
+          nextStreak = prevStreak;
+        } else if (lastDay === dayIndex - 1) {
+          nextStreak = prevStreak + 1;
+        }
+        const nextExtra = { ...entry.extra, lastDayIndex: dayIndex, currentStreak: nextStreak };
+        if (nextStreak === prevStreak && lastDay === dayIndex) {
+          return entry;
+        }
+        return finalizeChallengeEntry(
+          {
+            ...entry,
+            progress: Math.min(def.targetValue, nextStreak),
+            extra: nextExtra,
+          },
+          def,
+          now
+        );
+      }
+      break;
+    case CHALLENGE_METRIC_TYPES.REFUSE_DAY_STREAK:
+      if (isSaveEvent(event.kind)) {
+        const dayIndex = getDayIndexFromTimestamp(timestamp);
+        const lastDay =
+          typeof entry.extra?.lastRefuseDayIndex === "number"
+            ? entry.extra.lastRefuseDayIndex
+            : null;
+        const prevStreak = entry.extra?.refuseStreak ?? 0;
+        let nextStreak = 1;
+        if (lastDay === dayIndex) {
+          nextStreak = prevStreak;
+        } else if (lastDay === dayIndex - 1) {
+          nextStreak = prevStreak + 1;
+        }
+        const nextExtra = {
+          ...entry.extra,
+          lastRefuseDayIndex: dayIndex,
+          refuseStreak: nextStreak,
+        };
+        if (nextStreak === prevStreak && lastDay === dayIndex) {
+          return entry;
+        }
+        return finalizeChallengeEntry(
+          {
+            ...entry,
+            progress: Math.min(def.targetValue, nextStreak),
+            extra: nextExtra,
+          },
+          def,
+          now
+        );
+      }
+      break;
+    case CHALLENGE_METRIC_TYPES.MORNING_FREE_DAY:
+      if (event.kind === "free_day" && isMorningTimestamp(timestamp)) {
+        const dayIndex = getDayIndexFromTimestamp(timestamp);
+        const seenDays = Array.isArray(entry.extra?.morningDays) ? entry.extra.morningDays : [];
+        if (seenDays.includes(dayIndex)) {
+          return entry;
+        }
+        const updatedDays = [...seenDays, dayIndex];
+        return finalizeChallengeEntry(
+          {
+            ...entry,
+            progress: Math.min(def.targetValue, (entry.progress || 0) + 1),
+            extra: { ...entry.extra, morningDays: updatedDays },
+          },
+          def,
+          now
+        );
+      }
+      break;
+    default:
+      break;
+  }
+  if (!delta) return entry;
+  return finalizeChallengeEntry(
+    {
+      ...entry,
+      progress: Math.min(def.targetValue, (entry.progress || 0) + delta),
+    },
+    def,
+    now
+  );
+};
+
+const expireChallenges = (state = createInitialChallengesState(), now = Date.now()) => {
+  let changed = false;
+  const next = { ...state };
+  Object.keys(next).forEach((id) => {
+    const entry = next[id];
+    if (
+      entry?.status === CHALLENGE_STATUS.ACTIVE &&
+      entry.expiresAt &&
+      now > entry.expiresAt
+    ) {
+      next[id] = {
+        ...entry,
+        status: CHALLENGE_STATUS.EXPIRED,
+      };
+      changed = true;
+    }
+  });
+  return changed ? next : state;
+};
+
+const formatChallengeTimeLeft = (ms, t) => {
+  if (ms <= 0) return t("challengeTimeExpired");
+  const days = Math.floor(ms / DAY_MS);
+  const hours = Math.floor((ms % DAY_MS) / (1000 * 60 * 60));
+  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+  if (days > 0) {
+    return `${days}${t("challengeTimeDayShort")}${hours > 0 ? ` ${hours}${t("challengeTimeHourShort")}` : ""}`.trim();
+  }
+  if (hours > 0) {
+    return `${hours}${t("challengeTimeHourShort")}${
+      minutes > 0 ? ` ${minutes}${t("challengeTimeMinuteShort")}` : ""
+    }`.trim();
+  }
+  return `${Math.max(minutes, 1)}${t("challengeTimeMinuteShort")}`;
+};
+
+const buildChallengesDisplay = ({ state, currency, language, t }) => {
+  const currencyCode = currency || DEFAULT_PROFILE.currency;
+  const now = Date.now();
+  const list = CHALLENGE_DEFS.map((def) => {
+    const entry = state?.[def.id] || createChallengeEntry(def.id);
+    const progressValue = entry.progress || 0;
+    const percent = def.targetValue > 0 ? Math.min(1, progressValue / def.targetValue) : 0;
+    const copy = getChallengeCopy(def, language);
+    const targetLabel =
+      def.metricType === CHALLENGE_METRIC_TYPES.SAVE_AMOUNT
+        ? formatCurrency(convertToCurrency(def.targetValue, currencyCode), currencyCode)
+        : `${def.targetValue}`;
+    const progressLabelValue =
+      def.metricType === CHALLENGE_METRIC_TYPES.SAVE_AMOUNT
+        ? formatCurrency(convertToCurrency(progressValue, currencyCode), currencyCode)
+        : `${Math.floor(progressValue)}`;
+    const amountLabel =
+      def.metricType === CHALLENGE_METRIC_TYPES.SAVE_AMOUNT
+        ? targetLabel
+        : "";
+    const limitLabel = def.minAmountUSD
+      ? formatCurrency(convertToCurrency(def.minAmountUSD, currencyCode), currencyCode)
+      : "";
+    const description =
+      copy.desc && copy.desc.length
+        ? renderTemplateString(copy.desc, {
+            count: def.targetValue,
+            days: def.durationDays,
+            amount: amountLabel,
+            limit: limitLabel,
+          })
+        : "";
+    let timerLabel = t("challengeDurationLabel", { days: def.durationDays });
+    if (entry.status === CHALLENGE_STATUS.ACTIVE && entry.expiresAt) {
+      timerLabel = t("challengeTimeLeftLabel", {
+        time: formatChallengeTimeLeft(Math.max(0, entry.expiresAt - now), t),
+      });
+    } else if (entry.status === CHALLENGE_STATUS.COMPLETED) {
+      timerLabel = t("challengeReadyToClaim");
+    } else if (entry.status === CHALLENGE_STATUS.CLAIMED) {
+      timerLabel = t("challengeRestartHint", { days: def.durationDays });
+    }
+    const canStart =
+      entry.status === CHALLENGE_STATUS.IDLE ||
+      entry.status === CHALLENGE_STATUS.EXPIRED ||
+      entry.status === CHALLENGE_STATUS.CLAIMED;
+    const canClaim = entry.status === CHALLENGE_STATUS.COMPLETED;
+    let actionLabel = t("challengeActiveCta");
+    if (canClaim) {
+      actionLabel = t("challengeClaimCta");
+    } else if (canStart) {
+      actionLabel = t("challengeStartCta");
+    }
+    return {
+      id: def.id,
+      emoji: def.emoji,
+      title: copy.title || "",
+      description,
+      rewardHealth: def.rewardHealth,
+      rewardLabel: t("challengeRewardHealth", { amount: def.rewardHealth }),
+      status: entry.status,
+      statusLabel: t(CHALLENGE_STATUS_LABELS[entry.status] || CHALLENGE_STATUS_LABELS[CHALLENGE_STATUS.IDLE]),
+      progressPercent: percent,
+      progressLabel: t("challengeProgressLabel", {
+        current: progressLabelValue,
+        target: targetLabel,
+      }),
+      timerLabel,
+      canStart,
+      canClaim,
+      actionLabel,
+    };
+  });
+  return list.sort(
+    (a, b) => (CHALLENGE_STATUS_ORDER[a.status] || 99) - (CHALLENGE_STATUS_ORDER[b.status] || 99)
+  );
+};
+
 const getAchievementRemainingLabel = (metricType, remaining, currency, t) => {
   if (!remaining || remaining <= 0) return "";
   const count = Math.max(1, Math.ceil(remaining));
@@ -4868,6 +5785,12 @@ const buildAchievements = ({
 
 function RewardsScreen({
   achievements = [],
+  challenges = [],
+  activePane = "challenges",
+  onPaneChange = () => {},
+  onChallengeAccept = () => {},
+  onChallengeClaim = () => {},
+  onChallengeCancel = () => {},
   t,
   colors,
   savedTotalUSD = 0,
@@ -4876,40 +5799,231 @@ function RewardsScreen({
   healthRewardAmount = HEALTH_PER_REWARD,
 }) {
   const isDarkTheme = colors.background === THEMES.dark.background;
-  const tierInfo = getTierProgress(savedTotalUSD || 0);
-  const nextSpan = tierInfo.nextTargetUSD
-    ? Math.max(tierInfo.nextTargetUSD - (tierInfo.prevTargetUSD || 0), 1)
-    : 1;
-  const baseProgress = tierInfo.nextTargetUSD
-    ? (savedTotalUSD - (tierInfo.prevTargetUSD || 0)) / nextSpan
-    : 1;
-  const levelProgress = Math.min(Math.max(baseProgress, 0), 1);
-  const remainingUSD = tierInfo.nextTargetUSD
-    ? Math.max(tierInfo.nextTargetUSD - savedTotalUSD, 0)
-    : 0;
-  const remainingLabel = formatCurrency(convertToCurrency(remainingUSD, currency), currency);
-  const nextTargetLabel = tierInfo.nextTargetUSD
-    ? formatCurrency(convertToCurrency(tierInfo.nextTargetUSD, currency), currency)
-    : "";
-  const levelPalette = isDarkTheme
-    ? {
-        background: "rgba(7,29,23,0.95)",
-        border: "rgba(117,255,210,0.35)",
-        text: "#E7FFF5",
-        subtext: "rgba(231,255,245,0.8)",
-        track: "rgba(255,255,255,0.15)",
-        fill: "#58E0B5",
-        badgeBg: "rgba(255,255,255,0.08)",
+  const pane = activePane === "rewards" ? "rewards" : "challenges";
+  const challengeSwipeCloserRef = useRef(null);
+  const handleChallengeSwipeOpen = useCallback((closer) => {
+    if (challengeSwipeCloserRef.current && challengeSwipeCloserRef.current !== closer) {
+      challengeSwipeCloserRef.current();
+    }
+    challengeSwipeCloserRef.current = closer;
+  }, []);
+  const handleChallengeSwipeClose = useCallback((closer) => {
+    if (!closer || challengeSwipeCloserRef.current === closer) {
+      challengeSwipeCloserRef.current = null;
+    }
+  }, []);
+
+  const renderChallengeCard = (challenge) => {
+    const actionPalette = challenge.canClaim
+      ? { background: SAVE_ACTION_COLOR, text: "#fff" }
+      : challenge.canStart
+      ? { background: colors.text, text: colors.background }
+      : { background: colors.border, text: colors.muted };
+    const confirmAccept = () => {
+      Alert.alert(
+        t("challengeAcceptConfirmTitle"),
+        t("challengeAcceptConfirmMessage", { title: challenge.title }),
+        [
+          { text: t("challengeAcceptConfirmNo"), style: "cancel" },
+          {
+            text: t("challengeAcceptConfirmYes"),
+            style: "default",
+            onPress: () => onChallengeAccept?.(challenge.id),
+          },
+        ]
+      );
+    };
+    const confirmCancel = () => {
+      Alert.alert(
+        t("challengeCancelConfirmTitle"),
+        t("challengeCancelConfirmMessage", { title: challenge.title }),
+        [
+          { text: t("challengeCancelConfirmNo"), style: "cancel" },
+          {
+            text: t("challengeCancelConfirmYes"),
+            style: "destructive",
+            onPress: () => onChallengeCancel?.(challenge.id),
+          },
+        ]
+      );
+    };
+    const handleActionPress = () => {
+      if (challenge.canClaim) {
+        onChallengeClaim?.(challenge.id);
+      } else if (challenge.canStart) {
+        confirmAccept();
       }
-    : {
-        background: "#E6FFF2",
-        border: "rgba(27,140,96,0.25)",
-        text: "#063820",
-        subtext: "rgba(6,56,32,0.75)",
-        track: "rgba(6,56,32,0.15)",
-        fill: "#1BA361",
-        badgeBg: "rgba(255,255,255,0.65)",
-      };
+    };
+    const isActionEnabled = challenge.canClaim || challenge.canStart;
+    const isSwipeEnabled = challenge.status === CHALLENGE_STATUS.ACTIVE;
+    const cardBody = (
+      <View style={[styles.challengeCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.challengeHeader}>
+          <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={[styles.challengeTitle, { color: colors.text }]}>{challenge.title}</Text>
+            <Text style={[styles.challengeDesc, { color: colors.muted }]}>{challenge.description}</Text>
+          </View>
+          <View style={[styles.challengeRewardChip, { backgroundColor: colors.text }]}>
+            <Text style={[styles.challengeRewardChipText, { color: colors.background }]}>
+              {challenge.rewardLabel}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.challengeMetaRow}>
+          <Text style={[styles.challengeStatus, { color: colors.muted }]}>{challenge.statusLabel}</Text>
+          <Text style={[styles.challengeTimer, { color: colors.muted }]}>{challenge.timerLabel}</Text>
+        </View>
+        <View style={[styles.challengeProgressBar, { backgroundColor: colors.border }]}>
+          <View
+            style={[
+              styles.challengeProgressFill,
+              { width: `${challenge.progressPercent * 100}%`, backgroundColor: colors.text },
+            ]}
+          />
+        </View>
+        <Text style={[styles.challengeProgressLabel, { color: colors.muted }]}>{challenge.progressLabel}</Text>
+        <TouchableOpacity
+          style={[styles.challengeActionButton, { backgroundColor: actionPalette.background }]}
+          activeOpacity={0.9}
+          disabled={!isActionEnabled}
+          onPress={handleActionPress}
+        >
+          <Text style={[styles.challengeActionText, { color: actionPalette.text }]}>
+            {challenge.actionLabel}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+    if (isSwipeEnabled) {
+      return (
+        <SwipeableChallengeCard
+          key={challenge.id}
+          colors={colors}
+          cancelLabel={t("challengeCancelAction")}
+          onCancel={confirmCancel}
+          onSwipeOpen={handleChallengeSwipeOpen}
+          onSwipeClose={handleChallengeSwipeClose}
+        >
+          {cardBody}
+        </SwipeableChallengeCard>
+      );
+    }
+    return (
+      <View key={challenge.id}>
+        {cardBody}
+      </View>
+    );
+  };
+
+  const renderRewardCard = (reward) => {
+    const rewardPalette = reward.unlocked
+      ? isDarkTheme
+        ? {
+            background: "rgba(8,48,30,0.9)",
+            border: "rgba(74,221,152,0.6)",
+            text: "#D6FFE8",
+            badgeBg: "rgba(74,221,152,0.2)",
+            badgeText: "#82FFC6",
+          }
+        : {
+            background: "#E6F9EE",
+            border: "rgba(58,174,120,0.45)",
+            text: "#0E512F",
+            badgeBg: "rgba(58,174,120,0.15)",
+            badgeText: "#0F5C35",
+          }
+      : {
+          background: colors.card,
+          border: colors.border,
+          text: colors.text,
+          badgeBg: colors.text,
+          badgeText: colors.background,
+        };
+    const cardContent = (
+      <View
+        style={[
+          styles.goalCard,
+          {
+            backgroundColor: rewardPalette.background,
+            borderColor: rewardPalette.border,
+            borderWidth: reward.unlocked ? 2 : 1,
+            shadowOpacity: reward.unlocked ? 0.15 : 0,
+            shadowColor: rewardPalette.border,
+            shadowOffset: { width: 0, height: reward.unlocked ? 6 : 0 },
+            shadowRadius: reward.unlocked ? 12 : 0,
+            elevation: reward.unlocked ? 4 : 0,
+          },
+        ]}
+      >
+        <View style={styles.rewardHeader}>
+          <View style={{ flexDirection: "row", gap: 12, alignItems: "center", flex: 1 }}>
+            <Text style={{ fontSize: 28 }}>{reward.emoji}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.goalTitle, { color: rewardPalette.text }]}>{reward.title}</Text>
+              <Text style={[styles.goalDesc, { color: colors.muted }]}>{reward.desc}</Text>
+            </View>
+          </View>
+          {reward.unlocked && (
+            <View style={[styles.rewardBadge, { backgroundColor: rewardPalette.badgeBg }]}>
+              <Text style={[styles.rewardBadgeText, { color: rewardPalette.badgeText }]}>
+                {reward.claimed
+                  ? t("rewardBadgeClaimed")
+                  : t("rewardHealthBonus", { amount: healthRewardAmount })}
+              </Text>
+            </View>
+          )}
+        </View>
+        <View style={[styles.goalProgressBar, { backgroundColor: colors.border }]}>
+          <View
+            style={[
+              styles.goalProgressFill,
+              {
+                width: `${reward.progress * 100}%`,
+                backgroundColor: reward.unlocked ? rewardPalette.badgeText : colors.muted,
+              },
+            ]}
+          />
+        </View>
+        <Text style={[styles.goalDesc, { color: colors.muted }]}>
+          {reward.unlocked
+            ? reward.claimed
+              ? t("rewardClaimedStatus")
+              : t("rewardClaimHint", { amount: healthRewardAmount })
+            : reward.remainingLabel || t("rewardLockedGeneric", { count: 1 })}
+        </Text>
+        {reward.unlocked && !reward.claimed && (
+          <TouchableOpacity
+            style={[styles.rewardClaimButton, { backgroundColor: rewardPalette.badgeText }]}
+            onPress={(event) => {
+              event?.stopPropagation?.();
+              onRewardClaim?.(reward);
+            }}
+          >
+            <Text style={[styles.rewardClaimButtonText, { color: rewardPalette.background }]}>
+              {t("rewardClaimCta")}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+    const isClaimable = reward.unlocked && !reward.claimed;
+    return (
+      <TouchableOpacity
+        key={reward.id}
+        activeOpacity={isClaimable ? 0.85 : 1}
+        onPress={() => (isClaimable ? onRewardClaim?.(reward) : undefined)}
+        disabled={!isClaimable}
+      >
+        {cardContent}
+      </TouchableOpacity>
+    );
+  };
+
+  const tabItems = [
+    { id: "challenges", label: t("challengeTabTitle") },
+    { id: "rewards", label: t("challengeRewardsTabTitle") },
+  ];
 
   return (
     <ScrollView
@@ -4917,158 +6031,60 @@ function RewardsScreen({
       contentContainerStyle={{ paddingBottom: 200, gap: 16 }}
       showsVerticalScrollIndicator={false}
     >
-      <View
-        style={[
-          styles.levelWidget,
-          { backgroundColor: levelPalette.background, borderColor: levelPalette.border },
-        ]}
-      >
-        <View style={styles.levelWidgetHeader}>
-          <Text style={[styles.levelWidgetTitle, { color: levelPalette.text }]}>
-            {t("levelWidgetTitle")}
-          </Text>
-          <View style={[styles.levelWidgetBadge, { backgroundColor: levelPalette.badgeBg }]}>
-            <Text style={[styles.levelWidgetBadgeText, { color: levelPalette.text }]}>
-              {t("levelWidgetCurrent", { level: tierInfo.level })}
-            </Text>
-          </View>
-        </View>
-        <Text style={[styles.levelWidgetSubtitle, { color: levelPalette.subtext }]}>
-          {tierInfo.nextTargetUSD
-            ? t("levelWidgetSubtitle", { amount: remainingLabel })
-            : t("levelWidgetMaxed")}
-        </Text>
-        <View style={[styles.levelWidgetBar, { backgroundColor: levelPalette.track }]}>
-          <View
-            style={[
-              styles.levelWidgetFill,
-              {
-                width: `${levelProgress * 100}%`,
-                backgroundColor: levelPalette.fill,
-              },
-            ]}
-          />
-        </View>
-        {tierInfo.nextTargetUSD && (
-          <Text style={[styles.levelWidgetMeta, { color: levelPalette.subtext }]}>
-            {t("levelWidgetTarget", { amount: nextTargetLabel })}
-          </Text>
-        )}
-      </View>
       <View>
         <Text style={[styles.header, { color: colors.text }]}>{t("purchasesTitle")}</Text>
         <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
           {t("purchasesSubtitle")}
         </Text>
       </View>
-      {achievements.map((reward) => {
-        const rewardPalette = reward.unlocked
-          ? isDarkTheme
-            ? {
-                background: "rgba(8,48,30,0.9)",
-                border: "rgba(74,221,152,0.6)",
-                text: "#D6FFE8",
-                badgeBg: "rgba(74,221,152,0.2)",
-                badgeText: "#82FFC6",
-              }
-            : {
-                background: "#E6F9EE",
-                border: "rgba(58,174,120,0.45)",
-                text: "#0E512F",
-                badgeBg: "rgba(58,174,120,0.15)",
-                badgeText: "#0F5C35",
-              }
-          : {
-              background: colors.card,
-              border: colors.border,
-              text: colors.text,
-              badgeBg: colors.text,
-              badgeText: colors.background,
-            };
-        return (
-          <View
-            style={[
-              styles.goalCard,
-              {
-                backgroundColor: rewardPalette.background,
-                borderColor: rewardPalette.border,
-                borderWidth: reward.unlocked ? 2 : 1,
-                shadowOpacity: reward.unlocked ? 0.15 : 0,
-                shadowColor: rewardPalette.border,
-                shadowOffset: { width: 0, height: reward.unlocked ? 6 : 0 },
-                shadowRadius: reward.unlocked ? 12 : 0,
-                elevation: reward.unlocked ? 4 : 0,
-              },
-            ]}
-          >
-            <View style={styles.rewardHeader}>
-              <View style={{ flexDirection: "row", gap: 12, alignItems: "center", flex: 1 }}>
-                <Text style={{ fontSize: 28 }}>{reward.emoji}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.goalTitle, { color: rewardPalette.text }]}>{reward.title}</Text>
-                  <Text style={[styles.goalDesc, { color: colors.muted }]}>{reward.desc}</Text>
-                </View>
-              </View>
-              {reward.unlocked && (
-                <View style={[styles.rewardBadge, { backgroundColor: rewardPalette.badgeBg }]}>
-                  <Text style={[styles.rewardBadgeText, { color: rewardPalette.badgeText }]}>
-                    {reward.claimed
-                      ? t("rewardBadgeClaimed")
-                      : t("rewardHealthBonus", { amount: healthRewardAmount })}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <View style={[styles.goalProgressBar, { backgroundColor: colors.border }]}>
-              <View
+      <View style={styles.rewardsTabs}>
+        {tabItems.map((tab) => {
+          const isActive = pane === tab.id;
+          return (
+            <TouchableOpacity
+              key={tab.id}
+              style={[
+                styles.rewardsTabButton,
+                {
+                  backgroundColor: isActive ? colors.text : "transparent",
+                  borderColor: isActive ? colors.text : colors.border,
+                },
+              ]}
+              activeOpacity={0.85}
+              onPress={() => {
+                if (tab.id !== pane) {
+                  onPaneChange?.(tab.id);
+                }
+              }}
+            >
+              <Text
                 style={[
-                  styles.goalProgressFill,
-                  {
-                    width: `${reward.progress * 100}%`,
-                    backgroundColor: reward.unlocked ? rewardPalette.badgeText : colors.muted,
-                  },
+                  styles.rewardsTabText,
+                  { color: isActive ? colors.background : colors.text },
                 ]}
-              />
-            </View>
-            <Text style={[styles.goalDesc, { color: colors.muted }]}>
-              {reward.unlocked
-                ? reward.claimed
-                  ? t("rewardClaimedStatus")
-                  : t("rewardClaimHint", { amount: healthRewardAmount })
-                : reward.remainingLabel || t("rewardLockedGeneric", { count: 1 })}
-            </Text>
-            {reward.unlocked && !reward.claimed && (
-              <TouchableOpacity
-                style={[
-                  styles.rewardClaimButton,
-                  { backgroundColor: rewardPalette.badgeText },
-                ]}
-                onPress={(event) => {
-                  event?.stopPropagation?.();
-                  onRewardClaim?.(reward);
-                }}
               >
-                <Text style={[styles.rewardClaimButtonText, { color: rewardPalette.background }]}>
-                  {t("rewardClaimCta")}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        );
-        const isClaimable = reward.unlocked && !reward.claimed;
-        return (
-          <TouchableOpacity
-            key={reward.id}
-            activeOpacity={isClaimable ? 0.85 : 1}
-            onPress={() => (isClaimable ? onRewardClaim?.(reward) : undefined)}
-            disabled={!isClaimable}
-          >
-            {cardContent}
-          </TouchableOpacity>
-        );
-      })}
-      {!achievements.some((item) => item.unlocked) && (
-        <Text style={[styles.historyEmpty, { color: colors.muted }]}>{t("rewardsEmpty")}</Text>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      {pane === "challenges" ? (
+        <View style={{ gap: 16 }}>
+          {challenges.map(renderChallengeCard)}
+          {!challenges.length && (
+            <Text style={[styles.historyEmpty, { color: colors.muted }]}>
+              {t("rewardsEmpty")}
+            </Text>
+          )}
+        </View>
+      ) : (
+        <View style={{ gap: 16 }}>
+          {achievements.map(renderRewardCard)}
+          {!achievements.some((item) => item.unlocked) && (
+            <Text style={[styles.historyEmpty, { color: colors.muted }]}>{t("rewardsEmpty")}</Text>
+          )}
+        </View>
       )}
     </ScrollView>
   );
@@ -5111,33 +6127,136 @@ function ProfileScreen({
             targetUSD: getGoalDefaultTargetUSD(activeGoalId),
           },
         ];
-  const historyPreview = (history || []).slice(0, 5);
+  const historyEntries = Array.isArray(history) ? history : [];
   const locale = language === "ru" ? "ru-RU" : "en-US";
   const formatLocalAmount = (valueUSD = 0) =>
     formatCurrency(convertToCurrency(valueUSD || 0, currentCurrency), currentCurrency);
-  const [goalTargetInputs, setGoalTargetInputs] = useState({});
+  const [baselineInput, setBaselineInput] = useState("");
+  const [customSpendInputs, setCustomSpendInputs] = useState({
+    title: "",
+    amount: "",
+    frequency: "",
+  });
+  const profileEditingRef = useRef(isEditing);
+  const profileCurrencyRef = useRef(currentCurrency);
   useEffect(() => {
-    const nextInputs = {};
-    primaryGoalsList.forEach((goal) => {
-      nextInputs[goal.id] = formatNumberInputValue(
-        convertToCurrency(goal.targetUSD || 0, currentCurrency)
-      );
+    const editingJustOpened = isEditing && !profileEditingRef.current;
+    const currencyChanged = isEditing && profileCurrencyRef.current !== currentCurrency;
+    profileEditingRef.current = isEditing;
+    profileCurrencyRef.current = currentCurrency;
+    if (!editingJustOpened && !currencyChanged) return;
+    const baselineUSD = profile.spendingProfile?.baselineMonthlyWasteUSD || 0;
+    setBaselineInput(
+      baselineUSD > 0 ? formatNumberInputValue(convertToCurrency(baselineUSD, currentCurrency)) : ""
+    );
+    const customAmountUSD = resolveCustomPriceUSD(
+      profile.customSpend,
+      profile.currency || DEFAULT_PROFILE.currency
+    );
+    setCustomSpendInputs({
+      title: profile.customSpend?.title || "",
+      amount:
+        customAmountUSD > 0
+          ? formatNumberInputValue(convertToCurrency(customAmountUSD, currentCurrency))
+          : "",
+      frequency: profile.customSpend?.frequencyPerWeek
+        ? `${profile.customSpend.frequencyPerWeek}`
+        : "",
     });
-    setGoalTargetInputs(nextInputs);
-  }, [primaryGoalsList, currentCurrency]);
-  const handleGoalTargetInputChange = (goalId, text) => {
-    setGoalTargetInputs((prev) => ({ ...prev, [goalId]: text }));
-    const parsed = parseNumberInputValue(text);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      const updatedGoals = primaryGoalsList.map((goal) =>
-        goal.id === goalId
-          ? { ...goal, targetUSD: convertFromCurrency(parsed, currentCurrency) }
-          : goal
-      );
-      onFieldChange?.("primaryGoals", updatedGoals);
-      onFieldChange?.("goalCelebrated", false);
-    }
-  };
+  }, [
+    currentCurrency,
+    isEditing,
+    profile.currency,
+    profile.customSpend,
+    profile.spendingProfile?.baselineMonthlyWasteUSD,
+  ]);
+  const baselineDisplayUSD = profile.spendingProfile?.baselineMonthlyWasteUSD || 0;
+  const baselineLocalDisplay = baselineDisplayUSD
+    ? formatCurrency(convertToCurrency(baselineDisplayUSD, currentCurrency), currentCurrency)
+    : null;
+  const customSpendAmountUSD = resolveCustomPriceUSD(
+    profile.customSpend,
+    profile.currency || DEFAULT_PROFILE.currency
+  );
+  const customSpendAmountDisplay =
+    customSpendAmountUSD > 0
+      ? formatCurrency(convertToCurrency(customSpendAmountUSD, currentCurrency), currentCurrency)
+      : null;
+  const customSpendFrequency = profile.customSpend?.frequencyPerWeek || null;
+  const handleBaselineInputChange = useCallback(
+    (text) => {
+      setBaselineInput(text);
+      const trimmed = text.trim();
+      const baseProfile = profile.spendingProfile || { ...DEFAULT_PROFILE.spendingProfile };
+      if (!trimmed) {
+        onFieldChange?.("spendingProfile", {
+          ...baseProfile,
+          baselineMonthlyWasteUSD: 0,
+          baselineStartAt: null,
+        });
+        return;
+      }
+      const parsed = parseNumberInputValue(text);
+      if (!Number.isFinite(parsed) || parsed <= 0) return;
+      onFieldChange?.("spendingProfile", {
+        ...baseProfile,
+        baselineMonthlyWasteUSD: convertFromCurrency(parsed, currentCurrency),
+        baselineStartAt: new Date().toISOString(),
+      });
+    },
+    [currentCurrency, onFieldChange, profile.spendingProfile]
+  );
+  const applyCustomSpendDraft = useCallback(
+    (nextState) => {
+      const trimmedTitle = nextState.title.trim();
+      const parsedAmount = parseNumberInputValue(nextState.amount);
+      const frequencyValue = parseFloat((nextState.frequency || "").replace(",", "."));
+      const hasAmount = Number.isFinite(parsedAmount) && parsedAmount > 0;
+      const hasFrequency = Number.isFinite(frequencyValue) && frequencyValue > 0;
+      if (!trimmedTitle && !hasAmount && !hasFrequency) {
+        onFieldChange?.("customSpend", null);
+        return;
+      }
+      const existing = profile.customSpend || {};
+      const next = {
+        ...existing,
+      };
+      next.id = next.id || existing.id || "custom_habit";
+      if (trimmedTitle) {
+        next.title = trimmedTitle;
+      } else {
+        delete next.title;
+      }
+      if (hasAmount) {
+        next.amountUSD = convertFromCurrency(parsedAmount, currentCurrency);
+        next.currency = currentCurrency;
+      } else {
+        delete next.amountUSD;
+        delete next.currency;
+      }
+      if (hasFrequency) {
+        next.frequencyPerWeek = Math.max(1, Math.round(frequencyValue));
+      } else {
+        delete next.frequencyPerWeek;
+      }
+      if (!next.title && !next.amountUSD && !next.frequencyPerWeek) {
+        onFieldChange?.("customSpend", null);
+        return;
+      }
+      onFieldChange?.("customSpend", next);
+    },
+    [currentCurrency, onFieldChange, profile.customSpend]
+  );
+  const handleCustomSpendInputChange = useCallback(
+    (field, value) => {
+      setCustomSpendInputs((prev) => {
+        const nextState = { ...prev, [field]: value };
+        applyCustomSpendDraft(nextState);
+        return nextState;
+      });
+    },
+    [applyCustomSpendDraft]
+  );
   const describeHistory = (entry) => {
     if (!entry) return t("historyUnknown");
     const { kind, meta = {} } = entry;
@@ -5167,6 +6286,16 @@ function ProfileScreen({
         return t("historyFreeDay", { total: meta.total || 0 });
       case "spend":
         return t("historySpend", { title, amount: formatLocalAmount(meta.amountUSD) });
+      case "wish_removed":
+        return t("historyWishRemoved", { title });
+      case "goal_started":
+        return t("historyGoalStarted", { title });
+      case "goal_cancelled":
+        return t("historyGoalCancelled", { title });
+      case "reward_claimed":
+        return t("historyRewardClaimed", { title: title || meta.rewardId || t("historyUnknown") });
+      case "mood_changed":
+        return t("historyMoodChanged", { label: meta.label || meta.moodId || t("historyUnknown") });
       default:
         return t("historyUnknown");
     }
@@ -5182,6 +6311,21 @@ function ProfileScreen({
       return "";
     }
   };
+  const joinDateLabel = useMemo(() => {
+    const stamp = profile.joinedAt || profile.spendingProfile?.baselineStartAt;
+    if (!stamp) return null;
+    try {
+      const joinedDate = new Date(stamp);
+      const dateLabel = joinedDate.toLocaleDateString(locale, {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+      return t("profileJoinDate", { date: dateLabel });
+    } catch {
+      return null;
+    }
+  }, [profile.joinedAt, profile.spendingProfile?.baselineStartAt, locale, t]);
   const profileMoodGradient = useMemo(
     () => getMoodGradient(moodPreset?.id),
     [moodPreset?.id]
@@ -5229,34 +6373,24 @@ function ProfileScreen({
                 ]}
                 value={profile.name}
                 onChangeText={(text) => onFieldChange("name", text)}
-              placeholder="Name"
-              placeholderTextColor={colors.muted}
-            />
-            <TextInput
-              style={[
-                styles.profileInput,
-                { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-              ]}
-              value={profile.subtitle}
-              onChangeText={(text) => onFieldChange("subtitle", text)}
-              placeholder="Tagline"
-              placeholderTextColor={colors.muted}
-            />
-            <TextInput
-              style={[
-                styles.profileInput,
-                styles.profileBioInput,
-                { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-              ]}
-              value={profile.bio}
-              onChangeText={(text) => onFieldChange("bio", text)}
+                placeholder="Name"
+                placeholderTextColor={colors.muted}
+              />
+              <TextInput
+                style={[
+                  styles.profileInput,
+                  styles.profileBioInput,
+                  { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                ]}
+                value={profile.bio}
+                onChangeText={(text) => onFieldChange("bio", text)}
                 placeholder="About you"
                 multiline
                 placeholderTextColor={colors.muted}
               />
             </>
           ) : (
-          <>
+            <>
             <View style={styles.profileNameRow}>
               <Text style={[styles.profileName, { color: colors.text }]}>{profile.name}</Text>
               {!!rewardBadges.length && (
@@ -5268,9 +6402,9 @@ function ProfileScreen({
                 </View>
               )}
             </View>
-            <Text style={[styles.profileSubtitle, { color: colors.muted }]}>
-              {profile.subtitle}
-            </Text>
+            {joinDateLabel && (
+              <Text style={[styles.profileSubtitle, { color: colors.muted }]}>{joinDateLabel}</Text>
+            )}
             <Text style={[styles.profileBio, { color: colors.muted }]}>{profile.bio}</Text>
           </>
         )}
@@ -5350,49 +6484,86 @@ function ProfileScreen({
                 );
               })}
             </View>
-            {isEditing && (
-              <View
-                style={[
-                  styles.goalTargetBlock,
-                  { borderColor: colors.border, backgroundColor: colors.background },
-                ]}
-              >
-                <View style={styles.goalTargetHeader}>
-                  <Text style={[styles.goalTargetTitle, { color: colors.text }]}>
-                    {t("goalTargetLabel")}
-                  </Text>
-                  <Text style={[styles.goalTargetHint, { color: colors.muted }]}>
-                    {t("goalTargetHint")}
-                  </Text>
-                </View>
-                {primaryGoalsList.map((goal) => {
-                  const preset = getGoalPreset(goal.id);
-                  const goalLabel = preset?.[language] || preset?.en || goal.id;
-                  return (
-                    <View key={goal.id} style={styles.goalTargetRow}>
-                      <Text style={[styles.goalTargetLabel, { color: colors.muted }]}>{goalLabel}</Text>
-                      <View
-                        style={[
-                          styles.goalTargetInputWrap,
-                          { borderColor: colors.border, backgroundColor: colors.card },
-                        ]}
-                      >
-                        <TextInput
-                          style={[styles.goalTargetInput, { color: colors.text }]}
-                          value={goalTargetInputs[goal.id] || ""}
-                          onChangeText={(text) => handleGoalTargetInputChange(goal.id, text)}
-                          keyboardType="decimal-pad"
-                          placeholder={t("goalTargetPlaceholder")}
-                          placeholderTextColor={colors.muted}
-                        />
-                        <Text style={[styles.goalTargetCurrency, { color: colors.muted }]}>
-                          {currentCurrency}
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                })}
+          </View>
+          <View style={styles.profileSection}>
+            <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("customSpendTitle")}</Text>
+            {isEditing ? (
+              <View style={{ gap: 10 }}>
+                <TextInput
+                  style={[
+                    styles.profileInput,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  value={customSpendInputs.title}
+                  onChangeText={(text) => handleCustomSpendInputChange("title", text)}
+                  placeholder={t("customSpendNamePlaceholder")}
+                  placeholderTextColor={colors.muted}
+                />
+                <TextInput
+                  style={[
+                    styles.profileInput,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  value={customSpendInputs.amount}
+                  onChangeText={(text) => handleCustomSpendInputChange("amount", text)}
+                  placeholder={`${t("customSpendAmountPlaceholder")} (${currentCurrency})`}
+                  keyboardType="decimal-pad"
+                  placeholderTextColor={colors.muted}
+                />
+                <TextInput
+                  style={[
+                    styles.profileInput,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  value={customSpendInputs.frequency}
+                  onChangeText={(text) => handleCustomSpendInputChange("frequency", text)}
+                  placeholder={t("customSpendFrequencyPlaceholder")}
+                  keyboardType="number-pad"
+                  placeholderTextColor={colors.muted}
+                />
               </View>
+            ) : profile.customSpend ? (
+              <View style={{ gap: 4 }}>
+                <Text style={[styles.profileSettingValue, { color: colors.text }]}>
+                  {profile.customSpend.title}
+                </Text>
+                {customSpendAmountDisplay && (
+                  <Text style={[styles.profileHintText, { color: colors.muted }]}>
+                    {t("customSpendAmountLabel")}: {customSpendAmountDisplay}
+                  </Text>
+                )}
+                {customSpendFrequency ? (
+                  <Text style={[styles.profileHintText, { color: colors.muted }]}>
+                    {t("customSpendFrequencyLabel")}: {customSpendFrequency}
+                  </Text>
+                ) : null}
+              </View>
+            ) : (
+              <Text style={[styles.profileHintText, { color: colors.muted }]}>{t("customSpendHint")}</Text>
+            )}
+          </View>
+          <View style={styles.profileSection}>
+            <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("baselineTitle")}</Text>
+            {isEditing ? (
+              <View style={{ gap: 10 }}>
+                <TextInput
+                  style={[
+                    styles.profileInput,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  value={baselineInput}
+                  onChangeText={handleBaselineInputChange}
+                  placeholder={`${t("baselinePlaceholder")} (${currentCurrency})`}
+                  keyboardType="decimal-pad"
+                  placeholderTextColor={colors.muted}
+                />
+              </View>
+            ) : baselineLocalDisplay ? (
+              <Text style={[styles.profileSettingValue, { color: colors.text }]}>
+                {baselineLocalDisplay}
+              </Text>
+            ) : (
+              <Text style={[styles.profileHintText, { color: colors.muted }]}>{t("baselineHint")}</Text>
             )}
           </View>
 
@@ -5504,28 +6675,43 @@ function ProfileScreen({
 
         <View style={[styles.historyCard, { backgroundColor: colors.card }] }>
           <Text style={[styles.historyTitle, { color: colors.text }]}>{t("historyTitle")}</Text>
-          {historyPreview.length === 0 ? (
+          {historyEntries.length === 0 ? (
             <Text style={[styles.historyEmpty, { color: colors.muted }]}>{t("historyEmpty")}</Text>
           ) : (
-            historyPreview.map((entry, index) => (
-              <View
-                key={entry.id}
-                style={[
-                  styles.historyItem,
-                  {
-                    borderColor: colors.border,
-                    borderBottomWidth: index === historyPreview.length - 1 ? 0 : StyleSheet.hairlineWidth,
-                  },
-                ]}
-              >
-                <Text style={[styles.historyItemTitle, { color: colors.text }]}>
-                  {describeHistory(entry)}
-                </Text>
-                <Text style={[styles.historyItemMeta, { color: colors.muted }]}>
-                  {formatHistoryMeta(entry)}
-                </Text>
-              </View>
-            ))
+            <ScrollView
+              style={[
+                styles.historyList,
+                {
+                  borderColor: colors.border,
+                  height: HISTORY_VIEWPORT_HEIGHT,
+                },
+              ]}
+              contentContainerStyle={styles.historyListContent}
+              showsVerticalScrollIndicator
+              nestedScrollEnabled
+              scrollEventThrottle={16}
+            >
+              {historyEntries.map((entry, index) => (
+                <View
+                  key={entry.id}
+                  style={[
+                    styles.historyItem,
+                    {
+                      borderColor: colors.border,
+                      borderBottomWidth:
+                        index === historyEntries.length - 1 ? 0 : StyleSheet.hairlineWidth,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.historyItemTitle, { color: colors.text }]}>
+                    {describeHistory(entry)}
+                  </Text>
+                  <Text style={[styles.historyItemMeta, { color: colors.muted }]}>
+                    {formatHistoryMeta(entry)}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
           )}
         </View>
       </ScrollView>
@@ -5533,7 +6719,7 @@ function ProfileScreen({
   );
 }
 
-function App() {
+function AppContent() {
   const [wishes, setWishes] = useState([]);
   const [purchases, setPurchases] = useState([]);
   const [activeTab, setActiveTab] = useState("feed");
@@ -5544,18 +6730,28 @@ function App() {
   const [quickTemptations, setQuickTemptations] = useState([]);
   const [hiddenTemptations, setHiddenTemptations] = useState([]);
   const [priceEditor, setPriceEditor] = useState({ item: null, value: "", title: "", emoji: "" });
+  const [customReminderId, setCustomReminderId] = useState(null);
   const [savedTotalUSD, setSavedTotalUSD] = useState(0);
   const [declineCount, setDeclineCount] = useState(0);
   const [pendingList, setPendingList] = useState([]);
   const [freeDayStats, setFreeDayStats] = useState({ ...INITIAL_FREE_DAY_STATS });
   const [healthPoints, setHealthPoints] = useState(0);
   const [claimedRewards, setClaimedRewards] = useState({});
+  const [challengesState, setChallengesState] = useState(() => createInitialChallengesState());
+  const [rewardsPane, setRewardsPane] = useState("challenges");
   const [decisionStats, setDecisionStats] = useState({ ...INITIAL_DECISION_STATS });
   const [historyEvents, setHistoryEvents] = useState([]);
+  const [pendingGoalTargets, setPendingGoalTargets] = useState(null);
   const products = temptations;
   const [activeCategory, setActiveCategory] = useState("all");
-  const [profile, setProfile] = useState({ ...DEFAULT_PROFILE });
-  const [profileDraft, setProfileDraft] = useState({ ...DEFAULT_PROFILE });
+  const [profile, setProfile] = useState(() => ({
+    ...DEFAULT_PROFILE,
+    joinedAt: new Date().toISOString(),
+  }));
+  const [profileDraft, setProfileDraft] = useState(() => ({
+    ...DEFAULT_PROFILE,
+    joinedAt: new Date().toISOString(),
+  }));
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [theme, setTheme] = useState("light");
   const [language, setLanguage] = useState("ru");
@@ -5567,8 +6763,9 @@ function App() {
   const saveActionLogRef = useRef([]);
   const cartBadgeScale = useRef(new Animated.Value(1)).current;
   const [onboardingStep, setOnboardingStep] = useState("logo");
+  const onboardingHistoryRef = useRef([]);
+  const [canGoBackOnboarding, setCanGoBackOnboarding] = useState(false);
   const [registrationData, setRegistrationData] = useState(INITIAL_REGISTRATION);
-  const [selectedGoals, setSelectedGoals] = useState([]);
   const [showImageSourceSheet, setShowImageSourceSheet] = useState(false);
   const [showCustomSpend, setShowCustomSpend] = useState(false);
   const [quickSpendDraft, setQuickSpendDraft] = useState({
@@ -5579,6 +6776,12 @@ function App() {
   const [fabMenuVisible, setFabMenuVisible] = useState(false);
   const fabMenuAnim = useRef(new Animated.Value(0)).current;
   const [newGoalModal, setNewGoalModal] = useState({
+    visible: false,
+    name: "",
+    target: "",
+    emoji: DEFAULT_GOAL_EMOJI,
+  });
+  const [onboardingGoalModal, setOnboardingGoalModal] = useState({
     visible: false,
     name: "",
     target: "",
@@ -5624,10 +6827,40 @@ function App() {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [spendPrompt, setSpendPrompt] = useState({ visible: false, item: null });
   const [stormActive, setStormActive] = useState(false);
-  const [analyticsOptOut, setAnalyticsOptOutState] = useState(false);
+  const tabBarBottomInset = Platform.OS === "ios" ? 28 : 12;
+  const topSafeInset = Platform.OS === "android" ? RNStatusBar.currentHeight || 24 : 0;
+  const [analyticsOptOut, setAnalyticsOptOutState] = useState(true);
+
+  const goToOnboardingStep = useCallback(
+    (nextStep, { recordHistory = true, resetHistory = false } = {}) => {
+      if (resetHistory) {
+        onboardingHistoryRef.current = [];
+        setCanGoBackOnboarding(false);
+      }
+      setOnboardingStep((prev) => {
+        if (recordHistory && prev && prev !== nextStep) {
+          const nextHistory = [...onboardingHistoryRef.current, prev];
+          onboardingHistoryRef.current = nextHistory;
+          setCanGoBackOnboarding(nextHistory.length > 0);
+        }
+        return nextStep;
+      });
+    },
+    []
+  );
+
+  const handleOnboardingBack = useCallback(() => {
+    if (!onboardingHistoryRef.current.length) return;
+    const history = [...onboardingHistoryRef.current];
+    const prevStep = history.pop();
+    onboardingHistoryRef.current = history;
+    setCanGoBackOnboarding(history.length > 0);
+    setOnboardingStep(prevStep);
+  }, []);
   const stormTimerRef = useRef(null);
   const [rewardCelebratedMap, setRewardCelebratedMap] = useState({});
   const [rewardsReady, setRewardsReady] = useState(false);
+  const challengesPrevRef = useRef(challengesState);
   const [temptationGoalMap, setTemptationGoalMap] = useState({});
   const [goalLinkPrompt, setGoalLinkPrompt] = useState({ visible: false, item: null, intent: null });
   const [goalTemptationPrompt, setGoalTemptationPrompt] = useState({ visible: false, wish: null });
@@ -5638,6 +6871,8 @@ function App() {
     target: "",
     emoji: DEFAULT_GOAL_EMOJI,
   });
+  const [goalRenewalPromptVisible, setGoalRenewalPromptVisible] = useState(false);
+  const goalRenewalPromptPendingRef = useRef(false);
   const [moodDetailsVisible, setMoodDetailsVisible] = useState(false);
   const [potentialDetailsVisible, setPotentialDetailsVisible] = useState(false);
   const [potentialDetailsText, setPotentialDetailsText] = useState("");
@@ -5696,6 +6931,18 @@ function App() {
       : moodPreset.hero || t("heroEconomyContinues");
     return moodPreset.motivation ? `${baseLine} ${moodPreset.motivation}` : baseLine;
   }, [moodGoalInfo.isComplete, moodPreset, t]);
+  const lastMoodLoggedRef = useRef(null);
+  useEffect(() => {
+    if (!moodPreset || !currentMood) return;
+    if (lastMoodLoggedRef.current === currentMood) return;
+    if (lastMoodLoggedRef.current !== null) {
+      logHistoryEvent("mood_changed", {
+        moodId: currentMood,
+        label: moodPreset.label || currentMood,
+      });
+    }
+    lastMoodLoggedRef.current = currentMood;
+  }, [currentMood, moodPreset?.label, logHistoryEvent]);
   const moodSessionRecordedRef = useRef(false);
   useEffect(() => {
     if (moodSessionRecordedRef.current) return;
@@ -5801,6 +7048,63 @@ function App() {
   }, [ensureNotificationPermission]);
 
   useEffect(() => {
+    schedulePersonalTemptationReminder(profile.customSpend);
+  }, [profile.customSpend, schedulePersonalTemptationReminder]);
+
+  useEffect(() => {
+    const tick = () => {
+      setChallengesState((prev) => expireChallenges(prev));
+    };
+    tick();
+    const interval = setInterval(tick, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const staleEntries = Object.values(challengesState).filter(
+      (entry) => entry?.reminderNotificationIds?.length && entry.status !== CHALLENGE_STATUS.ACTIVE
+    );
+    if (!staleEntries.length) return;
+    staleEntries.forEach((entry) => {
+      entry.reminderNotificationIds.forEach((id) => {
+        Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+      });
+    });
+    setChallengesState((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      staleEntries.forEach((entry) => {
+        if (next[entry.id]?.reminderNotificationIds?.length) {
+          next[entry.id] = { ...next[entry.id], reminderNotificationIds: [] };
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [challengesState]);
+
+  useEffect(() => {
+    const prev = challengesPrevRef.current || {};
+    const newlyCompleted = [];
+    Object.keys(challengesState).forEach((id) => {
+      const previousStatus = prev[id]?.status;
+      const nextStatus = challengesState[id]?.status;
+      if (nextStatus === CHALLENGE_STATUS.COMPLETED && previousStatus !== CHALLENGE_STATUS.COMPLETED) {
+        newlyCompleted.push(id);
+      }
+    });
+    newlyCompleted.forEach((challengeId) => {
+      const def = CHALLENGE_DEF_MAP[challengeId];
+      if (!def) return;
+      const copy = getChallengeCopy(def, language);
+      const title = copy.title || challengeId;
+      triggerOverlayState("reward", t("challengeCompletedOverlay", { title }));
+      logEvent("challenge_completed", { challenge_id: challengeId });
+    });
+    challengesPrevRef.current = challengesState;
+  }, [challengesState, language, t, triggerOverlayState, logEvent]);
+
+  useEffect(() => {
     impulseAlertCooldownRef.current = impulseTracker.lastAlerts || {};
   }, [impulseTracker.lastAlerts]);
 
@@ -5851,6 +7155,34 @@ function App() {
     [ensureNotificationPermission, t, moodPreset]
   );
 
+  const scheduleChallengeReminders = useCallback(
+    async (challengeId, def, startAt, expiresAt) => {
+      if (!def?.reminderOffsetsHours?.length) return [];
+      const permitted = await ensureNotificationPermission();
+      if (!permitted) return [];
+      const copy = getChallengeCopy(def, language);
+      const title = t("challengeReminderTitle", { title: copy.title || challengeId });
+      const body = t("challengeReminderBody", { title: copy.title || challengeId });
+      const scheduled = [];
+      for (const offsetHours of def.reminderOffsetsHours) {
+        const triggerTime = startAt + offsetHours * 60 * 60 * 1000;
+        if (!Number.isFinite(triggerTime) || triggerTime <= Date.now()) continue;
+        if (expiresAt && triggerTime >= expiresAt) continue;
+        try {
+          const notificationId = await Notifications.scheduleNotificationAsync({
+            content: { title, body },
+            trigger: new Date(triggerTime),
+          });
+          scheduled.push(notificationId);
+        } catch (error) {
+          console.warn("challenge reminder", error);
+        }
+      }
+      return scheduled;
+    },
+    [ensureNotificationPermission, language, t]
+  );
+
   const categories = useMemo(() => {
     const set = new Set(["all"]);
     products.forEach((product) => product.categories?.forEach((c) => set.add(c)));
@@ -5861,9 +7193,32 @@ function App() {
     if (activeCategory === "all") return products;
     return products.filter((product) => product.categories?.includes(activeCategory));
   }, [products, activeCategory]);
+  const customGoalMap = useMemo(() => {
+    const entries = registrationData.customGoals || [];
+    return entries.reduce((acc, goal) => {
+      acc[goal.id] = goal;
+      return acc;
+    }, {});
+  }, [registrationData.customGoals]);
 
   const colors = THEMES[theme];
   const isDarkTheme = theme === "dark";
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const targetNavColor = overlay ? overlayDimColor : colors.card;
+    const targetButtonStyle = overlay ? "light" : isDarkTheme ? "light" : "dark";
+    const targetStatusColor = overlay ? overlayDimColor : colors.background;
+    const applyNav = async () => {
+      try {
+        await NavigationBar.setBackgroundColorAsync(targetNavColor);
+        await NavigationBar.setButtonStyleAsync(targetButtonStyle);
+      } catch (err) {
+        console.warn("navigation bar color", err);
+      }
+    };
+    applyNav();
+    RNStatusBar.setBackgroundColor(targetStatusColor, true);
+  }, [colors.card, colors.background, isDarkTheme, overlay, overlayDimColor]);
   const overlayDimColor = isDarkTheme ? "rgba(0,0,0,0.65)" : "rgba(5,6,15,0.2)";
   const overlayCardBackground = isDarkTheme ? lightenColor(colors.card, 0.18) : colors.card;
   const overlayBorderColor = isDarkTheme ? lightenColor(colors.border, 0.25) : colors.border;
@@ -6047,20 +7402,31 @@ function App() {
     [achievements]
   );
 
+  const challengeList = useMemo(
+    () =>
+      buildChallengesDisplay({
+        state: challengesState,
+        currency: profile.currency || DEFAULT_PROFILE.currency,
+        language,
+        t,
+      }),
+    [challengesState, profile.currency, language, t]
+  );
+
+  const wishCount = wishes.length;
   const profileStats = useMemo(() => {
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
     const totalSavedConverted = formatCurrency(
       convertToCurrency(savedTotalUSD, currencyCode),
       currencyCode
     );
-    const completed = wishes.filter((wish) => wish.status === "done").length;
     return [
       { label: t("statsSaved"), value: totalSavedConverted },
-      { label: t("statsItems"), value: `${completed}/${wishes.length}` },
+      { label: t("statsItems"), value: `${wishCount}` },
       { label: t("statsDeclines"), value: `${declineCount}` },
       { label: t("statsFreeDays"), value: `${freeDayStats.current}🔥` },
     ];
-  }, [savedTotalUSD, wishes, declineCount, freeDayStats.current, t, profile.currency]);
+  }, [savedTotalUSD, wishCount, declineCount, freeDayStats.current, t, profile.currency]);
 
   const analyticsStats = useMemo(
     () => [
@@ -6079,6 +7445,55 @@ function App() {
     if (!impulseInsights.activeRisk) return;
     notifyImpulseRisk(impulseInsights.activeRisk);
   }, [impulseInsights.activeRisk, notifyImpulseRisk]);
+
+  const persistCustomReminderId = useCallback(
+    (id) => {
+      setCustomReminderId(id);
+      if (id) {
+        AsyncStorage.setItem(STORAGE_KEYS.CUSTOM_REMINDER, id).catch(() => {});
+      } else {
+        AsyncStorage.removeItem(STORAGE_KEYS.CUSTOM_REMINDER).catch(() => {});
+      }
+    },
+    []
+  );
+
+  const schedulePersonalTemptationReminder = useCallback(
+    async (customSpend) => {
+      if (
+        !customSpend?.title ||
+        !Number.isFinite(customSpend.frequencyPerWeek) ||
+        customSpend.frequencyPerWeek <= 0
+      ) {
+        if (customReminderId) {
+          Notifications.cancelScheduledNotificationAsync(customReminderId).catch(() => {});
+          persistCustomReminderId(null);
+        }
+        return;
+      }
+      const permitted = await ensureNotificationPermission();
+      if (!permitted) return;
+      if (customReminderId) {
+        await Notifications.cancelScheduledNotificationAsync(customReminderId).catch(() => {});
+      }
+      const frequency = Math.max(1, customSpend.frequencyPerWeek);
+      const intervalDays = Math.max(1, Math.round(7 / frequency));
+      const seconds = Math.max(6 * 60 * 60, intervalDays * 24 * 60 * 60);
+      const title = t("smartReminderTitle", { temptation: customSpend.title });
+      const body = t("smartReminderBody", { temptation: customSpend.title });
+      try {
+        const id = await Notifications.scheduleNotificationAsync({
+          content: { title, body },
+          trigger: { seconds, repeats: true },
+        });
+        persistCustomReminderId(id);
+      } catch (error) {
+        console.warn("custom reminder", error);
+        persistCustomReminderId(null);
+      }
+    },
+    [customReminderId, ensureNotificationPermission, persistCustomReminderId, t]
+  );
 
   const loadStoredData = async () => {
     try {
@@ -6108,6 +7523,8 @@ function App() {
         claimedRewardsRaw,
         impulseTrackerRaw,
         moodRaw,
+        challengesRaw,
+        customReminderRaw,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.WISHES),
         AsyncStorage.getItem(STORAGE_KEYS.PENDING),
@@ -6134,6 +7551,8 @@ function App() {
         AsyncStorage.getItem(STORAGE_KEYS.CLAIMED_REWARDS),
         AsyncStorage.getItem(STORAGE_KEYS.IMPULSE_TRACKER),
         AsyncStorage.getItem(STORAGE_KEYS.MOOD_STATE),
+        AsyncStorage.getItem(STORAGE_KEYS.CHALLENGES),
+        AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_REMINDER),
       ]);
       if (wishesRaw) setWishes(JSON.parse(wishesRaw));
       if (pendingRaw) setPendingList(JSON.parse(pendingRaw));
@@ -6143,14 +7562,28 @@ function App() {
         parsedProfile = { ...DEFAULT_PROFILE, ...JSON.parse(profileRaw) };
         const normalizedPrimaryGoals = Array.isArray(parsedProfile.primaryGoals)
           ? parsedProfile.primaryGoals
-              .map((entry) => ({
-                id: entry?.id || parsedProfile.goal || DEFAULT_PROFILE.goal,
-                targetUSD:
+              .map((entry) => {
+                const goalId = entry?.id || parsedProfile.goal || DEFAULT_PROFILE.goal;
+                if (!goalId) return null;
+                const targetUSD =
                   Number.isFinite(entry?.targetUSD) && entry.targetUSD > 0
                     ? entry.targetUSD
-                    : getGoalDefaultTargetUSD(entry?.id || parsedProfile.goal || DEFAULT_PROFILE.goal),
-              }))
-              .filter((entry) => entry.id)
+                    : getGoalDefaultTargetUSD(goalId);
+                const normalized = {
+                  id: goalId,
+                  targetUSD,
+                };
+                const customTitle =
+                  typeof entry?.customTitle === "string" ? entry.customTitle.trim() : "";
+                if (customTitle) {
+                  normalized.customTitle = customTitle;
+                }
+                if (entry?.customEmoji) {
+                  normalized.customEmoji = normalizeEmojiValue(entry.customEmoji, DEFAULT_GOAL_EMOJI);
+                }
+                return normalized;
+              })
+              .filter((entry) => entry?.id)
           : [];
         if (!normalizedPrimaryGoals.length) {
           const fallbackId = parsedProfile.goal || DEFAULT_PROFILE.goal;
@@ -6176,6 +7609,10 @@ function App() {
           ),
           baselineStartAt: parsedProfile.spendingProfile?.baselineStartAt || null,
         };
+        if (!parsedProfile.joinedAt) {
+          parsedProfile.joinedAt =
+            parsedProfile.spendingProfile?.baselineStartAt || new Date().toISOString();
+        }
         setProfile(parsedProfile);
         setProfileDraft(parsedProfile);
         setRegistrationData((prev) => ({
@@ -6190,7 +7627,13 @@ function App() {
         }));
         setActiveCurrency(parsedProfile.currency || DEFAULT_PROFILE.currency);
       } else {
+        const freshProfile = { ...DEFAULT_PROFILE, joinedAt: new Date().toISOString() };
+        setProfile(freshProfile);
+        setProfileDraft(freshProfile);
         setActiveCurrency(DEFAULT_PROFILE.currency);
+      }
+      if (customReminderRaw) {
+        setCustomReminderId(customReminderRaw);
       }
       if (themeRaw) setTheme(themeRaw);
       if (languageRaw) setLanguage(languageRaw);
@@ -6206,7 +7649,17 @@ function App() {
         setDecisionStats({ ...INITIAL_DECISION_STATS, ...JSON.parse(decisionStatsRaw) });
       }
       if (historyRaw) {
-        setHistoryEvents(JSON.parse(historyRaw));
+        try {
+          const parsedHistory = JSON.parse(historyRaw);
+          const now = Date.now();
+          const filteredHistory = (Array.isArray(parsedHistory) ? parsedHistory : [])
+            .filter((entry) => entry?.timestamp && now - entry.timestamp <= HISTORY_RETENTION_MS)
+            .slice(0, MAX_HISTORY_EVENTS);
+          setHistoryEvents(filteredHistory);
+        } catch (err) {
+          console.warn("history parse", err);
+          setHistoryEvents([]);
+        }
       }
       if (refuseStatsRaw) {
         setRefuseStats(JSON.parse(refuseStatsRaw));
@@ -6271,6 +7724,23 @@ function App() {
           console.warn("impulse tracker parse", err);
         }
       }
+      if (challengesRaw) {
+        try {
+          const parsed = JSON.parse(challengesRaw);
+          const normalized = normalizeChallengesState(parsed);
+          challengesPrevRef.current = normalized;
+          setChallengesState(normalized);
+        } catch (err) {
+          console.warn("challenges parse", err);
+          const fallback = createInitialChallengesState();
+          challengesPrevRef.current = fallback;
+          setChallengesState(fallback);
+        }
+      } else {
+        const fallback = createInitialChallengesState();
+        challengesPrevRef.current = fallback;
+        setChallengesState(fallback);
+      }
       if (moodRaw) {
         try {
           const parsed = JSON.parse(moodRaw);
@@ -6295,11 +7765,9 @@ function App() {
         }
       }
       if (onboardingRaw === "done" || parsedProfile?.goal) {
-        setOnboardingStep("done");
-      } else if (parsedProfile?.firstName) {
-        setOnboardingStep("logo");
+        goToOnboardingStep("done", { recordHistory: false, resetHistory: true });
       } else {
-        setOnboardingStep("logo");
+        goToOnboardingStep("logo", { recordHistory: false, resetHistory: true });
       }
     } catch (error) {
       console.warn("load error", error);
@@ -6312,12 +7780,6 @@ function App() {
   useEffect(() => {
     loadStoredData();
   }, []);
-
-  useEffect(() => {
-    if ((registrationData.goalSelections?.length || 0) !== selectedGoals.length) {
-      setSelectedGoals(registrationData.goalSelections || []);
-    }
-  }, [registrationData.goalSelections, selectedGoals.length]);
 
   useEffect(() => {
     if (onboardingStep === "done" && (profile.primaryGoals || []).length) {
@@ -6346,6 +7808,7 @@ function App() {
         },
         5200
       );
+      goalRenewalPromptPendingRef.current = true;
     }
   }, [
     profile.goal,
@@ -6377,6 +7840,13 @@ function App() {
   }, [profile]);
 
   useEffect(() => {
+    if (!overlay && goalRenewalPromptPendingRef.current) {
+      goalRenewalPromptPendingRef.current = false;
+      setGoalRenewalPromptVisible(true);
+    }
+  }, [overlay]);
+
+  useEffect(() => {
     setActiveCurrency(profile.currency || DEFAULT_PROFILE.currency);
   }, [profile.currency]);
 
@@ -6395,6 +7865,10 @@ function App() {
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.CLAIMED_REWARDS, JSON.stringify(claimedRewards)).catch(() => {});
   }, [claimedRewards]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.CHALLENGES, JSON.stringify(challengesState)).catch(() => {});
+  }, [challengesState]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.CATALOG, JSON.stringify(catalogOverrides)).catch(() => {});
@@ -6633,6 +8107,11 @@ function App() {
       (sum, goal) => sum + (Number.isFinite(goal.targetUSD) ? goal.targetUSD : 0),
       0
     );
+    const preset = getGoalPreset(goalId);
+    const goalLabel = preset
+      ? `${preset.emoji || "🎯"} ${preset[language] || preset.en || goalId}`
+      : goalId;
+    const eventKind = exists ? "goal_cancelled" : "goal_started";
     setProfile((prev) => ({
       ...prev,
       primaryGoals: nextPrimaryGoals,
@@ -6648,16 +8127,17 @@ function App() {
       goalCelebrated: false,
     }));
     ensurePrimaryGoalWish(nextPrimaryGoals, language);
+    logHistoryEvent(eventKind, { goalId, title: goalLabel });
   };
 
   const handleLanguageContinue = () => {
     triggerHaptic();
-    setOnboardingStep("guide");
+    goToOnboardingStep("guide");
   };
 
   const handleGuideContinue = () => {
     triggerHaptic();
-    setOnboardingStep("register");
+    goToOnboardingStep("register");
   };
 
   const updateRegistrationData = (field, value) => {
@@ -6700,9 +8180,17 @@ function App() {
           .filter((entry) => entry?.id)
           .map((entry) => {
             const goalPreset = getGoalPreset(entry.id);
-            const title = goalPreset
-              ? `${goalPreset.emoji} ${goalPreset[languageKey] || goalPreset.en}`
-              : `${entry.id}`;
+            const customTitle = typeof entry?.customTitle === "string" ? entry.customTitle.trim() : "";
+            const hasCustomTitle = !!customTitle;
+            const customEmoji = entry?.customEmoji
+              ? normalizeEmojiValue(entry.customEmoji, DEFAULT_GOAL_EMOJI)
+              : null;
+            const resolvedEmoji = hasCustomTitle
+              ? customEmoji || DEFAULT_GOAL_EMOJI
+              : goalPreset?.emoji || DEFAULT_GOAL_EMOJI;
+            const presetLabel = goalPreset?.[languageKey] || goalPreset?.en || entry.id;
+            const resolvedLabel = hasCustomTitle ? customTitle : presetLabel || entry.id;
+            const title = `${resolvedEmoji} ${resolvedLabel}`.trim();
             const targetUSD =
               Number.isFinite(entry.targetUSD) && entry.targetUSD > 0
                 ? entry.targetUSD
@@ -6712,6 +8200,7 @@ function App() {
               id: getPrimaryGoalWishId(entry.id),
               templateId: `goal_${entry.id}`,
               title,
+              emoji: resolvedEmoji,
               targetUSD,
               savedUSD: existing?.savedUSD || 0,
               status: existing?.status || "active",
@@ -6775,7 +8264,7 @@ function App() {
       return;
     }
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    setOnboardingStep("persona");
+    goToOnboardingStep("persona");
   };
 
   const handleQuickCustomChange = (field, value) => {
@@ -6871,16 +8360,69 @@ function App() {
     setNewGoalModal({ visible: false, name: "", target: "", emoji: DEFAULT_GOAL_EMOJI });
   }, [logHistoryEvent, newGoalModal, profile.currency, setWishes, t, triggerHaptic, triggerOverlayState]);
 
+  const openOnboardingGoalModal = useCallback(() => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    setOnboardingGoalModal({ visible: true, name: "", target: "", emoji: DEFAULT_GOAL_EMOJI });
+  }, [triggerHaptic]);
+
+  const handleOnboardingGoalChange = useCallback((field, value) => {
+    setOnboardingGoalModal((prev) => ({
+      ...prev,
+      [field]: field === "emoji" ? limitEmojiInput(value) : value,
+    }));
+  }, []);
+
+  const handleOnboardingGoalCancel = useCallback(() => {
+    setOnboardingGoalModal({ visible: false, name: "", target: "", emoji: DEFAULT_GOAL_EMOJI });
+  }, []);
+
+  const handleOnboardingGoalSubmit = useCallback(() => {
+    const trimmedName = (onboardingGoalModal.name || "").trim();
+    if (!trimmedName) {
+      Alert.alert("Almost", t("goalEditNameError"));
+      return;
+    }
+    const parsedLocal = parseNumberInputValue(onboardingGoalModal.target);
+    if (!Number.isFinite(parsedLocal) || parsedLocal <= 0) {
+      Alert.alert("Almost", t("goalEditTargetError"));
+      return;
+    }
+    const currencyCode = registrationData.currency || DEFAULT_PROFILE.currency;
+    const targetUSD = convertFromCurrency(parsedLocal, currencyCode);
+    const emoji = normalizeEmojiValue(onboardingGoalModal.emoji, DEFAULT_GOAL_EMOJI);
+    const id = `custom_goal_${Date.now()}`;
+    const formattedLocal = formatNumberInputValue(parsedLocal);
+    setRegistrationData((prev) => {
+      const selections = prev.goalSelections || [];
+      const nextSelections = selections.includes(id) ? selections : [...selections, id];
+      return {
+        ...prev,
+        customGoals: [
+          ...(prev.customGoals || []),
+          { id, title: trimmedName, emoji, targetUSD, targetLocal: formattedLocal },
+        ],
+        goalSelections: nextSelections,
+        goalTargetMap: {
+          ...(prev.goalTargetMap || {}),
+          [id]: formattedLocal,
+        },
+      };
+    });
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    setOnboardingGoalModal({ visible: false, name: "", target: "", emoji: DEFAULT_GOAL_EMOJI });
+  }, [onboardingGoalModal, registrationData.currency, setRegistrationData, t, triggerHaptic]);
+
   const handlePersonaSubmit = () => {
     if (!registrationData.persona) {
       Alert.alert("Almost", t("personaHabitLabel"));
       return;
     }
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-    setOnboardingStep("habit");
+    goToOnboardingStep("habit");
   };
 
   const handleHabitSubmit = (skip = false) => {
+    let sanitizedFrequency = null;
     if (!skip) {
       if (!registrationData.customSpendTitle.trim()) {
         Alert.alert("Almost", t("customSpendTitle"));
@@ -6891,24 +8433,43 @@ function App() {
         Alert.alert("Almost", t("customSpendAmountLabel"));
         return;
       }
+      const frequencyValue = parseFloat(
+        (registrationData.customSpendFrequency || "").replace(",", ".")
+      );
+      if (!Number.isFinite(frequencyValue) || frequencyValue <= 0) {
+        Alert.alert("Almost", t("customSpendFrequencyLabel"));
+        return;
+      }
+      sanitizedFrequency = Math.max(1, Math.round(frequencyValue));
+      setRegistrationData((prev) => ({
+        ...prev,
+        customSpendFrequency: `${sanitizedFrequency}`,
+      }));
     } else {
       setRegistrationData((prev) => ({
         ...prev,
         customSpendTitle: "",
         customSpendAmount: "",
+        customSpendFrequency: "",
       }));
     }
     const customAmountLocal = parseFloat((registrationData.customSpendAmount || "").replace(",", "."));
-    const hasCustom = !skip && registrationData.customSpendTitle.trim() && Number.isFinite(customAmountLocal) && customAmountLocal > 0;
+    const hasCustom =
+      !skip &&
+      registrationData.customSpendTitle.trim() &&
+      Number.isFinite(customAmountLocal) &&
+      customAmountLocal > 0;
     const customAmountUSD = hasCustom
       ? convertFromCurrency(customAmountLocal, registrationData.currency || DEFAULT_PROFILE.currency)
       : 0;
+    const frequencyPerWeek = hasCustom ? sanitizedFrequency || 0 : 0;
     logEvent("onboarding_custom_spend", {
       has_custom: !!hasCustom,
       price_usd: customAmountUSD || 0,
+      frequency_per_week: frequencyPerWeek,
     });
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-    setOnboardingStep("baseline");
+    goToOnboardingStep("baseline");
   };
 
   const handleBaselineSubmit = () => {
@@ -6926,7 +8487,7 @@ function App() {
       baselineMonthlyWaste: formatNumberInputValue(parsedLocal),
       baselineCapturedAt: timestamp,
     }));
-    setOnboardingStep("goal");
+    goToOnboardingStep("goal");
   };
 
   const handleBaselineSetupPrompt = () => {
@@ -6937,15 +8498,15 @@ function App() {
       baselineMonthlyWaste: "",
       baselineCapturedAt: null,
     }));
-    setOnboardingStep("baseline");
+    goToOnboardingStep("baseline");
   };
 
   const handleGoalToggle = (goalId) => {
     triggerHaptic();
-    const wasSelected = selectedGoals.includes(goalId);
-    setSelectedGoals((prev) =>
-      prev.includes(goalId) ? prev.filter((id) => id !== goalId) : [...prev, goalId]
-    );
+    const currentSelections = registrationData.goalSelections || [];
+    const wasSelected = currentSelections.includes(goalId);
+    const preset = getGoalPreset(goalId);
+    const customGoal = customGoalMap[goalId];
     setRegistrationData((prev) => {
       const selections = prev.goalSelections || [];
       const nextSelections = selections.includes(goalId)
@@ -6956,8 +8517,14 @@ function App() {
       if (selections.includes(goalId)) {
         delete nextTargetMap[goalId];
       } else {
-        const defaultTargetUSD = getGoalDefaultTargetUSD(goalId);
-        const defaultLocal = formatNumberInputValue(convertToCurrency(defaultTargetUSD, currencyCode));
+        const defaultLocal = customGoal?.targetLocal
+          ? customGoal.targetLocal
+          : formatNumberInputValue(
+              convertToCurrency(
+                preset?.targetUSD || customGoal?.targetUSD || getGoalDefaultTargetUSD(goalId),
+                currencyCode
+              )
+            );
         nextTargetMap[goalId] = nextTargetMap[goalId] || defaultLocal;
       }
       return {
@@ -6967,32 +8534,15 @@ function App() {
       };
     });
     if (!wasSelected && onboardingStep !== "done") {
-      const preset = getGoalPreset(goalId);
       logEvent("onboarding_goal_chosen", {
         goal_id: goalId,
-        target_usd: preset?.targetUSD || 0,
+        target_usd: customGoal?.targetUSD || preset?.targetUSD || 0,
       });
     }
   };
 
-  const handleGoalStageContinue = () => {
-    const selections =
-      (registrationData.goalSelections && registrationData.goalSelections.length > 0
-        ? registrationData.goalSelections
-        : selectedGoals) || [];
-    if (!selections.length) {
-      Alert.alert("Almost", t("goalTitle"));
-      return;
-    }
-    triggerHaptic();
-    setOnboardingStep("goal_target");
-  };
-
   const handleGoalTargetSubmit = async () => {
-    const selections =
-      (registrationData.goalSelections && registrationData.goalSelections.length > 0
-        ? registrationData.goalSelections
-        : selectedGoals) || [];
+    const selections = registrationData.goalSelections || [];
     if (!selections.length) {
       Alert.alert("Almost", t("goalTitle"));
       return;
@@ -7011,7 +8561,8 @@ function App() {
         usd: convertFromCurrency(parsedLocal, currencyCode),
       });
     }
-    await handleGoalComplete(targets);
+    setPendingGoalTargets(targets);
+    goToOnboardingStep("analytics_consent");
   };
 
   const handleGoalTargetDraftChange = (goalId, value) => {
@@ -7024,11 +8575,55 @@ function App() {
     }));
   };
 
+  const handleGoalStageContinue = async () => {
+    const selections = registrationData.goalSelections || [];
+    if (!selections.length) {
+      Alert.alert("Almost", t("goalTitle"));
+      return;
+    }
+    const currentMap = registrationData.goalTargetMap || {};
+    let patchedMap = null;
+    let needsTargetStep = false;
+    for (const goalId of selections) {
+      const workingMap = patchedMap || currentMap;
+      const draftValue = workingMap[goalId];
+      let parsedValue = parseNumberInputValue(draftValue || "");
+      if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+        const customGoal = customGoalMap[goalId];
+        const fallbackValue = customGoal?.targetLocal || "";
+        const fallbackParsed = parseNumberInputValue(fallbackValue || "");
+        if (Number.isFinite(fallbackParsed) && fallbackParsed > 0) {
+          if (!patchedMap) {
+            patchedMap = { ...currentMap };
+          }
+          patchedMap[goalId] = fallbackValue;
+          parsedValue = fallbackParsed;
+        }
+      }
+      if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+        needsTargetStep = true;
+      }
+    }
+    if (patchedMap) {
+      const mapToPersist = patchedMap;
+      setRegistrationData((prev) => ({
+        ...prev,
+        goalTargetMap: {
+          ...(prev.goalTargetMap || {}),
+          ...mapToPersist,
+        },
+      }));
+    }
+    triggerHaptic();
+    if (needsTargetStep) {
+      goToOnboardingStep("goal_target");
+      return;
+    }
+    await handleGoalTargetSubmit();
+  };
+
   const handleGoalComplete = async (targetsOverride = null) => {
-    const selections =
-      (registrationData.goalSelections && registrationData.goalSelections.length > 0
-        ? registrationData.goalSelections
-        : selectedGoals) || [];
+    const selections = registrationData.goalSelections || [];
     if (!selections.length) {
       Alert.alert("Almost", t("goalTitle"));
       return;
@@ -7045,10 +8640,23 @@ function App() {
               : getGoalDefaultTargetUSD(goalId);
             return { id: goalId, usd };
           });
-    const primaryGoals = targets.map((entry) => ({
-      id: entry.id,
-      targetUSD: entry.usd > 0 ? entry.usd : getGoalDefaultTargetUSD(entry.id),
-    }));
+    const primaryGoals = targets.map((entry) => {
+      const goalId = entry.id;
+      const targetUSD = entry.usd > 0 ? entry.usd : getGoalDefaultTargetUSD(goalId);
+      const customGoal = customGoalMap[goalId];
+      const customTitle = typeof customGoal?.title === "string" ? customGoal.title.trim() : "";
+      const base = {
+        id: goalId,
+        targetUSD,
+      };
+      if (customTitle) {
+        base.customTitle = customTitle;
+      }
+      if (customGoal?.emoji) {
+        base.customEmoji = normalizeEmojiValue(customGoal.emoji, DEFAULT_GOAL_EMOJI);
+      }
+      return base;
+    });
     const aggregatedGoalTargetUSD = primaryGoals.reduce(
       (sum, goal) => sum + (Number.isFinite(goal.targetUSD) ? goal.targetUSD : 0),
       0
@@ -7061,12 +8669,19 @@ function App() {
     let customSpend = null;
     const customName = registrationData.customSpendTitle?.trim();
     const customAmount = parseFloat((registrationData.customSpendAmount || "").replace(",", "."));
+    const customFrequency = parseFloat(
+      (registrationData.customSpendFrequency || "").replace(",", ".")
+    );
     if (customName && Number.isFinite(customAmount) && customAmount > 0) {
       const amountUSD = convertFromCurrency(customAmount, registrationData.currency);
       customSpend = {
         title: customName,
         amountUSD,
         currency: registrationData.currency,
+        frequencyPerWeek:
+          Number.isFinite(customFrequency) && customFrequency > 0
+            ? Math.round(customFrequency)
+            : 0,
       };
     }
     let spendingProfile = profile.spendingProfile || { ...DEFAULT_PROFILE.spendingProfile };
@@ -7094,6 +8709,7 @@ function App() {
       gender,
       customSpend,
       spendingProfile,
+      joinedAt: profile.joinedAt || new Date().toISOString(),
     };
     setProfile(updatedProfile);
     setProfileDraft(updatedProfile);
@@ -7108,10 +8724,18 @@ function App() {
       goal_id: primaryGoals[0]?.id || selections[0] || DEFAULT_PROFILE.goal,
     });
     setTimeout(() => {
-      setOnboardingStep("done");
-      setSelectedGoals([]);
+      goToOnboardingStep("done", { recordHistory: false, resetHistory: true });
       setRegistrationData(INITIAL_REGISTRATION);
     }, 500);
+  };
+
+  const handleAnalyticsConsentComplete = async (allowAnalytics) => {
+    const optOut = !allowAnalytics;
+    setAnalyticsOptOutState(optOut);
+    setAnalyticsOptOutFlag(optOut);
+    const targets = pendingGoalTargets;
+    setPendingGoalTargets(null);
+    await handleGoalComplete(targets && targets.length ? targets : null);
   };
 
   const ensureMediaPermission = async (type) => {
@@ -7178,18 +8802,26 @@ function App() {
     }
   };
 
-  const logHistoryEvent = useCallback((kind, meta = {}) => {
-    setHistoryEvents((prev) => {
+  const logHistoryEvent = useCallback(
+    (kind, meta = {}) => {
+      const timestamp = Date.now();
       const entry = {
-        id: `history-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+        id: `history-${timestamp}-${Math.random().toString(16).slice(2, 6)}`,
         kind,
         meta,
-        timestamp: Date.now(),
+        timestamp,
       };
-      const next = [entry, ...prev];
-      return next.slice(0, MAX_HISTORY_EVENTS);
-    });
-  }, []);
+      setHistoryEvents((prev) => {
+        const next = [entry, ...prev].filter((item) => {
+          if (!item?.timestamp) return false;
+          return timestamp - item.timestamp <= HISTORY_RETENTION_MS;
+        });
+        return next.slice(0, MAX_HISTORY_EVENTS);
+      });
+      setChallengesState((prev) => applyChallengeEvent(prev, entry));
+    },
+    [setChallengesState]
+  );
 
   const triggerCardFeedback = useCallback((templateId) => {
     if (!templateId) return;
@@ -7622,15 +9254,33 @@ function App() {
       goalEditorPrompt.wish.kind === PRIMARY_GOAL_KIND &&
       goalEditorPrompt.wish.goalId
     ) {
+      const goalExtras = {
+        customTitle: trimmedName,
+        customEmoji: normalizedEmoji,
+      };
       setProfile((prev) =>
-        updatePrimaryGoalTargetInProfile(prev, goalEditorPrompt.wish.goalId, nextTargetUSD)
+        updatePrimaryGoalTargetInProfile(prev, goalEditorPrompt.wish.goalId, nextTargetUSD, goalExtras)
       );
       setProfileDraft((prev) =>
-        updatePrimaryGoalTargetInProfile(prev, goalEditorPrompt.wish.goalId, nextTargetUSD)
+        updatePrimaryGoalTargetInProfile(prev, goalEditorPrompt.wish.goalId, nextTargetUSD, goalExtras)
       );
     }
     closeGoalEditorPrompt();
   }, [closeGoalEditorPrompt, goalEditorPrompt, profile.currency, setProfile, setProfileDraft, t]);
+
+  const handleGoalRenewalLater = useCallback(() => {
+    goalRenewalPromptPendingRef.current = false;
+    setGoalRenewalPromptVisible(false);
+  }, []);
+
+  const handleGoalRenewalStart = useCallback(() => {
+    goalRenewalPromptPendingRef.current = false;
+    setGoalRenewalPromptVisible(false);
+    setActiveTab("cart");
+    const targetWish = mainGoalWish || selectMainGoalWish(wishes);
+    const action = targetWish ? () => openGoalEditorPrompt(targetWish) : handleFabNewGoal;
+    setTimeout(action, 280);
+  }, [handleFabNewGoal, mainGoalWish, openGoalEditorPrompt, setActiveTab, wishes]);
 
   const handleLogFreeDay = useCallback(() => {
     const today = new Date();
@@ -8166,15 +9816,130 @@ function App() {
     (reward) => {
       if (!reward?.id || !reward.unlocked || reward.claimed || claimedRewards[reward.id]) return;
       setClaimedRewards((prev) => ({ ...prev, [reward.id]: true }));
-    setHealthPoints((prev) => prev + HEALTH_PER_REWARD);
-    triggerOverlayState("health", {
-      amount: HEALTH_PER_REWARD,
-      reason: t("healthCelebrateReward"),
-    }, 3200);
+      setHealthPoints((prev) => prev + HEALTH_PER_REWARD);
+      triggerOverlayState(
+        "health",
+        {
+          amount: HEALTH_PER_REWARD,
+          reason: t("healthCelebrateReward"),
+        },
+        3200
+      );
       triggerSuccessHaptic();
       logEvent("reward_claimed", { reward_id: reward.id });
+      logHistoryEvent("reward_claimed", { rewardId: reward.id, title: reward.title });
     },
-    [claimedRewards, t, triggerOverlayState]
+    [claimedRewards, t, triggerOverlayState, logHistoryEvent]
+  );
+
+  const handleChallengeAccept = useCallback(
+    async (challengeId) => {
+      const def = CHALLENGE_DEF_MAP[challengeId];
+      if (!def) return;
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+      let activated = false;
+      let startedAt = Date.now();
+      let expiresAt = startedAt + def.durationDays * DAY_MS;
+      setChallengesState((prev) => {
+        const entry = prev[challengeId] || createChallengeEntry(challengeId);
+        const canStart =
+          entry.status === CHALLENGE_STATUS.IDLE ||
+          entry.status === CHALLENGE_STATUS.EXPIRED ||
+          entry.status === CHALLENGE_STATUS.CLAIMED;
+        if (!canStart) {
+          return prev;
+        }
+        activated = true;
+        startedAt = Date.now();
+        expiresAt = startedAt + def.durationDays * DAY_MS;
+        return {
+          ...prev,
+          [challengeId]: {
+            ...createChallengeEntry(challengeId),
+            status: CHALLENGE_STATUS.ACTIVE,
+            startedAt,
+            expiresAt,
+          },
+        };
+      });
+      if (!activated) return;
+      const copy = getChallengeCopy(def, language);
+      const title = copy.title || challengeId;
+      triggerOverlayState("cart", t("challengeStartedOverlay", { title }));
+      logEvent("challenge_started", { challenge_id: challengeId });
+      const reminderIds = await scheduleChallengeReminders(challengeId, def, startedAt, expiresAt);
+      if (reminderIds.length) {
+        setChallengesState((prev) => {
+          const entry = prev[challengeId];
+          if (!entry || entry.startedAt !== startedAt) return prev;
+          return {
+            ...prev,
+            [challengeId]: {
+              ...entry,
+              reminderNotificationIds: reminderIds,
+            },
+          };
+        });
+      }
+    },
+    [language, scheduleChallengeReminders, t, triggerOverlayState]
+  );
+
+  const handleChallengeClaim = useCallback(
+    (challengeId) => {
+      const def = CHALLENGE_DEF_MAP[challengeId];
+      if (!def) return;
+      const currentEntry = challengesState[challengeId];
+      if (!currentEntry || currentEntry.status !== CHALLENGE_STATUS.COMPLETED) return;
+      (currentEntry.reminderNotificationIds || []).forEach((id) => {
+        Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+      });
+      triggerSuccessHaptic();
+      setChallengesState((prev) => {
+        const entry = prev[challengeId];
+        if (!entry || entry.status !== CHALLENGE_STATUS.COMPLETED) return prev;
+        return {
+          ...prev,
+          [challengeId]: {
+            ...entry,
+            status: CHALLENGE_STATUS.CLAIMED,
+            claimedAt: Date.now(),
+            reminderNotificationIds: [],
+          },
+        };
+      });
+      setHealthPoints((prev) => prev + def.rewardHealth);
+      const copy = getChallengeCopy(def, language);
+      const title = copy.title || challengeId;
+      triggerOverlayState(
+        "health",
+        {
+          amount: def.rewardHealth,
+          reason: t("challengeClaimedOverlay", { title }),
+        },
+        3200
+      );
+      logEvent("challenge_claimed", { challenge_id: challengeId });
+    },
+    [challengesState, language, t, triggerOverlayState]
+  );
+
+  const handleChallengeCancel = useCallback(
+    (challengeId) => {
+      setChallengesState((prev) => {
+        const entry = prev[challengeId];
+        if (!entry || entry.status !== CHALLENGE_STATUS.ACTIVE) return prev;
+        (entry.reminderNotificationIds || []).forEach((id) => {
+          Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+        });
+        logEvent("challenge_cancelled", { challenge_id: challengeId });
+        return {
+          ...prev,
+          [challengeId]: createChallengeEntry(challengeId),
+        };
+      });
+    },
+    [logEvent]
   );
 
   const handleFreeDayRescue = useCallback(() => {
@@ -8218,6 +9983,16 @@ function App() {
                   )
               );
             } catch {}
+            try {
+              const challengeReminderIds = Object.values(challengesState || {}).flatMap(
+                (entry) => entry?.reminderNotificationIds || []
+              );
+              await Promise.all(
+                challengeReminderIds.map((id) =>
+                  Notifications.cancelScheduledNotificationAsync(id).catch(() => {})
+                )
+              );
+            } catch {}
             setWishes([]);
             setPendingList([]);
             setPurchases([]);
@@ -8231,11 +10006,11 @@ function App() {
             setDecisionStats({ ...INITIAL_DECISION_STATS });
             setHistoryEvents([]);
             setRefuseStats({});
-            setProfile({ ...DEFAULT_PROFILE });
-            setProfileDraft({ ...DEFAULT_PROFILE });
+            const resetProfile = { ...DEFAULT_PROFILE, joinedAt: new Date().toISOString() };
+            setProfile(resetProfile);
+            setProfileDraft(resetProfile);
             setRegistrationData(INITIAL_REGISTRATION);
-            setSelectedGoals([]);
-            setOnboardingStep("logo");
+            goToOnboardingStep("logo", { recordHistory: false, resetHistory: true });
             setActiveCategory("all");
             setActiveTab("feed");
             setOverlay(null);
@@ -8245,9 +10020,16 @@ function App() {
             setHealthPoints(0);
             setClaimedRewards({});
             setRewardCelebratedMap({});
+            const resetChallenges = createInitialChallengesState();
+            challengesPrevRef.current = resetChallenges;
+            setChallengesState(resetChallenges);
             setImpulseTracker({ ...INITIAL_IMPULSE_TRACKER });
             setMoodState(createMoodStateForToday());
             impulseAlertCooldownRef.current = {};
+            if (customReminderId) {
+              Notifications.cancelScheduledNotificationAsync(customReminderId).catch(() => {});
+            }
+            persistCustomReminderId(null);
           },
         },
       ]
@@ -8269,13 +10051,24 @@ function App() {
   const saveProfileEdit = () => {
     triggerHaptic();
     const normalizedGoals = Array.isArray(profileDraft.primaryGoals) && profileDraft.primaryGoals.length
-      ? profileDraft.primaryGoals.map((entry) => ({
-          id: entry?.id || profileDraft.goal || profile.goal || DEFAULT_PROFILE.goal,
-          targetUSD:
+      ? profileDraft.primaryGoals.map((entry) => {
+          const goalId = entry?.id || profileDraft.goal || profile.goal || DEFAULT_PROFILE.goal;
+          const targetUSD =
             Number.isFinite(entry?.targetUSD) && entry.targetUSD > 0
               ? entry.targetUSD
-              : getGoalDefaultTargetUSD(entry?.id || profileDraft.goal || profile.goal || DEFAULT_PROFILE.goal),
-        }))
+              : getGoalDefaultTargetUSD(goalId);
+          const normalized = {
+            id: goalId,
+            targetUSD,
+          };
+          if (entry?.customTitle) {
+            normalized.customTitle = entry.customTitle;
+          }
+          if (entry?.customEmoji) {
+            normalized.customEmoji = entry.customEmoji;
+          }
+          return normalized;
+        })
       : [
           {
             id: profileDraft.goal || profile.goal || DEFAULT_PROFILE.goal,
@@ -8287,6 +10080,10 @@ function App() {
       0
     );
     const hasMetTarget = aggregatedTarget > 0 && savedTotalUSD >= aggregatedTarget;
+    const prevCustomId = profile.customSpend?.id || "custom_habit";
+    const prevCustomTitle = (profile.customSpend?.title || "").trim();
+    const nextCustomId = profileDraft.customSpend?.id || prevCustomId;
+    const nextCustomTitle = (profileDraft.customSpend?.title || "").trim();
     const nextProfile = {
       ...profileDraft,
       primaryGoals: normalizedGoals,
@@ -8294,6 +10091,17 @@ function App() {
       goalTargetUSD: aggregatedTarget,
       goalCelebrated: hasMetTarget ? profileDraft.goalCelebrated : false,
     };
+    if (nextCustomId && prevCustomTitle !== nextCustomTitle) {
+      setTitleOverrides((prev) => {
+        const next = { ...prev };
+        if (nextCustomTitle) {
+          next[nextCustomId] = nextCustomTitle;
+        } else {
+          delete next[nextCustomId];
+        }
+        return next;
+      });
+    }
     setProfile(nextProfile);
     setIsEditingProfile(false);
     Keyboard.dismiss();
@@ -8327,14 +10135,20 @@ function App() {
       case "purchases":
         return (
           <RewardsScreen
-          achievements={achievements}
-          t={t}
-          colors={colors}
-          savedTotalUSD={savedTotalUSD}
-          currency={profile.currency || DEFAULT_PROFILE.currency}
-          onRewardClaim={handleRewardClaim}
-          healthRewardAmount={HEALTH_PER_REWARD}
-        />
+            achievements={achievements}
+            challenges={challengeList}
+            activePane={rewardsPane}
+            onPaneChange={setRewardsPane}
+            onChallengeAccept={handleChallengeAccept}
+            onChallengeClaim={handleChallengeClaim}
+            onChallengeCancel={handleChallengeCancel}
+            t={t}
+            colors={colors}
+            savedTotalUSD={savedTotalUSD}
+            currency={profile.currency || DEFAULT_PROFILE.currency}
+            onRewardClaim={handleRewardClaim}
+            healthRewardAmount={HEALTH_PER_REWARD}
+          />
         );
       case "profile":
         return (
@@ -8445,6 +10259,7 @@ function App() {
       baseline: "onboarding_baseline",
       goal: "onboarding_goal",
       goal_target: "onboarding_goal_target",
+      analytics_consent: "onboarding_analytics_consent",
     };
     const screen = onboardingScreens[onboardingStep];
     if (screen) {
@@ -8453,9 +10268,10 @@ function App() {
   }, [onboardingStep]);
 
   if (onboardingStep !== "done") {
+    const onboardingBackHandler = canGoBackOnboarding ? handleOnboardingBack : undefined;
     let onboardContent = null;
     if (onboardingStep === "logo") {
-      onboardContent = <LogoSplash onDone={() => setOnboardingStep("language")} />;
+      onboardContent = <LogoSplash onDone={() => goToOnboardingStep("language", { recordHistory: false })} />;
     } else if (onboardingStep === "language") {
       onboardContent = (
         <LanguageScreen
@@ -8466,11 +10282,12 @@ function App() {
           onLanguageChange={handleLanguageChange}
           onCurrencyChange={(code) => updateRegistrationData("currency", code)}
           onContinue={handleLanguageContinue}
+          onBack={onboardingBackHandler}
         />
       );
     } else if (onboardingStep === "guide") {
       onboardContent = (
-        <HowItWorksScreen colors={colors} t={t} onContinue={handleGuideContinue} />
+        <HowItWorksScreen colors={colors} t={t} onContinue={handleGuideContinue} onBack={onboardingBackHandler} />
       );
     } else if (onboardingStep === "register") {
       onboardContent = (
@@ -8481,6 +10298,7 @@ function App() {
           onPickImage={handleRegistrationPickImage}
           colors={colors}
           t={t}
+          onBack={onboardingBackHandler}
         />
       );
     } else if (onboardingStep === "persona") {
@@ -8492,6 +10310,7 @@ function App() {
           colors={colors}
           t={t}
           language={language}
+          onBack={onboardingBackHandler}
         />
       );
     } else if (onboardingStep === "habit") {
@@ -8503,6 +10322,7 @@ function App() {
           colors={colors}
           t={t}
           currency={registrationData.currency || profile.currency || DEFAULT_PROFILE.currency}
+          onBack={onboardingBackHandler}
         />
       );
     } else if (onboardingStep === "baseline") {
@@ -8514,46 +10334,83 @@ function App() {
           onSubmit={handleBaselineSubmit}
           colors={colors}
           t={t}
+          onBack={onboardingBackHandler}
         />
       );
     } else if (onboardingStep === "goal") {
       onboardContent = (
         <GoalScreen
-          selectedGoals={registrationData.goalSelections || selectedGoals}
+          selectedGoals={registrationData.goalSelections || []}
           onToggle={handleGoalToggle}
           onSubmit={handleGoalStageContinue}
           colors={colors}
           t={t}
           language={language}
+          onBack={onboardingBackHandler}
+          customGoals={registrationData.customGoals || []}
+          onCustomGoalCreate={openOnboardingGoalModal}
         />
       );
     } else if (onboardingStep === "goal_target") {
       onboardContent = (
         <GoalTargetScreen
-          selections={registrationData.goalSelections || selectedGoals}
+          selections={registrationData.goalSelections || []}
           values={registrationData.goalTargetMap || {}}
           currency={registrationData.currency || profile.currency || DEFAULT_PROFILE.currency}
           onChange={handleGoalTargetDraftChange}
           onSubmit={handleGoalTargetSubmit}
-          onBack={() => setOnboardingStep("goal")}
+          onBack={onboardingBackHandler}
           colors={colors}
           t={t}
           language={language}
+          customGoals={registrationData.customGoals || []}
+        />
+      );
+    } else if (onboardingStep === "analytics_consent") {
+      onboardContent = (
+        <AnalyticsConsentScreen
+          colors={colors}
+          t={t}
+          onSubmit={(allow) => handleAnalyticsConsentComplete(allow)}
+          onBack={onboardingBackHandler}
         />
       );
     }
     const onboardingBackground = onboardingStep === "logo" ? "#fff" : colors.background;
     return (
       <>
-        <SafeAreaView style={[styles.appShell, { backgroundColor: onboardingBackground }] }>
-          {onboardContent || <LogoSplash onDone={() => setOnboardingStep("language")} />}
-        </SafeAreaView>
+        <View style={[styles.appBackground, { backgroundColor: onboardingBackground }]}>
+          <SafeAreaView
+            style={[
+              styles.appShell,
+              {
+                backgroundColor: onboardingBackground,
+                paddingTop: topSafeInset,
+              },
+            ]}
+          >
+            <StatusBar style={theme === "dark" ? "light" : "dark"} backgroundColor={onboardingBackground} />
+            {onboardContent || (
+              <LogoSplash onDone={() => goToOnboardingStep("language", { recordHistory: false })} />
+            )}
+          </SafeAreaView>
+        </View>
         <ImageSourceSheet
           visible={showImageSourceSheet}
           colors={colors}
           t={t}
           onClose={closeImagePickerSheet}
           onSelect={handleImageSourceChoice}
+        />
+        <OnboardingGoalModal
+          visible={onboardingGoalModal.visible}
+          colors={colors}
+          t={t}
+          currency={registrationData.currency || profile.currency || DEFAULT_PROFILE.currency}
+          data={onboardingGoalModal}
+          onChange={handleOnboardingGoalChange}
+          onSubmit={handleOnboardingGoalSubmit}
+          onCancel={handleOnboardingGoalCancel}
         />
       </>
     );
@@ -8566,9 +10423,37 @@ function App() {
         accessible={false}
         disabled={!keyboardVisible}
       >
-      <SafeAreaView style={[styles.appShell, { backgroundColor: colors.background }] }>
+      <View
+        style={[
+          styles.appBackground,
+          { backgroundColor: colors.background },
+        ]}
+      >
+      <SafeAreaView
+        style={[
+          styles.appShell,
+          {
+            backgroundColor: colors.background,
+            paddingTop: topSafeInset,
+          },
+        ]}
+      >
+        <StatusBar
+          style={theme === "dark" ? "light" : "dark"}
+          backgroundColor={colors.background}
+        />
         <View style={styles.screenWrapper}>{renderActiveScreen()}</View>
-        <View style={[styles.tabBar, { backgroundColor: colors.card, borderTopColor: colors.border }] }>
+        <View
+          style={[
+            styles.tabBar,
+            {
+              backgroundColor: colors.card,
+              borderTopColor: colors.border,
+              paddingBottom: tabBarBottomInset,
+              paddingTop: 12,
+            },
+          ]}
+        >
           {["feed", "cart", "pending", "purchases", "profile"].map((tab) => (
             <TouchableOpacity
               key={tab}
@@ -8717,6 +10602,7 @@ function App() {
             transparent
             animationType="fade"
             onRequestClose={() => setMoodDetailsVisible(false)}
+            statusBarTranslucent
           >
             <TouchableWithoutFeedback onPress={() => setMoodDetailsVisible(false)}>
               <View style={styles.moodDetailsBackdrop}>
@@ -8751,6 +10637,7 @@ function App() {
             transparent
             animationType="fade"
             onRequestClose={() => setPotentialDetailsVisible(false)}
+            statusBarTranslucent
           >
             <TouchableWithoutFeedback onPress={() => setPotentialDetailsVisible(false)}>
               <View style={styles.moodDetailsBackdrop}>
@@ -8852,7 +10739,7 @@ function App() {
           overlay.type !== "health" &&
           overlay.type !== "goal_complete" &&
           overlay.type !== "impulse_alert" && (
-            <Modal visible transparent animationType="fade">
+            <Modal visible transparent animationType="fade" statusBarTranslucent>
               <TouchableWithoutFeedback onPress={dismissOverlay}>
                 <View style={styles.confettiLayer}>
                   <View
@@ -8904,7 +10791,7 @@ function App() {
             </Modal>
           )}
         {overlay?.type === "level" && (
-          <Modal visible transparent animationType="fade">
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
                 <LevelUpCelebration colors={colors} message={overlay.message} level={overlay.message} t={t} />
@@ -8913,7 +10800,7 @@ function App() {
           </Modal>
         )}
         {overlay?.type === "save" && (
-          <Modal visible transparent animationType="fade">
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.saveOverlay}>
                 <View
@@ -8951,7 +10838,7 @@ function App() {
           </Modal>
         )}
         {overlay?.type === "custom_temptation" && (
-          <Modal visible transparent animationType="fade">
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.saveOverlay}>
                 <View
@@ -8976,7 +10863,7 @@ function App() {
           </Modal>
         )}
         {overlay?.type === "reward" && (
-          <Modal visible transparent animationType="fade">
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
                 <RewardCelebration colors={colors} message={overlay.message} t={t} />
@@ -8985,7 +10872,7 @@ function App() {
           </Modal>
         )}
         {overlay?.type === "health" && (
-          <Modal visible transparent animationType="fade">
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
                 <HealthCelebration colors={colors} payload={overlay.message} t={t} />
@@ -8994,7 +10881,7 @@ function App() {
           </Modal>
         )}
         {overlay?.type === "goal_complete" && (
-          <Modal visible transparent animationType="fade">
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
                 <GoalCelebration colors={colors} payload={overlay.message} t={t} />
@@ -9003,7 +10890,7 @@ function App() {
           </Modal>
         )}
         {overlay?.type === "impulse_alert" && (
-          <Modal visible transparent animationType="fade">
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View
                 style={[
@@ -9038,7 +10925,12 @@ function App() {
           </Modal>
         )}
 
-        <Modal visible={goalLinkPrompt.visible} transparent animationType="fade">
+        <Modal
+          visible={goalLinkPrompt.visible}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+        >
           <TouchableWithoutFeedback onPress={closeGoalLinkPrompt}>
             <View style={styles.priceModalBackdrop}>
               <TouchableWithoutFeedback onPress={() => {}}>
@@ -9124,7 +11016,12 @@ function App() {
           </TouchableWithoutFeedback>
         </Modal>
 
-        <Modal visible={goalTemptationPrompt.visible} transparent animationType="fade">
+        <Modal
+          visible={goalTemptationPrompt.visible}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+        >
           <TouchableWithoutFeedback onPress={closeGoalTemptationPrompt}>
             <View style={styles.priceModalBackdrop}>
               <TouchableWithoutFeedback onPress={() => {}}>
@@ -9195,7 +11092,12 @@ function App() {
           </TouchableWithoutFeedback>
         </Modal>
 
-        <Modal visible={goalEditorPrompt.visible} transparent animationType="fade">
+        <Modal
+          visible={goalEditorPrompt.visible}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+        >
           <TouchableWithoutFeedback onPress={closeGoalEditorPrompt}>
             <View style={styles.priceModalBackdrop}>
               <TouchableWithoutFeedback onPress={() => {}}>
@@ -9280,6 +11182,51 @@ function App() {
           </TouchableWithoutFeedback>
         </Modal>
 
+        <Modal
+          visible={goalRenewalPromptVisible}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+        >
+          <TouchableWithoutFeedback onPress={handleGoalRenewalLater}>
+            <View style={styles.goalRenewalBackdrop}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View
+                  style={[
+                    styles.goalRenewalCard,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                  ]}
+                >
+                  <Text style={[styles.goalRenewalTitle, { color: colors.text }]}>
+                    {t("goalRenewalTitle")}
+                  </Text>
+                  <Text style={[styles.goalRenewalSubtitle, { color: colors.muted }]}>
+                    {t("goalRenewalSubtitle")}
+                  </Text>
+                  <View style={styles.goalRenewalActions}>
+                    <TouchableOpacity
+                      style={[styles.goalRenewalSecondary, { borderColor: colors.border }]}
+                      onPress={handleGoalRenewalLater}
+                    >
+                      <Text style={[styles.goalRenewalSecondaryText, { color: colors.muted }]}>
+                        {t("goalRenewalLater")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.goalRenewalPrimary, { backgroundColor: colors.text }]}
+                      onPress={handleGoalRenewalStart}
+                    >
+                      <Text style={[styles.goalRenewalPrimaryText, { color: colors.background }]}>
+                        {t("goalRenewalCreate")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
         <ImageSourceSheet
           visible={showImageSourceSheet}
           colors={colors}
@@ -9299,14 +11246,22 @@ function App() {
         />
         {stormActive && <StormOverlay t={t} />}
       </SafeAreaView>
+      </View>
       </TouchableWithoutFeedback>
     </SavingsProvider>
   );
 }
 
+function App() {
+  return <AppContent />;
+}
+
 export default Sentry.wrap(App);
 
 const styles = StyleSheet.create({
+  appBackground: {
+    flex: 1,
+  },
   appShell: {
     flex: 1,
     paddingHorizontal: SHELL_HORIZONTAL_PADDING,
@@ -9432,7 +11387,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   progressHeroCard: {
-    marginTop: 18,
+    marginTop: 8,
     borderRadius: 24,
     padding: 18,
     borderWidth: 1,
@@ -9478,15 +11433,19 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     width: "100%",
   },
+  savedHeroLevelButton: {
+    position: "absolute",
+    top: -12,
+    right: 0,
+    zIndex: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+  },
   savedHeroLevelBadge: {
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderWidth: 1,
-    position: "absolute",
-    top: -6,
-    right: 0,
-    zIndex: 1,
   },
   savedHeroLevelText: {
     fontSize: 12,
@@ -9496,6 +11455,27 @@ const styles = StyleSheet.create({
   savedHeroAmountWrap: {
     marginTop: 4,
     marginBottom: 10,
+  },
+  heroLevelDetails: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 10,
+  },
+  heroLevelTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  heroLevelSubtitle: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  heroLevelMeta: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: "600",
   },
   heroPotentialCard: {
     marginBottom: 12,
@@ -10221,10 +12201,14 @@ const styles = StyleSheet.create({
     width: 40,
     alignItems: "center",
   },
-  temptationPinnedBadge: {
+  temptationBadgeStack: {
     position: "absolute",
-    top: 12,
-    right: 12,
+    top: 0,
+    right: 0,
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  temptationPinnedBadge: {
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: 10,
@@ -10290,11 +12274,15 @@ const styles = StyleSheet.create({
   },
   temptationDesc: {
     lineHeight: 20,
+    marginTop: 4,
+    marginBottom: 8,
   },
   temptationPriceRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginTop: 6,
+    marginBottom: 6,
   },
   temptationPricePill: {
     paddingVertical: 6,
@@ -10324,6 +12312,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 6,
   },
+  temptationGoalBadgeFloating: {
+    alignSelf: "flex-end",
+    marginBottom: 0,
+  },
   temptationGoalBadgeEditable: {
     flexDirection: "row",
     alignItems: "center",
@@ -10338,6 +12330,7 @@ const styles = StyleSheet.create({
   },
   temptationRefuseMeta: {
     fontSize: 12,
+    marginBottom: 6,
   },
   temptationFeedbackOverlay: {
     position: "absolute",
@@ -10415,6 +12408,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+    marginTop: 8,
   },
   temptationButtonPrimary: {
     flexGrow: 1,
@@ -10635,6 +12629,7 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 16,
     gap: 10,
+    position: "relative",
   },
   goalSwipeRow: {
     marginBottom: 20,
@@ -10674,7 +12669,7 @@ const styles = StyleSheet.create({
   wishHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
   },
   wishTitleWrap: {
     flexDirection: "row",
@@ -10703,6 +12698,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "transparent",
     backgroundColor: "rgba(0,0,0,0.04)",
+  },
+  wishBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
   wishMeta: {
     fontSize: 13,
@@ -11037,6 +13036,117 @@ const styles = StyleSheet.create({
     textAlign: "center",
     width: "100%",
   },
+  rewardsTabs: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  rewardsTabButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  rewardsTabText: {
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  challengeCard: {
+    borderRadius: 22,
+    padding: 18,
+    gap: 12,
+    borderWidth: 1,
+  },
+  challengeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  challengeEmoji: {
+    fontSize: 28,
+  },
+  challengeTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  challengeDesc: {
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  challengeMetaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  challengeStatus: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  challengeTimer: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  challengeProgressBar: {
+    height: 8,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  challengeProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  challengeProgressLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  challengeActionButton: {
+    borderRadius: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  challengeActionText: {
+    fontWeight: "700",
+  },
+  challengeRewardChip: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  challengeRewardChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  challengeSwipeWrapper: {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: 22,
+    backgroundColor: "transparent",
+  },
+  challengeSwipeActions: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: CHALLENGE_SWIPE_ACTION_WIDTH,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  challengeSwipeButton: {
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    width: "80%",
+    alignItems: "center",
+  },
+  challengeSwipeButtonText: {
+    fontWeight: "700",
+    fontSize: 13,
+    textAlign: "center",
+  },
   goalProgressBar: {
     height: 8,
     borderRadius: 999,
@@ -11047,19 +13157,6 @@ const styles = StyleSheet.create({
   goalProgressFill: {
     height: "100%",
     borderRadius: 999,
-  },
-  goalBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 18,
-    borderWidth: 1,
-    fontSize: 12,
-    textTransform: "uppercase",
-  },
-  goalBadgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
   },
   profileCard: {
     borderRadius: 30,
@@ -11208,6 +13305,14 @@ const styles = StyleSheet.create({
   profileInputHalf: {
     flex: 1,
     width: "auto",
+  },
+  profileHintText: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  profileSettingValue: {
+    fontSize: 16,
+    fontWeight: "600",
   },
   profileBioInput: {
     height: 90,
@@ -11369,6 +13474,13 @@ const styles = StyleSheet.create({
   historyEmpty: {
     fontSize: 14,
   },
+  historyList: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 20,
+  },
+  historyListContent: {
+    paddingHorizontal: 12,
+  },
   historyItem: {
     paddingVertical: 12,
   },
@@ -11396,6 +13508,46 @@ const styles = StyleSheet.create({
   tabButtonText: {
     fontSize: 13,
     textTransform: "uppercase",
+  },
+  analyticsConsentScreen: {
+    flex: 1,
+    justifyContent: "flex-start",
+    padding: 24,
+    paddingTop: 48,
+    gap: 20,
+  },
+  analyticsConsentCard: {
+    borderRadius: 32,
+    borderWidth: 1,
+    padding: 28,
+    gap: 20,
+  },
+  analyticsConsentTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+  },
+  analyticsConsentBody: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  analyticsConsentPrimary: {
+    borderRadius: 20,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  analyticsConsentPrimaryText: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  analyticsConsentSecondary: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  analyticsConsentSecondaryText: {
+    fontSize: 14,
+    fontWeight: "600",
   },
   modalContainer: {
     flex: 1,
@@ -12061,6 +14213,56 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
   },
+  goalRenewalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  goalRenewalCard: {
+    width: "100%",
+    borderRadius: 32,
+    borderWidth: 1,
+    padding: 24,
+    gap: 12,
+  },
+  goalRenewalTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  goalRenewalSubtitle: {
+    fontSize: 15,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  goalRenewalActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 8,
+  },
+  goalRenewalSecondary: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  goalRenewalSecondaryText: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  goalRenewalPrimary: {
+    flex: 1,
+    borderRadius: 18,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  goalRenewalPrimaryText: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
   onboardContainer: {
     flex: 1,
     paddingHorizontal: BASE_HORIZONTAL_PADDING,
@@ -12137,6 +14339,22 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 12,
   },
+  goalCustomSectionTitle: {
+    marginTop: 16,
+    fontSize: 14,
+    textTransform: "uppercase",
+  },
+  goalCustomButton: {
+    borderWidth: 1,
+    borderRadius: 22,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 16,
+  },
+  goalCustomButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
   goalOption: {
     width: "48%",
     borderWidth: 1,
@@ -12205,17 +14423,28 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     alignItems: "center",
   },
+  onboardBackButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    gap: 6,
+    marginBottom: 12,
+  },
+  onboardBackIcon: {
+    fontSize: 14,
+  },
+  onboardBackLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
   languageHint: {
     marginTop: 8,
     fontSize: 12,
     lineHeight: 16,
-  },
-  goalTargetBack: {
-    marginBottom: 16,
-  },
-  goalTargetBackText: {
-    fontSize: 13,
-    fontWeight: "600",
   },
   goalTargetHint: {
     marginTop: 8,
@@ -12237,7 +14466,13 @@ const styles = StyleSheet.create({
 });
 function ImageSourceSheet({ visible, colors, t, onClose, onSelect }) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.sheetBackdrop}>
           <TouchableWithoutFeedback onPress={() => {}}>
@@ -12268,7 +14503,7 @@ function ImageSourceSheet({ visible, colors, t, onClose, onSelect }) {
   );
 }
 
-function RegistrationScreen({ data, onChange, onSubmit, onPickImage, colors, t }) {
+function RegistrationScreen({ data, onChange, onSubmit, onPickImage, colors, t, onBack }) {
   const fade = useFadeIn();
 
   return (
@@ -12278,6 +14513,7 @@ function RegistrationScreen({ data, onChange, onSubmit, onPickImage, colors, t }
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("registrationTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("registrationSubtitle")}</Text>
 
@@ -12337,12 +14573,23 @@ function RegistrationScreen({ data, onChange, onSubmit, onPickImage, colors, t }
   );
 }
 
-function GoalScreen({ selectedGoals = [], onToggle, onSubmit, colors, t, language }) {
+function GoalScreen({
+  selectedGoals = [],
+  onToggle,
+  onSubmit,
+  colors,
+  t,
+  language,
+  onBack,
+  customGoals = [],
+  onCustomGoalCreate,
+}) {
   const fade = useFadeIn();
   const selection = Array.isArray(selectedGoals) ? selectedGoals : [];
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false}>
+        <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("goalTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("goalSubtitle")}</Text>
 
@@ -12370,6 +14617,46 @@ function GoalScreen({ selectedGoals = [], onToggle, onSubmit, colors, t, languag
           })}
         </View>
 
+        {customGoals.length > 0 && (
+          <>
+            <Text style={[styles.goalCustomSectionTitle, { color: colors.muted }]}>
+              {t("goalCustomSectionTitle")}
+            </Text>
+            <View style={styles.goalGrid}>
+              {customGoals.map((goal) => {
+                const active = selection.includes(goal.id);
+                return (
+                  <TouchableOpacity
+                    key={goal.id}
+                    style={[
+                      styles.goalOption,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: active ? colors.card : "transparent",
+                      },
+                    ]}
+                    onPress={() => onToggle?.(goal.id)}
+                  >
+                    <Text style={styles.goalEmoji}>{goal.emoji || "🎯"}</Text>
+                    <Text style={[styles.goalText, { color: colors.text }]}>{goal.title}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        )}
+
+        {onCustomGoalCreate && (
+          <TouchableOpacity
+            style={[styles.goalCustomButton, { borderColor: colors.border }]}
+            onPress={onCustomGoalCreate}
+          >
+            <Text style={[styles.goalCustomButtonText, { color: colors.text }]}>
+              {t("goalCustomCreate")}
+            </Text>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
           <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("goalButton")}</Text>
         </TouchableOpacity>
@@ -12388,20 +14675,28 @@ function GoalTargetScreen({
   colors,
   t,
   language,
+  customGoals = [],
 }) {
   const fade = useFadeIn();
   const selectionList = Array.isArray(selections) ? selections : [];
+  const customGoalMap = useMemo(() => {
+    const entries = Array.isArray(customGoals) ? customGoals : [];
+    return entries.reduce((acc, goal) => {
+      acc[goal.id] = goal;
+      return acc;
+    }, {});
+  }, [customGoals]);
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <TouchableOpacity style={styles.goalTargetBack} onPress={onBack}>
-          <Text style={[styles.goalTargetBackText, { color: colors.muted }]}>{t("goalTargetBack")}</Text>
-        </TouchableOpacity>
+        <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("goalTargetTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("goalTargetSubtitle")}</Text>
         {selectionList.map((goalId) => {
           const preset = getGoalPreset(goalId);
-          const goalLabel = preset?.[language] || preset?.en || goalId;
+          const customGoal = customGoalMap[goalId];
+          const goalLabel =
+            customGoal?.title || preset?.[language] || preset?.en || goalId;
           return (
             <View key={goalId} style={styles.goalTargetRow}>
               <Text style={[styles.goalTargetLabel, { color: colors.muted }]}>{goalLabel}</Text>
@@ -12433,11 +14728,49 @@ function GoalTargetScreen({
   );
 }
 
-function SpendingBaselineScreen({ value, currency, onChange, onSubmit, colors, t }) {
+function AnalyticsConsentScreen({ colors, t, onSubmit, onBack }) {
+  return (
+    <View style={[styles.analyticsConsentScreen, { backgroundColor: colors.background }]}>
+      <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
+      <View
+        style={[
+          styles.analyticsConsentCard,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
+        <Text style={[styles.analyticsConsentTitle, { color: colors.text }]}>
+          {t("analyticsConsentTitle")}
+        </Text>
+        <Text style={[styles.analyticsConsentBody, { color: colors.muted }]}>
+          {t("analyticsConsentBody")}
+        </Text>
+        <TouchableOpacity
+          style={[styles.analyticsConsentPrimary, { backgroundColor: colors.text }]}
+          onPress={() => onSubmit(true)}
+        >
+          <Text style={[styles.analyticsConsentPrimaryText, { color: colors.background }]}>
+            {t("analyticsConsentAgree")}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.analyticsConsentSecondary, { borderColor: colors.border }]}
+          onPress={() => onSubmit(false)}
+        >
+          <Text style={[styles.analyticsConsentSecondaryText, { color: colors.muted }]}>
+            {t("analyticsConsentSkip")}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function SpendingBaselineScreen({ value, currency, onChange, onSubmit, colors, t, onBack }) {
   const fade = useFadeIn();
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("baselineTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("baselineSubtitle")}</Text>
         <View style={styles.baselineInputGroup}>
@@ -12462,12 +14795,13 @@ function SpendingBaselineScreen({ value, currency, onChange, onSubmit, colors, t
   );
 }
 
-function PersonaScreen({ data, onChange, onSubmit, colors, t, language }) {
+function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack }) {
   const fade = useFadeIn();
   const personaList = Object.values(PERSONA_PRESETS);
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false}>
+        <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("personaTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("personaSubtitle")}</Text>
 
@@ -12534,11 +14868,12 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language }) {
   );
 }
 
-function CustomHabitScreen({ data, onChange, onSubmit, colors, t, currency }) {
+function CustomHabitScreen({ data, onChange, onSubmit, colors, t, currency, onBack }) {
   const fade = useFadeIn();
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false}>
+        <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("customSpendTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("customSpendSubtitle")}</Text>
 
@@ -12566,6 +14901,20 @@ function CustomHabitScreen({ data, onChange, onSubmit, colors, t, currency }) {
             onChangeText={(text) => onChange("customSpendAmount", text)}
           />
         </View>
+        <View style={{ gap: 6 }}>
+          <Text style={[styles.currencyLabel, { color: colors.muted }]}>{t("customSpendFrequencyLabel")}</Text>
+          <TextInput
+            style={[
+              styles.primaryInput,
+              { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+            ]}
+            placeholder={t("customSpendFrequencyPlaceholder")}
+            placeholderTextColor={colors.muted}
+            keyboardType="number-pad"
+            value={data.customSpendFrequency}
+            onChangeText={(text) => onChange("customSpendFrequency", text)}
+          />
+        </View>
         <Text style={{ color: colors.muted }}>{t("customSpendHint")}</Text>
 
         <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={() => onSubmit(false)}>
@@ -12581,7 +14930,13 @@ function CustomHabitScreen({ data, onChange, onSubmit, colors, t, currency }) {
 
 function QuickCustomModal({ visible, colors, t, currency, data, onChange, onSubmit, onCancel }) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+      statusBarTranslucent
+    >
       <TouchableWithoutFeedback onPress={onCancel}>
         <View style={styles.quickModalBackdrop}>
           <TouchableWithoutFeedback onPress={() => {}}>
@@ -12650,7 +15005,13 @@ function QuickCustomModal({ visible, colors, t, currency, data, onChange, onSubm
 
 function NewGoalModal({ visible, colors, t, currency, data, onChange, onSubmit, onCancel }) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+      statusBarTranslucent
+    >
       <TouchableWithoutFeedback onPress={onCancel}>
         <View style={styles.quickModalBackdrop}>
           <TouchableWithoutFeedback onPress={() => {}}>
@@ -12717,7 +15078,96 @@ function NewGoalModal({ visible, colors, t, currency, data, onChange, onSubmit, 
   );
 }
 
-function HowItWorksScreen({ colors, t, onContinue }) {
+function OnboardingGoalModal({ visible, colors, t, currency, data, onChange, onSubmit, onCancel }) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+      statusBarTranslucent
+    >
+      <TouchableWithoutFeedback onPress={onCancel}>
+        <View style={styles.quickModalBackdrop}>
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View style={[styles.quickModalCard, { backgroundColor: colors.card }] }>
+              <Text style={[styles.quickModalTitle, { color: colors.text }]}>{t("newGoalTitle")}</Text>
+              <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>{t("newGoalSubtitle")}</Text>
+              <View style={{ gap: 8, width: "100%" }}>
+                <TextInput
+                  style={[
+                    styles.primaryInput,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  placeholder={t("newGoalNameLabel")}
+                  placeholderTextColor={colors.muted}
+                  value={data.name}
+                  onChangeText={(text) => onChange("name", text)}
+                />
+                <TextInput
+                  style={[
+                    styles.primaryInput,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  placeholder={t("newGoalTargetLabel", { currency })}
+                  placeholderTextColor={colors.muted}
+                  keyboardType="decimal-pad"
+                  value={data.target}
+                  onChangeText={(text) => onChange("target", text)}
+                />
+                <TextInput
+                  style={[
+                    styles.primaryInput,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  placeholder={t("newGoalEmojiLabel")}
+                  placeholderTextColor={colors.muted}
+                  value={data.emoji || ""}
+                  onChangeText={(text) => onChange("emoji", text)}
+                  maxLength={2}
+                />
+              </View>
+              <View style={styles.quickModalActions}>
+                <TouchableOpacity
+                  style={[styles.quickModalSecondary, { borderColor: colors.border }]}
+                  onPress={onCancel}
+                >
+                  <Text style={[styles.quickModalSecondaryText, { color: colors.muted }]}>
+                    {t("newGoalCancel")}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.quickModalPrimary, { backgroundColor: colors.text }]}
+                  onPress={onSubmit}
+                >
+                  <Text style={[styles.quickModalPrimaryText, { color: colors.background }]}>
+                    {t("goalCustomCreate")}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
+function OnboardingBackButton({ onPress, colors, t }) {
+  if (!onPress) return null;
+  return (
+    <TouchableOpacity
+      style={[styles.onboardBackButton, { borderColor: colors.border }]}
+      onPress={onPress}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    >
+      <Text style={[styles.onboardBackIcon, { color: colors.text }]}>←</Text>
+      <Text style={[styles.onboardBackLabel, { color: colors.text }]}>{t("onboardingBack")}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function HowItWorksScreen({ colors, t, onContinue, onBack }) {
   const fade = useFadeIn();
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
@@ -12725,6 +15175,7 @@ function HowItWorksScreen({ colors, t, onContinue }) {
         contentContainerStyle={[styles.onboardContent, { gap: 18 }]}
         showsVerticalScrollIndicator={false}
       >
+        <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("onboardingGuideTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("onboardingGuideSubtitle")}</Text>
         <View style={styles.guideCards}>
@@ -12763,11 +15214,13 @@ function LanguageScreen({
   onLanguageChange,
   onCurrencyChange,
   onContinue,
+  onBack,
 }) {
   const fade = useFadeIn();
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <View style={styles.onboardContent}>
+        <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
         <Image source={CAT_WAVING} style={styles.languageMascot} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("languageTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("languageSubtitle")}</Text>
