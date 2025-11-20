@@ -75,6 +75,7 @@ const STORAGE_KEYS = {
   MOOD_STATE: "@almost_mood_state",
   CHALLENGES: "@almost_challenges",
   CUSTOM_REMINDER: "@almost_custom_reminder",
+  TAMAGOTCHI: "@almost_tamagotchi_state",
 };
 
 const PURCHASE_GOAL = 20000;
@@ -631,6 +632,39 @@ const TAMAGOTCHI_REACTION_DURATION = {
   sad: 4200,
   ohno: 4000,
 };
+const TAMAGOTCHI_DECAY_INTERVAL_MS = 1000 * 60 * 5;
+const TAMAGOTCHI_DECAY_STEP = 2;
+const TAMAGOTCHI_COIN_DECAY_TICKS = 6;
+const TAMAGOTCHI_FEED_AMOUNT = 18;
+const TAMAGOTCHI_MAX_HUNGER = 100;
+const TAMAGOTCHI_PARTY_COST = 10;
+const TAMAGOTCHI_START_STATE = {
+  hunger: 80,
+  coins: 5,
+  lastFedAt: null,
+};
+
+const getTamagotchiMood = (hunger = 0, language = "ru") => {
+  const texts = {
+    ru: {
+      happy: "Алми сытый и довольный",
+      calm: "Алми чуть проголодался",
+      sad: "Алми грустит, хочет монетку",
+      urgent: "Алми очень голодный!",
+    },
+    en: {
+      happy: "Almi is well-fed and happy",
+      calm: "Almi is getting hungry",
+      sad: "Almi is sad, needs a coin",
+      urgent: "Almi is very hungry!",
+    },
+  };
+  const dict = texts[language] || texts.ru;
+  if (hunger >= 75) return { label: dict.happy, tone: "happy" };
+  if (hunger >= 45) return { label: dict.calm, tone: "calm" };
+  if (hunger >= 20) return { label: dict.sad, tone: "sad" };
+  return { label: dict.urgent, tone: "urgent" };
+};
 
 function AlmiTamagotchi({ override, onOverrideComplete }) {
   const [currentKey, setCurrentKey] = useState("idle");
@@ -673,7 +707,13 @@ function AlmiTamagotchi({ override, onOverrideComplete }) {
   const source = TAMAGOTCHI_ANIMATIONS[currentKey] || TAMAGOTCHI_ANIMATIONS.idle;
   return (
     <View style={styles.almiMascotWrap}>
-      <Image source={source} style={styles.almiMascotImage} resizeMode="contain" />
+      <Image
+        source={source}
+        defaultSource={TAMAGOTCHI_ANIMATIONS.idle}
+        style={styles.almiMascotImage}
+        resizeMode="contain"
+        fadeDuration={0}
+      />
     </View>
   );
 }
@@ -1616,8 +1656,8 @@ const TRANSLATIONS = {
     rewardClaimHint: "Собери и получи {{amount}} здоровья",
     rewardClaimedStatus: "Здоровье получено",
     rewardHealthBonus: "+{{amount}} здоровья",
-    freeDayHealthTitle: "Запас здоровья",
-    freeDayHealthSubtitle: "Используй, чтобы спасти серию.",
+    freeDayHealthTitle: "Монетки",
+    freeDayHealthSubtitle: "Тратятся на спасение серии и Алми.",
     rewardCelebrateTitle: "Награда «{{title}}» получена!",
     rewardCelebrateSubtitle: "Алми ликует: продолжай накапливать достижения.",
     challengeTabTitle: "Челленджи",
@@ -2025,8 +2065,8 @@ const TRANSLATIONS = {
     rewardClaimHint: "Collect to gain {{amount}} health",
     rewardClaimedStatus: "Health banked",
     rewardHealthBonus: "+{{amount}} health",
-    freeDayHealthTitle: "Health bank",
-    freeDayHealthSubtitle: "Spend to rescue the streak.",
+    freeDayHealthTitle: "Coins",
+    freeDayHealthSubtitle: "Spend to rescue streaks and feed Almi.",
     rewardCelebrateTitle: "“{{title}}” unlocked!",
     rewardCelebrateSubtitle: "Almi is proud-keep the streak going.",
     challengeTabTitle: "Challenges",
@@ -4307,6 +4347,10 @@ function FeedScreen({
   onTemptationGoalSelect,
   onTemptationSwipeDelete,
   shuffleSeed = 0,
+  mascotOverride = null,
+  onMascotAnimationComplete = () => {},
+  hideMascot = false,
+  onMascotPress = () => {},
 }) {
   const [impulseExpanded, setImpulseExpanded] = useState(false);
   const handleBaselineSetup = onBaselineSetup || (() => {});
@@ -4648,23 +4692,27 @@ function FeedScreen({
                     <Text style={[styles.heroTagline, { color: colors.muted }]}>
                       {t("appTagline")}
                     </Text>
-                    {moodPreset?.label && (
-                      <TouchableOpacity style={styles.moodBadge} onPress={onMoodDetailsOpen}>
-                        <Text style={[styles.moodBadgeText, { color: moodGradient.accent }]}>
-                          {moodPreset.label}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                  <AlmiTamagotchi override={mascotOverride} onOverrideComplete={handleMascotAnimationComplete} />
+                  {moodPreset?.label && (
+                    <TouchableOpacity style={styles.moodBadge} onPress={onMoodDetailsOpen}>
+                      <Text style={[styles.moodBadgeText, { color: moodGradient.accent }]}>
+                        {moodPreset.label}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-              </MoodGradientBlock>
-            </View>
-            <SavingsHeroCard
-              goldPalette={goldPalette}
-              heroSpendCopy={heroSpendCopy}
-              heroEncouragementLine={heroEncouragementLine}
-              levelLabel={levelLabel}
+                {!hideMascot && (
+                  <TouchableOpacity onPress={onMascotPress} activeOpacity={0.9}>
+                    <AlmiTamagotchi override={mascotOverride} onOverrideComplete={onMascotAnimationComplete} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </MoodGradientBlock>
+          </View>
+          <SavingsHeroCard
+            goldPalette={goldPalette}
+            heroSpendCopy={heroSpendCopy}
+            heroEncouragementLine={heroEncouragementLine}
+            levelLabel={levelLabel}
               heroSavedLabel={heroSavedLabel}
               progressPercent={progressPercent}
               progressPercentLabel={progressPercentLabel}
@@ -7038,6 +7086,13 @@ function AppContent() {
   const [mascotOverride, setMascotOverride] = useState(null);
   const mascotQueueRef = useRef([]);
   const mascotBusyRef = useRef(false);
+  const [tamagotchiState, setTamagotchiState] = useState({ ...TAMAGOTCHI_START_STATE });
+  const tamagotchiCoinTickRef = useRef(0);
+  const [tamagotchiVisible, setTamagotchiVisible] = useState(false);
+  const tamagotchiModalAnim = useRef(new Animated.Value(0)).current;
+  const partyGlow = useRef(new Animated.Value(0)).current;
+  const [partyActive, setPartyActive] = useState(false);
+  const [partyBurstKey, setPartyBurstKey] = useState(0);
   const saveActionLogRef = useRef([]);
   const cartBadgeScale = useRef(new Animated.Value(1)).current;
   const [onboardingStep, setOnboardingStep] = useState("logo");
@@ -7051,8 +7106,19 @@ function AppContent() {
     amount: "",
     emoji: DEFAULT_TEMPTATION_EMOJI,
   });
+  const openTamagotchiOverlay = useCallback(() => setTamagotchiVisible(true), []);
+  const closeTamagotchiOverlay = useCallback(() => setTamagotchiVisible(false), []);
   const [fabMenuVisible, setFabMenuVisible] = useState(false);
   const fabMenuAnim = useRef(new Animated.Value(0)).current;
+  const tamagotchiMood = useMemo(
+    () => getTamagotchiMood(tamagotchiState.hunger, language),
+    [tamagotchiState.hunger, language]
+  );
+  const tamagotchiHungerPercent = useMemo(
+    () => Math.min(TAMAGOTCHI_MAX_HUNGER, Math.max(0, tamagotchiState.hunger)),
+    [tamagotchiState.hunger]
+  );
+  const tamagotchiCoins = healthPoints;
   const [newGoalModal, setNewGoalModal] = useState({
     visible: false,
     name: "",
@@ -7483,6 +7549,9 @@ function AppContent() {
 
   const colors = THEMES[theme];
   const isDarkTheme = theme === "dark";
+  const overlayDimColor = isDarkTheme ? "rgba(0,0,0,0.65)" : "rgba(5,6,15,0.2)";
+  const overlayCardBackground = isDarkTheme ? lightenColor(colors.card, 0.18) : colors.card;
+  const overlayBorderColor = isDarkTheme ? lightenColor(colors.border, 0.25) : colors.border;
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const targetNavColor = overlay ? overlayDimColor : colors.card;
@@ -7499,9 +7568,6 @@ function AppContent() {
     applyNav();
     RNStatusBar.setBackgroundColor(targetStatusColor, true);
   }, [colors.card, colors.background, isDarkTheme, overlay, overlayDimColor]);
-  const overlayDimColor = isDarkTheme ? "rgba(0,0,0,0.65)" : "rgba(5,6,15,0.2)";
-  const overlayCardBackground = isDarkTheme ? lightenColor(colors.card, 0.18) : colors.card;
-  const overlayBorderColor = isDarkTheme ? lightenColor(colors.border, 0.25) : colors.border;
   const saveOverlayPayload =
     overlay?.type === "save"
       ? typeof overlay.message === "object" && overlay.message !== null
@@ -7805,6 +7871,7 @@ function AppContent() {
         moodRaw,
         challengesRaw,
         customReminderRaw,
+        tamagotchiRaw,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.WISHES),
         AsyncStorage.getItem(STORAGE_KEYS.PENDING),
@@ -7833,6 +7900,7 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.MOOD_STATE),
         AsyncStorage.getItem(STORAGE_KEYS.CHALLENGES),
         AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_REMINDER),
+        AsyncStorage.getItem(STORAGE_KEYS.TAMAGOTCHI),
       ]);
       if (wishesRaw) setWishes(JSON.parse(wishesRaw));
       if (pendingRaw) setPendingList(JSON.parse(pendingRaw));
@@ -7914,6 +7982,30 @@ function AppContent() {
       }
       if (customReminderRaw) {
         setCustomReminderId(customReminderRaw);
+      }
+      if (tamagotchiRaw) {
+        try {
+          const parsed = JSON.parse(tamagotchiRaw);
+          const parsedHunger = Math.min(
+            TAMAGOTCHI_MAX_HUNGER,
+            Math.max(0, Number(parsed?.hunger) || 0)
+          );
+          const parsedCoins = Math.max(
+            0,
+            Math.floor(Number(parsed?.coins) || TAMAGOTCHI_START_STATE.coins)
+          );
+          setTamagotchiState({
+            ...TAMAGOTCHI_START_STATE,
+            ...parsed,
+            hunger: parsedHunger,
+            coins: parsedCoins,
+          });
+          if (!healthRaw) {
+            setHealthPoints(parsedCoins);
+          }
+        } catch (err) {
+          setTamagotchiState({ ...TAMAGOTCHI_START_STATE });
+        }
       }
       if (themeRaw) setTheme(themeRaw);
       if (languageRaw) setLanguage(languageRaw);
@@ -8065,6 +8157,47 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
+    const interval = setInterval(() => {
+      setTamagotchiState((prev) => {
+        const nextHunger = Math.max(0, prev.hunger - TAMAGOTCHI_DECAY_STEP);
+        const tick = tamagotchiCoinTickRef.current + 1;
+        if (tick >= TAMAGOTCHI_COIN_DECAY_TICKS) {
+          tamagotchiCoinTickRef.current = 0;
+          setHealthPoints((coins) => Math.max(0, coins - 1));
+        } else {
+          tamagotchiCoinTickRef.current = tick;
+        }
+        return { ...prev, hunger: nextHunger };
+      });
+    }, TAMAGOTCHI_DECAY_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [setHealthPoints]);
+
+  useEffect(() => {
+    setTamagotchiState((prev) =>
+      prev.coins === healthPoints ? prev : { ...prev, coins: healthPoints }
+    );
+  }, [healthPoints]);
+
+  useEffect(() => {
+    if (tamagotchiVisible) {
+      Animated.timing(tamagotchiModalAnim, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(tamagotchiModalAnim, {
+        toValue: 0,
+        duration: 160,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [tamagotchiVisible, tamagotchiModalAnim]);
+
+  useEffect(() => {
     if (activeTab === "feed") {
       setFeedShuffleSeed((prev) => prev + 1);
     }
@@ -8158,6 +8291,10 @@ function AppContent() {
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.CHALLENGES, JSON.stringify(challengesState)).catch(() => {});
   }, [challengesState]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.TAMAGOTCHI, JSON.stringify(tamagotchiState)).catch(() => {});
+  }, [tamagotchiState]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.CATALOG, JSON.stringify(catalogOverrides)).catch(() => {});
@@ -9196,11 +9333,69 @@ function AppContent() {
     [processMascotQueue]
   );
 
+  const feedTamagotchi = useCallback(() => {
+    setTamagotchiState((prev) => {
+      if (tamagotchiCoins <= 0) {
+        Alert.alert(
+          language === "ru" ? "Алми" : "Almi",
+          language === "ru"
+            ? "Монетки закончились — получи их через задания или уровень."
+            : "No coins left — earn them via tasks or leveling up."
+        );
+        return prev;
+      }
+      const nextHunger = Math.min(TAMAGOTCHI_MAX_HUNGER, prev.hunger + TAMAGOTCHI_FEED_AMOUNT);
+      setHealthPoints((coins) => Math.max(0, coins - 1));
+      return {
+        ...prev,
+        hunger: nextHunger,
+        lastFedAt: new Date().toISOString(),
+      };
+    });
+    requestMascotAnimation("happy", 3600);
+  }, [language, requestMascotAnimation, setHealthPoints, tamagotchiCoins]);
+
+  const startParty = useCallback(() => {
+    setHealthPoints((coins) => Math.max(0, coins - TAMAGOTCHI_PARTY_COST));
+    setPartyActive(true);
+    setPartyBurstKey((prev) => prev + 1);
+    partyGlow.setValue(0);
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(partyGlow, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.quad),
+        }),
+        Animated.timing(partyGlow, {
+          toValue: 0,
+          duration: 400,
+          useNativeDriver: true,
+          easing: Easing.in(Easing.quad),
+        }),
+      ])
+    ).start();
+    requestMascotAnimation("happyHeadshake", 3600);
+    setTimeout(() => {
+      partyGlow.stopAnimation();
+      partyGlow.setValue(0);
+      setPartyActive(false);
+    }, 2400);
+  }, [partyGlow, requestMascotAnimation, setHealthPoints]);
+
   const handleMascotAnimationComplete = useCallback(() => {
     mascotBusyRef.current = false;
+    if (!overlay && mascotQueueRef.current.length) {
+      const next = mascotQueueRef.current.shift();
+      if (next) {
+        mascotBusyRef.current = true;
+        setMascotOverride({ ...next, key: Date.now() });
+        return;
+      }
+    }
     setMascotOverride(null);
-    processMascotQueue();
-  }, [processMascotQueue]);
+  }, [overlay]);
 
   const triggerStormEffect = useCallback(() => {
     if (stormTimerRef.current) {
@@ -10596,6 +10791,10 @@ function AppContent() {
             }}
             heroGoalTargetUSD={heroGoalTargetUSD}
             heroGoalSavedUSD={heroGoalSavedUSD}
+            mascotOverride={mascotOverride}
+            onMascotAnimationComplete={handleMascotAnimationComplete}
+            hideMascot={tamagotchiVisible}
+            onMascotPress={openTamagotchiOverlay}
             editingTemptationId={priceEditor.item?.id || null}
             editingTitleValue={priceEditor.title}
             editingPriceValue={priceEditor.value}
@@ -10896,6 +11095,164 @@ function AppContent() {
           onSubmit={handleNewGoalSubmit}
           onCancel={handleNewGoalCancel}
         />
+
+        <Modal
+          visible={tamagotchiVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={closeTamagotchiOverlay}
+          statusBarTranslucent
+        >
+          <TouchableWithoutFeedback onPress={closeTamagotchiOverlay}>
+            <View style={styles.tamagotchiBackdrop}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <Animated.View
+                  style={[
+                    styles.tamagotchiCard,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                    {
+                      transform: [
+                        {
+                          translateY: tamagotchiModalAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [20, 0],
+                          }),
+                        },
+                        {
+                          scale: tamagotchiModalAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.95, 1],
+                          }),
+                        },
+                      ],
+                      opacity: tamagotchiModalAnim,
+                    },
+                  ]}
+                >
+                  <View style={styles.tamagotchiHeader}>
+                    <Text style={[styles.tamagotchiTitle, { color: colors.text }]}>
+                      {language === "ru" ? "Алми" : "Almi"}
+                    </Text>
+                    <Text style={[styles.tamagotchiMood, { color: colors.muted }]}>
+                      {tamagotchiMood.label}
+                    </Text>
+                  </View>
+                  <View style={styles.tamagotchiPreview}>
+                    <AlmiTamagotchi override={mascotOverride} onOverrideComplete={handleMascotAnimationComplete} />
+                  </View>
+                  <View style={styles.tamagotchiStatRow}>
+                    <Text style={[styles.tamagotchiStatLabel, { color: colors.muted }]}>
+                      {language === "ru" ? "Сытость" : "Fullness"}
+                    </Text>
+                    <Text style={[styles.tamagotchiStatValue, { color: colors.text }]}>
+                      {Math.round(tamagotchiHungerPercent)}%
+                    </Text>
+                  </View>
+                  <View style={[styles.tamagotchiProgress, { backgroundColor: colors.border }]}>
+                    <View
+                      style={[
+                        styles.tamagotchiProgressFill,
+                        {
+                          backgroundColor: colors.text,
+                          width: `${Math.max(8, Math.min(100, tamagotchiHungerPercent))}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View style={styles.tamagotchiStatRow}>
+                    <Text style={[styles.tamagotchiStatLabel, { color: colors.muted }]}>
+                      {language === "ru" ? "Монетки" : "Coins"}
+                    </Text>
+                    <Text style={[styles.tamagotchiStatValue, { color: colors.text }]}>
+                      {tamagotchiCoins}
+                    </Text>
+                  </View>
+                  {tamagotchiState.lastFedAt ? (
+                    <Text style={[styles.tamagotchiSub, { color: colors.muted }]}>
+                      {language === "ru" ? "Покормлен" : "Fed at"}:{" "}
+                      {new Date(tamagotchiState.lastFedAt).toLocaleString()}
+                    </Text>
+                  ) : (
+                    <Text style={[styles.tamagotchiSub, { color: colors.muted }]}>
+                      {language === "ru" ? "Алми ждёт первую монетку" : "Almi awaits the first coin"}
+                    </Text>
+                  )}
+                  <View style={styles.tamagotchiActions}>
+                    <TouchableOpacity
+                      style={[
+                        styles.tamagotchiButton,
+                        { backgroundColor: colors.text, borderColor: colors.text },
+                      ]}
+                      onPress={feedTamagotchi}
+                    >
+                      <View style={styles.tamagotchiButtonContent}>
+                        <Image source={HEALTH_COIN_TIERS[0].asset} style={styles.tamagotchiButtonIcon} />
+                        <Text style={[styles.tamagotchiButtonText, { color: colors.background }]}>
+                          {language === "ru" ? "Покормить" : "Feed Almi"}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.tamagotchiButton,
+                        { backgroundColor: colors.card, borderColor: colors.border },
+                      ]}
+                      onPress={() => {
+                        if (tamagotchiCoins < TAMAGOTCHI_PARTY_COST) {
+                          Alert.alert(
+                            language === "ru" ? "Алми" : "Almi",
+                            language === "ru"
+                              ? "Нужна синяя монета для вечеринки"
+                              : "Need a blue coin to start a party"
+                          );
+                          return;
+                        }
+                        startParty();
+                      }}
+                    >
+                      <View style={styles.tamagotchiButtonContent}>
+                        <Image source={HEALTH_COIN_TIERS[1].asset} style={styles.tamagotchiButtonIcon} />
+                        <Text style={[styles.tamagotchiButtonText, { color: colors.text }]}>
+                          {language === "ru" ? "Вечеринка" : "Party (1 blue coin)"}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity onPress={closeTamagotchiOverlay} style={styles.tamagotchiClose}>
+                    <Text style={[styles.tamagotchiCloseText, { color: colors.muted }]}>
+                      {language === "ru" ? "Закрыть" : "Close"}
+                    </Text>
+                  </TouchableOpacity>
+                  {partyActive && (
+                    <>
+                      <ConfettiCannon
+                        key={`party_confetti_${partyBurstKey}`}
+                        count={120}
+                        origin={{ x: SCREEN_WIDTH / 2, y: 0 }}
+                        fadeOut
+                        explosionSpeed={420}
+                        fallSpeed={3200}
+                      />
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[
+                          styles.partyGlowOverlay,
+                          {
+                            opacity: partyGlow.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.1, 0.4],
+                            }),
+                            backgroundColor: isDarkTheme ? "rgba(110,155,255,0.6)" : "rgba(255,210,120,0.7)",
+                          },
+                        ]}
+                      />
+                    </>
+                  )}
+                </Animated.View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
 
         {editOverlayVisible && (
           <TouchableWithoutFeedback onPress={closePriceEditor}>
@@ -11761,6 +12118,102 @@ const styles = StyleSheet.create({
   almiMascotImage: {
     width: "120%",
     height: "120%",
+  },
+  tamagotchiBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  partyGlowOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  tamagotchiCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    gap: 10,
+  },
+  tamagotchiHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  tamagotchiTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  tamagotchiMood: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  tamagotchiStatRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  tamagotchiStatLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  tamagotchiStatValue: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  tamagotchiProgress: {
+    height: 12,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  tamagotchiProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  tamagotchiActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 6,
+  },
+  tamagotchiButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  tamagotchiButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  tamagotchiButtonIcon: {
+    width: 20,
+    height: 20,
+  },
+  tamagotchiPreview: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  tamagotchiButtonText: {
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  tamagotchiSub: {
+    fontSize: 12,
+  },
+  tamagotchiClose: {
+    alignSelf: "center",
+    marginTop: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  tamagotchiCloseText: {
+    fontWeight: "600",
+    fontSize: 14,
   },
   heroStatCard: {
     padding: 16,
