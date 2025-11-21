@@ -3163,6 +3163,152 @@ const DEFAULT_TEMPTATIONS = [
     },
   },
   {
+    id: "late_night_takeout",
+    emoji: "🍱",
+    image:
+      "https://images.unsplash.com/photo-1466978913421-dad2ebd01d17?auto=format&fit=crop&w=900&q=80",
+    color: "#FFEFE9",
+    categories: ["food", "wow"],
+    basePriceUSD: 35,
+    priceUSD: 35,
+    title: {
+      ru: "Дополнительный сет роллов",
+      en: "Extra sushi add-on",
+    },
+    description: {
+      ru: "Кажется мелочью в доставке, но именно он делает чек заметно выше.",
+      en: "Tiny add-on in the cart that silently pushes the total over the top.",
+    },
+  },
+  {
+    id: "movie_premiere_combo",
+    emoji: "🎬",
+    image:
+      "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=900&q=80",
+    color: "#F4F2FF",
+    categories: ["fun", "food"],
+    basePriceUSD: 45,
+    priceUSD: 45,
+    title: {
+      ru: "Кино + закуски",
+      en: "Movie night combo",
+    },
+    description: {
+      ru: "Билеты, попкорн и лимонад, которые легко превратить в взнос в копилку.",
+      en: "Tickets, popcorn and soda that could become a little boost to savings.",
+    },
+  },
+  {
+    id: "beauty_box",
+    emoji: "💄",
+    image:
+      "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=900&q=80",
+    color: "#FFE9F2",
+    categories: ["beauty", "lifestyle"],
+    audience: ["female"],
+    basePriceUSD: 65,
+    priceUSD: 65,
+    title: {
+      ru: "Beauty-бокс месяца",
+      en: "Monthly beauty box",
+    },
+    description: {
+      ru: "Коробочка сюрпризов, которая каждый месяц перетягивает бюджет.",
+      en: "A curated surprise box that steals a chunk of the monthly plan.",
+    },
+  },
+  {
+    id: "grooming_upgrade_set",
+    emoji: "🪒",
+    image:
+      "https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?auto=format&fit=crop&w=900&q=80",
+    color: "#E9F8FF",
+    categories: ["style", "lifestyle"],
+    audience: ["male"],
+    basePriceUSD: 70,
+    priceUSD: 70,
+    title: {
+      ru: "Премиум-набор для ухода",
+      en: "Premium grooming bundle",
+    },
+    description: {
+      ru: "Бритва, масла и триммер, которые легко заменить прогрессом по целям.",
+      en: "Razor, oils and trimmer that could become goal progress instead.",
+    },
+  },
+  {
+    id: "smart_band_upgrade",
+    emoji: "📿",
+    image:
+      "https://images.unsplash.com/photo-1517148815974-413097f4a0c0?auto=format&fit=crop&w=900&q=80",
+    color: "#E9F5FF",
+    categories: ["tech", "wearable"],
+    basePriceUSD: 90,
+    priceUSD: 90,
+    title: {
+      ru: "Новый фитнес-браслет",
+      en: "Fresh fitness band",
+    },
+    description: {
+      ru: "Экран побольше, датчиков побольше и еще один повод отложить upgrade.",
+      en: "Bigger screen, more sensors and one more reason to pause the upgrade.",
+    },
+  },
+  {
+    id: "weekend_brunch",
+    emoji: "🥞",
+    image:
+      "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=900&q=80",
+    color: "#FFF7EA",
+    categories: ["food", "lifestyle"],
+    basePriceUSD: 120,
+    priceUSD: 120,
+    title: {
+      ru: "Бранч выходного дня",
+      en: "Weekend brunch ritual",
+    },
+    description: {
+      ru: "Слои панкейков и мимозы легко превращаются в прогресс по целям.",
+      en: "Stacks of pancakes and mimosas that could have been goal progress.",
+    },
+  },
+  {
+    id: "studio_pass",
+    emoji: "🧘",
+    image:
+      "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=900&q=80",
+    color: "#E9FFF2",
+    categories: ["health", "lifestyle"],
+    basePriceUSD: 180,
+    priceUSD: 180,
+    title: {
+      ru: "Пакет из 10 тренировок",
+      en: "10-class studio pass",
+    },
+    description: {
+      ru: "Красивая подписка, которая окупится, если копилка останется приоритетом.",
+      en: "A shiny class pack that pays off only if the jar stays priority.",
+    },
+  },
+  {
+    id: "streetwear_capsule",
+    emoji: "🧥",
+    image:
+      "https://images.unsplash.com/photo-1475180098004-ca77a66827be?auto=format&fit=crop&w=900&q=80",
+    color: "#EAF2FF",
+    categories: ["style", "wow"],
+    basePriceUSD: 220,
+    priceUSD: 220,
+    title: {
+      ru: "Стритвир-капсула",
+      en: "Streetwear capsule",
+    },
+    description: {
+      ru: "Худи, кепка и аксессуары, которые легко превратить в вклад в большую мечту.",
+      en: "Hoodie, cap and trinkets that could accelerate the bigger dream.",
+    },
+  },
+  {
     id: "vacation",
     emoji: "🏝️",
     image:
@@ -3492,26 +3638,12 @@ const resolveTemptationTitle = (item, language, override) => {
   );
 };
 
-const createSeededRandom = (seed = 1) => {
-  let value = seed || 1;
-  return () => {
-    value += 0x6d2b79f5;
-    let t = value;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-};
-
-const shuffleWithSeed = (items = [], seed = 1) => {
-  const array = [...items];
-  if (array.length <= 1) return array;
-  const random = createSeededRandom(seed);
-  for (let i = array.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
+const getTemptationPrice = (item) => {
+  const price = typeof item?.priceUSD === "number" ? item.priceUSD : item?.basePriceUSD;
+  if (typeof price === "number" && !Number.isNaN(price)) {
+    return price;
   }
-  return array;
+  return 0;
 };
 
 function TemptationCard({
@@ -4789,7 +4921,6 @@ function FeedScreen({
   onTemptationGoalSelect,
   onTemptationSwipeDelete,
   onSavingsBreakdownPress = () => {},
-  shuffleSeed = 0,
   mascotOverride = null,
   onMascotAnimationComplete = () => {},
   hideMascot = false,
@@ -5026,28 +5157,16 @@ function FeedScreen({
         primaryCard = entries.splice(primaryIndex, 1)[0];
       }
     }
-    const withStats = [];
-    const withoutStats = [];
-    entries.forEach((item) => {
-      const count = refuseStats?.[item.id]?.count || 0;
-      if (count > 0) {
-        withStats.push({ item, count });
-      } else {
-        withoutStats.push(item);
+    const ordered = entries.sort((a, b) => {
+      const priceDiff = getTemptationPrice(a) - getTemptationPrice(b);
+      if (priceDiff !== 0) {
+        return priceDiff;
       }
+      return (a.id || "").localeCompare(b.id || "");
     });
-    withStats.sort((a, b) => {
-      if (b.count !== a.count) return b.count - a.count;
-      return a.item.id.localeCompare(b.item.id);
-    });
-    const shuffledOthers =
-      shuffleSeed && shuffleSeed !== 0
-        ? shuffleWithSeed(withoutStats, shuffleSeed)
-        : withoutStats;
-    const ordered = [...withStats.map((entry) => entry.item), ...shuffledOthers];
     if (primaryCard) ordered.unshift(primaryCard);
     return ordered;
-  }, [products, refuseStats, mainTemptationId, shuffleSeed]);
+  }, [products, mainTemptationId]);
 
   const filteredProducts = useMemo(() => {
     if (activeCategory === "all") return orderedProducts;
@@ -7894,7 +8013,6 @@ function AppContent() {
     goalRenewalPromptPendingRef.current = false;
     setGoalRenewalPromptVisible(true);
   }, [goalRenewalPromptVisible, overlay]);
-  const [feedShuffleSeed, setFeedShuffleSeed] = useState(0);
   const [moodDetailsVisible, setMoodDetailsVisible] = useState(false);
   const [potentialDetailsVisible, setPotentialDetailsVisible] = useState(false);
   const [potentialDetailsText, setPotentialDetailsText] = useState("");
@@ -8978,12 +9096,6 @@ function AppContent() {
       }).start();
     }
   }, [tamagotchiVisible, tamagotchiModalAnim]);
-
-  useEffect(() => {
-    if (activeTab === "feed") {
-      setFeedShuffleSeed((prev) => prev + 1);
-    }
-  }, [activeTab]);
 
   useEffect(() => {
     if (onboardingStep === "done" && (profile.primaryGoals || []).length) {
@@ -11843,7 +11955,6 @@ const handleFreeDayRescue = useCallback(() => {
             historyEvents={historyEvents}
             profile={profile}
             titleOverrides={titleOverrides}
-            shuffleSeed={feedShuffleSeed}
             onLevelCelebrate={handleLevelCelebrate}
             onBaselineSetup={handleBaselineSetupPrompt}
             healthPoints={healthPoints}
