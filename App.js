@@ -2022,6 +2022,7 @@ const TRANSLATIONS = {
     goalAssignTemptationSubtitle: "Что будет пополнять «{{goal}}»?",
     goalAssignClear: "Сбросить назначение",
     goalAssignFieldLabel: "Куда копим",
+    goalDestinationLabel: "Куда копим",
     goalStatusInWishlist: "в цели",
     goalSwipeAdd: "в цели",
     goalSwipeDelete: "Удалить",
@@ -2447,6 +2448,7 @@ const TRANSLATIONS = {
     goalAssignTemptationSubtitle: "Which habit fills “{{goal}}”?",
     goalAssignClear: "Clear assignment",
     goalAssignFieldLabel: "Sends savings to",
+    goalDestinationLabel: "Saving for",
     goalStatusInWishlist: "Add to goal",
     goalSwipeAdd: "Add to goal",
     goalSwipeDelete: "Delete",
@@ -2934,19 +2936,21 @@ const insertWishAfterPrimary = (list = [], newWish) => {
   return [...before, newWish, ...after];
 };
 
-const sumPrimaryGoalTargets = (goals = []) =>
-  goals.reduce((sum, goal) => sum + (Number(goal?.targetUSD) || 0), 0);
-
 const removePrimaryGoalFromProfile = (profileState = {}, goalId) => {
   if (!goalId) return profileState;
   const currentGoals = Array.isArray(profileState.primaryGoals) ? profileState.primaryGoals : [];
   const filtered = currentGoals.filter((goal) => goal.id !== goalId);
-  const nextGoalId = filtered[0]?.id || "";
+  const nextGoalId = filtered[0]?.id || profileState.goal || DEFAULT_PROFILE.goal;
+  const nextGoalTarget = filtered[0]
+    ? (Number.isFinite(filtered[0].targetUSD) && filtered[0].targetUSD > 0
+        ? filtered[0].targetUSD
+        : getGoalDefaultTargetUSD(filtered[0].id))
+    : getGoalDefaultTargetUSD(nextGoalId);
   return {
     ...profileState,
     primaryGoals: filtered,
     goal: nextGoalId,
-    goalTargetUSD: sumPrimaryGoalTargets(filtered),
+    goalTargetUSD: nextGoalTarget,
     goalCelebrated: filtered.length ? profileState.goalCelebrated : false,
   };
 };
@@ -2957,10 +2961,18 @@ const updatePrimaryGoalTargetInProfile = (profileState = {}, goalId, targetUSD, 
   const updated = currentGoals.map((goal) =>
     goal.id === goalId ? { ...goal, targetUSD, ...extra } : goal
   );
+  const activeGoalId = profileState.goal || updated[0]?.id || goalId;
+  const activeEntry = updated.find((goal) => goal.id === activeGoalId) || updated[0] || null;
+  const nextTarget = activeEntry
+    ? (Number.isFinite(activeEntry.targetUSD) && activeEntry.targetUSD > 0
+        ? activeEntry.targetUSD
+        : getGoalDefaultTargetUSD(activeEntry.id))
+    : getGoalDefaultTargetUSD(activeGoalId);
   return {
     ...profileState,
     primaryGoals: updated,
-    goalTargetUSD: sumPrimaryGoalTargets(updated),
+    goal: activeEntry?.id || activeGoalId,
+    goalTargetUSD: nextTarget,
   };
 };
 
@@ -3710,6 +3722,8 @@ function TemptationCard({
   const primaryHighlightColor = "#FF4D5A";
   const cardTextColor = isDarkTheme ? darkCardPalette.text : colors.text;
   const cardMutedColor = isDarkTheme ? darkCardPalette.muted : colors.muted;
+  const resolvedGoalLabel =
+    typeof goalLabel === "string" && goalLabel.trim().length ? goalLabel.trim() : "";
   const coinBurstColor = isDarkTheme ? "#FFD78B" : "#FFF4B3";
   const effectiveWishlistGoal = isWishlistGoal && !isPrimaryTemptation;
   const highlightPinned = effectiveWishlistGoal && !showEditorInline;
@@ -3726,8 +3740,8 @@ function TemptationCard({
   const defaultGoalBadgeBackground = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)";
   const defaultGoalBadgeBorder = isDarkTheme ? "rgba(255,255,255,0.24)" : "rgba(0,0,0,0.08)";
   const defaultGoalBadgeText = isDarkTheme ? "#FFF7E1" : colors.text;
-  const hasGoalAssigned = effectiveWishlistGoal && !!goalLabel;
   const canAssignGoal = !isPrimaryTemptation;
+  const hasGoalAssigned = !!resolvedGoalLabel && canAssignGoal;
   const refuseCount = stats?.count || 0;
   const totalRefusedLabel = formatCurrency(
     convertToCurrency(stats?.totalUSD || 0, currency),
@@ -3962,6 +3976,21 @@ function TemptationCard({
               </Text>
             </View>
           )}
+        </View>
+      )}
+      {!showEditorInline && hasGoalAssigned && (
+        <View
+          style={[
+            styles.temptationGoalBadge,
+            {
+              backgroundColor: isDarkTheme ? "rgba(246,193,107,0.18)" : "rgba(246,193,107,0.12)",
+              borderColor: isDarkTheme ? "rgba(246,193,107,0.55)" : "rgba(246,193,107,0.65)",
+            },
+          ]}
+        >
+          <Text style={[styles.temptationGoalBadgeText, { color: isDarkTheme ? "#FEEAC4" : "#5C3A00" }]}>
+            {t("goalDestinationLabel")}: {resolvedGoalLabel}
+          </Text>
         </View>
       )}
       {showEditorInline ? (
@@ -5365,7 +5394,7 @@ function FeedScreen({
               stats={refuseStats[item.id]}
               feedback={cardFeedback[item.id]}
               titleOverride={titleOverrides[item.id]}
-              goalLabel={assignedGoal?.title || null}
+              goalLabel={assignedGoal ? getWishTitleWithoutEmoji(assignedGoal) : null}
               isWishlistGoal={isWishlistGoal}
               isEditing={editingTemptationId === item.id}
               editTitleValue={editingTemptationId === item.id ? editingTitleValue : ""}
@@ -5521,12 +5550,19 @@ const getWishTitleWithoutEmoji = (wish) => {
   if (!title) return "";
   const trimmed = title.trimStart();
   if (!trimmed) return "";
+  const wishEmoji = resolveWishEmoji(wish);
+  if (wishEmoji) {
+    const emojiToken = wishEmoji.trim();
+    if (emojiToken && trimmed.startsWith(emojiToken)) {
+      return trimmed.slice(emojiToken.length).trimStart();
+    }
+  }
   const firstChar = Array.from(trimmed)[0];
   if (!firstChar) return trimmed;
   const isSymbol = !/[A-Za-zА-Яа-я0-9]/.test(firstChar);
-  const wishEmoji = resolveWishEmoji(wish);
-  if (isSymbol && wishEmoji && firstChar === wishEmoji) {
-    return Array.from(trimmed).slice(1).join("").trimStart();
+  if (isSymbol && wishEmoji) {
+    const rest = Array.from(trimmed).slice(1).join("").trimStart();
+    return rest || trimmed;
   }
   return trimmed;
 };
@@ -7463,7 +7499,7 @@ function ProfileScreen({
             <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("primaryGoalLabel")}</Text>
             <View style={styles.profileGoalGrid}>
               {GOAL_PRESETS.map((goal) => {
-                const active = primaryGoalsList.some((entry) => entry.id === goal.id);
+                const active = activeGoalId === goal.id;
                 return (
                   <TouchableOpacity
                     key={goal.id}
@@ -7736,6 +7772,7 @@ function ProfileScreen({
 
 function AppContent() {
   const [wishes, setWishes] = useState([]);
+  const [wishesHydrated, setWishesHydrated] = useState(false);
   const [purchases, setPurchases] = useState([]);
   const [activeTab, setActiveTab] = useState("feed");
   const [catalogOverrides, setCatalogOverrides] = useState({});
@@ -7747,6 +7784,7 @@ function AppContent() {
   const [priceEditor, setPriceEditor] = useState({ item: null, value: "", title: "", emoji: "" });
   const [customReminderId, setCustomReminderId] = useState(null);
   const [savedTotalUSD, setSavedTotalUSD] = useState(0);
+  const [savedTotalHydrated, setSavedTotalHydrated] = useState(false);
   const [declineCount, setDeclineCount] = useState(0);
   const [pendingList, setPendingList] = useState([]);
   const [freeDayStats, setFreeDayStats] = useState({ ...INITIAL_FREE_DAY_STATS });
@@ -7986,6 +8024,7 @@ function AppContent() {
   }, []);
   const stormTimerRef = useRef(null);
   const [rewardCelebratedMap, setRewardCelebratedMap] = useState({});
+  const [rewardCelebratedHydrated, setRewardCelebratedHydrated] = useState(false);
   const [rewardsReady, setRewardsReady] = useState(false);
   const challengesPrevRef = useRef(challengesState);
   const [temptationGoalMap, setTemptationGoalMap] = useState({});
@@ -8412,18 +8451,6 @@ function AppContent() {
     if (assignableGoals.length > 0) return assignableGoals[0].id;
     return wishes[0]?.id || null;
   }, [assignableGoals, wishes]);
-  const assignTemptationGoal = useCallback((templateId, wishId = null) => {
-    if (!templateId) return;
-    setTemptationGoalMap((prev) => {
-      const next = { ...prev };
-      if (wishId) {
-        next[templateId] = wishId;
-      } else {
-        delete next[templateId];
-      }
-      return next;
-    });
-  }, []);
   useEffect(() => {
     const activeGoalIds = new Set(
       (wishes || [])
@@ -8443,38 +8470,129 @@ function AppContent() {
       setTemptationGoalMap(nextMap);
     }
   }, [temptationGoalMap, wishes]);
-  const applySavingsToWish = useCallback((wishId, amountUSD) => {
-    if (!wishId || !Number.isFinite(amountUSD) || amountUSD <= 0) return 0;
-    let applied = 0;
-    setWishes((prev) => {
-      let changed = false;
-      const next = prev.map((wish) => {
-        if (wish.id !== wishId) return wish;
-        const current = wish.savedUSD || 0;
-        const target = wish.targetUSD || 0;
-        const desired = current + amountUSD;
-        const nextSaved = Math.min(desired, target);
-        applied = nextSaved - current;
-        const status = nextSaved >= target ? "done" : "active";
-        if (
-          nextSaved !== current ||
-          wish.status !== status ||
-          wish.autoManaged !== false
-        ) {
+  const syncPrimaryGoalProgress = useCallback(
+    (goalId, savedUSD, status = "active") => {
+      if (!goalId) return;
+      const normalizedSaved = Number.isFinite(savedUSD) ? Math.max(savedUSD, 0) : 0;
+      const updateEntry = (profileState = {}) => {
+        const goals = Array.isArray(profileState.primaryGoals) ? profileState.primaryGoals : [];
+        let changed = false;
+        const nextGoals = goals.map((entry) => {
+          if (entry.id !== goalId) return entry;
+          const nextEntry = { ...entry };
+          if (nextEntry.savedUSD !== normalizedSaved) {
+            nextEntry.savedUSD = normalizedSaved;
+            changed = true;
+          }
+          if (status && nextEntry.status !== status) {
+            nextEntry.status = status;
+            changed = true;
+          }
+          return nextEntry;
+        });
+        return changed ? { ...profileState, primaryGoals: nextGoals } : profileState;
+      };
+      setProfile((prev) => updateEntry(prev));
+      setProfileDraft((prev) => updateEntry(prev));
+    },
+    [setProfile, setProfileDraft]
+  );
+
+  const resetWishProgress = useCallback(
+    (wishId) => {
+      if (!wishId) return;
+      let goalMeta = null;
+      setWishes((prev) => {
+        let changed = false;
+        const next = prev.map((wish) => {
+          if (wish.id !== wishId) return wish;
+          const wasSaved = Number.isFinite(wish.savedUSD) ? wish.savedUSD : 0;
+          const wasStatus = wish.status || "active";
+          if (wish.kind === PRIMARY_GOAL_KIND && wish.goalId) {
+            goalMeta = { goalId: wish.goalId };
+          }
+          if (wasSaved === 0 && wasStatus === "active") {
+            return wish;
+          }
           changed = true;
           return {
             ...wish,
-            savedUSD: nextSaved,
-            status,
-            autoManaged: false,
+            savedUSD: 0,
+            status: "active",
           };
-        }
-        return wish;
+        });
+        return changed ? next : prev;
       });
-      return changed ? next : prev;
-    });
-    return applied;
-  }, []);
+      if (goalMeta) {
+        syncPrimaryGoalProgress(goalMeta.goalId, 0, "active");
+      }
+    },
+    [setWishes, syncPrimaryGoalProgress]
+  );
+
+  const assignTemptationGoal = useCallback(
+    (templateId, wishId = null) => {
+      if (!templateId) return;
+      let previousAssignedId = null;
+      setTemptationGoalMap((prev) => {
+        previousAssignedId = prev[templateId] || null;
+        const next = { ...prev };
+        if (wishId) {
+          next[templateId] = wishId;
+        } else {
+          delete next[templateId];
+        }
+        return next;
+      });
+      if (wishId && previousAssignedId !== wishId) {
+        resetWishProgress(wishId);
+      }
+    },
+    [resetWishProgress]
+  );
+
+  const applySavingsToWish = useCallback(
+    (wishId, amountUSD) => {
+      if (!wishId || !Number.isFinite(amountUSD) || amountUSD <= 0) return 0;
+      let applied = 0;
+      let goalSyncMeta = null;
+      setWishes((prev) => {
+        let changed = false;
+        const next = prev.map((wish) => {
+          if (wish.id !== wishId) return wish;
+          const current = wish.savedUSD || 0;
+          const target = wish.targetUSD || 0;
+          const desired = current + amountUSD;
+          const nextSaved = Math.min(desired, target);
+          applied = nextSaved - current;
+          const status = nextSaved >= target ? "done" : "active";
+          if (
+            nextSaved !== current ||
+            wish.status !== status ||
+            wish.autoManaged !== false
+          ) {
+            changed = true;
+            if (wish.kind === PRIMARY_GOAL_KIND && wish.goalId) {
+              goalSyncMeta = { goalId: wish.goalId, savedUSD: nextSaved, status };
+            }
+            return {
+              ...wish,
+              savedUSD: nextSaved,
+              status,
+              autoManaged: false,
+            };
+          }
+          return wish;
+        });
+        return changed ? next : prev;
+      });
+      if (goalSyncMeta) {
+        syncPrimaryGoalProgress(goalSyncMeta.goalId, goalSyncMeta.savedUSD, goalSyncMeta.status);
+      }
+      return applied;
+    },
+    [syncPrimaryGoalProgress]
+  );
   const getWishTitleById = useCallback(
     (wishId) => wishes.find((wish) => wish.id === wishId)?.title || "",
     [wishes]
@@ -8486,8 +8604,11 @@ function AppContent() {
   const priceEditorAssignedGoalId = priceEditor.item
     ? resolveTemptationGoalId(priceEditor.item.id)
     : null;
-  const priceEditorAssignedGoalTitle = priceEditorAssignedGoalId
-    ? getWishTitleById(priceEditorAssignedGoalId)
+  const priceEditorAssignedGoal =
+    priceEditorAssignedGoalId &&
+    (wishes || []).find((wish) => wish.id === priceEditorAssignedGoalId);
+  const priceEditorAssignedGoalTitle = priceEditorAssignedGoal
+    ? getWishTitleWithoutEmoji(priceEditorAssignedGoal)
     : "";
   const goalLinkCurrentGoalId = goalLinkPrompt.item
     ? resolveTemptationGoalId(goalLinkPrompt.item.id)
@@ -8744,7 +8865,12 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.DAILY_SUMMARY),
         AsyncStorage.getItem(STORAGE_KEYS.TUTORIAL),
       ]);
-      if (wishesRaw) setWishes(JSON.parse(wishesRaw));
+      if (wishesRaw) {
+        setWishes(JSON.parse(wishesRaw));
+      } else {
+        setWishes([]);
+      }
+      setWishesHydrated(true);
       if (pendingRaw) setPendingList(JSON.parse(pendingRaw));
       if (purchasesRaw) setPurchases(JSON.parse(purchasesRaw));
       let parsedProfile = null;
@@ -8762,6 +8888,9 @@ function AppContent() {
                 const normalized = {
                   id: goalId,
                   targetUSD,
+                  savedUSD: Number.isFinite(entry?.savedUSD) ? entry.savedUSD : 0,
+                  status: entry?.status && entry.status !== "done" ? entry.status : "active",
+                  createdAt: entry?.createdAt || null,
                 };
                 const customTitle =
                   typeof entry?.customTitle === "string" ? entry.customTitle.trim() : "";
@@ -8783,14 +8912,19 @@ function AppContent() {
               Number.isFinite(parsedProfile.goalTargetUSD) && parsedProfile.goalTargetUSD > 0
                 ? parsedProfile.goalTargetUSD
                 : getGoalDefaultTargetUSD(fallbackId),
+            savedUSD: 0,
+            status: "active",
+            createdAt: null,
           });
         }
         parsedProfile.primaryGoals = normalizedPrimaryGoals;
         parsedProfile.goal = normalizedPrimaryGoals[0]?.id || DEFAULT_PROFILE.goal;
-        parsedProfile.goalTargetUSD = normalizedPrimaryGoals.reduce(
-          (sum, goal) => sum + (Number.isFinite(goal.targetUSD) ? goal.targetUSD : 0),
-          0
-        );
+        const activeTargetEntry = normalizedPrimaryGoals[0];
+        const activeTargetUSD =
+          Number.isFinite(activeTargetEntry?.targetUSD) && activeTargetEntry.targetUSD > 0
+            ? activeTargetEntry.targetUSD
+            : getGoalDefaultTargetUSD(parsedProfile.goal || activeTargetEntry?.id || DEFAULT_PROFILE.goal);
+        parsedProfile.goalTargetUSD = activeTargetUSD;
         parsedProfile.goalCelebrated = !!parsedProfile.goalCelebrated;
         parsedProfile.spendingProfile = {
           baselineMonthlyWasteUSD: Math.max(
@@ -8859,7 +8993,12 @@ function AppContent() {
       if (catalogRaw) setCatalogOverrides(JSON.parse(catalogRaw));
       if (titleRaw) setTitleOverrides(JSON.parse(titleRaw));
       if (emojiOverridesRaw) setEmojiOverrides(JSON.parse(emojiOverridesRaw));
-      if (savedTotalRaw) setSavedTotalUSD(Number(savedTotalRaw) || 0);
+      if (savedTotalRaw) {
+        setSavedTotalUSD(Number(savedTotalRaw) || 0);
+      } else {
+        setSavedTotalUSD(0);
+      }
+      setSavedTotalHydrated(true);
       if (declinesRaw) setDeclineCount(Number(declinesRaw) || 0);
       if (freeDayRaw) {
         setFreeDayStats({ ...INITIAL_FREE_DAY_STATS, ...JSON.parse(freeDayRaw) });
@@ -8884,8 +9023,17 @@ function AppContent() {
         setRefuseStats(JSON.parse(refuseStatsRaw));
       }
       if (rewardsCelebratedRaw) {
-        setRewardCelebratedMap(JSON.parse(rewardsCelebratedRaw));
+        try {
+          const parsedCelebrated = JSON.parse(rewardsCelebratedRaw);
+          setRewardCelebratedMap(parsedCelebrated && typeof parsedCelebrated === "object" ? parsedCelebrated : {});
+        } catch (err) {
+          console.warn("rewards celebrated parse", err);
+          setRewardCelebratedMap({});
+        }
+      } else {
+        setRewardCelebratedMap({});
       }
+      setRewardCelebratedHydrated(true);
       if (analyticsOptOutRaw) {
         setAnalyticsOptOutState(analyticsOptOutRaw === "1");
       } else {
@@ -9008,6 +9156,8 @@ function AppContent() {
       console.warn("load error", error);
       setAnalyticsOptOutState((prev) => (prev === null ? false : prev));
     } finally {
+      setWishesHydrated(true);
+      setSavedTotalHydrated(true);
       setRewardsReady(true);
       setMoodHydrated(true);
     }
@@ -9266,7 +9416,7 @@ function AppContent() {
   }, [rewardCelebratedMap]);
 
   useEffect(() => {
-    if (!rewardsReady || !achievements.length) return;
+    if (!rewardsReady || !rewardCelebratedHydrated || !achievements.length) return;
     const newlyUnlocked = achievements.filter(
       (reward) => reward.unlocked && !rewardCelebratedMap[reward.id]
     );
@@ -9279,9 +9429,10 @@ function AppContent() {
       return next;
     });
     triggerOverlayState("reward", newlyUnlocked[0].title);
-  }, [achievements, rewardCelebratedMap, rewardsReady]);
+  }, [achievements, rewardCelebratedMap, rewardCelebratedHydrated, rewardsReady]);
 
   useEffect(() => {
+    if (!wishesHydrated || !savedTotalHydrated) return;
     setWishes((prev) => {
       if (!prev.length) return prev;
       let changed = false;
@@ -9337,7 +9488,7 @@ function AppContent() {
       }
       return changed ? next : prev;
     });
-  }, [savedTotalUSD, wishes]);
+  }, [savedTotalUSD, wishes, savedTotalHydrated, wishesHydrated]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.DECISION_STATS, JSON.stringify(decisionStats)).catch(() => {});
@@ -9485,46 +9636,116 @@ function AppContent() {
   const handleProfileGoalChange = (goalId) => {
     if (!goalId) return;
     triggerHaptic();
-    const toggleGoals = (currentGoals = []) => {
-      const list = Array.isArray(currentGoals) ? currentGoals : [];
-      const exists = list.some((goal) => goal.id === goalId);
-      let nextGoals = exists
-        ? list.filter((goal) => goal.id !== goalId)
-        : [...list, { id: goalId, targetUSD: getGoalDefaultTargetUSD(goalId) }];
-      if (!nextGoals.length) {
-        const fallbackId = DEFAULT_PROFILE.goal;
-        nextGoals = [{ id: fallbackId, targetUSD: getGoalDefaultTargetUSD(fallbackId) }];
-      }
-      return nextGoals;
-    };
-    const nextPrimaryGoals = toggleGoals(profile.primaryGoals);
-    const aggregatedTarget = nextPrimaryGoals.reduce(
-      (sum, goal) => sum + (Number.isFinite(goal.targetUSD) ? goal.targetUSD : 0),
-      0
+    const rawGoals = Array.isArray(profile.primaryGoals) ? profile.primaryGoals : [];
+    const normalizedGoals = [];
+    const dedupe = new Set();
+    rawGoals.forEach((entry) => {
+      const id = entry?.id;
+      if (!id || dedupe.has(id)) return;
+      dedupe.add(id);
+      const targetUSD =
+        Number.isFinite(entry?.targetUSD) && entry.targetUSD > 0
+          ? entry.targetUSD
+          : getGoalDefaultTargetUSD(id);
+      const normalized = {
+        ...entry,
+        id,
+        targetUSD,
+        savedUSD: Number.isFinite(entry?.savedUSD) ? entry.savedUSD : 0,
+        status: entry?.status || "active",
+        createdAt: entry?.createdAt || Date.now(),
+      };
+      normalizedGoals.push(normalized);
+    });
+    const previousGoalId = profile.goal || normalizedGoals[0]?.id || DEFAULT_PROFILE.goal;
+    if (previousGoalId === goalId) return;
+    const previousWish = wishes.find(
+      (wish) =>
+        wish.kind === PRIMARY_GOAL_KIND &&
+        (wish.goalId === previousGoalId || wish.id === previousGoalId)
     );
-    const preset = getGoalPreset(goalId);
-    const goalLabel = preset
-      ? `${preset.emoji || "🎯"} ${preset[language] || preset.en || goalId}`
-      : goalId;
-    const eventKind = exists ? "goal_cancelled" : "goal_started";
+    if (!normalizedGoals.some((goal) => goal.id === previousGoalId)) {
+      const fallbackTarget = getGoalDefaultTargetUSD(previousGoalId);
+      normalizedGoals.unshift({
+        id: previousGoalId,
+        targetUSD: fallbackTarget,
+        savedUSD: Number(previousWish?.savedUSD) || 0,
+        status: previousWish?.status || "active",
+        createdAt: previousWish?.createdAt || Date.now(),
+      });
+    } else if (previousWish) {
+      const prevIndex = normalizedGoals.findIndex((goal) => goal.id === previousGoalId);
+      if (prevIndex !== -1) {
+        normalizedGoals[prevIndex] = {
+          ...normalizedGoals[prevIndex],
+          savedUSD: Number.isFinite(previousWish.savedUSD)
+            ? previousWish.savedUSD
+            : normalizedGoals[prevIndex].savedUSD || 0,
+          status: previousWish.status || normalizedGoals[prevIndex].status || "active",
+          createdAt: previousWish.createdAt || normalizedGoals[prevIndex].createdAt || Date.now(),
+        };
+      }
+    }
+    const formatGoalLabel = (id, entry = null) => {
+      if (!id) return "";
+      const preset = getGoalPreset(id);
+      const customTitle = typeof entry?.customTitle === "string" ? entry.customTitle.trim() : "";
+      const hasCustomTitle = !!customTitle;
+      const customEmoji = entry?.customEmoji
+        ? normalizeEmojiValue(entry.customEmoji, DEFAULT_GOAL_EMOJI)
+        : null;
+      const resolvedEmoji = hasCustomTitle
+        ? customEmoji || DEFAULT_GOAL_EMOJI
+        : preset?.emoji || DEFAULT_GOAL_EMOJI;
+      const resolvedLabel = hasCustomTitle ? customTitle : preset?.[language] || preset?.en || id;
+      return `${resolvedEmoji} ${resolvedLabel || id}`.trim();
+    };
+    const existingEntry = normalizedGoals.find((goal) => goal.id === goalId) || null;
+    const nextGoalEntry = existingEntry
+      ? { ...existingEntry }
+      : {
+          id: goalId,
+          targetUSD: getGoalDefaultTargetUSD(goalId),
+          savedUSD: 0,
+          status: "active",
+          createdAt: Date.now(),
+        };
+    const filteredGoals = normalizedGoals.filter((goal) => goal.id !== goalId);
+    const nextPrimaryGoals = [nextGoalEntry, ...filteredGoals];
+    const activeGoal = nextGoalEntry.id || DEFAULT_PROFILE.goal;
+    const activeTargetUSD =
+      Number.isFinite(nextGoalEntry.targetUSD) && nextGoalEntry.targetUSD > 0
+        ? nextGoalEntry.targetUSD
+        : getGoalDefaultTargetUSD(activeGoal);
+    setActiveGoalId(activeGoal);
     setProfile((prev) => ({
       ...prev,
       primaryGoals: nextPrimaryGoals,
-      goal: nextPrimaryGoals[0]?.id || DEFAULT_PROFILE.goal,
-      goalTargetUSD: aggregatedTarget,
+      goal: activeGoal,
+      goalTargetUSD: activeTargetUSD,
       goalCelebrated: false,
       goalRenewalPending: false,
     }));
     setProfileDraft((prev) => ({
       ...prev,
       primaryGoals: nextPrimaryGoals,
-      goal: nextPrimaryGoals[0]?.id || DEFAULT_PROFILE.goal,
-      goalTargetUSD: aggregatedTarget,
+      goal: activeGoal,
+      goalTargetUSD: activeTargetUSD,
       goalCelebrated: false,
       goalRenewalPending: false,
     }));
-    ensurePrimaryGoalWish(nextPrimaryGoals, language, goalId);
-    logHistoryEvent(eventKind, { goalId, title: goalLabel });
+    ensurePrimaryGoalWish(nextPrimaryGoals, language, activeGoal);
+    if (previousGoalId && previousGoalId !== activeGoal) {
+      const previousEntry = normalizedGoals.find((goal) => goal.id === previousGoalId) || null;
+      logHistoryEvent("goal_cancelled", {
+        goalId: previousGoalId,
+        title: formatGoalLabel(previousGoalId, previousEntry),
+      });
+    }
+    logHistoryEvent("goal_started", {
+      goalId: activeGoal,
+      title: formatGoalLabel(activeGoal, nextGoalEntry),
+    });
   };
 
   const handleLanguageContinue = () => {
@@ -9597,15 +9818,18 @@ function AppContent() {
             : getGoalDefaultTargetUSD(entry.id);
         const existing = existingMap.get(entry.id);
         const canReuseExisting = existing && existing.status !== "done";
+        const fallbackSavedUSD = Number.isFinite(entry.savedUSD) ? entry.savedUSD : 0;
+        const fallbackStatus = entry?.status && entry.status !== "done" ? entry.status : "active";
+        const fallbackCreatedAt = entry?.createdAt || Date.now();
         return {
           id: getPrimaryGoalWishId(entry.id),
           templateId: `goal_${entry.id}`,
           title,
           emoji: resolvedEmoji,
           targetUSD,
-          savedUSD: canReuseExisting ? existing.savedUSD || 0 : 0,
-          status: canReuseExisting ? existing.status || "active" : "active",
-          createdAt: canReuseExisting ? existing.createdAt || Date.now() : Date.now(),
+          savedUSD: canReuseExisting ? existing.savedUSD || 0 : fallbackSavedUSD,
+          status: canReuseExisting ? existing.status || "active" : fallbackStatus,
+          createdAt: canReuseExisting ? existing.createdAt || Date.now() : fallbackCreatedAt,
               autoManaged: true,
               kind: PRIMARY_GOAL_KIND,
               goalId: entry.id,
@@ -9755,14 +9979,21 @@ function AppContent() {
         targetUSD,
         customTitle: trimmedName,
         customEmoji: emoji,
+        savedUSD: 0,
+        status: "active",
+        createdAt: Date.now(),
       };
-      const nextPrimaryGoals = [...(profile.primaryGoals || []), goalEntry];
-      const aggregatedTargetUSD = sumPrimaryGoalTargets(nextPrimaryGoals);
+      const existingGoals = Array.isArray(profile.primaryGoals) ? profile.primaryGoals : [];
+      const nextPrimaryGoals = [
+        goalEntry,
+        ...existingGoals.filter((entry) => entry?.id && entry.id !== goalId),
+      ];
+      const activeTargetUSD = targetUSD > 0 ? targetUSD : getGoalDefaultTargetUSD(goalId);
       setProfile((prev) => ({
         ...prev,
         primaryGoals: nextPrimaryGoals,
         goal: goalId,
-        goalTargetUSD: aggregatedTargetUSD,
+        goalTargetUSD: activeTargetUSD,
         goalCelebrated: false,
         goalRenewalPending: false,
       }));
@@ -9770,7 +10001,7 @@ function AppContent() {
         ...prev,
         primaryGoals: nextPrimaryGoals,
         goal: goalId,
-        goalTargetUSD: aggregatedTargetUSD,
+        goalTargetUSD: activeTargetUSD,
         goalCelebrated: false,
         goalRenewalPending: false,
       }));
@@ -10124,6 +10355,9 @@ function AppContent() {
       const base = {
         id: goalId,
         targetUSD,
+        savedUSD: 0,
+        status: "active",
+        createdAt: Date.now(),
       };
       if (customTitle) {
         base.customTitle = customTitle;
@@ -10133,10 +10367,10 @@ function AppContent() {
       }
       return base;
     });
-    const aggregatedGoalTargetUSD = primaryGoals.reduce(
-      (sum, goal) => sum + (Number.isFinite(goal.targetUSD) ? goal.targetUSD : 0),
-      0
-    );
+    const activeGoalTargetUSD =
+      Number.isFinite(primaryGoals[0]?.targetUSD) && primaryGoals[0].targetUSD > 0
+        ? primaryGoals[0].targetUSD
+        : getGoalDefaultTargetUSD(primaryGoals[0]?.id || selections[0] || DEFAULT_PROFILE.goal);
     const displayName = `${registrationData.firstName} ${registrationData.lastName}`.trim()
       || registrationData.firstName.trim()
       || DEFAULT_PROFILE.name;
@@ -10179,7 +10413,7 @@ function AppContent() {
       currency: registrationData.currency,
       goal: primaryGoals[0]?.id || DEFAULT_PROFILE.goal,
       primaryGoals,
-      goalTargetUSD: aggregatedGoalTargetUSD,
+      goalTargetUSD: activeGoalTargetUSD,
       goalCelebrated: false,
       persona: personaId,
       gender,
@@ -11774,6 +12008,15 @@ const handleFreeDayRescue = useCallback(() => {
             id: goalId,
             targetUSD,
           };
+          if (Number.isFinite(entry?.savedUSD)) {
+            normalized.savedUSD = entry.savedUSD;
+          }
+          if (entry?.status) {
+            normalized.status = entry.status;
+          }
+          if (entry?.createdAt) {
+            normalized.createdAt = entry.createdAt;
+          }
           if (entry?.customTitle) {
             normalized.customTitle = entry.customTitle;
           }
@@ -11786,13 +12029,18 @@ const handleFreeDayRescue = useCallback(() => {
           {
             id: profileDraft.goal || profile.goal || DEFAULT_PROFILE.goal,
             targetUSD: getGoalDefaultTargetUSD(profileDraft.goal || profile.goal || DEFAULT_PROFILE.goal),
+            savedUSD: 0,
+            status: "active",
+            createdAt: Date.now(),
           },
         ];
-    const aggregatedTarget = normalizedGoals.reduce(
-      (sum, goal) => sum + (Number.isFinite(goal.targetUSD) ? goal.targetUSD : 0),
-      0
-    );
-    const hasMetTarget = aggregatedTarget > 0 && savedTotalUSD >= aggregatedTarget;
+    const activeEntry = normalizedGoals[0];
+    const activeTarget =
+      Number.isFinite(activeEntry?.targetUSD) && activeEntry.targetUSD > 0
+        ? activeEntry.targetUSD
+        : getGoalDefaultTargetUSD(activeEntry?.id || profile.goal || DEFAULT_PROFILE.goal);
+    const activeSaved = Number.isFinite(activeEntry?.savedUSD) ? Math.max(activeEntry.savedUSD, 0) : 0;
+    const hasMetTarget = activeTarget > 0 && activeSaved >= activeTarget;
     const prevCustomId = profile.customSpend?.id || "custom_habit";
     const prevCustomTitle = (profile.customSpend?.title || "").trim();
     const nextCustomId = profileDraft.customSpend?.id || prevCustomId;
@@ -11801,7 +12049,7 @@ const handleFreeDayRescue = useCallback(() => {
       ...profileDraft,
       primaryGoals: normalizedGoals,
       goal: normalizedGoals[0]?.id || DEFAULT_PROFILE.goal,
-      goalTargetUSD: aggregatedTarget,
+      goalTargetUSD: activeTarget,
       goalCelebrated: hasMetTarget ? profileDraft.goalCelebrated : false,
     };
     if (nextCustomId && prevCustomTitle !== nextCustomTitle) {
