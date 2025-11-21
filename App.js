@@ -109,55 +109,6 @@ const THEMES = {
     border: "#E5E6ED",
     primary: "#111",
   },
-  dailySummaryCard: {
-    width: "100%",
-    maxWidth: 360,
-    borderRadius: 18,
-    padding: 20,
-    borderWidth: 1,
-  },
-  dailySummaryTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    marginBottom: 6,
-  },
-  dailySummarySubtitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 16,
-  },
-  dailySummaryStats: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-    marginBottom: 18,
-  },
-  dailySummaryStatItem: {
-    flex: 1,
-    alignItems: "center",
-    padding: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.06)",
-  },
-  dailySummaryStatValue: {
-    fontSize: 18,
-    fontWeight: "800",
-  },
-  dailySummaryStatLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 4,
-  },
-  dailySummaryButton: {
-    borderRadius: 14,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  dailySummaryButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
   dark: {
     background: "#05070D",
     card: "#161B2A",
@@ -259,6 +210,8 @@ const GOAL_HIGHLIGHT_COLOR = "#F6C16B";
 const GOAL_SWIPE_THRESHOLD = 80;
 const DELETE_SWIPE_THRESHOLD = 130;
 const CHALLENGE_SWIPE_ACTION_WIDTH = 120;
+const BASELINE_SAMPLE_USD = 120;
+const CUSTOM_SPEND_SAMPLE_USD = 7.5;
 
 const getDayKey = (date) => {
   const d = new Date(date);
@@ -651,6 +604,24 @@ const MOOD_PRESETS = {
   },
 };
 
+const lightenColor = (hex, amount = 0.25) => {
+  if (typeof hex !== "string" || !hex.startsWith("#") || (hex.length !== 7 && hex.length !== 4)) {
+    return hex;
+  }
+  const full = hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
+  const num = parseInt(full.slice(1), 16);
+  if (Number.isNaN(num)) return hex;
+  const adjust = (channel) => {
+    const delta = 255 * amount;
+    const next = channel + delta;
+    return Math.max(0, Math.min(255, Math.round(next)));
+  };
+  const r = adjust((num >> 16) & 255);
+  const g = adjust((num >> 8) & 255);
+  const b = adjust(num & 255);
+  return `rgb(${r}, ${g}, ${b})`;
+};
+
 const MOOD_GRADIENTS = {
   [MOOD_IDS.NEUTRAL]: {
     start: "#CDE6FF",
@@ -686,6 +657,16 @@ const MOOD_GRADIENTS = {
 
 const getMoodGradient = (moodId = MOOD_IDS.NEUTRAL) =>
   MOOD_GRADIENTS[moodId] || MOOD_GRADIENTS[MOOD_IDS.NEUTRAL];
+
+const applyThemeToMoodGradient = (palette, themeKey = "light") => {
+  if (!palette) return getMoodGradient();
+  if (themeKey !== "dark") return palette;
+  return {
+    start: lightenColor(palette.start, -0.55),
+    end: lightenColor(palette.end, -0.65),
+    accent: lightenColor(palette.accent, 0.35),
+  };
+};
 
 const MoodGradientBlock = ({ colors: palette, style, children }) => {
   const gradientColors = palette || MOOD_GRADIENTS[MOOD_IDS.NEUTRAL];
@@ -841,7 +822,7 @@ const getTamagotchiMood = (hunger = 0, language = "ru") => {
   return { label: dict.urgent, tone: "urgent" };
 };
 
-function AlmiTamagotchi({ override, onOverrideComplete }) {
+function AlmiTamagotchi({ override, onOverrideComplete, style }) {
   const [currentKey, setCurrentKey] = useState("idle");
   const idleTimerRef = useRef(null);
   const overrideTimerRef = useRef(null);
@@ -881,7 +862,7 @@ function AlmiTamagotchi({ override, onOverrideComplete }) {
 
   const source = TAMAGOTCHI_ANIMATIONS[currentKey] || TAMAGOTCHI_ANIMATIONS.idle;
   return (
-    <View style={styles.almiMascotWrap}>
+    <View style={[styles.almiMascotWrap, style]}>
       <Image
         source={source}
         defaultSource={TAMAGOTCHI_ANIMATIONS.idle}
@@ -1523,6 +1504,9 @@ const convertFromCurrency = (valueLocal = 0, currency = activeCurrency) => {
   return valueLocal / rate;
 };
 
+const formatSampleAmount = (valueUSD, currencyCode) =>
+  formatCurrency(convertToCurrency(valueUSD, currencyCode), currencyCode);
+
 
 const formatNumberInputValue = (value) => {
   if (!Number.isFinite(value)) return "";
@@ -2075,7 +2059,7 @@ const TRANSLATIONS = {
     customSpendSubtitle: "Дай ему имя - Almost поможет отказываться чаще.",
     customSpendNamePlaceholder: "Матча, сигареты, маникюр...",
     customSpendAmountLabel: "Сколько стоит один раз?",
-    customSpendAmountPlaceholder: "Например 550",
+    customSpendAmountPlaceholder: "Например {{amount}}",
     customSpendFrequencyLabel: "Сколько раз в неделю поддаёшься?",
     customSpendFrequencyPlaceholder: "Например 4",
     customSpendHint: "Это всегда можно поменять в профиле.",
@@ -2084,7 +2068,7 @@ const TRANSLATIONS = {
     smartReminderBody: "Ты решил копить вместо «{{temptation}}». Хочешь удержать фокус?",
     baselineTitle: "Сколько уходит на мелкие импульсы?",
     baselineSubtitle: "Прикинь месячную сумму - Almost сравнит её с реальными победами.",
-    baselinePlaceholder: "Например 4300",
+    baselinePlaceholder: "Например {{amount}}",
     baselineCTA: "Запомнить",
     baselineHint: "Это ориентир, позже можно обновить его в профиле.",
     baselineInputError: "Введи сумму ежемесячных необязательных трат",
@@ -2494,7 +2478,7 @@ const TRANSLATIONS = {
     customSpendSubtitle: "Give it a short name and Almost will help you resist it more often.",
     customSpendNamePlaceholder: "Morning latte, cigarettes, nail art…",
     customSpendAmountLabel: "Cost per attempt",
-    customSpendAmountPlaceholder: "E.g. 7.50",
+    customSpendAmountPlaceholder: "E.g. {{amount}}",
     customSpendFrequencyLabel: "How many times per week does it usually win?",
     customSpendFrequencyPlaceholder: "E.g. 4",
     customSpendHint: "You can change this anytime in the profile.",
@@ -2503,7 +2487,7 @@ const TRANSLATIONS = {
     smartReminderBody: "You planned to save instead of “{{temptation}}”. Stay on track?",
     baselineTitle: "How much slips on small stuff?",
     baselineSubtitle: "Estimate one month of coffees, snacks and impulse buys to compare with real wins.",
-    baselinePlaceholder: "E.g. 120",
+    baselinePlaceholder: "E.g. {{amount}}",
     baselineCTA: "Save amount",
     baselineHint: "Rough number is fine - you can tweak it later in Profile.",
     baselineInputError: "Enter your rough monthly spend on non‑essentials",
@@ -3026,6 +3010,7 @@ const INITIAL_REGISTRATION = {
   goalSelections: [],
   goalTargetMap: {},
   customGoals: [],
+  goalTargetConfirmed: [],
 };
 
 const DEFAULT_TEMPTATIONS = [
@@ -3545,26 +3530,6 @@ const getCopyForPurchase = (item, language, t) => {
     title: t("defaultDealTitle"),
     desc: t("defaultDealDesc"),
   };
-};
-
-const lightenColor = (hex, amount = 0.25) => {
-  if (typeof hex !== "string" || !hex.startsWith("#") || (hex.length !== 7 && hex.length !== 4)) {
-    return hex;
-  }
-  const full = hex.length === 4
-    ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
-    : hex;
-  const num = parseInt(full.slice(1), 16);
-  if (Number.isNaN(num)) return hex;
-  const adjust = (channel) => {
-    const delta = 255 * amount;
-    const next = channel + delta;
-    return Math.max(0, Math.min(255, Math.round(next)));
-  };
-  const r = adjust((num >> 16) & 255);
-  const g = adjust((num >> 8) & 255);
-  const b = adjust(num & 255);
-  return `rgb(${r}, ${g}, ${b})`;
 };
 
 const parseColor = (value) => {
@@ -5006,12 +4971,15 @@ function FeedScreen({
     }
     return heroLine;
   }, [isGoalComplete, moodPreset, t]);
-  const moodGradient = useMemo(() => getMoodGradient(moodPreset?.id), [moodPreset?.id]);
+  const isDarkMode = colors === THEMES.dark;
+  const moodGradient = useMemo(
+    () => applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), isDarkMode ? "dark" : "light"),
+    [moodPreset?.id, isDarkMode]
+  );
   const mainTemptationId = useMemo(() => {
     if (!profile?.customSpend) return null;
     return profile.customSpend.id || "custom_habit";
   }, [profile?.customSpend]);
-  const isDarkMode = colors === THEMES.dark;
   const goldPalette = useMemo(
     () =>
       isGoalComplete
@@ -5070,6 +5038,21 @@ function FeedScreen({
             shadow: "#F3C75A",
           },
     [isDarkMode, isGoalComplete]
+  );
+  const heroMoodBadgeStyle = useMemo(
+    () =>
+      isDarkMode
+        ? { backgroundColor: "rgba(0,0,0,0.45)", borderWidth: 1, borderColor: "rgba(255,255,255,0.15)" }
+        : null,
+    [isDarkMode]
+  );
+  const heroMoodBadgeTextColor = isDarkMode ? colors.text : moodGradient.accent;
+  const heroMascotWrapStyle = useMemo(
+    () =>
+      isDarkMode
+        ? { backgroundColor: "rgba(0,0,0,0.3)", borderColor: "rgba(255,255,255,0.12)" }
+        : null,
+    [isDarkMode]
   );
   const tierInfo = getTierProgress(savedTotalUSD || 0);
   const span = Math.max(
@@ -5295,8 +5278,11 @@ function FeedScreen({
                       {t("appTagline")}
                     </Text>
                   {moodPreset?.label && (
-                    <TouchableOpacity style={styles.moodBadge} onPress={onMoodDetailsOpen}>
-                      <Text style={[styles.moodBadgeText, { color: moodGradient.accent }]}>
+                    <TouchableOpacity
+                      style={[styles.moodBadge, heroMoodBadgeStyle]}
+                      onPress={onMoodDetailsOpen}
+                    >
+                      <Text style={[styles.moodBadgeText, { color: heroMoodBadgeTextColor }]}>
                         {moodPreset.label}
                       </Text>
                     </TouchableOpacity>
@@ -5304,7 +5290,11 @@ function FeedScreen({
                 </View>
                 {!hideMascot && (
                   <TouchableOpacity onPress={onMascotPress} activeOpacity={0.9}>
-                    <AlmiTamagotchi override={mascotOverride} onOverrideComplete={onMascotAnimationComplete} />
+                    <AlmiTamagotchi
+                      style={heroMascotWrapStyle}
+                      override={mascotOverride}
+                      onOverrideComplete={onMascotAnimationComplete}
+                    />
                   </TouchableOpacity>
                 )}
               </View>
@@ -7158,6 +7148,7 @@ function ProfileScreen({
   moodPreset = null,
 }) {
   const currentCurrency = currencyValue || profile.currency || DEFAULT_PROFILE.currency;
+  const isDarkTheme = theme === "dark";
   const activeGoalId = profile.goal || DEFAULT_PROFILE.goal;
   const primaryGoalsList =
     Array.isArray(profile.primaryGoals) && profile.primaryGoals.length
@@ -7224,6 +7215,19 @@ function ProfileScreen({
       ? formatCurrency(convertToCurrency(customSpendAmountUSD, currentCurrency), currentCurrency)
       : null;
   const customSpendFrequency = profile.customSpend?.frequencyPerWeek || null;
+  const customSpendPlaceholderLabel = formatSampleAmount(CUSTOM_SPEND_SAMPLE_USD, currentCurrency);
+  const baselinePlaceholderLabel = formatSampleAmount(BASELINE_SAMPLE_USD, currentCurrency);
+  const avatarEditBadgeColors = useMemo(
+    () => {
+      const dark = theme === "dark";
+      return {
+        background: dark ? "rgba(0,0,0,0.6)" : "rgba(255,255,255,0.92)",
+        border: dark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.08)",
+        icon: dark ? colors.card : colors.text,
+      };
+    },
+    [theme, colors.card, colors.text]
+  );
   const handleBaselineInputChange = useCallback(
     (text) => {
       setBaselineInput(text);
@@ -7368,8 +7372,9 @@ function ProfileScreen({
     }
   }, [profile.joinedAt, profile.spendingProfile?.baselineStartAt, locale, t]);
   const profileMoodGradient = useMemo(
-    () => getMoodGradient(moodPreset?.id),
-    [moodPreset?.id]
+    () =>
+      applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), isDarkTheme ? "dark" : "light"),
+    [moodPreset?.id, isDarkTheme]
   );
   return (
     <View style={[styles.container, { backgroundColor: colors.background }] }>
@@ -7393,12 +7398,20 @@ function ProfileScreen({
                   resizeMode="cover"
                 />
                 {isEditing && (
-                  <Text style={[styles.profileAvatarHint, { color: colors.muted }]}>
-                    {t("photoTapHint")}
-                  </Text>
+                  <View
+                    style={[
+                      styles.profileAvatarEditBadge,
+                      { backgroundColor: avatarEditBadgeColors.background, borderColor: avatarEditBadgeColors.border },
+                    ]}
+                  >
+                    <Text style={[styles.profileAvatarEditIcon, { color: avatarEditBadgeColors.icon }]}>✏︎</Text>
+                  </View>
                 )}
               </TouchableOpacity>
             </MoodGradientBlock>
+            {isEditing && (
+              <Text style={[styles.profileAvatarHint, { color: colors.muted }]}>{t("photoTapHint")}</Text>
+            )}
             {moodPreset?.label && (
               <Text style={[styles.profileMoodStatus, { color: profileMoodGradient.accent }]}>
                 {moodPreset.label}
@@ -7547,7 +7560,7 @@ function ProfileScreen({
                   ]}
                   value={customSpendInputs.amount}
                   onChangeText={(text) => handleCustomSpendInputChange("amount", text)}
-                  placeholder={`${t("customSpendAmountPlaceholder")} (${currentCurrency})`}
+                  placeholder={t("customSpendAmountPlaceholder", { amount: customSpendPlaceholderLabel })}
                   keyboardType="decimal-pad"
                   placeholderTextColor={colors.muted}
                 />
@@ -7594,7 +7607,7 @@ function ProfileScreen({
                   ]}
                   value={baselineInput}
                   onChangeText={handleBaselineInputChange}
-                  placeholder={`${t("baselinePlaceholder")} (${currentCurrency})`}
+                  placeholder={t("baselinePlaceholder", { amount: baselinePlaceholderLabel })}
                   keyboardType="decimal-pad"
                   placeholderTextColor={colors.muted}
                 />
@@ -7819,6 +7832,13 @@ function AppContent() {
   const [dailySummaryVisible, setDailySummaryVisible] = useState(false);
   const [dailySummaryData, setDailySummaryData] = useState(null);
   const [dailySummarySeenKey, setDailySummarySeenKey] = useState(null);
+  const handleDailySummaryContinue = useCallback(() => {
+    setDailySummaryVisible(false);
+    const todayKey = dailySummaryData?.todayKey || getDayKey(Date.now());
+    if (!todayKey) return;
+    setDailySummarySeenKey(todayKey);
+    AsyncStorage.setItem(STORAGE_KEYS.DAILY_SUMMARY, todayKey).catch(() => {});
+  }, [dailySummaryData]);
   const [tutorialSeen, setTutorialSeen] = useState(true);
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
@@ -8055,7 +8075,9 @@ function AppContent() {
   const [moodDetailsVisible, setMoodDetailsVisible] = useState(false);
   const [potentialDetailsVisible, setPotentialDetailsVisible] = useState(false);
   const [potentialDetailsText, setPotentialDetailsText] = useState("");
-  const [moodGradient, setMoodGradient] = useState(getMoodGradient());
+  const [moodGradient, setMoodGradient] = useState(() =>
+    applyThemeToMoodGradient(getMoodGradient(), theme)
+  );
   const mainGoalWish = useMemo(
     () => selectMainGoalWish(wishes, activeGoalId || profile.goal),
     [wishes, activeGoalId, profile.goal]
@@ -8116,8 +8138,8 @@ function AppContent() {
   );
   const moodPreset = useMemo(() => getMoodPreset(currentMood, language), [currentMood, language]);
   useEffect(() => {
-    setMoodGradient(getMoodGradient(moodPreset?.id));
-  }, [moodPreset?.id]);
+    setMoodGradient(applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), theme));
+  }, [moodPreset?.id, theme]);
   const moodGoalInfo = useMemo(() => {
     const aggregatedTargetUSD = heroGoalTargetUSD || 0;
     const savedUSD = heroGoalSavedUSD || 0;
@@ -8406,6 +8428,14 @@ function AppContent() {
   const overlayDimColor = isDarkTheme ? "rgba(0,0,0,0.65)" : "rgba(5,6,15,0.2)";
   const overlayCardBackground = isDarkTheme ? lightenColor(colors.card, 0.18) : colors.card;
   const overlayBorderColor = isDarkTheme ? lightenColor(colors.border, 0.25) : colors.border;
+  const impulseAlertPayload = useMemo(() => {
+    if (overlay?.type !== "impulse_alert") return null;
+    if (overlay?.message && typeof overlay.message === "object") {
+      return overlay.message;
+    }
+    if (!overlay?.message) return null;
+    return { body: overlay.message };
+  }, [overlay]);
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const targetNavColor = overlay ? overlayDimColor : colors.card;
@@ -10234,10 +10264,12 @@ function AppContent() {
             );
         nextTargetMap[goalId] = nextTargetMap[goalId] || defaultLocal;
       }
+      const confirmed = (prev.goalTargetConfirmed || []).filter((id) => id !== goalId);
       return {
         ...prev,
         goalSelections: nextSelections,
         goalTargetMap: nextTargetMap,
+        goalTargetConfirmed: confirmed,
       };
     });
     if (!wasSelected && onboardingStep !== "done") {
@@ -10269,6 +10301,10 @@ function AppContent() {
       });
     }
     setPendingGoalTargets(targets);
+    setRegistrationData((prev) => ({
+      ...prev,
+      goalTargetConfirmed: selections.slice(),
+    }));
     goToOnboardingStep("analytics_consent");
   };
 
@@ -10291,6 +10327,7 @@ function AppContent() {
     const currentMap = registrationData.goalTargetMap || {};
     let patchedMap = null;
     let needsTargetStep = false;
+    const confirmedSet = new Set(registrationData.goalTargetConfirmed || []);
     for (const goalId of selections) {
       const workingMap = patchedMap || currentMap;
       const draftValue = workingMap[goalId];
@@ -10308,6 +10345,9 @@ function AppContent() {
         }
       }
       if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+        needsTargetStep = true;
+      }
+      if (!customGoalMap[goalId] && !confirmedSet.has(goalId)) {
         needsTargetStep = true;
       }
     }
@@ -11699,6 +11739,9 @@ function AppContent() {
         title: t("impulseAlertTitle"),
         body: overlayMessage,
         moodLine: moodPreset?.impulseOverlay || null,
+        window: risk.windowLabel || null,
+        amountLabel,
+        temptation: risk.title || "",
       });
       try {
         const allowed = await ensureNotificationPermission();
@@ -12521,7 +12564,7 @@ const handleFreeDayRescue = useCallback(() => {
         {dailySummaryVisible && dailySummaryData && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={() => setDailySummaryVisible(false)}>
-              <View style={styles.breakdownOverlay}>
+              <View style={styles.dailySummaryBackdrop}>
                 <TouchableWithoutFeedback onPress={() => {}}>
                   <View
                     style={[
@@ -12529,17 +12572,63 @@ const handleFreeDayRescue = useCallback(() => {
                       { backgroundColor: colors.card, borderColor: colors.border },
                     ]}
                   >
-                    <Text style={[styles.dailySummaryTitle, { color: colors.text }]}>
-                      {language === "ru" ? "Итоги дня" : "Today’s recap"}
-                    </Text>
-                    <Text style={[styles.dailySummarySubtitle, { color: colors.muted }]}>
-                      {language === "ru"
-                        ? "Так держать, продолжай в том же духе!"
-                        : "Great momentum — keep it up!"}
-                    </Text>
-                    <View style={styles.dailySummaryStats}>
-                      <View style={styles.dailySummaryStatItem}>
-                        <Text style={[styles.dailySummaryStatValue, { color: colors.text }]}>
+                    <View
+                      style={[
+                        styles.dailySummaryGlow,
+                        { backgroundColor: isDarkTheme ? "#FFC857" : "#111111" },
+                      ]}
+                    />
+                    <View style={styles.dailySummaryCardContent}>
+                      <View style={styles.dailySummaryHeroRow}>
+                        <View
+                          style={[
+                            styles.dailySummaryIconWrap,
+                            {
+                              backgroundColor: isDarkTheme
+                                ? "rgba(255,255,255,0.08)"
+                                : "rgba(17,17,17,0.05)",
+                              borderColor: colors.border,
+                            },
+                          ]}
+                        >
+                          <Text style={styles.dailySummaryIconText}>🌙</Text>
+                        </View>
+                        <View style={styles.dailySummaryHeroText}>
+                          <View
+                            style={[
+                              styles.dailySummaryBadge,
+                              { backgroundColor: colors.background, borderColor: colors.border },
+                            ]}
+                          >
+                            <Text style={[styles.dailySummaryBadgeText, { color: colors.muted }]}>
+                              {language === "ru" ? "вечерний отчёт" : "daily recap"}
+                            </Text>
+                          </View>
+                          <Text style={[styles.dailySummaryTitle, { color: colors.text }]}>
+                            {language === "ru" ? "Итоги дня" : "Today’s recap"}
+                          </Text>
+                          <Text style={[styles.dailySummarySubtitle, { color: colors.muted }]}>
+                            {language === "ru"
+                              ? "Так держать, продолжай в том же духе!"
+                              : "Great momentum — keep it up!"}
+                          </Text>
+                        </View>
+                      </View>
+                      <View
+                        style={[
+                          styles.dailySummaryHighlight,
+                          {
+                            backgroundColor: isDarkTheme
+                              ? "rgba(255,255,255,0.06)"
+                              : "rgba(17,17,17,0.03)",
+                            borderColor: isDarkTheme ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.06)",
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.dailySummaryHighlightLabel, { color: colors.muted }]}>
+                          {language === "ru" ? "Сэкономлено сегодня" : "Saved today"}
+                        </Text>
+                        <Text style={[styles.dailySummaryHighlightValue, { color: colors.text }]}>
                           {formatCurrency(
                             convertToCurrency(
                               dailySummaryData.savedUSD || 0,
@@ -12548,35 +12637,68 @@ const handleFreeDayRescue = useCallback(() => {
                             profile.currency || DEFAULT_PROFILE.currency
                           )}
                         </Text>
-                        <Text style={[styles.dailySummaryStatLabel, { color: colors.muted }]}>
-                          {language === "ru" ? "Сохранено" : "Saved"}
+                        <Text style={[styles.dailySummaryHighlightSub, { color: colors.muted }]}>
+                          {language === "ru"
+                            ? "Каждый отказ приближает к цели"
+                            : "Every skip nudges the goal closer"}
                         </Text>
                       </View>
-                      <View style={styles.dailySummaryStatItem}>
-                        <Text style={[styles.dailySummaryStatValue, { color: colors.text }]}>
-                          {dailySummaryData.declines || 0}
-                        </Text>
-                        <Text style={[styles.dailySummaryStatLabel, { color: colors.muted }]}>
-                          {language === "ru" ? "Отказов" : "Declines"}
-                        </Text>
+                      <View style={styles.dailySummaryStatsRow}>
+                        <View
+                          style={[
+                            styles.dailySummaryStatCard,
+                            {
+                              backgroundColor: isDarkTheme
+                                ? "rgba(255,255,255,0.08)"
+                                : "rgba(255,255,255,0.94)",
+                              borderColor: isDarkTheme ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.05)",
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.dailySummaryStatValue, { color: colors.text }]}>
+                            {dailySummaryData.declines || 0}
+                          </Text>
+                          <Text style={[styles.dailySummaryStatLabel, { color: colors.muted }]}>
+                            {language === "ru" ? "Отказов" : "Declines"}
+                          </Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.dailySummaryStatCard,
+                            {
+                              backgroundColor: isDarkTheme
+                                ? "rgba(255,255,255,0.08)"
+                                : "rgba(255,255,255,0.94)",
+                              borderColor: isDarkTheme ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.05)",
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.dailySummaryStatValue, { color: colors.text }]}>
+                            {dailySummaryData.thinking || 0}
+                          </Text>
+                          <Text style={[styles.dailySummaryStatLabel, { color: colors.muted }]}>
+                            {language === "ru" ? "В думаем" : "Thinking"}
+                          </Text>
+                        </View>
                       </View>
-                      <View style={styles.dailySummaryStatItem}>
-                        <Text style={[styles.dailySummaryStatValue, { color: colors.text }]}>
-                          {dailySummaryData.thinking || 0}
+                      <TouchableOpacity
+                        style={[styles.dailySummaryButton, { backgroundColor: colors.text }]}
+                        onPress={handleDailySummaryContinue}
+                        activeOpacity={0.9}
+                      >
+                        <Text style={[styles.dailySummaryButtonText, { color: colors.background }]}>
+                          {language === "ru" ? "Продолжить" : "Continue"}
                         </Text>
-                        <Text style={[styles.dailySummaryStatLabel, { color: colors.muted }]}>
-                          {language === "ru" ? "В думаем" : "Thinking"}
+                        <Text style={[styles.dailySummaryButtonIcon, { color: colors.background }]}>
+                          →
                         </Text>
-                      </View>
-                    </View>
-                    <TouchableOpacity
-                      style={[styles.dailySummaryButton, { backgroundColor: colors.text }]}
-                      onPress={() => setDailySummaryVisible(false)}
-                    >
-                      <Text style={[styles.dailySummaryButtonText, { color: colors.background }]}>
-                        {language === "ru" ? "Продолжить" : "Continue"}
+                      </TouchableOpacity>
+                      <Text style={[styles.dailySummaryHint, { color: colors.muted }]}>
+                        {language === "ru"
+                          ? "Загляну завтра с новыми цифрами."
+                          : "See you tomorrow with fresh numbers."}
                       </Text>
-                    </TouchableOpacity>
+                    </View>
                   </View>
                 </TouchableWithoutFeedback>
               </View>
@@ -13310,28 +13432,95 @@ const handleFreeDayRescue = useCallback(() => {
                   { backgroundColor: overlayDimColor },
                 ]}
               >
-                <View
-                  style={[
-                    styles.impulseAlertCard,
-                    { backgroundColor: overlayCardBackground, borderColor: overlayBorderColor },
-                  ]}
-                >
-                  <Text style={[styles.impulseAlertTitle, { color: colors.text }]}>
-                    {typeof overlay.message === "object" && overlay.message?.title
-                      ? overlay.message.title
-                      : t("impulseAlertTitle")}
-                  </Text>
-                  <Text style={[styles.impulseAlertBody, { color: colors.muted }]}>
-                    {typeof overlay.message === "object" && overlay.message?.body
-                      ? overlay.message.body
-                      : overlay.message}
-                  </Text>
-                  {typeof overlay.message === "object" && overlay.message?.moodLine ? (
-                    <Text style={[styles.impulseAlertMood, { color: colors.text }]}>
-                      {overlay.message.moodLine}
-                    </Text>
-                  ) : null}
-                </View>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
+                    style={[
+                      styles.impulseAlertCard,
+                      { backgroundColor: overlayCardBackground, borderColor: overlayBorderColor },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.impulseAlertGlow,
+                        { backgroundColor: isDarkTheme ? "#FFC857" : "#FF8F5A" },
+                      ]}
+                    />
+                    <View style={styles.impulseAlertContent}>
+                      <View style={styles.impulseAlertHeader}>
+                        <View
+                          style={[
+                            styles.impulseAlertBadge,
+                            { backgroundColor: colors.background, borderColor: colors.border },
+                          ]}
+                        >
+                          <Text style={[styles.impulseAlertBadgeText, { color: colors.muted }]}>
+                            {language === "ru" ? "умное уведомление" : "smart insight"}
+                          </Text>
+                        </View>
+                        <Text style={styles.impulseAlertEmoji}>⚡️</Text>
+                      </View>
+                      <Text style={[styles.impulseAlertTitle, { color: colors.text }]}>
+                        {impulseAlertPayload?.title || t("impulseAlertTitle")}
+                      </Text>
+                      <Text style={[styles.impulseAlertBody, { color: colors.muted }]}>
+                        {impulseAlertPayload?.body || ""}
+                      </Text>
+                      {(impulseAlertPayload?.window || impulseAlertPayload?.amountLabel) && (
+                        <View style={styles.impulseAlertStats}>
+                          {impulseAlertPayload?.window ? (
+                            <View style={styles.impulseAlertStat}>
+                              <Text style={[styles.impulseAlertStatLabel, { color: colors.muted }]}>
+                                {language === "ru" ? "Пик импульса" : "Hot zone"}
+                              </Text>
+                              <Text style={[styles.impulseAlertStatValue, { color: colors.text }]}>
+                                {impulseAlertPayload.window}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {impulseAlertPayload?.amountLabel ? (
+                            <View style={styles.impulseAlertStat}>
+                              <Text style={[styles.impulseAlertStatLabel, { color: colors.muted }]}>
+                                {language === "ru" ? "Сумма риска" : "At stake"}
+                              </Text>
+                              <Text style={[styles.impulseAlertStatValue, { color: colors.text }]}>
+                                {impulseAlertPayload.amountLabel}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      )}
+                      {impulseAlertPayload?.moodLine ? (
+                        <View
+                          style={[
+                            styles.impulseAlertMoodCard,
+                            {
+                              backgroundColor: isDarkTheme
+                                ? "rgba(255,255,255,0.08)"
+                                : "rgba(17,17,17,0.04)",
+                              borderColor: isDarkTheme ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.05)",
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.impulseAlertMood, { color: colors.text }]}>
+                            {impulseAlertPayload.moodLine}
+                          </Text>
+                        </View>
+                      ) : null}
+                      <TouchableOpacity
+                        style={[styles.impulseAlertButton, { backgroundColor: colors.text }]}
+                        onPress={dismissOverlay}
+                        activeOpacity={0.9}
+                      >
+                        <Text style={[styles.impulseAlertButtonText, { color: colors.background }]}>
+                          {language === "ru" ? "Держать курс" : "Stay focused"}
+                        </Text>
+                        <Text style={[styles.impulseAlertButtonIcon, { color: colors.background }]}>
+                          →
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </TouchableWithoutFeedback>
               </View>
             </TouchableWithoutFeedback>
           </Modal>
@@ -14114,6 +14303,134 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 16,
+  },
+  dailySummaryBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  dailySummaryCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 28,
+    padding: 24,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  dailySummaryGlow: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.12,
+  },
+  dailySummaryCardContent: {
+    gap: 18,
+  },
+  dailySummaryHeroRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  dailySummaryHeroText: {
+    flex: 1,
+  },
+  dailySummaryIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+  },
+  dailySummaryIconText: {
+    fontSize: 28,
+  },
+  dailySummaryBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginBottom: 6,
+  },
+  dailySummaryBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  dailySummaryTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  dailySummarySubtitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  dailySummaryHighlight: {
+    borderRadius: 22,
+    padding: 18,
+    borderWidth: 1,
+  },
+  dailySummaryHighlightLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  dailySummaryHighlightValue: {
+    fontSize: 32,
+    fontWeight: "800",
+    marginTop: 8,
+  },
+  dailySummaryHighlightSub: {
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 6,
+  },
+  dailySummaryStatsRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  dailySummaryStatCard: {
+    flex: 1,
+    borderRadius: 20,
+    paddingVertical: 16,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  dailySummaryStatValue: {
+    fontSize: 26,
+    fontWeight: "800",
+  },
+  dailySummaryStatLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 8,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  dailySummaryButton: {
+    borderRadius: 18,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  dailySummaryButtonText: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  dailySummaryButtonIcon: {
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  dailySummaryHint: {
+    textAlign: "center",
+    fontSize: 12,
+    fontWeight: "600",
   },
   breakdownCard: {
     width: "100%",
@@ -15988,7 +16305,8 @@ const styles = StyleSheet.create({
   },
   profileAvatarWrap: {
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 0,
+    position: "relative",
   },
   profileAvatar: {
     width: 120,
@@ -16011,7 +16329,23 @@ const styles = StyleSheet.create({
   },
   profileAvatarHint: {
     fontSize: 12,
-    marginTop: 8,
+    marginTop: 12,
+    textAlign: "center",
+  },
+  profileAvatarEditBadge: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileAvatarEditIcon: {
+    fontSize: 15,
+    fontWeight: "700",
   },
   profileName: {
     fontSize: 28,
@@ -16596,24 +16930,96 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   impulseAlertCard: {
-    marginHorizontal: 32,
-    borderRadius: 26,
-    padding: 22,
+    marginHorizontal: 24,
+    borderRadius: 28,
     borderWidth: 1,
-    gap: 8,
+    overflow: "hidden",
+    position: "relative",
+  },
+  impulseAlertGlow: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.18,
+  },
+  impulseAlertContent: {
+    padding: 24,
+    gap: 16,
+    position: "relative",
+  },
+  impulseAlertHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  impulseAlertBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  impulseAlertBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  impulseAlertEmoji: {
+    fontSize: 28,
   },
   impulseAlertTitle: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 22,
+    fontWeight: "800",
   },
   impulseAlertBody: {
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "600",
+  },
+  impulseAlertStats: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  impulseAlertStat: {
+    flex: 1,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+  },
+  impulseAlertStatLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  impulseAlertStatValue: {
+    fontSize: 18,
+    fontWeight: "800",
+    marginTop: 6,
+  },
+  impulseAlertMoodCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 12,
   },
   impulseAlertMood: {
-    fontSize: 14,
-    fontWeight: "600",
-    lineHeight: 20,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+  impulseAlertButton: {
+    borderRadius: 16,
+    paddingVertical: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  impulseAlertButtonText: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  impulseAlertButtonIcon: {
+    fontSize: 16,
+    fontWeight: "800",
   },
   celebrationCat: {
     width: 90,
@@ -17638,6 +18044,7 @@ function AnalyticsConsentScreen({ colors, t, onSubmit, onBack }) {
 
 function SpendingBaselineScreen({ value, currency, onChange, onSubmit, colors, t, onBack }) {
   const fade = useFadeIn();
+  const baselineSampleLabel = formatSampleAmount(BASELINE_SAMPLE_USD, currency || DEFAULT_PROFILE.currency);
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -17650,7 +18057,7 @@ function SpendingBaselineScreen({ value, currency, onChange, onSubmit, colors, t
               styles.primaryInput,
               { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
             ]}
-            placeholder={`${t("baselinePlaceholder")} (${currency})`}
+            placeholder={t("baselinePlaceholder", { amount: baselineSampleLabel })}
             placeholderTextColor={colors.muted}
             keyboardType="decimal-pad"
             value={value}
@@ -17741,6 +18148,7 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack }
 
 function CustomHabitScreen({ data, onChange, onSubmit, colors, t, currency, onBack }) {
   const fade = useFadeIn();
+  const customSpendSampleLabel = formatSampleAmount(CUSTOM_SPEND_SAMPLE_USD, currency || DEFAULT_PROFILE.currency);
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false}>
@@ -17765,7 +18173,7 @@ function CustomHabitScreen({ data, onChange, onSubmit, colors, t, currency, onBa
               styles.primaryInput,
               { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
             ]}
-            placeholder={`${t("customSpendAmountPlaceholder")} (${currency})`}
+            placeholder={t("customSpendAmountPlaceholder", { amount: customSpendSampleLabel })}
             placeholderTextColor={colors.muted}
             keyboardType="decimal-pad"
             value={data.customSpendAmount}
