@@ -77,6 +77,7 @@ const STORAGE_KEYS = {
   CUSTOM_REMINDER: "@almost_custom_reminder",
   TAMAGOTCHI: "@almost_tamagotchi_state",
   DAILY_SUMMARY: "@almost_daily_summary",
+  TUTORIAL: "@almost_tutorial_state",
 };
 
 const PURCHASE_GOAL = 20000;
@@ -166,6 +167,44 @@ const THEMES = {
     primary: "#FFC857",
   },
 };
+
+const APP_TUTORIAL_STEPS = [
+  {
+    id: "feed",
+    icon: "🧠",
+    titleKey: "tutorialFeedTitle",
+    descriptionKey: "tutorialFeedDesc",
+    tabs: ["feed"],
+  },
+  {
+    id: "goals",
+    icon: "🎯",
+    titleKey: "tutorialGoalsTitle",
+    descriptionKey: "tutorialGoalsDesc",
+    tabs: ["cart"],
+  },
+  {
+    id: "thinking",
+    icon: "🧊",
+    titleKey: "tutorialThinkingTitle",
+    descriptionKey: "tutorialThinkingDesc",
+    tabs: ["pending"],
+  },
+  {
+    id: "rewards",
+    icon: "🏆",
+    titleKey: "tutorialRewardsTitle",
+    descriptionKey: "tutorialRewardsDesc",
+    tabs: ["purchases"],
+  },
+  {
+    id: "profile",
+    icon: "⚙️",
+    titleKey: "tutorialProfileTitle",
+    descriptionKey: "tutorialProfileDesc",
+    tabs: ["profile"],
+  },
+];
 
 const CELEBRATION_BASE_RU = [
   "Хоп! Ещё одна осознанная экономия",
@@ -2076,6 +2115,20 @@ const TRANSLATIONS = {
     newGoalEmojiLabel: "Эмодзи цели",
     newGoalCreate: "Создать цель",
     newGoalCancel: "Отмена",
+    tutorialFeedTitle: "Лента искушений",
+    tutorialFeedDesc: "Отмечай импульсы и выбирай: копить, добавить в цели или подумать 14 дней.",
+    tutorialGoalsTitle: "Цели",
+    tutorialGoalsDesc: "Здесь живут мечты. Следи за прогрессом и пополняй главную цель.",
+    tutorialThinkingTitle: "Меню «Думаем»",
+    tutorialThinkingDesc: "Отправляй импульсы на паузу и возвращайся к ним через 14 дней, чтобы решить трезво.",
+    tutorialRewardsTitle: "Награды и челленджи",
+    tutorialRewardsDesc: "Заглядывай сюда, чтобы собирать награды за прогресс и запускать челленджи с бонусами.",
+    tutorialProfileTitle: "Профиль и мотивация",
+    tutorialProfileDesc: "Тут меняешь тему, язык, напоминания и персонализацию приложения под себя.",
+    tutorialSkip: "Пропустить",
+    tutorialNext: "Дальше",
+    tutorialDone: "Завершить",
+    tutorialProgress: "{{current}} из {{total}}",
   },
   en: {
     appTagline: "An offline temptation board that keeps savings safe",
@@ -2480,6 +2533,20 @@ const TRANSLATIONS = {
     newGoalEmojiLabel: "Goal emoji",
     newGoalCreate: "Create goal",
     newGoalCancel: "Cancel",
+    tutorialFeedTitle: "Temptation feed",
+    tutorialFeedDesc: "Log every impulse and choose: save it, add to goals, or park it for 14 days.",
+    tutorialGoalsTitle: "Goals",
+    tutorialGoalsDesc: "All dreams live here — track progress and refill your primary goal.",
+    tutorialThinkingTitle: "Thinking tab",
+    tutorialThinkingDesc: "Park temptations for 14 days and return with a cooler head before deciding.",
+    tutorialRewardsTitle: "Rewards & challenges",
+    tutorialRewardsDesc: "Visit this tab to claim achievements and start challenges with bonus health.",
+    tutorialProfileTitle: "Profile & motivation",
+    tutorialProfileDesc: "Adjust theme, language, reminders, and all personalization tweaks that keep Almost yours.",
+    tutorialSkip: "Skip",
+    tutorialNext: "Next",
+    tutorialDone: "Finish",
+    tutorialProgress: "{{current}} of {{total}}",
   },
 };
 
@@ -7595,6 +7662,25 @@ function AppContent() {
   const [dailySummaryVisible, setDailySummaryVisible] = useState(false);
   const [dailySummaryData, setDailySummaryData] = useState(null);
   const [dailySummarySeenKey, setDailySummarySeenKey] = useState(null);
+  const [tutorialSeen, setTutorialSeen] = useState(true);
+  const [tutorialVisible, setTutorialVisible] = useState(false);
+  const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
+  const finishTutorial = useCallback(() => {
+    setTutorialVisible(false);
+    setTutorialSeen(true);
+    setTutorialStepIndex(0);
+    AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
+  }, []);
+  const handleTutorialNext = useCallback(() => {
+    if (tutorialStepIndex < APP_TUTORIAL_STEPS.length - 1) {
+      setTutorialStepIndex((prev) => Math.min(prev + 1, APP_TUTORIAL_STEPS.length - 1));
+      return;
+    }
+    finishTutorial();
+  }, [tutorialStepIndex, finishTutorial]);
+  const handleTutorialSkip = useCallback(() => {
+    finishTutorial();
+  }, [finishTutorial]);
   const initialTemptationsAppliedRef = useRef(false);
   const clearCompletedPrimaryGoal = useCallback(
     (goalId) => {
@@ -7836,6 +7922,14 @@ function AppContent() {
   const heroGoalSavedUSD = mainGoalWish?.savedUSD ?? 0;
   const activeGender = profile.gender || registrationData.gender || DEFAULT_PROFILE.gender || "none";
   const analyticsOptOutValue = analyticsOptOut ?? false;
+  const activeTutorialStep =
+    APP_TUTORIAL_STEPS[tutorialStepIndex] ||
+    APP_TUTORIAL_STEPS[APP_TUTORIAL_STEPS.length - 1] ||
+    null;
+  const tutorialHighlightTabs = useMemo(() => {
+    if (!tutorialVisible || !activeTutorialStep?.tabs?.length) return null;
+    return new Set(activeTutorialStep.tabs);
+  }, [tutorialVisible, activeTutorialStep]);
   const t = (key, replacements = {}) => {
     let raw = TRANSLATIONS[language][key];
     if (raw && typeof raw === "object" && !Array.isArray(raw)) {
@@ -8499,6 +8593,7 @@ function AppContent() {
         customReminderRaw,
         tamagotchiRaw,
         dailySummaryRaw,
+        tutorialRaw,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.WISHES),
         AsyncStorage.getItem(STORAGE_KEYS.PENDING),
@@ -8529,6 +8624,7 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_REMINDER),
         AsyncStorage.getItem(STORAGE_KEYS.TAMAGOTCHI),
         AsyncStorage.getItem(STORAGE_KEYS.DAILY_SUMMARY),
+        AsyncStorage.getItem(STORAGE_KEYS.TUTORIAL),
       ]);
       if (wishesRaw) setWishes(JSON.parse(wishesRaw));
       if (pendingRaw) setPendingList(JSON.parse(pendingRaw));
@@ -8641,6 +8737,7 @@ function AppContent() {
       if (languageRaw) setLanguage(languageRaw);
       setActiveGoalId(parsedProfile?.goal || DEFAULT_PROFILE.goal);
       if (dailySummaryRaw) setDailySummarySeenKey(dailySummaryRaw);
+      setTutorialSeen(tutorialRaw === "pending" ? false : true);
       if (catalogRaw) setCatalogOverrides(JSON.parse(catalogRaw));
       if (titleRaw) setTitleOverrides(JSON.parse(titleRaw));
       if (emojiOverridesRaw) setEmojiOverrides(JSON.parse(emojiOverridesRaw));
@@ -8801,6 +8898,14 @@ function AppContent() {
   useEffect(() => {
     loadStoredData();
   }, []);
+
+  useEffect(() => {
+    if (onboardingStep !== "done") return;
+    if (tutorialSeen) return;
+    if (!APP_TUTORIAL_STEPS.length) return;
+    setTutorialStepIndex(0);
+    setTutorialVisible(true);
+  }, [onboardingStep, tutorialSeen]);
 
   useEffect(() => {
     if (onboardingStep !== "done") return;
@@ -9976,6 +10081,8 @@ function AppContent() {
     setActiveGoalId(updatedProfile.goal);
     await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(updatedProfile)).catch(() => {});
     await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, "done").catch(() => {});
+    await AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "pending").catch(() => {});
+    setTutorialSeen(false);
     setActiveCurrency(updatedProfile.currency);
     ensurePrimaryGoalWish(primaryGoals, language, updatedProfile.goal);
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
@@ -12128,33 +12235,50 @@ const handleFreeDayRescue = useCallback(() => {
             },
           ]}
         >
-          {["feed", "cart", "pending", "purchases", "profile"].map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              style={styles.tabButton}
-              onPress={() => handleTabChange(tab)}
-            >
-              <Text
+          {["feed", "cart", "pending", "purchases", "profile"].map((tab) => {
+            const isHighlighted = !!tutorialHighlightTabs?.has(tab);
+            const isActiveTab = activeTab === tab;
+            const highlightBackground = theme === "dark" ? "rgba(255,255,255,0.2)" : "#FFFFFF";
+            const highlightTextColor = theme === "dark" ? "#05070D" : colors.text;
+            const defaultTextColor = isActiveTab ? colors.text : colors.muted;
+            const textColor = isHighlighted ? highlightTextColor : defaultTextColor;
+            const highlightBorderColor =
+              theme === "dark" ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.08)";
+            return (
+              <TouchableOpacity
+                key={tab}
                 style={[
-                  styles.tabButtonText,
-                  {
-                    color: activeTab === tab ? colors.text : colors.muted,
-                    fontWeight: activeTab === tab ? "700" : "500",
+                  styles.tabButton,
+                  isHighlighted && styles.tabButtonHighlight,
+                  isHighlighted && {
+                    borderColor: highlightBorderColor,
+                    backgroundColor: highlightBackground,
                   },
                 ]}
+                onPress={() => handleTabChange(tab)}
               >
-                {tab === "feed"
-                  ? t("feedTab")
-                  : tab === "cart"
-                  ? t("wishlistTab")
-                  : tab === "pending"
-                  ? t("pendingTab")
-                  : tab === "purchases"
-                  ? t("purchasesTitle")
-                  : t("profileTab")}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Text
+                  style={[
+                    styles.tabButtonText,
+                    {
+                      color: textColor,
+                      fontWeight: isActiveTab || isHighlighted ? "700" : "500",
+                    },
+                  ]}
+                >
+                  {tab === "feed"
+                    ? t("feedTab")
+                    : tab === "cart"
+                    ? t("wishlistTab")
+                    : tab === "pending"
+                    ? t("pendingTab")
+                    : tab === "purchases"
+                    ? t("purchasesTitle")
+                    : t("profileTab")}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         <AnimatedTouchableOpacity
@@ -12192,6 +12316,80 @@ const handleFreeDayRescue = useCallback(() => {
           onSubmit={handleNewGoalSubmit}
           onCancel={handleNewGoalCancel}
         />
+
+        {tutorialVisible && activeTutorialStep && (
+          <Modal
+            visible
+            transparent
+            animationType="fade"
+            statusBarTranslucent
+            onRequestClose={handleTutorialSkip}
+          >
+            <View style={styles.tutorialBackdrop} pointerEvents="box-none">
+              <View
+                pointerEvents="none"
+                style={[
+                  StyleSheet.absoluteFillObject,
+                  styles.tutorialBackdropDim,
+                  { bottom: tabBarBottomInset + 56 },
+                ]}
+              />
+              <View
+                style={[
+                  styles.tutorialCard,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <Text style={styles.tutorialIcon}>{activeTutorialStep.icon}</Text>
+                <Text style={[styles.tutorialTitle, { color: colors.text }]}>
+                  {t(activeTutorialStep.titleKey)}
+                </Text>
+                <Text style={[styles.tutorialDescription, { color: colors.muted }]}>
+                  {t(activeTutorialStep.descriptionKey)}
+                </Text>
+                <View style={styles.tutorialProgressRow}>
+                  <View style={styles.tutorialDots}>
+                    {APP_TUTORIAL_STEPS.map((step, index) => (
+                      <View
+                        key={step.id}
+                        style={[
+                          styles.tutorialDot,
+                          {
+                            backgroundColor:
+                              index <= tutorialStepIndex ? colors.text : colors.border,
+                          },
+                        ]}
+                      />
+                    ))}
+                  </View>
+                  <Text style={[styles.tutorialProgressText, { color: colors.muted }]}>
+                    {t("tutorialProgress", {
+                      current: `${tutorialStepIndex + 1}`,
+                      total: `${APP_TUTORIAL_STEPS.length}`,
+                    })}
+                  </Text>
+                </View>
+                <View style={styles.tutorialActions}>
+                  <TouchableOpacity style={styles.tutorialSkipButton} onPress={handleTutorialSkip}>
+                    <Text style={[styles.tutorialSkipText, { color: colors.muted }]}>
+                      {t("tutorialSkip")}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.tutorialPrimaryButton, { backgroundColor: colors.text }]}
+                    onPress={handleTutorialNext}
+                  >
+                    <Text style={[styles.tutorialPrimaryText, { color: colors.background }]}>
+                      {tutorialStepIndex === APP_TUTORIAL_STEPS.length - 1
+                        ? t("tutorialDone")
+                        : t("tutorialNext")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        )}
 
         <Modal
           visible={tamagotchiVisible}
@@ -14598,6 +14796,82 @@ const styles = StyleSheet.create({
     marginTop: 12,
     lineHeight: 20,
   },
+  tutorialBackdrop: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  tutorialBackdropDim: {
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  tutorialCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 28,
+    padding: 24,
+    borderWidth: 1,
+    gap: 12,
+  },
+  tutorialIcon: {
+    fontSize: 32,
+    textAlign: "center",
+  },
+  tutorialTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  tutorialDescription: {
+    fontSize: 15,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  tutorialProgressRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 8,
+  },
+  tutorialDots: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  tutorialDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  tutorialProgressText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  tutorialActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 4,
+  },
+  tutorialSkipButton: {
+    flex: 1,
+    paddingVertical: 12,
+  },
+  tutorialSkipText: {
+    textAlign: "center",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  tutorialPrimaryButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 16,
+    alignItems: "center",
+  },
+  tutorialPrimaryText: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
   variantRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -15685,6 +15959,17 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     alignItems: "center",
+  },
+  tabButtonHighlight: {
+    borderWidth: 1,
+    borderRadius: 18,
+    marginHorizontal: 4,
+    paddingHorizontal: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   tabButtonText: {
     fontSize: 13,
