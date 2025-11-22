@@ -43,7 +43,8 @@
           "cameraPermission": "Allow Almost to use the camera for quick profile snapshots."
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "expo-font"
     ],
     "extra": {
       "eas": {

@@ -53,6 +53,7 @@ const STORAGE_KEYS = {
   THEME: "@almost_theme",
   LANGUAGE: "@almost_language",
   ONBOARDING: "@almost_onboarded",
+  TERMS_ACCEPTED: "@almost_terms_accepted",
   CATALOG: "@almost_catalog_overrides",
   TITLE_OVERRIDES: "@almost_title_overrides",
   EMOJI_OVERRIDES: "@almost_emoji_overrides",
@@ -98,6 +99,17 @@ const HEALTH_COIN_TIERS = [
   { id: "red", value: 1000, asset: require("./assets/coins/Coin_red.png") },
   { id: "pink", value: 10000, asset: require("./assets/coins/Coin_pink.png") },
 ];
+
+const ECONOMY_RULES = {
+  saveRewardStepUSD: 12,
+  minSaveReward: 2,
+  maxSaveReward: 24,
+  baseAchievementReward: 60,
+  freeDayRescueCost: 60,
+  tamagotchiFeedCost: 5,
+  tamagotchiFeedBoost: 24,
+  tamagotchiPartyCost: 20,
+};
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
 const THEMES = {
@@ -262,9 +274,28 @@ const buildHealthCoinEntries = (amount = 0) => {
   }));
 };
 const computeRefuseCoinReward = (amountUSD = 0) => {
-  if (!amountUSD || amountUSD <= 0) return 0;
-  const reward = Math.floor(amountUSD / 50);
-  return Math.max(1, Math.min(6, reward));
+  if (!amountUSD || amountUSD <= 0) return ECONOMY_RULES.minSaveReward;
+  const raw = Math.round(amountUSD / ECONOMY_RULES.saveRewardStepUSD);
+  return Math.max(
+    ECONOMY_RULES.minSaveReward,
+    Math.min(ECONOMY_RULES.maxSaveReward, raw)
+  );
+};
+
+const computeLevelRewardCoins = (level) => {
+  if (level <= 1) return 0;
+  if (level <= 9) return Math.max(1, level - 1);
+  return level;
+};
+
+const sumLevelRewardCoins = (level, levelsEarned = 1) => {
+  if (level <= 1 || levelsEarned <= 0) return 0;
+  const start = Math.max(2, level - levelsEarned + 1);
+  let total = 0;
+  for (let current = start; current <= level; current += 1) {
+    total += computeLevelRewardCoins(current);
+  }
+  return total;
 };
 const HEALTH_COIN_LABELS = {
   ru: {
@@ -789,9 +820,14 @@ const TAMAGOTCHI_REACTION_DURATION = {
 const TAMAGOTCHI_DECAY_INTERVAL_MS = 1000 * 60 * 5;
 const TAMAGOTCHI_DECAY_STEP = 2;
 const TAMAGOTCHI_COIN_DECAY_TICKS = 6;
-const TAMAGOTCHI_FEED_AMOUNT = 18;
+const TAMAGOTCHI_FEED_AMOUNT = ECONOMY_RULES.tamagotchiFeedBoost;
 const TAMAGOTCHI_MAX_HUNGER = 100;
-const TAMAGOTCHI_PARTY_COST = 10;
+const TAMAGOTCHI_FEED_COST = ECONOMY_RULES.tamagotchiFeedCost;
+const TAMAGOTCHI_PARTY_COST = ECONOMY_RULES.tamagotchiPartyCost;
+const TAMAGOTCHI_PARTY_BLUE_COST = Math.max(
+  1,
+  Math.round(TAMAGOTCHI_PARTY_COST / HEALTH_COIN_TIERS[1].value)
+);
 const TAMAGOTCHI_START_STATE = {
   hunger: 80,
   coins: 5,
@@ -1273,9 +1309,19 @@ const mapHistoryEventsToMoodEvents = (history = [], now = Date.now()) =>
     .filter(Boolean)
     .slice(0, MOOD_MAX_EVENTS);
 
-const buildSavingsBreakdown = (history = [], currency = DEFAULT_PROFILE.currency) => {
+const WEEKDAY_LABELS = {
+  ru: ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"],
+  en: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+};
+
+const buildSavingsBreakdown = (
+  history = [],
+  currency = DEFAULT_PROFILE.currency,
+  resolveTemplateTitle,
+  language = "ru"
+) => {
   const now = Date.now();
-  const dayLabels = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+  const dayLabels = WEEKDAY_LABELS[language] || WEEKDAY_LABELS.en;
   const palette = ["#3E8EED", "#F6A23D", "#8F7CF6", "#2EB873", "#E15555", "#FFC857"];
   const totalsByTitle = {};
   const daysRaw = Array.from({ length: 7 }).map((_, idx) => {
@@ -1287,8 +1333,18 @@ const buildSavingsBreakdown = (history = [], currency = DEFAULT_PROFILE.currency
     history.forEach((entry) => {
       if (entry?.kind !== "refuse_spend") return;
       if (!entry?.timestamp || entry.timestamp < dayStart.getTime() || entry.timestamp >= dayEnd) return;
+      const resolvedTitle =
+        (resolveTemplateTitle &&
+          resolveTemplateTitle(entry.meta?.templateId, entry.meta?.title || entry.title)) ||
+        null;
       const title =
-        (entry.meta?.title || entry.title || entry.meta?.templateId || entry.emoji || entry.id || "Отказ")
+        (resolvedTitle ||
+          entry.meta?.title ||
+          entry.title ||
+          entry.meta?.templateId ||
+          entry.emoji ||
+          entry.id ||
+          (language === "ru" ? "Отказ" : "Skip"))
           .toString()
           .slice(0, 42);
       const amount = Math.max(0, Number(entry.meta?.amountUSD) || 0);
@@ -1409,11 +1465,6 @@ const getImpulseCategoryLabel = (id, language = "en") => {
   if (!entry) return id;
   const localeKey = language === "ru" ? "ru" : "en";
   return `${entry.emoji} ${entry[localeKey]}`;
-};
-
-const WEEKDAY_LABELS = {
-  ru: ["пн", "вт", "ср", "чт", "пт", "сб", "вс"],
-  en: ["M", "T", "W", "T", "F", "S", "S"],
 };
 
 const RainOverlay = ({ colors }) => {
@@ -1575,11 +1626,25 @@ const resolveCustomPriceUSD = (customSpend, fallbackCurrency = DEFAULT_PROFILE.c
   return 0;
 };
 
-const createCustomHabitTemptation = (customSpend, fallbackCurrency) => {
+const buildCustomTemptationDescription = (gender = "none") => {
+  const isFemale = gender === "female";
+  const isMale = gender === "male";
+  let ru = "Это искушение ты добавил(а) сам(а). Отслеживай его и побеждай чаще.";
+  if (isMale) {
+    ru = "Это искушение ты добавил сам. Отслеживай его и побеждай чаще.";
+  } else if (isFemale) {
+    ru = "Это искушение ты добавила сама. Отслеживай его и побеждай чаще.";
+  }
+  const en = "You added this temptation yourself. Track it and beat it more often.";
+  return { ru, en };
+};
+
+const createCustomHabitTemptation = (customSpend, fallbackCurrency, gender = "none") => {
   if (!customSpend?.title) return null;
   const price = resolveCustomPriceUSD(customSpend, fallbackCurrency);
   if (!price) return null;
   const title = customSpend.title;
+  const description = buildCustomTemptationDescription(gender);
   return {
     id: customSpend.id || "custom_habit",
     emoji: customSpend.emoji || "💡",
@@ -1591,10 +1656,7 @@ const createCustomHabitTemptation = (customSpend, fallbackCurrency) => {
       ru: title,
       en: title,
     },
-    description: {
-      ru: "Твоя основная ежедневная трата, с которой начнём экономию.",
-      en: "Your main daily spend is the first habit we’ll tackle together.",
-    },
+    description,
   };
 };
 
@@ -1612,7 +1674,7 @@ const normalizeCustomTemptationEntry = (
 ) => {
   if (!entry || typeof entry !== "object") return null;
   if (hasValidCustomPrice(entry)) return entry;
-  const rebuilt = createCustomHabitTemptation(entry, fallbackCurrency);
+  const rebuilt = createCustomHabitTemptation(entry, fallbackCurrency, entry?.gender || "none");
   if (!rebuilt) return null;
   const merged = { ...rebuilt, ...entry };
   merged.priceUSD = rebuilt.priceUSD;
@@ -1628,7 +1690,11 @@ const matchesGenderAudience = (card, gender = "none") => {
 
 const buildPersonalizedTemptations = (profile, baseList = DEFAULT_TEMPTATIONS) => {
   const preset = getPersonaPreset(profile?.persona);
-  const customFirst = createCustomHabitTemptation(profile?.customSpend, profile?.currency);
+  const customFirst = createCustomHabitTemptation(
+    profile?.customSpend,
+    profile?.currency,
+    profile?.gender
+  );
   const personaCard = createPersonaTemptation(preset);
   const gender = profile?.gender || "none";
   const seen = new Set();
@@ -1821,7 +1887,7 @@ const TRANSLATIONS = {
     wishAdded: "Добавлено в цели: {{title}}",
     wishDeclined: "+{{amount}} к копилке. Отличное решение!",
     customTemptationAdded: "Добавлено в искушения: {{title}}",
-    saveCelebrateTitle: "Сэкономлено на «{{title}}»",
+    saveCelebrateTitlePrefix: "Сэкономлено на:",
     saveCelebrateSubtitle: "Алми радуется, счёт пополнен!",
     saveGoalRemaining: "Примерно {{count}} таких решений до цели «{{goal}}».",
     saveGoalComplete: "Цель «{{goal}}» достигнута! Можно праздновать.",
@@ -1844,6 +1910,8 @@ const TRANSLATIONS = {
     onboardingBack: "Назад",
     historyTitle: "История событий",
     historyEmpty: "Тишина. Добавь цель или отметь бесплатный день.",
+    privacyPolicyLink: "Политика конфиденциальности",
+    privacyPolicyHint: "Откроем документ в браузере.",
     historyWishAdded: "Добавлена хотелка: {{title}}",
     historyWishProgress: "Прогресс по «{{title}}»: {{amount}} из {{target}}",
     historyWishDone: "Цель достигнута: {{title}}",
@@ -1972,6 +2040,9 @@ const TRANSLATIONS = {
     languageTitle: "Выбери язык",
     languageSubtitle: "Чтобы подсказки звучали естественно",
     languageCurrencyHint: "Язык и валюту можно поменять позже в профиле.",
+    languageTermsHint: "Нажимая «Дальше», ты принимаешь пользовательское соглашение Almost.",
+    languageTermsAccepted: "Соглашение уже принято — можешь двигаться дальше.",
+    languageTermsLink: "Прочитать пользовательское соглашение",
     inputFirstName: "Имя",
     inputLastName: "Фамилия",
     inputMotto: "Девиз дня",
@@ -2044,6 +2115,12 @@ const TRANSLATIONS = {
     onboardingGuideTitle: "Смысл Almost",
     onboardingGuideSubtitle: "Первые шаги в борьбе с потребительством и импульсивными тратами.",
     onboardingGuideButton: "Продолжить",
+    termsTitle: "Пользовательское соглашение",
+    termsSubtitle: "Прочитай ключевые условия Almost. Продолжая, ты подтверждаешь согласие с ними.",
+    termsViewFull: "Открыть полную версию",
+    termsLinkHint: "Ссылка откроет документ в браузере.",
+    termsAccept: "Принимаю",
+    termsDecline: "Отменить",
     guideStepTrackTitle: "Главная цель: осознанность",
     guideStepTrackDesc: "Мы помогаем тратить деньги только на важное, сохраняя бюджет и фокус на крупных целях.",
     guideStepDecisionTitle: "Меню искушений",
@@ -2255,7 +2332,7 @@ const TRANSLATIONS = {
     wishAdded: "Added to wishes: {{title}}",
     wishDeclined: "+{{amount}} safely tucked away",
     customTemptationAdded: "Added to temptations: {{title}}",
-    saveCelebrateTitle: "Skipped “{{title}}” and the bankroll is grateful",
+    saveCelebrateTitlePrefix: "Skipped:",
     saveCelebrateSubtitle: "Almi purrs: savings up!",
     saveGoalRemaining: "Roughly {{count}} more skips to reach “{{goal}}”.",
     saveGoalComplete: "Goal “{{goal}}” reached! Celebrate the win.",
@@ -2286,6 +2363,8 @@ const TRANSLATIONS = {
     onboardingBack: "Back",
     historyTitle: "Event log",
     historyEmpty: "Nothing yet. Add a goal or mark a free day.",
+    privacyPolicyLink: "Privacy policy",
+    privacyPolicyHint: "Opens in your browser.",
     historyWishAdded: "Wish added: {{title}}",
     historyWishProgress: "Progress “{{title}}”: {{amount}} of {{target}}",
     historyWishDone: "Goal completed: {{title}}",
@@ -2398,6 +2477,9 @@ const TRANSLATIONS = {
     languageTitle: "Choose a language",
     languageSubtitle: "We’ll tailor every hint to you",
     languageCurrencyHint: "You can adjust language and currency later in Profile.",
+    languageTermsHint: "By continuing you accept Almost’s Terms of Use.",
+    languageTermsAccepted: "Terms accepted — you can move ahead.",
+    languageTermsLink: "Read the full Terms of Use",
     inputFirstName: "First name",
     inputLastName: "Last name",
     inputMotto: "Personal motto",
@@ -2463,6 +2545,12 @@ const TRANSLATIONS = {
     onboardingGuideTitle: "What Almost is about",
     onboardingGuideSubtitle: "A mindful antidote to consumerism and impulse buys.",
     onboardingGuideButton: "Got it",
+    termsTitle: "Terms of Use",
+    termsSubtitle: "Please review the key points. Continuing means you agree to the Almost Terms.",
+    termsViewFull: "Open the full document",
+    termsLinkHint: "We’ll open the document in your browser.",
+    termsAccept: "I agree",
+    termsDecline: "Not now",
     guideStepTrackTitle: "Your main mission",
     guideStepTrackDesc: "Spend consciously, protect the budget, and focus on the goals that actually matter.",
     guideStepDecisionTitle: "Temptation menu",
@@ -2586,6 +2674,31 @@ const CURRENCY_LOCALES = {
   USD: "en-US",
   EUR: "de-DE",
   RUB: "ru-RU",
+};
+
+const TERMS_LINKS = {
+  ru: "https://www.notion.so/RU-2b24e58ea9a0809ea04fe54138975e96",
+  en: "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b",
+};
+
+const PRIVACY_LINKS = {
+  ru: "https://www.notion.so/RU-2b24e58ea9a08032b017d3a5c69bbf48",
+  en: "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
+};
+
+const TERMS_POINTS = {
+  ru: [
+    "Almost помогает развивать осознанность в тратах и не является банком, брокером или финансовым консультантом. Любые решения о расходах и накоплениях остаются на стороне пользователя.",
+    "Ты подтверждаешь, что регистрационные данные переданы добровольно, точны и могут использоваться Almost для персонализации сервиса, уведомлений и аналитики в обезличенном виде.",
+    "Мы собираем и храним только минимально необходимые данные профиля. Ты можешь обновить или удалить их через настройки и поддержку. При удалении профиля мы стираем связанные события и историю.",
+    "Соглашение регулируется законодательством страны регистрации Almost. Споры решаются переговорами, а при необходимости — в суде по месту регистрации сервиса.",
+  ],
+  en: [
+    "Almost is a mindful spending companion, not a bank, broker, or financial advisor. Every decision about saving or spending remains your responsibility.",
+    "You confirm that the information you share is accurate and voluntarily provided so Almost can personalise hints, notifications, and anonymised analytics.",
+    "We store only the minimum profile data required to operate the app. You can edit or request deletion via settings and support, which wipes related history from our systems.",
+    "This agreement is governed by the laws of the jurisdiction where Almost is registered. Any dispute is settled amicably first and, if needed, in the courts of that jurisdiction.",
+  ],
 };
 
 const HOW_IT_WORKS_STEPS = [
@@ -3463,10 +3576,8 @@ const INITIAL_FREE_DAY_STATS = {
 };
 
 const FREE_DAY_MILESTONES = [3, 7, 30];
-const LEVEL_REWARD_BLUE_COINS = 6;
-const HEALTH_PER_LEVEL = LEVEL_REWARD_BLUE_COINS * HEALTH_COIN_TIERS[1].value; // 6 blue coins
-const HEALTH_PER_REWARD = 24;
-const FREE_DAY_RESCUE_COST = HEALTH_COIN_TIERS[1].value * 2; // 2 blue coins
+const HEALTH_PER_REWARD = ECONOMY_RULES.baseAchievementReward;
+const FREE_DAY_RESCUE_COST = ECONOMY_RULES.freeDayRescueCost;
 
 let activeCurrency = DEFAULT_PROFILE.currency;
 const setActiveCurrency = (code) => {
@@ -4919,6 +5030,7 @@ function FeedScreen({
   onMascotAnimationComplete = () => {},
   hideMascot = false,
   onMascotPress = () => {},
+  resolveTemplateTitle = () => null,
 }) {
   const [impulseExpanded, setImpulseExpanded] = useState(false);
   const handleBaselineSetup = onBaselineSetup || (() => {});
@@ -4950,8 +5062,12 @@ function FeedScreen({
     [historyEvents]
   );
   const heroSpendCopy = useMemo(() => {
-    if (latestSaving?.meta?.title) {
-      return t("heroSpendLine", { title: latestSaving.meta.title });
+    const resolvedLatestTitle = resolveTemplateTitle(
+      latestSaving?.meta?.templateId,
+      latestSaving?.meta?.title
+    );
+    if (resolvedLatestTitle) {
+      return t("heroSpendLine", { title: resolvedLatestTitle });
     }
     if (!realSavedUSD || realSavedUSD <= 0) {
       return t("heroSpendFallback");
@@ -4961,7 +5077,7 @@ function FeedScreen({
       return template.replace("{{amount}}", totalSavedLabel);
     }
     return t("heroSpendFallback");
-  }, [realSavedUSD, totalSavedLabel, personaPreset, language, t, latestSaving]);
+  }, [realSavedUSD, totalSavedLabel, personaPreset, language, t, latestSaving, resolveTemplateTitle]);
   const heroEncouragementLine = useMemo(() => {
     const heroLine = isGoalComplete
       ? moodPreset?.heroComplete || t("goalWidgetCompleteTagline")
@@ -5933,7 +6049,7 @@ function WishListScreen({
   );
 }
 
-function PendingScreen({ items, currency, t, colors, onResolve }) {
+function PendingScreen({ items, currency, t, colors, onResolve, language }) {
   const [nowTick, setNowTick] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNowTick(Date.now()), 1000);
@@ -5955,9 +6071,10 @@ function PendingScreen({ items, currency, t, colors, onResolve }) {
       const hh = String(hours).padStart(2, "0");
       const mm = String(minutes).padStart(2, "0");
       const ss = String(seconds).padStart(2, "0");
-      return days > 0 ? `${days}д ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+      const daySuffix = language === "ru" ? "д" : "d";
+      return days > 0 ? `${days}${daySuffix} ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
     },
-    [t]
+    [language, t]
   );
 
   if (!sorted.length) {
@@ -6053,7 +6170,7 @@ const ACHIEVEMENT_DEFS = [
     metricType: ACHIEVEMENT_METRIC_TYPES.SAVED_AMOUNT,
     targetValue: 50,
     emoji: "💾",
-    rewardHealth: 18,
+    rewardHealth: 40,
     copy: {
       ru: { title: "Первые {{amount}}", desc: "Отложено {{amount}} на мини-подарок." },
       en: { title: "First {{amount}}", desc: "Already banked {{amount}} for a mini gift." },
@@ -6064,7 +6181,7 @@ const ACHIEVEMENT_DEFS = [
     metricType: ACHIEVEMENT_METRIC_TYPES.SAVED_AMOUNT,
     targetValue: 500,
     emoji: "💎",
-    rewardHealth: 80,
+    rewardHealth: 200,
     copy: {
       ru: { title: "В копилке уже {{amount}}", desc: "Можно строить планы на крупную цель." },
       en: { title: "{{amount}} saved already", desc: "Time to plan for a bigger goal." },
@@ -6075,7 +6192,7 @@ const ACHIEVEMENT_DEFS = [
     metricType: ACHIEVEMENT_METRIC_TYPES.REFUSE_COUNT,
     targetValue: 10,
     emoji: "🧠",
-    rewardHealth: 30,
+    rewardHealth: 70,
     copy: {
       ru: { title: "Осознанный герой", desc: "10 осознанных отказов подряд, дисциплина на месте." },
       en: { title: "Mindful hero", desc: "10 deliberate skips keep savings safe." },
@@ -6086,7 +6203,7 @@ const ACHIEVEMENT_DEFS = [
     metricType: ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_TOTAL,
     targetValue: 14,
     emoji: "🗓️",
-    rewardHealth: 28,
+    rewardHealth: 70,
     copy: {
       ru: { title: "14 дней без импульсов", desc: "Две бесплатных недели и кошелёк доволен." },
       en: { title: "14 impulse-free days", desc: "Two solid weeks of mindful focus." },
@@ -6097,7 +6214,7 @@ const ACHIEVEMENT_DEFS = [
     metricType: ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_STREAK,
     targetValue: 7,
     emoji: "⚡️",
-    rewardHealth: 35,
+    rewardHealth: 90,
     copy: {
       ru: { title: "Серия из 7 дней", desc: "Неделя без трат, ты в потоке." },
       en: { title: "7-day streak", desc: "A full week in the mindful zone." },
@@ -6108,7 +6225,7 @@ const ACHIEVEMENT_DEFS = [
     metricType: ACHIEVEMENT_METRIC_TYPES.FRIDGE_ITEMS_COUNT,
     targetValue: 10,
     emoji: "🧊",
-    rewardHealth: 20,
+    rewardHealth: 40,
     copy: {
       ru: { title: "10 хотелок в «думаем»", desc: "10 хотелок в «думаем»." },
       en: { title: "Thinking stash", desc: "10 temptations parked in Thinking." },
@@ -6119,7 +6236,7 @@ const ACHIEVEMENT_DEFS = [
     metricType: ACHIEVEMENT_METRIC_TYPES.FRIDGE_DECISIONS,
     targetValue: 5,
     emoji: "🥶",
-    rewardHealth: 32,
+    rewardHealth: 70,
     copy: {
       ru: { title: "Взвешенный выбор", desc: "Разобрался с 5 хотелками из «думаем»." },
       en: { title: "Clear-headed", desc: "Closed out 5 Thinking decisions with intent." },
@@ -6163,7 +6280,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.REFUSE_DAY_STREAK,
     targetValue: 7,
     durationDays: 12,
-    rewardHealth: 96,
+    rewardHealth: 140,
     reminderOffsetsHours: [24, 96, 168],
     copy: {
       ru: {
@@ -6182,7 +6299,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.FREE_DAY_STREAK,
     targetValue: 3,
     durationDays: 5,
-    rewardHealth: 48,
+    rewardHealth: 80,
     reminderOffsetsHours: [24, 72],
     copy: {
       ru: {
@@ -6201,7 +6318,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.SAVE_COUNT,
     targetValue: 6,
     durationDays: 4,
-    rewardHealth: 40,
+    rewardHealth: 60,
     reminderOffsetsHours: [24, 72],
     copy: {
       ru: {
@@ -6220,7 +6337,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.SAVE_AMOUNT,
     targetValue: 80,
     durationDays: 7,
-    rewardHealth: 72,
+    rewardHealth: 120,
     reminderOffsetsHours: [24, 96],
     copy: {
       ru: {
@@ -6239,7 +6356,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.PENDING_DECISIONS,
     targetValue: 3,
     durationDays: 6,
-    rewardHealth: 48,
+    rewardHealth: 80,
     reminderOffsetsHours: [24, 72, 120],
     copy: {
       ru: {
@@ -6258,7 +6375,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.WISH_ADDED,
     targetValue: 2,
     durationDays: 4,
-    rewardHealth: 40,
+    rewardHealth: 60,
     reminderOffsetsHours: [24, 48],
     copy: {
       ru: {
@@ -6277,7 +6394,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.WEEKEND_SAVES,
     targetValue: 3,
     durationDays: 8,
-    rewardHealth: 56,
+    rewardHealth: 90,
     reminderOffsetsHours: [48, 96],
     copy: {
       ru: {
@@ -6296,7 +6413,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.MORNING_FREE_DAY,
     targetValue: 2,
     durationDays: 5,
-    rewardHealth: 48,
+    rewardHealth: 70,
     reminderOffsetsHours: [12, 48],
     copy: {
       ru: {
@@ -6315,7 +6432,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.HIGH_VALUE_SAVE,
     targetValue: 2,
     durationDays: 7,
-    rewardHealth: 64,
+    rewardHealth: 140,
     minAmountUSD: 35,
     reminderOffsetsHours: [48, 120],
     copy: {
@@ -6335,7 +6452,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.PENDING_ADDED,
     targetValue: 3,
     durationDays: 5,
-    rewardHealth: 36,
+    rewardHealth: 60,
     reminderOffsetsHours: [24, 72],
     copy: {
       ru: {
@@ -7376,6 +7493,12 @@ function ProfileScreen({
       applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), isDarkTheme ? "dark" : "light"),
     [moodPreset?.id, isDarkTheme]
   );
+  const handlePrivacyPolicyOpen = useCallback(() => {
+    const url = PRIVACY_LINKS[language] || PRIVACY_LINKS.en;
+    if (!url) return;
+    triggerHaptic();
+    Linking.openURL(url).catch((error) => console.warn("privacy policy", error));
+  }, [language]);
   return (
     <View style={[styles.container, { backgroundColor: colors.background }] }>
       <ScrollView
@@ -7778,6 +7901,17 @@ function ProfileScreen({
             </ScrollView>
           )}
         </View>
+        <TouchableOpacity
+          style={[
+            styles.profileLinkButton,
+            { borderColor: colors.border, backgroundColor: colors.card },
+          ]}
+          activeOpacity={0.85}
+          onPress={handlePrivacyPolicyOpen}
+        >
+          <Text style={[styles.profileLinkText, { color: colors.text }]}>{t("privacyPolicyLink")}</Text>
+          <Text style={[styles.profileLinkHint, { color: colors.muted }]}>{t("privacyPolicyHint")}</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -7824,6 +7958,24 @@ function AppContent() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [theme, setTheme] = useState("light");
   const [language, setLanguage] = useState("ru");
+  const resolveTemplateTitle = useCallback(
+    (templateId, fallback = null) => {
+      if (!templateId) return fallback;
+      const findInList = (list) => (list || []).find((card) => card?.id === templateId);
+      const source =
+        findInList(quickTemptations) || findInList(temptations) || findTemplateById(templateId);
+      if (!source) return fallback;
+      const rawTitle =
+        source.titleOverride ||
+        (typeof source.title === "string"
+          ? source.title
+          : source.title?.[language] || source.title?.en || source.title?.ru || source.title) ||
+        fallback;
+      const decorated = `${source.emoji || ""} ${rawTitle || ""}`.trim();
+      return decorated || fallback;
+    },
+    [language, quickTemptations, temptations]
+  );
   const [overlay, setOverlay] = useState(null);
   const [confettiKey, setConfettiKey] = useState(0);
   const overlayTimer = useRef(null);
@@ -7858,7 +8010,6 @@ function AppContent() {
   const handleTutorialSkip = useCallback(() => {
     finishTutorial();
   }, [finishTutorial]);
-  const initialTemptationsAppliedRef = useRef(false);
   const clearCompletedPrimaryGoal = useCallback(
     (goalId) => {
       if (!goalId) return;
@@ -7928,6 +8079,9 @@ function AppContent() {
   const onboardingHistoryRef = useRef([]);
   const [canGoBackOnboarding, setCanGoBackOnboarding] = useState(false);
   const [registrationData, setRegistrationData] = useState(INITIAL_REGISTRATION);
+  const [termsModalVisible, setTermsModalVisible] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsContinuePending, setTermsContinuePending] = useState(false);
   const [showImageSourceSheet, setShowImageSourceSheet] = useState(false);
   const [showCustomSpend, setShowCustomSpend] = useState(false);
   const [quickSpendDraft, setQuickSpendDraft] = useState({
@@ -8088,8 +8242,14 @@ function AppContent() {
     }
   }, [mainGoalWish?.id, ensureGoalManualTracking]);
   const savingsBreakdown = useMemo(
-    () => buildSavingsBreakdown(historyEvents, profile.currency || DEFAULT_PROFILE.currency),
-    [historyEvents, profile.currency]
+    () =>
+      buildSavingsBreakdown(
+        historyEvents,
+        profile.currency || DEFAULT_PROFILE.currency,
+        resolveTemplateTitle,
+        language
+      ),
+    [historyEvents, profile.currency, resolveTemplateTitle, language]
   );
   const fallbackGoalTargetUSD = useMemo(() => {
     if (Number.isFinite(profile?.goalTargetUSD) && profile.goalTargetUSD > 0) {
@@ -8586,6 +8746,7 @@ function AppContent() {
       if (!wishId || !Number.isFinite(amountUSD) || amountUSD <= 0) return 0;
       let applied = 0;
       let goalSyncMeta = null;
+      let completedGoalMeta = null;
       setWishes((prev) => {
         let changed = false;
         const next = prev.map((wish) => {
@@ -8596,6 +8757,7 @@ function AppContent() {
           const nextSaved = Math.min(desired, target);
           applied = nextSaved - current;
           const status = nextSaved >= target ? "done" : "active";
+          const becameDone = status === "done" && wish.status !== "done" && target > 0;
           if (
             nextSaved !== current ||
             wish.status !== status ||
@@ -8604,6 +8766,13 @@ function AppContent() {
             changed = true;
             if (wish.kind === PRIMARY_GOAL_KIND && wish.goalId) {
               goalSyncMeta = { goalId: wish.goalId, savedUSD: nextSaved, status };
+            }
+            if (becameDone) {
+              completedGoalMeta = {
+                goalId: wish.goalId || wish.id,
+                wishId: wish.id,
+                templateId: wish.templateId || null,
+              };
             }
             return {
               ...wish,
@@ -8619,9 +8788,16 @@ function AppContent() {
       if (goalSyncMeta) {
         syncPrimaryGoalProgress(goalSyncMeta.goalId, goalSyncMeta.savedUSD, goalSyncMeta.status);
       }
+      if (completedGoalMeta) {
+        logEvent("goal_completed", {
+          goal_id: completedGoalMeta.goalId,
+          wish_id: completedGoalMeta.wishId,
+          template_id: completedGoalMeta.templateId,
+        });
+      }
       return applied;
     },
-    [syncPrimaryGoalProgress]
+    [syncPrimaryGoalProgress, logEvent]
   );
   const getWishTitleById = useCallback(
     (wishId) => wishes.find((wish) => wish.id === wishId)?.title || "",
@@ -8863,6 +9039,7 @@ function AppContent() {
         tamagotchiRaw,
         dailySummaryRaw,
         tutorialRaw,
+        termsAcceptedRaw,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.WISHES),
         AsyncStorage.getItem(STORAGE_KEYS.PENDING),
@@ -8894,6 +9071,7 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.TAMAGOTCHI),
         AsyncStorage.getItem(STORAGE_KEYS.DAILY_SUMMARY),
         AsyncStorage.getItem(STORAGE_KEYS.TUTORIAL),
+        AsyncStorage.getItem(STORAGE_KEYS.TERMS_ACCEPTED),
       ]);
       if (wishesRaw) {
         setWishes(JSON.parse(wishesRaw));
@@ -9020,6 +9198,9 @@ function AppContent() {
       setActiveGoalId(parsedProfile?.goal || DEFAULT_PROFILE.goal);
       if (dailySummaryRaw) setDailySummarySeenKey(dailySummaryRaw);
       setTutorialSeen(tutorialRaw === "pending" ? false : true);
+      if (termsAcceptedRaw === "1") {
+        setTermsAccepted(true);
+      }
       if (catalogRaw) setCatalogOverrides(JSON.parse(catalogRaw));
       if (titleRaw) setTitleOverrides(JSON.parse(titleRaw));
       if (emojiOverridesRaw) setEmojiOverrides(JSON.parse(emojiOverridesRaw));
@@ -9572,18 +9753,10 @@ function AppContent() {
         titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
         emoji: emojiOverrides[card.id] || card.emoji,
       }));
-    // Персонализированный порядок всегда идёт первым (кастом/персона сверху), доп. быстрая карта — после.
-    const combined = [...personalizedVisible, ...quickAdjusted];
+    // Быстрая кастомная карта всегда рендерится первой, затем идёт персонализированный порядок.
+    const combined = [...quickAdjusted, ...personalizedVisible];
 
-    // Применяем персональный порядок один раз после завершения онбординга.
-    if (onboardingStep !== "done") {
-      setTemptations(combined);
-      return;
-    }
-    if (!initialTemptationsAppliedRef.current) {
-      initialTemptationsAppliedRef.current = true;
-      setTemptations(combined);
-    }
+    setTemptations(combined);
   }, [
     catalogOverrides,
     profile,
@@ -9624,6 +9797,39 @@ function AppContent() {
     }
   };
 
+  const handleTermsOpen = () => {
+    triggerHaptic();
+    setTermsContinuePending(false);
+    setTermsModalVisible(true);
+  };
+
+  const handleTermsCancel = () => {
+    triggerHaptic();
+    setTermsContinuePending(false);
+    setTermsModalVisible(false);
+  };
+
+  const handleTermsLinkOpen = () => {
+    const url = TERMS_LINKS[language] || TERMS_LINKS.en;
+    if (!url) return;
+    triggerHaptic();
+    Linking.openURL(url).catch((error) => console.warn("terms link", error));
+  };
+
+  const handleTermsAccept = () => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    const shouldAdvance = termsContinuePending;
+    setTermsAccepted(true);
+    setTermsModalVisible(false);
+    setTermsContinuePending(false);
+    AsyncStorage.setItem(STORAGE_KEYS.TERMS_ACCEPTED, "1").catch(() => {});
+    logEvent("onboarding_terms_accepted", { language });
+    logEvent("consent_terms_accepted", { language });
+    if (shouldAdvance) {
+      goToOnboardingStep("guide");
+    }
+  };
+
   const handleProfileCurrencyChange = (code) => {
     if (!CURRENCIES.includes(code) || profile.currency === code) return;
     triggerHaptic();
@@ -9637,6 +9843,7 @@ function AppContent() {
     if (analyticsOptOut === null) return;
     triggerHaptic();
     setAnalyticsOptOutState(!enabled);
+    logEvent("consent_analytics_enabled", { enabled, source: "settings" });
   };
 
   const handleActiveGoalSelect = useCallback(
@@ -9780,6 +9987,11 @@ function AppContent() {
 
   const handleLanguageContinue = () => {
     triggerHaptic();
+    if (!termsAccepted) {
+      setTermsModalVisible(true);
+      setTermsContinuePending(true);
+      return;
+    }
     goToOnboardingStep("guide");
   };
 
@@ -9937,6 +10149,7 @@ function AppContent() {
       return;
     }
     const amountUSD = convertFromCurrency(parsedAmount, currencyCode);
+    const ownerGender = profile.gender || "none";
     const emojiValue = normalizeEmojiValue(customData.emoji, DEFAULT_TEMPTATION_EMOJI);
     const newCustom = {
       title: customData.title.trim(),
@@ -9944,9 +10157,11 @@ function AppContent() {
       currency: currencyCode,
       emoji: emojiValue,
       id: customData.id || `custom_habit_${Date.now()}`,
+      gender: ownerGender,
     };
-    const card = createCustomHabitTemptation(newCustom, currencyCode);
+    const card = createCustomHabitTemptation(newCustom, currencyCode, ownerGender);
     if (card) {
+      card.gender = ownerGender;
       setQuickTemptations((prev) => [card, ...prev]);
     }
     logEvent("custom_temptation_created", {
@@ -10049,6 +10264,12 @@ function AppContent() {
         currency: currencyCode,
         is_primary: 1,
       });
+      logEvent("goal_created", {
+        goal_id: goalId,
+        title: trimmedName,
+        target_usd: targetUSD,
+        source: "manual_primary",
+      });
     } else {
       const newWish = {
         id: `wish-manual-${Date.now()}`,
@@ -10068,6 +10289,12 @@ function AppContent() {
         title: trimmedName,
         target_usd: targetUSD,
         currency: currencyCode,
+      });
+      logEvent("goal_created", {
+        goal_id: newWish.id,
+        title: trimmedName,
+        target_usd: targetUSD,
+        source: "manual",
       });
     }
     triggerOverlayState("purchase", t("wishAdded", { title: trimmedName }));
@@ -10144,6 +10371,12 @@ function AppContent() {
       title: trimmedName,
       target_usd: targetUSD,
       currency: currencyCode,
+    });
+    logEvent("goal_created", {
+      goal_id: id,
+      title: trimmedName,
+      target_usd: targetUSD,
+      source: "onboarding_custom",
     });
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     setOnboardingGoalModal({ visible: false, name: "", target: "", emoji: DEFAULT_GOAL_EMOJI });
@@ -10487,6 +10720,7 @@ function AppContent() {
     const optOut = !allowAnalytics;
     setAnalyticsOptOutState(optOut);
     setAnalyticsOptOutFlag(optOut);
+    logEvent("consent_analytics_enabled", { enabled: allowAnalytics, source: "onboarding" });
     const targets = pendingGoalTargets;
     setPendingGoalTargets(null);
     await handleGoalComplete(targets && targets.length ? targets : null);
@@ -10717,28 +10951,45 @@ function AppContent() {
   );
 
   const feedTamagotchi = useCallback(() => {
+    if (tamagotchiCoins < TAMAGOTCHI_FEED_COST) {
+      const hint =
+        language === "ru"
+          ? "Пополняй монетки через отказы, уровни и награды."
+          : "Earn coins via saves, levels and rewards.";
+      Alert.alert(
+        language === "ru" ? "Алми" : "Almi",
+        language === "ru"
+          ? `Нужно минимум ${TAMAGOTCHI_FEED_COST} монет, чтобы покормить Алми.\n\n${hint}`
+          : `You need at least ${TAMAGOTCHI_FEED_COST} coins to feed Almi.\n\n${hint}`
+      );
+      return;
+    }
     setTamagotchiState((prev) => {
-      if (tamagotchiCoins <= 0) {
-        Alert.alert(
-          language === "ru" ? "Алми" : "Almi",
-          language === "ru"
-            ? "Монетки закончились — получи их через задания или уровень."
-            : "No coins left — earn them via tasks or leveling up."
-        );
-        return prev;
-      }
       const nextHunger = Math.min(TAMAGOTCHI_MAX_HUNGER, prev.hunger + TAMAGOTCHI_FEED_AMOUNT);
-      setHealthPoints((coins) => Math.max(0, coins - 1));
       return {
         ...prev,
         hunger: nextHunger,
         lastFedAt: new Date().toISOString(),
       };
     });
+    setHealthPoints((coins) => Math.max(0, coins - TAMAGOTCHI_FEED_COST));
     requestMascotAnimation("happy", 3600);
   }, [language, requestMascotAnimation, setHealthPoints, tamagotchiCoins]);
 
   const startParty = useCallback(() => {
+    if (tamagotchiCoins < TAMAGOTCHI_PARTY_COST) {
+      const hint =
+        language === "ru"
+          ? "Пополняй монетки через отказы, уровни и награды."
+          : "Earn more coins through saves, levels and rewards.";
+      Alert.alert(
+        language === "ru" ? "Алми" : "Almi",
+        language === "ru"
+          ? `Нужно ${TAMAGOTCHI_PARTY_BLUE_COST} синих монет на вечеринку.\n\n${hint}`
+          : `You need ${TAMAGOTCHI_PARTY_BLUE_COST} blue coins to start a party.\n\n${hint}`
+      );
+      return;
+    }
     setHealthPoints((coins) => Math.max(0, coins - TAMAGOTCHI_PARTY_COST));
     setPartyActive(true);
     setPartyBurstKey((prev) => prev + 1);
@@ -10765,7 +11016,7 @@ function AppContent() {
       partyGlow.setValue(0);
       setPartyActive(false);
     }, 2400);
-  }, [partyGlow, requestMascotAnimation, setHealthPoints]);
+  }, [language, partyGlow, requestMascotAnimation, setHealthPoints, tamagotchiCoins]);
 
   const handleMascotAnimationComplete = useCallback(() => {
     mascotBusyRef.current = false;
@@ -10836,6 +11087,14 @@ function AppContent() {
     [profile.currency, profile.persona]
   );
 
+  const logTemptationAction = useCallback(
+    (action, item, extra = {}) => {
+      if (!item || !action) return;
+      logEvent("temptation_action", buildTemptationPayload(item, { action, ...extra }));
+    },
+    [buildTemptationPayload]
+  );
+
   const logImpulseEvent = useCallback(
     (action, item, amountUSD = 0, overrideTitle = null) => {
       if (!item || (action !== "save" && action !== "spend")) return;
@@ -10880,11 +11139,13 @@ function AppContent() {
         item.title?.[language] || item.title?.en || item.title || "wish"
       }`;
       if (type === "spend") {
+        logTemptationAction("spend", item);
         logEvent("temptation_spend", buildTemptationPayload(item, { total_saved_usd: savedTotalUSD }));
         setSpendPrompt({ visible: true, item });
         return;
       }
       if (type === "want") {
+        logTemptationAction("wish", item);
         logEvent("temptation_want", buildTemptationPayload(item));
         const newWish = {
           id: `wish-${item.id}-${Date.now()}`,
@@ -10991,6 +11252,7 @@ function AppContent() {
             refuse_count_for_item: (refuseStatsEntry.count || 0) + 1,
           })
         );
+        logTemptationAction("save", item, { goal_id: targetGoalId || null });
         logImpulseEvent("save", item, priceUSD, title);
         triggerCardFeedback(item.id);
         triggerCoinHaptics();
@@ -11004,6 +11266,7 @@ function AppContent() {
           "temptation_think_later",
           buildTemptationPayload(item, { reminder_days: REMINDER_DAYS })
         );
+        logTemptationAction("pending", item);
         const now = Date.now();
         const pendingEntry = {
           id: `pending-${item.id}-${now}`,
@@ -11041,6 +11304,7 @@ function AppContent() {
       savedTotalUSD,
       refuseStats,
       logImpulseEvent,
+      logTemptationAction,
       resolveTemptationGoalId,
       assignableGoals.length,
       assignTemptationGoal,
@@ -11781,9 +12045,13 @@ function AppContent() {
 
   const handleLevelCelebrate = useCallback(
     (level, levelsEarned = 1) => {
-      const rewardMultiplier = Math.max(1, levelsEarned || 1);
-      const rewardAmount = HEALTH_PER_LEVEL * rewardMultiplier;
-      const rewardCoins = LEVEL_REWARD_BLUE_COINS * rewardMultiplier;
+      const rewardCoins = sumLevelRewardCoins(level, levelsEarned);
+      if (rewardCoins <= 0) {
+        triggerOverlayState("level", level);
+        triggerSuccessHaptic();
+        return;
+      }
+      const rewardAmount = rewardCoins * HEALTH_COIN_TIERS[1].value;
       setHealthPoints((prev) => prev + rewardAmount);
       triggerOverlayState("level", level);
       triggerOverlayState(
@@ -12170,6 +12438,7 @@ const handleFreeDayRescue = useCallback(() => {
             t={t}
             colors={colors}
             onResolve={handlePendingDecision}
+            language={language}
           />
         );
       case "purchases":
@@ -12281,6 +12550,7 @@ const handleFreeDayRescue = useCallback(() => {
             }}
             onTemptationSwipeDelete={(item) => promptTemptationDelete(item)}
             onSavingsBreakdownPress={() => setSavingsBreakdownVisible(true)}
+            resolveTemplateTitle={resolveTemplateTitle}
           />
         );
     }
@@ -12330,6 +12600,8 @@ const handleFreeDayRescue = useCallback(() => {
           onCurrencyChange={(code) => updateRegistrationData("currency", code)}
           onContinue={handleLanguageContinue}
           onBack={onboardingBackHandler}
+          onShowTerms={handleTermsOpen}
+          termsAccepted={termsAccepted}
         />
       );
     } else if (onboardingStep === "guide") {
@@ -12458,6 +12730,15 @@ const handleFreeDayRescue = useCallback(() => {
           onChange={handleOnboardingGoalChange}
           onSubmit={handleOnboardingGoalSubmit}
           onCancel={handleOnboardingGoalCancel}
+        />
+        <TermsModal
+          visible={termsModalVisible}
+          colors={colors}
+          t={t}
+          language={language}
+          onAccept={handleTermsAccept}
+          onCancel={handleTermsCancel}
+          onOpenLink={handleTermsLinkOpen}
         />
       </>
     );
@@ -12964,7 +13245,9 @@ const handleFreeDayRescue = useCallback(() => {
                       <View style={styles.tamagotchiButtonContent}>
                         <Image source={HEALTH_COIN_TIERS[0].asset} style={styles.tamagotchiButtonIcon} />
                         <Text style={[styles.tamagotchiButtonText, { color: colors.background }]}>
-                          {language === "ru" ? "Покормить" : "Feed Almi"}
+                          {language === "ru"
+                            ? `Покормить ×${TAMAGOTCHI_FEED_COST}`
+                            : `Feed ×${TAMAGOTCHI_FEED_COST}`}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -12973,23 +13256,14 @@ const handleFreeDayRescue = useCallback(() => {
                         styles.tamagotchiButton,
                         { backgroundColor: colors.card, borderColor: colors.border },
                       ]}
-                      onPress={() => {
-                        if (tamagotchiCoins < TAMAGOTCHI_PARTY_COST) {
-                          Alert.alert(
-                            language === "ru" ? "Алми" : "Almi",
-                            language === "ru"
-                              ? "Нужна синяя монета для вечеринки"
-                              : "Need a blue coin to start a party"
-                          );
-                          return;
-                        }
-                        startParty();
-                      }}
+                      onPress={startParty}
                     >
                       <View style={styles.tamagotchiButtonContent}>
                         <Image source={HEALTH_COIN_TIERS[1].asset} style={styles.tamagotchiButtonIcon} />
                         <Text style={[styles.tamagotchiButtonText, { color: colors.text }]}>
-                          {language === "ru" ? "Вечеринка" : "Party (1 blue coin)"}
+                          {language === "ru"
+                            ? `Вечеринка ×${TAMAGOTCHI_PARTY_BLUE_COST}`
+                            : `Party ×${TAMAGOTCHI_PARTY_BLUE_COST}`}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -13322,14 +13596,10 @@ const handleFreeDayRescue = useCallback(() => {
                 />
                 <CoinRainOverlay dropCount={16} />
                 <Animated.View style={[styles.saveCard, saveCardBackgroundStyle]}>
-                  <View style={styles.saveHeader}>
-                    <Text style={[styles.savePill, { color: colors.text, borderColor: overlayBorderColor }]}>
-                      {language === "ru" ? "Решение сохранено" : "Saved decision"}
-                    </Text>
-                    <Text style={[styles.saveTitle, { color: colors.text }]}>
-                      {t("saveCelebrateTitle", { title: saveOverlayPayload?.title || "" })}
-                    </Text>
-                  </View>
+                  <Text style={[styles.saveTitle, { color: colors.text }]}>{t("saveCelebrateTitlePrefix")}</Text>
+                  <Text style={[styles.saveGoalText, { color: colors.text }]}>
+                    {saveOverlayPayload?.title || ""}
+                  </Text>
                   {saveOverlayGoalText ? (
                     <View style={styles.saveGoalBox}>
                       <Text style={[styles.saveGoalText, { color: colors.text }]}>
@@ -13337,15 +13607,6 @@ const handleFreeDayRescue = useCallback(() => {
                       </Text>
                     </View>
                   ) : null}
-                  {saveOverlayPayload?.moodLine ? (
-                    <Text style={[styles.saveMoodLine, { color: colors.muted }]}>
-                      {saveOverlayPayload.moodLine}
-                    </Text>
-                  ) : (
-                    <Text style={[styles.saveMoodLine, { color: colors.muted }]}>
-                      {t("saveCelebrateSubtitle")}
-                    </Text>
-                  )}
                   {Boolean(saveOverlayPayload?.coinReward) && (
                     <View
                       style={[
@@ -16300,7 +16561,7 @@ const styles = StyleSheet.create({
   },
   profileScrollContent: {
     paddingTop: 4,
-    paddingBottom: 200,
+    paddingBottom: 40,
     flexGrow: 1,
   },
   profileAvatarWrap: {
@@ -16640,6 +16901,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
+  profileLinkButton: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 16,
+    gap: 2,
+  },
+  profileLinkText: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  profileLinkHint: {
+    fontSize: 12,
+  },
   resetButtonText: {
     fontWeight: "600",
   },
@@ -16885,6 +17161,57 @@ const styles = StyleSheet.create({
   },
   quickModalPrimaryText: {
     fontWeight: "700",
+  },
+  termsCard: {
+    width: "100%",
+    borderRadius: 28,
+    padding: 22,
+    gap: 12,
+  },
+  termsTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  termsSubtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  termsScroll: {
+    maxHeight: 260,
+    marginVertical: 4,
+  },
+  termsScrollContent: {
+    paddingBottom: 4,
+    gap: 12,
+  },
+  termsPoint: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  termsPointIndex: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  termsPointText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  termsLinkButton: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  termsLinkText: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  termsHint: {
+    fontSize: 12,
+    textAlign: "center",
   },
   languageMascot: {
     width: 240,
@@ -17189,10 +17516,10 @@ const styles = StyleSheet.create({
   },
   saveCard: {
     backgroundColor: "rgba(255,255,255,0.96)",
-    borderRadius: 30,
-    padding: 22,
+    borderRadius: 24,
+    padding: 18,
     alignItems: "center",
-    gap: 12,
+    gap: 10,
     borderWidth: 1,
     borderColor: "rgba(18,15,40,0.08)",
     marginHorizontal: 24,
@@ -17202,71 +17529,47 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 12 },
   },
   saveGif: {
-    width: 118,
-    height: 118,
-    borderRadius: 26,
+    width: 96,
+    height: 96,
+    borderRadius: 22,
     resizeMode: "contain",
   },
   saveTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "800",
     textAlign: "center",
   },
-  saveSubtitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    textAlign: "center",
-  },
   saveGoalText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
     textAlign: "center",
-  },
-  saveMoodLine: {
-    fontSize: 14,
-    fontWeight: "600",
-    textAlign: "center",
-    marginTop: 8,
-  },
-  saveHeader: {
-    width: "100%",
-    alignItems: "center",
-    gap: 8,
-  },
-  savePill: {
-    fontSize: 13,
-    fontWeight: "700",
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
   },
   saveGoalBox: {
-    backgroundColor: "rgba(18,15,40,0.03)",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(18,15,40,0.05)",
-    marginTop: 6,
-  },
-  saveCoinsRow: {
-    marginTop: 6,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    backgroundColor: "rgba(18,15,40,0.04)",
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(18,15,40,0.05)",
+    marginTop: 4,
+  },
+  saveCoinsRow: {
+    marginTop: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 14,
     backgroundColor: "rgba(33, 150, 243, 0.08)",
   },
   saveCoinsText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "700",
   },
   saveCoinIcon: {
-    width: 28,
-    height: 28,
+    width: 24,
+    height: 24,
     resizeMode: "contain",
   },
   customTemptationCard: {
@@ -17673,6 +17976,25 @@ const styles = StyleSheet.create({
   languageButtons: {
     flexDirection: "row",
     gap: 14,
+  },
+  languageTermsBlock: {
+    width: "100%",
+    marginTop: 18,
+    gap: 8,
+  },
+  languageTermsNote: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  languageTermsButton: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  languageTermsButtonText: {
+    fontSize: 13,
+    fontWeight: "700",
   },
   genderGrid: {
     flexDirection: "row",
@@ -18432,6 +18754,53 @@ function OnboardingGoalModal({ visible, colors, t, currency, data, onChange, onS
   );
 }
 
+function TermsModal({ visible, colors, t, language, onAccept, onCancel, onOpenLink }) {
+  const points = TERMS_POINTS[language] || TERMS_POINTS.en;
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
+      <View style={styles.quickModalBackdrop}>
+        <View style={[styles.termsCard, { backgroundColor: colors.card }]}>
+          <Text style={[styles.termsTitle, { color: colors.text }]}>{t("termsTitle")}</Text>
+          <Text style={[styles.termsSubtitle, { color: colors.muted }]}>{t("termsSubtitle")}</Text>
+          <ScrollView
+            style={styles.termsScroll}
+            contentContainerStyle={styles.termsScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {points.map((point, index) => (
+              <View key={`${index}-${language}`} style={styles.termsPoint}>
+                <Text style={[styles.termsPointIndex, { color: colors.muted }]}>{index + 1}.</Text>
+                <Text style={[styles.termsPointText, { color: colors.text }]}>{point}</Text>
+              </View>
+            ))}
+          </ScrollView>
+          <TouchableOpacity
+            style={[styles.termsLinkButton, { borderColor: colors.border }]}
+            onPress={onOpenLink}
+          >
+            <Text style={[styles.termsLinkText, { color: colors.text }]}>{t("termsViewFull")}</Text>
+          </TouchableOpacity>
+          <Text style={[styles.termsHint, { color: colors.muted }]}>{t("termsLinkHint")}</Text>
+          <View style={styles.quickModalActions}>
+            <TouchableOpacity
+              style={[styles.quickModalSecondary, { borderColor: colors.border }]}
+              onPress={onCancel}
+            >
+              <Text style={[styles.quickModalSecondaryText, { color: colors.muted }]}>{t("termsDecline")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quickModalPrimary, { backgroundColor: colors.text }]}
+              onPress={onAccept}
+            >
+              <Text style={[styles.quickModalPrimaryText, { color: colors.background }]}>{t("termsAccept")}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function OnboardingBackButton({ onPress, colors, t }) {
   if (!onPress) return null;
   return (
@@ -18494,6 +18863,8 @@ function LanguageScreen({
   onCurrencyChange,
   onContinue,
   onBack,
+  onShowTerms,
+  termsAccepted,
 }) {
   const fade = useFadeIn();
   return (
@@ -18560,6 +18931,17 @@ function LanguageScreen({
         >
           <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("nextButton")}</Text>
         </TouchableOpacity>
+        <View style={styles.languageTermsBlock}>
+          <Text style={[styles.languageTermsNote, { color: colors.muted }]}>
+            {termsAccepted ? t("languageTermsAccepted") : t("languageTermsHint")}
+          </Text>
+          <TouchableOpacity
+            style={[styles.languageTermsButton, { borderColor: colors.border }]}
+            onPress={() => onShowTerms?.()}
+          >
+            <Text style={[styles.languageTermsButtonText, { color: colors.text }]}>{t("languageTermsLink")}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </Animated.View>
   );
