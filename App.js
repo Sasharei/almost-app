@@ -31,6 +31,16 @@ import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import * as NavigationBar from "expo-navigation-bar";
 import { StatusBar } from "expo-status-bar";
+import {
+  useFonts,
+  Inter_300Light,
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+  Inter_900Black,
+} from "@expo-google-fonts/inter";
 import Sentry, { initSentry } from "./sentry";
 import { initAnalytics, logEvent, logScreenView, setAnalyticsOptOut as setAnalyticsOptOutFlag } from "./analytics";
 import { SavingsProvider, useRealSavedAmount } from "./src/hooks/useRealSavedAmount";
@@ -130,6 +140,63 @@ const THEMES = {
     primary: "#FFC857",
   },
 };
+
+const INTER_FONTS = {
+  light: "Inter_300Light",
+  regular: "Inter_400Regular",
+  medium: "Inter_500Medium",
+  semiBold: "Inter_600SemiBold",
+  bold: "Inter_700Bold",
+  extraBold: "Inter_800ExtraBold",
+  black: "Inter_900Black",
+};
+
+const CTA_LETTER_SPACING = 0.4;
+
+const resolveInterFontFamily = (fontWeight) => {
+  if (typeof fontWeight === "string") {
+    if (fontWeight.toLowerCase() === "bold") return INTER_FONTS.bold;
+    if (fontWeight.toLowerCase() === "normal") return INTER_FONTS.regular;
+  }
+  const numericWeight = Number(fontWeight) || 0;
+  if (numericWeight >= 900) return INTER_FONTS.black;
+  if (numericWeight >= 800) return INTER_FONTS.extraBold;
+  if (numericWeight >= 700) return INTER_FONTS.bold;
+  if (numericWeight >= 600) return INTER_FONTS.semiBold;
+  if (numericWeight >= 500) return INTER_FONTS.medium;
+  if (numericWeight >= 300) return INTER_FONTS.light;
+  return INTER_FONTS.regular;
+};
+
+const withInterTypography = (Component) => {
+  if (!Component?.render) return;
+  const defaultRender = Component.render;
+  Component.render = function render(props = {}, ref) {
+    const styleProp = props.style;
+    const baseStyles = Array.isArray(styleProp)
+      ? styleProp.filter(Boolean)
+      : styleProp
+        ? [styleProp]
+        : [];
+    const flattened = StyleSheet.flatten(baseStyles) || {};
+    if (flattened.fontFamily) {
+      return defaultRender.apply(this, [props, ref]);
+    }
+    const resolvedFontFamily = resolveInterFontFamily(flattened.fontWeight);
+    const fontStyle = { fontFamily: resolvedFontFamily };
+    const nextStyle = baseStyles.length ? [...baseStyles, fontStyle] : fontStyle;
+    return defaultRender.apply(this, [{ ...props, style: nextStyle }, ref]);
+  };
+};
+
+const ensureGlobalInterTypography = (() => {
+  let applied = false;
+  return () => {
+    if (applied) return;
+    [Text, TextInput, Animated.Text].forEach(withInterTypography);
+    applied = true;
+  };
+})();
 
 const APP_TUTORIAL_STEPS = [
   {
@@ -3670,6 +3737,18 @@ const blendColors = (colorA, colorB, ratio = 0.5) => {
   const g = clamp(a.g * (1 - t) + b.g * t);
   const bl = clamp(a.b * (1 - t) + b.b * t);
   return `rgb(${r}, ${g}, ${bl})`;
+};
+
+const blendHexColors = (colorA, colorB, ratio = 0.5) => {
+  const clamp = (num) => Math.max(0, Math.min(255, Math.round(num)));
+  const toHex = (num) => clamp(num).toString(16).padStart(2, "0");
+  const t = Math.max(0, Math.min(1, ratio));
+  const a = parseColor(colorA);
+  const b = parseColor(colorB);
+  const r = a.r * (1 - t) + b.r * t;
+  const g = a.g * (1 - t) + b.g * t;
+  const bl = a.b * (1 - t) + b.b * t;
+  return `#${toHex(r)}${toHex(g)}${toHex(bl)}`;
 };
 
 const getTierProgress = (savedUSD = 0) => {
@@ -7918,6 +7997,15 @@ function ProfileScreen({
 }
 
 function AppContent() {
+  const [fontsLoaded, fontsError] = useFonts({
+    Inter_300Light,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+    Inter_900Black,
+  });
   const [wishes, setWishes] = useState([]);
   const [wishesHydrated, setWishesHydrated] = useState(false);
   const [purchases, setPurchases] = useState([]);
@@ -8089,6 +8177,16 @@ function AppContent() {
     amount: "",
     emoji: DEFAULT_TEMPTATION_EMOJI,
   });
+  useEffect(() => {
+    if (fontsLoaded) {
+      ensureGlobalInterTypography();
+    }
+  }, [fontsLoaded]);
+  useEffect(() => {
+    if (fontsError) {
+      console.warn("Inter font load error", fontsError);
+    }
+  }, [fontsError]);
   const openTamagotchiOverlay = useCallback(() => setTamagotchiVisible(true), []);
   const closeTamagotchiOverlay = useCallback(() => setTamagotchiVisible(false), []);
   const [fabMenuVisible, setFabMenuVisible] = useState(false);
@@ -8166,7 +8264,7 @@ function AppContent() {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [spendPrompt, setSpendPrompt] = useState({ visible: false, item: null });
   const [stormActive, setStormActive] = useState(false);
-  const tabBarBottomInset = Platform.OS === "ios" ? 28 : 12;
+  const tabBarBottomInset = Platform.OS === "ios" ? 28 : 0;
   const topSafeInset = Platform.OS === "android" ? RNStatusBar.currentHeight || 24 : 0;
   const [analyticsOptOut, setAnalyticsOptOutState] = useState(null);
 
@@ -8586,6 +8684,10 @@ function AppContent() {
   const colors = THEMES[theme];
   const isDarkTheme = theme === "dark";
   const overlayDimColor = isDarkTheme ? "rgba(0,0,0,0.65)" : "rgba(5,6,15,0.2)";
+  const overlaySystemColor = useMemo(
+    () => blendHexColors(colors.background, isDarkTheme ? "#000000" : "#05060F", isDarkTheme ? 0.5 : 0.15),
+    [colors.background, isDarkTheme]
+  );
   const overlayCardBackground = isDarkTheme ? lightenColor(colors.card, 0.18) : colors.card;
   const overlayBorderColor = isDarkTheme ? lightenColor(colors.border, 0.25) : colors.border;
   const impulseAlertPayload = useMemo(() => {
@@ -8596,22 +8698,26 @@ function AppContent() {
     if (!overlay?.message) return null;
     return { body: overlay.message };
   }, [overlay]);
+  const systemOverlayActive = Boolean(overlay || fabMenuVisible);
+
   useEffect(() => {
     if (Platform.OS !== "android") return;
-    const targetNavColor = overlay ? overlayDimColor : colors.card;
-    const targetButtonStyle = overlay ? "light" : isDarkTheme ? "light" : "dark";
-    const targetStatusColor = overlay ? overlayDimColor : colors.background;
+    const targetNavColor = systemOverlayActive ? overlaySystemColor : colors.card;
+    const targetButtonStyle = systemOverlayActive ? "light" : isDarkTheme ? "light" : "dark";
+    const targetStatusColor = systemOverlayActive ? overlaySystemColor : colors.background;
+    const targetNavVisibility = systemOverlayActive ? "hidden" : "visible";
     const applyNav = async () => {
       try {
         await NavigationBar.setBackgroundColorAsync(targetNavColor);
         await NavigationBar.setButtonStyleAsync(targetButtonStyle);
+        await NavigationBar.setVisibilityAsync(targetNavVisibility);
       } catch (err) {
         console.warn("navigation bar color", err);
       }
     };
     applyNav();
     RNStatusBar.setBackgroundColor(targetStatusColor, true);
-  }, [colors.card, colors.background, isDarkTheme, overlay, overlayDimColor]);
+  }, [colors.card, colors.background, isDarkTheme, overlayDimColor, overlaySystemColor, systemOverlayActive]);
   const saveOverlayPayload =
     overlay?.type === "save"
       ? typeof overlay.message === "object" && overlay.message !== null
@@ -12768,7 +12874,7 @@ const handleFreeDayRescue = useCallback(() => {
       >
         <StatusBar
           style={theme === "dark" ? "light" : "dark"}
-          backgroundColor={colors.background}
+          backgroundColor={systemOverlayActive ? overlaySystemColor : colors.background}
         />
         <View style={styles.screenWrapper}>{renderActiveScreen()}</View>
         {savingsBreakdownVisible && (
@@ -14120,6 +14226,43 @@ function App() {
 
 export default Sentry.wrap(App);
 
+const TYPOGRAPHY = {
+  logo: {
+    fontFamily: INTER_FONTS.extraBold,
+    fontSize: 44,
+    letterSpacing: -0.5,
+  },
+  display: {
+    fontFamily: INTER_FONTS.bold,
+    fontSize: 34,
+    letterSpacing: -0.2,
+  },
+  blockTitle: {
+    fontFamily: INTER_FONTS.bold,
+    fontSize: 24,
+    letterSpacing: -0.2,
+  },
+  body: {
+    fontFamily: INTER_FONTS.regular,
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  secondary: {
+    fontFamily: INTER_FONTS.light,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  cta: {
+    fontFamily: INTER_FONTS.semiBold,
+    fontSize: 14,
+    letterSpacing: CTA_LETTER_SPACING,
+  },
+};
+
+const createBodyText = (overrides = {}) => ({ ...TYPOGRAPHY.body, ...overrides });
+const createSecondaryText = (overrides = {}) => ({ ...TYPOGRAPHY.secondary, ...overrides });
+const createCtaText = (overrides = {}) => ({ ...TYPOGRAPHY.cta, ...overrides });
+
 const styles = StyleSheet.create({
   appBackground: {
     flex: 1,
@@ -14172,10 +14315,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   moodBadgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    ...createCtaText({ fontSize: 13, textTransform: "uppercase" }),
   },
   moodDetailsBackdrop: {
     flex: 1,
@@ -14192,14 +14332,12 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   moodDetailsLabel: {
+    ...TYPOGRAPHY.blockTitle,
     fontSize: 20,
-    fontWeight: "800",
     textAlign: "center",
   },
   moodDetailsDescription: {
-    fontSize: 16,
-    textAlign: "center",
-    lineHeight: 22,
+    ...createBodyText({ fontSize: 16, textAlign: "center", lineHeight: 22 }),
   },
   moodDetailsButton: {
     marginTop: 12,
@@ -14209,9 +14347,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   moodDetailsButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
-    textTransform: "uppercase",
+    ...createCtaText({ textTransform: "uppercase" }),
   },
   heroMascotRow: {
     flexDirection: "row",
@@ -14223,13 +14359,11 @@ const styles = StyleSheet.create({
     paddingRight: 6,
   },
   appName: {
-    fontSize: 44,
-    fontWeight: "800",
+    ...TYPOGRAPHY.logo,
   },
   heroTagline: {
-    fontSize: 15,
+    ...TYPOGRAPHY.body,
     marginTop: 4,
-    lineHeight: 20,
   },
   almiMascotWrap: {
     width: 96,
@@ -14270,12 +14404,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   tamagotchiTitle: {
+    ...TYPOGRAPHY.blockTitle,
     fontSize: 18,
-    fontWeight: "800",
   },
   tamagotchiMood: {
-    fontSize: 14,
-    fontWeight: "600",
+    ...createBodyText({ fontSize: 14 }),
   },
   tamagotchiStatRow: {
     flexDirection: "row",
@@ -14283,12 +14416,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   tamagotchiStatLabel: {
-    fontSize: 14,
-    fontWeight: "600",
+    ...createBodyText({ fontSize: 14 }),
   },
   tamagotchiStatValue: {
-    fontSize: 16,
-    fontWeight: "700",
+    ...createBodyText({ fontSize: 16, fontWeight: "700" }),
   },
   tamagotchiProgress: {
     height: 12,
@@ -14326,11 +14457,10 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   tamagotchiButtonText: {
-    fontWeight: "700",
-    fontSize: 14,
+    ...createCtaText({ fontSize: 14 }),
   },
   tamagotchiSub: {
-    fontSize: 12,
+    ...createSecondaryText({ fontSize: 12 }),
   },
   tamagotchiClose: {
     alignSelf: "center",
@@ -14339,8 +14469,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   tamagotchiCloseText: {
-    fontWeight: "600",
-    fontSize: 14,
+    ...createCtaText({ fontSize: 14 }),
   },
   heroStatCard: {
     padding: 16,
@@ -14406,16 +14535,12 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   savedHeroSubtitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginTop: 6,
-    lineHeight: 18,
-    width: "100%",
+    ...createBodyText({ fontSize: 15, marginTop: 6, lineHeight: 20, width: "100%" }),
   },
   savedHeroLevelButton: {
     position: "absolute",
     top: -12,
-    right: 0,
+    right: -12,
     zIndex: 2,
     paddingHorizontal: 6,
     paddingVertical: 6,
@@ -14427,9 +14552,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   savedHeroLevelText: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   savedHeroAmountWrap: {
     marginTop: 4,
@@ -14442,19 +14565,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   heroLevelTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   heroLevelSubtitle: {
-    marginTop: 6,
-    fontSize: 12,
-    fontWeight: "600",
+    ...createBodyText({ fontSize: 12, marginTop: 6 }),
   },
   heroLevelMeta: {
-    marginTop: 8,
-    fontSize: 12,
-    fontWeight: "600",
+    ...createSecondaryText({ marginTop: 8 }),
   },
   heroPotentialCard: {
     marginBottom: 12,
@@ -14468,21 +14585,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   heroPotentialLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   heroPotentialValue: {
-    fontSize: 16,
-    fontWeight: "700",
+    ...createBodyText({ fontSize: 16, fontWeight: "700" }),
   },
   heroPotentialHint: {
-    fontSize: 12,
-    fontWeight: "600",
+    ...createSecondaryText({ fontSize: 12 }),
   },
   heroPotentialStatus: {
-    fontSize: 12,
-    fontWeight: "600",
+    ...createSecondaryText({ fontSize: 12 }),
   },
   heroPotentialButton: {
     borderWidth: 1,
@@ -14491,7 +14603,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   heroPotentialButtonText: {
-    fontWeight: "700",
+    ...createCtaText(),
   },
   savedHeroProgressRow: {
     flexDirection: "row",
@@ -14510,8 +14622,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   savedHeroPercentText: {
-    fontSize: 12,
-    fontWeight: "700",
+    ...createCtaText({ fontSize: 12 }),
   },
   savedHeroGoalRow: {
     flexDirection: "row",
@@ -14520,8 +14631,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   goalLabel: {
-    fontSize: 12,
-    fontWeight: "700",
+    ...createCtaText({ fontSize: 12 }),
   },
   savedHeroGoalMetaRow: {
     flexDirection: "row",
@@ -14531,9 +14641,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   savedHeroGoalLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    flex: 1,
+    ...createBodyText({ fontSize: 13, flex: 1 }),
   },
   goalCompleteBadge: {
     borderRadius: 999,
@@ -14542,9 +14650,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   goalCompleteBadgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   goalSelectButton: {
     marginTop: 10,
@@ -14555,8 +14661,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   goalSelectText: {
-    fontSize: 13,
-    fontWeight: "700",
+    ...createCtaText({ fontSize: 13 }),
   },
   breakdownOverlay: {
     flex: 1,
@@ -14614,20 +14719,13 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   dailySummaryBadgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   dailySummaryTitle: {
-    fontSize: 22,
-    fontWeight: "800",
+    ...TYPOGRAPHY.blockTitle,
   },
   dailySummarySubtitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    lineHeight: 20,
-    marginTop: 4,
+    ...createBodyText({ fontSize: 16, marginTop: 4 }),
   },
   dailySummaryHighlight: {
     borderRadius: 22,
@@ -14635,10 +14733,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   dailySummaryHighlightLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
+    ...createCtaText({ fontSize: 13, textTransform: "uppercase" }),
   },
   dailySummaryHighlightValue: {
     fontSize: 32,
@@ -14646,9 +14741,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   dailySummaryHighlightSub: {
-    fontSize: 13,
-    fontWeight: "600",
-    marginTop: 6,
+    ...createBodyText({ fontSize: 14, marginTop: 6 }),
   },
   dailySummaryStatsRow: {
     flexDirection: "row",
@@ -14666,11 +14759,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   dailySummaryStatLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    marginTop: 8,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase", marginTop: 8 }),
   },
   dailySummaryButton: {
     borderRadius: 18,
@@ -14681,17 +14770,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   dailySummaryButtonText: {
-    fontSize: 15,
-    fontWeight: "700",
+    ...createCtaText({ fontSize: 15 }),
   },
   dailySummaryButtonIcon: {
-    fontSize: 16,
-    fontWeight: "800",
+    ...createCtaText({ fontSize: 16 }),
   },
   dailySummaryHint: {
-    textAlign: "center",
-    fontSize: 12,
-    fontWeight: "600",
+    ...createSecondaryText({ textAlign: "center" }),
   },
   breakdownCard: {
     width: "100%",
@@ -14856,12 +14941,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   progressHeroTitle: {
-    fontSize: 22,
-    fontWeight: "900",
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 24,
+    fontFamily: INTER_FONTS.extraBold,
   },
   progressHeroAmount: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "900",
+    fontFamily: INTER_FONTS.extraBold,
     marginBottom: 6,
   },
   progressHeroLevel: {
@@ -15027,16 +15114,15 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   freeDayLabel: {
-    fontSize: 12,
-    textTransform: "uppercase",
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 18,
+    letterSpacing: -0.2,
   },
   freeDayValue: {
-    fontSize: 18,
-    fontWeight: "700",
+    ...createBodyText({ fontSize: 18, fontWeight: "700" }),
   },
   freeDayValueInactive: {
-    fontSize: 16,
-    lineHeight: 20,
+    ...createBodyText({ fontSize: 16, fontWeight: "400" }),
   },
   freeDayStatsRow: {
     flexDirection: "row",
@@ -15049,14 +15135,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   freeDayStatLabel: {
-    fontSize: 12,
-    marginBottom: 2,
-    textAlign: "center",
+    ...createSecondaryText({ marginBottom: 2, textAlign: "center" }),
   },
   freeDayStatValue: {
-    fontSize: 16,
-    fontWeight: "700",
-    textAlign: "center",
+    ...createBodyText({ fontSize: 16, fontWeight: "700", textAlign: "center" }),
   },
   freeDayButton: {
     borderRadius: 999,
@@ -15065,9 +15147,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   freeDayButtonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 12,
+    ...createCtaText({ fontSize: 13, color: "#fff" }),
   },
   freeDaySummaryRow: {
     flexDirection: "row",
@@ -15087,9 +15167,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   freeDayChipText: {
-    fontSize: 12,
-    fontWeight: "600",
-    textAlign: "center",
+    ...createCtaText({ fontSize: 12, textAlign: "center" }),
   },
   freeDayToggle: {
     paddingHorizontal: 8,
@@ -15097,9 +15175,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   freeDayToggleText: {
-    fontSize: 12,
-    fontWeight: "600",
-    textAlign: "center",
+    ...createCtaText({ fontSize: 12, textAlign: "center" }),
   },
   freeDayLockedPill: {
     borderRadius: 999,
@@ -15110,9 +15186,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   freeDayLockedText: {
-    fontSize: 12,
-    fontWeight: "600",
-    textAlign: "center",
+    ...createCtaText({ fontSize: 12, textAlign: "center" }),
   },
   freeDayHealthBadge: {
     display: "none",
@@ -15128,12 +15202,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   freeDayRescueTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    marginBottom: 2,
+    ...createBodyText({ fontSize: 15, marginBottom: 2 }),
   },
   freeDayRescueSubtitle: {
-    fontSize: 12,
+    ...createSecondaryText({ fontSize: 12 }),
   },
   freeDayRescueButton: {
     borderRadius: 999,
@@ -15141,10 +15213,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   freeDayRescueButtonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 12,
-    textAlign: "center",
+    ...createCtaText({ fontSize: 13, color: "#fff", textAlign: "center" }),
   },
   freeDayRescueButtonDisabled: {
     backgroundColor: "rgba(0,0,0,0.05)",
@@ -15169,12 +15238,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   impulseCardTitle: {
-    fontSize: 16,
-    fontWeight: "700",
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 22,
   },
   impulseCardSubtitle: {
-    fontSize: 13,
-    lineHeight: 18,
+    ...createBodyText({ fontSize: 15, lineHeight: 22 }),
   },
   impulseToggle: {
     borderWidth: 1,
@@ -15183,9 +15251,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   impulseToggleText: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   impulseSummaryGrid: {
     flexDirection: "row",
@@ -15199,21 +15265,16 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   impulseSummaryLabel: {
-    fontSize: 12,
-    textTransform: "uppercase",
-    fontWeight: "700",
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   impulseSummaryValue: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "600",
+    ...createBodyText({ fontSize: 14, lineHeight: 20, fontWeight: "600" }),
   },
   impulseTrendRow: {
     paddingVertical: 4,
   },
   impulseTrendText: {
-    fontSize: 13,
-    fontWeight: "700",
+    ...createBodyText({ fontSize: 13, fontWeight: "700" }),
   },
   impulseCategoryList: {
     marginTop: 8,
@@ -15229,20 +15290,17 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   impulseCategoryLabel: {
-    fontWeight: "700",
-    flex: 1,
-    marginRight: 12,
+    ...createBodyText({ fontWeight: "700", flex: 1, marginRight: 12 }),
   },
   impulseCategoryStats: {
     alignItems: "flex-end",
     gap: 2,
   },
   impulseCategoryStat: {
-    fontSize: 13,
-    fontWeight: "700",
+    ...createBodyText({ fontSize: 13, fontWeight: "700" }),
   },
   impulseCategoryStatSecondary: {
-    fontSize: 12,
+    ...createSecondaryText({ fontSize: 12 }),
   },
   freeDayHealthRow: {
     flexDirection: "row",
@@ -15835,16 +15893,14 @@ const styles = StyleSheet.create({
     marginTop: 22,
   },
   primaryButtonText: {
-    fontWeight: "700",
-    fontSize: 16,
+    ...createCtaText({ fontSize: 16 }),
   },
   secondaryButtonClear: {
     alignItems: "center",
     paddingVertical: 12,
   },
   secondaryButtonClearText: {
-    fontWeight: "600",
-    fontSize: 14,
+    ...createCtaText({ fontSize: 14 }),
   },
   secondaryButton: {
     borderRadius: 24,
@@ -15854,7 +15910,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   secondaryButtonText: {
-    fontWeight: "600",
+    ...createCtaText(),
   },
   closeButton: {
     alignSelf: "flex-end",
@@ -15863,13 +15919,12 @@ const styles = StyleSheet.create({
     fontSize: 28,
   },
   header: {
+    ...TYPOGRAPHY.blockTitle,
     fontSize: 30,
-    fontWeight: "800",
     marginBottom: 16,
   },
   subheader: {
-    fontSize: 22,
-    fontWeight: "700",
+    ...TYPOGRAPHY.blockTitle,
     marginTop: 24,
     marginBottom: 12,
   },
@@ -15878,12 +15933,11 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
   },
   emptyStateTitle: {
+    ...TYPOGRAPHY.blockTitle,
     fontSize: 20,
-    fontWeight: "700",
   },
   emptyStateText: {
-    marginTop: 6,
-    textAlign: "center",
+    ...createBodyText({ textAlign: "center", marginTop: 6 }),
   },
   cartEmptyState: {
     alignItems: "center",
@@ -15902,12 +15956,11 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   cartEmptyTitle: {
+    ...TYPOGRAPHY.blockTitle,
     fontSize: 22,
-    fontWeight: "700",
   },
   cartEmptySubtitle: {
-    fontSize: 16,
-    textAlign: "center",
+    ...createBodyText({ fontSize: 16, textAlign: "center" }),
   },
   cartCard: {
     flexDirection: "row",
@@ -15987,8 +16040,7 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   goalSwipeButtonText: {
-    fontSize: 14,
-    fontWeight: "600",
+    ...createCtaText({ fontSize: 14 }),
   },
   goalSwipeContent: {
     width: "100%",
@@ -16059,8 +16111,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   wishProgressLabel: {
-    fontSize: 13,
-    fontWeight: "600",
+    ...createSecondaryText({ fontSize: 13 }),
   },
   wishButtonGhost: {
     borderWidth: 1,
@@ -16120,18 +16171,13 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   primaryGoalBadgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   primaryGoalTitle: {
-    fontSize: 22,
-    fontWeight: "800",
+    ...TYPOGRAPHY.blockTitle,
   },
   primaryGoalSubtitle: {
-    fontSize: 13,
-    marginTop: 6,
+    ...createBodyText({ fontSize: 15, marginTop: 6 }),
   },
   primaryGoalEmblem: {
     width: 64,
@@ -16158,8 +16204,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   primaryGoalPercent: {
-    fontSize: 16,
-    fontWeight: "800",
+    ...createBodyText({ fontSize: 16, fontWeight: "800" }),
   },
   pendingCard: {
     borderRadius: 24,
@@ -16173,14 +16218,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   pendingTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    flex: 1,
+    ...createBodyText({ fontSize: 18, fontWeight: "700", flex: 1 }),
   },
   pendingDue: {
-    fontSize: 13,
-    fontWeight: "600",
-    textTransform: "uppercase",
+    ...createCtaText({ fontSize: 13, textTransform: "uppercase" }),
   },
   pendingPrice: {
     fontSize: 16,
@@ -16202,7 +16243,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   pendingButtonPrimaryText: {
-    fontWeight: "700",
+    ...createCtaText(),
   },
   pendingButtonSecondary: {
     borderWidth: 1,
@@ -16217,12 +16258,10 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   cartTotalText: {
-    fontSize: 18,
-    fontWeight: "600",
+    ...createBodyText({ fontSize: 18, fontWeight: "600" }),
   },
   cartTotalAmount: {
-    fontSize: 18,
-    fontWeight: "700",
+    ...createBodyText({ fontSize: 18, fontWeight: "700" }),
   },
   buyAllButton: {
     marginTop: 18,
@@ -16231,7 +16270,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   buyAllButtonText: {
-    fontWeight: "700",
+    ...createCtaText(),
   },
   purchasesSubtitle: {
     marginBottom: 16,
@@ -16307,13 +16346,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   levelWidgetBadgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   levelWidgetSubtitle: {
-    fontSize: 14,
-    fontWeight: "600",
+    ...createBodyText({ fontSize: 14, fontWeight: "600" }),
   },
   levelWidgetBar: {
     height: 8,
@@ -16326,8 +16362,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   levelWidgetMeta: {
-    fontSize: 13,
-    fontWeight: "600",
+    ...createSecondaryText({ fontSize: 13 }),
   },
   goalCard: {
     borderRadius: 24,
@@ -16337,11 +16372,10 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   goalTitle: {
-    fontWeight: "700",
-    fontSize: 16,
+    ...createBodyText({ fontWeight: "700", fontSize: 16 }),
   },
   goalDesc: {
-    marginTop: 4,
+    ...createBodyText({ marginTop: 4 }),
   },
   rewardHeader: {
     flexDirection: "row",
@@ -16361,9 +16395,7 @@ const styles = StyleSheet.create({
     right: -6,
   },
   rewardBadgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   rewardBadgeContainer: {
     position: "absolute",
@@ -16395,8 +16427,7 @@ const styles = StyleSheet.create({
     resizeMode: "contain",
   },
   healthRewardTokenCount: {
-    fontSize: 12,
-    fontWeight: "700",
+    ...createCtaText({ fontSize: 12 }),
   },
   rewardClaimButton: {
     borderRadius: 16,
@@ -16405,10 +16436,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   rewardClaimButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
-    textAlign: "center",
-    width: "100%",
+    ...createCtaText({ fontSize: 14, textAlign: "center", width: "100%" }),
   },
   rewardsTabs: {
     flexDirection: "row",
@@ -16424,8 +16452,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   rewardsTabText: {
-    fontWeight: "700",
-    fontSize: 14,
+    ...createCtaText({ fontSize: 14 }),
   },
   challengeCard: {
     borderRadius: 22,
@@ -16443,12 +16470,10 @@ const styles = StyleSheet.create({
     fontSize: 28,
   },
   challengeTitle: {
-    fontSize: 16,
-    fontWeight: "700",
+    ...createBodyText({ fontSize: 16, fontWeight: "700" }),
   },
   challengeDesc: {
-    fontSize: 13,
-    lineHeight: 19,
+    ...createBodyText({ fontSize: 14, lineHeight: 20 }),
   },
   challengeMetaRow: {
     flexDirection: "row",
@@ -16456,13 +16481,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   challengeStatus: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   challengeTimer: {
-    fontSize: 12,
-    fontWeight: "600",
+    ...createSecondaryText({ fontSize: 12 }),
   },
   challengeProgressBar: {
     height: 8,
@@ -16474,8 +16496,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   challengeProgressLabel: {
-    fontSize: 12,
-    fontWeight: "600",
+    ...createSecondaryText({ fontSize: 12 }),
   },
   challengeActionButton: {
     borderRadius: 16,
@@ -16483,7 +16504,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   challengeActionText: {
-    fontWeight: "700",
+    ...createCtaText(),
   },
   challengeRewardChip: {
     borderRadius: 999,
@@ -16518,9 +16539,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   challengeSwipeButtonText: {
-    fontWeight: "700",
-    fontSize: 13,
-    textAlign: "center",
+    ...createCtaText({ fontSize: 13, textAlign: "center" }),
   },
   goalProgressBar: {
     height: 8,
@@ -16553,11 +16572,7 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   profileMoodStatus: {
-    marginTop: 10,
-    fontSize: 13,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    ...createCtaText({ fontSize: 13, textTransform: "uppercase", marginTop: 10 }),
   },
   profileScrollContent: {
     paddingTop: 4,
@@ -16585,13 +16600,10 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   rewardBadgeSmallText: {
-    fontSize: 12,
-    fontWeight: "600",
+    ...createCtaText({ fontSize: 12 }),
   },
   profileAvatarHint: {
-    fontSize: 12,
-    marginTop: 12,
-    textAlign: "center",
+    ...createSecondaryText({ fontSize: 12, marginTop: 12, textAlign: "center" }),
   },
   profileAvatarEditBadge: {
     position: "absolute",
@@ -16609,16 +16621,14 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   profileName: {
+    ...TYPOGRAPHY.blockTitle,
     fontSize: 28,
-    fontWeight: "800",
   },
   profileSubtitle: {
-    marginTop: 4,
+    ...createBodyText({ marginTop: 4 }),
   },
   profileBio: {
-    marginTop: 10,
-    textAlign: "center",
-    lineHeight: 20,
+    ...createBodyText({ marginTop: 10, textAlign: "center", lineHeight: 20 }),
   },
   profileStatsRow: {
     flexDirection: "row",
@@ -16631,12 +16641,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   profileStatValue: {
-    fontWeight: "700",
+    ...createBodyText({ fontWeight: "700" }),
   },
   profileStatLabel: {
-    fontSize: 12,
-    textTransform: "uppercase",
-    marginTop: 4,
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase", marginTop: 4 }),
   },
   profileActions: {
     width: "100%",
@@ -16649,7 +16657,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   profileActionPrimaryText: {
-    fontWeight: "700",
+    ...createCtaText(),
   },
   profileActionSecondary: {
     paddingVertical: 14,
@@ -16658,7 +16666,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   profileActionSecondaryText: {
-    fontWeight: "600",
+    ...createCtaText(),
   },
   profileInput: {
     width: "100%",
@@ -16894,12 +16902,10 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   historyItemTitle: {
-    fontSize: 15,
-    fontWeight: "600",
+    ...createBodyText({ fontWeight: "600" }),
   },
   historyItemMeta: {
-    fontSize: 12,
-    marginTop: 4,
+    ...createSecondaryText({ marginTop: 4 }),
   },
   profileLinkButton: {
     borderWidth: 1,
@@ -16910,14 +16916,13 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   profileLinkText: {
-    fontSize: 14,
-    fontWeight: "700",
+    ...createCtaText({ fontSize: 14 }),
   },
   profileLinkHint: {
-    fontSize: 12,
+    ...createSecondaryText({ fontSize: 12 }),
   },
   resetButtonText: {
-    fontWeight: "600",
+    ...createCtaText(),
   },
   tabBar: {
     flexDirection: "row",
@@ -16941,8 +16946,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   tabButtonText: {
-    fontSize: 13,
-    textTransform: "uppercase",
+    ...createCtaText({ fontSize: 13, textTransform: "uppercase" }),
   },
   analyticsConsentScreen: {
     flex: 1,
@@ -16958,12 +16962,10 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   analyticsConsentTitle: {
-    fontSize: 24,
-    fontWeight: "800",
+    ...TYPOGRAPHY.blockTitle,
   },
   analyticsConsentBody: {
-    fontSize: 15,
-    lineHeight: 22,
+    ...createBodyText({ lineHeight: 22 }),
   },
   analyticsConsentPrimary: {
     borderRadius: 20,
@@ -16971,8 +16973,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   analyticsConsentPrimaryText: {
-    fontSize: 15,
-    fontWeight: "700",
+    ...createCtaText({ fontSize: 15 }),
   },
   analyticsConsentSecondary: {
     borderWidth: 1,
@@ -16981,8 +16982,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   analyticsConsentSecondaryText: {
-    fontSize: 14,
-    fontWeight: "600",
+    ...createCtaText({ fontSize: 14 }),
   },
   modalContainer: {
     flex: 1,
@@ -17044,8 +17044,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   partialInfo: {
-    marginVertical: 12,
-    textAlign: "center",
+    ...createBodyText({ marginVertical: 12, textAlign: "center" }),
   },
   appleButton: {
     paddingVertical: 16,
@@ -17054,12 +17053,10 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   appleButtonText: {
-    fontWeight: "700",
-    fontSize: 16,
+    ...createCtaText({ fontSize: 16 }),
   },
   payCancel: {
-    textAlign: "center",
-    marginTop: 12,
+    ...createSecondaryText({ textAlign: "center", marginTop: 12 }),
   },
   cartBadge: {
     position: "absolute",
@@ -17160,7 +17157,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   quickModalPrimaryText: {
-    fontWeight: "700",
+    ...createCtaText(),
   },
   termsCard: {
     width: "100%",
@@ -17169,14 +17166,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   termsTitle: {
-    fontSize: 22,
-    fontWeight: "800",
+    ...TYPOGRAPHY.blockTitle,
     textAlign: "center",
   },
   termsSubtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: "center",
+    ...createBodyText({ fontSize: 15, lineHeight: 22, textAlign: "center" }),
   },
   termsScroll: {
     maxHeight: 260,
@@ -17191,13 +17185,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   termsPointIndex: {
-    fontSize: 13,
-    fontWeight: "700",
+    ...createCtaText({ fontSize: 13 }),
   },
   termsPointText: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
+    ...createBodyText({ flex: 1, fontSize: 15, lineHeight: 22 }),
   },
   termsLinkButton: {
     borderWidth: 1,
@@ -17206,12 +17197,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   termsLinkText: {
-    fontSize: 14,
-    fontWeight: "700",
+    ...createCtaText({ fontSize: 14 }),
   },
   termsHint: {
-    fontSize: 12,
-    textAlign: "center",
+    ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
   },
   languageMascot: {
     width: 240,
@@ -17220,11 +17209,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   confettiLayer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -17284,22 +17269,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   impulseAlertBadgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   impulseAlertEmoji: {
     fontSize: 28,
   },
   impulseAlertTitle: {
-    fontSize: 22,
-    fontWeight: "800",
+    ...TYPOGRAPHY.blockTitle,
   },
   impulseAlertBody: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "600",
+    ...createBodyText({ fontSize: 15, lineHeight: 22 }),
   },
   impulseAlertStats: {
     flexDirection: "row",
@@ -17312,15 +17291,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   impulseAlertStatLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
+    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
   },
   impulseAlertStatValue: {
-    fontSize: 18,
-    fontWeight: "800",
-    marginTop: 6,
+    ...createBodyText({ fontSize: 18, fontWeight: "800", marginTop: 6 }),
   },
   impulseAlertMoodCard: {
     borderRadius: 18,
@@ -17328,9 +17302,7 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   impulseAlertMood: {
-    fontSize: 13,
-    fontWeight: "700",
-    lineHeight: 18,
+    ...createBodyText({ fontSize: 14, lineHeight: 20 }),
   },
   impulseAlertButton: {
     borderRadius: 16,
@@ -17341,12 +17313,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   impulseAlertButtonText: {
-    fontSize: 15,
-    fontWeight: "700",
+    ...createCtaText({ fontSize: 15 }),
   },
   impulseAlertButtonIcon: {
-    fontSize: 16,
-    fontWeight: "800",
+    ...createCtaText({ fontSize: 16 }),
   },
   celebrationCat: {
     width: 90,
@@ -17379,13 +17349,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   levelTitle: {
-    fontSize: 28,
-    fontWeight: "900",
+    ...TYPOGRAPHY.display,
+    fontSize: 32,
   },
   levelSubtitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    textAlign: "center",
+    ...createBodyText({ fontSize: 16, fontWeight: "700", textAlign: "center" }),
   },
   rewardOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -17590,8 +17558,8 @@ const styles = StyleSheet.create({
     resizeMode: "contain",
   },
   customTemptationText: {
+    ...TYPOGRAPHY.blockTitle,
     fontSize: 18,
-    fontWeight: "800",
     textAlign: "center",
   },
   rainLayer: {
@@ -17624,13 +17592,12 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   sheetTitle: {
-    fontSize: 18,
-    fontWeight: "700",
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 20,
     textAlign: "center",
   },
   sheetSubtitle: {
-    fontSize: 14,
-    textAlign: "center",
+    ...createBodyText({ fontSize: 15, textAlign: "center" }),
   },
   sheetButton: {
     borderWidth: 1,
@@ -17639,9 +17606,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   sheetCancel: {
-    textAlign: "center",
-    fontWeight: "600",
-    marginTop: 4,
+    ...createCtaText({ textAlign: "center", marginTop: 4 }),
   },
   priceModalBackdrop: {
     flex: 1,
@@ -17657,16 +17622,12 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   priceModalTitle: {
+    ...TYPOGRAPHY.blockTitle,
     fontSize: 20,
-    fontWeight: "700",
     textAlign: "center",
   },
   priceModalLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 12,
-    marginBottom: 4,
-    textTransform: "uppercase",
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase", marginTop: 12, marginBottom: 4 }),
   },
   priceModalInput: {
     borderWidth: 1,
@@ -17691,15 +17652,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   goalPickerButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
+    ...createCtaText({ fontSize: 15 }),
   },
   goalPickerReset: {
     marginTop: 6,
   },
   goalPickerResetText: {
-    fontSize: 13,
-    fontWeight: "600",
+    ...createSecondaryText({ fontSize: 13 }),
   },
   temptationEditOverlay: {
     position: "absolute",
@@ -17808,14 +17767,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   goalRenewalTitle: {
-    fontSize: 24,
-    fontWeight: "800",
+    ...TYPOGRAPHY.blockTitle,
     textAlign: "center",
   },
   goalRenewalSubtitle: {
-    fontSize: 15,
-    textAlign: "center",
-    lineHeight: 20,
+    ...createBodyText({ fontSize: 16, textAlign: "center", lineHeight: 22 }),
   },
   goalRenewalActions: {
     flexDirection: "row",
@@ -17830,8 +17786,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   goalRenewalSecondaryText: {
-    fontSize: 15,
-    fontWeight: "600",
+    ...createCtaText({ fontSize: 15 }),
   },
   goalRenewalPrimary: {
     flex: 1,
@@ -17840,8 +17795,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   goalRenewalPrimaryText: {
-    fontSize: 15,
-    fontWeight: "700",
+    ...createCtaText({ fontSize: 15 }),
   },
   onboardContainer: {
     flex: 1,
@@ -17854,12 +17808,10 @@ const styles = StyleSheet.create({
     paddingBottom: 60,
   },
   onboardTitle: {
-    fontSize: 32,
-    fontWeight: "800",
+    ...TYPOGRAPHY.display,
   },
   onboardSubtitle: {
-    fontSize: 16,
-    lineHeight: 22,
+    ...createBodyText({ fontSize: 16, lineHeight: 22 }),
   },
   avatarPreview: {
     borderWidth: 1,
@@ -17879,8 +17831,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   baselineHint: {
-    fontSize: 14,
-    lineHeight: 20,
+    ...createSecondaryText({ fontSize: 14, lineHeight: 20 }),
   },
   avatarImage: {
     width: 120,
@@ -17920,9 +17871,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   goalCustomSectionTitle: {
-    marginTop: 16,
-    fontSize: 14,
-    textTransform: "uppercase",
+    ...createCtaText({ fontSize: 14, textTransform: "uppercase", marginTop: 16 }),
   },
   goalCustomButton: {
     borderWidth: 1,
@@ -17932,8 +17881,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   goalCustomButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
+    ...createCtaText({ fontSize: 14 }),
   },
   goalOption: {
     width: "48%",
@@ -17959,19 +17907,16 @@ const styles = StyleSheet.create({
     fontSize: 24,
   },
   personaTitle: {
-    fontWeight: "700",
-    fontSize: 15,
+    ...createBodyText({ fontWeight: "700", fontSize: 15 }),
   },
   personaSubtitleCard: {
-    fontSize: 13,
-    lineHeight: 18,
+    ...createBodyText({ fontSize: 14, lineHeight: 20 }),
   },
   goalEmoji: {
     fontSize: 28,
   },
   goalText: {
-    fontWeight: "600",
-    textAlign: "center",
+    ...createBodyText({ fontWeight: "600", textAlign: "center" }),
   },
   languageButtons: {
     flexDirection: "row",
@@ -17983,8 +17928,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   languageTermsNote: {
-    fontSize: 12,
-    lineHeight: 18,
+    ...createSecondaryText({ fontSize: 12, lineHeight: 18 }),
   },
   languageTermsButton: {
     borderWidth: 1,
@@ -17993,8 +17937,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   languageTermsButtonText: {
-    fontSize: 13,
-    fontWeight: "700",
+    ...createCtaText({ fontSize: 13 }),
   },
   genderGrid: {
     flexDirection: "row",
@@ -18013,7 +17956,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   genderLabel: {
-    fontWeight: "600",
+    ...createBodyText({ fontWeight: "600" }),
   },
   languageButton: {
     flex: 1,
@@ -18037,18 +17980,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   onboardBackLabel: {
-    fontSize: 13,
-    fontWeight: "600",
+    ...createCtaText({ fontSize: 13 }),
   },
   languageHint: {
-    marginTop: 8,
-    fontSize: 12,
-    lineHeight: 16,
+    ...createSecondaryText({ marginTop: 8, fontSize: 12 }),
   },
   goalTargetHint: {
-    marginTop: 8,
-    marginBottom: 22,
-    fontSize: 13,
+    ...createSecondaryText({ fontSize: 13, marginTop: 8, marginBottom: 22 }),
   },
   logoSplash: {
     flex: 1,
@@ -18057,9 +17995,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   logoSplashText: {
+    ...TYPOGRAPHY.logo,
     fontSize: 48,
-    fontWeight: "900",
-    letterSpacing: 2,
+    letterSpacing: -0.5,
     color: "#111",
   },
 });
