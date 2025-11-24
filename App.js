@@ -11261,7 +11261,7 @@ function AppContent() {
           savedUSD: 0,
           status: "active",
           createdAt: Date.now(),
-          autoManaged: true,
+          autoManaged: false,
           emoji: item.emoji || DEFAULT_GOAL_EMOJI,
           pinnedSource: pinnedBy,
         };
@@ -11974,7 +11974,7 @@ function AppContent() {
           savedUSD: 0,
           status: "active",
           createdAt: Date.now(),
-          autoManaged: true,
+          autoManaged: false,
           emoji: template?.emoji || DEFAULT_GOAL_EMOJI,
         };
         setWishes((prev) => insertWishAfterPrimary(prev, newWish));
@@ -16626,6 +16626,8 @@ const styles = StyleSheet.create({
   },
   profileSubtitle: {
     ...createBodyText({ marginTop: 4 }),
+    fontSize: 13,
+    lineHeight: 18,
   },
   profileBio: {
     ...createBodyText({ marginTop: 10, textAlign: "center", lineHeight: 20 }),
