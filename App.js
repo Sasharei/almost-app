@@ -330,8 +330,12 @@ const CUSTOM_SPEND_SAMPLE_USD = 7.5;
 
 const getDayKey = (date) => {
   const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return "";
   d.setHours(0, 0, 0, 0);
-  return d.toISOString().split("T")[0];
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 };
 
 const isSameDay = (tsA, tsB = Date.now()) => {
@@ -853,8 +857,8 @@ const CoinRainOverlay = React.memo(({ dropCount = 14 }) => {
   ).current;
 
   useEffect(() => {
-    drops.forEach(({ anim, duration, delay }) => {
-      Animated.loop(
+    const loops = drops.map(({ anim, duration, delay }) => {
+      const animation = Animated.loop(
         Animated.sequence([
           Animated.delay(delay),
           Animated.timing(anim, {
@@ -869,8 +873,13 @@ const CoinRainOverlay = React.memo(({ dropCount = 14 }) => {
             useNativeDriver: true,
           }),
         ])
-      ).start();
+      );
+      animation.start();
+      return animation;
     });
+    return () => {
+      loops.forEach((animation) => animation?.stop?.());
+    };
   }, [drops]);
 
   return (
@@ -1428,6 +1437,10 @@ const mapHistoryEventsToMoodEvents = (history = [], now = Date.now()) =>
 const WEEKDAY_LABELS = {
   ru: ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"],
   en: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+};
+const WEEKDAY_LABELS_MONDAY_FIRST = {
+  ru: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
+  en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
 };
 
 const buildSavingsBreakdown = (
@@ -5142,7 +5155,7 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
   );
 }
 
-function FeedScreen({
+const FeedScreen = React.memo(function FeedScreen({
   products,
   categories,
   activeCategory,
@@ -5475,7 +5488,7 @@ function FeedScreen({
     });
     return keys;
   }, [historyEvents]);
-  const weekLabels = WEEKDAY_LABELS[language] || WEEKDAY_LABELS.en;
+  const weekLabels = WEEKDAY_LABELS_MONDAY_FIRST[language] || WEEKDAY_LABELS_MONDAY_FIRST.en;
   const weekDays = useMemo(() => {
     const today = new Date(todayTimestamp);
     const start = new Date(today);
@@ -5518,7 +5531,9 @@ function FeedScreen({
       const amountUSD = map.get(key) || 0;
       if (amountUSD > max) max = amountUSD;
       const weekdayIndex = (date.getDay() + 6) % 7;
-      const label = WEEKDAY_LABELS[language]?.[weekdayIndex] || WEEKDAY_LABELS.en[weekdayIndex];
+      const label =
+        WEEKDAY_LABELS_MONDAY_FIRST[language]?.[weekdayIndex] ||
+        WEEKDAY_LABELS_MONDAY_FIRST.en[weekdayIndex];
       const amountLocal = convertToCurrency(amountUSD, currency);
       return {
         key,
@@ -5691,7 +5706,7 @@ function FeedScreen({
       />
     </SafeAreaView>
   );
-}
+});
 
 const SwipeableGoalRow = ({
   children,
@@ -8423,6 +8438,19 @@ function AppContent() {
   const [moodDetailsVisible, setMoodDetailsVisible] = useState(false);
   const [potentialDetailsVisible, setPotentialDetailsVisible] = useState(false);
   const [potentialDetailsText, setPotentialDetailsText] = useState("");
+  const openMoodDetails = useCallback(() => setMoodDetailsVisible(true), []);
+  const closeMoodDetails = useCallback(() => setMoodDetailsVisible(false), []);
+  const openPotentialDetails = useCallback((description) => {
+    setPotentialDetailsText(description);
+    setPotentialDetailsVisible(true);
+  }, []);
+  const closePotentialDetails = useCallback(() => setPotentialDetailsVisible(false), []);
+  const openSavingsBreakdown = useCallback(() => setSavingsBreakdownVisible(true), []);
+  const closeSavingsBreakdown = useCallback(() => setSavingsBreakdownVisible(false), []);
+  const openGoalLinkPrompt = useCallback((item, intent = "edit") => {
+    if (!item) return;
+    setGoalLinkPrompt({ visible: true, item, intent });
+  }, []);
   const [moodGradient, setMoodGradient] = useState(() =>
     applyThemeToMoodGradient(getMoodGradient(), theme)
   );
@@ -8463,7 +8491,7 @@ function AppContent() {
     if (!tutorialVisible || !activeTutorialStep?.tabs?.length) return null;
     return new Set(activeTutorialStep.tabs);
   }, [tutorialVisible, activeTutorialStep]);
-  const t = (key, replacements = {}) => {
+  const t = useCallback((key, replacements = {}) => {
     let raw = TRANSLATIONS[language][key];
     if (raw && typeof raw === "object" && !Array.isArray(raw)) {
       const genderValue = raw[activeGender];
@@ -8485,7 +8513,7 @@ function AppContent() {
       text = text.replace(`{{${token}}}`, value);
     });
     return text;
-  };
+  }, [activeGender, language]);
   const currentMood = useMemo(
     () => deriveMoodFromState(moodState, pendingList.length),
     [moodState.events, moodState.lastInteractionAt, moodState.lastVisitAt, pendingList.length]
@@ -10071,10 +10099,10 @@ function AppContent() {
     };
   }, []);
 
-  const handleCategorySelect = (category) => {
+  const handleCategorySelect = useCallback((category) => {
     triggerHaptic();
     setActiveCategory(category);
-  };
+  }, []);
 
   const handleTabChange = (tabKey) => {
     triggerHaptic();
@@ -12172,6 +12200,12 @@ function AppContent() {
     },
     [closePriceEditor, priceEditor.item, removeTemptationTemplate, t]
   );
+  const handleTemptationDelete = useCallback(
+    (item) => {
+      promptTemptationDelete(item);
+    },
+    [promptTemptationDelete]
+  );
 
   const handleRemoveWish = useCallback(
     (wishId) => {
@@ -12883,11 +12917,8 @@ const handleFreeDayRescue = useCallback(() => {
             freeDayRescueCost={FREE_DAY_RESCUE_COST}
             impulseInsights={impulseInsights}
             moodPreset={moodPreset}
-            onMoodDetailsOpen={() => setMoodDetailsVisible(true)}
-            onPotentialDetailsOpen={(description) => {
-              setPotentialDetailsText(description);
-              setPotentialDetailsVisible(true);
-            }}
+            onMoodDetailsOpen={openMoodDetails}
+            onPotentialDetailsOpen={openPotentialDetails}
             heroGoalTargetUSD={heroGoalTargetUSD}
             heroGoalSavedUSD={heroGoalSavedUSD}
             mascotOverride={mascotOverride}
@@ -12904,13 +12935,10 @@ const handleFreeDayRescue = useCallback(() => {
             onTemptationEditEmojiChange={handlePriceEmojiChange}
             onTemptationEditSave={savePriceEdit}
             onTemptationEditCancel={closePriceEditor}
-            onTemptationEditDelete={(item) => promptTemptationDelete(item)}
-            onTemptationGoalSelect={(item) => {
-              if (!item) return;
-              setGoalLinkPrompt({ visible: true, item, intent: "edit" });
-            }}
-            onTemptationSwipeDelete={(item) => promptTemptationDelete(item)}
-            onSavingsBreakdownPress={() => setSavingsBreakdownVisible(true)}
+            onTemptationEditDelete={handleTemptationDelete}
+            onTemptationGoalSelect={openGoalLinkPrompt}
+            onTemptationSwipeDelete={handleTemptationDelete}
+            onSavingsBreakdownPress={openSavingsBreakdown}
             resolveTemplateTitle={resolveTemplateTitle}
           />
         );
@@ -13134,7 +13162,7 @@ const handleFreeDayRescue = useCallback(() => {
         <View style={styles.screenWrapper}>{renderActiveScreen()}</View>
         {savingsBreakdownVisible && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
-            <TouchableWithoutFeedback onPress={() => setSavingsBreakdownVisible(false)}>
+            <TouchableWithoutFeedback onPress={closeSavingsBreakdown}>
               <View style={styles.breakdownOverlay}>
                 <TouchableWithoutFeedback onPress={() => {}}>
                   <View
@@ -13147,7 +13175,7 @@ const handleFreeDayRescue = useCallback(() => {
                       <Text style={[styles.breakdownTitle, { color: colors.text }]}>
                         {language === "ru" ? "Разбивка экономии" : "Savings breakdown"}
                       </Text>
-                      <TouchableOpacity onPress={() => setSavingsBreakdownVisible(false)}>
+                      <TouchableOpacity onPress={closeSavingsBreakdown}>
                         <Text style={[styles.breakdownClose, { color: colors.muted }]}>✕</Text>
                       </TouchableOpacity>
                     </View>
@@ -13747,10 +13775,10 @@ const handleFreeDayRescue = useCallback(() => {
             visible
             transparent
             animationType="fade"
-            onRequestClose={() => setMoodDetailsVisible(false)}
+            onRequestClose={closeMoodDetails}
             statusBarTranslucent
           >
-            <TouchableWithoutFeedback onPress={() => setMoodDetailsVisible(false)}>
+            <TouchableWithoutFeedback onPress={closeMoodDetails}>
               <View style={styles.moodDetailsBackdrop}>
                 <TouchableWithoutFeedback onPress={() => {}}>
                   <MoodGradientBlock colors={moodGradient} style={styles.moodDetailsCard}>
@@ -13764,7 +13792,7 @@ const handleFreeDayRescue = useCallback(() => {
                     ) : null}
                     <TouchableOpacity
                       style={[styles.moodDetailsButton, { borderColor: colors.text }]}
-                      onPress={() => setMoodDetailsVisible(false)}
+                      onPress={closeMoodDetails}
                     >
                       <Text style={[styles.moodDetailsButtonText, { color: colors.text }]}>
                         {t("profileOk") || "Ок"}
@@ -13782,10 +13810,10 @@ const handleFreeDayRescue = useCallback(() => {
             visible
             transparent
             animationType="fade"
-            onRequestClose={() => setPotentialDetailsVisible(false)}
+            onRequestClose={closePotentialDetails}
             statusBarTranslucent
           >
-            <TouchableWithoutFeedback onPress={() => setPotentialDetailsVisible(false)}>
+            <TouchableWithoutFeedback onPress={closePotentialDetails}>
               <View style={styles.moodDetailsBackdrop}>
                 <TouchableWithoutFeedback onPress={() => {}}>
                   <View
@@ -13802,7 +13830,7 @@ const handleFreeDayRescue = useCallback(() => {
                     </Text>
                     <TouchableOpacity
                       style={[styles.moodDetailsButton, { borderColor: colors.text }]}
-                      onPress={() => setPotentialDetailsVisible(false)}
+                      onPress={closePotentialDetails}
                     >
                       <Text style={[styles.moodDetailsButtonText, { color: colors.text }]}>
                         {t("profileOk") || "Ок"}
