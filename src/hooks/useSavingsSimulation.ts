@@ -1,21 +1,36 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { calcPotentialSaved } from "../utils/savingsSimulation";
+
+const UPDATE_INTERVAL_MS = 60 * 1000; // Avoid re-rendering huge tree every second.
+const MIN_VALUE_DELTA = 0.01;
 
 export function useSavingsSimulation(
   baselineMonthlyWaste: number | null,
   baselineStartAt: string | null
 ) {
   const [potentialSaved, setPotentialSaved] = useState(0);
+  const latestValueRef = useRef(0);
 
   useEffect(() => {
-    if (!baselineMonthlyWaste || !baselineStartAt) return;
+    if (!baselineMonthlyWaste || !baselineStartAt) {
+      if (latestValueRef.current !== 0) {
+        latestValueRef.current = 0;
+        setPotentialSaved(0);
+      }
+      return;
+    }
 
     const update = () => {
-      setPotentialSaved(calcPotentialSaved(baselineMonthlyWaste, baselineStartAt));
+      const nextValue = calcPotentialSaved(baselineMonthlyWaste, baselineStartAt);
+      if (Math.abs(nextValue - latestValueRef.current) < MIN_VALUE_DELTA) {
+        return;
+      }
+      latestValueRef.current = nextValue;
+      setPotentialSaved(nextValue);
     };
 
     update();
-    const id = setInterval(update, 1000);
+    const id = setInterval(update, UPDATE_INTERVAL_MS);
     return () => clearInterval(id);
   }, [baselineMonthlyWaste, baselineStartAt]);
 
