@@ -86,6 +86,8 @@ const STORAGE_KEYS = {
   MOOD_STATE: "@almost_mood_state",
   CHALLENGES: "@almost_challenges",
   CUSTOM_REMINDER: "@almost_custom_reminder",
+  SMART_REMINDERS: "@almost_smart_reminders",
+  DAILY_NUDGES: "@almost_daily_nudges",
   TAMAGOTCHI: "@almost_tamagotchi_state",
   DAILY_SUMMARY: "@almost_daily_summary",
   TUTORIAL: "@almost_tutorial_state",
@@ -141,6 +143,40 @@ const INTER_FONTS = {
 };
 
 const CTA_LETTER_SPACING = 0.4;
+const SMART_REMINDER_DELAY_MS = 23 * 60 * 60 * 1000;
+const SMART_REMINDER_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+const SMART_REMINDER_LIMIT = 40;
+const DAILY_NUDGE_REMINDERS = [
+  { id: "morning", hour: 9, minute: 0, titleKey: "dailyNudgeMorningTitle", bodyKey: "dailyNudgeMorningBody" },
+  { id: "daytime", hour: 14, minute: 0, titleKey: "dailyNudgeDayTitle", bodyKey: "dailyNudgeDayBody" },
+  { id: "evening", hour: 20, minute: 0, titleKey: "dailyNudgeEveningTitle", bodyKey: "dailyNudgeEveningBody" },
+];
+
+const normalizeSmartReminderEntries = (list) => {
+  const now = Date.now();
+  const seen = new Set();
+  const normalized = [];
+  (Array.isArray(list) ? list : []).forEach((entry) => {
+    if (!entry) return;
+    const timestamp = Number(entry.timestamp);
+    if (!Number.isFinite(timestamp)) return;
+    if (now - timestamp > SMART_REMINDER_RETENTION_MS) return;
+    const eventId = entry.eventId || entry.id;
+    if (!eventId || seen.has(eventId)) return;
+    seen.add(eventId);
+    normalized.push({
+      id: entry.id || `smart-${eventId}`,
+      eventId,
+      kind: typeof entry.kind === "string" ? entry.kind : "refuse_spend",
+      title: typeof entry.title === "string" ? entry.title : "",
+      timestamp,
+      scheduledAt: Number(entry.scheduledAt) || timestamp + SMART_REMINDER_DELAY_MS,
+      notificationId: entry.notificationId || null,
+    });
+  });
+  normalized.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  return normalized.slice(0, SMART_REMINDER_LIMIT);
+};
 
 const resolveInterFontFamily = (fontWeight) => {
   if (typeof fontWeight === "string") {
@@ -2226,6 +2262,24 @@ const TRANSLATIONS = {
     customSpendSkip: "Пропустить",
     smartReminderTitle: "Пауза перед «{{temptation}}»",
     smartReminderBody: "Ты решил копить вместо «{{temptation}}». Хочешь удержать фокус?",
+    smartInsightDeclineTitle: {
+      female: "Вчера ты отказалась от «{{temptation}}»",
+      male: "Вчера ты отказался от «{{temptation}}»",
+      none: "Вчера был отказ от «{{temptation}}»",
+    },
+    smartInsightDeclineBody: "Откажись и сегодня. Almost верит в тебя.",
+    smartInsightSpendTitle: {
+      female: "Вчера ты поддалась искушению «{{temptation}}»",
+      male: "Вчера ты поддался искушению «{{temptation}}»",
+      none: "Вчера «{{temptation}}» победило",
+    },
+    smartInsightSpendBody: "Сегодня попробуй устоять, и копилка вырастет.",
+    dailyNudgeMorningTitle: "Утро для осознанности",
+    dailyNudgeMorningBody: "Задай тон дню: обходи импульсы стороной.",
+    dailyNudgeDayTitle: "Днём легко сорваться",
+    dailyNudgeDayBody: "Перед покупкой просто сделай паузу и вспомни, ради чего копишь.",
+    dailyNudgeEveningTitle: "Вечером искушения сильнее",
+    dailyNudgeEveningBody: "Вечером особенно тянет тратить, но лучше держаться плана.",
     baselineTitle: "Сколько уходит на мелкие импульсы?",
     baselineSubtitle: "Прикинь месячную сумму - Almost сравнит её с реальными победами.",
     baselinePlaceholder: "Например {{amount}}",
@@ -2662,6 +2716,16 @@ const TRANSLATIONS = {
     customSpendSkip: "Skip for now",
     smartReminderTitle: "Pause before “{{temptation}}”",
     smartReminderBody: "You planned to save instead of “{{temptation}}”. Stay on track?",
+    smartInsightDeclineTitle: "You skipped “{{temptation}}” yesterday",
+    smartInsightDeclineBody: "Say no again today and keep the streak alive.",
+    smartInsightSpendTitle: "You gave in to “{{temptation}}” yesterday",
+    smartInsightSpendBody: "Try to hold the line today and your savings will thank you.",
+    dailyNudgeMorningTitle: "Morning check-in",
+    dailyNudgeMorningBody: "Set the tone for the day: steer past quick splurges.",
+    dailyNudgeDayTitle: "Midday impulse guard",
+    dailyNudgeDayBody: "Before you tap “buy”, pause and remember the goal.",
+    dailyNudgeEveningTitle: "Evenings tempt the most",
+    dailyNudgeEveningBody: "Evening is prime impulse time, so hold back and let savings win.",
     baselineTitle: "How much slips on small stuff?",
     baselineSubtitle: "Estimate one month of coffees, snacks and impulse buys to compare with real wins.",
     baselinePlaceholder: "E.g. {{amount}}",
@@ -8041,6 +8105,10 @@ function AppContent() {
   const [hiddenTemptations, setHiddenTemptations] = useState([]);
   const [priceEditor, setPriceEditor] = useState({ item: null, value: "", title: "", emoji: "" });
   const [customReminderId, setCustomReminderId] = useState(null);
+  const [smartReminders, setSmartReminders] = useState([]);
+  const [smartRemindersHydrated, setSmartRemindersHydrated] = useState(false);
+  const [dailyNudgeNotificationIds, setDailyNudgeNotificationIds] = useState({});
+  const [dailyNudgesHydrated, setDailyNudgesHydrated] = useState(false);
   const [savedTotalUSD, setSavedTotalUSD] = useState(0);
   const [savedTotalHydrated, setSavedTotalHydrated] = useState(false);
   const [declineCount, setDeclineCount] = useState(0);
@@ -8099,6 +8167,7 @@ function AppContent() {
   const [dailySummaryVisible, setDailySummaryVisible] = useState(false);
   const [dailySummaryData, setDailySummaryData] = useState(null);
   const [dailySummarySeenKey, setDailySummarySeenKey] = useState(null);
+  const dailyNudgeIdsRef = useRef({});
   const handleDailySummaryContinue = useCallback(() => {
     setDailySummaryVisible(false);
     const todayKey = dailySummaryData?.todayKey || getDayKey(Date.now());
@@ -8553,6 +8622,10 @@ function AppContent() {
   useEffect(() => {
     ensureNotificationPermission();
   }, [ensureNotificationPermission]);
+
+  useEffect(() => {
+    dailyNudgeIdsRef.current = dailyNudgeNotificationIds || {};
+  }, [dailyNudgeNotificationIds]);
 
   useEffect(() => {
     schedulePersonalTemptationReminder(profile.customSpend);
@@ -9141,6 +9214,41 @@ function AppContent() {
     [customReminderId, ensureNotificationPermission, persistCustomReminderId, t]
   );
 
+  const rescheduleDailyNudgeNotifications = useCallback(async () => {
+    if (!dailyNudgesHydrated || !DAILY_NUDGE_REMINDERS.length) return;
+    const permitted = await ensureNotificationPermission();
+    if (!permitted) return;
+    const existing = Object.values(dailyNudgeIdsRef.current || {});
+    if (existing.length) {
+      await Promise.all(
+        existing.map((notificationId) =>
+          Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => {})
+        )
+      );
+    }
+    const nextMap = {};
+    for (const def of DAILY_NUDGE_REMINDERS) {
+      try {
+        const notificationId = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: t(def.titleKey),
+            body: t(def.bodyKey),
+          },
+          trigger: { hour: def.hour, minute: def.minute, second: 0, repeats: true },
+        });
+        nextMap[def.id] = notificationId;
+      } catch (error) {
+        console.warn("daily nudge schedule", error);
+      }
+    }
+    setDailyNudgeNotificationIds(nextMap);
+  }, [dailyNudgesHydrated, ensureNotificationPermission, t]);
+
+  useEffect(() => {
+    if (!dailyNudgesHydrated) return;
+    rescheduleDailyNudgeNotifications();
+  }, [dailyNudgesHydrated, language, rescheduleDailyNudgeNotifications, t]);
+
   const loadStoredData = async () => {
     try {
       const [
@@ -9171,6 +9279,8 @@ function AppContent() {
         moodRaw,
         challengesRaw,
         customReminderRaw,
+        dailyNudgesRaw,
+        smartRemindersRaw,
         tamagotchiRaw,
         dailySummaryRaw,
         tutorialRaw,
@@ -9203,6 +9313,8 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.MOOD_STATE),
         AsyncStorage.getItem(STORAGE_KEYS.CHALLENGES),
         AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_REMINDER),
+        AsyncStorage.getItem(STORAGE_KEYS.DAILY_NUDGES),
+        AsyncStorage.getItem(STORAGE_KEYS.SMART_REMINDERS),
         AsyncStorage.getItem(STORAGE_KEYS.TAMAGOTCHI),
         AsyncStorage.getItem(STORAGE_KEYS.DAILY_SUMMARY),
         AsyncStorage.getItem(STORAGE_KEYS.TUTORIAL),
@@ -9301,6 +9413,39 @@ function AppContent() {
       }
       if (customReminderRaw) {
         setCustomReminderId(customReminderRaw);
+      }
+      if (dailyNudgesRaw) {
+        try {
+          const parsed = JSON.parse(dailyNudgesRaw);
+          if (parsed && typeof parsed === "object") {
+            setDailyNudgeNotificationIds(parsed);
+            dailyNudgeIdsRef.current = parsed;
+          } else {
+            setDailyNudgeNotificationIds({});
+            dailyNudgeIdsRef.current = {};
+          }
+        } catch (err) {
+          console.warn("daily nudges parse", err);
+          setDailyNudgeNotificationIds({});
+          dailyNudgeIdsRef.current = {};
+        }
+      } else {
+        setDailyNudgeNotificationIds({});
+        dailyNudgeIdsRef.current = {};
+      }
+      if (smartRemindersRaw) {
+        try {
+          const parsed = JSON.parse(smartRemindersRaw);
+          setSmartReminders((prev) =>
+            normalizeSmartReminderEntries([
+              ...(Array.isArray(parsed) ? parsed : []),
+              ...prev,
+            ])
+          );
+        } catch (err) {
+          console.warn("smart reminders parse", err);
+          setSmartReminders((prev) => normalizeSmartReminderEntries(prev));
+        }
       }
       if (tamagotchiRaw) {
         try {
@@ -9507,6 +9652,8 @@ function AppContent() {
       setRewardsReady(true);
       setMoodHydrated(true);
       setFreeDayHydrated(true);
+      setSmartRemindersHydrated(true);
+      setDailyNudgesHydrated(true);
     }
   };
 
@@ -9733,6 +9880,19 @@ function AppContent() {
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.DECLINES, String(declineCount)).catch(() => {});
   }, [declineCount]);
+
+  useEffect(() => {
+    if (!dailyNudgesHydrated) return;
+    AsyncStorage.setItem(
+      STORAGE_KEYS.DAILY_NUDGES,
+      JSON.stringify(dailyNudgeNotificationIds)
+    ).catch(() => {});
+  }, [dailyNudgeNotificationIds, dailyNudgesHydrated]);
+
+  useEffect(() => {
+    if (!smartRemindersHydrated) return;
+    AsyncStorage.setItem(STORAGE_KEYS.SMART_REMINDERS, JSON.stringify(smartReminders)).catch(() => {});
+  }, [smartReminders, smartRemindersHydrated]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.PENDING, JSON.stringify(pendingList)).catch(() => {});
@@ -10927,6 +11087,51 @@ function AppContent() {
     }
   };
 
+  const registerSmartReminder = useCallback(
+    async (entry) => {
+      if (!entry) return;
+      if (!["refuse_spend", "pending_to_decline", "spend"].includes(entry.kind)) return;
+      const timestamp = Number(entry.timestamp) || Date.now();
+      const triggerTime = timestamp + SMART_REMINDER_DELAY_MS;
+      if (!Number.isFinite(triggerTime) || triggerTime <= Date.now()) return;
+      const permitted = await ensureNotificationPermission();
+      if (!permitted) return;
+      const templateId = entry.meta?.templateId || entry.meta?.id || entry.meta?.template_id;
+      const metaTitle =
+        (typeof entry.meta?.title === "string" && entry.meta.title.trim()) ||
+        resolveTemplateTitle(templateId, "") ||
+        "";
+      const title = metaTitle || t("defaultDealTitle");
+      const isSpendEvent = entry.kind === "spend";
+      try {
+        const notificationId = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: isSpendEvent
+              ? t("smartInsightSpendTitle", { temptation: title })
+              : t("smartInsightDeclineTitle", { temptation: title }),
+            body: isSpendEvent
+              ? t("smartInsightSpendBody", { temptation: title })
+              : t("smartInsightDeclineBody", { temptation: title }),
+          },
+          trigger: new Date(triggerTime),
+        });
+        const payload = {
+          id: `smart-${entry.id}`,
+          eventId: entry.id,
+          kind: entry.kind,
+          title,
+          timestamp,
+          scheduledAt: triggerTime,
+          notificationId,
+        };
+        setSmartReminders((prev) => normalizeSmartReminderEntries([payload, ...prev]));
+      } catch (error) {
+        console.warn("smart reminder schedule", error);
+      }
+    },
+    [ensureNotificationPermission, resolveTemplateTitle, setSmartReminders, t]
+  );
+
   const logHistoryEvent = useCallback(
     (kind, meta = {}) => {
       const timestamp = Date.now();
@@ -10944,8 +11149,9 @@ function AppContent() {
         return next.slice(0, MAX_HISTORY_EVENTS);
       });
       setChallengesState((prev) => applyChallengeEvent(prev, entry));
+      registerSmartReminder(entry);
     },
-    [setChallengesState]
+    [registerSmartReminder, setChallengesState]
   );
 
   const recomputeHistoryAggregates = useCallback(
