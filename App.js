@@ -109,17 +109,6 @@ const HEALTH_COIN_TIERS = [
   { id: "red", value: 1000, asset: require("./assets/coins/Coin_red.png") },
   { id: "pink", value: 10000, asset: require("./assets/coins/Coin_pink.png") },
 ];
-
-const ECONOMY_RULES = {
-  saveRewardStepUSD: 12,
-  minSaveReward: 2,
-  maxSaveReward: 24,
-  baseAchievementReward: 60,
-  freeDayRescueCost: 60,
-  tamagotchiFeedCost: 5,
-  tamagotchiFeedBoost: 24,
-  tamagotchiPartyCost: 20,
-};
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
 const THEMES = {
@@ -275,6 +264,17 @@ const getCelebrationMessages = (language, gender = "none") => {
 
 const RAIN_DROPS = 20;
 const CURRENCY_RATES = { USD: 1, EUR: 0.92, RUB: 92 };
+const CURRENCY_REWARD_STEPS = { USD: 5, EUR: 5, RUB: 500 };
+const ECONOMY_RULES = {
+  saveRewardStepUSD: 5,
+  minSaveReward: 1,
+  maxSaveReward: 24,
+  baseAchievementReward: 60,
+  freeDayRescueCost: 60,
+  tamagotchiFeedCost: 1,
+  tamagotchiFeedBoost: 24,
+  tamagotchiPartyCost: 20,
+};
 const DEFAULT_REMOTE_IMAGE =
   "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=600&q=80";
 const REMINDER_DAYS = 14;
@@ -340,13 +340,26 @@ const buildHealthCoinEntries = (amount = 0) => {
     count: breakdown[tier.id] || 0,
   }));
 };
-const computeRefuseCoinReward = (amountUSD = 0) => {
-  if (!amountUSD || amountUSD <= 0) return ECONOMY_RULES.minSaveReward;
-  const raw = Math.round(amountUSD / ECONOMY_RULES.saveRewardStepUSD);
-  return Math.max(
-    ECONOMY_RULES.minSaveReward,
-    Math.min(ECONOMY_RULES.maxSaveReward, raw)
-  );
+const getLocalRewardStep = (currencyCode = activeCurrency) => {
+  const code = typeof currencyCode === "string" && currencyCode.trim() ? currencyCode : activeCurrency;
+  if (code && CURRENCY_REWARD_STEPS[code]) {
+    return CURRENCY_REWARD_STEPS[code];
+  }
+  const rate = code ? CURRENCY_RATES[code] : null;
+  if (rate && ECONOMY_RULES.saveRewardStepUSD > 0) {
+    return ECONOMY_RULES.saveRewardStepUSD * rate;
+  }
+  return ECONOMY_RULES.saveRewardStepUSD;
+};
+const computeRefuseCoinReward = (amountUSD = 0, currencyCode = activeCurrency) => {
+  if (!amountUSD || amountUSD <= 0) return 0;
+  const localAmount = convertToCurrency(amountUSD, currencyCode);
+  const localStep = getLocalRewardStep(currencyCode);
+  if (!localStep || localStep <= 0) return 0;
+  const normalized = Math.ceil(localAmount / localStep);
+  if (normalized <= 0) return 0;
+  const adjusted = Math.max(ECONOMY_RULES.minSaveReward, normalized);
+  return Math.min(ECONOMY_RULES.maxSaveReward, adjusted);
 };
 
 const computeLevelRewardCoins = (level) => {
@@ -1848,7 +1861,10 @@ const TRANSLATIONS = {
     wishlistSummary: "Всего целей на {{amount}}",
     freeDayButton: "Бесплатный день",
     freeDayLocked: "После 18:00",
-    freeDayLoggedToday: "Сегодня уже засчитано",
+    freeDayBlocked: "Недоступно",
+    freeDayStatusAvailable: "Записать",
+    freeDayStatusLogged: "Записано",
+    freeDayLoggedToday: "Записано",
     freeDayConfirm: "Удалось прожить день без лишних трат?",
     freeDayCongrats: "Серия {{days}} дня(ей)! Отличный фокус.",
     freeDayMilestone: "Серия {{days}} дней! Новый титул!",
@@ -2297,7 +2313,10 @@ const TRANSLATIONS = {
     wishlistSummary: "Total targets worth {{amount}}",
     freeDayButton: "Free day",
     freeDayLocked: "After 6 pm",
-    freeDayLoggedToday: "Already logged today",
+    freeDayBlocked: "Unavailable",
+    freeDayStatusAvailable: "Log day",
+    freeDayStatusLogged: "Logged",
+    freeDayLoggedToday: "Logged today",
     freeDayConfirm: "Stayed away from impulse buys today?",
     freeDayCongrats: "{{days}} day streak! Budget loves it.",
     freeDayMilestone: "{{days}} days in a row! New badge unlocked.",
@@ -2405,7 +2424,10 @@ const TRANSLATIONS = {
     saveGoalComplete: "Goal “{{goal}}” reached! Celebrate the win.",
     freeDayButton: "Free day",
     freeDayLocked: "After 6 pm",
-    freeDayLoggedToday: "Already logged today",
+    freeDayBlocked: "Unavailable",
+    freeDayStatusAvailable: "Log day",
+    freeDayStatusLogged: "Logged",
+    freeDayLoggedToday: "Logged today",
     freeDayConfirm: "Stayed away from impulse buys today?",
     freeDayCongrats: "{{days}} day streak! Budget loves it.",
     freeDayMilestone: "{{days}} days in a row! New badge unlocked.",
@@ -3640,6 +3662,7 @@ const INITIAL_FREE_DAY_STATS = {
   best: 0,
   lastDate: null,
   achievements: [],
+  blockedDate: null,
 };
 
 const FREE_DAY_MILESTONES = [3, 7, 30];
@@ -4669,6 +4692,7 @@ function FreeDayCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const streakActive = (freeDayStats.current || 0) > 0;
+  const blockedToday = freeDayStats.blockedDate === todayKey;
   const palette = streakActive
     ? {
         background: "#E6F8EE",
@@ -4681,9 +4705,13 @@ function FreeDayCard({
         accent: colors.text,
       };
   const buttonColor = streakActive ? palette.accent : "#20A36B";
-  const subtitle = streakActive
-    ? t("freeDayActiveLabel", { days: freeDayStats.current })
-    : t("freeDayInactiveLabel");
+  const statusLabel = canLog
+    ? t("freeDayStatusAvailable")
+    : freeDayStats.lastDate === todayKey
+    ? t("freeDayStatusLogged")
+    : blockedToday
+    ? t("freeDayBlocked")
+    : t("freeDayLocked");
   const stats = [
     { label: t("freeDayCurrentLabel"), value: `${freeDayStats.current || 0}` },
     { label: t("freeDayBestLabel"), value: `${freeDayStats.best || 0}` },
@@ -4700,38 +4728,31 @@ function FreeDayCard({
       ]}
     >
       <View style={styles.freeDayHeader}>
-        <View style={styles.freeDayHeaderText}>
-          <Text style={[styles.freeDayLabel, { color: colors.muted }]}>{t("freeDayCardTitle")}</Text>
-          <Text
-            style={[
-              styles.freeDayValue,
-              !streakActive && styles.freeDayValueInactive,
-              { color: palette.accent },
-            ]}
-          >
-            {subtitle}
-          </Text>
+        <View style={styles.freeDayTitleBlock}>
+          <Text style={[styles.freeDayLabel, { color: colors.text }]}>{t("freeDayCardTitle")}</Text>
         </View>
         {canLog ? (
           <TouchableOpacity
-            style={[styles.freeDayButton, { backgroundColor: buttonColor }]}
+            style={[
+              styles.freeDayStatusPill,
+              { backgroundColor: buttonColor, borderColor: buttonColor },
+            ]}
             onPress={onLog}
+            activeOpacity={0.85}
           >
-            <Text style={styles.freeDayButtonText}>{t("freeDayButton")}</Text>
+            <Text style={[styles.freeDayStatusText, { color: "#fff" }]}>{statusLabel}</Text>
           </TouchableOpacity>
         ) : (
           <View
             style={[
-              styles.freeDayLockedPill,
+              styles.freeDayStatusPill,
               {
                 borderColor: colors.border,
                 backgroundColor: colors.background,
               },
             ]}
           >
-            <Text style={[styles.freeDayLockedText, { color: colors.muted }]}>
-              {freeDayStats.lastDate === todayKey ? t("freeDayLoggedToday") : t("freeDayLocked")}
-            </Text>
+            <Text style={[styles.freeDayStatusText, { color: colors.muted }]}>{statusLabel}</Text>
           </View>
         )}
       </View>
@@ -5313,8 +5334,9 @@ function FeedScreen({
   const todayTimestamp = todayDate.getTime();
   const todayKey = getDayKey(todayDate);
   const dayBeforeYesterdayKey = getDayKey(new Date(todayDate.getTime() - DAY_MS * 2));
+  const freeDayBlockedToday = freeDayStats.blockedDate === todayKey;
   const isEvening = new Date().getHours() >= 18;
-  const canLogFreeDay = isEvening && freeDayStats.lastDate !== todayKey;
+  const canLogFreeDay = isEvening && freeDayStats.lastDate !== todayKey && !freeDayBlockedToday;
   const streakNeedsRescue =
     freeDayStats.current > 0 &&
     freeDayStats.lastDate === dayBeforeYesterdayKey &&
@@ -8008,6 +8030,7 @@ function AppContent() {
   });
   const [wishes, setWishes] = useState([]);
   const [wishesHydrated, setWishesHydrated] = useState(false);
+  const [freeDayHydrated, setFreeDayHydrated] = useState(false);
   const [purchases, setPurchases] = useState([]);
   const [activeTab, setActiveTab] = useState("feed");
   const [catalogOverrides, setCatalogOverrides] = useState({});
@@ -8046,6 +8069,10 @@ function AppContent() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [theme, setTheme] = useState("light");
   const [language, setLanguage] = useState("ru");
+  const isAndroid = Platform.OS === "android";
+  const androidVersion = isAndroid ? Number(Platform.Version) : null;
+  const canToggleNavVisibility =
+    isAndroid && typeof androidVersion === "number" && !Number.isNaN(androidVersion) && androidVersion < 35;
   const resolveTemplateTitle = useCallback(
     (templateId, fallback = null) => {
       if (!templateId) return fallback;
@@ -8701,7 +8728,7 @@ function AppContent() {
   const systemOverlayActive = Boolean(overlay || fabMenuVisible);
 
   useEffect(() => {
-    if (Platform.OS !== "android") return;
+    if (!isAndroid) return;
     const targetNavColor = systemOverlayActive ? overlaySystemColor : colors.card;
     const targetButtonStyle = systemOverlayActive ? "light" : isDarkTheme ? "light" : "dark";
     const targetStatusColor = systemOverlayActive ? overlaySystemColor : colors.background;
@@ -8710,14 +8737,16 @@ function AppContent() {
       try {
         await NavigationBar.setBackgroundColorAsync(targetNavColor);
         await NavigationBar.setButtonStyleAsync(targetButtonStyle);
-        await NavigationBar.setVisibilityAsync(targetNavVisibility);
+        if (canToggleNavVisibility) {
+          await NavigationBar.setVisibilityAsync(targetNavVisibility);
+        }
       } catch (err) {
         console.warn("navigation bar color", err);
       }
     };
     applyNav();
     RNStatusBar.setBackgroundColor(targetStatusColor, true);
-  }, [colors.card, colors.background, isDarkTheme, overlayDimColor, overlaySystemColor, systemOverlayActive]);
+  }, [canToggleNavVisibility, colors.card, colors.background, isAndroid, isDarkTheme, overlayDimColor, overlaySystemColor, systemOverlayActive]);
   const saveOverlayPayload =
     overlay?.type === "save"
       ? typeof overlay.message === "object" && overlay.message !== null
@@ -9477,6 +9506,7 @@ function AppContent() {
       setSavedTotalHydrated(true);
       setRewardsReady(true);
       setMoodHydrated(true);
+      setFreeDayHydrated(true);
     }
   };
 
@@ -9709,8 +9739,9 @@ function AppContent() {
   }, [pendingList]);
 
   useEffect(() => {
+    if (!freeDayHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.FREE_DAY, JSON.stringify(freeDayStats)).catch(() => {});
-  }, [freeDayStats]);
+  }, [freeDayStats, freeDayHydrated]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.REFUSE_STATS, JSON.stringify(refuseStats)).catch(() => {});
@@ -11164,10 +11195,25 @@ function AppContent() {
         },
         ...prev,
       ]);
+      setFreeDayStats((prev) => {
+        const todayKey = getDayKey(Date.now());
+        if (!prev) {
+          return { ...INITIAL_FREE_DAY_STATS, blockedDate: todayKey };
+        }
+        if (prev.blockedDate === todayKey && prev.current === 0) {
+          return prev;
+        }
+        const next = {
+          ...prev,
+          current: 0,
+          blockedDate: todayKey,
+        };
+        return next;
+      });
       logImpulseEvent("spend", item, priceUSD, title);
       requestMascotAnimation(Math.random() > 0.5 ? "sad" : "ohno");
     },
-    [language, logHistoryEvent, logImpulseEvent, requestMascotAnimation]
+    [language, logHistoryEvent, logImpulseEvent, requestMascotAnimation, setFreeDayStats]
   );
 
   const handleSpendConfirm = useCallback(() => {
@@ -11327,7 +11373,9 @@ function AppContent() {
         const timestamp = saveTimestamp;
         setSavedTotalUSD((prev) => prev + priceUSD);
         setDeclineCount((prev) => prev + 1);
-        const coinReward = priceUSD ? computeRefuseCoinReward(priceUSD) : 0;
+        const coinReward = priceUSD
+          ? computeRefuseCoinReward(priceUSD, profile.currency || DEFAULT_PROFILE.currency)
+          : 0;
         if (coinReward > 0) {
           setHealthPoints((prev) => prev + coinReward);
         }
@@ -11648,6 +11696,7 @@ function AppContent() {
             best,
             lastDate: todayKey,
             achievements,
+            blockedDate: null,
           });
           logHistoryEvent("free_day", { total, current, best });
           logEvent("free_day_logged", {
@@ -15095,34 +15144,26 @@ const styles = StyleSheet.create({
   },
   freeDayCard: {
     marginTop: 12,
-    padding: 14,
-    borderRadius: 20,
+    padding: 18,
+    borderRadius: 24,
     borderWidth: 1,
-    gap: 10,
+    gap: 12,
     position: "relative",
   },
   freeDayHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 6,
+    alignItems: "center",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 12,
   },
-  freeDayHeaderText: {
+  freeDayTitleBlock: {
     flex: 1,
-    gap: 2,
   },
   freeDayLabel: {
     ...TYPOGRAPHY.blockTitle,
     fontSize: 18,
-    letterSpacing: -0.2,
-  },
-  freeDayValue: {
-    ...createBodyText({ fontSize: 18, fontWeight: "700" }),
-  },
-  freeDayValueInactive: {
-    ...createBodyText({ fontSize: 16, fontWeight: "400" }),
+    letterSpacing: -0.3,
   },
   freeDayStatsRow: {
     flexDirection: "row",
@@ -15139,15 +15180,6 @@ const styles = StyleSheet.create({
   },
   freeDayStatValue: {
     ...createBodyText({ fontSize: 16, fontWeight: "700", textAlign: "center" }),
-  },
-  freeDayButton: {
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    alignSelf: "flex-start",
-  },
-  freeDayButtonText: {
-    ...createCtaText({ fontSize: 13, color: "#fff" }),
   },
   freeDaySummaryRow: {
     flexDirection: "row",
@@ -15177,15 +15209,15 @@ const styles = StyleSheet.create({
   freeDayToggleText: {
     ...createCtaText({ fontSize: 12, textAlign: "center" }),
   },
-  freeDayLockedPill: {
+  freeDayStatusPill: {
     borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderWidth: 1,
     alignSelf: "flex-start",
     alignItems: "center",
   },
-  freeDayLockedText: {
+  freeDayStatusText: {
     ...createCtaText({ fontSize: 12, textAlign: "center" }),
   },
   freeDayHealthBadge: {
