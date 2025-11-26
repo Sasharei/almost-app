@@ -91,6 +91,7 @@ const STORAGE_KEYS = {
   TAMAGOTCHI: "@almost_tamagotchi_state",
   DAILY_SUMMARY: "@almost_daily_summary",
   TUTORIAL: "@almost_tutorial_state",
+  DAILY_CHALLENGE: "@almost_daily_challenge_state",
 };
 
 const PURCHASE_GOAL = 20000;
@@ -153,6 +154,80 @@ const DAILY_NUDGE_REMINDERS = [
   { id: "evening", hour: 20, minute: 0, titleKey: "dailyNudgeEveningTitle", bodyKey: "dailyNudgeEveningBody" },
 ];
 const ANDROID_DAILY_NUDGE_CHANNEL_ID = "daily-nudges";
+const DAILY_CHALLENGE_FALLBACK_IDS = ["coffee_to_go", "croissant_break", "pizza"];
+const DAILY_CHALLENGE_REWARD_MULTIPLIER = 2;
+
+const DAILY_CHALLENGE_STATUS = {
+  IDLE: "idle",
+  OFFER: "offer",
+  ACTIVE: "active",
+  COMPLETED: "completed",
+  FAILED: "failed",
+};
+
+const buildTemptationPressureMap = (events = []) => {
+  const map = {};
+  (Array.isArray(events) ? events : []).forEach((event) => {
+    if (!event?.templateId) return;
+    const entry = map[event.templateId] || {
+      spend: 0,
+      save: 0,
+      lastTimestamp: 0,
+    };
+    if (event.action === "spend") {
+      entry.spend += 1;
+      if (event.timestamp && event.timestamp > entry.lastTimestamp) {
+        entry.lastTimestamp = event.timestamp;
+      }
+    } else if (event.action === "save") {
+      entry.save += 1;
+    }
+    map[event.templateId] = entry;
+  });
+  return map;
+};
+
+const resolveDailyChallengeTemplateId = (pressureMap = {}, fallbackIds = DAILY_CHALLENGE_FALLBACK_IDS) => {
+  const ranked = Object.entries(pressureMap || {})
+    .map(([templateId, stats]) => ({
+      templateId,
+      spend: stats?.spend || 0,
+      save: stats?.save || 0,
+      lastTimestamp: stats?.lastTimestamp || 0,
+      score: (stats?.spend || 0) * 2 - (stats?.save || 0),
+    }))
+    .filter((entry) => entry.spend > 0)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.spend !== a.spend) return b.spend - a.spend;
+      return b.lastTimestamp - a.lastTimestamp;
+    });
+  if (ranked.length > 0) {
+    return ranked[0].templateId;
+  }
+  const fallbacks = Array.isArray(fallbackIds) ? fallbackIds : DAILY_CHALLENGE_FALLBACK_IDS;
+  return fallbacks.find((id) => typeof id === "string" && id.length) || null;
+};
+
+const createInitialDailyChallengeState = () => ({
+  id: null,
+  dateKey: null,
+  templateId: null,
+  templateTitle: "",
+  emoji: "✨",
+  priceUSD: 0,
+  rewardBonus: 0,
+  baseReward: 0,
+  templateLabel: "",
+  target: 1,
+  progress: 0,
+  status: DAILY_CHALLENGE_STATUS.IDLE,
+  acceptedAt: null,
+  completedAt: null,
+  failedAt: null,
+  offerDismissed: false,
+  rewardGranted: false,
+});
 const buildDailyNudgeTrigger = (hour, minute) => {
   if (Platform.OS === "android") {
     const now = new Date();
@@ -414,6 +489,15 @@ const computeRefuseCoinReward = (amountUSD = 0, currencyCode = activeCurrency) =
   if (normalized <= 0) return 0;
   const adjusted = Math.max(ECONOMY_RULES.minSaveReward, normalized);
   return Math.min(ECONOMY_RULES.maxSaveReward, adjusted);
+};
+
+const computeDailyChallengeBonus = (amountUSD = 0, currencyCode = activeCurrency) => {
+  const baseReward = computeRefuseCoinReward(amountUSD, currencyCode);
+  const multiplied = Math.round(baseReward * DAILY_CHALLENGE_REWARD_MULTIPLIER);
+  if (multiplied > 0) {
+    return Math.max(multiplied - baseReward, baseReward || 1);
+  }
+  return Math.max(1, baseReward || ECONOMY_RULES.minSaveReward);
 };
 
 const computeLevelRewardCoins = (level) => {
@@ -2182,6 +2266,20 @@ const TRANSLATIONS = {
     challengeCancelConfirmMessage: "Прервать «{{title}}»? Прогресс обнулится.",
     challengeCancelConfirmYes: "Отменить",
     challengeCancelConfirmNo: "Продолжить",
+    dailyChallengeOfferBadge: "мини-челлендж",
+    dailyChallengeOfferTitle: "Вызов дня",
+    dailyChallengeOfferSubtitle: "Попробуй провести день без «{{temptation}}»",
+    dailyChallengeOfferHint: "Откажись хотя бы один раз и получишь двойную награду.",
+    dailyChallengeOfferReward: "+{{amount}} монет сверху",
+    dailyChallengeOfferAccept: "Принять вызов",
+    dailyChallengeOfferLater: "Позже",
+    dailyChallengeWidgetBadge: "мини-челлендж",
+    dailyChallengeWidgetTitle: "Активный челлендж",
+    dailyChallengeWidgetDesc: "День без «{{temptation}}» = монеты х2",
+    dailyChallengeWidgetProgress: "Прогресс {{current}} / {{target}}",
+    dailyChallengeWidgetReward: "+{{amount}} монет",
+    dailyChallengeRewardReason: "Мини-челлендж «{{temptation}}» выполнен",
+    dailyChallengeFailedText: "Сегодня «{{temptation}}» оказалось сильнее",
     healthCelebrateTitle: "+{{amount}} монет",
     healthCelebrateSubtitle: "Сохраняй серию бесплатных дней.",
     healthCelebrateLevel: "Новый уровень! Алми доволен.",
@@ -2643,6 +2741,20 @@ const TRANSLATIONS = {
     challengeCancelConfirmMessage: "Stop “{{title}}”? All progress will reset.",
     challengeCancelConfirmYes: "Cancel",
     challengeCancelConfirmNo: "Keep going",
+    dailyChallengeOfferBadge: "daily challenge",
+    dailyChallengeOfferTitle: "Today’s mini challenge",
+    dailyChallengeOfferSubtitle: "Go a day without “{{temptation}}”",
+    dailyChallengeOfferHint: "Skip it once today and grab double rewards.",
+    dailyChallengeOfferReward: "+{{amount}} bonus health",
+    dailyChallengeOfferAccept: "Accept challenge",
+    dailyChallengeOfferLater: "Maybe later",
+    dailyChallengeWidgetBadge: "daily challenge",
+    dailyChallengeWidgetTitle: "Active mini challenge",
+    dailyChallengeWidgetDesc: "Day without “{{temptation}}” = coins x2",
+    dailyChallengeWidgetProgress: "Progress {{current}} / {{target}}",
+    dailyChallengeWidgetReward: "+{{amount}} health",
+    dailyChallengeRewardReason: "Mini challenge “{{temptation}}” complete",
+    dailyChallengeFailedText: "“{{temptation}}” won today",
     healthCelebrateTitle: "+{{amount}} coins",
     healthCelebrateSubtitle: "Use it to rescue your free-day streak.",
     healthCelebrateLevel: "Level up! Almi is happy.",
@@ -5245,6 +5357,7 @@ const FeedScreen = React.memo(function FeedScreen({
   resolveTemplateTitle = () => null,
   tamagotchiMood = null,
 }) {
+  const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
   const [impulseExpanded, setImpulseExpanded] = useState(false);
   const handleBaselineSetup = onBaselineSetup || (() => {});
   const realSavedUSD = useRealSavedAmount();
@@ -5271,8 +5384,8 @@ const FeedScreen = React.memo(function FeedScreen({
     : t("progressGoal", { current: heroGoalSavedLabel, goal: heroGoalSavedLabel });
   const personaPreset = useMemo(() => getPersonaPreset(profile?.persona), [profile?.persona]);
   const latestSaving = useMemo(
-    () => historyEvents.find((entry) => entry.kind === "refuse_spend"),
-    [historyEvents]
+    () => resolvedHistoryEvents.find((entry) => entry.kind === "refuse_spend"),
+    [resolvedHistoryEvents]
   );
   const heroSpendCopy = useMemo(() => {
     const resolvedLatestTitle = resolveTemplateTitle(
@@ -5517,13 +5630,13 @@ const FeedScreen = React.memo(function FeedScreen({
   const analyticsPreview = analyticsStats.slice(0, 3);
   const freeDayEventKeys = useMemo(() => {
     const keys = new Set();
-    historyEvents.forEach((entry) => {
+    resolvedHistoryEvents.forEach((entry) => {
       if (entry.kind === "free_day") {
         keys.add(getDayKey(entry.timestamp));
       }
     });
     return keys;
-  }, [historyEvents]);
+  }, [resolvedHistoryEvents]);
   const weekLabels = WEEKDAY_LABELS_MONDAY_FIRST[language] || WEEKDAY_LABELS_MONDAY_FIRST.en;
   const weekDays = useMemo(() => {
     const today = new Date(todayTimestamp);
@@ -5552,7 +5665,7 @@ const FeedScreen = React.memo(function FeedScreen({
     start.setDate(today.getDate() - 6);
     const minTimestamp = start.getTime();
     const map = new Map();
-    historyEvents.forEach((entry) => {
+    resolvedHistoryEvents.forEach((entry) => {
       if (entry.kind !== "refuse_spend") return;
       if (!entry.timestamp || entry.timestamp < minTimestamp) return;
       const key = getDayKey(entry.timestamp);
@@ -5583,7 +5696,7 @@ const FeedScreen = React.memo(function FeedScreen({
       ...item,
       percent: item.amountUSD > 0 ? Math.max((item.amountUSD / maxValue) * 100, 8) : 0,
     }));
-  }, [currency, historyEvents, language, todayTimestamp]);
+  }, [currency, resolvedHistoryEvents, language, todayTimestamp]);
   const showImpulseCard = useMemo(() => hasImpulseHistory(impulseInsights), [impulseInsights]);
 
   return (
@@ -7134,6 +7247,7 @@ function RewardsScreen({
   onRewardClaim = () => {},
   healthRewardAmount = HEALTH_PER_REWARD,
   language = "ru",
+  dailyChallenge = null,
 }) {
   const isDarkTheme = colors.background === THEMES.dark.background;
   const pane = activePane === "rewards" ? "rewards" : "challenges";
@@ -7383,6 +7497,65 @@ function RewardsScreen({
       </TouchableOpacity>
     );
   };
+  const renderDailyChallengeWidget = () => {
+    if (!dailyChallenge) return null;
+    const progress = Math.min(
+      Math.max(Number(dailyChallenge.progress) || 0, 0),
+      Number(dailyChallenge.target) || 1
+    );
+    const target = Math.max(Number(dailyChallenge.target) || 1, 1);
+    const percent = Math.min(Math.max(progress / target, 0), 1);
+    const widgetBackground = colors.background === THEMES.dark.background ? "rgba(255,255,255,0.05)" : "#FFF7EA";
+    const widgetBorder = colors.background === THEMES.dark.background ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.06)";
+    return (
+      <View
+        style={[
+          styles.dailyChallengeWidget,
+          { backgroundColor: widgetBackground, borderColor: widgetBorder },
+        ]}
+      >
+        <View style={styles.dailyChallengeWidgetHeader}>
+          <View style={[styles.dailyChallengeBadge, { borderColor: widgetBorder }]}>
+            <Text style={[styles.dailyChallengeBadgeText, { color: colors.text }]}>
+              {t("dailyChallengeWidgetBadge")}
+            </Text>
+          </View>
+          <HealthRewardTokens amount={dailyChallenge.rewardBonus} color={colors.text} iconSize={16} />
+        </View>
+        <View style={styles.dailyChallengeWidgetBody}>
+          <View style={styles.dailyChallengeEmojiPill}>
+            <Text style={styles.dailyChallengeEmojiText}>{dailyChallenge.emoji || "✨"}</Text>
+          </View>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={[styles.dailyChallengeWidgetTitle, { color: colors.text }]}>
+              {t("dailyChallengeWidgetTitle")}
+            </Text>
+            <Text style={[styles.dailyChallengeWidgetDesc, { color: colors.muted }]}>
+              {t("dailyChallengeWidgetDesc", { temptation: dailyChallenge.title })}
+            </Text>
+          </View>
+        </View>
+        <View style={{ gap: 6 }}>
+          <View style={[styles.dailyChallengeProgressBar, { backgroundColor: widgetBorder }]}>
+            <View
+              style={[
+                styles.dailyChallengeProgressFill,
+                { width: `${percent * 100}%`, backgroundColor: colors.text },
+              ]}
+            />
+          </View>
+          <View style={styles.dailyChallengeWidgetFooter}>
+            <Text style={[styles.dailyChallengeProgressLabel, { color: colors.muted }]}>
+              {t("dailyChallengeWidgetProgress", { current: `${progress}`, target: `${target}` })}
+            </Text>
+            <Text style={[styles.dailyChallengeRewardLabel, { color: colors.text }]}>
+              {t("dailyChallengeWidgetReward", { amount: dailyChallenge.rewardBonus })}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
 
   const tabItems = [
     { id: "challenges", label: t("challengeTabTitle") },
@@ -7435,6 +7608,7 @@ function RewardsScreen({
       </View>
       {pane === "challenges" ? (
         <View style={{ gap: 16 }}>
+          {renderDailyChallengeWidget()}
           {challenges.map(renderChallengeCard)}
           {!challenges.length && (
             <Text style={[styles.historyEmpty, { color: colors.muted }]}>
@@ -8161,6 +8335,8 @@ function AppContent() {
   const [smartRemindersHydrated, setSmartRemindersHydrated] = useState(false);
   const [dailyNudgeNotificationIds, setDailyNudgeNotificationIds] = useState({});
   const [dailyNudgesHydrated, setDailyNudgesHydrated] = useState(false);
+  const [dailyChallenge, setDailyChallenge] = useState(() => createInitialDailyChallengeState());
+  const [dailyChallengeHydrated, setDailyChallengeHydrated] = useState(false);
   const [savedTotalUSD, setSavedTotalUSD] = useState(0);
   const [savedTotalHydrated, setSavedTotalHydrated] = useState(false);
   const [declineCount, setDeclineCount] = useState(0);
@@ -8172,7 +8348,8 @@ function AppContent() {
   const [rewardsPane, setRewardsPane] = useState("challenges");
   const [decisionStats, setDecisionStats] = useState({ ...INITIAL_DECISION_STATS });
   const [historyEvents, setHistoryEvents] = useState([]);
-  const declineStreak = useMemo(() => computeRefuseStreak(historyEvents), [historyEvents]);
+  const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
+  const declineStreak = useMemo(() => computeRefuseStreak(resolvedHistoryEvents), [resolvedHistoryEvents]);
   const [pendingGoalTargets, setPendingGoalTargets] = useState(null);
   const [savingsBreakdownVisible, setSavingsBreakdownVisible] = useState(false);
   const products = temptations;
@@ -8193,12 +8370,18 @@ function AppContent() {
   const androidVersion = isAndroid ? Number(Platform.Version) : null;
   const canToggleNavVisibility =
     isAndroid && typeof androidVersion === "number" && !Number.isNaN(androidVersion) && androidVersion < 35;
+  const resolveTemplateCard = useCallback(
+    (templateId) => {
+      if (!templateId) return null;
+      const findInList = (list) => (list || []).find((card) => card?.id === templateId);
+      return findInList(quickTemptations) || findInList(temptations) || findTemplateById(templateId) || null;
+    },
+    [quickTemptations, temptations]
+  );
   const resolveTemplateTitle = useCallback(
     (templateId, fallback = null) => {
       if (!templateId) return fallback;
-      const findInList = (list) => (list || []).find((card) => card?.id === templateId);
-      const source =
-        findInList(quickTemptations) || findInList(temptations) || findTemplateById(templateId);
+      const source = resolveTemplateCard(templateId);
       if (!source) return fallback;
       const rawTitle =
         source.titleOverride ||
@@ -8209,7 +8392,7 @@ function AppContent() {
       const decorated = `${source.emoji || ""} ${rawTitle || ""}`.trim();
       return decorated || fallback;
     },
-    [language, quickTemptations, temptations]
+    [language, resolveTemplateCard]
   );
   const [overlay, setOverlay] = useState(null);
   const [confettiKey, setConfettiKey] = useState(0);
@@ -8219,6 +8402,8 @@ function AppContent() {
   const [dailySummaryVisible, setDailySummaryVisible] = useState(false);
   const [dailySummaryData, setDailySummaryData] = useState(null);
   const [dailySummarySeenKey, setDailySummarySeenKey] = useState(null);
+  const dailyChallengePromptVisible =
+    dailyChallenge.status === DAILY_CHALLENGE_STATUS.OFFER && !dailyChallenge.offerDismissed;
   const dailyNudgeIdsRef = useRef({});
   const handleDailySummaryContinue = useCallback(() => {
     setDailySummaryVisible(false);
@@ -8507,12 +8692,12 @@ function AppContent() {
   const savingsBreakdown = useMemo(
     () =>
       buildSavingsBreakdown(
-        historyEvents,
+        resolvedHistoryEvents,
         profile.currency || DEFAULT_PROFILE.currency,
         resolveTemplateTitle,
         language
       ),
-    [historyEvents, profile.currency, resolveTemplateTitle, language]
+    [resolvedHistoryEvents, profile.currency, resolveTemplateTitle, language]
   );
   const fallbackGoalTargetUSD = useMemo(() => {
     if (Number.isFinite(profile?.goalTargetUSD) && profile.goalTargetUSD > 0) {
@@ -8555,6 +8740,13 @@ function AppContent() {
     });
     return text;
   }, [activeGender, language]);
+  const dailyChallengeDisplayTitle = useMemo(
+    () =>
+      dailyChallenge.templateLabel ||
+      dailyChallenge.templateTitle ||
+      t("defaultDealTitle"),
+    [dailyChallenge.templateLabel, dailyChallenge.templateTitle, t]
+  );
   const currentMood = useMemo(
     () => deriveMoodFromState(moodState, pendingList.length),
     [moodState.events, moodState.lastInteractionAt, moodState.lastVisitAt, pendingList.length]
@@ -8610,7 +8802,7 @@ function AppContent() {
 
   useEffect(() => {
     const now = Date.now();
-    const mappedEvents = mapHistoryEventsToMoodEvents(historyEvents, now);
+    const mappedEvents = mapHistoryEventsToMoodEvents(resolvedHistoryEvents, now);
     const latestTimestamp = mappedEvents[0]?.timestamp || null;
     setMoodState((prev) =>
       evaluateMoodState(
@@ -8622,7 +8814,7 @@ function AppContent() {
         { now, pendingCount: pendingList.length }
       )
     );
-  }, [historyEvents, pendingList.length]);
+  }, [resolvedHistoryEvents, pendingList.length]);
 
   useEffect(() => {
     setMoodState((prev) =>
@@ -9211,6 +9403,18 @@ function AppContent() {
       }),
     [challengesState, profile.currency, language, t]
   );
+  const activeDailyChallenge = useMemo(() => {
+    if (dailyChallenge.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return null;
+    const targetValue = dailyChallenge.target || 1;
+    return {
+      id: dailyChallenge.id,
+      emoji: dailyChallenge.emoji || "✨",
+      title: dailyChallenge.templateLabel || dailyChallenge.templateTitle || t("defaultDealTitle"),
+      rewardBonus: dailyChallenge.rewardBonus || ECONOMY_RULES.minSaveReward,
+      progress: Math.min(dailyChallenge.progress || 0, targetValue),
+      target: targetValue,
+    };
+  }, [dailyChallenge, t]);
 
   const wishCount = wishes.length;
   const profileStats = useMemo(() => {
@@ -9239,11 +9443,178 @@ function AppContent() {
     () => buildImpulseInsights(impulseTracker.events),
     [impulseTracker.events]
   );
+  const temptationPressure = useMemo(
+    () => buildTemptationPressureMap(impulseTracker.events),
+    [impulseTracker.events]
+  );
 
   useEffect(() => {
     if (!impulseInsights.activeRisk) return;
     notifyImpulseRisk(impulseInsights.activeRisk);
   }, [impulseInsights.activeRisk, notifyImpulseRisk]);
+  useEffect(() => {
+    if (!dailyChallengeHydrated) return;
+    const todayKey = getDayKey(Date.now());
+    if (dailyChallenge.dateKey === todayKey && dailyChallenge.templateId) return;
+    const targetId = resolveDailyChallengeTemplateId(temptationPressure);
+    if (!targetId) {
+      setDailyChallenge((prev) => ({
+        ...createInitialDailyChallengeState(),
+        dateKey: todayKey,
+        status: DAILY_CHALLENGE_STATUS.IDLE,
+      }));
+      return;
+    }
+    const template = resolveTemplateCard(targetId);
+    const priceUSD = template?.priceUSD || template?.basePriceUSD || 0;
+    const templateLabel =
+      (typeof template?.title === "string"
+        ? template.title
+        : template?.title?.[language] || template?.title?.en || template?.title?.ru || "") || "";
+    const templateTitle = resolveTemplateTitle(targetId, templateLabel) || templateLabel;
+    const baseReward = computeRefuseCoinReward(priceUSD, profile.currency || DEFAULT_PROFILE.currency);
+    const rewardBonus = computeDailyChallengeBonus(priceUSD, profile.currency || DEFAULT_PROFILE.currency);
+    setDailyChallenge({
+      ...createInitialDailyChallengeState(),
+      id: `daily-${todayKey}-${targetId}`,
+      dateKey: todayKey,
+      templateId: targetId,
+      templateTitle,
+      templateLabel,
+      emoji: template?.emoji || "✨",
+      priceUSD,
+      baseReward,
+      rewardBonus,
+      status: DAILY_CHALLENGE_STATUS.OFFER,
+      offerDismissed: false,
+    });
+  }, [
+    dailyChallenge.dateKey,
+    dailyChallenge.templateId,
+    dailyChallengeHydrated,
+    language,
+    temptationPressure,
+    profile.currency,
+    resolveTemplateCard,
+    resolveTemplateTitle,
+  ]);
+  const handleDailyChallengeAccept = useCallback(() => {
+    if (!dailyChallenge.templateId) return;
+    setDailyChallenge((prev) => {
+      if (!prev || prev.status !== DAILY_CHALLENGE_STATUS.OFFER) return prev;
+      return {
+        ...prev,
+        status: DAILY_CHALLENGE_STATUS.ACTIVE,
+        acceptedAt: Date.now(),
+        offerDismissed: true,
+      };
+    });
+    logEvent("daily_challenge_accepted", { template_id: dailyChallenge.templateId });
+  }, [dailyChallenge.templateId, logEvent]);
+  const handleDailyChallengeLater = useCallback(() => {
+    setDailyChallenge((prev) => {
+      if (!prev || prev.offerDismissed) return prev || createInitialDailyChallengeState();
+      return { ...prev, offerDismissed: true };
+    });
+  }, []);
+  const completeDailyChallenge = useCallback(() => {
+    if (!dailyChallenge.templateId) return;
+    setDailyChallenge((prev) => {
+      if (!prev || prev.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return prev;
+      return {
+        ...prev,
+        status: DAILY_CHALLENGE_STATUS.COMPLETED,
+        progress: prev.target,
+        completedAt: Date.now(),
+        rewardGranted: true,
+      };
+    });
+    if (dailyChallenge.rewardBonus > 0) {
+      setHealthPoints((coins) => coins + dailyChallenge.rewardBonus);
+      triggerOverlayState("health", {
+        amount: dailyChallenge.rewardBonus,
+        reason: t("dailyChallengeRewardReason", {
+          temptation: dailyChallenge.templateLabel || dailyChallenge.templateTitle,
+        }),
+      });
+    }
+    logEvent("daily_challenge_completed", {
+      template_id: dailyChallenge.templateId,
+      reward_bonus: dailyChallenge.rewardBonus,
+    });
+  }, [
+    dailyChallenge.rewardBonus,
+    dailyChallenge.templateId,
+    dailyChallenge.templateTitle,
+    logEvent,
+    setHealthPoints,
+    t,
+    triggerOverlayState,
+  ]);
+  const failDailyChallenge = useCallback(() => {
+    if (!dailyChallenge.templateId) return;
+    setDailyChallenge((prev) => {
+      if (!prev || prev.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return prev;
+      return {
+        ...prev,
+        status: DAILY_CHALLENGE_STATUS.FAILED,
+        failedAt: Date.now(),
+      };
+    });
+    triggerOverlayState(
+      "cancel",
+      t("dailyChallengeFailedText", { temptation: dailyChallenge.templateLabel || dailyChallenge.templateTitle })
+    );
+    logEvent("daily_challenge_failed", { template_id: dailyChallenge.templateId });
+  }, [dailyChallenge.templateId, dailyChallenge.templateTitle, logEvent, t, triggerOverlayState]);
+  useEffect(() => {
+    if (!dailyChallengeHydrated) return;
+    if (dailyChallenge.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return;
+    if (!dailyChallenge.templateId || !dailyChallenge.dateKey) return;
+    const acceptedAt = dailyChallenge.acceptedAt || 0;
+    const hasRefuse = resolvedHistoryEvents.some((entry) => {
+      if (entry.kind !== "refuse_spend") return false;
+      if (entry.meta?.templateId !== dailyChallenge.templateId) return false;
+      if (getDayKey(entry.timestamp) !== dailyChallenge.dateKey) return false;
+      if (acceptedAt && entry.timestamp < acceptedAt) return false;
+      return true;
+    });
+    if (hasRefuse) {
+      completeDailyChallenge();
+    }
+  }, [
+    completeDailyChallenge,
+    dailyChallenge.acceptedAt,
+    dailyChallenge.dateKey,
+    dailyChallenge.status,
+    dailyChallenge.templateId,
+    dailyChallengeHydrated,
+    resolvedHistoryEvents,
+  ]);
+  useEffect(() => {
+    if (!dailyChallengeHydrated) return;
+    if (dailyChallenge.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return;
+    if (!dailyChallenge.templateId || !dailyChallenge.dateKey) return;
+    const acceptedAt = dailyChallenge.acceptedAt || 0;
+    const lost = (impulseTracker.events || []).some((event) => {
+      if (event.action !== "spend") return false;
+      if (event.templateId !== dailyChallenge.templateId) return false;
+      if (getDayKey(event.timestamp) !== dailyChallenge.dateKey) return false;
+      if (acceptedAt && event.timestamp < acceptedAt) return false;
+      return true;
+    });
+    if (lost) {
+      failDailyChallenge();
+    }
+  }, [
+    dailyChallenge.acceptedAt,
+    dailyChallenge.dateKey,
+    dailyChallenge.status,
+    dailyChallenge.templateId,
+    dailyChallengeHydrated,
+    failDailyChallenge,
+    impulseTracker.events,
+  ]);
 
   const persistCustomReminderId = useCallback(
     (id) => {
@@ -9365,6 +9736,7 @@ function AppContent() {
         dailyNudgesRaw,
         smartRemindersRaw,
         tamagotchiRaw,
+        dailyChallengeRaw,
         dailySummaryRaw,
         tutorialRaw,
         termsAcceptedRaw,
@@ -9399,6 +9771,7 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.DAILY_NUDGES),
         AsyncStorage.getItem(STORAGE_KEYS.SMART_REMINDERS),
         AsyncStorage.getItem(STORAGE_KEYS.TAMAGOTCHI),
+        AsyncStorage.getItem(STORAGE_KEYS.DAILY_CHALLENGE),
         AsyncStorage.getItem(STORAGE_KEYS.DAILY_SUMMARY),
         AsyncStorage.getItem(STORAGE_KEYS.TUTORIAL),
         AsyncStorage.getItem(STORAGE_KEYS.TERMS_ACCEPTED),
@@ -9563,6 +9936,21 @@ function AppContent() {
         tamagotchiHungerPrevRef.current = TAMAGOTCHI_START_STATE.hunger;
         tamagotchiHydratedRef.current = true;
       }
+      if (dailyChallengeRaw) {
+        try {
+          const parsed = JSON.parse(dailyChallengeRaw);
+          setDailyChallenge({
+            ...createInitialDailyChallengeState(),
+            ...(parsed && typeof parsed === "object" ? parsed : {}),
+          });
+        } catch (err) {
+          console.warn("daily challenge parse", err);
+          setDailyChallenge(createInitialDailyChallengeState());
+        }
+      } else {
+        setDailyChallenge(createInitialDailyChallengeState());
+      }
+      setDailyChallengeHydrated(true);
       if (themeRaw) setTheme(themeRaw);
       if (languageRaw) setLanguage(languageRaw);
       setActiveGoalId(parsedProfile?.goal || DEFAULT_PROFILE.goal);
@@ -9811,7 +10199,7 @@ function AppContent() {
     if (hour < 20) return;
     const todayKey = getDayKey(Date.now());
     if (dailySummarySeenKey === todayKey) return;
-    const todayEvents = historyEvents.filter((e) => getDayKey(e.timestamp) === todayKey);
+    const todayEvents = resolvedHistoryEvents.filter((e) => getDayKey(e.timestamp) === todayKey);
     if (!todayEvents.length) return;
     const savedUSD = todayEvents
       .filter((e) => e.kind === "refuse_spend")
@@ -9822,7 +10210,7 @@ function AppContent() {
     setDailySummaryVisible(true);
     setDailySummarySeenKey(todayKey);
     AsyncStorage.setItem(STORAGE_KEYS.DAILY_SUMMARY, todayKey).catch(() => {});
-  }, [dailySummarySeenKey, historyEvents, onboardingStep]);
+  }, [dailySummarySeenKey, resolvedHistoryEvents, onboardingStep]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -9992,6 +10380,10 @@ function AppContent() {
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.CHALLENGES, JSON.stringify(challengesState)).catch(() => {});
   }, [challengesState]);
+  useEffect(() => {
+    if (!dailyChallengeHydrated) return;
+    AsyncStorage.setItem(STORAGE_KEYS.DAILY_CHALLENGE, JSON.stringify(dailyChallenge)).catch(() => {});
+  }, [dailyChallenge, dailyChallengeHydrated]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.TAMAGOTCHI, JSON.stringify(tamagotchiState)).catch(() => {});
@@ -10139,8 +10531,8 @@ function AppContent() {
   }, [decisionStats]);
 
   useEffect(() => {
-    AsyncStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(historyEvents)).catch(() => {});
-  }, [historyEvents]);
+    AsyncStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(resolvedHistoryEvents)).catch(() => {});
+  }, [resolvedHistoryEvents]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.CUSTOM_TEMPTATIONS, JSON.stringify(quickTemptations)).catch(
@@ -11359,8 +11751,8 @@ function AppContent() {
   );
 
   useEffect(() => {
-    recomputeHistoryAggregates(historyEvents);
-  }, [historyEvents, recomputeHistoryAggregates]);
+    recomputeHistoryAggregates(resolvedHistoryEvents);
+  }, [resolvedHistoryEvents, recomputeHistoryAggregates]);
 
   const triggerCardFeedback = useCallback((templateId) => {
     if (!templateId) return;
@@ -12961,6 +13353,7 @@ const handleFreeDayRescue = useCallback(() => {
             onRewardClaim={handleRewardClaim}
             healthRewardAmount={HEALTH_PER_REWARD}
             language={language}
+            dailyChallenge={activeDailyChallenge}
           />
         );
       case "profile":
@@ -12982,7 +13375,7 @@ const handleFreeDayRescue = useCallback(() => {
           theme={theme}
           language={language}
           currencyValue={profile.currency || DEFAULT_PROFILE.currency}
-          history={historyEvents}
+          history={resolvedHistoryEvents}
           onHistoryDelete={handleHistoryDelete}
           freeDayStats={freeDayStats}
           rewardBadges={unlockedRewards}
@@ -13015,7 +13408,7 @@ const handleFreeDayRescue = useCallback(() => {
             analyticsStats={analyticsStats}
             refuseStats={refuseStats}
             cardFeedback={cardFeedback}
-            historyEvents={historyEvents}
+            historyEvents={resolvedHistoryEvents}
             profile={profile}
             titleOverrides={titleOverrides}
             onLevelCelebrate={handleLevelCelebrate}
@@ -13333,6 +13726,90 @@ const handleFreeDayRescue = useCallback(() => {
                           </Text>
                         </View>
                       ))}
+                    </View>
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+        {dailyChallengePromptVisible && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={handleDailyChallengeLater}>
+              <View style={styles.dailySummaryBackdrop}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
+                    style={[
+                      styles.dailyChallengeCard,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.dailyChallengeGlow,
+                        { backgroundColor: isDarkTheme ? "rgba(255,200,87,0.4)" : "rgba(255,160,60,0.25)" },
+                      ]}
+                    />
+                    <View style={styles.dailyChallengeContent}>
+                      <View style={styles.dailyChallengeHeroRow}>
+                        <View style={{ flex: 1, gap: 6 }}>
+                          <View
+                            style={[
+                              styles.dailyChallengeBadge,
+                              { borderColor: colors.border, backgroundColor: colors.background },
+                            ]}
+                          >
+                            <Text style={[styles.dailyChallengeBadgeText, { color: colors.muted }]}>
+                              {t("dailyChallengeOfferBadge")}
+                            </Text>
+                          </View>
+                          <Text style={[styles.dailyChallengeTitle, { color: colors.text }]}>
+                            {t("dailyChallengeOfferTitle")}
+                          </Text>
+                          <Text style={[styles.dailyChallengeSubtitle, { color: colors.muted }]}>
+                            {t("dailyChallengeOfferSubtitle", { temptation: dailyChallengeDisplayTitle })}
+                          </Text>
+                        </View>
+                        <View style={styles.dailyChallengeRewardStack}>
+                          <HealthRewardTokens amount={dailyChallenge.rewardBonus} color={colors.text} iconSize={18} />
+                          <Text style={[styles.dailyChallengeRewardHint, { color: colors.text }]}>
+                            {t("dailyChallengeOfferReward", { amount: dailyChallenge.rewardBonus })}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.dailyChallengeTemptationRow}>
+                        <View style={styles.dailyChallengeEmojiCard}>
+                          <Text style={styles.dailyChallengeEmojiCardText}>{dailyChallenge.emoji || "✨"}</Text>
+                        </View>
+                        <View style={{ flex: 1, gap: 4 }}>
+                          <Text style={[styles.dailyChallengeTemptationTitle, { color: colors.text }]}>
+                            {dailyChallengeDisplayTitle}
+                          </Text>
+                          <Text style={[styles.dailyChallengeTemptationHint, { color: colors.muted }]}>
+                            {t("dailyChallengeOfferHint")}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.dailyChallengeActions}>
+                        <TouchableOpacity
+                          style={[styles.dailyChallengePrimaryButton, { backgroundColor: colors.text }]}
+                          activeOpacity={0.92}
+                          onPress={handleDailyChallengeAccept}
+                        >
+                          <Text style={[styles.dailyChallengePrimaryText, { color: colors.background }]}>
+                            {t("dailyChallengeOfferAccept")}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.dailyChallengeGhostButton, { borderColor: colors.border }]}
+                          activeOpacity={0.85}
+                          onPress={handleDailyChallengeLater}
+                        >
+                          <Text style={[styles.dailyChallengeGhostText, { color: colors.muted }]}>
+                            {t("dailyChallengeOfferLater")}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
                 </TouchableWithoutFeedback>
@@ -15174,6 +15651,99 @@ const styles = StyleSheet.create({
   dailySummaryHint: {
     ...createSecondaryText({ textAlign: "center" }),
   },
+  dailyChallengeCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 30,
+    padding: 24,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  dailyChallengeGlow: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.25,
+  },
+  dailyChallengeContent: {
+    gap: 20,
+  },
+  dailyChallengeHeroRow: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  dailyChallengeBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  dailyChallengeBadgeText: {
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
+  },
+  dailyChallengeTitle: {
+    ...TYPOGRAPHY.blockTitle,
+  },
+  dailyChallengeSubtitle: {
+    ...createBodyText({ fontSize: 15, marginTop: 4 }),
+  },
+  dailyChallengeRewardStack: {
+    alignItems: "flex-end",
+    gap: 6,
+  },
+  dailyChallengeRewardHint: {
+    ...createBodyText({ fontSize: 13 }),
+    fontWeight: "700",
+  },
+  dailyChallengeTemptationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 24,
+    padding: 14,
+    backgroundColor: "rgba(17,17,17,0.03)",
+  },
+  dailyChallengeEmojiCard: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(17,17,17,0.05)",
+  },
+  dailyChallengeEmojiCardText: {
+    fontSize: 32,
+  },
+  dailyChallengeTemptationTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  dailyChallengeTemptationHint: {
+    ...createBodyText({ fontSize: 14 }),
+  },
+  dailyChallengeActions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  dailyChallengePrimaryButton: {
+    flex: 1,
+    borderRadius: 18,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  dailyChallengePrimaryText: {
+    ...createCtaText({ fontSize: 15 }),
+  },
+  dailyChallengeGhostButton: {
+    flex: 1,
+    borderRadius: 18,
+    paddingVertical: 14,
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  dailyChallengeGhostText: {
+    ...createCtaText({ fontSize: 15 }),
+  },
   breakdownCard: {
     width: "100%",
     maxWidth: 420,
@@ -16884,6 +17454,61 @@ const styles = StyleSheet.create({
   },
   challengeActionText: {
     ...createCtaText(),
+  },
+  dailyChallengeWidget: {
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    gap: 16,
+  },
+  dailyChallengeWidgetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  dailyChallengeWidgetBody: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  dailyChallengeEmojiPill: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.06)",
+  },
+  dailyChallengeEmojiText: {
+    fontSize: 30,
+  },
+  dailyChallengeWidgetTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  dailyChallengeWidgetDesc: {
+    ...createBodyText({ fontSize: 14 }),
+  },
+  dailyChallengeProgressBar: {
+    height: 8,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  dailyChallengeProgressFill: {
+    height: "100%",
+    borderRadius: 8,
+  },
+  dailyChallengeWidgetFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  dailyChallengeProgressLabel: {
+    ...createSecondaryText({ fontSize: 13 }),
+  },
+  dailyChallengeRewardLabel: {
+    fontSize: 14,
+    fontWeight: "800",
   },
   challengeRewardChip: {
     borderRadius: 999,
