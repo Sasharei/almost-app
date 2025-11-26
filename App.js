@@ -104,6 +104,7 @@ const CAT_SAD = require("./assets/Cat_sad.gif");
 const CAT_OH_OH = require("./assets/Cat_oh_oh.gif");
 const CAT_HAPPY_HEADSHAKE = require("./assets/Cat_happy_headshake.gif");
 const CAT_SPEAKS = require("./assets/Cat_speaks.gif");
+const CAT_CRY = require("./assets/Cat_cry.gif");
 const HEALTH_COIN_TIERS = [
   { id: "green", value: 1, asset: require("./assets/coins/Coin_green.png") },
   { id: "blue", value: 10, asset: require("./assets/coins/Coin_blue.png") },
@@ -151,6 +152,19 @@ const DAILY_NUDGE_REMINDERS = [
   { id: "daytime", hour: 14, minute: 0, titleKey: "dailyNudgeDayTitle", bodyKey: "dailyNudgeDayBody" },
   { id: "evening", hour: 20, minute: 0, titleKey: "dailyNudgeEveningTitle", bodyKey: "dailyNudgeEveningBody" },
 ];
+const ANDROID_DAILY_NUDGE_CHANNEL_ID = "daily-nudges";
+const buildDailyNudgeTrigger = (hour, minute) => {
+  if (Platform.OS === "android") {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(hour, minute, 0, 0);
+    if (next.getTime() <= now.getTime()) {
+      next.setDate(next.getDate() + 1);
+    }
+    return next;
+  }
+  return { hour, minute, second: 0, repeats: true };
+};
 
 const normalizeSmartReminderEntries = (list) => {
   const now = Date.now();
@@ -926,6 +940,7 @@ const CoinRainOverlay = React.memo(({ dropCount = 14 }) => {
 });
 
 const TAMAGOTCHI_IDLE_VARIANTS = ["idle", "idle", "curious", "follow", "speak"];
+const TAMAGOTCHI_STARVING_VARIANTS = ["cry", "cry", "sad", "ohno", "idle"];
 const TAMAGOTCHI_ANIMATIONS = {
   idle: CAT_IDLE,
   curious: CAT_CURIOUS,
@@ -935,6 +950,7 @@ const TAMAGOTCHI_ANIMATIONS = {
   happyHeadshake: CAT_HAPPY_HEADSHAKE,
   sad: CAT_SAD,
   ohno: CAT_OH_OH,
+  cry: CAT_CRY,
 };
 const TAMAGOTCHI_REACTION_DURATION = {
   happy: 3600,
@@ -953,12 +969,23 @@ const TAMAGOTCHI_PARTY_BLUE_COST = Math.max(
   1,
   Math.round(TAMAGOTCHI_PARTY_COST / HEALTH_COIN_TIERS[1].value)
 );
+const TAMAGOTCHI_HUNGER_LOW_THRESHOLD = 50;
 const TAMAGOTCHI_START_STATE = {
   hunger: 80,
   coins: 5,
   lastFedAt: null,
   lastDecayAt: null,
   coinTick: 0,
+};
+const TAMAGOTCHI_NOTIFICATION_COPY = {
+  ru: {
+    low: "Алми уже сильно голоден - приходи покорми его",
+    starving: "Алми плачет и очень хочет кушать - приходи покорми его",
+  },
+  en: {
+    low: "Almi is really hungry - come feed him",
+    starving: "Almi is crying and really wants to eat - come feed him",
+  },
 };
 
 const getTamagotchiMood = (hunger = 0, language = "ru") => {
@@ -983,22 +1010,30 @@ const getTamagotchiMood = (hunger = 0, language = "ru") => {
   return { label: dict.urgent, tone: "urgent" };
 };
 
-function AlmiTamagotchi({ override, onOverrideComplete, style }) {
+function AlmiTamagotchi({ override, onOverrideComplete, style, isStarving = false }) {
   const [currentKey, setCurrentKey] = useState("idle");
   const idleTimerRef = useRef(null);
   const overrideTimerRef = useRef(null);
+  const idleVariants = useMemo(
+    () => (isStarving ? TAMAGOTCHI_STARVING_VARIANTS : TAMAGOTCHI_IDLE_VARIANTS),
+    [isStarving]
+  );
+  const resolveNextIdleKey = useCallback(() => {
+    const pool = idleVariants.length ? idleVariants : TAMAGOTCHI_IDLE_VARIANTS;
+    const index = Math.floor(Math.random() * pool.length);
+    return pool[index] || "idle";
+  }, [idleVariants]);
 
   const scheduleIdleCycle = useCallback(
     (delay = 4500) => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       idleTimerRef.current = setTimeout(() => {
-        const next =
-          TAMAGOTCHI_IDLE_VARIANTS[Math.floor(Math.random() * TAMAGOTCHI_IDLE_VARIANTS.length)];
+        const next = resolveNextIdleKey();
         setCurrentKey(next);
         scheduleIdleCycle(5000 + Math.random() * 3000);
       }, delay);
     },
-    []
+    [resolveNextIdleKey]
   );
 
   useEffect(() => {
@@ -5208,6 +5243,7 @@ const FeedScreen = React.memo(function FeedScreen({
   hideMascot = false,
   onMascotPress = () => {},
   resolveTemplateTitle = () => null,
+  tamagotchiMood = null,
 }) {
   const [impulseExpanded, setImpulseExpanded] = useState(false);
   const handleBaselineSetup = onBaselineSetup || (() => {});
@@ -5590,6 +5626,7 @@ const FeedScreen = React.memo(function FeedScreen({
                       style={heroMascotWrapStyle}
                       override={mascotOverride}
                       onOverrideComplete={onMascotAnimationComplete}
+                      isStarving={tamagotchiMood?.tone === "urgent"}
                     />
                   </TouchableOpacity>
                 )}
@@ -8268,6 +8305,10 @@ function AppContent() {
   const mascotBusyRef = useRef(false);
   const [tamagotchiState, setTamagotchiState] = useState({ ...TAMAGOTCHI_START_STATE });
   const [tamagotchiVisible, setTamagotchiVisible] = useState(false);
+  const tamagotchiHydratedRef = useRef(false);
+  const tamagotchiHungerPrevRef = useRef(
+    Math.min(TAMAGOTCHI_MAX_HUNGER, Math.max(0, TAMAGOTCHI_START_STATE.hunger))
+  );
   const tamagotchiModalAnim = useRef(new Animated.Value(0)).current;
   const partyGlow = useRef(new Animated.Value(0)).current;
   const [partyActive, setPartyActive] = useState(false);
@@ -8650,6 +8691,17 @@ function AppContent() {
   useEffect(() => {
     ensureNotificationPermission();
   }, [ensureNotificationPermission]);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    Notifications.setNotificationChannelAsync(ANDROID_DAILY_NUDGE_CHANNEL_ID, {
+      name: "Daily nudges",
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: true,
+      vibrationPattern: [250, 250, 250],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     dailyNudgeIdsRef.current = dailyNudgeNotificationIds || {};
@@ -9257,12 +9309,15 @@ function AppContent() {
     const nextMap = {};
     for (const def of DAILY_NUDGE_REMINDERS) {
       try {
+        const trigger = buildDailyNudgeTrigger(def.hour, def.minute);
+        if (!trigger) continue;
         const notificationId = await Notifications.scheduleNotificationAsync({
           content: {
             title: t(def.titleKey),
             body: t(def.bodyKey),
+            ...(Platform.OS === "android" ? { channelId: ANDROID_DAILY_NUDGE_CHANNEL_ID } : null),
           },
-          trigger: { hour: def.hour, minute: def.minute, second: 0, repeats: true },
+          trigger,
         });
         nextMap[def.id] = notificationId;
       } catch (error) {
@@ -9494,12 +9549,19 @@ function AppContent() {
             lastDecayAt: parsed?.lastDecayAt || Date.now(),
             coinTick: Math.max(0, Number(parsed?.coinTick) || 0),
           });
+          tamagotchiHungerPrevRef.current = parsedHunger;
+          tamagotchiHydratedRef.current = true;
           if (!healthRaw) {
             setHealthPoints(parsedCoins);
           }
         } catch (err) {
           setTamagotchiState({ ...TAMAGOTCHI_START_STATE });
+          tamagotchiHungerPrevRef.current = TAMAGOTCHI_START_STATE.hunger;
+          tamagotchiHydratedRef.current = true;
         }
+      } else {
+        tamagotchiHungerPrevRef.current = TAMAGOTCHI_START_STATE.hunger;
+        tamagotchiHydratedRef.current = true;
       }
       if (themeRaw) setTheme(themeRaw);
       if (languageRaw) setLanguage(languageRaw);
@@ -9688,6 +9750,52 @@ function AppContent() {
   useEffect(() => {
     loadStoredData();
   }, []);
+
+  const sendTamagotchiHungerNotification = useCallback(
+    async (kind) => {
+      try {
+        const copy = TAMAGOTCHI_NOTIFICATION_COPY[language] || TAMAGOTCHI_NOTIFICATION_COPY.ru;
+        const body = copy[kind];
+        if (!body) return;
+        const allowed = await ensureNotificationPermission();
+        if (!allowed) return;
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: language === "ru" ? "Алми" : "Almi",
+            body,
+          },
+          trigger: null,
+        });
+      } catch (error) {
+        console.warn("tamagotchi notification", error);
+      }
+    },
+    [ensureNotificationPermission, language]
+  );
+
+  useEffect(() => {
+    const currentHunger = Math.min(
+      TAMAGOTCHI_MAX_HUNGER,
+      Math.max(0, Number(tamagotchiState.hunger) || 0)
+    );
+    if (!tamagotchiHydratedRef.current) {
+      tamagotchiHungerPrevRef.current = currentHunger;
+      return;
+    }
+    const previousHunger = Math.min(
+      TAMAGOTCHI_MAX_HUNGER,
+      Math.max(0, Number(tamagotchiHungerPrevRef.current) || 0)
+    );
+    if (currentHunger <= 0 && previousHunger > 0) {
+      sendTamagotchiHungerNotification("starving");
+    } else if (
+      currentHunger < TAMAGOTCHI_HUNGER_LOW_THRESHOLD &&
+      previousHunger >= TAMAGOTCHI_HUNGER_LOW_THRESHOLD
+    ) {
+      sendTamagotchiHungerNotification("low");
+    }
+    tamagotchiHungerPrevRef.current = currentHunger;
+  }, [sendTamagotchiHungerNotification, tamagotchiState.hunger]);
 
   useEffect(() => {
     if (onboardingStep !== "done") return;
@@ -12940,6 +13048,7 @@ const handleFreeDayRescue = useCallback(() => {
             onTemptationSwipeDelete={handleTemptationDelete}
             onSavingsBreakdownPress={openSavingsBreakdown}
             resolveTemplateTitle={resolveTemplateTitle}
+            tamagotchiMood={tamagotchiMood}
           />
         );
     }
@@ -13584,7 +13693,11 @@ const handleFreeDayRescue = useCallback(() => {
                     </Text>
                   </View>
                   <View style={styles.tamagotchiPreview}>
-                    <AlmiTamagotchi override={mascotOverride} onOverrideComplete={handleMascotAnimationComplete} />
+                    <AlmiTamagotchi
+                      override={mascotOverride}
+                      onOverrideComplete={handleMascotAnimationComplete}
+                      isStarving={tamagotchiMood.tone === "urgent"}
+                    />
                   </View>
                   <View style={styles.tamagotchiStatRow}>
                     <Text style={[styles.tamagotchiStatLabel, { color: colors.muted }]}>
