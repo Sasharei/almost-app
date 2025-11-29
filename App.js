@@ -92,6 +92,8 @@ const STORAGE_KEYS = {
   DAILY_SUMMARY: "@almost_daily_summary",
   TUTORIAL: "@almost_tutorial_state",
   DAILY_CHALLENGE: "@almost_daily_challenge_state",
+  DAILY_REFLECTION_REMINDERS: "@almost_daily_reflection_reminders",
+  TAB_HINTS: "@almost_tab_hints",
 };
 
 const PURCHASE_GOAL = 20000;
@@ -113,6 +115,7 @@ const HEALTH_COIN_TIERS = [
   { id: "red", value: 1000, asset: require("./assets/coins/Coin_red.png") },
   { id: "pink", value: 10000, asset: require("./assets/coins/Coin_pink.png") },
 ];
+const BLUE_HEALTH_COIN_ASSET = HEALTH_COIN_TIERS.find((tier) => tier.id === "blue")?.asset || null;
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
 const THEMES = {
@@ -153,8 +156,10 @@ const DAILY_NUDGE_REMINDERS = [
   { id: "daytime", hour: 14, minute: 0, titleKey: "dailyNudgeDayTitle", bodyKey: "dailyNudgeDayBody" },
   { id: "evening", hour: 20, minute: 0, titleKey: "dailyNudgeEveningTitle", bodyKey: "dailyNudgeEveningBody" },
 ];
+const REFLECTION_REMINDER_START_HOUR = 22;
+const REFLECTION_REMINDER_INTERVAL_MS = 60 * 1000;
 const ANDROID_DAILY_NUDGE_CHANNEL_ID = "daily-nudges";
-const DAILY_CHALLENGE_FALLBACK_IDS = ["coffee_to_go", "croissant_break", "pizza"];
+const DAILY_CHALLENGE_MIN_SPEND_EVENTS = 2;
 const DAILY_CHALLENGE_REWARD_MULTIPLIER = 2;
 
 const DAILY_CHALLENGE_STATUS = {
@@ -187,7 +192,10 @@ const buildTemptationPressureMap = (events = []) => {
   return map;
 };
 
-const resolveDailyChallengeTemplateId = (pressureMap = {}, fallbackIds = DAILY_CHALLENGE_FALLBACK_IDS) => {
+const resolveDailyChallengeTemplateId = (
+  pressureMap = {},
+  minSpendEvents = DAILY_CHALLENGE_MIN_SPEND_EVENTS
+) => {
   const ranked = Object.entries(pressureMap || {})
     .map(([templateId, stats]) => ({
       templateId,
@@ -196,7 +204,7 @@ const resolveDailyChallengeTemplateId = (pressureMap = {}, fallbackIds = DAILY_C
       lastTimestamp: stats?.lastTimestamp || 0,
       score: (stats?.spend || 0) * 2 - (stats?.save || 0),
     }))
-    .filter((entry) => entry.spend > 0)
+    .filter((entry) => entry.spend >= minSpendEvents && entry.spend > entry.save)
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       if (b.spend !== a.spend) return b.spend - a.spend;
@@ -205,8 +213,7 @@ const resolveDailyChallengeTemplateId = (pressureMap = {}, fallbackIds = DAILY_C
   if (ranked.length > 0) {
     return ranked[0].templateId;
   }
-  const fallbacks = Array.isArray(fallbackIds) ? fallbackIds : DAILY_CHALLENGE_FALLBACK_IDS;
-  return fallbacks.find((id) => typeof id === "string" && id.length) || null;
+  return null;
 };
 
 const createInitialDailyChallengeState = () => ({
@@ -349,6 +356,21 @@ const APP_TUTORIAL_STEPS = [
     tabs: ["profile"],
   },
 ];
+const DEFAULT_TAB_HINTS_STATE = {
+  feed: false,
+  cart: false,
+  pending: false,
+  purchases: false,
+  profile: false,
+};
+const CARD_TEXTURE_ACCENTS = ["#8AB9FF", "#FFA4C0", "#8CE7CF", "#FFD48A", "#BBA4FF", "#7FD8FF"];
+const TAB_HINT_CONFIG = {
+  feed: { titleKey: "tabHintFeedTitle", bodyKey: "tabHintFeedBody" },
+  cart: { titleKey: "tabHintCartTitle", bodyKey: "tabHintCartBody" },
+  pending: { titleKey: "tabHintPendingTitle", bodyKey: "tabHintPendingBody" },
+  purchases: { titleKey: "tabHintPurchasesTitle", bodyKey: "tabHintPurchasesBody" },
+  profile: { titleKey: "tabHintProfileTitle", bodyKey: "tabHintProfileBody" },
+};
 
 const CELEBRATION_BASE_RU = [
   "Хоп! Ещё одна осознанная экономия",
@@ -1023,6 +1045,89 @@ const CoinRainOverlay = React.memo(({ dropCount = 14 }) => {
   );
 });
 
+const PartyFirework = ({ color, size = 160, delay = 0, style }) => {
+  const scale = useRef(new Animated.Value(0.2)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    scale.setValue(0.2);
+    opacity.setValue(0);
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.parallel([
+          Animated.timing(scale, {
+            toValue: 1,
+            duration: 1100,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.sequence([
+            Animated.timing(opacity, {
+              toValue: 0.85,
+              duration: 220,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacity, {
+              toValue: 0,
+              duration: 880,
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
+        Animated.timing(scale, {
+          toValue: 0.2,
+          duration: 0,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [delay, opacity, scale]);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.partyFireworkRing,
+        style,
+        {
+          borderColor: color,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          transform: [{ scale }],
+          opacity,
+        },
+      ]}
+    />
+  );
+};
+
+const PartyFireworksLayer = ({ isDarkMode = false }) => {
+  const palette = useMemo(
+    () => (isDarkMode ? PARTY_FIREWORK_COLORS.dark : PARTY_FIREWORK_COLORS.light),
+    [isDarkMode]
+  );
+  return (
+    <View pointerEvents="none" style={styles.partyFireworksOverlay}>
+      {PARTY_FIREWORK_CONFIGS.map((config, index) => (
+        <PartyFirework
+          key={`firework_${index}`}
+          color={palette[index % palette.length]}
+          size={config.size}
+          delay={config.delay}
+          style={{
+            top: config.top,
+            bottom: config.bottom,
+            left: config.left,
+            right: config.right,
+          }}
+        />
+      ))}
+    </View>
+  );
+};
+
 const TAMAGOTCHI_IDLE_VARIANTS = ["idle", "idle", "curious", "follow", "speak"];
 const TAMAGOTCHI_STARVING_VARIANTS = ["cry", "cry", "sad", "ohno", "idle"];
 const TAMAGOTCHI_ANIMATIONS = {
@@ -1049,6 +1154,17 @@ const TAMAGOTCHI_FEED_AMOUNT = ECONOMY_RULES.tamagotchiFeedBoost;
 const TAMAGOTCHI_MAX_HUNGER = 100;
 const TAMAGOTCHI_FEED_COST = ECONOMY_RULES.tamagotchiFeedCost;
 const TAMAGOTCHI_PARTY_COST = ECONOMY_RULES.tamagotchiPartyCost;
+const PARTY_FIREWORK_CONFIGS = [
+  { top: "12%", left: "18%", size: 150, delay: 0 },
+  { top: "18%", right: "16%", size: 120, delay: 180 },
+  { bottom: "26%", left: "20%", size: 170, delay: 360 },
+  { bottom: "22%", right: "18%", size: 140, delay: 520 },
+  { top: "30%", left: "40%", size: 110, delay: 420 },
+];
+const PARTY_FIREWORK_COLORS = {
+  light: ["#FFB457", "#FF6FD8", "#7CDAFF", "#FFD36E"],
+  dark: ["#FFD685", "#FF8FF3", "#7DC6FF", "#9BFFDA"],
+};
 const TAMAGOTCHI_PARTY_BLUE_COST = Math.max(
   1,
   Math.round(TAMAGOTCHI_PARTY_COST / HEALTH_COIN_TIERS[1].value)
@@ -1806,6 +1922,17 @@ const convertFromCurrency = (valueLocal = 0, currency = activeCurrency) => {
 const formatSampleAmount = (valueUSD, currencyCode) =>
   formatCurrency(convertToCurrency(valueUSD, currencyCode), currencyCode);
 
+const formatReflectionCountdown = (ms) => {
+  if (!Number.isFinite(ms)) return "00:00";
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+};
 
 const formatNumberInputValue = (value) => {
   if (!Number.isFinite(value)) return "";
@@ -1818,6 +1945,23 @@ const parseNumberInputValue = (value = "") => {
   const normalized = value.replace(/[^\d,.\s]/g, "").replace(",", ".");
   const parsed = parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : NaN;
+};
+
+const formatLatestSavingTimestamp = (timestamp, language = "ru") => {
+  if (!timestamp) return null;
+  try {
+    const locale = language === "ru" ? "ru-RU" : "en-US";
+    const date = new Date(timestamp);
+    const dateLabel = date.toLocaleDateString(locale, { day: "numeric", month: "short" });
+    const timeLabel = date.toLocaleTimeString(locale, {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    return `${dateLabel}, ${timeLabel}`;
+  } catch {
+    return null;
+  }
 };
 
 const normalizeEmojiValue = (value, fallback) => {
@@ -2049,6 +2193,7 @@ const TRANSLATIONS = {
     freeDayRescueTitle: "Пропущен день?",
     freeDayRescueSubtitle: "Потрать {{cost}} здоровья, чтобы серия жила.",
     freeDayRescueButton: "Спасти серию",
+    freeDayRescuePillLabel: "Спасти ×{{count}}",
     freeDayRescueNeedHealth: "Нужно {{cost}} здоровья",
     freeDayRescueNeedTime: "Доступно после 18:00",
     freeDayRescueOverlay: "Серия спасена",
@@ -2071,6 +2216,8 @@ const TRANSLATIONS = {
       "Ты в зоне импульсивных трат на {{temptation}} ({{window}}). Откажись и отправь {{amount}} в копилку!",
     impulseNotificationTitle: "Импульс на {{temptation}}",
     impulseNotificationBody: "В это время ты обычно тратишься. Отправь {{amount}} в копилку и сохрани курс.",
+    dailyReflectionReminderTitle: "Подведи итоги дня",
+    dailyReflectionReminderBody: "До полуночи {{time}} · отметь трату или экономию.",
     pendingTab: "Думаем",
     pendingTitle: "Думаем",
     pendingEmptyTitle: "В «думаем» пусто",
@@ -2279,6 +2426,8 @@ const TRANSLATIONS = {
     dailyChallengeWidgetProgress: "Прогресс {{current}} / {{target}}",
     dailyChallengeWidgetReward: "+{{amount}} монет",
     dailyChallengeRewardReason: "Мини-челлендж «{{temptation}}» выполнен",
+    dailyChallengeRewardNotificationTitle: "Мини-челлендж закрыт",
+    dailyChallengeRewardNotificationBody: "«{{temptation}}» сдалось. Награда +{{amount}} монет.",
     dailyChallengeFailedText: "Сегодня «{{temptation}}» оказалось сильнее",
     healthCelebrateTitle: "+{{amount}} монет",
     healthCelebrateSubtitle: "Сохраняй серию бесплатных дней.",
@@ -2474,6 +2623,17 @@ const TRANSLATIONS = {
     tutorialNext: "Дальше",
     tutorialDone: "Завершить",
     tutorialProgress: "{{current}} из {{total}}",
+    tabHintFeedTitle: "Главный экран",
+    tabHintFeedBody: "Фиксируй импульсы и выбирай: копить, добавить в цели или отложить на потом.",
+    tabHintCartTitle: "Цели",
+    tabHintCartBody: "Ставь мечты в приоритет и обновляй прогресс, когда копишь.",
+    tabHintPendingTitle: "Меню «Думаем»",
+    tabHintPendingBody: "Отправляй покупки на паузу и возвращайся через 14 дней, чтобы решить трезво.",
+    tabHintPurchasesTitle: "Награды",
+    tabHintPurchasesBody: "Собирай достижения и запускай челленджи с дополнительными монетами.",
+    tabHintProfileTitle: "Профиль",
+    tabHintProfileBody: "Настраивай тему, язык, напоминания и личные цели.",
+    tabHintGotIt: "Понятно",
   },
   en: {
     appTagline: "An offline temptation board that keeps savings safe",
@@ -2533,6 +2693,7 @@ const TRANSLATIONS = {
     freeDayRescueTitle: "Missed a day?",
     freeDayRescueSubtitle: "Spend {{cost}} health to keep the streak alive.",
     freeDayRescueButton: "Rescue streak",
+    freeDayRescuePillLabel: "Rescue ×{{count}}",
     freeDayRescueNeedHealth: "Need {{cost}} health",
     freeDayRescueNeedTime: "Available after 6 pm",
     freeDayRescueOverlay: "Streak rescued",
@@ -2555,6 +2716,8 @@ const TRANSLATIONS = {
       "You’re entering a high-impulse zone for {{temptation}} ({{window}}). Skip it and stash {{amount}}!",
     impulseNotificationTitle: "Impulse for {{temptation}}",
     impulseNotificationBody: "You usually cave now. Send {{amount}} to savings instead.",
+    dailyReflectionReminderTitle: "Wrap up your day",
+    dailyReflectionReminderBody: "{{time}} left today · log a save or a spend.",
     pendingTab: "Thinking",
     pendingTitle: "Thinking",
     pendingEmptyTitle: "Nothing in Thinking",
@@ -2754,6 +2917,8 @@ const TRANSLATIONS = {
     dailyChallengeWidgetProgress: "Progress {{current}} / {{target}}",
     dailyChallengeWidgetReward: "+{{amount}} health",
     dailyChallengeRewardReason: "Mini challenge “{{temptation}}” complete",
+    dailyChallengeRewardNotificationTitle: "Daily challenge complete",
+    dailyChallengeRewardNotificationBody: "You beat “{{temptation}}”. Bonus +{{amount}} coins!",
     dailyChallengeFailedText: "“{{temptation}}” won today",
     healthCelebrateTitle: "+{{amount}} coins",
     healthCelebrateSubtitle: "Use it to rescue your free-day streak.",
@@ -2934,6 +3099,17 @@ const TRANSLATIONS = {
     tutorialNext: "Next",
     tutorialDone: "Finish",
     tutorialProgress: "{{current}} of {{total}}",
+    tabHintFeedTitle: "Temptation feed",
+    tabHintFeedBody: "Log impulses here and decide to save, add to goals, or park for later.",
+    tabHintCartTitle: "Goals",
+    tabHintCartBody: "Track your dreams, set priorities, and update progress as you save.",
+    tabHintPendingTitle: "Thinking tab",
+    tabHintPendingBody: "Send wants to a 14-day pause and come back with a cooler head.",
+    tabHintPurchasesTitle: "Rewards",
+    tabHintPurchasesBody: "Claim achievements and start challenges for bonus health coins.",
+    tabHintProfileTitle: "Profile",
+    tabHintProfileBody: "Tune theme, language, reminders, and personal targets.",
+    tabHintGotIt: "Got it",
   },
 };
 
@@ -4121,6 +4297,10 @@ function TemptationCard({
       };
   const baseCardBackground = isDarkTheme ? darkCardPalette.background : baseColor;
   const cardBackground = baseCardBackground;
+  const cardSurfaceColor = lightenColor(
+    cardBackground,
+    isDarkTheme ? 0.04 : 0.18
+  );
   const primaryHighlightColor = "#FF4D5A";
   const cardTextColor = isDarkTheme ? darkCardPalette.text : colors.text;
   const cardMutedColor = isDarkTheme ? darkCardPalette.muted : colors.muted;
@@ -4129,16 +4309,53 @@ function TemptationCard({
   const coinBurstColor = isDarkTheme ? "#FFD78B" : "#FFF4B3";
   const effectiveWishlistGoal = isWishlistGoal && !isPrimaryTemptation;
   const highlightPinned = effectiveWishlistGoal && !showEditorInline;
-  const cardBorderColor = isPrimaryTemptation
-    ? primaryHighlightColor
+  const textureSeedSource = item.id || title || "";
+  const textureSeed = textureSeedSource
+    ? textureSeedSource.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
+    : 0;
+  const textureVariant = textureSeed % CARD_TEXTURE_ACCENTS.length;
+  const accentPaletteColor = CARD_TEXTURE_ACCENTS[textureVariant];
+  const textureShift = (textureSeed % 7) * 0.02;
+  const texturePrimaryColor = blendColors(
+    cardBackground,
+    isDarkTheme ? "#080808" : "#FFFFFF",
+    isDarkTheme ? 0.12 + textureShift : 0.42 + textureShift * 0.5
+  );
+  const textureAccentColor = blendColors(
+    cardBackground,
+    isPrimaryTemptation ? "#FF6B8F" : highlightPinned ? "#FFD36E" : accentPaletteColor,
+    isDarkTheme ? 0.25 + textureShift : 0.5 + textureShift * 0.5
+  );
+  const textureHighlightColor = blendColors(
+    cardBackground,
+    highlightPinned ? "#FFF6C8" : isPrimaryTemptation ? "#FF9FB0" : "#D9F2FF",
+    isDarkTheme ? 0.18 : 0.32
+  );
+  const defaultShadowColor = isDarkTheme ? "rgba(0,0,0,0.85)" : "rgba(15,23,42,0.22)";
+  const redShadowColor = "rgba(244,37,78,0.88)";
+  const goldShadowColor = "rgba(255,198,110,0.75)";
+  const shadowColor = isPrimaryTemptation
+    ? redShadowColor
     : highlightPinned
-    ? GOAL_HIGHLIGHT_COLOR
-    : isDarkTheme
-    ? darkCardPalette.border
-    : highlight
-    ? colors.text
-    : "transparent";
-  const borderWidth = isPrimaryTemptation ? 3 : highlight ? 2 : 1;
+    ? goldShadowColor
+    : defaultShadowColor;
+  const shadowRadius = isPrimaryTemptation ? 36 : highlightPinned ? 30 : 22;
+  const shadowOpacity = isPrimaryTemptation ? 0.8 : highlightPinned ? 0.58 : isDarkTheme ? 0.45 : 0.3;
+  const shadowElevation = isPrimaryTemptation ? 20 : highlightPinned ? 14 : 8;
+  const shadowOffsetHeight = isPrimaryTemptation ? 18 : highlightPinned ? 16 : 12;
+  const cardShadowStyle = Platform.select({
+    ios: {
+      shadowColor,
+      shadowOpacity,
+      shadowRadius,
+      shadowOffset: { width: 0, height: shadowOffsetHeight },
+    },
+    android: {
+      elevation: shadowElevation,
+      shadowColor,
+    },
+    default: {},
+  });
   const defaultGoalBadgeBackground = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)";
   const defaultGoalBadgeBorder = isDarkTheme ? "rgba(255,255,255,0.24)" : "rgba(0,0,0,0.08)";
   const defaultGoalBadgeText = isDarkTheme ? "#FFF7E1" : colors.text;
@@ -4283,17 +4500,38 @@ function TemptationCard({
         {...panResponder.panHandlers}
         style={[
           styles.temptationCard,
+          cardShadowStyle,
           cardStyle,
           {
-            backgroundColor: cardBackground,
-            borderColor: cardBorderColor,
-            borderWidth,
+            backgroundColor: cardSurfaceColor,
             transform: [{ translateX }],
           },
         ]}
       >
         <TouchableWithoutFeedback onPress={handleCardPress}>
           <View>
+            <View pointerEvents="none" style={styles.temptationTextureContainer}>
+              <View
+                style={[
+                  styles.temptationTextureOverlay,
+                  { backgroundColor: texturePrimaryColor },
+                ]}
+              />
+              <View
+                style={[
+                  styles.temptationTextureOverlay,
+                  styles.temptationTextureAccent,
+                  { backgroundColor: textureAccentColor },
+                ]}
+              />
+              <View
+                style={[
+                  styles.temptationTextureOverlay,
+                  styles.temptationTextureHighlight,
+                  { backgroundColor: textureHighlightColor },
+                ]}
+              />
+            </View>
       <View
         style={[
           styles.temptationHeader,
@@ -4913,6 +5151,7 @@ function FreeDayCard({
   rescueStatus = null,
   rescueCost = FREE_DAY_RESCUE_COST,
   onRescue = () => {},
+  hasRescueHealth = false,
 }) {
   const [expanded, setExpanded] = useState(false);
   const streakActive = (freeDayStats.current || 0) > 0;
@@ -4941,6 +5180,10 @@ function FreeDayCard({
     { label: t("freeDayBestLabel"), value: `${freeDayStats.best || 0}` },
     { label: t("freeDayTotalShort"), value: `${freeDayStats.total || 0}` },
   ];
+  const showRescueStatusAction = needsRescue && !canLog;
+  const rescuePillDisabled = !hasRescueHealth;
+  const rescuePillColor = "#FFD75E";
+  const rescuePillTextColor = "#3C2A00";
   return (
     <View
       style={[
@@ -4955,7 +5198,25 @@ function FreeDayCard({
         <View style={styles.freeDayTitleBlock}>
           <Text style={[styles.freeDayLabel, { color: colors.text }]}>{t("freeDayCardTitle")}</Text>
         </View>
-        {canLog ? (
+        {showRescueStatusAction ? (
+          <TouchableOpacity
+            style={[
+              styles.freeDayStatusPill,
+              { backgroundColor: rescuePillColor, borderColor: rescuePillColor },
+              rescuePillDisabled && styles.freeDayStatusPillDisabled,
+            ]}
+            onPress={onRescue}
+            disabled={rescuePillDisabled}
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.freeDayStatusText, { color: rescuePillTextColor }]}>
+              {t("freeDayRescuePillLabel", { count: "1" })}
+            </Text>
+            {BLUE_HEALTH_COIN_ASSET ? (
+              <Image source={BLUE_HEALTH_COIN_ASSET} style={styles.freeDayStatusCoin} />
+            ) : null}
+          </TouchableOpacity>
+        ) : canLog ? (
           <TouchableOpacity
             style={[
               styles.freeDayStatusPill,
@@ -5387,13 +5648,19 @@ const FeedScreen = React.memo(function FeedScreen({
     () => resolvedHistoryEvents.find((entry) => entry.kind === "refuse_spend"),
     [resolvedHistoryEvents]
   );
+  const latestSavingTimestamp = latestSaving?.timestamp || null;
+  const latestSavingTimestampLabel = useMemo(
+    () => formatLatestSavingTimestamp(latestSavingTimestamp, language),
+    [latestSavingTimestamp, language]
+  );
   const heroSpendCopy = useMemo(() => {
     const resolvedLatestTitle = resolveTemplateTitle(
       latestSaving?.meta?.templateId,
       latestSaving?.meta?.title
     );
     if (resolvedLatestTitle) {
-      return t("heroSpendLine", { title: resolvedLatestTitle });
+      const baseCopy = t("heroSpendLine", { title: resolvedLatestTitle });
+      return latestSavingTimestampLabel ? `${baseCopy} · ${latestSavingTimestampLabel}` : baseCopy;
     }
     if (!realSavedUSD || realSavedUSD <= 0) {
       return t("heroSpendFallback");
@@ -5403,7 +5670,16 @@ const FeedScreen = React.memo(function FeedScreen({
       return template.replace("{{amount}}", totalSavedLabel);
     }
     return t("heroSpendFallback");
-  }, [realSavedUSD, totalSavedLabel, personaPreset, language, t, latestSaving, resolveTemplateTitle]);
+  }, [
+    realSavedUSD,
+    totalSavedLabel,
+    personaPreset,
+    language,
+    t,
+    latestSaving,
+    resolveTemplateTitle,
+    latestSavingTimestampLabel,
+  ]);
   const heroEncouragementLine = useMemo(() => {
     const heroLine = isGoalComplete
       ? moodPreset?.heroComplete || t("goalWidgetCompleteTagline")
@@ -5568,13 +5844,11 @@ const FeedScreen = React.memo(function FeedScreen({
     freeDayStats.lastDate === dayBeforeYesterdayKey &&
     freeDayStats.lastDate !== todayKey;
   const hasRescueHealth = healthPoints >= freeDayRescueCost;
-  const canRescueFreeDay = isEvening && streakNeedsRescue && hasRescueHealth;
+  const canRescueFreeDay = streakNeedsRescue && hasRescueHealth;
   const rescueStatus = !streakNeedsRescue
     ? null
     : !hasRescueHealth
     ? t("freeDayRescueNeedHealth", { cost: freeDayRescueCost })
-    : !isEvening
-    ? t("freeDayRescueNeedTime")
     : null;
   const potentialSavedUSD = useSavingsSimulation(
     profile?.spendingProfile?.baselineMonthlyWasteUSD || 0,
@@ -5772,7 +6046,7 @@ const FeedScreen = React.memo(function FeedScreen({
             levelProgressValue={heroLevelProgress}
             healthPoints={healthPoints}
             onBreakdownPress={onSavingsBreakdownPress}
-          />
+            />
             <FreeDayCard
               colors={colors}
               t={t}
@@ -5787,6 +6061,7 @@ const FeedScreen = React.memo(function FeedScreen({
               rescueStatus={rescueStatus}
               rescueCost={freeDayRescueCost}
               onRescue={onFreeDayRescue}
+              hasRescueHealth={hasRescueHealth}
             />
             {showImpulseCard && (
               <ImpulseMapCard
@@ -8402,6 +8677,13 @@ function AppContent() {
   const [dailySummaryVisible, setDailySummaryVisible] = useState(false);
   const [dailySummaryData, setDailySummaryData] = useState(null);
   const [dailySummarySeenKey, setDailySummarySeenKey] = useState(null);
+  const [reflectionReminderMeta, setReflectionReminderMeta] = useState({
+    dateKey: null,
+    ids: [],
+    locale: null,
+  });
+  const reflectionReminderMetaRef = useRef({ dateKey: null, ids: [], locale: null });
+  const [reflectionRemindersHydrated, setReflectionRemindersHydrated] = useState(false);
   const dailyChallengePromptVisible =
     dailyChallenge.status === DAILY_CHALLENGE_STATUS.OFFER && !dailyChallenge.offerDismissed;
   const dailyNudgeIdsRef = useRef({});
@@ -8415,6 +8697,9 @@ function AppContent() {
   const [tutorialSeen, setTutorialSeen] = useState(true);
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
+  const [tabHintsSeen, setTabHintsSeen] = useState(DEFAULT_TAB_HINTS_STATE);
+  const [tabHintsHydrated, setTabHintsHydrated] = useState(false);
+  const [tabHintVisible, setTabHintVisible] = useState(null);
   const finishTutorial = useCallback(() => {
     setTutorialVisible(false);
     setTutorialSeen(true);
@@ -8431,6 +8716,7 @@ function AppContent() {
   const handleTutorialSkip = useCallback(() => {
     finishTutorial();
   }, [finishTutorial]);
+  const dismissTabHint = useCallback(() => setTabHintVisible(null), []);
   const clearCompletedPrimaryGoal = useCallback(
     (goalId) => {
       if (!goalId) return;
@@ -8498,6 +8784,7 @@ function AppContent() {
   const partyGlow = useRef(new Animated.Value(0)).current;
   const [partyActive, setPartyActive] = useState(false);
   const [partyBurstKey, setPartyBurstKey] = useState(0);
+  const partyGlowAnimRef = useRef(null);
   const saveActionLogRef = useRef([]);
   const cartBadgeScale = useRef(new Animated.Value(1)).current;
   const [onboardingStep, setOnboardingStep] = useState("logo");
@@ -8524,6 +8811,86 @@ function AppContent() {
       console.warn("Inter font load error", fontsError);
     }
   }, [fontsError]);
+  useEffect(() => {
+    let mounted = true;
+    AsyncStorage.getItem(STORAGE_KEYS.DAILY_REFLECTION_REMINDERS)
+      .then((raw) => {
+        if (!mounted) return;
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === "object") {
+              const meta = {
+                dateKey: parsed.dateKey || null,
+                ids: Array.isArray(parsed.ids) ? parsed.ids : [],
+                locale: parsed.locale || null,
+              };
+              reflectionReminderMetaRef.current = meta;
+              setReflectionReminderMeta(meta);
+            } else {
+              reflectionReminderMetaRef.current = { dateKey: null, ids: [], locale: null };
+            }
+          } catch (error) {
+            console.warn("reflection reminder parse", error);
+            reflectionReminderMetaRef.current = { dateKey: null, ids: [], locale: null };
+          }
+        } else {
+          reflectionReminderMetaRef.current = { dateKey: null, ids: [], locale: null };
+        }
+      })
+      .catch(() => {
+        reflectionReminderMetaRef.current = { dateKey: null, ids: [], locale: null };
+      })
+      .finally(() => {
+        if (mounted) {
+          setReflectionRemindersHydrated(true);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  useEffect(() => {
+    reflectionReminderMetaRef.current = reflectionReminderMeta;
+  }, [reflectionReminderMeta]);
+  useEffect(() => {
+    if (!reflectionRemindersHydrated) return;
+    AsyncStorage.setItem(
+      STORAGE_KEYS.DAILY_REFLECTION_REMINDERS,
+      JSON.stringify(reflectionReminderMeta)
+    ).catch(() => {});
+  }, [reflectionReminderMeta, reflectionRemindersHydrated]);
+  useEffect(() => {
+    let mounted = true;
+    AsyncStorage.getItem(STORAGE_KEYS.TAB_HINTS)
+      .then((raw) => {
+        if (!mounted) return;
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            setTabHintsSeen({ ...DEFAULT_TAB_HINTS_STATE, ...(parsed || {}) });
+          } catch (error) {
+            console.warn("tab hints parse", error);
+            setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
+          }
+        } else {
+          setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
+        }
+      })
+      .catch(() => {
+        setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
+      })
+      .finally(() => {
+        if (mounted) setTabHintsHydrated(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!tabHintsHydrated) return;
+    AsyncStorage.setItem(STORAGE_KEYS.TAB_HINTS, JSON.stringify(tabHintsSeen)).catch(() => {});
+  }, [tabHintsSeen, tabHintsHydrated]);
   const openTamagotchiOverlay = useCallback(() => setTamagotchiVisible(true), []);
   const closeTamagotchiOverlay = useCallback(() => setTamagotchiVisible(false), []);
   const [fabMenuVisible, setFabMenuVisible] = useState(false);
@@ -8536,6 +8903,7 @@ function AppContent() {
     () => Math.min(TAMAGOTCHI_MAX_HUNGER, Math.max(0, tamagotchiState.hunger)),
     [tamagotchiState.hunger]
   );
+  const tamagotchiIsFull = tamagotchiHungerPercent >= TAMAGOTCHI_MAX_HUNGER;
   const tamagotchiCoins = healthPoints;
   const [newGoalModal, setNewGoalModal] = useState({
     visible: false,
@@ -9538,6 +9906,25 @@ function AppContent() {
         }),
       });
     }
+    const notifyReward = async () => {
+      const permitted = await ensureNotificationPermission();
+      if (!permitted) return;
+      try {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: t("dailyChallengeRewardNotificationTitle"),
+            body: t("dailyChallengeRewardNotificationBody", {
+              temptation: dailyChallenge.templateLabel || dailyChallenge.templateTitle || t("defaultDealTitle"),
+              amount: `${dailyChallenge.rewardBonus}`,
+            }),
+          },
+          trigger: null,
+        });
+      } catch (error) {
+        console.warn("daily challenge reward notification", error);
+      }
+    };
+    notifyReward();
     logEvent("daily_challenge_completed", {
       template_id: dailyChallenge.templateId,
       reward_bonus: dailyChallenge.rewardBonus,
@@ -9546,6 +9933,7 @@ function AppContent() {
     dailyChallenge.rewardBonus,
     dailyChallenge.templateId,
     dailyChallenge.templateTitle,
+    ensureNotificationPermission,
     logEvent,
     setHealthPoints,
     t,
@@ -11822,6 +12210,15 @@ function AppContent() {
   );
 
   const feedTamagotchi = useCallback(() => {
+    if (tamagotchiState.hunger >= TAMAGOTCHI_MAX_HUNGER) {
+      Alert.alert(
+        language === "ru" ? "Алми" : "Almi",
+        language === "ru"
+          ? "Алми сыта на 100%. Вернись позже, когда появится голод."
+          : "Almi is already full. Come back later when she gets hungry."
+      );
+      return;
+    }
     if (tamagotchiCoins < TAMAGOTCHI_FEED_COST) {
       const hint =
         language === "ru"
@@ -11845,7 +12242,143 @@ function AppContent() {
     });
     setHealthPoints((coins) => Math.max(0, coins - TAMAGOTCHI_FEED_COST));
     requestMascotAnimation("happy", 3600);
-  }, [language, requestMascotAnimation, setHealthPoints, tamagotchiCoins]);
+  }, [language, requestMascotAnimation, setHealthPoints, tamagotchiCoins, tamagotchiState.hunger]);
+
+  const stopPartyEffects = useCallback(() => {
+    if (partyGlowAnimRef.current) {
+      partyGlowAnimRef.current.stop();
+      partyGlowAnimRef.current = null;
+    }
+    partyGlow.setValue(0);
+    setPartyActive(false);
+  }, [partyGlow]);
+
+  const runPartyEffects = useCallback(
+    (cyclesLeft = 2) => {
+      const executeCycle = (remaining) => {
+        if (remaining <= 0) {
+          stopPartyEffects();
+          return;
+        }
+        setPartyBurstKey((prev) => prev + 1);
+        const glowPulse = Animated.sequence([
+          Animated.timing(partyGlow, {
+            toValue: 1,
+            duration: 400,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(partyGlow, {
+            toValue: 0,
+            duration: 400,
+            easing: Easing.in(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.delay(320),
+        ]);
+        partyGlowAnimRef.current = glowPulse;
+        glowPulse.start(() => executeCycle(remaining - 1));
+      };
+      executeCycle(cyclesLeft);
+    },
+    [partyGlow, stopPartyEffects]
+  );
+
+  useEffect(() => {
+    return () => {
+      stopPartyEffects();
+    };
+  }, [stopPartyEffects]);
+
+  const cancelReflectionReminders = useCallback(async () => {
+    const ids = reflectionReminderMetaRef.current?.ids || [];
+    if (ids.length) {
+      await Promise.all(
+        ids.map((notificationId) =>
+          Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => {})
+        )
+      );
+    }
+    const clearedMeta = { dateKey: null, ids: [], locale: null };
+    reflectionReminderMetaRef.current = clearedMeta;
+    setReflectionReminderMeta(clearedMeta);
+  }, []);
+
+  const scheduleDailyReflectionReminders = useCallback(async () => {
+    if (!reflectionRemindersHydrated) return;
+    const now = new Date();
+    const todayKey = getDayKey(now);
+    const midnight = new Date(now);
+    midnight.setHours(24, 0, 0, 0);
+    const startWindow = new Date(now);
+    startWindow.setHours(REFLECTION_REMINDER_START_HOUR, 0, 0, 0);
+    const hasTrackedActivity = resolvedHistoryEvents.some((entry) => {
+      if (!entry || (entry.kind !== "spend" && entry.kind !== "refuse_spend")) return false;
+      if (!entry.timestamp) return false;
+      return getDayKey(entry.timestamp) === todayKey;
+    });
+    if (hasTrackedActivity || now >= midnight) {
+      await cancelReflectionReminders();
+      return;
+    }
+    const existingMeta = reflectionReminderMetaRef.current || { ids: [], dateKey: null, locale: null };
+    if (
+      existingMeta.dateKey === todayKey &&
+      (existingMeta.ids?.length || 0) > 0 &&
+      existingMeta.locale === language
+    ) {
+      return;
+    }
+    const permitted = await ensureNotificationPermission();
+    if (!permitted) return;
+    await cancelReflectionReminders();
+    let firstTrigger = now > startWindow ? new Date(now) : new Date(startWindow);
+    firstTrigger.setSeconds(0, 0);
+    if (firstTrigger <= now) {
+      firstTrigger = new Date(firstTrigger.getTime() + REFLECTION_REMINDER_INTERVAL_MS);
+    }
+    if (firstTrigger >= midnight) return;
+    const ids = [];
+    for (
+      let tick = firstTrigger.getTime();
+      tick < midnight.getTime();
+      tick += REFLECTION_REMINDER_INTERVAL_MS
+    ) {
+      const triggerDate = new Date(tick);
+      const countdown = formatReflectionCountdown(midnight.getTime() - triggerDate.getTime());
+      try {
+        const notificationId = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: t("dailyReflectionReminderTitle"),
+            body: t("dailyReflectionReminderBody", { time: countdown }),
+            sound: "default",
+          },
+          trigger: triggerDate,
+        });
+        ids.push(notificationId);
+      } catch (error) {
+        console.warn("reflection reminder schedule", error);
+      }
+    }
+    const meta = { dateKey: todayKey, ids, locale: language };
+    reflectionReminderMetaRef.current = meta;
+    setReflectionReminderMeta(meta);
+  }, [
+    cancelReflectionReminders,
+    ensureNotificationPermission,
+    language,
+    reflectionRemindersHydrated,
+    resolvedHistoryEvents,
+    t,
+  ]);
+  useEffect(() => {
+    if (!reflectionRemindersHydrated) return;
+    scheduleDailyReflectionReminders();
+    const interval = setInterval(() => {
+      scheduleDailyReflectionReminders();
+    }, 15 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [reflectionRemindersHydrated, scheduleDailyReflectionReminders]);
 
   const startParty = useCallback(() => {
     if (tamagotchiCoins < TAMAGOTCHI_PARTY_COST) {
@@ -11862,32 +12395,11 @@ function AppContent() {
       return;
     }
     setHealthPoints((coins) => Math.max(0, coins - TAMAGOTCHI_PARTY_COST));
+    stopPartyEffects();
     setPartyActive(true);
-    setPartyBurstKey((prev) => prev + 1);
-    partyGlow.setValue(0);
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(partyGlow, {
-          toValue: 1,
-          duration: 400,
-          useNativeDriver: true,
-          easing: Easing.out(Easing.quad),
-        }),
-        Animated.timing(partyGlow, {
-          toValue: 0,
-          duration: 400,
-          useNativeDriver: true,
-          easing: Easing.in(Easing.quad),
-        }),
-      ])
-    ).start();
+    runPartyEffects(2);
     requestMascotAnimation("happyHeadshake", 3600);
-    setTimeout(() => {
-      partyGlow.stopAnimation();
-      partyGlow.setValue(0);
-      setPartyActive(false);
-    }, 2400);
-  }, [language, partyGlow, requestMascotAnimation, setHealthPoints, tamagotchiCoins]);
+  }, [language, requestMascotAnimation, runPartyEffects, setHealthPoints, stopPartyEffects, tamagotchiCoins]);
 
   const handleMascotAnimationComplete = useCallback(() => {
     mascotBusyRef.current = false;
@@ -12826,9 +13338,8 @@ function AppContent() {
       setConfettiKey((prev) => prev + 1);
     }
     setOverlay({ type: next.type, message: next.message });
-    const timeout =
-      next.duration ??
-      (next.type === "cart"
+    const defaultDuration =
+      next.type === "cart"
         ? 1800
         : next.type === "level"
         ? 3200
@@ -12836,12 +13347,19 @@ function AppContent() {
         ? 3200
         : next.type === "save"
         ? 4200
-        : 2600);
-    overlayTimer.current = setTimeout(() => {
-      setOverlay(null);
-      overlayActiveRef.current = false;
-      processOverlayQueue();
-    }, timeout);
+        : next.type === "impulse_alert"
+        ? null
+        : 2600;
+    const timeout = next.duration ?? defaultDuration;
+    if (typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0) {
+      overlayTimer.current = setTimeout(() => {
+        setOverlay(null);
+        overlayActiveRef.current = false;
+        processOverlayQueue();
+      }, timeout);
+    } else {
+      overlayTimer.current = null;
+    }
   }, []);
 
   const triggerOverlayState = useCallback(
@@ -13095,9 +13613,9 @@ function AppContent() {
     [logEvent]
   );
 
-const handleFreeDayRescue = useCallback(() => {
-  const now = new Date();
-  if (now.getHours() < 18 || !freeDayStats.lastDate || healthPoints < FREE_DAY_RESCUE_COST) return;
+  const handleFreeDayRescue = useCallback(() => {
+    const now = new Date();
+    if (!freeDayStats.lastDate || healthPoints < FREE_DAY_RESCUE_COST) return;
     const yesterdayKey = getDayKey(new Date(now.getTime() - DAY_MS));
     const dayBeforeYesterdayKey = getDayKey(new Date(now.getTime() - DAY_MS * 2));
     if (freeDayStats.lastDate !== dayBeforeYesterdayKey) return;
@@ -13458,6 +13976,18 @@ const handleFreeDayRescue = useCallback(() => {
     const screenName = tabScreens[activeTab] || "feed";
     logScreenView(screenName);
   }, [activeTab]);
+  useEffect(() => {
+    if (!tabHintsHydrated) return;
+    if (tabHintsSeen[activeTab]) return;
+    const config = TAB_HINT_CONFIG[activeTab];
+    if (!config) return;
+    setTabHintVisible({
+      tab: activeTab,
+      title: t(config.titleKey),
+      body: t(config.bodyKey),
+    });
+    setTabHintsSeen((prev) => ({ ...prev, [activeTab]: true }));
+  }, [activeTab, tabHintsHydrated, tabHintsSeen, t]);
 
   useEffect(() => {
     const onboardingScreens = {
@@ -14127,6 +14657,37 @@ const handleFreeDayRescue = useCallback(() => {
             </View>
           </Modal>
         )}
+        {tabHintVisible && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={dismissTabHint}>
+              <View style={styles.tabHintBackdrop}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
+                    style={[
+                      styles.tabHintCard,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.tabHintTitle, { color: colors.text }]}>
+                      {tabHintVisible.title}
+                    </Text>
+                    <Text style={[styles.tabHintBody, { color: colors.muted }]}>
+                      {tabHintVisible.body}
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.tabHintButton, { backgroundColor: colors.text }]}
+                      onPress={dismissTabHint}
+                    >
+                      <Text style={[styles.tabHintButtonText, { color: colors.background }]}>
+                        {t("tabHintGotIt")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
 
         <Modal
           visible={tamagotchiVisible}
@@ -14137,6 +14698,7 @@ const handleFreeDayRescue = useCallback(() => {
         >
           <TouchableWithoutFeedback onPress={closeTamagotchiOverlay}>
             <View style={styles.tamagotchiBackdrop}>
+              {partyActive && <PartyFireworksLayer isDarkMode={isDarkTheme} />}
               <TouchableWithoutFeedback onPress={() => {}}>
                 <Animated.View
                   style={[
@@ -14218,7 +14780,9 @@ const handleFreeDayRescue = useCallback(() => {
                       style={[
                         styles.tamagotchiButton,
                         { backgroundColor: colors.text, borderColor: colors.text },
+                        tamagotchiIsFull && styles.tamagotchiButtonDisabled,
                       ]}
+                      disabled={tamagotchiIsFull}
                       onPress={feedTamagotchi}
                     >
                       <View style={styles.tamagotchiButtonContent}>
@@ -14247,6 +14811,11 @@ const handleFreeDayRescue = useCallback(() => {
                       </View>
                     </TouchableOpacity>
                   </View>
+                  {tamagotchiIsFull && (
+                    <Text style={[styles.tamagotchiHint, { color: colors.muted }]}>
+                      {language === "ru" ? "Алми сыт, покорми позже." : "He is full, try again later."}
+                    </Text>
+                  )}
                   <TouchableOpacity onPress={closeTamagotchiOverlay} style={styles.tamagotchiClose}>
                     <Text style={[styles.tamagotchiCloseText, { color: colors.muted }]}>
                       {language === "ru" ? "Закрыть" : "Close"}
@@ -15263,6 +15832,14 @@ const styles = StyleSheet.create({
   partyGlowOverlay: {
     ...StyleSheet.absoluteFillObject,
   },
+  partyFireworksOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  partyFireworkRing: {
+    position: "absolute",
+    borderWidth: 2,
+    opacity: 0,
+  },
   tamagotchiCard: {
     width: "100%",
     maxWidth: 360,
@@ -15315,6 +15892,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
   },
+  tamagotchiButtonDisabled: {
+    opacity: 0.5,
+  },
   tamagotchiButtonContent: {
     flexDirection: "row",
     alignItems: "center",
@@ -15334,6 +15914,10 @@ const styles = StyleSheet.create({
   },
   tamagotchiSub: {
     ...createSecondaryText({ fontSize: 12 }),
+  },
+  tamagotchiHint: {
+    ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
+    marginTop: 4,
   },
   tamagotchiClose: {
     alignSelf: "center",
@@ -16133,9 +16717,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignSelf: "flex-start",
     alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
   },
   freeDayStatusText: {
     ...createCtaText({ fontSize: 12, textAlign: "center" }),
+  },
+  freeDayStatusPillDisabled: {
+    opacity: 0.5,
+  },
+  freeDayStatusCoin: {
+    width: 18,
+    height: 18,
+    marginLeft: 6,
+    resizeMode: "contain",
   },
   freeDayHealthBadge: {
     display: "none",
@@ -16407,9 +17002,30 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     padding: 20,
     gap: 12,
-    borderWidth: 1,
-    borderColor: "transparent",
     position: "relative",
+    overflow: "hidden",
+  },
+  temptationTextureContainer: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 28,
+  },
+  temptationTextureOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.18,
+  },
+  temptationTextureAccent: {
+    transform: [{ rotate: "-8deg" }],
+    opacity: 0.12,
+    top: -80,
+    bottom: -80,
+  },
+  temptationTextureHighlight: {
+    opacity: 0.16,
+    transform: [{ rotate: "14deg" }],
+    left: "-20%",
+    right: "-20%",
+    top: "-60%",
+    bottom: "-60%",
   },
   temptationSwipeWrapper: {
     marginBottom: 16,
@@ -16815,6 +17431,33 @@ const styles = StyleSheet.create({
   tutorialPrimaryText: {
     fontSize: 15,
     fontWeight: "700",
+  },
+  tabHintBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+    padding: 24,
+  },
+  tabHintCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 20,
+    gap: 10,
+  },
+  tabHintTitle: {
+    ...createBodyText({ fontSize: 17, fontWeight: "700" }),
+  },
+  tabHintBody: {
+    ...createBodyText({ fontSize: 14 }),
+  },
+  tabHintButton: {
+    marginTop: 4,
+    borderRadius: 14,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  tabHintButtonText: {
+    ...createCtaText({ fontSize: 14 }),
   },
   variantRow: {
     flexDirection: "row",
