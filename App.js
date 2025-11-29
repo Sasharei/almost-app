@@ -23,6 +23,7 @@ import {
   LayoutAnimation,
   UIManager,
   StatusBar as RNStatusBar,
+  AppState,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import ConfettiCannon from "react-native-confetti-cannon";
@@ -92,8 +93,11 @@ const STORAGE_KEYS = {
   DAILY_SUMMARY: "@almost_daily_summary",
   TUTORIAL: "@almost_tutorial_state",
   DAILY_CHALLENGE: "@almost_daily_challenge_state",
-  DAILY_REFLECTION_REMINDERS: "@almost_daily_reflection_reminders",
   TAB_HINTS: "@almost_tab_hints",
+  FOCUS_TARGET: "@almost_focus_target",
+  FOCUS_DIGEST: "@almost_focus_digest",
+  CATEGORY_OVERRIDES: "@almost_category_overrides",
+  FOCUS_DIGEST_PENDING: "@almost_focus_digest_pending",
 };
 
 const PURCHASE_GOAL = 20000;
@@ -156,8 +160,6 @@ const DAILY_NUDGE_REMINDERS = [
   { id: "daytime", hour: 14, minute: 0, titleKey: "dailyNudgeDayTitle", bodyKey: "dailyNudgeDayBody" },
   { id: "evening", hour: 20, minute: 0, titleKey: "dailyNudgeEveningTitle", bodyKey: "dailyNudgeEveningBody" },
 ];
-const REFLECTION_REMINDER_START_HOUR = 22;
-const REFLECTION_REMINDER_INTERVAL_MS = 60 * 1000;
 const ANDROID_DAILY_NUDGE_CHANNEL_ID = "daily-nudges";
 const DAILY_CHALLENGE_MIN_SPEND_EVENTS = 2;
 const DAILY_CHALLENGE_REWARD_MULTIPLIER = 2;
@@ -1279,6 +1281,7 @@ const IMPULSE_CATEGORY_DEFS = {
   vices: { id: "vices", ru: "Вредные мелочи", en: "Small vices", emoji: "⚡️" },
 };
 const IMPULSE_CATEGORY_ORDER = ["food", "things", "fun", "vices"];
+const DEFAULT_IMPULSE_CATEGORY = "vices";
 const INITIAL_IMPULSE_TRACKER = {
   events: [],
   lastAlerts: {},
@@ -1293,6 +1296,10 @@ const formatImpulseWindowLabel = (hour, span = 2) => {
 };
 
 const resolveImpulseCategory = (item = {}) => {
+  const override = typeof item?.impulseCategoryOverride === "string" ? item.impulseCategoryOverride : null;
+  if (override && IMPULSE_CATEGORY_DEFS[override]) {
+    return override;
+  }
   const categories = Array.isArray(item.categories)
     ? item.categories.map((entry) => (entry || "").toLowerCase())
     : [];
@@ -1322,6 +1329,8 @@ const buildImpulseInsights = (events = []) => {
   }, {});
   const templateStats = new Map();
   let processedEvents = 0;
+  let totalSaves = 0;
+  let totalSpends = 0;
   events.forEach((event) => {
     if (!event || !event.templateId) return;
     processedEvents += 1;
@@ -1331,8 +1340,10 @@ const buildImpulseInsights = (events = []) => {
     }
     if (event.action === "save") {
       categories[category].save += 1;
+      totalSaves += 1;
     } else if (event.action === "spend") {
       categories[category].spend += 1;
+      totalSpends += 1;
     }
     const stat =
       templateStats.get(event.templateId) || {
@@ -1463,6 +1474,8 @@ const buildImpulseInsights = (events = []) => {
     activeRisk,
     hottestCategory,
     eventCount: processedEvents,
+    totalSaveCount: totalSaves,
+    totalSpendCount: totalSpends,
   };
 };
 
@@ -1892,7 +1905,6 @@ const RainDrop = ({ left, delay, height, colors }) => {
 
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
 const BASE_HORIZONTAL_PADDING = Platform.OS === "android" ? 20 : 30;
-const SHELL_HORIZONTAL_PADDING = Platform.OS === "android" ? 0 : 8;
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -1921,18 +1933,6 @@ const convertFromCurrency = (valueLocal = 0, currency = activeCurrency) => {
 
 const formatSampleAmount = (valueUSD, currencyCode) =>
   formatCurrency(convertToCurrency(valueUSD, currencyCode), currencyCode);
-
-const formatReflectionCountdown = (ms) => {
-  if (!Number.isFinite(ms)) return "00:00";
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  if (hours > 0) {
-    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  }
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-};
 
 const formatNumberInputValue = (value) => {
   if (!Number.isFinite(value)) return "";
@@ -2028,7 +2028,10 @@ const buildCustomTemptationDescription = (gender = "none") => {
     ru = "Это искушение ты добавила сама. Отслеживай его и побеждай чаще.";
   }
   const en = "You added this temptation yourself. Track it and beat it more often.";
-  return { ru, en };
+  return {
+    ru,
+    en,
+  };
 };
 
 const createCustomHabitTemptation = (customSpend, fallbackCurrency, gender = "none") => {
@@ -2037,11 +2040,19 @@ const createCustomHabitTemptation = (customSpend, fallbackCurrency, gender = "no
   if (!price) return null;
   const title = customSpend.title;
   const description = buildCustomTemptationDescription(gender);
+  const impulseCategory =
+    customSpend.impulseCategory && IMPULSE_CATEGORY_DEFS[customSpend.impulseCategory]
+      ? customSpend.impulseCategory
+      : null;
+  const categories = ["habit", "custom"];
+  if (impulseCategory) {
+    categories.push(impulseCategory);
+  }
   return {
     id: customSpend.id || "custom_habit",
     emoji: customSpend.emoji || "💡",
     color: "#FFF5E6",
-    categories: ["habit", "custom"],
+    categories,
     basePriceUSD: price,
     priceUSD: price,
     title: {
@@ -2049,6 +2060,7 @@ const createCustomHabitTemptation = (customSpend, fallbackCurrency, gender = "no
       en: title,
     },
     description,
+    impulseCategoryOverride: impulseCategory,
   };
 };
 
@@ -2065,12 +2077,28 @@ const normalizeCustomTemptationEntry = (
   fallbackCurrency = DEFAULT_PROFILE.currency
 ) => {
   if (!entry || typeof entry !== "object") return null;
-  if (hasValidCustomPrice(entry)) return entry;
-  const rebuilt = createCustomHabitTemptation(entry, fallbackCurrency, entry?.gender || "none");
+  const genderValue = entry?.gender || "none";
+  if (hasValidCustomPrice(entry)) {
+    const entryCategory =
+      entry.impulseCategoryOverride || entry.impulseCategory || null;
+    const normalizedCategory =
+      entryCategory && IMPULSE_CATEGORY_DEFS[entryCategory] ? entryCategory : null;
+    return {
+      ...entry,
+      description: buildCustomTemptationDescription(genderValue),
+      impulseCategoryOverride: normalizedCategory,
+    };
+  }
+  const rebuilt = createCustomHabitTemptation(entry, fallbackCurrency, genderValue);
   if (!rebuilt) return null;
   const merged = { ...rebuilt, ...entry };
   merged.priceUSD = rebuilt.priceUSD;
   merged.basePriceUSD = rebuilt.basePriceUSD;
+  merged.description = rebuilt.description;
+  const entryCategory =
+    entry.impulseCategoryOverride || entry.impulseCategory || rebuilt.impulseCategoryOverride;
+  merged.impulseCategoryOverride =
+    entryCategory && IMPULSE_CATEGORY_DEFS[entryCategory] ? entryCategory : rebuilt.impulseCategoryOverride || null;
   return merged;
 };
 
@@ -2216,6 +2244,19 @@ const TRANSLATIONS = {
       "Ты в зоне импульсивных трат на {{temptation}} ({{window}}). Откажись и отправь {{amount}} в копилку!",
     impulseNotificationTitle: "Импульс на {{temptation}}",
     impulseNotificationBody: "В это время ты обычно тратишься. Отправь {{amount}} в копилку и сохрани курс.",
+    impulseCategoryLabel: "Категория импульса",
+    focusDigestPositiveTitle: "Держишь курс!",
+    focusDigestPositiveBody:
+      "Ты чаще отказываешься, чем тратишь. Сильная сторона — «{{strong}}», слабая — «{{weak}}».",
+    focusDigestNegativeTitle: "Внимание к расходам",
+    focusDigestNegativeBody:
+      "Трат стало больше. Главная трата — «{{weak}}». Сфокусируйся на ней, чтобы вернуть контроль.",
+    focusDigestStrongLabel: "Сильная сторона",
+    focusDigestWeakLabel: "Слабая сторона",
+    focusDigestButton: "Сфокусироваться",
+    focusDigestDismiss: "Позже",
+    focusDigestMissing: "Нет данных",
+    focusBadgeLabel: "Фокус",
     dailyReflectionReminderTitle: "Подведи итоги дня",
     dailyReflectionReminderBody: "До полуночи {{time}} · отметь трату или экономию.",
     pendingTab: "Думаем",
@@ -2716,6 +2757,19 @@ const TRANSLATIONS = {
       "You’re entering a high-impulse zone for {{temptation}} ({{window}}). Skip it and stash {{amount}}!",
     impulseNotificationTitle: "Impulse for {{temptation}}",
     impulseNotificationBody: "You usually cave now. Send {{amount}} to savings instead.",
+    impulseCategoryLabel: "Impulse category",
+    focusDigestPositiveTitle: "Trend is on track",
+    focusDigestPositiveBody:
+      "You resist more than you spend. Biggest win: “{{strong}}”. Keep an eye on “{{weak}}”.",
+    focusDigestNegativeTitle: "Time to refocus",
+    focusDigestNegativeBody:
+      "Spending is outpacing saves. Biggest leak: “{{weak}}”. Focus on it to regain control.",
+    focusDigestStrongLabel: "Biggest win",
+    focusDigestWeakLabel: "Needs attention",
+    focusDigestButton: "Focus",
+    focusDigestDismiss: "Later",
+    focusDigestMissing: "No data yet",
+    focusBadgeLabel: "Focus",
     dailyReflectionReminderTitle: "Wrap up your day",
     dailyReflectionReminderBody: "{{time}} left today · log a save or a spend.",
     pendingTab: "Thinking",
@@ -3607,6 +3661,7 @@ const INITIAL_REGISTRATION = {
   customSpendTitle: "",
   customSpendAmount: "",
   customSpendFrequency: "",
+   customSpendCategory: DEFAULT_IMPULSE_CATEGORY,
   baselineMonthlyWaste: "",
   baselineCapturedAt: null,
   goalSelections: [],
@@ -4246,8 +4301,12 @@ function TemptationCard({
   stats = {},
   feedback,
   titleOverride,
+  descriptionOverride = null,
   goalLabel = null,
   isWishlistGoal = false,
+  isFocusTarget = false,
+  editCategoryValue = DEFAULT_IMPULSE_CATEGORY,
+  onEditCategoryChange,
   onToggleEdit,
   isEditing = false,
   editTitleValue = "",
@@ -4268,12 +4327,13 @@ function TemptationCard({
   isPrimaryTemptation = false,
 }) {
   const title = resolveTemptationTitle(item, language, titleOverride);
-  const desc = item.description?.[language] || item.description?.en || "";
+  const desc = descriptionOverride ?? item.description?.[language] ?? item.description?.en ?? "";
   const priceUSD = item.priceUSD || item.basePriceUSD || 0;
   const priceLabel = formatCurrency(convertToCurrency(priceUSD, currency), currency);
   const highlight = true;
   const isDarkTheme = colors.background === THEMES.dark.background;
   const baseColor = item.color || colors.card;
+  const focusActive = isFocusTarget && !showEditorInline;
   const darkCardPalette = highlight
     ? {
         background: blendColors(baseColor, "#2B1A00", 0.4),
@@ -4295,12 +4355,13 @@ function TemptationCard({
         swipeBg: "rgba(255,255,255,0.04)",
         swipeBorder: "rgba(255,255,255,0.08)",
       };
-  const baseCardBackground = isDarkTheme ? darkCardPalette.background : baseColor;
+  const baseCardBackground = isDarkTheme
+    ? blendColors(baseColor, "#FFFFFF", 0.6)
+    : baseColor;
   const cardBackground = baseCardBackground;
-  const cardSurfaceColor = lightenColor(
-    cardBackground,
-    isDarkTheme ? 0.04 : 0.18
-  );
+  const cardSurfaceColor = isDarkTheme
+    ? blendColors(cardBackground, "#FFFFFF", 0.35)
+    : lightenColor(cardBackground, 0.18);
   const primaryHighlightColor = "#FF4D5A";
   const cardTextColor = isDarkTheme ? darkCardPalette.text : colors.text;
   const cardMutedColor = isDarkTheme ? darkCardPalette.muted : colors.muted;
@@ -4331,18 +4392,30 @@ function TemptationCard({
     highlightPinned ? "#FFF6C8" : isPrimaryTemptation ? "#FF9FB0" : "#D9F2FF",
     isDarkTheme ? 0.18 : 0.32
   );
-  const defaultShadowColor = isDarkTheme ? "rgba(0,0,0,0.85)" : "rgba(15,23,42,0.22)";
+  const showCardTexture = false;
+  const defaultShadowColor = isDarkTheme ? "rgba(255,255,255,0.55)" : "rgba(15,23,42,0.22)";
   const redShadowColor = "rgba(244,37,78,0.88)";
   const goldShadowColor = "rgba(255,198,110,0.75)";
+  const focusShadowColor = "rgba(255,92,92,0.85)";
   const shadowColor = isPrimaryTemptation
     ? redShadowColor
+    : focusActive
+    ? focusShadowColor
     : highlightPinned
     ? goldShadowColor
     : defaultShadowColor;
-  const shadowRadius = isPrimaryTemptation ? 36 : highlightPinned ? 30 : 22;
-  const shadowOpacity = isPrimaryTemptation ? 0.8 : highlightPinned ? 0.58 : isDarkTheme ? 0.45 : 0.3;
-  const shadowElevation = isPrimaryTemptation ? 20 : highlightPinned ? 14 : 8;
-  const shadowOffsetHeight = isPrimaryTemptation ? 18 : highlightPinned ? 16 : 12;
+  const shadowRadius = isPrimaryTemptation ? 36 : focusActive ? 34 : highlightPinned ? 30 : isDarkTheme ? 28 : 22;
+  const shadowOpacity = isPrimaryTemptation
+    ? 0.8
+    : focusActive
+    ? 0.75
+    : highlightPinned
+    ? 0.6
+    : isDarkTheme
+    ? 0.55
+    : 0.3;
+  const shadowElevation = isPrimaryTemptation ? 20 : focusActive ? 18 : highlightPinned ? 14 : isDarkTheme ? 12 : 8;
+  const shadowOffsetHeight = isPrimaryTemptation ? 18 : focusActive ? 16 : highlightPinned ? 16 : isDarkTheme ? 14 : 12;
   const cardShadowStyle = Platform.select({
     ios: {
       shadowColor,
@@ -4510,28 +4583,30 @@ function TemptationCard({
       >
         <TouchableWithoutFeedback onPress={handleCardPress}>
           <View>
-            <View pointerEvents="none" style={styles.temptationTextureContainer}>
-              <View
-                style={[
-                  styles.temptationTextureOverlay,
-                  { backgroundColor: texturePrimaryColor },
-                ]}
-              />
-              <View
-                style={[
-                  styles.temptationTextureOverlay,
-                  styles.temptationTextureAccent,
-                  { backgroundColor: textureAccentColor },
-                ]}
-              />
-              <View
-                style={[
-                  styles.temptationTextureOverlay,
-                  styles.temptationTextureHighlight,
-                  { backgroundColor: textureHighlightColor },
-                ]}
-              />
-            </View>
+            {showCardTexture && (
+              <View pointerEvents="none" style={styles.temptationTextureContainer}>
+                <View
+                  style={[
+                    styles.temptationTextureOverlay,
+                    { backgroundColor: texturePrimaryColor, opacity: isDarkTheme ? 0.08 : 0.18 },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.temptationTextureOverlay,
+                    styles.temptationTextureAccent,
+                    { backgroundColor: textureAccentColor },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.temptationTextureOverlay,
+                    styles.temptationTextureHighlight,
+                    { backgroundColor: textureHighlightColor },
+                  ]}
+                />
+              </View>
+            )}
       <View
         style={[
           styles.temptationHeader,
@@ -4633,6 +4708,21 @@ function TemptationCard({
           </Text>
         </View>
       )}
+      {focusActive && (
+        <View
+          style={[
+            styles.temptationFocusBadge,
+            {
+              backgroundColor: isDarkTheme ? "rgba(255,92,92,0.15)" : "rgba(255,92,92,0.12)",
+              borderColor: isDarkTheme ? "rgba(255,92,92,0.5)" : "rgba(255,92,92,0.45)",
+            },
+          ]}
+        >
+          <Text style={[styles.temptationFocusBadgeText, { color: isDarkTheme ? "#FFC0C0" : "#C2153B" }]}>
+            {t("focusBadgeLabel")}
+          </Text>
+        </View>
+      )}
       {showEditorInline ? (
         <TouchableOpacity
           style={[
@@ -4690,6 +4780,20 @@ function TemptationCard({
           </Text>
         )}
       </View>
+      {showEditorInline && (
+        <View style={styles.categoryEditSection}>
+          <Text style={[styles.categoryEditLabel, { color: colors.muted }]}>
+            {t("impulseCategoryLabel")}
+          </Text>
+          <ImpulseCategorySelector
+            value={editCategoryValue || DEFAULT_IMPULSE_CATEGORY}
+            onChange={onEditCategoryChange}
+            colors={colors}
+            language={language}
+            compact
+          />
+        </View>
+      )}
       {!showEditorInline && (
         <View style={styles.temptationActions}>
         {actionConfig.map((action) => {
@@ -5602,9 +5706,11 @@ const FeedScreen = React.memo(function FeedScreen({
   editingPriceValue = "",
   editingGoalLabel = "",
   editingEmojiValue = "",
+  editingCategoryValue = DEFAULT_IMPULSE_CATEGORY,
   onTemptationEditTitleChange,
   onTemptationEditPriceChange,
   onTemptationEditEmojiChange,
+  onTemptationEditCategoryChange,
   onTemptationEditSave,
   onTemptationEditCancel,
   onTemptationEditDelete,
@@ -5617,6 +5723,9 @@ const FeedScreen = React.memo(function FeedScreen({
   onMascotPress = () => {},
   resolveTemplateTitle = () => null,
   tamagotchiMood = null,
+  primaryTemptationId = null,
+  primaryTemptationDescription = "",
+  focusTemplateId = null,
 }) {
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
   const [impulseExpanded, setImpulseExpanded] = useState(false);
@@ -5694,10 +5803,7 @@ const FeedScreen = React.memo(function FeedScreen({
     () => applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), isDarkMode ? "dark" : "light"),
     [moodPreset?.id, isDarkMode]
   );
-  const mainTemptationId = useMemo(() => {
-    if (!profile?.customSpend) return null;
-    return profile.customSpend.id || "custom_habit";
-  }, [profile?.customSpend]);
+  const mainTemptationId = primaryTemptationId;
   const goldPalette = useMemo(
     () =>
       isGoalComplete
@@ -6100,6 +6206,10 @@ const FeedScreen = React.memo(function FeedScreen({
               language={language}
               colors={colors}
               t={t}
+              descriptionOverride={
+                item.id === mainTemptationId ? primaryTemptationDescription : null
+              }
+              isFocusTarget={item.id === focusTemplateId}
               onToggleEdit={() => onTemptationEditToggle?.(item)}
               currency={currency}
               stats={refuseStats[item.id]}
@@ -6112,9 +6222,13 @@ const FeedScreen = React.memo(function FeedScreen({
               editPriceValue={editingTemptationId === item.id ? editingPriceValue : ""}
               editGoalLabel={editingTemptationId === item.id ? editingGoalLabel : ""}
               editEmojiValue={editingTemptationId === item.id ? editingEmojiValue : ""}
+              editCategoryValue={
+                editingTemptationId === item.id ? editingCategoryValue : DEFAULT_IMPULSE_CATEGORY
+              }
               onEditTitleChange={onTemptationEditTitleChange}
               onEditPriceChange={onTemptationEditPriceChange}
               onEditEmojiChange={onTemptationEditEmojiChange}
+              onEditCategoryChange={onTemptationEditCategoryChange}
               onEditSave={onTemptationEditSave}
               onEditCancel={onTemptationEditCancel}
               onEditDelete={() => onTemptationEditDelete?.(item)}
@@ -8601,10 +8715,17 @@ function AppContent() {
   const [catalogOverrides, setCatalogOverrides] = useState({});
   const [titleOverrides, setTitleOverrides] = useState({});
   const [emojiOverrides, setEmojiOverrides] = useState({});
+  const [categoryOverrides, setCategoryOverrides] = useState({});
   const [temptations, setTemptations] = useState(DEFAULT_TEMPTATIONS);
   const [quickTemptations, setQuickTemptations] = useState([]);
   const [hiddenTemptations, setHiddenTemptations] = useState([]);
-  const [priceEditor, setPriceEditor] = useState({ item: null, value: "", title: "", emoji: "" });
+  const [priceEditor, setPriceEditor] = useState({
+    item: null,
+    value: "",
+    title: "",
+    emoji: "",
+    category: DEFAULT_IMPULSE_CATEGORY,
+  });
   const [customReminderId, setCustomReminderId] = useState(null);
   const [smartReminders, setSmartReminders] = useState([]);
   const [smartRemindersHydrated, setSmartRemindersHydrated] = useState(false);
@@ -8637,6 +8758,12 @@ function AppContent() {
     ...DEFAULT_PROFILE_PLACEHOLDER,
     joinedAt: new Date().toISOString(),
   }));
+  const primaryTemptationId = profile.customSpend ? profile.customSpend.id || "custom_habit" : null;
+  const primaryTemptationDescription = useMemo(() => {
+    const gender = profile?.gender || "none";
+    const description = buildCustomTemptationDescription(gender);
+    return description?.[language] || description?.en || "";
+  }, [language, profile?.gender]);
   const [activeGoalId, setActiveGoalId] = useState(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [theme, setTheme] = useState("light");
@@ -8677,13 +8804,13 @@ function AppContent() {
   const [dailySummaryVisible, setDailySummaryVisible] = useState(false);
   const [dailySummaryData, setDailySummaryData] = useState(null);
   const [dailySummarySeenKey, setDailySummarySeenKey] = useState(null);
-  const [reflectionReminderMeta, setReflectionReminderMeta] = useState({
-    dateKey: null,
-    ids: [],
-    locale: null,
-  });
-  const reflectionReminderMetaRef = useRef({ dateKey: null, ids: [], locale: null });
-  const [reflectionRemindersHydrated, setReflectionRemindersHydrated] = useState(false);
+  const [focusTemplateId, setFocusTemplateId] = useState(null);
+  const [focusStateHydrated, setFocusStateHydrated] = useState(false);
+  const [focusDigestSeenKey, setFocusDigestSeenKey] = useState(null);
+  const [focusDigestHydrated, setFocusDigestHydrated] = useState(false);
+  const [pendingFocusDigest, setPendingFocusDigest] = useState(null);
+  const [focusDigestPromptShown, setFocusDigestPromptShown] = useState(false);
+  const appStateRef = useRef(AppState.currentState || "active");
   const dailyChallengePromptVisible =
     dailyChallenge.status === DAILY_CHALLENGE_STATUS.OFFER && !dailyChallenge.offerDismissed;
   const dailyNudgeIdsRef = useRef({});
@@ -8800,6 +8927,7 @@ function AppContent() {
     title: "",
     amount: "",
     emoji: DEFAULT_TEMPTATION_EMOJI,
+    category: DEFAULT_IMPULSE_CATEGORY,
   });
   useEffect(() => {
     if (fontsLoaded) {
@@ -8811,55 +8939,6 @@ function AppContent() {
       console.warn("Inter font load error", fontsError);
     }
   }, [fontsError]);
-  useEffect(() => {
-    let mounted = true;
-    AsyncStorage.getItem(STORAGE_KEYS.DAILY_REFLECTION_REMINDERS)
-      .then((raw) => {
-        if (!mounted) return;
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed === "object") {
-              const meta = {
-                dateKey: parsed.dateKey || null,
-                ids: Array.isArray(parsed.ids) ? parsed.ids : [],
-                locale: parsed.locale || null,
-              };
-              reflectionReminderMetaRef.current = meta;
-              setReflectionReminderMeta(meta);
-            } else {
-              reflectionReminderMetaRef.current = { dateKey: null, ids: [], locale: null };
-            }
-          } catch (error) {
-            console.warn("reflection reminder parse", error);
-            reflectionReminderMetaRef.current = { dateKey: null, ids: [], locale: null };
-          }
-        } else {
-          reflectionReminderMetaRef.current = { dateKey: null, ids: [], locale: null };
-        }
-      })
-      .catch(() => {
-        reflectionReminderMetaRef.current = { dateKey: null, ids: [], locale: null };
-      })
-      .finally(() => {
-        if (mounted) {
-          setReflectionRemindersHydrated(true);
-        }
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-  useEffect(() => {
-    reflectionReminderMetaRef.current = reflectionReminderMeta;
-  }, [reflectionReminderMeta]);
-  useEffect(() => {
-    if (!reflectionRemindersHydrated) return;
-    AsyncStorage.setItem(
-      STORAGE_KEYS.DAILY_REFLECTION_REMINDERS,
-      JSON.stringify(reflectionReminderMeta)
-    ).catch(() => {});
-  }, [reflectionReminderMeta, reflectionRemindersHydrated]);
   useEffect(() => {
     let mounted = true;
     AsyncStorage.getItem(STORAGE_KEYS.TAB_HINTS)
@@ -8891,6 +8970,46 @@ function AppContent() {
     if (!tabHintsHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.TAB_HINTS, JSON.stringify(tabHintsSeen)).catch(() => {});
   }, [tabHintsSeen, tabHintsHydrated]);
+  useEffect(() => {
+    const handleAppStateChange = (nextState) => {
+      const previousState = appStateRef.current;
+      const wasBackground =
+        typeof previousState === "string" && /inactive|background/.test(previousState);
+      appStateRef.current = nextState;
+      if (wasBackground && nextState === "active" && pendingFocusDigest) {
+        setFocusDigestPromptShown(false);
+      }
+    };
+    const subscription = AppState.addEventListener("change", handleAppStateChange);
+    return () => subscription.remove();
+  }, [pendingFocusDigest]);
+  useEffect(() => {
+    if (!focusStateHydrated) return;
+    if (!focusTemplateId) {
+      AsyncStorage.removeItem(STORAGE_KEYS.FOCUS_TARGET).catch(() => {});
+      return;
+    }
+    AsyncStorage.setItem(
+      STORAGE_KEYS.FOCUS_TARGET,
+      JSON.stringify({ templateId: focusTemplateId, updatedAt: Date.now() })
+    ).catch(() => {});
+  }, [focusTemplateId, focusStateHydrated]);
+  useEffect(() => {
+    if (!focusDigestHydrated) return;
+    if (!focusDigestSeenKey) {
+      AsyncStorage.removeItem(STORAGE_KEYS.FOCUS_DIGEST).catch(() => {});
+      return;
+    }
+    AsyncStorage.setItem(STORAGE_KEYS.FOCUS_DIGEST, focusDigestSeenKey).catch(() => {});
+  }, [focusDigestSeenKey, focusDigestHydrated]);
+  useEffect(() => {
+    if (!focusDigestHydrated) return;
+    if (!pendingFocusDigest) {
+      AsyncStorage.removeItem(STORAGE_KEYS.FOCUS_DIGEST_PENDING).catch(() => {});
+      return;
+    }
+    AsyncStorage.setItem(STORAGE_KEYS.FOCUS_DIGEST_PENDING, JSON.stringify(pendingFocusDigest)).catch(() => {});
+  }, [pendingFocusDigest, focusDigestHydrated]);
   const openTamagotchiOverlay = useCallback(() => setTamagotchiVisible(true), []);
   const closeTamagotchiOverlay = useCallback(() => setTamagotchiVisible(false), []);
   const [fabMenuVisible, setFabMenuVisible] = useState(false);
@@ -9821,6 +9940,45 @@ function AppContent() {
     notifyImpulseRisk(impulseInsights.activeRisk);
   }, [impulseInsights.activeRisk, notifyImpulseRisk]);
   useEffect(() => {
+    if (!focusDigestHydrated) return;
+    const todayKey = getDayKey(Date.now());
+    if (focusDigestSeenKey === todayKey) return;
+    if (pendingFocusDigest?.dateKey === todayKey) return;
+    if (!impulseInsights || (impulseInsights.eventCount || 0) < 4) return;
+    const strong = impulseInsights.hotWin || null;
+    const weak = impulseInsights.hotLose || null;
+    if (!strong && !weak) return;
+    const positive = (impulseInsights.totalSpendCount || 0) <= (impulseInsights.totalSaveCount || 0);
+    const strongTitle = strong?.title || t("focusDigestMissing");
+    const weakTitle = weak?.title || t("focusDigestMissing");
+    const payload = {
+      title: positive ? t("focusDigestPositiveTitle") : t("focusDigestNegativeTitle"),
+      body: positive
+        ? t("focusDigestPositiveBody", { strong: strongTitle, weak: weakTitle })
+        : t("focusDigestNegativeBody", { weak: weakTitle }),
+      strong,
+      weak,
+      positive,
+      targetId: weak?.templateId || strong?.templateId || null,
+    };
+    setPendingFocusDigest({ dateKey: todayKey, payload });
+    setFocusDigestPromptShown(false);
+  }, [
+    focusDigestHydrated,
+    focusDigestSeenKey,
+    impulseInsights,
+    pendingFocusDigest,
+    t,
+  ]);
+
+  useEffect(() => {
+    if (!pendingFocusDigest) return;
+    if (focusDigestPromptShown) return;
+    if (dailyChallengePromptVisible || overlay) return;
+    triggerOverlayState("focus_digest", pendingFocusDigest.payload);
+    setFocusDigestPromptShown(true);
+  }, [pendingFocusDigest, focusDigestPromptShown, dailyChallengePromptVisible, overlay, triggerOverlayState]);
+  useEffect(() => {
     if (!dailyChallengeHydrated) return;
     const todayKey = getDayKey(Date.now());
     if (dailyChallenge.dateKey === todayKey && dailyChallenge.templateId) return;
@@ -10104,6 +10262,7 @@ function AppContent() {
         catalogRaw,
         titleRaw,
         emojiOverridesRaw,
+        categoryOverridesRaw,
         savedTotalRaw,
         declinesRaw,
         freeDayRaw,
@@ -10128,6 +10287,9 @@ function AppContent() {
         dailySummaryRaw,
         tutorialRaw,
         termsAcceptedRaw,
+        focusTargetRaw,
+        focusDigestRaw,
+        focusDigestPendingRaw,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.WISHES),
         AsyncStorage.getItem(STORAGE_KEYS.PENDING),
@@ -10139,6 +10301,7 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.CATALOG),
         AsyncStorage.getItem(STORAGE_KEYS.TITLE_OVERRIDES),
         AsyncStorage.getItem(STORAGE_KEYS.EMOJI_OVERRIDES),
+        AsyncStorage.getItem(STORAGE_KEYS.CATEGORY_OVERRIDES),
         AsyncStorage.getItem(STORAGE_KEYS.SAVED_TOTAL),
         AsyncStorage.getItem(STORAGE_KEYS.DECLINES),
         AsyncStorage.getItem(STORAGE_KEYS.FREE_DAY),
@@ -10163,6 +10326,9 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.DAILY_SUMMARY),
         AsyncStorage.getItem(STORAGE_KEYS.TUTORIAL),
         AsyncStorage.getItem(STORAGE_KEYS.TERMS_ACCEPTED),
+        AsyncStorage.getItem(STORAGE_KEYS.FOCUS_TARGET),
+        AsyncStorage.getItem(STORAGE_KEYS.FOCUS_DIGEST),
+        AsyncStorage.getItem(STORAGE_KEYS.FOCUS_DIGEST_PENDING),
       ]);
       if (wishesRaw) {
         setWishes(JSON.parse(wishesRaw));
@@ -10347,9 +10513,54 @@ function AppContent() {
       if (termsAcceptedRaw === "1") {
         setTermsAccepted(true);
       }
+      if (focusTargetRaw) {
+        try {
+          const parsedFocus = JSON.parse(focusTargetRaw);
+          if (parsedFocus && typeof parsedFocus === "object" && typeof parsedFocus.templateId === "string") {
+            setFocusTemplateId(parsedFocus.templateId);
+          } else {
+            setFocusTemplateId(null);
+          }
+        } catch (error) {
+          setFocusTemplateId(null);
+        }
+      } else {
+        setFocusTemplateId(null);
+      }
+      setFocusStateHydrated(true);
+      if (focusDigestRaw) {
+        setFocusDigestSeenKey(focusDigestRaw || null);
+      } else {
+        setFocusDigestSeenKey(null);
+      }
+      setFocusDigestHydrated(true);
+      if (focusDigestPendingRaw) {
+        try {
+          const parsedPending = JSON.parse(focusDigestPendingRaw);
+          if (parsedPending && typeof parsedPending === "object" && parsedPending.payload) {
+            setPendingFocusDigest(parsedPending);
+          } else {
+            setPendingFocusDigest(null);
+          }
+        } catch (error) {
+          setPendingFocusDigest(null);
+        }
+      } else {
+        setPendingFocusDigest(null);
+      }
       if (catalogRaw) setCatalogOverrides(JSON.parse(catalogRaw));
       if (titleRaw) setTitleOverrides(JSON.parse(titleRaw));
       if (emojiOverridesRaw) setEmojiOverrides(JSON.parse(emojiOverridesRaw));
+      if (categoryOverridesRaw) {
+        try {
+          setCategoryOverrides(JSON.parse(categoryOverridesRaw));
+        } catch (error) {
+          console.warn("category overrides parse", error);
+          setCategoryOverrides({});
+        }
+      } else {
+        setCategoryOverrides({});
+      }
       if (savedTotalRaw) {
         setSavedTotalUSD(Number(savedTotalRaw) || 0);
       } else {
@@ -10788,6 +10999,11 @@ function AppContent() {
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.EMOJI_OVERRIDES, JSON.stringify(emojiOverrides)).catch(() => {});
   }, [emojiOverrides]);
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.CATEGORY_OVERRIDES, JSON.stringify(categoryOverrides)).catch(
+      () => {}
+    );
+  }, [categoryOverrides]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.SAVED_TOTAL, String(savedTotalUSD)).catch(() => {});
@@ -10941,31 +11157,49 @@ function AppContent() {
   }, [impulseTracker]);
 
   useEffect(() => {
-    const nextList = DEFAULT_TEMPTATIONS.map((item) => ({
-      ...item,
-      priceUSD: catalogOverrides[item.id] ?? item.basePriceUSD,
-      titleOverride: titleOverrides[item.id] || null,
-      emoji: emojiOverrides[item.id] || item.emoji,
-    })).sort(
+    const nextList = DEFAULT_TEMPTATIONS.map((item) => {
+      const overrideCategory = categoryOverrides[item.id];
+      const normalizedCategory =
+        overrideCategory && IMPULSE_CATEGORY_DEFS[overrideCategory] ? overrideCategory : null;
+      return {
+        ...item,
+        priceUSD: catalogOverrides[item.id] ?? item.basePriceUSD,
+        titleOverride: titleOverrides[item.id] || null,
+        emoji: emojiOverrides[item.id] || item.emoji,
+        impulseCategoryOverride: normalizedCategory || item.impulseCategoryOverride || null,
+      };
+    }).sort(
       (a, b) =>
         (a.priceUSD ?? a.basePriceUSD ?? 0) - (b.priceUSD ?? b.basePriceUSD ?? 0)
     );
-    const personalized = buildPersonalizedTemptations(profile, nextList).map((card) => ({
-      ...card,
-      titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
-      emoji: emojiOverrides[card.id] || card.emoji,
-    }));
+    const personalized = buildPersonalizedTemptations(profile, nextList).map((card) => {
+      const overrideCategory = categoryOverrides[card.id];
+      const normalizedCategory =
+        overrideCategory && IMPULSE_CATEGORY_DEFS[overrideCategory] ? overrideCategory : null;
+      return {
+        ...card,
+        titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
+        emoji: emojiOverrides[card.id] || card.emoji,
+        impulseCategoryOverride: normalizedCategory || card.impulseCategoryOverride || null,
+      };
+    });
     const hiddenSet = new Set(hiddenTemptations);
     const personalizedVisible = personalized.filter((card) => !hiddenSet.has(card.id));
     const personalizedIds = new Set(personalizedVisible.map((c) => c.id));
     const quickAdjusted = quickTemptations
       .filter((card) => card && !hiddenSet.has(card.id) && !personalizedIds.has(card.id))
-      .map((card) => ({
-        ...card,
-        priceUSD: catalogOverrides[card.id] ?? card.priceUSD ?? card.basePriceUSD,
-        titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
-        emoji: emojiOverrides[card.id] || card.emoji,
-      }));
+      .map((card) => {
+        const overrideCategory = categoryOverrides[card.id];
+        const normalizedCategory =
+          overrideCategory && IMPULSE_CATEGORY_DEFS[overrideCategory] ? overrideCategory : null;
+        return {
+          ...card,
+          priceUSD: catalogOverrides[card.id] ?? card.priceUSD ?? card.basePriceUSD,
+          titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
+          emoji: emojiOverrides[card.id] || card.emoji,
+          impulseCategoryOverride: normalizedCategory || card.impulseCategoryOverride || null,
+        };
+      });
     // Быстрая кастомная карта всегда рендерится первой, затем идёт персонализированный порядок.
     const combined = [...quickAdjusted, ...personalizedVisible];
 
@@ -10975,6 +11209,7 @@ function AppContent() {
     profile,
     titleOverrides,
     emojiOverrides,
+    categoryOverrides,
     quickTemptations,
     hiddenTemptations,
     onboardingStep,
@@ -10986,6 +11221,16 @@ function AppContent() {
       Object.values(cardFeedbackTimers.current).forEach((timer) => clearTimeout(timer));
     };
   }, []);
+
+  useEffect(() => {
+    if (!focusTemplateId) return;
+    const exists =
+      [...quickTemptations, ...temptations].some((card) => card?.id === focusTemplateId) ||
+      focusTemplateId === primaryTemptationId;
+    if (!exists) {
+      setFocusTemplateId(null);
+    }
+  }, [focusTemplateId, quickTemptations, temptations, primaryTemptationId]);
 
   const handleCategorySelect = useCallback((category) => {
     triggerHaptic();
@@ -11350,9 +11595,34 @@ function AppContent() {
   const handleQuickCustomChange = (field, value) => {
     setQuickSpendDraft((prev) => ({
       ...prev,
-      [field]: field === "emoji" ? limitEmojiInput(value) : value,
+      [field]:
+        field === "emoji"
+          ? limitEmojiInput(value)
+          : field === "category"
+          ? (IMPULSE_CATEGORY_DEFS[value] ? value : prev.category)
+          : value,
     }));
   };
+
+  const resolveTemptationCategory = useCallback(
+    (item) => {
+      if (!item) return DEFAULT_IMPULSE_CATEGORY;
+      const override = categoryOverrides[item.id];
+      if (override && IMPULSE_CATEGORY_DEFS[override]) {
+        return override;
+      }
+      if (item.impulseCategoryOverride && IMPULSE_CATEGORY_DEFS[item.impulseCategoryOverride]) {
+        return item.impulseCategoryOverride;
+      }
+      if (Array.isArray(item.categories)) {
+        const match = IMPULSE_CATEGORY_ORDER.find((slug) => item.categories.includes(slug));
+        if (match) return match;
+      }
+      const inferred = resolveImpulseCategory(item);
+      return IMPULSE_CATEGORY_DEFS[inferred] ? inferred : DEFAULT_IMPULSE_CATEGORY;
+    },
+    [categoryOverrides]
+  );
 
   const handleQuickCustomSubmit = (customData) => {
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
@@ -11364,6 +11634,10 @@ function AppContent() {
     const amountUSD = convertFromCurrency(parsedAmount, currencyCode);
     const ownerGender = profile.gender || "none";
     const emojiValue = normalizeEmojiValue(customData.emoji, DEFAULT_TEMPTATION_EMOJI);
+    const category =
+      customData.category && IMPULSE_CATEGORY_DEFS[customData.category]
+        ? customData.category
+        : DEFAULT_IMPULSE_CATEGORY;
     const newCustom = {
       title: customData.title.trim(),
       amountUSD,
@@ -11371,31 +11645,34 @@ function AppContent() {
       emoji: emojiValue,
       id: customData.id || `custom_habit_${Date.now()}`,
       gender: ownerGender,
+      impulseCategory: category,
     };
     const card = createCustomHabitTemptation(newCustom, currencyCode, ownerGender);
     if (card) {
       card.gender = ownerGender;
       setQuickTemptations((prev) => [card, ...prev]);
     }
+    setCategoryOverrides((prev) => ({ ...prev, [newCustom.id]: category }));
     logEvent("custom_temptation_created", {
       title: newCustom.title,
       amount_usd: amountUSD,
       currency: currencyCode,
+      category,
     });
-    setQuickSpendDraft({ title: "", amount: "", emoji: DEFAULT_TEMPTATION_EMOJI });
+    setQuickSpendDraft({ title: "", amount: "", emoji: DEFAULT_TEMPTATION_EMOJI, category: DEFAULT_IMPULSE_CATEGORY });
     setShowCustomSpend(false);
     triggerOverlayState("custom_temptation", newCustom.title);
   };
 
   const handleQuickCustomCancel = () => {
-    setQuickSpendDraft({ title: "", amount: "", emoji: DEFAULT_TEMPTATION_EMOJI });
+    setQuickSpendDraft({ title: "", amount: "", emoji: DEFAULT_TEMPTATION_EMOJI, category: DEFAULT_IMPULSE_CATEGORY });
     setShowCustomSpend(false);
   };
 
   const handleFabNewTemptation = useCallback(() => {
     triggerHaptic();
     closeFabMenu();
-    setQuickSpendDraft({ title: "", amount: "", emoji: DEFAULT_TEMPTATION_EMOJI });
+    setQuickSpendDraft({ title: "", amount: "", emoji: DEFAULT_TEMPTATION_EMOJI, category: DEFAULT_IMPULSE_CATEGORY });
     setShowCustomSpend(true);
   }, [closeFabMenu, triggerHaptic]);
 
@@ -11634,6 +11911,7 @@ function AppContent() {
         customSpendTitle: "",
         customSpendAmount: "",
         customSpendFrequency: "",
+        customSpendCategory: DEFAULT_IMPULSE_CATEGORY,
       }));
     }
     const customAmountLocal = parseFloat((registrationData.customSpendAmount || "").replace(",", "."));
@@ -11870,6 +12148,10 @@ function AppContent() {
     );
     if (customName && Number.isFinite(customAmount) && customAmount > 0) {
       const amountUSD = convertFromCurrency(customAmount, registrationData.currency);
+      const categoryValue =
+        registrationData.customSpendCategory && IMPULSE_CATEGORY_DEFS[registrationData.customSpendCategory]
+          ? registrationData.customSpendCategory
+          : DEFAULT_IMPULSE_CATEGORY;
       customSpend = {
         title: customName,
         amountUSD,
@@ -11878,6 +12160,7 @@ function AppContent() {
           Number.isFinite(customFrequency) && customFrequency > 0
             ? Math.round(customFrequency)
             : 0,
+        impulseCategory: categoryValue,
       };
     }
     let spendingProfile = profile.spendingProfile || { ...DEFAULT_PROFILE.spendingProfile };
@@ -12290,95 +12573,6 @@ function AppContent() {
     };
   }, [stopPartyEffects]);
 
-  const cancelReflectionReminders = useCallback(async () => {
-    const ids = reflectionReminderMetaRef.current?.ids || [];
-    if (ids.length) {
-      await Promise.all(
-        ids.map((notificationId) =>
-          Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => {})
-        )
-      );
-    }
-    const clearedMeta = { dateKey: null, ids: [], locale: null };
-    reflectionReminderMetaRef.current = clearedMeta;
-    setReflectionReminderMeta(clearedMeta);
-  }, []);
-
-  const scheduleDailyReflectionReminders = useCallback(async () => {
-    if (!reflectionRemindersHydrated) return;
-    const now = new Date();
-    const todayKey = getDayKey(now);
-    const midnight = new Date(now);
-    midnight.setHours(24, 0, 0, 0);
-    const startWindow = new Date(now);
-    startWindow.setHours(REFLECTION_REMINDER_START_HOUR, 0, 0, 0);
-    const hasTrackedActivity = resolvedHistoryEvents.some((entry) => {
-      if (!entry || (entry.kind !== "spend" && entry.kind !== "refuse_spend")) return false;
-      if (!entry.timestamp) return false;
-      return getDayKey(entry.timestamp) === todayKey;
-    });
-    if (hasTrackedActivity || now >= midnight) {
-      await cancelReflectionReminders();
-      return;
-    }
-    const existingMeta = reflectionReminderMetaRef.current || { ids: [], dateKey: null, locale: null };
-    if (
-      existingMeta.dateKey === todayKey &&
-      (existingMeta.ids?.length || 0) > 0 &&
-      existingMeta.locale === language
-    ) {
-      return;
-    }
-    const permitted = await ensureNotificationPermission();
-    if (!permitted) return;
-    await cancelReflectionReminders();
-    let firstTrigger = now > startWindow ? new Date(now) : new Date(startWindow);
-    firstTrigger.setSeconds(0, 0);
-    if (firstTrigger <= now) {
-      firstTrigger = new Date(firstTrigger.getTime() + REFLECTION_REMINDER_INTERVAL_MS);
-    }
-    if (firstTrigger >= midnight) return;
-    const ids = [];
-    for (
-      let tick = firstTrigger.getTime();
-      tick < midnight.getTime();
-      tick += REFLECTION_REMINDER_INTERVAL_MS
-    ) {
-      const triggerDate = new Date(tick);
-      const countdown = formatReflectionCountdown(midnight.getTime() - triggerDate.getTime());
-      try {
-        const notificationId = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: t("dailyReflectionReminderTitle"),
-            body: t("dailyReflectionReminderBody", { time: countdown }),
-            sound: "default",
-          },
-          trigger: triggerDate,
-        });
-        ids.push(notificationId);
-      } catch (error) {
-        console.warn("reflection reminder schedule", error);
-      }
-    }
-    const meta = { dateKey: todayKey, ids, locale: language };
-    reflectionReminderMetaRef.current = meta;
-    setReflectionReminderMeta(meta);
-  }, [
-    cancelReflectionReminders,
-    ensureNotificationPermission,
-    language,
-    reflectionRemindersHydrated,
-    resolvedHistoryEvents,
-    t,
-  ]);
-  useEffect(() => {
-    if (!reflectionRemindersHydrated) return;
-    scheduleDailyReflectionReminders();
-    const interval = setInterval(() => {
-      scheduleDailyReflectionReminders();
-    }, 15 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [reflectionRemindersHydrated, scheduleDailyReflectionReminders]);
 
   const startParty = useCallback(() => {
     if (tamagotchiCoins < TAMAGOTCHI_PARTY_COST) {
@@ -12986,16 +13180,17 @@ function AppContent() {
           value: formatNumberInputValue(Number(currentValue) || 0),
           title: resolveTemptationTitle(item, language, titleOverrides[item.id]),
           emoji: item.emoji || DEFAULT_TEMPTATION_EMOJI,
+          category: resolveTemptationCategory(item),
         };
       });
     },
-    [language, profile.currency, titleOverrides]
+    [language, profile.currency, titleOverrides, resolveTemptationCategory]
   );
 
   const closePriceEditor = useCallback(() => {
     if (!priceEditor.item) return;
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setPriceEditor({ item: null, value: "", title: "", emoji: "" });
+    setPriceEditor({ item: null, value: "", title: "", emoji: "", category: DEFAULT_IMPULSE_CATEGORY });
   }, [priceEditor.item]);
 
   useEffect(() => {
@@ -13025,6 +13220,11 @@ function AppContent() {
 
   const handlePriceEmojiChange = (value) => {
     setPriceEditor((prev) => ({ ...prev, emoji: limitEmojiInput(value) }));
+  };
+
+  const handlePriceCategoryChange = (value) => {
+    if (!IMPULSE_CATEGORY_DEFS[value]) return;
+    setPriceEditor((prev) => ({ ...prev, category: value }));
   };
 
   const handleQuickGoalToggle = useCallback(
@@ -13105,6 +13305,12 @@ function AppContent() {
         delete next[templateId];
         return next;
       });
+      setCategoryOverrides((prev) => {
+        if (!(templateId in prev)) return prev;
+        const next = { ...prev };
+        delete next[templateId];
+        return next;
+      });
       setRefuseStats((prev) => {
         if (!prev[templateId]) return prev;
         const next = { ...prev };
@@ -13168,6 +13374,20 @@ function AppContent() {
     });
   };
 
+  const persistCategoryOverride = (value = null) => {
+    const targetId = priceEditor.item?.id;
+    if (!targetId) return;
+    setCategoryOverrides((prev) => {
+      const next = { ...prev };
+      if (value && IMPULSE_CATEGORY_DEFS[value]) {
+        next[targetId] = value;
+      } else {
+        delete next[targetId];
+      }
+      return next;
+    });
+  };
+
   const savePriceEdit = () => {
     if (!priceEditor.item) return;
     const parsed = parseFloat((priceEditor.value || "").replace(",", "."));
@@ -13184,10 +13404,16 @@ function AppContent() {
       ? normalizeEmojiValue(priceEditor.emoji, priceEditor.item.emoji || DEFAULT_TEMPTATION_EMOJI)
       : priceEditor.item.emoji || DEFAULT_TEMPTATION_EMOJI;
     persistEmojiOverride(hasCustomEmoji ? resolvedEmoji : null);
+    const categoryValue =
+      priceEditor.category && IMPULSE_CATEGORY_DEFS[priceEditor.category]
+        ? priceEditor.category
+        : null;
+    persistCategoryOverride(categoryValue);
     patchTemptationDisplay(priceEditor.item.id, {
       priceUSD: usdValue,
       titleOverride: titleValue || null,
       emoji: resolvedEmoji,
+      impulseCategoryOverride: categoryValue || null,
     });
     closePriceEditor();
   };
@@ -13381,6 +13607,49 @@ function AppContent() {
     setOverlay(null);
     processOverlayQueue();
   }, [processOverlayQueue]);
+
+  const applyFocusTarget = useCallback(
+    (templateId, source = "manual") => {
+      if (!templateId) return;
+      setFocusTemplateId(templateId);
+      logEvent("focus_target_set", { template_id: templateId, source });
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    },
+    [logEvent]
+  );
+
+  const resolveFocusDigest = useCallback(
+    (action = "later") => {
+      if (!pendingFocusDigest) return;
+      const targetDateKey = pendingFocusDigest.dateKey;
+      setFocusDigestSeenKey(targetDateKey);
+      setPendingFocusDigest(null);
+      setFocusDigestPromptShown(false);
+      AsyncStorage.removeItem(STORAGE_KEYS.FOCUS_DIGEST_PENDING).catch(() => {});
+      if (action === "later") {
+        logEvent("focus_digest_later", { date_key: targetDateKey });
+      } else if (action === "focus") {
+        logEvent("focus_digest_focus", { date_key: targetDateKey });
+      }
+    },
+    [pendingFocusDigest, logEvent]
+  );
+
+  const handleFocusOverlayConfirm = useCallback(
+    (templateId, source = "digest") => {
+      if (templateId) {
+        applyFocusTarget(templateId, source);
+      }
+      resolveFocusDigest("focus");
+      dismissOverlay();
+    },
+    [applyFocusTarget, dismissOverlay, resolveFocusDigest]
+  );
+
+  const handleFocusOverlayLater = useCallback(() => {
+    resolveFocusDigest("later");
+    dismissOverlay();
+  }, [dismissOverlay, resolveFocusDigest]);
 
   const notifyImpulseRisk = useCallback(
     async (risk) => {
@@ -13949,9 +14218,11 @@ function AppContent() {
             editingPriceValue={priceEditor.value}
             editingGoalLabel={priceEditorAssignedGoalTitle}
             editingEmojiValue={priceEditor.emoji}
+            editingCategoryValue={priceEditor.category || DEFAULT_IMPULSE_CATEGORY}
             onTemptationEditTitleChange={handlePriceTitleChange}
             onTemptationEditPriceChange={handlePriceInputChange}
             onTemptationEditEmojiChange={handlePriceEmojiChange}
+            onTemptationEditCategoryChange={handlePriceCategoryChange}
             onTemptationEditSave={savePriceEdit}
             onTemptationEditCancel={closePriceEditor}
             onTemptationEditDelete={handleTemptationDelete}
@@ -13960,6 +14231,9 @@ function AppContent() {
             onSavingsBreakdownPress={openSavingsBreakdown}
             resolveTemplateTitle={resolveTemplateTitle}
             tamagotchiMood={tamagotchiMood}
+            primaryTemptationId={primaryTemptationId}
+            primaryTemptationDescription={primaryTemptationDescription}
+            focusTemplateId={focusTemplateId}
           />
         );
     }
@@ -14063,6 +14337,7 @@ function AppContent() {
           t={t}
           currency={registrationData.currency || profile.currency || DEFAULT_PROFILE.currency}
           onBack={onboardingBackHandler}
+          language={language}
         />
       );
     } else if (onboardingStep === "baseline") {
@@ -14571,6 +14846,7 @@ function AppContent() {
           onChange={handleQuickCustomChange}
           onSubmit={handleQuickCustomSubmit}
           onCancel={handleQuickCustomCancel}
+          language={language}
         />
 
         <NewGoalModal
@@ -14895,6 +15171,12 @@ function AppContent() {
                       language={language}
                       colors={colors}
                       t={t}
+                      isFocusTarget={priceEditor.item?.id === focusTemplateId}
+                      descriptionOverride={
+                        priceEditor.item.id === primaryTemptationId
+                          ? primaryTemptationDescription
+                          : null
+                      }
                       currency={profile.currency || DEFAULT_PROFILE.currency}
                       stats={refuseStats[priceEditor.item.id]}
                       feedback={cardFeedback[priceEditor.item.id]}
@@ -14907,9 +15189,11 @@ function AppContent() {
                       editPriceValue={priceEditor.value}
                       editGoalLabel={priceEditorAssignedGoalTitle || ""}
                       editEmojiValue={priceEditor.emoji}
+                      editCategoryValue={priceEditor.category}
                       onEditTitleChange={handlePriceTitleChange}
                       onEditPriceChange={handlePriceInputChange}
                       onEditEmojiChange={handlePriceEmojiChange}
+                      onEditCategoryChange={handlePriceCategoryChange}
                       onEditSave={savePriceEdit}
                       onEditCancel={closePriceEditor}
                       onEditDelete={() => promptTemptationDelete(priceEditor.item)}
@@ -15071,7 +15355,8 @@ function AppContent() {
           overlay.type !== "reward" &&
           overlay.type !== "health" &&
           overlay.type !== "goal_complete" &&
-          overlay.type !== "impulse_alert" && (
+          overlay.type !== "impulse_alert" &&
+          overlay.type !== "focus_digest" && (
             <Modal visible transparent animationType="fade" statusBarTranslucent>
               <TouchableWithoutFeedback onPress={dismissOverlay}>
                 <View style={styles.confettiLayer}>
@@ -15122,7 +15407,108 @@ function AppContent() {
                 </View>
               </TouchableWithoutFeedback>
             </Modal>
-          )}
+        )}
+        {overlay?.type === "focus_digest" && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View style={styles.overlayFullScreen}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
+                    style={[
+                      styles.focusDigestCard,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.focusDigestTitle, { color: colors.text }]}>
+                      {overlay.message?.title || ""}
+                    </Text>
+                    <Text style={[styles.focusDigestBody, { color: colors.muted }]}>
+                      {overlay.message?.body || ""}
+                    </Text>
+                    <View style={styles.focusDigestStats}>
+                      <View
+                        style={[
+                          styles.focusDigestStat,
+                          {
+                            borderColor: colors.border,
+                            backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.08 : 0.2),
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.focusDigestLabel, { color: colors.muted }]}>
+                          {t("focusDigestStrongLabel")}
+                        </Text>
+                        <Text style={[styles.focusDigestValue, { color: colors.text }]}>
+                          {overlay.message?.strong?.title || t("focusDigestMissing")}
+                        </Text>
+                        {overlay.message?.strong?.window && (
+                          <Text style={[styles.focusDigestHint, { color: colors.muted }]}>
+                            {overlay.message.strong.window}
+                          </Text>
+                        )}
+                      </View>
+                      <View
+                        style={[
+                          styles.focusDigestStat,
+                          {
+                            borderColor: colors.border,
+                            backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.04 : 0.12),
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.focusDigestLabel, { color: colors.muted }]}>
+                          {t("focusDigestWeakLabel")}
+                        </Text>
+                        <Text style={[styles.focusDigestValue, { color: colors.text }]}>
+                          {overlay.message?.weak?.title || t("focusDigestMissing")}
+                        </Text>
+                        {overlay.message?.weak?.window && (
+                          <Text style={[styles.focusDigestHint, { color: colors.muted }]}>
+                            {overlay.message.weak.window}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    <View style={styles.focusDigestButtons}>
+                      <TouchableOpacity
+                        style={[styles.focusDigestSecondary, { borderColor: colors.border }]}
+                        onPress={handleFocusOverlayLater}
+                      >
+                        <Text style={[styles.focusDigestSecondaryText, { color: colors.muted }]}>
+                          {t("focusDigestDismiss")}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.focusDigestPrimary,
+                          {
+                            backgroundColor: overlay.message?.targetId ? colors.text : colors.border,
+                          },
+                        ]}
+                        disabled={!overlay.message?.targetId}
+                        onPress={() =>
+                          handleFocusOverlayConfirm(
+                            overlay.message?.targetId,
+                            overlay.message?.positive ? "digest_positive" : "digest_negative"
+                          )
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.focusDigestPrimaryText,
+                            { color: overlay.message?.targetId ? colors.background : colors.muted },
+                          ]}
+                        >
+                          {t("focusDigestButton")}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
         {overlay?.type === "level" && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
@@ -15711,7 +16097,6 @@ const styles = StyleSheet.create({
   },
   appShell: {
     flex: 1,
-    paddingHorizontal: SHELL_HORIZONTAL_PADDING,
   },
   screenWrapper: {
     flex: 1,
@@ -16809,7 +17194,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   impulseSummaryLabel: {
-    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
+    ...createCtaText({ fontSize: 11, textTransform: "none", letterSpacing: 0.2 }),
   },
   impulseSummaryValue: {
     ...createBodyText({ fontSize: 14, lineHeight: 20, fontWeight: "600" }),
@@ -17003,11 +17388,12 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 12,
     position: "relative",
-    overflow: "hidden",
+    overflow: "visible",
   },
   temptationTextureContainer: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 28,
+    overflow: "hidden",
   },
   temptationTextureOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -17181,8 +17567,8 @@ const styles = StyleSheet.create({
   },
   temptationGoalBadge: {
     alignSelf: "flex-start",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 999,
     borderWidth: 1,
     marginBottom: 6,
@@ -17196,8 +17582,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   temptationGoalBadgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
+  },
+  categoryEditSection: {
+    marginTop: 10,
+    gap: 6,
+  },
+  categoryEditLabel: {
+    ...createSecondaryText({ fontSize: 11, textTransform: "uppercase" }),
+  },
+  temptationFocusBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginBottom: 6,
+  },
+  temptationFocusBadgeText: {
+    ...createCtaText({ fontSize: 11 }),
   },
   editPriceText: {
     fontSize: 13,
@@ -18890,6 +19294,85 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
   },
+  focusDigestCard: {
+    width: "86%",
+    borderRadius: 30,
+    borderWidth: 1,
+    padding: 24,
+    gap: 14,
+  },
+  focusDigestTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 22,
+  },
+  focusDigestBody: {
+    ...createBodyText({ fontSize: 15, lineHeight: 22 }),
+  },
+  focusDigestStats: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  focusDigestStat: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 12,
+    gap: 4,
+  },
+  focusDigestLabel: {
+    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+  },
+  focusDigestValue: {
+    ...createBodyText({ fontSize: 15, fontWeight: "700" }),
+  },
+  focusDigestHint: {
+    ...createSecondaryText({ fontSize: 12 }),
+  },
+  focusDigestButtons: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 6,
+  },
+  focusDigestPrimary: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  focusDigestPrimaryText: {
+    ...createCtaText({ fontSize: 14 }),
+  },
+  focusDigestSecondary: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  focusDigestSecondaryText: {
+    ...createCtaText({ fontSize: 14 }),
+  },
+  impulseCategoryPicker: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  impulseCategoryPickerCompact: {
+    marginTop: 2,
+  },
+  impulseCategoryChip: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  impulseCategoryChipCompact: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  impulseCategoryChipText: {
+    ...createCtaText({ fontSize: 12 }),
+  },
   impulseAlertCard: {
     marginHorizontal: 24,
     borderRadius: 28,
@@ -20055,7 +20538,7 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack }
   );
 }
 
-function CustomHabitScreen({ data, onChange, onSubmit, colors, t, currency, onBack }) {
+function CustomHabitScreen({ data, onChange, onSubmit, colors, t, currency, onBack, language }) {
   const fade = useFadeIn();
   const customSpendSampleLabel = formatSampleAmount(CUSTOM_SPEND_SAMPLE_USD, currency || DEFAULT_PROFILE.currency);
   return (
@@ -20103,6 +20586,15 @@ function CustomHabitScreen({ data, onChange, onSubmit, colors, t, currency, onBa
             onChangeText={(text) => onChange("customSpendFrequency", text)}
           />
         </View>
+        <View style={{ gap: 6 }}>
+          <Text style={[styles.currencyLabel, { color: colors.muted }]}>{t("impulseCategoryLabel")}</Text>
+          <ImpulseCategorySelector
+            value={data.customSpendCategory || DEFAULT_IMPULSE_CATEGORY}
+            onChange={(cat) => onChange("customSpendCategory", cat)}
+            colors={colors}
+            language={language}
+          />
+        </View>
         <Text style={{ color: colors.muted }}>{t("customSpendHint")}</Text>
 
         <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={() => onSubmit(false)}>
@@ -20116,7 +20608,47 @@ function CustomHabitScreen({ data, onChange, onSubmit, colors, t, currency, onBa
   );
 }
 
-function QuickCustomModal({ visible, colors, t, currency, data, onChange, onSubmit, onCancel }) {
+function ImpulseCategorySelector({ value, onChange, colors, language, compact = false }) {
+  const selected = value && IMPULSE_CATEGORY_DEFS[value] ? value : DEFAULT_IMPULSE_CATEGORY;
+  return (
+    <View
+      style={[
+        styles.impulseCategoryPicker,
+        compact && styles.impulseCategoryPickerCompact,
+      ]}
+    >
+      {IMPULSE_CATEGORY_ORDER.map((categoryId) => {
+        const active = selected === categoryId;
+        return (
+          <TouchableOpacity
+            key={categoryId}
+            style={[
+              styles.impulseCategoryChip,
+              compact && styles.impulseCategoryChipCompact,
+              {
+                borderColor: active ? colors.text : colors.border,
+                backgroundColor: active ? colors.text : "transparent",
+              },
+            ]}
+            onPress={() => onChange?.(categoryId)}
+            activeOpacity={0.85}
+          >
+            <Text
+              style={[
+                styles.impulseCategoryChipText,
+                { color: active ? colors.background : colors.text },
+              ]}
+            >
+              {getImpulseCategoryLabel(categoryId, language)}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+function QuickCustomModal({ visible, colors, t, currency, data, onChange, onSubmit, onCancel, language }) {
   return (
     <Modal
       visible={visible}
@@ -20164,6 +20696,17 @@ function QuickCustomModal({ visible, colors, t, currency, data, onChange, onSubm
                   onChangeText={(text) => onChange("emoji", text)}
                   maxLength={2}
                 />
+                <View style={{ gap: 6 }}>
+                  <Text style={[styles.currencyLabel, { color: colors.muted }]}>
+                    {t("impulseCategoryLabel")}
+                  </Text>
+                  <ImpulseCategorySelector
+                    value={data.category || DEFAULT_IMPULSE_CATEGORY}
+                    onChange={(cat) => onChange("category", cat)}
+                    colors={colors}
+                    language={language}
+                  />
+                </View>
               </View>
               <View style={styles.quickModalActions}>
                 <TouchableOpacity
