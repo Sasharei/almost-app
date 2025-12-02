@@ -43,7 +43,13 @@ import {
   Inter_900Black,
 } from "@expo-google-fonts/inter";
 import Sentry, { initSentry } from "./sentry";
-import { initAnalytics, logEvent, logScreenView, setAnalyticsOptOut as setAnalyticsOptOutFlag } from "./analytics";
+import {
+  initAnalytics,
+  logEvent,
+  logScreenView,
+  setAnalyticsOptOut as setAnalyticsOptOutFlag,
+  setUserProperties,
+} from "./analytics";
 import { SavingsProvider, useRealSavedAmount } from "./src/hooks/useRealSavedAmount";
 import { useSavingsSimulation } from "./src/hooks/useSavingsSimulation";
 
@@ -97,6 +103,7 @@ const STORAGE_KEYS = {
   FOCUS_TARGET: "@almost_focus_target",
   FOCUS_DIGEST: "@almost_focus_digest",
   CATEGORY_OVERRIDES: "@almost_category_overrides",
+  DESCRIPTION_OVERRIDES: "@almost_description_overrides",
   FOCUS_DIGEST_PENDING: "@almost_focus_digest_pending",
 };
 
@@ -171,6 +178,12 @@ const DAILY_CHALLENGE_STATUS = {
   COMPLETED: "completed",
   FAILED: "failed",
 };
+const FOCUS_VICTORY_THRESHOLD = 3;
+const FOCUS_VICTORY_REWARD = 3;
+const FOCUS_LOSS_THRESHOLD = 3;
+const CHALLENGE_REWARD_SCALE = 0.5;
+const getScaledChallengeReward = (value = 0) =>
+  Math.max(1, Math.round(Math.max(0, value) * CHALLENGE_REWARD_SCALE));
 
 const buildTemptationPressureMap = (events = []) => {
   const map = {};
@@ -215,6 +228,9 @@ const resolveDailyChallengeTemplateId = (
   if (ranked.length > 0) {
     return ranked[0].templateId;
   }
+  const desc = (typeof descriptionOverride === "string" && descriptionOverride.trim().length
+    ? descriptionOverride
+    : null) || desc || "";
   return null;
 };
 
@@ -1315,6 +1331,21 @@ const resolveImpulseCategory = (item = {}) => {
   return "things";
 };
 
+const resolveGoalTypeFromTarget = (targetUSD = 0) => {
+  if (!Number.isFinite(targetUSD)) return "short_term";
+  return targetUSD >= 1000 ? "long_term" : "short_term";
+};
+
+const isCustomTemptation = (item = null) => {
+  if (!item) return false;
+  const categories = Array.isArray(item.categories) ? item.categories : [];
+  if (categories.includes("custom")) return true;
+  if (typeof item.id === "string") {
+    return item.id.startsWith("custom_") || item.id.startsWith("custom");
+  }
+  return false;
+};
+
 const buildImpulseInsights = (events = []) => {
   if (!Array.isArray(events) || !events.length) {
     const categories = IMPULSE_CATEGORY_ORDER.reduce((acc, id) => {
@@ -2164,6 +2195,7 @@ const TRANSLATIONS = {
       male: "Последняя экономия: «{{title}}».",
       none: "Последняя экономия: «{{title}}».",
     },
+    heroSpendRecentTitle: "Последние экономии:",
     heroSpendFallback: {
       female: "Каждый отказ приближает к цели. Продолжай фиксировать победы.",
       male: "Каждый отказ приближает к цели. Продолжай фиксировать победы.",
@@ -2257,6 +2289,11 @@ const TRANSLATIONS = {
     focusDigestDismiss: "Позже",
     focusDigestMissing: "Нет данных",
     focusBadgeLabel: "Фокус",
+    focusPromptTitle: "Возьми под контроль",
+    focusPromptBody: "Ты несколько раз поддалась на «{{title}}». Сделаем его фокусом?",
+    focusVictoryReward: "Фокус «{{title}}» побеждён! +3 зелёных монеты",
+    focusRewardTitle: "Фокус побеждён!",
+    focusRewardSubtitle: "Ты трижды отказалась от «{{title}}». +{{amount}} зелёных монет.",
     dailyReflectionReminderTitle: "Подведи итоги дня",
     dailyReflectionReminderBody: "До полуночи {{time}} · отметь трату или экономию.",
     pendingTab: "Думаем",
@@ -2442,7 +2479,7 @@ const TRANSLATIONS = {
     challengeRestartHint: "Можно повторить - длительность {{days}} дн.",
     challengeStartedOverlay: "Челлендж «{{title}}» запущен",
     challengeCompletedOverlay: "«{{title}}» выполнен - забери награду!",
-    challengeClaimedOverlay: "За челлендж «{{title}}»",
+    challengeClaimedOverlay: "За челлендж «{{title}}» · +{{amount}} монет",
     challengeReminderTitle: "Челлендж «{{title}}»",
     challengeReminderBody: "Продолжай - совсем скоро финиш у «{{title}}».",
     challengeCancelAction: "Отменить",
@@ -2684,6 +2721,7 @@ const TRANSLATIONS = {
       male: "Latest save: “{{title}}”.",
       none: "Latest save: “{{title}}”.",
     },
+    heroSpendRecentTitle: "Recent saves:",
     heroSpendFallback: "Every mindful pause fuels the freedom fund",
     heroEconomyContinues: "Savings continue.",
     heroExpand: "Show details",
@@ -2770,6 +2808,11 @@ const TRANSLATIONS = {
     focusDigestDismiss: "Later",
     focusDigestMissing: "No data yet",
     focusBadgeLabel: "Focus",
+    focusPromptTitle: "Refocus time",
+    focusPromptBody: "You caved to “{{title}}” a few times. Make it your focus?",
+    focusVictoryReward: "Focus “{{title}}” conquered! +3 green coins",
+    focusRewardTitle: "Focus conquered!",
+    focusRewardSubtitle: "You resisted “{{title}}” three times. +{{amount}} green coins.",
     dailyReflectionReminderTitle: "Wrap up your day",
     dailyReflectionReminderBody: "{{time}} left today · log a save or a spend.",
     pendingTab: "Thinking",
@@ -2946,7 +2989,7 @@ const TRANSLATIONS = {
     challengeRestartHint: "Repeat anytime ({{days}}-day run)",
     challengeStartedOverlay: "Challenge “{{title}}” started",
     challengeCompletedOverlay: "“{{title}}” complete - collect the bonus!",
-    challengeClaimedOverlay: "Challenge “{{title}}”",
+    challengeClaimedOverlay: "Challenge “{{title}}” · +{{amount}} coins",
     challengeReminderTitle: "Challenge “{{title}}”",
     challengeReminderBody: "You're close to finishing “{{title}}”. Keep going!",
     challengeCancelAction: "Cancel",
@@ -4313,9 +4356,11 @@ function TemptationCard({
   editPriceValue = "",
   editGoalLabel = "",
   editEmojiValue = "",
+  editDescriptionValue = "",
   onEditTitleChange,
   onEditPriceChange,
   onEditEmojiChange,
+  onEditDescriptionChange,
   onEditSave,
   onEditCancel,
   onEditDelete,
@@ -4327,7 +4372,43 @@ function TemptationCard({
   isPrimaryTemptation = false,
 }) {
   const title = resolveTemptationTitle(item, language, titleOverride);
-  const desc = descriptionOverride ?? item.description?.[language] ?? item.description?.en ?? "";
+  const isCustomCard =
+    Array.isArray(item?.categories) && item.categories.some((category) => category === "custom");
+  const descriptionString = typeof item.description === "string" ? item.description : null;
+  const descriptionMap =
+    item.description && typeof item.description === "object" && !Array.isArray(item.description)
+      ? item.description
+      : null;
+  const customDescriptionFallback = isCustomCard
+    ? buildCustomTemptationDescription(item?.gender || "none")
+    : null;
+  const customLanguageFallback =
+    customDescriptionFallback?.[language] ||
+    (language === "ru" ? customDescriptionFallback?.ru : customDescriptionFallback?.en) ||
+    customDescriptionFallback?.en ||
+    null;
+  let resolvedDesc = descriptionOverride || null;
+  if (!resolvedDesc) {
+    if (isCustomCard) {
+      resolvedDesc =
+        (descriptionMap ? descriptionMap[language] : null) ||
+        customLanguageFallback ||
+        (language === "ru"
+          ? descriptionMap?.ru || descriptionMap?.en || descriptionString
+          : descriptionMap?.en || descriptionMap?.ru || descriptionString) ||
+        descriptionString ||
+        "";
+    } else {
+      resolvedDesc =
+        (descriptionMap ? descriptionMap[language] : null) ||
+        (language === "ru"
+          ? descriptionMap?.ru || descriptionMap?.en || descriptionString
+          : descriptionMap?.en || descriptionMap?.ru || descriptionString) ||
+        descriptionString ||
+        "";
+    }
+  }
+  const desc = resolvedDesc || "";
   const priceUSD = item.priceUSD || item.basePriceUSD || 0;
   const priceLabel = formatCurrency(convertToCurrency(priceUSD, currency), currency);
   const highlight = true;
@@ -4738,7 +4819,26 @@ function TemptationCard({
           <Text style={[styles.editorHintIcon, { color: colors.muted, marginLeft: 6 }]}>✏️</Text>
         </TouchableOpacity>
       ) : null}
-      {desc ? (
+      {showEditorInline ? (
+        <View style={styles.descriptionEditWrapper}>
+          <TextInput
+            multiline
+            style={[
+              styles.descriptionEditInput,
+              {
+                borderColor: colors.border,
+                color: colors.text,
+                backgroundColor: colors.card,
+              },
+            ]}
+            value={editDescriptionValue ?? ""}
+            onChangeText={onEditDescriptionChange}
+            placeholder={t("priceEditDescriptionLabel")}
+            placeholderTextColor={colors.muted}
+          />
+          <Text style={[styles.editorHintIcon, { color: colors.muted }]}>✏️</Text>
+        </View>
+      ) : desc ? (
         <Text style={[styles.temptationDesc, { color: isDarkTheme ? "#FFFFFF" : cardMutedColor }]}>
           {desc}
         </Text>
@@ -5692,6 +5792,7 @@ const FeedScreen = React.memo(function FeedScreen({
   historyEvents = [],
   profile,
   titleOverrides = {},
+  descriptionOverrides = {},
   onLevelCelebrate,
   onBaselineSetup,
   goalAssignments = {},
@@ -5706,10 +5807,12 @@ const FeedScreen = React.memo(function FeedScreen({
   editingPriceValue = "",
   editingGoalLabel = "",
   editingEmojiValue = "",
+  editingDescriptionValue = "",
   editingCategoryValue = DEFAULT_IMPULSE_CATEGORY,
   onTemptationEditTitleChange,
   onTemptationEditPriceChange,
   onTemptationEditEmojiChange,
+  onTemptationEditDescriptionChange,
   onTemptationEditCategoryChange,
   onTemptationEditSave,
   onTemptationEditCancel,
@@ -5753,23 +5856,22 @@ const FeedScreen = React.memo(function FeedScreen({
     ? t("progressGoal", { current: heroGoalSavedLabel, goal: heroTargetLabel })
     : t("progressGoal", { current: heroGoalSavedLabel, goal: heroGoalSavedLabel });
   const personaPreset = useMemo(() => getPersonaPreset(profile?.persona), [profile?.persona]);
-  const latestSaving = useMemo(
-    () => resolvedHistoryEvents.find((entry) => entry.kind === "refuse_spend"),
+  const recentSavings = useMemo(
+    () => resolvedHistoryEvents.filter((entry) => entry.kind === "refuse_spend").slice(0, 3),
     [resolvedHistoryEvents]
   );
-  const latestSavingTimestamp = latestSaving?.timestamp || null;
-  const latestSavingTimestampLabel = useMemo(
-    () => formatLatestSavingTimestamp(latestSavingTimestamp, language),
-    [latestSavingTimestamp, language]
-  );
   const heroSpendCopy = useMemo(() => {
-    const resolvedLatestTitle = resolveTemplateTitle(
-      latestSaving?.meta?.templateId,
-      latestSaving?.meta?.title
-    );
-    if (resolvedLatestTitle) {
-      const baseCopy = t("heroSpendLine", { title: resolvedLatestTitle });
-      return latestSavingTimestampLabel ? `${baseCopy} · ${latestSavingTimestampLabel}` : baseCopy;
+    if (recentSavings.length > 0) {
+      const lines = recentSavings.map((entry) => {
+        const resolvedTitle =
+          resolveTemplateTitle(entry?.meta?.templateId, entry?.meta?.title) ||
+          entry?.title ||
+          t("defaultDealTitle");
+        const timestampLabel = formatLatestSavingTimestamp(entry?.timestamp, language);
+        const titleWithQuotes = `«${resolvedTitle}»`;
+        return `${titleWithQuotes}${timestampLabel ? ` · ${timestampLabel}` : ""}`;
+      });
+      return [t("heroSpendRecentTitle"), ...lines].join("\n");
     }
     if (!realSavedUSD || realSavedUSD <= 0) {
       return t("heroSpendFallback");
@@ -5785,9 +5887,8 @@ const FeedScreen = React.memo(function FeedScreen({
     personaPreset,
     language,
     t,
-    latestSaving,
+    recentSavings,
     resolveTemplateTitle,
-    latestSavingTimestampLabel,
   ]);
   const heroEncouragementLine = useMemo(() => {
     const heroLine = isGoalComplete
@@ -6200,15 +6301,18 @@ const FeedScreen = React.memo(function FeedScreen({
             (wish) => wish.templateId === item.id && wish.pinnedSource === "swipe"
           );
           const isWishlistGoal = !!wishlistEntry;
+          const overrideDescription =
+            (descriptionOverrides && descriptionOverrides[item.id]) || null;
+          const resolvedDescriptionOverride =
+            overrideDescription ||
+            (item.id === mainTemptationId ? primaryTemptationDescription : null);
           return (
             <TemptationCard
               item={item}
               language={language}
               colors={colors}
               t={t}
-              descriptionOverride={
-                item.id === mainTemptationId ? primaryTemptationDescription : null
-              }
+              descriptionOverride={resolvedDescriptionOverride}
               isFocusTarget={item.id === focusTemplateId}
               onToggleEdit={() => onTemptationEditToggle?.(item)}
               currency={currency}
@@ -6220,14 +6324,16 @@ const FeedScreen = React.memo(function FeedScreen({
               isEditing={editingTemptationId === item.id}
               editTitleValue={editingTemptationId === item.id ? editingTitleValue : ""}
               editPriceValue={editingTemptationId === item.id ? editingPriceValue : ""}
-              editGoalLabel={editingTemptationId === item.id ? editingGoalLabel : ""}
-              editEmojiValue={editingTemptationId === item.id ? editingEmojiValue : ""}
-              editCategoryValue={
-                editingTemptationId === item.id ? editingCategoryValue : DEFAULT_IMPULSE_CATEGORY
-              }
-              onEditTitleChange={onTemptationEditTitleChange}
-              onEditPriceChange={onTemptationEditPriceChange}
-              onEditEmojiChange={onTemptationEditEmojiChange}
+  editGoalLabel={editingTemptationId === item.id ? editingGoalLabel : ""}
+  editEmojiValue={editingTemptationId === item.id ? editingEmojiValue : ""}
+  editDescriptionValue={editingTemptationId === item.id ? editingDescriptionValue : ""}
+  editCategoryValue={
+    editingTemptationId === item.id ? editingCategoryValue : DEFAULT_IMPULSE_CATEGORY
+  }
+  onEditTitleChange={onTemptationEditTitleChange}
+  onEditPriceChange={onTemptationEditPriceChange}
+  onEditEmojiChange={onTemptationEditEmojiChange}
+  onEditDescriptionChange={onTemptationEditDescriptionChange}
               onEditCategoryChange={onTemptationEditCategoryChange}
               onEditSave={onTemptationEditSave}
               onEditCancel={onTemptationEditCancel}
@@ -6882,6 +6988,14 @@ const ACHIEVEMENT_METRIC_TYPES = {
   FRIDGE_ITEMS_COUNT: "FRIDGE_ITEMS_COUNT",
   FRIDGE_DECISIONS: "FRIDGE_DECISIONS",
 };
+const ACHIEVEMENT_CONDITION_MAP = {
+  [ACHIEVEMENT_METRIC_TYPES.SAVED_AMOUNT]: "amount_saved",
+  [ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_TOTAL]: "streak_days",
+  [ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_STREAK]: "streak_days",
+  [ACHIEVEMENT_METRIC_TYPES.REFUSE_COUNT]: "saves_count",
+  [ACHIEVEMENT_METRIC_TYPES.FRIDGE_ITEMS_COUNT]: "pending_items",
+  [ACHIEVEMENT_METRIC_TYPES.FRIDGE_DECISIONS]: "decisions_logged",
+};
 
 const ACHIEVEMENT_DEFS = [
   {
@@ -6919,7 +7033,7 @@ const ACHIEVEMENT_DEFS = [
   },
   {
     id: "free_total_14",
-    metricType: ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_TOTAL,
+    metricType: ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_STREAK,
     targetValue: 14,
     emoji: "🗓️",
     rewardHealth: 70,
@@ -7190,6 +7304,12 @@ const CHALLENGE_DEF_MAP = CHALLENGE_DEFS.reduce((acc, def) => {
   acc[def.id] = def;
   return acc;
 }, {});
+const CHALLENGE_TYPE_LABELS = {
+  [CHALLENGE_METRIC_TYPES.REFUSE_DAY_STREAK]: "no_spend_day",
+  [CHALLENGE_METRIC_TYPES.FREE_DAY_STREAK]: "no_spend_day",
+  [CHALLENGE_METRIC_TYPES.SAVE_COUNT]: "decline_count",
+  [CHALLENGE_METRIC_TYPES.SAVE_AMOUNT]: "savings_amount",
+};
 
 const CHALLENGE_STATUS_LABELS = {
   [CHALLENGE_STATUS.IDLE]: "challengeStatusAvailable",
@@ -7522,13 +7642,14 @@ const buildChallengesDisplay = ({ state, currency, language, t }) => {
     } else if (canStart) {
       actionLabel = t("challengeStartCta");
     }
+    const scaledReward = getScaledChallengeReward(def.rewardHealth);
     return {
       id: def.id,
       emoji: def.emoji,
       title: copy.title || "",
       description,
-      rewardHealth: def.rewardHealth,
-      rewardLabel: formatHealthRewardLabel(def.rewardHealth, language),
+      rewardHealth: scaledReward,
+      rewardLabel: formatHealthRewardLabel(scaledReward, language),
       status: entry.status,
       statusLabel: t(CHALLENGE_STATUS_LABELS[entry.status] || CHALLENGE_STATUS_LABELS[CHALLENGE_STATUS.IDLE]),
       progressPercent: percent,
@@ -8716,6 +8837,7 @@ function AppContent() {
   const [titleOverrides, setTitleOverrides] = useState({});
   const [emojiOverrides, setEmojiOverrides] = useState({});
   const [categoryOverrides, setCategoryOverrides] = useState({});
+  const [descriptionOverrides, setDescriptionOverrides] = useState({});
   const [temptations, setTemptations] = useState(DEFAULT_TEMPTATIONS);
   const [quickTemptations, setQuickTemptations] = useState([]);
   const [hiddenTemptations, setHiddenTemptations] = useState([]);
@@ -8725,6 +8847,7 @@ function AppContent() {
     title: "",
     emoji: "",
     category: DEFAULT_IMPULSE_CATEGORY,
+    description: "",
   });
   const [customReminderId, setCustomReminderId] = useState(null);
   const [smartReminders, setSmartReminders] = useState([]);
@@ -8810,7 +8933,15 @@ function AppContent() {
   const [focusDigestHydrated, setFocusDigestHydrated] = useState(false);
   const [pendingFocusDigest, setPendingFocusDigest] = useState(null);
   const [focusDigestPromptShown, setFocusDigestPromptShown] = useState(false);
+  const [focusSaveCount, setFocusSaveCount] = useState(0);
   const appStateRef = useRef(AppState.currentState || "active");
+  const focusLossCountersRef = useRef({});
+  const focusPromptActiveRef = useRef(false);
+  const homeSessionRef = useRef({
+    dateKey: getDayKey(Date.now()),
+    sessionCount: 0,
+    pendingIndex: null,
+  });
   const dailyChallengePromptVisible =
     dailyChallenge.status === DAILY_CHALLENGE_STATUS.OFFER && !dailyChallenge.offerDismissed;
   const dailyNudgeIdsRef = useRef({});
@@ -8971,18 +9102,28 @@ function AppContent() {
     AsyncStorage.setItem(STORAGE_KEYS.TAB_HINTS, JSON.stringify(tabHintsSeen)).catch(() => {});
   }, [tabHintsSeen, tabHintsHydrated]);
   useEffect(() => {
+    beginHomeSession();
+  }, [beginHomeSession]);
+  useEffect(() => {
+    tryLogHomeOpened();
+  }, [tryLogHomeOpened]);
+  useEffect(() => {
     const handleAppStateChange = (nextState) => {
       const previousState = appStateRef.current;
       const wasBackground =
         typeof previousState === "string" && /inactive|background/.test(previousState);
       appStateRef.current = nextState;
-      if (wasBackground && nextState === "active" && pendingFocusDigest) {
-        setFocusDigestPromptShown(false);
+      if (wasBackground && nextState === "active") {
+        beginHomeSession();
+        tryLogHomeOpened();
+        if (pendingFocusDigest) {
+          setFocusDigestPromptShown(false);
+        }
       }
     };
     const subscription = AppState.addEventListener("change", handleAppStateChange);
     return () => subscription.remove();
-  }, [pendingFocusDigest]);
+  }, [beginHomeSession, pendingFocusDigest, tryLogHomeOpened]);
   useEffect(() => {
     if (!focusStateHydrated) return;
     if (!focusTemplateId) {
@@ -8991,9 +9132,9 @@ function AppContent() {
     }
     AsyncStorage.setItem(
       STORAGE_KEYS.FOCUS_TARGET,
-      JSON.stringify({ templateId: focusTemplateId, updatedAt: Date.now() })
+      JSON.stringify({ templateId: focusTemplateId, saveCount: focusSaveCount, updatedAt: Date.now() })
     ).catch(() => {});
-  }, [focusTemplateId, focusStateHydrated]);
+  }, [focusSaveCount, focusStateHydrated, focusTemplateId]);
   useEffect(() => {
     if (!focusDigestHydrated) return;
     if (!focusDigestSeenKey) {
@@ -9018,6 +9159,22 @@ function AppContent() {
     () => getTamagotchiMood(tamagotchiState.hunger, language),
     [tamagotchiState.hunger, language]
   );
+  const beginHomeSession = useCallback(() => {
+    const todayKey = getDayKey(Date.now());
+    if (homeSessionRef.current.dateKey !== todayKey) {
+      homeSessionRef.current.dateKey = todayKey;
+      homeSessionRef.current.sessionCount = 0;
+    }
+    homeSessionRef.current.sessionCount += 1;
+    homeSessionRef.current.pendingIndex = homeSessionRef.current.sessionCount;
+  }, []);
+  const tryLogHomeOpened = useCallback(() => {
+    if (activeTab !== "feed") return;
+    const pendingIndex = homeSessionRef.current.pendingIndex;
+    if (!pendingIndex) return;
+    logEvent("home_opened", { session_index: pendingIndex });
+    homeSessionRef.current.pendingIndex = null;
+  }, [activeTab, logEvent]);
   const tamagotchiHungerPercent = useMemo(
     () => Math.min(TAMAGOTCHI_MAX_HUNGER, Math.max(0, tamagotchiState.hunger)),
     [tamagotchiState.hunger]
@@ -9424,24 +9581,33 @@ function AppContent() {
 
   useEffect(() => {
     const prev = challengesPrevRef.current || {};
-    const newlyCompleted = [];
+    const completedIds = [];
+    const expiredIds = [];
     Object.keys(challengesState).forEach((id) => {
       const previousStatus = prev[id]?.status;
       const nextStatus = challengesState[id]?.status;
       if (nextStatus === CHALLENGE_STATUS.COMPLETED && previousStatus !== CHALLENGE_STATUS.COMPLETED) {
-        newlyCompleted.push(id);
+        completedIds.push(id);
+      } else if (
+        nextStatus === CHALLENGE_STATUS.EXPIRED &&
+        previousStatus === CHALLENGE_STATUS.ACTIVE
+      ) {
+        expiredIds.push(id);
       }
     });
-    newlyCompleted.forEach((challengeId) => {
+    completedIds.forEach((challengeId) => {
       const def = CHALLENGE_DEF_MAP[challengeId];
       if (!def) return;
       const copy = getChallengeCopy(def, language);
       const title = copy.title || challengeId;
       triggerOverlayState("reward", t("challengeCompletedOverlay", { title }));
-      logEvent("challenge_completed", { challenge_id: challengeId });
+      logEvent("challenge_completed", { challenge_id: challengeId, success: true });
+    });
+    expiredIds.forEach((challengeId) => {
+      logEvent("challenge_completed", { challenge_id: challengeId, success: false });
     });
     challengesPrevRef.current = challengesState;
-  }, [challengesState, language, t, triggerOverlayState, logEvent]);
+  }, [challengesState, language, logEvent, t, triggerOverlayState]);
 
   useEffect(() => {
     impulseAlertCooldownRef.current = impulseTracker.lastAlerts || {};
@@ -9734,13 +9900,15 @@ function AppContent() {
             if (wish.kind === PRIMARY_GOAL_KIND && wish.goalId) {
               goalSyncMeta = { goalId: wish.goalId, savedUSD: nextSaved, status };
             }
-            if (becameDone) {
-              completedGoalMeta = {
-                goalId: wish.goalId || wish.id,
-                wishId: wish.id,
-                templateId: wish.templateId || null,
-              };
-            }
+          if (becameDone) {
+            completedGoalMeta = {
+              goalId: wish.goalId || wish.id,
+              wishId: wish.id,
+              templateId: wish.templateId || null,
+              targetUSD: target,
+              createdAt: wish.createdAt || wish.metaCreatedAt || null,
+            };
+          }
             return {
               ...wish,
               savedUSD: nextSaved,
@@ -9756,15 +9924,26 @@ function AppContent() {
         syncPrimaryGoalProgress(goalSyncMeta.goalId, goalSyncMeta.savedUSD, goalSyncMeta.status);
       }
       if (completedGoalMeta) {
+        const targetAmountLocal = convertToCurrency(
+          completedGoalMeta.targetUSD || 0,
+          profile.currency || DEFAULT_PROFILE.currency
+        );
+        let daysToComplete = null;
+        if (completedGoalMeta.createdAt) {
+          const createdAtTs = new Date(completedGoalMeta.createdAt).getTime();
+          if (Number.isFinite(createdAtTs)) {
+            daysToComplete = Math.max(1, Math.round((Date.now() - createdAtTs) / DAY_MS));
+          }
+        }
         logEvent("goal_completed", {
           goal_id: completedGoalMeta.goalId,
-          wish_id: completedGoalMeta.wishId,
-          template_id: completedGoalMeta.templateId,
+          target_amount: targetAmountLocal,
+          days_to_complete: daysToComplete,
         });
       }
       return applied;
     },
-    [syncPrimaryGoalProgress, logEvent]
+    [syncPrimaryGoalProgress, logEvent, profile.currency]
   );
   const getWishTitleById = useCallback(
     (wishId) => wishes.find((wish) => wish.id === wishId)?.title || "",
@@ -9890,6 +10069,12 @@ function AppContent() {
       }),
     [challengesState, profile.currency, language, t]
   );
+  const rewardsBadgeCount = useMemo(() => {
+    if (!rewardsReady) return 0;
+    const claimableRewards = achievements.filter((reward) => reward.unlocked && !reward.claimed).length;
+    const claimableChallenges = challengeList.filter((challenge) => challenge.canClaim).length;
+    return claimableRewards + claimableChallenges;
+  }, [achievements, challengeList, rewardsReady]);
   const activeDailyChallenge = useMemo(() => {
     if (dailyChallenge.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return null;
     const targetValue = dailyChallenge.target || 1;
@@ -10263,6 +10448,7 @@ function AppContent() {
         titleRaw,
         emojiOverridesRaw,
         categoryOverridesRaw,
+        descriptionOverridesRaw,
         savedTotalRaw,
         declinesRaw,
         freeDayRaw,
@@ -10302,6 +10488,7 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.TITLE_OVERRIDES),
         AsyncStorage.getItem(STORAGE_KEYS.EMOJI_OVERRIDES),
         AsyncStorage.getItem(STORAGE_KEYS.CATEGORY_OVERRIDES),
+        AsyncStorage.getItem(STORAGE_KEYS.DESCRIPTION_OVERRIDES),
         AsyncStorage.getItem(STORAGE_KEYS.SAVED_TOTAL),
         AsyncStorage.getItem(STORAGE_KEYS.DECLINES),
         AsyncStorage.getItem(STORAGE_KEYS.FREE_DAY),
@@ -10518,14 +10705,18 @@ function AppContent() {
           const parsedFocus = JSON.parse(focusTargetRaw);
           if (parsedFocus && typeof parsedFocus === "object" && typeof parsedFocus.templateId === "string") {
             setFocusTemplateId(parsedFocus.templateId);
+            setFocusSaveCount(Math.max(0, Number(parsedFocus.saveCount) || 0));
           } else {
             setFocusTemplateId(null);
+            setFocusSaveCount(0);
           }
         } catch (error) {
           setFocusTemplateId(null);
+          setFocusSaveCount(0);
         }
       } else {
         setFocusTemplateId(null);
+        setFocusSaveCount(0);
       }
       setFocusStateHydrated(true);
       if (focusDigestRaw) {
@@ -10560,6 +10751,16 @@ function AppContent() {
         }
       } else {
         setCategoryOverrides({});
+      }
+      if (descriptionOverridesRaw) {
+        try {
+          setDescriptionOverrides(JSON.parse(descriptionOverridesRaw));
+        } catch (error) {
+          console.warn("description overrides parse", error);
+          setDescriptionOverrides({});
+        }
+      } else {
+        setDescriptionOverrides({});
       }
       if (savedTotalRaw) {
         setSavedTotalUSD(Number(savedTotalRaw) || 0);
@@ -11006,6 +11207,12 @@ function AppContent() {
   }, [categoryOverrides]);
 
   useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.DESCRIPTION_OVERRIDES, JSON.stringify(descriptionOverrides)).catch(
+      () => {}
+    );
+  }, [descriptionOverrides]);
+
+  useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.SAVED_TOTAL, String(savedTotalUSD)).catch(() => {});
   }, [savedTotalUSD]);
 
@@ -11054,6 +11261,37 @@ function AppContent() {
       JSON.stringify(rewardCelebratedMap)
     ).catch(() => {});
   }, [rewardCelebratedMap]);
+  useEffect(() => {
+    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+    const hasGoalProperty =
+      (Array.isArray(profile.primaryGoals) && profile.primaryGoals.length > 0) ||
+      (wishes || []).some((wish) => wish.kind === PRIMARY_GOAL_KIND);
+    const totalDecisions =
+      (decisionStats?.resolvedToDeclines || 0) + (decisionStats?.resolvedToWishes || 0);
+    let savingStyle = "balanced";
+    if (totalDecisions > 0) {
+      const declineShare = (decisionStats.resolvedToDeclines || 0) / totalDecisions;
+      if (declineShare >= 0.7) {
+        savingStyle = "aggressive";
+      } else if (declineShare <= 0.4) {
+        savingStyle = "relaxed";
+      }
+    }
+    setUserProperties({
+      has_goal: !!hasGoalProperty,
+      preferred_currency: currencyCode,
+      saving_style: savingStyle,
+      locale: language,
+      is_premium: false,
+    });
+  }, [
+    decisionStats?.resolvedToDeclines,
+    decisionStats?.resolvedToWishes,
+    language,
+    profile.currency,
+    profile.primaryGoals,
+    wishes,
+  ]);
 
   useEffect(() => {
     if (!rewardsReady || !rewardCelebratedHydrated || !achievements.length) return;
@@ -11061,6 +11299,13 @@ function AppContent() {
       (reward) => reward.unlocked && !rewardCelebratedMap[reward.id]
     );
     if (!newlyUnlocked.length) return;
+    newlyUnlocked.forEach((reward) => {
+      logEvent("reward_unlocked", {
+        reward_id: reward.id,
+        type: "badge",
+        condition: ACHIEVEMENT_CONDITION_MAP[reward.metricType] || reward.metricType || "unknown",
+      });
+    });
     setRewardCelebratedMap((prev) => {
       const next = { ...prev };
       newlyUnlocked.forEach((reward) => {
@@ -11069,7 +11314,7 @@ function AppContent() {
       return next;
     });
     triggerOverlayState("reward", newlyUnlocked[0].title);
-  }, [achievements, rewardCelebratedMap, rewardCelebratedHydrated, rewardsReady]);
+  }, [achievements, logEvent, rewardCelebratedHydrated, rewardCelebratedMap, rewardsReady]);
 
   useEffect(() => {
     if (!wishesHydrated || !savedTotalHydrated) return;
@@ -11167,6 +11412,7 @@ function AppContent() {
         titleOverride: titleOverrides[item.id] || null,
         emoji: emojiOverrides[item.id] || item.emoji,
         impulseCategoryOverride: normalizedCategory || item.impulseCategoryOverride || null,
+        descriptionOverride: descriptionOverrides[item.id] || item.descriptionOverride || null,
       };
     }).sort(
       (a, b) =>
@@ -11181,6 +11427,8 @@ function AppContent() {
         titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
         emoji: emojiOverrides[card.id] || card.emoji,
         impulseCategoryOverride: normalizedCategory || card.impulseCategoryOverride || null,
+        descriptionOverride:
+          descriptionOverrides[card.id] ?? card.descriptionOverride ?? null,
       };
     });
     const hiddenSet = new Set(hiddenTemptations);
@@ -11198,6 +11446,8 @@ function AppContent() {
           titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
           emoji: emojiOverrides[card.id] || card.emoji,
           impulseCategoryOverride: normalizedCategory || card.impulseCategoryOverride || null,
+          descriptionOverride:
+            descriptionOverrides[card.id] ?? card.descriptionOverride ?? null,
         };
       });
     // Быстрая кастомная карта всегда рендерится первой, затем идёт персонализированный порядок.
@@ -11210,6 +11460,7 @@ function AppContent() {
     titleOverrides,
     emojiOverrides,
     categoryOverrides,
+    descriptionOverrides,
     quickTemptations,
     hiddenTemptations,
     onboardingStep,
@@ -11229,8 +11480,9 @@ function AppContent() {
       focusTemplateId === primaryTemptationId;
     if (!exists) {
       setFocusTemplateId(null);
+      setFocusSaveCount(0);
     }
-  }, [focusTemplateId, quickTemptations, temptations, primaryTemptationId]);
+  }, [focusTemplateId, primaryTemptationId, quickTemptations, temptations]);
 
   const handleCategorySelect = useCallback((category) => {
     triggerHaptic();
@@ -11653,11 +11905,11 @@ function AppContent() {
       setQuickTemptations((prev) => [card, ...prev]);
     }
     setCategoryOverrides((prev) => ({ ...prev, [newCustom.id]: category }));
-    logEvent("custom_temptation_created", {
-      title: newCustom.title,
-      amount_usd: amountUSD,
-      currency: currencyCode,
+    logEvent("temptation_created", {
+      temptation_id: newCustom.id,
+      is_custom: true,
       category,
+      price: convertToCurrency(amountUSD, currencyCode),
     });
     setQuickSpendDraft({ title: "", amount: "", emoji: DEFAULT_TEMPTATION_EMOJI, category: DEFAULT_IMPULSE_CATEGORY });
     setShowCustomSpend(false);
@@ -11756,9 +12008,8 @@ function AppContent() {
       });
       logEvent("goal_created", {
         goal_id: goalId,
-        title: trimmedName,
-        target_usd: targetUSD,
-        source: "manual_primary",
+        goal_type: resolveGoalTypeFromTarget(targetUSD),
+        target_amount: convertToCurrency(targetUSD, currencyCode),
       });
     } else {
       const newWish = {
@@ -11782,9 +12033,8 @@ function AppContent() {
       });
       logEvent("goal_created", {
         goal_id: newWish.id,
-        title: trimmedName,
-        target_usd: targetUSD,
-        source: "manual",
+        goal_type: resolveGoalTypeFromTarget(targetUSD),
+        target_amount: convertToCurrency(targetUSD, currencyCode),
       });
     }
     triggerOverlayState("purchase", t("wishAdded", { title: trimmedName }));
@@ -11864,9 +12114,8 @@ function AppContent() {
     });
     logEvent("goal_created", {
       goal_id: id,
-      title: trimmedName,
-      target_usd: targetUSD,
-      source: "onboarding_custom",
+      goal_type: resolveGoalTypeFromTarget(targetUSD),
+      target_amount: convertToCurrency(targetUSD, currencyCode),
     });
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     setOnboardingGoalModal({ visible: false, name: "", target: "", emoji: DEFAULT_GOAL_EMOJI });
@@ -12162,6 +12411,12 @@ function AppContent() {
             : 0,
         impulseCategory: categoryValue,
       };
+      logEvent("temptation_created", {
+        temptation_id: profile.customSpend?.id || "custom_habit",
+        is_custom: true,
+        category: categoryValue,
+        price: customAmount,
+      });
     }
     let spendingProfile = profile.spendingProfile || { ...DEFAULT_PROFILE.spendingProfile };
     const baselineLocal = parseNumberInputValue(registrationData.baselineMonthlyWaste || "");
@@ -12202,9 +12457,16 @@ function AppContent() {
     ensurePrimaryGoalWish(primaryGoals, language, updatedProfile.goal);
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     triggerOverlayState("completion", t("goalCompleteMessage"), 2400);
+    const hasPrimaryGoal = primaryGoals.length > 0;
+    const startBalanceLocal = convertToCurrency(
+      savedTotalUSD || 0,
+      updatedProfile.currency || DEFAULT_PROFILE.currency
+    );
     logEvent("onboarding_completed", {
       persona_id: personaId,
       goal_id: primaryGoals[0]?.id || selections[0] || DEFAULT_PROFILE.goal,
+      has_goal: hasPrimaryGoal,
+      start_balance: startBalanceLocal,
     });
     setTimeout(() => {
       goToOnboardingStep("done", { recordHistory: false, resetHistory: true });
@@ -12622,6 +12884,8 @@ function AppContent() {
       const title = `${item.emoji || "✨"} ${
         item.title?.[language] || item.title?.en || item.title || "wish"
       }`;
+      registerFocusLoss(item);
+      handleFocusSpend(item);
       logHistoryEvent("spend", { title, amountUSD: priceUSD });
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
       setSavedTotalUSD((prev) => Math.max(prev - priceUSD, 0));
@@ -12653,7 +12917,7 @@ function AppContent() {
       logImpulseEvent("spend", item, priceUSD, title);
       requestMascotAnimation(Math.random() > 0.5 ? "sad" : "ohno");
     },
-    [language, logHistoryEvent, logImpulseEvent, requestMascotAnimation, setFreeDayStats]
+    [handleFocusSpend, language, logHistoryEvent, logImpulseEvent, registerFocusLoss, requestMascotAnimation, setFreeDayStats]
   );
 
   const handleSpendConfirm = useCallback(() => {
@@ -12730,9 +12994,18 @@ function AppContent() {
       const title = `${item.emoji || "✨"} ${
         item.title?.[language] || item.title?.en || item.title || "wish"
       }`;
+      const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+      const priceLocal = convertToCurrency(priceUSD, currencyCode);
+      const balanceLocal = convertToCurrency(savedTotalUSD, currencyCode);
       if (type === "spend") {
         logTemptationAction("spend", item);
         logEvent("temptation_spend", buildTemptationPayload(item, { total_saved_usd: savedTotalUSD }));
+        logEvent("temptation_decision", {
+          temptation_id: item.id,
+          decision: "spend",
+          price: priceLocal,
+          balance_before: balanceLocal,
+        });
         setSpendPrompt({ visible: true, item });
         return;
       }
@@ -12792,6 +13065,13 @@ function AppContent() {
           assignTemptationGoal(item.id, targetGoalId);
         }
         const targetWish = targetGoalId ? wishes.find((wish) => wish.id === targetGoalId) : null;
+        logEvent("temptation_decision", {
+          temptation_id: item.id,
+          decision: "save",
+          price: priceLocal,
+          balance_before: balanceLocal,
+          saving_target_id: targetGoalId || null,
+        });
         let appliedAmount = 0;
         if (targetGoalId) {
           appliedAmount = applySavingsToWish(targetGoalId, priceUSD);
@@ -12809,6 +13089,15 @@ function AppContent() {
             remainingTemptations,
             goalComplete: remainingUSD <= 0,
           };
+          const progressPercent =
+            targetUSD > 0 ? Math.min((nextSavedUSD / targetUSD) * 100, 100) : 0;
+          if (targetGoalId && appliedAmount > 0) {
+            logEvent("saving_progress_updated", {
+              target_id: targetGoalId,
+              amount_added: convertToCurrency(appliedAmount, currencyCode),
+              new_progress: progressPercent,
+            });
+          }
         }
         const timestamp = saveTimestamp;
         setSavedTotalUSD((prev) => prev + priceUSD);
@@ -12850,6 +13139,7 @@ function AppContent() {
         logImpulseEvent("save", item, priceUSD, title);
         triggerCardFeedback(item.id);
         triggerCoinHaptics();
+        handleFocusSaveProgress(item);
         triggerOverlayState("save", { ...saveOverlayPayload, coinReward });
         requestMascotAnimation("happy");
         saveActionLogRef.current = [...recentSaves, { itemId: item.id, timestamp: saveTimestamp }];
@@ -12908,6 +13198,9 @@ function AppContent() {
       wishes,
       moodPreset,
       requestMascotAnimation,
+      handleFocusSaveProgress,
+      logEvent,
+      profile.currency,
     ]
   );
 
@@ -13171,26 +13464,77 @@ function AppContent() {
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
       setPriceEditor((prev) => {
         if (prev.item?.id === item.id) {
-          return { item: null, value: "", title: "", emoji: "" };
+          return {
+            item: null,
+            value: "",
+            title: "",
+            emoji: "",
+            category: DEFAULT_IMPULSE_CATEGORY,
+            description: "",
+          };
         }
         const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
         const currentValue = convertToCurrency(item.priceUSD || item.basePriceUSD || 0, currencyCode);
+        const categorySlug = resolveTemptationCategory(item);
+        const descriptionString = typeof item.description === "string" ? item.description : null;
+        const descriptionMap =
+          item.description && typeof item.description === "object" && !Array.isArray(item.description)
+            ? item.description
+            : null;
+        const isCustom =
+          Array.isArray(item?.categories) && item.categories.some((category) => category === "custom");
+        const customDescriptionFallback = isCustom
+          ? buildCustomTemptationDescription(item?.gender || "none")
+          : null;
+        const overrideDescription =
+          typeof descriptionOverrides[item.id] === "string"
+            ? descriptionOverrides[item.id]
+            : "";
+        const resolvedDescription =
+          (overrideDescription && overrideDescription.length
+            ? overrideDescription
+            : (descriptionMap ? descriptionMap[language] : null) ||
+              (language === "ru"
+                ? descriptionMap?.ru || descriptionMap?.en || descriptionString
+                : descriptionMap?.en || descriptionMap?.ru || descriptionString) ||
+              descriptionString ||
+              (isCustom
+                ? customDescriptionFallback?.[language] ||
+                  (language === "ru"
+                    ? customDescriptionFallback?.ru
+                    : customDescriptionFallback?.en) ||
+                  customDescriptionFallback?.en ||
+                  ""
+                : ""));
+        logEvent("temptation_viewed", {
+          temptation_id: item.id,
+          category: categorySlug,
+          price: convertToCurrency(item.priceUSD || item.basePriceUSD || 0, currencyCode),
+        });
         return {
           item,
           value: formatNumberInputValue(Number(currentValue) || 0),
           title: resolveTemptationTitle(item, language, titleOverrides[item.id]),
           emoji: item.emoji || DEFAULT_TEMPTATION_EMOJI,
-          category: resolveTemptationCategory(item),
+          category: categorySlug,
+          description: resolvedDescription,
         };
       });
     },
-    [language, profile.currency, titleOverrides, resolveTemptationCategory]
+    [language, profile.currency, titleOverrides, descriptionOverrides, resolveTemptationCategory]
   );
 
   const closePriceEditor = useCallback(() => {
     if (!priceEditor.item) return;
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setPriceEditor({ item: null, value: "", title: "", emoji: "", category: DEFAULT_IMPULSE_CATEGORY });
+    setPriceEditor({
+      item: null,
+      value: "",
+      title: "",
+      emoji: "",
+      category: DEFAULT_IMPULSE_CATEGORY,
+      description: "",
+    });
   }, [priceEditor.item]);
 
   useEffect(() => {
@@ -13256,6 +13600,10 @@ function AppContent() {
     setPriceEditor((prev) => ({ ...prev, value }));
   };
 
+  const handlePriceDescriptionChange = (value) => {
+    setPriceEditor((prev) => ({ ...prev, description: value }));
+  };
+
   const patchTemptationDisplay = useCallback((templateId, patch = {}) => {
     if (!templateId || !patch || typeof patch !== "object") return;
     setTemptations((prev) =>
@@ -13311,6 +13659,12 @@ function AppContent() {
         delete next[templateId];
         return next;
       });
+      setDescriptionOverrides((prev) => {
+        if (!(templateId in prev)) return prev;
+        const next = { ...prev };
+        delete next[templateId];
+        return next;
+      });
       setRefuseStats((prev) => {
         if (!prev[templateId]) return prev;
         const next = { ...prev };
@@ -13327,6 +13681,7 @@ function AppContent() {
       setCatalogOverrides,
       setTitleOverrides,
       setEmojiOverrides,
+      setDescriptionOverrides,
       setRefuseStats,
       setPendingList,
     ]
@@ -13374,6 +13729,22 @@ function AppContent() {
     });
   };
 
+  const persistDescriptionOverride = (value = null) => {
+    const targetId = priceEditor.item?.id;
+    if (!targetId) return;
+    setDescriptionOverrides((prev) => {
+      const next = { ...prev };
+      const normalized =
+        typeof value === "string" && value.trim().length ? value.trim() : null;
+      if (normalized) {
+        next[targetId] = normalized;
+      } else {
+        delete next[targetId];
+      }
+      return next;
+    });
+  };
+
   const persistCategoryOverride = (value = null) => {
     const targetId = priceEditor.item?.id;
     if (!targetId) return;
@@ -13396,6 +13767,7 @@ function AppContent() {
       return;
     }
     const usdValue = parsed / (CURRENCY_RATES[activeCurrency] || 1);
+    const previousPriceUSD = priceEditor.item.priceUSD || priceEditor.item.basePriceUSD || 0;
     persistPriceOverride(usdValue);
     const titleValue = (priceEditor.title || "").trim();
     persistTitleOverride(titleValue || null);
@@ -13408,12 +13780,30 @@ function AppContent() {
       priceEditor.category && IMPULSE_CATEGORY_DEFS[priceEditor.category]
         ? priceEditor.category
         : null;
+    const previousCategory = resolveTemptationCategory(priceEditor.item);
+    const nextCategory = categoryValue || previousCategory;
     persistCategoryOverride(categoryValue);
+    const descriptionValue = (priceEditor.description || "").trim();
+    const previousDescriptionOverride =
+      typeof descriptionOverrides[priceEditor.item.id] === "string"
+        ? descriptionOverrides[priceEditor.item.id]
+        : "";
+    const changedDescription = descriptionValue !== previousDescriptionOverride;
+    persistDescriptionOverride(descriptionValue || null);
+    const changedPrice = Math.abs(previousPriceUSD - usdValue) > 0.0001;
+    const changedCategory = nextCategory !== previousCategory;
     patchTemptationDisplay(priceEditor.item.id, {
       priceUSD: usdValue,
       titleOverride: titleValue || null,
       emoji: resolvedEmoji,
       impulseCategoryOverride: categoryValue || null,
+      descriptionOverride: descriptionValue || null,
+    });
+    logEvent("temptation_edited", {
+      temptation_id: priceEditor.item.id,
+      changed_price: changedPrice,
+      changed_category: changedCategory,
+      changed_description: changedDescription,
     });
     closePriceEditor();
   };
@@ -13428,6 +13818,14 @@ function AppContent() {
           text: t("priceEditDelete"),
           style: "destructive",
           onPress: () => {
+            logEvent("temptation_deleted", {
+              temptation_id: item.id,
+              is_custom: isCustomTemptation(item),
+              price: convertToCurrency(
+                item.priceUSD || item.basePriceUSD || 0,
+                profile.currency || DEFAULT_PROFILE.currency
+              ),
+            });
             removeTemptationTemplate(item.id);
             if (priceEditor.item?.id === item.id) {
               closePriceEditor();
@@ -13436,7 +13834,7 @@ function AppContent() {
         },
       ]);
     },
-    [closePriceEditor, priceEditor.item, removeTemptationTemplate, t]
+    [closePriceEditor, logEvent, priceEditor.item, profile.currency, removeTemptationTemplate, t]
   );
   const handleTemptationDelete = useCallback(
     (item) => {
@@ -13458,6 +13856,10 @@ function AppContent() {
           setProfile((prev) => removePrimaryGoalFromProfile(prev, targetWish.goalId));
           setProfileDraft((prev) => removePrimaryGoalFromProfile(prev, targetWish.goalId));
         }
+        logEvent("goal_abandoned", {
+          goal_id: targetWish.goalId || targetWish.id,
+          reason: "deleted",
+        });
       };
       Alert.alert(t("wishlistTitle"), t("wishlistRemoveConfirm"), [
         { text: t("priceEditCancel"), style: "cancel" },
@@ -13468,7 +13870,7 @@ function AppContent() {
         },
       ]);
     },
-    [setProfile, setProfileDraft, t, wishes]
+    [logEvent, setProfile, setProfileDraft, t, wishes]
   );
 
   const handlePendingDecision = useCallback(
@@ -13575,6 +13977,8 @@ function AppContent() {
         ? 4200
         : next.type === "impulse_alert"
         ? null
+        : next.type === "focus_digest"
+        ? null
         : 2600;
     const timeout = next.duration ?? defaultDuration;
     if (typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0) {
@@ -13597,6 +14001,9 @@ function AppContent() {
   );
 
   const dismissOverlay = useCallback(() => {
+    if (overlay?.type === "focus_digest" && overlay?.message?.prompt) {
+      focusPromptActiveRef.current = false;
+    }
     if (overlayTimer.current) {
       clearTimeout(overlayTimer.current);
       overlayTimer.current = null;
@@ -13606,16 +14013,100 @@ function AppContent() {
     }
     setOverlay(null);
     processOverlayQueue();
-  }, [processOverlayQueue]);
+  }, [overlay, processOverlayQueue]);
+
+  const resetFocusLossCounter = useCallback((templateId) => {
+    if (!templateId) return;
+    focusLossCountersRef.current[templateId] = { count: 0 };
+  }, []);
+
+  const promptFocusForTemptation = useCallback(
+    (template) => {
+      if (!template?.id) return;
+      if (focusPromptActiveRef.current) return;
+      if (overlay?.type === "focus_digest") return;
+      focusPromptActiveRef.current = true;
+      const title = resolveTemptationTitle(template, language, titleOverrides[template.id]) || t("defaultDealTitle");
+      triggerOverlayState("focus_digest", {
+        title: t("focusPromptTitle"),
+        body: t("focusPromptBody", { title }),
+        strong: null,
+        weak: { title, templateId: template.id },
+        positive: false,
+        targetId: template.id,
+        prompt: true,
+      }, null);
+    },
+    [language, overlay, t, titleOverrides, triggerOverlayState]
+  );
+
+  const registerFocusLoss = useCallback(
+    (template) => {
+      if (!template?.id) return;
+      const key = template.id;
+      const entry = focusLossCountersRef.current[key] || { count: 0 };
+      const nextCount = entry.count + 1;
+      focusLossCountersRef.current[key] = { count: nextCount };
+      if (nextCount >= FOCUS_LOSS_THRESHOLD) {
+        focusLossCountersRef.current[key] = { count: 0 };
+        if (focusTemplateId === key) return;
+        promptFocusForTemptation(template);
+      }
+    },
+    [focusTemplateId, promptFocusForTemptation]
+  );
+
+  const celebrateFocusVictory = useCallback(
+    (template) => {
+      if (!template) return;
+      const title = resolveTemptationTitle(template, language, titleOverrides[template.id]) || t("defaultDealTitle");
+      setFocusTemplateId(null);
+      setFocusSaveCount(0);
+      resetFocusLossCounter(template.id);
+    setHealthPoints((prev) => prev + FOCUS_VICTORY_REWARD);
+    triggerOverlayState("focus_reward", {
+      title: t("focusRewardTitle"),
+      body: t("focusRewardSubtitle", { title, amount: FOCUS_VICTORY_REWARD }),
+      amount: FOCUS_VICTORY_REWARD,
+    });
+    },
+    [language, resetFocusLossCounter, setHealthPoints, t, titleOverrides, triggerOverlayState]
+  );
+
+  const handleFocusSaveProgress = useCallback(
+    (template) => {
+      if (!template?.id || template.id !== focusTemplateId) return;
+      resetFocusLossCounter(template.id);
+      setFocusSaveCount((prev) => {
+        const next = prev + 1;
+        if (next >= FOCUS_VICTORY_THRESHOLD) {
+          celebrateFocusVictory(template);
+          return 0;
+        }
+        return next;
+      });
+    },
+    [celebrateFocusVictory, focusTemplateId, resetFocusLossCounter]
+  );
+
+  const handleFocusSpend = useCallback(
+    (template) => {
+      if (!template?.id || template.id !== focusTemplateId) return;
+      setFocusSaveCount(0);
+    },
+    [focusTemplateId]
+  );
 
   const applyFocusTarget = useCallback(
     (templateId, source = "manual") => {
       if (!templateId) return;
       setFocusTemplateId(templateId);
+      setFocusSaveCount(0);
+      resetFocusLossCounter(templateId);
       logEvent("focus_target_set", { template_id: templateId, source });
       triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     },
-    [logEvent]
+    [logEvent, resetFocusLossCounter]
   );
 
   const resolveFocusDigest = useCallback(
@@ -13637,19 +14128,27 @@ function AppContent() {
 
   const handleFocusOverlayConfirm = useCallback(
     (templateId, source = "digest") => {
+      const isPrompt = overlay?.message?.prompt;
       if (templateId) {
         applyFocusTarget(templateId, source);
       }
       resolveFocusDigest("focus");
       dismissOverlay();
+      if (isPrompt) {
+        focusPromptActiveRef.current = false;
+      }
     },
-    [applyFocusTarget, dismissOverlay, resolveFocusDigest]
+    [applyFocusTarget, dismissOverlay, overlay, resolveFocusDigest]
   );
 
   const handleFocusOverlayLater = useCallback(() => {
+    const isPrompt = overlay?.message?.prompt;
     resolveFocusDigest("later");
     dismissOverlay();
-  }, [dismissOverlay, resolveFocusDigest]);
+    if (isPrompt) {
+      focusPromptActiveRef.current = false;
+    }
+  }, [dismissOverlay, overlay, resolveFocusDigest]);
 
   const notifyImpulseRisk = useCallback(
     async (risk) => {
@@ -13807,6 +14306,10 @@ function AppContent() {
       const title = copy.title || challengeId;
       triggerOverlayState("cart", t("challengeStartedOverlay", { title }));
       logEvent("challenge_started", { challenge_id: challengeId });
+      logEvent("challenge_joined", {
+        challenge_id: challengeId,
+        type: CHALLENGE_TYPE_LABELS[def.metricType] || def.metricType,
+      });
       const reminderIds = await scheduleChallengeReminders(challengeId, def, startedAt, expiresAt);
       if (reminderIds.length) {
         setChallengesState((prev) => {
@@ -13848,14 +14351,15 @@ function AppContent() {
           },
         };
       });
-      setHealthPoints((prev) => prev + def.rewardHealth);
+      const rewardAmount = getScaledChallengeReward(def.rewardHealth);
+      setHealthPoints((prev) => prev + rewardAmount);
       const copy = getChallengeCopy(def, language);
       const title = copy.title || challengeId;
       triggerOverlayState(
         "health",
         {
-          amount: def.rewardHealth,
-          reason: t("challengeClaimedOverlay", { title }),
+          amount: rewardAmount,
+          reason: t("challengeClaimedOverlay", { title, amount: rewardAmount }),
         },
         3200
       );
@@ -14198,6 +14702,7 @@ function AppContent() {
             historyEvents={resolvedHistoryEvents}
             profile={profile}
             titleOverrides={titleOverrides}
+            descriptionOverrides={descriptionOverrides}
             onLevelCelebrate={handleLevelCelebrate}
             onBaselineSetup={handleBaselineSetupPrompt}
             healthPoints={healthPoints}
@@ -14218,10 +14723,12 @@ function AppContent() {
             editingPriceValue={priceEditor.value}
             editingGoalLabel={priceEditorAssignedGoalTitle}
             editingEmojiValue={priceEditor.emoji}
+            editingDescriptionValue={priceEditor.description || ""}
             editingCategoryValue={priceEditor.category || DEFAULT_IMPULSE_CATEGORY}
             onTemptationEditTitleChange={handlePriceTitleChange}
             onTemptationEditPriceChange={handlePriceInputChange}
             onTemptationEditEmojiChange={handlePriceEmojiChange}
+            onTemptationEditDescriptionChange={handlePriceDescriptionChange}
             onTemptationEditCategoryChange={handlePriceCategoryChange}
             onTemptationEditSave={savePriceEdit}
             onTemptationEditCancel={closePriceEditor}
@@ -14818,6 +15325,26 @@ function AppContent() {
                     ? t("purchasesTitle")
                     : t("profileTab")}
                 </Text>
+                {tab === "purchases" && rewardsBadgeCount > 0 && (
+                  <View
+                    style={[
+                      styles.tabBadge,
+                      styles.tabBadgeFloating,
+                      {
+                        backgroundColor: theme === "dark" ? "#FEE5A8" : colors.text,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.tabBadgeText,
+                        { color: theme === "dark" ? "#05070D" : colors.background },
+                      ]}
+                    >
+                      {rewardsBadgeCount > 99 ? "99+" : `${rewardsBadgeCount}`}
+                    </Text>
+                  </View>
+                )}
               </TouchableOpacity>
             );
           })}
@@ -15173,9 +15700,10 @@ function AppContent() {
                       t={t}
                       isFocusTarget={priceEditor.item?.id === focusTemplateId}
                       descriptionOverride={
-                        priceEditor.item.id === primaryTemptationId
+                        descriptionOverrides[priceEditor.item.id] ||
+                        (priceEditor.item.id === primaryTemptationId
                           ? primaryTemptationDescription
-                          : null
+                          : null)
                       }
                       currency={profile.currency || DEFAULT_PROFILE.currency}
                       stats={refuseStats[priceEditor.item.id]}
@@ -15189,10 +15717,12 @@ function AppContent() {
                       editPriceValue={priceEditor.value}
                       editGoalLabel={priceEditorAssignedGoalTitle || ""}
                       editEmojiValue={priceEditor.emoji}
+                      editDescriptionValue={priceEditor.description || ""}
                       editCategoryValue={priceEditor.category}
                       onEditTitleChange={handlePriceTitleChange}
                       onEditPriceChange={handlePriceInputChange}
                       onEditEmojiChange={handlePriceEmojiChange}
+                      onEditDescriptionChange={handlePriceDescriptionChange}
                       onEditCategoryChange={handlePriceCategoryChange}
                       onEditSave={savePriceEdit}
                       onEditCancel={closePriceEditor}
@@ -15354,6 +15884,7 @@ function AppContent() {
           overlay.type !== "custom_temptation" &&
           overlay.type !== "reward" &&
           overlay.type !== "health" &&
+          overlay.type !== "focus_reward" &&
           overlay.type !== "goal_complete" &&
           overlay.type !== "impulse_alert" &&
           overlay.type !== "focus_digest" && (
@@ -15410,103 +15941,107 @@ function AppContent() {
         )}
         {overlay?.type === "focus_digest" && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
-            <TouchableWithoutFeedback onPress={dismissOverlay}>
-              <View style={styles.overlayFullScreen}>
-                <TouchableWithoutFeedback onPress={() => {}}>
-                  <View
-                    style={[
-                      styles.focusDigestCard,
-                      { backgroundColor: colors.card, borderColor: colors.border },
-                    ]}
-                  >
-                    <Text style={[styles.focusDigestTitle, { color: colors.text }]}>
-                      {overlay.message?.title || ""}
-                    </Text>
-                    <Text style={[styles.focusDigestBody, { color: colors.muted }]}>
-                      {overlay.message?.body || ""}
-                    </Text>
-                    <View style={styles.focusDigestStats}>
-                      <View
-                        style={[
-                          styles.focusDigestStat,
-                          {
-                            borderColor: colors.border,
-                            backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.08 : 0.2),
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.focusDigestLabel, { color: colors.muted }]}>
-                          {t("focusDigestStrongLabel")}
+            <View style={styles.overlayFullScreen}>
+              <View
+                style={[
+                  styles.overlayDim,
+                  { backgroundColor: overlayDimColor },
+                ]}
+              />
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View
+                  style={[
+                    styles.focusDigestCard,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                  ]}
+                >
+                  <Text style={[styles.focusDigestTitle, { color: colors.text }]}>
+                    {overlay.message?.title || ""}
+                  </Text>
+                  <Text style={[styles.focusDigestBody, { color: colors.muted }]}>
+                    {overlay.message?.body || ""}
+                  </Text>
+                  <View style={styles.focusDigestStats}>
+                    <View
+                      style={[
+                        styles.focusDigestStat,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.08 : 0.2),
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.focusDigestLabel, { color: colors.muted }]}>
+                        {t("focusDigestStrongLabel")}
+                      </Text>
+                      <Text style={[styles.focusDigestValue, { color: colors.text }]}>
+                        {overlay.message?.strong?.title || t("focusDigestMissing")}
+                      </Text>
+                      {overlay.message?.strong?.window && (
+                        <Text style={[styles.focusDigestHint, { color: colors.muted }]}>
+                          {overlay.message.strong.window}
                         </Text>
-                        <Text style={[styles.focusDigestValue, { color: colors.text }]}>
-                          {overlay.message?.strong?.title || t("focusDigestMissing")}
-                        </Text>
-                        {overlay.message?.strong?.window && (
-                          <Text style={[styles.focusDigestHint, { color: colors.muted }]}>
-                            {overlay.message.strong.window}
-                          </Text>
-                        )}
-                      </View>
-                      <View
-                        style={[
-                          styles.focusDigestStat,
-                          {
-                            borderColor: colors.border,
-                            backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.04 : 0.12),
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.focusDigestLabel, { color: colors.muted }]}>
-                          {t("focusDigestWeakLabel")}
-                        </Text>
-                        <Text style={[styles.focusDigestValue, { color: colors.text }]}>
-                          {overlay.message?.weak?.title || t("focusDigestMissing")}
-                        </Text>
-                        {overlay.message?.weak?.window && (
-                          <Text style={[styles.focusDigestHint, { color: colors.muted }]}>
-                            {overlay.message.weak.window}
-                          </Text>
-                        )}
-                      </View>
+                      )}
                     </View>
-                    <View style={styles.focusDigestButtons}>
-                      <TouchableOpacity
-                        style={[styles.focusDigestSecondary, { borderColor: colors.border }]}
-                        onPress={handleFocusOverlayLater}
-                      >
-                        <Text style={[styles.focusDigestSecondaryText, { color: colors.muted }]}>
-                          {t("focusDigestDismiss")}
+                    <View
+                      style={[
+                        styles.focusDigestStat,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.04 : 0.12),
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.focusDigestLabel, { color: colors.muted }]}>
+                        {t("focusDigestWeakLabel")}
+                      </Text>
+                      <Text style={[styles.focusDigestValue, { color: colors.text }]}>
+                        {overlay.message?.weak?.title || t("focusDigestMissing")}
+                      </Text>
+                      {overlay.message?.weak?.window && (
+                        <Text style={[styles.focusDigestHint, { color: colors.muted }]}>
+                          {overlay.message.weak.window}
                         </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.focusDigestPrimary,
-                          {
-                            backgroundColor: overlay.message?.targetId ? colors.text : colors.border,
-                          },
-                        ]}
-                        disabled={!overlay.message?.targetId}
-                        onPress={() =>
-                          handleFocusOverlayConfirm(
-                            overlay.message?.targetId,
-                            overlay.message?.positive ? "digest_positive" : "digest_negative"
-                          )
-                        }
-                      >
-                        <Text
-                          style={[
-                            styles.focusDigestPrimaryText,
-                            { color: overlay.message?.targetId ? colors.background : colors.muted },
-                          ]}
-                        >
-                          {t("focusDigestButton")}
-                        </Text>
-                      </TouchableOpacity>
+                      )}
                     </View>
                   </View>
-                </TouchableWithoutFeedback>
-              </View>
-            </TouchableWithoutFeedback>
+                  <View style={styles.focusDigestButtons}>
+                    <TouchableOpacity
+                      style={[styles.focusDigestSecondary, { borderColor: colors.border }]}
+                      onPress={handleFocusOverlayLater}
+                    >
+                      <Text style={[styles.focusDigestSecondaryText, { color: colors.muted }]}>
+                        {t("focusDigestDismiss")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.focusDigestPrimary,
+                        {
+                          backgroundColor: overlay.message?.targetId ? colors.text : colors.border,
+                        },
+                      ]}
+                      disabled={!overlay.message?.targetId}
+                      onPress={() =>
+                        handleFocusOverlayConfirm(
+                          overlay.message?.targetId,
+                          overlay.message?.positive ? "digest_positive" : "digest_negative"
+                        )
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.focusDigestPrimaryText,
+                          { color: overlay.message?.targetId ? colors.background : colors.muted },
+                        ]}
+                      >
+                        {t("focusDigestButton")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
           </Modal>
         )}
         {overlay?.type === "level" && (
@@ -15596,6 +16131,43 @@ function AppContent() {
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
                 <RewardCelebration colors={colors} message={overlay.message} t={t} />
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+        {overlay?.type === "focus_reward" && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View style={styles.overlayFullScreen}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
+                    style={[
+                      styles.focusRewardCard,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <View style={styles.focusRewardIconRow}>
+                      <Image source={HEALTH_COIN_TIERS[0].asset} style={styles.focusRewardCoin} />
+                      <Text style={[styles.focusRewardAmount, { color: colors.text }]}>
+                        +{overlay.message?.amount || FOCUS_VICTORY_REWARD}
+                      </Text>
+                    </View>
+                    <Text style={[styles.focusRewardTitle, { color: colors.text }]}>
+                      {overlay.message?.title || t("focusRewardTitle")}
+                    </Text>
+                    <Text style={[styles.focusRewardBody, { color: colors.muted }]}>
+                      {overlay.message?.body || ""}
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.focusRewardButton, { borderColor: colors.text }]}
+                      onPress={dismissOverlay}
+                    >
+                      <Text style={[styles.focusRewardButtonText, { color: colors.text }]}>
+                        {t("profileOk") || "Ок"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </TouchableWithoutFeedback>
               </View>
             </TouchableWithoutFeedback>
           </Modal>
@@ -18986,6 +19558,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
   },
   tabButtonHighlight: {
     borderWidth: 1,
@@ -19000,6 +19574,22 @@ const styles = StyleSheet.create({
   },
   tabButtonText: {
     ...createCtaText({ fontSize: 13, textTransform: "uppercase" }),
+  },
+  tabBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabBadgeFloating: {
+    position: "absolute",
+    top: -6,
+    right: -2,
+  },
+  tabBadgeText: {
+    ...createCtaText({ fontSize: 11, textTransform: "none" }),
   },
   analyticsConsentScreen: {
     flex: 1,
@@ -19350,6 +19940,44 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   focusDigestSecondaryText: {
+    ...createCtaText({ fontSize: 14 }),
+  },
+  focusRewardCard: {
+    width: "82%",
+    borderRadius: 30,
+    borderWidth: 1,
+    padding: 24,
+    gap: 14,
+    alignItems: "center",
+  },
+  focusRewardIconRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  focusRewardCoin: {
+    width: 48,
+    height: 48,
+  },
+  focusRewardAmount: {
+    ...createCtaText({ fontSize: 24 }),
+  },
+  focusRewardTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 24,
+    textAlign: "center",
+  },
+  focusRewardBody: {
+    ...createBodyText({ fontSize: 15, lineHeight: 22 }),
+    textAlign: "center",
+  },
+  focusRewardButton: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+  },
+  focusRewardButtonText: {
     ...createCtaText({ fontSize: 14 }),
   },
   impulseCategoryPicker: {

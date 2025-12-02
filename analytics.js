@@ -33,8 +33,24 @@ const EVENT_DEFINITIONS = {
   onboarding_currency_chosen: ["currency"],
   onboarding_goal_chosen: ["goal_id", "target_usd"],
   onboarding_persona_chosen: ["persona_id", "habit_type"],
-  onboarding_custom_spend: ["has_custom", "price_usd"],
-  onboarding_completed: ["persona_id", "goal_id"],
+  onboarding_custom_spend: ["has_custom", "price_usd", "frequency_per_week"],
+  onboarding_completed: ["persona_id", "goal_id", "has_goal", "start_balance"],
+  home_opened: ["session_index"],
+  temptation_created: ["temptation_id", "is_custom", "category", "price"],
+  temptation_edited: ["temptation_id", "changed_price", "changed_category"],
+  temptation_deleted: ["temptation_id", "is_custom", "price"],
+  temptation_viewed: ["temptation_id", "category", "price"],
+  temptation_decision: ["temptation_id", "decision", "price", "balance_before", "saving_target_id"],
+  saving_progress_updated: ["target_id", "amount_added", "new_progress"],
+  goal_created: ["goal_id", "goal_type", "target_amount"],
+  goal_completed: ["goal_id", "target_amount", "days_to_complete"],
+  goal_abandoned: ["goal_id", "reason"],
+  reward_unlocked: ["reward_id", "type", "condition"],
+  challenge_joined: ["challenge_id", "type"],
+  challenge_completed: ["challenge_id", "success"],
+  stats_screen_viewed: ["tab"],
+  reminder_shown: ["reminder_type"],
+  reminder_clicked: ["reminder_type", "target_screen"],
   savings_updated: ["saved_usd_total", "tier_level", "next_tier_usd", "profile_goal"],
   savings_level_up: ["level", "saved_usd_total"],
 };
@@ -105,5 +121,16 @@ export const logScreenView = async (screenName) => {
     });
   } catch (error) {
     console.warn("Failed to log screen view:", error?.message || error);
+  }
+};
+
+export const setUserProperties = async (properties = {}) => {
+  if (!properties || typeof properties !== "object") return;
+  const client = getAnalyticsClient();
+  if (!client) return;
+  try {
+    await client.setUserProperties(properties);
+  } catch (error) {
+    console.warn("Failed to set analytics user properties:", error?.message || error);
   }
 };
