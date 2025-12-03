@@ -105,20 +105,132 @@ const STORAGE_KEYS = {
   CATEGORY_OVERRIDES: "@almost_category_overrides",
   DESCRIPTION_OVERRIDES: "@almost_description_overrides",
   FOCUS_DIGEST_PENDING: "@almost_focus_digest_pending",
+  TAMAGOTCHI_SKIN: "@almost_tamagotchi_skin",
 };
 
 const PURCHASE_GOAL = 20000;
-const CAT_IMAGE = require("./assets/Cat_mascot.png");
-const CAT_CURIOUS = require("./assets/Cat_curious.gif");
-const CAT_HAPPY_GIF = require("./assets/Cat_happy.gif");
-const CAT_WAVING = require("./assets/Cat_waving.gif");
-const CAT_FOLLOWS = require("./assets/Cat_follows.gif");
-const CAT_IDLE = require("./assets/Cat_idle.gif");
-const CAT_SAD = require("./assets/Cat_sad.gif");
-const CAT_OH_OH = require("./assets/Cat_oh_oh.gif");
-const CAT_HAPPY_HEADSHAKE = require("./assets/Cat_happy_headshake.gif");
-const CAT_SPEAKS = require("./assets/Cat_speaks.gif");
-const CAT_CRY = require("./assets/Cat_cry.gif");
+const CLASSIC_TAMAGOTCHI_ANIMATIONS = {
+  idle: require("./assets/Cat_idle.gif"),
+  curious: require("./assets/Cat_curious.gif"),
+  follow: require("./assets/Cat_follows.gif"),
+  speak: require("./assets/Cat_speaks.gif"),
+  happy: require("./assets/Cat_happy.gif"),
+  happyHeadshake: require("./assets/Cat_happy_headshake.gif"),
+  sad: require("./assets/Cat_sad.gif"),
+  ohno: require("./assets/Cat_oh_oh.gif"),
+  cry: require("./assets/Cat_cry.gif"),
+  waving: require("./assets/Cat_waving.gif"),
+};
+const GREEN_TAMAGOTCHI_ANIMATIONS = {
+  idle: require("./assets/tamagotchi_skins/green/Cat_idle.gif"),
+  curious: require("./assets/tamagotchi_skins/green/Cat_curious.gif"),
+  follow: require("./assets/tamagotchi_skins/green/Cat_follows.gif"),
+  speak: require("./assets/tamagotchi_skins/green/Cat_speaks.gif"),
+  happy: require("./assets/tamagotchi_skins/green/Cat_happy.gif"),
+  happyHeadshake: require("./assets/tamagotchi_skins/green/Cat_happy_headshake.gif"),
+  sad: require("./assets/tamagotchi_skins/green/Cat_sad.gif"),
+  ohno: require("./assets/tamagotchi_skins/green/Cat_oh_oh.gif"),
+  cry: require("./assets/tamagotchi_skins/green/Cat_cry.gif"),
+  waving: require("./assets/tamagotchi_skins/green/Cat_waving.gif"),
+};
+const TEAL_TAMAGOTCHI_ANIMATIONS = {
+  idle: require("./assets/tamagotchi_skins/teal/Cat_idle.gif"),
+  curious: require("./assets/tamagotchi_skins/teal/Cat_curious.gif"),
+  follow: require("./assets/tamagotchi_skins/teal/Cat_follows.gif"),
+  speak: require("./assets/tamagotchi_skins/teal/Cat_speaks.gif"),
+  happy: require("./assets/tamagotchi_skins/teal/Cat_happy.gif"),
+  happyHeadshake: require("./assets/tamagotchi_skins/teal/Cat_happy_headshake.gif"),
+  sad: require("./assets/tamagotchi_skins/teal/Cat_sad.gif"),
+  ohno: require("./assets/tamagotchi_skins/teal/Cat_oh_oh.gif"),
+  cry: require("./assets/tamagotchi_skins/teal/Cat_cry.gif"),
+  waving: require("./assets/tamagotchi_skins/teal/Cat_waving.gif"),
+};
+const YELLOW_TAMAGOTCHI_ANIMATIONS = {
+  idle: require("./assets/tamagotchi_skins/yellow/Cat_idle.gif"),
+  curious: require("./assets/tamagotchi_skins/yellow/Cat_curious.gif"),
+  follow: require("./assets/tamagotchi_skins/yellow/Cat_follows.gif"),
+  speak: require("./assets/tamagotchi_skins/yellow/Cat_speaks.gif"),
+  happy: require("./assets/tamagotchi_skins/yellow/Cat_happy.gif"),
+  happyHeadshake: require("./assets/tamagotchi_skins/yellow/Cat_happy_headshake.gif"),
+  sad: require("./assets/tamagotchi_skins/yellow/Cat_sad.gif"),
+  ohno: require("./assets/tamagotchi_skins/yellow/Cat_oh_oh.gif"),
+  cry: require("./assets/tamagotchi_skins/yellow/Cat_cry.gif"),
+  waving: require("./assets/tamagotchi_skins/yellow/Cat_waving.gif"),
+};
+const PURPLE_TAMAGOTCHI_ANIMATIONS = {
+  idle: require("./assets/tamagotchi_skins/purple/Cat_idle.gif"),
+  curious: require("./assets/tamagotchi_skins/purple/Cat_curious.gif"),
+  follow: require("./assets/tamagotchi_skins/purple/Cat_follows.gif"),
+  speak: require("./assets/tamagotchi_skins/purple/Cat_speaks.gif"),
+  happy: require("./assets/tamagotchi_skins/purple/Cat_happy.gif"),
+  happyHeadshake: require("./assets/tamagotchi_skins/purple/Cat_happy_headshake.gif"),
+  sad: require("./assets/tamagotchi_skins/purple/Cat_sad.gif"),
+  ohno: require("./assets/tamagotchi_skins/purple/Cat_oh_oh.gif"),
+  cry: require("./assets/tamagotchi_skins/purple/Cat_cry.gif"),
+  waving: require("./assets/tamagotchi_skins/purple/Cat_waving.gif"),
+};
+const TAMAGOTCHI_SKIN_OPTIONS = [
+  {
+    id: "classic",
+    label: { ru: "Классический", en: "Classic" },
+    description: {
+      ru: "Знакомый образ Алми",
+      en: "The original Almi look",
+    },
+    preview: require("./assets/Cat_mascot.png"),
+    avatar: require("./assets/Cat_mascot.png"),
+    animations: CLASSIC_TAMAGOTCHI_ANIMATIONS,
+  },
+  {
+    id: "green",
+    label: { ru: "Лесной", en: "Forest" },
+    description: {
+      ru: "Мятный исследователь",
+      en: "Mint explorer",
+    },
+    preview: require("./assets/tamagotchi_skins/green/Cat_idle.gif"),
+    avatar: require("./assets/tamagotchi_skins/green/Cat_idle.gif"),
+    animations: GREEN_TAMAGOTCHI_ANIMATIONS,
+  },
+  {
+    id: "teal",
+    label: { ru: "Лазурный", en: "Teal breeze" },
+    description: {
+      ru: "Свежий морской оттенок",
+      en: "Ocean breeze palette",
+    },
+    preview: require("./assets/tamagotchi_skins/teal/Cat_idle.gif"),
+    avatar: require("./assets/tamagotchi_skins/teal/Cat_idle.gif"),
+    animations: TEAL_TAMAGOTCHI_ANIMATIONS,
+  },
+  {
+    id: "yellow",
+    label: { ru: "Солнечный", en: "Sunny" },
+    description: {
+      ru: "Тёплый и энергичный",
+      en: "Bright and energising",
+    },
+    preview: require("./assets/tamagotchi_skins/yellow/Cat_idle.gif"),
+    avatar: require("./assets/tamagotchi_skins/yellow/Cat_idle.gif"),
+    animations: YELLOW_TAMAGOTCHI_ANIMATIONS,
+  },
+  {
+    id: "purple",
+    label: { ru: "Сиреневый", en: "Lavender" },
+    description: {
+      ru: "Немного загадочный",
+      en: "A dreamy violet vibe",
+    },
+    preview: require("./assets/tamagotchi_skins/purple/Cat_idle.gif"),
+    avatar: require("./assets/tamagotchi_skins/purple/Cat_idle.gif"),
+    animations: PURPLE_TAMAGOTCHI_ANIMATIONS,
+  },
+];
+const TAMAGOTCHI_SKINS = TAMAGOTCHI_SKIN_OPTIONS.reduce((acc, skin) => {
+  acc[skin.id] = skin;
+  return acc;
+}, {});
+const DEFAULT_TAMAGOTCHI_SKIN = "classic";
 const HEALTH_COIN_TIERS = [
   { id: "green", value: 1, asset: require("./assets/coins/Coin_green.png") },
   { id: "blue", value: 10, asset: require("./assets/coins/Coin_blue.png") },
@@ -1148,17 +1260,6 @@ const PartyFireworksLayer = ({ isDarkMode = false }) => {
 
 const TAMAGOTCHI_IDLE_VARIANTS = ["idle", "idle", "curious", "follow", "speak"];
 const TAMAGOTCHI_STARVING_VARIANTS = ["cry", "cry", "sad", "ohno", "idle"];
-const TAMAGOTCHI_ANIMATIONS = {
-  idle: CAT_IDLE,
-  curious: CAT_CURIOUS,
-  follow: CAT_FOLLOWS,
-  speak: CAT_SPEAKS,
-  happy: CAT_HAPPY_GIF,
-  happyHeadshake: CAT_HAPPY_HEADSHAKE,
-  sad: CAT_SAD,
-  ohno: CAT_OH_OH,
-  cry: CAT_CRY,
-};
 const TAMAGOTCHI_REACTION_DURATION = {
   happy: 3600,
   happyHeadshake: 3600,
@@ -1228,7 +1329,13 @@ const getTamagotchiMood = (hunger = 0, language = "ru") => {
   return { label: dict.urgent, tone: "urgent" };
 };
 
-function AlmiTamagotchi({ override, onOverrideComplete, style, isStarving = false }) {
+function AlmiTamagotchi({
+  override,
+  onOverrideComplete,
+  style,
+  isStarving = false,
+  animations = CLASSIC_TAMAGOTCHI_ANIMATIONS,
+}) {
   const [currentKey, setCurrentKey] = useState("idle");
   const idleTimerRef = useRef(null);
   const overrideTimerRef = useRef(null);
@@ -1266,20 +1373,20 @@ function AlmiTamagotchi({ override, onOverrideComplete, style, isStarving = fals
     if (!override) return;
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     if (overrideTimerRef.current) clearTimeout(overrideTimerRef.current);
-    const key = TAMAGOTCHI_ANIMATIONS[override.type] ? override.type : "happy";
+    const key = animations[override.type] ? override.type : "happy";
     setCurrentKey(key);
     overrideTimerRef.current = setTimeout(() => {
       onOverrideComplete?.();
       scheduleIdleCycle(2500);
     }, override.duration || 3200);
-  }, [override?.key, override?.type, override?.duration, onOverrideComplete, scheduleIdleCycle]);
+  }, [animations, override?.key, override?.type, override?.duration, onOverrideComplete, scheduleIdleCycle]);
 
-  const source = TAMAGOTCHI_ANIMATIONS[currentKey] || TAMAGOTCHI_ANIMATIONS.idle;
+  const source = animations[currentKey] || animations.idle;
   return (
     <View style={[styles.almiMascotWrap, style]}>
       <Image
         source={source}
-        defaultSource={TAMAGOTCHI_ANIMATIONS.idle}
+        defaultSource={animations.idle}
         style={styles.almiMascotImage}
         resizeMode="contain"
         fadeDuration={0}
@@ -2189,6 +2296,10 @@ const useFadeIn = () => {
 const TRANSLATIONS = {
   ru: {
     appTagline: "Витрина искушений которая помогает копить",
+    tamagotchiHungryBubble: "🐟",
+    tamagotchiSkinTitle: "Образ Алми",
+    tamagotchiSkinSubtitle: "Выбери новый окрас — пока бесплатно",
+    tamagotchiSkinCurrent: "Активно",
     heroAwaiting: "В листе желаний",
     heroSpendLine: {
       female: "Последняя экономия: «{{title}}».",
@@ -2715,6 +2826,10 @@ const TRANSLATIONS = {
   },
   en: {
     appTagline: "An offline temptation board that keeps savings safe",
+    tamagotchiHungryBubble: "🐟",
+    tamagotchiSkinTitle: "Almi skins",
+    tamagotchiSkinSubtitle: "Pick any colorway you like — it’s free",
+    tamagotchiSkinCurrent: "Selected",
     heroAwaiting: "On the wish list",
     heroSpendLine: {
       female: "Latest save: “{{title}}”.",
@@ -5829,6 +5944,7 @@ const FeedScreen = React.memo(function FeedScreen({
   primaryTemptationId = null,
   primaryTemptationDescription = "",
   focusTemplateId = null,
+  tamagotchiAnimations = CLASSIC_TAMAGOTCHI_ANIMATIONS,
 }) {
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
   const [impulseExpanded, setImpulseExpanded] = useState(false);
@@ -5977,6 +6093,24 @@ const FeedScreen = React.memo(function FeedScreen({
       isDarkMode
         ? { backgroundColor: "rgba(0,0,0,0.3)", borderColor: "rgba(255,255,255,0.12)" }
         : null,
+    [isDarkMode]
+  );
+  const showTamagotchiBubble = tamagotchiMood?.tone === "urgent";
+  const tamagotchiBubbleTheme = useMemo(
+    () =>
+      isDarkMode
+        ? {
+            backgroundColor: "rgba(5,7,15,0.92)",
+            borderColor: "rgba(255,255,255,0.25)",
+            textColor: "#F7F9FF",
+            shadowColor: "rgba(0,0,0,0.6)",
+          }
+        : {
+            backgroundColor: "rgba(255,255,255,0.96)",
+            borderColor: "rgba(28,26,42,0.12)",
+            textColor: "#1C1A2A",
+            shadowColor: "rgba(218,171,86,0.35)",
+          },
     [isDarkMode]
   );
   const tierInfo = getTierProgress(savedTotalUSD || 0);
@@ -6215,14 +6349,48 @@ const FeedScreen = React.memo(function FeedScreen({
                   )}
                 </View>
                 {!hideMascot && (
-                  <TouchableOpacity onPress={onMascotPress} activeOpacity={0.9}>
+                  <View style={styles.heroMascotContainer}>
+                    {showTamagotchiBubble && (
+                      <View
+                        pointerEvents="none"
+                        style={[
+                          styles.mascotBubble,
+                          {
+                            backgroundColor: tamagotchiBubbleTheme.backgroundColor,
+                            borderColor: tamagotchiBubbleTheme.borderColor,
+                            shadowColor: tamagotchiBubbleTheme.shadowColor,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.mascotBubbleText, { color: tamagotchiBubbleTheme.textColor }]}>
+                          {t("tamagotchiHungryBubble")}
+                        </Text>
+                        <View
+                          style={[
+                            styles.mascotBubbleTail,
+                            {
+                              left: "50%",
+                              marginLeft: -6,
+                              backgroundColor: tamagotchiBubbleTheme.backgroundColor,
+                              borderLeftWidth: 1,
+                              borderBottomWidth: 1,
+                              borderLeftColor: tamagotchiBubbleTheme.borderColor,
+                              borderBottomColor: tamagotchiBubbleTheme.borderColor,
+                            },
+                          ]}
+                        />
+                      </View>
+                    )}
+                    <TouchableOpacity onPress={onMascotPress} activeOpacity={0.9}>
                     <AlmiTamagotchi
                       style={heroMascotWrapStyle}
                       override={mascotOverride}
                       onOverrideComplete={onMascotAnimationComplete}
                       isStarving={tamagotchiMood?.tone === "urgent"}
+                      animations={tamagotchiAnimations}
                     />
-                  </TouchableOpacity>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
             </MoodGradientBlock>
@@ -6527,7 +6695,9 @@ function WishListScreen({
   activeGoalId = null,
   onSetActiveGoal = null,
   language = "ru",
+  catCuriousSource,
 }) {
+  const curiousImage = catCuriousSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.curious;
   const isDarkTheme = colors.background === THEMES.dark.background;
   const primaryGoalIds = Array.isArray(primaryGoals)
     ? primaryGoals.map((goal) => goal?.id).filter(Boolean)
@@ -6563,7 +6733,7 @@ function WishListScreen({
       <View style={[styles.container, { backgroundColor: colors.background }] }>
         <Text style={[styles.header, { color: colors.text }]}>{t("wishlistTitle")}</Text>
         <View style={styles.cartEmptyState}>
-          <Image source={CAT_CURIOUS} style={[styles.catImage, styles.catImageLarge]} />
+          <Image source={curiousImage} style={[styles.catImage, styles.catImageLarge]} />
           <Text style={[styles.cartEmptyTitle, { color: colors.text }]}>{t("wishlistEmptyTitle")}</Text>
           <Text style={[styles.cartEmptySubtitle, { color: colors.muted }]}>
             {t("wishlistEmptySubtitle")}
@@ -6874,7 +7044,16 @@ function WishListScreen({
   );
 }
 
-function PendingScreen({ items, currency, t, colors, onResolve, language }) {
+function PendingScreen({
+  items,
+  currency,
+  t,
+  colors,
+  onResolve,
+  language,
+  catCuriousSource,
+}) {
+  const curiousImage = catCuriousSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.curious;
   const [nowTick, setNowTick] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNowTick(Date.now()), 1000);
@@ -6907,7 +7086,7 @@ function PendingScreen({ items, currency, t, colors, onResolve, language }) {
       <View style={[styles.container, { backgroundColor: colors.background }] }>
         <Text style={[styles.header, { color: colors.text }]}>{t("pendingTitle")}</Text>
         <View style={styles.cartEmptyState}>
-          <Image source={CAT_CURIOUS} style={[styles.catImage, styles.catImageLarge]} />
+          <Image source={curiousImage} style={[styles.catImage, styles.catImageLarge]} />
           <Text style={[styles.cartEmptyTitle, { color: colors.text }]}>{t("pendingEmptyTitle")}</Text>
           <Text style={[styles.cartEmptySubtitle, { color: colors.muted }]}>
             {t("pendingEmptySubtitle")}
@@ -8164,7 +8343,9 @@ function ProfileScreen({
   t,
   colors,
   moodPreset = null,
+  mascotImageSource,
 }) {
+  const fallbackAvatar = mascotImageSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.idle;
   const currentCurrency = currencyValue || profile.currency || DEFAULT_PROFILE.currency;
   const isDarkTheme = theme === "dark";
   const activeGoalId = profile.goal || DEFAULT_PROFILE.goal;
@@ -8417,7 +8598,7 @@ function ProfileScreen({
                 onPress={() => isEditing && onPickImage?.()}
               >
                 <Image
-                  source={profile.avatar ? { uri: profile.avatar } : CAT_IMAGE}
+                  source={profile.avatar ? { uri: profile.avatar } : fallbackAvatar}
                   style={styles.profileAvatar}
                   resizeMode="cover"
                 />
@@ -8834,10 +9015,15 @@ function AppContent() {
   const [purchases, setPurchases] = useState([]);
   const [activeTab, setActiveTab] = useState("feed");
   const [catalogOverrides, setCatalogOverrides] = useState({});
+  const [catalogHydrated, setCatalogHydrated] = useState(false);
   const [titleOverrides, setTitleOverrides] = useState({});
+  const [titleOverridesHydrated, setTitleOverridesHydrated] = useState(false);
   const [emojiOverrides, setEmojiOverrides] = useState({});
+  const [emojiOverridesHydrated, setEmojiOverridesHydrated] = useState(false);
   const [categoryOverrides, setCategoryOverrides] = useState({});
+  const [categoryOverridesHydrated, setCategoryOverridesHydrated] = useState(false);
   const [descriptionOverrides, setDescriptionOverrides] = useState({});
+  const [descriptionOverridesHydrated, setDescriptionOverridesHydrated] = useState(false);
   const [temptations, setTemptations] = useState(DEFAULT_TEMPTATIONS);
   const [quickTemptations, setQuickTemptations] = useState([]);
   const [hiddenTemptations, setHiddenTemptations] = useState([]);
@@ -8877,6 +9063,7 @@ function AppContent() {
     ...DEFAULT_PROFILE_PLACEHOLDER,
     joinedAt: new Date().toISOString(),
   }));
+  const [profileHydrated, setProfileHydrated] = useState(false);
   const [profileDraft, setProfileDraft] = useState(() => ({
     ...DEFAULT_PROFILE_PLACEHOLDER,
     joinedAt: new Date().toISOString(),
@@ -9034,6 +9221,13 @@ function AppContent() {
   const mascotBusyRef = useRef(false);
   const [tamagotchiState, setTamagotchiState] = useState({ ...TAMAGOTCHI_START_STATE });
   const [tamagotchiVisible, setTamagotchiVisible] = useState(false);
+  const [tamagotchiSkinId, setTamagotchiSkinId] = useState(DEFAULT_TAMAGOTCHI_SKIN);
+  const [tamagotchiSkinHydrated, setTamagotchiSkinHydrated] = useState(false);
+  const [skinPickerVisible, setSkinPickerVisible] = useState(false);
+  const tamagotchiSkin =
+    TAMAGOTCHI_SKINS[tamagotchiSkinId] || TAMAGOTCHI_SKINS[DEFAULT_TAMAGOTCHI_SKIN];
+  const tamagotchiAnimations = tamagotchiSkin.animations;
+  const tamagotchiAvatarSource = tamagotchiSkin.avatar;
   const tamagotchiHydratedRef = useRef(false);
   const tamagotchiHungerPrevRef = useRef(
     Math.min(TAMAGOTCHI_MAX_HUNGER, Math.max(0, TAMAGOTCHI_START_STATE.hunger))
@@ -9045,6 +9239,20 @@ function AppContent() {
   const partyGlowAnimRef = useRef(null);
   const saveActionLogRef = useRef([]);
   const cartBadgeScale = useRef(new Animated.Value(1)).current;
+  const openSkinPicker = useCallback(() => {
+    triggerHaptic();
+    setSkinPickerVisible(true);
+  }, []);
+  const closeSkinPicker = useCallback(() => setSkinPickerVisible(false), []);
+  const handleSkinSelect = useCallback(
+    (skinId) => {
+      if (!skinId || !TAMAGOTCHI_SKINS[skinId]) return;
+      setTamagotchiSkinId(skinId);
+      setSkinPickerVisible(false);
+      logEvent("tamagotchi_skin_selected", { skin_id: skinId });
+    },
+    [logEvent]
+  );
   const [onboardingStep, setOnboardingStep] = useState("logo");
   const onboardingHistoryRef = useRef([]);
   const [canGoBackOnboarding, setCanGoBackOnboarding] = useState(false);
@@ -10476,6 +10684,7 @@ function AppContent() {
         focusTargetRaw,
         focusDigestRaw,
         focusDigestPendingRaw,
+        tamagotchiSkinRaw,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.WISHES),
         AsyncStorage.getItem(STORAGE_KEYS.PENDING),
@@ -10516,6 +10725,7 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.FOCUS_TARGET),
         AsyncStorage.getItem(STORAGE_KEYS.FOCUS_DIGEST),
         AsyncStorage.getItem(STORAGE_KEYS.FOCUS_DIGEST_PENDING),
+        AsyncStorage.getItem(STORAGE_KEYS.TAMAGOTCHI_SKIN),
       ]);
       if (wishesRaw) {
         setWishes(JSON.parse(wishesRaw));
@@ -10739,9 +10949,45 @@ function AppContent() {
       } else {
         setPendingFocusDigest(null);
       }
-      if (catalogRaw) setCatalogOverrides(JSON.parse(catalogRaw));
-      if (titleRaw) setTitleOverrides(JSON.parse(titleRaw));
-      if (emojiOverridesRaw) setEmojiOverrides(JSON.parse(emojiOverridesRaw));
+      if (tamagotchiSkinRaw && TAMAGOTCHI_SKINS[tamagotchiSkinRaw]) {
+        setTamagotchiSkinId(tamagotchiSkinRaw);
+      } else {
+        setTamagotchiSkinId(DEFAULT_TAMAGOTCHI_SKIN);
+      }
+      setTamagotchiSkinHydrated(true);
+      if (catalogRaw) {
+        try {
+          setCatalogOverrides(JSON.parse(catalogRaw));
+        } catch (error) {
+          console.warn("catalog overrides parse", error);
+          setCatalogOverrides({});
+        }
+      } else {
+        setCatalogOverrides({});
+      }
+      setCatalogHydrated(true);
+      if (titleRaw) {
+        try {
+          setTitleOverrides(JSON.parse(titleRaw));
+        } catch (error) {
+          console.warn("title overrides parse", error);
+          setTitleOverrides({});
+        }
+      } else {
+        setTitleOverrides({});
+      }
+      setTitleOverridesHydrated(true);
+      if (emojiOverridesRaw) {
+        try {
+          setEmojiOverrides(JSON.parse(emojiOverridesRaw));
+        } catch (error) {
+          console.warn("emoji overrides parse", error);
+          setEmojiOverrides({});
+        }
+      } else {
+        setEmojiOverrides({});
+      }
+      setEmojiOverridesHydrated(true);
       if (categoryOverridesRaw) {
         try {
           setCategoryOverrides(JSON.parse(categoryOverridesRaw));
@@ -10752,6 +10998,7 @@ function AppContent() {
       } else {
         setCategoryOverrides({});
       }
+      setCategoryOverridesHydrated(true);
       if (descriptionOverridesRaw) {
         try {
           setDescriptionOverrides(JSON.parse(descriptionOverridesRaw));
@@ -10762,6 +11009,7 @@ function AppContent() {
       } else {
         setDescriptionOverrides({});
       }
+      setDescriptionOverridesHydrated(true);
       if (savedTotalRaw) {
         setSavedTotalUSD(Number(savedTotalRaw) || 0);
       } else {
@@ -10921,6 +11169,7 @@ function AppContent() {
         setActiveCurrency(DEFAULT_PROFILE.currency);
         goToOnboardingStep("logo", { recordHistory: false, resetHistory: true });
       }
+      setProfileHydrated(true);
     } catch (error) {
       console.warn("load error", error);
       setAnalyticsOptOutState((prev) => (prev === null ? false : prev));
@@ -10932,6 +11181,13 @@ function AppContent() {
       setFreeDayHydrated(true);
       setSmartRemindersHydrated(true);
       setDailyNudgesHydrated(true);
+      setCatalogHydrated(true);
+      setTitleOverridesHydrated(true);
+      setEmojiOverridesHydrated(true);
+      setCategoryOverridesHydrated(true);
+      setDescriptionOverridesHydrated(true);
+      setTamagotchiSkinHydrated(true);
+      setProfileHydrated(true);
     }
   };
 
@@ -11136,8 +11392,9 @@ function AppContent() {
   }, [purchases]);
 
   useEffect(() => {
+    if (!profileHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(profile)).catch(() => {});
-  }, [profile]);
+  }, [profile, profileHydrated]);
 
   useEffect(() => {
     if (!overlay && goalRenewalPromptPendingRef.current) {
@@ -11190,31 +11447,42 @@ function AppContent() {
   }, [tamagotchiState]);
 
   useEffect(() => {
+    if (!tamagotchiSkinHydrated) return;
+    AsyncStorage.setItem(STORAGE_KEYS.TAMAGOTCHI_SKIN, tamagotchiSkinId).catch(() => {});
+  }, [tamagotchiSkinHydrated, tamagotchiSkinId]);
+
+  useEffect(() => {
+    if (!catalogHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.CATALOG, JSON.stringify(catalogOverrides)).catch(() => {});
-  }, [catalogOverrides]);
+  }, [catalogOverrides, catalogHydrated]);
 
   useEffect(() => {
+    if (!titleOverridesHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.TITLE_OVERRIDES, JSON.stringify(titleOverrides)).catch(() => {});
-  }, [titleOverrides]);
+  }, [titleOverrides, titleOverridesHydrated]);
 
   useEffect(() => {
+    if (!emojiOverridesHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.EMOJI_OVERRIDES, JSON.stringify(emojiOverrides)).catch(() => {});
-  }, [emojiOverrides]);
+  }, [emojiOverrides, emojiOverridesHydrated]);
   useEffect(() => {
+    if (!categoryOverridesHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.CATEGORY_OVERRIDES, JSON.stringify(categoryOverrides)).catch(
       () => {}
     );
-  }, [categoryOverrides]);
+  }, [categoryOverrides, categoryOverridesHydrated]);
 
   useEffect(() => {
+    if (!descriptionOverridesHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.DESCRIPTION_OVERRIDES, JSON.stringify(descriptionOverrides)).catch(
       () => {}
     );
-  }, [descriptionOverrides]);
+  }, [descriptionOverrides, descriptionOverridesHydrated]);
 
   useEffect(() => {
+    if (!savedTotalHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.SAVED_TOTAL, String(savedTotalUSD)).catch(() => {});
-  }, [savedTotalUSD]);
+  }, [savedTotalUSD, savedTotalHydrated]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.DECLINES, String(declineCount)).catch(() => {});
@@ -14614,6 +14882,7 @@ function AppContent() {
             activeGoalId={activeGoalId || profile.goal}
             onSetActiveGoal={handleActiveGoalSelect}
             language={language}
+            catCuriousSource={tamagotchiAnimations.curious}
           />
         );
       case "pending":
@@ -14625,6 +14894,7 @@ function AppContent() {
             colors={colors}
             onResolve={handlePendingDecision}
             language={language}
+            catCuriousSource={tamagotchiAnimations.curious}
           />
         );
       case "purchases":
@@ -14675,6 +14945,7 @@ function AppContent() {
           t={t}
           colors={colors}
           moodPreset={moodPreset}
+          mascotImageSource={tamagotchiAvatarSource}
         />
       );
       default:
@@ -14741,6 +15012,7 @@ function AppContent() {
             primaryTemptationId={primaryTemptationId}
             primaryTemptationDescription={primaryTemptationDescription}
             focusTemplateId={focusTemplateId}
+            tamagotchiAnimations={tamagotchiAnimations}
           />
         );
     }
@@ -14804,6 +15076,7 @@ function AppContent() {
           onBack={onboardingBackHandler}
           onShowTerms={handleTermsOpen}
           termsAccepted={termsAccepted}
+          mascotWaveSource={tamagotchiAnimations.waving}
         />
       );
     } else if (onboardingStep === "guide") {
@@ -14820,6 +15093,7 @@ function AppContent() {
           colors={colors}
           t={t}
           onBack={onboardingBackHandler}
+          mascotImageSource={tamagotchiAvatarSource}
         />
       );
     } else if (onboardingStep === "persona") {
@@ -15539,7 +15813,17 @@ function AppContent() {
                       override={mascotOverride}
                       onOverrideComplete={handleMascotAnimationComplete}
                       isStarving={tamagotchiMood.tone === "urgent"}
+                      animations={tamagotchiAnimations}
                     />
+                    <TouchableOpacity
+                      style={[
+                        styles.skinPickerButton,
+                        { borderColor: colors.border, backgroundColor: colors.card },
+                      ]}
+                      onPress={openSkinPicker}
+                    >
+                      <Text style={styles.skinPickerIcon}>🧥</Text>
+                    </TouchableOpacity>
                   </View>
                   <View style={styles.tamagotchiStatRow}>
                     <Text style={[styles.tamagotchiStatLabel, { color: colors.muted }]}>
@@ -15650,6 +15934,84 @@ function AppContent() {
                     </>
                   )}
                 </Animated.View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+        <Modal
+          visible={skinPickerVisible}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+          onRequestClose={closeSkinPicker}
+        >
+          <TouchableWithoutFeedback onPress={closeSkinPicker}>
+            <View style={styles.skinPickerBackdrop}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View
+                  style={[
+                    styles.skinPickerCard,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                  ]}
+                >
+                  <Text style={[styles.skinPickerTitle, { color: colors.text }]}>
+                    {t("tamagotchiSkinTitle")}
+                  </Text>
+                  <Text style={[styles.skinPickerSubtitle, { color: colors.muted }]}>
+                    {t("tamagotchiSkinSubtitle")}
+                  </Text>
+                  <ScrollView
+                    style={{ width: "100%" }}
+                    contentContainerStyle={styles.skinPickerList}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {TAMAGOTCHI_SKIN_OPTIONS.map((skin) => {
+                      const active = skin.id === tamagotchiSkinId;
+                      const label = skin.label?.[language] || skin.label?.en || skin.id;
+                      const description =
+                        skin.description?.[language] || skin.description?.en || "";
+                      return (
+                        <TouchableOpacity
+                          key={skin.id}
+                          style={[
+                            styles.skinPickerItem,
+                            {
+                              borderColor: active ? colors.text : colors.border,
+                              backgroundColor: active
+                                ? lightenColor(colors.card, isDarkTheme ? 0.1 : 0.2)
+                                : "transparent",
+                            },
+                          ]}
+                          onPress={() => handleSkinSelect(skin.id)}
+                        >
+                          <Image source={skin.preview} style={styles.skinPickerAvatar} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.skinPickerItemTitle, { color: colors.text }]}>
+                              {label}
+                            </Text>
+                            {!!description && (
+                              <Text style={[styles.skinPickerItemSubtitle, { color: colors.muted }]}>
+                                {description}
+                              </Text>
+                            )}
+                          </View>
+                          {active && (
+                            <View
+                              style={[
+                                styles.skinPickerBadge,
+                                { borderColor: colors.border, backgroundColor: colors.background },
+                              ]}
+                            >
+                              <Text style={[styles.skinPickerBadgeText, { color: colors.text }]}>
+                                {t("tamagotchiSkinCurrent")}
+                              </Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
               </TouchableWithoutFeedback>
             </View>
           </TouchableWithoutFeedback>
@@ -15922,7 +16284,11 @@ function AppContent() {
                       overlay.type === "purchase" ||
                       overlay.type === "completion") && (
                       <Image
-                        source={CAT_IMAGE}
+                        source={
+                          overlay.type === "cancel"
+                            ? tamagotchiAnimations.sad
+                            : tamagotchiAnimations.happy
+                        }
                         style={[
                           styles.celebrationCat,
                           overlay.type === "purchase" || overlay.type === "completion"
@@ -16095,7 +16461,7 @@ function AppContent() {
                       </Text>
                     </View>
                   )}
-                  <Image source={CAT_HAPPY_GIF} style={styles.saveGif} />
+                  <Image source={tamagotchiAnimations.happy} style={styles.saveGif} />
                 </Animated.View>
               </View>
             </TouchableWithoutFeedback>
@@ -16117,7 +16483,7 @@ function AppContent() {
                     { backgroundColor: overlayCardBackground, borderColor: overlayBorderColor },
                   ]}
                 >
-                  <Image source={CAT_FOLLOWS} style={styles.customTemptationGif} />
+                  <Image source={tamagotchiAnimations.follow} style={styles.customTemptationGif} />
                   <Text style={[styles.customTemptationText, { color: colors.text }]}>
                     {t("customTemptationAdded", { title: overlay.message || "" })}
                   </Text>
@@ -16130,7 +16496,12 @@ function AppContent() {
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
-                <RewardCelebration colors={colors} message={overlay.message} t={t} />
+                <RewardCelebration
+                  colors={colors}
+                  message={overlay.message}
+                  t={t}
+                  mascotHappySource={tamagotchiAnimations.happy}
+                />
               </View>
             </TouchableWithoutFeedback>
           </Modal>
@@ -16185,7 +16556,12 @@ function AppContent() {
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
-                <GoalCelebration colors={colors} payload={overlay.message} t={t} />
+                <GoalCelebration
+                  colors={colors}
+                  payload={overlay.message}
+                  t={t}
+                  mascotHappySource={tamagotchiAnimations.happy}
+                />
               </View>
             </TouchableWithoutFeedback>
           </Modal>
@@ -16750,8 +17126,13 @@ const styles = StyleSheet.create({
   },
   heroMascotRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 12,
+  },
+  heroMascotContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
   },
   heroTextWrap: {
     flex: 1,
@@ -16778,6 +17159,104 @@ const styles = StyleSheet.create({
   almiMascotImage: {
     width: "120%",
     height: "120%",
+  },
+  mascotBubble: {
+    position: "absolute",
+    top: -28,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: 0,
+    maxWidth: 180,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  mascotBubbleText: {
+    ...createBodyText({ fontSize: 13, textAlign: "center" }),
+    fontWeight: "600",
+  },
+  mascotBubbleTail: {
+    position: "absolute",
+    bottom: -6,
+    width: 12,
+    height: 12,
+    transform: [{ rotate: "45deg" }],
+    borderRadius: 2,
+  },
+  skinPickerButton: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    shadowColor: "rgba(0,0,0,0.25)",
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  skinPickerIcon: {
+    fontSize: 16,
+  },
+  skinPickerBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  skinPickerCard: {
+    width: "100%",
+    maxWidth: 380,
+    borderRadius: 28,
+    padding: 20,
+    borderWidth: 1,
+    gap: 10,
+  },
+  skinPickerTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 20,
+  },
+  skinPickerSubtitle: {
+    ...createBodyText({ fontSize: 15 }),
+  },
+  skinPickerList: {
+    paddingVertical: 8,
+  },
+  skinPickerItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 12,
+    gap: 12,
+    marginBottom: 12,
+  },
+  skinPickerAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+  },
+  skinPickerItemTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 16,
+  },
+  skinPickerItemSubtitle: {
+    ...createBodyText({ fontSize: 13 }),
+  },
+  skinPickerBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  skinPickerBadgeText: {
+    ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
   },
   tamagotchiBackdrop: {
     flex: 1,
@@ -20800,7 +21279,17 @@ function ImageSourceSheet({ visible, colors, t, onClose, onSelect }) {
   );
 }
 
-function RegistrationScreen({ data, onChange, onSubmit, onPickImage, colors, t, onBack }) {
+function RegistrationScreen({
+  data,
+  onChange,
+  onSubmit,
+  onPickImage,
+  colors,
+  t,
+  onBack,
+  mascotImageSource,
+}) {
+  const fallbackAvatar = mascotImageSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.idle;
   const fade = useFadeIn();
 
   return (
@@ -20821,7 +21310,7 @@ function RegistrationScreen({ data, onChange, onSubmit, onPickImage, colors, t, 
           {data.avatar ? (
             <Image source={{ uri: data.avatar }} style={styles.avatarImage} />
           ) : (
-            <Image source={CAT_IMAGE} style={styles.avatarImage} />
+            <Image source={fallbackAvatar} style={styles.avatarImage} />
           )}
           <Text style={{ color: colors.muted }}>{t("photoTapHint")}</Text>
         </TouchableOpacity>
@@ -21623,13 +22112,15 @@ function LanguageScreen({
   onBack,
   onShowTerms,
   termsAccepted,
+  mascotWaveSource,
 }) {
   const fade = useFadeIn();
+  const wavingSource = mascotWaveSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.waving;
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <View style={styles.onboardContent}>
         <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
-        <Image source={CAT_WAVING} style={styles.languageMascot} />
+        <Image source={wavingSource} style={styles.languageMascot} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("languageTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("languageSubtitle")}</Text>
         <View style={styles.languageButtons}>
@@ -21802,7 +22293,8 @@ const FallingCoin = ({ left, size, delay, duration }) => {
   );
 };
 
-const RewardCelebration = ({ colors, message, t }) => {
+const RewardCelebration = ({ colors, message, t, mascotHappySource }) => {
+  const happySource = mascotHappySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
   const hearts = useMemo(
     () =>
       Array.from({ length: 18 }).map((_, index) => ({
@@ -21829,7 +22321,7 @@ const RewardCelebration = ({ colors, message, t }) => {
           { backgroundColor: rewardCardBg, borderColor: rewardCardBorder },
         ]}
       >
-        <Image source={CAT_HAPPY_GIF} style={styles.rewardCat} />
+        <Image source={happySource} style={styles.rewardCat} />
         <Text style={[styles.rewardTitle, { color: colors.text }]}>
           {t("rewardCelebrateTitle", { title: message })}
         </Text>
@@ -21903,7 +22395,8 @@ const HealthCelebration = ({ colors, payload, t }) => {
   );
 };
 
-const GoalCelebration = ({ colors, payload, t }) => {
+const GoalCelebration = ({ colors, payload, t, mascotHappySource }) => {
+  const happySource = mascotHappySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
   const hearts = useMemo(
     () =>
       Array.from({ length: 14 }).map((_, index) => ({
@@ -21929,7 +22422,7 @@ const GoalCelebration = ({ colors, payload, t }) => {
         <RewardHeart key={heart.id} {...heart} />
       ))}
       <View style={[styles.goalCelebrateCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
-        <Image source={CAT_HAPPY_GIF} style={styles.goalCelebrateCat} />
+        <Image source={happySource} style={styles.goalCelebrateCat} />
         <Text style={[styles.goalCelebrateTitle, { color: colors.text }]}>
           {data.title || t("goalCelebrationTitle")}
         </Text>
