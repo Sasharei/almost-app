@@ -21,7 +21,6 @@ android/
 !patches/expo-modules-core/android/src/main/java/expo/modules/kotlin/jni/JavaScriptValue.kt
 !patches/expo-modules-core/android/src/main/java/expo/modules/kotlin/views/decorators/CSSProps.kt
 !patches/expo-modules-core/android/src/main/java/expo/modules/rncompatibility/ReactNativeFeatureFlags.kt
-ios/
 build/
 *.apk
 *.aab
