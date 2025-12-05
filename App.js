@@ -106,6 +106,8 @@ const STORAGE_KEYS = {
   DESCRIPTION_OVERRIDES: "@almost_description_overrides",
   FOCUS_DIGEST_PENDING: "@almost_focus_digest_pending",
   TAMAGOTCHI_SKIN: "@almost_tamagotchi_skin",
+  SAVED_TOTAL_PEAK: "@almost_saved_total_peak",
+  ACTIVE_GOAL: "@almost_active_goal",
 };
 
 const PURCHASE_GOAL = 20000;
@@ -296,6 +298,7 @@ const FOCUS_LOSS_THRESHOLD = 3;
 const CHALLENGE_REWARD_SCALE = 0.5;
 const getScaledChallengeReward = (value = 0) =>
   Math.max(1, Math.round(Math.max(0, value) * CHALLENGE_REWARD_SCALE));
+const PUSH_NOTIFICATION_COOLDOWN_MS = 30 * 60 * 1000;
 
 const buildTemptationPressureMap = (events = []) => {
   const map = {};
@@ -2499,6 +2502,8 @@ const TRANSLATIONS = {
     historyEmpty: "Тишина. Добавь цель или отметь бесплатный день.",
     privacyPolicyLink: "Политика конфиденциальности",
     privacyPolicyHint: "Откроем документ в браузере.",
+    supportLink: "Поддержка",
+    supportHint: "almostappsup@gmail.com",
     historyWishAdded: "Добавлена хотелка: {{title}}",
     historyWishProgress: "Прогресс по «{{title}}»: {{amount}} из {{target}}",
     historyWishDone: "Цель достигнута: {{title}}",
@@ -2517,7 +2522,6 @@ const TRANSLATIONS = {
     historyGoalStarted: "Начата цель: {{title}}",
     historyGoalCancelled: "Отменена цель: {{title}}",
     historyRewardClaimed: "Получено достижение: {{title}}",
-    historyMoodChanged: "Режим настроения: {{label}}",
     historyTimestamp: "{{date}} · {{time}}",
     historyUnknown: "Событие",
     progressHeroTitle: "Реально спасено",
@@ -2791,6 +2795,9 @@ const TRANSLATIONS = {
     quickCustomCancel: "Отмена",
     fabNewGoal: "Новая цель",
     fabNewTemptation: "Новая трата",
+    fabQuickActionTitle: "Последнее искушение",
+    fabQuickActionSubtitle: "Повтори действие для «{{title}}»",
+    fabQuickActionEmpty: "Не нашлось последнего действия. Сначала взаимодействуй с карточкой.",
     newGoalTitle: "Новая цель",
     newGoalSubtitle: "Как назовём мечту и сколько она стоит?",
     newGoalNameLabel: "Название цели",
@@ -2801,7 +2808,7 @@ const TRANSLATIONS = {
     tutorialFeedTitle: "Лента искушений",
     tutorialFeedDesc: "Отмечай импульсы и выбирай: копить, добавить в цели или подумать 14 дней.",
     tutorialGoalsTitle: "Цели",
-    tutorialGoalsDesc: "Здесь живут мечты. Следи за прогрессом и пополняй главную цель.",
+    tutorialGoalsDesc: "Здесь живут мечты. Следи за прогрессом и обновляй цель.",
     tutorialThinkingTitle: "Меню «Думаем»",
     tutorialThinkingDesc: "Отправляй импульсы на паузу и возвращайся к ним через 14 дней, чтобы решить трезво.",
     tutorialRewardsTitle: "Награды и челленджи",
@@ -3029,6 +3036,8 @@ const TRANSLATIONS = {
     historyEmpty: "Nothing yet. Add a goal or mark a free day.",
     privacyPolicyLink: "Privacy policy",
     privacyPolicyHint: "Opens in your browser.",
+    supportLink: "Contact support",
+    supportHint: "almostappsup@gmail.com",
     historyWishAdded: "Wish added: {{title}}",
     historyWishProgress: "Progress “{{title}}”: {{amount}} of {{target}}",
     historyWishDone: "Goal completed: {{title}}",
@@ -3043,7 +3052,6 @@ const TRANSLATIONS = {
     historyGoalStarted: "Goal started: {{title}}",
     historyGoalCancelled: "Goal cancelled: {{title}}",
     historyRewardClaimed: "Reward claimed: {{title}}",
-    historyMoodChanged: "Mood mode: {{label}}",
     historyTimestamp: "{{date}} · {{time}}",
     historyUnknown: "Event",
     progressHeroTitle: "Real savings",
@@ -3290,6 +3298,9 @@ const TRANSLATIONS = {
     quickCustomCancel: "Cancel",
     fabNewGoal: "New goal",
     fabNewTemptation: "New spend",
+    fabQuickActionTitle: "Last temptation",
+    fabQuickActionSubtitle: "Repeat action for “{{title}}”",
+    fabQuickActionEmpty: "No recent temptation yet. Interact with a card first.",
     newGoalTitle: "New goal",
     newGoalSubtitle: "Name the dream and set its target.",
     newGoalNameLabel: "Goal name",
@@ -3300,7 +3311,7 @@ const TRANSLATIONS = {
     tutorialFeedTitle: "Temptation feed",
     tutorialFeedDesc: "Log every impulse and choose: save it, add to goals, or park it for 14 days.",
     tutorialGoalsTitle: "Goals",
-    tutorialGoalsDesc: "All dreams live here — track progress and refill your primary goal.",
+    tutorialGoalsDesc: "All dreams live here. Track progress and top up your goal.",
     tutorialThinkingTitle: "Thinking tab",
     tutorialThinkingDesc: "Park temptations for 14 days and return with a cooler head before deciding.",
     tutorialRewardsTitle: "Rewards & challenges",
@@ -5945,6 +5956,7 @@ const FeedScreen = React.memo(function FeedScreen({
   primaryTemptationDescription = "",
   focusTemplateId = null,
   tamagotchiAnimations = CLASSIC_TAMAGOTCHI_ANIMATIONS,
+  lifetimeSavedUSD = 0,
 }) {
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
   const [impulseExpanded, setImpulseExpanded] = useState(false);
@@ -6113,7 +6125,8 @@ const FeedScreen = React.memo(function FeedScreen({
           },
     [isDarkMode]
   );
-  const tierInfo = getTierProgress(savedTotalUSD || 0);
+  const levelProgressUSD = Math.max(savedTotalUSD || 0, lifetimeSavedUSD || 0);
+  const tierInfo = getTierProgress(levelProgressUSD || 0);
   const span = Math.max(
     (tierInfo.nextTargetUSD ?? tierInfo.prevTargetUSD ?? 1) -
       (tierInfo.prevTargetUSD ?? 0),
@@ -6121,12 +6134,12 @@ const FeedScreen = React.memo(function FeedScreen({
   );
   const previousTierInfo = useRef(tierInfo.level);
   const tierProgress = tierInfo.nextTargetUSD
-    ? (savedTotalUSD - tierInfo.prevTargetUSD) / span
+    ? (levelProgressUSD - tierInfo.prevTargetUSD) / span
     : 1;
   const heroLevelHasNext = !!tierInfo.nextTargetUSD;
   const heroLevelCurrency = profile?.currency || DEFAULT_PROFILE.currency;
   const heroLevelRemainingUSD = heroLevelHasNext
-    ? Math.max(tierInfo.nextTargetUSD - savedTotalUSD, 0)
+    ? Math.max(tierInfo.nextTargetUSD - levelProgressUSD, 0)
     : 0;
   const heroLevelRemainingLabel = heroLevelHasNext
     ? formatCurrency(convertToCurrency(heroLevelRemainingUSD, heroLevelCurrency), heroLevelCurrency)
@@ -6164,7 +6177,7 @@ const FeedScreen = React.memo(function FeedScreen({
   const levelCurrency = profile?.currency || DEFAULT_PROFILE.currency;
   const levelProgress = Math.min(Math.max(tierProgress, 0), 1);
   const levelRemainingUSD = tierInfo.nextTargetUSD
-    ? Math.max(tierInfo.nextTargetUSD - savedTotalUSD, 0)
+    ? Math.max(tierInfo.nextTargetUSD - levelProgressUSD, 0)
     : 0;
   const levelRemainingLabel = formatCurrency(
     convertToCurrency(levelRemainingUSD, levelCurrency),
@@ -8538,8 +8551,6 @@ function ProfileScreen({
         return t("historyGoalCancelled", { title });
       case "reward_claimed":
         return t("historyRewardClaimed", { title: title || meta.rewardId || t("historyUnknown") });
-      case "mood_changed":
-        return t("historyMoodChanged", { label: meta.label || meta.moodId || t("historyUnknown") });
       default:
         return t("historyUnknown");
     }
@@ -8581,6 +8592,10 @@ function ProfileScreen({
     triggerHaptic();
     Linking.openURL(url).catch((error) => console.warn("privacy policy", error));
   }, [language]);
+  const handleSupportPress = useCallback(() => {
+    triggerHaptic();
+    Linking.openURL("mailto:almostappsup@gmail.com").catch((error) => console.warn("support mail", error));
+  }, []);
   return (
     <View style={[styles.container, { backgroundColor: colors.background }] }>
       <ScrollView
@@ -8994,6 +9009,17 @@ function ProfileScreen({
           <Text style={[styles.profileLinkText, { color: colors.text }]}>{t("privacyPolicyLink")}</Text>
           <Text style={[styles.profileLinkHint, { color: colors.muted }]}>{t("privacyPolicyHint")}</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.profileLinkButton,
+            { borderColor: colors.border, backgroundColor: colors.card },
+          ]}
+          activeOpacity={0.85}
+          onPress={handleSupportPress}
+        >
+          <Text style={[styles.profileLinkText, { color: colors.text }]}>{t("supportLink")}</Text>
+          <Text style={[styles.profileLinkHint, { color: colors.muted }]}>{t("supportHint")}</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -9044,6 +9070,8 @@ function AppContent() {
   const [dailyChallengeHydrated, setDailyChallengeHydrated] = useState(false);
   const [savedTotalUSD, setSavedTotalUSD] = useState(0);
   const [savedTotalHydrated, setSavedTotalHydrated] = useState(false);
+  const [lifetimeSavedUSD, setLifetimeSavedUSD] = useState(0);
+  const [lifetimeSavedHydrated, setLifetimeSavedHydrated] = useState(false);
   const [declineCount, setDeclineCount] = useState(0);
   const [pendingList, setPendingList] = useState([]);
   const [freeDayStats, setFreeDayStats] = useState({ ...INITIAL_FREE_DAY_STATS });
@@ -9055,6 +9083,8 @@ function AppContent() {
   const [historyEvents, setHistoryEvents] = useState([]);
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
   const declineStreak = useMemo(() => computeRefuseStreak(resolvedHistoryEvents), [resolvedHistoryEvents]);
+  const [lastTemptationContext, setLastTemptationContext] = useState(null);
+  const [quickActionVisible, setQuickActionVisible] = useState(false);
   const [pendingGoalTargets, setPendingGoalTargets] = useState(null);
   const [savingsBreakdownVisible, setSavingsBreakdownVisible] = useState(false);
   const products = temptations;
@@ -9075,6 +9105,7 @@ function AppContent() {
     return description?.[language] || description?.en || "";
   }, [language, profile?.gender]);
   const [activeGoalId, setActiveGoalId] = useState(null);
+  const [activeGoalHydrated, setActiveGoalHydrated] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [theme, setTheme] = useState("light");
   const [language, setLanguage] = useState("ru");
@@ -9106,6 +9137,38 @@ function AppContent() {
     },
     [language, resolveTemplateCard]
   );
+  const lastTemptationItem = useMemo(() => {
+    if (!lastTemptationContext?.templateId) return null;
+    return resolveTemplateCard(lastTemptationContext.templateId);
+  }, [lastTemptationContext?.templateId, resolveTemplateCard]);
+  const quickActionTitle = useMemo(() => {
+    if (!lastTemptationItem) return "";
+    return (
+      resolveTemptationTitle(lastTemptationItem, language, titleOverrides[lastTemptationItem.id]) ||
+      t("defaultDealTitle")
+    );
+  }, [language, lastTemptationItem, t, titleOverrides]);
+  const quickActionPrice = useMemo(() => {
+    if (!lastTemptationItem) return "";
+    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+    const priceUSD = getTemptationPrice(lastTemptationItem);
+    if (priceUSD <= 0) return "";
+    return formatCurrency(convertToCurrency(priceUSD, currencyCode), currencyCode);
+  }, [lastTemptationItem, profile.currency]);
+
+  useEffect(() => {
+    const recentEntry = resolvedHistoryEvents.find((entry) => entry?.meta?.templateId);
+    if (!recentEntry || !recentEntry.meta?.templateId) return;
+    setLastTemptationContext((prev) => {
+      if (
+        prev?.templateId === recentEntry.meta.templateId &&
+        prev?.timestamp === recentEntry.timestamp
+      ) {
+        return prev;
+      }
+      return { templateId: recentEntry.meta.templateId, timestamp: recentEntry.timestamp };
+    });
+  }, [resolvedHistoryEvents]);
   const [overlay, setOverlay] = useState(null);
   const [confettiKey, setConfettiKey] = useState(0);
   const overlayTimer = useRef(null);
@@ -9440,6 +9503,26 @@ function AppContent() {
       openFabMenu();
     }
   }, [closeFabMenu, fabMenuVisible, openFabMenu, triggerHaptic]);
+  const handleFabLongPress = useCallback(() => {
+    if (!lastTemptationItem) {
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+      Alert.alert("Almost", t("fabQuickActionEmpty"));
+      return;
+    }
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    closeFabMenu();
+    setQuickActionVisible(true);
+  }, [closeFabMenu, lastTemptationItem, t, triggerHaptic]);
+  const handleQuickActionClose = useCallback(() => setQuickActionVisible(false), []);
+  const handleQuickActionConfirm = useCallback(
+    (actionType) => {
+      const card = lastTemptationItem;
+      if (!card) return;
+      handleTemptationAction(actionType, card);
+      setQuickActionVisible(false);
+    },
+    [handleTemptationAction, lastTemptationItem]
+  );
   const imagePickerResolver = useRef(null);
   const [refuseStats, setRefuseStats] = useState({});
   const [impulseTracker, setImpulseTracker] = useState({ ...INITIAL_IMPULSE_TRACKER });
@@ -9450,6 +9533,7 @@ function AppContent() {
   const [editOverlayVisible, setEditOverlayVisible] = useState(false);
   const cardFeedbackTimers = useRef({});
   const impulseAlertCooldownRef = useRef({});
+  const lastInstantNotificationRef = useRef(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [spendPrompt, setSpendPrompt] = useState({ visible: false, item: null });
   const [stormActive, setStormActive] = useState(false);
@@ -9620,18 +9704,6 @@ function AppContent() {
       : moodPreset.hero || t("heroEconomyContinues");
     return moodPreset.motivation ? `${baseLine} ${moodPreset.motivation}` : baseLine;
   }, [moodGoalInfo.isComplete, moodPreset, t]);
-  const lastMoodLoggedRef = useRef(null);
-  useEffect(() => {
-    if (!moodPreset || !currentMood) return;
-    if (lastMoodLoggedRef.current === currentMood) return;
-    if (lastMoodLoggedRef.current !== null) {
-      logHistoryEvent("mood_changed", {
-        moodId: currentMood,
-        label: moodPreset.label || currentMood,
-      });
-    }
-    lastMoodLoggedRef.current = currentMood;
-  }, [currentMood, moodPreset?.label, logHistoryEvent]);
   const moodSessionRecordedRef = useRef(false);
   useEffect(() => {
     if (moodSessionRecordedRef.current) return;
@@ -9735,6 +9807,30 @@ function AppContent() {
   useEffect(() => {
     ensureNotificationPermission();
   }, [ensureNotificationPermission]);
+
+  const sendImmediateNotification = useCallback(
+    async (content) => {
+      if (!content) return false;
+      const now = Date.now();
+      if (now - lastInstantNotificationRef.current < PUSH_NOTIFICATION_COOLDOWN_MS) {
+        return false;
+      }
+      const allowed = await ensureNotificationPermission();
+      if (!allowed) return false;
+      try {
+        await Notifications.scheduleNotificationAsync({
+          content,
+          trigger: null,
+        });
+        lastInstantNotificationRef.current = now;
+        return true;
+      } catch (error) {
+        console.warn("immediate notification", error);
+        return false;
+      }
+    },
+    [ensureNotificationPermission]
+  );
 
   useEffect(() => {
     if (Platform.OS !== "android") return;
@@ -10457,25 +10553,13 @@ function AppContent() {
         }),
       });
     }
-    const notifyReward = async () => {
-      const permitted = await ensureNotificationPermission();
-      if (!permitted) return;
-      try {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: t("dailyChallengeRewardNotificationTitle"),
-            body: t("dailyChallengeRewardNotificationBody", {
-              temptation: dailyChallenge.templateLabel || dailyChallenge.templateTitle || t("defaultDealTitle"),
-              amount: `${dailyChallenge.rewardBonus}`,
-            }),
-          },
-          trigger: null,
-        });
-      } catch (error) {
-        console.warn("daily challenge reward notification", error);
-      }
-    };
-    notifyReward();
+    sendImmediateNotification({
+      title: t("dailyChallengeRewardNotificationTitle"),
+      body: t("dailyChallengeRewardNotificationBody", {
+        temptation: dailyChallenge.templateLabel || dailyChallenge.templateTitle || t("defaultDealTitle"),
+        amount: `${dailyChallenge.rewardBonus}`,
+      }),
+    });
     logEvent("daily_challenge_completed", {
       template_id: dailyChallenge.templateId,
       reward_bonus: dailyChallenge.rewardBonus,
@@ -10484,7 +10568,7 @@ function AppContent() {
     dailyChallenge.rewardBonus,
     dailyChallenge.templateId,
     dailyChallenge.templateTitle,
-    ensureNotificationPermission,
+    sendImmediateNotification,
     logEvent,
     setHealthPoints,
     t,
@@ -10685,6 +10769,8 @@ function AppContent() {
         focusDigestRaw,
         focusDigestPendingRaw,
         tamagotchiSkinRaw,
+        savedPeakRaw,
+        activeGoalRaw,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.WISHES),
         AsyncStorage.getItem(STORAGE_KEYS.PENDING),
@@ -10726,6 +10812,8 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.FOCUS_DIGEST),
         AsyncStorage.getItem(STORAGE_KEYS.FOCUS_DIGEST_PENDING),
         AsyncStorage.getItem(STORAGE_KEYS.TAMAGOTCHI_SKIN),
+        AsyncStorage.getItem(STORAGE_KEYS.SAVED_TOTAL_PEAK),
+        AsyncStorage.getItem(STORAGE_KEYS.ACTIVE_GOAL),
       ]);
       if (wishesRaw) {
         setWishes(JSON.parse(wishesRaw));
@@ -10736,6 +10824,10 @@ function AppContent() {
       if (pendingRaw) setPendingList(JSON.parse(pendingRaw));
       if (purchasesRaw) setPurchases(JSON.parse(purchasesRaw));
       let parsedProfile = null;
+      let hydratedGoalId = DEFAULT_PROFILE.goal;
+      if (activeGoalRaw) {
+        hydratedGoalId = activeGoalRaw;
+      }
       if (profileRaw) {
         parsedProfile = { ...DEFAULT_PROFILE, ...JSON.parse(profileRaw) };
         const normalizedPrimaryGoals = Array.isArray(parsedProfile.primaryGoals)
@@ -10779,13 +10871,27 @@ function AppContent() {
             createdAt: null,
           });
         }
-        parsedProfile.primaryGoals = normalizedPrimaryGoals;
-        parsedProfile.goal = normalizedPrimaryGoals[0]?.id || DEFAULT_PROFILE.goal;
-        const activeTargetEntry = normalizedPrimaryGoals[0];
+        const storedGoalId = activeGoalRaw || parsedProfile.goal || null;
+        const activeGoalEntry =
+          storedGoalId && normalizedPrimaryGoals.find((goal) => goal.id === storedGoalId);
+        const orderedPrimaryGoals = activeGoalEntry
+          ? [activeGoalEntry, ...normalizedPrimaryGoals.filter((goal) => goal.id !== activeGoalEntry.id)]
+          : normalizedPrimaryGoals;
+        const profileGoalId =
+          (activeGoalEntry && activeGoalEntry.id) ||
+          parsedProfile.goal ||
+          orderedPrimaryGoals[0]?.id ||
+          DEFAULT_PROFILE.goal;
+        hydratedGoalId = profileGoalId;
+        parsedProfile.primaryGoals = orderedPrimaryGoals;
+        parsedProfile.goal = profileGoalId;
+        const activeTargetEntry =
+          orderedPrimaryGoals.find((goal) => goal.id === profileGoalId) || orderedPrimaryGoals[0];
         const activeTargetUSD =
           Number.isFinite(activeTargetEntry?.targetUSD) && activeTargetEntry.targetUSD > 0
             ? activeTargetEntry.targetUSD
-            : getGoalDefaultTargetUSD(parsedProfile.goal || activeTargetEntry?.id || DEFAULT_PROFILE.goal);
+            : parsedProfile.goalTargetUSD ||
+              getGoalDefaultTargetUSD(profileGoalId || activeTargetEntry?.id || DEFAULT_PROFILE.goal);
         parsedProfile.goalTargetUSD = activeTargetUSD;
         parsedProfile.goalCelebrated = !!parsedProfile.goalCelebrated;
         parsedProfile.spendingProfile = {
@@ -10904,7 +11010,6 @@ function AppContent() {
       setDailyChallengeHydrated(true);
       if (themeRaw) setTheme(themeRaw);
       if (languageRaw) setLanguage(languageRaw);
-      setActiveGoalId(parsedProfile?.goal || DEFAULT_PROFILE.goal);
       if (dailySummaryRaw) setDailySummarySeenKey(dailySummaryRaw);
       setTutorialSeen(tutorialRaw === "pending" ? false : true);
       if (termsAcceptedRaw === "1") {
@@ -10955,6 +11060,8 @@ function AppContent() {
         setTamagotchiSkinId(DEFAULT_TAMAGOTCHI_SKIN);
       }
       setTamagotchiSkinHydrated(true);
+      setActiveGoalId(hydratedGoalId || DEFAULT_PROFILE.goal);
+      setActiveGoalHydrated(true);
       if (catalogRaw) {
         try {
           setCatalogOverrides(JSON.parse(catalogRaw));
@@ -11010,12 +11117,21 @@ function AppContent() {
         setDescriptionOverrides({});
       }
       setDescriptionOverridesHydrated(true);
+      let resolvedSavedTotal = 0;
       if (savedTotalRaw) {
-        setSavedTotalUSD(Number(savedTotalRaw) || 0);
+        resolvedSavedTotal = Number(savedTotalRaw) || 0;
+        setSavedTotalUSD(resolvedSavedTotal);
       } else {
         setSavedTotalUSD(0);
       }
       setSavedTotalHydrated(true);
+      if (savedPeakRaw) {
+        const parsedPeak = Number(savedPeakRaw) || 0;
+        setLifetimeSavedUSD(Math.max(parsedPeak, resolvedSavedTotal));
+      } else {
+        setLifetimeSavedUSD(Math.max(0, resolvedSavedTotal));
+      }
+      setLifetimeSavedHydrated(true);
       if (declinesRaw) setDeclineCount(Number(declinesRaw) || 0);
       if (freeDayRaw) {
         setFreeDayStats({ ...INITIAL_FREE_DAY_STATS, ...JSON.parse(freeDayRaw) });
@@ -11168,6 +11284,8 @@ function AppContent() {
         }));
         setActiveCurrency(DEFAULT_PROFILE.currency);
         goToOnboardingStep("logo", { recordHistory: false, resetHistory: true });
+        setOnboardingStep("logo");
+        setActiveGoalHydrated(true);
       }
       setProfileHydrated(true);
     } catch (error) {
@@ -11187,6 +11305,7 @@ function AppContent() {
       setCategoryOverridesHydrated(true);
       setDescriptionOverridesHydrated(true);
       setTamagotchiSkinHydrated(true);
+      setLifetimeSavedHydrated(true);
       setProfileHydrated(true);
     }
   };
@@ -11197,24 +11316,15 @@ function AppContent() {
 
   const sendTamagotchiHungerNotification = useCallback(
     async (kind) => {
-      try {
-        const copy = TAMAGOTCHI_NOTIFICATION_COPY[language] || TAMAGOTCHI_NOTIFICATION_COPY.ru;
-        const body = copy[kind];
-        if (!body) return;
-        const allowed = await ensureNotificationPermission();
-        if (!allowed) return;
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: language === "ru" ? "Алми" : "Almi",
-            body,
-          },
-          trigger: null,
-        });
-      } catch (error) {
-        console.warn("tamagotchi notification", error);
-      }
+      const copy = TAMAGOTCHI_NOTIFICATION_COPY[language] || TAMAGOTCHI_NOTIFICATION_COPY.ru;
+      const body = copy[kind];
+      if (!body) return;
+      await sendImmediateNotification({
+        title: language === "ru" ? "Алми" : "Almi",
+        body,
+      });
     },
-    [ensureNotificationPermission, language]
+    [language, sendImmediateNotification]
   );
 
   useEffect(() => {
@@ -11397,6 +11507,12 @@ function AppContent() {
   }, [profile, profileHydrated]);
 
   useEffect(() => {
+    if (!activeGoalHydrated) return;
+    const value = activeGoalId || "";
+    AsyncStorage.setItem(STORAGE_KEYS.ACTIVE_GOAL, value).catch(() => {});
+  }, [activeGoalHydrated, activeGoalId]);
+
+  useEffect(() => {
     if (!overlay && goalRenewalPromptPendingRef.current) {
       goalRenewalPromptPendingRef.current = false;
       if (!goalRenewalPromptVisible) {
@@ -11483,6 +11599,16 @@ function AppContent() {
     if (!savedTotalHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.SAVED_TOTAL, String(savedTotalUSD)).catch(() => {});
   }, [savedTotalUSD, savedTotalHydrated]);
+
+  useEffect(() => {
+    if (!savedTotalHydrated || !lifetimeSavedHydrated) return;
+    setLifetimeSavedUSD((prev) => (savedTotalUSD > prev ? savedTotalUSD : prev));
+  }, [savedTotalUSD, savedTotalHydrated, lifetimeSavedHydrated]);
+
+  useEffect(() => {
+    if (!lifetimeSavedHydrated) return;
+    AsyncStorage.setItem(STORAGE_KEYS.SAVED_TOTAL_PEAK, String(lifetimeSavedUSD)).catch(() => {});
+  }, [lifetimeSavedUSD, lifetimeSavedHydrated]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.DECLINES, String(declineCount)).catch(() => {});
@@ -13252,12 +13378,15 @@ function AppContent() {
 
   const handleTemptationAction = useCallback(
     async (type, item, options = {}) => {
-  const {
-    skipPrompt = false,
-    goalId: forcedGoalId = null,
-    shouldAssign = false,
-    pinnedBy = null,
-  } = options || {};
+      const {
+        skipPrompt = false,
+        goalId: forcedGoalId = null,
+        shouldAssign = false,
+        pinnedBy = null,
+      } = options || {};
+      if (item?.id) {
+        setLastTemptationContext({ templateId: item.id, timestamp: Date.now() });
+      }
       const priceUSD = item.priceUSD || item.basePriceUSD || 0;
       const title = `${item.emoji || "✨"} ${
         item.title?.[language] || item.title?.en || item.title || "wish"
@@ -14456,20 +14585,10 @@ function AppContent() {
         amountLabel,
         temptation: risk.title || "",
       });
-      try {
-        const allowed = await ensureNotificationPermission();
-        if (allowed) {
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: pushTitle,
-              body: pushBody,
-            },
-            trigger: null,
-          });
-        }
-      } catch (error) {
-        console.warn("impulse notify", error);
-      }
+      await sendImmediateNotification({
+        title: pushTitle,
+        body: pushBody,
+      });
       impulseAlertCooldownRef.current = {
         ...(impulseAlertCooldownRef.current || {}),
         [risk.templateId]: now,
@@ -14483,7 +14602,7 @@ function AppContent() {
         events: prev?.events || [],
       }));
     },
-    [ensureNotificationPermission, profile.currency, t, triggerOverlayState, moodPreset]
+    [profile.currency, sendImmediateNotification, t, triggerOverlayState, moodPreset]
   );
 
   const triggerCelebration = () => {
@@ -14709,6 +14828,7 @@ function AppContent() {
             setPendingList([]);
             setPurchases([]);
             setSavedTotalUSD(0);
+            setLifetimeSavedUSD(0);
             setDeclineCount(0);
             setCatalogOverrides({});
             setTitleOverrides({});
@@ -14730,6 +14850,8 @@ function AppContent() {
             setLanguage("ru");
             setActiveCurrency(DEFAULT_PROFILE.currency);
             setHealthPoints(0);
+            setTamagotchiSkinId(DEFAULT_TAMAGOTCHI_SKIN);
+            setSkinPickerVisible(false);
             setClaimedRewards({});
             setRewardCelebratedMap({});
             const resetChallenges = createInitialChallengesState();
@@ -15010,10 +15132,11 @@ function AppContent() {
             resolveTemplateTitle={resolveTemplateTitle}
             tamagotchiMood={tamagotchiMood}
             primaryTemptationId={primaryTemptationId}
-            primaryTemptationDescription={primaryTemptationDescription}
-            focusTemplateId={focusTemplateId}
-            tamagotchiAnimations={tamagotchiAnimations}
-          />
+          primaryTemptationDescription={primaryTemptationDescription}
+          focusTemplateId={focusTemplateId}
+          tamagotchiAnimations={tamagotchiAnimations}
+          lifetimeSavedUSD={lifetimeSavedUSD}
+        />
         );
     }
   };
@@ -15634,6 +15757,8 @@ function AppContent() {
             },
           ]}
           onPress={handleFabPress}
+          onLongPress={handleFabLongPress}
+          delayLongPress={420}
         >
           <Text style={[styles.cartBadgeIcon, { color: colors.background }]}>+</Text>
         </AnimatedTouchableOpacity>
@@ -16238,6 +16363,70 @@ function AppContent() {
               </TouchableOpacity>
             </Animated.View>
           </View>
+        )}
+
+        {quickActionVisible && lastTemptationItem && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={handleQuickActionClose}>
+              <View style={styles.quickActionOverlay}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
+                    style={[
+                      styles.quickActionCard,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.quickActionTitle, { color: colors.text }]}>
+                      {t("fabQuickActionTitle")}
+                    </Text>
+                    <Text style={[styles.quickActionSubtitle, { color: colors.muted }]}>
+                      {t("fabQuickActionSubtitle", { title: quickActionTitle || t("defaultDealTitle") })}
+                    </Text>
+                    <View style={styles.quickActionInfo}>
+                      <Text style={[styles.quickActionTemptation, { color: colors.text }]} numberOfLines={2}>
+                        {quickActionTitle || t("defaultDealTitle")}
+                      </Text>
+                      {!!quickActionPrice && (
+                        <Text style={[styles.quickActionPrice, { color: colors.muted }]}>{quickActionPrice}</Text>
+                      )}
+                    </View>
+                    <View style={styles.quickActionButtons}>
+                      <TouchableOpacity
+                        style={[styles.quickActionButton, styles.quickActionButtonSuccess]}
+                        onPress={() => handleQuickActionConfirm("save")}
+                      >
+                        <Text style={[styles.quickActionButtonText, { color: "#0D561A" }]}>
+                          {t("saveAction")}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.quickActionButton,
+                          { borderColor: colors.border, borderWidth: 1, backgroundColor: colors.card },
+                        ]}
+                        onPress={() => handleQuickActionConfirm("want")}
+                      >
+                        <Text style={[styles.quickActionButtonText, { color: colors.text }]}>
+                          {t("maybeAction")}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.quickActionButton,
+                          styles.quickActionButtonDanger,
+                        ]}
+                        onPress={() => handleQuickActionConfirm("spend")}
+                      >
+                        <Text style={[styles.quickActionButtonText, { color: colors.background }]}>
+                          {t("spendAction")}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
         )}
 
         {overlay &&
@@ -20233,6 +20422,61 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textAlign: "center",
     lineHeight: 16,
+  },
+  quickActionOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  quickActionCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    gap: 12,
+  },
+  quickActionTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 20,
+  },
+  quickActionSubtitle: {
+    ...createBodyText({ fontSize: 15 }),
+  },
+  quickActionInfo: {
+    gap: 4,
+  },
+  quickActionTemptation: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 18,
+  },
+  quickActionPrice: {
+    ...createBodyText({ fontSize: 14 }),
+  },
+  quickActionButtons: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  quickActionButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quickActionButtonText: {
+    ...createCtaText({ textTransform: "uppercase" }),
+    fontSize: 12,
+  },
+  quickActionButtonDanger: {
+    backgroundColor: "#FF6B8F",
+  },
+  quickActionButtonSuccess: {
+    backgroundColor: "#D7F2DB",
+    borderColor: "#0D561A",
+    borderWidth: 1,
   },
   quickModalBackdrop: {
     flex: 1,
