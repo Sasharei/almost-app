@@ -54,6 +54,30 @@ const patches = [
     src: 'patches/expo-modules-core/android/src/main/java/expo/modules/rncompatibility/ReactNativeFeatureFlags.kt',
     dest: 'node_modules/expo-modules-core/android/src/main/java/expo/modules/rncompatibility/ReactNativeFeatureFlags.kt',
   },
+  {
+    src: 'patches/expo-modules-core/common/cpp/fabric/ExpoViewComponentDescriptor.cpp',
+    dest: 'node_modules/expo-modules-core/common/cpp/fabric/ExpoViewComponentDescriptor.cpp',
+  },
+  {
+    src: 'patches/expo-modules-core/ios/JSI/EXJSIConversions.mm',
+    dest: 'node_modules/expo-modules-core/ios/JSI/EXJSIConversions.mm',
+  },
+  {
+    src: 'patches/react-native/ReactCommon/jsitooling/React-jsitooling.podspec',
+    dest: 'node_modules/react-native/ReactCommon/jsitooling/React-jsitooling.podspec',
+  },
+  {
+    src: 'patches/react-native/ReactCommon/react/runtime/platform/ios/React-RuntimeApple.podspec',
+    dest: 'node_modules/react-native/ReactCommon/react/runtime/platform/ios/React-RuntimeApple.podspec',
+  },
+  {
+    src: 'patches/@sentry/react-native/ios/RNSentry.mm',
+    dest: 'node_modules/@sentry/react-native/ios/RNSentry.mm',
+  },
+  {
+    src: 'patches/@sentry/react-native/RNSentry.podspec',
+    dest: 'node_modules/@sentry/react-native/RNSentry.podspec',
+  },
 ];
 
 let applied = 0;

@@ -143,7 +143,7 @@ inline fun <reified T : View> ViewDefinitionBuilder<T>.UseBoxShadowProp(crossinl
 
     val shadowStyle = mutableListOf<BoxShadow>()
     for (i in 0..<shadows.size()) {
-      val shadow = BoxShadow.parse(shadows.getMap(i)) ?: continue
+      val shadow = BoxShadow.parse(shadows.getMap(i), view.context) ?: continue
       shadowStyle.add((shadow))
     }
     body(view, shadowStyle)
