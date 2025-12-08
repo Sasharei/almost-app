@@ -43,6 +43,7 @@ import {
   Inter_900Black,
 } from "@expo-google-fonts/inter";
 import Sentry, { initSentry } from "./sentry";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   initAnalytics,
   logEvent,
@@ -4569,7 +4570,7 @@ function TemptationCard({
   const cardSurfaceColor = isDarkTheme
     ? blendColors(cardBackground, "#FFFFFF", 0.35)
     : lightenColor(cardBackground, 0.18);
-  const primaryHighlightColor = "#FF4D5A";
+  const primaryHighlightColor = Platform.OS === "ios" ? "#FF6F7D" : "#FF4D5A";
   const cardTextColor = isDarkTheme ? darkCardPalette.text : colors.text;
   const cardMutedColor = isDarkTheme ? darkCardPalette.muted : colors.muted;
   const resolvedGoalLabel =
@@ -4601,7 +4602,7 @@ function TemptationCard({
   );
   const showCardTexture = false;
   const defaultShadowColor = isDarkTheme ? "rgba(255,255,255,0.55)" : "rgba(15,23,42,0.22)";
-  const redShadowColor = "rgba(244,37,78,0.88)";
+  const redShadowColor = Platform.OS === "ios" ? "rgba(244,37,78,0.6)" : "rgba(244,37,78,0.88)";
   const goldShadowColor = "rgba(255,198,110,0.75)";
   const focusShadowColor = "rgba(255,92,92,0.85)";
   const shadowColor = isPrimaryTemptation
@@ -4611,9 +4612,17 @@ function TemptationCard({
     : highlightPinned
     ? goldShadowColor
     : defaultShadowColor;
-  const shadowRadius = isPrimaryTemptation ? 36 : focusActive ? 34 : highlightPinned ? 30 : isDarkTheme ? 28 : 22;
+  const shadowRadius = isPrimaryTemptation
+    ? Platform.OS === "ios" ? 28 : 36
+    : focusActive
+    ? 34
+    : highlightPinned
+    ? 30
+    : isDarkTheme
+    ? 28
+    : 22;
   const shadowOpacity = isPrimaryTemptation
-    ? 0.8
+    ? Platform.OS === "ios" ? 0.6 : 0.8
     : focusActive
     ? 0.75
     : highlightPinned
@@ -4621,8 +4630,16 @@ function TemptationCard({
     : isDarkTheme
     ? 0.55
     : 0.3;
-  const shadowElevation = isPrimaryTemptation ? 20 : focusActive ? 18 : highlightPinned ? 14 : isDarkTheme ? 12 : 8;
-  const shadowOffsetHeight = isPrimaryTemptation ? 18 : focusActive ? 16 : highlightPinned ? 16 : isDarkTheme ? 14 : 12;
+  const shadowElevation = isPrimaryTemptation ? 16 : focusActive ? 18 : highlightPinned ? 14 : isDarkTheme ? 12 : 8;
+  const shadowOffsetHeight = isPrimaryTemptation
+    ? Platform.OS === "ios" ? 12 : 18
+    : focusActive
+    ? 16
+    : highlightPinned
+    ? 16
+    : isDarkTheme
+    ? 14
+    : 12;
   const cardShadowStyle = Platform.select({
     ios: {
       shadowColor,
@@ -8931,6 +8948,7 @@ function ProfileScreen({
             <Text style={{ color: colors.muted }}>{t("analyticsOptInHint")}</Text>
           </View>
           <Switch
+            style={styles.analyticsSwitch}
             value={!analyticsOptOut}
             onValueChange={onAnalyticsToggle}
             trackColor={{ false: colors.border, true: colors.text }}
@@ -9224,7 +9242,9 @@ function AppContent() {
   const handleTutorialSkip = useCallback(() => {
     finishTutorial();
   }, [finishTutorial]);
-  const dismissTabHint = useCallback(() => setTabHintVisible(null), []);
+  const dismissTabHint = useCallback(() => {
+    setTabHintVisible(null);
+  }, []);
   const clearCompletedPrimaryGoal = useCallback(
     (goalId) => {
       if (!goalId) return;
@@ -9304,6 +9324,7 @@ function AppContent() {
   const cartBadgeScale = useRef(new Animated.Value(1)).current;
   const openSkinPicker = useCallback(() => {
     triggerHaptic();
+    setTamagotchiVisible(false);
     setSkinPickerVisible(true);
   }, []);
   const closeSkinPicker = useCallback(() => setSkinPickerVisible(false), []);
@@ -9349,7 +9370,12 @@ function AppContent() {
         if (raw) {
           try {
             const parsed = JSON.parse(raw);
-            setTabHintsSeen({ ...DEFAULT_TAB_HINTS_STATE, ...(parsed || {}) });
+            if (parsed && typeof parsed === "object") {
+              const { __disabled: _legacyDisabled, ...rest } = parsed;
+              setTabHintsSeen({ ...DEFAULT_TAB_HINTS_STATE, ...(rest || {}) });
+            } else {
+              setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
+            }
           } catch (error) {
             console.warn("tab hints parse", error);
             setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
@@ -9537,7 +9563,9 @@ function AppContent() {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [spendPrompt, setSpendPrompt] = useState({ visible: false, item: null });
   const [stormActive, setStormActive] = useState(false);
-  const tabBarBottomInset = Platform.OS === "ios" ? 28 : 0;
+  const safeAreaInsets = useSafeAreaInsets();
+  const iosTabInset = Platform.OS === "ios" ? Math.max((safeAreaInsets.bottom || 0) - 8, 0) : 0;
+  const tabBarBottomInset = iosTabInset;
   const topSafeInset = Platform.OS === "android" ? RNStatusBar.currentHeight || 24 : 0;
   const [analyticsOptOut, setAnalyticsOptOutState] = useState(null);
 
@@ -14860,6 +14888,8 @@ function AppContent() {
             setImpulseTracker({ ...INITIAL_IMPULSE_TRACKER });
             setMoodState(createMoodStateForToday());
             impulseAlertCooldownRef.current = {};
+            setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
+            setTabHintVisible(null);
             if (customReminderId) {
               Notifications.cancelScheduledNotificationAsync(customReminderId).catch(() => {});
             }
@@ -15154,6 +15184,7 @@ function AppContent() {
   }, [activeTab]);
   useEffect(() => {
     if (!tabHintsHydrated) return;
+    if (tabHintVisible) return;
     if (tabHintsSeen[activeTab]) return;
     const config = TAB_HINT_CONFIG[activeTab];
     if (!config) return;
@@ -15163,7 +15194,7 @@ function AppContent() {
       body: t(config.bodyKey),
     });
     setTabHintsSeen((prev) => ({ ...prev, [activeTab]: true }));
-  }, [activeTab, tabHintsHydrated, tabHintsSeen, t]);
+  }, [activeTab, tabHintVisible, tabHintsHydrated, tabHintsSeen, t]);
 
   useEffect(() => {
     const onboardingScreens = {
@@ -15677,6 +15708,7 @@ function AppContent() {
               backgroundColor: colors.card,
               borderTopColor: colors.border,
               paddingBottom: tabBarBottomInset,
+              marginBottom: Platform.OS === "ios" ? -(safeAreaInsets.bottom || 0) : 0,
               paddingTop: 12,
             },
           ]}
@@ -15709,6 +15741,7 @@ function AppContent() {
                     {
                       color: textColor,
                       fontWeight: isActiveTab || isHighlighted ? "700" : "500",
+                      fontSize: Platform.OS === "ios" ? 12 : 13,
                     },
                   ]}
                 >
@@ -15800,7 +15833,7 @@ function AppContent() {
                 style={[
                   StyleSheet.absoluteFillObject,
                   styles.tutorialBackdropDim,
-                  { bottom: tabBarBottomInset + 56 },
+                  { bottom: tabBarBottomInset + (Platform.OS === "ios" ? 64 : 72) },
                 ]}
               />
               <View
@@ -16079,14 +16112,13 @@ function AppContent() {
                     { backgroundColor: colors.card, borderColor: colors.border },
                   ]}
                 >
-                  <Text style={[styles.skinPickerTitle, { color: colors.text }]}>
+                  <Text style={[styles.skinPickerTitle, { color: colors.text, textAlign: "center" }]}>
                     {t("tamagotchiSkinTitle")}
                   </Text>
-                  <Text style={[styles.skinPickerSubtitle, { color: colors.muted }]}>
+                  <Text style={[styles.skinPickerSubtitle, { color: colors.muted, textAlign: "center" }]}>
                     {t("tamagotchiSkinSubtitle")}
                   </Text>
                   <ScrollView
-                    style={{ width: "100%" }}
                     contentContainerStyle={styles.skinPickerList}
                     showsVerticalScrollIndicator={false}
                   >
@@ -17186,7 +17218,11 @@ function AppContent() {
 }
 
 function App() {
-  return <AppContent />;
+  return (
+    <SafeAreaProvider>
+      <AppContent />
+    </SafeAreaProvider>
+  );
 }
 
 export default Sentry.wrap(App);
@@ -17397,7 +17433,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.55)",
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
   },
   skinPickerCard: {
     width: "100%",
@@ -17416,6 +17453,7 @@ const styles = StyleSheet.create({
   },
   skinPickerList: {
     paddingVertical: 8,
+    paddingHorizontal: 4,
   },
   skinPickerItem: {
     flexDirection: "row",
@@ -17572,9 +17610,10 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   heroSpendLine: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginTop: 10,
+    fontSize: Platform.OS === "ios" ? 16 : 18,
+    lineHeight: Platform.OS === "ios" ? 20 : 22,
+    fontWeight: "600",
+    marginTop: Platform.OS === "ios" ? 6 : 10,
   },
   progressHeroCard: {
     marginTop: 8,
@@ -17617,7 +17656,12 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   savedHeroSubtitle: {
-    ...createBodyText({ fontSize: 15, marginTop: 6, lineHeight: 20, width: "100%" }),
+    ...createBodyText({
+      fontSize: Platform.OS === "ios" ? 13 : 15,
+      marginTop: Platform.OS === "ios" ? 4 : 6,
+      lineHeight: Platform.OS === "ios" ? 18 : 20,
+      width: "100%",
+    }),
   },
   savedHeroLevelButton: {
     position: "absolute",
@@ -18117,8 +18161,10 @@ const styles = StyleSheet.create({
   },
   progressHeroTitle: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: 24,
+    fontSize: Platform.OS === "ios" ? 22 : 24,
+    lineHeight: Platform.OS === "ios" ? 26 : undefined,
     fontFamily: INTER_FONTS.extraBold,
+    marginRight: Platform.OS === "ios" ? 8 : 0,
   },
   progressHeroAmount: {
     fontSize: 26,
@@ -20117,7 +20163,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   resetButton: {
-    marginTop: 8,
+    marginTop: Platform.OS === "ios" ? 16 : 8,
     paddingVertical: 12,
     borderWidth: 1,
     borderRadius: 18,
@@ -20213,6 +20259,15 @@ const styles = StyleSheet.create({
   },
   profileLinkHint: {
     ...createSecondaryText({ fontSize: 12 }),
+  },
+  analyticsSwitch: {
+    ...(Platform.OS === "ios"
+      ? {
+          transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }],
+          marginLeft: 12,
+          marginTop: 6,
+        }
+      : {}),
   },
   resetButtonText: {
     ...createCtaText(),
