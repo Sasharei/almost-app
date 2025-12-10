@@ -95,6 +95,33 @@ target 'almostclean' do
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = min_ios_target
       end
     end
+
+    disable_flags = 'SENTRY_TARGET_PROFILING_SUPPORTED=0 SENTRY_PROFILING_SUPPORTED=0'
+    installer.pods_project.targets.each do |target|
+      next unless target.name == 'Sentry'
+
+      target.build_configurations.each do |config|
+        definitions = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS']
+        definitions = Array(definitions).join(' ')
+        definitions = '$(inherited)' if definitions.strip.empty?
+        next if definitions.include?('SENTRY_TARGET_PROFILING_SUPPORTED')
+
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = "#{definitions} #{disable_flags}"
+      end
+    end
+
+    sentry_support_dir = File.join(Pod::Config.instance.installation_root, 'Pods', 'Target Support Files', 'Sentry')
+    Dir.glob(File.join(sentry_support_dir, 'Sentry.*.xcconfig')).each do |xcconfig_path|
+      next unless File.exist?(xcconfig_path)
+      contents = File.read(xcconfig_path)
+      next if contents.include?('SENTRY_TARGET_PROFILING_SUPPORTED')
+
+      contents = contents.gsub(/(GCC_PREPROCESSOR_DEFINITIONS = .+)/) do |line|
+        "#{line} #{disable_flags}"
+      end
+      File.write(xcconfig_path, contents)
+    end
+
     installer.pods_project.save
   end
 end

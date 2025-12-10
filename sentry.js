@@ -11,6 +11,7 @@ export function initSentry() {
       dsn: process.env.SENTRY_DSN,
       tracesSampleRate: 0.1,
       sendDefaultPii: false,
+      enableProfiling: false,
     });
   } catch (error) {
     console.warn("Failed to initialise Sentry:", error?.message || error);

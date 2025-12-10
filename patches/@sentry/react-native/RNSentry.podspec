@@ -5,17 +5,17 @@ version = JSON.parse(File.read('package.json'))["version"]
 rn_package = parse_rn_package_json()
 rn_version = get_rn_version(rn_package)
 is_hermes_default = is_hermes_default(rn_version)
-is_profiling_supported = is_profiling_supported(rn_version)
-
 folly_flags = ' -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1'
 folly_compiler_flags = folly_flags + ' ' + '-Wno-comma -Wno-shorten-64-to-32'
 
 is_new_arch_enabled = ENV["RCT_NEW_ARCH_ENABLED"] == "1"
 is_using_hermes = (ENV['USE_HERMES'] == nil && is_hermes_default) || ENV['USE_HERMES'] == '1'
 new_arch_enabled_flag = (is_new_arch_enabled ? folly_compiler_flags + " -DRCT_NEW_ARCH_ENABLED" : "")
+is_profiling_supported = is_profiling_supported(rn_version)
+
 # Hermes 0.81 + Sentry profiling currently fails to compile on iOS (std::allocator<const ...>).
-# Disable the profiling compile flag until Sentry ships a fix to avoid XC build failures.
-sentry_profiling_supported_flag = ""
+# Force-disable the native profiler by overriding the conditional flags until Sentry ships a fix.
+sentry_profiling_supported_flag = " -DSENTRY_TARGET_PROFILING_SUPPORTED=0 -DSENTRY_PROFILING_SUPPORTED=0"
 other_cflags = "$(inherited)" + new_arch_enabled_flag + sentry_profiling_supported_flag
 
 Pod::Spec.new do |s|
