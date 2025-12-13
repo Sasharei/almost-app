@@ -43,6 +43,10 @@ const patches = [
     dest: 'node_modules/react-native-gesture-handler/android/build.gradle',
   },
   {
+    src: 'patches/react-native-svg/android/build.gradle',
+    dest: 'node_modules/react-native-svg/android/build.gradle',
+  },
+  {
     src: 'patches/expo-modules-core/android/src/main/java/expo/modules/kotlin/jni/JavaScriptValue.kt',
     dest: 'node_modules/expo-modules-core/android/src/main/java/expo/modules/kotlin/jni/JavaScriptValue.kt',
   },

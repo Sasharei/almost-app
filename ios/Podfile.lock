@@ -43,7 +43,7 @@ PODS:
     - Yoga
   - ExpoAsset (12.0.11):
     - ExpoModulesCore
-  - ExpoFileSystem (19.0.20):
+  - ExpoFileSystem (17.0.1):
     - ExpoModulesCore
   - ExpoFont (14.0.10):
     - ExpoModulesCore
@@ -82,6 +82,10 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
+  - ExpoSharing (14.0.8):
+    - ExpoModulesCore
+  - ExpoStoreReview (9.0.9):
+    - ExpoModulesCore
   - ExpoWebBrowser (15.0.10):
     - ExpoModulesCore
   - EXSplashScreen (0.28.5):
@@ -1939,6 +1943,8 @@ PODS:
     - SocketRocket
   - react-native-safe-area-context (5.6.2):
     - React-Core
+  - react-native-view-shot (3.8.0):
+    - React-Core
   - React-NativeModulesApple (0.81.4):
     - boost
     - DoubleConversion
@@ -2505,6 +2511,8 @@ DEPENDENCIES:
   - ExpoImagePicker (from `../node_modules/expo-image-picker/ios`)
   - ExpoKeepAwake (from `../node_modules/expo-keep-awake/ios`)
   - ExpoModulesCore (from `../node_modules/expo-modules-core`)
+  - ExpoSharing (from `../node_modules/expo-sharing/ios`)
+  - ExpoStoreReview (from `../node_modules/expo-store-review/ios`)
   - ExpoWebBrowser (from `../node_modules/expo-web-browser/ios`)
   - EXSplashScreen (from `../node_modules/expo-splash-screen/ios`)
   - fast_float (from `../node_modules/react-native/third-party-podspecs/fast_float.podspec`)
@@ -2547,6 +2555,7 @@ DEPENDENCIES:
   - React-Mapbuffer (from `../node_modules/react-native/ReactCommon`)
   - React-microtasksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
+  - react-native-view-shot (from `../node_modules/react-native-view-shot`)
   - React-NativeModulesApple (from `../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
   - React-oscompat (from `../node_modules/react-native/ReactCommon/oscompat`)
   - React-perflogger (from `../node_modules/react-native/ReactCommon/reactperflogger`)
@@ -2628,6 +2637,10 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-keep-awake/ios"
   ExpoModulesCore:
     :path: "../node_modules/expo-modules-core"
+  ExpoSharing:
+    :path: "../node_modules/expo-sharing/ios"
+  ExpoStoreReview:
+    :path: "../node_modules/expo-store-review/ios"
   ExpoWebBrowser:
     :path: "../node_modules/expo-web-browser/ios"
   EXSplashScreen:
@@ -2711,6 +2724,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/microtasks"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
+  react-native-view-shot:
+    :path: "../node_modules/react-native-view-shot"
   React-NativeModulesApple:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios"
   React-oscompat:
@@ -2793,12 +2808,14 @@ SPEC CHECKSUMS:
   EXNotifications: 6ce128c0d3d3d161cd68bfd07d593db40e140396
   Expo: ef79cf778c7e53427424531df91d83306a7b90bf
   ExpoAsset: 23a958e97d3d340919fe6774db35d563241e6c03
-  ExpoFileSystem: 3592defb5faa3c5866a2900eae87ceec8cc0489f
+  ExpoFileSystem: 2988caaf68b7cb706e36d382829d99811d9d76a5
   ExpoFont: 35ac6191ed86bbf56b3ebd2d9154eda9fad5b509
   ExpoHaptics: d3a6375d8dcc3a1083d003bc2298ff654fafb536
   ExpoImagePicker: e62bc7b6513d1fd0e098c907c64982fb953abb18
   ExpoKeepAwake: 55f75eca6499bb9e4231ebad6f3e9cb8f99c0296
   ExpoModulesCore: 096932ee61a4dbc1e538f797ab7363308497f877
+  ExpoSharing: 0d983394ed4a80334bab5a0d5384f75710feb7e8
+  ExpoStoreReview: 32bb43b6fae9c8db3e33cad69996dff3785eef5f
   ExpoWebBrowser: 17b064c621789e41d4816c95c93f429b84971f52
   EXSplashScreen: b3bdc81e622462cf609d54e32eb60086c81f3c66
   fast_float: b32c788ed9c6a8c584d114d0047beda9664e7cc6
@@ -2849,6 +2866,7 @@ SPEC CHECKSUMS:
   React-Mapbuffer: 9d2434a42701d6144ca18f0ca1c4507808ca7696
   React-microtasksnativemodule: 75b6604b667d297292345302cc5bfb6b6aeccc1b
   react-native-safe-area-context: 6c8805194166a9d6b3e53ba69ca76756c9bfb052
+  react-native-view-shot: d1a701eb0719c6dccbd20b4bb43b1069f304cb70
   React-NativeModulesApple: 879fbdc5dcff7136abceb7880fe8a2022a1bd7c3
   React-oscompat: 93b5535ea7f7dff46aaee4f78309a70979bdde9d
   React-perflogger: 5536d2df3d18fe0920263466f7b46a56351c0510
