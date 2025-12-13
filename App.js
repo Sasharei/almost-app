@@ -574,10 +574,18 @@ const CURRENCY_RATES = { USD: 1, EUR: 0.92, RUB: 92 };
 const CURRENCY_REWARD_STEPS = { USD: 5, EUR: 5, RUB: 500 };
 const DEFAULT_COIN_SLIDER_MAX_USD = 50;
 const COIN_SLIDER_HORIZONTAL_THRESHOLD = 80;
-const COIN_SLIDER_HORIZONTAL_LOCK_THRESHOLD = 40;
+const COIN_SLIDER_HORIZONTAL_ACTIVATION = 38;
+const COIN_SLIDER_VERTICAL_ACTIVATION = 2;
+const COIN_SLIDER_AXIS_BUFFER = 6;
+const COIN_SLIDER_HORIZONTAL_DISTANCE = 120;
 const COIN_SLIDER_SIZE = 220;
+const COIN_SLIDER_MIN_DELTA = 0.00001;
+const COIN_SLIDER_VALUE_DEADBAND = 0.01;
+const COIN_SLIDER_STATE_MIN_INTERVAL = 16;
+const COIN_SLIDER_HAPTIC_COOLDOWN_MS = 80;
 const COIN_FILL_MIN_HEIGHT = 12;
 const CURRENCY_SIGNS = { USD: "$", EUR: "€", RUB: "₽" };
+const CURRENCY_FINE_STEPS = { USD: 0.05, EUR: 0.05, RUB: 5 };
 const ECONOMY_RULES = {
   saveRewardStepUSD: 5,
   minSaveReward: 1,
@@ -2122,6 +2130,7 @@ const getCurrencyPrecision = (currency = activeCurrency) => {
 };
 
 const getCurrencyFineStep = (currency = activeCurrency) => {
+  if (CURRENCY_FINE_STEPS[currency]) return CURRENCY_FINE_STEPS[currency];
   const precision = getCurrencyPrecision(currency);
   return precision > 0 ? Math.pow(10, -precision) : 1;
 };
@@ -2131,6 +2140,15 @@ const roundCurrencyValue = (value = 0, currency = activeCurrency) => {
   const factor = Math.pow(10, precision);
   if (!factor) return Number(value) || 0;
   return Math.round(((Number(value) || 0) + Number.EPSILON) * factor) / factor;
+};
+
+const snapCurrencyValue = (value = 0, currency = activeCurrency) => {
+  const step = CURRENCY_FINE_STEPS[currency];
+  if (!step || step <= 0) {
+    return roundCurrencyValue(value, currency);
+  }
+  const snapped = Math.round((Number(value) || 0) / step) * step;
+  return roundCurrencyValue(snapped, currency);
 };
 
 const formatSampleAmount = (valueUSD, currencyCode) =>
@@ -2882,6 +2900,8 @@ const TRANSLATIONS = {
     coinEntryManualSave: "Запомнить",
     coinEntryManualCancel: "Отмена",
     coinEntryManualError: "Введи корректную сумму",
+    coinEntryManualAmountTitle: "Введи сумму вручную",
+    coinEntryManualAmountPlaceholder: "Например {{amount}}",
     coinEntryCategoryLabel: "Категория",
     coinEntryCategoryError: "Сначала выбери категорию",
     coinEntrySaveLabel: "Быстрое накопление",
@@ -3402,6 +3422,8 @@ const TRANSLATIONS = {
     coinEntryManualSave: "Remember",
     coinEntryManualCancel: "Cancel",
     coinEntryManualError: "Enter a valid amount",
+    coinEntryManualAmountTitle: "Enter custom amount",
+    coinEntryManualAmountPlaceholder: "E.g. {{amount}}",
     coinEntryCategoryLabel: "Category",
     coinEntryCategoryError: "Pick a category first",
     coinEntrySaveLabel: "Quick save",
@@ -9245,6 +9267,7 @@ function AppContent() {
     description: "",
   });
   const [customReminderId, setCustomReminderId] = useState(null);
+  const [customReminderHydrated, setCustomReminderHydrated] = useState(false);
   const [smartReminders, setSmartReminders] = useState([]);
   const [smartRemindersHydrated, setSmartRemindersHydrated] = useState(false);
   const [dailyNudgeNotificationIds, setDailyNudgeNotificationIds] = useState({});
@@ -10130,8 +10153,9 @@ function AppContent() {
   }, [smartReminders]);
 
   useEffect(() => {
+    if (!profileHydrated || !customReminderHydrated) return;
     schedulePersonalTemptationReminder(profile.customSpend);
-  }, [profile.customSpend, schedulePersonalTemptationReminder]);
+  }, [customReminderHydrated, profile.customSpend, profileHydrated, schedulePersonalTemptationReminder]);
 
   useEffect(() => {
     const tick = () => {
@@ -11215,7 +11239,10 @@ function AppContent() {
       }
       if (customReminderRaw) {
         setCustomReminderId(customReminderRaw);
+      } else {
+        setCustomReminderId(null);
       }
+      setCustomReminderHydrated(true);
       if (dailyNudgesRaw) {
         try {
           const parsed = JSON.parse(dailyNudgesRaw);
@@ -11622,6 +11649,7 @@ function AppContent() {
       setRewardsReady(true);
       setMoodHydrated(true);
       setFreeDayHydrated(true);
+      setCustomReminderHydrated(true);
       setSmartRemindersHydrated(true);
       setDailyNudgesHydrated(true);
       setCatalogHydrated(true);
@@ -21230,20 +21258,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
-  coinEntryManualFab: {
-    alignSelf: "flex-end",
-    marginTop: 8,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  coinEntryManualFabText: {
-    fontSize: 22,
-    letterSpacing: 2,
-  },
   coinEntryManualBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.6)",
@@ -22805,42 +22819,61 @@ function CoinEntryModal({
   const [trackHeight, setTrackHeight] = useState(260);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [categoryError, setCategoryError] = useState(false);
-  const [manualVisible, setManualVisible] = useState(false);
+  const [manualMode, setManualMode] = useState(null);
   const [manualValue, setManualValue] = useState("");
   const [manualError, setManualError] = useState("");
   const directionAnim = useRef(new Animated.Value(0)).current;
-  const dragStartRef = useRef(0.25);
   const sliderValueRef = useRef(0.25);
+  const sliderValueCommitRef = useRef(0.25);
+  const sliderValueThrottleRef = useRef(0);
   const hapticStepRef = useRef(0);
+  const sliderHapticCooldownRef = useRef(0);
   const tossingRef = useRef(false);
-  const horizontalLockRef = useRef(false);
+  const sliderGestureRef = useRef({
+    axis: "pending",
+  });
   const touchStartRef = useRef(0);
+  const manualVisible = manualMode !== null;
+  const manualIsAmountMode = manualMode === "amount";
   useEffect(() => {
     if (!visible) return;
-    setSliderValue(0.25);
-    dragStartRef.current = 0.25;
-    sliderValueRef.current = 0.25;
+    updateSliderValue(0.25, { force: true });
     hapticStepRef.current = Math.round(0.25 * 20);
+    sliderHapticCooldownRef.current = 0;
+    sliderGestureRef.current = {
+      axis: "pending",
+    };
     setSelectedCategory(null);
     setCategoryError(false);
-    setManualVisible(false);
+    setManualMode(null);
     setManualValue("");
     setManualError("");
     directionAnim.setValue(0);
     tossingRef.current = false;
-    horizontalLockRef.current = false;
     touchStartRef.current = 0;
-  }, [directionAnim, visible]);
+  }, [directionAnim, updateSliderValue, visible]);
   const currencySymbol =
     CURRENCY_SIGNS[currency] ||
     CURRENCY_SIGNS[DEFAULT_PROFILE.currency] ||
     DEFAULT_PROFILE.currency ||
     "$";
-  const sliderAmountUSD = Math.max(0, maxAmountUSD * sliderValue);
-  const sliderLocalValue = roundCurrencyValue(convertToCurrency(sliderAmountUSD, currency), currency);
+  const computeAmountUSDForValue = useCallback(
+    (value) => {
+      if (!Number.isFinite(value) || maxAmountUSD <= 0) return 0;
+      const localAmount = roundCurrencyValue(
+        convertToCurrency(maxAmountUSD * value, currency),
+        currency
+      );
+      const usd = convertFromCurrency(localAmount, currency);
+      return Math.max(0, Math.min(maxAmountUSD, usd));
+    },
+    [currency, maxAmountUSD]
+  );
+  const sliderAmountUSD = computeAmountUSDForValue(sliderValue);
+  const sliderLocalValue = snapCurrencyValue(convertToCurrency(sliderAmountUSD, currency), currency);
   const sliderAmountLocal = formatCurrencyWhole(sliderLocalValue, currency);
   const sliderMaxLocalValue = useMemo(
-    () => roundCurrencyValue(convertToCurrency(maxAmountUSD, currency), currency),
+    () => snapCurrencyValue(convertToCurrency(maxAmountUSD, currency), currency),
     [currency, maxAmountUSD]
   );
   const sliderMaxLocal = formatCurrencyWhole(sliderMaxLocalValue, currency);
@@ -22858,20 +22891,9 @@ function CoinEntryModal({
     outputRange: [-SCREEN_WIDTH, -48, 0, 48, SCREEN_WIDTH],
     extrapolate: "clamp",
   });
-  const computeAmountUSDForValue = useCallback(
-    (value) => {
-      if (!Number.isFinite(value) || maxAmountUSD <= 0) return 0;
-      const localAmount = roundCurrencyValue(
-        convertToCurrency(maxAmountUSD * value, currency),
-        currency
-      );
-      const usd = convertFromCurrency(localAmount, currency);
-      return Math.max(0, Math.min(maxAmountUSD, usd));
-    },
-    [currency, maxAmountUSD]
-  );
   const finalizeSwipe = useCallback(
-    (dx) => {
+    (dx, mode) => {
+      if (mode !== "horizontal") return false;
       if (Math.abs(dx) < COIN_SLIDER_HORIZONTAL_THRESHOLD) return false;
       const value = sliderValueRef.current;
       const hasAmount = value >= 0.02;
@@ -22898,23 +22920,17 @@ function CoinEntryModal({
       });
       return true;
     },
-    [computeAmountUSDForValue, onSubmit, selectedCategory, directionAnim]
+    [computeAmountUSDForValue, directionAnim, onSubmit, selectedCategory]
   );
   const currencyFineStep = useMemo(() => getCurrencyFineStep(currency), [currency]);
   const computeSteppedValue = useCallback(
-    (rawValue, velocity = 0) => {
+    (rawValue) => {
       const clamped = Math.max(0, Math.min(1, rawValue));
       if (!Number.isFinite(clamped) || maxAmountUSD <= 0 || sliderMaxLocalValue <= 0) {
         return clamped;
       }
       const targetLocal = clamped * sliderMaxLocalValue;
-      const speed = Math.abs(velocity);
-      let multiplier = 1;
-      if (speed < 0.4) multiplier = 1;
-      else if (speed < 1) multiplier = 5;
-      else if (speed < 2) multiplier = 10;
-      else multiplier = 25;
-      const stepLocal = currencyFineStep * multiplier;
+      const stepLocal = currencyFineStep;
       const roundedLocal =
         stepLocal > 0
           ? roundCurrencyValue(Math.round(targetLocal / stepLocal) * stepLocal, currency)
@@ -22928,75 +22944,142 @@ function CoinEntryModal({
     },
     [currency, currencyFineStep, sliderMaxLocalValue, maxAmountUSD]
   );
-  const openManual = useCallback(() => {
-    setManualVisible(true);
-    setManualError("");
-    setManualValue("");
-  }, []);
+  const computeValueFromTouch = useCallback(
+    (locationY) => {
+      if (!Number.isFinite(locationY) || trackHeight <= 0) {
+        return sliderValueRef.current;
+      }
+      const clamped = Math.max(0, Math.min(trackHeight, locationY));
+      const normalized = 1 - clamped / trackHeight;
+      return computeSteppedValue(normalized);
+    },
+    [computeSteppedValue, sliderValueRef, trackHeight]
+  );
+  const updateSliderValue = useCallback(
+    (value, { force = false } = {}) => {
+      const clamped = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+      sliderValueRef.current = clamped;
+      const now = Date.now();
+      if (force) {
+        sliderValueCommitRef.current = clamped;
+        sliderValueThrottleRef.current = now;
+        setSliderValue(clamped);
+        return clamped;
+      }
+      const diff = Math.abs(clamped - sliderValueCommitRef.current);
+      if (diff < COIN_SLIDER_VALUE_DEADBAND && now - sliderValueThrottleRef.current < COIN_SLIDER_STATE_MIN_INTERVAL) {
+        return sliderValueCommitRef.current;
+      }
+      const smoothing = 0.35;
+      const smoothed = sliderValueCommitRef.current + (clamped - sliderValueCommitRef.current) * smoothing;
+      sliderValueCommitRef.current = smoothed;
+      sliderValueThrottleRef.current = now;
+      setSliderValue(smoothed);
+      return smoothed;
+    },
+    []
+  );
+  const openManual = useCallback(
+    (mode) => {
+      setManualMode(mode);
+      setManualError("");
+      if (mode === "amount") {
+        const formatted = sliderLocalValue > 0 ? formatNumberInputValue(sliderLocalValue) : "";
+        setManualValue(formatted);
+      } else {
+        setManualValue("");
+      }
+    },
+    [sliderLocalValue]
+  );
   const closeManual = useCallback(() => {
-    setManualVisible(false);
+    setManualMode(null);
     setManualError("");
   }, []);
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
-        onPanResponderGrant: () => {
-          dragStartRef.current = sliderValue;
-          sliderValueRef.current = sliderValue;
-          horizontalLockRef.current = false;
+        onPanResponderGrant: (evt) => {
+          sliderGestureRef.current = {
+            axis: "vertical",
+          };
+          const touchY = evt.nativeEvent?.locationY;
+          if (Number.isFinite(touchY)) {
+            const nextValue = computeValueFromTouch(touchY);
+            if (Math.abs(nextValue - sliderValueRef.current) >= COIN_SLIDER_VALUE_DEADBAND) {
+              const applied = updateSliderValue(nextValue, { force: true });
+              hapticStepRef.current = Math.round(applied * 20);
+            }
+          }
           touchStartRef.current = Date.now();
+          directionAnim.stopAnimation();
+          directionAnim.setValue(0);
         },
-        onPanResponderMove: (_, gesture) => {
+        onPanResponderMove: (evt, gesture) => {
+          if (tossingRef.current) return;
           if (trackHeight <= 0) return;
-          if (!horizontalLockRef.current) {
-            const delta = -gesture.dy / trackHeight;
-            const rawValue = dragStartRef.current + delta;
-            const nextValue = computeSteppedValue(rawValue, gesture.vy);
-            if (Math.abs(nextValue - sliderValueRef.current) > 0.001) {
-              sliderValueRef.current = nextValue;
-              setSliderValue(nextValue);
-              const nextStep = Math.round(nextValue * 20);
+          const state = sliderGestureRef.current;
+          const absDx = Math.abs(gesture.dx);
+          const absDy = Math.abs(gesture.dy);
+          if (
+            state.axis !== "horizontal" &&
+            absDx >= COIN_SLIDER_HORIZONTAL_ACTIVATION &&
+            absDx > absDy + COIN_SLIDER_AXIS_BUFFER
+          ) {
+            state.axis = "horizontal";
+          }
+          if (state.axis === "vertical") {
+            const touchY = evt.nativeEvent?.locationY;
+            const nextValue = computeValueFromTouch(touchY);
+            if (Math.abs(nextValue - sliderValueRef.current) >= COIN_SLIDER_VALUE_DEADBAND) {
+              const applied = updateSliderValue(nextValue);
+              const nextStep = Math.round(applied * 20);
               if (nextStep !== hapticStepRef.current) {
-                triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+                const now = Date.now();
+                if (now - sliderHapticCooldownRef.current >= COIN_SLIDER_HAPTIC_COOLDOWN_MS) {
+                  triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+                  sliderHapticCooldownRef.current = now;
+                }
                 hapticStepRef.current = nextStep;
               }
             }
-            if (Math.abs(gesture.dx) > COIN_SLIDER_HORIZONTAL_LOCK_THRESHOLD) {
-              horizontalLockRef.current = true;
-              dragStartRef.current = sliderValueRef.current;
-            }
+            directionAnim.setValue(0);
+          } else if (state.axis === "horizontal") {
+            const normalizedDx = Math.max(
+              -1,
+              Math.min(1, gesture.dx / COIN_SLIDER_HORIZONTAL_DISTANCE)
+            );
+            directionAnim.setValue(normalizedDx);
+          } else {
+            directionAnim.setValue(0);
           }
-          const normalizedDx = Math.max(-1, Math.min(1, gesture.dx / 120));
-          directionAnim.setValue(normalizedDx);
         },
         onPanResponderRelease: (_, gesture) => {
-          horizontalLockRef.current = false;
           const elapsed = Date.now() - (touchStartRef.current || 0);
           const isTap =
             Math.abs(gesture.dx) < 6 && Math.abs(gesture.dy) < 6 && elapsed < 200 && !tossingRef.current;
-          if (isTap) {
+          const axis = sliderGestureRef.current.axis === "horizontal" ? "horizontal" : "vertical";
+          sliderGestureRef.current = {
+            axis: "pending",
+          };
+          const tossed = !isTap && finalizeSwipe(gesture.dx || 0, axis);
+          if (isTap || !tossed) {
             Animated.spring(directionAnim, {
               toValue: 0,
               useNativeDriver: false,
               speed: 10,
               bounciness: 8,
             }).start();
-            openManual();
-            return;
           }
-          const tossed = finalizeSwipe(gesture.dx);
-          if (!tossed) {
-            Animated.spring(directionAnim, {
-              toValue: 0,
-              useNativeDriver: false,
-              speed: 10,
-              bounciness: 8,
-            }).start();
+          if (isTap) {
+            openManual("amount");
           }
         },
         onPanResponderTerminate: () => {
-          horizontalLockRef.current = false;
+          sliderGestureRef.current = {
+            axis: "pending",
+          };
           if (tossingRef.current) return;
           Animated.spring(directionAnim, {
             toValue: 0,
@@ -23006,7 +23089,7 @@ function CoinEntryModal({
           }).start();
         },
       }),
-    [computeSteppedValue, directionAnim, finalizeSwipe, openManual, trackHeight]
+    [computeValueFromTouch, directionAnim, finalizeSwipe, openManual, trackHeight, updateSliderValue]
   );
   const handleManualSave = () => {
     const parsed = parseNumberInputValue(manualValue);
@@ -23014,7 +23097,27 @@ function CoinEntryModal({
       setManualError(t("coinEntryManualError"));
       return;
     }
-    const roundedLocal = roundCurrencyValue(parsed, currency);
+    const roundedLocal = snapCurrencyValue(parsed, currency);
+    if (manualIsAmountMode) {
+      if (!Number.isFinite(maxAmountUSD) || maxAmountUSD <= 0) {
+        setManualError(t("coinEntryManualError"));
+        return;
+      }
+      const limitedLocal = Math.max(0, Math.min(sliderMaxLocalValue, roundedLocal));
+      const parsedUSD = convertFromCurrency(limitedLocal, currency);
+      if (!Number.isFinite(parsedUSD)) {
+        setManualError(t("coinEntryManualError"));
+        return;
+      }
+      const normalized = Math.max(0, Math.min(1, parsedUSD / maxAmountUSD));
+      updateSliderValue(normalized, { force: true });
+      hapticStepRef.current = Math.round(normalized * 20);
+      sliderGestureRef.current = {
+        axis: "pending",
+      };
+      closeManual();
+      return;
+    }
     const parsedUSD = convertFromCurrency(roundedLocal, currency);
     if (!Number.isFinite(parsedUSD) || parsedUSD <= 0) {
       setManualError(t("coinEntryManualError"));
@@ -23024,7 +23127,10 @@ function CoinEntryModal({
     closeManual();
   };
   const categoryLabelKey = language === "ru" ? "ru" : "en";
-  const renderManualPlaceholder = t("coinEntryManualPlaceholder", { amount: sliderMaxLocal });
+  const manualTitle = manualIsAmountMode ? t("coinEntryManualAmountTitle") : t("coinEntryManualTitle");
+  const manualPlaceholder = manualIsAmountMode
+    ? t("coinEntryManualAmountPlaceholder", { amount: sliderAmountLocal })
+    : t("coinEntryManualPlaceholder", { amount: sliderMaxLocal });
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
       <TouchableWithoutFeedback onPress={onCancel}>
@@ -23049,9 +23155,14 @@ function CoinEntryModal({
               </View>
               <View style={styles.coinEntryAmountRow}>
                 <Text style={[styles.coinEntryAmount, { color: colors.text }]}>{sliderAmountLocal}</Text>
-                <Text style={[styles.coinEntryMaxLabel, { color: colors.muted }]}>
-                  {sliderMaxLocal}
-                </Text>
+                <TouchableOpacity
+                  onPress={() => openManual("max")}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={[styles.coinEntryMaxLabel, { color: colors.muted }]}>
+                    {sliderMaxLocal}
+                  </Text>
+                </TouchableOpacity>
               </View>
               <View style={styles.coinSliderWrapper}>
                 <Animated.View style={[styles.coinSliderBackdrop, { backgroundColor: sliderBackground }]} />
@@ -23135,15 +23246,6 @@ function CoinEntryModal({
                   );
                 })}
               </View>
-              <TouchableOpacity
-                onPress={openManual}
-                style={[
-                  styles.coinEntryManualFab,
-                  { backgroundColor: colors.card, borderColor: colors.border },
-                ]}
-              >
-                <Text style={[styles.coinEntryManualFabText, { color: colors.text }]}>•••</Text>
-              </TouchableOpacity>
             </View>
           </TouchableWithoutFeedback>
         </View>
@@ -23160,11 +23262,11 @@ function CoinEntryModal({
                   ]}
                 >
                   <Text style={[styles.coinEntryManualTitle, { color: colors.text }]}>
-                    {t("coinEntryManualTitle")}
+                    {manualTitle}
                   </Text>
                   <TextInput
                     style={[styles.coinEntryManualInput, { color: colors.text, borderColor: colors.border }]}
-                    placeholder={renderManualPlaceholder}
+                    placeholder={manualPlaceholder}
                     placeholderTextColor={colors.muted}
                     keyboardType="numeric"
                     value={manualValue}
