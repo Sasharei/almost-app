@@ -25,6 +25,8 @@ import {
   UIManager,
   StatusBar as RNStatusBar,
   AppState,
+  Share,
+  ActionSheetIOS,
 } from "react-native";
 import Svg, { Circle as SvgCircle, Defs, Mask, Rect as SvgRect } from "react-native-svg";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -33,6 +35,7 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import * as NavigationBar from "expo-navigation-bar";
+import * as FileSystem from "expo-file-system";
 import { StatusBar } from "expo-status-bar";
 import {
   useFonts,
@@ -46,6 +49,7 @@ import {
 } from "@expo-google-fonts/inter";
 import Sentry, { initSentry } from "./sentry";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
+import ViewShot, { captureRef as captureViewShotRef } from "react-native-view-shot";
 import {
   initAnalytics,
   logEvent,
@@ -55,6 +59,23 @@ import {
 } from "./analytics";
 import { SavingsProvider, useRealSavedAmount } from "./src/hooks/useRealSavedAmount";
 import { useSavingsSimulation } from "./src/hooks/useSavingsSimulation";
+
+let StoreReview = null;
+try {
+  // Optional native module – older builds might not include it.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  StoreReview = require("expo-store-review");
+} catch (error) {
+  console.warn("StoreReview unavailable", error);
+}
+let Sharing = null;
+try {
+  // Optional: module might be missing on some builds (e.g. Expo Go).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  Sharing = require("expo-sharing");
+} catch (error) {
+  console.warn("Sharing unavailable", error);
+}
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -110,10 +131,12 @@ const STORAGE_KEYS = {
   DESCRIPTION_OVERRIDES: "@almost_description_overrides",
   FOCUS_DIGEST_PENDING: "@almost_focus_digest_pending",
   TAMAGOTCHI_SKIN: "@almost_tamagotchi_skin",
+  TAMAGOTCHI_SKINS_UNLOCKED: "@almost_tamagotchi_skins_unlocked",
   SAVED_TOTAL_PEAK: "@almost_saved_total_peak",
   ACTIVE_GOAL: "@almost_active_goal",
   COIN_SLIDER_MAX: "@almost_coin_slider_max",
   FAB_TUTORIAL: "@almost_fab_tutorial",
+  RATING_PROMPT: "@almost_rating_prompt",
 };
 
 const PURCHASE_GOAL = 20000;
@@ -248,6 +271,7 @@ const TAMAGOTCHI_SKINS = TAMAGOTCHI_SKIN_OPTIONS.reduce((acc, skin) => {
   return acc;
 }, {});
 const DEFAULT_TAMAGOTCHI_SKIN = "classic";
+const SUPPORT_EMAIL = "almostappsup@gmail.com";
 const HEALTH_COIN_TIERS = [
   { id: "green", value: 1, asset: require("./assets/coins/Coin_green.png") },
   { id: "blue", value: 10, asset: require("./assets/coins/Coin_blue.png") },
@@ -295,8 +319,15 @@ const SMART_REMINDER_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const SMART_REMINDER_LIMIT = 40;
 const DAILY_NUDGE_REMINDERS = [
   { id: "morning", hour: 9, minute: 0, titleKey: "dailyNudgeMorningTitle", bodyKey: "dailyNudgeMorningBody" },
-  { id: "daytime", hour: 14, minute: 0, titleKey: "dailyNudgeDayTitle", bodyKey: "dailyNudgeDayBody" },
-  { id: "evening", hour: 20, minute: 0, titleKey: "dailyNudgeEveningTitle", bodyKey: "dailyNudgeEveningBody" },
+  { id: "daytime", hour: 12, minute: 30, titleKey: "dailyNudgeDayTitle", bodyKey: "dailyNudgeDayBody" },
+  {
+    id: "afternoon",
+    hour: 15,
+    minute: 30,
+    titleKey: "dailyNudgeAfternoonTitle",
+    bodyKey: "dailyNudgeAfternoonBody",
+  },
+  { id: "evening", hour: 19, minute: 0, titleKey: "dailyNudgeEveningTitle", bodyKey: "dailyNudgeEveningBody" },
 ];
 const ANDROID_DAILY_NUDGE_CHANNEL_ID = "daily-nudges";
 const DAILY_CHALLENGE_MIN_SPEND_EVENTS = 2;
@@ -397,6 +428,7 @@ const buildDailyNudgeTrigger = (hour, minute) => {
   }
   return { hour, minute, second: 0, repeats: true };
 };
+
 
 const normalizeSmartReminderEntries = (list) => {
   const now = Date.now();
@@ -580,7 +612,9 @@ const COIN_SLIDER_AXIS_BUFFER = 6;
 const COIN_SLIDER_HORIZONTAL_DISTANCE = 120;
 const COIN_SLIDER_SIZE = 220;
 const COIN_SLIDER_MIN_DELTA = 0.00001;
-const COIN_SLIDER_VALUE_DEADBAND = 0.01;
+const COIN_SLIDER_VALUE_DEADBAND = 0.008;
+const COIN_SLIDER_COMMIT_DEADBAND =
+  Platform.OS === "android" ? 0.02 : COIN_SLIDER_VALUE_DEADBAND;
 const COIN_SLIDER_STATE_MIN_INTERVAL = 16;
 const COIN_SLIDER_HAPTIC_COOLDOWN_MS = 80;
 const COIN_FILL_MIN_HEIGHT = 12;
@@ -612,6 +646,21 @@ const DELETE_SWIPE_THRESHOLD = 130;
 const CHALLENGE_SWIPE_ACTION_WIDTH = 120;
 const BASELINE_SAMPLE_USD = 120;
 const CUSTOM_SPEND_SAMPLE_USD = 7.5;
+const RATING_PROMPT_DELAY_DAYS = 2; // show on the third calendar day (after two full days)
+const ANDROID_REVIEW_URL = "market://details?id=com.sasarei.almostclean";
+const ANDROID_REVIEW_WEB_URL = "https://play.google.com/store/apps/details?id=com.sasarei.almostclean";
+const LEVEL_SHARE_CAT = require("./assets/Cat_mascot.png");
+const LEVEL_SHARE_LOGO = require("./assets/Almost_icon.png");
+const LEVEL_SHARE_ACCENT = "#FFB347";
+const LEVEL_SHARE_BG = "#050C1A";
+const LEVEL_SHARE_MUTED = "rgba(255,255,255,0.65)";
+const createInitialRatingPromptState = () => ({
+  firstOpenAt: new Date().toISOString(),
+  completed: false,
+  lastShownAt: null,
+  lastAction: null,
+  respondedAt: null,
+});
 
 const getDayKey = (date) => {
   const d = new Date(date);
@@ -2399,8 +2448,13 @@ const TRANSLATIONS = {
     appTagline: "Витрина искушений которая помогает копить",
     tamagotchiHungryBubble: "🐟",
     tamagotchiSkinTitle: "Образ Алми",
-    tamagotchiSkinSubtitle: "Выбери новый окрас — пока бесплатно",
+    tamagotchiSkinSubtitle: "Новый стиль Алми мотивирует экономить по-новому",
     tamagotchiSkinCurrent: "Активно",
+    tamagotchiSkinUnlockTitle: "Almost только запустился 🚀",
+    tamagotchiSkinUnlockDescription:
+      "Помоги нам стать лучше: отправь отзыв на {{email}} и разблокируй все образы.",
+    tamagotchiSkinUnlockButton: "Написать отзыв и открыть скины",
+    tamagotchiSkinLockedBadge: "Закрыто",
     heroAwaiting: "В листе желаний",
     heroSpendLine: {
       female: "Последняя экономия: «{{title}}».",
@@ -2602,6 +2656,23 @@ const TRANSLATIONS = {
     privacyPolicyHint: "Откроем документ в браузере.",
     supportLink: "Поддержка",
     supportHint: "almostappsup@gmail.com",
+    ratingPromptTitle: "Оцени Almost в сторе",
+    ratingPromptBody: "Если Almost помогает держать импульсы под контролем, поставь оценку — это очень поддержит команду.",
+    ratingPromptLater: "Позже",
+    ratingPromptAction: "Оценить",
+    levelShareButton: "Поделиться уровнем",
+    levelShareModalTitle: "Новый уровень!",
+    levelShareModalCaption: "Скринь карточку и отправляй друзьям",
+    levelShareModalShare: "Делиться картинкой",
+    levelShareModalClose: "Закрыть",
+    levelShareError: "Не удалось поделиться. Попробуй позже.",
+    levelShareShareMessage: "Я на уровне {{level}} в Almost. Присоединяйся к осознанным тратам!",
+    levelShareCardBadge: "ALMOST HERO",
+    levelShareCardTitle: "Уровень {{level}}",
+    levelShareCardSubtitle: "Алми радуется моему прогрессу",
+    levelShareJoin: "Присоединяйся к осознанным расходам",
+    levelShareFooterBrand: "Almost",
+    levelShareFooterHint: "APP",
     historyWishAdded: "Добавлена хотелка: {{title}}",
     historyWishProgress: "Прогресс по «{{title}}»: {{amount}} из {{target}}",
     historyWishDone: "Цель достигнута: {{title}}",
@@ -2846,8 +2917,17 @@ const TRANSLATIONS = {
     customSpendFrequencyPlaceholder: "Например 4",
     customSpendHint: "Это всегда можно поменять в профиле.",
     customSpendSkip: "Пропустить",
-    smartReminderTitle: "Пауза перед «{{temptation}}»",
-    smartReminderBody: "Ты решил копить вместо «{{temptation}}». Хочешь удержать фокус?",
+    smartReminderTitle: [
+      "Пауза перед «{{temptation}}»",
+      "«{{temptation}}» может подождать",
+      "Сохрани фокус — «{{temptation}}» под контролем",
+    ],
+    smartReminderBody: [
+      "Ты решил копить вместо «{{temptation}}». Хочешь удержать фокус?",
+      "Сделай вдох перед «{{temptation}}» и направь деньги в цель.",
+      "Отложи «{{temptation}}» ещё немного — так цель ближе.",
+      "Напоминание: отказ от «{{temptation}}» держит прогресс стабильным.",
+    ],
     smartInsightDeclineTitle: {
       female: "Вчера ты отказалась от «{{temptation}}»",
       male: "Вчера ты отказался от «{{temptation}}»",
@@ -2860,12 +2940,26 @@ const TRANSLATIONS = {
       none: "Вчера «{{temptation}}» победило",
     },
     smartInsightSpendBody: "Сегодня попробуй устоять, и копилка вырастет.",
-    dailyNudgeMorningTitle: "Утро для осознанности",
-    dailyNudgeMorningBody: "Задай тон дню: обходи импульсы стороной.",
-    dailyNudgeDayTitle: "Днём легко сорваться",
-    dailyNudgeDayBody: "Перед покупкой просто сделай паузу и вспомни, ради чего копишь.",
-    dailyNudgeEveningTitle: "Вечером искушения сильнее",
-    dailyNudgeEveningBody: "Вечером особенно тянет тратить, но лучше держаться плана.",
+    dailyNudgeMorningTitle: ["Утро для осознанности", "Начни день с паузы"],
+    dailyNudgeMorningBody: [
+      "Задай тон дню: обходи импульсы стороной.",
+      "Первое решение дня пусть будет осознанным.",
+    ],
+    dailyNudgeDayTitle: ["Днём легко сорваться", "Середина дня — проверка фокуса"],
+    dailyNudgeDayBody: [
+      "Перед покупкой просто сделай паузу и вспомни, ради чего копишь.",
+      "В середине дня спроси себя, поддержит ли эта трата твою цель.",
+    ],
+    dailyNudgeAfternoonTitle: ["После обеда держим курс", "Дневной тормоз для импульсов"],
+    dailyNudgeAfternoonBody: [
+      "Сделай чек-ин: нет ли автоматической покупки?",
+      "Пятиминутное ожидание сейчас усиливает твою копилку.",
+    ],
+    dailyNudgeEveningTitle: ["Вечером искушения сильнее", "Закрой день осознанностью"],
+    dailyNudgeEveningBody: [
+      "Вечером особенно тянет тратить, но лучше держаться плана.",
+      "Перед сном отметь победу над импульсом — даже маленькую.",
+    ],
     baselineTitle: "Сколько уходит на мелкие импульсы?",
     baselineSubtitle: "Прикинь месячную сумму - Almost сравнит её с реальными победами.",
     baselinePlaceholder: "Например {{amount}}",
@@ -2952,8 +3046,13 @@ const TRANSLATIONS = {
     appTagline: "An offline temptation board that keeps savings safe",
     tamagotchiHungryBubble: "🐟",
     tamagotchiSkinTitle: "Almi skins",
-    tamagotchiSkinSubtitle: "Pick any colorway you like — it’s free",
+    tamagotchiSkinSubtitle: "A new vibe for Almi keeps your savings fresh",
     tamagotchiSkinCurrent: "Selected",
+    tamagotchiSkinUnlockTitle: "Almost just launched 🚀",
+    tamagotchiSkinUnlockDescription:
+      "Help us get better: send feedback to {{email}} and unlock every skin.",
+    tamagotchiSkinUnlockButton: "Send feedback & unlock skins",
+    tamagotchiSkinLockedBadge: "Locked",
     heroAwaiting: "On the wish list",
     heroSpendLine: {
       female: "Latest save: “{{title}}”.",
@@ -3155,6 +3254,23 @@ const TRANSLATIONS = {
     privacyPolicyHint: "Opens in your browser.",
     supportLink: "Contact support",
     supportHint: "almostappsup@gmail.com",
+    ratingPromptTitle: "Enjoying Almost?",
+    ratingPromptBody: "If it helps tame impulse buys, leave a quick store review — it keeps the team motivated.",
+    ratingPromptLater: "Maybe later",
+    ratingPromptAction: "Rate Almost",
+    levelShareButton: "Share level",
+    levelShareModalTitle: "Level unlocked!",
+    levelShareModalCaption: "Grab this card and hype your win",
+    levelShareModalShare: "Share this card",
+    levelShareModalClose: "Close",
+    levelShareError: "Couldn’t share this time. Try again later.",
+    levelShareShareMessage: "I'm already level {{level}} in Almost. Join the mindful crew!",
+    levelShareCardBadge: "ALMOST HERO",
+    levelShareCardTitle: "Level {{level}}",
+    levelShareCardSubtitle: "Almi is cheering for me",
+    levelShareJoin: "Join mindful spenders",
+    levelShareFooterBrand: "Almost",
+    levelShareFooterHint: "APP",
     historyWishAdded: "Wish added: {{title}}",
     historyWishProgress: "Progress “{{title}}”: {{amount}} of {{target}}",
     historyWishDone: "Goal completed: {{title}}",
@@ -3376,18 +3492,41 @@ const TRANSLATIONS = {
     customSpendFrequencyPlaceholder: "E.g. 4",
     customSpendHint: "You can change this anytime in the profile.",
     customSpendSkip: "Skip for now",
-    smartReminderTitle: "Pause before “{{temptation}}”",
-    smartReminderBody: "You planned to save instead of “{{temptation}}”. Stay on track?",
+    smartReminderTitle: [
+      "Pause before “{{temptation}}”",
+      "“{{temptation}}” can wait a bit",
+      "Stay focused — “{{temptation}}” under control",
+    ],
+    smartReminderBody: [
+      "You planned to save instead of “{{temptation}}”. Stay on track?",
+      "Take a breath before “{{temptation}}” and channel it into your goal.",
+      "Skip “{{temptation}}” again — future-you will smile.",
+      "A tiny pause from “{{temptation}}” keeps the momentum going.",
+    ],
     smartInsightDeclineTitle: "You skipped “{{temptation}}” yesterday",
     smartInsightDeclineBody: "Say no again today and keep the streak alive.",
     smartInsightSpendTitle: "You gave in to “{{temptation}}” yesterday",
     smartInsightSpendBody: "Try to hold the line today and your savings will thank you.",
-    dailyNudgeMorningTitle: "Morning check-in",
-    dailyNudgeMorningBody: "Set the tone for the day: steer past quick splurges.",
-    dailyNudgeDayTitle: "Midday impulse guard",
-    dailyNudgeDayBody: "Before you tap “buy”, pause and remember the goal.",
-    dailyNudgeEveningTitle: "Evenings tempt the most",
-    dailyNudgeEveningBody: "Evening is prime impulse time, so hold back and let savings win.",
+    dailyNudgeMorningTitle: ["Morning check-in", "Start mindful today"],
+    dailyNudgeMorningBody: [
+      "Set the tone for the day: steer past quick splurges.",
+      "One calm decision now keeps the rest of the day lighter.",
+    ],
+    dailyNudgeDayTitle: ["Midday impulse guard", "Afternoon focus boost"],
+    dailyNudgeDayBody: [
+      "Before you tap “buy”, pause and remember the goal.",
+      "Midday is perfect for a quick “does this help my plan?” check.",
+    ],
+    dailyNudgeAfternoonTitle: ["Post-lunch reset", "Midday pause reminder"],
+    dailyNudgeAfternoonBody: [
+      "Scan for auto-purchases before they happen.",
+      "Five mindful minutes after lunch protect your savings.",
+    ],
+    dailyNudgeEveningTitle: ["Evenings tempt the most", "Wrap the day with intention"],
+    dailyNudgeEveningBody: [
+      "Evening is prime impulse time, so hold back and let savings win.",
+      "Log one tiny win tonight to end the day strong.",
+    ],
     baselineTitle: "How much slips on small stuff?",
     baselineSubtitle: "Estimate one month of coffees, snacks and impulse buys to compare with real wins.",
     baselinePlaceholder: "E.g. {{amount}}",
@@ -8798,7 +8937,7 @@ function ProfileScreen({
   }, [language]);
   const handleSupportPress = useCallback(() => {
     triggerHaptic();
-    Linking.openURL("mailto:almostappsup@gmail.com").catch((error) => console.warn("support mail", error));
+    Linking.openURL(`mailto:${SUPPORT_EMAIL}`).catch((error) => console.warn("support mail", error));
   }, []);
   return (
     <View style={[styles.container, { backgroundColor: colors.background }] }>
@@ -9382,6 +9521,14 @@ function AppContent() {
   const [tutorialSeen, setTutorialSeen] = useState(true);
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
+  const [ratingPromptState, setRatingPromptState] = useState(() => createInitialRatingPromptState());
+  const [ratingPromptHydrated, setRatingPromptHydrated] = useState(false);
+  const [ratingPromptVisible, setRatingPromptVisible] = useState(false);
+  const ratingPromptCompleted = ratingPromptState.completed;
+  const ratingPromptFirstOpenAt = ratingPromptState.firstOpenAt;
+  const [levelShareModal, setLevelShareModal] = useState({ visible: false, level: 1 });
+  const [levelShareSharing, setLevelShareSharing] = useState(false);
+  const levelShareCardRef = useRef(null);
   const [tabHintsSeen, setTabHintsSeen] = useState(DEFAULT_TAB_HINTS_STATE);
   const [tabHintsHydrated, setTabHintsHydrated] = useState(false);
   const [tabHintVisible, setTabHintVisible] = useState(null);
@@ -9444,6 +9591,170 @@ function AppContent() {
     },
     [logEvent, setFabTutorialStateAndPersist]
   );
+  const updateRatingPromptState = useCallback((updater) => {
+    setRatingPromptState((prev) => {
+      const nextState = typeof updater === "function" ? updater(prev) : updater;
+      AsyncStorage.setItem(STORAGE_KEYS.RATING_PROMPT, JSON.stringify(nextState)).catch(() => {});
+      return nextState;
+    });
+  }, []);
+  const triggerStoreReview = useCallback(async () => {
+    try {
+      if (StoreReview && typeof StoreReview.isAvailableAsync === "function") {
+        const available = await StoreReview.isAvailableAsync();
+        if (available && typeof StoreReview.requestReview === "function") {
+          StoreReview.requestReview();
+          return;
+        }
+      }
+    } catch (error) {
+      console.warn("store review prompt", error);
+    }
+    if (Platform.OS !== "android") return;
+    try {
+      const canOpen = await Linking.canOpenURL(ANDROID_REVIEW_URL);
+      if (canOpen) {
+        await Linking.openURL(ANDROID_REVIEW_URL);
+        return;
+      }
+    } catch (error) {
+      console.warn("android review intent", error);
+    }
+    Linking.openURL(ANDROID_REVIEW_WEB_URL).catch(() => {});
+  }, []);
+  const handleRatingPromptLater = useCallback(() => {
+    setRatingPromptVisible(false);
+    const respondedAt = new Date().toISOString();
+    updateRatingPromptState((prev) => ({
+      ...prev,
+      completed: true,
+      lastAction: "later",
+      respondedAt,
+    }));
+    logEvent("rating_prompt_action", { action: "later" });
+  }, [logEvent, updateRatingPromptState]);
+  const handleRatingPromptConfirm = useCallback(() => {
+    setRatingPromptVisible(false);
+    const respondedAt = new Date().toISOString();
+    updateRatingPromptState((prev) => ({
+      ...prev,
+      completed: true,
+      lastAction: "rate",
+      respondedAt,
+    }));
+    logEvent("rating_prompt_action", { action: "rate" });
+    triggerStoreReview();
+  }, [logEvent, triggerStoreReview, updateRatingPromptState]);
+  const openLevelShareModal = useCallback(
+    (level = 1) => {
+      setLevelShareModal({ visible: true, level });
+      logEvent("level_share_opened", { level });
+    },
+    [logEvent]
+  );
+  const closeLevelShareModal = useCallback(() => {
+    setLevelShareModal((prev) => ({ ...prev, visible: false }));
+  }, []);
+  const handleLevelSharePress = useCallback(
+    (level) => {
+      dismissOverlay();
+      openLevelShareModal(level);
+    },
+    [dismissOverlay, openLevelShareModal]
+  );
+  const handleLevelShareConfirm = useCallback(async () => {
+    if (!levelShareCardRef.current || levelShareSharing) return;
+    let cleanupUri = null;
+    try {
+      setLevelShareSharing(true);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      let sharingAvailable = false;
+      if (Sharing && typeof Sharing.isAvailableAsync === "function" && typeof Sharing.shareAsync === "function") {
+        try {
+          sharingAvailable = await Sharing.isAvailableAsync();
+        } catch (availabilityError) {
+          console.warn("sharing availability", availabilityError);
+          sharingAvailable = false;
+        }
+      }
+      const captureOptions = sharingAvailable
+        ? { format: "png", quality: 0.96, result: "tmpfile" }
+        : { format: "png", quality: 0.96, result: "base64" };
+      const captureResult = await captureViewShotRef(levelShareCardRef, captureOptions);
+      if (!captureResult) {
+        throw new Error("capture_failed");
+      }
+      let normalizedUri = captureResult;
+      if (captureOptions.result === "base64") {
+        const baseDir = FileSystem.cacheDirectory || FileSystem.documentDirectory || "";
+        const targetUri = `${baseDir}almost-level-share-${Date.now()}.png`;
+        await FileSystem.writeAsStringAsync(targetUri, captureResult, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        normalizedUri = targetUri.startsWith("file://") ? targetUri : `file://${targetUri}`;
+      } else if (!normalizedUri.startsWith("file://")) {
+        normalizedUri = `file://${normalizedUri}`;
+      }
+      cleanupUri = normalizedUri;
+      const shareTitle = `${t("levelShareModalTitle")} · ${t("levelShareFooterBrand")}`;
+      const message = t("levelShareShareMessage", { level: levelShareModal.level });
+      let sharedSuccessfully = false;
+      if (sharingAvailable) {
+        try {
+          await Sharing.shareAsync(normalizedUri, {
+            dialogTitle: shareTitle,
+            mimeType: "image/png",
+            UTI: "public.png",
+          });
+          sharedSuccessfully = true;
+        } catch (sharingError) {
+          console.warn("expo sharing failed", sharingError);
+        }
+      }
+      if (!sharedSuccessfully) {
+        if (Platform.OS === "ios" && ActionSheetIOS && typeof ActionSheetIOS.showShareActionSheetWithOptions === "function") {
+          await new Promise((resolve, reject) => {
+            ActionSheetIOS.showShareActionSheetWithOptions(
+              {
+                url: normalizedUri,
+                subject: shareTitle,
+              },
+              (error) => {
+                if (error) {
+                  reject(error);
+                } else {
+                  resolve();
+                }
+              },
+              () => resolve()
+            );
+          });
+        } else {
+          let fallbackUri = normalizedUri;
+          if (Platform.OS === "android" && typeof FileSystem.getContentUriAsync === "function") {
+            fallbackUri = await FileSystem.getContentUriAsync(normalizedUri);
+          }
+          await Share.share({
+            url: fallbackUri,
+            message,
+            subject: Platform.OS === "ios" ? shareTitle : undefined,
+          });
+        }
+      }
+      logEvent("level_share_sent", { level: levelShareModal.level });
+      closeLevelShareModal();
+    } catch (error) {
+      console.warn("level share", error);
+      Alert.alert(t("levelShareModalTitle"), t("levelShareError") || "Не удалось поделиться. Попробуй позже.");
+    } finally {
+      if (cleanupUri) {
+        setTimeout(() => {
+          FileSystem.deleteAsync(cleanupUri, { idempotent: true }).catch(() => {});
+        }, 3500);
+      }
+      setLevelShareSharing(false);
+    }
+  }, [closeLevelShareModal, levelShareModal.level, levelShareSharing, logEvent, t]);
   const clearCompletedPrimaryGoal = useCallback(
     (goalId) => {
       if (!goalId) return;
@@ -9505,11 +9816,14 @@ function AppContent() {
   const [tamagotchiVisible, setTamagotchiVisible] = useState(false);
   const [tamagotchiSkinId, setTamagotchiSkinId] = useState(DEFAULT_TAMAGOTCHI_SKIN);
   const [tamagotchiSkinHydrated, setTamagotchiSkinHydrated] = useState(false);
+  const [tamagotchiSkinsUnlocked, setTamagotchiSkinsUnlocked] = useState(false);
+  const [tamagotchiSkinsUnlockHydrated, setTamagotchiSkinsUnlockHydrated] = useState(false);
   const [skinPickerVisible, setSkinPickerVisible] = useState(false);
   const tamagotchiSkin =
     TAMAGOTCHI_SKINS[tamagotchiSkinId] || TAMAGOTCHI_SKINS[DEFAULT_TAMAGOTCHI_SKIN];
   const tamagotchiAnimations = tamagotchiSkin.animations;
   const tamagotchiAvatarSource = tamagotchiSkin.avatar;
+  const tamagotchiSkinsLocked = !tamagotchiSkinsUnlocked;
   const tamagotchiHydratedRef = useRef(false);
   const tamagotchiHungerPrevRef = useRef(
     Math.min(TAMAGOTCHI_MAX_HUNGER, Math.max(0, TAMAGOTCHI_START_STATE.hunger))
@@ -9551,12 +9865,30 @@ function AppContent() {
   const handleSkinSelect = useCallback(
     (skinId) => {
       if (!skinId || !TAMAGOTCHI_SKINS[skinId]) return;
+      if (!tamagotchiSkinsUnlocked && skinId !== DEFAULT_TAMAGOTCHI_SKIN) {
+        triggerHaptic();
+        return;
+      }
       setTamagotchiSkinId(skinId);
       setSkinPickerVisible(false);
       logEvent("tamagotchi_skin_selected", { skin_id: skinId });
     },
-    [logEvent]
+    [logEvent, tamagotchiSkinsUnlocked]
   );
+  const handleUnlockSkinsPress = useCallback(() => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    const subject = language === "ru" ? "Отзыв для Almost" : "Feedback for Almost";
+    const body =
+      language === "ru"
+        ? "Привет, Almost! Делюсь своими впечатлениями об приложении:\n\n"
+        : "Hi Almost team! Sharing my thoughts about the app:\n\n";
+    const mailLink = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(
+      body
+    )}`;
+    Linking.openURL(mailLink).catch((error) => console.warn("tamagotchi skin unlock mail", error));
+    setTamagotchiSkinsUnlocked(true);
+    logEvent("tamagotchi_skin_unlock_feedback", { method: "support_mail" });
+  }, [language, logEvent]);
   const [onboardingStep, setOnboardingStep] = useState("logo");
   const onboardingStepRef = useRef("logo");
   const onboardingHistoryRef = useRef([]);
@@ -9619,6 +9951,51 @@ function AppContent() {
     };
   }, []);
   useEffect(() => {
+    let mounted = true;
+    AsyncStorage.getItem(STORAGE_KEYS.RATING_PROMPT)
+      .then((raw) => {
+        if (!mounted) return;
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            const fallback = createInitialRatingPromptState();
+            const normalized = {
+              firstOpenAt: typeof parsed?.firstOpenAt === "string" ? parsed.firstOpenAt : fallback.firstOpenAt,
+              completed: Boolean(parsed?.completed),
+              lastShownAt: typeof parsed?.lastShownAt === "string" ? parsed.lastShownAt : null,
+              lastAction: typeof parsed?.lastAction === "string" ? parsed.lastAction : null,
+              respondedAt: typeof parsed?.respondedAt === "string" ? parsed.respondedAt : null,
+            };
+            setRatingPromptState(normalized);
+            const needsRewrite =
+              normalized.firstOpenAt !== parsed?.firstOpenAt ||
+              normalized.lastShownAt !== parsed?.lastShownAt ||
+              normalized.lastAction !== parsed?.lastAction ||
+              normalized.respondedAt !== parsed?.respondedAt ||
+              normalized.completed !== Boolean(parsed?.completed);
+            if (needsRewrite) {
+              AsyncStorage.setItem(STORAGE_KEYS.RATING_PROMPT, JSON.stringify(normalized)).catch(() => {});
+            }
+            return;
+          } catch (error) {
+            console.warn("rating prompt hydrate", error);
+          }
+        }
+        const initial = createInitialRatingPromptState();
+        setRatingPromptState(initial);
+        AsyncStorage.setItem(STORAGE_KEYS.RATING_PROMPT, JSON.stringify(initial)).catch(() => {});
+      })
+      .catch((error) => {
+        console.warn("rating prompt hydrate", error);
+      })
+      .finally(() => {
+        if (mounted) setRatingPromptHydrated(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  useEffect(() => {
     if (!tabHintsHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.TAB_HINTS, JSON.stringify(tabHintsSeen)).catch(() => {});
   }, [tabHintsSeen, tabHintsHydrated]);
@@ -9671,6 +10048,32 @@ function AppContent() {
     const subscription = AppState.addEventListener("change", handleAppStateChange);
     return () => subscription.remove();
   }, [beginHomeSession, pendingFocusDigest, tryLogHomeOpened]);
+  useEffect(() => {
+    if (!ratingPromptHydrated) return;
+    if (ratingPromptCompleted) return;
+    if (ratingPromptVisible) return;
+    if (onboardingStep !== "done") return;
+    const firstOpenDate = new Date(ratingPromptFirstOpenAt || "");
+    if (Number.isNaN(firstOpenDate.getTime())) return;
+    const daysElapsed = Math.floor((Date.now() - firstOpenDate.getTime()) / DAY_MS);
+    if (daysElapsed < RATING_PROMPT_DELAY_DAYS) return;
+    setRatingPromptVisible(true);
+    updateRatingPromptState((prev) => ({
+      ...prev,
+      lastShownAt: new Date().toISOString(),
+    }));
+  }, [
+    onboardingStep,
+    ratingPromptHydrated,
+    ratingPromptCompleted,
+    ratingPromptFirstOpenAt,
+    ratingPromptVisible,
+    updateRatingPromptState,
+  ]);
+  useEffect(() => {
+    if (!ratingPromptVisible) return;
+    logEvent("rating_prompt_shown");
+  }, [logEvent, ratingPromptVisible]);
   useEffect(() => {
     if (!focusStateHydrated) return;
     if (!focusTemplateId) {
@@ -9795,6 +10198,11 @@ function AppContent() {
       openFabMenu();
     }
   }, [closeFabMenu, fabMenuVisible, handleFabTutorialDismiss, openFabMenu, triggerHaptic]);
+  useEffect(() => {
+    if (activeTab === "profile" && fabMenuVisible) {
+      closeFabMenu();
+    }
+  }, [activeTab, closeFabMenu, fabMenuVisible]);
   const imagePickerResolver = useRef(null);
   const [refuseStats, setRefuseStats] = useState({});
   const [temptationInteractions, setTemptationInteractions] = useState({});
@@ -9954,7 +10362,7 @@ function AppContent() {
     return new Set(activeTutorialStep.tabs);
   }, [tutorialVisible, activeTutorialStep]);
   const fabOverlayColor = theme === "dark" ? "rgba(5,7,13,0.78)" : "rgba(5,7,13,0.55)";
-  const t = useCallback((key, replacements = {}) => {
+  const resolveTranslationValue = useCallback((key) => {
     let raw = TRANSLATIONS[language][key];
     if (raw && typeof raw === "object" && !Array.isArray(raw)) {
       const genderValue = raw[activeGender];
@@ -9967,16 +10375,46 @@ function AppContent() {
         raw = fallbackValue !== undefined ? fallbackValue : undefined;
       }
     }
-    let text = raw;
+    return raw;
+  }, [activeGender, language]);
+
+  const formatTranslationText = useCallback((value, replacements = {}) => {
+    let text = value;
     if (text === undefined || text === null) {
-      text = key;
+      text = "";
     }
     text = String(text);
-    Object.entries(replacements).forEach(([token, value]) => {
-      text = text.replace(`{{${token}}}`, value);
+    Object.entries(replacements).forEach(([token, tokenValue]) => {
+      text = text.replace(`{{${token}}}`, tokenValue);
     });
     return text;
-  }, [activeGender, language]);
+  }, []);
+
+  const t = useCallback(
+    (key, replacements = {}) => {
+      const resolved = resolveTranslationValue(key);
+      const base = Array.isArray(resolved) ? resolved[0] : resolved;
+      const fallback = base === undefined || base === null ? key : base;
+      return formatTranslationText(fallback, replacements);
+    },
+    [formatTranslationText, resolveTranslationValue]
+  );
+
+  const tVariant = useCallback(
+    (key, replacements = {}) => {
+      const resolved = resolveTranslationValue(key);
+      const pool = Array.isArray(resolved)
+        ? resolved.filter((value) => typeof value === "string" && value.trim().length > 0)
+        : typeof resolved === "string"
+        ? [resolved]
+        : [];
+      const pickSource = pool.length ? pool : [resolved ?? key];
+      const choice = pickSource[Math.floor(Math.random() * pickSource.length)] ?? key;
+      const fallback = choice === undefined || choice === null ? key : choice;
+      return formatTranslationText(fallback, replacements);
+    },
+    [formatTranslationText, resolveTranslationValue]
+  );
   const dailyChallengeDisplayTitle = useMemo(
     () =>
       dailyChallenge.templateLabel ||
@@ -10978,8 +11416,8 @@ function AppContent() {
       const frequency = Math.max(1, customSpend.frequencyPerWeek);
       const intervalDays = Math.max(1, Math.round(7 / frequency));
       const seconds = Math.max(6 * 60 * 60, intervalDays * 24 * 60 * 60);
-      const title = t("smartReminderTitle", { temptation: customSpend.title });
-      const body = t("smartReminderBody", { temptation: customSpend.title });
+      const title = tVariant("smartReminderTitle", { temptation: customSpend.title });
+      const body = tVariant("smartReminderBody", { temptation: customSpend.title });
       try {
         const id = await Notifications.scheduleNotificationAsync({
           content: { title, body },
@@ -10991,7 +11429,7 @@ function AppContent() {
         persistCustomReminderId(null);
       }
     },
-    [customReminderId, ensureNotificationPermission, persistCustomReminderId, t]
+    [customReminderId, ensureNotificationPermission, persistCustomReminderId, tVariant]
   );
 
   const rescheduleDailyNudgeNotifications = useCallback(async () => {
@@ -11013,8 +11451,8 @@ function AppContent() {
         if (!trigger) continue;
         const notificationId = await Notifications.scheduleNotificationAsync({
           content: {
-            title: t(def.titleKey),
-            body: t(def.bodyKey),
+            title: tVariant(def.titleKey),
+            body: tVariant(def.bodyKey),
             ...(Platform.OS === "android" ? { channelId: ANDROID_DAILY_NUDGE_CHANNEL_ID } : null),
           },
           trigger,
@@ -11025,12 +11463,12 @@ function AppContent() {
       }
     }
     setDailyNudgeNotificationIds(nextMap);
-  }, [dailyNudgesHydrated, ensureNotificationPermission, t]);
+  }, [dailyNudgesHydrated, ensureNotificationPermission, tVariant]);
 
   useEffect(() => {
     if (!dailyNudgesHydrated) return;
     rescheduleDailyNudgeNotifications();
-  }, [dailyNudgesHydrated, language, rescheduleDailyNudgeNotifications, t]);
+  }, [dailyNudgesHydrated, language, rescheduleDailyNudgeNotifications, tVariant]);
 
   const loadStoredData = async () => {
     let resolvedHealthPoints = null;
@@ -11077,6 +11515,7 @@ function AppContent() {
         focusDigestRaw,
         focusDigestPendingRaw,
         tamagotchiSkinRaw,
+        tamagotchiSkinsUnlockedRaw,
         savedPeakRaw,
         activeGoalRaw,
         coinSliderMaxRaw,
@@ -11123,6 +11562,7 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.FOCUS_DIGEST),
         AsyncStorage.getItem(STORAGE_KEYS.FOCUS_DIGEST_PENDING),
         AsyncStorage.getItem(STORAGE_KEYS.TAMAGOTCHI_SKIN),
+        AsyncStorage.getItem(STORAGE_KEYS.TAMAGOTCHI_SKINS_UNLOCKED),
         AsyncStorage.getItem(STORAGE_KEYS.SAVED_TOTAL_PEAK),
         AsyncStorage.getItem(STORAGE_KEYS.ACTIVE_GOAL),
         AsyncStorage.getItem(STORAGE_KEYS.COIN_SLIDER_MAX),
@@ -11389,7 +11829,14 @@ function AppContent() {
       } else {
         setPendingFocusDigest(null);
       }
-      if (tamagotchiSkinRaw && TAMAGOTCHI_SKINS[tamagotchiSkinRaw]) {
+      const skinsUnlocked = tamagotchiSkinsUnlockedRaw === "1";
+      setTamagotchiSkinsUnlocked(skinsUnlocked);
+      setTamagotchiSkinsUnlockHydrated(true);
+      if (
+        tamagotchiSkinRaw &&
+        TAMAGOTCHI_SKINS[tamagotchiSkinRaw] &&
+        (skinsUnlocked || tamagotchiSkinRaw === DEFAULT_TAMAGOTCHI_SKIN)
+      ) {
         setTamagotchiSkinId(tamagotchiSkinRaw);
       } else {
         setTamagotchiSkinId(DEFAULT_TAMAGOTCHI_SKIN);
@@ -11931,6 +12378,13 @@ function AppContent() {
     if (!tamagotchiSkinHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.TAMAGOTCHI_SKIN, tamagotchiSkinId).catch(() => {});
   }, [tamagotchiSkinHydrated, tamagotchiSkinId]);
+  useEffect(() => {
+    if (!tamagotchiSkinsUnlockHydrated) return;
+    AsyncStorage.setItem(
+      STORAGE_KEYS.TAMAGOTCHI_SKINS_UNLOCKED,
+      tamagotchiSkinsUnlocked ? "1" : "0"
+    ).catch(() => {});
+  }, [tamagotchiSkinsUnlockHydrated, tamagotchiSkinsUnlocked]);
 
   useEffect(() => {
     if (!catalogHydrated) return;
@@ -16165,6 +16619,120 @@ function AppContent() {
             </TouchableWithoutFeedback>
           </Modal>
         )}
+        {ratingPromptVisible && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={handleRatingPromptLater}>
+              <View style={styles.ratingPromptBackdrop}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
+                    style={[
+                      styles.ratingPromptCard,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.ratingPromptTitle, { color: colors.text }]}>
+                      {t("ratingPromptTitle")}
+                    </Text>
+                    <Text style={[styles.ratingPromptBody, { color: colors.muted }]}>
+                      {t("ratingPromptBody")}
+                    </Text>
+                    <View style={styles.ratingPromptActions}>
+                      <TouchableOpacity
+                        style={[styles.ratingPromptSecondary, { borderColor: colors.border }]}
+                        activeOpacity={0.85}
+                        onPress={handleRatingPromptLater}
+                      >
+                        <Text style={[styles.ratingPromptSecondaryText, { color: colors.muted }]}>
+                          {t("ratingPromptLater")}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.ratingPromptPrimary, { backgroundColor: colors.text }]}
+                        activeOpacity={0.92}
+                        onPress={handleRatingPromptConfirm}
+                      >
+                        <Text style={[styles.ratingPromptPrimaryText, { color: colors.background }]}>
+                          {t("ratingPromptAction")}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+        {levelShareModal.visible && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={closeLevelShareModal}>
+              <View style={styles.dailySummaryBackdrop}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
+                    style={[
+                      styles.levelShareModalCard,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.levelShareModalTitle, { color: colors.text }]}>
+                      {t("levelShareModalTitle")}
+                    </Text>
+                    <Text style={[styles.levelShareModalCaption, { color: colors.muted }]}>
+                      {t("levelShareModalCaption")}
+                    </Text>
+                    <ViewShot
+                      ref={levelShareCardRef}
+                      options={{ format: "png", quality: 0.96, result: "tmpfile" }}
+                      style={styles.levelShareShot}
+                    >
+                      <View style={styles.levelShareCanvas}>
+                        <View style={styles.levelShareBadge}>
+                          <Text style={styles.levelShareBadgeText}>{t("levelShareCardBadge")}</Text>
+                        </View>
+                        <Text style={styles.levelShareCanvasTitle}>
+                          {t("levelShareCardTitle", { level: levelShareModal.level })}
+                        </Text>
+                        <Text style={styles.levelShareCanvasSubtitle}>{t("levelShareCardSubtitle")}</Text>
+                        <Image source={LEVEL_SHARE_CAT} style={styles.levelShareCat} />
+                        <Text style={styles.levelShareJoin}>{t("levelShareJoin")}</Text>
+                        <View style={styles.levelShareFooter}>
+                          <Image source={LEVEL_SHARE_LOGO} style={styles.levelShareLogo} />
+                          <View>
+                            <Text style={styles.levelShareFooterBrand}>{t("levelShareFooterBrand")}</Text>
+                            <Text style={styles.levelShareFooterHint}>{t("levelShareFooterHint")}</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </ViewShot>
+                    <View style={styles.levelShareActions}>
+                      <TouchableOpacity
+                        style={[
+                          styles.levelSharePrimary,
+                          { backgroundColor: colors.text, opacity: levelShareSharing ? 0.6 : 1 },
+                        ]}
+                        activeOpacity={0.92}
+                        disabled={levelShareSharing}
+                        onPress={handleLevelShareConfirm}
+                      >
+                        <Text style={[styles.levelSharePrimaryText, { color: colors.background }]}>
+                          {levelShareSharing ? "..." : t("levelShareModalShare")}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.levelShareGhost, { borderColor: colors.border }]}
+                        activeOpacity={0.85}
+                        onPress={closeLevelShareModal}
+                      >
+                        <Text style={[styles.levelShareGhostText, { color: colors.muted }]}>
+                          {t("levelShareModalClose")}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
         <View
           style={[
             styles.tabBar,
@@ -16244,44 +16812,46 @@ function AppContent() {
           })}
         </View>
 
-        <View pointerEvents="box-none" style={styles.fabCenterContainer}>
-          <View
-            ref={fabButtonWrapperRef}
-            style={styles.fabButtonWrapper}
-            pointerEvents="box-none"
-            onLayout={handleFabWrapperLayout}
-          >
-            {fabTutorialVisible && (
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.fabTutorialHalo,
-                  {
-                    backgroundColor: theme === "dark" ? "rgba(255,214,140,0.22)" : "rgba(245,200,105,0.22)",
-                    borderColor: theme === "dark" ? "#FFE08A" : "#F5C869",
-                    shadowColor: theme === "dark" ? "#FFE08A" : "#F5C869",
-                  },
-                ]}
-              />
-            )}
-            <AnimatedTouchableOpacity
-              style={[
-                styles.cartBadge,
-                {
-                  backgroundColor: colors.text,
-                  borderColor: colors.border,
-                  transform: [{ scale: cartBadgeScale }],
-                },
-                fabTutorialVisible && styles.cartBadgeHighlight,
-              ]}
-              onPress={handleFabPress}
-              onLongPress={handleFabLongPress}
-              delayLongPress={420}
+        {activeTab !== "profile" && (
+          <View pointerEvents="box-none" style={styles.fabCenterContainer}>
+            <View
+              ref={fabButtonWrapperRef}
+              style={styles.fabButtonWrapper}
+              pointerEvents="box-none"
+              onLayout={handleFabWrapperLayout}
             >
-              <Text style={[styles.cartBadgeIcon, { color: colors.background }]}>+</Text>
-            </AnimatedTouchableOpacity>
+              {fabTutorialVisible && (
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.fabTutorialHalo,
+                    {
+                      backgroundColor: theme === "dark" ? "rgba(255,214,140,0.22)" : "rgba(245,200,105,0.22)",
+                      borderColor: theme === "dark" ? "#FFE08A" : "#F5C869",
+                      shadowColor: theme === "dark" ? "#FFE08A" : "#F5C869",
+                    },
+                  ]}
+                />
+              )}
+              <AnimatedTouchableOpacity
+                style={[
+                  styles.cartBadge,
+                  {
+                    backgroundColor: colors.text,
+                    borderColor: colors.border,
+                    transform: [{ scale: cartBadgeScale }],
+                  },
+                  fabTutorialVisible && styles.cartBadgeHighlight,
+                ]}
+                onPress={handleFabPress}
+                onLongPress={handleFabLongPress}
+                delayLongPress={420}
+              >
+                <Text style={[styles.cartBadgeIcon, { color: colors.background }]}>+</Text>
+              </AnimatedTouchableOpacity>
+            </View>
           </View>
-        </View>
+        )}
 
         <CoinEntryModal
           visible={coinEntryVisible}
@@ -16318,7 +16888,7 @@ function AppContent() {
           onCancel={handleNewGoalCancel}
         />
 
-        {fabTutorialVisible && (
+        {activeTab !== "profile" && fabTutorialVisible && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={() => handleFabTutorialDismiss("backdrop")}>
               <View style={styles.fabTutorialBackdrop}>
@@ -16676,15 +17246,51 @@ function AppContent() {
                   <Text style={[styles.skinPickerTitle, { color: colors.text, textAlign: "center" }]}>
                     {t("tamagotchiSkinTitle")}
                   </Text>
-                  <Text style={[styles.skinPickerSubtitle, { color: colors.muted, textAlign: "center" }]}>
-                    {t("tamagotchiSkinSubtitle")}
-                  </Text>
                   <ScrollView
                     contentContainerStyle={styles.skinPickerList}
                     showsVerticalScrollIndicator={false}
                   >
+                    {tamagotchiSkinsLocked && (
+                      <View
+                        style={[
+                          styles.skinUnlockCard,
+                          {
+                            backgroundColor: lightenColor(
+                              colors.card,
+                              isDarkTheme ? 0.08 : 0.15
+                            ),
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.skinUnlockTitle, { color: colors.text }]}>
+                          {t("tamagotchiSkinUnlockTitle")}
+                        </Text>
+                        <Text style={[styles.skinUnlockSubtitle, { color: colors.muted }]}>
+                          {t("tamagotchiSkinUnlockDescription", { email: SUPPORT_EMAIL })}
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.skinUnlockButton,
+                            { backgroundColor: colors.text },
+                          ]}
+                          onPress={handleUnlockSkinsPress}
+                          activeOpacity={0.85}
+                        >
+                          <Text
+                            style={[
+                              styles.skinUnlockButtonText,
+                              { color: colors.background },
+                            ]}
+                          >
+                            {t("tamagotchiSkinUnlockButton")}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                     {TAMAGOTCHI_SKIN_OPTIONS.map((skin) => {
                       const active = skin.id === tamagotchiSkinId;
+                      const locked = tamagotchiSkinsLocked && skin.id !== DEFAULT_TAMAGOTCHI_SKIN;
                       const label = skin.label?.[language] || skin.label?.en || skin.id;
                       const description =
                         skin.description?.[language] || skin.description?.en || "";
@@ -16698,9 +17304,11 @@ function AppContent() {
                               backgroundColor: active
                                 ? lightenColor(colors.card, isDarkTheme ? 0.1 : 0.2)
                                 : "transparent",
+                              opacity: locked ? 0.55 : 1,
                             },
                           ]}
                           onPress={() => handleSkinSelect(skin.id)}
+                          disabled={locked}
                         >
                           <Image source={skin.preview} style={styles.skinPickerAvatar} />
                           <View style={{ flex: 1 }}>
@@ -16713,7 +17321,7 @@ function AppContent() {
                               </Text>
                             )}
                           </View>
-                          {active && (
+                          {active ? (
                             <View
                               style={[
                                 styles.skinPickerBadge,
@@ -16724,7 +17332,25 @@ function AppContent() {
                                 {t("tamagotchiSkinCurrent")}
                               </Text>
                             </View>
-                          )}
+                          ) : locked ? (
+                            <View
+                              style={[
+                                styles.skinPickerBadge,
+                                styles.skinPickerLockedBadge,
+                                { borderColor: colors.border, backgroundColor: colors.background },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.skinPickerBadgeText,
+                                  styles.skinPickerLockedBadgeText,
+                                  { color: colors.muted },
+                                ]}
+                              >
+                                {t("tamagotchiSkinLockedBadge")}
+                              </Text>
+                            </View>
+                          ) : null}
                         </TouchableOpacity>
                       );
                     })}
@@ -16896,7 +17522,7 @@ function AppContent() {
           </Modal>
         )}
 
-        {fabMenuVisible && (
+        {activeTab !== "profile" && fabMenuVisible && (
           <View pointerEvents="box-none" style={styles.fabMenuOverlay}>
             <TouchableWithoutFeedback onPress={closeFabMenu}>
               <View style={styles.fabMenuBackdrop} />
@@ -17113,11 +17739,18 @@ function AppContent() {
         )}
         {overlay?.type === "level" && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
-            <TouchableWithoutFeedback onPress={dismissOverlay}>
-              <View style={styles.overlayFullScreen}>
-                <LevelUpCelebration colors={colors} message={overlay.message} level={overlay.message} t={t} />
-              </View>
-            </TouchableWithoutFeedback>
+            <View style={styles.overlayFullScreen}>
+              <TouchableWithoutFeedback onPress={dismissOverlay}>
+                <View style={styles.overlayTouchable} />
+              </TouchableWithoutFeedback>
+              <LevelUpCelebration
+                colors={colors}
+                message={overlay.message}
+                level={overlay.message}
+                t={t}
+                onSharePress={handleLevelSharePress}
+              />
+            </View>
           </Modal>
         )}
         {overlay?.type === "save" && (
@@ -17931,9 +18564,10 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 380,
     borderRadius: 28,
-    padding: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
     borderWidth: 1,
-    gap: 10,
+    gap: 8,
   },
   skinPickerTitle: {
     ...TYPOGRAPHY.blockTitle,
@@ -17943,8 +18577,31 @@ const styles = StyleSheet.create({
     ...createBodyText({ fontSize: 15 }),
   },
   skinPickerList: {
-    paddingVertical: 8,
+    paddingVertical: 6,
     paddingHorizontal: 4,
+  },
+  skinUnlockCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 16,
+    gap: 10,
+  },
+  skinUnlockTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 17,
+  },
+  skinUnlockSubtitle: {
+    ...createBodyText({ fontSize: 14 }),
+  },
+  skinUnlockButton: {
+    borderRadius: 999,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: "center",
+  },
+  skinUnlockButtonText: {
+    ...createCtaText({ fontSize: 14, textTransform: "none" }),
   },
   skinPickerItem: {
     flexDirection: "row",
@@ -17975,6 +18632,12 @@ const styles = StyleSheet.create({
   },
   skinPickerBadgeText: {
     ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
+  },
+  skinPickerLockedBadge: {
+    opacity: 0.85,
+  },
+  skinPickerLockedBadgeText: {
+    letterSpacing: 0.5,
   },
   tamagotchiBackdrop: {
     flex: 1,
@@ -18394,6 +19057,154 @@ const styles = StyleSheet.create({
   },
   dailySummaryHint: {
     ...createSecondaryText({ textAlign: "center" }),
+  },
+  ratingPromptBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  ratingPromptCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 26,
+    padding: 24,
+    gap: 16,
+    borderWidth: 1,
+  },
+  ratingPromptTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    textAlign: "center",
+  },
+  ratingPromptBody: {
+    ...createBodyText({ fontSize: 15, textAlign: "center" }),
+  },
+  ratingPromptActions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  ratingPromptSecondary: {
+    flex: 1,
+    borderRadius: 18,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  ratingPromptSecondaryText: {
+    ...createCtaText({ fontSize: 15 }),
+  },
+  ratingPromptPrimary: {
+    flex: 1,
+    borderRadius: 18,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  ratingPromptPrimaryText: {
+    ...createCtaText({ fontSize: 15 }),
+  },
+  levelShareModalCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 28,
+    padding: 22,
+    borderWidth: 1,
+    gap: 12,
+  },
+  levelShareModalTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    textAlign: "center",
+  },
+  levelShareModalCaption: {
+    ...createSecondaryText({ textAlign: "center" }),
+  },
+  levelShareShot: {
+    width: "100%",
+    borderRadius: 28,
+    overflow: "hidden",
+  },
+  levelShareCanvas: {
+    backgroundColor: LEVEL_SHARE_BG,
+    borderRadius: 24,
+    paddingVertical: 26,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    gap: 12,
+  },
+  levelShareBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 6,
+    backgroundColor: LEVEL_SHARE_ACCENT,
+  },
+  levelShareBadgeText: {
+    color: "#1E0F00",
+    fontWeight: "800",
+    fontSize: 12,
+    letterSpacing: 1,
+  },
+  levelShareCanvasTitle: {
+    color: "#FFFFFF",
+    fontSize: 32,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  levelShareCanvasSubtitle: {
+    color: LEVEL_SHARE_MUTED,
+    fontSize: 15,
+    textAlign: "center",
+  },
+  levelShareCat: {
+    width: 180,
+    height: 180,
+    resizeMode: "contain",
+  },
+  levelShareJoin: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  levelShareFooter: {
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  levelShareLogo: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+  },
+  levelShareFooterBrand: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  levelShareFooterHint: {
+    color: LEVEL_SHARE_MUTED,
+    fontSize: 12,
+    textTransform: "uppercase",
+  },
+  levelShareActions: {
+    gap: 10,
+  },
+  levelSharePrimary: {
+    borderRadius: 18,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  levelSharePrimaryText: {
+    ...createCtaText({ fontSize: 15 }),
+  },
+  levelShareGhost: {
+    borderRadius: 18,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  levelShareGhostText: {
+    ...createCtaText({ fontSize: 15 }),
   },
   dailyChallengeCard: {
     width: "100%",
@@ -21371,6 +22182,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  overlayTouchable: {
+    ...StyleSheet.absoluteFillObject,
+  },
   overlayDim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(5, 6, 15, 0.2)",
@@ -21624,6 +22438,15 @@ const styles = StyleSheet.create({
   },
   levelSubtitle: {
     ...createBodyText({ fontSize: 16, fontWeight: "700", textAlign: "center" }),
+  },
+  levelShareButton: {
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 26,
+    marginTop: 8,
+  },
+  levelShareButtonText: {
+    ...createCtaText({ fontSize: 14 }),
   },
   rewardOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -22815,7 +23638,7 @@ function CoinEntryModal({
   onSubmit,
   onCancel,
 }) {
-  const [sliderValue, setSliderValue] = useState(0.25);
+  const [sliderDisplayValue, setSliderDisplayValue] = useState(0.25);
   const [trackHeight, setTrackHeight] = useState(260);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [categoryError, setCategoryError] = useState(false);
@@ -22823,9 +23646,13 @@ function CoinEntryModal({
   const [manualValue, setManualValue] = useState("");
   const [manualError, setManualError] = useState("");
   const directionAnim = useRef(new Animated.Value(0)).current;
-  const sliderValueRef = useRef(0.25);
-  const sliderValueCommitRef = useRef(0.25);
-  const sliderValueThrottleRef = useRef(0);
+  const sliderVisualValue = useRef(new Animated.Value(0.25)).current;
+  const sliderRawValueRef = useRef(0.25);
+  const sliderDisplayValueRef = useRef(0.25);
+  const sliderDisplayStateRef = useRef(0.25);
+  const sliderDisplayThrottleRef = useRef(0);
+  const sliderDisplayRafRef = useRef(null);
+  const sliderSnappedValueRef = useRef(0.25);
   const hapticStepRef = useRef(0);
   const sliderHapticCooldownRef = useRef(0);
   const tossingRef = useRef(false);
@@ -22849,9 +23676,19 @@ function CoinEntryModal({
     setManualValue("");
     setManualError("");
     directionAnim.setValue(0);
+    sliderVisualValue.setValue(0.25);
     tossingRef.current = false;
     touchStartRef.current = 0;
-  }, [directionAnim, updateSliderValue, visible]);
+  }, [directionAnim, sliderVisualValue, updateSliderValue, visible]);
+  useEffect(
+    () => () => {
+      if (sliderDisplayRafRef.current !== null) {
+        cancelAnimationFrame(sliderDisplayRafRef.current);
+        sliderDisplayRafRef.current = null;
+      }
+    },
+    []
+  );
   const currencySymbol =
     CURRENCY_SIGNS[currency] ||
     CURRENCY_SIGNS[DEFAULT_PROFILE.currency] ||
@@ -22869,16 +23706,26 @@ function CoinEntryModal({
     },
     [currency, maxAmountUSD]
   );
-  const sliderAmountUSD = computeAmountUSDForValue(sliderValue);
-  const sliderLocalValue = snapCurrencyValue(convertToCurrency(sliderAmountUSD, currency), currency);
+  const sliderAmountUSD = computeAmountUSDForValue(sliderDisplayValue);
+  const sliderLocalValue = roundCurrencyValue(
+    convertToCurrency(sliderAmountUSD, currency),
+    currency
+  );
   const sliderAmountLocal = formatCurrencyWhole(sliderLocalValue, currency);
   const sliderMaxLocalValue = useMemo(
     () => snapCurrencyValue(convertToCurrency(maxAmountUSD, currency), currency),
     [currency, maxAmountUSD]
   );
   const sliderMaxLocal = formatCurrencyWhole(sliderMaxLocalValue, currency);
-  const sliderFillHeight = Math.max(COIN_FILL_MIN_HEIGHT, Math.min(trackHeight, trackHeight * sliderValue));
-  const coinHasValue = sliderValue > 0.02;
+  const sliderFillHeight = useMemo(() => {
+    if (trackHeight <= 0) return sliderVisualValue;
+    const usableHeight = Math.max(trackHeight - COIN_FILL_MIN_HEIGHT, 0);
+    return Animated.add(
+      Animated.multiply(sliderVisualValue, usableHeight),
+      COIN_FILL_MIN_HEIGHT
+    );
+  }, [sliderVisualValue, trackHeight]);
+  const coinHasValue = sliderDisplayValue > 0.02;
   const coinFillColor = coinHasValue ? "#F7C45D" : "#DADDE3";
   const coinShineColor = coinHasValue ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.25)";
   const sliderBackground = directionAnim.interpolate({
@@ -22895,7 +23742,7 @@ function CoinEntryModal({
     (dx, mode) => {
       if (mode !== "horizontal") return false;
       if (Math.abs(dx) < COIN_SLIDER_HORIZONTAL_THRESHOLD) return false;
-      const value = sliderValueRef.current;
+      const value = sliderSnappedValueRef.current;
       const hasAmount = value >= 0.02;
       if (!hasAmount || tossingRef.current) return false;
       if (!selectedCategory) {
@@ -22944,40 +23791,61 @@ function CoinEntryModal({
     },
     [currency, currencyFineStep, sliderMaxLocalValue, maxAmountUSD]
   );
-  const computeValueFromTouch = useCallback(
+  const computeRawValueFromTouch = useCallback(
     (locationY) => {
       if (!Number.isFinite(locationY) || trackHeight <= 0) {
-        return sliderValueRef.current;
+        return sliderRawValueRef.current;
       }
       const clamped = Math.max(0, Math.min(trackHeight, locationY));
-      const normalized = 1 - clamped / trackHeight;
-      return computeSteppedValue(normalized);
+      return 1 - clamped / trackHeight;
     },
-    [computeSteppedValue, sliderValueRef, trackHeight]
+    [trackHeight]
   );
   const updateSliderValue = useCallback(
-    (value, { force = false } = {}) => {
-      const clamped = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
-      sliderValueRef.current = clamped;
-      const now = Date.now();
-      if (force) {
-        sliderValueCommitRef.current = clamped;
-        sliderValueThrottleRef.current = now;
-        setSliderValue(clamped);
-        return clamped;
+    (rawValue, { force = false, immediate = false } = {}) => {
+      const rawClamped = Math.max(
+        0,
+        Math.min(1, Number.isFinite(rawValue) ? rawValue : 0)
+      );
+
+      sliderRawValueRef.current = rawClamped;
+      sliderVisualValue.stopAnimation();
+      sliderVisualValue.setValue(rawClamped);
+
+      sliderDisplayValueRef.current = rawClamped;
+      const pushDisplayValue = () => {
+        const now = Date.now();
+        if (
+          !force &&
+          !immediate &&
+          Math.abs(sliderDisplayValueRef.current - sliderDisplayStateRef.current) <
+            0.0025 &&
+          now - sliderDisplayThrottleRef.current < 20
+        ) {
+          return;
+        }
+        sliderDisplayStateRef.current = sliderDisplayValueRef.current;
+        sliderDisplayThrottleRef.current = now;
+        setSliderDisplayValue(sliderDisplayStateRef.current);
+      };
+      if (force || immediate) {
+        if (sliderDisplayRafRef.current !== null) {
+          cancelAnimationFrame(sliderDisplayRafRef.current);
+          sliderDisplayRafRef.current = null;
+        }
+        pushDisplayValue();
+      } else if (sliderDisplayRafRef.current === null) {
+        sliderDisplayRafRef.current = requestAnimationFrame(() => {
+          sliderDisplayRafRef.current = null;
+          pushDisplayValue();
+        });
       }
-      const diff = Math.abs(clamped - sliderValueCommitRef.current);
-      if (diff < COIN_SLIDER_VALUE_DEADBAND && now - sliderValueThrottleRef.current < COIN_SLIDER_STATE_MIN_INTERVAL) {
-        return sliderValueCommitRef.current;
-      }
-      const smoothing = 0.35;
-      const smoothed = sliderValueCommitRef.current + (clamped - sliderValueCommitRef.current) * smoothing;
-      sliderValueCommitRef.current = smoothed;
-      sliderValueThrottleRef.current = now;
-      setSliderValue(smoothed);
-      return smoothed;
+
+      const snapped = computeSteppedValue(rawClamped);
+      sliderSnappedValueRef.current = snapped;
+      return snapped;
     },
-    []
+    [computeSteppedValue, sliderVisualValue]
   );
   const openManual = useCallback(
     (mode) => {
@@ -23006,8 +23874,8 @@ function CoinEntryModal({
           };
           const touchY = evt.nativeEvent?.locationY;
           if (Number.isFinite(touchY)) {
-            const nextValue = computeValueFromTouch(touchY);
-            if (Math.abs(nextValue - sliderValueRef.current) >= COIN_SLIDER_VALUE_DEADBAND) {
+            const nextValue = computeRawValueFromTouch(touchY);
+            if (Math.abs(nextValue - sliderRawValueRef.current) >= COIN_SLIDER_COMMIT_DEADBAND) {
               const applied = updateSliderValue(nextValue, { force: true });
               hapticStepRef.current = Math.round(applied * 20);
             }
@@ -23031,9 +23899,9 @@ function CoinEntryModal({
           }
           if (state.axis === "vertical") {
             const touchY = evt.nativeEvent?.locationY;
-            const nextValue = computeValueFromTouch(touchY);
-            if (Math.abs(nextValue - sliderValueRef.current) >= COIN_SLIDER_VALUE_DEADBAND) {
-              const applied = updateSliderValue(nextValue);
+            const nextValue = computeRawValueFromTouch(touchY);
+            if (Math.abs(nextValue - sliderRawValueRef.current) >= COIN_SLIDER_COMMIT_DEADBAND) {
+              const applied = updateSliderValue(nextValue, { immediate: true });
               const nextStep = Math.round(applied * 20);
               if (nextStep !== hapticStepRef.current) {
                 const now = Date.now();
@@ -23089,7 +23957,7 @@ function CoinEntryModal({
           }).start();
         },
       }),
-    [computeValueFromTouch, directionAnim, finalizeSwipe, openManual, trackHeight, updateSliderValue]
+    [computeRawValueFromTouch, directionAnim, finalizeSwipe, openManual, trackHeight, updateSliderValue]
   );
   const handleManualSave = () => {
     const parsed = parseNumberInputValue(manualValue);
@@ -23183,7 +24051,7 @@ function CoinEntryModal({
                 >
                   <View style={styles.coinInnerSurface}>
                     <View style={styles.coinFillTrack}>
-                      <View
+                      <Animated.View
                         style={[
                           styles.coinFill,
                           {
@@ -23740,7 +24608,7 @@ function LanguageScreen({
 function LogoSplash({ onDone }) {
   const [text, setText] = useState("");
   useEffect(() => {
-    const word = "almost";
+    const word = "Almost";
     let index = 0;
     const interval = setInterval(() => {
       index += 1;
@@ -23759,7 +24627,7 @@ function LogoSplash({ onDone }) {
     </View>
   );
 }
-const LevelUpCelebration = ({ colors, message, t }) => {
+const LevelUpCelebration = ({ colors, message, t, onSharePress }) => {
   const coins = useMemo(
     () =>
       Array.from({ length: 28 }).map((_, index) => ({
@@ -23773,13 +24641,24 @@ const LevelUpCelebration = ({ colors, message, t }) => {
   );
   const levelNumber = Number(message) || 1;
   return (
-    <View style={styles.levelOverlay} pointerEvents="none">
+    <View style={styles.levelOverlay} pointerEvents="box-none">
       <View style={styles.levelBackdrop} />
       <View style={styles.levelContent}>
         <Text style={[styles.levelTitle, { color: colors.text }]}>{t("progressHeroLevel", { level: levelNumber })}</Text>
         <Text style={[styles.levelSubtitle, { color: colors.text }]}>
           {t("levelCelebrate", { level: levelNumber })}
         </Text>
+        {onSharePress && (
+          <TouchableOpacity
+            style={[styles.levelShareButton, { backgroundColor: colors.text }]}
+            activeOpacity={0.92}
+            onPress={() => onSharePress(levelNumber)}
+          >
+            <Text style={[styles.levelShareButtonText, { color: colors.background }]}>
+              {t("levelShareButton")}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
       {coins.map((coin) => (
         <FallingCoin key={coin.id} {...coin} />
