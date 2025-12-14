@@ -140,6 +140,14 @@ const STORAGE_KEYS = {
 };
 
 const PURCHASE_GOAL = 20000;
+const ANDROID_API_LEVEL =
+  Platform.OS === "android"
+    ? typeof Platform.Version === "string"
+      ? parseInt(Platform.Version, 10) || 0
+      : Number(Platform.Version) || 0
+    : 0;
+const SHOULD_USE_ANDROID_LEGACY_MEDIA_PICKER =
+  Platform.OS === "android" && ANDROID_API_LEVEL > 0 && ANDROID_API_LEVEL < 33;
 const CLASSIC_TAMAGOTCHI_ANIMATIONS = {
   idle: require("./assets/Cat_idle.gif"),
   curious: require("./assets/Cat_curious.gif"),
@@ -558,6 +566,7 @@ const TAB_HINT_CONFIG = {
   purchases: { titleKey: "tabHintPurchasesTitle", bodyKey: "tabHintPurchasesBody" },
   profile: { titleKey: "tabHintProfileTitle", bodyKey: "tabHintProfileBody" },
 };
+const TAB_BAR_BASE_HEIGHT = 64;
 const FAB_BUTTON_SIZE = 64;
 const FAB_CONTAINER_BOTTOM = 96;
 const FAB_TUTORIAL_HALO_SIZE = 128;
@@ -605,21 +614,14 @@ const RAIN_DROPS = 20;
 const CURRENCY_RATES = { USD: 1, EUR: 0.92, RUB: 92 };
 const CURRENCY_REWARD_STEPS = { USD: 5, EUR: 5, RUB: 500 };
 const DEFAULT_COIN_SLIDER_MAX_USD = 50;
-const COIN_SLIDER_HORIZONTAL_THRESHOLD = 80;
-const COIN_SLIDER_HORIZONTAL_ACTIVATION = 38;
-const COIN_SLIDER_VERTICAL_ACTIVATION = 2;
-const COIN_SLIDER_AXIS_BUFFER = 6;
-const COIN_SLIDER_HORIZONTAL_DISTANCE = 120;
 const COIN_SLIDER_SIZE = 220;
-const COIN_SLIDER_MIN_DELTA = 0.00001;
-const COIN_SLIDER_VALUE_DEADBAND = 0.008;
-const COIN_SLIDER_COMMIT_DEADBAND =
-  Platform.OS === "android" ? 0.02 : COIN_SLIDER_VALUE_DEADBAND;
+const COIN_SLIDER_VALUE_DEADBAND = 0.01;
 const COIN_SLIDER_STATE_MIN_INTERVAL = 16;
 const COIN_SLIDER_HAPTIC_COOLDOWN_MS = 80;
 const COIN_FILL_MIN_HEIGHT = 12;
 const CURRENCY_SIGNS = { USD: "$", EUR: "€", RUB: "₽" };
 const CURRENCY_FINE_STEPS = { USD: 0.05, EUR: 0.05, RUB: 5 };
+const CURRENCY_DISPLAY_PRECISION = { USD: 0, EUR: 0 };
 const ECONOMY_RULES = {
   saveRewardStepUSD: 5,
   minSaveReward: 1,
@@ -2178,16 +2180,26 @@ const getCurrencyPrecision = (currency = activeCurrency) => {
   return 0;
 };
 
+const getCurrencyDisplayPrecision = (currency = activeCurrency) => {
+  if (Object.prototype.hasOwnProperty.call(CURRENCY_DISPLAY_PRECISION, currency)) {
+    return CURRENCY_DISPLAY_PRECISION[currency];
+  }
+  return getCurrencyPrecision(currency);
+};
+
 const getCurrencyFineStep = (currency = activeCurrency) => {
   if (CURRENCY_FINE_STEPS[currency]) return CURRENCY_FINE_STEPS[currency];
   const precision = getCurrencyPrecision(currency);
   return precision > 0 ? Math.pow(10, -precision) : 1;
 };
 
-const roundCurrencyValue = (value = 0, currency = activeCurrency) => {
-  const precision = getCurrencyPrecision(currency);
+const roundCurrencyValue = (value = 0, currency = activeCurrency, precisionOverride = null) => {
+  const precision =
+    typeof precisionOverride === "number" && Number.isFinite(precisionOverride)
+      ? precisionOverride
+      : getCurrencyPrecision(currency);
   const factor = Math.pow(10, precision);
-  if (!factor) return Number(value) || 0;
+  if (!Number.isFinite(factor) || factor <= 0) return Number(value) || 0;
   return Math.round(((Number(value) || 0) + Number.EPSILON) * factor) / factor;
 };
 
@@ -2829,7 +2841,6 @@ const TRANSLATIONS = {
     goalCustomSectionTitle: "Свои цели",
     goalCustomCreate: "Добавить свою цель",
     goalButton: "Готово",
-    goalCompleteMessage: "Всё готово, погнали копить!",
     goalPrimaryBadge: "Главная цель",
     goalTargetTitle: "Сколько нужно на цель?",
     goalTargetSubtitle: "Укажи сумму - Almost будет держать фокус и прогресс.",
@@ -2987,7 +2998,7 @@ const TRANSLATIONS = {
     quickCustomCancel: "Отмена",
     coinEntryTitle: "Сколько внести?",
     coinEntrySubtitle: "Проведи монетку вверх-вниз и выбери категорию.",
-    coinEntryHint: "Вправо - накопление, влево - трата.",
+    coinEntryHint: "Нажми кнопку ниже, чтобы подтвердить копилку или трату.",
     coinEntryManual: "...",
     coinEntryManualTitle: "Выбери новый максимум",
     coinEntryManualPlaceholder: "Например {{amount}}",
@@ -3235,11 +3246,11 @@ const TRANSLATIONS = {
     statsSaved: "Saved",
     statsItems: "Goals",
     statsCart: "In list",
-    statsDeclines: "Declines",
+    statsDeclines: "Savings",
     statsFreeDays: "Streak",
     analyticsTitle: "Progress",
     analyticsPendingToBuy: "Wishes",
-    analyticsPendingToDecline: "Declines",
+    analyticsPendingToDecline: "Savings",
     analyticsFridgeCount: "Thinking list",
     analyticsBestStreak: "Free days",
     analyticsConsentTitle: "Help us improve?",
@@ -3411,7 +3422,6 @@ const TRANSLATIONS = {
     goalCustomSectionTitle: "Your goals",
     goalCustomCreate: "Add your own goal",
     goalButton: "Start saving",
-    goalCompleteMessage: "You’re set. Let’s start saving!",
     goalPrimaryBadge: "Primary goal",
     goalTargetTitle: "How big is this goal?",
     goalTargetSubtitle: "Set the amount so Almost tracks every dollar toward it.",
@@ -3554,7 +3564,7 @@ const TRANSLATIONS = {
     quickCustomCancel: "Cancel",
     coinEntryTitle: "How much?",
     coinEntrySubtitle: "Slide the coin and pick a category.",
-    coinEntryHint: "Swipe right to save, left to spend.",
+    coinEntryHint: "Use the buttons below to save or spend.",
     coinEntryManual: "...",
     coinEntryManualTitle: "Set new slider max",
     coinEntryManualPlaceholder: "E.g. {{amount}}",
@@ -4605,23 +4615,28 @@ const SAVINGS_TIERS = [10, 20, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000
 
 const formatCurrency = (value = 0, currency = activeCurrency) => {
   const locale = CURRENCY_LOCALES[currency] || "en-US";
+  const displayPrecision = getCurrencyDisplayPrecision(currency);
+  const normalized = roundCurrencyValue(Number(value) || 0, currency, displayPrecision);
   try {
     return new Intl.NumberFormat(locale, {
       style: "currency",
       currency,
       minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }).format(value || 0);
+      maximumFractionDigits: displayPrecision,
+    }).format(normalized);
   } catch {
     const symbol = currency === "EUR" ? "€" : currency === "RUB" ? "₽" : "$";
-    return `${symbol}${Number(value || 0).toLocaleString(locale)}`;
+    return `${symbol}${normalized.toLocaleString(locale, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: displayPrecision,
+    })}`;
   }
 };
 
 const formatCurrencyWhole = (value = 0, currency = activeCurrency) => {
   const locale = CURRENCY_LOCALES[currency] || "en-US";
-  const precision = getCurrencyPrecision(currency);
-  const rounded = roundCurrencyValue(Number(value) || 0, currency);
+  const precision = getCurrencyDisplayPrecision(currency);
+  const rounded = roundCurrencyValue(Number(value) || 0, currency, precision);
   try {
     return new Intl.NumberFormat(locale, {
       style: "currency",
@@ -4631,7 +4646,10 @@ const formatCurrencyWhole = (value = 0, currency = activeCurrency) => {
     }).format(rounded);
   } catch {
     const symbol = currency === "EUR" ? "€" : currency === "RUB" ? "₽" : "$";
-    return `${symbol}${rounded.toLocaleString(locale)}`;
+    return `${symbol}${rounded.toLocaleString(locale, {
+      minimumFractionDigits: precision,
+      maximumFractionDigits: precision,
+    })}`;
   }
 };
 
@@ -4661,7 +4679,7 @@ const parseColor = (value) => {
     if (Number.isNaN(num)) return { r: 0, g: 0, b: 0 };
     return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
   }
-  const rgbMatch = value.match(/^rgb\\((\\d+),\\s*(\\d+),\\s*(\\d+)\\)$/i);
+  const rgbMatch = value.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/i);
   if (rgbMatch) {
     return { r: Number(rgbMatch[1]), g: Number(rgbMatch[2]), b: Number(rgbMatch[3]) };
   }
@@ -5000,11 +5018,14 @@ function TemptationCard({
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => !showEditorInline,
+        onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (_, gestureState) =>
           !showEditorInline &&
           Math.abs(gestureState.dx) > Math.abs(gestureState.dy) &&
           Math.abs(gestureState.dx) > 6,
+        onPanResponderGrant: () => {
+          translateX.stopAnimation();
+        },
         onPanResponderMove: (_, gestureState) => {
           if (showEditorInline) return;
           const dx = Math.max(Math.min(gestureState.dx, 150), -180);
@@ -9445,6 +9466,8 @@ function AppContent() {
     ...DEFAULT_PROFILE_PLACEHOLDER,
     joinedAt: new Date().toISOString(),
   }));
+  const [language, setLanguage] = useState("ru");
+  const [homeLayoutReady, setHomeLayoutReady] = useState(false);
   const primaryTemptationId = profile.customSpend ? profile.customSpend.id || "custom_habit" : null;
   const primaryTemptationDescription = useMemo(() => {
     const gender = profile?.gender || "none";
@@ -9455,7 +9478,6 @@ function AppContent() {
   const [activeGoalHydrated, setActiveGoalHydrated] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [theme, setTheme] = useState("light");
-  const [language, setLanguage] = useState("ru");
   const isAndroid = Platform.OS === "android";
   const androidVersion = isAndroid ? Number(Platform.Version) : null;
   const canToggleNavVisibility =
@@ -9532,6 +9554,7 @@ function AppContent() {
   const [tabHintsSeen, setTabHintsSeen] = useState(DEFAULT_TAB_HINTS_STATE);
   const [tabHintsHydrated, setTabHintsHydrated] = useState(false);
   const [tabHintVisible, setTabHintVisible] = useState(null);
+  const [tabBarHeight, setTabBarHeight] = useState(0);
   const [fabTutorialState, setFabTutorialState] = useState(FAB_TUTORIAL_STATUS.DONE);
   const [fabTutorialVisible, setFabTutorialVisible] = useState(false);
   const fabTutorialStateRef = useRef(FAB_TUTORIAL_STATUS.DONE);
@@ -9574,6 +9597,14 @@ function AppContent() {
   const handleFabWrapperLayout = useCallback(() => {
     updateFabAnchor();
   }, [updateFabAnchor]);
+  const handleTabBarLayout = useCallback((event) => {
+    const height = event?.nativeEvent?.layout?.height;
+    if (!height || height <= 0) return;
+    setTabBarHeight((prev) => (Math.abs(prev - height) < 1 ? prev : height));
+  }, []);
+  const handleHomeLayout = useCallback(() => {
+    setHomeLayoutReady((ready) => (ready ? ready : true));
+  }, []);
   const setFabTutorialStateAndPersist = useCallback((nextState) => {
     fabTutorialStateRef.current = nextState;
     setFabTutorialState(nextState);
@@ -9793,7 +9824,14 @@ function AppContent() {
       }));
       dismissGoalRenewalPrompt();
     },
-    [dismissGoalRenewalPrompt, mainGoalWish?.status, profile.goalCelebrated]
+    [
+      activeGoalId,
+      clearCompletedPrimaryGoal,
+      dismissGoalRenewalPrompt,
+      mainGoalWish?.status,
+      profile.goal,
+      profile.goalCelebrated,
+    ]
   );
   const ensureGoalManualTracking = useCallback((wishId) => {
     if (!wishId) return;
@@ -10015,7 +10053,13 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, [fabTutorialVisible, updateFabAnchor]);
   useEffect(() => {
-    if (fabTutorialState !== FAB_TUTORIAL_STATUS.SHOWING || onboardingStep !== "done") {
+    if (
+      fabTutorialState !== FAB_TUTORIAL_STATUS.SHOWING ||
+      onboardingStep !== "done" ||
+      tutorialVisible ||
+      !homeLayoutReady ||
+      startupLogoVisible
+    ) {
       fabTutorialLoggedRef.current = false;
       if (fabTutorialVisible) {
         setFabTutorialVisible(false);
@@ -10030,7 +10074,16 @@ function AppContent() {
       logEvent("fab_tutorial_shown");
       fabTutorialLoggedRef.current = true;
     }
-  }, [activeTab, fabTutorialState, fabTutorialVisible, logEvent, onboardingStep]);
+  }, [
+    activeTab,
+    fabTutorialState,
+    fabTutorialVisible,
+    homeLayoutReady,
+    logEvent,
+    onboardingStep,
+    startupLogoVisible,
+    tutorialVisible,
+  ]);
   useEffect(() => {
     const handleAppStateChange = (nextState) => {
       const previousState = appStateRef.current;
@@ -10222,6 +10275,9 @@ function AppContent() {
   const safeAreaInsets = useSafeAreaInsets();
   const iosTabInset = Platform.OS === "ios" ? Math.max((safeAreaInsets.bottom || 0) - 8, 0) : 0;
   const tabBarBottomInset = iosTabInset;
+  const resolvedTabBarHeight = tabBarHeight || tabBarBottomInset + TAB_BAR_BASE_HEIGHT;
+  const tutorialOverlayInset = resolvedTabBarHeight;
+  const tutorialCardOffset = resolvedTabBarHeight + (Platform.OS === "ios" ? 64 : 72);
   const topSafeInset = Platform.OS === "android" ? RNStatusBar.currentHeight || 24 : 0;
   const fabTutorialCutout = useMemo(() => {
     const radius = FAB_TUTORIAL_HALO_SIZE / 2;
@@ -12089,7 +12145,7 @@ function AppContent() {
         typeof resolvedHealthPoints === "number" && !Number.isNaN(resolvedHealthPoints)
           ? resolvedHealthPoints
           : 0;
-      setHealthPoints(safeHealthPoints);
+      setHealthPoints((prev) => prev + safeHealthPoints);
       setHealthHydrated(true);
       setWishesHydrated(true);
       setSavedTotalHydrated(true);
@@ -12113,6 +12169,12 @@ function AppContent() {
   useEffect(() => {
     loadStoredData();
   }, []);
+  useEffect(() => {
+    if (onboardingStep !== "done") {
+      setHomeLayoutReady(false);
+      setTutorialVisible(false);
+    }
+  }, [onboardingStep]);
 
   useEffect(() => {
     if (onboardingStep === "done" && !startupLogoDismissedRef.current) {
@@ -12162,13 +12224,26 @@ function AppContent() {
     tamagotchiHungerPrevRef.current = currentHunger;
   }, [sendTamagotchiHungerNotification, tamagotchiState.hunger]);
 
+  const shouldShowTutorial = onboardingStep === "done" && !tutorialSeen && !tutorialVisible;
+
   useEffect(() => {
-    if (onboardingStep !== "done") return;
-    if (tutorialSeen) return;
+    if (!shouldShowTutorial) return;
     if (!APP_TUTORIAL_STEPS.length) return;
+    if (!homeLayoutReady) return;
+    if (startupLogoVisible) return;
     setTutorialStepIndex(0);
     setTutorialVisible(true);
-  }, [onboardingStep, tutorialSeen]);
+  }, [homeLayoutReady, shouldShowTutorial, startupLogoVisible]);
+
+  useEffect(() => {
+    if (!shouldShowTutorial) return;
+    if (!APP_TUTORIAL_STEPS.length) return;
+    const fallbackTimer = setTimeout(() => {
+      setTutorialStepIndex(0);
+      setTutorialVisible(true);
+    }, 1600);
+    return () => clearTimeout(fallbackTimer);
+  }, [shouldShowTutorial]);
 
   useEffect(() => {
     if (onboardingStep !== "done") return;
@@ -12645,6 +12720,7 @@ function AppContent() {
         overrideCategory && IMPULSE_CATEGORY_DEFS[overrideCategory] ? overrideCategory : null;
       return {
         ...card,
+        priceUSD: catalogOverrides[card.id] ?? card.priceUSD ?? card.basePriceUSD,
         titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
         emoji: emojiOverrides[card.id] || card.emoji,
         impulseCategoryOverride: normalizedCategory || card.impulseCategoryOverride || null,
@@ -13728,7 +13804,6 @@ function AppContent() {
     setActiveCurrency(updatedProfile.currency);
     ensurePrimaryGoalWish(primaryGoals, language, updatedProfile.goal);
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    triggerOverlayState("completion", t("goalCompleteMessage"), 2400);
     const hasPrimaryGoal = primaryGoals.length > 0;
     const startBalanceLocal = convertToCurrency(
       savedTotalUSD || 0,
@@ -13757,6 +13832,9 @@ function AppContent() {
   };
 
   const ensureMediaPermission = async (type) => {
+    if (type === "library" && Platform.OS === "android") {
+      return true;
+    }
     const getter =
       type === "camera"
         ? ImagePicker.getCameraPermissionsAsync
@@ -13799,6 +13877,7 @@ function AppContent() {
       const pickerOptions = {
         mediaTypes: ["images"],
         quality: 0.8,
+        ...(SHOULD_USE_ANDROID_LEGACY_MEDIA_PICKER ? { legacy: true } : {}),
       };
       const result =
         source === "camera"
@@ -16085,6 +16164,8 @@ function AppContent() {
   }, [activeTab]);
   useEffect(() => {
     if (!tabHintsHydrated) return;
+    if (!tutorialSeen) return;
+    if (tutorialVisible) return;
     if (tabHintVisible) return;
     if (tabHintsSeen[activeTab]) return;
     const config = TAB_HINT_CONFIG[activeTab];
@@ -16095,7 +16176,12 @@ function AppContent() {
       body: t(config.bodyKey),
     });
     setTabHintsSeen((prev) => ({ ...prev, [activeTab]: true }));
-  }, [activeTab, tabHintVisible, tabHintsHydrated, tabHintsSeen, t]);
+  }, [activeTab, tabHintVisible, tabHintsHydrated, tabHintsSeen, t, tutorialSeen, tutorialVisible]);
+  useEffect(() => {
+    if (!tutorialVisible && !tutorialSeen) return;
+    if (!tabHintVisible) return;
+    setTabHintVisible(null);
+  }, [tutorialVisible, tutorialSeen, tabHintVisible]);
 
   useEffect(() => {
     const onboardingScreens = {
@@ -16302,6 +16388,7 @@ function AppContent() {
             paddingTop: topSafeInset,
           },
         ]}
+        onLayout={handleHomeLayout}
       >
         {startupLogoVisible && (
           <View style={[styles.logoSplashOverlay, { backgroundColor: colors.background }]}>
@@ -16573,7 +16660,7 @@ function AppContent() {
                             {dailySummaryData.declines || 0}
                           </Text>
                           <Text style={[styles.dailySummaryStatLabel, { color: colors.muted }]}>
-                            {language === "ru" ? "Отказов" : "Declines"}
+                            {t("statsDeclines")}
                           </Text>
                         </View>
                         <View
@@ -16744,6 +16831,7 @@ function AppContent() {
               paddingTop: 12,
             },
           ]}
+          onLayout={handleTabBarLayout}
         >
           {["feed", "cart", "pending", "purchases", "profile"].map((tab) => {
             const isHighlighted = !!tutorialHighlightTabs?.has(tab);
@@ -16958,13 +17046,19 @@ function AppContent() {
             statusBarTranslucent
             onRequestClose={handleTutorialSkip}
           >
-            <View style={styles.tutorialBackdrop} pointerEvents="box-none">
+            <View
+              style={[
+                styles.tutorialBackdrop,
+                { paddingBottom: 24 + tutorialCardOffset },
+              ]}
+              pointerEvents="box-none"
+            >
               <View
                 pointerEvents="none"
                 style={[
                   StyleSheet.absoluteFillObject,
                   styles.tutorialBackdropDim,
-                  { bottom: tabBarBottomInset + (Platform.OS === "ios" ? 64 : 72) },
+                  { bottom: tutorialOverlayInset },
                 ]}
               />
               <View
@@ -22032,6 +22126,39 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textTransform: "uppercase",
   },
+  coinEntryActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 16,
+  },
+  coinEntryActionButton: {
+    flex: 1,
+    borderRadius: 20,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  coinEntryActionButtonSpend: {
+    backgroundColor: "rgba(217,72,98,0.12)",
+  },
+  coinEntryActionButtonSave: {
+    backgroundColor: "rgba(46,184,115,0.12)",
+  },
+  coinEntryActionButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  coinEntryActionButtonTextSpend: {
+    color: SPEND_ACTION_COLOR,
+  },
+  coinEntryActionButtonTextSave: {
+    color: SAVE_ACTION_COLOR,
+  },
   coinEntryHint: {
     ...createBodyText({ fontSize: 13 }),
   },
@@ -23638,7 +23765,7 @@ function CoinEntryModal({
   onSubmit,
   onCancel,
 }) {
-  const [sliderDisplayValue, setSliderDisplayValue] = useState(0.25);
+  const [sliderValue, setSliderValue] = useState(0.25);
   const [trackHeight, setTrackHeight] = useState(260);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [categoryError, setCategoryError] = useState(false);
@@ -23646,16 +23773,13 @@ function CoinEntryModal({
   const [manualValue, setManualValue] = useState("");
   const [manualError, setManualError] = useState("");
   const directionAnim = useRef(new Animated.Value(0)).current;
-  const sliderVisualValue = useRef(new Animated.Value(0.25)).current;
-  const sliderRawValueRef = useRef(0.25);
-  const sliderDisplayValueRef = useRef(0.25);
-  const sliderDisplayStateRef = useRef(0.25);
-  const sliderDisplayThrottleRef = useRef(0);
-  const sliderDisplayRafRef = useRef(null);
-  const sliderSnappedValueRef = useRef(0.25);
+  const sliderValueRef = useRef(0.25);
+  const sliderValueCommitRef = useRef(0.25);
+  const sliderValueThrottleRef = useRef(0);
   const hapticStepRef = useRef(0);
   const sliderHapticCooldownRef = useRef(0);
   const tossingRef = useRef(false);
+  const [actionsUnlocked, setActionsUnlocked] = useState(false);
   const sliderGestureRef = useRef({
     axis: "pending",
   });
@@ -23676,19 +23800,10 @@ function CoinEntryModal({
     setManualValue("");
     setManualError("");
     directionAnim.setValue(0);
-    sliderVisualValue.setValue(0.25);
     tossingRef.current = false;
     touchStartRef.current = 0;
-  }, [directionAnim, sliderVisualValue, updateSliderValue, visible]);
-  useEffect(
-    () => () => {
-      if (sliderDisplayRafRef.current !== null) {
-        cancelAnimationFrame(sliderDisplayRafRef.current);
-        sliderDisplayRafRef.current = null;
-      }
-    },
-    []
-  );
+    setActionsUnlocked(false);
+  }, [directionAnim, updateSliderValue, visible]);
   const currencySymbol =
     CURRENCY_SIGNS[currency] ||
     CURRENCY_SIGNS[DEFAULT_PROFILE.currency] ||
@@ -23706,26 +23821,16 @@ function CoinEntryModal({
     },
     [currency, maxAmountUSD]
   );
-  const sliderAmountUSD = computeAmountUSDForValue(sliderDisplayValue);
-  const sliderLocalValue = roundCurrencyValue(
-    convertToCurrency(sliderAmountUSD, currency),
-    currency
-  );
+  const sliderAmountUSD = computeAmountUSDForValue(sliderValue);
+  const sliderLocalValue = snapCurrencyValue(convertToCurrency(sliderAmountUSD, currency), currency);
   const sliderAmountLocal = formatCurrencyWhole(sliderLocalValue, currency);
   const sliderMaxLocalValue = useMemo(
     () => snapCurrencyValue(convertToCurrency(maxAmountUSD, currency), currency),
     [currency, maxAmountUSD]
   );
   const sliderMaxLocal = formatCurrencyWhole(sliderMaxLocalValue, currency);
-  const sliderFillHeight = useMemo(() => {
-    if (trackHeight <= 0) return sliderVisualValue;
-    const usableHeight = Math.max(trackHeight - COIN_FILL_MIN_HEIGHT, 0);
-    return Animated.add(
-      Animated.multiply(sliderVisualValue, usableHeight),
-      COIN_FILL_MIN_HEIGHT
-    );
-  }, [sliderVisualValue, trackHeight]);
-  const coinHasValue = sliderDisplayValue > 0.02;
+  const sliderFillHeight = Math.max(COIN_FILL_MIN_HEIGHT, Math.min(trackHeight, trackHeight * sliderValue));
+  const coinHasValue = sliderValue > 0.02;
   const coinFillColor = coinHasValue ? "#F7C45D" : "#DADDE3";
   const coinShineColor = coinHasValue ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.25)";
   const sliderBackground = directionAnim.interpolate({
@@ -23738,37 +23843,6 @@ function CoinEntryModal({
     outputRange: [-SCREEN_WIDTH, -48, 0, 48, SCREEN_WIDTH],
     extrapolate: "clamp",
   });
-  const finalizeSwipe = useCallback(
-    (dx, mode) => {
-      if (mode !== "horizontal") return false;
-      if (Math.abs(dx) < COIN_SLIDER_HORIZONTAL_THRESHOLD) return false;
-      const value = sliderSnappedValueRef.current;
-      const hasAmount = value >= 0.02;
-      if (!hasAmount || tossingRef.current) return false;
-      if (!selectedCategory) {
-        setCategoryError(true);
-        triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-        return false;
-      }
-      const computedAmountUSD = computeAmountUSDForValue(value);
-      const direction = dx > 0 ? "save" : "spend";
-      tossingRef.current = true;
-      Animated.timing(directionAnim, {
-        toValue: direction === "save" ? 3.2 : -3.2,
-        duration: 180,
-        easing: Easing.out(Easing.circle),
-        useNativeDriver: false,
-      }).start(() => {
-        onSubmit?.({
-          amountUSD: computedAmountUSD,
-          category: selectedCategory,
-          direction,
-        });
-      });
-      return true;
-    },
-    [computeAmountUSDForValue, directionAnim, onSubmit, selectedCategory]
-  );
   const currencyFineStep = useMemo(() => getCurrencyFineStep(currency), [currency]);
   const computeSteppedValue = useCallback(
     (rawValue) => {
@@ -23791,61 +23865,46 @@ function CoinEntryModal({
     },
     [currency, currencyFineStep, sliderMaxLocalValue, maxAmountUSD]
   );
-  const computeRawValueFromTouch = useCallback(
+  const computeValueFromTouch = useCallback(
     (locationY) => {
       if (!Number.isFinite(locationY) || trackHeight <= 0) {
-        return sliderRawValueRef.current;
+        return sliderValueRef.current;
       }
       const clamped = Math.max(0, Math.min(trackHeight, locationY));
-      return 1 - clamped / trackHeight;
+      const normalized = 1 - clamped / trackHeight;
+      return computeSteppedValue(normalized);
     },
-    [trackHeight]
+    [computeSteppedValue, sliderValueRef, trackHeight]
   );
   const updateSliderValue = useCallback(
-    (rawValue, { force = false, immediate = false } = {}) => {
-      const rawClamped = Math.max(
-        0,
-        Math.min(1, Number.isFinite(rawValue) ? rawValue : 0)
-      );
-
-      sliderRawValueRef.current = rawClamped;
-      sliderVisualValue.stopAnimation();
-      sliderVisualValue.setValue(rawClamped);
-
-      sliderDisplayValueRef.current = rawClamped;
-      const pushDisplayValue = () => {
-        const now = Date.now();
-        if (
-          !force &&
-          !immediate &&
-          Math.abs(sliderDisplayValueRef.current - sliderDisplayStateRef.current) <
-            0.0025 &&
-          now - sliderDisplayThrottleRef.current < 20
-        ) {
-          return;
+    (value, { force = false, fromUser = false } = {}) => {
+      const clamped = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+      sliderValueRef.current = clamped;
+      const now = Date.now();
+      if (force) {
+        sliderValueCommitRef.current = clamped;
+        sliderValueThrottleRef.current = now;
+        setSliderValue(clamped);
+        if (!fromUser && clamped <= COIN_SLIDER_VALUE_DEADBAND) {
+          setActionsUnlocked(false);
         }
-        sliderDisplayStateRef.current = sliderDisplayValueRef.current;
-        sliderDisplayThrottleRef.current = now;
-        setSliderDisplayValue(sliderDisplayStateRef.current);
-      };
-      if (force || immediate) {
-        if (sliderDisplayRafRef.current !== null) {
-          cancelAnimationFrame(sliderDisplayRafRef.current);
-          sliderDisplayRafRef.current = null;
-        }
-        pushDisplayValue();
-      } else if (sliderDisplayRafRef.current === null) {
-        sliderDisplayRafRef.current = requestAnimationFrame(() => {
-          sliderDisplayRafRef.current = null;
-          pushDisplayValue();
-        });
+        return clamped;
       }
-
-      const snapped = computeSteppedValue(rawClamped);
-      sliderSnappedValueRef.current = snapped;
-      return snapped;
+      const diff = Math.abs(clamped - sliderValueCommitRef.current);
+      if (diff < COIN_SLIDER_VALUE_DEADBAND && now - sliderValueThrottleRef.current < COIN_SLIDER_STATE_MIN_INTERVAL) {
+        return sliderValueCommitRef.current;
+      }
+      const smoothing = 0.35;
+      const smoothed = sliderValueCommitRef.current + (clamped - sliderValueCommitRef.current) * smoothing;
+      sliderValueCommitRef.current = smoothed;
+      sliderValueThrottleRef.current = now;
+      setSliderValue(smoothed);
+      if (fromUser && smoothed > COIN_SLIDER_VALUE_DEADBAND) {
+        setActionsUnlocked(true);
+      }
+      return smoothed;
     },
-    [computeSteppedValue, sliderVisualValue]
+    [actionsUnlocked]
   );
   const openManual = useCallback(
     (mode) => {
@@ -23874,9 +23933,9 @@ function CoinEntryModal({
           };
           const touchY = evt.nativeEvent?.locationY;
           if (Number.isFinite(touchY)) {
-            const nextValue = computeRawValueFromTouch(touchY);
-            if (Math.abs(nextValue - sliderRawValueRef.current) >= COIN_SLIDER_COMMIT_DEADBAND) {
-              const applied = updateSliderValue(nextValue, { force: true });
+            const nextValue = computeValueFromTouch(touchY);
+            if (Math.abs(nextValue - sliderValueRef.current) >= COIN_SLIDER_VALUE_DEADBAND) {
+              const applied = updateSliderValue(nextValue, { force: true, fromUser: true });
               hapticStepRef.current = Math.round(applied * 20);
             }
           }
@@ -23884,62 +23943,32 @@ function CoinEntryModal({
           directionAnim.stopAnimation();
           directionAnim.setValue(0);
         },
-        onPanResponderMove: (evt, gesture) => {
+        onPanResponderMove: (evt) => {
           if (tossingRef.current) return;
           if (trackHeight <= 0) return;
-          const state = sliderGestureRef.current;
-          const absDx = Math.abs(gesture.dx);
-          const absDy = Math.abs(gesture.dy);
-          if (
-            state.axis !== "horizontal" &&
-            absDx >= COIN_SLIDER_HORIZONTAL_ACTIVATION &&
-            absDx > absDy + COIN_SLIDER_AXIS_BUFFER
-          ) {
-            state.axis = "horizontal";
-          }
-          if (state.axis === "vertical") {
-            const touchY = evt.nativeEvent?.locationY;
-            const nextValue = computeRawValueFromTouch(touchY);
-            if (Math.abs(nextValue - sliderRawValueRef.current) >= COIN_SLIDER_COMMIT_DEADBAND) {
-              const applied = updateSliderValue(nextValue, { immediate: true });
-              const nextStep = Math.round(applied * 20);
-              if (nextStep !== hapticStepRef.current) {
-                const now = Date.now();
-                if (now - sliderHapticCooldownRef.current >= COIN_SLIDER_HAPTIC_COOLDOWN_MS) {
-                  triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-                  sliderHapticCooldownRef.current = now;
-                }
-                hapticStepRef.current = nextStep;
+          const touchY = evt.nativeEvent?.locationY;
+          const nextValue = computeValueFromTouch(touchY);
+          if (Math.abs(nextValue - sliderValueRef.current) >= COIN_SLIDER_VALUE_DEADBAND) {
+            const applied = updateSliderValue(nextValue, { fromUser: true });
+            const nextStep = Math.round(applied * 20);
+            if (nextStep !== hapticStepRef.current) {
+              const now = Date.now();
+              if (now - sliderHapticCooldownRef.current >= COIN_SLIDER_HAPTIC_COOLDOWN_MS) {
+                triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+                sliderHapticCooldownRef.current = now;
               }
+              hapticStepRef.current = nextStep;
             }
-            directionAnim.setValue(0);
-          } else if (state.axis === "horizontal") {
-            const normalizedDx = Math.max(
-              -1,
-              Math.min(1, gesture.dx / COIN_SLIDER_HORIZONTAL_DISTANCE)
-            );
-            directionAnim.setValue(normalizedDx);
-          } else {
-            directionAnim.setValue(0);
           }
         },
         onPanResponderRelease: (_, gesture) => {
           const elapsed = Date.now() - (touchStartRef.current || 0);
           const isTap =
             Math.abs(gesture.dx) < 6 && Math.abs(gesture.dy) < 6 && elapsed < 200 && !tossingRef.current;
-          const axis = sliderGestureRef.current.axis === "horizontal" ? "horizontal" : "vertical";
           sliderGestureRef.current = {
             axis: "pending",
           };
-          const tossed = !isTap && finalizeSwipe(gesture.dx || 0, axis);
-          if (isTap || !tossed) {
-            Animated.spring(directionAnim, {
-              toValue: 0,
-              useNativeDriver: false,
-              speed: 10,
-              bounciness: 8,
-            }).start();
-          }
+          updateSliderValue(sliderValueRef.current, { force: true });
           if (isTap) {
             openManual("amount");
           }
@@ -23948,16 +23977,10 @@ function CoinEntryModal({
           sliderGestureRef.current = {
             axis: "pending",
           };
-          if (tossingRef.current) return;
-          Animated.spring(directionAnim, {
-            toValue: 0,
-            useNativeDriver: false,
-            speed: 10,
-            bounciness: 8,
-          }).start();
+          updateSliderValue(sliderValueRef.current, { force: true });
         },
       }),
-    [computeRawValueFromTouch, directionAnim, finalizeSwipe, openManual, trackHeight, updateSliderValue]
+    [computeValueFromTouch, directionAnim, openManual, trackHeight, updateSliderValue]
   );
   const handleManualSave = () => {
     const parsed = parseNumberInputValue(manualValue);
@@ -23978,7 +24001,7 @@ function CoinEntryModal({
         return;
       }
       const normalized = Math.max(0, Math.min(1, parsedUSD / maxAmountUSD));
-      updateSliderValue(normalized, { force: true });
+      updateSliderValue(normalized, { force: true, fromUser: true });
       hapticStepRef.current = Math.round(normalized * 20);
       sliderGestureRef.current = {
         axis: "pending",
@@ -23999,6 +24022,40 @@ function CoinEntryModal({
   const manualPlaceholder = manualIsAmountMode
     ? t("coinEntryManualAmountPlaceholder", { amount: sliderAmountLocal })
     : t("coinEntryManualPlaceholder", { amount: sliderMaxLocal });
+  const handleAction = useCallback(
+    (direction) => {
+      if (tossingRef.current) return;
+      const value = sliderValueRef.current;
+      const hasAmount = value >= 0.02;
+      if (!hasAmount) {
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+        return;
+      }
+      if (!selectedCategory) {
+        setCategoryError(true);
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+        return;
+      }
+      const computedAmountUSD = computeAmountUSDForValue(value);
+      tossingRef.current = true;
+      Animated.timing(directionAnim, {
+        toValue: direction === "save" ? 3.2 : -3.2,
+        duration: 180,
+        easing: Easing.out(Easing.circle),
+        useNativeDriver: false,
+      }).start(() => {
+        tossingRef.current = false;
+        directionAnim.setValue(0);
+        onSubmit?.({
+          amountUSD: computedAmountUSD,
+          category: selectedCategory,
+          direction,
+        });
+      });
+    },
+    [computeAmountUSDForValue, directionAnim, onSubmit, selectedCategory]
+  );
+  const showActionButtons = actionsUnlocked && sliderValue > COIN_SLIDER_VALUE_DEADBAND;
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
       <TouchableWithoutFeedback onPress={onCancel}>
@@ -24051,7 +24108,7 @@ function CoinEntryModal({
                 >
                   <View style={styles.coinInnerSurface}>
                     <View style={styles.coinFillTrack}>
-                      <Animated.View
+                      <View
                         style={[
                           styles.coinFill,
                           {
@@ -24067,11 +24124,29 @@ function CoinEntryModal({
                     </Text>
                   </View>
                 </Animated.View>
-                <View style={styles.coinDirectionLabels}>
-                  <Text style={[styles.coinDirectionLabel, { color: SPEND_ACTION_COLOR }]}>{t("spendAction")}</Text>
-                  <Text style={[styles.coinDirectionLabel, { color: SAVE_ACTION_COLOR }]}>{t("saveAction")}</Text>
-                </View>
               </View>
+              {showActionButtons && (
+                <View style={styles.coinEntryActions}>
+                  <TouchableOpacity
+                    style={[styles.coinEntryActionButton, styles.coinEntryActionButtonSpend]}
+                    onPress={() => handleAction("spend")}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.coinEntryActionButtonText, styles.coinEntryActionButtonTextSpend]}>
+                      {t("spendAction")}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.coinEntryActionButton, styles.coinEntryActionButtonSave]}
+                    onPress={() => handleAction("save")}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.coinEntryActionButtonText, styles.coinEntryActionButtonTextSave]}>
+                      {t("saveAction")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
               <Text style={[styles.coinEntryHint, { color: colors.muted }]}>{t("coinEntryHint")}</Text>
               <Text style={[styles.coinEntryCategoryLabel, { color: colors.text }]}>
                 {t("coinEntryCategoryLabel")}
