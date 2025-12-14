@@ -31,6 +31,10 @@ const patches = [
     dest: 'node_modules/expo/scripts/autolinking.gradle',
   },
   {
+    src: 'patches/expo-file-system/ios/FileSystemModule.swift',
+    dest: 'node_modules/expo-file-system/ios/FileSystemModule.swift',
+  },
+  {
     src: 'patches/expo-constants/scripts/get-app-config-android.gradle',
     dest: 'node_modules/expo-constants/scripts/get-app-config-android.gradle',
   },
