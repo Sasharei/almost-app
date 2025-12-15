@@ -37,6 +37,7 @@ import * as Notifications from "expo-notifications";
 import * as NavigationBar from "expo-navigation-bar";
 import * as FileSystem from "expo-file-system";
 import { StatusBar } from "expo-status-bar";
+import * as SplashScreen from "expo-splash-screen";
 import {
   useFonts,
   Inter_300Light,
@@ -87,6 +88,8 @@ Notifications.setNotificationHandler({
 
 initSentry();
 initAnalytics();
+// Keep native splash visible until our custom LogoSplash is ready.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const STORAGE_KEYS = {
   PURCHASES: "@almost_purchases",
@@ -122,6 +125,7 @@ const STORAGE_KEYS = {
   DAILY_NUDGES: "@almost_daily_nudges",
   TAMAGOTCHI: "@almost_tamagotchi_state",
   DAILY_SUMMARY: "@almost_daily_summary",
+  POTENTIAL_PUSH_PROGRESS: "@almost_potential_push_progress",
   TUTORIAL: "@almost_tutorial_state",
   DAILY_CHALLENGE: "@almost_daily_challenge_state",
   TAB_HINTS: "@almost_tab_hints",
@@ -184,6 +188,9 @@ const TEAL_TAMAGOTCHI_ANIMATIONS = {
   cry: require("./assets/tamagotchi_skins/teal/Cat_cry.gif"),
   waving: require("./assets/tamagotchi_skins/teal/Cat_waving.gif"),
 };
+const PENDING_COUNTDOWN_FAST_MS = 1000;
+const PENDING_COUNTDOWN_SLOW_MS = 60 * 1000;
+const PENDING_COUNTDOWN_FAST_THRESHOLD_MS = 5 * 60 * 1000;
 
 const stripEmojis = (text = "") =>
   text
@@ -337,6 +344,20 @@ const DAILY_NUDGE_REMINDERS = [
   },
   { id: "evening", hour: 19, minute: 0, titleKey: "dailyNudgeEveningTitle", bodyKey: "dailyNudgeEveningBody" },
 ];
+const DAILY_NUDGE_TITLE_KEYS = [
+  "dailyNudgeMorningTitle",
+  "dailyNudgeDayTitle",
+  "dailyNudgeAfternoonTitle",
+  "dailyNudgeEveningTitle",
+];
+const DAILY_NUDGE_BODY_KEYS = [
+  "dailyNudgeMorningBody",
+  "dailyNudgeDayBody",
+  "dailyNudgeAfternoonBody",
+  "dailyNudgeEveningBody",
+];
+const DAILY_NUDGE_LANGUAGES = ["ru", "en"];
+const DAILY_NUDGE_NOTIFICATION_TAG = "daily_nudge";
 const ANDROID_DAILY_NUDGE_CHANNEL_ID = "daily-nudges";
 const DAILY_CHALLENGE_MIN_SPEND_EVENTS = 2;
 const DAILY_CHALLENGE_REWARD_MULTIPLIER = 2;
@@ -642,6 +663,11 @@ const SAVE_SPAM_ITEM_LIMIT = 3;
 const SAVE_SPAM_GLOBAL_LIMIT = 5;
 const SAVE_ACTION_COLOR = "#2EB873";
 const SPEND_ACTION_COLOR = "#D94862";
+// Android darkens translucent backgrounds when elevation is applied, so use opaque fallbacks there.
+const COIN_ENTRY_SAVE_BACKGROUND =
+  Platform.OS === "android" ? "#E6F6EE" : "rgba(46,184,115,0.12)";
+const COIN_ENTRY_SPEND_BACKGROUND =
+  Platform.OS === "android" ? "#FAE9EC" : "rgba(217,72,98,0.12)";
 const GOAL_HIGHLIGHT_COLOR = "#F6C16B";
 const GOAL_SWIPE_THRESHOLD = 80;
 const DELETE_SWIPE_THRESHOLD = 130;
@@ -1383,6 +1409,75 @@ const TAMAGOTCHI_PARTY_BLUE_COST = Math.max(
   1,
   Math.round(TAMAGOTCHI_PARTY_COST / HEALTH_COIN_TIERS[1].value)
 );
+const TAMAGOTCHI_FOOD_OPTIONS = [
+  {
+    id: "berries",
+    tier: "snack",
+    emoji: "🍓",
+    hungerBoost: Math.round(TAMAGOTCHI_FEED_AMOUNT * 0.55),
+    cost: Math.max(1, Math.round(TAMAGOTCHI_FEED_COST)),
+    label: { ru: "Ягодки", en: "Berries" },
+  },
+  {
+    id: "fish",
+    tier: "treat",
+    emoji: "🐟",
+    hungerBoost: TAMAGOTCHI_FEED_AMOUNT,
+    cost: Math.max(2, Math.round(TAMAGOTCHI_FEED_COST * 2)),
+    label: { ru: "Рыбка", en: "Fish" },
+  },
+  {
+    id: "sushi",
+    tier: "deluxe",
+    emoji: "🍣",
+    hungerBoost: TAMAGOTCHI_FEED_AMOUNT + 12,
+    cost: Math.max(4, Math.round(TAMAGOTCHI_FEED_COST * 4)),
+    label: { ru: "Суши", en: "Sushi" },
+  },
+  {
+    id: "cake",
+    tier: "deluxe",
+    emoji: "🍰",
+    hungerBoost: TAMAGOTCHI_FEED_AMOUNT + 18,
+    cost: Math.max(5, Math.round(TAMAGOTCHI_FEED_COST * 5)),
+    label: { ru: "Десерт", en: "Dessert" },
+  },
+];
+const TAMAGOTCHI_FOOD_MAP = TAMAGOTCHI_FOOD_OPTIONS.reduce((acc, option) => {
+  acc[option.id] = option;
+  return acc;
+}, {});
+const TAMAGOTCHI_DEFAULT_FOOD_ID =
+  TAMAGOTCHI_FOOD_OPTIONS[0]?.id || (TAMAGOTCHI_FOOD_OPTIONS[1]?.id ?? "berries");
+const resolveTamagotchiFoodTier = (hunger = TAMAGOTCHI_MAX_HUNGER) => {
+  const normalized = Math.max(0, Math.min(TAMAGOTCHI_MAX_HUNGER, hunger));
+  if (normalized < 30) return "deluxe";
+  if (normalized < 60) return "treat";
+  return "snack";
+};
+const pickTamagotchiFoodByTier = (tier = "snack", excludeId = null) => {
+  const pool = TAMAGOTCHI_FOOD_OPTIONS.filter((food) => food.tier === tier);
+  const fallback = pool.length ? pool : TAMAGOTCHI_FOOD_OPTIONS;
+  if (!fallback.length) return null;
+  const candidates =
+    excludeId && fallback.length > 1 ? fallback.filter((food) => food.id !== excludeId) : fallback;
+  const list = candidates.length ? candidates : fallback;
+  const randomIndex = Math.floor(Math.random() * list.length);
+  return list[randomIndex]?.id || fallback[0].id;
+};
+const resolveNextTamagotchiFoodId = (
+  hunger = TAMAGOTCHI_MAX_HUNGER,
+  prevId = TAMAGOTCHI_DEFAULT_FOOD_ID,
+  forceChange = false
+) => {
+  const nextTier = resolveTamagotchiFoodTier(hunger);
+  const prevFood = TAMAGOTCHI_FOOD_MAP[prevId];
+  const prevTier = prevFood?.tier || resolveTamagotchiFoodTier(TAMAGOTCHI_MAX_HUNGER);
+  if (!forceChange && prevTier === nextTier && prevFood) {
+    return prevId;
+  }
+  return pickTamagotchiFoodByTier(nextTier, forceChange ? prevId : null) || prevId;
+};
 const TAMAGOTCHI_HUNGER_LOW_THRESHOLD = 50;
 const TAMAGOTCHI_START_STATE = {
   hunger: 80,
@@ -1390,16 +1485,69 @@ const TAMAGOTCHI_START_STATE = {
   lastFedAt: null,
   lastDecayAt: null,
   coinTick: 0,
+  desiredFoodId: TAMAGOTCHI_DEFAULT_FOOD_ID,
 };
 const TAMAGOTCHI_NOTIFICATION_COPY = {
   ru: {
-    low: "Алми уже сильно голоден - приходи покорми его",
-    starving: "Алми плачет и очень хочет кушать - приходи покорми его",
+    low: "Алми из Almost проголодался — загляни и покорми его.",
+    starving: "Алми совсем ослаб. Открой Almost и накорми его скорее.",
   },
   en: {
-    low: "Almi is really hungry - come feed him",
-    starving: "Almi is crying and really wants to eat - come feed him",
+    low: "Almi from Almost is hungry — drop in and feed him.",
+    starving: "Almi is starving. Open Almost and give him a snack.",
   },
+};
+
+const computeTamagotchiDecay = (state = TAMAGOTCHI_START_STATE, timestamp = Date.now()) => {
+  const source = state || {};
+  const now = Number.isFinite(timestamp) ? timestamp : Date.now();
+  const lastStored = source.lastDecayAt;
+  const last =
+    typeof lastStored === "number" && Number.isFinite(lastStored)
+      ? lastStored
+      : Number(lastStored) || now;
+  const hunger = Math.min(TAMAGOTCHI_MAX_HUNGER, Math.max(0, Number(source.hunger) || 0));
+  const coins = Math.max(0, Math.floor(Number(source.coins) || 0));
+  const coinTick = Math.max(0, Number(source.coinTick) || 0);
+  const elapsed = Math.max(0, now - last);
+  const ticks = Math.floor(elapsed / TAMAGOTCHI_DECAY_INTERVAL_MS);
+  if (ticks <= 0) {
+    return {
+      state: {
+        ...source,
+        hunger,
+        coins,
+        coinTick,
+        lastDecayAt: now,
+      },
+      burnedCoins: 0,
+    };
+  }
+  const hungerDrop = ticks * TAMAGOTCHI_DECAY_STEP;
+  const nextHunger = Math.max(0, hunger - hungerDrop);
+  const totalTicks = coinTick + ticks;
+  const potentialBurn = Math.floor(totalTicks / TAMAGOTCHI_COIN_DECAY_TICKS);
+  const coinsToBurn = Math.min(coins, potentialBurn);
+  const nextCoinTick = totalTicks % TAMAGOTCHI_COIN_DECAY_TICKS;
+  const decayDuration = ticks * TAMAGOTCHI_DECAY_INTERVAL_MS;
+  const hungerDelta = hunger - nextHunger;
+  const tierChanged = resolveTamagotchiFoodTier(nextHunger) !== resolveTamagotchiFoodTier(hunger);
+  const shouldRefreshCraving =
+    !source?.desiredFoodId || tierChanged || hungerDelta >= TAMAGOTCHI_DECAY_STEP * 3;
+  const desiredFoodId = shouldRefreshCraving
+    ? resolveNextTamagotchiFoodId(nextHunger, source?.desiredFoodId, hungerDelta > 0)
+    : source.desiredFoodId;
+  return {
+    state: {
+      ...source,
+      hunger: nextHunger,
+      coins: Math.max(0, coins - coinsToBurn),
+      lastDecayAt: last + decayDuration,
+      coinTick: nextCoinTick,
+      desiredFoodId: desiredFoodId || TAMAGOTCHI_DEFAULT_FOOD_ID,
+    },
+    burnedCoins: coinsToBurn,
+  };
 };
 
 const getTamagotchiMood = (hunger = 0, language = "ru") => {
@@ -2175,6 +2323,14 @@ const convertFromCurrency = (valueLocal = 0, currency = activeCurrency) => {
   return valueLocal / rate;
 };
 
+const POTENTIAL_PUSH_STEP_EUR = 10;
+const POTENTIAL_PUSH_STEP_USD = convertFromCurrency(POTENTIAL_PUSH_STEP_EUR, "EUR");
+const DEFAULT_POTENTIAL_PUSH_STATE = {
+  lastStep: 0,
+  lastStatus: null,
+  baselineKey: null,
+};
+
 const getCurrencyPrecision = (currency = activeCurrency) => {
   if (currency === "USD" || currency === "EUR") return 2;
   return 0;
@@ -2459,6 +2615,9 @@ const TRANSLATIONS = {
   ru: {
     appTagline: "Витрина искушений которая помогает копить",
     tamagotchiHungryBubble: "🐟",
+    tamagotchiFoodMenuTitle: "Меню Алми",
+    tamagotchiFoodBoostLabel: "+{{percent}}% сытости",
+    tamagotchiFoodWantLabel: "Хочу",
     tamagotchiSkinTitle: "Образ Алми",
     tamagotchiSkinSubtitle: "Новый стиль Алми мотивирует экономить по-новому",
     tamagotchiSkinCurrent: "Активно",
@@ -2552,8 +2711,8 @@ const TRANSLATIONS = {
     impulseAlertTitle: "Зона импульса",
     impulseAlertMessage:
       "Ты в зоне импульсивных трат на {{temptation}} ({{window}}). Откажись и отправь {{amount}} в копилку!",
-    impulseNotificationTitle: "Импульс на {{temptation}}",
-    impulseNotificationBody: "В это время ты обычно тратишься. Отправь {{amount}} в копилку и сохрани курс.",
+    impulseNotificationTitle: "Almost заметил импульс: «{{temptation}}»",
+    impulseNotificationBody: "В это время ты обычно тратишься. Сделай паузу и отправь {{amount}} в Almost.",
     impulseCategoryLabel: "Категория импульса",
     focusDigestPositiveTitle: "Держишь курс!",
     focusDigestPositiveBody:
@@ -2572,8 +2731,9 @@ const TRANSLATIONS = {
     focusVictoryReward: "Фокус «{{title}}» побеждён! +3 зелёных монеты",
     focusRewardTitle: "Фокус побеждён!",
     focusRewardSubtitle: "Ты трижды отказалась от «{{title}}». +{{amount}} зелёных монет.",
-    dailyReflectionReminderTitle: "Подведи итоги дня",
-    dailyReflectionReminderBody: "До полуночи {{time}} · отметь трату или экономию.",
+    dailyReflectionReminderTitle: "Вечерний чек-ин Almost",
+    dailyReflectionReminderBody:
+      "До полуночи {{time}}. Запиши трату или экономию — так умные подсказки останутся точными.",
     pendingTab: "Думаем",
     pendingTitle: "Думаем",
     pendingEmptyTitle: "В «думаем» пусто",
@@ -2583,13 +2743,14 @@ const TRANSLATIONS = {
     pendingDueToday: "Реши сегодня",
     pendingActionWant: "Начать копить",
     pendingActionDecline: "Сэкономить",
-    pendingNotificationTitle: "Прошло 14 дней",
+    pendingNotificationTitle: "Almost: пора решить «{{title}}»",
     pendingNotificationBody: {
-      female: "Готова решить, что делать с «{{title}}»?",
-      male: "Готов решить, что делать с «{{title}}»?",
-      none: "Готовы решить, что делать с «{{title}}»?",
+      female: "Две недели прошли. Начнём копить на «{{title}}» или отпустим его?",
+      male: "Две недели прошли. Начнём копить на «{{title}}» или отпустим его?",
+      none: "Две недели прошли. Что делаем с «{{title}}» — копим или отпускаем?",
     },
     pendingAdded: "Добавлено в «думаем». Напомним вовремя.",
+    pendingCustomError: "Укажи название и стоимость хотелки.",
     feedTab: "Лента",
     profileTab: "Профиль",
     payButton: "Оплатить",
@@ -2776,8 +2937,8 @@ const TRANSLATIONS = {
     challengeStartedOverlay: "Челлендж «{{title}}» запущен",
     challengeCompletedOverlay: "«{{title}}» выполнен - забери награду!",
     challengeClaimedOverlay: "За челлендж «{{title}}» · +{{amount}} монет",
-    challengeReminderTitle: "Челлендж «{{title}}»",
-    challengeReminderBody: "Продолжай - совсем скоро финиш у «{{title}}».",
+    challengeReminderTitle: "Челлендж Almost «{{title}}»",
+    challengeReminderBody: "До финиша рукой подать. Отметь отказ и забери награду за «{{title}}».",
     challengeCancelAction: "Отменить",
     challengeAcceptConfirmTitle: "Начать челлендж?",
     challengeAcceptConfirmMessage: "Запустить «{{title}}»? Время пойдёт сразу.",
@@ -2800,8 +2961,8 @@ const TRANSLATIONS = {
     dailyChallengeWidgetProgress: "Прогресс {{current}} / {{target}}",
     dailyChallengeWidgetReward: "+{{amount}} монет",
     dailyChallengeRewardReason: "Мини-челлендж «{{temptation}}» выполнен",
-    dailyChallengeRewardNotificationTitle: "Мини-челлендж закрыт",
-    dailyChallengeRewardNotificationBody: "«{{temptation}}» сдалось. Награда +{{amount}} монет.",
+    dailyChallengeRewardNotificationTitle: "Almost: мини-челлендж закрыт",
+    dailyChallengeRewardNotificationBody: "«{{temptation}}» сдалось — забери бонус +{{amount}} монет.",
     dailyChallengeFailedText: "Сегодня «{{temptation}}» оказалось сильнее",
     healthCelebrateTitle: "+{{amount}} монет",
     healthCelebrateSubtitle: "Сохраняй серию бесплатных дней.",
@@ -2929,47 +3090,47 @@ const TRANSLATIONS = {
     customSpendHint: "Это всегда можно поменять в профиле.",
     customSpendSkip: "Пропустить",
     smartReminderTitle: [
-      "Пауза перед «{{temptation}}»",
-      "«{{temptation}}» может подождать",
-      "Сохрани фокус — «{{temptation}}» под контролем",
+      "Almost ловит «{{temptation}}»",
+      "Алми чувствует импульс: «{{temptation}}»",
+      "Умное напоминание Almost про «{{temptation}}»",
     ],
     smartReminderBody: [
-      "Ты решил копить вместо «{{temptation}}». Хочешь удержать фокус?",
-      "Сделай вдох перед «{{temptation}}» и направь деньги в цель.",
-      "Отложи «{{temptation}}» ещё немного — так цель ближе.",
-      "Напоминание: отказ от «{{temptation}}» держит прогресс стабильным.",
+      "Недавно Almost записал «{{temptation}}». Повтори паузу и направь деньги в цель.",
+      "Almost заметил привычку: вдохни перед «{{temptation}}» и выбери копилку.",
+      "Держим серию отказов — «{{temptation}}» подождёт ещё чуть-чуть.",
+      "Алми шепчет: чем чаще выбираешь копилку вместо «{{temptation}}», тем умнее подсказки.",
     ],
     smartInsightDeclineTitle: {
-      female: "Вчера ты отказалась от «{{temptation}}»",
-      male: "Вчера ты отказался от «{{temptation}}»",
-      none: "Вчера был отказ от «{{temptation}}»",
+      female: "Almost запомнил вчерашний отказ от «{{temptation}}»",
+      male: "Almost запомнил вчерашний отказ от «{{temptation}}»",
+      none: "Almost запомнил отказ от «{{temptation}}» вчера",
     },
-    smartInsightDeclineBody: "Откажись и сегодня. Almost верит в тебя.",
+    smartInsightDeclineBody: "Повтори победу сегодня — Almost запишет новую серию.",
     smartInsightSpendTitle: {
-      female: "Вчера ты поддалась искушению «{{temptation}}»",
-      male: "Вчера ты поддался искушению «{{temptation}}»",
-      none: "Вчера «{{temptation}}» победило",
+      female: "Almost заметил вчерашний срыв на «{{temptation}}»",
+      male: "Almost заметил вчерашний срыв на «{{temptation}}»",
+      none: "Almost заметил, что «{{temptation}}» победило вчера",
     },
-    smartInsightSpendBody: "Сегодня попробуй устоять, и копилка вырастет.",
-    dailyNudgeMorningTitle: ["Утро для осознанности", "Начни день с паузы"],
+    smartInsightSpendBody: "Сделай паузу сегодня, и Almost отметит победу в копилке.",
+    dailyNudgeMorningTitle: ["Утренний пинг Almost", "Алми проверяет фокус"],
     dailyNudgeMorningBody: [
-      "Задай тон дню: обходи импульсы стороной.",
-      "Первое решение дня пусть будет осознанным.",
+      "Начни день осознанно: вспомни, ради какой цели ты копишь.",
+      "Алми следит за импульсами — сделай паузу перед первой покупкой.",
     ],
-    dailyNudgeDayTitle: ["Днём легко сорваться", "Середина дня — проверка фокуса"],
+    dailyNudgeDayTitle: ["Дневной чек Almost", "Алми напоминает держать курс"],
     dailyNudgeDayBody: [
-      "Перед покупкой просто сделай паузу и вспомни, ради чего копишь.",
-      "В середине дня спроси себя, поддержит ли эта трата твою цель.",
+      "В середине дня импульсы растут. Подумай, поддержит ли покупка твою цель.",
+      "Если рука тянется к кошельку, вспомни про Almost и выбери копилку.",
     ],
-    dailyNudgeAfternoonTitle: ["После обеда держим курс", "Дневной тормоз для импульсов"],
+    dailyNudgeAfternoonTitle: ["Послеобеденный стоп-сигнал Almost", "Алми держит тормоз"],
     dailyNudgeAfternoonBody: [
-      "Сделай чек-ин: нет ли автоматической покупки?",
-      "Пятиминутное ожидание сейчас усиливает твою копилку.",
+      "Сделай чек-ин перед любой покупкой и отправь свободные деньги в Almost.",
+      "Пятиминутная пауза сейчас поможет удержать курс экономии.",
     ],
-    dailyNudgeEveningTitle: ["Вечером искушения сильнее", "Закрой день осознанностью"],
+    dailyNudgeEveningTitle: ["Вечерний щит Almost", "Алми бережёт твой вечер"],
     dailyNudgeEveningBody: [
-      "Вечером особенно тянет тратить, но лучше держаться плана.",
-      "Перед сном отметь победу над импульсом — даже маленькую.",
+      "Вечером особенно тянет тратить. Запиши победу, даже если она маленькая.",
+      "Закрой день записью в Almost — так подсказки останутся умными.",
     ],
     baselineTitle: "Сколько уходит на мелкие импульсы?",
     baselineSubtitle: "Прикинь месячную сумму - Almost сравнит её с реальными победами.",
@@ -2989,6 +3150,12 @@ const TRANSLATIONS = {
     potentialBlockDetails:
       "Он берёт ваш ежемесячный бюджет на искушения (тот, что вы указали при регистрации), делит сумму на секунды и показывает, сколько денег можно было бы спасти прямо сейчас.",
     potentialBlockCta: "Расскажи, сколько уходит на мелкие траты, и мы покажем, сколько ты мог бы уже спасти.",
+    potentialPushAheadTitle: "Ты обгоняешь свой потенциал!",
+    potentialPushAheadBody:
+      "Потенциал дошёл до {{potential}}, а у тебя уже {{actual}}. Продолжай держать темп.",
+    potentialPushBehindTitle: "Счётчик потенциала ждёт тебя",
+    potentialPushBehindBody:
+      "Потенциал уже {{potential}}, до него осталось {{shortfall}}. Сделай паузу перед тратой и отметь новую экономию.",
     quickCustomTitle: "Новое искушение",
     quickCustomSubtitle: "Опиши траты, от которых хочешь отказаться первой",
     quickCustomNameLabel: "Название",
@@ -3027,6 +3194,13 @@ const TRANSLATIONS = {
     newGoalEmojiLabel: "Эмодзи цели",
     newGoalCreate: "Создать цель",
     newGoalCancel: "Отмена",
+    newPendingTitle: "Новое «думаем»",
+    newPendingSubtitle: "Опиши искушение, которое разумно отложить на 14 дней.",
+    newPendingNameLabel: "Название",
+    newPendingAmountLabel: "Стоимость ({{currency}})",
+    newPendingEmojiLabel: "Эмодзи карточки",
+    newPendingCreate: "Добавить в «думаем»",
+    newPendingCancel: "Отмена",
     tutorialFeedTitle: "Лента искушений",
     tutorialFeedDesc: "Отмечай импульсы и выбирай: копить, добавить в цели или подумать 14 дней.",
     tutorialGoalsTitle: "Цели",
@@ -3056,6 +3230,9 @@ const TRANSLATIONS = {
   en: {
     appTagline: "An offline temptation board that keeps savings safe",
     tamagotchiHungryBubble: "🐟",
+    tamagotchiFoodMenuTitle: "Almi's menu",
+    tamagotchiFoodBoostLabel: "+{{percent}}% fullness",
+    tamagotchiFoodWantLabel: "Want",
     tamagotchiSkinTitle: "Almi skins",
     tamagotchiSkinSubtitle: "A new vibe for Almi keeps your savings fresh",
     tamagotchiSkinCurrent: "Selected",
@@ -3142,8 +3319,8 @@ const TRANSLATIONS = {
     impulseAlertTitle: "Impulse alert",
     impulseAlertMessage:
       "You’re entering a high-impulse zone for {{temptation}} ({{window}}). Skip it and stash {{amount}}!",
-    impulseNotificationTitle: "Impulse for {{temptation}}",
-    impulseNotificationBody: "You usually cave now. Send {{amount}} to savings instead.",
+    impulseNotificationTitle: "Almost spotted an impulse: “{{temptation}}”",
+    impulseNotificationBody: "You usually cave now. Take an Almost pause and stash {{amount}}.",
     impulseCategoryLabel: "Impulse category",
     focusDigestPositiveTitle: "Trend is on track",
     focusDigestPositiveBody:
@@ -3162,8 +3339,9 @@ const TRANSLATIONS = {
     focusVictoryReward: "Focus “{{title}}” conquered! +3 green coins",
     focusRewardTitle: "Focus conquered!",
     focusRewardSubtitle: "You resisted “{{title}}” three times. +{{amount}} green coins.",
-    dailyReflectionReminderTitle: "Wrap up your day",
-    dailyReflectionReminderBody: "{{time}} left today · log a save or a spend.",
+    dailyReflectionReminderTitle: "Almost nightly check-in",
+    dailyReflectionReminderBody:
+      "{{time}} left today. Log a save or spend so our smart nudges stay relevant.",
     pendingTab: "Thinking",
     pendingTitle: "Thinking",
     pendingEmptyTitle: "Nothing in Thinking",
@@ -3173,9 +3351,10 @@ const TRANSLATIONS = {
     pendingDueToday: "Decide today",
     pendingActionWant: "Start saving",
     pendingActionDecline: "Save it",
-    pendingNotificationTitle: "14 days passed",
-    pendingNotificationBody: "Ready to decide what to do with “{{title}}”?",
+    pendingNotificationTitle: "Almost check-in: decide on “{{title}}”",
+    pendingNotificationBody: "Two weeks are up. Start saving for “{{title}}” or let it go?",
     pendingAdded: "Sent to Thinking. We’ll remind you in 2 weeks.",
+    pendingCustomError: "Add a name and price for this temptation.",
     feedTab: "Feed",
     profileTab: "Profile",
     payButton: "Pay",
@@ -3357,8 +3536,8 @@ const TRANSLATIONS = {
     challengeStartedOverlay: "Challenge “{{title}}” started",
     challengeCompletedOverlay: "“{{title}}” complete - collect the bonus!",
     challengeClaimedOverlay: "Challenge “{{title}}” · +{{amount}} coins",
-    challengeReminderTitle: "Challenge “{{title}}”",
-    challengeReminderBody: "You're close to finishing “{{title}}”. Keep going!",
+    challengeReminderTitle: "Almost challenge “{{title}}”",
+    challengeReminderBody: "You're close to the finish. Log another save for “{{title}}” and claim the reward.",
     challengeCancelAction: "Cancel",
     challengeAcceptConfirmTitle: "Start challenge?",
     challengeAcceptConfirmMessage: "Kick off “{{title}}”? The timer starts right away.",
@@ -3381,8 +3560,8 @@ const TRANSLATIONS = {
     dailyChallengeWidgetProgress: "Progress {{current}} / {{target}}",
     dailyChallengeWidgetReward: "+{{amount}} health",
     dailyChallengeRewardReason: "Mini challenge “{{temptation}}” complete",
-    dailyChallengeRewardNotificationTitle: "Daily challenge complete",
-    dailyChallengeRewardNotificationBody: "You beat “{{temptation}}”. Bonus +{{amount}} coins!",
+    dailyChallengeRewardNotificationTitle: "Almost daily challenge complete",
+    dailyChallengeRewardNotificationBody: "“{{temptation}}” gave in — grab your +{{amount}} coin bonus.",
     dailyChallengeFailedText: "“{{temptation}}” won today",
     healthCelebrateTitle: "+{{amount}} coins",
     healthCelebrateSubtitle: "Use it to rescue your free-day streak.",
@@ -3503,39 +3682,39 @@ const TRANSLATIONS = {
     customSpendHint: "You can change this anytime in the profile.",
     customSpendSkip: "Skip for now",
     smartReminderTitle: [
-      "Pause before “{{temptation}}”",
-      "“{{temptation}}” can wait a bit",
-      "Stay focused — “{{temptation}}” under control",
+      "Almost spotted “{{temptation}}”",
+      "Pause with Almi: “{{temptation}}”",
+      "Almost focus ping: “{{temptation}}”",
     ],
     smartReminderBody: [
-      "You planned to save instead of “{{temptation}}”. Stay on track?",
-      "Take a breath before “{{temptation}}” and channel it into your goal.",
-      "Skip “{{temptation}}” again — future-you will smile.",
-      "A tiny pause from “{{temptation}}” keeps the momentum going.",
+      "You logged “{{temptation}}” recently. Repeat the pause and send the cash to your goal.",
+      "Almost flagged this routine — take a breath before “{{temptation}}” and choose savings.",
+      "Keep the streak alive. “{{temptation}}” can wait a little longer.",
+      "Smart tip: every time you skip “{{temptation}}”, Almost keeps your insights sharp.",
     ],
-    smartInsightDeclineTitle: "You skipped “{{temptation}}” yesterday",
-    smartInsightDeclineBody: "Say no again today and keep the streak alive.",
-    smartInsightSpendTitle: "You gave in to “{{temptation}}” yesterday",
-    smartInsightSpendBody: "Try to hold the line today and your savings will thank you.",
-    dailyNudgeMorningTitle: ["Morning check-in", "Start mindful today"],
+    smartInsightDeclineTitle: "Almost remembers yesterday's win over “{{temptation}}”",
+    smartInsightDeclineBody: "Say no again today and Almost will lock in the streak.",
+    smartInsightSpendTitle: "Almost noticed “{{temptation}}” won yesterday",
+    smartInsightSpendBody: "Hold the line today so Almost can celebrate a save.",
+    dailyNudgeMorningTitle: ["Morning nudge from Almost", "Almi's focus check"],
     dailyNudgeMorningBody: [
-      "Set the tone for the day: steer past quick splurges.",
-      "One calm decision now keeps the rest of the day lighter.",
+      "Set the tone: skip the first impulse and remember your goal.",
+      "Almi is checking in — pause before the first swipe today.",
     ],
-    dailyNudgeDayTitle: ["Midday impulse guard", "Afternoon focus boost"],
+    dailyNudgeDayTitle: ["Midday Almost check-in", "Focus boost from Almi"],
     dailyNudgeDayBody: [
-      "Before you tap “buy”, pause and remember the goal.",
-      "Midday is perfect for a quick “does this help my plan?” check.",
+      "Afternoon impulses climb. Ask if this buy still serves your goal.",
+      "Almost noticed lunch-time splurges. Take a mindful pause.",
     ],
-    dailyNudgeAfternoonTitle: ["Post-lunch reset", "Midday pause reminder"],
+    dailyNudgeAfternoonTitle: ["Post-lunch reset with Almost", "Hold the brakes with Almi"],
     dailyNudgeAfternoonBody: [
-      "Scan for auto-purchases before they happen.",
-      "Five mindful minutes after lunch protect your savings.",
+      "Take a breath before tapping buy and reroute that money to savings.",
+      "A five-minute pause now keeps your savings autopilot engaged.",
     ],
-    dailyNudgeEveningTitle: ["Evenings tempt the most", "Wrap the day with intention"],
+    dailyNudgeEveningTitle: ["Evening shield from Almost", "Almi wraps up your day"],
     dailyNudgeEveningBody: [
-      "Evening is prime impulse time, so hold back and let savings win.",
-      "Log one tiny win tonight to end the day strong.",
+      "Evenings tempt the most. Log a win before bed.",
+      "Close the day inside Almost — even a tiny save keeps nudges smart.",
     ],
     baselineTitle: "How much slips on small stuff?",
     baselineSubtitle: "Estimate one month of coffees, snacks and impulse buys to compare with real wins.",
@@ -3555,6 +3734,12 @@ const TRANSLATIONS = {
     potentialBlockDetails:
       "It grabs the monthly temptation budget you set during onboarding, slices it into seconds, and shows how much you could have already saved right now.",
     potentialBlockCta: "Tell us how much usually slips on small extras and we’ll show the potential savings.",
+    potentialPushAheadTitle: "You’re ahead of your potential!",
+    potentialPushAheadBody:
+      "The potential counter just hit {{potential}}, and you’re already at {{actual}}. Keep that streak going!",
+    potentialPushBehindTitle: "Catch up to your potential",
+    potentialPushBehindBody:
+      "Potential is already {{potential}} – only {{shortfall}} to catch up. Pause before the next purchase and log a win.",
     quickCustomTitle: "Add temptation",
     quickCustomSubtitle: "Name the impulse and set a price to add it to the deck",
     quickCustomNameLabel: "Name",
@@ -3593,6 +3778,13 @@ const TRANSLATIONS = {
     newGoalEmojiLabel: "Goal emoji",
     newGoalCreate: "Create goal",
     newGoalCancel: "Cancel",
+    newPendingTitle: "New Thinking item",
+    newPendingSubtitle: "Describe the temptation you want to park for 14 days.",
+    newPendingNameLabel: "Name",
+    newPendingAmountLabel: "Price ({{currency}})",
+    newPendingEmojiLabel: "Card emoji",
+    newPendingCreate: "Add to Thinking",
+    newPendingCancel: "Cancel",
     tutorialFeedTitle: "Temptation feed",
     tutorialFeedDesc: "Log every impulse and choose: save it, add to goals, or park it for 14 days.",
     tutorialGoalsTitle: "Goals",
@@ -3619,6 +3811,49 @@ const TRANSLATIONS = {
     tabHintProfileBody: "Tune theme, language, reminders, and personal targets.",
     tabHintGotIt: "Got it",
   },
+};
+const collectDailyNudgeVariants = (keys = []) => {
+  const variants = new Set();
+  DAILY_NUDGE_LANGUAGES.forEach((lng) => {
+    const dict = TRANSLATIONS[lng] || {};
+    keys.forEach((key) => {
+      const raw = dict[key];
+      if (Array.isArray(raw)) {
+        raw.forEach((value) => {
+          if (typeof value === "string") {
+            const normalized = value.trim();
+            if (normalized.length) {
+              variants.add(normalized);
+            }
+          }
+        });
+      } else if (typeof raw === "string") {
+        const normalized = raw.trim();
+        if (normalized.length) {
+          variants.add(normalized);
+        }
+      }
+    });
+  });
+  return variants;
+};
+const DAILY_NUDGE_TITLE_VARIANTS = collectDailyNudgeVariants(DAILY_NUDGE_TITLE_KEYS);
+const DAILY_NUDGE_BODY_VARIANTS = collectDailyNudgeVariants(DAILY_NUDGE_BODY_KEYS);
+const matchesDailyNudgeText = (text, variants) => {
+  if (typeof text !== "string") return false;
+  const normalized = text.trim();
+  return normalized.length > 0 && variants.has(normalized);
+};
+const isKnownDailyNudgeNotification = (content = {}) => {
+  if (!content) return false;
+  const data = content.data;
+  if (data?.type === DAILY_NUDGE_NOTIFICATION_TAG || data?.tag === DAILY_NUDGE_NOTIFICATION_TAG) {
+    return true;
+  }
+  return (
+    matchesDailyNudgeText(content.title, DAILY_NUDGE_TITLE_VARIANTS) &&
+    matchesDailyNudgeText(content.body, DAILY_NUDGE_BODY_VARIANTS)
+  );
 };
 
 const CATEGORY_LABELS = {
@@ -4771,7 +5006,7 @@ const getTemptationPrice = (item) => {
   return 0;
 };
 
-function TemptationCard({
+function TemptationCardComponent({
   item,
   language,
   colors,
@@ -5461,6 +5696,8 @@ function TemptationCard({
     </View>
   );
 }
+
+const TemptationCard = React.memo(TemptationCardComponent);
 
 function SavingsHeroCard({
   goldPalette,
@@ -6283,6 +6520,7 @@ const FeedScreen = React.memo(function FeedScreen({
   onMascotPress = () => {},
   resolveTemplateTitle = () => null,
   tamagotchiMood = null,
+  tamagotchiDesiredFood = null,
   primaryTemptationId = null,
   primaryTemptationDescription = "",
   focusTemplateId = null,
@@ -6618,6 +6856,96 @@ const FeedScreen = React.memo(function FeedScreen({
     if (activeCategory === "all") return orderedProducts;
     return orderedProducts.filter((product) => product.categories?.includes(activeCategory));
   }, [activeCategory, orderedProducts]);
+  const feedKeyExtractor = useCallback((item) => item.id, []);
+  const renderTemptationItem = useCallback(
+    ({ item }) => {
+      const assignedGoalId = goalAssignments?.[item.id];
+      const assignedGoal = assignedGoalId ? wishesById[assignedGoalId] : null;
+      const wishlistEntry = swipePinnedByTemplate[item.id];
+      const isWishlistGoal = !!wishlistEntry;
+      const overrideDescription =
+        (descriptionOverrides && descriptionOverrides[item.id]) || null;
+      const resolvedDescriptionOverride =
+        overrideDescription ||
+        (item.id === mainTemptationId ? primaryTemptationDescription : null);
+      return (
+        <TemptationCard
+          item={item}
+          language={language}
+          colors={colors}
+          t={t}
+          descriptionOverride={resolvedDescriptionOverride}
+          isFocusTarget={item.id === focusTemplateId}
+          onToggleEdit={() => onTemptationEditToggle?.(item)}
+          currency={currency}
+          stats={refuseStats[item.id]}
+          feedback={cardFeedback[item.id]}
+          titleOverride={titleOverrides[item.id]}
+          goalLabel={assignedGoal ? getWishTitleWithoutEmoji(assignedGoal) : null}
+          isWishlistGoal={isWishlistGoal}
+          isEditing={editingTemptationId === item.id}
+          editTitleValue={editingTemptationId === item.id ? editingTitleValue : ""}
+          editPriceValue={editingTemptationId === item.id ? editingPriceValue : ""}
+          editGoalLabel={editingTemptationId === item.id ? editingGoalLabel : ""}
+          editEmojiValue={editingTemptationId === item.id ? editingEmojiValue : ""}
+          editDescriptionValue={editingTemptationId === item.id ? editingDescriptionValue : ""}
+          editCategoryValue={
+            editingTemptationId === item.id ? editingCategoryValue : DEFAULT_IMPULSE_CATEGORY
+          }
+          onEditTitleChange={onTemptationEditTitleChange}
+          onEditPriceChange={onTemptationEditPriceChange}
+          onEditEmojiChange={onTemptationEditEmojiChange}
+          onEditDescriptionChange={onTemptationEditDescriptionChange}
+          onEditCategoryChange={onTemptationEditCategoryChange}
+          onEditSave={onTemptationEditSave}
+          onEditCancel={onTemptationEditCancel}
+          onEditDelete={() => onTemptationEditDelete?.(item)}
+          onEditGoalSelect={() => onTemptationGoalSelect?.(item)}
+          onSwipeDelete={() => onTemptationSwipeDelete?.(item)}
+          onQuickGoalToggle={() => onTemptationQuickGoalToggle?.(item)}
+          isPrimaryTemptation={item.id === mainTemptationId}
+          onAction={async (type) => {
+            await onTemptationAction(type, item);
+          }}
+        />
+      );
+    },
+    [
+      cardFeedback,
+      colors,
+      currency,
+      descriptionOverrides,
+      editingCategoryValue,
+      editingDescriptionValue,
+      editingEmojiValue,
+      editingGoalLabel,
+      editingPriceValue,
+      editingTemptationId,
+      editingTitleValue,
+      focusTemplateId,
+      goalAssignments,
+      language,
+      mainTemptationId,
+      onTemptationAction,
+      onTemptationEditCancel,
+      onTemptationEditDelete,
+      onTemptationEditDescriptionChange,
+      onTemptationEditEmojiChange,
+      onTemptationEditPriceChange,
+      onTemptationEditSave,
+      onTemptationEditTitleChange,
+      onTemptationEditToggle,
+      onTemptationGoalSelect,
+      onTemptationQuickGoalToggle,
+      onTemptationSwipeDelete,
+      primaryTemptationDescription,
+      refuseStats,
+      swipePinnedByTemplate,
+      t,
+      titleOverrides,
+      wishesById,
+    ]
+  );
   const analyticsPreview = analyticsStats.slice(0, 3);
   const freeDayEventKeys = useMemo(() => {
     const keys = new Set();
@@ -6689,15 +7017,34 @@ const FeedScreen = React.memo(function FeedScreen({
     }));
   }, [currency, resolvedHistoryEvents, language, todayTimestamp]);
   const showImpulseCard = useMemo(() => hasImpulseHistory(impulseInsights), [impulseInsights]);
+  const { wishesById, swipePinnedByTemplate } = useMemo(() => {
+    const byId = {};
+    const swipePinned = {};
+    (wishes || []).forEach((wish) => {
+      if (wish?.id) {
+        byId[wish.id] = wish;
+      }
+      if (wish?.templateId && wish?.pinnedSource === "swipe") {
+        swipePinned[wish.templateId] = wish;
+      }
+    });
+    return { wishesById: byId, swipePinnedByTemplate: swipePinned };
+  }, [wishes]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }] }>
       <FlatList
         style={styles.feedList}
         data={filteredProducts}
-        keyExtractor={(item) => item.id}
+        keyExtractor={feedKeyExtractor}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.feedListContent}
+        renderItem={renderTemptationItem}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={7}
+        updateCellsBatchingPeriod={50}
+        removeClippedSubviews={Platform.OS === "android"}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={[styles.emptyStateTitle, { color: colors.text }]}>{t("feedEmptyTitle")}</Text>
@@ -6740,7 +7087,7 @@ const FeedScreen = React.memo(function FeedScreen({
                         ]}
                       >
                         <Text style={[styles.mascotBubbleText, { color: tamagotchiBubbleTheme.textColor }]}>
-                          {t("tamagotchiHungryBubble")}
+                          {tamagotchiDesiredFood?.emoji || t("tamagotchiHungryBubble")}
                         </Text>
                         <View
                           style={[
@@ -6838,61 +7185,6 @@ const FeedScreen = React.memo(function FeedScreen({
             </ScrollView>
           </View>
         }
-        renderItem={({ item }) => {
-          const assignedGoalId = goalAssignments?.[item.id];
-          const assignedGoal =
-            assignedGoalId && (wishes || []).find((wish) => wish.id === assignedGoalId);
-          const wishlistEntry = (wishes || []).find(
-            (wish) => wish.templateId === item.id && wish.pinnedSource === "swipe"
-          );
-          const isWishlistGoal = !!wishlistEntry;
-          const overrideDescription =
-            (descriptionOverrides && descriptionOverrides[item.id]) || null;
-          const resolvedDescriptionOverride =
-            overrideDescription ||
-            (item.id === mainTemptationId ? primaryTemptationDescription : null);
-          return (
-            <TemptationCard
-              item={item}
-              language={language}
-              colors={colors}
-              t={t}
-              descriptionOverride={resolvedDescriptionOverride}
-              isFocusTarget={item.id === focusTemplateId}
-              onToggleEdit={() => onTemptationEditToggle?.(item)}
-              currency={currency}
-              stats={refuseStats[item.id]}
-              feedback={cardFeedback[item.id]}
-              titleOverride={titleOverrides[item.id]}
-              goalLabel={assignedGoal ? getWishTitleWithoutEmoji(assignedGoal) : null}
-              isWishlistGoal={isWishlistGoal}
-              isEditing={editingTemptationId === item.id}
-              editTitleValue={editingTemptationId === item.id ? editingTitleValue : ""}
-              editPriceValue={editingTemptationId === item.id ? editingPriceValue : ""}
-  editGoalLabel={editingTemptationId === item.id ? editingGoalLabel : ""}
-  editEmojiValue={editingTemptationId === item.id ? editingEmojiValue : ""}
-  editDescriptionValue={editingTemptationId === item.id ? editingDescriptionValue : ""}
-  editCategoryValue={
-    editingTemptationId === item.id ? editingCategoryValue : DEFAULT_IMPULSE_CATEGORY
-  }
-  onEditTitleChange={onTemptationEditTitleChange}
-  onEditPriceChange={onTemptationEditPriceChange}
-  onEditEmojiChange={onTemptationEditEmojiChange}
-  onEditDescriptionChange={onTemptationEditDescriptionChange}
-              onEditCategoryChange={onTemptationEditCategoryChange}
-              onEditSave={onTemptationEditSave}
-              onEditCancel={onTemptationEditCancel}
-              onEditDelete={() => onTemptationEditDelete?.(item)}
-              onEditGoalSelect={() => onTemptationGoalSelect?.(item)}
-              onSwipeDelete={() => onTemptationSwipeDelete?.(item)}
-              onQuickGoalToggle={() => onTemptationQuickGoalToggle?.(item)}
-              isPrimaryTemptation={item.id === mainTemptationId}
-              onAction={async (type) => {
-                await onTemptationAction(type, item);
-              }}
-            />
-          );
-        }}
       />
     </SafeAreaView>
   );
@@ -7432,14 +7724,31 @@ function PendingScreen({
 }) {
   const curiousImage = catCuriousSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.curious;
   const [nowTick, setNowTick] = useState(Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNowTick(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
   const sorted = useMemo(
     () => [...items].sort((a, b) => (a.decisionDue || 0) - (b.decisionDue || 0)),
     [items]
   );
+  useEffect(() => {
+    if (!sorted.length) return undefined;
+    let timeoutId;
+    const scheduleTick = () => {
+      const now = Date.now();
+      const soonestDue = sorted[0]?.decisionDue || 0;
+      const msUntilSoonest = soonestDue
+        ? Math.max(soonestDue - now, 0)
+        : Number.MAX_SAFE_INTEGER;
+      const interval =
+        msUntilSoonest <= PENDING_COUNTDOWN_FAST_THRESHOLD_MS
+          ? PENDING_COUNTDOWN_FAST_MS
+          : PENDING_COUNTDOWN_SLOW_MS;
+      timeoutId = setTimeout(() => {
+        setNowTick(Date.now());
+        scheduleTick();
+      }, interval);
+    };
+    scheduleTick();
+    return () => clearTimeout(timeoutId);
+  }, [sorted]);
 
   const formatCountdown = useCallback(
     (ms) => {
@@ -7480,7 +7789,7 @@ function PendingScreen({
     >
       <Text style={[styles.header, { color: colors.text }]}>{t("pendingTitle")}</Text>
       {sorted.map((item) => {
-        const diff = (item.decisionDue || 0) - Date.now();
+        const diff = (item.decisionDue || 0) - nowTick;
         const countdownLabel = formatCountdown(diff);
         const overdue = diff <= 0;
         const priceLabel = formatCurrency(convertToCurrency(item.priceUSD || 0, currency), currency);
@@ -9430,6 +9739,10 @@ function AppContent() {
   const [customReminderHydrated, setCustomReminderHydrated] = useState(false);
   const [smartReminders, setSmartReminders] = useState([]);
   const [smartRemindersHydrated, setSmartRemindersHydrated] = useState(false);
+  const [potentialPushProgress, setPotentialPushProgress] = useState({
+    ...DEFAULT_POTENTIAL_PUSH_STATE,
+  });
+  const [potentialPushHydrated, setPotentialPushHydrated] = useState(false);
   const [dailyNudgeNotificationIds, setDailyNudgeNotificationIds] = useState({});
   const [dailyNudgesHydrated, setDailyNudgesHydrated] = useState(false);
   const [dailyChallenge, setDailyChallenge] = useState(() => createInitialDailyChallengeState());
@@ -9451,6 +9764,7 @@ function AppContent() {
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
   const declineStreak = useMemo(() => computeRefuseStreak(resolvedHistoryEvents), [resolvedHistoryEvents]);
   const [coinEntryVisible, setCoinEntryVisible] = useState(false);
+  const coinEntryContextRef = useRef({ source: null, openedAt: 0, submitted: false });
   const [coinSliderMaxUSD, setCoinSliderMaxUSD] = useState(DEFAULT_COIN_SLIDER_MAX_USD);
   const [coinSliderHydrated, setCoinSliderHydrated] = useState(false);
   const [pendingGoalTargets, setPendingGoalTargets] = useState(null);
@@ -9466,6 +9780,19 @@ function AppContent() {
     ...DEFAULT_PROFILE_PLACEHOLDER,
     joinedAt: new Date().toISOString(),
   }));
+  const potentialSavedUSD = useSavingsSimulation(
+    profile?.spendingProfile?.baselineMonthlyWasteUSD || 0,
+    profile?.spendingProfile?.baselineStartAt || null
+  );
+  const baselineMonthlyWasteUSD = Math.max(
+    0,
+    Number(profile?.spendingProfile?.baselineMonthlyWasteUSD) || 0
+  );
+  const baselineStartAt = profile?.spendingProfile?.baselineStartAt || null;
+  const potentialBaselineKey =
+    baselineMonthlyWasteUSD > 0 && baselineStartAt
+      ? `${baselineStartAt}:${baselineMonthlyWasteUSD}`
+      : null;
   const [language, setLanguage] = useState("ru");
   const [homeLayoutReady, setHomeLayoutReady] = useState(false);
   const primaryTemptationId = profile.customSpend ? profile.customSpend.id || "custom_habit" : null;
@@ -9580,6 +9907,20 @@ function AppContent() {
   const dismissTabHint = useCallback(() => {
     setTabHintVisible(null);
   }, []);
+  const markTabHintSeen = useCallback(
+    (tabId) => {
+      if (!tabId) return;
+      setTabHintsSeen((prev) => {
+        if (prev[tabId]) return prev;
+        const nextState = { ...prev, [tabId]: true };
+        if (tabHintsHydrated) {
+          AsyncStorage.setItem(STORAGE_KEYS.TAB_HINTS, JSON.stringify(nextState)).catch(() => {});
+        }
+        return nextState;
+      });
+    },
+    [tabHintsHydrated]
+  );
   const updateFabAnchor = useCallback(() => {
     const node = fabButtonWrapperRef.current;
     if (!node || typeof node.measureInWindow !== "function") return;
@@ -9871,6 +10212,18 @@ function AppContent() {
   const [partyActive, setPartyActive] = useState(false);
   const [partyBurstKey, setPartyBurstKey] = useState(0);
   const partyGlowAnimRef = useRef(null);
+  const processTamagotchiDecay = useCallback(
+    (timestamp = Date.now()) => {
+      setTamagotchiState((prev) => {
+        const { state: nextState, burnedCoins } = computeTamagotchiDecay(prev, timestamp);
+        if (burnedCoins > 0) {
+          setHealthPoints((coins) => Math.max(0, coins - burnedCoins));
+        }
+        return nextState;
+      });
+    },
+    [setHealthPoints, setTamagotchiState]
+  );
   const saveActionLogRef = useRef([]);
   const cartBadgeScale = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -10091,6 +10444,7 @@ function AppContent() {
         typeof previousState === "string" && /inactive|background/.test(previousState);
       appStateRef.current = nextState;
       if (wasBackground && nextState === "active") {
+        processTamagotchiDecay();
         beginHomeSession();
         tryLogHomeOpened();
         if (pendingFocusDigest) {
@@ -10100,7 +10454,7 @@ function AppContent() {
     };
     const subscription = AppState.addEventListener("change", handleAppStateChange);
     return () => subscription.remove();
-  }, [beginHomeSession, pendingFocusDigest, tryLogHomeOpened]);
+  }, [beginHomeSession, pendingFocusDigest, processTamagotchiDecay, tryLogHomeOpened]);
   useEffect(() => {
     if (!ratingPromptHydrated) return;
     if (ratingPromptCompleted) return;
@@ -10190,24 +10544,59 @@ function AppContent() {
   );
   const tamagotchiIsFull = tamagotchiHungerPercent >= TAMAGOTCHI_MAX_HUNGER;
   const tamagotchiCoins = healthPoints;
+  const tamagotchiDesiredFood =
+    TAMAGOTCHI_FOOD_MAP[tamagotchiState.desiredFoodId] ||
+    TAMAGOTCHI_FOOD_MAP[TAMAGOTCHI_DEFAULT_FOOD_ID];
+  const [newPendingModal, setNewPendingModal] = useState({
+    visible: false,
+    title: "",
+    amount: "",
+    emoji: DEFAULT_TEMPTATION_EMOJI,
+  });
   const [newGoalModal, setNewGoalModal] = useState({
     visible: false,
     name: "",
     target: "",
     emoji: DEFAULT_GOAL_EMOJI,
     makePrimary: false,
+    source: "unknown",
   });
+  const openNewPendingModal = useCallback(
+    () =>
+      setNewPendingModal({
+        visible: true,
+        title: "",
+        amount: "",
+        emoji: DEFAULT_TEMPTATION_EMOJI,
+      }),
+    []
+  );
   const openNewGoalModal = useCallback(
-    (makePrimary = false) =>
+    (makePrimary = false, source = "unknown") => {
       setNewGoalModal({
         visible: true,
         name: "",
         target: "",
         emoji: DEFAULT_GOAL_EMOJI,
         makePrimary,
-      }),
-    []
+        source,
+      });
+      logEvent("goal_creator_opened", {
+        source,
+        make_primary: makePrimary ? 1 : 0,
+      });
+    },
+    [logEvent]
   );
+  const handleNewPendingChange = useCallback((field, value) => {
+    setNewPendingModal((prev) => ({
+      ...prev,
+      [field]: field === "emoji" ? limitEmojiInput(value) : value,
+    }));
+  }, []);
+  const handleNewPendingCancel = useCallback(() => {
+    setNewPendingModal({ visible: false, title: "", amount: "", emoji: DEFAULT_TEMPTATION_EMOJI });
+  }, []);
   const [onboardingGoalModal, setOnboardingGoalModal] = useState({
     visible: false,
     name: "",
@@ -10239,8 +10628,23 @@ function AppContent() {
     if (fabMenuVisible) {
       closeFabMenu();
     }
-    setCoinEntryVisible(true);
-  }, [closeFabMenu, fabMenuVisible, handleFabTutorialDismiss, triggerHaptic]);
+    if (activeTab === "cart") {
+      openNewGoalModal(false, "fab_cart");
+    } else if (activeTab === "pending") {
+      openNewPendingModal();
+    } else {
+      openCoinEntry(activeTab || "unknown");
+    }
+  }, [
+    activeTab,
+    closeFabMenu,
+    fabMenuVisible,
+    handleFabTutorialDismiss,
+    openCoinEntry,
+    openNewGoalModal,
+    openNewPendingModal,
+    triggerHaptic,
+  ]);
   const handleFabLongPress = useCallback(() => {
     Keyboard.dismiss();
     handleFabTutorialDismiss("hold");
@@ -10645,6 +11049,87 @@ function AppContent() {
   useEffect(() => {
     smartRemindersRef.current = smartReminders || [];
   }, [smartReminders]);
+
+  useEffect(() => {
+    if (!potentialPushHydrated) return;
+    const stepUSD = POTENTIAL_PUSH_STEP_USD;
+    if (!Number.isFinite(stepUSD) || stepUSD <= 0) return;
+    if (!potentialBaselineKey) {
+      if (
+        potentialPushProgress.baselineKey ||
+        potentialPushProgress.lastStep ||
+        potentialPushProgress.lastStatus
+      ) {
+        setPotentialPushProgress({ ...DEFAULT_POTENTIAL_PUSH_STATE });
+      }
+      return;
+    }
+    const resolvedPotential = Number.isFinite(potentialSavedUSD) ? potentialSavedUSD : 0;
+    const currentStep = Math.max(0, Math.floor(resolvedPotential / stepUSD));
+    if (potentialPushProgress.baselineKey !== potentialBaselineKey) {
+      setPotentialPushProgress({
+        lastStep: currentStep,
+        lastStatus: null,
+        baselineKey: potentialBaselineKey,
+      });
+      return;
+    }
+    if (currentStep < potentialPushProgress.lastStep) {
+      setPotentialPushProgress((prev) => ({
+        ...prev,
+        lastStep: currentStep,
+      }));
+      return;
+    }
+    if (!profileHydrated || !savedTotalHydrated) return;
+    if (currentStep <= 0 || currentStep <= potentialPushProgress.lastStep) return;
+    let cancelled = false;
+    const notify = async () => {
+      const ahead = savedTotalUSD >= resolvedPotential && savedTotalUSD > 0;
+      const status = ahead ? "ahead" : "behind";
+      const currencyCode = profile?.currency || DEFAULT_PROFILE.currency;
+      const formatLocal = (valueUSD = 0) =>
+        formatCurrency(convertToCurrency(Math.max(valueUSD, 0), currencyCode), currencyCode);
+      const replacements = {
+        potential: formatLocal(resolvedPotential),
+        actual: formatLocal(savedTotalUSD),
+        shortfall: formatLocal(Math.max(resolvedPotential - savedTotalUSD, 0)),
+      };
+      await sendImmediateNotification({
+        title: t(
+          status === "ahead" ? "potentialPushAheadTitle" : "potentialPushBehindTitle",
+          replacements
+        ),
+        body: t(
+          status === "ahead" ? "potentialPushAheadBody" : "potentialPushBehindBody",
+          replacements
+        ),
+      });
+      if (cancelled) return;
+      setPotentialPushProgress({
+        lastStep: currentStep,
+        lastStatus: status,
+        baselineKey: potentialBaselineKey,
+      });
+    };
+    notify().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    potentialBaselineKey,
+    potentialPushHydrated,
+    potentialPushProgress.baselineKey,
+    potentialPushProgress.lastStatus,
+    potentialPushProgress.lastStep,
+    potentialSavedUSD,
+    profile?.currency,
+    profileHydrated,
+    savedTotalHydrated,
+    savedTotalUSD,
+    sendImmediateNotification,
+    t,
+  ]);
 
   useEffect(() => {
     if (!profileHydrated || !customReminderHydrated) return;
@@ -11487,6 +11972,24 @@ function AppContent() {
     },
     [customReminderId, ensureNotificationPermission, persistCustomReminderId, tVariant]
   );
+  const clearLegacyDailyNudges = useCallback(async () => {
+    try {
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      if (!Array.isArray(scheduled) || !scheduled.length) return;
+      const identifiers = scheduled
+        .filter((entry) => isKnownDailyNudgeNotification(entry?.content))
+        .map((entry) => entry?.identifier)
+        .filter(Boolean);
+      if (!identifiers.length) return;
+      await Promise.all(
+        identifiers.map((id) =>
+          Notifications.cancelScheduledNotificationAsync(id).catch(() => {})
+        )
+      );
+    } catch (error) {
+      console.warn("daily nudge cleanup", error);
+    }
+  }, []);
 
   const rescheduleDailyNudgeNotifications = useCallback(async () => {
     if (!dailyNudgesHydrated || !DAILY_NUDGE_REMINDERS.length) return;
@@ -11500,6 +12003,7 @@ function AppContent() {
         )
       );
     }
+    await clearLegacyDailyNudges();
     const nextMap = {};
     for (const def of DAILY_NUDGE_REMINDERS) {
       try {
@@ -11509,6 +12013,7 @@ function AppContent() {
           content: {
             title: tVariant(def.titleKey),
             body: tVariant(def.bodyKey),
+            data: { type: DAILY_NUDGE_NOTIFICATION_TAG, locale: language },
             ...(Platform.OS === "android" ? { channelId: ANDROID_DAILY_NUDGE_CHANNEL_ID } : null),
           },
           trigger,
@@ -11519,7 +12024,7 @@ function AppContent() {
       }
     }
     setDailyNudgeNotificationIds(nextMap);
-  }, [dailyNudgesHydrated, ensureNotificationPermission, tVariant]);
+  }, [clearLegacyDailyNudges, dailyNudgesHydrated, ensureNotificationPermission, language, tVariant]);
 
   useEffect(() => {
     if (!dailyNudgesHydrated) return;
@@ -11528,6 +12033,7 @@ function AppContent() {
 
   const loadStoredData = async () => {
     let resolvedHealthPoints = null;
+    let pendingTamagotchiCoinBurn = 0;
     try {
       const [
         wishesRaw,
@@ -11562,6 +12068,7 @@ function AppContent() {
         customReminderRaw,
         dailyNudgesRaw,
         smartRemindersRaw,
+        potentialPushProgressRaw,
         tamagotchiRaw,
         dailyChallengeRaw,
         dailySummaryRaw,
@@ -11609,6 +12116,7 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_REMINDER),
         AsyncStorage.getItem(STORAGE_KEYS.DAILY_NUDGES),
         AsyncStorage.getItem(STORAGE_KEYS.SMART_REMINDERS),
+        AsyncStorage.getItem(STORAGE_KEYS.POTENTIAL_PUSH_PROGRESS),
         AsyncStorage.getItem(STORAGE_KEYS.TAMAGOTCHI),
         AsyncStorage.getItem(STORAGE_KEYS.DAILY_CHALLENGE),
         AsyncStorage.getItem(STORAGE_KEYS.DAILY_SUMMARY),
@@ -11772,6 +12280,28 @@ function AppContent() {
           setSmartReminders((prev) => normalizeSmartReminderEntries(prev));
         }
       }
+      if (potentialPushProgressRaw) {
+        try {
+          const parsed = JSON.parse(potentialPushProgressRaw);
+          setPotentialPushProgress({
+            lastStep: Math.max(0, Number(parsed?.lastStep) || 0),
+            lastStatus:
+              parsed?.lastStatus === "ahead" || parsed?.lastStatus === "behind"
+                ? parsed.lastStatus
+                : null,
+            baselineKey:
+              typeof parsed?.baselineKey === "string" && parsed.baselineKey.trim()
+                ? parsed.baselineKey
+                : null,
+          });
+        } catch (err) {
+          console.warn("potential push progress parse", err);
+          setPotentialPushProgress({ ...DEFAULT_POTENTIAL_PUSH_STATE });
+        }
+      } else {
+        setPotentialPushProgress({ ...DEFAULT_POTENTIAL_PUSH_STATE });
+      }
+      setPotentialPushHydrated(true);
       if (tamagotchiRaw) {
         try {
           const parsed = JSON.parse(tamagotchiRaw);
@@ -11783,18 +12313,24 @@ function AppContent() {
             0,
             Math.floor(Number(parsed?.coins) || TAMAGOTCHI_START_STATE.coins)
           );
-          setTamagotchiState({
+          const baseState = {
             ...TAMAGOTCHI_START_STATE,
             ...parsed,
             hunger: parsedHunger,
             coins: parsedCoins,
-            lastDecayAt: parsed?.lastDecayAt || Date.now(),
+            lastDecayAt:
+              typeof parsed?.lastDecayAt === "number" && Number.isFinite(parsed.lastDecayAt)
+                ? parsed.lastDecayAt
+                : Number(parsed?.lastDecayAt) || Date.now(),
             coinTick: Math.max(0, Number(parsed?.coinTick) || 0),
-          });
-          tamagotchiHungerPrevRef.current = parsedHunger;
+          };
+          const { state: hydratedState, burnedCoins } = computeTamagotchiDecay(baseState);
+          pendingTamagotchiCoinBurn += burnedCoins;
+          setTamagotchiState(hydratedState);
+          tamagotchiHungerPrevRef.current = hydratedState.hunger;
           tamagotchiHydratedRef.current = true;
           if (!healthRaw && resolvedHealthPoints === null) {
-            resolvedHealthPoints = parsedCoins;
+            resolvedHealthPoints = hydratedState.coins;
           }
         } catch (err) {
           setTamagotchiState({ ...TAMAGOTCHI_START_STATE });
@@ -12048,7 +12584,8 @@ function AppContent() {
         }
       }
       if (healthRaw) {
-        resolvedHealthPoints = Number(healthRaw) || 0;
+        const parsedHealth = Number(healthRaw) || 0;
+        resolvedHealthPoints = Math.max(0, parsedHealth - pendingTamagotchiCoinBurn);
       } else if (resolvedHealthPoints === null) {
         resolvedHealthPoints = 0;
       }
@@ -12153,6 +12690,7 @@ function AppContent() {
       setMoodHydrated(true);
       setFreeDayHydrated(true);
       setCustomReminderHydrated(true);
+      setPotentialPushHydrated(true);
       setSmartRemindersHydrated(true);
       setDailyNudgesHydrated(true);
       setCatalogHydrated(true);
@@ -12265,33 +12803,12 @@ function AppContent() {
   }, [dailySummarySeenKey, resolvedHistoryEvents, onboardingStep]);
 
   useEffect(() => {
+    processTamagotchiDecay();
     const interval = setInterval(() => {
-      setTamagotchiState((prev) => {
-        const now = Date.now();
-        const last = prev.lastDecayAt || now;
-        const elapsed = Math.max(0, now - last);
-        const ticks = Math.floor(elapsed / TAMAGOTCHI_DECAY_INTERVAL_MS);
-        if (ticks <= 0) {
-          return { ...prev, lastDecayAt: now };
-        }
-        const hungerDrop = ticks * TAMAGOTCHI_DECAY_STEP;
-        const nextHunger = Math.max(0, prev.hunger - hungerDrop);
-        const totalTicks = prev.coinTick + ticks;
-        const coinsToBurn = Math.floor(totalTicks / TAMAGOTCHI_COIN_DECAY_TICKS);
-        const nextCoinTick = totalTicks % TAMAGOTCHI_COIN_DECAY_TICKS;
-        if (coinsToBurn > 0) {
-          setHealthPoints((coins) => Math.max(0, coins - coinsToBurn));
-        }
-        return {
-          ...prev,
-          hunger: nextHunger,
-          lastDecayAt: last + ticks * TAMAGOTCHI_DECAY_INTERVAL_MS,
-          coinTick: nextCoinTick,
-        };
-      });
+      processTamagotchiDecay();
     }, 60 * 1000);
     return () => clearInterval(interval);
-  }, [setHealthPoints]);
+  }, [processTamagotchiDecay]);
 
   useEffect(() => {
     setTamagotchiState((prev) =>
@@ -12520,6 +13037,20 @@ function AppContent() {
     if (!smartRemindersHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.SMART_REMINDERS, JSON.stringify(smartReminders)).catch(() => {});
   }, [smartReminders, smartRemindersHydrated]);
+  useEffect(() => {
+    if (!potentialPushHydrated) return;
+    AsyncStorage.setItem(
+      STORAGE_KEYS.POTENTIAL_PUSH_PROGRESS,
+      JSON.stringify({
+        lastStep: Math.max(0, Number(potentialPushProgress.lastStep) || 0),
+        lastStatus:
+          potentialPushProgress.lastStatus === "ahead" || potentialPushProgress.lastStatus === "behind"
+            ? potentialPushProgress.lastStatus
+            : null,
+        baselineKey: potentialPushProgress.baselineKey || null,
+      })
+    ).catch(() => {});
+  }, [potentialPushHydrated, potentialPushProgress]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.PENDING, JSON.stringify(pendingList)).catch(() => {});
@@ -13145,9 +13676,30 @@ function AppContent() {
     if (!Number.isFinite(nextUSD) || nextUSD <= 0) return;
     setCoinSliderMaxUSD(nextUSD);
   }, []);
+  const openCoinEntry = useCallback(
+    (source = "unknown") => {
+      coinEntryContextRef.current = {
+        source,
+        openedAt: Date.now(),
+        submitted: false,
+      };
+      setCoinEntryVisible(true);
+      logEvent("coin_entry_opened", { source });
+    },
+    [logEvent]
+  );
   const handleCoinEntryClose = useCallback(() => {
+    const context = coinEntryContextRef.current;
+    if (context?.source) {
+      logEvent("coin_entry_closed", {
+        source: context.source,
+        result: context.submitted ? "submitted" : "dismissed",
+        duration_ms: Math.max(0, Date.now() - (context.openedAt || 0)),
+      });
+    }
+    coinEntryContextRef.current = { source: null, openedAt: 0, submitted: false };
     setCoinEntryVisible(false);
-  }, []);
+  }, [logEvent]);
 
   const handleQuickCustomChange = (field, value) => {
     setQuickSpendDraft((prev) => ({
@@ -13250,6 +13802,19 @@ function AppContent() {
         categories: [category],
         impulseCategoryOverride: category,
       };
+      const entryContext = coinEntryContextRef.current || {};
+      const entrySource = entryContext.source || "unknown";
+      logEvent("coin_entry_submit", {
+        source: entrySource,
+        direction: action,
+        amount_usd: amountUSD,
+        category,
+      });
+      coinEntryContextRef.current = {
+        source: entrySource,
+        openedAt: entryContext.openedAt || Date.now(),
+        submitted: true,
+      };
       if (action === "save") {
         const fallbackGoal = activeGoalId || profile.goal || getFallbackGoalId();
         await handleTemptationAction("save", virtualItem, {
@@ -13264,7 +13829,7 @@ function AppContent() {
       }
       handleCoinEntryClose();
     },
-    [activeGoalId, getFallbackGoalId, handleCoinEntryClose, handleTemptationAction, language, profile.goal, t]
+    [activeGoalId, getFallbackGoalId, handleCoinEntryClose, handleTemptationAction, language, logEvent, profile.goal, t]
   );
 
   const handleFabNewTemptation = useCallback(() => {
@@ -13277,7 +13842,7 @@ function AppContent() {
   const handleFabNewGoal = useCallback(() => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
     closeFabMenu();
-    openNewGoalModal(false);
+    openNewGoalModal(false, "fab_menu");
   }, [closeFabMenu, openNewGoalModal, triggerHaptic]);
 
   const handleNewGoalChange = useCallback((field, value) => {
@@ -13288,8 +13853,21 @@ function AppContent() {
   }, []);
 
   const handleNewGoalCancel = useCallback(() => {
-    setNewGoalModal({ visible: false, name: "", target: "", emoji: DEFAULT_GOAL_EMOJI, makePrimary: false });
-  }, []);
+    if (newGoalModal.visible) {
+      logEvent("goal_creator_cancelled", {
+        source: newGoalModal.source || "unknown",
+        make_primary: newGoalModal.makePrimary ? 1 : 0,
+      });
+    }
+    setNewGoalModal({
+      visible: false,
+      name: "",
+      target: "",
+      emoji: DEFAULT_GOAL_EMOJI,
+      makePrimary: false,
+      source: "unknown",
+    });
+  }, [logEvent, newGoalModal]);
 
   const handleNewGoalSubmit = useCallback(() => {
     const trimmedName = (newGoalModal.name || "").trim();
@@ -13386,7 +13964,14 @@ function AppContent() {
     triggerOverlayState("purchase", t("wishAdded", { title: trimmedName }));
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     dismissGoalRenewalPrompt();
-    setNewGoalModal({ visible: false, name: "", target: "", emoji: DEFAULT_GOAL_EMOJI, makePrimary: false });
+    setNewGoalModal({
+      visible: false,
+      name: "",
+      target: "",
+      emoji: DEFAULT_GOAL_EMOJI,
+      makePrimary: false,
+      source: "unknown",
+    });
   }, [
     dismissGoalRenewalPrompt,
     ensureActiveGoalForNewWish,
@@ -14127,41 +14712,61 @@ function AppContent() {
     [processMascotQueue]
   );
 
-  const feedTamagotchi = useCallback(() => {
-    if (tamagotchiState.hunger >= TAMAGOTCHI_MAX_HUNGER) {
-      Alert.alert(
-        language === "ru" ? "Алми" : "Almi",
-        language === "ru"
-          ? "Алми сыта на 100%. Вернись позже, когда появится голод."
-          : "Almi is already full. Come back later when she gets hungry."
-      );
-      return;
-    }
-    if (tamagotchiCoins < TAMAGOTCHI_FEED_COST) {
-      const hint =
-        language === "ru"
-          ? "Пополняй монетки через отказы, уровни и награды."
-          : "Earn coins via saves, levels and rewards.";
-      Alert.alert(
-        language === "ru" ? "Алми" : "Almi",
-        language === "ru"
-          ? `Нужно минимум ${TAMAGOTCHI_FEED_COST} монет, чтобы покормить Алми.\n\n${hint}`
-          : `You need at least ${TAMAGOTCHI_FEED_COST} coins to feed Almi.\n\n${hint}`
-      );
-      return;
-    }
-    setTamagotchiState((prev) => {
-      const nextHunger = Math.min(TAMAGOTCHI_MAX_HUNGER, prev.hunger + TAMAGOTCHI_FEED_AMOUNT);
-      return {
-        ...prev,
-        hunger: nextHunger,
-        lastFedAt: new Date().toISOString(),
-      };
-    });
-    triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
-    setHealthPoints((coins) => Math.max(0, coins - TAMAGOTCHI_FEED_COST));
-    requestMascotAnimation("happy", 3600);
-  }, [language, requestMascotAnimation, setHealthPoints, tamagotchiCoins, tamagotchiState.hunger]);
+  const feedTamagotchi = useCallback(
+    (foodId = TAMAGOTCHI_DEFAULT_FOOD_ID) => {
+      const food = TAMAGOTCHI_FOOD_MAP[foodId] || TAMAGOTCHI_FOOD_MAP[TAMAGOTCHI_DEFAULT_FOOD_ID];
+      if (!food) return;
+      if (tamagotchiState.hunger >= TAMAGOTCHI_MAX_HUNGER) {
+        Alert.alert(
+          language === "ru" ? "Алми" : "Almi",
+          language === "ru"
+            ? "Алми сыта на 100%. Вернись позже, когда появится голод."
+            : "Almi is already full. Come back later when she gets hungry."
+        );
+        return;
+      }
+      if (tamagotchiCoins < food.cost) {
+        const hint =
+          language === "ru"
+            ? "Пополняй монетки через отказы, уровни и награды."
+            : "Earn coins via saves, levels and rewards.";
+        const needText =
+          language === "ru"
+            ? `Нужно минимум ${food.cost} монет на ${food.emoji}.`
+            : `You need at least ${food.cost} coins for ${food.emoji}.`;
+        Alert.alert(language === "ru" ? "Алми" : "Almi", `${needText}\n\n${hint}`);
+        return;
+      }
+      let hungerBefore = tamagotchiState.hunger;
+      let hungerAfter = tamagotchiState.hunger;
+      setTamagotchiState((prev) => {
+        const prevHunger = Math.max(0, Number(prev.hunger) || 0);
+        const nextHunger = Math.min(TAMAGOTCHI_MAX_HUNGER, prevHunger + food.hungerBoost);
+        hungerBefore = prevHunger;
+        hungerAfter = nextHunger;
+        const nextFoodId = resolveNextTamagotchiFoodId(nextHunger, food.id, true);
+        return {
+          ...prev,
+          hunger: nextHunger,
+          lastFedAt: new Date().toISOString(),
+          desiredFoodId: nextFoodId,
+        };
+      });
+      const coinsAfter = Math.max(0, tamagotchiCoins - food.cost);
+      logEvent("tamagotchi_feed", {
+        food_id: food.id,
+        food_cost: food.cost,
+        hunger_before: hungerBefore,
+        hunger_after: hungerAfter,
+        coins_before: tamagotchiCoins,
+        coins_after: coinsAfter,
+      });
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
+      setHealthPoints((coins) => Math.max(0, coins - food.cost));
+      requestMascotAnimation("happy", 3600);
+    },
+    [language, logEvent, requestMascotAnimation, setHealthPoints, tamagotchiCoins, tamagotchiState.hunger]
+  );
 
   const stopPartyEffects = useCallback(() => {
     if (partyGlowAnimRef.current) {
@@ -14653,6 +15258,32 @@ function AppContent() {
     [assignTemptationGoal, closeGoalTemptationPrompt, goalTemptationPrompt]
   );
 
+  const handleNewPendingSubmit = useCallback(async () => {
+    const trimmedTitle = (newPendingModal.title || "").trim();
+    if (!trimmedTitle) {
+      Alert.alert("Almost", t("pendingCustomError"));
+      return;
+    }
+    const parsedLocal = parseNumberInputValue(newPendingModal.amount);
+    if (!Number.isFinite(parsedLocal) || parsedLocal <= 0) {
+      Alert.alert("Almost", t("pendingCustomError"));
+      return;
+    }
+    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+    const amountUSD = convertFromCurrency(parsedLocal, currencyCode);
+    const emoji = normalizeEmojiValue(newPendingModal.emoji, DEFAULT_TEMPTATION_EMOJI);
+    const manualItem = {
+      id: `manual_pending_${Date.now()}`,
+      title: trimmedTitle,
+      emoji,
+      priceUSD: amountUSD,
+      basePriceUSD: amountUSD,
+      categories: [],
+    };
+    await handleTemptationAction("maybe", manualItem);
+    setNewPendingModal({ visible: false, title: "", amount: "", emoji: DEFAULT_TEMPTATION_EMOJI });
+  }, [handleTemptationAction, newPendingModal, profile.currency, t]);
+
   const openGoalEditorPrompt = useCallback(
     (wish) => {
       if (!wish) return;
@@ -14792,7 +15423,7 @@ function AppContent() {
     const targetWish = mainGoalWish || selectMainGoalWish(wishes);
     logEvent("goal_renewal_start", { had_existing_goal: !!targetWish });
     setTimeout(() => {
-      openNewGoalModal(true);
+      openNewGoalModal(true, "goal_renewal");
     }, 280);
   }, [
     dismissGoalRenewalPrompt,
@@ -16140,13 +16771,14 @@ function AppContent() {
             onSavingsBreakdownPress={openSavingsBreakdown}
             resolveTemplateTitle={resolveTemplateTitle}
             tamagotchiMood={tamagotchiMood}
+            tamagotchiDesiredFood={tamagotchiDesiredFood}
             primaryTemptationId={primaryTemptationId}
-          primaryTemptationDescription={primaryTemptationDescription}
-          focusTemplateId={focusTemplateId}
-          tamagotchiAnimations={tamagotchiAnimations}
-          lifetimeSavedUSD={lifetimeSavedUSD}
-          interactionStats={temptationInteractions}
-        />
+            primaryTemptationDescription={primaryTemptationDescription}
+            focusTemplateId={focusTemplateId}
+            tamagotchiAnimations={tamagotchiAnimations}
+            lifetimeSavedUSD={lifetimeSavedUSD}
+            interactionStats={temptationInteractions}
+          />
         );
     }
   };
@@ -16175,8 +16807,17 @@ function AppContent() {
       title: t(config.titleKey),
       body: t(config.bodyKey),
     });
-    setTabHintsSeen((prev) => ({ ...prev, [activeTab]: true }));
-  }, [activeTab, tabHintVisible, tabHintsHydrated, tabHintsSeen, t, tutorialSeen, tutorialVisible]);
+    markTabHintSeen(activeTab);
+  }, [
+    activeTab,
+    markTabHintSeen,
+    tabHintVisible,
+    tabHintsHydrated,
+    tabHintsSeen,
+    t,
+    tutorialSeen,
+    tutorialVisible,
+  ]);
   useEffect(() => {
     if (!tutorialVisible && !tutorialSeen) return;
     if (!tabHintVisible) return;
@@ -16964,6 +17605,16 @@ function AppContent() {
           onCancel={handleQuickCustomCancel}
           language={language}
         />
+        <NewPendingModal
+          visible={newPendingModal.visible}
+          colors={colors}
+          t={t}
+          currency={profile.currency || DEFAULT_PROFILE.currency}
+          data={newPendingModal}
+          onChange={handleNewPendingChange}
+          onSubmit={handleNewPendingSubmit}
+          onCancel={handleNewPendingCancel}
+        />
 
         <NewGoalModal
           visible={newGoalModal.visible}
@@ -17245,25 +17896,60 @@ function AppContent() {
                       {language === "ru" ? "Алми ждёт первую монетку" : "Almi awaits the first coin"}
                     </Text>
                   )}
+                  <Text style={[styles.tamagotchiFoodTitle, { color: colors.text }]}>
+                    {t("tamagotchiFoodMenuTitle")}
+                  </Text>
+                  <View style={styles.tamagotchiFoodList}>
+                    {TAMAGOTCHI_FOOD_OPTIONS.map((food, index) => {
+                      const label = food.label[language] || food.label.en;
+                      const coinTier = getHealthCoinTierForAmount(food.cost);
+                      const affordable = tamagotchiCoins >= food.cost;
+                      const isDesired = tamagotchiDesiredFood?.id === food.id;
+                      const isLast = index === TAMAGOTCHI_FOOD_OPTIONS.length - 1;
+                      return (
+                        <TouchableOpacity
+                          key={food.id}
+                          style={[
+                            styles.tamagotchiFoodButton,
+                            { borderColor: colors.border, backgroundColor: colors.card },
+                            isDesired && { borderColor: colors.text },
+                            tamagotchiIsFull && styles.tamagotchiFoodButtonDisabled,
+                            isLast && styles.tamagotchiFoodButtonLast,
+                          ]}
+                          activeOpacity={0.9}
+                          onPress={() => feedTamagotchi(food.id)}
+                          disabled={tamagotchiIsFull}
+                        >
+                          <Text style={styles.tamagotchiFoodEmoji}>{food.emoji}</Text>
+                          <View style={styles.tamagotchiFoodInfo}>
+                            <Text style={[styles.tamagotchiFoodLabel, { color: colors.text }]}>{label}</Text>
+                            <Text style={[styles.tamagotchiFoodBoost, { color: colors.muted }]}>
+                              {t("tamagotchiFoodBoostLabel", { percent: food.hungerBoost })}
+                            </Text>
+                          </View>
+                          <View style={styles.tamagotchiFoodCost}>
+                            <Image source={coinTier.asset} style={styles.tamagotchiFoodCostIcon} />
+                            <Text
+                              style={[
+                                styles.tamagotchiFoodCostText,
+                                { color: colors.text, opacity: affordable ? 1 : 0.5 },
+                              ]}
+                            >
+                              ×{food.cost}
+                            </Text>
+                          </View>
+                          {isDesired && (
+                            <View style={[styles.tamagotchiFoodBadge, { backgroundColor: colors.text }]}>
+                              <Text style={[styles.tamagotchiFoodBadgeText, { color: colors.background }]}>
+                                {t("tamagotchiFoodWantLabel")}
+                              </Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                   <View style={styles.tamagotchiActions}>
-                    <TouchableOpacity
-                      style={[
-                        styles.tamagotchiButton,
-                        { backgroundColor: colors.text, borderColor: colors.text },
-                        tamagotchiIsFull && styles.tamagotchiButtonDisabled,
-                      ]}
-                      disabled={tamagotchiIsFull}
-                      onPress={feedTamagotchi}
-                    >
-                      <View style={styles.tamagotchiButtonContent}>
-                        <Image source={HEALTH_COIN_TIERS[0].asset} style={styles.tamagotchiButtonIcon} />
-                        <Text style={[styles.tamagotchiButtonText, { color: colors.background }]}>
-                          {language === "ru"
-                            ? `Покормить ×${TAMAGOTCHI_FEED_COST}`
-                            : `Feed ×${TAMAGOTCHI_FEED_COST}`}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
                     <TouchableOpacity
                       style={[
                         styles.tamagotchiButton,
@@ -18803,9 +19489,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
   },
-  tamagotchiButtonDisabled: {
-    opacity: 0.5,
-  },
   tamagotchiButtonContent: {
     flexDirection: "row",
     alignItems: "center",
@@ -18822,6 +19505,69 @@ const styles = StyleSheet.create({
   },
   tamagotchiButtonText: {
     ...createCtaText({ fontSize: 14 }),
+  },
+  tamagotchiFoodTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 16,
+    marginTop: 12,
+  },
+  tamagotchiFoodList: {
+    marginTop: 6,
+  },
+  tamagotchiFoodButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 12,
+    position: "relative",
+    marginBottom: 10,
+  },
+  tamagotchiFoodButtonLast: {
+    marginBottom: 0,
+  },
+  tamagotchiFoodButtonDisabled: {
+    opacity: 0.5,
+  },
+  tamagotchiFoodEmoji: {
+    fontSize: 28,
+  },
+  tamagotchiFoodInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  tamagotchiFoodLabel: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 15,
+  },
+  tamagotchiFoodBoost: {
+    ...createSecondaryText({ fontSize: 12 }),
+  },
+  tamagotchiFoodCost: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  tamagotchiFoodCostIcon: {
+    width: 18,
+    height: 18,
+  },
+  tamagotchiFoodCostText: {
+    ...createCtaText({ fontSize: 13 }),
+  },
+  tamagotchiFoodBadge: {
+    position: "absolute",
+    top: -10,
+    right: 12,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  tamagotchiFoodBadgeText: {
+    ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
+    letterSpacing: 0.6,
   },
   tamagotchiSub: {
     ...createSecondaryText({ fontSize: 12 }),
@@ -22144,10 +22890,10 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   coinEntryActionButtonSpend: {
-    backgroundColor: "rgba(217,72,98,0.12)",
+    backgroundColor: COIN_ENTRY_SPEND_BACKGROUND,
   },
   coinEntryActionButtonSave: {
-    backgroundColor: "rgba(46,184,115,0.12)",
+    backgroundColor: COIN_ENTRY_SAVE_BACKGROUND,
   },
   coinEntryActionButtonText: {
     fontSize: 16,
@@ -24409,6 +25155,82 @@ function NewGoalModal({ visible, colors, t, currency, data, onChange, onSubmit, 
   );
 }
 
+function NewPendingModal({ visible, colors, t, currency, data, onChange, onSubmit, onCancel }) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+      statusBarTranslucent
+    >
+      <TouchableWithoutFeedback onPress={onCancel}>
+        <View style={styles.quickModalBackdrop}>
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View style={[styles.quickModalCard, { backgroundColor: colors.card }] }>
+              <Text style={[styles.quickModalTitle, { color: colors.text }]}>{t("newPendingTitle")}</Text>
+              <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>{t("newPendingSubtitle")}</Text>
+              <View style={{ gap: 8, width: "100%" }}>
+                <TextInput
+                  style={[
+                    styles.primaryInput,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  placeholder={t("newPendingNameLabel")}
+                  placeholderTextColor={colors.muted}
+                  value={data.title}
+                  onChangeText={(text) => onChange("title", text)}
+                />
+                <TextInput
+                  style={[
+                    styles.primaryInput,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  placeholder={t("newPendingAmountLabel", { currency })}
+                  placeholderTextColor={colors.muted}
+                  keyboardType="decimal-pad"
+                  value={data.amount}
+                  onChangeText={(text) => onChange("amount", text)}
+                />
+                <TextInput
+                  style={[
+                    styles.primaryInput,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  placeholder={t("newPendingEmojiLabel")}
+                  placeholderTextColor={colors.muted}
+                  value={data.emoji || ""}
+                  onChangeText={(text) => onChange("emoji", text)}
+                  selectTextOnFocus
+                  maxLength={2}
+                />
+              </View>
+              <View style={styles.quickModalActions}>
+                <TouchableOpacity
+                  style={[styles.quickModalSecondary, { borderColor: colors.border }]}
+                  onPress={onCancel}
+                >
+                  <Text style={[styles.quickModalSecondaryText, { color: colors.muted }]}>
+                    {t("newPendingCancel")}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.quickModalPrimary, { backgroundColor: colors.text }]}
+                  onPress={onSubmit}
+                >
+                  <Text style={[styles.quickModalPrimaryText, { color: colors.background }]}>
+                    {t("newPendingCreate")}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
 function OnboardingGoalModal({ visible, colors, t, currency, data, onChange, onSubmit, onCancel }) {
   return (
     <Modal
@@ -24682,6 +25504,9 @@ function LanguageScreen({
 
 function LogoSplash({ onDone }) {
   const [text, setText] = useState("");
+  const handleLayout = useCallback(() => {
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
   useEffect(() => {
     const word = "Almost";
     let index = 0;
@@ -24697,7 +25522,7 @@ function LogoSplash({ onDone }) {
   }, [onDone]);
 
   return (
-    <View style={styles.logoSplash}>
+    <View style={styles.logoSplash} onLayout={handleLayout}>
       <Text style={styles.logoSplashText}>{text}</Text>
     </View>
   );
