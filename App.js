@@ -12,7 +12,6 @@ import {
   TextInput,
   Alert,
   Keyboard,
-  KeyboardAvoidingView,
   TouchableWithoutFeedback,
   Platform,
   Dimensions,
@@ -27,6 +26,7 @@ import {
   AppState,
   Share,
   ActionSheetIOS,
+  PixelRatio,
 } from "react-native";
 import Svg, { Circle as SvgCircle, Defs, Mask, Rect as SvgRect } from "react-native-svg";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -297,6 +297,42 @@ const HEALTH_COIN_TIERS = [
 const BLUE_HEALTH_COIN_ASSET = HEALTH_COIN_TIERS.find((tier) => tier.id === "blue")?.asset || null;
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
+const CTA_LETTER_SPACING = 0.4;
+const FONT_SCALE = typeof PixelRatio.getFontScale === "function" ? PixelRatio.getFontScale() : 1;
+const IS_EXTRA_COMPACT_DEVICE = SCREEN_WIDTH <= 375 || (SCREEN_WIDTH <= 390 && FONT_SCALE > 1.1);
+const TYPOGRAPHY_SCALE = IS_EXTRA_COMPACT_DEVICE ? 0.92 : 1;
+const scaleFontSize = (value) =>
+  typeof value === "number" ? Number((value * TYPOGRAPHY_SCALE).toFixed(2)) : value;
+const scaleLetterSpacing = (value) =>
+  typeof value === "number" ? Number((value * TYPOGRAPHY_SCALE).toFixed(3)) : value;
+const scaleTypographyOverrides = (overrides = {}) => {
+  if (!overrides || typeof overrides !== "object") return overrides;
+  let next = overrides;
+  const applyScaled = (key, scaleFn) => {
+    if (typeof overrides[key] === "number") {
+      if (next === overrides) next = { ...overrides };
+      next[key] = scaleFn(overrides[key]);
+    }
+  };
+  applyScaled("fontSize", scaleFontSize);
+  applyScaled("lineHeight", scaleFontSize);
+  applyScaled("letterSpacing", scaleLetterSpacing);
+  return next;
+};
+// Limit how far dialog-style cards can move when the keyboard is visible.
+const MAX_MODAL_KEYBOARD_OFFSET = Math.min(SCREEN_HEIGHT * 0.45, 360);
+const OVERLAY_CARD_MAX_WIDTH = Math.min(SCREEN_WIDTH - 40, 440);
+const IS_COMPACT_DEVICE = SCREEN_WIDTH <= 380;
+const PROFILE_SUBTITLE_FONT_SIZE = scaleFontSize(IS_COMPACT_DEVICE ? 12 : 13);
+const PROFILE_SUBTITLE_LINE_HEIGHT = scaleFontSize(IS_COMPACT_DEVICE ? 16 : 18);
+const PROFILE_STAT_LABEL_FONT_SIZE = scaleFontSize(IS_COMPACT_DEVICE ? 8.5 : 10);
+const PROFILE_STAT_LETTER_SPACING = scaleLetterSpacing(
+  IS_COMPACT_DEVICE ? CTA_LETTER_SPACING * 0.6 : CTA_LETTER_SPACING * 0.8
+);
+const CHALLENGE_TITLE_FONT_SIZE = scaleFontSize(IS_COMPACT_DEVICE ? 15 : 16);
+const CHALLENGE_DESC_FONT_SIZE = scaleFontSize(IS_COMPACT_DEVICE ? 13 : 14);
+const CHALLENGE_LINE_HEIGHT = scaleFontSize(IS_COMPACT_DEVICE ? 18 : 20);
+const CHALLENGE_META_FONT_SIZE = scaleFontSize(IS_COMPACT_DEVICE ? 11.5 : 12);
 
 const THEMES = {
   light: {
@@ -327,7 +363,6 @@ const INTER_FONTS = {
   black: "Inter_900Black",
 };
 
-const CTA_LETTER_SPACING = 0.4;
 const SMART_REMINDER_DELAY_MS = 23 * 60 * 60 * 1000;
 const SMART_REMINDER_MIN_INTERVAL_MS = 60 * 60 * 1000;
 const SMART_REMINDER_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
@@ -590,6 +625,7 @@ const TAB_HINT_CONFIG = {
 const TAB_BAR_BASE_HEIGHT = 64;
 const FAB_BUTTON_SIZE = 64;
 const FAB_CONTAINER_BOTTOM = 96;
+const FAB_TUTORIAL_MIN_SESSIONS = 3;
 const FAB_TUTORIAL_HALO_SIZE = 128;
 const FAB_TUTORIAL_CARD_SPACING = 140;
 const FAB_TUTORIAL_HALO_INSET = (FAB_TUTORIAL_HALO_SIZE - FAB_BUTTON_SIZE) / 2;
@@ -711,6 +747,8 @@ const HISTORY_RETENTION_MS = DAY_MS * 31;
 const HISTORY_VIEWPORT_ROWS = 5;
 const HISTORY_ITEM_HEIGHT = 60;
 const HISTORY_VIEWPORT_HEIGHT = HISTORY_VIEWPORT_ROWS * HISTORY_ITEM_HEIGHT;
+const HISTORY_SAVED_GAIN_EVENTS = new Set(["refuse_spend", "pending_to_decline"]);
+const HISTORY_SAVED_LOSS_EVENTS = new Set(["spend"]);
 const getHealthCoinTierForAmount = (amount = 0) => {
   const normalized = Math.max(0, Math.floor(amount));
   for (let i = HEALTH_COIN_TIERS.length - 1; i >= 0; i -= 1) {
@@ -2716,10 +2754,10 @@ const TRANSLATIONS = {
     impulseCategoryLabel: "Категория импульса",
     focusDigestPositiveTitle: "Держишь курс!",
     focusDigestPositiveBody:
-      "Ты чаще отказываешься, чем тратишь. Сильная сторона — «{{strong}}», слабая — «{{weak}}».",
+      "Ты чаще отказываешься, чем тратишь.\nСильная сторона: «{{strong}}».\nСлабая сторона: «{{weak}}».",
     focusDigestNegativeTitle: "Внимание к расходам",
     focusDigestNegativeBody:
-      "Трат стало больше. Главная трата — «{{weak}}». Сфокусируйся на ней, чтобы вернуть контроль.",
+      "Трат стало больше.\nГлавная трата: «{{weak}}». Сфокусируйся на ней.",
     focusDigestStrongLabel: "Сильная сторона",
     focusDigestWeakLabel: "Слабая сторона",
     focusDigestButton: "Сфокусироваться",
@@ -2750,6 +2788,7 @@ const TRANSLATIONS = {
       none: "Две недели прошли. Что делаем с «{{title}}» — копим или отпускаем?",
     },
     pendingAdded: "Добавлено в «думаем». Напомним вовремя.",
+    pendingDeleteConfirm: "Убрать эту хотелку из «думаем»?",
     pendingCustomError: "Укажи название и стоимость хотелки.",
     feedTab: "Лента",
     profileTab: "Профиль",
@@ -2810,8 +2849,9 @@ const TRANSLATIONS = {
     statsSaved: "Спасено",
     statsItems: "Целей",
     statsCart: "В листе",
-    statsDeclines: "Отказов",
-    statsFreeDays: "Серия дней",
+    statsDeclines: "Экономий",
+    statsSpends: "Трат",
+    statsFreeDays: "Серия",
     analyticsTitle: "Прогресс",
     analyticsPendingToBuy: "Цели",
     analyticsPendingToDecline: "Отказы",
@@ -2854,6 +2894,7 @@ const TRANSLATIONS = {
     historyPendingAdded: "Отложено на 14 дней: {{title}}",
     historyPendingWant: "После паузы решили копить: {{title}}",
     historyPendingDecline: "После паузы отказ: {{title}} (+{{amount}})",
+    historyPendingRemoved: "Удалено из «думаем»: {{title}}",
     historyFreeDay: "Бесплатный день №{{total}}",
     historySpend: {
       female: "Потратила: {{title}} (-{{amount}})",
@@ -2911,7 +2952,7 @@ const TRANSLATIONS = {
     rewardHealthBonus: "+{{amount}} здоровья",
     freeDayHealthTitle: "Монетки",
     freeDayHealthSubtitle: "Тратятся на спасение серии и Алми.",
-    rewardCelebrateTitle: "Награда «{{title}}» получена!",
+    rewardCelebrateTitle: "Награда {{title}} получена!",
     rewardCelebrateSubtitle: "Алми ликует: продолжай накапливать достижения.",
     challengeTabTitle: "Челленджи",
     challengeRewardsTabTitle: "Награды",
@@ -3117,12 +3158,12 @@ const TRANSLATIONS = {
       "Начни день осознанно: вспомни, ради какой цели ты копишь.",
       "Алми следит за импульсами — сделай паузу перед первой покупкой.",
     ],
-    dailyNudgeDayTitle: ["Дневной чек Almost", "Алми напоминает держать курс"],
+    dailyNudgeDayTitle: ["Дневной чек Almost", "Алми держит фокус"],
     dailyNudgeDayBody: [
       "В середине дня импульсы растут. Подумай, поддержит ли покупка твою цель.",
       "Если рука тянется к кошельку, вспомни про Almost и выбери копилку.",
     ],
-    dailyNudgeAfternoonTitle: ["Послеобеденный стоп-сигнал Almost", "Алми держит тормоз"],
+    dailyNudgeAfternoonTitle: ["Послеобеденный чек-поинт Almost", "Алми сбавляет темп"],
     dailyNudgeAfternoonBody: [
       "Сделай чек-ин перед любой покупкой и отправь свободные деньги в Almost.",
       "Пятиминутная пауза сейчас поможет удержать курс экономии.",
@@ -3165,7 +3206,7 @@ const TRANSLATIONS = {
     quickCustomCancel: "Отмена",
     coinEntryTitle: "Сколько внести?",
     coinEntrySubtitle: "Проведи монетку вверх-вниз и выбери категорию.",
-    coinEntryHint: "Нажми кнопку ниже, чтобы подтвердить копилку или трату.",
+    coinEntryHint: "Нажми кнопку выше, чтобы подтвердить копилку или трату.",
     coinEntryManual: "...",
     coinEntryManualTitle: "Выбери новый максимум",
     coinEntryManualPlaceholder: "Например {{amount}}",
@@ -3324,10 +3365,10 @@ const TRANSLATIONS = {
     impulseCategoryLabel: "Impulse category",
     focusDigestPositiveTitle: "Trend is on track",
     focusDigestPositiveBody:
-      "You resist more than you spend. Biggest win: “{{strong}}”. Keep an eye on “{{weak}}”.",
+      "You resist more than you spend.\nBiggest win: “{{strong}}”.\nWatch “{{weak}}”.",
     focusDigestNegativeTitle: "Time to refocus",
     focusDigestNegativeBody:
-      "Spending is outpacing saves. Biggest leak: “{{weak}}”. Focus on it to regain control.",
+      "Spending is outpacing saves.\nBiggest leak: “{{weak}}”. Focus on it.",
     focusDigestStrongLabel: "Biggest win",
     focusDigestWeakLabel: "Needs attention",
     focusDigestButton: "Focus",
@@ -3354,6 +3395,7 @@ const TRANSLATIONS = {
     pendingNotificationTitle: "Almost check-in: decide on “{{title}}”",
     pendingNotificationBody: "Two weeks are up. Start saving for “{{title}}” or let it go?",
     pendingAdded: "Sent to Thinking. We’ll remind you in 2 weeks.",
+    pendingDeleteConfirm: "Remove this item from Thinking?",
     pendingCustomError: "Add a name and price for this temptation.",
     feedTab: "Feed",
     profileTab: "Profile",
@@ -3425,7 +3467,8 @@ const TRANSLATIONS = {
     statsSaved: "Saved",
     statsItems: "Goals",
     statsCart: "In list",
-    statsDeclines: "Savings",
+    statsDeclines: "Saves",
+    statsSpends: "Spends",
     statsFreeDays: "Streak",
     analyticsTitle: "Progress",
     analyticsPendingToBuy: "Wishes",
@@ -3469,6 +3512,7 @@ const TRANSLATIONS = {
     historyPendingAdded: "Queued for later: {{title}}",
     historyPendingWant: "Later decision → saving: {{title}}",
     historyPendingDecline: "Later decision → decline: {{title}} (+{{amount}})",
+    historyPendingRemoved: "Removed from Thinking: {{title}}",
     historyFreeDay: "Free day #{{total}}",
     historySpend: "Spent on {{title}} (-{{amount}})",
     historyWishRemoved: "Goal removed: {{title}}",
@@ -3510,7 +3554,7 @@ const TRANSLATIONS = {
     rewardHealthBonus: "+{{amount}} health",
     freeDayHealthTitle: "Coins",
     freeDayHealthSubtitle: "Spend to rescue streaks and feed Almi.",
-    rewardCelebrateTitle: "“{{title}}” unlocked!",
+    rewardCelebrateTitle: "{{title}} unlocked!",
     rewardCelebrateSubtitle: "Almi is proud-keep the streak going.",
     challengeTabTitle: "Challenges",
     challengeRewardsTabTitle: "Rewards",
@@ -3696,7 +3740,7 @@ const TRANSLATIONS = {
     smartInsightDeclineBody: "Say no again today and Almost will lock in the streak.",
     smartInsightSpendTitle: "Almost noticed “{{temptation}}” won yesterday",
     smartInsightSpendBody: "Hold the line today so Almost can celebrate a save.",
-    dailyNudgeMorningTitle: ["Morning nudge from Almost", "Almi's focus check"],
+    dailyNudgeMorningTitle: ["Morning nudge from Almost", "Focus check from Almi"],
     dailyNudgeMorningBody: [
       "Set the tone: skip the first impulse and remember your goal.",
       "Almi is checking in — pause before the first swipe today.",
@@ -3706,7 +3750,7 @@ const TRANSLATIONS = {
       "Afternoon impulses climb. Ask if this buy still serves your goal.",
       "Almost noticed lunch-time splurges. Take a mindful pause.",
     ],
-    dailyNudgeAfternoonTitle: ["Post-lunch reset with Almost", "Hold the brakes with Almi"],
+    dailyNudgeAfternoonTitle: ["Post-lunch check-in with Almost", "Tap the brakes with Almi"],
     dailyNudgeAfternoonBody: [
       "Take a breath before tapping buy and reroute that money to savings.",
       "A five-minute pause now keeps your savings autopilot engaged.",
@@ -3749,7 +3793,7 @@ const TRANSLATIONS = {
     quickCustomCancel: "Cancel",
     coinEntryTitle: "How much?",
     coinEntrySubtitle: "Slide the coin and pick a category.",
-    coinEntryHint: "Use the buttons below to save or spend.",
+    coinEntryHint: "Use the buttons above to save or spend.",
     coinEntryManual: "...",
     coinEntryManualTitle: "Set new slider max",
     coinEntryManualPlaceholder: "E.g. {{amount}}",
@@ -4847,6 +4891,14 @@ const GOALS = [
 ];
 
 const SAVINGS_TIERS = [10, 20, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000, 50000, 100000, 250000];
+const LEVEL_TWO_TARGET_RUB_USD = convertFromCurrency(1000, "RUB"); // level 2 at ₽1000 instead of default $10
+const getTierTargetsUSD = (currencyCode = activeCurrency) => {
+  const code = currencyCode || activeCurrency;
+  if (code === "RUB") {
+    return [LEVEL_TWO_TARGET_RUB_USD, ...SAVINGS_TIERS.slice(1)];
+  }
+  return SAVINGS_TIERS;
+};
 
 const formatCurrency = (value = 0, currency = activeCurrency) => {
   const locale = CURRENCY_LOCALES[currency] || "en-US";
@@ -4944,10 +4996,11 @@ const blendHexColors = (colorA, colorB, ratio = 0.5) => {
   return `#${toHex(r)}${toHex(g)}${toHex(bl)}`;
 };
 
-const getTierProgress = (savedUSD = 0) => {
+const getTierProgress = (savedUSD = 0, currencyCode = activeCurrency) => {
+  const tierTargets = getTierTargetsUSD(currencyCode);
   let previousTarget = 0;
-  for (let i = 0; i < SAVINGS_TIERS.length; i += 1) {
-    const target = SAVINGS_TIERS[i];
+  for (let i = 0; i < tierTargets.length; i += 1) {
+    const target = tierTargets[i];
     if (savedUSD < target) {
       return {
         level: i + 1,
@@ -4958,7 +5011,7 @@ const getTierProgress = (savedUSD = 0) => {
     previousTarget = target;
   }
   return {
-    level: SAVINGS_TIERS.length + 1,
+    level: tierTargets.length + 1,
     prevTargetUSD: previousTarget,
     nextTargetUSD: null,
   };
@@ -6695,7 +6748,8 @@ const FeedScreen = React.memo(function FeedScreen({
     [isDarkMode]
   );
   const levelProgressUSD = Math.max(savedTotalUSD || 0, lifetimeSavedUSD || 0);
-  const tierInfo = getTierProgress(levelProgressUSD || 0);
+  const heroLevelCurrency = profile?.currency || DEFAULT_PROFILE.currency;
+  const tierInfo = getTierProgress(levelProgressUSD || 0, heroLevelCurrency);
   const span = Math.max(
     (tierInfo.nextTargetUSD ?? tierInfo.prevTargetUSD ?? 1) -
       (tierInfo.prevTargetUSD ?? 0),
@@ -6706,7 +6760,6 @@ const FeedScreen = React.memo(function FeedScreen({
     ? (levelProgressUSD - tierInfo.prevTargetUSD) / span
     : 1;
   const heroLevelHasNext = !!tierInfo.nextTargetUSD;
-  const heroLevelCurrency = profile?.currency || DEFAULT_PROFILE.currency;
   const heroLevelRemainingUSD = heroLevelHasNext
     ? Math.max(tierInfo.nextTargetUSD - levelProgressUSD, 0)
     : 0;
@@ -7352,7 +7405,7 @@ const selectMainGoalWish = (wishes = [], activeGoalId = null) => {
   return list.find((wish) => wish?.status !== "done") || null;
 };
 
-function WishListScreen({
+const WishListScreen = React.memo(function WishListScreen({
   wishes,
   currency = DEFAULT_PROFILE.currency,
   t,
@@ -7711,14 +7764,84 @@ function WishListScreen({
       />
     </View>
   );
+});
+
+function SwipeablePendingCard({ children, colors, t, onDelete, itemId }) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const isDarkTheme = colors.background === THEMES.dark.background;
+
+  const handleSwipeRelease = useCallback(
+    (dx = 0) => {
+      if (dx < -DELETE_SWIPE_THRESHOLD && onDelete) {
+        onDelete();
+      }
+      Animated.timing(translateX, {
+        toValue: 0,
+        duration: 160,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start();
+    },
+    [onDelete, translateX]
+  );
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 6,
+        onPanResponderGrant: () => {
+          translateX.stopAnimation();
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const dx = Math.max(Math.min(gestureState.dx, 60), -180);
+          translateX.setValue(dx);
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          handleSwipeRelease(gestureState.dx);
+        },
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderTerminate: () => handleSwipeRelease(0),
+      }),
+    [handleSwipeRelease, translateX]
+  );
+
+  useEffect(() => {
+    translateX.setValue(0);
+  }, [itemId, translateX]);
+
+  return (
+    <View style={styles.pendingSwipeWrapper}>
+      <View style={styles.pendingSwipeBackground} pointerEvents="none">
+        <View
+          style={[
+            styles.swipeHint,
+            styles.swipeHintRight,
+            {
+              borderColor: isDarkTheme ? "rgba(255,255,255,0.12)" : colors.border,
+              backgroundColor: isDarkTheme ? "rgba(255,87,115,0.15)" : "rgba(233,61,87,0.12)",
+            },
+          ]}
+        >
+          <Text style={[styles.swipeHintIcon, { color: "#E15555" }]}>🗑️</Text>
+          <Text style={[styles.swipeHintText, { color: "#E15555" }]}>{t("goalSwipeDelete")}</Text>
+        </View>
+      </View>
+      <Animated.View style={{ transform: [{ translateX }] }} {...panResponder.panHandlers}>
+        {children}
+      </Animated.View>
+    </View>
+  );
 }
 
-function PendingScreen({
+const PendingScreen = React.memo(function PendingScreen({
   items,
   currency,
   t,
   colors,
   onResolve,
+  onDelete,
   language,
   catCuriousSource,
 }) {
@@ -7794,56 +7917,63 @@ function PendingScreen({
         const overdue = diff <= 0;
         const priceLabel = formatCurrency(convertToCurrency(item.priceUSD || 0, currency), currency);
         return (
-          <View
+          <SwipeablePendingCard
             key={item.id}
-            style={[
-              styles.pendingCard,
-              {
-                backgroundColor: "rgba(210,230,255,0.9)",
-                borderColor: "rgba(120,170,255,0.65)",
-                borderWidth: 1,
-                shadowColor: "rgba(120,170,255,0.45)",
-                shadowOpacity: 0.12,
-                shadowRadius: 10,
-                shadowOffset: { width: 0, height: 6 },
-                elevation: 3,
-              },
-            ]}
+            colors={colors}
+            t={t}
+            onDelete={onDelete ? () => onDelete(item) : undefined}
+            itemId={item.id}
           >
-            <View style={styles.pendingHeader}>
-              <Text style={[styles.pendingTitle, { color: colors.text }]}>{item.title}</Text>
-            </View>
-            <Text
+            <View
               style={[
-                styles.pendingCountdown,
-                { color: overdue ? "#D9534F" : colors.text, textAlign: "center", fontSize: 20 },
+                styles.pendingCard,
+                {
+                  backgroundColor: "rgba(210,230,255,0.9)",
+                  borderColor: "rgba(120,170,255,0.65)",
+                  borderWidth: 1,
+                  shadowColor: "rgba(120,170,255,0.45)",
+                  shadowOpacity: 0.12,
+                  shadowRadius: 10,
+                  shadowOffset: { width: 0, height: 6 },
+                  elevation: 3,
+                },
               ]}
             >
-              {countdownLabel}
-            </Text>
-            <Text style={[styles.pendingPrice, { color: colors.text }]}>{priceLabel}</Text>
-            <View style={styles.pendingButtons}>
-              <TouchableOpacity
-                style={[styles.pendingButtonPrimary, { backgroundColor: colors.text }]}
-                onPress={() => onResolve(item, "want")}
+              <View style={styles.pendingHeader}>
+                <Text style={[styles.pendingTitle, { color: colors.text }]}>{item.title}</Text>
+              </View>
+              <Text
+                style={[
+                  styles.pendingCountdown,
+                  { color: overdue ? "#D9534F" : colors.text, textAlign: "center", fontSize: 20 },
+                ]}
               >
-                <Text style={[styles.pendingButtonPrimaryText, { color: colors.background }]}>
-                  {t("pendingActionWant")}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.pendingButtonSecondary, { borderColor: colors.border }]}
-                onPress={() => onResolve(item, "decline")}
-              >
-                <Text style={{ color: colors.muted }}>{t("pendingActionDecline")}</Text>
-              </TouchableOpacity>
+                {countdownLabel}
+              </Text>
+              <Text style={[styles.pendingPrice, { color: colors.text }]}>{priceLabel}</Text>
+              <View style={styles.pendingButtons}>
+                <TouchableOpacity
+                  style={[styles.pendingButtonPrimary, { backgroundColor: colors.text }]}
+                  onPress={() => onResolve(item, "want")}
+                >
+                  <Text style={[styles.pendingButtonPrimaryText, { color: colors.background }]}>
+                    {t("pendingActionWant")}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.pendingButtonSecondary, { borderColor: colors.border }]}
+                  onPress={() => onResolve(item, "decline")}
+                >
+                  <Text style={{ color: colors.muted }}>{t("pendingActionDecline")}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </SwipeablePendingCard>
         );
       })}
     </ScrollView>
   );
-}
+});
 
 const ACHIEVEMENT_METRIC_TYPES = {
   SAVED_AMOUNT: "SAVED_AMOUNT",
@@ -7866,9 +7996,9 @@ const ACHIEVEMENT_DEFS = [
   {
     id: "saved_50",
     metricType: ACHIEVEMENT_METRIC_TYPES.SAVED_AMOUNT,
-    targetValue: 50,
+    targetValue: convertFromCurrency(5000, "RUB"),
     emoji: "💾",
-    rewardHealth: 40,
+    rewardHealth: 50,
     copy: {
       ru: { title: "Первые {{amount}}", desc: "Отложено {{amount}} на мини-подарок." },
       en: { title: "First {{amount}}", desc: "Already banked {{amount}} for a mini gift." },
@@ -8438,6 +8568,61 @@ const expireChallenges = (state = createInitialChallengesState(), now = Date.now
   return changed ? next : state;
 };
 
+const rebuildChallengeProgressFromHistory = (history = [], state = createInitialChallengesState()) => {
+  if (!Array.isArray(history) || !state) return state;
+  const sortedEvents = history
+    .filter((event) => event && typeof event.timestamp === "number")
+    .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+  if (!sortedEvents.length) return state;
+  let changed = false;
+  const nextState = { ...state };
+  Object.keys(nextState).forEach((id) => {
+    const entry = nextState[id];
+    const def = CHALLENGE_DEF_MAP[id];
+    if (
+      !entry ||
+      !def ||
+      !entry.startedAt ||
+      (entry.status !== CHALLENGE_STATUS.ACTIVE && entry.status !== CHALLENGE_STATUS.COMPLETED)
+    ) {
+      return;
+    }
+    let rebuilt = {
+      ...entry,
+      progress: 0,
+      completedAt: null,
+      status: CHALLENGE_STATUS.ACTIVE,
+      extra: {},
+    };
+    sortedEvents.forEach((event) => {
+      if (!event) return;
+      const ts = event.timestamp || 0;
+      if (ts < entry.startedAt) return;
+      if (entry.expiresAt && ts > entry.expiresAt) return;
+      rebuilt = processChallengeEvent(rebuilt, def, event, ts);
+    });
+    const extraChanged =
+      JSON.stringify(rebuilt.extra || {}) !== JSON.stringify(entry.extra || {});
+    if (
+      rebuilt.progress !== entry.progress ||
+      rebuilt.status !== entry.status ||
+      (rebuilt.completedAt || null) !== (entry.completedAt || null) ||
+      extraChanged
+    ) {
+      nextState[id] = {
+        ...entry,
+        progress: rebuilt.progress,
+        status: rebuilt.status,
+        completedAt: rebuilt.completedAt,
+        extra: rebuilt.extra,
+        claimedAt: rebuilt.status === CHALLENGE_STATUS.COMPLETED ? entry.claimedAt : null,
+      };
+      changed = true;
+    }
+  });
+  return changed ? nextState : state;
+};
+
 const formatChallengeTimeLeft = (ms, t) => {
   if (ms <= 0) return t("challengeTimeExpired");
   const days = Math.floor(ms / DAY_MS);
@@ -8607,7 +8792,7 @@ const buildAchievements = ({
   });
 };
 
-function RewardsScreen({
+const RewardsScreen = React.memo(function RewardsScreen({
   achievements = [],
   challenges = [],
   activePane = "challenges",
@@ -8703,8 +8888,17 @@ function RewardsScreen({
         <View style={styles.challengeHeader}>
           <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
           <View style={{ flex: 1, gap: 4 }}>
-            <Text style={[styles.challengeTitle, { color: colors.text }]}>{challenge.title}</Text>
-            <Text style={[styles.challengeDesc, { color: colors.muted }]}>{challenge.description}</Text>
+            <Text
+              style={[styles.challengeTitle, { color: colors.text }]}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.9}
+            >
+              {challenge.title}
+            </Text>
+            <Text style={[styles.challengeDesc, { color: colors.muted }]} numberOfLines={3}>
+              {challenge.description}
+            </Text>
           </View>
         </View>
         <View style={styles.challengeMetaRow}>
@@ -9001,9 +9195,9 @@ function RewardsScreen({
       )}
     </ScrollView>
   );
-}
+});
 
-function ProfileScreen({
+const ProfileScreen = React.memo(function ProfileScreen({
   profile,
   stats,
   isEditing,
@@ -9212,6 +9406,8 @@ function ProfileScreen({
         return t("historyPendingWant", { title });
       case "pending_to_decline":
         return t("historyPendingDecline", { title, amount: formatLocalAmount(meta.amountUSD) });
+      case "pending_removed":
+        return t("historyPendingRemoved", { title });
       case "free_day":
         return t("historyFreeDay", { total: meta.total || 0 });
       case "spend":
@@ -9350,7 +9546,9 @@ function ProfileScreen({
               )}
             </View>
             {joinDateLabel && (
-              <Text style={[styles.profileSubtitle, { color: colors.muted }]}>{joinDateLabel}</Text>
+              <Text style={[styles.profileSubtitle, { color: colors.muted }]} numberOfLines={2}>
+                {joinDateLabel}
+              </Text>
             )}
             <Text style={[styles.profileBio, { color: colors.muted }]}>{profile.bio}</Text>
           </>
@@ -9359,8 +9557,15 @@ function ProfileScreen({
           <View style={styles.profileStatsRow}>
             {stats.map((stat) => (
               <View key={stat.label} style={styles.profileStat}>
-                <Text style={[styles.profileStatValue, { color: colors.text }]}>{stat.value}</Text>
-                <Text style={[styles.profileStatLabel, { color: colors.muted }]}>
+                <View style={styles.profileStatValueRow}>
+                  <Text style={[styles.profileStatValue, { color: colors.text }]}>{stat.value}</Text>
+                  {!!stat.suffix && (
+                    <Text style={[styles.profileStatValueSuffix, { color: colors.text }]}>
+                      {stat.suffix}
+                    </Text>
+                  )}
+                </View>
+                <Text style={[styles.profileStatLabel, { color: colors.muted }]} numberOfLines={1}>
                   {stat.label}
                 </Text>
               </View>
@@ -9697,7 +9902,7 @@ function ProfileScreen({
       </ScrollView>
     </View>
   );
-}
+});
 
 function AppContent() {
   const [fontsLoaded, fontsError] = useFonts({
@@ -9888,6 +10093,7 @@ function AppContent() {
   const fabTutorialLoggedRef = useRef(false);
   const fabButtonWrapperRef = useRef(null);
   const [fabTutorialAnchor, setFabTutorialAnchor] = useState(null);
+  const [fabTutorialEligible, setFabTutorialEligible] = useState(false);
   const finishTutorial = useCallback(() => {
     setTutorialVisible(false);
     setTutorialSeen(true);
@@ -10443,6 +10649,10 @@ function AppContent() {
       const wasBackground =
         typeof previousState === "string" && /inactive|background/.test(previousState);
       appStateRef.current = nextState;
+      if (nextState !== "active") {
+        setFabTutorialVisible(false);
+        return;
+      }
       if (wasBackground && nextState === "active") {
         processTamagotchiDecay();
         beginHomeSession();
@@ -10454,7 +10664,13 @@ function AppContent() {
     };
     const subscription = AppState.addEventListener("change", handleAppStateChange);
     return () => subscription.remove();
-  }, [beginHomeSession, pendingFocusDigest, processTamagotchiDecay, tryLogHomeOpened]);
+  }, [
+    beginHomeSession,
+    pendingFocusDigest,
+    processTamagotchiDecay,
+    tryLogHomeOpened,
+    setFabTutorialVisible,
+  ]);
   useEffect(() => {
     if (!ratingPromptHydrated) return;
     if (ratingPromptCompleted) return;
@@ -10523,6 +10739,11 @@ function AppContent() {
       homeSessionRef.current.sessionCount = 0;
     }
     homeSessionRef.current.sessionCount += 1;
+    const sessionCount = homeSessionRef.current.sessionCount;
+    setFabTutorialEligible((prev) => {
+      if (prev) return prev;
+      return sessionCount >= FAB_TUTORIAL_MIN_SESSIONS;
+    });
     homeSessionRef.current.pendingIndex = homeSessionRef.current.sessionCount;
     if (
       onboardingStepRef.current === "done" &&
@@ -10538,6 +10759,28 @@ function AppContent() {
     logEvent("home_opened", { session_index: pendingIndex });
     homeSessionRef.current.pendingIndex = null;
   }, [activeTab, logEvent]);
+  const isFabTutorialEnvironmentReady = useMemo(
+    () =>
+      onboardingStep === "done" &&
+      homeLayoutReady &&
+      !tutorialVisible &&
+      !startupLogoVisible,
+    [homeLayoutReady, onboardingStep, startupLogoVisible, tutorialVisible]
+  );
+  useEffect(() => {
+    if (
+      fabTutorialState === FAB_TUTORIAL_STATUS.PENDING &&
+      fabTutorialEligible &&
+      isFabTutorialEnvironmentReady
+    ) {
+      setFabTutorialStateAndPersist(FAB_TUTORIAL_STATUS.SHOWING);
+    }
+  }, [
+    fabTutorialEligible,
+    fabTutorialState,
+    isFabTutorialEnvironmentReady,
+    setFabTutorialStateAndPersist,
+  ]);
   const tamagotchiHungerPercent = useMemo(
     () => Math.min(TAMAGOTCHI_MAX_HUNGER, Math.max(0, tamagotchiState.hunger)),
     [tamagotchiState.hunger]
@@ -10673,7 +10916,6 @@ function AppContent() {
   const cardFeedbackTimers = useRef({});
   const impulseAlertCooldownRef = useRef({});
   const lastInstantNotificationRef = useRef(0);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [spendPrompt, setSpendPrompt] = useState({ visible: false, item: null });
   const [stormActive, setStormActive] = useState(false);
   const safeAreaInsets = useSafeAreaInsets();
@@ -10683,6 +10925,47 @@ function AppContent() {
   const tutorialOverlayInset = resolvedTabBarHeight;
   const tutorialCardOffset = resolvedTabBarHeight + (Platform.OS === "ios" ? 64 : 72);
   const topSafeInset = Platform.OS === "android" ? RNStatusBar.currentHeight || 24 : 0;
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const handleKeyboardShow = (event = {}) => {
+      const keyboardHeight = event.endCoordinates?.height || 0;
+      const safeGap = Math.max(0, keyboardHeight - tabBarBottomInset);
+      const buffer = Platform.OS === "ios" ? 12 : 0;
+      setKeyboardInset(safeGap ? safeGap + buffer : buffer);
+      setKeyboardVisible(true);
+    };
+    const handleKeyboardHide = () => {
+      setKeyboardInset(0);
+      setKeyboardVisible(false);
+    };
+    const showSub = Keyboard.addListener(showEvent, handleKeyboardShow);
+    const hideSub = Keyboard.addListener(hideEvent, handleKeyboardHide);
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [tabBarBottomInset]);
+  const screenKeyboardAdjustmentStyle = useMemo(() => {
+    if (Platform.OS === "ios") return null;
+    return keyboardInset ? { paddingBottom: keyboardInset } : null;
+  }, [keyboardInset]);
+
+  const keyboardModalOffset = useMemo(() => {
+    if (!keyboardInset) return 0;
+    const effectiveInset =
+      Platform.OS === "ios" ? keyboardInset * 0.6 : keyboardInset;
+    return Math.min(effectiveInset, MAX_MODAL_KEYBOARD_OFFSET);
+  }, [keyboardInset]);
+
+  const modalKeyboardPaddingStyle = useMemo(
+    () => (keyboardModalOffset ? { paddingBottom: keyboardModalOffset } : null),
+    [keyboardModalOffset]
+  );
+
   const fabTutorialCutout = useMemo(() => {
     const radius = FAB_TUTORIAL_HALO_SIZE / 2;
     const fallbackCenterX = SCREEN_WIDTH / 2;
@@ -11204,15 +11487,6 @@ function AppContent() {
 
 
   useEffect(() => {
-    const showSub = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
-    const hideSub = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
-  useEffect(() => {
     return () => {
       if (stormTimerRef.current) {
         clearTimeout(stormTimerRef.current);
@@ -11677,20 +11951,20 @@ function AppContent() {
     };
   }, [dailyChallenge, t]);
 
-  const wishCount = wishes.length;
   const profileStats = useMemo(() => {
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
     const totalSavedConverted = formatCurrency(
       convertToCurrency(savedTotalUSD, currencyCode),
       currencyCode
     );
+    const spendCount = purchases.length;
     return [
       { label: t("statsSaved"), value: totalSavedConverted },
-      { label: t("statsItems"), value: `${wishCount}` },
       { label: t("statsDeclines"), value: `${declineCount}` },
-      { label: t("statsFreeDays"), value: `${freeDayStats.current}🔥` },
+      { label: t("statsSpends"), value: `${spendCount}` },
+      { label: t("statsFreeDays"), value: `${freeDayStats.current}`, suffix: "🔥" },
     ];
-  }, [savedTotalUSD, wishCount, declineCount, freeDayStats.current, t, profile.currency]);
+  }, [savedTotalUSD, declineCount, freeDayStats.current, purchases.length, t, profile.currency]);
 
   const analyticsStats = useMemo(
     () => [
@@ -12791,12 +13065,12 @@ function AppContent() {
     if (dailySummarySeenKey === todayKey) return;
     const todayEvents = resolvedHistoryEvents.filter((e) => getDayKey(e.timestamp) === todayKey);
     if (!todayEvents.length) return;
-    const savedUSD = todayEvents
-      .filter((e) => e.kind === "refuse_spend")
-      .reduce((sum, e) => sum + (Number(e.meta?.amountUSD) || 0), 0);
-    const declines = todayEvents.filter((e) => e.kind === "refuse_spend").length;
-    const thinking = todayEvents.filter((e) => e.kind === "pending_added").length;
-    setDailySummaryData({ savedUSD, declines, thinking, todayKey });
+    const saves = todayEvents.filter((e) => e.kind === "refuse_spend");
+    const spends = todayEvents.filter((e) => e.kind === "spend");
+    const savedUSD = saves.reduce((sum, e) => sum + (Number(e.meta?.amountUSD) || 0), 0);
+    const declines = saves.length;
+    const spendCount = spends.length;
+    setDailySummaryData({ savedUSD, declines, spends: spendCount, todayKey });
     setDailySummaryVisible(true);
     setDailySummarySeenKey(todayKey);
     AsyncStorage.setItem(STORAGE_KEYS.DAILY_SUMMARY, todayKey).catch(() => {});
@@ -14386,6 +14660,10 @@ function AppContent() {
     setTutorialSeen(false);
     setFabTutorialVisible(false);
     setFabTutorialStateAndPersist(FAB_TUTORIAL_STATUS.PENDING);
+    setFabTutorialEligible(false);
+    homeSessionRef.current.sessionCount = 0;
+    homeSessionRef.current.pendingIndex = null;
+    homeSessionRef.current.dateKey = getDayKey(Date.now());
     setActiveCurrency(updatedProfile.currency);
     ensurePrimaryGoalWish(primaryGoals, language, updatedProfile.goal);
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
@@ -14608,15 +14886,45 @@ function AppContent() {
     [setDeclineCount, setDecisionStats, setRefuseStats, setSavedTotalUSD]
   );
 
+  const rebuildSavingsFromHistory = useCallback(
+    (list) => {
+      const normalized = Array.isArray(list) ? list.filter(Boolean) : [];
+      if (!normalized.length) {
+        setSavedTotalUSD(0);
+        setLifetimeSavedUSD(0);
+        return;
+      }
+      const sorted = normalized.slice().sort((a, b) => {
+        const aStamp = typeof a?.timestamp === "number" ? a.timestamp : 0;
+        const bStamp = typeof b?.timestamp === "number" ? b.timestamp : 0;
+        return aStamp - bStamp;
+      });
+      let running = 0;
+      let peak = 0;
+      sorted.forEach((entry) => {
+        if (!entry?.kind) return;
+        const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
+        if (!amount) return;
+        if (HISTORY_SAVED_GAIN_EVENTS.has(entry.kind)) {
+          running += amount;
+        } else if (HISTORY_SAVED_LOSS_EVENTS.has(entry.kind)) {
+          running -= amount;
+        }
+        if (running < 0) running = 0;
+        if (running > peak) peak = running;
+      });
+      setSavedTotalUSD(running);
+      setLifetimeSavedUSD(peak);
+    },
+    [setLifetimeSavedUSD, setSavedTotalUSD]
+  );
+
   const handleHistoryDelete = useCallback(
     (entry) => {
       if (!entry) return;
       const entryId = entry.id;
       if (entry.kind === "refuse_spend") {
         const amountUSD = Math.max(0, Number(entry.meta?.amountUSD) || 0);
-        if (amountUSD > 0) {
-          setSavedTotalUSD((prev) => Math.max(0, prev - amountUSD));
-        }
         const metaCoinReward = Math.max(0, Number(entry.meta?.coinReward) || 0);
         const resolvedCurrency = entry.meta?.currency || profile.currency || DEFAULT_PROFILE.currency;
         const coinRefund = metaCoinReward > 0
@@ -14629,6 +14937,8 @@ function AppContent() {
       setHistoryEvents((prev) => {
         const next = prev.filter((h) => h.id !== entryId);
         AsyncStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(next)).catch(() => {});
+        rebuildSavingsFromHistory(next);
+        setChallengesState((prevState) => rebuildChallengeProgressFromHistory(next, prevState));
         return next;
       });
       if (entry.kind === "pending_added" && entry.meta?.pendingId) {
@@ -14638,7 +14948,7 @@ function AppContent() {
         setWishes((prev) => prev.filter((w) => w.id !== entry.meta.wishId));
       }
     },
-    [profile.currency]
+    [profile.currency, rebuildSavingsFromHistory, setPendingList, setWishes, setHealthPoints, setChallengesState]
   );
 
   useEffect(() => {
@@ -15987,6 +16297,37 @@ function AppContent() {
     },
     [language, profile.currency, t, logHistoryEvent, buildTemptationPayload]
   );
+  const handlePendingDelete = useCallback(
+    (pendingItem) => {
+      if (!pendingItem) return;
+      const template = findTemplateById(pendingItem.templateId);
+      const title =
+        pendingItem.title || template?.title?.[language] || template?.title?.en || "Wish";
+      const performDelete = async () => {
+        if (pendingItem.notificationId) {
+          try {
+            await Notifications.cancelScheduledNotificationAsync(pendingItem.notificationId);
+          } catch (error) {
+            console.warn("cancel reminder", error);
+          }
+        }
+        setPendingList((prev) => prev.filter((entry) => entry.id !== pendingItem.id));
+        logHistoryEvent("pending_removed", { title, pendingId: pendingItem.id });
+        logEvent("pending_deleted", { pending_id: pendingItem.id });
+      };
+      Alert.alert(t("pendingTitle"), t("pendingDeleteConfirm"), [
+        { text: t("priceEditCancel"), style: "cancel" },
+        {
+          text: t("goalSwipeDelete"),
+          style: "destructive",
+          onPress: () => {
+            performDelete();
+          },
+        },
+      ]);
+    },
+    [findTemplateById, language, logEvent, logHistoryEvent, setPendingList, t]
+  );
 
   const processOverlayQueue = useCallback(() => {
     if (overlayActiveRef.current) return;
@@ -16655,6 +16996,7 @@ function AppContent() {
             t={t}
             colors={colors}
             onResolve={handlePendingDecision}
+            onDelete={handlePendingDelete}
             language={language}
             catCuriousSource={tamagotchiAnimations.curious}
           />
@@ -16989,6 +17331,7 @@ function AppContent() {
           onChange={handleOnboardingGoalChange}
           onSubmit={handleOnboardingGoalSubmit}
           onCancel={handleOnboardingGoalCancel}
+          keyboardOffset={keyboardModalOffset}
         />
         <TermsModal
           visible={termsModalVisible}
@@ -17005,32 +17348,23 @@ function AppContent() {
 
   return (
     <SavingsProvider value={{ savedTotalUSD }}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? topSafeInset : 0}
+      <TouchableWithoutFeedback
+        onPress={Keyboard.dismiss}
+        accessible={false}
+        disabled={!keyboardVisible}
+        touchSoundDisabled
       >
-        <TouchableWithoutFeedback
-          onPress={Keyboard.dismiss}
-          accessible={false}
-          disabled={!keyboardVisible}
-        >
-        <View
-        style={[
-          styles.appBackground,
-          { backgroundColor: colors.background },
-        ]}
-      >
-      <SafeAreaView
-        style={[
-          styles.appShell,
-          {
-            backgroundColor: colors.background,
-            paddingTop: topSafeInset,
-          },
-        ]}
-        onLayout={handleHomeLayout}
-      >
+        <View style={[styles.appBackground, { backgroundColor: colors.background }]}>
+        <SafeAreaView
+            style={[
+              styles.appShell,
+              {
+                backgroundColor: colors.background,
+                paddingTop: topSafeInset,
+              },
+            ]}
+            onLayout={handleHomeLayout}
+          >
         {startupLogoVisible && (
           <View style={[styles.logoSplashOverlay, { backgroundColor: colors.background }]}>
             <LogoSplash onDone={handleStartupLogoComplete} />
@@ -17040,7 +17374,7 @@ function AppContent() {
           style={theme === "dark" ? "light" : "dark"}
           backgroundColor={systemOverlayActive ? overlaySystemColor : colors.background}
         />
-        <View style={styles.screenWrapper}>{renderActiveScreen()}</View>
+        <View style={[styles.screenWrapper, screenKeyboardAdjustmentStyle]}>{renderActiveScreen()}</View>
         {savingsBreakdownVisible && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={closeSavingsBreakdown}>
@@ -17315,11 +17649,11 @@ function AppContent() {
                             },
                           ]}
                         >
-                          <Text style={[styles.dailySummaryStatValue, { color: colors.text }]}>
-                            {dailySummaryData.thinking || 0}
+                        <Text style={[styles.dailySummaryStatValue, { color: colors.text }]}>
+                            {dailySummaryData.spends || 0}
                           </Text>
                           <Text style={[styles.dailySummaryStatLabel, { color: colors.muted }]}>
-                            {language === "ru" ? "В думаем" : "Thinking"}
+                            {language === "ru" ? "Траты" : "Spends"}
                           </Text>
                         </View>
                       </View>
@@ -17541,7 +17875,7 @@ function AppContent() {
           })}
         </View>
 
-        {activeTab !== "profile" && (
+        {activeTab !== "profile" && activeTab !== "purchases" && (
           <View pointerEvents="box-none" style={styles.fabCenterContainer}>
             <View
               ref={fabButtonWrapperRef}
@@ -17604,6 +17938,7 @@ function AppContent() {
           onSubmit={handleQuickCustomSubmit}
           onCancel={handleQuickCustomCancel}
           language={language}
+          keyboardOffset={keyboardModalOffset}
         />
         <NewPendingModal
           visible={newPendingModal.visible}
@@ -17614,6 +17949,7 @@ function AppContent() {
           onChange={handleNewPendingChange}
           onSubmit={handleNewPendingSubmit}
           onCancel={handleNewPendingCancel}
+          keyboardOffset={keyboardModalOffset}
         />
 
         <NewGoalModal
@@ -17625,6 +17961,7 @@ function AppContent() {
           onChange={handleNewGoalChange}
           onSubmit={handleNewGoalSubmit}
           onCancel={handleNewGoalCancel}
+          keyboardOffset={keyboardModalOffset}
         />
 
         {activeTab !== "profile" && fabTutorialVisible && (
@@ -18143,7 +18480,10 @@ function AppContent() {
 
         {editOverlayVisible && (
           <TouchableWithoutFeedback onPress={closePriceEditor}>
-            <View style={styles.temptationEditOverlay} pointerEvents="box-none">
+            <View
+              style={[styles.temptationEditOverlay, modalKeyboardPaddingStyle]}
+              pointerEvents="box-none"
+            >
               <Animated.View
                 style={[
                   styles.temptationEditBackdrop,
@@ -18790,7 +19130,7 @@ function AppContent() {
           statusBarTranslucent
         >
           <TouchableWithoutFeedback onPress={closeGoalLinkPrompt}>
-            <View style={styles.priceModalBackdrop}>
+            <View style={[styles.priceModalBackdrop, modalKeyboardPaddingStyle]}>
               <TouchableWithoutFeedback onPress={() => {}}>
                 <View style={[styles.goalModalCard, { backgroundColor: colors.card }] }>
                   <Text style={[styles.goalModalTitle, { color: colors.text }]}>
@@ -18881,7 +19221,7 @@ function AppContent() {
           statusBarTranslucent
         >
           <TouchableWithoutFeedback onPress={closeGoalTemptationPrompt}>
-            <View style={styles.priceModalBackdrop}>
+            <View style={[styles.priceModalBackdrop, modalKeyboardPaddingStyle]}>
               <TouchableWithoutFeedback onPress={() => {}}>
                 <View style={[styles.goalModalCard, { backgroundColor: colors.card }] }>
                   <Text style={[styles.goalModalTitle, { color: colors.text }]}>
@@ -18957,7 +19297,7 @@ function AppContent() {
           statusBarTranslucent
         >
           <TouchableWithoutFeedback onPress={closeGoalEditorPrompt}>
-            <View style={styles.priceModalBackdrop}>
+            <View style={[styles.priceModalBackdrop, modalKeyboardPaddingStyle]}>
               <TouchableWithoutFeedback onPress={() => {}}>
                 <View style={[styles.priceModalCard, { backgroundColor: colors.card }] }>
                   <Text style={[styles.priceModalTitle, { color: colors.text }]}>
@@ -19105,9 +19445,8 @@ function AppContent() {
         />
         {stormActive && <StormOverlay t={t} />}
       </SafeAreaView>
-      </View>
+        </View>
       </TouchableWithoutFeedback>
-      </KeyboardAvoidingView>
     </SavingsProvider>
   );
 }
@@ -19125,39 +19464,42 @@ export default Sentry.wrap(App);
 const TYPOGRAPHY = {
   logo: {
     fontFamily: INTER_FONTS.extraBold,
-    fontSize: 44,
-    letterSpacing: -0.5,
+    fontSize: scaleFontSize(44),
+    letterSpacing: scaleLetterSpacing(-0.5),
   },
   display: {
     fontFamily: INTER_FONTS.bold,
-    fontSize: 34,
-    letterSpacing: -0.2,
+    fontSize: scaleFontSize(34),
+    letterSpacing: scaleLetterSpacing(-0.2),
   },
   blockTitle: {
     fontFamily: INTER_FONTS.bold,
-    fontSize: 24,
-    letterSpacing: -0.2,
+    fontSize: scaleFontSize(24),
+    letterSpacing: scaleLetterSpacing(-0.2),
   },
   body: {
     fontFamily: INTER_FONTS.regular,
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: scaleFontSize(15),
+    lineHeight: scaleFontSize(20),
   },
   secondary: {
     fontFamily: INTER_FONTS.light,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: scaleFontSize(12),
+    lineHeight: scaleFontSize(16),
   },
   cta: {
     fontFamily: INTER_FONTS.semiBold,
-    fontSize: 14,
-    letterSpacing: CTA_LETTER_SPACING,
+    fontSize: scaleFontSize(14),
+    letterSpacing: scaleLetterSpacing(CTA_LETTER_SPACING),
   },
 };
 
-const createBodyText = (overrides = {}) => ({ ...TYPOGRAPHY.body, ...overrides });
-const createSecondaryText = (overrides = {}) => ({ ...TYPOGRAPHY.secondary, ...overrides });
-const createCtaText = (overrides = {}) => ({ ...TYPOGRAPHY.cta, ...overrides });
+const createBodyText = (overrides = {}) => ({ ...TYPOGRAPHY.body, ...scaleTypographyOverrides(overrides) });
+const createSecondaryText = (overrides = {}) => ({
+  ...TYPOGRAPHY.secondary,
+  ...scaleTypographyOverrides(overrides),
+});
+const createCtaText = (overrides = {}) => ({ ...TYPOGRAPHY.cta, ...scaleTypographyOverrides(overrides) });
 
 const styles = StyleSheet.create({
   appBackground: {
@@ -21640,6 +21982,20 @@ const styles = StyleSheet.create({
     padding: 18,
     gap: 12,
   },
+  pendingSwipeWrapper: {
+    position: "relative",
+  },
+  pendingSwipeBackground: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    flexDirection: "row",
+  },
   pendingHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -21899,10 +22255,10 @@ const styles = StyleSheet.create({
     fontSize: 28,
   },
   challengeTitle: {
-    ...createBodyText({ fontSize: 16, fontWeight: "700" }),
+    ...createBodyText({ fontSize: CHALLENGE_TITLE_FONT_SIZE, fontWeight: "700" }),
   },
   challengeDesc: {
-    ...createBodyText({ fontSize: 14, lineHeight: 20 }),
+    ...createBodyText({ fontSize: CHALLENGE_DESC_FONT_SIZE, lineHeight: CHALLENGE_LINE_HEIGHT }),
   },
   challengeMetaRow: {
     flexDirection: "row",
@@ -21910,10 +22266,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   challengeStatus: {
-    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
+    ...createCtaText({ fontSize: CHALLENGE_META_FONT_SIZE, textTransform: "uppercase" }),
   },
   challengeTimer: {
-    ...createSecondaryText({ fontSize: 12 }),
+    ...createSecondaryText({ fontSize: CHALLENGE_META_FONT_SIZE }),
+    textAlign: "right",
   },
   challengeProgressBar: {
     height: 8,
@@ -21925,7 +22282,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   challengeProgressLabel: {
-    ...createSecondaryText({ fontSize: 12 }),
+    ...createSecondaryText({ fontSize: CHALLENGE_META_FONT_SIZE }),
   },
   challengeActionButton: {
     borderRadius: 16,
@@ -21960,10 +22317,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.06)",
   },
   dailyChallengeEmojiText: {
-    fontSize: 30,
+    fontSize: scaleFontSize(30),
   },
   dailyChallengeWidgetTitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: "800",
   },
   dailyChallengeWidgetDesc: {
@@ -21987,7 +22344,7 @@ const styles = StyleSheet.create({
     ...createSecondaryText({ fontSize: 13 }),
   },
   dailyChallengeRewardLabel: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: "800",
   },
   challengeRewardChip: {
@@ -21998,7 +22355,7 @@ const styles = StyleSheet.create({
   challengeRewardChipFloating: {
     position: "absolute",
     right: 10,
-    top: 10,
+    top: -6,
   },
   challengeSwipeWrapper: {
     position: "relative",
@@ -22106,12 +22463,13 @@ const styles = StyleSheet.create({
   },
   profileName: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: 28,
+    fontSize: scaleFontSize(28),
   },
   profileSubtitle: {
     ...createBodyText({ marginTop: 4 }),
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: PROFILE_SUBTITLE_FONT_SIZE,
+    lineHeight: PROFILE_SUBTITLE_LINE_HEIGHT,
+    textAlign: "center",
   },
   profileBio: {
     ...createBodyText({ marginTop: 10, textAlign: "center", lineHeight: 20 }),
@@ -22125,12 +22483,29 @@ const styles = StyleSheet.create({
   profileStat: {
     alignItems: "center",
     flex: 1,
+    paddingHorizontal: 2,
+  },
+  profileStatValueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
   },
   profileStatValue: {
     ...createBodyText({ fontWeight: "700" }),
   },
+  profileStatValueSuffix: {
+    ...createBodyText({ fontWeight: "700" }),
+  },
   profileStatLabel: {
-    ...createCtaText({ fontSize: 12, textTransform: "uppercase", marginTop: 4 }),
+    ...createCtaText({
+      fontSize: PROFILE_STAT_LABEL_FONT_SIZE,
+      textTransform: "uppercase",
+      marginTop: 4,
+      letterSpacing: PROFILE_STAT_LETTER_SPACING,
+    }),
+    textAlign: "center",
+    flexShrink: 1,
   },
   profileActions: {
     width: "100%",
@@ -23091,9 +23466,11 @@ const styles = StyleSheet.create({
   focusDigestTitle: {
     ...TYPOGRAPHY.blockTitle,
     fontSize: 22,
+    textAlign: "center",
   },
   focusDigestBody: {
     ...createBodyText({ fontSize: 15, lineHeight: 22 }),
+    textAlign: "center",
   },
   focusDigestStats: {
     flexDirection: "row",
@@ -23124,6 +23501,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 16,
     paddingVertical: 12,
+    paddingHorizontal: 12,
     alignItems: "center",
   },
   focusDigestPrimaryText: {
@@ -23134,6 +23512,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 16,
     paddingVertical: 12,
+    paddingHorizontal: 12,
     alignItems: "center",
   },
   focusDigestSecondaryText: {
@@ -23331,12 +23710,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,241,225,0.92)",
   },
   rewardCard: {
-    paddingVertical: 32,
-    paddingHorizontal: 28,
+    paddingVertical: 30,
+    paddingHorizontal: 24,
     borderRadius: 36,
     alignItems: "center",
-    width: "80%",
-    maxWidth: 360,
+    width: OVERLAY_CARD_MAX_WIDTH,
+    maxWidth: OVERLAY_CARD_MAX_WIDTH,
     borderWidth: 2,
     borderColor: "rgba(255,181,115,0.7)",
     gap: 12,
@@ -23378,13 +23757,13 @@ const styles = StyleSheet.create({
     resizeMode: "contain",
   },
   healthCard: {
-    paddingHorizontal: 28,
+    paddingHorizontal: 24,
     paddingVertical: 24,
     borderRadius: 30,
     borderWidth: 1,
     alignItems: "center",
-    width: "80%",
-    maxWidth: 360,
+    width: OVERLAY_CARD_MAX_WIDTH,
+    maxWidth: OVERLAY_CARD_MAX_WIDTH,
   },
   healthTitle: {
     fontSize: 24,
@@ -23406,11 +23785,12 @@ const styles = StyleSheet.create({
   },
   goalCelebrateCard: {
     paddingVertical: 36,
-    paddingHorizontal: 30,
+    paddingHorizontal: 26,
     borderRadius: 34,
     borderWidth: 2,
     alignItems: "center",
-    width: "82%",
+    width: OVERLAY_CARD_MAX_WIDTH,
+    maxWidth: OVERLAY_CARD_MAX_WIDTH,
     gap: 12,
   },
   goalCelebrateCat: {
@@ -24992,7 +25372,19 @@ function CoinEntryModal({
   );
 }
 
-function QuickCustomModal({ visible, colors, t, currency, data, onChange, onSubmit, onCancel, language }) {
+function QuickCustomModal({
+  visible,
+  colors,
+  t,
+  currency,
+  data,
+  onChange,
+  onSubmit,
+  onCancel,
+  language,
+  keyboardOffset = 0,
+}) {
+  const keyboardPaddingStyle = keyboardOffset ? { paddingBottom: keyboardOffset } : null;
   return (
     <Modal
       visible={visible}
@@ -25002,7 +25394,7 @@ function QuickCustomModal({ visible, colors, t, currency, data, onChange, onSubm
       statusBarTranslucent
     >
       <TouchableWithoutFeedback onPress={onCancel}>
-        <View style={styles.quickModalBackdrop}>
+        <View style={[styles.quickModalBackdrop, keyboardPaddingStyle]}>
           <TouchableWithoutFeedback onPress={() => {}}>
             <View style={[styles.quickModalCard, { backgroundColor: colors.card }] }>
               <Text style={[styles.quickModalTitle, { color: colors.text }]}>{t("quickCustomTitle")}</Text>
@@ -25079,7 +25471,18 @@ function QuickCustomModal({ visible, colors, t, currency, data, onChange, onSubm
   );
 }
 
-function NewGoalModal({ visible, colors, t, currency, data, onChange, onSubmit, onCancel }) {
+function NewGoalModal({
+  visible,
+  colors,
+  t,
+  currency,
+  data,
+  onChange,
+  onSubmit,
+  onCancel,
+  keyboardOffset = 0,
+}) {
+  const keyboardPaddingStyle = keyboardOffset ? { paddingBottom: keyboardOffset } : null;
   return (
     <Modal
       visible={visible}
@@ -25089,7 +25492,7 @@ function NewGoalModal({ visible, colors, t, currency, data, onChange, onSubmit, 
       statusBarTranslucent
     >
       <TouchableWithoutFeedback onPress={onCancel}>
-        <View style={styles.quickModalBackdrop}>
+        <View style={[styles.quickModalBackdrop, keyboardPaddingStyle]}>
           <TouchableWithoutFeedback onPress={() => {}}>
             <View style={[styles.quickModalCard, { backgroundColor: colors.card }] }>
               <Text style={[styles.quickModalTitle, { color: colors.text }]}>{t("newGoalTitle")}</Text>
@@ -25155,7 +25558,18 @@ function NewGoalModal({ visible, colors, t, currency, data, onChange, onSubmit, 
   );
 }
 
-function NewPendingModal({ visible, colors, t, currency, data, onChange, onSubmit, onCancel }) {
+function NewPendingModal({
+  visible,
+  colors,
+  t,
+  currency,
+  data,
+  onChange,
+  onSubmit,
+  onCancel,
+  keyboardOffset = 0,
+}) {
+  const keyboardPaddingStyle = keyboardOffset ? { paddingBottom: keyboardOffset } : null;
   return (
     <Modal
       visible={visible}
@@ -25165,7 +25579,7 @@ function NewPendingModal({ visible, colors, t, currency, data, onChange, onSubmi
       statusBarTranslucent
     >
       <TouchableWithoutFeedback onPress={onCancel}>
-        <View style={styles.quickModalBackdrop}>
+        <View style={[styles.quickModalBackdrop, keyboardPaddingStyle]}>
           <TouchableWithoutFeedback onPress={() => {}}>
             <View style={[styles.quickModalCard, { backgroundColor: colors.card }] }>
               <Text style={[styles.quickModalTitle, { color: colors.text }]}>{t("newPendingTitle")}</Text>
@@ -25231,7 +25645,18 @@ function NewPendingModal({ visible, colors, t, currency, data, onChange, onSubmi
   );
 }
 
-function OnboardingGoalModal({ visible, colors, t, currency, data, onChange, onSubmit, onCancel }) {
+function OnboardingGoalModal({
+  visible,
+  colors,
+  t,
+  currency,
+  data,
+  onChange,
+  onSubmit,
+  onCancel,
+  keyboardOffset = 0,
+}) {
+  const keyboardPaddingStyle = keyboardOffset ? { paddingBottom: keyboardOffset } : null;
   return (
     <Modal
       visible={visible}
@@ -25241,7 +25666,7 @@ function OnboardingGoalModal({ visible, colors, t, currency, data, onChange, onS
       statusBarTranslucent
     >
       <TouchableWithoutFeedback onPress={onCancel}>
-        <View style={styles.quickModalBackdrop}>
+        <View style={[styles.quickModalBackdrop, keyboardPaddingStyle]}>
           <TouchableWithoutFeedback onPress={() => {}}>
             <View style={[styles.quickModalCard, { backgroundColor: colors.card }] }>
               <Text style={[styles.quickModalTitle, { color: colors.text }]}>{t("newGoalTitle")}</Text>
