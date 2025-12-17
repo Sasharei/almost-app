@@ -2,7 +2,7 @@
   "expo": {
     "name": "Almost",
     "slug": "almost_clean",
-    "version": "2.0.7",
+    "version": "2.0.8",
     "orientation": "portrait",
     "icon": "./assets/Almost_icon.png",
     "userInterfaceStyle": "light",
@@ -15,6 +15,7 @@
     "ios": {
       "bundleIdentifier": "com.sasarei.almostclean",
       "supportsTablet": true,
+      "googleServicesFile": "./ios/GoogleService-Info.plist",
       "infoPlist": {
         "NSCameraUsageDescription": "Almost lets you snap a portrait so your savings profile feels personal.",
         "NSPhotoLibraryUsageDescription": "Almost accesses your photos to update the avatar that keeps you motivated."
@@ -22,7 +23,7 @@
     },
     "android": {
       "package": "com.sasarei.almostclean",
-      "versionCode": 13,
+      "versionCode": 14,
       "adaptiveIcon": {
         "foregroundImage": "./assets/Almost_icon.png",
         "backgroundColor": "#ffffff"
@@ -53,7 +54,8 @@
           "image": "./assets/splash-icon.png",
           "resizeMode": "contain"
         }
-      ]
+      ],
+      "@react-native-firebase/app"
     ],
     "extra": {
       "eas": {
