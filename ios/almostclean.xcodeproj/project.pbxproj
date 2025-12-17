@@ -10,6 +10,8 @@
 		0570F43D99008B13D76F2829 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA7D8013E851DC6732F450D0 /* ExpoModulesProvider.swift */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
+		4192112D2EF204550062EFF8 /* GoogleService-Info 2.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4192112C2EF204550062EFF8 /* GoogleService-Info 2.plist */; };
+		7A834E652D9F403C0075AD8F /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 7A834E642D9F403C0075AD8F /* GoogleService-Info.plist */; };
 		A500782860CC785ED036EBA0 /* libPods-almostclean.a in Frameworks */ = {isa = PBXBuildFile; fileRef = B0883ACCCFE6DDC6CCA38443 /* libPods-almostclean.a */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		BBF36E1FC675169F42B53691 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 8270731C04BBF0D3C4149572 /* PrivacyInfo.xcprivacy */; };
@@ -21,6 +23,8 @@
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = almostclean/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = almostclean/Info.plist; sourceTree = "<group>"; };
 		3BDAAB6AF75AB36140C905AC /* Pods-almostclean.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-almostclean.release.xcconfig"; path = "Target Support Files/Pods-almostclean/Pods-almostclean.release.xcconfig"; sourceTree = "<group>"; };
+		4192112C2EF204550062EFF8 /* GoogleService-Info 2.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info 2.plist"; sourceTree = "<group>"; };
+		7A834E642D9F403C0075AD8F /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		8270731C04BBF0D3C4149572 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = almostclean/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = almostclean/SplashScreen.storyboard; sourceTree = "<group>"; };
 		B0883ACCCFE6DDC6CCA38443 /* libPods-almostclean.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-almostclean.a"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -53,6 +57,7 @@
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
+				7A834E642D9F403C0075AD8F /* GoogleService-Info.plist */,
 				8270731C04BBF0D3C4149572 /* PrivacyInfo.xcprivacy */,
 			);
 			name = almostclean;
@@ -94,6 +99,7 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
+				4192112C2EF204550062EFF8 /* GoogleService-Info 2.plist */,
 				13B07FAE1A68108700A75B9A /* almostclean */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
@@ -194,9 +200,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
+				4192112D2EF204550062EFF8 /* GoogleService-Info 2.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
 				BBF36E1FC675169F42B53691 /* PrivacyInfo.xcprivacy in Resources */,
+				7A834E652D9F403C0075AD8F /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
