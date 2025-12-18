@@ -51,6 +51,10 @@ const patches = [
     dest: 'node_modules/react-native-svg/android/build.gradle',
   },
   {
+    src: 'patches/react-native-fbsdk-next/android/src/main/java/com/facebook/reactnative/androidsdk/FBAppEventsLoggerModule.java',
+    dest: 'node_modules/react-native-fbsdk-next/android/src/main/java/com/facebook/reactnative/androidsdk/FBAppEventsLoggerModule.java',
+  },
+  {
     src: 'patches/expo-modules-core/android/src/main/java/expo/modules/kotlin/jni/JavaScriptValue.kt',
     dest: 'node_modules/expo-modules-core/android/src/main/java/expo/modules/kotlin/jni/JavaScriptValue.kt',
   },
@@ -61,6 +65,10 @@ const patches = [
   {
     src: 'patches/expo-modules-core/android/src/main/java/expo/modules/rncompatibility/ReactNativeFeatureFlags.kt',
     dest: 'node_modules/expo-modules-core/android/src/main/java/expo/modules/rncompatibility/ReactNativeFeatureFlags.kt',
+  },
+  {
+    src: 'patches/expo-modules-core/src/sweet/setUpJsLogger.fx.ts',
+    dest: 'node_modules/expo-modules-core/src/sweet/setUpJsLogger.fx.ts',
   },
   {
     src: 'patches/expo-modules-core/common/cpp/fabric/ExpoViewComponentDescriptor.cpp',

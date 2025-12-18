@@ -2,6 +2,7 @@ import Expo
 import FirebaseCore
 import React
 import ReactAppDependencyProvider
+import FBSDKCoreKit
 
 @UIApplicationMain
 public class AppDelegate: ExpoAppDelegate {
@@ -26,6 +27,11 @@ public class AppDelegate: ExpoAppDelegate {
       FirebaseApp.configure()
     }
 
+    ApplicationDelegate.shared.application(
+      application,
+      didFinishLaunchingWithOptions: launchOptions
+    )
+
 #if os(iOS) || os(tvOS)
     window = UIWindow(frame: UIScreen.main.bounds)
     factory.startReactNative(
@@ -37,12 +43,20 @@ public class AppDelegate: ExpoAppDelegate {
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
+  public override func applicationDidBecomeActive(_ application: UIApplication) {
+    super.applicationDidBecomeActive(application)
+    AppEvents.shared.activateApp()
+  }
+
   // Linking API
   public override func application(
     _ app: UIApplication,
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
+    if ApplicationDelegate.shared.application(app, open: url, options: options) {
+      return true
+    }
     return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
   }
 
