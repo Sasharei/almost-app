@@ -51,6 +51,7 @@ import {
 import Sentry, { initSentry } from "./sentry";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import ViewShot, { captureRef as captureViewShotRef } from "react-native-view-shot";
+import { Settings as FacebookSettings } from "react-native-fbsdk-next";
 import {
   initAnalytics,
   logEvent,
@@ -141,6 +142,7 @@ const STORAGE_KEYS = {
   COIN_SLIDER_MAX: "@almost_coin_slider_max",
   FAB_TUTORIAL: "@almost_fab_tutorial",
   RATING_PROMPT: "@almost_rating_prompt",
+  NORTH_STAR_METRIC: "@almost_north_star_metric",
 };
 
 const PURCHASE_GOAL = 20000;
@@ -287,6 +289,7 @@ const TAMAGOTCHI_SKINS = TAMAGOTCHI_SKIN_OPTIONS.reduce((acc, skin) => {
 }, {});
 const DEFAULT_TAMAGOTCHI_SKIN = "classic";
 const SUPPORT_EMAIL = "almostappsup@gmail.com";
+const FACEBOOK_APP_ID = "1653035139013896";
 const HEALTH_COIN_TIERS = [
   { id: "green", value: 1, asset: require("./assets/coins/Coin_green.png") },
   { id: "blue", value: 10, asset: require("./assets/coins/Coin_blue.png") },
@@ -294,7 +297,10 @@ const HEALTH_COIN_TIERS = [
   { id: "red", value: 1000, asset: require("./assets/coins/Coin_red.png") },
   { id: "pink", value: 10000, asset: require("./assets/coins/Coin_pink.png") },
 ];
-const BLUE_HEALTH_COIN_ASSET = HEALTH_COIN_TIERS.find((tier) => tier.id === "blue")?.asset || null;
+const BLUE_HEALTH_COIN_TIER =
+  HEALTH_COIN_TIERS.find((tier) => tier.id === "blue") || HEALTH_COIN_TIERS[1];
+const BLUE_HEALTH_COIN_ASSET = BLUE_HEALTH_COIN_TIER?.asset || null;
+const BLUE_HEALTH_COIN_VALUE = BLUE_HEALTH_COIN_TIER?.value || 10;
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 const CTA_LETTER_SPACING = 0.4;
@@ -697,6 +703,8 @@ const REMINDER_MS = REMINDER_DAYS * DAY_MS;
 const SAVE_SPAM_WINDOW_MS = 1000 * 60 * 5;
 const SAVE_SPAM_ITEM_LIMIT = 3;
 const SAVE_SPAM_GLOBAL_LIMIT = 5;
+const NORTH_STAR_SAVE_THRESHOLD = 2;
+const NORTH_STAR_WINDOW_MS = DAY_MS;
 const SAVE_ACTION_COLOR = "#2EB873";
 const SPEND_ACTION_COLOR = "#D94862";
 // Android darkens translucent backgrounds when elevation is applied, so use opaque fallbacks there.
@@ -1564,8 +1572,6 @@ const computeTamagotchiDecay = (state = TAMAGOTCHI_START_STATE, timestamp = Date
   const hungerDrop = ticks * TAMAGOTCHI_DECAY_STEP;
   const nextHunger = Math.max(0, hunger - hungerDrop);
   const totalTicks = coinTick + ticks;
-  const potentialBurn = Math.floor(totalTicks / TAMAGOTCHI_COIN_DECAY_TICKS);
-  const coinsToBurn = Math.min(coins, potentialBurn);
   const nextCoinTick = totalTicks % TAMAGOTCHI_COIN_DECAY_TICKS;
   const decayDuration = ticks * TAMAGOTCHI_DECAY_INTERVAL_MS;
   const hungerDelta = hunger - nextHunger;
@@ -1579,12 +1585,12 @@ const computeTamagotchiDecay = (state = TAMAGOTCHI_START_STATE, timestamp = Date
     state: {
       ...source,
       hunger: nextHunger,
-      coins: Math.max(0, coins - coinsToBurn),
+      coins,
       lastDecayAt: last + decayDuration,
       coinTick: nextCoinTick,
       desiredFoodId: desiredFoodId || TAMAGOTCHI_DEFAULT_FOOD_ID,
     },
-    burnedCoins: coinsToBurn,
+    burnedCoins: 0,
   };
 };
 
@@ -2745,6 +2751,8 @@ const TRANSLATIONS = {
     freeDayRescueNeedHealth: "Нужно {{cost}} здоровья",
     freeDayRescueNeedTime: "Доступно после 18:00",
     freeDayRescueOverlay: "Серия спасена",
+    freeDayCoinReward: "Бесплатный день: +{{coins}} синие монеты.",
+    freeDayCoinRewardStreak: "🔥 Серия {{days}} дня(ей): ещё +{{coins}} синие монеты.",
     impulseCardTitle: "Импульс-карта",
     impulseCardSubtitle: "Фиксируем, где искушения чаще всего побеждают или проигрывают.",
     impulseLoseLabel: "Чаще сдаёшься",
@@ -3356,6 +3364,8 @@ const TRANSLATIONS = {
     freeDayRescueNeedHealth: "Need {{cost}} health",
     freeDayRescueNeedTime: "Available after 6 pm",
     freeDayRescueOverlay: "Streak rescued",
+    freeDayCoinReward: "Free day logged: +{{coins}} blue coins.",
+    freeDayCoinRewardStreak: "🔥 {{days}}-day streak: +{{coins}} blue coins.",
     impulseCardTitle: "Impulse map",
     impulseCardSubtitle: "See when temptations usually win or when you stay strong.",
     impulseLoseLabel: "Weak spot",
@@ -4887,6 +4897,7 @@ const INITIAL_FREE_DAY_STATS = {
 const FREE_DAY_MILESTONES = [3, 7, 30];
 const HEALTH_PER_REWARD = ECONOMY_RULES.baseAchievementReward;
 const FREE_DAY_RESCUE_COST = ECONOMY_RULES.freeDayRescueCost;
+const FREE_DAY_LOGIN_BLUE_COINS = 2;
 
 let activeCurrency = DEFAULT_PROFILE.currency;
 const setActiveCurrency = (code) => {
@@ -10015,6 +10026,9 @@ function AppContent() {
     ...DEFAULT_PROFILE_PLACEHOLDER,
     joinedAt: new Date().toISOString(),
   }));
+  const [northStarLogged, setNorthStarLogged] = useState(false);
+  const [northStarHydrated, setNorthStarHydrated] = useState(false);
+  const northStarLoggedRef = useRef(false);
   const potentialSavedUSD = useSavingsSimulation(
     profile?.spendingProfile?.baselineMonthlyWasteUSD || 0,
     profile?.spendingProfile?.baselineStartAt || null
@@ -10024,6 +10038,7 @@ function AppContent() {
     Number(profile?.spendingProfile?.baselineMonthlyWasteUSD) || 0
   );
   const baselineStartAt = profile?.spendingProfile?.baselineStartAt || null;
+  const profileJoinedAt = profile?.joinedAt || null;
   const potentialBaselineKey =
     baselineMonthlyWasteUSD > 0 && baselineStartAt
       ? `${baselineStartAt}:${baselineMonthlyWasteUSD}`
@@ -10071,6 +10086,24 @@ function AppContent() {
   const [overlay, setOverlay] = useState(null);
   const [confettiKey, setConfettiKey] = useState(0);
   const overlayTimer = useRef(null);
+
+  useEffect(() => {
+    if (!FacebookSettings || typeof FacebookSettings.initializeSDK !== "function") return;
+    try {
+      if (typeof FacebookSettings.setAppID === "function") {
+        FacebookSettings.setAppID(FACEBOOK_APP_ID);
+      }
+      FacebookSettings.initializeSDK();
+      if (typeof FacebookSettings.setAdvertiserTrackingEnabled === "function") {
+        const trackingPromise = FacebookSettings.setAdvertiserTrackingEnabled(true);
+        if (trackingPromise?.catch) {
+          trackingPromise.catch(() => {});
+        }
+      }
+    } catch (error) {
+      console.warn("facebook sdk init", error);
+    }
+  }, []);
   const overlayQueueRef = useRef([]);
   const overlayActiveRef = useRef(false);
   const [dailySummaryVisible, setDailySummaryVisible] = useState(false);
@@ -10451,14 +10484,11 @@ function AppContent() {
   const processTamagotchiDecay = useCallback(
     (timestamp = Date.now()) => {
       setTamagotchiState((prev) => {
-        const { state: nextState, burnedCoins } = computeTamagotchiDecay(prev, timestamp);
-        if (burnedCoins > 0) {
-          setHealthPoints((coins) => Math.max(0, coins - burnedCoins));
-        }
+        const { state: nextState } = computeTamagotchiDecay(prev, timestamp);
         return nextState;
       });
     },
-    [setHealthPoints, setTamagotchiState]
+    [setTamagotchiState]
   );
   const saveActionLogRef = useRef([]);
   const cartBadgeScale = useRef(new Animated.Value(1)).current;
@@ -12373,7 +12403,6 @@ function AppContent() {
 
   const loadStoredData = async () => {
     let resolvedHealthPoints = null;
-    let pendingTamagotchiCoinBurn = 0;
     try {
       const [
         wishesRaw,
@@ -12423,6 +12452,7 @@ function AppContent() {
         activeGoalRaw,
         coinSliderMaxRaw,
         fabTutorialRaw,
+        northStarMetricRaw,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.WISHES),
         AsyncStorage.getItem(STORAGE_KEYS.PENDING),
@@ -12471,6 +12501,7 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.ACTIVE_GOAL),
         AsyncStorage.getItem(STORAGE_KEYS.COIN_SLIDER_MAX),
         AsyncStorage.getItem(STORAGE_KEYS.FAB_TUTORIAL),
+        AsyncStorage.getItem(STORAGE_KEYS.NORTH_STAR_METRIC),
       ]);
       if (wishesRaw) {
         setWishes(JSON.parse(wishesRaw));
@@ -12672,8 +12703,7 @@ function AppContent() {
                 : Number(parsed?.lastDecayAt) || Date.now(),
             coinTick: Math.max(0, Number(parsed?.coinTick) || 0),
           };
-          const { state: hydratedState, burnedCoins } = computeTamagotchiDecay(baseState);
-          pendingTamagotchiCoinBurn += burnedCoins;
+          const { state: hydratedState } = computeTamagotchiDecay(baseState);
           setTamagotchiState(hydratedState);
           tamagotchiHungerPrevRef.current = hydratedState.hunger;
           tamagotchiHydratedRef.current = true;
@@ -12725,6 +12755,21 @@ function AppContent() {
         setFabTutorialState(FAB_TUTORIAL_STATUS.DONE);
         fabTutorialStateRef.current = FAB_TUTORIAL_STATUS.DONE;
       }
+      if (northStarMetricRaw) {
+        let logged = false;
+        try {
+          const parsedNorthStar = JSON.parse(northStarMetricRaw);
+          logged = !!parsedNorthStar?.logged;
+        } catch (error) {
+          logged = northStarMetricRaw === "1";
+        }
+        setNorthStarLogged(logged);
+        northStarLoggedRef.current = logged;
+      } else {
+        setNorthStarLogged(false);
+        northStarLoggedRef.current = false;
+      }
+      setNorthStarHydrated(true);
       if (dailySummaryRaw) setDailySummarySeenKey(dailySummaryRaw);
       setTutorialSeen(tutorialRaw === "pending" ? false : true);
       if (termsAcceptedRaw === "1") {
@@ -12933,7 +12978,7 @@ function AppContent() {
       }
       if (healthRaw) {
         const parsedHealth = Number(healthRaw) || 0;
-        resolvedHealthPoints = Math.max(0, parsedHealth - pendingTamagotchiCoinBurn);
+        resolvedHealthPoints = Math.max(0, parsedHealth);
       } else if (resolvedHealthPoints === null) {
         resolvedHealthPoints = 0;
       }
@@ -13032,6 +13077,7 @@ function AppContent() {
           : 0;
       setHealthPoints((prev) => prev + safeHealthPoints);
       setHealthHydrated(true);
+      setNorthStarHydrated(true);
       setWishesHydrated(true);
       setSavedTotalHydrated(true);
       setRewardsReady(true);
@@ -13055,6 +13101,9 @@ function AppContent() {
   useEffect(() => {
     loadStoredData();
   }, []);
+  useEffect(() => {
+    northStarLoggedRef.current = northStarLogged;
+  }, [northStarLogged]);
   useEffect(() => {
     if (onboardingStep !== "done") {
       setHomeLayoutReady(false);
@@ -15037,6 +15086,42 @@ function AppContent() {
   useEffect(() => {
     recomputeHistoryAggregates(resolvedHistoryEvents);
   }, [resolvedHistoryEvents, recomputeHistoryAggregates]);
+  const maybeTriggerNorthStarMetric = useCallback(() => {
+    if (!northStarHydrated || !profileHydrated || northStarLoggedRef.current) return;
+    if (!profileJoinedAt) return;
+    const joinedAtTimestamp = new Date(profileJoinedAt).getTime();
+    if (!Number.isFinite(joinedAtTimestamp)) return;
+    const windowEnd = joinedAtTimestamp + NORTH_STAR_WINDOW_MS;
+    let savesInWindow = 0;
+    resolvedHistoryEvents.forEach((entry) => {
+      if (entry?.kind !== "refuse_spend") return;
+      const eventTimestamp = typeof entry.timestamp === "number" ? entry.timestamp : 0;
+      if (!eventTimestamp) return;
+      if (eventTimestamp >= joinedAtTimestamp && eventTimestamp <= windowEnd) {
+        savesInWindow += 1;
+      }
+    });
+    if (savesInWindow < NORTH_STAR_SAVE_THRESHOLD) return;
+    const hoursSinceJoinRaw = Math.max(0, (Date.now() - joinedAtTimestamp) / (1000 * 60 * 60));
+    const hoursSinceJoin = Math.min(24, Math.round(hoursSinceJoinRaw * 10) / 10);
+    setNorthStarLogged(true);
+    northStarLoggedRef.current = true;
+    AsyncStorage.setItem(
+      STORAGE_KEYS.NORTH_STAR_METRIC,
+      JSON.stringify({
+        logged: true,
+        loggedAt: new Date().toISOString(),
+        savesInWindow,
+      })
+    ).catch(() => {});
+    logEvent("north_star_two_saves", {
+      saves_in_window: savesInWindow,
+      hours_since_join: hoursSinceJoin,
+    });
+  }, [logEvent, northStarHydrated, profileHydrated, profileJoinedAt, resolvedHistoryEvents]);
+  useEffect(() => {
+    maybeTriggerNorthStarMetric();
+  }, [maybeTriggerNorthStarMetric]);
 
   const triggerCardFeedback = useCallback((templateId) => {
     if (!templateId) return;
@@ -15879,10 +15964,28 @@ function AppContent() {
               : t("freeDayCongrats", { days: current });
           triggerOverlayState("purchase", message);
           triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+          const rewardBlueCoins = FREE_DAY_LOGIN_BLUE_COINS * current;
+          const rewardHealthPoints = rewardBlueCoins * BLUE_HEALTH_COIN_VALUE;
+          setHealthPoints((prev) => prev + rewardHealthPoints);
+          const rewardReason =
+            current > 1
+              ? t("freeDayCoinRewardStreak", { coins: rewardBlueCoins, days: current })
+              : t("freeDayCoinReward", { coins: rewardBlueCoins });
+          triggerOverlayState("health", {
+            amount: rewardHealthPoints,
+            displayCoins: rewardBlueCoins,
+            coinValue: BLUE_HEALTH_COIN_VALUE,
+            reason: rewardReason,
+          });
+          logEvent("free_day_coin_reward", {
+            blue_coins: rewardBlueCoins,
+            health_points: rewardHealthPoints,
+            current_streak: current,
+          });
         },
       },
     ]);
-  }, [freeDayStats, t, logHistoryEvent, profile.goal, profile.persona]);
+  }, [freeDayStats, t, logEvent, logHistoryEvent, profile.goal, profile.persona, setHealthPoints, triggerOverlayState]);
 
   const toggleTemptationEditor = useCallback(
     (item) => {

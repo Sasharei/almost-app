@@ -72,6 +72,7 @@ const EVENT_DEFINITIONS = {
   reminder_clicked: ["reminder_type", "target_screen"],
   savings_updated: ["saved_usd_total", "tier_level", "next_tier_usd", "profile_goal"],
   savings_level_up: ["level", "saved_usd_total"],
+  north_star_two_saves: ["saves_in_window", "hours_since_join"],
   free_day_rescue: ["current_streak", "health_remaining"],
   profile_baseline_updated: ["previous_usd", "baseline_usd", "currency"],
   profile_custom_spend_updated: ["title", "amount_usd", "frequency_per_week", "removed"],

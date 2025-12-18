@@ -17,6 +17,14 @@ prepare_react_native_project!
 target 'almostclean' do
   use_expo_modules!
 
+  # Facebook SDK pods bundled via react-native-fbsdk-next lag behind Expo's Android version.
+  # Pin them here so iOS picks up the latest SDK (required for SKAdNetwork + tracking flags).
+  fb_sdk_version = '18.0.2'
+  pod 'FBSDKCoreKit', fb_sdk_version
+  pod 'FBSDKLoginKit', fb_sdk_version
+  pod 'FBSDKShareKit', fb_sdk_version
+  pod 'FBSDKGamingServicesKit', fb_sdk_version
+
   if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
     config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
   else
