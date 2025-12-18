@@ -2363,10 +2363,23 @@ const convertFromCurrency = (valueLocal = 0, currency = activeCurrency) => {
 
 const POTENTIAL_PUSH_STEP_EUR = 10;
 const POTENTIAL_PUSH_STEP_USD = convertFromCurrency(POTENTIAL_PUSH_STEP_EUR, "EUR");
+const POTENTIAL_PUSH_STEP_LOCAL_MAP = {
+  USD: 10,
+  EUR: 10,
+  RUB: 1000,
+  DEFAULT: 10,
+};
+const POTENTIAL_PUSH_STEP_LOCAL_FALLBACK =
+  POTENTIAL_PUSH_STEP_LOCAL_MAP.DEFAULT || POTENTIAL_PUSH_STEP_EUR;
+const POTENTIAL_PUSH_MAX_MULTIPLIER = 5;
+const POTENTIAL_PUSH_FAST_GAIN_WINDOW_MS = 2 * 60 * 60 * 1000;
+const POTENTIAL_PUSH_COOLDOWN_WINDOW_MS = 36 * 60 * 60 * 1000;
 const DEFAULT_POTENTIAL_PUSH_STATE = {
   lastStep: 0,
   lastStatus: null,
   baselineKey: null,
+  stepMultiplier: 1,
+  lastNotifiedAt: 0,
 };
 
 const getCurrencyPrecision = (currency = activeCurrency) => {
@@ -4384,6 +4397,23 @@ const DEFAULT_PROFILE_PLACEHOLDER = {
   bio: "",
 };
 
+const resolvePotentialPushStepUSD = (currencyCode = DEFAULT_PROFILE.currency) => {
+  const normalizedCode =
+    typeof currencyCode === "string" && currencyCode.trim().length > 0
+      ? currencyCode.trim().toUpperCase()
+      : DEFAULT_PROFILE.currency;
+  const convertCode = CURRENCIES.includes(normalizedCode) ? normalizedCode : DEFAULT_PROFILE.currency;
+  const localStep =
+    POTENTIAL_PUSH_STEP_LOCAL_MAP[normalizedCode] ??
+    POTENTIAL_PUSH_STEP_LOCAL_MAP[convertCode] ??
+    POTENTIAL_PUSH_STEP_LOCAL_FALLBACK;
+  const resolvedUSD = convertFromCurrency(localStep, convertCode);
+  if (Number.isFinite(resolvedUSD) && resolvedUSD > 0) {
+    return resolvedUSD;
+  }
+  return POTENTIAL_PUSH_STEP_USD;
+};
+
 const INITIAL_REGISTRATION = {
   firstName: "",
   lastName: "",
@@ -5162,11 +5192,11 @@ function TemptationCardComponent({
         swipeBorder: "rgba(255,255,255,0.08)",
       };
   const baseCardBackground = isDarkTheme
-    ? blendColors(baseColor, "#FFFFFF", 0.6)
+    ? blendColors(colors.card, baseColor, 0.2)
     : baseColor;
   const cardBackground = baseCardBackground;
   const cardSurfaceColor = isDarkTheme
-    ? blendColors(cardBackground, "#FFFFFF", 0.35)
+    ? blendColors(cardBackground, "#FFFFFF", 0.08)
     : lightenColor(cardBackground, 0.18);
   const primaryHighlightColor = Platform.OS === "ios" ? "#FF6F7D" : "#FF4D5A";
   const cardTextColor = isDarkTheme ? darkCardPalette.text : colors.text;
@@ -5584,7 +5614,7 @@ function TemptationCardComponent({
           <Text style={[styles.editorHintIcon, { color: colors.muted }]}>✏️</Text>
         </View>
       ) : desc ? (
-        <Text style={[styles.temptationDesc, { color: isDarkTheme ? "#FFFFFF" : cardMutedColor }]}>
+        <Text style={[styles.temptationDesc, { color: cardMutedColor }]}>
           {desc}
         </Text>
       ) : null}
@@ -5618,7 +5648,7 @@ function TemptationCardComponent({
           <Text
             style={[
               styles.temptationPrice,
-              { color: isDarkTheme ? "#FFFFFF" : colors.text },
+              { color: cardTextColor },
             ]}
           >
             {priceLabel}
@@ -11335,13 +11365,16 @@ function AppContent() {
 
   useEffect(() => {
     if (!potentialPushHydrated) return;
-    const stepUSD = POTENTIAL_PUSH_STEP_USD;
+    const currencyForStep = profile?.currency || DEFAULT_PROFILE.currency;
+    const stepUSD = resolvePotentialPushStepUSD(currencyForStep);
     if (!Number.isFinite(stepUSD) || stepUSD <= 0) return;
     if (!potentialBaselineKey) {
       if (
         potentialPushProgress.baselineKey ||
         potentialPushProgress.lastStep ||
-        potentialPushProgress.lastStatus
+        potentialPushProgress.lastStatus ||
+        potentialPushProgress.stepMultiplier !== 1 ||
+        potentialPushProgress.lastNotifiedAt
       ) {
         setPotentialPushProgress({ ...DEFAULT_POTENTIAL_PUSH_STATE });
       }
@@ -11349,15 +11382,32 @@ function AppContent() {
     }
     const resolvedPotential = Number.isFinite(potentialSavedUSD) ? potentialSavedUSD : 0;
     const currentStep = Math.max(0, Math.floor(resolvedPotential / stepUSD));
+    const lastStep = Math.max(0, Number(potentialPushProgress.lastStep) || 0);
+    const now = Date.now();
+    const lastNotifiedAt = Number(potentialPushProgress.lastNotifiedAt) || 0;
+    const rawMultiplier = Math.max(1, Number(potentialPushProgress.stepMultiplier) || 1);
+    const cooledDown =
+      rawMultiplier > 1 &&
+      lastNotifiedAt > 0 &&
+      now - lastNotifiedAt > POTENTIAL_PUSH_COOLDOWN_WINDOW_MS;
+    const stepMultiplier = cooledDown
+      ? 1
+      : Math.min(rawMultiplier, POTENTIAL_PUSH_MAX_MULTIPLIER);
+    if (cooledDown) {
+      setPotentialPushProgress((prev) => {
+        if (prev.baselineKey !== potentialBaselineKey || prev.stepMultiplier <= 1) return prev;
+        return { ...prev, stepMultiplier: 1 };
+      });
+    }
     if (potentialPushProgress.baselineKey !== potentialBaselineKey) {
       setPotentialPushProgress({
+        ...DEFAULT_POTENTIAL_PUSH_STATE,
         lastStep: currentStep,
-        lastStatus: null,
         baselineKey: potentialBaselineKey,
       });
       return;
     }
-    if (currentStep < potentialPushProgress.lastStep) {
+    if (currentStep < lastStep) {
       setPotentialPushProgress((prev) => ({
         ...prev,
         lastStep: currentStep,
@@ -11365,14 +11415,26 @@ function AppContent() {
       return;
     }
     if (!profileHydrated || !savedTotalHydrated) return;
-    if (currentStep <= 0 || currentStep <= potentialPushProgress.lastStep) return;
+    if (currentStep <= 0 || currentStep <= lastStep) return;
+    const stepGap = currentStep - lastStep;
+    const requiredGap = stepMultiplier;
+    if (stepGap < requiredGap) return;
+    const fastGain =
+      lastNotifiedAt > 0 && now - lastNotifiedAt < POTENTIAL_PUSH_FAST_GAIN_WINDOW_MS;
+    if (fastGain && stepMultiplier < POTENTIAL_PUSH_MAX_MULTIPLIER) {
+      setPotentialPushProgress((prev) => {
+        if (prev.baselineKey !== potentialBaselineKey) return prev;
+        if (prev.stepMultiplier >= POTENTIAL_PUSH_MAX_MULTIPLIER) return prev;
+        return { ...prev, stepMultiplier: POTENTIAL_PUSH_MAX_MULTIPLIER };
+      });
+      return;
+    }
     let cancelled = false;
     const notify = async () => {
       const ahead = savedTotalUSD >= resolvedPotential && savedTotalUSD > 0;
       const status = ahead ? "ahead" : "behind";
-      const currencyCode = profile?.currency || DEFAULT_PROFILE.currency;
       const formatLocal = (valueUSD = 0) =>
-        formatCurrency(convertToCurrency(Math.max(valueUSD, 0), currencyCode), currencyCode);
+        formatCurrency(convertToCurrency(Math.max(valueUSD, 0), currencyForStep), currencyForStep);
       const replacements = {
         potential: formatLocal(resolvedPotential),
         actual: formatLocal(savedTotalUSD),
@@ -11393,6 +11455,8 @@ function AppContent() {
         lastStep: currentStep,
         lastStatus: status,
         baselineKey: potentialBaselineKey,
+        stepMultiplier,
+        lastNotifiedAt: now,
       });
     };
     notify().catch(() => {});
@@ -11403,8 +11467,10 @@ function AppContent() {
     potentialBaselineKey,
     potentialPushHydrated,
     potentialPushProgress.baselineKey,
+    potentialPushProgress.lastNotifiedAt,
     potentialPushProgress.lastStatus,
     potentialPushProgress.lastStep,
+    potentialPushProgress.stepMultiplier,
     potentialSavedUSD,
     profile?.currency,
     profileHydrated,
@@ -12567,6 +12633,14 @@ function AppContent() {
               typeof parsed?.baselineKey === "string" && parsed.baselineKey.trim()
                 ? parsed.baselineKey
                 : null,
+            stepMultiplier: Math.min(
+              POTENTIAL_PUSH_MAX_MULTIPLIER,
+              Math.max(1, Number(parsed?.stepMultiplier) || 1)
+            ),
+            lastNotifiedAt:
+              Number.isFinite(Number(parsed?.lastNotifiedAt)) && Number(parsed?.lastNotifiedAt) > 0
+                ? Number(parsed.lastNotifiedAt)
+                : 0,
           });
         } catch (err) {
           console.warn("potential push progress parse", err);
@@ -13322,6 +13396,15 @@ function AppContent() {
             ? potentialPushProgress.lastStatus
             : null,
         baselineKey: potentialPushProgress.baselineKey || null,
+        stepMultiplier: Math.min(
+          POTENTIAL_PUSH_MAX_MULTIPLIER,
+          Math.max(1, Number(potentialPushProgress.stepMultiplier) || 1)
+        ),
+        lastNotifiedAt:
+          Number.isFinite(Number(potentialPushProgress.lastNotifiedAt)) &&
+          Number(potentialPushProgress.lastNotifiedAt) > 0
+            ? Number(potentialPushProgress.lastNotifiedAt)
+            : 0,
       })
     ).catch(() => {});
   }, [potentialPushHydrated, potentialPushProgress]);
@@ -22359,7 +22442,6 @@ const styles = StyleSheet.create({
   },
   challengeSwipeWrapper: {
     position: "relative",
-    overflow: "hidden",
     borderRadius: 22,
     backgroundColor: "transparent",
   },
@@ -22371,6 +22453,8 @@ const styles = StyleSheet.create({
     width: CHALLENGE_SWIPE_ACTION_WIDTH,
     justifyContent: "center",
     alignItems: "center",
+    borderRadius: 22,
+    overflow: "hidden",
   },
   challengeSwipeButton: {
     borderRadius: 16,
@@ -24959,6 +25043,12 @@ function CoinEntryModal({
   const coinHasValue = sliderValue > 0.02;
   const coinFillColor = coinHasValue ? "#F7C45D" : "#DADDE3";
   const coinShineColor = coinHasValue ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.25)";
+  const isDarkTheme = colors.background === THEMES.dark.background;
+  const coinSurfaceOuter = isDarkTheme ? "#111525" : "#F6F8FC";
+  const coinSurfaceInner = isDarkTheme ? "#181D31" : "#ECEFF5";
+  const coinSurfaceBorder = isDarkTheme ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.8)";
+  const coinSymbolColor = isDarkTheme ? "rgba(5,7,13,0.55)" : "rgba(5,7,13,0.25)";
+  const coinSymbolOpacity = isDarkTheme ? 0.55 : 0.2;
   const sliderBackground = directionAnim.interpolate({
     inputRange: [-1, 0, 1],
     outputRange: ["rgba(217,72,98,0.18)", "rgba(0,0,0,0)", "rgba(46,184,115,0.18)"],
@@ -25222,6 +25312,7 @@ function CoinEntryModal({
                     styles.coinCircle,
                     {
                       borderColor: coinHasValue ? "rgba(247,196,93,0.5)" : colors.border,
+                      backgroundColor: coinSurfaceOuter,
                       shadowColor: coinHasValue ? "#F7C45D" : "#A0A5B6",
                       transform: [{ translateX: coinTranslateX }],
                     },
@@ -25232,7 +25323,12 @@ function CoinEntryModal({
                   }}
                   {...panResponder.panHandlers}
                 >
-                  <View style={styles.coinInnerSurface}>
+                  <View
+                    style={[
+                      styles.coinInnerSurface,
+                      { backgroundColor: coinSurfaceInner, borderColor: coinSurfaceBorder },
+                    ]}
+                  >
                     <View style={styles.coinFillTrack}>
                       <View
                         style={[
@@ -25245,7 +25341,12 @@ function CoinEntryModal({
                       />
                     </View>
                     <View style={[styles.coinShine, { backgroundColor: coinShineColor }]} />
-                    <Text style={[styles.coinCurrencySymbol, { color: colors.text }]}>
+                    <Text
+                      style={[
+                        styles.coinCurrencySymbol,
+                        { color: coinSymbolColor, opacity: coinSymbolOpacity },
+                      ]}
+                    >
                       {currencySymbol}
                     </Text>
                   </View>
