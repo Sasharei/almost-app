@@ -121,6 +121,7 @@ const STORAGE_KEYS = {
   REWARDS_CELEBRATED: "@almost_rewards_celebrated",
   HEALTH: "@almost_health_points",
   CLAIMED_REWARDS: "@almost_claimed_rewards",
+  REWARD_TOTAL: "@almost_reward_total",
   ANALYTICS_OPT_OUT: "@almost_analytics_opt_out",
   TEMPTATION_GOALS: "@almost_temptation_goals",
   TEMPTATION_INTERACTIONS: "@almost_temptation_interactions",
@@ -199,8 +200,6 @@ const TEAL_TAMAGOTCHI_ANIMATIONS = {
   waving: require("./assets/tamagotchi_skins/teal/Cat_waving.gif"),
 };
 const PENDING_COUNTDOWN_FAST_MS = 1000;
-const PENDING_COUNTDOWN_SLOW_MS = 60 * 1000;
-const PENDING_COUNTDOWN_FAST_THRESHOLD_MS = 5 * 60 * 1000;
 
 const stripEmojis = (text = "") =>
   text
@@ -707,6 +706,7 @@ const DEFAULT_REMOTE_IMAGE =
   "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=600&q=80";
 const REMINDER_DAYS = 14;
 const DAY_MS = 1000 * 60 * 60 * 24;
+const REWARD_RESET_INTERVAL_MS = DAY_MS * 14;
 const REMINDER_MS = REMINDER_DAYS * DAY_MS;
 const SAVE_SPAM_WINDOW_MS = 1000 * 60 * 5;
 const SAVE_SPAM_ITEM_LIMIT = 3;
@@ -765,6 +765,42 @@ const HISTORY_ITEM_HEIGHT = 60;
 const HISTORY_VIEWPORT_HEIGHT = HISTORY_VIEWPORT_ROWS * HISTORY_ITEM_HEIGHT;
 const HISTORY_SAVED_GAIN_EVENTS = new Set(["refuse_spend", "pending_to_decline"]);
 const HISTORY_SAVED_LOSS_EVENTS = new Set(["spend"]);
+const normalizeClaimedRewardEntry = (value, now = Date.now()) => {
+  if (!value) return null;
+  if (typeof value === "object" && Number.isFinite(value.claimedAt)) {
+    return { claimedAt: value.claimedAt };
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return { claimedAt: value };
+  }
+  if (value === true) {
+    return { claimedAt: now };
+  }
+  return null;
+};
+const normalizeClaimedRewardsMap = (map, now = Date.now()) => {
+  if (!map || typeof map !== "object") return {};
+  const normalized = {};
+  Object.entries(map).forEach(([key, entry]) => {
+    const normalizedEntry = normalizeClaimedRewardEntry(entry, now);
+    if (!normalizedEntry) return;
+    if (now - normalizedEntry.claimedAt < REWARD_RESET_INTERVAL_MS) {
+      normalized[key] = normalizedEntry;
+    }
+  });
+  return normalized;
+};
+const claimedRewardsEqual = (a = {}, b = {}) => {
+  const aKeys = Object.keys(a || {});
+  const bKeys = Object.keys(b || {});
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key) => {
+    const aEntry = a[key];
+    const bEntry = b[key];
+    if (!bEntry || !aEntry) return false;
+    return Number(aEntry.claimedAt) === Number(bEntry.claimedAt);
+  });
+};
 const getHealthCoinTierForAmount = (amount = 0) => {
   const normalized = Math.max(0, Math.floor(amount));
   for (let i = HEALTH_COIN_TIERS.length - 1; i >= 0; i -= 1) {
@@ -844,18 +880,18 @@ const sumLevelRewardCoins = (level, levelsEarned = 1) => {
 };
 const HEALTH_COIN_LABELS = {
   ru: {
-    pink: "розовых",
-    red: "красных",
-    orange: "оранжевых",
-    blue: "синих",
-    green: "зелёных",
+    pink: "розовых монет",
+    red: "красных монет",
+    orange: "оранжевых монет",
+    blue: "синих монет",
+    green: "зелёных монет",
   },
   en: {
-    pink: "pink",
-    red: "red",
-    orange: "orange",
-    blue: "blue",
-    green: "green",
+    pink: "pink coins",
+    red: "red coins",
+    orange: "orange coins",
+    blue: "blue coins",
+    green: "green coins",
   },
 };
 const formatHealthRewardLabel = (amount = 0, language = "ru") => {
@@ -2974,11 +3010,12 @@ const TRANSLATIONS = {
     rewardRemainingDecisions: "Осталось {{count}} решений из «думаем»",
     rewardLockedGeneric: "Осталось {{count}} шагов",
     rewardBadgeLabel: "Награда",
+    rewardBadgeLabelPlural: "наград",
     rewardBadgeClaimed: "Получено!",
     rewardClaimCta: "Собрать",
-    rewardClaimHint: "Собери и получи {{amount}} здоровья",
+    rewardClaimHint: "Собери и получи {{amount}}",
     rewardClaimedStatus: "Здоровье получено",
-    rewardHealthBonus: "+{{amount}} здоровья",
+    rewardHealthBonus: "+{{amount}}",
     freeDayHealthTitle: "Монетки",
     freeDayHealthSubtitle: "Тратятся на спасение серии и Алми.",
     rewardCelebrateTitle: "Награда {{title}} получена!",
@@ -2994,7 +3031,7 @@ const TRANSLATIONS = {
     challengeStatusExpired: "Просрочен",
     challengeStatusClaimed: "Пройден",
     challengeRewardLabel: "Награда",
-    challengeRewardHealth: "+{{amount}} здоровья",
+    challengeRewardHealth: "+{{amount}}",
     challengeProgressLabel: "{{current}} / {{target}}",
     challengeDurationLabel: "Длительность: {{days}} дн.",
     challengeTimeLeftLabel: "Осталось {{time}}",
@@ -3006,7 +3043,7 @@ const TRANSLATIONS = {
     challengeRestartHint: "Можно повторить - длительность {{days}} дн.",
     challengeStartedOverlay: "Челлендж «{{title}}» запущен",
     challengeCompletedOverlay: "«{{title}}» выполнен - забери награду!",
-    challengeClaimedOverlay: "За челлендж «{{title}}» · +{{amount}} монет",
+    challengeClaimedOverlay: "За челлендж «{{title}}» · +{{amount}}",
     challengeReminderTitle: "Челлендж Almost «{{title}}»",
     challengeReminderBody: "До финиша рукой подать. Отметь отказ и забери награду за «{{title}}».",
     challengeCancelAction: "Отменить",
@@ -3022,19 +3059,19 @@ const TRANSLATIONS = {
     dailyChallengeOfferTitle: "Вызов дня",
     dailyChallengeOfferSubtitle: "Попробуй провести день без «{{temptation}}»",
     dailyChallengeOfferHint: "Откажись хотя бы один раз и получишь двойную награду.",
-    dailyChallengeOfferReward: "+{{amount}} монет сверху",
+    dailyChallengeOfferReward: "+{{amount}} сверху",
     dailyChallengeOfferAccept: "Принять вызов",
     dailyChallengeOfferLater: "Позже",
     dailyChallengeWidgetBadge: "мини-челлендж",
     dailyChallengeWidgetTitle: "Активный челлендж",
     dailyChallengeWidgetDesc: "День без «{{temptation}}» = монеты х2",
     dailyChallengeWidgetProgress: "Прогресс {{current}} / {{target}}",
-    dailyChallengeWidgetReward: "+{{amount}} монет",
+    dailyChallengeWidgetReward: "+{{amount}}",
     dailyChallengeRewardReason: "Мини-челлендж «{{temptation}}» выполнен",
     dailyChallengeRewardNotificationTitle: "Almost: мини-челлендж закрыт",
-    dailyChallengeRewardNotificationBody: "«{{temptation}}» сдалось — забери бонус +{{amount}} монет.",
+    dailyChallengeRewardNotificationBody: "«{{temptation}}» сдалось — забери бонус +{{amount}}.",
     dailyChallengeFailedText: "Сегодня «{{temptation}}» оказалось сильнее",
-    healthCelebrateTitle: "+{{amount}} монет",
+    healthCelebrateTitle: "+{{amount}}",
     healthCelebrateSubtitle: "Сохраняй серию бесплатных дней.",
     healthCelebrateLevel: "Новый уровень! Алми доволен.",
     healthCelebrateReward: "Награда собрана - здоровье пополнено.",
@@ -3578,11 +3615,12 @@ const TRANSLATIONS = {
     rewardRemainingDecisions: "{{count}} Thinking decisions left",
     rewardLockedGeneric: "{{count}} steps remaining",
     rewardBadgeLabel: "Reward",
+    rewardBadgeLabelPlural: "rewards",
     rewardBadgeClaimed: "Claimed!",
     rewardClaimCta: "Collect",
-    rewardClaimHint: "Collect to gain {{amount}} health",
+    rewardClaimHint: "Collect to gain {{amount}}",
     rewardClaimedStatus: "Health banked",
-    rewardHealthBonus: "+{{amount}} health",
+    rewardHealthBonus: "+{{amount}}",
     freeDayHealthTitle: "Coins",
     freeDayHealthSubtitle: "Spend to rescue streaks and feed Almi.",
     rewardCelebrateTitle: "{{title}} unlocked!",
@@ -3598,7 +3636,7 @@ const TRANSLATIONS = {
     challengeStatusExpired: "Expired",
     challengeStatusClaimed: "Completed",
     challengeRewardLabel: "Reward",
-    challengeRewardHealth: "+{{amount}} health",
+    challengeRewardHealth: "+{{amount}}",
     challengeProgressLabel: "{{current}} / {{target}}",
     challengeDurationLabel: "Duration: {{days}} days",
     challengeTimeLeftLabel: "{{time}} left",
@@ -3610,7 +3648,7 @@ const TRANSLATIONS = {
     challengeRestartHint: "Repeat anytime ({{days}}-day run)",
     challengeStartedOverlay: "Challenge “{{title}}” started",
     challengeCompletedOverlay: "“{{title}}” complete - collect the bonus!",
-    challengeClaimedOverlay: "Challenge “{{title}}” · +{{amount}} coins",
+    challengeClaimedOverlay: "Challenge “{{title}}” · +{{amount}}",
     challengeReminderTitle: "Almost challenge “{{title}}”",
     challengeReminderBody: "You're close to the finish. Log another save for “{{title}}” and claim the reward.",
     challengeCancelAction: "Cancel",
@@ -3626,19 +3664,19 @@ const TRANSLATIONS = {
     dailyChallengeOfferTitle: "Today’s mini challenge",
     dailyChallengeOfferSubtitle: "Go a day without “{{temptation}}”",
     dailyChallengeOfferHint: "Skip it once today and grab double rewards.",
-    dailyChallengeOfferReward: "+{{amount}} bonus health",
+    dailyChallengeOfferReward: "+{{amount}} bonus",
     dailyChallengeOfferAccept: "Accept challenge",
     dailyChallengeOfferLater: "Maybe later",
     dailyChallengeWidgetBadge: "daily challenge",
     dailyChallengeWidgetTitle: "Active mini challenge",
     dailyChallengeWidgetDesc: "Day without “{{temptation}}” = coins x2",
     dailyChallengeWidgetProgress: "Progress {{current}} / {{target}}",
-    dailyChallengeWidgetReward: "+{{amount}} health",
+    dailyChallengeWidgetReward: "+{{amount}}",
     dailyChallengeRewardReason: "Mini challenge “{{temptation}}” complete",
     dailyChallengeRewardNotificationTitle: "Almost daily challenge complete",
-    dailyChallengeRewardNotificationBody: "“{{temptation}}” gave in — grab your +{{amount}} coin bonus.",
+    dailyChallengeRewardNotificationBody: "“{{temptation}}” gave in — grab your +{{amount}} bonus.",
     dailyChallengeFailedText: "“{{temptation}}” won today",
-    healthCelebrateTitle: "+{{amount}} coins",
+    healthCelebrateTitle: "+{{amount}}",
     healthCelebrateSubtitle: "Use it to rescue your free-day streak.",
     healthCelebrateLevel: "Level up! Almi is happy.",
     healthCelebrateReward: "Reward collected - health restored.",
@@ -7912,25 +7950,11 @@ const PendingScreen = React.memo(function PendingScreen({
   );
   useEffect(() => {
     if (!sorted.length) return undefined;
-    let timeoutId;
-    const scheduleTick = () => {
-      const now = Date.now();
-      const soonestDue = sorted[0]?.decisionDue || 0;
-      const msUntilSoonest = soonestDue
-        ? Math.max(soonestDue - now, 0)
-        : Number.MAX_SAFE_INTEGER;
-      const interval =
-        msUntilSoonest <= PENDING_COUNTDOWN_FAST_THRESHOLD_MS
-          ? PENDING_COUNTDOWN_FAST_MS
-          : PENDING_COUNTDOWN_SLOW_MS;
-      timeoutId = setTimeout(() => {
-        setNowTick(Date.now());
-        scheduleTick();
-      }, interval);
-    };
-    scheduleTick();
-    return () => clearTimeout(timeoutId);
-  }, [sorted]);
+    const intervalId = setInterval(() => {
+      setNowTick(Date.now());
+    }, PENDING_COUNTDOWN_FAST_MS);
+    return () => clearInterval(intervalId);
+  }, [sorted.length]);
 
   const formatCountdown = useCallback(
     (ms) => {
@@ -8055,7 +8079,7 @@ const ACHIEVEMENT_DEFS = [
   {
     id: "saved_50",
     metricType: ACHIEVEMENT_METRIC_TYPES.SAVED_AMOUNT,
-    targetValue: convertFromCurrency(5000, "RUB"),
+    targetValue: 50,
     emoji: "💾",
     rewardHealth: 50,
     copy: {
@@ -8912,6 +8936,10 @@ const RewardsScreen = React.memo(function RewardsScreen({
       challengeSwipeCloserRef.current = null;
     }
   }, []);
+  const formatRewardLabel = useCallback(
+    (amount) => formatHealthRewardLabel(amount, language),
+    [language]
+  );
 
   const renderChallengeCard = (challenge) => {
     const actionPalette = challenge.canClaim
@@ -9038,6 +9066,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
 
   const renderRewardCard = (reward) => {
     const rewardPayout = reward.rewardHealth || healthRewardAmount;
+    const rewardLabel = formatRewardLabel(rewardPayout);
     const rewardPalette = reward.unlocked
       ? isDarkTheme
         ? {
@@ -9125,7 +9154,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
           {reward.unlocked
             ? reward.claimed
               ? t("rewardClaimedStatus")
-              : t("rewardClaimHint", { amount: rewardPayout })
+              : t("rewardClaimHint", { amount: rewardLabel })
             : reward.remainingLabel || t("rewardLockedGeneric", { count: 1 })}
         </Text>
         {reward.unlocked && !reward.claimed && (
@@ -9162,6 +9191,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
       Number(dailyChallenge.target) || 1
     );
     const target = Math.max(Number(dailyChallenge.target) || 1, 1);
+    const rewardLabel = dailyChallengeRewardLabel;
     const percent = Math.min(Math.max(progress / target, 0), 1);
     const widgetBackground = colors.background === THEMES.dark.background ? "rgba(255,255,255,0.05)" : "#FFF7EA";
     const widgetBorder = colors.background === THEMES.dark.background ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.06)";
@@ -9207,7 +9237,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
               {t("dailyChallengeWidgetProgress", { current: `${progress}`, target: `${target}` })}
             </Text>
             <Text style={[styles.dailyChallengeRewardLabel, { color: colors.text }]}>
-              {t("dailyChallengeWidgetReward", { amount: dailyChallenge.rewardBonus })}
+              {t("dailyChallengeWidgetReward", { amount: rewardLabel })}
             </Text>
           </View>
         </View>
@@ -9306,7 +9336,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
   currencyValue,
   history = [],
   freeDayStats = INITIAL_FREE_DAY_STATS,
-  rewardBadges = [],
+  rewardBadgeCount = 0,
   analyticsOptOut = false,
   onAnalyticsToggle = () => {},
   t,
@@ -9625,11 +9655,11 @@ const ProfileScreen = React.memo(function ProfileScreen({
             <>
             <View style={styles.profileNameRow}>
               <Text style={[styles.profileName, { color: colors.text }]}>{profile.name}</Text>
-              {!!rewardBadges.length && (
+              {rewardBadgeCount > 0 && (
                 <View style={[styles.rewardBadgeSmall, { backgroundColor: colors.text }]}>
                   <Text style={[styles.rewardBadgeSmallText, { color: colors.background }]}>
-                    {t("rewardBadgeLabel")}
-                    {rewardBadges.length > 1 ? ` ×${rewardBadges.length}` : ""}
+                    {rewardBadgeCount}{" "}
+                    {rewardBadgeCount === 1 ? t("rewardBadgeLabel") : t("rewardBadgeLabelPlural")}
                   </Text>
                 </View>
               )}
@@ -10051,6 +10081,21 @@ function AppContent() {
   const [healthPoints, setHealthPoints] = useState(0);
   const [healthHydrated, setHealthHydrated] = useState(false);
   const [claimedRewards, setClaimedRewards] = useState({});
+  const [rewardClaimTotal, setRewardClaimTotal] = useState(0);
+  const pruneClaimedRewards = useCallback(() => {
+    setClaimedRewards((prev) => {
+      const normalized = normalizeClaimedRewardsMap(prev || {});
+      if (claimedRewardsEqual(prev || {}, normalized)) {
+        return prev;
+      }
+      return normalized;
+    });
+  }, []);
+  useEffect(() => {
+    pruneClaimedRewards();
+    const interval = setInterval(pruneClaimedRewards, DAY_MS);
+    return () => clearInterval(interval);
+  }, [pruneClaimedRewards]);
   const [challengesState, setChallengesState] = useState(() => createInitialChallengesState());
   const [rewardsPane, setRewardsPane] = useState("challenges");
   const [decisionStats, setDecisionStats] = useState({ ...INITIAL_DECISION_STATS });
@@ -11276,12 +11321,20 @@ function AppContent() {
     },
     [formatTranslationText, resolveTranslationValue]
   );
+  const formatHealthRewardText = useCallback(
+    (amount) => formatHealthRewardLabel(amount, language),
+    [language]
+  );
   const dailyChallengeDisplayTitle = useMemo(
     () =>
       dailyChallenge.templateLabel ||
       dailyChallenge.templateTitle ||
       t("defaultDealTitle"),
     [dailyChallenge.templateLabel, dailyChallenge.templateTitle, t]
+  );
+  const dailyChallengeRewardLabel = useMemo(
+    () => formatHealthRewardText(dailyChallenge.rewardBonus || 0),
+    [dailyChallenge.rewardBonus, formatHealthRewardText]
   );
   const currentMood = useMemo(
     () => deriveMoodFromState(moodState, pendingList.length),
@@ -11855,44 +11908,17 @@ function AppContent() {
     [setProfile, setProfileDraft]
   );
 
-  const resetWishProgress = useCallback(
-    (wishId) => {
-      if (!wishId) return;
-      let goalMeta = null;
-      setWishes((prev) => {
-        let changed = false;
-        const next = prev.map((wish) => {
-          if (wish.id !== wishId) return wish;
-          const wasSaved = Number.isFinite(wish.savedUSD) ? wish.savedUSD : 0;
-          const wasStatus = wish.status || "active";
-          if (wish.kind === PRIMARY_GOAL_KIND && wish.goalId) {
-            goalMeta = { goalId: wish.goalId };
-          }
-          if (wasSaved === 0 && wasStatus === "active") {
-            return wish;
-          }
-          changed = true;
-          return {
-            ...wish,
-            savedUSD: 0,
-            status: "active",
-          };
-        });
-        return changed ? next : prev;
-      });
-      if (goalMeta) {
-        syncPrimaryGoalProgress(goalMeta.goalId, 0, "active");
-      }
-    },
-    [setWishes, syncPrimaryGoalProgress]
-  );
-
   const assignTemptationGoal = useCallback(
     (templateId, wishId = null) => {
       if (!templateId) return;
-      let previousAssignedId = null;
       setTemptationGoalMap((prev) => {
-        previousAssignedId = prev[templateId] || null;
+        const currentAssignment = prev[templateId];
+        if (wishId && currentAssignment === wishId) {
+          return prev;
+        }
+        if (!wishId && !currentAssignment) {
+          return prev;
+        }
         const next = { ...prev };
         if (wishId) {
           next[templateId] = wishId;
@@ -11901,11 +11927,8 @@ function AppContent() {
         }
         return next;
       });
-      if (wishId && previousAssignedId !== wishId) {
-        resetWishProgress(wishId);
-      }
     },
-    [resetWishProgress]
+    []
   );
 
   const applySavingsToWish = useCallback(
@@ -12088,10 +12111,6 @@ function AppContent() {
     claimedRewards,
   ]);
 
-  const unlockedRewards = useMemo(
-    () => achievements.filter((item) => item.unlocked),
-    [achievements]
-  );
 
   const challengeList = useMemo(
     () =>
@@ -12164,6 +12183,7 @@ function AppContent() {
     if (focusDigestSeenKey === todayKey) return;
     if (pendingFocusDigest?.dateKey === todayKey) return;
     if (!impulseInsights || (impulseInsights.eventCount || 0) < 4) return;
+    if (!purchases.length) return;
     if ((impulseInsights.totalSpendCount || 0) === 0) return;
     const strong = impulseInsights.hotWin || null;
     const weak = impulseInsights.hotLose || null;
@@ -12188,6 +12208,7 @@ function AppContent() {
     focusDigestSeenKey,
     impulseInsights,
     pendingFocusDigest,
+    purchases.length,
     t,
   ]);
 
@@ -12288,7 +12309,7 @@ function AppContent() {
       title: t("dailyChallengeRewardNotificationTitle"),
       body: t("dailyChallengeRewardNotificationBody", {
         temptation: dailyChallenge.templateLabel || dailyChallenge.templateTitle || t("defaultDealTitle"),
-        amount: `${dailyChallenge.rewardBonus}`,
+        amount: dailyChallengeRewardLabel,
       }),
     });
     logEvent("daily_challenge_completed", {
@@ -12299,6 +12320,7 @@ function AppContent() {
     dailyChallenge.rewardBonus,
     dailyChallenge.templateId,
     dailyChallenge.templateTitle,
+    dailyChallengeRewardLabel,
     sendImmediateNotification,
     logEvent,
     setHealthPoints,
@@ -12507,6 +12529,7 @@ function AppContent() {
         hiddenTemptationsRaw,
         healthRaw,
         claimedRewardsRaw,
+        rewardTotalRaw,
         impulseTrackerRaw,
         moodRaw,
         challengesRaw,
@@ -12556,6 +12579,7 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.HIDDEN_TEMPTATIONS),
         AsyncStorage.getItem(STORAGE_KEYS.HEALTH),
         AsyncStorage.getItem(STORAGE_KEYS.CLAIMED_REWARDS),
+        AsyncStorage.getItem(STORAGE_KEYS.REWARD_TOTAL),
         AsyncStorage.getItem(STORAGE_KEYS.IMPULSE_TRACKER),
         AsyncStorage.getItem(STORAGE_KEYS.MOOD_STATE),
         AsyncStorage.getItem(STORAGE_KEYS.CHALLENGES),
@@ -13058,15 +13082,25 @@ function AppContent() {
       } else if (resolvedHealthPoints === null) {
         resolvedHealthPoints = 0;
       }
+      let initialClaimedCount = 0;
       if (claimedRewardsRaw) {
         try {
-          setClaimedRewards(JSON.parse(claimedRewardsRaw));
+          const parsedClaimed = JSON.parse(claimedRewardsRaw);
+          const normalizedClaimed = normalizeClaimedRewardsMap(parsedClaimed);
+          initialClaimedCount = Object.keys(normalizedClaimed).length;
+          setClaimedRewards(normalizedClaimed);
         } catch (err) {
           console.warn("claimed rewards parse", err);
           setClaimedRewards({});
         }
       } else {
         setClaimedRewards({});
+      }
+      if (rewardTotalRaw) {
+        const parsedRewardTotal = Number(rewardTotalRaw);
+        setRewardClaimTotal(Number.isFinite(parsedRewardTotal) ? Math.max(parsedRewardTotal, 0) : 0);
+      } else {
+        setRewardClaimTotal(initialClaimedCount);
       }
       if (impulseTrackerRaw) {
         try {
@@ -13426,6 +13460,10 @@ function AppContent() {
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.CLAIMED_REWARDS, JSON.stringify(claimedRewards)).catch(() => {});
   }, [claimedRewards]);
+  useEffect(() => {
+    if (!Number.isFinite(rewardClaimTotal)) return;
+    AsyncStorage.setItem(STORAGE_KEYS.REWARD_TOTAL, String(Math.max(0, rewardClaimTotal))).catch(() => {});
+  }, [rewardClaimTotal]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.CHALLENGES, JSON.stringify(challengesState)).catch(() => {});
@@ -16879,9 +16917,11 @@ function AppContent() {
 
   const handleRewardClaim = useCallback(
     (reward) => {
-      if (!reward?.id || !reward.unlocked || reward.claimed || claimedRewards[reward.id]) return;
+      if (!reward?.id || !reward.unlocked || reward.claimed) return;
       const rewardAmount = reward.rewardHealth || HEALTH_PER_REWARD;
-      setClaimedRewards((prev) => ({ ...prev, [reward.id]: true }));
+      const claimedAt = Date.now();
+      setClaimedRewards((prev) => ({ ...prev, [reward.id]: { claimedAt } }));
+      setRewardClaimTotal((prev) => Math.max(0, prev) + 1);
       setHealthPoints((prev) => prev + rewardAmount);
       triggerOverlayState(
         "health",
@@ -16895,7 +16935,7 @@ function AppContent() {
       logEvent("reward_claimed", { reward_id: reward.id });
       logHistoryEvent("reward_claimed", { rewardId: reward.id, title: reward.title });
     },
-    [claimedRewards, t, triggerOverlayState, logHistoryEvent]
+    [t, triggerOverlayState, logHistoryEvent]
   );
 
   const handleChallengeAccept = useCallback(
@@ -16979,6 +17019,7 @@ function AppContent() {
         };
       });
       const rewardAmount = getScaledChallengeReward(def.rewardHealth);
+      const rewardLabel = formatHealthRewardText(rewardAmount);
       setHealthPoints((prev) => prev + rewardAmount);
       const copy = getChallengeCopy(def, language);
       const title = copy.title || challengeId;
@@ -16986,13 +17027,13 @@ function AppContent() {
         "health",
         {
           amount: rewardAmount,
-          reason: t("challengeClaimedOverlay", { title, amount: rewardAmount }),
+          reason: t("challengeClaimedOverlay", { title, amount: rewardLabel }),
         },
         3200
       );
       logEvent("challenge_claimed", { challenge_id: challengeId });
     },
-    [challengesState, language, t, triggerOverlayState]
+    [challengesState, formatHealthRewardText, language, t, triggerOverlayState]
   );
 
   const handleChallengeCancel = useCallback(
@@ -17094,6 +17135,7 @@ function AppContent() {
             setTamagotchiSkinId(DEFAULT_TAMAGOTCHI_SKIN);
             setSkinPickerVisible(false);
             setClaimedRewards({});
+            setRewardClaimTotal(0);
             setRewardCelebratedMap({});
             const resetChallenges = createInitialChallengesState();
             challengesPrevRef.current = resetChallenges;
@@ -17305,7 +17347,7 @@ function AppContent() {
           history={resolvedHistoryEvents}
           onHistoryDelete={handleHistoryDelete}
           freeDayStats={freeDayStats}
-          rewardBadges={unlockedRewards}
+          rewardBadgeCount={rewardClaimTotal}
           analyticsOptOut={analyticsOptOutValue}
           onAnalyticsToggle={handleAnalyticsToggle}
           t={t}
@@ -17771,7 +17813,7 @@ function AppContent() {
                         <View style={styles.dailyChallengeRewardStack}>
                           <HealthRewardTokens amount={dailyChallenge.rewardBonus} color={colors.text} iconSize={18} />
                           <Text style={[styles.dailyChallengeRewardHint, { color: colors.text }]}>
-                            {t("dailyChallengeOfferReward", { amount: dailyChallenge.rewardBonus })}
+                            {t("dailyChallengeOfferReward", { amount: dailyChallengeRewardLabel })}
                           </Text>
                         </View>
                       </View>
@@ -19279,7 +19321,7 @@ function AppContent() {
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
-                <HealthCelebration colors={colors} payload={overlay.message} t={t} />
+                <HealthCelebration colors={colors} payload={overlay.message} t={t} language={language} />
               </View>
             </TouchableWithoutFeedback>
           </Modal>
@@ -23838,7 +23880,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   focusDigestPrimaryText: {
-    ...createCtaText({ fontSize: 13 }),
+    ...createCtaText({ fontSize: 12 }),
   },
   focusDigestSecondary: {
     flex: 1,
@@ -23849,7 +23891,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   focusDigestSecondaryText: {
-    ...createCtaText({ fontSize: 13 }),
+    ...createCtaText({ fontSize: 12 }),
   },
   focusRewardCard: {
     width: "82%",
@@ -26428,7 +26470,7 @@ const RewardCelebration = ({ colors, message, t, mascotHappySource }) => {
   );
 };
 
-const HealthCelebration = ({ colors, payload, t }) => {
+const HealthCelebration = ({ colors, payload, t, language }) => {
   const scale = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     const pulse = Animated.loop(
@@ -26451,10 +26493,6 @@ const HealthCelebration = ({ colors, payload, t }) => {
   const data = payload && typeof payload === "object" ? payload : { reason: payload };
   const amount =
     typeof data.amount === "number" && Number.isFinite(data.amount) ? data.amount : HEALTH_PER_REWARD;
-  const displayCoins =
-    typeof data.displayCoins === "number" && Number.isFinite(data.displayCoins)
-      ? data.displayCoins
-      : null;
   const coinValue =
     typeof data.coinValue === "number" && Number.isFinite(data.coinValue) ? data.coinValue : amount;
   const baseSubtitle = t("healthCelebrateSubtitle");
@@ -26465,7 +26503,7 @@ const HealthCelebration = ({ colors, payload, t }) => {
   const cardBorder = isDarkTheme ? lightenColor(colors.border, 0.25) : "rgba(0,0,0,0.1)";
   const heartBackground = isDarkTheme ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.8)";
   const rewardCoinTier = getHealthCoinTierForAmount(coinValue);
-  const titleAmount = displayCoins ?? amount;
+  const titleAmount = formatHealthRewardLabel(coinValue, language);
   return (
     <View style={styles.healthOverlay} pointerEvents="none">
       <View style={[styles.healthBackdrop, { backgroundColor: backdropColor }]} />
