@@ -28,7 +28,14 @@ import {
   ActionSheetIOS,
   PixelRatio,
 } from "react-native";
-import Svg, { Circle as SvgCircle, Defs, Mask, Rect as SvgRect } from "react-native-svg";
+import Svg, {
+  Circle as SvgCircle,
+  Defs,
+  Mask,
+  Rect as SvgRect,
+  LinearGradient as SvgLinearGradient,
+  Stop as SvgStop,
+} from "react-native-svg";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import ConfettiCannon from "react-native-confetti-cannon";
 import * as Haptics from "expo-haptics";
@@ -37,6 +44,7 @@ import * as Notifications from "expo-notifications";
 import * as NavigationBar from "expo-navigation-bar";
 import * as FileSystem from "expo-file-system";
 import { StatusBar } from "expo-status-bar";
+import { BlurView } from "expo-blur";
 import * as SplashScreen from "expo-splash-screen";
 import {
   useFonts,
@@ -3187,7 +3195,7 @@ const TRANSLATIONS = {
     dailyNudgeAfternoonTitle: ["Послеобеденный чек-поинт Almost", "Алми сбавляет темп"],
     dailyNudgeAfternoonBody: [
       "Сделай чек-ин перед любой покупкой и отправь свободные деньги в Almost.",
-      "Пятиминутная пауза сейчас поможет удержать курс экономии.",
+      "Искушения наступают? Держись и помни о своей цели.",
     ],
     dailyNudgeEveningTitle: ["Вечерний щит Almost", "Алми бережёт твой вечер"],
     dailyNudgeEveningBody: [
@@ -3776,7 +3784,7 @@ const TRANSLATIONS = {
     dailyNudgeAfternoonTitle: ["Post-lunch check-in with Almost", "Tap the brakes with Almi"],
     dailyNudgeAfternoonBody: [
       "Take a breath before tapping buy and reroute that money to savings.",
-      "A five-minute pause now keeps your savings autopilot engaged.",
+      "Temptations creeping in? Hold the line and remember your goal.",
     ],
     dailyNudgeEveningTitle: ["Evening shield from Almost", "Almi wraps up your day"],
     dailyNudgeEveningBody: [
@@ -4931,12 +4939,16 @@ const GOALS = [
   },
 ];
 
-const SAVINGS_TIERS = [10, 20, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000, 50000, 100000, 250000];
-const LEVEL_TWO_TARGET_RUB_USD = convertFromCurrency(1000, "RUB"); // level 2 at ₽1000 instead of default $10
+const SAVINGS_TIERS = [6, 20, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000, 50000, 100000, 250000];
+const LEVEL_TWO_TARGET_RUB_USD = convertFromCurrency(600, "RUB"); // level 2 at ₽600 instead of default $6
+const LEVEL_TWO_TARGET_EUR_USD = convertFromCurrency(6, "EUR"); // keep €6 requirement despite USD base
 const getTierTargetsUSD = (currencyCode = activeCurrency) => {
   const code = currencyCode || activeCurrency;
   if (code === "RUB") {
     return [LEVEL_TWO_TARGET_RUB_USD, ...SAVINGS_TIERS.slice(1)];
+  }
+  if (code === "EUR") {
+    return [LEVEL_TWO_TARGET_EUR_USD, ...SAVINGS_TIERS.slice(1)];
   }
   return SAVINGS_TIERS;
 };
@@ -5035,6 +5047,12 @@ const blendHexColors = (colorA, colorB, ratio = 0.5) => {
   const g = a.g * (1 - t) + b.g * t;
   const bl = a.b * (1 - t) + b.b * t;
   return `#${toHex(r)}${toHex(g)}${toHex(bl)}`;
+};
+
+const colorWithAlpha = (color, alpha = 1) => {
+  const normalized = Math.max(0, Math.min(1, alpha));
+  const { r, g, b } = parseColor(color);
+  return `rgba(${r}, ${g}, ${b}, ${normalized})`;
 };
 
 const getTierProgress = (savedUSD = 0, currencyCode = activeCurrency) => {
@@ -8141,6 +8159,36 @@ const CHALLENGE_STATUS_ORDER = {
   [CHALLENGE_STATUS.EXPIRED]: 3,
   [CHALLENGE_STATUS.CLAIMED]: 4,
 };
+const CHALLENGE_REMINDER_WINDOWS = [
+  { hour: 9, minute: 0 },
+  { hour: 12, minute: 30 },
+  { hour: 16, minute: 0 },
+  { hour: 19, minute: 30 },
+  { hour: 21, minute: 15 },
+];
+
+const hashString = (value = "") => {
+  const str = String(value);
+  let hash = 0;
+  for (let i = 0; i < str.length; i += 1) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+};
+
+const alignReminderSlotTime = (timestamp, slot, jitterMinutes = 0) => {
+  if (!slot) return timestamp;
+  const slotDate = new Date(timestamp);
+  slotDate.setHours(slot.hour, slot.minute || 0, 0, 0);
+  if (slotDate.getTime() < timestamp) {
+    slotDate.setDate(slotDate.getDate() + 1);
+  }
+  if (jitterMinutes) {
+    slotDate.setMinutes(slotDate.getMinutes() + jitterMinutes);
+  }
+  return slotDate.getTime();
+};
 
 const CHALLENGE_DEFS = [
   {
@@ -10244,7 +10292,7 @@ function AppContent() {
       if (StoreReview && typeof StoreReview.isAvailableAsync === "function") {
         const available = await StoreReview.isAvailableAsync();
         if (available && typeof StoreReview.requestReview === "function") {
-          StoreReview.requestReview();
+          await StoreReview.requestReview();
           return;
         }
       }
@@ -10984,7 +11032,8 @@ function AppContent() {
   const resolvedTabBarHeight = tabBarHeight || tabBarBottomInset + TAB_BAR_BASE_HEIGHT;
   const tutorialOverlayInset = resolvedTabBarHeight;
   const tutorialCardOffset = resolvedTabBarHeight + (Platform.OS === "ios" ? 64 : 72);
-  const topSafeInset = Platform.OS === "android" ? RNStatusBar.currentHeight || 24 : 0;
+  const topSafeInset =
+    Platform.OS === "android" ? RNStatusBar.currentHeight || 24 : safeAreaInsets.top || 0;
   const [keyboardInset, setKeyboardInset] = useState(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
@@ -11009,6 +11058,15 @@ function AppContent() {
       hideSub.remove();
     };
   }, [tabBarBottomInset]);
+  const shouldRenderStatusGlass = Platform.OS === "ios" && topSafeInset > 0;
+  const statusBlurAvailable = useMemo(() => {
+    if (!shouldRenderStatusGlass) return false;
+    const viewName = "ViewManagerAdapter_ExpoBlurView";
+    if (typeof UIManager.getViewManagerConfig === "function") {
+      return !!UIManager.getViewManagerConfig(viewName);
+    }
+    return !!UIManager[viewName];
+  }, [shouldRenderStatusGlass]);
   const screenKeyboardAdjustmentStyle = useMemo(() => {
     if (Platform.OS === "ios") return null;
     return keyboardInset ? { paddingBottom: keyboardInset } : null;
@@ -11628,14 +11686,31 @@ function AppContent() {
       const title = t("challengeReminderTitle", { title: copy.title || challengeId });
       const body = t("challengeReminderBody", { title: copy.title || challengeId });
       const scheduled = [];
-      for (const offsetHours of def.reminderOffsetsHours) {
+      const challengeHash = hashString(challengeId || "");
+      const jitterMinutes = challengeHash % 11;
+      const windows =
+        CHALLENGE_REMINDER_WINDOWS.length > 0
+          ? [
+              ...CHALLENGE_REMINDER_WINDOWS.slice(challengeHash % CHALLENGE_REMINDER_WINDOWS.length),
+              ...CHALLENGE_REMINDER_WINDOWS.slice(0, challengeHash % CHALLENGE_REMINDER_WINDOWS.length),
+            ]
+          : [];
+      for (let index = 0; index < def.reminderOffsetsHours.length; index += 1) {
+        const offsetHours = def.reminderOffsetsHours[index];
         const triggerTime = startAt + offsetHours * 60 * 60 * 1000;
         if (!Number.isFinite(triggerTime) || triggerTime <= Date.now()) continue;
         if (expiresAt && triggerTime >= expiresAt) continue;
+        const slot = windows[index % (windows.length || 1)];
+        let scheduledTime = alignReminderSlotTime(triggerTime, slot, jitterMinutes);
+        if (expiresAt && scheduledTime >= expiresAt) {
+          scheduledTime = triggerTime + jitterMinutes * 60 * 1000;
+        }
+        if (!Number.isFinite(scheduledTime)) continue;
+        if (expiresAt && scheduledTime >= expiresAt) continue;
         try {
           const notificationId = await Notifications.scheduleNotificationAsync({
             content: { title, body },
-            trigger: new Date(triggerTime),
+            trigger: new Date(scheduledTime),
           });
           scheduled.push(notificationId);
         } catch (error) {
@@ -12089,6 +12164,7 @@ function AppContent() {
     if (focusDigestSeenKey === todayKey) return;
     if (pendingFocusDigest?.dateKey === todayKey) return;
     if (!impulseInsights || (impulseInsights.eventCount || 0) < 4) return;
+    if ((impulseInsights.totalSpendCount || 0) === 0) return;
     const strong = impulseInsights.hotWin || null;
     const weak = impulseInsights.hotLose || null;
     if (!strong && !weak) return;
@@ -17495,6 +17571,14 @@ function AppContent() {
               },
             ]}
           >
+            {shouldRenderStatusGlass && (
+              <StatusGlass
+                height={topSafeInset}
+                colors={{ ...colors, background: onboardingBackground }}
+                theme={theme}
+                blurAvailable={statusBlurAvailable}
+              />
+            )}
             <StatusBar style={theme === "dark" ? "light" : "dark"} backgroundColor={onboardingBackground} />
             {onboardContent || (
               <LogoSplash onDone={() => goToOnboardingStep("language", { recordHistory: false })} />
@@ -17541,7 +17625,7 @@ function AppContent() {
         touchSoundDisabled
       >
         <View style={[styles.appBackground, { backgroundColor: colors.background }]}>
-        <SafeAreaView
+          <SafeAreaView
             style={[
               styles.appShell,
               {
@@ -17551,16 +17635,24 @@ function AppContent() {
             ]}
             onLayout={handleHomeLayout}
           >
-        {startupLogoVisible && (
-          <View style={[styles.logoSplashOverlay, { backgroundColor: colors.background }]}>
-            <LogoSplash onDone={handleStartupLogoComplete} />
-          </View>
-        )}
-        <StatusBar
-          style={theme === "dark" ? "light" : "dark"}
-          backgroundColor={systemOverlayActive ? overlaySystemColor : colors.background}
-        />
-        <View style={[styles.screenWrapper, screenKeyboardAdjustmentStyle]}>{renderActiveScreen()}</View>
+            {shouldRenderStatusGlass && (
+              <StatusGlass
+                height={topSafeInset}
+                colors={colors}
+                theme={theme}
+                blurAvailable={statusBlurAvailable}
+              />
+            )}
+            {startupLogoVisible && (
+              <View style={[styles.logoSplashOverlay, { backgroundColor: colors.background }]}>
+                <LogoSplash onDone={handleStartupLogoComplete} />
+              </View>
+            )}
+            <StatusBar
+              style={theme === "dark" ? "light" : "dark"}
+              backgroundColor={systemOverlayActive ? overlaySystemColor : colors.background}
+            />
+            <View style={[styles.screenWrapper, screenKeyboardAdjustmentStyle]}>{renderActiveScreen()}</View>
         {savingsBreakdownVisible && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={closeSavingsBreakdown}>
@@ -19209,12 +19301,13 @@ function AppContent() {
         {overlay?.type === "impulse_alert" && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
-              <View
-                style={[
-                  styles.overlayDim,
-                  { backgroundColor: overlayDimColor },
-                ]}
-              >
+              <View style={styles.overlayFullScreen}>
+                <View
+                  style={[
+                    styles.overlayDim,
+                    { backgroundColor: overlayDimColor },
+                  ]}
+                />
                 <TouchableWithoutFeedback onPress={() => {}}>
                   <View
                     style={[
@@ -19647,6 +19740,45 @@ function App() {
 
 export default Sentry.wrap(App);
 
+const StatusGlass = React.memo(({ height, colors, theme, blurAvailable = false }) => {
+  const gradientId = useMemo(() => `status-glass-${Math.random().toString(36).slice(2, 10)}`, []);
+  const baseColor = colors?.background || "#fff";
+  const tintedBase = blendColors(baseColor, "#ffffff", theme === "dark" ? 0.2 : 0.45);
+  const highlight = colorWithAlpha("#ffffff", theme === "dark" ? 0.2 : 0.32);
+  const softCore = colorWithAlpha(tintedBase, theme === "dark" ? 0.28 : 0.38);
+  const fadeOut = colorWithAlpha(baseColor, 0);
+  const borderColor = colorWithAlpha(colors?.border || tintedBase, theme === "dark" ? 0.35 : 0.18);
+  const borderPosition = Math.max(0, height - 26);
+  const overlay = (
+    <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Defs>
+        <SvgLinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <SvgStop offset="0%" stopColor={highlight} />
+          <SvgStop offset="55%" stopColor={softCore} />
+          <SvgStop offset="100%" stopColor={fadeOut} />
+        </SvgLinearGradient>
+      </Defs>
+      <SvgRect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
+    </Svg>
+  );
+  const border = <View style={[styles.statusGlassBorder, { borderColor, top: borderPosition }]} />;
+  if (blurAvailable) {
+    return (
+      <View pointerEvents="none" style={[styles.statusGlass, { height }]}>
+        <BlurView tint={theme === "dark" ? "dark" : "extraLight"} intensity={35} style={StyleSheet.absoluteFill} />
+        {overlay}
+        {border}
+      </View>
+    );
+  }
+  return (
+    <View pointerEvents="none" style={[styles.statusGlass, { height }]}>
+      {overlay}
+      {border}
+    </View>
+  );
+});
+
 const TYPOGRAPHY = {
   logo: {
     fontFamily: INTER_FONTS.extraBold,
@@ -19696,6 +19828,20 @@ const styles = StyleSheet.create({
   },
   screenWrapper: {
     flex: 1,
+  },
+  statusGlass: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    overflow: "hidden",
+    zIndex: 10,
+  },
+  statusGlassBorder: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   container: {
     flex: 1,
@@ -23692,7 +23838,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   focusDigestPrimaryText: {
-    ...createCtaText({ fontSize: 14 }),
+    ...createCtaText({ fontSize: 13 }),
   },
   focusDigestSecondary: {
     flex: 1,
@@ -23703,7 +23849,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   focusDigestSecondaryText: {
-    ...createCtaText({ fontSize: 14 }),
+    ...createCtaText({ fontSize: 13 }),
   },
   focusRewardCard: {
     width: "82%",
