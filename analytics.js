@@ -4,6 +4,15 @@
  */
 import analytics from "@react-native-firebase/analytics";
 
+let FacebookAppEvents = null;
+try {
+  // Optional dependency – only available on native builds.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  FacebookAppEvents = require("react-native-fbsdk-next").AppEventsLogger;
+} catch (error) {
+  FacebookAppEvents = null;
+}
+
 const EVENT_DEFINITIONS = {
   temptation_want: ["item_id", "price_usd", "categories", "persona", "currency"],
   temptation_save: [
@@ -91,6 +100,8 @@ const EVENT_DEFINITIONS = {
   level_share_sent: ["level"],
 };
 
+const FACEBOOK_EVENT_WHITELIST = new Set(["onboarding_completed", "north_star_two_saves"]);
+
 const baseEnabled = !__DEV__;
 let analyticsOptedOut = false;
 
@@ -138,12 +149,15 @@ export const setAnalyticsOptOut = async (optOut) => {
 export const logEvent = async (eventName, params = {}) => {
   if (!EVENT_DEFINITIONS[eventName]) return;
   const client = getAnalyticsClient();
-  if (!client) return;
-  try {
-    await client.logEvent(eventName, filterParams(eventName, params));
-  } catch (error) {
-    console.warn("Failed to log analytics event:", eventName, error?.message || error);
+  const filteredParams = filterParams(eventName, params);
+  if (client) {
+    try {
+      await client.logEvent(eventName, filteredParams);
+    } catch (error) {
+      console.warn("Failed to log analytics event:", eventName, error?.message || error);
+    }
   }
+  logFacebookEvent(eventName, filteredParams);
 };
 
 export const logScreenView = async (screenName) => {
@@ -157,6 +171,17 @@ export const logScreenView = async (screenName) => {
     });
   } catch (error) {
     console.warn("Failed to log screen view:", error?.message || error);
+  }
+};
+
+const logFacebookEvent = (eventName, params = {}) => {
+  if (!FACEBOOK_EVENT_WHITELIST.has(eventName)) return;
+  if (!isAnalyticsEnabled()) return;
+  if (!FacebookAppEvents || typeof FacebookAppEvents.logEvent !== "function") return;
+  try {
+    FacebookAppEvents.logEvent(eventName, undefined, params);
+  } catch (error) {
+    console.warn("Failed to log Facebook event:", eventName, error?.message || error);
   }
 };
 
