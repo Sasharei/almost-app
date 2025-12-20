@@ -2742,7 +2742,7 @@ const TRANSLATIONS = {
     heroEconomyContinues: "Экономия продолжается.",
     heroExpand: "Показать детали",
     heroCollapse: "Скрыть детали",
-    heroDailyTitle: "Неделя экономии",
+    heroDailyTitle: "Неделя экономии/трат",
     heroDailyEmpty: "Пока пусто, попробуй отказать себе хотя бы раз.",
     feedEmptyTitle: "Фильтр пуст",
     feedEmptySubtitle: "Попробуй другой тег или обнови каталог",
@@ -2920,7 +2920,7 @@ const TRANSLATIONS = {
     analyticsTitle: "Прогресс",
     analyticsPendingToBuy: "Цели",
     analyticsPendingToDecline: "Отказы",
-    analyticsFridgeCount: "В «думаем»",
+    analyticsFridgeCount: "Траты",
     analyticsBestStreak: "Бесплатных дней",
     analyticsConsentTitle: "Поможешь нам стать лучше?",
     analyticsConsentBody:
@@ -3359,7 +3359,7 @@ const TRANSLATIONS = {
     heroEconomyContinues: "Savings continue.",
     heroExpand: "Show details",
     heroCollapse: "Hide details",
-    heroDailyTitle: "Weekly savings",
+    heroDailyTitle: "Weekly savings/spend",
     heroDailyEmpty: "No skips yet. Try saving once this week.",
     feedEmptyTitle: "Nothing here",
     feedEmptySubtitle: "Try another tag or refresh the catalog",
@@ -3541,7 +3541,7 @@ const TRANSLATIONS = {
     analyticsTitle: "Progress",
     analyticsPendingToBuy: "Wishes",
     analyticsPendingToDecline: "Savings",
-    analyticsFridgeCount: "Thinking list",
+    analyticsFridgeCount: "Spends",
     analyticsBestStreak: "Free days",
     analyticsConsentTitle: "Help us improve?",
     analyticsConsentBody:
@@ -5852,6 +5852,7 @@ const TemptationCard = React.memo(TemptationCardComponent);
 function SavingsHeroCard({
   goldPalette,
   heroSpendCopy,
+  heroRecentSaves = [],
   heroEncouragementLine,
   levelLabel,
   totalSavedLabel,
@@ -5911,45 +5912,65 @@ function SavingsHeroCard({
         },
       ]}
     >
-      <View style={[styles.savedHeroGlow, { backgroundColor: goldPalette.glow }]} />
-      <View
-        style={[
-          styles.savedHeroGlow,
-          styles.savedHeroGlowBottom,
-          { backgroundColor: goldPalette.glow },
-        ]}
-      />
-      <View style={styles.savedHeroHeader}>
-        <View style={styles.savedHeroTextBlock}>
+      <View pointerEvents="none" style={styles.savedHeroGlowWrap}>
+        <View style={[styles.savedHeroGlow, { backgroundColor: goldPalette.glow }]} />
+        <View
+          style={[
+            styles.savedHeroGlow,
+            styles.savedHeroGlowBottom,
+            { backgroundColor: goldPalette.glow },
+          ]}
+        />
+      </View>
+      <View style={styles.savedHeroContent}>
+        <View style={styles.savedHeroHeader}>
           <Text style={[styles.progressHeroTitle, { color: goldPalette.text }]}>
             {t("progressHeroTitle")}
           </Text>
-          <Text style={[styles.savedHeroSubtitle, { color: goldPalette.subtext }]}>
-            {heroSpendCopy}
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={styles.savedHeroLevelButton}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          activeOpacity={0.85}
-          onPress={() => setLevelExpanded((prev) => !prev)}
-        >
-          <View
-            style={[
-              styles.savedHeroLevelBadge,
-              {
-                backgroundColor: goldPalette.badgeBg,
-                borderColor: goldPalette.badgeBorder,
-              },
-            ]}
+          <TouchableOpacity
+            style={styles.savedHeroLevelButton}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            activeOpacity={0.85}
+            onPress={() => setLevelExpanded((prev) => !prev)}
           >
-            <Text style={[styles.savedHeroLevelText, { color: goldPalette.badgeText }]}>
-              {levelLabel}
+            <View
+              style={[
+                styles.savedHeroLevelBadge,
+                {
+                  backgroundColor: goldPalette.badgeBg,
+                  borderColor: goldPalette.badgeBorder,
+                },
+              ]}
+            >
+              <Text style={[styles.savedHeroLevelText, { color: goldPalette.badgeText }]}>
+                {levelLabel}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+        {heroRecentSaves.length > 0 ? (
+          <View style={styles.savedHeroRecentList}>
+            <Text style={[styles.savedHeroRecentTitle, { color: goldPalette.subtext }]}>
+              {t("heroSpendRecentTitle")}
             </Text>
+            {heroRecentSaves.map((entry) => (
+              <Text
+                key={entry.id}
+                style={[styles.savedHeroRecentItem, { color: goldPalette.subtext }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {entry.label}
+              </Text>
+            ))}
           </View>
-        </TouchableOpacity>
-      </View>
-      {levelExpanded && (
+        ) : (
+          <Text style={[styles.savedHeroSubtitle, { color: goldPalette.subtext }]}>
+            {heroSpendCopy || heroEncouragementLine}
+          </Text>
+        )}
+
+        {levelExpanded && (
         <View
           style={[
             styles.heroLevelDetails,
@@ -6132,9 +6153,21 @@ function SavingsHeroCard({
                 {dailySavings.map((day) => (
                   <View key={day.key} style={styles.savedHeroBarItem}>
                     <View style={styles.savedHeroBarAmountWrap}>
-                      <Text style={[styles.savedHeroBarAmount, { color: goldPalette.text }]}>
-                        {day.amountUSD ? day.amountLabel : ""}
-                      </Text>
+                      {day.amountLabel ? (
+                        <Text style={[styles.savedHeroBarAmount, { color: goldPalette.text }]}>
+                          {day.amountLabel}
+                        </Text>
+                      ) : null}
+                      {day.spendLabel ? (
+                        <Text
+                          style={[
+                            styles.savedHeroBarSpend,
+                            { color: day.amountUSD ? goldPalette.subtext : goldPalette.danger },
+                          ]}
+                        >
+                          {day.spendLabel}
+                        </Text>
+                      ) : null}
                     </View>
                     <View style={styles.savedHeroBarTrack}>
                       <View
@@ -6146,6 +6179,18 @@ function SavingsHeroCard({
                           },
                         ]}
                       />
+                      {day.spendPercent > 0 ? (
+                        <View
+                          style={[
+                            styles.savedHeroBarColumnSpend,
+                            {
+                              height: `${day.spendPercent}%`,
+                              backgroundColor: goldPalette.danger,
+                              opacity: day.spendOverflow ? 0.95 : 0.8,
+                            },
+                          ]}
+                        />
+                      ) : null}
                     </View>
                     <Text style={[styles.savedHeroBarLabel, { color: goldPalette.subtext }]}>
                       {day.label}
@@ -6181,6 +6226,7 @@ function SavingsHeroCard({
           </View>
         </TouchableOpacity>
       )}
+      </View>
     </View>
   );
 }
@@ -6708,17 +6754,24 @@ const FeedScreen = React.memo(function FeedScreen({
     () => resolvedHistoryEvents.filter((entry) => entry.kind === "refuse_spend").slice(0, 3),
     [resolvedHistoryEvents]
   );
-  const heroSpendCopy = useMemo(() => {
-    if (recentSavings.length > 0) {
-      const lines = recentSavings.map((entry) => {
+  const heroRecentSaves = useMemo(
+    () =>
+      recentSavings.map((entry) => {
         const resolvedTitle =
           resolveTemplateTitle(entry?.meta?.templateId, entry?.meta?.title) ||
           entry?.title ||
           t("defaultDealTitle");
         const timestampLabel = formatLatestSavingTimestamp(entry?.timestamp, language);
-        return `${resolvedTitle}${timestampLabel ? ` · ${timestampLabel}` : ""}`;
-      });
-      return [t("heroSpendRecentTitle"), ...lines].join("\n");
+        return {
+          id: entry.id,
+          label: `${resolvedTitle}${timestampLabel ? ` · ${timestampLabel}` : ""}`,
+        };
+      }),
+    [language, recentSavings, resolveTemplateTitle, t]
+  );
+  const heroSpendCopy = useMemo(() => {
+    if (heroRecentSaves.length > 0) {
+      return "";
     }
     if (!realSavedUSD || realSavedUSD <= 0) {
       return t("heroSpendFallback");
@@ -6729,13 +6782,12 @@ const FeedScreen = React.memo(function FeedScreen({
     }
     return t("heroSpendFallback");
   }, [
-    realSavedUSD,
-    totalSavedLabel,
-    personaPreset,
+    heroRecentSaves.length,
     language,
+    personaPreset,
+    realSavedUSD,
     t,
-    recentSavings,
-    resolveTemplateTitle,
+    totalSavedLabel,
   ]);
   const heroEncouragementLine = useMemo(() => {
     const heroLine = isGoalComplete
@@ -6768,6 +6820,7 @@ const FeedScreen = React.memo(function FeedScreen({
               badgeText: "#9FFFCF",
               barBg: "rgba(0,0,0,0.3)",
               shadow: "#032015",
+              danger: "#FF9C9C",
             }
           : {
               background: "#E7FFE8",
@@ -6781,6 +6834,7 @@ const FeedScreen = React.memo(function FeedScreen({
               badgeText: "#0E5B30",
               barBg: "rgba(255,255,255,0.65)",
               shadow: "#B2F8C3",
+              danger: "#D63B3B",
             }
         : isDarkMode
         ? {
@@ -6795,6 +6849,7 @@ const FeedScreen = React.memo(function FeedScreen({
             badgeText: "#FFEED0",
             barBg: "rgba(0,0,0,0.3)",
             shadow: "#1B1100",
+            danger: "#FF8F8F",
           }
         : {
             background: "#FFF6D5",
@@ -6808,6 +6863,7 @@ const FeedScreen = React.memo(function FeedScreen({
             badgeText: "#7A4A00",
             barBg: "rgba(255,255,255,0.6)",
             shadow: "#F3C75A",
+            danger: "#D63B3B",
           },
     [isDarkMode, isGoalComplete]
   );
@@ -7135,36 +7191,58 @@ const FeedScreen = React.memo(function FeedScreen({
     const minTimestamp = start.getTime();
     const map = new Map();
     resolvedHistoryEvents.forEach((entry) => {
-      if (entry.kind !== "refuse_spend") return;
       if (!entry.timestamp || entry.timestamp < minTimestamp) return;
+      if (entry.kind !== "refuse_spend" && entry.kind !== "spend") return;
+      const amount = Math.max(0, Number(entry.meta?.amountUSD) || 0);
+      if (!amount) return;
       const key = getDayKey(entry.timestamp);
-      const amount = entry.meta?.amountUSD || 0;
-      map.set(key, (map.get(key) || 0) + amount);
+      const current = map.get(key) || { saveUSD: 0, spendUSD: 0 };
+      if (entry.kind === "refuse_spend") {
+        current.saveUSD += amount;
+      } else {
+        current.spendUSD += amount;
+      }
+      map.set(key, current);
     });
-    let max = 0;
-    const result = Array.from({ length: 7 }).map((_, index) => {
+    let maxSave = 0;
+    const baseItems = Array.from({ length: 7 }).map((_, index) => {
       const date = new Date(start);
       date.setDate(start.getDate() + index);
       const key = getDayKey(date);
-      const amountUSD = map.get(key) || 0;
-      if (amountUSD > max) max = amountUSD;
+      const stats = map.get(key) || { saveUSD: 0, spendUSD: 0 };
+      const saveUSD = stats.saveUSD || 0;
+      const spendUSD = stats.spendUSD || 0;
+      if (saveUSD > maxSave) maxSave = saveUSD;
       const weekdayIndex = (date.getDay() + 6) % 7;
       const label =
         WEEKDAY_LABELS_MONDAY_FIRST[language]?.[weekdayIndex] ||
         WEEKDAY_LABELS_MONDAY_FIRST.en[weekdayIndex];
-      const amountLocal = convertToCurrency(amountUSD, currency);
+      const saveLocal = convertToCurrency(saveUSD, currency);
+      const spendLocal = convertToCurrency(spendUSD, currency);
       return {
         key,
-        amountUSD,
         label,
-        amountLabel: amountUSD ? formatCurrency(amountLocal, currency) : "",
+        amountUSD: saveUSD,
+        saveUSD,
+        spendUSD,
+        amountLabel: saveUSD ? formatCurrency(saveLocal, currency) : "",
+        spendLabel: spendUSD ? `-${formatCurrency(spendLocal, currency)}` : "",
       };
     });
-    const maxValue = Math.max(max, 0.01);
-    return result.map((item) => ({
-      ...item,
-      percent: item.amountUSD > 0 ? Math.max((item.amountUSD / maxValue) * 100, 8) : 0,
-    }));
+    const maxValue = Math.max(maxSave, 0.01);
+    return baseItems.map((item) => {
+      const percent = item.saveUSD > 0 ? Math.max((item.saveUSD / maxValue) * 100, 8) : 0;
+      const spendPercent =
+        item.saveUSD > 0 && item.spendUSD > 0
+          ? Math.min(percent, Math.max((item.spendUSD / item.saveUSD) * percent, 2))
+          : 0;
+      return {
+        ...item,
+        percent,
+        spendPercent,
+        spendOverflow: item.spendUSD > item.saveUSD,
+      };
+    });
   }, [currency, resolvedHistoryEvents, language, todayTimestamp]);
   const showImpulseCard = useMemo(() => hasImpulseHistory(impulseInsights), [impulseInsights]);
   const { wishesById, swipePinnedByTemplate } = useMemo(() => {
@@ -7272,6 +7350,7 @@ const FeedScreen = React.memo(function FeedScreen({
           <SavingsHeroCard
             goldPalette={goldPalette}
             heroSpendCopy={heroSpendCopy}
+            heroRecentSaves={heroRecentSaves}
             heroEncouragementLine={heroEncouragementLine}
             levelLabel={levelLabel}
               totalSavedLabel={totalSavedLabel}
@@ -12160,9 +12239,9 @@ function AppContent() {
     () => [
       { label: t("analyticsPendingToBuy"), value: `${wishes.length}` },
       { label: t("analyticsPendingToDecline"), value: `${declineCount}` },
-      { label: t("analyticsFridgeCount"), value: `${pendingList.length}` },
+      { label: t("analyticsFridgeCount"), value: `${purchases.length}` },
     ],
-    [wishes.length, declineCount, pendingList.length, t]
+    [wishes.length, declineCount, purchases.length, t]
   );
   const impulseInsights = useMemo(
     () => buildImpulseInsights(impulseTracker.events),
@@ -20340,6 +20419,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 8,
     overflow: "hidden",
+    position: "relative",
+  },
+  savedHeroGlowWrap: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
   },
   savedHeroGlow: {
     position: "absolute",
@@ -20349,21 +20433,25 @@ const styles = StyleSheet.create({
     top: -40,
     right: -30,
     opacity: 0.6,
+    zIndex: -1,
   },
   savedHeroGlowBottom: {
     width: 120,
     height: 120,
     bottom: -30,
     left: -10,
+    zIndex: -1,
+  },
+  savedHeroContent: {
+    position: "relative",
+    zIndex: 1,
   },
   savedHeroHeader: {
     marginBottom: 12,
-    position: "relative",
-  },
-  savedHeroTextBlock: {
-    flex: 1,
-    minWidth: 0,
-    zIndex: 2,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
   },
   savedHeroSubtitle: {
     ...createBodyText({
@@ -20373,11 +20461,24 @@ const styles = StyleSheet.create({
       width: "100%",
     }),
   },
+  savedHeroRecentList: {
+    width: "100%",
+    alignSelf: "stretch",
+    marginTop: Platform.OS === "ios" ? 4 : 6,
+    gap: Platform.OS === "ios" ? 4 : 6,
+  },
+  savedHeroRecentTitle: {
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
+  },
+  savedHeroRecentItem: {
+    ...createBodyText({
+      fontSize: Platform.OS === "ios" ? 12 : 13,
+      lineHeight: Platform.OS === "ios" ? 16 : 18,
+    }),
+    width: "100%",
+    flexShrink: 1,
+  },
   savedHeroLevelButton: {
-    position: "absolute",
-    top: -12,
-    right: -12,
-    zIndex: 2,
     paddingHorizontal: 6,
     paddingVertical: 6,
   },
@@ -20990,12 +21091,19 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   savedHeroBarAmountWrap: {
-    minHeight: 18,
+    minHeight: 28,
     justifyContent: "flex-end",
+    alignItems: "center",
   },
   savedHeroBarAmount: {
     fontSize: 10,
     textAlign: "center",
+  },
+  savedHeroBarSpend: {
+    fontSize: 9,
+    textAlign: "center",
+    marginTop: 2,
+    fontWeight: "600",
   },
   savedHeroBarTrack: {
     width: 20,
@@ -21004,8 +21112,16 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.4)",
     justifyContent: "flex-end",
     overflow: "hidden",
+    position: "relative",
   },
   savedHeroBarColumn: {
+    width: "100%",
+    borderRadius: 10,
+  },
+  savedHeroBarColumnSpend: {
+    position: "absolute",
+    left: 0,
+    bottom: 0,
     width: "100%",
     borderRadius: 10,
   },
