@@ -62,6 +62,7 @@ import ViewShot, { captureRef as captureViewShotRef } from "react-native-view-sh
 import { Settings as FacebookSettings } from "react-native-fbsdk-next";
 import {
   initAnalytics,
+  initPerformanceMonitoring,
   logEvent,
   logScreenView,
   setAnalyticsOptOut as setAnalyticsOptOutFlag,
@@ -97,6 +98,7 @@ Notifications.setNotificationHandler({
 
 initSentry();
 initAnalytics();
+initPerformanceMonitoring();
 // Keep native splash visible until our custom LogoSplash is ready.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -688,9 +690,11 @@ const COIN_SLIDER_SIZE = 220;
 const COIN_SLIDER_VALUE_DEADBAND = 0.01;
 const COIN_SLIDER_STATE_MIN_INTERVAL = 16;
 const COIN_SLIDER_HAPTIC_COOLDOWN_MS = 80;
+const COIN_SLIDER_STEP_STICKINESS = 0.95;
+const COIN_SLIDER_GESTURE_DEADBAND = 0.03;
 const COIN_FILL_MIN_HEIGHT = 12;
 const CURRENCY_SIGNS = { USD: "$", EUR: "€", RUB: "₽" };
-const CURRENCY_FINE_STEPS = { USD: 0.05, EUR: 0.05, RUB: 5 };
+const CURRENCY_FINE_STEPS = { USD: 0.5, EUR: 0.5, RUB: 5 };
 const CURRENCY_DISPLAY_PRECISION = { USD: 0, EUR: 0 };
 const ECONOMY_RULES = {
   saveRewardStepUSD: 5,
@@ -1568,7 +1572,7 @@ const resolveNextTamagotchiFoodId = (
   }
   return pickTamagotchiFoodByTier(nextTier, forceChange ? prevId : null) || prevId;
 };
-const TAMAGOTCHI_HUNGER_LOW_THRESHOLD = 50;
+const TAMAGOTCHI_HUNGER_LOW_THRESHOLD = Math.round(TAMAGOTCHI_MAX_HUNGER * 0.25);
 const TAMAGOTCHI_START_STATE = {
   hunger: 80,
   coins: 5,
@@ -2733,7 +2737,7 @@ const TRANSLATIONS = {
       male: "Последняя экономия: «{{title}}».",
       none: "Последняя экономия: «{{title}}».",
     },
-    heroSpendRecentTitle: "Последние экономии:",
+    heroSpendRecentTitle: "Последние события:",
     heroSpendFallback: {
       female: "Каждый отказ приближает к цели. Продолжай фиксировать победы.",
       male: "Каждый отказ приближает к цели. Продолжай фиксировать победы.",
@@ -2744,6 +2748,8 @@ const TRANSLATIONS = {
     heroCollapse: "Скрыть детали",
     heroDailyTitle: "Неделя экономии/трат",
     heroDailyEmpty: "Пока пусто, попробуй отказать себе хотя бы раз.",
+    heroWeeklySavingsDelta: "Сбережения",
+    heroWeeklySpendingDelta: "Траты",
     feedEmptyTitle: "Фильтр пуст",
     feedEmptySubtitle: "Попробуй другой тег или обнови каталог",
     buyNow: "Оплатить через {{pay}}",
@@ -3354,13 +3360,15 @@ const TRANSLATIONS = {
       male: "Latest save: “{{title}}”.",
       none: "Latest save: “{{title}}”.",
     },
-    heroSpendRecentTitle: "Recent saves:",
+    heroSpendRecentTitle: "Recent activity:",
     heroSpendFallback: "Every mindful pause fuels the freedom fund",
     heroEconomyContinues: "Savings continue.",
     heroExpand: "Show details",
     heroCollapse: "Hide details",
     heroDailyTitle: "Weekly savings/spend",
     heroDailyEmpty: "No skips yet. Try saving once this week.",
+    heroWeeklySavingsDelta: "Saved",
+    heroWeeklySpendingDelta: "Spent",
     feedEmptyTitle: "Nothing here",
     feedEmptySubtitle: "Try another tag or refresh the catalog",
     buyNow: "Pay with {{pay}}",
@@ -5031,6 +5039,21 @@ const formatCurrencyWhole = (value = 0, currency = activeCurrency) => {
   }
 };
 
+const splitCurrencyLabel = (label = "", currency = activeCurrency) => {
+  if (!label) return { value: "", symbol: "" };
+  const normalized = `${label}`.replace(/[\u00A0\u202F]/g, " ").trim();
+  if (!normalized) return { value: "", symbol: "" };
+  const preferredSymbol = CURRENCY_SIGNS[currency] || "";
+  const hasPreferredSymbol = preferredSymbol && normalized.includes(preferredSymbol);
+  const fallbackSymbol = normalized.replace(/[-\d\s.,]/g, "").trim();
+  const symbol = hasPreferredSymbol ? preferredSymbol : fallbackSymbol;
+  const value = symbol ? normalized.replace(symbol, "").trim() : normalized;
+  return {
+    value: value.replace(/\s{2,}/g, " "),
+    symbol,
+  };
+};
+
 const getCopyForPurchase = (item, language, t) => {
   if (item.copy?.[language]) return item.copy[language];
   const product = DEFAULT_TEMPTATIONS.find((prod) => prod.id === item.productId);
@@ -5146,6 +5169,12 @@ const resolveTemptationTitle = (item, language, override) => {
     (typeof source === "object" ? Object.values(source)[0] : null) ||
     "Wish"
   );
+};
+
+const buildTemptationDisplayTitle = (emojiValue, titleValue, fallbackTitle = "Wish") => {
+  const emoji = (emojiValue || "").trim();
+  const title = (titleValue || "").trim() || fallbackTitle || "";
+  return emoji ? `${emoji} ${title}`.trim() : title;
 };
 
 const getTemptationPrice = (item) => {
@@ -5852,7 +5881,7 @@ const TemptationCard = React.memo(TemptationCardComponent);
 function SavingsHeroCard({
   goldPalette,
   heroSpendCopy,
-  heroRecentSaves = [],
+  heroRecentEvents = [],
   heroEncouragementLine,
   levelLabel,
   totalSavedLabel,
@@ -5876,6 +5905,7 @@ function SavingsHeroCard({
   levelProgressValue = 0,
   healthPoints = 0,
   onBreakdownPress = () => {},
+  weeklyComparison = null,
 }) {
   const [expanded, setExpanded] = useState(false);
   const [levelExpanded, setLevelExpanded] = useState(false);
@@ -5900,6 +5930,31 @@ function SavingsHeroCard({
       onPotentialDetailsOpen();
     }
   }, [hasBaseline, onPotentialDetailsOpen]);
+  const weeklyTrend = useMemo(() => {
+    if (!weeklyComparison) return null;
+    const formatEntry = (entry, type) => {
+      if (!entry) return null;
+      const delta = Number(entry.deltaUSD) || 0;
+      const absDelta = Math.abs(delta);
+      const localValue = formatCurrency(convertToCurrency(absDelta, currency), currency);
+      const symbol = delta >= 0 ? "▲" : "▼";
+      let color = goldPalette.accent;
+      if (type === "savings") {
+        color = delta >= 0 ? goldPalette.accent : goldPalette.danger;
+      } else {
+        color = delta >= 0 ? goldPalette.danger : goldPalette.accent;
+      }
+      return {
+        symbol,
+        label: localValue,
+        color,
+      };
+    };
+    const savingsTrend = formatEntry(weeklyComparison.savings, "savings");
+    const spendingTrend = formatEntry(weeklyComparison.spending, "spending");
+    if (!savingsTrend && !spendingTrend) return null;
+    return { savings: savingsTrend, spending: spendingTrend };
+  }, [currency, goldPalette.accent, goldPalette.danger, weeklyComparison]);
   return (
     <View
       style={[
@@ -5928,7 +5983,7 @@ function SavingsHeroCard({
             {t("progressHeroTitle")}
           </Text>
           <TouchableOpacity
-            style={styles.savedHeroLevelButton}
+            style={[styles.savedHeroLevelButton, styles.savedHeroLevelButtonFloating]}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             activeOpacity={0.85}
             onPress={() => setLevelExpanded((prev) => !prev)}
@@ -5948,15 +6003,23 @@ function SavingsHeroCard({
             </View>
           </TouchableOpacity>
         </View>
-        {heroRecentSaves.length > 0 ? (
+        <View style={styles.savedHeroAmountWrap}>
+          <Text style={[styles.progressHeroAmount, { color: goldPalette.text }]}>
+            {totalSavedLabel}
+          </Text>
+        </View>
+        {heroRecentEvents.length > 0 ? (
           <View style={styles.savedHeroRecentList}>
             <Text style={[styles.savedHeroRecentTitle, { color: goldPalette.subtext }]}>
               {t("heroSpendRecentTitle")}
             </Text>
-            {heroRecentSaves.map((entry) => (
+            {heroRecentEvents.map((entry) => (
               <Text
                 key={entry.id}
-                style={[styles.savedHeroRecentItem, { color: goldPalette.subtext }]}
+                style={[
+                  styles.savedHeroRecentItem,
+                  { color: entry.isSpend ? goldPalette.danger : goldPalette.subtext },
+                ]}
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
@@ -5971,84 +6034,79 @@ function SavingsHeroCard({
         )}
 
         {levelExpanded && (
-        <View
+          <View
+            style={[
+              styles.heroLevelDetails,
+              {
+                backgroundColor: goldPalette.badgeBg,
+                borderColor: goldPalette.badgeBorder,
+              },
+            ]}
+          >
+            <Text style={[styles.heroLevelTitle, { color: goldPalette.text }]}>
+              {t("levelWidgetTitle")}
+            </Text>
+            <Text style={[styles.heroLevelSubtitle, { color: goldPalette.subtext }]}>
+              {levelHasNext
+                ? t("levelWidgetSubtitle", { amount: levelRemainingLabel })
+                : t("levelWidgetMaxed")}
+            </Text>
+            <View style={[styles.levelWidgetBar, { backgroundColor: goldPalette.barBg }]}>
+              <View
+                style={[
+                  styles.levelWidgetFill,
+                  { backgroundColor: goldPalette.accent, width: `${Math.min(Math.max(levelProgressValue, 0), 1) * 100}%` },
+                ]}
+              />
+            </View>
+          </View>
+        )}
+        <TouchableOpacity
           style={[
-            styles.heroLevelDetails,
+            styles.heroPotentialCard,
             {
               backgroundColor: goldPalette.badgeBg,
               borderColor: goldPalette.badgeBorder,
             },
           ]}
+          activeOpacity={0.9}
+          onPress={handlePotentialDetailsOpen}
         >
-          <Text style={[styles.heroLevelTitle, { color: goldPalette.text }]}>
-            {t("levelWidgetTitle")}
-          </Text>
-          <Text style={[styles.heroLevelSubtitle, { color: goldPalette.subtext }]}>
-            {levelHasNext
-              ? t("levelWidgetSubtitle", { amount: levelRemainingLabel })
-              : t("levelWidgetMaxed")}
-          </Text>
-          <View style={[styles.levelWidgetBar, { backgroundColor: goldPalette.barBg }]}>
-            <View
-              style={[
-                styles.levelWidgetFill,
-                { backgroundColor: goldPalette.accent, width: `${Math.min(Math.max(levelProgressValue, 0), 1) * 100}%` },
-              ]}
-            />
-          </View>
-        </View>
-      )}
-      <View style={styles.savedHeroAmountWrap}>
-        <Text style={[styles.progressHeroAmount, { color: goldPalette.text }]}>
-          {totalSavedLabel}
-        </Text>
-      </View>
-      <TouchableOpacity
-        style={[
-          styles.heroPotentialCard,
-          {
-            backgroundColor: goldPalette.badgeBg,
-            borderColor: goldPalette.badgeBorder,
-          },
-        ]}
-        activeOpacity={0.9}
-        onPress={handlePotentialDetailsOpen}
-      >
-        {hasBaseline ? (
-          <>
-            <View style={styles.heroPotentialHeader}>
+          {hasBaseline ? (
+            <>
+              <View style={styles.heroPotentialHeader}>
+                <Text style={[styles.heroPotentialLabel, { color: goldPalette.text }]}>
+                  {t("potentialBlockTitle")}
+                </Text>
+                <Text style={[styles.heroPotentialValue, { color: goldPalette.text }]}>
+                  {potentialLocal}
+                </Text>
+              </View>
+              <Text style={[styles.heroPotentialStatus, { color: goldPalette.subtext }]}>
+                {t(statusKey)}
+              </Text>
+            </>
+          ) : (
+            <>
               <Text style={[styles.heroPotentialLabel, { color: goldPalette.text }]}>
-                {t("potentialBlockTitle")}
+                {t("potentialBlockCta")}
               </Text>
-              <Text style={[styles.heroPotentialValue, { color: goldPalette.text }]}>
-                {potentialLocal}
-              </Text>
-            </View>
-            <Text style={[styles.heroPotentialStatus, { color: goldPalette.subtext }]}>
-              {t(statusKey)}
-            </Text>
-          </>
-        ) : (
-          <>
-            <Text style={[styles.heroPotentialLabel, { color: goldPalette.text }]}>
-              {t("potentialBlockCta")}
-            </Text>
-            <TouchableOpacity
-              style={[
-                styles.heroPotentialButton,
-                {
-                  borderColor: goldPalette.text,
-                },
-              ]}
-              onPress={onBaselineSetup}
-            >
-              <Text style={[styles.heroPotentialButtonText, { color: goldPalette.text }]}>
-                {t("baselineCTA")}
-              </Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.heroPotentialButton,
+                  {
+                    borderColor: goldPalette.text,
+                  },
+                ]}
+                onPress={onBaselineSetup}
+              >
+                <Text style={[styles.heroPotentialButtonText, { color: goldPalette.text }]}>
+                  {t("baselineCTA")}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </TouchableOpacity>
       <View style={styles.savedHeroProgressRow}>
         <View
           style={[
@@ -6148,25 +6206,76 @@ function SavingsHeroCard({
             <Text style={[styles.savedHeroDailyTitle, { color: goldPalette.text }]}>
               {t("heroDailyTitle")}
             </Text>
+            {weeklyTrend && (
+              <View style={styles.weeklyTrendRow}>
+                {weeklyTrend.savings && (
+                  <View style={styles.weeklyTrendItem}>
+                    <Text style={[styles.weeklyTrendLabel, { color: goldPalette.subtext }]}>
+                      {t("heroWeeklySavingsDelta")}
+                    </Text>
+                    <Text style={[styles.weeklyTrendValue, { color: weeklyTrend.savings.color }]}>
+                      {weeklyTrend.savings.symbol} {weeklyTrend.savings.label}
+                    </Text>
+                  </View>
+                )}
+                {weeklyTrend.spending && (
+                  <View style={styles.weeklyTrendItem}>
+                    <Text style={[styles.weeklyTrendLabel, { color: goldPalette.subtext }]}>
+                      {t("heroWeeklySpendingDelta")}
+                    </Text>
+                    <Text style={[styles.weeklyTrendValue, { color: weeklyTrend.spending.color }]}>
+                      {weeklyTrend.spending.symbol} {weeklyTrend.spending.label}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
             {maxAmount > 0 ? (
               <View style={styles.savedHeroBars}>
                 {dailySavings.map((day) => (
                   <View key={day.key} style={styles.savedHeroBarItem}>
                     <View style={styles.savedHeroBarAmountWrap}>
-                      {day.amountLabel ? (
-                        <Text style={[styles.savedHeroBarAmount, { color: goldPalette.text }]}>
-                          {day.amountLabel}
-                        </Text>
+                      {day.amountValueLabel ? (
+                        <View style={styles.savedHeroBarAmountBlock}>
+                          <Text
+                            style={[styles.savedHeroBarAmount, { color: goldPalette.text }]}
+                            numberOfLines={1}
+                          >
+                            {day.amountValueLabel}
+                            {day.amountCurrencySymbol ? (
+                              <Text
+                                style={[styles.savedHeroBarCurrency, { color: goldPalette.text }]}
+                              >
+                                {"\u00A0"}
+                                {day.amountCurrencySymbol}
+                              </Text>
+                            ) : null}
+                          </Text>
+                        </View>
                       ) : null}
-                      {day.spendLabel ? (
-                        <Text
-                          style={[
-                            styles.savedHeroBarSpend,
-                            { color: day.amountUSD ? goldPalette.subtext : goldPalette.danger },
-                          ]}
-                        >
-                          {day.spendLabel}
-                        </Text>
+                      {day.spendValueLabel ? (
+                        <View style={styles.savedHeroBarAmountBlock}>
+                          <Text
+                            style={[
+                              styles.savedHeroBarSpend,
+                              { color: day.amountUSD ? goldPalette.subtext : goldPalette.danger },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {day.spendValueLabel}
+                            {day.spendCurrencySymbol ? (
+                              <Text
+                                style={[
+                                  styles.savedHeroBarCurrency,
+                                  { color: day.amountUSD ? goldPalette.subtext : goldPalette.danger },
+                                ]}
+                              >
+                                {"\u00A0"}
+                                {day.spendCurrencySymbol}
+                              </Text>
+                            ) : null}
+                          </Text>
+                        </View>
                       ) : null}
                     </View>
                     <View style={styles.savedHeroBarTrack}>
@@ -6750,27 +6859,37 @@ const FeedScreen = React.memo(function FeedScreen({
     ? t("progressGoal", { current: heroGoalSavedLabel, goal: heroTargetLabel })
     : t("progressGoal", { current: heroGoalSavedLabel, goal: heroGoalSavedLabel });
   const personaPreset = useMemo(() => getPersonaPreset(profile?.persona), [profile?.persona]);
-  const recentSavings = useMemo(
-    () => resolvedHistoryEvents.filter((entry) => entry.kind === "refuse_spend").slice(0, 3),
-    [resolvedHistoryEvents]
-  );
-  const heroRecentSaves = useMemo(
+  const recentActivity = useMemo(() => {
+    const filtered = resolvedHistoryEvents.filter(
+      (entry) => entry.kind === "refuse_spend" || entry.kind === "spend"
+    );
+    filtered.sort((a, b) => {
+      const aTime = Number(a?.timestamp) || 0;
+      const bTime = Number(b?.timestamp) || 0;
+      return bTime - aTime;
+    });
+    return filtered.slice(0, 3);
+  }, [resolvedHistoryEvents]);
+  const heroRecentEvents = useMemo(
     () =>
-      recentSavings.map((entry) => {
+      recentActivity.map((entry) => {
         const resolvedTitle =
           resolveTemplateTitle(entry?.meta?.templateId, entry?.meta?.title) ||
           entry?.title ||
           t("defaultDealTitle");
         const timestampLabel = formatLatestSavingTimestamp(entry?.timestamp, language);
+        const isSpend = entry.kind === "spend";
+        const prefix = isSpend ? "- " : "";
         return {
           id: entry.id,
-          label: `${resolvedTitle}${timestampLabel ? ` · ${timestampLabel}` : ""}`,
+          label: `${prefix}${resolvedTitle}${timestampLabel ? ` · ${timestampLabel}` : ""}`,
+          isSpend,
         };
       }),
-    [language, recentSavings, resolveTemplateTitle, t]
+    [language, recentActivity, resolveTemplateTitle, t]
   );
   const heroSpendCopy = useMemo(() => {
-    if (heroRecentSaves.length > 0) {
+    if (heroRecentEvents.length > 0) {
       return "";
     }
     if (!realSavedUSD || realSavedUSD <= 0) {
@@ -6781,14 +6900,7 @@ const FeedScreen = React.memo(function FeedScreen({
       return template.replace("{{amount}}", totalSavedLabel);
     }
     return t("heroSpendFallback");
-  }, [
-    heroRecentSaves.length,
-    language,
-    personaPreset,
-    realSavedUSD,
-    t,
-    totalSavedLabel,
-  ]);
+  }, [heroRecentEvents.length, language, personaPreset, realSavedUSD, t, totalSavedLabel]);
   const heroEncouragementLine = useMemo(() => {
     const heroLine = isGoalComplete
       ? moodPreset?.heroComplete || t("goalWidgetCompleteTagline")
@@ -7152,7 +7264,6 @@ const FeedScreen = React.memo(function FeedScreen({
       wishesById,
     ]
   );
-  const analyticsPreview = analyticsStats.slice(0, 3);
   const freeDayEventKeys = useMemo(() => {
     const keys = new Set();
     resolvedHistoryEvents.forEach((entry) => {
@@ -7184,6 +7295,54 @@ const FeedScreen = React.memo(function FeedScreen({
     () => weekDays.filter((day) => day.active).length,
     [weekDays]
   );
+  const weeklyComparison = useMemo(() => {
+    const today = new Date(todayTimestamp);
+    const currentStart = new Date(today);
+    currentStart.setDate(today.getDate() - 6);
+    const prevStart = new Date(currentStart);
+    prevStart.setDate(currentStart.getDate() - 7);
+    const currentRange = { start: currentStart.getTime(), end: today.getTime() };
+    const prevRange = { start: prevStart.getTime(), end: currentStart.getTime() - 1 };
+    let currentSavings = 0;
+    let currentSpending = 0;
+    let prevSavings = 0;
+    let prevSpending = 0;
+    resolvedHistoryEvents.forEach((entry) => {
+      const timestamp = entry?.timestamp;
+      if (!timestamp) return;
+      const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
+      if (!amount) return;
+      if (timestamp >= currentRange.start && timestamp <= currentRange.end) {
+        if (entry.kind === "refuse_spend") {
+          currentSavings += amount;
+        } else if (entry.kind === "spend") {
+          currentSpending += amount;
+        }
+      } else if (timestamp >= prevRange.start && timestamp <= prevRange.end) {
+        if (entry.kind === "refuse_spend") {
+          prevSavings += amount;
+        } else if (entry.kind === "spend") {
+          prevSpending += amount;
+        }
+      }
+    });
+    const buildDelta = (current, previous) => {
+      const deltaUSD = current - previous;
+      const direction = deltaUSD >= 0 ? "up" : "down";
+      return {
+        deltaUSD,
+        direction,
+        previous,
+      };
+    };
+    return {
+      savings: buildDelta(currentSavings, prevSavings),
+      spending: buildDelta(currentSpending, prevSpending),
+      currentSavings,
+      currentSpending,
+    };
+  }, [resolvedHistoryEvents, todayTimestamp]);
+  const analyticsPreview = analyticsStats.slice(0, 3);
   const savingsDaily = useMemo(() => {
     const today = new Date(todayTimestamp);
     const start = new Date(today);
@@ -7219,14 +7378,30 @@ const FeedScreen = React.memo(function FeedScreen({
         WEEKDAY_LABELS_MONDAY_FIRST.en[weekdayIndex];
       const saveLocal = convertToCurrency(saveUSD, currency);
       const spendLocal = convertToCurrency(spendUSD, currency);
+      const amountLabel = saveUSD ? formatCurrency(saveLocal, currency) : "";
+      const spendLabel = spendUSD ? `-${formatCurrency(spendLocal, currency)}` : "";
+      const amountParts = splitCurrencyLabel(amountLabel, currency);
+      const spendParts = splitCurrencyLabel(spendLabel, currency);
+      const amountValueLabel =
+        amountParts.value && typeof amountParts.value === "string"
+          ? amountParts.value.replace(/ /g, "\u00A0")
+          : amountParts.value;
+      const spendValueLabel =
+        spendParts.value && typeof spendParts.value === "string"
+          ? spendParts.value.replace(/ /g, "\u00A0")
+          : spendParts.value;
       return {
         key,
         label,
         amountUSD: saveUSD,
         saveUSD,
         spendUSD,
-        amountLabel: saveUSD ? formatCurrency(saveLocal, currency) : "",
-        spendLabel: spendUSD ? `-${formatCurrency(spendLocal, currency)}` : "",
+        amountLabel,
+        amountValueLabel,
+        amountCurrencySymbol: amountParts.symbol,
+        spendLabel,
+        spendValueLabel,
+        spendCurrencySymbol: spendParts.symbol,
       };
     });
     const maxValue = Math.max(maxSave, 0.01);
@@ -7350,7 +7525,7 @@ const FeedScreen = React.memo(function FeedScreen({
           <SavingsHeroCard
             goldPalette={goldPalette}
             heroSpendCopy={heroSpendCopy}
-            heroRecentSaves={heroRecentSaves}
+            heroRecentEvents={heroRecentEvents}
             heroEncouragementLine={heroEncouragementLine}
             levelLabel={levelLabel}
               totalSavedLabel={totalSavedLabel}
@@ -7374,6 +7549,7 @@ const FeedScreen = React.memo(function FeedScreen({
             levelProgressValue={heroLevelProgress}
             healthPoints={healthPoints}
             onBreakdownPress={onSavingsBreakdownPress}
+            weeklyComparison={weeklyComparison}
             />
             <FreeDayCard
               colors={colors}
@@ -10258,6 +10434,7 @@ function AppContent() {
   const [overlay, setOverlay] = useState(null);
   const [confettiKey, setConfettiKey] = useState(0);
   const overlayTimer = useRef(null);
+  const overlayRetryTimerRef = useRef(null);
 
   useEffect(() => {
     if (!FacebookSettings || typeof FacebookSettings.initializeSDK !== "function") return;
@@ -10843,13 +11020,15 @@ function AppContent() {
     const timer = setTimeout(updateFabAnchor, 100);
     return () => clearTimeout(timer);
   }, [fabTutorialVisible, updateFabAnchor]);
+  const fabTutorialBlocked = Boolean(overlay || dailySummaryVisible || priceEditor.item);
   useEffect(() => {
     if (
       fabTutorialState !== FAB_TUTORIAL_STATUS.SHOWING ||
       onboardingStep !== "done" ||
       tutorialVisible ||
       !homeLayoutReady ||
-      startupLogoVisible
+      startupLogoVisible ||
+      fabTutorialBlocked
     ) {
       fabTutorialLoggedRef.current = false;
       if (fabTutorialVisible) {
@@ -10874,6 +11053,7 @@ function AppContent() {
     onboardingStep,
     startupLogoVisible,
     tutorialVisible,
+    fabTutorialBlocked,
   ]);
   useEffect(() => {
     const handleAppStateChange = (nextState) => {
@@ -11233,6 +11413,8 @@ function AppContent() {
   const [analyticsOptOut, setAnalyticsOptOutState] = useState(null);
   const [startupLogoVisible, setStartupLogoVisible] = useState(false);
   const startupLogoDismissedRef = useRef(false);
+  const overlayEnvironmentReady =
+    onboardingStep === "done" && homeLayoutReady && !startupLogoVisible;
 
   const goToOnboardingStep = useCallback(
     (nextStep, { recordHistory = true, resetHistory = false } = {}) => {
@@ -13340,8 +13522,8 @@ function AppContent() {
     if (currentHunger <= 0 && previousHunger > 0) {
       sendTamagotchiHungerNotification("starving");
     } else if (
-      currentHunger < TAMAGOTCHI_HUNGER_LOW_THRESHOLD &&
-      previousHunger >= TAMAGOTCHI_HUNGER_LOW_THRESHOLD
+      currentHunger <= TAMAGOTCHI_HUNGER_LOW_THRESHOLD &&
+      previousHunger > TAMAGOTCHI_HUNGER_LOW_THRESHOLD
     ) {
       sendTamagotchiHungerNotification("low");
     }
@@ -15880,6 +16062,7 @@ function AppContent() {
       executeSpend,
       triggerStormEffect,
       recordTemptationInteraction,
+      triggerOverlayState,
     ]
   );
 
@@ -16482,6 +16665,117 @@ function AppContent() {
     });
   };
 
+  const propagateTemptationEdit = useCallback(
+    (templateId, { label, emoji, priceUSD, category }) => {
+      if (!templateId) return;
+      const fallbackTitle = language === "ru" ? "Привычка" : "Wish";
+      const normalizedLabel = (label && label.trim()) || fallbackTitle;
+      const decoratedTitle = buildTemptationDisplayTitle(emoji, normalizedLabel, fallbackTitle);
+      const numericPrice = Number(priceUSD);
+      const hasPrice = Number.isFinite(numericPrice) && numericPrice > 0;
+      setPendingList((prev) => {
+        let mutated = false;
+        const next = prev.map((entry) => {
+          if (entry.templateId !== templateId) return entry;
+          const updates = {};
+          if (decoratedTitle && entry.title !== decoratedTitle) {
+            updates.title = decoratedTitle;
+          }
+          if (hasPrice && entry.priceUSD !== numericPrice) {
+            updates.priceUSD = numericPrice;
+          }
+          if (!Object.keys(updates).length) return entry;
+          mutated = true;
+          return { ...entry, ...updates };
+        });
+        return mutated ? next : prev || [];
+      });
+      setWishes((prev) => {
+        let mutated = false;
+        const next = prev.map((wish) => {
+          if (wish.templateId !== templateId) return wish;
+          const updates = {};
+          if (decoratedTitle && wish.title !== decoratedTitle) {
+            updates.title = decoratedTitle;
+          }
+          if (emoji && wish.emoji !== emoji) {
+            updates.emoji = emoji;
+          }
+          if (hasPrice && wish.targetUSD !== numericPrice) {
+            updates.targetUSD = numericPrice;
+          }
+          if (!Object.keys(updates).length) return wish;
+          mutated = true;
+          return { ...wish, ...updates };
+        });
+        return mutated ? next : prev;
+      });
+      setImpulseTracker((prev) => {
+        const current = prev || INITIAL_IMPULSE_TRACKER;
+        let mutated = false;
+        const nextEvents = (current.events || []).map((event) => {
+          if (event.templateId !== templateId) return event;
+          const updates = {};
+          if (decoratedTitle && event.title !== decoratedTitle) {
+            updates.title = decoratedTitle;
+          }
+          if (emoji && event.emoji !== emoji) {
+            updates.emoji = emoji;
+          }
+          if (hasPrice && event.amountUSD !== numericPrice) {
+            updates.amountUSD = numericPrice;
+          }
+          if (category && event.category !== category) {
+            updates.category = category;
+          }
+          if (!Object.keys(updates).length) return event;
+          mutated = true;
+          return { ...event, ...updates };
+        });
+        if (!mutated) return current;
+        return { ...current, events: nextEvents };
+      });
+      setHistoryEvents((prev) => {
+        let mutated = false;
+        const next = (prev || []).map((entry) => {
+          if (!entry || !entry.meta) return entry;
+          const metaTemplateId =
+            entry?.meta?.templateId || entry?.meta?.template_id || entry?.meta?.templateID;
+          if (metaTemplateId !== templateId) return entry;
+          const nextMeta = { ...(entry.meta || {}) };
+          let metaChanged = false;
+          if (decoratedTitle && nextMeta.title !== decoratedTitle) {
+            nextMeta.title = decoratedTitle;
+            metaChanged = true;
+          }
+          if (emoji && nextMeta.emoji !== emoji) {
+            nextMeta.emoji = emoji;
+            metaChanged = true;
+          }
+          if (hasPrice) {
+            if (typeof nextMeta.amountUSD === "number" && nextMeta.amountUSD !== numericPrice) {
+              nextMeta.amountUSD = numericPrice;
+              metaChanged = true;
+            }
+            if (typeof nextMeta.targetUSD === "number" && nextMeta.targetUSD !== numericPrice) {
+              nextMeta.targetUSD = numericPrice;
+              metaChanged = true;
+            }
+            if (typeof nextMeta.priceUSD === "number" && nextMeta.priceUSD !== numericPrice) {
+              nextMeta.priceUSD = numericPrice;
+              metaChanged = true;
+            }
+          }
+          if (!metaChanged) return entry;
+          mutated = true;
+          return { ...entry, meta: nextMeta };
+        });
+        return mutated ? next : prev;
+      });
+    },
+    [language, setHistoryEvents, setImpulseTracker, setPendingList, setWishes]
+  );
+
   const savePriceEdit = () => {
     if (!priceEditor.item) return;
     const parsed = parseFloat((priceEditor.value || "").replace(",", "."));
@@ -16521,6 +16815,19 @@ function AppContent() {
       emoji: resolvedEmoji,
       impulseCategoryOverride: categoryValue || null,
       descriptionOverride: descriptionValue || null,
+    });
+    const fallbackTitle =
+      resolveTemptationTitle(
+        priceEditor.item,
+        language,
+        titleOverrides[priceEditor.item.id] || priceEditor.item.titleOverride || null
+      ) || (language === "ru" ? "Привычка" : "Wish");
+    const normalizedLabel = titleValue || fallbackTitle;
+    propagateTemptationEdit(priceEditor.item.id, {
+      label: normalizedLabel,
+      emoji: resolvedEmoji,
+      priceUSD: usdValue,
+      category: nextCategory,
     });
     logEvent("temptation_edited", {
       temptation_id: priceEditor.item.id,
@@ -16708,7 +17015,18 @@ function AppContent() {
     [findTemplateById, language, logEvent, logHistoryEvent, setPendingList, t]
   );
 
+  useEffect(
+    () => () => {
+      if (overlayRetryTimerRef.current) {
+        clearTimeout(overlayRetryTimerRef.current);
+        overlayRetryTimerRef.current = null;
+      }
+    },
+    []
+  );
+
   const processOverlayQueue = useCallback(() => {
+    if (!overlayEnvironmentReady) return;
     if (overlayActiveRef.current) return;
     const next = overlayQueueRef.current.shift();
     if (!next) return;
@@ -16744,15 +17062,37 @@ function AppContent() {
     } else {
       overlayTimer.current = null;
     }
-  }, []);
+  }, [overlayEnvironmentReady]);
+
+  const scheduleOverlayRetry = useCallback(() => {
+    if (overlayRetryTimerRef.current) return;
+    if (!overlayQueueRef.current.length) return;
+    overlayRetryTimerRef.current = setTimeout(() => {
+      overlayRetryTimerRef.current = null;
+      if (!overlayEnvironmentReady && overlayQueueRef.current.length) {
+        scheduleOverlayRetry();
+        return;
+      }
+      processOverlayQueue();
+    }, 250);
+  }, [overlayEnvironmentReady, processOverlayQueue]);
 
   const triggerOverlayState = useCallback(
     (type, message, duration) => {
       overlayQueueRef.current.push({ type, message, duration });
       processOverlayQueue();
+      if (!overlayEnvironmentReady) {
+        scheduleOverlayRetry();
+      }
     },
-    [processOverlayQueue]
+    [overlayEnvironmentReady, processOverlayQueue, scheduleOverlayRetry]
   );
+
+  useEffect(() => {
+    if (overlayEnvironmentReady) {
+      processOverlayQueue();
+    }
+  }, [overlayEnvironmentReady, processOverlayQueue]);
 
   const dismissOverlay = useCallback(() => {
     if (overlay?.type === "focus_digest" && overlay?.message?.prompt) {
@@ -20447,16 +20787,19 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   savedHeroHeader: {
-    marginBottom: 12,
+    marginBottom: 0,
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
+    position: "relative",
+    paddingRight: 48,
   },
   savedHeroSubtitle: {
     ...createBodyText({
       fontSize: Platform.OS === "ios" ? 13 : 15,
       marginTop: Platform.OS === "ios" ? 4 : 6,
+      marginBottom: 8,
       lineHeight: Platform.OS === "ios" ? 18 : 20,
       width: "100%",
     }),
@@ -20464,16 +20807,17 @@ const styles = StyleSheet.create({
   savedHeroRecentList: {
     width: "100%",
     alignSelf: "stretch",
-    marginTop: Platform.OS === "ios" ? 4 : 6,
+    marginTop: 0,
     gap: Platform.OS === "ios" ? 4 : 6,
+    marginBottom: 14,
   },
   savedHeroRecentTitle: {
-    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
+    ...createCtaText({ fontSize: 11 }),
   },
   savedHeroRecentItem: {
     ...createBodyText({
-      fontSize: Platform.OS === "ios" ? 12 : 13,
-      lineHeight: Platform.OS === "ios" ? 16 : 18,
+      fontSize: Platform.OS === "ios" ? 11 : 12,
+      lineHeight: Platform.OS === "ios" ? 15 : 17,
     }),
     width: "100%",
     flexShrink: 1,
@@ -20481,6 +20825,11 @@ const styles = StyleSheet.create({
   savedHeroLevelButton: {
     paddingHorizontal: 6,
     paddingVertical: 6,
+  },
+  savedHeroLevelButtonFloating: {
+    position: "absolute",
+    top: -8,
+    right: -8,
   },
   savedHeroLevelBadge: {
     borderRadius: 999,
@@ -20492,8 +20841,8 @@ const styles = StyleSheet.create({
     ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   savedHeroAmountWrap: {
-    marginTop: 4,
-    marginBottom: 10,
+    marginTop: 2,
+    marginBottom: 4,
   },
   heroLevelDetails: {
     borderRadius: 16,
@@ -21094,15 +21443,28 @@ const styles = StyleSheet.create({
     minHeight: 28,
     justifyContent: "flex-end",
     alignItems: "center",
+    gap: 2,
+    paddingHorizontal: 2,
+  },
+  savedHeroBarAmountBlock: {
+    alignItems: "center",
+    maxWidth: 60,
+    width: "100%",
   },
   savedHeroBarAmount: {
-    fontSize: 10,
-    textAlign: "center",
-  },
-  savedHeroBarSpend: {
     fontSize: 9,
     textAlign: "center",
-    marginTop: 2,
+    lineHeight: 11,
+    fontWeight: "600",
+  },
+  savedHeroBarSpend: {
+    fontSize: 8,
+    textAlign: "center",
+    lineHeight: 10,
+    fontWeight: "600",
+  },
+  savedHeroBarCurrency: {
+    fontSize: 8,
     fontWeight: "600",
   },
   savedHeroBarTrack: {
@@ -21131,6 +21493,25 @@ const styles = StyleSheet.create({
   },
   savedHeroDailyEmpty: {
     fontSize: 12,
+  },
+  weeklyTrendRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  weeklyTrendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  weeklyTrendLabel: {
+    ...createSecondaryText({ fontSize: 11 }),
+  },
+  weeklyTrendValue: {
+    ...createSecondaryText({ fontSize: 11 }),
+    fontWeight: "700",
   },
   progressHeroHeader: {
     flexDirection: "row",
@@ -25475,10 +25856,25 @@ function CoinEntryModal({
       }
       const targetLocal = clamped * sliderMaxLocalValue;
       const stepLocal = currencyFineStep;
-      const roundedLocal =
-        stepLocal > 0
-          ? roundCurrencyValue(Math.round(targetLocal / stepLocal) * stepLocal, currency)
-          : roundCurrencyValue(targetLocal, currency);
+      let roundedLocal;
+      if (stepLocal > 0) {
+        const normalizedIndex = stepLocal > 0 ? targetLocal / stepLocal : 0;
+        const baseIndex = Math.floor(normalizedIndex);
+        const remainder = normalizedIndex - baseIndex;
+        const stickingThreshold = Math.max(0.6, Math.min(0.98, COIN_SLIDER_STEP_STICKINESS));
+        const downThreshold = Math.max(0.02, 1 - stickingThreshold);
+        const previousLocal = sliderValueRef.current * sliderMaxLocalValue;
+        const movingUp = targetLocal >= previousLocal;
+        let finalIndex = baseIndex;
+        if (movingUp) {
+          finalIndex = remainder >= stickingThreshold ? baseIndex + 1 : baseIndex;
+        } else {
+          finalIndex = remainder > downThreshold ? baseIndex + 1 : baseIndex;
+        }
+        roundedLocal = roundCurrencyValue(finalIndex * stepLocal, currency);
+      } else {
+        roundedLocal = roundCurrencyValue(targetLocal, currency);
+      }
       const limitedLocal = Math.max(0, Math.min(sliderMaxLocalValue, roundedLocal));
       const roundedUSD = convertFromCurrency(limitedLocal, currency);
       if (!Number.isFinite(roundedUSD) || roundedUSD < 0) {
@@ -25546,6 +25942,11 @@ function CoinEntryModal({
     setManualMode(null);
     setManualError("");
   }, []);
+  const finalizeSliderValue = useCallback(() => {
+    const committed = sliderValueCommitRef.current;
+    sliderValueRef.current = committed;
+    updateSliderValue(committed, { force: true });
+  }, [updateSliderValue]);
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -25557,7 +25958,7 @@ function CoinEntryModal({
           const touchY = evt.nativeEvent?.locationY;
           if (Number.isFinite(touchY)) {
             const nextValue = computeValueFromTouch(touchY);
-            if (Math.abs(nextValue - sliderValueRef.current) >= COIN_SLIDER_VALUE_DEADBAND) {
+            if (Math.abs(nextValue - sliderValueRef.current) >= COIN_SLIDER_GESTURE_DEADBAND) {
               const applied = updateSliderValue(nextValue, { force: true, fromUser: true });
               hapticStepRef.current = Math.round(applied * 20);
             }
@@ -25571,7 +25972,7 @@ function CoinEntryModal({
           if (trackHeight <= 0) return;
           const touchY = evt.nativeEvent?.locationY;
           const nextValue = computeValueFromTouch(touchY);
-          if (Math.abs(nextValue - sliderValueRef.current) >= COIN_SLIDER_VALUE_DEADBAND) {
+          if (Math.abs(nextValue - sliderValueRef.current) >= COIN_SLIDER_GESTURE_DEADBAND) {
             const applied = updateSliderValue(nextValue, { fromUser: true });
             const nextStep = Math.round(applied * 20);
             if (nextStep !== hapticStepRef.current) {
@@ -25591,7 +25992,7 @@ function CoinEntryModal({
           sliderGestureRef.current = {
             axis: "pending",
           };
-          updateSliderValue(sliderValueRef.current, { force: true });
+          finalizeSliderValue();
           if (isTap) {
             openManual("amount");
           }
@@ -25600,10 +26001,10 @@ function CoinEntryModal({
           sliderGestureRef.current = {
             axis: "pending",
           };
-          updateSliderValue(sliderValueRef.current, { force: true });
+          finalizeSliderValue();
         },
       }),
-    [computeValueFromTouch, directionAnim, openManual, trackHeight, updateSliderValue]
+    [computeValueFromTouch, directionAnim, finalizeSliderValue, openManual, trackHeight]
   );
   const handleManualSave = () => {
     const parsed = parseNumberInputValue(manualValue);
@@ -26437,22 +26838,30 @@ function LanguageScreen({
 
 function LogoSplash({ onDone }) {
   const [text, setText] = useState("");
+  const onDoneRef = useRef(onDone);
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
   const handleLayout = useCallback(() => {
     SplashScreen.hideAsync().catch(() => {});
   }, []);
   useEffect(() => {
     const word = "Almost";
     let index = 0;
-    const interval = setInterval(() => {
+    let timeoutId = null;
+    const intervalId = setInterval(() => {
       index += 1;
       setText(word.slice(0, index));
       if (index === word.length) {
-        clearInterval(interval);
-        setTimeout(() => onDone?.(), 600);
+        clearInterval(intervalId);
+        timeoutId = setTimeout(() => onDoneRef.current?.(), 600);
       }
     }, 140);
-    return () => clearInterval(interval);
-  }, [onDone]);
+    return () => {
+      clearInterval(intervalId);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []);
 
   return (
     <View style={styles.logoSplash} onLayout={handleLayout}>

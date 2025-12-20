@@ -3,6 +3,7 @@
  * The module guards against missing dependencies and never emits events in dev.
  */
 import analytics from "@react-native-firebase/analytics";
+import perf from "@react-native-firebase/perf";
 
 let FacebookAppEvents = null;
 try {
@@ -104,6 +105,7 @@ const FACEBOOK_EVENT_WHITELIST = new Set(["onboarding_completed", "north_star_tw
 
 const baseEnabled = !__DEV__;
 let analyticsOptedOut = false;
+let performanceUnavailableLogged = false;
 
 const isAnalyticsEnabled = () => baseEnabled && !analyticsOptedOut;
 
@@ -114,6 +116,29 @@ const getAnalyticsClient = () => {
   } catch (error) {
     console.warn("Analytics unavailable:", error?.message || error);
     return null;
+  }
+};
+
+const getPerformanceClient = () => {
+  if (typeof perf !== "function") return null;
+  try {
+    return perf();
+  } catch (error) {
+    if (!performanceUnavailableLogged) {
+      performanceUnavailableLogged = true;
+      console.warn("Performance unavailable:", error?.message || error);
+    }
+    return null;
+  }
+};
+
+const syncPerformanceCollection = async () => {
+  const perfClient = getPerformanceClient();
+  if (!perfClient) return;
+  try {
+    await perfClient.setPerformanceCollectionEnabled(isAnalyticsEnabled());
+  } catch (error) {
+    console.warn("Performance toggle failed:", error?.message || error);
   }
 };
 
@@ -136,6 +161,11 @@ export const initAnalytics = async () => {
   }
 };
 
+export const initPerformanceMonitoring = async () => {
+  if (!baseEnabled) return;
+  await syncPerformanceCollection();
+};
+
 export const setAnalyticsOptOut = async (optOut) => {
   analyticsOptedOut = !!optOut;
   if (__DEV__) return;
@@ -144,6 +174,7 @@ export const setAnalyticsOptOut = async (optOut) => {
   } catch (error) {
     console.warn("Analytics opt-out failed:", error?.message || error);
   }
+  await syncPerformanceCollection();
 };
 
 export const logEvent = async (eventName, params = {}) => {
