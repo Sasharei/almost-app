@@ -683,8 +683,40 @@ const getCelebrationMessages = (language, gender = "none") => {
 };
 
 const RAIN_DROPS = 20;
-const CURRENCY_RATES = { USD: 1, EUR: 0.92, RUB: 92 };
-const CURRENCY_REWARD_STEPS = { USD: 5, EUR: 5, RUB: 500 };
+const LTR_MARK = "\u200E"; // keeps currency labels left-to-right even with RTL symbols
+const RTL_CURRENCIES = new Set(["SAR"]);
+const CURRENCY_RATES = {
+  AED: 3.67,
+  AUD: 1.5,
+  BYN: 3.3,
+  CAD: 1.35,
+  EUR: 0.92,
+  GBP: 0.79,
+  JPY: 150,
+  KZT: 450,
+  KRW: 1350,
+  MXN: 17,
+  PLN: 4,
+  RUB: 92,
+  SAR: 3.75,
+  USD: 1,
+};
+const CURRENCY_REWARD_STEPS = {
+  AED: 20,
+  AUD: 5,
+  BYN: 5,
+  CAD: 5,
+  EUR: 5,
+  GBP: 5,
+  JPY: 750,
+  KZT: 2000,
+  KRW: 7000,
+  MXN: 100,
+  PLN: 20,
+  RUB: 500,
+  SAR: 20,
+  USD: 5,
+};
 const DEFAULT_COIN_SLIDER_MAX_USD = 50;
 const COIN_SLIDER_SIZE = 220;
 const COIN_SLIDER_VALUE_DEADBAND = 0.01;
@@ -693,9 +725,50 @@ const COIN_SLIDER_HAPTIC_COOLDOWN_MS = 80;
 const COIN_SLIDER_STEP_STICKINESS = 0.95;
 const COIN_SLIDER_GESTURE_DEADBAND = 0.03;
 const COIN_FILL_MIN_HEIGHT = 12;
-const CURRENCY_SIGNS = { USD: "$", EUR: "€", RUB: "₽" };
-const CURRENCY_FINE_STEPS = { USD: 0.5, EUR: 0.5, RUB: 5 };
-const CURRENCY_DISPLAY_PRECISION = { USD: 0, EUR: 0 };
+const CURRENCY_SIGNS = {
+  AED: "AED ",
+  AUD: "A$",
+  BYN: "Br",
+  CAD: "C$",
+  EUR: "€",
+  GBP: "£",
+  JPY: "¥",
+  KZT: "₸",
+  KRW: "₩",
+  MXN: "MX$",
+  PLN: "zł",
+  RUB: "₽",
+  SAR: "﷼",
+  USD: "$",
+};
+const CURRENCY_FINE_STEPS = {
+  AED: 0.5,
+  AUD: 0.5,
+  BYN: 0.5,
+  CAD: 0.5,
+  EUR: 0.5,
+  GBP: 0.5,
+  JPY: 10,
+  KZT: 10,
+  KRW: 100,
+  MXN: 0.5,
+  PLN: 0.5,
+  RUB: 5,
+  SAR: 0.5,
+  USD: 0.5,
+};
+const CURRENCY_DISPLAY_PRECISION = {
+  AED: 0,
+  AUD: 0,
+  BYN: 0,
+  CAD: 0,
+  EUR: 0,
+  GBP: 0,
+  MXN: 0,
+  PLN: 0,
+  SAR: 0,
+  USD: 0,
+};
 const ECONOMY_RULES = {
   saveRewardStepUSD: 5,
   minSaveReward: 1,
@@ -2418,9 +2491,20 @@ const convertFromCurrency = (valueLocal = 0, currency = activeCurrency) => {
 const POTENTIAL_PUSH_STEP_EUR = 10;
 const POTENTIAL_PUSH_STEP_USD = convertFromCurrency(POTENTIAL_PUSH_STEP_EUR, "EUR");
 const POTENTIAL_PUSH_STEP_LOCAL_MAP = {
-  USD: 10,
+  AED: 10,
+  AUD: 10,
+  BYN: 10,
+  CAD: 10,
   EUR: 10,
+  GBP: 10,
+  JPY: 1000,
+  KZT: 3000,
+  KRW: 15000,
+  MXN: 100,
+  PLN: 10,
   RUB: 1000,
+  SAR: 10,
+  USD: 10,
   DEFAULT: 10,
 };
 const POTENTIAL_PUSH_STEP_LOCAL_FALLBACK =
@@ -2437,7 +2521,19 @@ const DEFAULT_POTENTIAL_PUSH_STATE = {
 };
 
 const getCurrencyPrecision = (currency = activeCurrency) => {
-  if (currency === "USD" || currency === "EUR") return 2;
+  if (
+    currency === "AED" ||
+    currency === "AUD" ||
+    currency === "BYN" ||
+    currency === "CAD" ||
+    currency === "EUR" ||
+    currency === "GBP" ||
+    currency === "MXN" ||
+    currency === "PLN" ||
+    currency === "SAR" ||
+    currency === "USD"
+  )
+    return 2;
   return 0;
 };
 
@@ -3102,6 +3198,7 @@ const TRANSLATIONS = {
     languageTitle: "Выбери язык",
     languageSubtitle: "Чтобы подсказки звучали естественно",
     languageCurrencyHint: "Язык и валюту можно поменять позже в профиле.",
+    currencySwipeHint: "Свайпни, чтобы увидеть все валюты →",
     languageTermsHint: "Нажимая «Дальше», ты принимаешь пользовательское соглашение Almost.",
     languageTermsAccepted: "Соглашение уже принято — можешь двигаться дальше.",
     languageTermsLink: "Прочитать пользовательское соглашение",
@@ -3709,6 +3806,7 @@ const TRANSLATIONS = {
     languageTitle: "Choose a language",
     languageSubtitle: "We’ll tailor every hint to you",
     languageCurrencyHint: "You can adjust language and currency later in Profile.",
+    currencySwipeHint: "Swipe to view all currencies →",
     languageTermsHint: "By continuing you accept Almost’s Terms of Use.",
     languageTermsAccepted: "Terms accepted — you can move ahead.",
     languageTermsLink: "Read the full Terms of Use",
@@ -4022,12 +4120,23 @@ const resolveCategoryLabel = (categoryKey, language = "en") => {
   return localized.toUpperCase();
 };
 
-const CURRENCIES = ["USD", "EUR", "RUB"];
+const CURRENCIES = ["AED", "AUD", "BYN", "CAD", "EUR", "GBP", "JPY", "KZT", "KRW", "MXN", "PLN", "RUB", "SAR", "USD"];
 
 const CURRENCY_LOCALES = {
-  USD: "en-US",
+  AED: "en-AE",
+  AUD: "en-AU",
+  BYN: "be-BY",
+  CAD: "en-CA",
   EUR: "de-DE",
+  GBP: "en-GB",
+  JPY: "ja-JP",
+  KZT: "kk-KZ",
+  KRW: "ko-KR",
+  MXN: "es-MX",
+  PLN: "pl-PL",
   RUB: "ru-RU",
+  SAR: "en-US", // keep layout LTR; symbol handled manually
+  USD: "en-US",
 };
 
 const TERMS_LINKS = {
@@ -4988,6 +5097,17 @@ const GOALS = [
 const SAVINGS_TIERS = [6, 20, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000, 50000, 100000, 250000];
 const LEVEL_TWO_TARGET_RUB_USD = convertFromCurrency(600, "RUB"); // level 2 at ₽600 instead of default $6
 const LEVEL_TWO_TARGET_EUR_USD = convertFromCurrency(6, "EUR"); // keep €6 requirement despite USD base
+const LEVEL_TWO_TARGET_GBP_USD = convertFromCurrency(6, "GBP"); // keep £6 requirement despite USD base
+const LEVEL_TWO_TARGET_SAR_USD = convertFromCurrency(6, "SAR"); // keep ﷼6 requirement despite USD base
+const LEVEL_TWO_TARGET_AED_USD = convertFromCurrency(6, "AED"); // keep د.إ6 requirement despite USD base
+const LEVEL_TWO_TARGET_AUD_USD = convertFromCurrency(6, "AUD"); // keep A$6 requirement despite USD base
+const LEVEL_TWO_TARGET_BYN_USD = convertFromCurrency(6, "BYN"); // keep Br6 requirement despite USD base
+const LEVEL_TWO_TARGET_CAD_USD = convertFromCurrency(6, "CAD"); // keep C$6 requirement despite USD base
+const LEVEL_TWO_TARGET_PLN_USD = convertFromCurrency(6, "PLN"); // keep zł6 requirement despite USD base
+const LEVEL_TWO_TARGET_KZT_USD = convertFromCurrency(3000, "KZT"); // keep ₸3000 requirement despite USD base
+const LEVEL_TWO_TARGET_JPY_USD = convertFromCurrency(1000, "JPY"); // keep ¥1000 requirement despite USD base
+const LEVEL_TWO_TARGET_KRW_USD = convertFromCurrency(15000, "KRW"); // keep ₩15000 requirement despite USD base
+const LEVEL_TWO_TARGET_MXN_USD = convertFromCurrency(120, "MXN"); // keep MX$120 requirement despite USD base
 const getTierTargetsUSD = (currencyCode = activeCurrency) => {
   const code = currencyCode || activeCurrency;
   if (code === "RUB") {
@@ -4995,6 +5115,39 @@ const getTierTargetsUSD = (currencyCode = activeCurrency) => {
   }
   if (code === "EUR") {
     return [LEVEL_TWO_TARGET_EUR_USD, ...SAVINGS_TIERS.slice(1)];
+  }
+  if (code === "AUD") {
+    return [LEVEL_TWO_TARGET_AUD_USD, ...SAVINGS_TIERS.slice(1)];
+  }
+  if (code === "BYN") {
+    return [LEVEL_TWO_TARGET_BYN_USD, ...SAVINGS_TIERS.slice(1)];
+  }
+  if (code === "CAD") {
+    return [LEVEL_TWO_TARGET_CAD_USD, ...SAVINGS_TIERS.slice(1)];
+  }
+  if (code === "GBP") {
+    return [LEVEL_TWO_TARGET_GBP_USD, ...SAVINGS_TIERS.slice(1)];
+  }
+  if (code === "SAR") {
+    return [LEVEL_TWO_TARGET_SAR_USD, ...SAVINGS_TIERS.slice(1)];
+  }
+  if (code === "AED") {
+    return [LEVEL_TWO_TARGET_AED_USD, ...SAVINGS_TIERS.slice(1)];
+  }
+  if (code === "PLN") {
+    return [LEVEL_TWO_TARGET_PLN_USD, ...SAVINGS_TIERS.slice(1)];
+  }
+  if (code === "KZT") {
+    return [LEVEL_TWO_TARGET_KZT_USD, ...SAVINGS_TIERS.slice(1)];
+  }
+  if (code === "JPY") {
+    return [LEVEL_TWO_TARGET_JPY_USD, ...SAVINGS_TIERS.slice(1)];
+  }
+  if (code === "KRW") {
+    return [LEVEL_TWO_TARGET_KRW_USD, ...SAVINGS_TIERS.slice(1)];
+  }
+  if (code === "MXN") {
+    return [LEVEL_TWO_TARGET_MXN_USD, ...SAVINGS_TIERS.slice(1)];
   }
   return SAVINGS_TIERS;
 };
@@ -5004,6 +5157,14 @@ const formatCurrency = (value = 0, currency = activeCurrency) => {
   const displayPrecision = getCurrencyDisplayPrecision(currency);
   const normalized = roundCurrencyValue(Number(value) || 0, currency, displayPrecision);
   try {
+    if (RTL_CURRENCIES.has(currency)) {
+      const digits = new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: displayPrecision,
+      }).format(normalized);
+      const symbol = CURRENCY_SIGNS[currency] || "";
+      return `${LTR_MARK}${symbol}${digits}`;
+    }
     return new Intl.NumberFormat(locale, {
       style: "currency",
       currency,
@@ -5011,8 +5172,9 @@ const formatCurrency = (value = 0, currency = activeCurrency) => {
       maximumFractionDigits: displayPrecision,
     }).format(normalized);
   } catch {
-    const symbol = currency === "EUR" ? "€" : currency === "RUB" ? "₽" : "$";
-    return `${symbol}${normalized.toLocaleString(locale, {
+    const symbol = CURRENCY_SIGNS[currency] || "$";
+    const prefix = RTL_CURRENCIES.has(currency) ? `${LTR_MARK}${symbol}` : symbol;
+    return `${prefix}${normalized.toLocaleString(locale, {
       minimumFractionDigits: 0,
       maximumFractionDigits: displayPrecision,
     })}`;
@@ -5024,6 +5186,14 @@ const formatCurrencyWhole = (value = 0, currency = activeCurrency) => {
   const precision = getCurrencyDisplayPrecision(currency);
   const rounded = roundCurrencyValue(Number(value) || 0, currency, precision);
   try {
+    if (RTL_CURRENCIES.has(currency)) {
+      const digits = new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: precision,
+        maximumFractionDigits: precision,
+      }).format(rounded);
+      const symbol = CURRENCY_SIGNS[currency] || "";
+      return `${LTR_MARK}${symbol}${digits}`;
+    }
     return new Intl.NumberFormat(locale, {
       style: "currency",
       currency,
@@ -5031,8 +5201,9 @@ const formatCurrencyWhole = (value = 0, currency = activeCurrency) => {
       maximumFractionDigits: precision,
     }).format(rounded);
   } catch {
-    const symbol = currency === "EUR" ? "€" : currency === "RUB" ? "₽" : "$";
-    return `${symbol}${rounded.toLocaleString(locale, {
+    const symbol = CURRENCY_SIGNS[currency] || "$";
+    const prefix = RTL_CURRENCIES.has(currency) ? `${LTR_MARK}${symbol}` : symbol;
+    return `${prefix}${rounded.toLocaleString(locale, {
       minimumFractionDigits: precision,
       maximumFractionDigits: precision,
     })}`;
@@ -9624,6 +9795,23 @@ const ProfileScreen = React.memo(function ProfileScreen({
   });
   const profileEditingRef = useRef(isEditing);
   const profileCurrencyRef = useRef(currentCurrency);
+  const profileCurrencyScrollRef = useRef(null);
+  const profileCurrencyNudgeRan = useRef(false);
+  useEffect(() => {
+    if (profileCurrencyNudgeRan.current) return undefined;
+    profileCurrencyNudgeRan.current = true;
+    let backTimeout;
+    const forwardTimeout = setTimeout(() => {
+      profileCurrencyScrollRef.current?.scrollTo({ x: 48, animated: true });
+      backTimeout = setTimeout(() => {
+        profileCurrencyScrollRef.current?.scrollTo({ x: 0, animated: true });
+      }, 650);
+    }, 900);
+    return () => {
+      clearTimeout(forwardTimeout);
+      if (backTimeout) clearTimeout(backTimeout);
+    };
+  }, []);
   useEffect(() => {
     const editingJustOpened = isEditing && !profileEditingRef.current;
     const currencyChanged = isEditing && profileCurrencyRef.current !== currentCurrency;
@@ -10151,30 +10339,40 @@ const ProfileScreen = React.memo(function ProfileScreen({
           </View>
         </View>
         <View style={styles.settingRow}>
-          <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("currencyLabel")}</Text>
-          <View style={styles.settingChoices}>
-            {CURRENCIES.map((code) => (
-              <TouchableOpacity
-                key={code}
-                style={[
-                  styles.settingChip,
-                  {
-                    backgroundColor: currentCurrency === code ? colors.text : "transparent",
-                    borderColor: colors.border,
-                  },
-                ]}
-                onPress={() => onCurrencyChange?.(code)}
-              >
-                <Text
-                  style={{
-                    color: currentCurrency === code ? colors.background : colors.muted,
-                    fontWeight: "600",
-                  }}
+          <Text style={[styles.settingLabel, { color: colors.muted }]}>
+            {t("currencyLabel")} <Text style={{ fontSize: 16 }}>→</Text>
+          </Text>
+          <View style={styles.settingCurrencyScrollWrapper}>
+            <ScrollView
+              ref={profileCurrencyScrollRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.settingCurrencyScroll}
+              contentContainerStyle={styles.settingCurrencyScrollContent}
+            >
+              {CURRENCIES.map((code) => (
+                <TouchableOpacity
+                  key={code}
+                  style={[
+                    styles.settingChip,
+                    {
+                      backgroundColor: currentCurrency === code ? colors.text : "transparent",
+                      borderColor: colors.border,
+                    },
+                  ]}
+                  onPress={() => onCurrencyChange?.(code)}
                 >
-                  {code}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={{
+                      color: currentCurrency === code ? colors.background : colors.muted,
+                      fontWeight: "600",
+                    }}
+                  >
+                    {code}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         </View>
         <View style={[styles.settingRow, { alignItems: "center", justifyContent: "space-between" }]}>
@@ -23491,6 +23689,21 @@ const styles = StyleSheet.create({
     gap: 12,
     flexWrap: "wrap",
   },
+  settingCurrencyScrollWrapper: {
+    position: "relative",
+    marginTop: 4,
+    marginRight: -32,
+    paddingRight: 32,
+  },
+  settingCurrencyScroll: {
+    marginTop: 0,
+  },
+  settingCurrencyScrollContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingRight: 16,
+  },
   profileGoalGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -25071,10 +25284,30 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginTop: 4,
   },
-  currencyGrid: {
+  currencyScrollWrapper: {
+    marginTop: 12,
+    position: "relative",
+    marginRight: -32,
+    paddingRight: 32,
+  },
+    currencyScroll: {
+    marginTop: 0,
+  },
+  currencyScrollContent: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+    alignItems: "center",
+    gap: 12,
+    paddingRight: 12,
+  },
+  currencyScrollFadeWrapper: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 40,
+  },
+  currencyScrollFade: {
+    height: "100%",
   },
   currencyChipLarge: {
     borderWidth: 1,
@@ -26756,6 +26989,37 @@ function LanguageScreen({
 }) {
   const fade = useFadeIn();
   const wavingSource = mascotWaveSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.waving;
+  const [currencyIndicatorVisible, setCurrencyIndicatorVisible] = useState(true);
+  const currencyScrollRef = useRef(null);
+  const currencyNudgeRan = useRef(false);
+  const handleCurrencyScroll = useCallback(
+    (event) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      const scrollable = contentSize.width > layoutMeasurement.width + 4;
+      if (!scrollable) {
+        setCurrencyIndicatorVisible(false);
+        return;
+      }
+      const atEnd = contentOffset.x + layoutMeasurement.width >= contentSize.width - 8;
+      setCurrencyIndicatorVisible(!atEnd);
+    },
+    [setCurrencyIndicatorVisible]
+  );
+  useEffect(() => {
+    if (currencyNudgeRan.current) return undefined;
+    currencyNudgeRan.current = true;
+    let backTimeout;
+    const forwardTimeout = setTimeout(() => {
+      currencyScrollRef.current?.scrollTo({ x: 48, animated: true });
+      backTimeout = setTimeout(() => {
+        currencyScrollRef.current?.scrollTo({ x: 0, animated: true });
+      }, 650);
+    }, 900);
+    return () => {
+      clearTimeout(forwardTimeout);
+      if (backTimeout) clearTimeout(backTimeout);
+    };
+  }, []);
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <View style={styles.onboardContent}>
@@ -26784,33 +27048,58 @@ function LanguageScreen({
           ))}
         </View>
         <View style={{ width: "100%", marginTop: 32 }}>
-          <Text style={[styles.currencyLabel, { color: colors.muted }]}>{t("currencyLabel")}</Text>
-          <View style={[styles.currencyGrid, { marginTop: 12 }]}>
-            {CURRENCIES.map((currency) => {
-              const active = currency === selectedCurrency;
-              return (
-                <TouchableOpacity
-                  key={currency}
-                  style={[
-                    styles.currencyChipLarge,
-                    {
-                      backgroundColor: active ? colors.text : "transparent",
-                      borderColor: colors.border,
-                    },
-                  ]}
-                  onPress={() => onCurrencyChange?.(currency)}
-                >
-                  <Text
-                    style={{
-                      color: active ? colors.background : colors.text,
-                      fontWeight: "600",
-                    }}
+          <Text style={[styles.currencyLabel, { color: colors.muted }]}>
+            {t("currencyLabel")} <Text style={{ fontSize: 16 }}>→</Text>
+          </Text>
+          <View style={styles.currencyScrollWrapper}>
+            <ScrollView
+              ref={currencyScrollRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.currencyScroll}
+              contentContainerStyle={styles.currencyScrollContent}
+              onScroll={handleCurrencyScroll}
+              scrollEventThrottle={16}
+            >
+              {CURRENCIES.map((currency) => {
+                const active = currency === selectedCurrency;
+                return (
+                  <TouchableOpacity
+                    key={currency}
+                    style={[
+                      styles.currencyChipLarge,
+                      {
+                        backgroundColor: active ? colors.text : "transparent",
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    onPress={() => onCurrencyChange?.(currency)}
                   >
-                    {currency}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+                    <Text
+                      style={{
+                        color: active ? colors.background : colors.text,
+                        fontWeight: "600",
+                      }}
+                    >
+                      {currency}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            {currencyIndicatorVisible && (
+              <View pointerEvents="none" style={styles.currencyScrollFadeWrapper}>
+                <Svg style={styles.currencyScrollFade} width="100%" height="100%">
+                  <Defs>
+                    <SvgLinearGradient id="currencyFade" x1="0" y1="0" x2="1" y2="0">
+                      <SvgStop offset="0%" stopColor={colors.background} stopOpacity="0" />
+                      <SvgStop offset="100%" stopColor={colors.background} stopOpacity="1" />
+                    </SvgLinearGradient>
+                  </Defs>
+                  <SvgRect x="0" y="0" width="100%" height="100%" fill="url(#currencyFade)" />
+                </Svg>
+              </View>
+            )}
           </View>
           <Text style={[styles.languageHint, { color: colors.muted }]}>{t("languageCurrencyHint")}</Text>
         </View>
