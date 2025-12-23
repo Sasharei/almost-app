@@ -2,7 +2,7 @@
   "expo": {
     "name": "Almost",
     "slug": "almost_clean",
-    "version": "2.0.14",
+    "version": "2.1.15",
     "orientation": "default",
     "icon": "./assets/Almost_icon.png",
     "userInterfaceStyle": "light",
@@ -16,6 +16,7 @@
       "bundleIdentifier": "com.sasarei.almostclean",
       "supportsTablet": true,
       "googleServicesFile": "./ios/GoogleService-Info.plist",
+      "buildNumber": "2.1.15",
       "infoPlist": {
         "NSCameraUsageDescription": "Almost lets you snap a portrait so your savings profile feels personal.",
         "NSPhotoLibraryUsageDescription": "Almost accesses your photos to update the avatar that keeps you motivated."
@@ -23,7 +24,7 @@
     },
     "android": {
       "package": "com.sasarei.almostclean",
-      "versionCode": 21,
+      "versionCode": 23,
       "adaptiveIcon": {
         "foregroundImage": "./assets/Almost_icon.png",
         "backgroundColor": "#ffffff"

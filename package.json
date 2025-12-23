@@ -1,6 +1,6 @@
 {
   "name": "almost_clean",
-  "version": "2.0.14",
+  "version": "2.1.15",
   "main": "index.js",
   "scripts": {
     "start": "EXPO_NO_TYPESCRIPT_SETUP=1 expo start",

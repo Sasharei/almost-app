@@ -105,9 +105,10 @@ const FACEBOOK_EVENT_WHITELIST = new Set(["onboarding_completed", "north_star_tw
 
 const baseEnabled = !__DEV__;
 let analyticsOptedOut = false;
+let analyticsConsentGranted = false;
 let performanceUnavailableLogged = false;
 
-const isAnalyticsEnabled = () => baseEnabled && !analyticsOptedOut;
+const isAnalyticsEnabled = () => baseEnabled && analyticsConsentGranted && !analyticsOptedOut;
 
 const getAnalyticsClient = () => {
   if (!isAnalyticsEnabled()) return null;
@@ -132,6 +133,15 @@ const getPerformanceClient = () => {
   }
 };
 
+const syncAnalyticsCollection = async () => {
+  if (!baseEnabled) return;
+  try {
+    await analytics().setAnalyticsCollectionEnabled(isAnalyticsEnabled());
+  } catch (error) {
+    console.warn("Analytics collection toggle failed:", error?.message || error);
+  }
+};
+
 const syncPerformanceCollection = async () => {
   const perfClient = getPerformanceClient();
   if (!perfClient) return;
@@ -153,12 +163,7 @@ const filterParams = (eventName, params = {}) => {
 };
 
 export const initAnalytics = async () => {
-  if (!isAnalyticsEnabled()) return;
-  try {
-    await analytics().setAnalyticsCollectionEnabled(true);
-  } catch (error) {
-    console.warn("Analytics init failed:", error?.message || error);
-  }
+  await syncAnalyticsCollection();
 };
 
 export const initPerformanceMonitoring = async () => {
@@ -167,13 +172,10 @@ export const initPerformanceMonitoring = async () => {
 };
 
 export const setAnalyticsOptOut = async (optOut) => {
+  if (optOut === null || optOut === undefined) return;
   analyticsOptedOut = !!optOut;
-  if (__DEV__) return;
-  try {
-    await analytics().setAnalyticsCollectionEnabled(!analyticsOptedOut);
-  } catch (error) {
-    console.warn("Analytics opt-out failed:", error?.message || error);
-  }
+  analyticsConsentGranted = !analyticsOptedOut || analyticsConsentGranted;
+  await syncAnalyticsCollection();
   await syncPerformanceCollection();
 };
 
