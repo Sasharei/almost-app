@@ -135,6 +135,7 @@ const STORAGE_KEYS = {
   CUSTOM_REMINDER: "@almost_custom_reminder",
   SMART_REMINDERS: "@almost_smart_reminders",
   DAILY_NUDGES: "@almost_daily_nudges",
+  LANGUAGE_CURRENCY_NUDGE: "@almost_language_currency_nudge",
   TAMAGOTCHI: "@almost_tamagotchi_state",
   DAILY_SUMMARY: "@almost_daily_summary",
   POTENTIAL_PUSH_PROGRESS: "@almost_potential_push_progress",
@@ -155,6 +156,42 @@ const STORAGE_KEYS = {
   RATING_PROMPT: "@almost_rating_prompt",
   NORTH_STAR_METRIC: "@almost_north_star_metric",
 };
+
+const DEFAULT_LANGUAGE = "en";
+const FALLBACK_LANGUAGE = "en";
+const SUPPORTED_LANGUAGES = ["en", "es", "fr", "ru"];
+const LANGUAGE_LABEL_KEYS = {
+  ru: "languageRussian",
+  en: "languageEnglish",
+  es: "languageSpanish",
+  fr: "languageFrench",
+};
+const LANGUAGE_NATIVE_LABELS = {
+  ru: "Русский",
+  en: "English",
+  es: "Español",
+  fr: "Français",
+};
+const normalizeLanguage = (value) =>
+  SUPPORTED_LANGUAGES.includes(value) ? value : DEFAULT_LANGUAGE;
+const getLanguageLabelKey = (language) =>
+  LANGUAGE_LABEL_KEYS[language] || LANGUAGE_LABEL_KEYS[FALLBACK_LANGUAGE];
+const FORMAT_LOCALES = {
+  ru: "ru-RU",
+  en: "en-US",
+  es: "es-ES",
+  fr: "fr-FR",
+};
+const SHORT_LANGUAGE_MAP = {
+  ru: "ru",
+  en: "en",
+  es: "es",
+  fr: "fr",
+};
+const getFormatLocale = (language) =>
+  FORMAT_LOCALES[language] || FORMAT_LOCALES[FALLBACK_LANGUAGE];
+const getShortLanguageKey = (language) =>
+  SHORT_LANGUAGE_MAP[language] || SHORT_LANGUAGE_MAP[FALLBACK_LANGUAGE];
 
 const PURCHASE_GOAL = 20000;
 const ANDROID_API_LEVEL =
@@ -238,10 +275,12 @@ const PURPLE_TAMAGOTCHI_ANIMATIONS = {
 const TAMAGOTCHI_SKIN_OPTIONS = [
   {
     id: "classic",
-    label: { ru: "Классический", en: "Classic" },
+    label: { ru: "Классический", en: "Classic", es: "Clásico", fr: "Classique" },
     description: {
       ru: "Знакомый образ Алми",
       en: "The original Almi look",
+      es: "El estilo original de Almi",
+      fr: "Le look original d'Almi",
     },
     preview: require("./assets/Cat_mascot.png"),
     avatar: require("./assets/Cat_mascot.png"),
@@ -249,10 +288,12 @@ const TAMAGOTCHI_SKIN_OPTIONS = [
   },
   {
     id: "green",
-    label: { ru: "Лесной", en: "Forest" },
+    label: { ru: "Лесной", en: "Forest", es: "Verde bosque", fr: "Forêt" },
     description: {
       ru: "Мятный исследователь",
       en: "Mint explorer",
+      es: "Explorador mentolado",
+      fr: "Exploratrice mentholée",
     },
     preview: require("./assets/tamagotchi_skins/green/Cat_idle.gif"),
     avatar: require("./assets/tamagotchi_skins/green/Cat_idle.gif"),
@@ -260,10 +301,12 @@ const TAMAGOTCHI_SKIN_OPTIONS = [
   },
   {
     id: "teal",
-    label: { ru: "Лазурный", en: "Teal breeze" },
+    label: { ru: "Лазурный", en: "Teal breeze", es: "Brisa turquesa", fr: "Brise turquoise" },
     description: {
       ru: "Свежий морской оттенок",
       en: "Ocean breeze palette",
+      es: "Paleta brisa marina",
+      fr: "Palette brise océane",
     },
     preview: require("./assets/tamagotchi_skins/teal/Cat_idle.gif"),
     avatar: require("./assets/tamagotchi_skins/teal/Cat_idle.gif"),
@@ -271,10 +314,12 @@ const TAMAGOTCHI_SKIN_OPTIONS = [
   },
   {
     id: "yellow",
-    label: { ru: "Солнечный", en: "Sunny" },
+    label: { ru: "Солнечный", en: "Sunny", es: "Amarillo brillante", fr: "Ensoleillé" },
     description: {
       ru: "Тёплый и энергичный",
       en: "Bright and energising",
+      es: "Cálido y lleno de energía",
+      fr: "Chaud et plein d'énergie",
     },
     preview: require("./assets/tamagotchi_skins/yellow/Cat_idle.gif"),
     avatar: require("./assets/tamagotchi_skins/yellow/Cat_idle.gif"),
@@ -282,10 +327,12 @@ const TAMAGOTCHI_SKIN_OPTIONS = [
   },
   {
     id: "purple",
-    label: { ru: "Сиреневый", en: "Lavender" },
+    label: { ru: "Сиреневый", en: "Lavender", es: "Lavanda", fr: "Lavande" },
     description: {
       ru: "Немного загадочный",
       en: "A dreamy violet vibe",
+      es: "Un toque violeta soñador",
+      fr: "Une touche violette rêveuse",
     },
     preview: require("./assets/tamagotchi_skins/purple/Cat_idle.gif"),
     avatar: require("./assets/tamagotchi_skins/purple/Cat_idle.gif"),
@@ -406,7 +453,7 @@ const DAILY_NUDGE_BODY_KEYS = [
   "dailyNudgeAfternoonBody",
   "dailyNudgeEveningBody",
 ];
-const DAILY_NUDGE_LANGUAGES = ["ru", "en"];
+const DAILY_NUDGE_LANGUAGES = SUPPORTED_LANGUAGES;
 const DAILY_NUDGE_NOTIFICATION_TAG = "daily_nudge";
 const ANDROID_DAILY_NUDGE_CHANNEL_ID = "daily-nudges";
 const DAILY_CHALLENGE_MIN_SPEND_EVENTS = 2;
@@ -667,10 +714,47 @@ const CELEBRATION_MESSAGES = {
     ],
     level: "Level {{level}}! Savings armor upgraded ✨",
   },
+  fr: {
+    default: [
+      "Boom ! Encore un choix conscient",
+      "Moins d'impulsions, plus de plan",
+      "Le portefeuille respire enfin",
+      "Accord malin verrouillé – l'épargne est en sécurité",
+    ],
+    level: "Niveau {{level}} ! Armure d'épargne améliorée ✨",
+  },
+  es: {
+    default: [
+      "¡Boom! Otro ahorro consciente",
+      "Menos impulso, más plan",
+      "La cartera respira aliviada",
+      "Intercambio inteligente: el ahorro está a salvo",
+    ],
+    female: [
+      "¡Boom! Otro ahorro consciente",
+      "Menos impulso, más plan",
+      "La cartera respira aliviada",
+      "Intercambio inteligente: el ahorro está a salvo",
+    ],
+    male: [
+      "¡Boom! Otro ahorro consciente",
+      "Menos impulso, más plan",
+      "La cartera respira aliviada",
+      "Intercambio inteligente: el ahorro está a salvo",
+    ],
+    none: [
+      "¡Boom! Otro ahorro consciente",
+      "Menos impulso, más plan",
+      "La cartera respira aliviada",
+      "Intercambio inteligente: el ahorro está a salvo",
+    ],
+    level: "¡Nivel {{level}}! Tu armadura de ahorro sube de rango ✨",
+  },
 };
 
 const getCelebrationMessages = (language, gender = "none") => {
-  const entry = CELEBRATION_MESSAGES[language];
+  const normalized = normalizeLanguage(language);
+  const entry = CELEBRATION_MESSAGES[normalized] || CELEBRATION_MESSAGES[FALLBACK_LANGUAGE];
   if (!entry) return [];
   if (Array.isArray(entry)) return entry;
   if (Array.isArray(entry.default)) return entry.default;
@@ -970,15 +1054,35 @@ const HEALTH_COIN_LABELS = {
     blue: "blue coins",
     green: "green coins",
   },
+  es: {
+    pink: "monedas rosas",
+    red: "monedas rojas",
+    orange: "monedas naranjas",
+    blue: "monedas azules",
+    green: "monedas verdes",
+  },
+  fr: {
+    pink: "pièces roses",
+    red: "pièces rouges",
+    orange: "pièces orange",
+    blue: "pièces bleues",
+    green: "pièces vertes",
+  },
 };
-const formatHealthRewardLabel = (amount = 0, language = "ru") => {
+const ZERO_HEALTH_REWARD_LABELS = {
+  ru: "0 монет",
+  en: "0 coins",
+  es: "0 monedas",
+  fr: "0 pièce",
+};
+const formatHealthRewardLabel = (amount = 0, language = DEFAULT_LANGUAGE) => {
   const entries = buildHealthCoinEntries(amount);
   const labels = HEALTH_COIN_LABELS[language] || HEALTH_COIN_LABELS.en;
   const parts = entries
     .filter((entry) => entry.count > 0)
     .map((entry) => `${entry.count} ${labels[entry.id] || entry.id}`);
   if (!parts.length) {
-    return language === "ru" ? "0 монет" : "0 coins";
+    return ZERO_HEALTH_REWARD_LABELS[language] || ZERO_HEALTH_REWARD_LABELS.en;
   }
   return parts.join(" · ");
 };
@@ -1058,237 +1162,345 @@ const INITIAL_MOOD_STATE = createMoodStateForToday();
 
 const MOOD_PRESETS = {
   [MOOD_IDS.NEUTRAL]: {
-    label: { ru: "Режим баланса", en: "Balanced mode" },
+    label: { ru: "Режим баланса", en: "Balanced mode", es: "Modo balance", fr: "Mode équilibre" },
     hero: {
       ru: "Баланс держится, просто продолжай отмечать победы.",
       en: "Balance holds steady-keep logging the wins.",
+      es: "El balance se mantiene: sigue registrando victorias.",
+      fr: "L'équilibre tient bon : continue de noter tes victoires.",
     },
     heroComplete: {
       ru: "Режим спокойствия фиксирует каждое достижение.",
       en: "Calm mode celebrates each milestone.",
+      es: "El modo calma celebra cada logro.",
+      fr: "Le mode calme célèbre chaque étape.",
     },
     motivation: {
       ru: "Небольшой шаг сегодня спасает завтрашний план.",
       en: "A tiny step today protects tomorrow’s plan.",
+      es: "Un paso pequeño hoy protege el plan de mañana.",
+      fr: "Un petit pas aujourd'hui protège le plan de demain.",
     },
     saveOverlay: {
       ru: "Баланс усилен ещё одним отказом.",
       en: "Balance reinforced with another skip.",
+      es: "El balance se refuerza con otro rechazo.",
+      fr: "L'équilibre est renforcé par un refus de plus.",
     },
     impulseOverlay: {
       ru: "Сохраняем спокойствие даже при штормах.",
       en: "Staying calm even when urges spike.",
+      es: "Mantenemos la calma incluso cuando suben los impulsos.",
+      fr: "On reste calme même quand les envies montent.",
     },
     pushPendingTitle: {
       ru: "Баланс проверяет хотелку",
       en: "Balance check-in",
+      es: "Recordatorio de balance",
+      fr: "Contrôle équilibre",
     },
     pushPendingBody: {
       ru: "«{{title}}» ждет решения. Подумай, стоит ли держать курс.",
       en: "“{{title}}” is waiting. Decide if it fits the plan.",
+      es: "“{{title}}” sigue esperando. Decide si se queda en el plan.",
+      fr: "« {{title}} » attend. Décide si ça reste dans le plan.",
     },
     pushImpulseTitle: {
       ru: "Баланс в деле",
       en: "Balance alert",
+      es: "Aviso de balance",
+      fr: "Alerte équilibre",
     },
     pushImpulseBody: {
       ru: "В это время хочется {{temptation}}, но баланс предлагает спасти {{amount}}.",
       en: "This hour usually tempts {{temptation}}, but balance can bank {{amount}}.",
+      es: "A esta hora suele ganar {{temptation}}, pero el balance puede guardar {{amount}}.",
+      fr: "À cette heure {{temptation}} appelle, mais l'équilibre peut mettre {{amount}} de côté.",
     },
   },
   [MOOD_IDS.FOCUSED]: {
-    label: { ru: "Волевой режим", en: "Focused mode" },
+    label: { ru: "Волевой режим", en: "Focused mode", es: "Modo enfoque", fr: "Mode focus" },
     hero: {
       ru: "Волевой режим активен - искушения сами пугаются.",
       en: "Focused mode is on-temptations get nervous.",
+      es: "El modo enfoque está activo: las tentaciones se ponen nerviosas.",
+      fr: "Le mode focus est activé : les tentations se crispent.",
     },
     heroComplete: {
       ru: "Волевой режим и цель сделаны! Можно планировать больше.",
       en: "Focused mode + goal complete! Time to plan even bigger.",
+      es: "Modo enfoque + meta completa. Hora de un objetivo más grande.",
+      fr: "Mode focus + objectif atteint ! Place à un rêve plus grand.",
     },
     motivation: {
       ru: "Режим силы: собери ещё одно подтверждение дисциплины.",
       en: "Power mode: lock in one more proof of discipline.",
+      es: "Modo potencia: suma otra prueba de disciplina.",
+      fr: "Mode puissance : ajoute une preuve de discipline de plus.",
     },
     saveOverlay: {
       ru: "Волевое решение сохранено. Так держать!",
       en: "Willpower locked in. Keep it going!",
+      es: "La fuerza de voluntad quedó registrada. ¡Sigue así!",
+      fr: "Force de volonté verrouillée. Continue comme ça !",
     },
     impulseOverlay: {
       ru: "Волевой режим умеет тормозить импульсы.",
       en: "Focused mode crushes impulse spikes.",
+      es: "El modo enfoque aplasta los impulsos.",
+      fr: "Le mode focus écrase les pics d'impulsion.",
     },
     pushPendingTitle: {
       ru: "Волевой пинг",
       en: "Focused ping",
+      es: "Ping de enfoque",
+      fr: "Ping focus",
     },
     pushPendingBody: {
       ru: "Ты в волевом режиме - реши, идем ли дальше с «{{title}}».",
       en: "Focused mode speaking-decide what to do with “{{title}}”.",
+      es: "Modo enfoque al habla: decide qué hacer con «{{title}}».",
+      fr: "Le mode focus te parle : décide quoi faire de « {{title}} ».",
     },
     pushImpulseTitle: {
       ru: "Волевой сигнал",
       en: "Focused alert",
+      es: "Alerta de enfoque",
+      fr: "Alerte focus",
     },
     pushImpulseBody: {
       ru: "Сейчас чаще хочется {{temptation}}, но волевой режим может отправить {{amount}} в копилку.",
       en: "This hour begs for {{temptation}}, but focused mode can stash {{amount}}.",
+      es: "A esta hora pide {{temptation}}, pero el modo enfoque puede guardar {{amount}}.",
+      fr: "À cette heure {{temptation}} insiste, mais le mode focus peut mettre {{amount}} de côté.",
     },
   },
   [MOOD_IDS.IMPULSIVE]: {
-    label: { ru: "Импульсивный режим", en: "Impulse mode" },
+    label: { ru: "Импульсивный режим", en: "Impulse mode", es: "Modo impulso", fr: "Mode impulsif" },
     hero: {
       ru: "Импульсивный режим включён - стоит поймать пару побед.",
       en: "Impulse mode detected-time to capture a few wins.",
+      es: "Modo impulso activado: toca atrapar un par de victorias.",
+      fr: "Mode impulsif détecté : il est temps de décrocher quelques victoires.",
     },
     heroComplete: {
       ru: "Импульсы были сильными, но цель всё равно закрыта.",
       en: "Impulses were strong, yet you still hit the target.",
+      es: "El impulso fue fuerte, pero aun así lograste la meta.",
+      fr: "Les envies étaient fortes, mais tu as quand même atteint la cible.",
     },
     motivation: {
       ru: "Маленький отказ прямо сейчас вернёт контроль.",
       en: "One tiny skip right now resets control.",
+      es: "Un pequeño “no” ahora recupera el control.",
+      fr: "Un petit « non » maintenant rend le contrôle.",
     },
     saveOverlay: {
       ru: "Импульсы медлят - ты перехватил управление.",
       en: "Impulse paused-you took the controls back.",
+      es: "El impulso se detuvo: retomaste el mando.",
+      fr: "Impulsion stoppée : tu reprends les commandes.",
     },
     impulseOverlay: {
       ru: "Поймай ещё один момент и переведи его в копилку.",
       en: "Catch the next urge and reroute it into savings.",
+      es: "Atrapa el siguiente impulso y conviértelo en ahorro.",
+      fr: "Attrape la prochaine envie et transforme-la en épargne.",
     },
     pushPendingTitle: {
       ru: "Импульс проверяет «{{title}}»",
       en: "Impulse check-in",
+      es: "Aviso del impulso",
+      fr: "Contrôle impulsif",
     },
     pushPendingBody: {
       ru: "Импульсивный режим просит ясности: оставляем «{{title}}» или копим?",
       en: "Impulse mode needs clarity: keep “{{title}}” or bank it?",
+      es: "El modo impulso pide claridad: ¿dejamos «{{title}}» o lo convertimos en ahorro?",
+      fr: "Le mode impulsif demande une décision : on garde « {{title}} » ou on le convertit en épargne ?",
     },
     pushImpulseTitle: {
       ru: "Импульс на подходе",
       en: "Impulse incoming",
+      es: "Impulso en camino",
+      fr: "Impulsion en approche",
     },
     pushImpulseBody: {
       ru: "Чаще всего сейчас берешь {{temptation}}. Попробуй отправить {{amount}} в копилку.",
       en: "{{temptation}} usually wins now. Try sending {{amount}} to savings instead.",
+      es: "Ahora suele ganar {{temptation}}. Intenta enviar {{amount}} al ahorro.",
+      fr: "{{temptation}} gagne souvent maintenant. Essaie d'envoyer {{amount}} vers l'épargne.",
     },
   },
   [MOOD_IDS.DOUBTER]: {
-    label: { ru: "Режим сомнений", en: "Doubter mode" },
+    label: { ru: "Режим сомнений", en: "Doubter mode", es: "Modo dudas", fr: "Mode doutes" },
     hero: {
       ru: "Режим сомнений активен - выбери хотя бы одно уверенное решение.",
       en: "Doubter mode is on-choose one confident move.",
+      es: "Modo dudas activo: elige al menos un movimiento seguro.",
+      fr: "Le mode doutes est activé : choisis au moins un geste sûr.",
     },
     heroComplete: {
       ru: "Сомневаешься, но цели достигаются. Значит, курс верный.",
       en: "Doubts aside, goals still get reached. The course works.",
+      es: "Aun con dudas, las metas se cumplen. Vas en buen camino.",
+      fr: "Même avec des doutes, les objectifs avancent. Le cap est bon.",
     },
     motivation: {
       ru: "Выбери одну мысль «копить» и закрепи уверенность.",
       en: "Pick one “save it” thought and lock it in.",
+      es: "Elige un “ahórralo” y afianza la confianza.",
+      fr: "Choisis un « j'économise » et consolide ta confiance.",
     },
     saveOverlay: {
       ru: "Это решение снимает сомнения.",
       en: "That choice dissolves doubts.",
+      es: "Esa decisión disuelve las dudas.",
+      fr: "Ce choix dissout les doutes.",
     },
     impulseOverlay: {
       ru: "Сомнения лучше переводить в цифры, а не покупки.",
       en: "Turn doubts into numbers, not purchases.",
+      es: "Convierte las dudas en números, no en compras.",
+      fr: "Transforme les doutes en chiffres, pas en achats.",
     },
     pushPendingTitle: {
       ru: "Сомнения просят ответа",
       en: "Doubter check",
+      es: "Chequeo de dudas",
+      fr: "Contrôle des doutes",
     },
     pushPendingBody: {
       ru: "«{{title}}» висит в сомнениях. Реши, куда его направить.",
       en: "“{{title}}” is stuck in limbo. Decide where it belongs.",
+      es: "“{{title}}” sigue en duda. Decide adónde va.",
+      fr: "« {{title}} » plane encore. Décide où l'envoyer.",
     },
     pushImpulseTitle: {
       ru: "Сомневаешься?",
       en: "Feeling unsure?",
+      es: "¿Con dudas?",
+      fr: "Un doute ?",
     },
     pushImpulseBody: {
       ru: "Когда тянет к {{temptation}}, попробуй направить {{amount}} в копилку - уверенность вернётся.",
       en: "When {{temptation}} calls, redirect {{amount}} to savings to regain certainty.",
+      es: "Cuando llame {{temptation}}, dirige {{amount}} al ahorro para recuperar seguridad.",
+      fr: "Quand {{temptation}} appelle, envoie {{amount}} vers l'épargne pour retrouver confiance.",
     },
   },
   [MOOD_IDS.TIRED]: {
-    label: { ru: "Режим отдыха", en: "Recharge mode" },
+    label: { ru: "Режим отдыха", en: "Recharge mode", es: "Modo descanso", fr: "Mode recharge" },
     hero: {
       ru: "Давно не виделись - режим отдыха напоминает о мягком старте.",
       en: "Long time no see-recharge mode suggests a gentle restart.",
+      es: "Tiempo sin verte: el modo descanso propone un reinicio suave.",
+      fr: "Ça faisait longtemps : le mode recharge propose un redémarrage tout doux.",
     },
     heroComplete: {
       ru: "Паузы тоже часть пути. Возвращайся, когда готов.",
       en: "Breaks are part of the path. Return when ready.",
+      es: "Los descansos son parte del camino. Vuelve cuando estés listo.",
+      fr: "Les pauses font partie du chemin. Reviens quand tu es prêt·e.",
     },
     motivation: {
       ru: "Начни с одного отказа сегодня и посмотри, что изменится.",
       en: "Start with one skip today and see the shift.",
+      es: "Empieza con un rechazo hoy y nota el cambio.",
+      fr: "Commence par un refus aujourd'hui et observe le déclic.",
     },
     saveOverlay: {
       ru: "Вот и мягкий рестарт. Так держать.",
       en: "There’s the gentle restart. Nice.",
+      es: "Así se ve un reinicio suave. Bien hecho.",
+      fr: "Voilà un redémarrage tout doux. Bravo.",
     },
     impulseOverlay: {
       ru: "Отдохнувшая версия тебя умеет говорить «потом».",
       en: "Rested-you can say “later” with ease.",
+      es: "En modo descanso es más fácil decir “luego”.",
+      fr: "Reposé·e, tu peux dire \"plus tard\" sans effort.",
     },
     pushPendingTitle: {
       ru: "Вернись к «{{title}}»",
       en: "Come back to “{{title}}”",
+      es: "Vuelve a «{{title}}»",
+      fr: "Reviens à « {{title}} »",
     },
     pushPendingBody: {
       ru: "Режим отдыха не вечный. Реши, что делать с «{{title}}».",
       en: "Recharge mode isn’t forever. Decide what to do with “{{title}}”.",
+      es: "El modo descanso no es eterno. Decide qué hacer con «{{title}}».",
+      fr: "Le mode recharge n'est pas éternel. Décide quoi faire de « {{title}} ».",
     },
     pushImpulseTitle: {
       ru: "Мягкий сигнал",
       en: "Gentle alert",
+      es: "Alerta suave",
+      fr: "Alerte douce",
     },
     pushImpulseBody: {
       ru: "Паузы были длинными, но даже сейчас можно сберечь {{amount}} от {{temptation}}.",
       en: "Breaks ran long, yet this minute can still save {{amount}} from {{temptation}}.",
+      es: "El descanso fue largo, pero aún puedes salvar {{amount}} de {{temptation}}.",
+      fr: "La pause a duré, mais tu peux encore sauver {{amount}} de {{temptation}}.",
     },
   },
   [MOOD_IDS.DREAMER]: {
-    label: { ru: "Мечтательный режим", en: "Dreamer mode" },
+    label: { ru: "Мечтательный режим", en: "Dreamer mode", es: "Modo soñador", fr: "Mode rêveur" },
     hero: {
       ru: "Мечтательный режим активен - в «думаем» уже целая галерея.",
       en: "Dreamer mode is on-your Thinking shelf is a gallery.",
+      es: "Modo soñador activo: tu estante En pausa parece una galería.",
+      fr: "Le mode rêveur est activé : ton onglet En pause ressemble à une galerie.",
     },
     heroComplete: {
       ru: "Даже мечтатели доводят планы до конца.",
       en: "Even dreamers finish their plans.",
+      es: "Incluso los soñadores concluyen sus planes.",
+      fr: "Même les rêveurs bouclent leurs plans.",
     },
     motivation: {
       ru: "Выбери одну мечту и нажми «копить» сегодня.",
       en: "Pick one dream and tap “save it” today.",
+      es: "Elige un sueño y pulsa “ahórralo” hoy.",
+      fr: "Choisis un rêve et appuie sur « j'économise » aujourd'hui.",
     },
     saveOverlay: {
       ru: "Мечта зафиксирована реальным действием.",
       en: "Dream locked in with a real action.",
+      es: "Sueño asegurado con una acción real.",
+      fr: "Rêve sécurisé par une vraie action.",
     },
     impulseOverlay: {
       ru: "Пусть мечты копятся в цифрах, а не расходах.",
       en: "Let dreams live in numbers, not expenses.",
+      es: "Que los sueños vivan en cifras y no en gastos.",
+      fr: "Que les rêves vivent en chiffres, pas en dépenses.",
     },
     pushPendingTitle: {
       ru: "Мечты ждут старта",
       en: "Dreams are waiting",
+      es: "Los sueños esperan",
+      fr: "Les rêves attendent",
     },
     pushPendingBody: {
       ru: "В «думаем» уже очередь. Реши, что делать с «{{title}}».",
       en: "Thinking is crowded. Decide what to do with “{{title}}”.",
+      es: "Hay fila en En pausa. Decide qué hacer con «{{title}}».",
+      fr: "L'onglet En pause est plein. Décide quoi faire de « {{title}} ».",
     },
     pushImpulseTitle: {
       ru: "Мечтательный сигнал",
       en: "Dreamer alert",
+      es: "Alerta soñadora",
+      fr: "Alerte rêveuse",
     },
     pushImpulseBody: {
       ru: "Лучше добавить {{amount}} в мечту, чем снова брать {{temptation}}.",
       en: "Add {{amount}} to the dream instead of grabbing {{temptation}} again.",
+      es: "Mejor suma {{amount}} al sueño antes que volver a tomar {{temptation}}.",
+      fr: "Ajoute {{amount}} au rêve plutôt que de reprendre {{temptation}}.",
     },
   },
 };
@@ -1583,7 +1795,7 @@ const TAMAGOTCHI_FOOD_OPTIONS = [
     emoji: "🍓",
     hungerBoost: Math.round(TAMAGOTCHI_FEED_AMOUNT * 0.55),
     cost: Math.max(1, Math.round(TAMAGOTCHI_FEED_COST)),
-    label: { ru: "Ягодки", en: "Berries" },
+    label: { ru: "Ягодки", en: "Berries", es: "Frutos rojos", fr: "Baies" },
   },
   {
     id: "fish",
@@ -1591,7 +1803,7 @@ const TAMAGOTCHI_FOOD_OPTIONS = [
     emoji: "🐟",
     hungerBoost: TAMAGOTCHI_FEED_AMOUNT,
     cost: Math.max(2, Math.round(TAMAGOTCHI_FEED_COST * 2)),
-    label: { ru: "Рыбка", en: "Fish" },
+    label: { ru: "Рыбка", en: "Fish", es: "Pescado", fr: "Poisson" },
   },
   {
     id: "sushi",
@@ -1599,7 +1811,7 @@ const TAMAGOTCHI_FOOD_OPTIONS = [
     emoji: "🍣",
     hungerBoost: TAMAGOTCHI_FEED_AMOUNT + 12,
     cost: Math.max(4, Math.round(TAMAGOTCHI_FEED_COST * 4)),
-    label: { ru: "Суши", en: "Sushi" },
+    label: { ru: "Суши", en: "Sushi", es: "Sushi", fr: "Sushi" },
   },
   {
     id: "cake",
@@ -1607,7 +1819,7 @@ const TAMAGOTCHI_FOOD_OPTIONS = [
     emoji: "🍰",
     hungerBoost: TAMAGOTCHI_FEED_AMOUNT + 18,
     cost: Math.max(5, Math.round(TAMAGOTCHI_FEED_COST * 5)),
-    label: { ru: "Десерт", en: "Dessert" },
+    label: { ru: "Десерт", en: "Dessert", es: "Postre", fr: "Dessert" },
   },
 ];
 const TAMAGOTCHI_FOOD_MAP = TAMAGOTCHI_FOOD_OPTIONS.reduce((acc, option) => {
@@ -1656,11 +1868,11 @@ const TAMAGOTCHI_START_STATE = {
 };
 const TAMAGOTCHI_NOTIFICATION_COPY = {
   ru: {
-    low: "Алми из Almost проголодался — загляни и покорми его.",
+    low: "Алми из Almost проголодался - загляни и покорми его.",
     starving: "Алми совсем ослаб. Открой Almost и накорми его скорее.",
   },
   en: {
-    low: "Almi from Almost is hungry — drop in and feed him.",
+    low: "Almi from Almost is hungry - drop in and feed him.",
     starving: "Almi is starving. Open Almost and give him a snack.",
   },
 };
@@ -1715,7 +1927,7 @@ const computeTamagotchiDecay = (state = TAMAGOTCHI_START_STATE, timestamp = Date
   };
 };
 
-const getTamagotchiMood = (hunger = 0, language = "ru") => {
+const getTamagotchiMood = (hunger = 0, language = DEFAULT_LANGUAGE) => {
   const texts = {
     ru: {
       happy: "Алми сытый и довольный",
@@ -1728,6 +1940,18 @@ const getTamagotchiMood = (hunger = 0, language = "ru") => {
       calm: "Almi is getting hungry",
       sad: "Almi is sad, needs a coin",
       urgent: "Almi is very hungry!",
+    },
+    es: {
+      happy: "Almi está lleno y feliz",
+      calm: "Almi empieza a tener hambre",
+      sad: "Almi está triste, quiere una moneda",
+      urgent: "¡Almi tiene mucha hambre!",
+    },
+    fr: {
+      happy: "Almi est rassasié et heureux",
+      calm: "Almi commence à avoir faim",
+      sad: "Almi est triste, il veut une pièce",
+      urgent: "Almi a très faim !",
     },
   };
   const dict = texts[language] || texts.ru;
@@ -1806,10 +2030,24 @@ const MAX_IMPULSE_EVENTS = 180;
 const MIN_IMPULSE_EVENTS_FOR_MAP = 4;
 const IMPULSE_ALERT_COOLDOWN_MS = 1000 * 60 * 45;
 const IMPULSE_CATEGORY_DEFS = {
-  food: { id: "food", ru: "Еда", en: "Food", emoji: "🍜" },
-  things: { id: "things", ru: "Вещи", en: "Things", emoji: "🎁" },
-  fun: { id: "fun", ru: "Развлечения", en: "Entertainment", emoji: "🎉" },
-  vices: { id: "vices", ru: "Вредные мелочи", en: "Small vices", emoji: "⚡️" },
+  food: { id: "food", ru: "Еда", en: "Food", es: "Comida", fr: "Nourriture", emoji: "🍜" },
+  things: { id: "things", ru: "Вещи", en: "Things", es: "Cosas", fr: "Objets", emoji: "🎁" },
+  fun: {
+    id: "fun",
+    ru: "Развлечения",
+    en: "Entertainment",
+    es: "Diversión",
+    fr: "Divertissement",
+    emoji: "🎉",
+  },
+  vices: {
+    id: "vices",
+    ru: "Вредные мелочи",
+    en: "Small vices",
+    es: "Pequeños vicios",
+    fr: "Petits vices",
+    emoji: "⚡️",
+  },
 };
 const IMPULSE_CATEGORY_ORDER = ["food", "things", "fun", "vices"];
 const DEFAULT_IMPULSE_CATEGORY = "vices";
@@ -2071,7 +2309,7 @@ const SwipeableChallengeCard = ({
     setManualVisible(true);
     setManualError("");
     setManualValue("");
-  }, []);
+  }, [setNotificationPermissionGranted]);
   const closeManual = useCallback(() => {
     setManualVisible(false);
     setManualError("");
@@ -2136,7 +2374,7 @@ const SwipeableChallengeCard = ({
   );
 };
 
-const getMoodPreset = (moodId = MOOD_IDS.NEUTRAL, language = "ru") => {
+const getMoodPreset = (moodId = MOOD_IDS.NEUTRAL, language = DEFAULT_LANGUAGE) => {
   const preset = MOOD_PRESETS[moodId] || MOOD_PRESETS[MOOD_IDS.NEUTRAL];
   const localize = (value) => {
     if (!value) return "";
@@ -2240,19 +2478,26 @@ const mapHistoryEventsToMoodEvents = (history = [], now = Date.now()) =>
 const WEEKDAY_LABELS = {
   ru: ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"],
   en: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+  es: ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"],
+  fr: ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"],
 };
 const WEEKDAY_LABELS_MONDAY_FIRST = {
   ru: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
   en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+  es: ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
+  fr: ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"],
 };
+const PENDING_DAY_SUFFIX = { ru: "д", en: "d", es: "d", fr: "j" };
 
 const buildSavingsBreakdown = (
   history = [],
   currency = DEFAULT_PROFILE.currency,
   resolveTemplateTitle,
-  language = "ru"
+  language = DEFAULT_LANGUAGE
 ) => {
   const now = Date.now();
+  const defaultDeclineTitle = resolveTranslationValueForLanguage(language, "defaultDeclineLabel") || "Skip";
+  const otherLabel = resolveTranslationValueForLanguage(language, "savingsBreakdownOtherLabel") || "Other";
   const dayLabels = WEEKDAY_LABELS[language] || WEEKDAY_LABELS.en;
   const palette = ["#3E8EED", "#F6A23D", "#8F7CF6", "#2EB873", "#E15555", "#FFC857"];
   const totalsByTitle = {};
@@ -2276,11 +2521,11 @@ const buildSavingsBreakdown = (
           entry.meta?.templateId ||
           entry.emoji ||
           entry.id ||
-          (language === "ru" ? "Отказ" : "Skip"))
+          defaultDeclineTitle)
           .toString()
           .slice(0, 42);
       const stripped = stripEmojis(baseTitle);
-      const title = (stripped || baseTitle || (language === "ru" ? "Отказ" : "Skip")).trim();
+      const title = (stripped || baseTitle || defaultDeclineTitle).trim();
       const amount = Math.max(0, Number(entry.meta?.amountUSD) || 0);
       stacks[title] = (stacks[title] || 0) + amount;
       totalsByTitle[title] = (totalsByTitle[title] || 0) + amount;
@@ -2307,7 +2552,7 @@ const buildSavingsBreakdown = (
       return acc + value;
     }, 0);
     if (otherSum > 0) {
-      stacksArray.push({ title: "Другие", value: otherSum, color: otherColor });
+      stacksArray.push({ title: otherLabel, value: otherSum, color: otherColor });
     }
     return { label: day.label, total: day.total, stacks: stacksArray };
   });
@@ -2323,7 +2568,7 @@ const buildSavingsBreakdown = (
   if (otherTotal > 0) {
     legend.push({
       id: "other",
-      label: "Другие",
+      label: otherLabel,
       value: otherTotal,
       percent: Math.max(1, Math.round((otherTotal / grandTotal) * 100)),
       color: otherColor,
@@ -2397,7 +2642,7 @@ const deriveMoodFromState = (state = createMoodStateForToday(), pendingCount = 0
 const getImpulseCategoryLabel = (id, language = "en") => {
   const entry = IMPULSE_CATEGORY_DEFS[id];
   if (!entry) return id;
-  const localeKey = language === "ru" ? "ru" : "en";
+  const localeKey = getShortLanguageKey(language);
   return `${entry.emoji} ${entry[localeKey]}`;
 };
 
@@ -2569,6 +2814,31 @@ const snapCurrencyValue = (value = 0, currency = activeCurrency) => {
   return roundCurrencyValue(snapped, currency);
 };
 
+const getFriendlyDisplayStep = (amount = 0) => {
+  const value = Math.abs(amount);
+  if (value === 0) return 1;
+  if (value < 1) return 0.1;
+  if (value < 5) return 0.25;
+  if (value < 20) return 1;
+  if (value < 50) return 2;
+  if (value < 100) return 5;
+  if (value < 250) return 10;
+  if (value < 1000) return 25;
+  if (value < 5000) return 50;
+  if (value < 20000) return 100;
+  if (value < 100000) return 250;
+  return 500;
+};
+
+const applyFriendlyDisplayRounding = (value = 0, currency = activeCurrency) => {
+  if (!Number.isFinite(value) || value === 0) return value || 0;
+  const baseStep = getFriendlyDisplayStep(value);
+  const fineStep = getCurrencyFineStep(currency) || 0;
+  const step = Math.max(baseStep, fineStep || 0);
+  if (!Number.isFinite(step) || step === 0) return value;
+  return Math.round(value / step) * step;
+};
+
 const formatSampleAmount = (valueUSD, currencyCode) =>
   formatCurrency(convertToCurrency(valueUSD, currencyCode), currencyCode);
 
@@ -2585,10 +2855,10 @@ const parseNumberInputValue = (value = "") => {
   return Number.isFinite(parsed) ? parsed : NaN;
 };
 
-const formatLatestSavingTimestamp = (timestamp, language = "ru") => {
+const formatLatestSavingTimestamp = (timestamp, language = DEFAULT_LANGUAGE) => {
   if (!timestamp) return null;
   try {
-    const locale = language === "ru" ? "ru-RU" : "en-US";
+    const locale = getFormatLocale(language);
     const date = new Date(timestamp);
     const dateLabel = date.toLocaleDateString(locale, { day: "numeric", month: "short" });
     const timeLabel = date.toLocaleTimeString(locale, {
@@ -2666,9 +2936,16 @@ const buildCustomTemptationDescription = (gender = "none") => {
     ru = "Это искушение ты добавила сама. Отслеживай его и побеждай чаще.";
   }
   const en = "You added this temptation yourself. Track it and beat it more often.";
+  const esBase = "Añadiste esta tentación tú misma. Regístrala y supérala más seguido.";
+  const es = isMale
+    ? "Añadiste esta tentación tú mismo. Regístrala y supérala más seguido."
+    : esBase;
+  const fr = "Tu as ajouté cette tentation toi-même. Suis-la et bats-la plus souvent.";
   return {
     ru,
     en,
+    es,
+    fr,
   };
 };
 
@@ -2696,6 +2973,8 @@ const createCustomHabitTemptation = (customSpend, fallbackCurrency, gender = "no
     title: {
       ru: title,
       en: title,
+      es: title,
+      fr: title,
     },
     description,
     impulseCategoryOverride: impulseCategory,
@@ -2766,7 +3045,7 @@ const buildPersonalizedTemptations = (profile, baseList = DEFAULT_TEMPTATIONS) =
 
   // 1) Кастомная карта пользователя всегда первая, если есть.
   pushIfVisible(customFirst);
-  // 2) Карта персоны — сразу после кастомной или первой, если кастомной нет.
+  // 2) Карта персоны - сразу после кастомной или первой, если кастомной нет.
   pushIfVisible(personaCard);
 
   // Остальные, отсортированные по цене.
@@ -2827,6 +3106,19 @@ const TRANSLATIONS = {
       "Помоги нам стать лучше: отправь отзыв на {{email}} и разблокируй все образы.",
     tamagotchiSkinUnlockButton: "Написать отзыв и открыть скины",
     tamagotchiSkinLockedBadge: "Закрыто",
+    tamagotchiName: "Алми",
+    tamagotchiFullnessLabel: "Сытость",
+    tamagotchiCoinsLabel: "Монетки",
+    tamagotchiFedAtLabel: "Покормлен",
+    tamagotchiAwaitingFirstCoin: "Алми ждёт первую монетку",
+    tamagotchiFullMessage: "Алми сыта на 100%. Вернись позже, когда появится голод.",
+    tamagotchiEarnCoinsHint: "Пополняй монетки через отказы, уровни и награды.",
+    tamagotchiNeedCoinsMessage: "Нужно минимум {{cost}} монет на {{emoji}}.",
+    tamagotchiPartyNeedCoinsMessage: "Нужно {{amount}} синих монет на вечеринку.",
+    tamagotchiPartyButtonLabel: "Вечеринка ×{{cost}}",
+    tamagotchiFullHint: "Алми сыт, покорми позже.",
+    tamagotchiSkinFeedbackSubject: "Отзыв для Almost",
+    tamagotchiSkinFeedbackBody: "Привет, Almost! Делюсь своими впечатлениями об приложении:\\n\\n",
     heroAwaiting: "В листе желаний",
     heroSpendLine: {
       female: "Последняя экономия: «{{title}}».",
@@ -2844,6 +3136,8 @@ const TRANSLATIONS = {
     heroCollapse: "Скрыть детали",
     heroDailyTitle: "Неделя экономии/трат",
     heroDailyEmpty: "Пока пусто, попробуй отказать себе хотя бы раз.",
+    defaultDeclineLabel: "Отказ",
+    defaultWishTitle: "Привычка",
     heroWeeklySavingsDelta: "Сбережения",
     heroWeeklySpendingDelta: "Траты",
     feedEmptyTitle: "Фильтр пуст",
@@ -2918,6 +3212,10 @@ const TRANSLATIONS = {
       "Ты в зоне импульсивных трат на {{temptation}} ({{window}}). Откажись и отправь {{amount}} в копилку!",
     impulseNotificationTitle: "Almost заметил импульс: «{{temptation}}»",
     impulseNotificationBody: "В это время ты обычно тратишься. Сделай паузу и отправь {{amount}} в Almost.",
+    impulseAlertBadgeLabel: "умное уведомление",
+    impulseAlertWindowLabel: "Пик импульса",
+    impulseAlertAmountLabel: "Сумма риска",
+    impulseAlertButtonLabel: "Держать курс",
     impulseCategoryLabel: "Категория импульса",
     focusDigestPositiveTitle: "Держишь курс!",
     focusDigestPositiveBody:
@@ -2938,7 +3236,7 @@ const TRANSLATIONS = {
     focusRewardSubtitle: "Ты трижды отказалась от «{{title}}». +{{amount}} зелёных монет.",
     dailyReflectionReminderTitle: "Вечерний чек-ин Almost",
     dailyReflectionReminderBody:
-      "До полуночи {{time}}. Запиши трату или экономию — так умные подсказки останутся точными.",
+      "До полуночи {{time}}. Запиши трату или экономию - так умные подсказки останутся точными.",
     pendingTab: "Думаем",
     pendingTitle: "Думаем",
     pendingEmptyTitle: "В «думаем» пусто",
@@ -2952,7 +3250,7 @@ const TRANSLATIONS = {
     pendingNotificationBody: {
       female: "Две недели прошли. Начнём копить на «{{title}}» или отпустим его?",
       male: "Две недели прошли. Начнём копить на «{{title}}» или отпустим его?",
-      none: "Две недели прошли. Что делаем с «{{title}}» — копим или отпускаем?",
+      none: "Две недели прошли. Что делаем с «{{title}}» - копим или отпускаем?",
     },
     pendingAdded: "Добавлено в «думаем». Напомним вовремя.",
     pendingDeleteConfirm: "Убрать эту хотелку из «думаем»?",
@@ -2981,6 +3279,8 @@ const TRANSLATIONS = {
     languageLabel: "Язык",
     languageRussian: "Русский",
     languageEnglish: "English",
+    languageSpanish: "Испанский",
+    languageFrench: "Французский",
     partialInfo: "Частичная оплата недоступна для нескольких товаров",
     partialLabel: "Введи сумму (до {{amount}})",
     partialError: "Нужна сумма от 1 и не больше полной стоимости",
@@ -3012,6 +3312,7 @@ const TRANSLATIONS = {
     saveCelebrateSubtitle: "Алми радуется, счёт пополнен!",
     saveGoalRemaining: "Примерно {{count}} таких решений до цели «{{goal}}».",
     saveGoalComplete: "Цель «{{goal}}» достигнута! Можно праздновать.",
+    saveOverlayCoinReward: "+{{amount}} монет в копилку Алми",
     statsSpent: "Закрыто целей",
     statsSaved: "Спасено",
     statsItems: "Целей",
@@ -3019,6 +3320,8 @@ const TRANSLATIONS = {
     statsDeclines: "Экономий",
     statsSpends: "Трат",
     statsFreeDays: "Серия",
+    savingsBreakdownTitle: "Разбивка экономии",
+    savingsBreakdownOtherLabel: "Другие",
     analyticsTitle: "Прогресс",
     analyticsPendingToBuy: "Цели",
     analyticsPendingToDecline: "Отказы",
@@ -3037,7 +3340,7 @@ const TRANSLATIONS = {
     supportLink: "Поддержка",
     supportHint: "almostappsup@gmail.com",
     ratingPromptTitle: "Оцени Almost в сторе",
-    ratingPromptBody: "Если Almost помогает держать импульсы под контролем, поставь оценку — это очень поддержит команду.",
+    ratingPromptBody: "Если Almost помогает держать импульсы под контролем, поставь оценку - это очень поддержит команду.",
     ratingPromptLater: "Позже",
     ratingPromptAction: "Оценить",
     levelShareButton: "Поделиться уровнем",
@@ -3171,7 +3474,7 @@ const TRANSLATIONS = {
     dailyChallengeWidgetReward: "+{{amount}}",
     dailyChallengeRewardReason: "Мини-челлендж «{{temptation}}» выполнен",
     dailyChallengeRewardNotificationTitle: "Almost: мини-челлендж закрыт",
-    dailyChallengeRewardNotificationBody: "«{{temptation}}» сдалось — забери бонус +{{amount}}.",
+    dailyChallengeRewardNotificationBody: "«{{temptation}}» сдалось - забери бонус +{{amount}}.",
     dailyChallengeFailedText: "Сегодня «{{temptation}}» оказалось сильнее",
     healthCelebrateTitle: "+{{amount}}",
     healthCelebrateSubtitle: "Сохраняй серию бесплатных дней.",
@@ -3199,8 +3502,8 @@ const TRANSLATIONS = {
     languageSubtitle: "Чтобы подсказки звучали естественно",
     languageCurrencyHint: "Язык и валюту можно поменять позже в профиле.",
     currencySwipeHint: "Свайпни, чтобы увидеть все валюты →",
-    languageTermsHint: "Нажимая «Дальше», ты принимаешь пользовательское соглашение Almost.",
-    languageTermsAccepted: "Соглашение уже принято — можешь двигаться дальше.",
+    languageTermsHint: "Нажимая «Дальше», вы принимаете пользовательское соглашение Almost.",
+    languageTermsAccepted: "Прими пользовательское соглашение, чтобы двигаться дальше.",
     languageTermsLink: "Прочитать пользовательское соглашение",
     inputFirstName: "Имя",
     inputLastName: "Фамилия",
@@ -3235,6 +3538,7 @@ const TRANSLATIONS = {
     goalAssignTemptationSubtitle: "Что будет пополнять «{{goal}}»?",
     goalAssignClear: "Сбросить назначение",
     goalAssignFieldLabel: "Куда копим",
+    goalMainTemptationError: "Главное искушение нельзя сделать целью.",
     goalDestinationLabel: "Куда копим",
     goalStatusInWishlist: "в цели",
     goalSwipeAdd: "в цели",
@@ -3307,7 +3611,7 @@ const TRANSLATIONS = {
     smartReminderBody: [
       "Недавно Almost записал «{{temptation}}». Повтори паузу и направь деньги в цель.",
       "Almost заметил привычку: вдохни перед «{{temptation}}» и выбери копилку.",
-      "Держим серию отказов — «{{temptation}}» подождёт ещё чуть-чуть.",
+      "Держим серию отказов - «{{temptation}}» подождёт ещё чуть-чуть.",
       "Алми шепчет: чем чаще выбираешь копилку вместо «{{temptation}}», тем умнее подсказки.",
     ],
     smartInsightDeclineTitle: {
@@ -3315,7 +3619,7 @@ const TRANSLATIONS = {
       male: "Almost запомнил вчерашний отказ от «{{temptation}}»",
       none: "Almost запомнил отказ от «{{temptation}}» вчера",
     },
-    smartInsightDeclineBody: "Повтори победу сегодня — Almost запишет новую серию.",
+    smartInsightDeclineBody: "Повтори победу сегодня - Almost запишет новую серию.",
     smartInsightSpendTitle: {
       female: "Almost заметил вчерашний срыв на «{{temptation}}»",
       male: "Almost заметил вчерашний срыв на «{{temptation}}»",
@@ -3325,7 +3629,7 @@ const TRANSLATIONS = {
     dailyNudgeMorningTitle: ["Утренний пинг Almost", "Алми проверяет фокус"],
     dailyNudgeMorningBody: [
       "Начни день осознанно: вспомни, ради какой цели ты копишь.",
-      "Алми следит за импульсами — сделай паузу перед первой покупкой.",
+      "Алми следит за импульсами - сделай паузу перед первой покупкой.",
     ],
     dailyNudgeDayTitle: ["Дневной чек Almost", "Алми держит фокус"],
     dailyNudgeDayBody: [
@@ -3340,8 +3644,16 @@ const TRANSLATIONS = {
     dailyNudgeEveningTitle: ["Вечерний щит Almost", "Алми бережёт твой вечер"],
     dailyNudgeEveningBody: [
       "Вечером особенно тянет тратить. Запиши победу, даже если она маленькая.",
-      "Закрой день записью в Almost — так подсказки останутся умными.",
+      "Закрой день записью в Almost - так подсказки останутся умными.",
     ],
+    dailySummaryBadgeLabel: "вечерний отчёт",
+    dailySummaryTitle: "Итоги дня",
+    dailySummarySubtitle: "Так держать, продолжай в том же духе!",
+    dailySummarySavedLabel: "Сэкономлено сегодня",
+    dailySummarySavedSub: "Каждый отказ приближает к цели",
+    dailySummarySpendsLabel: "Траты",
+    dailySummaryContinue: "Продолжить",
+    dailySummaryHint: "Загляну завтра с новыми цифрами.",
     baselineTitle: "Сколько уходит на мелкие импульсы?",
     baselineSubtitle: "Прикинь месячную сумму - Almost сравнит её с реальными победами.",
     baselinePlaceholder: "Например {{amount}}",
@@ -3451,6 +3763,19 @@ const TRANSLATIONS = {
       "Help us get better: send feedback to {{email}} and unlock every skin.",
     tamagotchiSkinUnlockButton: "Send feedback & unlock skins",
     tamagotchiSkinLockedBadge: "Locked",
+    tamagotchiName: "Almi",
+    tamagotchiFullnessLabel: "Fullness",
+    tamagotchiCoinsLabel: "Coins",
+    tamagotchiFedAtLabel: "Fed at",
+    tamagotchiAwaitingFirstCoin: "Almi awaits the first coin",
+    tamagotchiFullMessage: "Almi is already full. Come back later when she gets hungry.",
+    tamagotchiEarnCoinsHint: "Earn coins via saves, levels, and rewards.",
+    tamagotchiNeedCoinsMessage: "You need at least {{cost}} coins for {{emoji}}.",
+    tamagotchiPartyNeedCoinsMessage: "You need {{amount}} blue coins to start a party.",
+    tamagotchiPartyButtonLabel: "Party ×{{cost}}",
+    tamagotchiFullHint: "He is full, try again later.",
+    tamagotchiSkinFeedbackSubject: "Feedback for Almost",
+    tamagotchiSkinFeedbackBody: "Hi Almost team! Sharing my thoughts about the app:\\n\\n",
     heroAwaiting: "On the wish list",
     heroSpendLine: {
       female: "Latest save: “{{title}}”.",
@@ -3464,6 +3789,8 @@ const TRANSLATIONS = {
     heroCollapse: "Hide details",
     heroDailyTitle: "Weekly savings/spend",
     heroDailyEmpty: "No skips yet. Try saving once this week.",
+    defaultDeclineLabel: "Skip",
+    defaultWishTitle: "Wish",
     heroWeeklySavingsDelta: "Saved",
     heroWeeklySpendingDelta: "Spent",
     feedEmptyTitle: "Nothing here",
@@ -3535,6 +3862,10 @@ const TRANSLATIONS = {
       "You’re entering a high-impulse zone for {{temptation}} ({{window}}). Skip it and stash {{amount}}!",
     impulseNotificationTitle: "Almost spotted an impulse: “{{temptation}}”",
     impulseNotificationBody: "You usually cave now. Take an Almost pause and stash {{amount}}.",
+    impulseAlertBadgeLabel: "smart insight",
+    impulseAlertWindowLabel: "Hot zone",
+    impulseAlertAmountLabel: "At stake",
+    impulseAlertButtonLabel: "Stay focused",
     impulseCategoryLabel: "Impulse category",
     focusDigestPositiveTitle: "Trend is on track",
     focusDigestPositiveBody:
@@ -3570,7 +3901,7 @@ const TRANSLATIONS = {
     pendingAdded: "Sent to Thinking. We’ll remind you in 2 weeks.",
     pendingDeleteConfirm: "Remove this item from Thinking?",
     pendingCustomError: "Add a name and price for this temptation.",
-    feedTab: "Feed",
+    feedTab: "Inicio",
     profileTab: "Profile",
     payButton: "Pay",
     cartOverlay: "Savings updated",
@@ -3594,6 +3925,8 @@ const TRANSLATIONS = {
     languageLabel: "Language",
     languageRussian: "Русский",
     languageEnglish: "English",
+    languageSpanish: "Spanish",
+    languageFrench: "French",
     partialInfo: "Partial payment isn’t available for bundles",
     partialLabel: "Enter amount (up to {{amount}})",
     partialError: "Enter a value between 1 and the total cost",
@@ -3625,6 +3958,7 @@ const TRANSLATIONS = {
     saveCelebrateSubtitle: "Almi purrs: savings up!",
     saveGoalRemaining: "Roughly {{count}} more skips to reach “{{goal}}”.",
     saveGoalComplete: "Goal “{{goal}}” reached! Celebrate the win.",
+    saveOverlayCoinReward: "+{{amount}} coins for Almi",
     freeDayButton: "Free day",
     freeDayLocked: "After 6 pm",
     freeDayBlocked: "Unavailable",
@@ -3643,6 +3977,8 @@ const TRANSLATIONS = {
     statsDeclines: "Saves",
     statsSpends: "Spends",
     statsFreeDays: "Streak",
+    savingsBreakdownTitle: "Savings breakdown",
+    savingsBreakdownOtherLabel: "Other",
     analyticsTitle: "Progress",
     analyticsPendingToBuy: "Wishes",
     analyticsPendingToDecline: "Savings",
@@ -3661,7 +3997,7 @@ const TRANSLATIONS = {
     supportLink: "Contact support",
     supportHint: "almostappsup@gmail.com",
     ratingPromptTitle: "Enjoying Almost?",
-    ratingPromptBody: "If it helps tame impulse buys, leave a quick store review — it keeps the team motivated.",
+    ratingPromptBody: "If it helps tame impulse buys, leave a quick store review - it keeps the team motivated.",
     ratingPromptLater: "Maybe later",
     ratingPromptAction: "Rate Almost",
     levelShareButton: "Share level",
@@ -3779,7 +4115,7 @@ const TRANSLATIONS = {
     dailyChallengeWidgetReward: "+{{amount}}",
     dailyChallengeRewardReason: "Mini challenge “{{temptation}}” complete",
     dailyChallengeRewardNotificationTitle: "Almost daily challenge complete",
-    dailyChallengeRewardNotificationBody: "“{{temptation}}” gave in — grab your +{{amount}} bonus.",
+    dailyChallengeRewardNotificationBody: "“{{temptation}}” gave in - grab your +{{amount}} bonus.",
     dailyChallengeFailedText: "“{{temptation}}” won today",
     healthCelebrateTitle: "+{{amount}}",
     healthCelebrateSubtitle: "Use it to rescue your free-day streak.",
@@ -3808,7 +4144,7 @@ const TRANSLATIONS = {
     languageCurrencyHint: "You can adjust language and currency later in Profile.",
     currencySwipeHint: "Swipe to view all currencies →",
     languageTermsHint: "By continuing you accept Almost’s Terms of Use.",
-    languageTermsAccepted: "Terms accepted — you can move ahead.",
+    languageTermsAccepted: "Accept the Terms of Use to keep going.",
     languageTermsLink: "Read the full Terms of Use",
     inputFirstName: "First name",
     inputLastName: "Last name",
@@ -3843,6 +4179,7 @@ const TRANSLATIONS = {
     goalAssignTemptationSubtitle: "Which habit fills “{{goal}}”?",
     goalAssignClear: "Clear assignment",
     goalAssignFieldLabel: "Sends savings to",
+    goalMainTemptationError: "The main temptation can’t be turned into a goal.",
     goalDestinationLabel: "Saving for",
     goalStatusInWishlist: "Add to goal",
     goalSwipeAdd: "Add to goal",
@@ -3907,7 +4244,7 @@ const TRANSLATIONS = {
     ],
     smartReminderBody: [
       "You logged “{{temptation}}” recently. Repeat the pause and send the cash to your goal.",
-      "Almost flagged this routine — take a breath before “{{temptation}}” and choose savings.",
+      "Almost flagged this routine - take a breath before “{{temptation}}” and choose savings.",
       "Keep the streak alive. “{{temptation}}” can wait a little longer.",
       "Smart tip: every time you skip “{{temptation}}”, Almost keeps your insights sharp.",
     ],
@@ -3918,7 +4255,7 @@ const TRANSLATIONS = {
     dailyNudgeMorningTitle: ["Morning nudge from Almost", "Focus check from Almi"],
     dailyNudgeMorningBody: [
       "Set the tone: skip the first impulse and remember your goal.",
-      "Almi is checking in — pause before the first swipe today.",
+      "Almi is checking in - pause before the first swipe today.",
     ],
     dailyNudgeDayTitle: ["Midday Almost check-in", "Focus boost from Almi"],
     dailyNudgeDayBody: [
@@ -3933,8 +4270,16 @@ const TRANSLATIONS = {
     dailyNudgeEveningTitle: ["Evening shield from Almost", "Almi wraps up your day"],
     dailyNudgeEveningBody: [
       "Evenings tempt the most. Log a win before bed.",
-      "Close the day inside Almost — even a tiny save keeps nudges smart.",
+      "Close the day inside Almost - even a tiny save keeps nudges smart.",
     ],
+    dailySummaryBadgeLabel: "daily recap",
+    dailySummaryTitle: "Today’s recap",
+    dailySummarySubtitle: "Great momentum - keep it up!",
+    dailySummarySavedLabel: "Saved today",
+    dailySummarySavedSub: "Every skip nudges the goal closer",
+    dailySummarySpendsLabel: "Spends",
+    dailySummaryContinue: "Continue",
+    dailySummaryHint: "See you tomorrow with fresh numbers.",
     baselineTitle: "How much slips on small stuff?",
     baselineSubtitle: "Estimate one month of coffees, snacks and impulse buys to compare with real wins.",
     baselinePlaceholder: "E.g. {{amount}}",
@@ -4029,12 +4374,1312 @@ const TRANSLATIONS = {
     tabHintProfileTitle: "Profile",
     tabHintProfileBody: "Tune theme, language, reminders, and personal targets.",
     tabHintGotIt: "Got it",
+  },  fr: {
+    appTagline: "Un tableau hors ligne des tentations qui protège tes économies",
+    tamagotchiHungryBubble: "🐟",
+    tamagotchiFoodMenuTitle: "Menu d'Almi",
+    tamagotchiFoodBoostLabel: "+{{percent}} % de satiété",
+    tamagotchiFoodWantLabel: "Je veux",
+    tamagotchiSkinTitle: "Apparences d'Almi",
+    tamagotchiSkinSubtitle: "Un nouveau style pour Almi ravive ta motivation d'épargner",
+    tamagotchiSkinCurrent: "Actif",
+    tamagotchiSkinUnlockTitle: "Almost vient d'arriver 🚀",
+    tamagotchiSkinUnlockDescription:
+      "Aide-nous à progresser : envoie ton avis à {{email}} et débloque tous les skins.",
+    tamagotchiSkinUnlockButton: "Envoyer un avis et débloquer les skins",
+    tamagotchiSkinLockedBadge: "Verrouillé",
+    tamagotchiName: "Almi",
+    tamagotchiFullnessLabel: "Satiété",
+    tamagotchiCoinsLabel: "Pièces",
+    tamagotchiFedAtLabel: "Nourri à",
+    tamagotchiAwaitingFirstCoin: "Almi attend sa première pièce",
+    tamagotchiFullMessage: "Almi est repue pour l'instant. Reviens quand elle aura faim.",
+    tamagotchiEarnCoinsHint: "Gagne des pièces via tes refus, niveaux et récompenses.",
+    tamagotchiNeedCoinsMessage: "Il faut au moins {{cost}} pièces pour {{emoji}}.",
+    tamagotchiPartyNeedCoinsMessage: "Il faut {{amount}} pièces bleues pour lancer la fête.",
+    tamagotchiPartyButtonLabel: "Fête ×{{cost}}",
+    tamagotchiFullHint: "Elle est rassasiée, réessaie plus tard.",
+    tamagotchiSkinFeedbackSubject: "Avis pour Almost",
+    tamagotchiSkinFeedbackBody: "Salut l'équipe Almost ! Je partage mes impressions sur l'app :\n\n",
+    heroAwaiting: "Dans la liste de souhaits",
+    heroSpendLine: {
+      female: "Dernière économie : « {{title}} ».",
+      male: "Dernière économie : « {{title}} ».",
+      none: "Dernière économie : « {{title}} ».",
+    },
+    heroSpendRecentTitle: "Activité récente :",
+    heroSpendFallback: "Chaque pause consciente alimente ton fonds de liberté",
+    heroEconomyContinues: "L'épargne continue.",
+    heroExpand: "Voir les détails",
+    heroCollapse: "Masquer",
+    heroDailyTitle: "Épargne/dépenses de la semaine",
+    heroDailyEmpty: "Aucun refus pour l'instant. Essaie d'économiser une fois cette semaine.",
+    defaultDeclineLabel: "Refuser",
+    defaultWishTitle: "Envie",
+    heroWeeklySavingsDelta: "Économisé",
+    heroWeeklySpendingDelta: "Dépensé",
+    feedEmptyTitle: "Rien ici",
+    feedEmptySubtitle: "Essaie un autre tag ou rafraîchis le catalogue",
+    buyNow: "Payer avec {{pay}}",
+    addToCart: "Mettre de côté",
+    buyExternal: "Ouvrir la fiche produit",
+    wishlistTitle: "Objectifs",
+    wishlistEmptyTitle: "Aucun objectif pour l'instant",
+    wishlistEmptySubtitle: "Choisis une tentation dans le flux et commence à économiser",
+    buyLabel: "Prendre",
+    buyAllLabel: "Tout valider",
+    totalLabel: "Total",
+    cartRemove: "Supprimer",
+    wishlistTab: "Objectifs",
+    wishlistProgress: "{{current}} sur {{target}}",
+    wishlistSavedHint: "Montant à économiser",
+    wishlistSaveProgress: "Mettre à jour",
+    wishlistSetActive: "Activer",
+    wishlistActive: "Objectif actif",
+    wishlistRemove: "Retirer",
+    wishlistRemoveConfirm: "Retirer cette envie ?",
+    wishlistDoneLabel: "Terminé",
+    wishlistSummary: "Objectifs totalisant {{amount}}",
+    freeDayButton: "Jour gratuit",
+    freeDayLocked: "Après 18 h",
+    freeDayBlocked: "Indisponible",
+    freeDayStatusAvailable: "Enregistrer",
+    freeDayStatusLogged: "Enregistré",
+    freeDayLoggedToday: "Noté aujourd'hui",
+    freeDayConfirm: "Tu as évité les achats impulsifs aujourd'hui ?",
+    freeDayCongrats: "Série de {{days}} jours ! Ton budget adore.",
+    freeDayMilestone: "{{days}} jours d'affilée ! Nouveau badge.",
+    freeDayCardTitle: "Série de jours gratuits",
+    freeDayActiveLabel: "Série {{days}} jours",
+    freeDayInactiveLabel: "Note une soirée sans impulsion",
+    freeDayCurrentLabel: "Actuel",
+    freeDayBestLabel: "Record",
+    freeDayTotalShort: "Total",
+    freeDayWeekTitle: "Cette semaine",
+    freeDayExpand: "Voir les détails",
+    freeDayCollapse: "Masquer",
+    freeDayTotalLabel: "Total : {{total}}",
+    freeDayRescueTitle: "Jour manqué ?",
+    freeDayRescueSubtitle: "Dépense {{cost}} de santé pour sauver la série.",
+    freeDayRescueButton: "Sauver la série",
+    freeDayRescuePillLabel: "Sauver ×{{count}}",
+    freeDayRescueNeedHealth: "Besoin de {{cost}} santé",
+    freeDayRescueNeedTime: "Disponible après 18 h",
+    freeDayRescueOverlay: "Série sauvée",
+    freeDayCoinReward: "Jour gratuit enregistré : +{{coins}} pièces bleues.",
+    freeDayCoinRewardStreak: "🔥 Série de {{days}} jours : +{{coins}} pièces bleues.",
+    impulseCardTitle: "Carte des impulsions",
+    impulseCardSubtitle: "Vois quand les tentations gagnent ou quand tu restes solide.",
+    impulseLoseLabel: "Zone fragile",
+    impulseLoseCopy: "{{temptation}} gagne souvent vers {{time}}.",
+    impulseLoseEmpty: "Encore aucune zone faible.",
+    impulseWinLabel: "Série gagnante",
+    impulseWinCopy: "Tu résistes le plus souvent à {{temptation}} vers {{time}}.",
+    impulseWinEmpty: "Les victoires apparaîtront quand tu loggueras plus d'économies.",
+    impulseTrendLabel: "La plupart des impulsions tombent dans {{category}}",
+    impulseCategorySave: "Économies : {{count}}",
+    impulseCategorySpend: "Craquages : {{count}}",
+    impulseAnytimeLabel: "n'importe quand",
+    impulseExpand: "Déployer",
+    impulseCollapse: "Masquer la carte",
+    impulseAlertTitle: "Alerte d'impulsion",
+    impulseAlertMessage:
+      "Tu entres dans une zone à forte impulsion pour {{temptation}} ({{window}}). Résiste et mets {{amount}} de côté !",
+    impulseNotificationTitle: "Almost a détecté l'impulsion : « {{temptation}} »",
+    impulseNotificationBody: "Tu cèdes d'habitude maintenant. Fais une pause Almost et économise {{amount}}.",
+    impulseAlertBadgeLabel: "astuce intelligente",
+    impulseAlertWindowLabel: "Zone chaude",
+    impulseAlertAmountLabel: "En jeu",
+    impulseAlertButtonLabel: "Rester concentré(e)",
+    impulseCategoryLabel: "Catégorie d'impulsion",
+    focusDigestPositiveTitle: "La tendance est bonne",
+    focusDigestPositiveBody:
+      "Tu résistes plus que tu ne dépenses.\nPlus belle victoire : « {{strong}} ».\nSurveille « {{weak}} ».",
+    focusDigestNegativeTitle: "Il faut se recentrer",
+    focusDigestNegativeBody:
+      "Les dépenses dépassent les économies.\nPire fuite : « {{weak}} ». Concentre-toi dessus.",
+    focusDigestStrongLabel: "Plus belle victoire",
+    focusDigestWeakLabel: "À surveiller",
+    focusDigestButton: "Focus",
+    focusDigestDismiss: "Plus tard",
+    focusDigestMissing: "Pas encore de données",
+    focusBadgeLabel: "Focus",
+    focusPromptTitle: "Moment de focus",
+    focusPromptBody: "Tu as cédé plusieurs fois à « {{title}} ». On en fait ton focus ?",
+    focusVictoryReward: "Focus « {{title}} » dompté ! +3 pièces vertes",
+    focusRewardTitle: "Focus vaincu",
+    focusRewardSubtitle: "Tu as résisté trois fois à « {{title}} ». +{{amount}} pièces vertes.",
+    dailyReflectionReminderTitle: "Check-in du soir Almost",
+    dailyReflectionReminderBody:
+      "Il reste {{time}} aujourd'hui. Note une économie ou une dépense pour garder nos rappels pertinents.",
+    pendingTab: "En pause",
+    pendingTitle: "En pause",
+    pendingEmptyTitle: "Aucun élément en pause",
+    pendingEmptySubtitle: "Mets les tentations en pause et on te relance dans 14 jours.",
+    pendingDaysLeft: "{{days}} jours restants",
+    pendingExpired: "Décision en retard",
+    pendingDueToday: "Décider aujourd'hui",
+    pendingActionWant: "Commencer à épargner",
+    pendingActionDecline: "Économiser",
+    pendingNotificationTitle: "Almost te relance : que faire de « {{title}} » ?",
+    pendingNotificationBody: "Deux semaines sont passées. On commence à épargner pour « {{title}} » ou on laisse tomber ?",
+    pendingAdded: "Envoyé en pause. Rappel dans 2 semaines.",
+    pendingDeleteConfirm: "Retirer cet élément de En pause ?",
+    pendingCustomError: "Ajoute un nom et un prix pour cette tentation.",
+    feedTab: "Flux",
+    profileTab: "Profil",
+    payButton: "Payer",
+    cartOverlay: "Épargne mise à jour",
+    purchasesTitle: "Bonus",
+    purchasesSubtitle: "Suis tes succès et rappelle-toi pourquoi tu économises",
+    progressLabel: "Niveau de conscience",
+    progressGoal: "{{current}} / {{goal}}",
+    progressHint: "Plus que {{amount}} avant le statut ‘maître zen du budget’",
+    emptyPurchases: "Rien encore. Ce qui fait déjà économiser",
+    profileEdit: "Modifier",
+    profileSave: "Enregistrer",
+    profileCancel: "Annuler",
+    profileOk: "Ok",
+    profileJoinDate: "Épargne consciente depuis le {{date}}",
+    settingsTitle: "Réglages et personnalisation",
+    analyticsOptInLabel: "Envoyer des données anonymes",
+    analyticsOptInHint: "Ça aide Almost à s'améliorer sans partager de données perso",
+    themeLabel: "Thème",
+    themeLight: "Clair",
+    themeDark: "Sombre",
+    languageLabel: "Langue",
+    languageRussian: "Русский",
+    languageEnglish: "English",
+    languageSpanish: "Español",
+    languageFrench: "Français",
+    partialInfo: "Le paiement partiel n'est pas dispo pour les lots",
+    partialLabel: "Entre un montant (jusqu'à {{amount}})",
+    partialError: "Entre une valeur entre 1 et le total",
+    buyFull: "Payer en entier",
+    buyPartial: "Payer partiellement",
+    thinkLater: "Réfléchir plus tard",
+    wantAction: "Ajouter aux objectifs",
+    saveAction: "Économiser",
+    maybeAction: "Je verrai",
+    spendAction: "Dépenser",
+    editPrice: "Modifier le prix",
+    actionSoon: "Le flux détaillé arrive dans la prochaine mise à jour.",
+    saveSpamWarningItem:
+      "On dirait que tu as tapé « Économiser » plusieurs fois sur cette carte en cinq minutes. Fais une pause pour éviter les appuis accidentels.",
+    saveSpamWarningGlobal:
+      "Beaucoup de taps rapides sur « Économiser ». Vérifie que c'est volontaire et réessaie dans un instant.",
+    priceEditTitle: "Ajuster le montant cible",
+    priceEditPlaceholder: "Entre un montant",
+    priceEditSave: "Enregistrer",
+    priceEditReset: "Réinitialiser",
+    priceEditCancel: "Annuler",
+    priceEditDelete: "Supprimer la tentation",
+    priceEditDeleteConfirm: "Supprimer cette tentation ?",
+    priceEditError: "Entre un nombre positif",
+    priceEditNameLabel: "Nom de la carte",
+    priceEditAmountLabel: "Montant ({{currency}})",
+    wishAdded: "Ajouté aux envies : {{title}}",
+    wishDeclined: "+{{amount}} mis de côté",
+    customTemptationAdded: "Ajouté aux tentations : {{title}}",
+    saveCelebrateTitlePrefix: "Sauté :",
+    saveCelebrateSubtitle: "Almi ronronne : économise engrangée !",
+    saveGoalRemaining: "Encore environ {{count}} refus pour atteindre « {{goal}} ».",
+    saveGoalComplete: "Objectif « {{goal}} » atteint ! On célèbre ?",
+    saveOverlayCoinReward: "+{{amount}} pièces pour Almi",
+    freeDayStreakLabel: "Série de jours gratuits",
+    freeDayTotalLabel: "Total : {{total}}",
+    statsSpent: "Objectifs finis",
+    statsSaved: "Économisé",
+    statsItems: "Objectifs",
+    statsCart: "Dans la liste",
+    statsDeclines: "Refus",
+    statsSpends: "Dépenses",
+    statsFreeDays: "Série",
+    savingsBreakdownTitle: "Répartition de l'épargne",
+    savingsBreakdownOtherLabel: "Autres",
+    analyticsTitle: "Progression",
+    analyticsPendingToBuy: "Envies",
+    analyticsPendingToDecline: "Économies",
+    analyticsFridgeCount: "Dépenses",
+    analyticsBestStreak: "Jours gratuits",
+    analyticsConsentTitle: "Tu nous aides à progresser ?",
+    analyticsConsentBody:
+      "On collecte des stats anonymes pour savoir quels moments inspirent plus d'épargne. Aucune donnée perso n'est stockée.",
+    analyticsConsentAgree: "Partager les stats",
+    analyticsConsentSkip: "Ignorer pour l'instant",
+    onboardingBack: "Retour",
+    historyTitle: "Journal des événements",
+    historyEmpty: "Rien pour l'instant. Ajoute un objectif ou note un jour gratuit.",
+    privacyPolicyLink: "Politique de confidentialité",
+    privacyPolicyHint: "S'ouvrira dans ton navigateur.",
+    supportLink: "Contacter le support",
+    supportHint: "almostappsup@gmail.com",
+    ratingPromptTitle: "Almost te plaît ?",
+    ratingPromptBody:
+      "Si l'app aide à calmer les achats impulsifs, laisse une évaluation rapide dans le store - ça motive l'équipe.",
+    ratingPromptLater: "Plus tard",
+    ratingPromptAction: "Noter Almost",
+    levelShareButton: "Partager mon niveau",
+    levelShareModalTitle: "Niveau débloqué !",
+    levelShareModalCaption: "Capture cette carte et célèbre ta victoire",
+    levelShareModalShare: "Partager la carte",
+    levelShareModalClose: "Fermer",
+    levelShareError: "Impossible de partager cette fois. Réessaie plus tard.",
+    levelShareShareMessage: "Je suis déjà niveau {{level}} dans Almost. Rejoins l'équipe mindful !",
+    levelShareCardBadge: "ALMOST HERO",
+    levelShareCardTitle: "Niveau {{level}}",
+    levelShareCardSubtitle: "Almi m'encourage",
+    levelShareJoin: "Rejoins les dépensiers conscients",
+    levelShareFooterBrand: "Almost",
+    levelShareFooterHint: "APP",
+    historyWishAdded: "Envie ajoutée : {{title}}",
+    historyWishProgress: "Progression « {{title}} » : {{amount}} / {{target}}",
+    historyWishDone: "Objectif terminé : {{title}}",
+    historyDecline: "Refusé {{title}} (+{{amount}} économisés)",
+    historyRefuseSpend: "Sauté {{title}} (+{{amount}} économisés)",
+    historyPendingAdded: "Mis de côté pour plus tard : {{title}}",
+    historyPendingWant: "Décision différée → on épargne : {{title}}",
+    historyPendingDecline: "Décision différée → refus : {{title}} (+{{amount}})",
+    historyPendingRemoved: "Retiré de En pause : {{title}}",
+    historyFreeDay: "Jour gratuit n°{{total}}",
+    historySpend: "Dépensé pour {{title}} (-{{amount}})",
+    historyWishRemoved: "Objectif retiré : {{title}}",
+    historyGoalStarted: "Objectif lancé : {{title}}",
+    historyGoalCancelled: "Objectif annulé : {{title}}",
+    historyRewardClaimed: "Récompense récupérée : {{title}}",
+    historyTimestamp: "{{date}} · {{time}}",
+    historyUnknown: "Événement",
+    progressHeroTitle: "Épargne réelle",
+    progressHeroLevel: "Niveau {{level}}",
+    progressHeroNext: "Encore {{amount}} jusqu'au suivant",
+    levelCelebrate: "Niveau {{level}} débloqué, armure d'épargne améliorée !",
+    tileRefuseCount: "Déjà refusé {{count}}× · +{{amount}}",
+    tileRefuseMessage: "Dis-lui non aujourd'hui, tes économies diront merci",
+    tileReady: "Prêt à profiter",
+    tileLocked: "Encore en épargne",
+    spendWarning: "Tu vas dépenser {{amount}}. C'est sûr ?",
+    spendSheetTitle: "Almost Pay",
+    spendSheetSubtitle: "Notre Pay joueur suggère d'économiser encore un peu.",
+    spendSheetHint: "Double-tape (en esprit) pour continuer quand même.",
+    spendSheetCancel: "Continuer à épargner",
+    spendSheetConfirm: "Dépenser malgré tout",
+    stormOverlayMessage: "Ambiance de dépenses orageuse. Tu veux toujours valider ?",
+    rewardsEmpty: "Gagne des succès en refusant les tentations ou en notant un jour gratuit.",
+    goalsTitle: "Objectifs & récompenses",
+    rewardUnlocked: "Débloquée",
+    rewardLocked: "Encore {{amount}}",
+    rewardRemainingAmount: "Encore {{amount}}",
+    rewardRemainingDays: "{{count}} jours restants",
+    rewardRemainingRefuse: "Encore {{count}} refus",
+    rewardRemainingFridge: "Encore {{count}} éléments en pause",
+    rewardRemainingDecisions: "{{count}} décisions En pause restantes",
+    rewardLockedGeneric: "Encore {{count}} étapes",
+    rewardBadgeLabel: "Récompense",
+    rewardBadgeLabelPlural: "récompenses",
+    rewardBadgeClaimed: "Récoltée !",
+    rewardClaimCta: "Récupérer",
+    rewardClaimHint: "Permet de gagner {{amount}}",
+    rewardClaimedStatus: "Santé stockée",
+    rewardHealthBonus: "+{{amount}}",
+    freeDayHealthTitle: "Pièces",
+    freeDayHealthSubtitle: "À utiliser pour sauver tes séries et nourrir Almi.",
+    rewardCelebrateTitle: "{{title}} débloquée !",
+    rewardCelebrateSubtitle: "Almi est fier·e : garde la série.",
+    challengeTabTitle: "Défis",
+    challengeRewardsTabTitle: "Bonus",
+    challengeStartCta: "Lancer le défi",
+    challengeClaimCta: "Récupérer la récompense",
+    challengeActiveCta: "En cours",
+    challengeStatusAvailable: "Prêt à démarrer",
+    challengeStatusActive: "Actif",
+    challengeStatusCompleted: "Prêt à être réclamé",
+    challengeStatusExpired: "Expiré",
+    challengeStatusClaimed: "Terminé",
+    challengeRewardLabel: "Récompense",
+    challengeRewardHealth: "+{{amount}}",
+    challengeProgressLabel: "{{current}} / {{target}}",
+    challengeDurationLabel: "Durée : {{days}} jours",
+    challengeTimeLeftLabel: "{{time}} restantes",
+    challengeTimeDayShort: "j",
+    challengeTimeHourShort: "h",
+    challengeTimeMinuteShort: "m",
+    challengeTimeExpired: "Temps écoulé",
+    challengeReadyToClaim: "Récompense prête",
+    challengeRestartHint: "Rejouable à tout moment (défi de {{days}} jours)",
+    challengeStartedOverlay: "Défi « {{title}} » lancé",
+    challengeCompletedOverlay: "« {{title}} » terminé : prends le bonus !",
+    challengeClaimedOverlay: "Défi « {{title}} » · +{{amount}}",
+    challengeReminderTitle: "Défi Almost « {{title}} »",
+    challengeReminderBody: "Tu touches au but. Enregistre encore une économie pour « {{title}} » et prends la récompense.",
+    challengeCancelAction: "Annuler",
+    challengeAcceptConfirmTitle: "Commencer ce défi ?",
+    challengeAcceptConfirmMessage: "On lance « {{title}} » ? Le chrono démarre tout de suite.",
+    challengeAcceptConfirmYes: "Démarrer",
+    challengeAcceptConfirmNo: "Pas maintenant",
+    challengeCancelConfirmTitle: "Annuler ce défi ?",
+    challengeCancelConfirmMessage: "On stoppe « {{title}} » ? Le progrès sera perdu.",
+    challengeCancelConfirmYes: "Annuler",
+    challengeCancelConfirmNo: "Continuer",
+    dailyChallengeOfferBadge: "défi du jour",
+    dailyChallengeOfferTitle: "Mini défi du jour",
+    dailyChallengeOfferSubtitle: "Passe une journée sans « {{temptation}} »",
+    dailyChallengeOfferHint: "Évite-le une fois aujourd'hui et gagne une récompense doublée.",
+    dailyChallengeOfferReward: "+{{amount}} bonus",
+    dailyChallengeOfferAccept: "Accepter le défi",
+    dailyChallengeOfferLater: "Plus tard",
+    dailyChallengeWidgetBadge: "défi du jour",
+    dailyChallengeWidgetTitle: "Mini défi actif",
+    dailyChallengeWidgetDesc: "Journée sans « {{temptation}} » = pièces ×2",
+    dailyChallengeWidgetProgress: "Progression {{current}} / {{target}}",
+    dailyChallengeWidgetReward: "+{{amount}}",
+    dailyChallengeRewardReason: "Mini défi « {{temptation}} » réussi",
+    dailyChallengeRewardNotificationTitle: "Défi quotidien Almost terminé",
+    dailyChallengeRewardNotificationBody: "« {{temptation}} » a cédé - prends ton bonus de +{{amount}}.",
+    dailyChallengeFailedText: "« {{temptation}} » a gagné aujourd'hui",
+    healthCelebrateTitle: "+{{amount}}",
+    healthCelebrateSubtitle: "À utiliser pour sauver ta série de jours gratuits.",
+    healthCelebrateLevel: "Niveau supérieur ! Almi est content(e).",
+    healthCelebrateReward: "Récompense récoltée : santé restaurée.",
+    rainMessage: "Oh non ! Protège l'argent.",
+    developerReset: "Réinitialiser les données",
+    developerResetConfirm: "Effacer envies, historique et profil ?",
+    developerResetCancel: "Conserver",
+    developerResetApply: "Réinitialiser",
+    openSettings: "Réglages",
+    defaultDealTitle: "Objectif",
+    defaultDealDesc: "Décris ce que tu veux financer",
+    photoLibrary: "Depuis la galerie",
+    photoCamera: "Utiliser la caméra",
+    photoTapHint: "Tape pour ajouter une photo",
+    photoPromptTitle: "Ajouter une photo ?",
+    photoPromptSubtitle: "Choisis caméra ou galerie",
+    photoPermissionDenied: "Nous avons besoin de l'accès caméra ou photos pour changer ton avatar.",
+    photoPermissionSettings: "Ouvre Réglages pour accorder l'accès à la caméra et aux photos.",
+    photoPickerError: "Un souci est survenu. Réessaie.",
+    registrationTitle: "Mettons tout en place",
+    registrationSubtitle: "Présente-toi pour qu'Almost parle ta langue",
+    languageTitle: "Choisis une langue",
+    languageSubtitle: "Chaque astuce sera adaptée pour toi",
+    languageCurrencyHint: "Tu pourras changer la langue et la devise dans Profil.",
+    currencySwipeHint: "Balaye pour voir toutes les devises →",
+    languageTermsHint: "En continuant, vous acceptez les conditions d'utilisation d'Almost.",
+    languageTermsAccepted: "Accepte les conditions d'utilisation pour continuer.",
+    languageTermsLink: "Lire les Conditions complètes",
+    inputFirstName: "Prénom",
+    inputLastName: "Nom",
+    inputMotto: "Devise personnelle",
+    currencyLabel: "Devise d'épargne",
+    nextButton: "Continuer",
+    goalTitle: "Choisis un objectif",
+    goalSubtitle: "À quoi doivent servir tes décisions conscientes ?",
+    goalCustomSectionTitle: "Tes objectifs",
+    goalCustomCreate: "Ajouter ton propre objectif",
+    goalButton: "Commencer à épargner",
+    goalPrimaryBadge: "Objectif principal",
+    goalTargetTitle: "Quelle taille pour cet objectif ?",
+    goalTargetSubtitle: "Définis le montant pour qu'Almost suive chaque unité.",
+    goalTargetPlaceholder: "Ex. 1200",
+    goalTargetHint: "Tu pourras le modifier plus tard dans le profil.",
+    goalTargetCTA: "Enregistrer le montant",
+    goalTargetError: "Entre un montant",
+    goalTargetLabel: "Montant de l'objectif",
+    primaryGoalLabel: "Objectif principal",
+    primaryGoalLocked: "Tu pourras changer ça plus tard dans ton profil.",
+    primaryGoalRemaining: "Il reste {{amount}}",
+    goalWidgetTargetLabel: "Objectif : {{amount}}",
+    goalWidgetRemaining: "Encore {{amount}}",
+    goalWidgetComplete: "Objectif atteint",
+    goalWidgetTitle: "Vers l'objectif",
+    goalWidgetCompleteTagline: "Les économies continuent - mission accomplie.",
+    goalAssignPromptTitle: "Où envoyer cette économie ?",
+    goalAssignPromptSubtitle: "Choisis l'objectif qui recevra « {{title}} ».",
+    goalAssignNone: "Pas encore d'objectif",
+    goalAssignTemptationTitle: "Associer une tentation",
+    goalAssignTemptationSubtitle: "Quelle habitude alimente « {{goal}} » ?",
+    goalAssignClear: "Retirer l'association",
+    goalAssignFieldLabel: "Envoyer l'épargne vers",
+    goalMainTemptationError: "La tentation principale ne peut pas devenir un objectif.",
+    goalDestinationLabel: "J'épargne pour",
+    goalStatusInWishlist: "Ajouter à l'objectif",
+    goalSwipeAdd: "Ajouter",
+    goalSwipeDelete: "Supprimer",
+    goalPinnedBadge: "Objectif",
+    goalRemoved: "Objectif supprimé",
+    goalEditAction: "Modifier",
+    goalDeleteAction: "Retirer",
+    goalEditModalTitle: "Modifier l'objectif",
+    goalEditNameLabel: "Nom de l'objectif",
+    goalEditTargetLabel: "Montant",
+    goalEditEmojiLabel: "Emoji",
+    goalEditSave: "Enregistrer",
+    goalEditCancel: "Annuler",
+    goalEditNameError: "Entre un nom",
+    goalEditTargetError: "Spécifie un montant",
+    goalCelebrationTitle: "Objectif principal atteint !",
+    goalCelebrationSubtitle: "Almi est fier : choisis le prochain rêve.",
+    goalCelebrationTarget: "Économisé {{amount}}",
+    goalRenewalTitle: "Choisis un nouvel objectif principal",
+    goalRenewalSubtitle: "Celui-ci est terminé : fixe-en un nouveau pour garder l'élan.",
+    goalRenewalCreate: "Créer un objectif",
+    goalRenewalLater: "Plus tard",
+    levelWidgetTitle: "Progression du niveau",
+    levelWidgetCurrent: "Niveau {{level}}",
+    levelWidgetSubtitle: "{{amount}} avant le prochain niveau",
+    levelWidgetTarget: "Niveau suivant à {{amount}}",
+    levelWidgetMaxed: "Niveau ultime atteint - épargnant légendaire !",
+    onboardingGuideTitle: "La promesse d'Almost",
+    onboardingGuideSubtitle: "Un antidote conscient contre le consumérisme et les achats impulsifs.",
+    onboardingGuideButton: "Compris",
+    termsTitle: "Conditions d'utilisation",
+    termsSubtitle: "Lis les points clés. Continuer signifie accepter les Conditions Almost.",
+    termsViewFull: "Ouvrir le document complet",
+    termsLinkHint: "Nous l'ouvrirons dans ton navigateur.",
+    termsAccept: "J'accepte",
+    termsDecline: "Pas maintenant",
+    guideStepTrackTitle: "Ta mission principale",
+    guideStepTrackDesc: "Dépense consciemment, protège ton budget et concentre-toi sur ce qui compte.",
+    guideStepDecisionTitle: "Menu des tentations",
+    guideStepDecisionDesc: "Note chaque tentation et résiste pour qu'Almost enregistre la victoire et garde l'argent au chaud.",
+    guideStepRewardTitle: "Voir la vue d'ensemble",
+    guideStepRewardDesc: "Valide chaque économie et observe l'app dessiner le grand objectif.",
+    personaTitle: "Parle-nous de toi",
+    personaSubtitle: "Pour personnaliser l'expérience.",
+    personaGenderLabel: "Comment devons-nous t'appeler ?",
+    personaHabitLabel: "Choisis un profil de départ",
+    personaConfirm: "Continuer",
+    customSpendTitle: "Ta tentation quotidienne",
+    customSpendSubtitle: "Donne-lui un petit nom et Almost t'aidera à la battre plus souvent.",
+    customSpendNamePlaceholder: "Matcha du matin, cigarettes, nail art…",
+    customSpendAmountLabel: "Coût par occasion",
+    customSpendAmountPlaceholder: "Ex. {{amount}}",
+    customSpendFrequencyLabel: "Combien de fois par semaine gagne-t-elle ?",
+    customSpendFrequencyPlaceholder: "Ex. 4",
+    customSpendHint: "Tu peux changer ça à tout moment dans le profil.",
+    customSpendSkip: "Passer pour l'instant",
+    smartReminderTitle: [
+      "Almost a repéré « {{temptation}} »",
+      "Pause avec Almi : « {{temptation}} »",
+      "Alerte focus Almost : « {{temptation}} »",
+    ],
+    smartReminderBody: [
+      "Tu as enregistré « {{temptation}} » récemment. Refais une pause et envoie l'argent vers ton objectif.",
+      "Almost a signalé cette routine - respire avant « {{temptation}} » et choisis l'épargne.",
+      "Garde la série en vie. « {{temptation}} » peut attendre un peu.",
+      "Astuce : chaque fois que tu évites « {{temptation}} », Almost affine ses idées.",
+    ],
+    smartInsightDeclineTitle: "Almost se souvient de ta victoire d'hier sur « {{temptation}} »",
+    smartInsightDeclineBody: "Redis-lui non aujourd'hui et Almost verrouillera la série.",
+    smartInsightSpendTitle: "Almost a vu que « {{temptation}} » a gagné hier",
+    smartInsightSpendBody: "Tiens bon aujourd'hui pour célébrer une économie.",
+    dailyNudgeMorningTitle: ["Coup de pouce matinal d'Almost", "Contrôle focus d'Almi"],
+    dailyNudgeMorningBody: [
+      "Donne le ton : saute la première impulsion et rappelle-toi ta cible.",
+      "Almi vérifie - fais une pause avant la première dépense",
+    ],
+    dailyNudgeDayTitle: ["Check-in Almost de midi", "Boost de focus d'Almi"],
+    dailyNudgeDayBody: [
+      "Les impulsions montent à cette heure. Demande-toi si cet achat sert toujours ton objectif.",
+      "Almost a remarqué des craquages du midi. Prends une pause consciente.",
+    ],
+    dailyNudgeAfternoonTitle: ["Check-in d'après-midi avec Almost", "Freine avec Almi"],
+    dailyNudgeAfternoonBody: [
+      "Respire avant de cliquer sur acheter et redirige l'argent vers ton épargne.",
+      "Les tentations s'approchent ? Garde le cap et pense à ton objectif.",
+    ],
+    dailyNudgeEveningTitle: ["Bouclier du soir d'Almost", "Almi clôt ta journée"],
+    dailyNudgeEveningBody: [
+      "Les soirées sont les plus tentantes. Note une victoire avant de dormir.",
+      "Termine ta journée dans Almost - même une mini-économie tient les rappels à jour.",
+    ],
+    dailySummaryBadgeLabel: "récap du jour",
+    dailySummaryTitle: "Récap du jour",
+    dailySummarySubtitle: "Super rythme - continue !",
+    dailySummarySavedLabel: "Économisé aujourd'hui",
+    dailySummarySavedSub: "Chaque refus rapproche la cible",
+    dailySummarySpendsLabel: "Dépenses",
+    dailySummaryContinue: "Continuer",
+    dailySummaryHint: "À demain avec des chiffres frais.",
+    baselineTitle: "Combien part dans les petites folies ?",
+    baselineSubtitle:
+      "Estime un mois de cafés, snacks et achats impulsifs pour le comparer aux vraies victoires.",
+    baselinePlaceholder: "Ex. {{amount}}",
+    baselineCTA: "Enregistrer le montant",
+    baselineHint: "Un chiffre approximatif suffit ; tu pourras l'ajuster dans Profil.",
+    baselineInputError: "Entre ta dépense mensuelle estimée en extras",
+    potentialBlockTitle: "Potentiel vs épargne réelle",
+    potentialBlockSubtitle: "",
+    potentialBlockStatusAhead: "Wow, tu dépasses le pronostic !",
+    potentialBlockStatusStart: "Commence à noter tes victoires - le potentiel t'attend.",
+    potentialBlockStatusBehind: "Tu es sur la bonne voie, mais il reste du potentiel.",
+    potentialBlockStatusOnTrack: "Tu captes presque tout le potentiel. Continue !",
+    potentialBlockActualLabel: "Vraiment économisé",
+    potentialBlockPotentialLabel: "Potentiel",
+    potentialBlockHint: "Il reste {{amount}} de potentiel. On garde le rythme 🙂",
+    potentialBlockDetails:
+      "On utilise le budget mensuel des tentations défini à l'onboarding, on le découpe par seconde et on montre combien tu pourrais déjà avoir économisé.",
+    potentialBlockCta: "Dis-nous combien fuient dans les extras et on t'affiche le potentiel.",
+    potentialPushAheadTitle: "Tu es en avance sur ton potentiel !",
+    potentialPushAheadBody:
+      "Le compteur potentiel atteint {{potential}} et tu es déjà à {{actual}}. Garde cette dynamique.",
+    potentialPushBehindTitle: "Rattrape ton potentiel",
+    potentialPushBehindBody:
+      "Le potentiel est à {{potential}} - plus que {{shortfall}} pour rattraper. Fais une pause avant le prochain achat et note une victoire.",
+    quickCustomTitle: "Ajouter une tentation",
+    quickCustomSubtitle: "Nomme l'impulsion et fixe un prix pour l'ajouter au deck",
+    quickCustomNameLabel: "Nom",
+    quickCustomAmountLabel: "Coût ({{currency}})",
+    quickCustomEmojiLabel: "Emoji",
+    quickCustomConfirm: "Ajouter",
+    quickCustomCancel: "Annuler",
+    coinEntryTitle: "Quel montant ?",
+    coinEntrySubtitle: "Fais glisser la pièce et choisis une catégorie.",
+    coinEntryHint: "Utilise les boutons pour économiser ou dépenser.",
+    coinEntryManual: "...",
+    coinEntryManualTitle: "Définir un nouveau maximum",
+    coinEntryManualPlaceholder: "Ex. {{amount}}",
+    coinEntryManualSave: "Mémoriser",
+    coinEntryManualCancel: "Annuler",
+    coinEntryManualError: "Entre un montant valide",
+    coinEntryManualAmountTitle: "Saisir un montant manuel",
+    coinEntryManualAmountPlaceholder: "Ex. {{amount}}",
+    coinEntryCategoryLabel: "Catégorie",
+    coinEntryCategoryError: "Choisis d'abord une catégorie",
+    coinEntrySaveLabel: "Économie rapide",
+    coinEntrySpendLabel: "Dépense rapide",
+    fabNewGoal: "Nouvel objectif",
+    fabNewTemptation: "Nouvelle dépense",
+    fabQuickActionTitle: "Dernière tentation",
+    fabQuickActionSubtitle: "Répéter l'action pour « {{title}} »",
+    fabQuickActionEmpty: "Aucune tentation récente. Interagis d'abord avec une carte.",
+    fabTutorialTitle: "Découvre le « + »",
+    fabTutorialDesc:
+      "Tape pour enregistrer une impulsion personnalisée avec ton montant et ta catégorie. Maintiens pour créer objectifs ou dépenses custom.",
+    fabTutorialAction: "Compris",
+    newGoalTitle: "Nouvel objectif",
+    newGoalSubtitle: "Nomme le rêve et fixe sa cible.",
+    newGoalNameLabel: "Nom",
+    newGoalTargetLabel: "Montant ({{currency}})",
+    newGoalEmojiLabel: "Emoji",
+    newGoalCreate: "Créer",
+    newGoalCancel: "Annuler",
+    newPendingTitle: "Nouvel élément En pause",
+    newPendingSubtitle: "Décris la tentation à mettre en pause 14 jours.",
+    newPendingNameLabel: "Nom",
+    newPendingAmountLabel: "Prix ({{currency}})",
+    newPendingEmojiLabel: "Emoji",
+    newPendingCreate: "Ajouter à En pause",
+    newPendingCancel: "Annuler",
+    tutorialFeedTitle: "Flux de tentations",
+    tutorialFeedDesc: "Enregistre chaque impulsion et décide : économiser, ajouter à l'objectif ou mettre en pause 14 jours.",
+    tutorialGoalsTitle: "Objectifs",
+    tutorialGoalsDesc: "Tous les rêves vivent ici. Suis le progrès et recharge ton objectif.",
+    tutorialThinkingTitle: "Onglet En pause",
+    tutorialThinkingDesc: "Mets les achats en pause 14 jours et reviens l'esprit clair.",
+    tutorialRewardsTitle: "Récompenses & défis",
+    tutorialRewardsDesc: "Dans cet onglet tu récoltes les succès et lances des défis avec bonus santé.",
+    tutorialProfileTitle: "Profil & motivation",
+    tutorialProfileDesc: "Ajuste thème, langue, rappels et personnalisation.",
+    tutorialSkip: "Passer",
+    tutorialNext: "Suivant",
+    tutorialDone: "Terminer",
+    tutorialProgress: "{{current}} sur {{total}}",
+    tabHintFeedTitle: "Flux de tentations",
+    tabHintFeedBody: "Note les impulsions et décide de les économiser, de les ajouter à un objectif ou de les mettre en pause.",
+    tabHintCartTitle: "Objectifs",
+    tabHintCartBody: "Classe tes rêves, fixe les priorités et mets à jour ton progrès.",
+    tabHintPendingTitle: "Onglet En pause",
+    tabHintPendingBody: "Envoie les envies dans une pause de 14 jours et reviens plus lucide.",
+    tabHintPurchasesTitle: "Récompenses",
+    tabHintPurchasesBody: "Récupère les succès et lance des défis pour gagner de la santé.",
+    tabHintProfileTitle: "Profil",
+    tabHintProfileBody: "Règle thème, langue, rappels et objectifs personnels.",
+    tabHintGotIt: "Compris",
   },
+
+  es: {
+    appTagline: "Un panel offline de tentaciones que protege tus ahorros",
+    tamagotchiHungryBubble: "🐟",
+    tamagotchiFoodMenuTitle: "Menú de Almi",
+    tamagotchiFoodBoostLabel: "+{{percent}}% de saciedad",
+    tamagotchiFoodWantLabel: "Lo quiero",
+    tamagotchiSkinTitle: "Aspectos de Almi",
+    tamagotchiSkinSubtitle: "Un nuevo estilo para Almi mantiene fresca la motivación de ahorro",
+    tamagotchiSkinCurrent: "Seleccionado",
+    tamagotchiSkinUnlockTitle: "Almost acaba de despegar 🚀",
+    tamagotchiSkinUnlockDescription:
+      "Ayúdanos a mejorar: envía feedback a {{email}} y desbloquea todos los aspectos.",
+    tamagotchiSkinUnlockButton: "Enviar feedback y desbloquear skins",
+    tamagotchiSkinLockedBadge: "Bloqueado",
+    tamagotchiName: "Almi",
+    tamagotchiFullnessLabel: "Saciedad",
+    tamagotchiCoinsLabel: "Monedas",
+    tamagotchiFedAtLabel: "Alimentado",
+    tamagotchiAwaitingFirstCoin: "Almi espera su primera moneda",
+    tamagotchiFullMessage: "Almi ya está llena. Vuelve cuando vuelva a tener hambre.",
+    tamagotchiEarnCoinsHint: "Consigue monedas con rechazos, niveles y recompensas.",
+    tamagotchiNeedCoinsMessage: "Necesitas al menos {{cost}} monedas para {{emoji}}.",
+    tamagotchiPartyNeedCoinsMessage: "Necesitas {{amount}} monedas azules para iniciar una fiesta.",
+    tamagotchiPartyButtonLabel: "Fiesta ×{{cost}}",
+    tamagotchiFullHint: "Está lleno, inténtalo más tarde.",
+    tamagotchiSkinFeedbackSubject: "Comentarios para Almost",
+    tamagotchiSkinFeedbackBody: "Hola equipo Almost. Comparto mis impresiones de la app:\\n\\n",
+    heroAwaiting: "En la lista de deseos",
+    heroSpendLine: {
+      female: "Último ahorro: «{{title}}».",
+      male: "Último ahorro: «{{title}}».",
+      none: "Último ahorro: «{{title}}».",
+    },
+    heroSpendRecentTitle: "Actividad reciente:",
+    heroSpendFallback: "Cada pausa consciente alimenta el fondo de libertad",
+    heroEconomyContinues: "El ahorro sigue en marcha.",
+    heroExpand: "Mostrar detalles",
+    heroCollapse: "Ocultar detalles",
+    heroDailyTitle: "Ahorros/gastos semanales",
+    heroDailyEmpty: "Aún no has rechazado nada. Intenta ahorrar una vez esta semana.",
+    defaultDeclineLabel: "Rechazo",
+    defaultWishTitle: "Deseo",
+    heroWeeklySavingsDelta: "Ahorrado",
+    heroWeeklySpendingDelta: "Gastado",
+    feedEmptyTitle: "Aquí no hay nada",
+    feedEmptySubtitle: "Prueba otro tag o actualiza el catálogo",
+    buyNow: "Pagar con {{pay}}",
+    addToCart: "Guardar para después",
+    buyExternal: "Abrir página del producto",
+    wishlistTitle: "Metas",
+    wishlistEmptyTitle: "Todavía no hay metas",
+    wishlistEmptySubtitle: "Elige una tentación del feed y empieza a ahorrar para ella",
+    buyLabel: "Tomar",
+    buyAllLabel: "Comprar todo",
+    totalLabel: "Total",
+    cartRemove: "Eliminar",
+    wishlistTab: "Metas",
+    wishlistProgress: "{{current}} de {{target}}",
+    wishlistSavedHint: "Lo que necesitas ahorrar",
+    wishlistSaveProgress: "Actualizar progreso",
+    wishlistSetActive: "Marcar como activa",
+    wishlistActive: "Meta activa",
+    wishlistRemove: "Eliminar",
+    wishlistRemoveConfirm: "¿Quitar este deseo?",
+    wishlistDoneLabel: "Listo",
+    wishlistSummary: "Metas por un total de {{amount}}",
+    freeDayButton: "Día gratis",
+    freeDayLocked: "Después de las 18:00",
+    freeDayBlocked: "No disponible",
+    freeDayStatusAvailable: "Registrar día",
+    freeDayStatusLogged: "Registrado",
+    freeDayLoggedToday: "Anotado hoy",
+    freeDayConfirm: "¿Hoy evitaste las compras impulsivas?",
+    freeDayCongrats: "Racha de {{days}} días. ¡Al presupuesto le encanta!",
+    freeDayMilestone: "{{days}} días seguidos. ¡Nuevo logro desbloqueado!",
+    freeDayCardTitle: "Racha de días gratis",
+    freeDayActiveLabel: "Racha de {{days}} días",
+    freeDayInactiveLabel: "Registra una noche sin impulsos",
+    freeDayCurrentLabel: "Actual",
+    freeDayBestLabel: "Mejor",
+    freeDayTotalShort: "Total",
+    freeDayWeekTitle: "Esta semana",
+    freeDayExpand: "Mostrar detalles",
+    freeDayCollapse: "Ocultar",
+    freeDayTotalLabel: "Total: {{total}}",
+    freeDayRescueTitle: "¿Se rompió la racha?",
+    freeDayRescueSubtitle: "Invierte {{cost}} de salud para mantenerla viva.",
+    freeDayRescueButton: "Salvar racha",
+    freeDayRescuePillLabel: "Salvar ×{{count}}",
+    freeDayRescueNeedHealth: "Necesitas {{cost}} de salud",
+    freeDayRescueNeedTime: "Disponible después de las 18:00",
+    freeDayRescueOverlay: "Racha salvada",
+    freeDayCoinReward: "Día gratis registrado: +{{coins}} monedas azules.",
+    freeDayCoinRewardStreak: "🔥 Racha de {{days}} días: +{{coins}} monedas azules.",
+    impulseCardTitle: "Mapa de impulsos",
+    impulseCardSubtitle: "Descubre cuándo suelen ganar las tentaciones o cuándo mantienes el control.",
+    impulseLoseLabel: "Zona débil",
+    impulseLoseCopy: "{{temptation}} suele ganar alrededor de las {{time}}.",
+    impulseLoseEmpty: "Aún no hay zonas débiles.",
+    impulseWinLabel: "Racha ganadora",
+    impulseWinCopy: "Resistes {{temptation}} sobre todo alrededor de las {{time}}.",
+    impulseWinEmpty: "Los logros aparecen cuando registres más ahorros.",
+    impulseTrendLabel: "La mayoría de impulsos aparecen en {{category}}",
+    impulseCategorySave: "Ahorros: {{count}}",
+    impulseCategorySpend: "Gastos: {{count}}",
+    impulseAnytimeLabel: "en cualquier momento",
+    impulseExpand: "Expandir",
+    impulseCollapse: "Ocultar mapa",
+    impulseAlertTitle: "Alerta de impulso",
+    impulseAlertMessage:
+      "Estás entrando en una zona de alto impulso para {{temptation}} ({{window}}). Saltéalo y guarda {{amount}}.",
+    impulseNotificationTitle: "Almost detectó un impulso: «{{temptation}}»",
+    impulseNotificationBody: "Normalmente cedes ahora. Haz una pausa Almost y guarda {{amount}}.",
+    impulseAlertBadgeLabel: "alerta inteligente",
+    impulseAlertWindowLabel: "Pico de impulso",
+    impulseAlertAmountLabel: "En juego",
+    impulseAlertButtonLabel: "Mantener el enfoque",
+    impulseCategoryLabel: "Categoría del impulso",
+    focusDigestPositiveTitle: "La tendencia va bien",
+    focusDigestPositiveBody:
+      "Resistes más de lo que gastas.\nMayor victoria: «{{strong}}».\nAtiende a «{{weak}}».",
+    focusDigestNegativeTitle: "Hora de reenfocar",
+    focusDigestNegativeBody:
+      "Los gastos superan a los ahorros.\nLa mayor fuga es «{{weak}}». Concéntrate en ella.",
+    focusDigestStrongLabel: "Mayor victoria",
+    focusDigestWeakLabel: "Necesita atención",
+    focusDigestButton: "Focalizar",
+    focusDigestDismiss: "Después",
+    focusDigestMissing: "Sin datos aún",
+    focusBadgeLabel: "Foco",
+    focusPromptTitle: "Momento de reenfoque",
+    focusPromptBody: "Caíste ante «{{title}}» varias veces. ¿Lo hacemos tu foco?",
+    focusVictoryReward: "Foco «{{title}}» conquistado. +3 monedas verdes",
+    focusRewardTitle: "Foco conquistado",
+    focusRewardSubtitle: "Resististe «{{title}}» tres veces. +{{amount}} monedas verdes.",
+    dailyReflectionReminderTitle: "Chequeo nocturno de Almost",
+    dailyReflectionReminderBody:
+      "Quedan {{time}} hoy. Registra un ahorro o un gasto para que los recordatorios sigan siendo certeros.",
+    pendingTab: "En pausa",
+    pendingTitle: "En pausa",
+    pendingEmptyTitle: "Nada en pausa",
+    pendingEmptySubtitle: "Envía tentaciones a En pausa y te recordaremos en 14 días.",
+    pendingDaysLeft: "Quedan {{days}} días",
+    pendingExpired: "Decisión atrasada",
+    pendingDueToday: "Decide hoy",
+    pendingActionWant: "Empezar a ahorrar",
+    pendingActionDecline: "Ahorrar",
+    pendingNotificationTitle: "Almost pregunta: ¿qué hacemos con «{{title}}»?",
+    pendingNotificationBody: "Han pasado dos semanas. ¿Empezamos a ahorrar para «{{title}}» o lo soltamos?",
+    pendingAdded: "Enviado a En pausa. Recordaremos en dos semanas.",
+    pendingDeleteConfirm: "¿Quitar este elemento de En pausa?",
+    pendingCustomError: "Añade un nombre y un precio para esta tentación.",
+    feedTab: "Feed",
+    profileTab: "Perfil",
+    payButton: "Pagar",
+    cartOverlay: "Ahorro actualizado",
+    purchasesTitle: "Premios",
+    purchasesSubtitle: "Sigue tus logros y recuerda por qué ahorras",
+    progressLabel: "Nivel de consciencia",
+    progressGoal: "{{current}} / {{goal}}",
+    progressHint: "Solo faltan {{amount}} para alcanzar el ‘maestro zen del presupuesto’",
+    emptyPurchases: "Todavía nada. Lo cual ya ahorra dinero",
+    profileEdit: "Editar",
+    profileSave: "Guardar",
+    profileCancel: "Cancelar",
+    profileOk: "Ok",
+    profileJoinDate: "Ahorro consciente desde {{date}}",
+    settingsTitle: "Ajustes y personalización",
+    analyticsOptInLabel: "Enviar analíticas anónimas",
+    analyticsOptInHint: "Ayuda a mejorar Almost sin compartir datos personales",
+    themeLabel: "Tema",
+    themeLight: "Claro",
+    themeDark: "Oscuro",
+    languageLabel: "Idioma",
+    languageRussian: "Русский",
+    languageEnglish: "English",
+    languageSpanish: "Español",
+    languageFrench: "Francés",
+    partialInfo: "El pago parcial no está disponible para packs",
+    partialLabel: "Introduce un monto (hasta {{amount}})",
+    partialError: "Ingresa un valor entre 1 y el total",
+    buyFull: "Pagar completo",
+    buyPartial: "Pagar parcialmente",
+    thinkLater: "Pensar luego",
+    wantAction: "Añadir a metas",
+    saveAction: "Ahorrarlo",
+    maybeAction: "Lo pensaré",
+    spendAction: "Gastarlo",
+    editPrice: "Editar precio",
+    actionSoon: "El flujo detallado llegará en la próxima actualización.",
+    saveSpamWarningItem: "Parece que pulsaste “Ahorrarlo” varias veces en esta tarjeta en cinco minutos. Haz una pausa para evitar toques accidentales.",
+    saveSpamWarningGlobal: "Demasiados toques rápidos en “Ahorrarlo”. Asegúrate de que sea intencional y vuelve a intentar en un momento.",
+    priceEditTitle: "Ajustar el monto objetivo",
+    priceEditPlaceholder: "Introduce un monto",
+    priceEditSave: "Guardar",
+    priceEditReset: "Restablecer",
+    priceEditCancel: "Cancelar",
+    priceEditDelete: "Eliminar tentación",
+    priceEditDeleteConfirm: "¿Eliminar esta tentación?",
+    priceEditError: "Introduce un número positivo",
+    priceEditNameLabel: "Nombre de la tarjeta",
+    priceEditAmountLabel: "Monto ({{currency}})",
+    wishAdded: "Añadido a deseos: {{title}}",
+    wishDeclined: "+{{amount}} resguardados",
+    customTemptationAdded: "Añadido a tentaciones: {{title}}",
+    saveCelebrateTitlePrefix: "Saltado:",
+    saveCelebrateSubtitle: "Almi ronronea: ¡ahorros arriba!",
+    saveGoalRemaining: "Aproximadamente faltan {{count}} rechazos para llegar a «{{goal}}».",
+    saveGoalComplete: "Meta «{{goal}}» alcanzada. A celebrar.",
+    saveOverlayCoinReward: "+{{amount}} monedas para Almi",
+    freeDayStreakLabel: "Racha de días gratis",
+    freeDayTotalLabel: "Total: {{total}}",
+    statsSpent: "Metas completadas",
+    statsSaved: "Ahorrado",
+    statsItems: "Metas",
+    statsCart: "En lista",
+    statsDeclines: "Rechazos",
+    statsSpends: "Gastos",
+    statsFreeDays: "Racha",
+    savingsBreakdownTitle: "Detalle del ahorro",
+    savingsBreakdownOtherLabel: "Otros",
+    analyticsTitle: "Progreso",
+    analyticsPendingToBuy: "Deseos",
+    analyticsPendingToDecline: "Ahorros",
+    analyticsFridgeCount: "Gastos",
+    analyticsBestStreak: "Días gratis",
+    analyticsConsentTitle: "¿Nos ayudas a mejorar?",
+    analyticsConsentBody:
+      "Recopilamos analíticas anónimas para entender qué momentos inspiran más ahorro. No guardamos datos personales.",
+    analyticsConsentAgree: "Compartir analíticas",
+    analyticsConsentSkip: "Omitir por ahora",
+    onboardingBack: "Atrás",
+    historyTitle: "Registro de eventos",
+    historyEmpty: "Aún nada. Añade una meta o marca un día gratis.",
+    privacyPolicyLink: "Política de privacidad",
+    privacyPolicyHint: "Se abrirá en tu navegador.",
+    supportLink: "Soporte",
+    supportHint: "almostappsup@gmail.com",
+    ratingPromptTitle: "¿Disfrutas Almost?",
+    ratingPromptBody: "Si te ayuda a domar las compras impulsivas, deja una reseña rápida: motiva mucho al equipo.",
+    ratingPromptLater: "Quizá luego",
+    ratingPromptAction: "Calificar Almost",
+    levelShareButton: "Compartir nivel",
+    levelShareModalTitle: "¡Nivel desbloqueado!",
+    levelShareModalCaption: "Captura esta tarjeta y presume tu logro",
+    levelShareModalShare: "Compartir tarjeta",
+    levelShareModalClose: "Cerrar",
+    levelShareError: "No pudimos compartir ahora. Intenta de nuevo más tarde.",
+    levelShareShareMessage: "Ya voy en el nivel {{level}} en Almost. ¡Únete a los gastos conscientes!",
+    levelShareCardBadge: "ALMOST HERO",
+    levelShareCardTitle: "Nivel {{level}}",
+    levelShareCardSubtitle: "Almi celebra mi progreso",
+    levelShareJoin: "Únete a los ahorradores conscientes",
+    levelShareFooterBrand: "Almost",
+    levelShareFooterHint: "APP",
+    historyWishAdded: "Deseo añadido: {{title}}",
+    historyWishProgress: "Progreso «{{title}}»: {{amount}} de {{target}}",
+    historyWishDone: "Meta completada: {{title}}",
+    historyDecline: "Rechazado {{title}} (+{{amount}} ahorrados)",
+    historyRefuseSpend: "Saltado {{title}} (+{{amount}} ahorrados)",
+    historyPendingAdded: "Puesto en En pausa: {{title}}",
+    historyPendingWant: "Decisión tardía → ahorrar: {{title}}",
+    historyPendingDecline: "Decisión tardía → rechazo: {{title}} (+{{amount}})",
+    historyPendingRemoved: "Eliminado de En pausa: {{title}}",
+    historyFreeDay: "Día gratis #{{total}}",
+    historySpend: "Gastado en {{title}} (-{{amount}})",
+    historyWishRemoved: "Meta eliminada: {{title}}",
+    historyGoalStarted: "Meta iniciada: {{title}}",
+    historyGoalCancelled: "Meta cancelada: {{title}}",
+    historyRewardClaimed: "Recompensa reclamada: {{title}}",
+    historyTimestamp: "{{date}} · {{time}}",
+    historyUnknown: "Evento",
+    progressHeroTitle: "Ahorros reales",
+    progressHeroLevel: "Nivel {{level}}",
+    progressHeroNext: "Para el siguiente nivel {{amount}}",
+    levelCelebrate: "Nivel {{level}} desbloqueado, armadura de ahorro mejorada",
+    tileRefuseCount: "Ya se rechazó {{count}}× · +{{amount}}",
+    tileRefuseMessage: "Recházalo hoy y tus ahorros te lo agradecerán",
+    tileReady: "Listo para disfrutar",
+    tileLocked: "Sigue ahorrando",
+    spendWarning: "Gastando {{amount}}. ¿Seguro?",
+    spendSheetTitle: "Almost Pay",
+    spendSheetSubtitle: "Nuestro Pay juguetón sugiere ahorrar un poco más.",
+    spendSheetHint: "Pulsa dos veces (de espíritu) para continuar.",
+    spendSheetCancel: "Seguir ahorrando",
+    spendSheetConfirm: "Gastar de todas formas",
+    stormOverlayMessage: "Ambiente de gasto tormentoso. ¿Aún quieres deslizar?",
+    rewardsEmpty: "Consigue logros al saltar tentaciones o registrar un día gratis.",
+    goalsTitle: "Metas y recompensas",
+    rewardUnlocked: "Desbloqueada",
+    rewardLocked: "Faltan {{amount}}",
+    rewardRemainingAmount: "Faltan {{amount}}",
+    rewardRemainingDays: "Quedan {{count}} días",
+    rewardRemainingRefuse: "Faltan {{count}} rechazos",
+    rewardRemainingFridge: "{{count}} elementos más en En pausa",
+    rewardRemainingDecisions: "Quedan {{count}} decisiones en En pausa",
+    rewardLockedGeneric: "Faltan {{count}} pasos",
+    rewardBadgeLabel: "Recompensa",
+    rewardBadgeLabelPlural: "recompensas",
+    rewardBadgeClaimed: "¡Cobrada!",
+    rewardClaimCta: "Cobrar",
+    rewardClaimHint: "Obtén {{amount}}",
+    rewardClaimedStatus: "Salud almacenada",
+    rewardHealthBonus: "+{{amount}}",
+    freeDayHealthTitle: "Monedas",
+    freeDayHealthSubtitle: "Úsalas para salvar rachas y alimentar a Almi.",
+    rewardCelebrateTitle: "{{title}} desbloqueada",
+    rewardCelebrateSubtitle: "Almi está orgulloso: mantén la racha.",
+    challengeTabTitle: "Retos",
+    challengeRewardsTabTitle: "Recompensas",
+    challengeStartCta: "Iniciar reto",
+    challengeClaimCta: "Cobrar recompensa",
+    challengeActiveCta: "En progreso",
+    challengeStatusAvailable: "Listo para empezar",
+    challengeStatusActive: "Activo",
+    challengeStatusCompleted: "Listo para cobrar",
+    challengeStatusExpired: "Expirado",
+    challengeStatusClaimed: "Completado",
+    challengeRewardLabel: "Recompensa",
+    challengeRewardHealth: "+{{amount}}",
+    challengeProgressLabel: "{{current}} / {{target}}",
+    challengeDurationLabel: "Duración: {{days}} días",
+    challengeTimeLeftLabel: "Queda {{time}}",
+    challengeTimeDayShort: "d",
+    challengeTimeHourShort: "h",
+    challengeTimeMinuteShort: "m",
+    challengeTimeExpired: "Tiempo agotado",
+    challengeReadyToClaim: "Recompensa lista",
+    challengeRestartHint: "Repítelo cuando quieras (reto de {{days}} días)",
+    challengeStartedOverlay: "Reto «{{title}}» iniciado",
+    challengeCompletedOverlay: "«{{title}}» listo: cobra el bono",
+    challengeClaimedOverlay: "Reto «{{title}}» · +{{amount}}",
+    challengeReminderTitle: "Reto Almost «{{title}}»",
+    challengeReminderBody: "Ya casi lo logras. Registra un ahorro más para «{{title}}» y cobra la recompensa.",
+    challengeCancelAction: "Cancelar",
+    challengeAcceptConfirmTitle: "¿Comenzar este reto?",
+    challengeAcceptConfirmMessage: "¿Arrancamos «{{title}}»? El cronómetro empieza ya.",
+    challengeAcceptConfirmYes: "Empezar",
+    challengeAcceptConfirmNo: "Ahora no",
+    challengeCancelConfirmTitle: "¿Cancelar el reto?",
+    challengeCancelConfirmMessage: "¿Detenemos «{{title}}»? Se perderá el progreso.",
+    challengeCancelConfirmYes: "Cancelar",
+    challengeCancelConfirmNo: "Seguir",
+    dailyChallengeOfferBadge: "reto diario",
+    dailyChallengeOfferTitle: "Mini reto de hoy",
+    dailyChallengeOfferSubtitle: "Pasa un día sin «{{temptation}}»",
+    dailyChallengeOfferHint: "Sáltalo una vez hoy y consigue recompensas dobles.",
+    dailyChallengeOfferReward: "+{{amount}} extra",
+    dailyChallengeOfferAccept: "Aceptar reto",
+    dailyChallengeOfferLater: "Quizá luego",
+    dailyChallengeWidgetBadge: "reto diario",
+    dailyChallengeWidgetTitle: "Mini reto activo",
+    dailyChallengeWidgetDesc: "Día sin «{{temptation}}» = monedas x2",
+    dailyChallengeWidgetProgress: "Progreso {{current}} / {{target}}",
+    dailyChallengeWidgetReward: "+{{amount}}",
+    dailyChallengeRewardReason: "Mini reto «{{temptation}}» completado",
+    dailyChallengeRewardNotificationTitle: "Reto diario Almost completado",
+    dailyChallengeRewardNotificationBody: "«{{temptation}}» cedió. Toma tu bono de +{{amount}}.",
+    dailyChallengeFailedText: "«{{temptation}}» ganó hoy",
+    healthCelebrateTitle: "+{{amount}}",
+    healthCelebrateSubtitle: "Úsalo para rescatar tu racha de días gratis.",
+    healthCelebrateLevel: "Subiste de nivel. Almi está feliz.",
+    healthCelebrateReward: "Recompensa cobrada: salud restaurada.",
+    rainMessage: "¡Oh no! Protege el dinero.",
+    developerReset: "Restablecer datos",
+    developerResetConfirm: "¿Borrar deseos, historial y perfil?",
+    developerResetCancel: "Conservar",
+    developerResetApply: "Restablecer",
+    openSettings: "Ajustes",
+    defaultDealTitle: "Meta",
+    defaultDealDesc: "Describe para qué estás ahorrando",
+    photoLibrary: "Desde galería",
+    photoCamera: "Usar cámara",
+    photoTapHint: "Toca para añadir una foto",
+    photoPromptTitle: "¿Añadir foto?",
+    photoPromptSubtitle: "Elige cámara o galería",
+    photoPermissionDenied: "Necesitamos acceso a cámara o fotos para actualizar tu avatar.",
+    photoPermissionSettings: "Abre Ajustes para conceder acceso a cámara y fotos.",
+    photoPickerError: "Algo salió mal. Intenta de nuevo.",
+    registrationTitle: "Configuremos todo",
+    registrationSubtitle: "Cuéntanos quién eres para que Almost hable tu idioma",
+    languageTitle: "Elige un idioma",
+    languageSubtitle: "Personalizaremos cada pista para ti",
+    languageCurrencyHint: "Podrás cambiar idioma y moneda luego en el Perfil.",
+    currencySwipeHint: "Desliza para ver todas las monedas →",
+    languageTermsHint: "Al continuar, usted acepta los términos de Almost.",
+    languageTermsAccepted: "Acepta los términos de uso para seguir.",
+    languageTermsLink: "Leer los Términos completos",
+    inputFirstName: "Nombre",
+    inputLastName: "Apellido",
+    inputMotto: "Lema personal",
+    currencyLabel: "Moneda de ahorro",
+    nextButton: "Continuar",
+    goalTitle: "Elige una meta",
+    goalSubtitle: "¿Hacia dónde deben ir tus decisiones conscientes?",
+    goalCustomSectionTitle: "Tus metas",
+    goalCustomCreate: "Añadir meta propia",
+    goalButton: "Empezar a ahorrar",
+    goalPrimaryBadge: "Meta principal",
+    goalTargetTitle: "¿Qué tan grande es esta meta?",
+    goalTargetSubtitle: "Configura el monto para que Almost registre cada unidad.",
+    goalTargetPlaceholder: "Ej. 1200",
+    goalTargetHint: "Siempre podrás editarlo en el perfil.",
+    goalTargetCTA: "Guardar monto",
+    goalTargetError: "Introduce un monto objetivo",
+    goalTargetLabel: "Monto de la meta",
+    primaryGoalLabel: "Meta principal",
+    primaryGoalLocked: "Podrás cambiar la meta principal desde el perfil.",
+    primaryGoalRemaining: "Quedan {{amount}}",
+    goalWidgetTargetLabel: "Meta: {{amount}}",
+    goalWidgetRemaining: "Faltan {{amount}}",
+    goalWidgetComplete: "Meta completada",
+    goalWidgetTitle: "Hacia la meta",
+    goalWidgetCompleteTagline: "Los ahorros siguieron llegando: misión cumplida.",
+    goalAssignPromptTitle: "¿A qué meta irá este ahorro?",
+    goalAssignPromptSubtitle: "Elige la meta que financiará «{{title}}».",
+    goalAssignNone: "Sin meta aún",
+    goalAssignTemptationTitle: "Asignar tentación",
+    goalAssignTemptationSubtitle: "¿Qué hábito alimenta «{{goal}}»?",
+    goalAssignClear: "Quitar asignación",
+    goalAssignFieldLabel: "Envía el ahorro a",
+    goalMainTemptationError: "La tentación principal no se puede convertir en una meta.",
+    goalDestinationLabel: "Ahorrando para",
+    goalStatusInWishlist: "Añadir a la meta",
+    goalSwipeAdd: "Añadir a meta",
+    goalSwipeDelete: "Eliminar",
+    goalPinnedBadge: "Meta",
+    goalRemoved: "Meta eliminada",
+    goalEditAction: "Editar",
+    goalDeleteAction: "Quitar",
+    goalEditModalTitle: "Editar meta",
+    goalEditNameLabel: "Nombre de la meta",
+    goalEditTargetLabel: "Monto objetivo",
+    goalEditEmojiLabel: "Emoji",
+    goalEditSave: "Guardar",
+    goalEditCancel: "Cancelar",
+    goalEditNameError: "Introduce un nombre",
+    goalEditTargetError: "Define un monto",
+    goalCelebrationTitle: "¡Meta principal cumplida!",
+    goalCelebrationSubtitle: "Almi está orgulloso: elige el siguiente sueño.",
+    goalCelebrationTarget: "Ahorrado {{amount}}",
+    goalRenewalTitle: "Elige una nueva meta principal",
+    goalRenewalSubtitle: "Esta ya está lista: fija un nuevo objetivo para mantener la racha.",
+    goalRenewalCreate: "Crear meta",
+    goalRenewalLater: "Luego",
+    levelWidgetTitle: "Progreso de nivel",
+    levelWidgetCurrent: "Nivel {{level}}",
+    levelWidgetSubtitle: "{{amount}} para el siguiente nivel",
+    levelWidgetTarget: "Siguiente nivel a {{amount}}",
+    levelWidgetMaxed: "¡Lograste el nivel máximo!",
+    onboardingGuideTitle: "De qué trata Almost",
+    onboardingGuideSubtitle: "Un antídoto consciente contra el consumismo y los impulsos.",
+    onboardingGuideButton: "Continuar",
+    termsTitle: "Términos de uso",
+    termsSubtitle: "Revisa los puntos clave. Al seguir, aceptas los Términos de Almost.",
+    termsViewFull: "Abrir documento completo",
+    termsLinkHint: "Lo abriremos en el navegador.",
+    termsAccept: "Acepto",
+    termsDecline: "Cancelar",
+    guideStepTrackTitle: "Tu misión principal",
+    guideStepTrackDesc: "Gasta de forma consciente, protege el presupuesto y enfócate en lo que importa.",
+    guideStepDecisionTitle: "Menú de tentaciones",
+    guideStepDecisionDesc: "Registra cada impulso y resístelo para que Almost cuente la victoria.",
+    guideStepRewardTitle: "Visualiza el panorama",
+    guideStepRewardDesc: "Marca cada ahorro y observa cómo la app dibuja la meta mayor.",
+    personaTitle: "Cuéntanos de ti",
+    personaSubtitle: "Así personalizamos la experiencia.",
+    personaGenderLabel: "¿Cómo te llamamos?",
+    personaHabitLabel: "Perfil con el que más te identificas",
+    personaConfirm: "Continuar",
+    customSpendTitle: "Tu tentación diaria",
+    customSpendSubtitle: "Ponle un nombre y Almost te ayudará a decir que no.",
+    customSpendNamePlaceholder: "Matcha, cigarros, manicura...",
+    customSpendAmountLabel: "¿Cuánto cuesta cada vez?",
+    customSpendAmountPlaceholder: "Ej. {{amount}}",
+    customSpendFrequencyLabel: "¿Cuántas veces por semana gana?",
+    customSpendFrequencyPlaceholder: "Ej. 4",
+    customSpendHint: "Puedes cambiarlo en tu perfil.",
+    customSpendSkip: "Saltar",
+    smartReminderTitle: [
+      "Almost detectó «{{temptation}}»",
+      "Pausa con Almi: «{{temptation}}»",
+      "Recordatorio Almost: «{{temptation}}»",
+    ],
+    smartReminderBody: [
+      "Registraste «{{temptation}}» hace poco. Repite la pausa y envía el dinero a tu meta.",
+      "Almost vio este hábito: respira antes de «{{temptation}}» y elige ahorrar.",
+      "Mantén la racha. «{{temptation}}» puede esperar un poco más.",
+      "Tip: cada vez que saltas «{{temptation}}», Almost afina sus ideas.",
+    ],
+    smartInsightDeclineTitle: "Almost recuerda la victoria de ayer sobre «{{temptation}}»",
+    smartInsightDeclineBody: "Dile que no otra vez hoy y Almost fijará la racha.",
+    smartInsightSpendTitle: "Almost vio que «{{temptation}}» ganó ayer",
+    smartInsightSpendBody: "Mantén la calma hoy para celebrar un ahorro.",
+    dailyNudgeMorningTitle: ["Empujón matutino de Almost", "Chequeo de enfoque de Almi"],
+    dailyNudgeMorningBody: [
+      "Marca el ritmo: salta el primer impulso y recuerda tu meta.",
+      "Almi pasa revista: haz una pausa antes del primer pago de hoy.",
+    ],
+    dailyNudgeDayTitle: ["Chequeo Almost al mediodía", "Impulso de enfoque de Almi"],
+    dailyNudgeDayBody: [
+      "Los impulsos suben a esta hora. Pregunta si la compra sirve a tu meta.",
+      "Almost notó caprichos a la hora de comer. Haz una pausa consciente.",
+    ],
+    dailyNudgeAfternoonTitle: ["Chequeo post comida con Almost", "Frena con Almi"],
+    dailyNudgeAfternoonBody: [
+      "Respira antes de tocar comprar y redirige el dinero al ahorro.",
+      "¿Tentaciones al acecho? Mantén el rumbo y recuerda tu meta.",
+    ],
+    dailyNudgeEveningTitle: ["Escudo nocturno de Almost", "Cierre del día con Almi"],
+    dailyNudgeEveningBody: [
+      "Las noches tientan más. Registra una victoria antes de dormir.",
+      "Cierra el día en Almost: incluso un pequeño ahorro mantiene listos los recordatorios.",
+    ],
+    dailySummaryBadgeLabel: "reporte nocturno",
+    dailySummaryTitle: "Resumen del día",
+    dailySummarySubtitle: "Qué ritmo, sigue así.",
+    dailySummarySavedLabel: "Ahorro de hoy",
+    dailySummarySavedSub: "Cada renuncia acerca la meta.",
+    dailySummarySpendsLabel: "Gastos",
+    dailySummaryContinue: "Continuar",
+    dailySummaryHint: "Mañana vuelvo con números frescos.",
+    baselineTitle: "¿Cuánto se va en pequeños caprichos?",
+    baselineSubtitle: "Calcula un mes de cafés, snacks y compras impulsivas para compararlo con tus victorias reales.",
+    baselinePlaceholder: "Ej. {{amount}}",
+    baselineCTA: "Guardar monto",
+    baselineHint: "Un aproximado basta; podrás ajustarlo en Perfil.",
+    baselineInputError: "Introduce tu gasto mensual estimado en extras",
+    potentialBlockTitle: "Potencial vs ahorro real",
+    potentialBlockSubtitle: "",
+    potentialBlockStatusAhead: "¡Vas por delante del pronóstico!",
+    potentialBlockStatusStart: "Empieza a registrar rechazos: el potencial espera.",
+    potentialBlockStatusBehind: "Vas bien, pero el potencial es mayor.",
+    potentialBlockStatusOnTrack: "Estás aprovechando casi todo el potencial. Sigue así.",
+    potentialBlockActualLabel: "Ahorrado",
+    potentialBlockPotentialLabel: "Potencial",
+    potentialBlockHint: "Aún quedan {{amount}} de potencial. Nothing is lost 🙂",
+    potentialBlockDetails:
+      "Usamos el presupuesto mensual de tentaciones que pusiste en el onboarding, lo dividimos en segundos y mostramos cuánto podrías haber ahorrado hasta ahora.",
+    potentialBlockCta: "Cuéntanos cuánto suele escaparse en extras y te mostraremos el potencial.",
+    potentialPushAheadTitle: "¡Vas por delante de tu potencial!",
+    potentialPushAheadBody:
+      "El contador llegó a {{potential}} y tú ya estás en {{actual}}. Mantén ese ritmo.",
+    potentialPushBehindTitle: "Alcanza tu potencial",
+    potentialPushBehindBody:
+      "El potencial ya va por {{potential}}; faltan {{shortfall}}. Pausa antes de comprar y registra un ahorro.",
+    quickCustomTitle: "Añadir tentación",
+    quickCustomSubtitle: "Nombra el impulso y define un precio para añadirlo al mazo",
+    quickCustomNameLabel: "Nombre",
+    quickCustomAmountLabel: "Costo ({{currency}})",
+    quickCustomEmojiLabel: "Emoji",
+    quickCustomConfirm: "Añadir",
+    quickCustomCancel: "Cancelar",
+    coinEntryTitle: "¿Cuánto?",
+    coinEntrySubtitle: "Desliza la moneda y elige categoría.",
+    coinEntryHint: "Usa los botones de arriba para ahorrar o gastar.",
+    coinEntryManual: "...",
+    coinEntryManualTitle: "Define un nuevo máximo",
+    coinEntryManualPlaceholder: "Ej. {{amount}}",
+    coinEntryManualSave: "Recordar",
+    coinEntryManualCancel: "Cancelar",
+    coinEntryManualError: "Introduce un monto válido",
+    coinEntryManualAmountTitle: "Ingresa un monto manual",
+    coinEntryManualAmountPlaceholder: "Ej. {{amount}}",
+    coinEntryCategoryLabel: "Categoría",
+    coinEntryCategoryError: "Primero elige una categoría",
+    coinEntrySaveLabel: "Ahorro rápido",
+    coinEntrySpendLabel: "Gasto rápido",
+    fabNewGoal: "Nueva meta",
+    fabNewTemptation: "Nuevo gasto",
+    fabQuickActionTitle: "Última tentación",
+    fabQuickActionSubtitle: "Repite la acción para «{{title}}»",
+    fabQuickActionEmpty: "Aún no hay tentación reciente. Interactúa con una tarjeta.",
+    fabTutorialTitle: "Conoce el “+”",
+    fabTutorialDesc:
+      "Toca para registrar impulsos con tu propio monto y categoría. Mantén presionado para crear metas o gastos personalizados.",
+    fabTutorialAction: "Entendido",
+    newGoalTitle: "Nueva meta",
+    newGoalSubtitle: "Ponle nombre al sueño y define su importe.",
+    newGoalNameLabel: "Nombre",
+    newGoalTargetLabel: "Objetivo ({{currency}})",
+    newGoalEmojiLabel: "Emoji",
+    newGoalCreate: "Crear meta",
+    newGoalCancel: "Cancelar",
+    newPendingTitle: "Nuevo elemento En pausa",
+    newPendingSubtitle: "Describe la tentación que quieres aparcar 14 días.",
+    newPendingNameLabel: "Nombre",
+    newPendingAmountLabel: "Precio ({{currency}})",
+    newPendingEmojiLabel: "Emoji",
+    newPendingCreate: "Añadir a En pausa",
+    newPendingCancel: "Cancelar",
+    tutorialFeedTitle: "Feed de tentaciones",
+    tutorialFeedDesc: "Registra cada impulso y decide: guardar, añadir a metas o pausar 14 días.",
+    tutorialGoalsTitle: "Metas",
+    tutorialGoalsDesc: "Aquí viven los sueños. Sigue el progreso y recarga tu meta.",
+    tutorialThinkingTitle: "Pestaña En pausa",
+    tutorialThinkingDesc: "Pon las compras en pausa 14 días y vuelve con la cabeza fría.",
+    tutorialRewardsTitle: "Recompensas y retos",
+    tutorialRewardsDesc: "En esta pestaña cobras logros y lanzas retos con bono de salud.",
+    tutorialProfileTitle: "Perfil y motivación",
+    tutorialProfileDesc: "Ajusta tema, idioma, recordatorios y tus objetivos personales.",
+    tutorialSkip: "Saltar",
+    tutorialNext: "Siguiente",
+    tutorialDone: "Finalizar",
+    tutorialProgress: "{{current}} de {{total}}",
+    tabHintFeedTitle: "Feed de tentaciones",
+    tabHintFeedBody: "Registra impulsos y decide si ahorras, lo añades a metas o lo pospones.",
+    tabHintCartTitle: "Metas",
+    tabHintCartBody: "Ordena tus sueños, fija prioridades y actualiza el progreso.",
+    tabHintPendingTitle: "En pausa",
+    tabHintPendingBody: "Envía compras a una espera de 14 días y vuelve más objetiva.",
+    tabHintPurchasesTitle: "Recompensas",
+    tabHintPurchasesBody: "Cobra logros y activa retos para ganar salud adicional.",
+    tabHintProfileTitle: "Perfil",
+    tabHintProfileBody: "Ajusta tema, idioma, recordatorios y metas personales.",
+    tabHintGotIt: "Entendido",
+  },
+};
+
+const LANGUAGE_OVERRIDES = {
+  es: {
+    languageLabel: "Idioma",
+    languageTitle: "Elige idioma",
+    languageSubtitle: "Configura el idioma y la moneda antes de empezar",
+    languageRussian: "Ruso",
+    languageEnglish: "Inglés",
+    languageSpanish: "Español",
+  },
+  fr: {
+    languageLabel: "Langue",
+    languageTitle: "Choisir une langue",
+    languageSubtitle: "Configure la langue et la devise avant de commencer",
+    languageRussian: "Russe",
+    languageEnglish: "Anglais",
+    languageSpanish: "Espagnol",
+    languageFrench: "Français",
+  },
+};
+const resolveTranslationValueForLanguage = (language, key, gender = "none") => {
+  const normalizedLanguage = normalizeLanguage(language);
+  const override = LANGUAGE_OVERRIDES[normalizedLanguage]?.[key];
+  const dictionary = TRANSLATIONS[normalizedLanguage] || {};
+  let raw =
+    override !== undefined
+      ? override
+      : dictionary[key] ??
+        TRANSLATIONS[FALLBACK_LANGUAGE]?.[key] ??
+        TRANSLATIONS[DEFAULT_LANGUAGE]?.[key];
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const genderValue = raw[gender];
+    if (typeof genderValue === "string") {
+      raw = genderValue;
+    } else if (typeof raw.none === "string") {
+      raw = raw.none;
+    } else {
+      const fallbackValue = Object.values(raw).find((value) => typeof value === "string");
+      raw = fallbackValue !== undefined ? fallbackValue : undefined;
+    }
+  }
+  return raw;
+};
+
+const resolveLanguageMapValue = (value, language) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const normalizedLanguage = normalizeLanguage(language);
+  const direct = value[normalizedLanguage];
+  if (typeof direct === "string" && direct.length) {
+    return direct;
+  }
+  const fallback = value[FALLBACK_LANGUAGE];
+  if (typeof fallback === "string" && fallback.length) {
+    return fallback;
+  }
+  const defaultValue = value[DEFAULT_LANGUAGE];
+  if (typeof defaultValue === "string" && defaultValue.length) {
+    return defaultValue;
+  }
+  const generic = Object.values(value).find((entry) => typeof entry === "string" && entry.length);
+  return typeof generic === "string" ? generic : null;
 };
 const collectDailyNudgeVariants = (keys = []) => {
   const variants = new Set();
   DAILY_NUDGE_LANGUAGES.forEach((lng) => {
-    const dict = TRANSLATIONS[lng] || {};
+    const dict = TRANSLATIONS[lng] || TRANSLATIONS[FALLBACK_LANGUAGE] || {};
     keys.forEach((key) => {
       const raw = dict[key];
       if (Array.isArray(raw)) {
@@ -4076,35 +5721,35 @@ const isKnownDailyNudgeNotification = (content = {}) => {
 };
 
 const CATEGORY_LABELS = {
-  all: { ru: "все", en: "all" },
-  tech: { ru: "техника", en: "tech" },
-  flagship: { ru: "флагман", en: "flagship" },
-  iphone: { ru: "iphone", en: "iphone" },
-  laptop: { ru: "ноут", en: "laptop" },
-  work: { ru: "работа", en: "work" },
-  audio: { ru: "аудио", en: "audio" },
-  style: { ru: "стиль", en: "style" },
-  wearable: { ru: "носимое", en: "wearable" },
-  sport: { ru: "спорт", en: "sport" },
-  home: { ru: "дом", en: "home" },
-  wow: { ru: "вау", en: "wow" },
-  gift: { ru: "подарки", en: "gift" },
-  coffee: { ru: "кофе", en: "coffee" },
-  eco: { ru: "эко", en: "eco" },
-  food: { ru: "еда", en: "food" },
-  wellness: { ru: "забота", en: "wellness" },
-  retro: { ru: "ретро", en: "retro" },
-  lifestyle: { ru: "лайф", en: "lifestyle" },
-  stationery: { ru: "бумага", en: "stationery" },
-  phone: { ru: "телефон", en: "phone" },
-  travel: { ru: "путешествия", en: "travel" },
-  dream: { ru: "мечты", en: "dream" },
-  habit: { ru: "привычки", en: "habit" },
-  habbit: { ru: "привычки", en: "habit" },
-  custom: { ru: "свои", en: "custom" },
-  daily: { ru: "ежедневное", en: "daily" },
-  health: { ru: "здоровье", en: "health" },
-  vices: { ru: "вредные", en: "vices" },
+  all: { ru: "все", en: "all", es: "todo", fr: "tout" },
+  tech: { ru: "техника", en: "tech", es: "tecnología", fr: "tech" },
+  flagship: { ru: "флагман", en: "flagship", es: "gama alta", fr: "haut de gamme" },
+  iphone: { ru: "iphone", en: "iphone", es: "iphone", fr: "iphone" },
+  laptop: { ru: "ноут", en: "laptop", es: "portátil", fr: "portable" },
+  work: { ru: "работа", en: "work", es: "trabajo", fr: "travail" },
+  audio: { ru: "аудио", en: "audio", es: "audio", fr: "audio" },
+  style: { ru: "стиль", en: "style", es: "estilo", fr: "style" },
+  wearable: { ru: "носимое", en: "wearable", es: "wearable", fr: "wearable" },
+  sport: { ru: "спорт", en: "sport", es: "deporte", fr: "sport" },
+  home: { ru: "дом", en: "home", es: "hogar", fr: "maison" },
+  wow: { ru: "вау", en: "wow", es: "wow", fr: "wow" },
+  gift: { ru: "подарки", en: "gift", es: "regalo", fr: "cadeau" },
+  coffee: { ru: "кофе", en: "coffee", es: "café", fr: "café" },
+  eco: { ru: "эко", en: "eco", es: "eco", fr: "éco" },
+  food: { ru: "еда", en: "food", es: "comida", fr: "nourriture" },
+  wellness: { ru: "забота", en: "wellness", es: "bienestar", fr: "bien-être" },
+  retro: { ru: "ретро", en: "retro", es: "retro", fr: "rétro" },
+  lifestyle: { ru: "лайф", en: "lifestyle", es: "lifestyle", fr: "lifestyle" },
+  stationery: { ru: "бумага", en: "stationery", es: "papelería", fr: "papeterie" },
+  phone: { ru: "телефон", en: "phone", es: "teléfono", fr: "téléphone" },
+  travel: { ru: "путешествия", en: "travel", es: "viajes", fr: "voyage" },
+  dream: { ru: "мечты", en: "dream", es: "sueños", fr: "rêves" },
+  habit: { ru: "привычки", en: "habit", es: "hábito", fr: "habitudes" },
+  habbit: { ru: "привычки", en: "habit", es: "hábito", fr: "habitudes" },
+  custom: { ru: "свои", en: "custom", es: "personal", fr: "perso" },
+  daily: { ru: "ежедневное", en: "daily", es: "diario", fr: "quotidien" },
+  health: { ru: "здоровье", en: "health", es: "salud", fr: "santé" },
+  vices: { ru: "вредные", en: "vices", es: "vicios", fr: "vices" },
 };
 
 const normalizeCategoryKey = (value) => {
@@ -4142,11 +5787,15 @@ const CURRENCY_LOCALES = {
 const TERMS_LINKS = {
   ru: "https://www.notion.so/RU-2b24e58ea9a0809ea04fe54138975e96",
   en: "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b",
+  es: "https://www.notion.so/T-RMINOS-DE-USO-ES-2d14e58ea9a080988f5bed55ccea3c2e?source=copy_link",
+  fr: "https://www.notion.so/CONDITIONS-D-UTILISATION-FR-2d14e58ea9a080dd9c53dcf52d5eb3e0?source=copy_link",
 };
 
 const PRIVACY_LINKS = {
   ru: "https://www.notion.so/RU-2b24e58ea9a08032b017d3a5c69bbf48",
   en: "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
+  es: "https://www.notion.so/POL-TICA-DE-PRIVACIDAD-ES-2d14e58ea9a080a09132c0bc8d722b7b?source=copy_link",
+  fr: "https://www.notion.so/POLITIQUE-DE-CONFIDENTIALIT-FR-2d14e58ea9a080628e6bc7cdaef3f451?source=copy_link",
 };
 
 const TERMS_POINTS = {
@@ -4154,13 +5803,25 @@ const TERMS_POINTS = {
     "Almost помогает развивать осознанность в тратах и не является банком, брокером или финансовым консультантом. Любые решения о расходах и накоплениях остаются на стороне пользователя.",
     "Ты подтверждаешь, что регистрационные данные переданы добровольно, точны и могут использоваться Almost для персонализации сервиса, уведомлений и аналитики в обезличенном виде.",
     "Мы собираем и храним только минимально необходимые данные профиля. Ты можешь обновить или удалить их через настройки и поддержку. При удалении профиля мы стираем связанные события и историю.",
-    "Соглашение регулируется законодательством страны регистрации Almost. Споры решаются переговорами, а при необходимости — в суде по месту регистрации сервиса.",
+    "Соглашение регулируется законодательством страны регистрации Almost. Споры решаются переговорами, а при необходимости - в суде по месту регистрации сервиса.",
   ],
   en: [
     "Almost is a mindful spending companion, not a bank, broker, or financial advisor. Every decision about saving or spending remains your responsibility.",
     "You confirm that the information you share is accurate and voluntarily provided so Almost can personalise hints, notifications, and anonymised analytics.",
     "We store only the minimum profile data required to operate the app. You can edit or request deletion via settings and support, which wipes related history from our systems.",
     "This agreement is governed by the laws of the jurisdiction where Almost is registered. Any dispute is settled amicably first and, if needed, in the courts of that jurisdiction.",
+  ],
+  es: [
+    "Almost te ayuda a desarrollar hábitos conscientes de gasto y no es un banco, bróker ni asesor financiero. Cada decisión de ahorro o gasto sigue siendo tu responsabilidad.",
+    "Confirmas que la información compartida es precisa y se entrega de forma voluntaria para que Almost pueda personalizar recordatorios, notificaciones y analíticas anónimas.",
+    "Guardamos solo los datos mínimos del perfil para que la app funcione. Puedes editarlos o pedir su eliminación desde los ajustes o soporte; al eliminar el perfil se borra también el historial relacionado.",
+    "Este acuerdo se rige por las leyes de la jurisdicción donde está registrado Almost. Los conflictos se intentan resolver de forma amistosa y, si es necesario, en los tribunales de dicha jurisdicción.",
+  ],
+  fr: [
+    "Almost est un compagnon de dépenses conscientes, pas une banque, un courtier ni un conseiller financier. Chaque décision d’épargner ou de dépenser reste sous ta responsabilité.",
+    "Tu confirmes que les informations fournies sont exactes et transmises volontairement pour qu’Almost puisse personnaliser les conseils, notifications et analyses anonymisées.",
+    "Nous conservons uniquement les données minimales du profil nécessaires au fonctionnement de l’app. Tu peux les modifier ou demander leur suppression via les réglages ou le support ; la suppression efface aussi l’historique lié.",
+    "Le présent accord est régi par les lois de la juridiction où Almost est enregistré. Les litiges se règlent d’abord à l’amiable puis, si besoin, devant les tribunaux compétents de cette juridiction.",
   ],
 };
 
@@ -4177,14 +5838,20 @@ const PERSONA_PRESETS = {
     title: {
       ru: "Любитель кофе",
       en: "Coffee devotee",
+      es: "Fan del café",
+      fr: "Fan de café",
     },
     description: {
       ru: "Первая цель: замедлить походы за кофе навынос.",
       en: "Goal one: slow down the take-away coffee habit.",
+      es: "Primer paso: reducir los cafés para llevar.",
+      fr: "Objectif n°1 : freiner la manie du café à emporter.",
     },
     tagline: {
       ru: "Каждая некупленная чашка дарит +{{amount}} копилке.",
       en: "Every skipped cup adds +{{amount}} to the stash.",
+      es: "Cada taza que saltas suma +{{amount}} al cofre.",
+      fr: "Chaque tasse évitée ajoute +{{amount}} à la cagnotte.",
     },
     habit: {
       emoji: "☕️",
@@ -4194,10 +5861,14 @@ const PERSONA_PRESETS = {
       title: {
         ru: "Кофе навынос",
         en: "Coffee run",
+        es: "Café para llevar",
+        fr: "Course café",
       },
       description: {
         ru: "Сладкий момент слабости каждое утро.",
         en: "Sweet little impulse every morning.",
+        es: "Ese pequeño impulso dulce de cada mañana.",
+        fr: "Petit écart sucré de chaque matin.",
       },
     },
   },
@@ -4207,14 +5878,20 @@ const PERSONA_PRESETS = {
     title: {
       ru: "Отказ от сигарет",
       en: "Quit smoking",
+      es: "Dejar de fumar",
+      fr: "Arrêter de fumer",
     },
     description: {
       ru: "Первая ступень: меньше случайных сигарет и перекуров.",
       en: "First tier: fewer casual cigarettes and smoke breaks.",
+      es: "Primer nivel: menos cigarrillos casuales y descansos de humo.",
+      fr: "Premier palier : moins de cigarettes prises « au cas où » et de pauses clope.",
     },
     tagline: {
       ru: "Каждая пропущенная сигарета держит бюджет в тонусе.",
       en: "Every skipped cigarette keeps the budget sharp.",
+      es: "Cada cigarro que saltas mantiene el presupuesto firme.",
+      fr: "Chaque cigarette évitée garde ton budget affûté.",
     },
     habit: {
       emoji: "🚬",
@@ -4224,10 +5901,14 @@ const PERSONA_PRESETS = {
       title: {
         ru: "Пачка сигарет",
         en: "Pack of cigarettes",
+        es: "Paquete de cigarrillos",
+        fr: "Paquet de cigarettes",
       },
       description: {
         ru: "Пропустить перекур значит ускорить прогресс.",
         en: "Skip the smoke break, speed up the progress.",
+        es: "Saltarte el cigarro acelera el progreso.",
+        fr: "Sauter une pause clope accélère le progrès.",
       },
     },
   },
@@ -4238,14 +5919,20 @@ const PERSONA_PRESETS = {
     title: {
       ru: "Бьюти-фанат",
       en: "Beauty fan",
+      es: "Fanática del beauty",
+      fr: "Fan de beauté",
     },
     description: {
       ru: "Контролируем спонтанные бьюти-покупки и подписки.",
       en: "Keep beauty splurges and subs in check.",
+      es: "Domina las compras y suscripciones de belleza.",
+      fr: "On garde les achats et abonnements beauté sous contrôle.",
     },
     tagline: {
       ru: "Один пропущенный бьюти-дроп = {{amount}} для большой цели.",
       en: "One skipped beauty drop = {{amount}} toward the big goal.",
+      es: "Cada beauty drop que saltas suma {{amount}} a la meta mayor.",
+      fr: "Chaque drop beauté évité = {{amount}} en plus pour ton grand objectif.",
     },
     habit: {
       emoji: "💄",
@@ -4255,10 +5942,14 @@ const PERSONA_PRESETS = {
       title: {
         ru: "Мини бьюти-дроп",
         en: "Mini beauty haul",
+        es: "Mini compra beauty",
+        fr: "Mini craquage beauté",
       },
       description: {
         ru: "Тени, помада и ещё один «нужный» уход.",
         en: "Shadow, lipstick and yet another “needed” serum.",
+        es: "Sombras, labial y otro serum “imprescindible”.",
+        fr: "Fard, rouge et un énième sérum soi-disant indispensable.",
       },
     },
   },
@@ -4269,14 +5960,20 @@ const PERSONA_PRESETS = {
     title: {
       ru: "Геймер",
       en: "Gamer",
+      es: "Gamer",
+      fr: "Gamer",
     },
     description: {
       ru: "Замедляем донаты, лутбоксы и ночные DLC.",
       en: "Cool down loot boxes, microtransactions and DLC binges.",
+      es: "Baja el ritmo de loot boxes, DLC y microtransacciones.",
+      fr: "On calme les loot boxes, microtransactions et DLC nocturnes.",
     },
     tagline: {
       ru: "Каждый пропущенный донат = {{amount}} на мечту IRL.",
       en: "Every skipped microtransaction frees {{amount}} for IRL goals.",
+      es: "Cada donación que evitas libera {{amount}} para metas reales.",
+      fr: "Chaque microtransaction évitée libère {{amount}} pour tes buts IRL.",
     },
     habit: {
       emoji: "🎮",
@@ -4286,10 +5983,14 @@ const PERSONA_PRESETS = {
       title: {
         ru: "Игровой донат",
         en: "Game microtransaction",
+        es: "Microtransacción",
+        fr: "Microtransaction",
       },
       description: {
         ru: "Пара пропущенных скинов даёт плюс к прогрессу.",
         en: "Skip a couple skins, gain momentum.",
+        es: "Salta un par de skins y gana impulso.",
+        fr: "Saute deux skins et tu gagnes en vitesse.",
       },
     },
   },
@@ -4299,14 +6000,20 @@ const PERSONA_PRESETS = {
     title: {
       ru: "Любитель доставки",
       en: "Delivery lover",
+      es: "Fan de la entrega",
+      fr: "Accro à la livraison",
     },
     description: {
       ru: "Первая миссия: меньше спонтанной еды из приложения.",
       en: "Mission one: fewer random delivery orders.",
+      es: "Misión uno: menos pedidos impulsivos en apps.",
+      fr: "Mission 1 : moins de commandes impulsives via l'app.",
     },
     tagline: {
       ru: "Перескочил доставку и сохранил {{amount}} на реальную цель.",
       en: "Skip delivery, unlock {{amount}} for real goals.",
+      es: "Saltarte la entrega libera {{amount}} para la meta real.",
+      fr: "Saute une livraison et libère {{amount}} pour ton vrai but.",
     },
     habit: {
       emoji: "🍕",
@@ -4316,10 +6023,14 @@ const PERSONA_PRESETS = {
       title: {
         ru: "Доставка вечерком",
         en: "Night delivery",
+        es: "Delivery nocturno",
+        fr: "Livraison nocturne",
       },
       description: {
         ru: "Пицца, поке или суши? Выбираешь прогресс.",
         en: "Pizza, poke or sushi? You choose progress.",
+        es: "¿Pizza, poke o sushi? Tú eliges el progreso.",
+        fr: "Pizza, poke ou sushi ? Tu choisis le progrès.",
       },
     },
   },
@@ -4329,14 +6040,20 @@ const PERSONA_PRESETS = {
     title: {
       ru: "Онлайн-шопер",
       en: "Online shopper",
+      es: "Comprador online",
+      fr: "Shoppeur en ligne",
     },
     description: {
       ru: "Любит импульсивные онлайн-покупки. Кладём в список, а не в корзину.",
       en: "Loves impulse online buys. Park them in a list instead of checkout.",
+      es: "Le encantan las compras impulsivas online. Mejor guárdalas en una lista.",
+      fr: "Fan des achats impulsifs en ligne. On les range dans une liste plutôt que dans le panier.",
     },
     tagline: {
       ru: "Каждый несостоявшийся заказ = {{amount}} ближе к цели.",
       en: "Every skipped checkout moves {{amount}} closer to your goal.",
+      es: "Cada carrito sin pagar acerca {{amount}} a tu meta.",
+      fr: "Chaque panier abandonné rapproche de {{amount}} ta prochaine étape.",
     },
     habit: {
       emoji: "📦",
@@ -4346,10 +6063,14 @@ const PERSONA_PRESETS = {
       title: {
         ru: "Онлайн-импульс",
         en: "Online impulse",
+        es: "Impulso online",
+        fr: "Impulsion en ligne",
       },
       description: {
         ru: "Ещё одна посылка, которая могла стать прогрессом.",
         en: "Another package that could have been progress.",
+        es: "Otro paquete que podría haber sido progreso.",
+        fr: "Un colis de plus qui aurait pu devenir du progrès.",
       },
     },
   },
@@ -4359,14 +6080,20 @@ const PERSONA_PRESETS = {
     title: {
       ru: "Любитель аниме",
       en: "Anime fan",
+      es: "Fan del anime",
+      fr: "Fan d'anime",
     },
     description: {
       ru: "Мерч, манга и фигурки. Фиксируем только то, что реально важно.",
       en: "Merch, manga, figures. Log only what truly matters.",
+      es: "Merch, manga, figuras. Registra solo lo que importa.",
+      fr: "Merch, manga et figurines : on ne garde que l'essentiel.",
     },
     tagline: {
-      ru: "Пропустил очередной сет — {{amount}} в копилку мечты.",
-      en: "Skipped the next merch drop—{{amount}} to your dream.",
+      ru: "Пропустил очередной сет - {{amount}} в копилку мечты.",
+      en: "Skipped the next merch drop-{{amount}} to your dream.",
+      es: "Saltarse el nuevo drop suma {{amount}} a tu sueño.",
+      fr: "Skip le prochain drop = {{amount}} de plus pour ton rêve.",
     },
     habit: {
       emoji: "🎌",
@@ -4376,10 +6103,14 @@ const PERSONA_PRESETS = {
       title: {
         ru: "Аниме-мерч",
         en: "Anime merch",
+        es: "Merch anime",
+        fr: "Merch anime",
       },
       description: {
-        ru: "Фигурка, томик или брелок — решай осознанно.",
-        en: "Figure, volume, or keychain—choose mindfully.",
+        ru: "Фигурка, томик или брелок - решай осознанно.",
+        en: "Figure, volume, or keychain-choose mindfully.",
+        es: "Figura, tomo o llavero: decide con consciencia.",
+        fr: "Figurine, tome ou porte-clés : décide en conscience.",
       },
     },
   },
@@ -4389,14 +6120,20 @@ const PERSONA_PRESETS = {
     title: {
       ru: "Любитель подписок",
       en: "Subscription lover",
+      es: "Fan de las suscripciones",
+      fr: "Fan des abonnements",
     },
     description: {
       ru: "Стриминг, сервисы, доп‑фичи. Держим подписки под контролем.",
       en: "Streaming, SaaS, extra features. Keep subs under control.",
+      es: "Streaming, servicios, extras. Mantén a raya las suscripciones.",
+      fr: "Streaming, services et options : on garde les abonnements sous contrôle.",
     },
     tagline: {
-      ru: "Отменил лишнее — {{amount}} осталась в целях.",
-      en: "Cancel the extra sub—{{amount}} stays with your goals.",
+      ru: "Отменил лишнее - {{amount}} осталась в целях.",
+      en: "Cancel the extra sub-{{amount}} stays with your goals.",
+      es: "Cancelar la suscripción extra deja {{amount}} en tus metas.",
+      fr: "Annule un abonnement de trop et {{amount}} reste pour tes objectifs.",
     },
     habit: {
       emoji: "🧾",
@@ -4406,10 +6143,14 @@ const PERSONA_PRESETS = {
       title: {
         ru: "Лишняя подписка",
         en: "Extra subscription",
+        es: "Suscripción extra",
+        fr: "Abonnement en trop",
       },
       description: {
         ru: "Месячные платежи, которые незаметно съедают бюджет.",
         en: "Monthly payments quietly draining the budget.",
+        es: "Pagos mensuales que se comen el presupuesto sin avisar.",
+        fr: "Des prélèvements mensuels qui mangent le budget sans prévenir.",
       },
     },
   },
@@ -4419,14 +6160,20 @@ const PERSONA_PRESETS = {
     title: {
       ru: "Любитель шмоток",
       en: "Fashion lover",
+      es: "Fan de la moda",
+      fr: "Passionné·e de mode",
     },
     description: {
       ru: "Следит за дропами и скидками. Учимся тормозить импульсы.",
       en: "Tracks drops and sales. Time to slow the impulses.",
+      es: "Sigue drops y rebajas. Toca frenar los impulsos.",
+      fr: "Scrute les drops et promos. On apprend à freiner les impulsions.",
     },
     tagline: {
       ru: "Каждый нескупленный дроп = {{amount}} к большому плану.",
       en: "Every unsnapped drop adds {{amount}} to the big plan.",
+      es: "Cada drop que dejas pasar suma {{amount}} a tu plan grande.",
+      fr: "Chaque drop laissé passer ajoute {{amount}} au grand plan.",
     },
     habit: {
       emoji: "👜",
@@ -4436,10 +6183,14 @@ const PERSONA_PRESETS = {
       title: {
         ru: "Импульсный шоппинг",
         en: "Impulse fashion pick",
+        es: "Antojo de moda",
+        fr: "Craquage mode",
       },
       description: {
-        ru: "Сумка, худи или кроссы — фиксируй, а не хватай.",
-        en: "Bag, hoodie or sneakers—log it, don't grab it.",
+        ru: "Сумка, худи или кроссы - фиксируй, а не хватай.",
+        en: "Bag, hoodie or sneakers-log it, don't grab it.",
+        es: "Bolso, hoodie o sneakers: regístralo antes de comprar.",
+        fr: "Sac, hoodie ou sneakers : note-le avant de craquer.",
       },
     },
   },
@@ -4460,16 +6211,41 @@ const PERSONA_HABIT_TYPES = {
 const DEFAULT_PERSONA_ID = "mindful_coffee";
 
 const GENDER_OPTIONS = [
-  { id: "female", label: { ru: "Женщина", en: "Female" }, emoji: "💁‍♀️" },
-  { id: "male", label: { ru: "Мужчина", en: "Male" }, emoji: "🧑‍🦱" },
-  { id: "none", label: { ru: "Не указывать", en: "Prefer not to say" }, emoji: "🤫" },
+  { id: "female", label: { ru: "Женщина", en: "Female", es: "Mujer", fr: "Femme" }, emoji: "💁‍♀️" },
+  { id: "male", label: { ru: "Мужчина", en: "Male", es: "Hombre", fr: "Homme" }, emoji: "🧑‍🦱" },
+  {
+    id: "none",
+    label: {
+      ru: "Не указывать",
+      en: "Prefer not to say",
+      es: "Prefiero no decirlo",
+      fr: "Je préfère ne pas le dire",
+    },
+    emoji: "🤫",
+  },
 ];
 
 const GOAL_PRESETS = [
-  { id: "travel", ru: "Путешествия", en: "Travel", emoji: "✈️", targetUSD: 1500 },
-  { id: "tech", ru: "Техника", en: "Tech upgrade", emoji: "💻", targetUSD: 900 },
-  { id: "daily", ru: "Ежедневные цели", en: "Daily treats", emoji: "🍩", targetUSD: 250 },
-  { id: "save", ru: "Просто копить", en: "Rainy-day fund", emoji: "💰", targetUSD: 600 },
+  { id: "travel", ru: "Путешествия", en: "Travel", es: "Viajes", fr: "Voyages", emoji: "✈️", targetUSD: 1500 },
+  { id: "tech", ru: "Техника", en: "Tech upgrade", es: "Tecnología", fr: "Upgrade tech", emoji: "💻", targetUSD: 900 },
+  {
+    id: "daily",
+    ru: "Ежедневные цели",
+    en: "Daily treats",
+    es: "Caprichos diarios",
+    fr: "Plaisirs quotidiens",
+    emoji: "🍩",
+    targetUSD: 250,
+  },
+  {
+    id: "save",
+    ru: "Просто копить",
+    en: "Rainy-day fund",
+    es: "Fondo de respaldo",
+    fr: "Fonds de secours",
+    emoji: "💰",
+    targetUSD: 600,
+  },
 ];
 
 const PRIMARY_GOAL_KIND = "primary_goal";
@@ -4536,13 +6312,20 @@ const updatePrimaryGoalTargetInProfile = (profileState = {}, goalId, targetUSD, 
   };
 };
 
+const PROFILE_BIO_FALLBACKS = {
+  ru: "Люблю красивые вещи, но больше люблю финансовый план",
+  en: "I love nice things, but I love my money plan even more",
+  es: "Me encantan las cosas bonitas, pero más mi plan financiero",
+  fr: "J’aime les belles choses, mais j’adore encore plus mon plan financier",
+};
+
 const DEFAULT_PROFILE = {
   name: "Nina Cleanova",
   firstName: "Nina",
   lastName: "Cleanova",
   subtitle: "",
   motto: "",
-  bio: "Люблю красивые вещи, но больше люблю финансовый план",
+  bio: PROFILE_BIO_FALLBACKS.en,
   avatar: "",
   currency: "USD",
   goal: "save",
@@ -4620,10 +6403,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Кофе навынос",
       en: "Coffee to-go",
+      es: "Café para llevar",
+      fr: "Café à emporter",
     },
     description: {
       ru: "Самая мелкая трата, которая, если её не заметить, съедает бюджет каждый день.",
       en: "Tiny daily swipe that quietly eats the budget if you don’t watch it.",
+      es: "Ese pequeño pago diario que devora el presupuesto si no lo vigilas.",
+      fr: "Ce petit achat quotidien finit par grignoter ton budget si tu ne le surveilles pas.",
     },
   },
   {
@@ -4638,10 +6425,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Утренний круассан",
       en: "Morning croissant",
+      es: "Croissant mañanero",
+      fr: "Croissant du matin",
     },
     description: {
       ru: "Маленькое удовольствие, которое запускает большой прогресс, если его отложить.",
       en: "A tiny treat that becomes a big level boost once you skip it.",
+      es: "Un pequeño antojo que impulsa el progreso cuando lo pospones.",
+      fr: "Ce petit plaisir devient un vrai boost de progression quand tu le remets à plus tard.",
     },
   },
   {
@@ -4656,10 +6447,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Матча-латте",
       en: "Matcha latte",
+      es: "Matcha latte",
+      fr: "Matcha latte",
     },
     description: {
       ru: "Стеклянный стакан + топинг = почти абонемент в спортзал за месяц.",
       en: "Glass cup + topping = nearly a gym pass per month if you bank it.",
+      es: "Vaso chic + topping = casi una mensualidad de gimnasio si lo ahorras.",
+      fr: "Verre stylé + topping = presque un abonnement de gym par mois si tu l'économises.",
     },
   },
   {
@@ -4674,10 +6469,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Новый смартфон",
       en: "New smartphone",
+      es: "Smartphone nuevo",
+      fr: "Nouveau smartphone",
     },
     description: {
       ru: "Свежий гаджет с двойной камерой, который так легко оправдать. Проверим, стоит ли он эмоций?",
       en: "Shiny dual-camera flagship tempting every scroll. Is the hype worth your savings?",
+      es: "Nuevo flagship con doble cámara que tienta en cada scroll. ¿Vale tus ahorros?",
+      fr: "Ce flagship brillant à double caméra tente à chaque scroll. L'engouement mérite-t-il tes économies ?",
     },
   },
   {
@@ -4692,10 +6491,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Лимитированные кроссы",
       en: "Limited sneakers",
+      es: "Tenis limitados",
+      fr: "Sneakers en édition limitée",
     },
     description: {
       ru: "Редкий дроп с очередью из желающих. Иногда вместо очереди лучше пополнить копилку.",
       en: "Rare drop everyone chases. Maybe the real flex is topping up your stash.",
+      es: "Drop limitado que todos persiguen. El verdadero lujo puede ser engordar la alcancía.",
+      fr: "Un drop rare que tout le monde pourchasse. Et si le vrai flex était de gonfler ta cagnotte ?",
     },
   },
   {
@@ -4710,10 +6513,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Премиальные часы",
       en: "Premium watch",
+      es: "Reloj premium",
+      fr: "Montre premium",
     },
     description: {
       ru: "Отслеживает пульс и расходы, если враг не носит их каждый день.",
       en: "Tracks your pulse and spending if you resist wearing it daily.",
+      es: "Controla tu pulso (y tu gasto) si lo dejas en la vitrina un día más.",
+      fr: "Suit ton pouls et tes dépenses… si tu résistes à la porter tous les jours.",
     },
   },
   {
@@ -4729,10 +6536,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Игровая приставка",
       en: "Game console",
+      es: "Consola de juegos",
+      fr: "Console de jeu",
     },
     description: {
       ru: "Лучший способ вечерами спасать мир и бюджет. До тех пор, пока ты не нажал «купить».",
       en: "Saves worlds at night and your budget if you pause before checkout.",
+      es: "Salva mundos por la noche y tu presupuesto si te detienes antes de pagar.",
+      fr: "Sauve des mondes le soir et ton budget si tu fais une pause avant de payer.",
     },
   },
   {
@@ -4747,10 +6558,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Сет пицц и роллов",
       en: "Pizza & rolls night",
+      es: "Noche de pizza y rolls",
+      fr: "Nuit pizza & rolls",
     },
     description: {
       ru: "Пятничный ритуал, который легко превращается в тысячу рублей, улетевших в никуда.",
       en: "Friday ritual that quickly becomes a $40 habit. Maybe cook tonight?",
+      es: "Ritual de viernes que se vuelve un hábito de $40. ¿Y si cocinas hoy?",
+      fr: "Rituel du vendredi qui finit vite en habitude à 40 $. Et si tu cuisinais ce soir ?",
     },
   },
   {
@@ -4765,10 +6580,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Дополнительный сет роллов",
       en: "Extra sushi add-on",
+      es: "Extra de sushi nocturno",
+      fr: "Supplément sushi de nuit",
     },
     description: {
       ru: "Кажется мелочью в доставке, но именно он делает чек заметно выше.",
       en: "Tiny add-on in the cart that silently pushes the total over the top.",
+      es: "Ese extra pequeño en la app que dispara la cuenta final.",
+      fr: "Ce petit extra dans le panier qui fait grimper la note sans prévenir.",
     },
   },
   {
@@ -4783,10 +6602,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Кино + закуски",
       en: "Movie night combo",
+      es: "Combo noche de cine",
+      fr: "Combo soirée cinéma",
     },
     description: {
       ru: "Билеты, попкорн и лимонад, которые легко превратить в взнос в копилку.",
       en: "Tickets, popcorn and soda that could become a little boost to savings.",
+      es: "Entradas, palomitas y refresco que podrían ir directo al ahorro.",
+      fr: "Tickets, pop-corn et soda qui pourraient devenir un coup de pouce pour l'épargne.",
     },
   },
   {
@@ -4802,10 +6625,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Beauty-бокс месяца",
       en: "Monthly beauty box",
+      es: "Caja beauty mensual",
+      fr: "Box beauté du mois",
     },
     description: {
       ru: "Коробочка сюрпризов, которая каждый месяц перетягивает бюджет.",
       en: "A curated surprise box that steals a chunk of the monthly plan.",
+      es: "Caja sorpresa curada que se lleva parte del plan mensual.",
+      fr: "Une box surprise bien pensée qui mord chaque mois dans ton budget.",
     },
   },
   {
@@ -4821,10 +6648,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Премиум-набор для ухода",
       en: "Premium grooming bundle",
+      es: "Set premium de cuidado",
+      fr: "Coffret grooming premium",
     },
     description: {
       ru: "Бритва, масла и триммер, которые легко заменить прогрессом по целям.",
       en: "Razor, oils and trimmer that could become goal progress instead.",
+      es: "Rasuradora, aceites y trimmer que podrían ser avance hacia tu meta.",
+      fr: "Rasoir, huiles et tondeuse qui pourraient devenir des points de progrès.",
     },
   },
   {
@@ -4839,10 +6670,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Новый фитнес-браслет",
       en: "Fresh fitness band",
+      es: "Nueva smartband",
+      fr: "Nouveau bracelet fitness",
     },
     description: {
       ru: "Экран побольше, датчиков побольше и еще один повод отложить upgrade.",
       en: "Bigger screen, more sensors and one more reason to pause the upgrade.",
+      es: "Pantalla más grande y sensores extra: otro motivo para frenar el upgrade.",
+      fr: "Écran plus grand, capteurs en plus et une raison de plus d'attendre avant l'upgrade.",
     },
   },
   {
@@ -4857,10 +6692,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Бранч выходного дня",
       en: "Weekend brunch ritual",
+      es: "Ritual de brunch",
+      fr: "Rituel brunch du week-end",
     },
     description: {
       ru: "Слои панкейков и мимозы легко превращаются в прогресс по целям.",
       en: "Stacks of pancakes and mimosas that could have been goal progress.",
+      es: "Capas de pancakes y mimosas que podrían ser progreso de metas.",
+      fr: "Des piles de pancakes et des mimosas qui pourraient devenir du progrès vers tes objectifs.",
     },
   },
   {
@@ -4875,10 +6714,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Пакет из 10 тренировок",
       en: "10-class studio pass",
+      es: "Pase de 10 clases",
+      fr: "Pass studio 10 séances",
     },
     description: {
       ru: "Красивая подписка, которая окупится, если копилка останется приоритетом.",
       en: "A shiny class pack that pays off only if the jar stays priority.",
+      es: "Un paquete brillante que solo rinde si el ahorro sigue siendo prioridad.",
+      fr: "Un pack de cours canon qui ne vaut le coup que si la cagnotte reste prioritaire.",
     },
   },
   {
@@ -4893,10 +6736,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Стритвир-капсула",
       en: "Streetwear capsule",
+      es: "Cápsula streetwear",
+      fr: "Capsule streetwear",
     },
     description: {
       ru: "Худи, кепка и аксессуары, которые легко превратить в вклад в большую мечту.",
       en: "Hoodie, cap and trinkets that could accelerate the bigger dream.",
+      es: "Hoodie, gorra y accesorios que podrían empujar tu gran sueño.",
+      fr: "Hoodie, casquette et accessoires qui pourraient plutôt accélérer ton grand rêve.",
     },
   },
   {
@@ -4911,10 +6758,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Экспресс-путешествие",
       en: "Flash vacation",
+      es: "Escapada exprés",
+      fr: "Escapade éclair",
     },
     description: {
       ru: "Ловим билеты на море до зарплаты. Или копим заранее и летим без стресса.",
       en: "Spontaneous seaside flights before payday or a mindful trip later.",
+      es: "Vuelos a la playa antes de cobrar o un viaje con calma si lo planificas.",
+      fr: "Vols improvisés avant la paie ou voyage paisible si tu l'anticipes.",
     },
   },
   {
@@ -4929,10 +6780,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Домашняя кофемашина",
       en: "Home coffee setup",
+      es: "Cafetera en casa",
+      fr: "Machine à café maison",
     },
     description: {
       ru: "Бариста на кухне и минус десяток походов в кофейню каждую неделю.",
       en: "Barista on the countertop and fewer pricey coffee runs.",
+      es: "Un barista en tu cocina y menos visitas costosas a la cafetería.",
+      fr: "Un barista sur le plan de travail et moins d'allers-retours coûteux au café.",
     },
   },
   {
@@ -4948,10 +6803,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Дизайнерская сумка",
       en: "Designer bag",
+      es: "Bolso de diseñador",
+      fr: "Sac de créateur",
     },
     description: {
       ru: "Вещь мечты, которая либо вдохновляет, либо возвращает к списку финансовых целей.",
       en: "Statement piece that either inspires or reminds you of bigger goals.",
+      es: "Pieza soñada que inspira o te recuerda metas más grandes.",
+      fr: "Pièce signature qui inspire ou te rappelle des objectifs plus grands.",
     },
   },
   {
@@ -4966,10 +6825,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Уикенд в европейском городе",
       en: "Weekend city escape",
+      es: "Escapada urbana",
+      fr: "Escapade urbaine",
     },
     description: {
       ru: "Два дня архитектуры и кофе или месячный запас сбережений.",
       en: "Two days of architecture and espresso or a month of savings momentum.",
+      es: "Dos días de arquitectura y espresso o un mes de impulso de ahorro.",
+      fr: "Deux jours d'architecture et d'espresso ou un mois d'élan d'épargne.",
     },
   },
   {
@@ -4984,10 +6847,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Путешествие на машине мечты",
       en: "Dream road trip",
+      es: "Road trip soñado",
+      fr: "Road trip de rêve",
     },
     description: {
       ru: "Бензин, дом на колёсах и свобода. Всё это может подождать до полного прогресса.",
       en: "Fuel, van life and freedom are all waiting once the progress bar hits max.",
+      es: "Gasolina, van y libertad te esperan cuando la barra de progreso llegue al tope.",
+      fr: "Carburant, vanlife et liberté attendent une fois la barre de progression au max.",
     },
   },
   {
@@ -5002,10 +6869,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Автомобиль мечты",
       en: "Dream car",
+      es: "Auto de ensueño",
+      fr: "Voiture de rêve",
     },
     description: {
       ru: "Каждый «сэкономить» переводит топливо из чата хотелок в гараж будущего.",
       en: "Every “save it” reroutes fuel from impulse chats into the future garage.",
+      es: "Cada “ahórralo” desvía combustible de los impulsos al garaje futuro.",
+      fr: "Chaque « j'économise » détourne du carburant des chats d'impulsion vers ton garage futur.",
     },
   },
   {
@@ -5020,10 +6891,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Взнос за квартиру",
       en: "Home down payment",
+      es: "Enganche para casa",
+      fr: "Apport pour la maison",
     },
     description: {
       ru: "Пусть отказ от доставок превращается в кирпичи твоего будущего адреса.",
       en: "Every skipped delivery becomes a brick in your future address.",
+      es: "Cada entrega que saltas se convierte en un ladrillo de tu futuro hogar.",
+      fr: "Chaque livraison évitée devient une brique de ton adresse future.",
     },
   },
   {
@@ -5038,10 +6913,14 @@ const DEFAULT_TEMPTATIONS = [
     title: {
       ru: "Частный самолёт (мечта)",
       en: "Private jet (why not)",
+      es: "Jet privado (por qué no)",
+      fr: "Jet privé (pourquoi pas)",
     },
     description: {
       ru: "Чистая геймификация: уровень «самолёт» показывает безлимитную дисциплину.",
       en: "Pure gamification: the jet tier proves your discipline is first class.",
+      es: "Gamificación pura: nivel jet demuestra disciplina de primera clase.",
+      fr: "Pure gamification : ce palier “jet” prouve une discipline première classe.",
     },
   },
 ];
@@ -5074,6 +6953,8 @@ const GOALS = [
     copy: {
       ru: { title: "Забронь 250$", desc: "меньше кофеен, больше резерва" },
       en: { title: "Lock $250", desc: "skip cafés, build reserves" },
+      es: { title: "Asegura $250", desc: "menos cafés, más reserva" },
+      fr: { title: "Verrouille 250 $", desc: "moins de cafés, plus de réserve" },
     },
   },
   {
@@ -5082,6 +6963,8 @@ const GOALS = [
     copy: {
       ru: { title: "Сдержи 1000$", desc: "осознанные гаджеты вместо хаоса" },
       en: { title: "Hold $1000", desc: "mindful tech deals only" },
+      es: { title: "Retén $1000", desc: "gadgets con consciencia" },
+      fr: { title: "Garde 1 000 $", desc: "des gadgets réfléchis uniquement" },
     },
   },
   {
@@ -5090,6 +6973,8 @@ const GOALS = [
     copy: {
       ru: { title: "Герой экономии", desc: "ты заменяешь траты привычкой" },
       en: { title: "Savings hero", desc: "deals became a habit" },
+      es: { title: "Héroe del ahorro", desc: "los rechazos son tu hábito" },
+      fr: { title: "Héros de l'épargne", desc: "les refus sont devenus ton habitude" },
     },
   },
 ];
@@ -5152,10 +7037,13 @@ const getTierTargetsUSD = (currencyCode = activeCurrency) => {
   return SAVINGS_TIERS;
 };
 
-const formatCurrency = (value = 0, currency = activeCurrency) => {
+const formatCurrency = (value = 0, currency = activeCurrency, options = null) => {
   const locale = CURRENCY_LOCALES[currency] || "en-US";
   const displayPrecision = getCurrencyDisplayPrecision(currency);
-  const normalized = roundCurrencyValue(Number(value) || 0, currency, displayPrecision);
+  const friendly = options?.friendly;
+  const baseValue = Number(value) || 0;
+  const adjusted = friendly ? applyFriendlyDisplayRounding(baseValue, currency) : baseValue;
+  const normalized = roundCurrencyValue(adjusted, currency, displayPrecision);
   try {
     if (RTL_CURRENCIES.has(currency)) {
       const digits = new Intl.NumberFormat("en-US", {
@@ -5404,35 +7292,18 @@ function TemptationCardComponent({
   const customDescriptionFallback = isCustomCard
     ? buildCustomTemptationDescription(item?.gender || "none")
     : null;
-  const customLanguageFallback =
-    customDescriptionFallback?.[language] ||
-    (language === "ru" ? customDescriptionFallback?.ru : customDescriptionFallback?.en) ||
-    customDescriptionFallback?.en ||
-    null;
+  const customLanguageFallback = customDescriptionFallback
+    ? resolveLanguageMapValue(customDescriptionFallback, language)
+    : null;
+  const descriptionLanguageValue = descriptionMap ? resolveLanguageMapValue(descriptionMap, language) : null;
   let resolvedDesc = descriptionOverride || null;
   if (!resolvedDesc) {
-    if (isCustomCard) {
-      resolvedDesc =
-        (descriptionMap ? descriptionMap[language] : null) ||
-        customLanguageFallback ||
-        (language === "ru"
-          ? descriptionMap?.ru || descriptionMap?.en || descriptionString
-          : descriptionMap?.en || descriptionMap?.ru || descriptionString) ||
-        descriptionString ||
-        "";
-    } else {
-      resolvedDesc =
-        (descriptionMap ? descriptionMap[language] : null) ||
-        (language === "ru"
-          ? descriptionMap?.ru || descriptionMap?.en || descriptionString
-          : descriptionMap?.en || descriptionMap?.ru || descriptionString) ||
-        descriptionString ||
-        "";
-    }
+    const baseDescription = descriptionLanguageValue || descriptionString || "";
+    resolvedDesc = isCustomCard ? baseDescription || customLanguageFallback || "" : baseDescription;
   }
   const desc = resolvedDesc || "";
   const priceUSD = item.priceUSD || item.basePriceUSD || 0;
-  const priceLabel = formatCurrency(convertToCurrency(priceUSD, currency), currency);
+  const priceLabel = formatCurrency(convertToCurrency(priceUSD, currency), currency, { friendly: true });
   const highlight = true;
   const isDarkTheme = colors.background === THEMES.dark.background;
   const baseColor = item.color || colors.card;
@@ -5578,9 +7449,7 @@ function TemptationCardComponent({
       if (!showEditorInline) {
         if (dx > GOAL_SWIPE_THRESHOLD && onQuickGoalToggle) {
           if (!canAssignGoal) {
-            Alert.alert(language === "ru" ? "Алми" : "Almi", language === "ru"
-              ? "Главное искушение нельзя сделать целью."
-              : "The main temptation can’t be turned into a goal.");
+            Alert.alert(t("tamagotchiName"), t("goalMainTemptationError"));
           } else {
             swipeActionRef.current = true;
             onQuickGoalToggle(item);
@@ -6179,31 +8048,6 @@ function SavingsHeroCard({
             {totalSavedLabel}
           </Text>
         </View>
-        {heroRecentEvents.length > 0 ? (
-          <View style={styles.savedHeroRecentList}>
-            <Text style={[styles.savedHeroRecentTitle, { color: goldPalette.subtext }]}>
-              {t("heroSpendRecentTitle")}
-            </Text>
-            {heroRecentEvents.map((entry) => (
-              <Text
-                key={entry.id}
-                style={[
-                  styles.savedHeroRecentItem,
-                  { color: entry.isSpend ? goldPalette.danger : goldPalette.subtext },
-                ]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {entry.label}
-              </Text>
-            ))}
-          </View>
-        ) : (
-          <Text style={[styles.savedHeroSubtitle, { color: goldPalette.subtext }]}>
-            {heroSpendCopy || heroEncouragementLine}
-          </Text>
-        )}
-
         {levelExpanded && (
           <View
             style={[
@@ -6232,6 +8076,31 @@ function SavingsHeroCard({
             </View>
           </View>
         )}
+        {heroRecentEvents.length > 0 ? (
+          <View style={styles.savedHeroRecentList}>
+            <Text style={[styles.savedHeroRecentTitle, { color: goldPalette.subtext }]}>
+              {t("heroSpendRecentTitle")}
+            </Text>
+            {heroRecentEvents.map((entry) => (
+              <Text
+                key={entry.id}
+                style={[
+                  styles.savedHeroRecentItem,
+                  { color: entry.isSpend ? goldPalette.danger : goldPalette.subtext },
+                ]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {entry.label}
+              </Text>
+            ))}
+          </View>
+        ) : (
+          <Text style={[styles.savedHeroSubtitle, { color: goldPalette.subtext }]}>
+            {heroSpendCopy || heroEncouragementLine}
+          </Text>
+        )}
+
         <TouchableOpacity
           style={[
             styles.heroPotentialCard,
@@ -6717,14 +8586,14 @@ function SpendConfirmSheet({
   visible,
   item,
   currency = DEFAULT_PROFILE.currency,
-  language = "ru",
+  language = DEFAULT_LANGUAGE,
   onCancel,
   onConfirm,
   colors,
   t,
 }) {
   const priceUSD = item?.priceUSD || item?.basePriceUSD || 0;
-  const priceLabel = formatCurrency(convertToCurrency(priceUSD, currency), currency);
+  const priceLabel = formatCurrency(convertToCurrency(priceUSD, currency), currency, { friendly: true });
   const displayTitle =
     item?.title?.[language] || item?.title?.en || item?.title || t("defaultDealTitle");
   return (
@@ -7203,7 +9072,9 @@ const FeedScreen = React.memo(function FeedScreen({
     ? formatCurrency(convertToCurrency(heroLevelRemainingUSD, heroLevelCurrency), heroLevelCurrency)
     : "";
   const heroLevelTargetLabel = heroLevelHasNext
-    ? formatCurrency(convertToCurrency(tierInfo.nextTargetUSD, heroLevelCurrency), heroLevelCurrency)
+    ? formatCurrency(convertToCurrency(tierInfo.nextTargetUSD, heroLevelCurrency), heroLevelCurrency, {
+        friendly: true,
+      })
     : "";
   const heroLevelProgress = Math.min(Math.max(tierProgress, 0), 1);
   const previousSavedTotal = useRef(savedTotalUSD);
@@ -7242,7 +9113,9 @@ const FeedScreen = React.memo(function FeedScreen({
     levelCurrency
   );
   const levelTargetLabel = tierInfo.nextTargetUSD
-    ? formatCurrency(convertToCurrency(tierInfo.nextTargetUSD, levelCurrency), levelCurrency)
+    ? formatCurrency(convertToCurrency(tierInfo.nextTargetUSD, levelCurrency), levelCurrency, {
+        friendly: true,
+      })
     : "";
   const todayDate = new Date();
   const todayTimestamp = todayDate.getTime();
@@ -7939,7 +9812,7 @@ const WishListScreen = React.memo(function WishListScreen({
   onGoalEdit = null,
   activeGoalId = null,
   onSetActiveGoal = null,
-  language = "ru",
+  language = DEFAULT_LANGUAGE,
   catCuriousSource,
 }) {
   const curiousImage = catCuriousSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.curious;
@@ -8145,10 +10018,10 @@ const WishListScreen = React.memo(function WishListScreen({
                   ]}
                 >
                   {isActiveGoal
-                    ? (language || "ru") === "ru"
+                    ? (language || DEFAULT_LANGUAGE) === "ru"
                       ? "Активная цель"
                       : "Active goal"
-                    : (language || "ru") === "ru"
+                    : (language || DEFAULT_LANGUAGE) === "ru"
                     ? "Сделать активной"
                     : "Set active"}
                 </Text>
@@ -8393,7 +10266,7 @@ const PendingScreen = React.memo(function PendingScreen({
       const hh = String(hours).padStart(2, "0");
       const mm = String(minutes).padStart(2, "0");
       const ss = String(seconds).padStart(2, "0");
-      const daySuffix = language === "ru" ? "д" : "d";
+      const daySuffix = resolveLanguageMapValue(PENDING_DAY_SUFFIX, language) || "d";
       return days > 0 ? `${days}${daySuffix} ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
     },
     [language, t]
@@ -8424,7 +10297,9 @@ const PendingScreen = React.memo(function PendingScreen({
         const diff = (item.decisionDue || 0) - nowTick;
         const countdownLabel = formatCountdown(diff);
         const overdue = diff <= 0;
-        const priceLabel = formatCurrency(convertToCurrency(item.priceUSD || 0, currency), currency);
+        const priceLabel = formatCurrency(convertToCurrency(item.priceUSD || 0, currency), currency, {
+          friendly: true,
+        });
         return (
           <SwipeablePendingCard
             key={item.id}
@@ -8511,6 +10386,8 @@ const ACHIEVEMENT_DEFS = [
     copy: {
       ru: { title: "Первые {{amount}}", desc: "Отложено {{amount}} на мини-подарок." },
       en: { title: "First {{amount}}", desc: "Already banked {{amount}} for a mini gift." },
+      es: { title: "Primeros {{amount}}", desc: "Ya guardaste {{amount}} para un mini regalo." },
+      fr: { title: "Premiers {{amount}}", desc: "Déjà mis de côté {{amount}} pour un mini cadeau." },
     },
   },
   {
@@ -8522,6 +10399,8 @@ const ACHIEVEMENT_DEFS = [
     copy: {
       ru: { title: "В копилке уже {{amount}}", desc: "Можно строить планы на крупную цель." },
       en: { title: "{{amount}} saved already", desc: "Time to plan for a bigger goal." },
+      es: { title: "Ya van {{amount}}", desc: "Hora de planear una meta más grande." },
+      fr: { title: "{{amount}} déjà épargnés", desc: "Il est temps de viser un objectif plus grand." },
     },
   },
   {
@@ -8533,6 +10412,8 @@ const ACHIEVEMENT_DEFS = [
     copy: {
       ru: { title: "Осознанный герой", desc: "10 осознанных отказов подряд, дисциплина на месте." },
       en: { title: "Mindful hero", desc: "10 deliberate skips keep savings safe." },
+      es: { title: "Héroe consciente", desc: "10 rechazos intencionales mantienen seguros los ahorros." },
+      fr: { title: "Héros conscient", desc: "10 refus réfléchis d'affilée sécurisent ton épargne." },
     },
   },
   {
@@ -8544,6 +10425,8 @@ const ACHIEVEMENT_DEFS = [
     copy: {
       ru: { title: "14 дней без импульсов", desc: "Две бесплатных недели и кошелёк доволен." },
       en: { title: "14 impulse-free days", desc: "Two solid weeks of mindful focus." },
+      es: { title: "14 días sin impulsos", desc: "Dos semanas completas de enfoque consciente." },
+      fr: { title: "14 jours sans impulsion", desc: "Deux semaines pleines de focus conscient." },
     },
   },
   {
@@ -8555,6 +10438,8 @@ const ACHIEVEMENT_DEFS = [
     copy: {
       ru: { title: "Серия из 7 дней", desc: "Неделя без трат, ты в потоке." },
       en: { title: "7-day streak", desc: "A full week in the mindful zone." },
+      es: { title: "Racha de 7 días", desc: "Una semana completa en modo consciente." },
+      fr: { title: "Série de 7 jours", desc: "Une semaine entière en mode mindful." },
     },
   },
   {
@@ -8566,6 +10451,8 @@ const ACHIEVEMENT_DEFS = [
     copy: {
       ru: { title: "10 хотелок в «думаем»", desc: "10 хотелок в «думаем»." },
       en: { title: "Thinking stash", desc: "10 temptations parked in Thinking." },
+      es: { title: "Reserva en pausa", desc: "10 tentaciones estacionadas en En pausa." },
+      fr: { title: "Réserve en pause", desc: "10 tentations garées dans l'onglet En pause." },
     },
   },
   {
@@ -8577,6 +10464,8 @@ const ACHIEVEMENT_DEFS = [
     copy: {
       ru: { title: "Взвешенный выбор", desc: "Разобрался с 5 хотелками из «думаем»." },
       en: { title: "Clear-headed", desc: "Closed out 5 Thinking decisions with intent." },
+      es: { title: "Decisión clara", desc: "Resolviste 5 decisiones en En pausa con intención." },
+      fr: { title: "Esprit clair", desc: "Tu as tranché 5 décisions de l'onglet En pause en toute intention." },
     },
   },
 ];
@@ -8658,6 +10547,14 @@ const CHALLENGE_DEFS = [
         title: "Habit week",
         desc: "Log at least one refusal every day for a full week.",
       },
+      es: {
+        title: "Semana del hábito",
+        desc: "Registra al menos un rechazo cada día durante toda la semana.",
+      },
+      fr: {
+        title: "Semaine habitude",
+        desc: "Note au moins un refus par jour pendant toute une semaine.",
+      },
     },
   },
   {
@@ -8676,6 +10573,14 @@ const CHALLENGE_DEFS = [
       en: {
         title: "Clarity streak",
         desc: "Log {{count}} impulse-free days in a row for a quick reset.",
+      },
+      es: {
+        title: "Racha de claridad",
+        desc: "Marca {{count}} días sin impulsos seguidos para reiniciar tu enfoque.",
+      },
+      fr: {
+        title: "Série clarté",
+        desc: "Note {{count}} jours sans impulsion d'affilée pour un reset express.",
       },
     },
   },
@@ -8696,6 +10601,14 @@ const CHALLENGE_DEFS = [
         title: "Decline sprint",
         desc: "Record {{count}} mindful refusals in a row to lock the habit.",
       },
+      es: {
+        title: "Sprint de rechazos",
+        desc: "Registra {{count}} «no» conscientes seguidos para afianzar la costumbre.",
+      },
+      fr: {
+        title: "Sprint de refus",
+        desc: "Consigne {{count}} refus lucides d'affilée pour ancrer l'habitude.",
+      },
     },
   },
   {
@@ -8714,6 +10627,14 @@ const CHALLENGE_DEFS = [
       en: {
         title: "Savings boost",
         desc: "Route {{amount}} into savings through refusals this week.",
+      },
+      es: {
+        title: "Impulso de ahorro",
+        desc: "Envía {{amount}} a la alcancía con tus rechazos esta semana.",
+      },
+      fr: {
+        title: "Boost d'épargne",
+        desc: "Dirige {{amount}} vers l'épargne grâce à tes refus cette semaine.",
       },
     },
   },
@@ -8734,6 +10655,14 @@ const CHALLENGE_DEFS = [
         title: "Clear the shelf",
         desc: "Resolve {{count}} items from the thinking list and free up focus.",
       },
+      es: {
+        title: "Limpia En pausa",
+        desc: "Resuelve {{count}} elementos de En pausa y libera espacio mental.",
+      },
+      fr: {
+        title: "Vider l'étagère",
+        desc: "Résous {{count}} éléments de la liste En pause et libère ton esprit.",
+      },
     },
   },
   {
@@ -8752,6 +10681,14 @@ const CHALLENGE_DEFS = [
       en: {
         title: "Goal-mapping",
         desc: "Add {{count}} new wishes to remember why you save.",
+      },
+      es: {
+        title: "Mapa de metas",
+        desc: "Añade {{count}} nuevos deseos para recordar por qué ahorras.",
+      },
+      fr: {
+        title: "Carte des objectifs",
+        desc: "Ajoute {{count}} nouvelles envies pour te rappeler pourquoi tu épargnes.",
       },
     },
   },
@@ -8772,6 +10709,14 @@ const CHALLENGE_DEFS = [
         title: "Weekend shield",
         desc: "Log {{count}} refusals during the weekend rush.",
       },
+      es: {
+        title: "Escudo de fin de semana",
+        desc: "Registra {{count}} rechazos durante el rush del fin de semana.",
+      },
+      fr: {
+        title: "Bouclier week-end",
+        desc: "Consigne {{count}} refus pendant la folie du week-end.",
+      },
     },
   },
   {
@@ -8790,6 +10735,14 @@ const CHALLENGE_DEFS = [
       en: {
         title: "Morning focus",
         desc: "Log a free day before noon {{count}} times.",
+      },
+      es: {
+        title: "Enfoque matutino",
+        desc: "Marca un día gratis antes del mediodía {{count}} veces.",
+      },
+      fr: {
+        title: "Focus matinal",
+        desc: "Note un jour gratuit avant midi {{count}} fois.",
       },
     },
   },
@@ -8811,6 +10764,14 @@ const CHALLENGE_DEFS = [
         title: "High-roller shield",
         desc: "Decline {{count}} big spends (over {{limit}}) to stay on track.",
       },
+      es: {
+        title: "Escudo anti derroche",
+        desc: "Rechaza {{count}} compras grandes (más de {{limit}}) para mantener el rumbo.",
+      },
+      fr: {
+        title: "Bouclier anti-gros achats",
+        desc: "Dis non à {{count}} grosses dépenses (plus de {{limit}}) pour rester sur la voie.",
+      },
     },
   },
   {
@@ -8829,6 +10790,14 @@ const CHALLENGE_DEFS = [
       en: {
         title: "Pause collector",
         desc: "Park {{count}} temptations into “decide later” to buy yourself time.",
+      },
+      es: {
+        title: "Coleccionista de pausas",
+        desc: "Envía {{count}} tentaciones a “pensar después” para ganar tiempo.",
+      },
+      fr: {
+        title: "Collectionneur de pauses",
+        desc: "Envoie {{count}} tentations dans « décider plus tard » pour gagner du temps.",
       },
     },
   },
@@ -8894,8 +10863,8 @@ const normalizeChallengesState = (rawState) => {
   return base;
 };
 
-const getChallengeCopy = (def, language = "ru") => {
-  const locale = language === "ru" ? "ru" : "en";
+const getChallengeCopy = (def, language = DEFAULT_LANGUAGE) => {
+  const locale = getShortLanguageKey(language);
   return def.copy?.[locale] || def.copy?.en || {};
 };
 
@@ -9188,7 +11157,7 @@ const buildChallengesDisplay = ({ state, currency, language, t }) => {
     const copy = getChallengeCopy(def, language);
     const targetLabel =
       def.metricType === CHALLENGE_METRIC_TYPES.SAVE_AMOUNT
-        ? formatCurrency(convertToCurrency(def.targetValue, currencyCode), currencyCode)
+        ? formatCurrency(convertToCurrency(def.targetValue, currencyCode), currencyCode, { friendly: true })
         : `${def.targetValue}`;
     const progressLabelValue =
       def.metricType === CHALLENGE_METRIC_TYPES.SAVE_AMOUNT
@@ -9199,7 +11168,7 @@ const buildChallengesDisplay = ({ state, currency, language, t }) => {
         ? targetLabel
         : "";
     const limitLabel = def.minAmountUSD
-      ? formatCurrency(convertToCurrency(def.minAmountUSD, currencyCode), currencyCode)
+      ? formatCurrency(convertToCurrency(def.minAmountUSD, currencyCode), currencyCode, { friendly: true })
       : "";
     const description =
       copy.desc && copy.desc.length
@@ -9263,7 +11232,7 @@ const getAchievementRemainingLabel = (metricType, remaining, currency, t) => {
   switch (metricType) {
     case ACHIEVEMENT_METRIC_TYPES.SAVED_AMOUNT:
       return t("rewardRemainingAmount", {
-        amount: formatCurrency(convertToCurrency(remaining, currency), currency),
+        amount: formatCurrency(convertToCurrency(remaining, currency), currency, { friendly: true }),
       });
     case ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_TOTAL:
     case ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_STREAK:
@@ -9309,7 +11278,7 @@ const buildAchievements = ({
     const remaining = target ? Math.max(target - value, 0) : 0;
     const amountLabel =
       def.metricType === ACHIEVEMENT_METRIC_TYPES.SAVED_AMOUNT
-        ? formatCurrency(convertToCurrency(def.targetValue || 0, currency), currency)
+        ? formatCurrency(convertToCurrency(def.targetValue || 0, currency), currency, { friendly: true })
         : null;
     const copySource = def.copy[language] || def.copy.en;
     const applyAmount = (text) =>
@@ -9345,7 +11314,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
   currency = DEFAULT_PROFILE.currency,
   onRewardClaim = () => {},
   healthRewardAmount = HEALTH_PER_REWARD,
-  language = "ru",
+  language = DEFAULT_LANGUAGE,
   dailyChallenge = null,
 }) {
   const isDarkTheme = colors.background === THEMES.dark.background;
@@ -9773,6 +11742,8 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const fallbackAvatar = mascotImageSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.idle;
   const currentCurrency = currencyValue || profile.currency || DEFAULT_PROFILE.currency;
   const isDarkTheme = theme === "dark";
+  const normalizedLanguageValue = normalizeLanguage(language || DEFAULT_LANGUAGE);
+  const isRomanceLocale = normalizedLanguageValue === "es" || normalizedLanguageValue === "fr";
   const activeGoalId = profile.goal || DEFAULT_PROFILE.goal;
   const primaryGoalsList =
     Array.isArray(profile.primaryGoals) && profile.primaryGoals.length
@@ -9784,7 +11755,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
           },
         ];
   const historyEntries = Array.isArray(history) ? history : [];
-  const locale = language === "ru" ? "ru-RU" : "en-US";
+  const locale = getFormatLocale(language);
   const formatLocalAmount = (valueUSD = 0) =>
     formatCurrency(convertToCurrency(valueUSD || 0, currentCurrency), currentCurrency);
   const [baselineInput, setBaselineInput] = useState("");
@@ -10012,13 +11983,33 @@ const ProfileScreen = React.memo(function ProfileScreen({
       return null;
     }
   }, [profile.joinedAt, profile.spendingProfile?.baselineStartAt, locale, t]);
+  const defaultBioByLanguage =
+    PROFILE_BIO_FALLBACKS[normalizedLanguageValue] || PROFILE_BIO_FALLBACKS[FALLBACK_LANGUAGE];
+  const profileBioValue = typeof profile?.bio === "string" ? profile.bio : "";
+  const profileBioText = useMemo(() => {
+    const raw = profileBioValue.trim();
+    if (!raw) return defaultBioByLanguage;
+    const matchedEntry = Object.entries(PROFILE_BIO_FALLBACKS).find(([, value]) => value === raw);
+    if (matchedEntry && matchedEntry[0] !== normalizedLanguageValue) {
+      return PROFILE_BIO_FALLBACKS[normalizedLanguageValue] || raw;
+    }
+    return raw;
+  }, [defaultBioByLanguage, normalizedLanguageValue, profileBioValue]);
+  const profileSubtitleAdjustments = useMemo(() => {
+    if (!isRomanceLocale) return null;
+    return {
+      fontSize: PROFILE_SUBTITLE_FONT_SIZE * 0.9,
+      lineHeight: PROFILE_SUBTITLE_LINE_HEIGHT * 0.9,
+    };
+  }, [isRomanceLocale]);
   const profileMoodGradient = useMemo(
     () =>
       applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), isDarkTheme ? "dark" : "light"),
     [moodPreset?.id, isDarkTheme]
   );
   const handlePrivacyPolicyOpen = useCallback(() => {
-    const url = PRIVACY_LINKS[language] || PRIVACY_LINKS.en;
+    const normalizedLanguage = normalizeLanguage(language);
+    const url = PRIVACY_LINKS[normalizedLanguage] || PRIVACY_LINKS.en;
     if (!url) return;
     triggerHaptic();
     Linking.openURL(url).catch((error) => console.warn("privacy policy", error));
@@ -10108,11 +12099,15 @@ const ProfileScreen = React.memo(function ProfileScreen({
               )}
             </View>
             {joinDateLabel && (
-              <Text style={[styles.profileSubtitle, { color: colors.muted }]} numberOfLines={2}>
+              <Text
+                style={[styles.profileSubtitle, { color: colors.muted }, profileSubtitleAdjustments]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
                 {joinDateLabel}
               </Text>
             )}
-            <Text style={[styles.profileBio, { color: colors.muted }]}>{profile.bio}</Text>
+            <Text style={[styles.profileBio, { color: colors.muted }]}>{profileBioText}</Text>
           </>
         )}
 
@@ -10314,28 +12309,31 @@ const ProfileScreen = React.memo(function ProfileScreen({
         <View style={styles.settingRow}>
           <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("languageLabel")}</Text>
           <View style={styles.settingChoices}>
-            {(["ru", "en"]).map((lng) => (
-              <TouchableOpacity
-                key={lng}
-                style={[
-                  styles.settingChip,
-                  {
-                    backgroundColor: language === lng ? colors.text : "transparent",
-                    borderColor: colors.border,
-                  },
-                ]}
-                onPress={() => onLanguageChange(lng)}
-              >
-                <Text
-                  style={{
-                    color: language === lng ? colors.background : colors.muted,
-                    fontWeight: "600",
-                  }}
+            {SUPPORTED_LANGUAGES.map((lng) => {
+              const active = language === lng;
+              return (
+                <TouchableOpacity
+                  key={lng}
+                  style={[
+                    styles.settingChip,
+                    {
+                      backgroundColor: active ? colors.text : "transparent",
+                      borderColor: colors.border,
+                    },
+                  ]}
+                  onPress={() => onLanguageChange(lng)}
                 >
-                  {lng === "ru" ? t("languageRussian") : t("languageEnglish")}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={{
+                      color: active ? colors.background : colors.muted,
+                      fontWeight: "600",
+                    }}
+                  >
+                    {t(getLanguageLabelKey(lng))}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
         <View style={styles.settingRow}>
@@ -10589,7 +12587,11 @@ function AppContent() {
     baselineMonthlyWasteUSD > 0 && baselineStartAt
       ? `${baselineStartAt}:${baselineMonthlyWasteUSD}`
       : null;
-  const [language, setLanguage] = useState("ru");
+  const [language, setLanguage] = useState(DEFAULT_LANGUAGE);
+  const normalizedLanguageValue = normalizeLanguage(language);
+  const isRomanceLocale = normalizedLanguageValue === "es" || normalizedLanguageValue === "fr";
+  const baseTabFontSize = Platform.OS === "ios" ? 12 : 13;
+  const tabLabelFontSize = isRomanceLocale ? baseTabFontSize - 1 : baseTabFontSize;
   const [homeLayoutReady, setHomeLayoutReady] = useState(false);
   const primaryTemptationId = profile.customSpend ? profile.customSpend.id || "custom_habit" : null;
   const primaryTemptationDescription = useMemo(() => {
@@ -10656,6 +12658,7 @@ function AppContent() {
   const [dailySummaryVisible, setDailySummaryVisible] = useState(false);
   const [dailySummaryData, setDailySummaryData] = useState(null);
   const [dailySummarySeenKey, setDailySummarySeenKey] = useState(null);
+  const [pendingDailySummaryData, setPendingDailySummaryData] = useState(null);
   const [focusTemplateId, setFocusTemplateId] = useState(null);
   const [focusStateHydrated, setFocusStateHydrated] = useState(false);
   const [focusDigestSeenKey, setFocusDigestSeenKey] = useState(null);
@@ -11081,18 +13084,15 @@ function AppContent() {
   );
   const handleUnlockSkinsPress = useCallback(() => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    const subject = language === "ru" ? "Отзыв для Almost" : "Feedback for Almost";
-    const body =
-      language === "ru"
-        ? "Привет, Almost! Делюсь своими впечатлениями об приложении:\n\n"
-        : "Hi Almost team! Sharing my thoughts about the app:\n\n";
+    const subject = t("tamagotchiSkinFeedbackSubject");
+    const body = t("tamagotchiSkinFeedbackBody");
     const mailLink = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(
       body
     )}`;
     Linking.openURL(mailLink).catch((error) => console.warn("tamagotchi skin unlock mail", error));
     setTamagotchiSkinsUnlocked(true);
     logEvent("tamagotchi_skin_unlock_feedback", { method: "support_mail" });
-  }, [language, logEvent]);
+  }, [logEvent, t]);
   const [onboardingStep, setOnboardingStep] = useState("logo");
   const onboardingStepRef = useRef("logo");
   const onboardingHistoryRef = useRef([]);
@@ -11526,6 +13526,7 @@ function AppContent() {
   const cardFeedbackTimers = useRef({});
   const impulseAlertCooldownRef = useRef({});
   const lastInstantNotificationRef = useRef(0);
+  const [notificationPermissionGranted, setNotificationPermissionGranted] = useState(null);
   const [spendPrompt, setSpendPrompt] = useState({ visible: false, item: null });
   const [stormActive, setStormActive] = useState(false);
   const safeAreaInsets = useSafeAreaInsets();
@@ -11612,7 +13613,7 @@ function AppContent() {
   const [startupLogoVisible, setStartupLogoVisible] = useState(false);
   const startupLogoDismissedRef = useRef(false);
   const overlayEnvironmentReady =
-    onboardingStep === "done" && homeLayoutReady && !startupLogoVisible;
+    onboardingStep === "done" && homeLayoutReady && !startupLogoVisible && !dailySummaryVisible;
 
   const goToOnboardingStep = useCallback(
     (nextStep, { recordHistory = true, resetHistory = false } = {}) => {
@@ -11728,7 +13729,15 @@ function AppContent() {
   }, [tutorialVisible, activeTutorialStep]);
   const fabOverlayColor = theme === "dark" ? "rgba(5,7,13,0.78)" : "rgba(5,7,13,0.55)";
   const resolveTranslationValue = useCallback((key) => {
-    let raw = TRANSLATIONS[language][key];
+    const normalizedLanguage = normalizeLanguage(language);
+    const override = LANGUAGE_OVERRIDES[normalizedLanguage]?.[key];
+    const dictionary = TRANSLATIONS[normalizedLanguage] || {};
+    let raw =
+      override !== undefined
+        ? override
+        : dictionary[key] ??
+          TRANSLATIONS[FALLBACK_LANGUAGE]?.[key] ??
+          TRANSLATIONS[DEFAULT_LANGUAGE]?.[key];
     if (raw && typeof raw === "object" && !Array.isArray(raw)) {
       const genderValue = raw[activeGender];
       if (typeof genderValue === "string") {
@@ -11909,9 +13918,11 @@ function AppContent() {
           settings.granted ||
           settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
       }
+      setNotificationPermissionGranted(granted);
       return granted;
     } catch (error) {
       console.warn("notifications", error);
+      setNotificationPermissionGranted(false);
       return false;
     }
   }, []);
@@ -13294,7 +15305,7 @@ function AppContent() {
       }
       setDailyChallengeHydrated(true);
       if (themeRaw) setTheme(themeRaw);
-      if (languageRaw) setLanguage(languageRaw);
+      if (languageRaw) setLanguage(normalizeLanguage(languageRaw));
       if (coinSliderMaxRaw) {
         const parsedSliderMax = parseFloat(coinSliderMaxRaw);
         if (Number.isFinite(parsedSliderMax) && parsedSliderMax > 0) {
@@ -13504,10 +15515,10 @@ function AppContent() {
         setRewardCelebratedMap({});
       }
       setRewardCelebratedHydrated(true);
-      if (analyticsOptOutRaw) {
+      if (analyticsOptOutRaw === "1" || analyticsOptOutRaw === "0") {
         setAnalyticsOptOutState(analyticsOptOutRaw === "1");
       } else {
-        setAnalyticsOptOutState(false);
+        setAnalyticsOptOutState(true);
       }
       if (goalMapRaw) {
         try {
@@ -13638,7 +15649,7 @@ function AppContent() {
       setProfileHydrated(true);
     } catch (error) {
       console.warn("load error", error);
-      setAnalyticsOptOutState((prev) => (prev === null ? false : prev));
+      setAnalyticsOptOutState((prev) => (prev === null ? true : prev));
     } finally {
       const safeHealthPoints =
         typeof resolvedHealthPoints === "number" && !Number.isNaN(resolvedHealthPoints)
@@ -13697,11 +15708,11 @@ function AppContent() {
       const body = copy[kind];
       if (!body) return;
       await sendImmediateNotification({
-        title: language === "ru" ? "Алми" : "Almi",
+        title: t("tamagotchiName"),
         body,
       });
     },
-    [language, sendImmediateNotification]
+    [language, sendImmediateNotification, t]
   );
 
   useEffect(() => {
@@ -13761,12 +15772,21 @@ function AppContent() {
     const spends = todayEvents.filter((e) => e.kind === "spend");
     const savedUSD = saves.reduce((sum, e) => sum + (Number(e.meta?.amountUSD) || 0), 0);
     const declines = saves.length;
+    if (declines < 3) return;
     const spendCount = spends.length;
-    setDailySummaryData({ savedUSD, declines, spends: spendCount, todayKey });
+    setPendingDailySummaryData({ savedUSD, declines, spends: spendCount, todayKey });
+  }, [dailySummarySeenKey, resolvedHistoryEvents, onboardingStep]);
+
+  useEffect(() => {
+    if (!pendingDailySummaryData) return;
+    if (overlay) return;
+    setDailySummaryData(pendingDailySummaryData);
     setDailySummaryVisible(true);
+    const todayKey = pendingDailySummaryData.todayKey || getDayKey(Date.now());
     setDailySummarySeenKey(todayKey);
     AsyncStorage.setItem(STORAGE_KEYS.DAILY_SUMMARY, todayKey).catch(() => {});
-  }, [dailySummarySeenKey, resolvedHistoryEvents, onboardingStep]);
+    setPendingDailySummaryData(null);
+  }, [overlay, pendingDailySummaryData]);
 
   useEffect(() => {
     processTamagotchiDecay();
@@ -14068,6 +16088,9 @@ function AppContent() {
     ).catch(() => {});
   }, [rewardCelebratedMap]);
   useEffect(() => {
+    if (analyticsOptOut !== false) return;
+    if (!profileHydrated) return;
+    if (notificationPermissionGranted === null) return;
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
     const hasGoalProperty =
       (Array.isArray(profile.primaryGoals) && profile.primaryGoals.length > 0) ||
@@ -14083,19 +16106,30 @@ function AppContent() {
         savingStyle = "relaxed";
       }
     }
+    const personaType = profile.persona || DEFAULT_PERSONA_ID;
+    const genderValue = profile.gender || "none";
+    const notificationsAllowed = notificationPermissionGranted === true;
     setUserProperties({
       has_goal: !!hasGoalProperty,
       preferred_currency: currencyCode,
       saving_style: savingStyle,
       locale: language,
       is_premium: false,
+      gender: genderValue,
+      persona_type: personaType,
+      notifications_allowed: notificationsAllowed,
     });
   }, [
+    analyticsOptOut,
     decisionStats?.resolvedToDeclines,
     decisionStats?.resolvedToWishes,
     language,
+    notificationPermissionGranted,
     profile.currency,
+    profile.gender,
+    profile.persona,
     profile.primaryGoals,
+    profileHydrated,
     wishes,
   ]);
 
@@ -14307,10 +16341,11 @@ function AppContent() {
   };
 
   const handleLanguageChange = (lng) => {
+    const nextLanguage = normalizeLanguage(lng);
     triggerHaptic();
-    setLanguage(lng);
+    setLanguage(nextLanguage);
     if (onboardingStep !== "done") {
-      logEvent("onboarding_language_chosen", { language: lng });
+      logEvent("onboarding_language_chosen", { language: nextLanguage });
     }
   };
 
@@ -14327,7 +16362,8 @@ function AppContent() {
   };
 
   const handleTermsLinkOpen = () => {
-    const url = TERMS_LINKS[language] || TERMS_LINKS.en;
+    const normalizedLanguage = normalizeLanguage(language);
+    const url = TERMS_LINKS[normalizedLanguage] || TERMS_LINKS.en;
     if (!url) return;
     triggerHaptic();
     Linking.openURL(url).catch((error) => console.warn("terms link", error));
@@ -14764,14 +16800,7 @@ function AppContent() {
       const action = direction === "save" ? "save" : "spend";
       const entryId = `coin_entry_${Date.now()}`;
       const categoryDef = IMPULSE_CATEGORY_DEFS[category];
-      const title =
-        language === "ru"
-          ? action === "save"
-            ? t("coinEntrySaveLabel")
-            : t("coinEntrySpendLabel")
-          : action === "save"
-          ? t("coinEntrySaveLabel")
-          : t("coinEntrySpendLabel");
+      const title = action === "save" ? t("coinEntrySaveLabel") : t("coinEntrySpendLabel");
       const virtualItem = {
         id: entryId,
         title,
@@ -14808,7 +16837,7 @@ function AppContent() {
       }
       handleCoinEntryClose();
     },
-    [activeGoalId, getFallbackGoalId, handleCoinEntryClose, handleTemptationAction, language, logEvent, profile.goal, t]
+    [activeGoalId, getFallbackGoalId, handleCoinEntryClose, handleTemptationAction, logEvent, profile.goal, t]
   );
 
   const handleFabNewTemptation = useCallback(() => {
@@ -15768,24 +17797,13 @@ function AppContent() {
       const food = TAMAGOTCHI_FOOD_MAP[foodId] || TAMAGOTCHI_FOOD_MAP[TAMAGOTCHI_DEFAULT_FOOD_ID];
       if (!food) return;
       if (tamagotchiState.hunger >= TAMAGOTCHI_MAX_HUNGER) {
-        Alert.alert(
-          language === "ru" ? "Алми" : "Almi",
-          language === "ru"
-            ? "Алми сыта на 100%. Вернись позже, когда появится голод."
-            : "Almi is already full. Come back later when she gets hungry."
-        );
+        Alert.alert(t("tamagotchiName"), t("tamagotchiFullMessage"));
         return;
       }
       if (tamagotchiCoins < food.cost) {
-        const hint =
-          language === "ru"
-            ? "Пополняй монетки через отказы, уровни и награды."
-            : "Earn coins via saves, levels and rewards.";
-        const needText =
-          language === "ru"
-            ? `Нужно минимум ${food.cost} монет на ${food.emoji}.`
-            : `You need at least ${food.cost} coins for ${food.emoji}.`;
-        Alert.alert(language === "ru" ? "Алми" : "Almi", `${needText}\n\n${hint}`);
+        const hint = t("tamagotchiEarnCoinsHint");
+        const needText = t("tamagotchiNeedCoinsMessage", { cost: food.cost, emoji: food.emoji });
+        Alert.alert(t("tamagotchiName"), `${needText}\n\n${hint}`);
         return;
       }
       let hungerBefore = tamagotchiState.hunger;
@@ -15816,7 +17834,7 @@ function AppContent() {
       setHealthPoints((coins) => Math.max(0, coins - food.cost));
       requestMascotAnimation("happy", 3600);
     },
-    [language, logEvent, requestMascotAnimation, setHealthPoints, tamagotchiCoins, tamagotchiState.hunger]
+    [logEvent, requestMascotAnimation, setHealthPoints, t, tamagotchiCoins, tamagotchiState.hunger]
   );
 
   const stopPartyEffects = useCallback(() => {
@@ -15868,16 +17886,11 @@ function AppContent() {
 
   const startParty = useCallback(() => {
     if (tamagotchiCoins < TAMAGOTCHI_PARTY_COST) {
-      const hint =
-        language === "ru"
-          ? "Пополняй монетки через отказы, уровни и награды."
-          : "Earn more coins through saves, levels and rewards.";
-      Alert.alert(
-        language === "ru" ? "Алми" : "Almi",
-        language === "ru"
-          ? `Нужно ${TAMAGOTCHI_PARTY_BLUE_COST} синих монет на вечеринку.\n\n${hint}`
-          : `You need ${TAMAGOTCHI_PARTY_BLUE_COST} blue coins to start a party.\n\n${hint}`
-      );
+      const hint = t("tamagotchiEarnCoinsHint");
+      const needText = t("tamagotchiPartyNeedCoinsMessage", {
+        amount: TAMAGOTCHI_PARTY_BLUE_COST,
+      });
+      Alert.alert(t("tamagotchiName"), `${needText}\n\n${hint}`);
       return;
     }
     setHealthPoints((coins) => Math.max(0, coins - TAMAGOTCHI_PARTY_COST));
@@ -15885,7 +17898,7 @@ function AppContent() {
     setPartyActive(true);
     runPartyEffects(2);
     requestMascotAnimation("happyHeadshake", 3600);
-  }, [language, requestMascotAnimation, runPartyEffects, setHealthPoints, stopPartyEffects, tamagotchiCoins]);
+  }, [requestMascotAnimation, runPartyEffects, setHealthPoints, stopPartyEffects, t, tamagotchiCoins]);
 
   const handleMascotAnimationComplete = useCallback(() => {
     mascotBusyRef.current = false;
@@ -16590,26 +18603,18 @@ function AppContent() {
         const customDescriptionFallback = isCustom
           ? buildCustomTemptationDescription(item?.gender || "none")
           : null;
+        const customLanguageFallback = customDescriptionFallback
+          ? resolveLanguageMapValue(customDescriptionFallback, language)
+          : null;
+        const descriptionLanguageValue = descriptionMap ? resolveLanguageMapValue(descriptionMap, language) : null;
         const overrideDescription =
           typeof descriptionOverrides[item.id] === "string"
             ? descriptionOverrides[item.id]
             : "";
+        const baseDescription = descriptionLanguageValue || descriptionString || "";
+        const computedDescription = isCustom ? baseDescription || customLanguageFallback || "" : baseDescription;
         const resolvedDescription =
-          (overrideDescription && overrideDescription.length
-            ? overrideDescription
-            : (descriptionMap ? descriptionMap[language] : null) ||
-              (language === "ru"
-                ? descriptionMap?.ru || descriptionMap?.en || descriptionString
-                : descriptionMap?.en || descriptionMap?.ru || descriptionString) ||
-              descriptionString ||
-              (isCustom
-                ? customDescriptionFallback?.[language] ||
-                  (language === "ru"
-                    ? customDescriptionFallback?.ru
-                    : customDescriptionFallback?.en) ||
-                  customDescriptionFallback?.en ||
-                  ""
-                : ""));
+          (overrideDescription && overrideDescription.length ? overrideDescription : computedDescription);
         logEvent("temptation_viewed", {
           temptation_id: item.id,
           category: categorySlug,
@@ -16866,7 +18871,7 @@ function AppContent() {
   const propagateTemptationEdit = useCallback(
     (templateId, { label, emoji, priceUSD, category }) => {
       if (!templateId) return;
-      const fallbackTitle = language === "ru" ? "Привычка" : "Wish";
+      const fallbackTitle = resolveTranslationValueForLanguage(language, "defaultWishTitle") || "Wish";
       const normalizedLabel = (label && label.trim()) || fallbackTitle;
       const decoratedTitle = buildTemptationDisplayTitle(emoji, normalizedLabel, fallbackTitle);
       const numericPrice = Number(priceUSD);
@@ -17019,7 +19024,7 @@ function AppContent() {
         priceEditor.item,
         language,
         titleOverrides[priceEditor.item.id] || priceEditor.item.titleOverride || null
-      ) || (language === "ru" ? "Привычка" : "Wish");
+      ) || resolveTranslationValueForLanguage(language, "defaultWishTitle") || "Wish";
     const normalizedLabel = titleValue || fallbackTitle;
     propagateTemptationEdit(priceEditor.item.id, {
       label: normalizedLabel,
@@ -17746,7 +19751,7 @@ function AppContent() {
             setActiveTab("feed");
             setOverlay(null);
             setTheme("light");
-            setLanguage("ru");
+            setLanguage(DEFAULT_LANGUAGE);
             setActiveCurrency(DEFAULT_PROFILE.currency);
             setHealthPoints(0);
             setTamagotchiSkinId(DEFAULT_TAMAGOTCHI_SKIN);
@@ -18325,7 +20330,7 @@ function AppContent() {
                   >
                     <View style={styles.breakdownHeader}>
                       <Text style={[styles.breakdownTitle, { color: colors.text }]}>
-                        {language === "ru" ? "Разбивка экономии" : "Savings breakdown"}
+                        {t("savingsBreakdownTitle")}
                       </Text>
                       <TouchableOpacity onPress={closeSavingsBreakdown}>
                         <Text style={[styles.breakdownClose, { color: colors.muted }]}>✕</Text>
@@ -18514,16 +20519,14 @@ function AppContent() {
                             ]}
                           >
                             <Text style={[styles.dailySummaryBadgeText, { color: colors.muted }]}>
-                              {language === "ru" ? "вечерний отчёт" : "daily recap"}
+                              {t("dailySummaryBadgeLabel")}
                             </Text>
                           </View>
                           <Text style={[styles.dailySummaryTitle, { color: colors.text }]}>
-                            {language === "ru" ? "Итоги дня" : "Today’s recap"}
+                            {t("dailySummaryTitle")}
                           </Text>
                           <Text style={[styles.dailySummarySubtitle, { color: colors.muted }]}>
-                            {language === "ru"
-                              ? "Так держать, продолжай в том же духе!"
-                              : "Great momentum — keep it up!"}
+                            {t("dailySummarySubtitle")}
                           </Text>
                         </View>
                       </View>
@@ -18539,7 +20542,7 @@ function AppContent() {
                         ]}
                       >
                         <Text style={[styles.dailySummaryHighlightLabel, { color: colors.muted }]}>
-                          {language === "ru" ? "Сэкономлено сегодня" : "Saved today"}
+                          {t("dailySummarySavedLabel")}
                         </Text>
                         <Text style={[styles.dailySummaryHighlightValue, { color: colors.text }]}>
                           {formatCurrency(
@@ -18551,9 +20554,7 @@ function AppContent() {
                           )}
                         </Text>
                         <Text style={[styles.dailySummaryHighlightSub, { color: colors.muted }]}>
-                          {language === "ru"
-                            ? "Каждый отказ приближает к цели"
-                            : "Every skip nudges the goal closer"}
+                          {t("dailySummarySavedSub")}
                         </Text>
                       </View>
                       <View style={styles.dailySummaryStatsRow}>
@@ -18590,7 +20591,7 @@ function AppContent() {
                             {dailySummaryData.spends || 0}
                           </Text>
                           <Text style={[styles.dailySummaryStatLabel, { color: colors.muted }]}>
-                            {language === "ru" ? "Траты" : "Spends"}
+                            {t("dailySummarySpendsLabel")}
                           </Text>
                         </View>
                       </View>
@@ -18600,16 +20601,14 @@ function AppContent() {
                         activeOpacity={0.9}
                       >
                         <Text style={[styles.dailySummaryButtonText, { color: colors.background }]}>
-                          {language === "ru" ? "Продолжить" : "Continue"}
+                          {t("dailySummaryContinue")}
                         </Text>
                         <Text style={[styles.dailySummaryButtonIcon, { color: colors.background }]}>
                           →
                         </Text>
                       </TouchableOpacity>
                       <Text style={[styles.dailySummaryHint, { color: colors.muted }]}>
-                        {language === "ru"
-                          ? "Загляну завтра с новыми цифрами."
-                          : "See you tomorrow with fresh numbers."}
+                        {t("dailySummaryHint")}
                       </Text>
                     </View>
                   </View>
@@ -18773,7 +20772,7 @@ function AppContent() {
                     {
                       color: textColor,
                       fontWeight: isActiveTab || isHighlighted ? "700" : "500",
-                      fontSize: Platform.OS === "ios" ? 12 : 13,
+                      fontSize: tabLabelFontSize,
                     },
                   ]}
                 >
@@ -19110,7 +21109,7 @@ function AppContent() {
                 >
                   <View style={styles.tamagotchiHeader}>
                     <Text style={[styles.tamagotchiTitle, { color: colors.text }]}>
-                      {language === "ru" ? "Алми" : "Almi"}
+                      {t("tamagotchiName")}
                     </Text>
                     <Text style={[styles.tamagotchiMood, { color: colors.muted }]}>
                       {tamagotchiMood.label}
@@ -19135,7 +21134,7 @@ function AppContent() {
                   </View>
                   <View style={styles.tamagotchiStatRow}>
                     <Text style={[styles.tamagotchiStatLabel, { color: colors.muted }]}>
-                      {language === "ru" ? "Сытость" : "Fullness"}
+                      {t("tamagotchiFullnessLabel")}
                     </Text>
                     <Text style={[styles.tamagotchiStatValue, { color: colors.text }]}>
                       {Math.round(tamagotchiHungerPercent)}%
@@ -19154,7 +21153,7 @@ function AppContent() {
                   </View>
                   <View style={styles.tamagotchiStatRow}>
                     <Text style={[styles.tamagotchiStatLabel, { color: colors.muted }]}>
-                      {language === "ru" ? "Монетки" : "Coins"}
+                      {t("tamagotchiCoinsLabel")}
                     </Text>
                     <Text style={[styles.tamagotchiStatValue, { color: colors.text }]}>
                       {tamagotchiCoins}
@@ -19162,12 +21161,12 @@ function AppContent() {
                   </View>
                   {tamagotchiState.lastFedAt ? (
                     <Text style={[styles.tamagotchiSub, { color: colors.muted }]}>
-                      {language === "ru" ? "Покормлен" : "Fed at"}:{" "}
+                      {t("tamagotchiFedAtLabel")}:{" "}
                       {new Date(tamagotchiState.lastFedAt).toLocaleString()}
                     </Text>
                   ) : (
                     <Text style={[styles.tamagotchiSub, { color: colors.muted }]}>
-                      {language === "ru" ? "Алми ждёт первую монетку" : "Almi awaits the first coin"}
+                      {t("tamagotchiAwaitingFirstCoin")}
                     </Text>
                   )}
                   <Text style={[styles.tamagotchiFoodTitle, { color: colors.text }]}>
@@ -19234,21 +21233,19 @@ function AppContent() {
                       <View style={styles.tamagotchiButtonContent}>
                         <Image source={HEALTH_COIN_TIERS[1].asset} style={styles.tamagotchiButtonIcon} />
                         <Text style={[styles.tamagotchiButtonText, { color: colors.text }]}>
-                          {language === "ru"
-                            ? `Вечеринка ×${TAMAGOTCHI_PARTY_BLUE_COST}`
-                            : `Party ×${TAMAGOTCHI_PARTY_BLUE_COST}`}
+                          {t("tamagotchiPartyButtonLabel", { cost: TAMAGOTCHI_PARTY_BLUE_COST })}
                         </Text>
                       </View>
                     </TouchableOpacity>
                   </View>
                   {tamagotchiIsFull && (
                     <Text style={[styles.tamagotchiHint, { color: colors.muted }]}>
-                      {language === "ru" ? "Алми сыт, покорми позже." : "He is full, try again later."}
+                      {t("tamagotchiFullHint")}
                     </Text>
                   )}
                   <TouchableOpacity onPress={closeTamagotchiOverlay} style={styles.tamagotchiClose}>
                     <Text style={[styles.tamagotchiCloseText, { color: colors.muted }]}>
-                      {language === "ru" ? "Закрыть" : "Close"}
+                      {t("levelShareModalClose")}
                     </Text>
                   </TouchableOpacity>
                   {partyActive && (
@@ -19335,6 +21332,7 @@ function AppContent() {
                             style={[
                               styles.skinUnlockButtonText,
                               { color: colors.background },
+                              isRomanceLocale ? { fontSize: scaleFontSize(12) } : null,
                             ]}
                           >
                             {t("tamagotchiSkinUnlockButton")}
@@ -19846,9 +21844,7 @@ function AppContent() {
                     >
                       <Image source={HEALTH_COIN_TIERS[0].asset} style={styles.saveCoinIcon} />
                       <Text style={[styles.saveCoinsText, { color: colors.text }]}>
-                        {language === "ru"
-                          ? `+${saveOverlayPayload.coinReward} монет в копилку Алми`
-                          : `+${saveOverlayPayload.coinReward} coins for Almi`}
+                        {t("saveOverlayCoinReward", { amount: saveOverlayPayload.coinReward })}
                       </Text>
                     </View>
                   )}
@@ -19989,7 +21985,7 @@ function AppContent() {
                           ]}
                         >
                           <Text style={[styles.impulseAlertBadgeText, { color: colors.muted }]}>
-                            {language === "ru" ? "умное уведомление" : "smart insight"}
+                            {t("impulseAlertBadgeLabel")}
                           </Text>
                         </View>
                         <Text style={styles.impulseAlertEmoji}>⚡️</Text>
@@ -20005,7 +22001,7 @@ function AppContent() {
                           {impulseAlertPayload?.window ? (
                             <View style={styles.impulseAlertStat}>
                               <Text style={[styles.impulseAlertStatLabel, { color: colors.muted }]}>
-                                {language === "ru" ? "Пик импульса" : "Hot zone"}
+                                {t("impulseAlertWindowLabel")}
                               </Text>
                               <Text style={[styles.impulseAlertStatValue, { color: colors.text }]}>
                                 {impulseAlertPayload.window}
@@ -20015,7 +22011,7 @@ function AppContent() {
                           {impulseAlertPayload?.amountLabel ? (
                             <View style={styles.impulseAlertStat}>
                               <Text style={[styles.impulseAlertStatLabel, { color: colors.muted }]}>
-                                {language === "ru" ? "Сумма риска" : "At stake"}
+                                {t("impulseAlertAmountLabel")}
                               </Text>
                               <Text style={[styles.impulseAlertStatValue, { color: colors.text }]}>
                                 {impulseAlertPayload.amountLabel}
@@ -20047,7 +22043,7 @@ function AppContent() {
                         activeOpacity={0.9}
                       >
                         <Text style={[styles.impulseAlertButtonText, { color: colors.background }]}>
-                          {language === "ru" ? "Держать курс" : "Stay focused"}
+                          {t("impulseAlertButtonLabel")}
                         </Text>
                         <Text style={[styles.impulseAlertButtonIcon, { color: colors.background }]}>
                           →
@@ -24500,10 +26496,10 @@ const styles = StyleSheet.create({
     ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
   },
   languageMascot: {
-    width: 240,
-    height: 240,
+    width: 220,
+    height: 220,
     alignSelf: "center",
-    marginBottom: 10,
+    marginBottom: 4,
   },
   confettiLayer: {
     flex: 1,
@@ -25371,15 +27367,16 @@ const styles = StyleSheet.create({
   },
   languageButtons: {
     flexDirection: "row",
-    gap: 14,
+    flexWrap: "wrap",
+    gap: 10,
   },
   languageTermsBlock: {
     width: "100%",
-    marginTop: 18,
-    gap: 8,
+    marginTop: 12,
+    gap: 6,
   },
   languageTermsNote: {
-    ...createSecondaryText({ fontSize: 12, lineHeight: 18 }),
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16 }),
   },
   languageTermsButton: {
     borderWidth: 1,
@@ -25410,10 +27407,12 @@ const styles = StyleSheet.create({
     ...createBodyText({ fontWeight: "600" }),
   },
   languageButton: {
-    flex: 1,
+    flexGrow: 1,
+    width: "48%",
     borderWidth: 1,
     borderRadius: 20,
     paddingVertical: 18,
+    paddingHorizontal: 12,
     alignItems: "center",
   },
   onboardBackButton: {
@@ -25434,7 +27433,7 @@ const styles = StyleSheet.create({
     ...createCtaText({ fontSize: 13 }),
   },
   languageHint: {
-    ...createSecondaryText({ marginTop: 8, fontSize: 12 }),
+    ...createSecondaryText({ marginTop: 6, fontSize: 12 }),
   },
   goalTargetHint: {
     ...createSecondaryText({ fontSize: 13, marginTop: 8, marginBottom: 22 }),
@@ -26274,7 +28273,7 @@ function CoinEntryModal({
     onUpdateMaxUSD?.(parsedUSD);
     closeManual();
   };
-  const categoryLabelKey = language === "ru" ? "ru" : "en";
+  const categoryLabelKey = getShortLanguageKey(language);
   const manualTitle = manualIsAmountMode ? t("coinEntryManualAmountTitle") : t("coinEntryManualTitle");
   const manualPlaceholder = manualIsAmountMode
     ? t("coinEntryManualAmountPlaceholder", { amount: sliderAmountLocal })
@@ -26875,7 +28874,8 @@ function OnboardingGoalModal({
 }
 
 function TermsModal({ visible, colors, t, language, onAccept, onCancel, onOpenLink }) {
-  const points = TERMS_POINTS[language] || TERMS_POINTS.en;
+  const normalizedLanguage = normalizeLanguage(language);
+  const points = TERMS_POINTS[normalizedLanguage] || TERMS_POINTS.en;
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
       <View style={styles.quickModalBackdrop}>
@@ -26992,6 +28992,7 @@ function LanguageScreen({
   const [currencyIndicatorVisible, setCurrencyIndicatorVisible] = useState(true);
   const currencyScrollRef = useRef(null);
   const currencyNudgeRan = useRef(false);
+  const [shouldAnimateCurrencyNudge, setShouldAnimateCurrencyNudge] = useState(false);
   const handleCurrencyScroll = useCallback(
     (event) => {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -27006,7 +29007,18 @@ function LanguageScreen({
     [setCurrencyIndicatorVisible]
   );
   useEffect(() => {
-    if (currencyNudgeRan.current) return undefined;
+    let cancelled = false;
+    AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE_CURRENCY_NUDGE)
+      .then((value) => {
+        if (!cancelled && !value) setShouldAnimateCurrencyNudge(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (!shouldAnimateCurrencyNudge || currencyNudgeRan.current) return undefined;
     currencyNudgeRan.current = true;
     let backTimeout;
     const forwardTimeout = setTimeout(() => {
@@ -27015,11 +29027,12 @@ function LanguageScreen({
         currencyScrollRef.current?.scrollTo({ x: 0, animated: true });
       }, 650);
     }, 900);
+    AsyncStorage.setItem(STORAGE_KEYS.LANGUAGE_CURRENCY_NUDGE, "1").catch(() => {});
     return () => {
       clearTimeout(forwardTimeout);
       if (backTimeout) clearTimeout(backTimeout);
     };
-  }, []);
+  }, [shouldAnimateCurrencyNudge]);
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <View style={styles.onboardContent}>
@@ -27028,26 +29041,27 @@ function LanguageScreen({
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("languageTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("languageSubtitle")}</Text>
         <View style={styles.languageButtons}>
-          {[
-            { key: "ru", label: t("languageRussian") },
-            { key: "en", label: t("languageEnglish") },
-          ].map((lang) => (
-            <TouchableOpacity
-              key={lang.key}
-              style={[
-                styles.languageButton,
-                {
-                  borderColor: colors.border,
-                  backgroundColor: selectedLanguage === lang.key ? colors.card : "transparent",
-                },
-              ]}
-              onPress={() => onLanguageChange?.(lang.key)}
-            >
-              <Text style={{ color: colors.text, fontWeight: "700" }}>{lang.label}</Text>
-            </TouchableOpacity>
-          ))}
+          {SUPPORTED_LANGUAGES.map((langKey) => {
+            const label = LANGUAGE_NATIVE_LABELS[langKey] || langKey.toUpperCase();
+            const active = selectedLanguage === langKey;
+            return (
+              <TouchableOpacity
+                key={langKey}
+                style={[
+                  styles.languageButton,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: active ? colors.card : "transparent",
+                  },
+                ]}
+                onPress={() => onLanguageChange?.(langKey)}
+              >
+                <Text style={{ color: colors.text, fontWeight: "700" }}>{label}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
-        <View style={{ width: "100%", marginTop: 32 }}>
+        <View style={{ width: "100%", marginTop: 20 }}>
           <Text style={[styles.currencyLabel, { color: colors.muted }]}>
             {t("currencyLabel")} <Text style={{ fontSize: 16 }}>→</Text>
           </Text>
@@ -27104,7 +29118,7 @@ function LanguageScreen({
           <Text style={[styles.languageHint, { color: colors.muted }]}>{t("languageCurrencyHint")}</Text>
         </View>
         <TouchableOpacity
-          style={[styles.primaryButton, { backgroundColor: colors.text, marginTop: 32 }]}
+          style={[styles.primaryButton, { backgroundColor: colors.text, marginTop: 20 }]}
           onPress={onContinue}
         >
           <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("nextButton")}</Text>
