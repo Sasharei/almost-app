@@ -27,6 +27,7 @@ import {
   Share,
   ActionSheetIOS,
   PixelRatio,
+  InteractionManager,
 } from "react-native";
 import Svg, {
   Circle as SvgCircle,
@@ -110,6 +111,7 @@ const STORAGE_KEYS = {
   ONBOARDING: "@almost_onboarded",
   TERMS_ACCEPTED: "@almost_terms_accepted",
   CATALOG: "@almost_catalog_overrides",
+  PRICE_PRECISION_OVERRIDES: "@almost_price_precision_overrides",
   TITLE_OVERRIDES: "@almost_title_overrides",
   EMOJI_OVERRIDES: "@almost_emoji_overrides",
   WISHES: "@almost_wishes",
@@ -194,6 +196,7 @@ const getShortLanguageKey = (language) =>
   SHORT_LANGUAGE_MAP[language] || SHORT_LANGUAGE_MAP[FALLBACK_LANGUAGE];
 
 const PURCHASE_GOAL = 20000;
+const MAX_ACTIVE_CHALLENGES = 3;
 const ANDROID_API_LEVEL =
   Platform.OS === "android"
     ? typeof Platform.Version === "string"
@@ -2305,15 +2308,6 @@ const SwipeableChallengeCard = ({
     onSwipeOpen?.(closer);
   }, [closeRow, onSwipeOpen]);
 
-  const openManual = useCallback(() => {
-    setManualVisible(true);
-    setManualError("");
-    setManualValue("");
-  }, [setNotificationPermissionGranted]);
-  const closeManual = useCallback(() => {
-    setManualVisible(false);
-    setManualError("");
-  }, []);
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -2853,6 +2847,15 @@ const parseNumberInputValue = (value = "") => {
   const normalized = value.replace(/[^\d,.\s]/g, "").replace(",", ".");
   const parsed = parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : NaN;
+};
+
+const getManualInputPrecision = (value = "") => {
+  if (typeof value !== "string") return 0;
+  const normalized = value.replace(/[^\d,.\s]/g, "").replace(",", ".").trim();
+  const [, fraction = ""] = normalized.split(".");
+  if (!fraction) return 0;
+  const digits = fraction.replace(/\D/g, "");
+  return Math.max(0, Math.min(6, digits.length));
 };
 
 const formatLatestSavingTimestamp = (timestamp, language = DEFAULT_LANGUAGE) => {
@@ -3460,6 +3463,9 @@ const TRANSLATIONS = {
     challengeCancelConfirmMessage: "Прервать «{{title}}»? Прогресс обнулится.",
     challengeCancelConfirmYes: "Отменить",
     challengeCancelConfirmNo: "Продолжить",
+    challengeLimitReachedAction: "Макс. {{limit}} челленджа",
+    challengeLimitReachedTitle: "Лимит челленджей",
+    challengeLimitReachedMessage: "Можно вести не более {{limit}} челленджей одновременно. Заверши активный челлендж, чтобы взять новый.",
     dailyChallengeOfferBadge: "мини-челлендж",
     dailyChallengeOfferTitle: "Вызов дня",
     dailyChallengeOfferSubtitle: "Попробуй провести день без «{{temptation}}»",
@@ -3518,7 +3524,7 @@ const TRANSLATIONS = {
     goalPrimaryBadge: "Главная цель",
     goalTargetTitle: "Сколько нужно на цель?",
     goalTargetSubtitle: "Укажи сумму - Almost будет держать фокус и прогресс.",
-    goalTargetPlaceholder: "Например 1200",
+    goalTargetPlaceholder: "Введите сумму",
     goalTargetHint: "Сумму можно поменять позже в профиле.",
     goalTargetCTA: "Запомнить",
     goalTargetError: "Введи сумму цели",
@@ -3598,15 +3604,15 @@ const TRANSLATIONS = {
     customSpendSubtitle: "Дай ему имя - Almost поможет отказываться чаще.",
     customSpendNamePlaceholder: "Матча, сигареты, маникюр...",
     customSpendAmountLabel: "Сколько стоит один раз?",
-    customSpendAmountPlaceholder: "Например {{amount}}",
+    customSpendAmountPlaceholder: "Введите сумму",
     customSpendFrequencyLabel: "Сколько раз в неделю поддаёшься?",
     customSpendFrequencyPlaceholder: "Например 4",
     customSpendHint: "Это всегда можно поменять в профиле.",
     customSpendSkip: "Пропустить",
     smartReminderTitle: [
       "Almost ловит «{{temptation}}»",
-      "Алми чувствует импульс: «{{temptation}}»",
-      "Умное напоминание Almost про «{{temptation}}»",
+      "Алми чует «{{temptation}}»",
+      "Пинг Almost: «{{temptation}}»",
     ],
     smartReminderBody: [
       "Недавно Almost записал «{{temptation}}». Повтори паузу и направь деньги в цель.",
@@ -3615,15 +3621,15 @@ const TRANSLATIONS = {
       "Алми шепчет: чем чаще выбираешь копилку вместо «{{temptation}}», тем умнее подсказки.",
     ],
     smartInsightDeclineTitle: {
-      female: "Almost запомнил вчерашний отказ от «{{temptation}}»",
-      male: "Almost запомнил вчерашний отказ от «{{temptation}}»",
-      none: "Almost запомнил отказ от «{{temptation}}» вчера",
+      female: "Вчера победил «{{temptation}}»",
+      male: "Вчера победил «{{temptation}}»",
+      none: "Вчера победил «{{temptation}}»",
     },
     smartInsightDeclineBody: "Повтори победу сегодня - Almost запишет новую серию.",
     smartInsightSpendTitle: {
-      female: "Almost заметил вчерашний срыв на «{{temptation}}»",
-      male: "Almost заметил вчерашний срыв на «{{temptation}}»",
-      none: "Almost заметил, что «{{temptation}}» победило вчера",
+      female: "Вчера «{{temptation}}» выиграло",
+      male: "Вчера «{{temptation}}» выиграло",
+      none: "Вчера «{{temptation}}» выиграло",
     },
     smartInsightSpendBody: "Сделай паузу сегодня, и Almost отметит победу в копилке.",
     dailyNudgeMorningTitle: ["Утренний пинг Almost", "Алми проверяет фокус"],
@@ -3636,7 +3642,7 @@ const TRANSLATIONS = {
       "В середине дня импульсы растут. Подумай, поддержит ли покупка твою цель.",
       "Если рука тянется к кошельку, вспомни про Almost и выбери копилку.",
     ],
-    dailyNudgeAfternoonTitle: ["Послеобеденный чек-поинт Almost", "Алми сбавляет темп"],
+    dailyNudgeAfternoonTitle: ["Послеобеденный пинг Almost", "Алми сбавляет темп"],
     dailyNudgeAfternoonBody: [
       "Сделай чек-ин перед любой покупкой и отправь свободные деньги в Almost.",
       "Искушения наступают? Держись и помни о своей цели.",
@@ -3656,7 +3662,7 @@ const TRANSLATIONS = {
     dailySummaryHint: "Загляну завтра с новыми цифрами.",
     baselineTitle: "Сколько уходит на мелкие импульсы?",
     baselineSubtitle: "Прикинь месячную сумму - Almost сравнит её с реальными победами.",
-    baselinePlaceholder: "Например {{amount}}",
+    baselinePlaceholder: "Введите сумму",
     baselineCTA: "Запомнить",
     baselineHint: "Это ориентир, позже можно обновить его в профиле.",
     baselineInputError: "Введи сумму ежемесячных необязательных трат",
@@ -3672,10 +3678,10 @@ const TRANSLATIONS = {
     potentialBlockDetails:
       "Он берёт ваш ежемесячный бюджет на искушения (тот, что вы указали при регистрации), делит сумму на секунды и показывает, сколько денег можно было бы спасти прямо сейчас.",
     potentialBlockCta: "Расскажи, сколько уходит на мелкие траты, и мы покажем, сколько ты мог бы уже спасти.",
-    potentialPushAheadTitle: "Ты обгоняешь свой потенциал!",
+    potentialPushAheadTitle: "Опередил потенциал!",
     potentialPushAheadBody:
       "Потенциал дошёл до {{potential}}, а у тебя уже {{actual}}. Продолжай держать темп.",
-    potentialPushBehindTitle: "Счётчик потенциала ждёт тебя",
+    potentialPushBehindTitle: "Догони потенциал",
     potentialPushBehindBody:
       "Потенциал уже {{potential}}, до него осталось {{shortfall}}. Сделай паузу перед тратой и отметь новую экономию.",
     quickCustomTitle: "Новое искушение",
@@ -3690,12 +3696,12 @@ const TRANSLATIONS = {
     coinEntryHint: "Нажми кнопку выше, чтобы подтвердить копилку или трату.",
     coinEntryManual: "...",
     coinEntryManualTitle: "Выбери новый максимум",
-    coinEntryManualPlaceholder: "Например {{amount}}",
+    coinEntryManualPlaceholder: "Введите сумму",
     coinEntryManualSave: "Запомнить",
     coinEntryManualCancel: "Отмена",
     coinEntryManualError: "Введи корректную сумму",
     coinEntryManualAmountTitle: "Введи сумму вручную",
-    coinEntryManualAmountPlaceholder: "Например {{amount}}",
+    coinEntryManualAmountPlaceholder: "Введите сумму",
     coinEntryCategoryLabel: "Категория",
     coinEntryCategoryError: "Сначала выбери категорию",
     coinEntrySaveLabel: "Быстрое накопление",
@@ -4101,6 +4107,9 @@ const TRANSLATIONS = {
     challengeCancelConfirmMessage: "Stop “{{title}}”? All progress will reset.",
     challengeCancelConfirmYes: "Cancel",
     challengeCancelConfirmNo: "Keep going",
+    challengeLimitReachedAction: "Max {{limit}} challenges",
+    challengeLimitReachedTitle: "Challenge limit",
+    challengeLimitReachedMessage: "You can run at most {{limit}} challenges at once. Finish one to start another.",
     dailyChallengeOfferBadge: "daily challenge",
     dailyChallengeOfferTitle: "Today’s mini challenge",
     dailyChallengeOfferSubtitle: "Go a day without “{{temptation}}”",
@@ -4159,7 +4168,7 @@ const TRANSLATIONS = {
     goalPrimaryBadge: "Primary goal",
     goalTargetTitle: "How big is this goal?",
     goalTargetSubtitle: "Set the amount so Almost tracks every dollar toward it.",
-    goalTargetPlaceholder: "E.g. 1200",
+    goalTargetPlaceholder: "Enter amount",
     goalTargetHint: "You can edit the amount later in the profile.",
     goalTargetCTA: "Save amount",
     goalTargetError: "Enter a goal amount",
@@ -4232,15 +4241,15 @@ const TRANSLATIONS = {
     customSpendSubtitle: "Give it a short name and Almost will help you resist it more often.",
     customSpendNamePlaceholder: "Morning latte, cigarettes, nail art…",
     customSpendAmountLabel: "Cost per attempt",
-    customSpendAmountPlaceholder: "E.g. {{amount}}",
+    customSpendAmountPlaceholder: "Enter amount",
     customSpendFrequencyLabel: "How many times per week does it usually win?",
     customSpendFrequencyPlaceholder: "E.g. 4",
     customSpendHint: "You can change this anytime in the profile.",
     customSpendSkip: "Skip for now",
     smartReminderTitle: [
       "Almost spotted “{{temptation}}”",
-      "Pause with Almi: “{{temptation}}”",
-      "Almost focus ping: “{{temptation}}”",
+      "Almi flags “{{temptation}}”",
+      "Almost ping: “{{temptation}}”",
     ],
     smartReminderBody: [
       "You logged “{{temptation}}” recently. Repeat the pause and send the cash to your goal.",
@@ -4248,9 +4257,9 @@ const TRANSLATIONS = {
       "Keep the streak alive. “{{temptation}}” can wait a little longer.",
       "Smart tip: every time you skip “{{temptation}}”, Almost keeps your insights sharp.",
     ],
-    smartInsightDeclineTitle: "Almost remembers yesterday's win over “{{temptation}}”",
+    smartInsightDeclineTitle: "Yesterday’s win: “{{temptation}}”",
     smartInsightDeclineBody: "Say no again today and Almost will lock in the streak.",
-    smartInsightSpendTitle: "Almost noticed “{{temptation}}” won yesterday",
+    smartInsightSpendTitle: "Yesterday “{{temptation}}” won",
     smartInsightSpendBody: "Hold the line today so Almost can celebrate a save.",
     dailyNudgeMorningTitle: ["Morning nudge from Almost", "Focus check from Almi"],
     dailyNudgeMorningBody: [
@@ -4262,7 +4271,7 @@ const TRANSLATIONS = {
       "Afternoon impulses climb. Ask if this buy still serves your goal.",
       "Almost noticed lunch-time splurges. Take a mindful pause.",
     ],
-    dailyNudgeAfternoonTitle: ["Post-lunch check-in with Almost", "Tap the brakes with Almi"],
+    dailyNudgeAfternoonTitle: ["Post-lunch ping from Almost", "Tap the brakes with Almi"],
     dailyNudgeAfternoonBody: [
       "Take a breath before tapping buy and reroute that money to savings.",
       "Temptations creeping in? Hold the line and remember your goal.",
@@ -4282,7 +4291,7 @@ const TRANSLATIONS = {
     dailySummaryHint: "See you tomorrow with fresh numbers.",
     baselineTitle: "How much slips on small stuff?",
     baselineSubtitle: "Estimate one month of coffees, snacks and impulse buys to compare with real wins.",
-    baselinePlaceholder: "E.g. {{amount}}",
+    baselinePlaceholder: "Enter amount",
     baselineCTA: "Save amount",
     baselineHint: "Rough number is fine - you can tweak it later in Profile.",
     baselineInputError: "Enter your rough monthly spend on non‑essentials",
@@ -4298,10 +4307,10 @@ const TRANSLATIONS = {
     potentialBlockDetails:
       "It grabs the monthly temptation budget you set during onboarding, slices it into seconds, and shows how much you could have already saved right now.",
     potentialBlockCta: "Tell us how much usually slips on small extras and we’ll show the potential savings.",
-    potentialPushAheadTitle: "You’re ahead of your potential!",
+    potentialPushAheadTitle: "Ahead of potential!",
     potentialPushAheadBody:
       "The potential counter just hit {{potential}}, and you’re already at {{actual}}. Keep that streak going!",
-    potentialPushBehindTitle: "Catch up to your potential",
+    potentialPushBehindTitle: "Catch potential up",
     potentialPushBehindBody:
       "Potential is already {{potential}} – only {{shortfall}} to catch up. Pause before the next purchase and log a win.",
     quickCustomTitle: "Add temptation",
@@ -4316,12 +4325,12 @@ const TRANSLATIONS = {
     coinEntryHint: "Use the buttons above to save or spend.",
     coinEntryManual: "...",
     coinEntryManualTitle: "Set new slider max",
-    coinEntryManualPlaceholder: "E.g. {{amount}}",
+    coinEntryManualPlaceholder: "Enter amount",
     coinEntryManualSave: "Remember",
     coinEntryManualCancel: "Cancel",
     coinEntryManualError: "Enter a valid amount",
     coinEntryManualAmountTitle: "Enter custom amount",
-    coinEntryManualAmountPlaceholder: "E.g. {{amount}}",
+    coinEntryManualAmountPlaceholder: "Enter amount",
     coinEntryCategoryLabel: "Category",
     coinEntryCategoryError: "Pick a category first",
     coinEntrySaveLabel: "Quick save",
@@ -4720,6 +4729,9 @@ const TRANSLATIONS = {
     challengeCancelConfirmMessage: "On stoppe « {{title}} » ? Le progrès sera perdu.",
     challengeCancelConfirmYes: "Annuler",
     challengeCancelConfirmNo: "Continuer",
+    challengeLimitReachedAction: "Limite : {{limit}} défis",
+    challengeLimitReachedTitle: "Limite de défis",
+    challengeLimitReachedMessage: "Tu peux mener au plus {{limit}} défis en parallèle. Termine-en un pour en lancer un nouveau.",
     dailyChallengeOfferBadge: "défi du jour",
     dailyChallengeOfferTitle: "Mini défi du jour",
     dailyChallengeOfferSubtitle: "Passe une journée sans « {{temptation}} »",
@@ -4778,7 +4790,7 @@ const TRANSLATIONS = {
     goalPrimaryBadge: "Objectif principal",
     goalTargetTitle: "Quelle taille pour cet objectif ?",
     goalTargetSubtitle: "Définis le montant pour qu'Almost suive chaque unité.",
-    goalTargetPlaceholder: "Ex. 1200",
+    goalTargetPlaceholder: "Entre le montant",
     goalTargetHint: "Tu pourras le modifier plus tard dans le profil.",
     goalTargetCTA: "Enregistrer le montant",
     goalTargetError: "Entre un montant",
@@ -4851,15 +4863,15 @@ const TRANSLATIONS = {
     customSpendSubtitle: "Donne-lui un petit nom et Almost t'aidera à la battre plus souvent.",
     customSpendNamePlaceholder: "Matcha du matin, cigarettes, nail art…",
     customSpendAmountLabel: "Coût par occasion",
-    customSpendAmountPlaceholder: "Ex. {{amount}}",
+    customSpendAmountPlaceholder: "Entre le montant",
     customSpendFrequencyLabel: "Combien de fois par semaine gagne-t-elle ?",
     customSpendFrequencyPlaceholder: "Ex. 4",
     customSpendHint: "Tu peux changer ça à tout moment dans le profil.",
     customSpendSkip: "Passer pour l'instant",
     smartReminderTitle: [
       "Almost a repéré « {{temptation}} »",
-      "Pause avec Almi : « {{temptation}} »",
-      "Alerte focus Almost : « {{temptation}} »",
+      "Almi veille : « {{temptation}} »",
+      "Ping Almost : « {{temptation}} »",
     ],
     smartReminderBody: [
       "Tu as enregistré « {{temptation}} » récemment. Refais une pause et envoie l'argent vers ton objectif.",
@@ -4867,9 +4879,9 @@ const TRANSLATIONS = {
       "Garde la série en vie. « {{temptation}} » peut attendre un peu.",
       "Astuce : chaque fois que tu évites « {{temptation}} », Almost affine ses idées.",
     ],
-    smartInsightDeclineTitle: "Almost se souvient de ta victoire d'hier sur « {{temptation}} »",
+    smartInsightDeclineTitle: "Victoire hier : « {{temptation}} »",
     smartInsightDeclineBody: "Redis-lui non aujourd'hui et Almost verrouillera la série.",
-    smartInsightSpendTitle: "Almost a vu que « {{temptation}} » a gagné hier",
+    smartInsightSpendTitle: "Hier, « {{temptation}} » a gagné",
     smartInsightSpendBody: "Tiens bon aujourd'hui pour célébrer une économie.",
     dailyNudgeMorningTitle: ["Coup de pouce matinal d'Almost", "Contrôle focus d'Almi"],
     dailyNudgeMorningBody: [
@@ -4881,7 +4893,7 @@ const TRANSLATIONS = {
       "Les impulsions montent à cette heure. Demande-toi si cet achat sert toujours ton objectif.",
       "Almost a remarqué des craquages du midi. Prends une pause consciente.",
     ],
-    dailyNudgeAfternoonTitle: ["Check-in d'après-midi avec Almost", "Freine avec Almi"],
+    dailyNudgeAfternoonTitle: ["Ping aprèm d’Almost", "Freine avec Almi"],
     dailyNudgeAfternoonBody: [
       "Respire avant de cliquer sur acheter et redirige l'argent vers ton épargne.",
       "Les tentations s'approchent ? Garde le cap et pense à ton objectif.",
@@ -4902,7 +4914,7 @@ const TRANSLATIONS = {
     baselineTitle: "Combien part dans les petites folies ?",
     baselineSubtitle:
       "Estime un mois de cafés, snacks et achats impulsifs pour le comparer aux vraies victoires.",
-    baselinePlaceholder: "Ex. {{amount}}",
+    baselinePlaceholder: "Entre le montant",
     baselineCTA: "Enregistrer le montant",
     baselineHint: "Un chiffre approximatif suffit ; tu pourras l'ajuster dans Profil.",
     baselineInputError: "Entre ta dépense mensuelle estimée en extras",
@@ -4918,10 +4930,10 @@ const TRANSLATIONS = {
     potentialBlockDetails:
       "On utilise le budget mensuel des tentations défini à l'onboarding, on le découpe par seconde et on montre combien tu pourrais déjà avoir économisé.",
     potentialBlockCta: "Dis-nous combien fuient dans les extras et on t'affiche le potentiel.",
-    potentialPushAheadTitle: "Tu es en avance sur ton potentiel !",
+    potentialPushAheadTitle: "En avance sur le potentiel !",
     potentialPushAheadBody:
       "Le compteur potentiel atteint {{potential}} et tu es déjà à {{actual}}. Garde cette dynamique.",
-    potentialPushBehindTitle: "Rattrape ton potentiel",
+    potentialPushBehindTitle: "Rattrape le potentiel",
     potentialPushBehindBody:
       "Le potentiel est à {{potential}} - plus que {{shortfall}} pour rattraper. Fais une pause avant le prochain achat et note une victoire.",
     quickCustomTitle: "Ajouter une tentation",
@@ -4936,12 +4948,12 @@ const TRANSLATIONS = {
     coinEntryHint: "Utilise les boutons pour économiser ou dépenser.",
     coinEntryManual: "...",
     coinEntryManualTitle: "Définir un nouveau maximum",
-    coinEntryManualPlaceholder: "Ex. {{amount}}",
+    coinEntryManualPlaceholder: "Entre le montant",
     coinEntryManualSave: "Mémoriser",
     coinEntryManualCancel: "Annuler",
     coinEntryManualError: "Entre un montant valide",
     coinEntryManualAmountTitle: "Saisir un montant manuel",
-    coinEntryManualAmountPlaceholder: "Ex. {{amount}}",
+    coinEntryManualAmountPlaceholder: "Entre le montant",
     coinEntryCategoryLabel: "Catégorie",
     coinEntryCategoryError: "Choisis d'abord une catégorie",
     coinEntrySaveLabel: "Économie rapide",
@@ -5339,6 +5351,9 @@ const TRANSLATIONS = {
     challengeCancelConfirmMessage: "¿Detenemos «{{title}}»? Se perderá el progreso.",
     challengeCancelConfirmYes: "Cancelar",
     challengeCancelConfirmNo: "Seguir",
+    challengeLimitReachedAction: "Máx. {{limit}} retos",
+    challengeLimitReachedTitle: "Límite de retos",
+    challengeLimitReachedMessage: "Solo puedes tener {{limit}} retos activos a la vez. Termina uno para iniciar otro.",
     dailyChallengeOfferBadge: "reto diario",
     dailyChallengeOfferTitle: "Mini reto de hoy",
     dailyChallengeOfferSubtitle: "Pasa un día sin «{{temptation}}»",
@@ -5397,7 +5412,7 @@ const TRANSLATIONS = {
     goalPrimaryBadge: "Meta principal",
     goalTargetTitle: "¿Qué tan grande es esta meta?",
     goalTargetSubtitle: "Configura el monto para que Almost registre cada unidad.",
-    goalTargetPlaceholder: "Ej. 1200",
+    goalTargetPlaceholder: "Ingresa el monto",
     goalTargetHint: "Siempre podrás editarlo en el perfil.",
     goalTargetCTA: "Guardar monto",
     goalTargetError: "Introduce un monto objetivo",
@@ -5470,15 +5485,15 @@ const TRANSLATIONS = {
     customSpendSubtitle: "Ponle un nombre y Almost te ayudará a decir que no.",
     customSpendNamePlaceholder: "Matcha, cigarros, manicura...",
     customSpendAmountLabel: "¿Cuánto cuesta cada vez?",
-    customSpendAmountPlaceholder: "Ej. {{amount}}",
+    customSpendAmountPlaceholder: "Ingresa el monto",
     customSpendFrequencyLabel: "¿Cuántas veces por semana gana?",
     customSpendFrequencyPlaceholder: "Ej. 4",
     customSpendHint: "Puedes cambiarlo en tu perfil.",
     customSpendSkip: "Saltar",
     smartReminderTitle: [
       "Almost detectó «{{temptation}}»",
-      "Pausa con Almi: «{{temptation}}»",
-      "Recordatorio Almost: «{{temptation}}»",
+      "Almi avisa: «{{temptation}}»",
+      "Ping Almost: «{{temptation}}»",
     ],
     smartReminderBody: [
       "Registraste «{{temptation}}» hace poco. Repite la pausa y envía el dinero a tu meta.",
@@ -5486,9 +5501,9 @@ const TRANSLATIONS = {
       "Mantén la racha. «{{temptation}}» puede esperar un poco más.",
       "Tip: cada vez que saltas «{{temptation}}», Almost afina sus ideas.",
     ],
-    smartInsightDeclineTitle: "Almost recuerda la victoria de ayer sobre «{{temptation}}»",
+    smartInsightDeclineTitle: "Victoria ayer: «{{temptation}}»",
     smartInsightDeclineBody: "Dile que no otra vez hoy y Almost fijará la racha.",
-    smartInsightSpendTitle: "Almost vio que «{{temptation}}» ganó ayer",
+    smartInsightSpendTitle: "Ayer ganó «{{temptation}}»",
     smartInsightSpendBody: "Mantén la calma hoy para celebrar un ahorro.",
     dailyNudgeMorningTitle: ["Empujón matutino de Almost", "Chequeo de enfoque de Almi"],
     dailyNudgeMorningBody: [
@@ -5500,7 +5515,7 @@ const TRANSLATIONS = {
       "Los impulsos suben a esta hora. Pregunta si la compra sirve a tu meta.",
       "Almost notó caprichos a la hora de comer. Haz una pausa consciente.",
     ],
-    dailyNudgeAfternoonTitle: ["Chequeo post comida con Almost", "Frena con Almi"],
+    dailyNudgeAfternoonTitle: ["Ping tarde de Almost", "Frena con Almi"],
     dailyNudgeAfternoonBody: [
       "Respira antes de tocar comprar y redirige el dinero al ahorro.",
       "¿Tentaciones al acecho? Mantén el rumbo y recuerda tu meta.",
@@ -5520,7 +5535,7 @@ const TRANSLATIONS = {
     dailySummaryHint: "Mañana vuelvo con números frescos.",
     baselineTitle: "¿Cuánto se va en pequeños caprichos?",
     baselineSubtitle: "Calcula un mes de cafés, snacks y compras impulsivas para compararlo con tus victorias reales.",
-    baselinePlaceholder: "Ej. {{amount}}",
+    baselinePlaceholder: "Ingresa el monto",
     baselineCTA: "Guardar monto",
     baselineHint: "Un aproximado basta; podrás ajustarlo en Perfil.",
     baselineInputError: "Introduce tu gasto mensual estimado en extras",
@@ -5536,10 +5551,10 @@ const TRANSLATIONS = {
     potentialBlockDetails:
       "Usamos el presupuesto mensual de tentaciones que pusiste en el onboarding, lo dividimos en segundos y mostramos cuánto podrías haber ahorrado hasta ahora.",
     potentialBlockCta: "Cuéntanos cuánto suele escaparse en extras y te mostraremos el potencial.",
-    potentialPushAheadTitle: "¡Vas por delante de tu potencial!",
+    potentialPushAheadTitle: "¡Vas delante del potencial!",
     potentialPushAheadBody:
       "El contador llegó a {{potential}} y tú ya estás en {{actual}}. Mantén ese ritmo.",
-    potentialPushBehindTitle: "Alcanza tu potencial",
+    potentialPushBehindTitle: "Alcanza el potencial",
     potentialPushBehindBody:
       "El potencial ya va por {{potential}}; faltan {{shortfall}}. Pausa antes de comprar y registra un ahorro.",
     quickCustomTitle: "Añadir tentación",
@@ -5554,12 +5569,12 @@ const TRANSLATIONS = {
     coinEntryHint: "Usa los botones de arriba para ahorrar o gastar.",
     coinEntryManual: "...",
     coinEntryManualTitle: "Define un nuevo máximo",
-    coinEntryManualPlaceholder: "Ej. {{amount}}",
+    coinEntryManualPlaceholder: "Ingresa el monto",
     coinEntryManualSave: "Recordar",
     coinEntryManualCancel: "Cancelar",
     coinEntryManualError: "Introduce un monto válido",
     coinEntryManualAmountTitle: "Ingresa un monto manual",
-    coinEntryManualAmountPlaceholder: "Ej. {{amount}}",
+    coinEntryManualAmountPlaceholder: "Ingresa el monto",
     coinEntryCategoryLabel: "Categoría",
     coinEntryCategoryError: "Primero elige una categoría",
     coinEntrySaveLabel: "Ahorro rápido",
@@ -7040,15 +7055,23 @@ const getTierTargetsUSD = (currencyCode = activeCurrency) => {
 const formatCurrency = (value = 0, currency = activeCurrency, options = null) => {
   const locale = CURRENCY_LOCALES[currency] || "en-US";
   const displayPrecision = getCurrencyDisplayPrecision(currency);
-  const friendly = options?.friendly;
+  const precisionOverride =
+    typeof options?.precisionOverride === "number" && Number.isFinite(options.precisionOverride)
+      ? Math.max(0, Math.min(6, options.precisionOverride))
+      : null;
+  const friendlyRequested = Boolean(options?.friendly);
+  const friendly = friendlyRequested && precisionOverride === null;
   const baseValue = Number(value) || 0;
   const adjusted = friendly ? applyFriendlyDisplayRounding(baseValue, currency) : baseValue;
-  const normalized = roundCurrencyValue(adjusted, currency, displayPrecision);
+  const precision = precisionOverride ?? displayPrecision;
+  const normalized = roundCurrencyValue(adjusted, currency, precision);
+  const minFractionDigits = precisionOverride !== null ? precision : 0;
+  const maxFractionDigits = precision;
   try {
     if (RTL_CURRENCIES.has(currency)) {
       const digits = new Intl.NumberFormat("en-US", {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: displayPrecision,
+        minimumFractionDigits: minFractionDigits,
+        maximumFractionDigits: maxFractionDigits,
       }).format(normalized);
       const symbol = CURRENCY_SIGNS[currency] || "";
       return `${LTR_MARK}${symbol}${digits}`;
@@ -7056,28 +7079,32 @@ const formatCurrency = (value = 0, currency = activeCurrency, options = null) =>
     return new Intl.NumberFormat(locale, {
       style: "currency",
       currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: displayPrecision,
+      minimumFractionDigits: minFractionDigits,
+      maximumFractionDigits: maxFractionDigits,
     }).format(normalized);
   } catch {
     const symbol = CURRENCY_SIGNS[currency] || "$";
     const prefix = RTL_CURRENCIES.has(currency) ? `${LTR_MARK}${symbol}` : symbol;
     return `${prefix}${normalized.toLocaleString(locale, {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: displayPrecision,
+      minimumFractionDigits: minFractionDigits,
+      maximumFractionDigits: maxFractionDigits,
     })}`;
   }
 };
 
-const formatCurrencyWhole = (value = 0, currency = activeCurrency) => {
+const formatCurrencyWhole = (value = 0, currency = activeCurrency, precisionOverride = null) => {
   const locale = CURRENCY_LOCALES[currency] || "en-US";
-  const precision = getCurrencyDisplayPrecision(currency);
-  const rounded = roundCurrencyValue(Number(value) || 0, currency, precision);
+  const basePrecision = getCurrencyDisplayPrecision(currency);
+  const normalizedPrecision =
+    typeof precisionOverride === "number" && Number.isFinite(precisionOverride)
+      ? Math.max(0, Math.min(6, precisionOverride))
+      : basePrecision;
+  const rounded = roundCurrencyValue(Number(value) || 0, currency, normalizedPrecision);
   try {
     if (RTL_CURRENCIES.has(currency)) {
       const digits = new Intl.NumberFormat("en-US", {
-        minimumFractionDigits: precision,
-        maximumFractionDigits: precision,
+        minimumFractionDigits: normalizedPrecision,
+        maximumFractionDigits: normalizedPrecision,
       }).format(rounded);
       const symbol = CURRENCY_SIGNS[currency] || "";
       return `${LTR_MARK}${symbol}${digits}`;
@@ -7085,15 +7112,15 @@ const formatCurrencyWhole = (value = 0, currency = activeCurrency) => {
     return new Intl.NumberFormat(locale, {
       style: "currency",
       currency,
-      minimumFractionDigits: precision,
-      maximumFractionDigits: precision,
+      minimumFractionDigits: normalizedPrecision,
+      maximumFractionDigits: normalizedPrecision,
     }).format(rounded);
   } catch {
     const symbol = CURRENCY_SIGNS[currency] || "$";
     const prefix = RTL_CURRENCIES.has(currency) ? `${LTR_MARK}${symbol}` : symbol;
     return `${prefix}${rounded.toLocaleString(locale, {
-      minimumFractionDigits: precision,
-      maximumFractionDigits: precision,
+      minimumFractionDigits: normalizedPrecision,
+      maximumFractionDigits: normalizedPrecision,
     })}`;
   }
 };
@@ -7244,6 +7271,25 @@ const getTemptationPrice = (item) => {
   return 0;
 };
 
+const getTemptationPricePrecision = (item) => {
+  if (!item) return null;
+  const precision = item.pricePrecision;
+  if (typeof precision === "number" && Number.isFinite(precision) && precision >= 0) {
+    return precision;
+  }
+  return null;
+};
+
+const formatTemptationPriceLabel = (item, currency) => {
+  const priceUSD = getTemptationPrice(item);
+  const precision = getTemptationPricePrecision(item);
+  const hasOverride = precision !== null;
+  return formatCurrency(convertToCurrency(priceUSD, currency), currency, {
+    friendly: !hasOverride,
+    precisionOverride: hasOverride ? precision : null,
+  });
+};
+
 function TemptationCardComponent({
   item,
   language,
@@ -7302,8 +7348,7 @@ function TemptationCardComponent({
     resolvedDesc = isCustomCard ? baseDescription || customLanguageFallback || "" : baseDescription;
   }
   const desc = resolvedDesc || "";
-  const priceUSD = item.priceUSD || item.basePriceUSD || 0;
-  const priceLabel = formatCurrency(convertToCurrency(priceUSD, currency), currency, { friendly: true });
+  const priceLabel = formatTemptationPriceLabel(item, currency);
   const highlight = true;
   const isDarkTheme = colors.background === THEMES.dark.background;
   const baseColor = item.color || colors.card;
@@ -8592,8 +8637,9 @@ function SpendConfirmSheet({
   colors,
   t,
 }) {
-  const priceUSD = item?.priceUSD || item?.basePriceUSD || 0;
-  const priceLabel = formatCurrency(convertToCurrency(priceUSD, currency), currency, { friendly: true });
+  const priceLabel = item
+    ? formatTemptationPriceLabel(item, currency)
+    : formatCurrency(0, currency, { friendly: true });
   const displayTitle =
     item?.title?.[language] || item?.title?.en || item?.title || t("defaultDealTitle");
   return (
@@ -10297,9 +10343,7 @@ const PendingScreen = React.memo(function PendingScreen({
         const diff = (item.decisionDue || 0) - nowTick;
         const countdownLabel = formatCountdown(diff);
         const overdue = diff <= 0;
-        const priceLabel = formatCurrency(convertToCurrency(item.priceUSD || 0, currency), currency, {
-          friendly: true,
-        });
+        const priceLabel = formatTemptationPriceLabel(item, currency);
         return (
           <SwipeablePendingCard
             key={item.id}
@@ -10822,6 +10866,9 @@ const CHALLENGE_STATUS_LABELS = {
   [CHALLENGE_STATUS.CLAIMED]: "challengeStatusClaimed",
 };
 
+const getActiveChallengesCount = (state) =>
+  Object.values(state || {}).filter((entry) => entry?.status === CHALLENGE_STATUS.ACTIVE).length;
+
 const createChallengeEntry = (id) => ({
   id,
   status: CHALLENGE_STATUS.IDLE,
@@ -11147,9 +11194,12 @@ const formatChallengeTimeLeft = (ms, t) => {
   return `${Math.max(minutes, 1)}${t("challengeTimeMinuteShort")}`;
 };
 
-const buildChallengesDisplay = ({ state, currency, language, t }) => {
+const buildChallengesDisplay = ({ state, currency, language, t, maxActiveChallenges = Infinity }) => {
   const currencyCode = currency || DEFAULT_PROFILE.currency;
   const now = Date.now();
+  const limitThreshold = Number.isFinite(maxActiveChallenges) ? maxActiveChallenges : Infinity;
+  const activeCount = getActiveChallengesCount(state);
+  const isLimitBlockingNewStart = Number.isFinite(limitThreshold) && activeCount >= limitThreshold;
   const list = CHALLENGE_DEFS.map((def) => {
     const entry = state?.[def.id] || createChallengeEntry(def.id);
     const progressValue = entry.progress || 0;
@@ -11189,13 +11239,17 @@ const buildChallengesDisplay = ({ state, currency, language, t }) => {
     } else if (entry.status === CHALLENGE_STATUS.CLAIMED) {
       timerLabel = t("challengeRestartHint", { days: def.durationDays });
     }
-    const canStart =
+    const baseCanStart =
       entry.status === CHALLENGE_STATUS.IDLE ||
       entry.status === CHALLENGE_STATUS.EXPIRED ||
       entry.status === CHALLENGE_STATUS.CLAIMED;
+    const limitBlocksStart = baseCanStart && isLimitBlockingNewStart;
+    const canStart = baseCanStart && !limitBlocksStart;
     const canClaim = entry.status === CHALLENGE_STATUS.COMPLETED;
     let actionLabel = t("challengeActiveCta");
-    if (canClaim) {
+    if (limitBlocksStart) {
+      actionLabel = t("challengeLimitReachedAction", { limit: maxActiveChallenges });
+    } else if (canClaim) {
       actionLabel = t("challengeClaimCta");
     } else if (canStart) {
       actionLabel = t("challengeStartCta");
@@ -12491,6 +12545,8 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState("feed");
   const [catalogOverrides, setCatalogOverrides] = useState({});
   const [catalogHydrated, setCatalogHydrated] = useState(false);
+  const [pricePrecisionOverrides, setPricePrecisionOverrides] = useState({});
+  const [pricePrecisionOverridesHydrated, setPricePrecisionOverridesHydrated] = useState(false);
   const [titleOverrides, setTitleOverrides] = useState({});
   const [titleOverridesHydrated, setTitleOverridesHydrated] = useState(false);
   const [emojiOverrides, setEmojiOverrides] = useState({});
@@ -12745,7 +12801,8 @@ function AppContent() {
     if (!node || typeof node.measureInWindow !== "function") return;
     node.measureInWindow((x, y, width, height) => {
       const centerX = x + width / 2;
-      const centerY = y + height / 2;
+      const androidStatusBarOffset = Platform.OS === "android" ? RNStatusBar.currentHeight || 0 : 0;
+      const centerY = y + height / 2 + androidStatusBarOffset;
       setFabTutorialAnchor((prev) => {
         if (prev && Math.abs(prev.x - centerX) < 0.5 && Math.abs(prev.y - centerY) < 0.5) {
           return prev;
@@ -12834,7 +12891,10 @@ function AppContent() {
       respondedAt,
     }));
     logEvent("rating_prompt_action", { action: "rate" });
-    triggerStoreReview();
+    // Wait until the prompt modal is fully dismissed before attempting to show the native review UI.
+    InteractionManager.runAfterInteractions(() => {
+      triggerStoreReview();
+    });
   }, [logEvent, triggerStoreReview, updateRatingPromptState]);
   const openLevelShareModal = useCallback(
     (level = 1) => {
@@ -13590,8 +13650,9 @@ function AppContent() {
   const fabTutorialCutout = useMemo(() => {
     const radius = FAB_TUTORIAL_HALO_SIZE / 2;
     const fallbackCenterX = SCREEN_WIDTH / 2;
+    const androidStatusBarOffset = Platform.OS === "android" ? RNStatusBar.currentHeight || 0 : 0;
     const fallbackCenterY =
-      SCREEN_HEIGHT - (tabBarBottomInset + FAB_CONTAINER_BOTTOM + FAB_BUTTON_SIZE / 2);
+      SCREEN_HEIGHT - (tabBarBottomInset + FAB_CONTAINER_BOTTOM + FAB_BUTTON_SIZE / 2) + androidStatusBarOffset;
     const centerX = fabTutorialAnchor?.x ?? fallbackCenterX;
     const centerY = fabTutorialAnchor?.y ?? fallbackCenterY;
     const top = Math.max(0, centerY - radius);
@@ -14589,6 +14650,7 @@ function AppContent() {
         currency: profile.currency || DEFAULT_PROFILE.currency,
         language,
         t,
+        maxActiveChallenges: MAX_ACTIVE_CHALLENGES,
       }),
     [challengesState, profile.currency, language, t]
   );
@@ -14981,6 +15043,7 @@ function AppContent() {
         languageRaw,
         onboardingRaw,
         catalogRaw,
+        pricePrecisionRaw,
         titleRaw,
         emojiOverridesRaw,
         categoryOverridesRaw,
@@ -15031,6 +15094,7 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
         AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
         AsyncStorage.getItem(STORAGE_KEYS.CATALOG),
+        AsyncStorage.getItem(STORAGE_KEYS.PRICE_PRECISION_OVERRIDES),
         AsyncStorage.getItem(STORAGE_KEYS.TITLE_OVERRIDES),
         AsyncStorage.getItem(STORAGE_KEYS.EMOJI_OVERRIDES),
         AsyncStorage.getItem(STORAGE_KEYS.CATEGORY_OVERRIDES),
@@ -15410,6 +15474,17 @@ function AppContent() {
         setCatalogOverrides({});
       }
       setCatalogHydrated(true);
+      if (pricePrecisionRaw) {
+        try {
+          setPricePrecisionOverrides(JSON.parse(pricePrecisionRaw));
+        } catch (error) {
+          console.warn("price precision overrides parse", error);
+          setPricePrecisionOverrides({});
+        }
+      } else {
+        setPricePrecisionOverrides({});
+      }
+      setPricePrecisionOverridesHydrated(true);
       if (titleRaw) {
         try {
           setTitleOverrides(JSON.parse(titleRaw));
@@ -15972,6 +16047,13 @@ function AppContent() {
     if (!catalogHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.CATALOG, JSON.stringify(catalogOverrides)).catch(() => {});
   }, [catalogOverrides, catalogHydrated]);
+  useEffect(() => {
+    if (!pricePrecisionOverridesHydrated) return;
+    AsyncStorage.setItem(
+      STORAGE_KEYS.PRICE_PRECISION_OVERRIDES,
+      JSON.stringify(pricePrecisionOverrides)
+    ).catch(() => {});
+  }, [pricePrecisionOverrides, pricePrecisionOverridesHydrated]);
 
   useEffect(() => {
     if (!titleOverridesHydrated) return;
@@ -16246,9 +16328,15 @@ function AppContent() {
       const overrideCategory = categoryOverrides[item.id];
       const normalizedCategory =
         overrideCategory && IMPULSE_CATEGORY_DEFS[overrideCategory] ? overrideCategory : null;
+      const precisionOverride = pricePrecisionOverrides[item.id];
+      const normalizedPrecision =
+        typeof precisionOverride === "number" && Number.isFinite(precisionOverride) && precisionOverride >= 0
+          ? precisionOverride
+          : item.pricePrecision ?? null;
       return {
         ...item,
         priceUSD: catalogOverrides[item.id] ?? item.basePriceUSD,
+        pricePrecision: normalizedPrecision,
         titleOverride: titleOverrides[item.id] || null,
         emoji: emojiOverrides[item.id] || item.emoji,
         impulseCategoryOverride: normalizedCategory || item.impulseCategoryOverride || null,
@@ -16262,9 +16350,15 @@ function AppContent() {
       const overrideCategory = categoryOverrides[card.id];
       const normalizedCategory =
         overrideCategory && IMPULSE_CATEGORY_DEFS[overrideCategory] ? overrideCategory : null;
+      const precisionOverride = pricePrecisionOverrides[card.id];
+      const normalizedPrecision =
+        typeof precisionOverride === "number" && Number.isFinite(precisionOverride) && precisionOverride >= 0
+          ? precisionOverride
+          : card.pricePrecision ?? null;
       return {
         ...card,
         priceUSD: catalogOverrides[card.id] ?? card.priceUSD ?? card.basePriceUSD,
+        pricePrecision: normalizedPrecision,
         titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
         emoji: emojiOverrides[card.id] || card.emoji,
         impulseCategoryOverride: normalizedCategory || card.impulseCategoryOverride || null,
@@ -16281,9 +16375,15 @@ function AppContent() {
         const overrideCategory = categoryOverrides[card.id];
         const normalizedCategory =
           overrideCategory && IMPULSE_CATEGORY_DEFS[overrideCategory] ? overrideCategory : null;
+        const precisionOverride = pricePrecisionOverrides[card.id];
+        const normalizedPrecision =
+          typeof precisionOverride === "number" && Number.isFinite(precisionOverride) && precisionOverride >= 0
+            ? precisionOverride
+            : card.pricePrecision ?? null;
         return {
           ...card,
           priceUSD: catalogOverrides[card.id] ?? card.priceUSD ?? card.basePriceUSD,
+          pricePrecision: normalizedPrecision,
           titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
           emoji: emojiOverrides[card.id] || card.emoji,
           impulseCategoryOverride: normalizedCategory || card.impulseCategoryOverride || null,
@@ -16297,6 +16397,7 @@ function AppContent() {
     setTemptations(combined);
   }, [
     catalogOverrides,
+    pricePrecisionOverrides,
     profile,
     titleOverrides,
     emojiOverrides,
@@ -17166,15 +17267,17 @@ function AppContent() {
       if (selections.includes(goalId)) {
         delete nextTargetMap[goalId];
       } else {
-        const defaultLocal = customGoal?.targetLocal
-          ? customGoal.targetLocal
-          : formatNumberInputValue(
-              convertToCurrency(
-                preset?.targetUSD || customGoal?.targetUSD || getGoalDefaultTargetUSD(goalId),
-                currencyCode
-              )
-            );
-        nextTargetMap[goalId] = nextTargetMap[goalId] || defaultLocal;
+        let defaultLocal = "";
+        if (customGoal?.targetLocal) {
+          defaultLocal = customGoal.targetLocal;
+        } else if (Number.isFinite(customGoal?.targetUSD) && customGoal.targetUSD > 0) {
+          defaultLocal = formatNumberInputValue(
+            convertToCurrency(customGoal.targetUSD, currencyCode)
+          );
+        }
+        if (!(goalId in nextTargetMap)) {
+          nextTargetMap[goalId] = defaultLocal;
+        }
       }
       const confirmed = (prev.goalTargetConfirmed || []).filter((id) => id !== goalId);
       return {
@@ -17187,7 +17290,7 @@ function AppContent() {
     if (!wasSelected && onboardingStep !== "done") {
       logEvent("onboarding_goal_chosen", {
         goal_id: goalId,
-        target_usd: customGoal?.targetUSD || preset?.targetUSD || 0,
+        target_usd: customGoal?.targetUSD || 0,
       });
     }
   };
@@ -18226,6 +18329,7 @@ function AppContent() {
           templateId: item.id,
           title,
           priceUSD,
+          pricePrecision: getTemptationPricePrecision(item),
           createdAt: now,
           decisionDue: now + REMINDER_MS,
           notificationId: null,
@@ -18750,6 +18854,12 @@ function AppContent() {
         delete next[templateId];
         return next;
       });
+      setPricePrecisionOverrides((prev) => {
+        if (!(templateId in prev)) return prev;
+        const next = { ...prev };
+        delete next[templateId];
+        return next;
+      });
       setTitleOverrides((prev) => {
         if (!(templateId in prev)) return prev;
         const next = { ...prev };
@@ -18788,6 +18898,7 @@ function AppContent() {
       setHiddenTemptations,
       setTemptationGoalMap,
       setCatalogOverrides,
+      setPricePrecisionOverrides,
       setTitleOverrides,
       setEmojiOverrides,
       setDescriptionOverrides,
@@ -18796,7 +18907,7 @@ function AppContent() {
     ]
   );
 
-  const persistPriceOverride = (valueUSD = null) => {
+  const persistPriceOverride = (valueUSD = null, precision = null) => {
     const targetId = priceEditor.item?.id;
     if (!targetId) return;
     setCatalogOverrides((prev) => {
@@ -18804,6 +18915,16 @@ function AppContent() {
       if (valueUSD) {
         next[targetId] = valueUSD;
       } else {
+        delete next[targetId];
+      }
+      return next;
+    });
+    setPricePrecisionOverrides((prev) => {
+      const next = { ...prev };
+      const hasPrecision = typeof precision === "number" && Number.isFinite(precision) && precision >= 0;
+      if (valueUSD && hasPrecision) {
+        next[targetId] = precision;
+      } else if (!valueUSD || !hasPrecision) {
         delete next[targetId];
       }
       return next;
@@ -18869,13 +18990,17 @@ function AppContent() {
   };
 
   const propagateTemptationEdit = useCallback(
-    (templateId, { label, emoji, priceUSD, category }) => {
+    (templateId, { label, emoji, priceUSD, category, pricePrecision = null }) => {
       if (!templateId) return;
       const fallbackTitle = resolveTranslationValueForLanguage(language, "defaultWishTitle") || "Wish";
       const normalizedLabel = (label && label.trim()) || fallbackTitle;
       const decoratedTitle = buildTemptationDisplayTitle(emoji, normalizedLabel, fallbackTitle);
       const numericPrice = Number(priceUSD);
       const hasPrice = Number.isFinite(numericPrice) && numericPrice > 0;
+      const normalizedPrecision =
+        typeof pricePrecision === "number" && Number.isFinite(pricePrecision) && pricePrecision >= 0
+          ? pricePrecision
+          : null;
       setPendingList((prev) => {
         let mutated = false;
         const next = prev.map((entry) => {
@@ -18886,6 +19011,11 @@ function AppContent() {
           }
           if (hasPrice && entry.priceUSD !== numericPrice) {
             updates.priceUSD = numericPrice;
+          }
+          if (normalizedPrecision !== null && entry.pricePrecision !== normalizedPrecision) {
+            updates.pricePrecision = normalizedPrecision;
+          } else if (normalizedPrecision === null && entry.pricePrecision != null) {
+            updates.pricePrecision = null;
           }
           if (!Object.keys(updates).length) return entry;
           mutated = true;
@@ -18988,7 +19118,8 @@ function AppContent() {
     }
     const usdValue = parsed / (CURRENCY_RATES[activeCurrency] || 1);
     const previousPriceUSD = priceEditor.item.priceUSD || priceEditor.item.basePriceUSD || 0;
-    persistPriceOverride(usdValue);
+    const manualPrecision = getManualInputPrecision(priceEditor.value || "");
+    persistPriceOverride(usdValue, manualPrecision);
     const titleValue = (priceEditor.title || "").trim();
     persistTitleOverride(titleValue || null);
     const hasCustomEmoji = !!priceEditor.emoji?.trim();
@@ -19014,6 +19145,7 @@ function AppContent() {
     const changedCategory = nextCategory !== previousCategory;
     patchTemptationDisplay(priceEditor.item.id, {
       priceUSD: usdValue,
+      pricePrecision: manualPrecision,
       titleOverride: titleValue || null,
       emoji: resolvedEmoji,
       impulseCategoryOverride: categoryValue || null,
@@ -19031,6 +19163,7 @@ function AppContent() {
       emoji: resolvedEmoji,
       priceUSD: usdValue,
       category: nextCategory,
+      pricePrecision: manualPrecision,
     });
     logEvent("temptation_edited", {
       temptation_id: priceEditor.item.id,
@@ -19564,10 +19697,18 @@ function AppContent() {
     async (challengeId) => {
       const def = CHALLENGE_DEF_MAP[challengeId];
       if (!def) return;
+      if (getActiveChallengesCount(challengesState) >= MAX_ACTIVE_CHALLENGES) {
+        Alert.alert(
+          t("challengeLimitReachedTitle", { limit: MAX_ACTIVE_CHALLENGES }),
+          t("challengeLimitReachedMessage", { limit: MAX_ACTIVE_CHALLENGES })
+        );
+        return;
+      }
       triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
       let activated = false;
       let startedAt = Date.now();
       let expiresAt = startedAt + def.durationDays * DAY_MS;
+      let limitReached = false;
       setChallengesState((prev) => {
         const entry = prev[challengeId] || createChallengeEntry(challengeId);
         const canStart =
@@ -19575,6 +19716,11 @@ function AppContent() {
           entry.status === CHALLENGE_STATUS.EXPIRED ||
           entry.status === CHALLENGE_STATUS.CLAIMED;
         if (!canStart) {
+          return prev;
+        }
+        const activeCount = getActiveChallengesCount(prev);
+        if (activeCount >= MAX_ACTIVE_CHALLENGES) {
+          limitReached = true;
           return prev;
         }
         activated = true;
@@ -19590,6 +19736,13 @@ function AppContent() {
           },
         };
       });
+      if (limitReached) {
+        Alert.alert(
+          t("challengeLimitReachedTitle", { limit: MAX_ACTIVE_CHALLENGES }),
+          t("challengeLimitReachedMessage", { limit: MAX_ACTIVE_CHALLENGES })
+        );
+        return;
+      }
       if (!activated) return;
       const copy = getChallengeCopy(def, language);
       const title = copy.title || challengeId;
@@ -19614,7 +19767,7 @@ function AppContent() {
         });
       }
     },
-    [language, scheduleChallengeReminders, t, triggerOverlayState]
+    [challengesState, language, scheduleChallengeReminders, t, triggerOverlayState]
   );
 
   const handleChallengeClaim = useCallback(
@@ -20093,8 +20246,12 @@ function AppContent() {
   }, [tutorialVisible, tutorialSeen, tabHintVisible]);
 
   useEffect(() => {
+    if (!termsAccepted) return;
     const onboardingScreens = {
+      logo: "onboarding_logo",
       language: "onboarding_language",
+      guide: "onboarding_guide",
+      register: "onboarding_register",
       persona: "onboarding_persona",
       habit: "onboarding_custom_spend",
       baseline: "onboarding_baseline",
@@ -20106,7 +20263,7 @@ function AppContent() {
     if (screen) {
       logScreenView(screen);
     }
-  }, [onboardingStep]);
+  }, [onboardingStep, termsAccepted]);
 
   if (onboardingStep !== "done") {
     const onboardingBackHandler = canGoBackOnboarding ? handleOnboardingBack : undefined;
@@ -28002,6 +28159,7 @@ function CoinEntryModal({
   const [manualMode, setManualMode] = useState(null);
   const [manualValue, setManualValue] = useState("");
   const [manualError, setManualError] = useState("");
+  const [manualExactLocal, setManualExactLocal] = useState(null);
   const directionAnim = useRef(new Animated.Value(0)).current;
   const sliderValueRef = useRef(0.25);
   const sliderValueCommitRef = useRef(0.25);
@@ -28029,6 +28187,7 @@ function CoinEntryModal({
     setManualMode(null);
     setManualValue("");
     setManualError("");
+    setManualExactLocal(null);
     directionAnim.setValue(0);
     tossingRef.current = false;
     touchStartRef.current = 0;
@@ -28053,7 +28212,9 @@ function CoinEntryModal({
   );
   const sliderAmountUSD = computeAmountUSDForValue(sliderValue);
   const sliderLocalValue = snapCurrencyValue(convertToCurrency(sliderAmountUSD, currency), currency);
-  const sliderAmountLocal = formatCurrencyWhole(sliderLocalValue, currency);
+  const sliderAmountLocal = manualExactLocal
+    ? formatCurrencyWhole(manualExactLocal.value, currency, manualExactLocal.precision)
+    : formatCurrencyWhole(sliderLocalValue, currency);
   const sliderMaxLocalValue = useMemo(
     () => snapCurrencyValue(convertToCurrency(maxAmountUSD, currency), currency),
     [currency, maxAmountUSD]
@@ -28128,7 +28289,10 @@ function CoinEntryModal({
     [computeSteppedValue, sliderValueRef, trackHeight]
   );
   const updateSliderValue = useCallback(
-    (value, { force = false, fromUser = false } = {}) => {
+    (value, { force = false, fromUser = false, manualOverride = false } = {}) => {
+      if (!manualOverride) {
+        setManualExactLocal(null);
+      }
       const clamped = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
       sliderValueRef.current = clamped;
       const now = Date.now();
@@ -28155,7 +28319,7 @@ function CoinEntryModal({
       }
       return smoothed;
     },
-    [actionsUnlocked]
+    [actionsUnlocked, setManualExactLocal]
   );
   const openManual = useCallback(
     (mode) => {
@@ -28244,28 +28408,33 @@ function CoinEntryModal({
       setManualError(t("coinEntryManualError"));
       return;
     }
-    const roundedLocal = snapCurrencyValue(parsed, currency);
+    const normalizedLocal = manualIsAmountMode ? parsed : snapCurrencyValue(parsed, currency);
     if (manualIsAmountMode) {
       if (!Number.isFinite(maxAmountUSD) || maxAmountUSD <= 0) {
         setManualError(t("coinEntryManualError"));
         return;
       }
-      const limitedLocal = Math.max(0, Math.min(sliderMaxLocalValue, roundedLocal));
+      const limitedLocal = Math.max(0, Math.min(sliderMaxLocalValue, normalizedLocal));
       const parsedUSD = convertFromCurrency(limitedLocal, currency);
       if (!Number.isFinite(parsedUSD)) {
         setManualError(t("coinEntryManualError"));
         return;
       }
       const normalized = Math.max(0, Math.min(1, parsedUSD / maxAmountUSD));
-      updateSliderValue(normalized, { force: true, fromUser: true });
+      updateSliderValue(normalized, { force: true, fromUser: true, manualOverride: true });
       hapticStepRef.current = Math.round(normalized * 20);
+      const manualPrecision = getManualInputPrecision(manualValue);
+      setManualExactLocal({
+        value: limitedLocal,
+        precision: manualPrecision,
+      });
       sliderGestureRef.current = {
         axis: "pending",
       };
       closeManual();
       return;
     }
-    const parsedUSD = convertFromCurrency(roundedLocal, currency);
+    const parsedUSD = convertFromCurrency(normalizedLocal, currency);
     if (!Number.isFinite(parsedUSD) || parsedUSD <= 0) {
       setManualError(t("coinEntryManualError"));
       return;
