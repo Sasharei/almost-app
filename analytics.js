@@ -2,8 +2,10 @@
  * Analytics helper responsible for routing events to Firebase Analytics.
  * The module guards against missing dependencies and never emits events in dev.
  */
+import { Platform } from "react-native";
 import analytics from "@react-native-firebase/analytics";
 import perf from "@react-native-firebase/perf";
+import appsFlyer from "react-native-appsflyer";
 
 let FacebookAppEvents = null;
 try {
@@ -41,14 +43,18 @@ const EVENT_DEFINITIONS = {
   free_day_milestone: ["milestone", "current_streak"],
   onboarding_language_chosen: ["language"],
   onboarding_currency_chosen: ["currency"],
+  onboarding_gender_chosen: ["gender"],
   onboarding_goal_chosen: ["goal_id", "target_usd"],
+  onboarding_goal_skipped: ["method"],
   onboarding_goal_custom_created: ["title", "target_usd", "currency"],
   onboarding_persona_chosen: ["persona_id", "habit_type"],
   onboarding_custom_spend: ["has_custom", "price_usd", "frequency_per_week"],
   onboarding_completed: ["persona_id", "goal_id", "has_goal", "start_balance"],
   onboarding_terms_accepted: ["language"],
+  onboarding_skipped: ["from_step"],
   consent_terms_accepted: ["language"],
   consent_analytics_enabled: ["enabled", "source"],
+  theme_changed: ["theme"],
   home_opened: ["session_index"],
   rating_prompt_shown: [],
   rating_prompt_action: ["action"],
@@ -80,8 +86,13 @@ const EVENT_DEFINITIONS = {
   stats_screen_viewed: ["tab"],
   reminder_shown: ["reminder_type"],
   reminder_clicked: ["reminder_type", "target_screen"],
+  push_notifications_enabled: [],
+  push_notification_open: [],
   savings_updated: ["saved_usd_total", "tier_level", "next_tier_usd", "profile_goal"],
   savings_level_up: ["level", "saved_usd_total"],
+  hero_level_unlocked: ["level", "saved_usd_total"],
+  day_2: [],
+  day_3: [],
   north_star_two_saves: ["saves_in_window", "hours_since_join"],
   free_day_rescue: ["current_streak", "health_remaining"],
   profile_baseline_updated: ["previous_usd", "baseline_usd", "currency"],
@@ -103,12 +114,25 @@ const EVENT_DEFINITIONS = {
 
 const FACEBOOK_EVENT_WHITELIST = new Set(["onboarding_completed", "north_star_two_saves"]);
 
+const APPSFLYER_DEV_KEY = process.env.APPSFLYER_DEV_KEY || "hccSDBqWuZXfQCRbRQbqBR";
+const APPSFLYER_APP_ID = process.env.APPSFLYER_APP_ID || "6756276744";
+
 const baseEnabled = !__DEV__;
 let analyticsOptedOut = false;
 let analyticsConsentGranted = false;
 let performanceUnavailableLogged = false;
+let appsFlyerInitialized = false;
+let appsFlyerInitPromise = null;
 
 const isAnalyticsEnabled = () => baseEnabled && analyticsConsentGranted && !analyticsOptedOut;
+const isAppsFlyerConfigured = () => {
+  if (!APPSFLYER_DEV_KEY) return false;
+  if (Platform.OS === "ios") {
+    return !!APPSFLYER_APP_ID;
+  }
+  return true;
+};
+const shouldUseAppsFlyer = () => baseEnabled && isAppsFlyerConfigured();
 
 const getAnalyticsClient = () => {
   if (!isAnalyticsEnabled()) return null;
@@ -152,6 +176,86 @@ const syncPerformanceCollection = async () => {
   }
 };
 
+const initAppsFlyerSdk = async () => {
+  if (!shouldUseAppsFlyer() || !isAnalyticsEnabled()) return false;
+  if (appsFlyerInitialized) return true;
+  if (!appsFlyerInitPromise) {
+    const options = {
+      devKey: APPSFLYER_DEV_KEY,
+      isDebug: __DEV__,
+      onInstallConversionDataListener: false,
+      onDeepLinkListener: false,
+    };
+    if (Platform.OS === "ios" && APPSFLYER_APP_ID) {
+      options.appId = APPSFLYER_APP_ID;
+    }
+    appsFlyerInitPromise = new Promise((resolve) => {
+      try {
+        appsFlyer.initSdk(
+          options,
+          () => {
+            appsFlyerInitialized = true;
+            resolve(true);
+          },
+          (error) => {
+            console.warn("AppsFlyer init failed:", error?.message || error);
+            appsFlyerInitPromise = null;
+            resolve(false);
+          }
+        );
+      } catch (error) {
+        console.warn("AppsFlyer init threw:", error?.message || error);
+        appsFlyerInitPromise = null;
+        resolve(false);
+      }
+    });
+  }
+  return appsFlyerInitPromise;
+};
+
+const syncAppsFlyerCollection = async () => {
+  if (!shouldUseAppsFlyer()) return;
+  if (!isAnalyticsEnabled()) {
+    if (appsFlyerInitialized) {
+      try {
+        appsFlyer.stop(true);
+      } catch (error) {
+        console.warn("AppsFlyer stop failed:", error?.message || error);
+      }
+    }
+    return;
+  }
+  const initialized = await initAppsFlyerSdk();
+  if (!initialized) return;
+  try {
+    appsFlyer.stop(false);
+  } catch (error) {
+    console.warn("AppsFlyer resume failed:", error?.message || error);
+  }
+};
+
+const logAppsFlyerEvent = async (eventName, params = {}) => {
+  if (!shouldUseAppsFlyer() || !isAnalyticsEnabled()) return;
+  const initialized = await initAppsFlyerSdk();
+  if (!initialized) return;
+  return new Promise((resolve) => {
+    try {
+      appsFlyer.logEvent(
+        eventName,
+        params,
+        () => resolve(true),
+        (error) => {
+          console.warn("AppsFlyer log failed:", eventName, error?.message || error);
+          resolve(false);
+        }
+      );
+    } catch (error) {
+      console.warn("AppsFlyer event exception:", eventName, error?.message || error);
+      resolve(false);
+    }
+  });
+};
+
 const filterParams = (eventName, params = {}) => {
   const allowedKeys = EVENT_DEFINITIONS[eventName] || [];
   return allowedKeys.reduce((acc, key) => {
@@ -164,6 +268,7 @@ const filterParams = (eventName, params = {}) => {
 
 export const initAnalytics = async () => {
   await syncAnalyticsCollection();
+  await syncAppsFlyerCollection();
 };
 
 export const initPerformanceMonitoring = async () => {
@@ -177,6 +282,7 @@ export const setAnalyticsOptOut = async (optOut) => {
   analyticsConsentGranted = !analyticsOptedOut || analyticsConsentGranted;
   await syncAnalyticsCollection();
   await syncPerformanceCollection();
+  await syncAppsFlyerCollection();
 };
 
 export const logEvent = async (eventName, params = {}) => {
@@ -190,6 +296,7 @@ export const logEvent = async (eventName, params = {}) => {
       console.warn("Failed to log analytics event:", eventName, error?.message || error);
     }
   }
+  await logAppsFlyerEvent(eventName, filteredParams);
   logFacebookEvent(eventName, filteredParams);
 };
 
