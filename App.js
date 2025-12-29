@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ import {
   ActionSheetIOS,
   PixelRatio,
   InteractionManager,
+  Pressable,
 } from "react-native";
 import Svg, {
   Circle as SvgCircle,
@@ -36,6 +37,7 @@ import Svg, {
   Rect as SvgRect,
   LinearGradient as SvgLinearGradient,
   Stop as SvgStop,
+  Path as SvgPath,
 } from "react-native-svg";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import ConfettiCannon from "react-native-confetti-cannon";
@@ -97,9 +99,18 @@ Notifications.setNotificationHandler({
   }),
 });
 
-initSentry();
-initAnalytics();
-initPerformanceMonitoring();
+const bootstrapMonitoring = (() => {
+  let queued = false;
+  return () => {
+    if (queued) return;
+    queued = true;
+    InteractionManager.runAfterInteractions(() => {
+      initSentry();
+      initAnalytics();
+      initPerformanceMonitoring();
+    });
+  };
+})();
 // Keep native splash visible until our custom LogoSplash is ready.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -141,6 +152,9 @@ const STORAGE_KEYS = {
   TAMAGOTCHI: "@almost_tamagotchi_state",
   DAILY_SUMMARY: "@almost_daily_summary",
   POTENTIAL_PUSH_PROGRESS: "@almost_potential_push_progress",
+  PUSH_NOTIFICATIONS_ENABLED_LOGGED: "@almost_push_notifications_enabled_logged",
+  PUSH_DAY_THREE_PROMPT: "@almost_push_day_three_prompt",
+  SPEND_LOGGING_REMINDER: "@almost_spend_logging_reminder",
   TUTORIAL: "@almost_tutorial_state",
   DAILY_CHALLENGE: "@almost_daily_challenge_state",
   TAB_HINTS: "@almost_tab_hints",
@@ -157,6 +171,9 @@ const STORAGE_KEYS = {
   FAB_TUTORIAL: "@almost_fab_tutorial",
   RATING_PROMPT: "@almost_rating_prompt",
   NORTH_STAR_METRIC: "@almost_north_star_metric",
+  DAY_TWO_ACTIVITY: "@almost_day_two_activity",
+  DAY_THREE_ACTIVITY: "@almost_day_three_activity",
+  PRIMARY_TEMPTATION_PROMPT: "@almost_primary_temptation_prompt",
 };
 
 const DEFAULT_LANGUAGE = "en";
@@ -196,6 +213,72 @@ const getShortLanguageKey = (language) =>
   SHORT_LANGUAGE_MAP[language] || SHORT_LANGUAGE_MAP[FALLBACK_LANGUAGE];
 
 const PURCHASE_GOAL = 20000;
+const FALLBACK_SAVE_ACTION_USD = 20;
+const FINANCIAL_QUOTES = [
+  {
+    id: "franklin",
+    en: "“A penny saved is a penny earned.” Benjamin Franklin",
+    ru: "«Сбережённый рубль равен заработанному.» Бенджамин Франклин",
+    es: "“Un centavo ahorrado es un centavo ganado.” Benjamin Franklin",
+    fr: "«Un sou économisé est un sou gagné.» Benjamin Franklin",
+  },
+  {
+    id: "seneca",
+    en: "“Wealth is the slave of a wise man and the master of a fool.” Seneca",
+    ru: "«Богатство служит мудрому и правит глупцом.» Сенека",
+    es: "“La riqueza es la esclava del sabio y la dueña del necio.” Séneca",
+    fr: "«La richesse est l'esclave du sage et la maîtresse du fou.» Sénèque",
+  },
+  {
+    id: "buffett",
+    en: "“Do not save what is left after spending; spend what is left after saving.” Warren Buffett",
+    ru: "«Не откладывай то, что осталось после расходов, трать то, что осталось после сбережений.» Уоррен Баффет",
+    es: "“No ahorres lo que quede después de gastar; gasta lo que quede después de ahorrar.” Warren Buffett",
+    fr: "«N'épargne pas ce qui reste après avoir dépensé, dépense ce qui reste après avoir épargné.» Warren Buffett",
+  },
+  {
+    id: "ramsey",
+    en: "“You must gain control over your money or the lack of it will forever control you.” Dave Ramsey",
+    ru: "«Либо ты управляешь деньгами, либо их отсутствие будет управлять тобой всегда.» Дейв Рэмси",
+    es: "“Debes controlar tu dinero o la falta de él te controlará para siempre.” Dave Ramsey",
+    fr: "«Prends le contrôle de ton argent sinon son absence te contrôlera pour toujours.» Dave Ramsey",
+  },
+  {
+    id: "orman",
+    en: "“A big part of financial freedom is having your heart and mind free from worry about the what-ifs of life.” Suze Orman",
+    ru: "«Финансовая свобода начинается, когда сердце и разум свободны от тревоги о том, что будет, если.» Сьюз Орман",
+    es: "“Gran parte de la libertad financiera es tener la mente y el corazón libres de preocuparse por los «qué pasaría si».” Suze Orman",
+    fr: "«Une grande part de la liberté financière consiste à avoir l'esprit et le cœur libérés des inquiétudes du et si.» Suze Orman",
+  },
+  {
+    id: "lynch",
+    en: "“Know what you own, and know why you own it.” Peter Lynch",
+    ru: "«Знай, чем владеешь, и понимай, зачем это тебе.» Питер Линч",
+    es: "“Sabe qué posees y por qué lo posees.” Peter Lynch",
+    fr: "«Sache ce que tu possèdes et pourquoi tu le possèdes.» Peter Lynch",
+  },
+  {
+    id: "jefferson",
+    en: "“Never spend your money before you have it.” Thomas Jefferson",
+    ru: "«Никогда не трать деньги раньше, чем они у тебя есть.» Томас Джефферсон",
+    es: "“Nunca gastes tu dinero antes de tenerlo.” Thomas Jefferson",
+    fr: "«Ne dépense jamais ton argent avant de l'avoir.» Thomas Jefferson",
+  },
+  {
+    id: "thatcher",
+    en: "“Pennies do not come from heaven. They have to be earned here on earth.” Margaret Thatcher",
+    ru: "«Монеты не падают с небес, их нужно заработать на земле.» Маргарет Тэтчер",
+    es: "“Los centavos no caen del cielo, hay que ganarlos aquí en la tierra.” Margaret Thatcher",
+    fr: "«Les pièces ne tombent pas du ciel, il faut les gagner ici-bas.» Margaret Thatcher",
+  },
+  {
+    id: "kiyosaki",
+    en: "“It's not how much money you make, but how much money you keep, how hard it works for you, and how many generations you keep it for.” Robert Kiyosaki",
+    ru: "«Важны не столько заработанные деньги, сколько то, сколько ты сохраняешь, как они работают на тебя и на сколько поколений их хватит.» Роберт Киосаки",
+    es: "“No importa cuánto dinero ganes, sino cuánto conservas, qué tan duro trabaja para ti y por cuántas generaciones lo mantienes.” Robert Kiyosaki",
+    fr: "«Ce n'est pas ce que tu gagnes qui compte mais ce que tu conserves, la façon dont cet argent travaille pour toi et le nombre de générations qui en profitent.» Robert Kiyosaki",
+  },
+];
 const MAX_ACTIVE_CHALLENGES = 3;
 const ANDROID_API_LEVEL =
   Platform.OS === "android"
@@ -242,6 +325,7 @@ const TEAL_TAMAGOTCHI_ANIMATIONS = {
   waving: require("./assets/tamagotchi_skins/teal/Cat_waving.gif"),
 };
 const PENDING_COUNTDOWN_FAST_MS = 1000;
+const STORM_OVERLAY_DURATION_MS = 6000;
 
 const stripEmojis = (text = "") =>
   text
@@ -362,6 +446,7 @@ const BLUE_HEALTH_COIN_ASSET = BLUE_HEALTH_COIN_TIER?.asset || null;
 const BLUE_HEALTH_COIN_VALUE = BLUE_HEALTH_COIN_TIER?.value || 10;
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
+const SAVE_PROGRESS_BAR_WIDTH = Math.min(SCREEN_WIDTH - 80, 340);
 const CTA_LETTER_SPACING = 0.4;
 const FONT_SCALE = typeof PixelRatio.getFontScale === "function" ? PixelRatio.getFontScale() : 1;
 const IS_EXTRA_COMPACT_DEVICE = SCREEN_WIDTH <= 375 || (SCREEN_WIDTH <= 390 && FONT_SCALE > 1.1);
@@ -388,6 +473,13 @@ const scaleTypographyOverrides = (overrides = {}) => {
 const MAX_MODAL_KEYBOARD_OFFSET = Math.min(SCREEN_HEIGHT * 0.45, 360);
 const OVERLAY_CARD_MAX_WIDTH = Math.min(SCREEN_WIDTH - 40, 440);
 const IS_COMPACT_DEVICE = SCREEN_WIDTH <= 380;
+const SAVE_INTRO_STAGE_DURATION = 3400;
+const SAVE_COUNTER_DIGIT_HEIGHT = 64;
+const SAVE_COUNTER_SPIN_LOOPS = 2;
+const SAVE_PROGRESS_DELAY_MS = 800;
+const SAVE_PROGRESS_PULSE_SCALE = 1.08;
+const SAVE_COUNTDOWN_ZOOM_DELAY_AFTER_SPIN = 1500;
+const SAVE_COUNTDOWN_FINAL_HOLD_DELAY = 2600;
 const PROFILE_SUBTITLE_FONT_SIZE = scaleFontSize(IS_COMPACT_DEVICE ? 12 : 13);
 const PROFILE_SUBTITLE_LINE_HEIGHT = scaleFontSize(IS_COMPACT_DEVICE ? 16 : 18);
 const PROFILE_STAT_LABEL_FONT_SIZE = scaleFontSize(IS_COMPACT_DEVICE ? 8.5 : 10);
@@ -893,6 +985,8 @@ const CUSTOM_SPEND_SAMPLE_USD = 7.5;
 const RATING_PROMPT_DELAY_DAYS = 2; // show on the third calendar day (after two full days)
 const ANDROID_REVIEW_URL = "market://details?id=com.sasarei.almostclean";
 const ANDROID_REVIEW_WEB_URL = "https://play.google.com/store/apps/details?id=com.sasarei.almostclean";
+const IOS_REVIEW_URL = "itms-apps://itunes.apple.com/app/id6756276744?action=write-review";
+const IOS_REVIEW_WEB_URL = "https://apps.apple.com/app/id6756276744?action=write-review";
 const LEVEL_SHARE_CAT = require("./assets/Cat_mascot.png");
 const LEVEL_SHARE_LOGO = require("./assets/Almost_icon.png");
 const LEVEL_SHARE_ACCENT = "#FFB347";
@@ -924,6 +1018,8 @@ const DEFAULT_TEMPTATION_EMOJI = "✨";
 const DEFAULT_GOAL_EMOJI = "🎯";
 const MAX_HISTORY_EVENTS = 200;
 const HISTORY_RETENTION_MS = DAY_MS * 31;
+const SPEND_LOGGING_REMINDER_DELAY_MS = DAY_MS * 1.5;
+const SPEND_LOGGING_REMINDER_COOLDOWN_MS = DAY_MS * 2;
 const HISTORY_VIEWPORT_ROWS = 5;
 const HISTORY_ITEM_HEIGHT = 60;
 const HISTORY_VIEWPORT_HEIGHT = HISTORY_VIEWPORT_ROWS * HISTORY_ITEM_HEIGHT;
@@ -2066,6 +2162,41 @@ const formatImpulseWindowLabel = (hour, span = 2) => {
   const end = padHour((hour + span) % 24);
   return `${start}:00–${end}:00`;
 };
+const IMPULSE_DELAY_UNITS = {
+  ru: { hour: "ч", minute: "мин" },
+  en: { hour: "h", minute: "m" },
+  es: { hour: "h", minute: "min" },
+  fr: { hour: "h", minute: "min" },
+};
+const IMPULSE_REMINDER_MIN_DELAY_MS = 5 * 60 * 1000;
+const formatImpulseDelayLabel = (minutes, language = DEFAULT_LANGUAGE) => {
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  const normalizedLanguage = normalizeLanguage(language);
+  const units = IMPULSE_DELAY_UNITS[normalizedLanguage] || IMPULSE_DELAY_UNITS[DEFAULT_LANGUAGE];
+  const totalMinutes = Math.max(1, Math.round(minutes));
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  const parts = [];
+  if (hours > 0) {
+    parts.push(`${hours}${units.hour}`);
+  }
+  if (mins > 0) {
+    parts.push(`${mins}${units.minute}`);
+  }
+  if (!parts.length) {
+    parts.push(`1${units.minute}`);
+  }
+  return parts.join(" ");
+};
+const getImpulseReminderTimestamp = (timestamp) => {
+  if (!Number.isFinite(timestamp)) return null;
+  const base = new Date(timestamp);
+  const reminder = new Date(base);
+  reminder.setDate(base.getDate() + 1);
+  const reminderHour = Math.max(0, base.getHours() - 1);
+  reminder.setHours(reminderHour, base.getMinutes(), 0, 0);
+  return reminder.getTime();
+};
 
 const resolveImpulseCategory = (item = {}) => {
   const override = typeof item?.impulseCategoryOverride === "string" ? item.impulseCategoryOverride : null;
@@ -2108,7 +2239,15 @@ const buildImpulseInsights = (events = []) => {
       acc[id] = { save: 0, spend: 0 };
       return acc;
     }, {});
-    return { categories, hotLose: null, hotWin: null, activeRisk: null, hottestCategory: null, eventCount: 0 };
+    return {
+      categories,
+      hotLose: null,
+      hotWin: null,
+      activeRisk: null,
+      hottestCategory: null,
+      eventCount: 0,
+      sequenceHotspots: { slip: null, rebound: null },
+    };
   }
   const categories = IMPULSE_CATEGORY_ORDER.reduce((acc, id) => {
     acc[id] = { save: 0, spend: 0 };
@@ -2118,8 +2257,12 @@ const buildImpulseInsights = (events = []) => {
   let processedEvents = 0;
   let totalSaves = 0;
   let totalSpends = 0;
+  const chronologicalEvents = [];
   events.forEach((event) => {
     if (!event || !event.templateId) return;
+    if (Number.isFinite(event.timestamp)) {
+      chronologicalEvents.push(event);
+    }
     processedEvents += 1;
     const category = event.category || "things";
     if (!categories[category]) {
@@ -2158,6 +2301,79 @@ const buildImpulseInsights = (events = []) => {
     }
     templateStats.set(event.templateId, stat);
   });
+  chronologicalEvents.sort((a, b) => {
+    const tsA = Number(a.timestamp) || 0;
+    const tsB = Number(b.timestamp) || 0;
+    return tsA - tsB;
+  });
+  const sequenceStats = new Map();
+  const previousByTemplate = new Map();
+  const selectSequence = (current, candidate) => {
+    if (!candidate) return current;
+    if (!current) {
+      return { ...candidate };
+    }
+    if (candidate.count > current.count) {
+      return { ...candidate };
+    }
+    if (candidate.count === current.count) {
+      if ((candidate.avgDelayMinutes || 0) < (current.avgDelayMinutes || 0)) {
+        return { ...candidate };
+      }
+      if (
+        Math.round(candidate.avgDelayMinutes || 0) === Math.round(current.avgDelayMinutes || 0) &&
+        (candidate.lastTimestamp || 0) > (current.lastTimestamp || 0)
+      ) {
+        return { ...candidate };
+      }
+    }
+    return current;
+  };
+  let slipSequence = null;
+  let reboundSequence = null;
+  chronologicalEvents.forEach((event) => {
+    const prev = previousByTemplate.get(event.templateId);
+    previousByTemplate.set(event.templateId, event);
+    if (!prev || !Number.isFinite(prev.timestamp) || prev.timestamp >= event.timestamp) return;
+    const deltaMinutes = Math.max(0, Math.round((event.timestamp - prev.timestamp) / (60 * 1000)));
+    const key = `${event.templateId}:${prev.action}->${event.action}`;
+    const stat =
+      sequenceStats.get(key) || {
+        templateId: event.templateId,
+        title: event.title,
+        emoji: event.emoji,
+        category: event.category,
+        prevAction: prev.action,
+        nextAction: event.action,
+        count: 0,
+        totalDelayMinutes: 0,
+        avgDelayMinutes: 0,
+        lastTimestamp: 0,
+      };
+    stat.count += 1;
+    stat.totalDelayMinutes += deltaMinutes;
+    stat.avgDelayMinutes = stat.count ? stat.totalDelayMinutes / stat.count : 0;
+    stat.lastTimestamp = event.timestamp;
+    sequenceStats.set(key, stat);
+    if (prev.action === "save" && event.action === "spend") {
+      slipSequence = selectSequence(slipSequence, stat);
+    } else if (prev.action === "spend" && event.action === "save") {
+      reboundSequence = selectSequence(reboundSequence, stat);
+    }
+  });
+  const makeSequencePayload = (stat) => {
+    if (!stat) return null;
+    return {
+      templateId: stat.templateId,
+      title: stat.title,
+      emoji: stat.emoji,
+      category: stat.category,
+      fromAction: stat.prevAction,
+      toAction: stat.nextAction,
+      avgDelayMinutes: Math.round(stat.avgDelayMinutes || 0),
+      count: stat.count,
+    };
+  };
   const selectHotHour = (hours = []) => {
     let chosen = null;
     let best = 0;
@@ -2180,9 +2396,17 @@ const buildImpulseInsights = (events = []) => {
     if (!total) return;
     const loseRate = stat.spendCount / total;
     if (stat.spendCount >= 1 && loseRate >= 0.5) {
-      if (!hotLose || stat.spendCount > hotLose.spendCount || loseRate > hotLose.lossRate) {
+      if (
+        !hotLose ||
+        total > hotLose.totalInteractions ||
+        (total === hotLose.totalInteractions && stat.spendCount > hotLose.spendCount) ||
+        (total === hotLose.totalInteractions &&
+          stat.spendCount === hotLose.spendCount &&
+          loseRate > hotLose.lossRate)
+      ) {
         hotLose = {
           ...stat,
+          totalInteractions: total,
           lossRate: loseRate,
           hotspot: selectHotHour(stat.spendHours),
         };
@@ -2190,9 +2414,17 @@ const buildImpulseInsights = (events = []) => {
     }
     const winRate = stat.saveCount / total;
     if (stat.saveCount >= 1 && winRate >= 0.5) {
-      if (!hotWin || stat.saveCount > hotWin.saveCount || winRate > hotWin.winRate) {
+      if (
+        !hotWin ||
+        total > hotWin.totalInteractions ||
+        (total === hotWin.totalInteractions && stat.saveCount > hotWin.saveCount) ||
+        (total === hotWin.totalInteractions &&
+          stat.saveCount === hotWin.saveCount &&
+          winRate > hotWin.winRate)
+      ) {
         hotWin = {
           ...stat,
+          totalInteractions: total,
           winRate,
           hotspot: selectHotHour(stat.saveHours),
         };
@@ -2223,17 +2455,23 @@ const buildImpulseInsights = (events = []) => {
       };
     }
   });
-  const hottestCategory = IMPULSE_CATEGORY_ORDER.reduce(
-    (best, id) => {
-      const entry = categories[id];
-      const delta = (entry?.spend || 0) - (entry?.save || 0);
-      if (!best || delta > best.delta) {
-        return { id, delta };
-      }
+  const hottestCategory = IMPULSE_CATEGORY_ORDER.reduce((best, id) => {
+    const entry = categories[id] || { save: 0, spend: 0 };
+    const saveCount = entry.save || 0;
+    const spendCount = entry.spend || 0;
+    const interactions = saveCount + spendCount;
+    if (interactions === 0) {
       return best;
-    },
-    null
-  );
+    }
+    if (
+      !best ||
+      interactions > best.interactions ||
+      (interactions === best.interactions && spendCount > (best.spendCount || 0))
+    ) {
+      return { id, interactions, spendCount };
+    }
+    return best;
+  }, null);
   return {
     categories,
     hotLose: hotLose
@@ -2263,6 +2501,10 @@ const buildImpulseInsights = (events = []) => {
     eventCount: processedEvents,
     totalSaveCount: totalSaves,
     totalSpendCount: totalSpends,
+    sequenceHotspots: {
+      slip: makeSequencePayload(slipSequence),
+      rebound: makeSequencePayload(reboundSequence),
+    },
   };
 };
 
@@ -2714,6 +2956,10 @@ const triggerSuccessHaptic = () => {
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 };
 
+const triggerSelectionHaptic = () => {
+  Haptics.selectionAsync().catch(() => {});
+};
+
 const convertToCurrency = (valueUSD = 0, currency = activeCurrency) => {
   if (!valueUSD) return 0;
   const rate = CURRENCY_RATES[currency] || 1;
@@ -2725,6 +2971,24 @@ const convertFromCurrency = (valueLocal = 0, currency = activeCurrency) => {
   const rate = CURRENCY_RATES[currency] || 1;
   if (!rate) return valueLocal;
   return valueLocal / rate;
+};
+
+const STREAK_RECOVERY_COST_STEP_RUB = 500;
+const computeStreakRecoveryCost = (amountUSD = 0) => {
+  const rubValue = convertToCurrency(Math.max(amountUSD, 0), "RUB");
+  if (!rubValue || rubValue <= 0) return 1;
+  return Math.max(1, Math.ceil(rubValue / STREAK_RECOVERY_COST_STEP_RUB));
+};
+
+const INITIAL_STREAK_RECOVERY_PROMPT = {
+  visible: false,
+  item: null,
+  templateId: null,
+  coinCost: 0,
+  options: null,
+  recoverableStreak: 0,
+  recoverableAmountUSD: 0,
+  errorMessage: "",
 };
 
 const POTENTIAL_PUSH_STEP_EUR = 10;
@@ -3031,7 +3295,7 @@ const matchesGenderAudience = (card, gender = "none") => {
 const buildPersonalizedTemptations = (profile, baseList = DEFAULT_TEMPTATIONS) => {
   const preset = getPersonaPreset(profile?.persona);
   const customFirst = createCustomHabitTemptation(
-    profile?.customSpend,
+    profile.customSpend,
     profile?.currency,
     profile?.gender
   );
@@ -3210,6 +3474,23 @@ const TRANSLATIONS = {
     impulseAnytimeLabel: "любое время",
     impulseExpand: "Развернуть",
     impulseCollapse: "Скрыть карту",
+    impulseSequenceTitle: "Цепочки решений",
+    impulseSequenceSlip: "После {{before}} часто случается {{after}} на {{temptation}} примерно через {{time}}.",
+    impulseSequenceRebound: "После {{before}} ты часто выбираешь {{after}} на {{temptation}} через {{time}}.",
+    impulseSequenceEmpty: "Нужно больше данных, чтобы показать цепочки.",
+    impulseActionSave: "«копить»",
+    impulseActionSpend: "«тратить»",
+    streakBadgeActive: "Серия: {{count}}",
+    streakBadgeBest: "Рекорд: {{count}}",
+    streakRecoveryTitle: "Восстановить серию?",
+    streakRecoveryBody: "После траты серия слетела. Вернём её за {{coins}} синие монеты?",
+    streakRecoveryConfirm: "Вернуть за {{coins}}",
+    streakRecoveryDecline: "Начать заново",
+    streakRecoveryInsufficient: "Нужно {{coins}} синие монеты для восстановления.",
+    impulseReminderWinTitle: "Ты победил «{{temptation}}»",
+    impulseReminderWinBody: "Вчера это сэкономило {{amount}}. Помни, ради чего держишь курс.",
+    impulseReminderLoseTitle: "«{{temptation}}» вчера победил",
+    impulseReminderLoseBody: "Это стоило {{amount}}. Сегодняшний выбор решает судьбу суммы.",
     impulseAlertTitle: "Зона импульса",
     impulseAlertMessage:
       "Ты в зоне импульсивных трат на {{temptation}} ({{window}}). Откажись и отправь {{amount}} в копилку!",
@@ -3271,6 +3552,8 @@ const TRANSLATIONS = {
     profileEdit: "Редактировать",
     profileSave: "Сохранить",
     profileCancel: "Отмена",
+    profileNamePlaceholder: "Добавь имя",
+    profileBioPlaceholder: "Добавь заметку о себе",
     profileOk: "ок",
     profileJoinDate: "В осознанной экономии с {{date}}",
     settingsTitle: "Настройки и персонализация",
@@ -3313,7 +3596,7 @@ const TRANSLATIONS = {
     customTemptationAdded: "Добавлено в искушения: {{title}}",
     saveCelebrateTitlePrefix: "Сэкономлено на:",
     saveCelebrateSubtitle: "Алми радуется, счёт пополнен!",
-    saveGoalRemaining: "Примерно {{count}} таких решений до цели «{{goal}}».",
+    saveGoalRemaining: "Таких отказов до цели",
     saveGoalComplete: "Цель «{{goal}}» достигнута! Можно праздновать.",
     saveOverlayCoinReward: "+{{amount}} монет в копилку Алми",
     statsSpent: "Закрыто целей",
@@ -3335,7 +3618,12 @@ const TRANSLATIONS = {
       "Мы собираем анонимную аналитику, чтобы понимать, какие решения помогают экономить чаще. Никакие персональные данные не сохраняем.",
     analyticsConsentAgree: "Делиться аналитикой",
     analyticsConsentSkip: "Продолжить без аналитики",
+    pushOptInPromptTitle: "Включи уведомления",
+    pushOptInPromptBody: "Almost будет вовремя подсказывать и мягко напоминать — так приложение помогает эффективнее.",
+    pushOptInPromptPrimary: "Включить уведомления",
+    pushOptInPromptSecondary: "Позже",
     onboardingBack: "Назад",
+    onboardingSkip: "Пропустить знакомство",
     historyTitle: "История событий",
     historyEmpty: "Тишина. Добавь цель или отметь бесплатный день.",
     privacyPolicyLink: "Политика конфиденциальности",
@@ -3402,11 +3690,12 @@ const TRANSLATIONS = {
       none: "Потратишь {{amount}}, точно готов(а)?",
     },
     spendSheetTitle: "Almost Pay",
-    spendSheetSubtitle: "Шутливый Pay напоминает: экономия любит терпение.",
+    spendSheetSubtitle: "Almost Pay напоминает: терпение экономит.",
     spendSheetHint: "Дважды нажми (мысленно) на кнопку, если всё-таки тратишь.",
     spendSheetCancel: "Продолжить копить",
     spendSheetConfirm: "Потратить всё равно",
     stormOverlayMessage: "Гроза трат гремит. Может, спрячем карту?",
+    stormOverlayComfortMessage: "Ничего, мы справимся.",
     rewardsEmpty: "Собери достижения: откажись от пары лишних хотелок или отметь бесплатный день.",
     goalsTitle: "Цели и награды",
     rewardUnlocked: "Достигнуто",
@@ -3511,9 +3800,9 @@ const TRANSLATIONS = {
     languageTermsHint: "Нажимая «Дальше», вы принимаете пользовательское соглашение Almost.",
     languageTermsAccepted: "Прими пользовательское соглашение, чтобы двигаться дальше.",
     languageTermsLink: "Прочитать пользовательское соглашение",
-    inputFirstName: "Имя",
-    inputLastName: "Фамилия",
-    inputMotto: "Девиз дня",
+    inputFirstName: "Имя (по желанию)",
+    inputLastName: "Фамилия (по желанию)",
+    inputMotto: "Пара слов о себе (по желанию)",
     currencyLabel: "Валюта накоплений",
     nextButton: "Дальше",
     goalTitle: "Определим цель",
@@ -3521,6 +3810,7 @@ const TRANSLATIONS = {
     goalCustomSectionTitle: "Свои цели",
     goalCustomCreate: "Добавить свою цель",
     goalButton: "Готово",
+    goalSkip: "Пока пропустить",
     goalPrimaryBadge: "Главная цель",
     goalTargetTitle: "Сколько нужно на цель?",
     goalTargetSubtitle: "Укажи сумму - Almost будет держать фокус и прогресс.",
@@ -3660,10 +3950,15 @@ const TRANSLATIONS = {
     dailySummarySpendsLabel: "Траты",
     dailySummaryContinue: "Продолжить",
     dailySummaryHint: "Загляну завтра с новыми цифрами.",
+    spendLoggingReminderTitle: "Запиши траты",
+    spendLoggingReminderBody: "Чем чаще отмечаешь расходы, тем точнее Almost помогает советами.",
+    dailySummaryNotificationTitle: "Вечерний отчёт готов",
+    dailySummaryNotificationBody: "+{{saved}} за {{declines}} отказа(ов). Запрыгни в Almost и подведём итоги.",
     baselineTitle: "Сколько уходит на мелкие импульсы?",
     baselineSubtitle: "Прикинь месячную сумму - Almost сравнит её с реальными победами.",
     baselinePlaceholder: "Введите сумму",
     baselineCTA: "Запомнить",
+    baselineSkip: "Пока пропустить",
     baselineHint: "Это ориентир, позже можно обновить его в профиле.",
     baselineInputError: "Введи сумму ежемесячных необязательных трат",
     potentialBlockTitle: "Потенциал экономии",
@@ -3863,6 +4158,23 @@ const TRANSLATIONS = {
     impulseAnytimeLabel: "any time",
     impulseExpand: "Expand",
     impulseCollapse: "Hide map",
+    impulseSequenceTitle: "Habit loops",
+    impulseSequenceSlip: "After {{before}} you often go for {{after}} on {{temptation}} about {{time}} later.",
+    impulseSequenceRebound: "After {{before}} you usually lean on {{after}} for {{temptation}} roughly {{time}} later.",
+    impulseSequenceEmpty: "Need more history to surface loops.",
+    impulseActionSave: "“save it”",
+    impulseActionSpend: "“spend it”",
+    streakBadgeActive: "Streak ×{{count}}",
+    streakBadgeBest: "Best ×{{count}}",
+    streakRecoveryTitle: "Restore streak?",
+    streakRecoveryBody: "A spend broke this streak. Bring it back for {{coins}} blue coins?",
+    streakRecoveryConfirm: "Restore for {{coins}}",
+    streakRecoveryDecline: "Start fresh",
+    streakRecoveryInsufficient: "You need {{coins}} blue coins to restore it.",
+    impulseReminderWinTitle: "You beat “{{temptation}}”",
+    impulseReminderWinBody: "Yesterday that saved {{amount}}. Keep the streak going today.",
+    impulseReminderLoseTitle: "“{{temptation}}” won yesterday",
+    impulseReminderLoseBody: "It cost {{amount}}. Today’s choice can flip the script.",
     impulseAlertTitle: "Impulse alert",
     impulseAlertMessage:
       "You’re entering a high-impulse zone for {{temptation}} ({{window}}). Skip it and stash {{amount}}!",
@@ -3907,7 +4219,7 @@ const TRANSLATIONS = {
     pendingAdded: "Sent to Thinking. We’ll remind you in 2 weeks.",
     pendingDeleteConfirm: "Remove this item from Thinking?",
     pendingCustomError: "Add a name and price for this temptation.",
-    feedTab: "Inicio",
+    feedTab: "Feed",
     profileTab: "Profile",
     payButton: "Pay",
     cartOverlay: "Savings updated",
@@ -3920,6 +4232,8 @@ const TRANSLATIONS = {
     profileEdit: "Edit",
     profileSave: "Save",
     profileCancel: "Cancel",
+    profileNamePlaceholder: "Add your name",
+    profileBioPlaceholder: "Share something about yourself",
     profileOk: "Ok",
     profileJoinDate: "Mindful saving since {{date}}",
     settingsTitle: "Settings & personalisation",
@@ -3962,7 +4276,7 @@ const TRANSLATIONS = {
     customTemptationAdded: "Added to temptations: {{title}}",
     saveCelebrateTitlePrefix: "Skipped:",
     saveCelebrateSubtitle: "Almi purrs: savings up!",
-    saveGoalRemaining: "Roughly {{count}} more skips to reach “{{goal}}”.",
+    saveGoalRemaining: "Skips left before",
     saveGoalComplete: "Goal “{{goal}}” reached! Celebrate the win.",
     saveOverlayCoinReward: "+{{amount}} coins for Almi",
     freeDayButton: "Free day",
@@ -3995,7 +4309,12 @@ const TRANSLATIONS = {
       "We collect anonymous analytics to see which moments inspire more saving. No personal data is stored.",
     analyticsConsentAgree: "Share analytics",
     analyticsConsentSkip: "Skip for now",
+    pushOptInPromptTitle: "Turn on notifications",
+    pushOptInPromptBody: "Timely nudges help Almost support you better. Allow notifications to get gentle reminders.",
+    pushOptInPromptPrimary: "Enable notifications",
+    pushOptInPromptSecondary: "Maybe later",
     onboardingBack: "Back",
+    onboardingSkip: "Skip intro",
     historyTitle: "Event log",
     historyEmpty: "Nothing yet. Add a goal or mark a free day.",
     privacyPolicyLink: "Privacy policy",
@@ -4046,11 +4365,12 @@ const TRANSLATIONS = {
     tileLocked: "Still saving",
     spendWarning: "Spending {{amount}}. Sure about it?",
     spendSheetTitle: "Almost Pay",
-    spendSheetSubtitle: "Our playful Pay suggests saving just a bit longer.",
+    spendSheetSubtitle: "Almost Pay reminds you: patience saves.",
     spendSheetHint: "Double-press (in spirit) to go ahead anyway.",
     spendSheetCancel: "Keep saving",
     spendSheetConfirm: "Spend anyway",
     stormOverlayMessage: "Stormy spending vibes. Still want to swipe?",
+    stormOverlayComfortMessage: "It's okay, we'll get through this.",
     rewardsEmpty: "Earn achievements by skipping temptations or logging a free day.",
     goalsTitle: "Goals & rewards",
     rewardUnlocked: "Unlocked",
@@ -4155,9 +4475,9 @@ const TRANSLATIONS = {
     languageTermsHint: "By continuing you accept Almost’s Terms of Use.",
     languageTermsAccepted: "Accept the Terms of Use to keep going.",
     languageTermsLink: "Read the full Terms of Use",
-    inputFirstName: "First name",
-    inputLastName: "Last name",
-    inputMotto: "Personal motto",
+    inputFirstName: "First name (optional)",
+    inputLastName: "Last name (optional)",
+    inputMotto: "Add a short note (optional)",
     currencyLabel: "Savings currency",
     nextButton: "Continue",
     goalTitle: "Pick a goal",
@@ -4165,6 +4485,7 @@ const TRANSLATIONS = {
     goalCustomSectionTitle: "Your goals",
     goalCustomCreate: "Add your own goal",
     goalButton: "Start saving",
+    goalSkip: "Skip for now",
     goalPrimaryBadge: "Primary goal",
     goalTargetTitle: "How big is this goal?",
     goalTargetSubtitle: "Set the amount so Almost tracks every dollar toward it.",
@@ -4289,10 +4610,15 @@ const TRANSLATIONS = {
     dailySummarySpendsLabel: "Spends",
     dailySummaryContinue: "Continue",
     dailySummaryHint: "See you tomorrow with fresh numbers.",
+    spendLoggingReminderTitle: "Log today’s spends",
+    spendLoggingReminderBody: "The more often you record purchases, the smarter Almost can guide you.",
+    dailySummaryNotificationTitle: "Tonight’s recap is ready",
+    dailySummaryNotificationBody: "+{{saved}} from {{declines}} skips today. Open Almost for the full story.",
     baselineTitle: "How much slips on small stuff?",
     baselineSubtitle: "Estimate one month of coffees, snacks and impulse buys to compare with real wins.",
     baselinePlaceholder: "Enter amount",
     baselineCTA: "Save amount",
+    baselineSkip: "Skip for now",
     baselineHint: "Rough number is fine - you can tweak it later in Profile.",
     baselineInputError: "Enter your rough monthly spend on non‑essentials",
     potentialBlockTitle: "Potential vs real savings",
@@ -4491,6 +4817,23 @@ const TRANSLATIONS = {
     impulseAnytimeLabel: "n'importe quand",
     impulseExpand: "Déployer",
     impulseCollapse: "Masquer la carte",
+    impulseSequenceTitle: "Boucles d'habitudes",
+    impulseSequenceSlip: "Après {{before}}, tu passes souvent à {{after}} pour {{temptation}} environ {{time}} plus tard.",
+    impulseSequenceRebound: "Après {{before}}, tu reviens souvent à {{after}} sur {{temptation}} vers {{time}} plus tard.",
+    impulseSequenceEmpty: "Pas encore assez de données pour ces boucles.",
+    impulseActionSave: "« économiser »",
+    impulseActionSpend: "« craquer »",
+    streakBadgeActive: "Série ×{{count}}",
+    streakBadgeBest: "Record ×{{count}}",
+    streakRecoveryTitle: "Restaurer la série ?",
+    streakRecoveryBody: "Tu as rompu la série. Récupère-la pour {{coins}} pièces bleues ?",
+    streakRecoveryConfirm: "Restaurer pour {{coins}}",
+    streakRecoveryDecline: "Repartir de zéro",
+    streakRecoveryInsufficient: "Il faut {{coins}} pièces bleues pour la restaurer.",
+    impulseReminderWinTitle: "Tu as tenu bon face à « {{temptation}} »",
+    impulseReminderWinBody: "Hier tu as gardé {{amount}}. Rappelle-toi pourquoi tu résistes.",
+    impulseReminderLoseTitle: "« {{temptation}} » a gagné hier",
+    impulseReminderLoseBody: "Ça t'a coûté {{amount}}. La décision d'aujourd'hui change la donne.",
     impulseAlertTitle: "Alerte d'impulsion",
     impulseAlertMessage:
       "Tu entres dans une zone à forte impulsion pour {{temptation}} ({{window}}). Résiste et mets {{amount}} de côté !",
@@ -4548,6 +4891,8 @@ const TRANSLATIONS = {
     profileEdit: "Modifier",
     profileSave: "Enregistrer",
     profileCancel: "Annuler",
+    profileNamePlaceholder: "Ajoute ton nom",
+    profileBioPlaceholder: "Partage quelques mots sur toi",
     profileOk: "Ok",
     profileJoinDate: "Épargne consciente depuis le {{date}}",
     settingsTitle: "Réglages et personnalisation",
@@ -4592,7 +4937,7 @@ const TRANSLATIONS = {
     customTemptationAdded: "Ajouté aux tentations : {{title}}",
     saveCelebrateTitlePrefix: "Sauté :",
     saveCelebrateSubtitle: "Almi ronronne : économise engrangée !",
-    saveGoalRemaining: "Encore environ {{count}} refus pour atteindre « {{goal}} ».",
+    saveGoalRemaining: "Refus restants avant",
     saveGoalComplete: "Objectif « {{goal}} » atteint ! On célèbre ?",
     saveOverlayCoinReward: "+{{amount}} pièces pour Almi",
     freeDayStreakLabel: "Série de jours gratuits",
@@ -4616,7 +4961,12 @@ const TRANSLATIONS = {
       "On collecte des stats anonymes pour savoir quels moments inspirent plus d'épargne. Aucune donnée perso n'est stockée.",
     analyticsConsentAgree: "Partager les stats",
     analyticsConsentSkip: "Ignorer pour l'instant",
+    pushOptInPromptTitle: "Activer les notifications",
+    pushOptInPromptBody: "Almost pourra envoyer des rappels au bon moment et mieux t’accompagner.",
+    pushOptInPromptPrimary: "Activer les notifs",
+    pushOptInPromptSecondary: "Plus tard",
     onboardingBack: "Retour",
+    onboardingSkip: "Passer l'accueil",
     historyTitle: "Journal des événements",
     historyEmpty: "Rien pour l'instant. Ajoute un objectif ou note un jour gratuit.",
     privacyPolicyLink: "Politique de confidentialité",
@@ -4668,11 +5018,12 @@ const TRANSLATIONS = {
     tileLocked: "Encore en épargne",
     spendWarning: "Tu vas dépenser {{amount}}. C'est sûr ?",
     spendSheetTitle: "Almost Pay",
-    spendSheetSubtitle: "Notre Pay joueur suggère d'économiser encore un peu.",
+    spendSheetSubtitle: "Almost Pay te rappelle : la patience fait économiser.",
     spendSheetHint: "Double-tape (en esprit) pour continuer quand même.",
     spendSheetCancel: "Continuer à épargner",
     spendSheetConfirm: "Dépenser malgré tout",
     stormOverlayMessage: "Ambiance de dépenses orageuse. Tu veux toujours valider ?",
+    stormOverlayComfortMessage: "Ce n'est rien, on va s'en sortir.",
     rewardsEmpty: "Gagne des succès en refusant les tentations ou en notant un jour gratuit.",
     goalsTitle: "Objectifs & récompenses",
     rewardUnlocked: "Débloquée",
@@ -4777,9 +5128,9 @@ const TRANSLATIONS = {
     languageTermsHint: "En continuant, vous acceptez les conditions d'utilisation d'Almost.",
     languageTermsAccepted: "Accepte les conditions d'utilisation pour continuer.",
     languageTermsLink: "Lire les Conditions complètes",
-    inputFirstName: "Prénom",
-    inputLastName: "Nom",
-    inputMotto: "Devise personnelle",
+    inputFirstName: "Prénom (facultatif)",
+    inputLastName: "Nom (facultatif)",
+    inputMotto: "Quelques mots sur toi (facultatif)",
     currencyLabel: "Devise d'épargne",
     nextButton: "Continuer",
     goalTitle: "Choisis un objectif",
@@ -4787,6 +5138,7 @@ const TRANSLATIONS = {
     goalCustomSectionTitle: "Tes objectifs",
     goalCustomCreate: "Ajouter ton propre objectif",
     goalButton: "Commencer à épargner",
+    goalSkip: "Passer pour l'instant",
     goalPrimaryBadge: "Objectif principal",
     goalTargetTitle: "Quelle taille pour cet objectif ?",
     goalTargetSubtitle: "Définis le montant pour qu'Almost suive chaque unité.",
@@ -4911,11 +5263,16 @@ const TRANSLATIONS = {
     dailySummarySpendsLabel: "Dépenses",
     dailySummaryContinue: "Continuer",
     dailySummaryHint: "À demain avec des chiffres frais.",
+    spendLoggingReminderTitle: "Note tes dépenses",
+    spendLoggingReminderBody: "Plus tu enregistres tes achats, plus Almost peut t’aider avec précision.",
+    dailySummaryNotificationTitle: "Le récap du soir est prêt",
+    dailySummaryNotificationBody: "+{{saved}} en {{declines}} refus aujourd’hui. Ouvre Almost pour tout voir.",
     baselineTitle: "Combien part dans les petites folies ?",
     baselineSubtitle:
       "Estime un mois de cafés, snacks et achats impulsifs pour le comparer aux vraies victoires.",
     baselinePlaceholder: "Entre le montant",
     baselineCTA: "Enregistrer le montant",
+    baselineSkip: "Passer pour l'instant",
     baselineHint: "Un chiffre approximatif suffit ; tu pourras l'ajuster dans Profil.",
     baselineInputError: "Entre ta dépense mensuelle estimée en extras",
     potentialBlockTitle: "Potentiel vs épargne réelle",
@@ -5116,6 +5473,23 @@ const TRANSLATIONS = {
     impulseAnytimeLabel: "en cualquier momento",
     impulseExpand: "Expandir",
     impulseCollapse: "Ocultar mapa",
+    impulseSequenceTitle: "Bucles de hábitos",
+    impulseSequenceSlip: "Después de {{before}} sueles pasar a {{after}} con {{temptation}} unos {{time}} después.",
+    impulseSequenceRebound: "Después de {{before}} normalmente vuelves a {{after}} con {{temptation}} cerca de {{time}} después.",
+    impulseSequenceEmpty: "Aún no hay datos para mostrar bucles.",
+    impulseActionSave: "«guardar»",
+    impulseActionSpend: "«gastar»",
+    streakBadgeActive: "Racha ×{{count}}",
+    streakBadgeBest: "Mejor ×{{count}}",
+    streakRecoveryTitle: "¿Restaurar la racha?",
+    streakRecoveryBody: "Un gasto rompió la racha. Tráela de vuelta por {{coins}} monedas azules.",
+    streakRecoveryConfirm: "Restaurar por {{coins}}",
+    streakRecoveryDecline: "Empezar de nuevo",
+    streakRecoveryInsufficient: "Necesitas {{coins}} monedas azules para restaurarla.",
+    impulseReminderWinTitle: "Ayer domaste «{{temptation}}»",
+    impulseReminderWinBody: "Guardaste {{amount}}. Sigue en modo ahorro hoy.",
+    impulseReminderLoseTitle: "«{{temptation}}» ganó ayer",
+    impulseReminderLoseBody: "Costó {{amount}}. Hoy puedes recuperar el control.",
     impulseAlertTitle: "Alerta de impulso",
     impulseAlertMessage:
       "Estás entrando en una zona de alto impulso para {{temptation}} ({{window}}). Saltéalo y guarda {{amount}}.",
@@ -5160,7 +5534,7 @@ const TRANSLATIONS = {
     pendingAdded: "Enviado a En pausa. Recordaremos en dos semanas.",
     pendingDeleteConfirm: "¿Quitar este elemento de En pausa?",
     pendingCustomError: "Añade un nombre y un precio para esta tentación.",
-    feedTab: "Feed",
+    feedTab: "Inicio",
     profileTab: "Perfil",
     payButton: "Pagar",
     cartOverlay: "Ahorro actualizado",
@@ -5173,6 +5547,8 @@ const TRANSLATIONS = {
     profileEdit: "Editar",
     profileSave: "Guardar",
     profileCancel: "Cancelar",
+    profileNamePlaceholder: "Agrega tu nombre",
+    profileBioPlaceholder: "Cuenta algo sobre ti",
     profileOk: "Ok",
     profileJoinDate: "Ahorro consciente desde {{date}}",
     settingsTitle: "Ajustes y personalización",
@@ -5215,7 +5591,7 @@ const TRANSLATIONS = {
     customTemptationAdded: "Añadido a tentaciones: {{title}}",
     saveCelebrateTitlePrefix: "Saltado:",
     saveCelebrateSubtitle: "Almi ronronea: ¡ahorros arriba!",
-    saveGoalRemaining: "Aproximadamente faltan {{count}} rechazos para llegar a «{{goal}}».",
+    saveGoalRemaining: "Rechazos que faltan antes de",
     saveGoalComplete: "Meta «{{goal}}» alcanzada. A celebrar.",
     saveOverlayCoinReward: "+{{amount}} monedas para Almi",
     freeDayStreakLabel: "Racha de días gratis",
@@ -5239,7 +5615,12 @@ const TRANSLATIONS = {
       "Recopilamos analíticas anónimas para entender qué momentos inspiran más ahorro. No guardamos datos personales.",
     analyticsConsentAgree: "Compartir analíticas",
     analyticsConsentSkip: "Omitir por ahora",
+    pushOptInPromptTitle: "Activa las notificaciones",
+    pushOptInPromptBody: "Así Almost puede enviarte recordatorios puntuales y ayudarte mejor.",
+    pushOptInPromptPrimary: "Activar notificaciones",
+    pushOptInPromptSecondary: "Quizá después",
     onboardingBack: "Atrás",
+    onboardingSkip: "Saltar intro",
     historyTitle: "Registro de eventos",
     historyEmpty: "Aún nada. Añade una meta o marca un día gratis.",
     privacyPolicyLink: "Política de privacidad",
@@ -5290,11 +5671,12 @@ const TRANSLATIONS = {
     tileLocked: "Sigue ahorrando",
     spendWarning: "Gastando {{amount}}. ¿Seguro?",
     spendSheetTitle: "Almost Pay",
-    spendSheetSubtitle: "Nuestro Pay juguetón sugiere ahorrar un poco más.",
+    spendSheetSubtitle: "Almost Pay te recuerda: la paciencia ahorra.",
     spendSheetHint: "Pulsa dos veces (de espíritu) para continuar.",
     spendSheetCancel: "Seguir ahorrando",
     spendSheetConfirm: "Gastar de todas formas",
     stormOverlayMessage: "Ambiente de gasto tormentoso. ¿Aún quieres deslizar?",
+    stormOverlayComfortMessage: "No pasa nada, saldremos adelante.",
     rewardsEmpty: "Consigue logros al saltar tentaciones o registrar un día gratis.",
     goalsTitle: "Metas y recompensas",
     rewardUnlocked: "Desbloqueada",
@@ -5399,9 +5781,9 @@ const TRANSLATIONS = {
     languageTermsHint: "Al continuar, usted acepta los términos de Almost.",
     languageTermsAccepted: "Acepta los términos de uso para seguir.",
     languageTermsLink: "Leer los Términos completos",
-    inputFirstName: "Nombre",
-    inputLastName: "Apellido",
-    inputMotto: "Lema personal",
+    inputFirstName: "Nombre (opcional)",
+    inputLastName: "Apellido (opcional)",
+    inputMotto: "Cuenta algo sobre ti (opcional)",
     currencyLabel: "Moneda de ahorro",
     nextButton: "Continuar",
     goalTitle: "Elige una meta",
@@ -5409,6 +5791,7 @@ const TRANSLATIONS = {
     goalCustomSectionTitle: "Tus metas",
     goalCustomCreate: "Añadir meta propia",
     goalButton: "Empezar a ahorrar",
+    goalSkip: "Saltar por ahora",
     goalPrimaryBadge: "Meta principal",
     goalTargetTitle: "¿Qué tan grande es esta meta?",
     goalTargetSubtitle: "Configura el monto para que Almost registre cada unidad.",
@@ -5533,10 +5916,15 @@ const TRANSLATIONS = {
     dailySummarySpendsLabel: "Gastos",
     dailySummaryContinue: "Continuar",
     dailySummaryHint: "Mañana vuelvo con números frescos.",
+    spendLoggingReminderTitle: "Registra tus gastos",
+    spendLoggingReminderBody: "Mientras más compras anotes, mejor te guía Almost.",
+    dailySummaryNotificationTitle: "Resumen nocturno listo",
+    dailySummaryNotificationBody: "+{{saved}} en {{declines}} rechazos hoy. Abre Almost para ver los detalles.",
     baselineTitle: "¿Cuánto se va en pequeños caprichos?",
     baselineSubtitle: "Calcula un mes de cafés, snacks y compras impulsivas para compararlo con tus victorias reales.",
     baselinePlaceholder: "Ingresa el monto",
     baselineCTA: "Guardar monto",
+    baselineSkip: "Saltar por ahora",
     baselineHint: "Un aproximado basta; podrás ajustarlo en Perfil.",
     baselineInputError: "Introduce tu gasto mensual estimado en extras",
     potentialBlockTitle: "Potencial vs ahorro real",
@@ -6273,6 +6661,16 @@ const getGoalDefaultTargetUSD = (goalId) => {
   return preset?.targetUSD || 500;
 };
 
+const resolveProfileGoalId = (profile) => {
+  if (!profile || typeof profile !== "object") return null;
+  if (profile.goal) return profile.goal;
+  if (Array.isArray(profile.primaryGoals)) {
+    const first = profile.primaryGoals.find((entry) => entry?.id);
+    if (first?.id) return first.id;
+  }
+  return null;
+};
+
 const insertWishAfterPrimary = (list = [], newWish) => {
   if (!newWish) return list;
   const lastPrimaryIndex = list.reduce(
@@ -6333,6 +6731,7 @@ const PROFILE_BIO_FALLBACKS = {
   es: "Me encantan las cosas bonitas, pero más mi plan financiero",
   fr: "J’aime les belles choses, mais j’adore encore plus mon plan financier",
 };
+const PROFILE_BIO_FALLBACK_VALUES = Object.values(PROFILE_BIO_FALLBACKS);
 
 const DEFAULT_PROFILE = {
   name: "Nina Cleanova",
@@ -7052,6 +7451,44 @@ const getTierTargetsUSD = (currencyCode = activeCurrency) => {
   return SAVINGS_TIERS;
 };
 
+const intlFallbackWarnings = new Set();
+const warnIntlFallback = (currency, locale, error) => {
+  const key = `${currency || "unknown"}:${locale || "default"}`;
+  if (intlFallbackWarnings.has(key)) return;
+  intlFallbackWarnings.add(key);
+  console.warn(
+    "Intl.NumberFormat fallback",
+    currency || "currency_unknown",
+    locale || "locale_unknown",
+    error?.message || error
+  );
+};
+
+const formatNumberWithGrouping = (value, fractionDigits = 0) => {
+  const safePrecision =
+    typeof fractionDigits === "number" && Number.isFinite(fractionDigits)
+      ? Math.max(0, Math.min(6, fractionDigits))
+      : 0;
+  const numericValue = Number(value) || 0;
+  const absolute = Math.abs(numericValue);
+  const fixed = absolute.toFixed(safePrecision);
+  const [integerPart, decimalPart] = fixed.split(".");
+  const groupedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  const sign = numericValue < 0 ? "-" : "";
+  if (safePrecision > 0 && decimalPart) {
+    return `${sign}${groupedInteger}.${decimalPart}`;
+  }
+  return `${sign}${groupedInteger}`;
+};
+
+const formatCurrencyFallback = (value, currency, fractionDigits = 0) => {
+  const digits = formatNumberWithGrouping(value, fractionDigits);
+  const isRtl = RTL_CURRENCIES.has(currency);
+  const symbol = CURRENCY_SIGNS[currency] || (isRtl ? "" : "$");
+  const prefix = isRtl ? `${LTR_MARK}${symbol}` : symbol;
+  return `${prefix}${digits}`;
+};
+
 const formatCurrency = (value = 0, currency = activeCurrency, options = null) => {
   const locale = CURRENCY_LOCALES[currency] || "en-US";
   const displayPrecision = getCurrencyDisplayPrecision(currency);
@@ -7082,13 +7519,27 @@ const formatCurrency = (value = 0, currency = activeCurrency, options = null) =>
       minimumFractionDigits: minFractionDigits,
       maximumFractionDigits: maxFractionDigits,
     }).format(normalized);
-  } catch {
-    const symbol = CURRENCY_SIGNS[currency] || "$";
-    const prefix = RTL_CURRENCIES.has(currency) ? `${LTR_MARK}${symbol}` : symbol;
-    return `${prefix}${normalized.toLocaleString(locale, {
-      minimumFractionDigits: minFractionDigits,
-      maximumFractionDigits: maxFractionDigits,
-    })}`;
+  } catch (intlError) {
+    warnIntlFallback(currency, locale, intlError);
+    try {
+      if (RTL_CURRENCIES.has(currency)) {
+        const digits = normalized.toLocaleString("en-US", {
+          minimumFractionDigits: minFractionDigits,
+          maximumFractionDigits: maxFractionDigits,
+        });
+        const symbol = CURRENCY_SIGNS[currency] || "";
+        return `${LTR_MARK}${symbol}${digits}`;
+      }
+      const digits = normalized.toLocaleString(locale, {
+        minimumFractionDigits: minFractionDigits,
+        maximumFractionDigits: maxFractionDigits,
+      });
+      const symbol = CURRENCY_SIGNS[currency] || "$";
+      return `${symbol}${digits}`;
+    } catch (localeError) {
+      warnIntlFallback(currency, locale, localeError);
+      return formatCurrencyFallback(normalized, currency, maxFractionDigits);
+    }
   }
 };
 
@@ -7115,13 +7566,27 @@ const formatCurrencyWhole = (value = 0, currency = activeCurrency, precisionOver
       minimumFractionDigits: normalizedPrecision,
       maximumFractionDigits: normalizedPrecision,
     }).format(rounded);
-  } catch {
-    const symbol = CURRENCY_SIGNS[currency] || "$";
-    const prefix = RTL_CURRENCIES.has(currency) ? `${LTR_MARK}${symbol}` : symbol;
-    return `${prefix}${rounded.toLocaleString(locale, {
-      minimumFractionDigits: normalizedPrecision,
-      maximumFractionDigits: normalizedPrecision,
-    })}`;
+  } catch (intlError) {
+    warnIntlFallback(currency, locale, intlError);
+    try {
+      if (RTL_CURRENCIES.has(currency)) {
+        const digits = rounded.toLocaleString("en-US", {
+          minimumFractionDigits: normalizedPrecision,
+          maximumFractionDigits: normalizedPrecision,
+        });
+        const symbol = CURRENCY_SIGNS[currency] || "";
+        return `${LTR_MARK}${symbol}${digits}`;
+      }
+      const digits = rounded.toLocaleString(locale, {
+        minimumFractionDigits: normalizedPrecision,
+        maximumFractionDigits: normalizedPrecision,
+      });
+      const symbol = CURRENCY_SIGNS[currency] || "$";
+      return `${symbol}${digits}`;
+    } catch (localeError) {
+      warnIntlFallback(currency, locale, localeError);
+      return formatCurrencyFallback(rounded, currency, normalizedPrecision);
+    }
   }
 };
 
@@ -7479,11 +7944,86 @@ function TemptationCardComponent({
     { type: "spend", label: t("spendAction"), variant: "ghost" },
     { type: "maybe", label: t("maybeAction"), variant: "outline" },
   ];
+  const currentStreak = Math.max(0, stats?.currentStreak || 0);
+  const bestStreak = Math.max(stats?.bestStreak || 0, currentStreak);
+  const streakLastAction = stats?.lastAction || null;
+  const showStreakBadge = currentStreak > 0 || (bestStreak > 0 && streakLastAction === "spend");
+  const streakActive = currentStreak > 0;
+  const streakBadgeLabel = streakActive
+    ? t("streakBadgeActive", { count: currentStreak })
+    : t("streakBadgeBest", { count: bestStreak });
+  const showStreakFire = streakActive && currentStreak >= 3;
+  const streakGlowStyle = useMemo(() => {
+    if (!showStreakFire) return null;
+    if (Platform.OS === "ios") {
+      return {
+        shadowColor: "rgba(255,180,0,0.9)",
+        shadowOpacity: 0.9,
+        shadowRadius: shadowRadius + 10,
+        shadowOffset: { width: 0, height: shadowOffsetHeight + 4 },
+      };
+    }
+    return {
+      elevation: Math.max(shadowElevation, 22),
+      shadowColor: "#FFB347",
+    };
+  }, [showStreakFire, shadowElevation, shadowOffsetHeight, shadowRadius]);
   const [coinBursts, setCoinBursts] = useState([]);
   const messageActive = feedback?.message;
   const burstKey = feedback?.burstKey;
   const translateX = useRef(new Animated.Value(0)).current;
+  const streakFireAnim = useRef(new Animated.Value(0)).current;
   const swipeActionRef = useRef(false);
+  useEffect(() => {
+    if (!showStreakFire) {
+      streakFireAnim.stopAnimation?.();
+      streakFireAnim.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(streakFireAnim, {
+          toValue: 1,
+          duration: 520,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(streakFireAnim, {
+          toValue: 0,
+          duration: 520,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      streakFireAnim.setValue(0);
+    };
+  }, [showStreakFire, streakFireAnim]);
+  const streakFlameStyle = {
+    transform: [
+      {
+        scale: streakFireAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [1, 1.2],
+        }),
+      },
+      {
+        translateY: streakFireAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -3],
+        }),
+      },
+      {
+        rotate: streakFireAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: ["0deg", "8deg"],
+        }),
+      },
+    ],
+  };
 
   useEffect(() => {
     translateX.setValue(0);
@@ -7611,6 +8151,7 @@ function TemptationCardComponent({
           styles.temptationCard,
           cardShadowStyle,
           cardStyle,
+          streakGlowStyle,
           {
             backgroundColor: cardSurfaceColor,
             transform: [{ translateX }],
@@ -7730,21 +8271,6 @@ function TemptationCardComponent({
           )}
         </View>
       )}
-      {!showEditorInline && hasGoalAssigned && (
-        <View
-          style={[
-            styles.temptationGoalBadge,
-            {
-              backgroundColor: isDarkTheme ? "rgba(246,193,107,0.18)" : "rgba(246,193,107,0.12)",
-              borderColor: isDarkTheme ? "rgba(246,193,107,0.55)" : "rgba(246,193,107,0.65)",
-            },
-          ]}
-        >
-          <Text style={[styles.temptationGoalBadgeText, { color: isDarkTheme ? "#FEEAC4" : "#5C3A00" }]}>
-            {t("goalDestinationLabel")}: {resolvedGoalLabel}
-          </Text>
-        </View>
-      )}
       {focusActive && (
         <View
           style={[
@@ -7758,6 +8284,39 @@ function TemptationCardComponent({
           <Text style={[styles.temptationFocusBadgeText, { color: isDarkTheme ? "#FFC0C0" : "#C2153B" }]}>
             {t("focusBadgeLabel")}
           </Text>
+        </View>
+      )}
+      {showStreakBadge && (
+        <View style={styles.temptationStreakBadgeFloating} pointerEvents="none">
+          <View
+            style={[
+              styles.temptationStreakBadge,
+              {
+                borderColor: streakActive
+                  ? "#F6A218"
+                  : colors.border,
+                backgroundColor: streakActive
+                  ? "#FFF6DB"
+                  : colors.card,
+              },
+            ]}
+          >
+            {showStreakFire ? (
+              <Animated.Text style={[styles.temptationStreakEmoji, streakFlameStyle]}>🔥</Animated.Text>
+            ) : (
+              <Text style={[styles.temptationStreakEmoji, { color: streakActive ? "#FF8C1A" : colors.muted }]}>
+                {streakActive ? "✨" : "⏳"}
+              </Text>
+            )}
+            <Text
+              style={[
+                styles.temptationStreakText,
+                { color: streakActive ? "#5C2F00" : colors.muted },
+              ]}
+            >
+              {streakBadgeLabel}
+            </Text>
+          </View>
         </View>
       )}
       {showEditorInline ? (
@@ -7799,43 +8358,61 @@ function TemptationCardComponent({
           {desc}
         </Text>
       ) : null}
-      {refuseCount > 0 && (
+  {refuseCount > 0 && (
         <Text style={[styles.temptationRefuseMeta, { color: cardMutedColor }]}>
           {t("tileRefuseCount", { count: refuseCount, amount: totalRefusedLabel })}
         </Text>
       )}
-      <View style={styles.temptationPriceRow}>
-        {showEditorInline ? (
+  <View style={styles.temptationPriceRow}>
+    {showEditorInline ? (
+      <View
+        style={[
+          styles.temptationPricePill,
+          { borderColor: colors.border, backgroundColor: colors.card },
+        ]}
+      >
+        <TextInput
+          style={[
+            styles.pricePillInput,
+            { color: colors.text },
+          ]}
+          value={editPriceValue ?? ""}
+          onChangeText={onEditPriceChange}
+          keyboardType="decimal-pad"
+          placeholder={t("priceEditAmountLabel", { currency })}
+          placeholderTextColor={colors.muted}
+        />
+        <Text style={[styles.editorHintIcon, { color: colors.muted }]}>✏️</Text>
+      </View>
+    ) : (
+      <>
+        <Text
+          style={[
+            styles.temptationPrice,
+            { color: cardTextColor },
+          ]}
+        >
+          {priceLabel}
+        </Text>
+        {hasGoalAssigned && (
           <View
             style={[
-              styles.temptationPricePill,
-              { borderColor: colors.border, backgroundColor: colors.card },
+              styles.temptationGoalBadge,
+              styles.temptationGoalBadgeInline,
+              {
+                backgroundColor: isDarkTheme ? "rgba(246,193,107,0.18)" : "rgba(246,193,107,0.12)",
+                borderColor: isDarkTheme ? "rgba(246,193,107,0.55)" : "rgba(246,193,107,0.65)",
+              },
             ]}
           >
-            <TextInput
-              style={[
-                styles.pricePillInput,
-                { color: colors.text },
-              ]}
-              value={editPriceValue ?? ""}
-              onChangeText={onEditPriceChange}
-              keyboardType="decimal-pad"
-              placeholder={t("priceEditAmountLabel", { currency })}
-              placeholderTextColor={colors.muted}
-            />
-            <Text style={[styles.editorHintIcon, { color: colors.muted }]}>✏️</Text>
+            <Text style={[styles.temptationGoalBadgeText, { color: isDarkTheme ? "#FEEAC4" : "#5C3A00" }]}>
+              {t("goalDestinationLabel")}: {resolvedGoalLabel}
+            </Text>
           </View>
-        ) : (
-          <Text
-            style={[
-              styles.temptationPrice,
-              { color: cardTextColor },
-            ]}
-          >
-            {priceLabel}
-          </Text>
         )}
-      </View>
+      </>
+    )}
+  </View>
       {showEditorInline && (
         <View style={styles.categoryEditSection}>
           <Text style={[styles.categoryEditLabel, { color: colors.muted }]}>
@@ -7982,6 +8559,7 @@ function SavingsHeroCard({
   actualSavedUSD = 0,
   currency,
   hasBaseline = false,
+  hasActiveGoal = true,
   onBaselineSetup = () => {},
   onPotentialDetailsOpen = null,
   levelHasNext = false,
@@ -8173,7 +8751,7 @@ function SavingsHeroCard({
             </>
           ) : (
             <>
-              <Text style={[styles.heroPotentialLabel, { color: goldPalette.text }]}>
+              <Text style={[styles.heroPotentialBody, { color: goldPalette.text }]}>
                 {t("potentialBlockCta")}
               </Text>
               <TouchableOpacity
@@ -8183,6 +8761,7 @@ function SavingsHeroCard({
                     borderColor: goldPalette.text,
                   },
                 ]}
+                activeOpacity={0.85}
                 onPress={onBaselineSetup}
               >
                 <Text style={[styles.heroPotentialButtonText, { color: goldPalette.text }]}>
@@ -8192,34 +8771,38 @@ function SavingsHeroCard({
             </>
           )}
         </TouchableOpacity>
-      <View style={styles.savedHeroProgressRow}>
-        <View
-          style={[
-            styles.progressHeroBar,
-            styles.savedHeroBar,
-            { backgroundColor: goldPalette.barBg },
-          ]}
-        >
+      {hasActiveGoal && (
+        <View style={styles.savedHeroProgressRow}>
           <View
             style={[
-              styles.progressHeroFill,
-              { backgroundColor: goldPalette.accent, width: `${progressPercent * 100}%` },
+              styles.progressHeroBar,
+              styles.savedHeroBar,
+              { backgroundColor: goldPalette.barBg },
             ]}
-          />
+          >
+            <View
+              style={[
+                styles.progressHeroFill,
+                { backgroundColor: goldPalette.accent, width: `${progressPercent * 100}%` },
+              ]}
+            />
+          </View>
+          <View
+            style={[
+              styles.savedHeroPercentTag,
+              { backgroundColor: goldPalette.badgeBg, borderColor: goldPalette.border },
+            ]}
+          >
+            <Text style={[styles.savedHeroPercentText, { color: goldPalette.text }]}>
+              {progressPercentLabel}%
+            </Text>
+          </View>
         </View>
-        <View
-          style={[
-            styles.savedHeroPercentTag,
-            { backgroundColor: goldPalette.badgeBg, borderColor: goldPalette.border },
-          ]}
-        >
-          <Text style={[styles.savedHeroPercentText, { color: goldPalette.text }]}>
-            {progressPercentLabel}%
-          </Text>
-        </View>
-      </View>
+      )}
       <View style={styles.savedHeroGoalRow}>
-        <Text style={[styles.goalLabel, { color: goldPalette.subtext }]}>{t("goalWidgetTitle")}</Text>
+        <Text style={[styles.goalLabel, { color: goldPalette.subtext }]}>
+          {hasActiveGoal ? t("goalWidgetTitle") : t("heroDailyTitle")}
+        </Text>
         <TouchableOpacity
           style={styles.savedHeroToggleButton}
           onPress={() => setExpanded((prev) => !prev)}
@@ -8229,21 +8812,23 @@ function SavingsHeroCard({
           </Text>
         </TouchableOpacity>
       </View>
-      <View style={styles.savedHeroGoalMetaRow}>
-        <Text style={[styles.savedHeroGoalLabel, { color: goldPalette.subtext }]}>{goalProgressLabel}</Text>
-        {isGoalComplete && (
-          <View
-            style={[
-              styles.goalCompleteBadge,
-              { backgroundColor: goldPalette.badgeBg, borderColor: goldPalette.badgeBorder },
-            ]}
-          >
-            <Text style={[styles.goalCompleteBadgeText, { color: goldPalette.badgeText }]}>
-              {completionLabel}
-            </Text>
-          </View>
-        )}
-      </View>
+      {hasActiveGoal && (
+        <View style={styles.savedHeroGoalMetaRow}>
+          <Text style={[styles.savedHeroGoalLabel, { color: goldPalette.subtext }]}>{goalProgressLabel}</Text>
+          {isGoalComplete && (
+            <View
+              style={[
+                styles.goalCompleteBadge,
+                { backgroundColor: goldPalette.badgeBg, borderColor: goldPalette.badgeBorder },
+              ]}
+            >
+              <Text style={[styles.goalCompleteBadgeText, { color: goldPalette.badgeText }]}>
+                {completionLabel}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
       {expanded && (
         <TouchableOpacity
           activeOpacity={0.9}
@@ -8636,12 +9221,14 @@ function SpendConfirmSheet({
   onConfirm,
   colors,
   t,
+  theme,
 }) {
   const priceLabel = item
     ? formatTemptationPriceLabel(item, currency)
     : formatCurrency(0, currency, { friendly: true });
   const displayTitle =
     item?.title?.[language] || item?.title?.en || item?.title || t("defaultDealTitle");
+  const cancelColor = theme === "dark" ? "#64F2B5" : "#1BA868";
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
       <View style={styles.payBackdrop}>
@@ -8660,12 +9247,16 @@ function SpendConfirmSheet({
             </View>
             <Text style={[styles.payCardAmount, { color: colors.text }]}>{priceLabel}</Text>
           </View>
-          <Text style={[styles.paySheetSubtitle, { color: colors.muted }]}>
-            {t("spendSheetSubtitle")}
-          </Text>
-          <View style={styles.paySheetHintRow}>
-            <View style={styles.paySheetHintDot} />
-            <Text style={[styles.paySheetHint, { color: colors.muted }]}>{t("spendSheetHint")}</Text>
+          <View style={styles.paySheetReminder}>
+            <Text
+              style={[styles.paySheetSubtitle, { color: colors.muted }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
+              ellipsizeMode="tail"
+            >
+              {t("spendSheetSubtitle")}
+            </Text>
           </View>
           <TouchableOpacity style={[styles.payConfirm, { backgroundColor: colors.text }]} onPress={onConfirm}>
             <Text style={[styles.payConfirmText, { color: colors.background }]}>
@@ -8673,7 +9264,9 @@ function SpendConfirmSheet({
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.payCancel} onPress={onCancel}>
-            <Text style={[styles.payCancelText, { color: colors.muted }]}>{t("spendSheetCancel")}</Text>
+            <Text style={[styles.payCancelText, { color: cancelColor }]}>
+              {t("spendSheetCancel")}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -8681,30 +9274,123 @@ function SpendConfirmSheet({
   );
 }
 
-function StormOverlay({ t }) {
-  const flash = useRef(new Animated.Value(0)).current;
+const LightningBolt = ({ active, delay = 0, style }) => {
+  const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    if (!active) {
+      opacity.setValue(0);
+      return;
+    }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.delay(600),
-        Animated.timing(flash, { toValue: 0.75, duration: 120, useNativeDriver: true }),
-        Animated.timing(flash, { toValue: 0, duration: 320, useNativeDriver: true }),
+        Animated.delay(delay),
+        Animated.timing(opacity, { toValue: 1, duration: 120, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0, duration: 280, useNativeDriver: true }),
+        Animated.delay(900 + Math.random() * 500),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [active, delay, opacity]);
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.stormLightningBolt, style, { opacity }]}>
+      <Svg width={60} height={140} viewBox="0 0 60 140">
+        <SvgPath d="M24 0 L0 80 H18 L8 140 L60 55 H38 L48 0 Z" fill="rgba(255,255,255,0.95)" />
+      </Svg>
+    </Animated.View>
+  );
+};
+
+function StormOverlay({ visible, t, catCrySource, colors }) {
+  const flash = useRef(new Animated.Value(0)).current;
+  const catBounce = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!visible) {
+      flash.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(500),
+        Animated.timing(flash, { toValue: 0.85, duration: 110, useNativeDriver: true }),
+        Animated.timing(flash, { toValue: 0, duration: 360, useNativeDriver: true }),
         Animated.delay(700),
       ])
     );
     loop.start();
     return () => loop.stop();
-  }, [flash]);
+  }, [flash, visible]);
+
+  useEffect(() => {
+    if (!visible) {
+      catBounce.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(catBounce, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(catBounce, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [catBounce, visible]);
+
+  if (!visible) return null;
+
+  const rainColors =
+    colors?.muted != null
+      ? { muted: colorWithAlpha(colors.muted, 0.5) }
+      : { muted: "rgba(173,196,255,0.5)" };
+  const cardBackground = colorWithAlpha(colors?.card || "#0A0F23", 0.96);
+  const borderColor = colorWithAlpha(colors?.text || "#FFFFFF", 0.18);
+  const messageColor = colors?.text || "#F5F6FF";
+  const comfortColor = colors?.muted || "rgba(245,246,255,0.75)";
+  const catSource = catCrySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.cry;
+  const bobbing = catBounce.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -10],
+  });
 
   return (
-    <View style={styles.stormOverlay} pointerEvents="auto">
-      <RainOverlay colors={{ muted: "rgba(173,196,255,0.5)" }} />
-      <Animated.View style={[styles.stormFlash, { opacity: flash }]} />
-      <View style={styles.stormMessageWrap}>
-        <Text style={styles.stormMessage}>{t("stormOverlayMessage")}</Text>
+    <Modal visible transparent animationType="fade" statusBarTranslucent>
+      <View style={styles.stormOverlay} pointerEvents="auto">
+        <RainOverlay colors={rainColors} />
+        <Animated.View style={[styles.stormFlash, { opacity: flash }]} />
+        <LightningBolt
+          active={visible}
+          delay={150}
+          style={{ left: 30, top: 80, transform: [{ rotate: "-10deg" }] }}
+        />
+        <LightningBolt
+          active={visible}
+          delay={640}
+          style={{ right: 40, top: 130, transform: [{ rotate: "12deg" }] }}
+        />
+        <View style={[styles.stormMessageWrap, { backgroundColor: cardBackground, borderColor }]}>
+          <Animated.View style={[styles.stormCatWrap, { transform: [{ translateY: bobbing }] }]}>
+            <Image source={catSource} style={styles.stormCatImage} resizeMode="contain" />
+          </Animated.View>
+          <Text style={[styles.stormMessage, { color: messageColor }]}>{t("stormOverlayMessage")}</Text>
+          <Text style={[styles.stormComfortText, { color: comfortColor }]}>
+            {t("stormOverlayComfortMessage")}
+          </Text>
+        </View>
       </View>
-    </View>
+    </Modal>
   );
 }
 
@@ -8720,6 +9406,8 @@ const hasImpulseHistory = (insights) => {
 function ImpulseMapCard({ insights, colors, t, language, expanded = false, onToggle }) {
   if (!insights) return null;
   const fallbackTime = t("impulseAnytimeLabel");
+  const describeImpulseAction = (action) =>
+    action === "save" ? t("impulseActionSave") : t("impulseActionSpend");
   const loseText = insights.hotLose
     ? t("impulseLoseCopy", {
         temptation: insights.hotLose.title,
@@ -8733,7 +9421,7 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
       })
     : t("impulseWinEmpty");
   const trendText =
-    insights.hottestCategory && insights.hottestCategory.delta > 0
+    insights.hottestCategory && insights.hottestCategory.interactions > 0
       ? t("impulseTrendLabel", {
           category: getImpulseCategoryLabel(insights.hottestCategory.id, language),
         })
@@ -8755,6 +9443,30 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
       spend: entry.spend || 0,
     };
   });
+  const sequenceEntries = [];
+  const sequenceData = insights.sequenceHotspots || {};
+  if (sequenceData.slip) {
+    sequenceEntries.push({
+      key: "slip",
+      text: t("impulseSequenceSlip", {
+        before: describeImpulseAction(sequenceData.slip.fromAction),
+        after: describeImpulseAction(sequenceData.slip.toAction),
+        temptation: sequenceData.slip.title,
+        time: formatImpulseDelayLabel(sequenceData.slip.avgDelayMinutes, language) || fallbackTime,
+      }),
+    });
+  }
+  if (sequenceData.rebound) {
+    sequenceEntries.push({
+      key: "rebound",
+      text: t("impulseSequenceRebound", {
+        before: describeImpulseAction(sequenceData.rebound.fromAction),
+        after: describeImpulseAction(sequenceData.rebound.toAction),
+        temptation: sequenceData.rebound.title,
+        time: formatImpulseDelayLabel(sequenceData.rebound.avgDelayMinutes, language) || fallbackTime,
+      }),
+    });
+  }
   return (
     <View style={[styles.impulseCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <View style={styles.impulseHeaderRow}>
@@ -8846,6 +9558,25 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
               );
             })}
           </View>
+          <View
+            style={[
+              styles.impulseSequenceSection,
+              { borderColor: colors.border, backgroundColor: lightenColor(colors.card, isDarkMode ? 0.05 : 0.12) },
+            ]}
+          >
+            <Text style={[styles.impulseSequenceTitle, { color: colors.text }]}>{t("impulseSequenceTitle")}</Text>
+            {sequenceEntries.length ? (
+              sequenceEntries.map((entry) => (
+                <Text key={entry.key} style={[styles.impulseSequenceEntry, { color: colors.muted }]}>
+                  {entry.text}
+                </Text>
+              ))
+            ) : (
+              <Text style={[styles.impulseSequenceEntry, { color: colors.muted }]}>
+                {t("impulseSequenceEmpty")}
+              </Text>
+            )}
+          </View>
         </>
       )}
     </View>
@@ -8918,6 +9649,7 @@ const FeedScreen = React.memo(function FeedScreen({
   tamagotchiAnimations = CLASSIC_TAMAGOTCHI_ANIMATIONS,
   lifetimeSavedUSD = 0,
   interactionStats = {},
+  resolveCardRefuseStats = () => null,
 }) {
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
   const [impulseExpanded, setImpulseExpanded] = useState(false);
@@ -8935,6 +9667,9 @@ const FeedScreen = React.memo(function FeedScreen({
     () => formatCurrency(convertToCurrency(heroGoalTargetUSD || 0, currency), currency),
     [heroGoalTargetUSD, currency]
   );
+  const heroHasActiveGoal =
+    Boolean(profile?.goal) ||
+    (Array.isArray(profile?.primaryGoals) && profile.primaryGoals.length > 0);
   const isGoalComplete = heroGoalTargetUSD > 0 && heroGoalSavedUSD >= heroGoalTargetUSD;
   const goalProgress = heroGoalTargetUSD > 0 ? heroGoalSavedUSD / heroGoalTargetUSD : 0;
   const remainingLocal = formatCurrency(
@@ -9130,15 +9865,19 @@ const FeedScreen = React.memo(function FeedScreen({
         saved_usd_total: savedTotalUSD,
         tier_level: tierInfo.level,
         next_tier_usd: tierInfo.nextTargetUSD || null,
-        profile_goal: profile.goal || "none",
+        profile_goal: resolveProfileGoalId(profile) || "none",
       });
     }
     previousSavedTotal.current = savedTotalUSD;
-  }, [savedTotalUSD, tierInfo.level, tierInfo.nextTargetUSD, profile.goal]);
+  }, [savedTotalUSD, tierInfo.level, tierInfo.nextTargetUSD, profile.goal, profile.primaryGoals]);
   useEffect(() => {
     if (tierInfo.level > previousTierInfo.current) {
       const levelsEarned = tierInfo.level - previousTierInfo.current;
       logEvent("savings_level_up", {
+        level: tierInfo.level,
+        saved_usd_total: savedTotalUSD,
+      });
+      logEvent("hero_level_unlocked", {
         level: tierInfo.level,
         saved_usd_total: savedTotalUSD,
       });
@@ -9276,6 +10015,7 @@ const FeedScreen = React.memo(function FeedScreen({
       const resolvedDescriptionOverride =
         overrideDescription ||
         (item.id === mainTemptationId ? primaryTemptationDescription : null);
+      const statsEntry = resolveCardRefuseStats(item);
       return (
         <TemptationCard
           item={item}
@@ -9286,7 +10026,7 @@ const FeedScreen = React.memo(function FeedScreen({
           isFocusTarget={item.id === focusTemplateId}
           onToggleEdit={() => onTemptationEditToggle?.(item)}
           currency={currency}
-          stats={refuseStats[item.id]}
+          stats={statsEntry}
           feedback={cardFeedback[item.id]}
           titleOverride={titleOverrides[item.id]}
           goalLabel={assignedGoal ? getWishTitleWithoutEmoji(assignedGoal) : null}
@@ -9347,7 +10087,7 @@ const FeedScreen = React.memo(function FeedScreen({
       onTemptationQuickGoalToggle,
       onTemptationSwipeDelete,
       primaryTemptationDescription,
-      refuseStats,
+      resolveCardRefuseStats,
       swipePinnedByTemplate,
       t,
       titleOverrides,
@@ -9618,19 +10358,20 @@ const FeedScreen = React.memo(function FeedScreen({
             heroRecentEvents={heroRecentEvents}
             heroEncouragementLine={heroEncouragementLine}
             levelLabel={levelLabel}
-              totalSavedLabel={totalSavedLabel}
-              progressPercent={progressPercent}
-              progressPercentLabel={progressPercentLabel}
-              goalProgressLabel={goalProgressLabel}
-              isGoalComplete={isGoalComplete}
-              completionLabel={t("goalWidgetComplete")}
-              t={t}
-              dailySavings={savingsDaily}
+            totalSavedLabel={totalSavedLabel}
+            progressPercent={progressPercent}
+            progressPercentLabel={progressPercentLabel}
+            goalProgressLabel={goalProgressLabel}
+            isGoalComplete={isGoalComplete}
+            completionLabel={t("goalWidgetComplete")}
+            t={t}
+            dailySavings={savingsDaily}
             analyticsPreview={analyticsPreview}
             potentialSavedUSD={potentialSavedUSD}
             actualSavedUSD={realSavedUSD}
             currency={currency}
             hasBaseline={hasBaseline}
+            hasActiveGoal={heroHasActiveGoal}
             onBaselineSetup={handleBaselineSetup}
             onPotentialDetailsOpen={handlePotentialDetailsOpen}
             levelHasNext={heroLevelHasNext}
@@ -9892,21 +10633,6 @@ const WishListScreen = React.memo(function WishListScreen({
       swipeCloserRef.current = null;
     }
   }, []);
-  if (listData.length === 0) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }] }>
-        <Text style={[styles.header, { color: colors.text }]}>{t("wishlistTitle")}</Text>
-        <View style={styles.cartEmptyState}>
-          <Image source={curiousImage} style={[styles.catImage, styles.catImageLarge]} />
-          <Text style={[styles.cartEmptyTitle, { color: colors.text }]}>{t("wishlistEmptyTitle")}</Text>
-          <Text style={[styles.cartEmptySubtitle, { color: colors.muted }]}>
-            {t("wishlistEmptySubtitle")}
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
   const totalTarget = formatCurrency(
     convertToCurrency(listData.reduce((sum, wish) => sum + (wish.targetUSD || 0), 0), currency),
     currency
@@ -10187,6 +10913,20 @@ const WishListScreen = React.memo(function WishListScreen({
         t,
       ]
     );
+  if (listData.length === 0) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }] }>
+        <Text style={[styles.header, { color: colors.text }]}>{t("wishlistTitle")}</Text>
+        <View style={styles.cartEmptyState}>
+          <Image source={curiousImage} style={[styles.catImage, styles.catImageLarge]} />
+          <Text style={[styles.cartEmptyTitle, { color: colors.text }]}>{t("wishlistEmptyTitle")}</Text>
+          <Text style={[styles.cartEmptySubtitle, { color: colors.muted }]}>
+            {t("wishlistEmptySubtitle")}
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }] }>
@@ -11371,6 +12111,21 @@ const RewardsScreen = React.memo(function RewardsScreen({
   language = DEFAULT_LANGUAGE,
   dailyChallenge = null,
 }) {
+  const rewardList = Array.isArray(achievements) ? achievements.filter(Boolean) : [];
+  const challengeList = useMemo(() => {
+    const list = Array.isArray(challenges) ? challenges.filter(Boolean) : [];
+    return list
+      .map((entry, index) => ({ entry, index }))
+      .sort((a, b) => {
+        const orderA = CHALLENGE_STATUS_ORDER[a.entry.status] ?? 99;
+        const orderB = CHALLENGE_STATUS_ORDER[b.entry.status] ?? 99;
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+        return a.index - b.index;
+      })
+      .map((item) => item.entry);
+  }, [challenges]);
   const isDarkTheme = colors.background === THEMES.dark.background;
   const pane = activePane === "rewards" ? "rewards" : "challenges";
   const challengeSwipeCloserRef = useRef(null);
@@ -11746,8 +12501,8 @@ const RewardsScreen = React.memo(function RewardsScreen({
       {pane === "challenges" ? (
         <View style={{ gap: 16 }}>
           {renderDailyChallengeWidget()}
-          {challenges.map(renderChallengeCard)}
-          {!challenges.length && (
+          {challengeList.map(renderChallengeCard)}
+          {!challengeList.length && (
             <Text style={[styles.historyEmpty, { color: colors.muted }]}>
               {t("rewardsEmpty")}
             </Text>
@@ -11755,8 +12510,8 @@ const RewardsScreen = React.memo(function RewardsScreen({
         </View>
       ) : (
         <View style={{ gap: 16 }}>
-          {achievements.map(renderRewardCard)}
-          {!achievements.some((item) => item.unlocked) && (
+          {rewardList.map(renderRewardCard)}
+          {!rewardList.some((item) => item.unlocked) && (
             <Text style={[styles.historyEmpty, { color: colors.muted }]}>{t("rewardsEmpty")}</Text>
           )}
         </View>
@@ -11798,16 +12553,23 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const isDarkTheme = theme === "dark";
   const normalizedLanguageValue = normalizeLanguage(language || DEFAULT_LANGUAGE);
   const isRomanceLocale = normalizedLanguageValue === "es" || normalizedLanguageValue === "fr";
-  const activeGoalId = profile.goal || DEFAULT_PROFILE.goal;
+  const resolvedProfileGoalId =
+    profile.goal ||
+    (Array.isArray(profile.primaryGoals) && profile.primaryGoals.length
+      ? profile.primaryGoals[0]?.id
+      : null);
+  const activeGoalId = resolvedProfileGoalId;
   const primaryGoalsList =
     Array.isArray(profile.primaryGoals) && profile.primaryGoals.length
       ? profile.primaryGoals
-      : [
+      : activeGoalId
+      ? [
           {
             id: activeGoalId,
             targetUSD: getGoalDefaultTargetUSD(activeGoalId),
           },
-        ];
+        ]
+      : [];
   const historyEntries = Array.isArray(history) ? history : [];
   const locale = getFormatLocale(language);
   const formatLocalAmount = (valueUSD = 0) =>
@@ -12037,18 +12799,19 @@ const ProfileScreen = React.memo(function ProfileScreen({
       return null;
     }
   }, [profile.joinedAt, profile.spendingProfile?.baselineStartAt, locale, t]);
-  const defaultBioByLanguage =
-    PROFILE_BIO_FALLBACKS[normalizedLanguageValue] || PROFILE_BIO_FALLBACKS[FALLBACK_LANGUAGE];
+  const profileNamePlaceholder = t("profileNamePlaceholder");
+  const profileBioPlaceholder = t("profileBioPlaceholder");
   const profileBioValue = typeof profile?.bio === "string" ? profile.bio : "";
   const profileBioText = useMemo(() => {
     const raw = profileBioValue.trim();
-    if (!raw) return defaultBioByLanguage;
-    const matchedEntry = Object.entries(PROFILE_BIO_FALLBACKS).find(([, value]) => value === raw);
-    if (matchedEntry && matchedEntry[0] !== normalizedLanguageValue) {
-      return PROFILE_BIO_FALLBACKS[normalizedLanguageValue] || raw;
-    }
+    if (!raw) return "";
+    if (PROFILE_BIO_FALLBACK_VALUES.includes(raw)) return "";
     return raw;
-  }, [defaultBioByLanguage, normalizedLanguageValue, profileBioValue]);
+  }, [profileBioValue]);
+  const profileNameDisplay = (profile?.name || "").trim();
+  const profileNameText = profileNameDisplay || profileNamePlaceholder;
+  const profileBioDisplay = profileBioText || profileBioPlaceholder;
+  const profileBioColor = profileBioText ? colors.muted : colorWithAlpha(colors.muted, 0.7);
   const profileSubtitleAdjustments = useMemo(() => {
     if (!isRomanceLocale) return null;
     return {
@@ -12123,7 +12886,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
                 ]}
                 value={profile.name}
                 onChangeText={(text) => onFieldChange("name", text)}
-                placeholder="Name"
+                placeholder={t("profileNamePlaceholder")}
                 placeholderTextColor={colors.muted}
               />
               <TextInput
@@ -12134,7 +12897,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
                 ]}
                 value={profile.bio}
                 onChangeText={(text) => onFieldChange("bio", text)}
-                placeholder="About you"
+                placeholder={t("profileBioPlaceholder")}
                 multiline
                 placeholderTextColor={colors.muted}
               />
@@ -12142,7 +12905,14 @@ const ProfileScreen = React.memo(function ProfileScreen({
           ) : (
             <>
             <View style={styles.profileNameRow}>
-              <Text style={[styles.profileName, { color: colors.text }]}>{profile.name}</Text>
+              <Text
+                style={[
+                  styles.profileName,
+                  { color: profileNameDisplay ? colors.text : colorWithAlpha(colors.muted, 0.8) },
+                ]}
+              >
+                {profileNameText}
+              </Text>
               {rewardBadgeCount > 0 && (
                 <View style={[styles.rewardBadgeSmall, { backgroundColor: colors.text }]}>
                   <Text style={[styles.rewardBadgeSmallText, { color: colors.background }]}>
@@ -12161,7 +12931,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
                 {joinDateLabel}
               </Text>
             )}
-            <Text style={[styles.profileBio, { color: colors.muted }]}>{profileBioText}</Text>
+            <Text style={[styles.profileBio, { color: profileBioColor }]}>
+              {profileBioDisplay}
+            </Text>
           </>
         )}
 
@@ -12588,6 +13360,11 @@ function AppContent() {
   const [healthPoints, setHealthPoints] = useState(0);
   const [healthHydrated, setHealthHydrated] = useState(false);
   const [claimedRewards, setClaimedRewards] = useState({});
+  const [claimedRewardsHydrated, setClaimedRewardsHydrated] = useState(false);
+  const safeClaimedRewards = useMemo(
+    () => (claimedRewards && typeof claimedRewards === "object" ? claimedRewards : {}),
+    [claimedRewards]
+  );
   const [rewardClaimTotal, setRewardClaimTotal] = useState(0);
   const pruneClaimedRewards = useCallback(() => {
     setClaimedRewards((prev) => {
@@ -12604,6 +13381,7 @@ function AppContent() {
     return () => clearInterval(interval);
   }, [pruneClaimedRewards]);
   const [challengesState, setChallengesState] = useState(() => createInitialChallengesState());
+  const [challengesHydrated, setChallengesHydrated] = useState(false);
   const [rewardsPane, setRewardsPane] = useState("challenges");
   const [decisionStats, setDecisionStats] = useState({ ...INITIAL_DECISION_STATS });
   const [historyEvents, setHistoryEvents] = useState([]);
@@ -12626,6 +13404,16 @@ function AppContent() {
     ...DEFAULT_PROFILE_PLACEHOLDER,
     joinedAt: new Date().toISOString(),
   }));
+  const [primaryTemptationPromptState, setPrimaryTemptationPromptState] = useState("done");
+  const [primaryTemptationPromptHydrated, setPrimaryTemptationPromptHydrated] = useState(false);
+  const markPrimaryTemptationPromptDone = useCallback(() => {
+    setPrimaryTemptationPromptState("done");
+    AsyncStorage.setItem(STORAGE_KEYS.PRIMARY_TEMPTATION_PROMPT, "done").catch(() => {});
+  }, []);
+  const schedulePrimaryTemptationPrompt = useCallback(() => {
+    setPrimaryTemptationPromptState("pending");
+    AsyncStorage.setItem(STORAGE_KEYS.PRIMARY_TEMPTATION_PROMPT, "pending").catch(() => {});
+  }, []);
   const [northStarLogged, setNorthStarLogged] = useState(false);
   const [northStarHydrated, setNorthStarHydrated] = useState(false);
   const northStarLoggedRef = useRef(false);
@@ -12639,6 +13427,47 @@ function AppContent() {
   );
   const baselineStartAt = profile?.spendingProfile?.baselineStartAt || null;
   const profileJoinedAt = profile?.joinedAt || null;
+  const dayMilestonesLoggedRef = useRef({ day2: false, day3: false });
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.multiGet([STORAGE_KEYS.DAY_TWO_ACTIVITY, STORAGE_KEYS.DAY_THREE_ACTIVITY])
+      .then((entries) => {
+        if (cancelled || !Array.isArray(entries)) return;
+        const logged = { ...dayMilestonesLoggedRef.current };
+        entries.forEach(([key, value]) => {
+          if (key === STORAGE_KEYS.DAY_TWO_ACTIVITY && value) {
+            logged.day2 = true;
+          }
+          if (key === STORAGE_KEYS.DAY_THREE_ACTIVITY && value) {
+            logged.day3 = true;
+          }
+        });
+        dayMilestonesLoggedRef.current = logged;
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const maybeLogDayMilestone = useCallback(
+    (actionType) => {
+      if (actionType !== "save" && actionType !== "spend") return;
+      if (!profileJoinedAt) return;
+      const joinedAtTimestamp = new Date(profileJoinedAt).getTime();
+      if (!Number.isFinite(joinedAtTimestamp)) return;
+      const ordinalDay = Math.floor((Date.now() - joinedAtTimestamp) / DAY_MS) + 1;
+      if (ordinalDay === 2 && !dayMilestonesLoggedRef.current.day2) {
+        dayMilestonesLoggedRef.current = { ...dayMilestonesLoggedRef.current, day2: true };
+        AsyncStorage.setItem(STORAGE_KEYS.DAY_TWO_ACTIVITY, "1").catch(() => {});
+        logEvent("day_2");
+      } else if (ordinalDay === 3 && !dayMilestonesLoggedRef.current.day3) {
+        dayMilestonesLoggedRef.current = { ...dayMilestonesLoggedRef.current, day3: true };
+        AsyncStorage.setItem(STORAGE_KEYS.DAY_THREE_ACTIVITY, "1").catch(() => {});
+        logEvent("day_3");
+      }
+    },
+    [profileJoinedAt, logEvent]
+  );
   const potentialBaselineKey =
     baselineMonthlyWasteUSD > 0 && baselineStartAt
       ? `${baselineStartAt}:${baselineMonthlyWasteUSD}`
@@ -12858,17 +13687,24 @@ function AppContent() {
     } catch (error) {
       console.warn("store review prompt", error);
     }
-    if (Platform.OS !== "android") return;
+    const isAndroid = Platform.OS === "android";
+    const primaryUrl = isAndroid ? ANDROID_REVIEW_URL : IOS_REVIEW_URL;
+    const fallbackUrl = isAndroid ? ANDROID_REVIEW_WEB_URL : IOS_REVIEW_WEB_URL;
+    if (!primaryUrl && !fallbackUrl) return;
     try {
-      const canOpen = await Linking.canOpenURL(ANDROID_REVIEW_URL);
-      if (canOpen) {
-        await Linking.openURL(ANDROID_REVIEW_URL);
-        return;
+      if (primaryUrl) {
+        const canOpen = await Linking.canOpenURL(primaryUrl);
+        if (canOpen) {
+          await Linking.openURL(primaryUrl);
+          return;
+        }
       }
     } catch (error) {
-      console.warn("android review intent", error);
+      console.warn(`${isAndroid ? "android" : "ios"} review intent`, error);
     }
-    Linking.openURL(ANDROID_REVIEW_WEB_URL).catch(() => {});
+    if (fallbackUrl) {
+      Linking.openURL(fallbackUrl).catch(() => {});
+    }
   }, []);
   const handleRatingPromptLater = useCallback(() => {
     setRatingPromptVisible(false);
@@ -13020,7 +13856,12 @@ function AppContent() {
   const ensureActiveGoalForNewWish = useCallback(
     (newWish) => {
       if (!newWish) return;
-      if (!(mainGoalWish?.status === "done" || profile.goalCelebrated)) return;
+      const shouldActivate =
+        !mainGoalWish ||
+        !profile.goal ||
+        mainGoalWish.status === "done" ||
+        profile.goalCelebrated;
+      if (!shouldActivate) return;
       const targetUSD =
         Number.isFinite(newWish.targetUSD) && newWish.targetUSD > 0
           ? newWish.targetUSD
@@ -13157,6 +13998,8 @@ function AppContent() {
   const onboardingStepRef = useRef("logo");
   const onboardingHistoryRef = useRef([]);
   const [canGoBackOnboarding, setCanGoBackOnboarding] = useState(false);
+  const [onboardingSkipLocked, setOnboardingSkipLocked] = useState(false);
+  const onboardingSkippedRef = useRef(false);
   const [registrationData, setRegistrationData] = useState(INITIAL_REGISTRATION);
   const [termsModalVisible, setTermsModalVisible] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -13173,6 +14016,11 @@ function AppContent() {
     onboardingStepRef.current = onboardingStep;
   }, [onboardingStep]);
   useEffect(() => {
+    if (onboardingStep === "done") {
+      setOnboardingSkipLocked(false);
+    }
+  }, [onboardingStep]);
+  useEffect(() => {
     if (fontsLoaded) {
       ensureGlobalInterTypography();
     }
@@ -13182,83 +14030,6 @@ function AppContent() {
       console.warn("Inter font load error", fontsError);
     }
   }, [fontsError]);
-  useEffect(() => {
-    let mounted = true;
-    AsyncStorage.getItem(STORAGE_KEYS.TAB_HINTS)
-      .then((raw) => {
-        if (!mounted) return;
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed === "object") {
-              const { __disabled: _legacyDisabled, ...rest } = parsed;
-              setTabHintsSeen({ ...DEFAULT_TAB_HINTS_STATE, ...(rest || {}) });
-            } else {
-              setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
-            }
-          } catch (error) {
-            console.warn("tab hints parse", error);
-            setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
-          }
-        } else {
-          setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
-        }
-      })
-      .catch(() => {
-        setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
-      })
-      .finally(() => {
-        if (mounted) setTabHintsHydrated(true);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-  useEffect(() => {
-    let mounted = true;
-    AsyncStorage.getItem(STORAGE_KEYS.RATING_PROMPT)
-      .then((raw) => {
-        if (!mounted) return;
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw);
-            const fallback = createInitialRatingPromptState();
-            const normalized = {
-              firstOpenAt: typeof parsed?.firstOpenAt === "string" ? parsed.firstOpenAt : fallback.firstOpenAt,
-              completed: Boolean(parsed?.completed),
-              lastShownAt: typeof parsed?.lastShownAt === "string" ? parsed.lastShownAt : null,
-              lastAction: typeof parsed?.lastAction === "string" ? parsed.lastAction : null,
-              respondedAt: typeof parsed?.respondedAt === "string" ? parsed.respondedAt : null,
-            };
-            setRatingPromptState(normalized);
-            const needsRewrite =
-              normalized.firstOpenAt !== parsed?.firstOpenAt ||
-              normalized.lastShownAt !== parsed?.lastShownAt ||
-              normalized.lastAction !== parsed?.lastAction ||
-              normalized.respondedAt !== parsed?.respondedAt ||
-              normalized.completed !== Boolean(parsed?.completed);
-            if (needsRewrite) {
-              AsyncStorage.setItem(STORAGE_KEYS.RATING_PROMPT, JSON.stringify(normalized)).catch(() => {});
-            }
-            return;
-          } catch (error) {
-            console.warn("rating prompt hydrate", error);
-          }
-        }
-        const initial = createInitialRatingPromptState();
-        setRatingPromptState(initial);
-        AsyncStorage.setItem(STORAGE_KEYS.RATING_PROMPT, JSON.stringify(initial)).catch(() => {});
-      })
-      .catch((error) => {
-        console.warn("rating prompt hydrate", error);
-      })
-      .finally(() => {
-        if (mounted) setRatingPromptHydrated(true);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
   useEffect(() => {
     if (!tabHintsHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.TAB_HINTS, JSON.stringify(tabHintsSeen)).catch(() => {});
@@ -13516,6 +14287,7 @@ function AppContent() {
     target: "",
     emoji: DEFAULT_GOAL_EMOJI,
   });
+  const goalSelectionTouchedRef = useRef(false);
   const openFabMenu = useCallback(() => {
     if (fabMenuVisible) return;
     setFabMenuVisible(true);
@@ -13575,6 +14347,37 @@ function AppContent() {
   }, [activeTab, closeFabMenu, fabMenuVisible]);
   const imagePickerResolver = useRef(null);
   const [refuseStats, setRefuseStats] = useState({});
+  const resolveCardRefuseStats = useCallback(
+    (card) => {
+      if (!card) return null;
+      const directKey = typeof card.id === "string" ? card.id : null;
+      if (directKey && refuseStats[directKey]) {
+        return refuseStats[directKey];
+      }
+      const templateKey =
+        typeof card.templateId === "string" && card.templateId.trim().length
+          ? card.templateId.trim()
+          : null;
+      if (templateKey && refuseStats[templateKey]) {
+        return refuseStats[templateKey];
+      }
+      if (isCustomTemptation(card)) {
+        const fallbackKeys = [];
+        if (profile.customSpend?.id) {
+          fallbackKeys.push(profile.customSpend.id);
+        }
+        fallbackKeys.push("custom_habit", "undefined");
+        for (let index = 0; index < fallbackKeys.length; index += 1) {
+          const key = fallbackKeys[index];
+          if (key && refuseStats[key]) {
+            return refuseStats[key];
+          }
+        }
+      }
+      return null;
+    },
+    [profile.customSpend?.id, refuseStats]
+  );
   const [temptationInteractions, setTemptationInteractions] = useState({});
   const [temptationInteractionsHydrated, setTemptationInteractionsHydrated] = useState(false);
   const [impulseTracker, setImpulseTracker] = useState({ ...INITIAL_IMPULSE_TRACKER });
@@ -13584,9 +14387,19 @@ function AppContent() {
   const editOverlayAnim = useRef(new Animated.Value(0)).current;
   const [editOverlayVisible, setEditOverlayVisible] = useState(false);
   const cardFeedbackTimers = useRef({});
+  const pendingStreakRecoveryRef = useRef({});
+  const streakRecoveryOverrideRef = useRef({});
   const impulseAlertCooldownRef = useRef({});
   const lastInstantNotificationRef = useRef(0);
   const [notificationPermissionGranted, setNotificationPermissionGranted] = useState(null);
+  const [pushOptInHydrated, setPushOptInHydrated] = useState(false);
+  const pushOptInLoggedRef = useRef(false);
+  const [pushDayThreePromptVisible, setPushDayThreePromptVisible] = useState(false);
+  const [pushDayThreePromptHydrated, setPushDayThreePromptHydrated] = useState(false);
+  const pushDayThreePromptShownRef = useRef(false);
+  const [spendLoggingReminderHydrated, setSpendLoggingReminderHydrated] = useState(false);
+  const lastSpendLoggingReminderRef = useRef(0);
+  const handledNotificationResponseIdsRef = useRef(new Set());
   const [spendPrompt, setSpendPrompt] = useState({ visible: false, item: null });
   const [stormActive, setStormActive] = useState(false);
   const safeAreaInsets = useSafeAreaInsets();
@@ -13671,10 +14484,46 @@ function AppContent() {
     };
   }, [fabTutorialAnchor, tabBarBottomInset]);
   const [analyticsOptOut, setAnalyticsOptOutState] = useState(null);
+  useEffect(() => {
+    if (analyticsOptOut === null) return;
+    bootstrapMonitoring();
+  }, [analyticsOptOut]);
   const [startupLogoVisible, setStartupLogoVisible] = useState(false);
   const startupLogoDismissedRef = useRef(false);
   const overlayEnvironmentReady =
     onboardingStep === "done" && homeLayoutReady && !startupLogoVisible && !dailySummaryVisible;
+  const ensureOverlayEnvironmentReady = useCallback(() => {
+    if (
+      onboardingStep === "done" &&
+      !homeLayoutReady &&
+      !startupLogoVisible &&
+      !dailySummaryVisible
+    ) {
+      setHomeLayoutReady(true);
+    }
+  }, [dailySummaryVisible, homeLayoutReady, onboardingStep, startupLogoVisible]);
+  useEffect(() => {
+    if (!primaryTemptationPromptHydrated) return;
+    if (primaryTemptationPromptState !== "pending") return;
+    if (!primaryTemptationId || !profile?.customSpend) {
+      markPrimaryTemptationPromptDone();
+      return;
+    }
+    if (tutorialVisible || !tutorialSeen) return;
+    if (!overlayEnvironmentReady) return;
+    triggerOverlayState("primary_temptation", { templateId: primaryTemptationId });
+    markPrimaryTemptationPromptDone();
+  }, [
+    markPrimaryTemptationPromptDone,
+    overlayEnvironmentReady,
+    primaryTemptationId,
+    primaryTemptationPromptHydrated,
+    primaryTemptationPromptState,
+    profile?.customSpend,
+    triggerOverlayState,
+    tutorialSeen,
+    tutorialVisible,
+  ]);
 
   const goToOnboardingStep = useCallback(
     (nextStep, { recordHistory = true, resetHistory = false } = {}) => {
@@ -13702,13 +14551,56 @@ function AppContent() {
     setCanGoBackOnboarding(history.length > 0);
     setOnboardingStep(prevStep);
   }, []);
+  const canShowOnboardingSkip =
+    !onboardingSkipLocked &&
+    onboardingStep !== "done" &&
+    onboardingStep !== "logo" &&
+    onboardingStep !== "language" &&
+    onboardingStep !== "analytics_consent";
+  const handleOnboardingSkip = useCallback(() => {
+    if (!canShowOnboardingSkip) return;
+    onboardingSkippedRef.current = true;
+    logEvent("onboarding_skipped", { from_step: onboardingStep });
+    goToOnboardingStep("analytics_consent", { recordHistory: false, resetHistory: true });
+  }, [canShowOnboardingSkip, goToOnboardingStep, logEvent, onboardingStep]);
+  useEffect(() => {
+    if (onboardingStep !== "goal") return;
+    if (goalSelectionTouchedRef.current) return;
+    setRegistrationData((prev) => {
+      const hasSelections = Array.isArray(prev.goalSelections) && prev.goalSelections.length > 0;
+      const hasTargets = prev.goalTargetMap && Object.keys(prev.goalTargetMap).length > 0;
+      const hasConfirmed =
+        Array.isArray(prev.goalTargetConfirmed) && prev.goalTargetConfirmed.length > 0;
+      if (!hasSelections && !hasTargets && !hasConfirmed) {
+        return prev;
+      }
+      return {
+        ...prev,
+        goalSelections: [],
+        goalTargetMap: {},
+        goalTargetConfirmed: [],
+      };
+    });
+  }, [onboardingStep, setRegistrationData]);
   const stormTimerRef = useRef(null);
   const [rewardCelebratedMap, setRewardCelebratedMap] = useState({});
   const [rewardCelebratedHydrated, setRewardCelebratedHydrated] = useState(false);
   const [rewardsReady, setRewardsReady] = useState(false);
   const challengesPrevRef = useRef(challengesState);
   const [temptationGoalMap, setTemptationGoalMap] = useState({});
-  const [goalLinkPrompt, setGoalLinkPrompt] = useState({ visible: false, item: null, intent: null });
+  const [goalLinkPrompt, setGoalLinkPrompt] = useState({
+    visible: false,
+    item: null,
+    intent: null,
+    streakRecoveryValue: null,
+  });
+  const [streakRecoveryPrompt, setStreakRecoveryPrompt] = useState({
+    ...INITIAL_STREAK_RECOVERY_PROMPT,
+  });
+  const hideStreakRecoveryPrompt = useCallback(
+    () => setStreakRecoveryPrompt({ ...INITIAL_STREAK_RECOVERY_PROMPT }),
+    []
+  );
   const [goalTemptationPrompt, setGoalTemptationPrompt] = useState({ visible: false, wish: null });
   const [goalEditorPrompt, setGoalEditorPrompt] = useState({
     visible: false,
@@ -13716,6 +14608,11 @@ function AppContent() {
     name: "",
     target: "",
     emoji: DEFAULT_GOAL_EMOJI,
+  });
+  const [baselinePrompt, setBaselinePrompt] = useState({
+    visible: false,
+    value: "",
+    currency: DEFAULT_PROFILE.currency,
   });
   const [goalRenewalPromptVisible, setGoalRenewalPromptVisible] = useState(false);
   const goalRenewalPromptPendingRef = useRef(false);
@@ -13732,6 +14629,69 @@ function AppContent() {
     goalRenewalPromptPendingRef.current = false;
     setGoalRenewalPromptVisible(true);
   }, [goalRenewalPromptVisible, overlay]);
+  const openBaselinePrompt = useCallback(() => {
+    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+    const existingUSD = Math.max(0, Number(profile.spendingProfile?.baselineMonthlyWasteUSD) || 0);
+    const existingLocal =
+      existingUSD > 0
+        ? formatNumberInputValue(convertToCurrency(existingUSD, currencyCode))
+        : "";
+    setBaselinePrompt({
+      visible: true,
+      value: existingLocal,
+      currency: currencyCode,
+    });
+  }, [profile.currency, profile.spendingProfile?.baselineMonthlyWasteUSD]);
+  const closeBaselinePrompt = useCallback(() => {
+    setBaselinePrompt((prev) => ({ ...prev, visible: false }));
+  }, []);
+  const handleBaselinePromptChange = useCallback((text) => {
+    setBaselinePrompt((prev) => ({ ...prev, value: text }));
+  }, []);
+  const handleBaselinePromptSubmit = useCallback(() => {
+    const trimmed = (baselinePrompt.value || "").trim();
+    const parsed = parseNumberInputValue(trimmed);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      Alert.alert("Almost", t("baselineInputError"));
+      return;
+    }
+    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+    const baselineMonthlyWasteUSD = convertFromCurrency(parsed, currencyCode);
+    const timestamp = new Date().toISOString();
+    const nextSpendingProfile = {
+      ...(profile.spendingProfile || { ...DEFAULT_PROFILE.spendingProfile }),
+      baselineMonthlyWasteUSD,
+      baselineStartAt: timestamp,
+    };
+    const previousBaselineUSD = Math.max(
+      0,
+      Number(profile.spendingProfile?.baselineMonthlyWasteUSD) || 0
+    );
+    if (previousBaselineUSD !== baselineMonthlyWasteUSD) {
+      logEvent("profile_baseline_updated", {
+        previous_usd: previousBaselineUSD,
+        baseline_usd: baselineMonthlyWasteUSD,
+        currency: currencyCode,
+      });
+    }
+    setProfile((prev) => ({
+      ...prev,
+      spendingProfile: nextSpendingProfile,
+    }));
+    setProfileDraft((prev) => ({
+      ...prev,
+      spendingProfile: nextSpendingProfile,
+    }));
+    setBaselinePrompt((prev) => ({ ...prev, visible: false }));
+  }, [
+    baselinePrompt.value,
+    logEvent,
+    profile.currency,
+    profile.spendingProfile,
+    setProfile,
+    setProfileDraft,
+    t,
+  ]);
   const [moodDetailsVisible, setMoodDetailsVisible] = useState(false);
   const [potentialDetailsVisible, setPotentialDetailsVisible] = useState(false);
   const [potentialDetailsText, setPotentialDetailsText] = useState("");
@@ -13746,7 +14706,7 @@ function AppContent() {
   const closeSavingsBreakdown = useCallback(() => setSavingsBreakdownVisible(false), []);
   const openGoalLinkPrompt = useCallback((item, intent = "edit") => {
     if (!item) return;
-    setGoalLinkPrompt({ visible: true, item, intent });
+    setGoalLinkPrompt({ visible: true, item, intent, streakRecoveryValue: null });
   }, []);
   const [moodGradient, setMoodGradient] = useState(() =>
     applyThemeToMoodGradient(getMoodGradient(), theme)
@@ -13778,6 +14738,29 @@ function AppContent() {
   }, [profile?.goalTargetUSD, profile?.goal]);
   const heroGoalTargetUSD = mainGoalWish?.targetUSD || fallbackGoalTargetUSD;
   const heroGoalSavedUSD = mainGoalWish?.savedUSD ?? 0;
+  const heroGoalProgressRatio = heroGoalTargetUSD > 0 ? heroGoalSavedUSD / heroGoalTargetUSD : 0;
+  const remainingGoalUSD = Math.max(heroGoalTargetUSD - heroGoalSavedUSD, 0);
+  const averageSaveActionUSD = useMemo(() => {
+    if (!resolvedHistoryEvents.length) return FALLBACK_SAVE_ACTION_USD;
+    let total = 0;
+    let count = 0;
+    resolvedHistoryEvents.forEach((entry) => {
+      if (!entry || entry.kind !== "refuse_spend") return;
+      const amountUSD = Math.max(0, Number(entry.meta?.amountUSD) || 0);
+      if (amountUSD <= 0) return;
+      total += amountUSD;
+      count += 1;
+    });
+    if (!count || total <= 0) {
+      return FALLBACK_SAVE_ACTION_USD;
+    }
+    return total / count;
+  }, [resolvedHistoryEvents]);
+  const remainingGoalActions = useMemo(() => {
+    if (remainingGoalUSD <= 0) return 0;
+    const divisor = averageSaveActionUSD > 0 ? averageSaveActionUSD : FALLBACK_SAVE_ACTION_USD;
+    return Math.max(1, Math.ceil(remainingGoalUSD / divisor));
+  }, [averageSaveActionUSD, remainingGoalUSD]);
   const activeGender = profile.gender || registrationData.gender || DEFAULT_PROFILE.gender || "none";
   const analyticsOptOutValue = analyticsOptOut ?? false;
   const activeTutorialStep =
@@ -13989,7 +14972,127 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    ensureNotificationPermission();
+    if (onboardingStep !== "done") return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      ensureNotificationPermission();
+    });
+    return () => {
+      task?.cancel?.();
+    };
+  }, [ensureNotificationPermission, onboardingStep]);
+  const handleNotificationOpenFromPush = useCallback(
+    (response) => {
+      if (!response?.notification?.request) return;
+      const identifier = response.notification.request.identifier;
+      if (identifier && handledNotificationResponseIdsRef.current.has(identifier)) return;
+      if (identifier) {
+        handledNotificationResponseIdsRef.current.add(identifier);
+      }
+      logEvent("push_notification_open");
+    },
+    [logEvent]
+  );
+  useEffect(() => {
+    let isMounted = true;
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (!isMounted) return;
+        handleNotificationOpenFromPush(response);
+      })
+      .catch(() => {});
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      handleNotificationOpenFromPush
+    );
+    return () => {
+      isMounted = false;
+      if (subscription?.remove) {
+        subscription.remove();
+      }
+    };
+  }, [handleNotificationOpenFromPush]);
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(STORAGE_KEYS.PUSH_NOTIFICATIONS_ENABLED_LOGGED)
+      .then((value) => {
+        if (cancelled) return;
+        pushOptInLoggedRef.current = value === "1";
+        setPushOptInHydrated(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPushOptInHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(STORAGE_KEYS.PUSH_DAY_THREE_PROMPT)
+      .then((value) => {
+        if (cancelled) return;
+        pushDayThreePromptShownRef.current = value === "1";
+        setPushDayThreePromptHydrated(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPushDayThreePromptHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(STORAGE_KEYS.SPEND_LOGGING_REMINDER)
+      .then((value) => {
+        if (cancelled) return;
+        lastSpendLoggingReminderRef.current = Number(value) || 0;
+        setSpendLoggingReminderHydrated(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSpendLoggingReminderHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (!pushOptInHydrated) return;
+    if (notificationPermissionGranted !== true) return;
+    if (pushOptInLoggedRef.current) return;
+    pushOptInLoggedRef.current = true;
+    AsyncStorage.setItem(STORAGE_KEYS.PUSH_NOTIFICATIONS_ENABLED_LOGGED, "1").catch(() => {});
+    logEvent("push_notifications_enabled");
+  }, [notificationPermissionGranted, pushOptInHydrated]);
+  useEffect(() => {
+    if (!pushDayThreePromptHydrated) return;
+    if (pushDayThreePromptShownRef.current) return;
+    if (notificationPermissionGranted !== false) return;
+    if (!profileHydrated) return;
+    if (!profileJoinedAt) return;
+    if (onboardingStep !== "done") return;
+    const joinedAtTimestamp = new Date(profileJoinedAt).getTime();
+    if (!Number.isFinite(joinedAtTimestamp)) return;
+    const ordinalDay = Math.floor((Date.now() - joinedAtTimestamp) / DAY_MS) + 1;
+    if (ordinalDay < 3) return;
+    pushDayThreePromptShownRef.current = true;
+    AsyncStorage.setItem(STORAGE_KEYS.PUSH_DAY_THREE_PROMPT, "1").catch(() => {});
+    setPushDayThreePromptVisible(true);
+  }, [
+    notificationPermissionGranted,
+    onboardingStep,
+    profileHydrated,
+    profileJoinedAt,
+    pushDayThreePromptHydrated,
+  ]);
+  const handlePushDayThreePromptLater = useCallback(() => {
+    setPushDayThreePromptVisible(false);
+  }, []);
+  const handlePushDayThreePromptEnable = useCallback(async () => {
+    setPushDayThreePromptVisible(false);
+    await ensureNotificationPermission();
   }, [ensureNotificationPermission]);
 
   const sendImmediateNotification = useCallback(
@@ -14369,7 +15472,22 @@ function AppContent() {
         ? overlay.message
         : { title: overlay.message }
       : null;
-  const saveGlowAnim = useRef(new Animated.Value(0)).current;
+  const saveCelebrationRef = useRef(null);
+  const handleSaveOverlayPress = useCallback(() => {
+    if (saveCelebrationRef.current?.skipToCountdown?.()) {
+      return;
+    }
+    dismissOverlay({ clearQueue: true });
+  }, [dismissOverlay]);
+  const handlePrimaryTemptationOverlayAction = useCallback(
+    async (type, sourceItem = null) => {
+      const targetItem = sourceItem || primaryTemptationOverlayItem;
+      if (!targetItem) return;
+      dismissOverlay();
+      await handleTemptationAction(type, targetItem);
+    },
+    [dismissOverlay, handleTemptationAction, primaryTemptationOverlayItem]
+  );
   const assignableGoals = useMemo(
     () => (wishes || []).filter((wish) => wish.status !== "done"),
     [wishes]
@@ -14392,6 +15510,57 @@ function AppContent() {
     if (assignableGoals.length > 0) return assignableGoals[0].id;
     return wishes[0]?.id || null;
   }, [assignableGoals, wishes]);
+  const primaryTemptationOverlayItem = useMemo(() => {
+    if (overlay?.type !== "primary_temptation") return null;
+    const payload = overlay?.message;
+    let templateId = null;
+    if (payload && typeof payload === "object") {
+      if (payload.templateId) {
+        templateId = payload.templateId;
+      } else if (payload.id) {
+        templateId = payload.id;
+      }
+    } else if (typeof payload === "string") {
+      templateId = payload;
+    }
+    const resolvedTemplateId = templateId || primaryTemptationId;
+    const resolved = resolveTemplateCard(resolvedTemplateId);
+    if (resolved) return resolved;
+    if (profile.customSpend) {
+      return createCustomHabitTemptation(
+        profile.customSpend,
+        profile.currency || DEFAULT_PROFILE.currency,
+        profile.gender || "none"
+      );
+    }
+    return null;
+  }, [
+    overlay,
+    primaryTemptationId,
+    profile.customSpend,
+    profile.currency,
+    profile.gender,
+    resolveTemplateCard,
+  ]);
+  const primaryTemptationOverlayGoalLabel = useMemo(() => {
+    if (!primaryTemptationOverlayItem) return null;
+    const assignedGoalId = resolveTemptationGoalId(primaryTemptationOverlayItem.id);
+    if (!assignedGoalId) return null;
+    const assignedWish = (wishes || []).find((wish) => wish.id === assignedGoalId);
+    return assignedWish ? getWishTitleWithoutEmoji(assignedWish) : null;
+  }, [primaryTemptationOverlayItem, resolveTemptationGoalId, wishes]);
+  const primaryTemptationOverlayStats = useMemo(
+    () =>
+      primaryTemptationOverlayItem ? resolveCardRefuseStats(primaryTemptationOverlayItem) : null,
+    [primaryTemptationOverlayItem, resolveCardRefuseStats]
+  );
+  const primaryTemptationOverlayDescription = primaryTemptationOverlayItem
+    ? descriptionOverrides[primaryTemptationOverlayItem.id] ||
+      (primaryTemptationOverlayItem.id === primaryTemptationId ? primaryTemptationDescription : null)
+    : null;
+  const primaryTemptationOverlayTitle = primaryTemptationOverlayItem
+    ? titleOverrides[primaryTemptationOverlayItem.id]
+    : null;
   useEffect(() => {
     const activeGoalIds = new Set(
       (wishes || [])
@@ -14541,79 +15710,30 @@ function AppContent() {
     () => (assignableGoals.length > 0 ? assignableGoals : wishes),
     [assignableGoals, wishes]
   );
-  const priceEditorAssignedGoalId = priceEditor.item
-    ? resolveTemptationGoalId(priceEditor.item.id)
-    : null;
-  const priceEditorAssignedGoal =
-    priceEditorAssignedGoalId &&
-    (wishes || []).find((wish) => wish.id === priceEditorAssignedGoalId);
-  const priceEditorAssignedGoalTitle = priceEditorAssignedGoal
-    ? getWishTitleWithoutEmoji(priceEditorAssignedGoal)
-    : "";
-  const goalLinkCurrentGoalId = goalLinkPrompt.item
-    ? resolveTemptationGoalId(goalLinkPrompt.item.id)
-    : null;
-
-  useEffect(() => {
-    if (overlay?.type !== "save") {
-      saveGlowAnim.stopAnimation?.();
-      return;
+  const currentGoalTitle = useMemo(() => {
+    if (saveOverlayPayload?.goalTitle) {
+      return saveOverlayPayload.goalTitle;
     }
-    saveGlowAnim.setValue(0);
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(saveGlowAnim, {
-          toValue: 1,
-          duration: 900,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: false,
-        }),
-        Animated.timing(saveGlowAnim, {
-          toValue: 0,
-          duration: 900,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: false,
-        }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [overlay?.type, saveGlowAnim]);
-
-  const saveGlowHighlight = useMemo(
-    () => blendColors(overlayCardBackground, isDarkTheme ? "#F5C978" : "#FFE8BA", isDarkTheme ? 0.45 : 0.35),
-    [overlayCardBackground, isDarkTheme]
-  );
-  const saveGlowBorderHighlight = useMemo(
-    () => blendColors(overlayBorderColor, "#F2A93B", 0.6),
-    [overlayBorderColor]
-  );
-
+    if (assignableGoals.length > 0) {
+      const primaryGoal = assignableGoals[0];
+      const baseTitle =
+        (primaryGoal && getWishTitleWithoutEmoji(primaryGoal)) ||
+        getWishTitleById(assignableGoals[0].id);
+      return (baseTitle || "").trim();
+    }
+    return null;
+  }, [assignableGoals, getWishTitleById, saveOverlayPayload]);
   const saveOverlayGoalText =
-    saveOverlayPayload && saveOverlayPayload.goalTitle
-      ? saveOverlayPayload.goalComplete
-        ? t("saveGoalComplete", { goal: saveOverlayPayload.goalTitle })
-        : Number.isFinite(saveOverlayPayload.remainingTemptations)
-        ? t("saveGoalRemaining", {
-            goal: saveOverlayPayload.goalTitle,
-            count: saveOverlayPayload.remainingTemptations,
-          })
-        : null
+    currentGoalTitle && saveOverlayPayload?.goalComplete
+      ? t("saveGoalComplete", { goal: currentGoalTitle })
+      : currentGoalTitle;
+  const saveOverlayGoalPrefix =
+    currentGoalTitle &&
+    !saveOverlayPayload?.goalComplete &&
+    Number.isFinite(saveOverlayPayload?.remainingTemptations) &&
+    saveOverlayPayload?.remainingTemptations > 0
+      ? t("saveGoalRemaining")
       : null;
-  const saveCardBackgroundStyle =
-    overlay?.type === "save"
-      ? {
-          backgroundColor: saveGlowAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: [overlayCardBackground, saveGlowHighlight],
-          }),
-          borderColor: saveGlowAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: [overlayBorderColor, saveGlowBorderHighlight],
-          }),
-        }
-      : { backgroundColor: overlayCardBackground, borderColor: overlayBorderColor };
-
   const achievements = useMemo(() => {
     const built = buildAchievements({
       savedTotalUSD,
@@ -14626,9 +15746,10 @@ function AppContent() {
       t,
       language,
     });
-    return built.map((reward) => ({
+    const normalizedList = Array.isArray(built) ? built.filter(Boolean) : [];
+    return normalizedList.map((reward) => ({
       ...reward,
-      claimed: !!claimedRewards[reward.id],
+      claimed: !!safeClaimedRewards[reward.id],
     }));
   }, [
     savedTotalUSD,
@@ -14639,7 +15760,7 @@ function AppContent() {
     profile.currency,
     t,
     language,
-    claimedRewards,
+    safeClaimedRewards,
   ]);
 
 
@@ -15085,6 +16206,9 @@ function AppContent() {
         coinSliderMaxRaw,
         fabTutorialRaw,
         northStarMetricRaw,
+        primaryTemptationPromptRaw,
+        tabHintsRaw,
+        ratingPromptRaw,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.WISHES),
         AsyncStorage.getItem(STORAGE_KEYS.PENDING),
@@ -15136,6 +16260,9 @@ function AppContent() {
         AsyncStorage.getItem(STORAGE_KEYS.COIN_SLIDER_MAX),
         AsyncStorage.getItem(STORAGE_KEYS.FAB_TUTORIAL),
         AsyncStorage.getItem(STORAGE_KEYS.NORTH_STAR_METRIC),
+        AsyncStorage.getItem(STORAGE_KEYS.PRIMARY_TEMPTATION_PROMPT),
+        AsyncStorage.getItem(STORAGE_KEYS.TAB_HINTS),
+        AsyncStorage.getItem(STORAGE_KEYS.RATING_PROMPT),
       ]);
       if (wishesRaw) {
         setWishes(JSON.parse(wishesRaw));
@@ -15152,6 +16279,22 @@ function AppContent() {
       }
       if (profileRaw) {
         parsedProfile = { ...DEFAULT_PROFILE, ...JSON.parse(profileRaw) };
+        const trimmedFirstName = (parsedProfile.firstName || "").trim();
+        const trimmedLastName = (parsedProfile.lastName || "").trim();
+        const trimmedName = (parsedProfile.name || "").trim();
+        if (!trimmedFirstName && !trimmedLastName && trimmedName === DEFAULT_PROFILE.name) {
+          parsedProfile.name = "";
+        } else if (!trimmedName) {
+          parsedProfile.name = [trimmedFirstName, trimmedLastName].filter(Boolean).join(" ").trim();
+        } else {
+          parsedProfile.name = trimmedName;
+        }
+        const trimmedBio = (parsedProfile.bio || "").trim();
+        if (!trimmedBio || PROFILE_BIO_FALLBACK_VALUES.includes(trimmedBio)) {
+          parsedProfile.bio = "";
+        } else {
+          parsedProfile.bio = trimmedBio;
+        }
         const normalizedPrimaryGoals = Array.isArray(parsedProfile.primaryGoals)
           ? parsedProfile.primaryGoals
               .map((entry) => {
@@ -15241,7 +16384,7 @@ function AppContent() {
         }));
         setActiveCurrency(parsedProfile.currency || DEFAULT_PROFILE.currency);
       } else {
-        const freshProfile = { ...DEFAULT_PROFILE, joinedAt: new Date().toISOString() };
+        const freshProfile = { ...DEFAULT_PROFILE_PLACEHOLDER, joinedAt: new Date().toISOString() };
         setProfile(freshProfile);
         setProfileDraft(freshProfile);
         setActiveCurrency(DEFAULT_PROFILE.currency);
@@ -15379,6 +16522,59 @@ function AppContent() {
         setCoinSliderMaxUSD(DEFAULT_COIN_SLIDER_MAX_USD);
       }
       setCoinSliderHydrated(true);
+      if (tabHintsRaw) {
+        try {
+          const parsed = JSON.parse(tabHintsRaw);
+          if (parsed && typeof parsed === "object") {
+            const { __disabled: _legacyDisabled, ...rest } = parsed;
+            setTabHintsSeen({ ...DEFAULT_TAB_HINTS_STATE, ...(rest || {}) });
+          } else {
+            setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
+          }
+        } catch (error) {
+          console.warn("tab hints parse", error);
+          setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
+        }
+      } else {
+        setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
+      }
+      setTabHintsHydrated(true);
+      let normalizedRatingPrompt = createInitialRatingPromptState();
+      let ratingPromptNeedsRewrite = false;
+      if (ratingPromptRaw) {
+        try {
+          const parsed = JSON.parse(ratingPromptRaw);
+          const fallback = createInitialRatingPromptState();
+          normalizedRatingPrompt = {
+            firstOpenAt:
+              typeof parsed?.firstOpenAt === "string" ? parsed.firstOpenAt : fallback.firstOpenAt,
+            completed: Boolean(parsed?.completed),
+            lastShownAt: typeof parsed?.lastShownAt === "string" ? parsed.lastShownAt : null,
+            lastAction: typeof parsed?.lastAction === "string" ? parsed.lastAction : null,
+            respondedAt: typeof parsed?.respondedAt === "string" ? parsed.respondedAt : null,
+          };
+          ratingPromptNeedsRewrite =
+            normalizedRatingPrompt.firstOpenAt !== parsed?.firstOpenAt ||
+            normalizedRatingPrompt.lastShownAt !== parsed?.lastShownAt ||
+            normalizedRatingPrompt.lastAction !== parsed?.lastAction ||
+            normalizedRatingPrompt.respondedAt !== parsed?.respondedAt ||
+            normalizedRatingPrompt.completed !== Boolean(parsed?.completed);
+        } catch (error) {
+          console.warn("rating prompt hydrate", error);
+          normalizedRatingPrompt = createInitialRatingPromptState();
+          ratingPromptNeedsRewrite = true;
+        }
+      } else {
+        ratingPromptNeedsRewrite = true;
+      }
+      setRatingPromptState(normalizedRatingPrompt);
+      if (ratingPromptNeedsRewrite) {
+        AsyncStorage.setItem(
+          STORAGE_KEYS.RATING_PROMPT,
+          JSON.stringify(normalizedRatingPrompt)
+        ).catch(() => {});
+      }
+      setRatingPromptHydrated(true);
       if (
         fabTutorialRaw === FAB_TUTORIAL_STATUS.PENDING ||
         fabTutorialRaw === FAB_TUTORIAL_STATUS.SHOWING
@@ -15404,6 +16600,12 @@ function AppContent() {
         northStarLoggedRef.current = false;
       }
       setNorthStarHydrated(true);
+      if (primaryTemptationPromptRaw === "pending") {
+        setPrimaryTemptationPromptState("pending");
+      } else {
+        setPrimaryTemptationPromptState("done");
+      }
+      setPrimaryTemptationPromptHydrated(true);
       if (dailySummaryRaw) setDailySummarySeenKey(dailySummaryRaw);
       setTutorialSeen(tutorialRaw === "pending" ? false : true);
       if (termsAcceptedRaw === "1") {
@@ -15641,6 +16843,7 @@ function AppContent() {
       } else {
         setClaimedRewards({});
       }
+      setClaimedRewardsHydrated(true);
       if (rewardTotalRaw) {
         const parsedRewardTotal = Number(rewardTotalRaw);
         setRewardClaimTotal(Number.isFinite(parsedRewardTotal) ? Math.max(parsedRewardTotal, 0) : 0);
@@ -15677,6 +16880,7 @@ function AppContent() {
         challengesPrevRef.current = fallback;
         setChallengesState(fallback);
       }
+      setChallengesHydrated(true);
       if (moodRaw) {
         try {
           const parsed = JSON.parse(moodRaw);
@@ -15725,6 +16929,10 @@ function AppContent() {
     } catch (error) {
       console.warn("load error", error);
       setAnalyticsOptOutState((prev) => (prev === null ? true : prev));
+      setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
+      setRatingPromptState(createInitialRatingPromptState());
+      setClaimedRewardsHydrated(true);
+      setChallengesHydrated(true);
     } finally {
       const safeHealthPoints =
         typeof resolvedHealthPoints === "number" && !Number.isNaN(resolvedHealthPoints)
@@ -15750,11 +16958,25 @@ function AppContent() {
       setTamagotchiSkinHydrated(true);
       setLifetimeSavedHydrated(true);
       setProfileHydrated(true);
+      setPrimaryTemptationPromptHydrated(true);
+      setTabHintsHydrated(true);
+      setRatingPromptHydrated(true);
+      setClaimedRewardsHydrated(true);
+      setChallengesHydrated(true);
     }
   };
 
   useEffect(() => {
-    loadStoredData();
+    let cancelled = false;
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (!cancelled) {
+        loadStoredData();
+      }
+    });
+    return () => {
+      cancelled = true;
+      task?.cancel?.();
+    };
   }, []);
   useEffect(() => {
     northStarLoggedRef.current = northStarLogged;
@@ -15767,7 +16989,11 @@ function AppContent() {
   }, [onboardingStep]);
 
   useEffect(() => {
-    if (onboardingStep === "done" && !startupLogoDismissedRef.current) {
+    if (
+      onboardingStep === "done" &&
+      !startupLogoDismissedRef.current &&
+      !onboardingSkippedRef.current
+    ) {
       setStartupLogoVisible(true);
     }
   }, [onboardingStep]);
@@ -15788,6 +17014,24 @@ function AppContent() {
       });
     },
     [language, sendImmediateNotification, t]
+  );
+  const notifyDailySummaryReady = useCallback(
+    (summary) => {
+      if (!summary) return;
+      const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+      const savedLabel = formatCurrency(
+        convertToCurrency(summary.savedUSD || 0, currencyCode),
+        currencyCode
+      );
+      sendImmediateNotification({
+        title: t("dailySummaryNotificationTitle"),
+        body: t("dailySummaryNotificationBody", {
+          saved: savedLabel,
+          declines: summary.declines || 0,
+        }),
+      });
+    },
+    [profile.currency, sendImmediateNotification, t]
   );
 
   useEffect(() => {
@@ -15841,6 +17085,7 @@ function AppContent() {
     if (hour < 20) return;
     const todayKey = getDayKey(Date.now());
     if (dailySummarySeenKey === todayKey) return;
+    if (pendingDailySummaryData?.todayKey === todayKey) return;
     const todayEvents = resolvedHistoryEvents.filter((e) => getDayKey(e.timestamp) === todayKey);
     if (!todayEvents.length) return;
     const saves = todayEvents.filter((e) => e.kind === "refuse_spend");
@@ -15849,8 +17094,16 @@ function AppContent() {
     const declines = saves.length;
     if (declines < 3) return;
     const spendCount = spends.length;
-    setPendingDailySummaryData({ savedUSD, declines, spends: spendCount, todayKey });
-  }, [dailySummarySeenKey, resolvedHistoryEvents, onboardingStep]);
+    const summaryPayload = { savedUSD, declines, spends: spendCount, todayKey };
+    setPendingDailySummaryData(summaryPayload);
+    notifyDailySummaryReady(summaryPayload);
+  }, [
+    dailySummarySeenKey,
+    notifyDailySummaryReady,
+    onboardingStep,
+    pendingDailySummaryData?.todayKey,
+    resolvedHistoryEvents,
+  ]);
 
   useEffect(() => {
     if (!pendingDailySummaryData) return;
@@ -15862,6 +17115,35 @@ function AppContent() {
     AsyncStorage.setItem(STORAGE_KEYS.DAILY_SUMMARY, todayKey).catch(() => {});
     setPendingDailySummaryData(null);
   }, [overlay, pendingDailySummaryData]);
+  useEffect(() => {
+    if (!spendLoggingReminderHydrated) return;
+    if (onboardingStep !== "done") return;
+    const now = Date.now();
+    const lastSpendTimestamp = resolvedHistoryEvents.reduce((max, entry) => {
+      if (entry?.kind !== "spend") return max;
+      const ts = Number(entry.timestamp) || 0;
+      return ts > max ? ts : max;
+    }, 0);
+    const joinedAtTimestamp = profileJoinedAt ? new Date(profileJoinedAt).getTime() : 0;
+    const lastTrackedSpendAt = lastSpendTimestamp || joinedAtTimestamp;
+    if (!lastTrackedSpendAt) return;
+    if (now - lastTrackedSpendAt < SPEND_LOGGING_REMINDER_DELAY_MS) return;
+    const lastReminderAt = Number(lastSpendLoggingReminderRef.current) || 0;
+    if (lastReminderAt && now - lastReminderAt < SPEND_LOGGING_REMINDER_COOLDOWN_MS) return;
+    lastSpendLoggingReminderRef.current = now;
+    AsyncStorage.setItem(STORAGE_KEYS.SPEND_LOGGING_REMINDER, String(now)).catch(() => {});
+    sendImmediateNotification({
+      title: t("spendLoggingReminderTitle"),
+      body: t("spendLoggingReminderBody"),
+    });
+  }, [
+    onboardingStep,
+    profileJoinedAt,
+    resolvedHistoryEvents,
+    sendImmediateNotification,
+    spendLoggingReminderHydrated,
+    t,
+  ]);
 
   useEffect(() => {
     processTamagotchiDecay();
@@ -16012,16 +17294,22 @@ function AppContent() {
   }, [healthHydrated, healthPoints]);
 
   useEffect(() => {
-    AsyncStorage.setItem(STORAGE_KEYS.CLAIMED_REWARDS, JSON.stringify(claimedRewards)).catch(() => {});
-  }, [claimedRewards]);
+    if (!claimedRewardsHydrated) return;
+    AsyncStorage.setItem(STORAGE_KEYS.CLAIMED_REWARDS, JSON.stringify(claimedRewards)).catch(
+      () => {}
+    );
+  }, [claimedRewards, claimedRewardsHydrated]);
   useEffect(() => {
     if (!Number.isFinite(rewardClaimTotal)) return;
     AsyncStorage.setItem(STORAGE_KEYS.REWARD_TOTAL, String(Math.max(0, rewardClaimTotal))).catch(() => {});
   }, [rewardClaimTotal]);
 
   useEffect(() => {
-    AsyncStorage.setItem(STORAGE_KEYS.CHALLENGES, JSON.stringify(challengesState)).catch(() => {});
-  }, [challengesState]);
+    if (!challengesHydrated) return;
+    AsyncStorage.setItem(STORAGE_KEYS.CHALLENGES, JSON.stringify(challengesState)).catch(
+      () => {}
+    );
+  }, [challengesState, challengesHydrated]);
   useEffect(() => {
     if (!dailyChallengeHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.DAILY_CHALLENGE, JSON.stringify(dailyChallenge)).catch(() => {});
@@ -16164,11 +17452,12 @@ function AppContent() {
   }, [analyticsOptOut]);
 
   useEffect(() => {
+    if (!rewardCelebratedHydrated) return;
     AsyncStorage.setItem(
       STORAGE_KEYS.REWARDS_CELEBRATED,
       JSON.stringify(rewardCelebratedMap)
     ).catch(() => {});
-  }, [rewardCelebratedMap]);
+  }, [rewardCelebratedHydrated, rewardCelebratedMap]);
   useEffect(() => {
     if (analyticsOptOut !== false) return;
     if (!profileHydrated) return;
@@ -16437,8 +17726,12 @@ function AppContent() {
   };
 
   const handleThemeToggle = (mode) => {
+    const nextTheme = mode === "dark" ? "dark" : "light";
     triggerHaptic();
-    setTheme(mode);
+    setTheme(nextTheme);
+    if (nextTheme !== theme) {
+      logEvent("theme_changed", { theme: nextTheme });
+    }
   };
 
   const handleLanguageChange = (lng) => {
@@ -16548,14 +17841,14 @@ function AppContent() {
       };
       normalizedGoals.push(normalized);
     });
-    const previousGoalId = profile.goal || normalizedGoals[0]?.id || DEFAULT_PROFILE.goal;
-    if (previousGoalId === goalId) return;
+    const previousGoalId = profile.goal || normalizedGoals[0]?.id || null;
+    if (previousGoalId && previousGoalId === goalId) return;
     const previousWish = wishes.find(
       (wish) =>
         wish.kind === PRIMARY_GOAL_KIND &&
         (wish.goalId === previousGoalId || wish.id === previousGoalId)
     );
-    if (!normalizedGoals.some((goal) => goal.id === previousGoalId)) {
+    if (previousGoalId && !normalizedGoals.some((goal) => goal.id === previousGoalId)) {
       const fallbackTarget = getGoalDefaultTargetUSD(previousGoalId);
       normalizedGoals.unshift({
         id: previousGoalId,
@@ -16564,7 +17857,7 @@ function AppContent() {
         status: previousWish?.status || "active",
         createdAt: previousWish?.createdAt || Date.now(),
       });
-    } else if (previousWish) {
+    } else if (previousGoalId && previousWish) {
       const prevIndex = normalizedGoals.findIndex((goal) => goal.id === previousGoalId);
       if (prevIndex !== -1) {
         normalizedGoals[prevIndex] = {
@@ -16660,6 +17953,10 @@ function AppContent() {
       if (onboardingStep !== "done") {
         logEvent("onboarding_currency_chosen", { currency: value });
       }
+    }
+    if (field === "gender" && onboardingStep !== "done") {
+      const genderValue = value || "none";
+      logEvent("onboarding_gender_chosen", { gender: genderValue });
     }
     if (field === "persona" && onboardingStep !== "done") {
       const habitType = PERSONA_HABIT_TYPES[value] || "custom";
@@ -16776,10 +18073,6 @@ function AppContent() {
   };
 
   const handleRegistrationSubmit = () => {
-    if (!registrationData.firstName.trim()) {
-      Alert.alert("Almost", t("inputFirstName"));
-      return;
-    }
     if (!registrationData.currency) {
       Alert.alert("Almost", t("currencyLabel"));
       return;
@@ -17131,6 +18424,7 @@ function AppContent() {
     const emoji = normalizeEmojiValue(onboardingGoalModal.emoji, DEFAULT_GOAL_EMOJI);
     const id = `custom_goal_${Date.now()}`;
     const formattedLocal = formatNumberInputValue(parsedLocal);
+    goalSelectionTouchedRef.current = true;
     setRegistrationData((prev) => {
       const selections = prev.goalSelections || [];
       const nextSelections = selections.includes(id) ? selections : [...selections, id];
@@ -17240,19 +18534,35 @@ function AppContent() {
     goToOnboardingStep("goal");
   };
 
+  const handleBaselineSkip = () => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    setRegistrationData((prev) => ({
+      ...prev,
+      baselineMonthlyWaste: "",
+      baselineCapturedAt: null,
+    }));
+    goToOnboardingStep("goal");
+  };
+
   const handleBaselineSetupPrompt = () => {
     triggerHaptic();
+    if (onboardingStep === "done") {
+      openBaselinePrompt();
+      return;
+    }
     setRegistrationData((prev) => ({
       ...prev,
       currency: profile.currency || prev.currency || DEFAULT_PROFILE.currency,
       baselineMonthlyWaste: "",
       baselineCapturedAt: null,
     }));
+    setOnboardingSkipLocked(true);
     goToOnboardingStep("baseline");
   };
 
   const handleGoalToggle = (goalId) => {
     triggerHaptic();
+    goalSelectionTouchedRef.current = true;
     const currentSelections = registrationData.goalSelections || [];
     const wasSelected = currentSelections.includes(goalId);
     const preset = getGoalPreset(goalId);
@@ -17298,7 +18608,13 @@ function AppContent() {
   const handleGoalTargetSubmit = async () => {
     const selections = registrationData.goalSelections || [];
     if (!selections.length) {
-      Alert.alert("Almost", t("goalTitle"));
+      logEvent("onboarding_goal_skipped", { method: "target_step_empty" });
+      setPendingGoalTargets([]);
+      setRegistrationData((prev) => ({
+        ...prev,
+        goalTargetConfirmed: [],
+      }));
+      goToOnboardingStep("analytics_consent");
       return;
     }
     const currencyCode = registrationData.currency || DEFAULT_PROFILE.currency;
@@ -17336,7 +18652,10 @@ function AppContent() {
   const handleGoalStageContinue = async () => {
     const selections = registrationData.goalSelections || [];
     if (!selections.length) {
-      Alert.alert("Almost", t("goalTitle"));
+      triggerHaptic();
+      logEvent("onboarding_goal_skipped", { method: "empty_selection" });
+      setPendingGoalTargets([]);
+      goToOnboardingStep("analytics_consent");
       return;
     }
     const currentMap = registrationData.goalTargetMap || {};
@@ -17383,25 +18702,36 @@ function AppContent() {
     }
     await handleGoalTargetSubmit();
   };
+  const handleGoalStageSkip = () => {
+    triggerHaptic();
+    logEvent("onboarding_goal_skipped", { method: "skip_button" });
+    setPendingGoalTargets([]);
+    goalSelectionTouchedRef.current = false;
+    setRegistrationData((prev) => ({
+      ...prev,
+      goalSelections: [],
+      goalTargetMap: {},
+      goalTargetConfirmed: [],
+    }));
+    goToOnboardingStep("analytics_consent");
+  };
 
   const handleGoalComplete = async (targetsOverride = null) => {
     const selections = registrationData.goalSelections || [];
-    if (!selections.length) {
-      Alert.alert("Almost", t("goalTitle"));
-      return;
-    }
     const currencyCode = registrationData.currency || DEFAULT_PROFILE.currency;
-    const targets =
-      targetsOverride && targetsOverride.length
-        ? targetsOverride
-        : selections.map((goalId) => {
-            const draftValue = registrationData.goalTargetMap?.[goalId];
-            const parsedLocal = parseNumberInputValue(draftValue || "");
-            const usd = Number.isFinite(parsedLocal) && parsedLocal > 0
-              ? convertFromCurrency(parsedLocal, currencyCode)
-              : getGoalDefaultTargetUSD(goalId);
-            return { id: goalId, usd };
-          });
+    let targets = [];
+    if (Array.isArray(targetsOverride)) {
+      targets = targetsOverride;
+    } else if (selections.length) {
+      targets = selections.map((goalId) => {
+        const draftValue = registrationData.goalTargetMap?.[goalId];
+        const parsedLocal = parseNumberInputValue(draftValue || "");
+        const usd = Number.isFinite(parsedLocal) && parsedLocal > 0
+          ? convertFromCurrency(parsedLocal, currencyCode)
+          : getGoalDefaultTargetUSD(goalId);
+        return { id: goalId, usd };
+      });
+    }
     const primaryGoals = targets.map((entry) => {
       const goalId = entry.id;
       const targetUSD = entry.usd > 0 ? entry.usd : getGoalDefaultTargetUSD(goalId);
@@ -17422,15 +18752,22 @@ function AppContent() {
       }
       return base;
     });
+    const hasPrimaryGoal = primaryGoals.length > 0;
     const activeGoalTargetUSD =
-      Number.isFinite(primaryGoals[0]?.targetUSD) && primaryGoals[0].targetUSD > 0
+      hasPrimaryGoal && Number.isFinite(primaryGoals[0]?.targetUSD) && primaryGoals[0].targetUSD > 0
         ? primaryGoals[0].targetUSD
-        : getGoalDefaultTargetUSD(primaryGoals[0]?.id || selections[0] || DEFAULT_PROFILE.goal);
-    const displayName = `${registrationData.firstName} ${registrationData.lastName}`.trim()
-      || registrationData.firstName.trim()
-      || DEFAULT_PROFILE.name;
+        : 0;
+    const firstNameValue = (registrationData.firstName || "").trim();
+    const lastNameValue = (registrationData.lastName || "").trim();
+    const mottoValue = (registrationData.motto || "").trim();
+    const displayName = `${firstNameValue} ${lastNameValue}`.trim() || firstNameValue || "";
     const personaId = registrationData.persona || DEFAULT_PERSONA_ID;
     const gender = registrationData.gender || "none";
+    logEvent("onboarding_profile_fields", {
+      first_name_entered: firstNameValue.length > 0,
+      last_name_entered: lastNameValue.length > 0,
+      motto_entered: mottoValue.length > 0,
+    });
     let customSpend = null;
     const customName = registrationData.customSpendTitle?.trim();
     const customAmount = parseFloat((registrationData.customSpendAmount || "").replace(",", "."));
@@ -17460,6 +18797,11 @@ function AppContent() {
         price: customAmount,
       });
     }
+    if (customSpend) {
+      schedulePrimaryTemptationPrompt();
+    } else {
+      markPrimaryTemptationPromptDone();
+    }
     let spendingProfile = profile.spendingProfile || { ...DEFAULT_PROFILE.spendingProfile };
     const baselineLocal = parseNumberInputValue(registrationData.baselineMonthlyWaste || "");
     if (Number.isFinite(baselineLocal) && baselineLocal > 0) {
@@ -17473,11 +18815,11 @@ function AppContent() {
       name: displayName,
       firstName: registrationData.firstName,
       lastName: registrationData.lastName,
-      subtitle: registrationData.motto || profile.subtitle,
-      motto: registrationData.motto || profile.motto,
+      subtitle: mottoValue || profile.subtitle,
+      motto: mottoValue || profile.motto,
       avatar: registrationData.avatar || profile.avatar,
       currency: registrationData.currency,
-      goal: primaryGoals[0]?.id || DEFAULT_PROFILE.goal,
+      goal: hasPrimaryGoal ? primaryGoals[0]?.id : null,
       primaryGoals,
       goalTargetUSD: activeGoalTargetUSD,
       goalCelebrated: false,
@@ -17504,20 +18846,22 @@ function AppContent() {
     setActiveCurrency(updatedProfile.currency);
     ensurePrimaryGoalWish(primaryGoals, language, updatedProfile.goal);
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    const hasPrimaryGoal = primaryGoals.length > 0;
     const startBalanceLocal = convertToCurrency(
       savedTotalUSD || 0,
       updatedProfile.currency || DEFAULT_PROFILE.currency
     );
     logEvent("onboarding_completed", {
       persona_id: personaId,
-      goal_id: primaryGoals[0]?.id || selections[0] || DEFAULT_PROFILE.goal,
+      goal_id: primaryGoals[0]?.id || "none",
       has_goal: hasPrimaryGoal,
       start_balance: startBalanceLocal,
+      skipped: onboardingSkippedRef.current ? 1 : 0,
     });
     setTimeout(() => {
       goToOnboardingStep("done", { recordHistory: false, resetHistory: true });
       setRegistrationData(INITIAL_REGISTRATION);
+      goalSelectionTouchedRef.current = false;
+      onboardingSkippedRef.current = false;
     }, 500);
   };
 
@@ -17528,7 +18872,7 @@ function AppContent() {
     logEvent("consent_analytics_enabled", { enabled: allowAnalytics, source: "onboarding" });
     const targets = pendingGoalTargets;
     setPendingGoalTargets(null);
-    await handleGoalComplete(targets && targets.length ? targets : null);
+    await handleGoalComplete(Array.isArray(targets) ? targets : null);
   };
 
   const ensureMediaPermission = async (type) => {
@@ -17711,6 +19055,85 @@ function AppContent() {
         } else if (entry.kind === "pending_to_decline") {
           resolvedToDeclines += 1;
         }
+      });
+      const chronologicalEntries = (Array.isArray(list) ? list : [])
+        .filter((entry) => entry?.meta?.templateId && Number.isFinite(entry.timestamp))
+        .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+      const streakTracker = {};
+      chronologicalEntries.forEach((entry) => {
+        const templateId = entry.meta.templateId;
+        const prev = streakTracker[templateId] || {
+          current: 0,
+          best: 0,
+          lastAction: null,
+          lostAt: null,
+          recoverable: 0,
+          recoverableAmountUSD: 0,
+        };
+        if (entry.kind === "refuse_spend") {
+          const nextCurrent = prev.lastAction === "save" ? prev.current + 1 : 1;
+          streakTracker[templateId] = {
+            current: nextCurrent,
+            best: Math.max(prev.best, nextCurrent),
+            lastAction: "save",
+            lostAt: null,
+            recoverable: 0,
+            recoverableAmountUSD: 0,
+          };
+        } else if (entry.kind === "spend") {
+          const previousRecoverable =
+            prev.lastAction === "save" ? prev.current : prev.recoverable || 0;
+          const spendAmountUSD = Math.max(0, Number(entry.meta?.amountUSD) || 0);
+          streakTracker[templateId] = {
+            current: 0,
+            best: Math.max(prev.best, prev.current),
+            lastAction: "spend",
+            lostAt: entry.timestamp || null,
+            recoverable: previousRecoverable,
+            recoverableAmountUSD: spendAmountUSD || prev.recoverableAmountUSD || 0,
+          };
+        } else if (entry.kind === "streak_restore") {
+          const restoredValue = Math.max(
+            0,
+            Number(entry.meta?.restoredStreak) ||
+              prev.recoverable ||
+              prev.current ||
+              0
+          );
+          streakTracker[templateId] = {
+            current: restoredValue,
+            best: Math.max(prev.best, restoredValue),
+            lastAction: "save",
+            lostAt: null,
+            recoverable: 0,
+            recoverableAmountUSD: 0,
+          };
+        } else {
+          streakTracker[templateId] = prev;
+        }
+      });
+      Object.entries(streakTracker).forEach(([templateId, streak]) => {
+        const base = nextRefuseStats[templateId] || {
+          count: 0,
+          totalUSD: 0,
+          lastSavedAt: 0,
+          lastSavedAmountUSD: 0,
+          recoverableStreak: 0,
+          recoverableAmountUSD: 0,
+        };
+        const recoverableStreakValue =
+          streak.lastAction === "spend" ? Math.max(streak.recoverable || 0, 0) : 0;
+        const recoverableAmountValue =
+          streak.lastAction === "spend" ? Math.max(streak.recoverableAmountUSD || 0, 0) : 0;
+        nextRefuseStats[templateId] = {
+          ...base,
+          currentStreak: streak.lastAction === "save" ? streak.current : 0,
+          bestStreak: Math.max(base.bestStreak || 0, streak.best),
+          lastAction: streak.lastAction,
+          streakLostAt: streak.lastAction === "spend" ? streak.lostAt : null,
+          recoverableStreak: recoverableStreakValue,
+          recoverableAmountUSD: recoverableAmountValue,
+        };
       });
       setDeclineCount(nextDeclines);
       setRefuseStats(nextRefuseStats);
@@ -18021,7 +19444,7 @@ function AppContent() {
       clearTimeout(stormTimerRef.current);
     }
     setStormActive(true);
-    stormTimerRef.current = setTimeout(() => setStormActive(false), 2400);
+    stormTimerRef.current = setTimeout(() => setStormActive(false), STORM_OVERLAY_DURATION_MS);
   }, []);
   const recordTemptationInteraction = useCallback((templateId, actionType) => {
     if (!templateId) return;
@@ -18039,16 +19462,135 @@ function AppContent() {
       };
     });
   }, []);
+  const normalizeTemplateKey = (value) => {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  };
+  const resolveTemptationTemplateId = useCallback(
+    (item, fallbackId = null) => {
+      const fallback = normalizeTemplateKey(fallbackId);
+      if (fallback) return fallback;
+      const templateProp = normalizeTemplateKey(item?.templateId);
+      if (templateProp) return templateProp;
+      const itemId = normalizeTemplateKey(item?.id);
+      if (itemId) return itemId;
+      if (isCustomTemptation(item)) {
+        const customId = normalizeTemplateKey(profile.customSpend?.id);
+        return customId || "custom_habit";
+      }
+      return null;
+    },
+    [profile.customSpend]
+  );
+  const buildLegacyTemplateKeys = useCallback(
+    (templateId, item = null) => {
+      const keys = [];
+      const pushKey = (value) => {
+        if (typeof value !== "string") return;
+        const normalized = value.trim();
+        if (!normalized || keys.includes(normalized)) return;
+        keys.push(normalized);
+      };
+      if (typeof templateId === "string" && templateId.trim()) {
+        pushKey(templateId);
+      }
+      if (item?.templateId) {
+        pushKey(item.templateId);
+      }
+      if (item?.id && item.id !== templateId) {
+        pushKey(item.id);
+      }
+      if (isCustomTemptation(item)) {
+        if (profile.customSpend?.id) {
+          pushKey(profile.customSpend.id);
+        }
+        pushKey("custom_habit");
+        pushKey("undefined");
+      }
+      return keys;
+    },
+    [profile.customSpend]
+  );
+  const getLegacyRefuseStatsEntry = useCallback(
+    (stats, templateId, item = null) => {
+      if (!stats || typeof stats !== "object") {
+        return { entry: null, key: templateId || null };
+      }
+      const keysToCheck = buildLegacyTemplateKeys(templateId, item);
+      for (let index = 0; index < keysToCheck.length; index += 1) {
+        const key = keysToCheck[index];
+        if (!key) continue;
+        if (Object.prototype.hasOwnProperty.call(stats, key)) {
+          return { entry: stats[key], key };
+        }
+      }
+      return { entry: null, key: templateId || null };
+    },
+    [buildLegacyTemplateKeys]
+  );
+  const normalizeLegacyRecoveryRefs = useCallback(
+    (templateId, item = null) => {
+      if (!templateId) return;
+      const keysToCheck = buildLegacyTemplateKeys(templateId, item);
+      keysToCheck.forEach((key) => {
+        if (!key || key === templateId) return;
+        if (pendingStreakRecoveryRef.current?.[key]) {
+          if (!pendingStreakRecoveryRef.current[templateId]) {
+            pendingStreakRecoveryRef.current[templateId] = pendingStreakRecoveryRef.current[key];
+          }
+          delete pendingStreakRecoveryRef.current[key];
+        }
+        if (streakRecoveryOverrideRef.current?.[key]) {
+          if (!streakRecoveryOverrideRef.current[templateId]) {
+            streakRecoveryOverrideRef.current[templateId] = streakRecoveryOverrideRef.current[key];
+          }
+          delete streakRecoveryOverrideRef.current[key];
+        }
+      });
+    },
+    [buildLegacyTemplateKeys]
+  );
+  const clearStreakRecoveryForTemptation = useCallback((templateId) => {
+    if (!templateId) return;
+    delete pendingStreakRecoveryRef.current?.[templateId];
+    delete streakRecoveryOverrideRef.current?.[templateId];
+    setRefuseStats((prev) => {
+      const current = prev?.[templateId];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [templateId]: {
+          ...current,
+          recoverableStreak: 0,
+          recoverableAmountUSD: 0,
+        },
+      };
+    });
+  }, []);
+  const priceEditorTemplateId = priceEditor.item ? resolveTemptationTemplateId(priceEditor.item) : null;
+  const priceEditorAssignedGoalId = priceEditorTemplateId
+    ? resolveTemptationGoalId(priceEditorTemplateId)
+    : null;
+  const priceEditorAssignedGoal =
+    priceEditorAssignedGoalId &&
+    (wishes || []).find((wish) => wish.id === priceEditorAssignedGoalId);
+  const priceEditorAssignedGoalTitle = priceEditorAssignedGoal
+    ? getWishTitleWithoutEmoji(priceEditorAssignedGoal)
+    : "";
+  const goalLinkTemplateId = goalLinkPrompt.item ? resolveTemptationTemplateId(goalLinkPrompt.item) : null;
+  const goalLinkCurrentGoalId = goalLinkTemplateId ? resolveTemptationGoalId(goalLinkTemplateId) : null;
   const executeSpend = useCallback(
     (item) => {
       if (!item) return;
+      const templateId = resolveTemptationTemplateId(item);
       const priceUSD = item.priceUSD || item.basePriceUSD || 0;
       const title = `${item.emoji || "✨"} ${
         item.title?.[language] || item.title?.en || item.title || "wish"
       }`;
       registerFocusLoss(item);
       handleFocusSpend(item);
-      logHistoryEvent("spend", { title, amountUSD: priceUSD });
+      logHistoryEvent("spend", { title, amountUSD: priceUSD, templateId: templateId || item.id });
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
       setSavedTotalUSD((prev) => Math.max(prev - priceUSD, 0));
       setPurchases((prev) => [
@@ -18076,11 +19618,55 @@ function AppContent() {
         };
         return next;
       });
+      setRefuseStats((prev) => {
+        if (!templateId) return prev;
+        const { entry: current, key: legacyKey } = getLegacyRefuseStatsEntry(prev, templateId, item);
+        if (!current) return prev;
+        const normalizedBest = Math.max(current.bestStreak || 0, current.currentStreak || 0);
+        const recoverableValue = Math.max(current.currentStreak || 0, 0);
+        if (recoverableValue > 0) {
+          pendingStreakRecoveryRef.current = {
+            ...(pendingStreakRecoveryRef.current || {}),
+            [templateId]: {
+              streak: recoverableValue,
+              amountUSD: priceUSD,
+            },
+          };
+        }
+        const next = {
+          ...prev,
+          [templateId]: {
+            ...current,
+            currentStreak: 0,
+            bestStreak: normalizedBest,
+            lastAction: "spend",
+            streakLostAt: Date.now(),
+            recoverableStreak: recoverableValue,
+            recoverableAmountUSD: priceUSD,
+          },
+        };
+        if (legacyKey && legacyKey !== templateId) {
+          delete next[legacyKey];
+        }
+        return next;
+      });
       logImpulseEvent("spend", item, priceUSD, title);
       requestMascotAnimation(Math.random() > 0.5 ? "sad" : "ohno");
-      recordTemptationInteraction(item.id, "spend");
+      recordTemptationInteraction(templateId || item.id, "spend");
     },
-    [handleFocusSpend, language, logHistoryEvent, logImpulseEvent, recordTemptationInteraction, registerFocusLoss, requestMascotAnimation, setFreeDayStats]
+    [
+      handleFocusSpend,
+      language,
+      resolveTemptationTemplateId,
+      logHistoryEvent,
+      logImpulseEvent,
+      recordTemptationInteraction,
+      registerFocusLoss,
+      requestMascotAnimation,
+      setFreeDayStats,
+      setRefuseStats,
+      getLegacyRefuseStatsEntry,
+    ]
   );
 
   const handleSpendConfirm = useCallback(() => {
@@ -18109,9 +19695,46 @@ function AppContent() {
   const logTemptationAction = useCallback(
     (action, item, extra = {}) => {
       if (!item || !action) return;
+      maybeLogDayMilestone(action);
       logEvent("temptation_action", buildTemptationPayload(item, { action, ...extra }));
     },
-    [buildTemptationPayload]
+    [buildTemptationPayload, maybeLogDayMilestone]
+  );
+
+  const scheduleImpulseReminder = useCallback(
+    async (event) => {
+      if (!event || !event.timestamp) return;
+      const triggerAt = getImpulseReminderTimestamp(event.timestamp);
+      if (!triggerAt) return;
+      if (triggerAt - Date.now() < IMPULSE_REMINDER_MIN_DELAY_MS) return;
+      const allowed = await ensureNotificationPermission();
+      if (!allowed) return;
+      const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+      const amountLabel = formatCurrency(
+        convertToCurrency(Math.max(event.amountUSD || 0, 0), currencyCode),
+        currencyCode
+      );
+      const templateTitle = event.title || t("defaultDealTitle");
+      const content =
+        event.action === "save"
+          ? {
+              title: t("impulseReminderWinTitle", { temptation: templateTitle }),
+              body: t("impulseReminderWinBody", { amount: amountLabel }),
+            }
+          : {
+              title: t("impulseReminderLoseTitle", { temptation: templateTitle }),
+              body: t("impulseReminderLoseBody", { amount: amountLabel }),
+            };
+      try {
+        await Notifications.scheduleNotificationAsync({
+          content,
+          trigger: new Date(triggerAt),
+        });
+      } catch (error) {
+        console.warn("impulse reminder schedule", error);
+      }
+    },
+    [ensureNotificationPermission, profile.currency, t]
   );
 
   const logImpulseEvent = useCallback(
@@ -18123,9 +19746,10 @@ function AppContent() {
         `${item.emoji || "✨"} ${
           item.title?.[language] || item.title?.en || item.title || t("defaultDealTitle")
         }`;
+      const eventTemplateId = resolveTemptationTemplateId(item) || item.id;
       const event = {
         id: `impulse-${timestamp}-${Math.random().toString(16).slice(2, 6)}`,
-        templateId: item.id,
+        templateId: eventTemplateId,
         title: entryTitle,
         emoji: item.emoji || "✨",
         category: resolveImpulseCategory(item),
@@ -18141,8 +19765,9 @@ function AppContent() {
           events: nextEvents,
         };
       });
+      scheduleImpulseReminder(event);
     },
-    [language, t]
+    [language, resolveTemptationTemplateId, scheduleImpulseReminder, t]
   );
 
   const handleTemptationAction = useCallback(
@@ -18153,7 +19778,10 @@ function AppContent() {
         shouldAssign = false,
         pinnedBy = null,
         bypassSpendPrompt = false,
+        skipStreakRecoveryPrompt = false,
+        restoredStreakValue = null,
       } = options || {};
+      const templateId = resolveTemptationTemplateId(item);
       const priceUSD = item.priceUSD || item.basePriceUSD || 0;
       const title = `${item.emoji || "✨"} ${
         item.title?.[language] || item.title?.en || item.title || "wish"
@@ -18165,7 +19793,7 @@ function AppContent() {
         logTemptationAction("spend", item);
         logEvent("temptation_spend", buildTemptationPayload(item, { total_saved_usd: savedTotalUSD }));
         logEvent("temptation_decision", {
-          temptation_id: item.id,
+          temptation_id: templateId || item.id,
           decision: "spend",
           price: priceLocal,
           balance_before: balanceLocal,
@@ -18181,9 +19809,10 @@ function AppContent() {
       if (type === "want") {
         logTemptationAction("wish", item);
         logEvent("temptation_want", buildTemptationPayload(item));
+        const wishTemplateId = templateId || item.id || `custom_${Date.now()}`;
         const newWish = {
-          id: `wish-${item.id}-${Date.now()}`,
-          templateId: item.id,
+          id: `wish-${wishTemplateId}-${Date.now()}`,
+          templateId: wishTemplateId,
           title,
           targetUSD: priceUSD,
           savedUSD: 0,
@@ -18194,18 +19823,67 @@ function AppContent() {
           pinnedSource: pinnedBy,
         };
         setWishes((prev) => insertWishAfterPrimary(prev, newWish));
-        logHistoryEvent("wish_added", { title, targetUSD: priceUSD, templateId: item.id, wishId: newWish.id });
+        logHistoryEvent("wish_added", {
+          title,
+          targetUSD: priceUSD,
+          templateId: wishTemplateId,
+          wishId: newWish.id,
+        });
         triggerOverlayState("purchase", t("wishAdded", { title }));
         triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
         return;
       }
       if (type === "save") {
+        if (templateId) {
+          normalizeLegacyRecoveryRefs(templateId, item);
+        }
+        const { entry: resolvedStreakStats } = getLegacyRefuseStatsEntry(refuseStats, templateId, item);
+        const streakStatsEntry = resolvedStreakStats || {};
+        const overrideEntry = templateId ? streakRecoveryOverrideRef.current?.[templateId] : null;
+        const restoredStreakOverride =
+          restoredStreakValue !== null && restoredStreakValue !== undefined
+            ? restoredStreakValue
+            : overrideEntry?.streak ?? null;
+        const pendingRecovery = templateId ? pendingStreakRecoveryRef.current?.[templateId] : null;
+        const recoverableStreak =
+          streakStatsEntry.recoverableStreak ||
+          pendingRecovery?.streak ||
+          0;
+        const recoverableAmountUSD =
+          streakStatsEntry.recoverableAmountUSD ||
+          pendingRecovery?.amountUSD ||
+          0;
+        const lastStreakAction =
+          streakStatsEntry.lastAction || (pendingRecovery ? "spend" : null);
+        if (!skipStreakRecoveryPrompt && restoredStreakOverride == null) {
+          const hasRecoverableStreak =
+            lastStreakAction === "spend" && recoverableStreak > 0;
+          if (hasRecoverableStreak) {
+            const recoveryUSD = recoverableAmountUSD || priceUSD;
+            const coinCost = computeStreakRecoveryCost(recoveryUSD);
+            const nextOptions = { ...options, skipStreakRecoveryPrompt: true };
+            const fallbackTemplateId =
+              templateId || (isCustomTemptation(item) ? profile.customSpend?.id || "custom_habit" : null);
+            setStreakRecoveryPrompt({
+              visible: true,
+              item,
+              templateId: fallbackTemplateId,
+              coinCost,
+              options: nextOptions,
+              recoverableStreak,
+              recoverableAmountUSD: recoveryUSD,
+              errorMessage: "",
+            });
+            return;
+          }
+        }
         const saveTimestamp = Date.now();
         const windowStart = saveTimestamp - SAVE_SPAM_WINDOW_MS;
         const recentSaves = saveActionLogRef.current.filter(
           (entry) => entry.timestamp >= windowStart
         );
-        const sameItemCount = recentSaves.filter((entry) => entry.itemId === item.id).length;
+        const targetItemId = templateId || item.id;
+        const sameItemCount = recentSaves.filter((entry) => entry.itemId === targetItemId).length;
         const totalSaveCount = recentSaves.length;
         if (sameItemCount >= SAVE_SPAM_ITEM_LIMIT) {
           Alert.alert("Almost", t("saveSpamWarningItem"));
@@ -18215,12 +19893,17 @@ function AppContent() {
           Alert.alert("Almost", t("saveSpamWarningGlobal"));
           return;
         }
-        const storedGoalId = resolveTemptationGoalId(item.id);
+        const storedGoalId = resolveTemptationGoalId(templateId);
         const desiredGoalId = forcedGoalId || storedGoalId;
         const shouldPrompt =
           !skipPrompt && assignableGoals.length > 1 && !desiredGoalId;
         if (shouldPrompt) {
-          setGoalLinkPrompt({ visible: true, item, intent: "save" });
+          setGoalLinkPrompt({
+            visible: true,
+            item,
+            intent: "save",
+            streakRecoveryValue: restoredStreakOverride ?? null,
+          });
           return;
         }
         let targetGoalId = desiredGoalId || getFallbackGoalId();
@@ -18231,11 +19914,11 @@ function AppContent() {
           (shouldAssign && !!targetGoalId) ||
           (!storedGoalId && !forcedGoalId && !!targetGoalId);
         if (shouldStoreGoal) {
-          assignTemptationGoal(item.id, targetGoalId);
+          assignTemptationGoal(templateId || item.id, targetGoalId);
         }
         const targetWish = targetGoalId ? wishes.find((wish) => wish.id === targetGoalId) : null;
         logEvent("temptation_decision", {
-          temptation_id: item.id,
+          temptation_id: templateId || item.id,
           decision: "save",
           price: priceLocal,
           balance_before: balanceLocal,
@@ -18252,11 +19935,15 @@ function AppContent() {
           const nextSavedUSD = Math.min(previousSavedUSD + appliedAmount, targetUSD);
           const remainingUSD = Math.max(targetUSD - nextSavedUSD, 0);
           const remainingTemptations = Math.max(Math.ceil(remainingUSD / priceUSD), 0);
+          const progressStartValue = targetUSD > 0 ? previousSavedUSD / targetUSD : 0;
+          const progressEndValue = targetUSD > 0 ? nextSavedUSD / targetUSD : progressStartValue;
           saveOverlayPayload = {
             ...saveOverlayPayload,
             goalTitle: targetWish.title || "",
             remainingTemptations,
             goalComplete: remainingUSD <= 0,
+            progressStart: progressStartValue,
+            progressEnd: progressEndValue,
           };
           const progressPercent =
             targetUSD > 0 ? Math.min((nextSavedUSD / targetUSD) * 100, 100) : 0;
@@ -18266,6 +19953,31 @@ function AppContent() {
               amount_added: convertToCurrency(appliedAmount, currencyCode),
               new_progress: progressPercent,
             });
+          }
+        }
+        if (
+          (!Number.isFinite(saveOverlayPayload.progressStart) ||
+            !Number.isFinite(saveOverlayPayload.progressEnd)) &&
+          heroGoalTargetUSD > 0 &&
+          priceUSD > 0
+        ) {
+          const heroStartValue = Math.min(
+            1,
+            Math.max(0, heroGoalTargetUSD > 0 ? heroGoalSavedUSD / heroGoalTargetUSD : 0)
+          );
+          const heroDeltaUSD = appliedAmount > 0 ? appliedAmount : priceUSD;
+          const heroEndValue = Math.min(
+            1,
+            heroGoalTargetUSD > 0
+              ? (heroGoalSavedUSD + heroDeltaUSD) / heroGoalTargetUSD
+              : heroStartValue
+          );
+          if (heroEndValue > heroStartValue) {
+            saveOverlayPayload = {
+              ...saveOverlayPayload,
+              progressStart: heroStartValue,
+              progressEnd: heroEndValue,
+            };
           }
         }
         const timestamp = saveTimestamp;
@@ -18278,27 +19990,54 @@ function AppContent() {
           setHealthPoints((prev) => prev + coinReward);
         }
         setRefuseStats((prev) => {
-          const current = prev[item.id] || {};
+          if (!templateId) return prev;
+          const { entry: currentEntry, key: legacyKey } = getLegacyRefuseStatsEntry(prev, templateId, item);
+          const current = currentEntry || {};
           const count = (current.count || 0) + 1;
           const totalUSD = (current.totalUSD || 0) + priceUSD;
-          return {
+          const previousStreak =
+            restoredStreakOverride !== null
+              ? restoredStreakOverride
+              : current.lastAction === "save"
+              ? current.currentStreak || 0
+              : 0;
+          const currentStreak = previousStreak + 1;
+          const bestStreak = Math.max(current.bestStreak || 0, currentStreak);
+          if (pendingStreakRecoveryRef.current?.[templateId]) {
+            delete pendingStreakRecoveryRef.current[templateId];
+          }
+          const next = {
             ...prev,
-            [item.id]: {
+            [templateId]: {
+              ...current,
               count,
               totalUSD,
               lastSavedAt: timestamp,
               lastSavedAmountUSD: priceUSD,
+              currentStreak,
+              bestStreak,
+              lastAction: "save",
+              streakLostAt: null,
+              recoverableStreak: 0,
+              recoverableAmountUSD: 0,
             },
           };
+          if (legacyKey && legacyKey !== templateId) {
+            delete next[legacyKey];
+          }
+          return next;
         });
+        if (templateId && streakRecoveryOverrideRef.current?.[templateId]) {
+          delete streakRecoveryOverrideRef.current[templateId];
+        }
         logHistoryEvent("refuse_spend", {
           title,
           amountUSD: priceUSD,
-          templateId: item.id,
+          templateId: templateId || item.id,
           coinReward,
           currency: profile.currency || DEFAULT_PROFILE.currency,
         });
-        const refuseStatsEntry = refuseStats[item.id] || {};
+        const refuseStatsEntry = streakStatsEntry || {};
         logEvent(
           "temptation_save",
           buildTemptationPayload(item, {
@@ -18308,13 +20047,14 @@ function AppContent() {
         );
         logTemptationAction("save", item, { goal_id: targetGoalId || null });
         logImpulseEvent("save", item, priceUSD, title);
-        triggerCardFeedback(item.id);
+        triggerCardFeedback(templateId || item.id);
         triggerCoinHaptics();
         handleFocusSaveProgress(item);
-        triggerOverlayState("save", { ...saveOverlayPayload, coinReward });
+        ensureOverlayEnvironmentReady();
+        triggerOverlayState("save", { ...saveOverlayPayload, coinReward }, { clearQueueOnDismiss: true });
         requestMascotAnimation("happy");
-        saveActionLogRef.current = [...recentSaves, { itemId: item.id, timestamp: saveTimestamp }];
-        recordTemptationInteraction(item.id, "save");
+        saveActionLogRef.current = [...recentSaves, { itemId: templateId || item.id, timestamp: saveTimestamp }];
+        recordTemptationInteraction(templateId || item.id, "save");
         return;
       }
       if (type === "maybe") {
@@ -18326,7 +20066,7 @@ function AppContent() {
         const now = Date.now();
         const pendingEntry = {
           id: `pending-${item.id}-${now}`,
-          templateId: item.id,
+          templateId: templateId || item.id,
           title,
           priceUSD,
           pricePrecision: getTemptationPricePrecision(item),
@@ -18372,23 +20112,141 @@ function AppContent() {
       moodPreset,
       requestMascotAnimation,
       handleFocusSaveProgress,
+      ensureOverlayEnvironmentReady,
       logEvent,
       profile.currency,
+      profile.customSpend,
       executeSpend,
       triggerStormEffect,
       recordTemptationInteraction,
       triggerOverlayState,
+      clearStreakRecoveryForTemptation,
+      getLegacyRefuseStatsEntry,
+      normalizeLegacyRecoveryRefs,
+      healthPoints,
+      setHealthPoints,
+      setStreakRecoveryPrompt,
+      resolveTemptationTemplateId,
     ]
   );
 
+  const handleStreakRecoveryDecline = useCallback(() => {
+    const { item, options, templateId } = streakRecoveryPrompt;
+    if (!item) {
+      hideStreakRecoveryPrompt();
+      return;
+    }
+    const resolvedTemplateId = resolveTemptationTemplateId(item, templateId);
+    if (resolvedTemplateId) {
+      normalizeLegacyRecoveryRefs(resolvedTemplateId, item);
+      clearStreakRecoveryForTemptation(resolvedTemplateId);
+    }
+    hideStreakRecoveryPrompt();
+    handleTemptationAction("save", item, options || {});
+  }, [
+    clearStreakRecoveryForTemptation,
+    handleTemptationAction,
+    hideStreakRecoveryPrompt,
+    normalizeLegacyRecoveryRefs,
+    resolveTemptationTemplateId,
+    streakRecoveryPrompt,
+  ]);
+
+  const handleStreakRecoveryConfirm = useCallback(() => {
+    const {
+      item,
+      options,
+      coinCost,
+      recoverableStreak,
+      recoverableAmountUSD,
+      templateId,
+    } = streakRecoveryPrompt;
+    if (!item) {
+      hideStreakRecoveryPrompt();
+      return;
+    }
+    const resolvedTemplateId = resolveTemptationTemplateId(item, templateId);
+    if (!resolvedTemplateId) {
+      hideStreakRecoveryPrompt();
+      return;
+    }
+    if (healthPoints < coinCost) {
+      setStreakRecoveryPrompt((prev) => ({
+        ...prev,
+        errorMessage: t("streakRecoveryInsufficient", { coins: prev.coinCost }),
+      }));
+      return;
+    }
+    setHealthPoints((prev) => Math.max(prev - coinCost, 0));
+    const restoredValue = Math.max(recoverableStreak || 0, 0);
+    const recoveryAmountUSD = Math.max(Number(recoverableAmountUSD) || 0, 0);
+    normalizeLegacyRecoveryRefs(resolvedTemplateId, item);
+    streakRecoveryOverrideRef.current[resolvedTemplateId] = { streak: restoredValue };
+    setRefuseStats((prev) => {
+      const { entry: current, key: legacyKey } = getLegacyRefuseStatsEntry(prev, resolvedTemplateId, item);
+      if (!current) return prev;
+      const restoredCurrent = Math.max(
+        recoverableStreak || current.recoverableStreak || 0,
+        0
+      );
+      const next = {
+        ...prev,
+        [resolvedTemplateId]: {
+          ...current,
+          currentStreak: restoredCurrent,
+          lastAction: "save",
+          recoverableStreak: 0,
+          recoverableAmountUSD: 0,
+        },
+      };
+      if (legacyKey && legacyKey !== resolvedTemplateId) {
+        delete next[legacyKey];
+      }
+      return next;
+    });
+    if (pendingStreakRecoveryRef.current?.[resolvedTemplateId]) {
+      delete pendingStreakRecoveryRef.current[resolvedTemplateId];
+    }
+    logHistoryEvent("streak_restore", {
+      templateId: resolvedTemplateId,
+      restoredStreak: restoredValue,
+      amountUSD: recoveryAmountUSD,
+      coinCost,
+    });
+    hideStreakRecoveryPrompt();
+    const nextOptions = {
+      ...(options || {}),
+      skipStreakRecoveryPrompt: true,
+      restoredStreakValue: restoredValue,
+    };
+    handleTemptationAction("save", item, nextOptions);
+  }, [
+    getLegacyRefuseStatsEntry,
+    handleTemptationAction,
+    healthPoints,
+    hideStreakRecoveryPrompt,
+    normalizeLegacyRecoveryRefs,
+    pendingStreakRecoveryRef,
+    resolveTemptationTemplateId,
+    streakRecoveryOverrideRef,
+    setHealthPoints,
+    setRefuseStats,
+    setStreakRecoveryPrompt,
+    streakRecoveryPrompt,
+    t,
+    logHistoryEvent,
+  ]);
+
   const closeGoalLinkPrompt = useCallback(() => {
-    setGoalLinkPrompt({ visible: false, item: null, intent: null });
+    setGoalLinkPrompt({ visible: false, item: null, intent: null, streakRecoveryValue: null });
   }, []);
 
   const handleGoalLinkSelect = useCallback(
     (wishId) => {
       const sourceItem = goalLinkPrompt.item;
       const intent = goalLinkPrompt.intent;
+      const streakRecoveryValue = goalLinkPrompt.streakRecoveryValue;
+      const templateId = resolveTemptationTemplateId(sourceItem);
       closeGoalLinkPrompt();
       if (!wishId || !sourceItem) return;
       if (intent === "save") {
@@ -18396,12 +20254,19 @@ function AppContent() {
           skipPrompt: true,
           goalId: wishId,
           shouldAssign: true,
+          restoredStreakValue: streakRecoveryValue ?? null,
         });
         return;
       }
-      assignTemptationGoal(sourceItem.id, wishId);
+      assignTemptationGoal(templateId || sourceItem.id, wishId);
     },
-    [assignTemptationGoal, closeGoalLinkPrompt, goalLinkPrompt, handleTemptationAction]
+    [
+      assignTemptationGoal,
+      closeGoalLinkPrompt,
+      goalLinkPrompt,
+      handleTemptationAction,
+      resolveTemptationTemplateId,
+    ]
   );
 
   const handleGoalLongPress = useCallback(
@@ -18641,7 +20506,7 @@ function AppContent() {
             best_streak: best,
             weekday: today.getDay(),
             persona: profile.persona || "unknown",
-            goal: profile.goal || "none",
+            goal: resolveProfileGoalId(profile) || "none",
           });
           newMilestones.forEach((milestone) => {
             logEvent("free_day_milestone", {
@@ -18676,7 +20541,17 @@ function AppContent() {
         },
       },
     ]);
-  }, [freeDayStats, t, logEvent, logHistoryEvent, profile.goal, profile.persona, setHealthPoints, triggerOverlayState]);
+  }, [
+    freeDayStats,
+    t,
+    logEvent,
+    logHistoryEvent,
+    profile.goal,
+    profile.persona,
+    profile.primaryGoals,
+    setHealthPoints,
+    triggerOverlayState,
+  ]);
 
   const toggleTemptationEditor = useCallback(
     (item) => {
@@ -19294,11 +21169,6 @@ function AppContent() {
       }
       if (decision === "decline") {
         const price = priceUSD;
-        const localAmount = formatCurrency(
-          convertToCurrency(price, profile.currency || DEFAULT_PROFILE.currency)
-        );
-        setSavedTotalUSD((prev) => prev + price);
-        setDeclineCount((prev) => prev + 1);
         setDecisionStats((prev) => ({
           ...prev,
           resolvedToDeclines: prev.resolvedToDeclines + 1,
@@ -19313,11 +21183,25 @@ function AppContent() {
           )
         );
         logHistoryEvent("pending_to_decline", { title, amountUSD: price });
-        triggerOverlayState("cart", t("wishDeclined", { amount: localAmount }));
-        triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+        const actionTemplateId = template?.id || pendingItem.templateId || pendingItem.id;
+        const actionItem = {
+          ...(template || {}),
+          id: actionTemplateId,
+          templateId: actionTemplateId,
+          title: template?.title || pendingItem.title || "Wish",
+          emoji: pendingItem.emoji || template?.emoji || DEFAULT_TEMPTATION_EMOJI,
+          priceUSD: price,
+          basePriceUSD: template?.basePriceUSD || price,
+          categories: template?.categories || pendingItem.categories || [],
+        };
+        await handleTemptationAction("save", actionItem, {
+          skipPrompt: true,
+          shouldAssign: false,
+        });
+        return;
       }
     },
-    [language, profile.currency, t, logHistoryEvent, buildTemptationPayload]
+    [buildTemptationPayload, findTemplateById, handleTemptationAction, language, logHistoryEvent, profile.currency, t]
   );
   const handlePendingDelete = useCallback(
     (pendingItem) => {
@@ -19373,7 +21257,7 @@ function AppContent() {
     if (next.type === "purchase") {
       setConfettiKey((prev) => prev + 1);
     }
-    setOverlay({ type: next.type, message: next.message });
+    setOverlay({ type: next.type, message: next.message, clearQueueOnDismiss: !!next.clearQueueOnDismiss });
     const defaultDuration =
       next.type === "cart"
         ? 1800
@@ -19382,10 +21266,12 @@ function AppContent() {
         : next.type === "reward"
         ? 3200
         : next.type === "save"
-        ? 4200
+        ? null
         : next.type === "impulse_alert"
         ? null
         : next.type === "focus_digest"
+        ? null
+        : next.type === "primary_temptation"
         ? null
         : 2600;
     const timeout = next.duration ?? defaultDuration;
@@ -19414,8 +21300,16 @@ function AppContent() {
   }, [overlayEnvironmentReady, processOverlayQueue]);
 
   const triggerOverlayState = useCallback(
-    (type, message, duration) => {
-      overlayQueueRef.current.push({ type, message, duration });
+    (type, message, config) => {
+      let duration = null;
+      let clearQueueOnDismiss = false;
+      if (typeof config === "number") {
+        duration = config;
+      } else if (config && typeof config === "object") {
+        duration = typeof config.duration === "number" ? config.duration : null;
+        clearQueueOnDismiss = !!config.clearQueueOnDismiss;
+      }
+      overlayQueueRef.current.push({ type, message, duration, clearQueueOnDismiss });
       processOverlayQueue();
       if (!overlayEnvironmentReady) {
         scheduleOverlayRetry();
@@ -19430,7 +21324,9 @@ function AppContent() {
     }
   }, [overlayEnvironmentReady, processOverlayQueue]);
 
-  const dismissOverlay = useCallback(() => {
+  const dismissOverlay = useCallback((maybeOptions = {}) => {
+    const options =
+      maybeOptions && typeof maybeOptions === "object" && "nativeEvent" in maybeOptions ? {} : maybeOptions;
     if (overlay?.type === "focus_digest" && overlay?.message?.prompt) {
       focusPromptActiveRef.current = false;
     }
@@ -19440,6 +21336,11 @@ function AppContent() {
     }
     if (overlayActiveRef.current) {
       overlayActiveRef.current = false;
+    }
+    const shouldClearQueue =
+      typeof options.clearQueue === "boolean" ? options.clearQueue : !!overlay?.clearQueueOnDismiss;
+    if (shouldClearQueue) {
+      overlayQueueRef.current = [];
     }
     setOverlay(null);
     processOverlayQueue();
@@ -19899,6 +21800,7 @@ function AppContent() {
             setProfile(resetProfile);
             setProfileDraft(resetProfile);
             setRegistrationData(INITIAL_REGISTRATION);
+            goalSelectionTouchedRef.current = false;
             goToOnboardingStep("logo", { recordHistory: false, resetHistory: true });
             setActiveCategory("all");
             setActiveTab("feed");
@@ -19945,47 +21847,59 @@ function AppContent() {
   const saveProfileEdit = () => {
     triggerHaptic();
     const normalizedGoals = Array.isArray(profileDraft.primaryGoals) && profileDraft.primaryGoals.length
-      ? profileDraft.primaryGoals.map((entry) => {
-          const goalId = entry?.id || profileDraft.goal || profile.goal || DEFAULT_PROFILE.goal;
-          const targetUSD =
-            Number.isFinite(entry?.targetUSD) && entry.targetUSD > 0
-              ? entry.targetUSD
-              : getGoalDefaultTargetUSD(goalId);
-          const normalized = {
-            id: goalId,
-            targetUSD,
-          };
-          if (Number.isFinite(entry?.savedUSD)) {
-            normalized.savedUSD = entry.savedUSD;
-          }
-          if (entry?.status) {
-            normalized.status = entry.status;
-          }
-          if (entry?.createdAt) {
-            normalized.createdAt = entry.createdAt;
-          }
-          if (entry?.customTitle) {
-            normalized.customTitle = entry.customTitle;
-          }
-          if (entry?.customEmoji) {
-            normalized.customEmoji = entry.customEmoji;
-          }
-          return normalized;
-        })
-      : [
-          {
-            id: profileDraft.goal || profile.goal || DEFAULT_PROFILE.goal,
-            targetUSD: getGoalDefaultTargetUSD(profileDraft.goal || profile.goal || DEFAULT_PROFILE.goal),
-            savedUSD: 0,
-            status: "active",
-            createdAt: Date.now(),
-          },
-        ];
-    const activeEntry = normalizedGoals[0];
+      ? profileDraft.primaryGoals
+          .map((entry) => {
+            const goalId = entry?.id || profileDraft.goal || profile.goal || null;
+            if (!goalId) return null;
+            const targetUSD =
+              Number.isFinite(entry?.targetUSD) && entry.targetUSD > 0
+                ? entry.targetUSD
+                : getGoalDefaultTargetUSD(goalId);
+            const normalized = {
+              id: goalId,
+              targetUSD,
+            };
+            if (Number.isFinite(entry?.savedUSD)) {
+              normalized.savedUSD = entry.savedUSD;
+            }
+            if (entry?.status) {
+              normalized.status = entry.status;
+            }
+            if (entry?.createdAt) {
+              normalized.createdAt = entry.createdAt;
+            }
+            if (entry?.customTitle) {
+              normalized.customTitle = entry.customTitle;
+            }
+            if (entry?.customEmoji) {
+              normalized.customEmoji = entry.customEmoji;
+            }
+            return normalized;
+          })
+          .filter(Boolean)
+      : [];
+    const fallbackGoalId = profileDraft.goal || profile.goal || null;
+    const primaryGoalEntries =
+      normalizedGoals.length > 0
+        ? normalizedGoals
+        : fallbackGoalId
+        ? [
+            {
+              id: fallbackGoalId,
+              targetUSD: getGoalDefaultTargetUSD(fallbackGoalId),
+              savedUSD: 0,
+              status: "active",
+              createdAt: Date.now(),
+            },
+          ]
+        : [];
+    const activeEntry = primaryGoalEntries[0];
     const activeTarget =
       Number.isFinite(activeEntry?.targetUSD) && activeEntry.targetUSD > 0
         ? activeEntry.targetUSD
-        : getGoalDefaultTargetUSD(activeEntry?.id || profile.goal || DEFAULT_PROFILE.goal);
+        : activeEntry?.id
+        ? getGoalDefaultTargetUSD(activeEntry.id)
+        : 0;
     const activeSaved = Number.isFinite(activeEntry?.savedUSD) ? Math.max(activeEntry.savedUSD, 0) : 0;
     const hasMetTarget = activeTarget > 0 && activeSaved >= activeTarget;
     const prevCustomId = profile.customSpend?.id || "custom_habit";
@@ -19994,8 +21908,8 @@ function AppContent() {
     const nextCustomTitle = (profileDraft.customSpend?.title || "").trim();
     const nextProfile = {
       ...profileDraft,
-      primaryGoals: normalizedGoals,
-      goal: normalizedGoals[0]?.id || DEFAULT_PROFILE.goal,
+      primaryGoals: primaryGoalEntries,
+      goal: primaryGoalEntries[0]?.id || null,
       goalTargetUSD: activeTarget,
       goalCelebrated: hasMetTarget ? profileDraft.goalCelebrated : false,
     };
@@ -20199,6 +22113,7 @@ function AppContent() {
             tamagotchiAnimations={tamagotchiAnimations}
             lifetimeSavedUSD={lifetimeSavedUSD}
             interactionStats={temptationInteractions}
+            resolveCardRefuseStats={resolveCardRefuseStats}
           />
         );
     }
@@ -20267,6 +22182,7 @@ function AppContent() {
 
   if (onboardingStep !== "done") {
     const onboardingBackHandler = canGoBackOnboarding ? handleOnboardingBack : undefined;
+    const onboardingSkipHandler = canShowOnboardingSkip ? handleOnboardingSkip : null;
     let onboardContent = null;
     if (onboardingStep === "logo") {
       onboardContent = <LogoSplash onDone={() => goToOnboardingStep("language", { recordHistory: false })} />;
@@ -20288,7 +22204,13 @@ function AppContent() {
       );
     } else if (onboardingStep === "guide") {
       onboardContent = (
-        <HowItWorksScreen colors={colors} t={t} onContinue={handleGuideContinue} onBack={onboardingBackHandler} />
+        <HowItWorksScreen
+          colors={colors}
+          t={t}
+          onContinue={handleGuideContinue}
+          onBack={onboardingBackHandler}
+          onSkip={onboardingSkipHandler}
+        />
       );
     } else if (onboardingStep === "register") {
       onboardContent = (
@@ -20301,6 +22223,7 @@ function AppContent() {
           t={t}
           onBack={onboardingBackHandler}
           mascotImageSource={tamagotchiAvatarSource}
+          onSkip={onboardingSkipHandler}
         />
       );
     } else if (onboardingStep === "persona") {
@@ -20313,6 +22236,7 @@ function AppContent() {
           t={t}
           language={language}
           onBack={onboardingBackHandler}
+          onSkip={onboardingSkipHandler}
         />
       );
     } else if (onboardingStep === "habit") {
@@ -20326,6 +22250,7 @@ function AppContent() {
           currency={registrationData.currency || profile.currency || DEFAULT_PROFILE.currency}
           onBack={onboardingBackHandler}
           language={language}
+          onSkip={onboardingSkipHandler}
         />
       );
     } else if (onboardingStep === "baseline") {
@@ -20338,6 +22263,8 @@ function AppContent() {
           colors={colors}
           t={t}
           onBack={onboardingBackHandler}
+          onSkip={onboardingSkipHandler}
+          onSkipStep={handleBaselineSkip}
         />
       );
     } else if (onboardingStep === "goal") {
@@ -20352,6 +22279,8 @@ function AppContent() {
           onBack={onboardingBackHandler}
           customGoals={registrationData.customGoals || []}
           onCustomGoalCreate={openOnboardingGoalModal}
+          onSkip={onboardingSkipHandler}
+          onSkipStep={handleGoalStageSkip}
         />
       );
     } else if (onboardingStep === "goal_target") {
@@ -20367,6 +22296,7 @@ function AppContent() {
           t={t}
           language={language}
           customGoals={registrationData.customGoals || []}
+          onSkip={onboardingSkipHandler}
         />
       );
     } else if (onboardingStep === "analytics_consent") {
@@ -20774,6 +22704,40 @@ function AppContent() {
             </TouchableWithoutFeedback>
           </Modal>
         )}
+        {pushDayThreePromptVisible && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <View style={styles.quickModalBackdrop}>
+              <View style={[styles.quickModalCard, { backgroundColor: colors.card }]}>
+                <Text style={[styles.quickModalTitle, { color: colors.text }]}>
+                  {t("pushOptInPromptTitle")}
+                </Text>
+                <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>
+                  {t("pushOptInPromptBody")}
+                </Text>
+                <View style={styles.quickModalActions}>
+                  <TouchableOpacity
+                    style={[styles.quickModalSecondary, { borderColor: colors.border }]}
+                    activeOpacity={0.85}
+                    onPress={handlePushDayThreePromptLater}
+                  >
+                    <Text style={[styles.quickModalSecondaryText, { color: colors.muted }]}>
+                      {t("pushOptInPromptSecondary")}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.quickModalPrimary, { backgroundColor: colors.text }]}
+                    activeOpacity={0.92}
+                    onPress={handlePushDayThreePromptEnable}
+                  >
+                    <Text style={[styles.quickModalPrimaryText, { color: colors.background }]}>
+                      {t("pushOptInPromptPrimary")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        )}
         {ratingPromptVisible && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={handleRatingPromptLater}>
@@ -20894,7 +22858,7 @@ function AppContent() {
             {
               backgroundColor: colors.card,
               borderTopColor: colors.border,
-              paddingBottom: tabBarBottomInset,
+              paddingBottom: tabBarBottomInset + (Platform.OS === "android" ? 12 : 0),
               marginBottom: Platform.OS === "ios" ? -(safeAreaInsets.bottom || 0) : 0,
               paddingTop: 12,
             },
@@ -21624,7 +23588,7 @@ function AppContent() {
                           : null)
                       }
                       currency={profile.currency || DEFAULT_PROFILE.currency}
-                      stats={refuseStats[priceEditor.item.id]}
+                      stats={resolveCardRefuseStats(priceEditor.item)}
                       feedback={cardFeedback[priceEditor.item.id]}
                       titleOverride={titleOverrides[priceEditor.item.id]}
                       goalLabel={priceEditorAssignedGoalTitle || null}
@@ -21646,7 +23610,12 @@ function AppContent() {
                       onEditCancel={closePriceEditor}
                       onEditDelete={() => promptTemptationDelete(priceEditor.item)}
                       onEditGoalSelect={() => {
-                        setGoalLinkPrompt({ visible: true, item: priceEditor.item, intent: "edit" });
+                        setGoalLinkPrompt({
+                          visible: true,
+                          item: priceEditor.item,
+                          intent: "edit",
+                          streakRecoveryValue: null,
+                        });
                       }}
                       onQuickGoalToggle={handleQuickGoalToggle}
                       onSwipeDelete={() => promptTemptationDelete(priceEditor.item)}
@@ -21690,6 +23659,81 @@ function AppContent() {
                       </Text>
                     </TouchableOpacity>
                   </MoodGradientBlock>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+
+        {baselinePrompt.visible && (
+          <Modal
+            visible
+            transparent
+            animationType="fade"
+            onRequestClose={closeBaselinePrompt}
+            statusBarTranslucent
+          >
+            <TouchableWithoutFeedback onPress={closeBaselinePrompt}>
+              <View style={styles.baselinePromptBackdrop}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
+                    style={[
+                      styles.baselinePromptCard,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.baselinePromptTitle, { color: colors.text }]}>
+                      {t("baselineTitle")}
+                    </Text>
+                    <Text style={[styles.baselinePromptSubtitle, { color: colors.muted }]}>
+                      {t("baselineSubtitle")}
+                    </Text>
+                    <View style={styles.baselineInputGroup}>
+                      <TextInput
+                        style={[
+                          styles.primaryInput,
+                          {
+                            borderColor: colors.border,
+                            backgroundColor: colors.background,
+                            color: colors.text,
+                          },
+                        ]}
+                        value={baselinePrompt.value}
+                        onChangeText={handleBaselinePromptChange}
+                        placeholder={t("baselinePlaceholder", {
+                          amount: formatSampleAmount(
+                            BASELINE_SAMPLE_USD,
+                            baselinePrompt.currency ||
+                              profile.currency ||
+                              DEFAULT_PROFILE.currency
+                          ),
+                        })}
+                        placeholderTextColor={colorWithAlpha(colors.muted, 0.6)}
+                        keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "decimal-pad"}
+                        returnKeyType="done"
+                        onSubmitEditing={handleBaselinePromptSubmit}
+                      />
+                    </View>
+                    <Text style={[styles.baselineHint, { color: colors.muted }]}>
+                      {t("baselineHint")}
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.primaryButton, { backgroundColor: colors.text }]}
+                      onPress={handleBaselinePromptSubmit}
+                    >
+                      <Text style={[styles.primaryButtonText, { color: colors.background }]}>
+                        {t("baselineCTA")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.baselinePromptDismiss} onPress={closeBaselinePrompt}>
+                      <Text style={[styles.baselinePromptDismissText, { color: colors.muted }]}>
+                        {t("profileCancel")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </TouchableWithoutFeedback>
               </View>
             </TouchableWithoutFeedback>
@@ -21783,6 +23827,7 @@ function AppContent() {
           overlay.type !== "level" &&
           overlay.type !== "save" &&
           overlay.type !== "custom_temptation" &&
+          overlay.type !== "primary_temptation" &&
           overlay.type !== "reward" &&
           overlay.type !== "health" &&
           overlay.type !== "focus_reward" &&
@@ -21967,7 +24012,7 @@ function AppContent() {
         )}
         {overlay?.type === "save" && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
-            <TouchableWithoutFeedback onPress={dismissOverlay}>
+            <TouchableWithoutFeedback onPress={handleSaveOverlayPress}>
               <View style={styles.saveOverlay}>
                 <View
                   style={[
@@ -21976,37 +24021,32 @@ function AppContent() {
                   ]}
                 />
                 <CoinRainOverlay dropCount={16} />
-                <Animated.View style={[styles.saveCard, saveCardBackgroundStyle]}>
-                  <Text style={[styles.saveTitle, { color: colors.text }]}>{t("saveCelebrateTitlePrefix")}</Text>
-                  <Text style={[styles.saveGoalText, { color: colors.text }]}>
-                    {saveOverlayPayload?.title || ""}
-                  </Text>
-                  {saveOverlayGoalText ? (
-                    <View style={styles.saveGoalBox}>
-                      <Text style={[styles.saveGoalText, { color: colors.text }]}>
-                        {saveOverlayGoalText}
-                      </Text>
-                    </View>
-                  ) : null}
-                  {Boolean(saveOverlayPayload?.coinReward) && (
-                    <View
-                      style={[
-                        styles.saveCoinsRow,
-                        {
-                          backgroundColor: isDarkTheme
-                            ? "rgba(255,255,255,0.08)"
-                            : "rgba(33,150,243,0.08)",
-                        },
-                      ]}
-                    >
-                      <Image source={HEALTH_COIN_TIERS[0].asset} style={styles.saveCoinIcon} />
-                      <Text style={[styles.saveCoinsText, { color: colors.text }]}>
-                        {t("saveOverlayCoinReward", { amount: saveOverlayPayload.coinReward })}
-                      </Text>
-                    </View>
-                  )}
-                  <Image source={tamagotchiAnimations.happy} style={styles.saveGif} />
-                </Animated.View>
+                <SaveCelebration
+                  ref={saveCelebrationRef}
+                  colors={colors}
+                  t={t}
+                  language={language}
+                  payload={saveOverlayPayload}
+                  goalCopy={saveOverlayGoalText}
+                  goalPrefix={saveOverlayGoalPrefix}
+                  coinReward={saveOverlayPayload?.coinReward}
+                  mascotHappySource={tamagotchiAnimations.happy}
+                  progressStart={
+                    Number.isFinite(saveOverlayPayload?.progressStart)
+                      ? saveOverlayPayload.progressStart
+                      : heroGoalProgressRatio
+                  }
+                  progressEnd={
+                    Number.isFinite(saveOverlayPayload?.progressEnd)
+                      ? saveOverlayPayload.progressEnd
+                      : heroGoalProgressRatio
+                  }
+                  remainingActions={
+                    Number.isFinite(saveOverlayPayload?.remainingTemptations)
+                      ? saveOverlayPayload.remainingTemptations
+                      : remainingGoalActions
+                  }
+                />
               </View>
             </TouchableWithoutFeedback>
           </Modal>
@@ -22032,6 +24072,56 @@ function AppContent() {
                     {t("customTemptationAdded", { title: overlay.message || "" })}
                   </Text>
                 </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+        {overlay?.type === "primary_temptation" && primaryTemptationOverlayItem && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View style={styles.overlayFullScreen}>
+                <View
+                  style={[
+                    styles.overlayDim,
+                    { backgroundColor: overlayDimColor },
+                  ]}
+                />
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
+                    style={[
+                      styles.primaryTemptationOverlayCardContainer,
+                      { backgroundColor: colors.background, borderColor: overlayBorderColor },
+                    ]}
+                  >
+                    <Text style={[styles.primaryTemptationOverlayTitle, { color: colors.text }]}>
+                      {t("customSpendTitle")}
+                    </Text>
+                    <TemptationCard
+                      item={primaryTemptationOverlayItem}
+                      language={language}
+                      colors={colors}
+                      t={t}
+                      currency={profile.currency || DEFAULT_PROFILE.currency}
+                      stats={primaryTemptationOverlayStats}
+                      feedback={primaryTemptationOverlayItem ? cardFeedback[primaryTemptationOverlayItem.id] : null}
+                      titleOverride={primaryTemptationOverlayTitle}
+                      descriptionOverride={primaryTemptationOverlayDescription}
+                      goalLabel={primaryTemptationOverlayGoalLabel}
+                      isPrimaryTemptation={primaryTemptationOverlayItem.id === primaryTemptationId}
+                      onAction={(type, item) => handlePrimaryTemptationOverlayAction(type, item)}
+                      onToggleEdit={null}
+                      cardStyle={styles.primaryTemptationCard}
+                    />
+                    <TouchableOpacity
+                      style={[styles.primaryTemptationDismiss, { borderColor: colors.border }]}
+                      onPress={dismissOverlay}
+                    >
+                      <Text style={[styles.primaryTemptationDismissText, { color: colors.muted }]}>
+                        {t("profileCancel")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </TouchableWithoutFeedback>
               </View>
             </TouchableWithoutFeedback>
           </Modal>
@@ -22285,7 +24375,8 @@ function AppContent() {
                     <TouchableOpacity
                       style={styles.goalPickerReset}
                       onPress={() => {
-                        assignTemptationGoal(goalLinkPrompt.item.id, null);
+                        const templateId = resolveTemptationTemplateId(goalLinkPrompt.item);
+                        assignTemptationGoal(templateId || goalLinkPrompt.item.id, null);
                         closeGoalLinkPrompt();
                       }}
                     >
@@ -22375,6 +24466,85 @@ function AppContent() {
                       {t("priceEditCancel")}
                     </Text>
                   </TouchableOpacity>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        <Modal
+          visible={streakRecoveryPrompt.visible}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+        >
+          <TouchableWithoutFeedback onPress={handleStreakRecoveryDecline}>
+            <View style={[styles.priceModalBackdrop, modalKeyboardPaddingStyle]}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={[styles.streakRecoveryCard, { backgroundColor: colors.card }]}>
+                  <Text style={[styles.streakRecoveryTitle, { color: colors.text }]}>
+                    {t("streakRecoveryTitle")}
+                  </Text>
+                  <Text style={[styles.streakRecoveryBody, { color: colors.muted }]}>
+                    {t("streakRecoveryBody", { coins: streakRecoveryPrompt.coinCost })}
+                  </Text>
+                  {Boolean(streakRecoveryPrompt.coinCost) && (
+                    <View style={styles.streakRecoveryCoinRow}>
+                      {BLUE_HEALTH_COIN_ASSET ? (
+                        <>
+                          {Array.from({
+                            length: Math.min(streakRecoveryPrompt.coinCost || 0, 6),
+                          }).map((_, index) => (
+                            <Image
+                              key={`recovery-coin-${index}`}
+                              source={BLUE_HEALTH_COIN_ASSET}
+                              style={styles.streakRecoveryCoinIcon}
+                            />
+                          ))}
+                          {streakRecoveryPrompt.coinCost > 6 ? (
+                            <Text style={[styles.streakRecoveryCoinOverflow, { color: colors.muted }]}>
+                              +{streakRecoveryPrompt.coinCost - 6}
+                            </Text>
+                          ) : null}
+                        </>
+                      ) : (
+                        <Text style={[styles.streakRecoveryCoinOverflow, { color: colors.text }]}>
+                          ×{streakRecoveryPrompt.coinCost}
+                        </Text>
+                      )}
+                    </View>
+                  )}
+                  {Boolean(streakRecoveryPrompt.errorMessage) && (
+                    <Text style={styles.streakRecoveryErrorText}>
+                      {streakRecoveryPrompt.errorMessage}
+                    </Text>
+                  )}
+                  <View style={styles.streakRecoveryActions}>
+                    <TouchableOpacity
+                      style={[
+                        styles.streakRecoveryButton,
+                        styles.streakRecoveryButtonSecondary,
+                        { borderColor: colors.border },
+                      ]}
+                      onPress={handleStreakRecoveryDecline}
+                    >
+                      <Text style={[styles.streakRecoveryButtonText, { color: colors.text }]}>
+                        {t("streakRecoveryDecline")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.streakRecoveryButton,
+                        styles.streakRecoveryButtonPrimary,
+                        { backgroundColor: colors.text },
+                      ]}
+                      onPress={handleStreakRecoveryConfirm}
+                    >
+                      <Text style={[styles.streakRecoveryButtonText, { color: colors.background }]}>
+                        {t("streakRecoveryConfirm", { coins: streakRecoveryPrompt.coinCost })}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </TouchableWithoutFeedback>
             </View>
@@ -22533,8 +24703,14 @@ function AppContent() {
           onConfirm={handleSpendConfirm}
           colors={colors}
           t={t}
+          theme={theme}
         />
-        {stormActive && <StormOverlay t={t} />}
+        <StormOverlay
+          visible={stormActive}
+          t={t}
+          catCrySource={tamagotchiAnimations.cry}
+          colors={colors}
+        />
       </SafeAreaView>
         </View>
       </TouchableWithoutFeedback>
@@ -22555,11 +24731,15 @@ export default Sentry.wrap(App);
 const StatusGlass = React.memo(({ height, colors, theme, blurAvailable = false }) => {
   const gradientId = useMemo(() => `status-glass-${Math.random().toString(36).slice(2, 10)}`, []);
   const baseColor = colors?.background || "#fff";
-  const tintedBase = blendColors(baseColor, "#ffffff", theme === "dark" ? 0.2 : 0.45);
-  const highlight = colorWithAlpha("#ffffff", theme === "dark" ? 0.2 : 0.32);
-  const softCore = colorWithAlpha(tintedBase, theme === "dark" ? 0.28 : 0.38);
+  const isDarkTheme = theme === "dark";
+  const tintedBase = isDarkTheme
+    ? blendColors(baseColor, "#000000", 0.35)
+    : blendColors(baseColor, "#ffffff", 0.45);
+  const highlightBase = isDarkTheme ? "#000000" : "#ffffff";
+  const highlight = colorWithAlpha(highlightBase, isDarkTheme ? 0.3 : 0.32);
+  const softCore = colorWithAlpha(tintedBase, isDarkTheme ? 0.45 : 0.38);
   const fadeOut = colorWithAlpha(baseColor, 0);
-  const borderColor = colorWithAlpha(colors?.border || tintedBase, theme === "dark" ? 0.35 : 0.18);
+  const borderColor = colorWithAlpha(colors?.border || tintedBase, isDarkTheme ? 0.35 : 0.18);
   const borderPosition = Math.max(0, height - 26);
   const overlay = (
     <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -22738,6 +24918,32 @@ const styles = StyleSheet.create({
   },
   moodDetailsButtonText: {
     ...createCtaText({ textTransform: "uppercase" }),
+  },
+  baselinePromptBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    padding: 24,
+    justifyContent: "center",
+  },
+  baselinePromptCard: {
+    borderRadius: 28,
+    borderWidth: 1,
+    padding: 20,
+    gap: 12,
+  },
+  baselinePromptTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 22,
+  },
+  baselinePromptSubtitle: {
+    ...createBodyText({ fontSize: 15, lineHeight: 22 }),
+  },
+  baselinePromptDismiss: {
+    alignItems: "center",
+    marginTop: 4,
+  },
+  baselinePromptDismissText: {
+    ...createCtaText({ fontSize: 13 }),
   },
   heroMascotRow: {
     flexDirection: "row",
@@ -23215,6 +25421,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 14,
     gap: 8,
+  },
+  heroPotentialBody: {
+    ...createBodyText({ fontSize: 14 }),
   },
   heroPotentialHeader: {
     flexDirection: "row",
@@ -23979,34 +26188,27 @@ const styles = StyleSheet.create({
   },
   payCardTexts: {
     flex: 1,
+    marginLeft: 10,
   },
   payCardTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
   },
   payCardAmount: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
   },
-  paySheetSubtitle: {
-    fontSize: 14,
-    textAlign: "center",
-  },
-  paySheetHintRow: {
-    flexDirection: "row",
+  paySheetReminder: {
+    width: "100%",
     alignItems: "center",
-    gap: 8,
-    justifyContent: "center",
+    paddingVertical: 8,
   },
-  paySheetHintDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#FFD93D",
-  },
-  paySheetHint: {
-    fontSize: 12,
+  paySheetSubtitle: {
+    fontSize: 11,
+    lineHeight: 14,
     textAlign: "center",
+    maxWidth: "90%",
+    alignSelf: "center",
   },
   payConfirm: {
     borderRadius: 999,
@@ -24228,6 +26430,20 @@ const styles = StyleSheet.create({
   impulseCategoryStatSecondary: {
     ...createSecondaryText({ fontSize: 12 }),
   },
+  impulseSequenceSection: {
+    marginTop: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 12,
+    gap: 4,
+  },
+  impulseSequenceTitle: {
+    ...createBodyText({ fontSize: 13, fontWeight: "700" }),
+    marginBottom: 2,
+  },
+  impulseSequenceEntry: {
+    ...createSecondaryText({ fontSize: 13 }),
+  },
   freeDayHealthRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -24336,23 +26552,45 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(4,6,15,0.92)",
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 24,
     zIndex: 99,
   },
   stormFlash: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255,255,255,0.5)",
+    backgroundColor: "rgba(255,255,255,0.55)",
   },
   stormMessageWrap: {
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 18,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    width: "85%",
+    maxWidth: 360,
+    paddingHorizontal: 26,
+    paddingVertical: 24,
+    borderRadius: 32,
+    borderWidth: 1,
+    alignItems: "center",
+    gap: 8,
   },
   stormMessage: {
-    color: "#F5F6FF",
+    fontSize: 18,
     fontWeight: "700",
     textAlign: "center",
+    lineHeight: 24,
+  },
+  stormComfortText: {
     fontSize: 14,
+    textAlign: "center",
+    fontWeight: "500",
+  },
+  stormCatWrap: {
+    marginBottom: 8,
+  },
+  stormCatImage: {
+    width: 170,
+    height: 170,
+  },
+  stormLightningBolt: {
+    position: "absolute",
+    width: 80,
+    height: 200,
   },
   productCard: {
     width: "48%",
@@ -24582,6 +26820,10 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
   },
+  temptationGoalBadgeInline: {
+    marginLeft: 12,
+    marginTop: 2,
+  },
   categoryEditSection: {
     marginTop: 10,
     gap: 6,
@@ -24599,6 +26841,28 @@ const styles = StyleSheet.create({
   },
   temptationFocusBadgeText: {
     ...createCtaText({ fontSize: 11 }),
+  },
+  temptationStreakBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    gap: 4,
+    minHeight: 22,
+  },
+  temptationStreakEmoji: {
+    fontSize: 12,
+  },
+  temptationStreakText: {
+    ...createCtaText({ fontSize: 10 }),
+  },
+  temptationStreakBadgeFloating: {
+    position: "absolute",
+    top: -26,
+    right: -2,
+    zIndex: 2,
   },
   editPriceText: {
     fontSize: 13,
@@ -25759,6 +28023,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     marginBottom: 10,
+  },
+  profileInputPlaceholder: {
+    fontSize: IS_COMPACT_DEVICE ? 13 : 14,
   },
   goalTargetInputWrap: {
     flexDirection: "row",
@@ -27066,63 +29333,245 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  saveCard: {
-    backgroundColor: "rgba(255,255,255,0.96)",
-    borderRadius: 24,
-    padding: 18,
-    alignItems: "center",
-    gap: 10,
+  primaryTemptationOverlayCardContainer: {
+    width: OVERLAY_CARD_MAX_WIDTH,
+    maxWidth: OVERLAY_CARD_MAX_WIDTH,
+    borderRadius: 34,
+    padding: 20,
     borderWidth: 1,
-    borderColor: "rgba(18,15,40,0.08)",
-    marginHorizontal: 24,
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 12 },
+    gap: 16,
   },
-  saveGif: {
-    width: 96,
-    height: 96,
-    borderRadius: 22,
+  primaryTemptationOverlayTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  primaryTemptationCard: {
+    width: "100%",
+  },
+  primaryTemptationDismiss: {
+    alignSelf: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 24,
+    borderWidth: 1,
+  },
+  primaryTemptationDismissText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  saveCelebrationOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  saveCelebrationCard: {
+    paddingVertical: 26,
+    paddingHorizontal: 26,
+    borderRadius: 34,
+    alignItems: "center",
+    width: OVERLAY_CARD_MAX_WIDTH,
+    maxWidth: OVERLAY_CARD_MAX_WIDTH,
+    borderWidth: 2,
+    gap: 16,
+  },
+  saveCelebrationPrimary: {
+    gap: 18,
+  },
+  saveCelebrationCat: {
+    width: 150,
+    height: 150,
+    resizeMode: "contain",
+    marginBottom: 4,
+  },
+  saveCelebrationTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  saveCelebrationSubtitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  saveRewardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+  },
+  saveRewardIcon: {
+    width: 26,
+    height: 26,
     resizeMode: "contain",
   },
-  saveTitle: {
+  saveRewardText: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  saveQuote: {
+    fontSize: 16,
+    fontWeight: "600",
+    textAlign: "center",
+    opacity: 0.9,
+  },
+  saveProgressSection: {
+    width: "100%",
+    alignItems: "center",
+    gap: 8,
+  },
+  saveProgressTrack: {
+    width: SAVE_PROGRESS_BAR_WIDTH,
+    height: 12,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  saveProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  saveProgressLabelRow: {
+    width: SAVE_PROGRESS_BAR_WIDTH,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  saveProgressValue: {
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  saveProgressHint: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  saveCountdownCard: {
+    position: "absolute",
+    gap: 16,
+    overflow: "hidden",
+  },
+  saveCountdownGlow: {
+    position: "absolute",
+    top: -40,
+    left: -60,
+    right: -60,
+    bottom: -40,
+    borderRadius: 999,
+  },
+  saveCountdownTitle: {
     fontSize: 18,
     fontWeight: "800",
     textAlign: "center",
   },
-  saveGoalText: {
-    fontSize: 16,
-    fontWeight: "700",
+  saveCountdownGoal: {
+    fontSize: 18,
+    fontWeight: "800",
     textAlign: "center",
   },
-  saveGoalBox: {
-    backgroundColor: "rgba(18,15,40,0.04)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(18,15,40,0.05)",
+  saveCountdownGoalPrefix: {
+    fontSize: 16,
+    fontWeight: "600",
+    textAlign: "center",
     marginTop: 4,
   },
-  saveCoinsRow: {
-    marginTop: 4,
+  saveCounterRow: {
     flexDirection: "row",
-    alignItems: "center",
     gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 14,
-    backgroundColor: "rgba(33, 150, 243, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  saveCoinsText: {
-    fontSize: 14,
-    fontWeight: "700",
+  saveCounterSeparator: {
+    paddingHorizontal: 2,
+    paddingVertical: 6,
   },
-  saveCoinIcon: {
-    width: 24,
-    height: 24,
-    resizeMode: "contain",
+  saveCounterSeparatorText: {
+    fontSize: 28,
+    fontWeight: "800",
+  },
+  saveCounterSpace: {
+    width: 12,
+  },
+  saveCounterDigit: {
+    width: 58,
+    height: SAVE_COUNTER_DIGIT_HEIGHT,
+    borderRadius: 18,
+    padding: 2,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  saveCounterDigitSurface: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveCounterDigitColumn: {
+    position: "absolute",
+    top: -4,
+    left: 0,
+    right: 0,
+    width: "100%",
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+  saveCounterDigitText: {
+    fontSize: 36,
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
+    textAlign: "center",
+    height: SAVE_COUNTER_DIGIT_HEIGHT,
+    lineHeight: SAVE_COUNTER_DIGIT_HEIGHT,
+  },
+  saveCounterDigitEdgeTop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: SAVE_COUNTER_DIGIT_HEIGHT / 2,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  saveCounterDigitEdgeBottom: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: SAVE_COUNTER_DIGIT_HEIGHT / 2,
+    backgroundColor: "rgba(0,0,0,0.08)",
+  },
+  saveCounterDigitHighlight: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    right: 6,
+    height: 16,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.85)",
+  },
+  saveCounterDigitDivider: {
+    position: "absolute",
+    top: SAVE_COUNTER_DIGIT_HEIGHT / 2 - 1,
+    left: 8,
+    right: 8,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.18)",
+  },
+  saveRemainingCopy: {
+    fontSize: 16,
+    fontWeight: "600",
+    textAlign: "center",
+    opacity: 0.85,
   },
   customTemptationCard: {
     backgroundColor: "rgba(255,255,255,0.95)",
@@ -27321,6 +29770,64 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: "center",
   },
+  streakRecoveryCard: {
+    width: "88%",
+    maxWidth: 360,
+    borderRadius: 28,
+    padding: 24,
+    gap: 14,
+    alignSelf: "center",
+  },
+  streakRecoveryTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  streakRecoveryBody: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
+  },
+  streakRecoveryCoinRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+  },
+  streakRecoveryCoinIcon: {
+    width: 32,
+    height: 32,
+    resizeMode: "contain",
+  },
+  streakRecoveryCoinOverflow: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  streakRecoveryErrorText: {
+    textAlign: "center",
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#D9381E",
+  },
+  streakRecoveryActions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  streakRecoveryButton: {
+    flex: 1,
+    borderRadius: 18,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  streakRecoveryButtonSecondary: {
+    borderWidth: 1,
+  },
+  streakRecoveryButtonPrimary: {},
+  streakRecoveryButtonText: {
+    fontWeight: "700",
+  },
   goalOptionButton: {
     borderWidth: 1,
     borderRadius: 18,
@@ -27391,11 +29898,46 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingBottom: 60,
   },
+  onboardContentWithFooter: {
+    paddingBottom: 140,
+  },
+  onboardContentCompact: {
+    gap: 12,
+    paddingBottom: 40,
+  },
+  onboardHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+  },
   onboardTitle: {
     ...TYPOGRAPHY.display,
   },
+  onboardTitleCompact: {
+    ...TYPOGRAPHY.display,
+    fontSize: Math.max(TYPOGRAPHY.display.fontSize - 4, 26),
+    lineHeight: Math.max(TYPOGRAPHY.display.fontSize - 2, 28),
+  },
   onboardSubtitle: {
     ...createBodyText({ fontSize: 16, lineHeight: 22 }),
+  },
+  onboardGuideContent: {
+    gap: 12,
+    paddingBottom: 24,
+  },
+  onboardFloatingActions: {
+    position: "absolute",
+    left: BASE_HORIZONTAL_PADDING,
+    right: BASE_HORIZONTAL_PADDING,
+    bottom: 24,
+    paddingTop: 12,
+  },
+  onboardFloatingPrimary: {
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
   avatarPreview: {
     borderWidth: 1,
@@ -27589,6 +30131,18 @@ const styles = StyleSheet.create({
   onboardBackLabel: {
     ...createCtaText({ fontSize: 13 }),
   },
+  onboardSkipButton: {
+    marginLeft: "auto",
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "#000000",
+    marginBottom: 12,
+  },
+  onboardSkipLabel: {
+    ...createCtaText({ fontSize: 13 }),
+    color: "#FFFFFF",
+  },
   languageHint: {
     ...createSecondaryText({ marginTop: 6, fontSize: 12 }),
   },
@@ -27664,6 +30218,7 @@ function RegistrationScreen({
   t,
   onBack,
   mascotImageSource,
+  onSkip,
 }) {
   const fallbackAvatar = mascotImageSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.idle;
   const fade = useFadeIn();
@@ -27675,7 +30230,7 @@ function RegistrationScreen({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
+        <OnboardingHeader onBack={onBack} colors={colors} t={t} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("registrationTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("registrationSubtitle")}</Text>
 
@@ -27745,13 +30300,15 @@ function GoalScreen({
   onBack,
   customGoals = [],
   onCustomGoalCreate,
+  onSkip,
+  onSkipStep,
 }) {
   const fade = useFadeIn();
   const selection = Array.isArray(selectedGoals) ? selectedGoals : [];
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false}>
-        <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
+        <OnboardingHeader onBack={onBack} onSkip={onSkip} colors={colors} t={t} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("goalTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("goalSubtitle")}</Text>
 
@@ -27822,6 +30379,11 @@ function GoalScreen({
         <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
           <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("goalButton")}</Text>
         </TouchableOpacity>
+        {typeof onSkipStep === "function" && (
+          <TouchableOpacity style={styles.secondaryButtonClear} onPress={onSkipStep}>
+            <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>{t("goalSkip")}</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </Animated.View>
   );
@@ -27838,6 +30400,7 @@ function GoalTargetScreen({
   t,
   language,
   customGoals = [],
+  onSkip,
 }) {
   const fade = useFadeIn();
   const selectionList = Array.isArray(selections) ? selections : [];
@@ -27851,7 +30414,7 @@ function GoalTargetScreen({
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
+        <OnboardingHeader onBack={onBack} onSkip={onSkip} colors={colors} t={t} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("goalTargetTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("goalTargetSubtitle")}</Text>
         {selectionList.map((goalId) => {
@@ -27927,13 +30490,23 @@ function AnalyticsConsentScreen({ colors, t, onSubmit, onBack }) {
   );
 }
 
-function SpendingBaselineScreen({ value, currency, onChange, onSubmit, colors, t, onBack }) {
+function SpendingBaselineScreen({
+  value,
+  currency,
+  onChange,
+  onSubmit,
+  colors,
+  t,
+  onBack,
+  onSkip,
+  onSkipStep,
+}) {
   const fade = useFadeIn();
   const baselineSampleLabel = formatSampleAmount(BASELINE_SAMPLE_USD, currency || DEFAULT_PROFILE.currency);
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
+        <OnboardingHeader onBack={onBack} onSkip={onSkip} colors={colors} t={t} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("baselineTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("baselineSubtitle")}</Text>
         <View style={styles.baselineInputGroup}>
@@ -27953,18 +30526,26 @@ function SpendingBaselineScreen({ value, currency, onChange, onSubmit, colors, t
         <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
           <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("baselineCTA")}</Text>
         </TouchableOpacity>
+        {typeof onSkipStep === "function" && (
+          <TouchableOpacity style={styles.secondaryButtonClear} onPress={onSkipStep}>
+            <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>{t("baselineSkip")}</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </Animated.View>
   );
 }
 
-function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack }) {
+function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, onSkip }) {
   const fade = useFadeIn();
   const personaList = Object.values(PERSONA_PRESETS);
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
-      <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false}>
-        <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
+      <ScrollView
+        contentContainerStyle={[styles.onboardContent, styles.onboardContentWithFooter]}
+        showsVerticalScrollIndicator={false}
+      >
+        <OnboardingHeader onBack={onBack} onSkip={onSkip} colors={colors} t={t} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("personaTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("personaSubtitle")}</Text>
 
@@ -28023,22 +30604,27 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack }
           })}
         </View>
 
-        <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
+      </ScrollView>
+      <View style={[styles.onboardFloatingActions, { backgroundColor: colors.background }]}>
+        <TouchableOpacity
+          style={[styles.primaryButton, styles.onboardFloatingPrimary, { backgroundColor: colors.text }]}
+          onPress={onSubmit}
+        >
           <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("personaConfirm")}</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </View>
     </Animated.View>
   );
 }
 
-function CustomHabitScreen({ data, onChange, onSubmit, colors, t, currency, onBack, language }) {
+function CustomHabitScreen({ data, onChange, onSubmit, colors, t, currency, onBack, language, onSkip }) {
   const fade = useFadeIn();
   const customSpendSampleLabel = formatSampleAmount(CUSTOM_SPEND_SAMPLE_USD, currency || DEFAULT_PROFILE.currency);
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
-      <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false}>
-        <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
-        <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("customSpendTitle")}</Text>
+      <ScrollView contentContainerStyle={styles.onboardContentCompact} showsVerticalScrollIndicator={false}>
+        <OnboardingHeader onBack={onBack} onSkip={onSkip} colors={colors} t={t} />
+        <Text style={[styles.onboardTitleCompact, { color: colors.text }]}>{t("customSpendTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("customSpendSubtitle")}</Text>
 
         <TextInput
@@ -29104,16 +31690,39 @@ function OnboardingBackButton({ onPress, colors, t }) {
   );
 }
 
-function HowItWorksScreen({ colors, t, onContinue, onBack }) {
+function OnboardingSkipButton({ onPress, t }) {
+  if (!onPress) return null;
+  return (
+    <TouchableOpacity
+      style={styles.onboardSkipButton}
+      onPress={onPress}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    >
+      <Text style={styles.onboardSkipLabel}>{t("onboardingSkip")}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function OnboardingHeader({ onBack, onSkip, colors, t }) {
+  if (!onBack && !onSkip) return null;
+  return (
+    <View style={styles.onboardHeaderRow}>
+      <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
+      <OnboardingSkipButton onPress={onSkip} t={t} />
+    </View>
+  );
+}
+
+function HowItWorksScreen({ colors, t, onContinue, onBack, onSkip }) {
   const fade = useFadeIn();
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView
-        contentContainerStyle={[styles.onboardContent, { gap: 18 }]}
+        contentContainerStyle={[styles.onboardContent, styles.onboardGuideContent]}
         showsVerticalScrollIndicator={false}
       >
-        <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
-        <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("onboardingGuideTitle")}</Text>
+        <OnboardingHeader onBack={onBack} onSkip={onSkip} colors={colors} t={t} />
+        <Text style={[styles.onboardTitleCompact, { color: colors.text }]}>{t("onboardingGuideTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("onboardingGuideSubtitle")}</Text>
         <View style={styles.guideCards}>
           {HOW_IT_WORKS_STEPS.map((step) => (
@@ -29207,7 +31816,7 @@ function LanguageScreen({
       <View style={styles.onboardContent}>
         <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
         <Image source={wavingSource} style={styles.languageMascot} />
-        <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("languageTitle")}</Text>
+        <Text style={[styles.onboardTitleCompact, { color: colors.text }]}>{t("languageTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("languageSubtitle")}</Text>
         <View style={styles.languageButtons}>
           {SUPPORTED_LANGUAGES.map((langKey) => {
@@ -29427,6 +32036,668 @@ const FallingCoin = ({ left, size, delay, duration }) => {
   );
 };
 
+const getRandomFinancialQuote = (language) => {
+  const normalized = normalizeLanguage(language);
+  const pool = FINANCIAL_QUOTES.map((entry) => entry[normalized] || entry.en).filter(Boolean);
+  if (!pool.length) return "";
+  return pool[Math.floor(Math.random() * pool.length)];
+};
+
+const getSaveProgressCopy = (language) => {
+  const normalized = normalizeLanguage(language);
+  const map = {
+    ru: "До цели",
+    en: "Closer to goal",
+    es: "Más cerca de la meta",
+    fr: "Plus près de l'objectif",
+  };
+  return map[normalized] || map.en;
+};
+
+const getSaveCountdownTitle = (language) => {
+  const normalized = normalizeLanguage(language);
+  const map = {
+    ru: "Сколько осталось до цели",
+    en: "Steps left to reach it",
+    es: "Lo que falta para llegar",
+    fr: "Combien reste-t-il",
+  };
+  return map[normalized] || map.en;
+};
+
+const getSaveCountdownCopy = (language, count) => {
+  const normalized = normalizeLanguage(language);
+  const safeCount = Math.max(0, Number(count) || 0);
+  if (safeCount <= 0) {
+    const doneMap = {
+      ru: "Цель почти достигнута!",
+      en: "Goal is within reach!",
+      es: "La meta está al alcance.",
+      fr: "L'objectif est tout proche !",
+    };
+    return doneMap[normalized] || doneMap.en;
+  }
+  if (normalized === "ru") {
+    const suffix =
+      safeCount % 10 === 1 && safeCount % 100 !== 11
+        ? "поступок"
+        : safeCount % 10 >= 2 && safeCount % 10 <= 4 && (safeCount % 100 < 10 || safeCount % 100 >= 20)
+        ? "поступка"
+        : "поступков";
+    return `Ещё ${safeCount} ${suffix} до цели`;
+  }
+  const map = {
+    en: `${safeCount} more actions like this to reach your goal`,
+    es: `Quedan ${safeCount} pasos como este hasta la meta`,
+    fr: `Encore ${safeCount} actions comme celle-ci pour la cible`,
+  };
+  return map[normalized] || map.en;
+};
+
+const buildSaveCountdownSlots = (count, language) => {
+  const safeCount = Math.max(0, Number(count) || 0);
+  const formattedLocale = getFormatLocale(language);
+  let formattedValue =
+    safeCount >= 1000 ? safeCount.toLocaleString(formattedLocale) : safeCount.toString().padStart(3, "0");
+  formattedValue = formattedValue.replace(/\u202F/g, " ").replace(/\u00A0/g, " ");
+  return formattedValue.split("").map((char, index) => {
+    if (/[0-9]/.test(char)) {
+      return { type: "digit", value: Number(char), key: `digit_${index}_${char}` };
+    }
+    if (char === " ") {
+      return { type: "space", value: char, key: `space_${index}` };
+    }
+    return { type: "separator", value: char, key: `separator_${index}_${char}` };
+  });
+};
+
+const getGoalQuoteMarks = (language) => {
+  const normalized = normalizeLanguage(language);
+  switch (normalized) {
+    case "ru":
+    case "fr":
+    case "es":
+      return ["«", "»"];
+    default:
+      return ["“", "”"];
+  }
+};
+
+const clampProgress = (value) => {
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
+};
+const MIN_PROGRESS_PULSE = 0.012;
+const MAX_PROGRESS_PULSE = 0.05;
+
+const SaveCelebration = forwardRef(
+  (
+    {
+      colors,
+      payload,
+      t,
+      language,
+      goalCopy,
+      goalPrefix = null,
+      coinReward = 0,
+      mascotHappySource,
+      progressStart: progressStartProp = 0,
+      progressEnd: progressEndProp = 0,
+      remainingActions = 0,
+    },
+    ref
+  ) => {
+    const happySource = mascotHappySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
+    const progressStart = clampProgress(progressStartProp);
+    const progressEnd = clampProgress(progressEndProp < progressStart ? progressStart : progressEndProp);
+    const displayActions = Math.max(0, Number(remainingActions) || 0);
+    const countdownSlots = useMemo(
+      () => buildSaveCountdownSlots(displayActions, language),
+      [displayActions, language]
+    );
+    const hearts = useMemo(
+      () =>
+        Array.from({ length: 18 }).map((_, index) => ({
+          id: `reward_heart_${index}`,
+          left: Math.random() * SCREEN_WIDTH,
+          delay: Math.random() * 1200,
+          duration: 1800 + Math.random() * 800,
+        })),
+      []
+    );
+    const celebrationQuote = useMemo(() => getRandomFinancialQuote(language), [language]);
+    const isDarkTheme = colors.background === THEMES.dark.background;
+    const primaryCardBg = isDarkTheme ? lightenColor(colors.card, 0.12) : colors.card;
+    const primaryCardBorder = isDarkTheme ? lightenColor(colors.border, 0.25) : "rgba(255,181,115,0.7)";
+    const countdownCardBg = isDarkTheme ? lightenColor(colors.card, 0.1) : lightenColor(colors.card, 0.04);
+    const countdownCardBorder = isDarkTheme ? lightenColor(colors.border, 0.3) : "rgba(255,180,126,0.65)";
+    const progressAccent = isDarkTheme ? "#FFD06A" : "#FF8C3B";
+    const progressTrack = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(17,7,0,0.08)";
+    const counterDigitBackground = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.92)";
+    const glowColor = isDarkTheme ? "rgba(255,214,165,0.35)" : "rgba(255,178,120,0.35)";
+    const progressValue = useRef(new Animated.Value(progressStart)).current;
+    const progressPulse = useRef(new Animated.Value(1)).current;
+    const progressHapticTimersRef = useRef([]);
+    const introOpacity = useRef(new Animated.Value(1)).current;
+    const introScale = useRef(new Animated.Value(0.94)).current;
+    const countdownOpacity = useRef(new Animated.Value(0)).current;
+    const countdownScale = useRef(new Animated.Value(0.9)).current;
+    const countdownZoom = useRef(new Animated.Value(1)).current;
+    const glowPulse = useRef(new Animated.Value(0)).current;
+    const countdownEnabled = !!goalCopy;
+    const [countdownActive, setCountdownActive] = useState(false);
+    const [countdownReady, setCountdownReady] = useState(false);
+    const introTimerRef = useRef(null);
+    const countdownActiveRef = useRef(false);
+    const digitsCompletedRef = useRef(0);
+    const digitCount = useMemo(
+      () => countdownSlots.filter((slot) => slot.type === "digit").length,
+      [countdownSlots]
+    );
+    const handleDigitSpinComplete = useCallback(() => {
+      if (digitCount <= 0) {
+        setCountdownReady(true);
+        triggerSuccessHaptic();
+        return;
+      }
+      digitsCompletedRef.current += 1;
+      triggerSelectionHaptic();
+      if (digitsCompletedRef.current >= digitCount) {
+        setCountdownReady(true);
+        triggerSuccessHaptic();
+      }
+    }, [digitCount]);
+    const progressWidth = progressValue.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, SAVE_PROGRESS_BAR_WIDTH],
+    });
+    useEffect(() => {
+      introScale.setValue(0.94);
+      const introEntrance = Animated.spring(introScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 8,
+      });
+      introEntrance.start();
+      return () => introEntrance.stop();
+    }, [introScale]);
+    useEffect(() => {
+      progressValue.setValue(progressStart);
+      progressPulse.setValue(1);
+      const diff = Math.max(0, progressEnd - progressStart);
+      const impactDelta = Math.max(diff, MIN_PROGRESS_PULSE);
+      const paddedTarget = clampProgress(progressStart + impactDelta);
+      const overshootDelta = Math.min(
+        Math.max(impactDelta * 0.65, MIN_PROGRESS_PULSE * 0.75),
+        MAX_PROGRESS_PULSE
+      );
+      const pumpTarget =
+        diff < MIN_PROGRESS_PULSE
+          ? paddedTarget
+          : clampProgress(Math.max(progressStart, progressEnd - overshootDelta * 0.75));
+      const overshootTarget = clampProgress(pumpTarget + overshootDelta);
+      const fillSequence = Animated.sequence([
+        Animated.spring(progressValue, {
+          toValue: pumpTarget,
+          friction: 7,
+          tension: 120,
+          velocity: 1.1,
+          useNativeDriver: false,
+        }),
+        Animated.spring(progressValue, {
+          toValue: overshootTarget,
+          friction: 5,
+          tension: 70,
+          velocity: 0.8,
+          useNativeDriver: false,
+        }),
+        Animated.spring(progressValue, {
+          toValue: progressEnd,
+          friction: 11,
+          tension: 90,
+          velocity: 0.65,
+          useNativeDriver: false,
+        }),
+      ]);
+      const anim = Animated.sequence([
+        Animated.delay(SAVE_PROGRESS_DELAY_MS),
+        Animated.spring(progressPulse, {
+          toValue: SAVE_PROGRESS_PULSE_SCALE,
+          friction: 6,
+          tension: 140,
+          useNativeDriver: true,
+        }),
+        Animated.delay(90),
+        fillSequence,
+        Animated.delay(60),
+        Animated.spring(progressPulse, {
+          toValue: 1,
+          friction: 9,
+          tension: 80,
+          useNativeDriver: true,
+        }),
+      ]);
+      anim.start();
+      return () => anim.stop();
+    }, [progressEnd, progressPulse, progressStart, progressValue]);
+    const clearProgressHapticTimers = useCallback(() => {
+      if (progressHapticTimersRef.current.length) {
+        progressHapticTimersRef.current.forEach((timerId) => clearTimeout(timerId));
+        progressHapticTimersRef.current = [];
+      }
+    }, []);
+    useEffect(() => {
+      clearProgressHapticTimers();
+      const diff = Math.max(0, progressEnd - progressStart);
+      if (diff <= 0) return undefined;
+      const schedule = (timeout, fn) => {
+        const timerId = setTimeout(fn, Math.max(0, timeout));
+        progressHapticTimersRef.current.push(timerId);
+      };
+      const baseDelay = SAVE_PROGRESS_DELAY_MS + 100;
+      const diffScale = Math.min(Math.max(diff, MIN_PROGRESS_PULSE), 0.85);
+      const fillDuration = 640 + diffScale * 1600;
+      schedule(baseDelay, () => triggerHaptic(Haptics.ImpactFeedbackStyle.Light));
+      schedule(baseDelay + fillDuration * 0.45, () => triggerSelectionHaptic());
+      schedule(baseDelay + fillDuration * 0.92, () => triggerHaptic(Haptics.ImpactFeedbackStyle.Medium));
+      return () => {
+        clearProgressHapticTimers();
+      };
+    }, [clearProgressHapticTimers, progressEnd, progressStart]);
+    const clearIntroTimer = useCallback(() => {
+      if (introTimerRef.current) {
+        clearTimeout(introTimerRef.current);
+        introTimerRef.current = null;
+      }
+    }, []);
+    const startCountdownPhase = useCallback(() => {
+      if (!countdownEnabled) return false;
+      if (countdownActiveRef.current) return false;
+      clearIntroTimer();
+      digitsCompletedRef.current = 0;
+      setCountdownReady(digitCount <= 0);
+      countdownActiveRef.current = true;
+      setCountdownActive(true);
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+      Animated.parallel([
+        Animated.timing(introOpacity, {
+          toValue: 0,
+          duration: 320,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(countdownOpacity, {
+          toValue: 1,
+          duration: 360,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.spring(countdownScale, {
+          toValue: 1,
+          useNativeDriver: true,
+          friction: 8,
+        }),
+      ]).start();
+      return true;
+    }, [clearIntroTimer, countdownOpacity, countdownScale, digitCount, introOpacity]);
+    useEffect(() => {
+      if (!countdownEnabled) return undefined;
+      introTimerRef.current = setTimeout(() => {
+        startCountdownPhase();
+      }, SAVE_INTRO_STAGE_DURATION);
+      return () => {
+        clearIntroTimer();
+      };
+    }, [clearIntroTimer, countdownEnabled, startCountdownPhase]);
+    useEffect(() => {
+      if (!countdownEnabled) return;
+      countdownActiveRef.current = countdownActive;
+    }, [countdownActive]);
+    useEffect(() => {
+      if (!countdownEnabled || !countdownActive || !countdownReady) return;
+      glowPulse.setValue(0);
+      countdownZoom.setValue(1);
+      const pulse = Animated.sequence([
+        Animated.delay(SAVE_COUNTDOWN_ZOOM_DELAY_AFTER_SPIN),
+        Animated.parallel([
+          Animated.sequence([
+            Animated.timing(glowPulse, {
+              toValue: 1,
+              duration: 260,
+              useNativeDriver: true,
+            }),
+            Animated.timing(glowPulse, {
+              toValue: 0,
+              duration: 420,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.sequence([
+            Animated.timing(countdownZoom, {
+              toValue: 1.04,
+              duration: 240,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: true,
+            }),
+            Animated.timing(countdownZoom, {
+              toValue: 1,
+              duration: 320,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
+        Animated.delay(SAVE_COUNTDOWN_FINAL_HOLD_DELAY),
+      ]);
+      pulse.start();
+      return () => pulse.stop();
+    }, [countdownActive, countdownEnabled, countdownReady, countdownZoom, glowPulse]);
+    const percentLabel = Math.min(100, Math.max(0, Math.round(progressEnd * 100)));
+    const progressCopy = getSaveProgressCopy(language);
+    const countdownTitle = getSaveCountdownTitle(language);
+    const rewardLabel = Math.max(0, Number(coinReward) || 0);
+    const [goalQuoteStart, goalQuoteEnd] = useMemo(() => getGoalQuoteMarks(language), [language]);
+    const goalDisplay = goalPrefix && goalCopy ? `${goalQuoteStart}${goalCopy}${goalQuoteEnd}` : goalCopy;
+    const rewardRowBg = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(33,150,243,0.08)";
+    useImperativeHandle(
+      ref,
+      () => ({
+        skipToCountdown: () => (countdownEnabled ? startCountdownPhase() : false),
+        isCountdownActive: () => (countdownEnabled ? countdownActiveRef.current : false),
+      }),
+      [countdownEnabled, startCountdownPhase]
+    );
+    return (
+      <View style={styles.saveCelebrationOverlay} pointerEvents="none">
+        {hearts.map((heart) => (
+          <RewardHeart key={heart.id} {...heart} />
+        ))}
+        <Animated.View
+          style={[
+            styles.saveCelebrationCard,
+            styles.saveCelebrationPrimary,
+            {
+              backgroundColor: primaryCardBg,
+              borderColor: primaryCardBorder,
+              opacity: introOpacity,
+              transform: [{ scale: introScale }],
+            },
+          ]}
+        >
+          <Image source={happySource} style={styles.saveCelebrationCat} />
+          <Text style={[styles.saveCelebrationTitle, { color: colors.text }]}>
+            {t("saveCelebrateTitlePrefix")}
+          </Text>
+          <Text style={[styles.saveCelebrationSubtitle, { color: colors.text }]}>
+            {payload?.title || ""}
+          </Text>
+          {rewardLabel > 0 && (
+            <View style={[styles.saveRewardRow, { backgroundColor: rewardRowBg }]}>
+              <Image source={HEALTH_COIN_TIERS[0].asset} style={styles.saveRewardIcon} />
+              <Text style={[styles.saveRewardText, { color: colors.text }]}>
+                {t("saveOverlayCoinReward", { amount: rewardLabel })}
+              </Text>
+            </View>
+          )}
+          {celebrationQuote ? (
+            <Text style={[styles.saveQuote, { color: colors.text }]}>{celebrationQuote}</Text>
+          ) : null}
+          <Animated.View style={[styles.saveProgressSection, { transform: [{ scaleY: progressPulse }] }]}>
+            <View style={[styles.saveProgressTrack, { backgroundColor: progressTrack }]}>
+              <Animated.View
+                style={[
+                  styles.saveProgressFill,
+                  {
+                    width: progressWidth,
+                    backgroundColor: progressAccent,
+                  },
+                ]}
+              />
+            </View>
+            <View style={styles.saveProgressLabelRow}>
+              <Text style={[styles.saveProgressValue, { color: colors.text }]}>{percentLabel}%</Text>
+              <Text style={[styles.saveProgressHint, { color: colors.muted }]}>{progressCopy}</Text>
+            </View>
+          </Animated.View>
+        </Animated.View>
+        {countdownEnabled && (
+          <Animated.View
+            style={[
+              styles.saveCelebrationCard,
+              styles.saveCountdownCard,
+              {
+                backgroundColor: countdownCardBg,
+                borderColor: countdownCardBorder,
+                opacity: countdownOpacity,
+                transform: [{ scale: countdownScale }, { scale: countdownZoom }],
+              },
+            ]}
+          >
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.saveCountdownGlow,
+                {
+                  backgroundColor: glowColor,
+                  opacity: glowPulse,
+                },
+              ]}
+            />
+            <Text style={[styles.saveCountdownTitle, { color: colors.text }]}>{countdownTitle}</Text>
+            <View style={styles.saveCounterRow}>
+              {countdownSlots.map((slot, index) => {
+                if (slot.type === "digit") {
+                  return (
+                    <SaveCounterDigit
+                      key={`${slot.key}-${countdownActive}`}
+                      index={index}
+                      digit={slot.value}
+                      delay={index * 110}
+                      active={countdownActive}
+                      color={colors.text}
+                      backgroundColor={counterDigitBackground}
+                      onSpinComplete={handleDigitSpinComplete}
+                    />
+                  );
+                }
+                if (slot.type === "separator") {
+                  return (
+                    <View key={`${slot.key}-sep`} style={styles.saveCounterSeparator}>
+                      <Text style={[styles.saveCounterSeparatorText, { color: colors.muted }]}>{slot.value}</Text>
+                    </View>
+                  );
+                }
+                return <View key={`${slot.key}-space`} style={styles.saveCounterSpace} />;
+              })}
+            </View>
+            {goalPrefix && goalDisplay ? (
+              <>
+                <Text style={[styles.saveCountdownGoalPrefix, { color: colors.muted }]}>{goalPrefix}</Text>
+                <Text style={[styles.saveCountdownGoal, { color: colors.text }]}>{goalDisplay}</Text>
+              </>
+            ) : goalDisplay ? (
+              <Text style={[styles.saveCountdownGoal, { color: colors.text }]}>{goalDisplay}</Text>
+            ) : null}
+          </Animated.View>
+        )}
+      </View>
+    );
+  }
+);
+
+const SaveCounterDigit = ({
+  digit = 0,
+  delay = 0,
+  active = false,
+  color = "#000",
+  backgroundColor = "rgba(0,0,0,0.05)",
+  index = 0,
+  onSpinComplete,
+}) => {
+  const spinProgress = useRef(new Animated.Value(0)).current;
+  const digitScale = useRef(new Animated.Value(0.96)).current;
+  const tiltProgress = useRef(new Animated.Value(0)).current;
+  const shineProgress = useRef(new Animated.Value(0)).current;
+  const loops = Math.max(1, SAVE_COUNTER_SPIN_LOOPS + index);
+  const spinHapticTimeoutsRef = useRef([]);
+  const spinHapticIntervalRef = useRef(null);
+  const clearSpinHaptics = useCallback(() => {
+    if (spinHapticTimeoutsRef.current.length) {
+      spinHapticTimeoutsRef.current.forEach((timerId) => clearTimeout(timerId));
+      spinHapticTimeoutsRef.current = [];
+    }
+    if (spinHapticIntervalRef.current) {
+      clearInterval(spinHapticIntervalRef.current);
+      spinHapticIntervalRef.current = null;
+    }
+  }, []);
+  const digitsSequence = useMemo(() => {
+    const safeDigit = Math.max(0, Number(digit) || 0);
+    const values = [];
+    for (let counter = 0; counter < loops * 10; counter += 1) {
+      values.push(counter % 10);
+    }
+    values.push(safeDigit);
+    return values;
+  }, [digit, loops]);
+  const spinSteps = Math.max(1, digitsSequence.length - 1);
+  const translateY = spinProgress.interpolate({
+    inputRange: [0, spinSteps],
+    outputRange: [0, -SAVE_COUNTER_DIGIT_HEIGHT * spinSteps],
+  });
+  const rotateX = tiltProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "-7deg"],
+  });
+  const highlightOpacity = shineProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.1, 0.7],
+  });
+  useEffect(() => {
+    spinProgress.setValue(0);
+    digitScale.setValue(0.96);
+    tiltProgress.setValue(0);
+    shineProgress.setValue(0);
+    if (!active) return;
+    const animation = Animated.sequence([
+      Animated.delay(delay),
+      Animated.timing(spinProgress, {
+        toValue: spinSteps - 0.35,
+        duration: 900 + spinSteps * 12,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(spinProgress, {
+        toValue: spinSteps,
+        duration: 160,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.parallel([
+        Animated.spring(digitScale, {
+          toValue: 1.08,
+          friction: 5,
+          tension: 140,
+          useNativeDriver: true,
+        }),
+        Animated.spring(tiltProgress, {
+          toValue: 1,
+          friction: 6,
+          tension: 110,
+          useNativeDriver: true,
+        }),
+        Animated.sequence([
+          Animated.timing(shineProgress, {
+            toValue: 1,
+            duration: 160,
+            useNativeDriver: true,
+          }),
+          Animated.spring(shineProgress, {
+            toValue: 0.35,
+            friction: 6,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]),
+      Animated.spring(digitScale, {
+        toValue: 1,
+        friction: 7,
+        tension: 90,
+        useNativeDriver: true,
+      }),
+      Animated.spring(tiltProgress, {
+        toValue: 0,
+        friction: 7,
+        tension: 70,
+        useNativeDriver: true,
+      }),
+    ]);
+    animation.start(({ finished }) => {
+      if (finished) {
+        onSpinComplete?.();
+      }
+    });
+    return () => animation.stop();
+  }, [active, delay, digitScale, onSpinComplete, shineProgress, spinProgress, spinSteps, tiltProgress]);
+  useEffect(() => {
+    clearSpinHaptics();
+    if (!active) return undefined;
+    const startDelay = Math.max(0, delay + 60);
+    const spinDuration = 900 + spinSteps * 12 + 160;
+    const tickInterval = Math.max(70, Math.min(170, spinDuration / Math.max(2, loops * 1.2)));
+    const startTimer = setTimeout(() => {
+      triggerSelectionHaptic();
+      spinHapticIntervalRef.current = setInterval(() => {
+        triggerSelectionHaptic();
+      }, tickInterval);
+    }, startDelay);
+    const stopTimer = setTimeout(() => {
+      clearSpinHaptics();
+    }, startDelay + spinDuration);
+    spinHapticTimeoutsRef.current = [startTimer, stopTimer];
+    return () => {
+      clearSpinHaptics();
+    };
+  }, [active, clearSpinHaptics, delay, loops, spinSteps]);
+  return (
+    <Animated.View style={[styles.saveCounterDigit, { transform: [{ scale: digitScale }] }]}>
+      <Animated.View
+        style={[
+          styles.saveCounterDigitSurface,
+          {
+            backgroundColor,
+            transform: [{ perspective: 400 }, { rotateX }],
+          },
+        ]}
+      >
+        <View pointerEvents="none" style={styles.saveCounterDigitEdgeTop} />
+        <View pointerEvents="none" style={styles.saveCounterDigitEdgeBottom} />
+        <Animated.View
+          style={[
+            styles.saveCounterDigitColumn,
+            {
+              transform: [{ translateY }],
+            },
+          ]}
+        >
+          {digitsSequence.map((value, valueIndex) => (
+            <Text key={`${value}-${valueIndex}`} style={[styles.saveCounterDigitText, { color }]}>
+              {value}
+            </Text>
+          ))}
+        </Animated.View>
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.saveCounterDigitHighlight, { opacity: highlightOpacity }]}
+        />
+        <View pointerEvents="none" style={styles.saveCounterDigitDivider} />
+      </Animated.View>
+    </Animated.View>
+  );
+};
+
 const RewardCelebration = ({ colors, message, t, mascotHappySource }) => {
   const happySource = mascotHappySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
   const hearts = useMemo(
@@ -29444,7 +32715,7 @@ const RewardCelebration = ({ colors, message, t, mascotHappySource }) => {
   const rewardCardBg = isDarkTheme ? lightenColor(colors.card, 0.12) : colors.card;
   const rewardCardBorder = isDarkTheme ? lightenColor(colors.border, 0.25) : "rgba(255,181,115,0.7)";
   return (
-    <View style={styles.rewardOverlay} pointerEvents="none">
+    <View style={styles.rewardOverlay}>
       <View style={[styles.rewardBackdrop, { backgroundColor: rewardBackdropColor }]} />
       {hearts.map((heart) => (
         <RewardHeart key={heart.id} {...heart} />
@@ -29502,7 +32773,7 @@ const HealthCelebration = ({ colors, payload, t, language }) => {
   const rewardCoinTier = getHealthCoinTierForAmount(coinValue);
   const titleAmount = formatHealthRewardLabel(coinValue, language);
   return (
-    <View style={styles.healthOverlay} pointerEvents="none">
+    <View style={styles.healthOverlay}>
       <View style={[styles.healthBackdrop, { backgroundColor: backdropColor }]} />
       <Animated.View
         style={[
@@ -29546,7 +32817,7 @@ const GoalCelebration = ({ colors, payload, t, mascotHappySource }) => {
   const cardBg = isDarkTheme ? lightenColor(colors.card, 0.15) : "#E7FFE9";
   const cardBorder = isDarkTheme ? lightenColor(colors.border, 0.25) : "#8FD7AE";
   return (
-    <View style={styles.goalCelebrateOverlay} pointerEvents="none">
+    <View style={styles.goalCelebrateOverlay}>
       <View style={[styles.goalCelebrateBackdrop, { backgroundColor: backdropColor }]} />
       {hearts.map((heart) => (
         <RewardHeart key={heart.id} {...heart} />

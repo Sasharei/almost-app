@@ -54,6 +54,7 @@ public class AppDelegate: ExpoAppDelegate {
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
+    AppsFlyerAttribution.shared().handleOpen(url, options: options)
     if ApplicationDelegate.shared.application(app, open: url, options: options) {
       return true
     }
@@ -66,6 +67,12 @@ public class AppDelegate: ExpoAppDelegate {
     continue userActivity: NSUserActivity,
     restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
   ) -> Bool {
+    AppsFlyerAttribution.shared().continue(
+      userActivity,
+      restorationHandler: { restoringObjects in
+        restorationHandler(restoringObjects as? [UIUserActivityRestoring])
+      }
+    )
     let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
     return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
   }
