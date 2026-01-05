@@ -2,7 +2,7 @@
   "expo": {
     "name": "Almost",
     "slug": "almost_clean",
-    "version": "2.2.0",
+    "version": "2.3.3",
     "orientation": "default",
     "icon": "./assets/Almost_icon.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,7 @@
       "bundleIdentifier": "com.sasarei.almostclean",
       "supportsTablet": true,
       "googleServicesFile": "./ios/GoogleService-Info.plist",
-      "buildNumber": "2.2.0",
+      "buildNumber": "2.3.3",
       "appStoreUrl": "https://apps.apple.com/app/id6756276744?action=write-review",
       "infoPlist": {
         "NSCameraUsageDescription": "Almost lets you snap a portrait so your savings profile feels personal.",
@@ -25,7 +25,7 @@
     },
     "android": {
       "package": "com.sasarei.almostclean",
-      "versionCode": 27,
+      "versionCode": 33,
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.sasarei.almostclean",
       "adaptiveIcon": {
         "foregroundImage": "./assets/Almost_icon.png",
