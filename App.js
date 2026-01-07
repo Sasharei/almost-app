@@ -157,6 +157,8 @@ const STORAGE_KEYS = {
   TUTORIAL: "@almost_tutorial_state",
   TEMPTATION_TUTORIAL: "@almost_temptation_cards_tutorial",
   DAILY_CHALLENGE: "@almost_daily_challenge_state",
+  DAILY_REWARD: "@almost_daily_reward",
+  DAILY_REWARD_DAY_KEY: "@almost_daily_reward_day",
   TAB_HINTS: "@almost_tab_hints",
   FOCUS_TARGET: "@almost_focus_target",
   FOCUS_DIGEST: "@almost_focus_digest",
@@ -166,6 +168,7 @@ const STORAGE_KEYS = {
   TAMAGOTCHI_SKIN: "@almost_tamagotchi_skin",
   TAMAGOTCHI_SKINS_UNLOCKED: "@almost_tamagotchi_skins_unlocked",
   SAVED_TOTAL_PEAK: "@almost_saved_total_peak",
+  LAST_CELEBRATED_LEVEL: "@almost_last_celebrated_level",
   ACTIVE_GOAL: "@almost_active_goal",
   COIN_SLIDER_MAX: "@almost_coin_slider_max",
   FAB_TUTORIAL: "@almost_fab_tutorial",
@@ -510,6 +513,7 @@ const THEMES = {
     primary: "#FFC857",
   },
 };
+const DEFAULT_THEME = "light";
 
 const INTER_FONTS = {
   light: "Inter_300Light",
@@ -723,7 +727,7 @@ const ensureGlobalInterTypography = (() => {
   };
 })();
 
-const APP_TUTORIAL_STEPS = [
+const APP_TUTORIAL_BASE_STEPS = [
   {
     id: "feed",
     icon: "🧠",
@@ -739,18 +743,12 @@ const APP_TUTORIAL_STEPS = [
     tabs: ["cart"],
   },
   {
-    id: "thinking",
-    icon: "🧊",
-    titleKey: "tutorialThinkingTitle",
-    descriptionKey: "tutorialThinkingDesc",
-    tabs: ["pending"],
-  },
-  {
     id: "rewards",
     icon: "🏆",
     titleKey: "tutorialRewardsTitle",
     descriptionKey: "tutorialRewardsDesc",
     tabs: ["purchases"],
+    requiresRewards: true,
   },
   {
     id: "profile",
@@ -773,12 +771,6 @@ const TEMPTATION_TUTORIAL_STEPS = [
     titleKey: "temptationTutorialSwipeTitle",
     descriptionKey: "temptationTutorialSwipeDesc",
   },
-  {
-    id: "think",
-    icon: "⏳",
-    titleKey: "temptationTutorialThinkTitle",
-    descriptionKey: "temptationTutorialThinkDesc",
-  },
 ];
 const FAB_TUTORIAL_STATUS = {
   DONE: "done",
@@ -794,6 +786,8 @@ const DEFAULT_TAB_HINTS_STATE = {
 };
 const CARD_TEXTURE_ACCENTS = ["#8AB9FF", "#FFA4C0", "#8CE7CF", "#FFD48A", "#BBA4FF", "#7FD8FF"];
 const TEMPTATION_CARD_RADIUS = 28;
+// Fine-tune Android highlight alignment when using measureInWindow (positive moves the cutout lower).
+const ANDROID_TUTORIAL_HIGHLIGHT_OFFSET = 6;
 const TAB_HINT_CONFIG = {
   feed: { titleKey: "tabHintFeedTitle", bodyKey: "tabHintFeedBody" },
   cart: { titleKey: "tabHintCartTitle", bodyKey: "tabHintCartBody" },
@@ -808,10 +802,7 @@ const FAB_TUTORIAL_MIN_SESSIONS = 3;
 const FAB_TUTORIAL_HALO_SIZE = 128;
 const FAB_TUTORIAL_CARD_SPACING = 140;
 const FAB_TUTORIAL_HALO_INSET = (FAB_TUTORIAL_HALO_SIZE - FAB_BUTTON_SIZE) / 2;
-const TUTORIAL_HIGHLIGHT_INSET = Platform.select({
-  android: { x: 16, y: 4 },
-  default: { x: 0, y: 0 },
-});
+const TUTORIAL_HIGHLIGHT_INSET = { x: 0, y: 0 };
 const BACK_GESTURE_EDGE_WIDTH = 32;
 const BACK_GESTURE_TRIGGER_DISTANCE = 60;
 const BACK_GESTURE_VERTICAL_SLOP = 60;
@@ -1168,6 +1159,79 @@ const sumLevelRewardCoins = (level, levelsEarned = 1) => {
   }
   return total;
 };
+
+const DEFAULT_DAILY_REWARD_STATE = {
+  lastKey: null,
+  lastAmount: 0,
+  lastClaimAt: 0,
+};
+
+const computeDailyAlmiReward = (savedUSD = 0) => {
+  const normalized = Math.max(0, Number(savedUSD) || 0);
+  if (normalized <= 0) return ECONOMY_RULES.minSaveReward;
+  if (normalized < 50) return 2;
+  if (normalized < 200) return 3;
+  if (normalized < 500) return 4;
+  if (normalized < 1000) return 6;
+  return Math.min(12, Math.round(normalized / 200));
+};
+
+const getTemptationPriceLimitForLevel = (level = 1) => {
+  if (!Number.isFinite(level) || level <= 1) return 15;
+  if (level < 4) return 50;
+  if (level < 6) return 150;
+  return Infinity;
+};
+
+const FEATURE_UNLOCK_STEPS = [
+  { level: 2, messageKey: "level2UnlockMessage" },
+  { level: 3, messageKey: "level3UnlockMessage" },
+  { level: 4, messageKey: "level4UnlockMessage" },
+  { level: 5, messageKey: "level5UnlockMessage" },
+  { level: 6, messageKey: "level6UnlockMessage" },
+  { level: 7, messageKey: "level7UnlockMessage" },
+];
+const FEATURE_UNLOCK_VARIANT_MAP = {
+  level2UnlockMessage: "rewardsDaily",
+  level3UnlockMessage: "feedFocus",
+  level4UnlockMessage: "rewardsCustomization",
+  level5UnlockMessage: "rewardsChallenges",
+  level6UnlockMessage: "impulseMap",
+  level7UnlockMessage: "thinkingList",
+};
+const FEATURE_UNLOCK_VARIANT_CONFIG = {
+  rewardsDaily: {
+    titleKey: "featureUnlockRewardsDailyTitle",
+    descriptionKey: "featureUnlockRewardsDailyDescription",
+    previewLabelKey: "featureUnlockRewardsDailyPreview",
+  },
+  feedFocus: {
+    titleKey: "featureUnlockFeedFocusTitle",
+    descriptionKey: "featureUnlockFeedFocusDescription",
+    previewLabelKey: "featureUnlockFeedFocusPreview",
+  },
+  rewardsCustomization: {
+    titleKey: "featureUnlockRewardsCustomizationTitle",
+    descriptionKey: "featureUnlockRewardsCustomizationDescription",
+    previewLabelKey: "featureUnlockRewardsCustomizationPreview",
+  },
+  rewardsChallenges: {
+    titleKey: "featureUnlockRewardsChallengesTitle",
+    descriptionKey: "featureUnlockRewardsChallengesDescription",
+    previewLabelKey: "featureUnlockRewardsChallengesPreview",
+  },
+  impulseMap: {
+    titleKey: "featureUnlockImpulseMapTitle",
+    descriptionKey: "featureUnlockImpulseMapDescription",
+    previewLabelKey: "featureUnlockImpulseMapPreview",
+  },
+  thinkingList: {
+    titleKey: "featureUnlockThinkingTitle",
+    descriptionKey: "featureUnlockThinkingDescription",
+    previewLabelKey: "featureUnlockThinkingPreview",
+  },
+};
+
 const HEALTH_COIN_LABELS = {
   ru: {
     pink: "розовых монет",
@@ -3335,6 +3399,7 @@ const buildPersonalizedTemptations = (profile, baseList = DEFAULT_TEMPTATIONS) =
     profile?.gender
   );
   const personaCard = createPersonaTemptation(preset);
+  const priorityIds = ["coffee_to_go", "netflix_subscription"];
   const gender = profile?.gender || "none";
   const seen = new Set();
   const result = [];
@@ -3349,6 +3414,11 @@ const buildPersonalizedTemptations = (profile, baseList = DEFAULT_TEMPTATIONS) =
   pushIfVisible(customFirst);
   // 2) Карта персоны - сразу после кастомной или первой, если кастомной нет.
   pushIfVisible(personaCard);
+  // 3) Держим кофе навынос и подписку Netflix сразу после кастомной/персоны.
+  priorityIds.forEach((id) => {
+    const card = baseList.find((item) => item?.id === id);
+    pushIfVisible(card);
+  });
 
   // Остальные, отсортированные по цене.
   const pool = [...baseList].filter((item) => item && !seen.has(item.id));
@@ -3631,6 +3701,48 @@ const TRANSLATIONS = {
     freeDayRescueOverlay: "Серия спасена",
     freeDayCoinReward: "Бесплатный день: +{{coins}} синие монеты.",
     freeDayCoinRewardStreak: "🔥 Серия {{days}} дня(ей): ещё +{{coins}} синие монеты.",
+    dailyRewardReason: "Ежедневный бонус Алми · +{{amount}} монет. Возвращайся завтра за новой наградой!",
+    dailyRewardButtonLabel: "Ежедневная награда",
+    dailyRewardClaimHint: "Забрать",
+    dailyRewardCollectedLabel: "Завтра",
+    dailyRewardCelebrateMessage: "+{{amount}}",
+    level2UnlockMessage:
+      "Уровень 2! Ежедневная награда открыта - забирай бонус каждый день. Мини-челлендж тоже появляется на главном экране, когда Almost посчитает нужным.",
+    level3UnlockMessage:
+      "Уровень 3! В «Ленте» включились фокус-режим и вечерние сводки, чтобы подсказывать, куда двигаться дальше.",
+    level4UnlockMessage:
+      "Уровень 4! Открыто меню «Награды» и фокус-цели. Зайди в «Награды», чтобы увидеть трофеи и выбрать импульс для фокуса. Кастомизация Алми — на главном экране, нажми на кота.",
+    level5UnlockMessage:
+      "Уровень 5! Во вкладке «Награды» открылись полноценные челленджи. Выбирай испытания и прокачивай дисциплину.",
+    level6UnlockMessage:
+      "Уровень 6! Карта импульсов и умные уведомления теперь показывают, где и когда обычно срываешься.",
+    level7UnlockMessage:
+      "Уровень 7! Доступны вкладка «Думаем» и учёт бесплатных дней. Записывай идеи и фиксируй дни без трат.",
+    featureUnlockWhereLabel: "Где искать",
+    featureUnlockPreviewLabel: "Как это выглядит",
+    featureUnlockRewardsDailyTitle: "Ежедневная награда",
+    featureUnlockRewardsDailyDescription:
+      "Вверху главного экрана появилась карточка ежедневной награды. Забирай бонус раз в день - монеты сразу попадают к Алми, а новая награда приходит завтра.",
+    featureUnlockRewardsDailyPreview: "Ежедневная награда",
+    featureUnlockFeedFocusTitle: "Лента",
+    featureUnlockFeedFocusDescription: "Прокрути чуть вниз: блок фокуса и вечерняя сводка ждут тебя вверху ленты.",
+    featureUnlockFeedFocusPreview: "Фокус-режим",
+    featureUnlockRewardsCustomizationTitle: "Награды",
+    featureUnlockRewardsCustomizationDescription:
+      "Открылась вкладка «Награды»: там трофеи и фокус-цели. Кастомизация Алми — на главном экране, нажми на кота.",
+    featureUnlockRewardsCustomizationPreview: "Меню наград",
+    featureUnlockRewardsChallengesTitle: "Награды → Челленджи",
+    featureUnlockRewardsChallengesDescription:
+      "Переключись на вкладку «Челленджи» в трофее и запускай подходящие испытания.",
+    featureUnlockRewardsChallengesPreview: "Челленджи",
+    featureUnlockImpulseMapTitle: "Лента → Карта импульсов",
+    featureUnlockImpulseMapDescription:
+      "В ленте появился блок с тепловой картой. Он подскажет, когда и где чаще всего бывают соблазны.",
+    featureUnlockImpulseMapPreview: "Карта импульсов",
+    featureUnlockThinkingTitle: "Вкладка «Думаем»",
+    featureUnlockThinkingDescription:
+      "Новая вкладка с лампочкой хранит список «думаем» и лог бесплатных дней. Добавляй крупные покупки и отмечай дни без трат.",
+    featureUnlockThinkingPreview: "Список «Думаем»",
     impulseCardTitle: "Импульс-карта",
     impulseCardSubtitle: "Фиксируем, где искушения чаще всего побеждают или проигрывают.",
     impulseLoseLabel: "Чаще сдаёшься",
@@ -3710,6 +3822,7 @@ const TRANSLATIONS = {
     pendingAdded: "Добавлено в «думаем». Напомним вовремя.",
     pendingDeleteConfirm: "Убрать эту хотелку из «думаем»?",
     pendingCustomError: "Укажи название и стоимость хотелки.",
+    thinkingLockedMessage: "Меню «думаем» появится на 7 уровне. Продолжай сохранять, чтобы разблокировать его.",
     feedTab: "Лента",
     profileTab: "Профиль",
     payButton: "Оплатить",
@@ -3788,7 +3901,7 @@ const TRANSLATIONS = {
     analyticsConsentAgree: "🚀 Помочь улучшить Almost",
     analyticsConsentSkip: "Пропустить",
     pushOptInPromptTitle: "Включи уведомления",
-    pushOptInPromptBody: "Almost будет вовремя подсказывать и мягко напоминать — так приложение помогает эффективнее.",
+    pushOptInPromptBody: "Almost будет вовремя подсказывать и мягко напоминать. Так приложение помогает эффективнее.",
     pushOptInPromptPrimary: "Включить уведомления",
     pushOptInPromptSecondary: "Позже",
     onboardingBack: "Назад",
@@ -4197,8 +4310,6 @@ const TRANSLATIONS = {
     tutorialFeedDesc: "Отмечай импульсы и выбирай: копить, добавить в цели или подумать 14 дней.",
     tutorialGoalsTitle: "Цели",
     tutorialGoalsDesc: "Здесь живут мечты. Следи за прогрессом и обновляй цель.",
-    tutorialThinkingTitle: "Меню «Думаем»",
-    tutorialThinkingDesc: "Отправляй импульсы на паузу и возвращайся к ним через 14 дней, чтобы решить трезво.",
     tutorialRewardsTitle: "Награды и челленджи",
     tutorialRewardsDesc: "Заглядывай сюда, чтобы собирать награды за прогресс и запускать челленджи с бонусами.",
     tutorialProfileTitle: "Профиль и мотивация",
@@ -4211,8 +4322,6 @@ const TRANSLATIONS = {
     temptationTutorialActionsDesc: "Жми «Копить» или «Потратить», чтобы Almost фиксировал исход искушения.",
     temptationTutorialSwipeTitle: "Свайпы по карточке",
     temptationTutorialSwipeDesc: "Свайпай вправо, чтобы закрепить цель, и влево, чтобы удалить или спрятать искушение.",
-    temptationTutorialThinkTitle: "Режим «Думаем»",
-    temptationTutorialThinkDesc: "Кнопка «Думаем» ставит искушение на паузу 14 дней и напомнит вернуться к решению.",
     tabHintFeedTitle: "Главный экран",
     tabHintFeedBody: "Фиксируй импульсы и выбирай: копить, добавить в цели или отложить на потом.",
     tabHintCartTitle: "Цели",
@@ -4241,7 +4350,7 @@ const TRANSLATIONS = {
     frequencyTimerLabel: "Next check in {{time}}",
     frequencyTimerDue: "Time to log again",
     frequencyReminderTitle: "“{{temptation}}” needs a decision",
-    frequencyReminderBody: "Timer is almost out — log if you saved or spent.",
+    frequencyReminderBody: "Timer is almost out, log if you saved or spent.",
     tamagotchiHungryBubble: "🐟",
     tamagotchiFoodMenuTitle: "Almi's menu",
     tamagotchiFoodBoostLabel: "+{{percent}}% fullness",
@@ -4334,6 +4443,49 @@ const TRANSLATIONS = {
     freeDayRescueOverlay: "Streak rescued",
     freeDayCoinReward: "Free day logged: +{{coins}} blue coins.",
     freeDayCoinRewardStreak: "🔥 {{days}}-day streak: +{{coins}} blue coins.",
+    dailyRewardReason: "Daily Almi reward · +{{amount}} coins. Come back tomorrow for another reward!",
+    dailyRewardButtonLabel: "Daily reward",
+    dailyRewardClaimHint: "Tap to collect",
+    dailyRewardCollectedLabel: "Collected today",
+    dailyRewardCelebrateMessage: "+{{amount}}",
+    level2UnlockMessage:
+      "Level 2! Daily rewards are unlocked - claim a bonus once per day. The daily mini challenge will also appear on Home when Almost thinks you’re ready.",
+    level3UnlockMessage:
+      "Level 3! Focus mode plus evening summaries now live on the Feed to keep you on track and show what to improve next.",
+    level4UnlockMessage:
+      "Level 4! Rewards menu and focus targets unlocked. Open Rewards to see trophies and pick a temptation to focus on. Almi customization lives on Home, tap the cat.",
+    level5UnlockMessage:
+      "Level 5! Full challenges are ready inside Rewards → Challenges so you can choose longer missions and stay accountable.",
+    level6UnlockMessage:
+      "Level 6! The impulse map and smart nudges highlight risky places and hours so you know where impulses strike.",
+    level7UnlockMessage:
+      "Level 7! The Thinking list and Free Day tracker are live. Log ideas and zero-spend days to celebrate mindful wins.",
+    featureUnlockWhereLabel: "Where it lives",
+    featureUnlockPreviewLabel: "Looks like this",
+    featureUnlockRewardsDailyTitle: "Daily reward",
+    featureUnlockRewardsDailyDescription:
+      "A Daily Reward card now sits near the top of Home. Claim it once per day to get Almi coins instantly; it resets tomorrow.",
+    featureUnlockRewardsDailyPreview: "Daily reward",
+    featureUnlockFeedFocusTitle: "Feed focus block",
+    featureUnlockFeedFocusDescription:
+      "Scroll near the top of the feed to see focus mode plus the evening recap keeping you on track.",
+    featureUnlockFeedFocusPreview: "Focus mode",
+    featureUnlockRewardsCustomizationTitle: "Rewards menu",
+    featureUnlockRewardsCustomizationDescription:
+      "The Rewards tab is now unlocked with trophies and focus targets. To customize Almi, tap the cat on Home.",
+    featureUnlockRewardsCustomizationPreview: "Rewards tab",
+    featureUnlockRewardsChallengesTitle: "Rewards → Challenges",
+    featureUnlockRewardsChallengesDescription:
+      "Switch to the Challenges pane inside Rewards to pick a mission that matches your mood.",
+    featureUnlockRewardsChallengesPreview: "Challenge board",
+    featureUnlockImpulseMapTitle: "Feed → Impulse map",
+    featureUnlockImpulseMapDescription:
+      "Find the impulse insights block in the feed to see hot spots and hours where impulses sneak in.",
+    featureUnlockImpulseMapPreview: "Impulse map",
+    featureUnlockThinkingTitle: "Thinking tab",
+    featureUnlockThinkingDescription:
+      "Use the light bulb tab to park “thinking” purchases and log your free days without spending.",
+    featureUnlockThinkingPreview: "Thinking list",
     impulseCardTitle: "Impulse map",
     impulseCardSubtitle: "See when temptations usually win or when you stay strong.",
     impulseLoseLabel: "Weak spot",
@@ -4409,6 +4561,7 @@ const TRANSLATIONS = {
     pendingAdded: "Sent to Thinking. We’ll remind you in 2 weeks.",
     pendingDeleteConfirm: "Remove this item from Thinking?",
     pendingCustomError: "Add a name and price for this temptation.",
+    thinkingLockedMessage: "Thinking unlocks at level 7. Keep logging mindful saves to get there faster.",
     feedTab: "Feed",
     profileTab: "Profile",
     payButton: "Pay",
@@ -4876,8 +5029,6 @@ const TRANSLATIONS = {
     tutorialFeedDesc: "Log every impulse and choose: save it, add to goals, or park it for 14 days.",
     tutorialGoalsTitle: "Goals",
     tutorialGoalsDesc: "All dreams live here. Track progress and top up your goal.",
-    tutorialThinkingTitle: "Thinking tab",
-    tutorialThinkingDesc: "Park temptations for 14 days and return with a cooler head before deciding.",
     tutorialRewardsTitle: "Rewards & challenges",
     tutorialRewardsDesc: "Visit this tab to claim achievements and start challenges with bonus health.",
     tutorialProfileTitle: "Profile & motivation",
@@ -4890,8 +5041,6 @@ const TRANSLATIONS = {
     temptationTutorialActionsDesc: "Tap Save or Spend so Almost remembers how you handled a temptation.",
     temptationTutorialSwipeTitle: "Swipe gestures",
     temptationTutorialSwipeDesc: "Swipe right to pin a goal, left to delete or hide a temptation.",
-    temptationTutorialThinkTitle: "Thinking mode",
-    temptationTutorialThinkDesc: "Use “Think” to park a temptation for 14 days and get a reminder before deciding.",
     tabHintFeedTitle: "Temptation feed",
     tabHintFeedBody: "Log impulses here and decide to save, add to goals, or park for later.",
     tabHintCartTitle: "Goals",
@@ -5012,6 +5161,49 @@ const TRANSLATIONS = {
     freeDayRescueOverlay: "Série sauvée",
     freeDayCoinReward: "Jour gratuit enregistré : +{{coins}} pièces bleues.",
     freeDayCoinRewardStreak: "🔥 Série de {{days}} jours : +{{coins}} pièces bleues.",
+    dailyRewardReason: "Récompense Almi quotidienne · +{{amount}} pièces. Reviens demain pour en gagner une autre !",
+    dailyRewardButtonLabel: "Récompense du jour",
+    dailyRewardClaimHint: "Appuie pour l’obtenir",
+    dailyRewardCollectedLabel: "Déjà prise",
+    dailyRewardCelebrateMessage: "+{{amount}}",
+    level2UnlockMessage:
+      "Niveau 2 ! Les récompenses quotidiennes sont actives : récupère un bonus chaque jour. Le mini-défi quotidien apparaît aussi sur l’accueil quand Almost juge que tu es prêt.",
+    level3UnlockMessage:
+      "Niveau 3 ! Le mode focus et les résumés du soir arrivent dans le flux pour t’expliquer quoi améliorer ensuite.",
+    level4UnlockMessage:
+      "Niveau 4 ! Le menu Récompenses et les cibles focus sont débloqués. Ouvre Récompenses pour voir les trophées et choisir une impulsion à surveiller. La personnalisation d’Almi se fait sur l’accueil : touche le chat.",
+    level5UnlockMessage:
+      "Niveau 5 ! Les défis complets sont disponibles dans Récompenses → Défis pour te lancer sur la durée.",
+    level6UnlockMessage:
+      "Niveau 6 ! La carte des impulsions et les notifications intelligentes indiquent où et quand les envies frappent.",
+    level7UnlockMessage:
+      "Niveau 7 ! La liste « en pause » et le suivi des jours gratuits sont actifs : note tes idées et tes journées sans dépenses.",
+    featureUnlockWhereLabel: "Où le trouver",
+    featureUnlockPreviewLabel: "Aperçu",
+    featureUnlockRewardsDailyTitle: "Récompense du jour",
+    featureUnlockRewardsDailyDescription:
+      "Une carte « Récompense du jour » apparaît en haut de l’accueil. Récupère le bonus une fois par jour pour gagner des pièces Almi ; elle revient demain.",
+    featureUnlockRewardsDailyPreview: "Récompense du jour",
+    featureUnlockFeedFocusTitle: "Bloc focus du flux",
+    featureUnlockFeedFocusDescription:
+      "Fais défiler le début du flux : le mode focus et le récap du soir apparaissent juste après le héros.",
+    featureUnlockFeedFocusPreview: "Mode focus",
+    featureUnlockRewardsCustomizationTitle: "Menu Récompenses",
+    featureUnlockRewardsCustomizationDescription:
+      "L’onglet Récompenses est maintenant ouvert avec les trophées et les cibles focus. Pour personnaliser Almi, touche le chat sur l’accueil.",
+    featureUnlockRewardsCustomizationPreview: "Onglet Récompenses",
+    featureUnlockRewardsChallengesTitle: "Récompenses → Défis",
+    featureUnlockRewardsChallengesDescription:
+      "Passe sur l’onglet « Défis » dans Récompenses pour lancer une mission qui te motive.",
+    featureUnlockRewardsChallengesPreview: "Tableau de défis",
+    featureUnlockImpulseMapTitle: "Flux → Carte des impulsions",
+    featureUnlockImpulseMapDescription:
+      "Dans le flux, repère la carte d’analyses d’impulsions : elle montre les moments et lieux sensibles.",
+    featureUnlockImpulseMapPreview: "Carte impulsions",
+    featureUnlockThinkingTitle: "Onglet « En pause »",
+    featureUnlockThinkingDescription:
+      "Le nouvel onglet ampoule enregistre les achats « en pause » et tes jours gratuits sans dépenses.",
+    featureUnlockThinkingPreview: "Liste « En pause »",
     impulseCardTitle: "Carte des impulsions",
     impulseCardSubtitle: "Vois quand les tentations gagnent ou quand tu restes solide.",
     impulseLoseLabel: "Zone fragile",
@@ -5087,6 +5279,7 @@ const TRANSLATIONS = {
     pendingAdded: "Envoyé en pause. Rappel dans 2 semaines.",
     pendingDeleteConfirm: "Retirer cet élément de En pause ?",
     pendingCustomError: "Ajoute un nom et un prix pour cette tentation.",
+    thinkingLockedMessage: "L’onglet « En pause » se débloque au niveau 7. Continue d’économiser pour y accéder.",
     feedTab: "Flux",
     profileTab: "Profil",
     payButton: "Payer",
@@ -5549,8 +5742,6 @@ const TRANSLATIONS = {
     tutorialFeedDesc: "Enregistre chaque impulsion et décide : économiser, ajouter à l'objectif ou mettre en pause 14 jours.",
     tutorialGoalsTitle: "Objectifs",
     tutorialGoalsDesc: "Tous les rêves vivent ici. Suis le progrès et recharge ton objectif.",
-    tutorialThinkingTitle: "Onglet En pause",
-    tutorialThinkingDesc: "Mets les achats en pause 14 jours et reviens l'esprit clair.",
     tutorialRewardsTitle: "Récompenses & défis",
     tutorialRewardsDesc: "Dans cet onglet tu récoltes les succès et lances des défis avec bonus santé.",
     tutorialProfileTitle: "Profil & motivation",
@@ -5563,8 +5754,6 @@ const TRANSLATIONS = {
     temptationTutorialActionsDesc: "Appuie sur « Épargner » ou « Dépenser » pour qu'Almost enregistre ton choix.",
     temptationTutorialSwipeTitle: "Gestes de balayage",
     temptationTutorialSwipeDesc: "Balaye à droite pour épingler un objectif, à gauche pour supprimer ou cacher la tentation.",
-    temptationTutorialThinkTitle: "Mode Réflexion",
-    temptationTutorialThinkDesc: "Le bouton « Réfléchir » met la tentation en pause 14 jours et te relance avant de décider.",
     tabHintFeedTitle: "Flux de tentations",
     tabHintFeedBody: "Note les impulsions et décide de les économiser, de les ajouter à un objectif ou de les mettre en pause.",
     tabHintCartTitle: "Objectifs",
@@ -5687,6 +5876,49 @@ const TRANSLATIONS = {
     freeDayRescueOverlay: "Racha salvada",
     freeDayCoinReward: "Día gratis registrado: +{{coins}} monedas azules.",
     freeDayCoinRewardStreak: "🔥 Racha de {{days}} días: +{{coins}} monedas azules.",
+    dailyRewardReason: "Recompensa diaria de Almi · +{{amount}} monedas. Vuelve mañana por otra recompensa.",
+    dailyRewardButtonLabel: "Recompensa diaria",
+    dailyRewardClaimHint: "Toca para cobrar",
+    dailyRewardCollectedLabel: "Ya cobrada hoy",
+    dailyRewardCelebrateMessage: "+{{amount}}",
+    level2UnlockMessage:
+      "Nivel 2: Las recompensas diarias están activas; reclama un bonus cada día. El mini reto diario también aparece en Inicio cuando Almost lo considera.",
+    level3UnlockMessage:
+      "Nivel 3: El modo foco y los resúmenes nocturnos llegan al Feed para recordarte qué mejorar.",
+    level4UnlockMessage:
+      "Nivel 4: Desbloqueaste el menú Recompensas y los objetivos de enfoque. Abre Recompensas para ver trofeos y elegir una tentación a vigilar. Para personalizar a Almi, toca el gato en Inicio.",
+    level5UnlockMessage:
+      "Nivel 5: Los retos completos viven en Recompensas → Retos para que tomes misiones más largas.",
+    level6UnlockMessage:
+      "Nivel 6: El mapa de impulsos y las notificaciones inteligentes muestran dónde y cuándo llegan los impulsos.",
+    level7UnlockMessage:
+      "Nivel 7: La lista «en pausa» y el registro de días libres están disponibles; anota ideas y días sin gasto.",
+    featureUnlockWhereLabel: "Dónde está",
+    featureUnlockPreviewLabel: "Así se ve",
+    featureUnlockRewardsDailyTitle: "Recompensa diaria",
+    featureUnlockRewardsDailyDescription:
+      "En la parte superior de Inicio aparece la tarjeta de recompensa diaria. Reclama el bonus una vez al día para ganar monedas Almi; se reinicia mañana.",
+    featureUnlockRewardsDailyPreview: "Recompensa diaria",
+    featureUnlockFeedFocusTitle: "Bloque de foco en el feed",
+    featureUnlockFeedFocusDescription:
+      "Desliza por el inicio del feed: ahí aparecen el modo foco y el resumen nocturno con tus pistas.",
+    featureUnlockFeedFocusPreview: "Modo foco",
+    featureUnlockRewardsCustomizationTitle: "Menú Recompensas",
+    featureUnlockRewardsCustomizationDescription:
+      "La pestaña Recompensas ya está abierta con trofeos y objetivos de enfoque. Para personalizar a Almi, toca el gato en Inicio.",
+    featureUnlockRewardsCustomizationPreview: "Pestaña Recompensas",
+    featureUnlockRewardsChallengesTitle: "Recompensas → Retos",
+    featureUnlockRewardsChallengesDescription:
+      "Cambia a la pestaña «Retos» en Recompensas y arranca la misión que más te motive.",
+    featureUnlockRewardsChallengesPreview: "Tablón de retos",
+    featureUnlockImpulseMapTitle: "Feed → Mapa de impulsos",
+    featureUnlockImpulseMapDescription:
+      "Busca la tarjeta con el mapa de impulsos en el feed para ver horas y lugares donde más tientan.",
+    featureUnlockImpulseMapPreview: "Mapa de impulsos",
+    featureUnlockThinkingTitle: "Pestaña «En pausa»",
+    featureUnlockThinkingDescription:
+      "El nuevo ícono con foco guarda la lista «en pausa» y tus días gratis sin gasto. Anota ideas ahí.",
+    featureUnlockThinkingPreview: "Lista «En pausa»",
     impulseCardTitle: "Mapa de impulsos",
     impulseCardSubtitle: "Descubre cuándo suelen ganar las tentaciones o cuándo mantienes el control.",
     impulseLoseLabel: "Zona débil",
@@ -5762,6 +5994,7 @@ const TRANSLATIONS = {
     pendingAdded: "Enviado a En pausa. Recordaremos en dos semanas.",
     pendingDeleteConfirm: "¿Quitar este elemento de En pausa?",
     pendingCustomError: "Añade un nombre y un precio para esta tentación.",
+    thinkingLockedMessage: "En pausa se desbloquea en el nivel 7. Sigue registrando ahorros para llegar pronto.",
     feedTab: "Inicio",
     profileTab: "Perfil",
     payButton: "Pagar",
@@ -6220,8 +6453,6 @@ const TRANSLATIONS = {
     tutorialFeedDesc: "Registra cada impulso y decide: guardar, añadir a metas o pausar 14 días.",
     tutorialGoalsTitle: "Metas",
     tutorialGoalsDesc: "Aquí viven los sueños. Sigue el progreso y recarga tu meta.",
-    tutorialThinkingTitle: "Pestaña En pausa",
-    tutorialThinkingDesc: "Pon las compras en pausa 14 días y vuelve con la cabeza fría.",
     tutorialRewardsTitle: "Recompensas y retos",
     tutorialRewardsDesc: "En esta pestaña cobras logros y lanzas retos con bono de salud.",
     tutorialProfileTitle: "Perfil y motivación",
@@ -6234,8 +6465,6 @@ const TRANSLATIONS = {
     temptationTutorialActionsDesc: "Toca «Ahorrar» o «Gastar» para que Almost recuerde cómo resolviste la tentación.",
     temptationTutorialSwipeTitle: "Gestos de swipe",
     temptationTutorialSwipeDesc: "Desliza a la derecha para fijar una meta y a la izquierda para borrar u ocultar la tentación.",
-    temptationTutorialThinkTitle: "Modo «Pensamos»",
-    temptationTutorialThinkDesc: "El botón «Pensamos» pone la tentación en pausa 14 días y te avisa antes de decidir.",
     tabHintFeedTitle: "Feed de tentaciones",
     tabHintFeedBody: "Registra impulsos y decide si ahorras, lo añades a metas o lo pospones.",
     tabHintCartTitle: "Metas",
@@ -6353,51 +6582,6 @@ const isKnownDailyNudgeNotification = (content = {}) => {
     matchesDailyNudgeText(content.title, DAILY_NUDGE_TITLE_VARIANTS) &&
     matchesDailyNudgeText(content.body, DAILY_NUDGE_BODY_VARIANTS)
   );
-};
-
-const CATEGORY_LABELS = {
-  all: { ru: "все", en: "all", es: "todo", fr: "tout" },
-  tech: { ru: "техника", en: "tech", es: "tecnología", fr: "tech" },
-  flagship: { ru: "флагман", en: "flagship", es: "gama alta", fr: "haut de gamme" },
-  iphone: { ru: "iphone", en: "iphone", es: "iphone", fr: "iphone" },
-  laptop: { ru: "ноут", en: "laptop", es: "portátil", fr: "portable" },
-  work: { ru: "работа", en: "work", es: "trabajo", fr: "travail" },
-  audio: { ru: "аудио", en: "audio", es: "audio", fr: "audio" },
-  style: { ru: "стиль", en: "style", es: "estilo", fr: "style" },
-  wearable: { ru: "носимое", en: "wearable", es: "wearable", fr: "wearable" },
-  sport: { ru: "спорт", en: "sport", es: "deporte", fr: "sport" },
-  home: { ru: "дом", en: "home", es: "hogar", fr: "maison" },
-  wow: { ru: "вау", en: "wow", es: "wow", fr: "wow" },
-  gift: { ru: "подарки", en: "gift", es: "regalo", fr: "cadeau" },
-  coffee: { ru: "кофе", en: "coffee", es: "café", fr: "café" },
-  eco: { ru: "эко", en: "eco", es: "eco", fr: "éco" },
-  food: { ru: "еда", en: "food", es: "comida", fr: "nourriture" },
-  wellness: { ru: "забота", en: "wellness", es: "bienestar", fr: "bien-être" },
-  retro: { ru: "ретро", en: "retro", es: "retro", fr: "rétro" },
-  lifestyle: { ru: "лайф", en: "lifestyle", es: "lifestyle", fr: "lifestyle" },
-  stationery: { ru: "бумага", en: "stationery", es: "papelería", fr: "papeterie" },
-  phone: { ru: "телефон", en: "phone", es: "teléfono", fr: "téléphone" },
-  travel: { ru: "путешествия", en: "travel", es: "viajes", fr: "voyage" },
-  dream: { ru: "мечты", en: "dream", es: "sueños", fr: "rêves" },
-  habit: { ru: "привычки", en: "habit", es: "hábito", fr: "habitudes" },
-  habbit: { ru: "привычки", en: "habit", es: "hábito", fr: "habitudes" },
-  custom: { ru: "свои", en: "custom", es: "personal", fr: "perso" },
-  daily: { ru: "ежедневное", en: "daily", es: "diario", fr: "quotidien" },
-  health: { ru: "здоровье", en: "health", es: "salud", fr: "santé" },
-  vices: { ru: "вредные", en: "vices", es: "vicios", fr: "vices" },
-};
-
-const normalizeCategoryKey = (value) => {
-  if (typeof value !== "string") return "";
-  return value.trim().toLowerCase();
-};
-
-const resolveCategoryLabel = (categoryKey, language = "en") => {
-  const normalized = normalizeCategoryKey(categoryKey);
-  const entry = CATEGORY_LABELS[normalized] || CATEGORY_LABELS[categoryKey];
-  const fallback = normalized || categoryKey || "";
-  const localized = entry?.[language] || entry?.en || fallback;
-  return localized.toUpperCase();
 };
 
 const CURRENCIES = ["USD", "AED", "AUD", "BYN", "CAD", "EUR", "GBP", "JPY", "KZT", "KRW", "MXN", "PLN", "RUB", "SAR"];
@@ -7060,6 +7244,28 @@ const DEFAULT_TEMPTATIONS = [
     },
   },
   {
+    id: "netflix_subscription",
+    emoji: "📺",
+    image:
+      "https://images.unsplash.com/photo-1524985069026-dd778a71c7b4?auto=format&fit=crop&w=600&q=80",
+    color: "#F2F2F2",
+    categories: ["subscription", "entertainment"],
+    basePriceUSD: 7,
+    priceUSD: 7,
+    title: {
+      ru: "Подписка на Нетфликс",
+      en: "Netflix subscription",
+      es: "Suscripción a Netflix",
+      fr: "Abonnement Netflix",
+    },
+    description: {
+      ru: "Маленькая ежемесячная подписка, которая незаметно тянет бюджет вниз.",
+      en: "A small monthly subscription that quietly drains the budget.",
+      es: "Una suscripción mensual pequeña que va drenando el presupuesto.",
+      fr: "Un petit abonnement mensuel qui grignote le budget sans bruit.",
+    },
+  },
+  {
     id: "croissant_break",
     emoji: "🥐",
     image:
@@ -7625,62 +7831,16 @@ const GOALS = [
   },
 ];
 
-const SAVINGS_TIERS = [6, 20, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000, 50000, 100000, 250000];
-const LEVEL_TWO_TARGET_RUB_USD = convertFromCurrency(600, "RUB"); // level 2 at ₽600 instead of default $6
-const LEVEL_TWO_TARGET_EUR_USD = convertFromCurrency(6, "EUR"); // keep €6 requirement despite USD base
-const LEVEL_TWO_TARGET_GBP_USD = convertFromCurrency(6, "GBP"); // keep £6 requirement despite USD base
-const LEVEL_TWO_TARGET_SAR_USD = convertFromCurrency(6, "SAR"); // keep ﷼6 requirement despite USD base
-const LEVEL_TWO_TARGET_AED_USD = convertFromCurrency(6, "AED"); // keep د.إ6 requirement despite USD base
-const LEVEL_TWO_TARGET_AUD_USD = convertFromCurrency(6, "AUD"); // keep A$6 requirement despite USD base
-const LEVEL_TWO_TARGET_BYN_USD = convertFromCurrency(6, "BYN"); // keep Br6 requirement despite USD base
-const LEVEL_TWO_TARGET_CAD_USD = convertFromCurrency(6, "CAD"); // keep C$6 requirement despite USD base
-const LEVEL_TWO_TARGET_PLN_USD = convertFromCurrency(6, "PLN"); // keep zł6 requirement despite USD base
-const LEVEL_TWO_TARGET_KZT_USD = convertFromCurrency(3000, "KZT"); // keep ₸3000 requirement despite USD base
-const LEVEL_TWO_TARGET_JPY_USD = convertFromCurrency(1000, "JPY"); // keep ¥1000 requirement despite USD base
-const LEVEL_TWO_TARGET_KRW_USD = convertFromCurrency(15000, "KRW"); // keep ₩15000 requirement despite USD base
-const LEVEL_TWO_TARGET_MXN_USD = convertFromCurrency(120, "MXN"); // keep MX$120 requirement despite USD base
+const SAVINGS_TIERS = [10, 20, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000, 50000, 100000, 250000];
+const getLevelTwoTargetUSD = (currencyCode = activeCurrency) => {
+  const code = currencyCode || activeCurrency;
+  const localTargetRounded = Math.round(convertToCurrency(10, code));
+  return convertFromCurrency(localTargetRounded, code);
+};
 const getTierTargetsUSD = (currencyCode = activeCurrency) => {
   const code = currencyCode || activeCurrency;
-  if (code === "RUB") {
-    return [LEVEL_TWO_TARGET_RUB_USD, ...SAVINGS_TIERS.slice(1)];
-  }
-  if (code === "EUR") {
-    return [LEVEL_TWO_TARGET_EUR_USD, ...SAVINGS_TIERS.slice(1)];
-  }
-  if (code === "AUD") {
-    return [LEVEL_TWO_TARGET_AUD_USD, ...SAVINGS_TIERS.slice(1)];
-  }
-  if (code === "BYN") {
-    return [LEVEL_TWO_TARGET_BYN_USD, ...SAVINGS_TIERS.slice(1)];
-  }
-  if (code === "CAD") {
-    return [LEVEL_TWO_TARGET_CAD_USD, ...SAVINGS_TIERS.slice(1)];
-  }
-  if (code === "GBP") {
-    return [LEVEL_TWO_TARGET_GBP_USD, ...SAVINGS_TIERS.slice(1)];
-  }
-  if (code === "SAR") {
-    return [LEVEL_TWO_TARGET_SAR_USD, ...SAVINGS_TIERS.slice(1)];
-  }
-  if (code === "AED") {
-    return [LEVEL_TWO_TARGET_AED_USD, ...SAVINGS_TIERS.slice(1)];
-  }
-  if (code === "PLN") {
-    return [LEVEL_TWO_TARGET_PLN_USD, ...SAVINGS_TIERS.slice(1)];
-  }
-  if (code === "KZT") {
-    return [LEVEL_TWO_TARGET_KZT_USD, ...SAVINGS_TIERS.slice(1)];
-  }
-  if (code === "JPY") {
-    return [LEVEL_TWO_TARGET_JPY_USD, ...SAVINGS_TIERS.slice(1)];
-  }
-  if (code === "KRW") {
-    return [LEVEL_TWO_TARGET_KRW_USD, ...SAVINGS_TIERS.slice(1)];
-  }
-  if (code === "MXN") {
-    return [LEVEL_TWO_TARGET_MXN_USD, ...SAVINGS_TIERS.slice(1)];
-  }
-  return SAVINGS_TIERS;
+  const levelTwoTarget = getLevelTwoTargetUSD(code);
+  return [levelTwoTarget, ...SAVINGS_TIERS.slice(1)];
 };
 
 const intlFallbackWarnings = new Set();
@@ -7920,27 +8080,6 @@ const getTierProgress = (savedUSD = 0, currencyCode = activeCurrency) => {
   };
 };
 
-function CategoryChip({ label, isActive, onPress, colors }) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={[
-        styles.categoryChip,
-        { backgroundColor: isActive ? colors.text : colors.card, borderColor: colors.border },
-      ]}
-    >
-      <Text
-        style={[
-          styles.categoryChipText,
-          { color: isActive ? colors.background : colors.muted },
-        ]}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
 const resolveTemptationTitle = (item, language, override) => {
   if (override) return override;
   if (item.titleOverride) return item.titleOverride;
@@ -7987,6 +8126,12 @@ const formatTemptationPriceLabel = (item, currency) => {
   });
 };
 
+const filterTemptationsByPrice = (list, limitUSD) => {
+  if (!Array.isArray(list)) return [];
+  if (!Number.isFinite(limitUSD)) return list;
+  return list.filter((item) => getTemptationPrice(item) <= limitUSD);
+};
+
 function TemptationCardComponent({
   item,
   language,
@@ -8024,9 +8169,11 @@ function TemptationCardComponent({
   cardStyle = null,
   isPrimaryTemptation = false,
   tutorialHighlightMode = null,
+  tutorialHighlightMeasureTick = 0,
   onTutorialHighlightLayoutChange = null,
   interaction = null,
   timerNow = null,
+  allowThinkAction = true,
 }) {
   const title = resolveTemptationTitle(item, language, titleOverride);
   const isCustomCard =
@@ -8052,7 +8199,8 @@ function TemptationCardComponent({
   const tutorialHighlightActive = Boolean(tutorialHighlightMode);
   const tutorialHighlightActions = tutorialHighlightMode === "actions";
   const tutorialHighlightSwipe = tutorialHighlightMode === "swipe";
-  const tutorialHighlightThink = tutorialHighlightMode === "think";
+  const tutorialHighlightThink = tutorialHighlightMode === "think" && allowThinkAction;
+  const tutorialHighlightFrame = tutorialHighlightSwipe || tutorialHighlightActions;
   const tutorialHighlightCardRef = useRef(null);
   const updateTutorialHighlightLayout = useCallback(() => {
     if (typeof onTutorialHighlightLayoutChange !== "function") return;
@@ -8067,11 +8215,11 @@ function TemptationCardComponent({
     if (!measureTarget || typeof measureTarget.measureInWindow !== "function") return;
     requestAnimationFrame(() => {
       measureTarget.measureInWindow((x, y, width, height) => {
-        const androidStatusBarOffset =
-          Platform.OS === "android" ? RNStatusBar.currentHeight || 0 : 0;
+        const androidFineTune =
+          Platform.OS === "android" ? ANDROID_TUTORIAL_HIGHLIGHT_OFFSET : 0;
         onTutorialHighlightLayoutChange({
           x,
-          y: y + androidStatusBarOffset,
+          y: y + androidFineTune,
           width,
           height,
         });
@@ -8088,6 +8236,11 @@ function TemptationCardComponent({
     }, 300);
     return () => clearTimeout(timer);
   }, [updateTutorialHighlightLayout]);
+  useEffect(() => {
+    if (!tutorialHighlightActive) return;
+    const frame = requestAnimationFrame(() => updateTutorialHighlightLayout());
+    return () => cancelAnimationFrame(frame);
+  }, [tutorialHighlightActive, tutorialHighlightMeasureTick, updateTutorialHighlightLayout]);
   useEffect(() => {
     if (!tutorialHighlightActive) return;
     const subscription = Dimensions.addEventListener("change", updateTutorialHighlightLayout);
@@ -8236,8 +8389,10 @@ function TemptationCardComponent({
   const actionConfig = [
     { type: "save", label: t("saveAction"), variant: "primary" },
     { type: "spend", label: t("spendAction"), variant: "ghost" },
-    { type: "maybe", label: t("maybeAction"), variant: "outline" },
   ];
+  if (allowThinkAction) {
+    actionConfig.push({ type: "maybe", label: t("maybeAction"), variant: "outline" });
+  }
   const interactionEntry = interaction || {};
   const frequencyId = interactionEntry.frequency || null;
   const frequencyLabelKey = frequencyId ? TEMPTATION_FREQUENCY_BUCKETS[frequencyId]?.badgeKey : null;
@@ -8443,7 +8598,7 @@ function TemptationCardComponent({
       <View
         style={[
           styles.temptationSwipeBackground,
-          tutorialHighlightSwipe && styles.temptationTutorialSwipeHint,
+          tutorialHighlightFrame && styles.temptationTutorialSwipeHint,
         ]}
         pointerEvents="none"
       >
@@ -8977,9 +9132,14 @@ function SavingsHeroCard({
   healthPoints = 0,
   onBreakdownPress = () => {},
   weeklyComparison = null,
+  dailyRewardUnlocked = false,
+  dailyRewardReady = false,
+  dailyRewardAmount = 0,
+  onDailyRewardClaim = () => {},
 }) {
   const [expanded, setExpanded] = useState(false);
   const [levelExpanded, setLevelExpanded] = useState(false);
+  const [levelBadgeLayout, setLevelBadgeLayout] = useState({ width: 0, height: 0, y: 0 });
   const maxAmount = Math.max(...dailySavings.map((day) => day.amountUSD), 0);
   const potentialLocal = formatCurrency(convertToCurrency(potentialSavedUSD || 0, currency), currency);
   const actualLocal = formatCurrency(convertToCurrency(actualSavedUSD || 0, currency), currency);
@@ -9026,6 +9186,45 @@ function SavingsHeroCard({
     if (!savingsTrend && !spendingTrend) return null;
     return { savings: savingsTrend, spending: spendingTrend };
   }, [currency, goldPalette.accent, goldPalette.danger, weeklyComparison]);
+  const rewardTileSize = useMemo(
+    () => Math.max(levelBadgeLayout.width || 0, 68),
+    [levelBadgeLayout.width]
+  );
+  const rewardTileTop = useMemo(
+    () => (levelBadgeLayout.y || 0) + (levelBadgeLayout.height || 0) + 10,
+    [levelBadgeLayout.height, levelBadgeLayout.y]
+  );
+  const handleLevelBadgeLayout = useCallback(
+    (event) => {
+      const layout = event?.nativeEvent?.layout;
+      if (!layout) return;
+      setLevelBadgeLayout((prev) => {
+        if (
+          prev.width === layout.width &&
+          prev.height === layout.height &&
+          prev.y === layout.y
+        ) {
+          return prev;
+        }
+        return { width: layout.width, height: layout.height, y: layout.y };
+      });
+    },
+    []
+  );
+  const dailyRewardButtonColors = dailyRewardReady
+    ? {
+        background: "rgba(255,173,74,0.25)",
+        border: "rgba(255,173,74,0.55)",
+        shadow: "rgba(255,160,80,0.4)",
+        text: "#6A390C",
+      }
+    : {
+        background: "rgba(130,130,130,0.25)",
+        border: "rgba(130,130,130,0.5)",
+        shadow: "transparent",
+        text: "rgba(90,90,90,0.9)",
+      };
+  const dailyRewardLabel = dailyRewardReady ? t("dailyRewardClaimHint") : t("dailyRewardCollectedLabel");
   return (
     <View
       style={[
@@ -9050,16 +9249,19 @@ function SavingsHeroCard({
       </View>
       <View style={styles.savedHeroContent}>
         <View style={styles.savedHeroHeader}>
-          <Text style={[styles.progressHeroTitle, { color: goldPalette.text }]}>
-            {t("progressHeroTitle")}
-          </Text>
+          <View style={styles.savedHeroTitleWrap}>
+            <Text style={[styles.progressHeroTitle, { color: goldPalette.text }]}>
+              {t("progressHeroTitle")}
+            </Text>
+          </View>
           <TouchableOpacity
-            style={[styles.savedHeroLevelButton, styles.savedHeroLevelButtonFloating]}
+            style={styles.savedHeroLevelButton}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             activeOpacity={0.85}
             onPress={() => setLevelExpanded((prev) => !prev)}
           >
             <View
+              onLayout={handleLevelBadgeLayout}
               style={[
                 styles.savedHeroLevelBadge,
                 {
@@ -9068,17 +9270,57 @@ function SavingsHeroCard({
                 },
               ]}
             >
-              <Text style={[styles.savedHeroLevelText, { color: goldPalette.badgeText }]}>
-                {levelLabel}
-              </Text>
+              <Text style={[styles.savedHeroLevelText, { color: goldPalette.badgeText }]}>{levelLabel}</Text>
             </View>
           </TouchableOpacity>
         </View>
-        <View style={styles.savedHeroAmountWrap}>
-          <Text style={[styles.progressHeroAmount, { color: goldPalette.text }]}>
-            {totalSavedLabel}
-          </Text>
-        </View>
+        {dailyRewardUnlocked && !levelExpanded && (
+          <TouchableOpacity
+            style={[
+              styles.dailyRewardButton,
+              styles.dailyRewardFloating,
+              {
+                width: rewardTileSize,
+                height: rewardTileSize,
+                minHeight: rewardTileSize,
+                minWidth: rewardTileSize,
+                top: rewardTileTop,
+                backgroundColor: dailyRewardButtonColors.background,
+                borderColor: dailyRewardButtonColors.border,
+                shadowColor: dailyRewardButtonColors.shadow,
+                shadowOpacity: dailyRewardReady ? 0.2 : 0,
+                shadowOffset: { width: 0, height: dailyRewardReady ? 3 : 0 },
+                shadowRadius: dailyRewardReady ? 4 : 0,
+                elevation: dailyRewardReady ? 1 : 0,
+              },
+            ]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            pressRetentionOffset={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={dailyRewardReady ? 0.85 : 1}
+            onPress={onDailyRewardClaim}
+            disabled={!dailyRewardReady}
+          >
+            <Image source={HEALTH_COIN_TIERS[0].asset} style={styles.dailyRewardCoin} />
+            {dailyRewardReady && dailyRewardAmount > 0 && (
+              <Text
+                style={[
+                  styles.dailyRewardAmount,
+                  { color: dailyRewardButtonColors.text },
+                ]}
+              >
+                {`+${dailyRewardAmount}`}
+              </Text>
+            )}
+            <Text
+              style={[
+                styles.dailyRewardCaption,
+                { color: dailyRewardButtonColors.text },
+              ]}
+            >
+              {dailyRewardLabel}
+            </Text>
+          </TouchableOpacity>
+        )}
         {levelExpanded && (
           <View
             style={[
@@ -9107,6 +9349,11 @@ function SavingsHeroCard({
             </View>
           </View>
         )}
+        <View style={styles.savedHeroAmountWrap}>
+          <Text style={[styles.progressHeroAmount, { color: goldPalette.text }]}>
+            {totalSavedLabel}
+          </Text>
+        </View>
         {heroRecentEvents.length > 0 ? (
           <View style={styles.savedHeroRecentList}>
             <Text style={[styles.savedHeroRecentTitle, { color: goldPalette.subtext }]}>
@@ -10003,9 +10250,6 @@ const FeedScreen = React.memo(
   forwardRef(function FeedScreen(
     {
   products,
-  categories,
-  activeCategory,
-  onCategorySelect,
   savedTotalUSD,
   wishes = [],
   onTemptationAction,
@@ -10027,7 +10271,6 @@ const FeedScreen = React.memo(
   profile,
   titleOverrides = {},
   descriptionOverrides = {},
-  onLevelCelebrate,
   onBaselineSetup,
   goalAssignments = {},
   impulseInsights = null,
@@ -10036,6 +10279,10 @@ const FeedScreen = React.memo(
   onPotentialDetailsOpen = null,
   heroGoalTargetUSD = 0,
   heroGoalSavedUSD = 0,
+  dailyRewardUnlocked = false,
+  dailyRewardReady = false,
+  dailyRewardAmount = 0,
+  onDailyRewardClaim = () => {},
   editingTemptationId = null,
   editingTitleValue = "",
   editingPriceValue = "",
@@ -10069,16 +10316,21 @@ const FeedScreen = React.memo(
   interactionStats = {},
   resolveCardRefuseStats = () => null,
   tutorialTemptationStepId = null,
+  tutorialHighlightMeasureTick = 0,
   onTutorialHighlightLayoutChange = null,
+  allowThinkAction = true,
+  showFreeDayCard = true,
+  showImpulseMap = true,
   },
     ref
   ) {
   const listRef = useRef(null);
   const heroSectionHeightRef = useRef(0);
   const scrollToTemptations = useCallback(
-    ({ animated = true } = {}) => {
+    ({ animated = true, extraOffset = 0 } = {}) => {
       if (!listRef.current) return false;
-      const offset = Math.max(0, (heroSectionHeightRef.current || 0) - 16);
+      const baseOffset = Math.max(0, (heroSectionHeightRef.current || 0) - 16);
+      const offset = Math.max(0, baseOffset + (Number(extraOffset) || 0));
       try {
         listRef.current.scrollToOffset({ offset, animated });
         return true;
@@ -10308,7 +10560,6 @@ const FeedScreen = React.memo(
       (tierInfo.prevTargetUSD ?? 0),
     1
   );
-  const previousTierInfo = useRef(tierInfo.level);
   const tierProgress = tierInfo.nextTargetUSD
     ? (levelProgressUSD - tierInfo.prevTargetUSD) / span
     : 1;
@@ -10337,21 +10588,6 @@ const FeedScreen = React.memo(
     }
     previousSavedTotal.current = savedTotalUSD;
   }, [savedTotalUSD, tierInfo.level, tierInfo.nextTargetUSD, profile.goal, profile.primaryGoals]);
-  useEffect(() => {
-    if (tierInfo.level > previousTierInfo.current) {
-      const levelsEarned = tierInfo.level - previousTierInfo.current;
-      logEvent("savings_level_up", {
-        level: tierInfo.level,
-        saved_usd_total: savedTotalUSD,
-      });
-      logEvent("hero_level_unlocked", {
-        level: tierInfo.level,
-        saved_usd_total: savedTotalUSD,
-      });
-      onLevelCelebrate?.(tierInfo.level, levelsEarned);
-    }
-    previousTierInfo.current = tierInfo.level;
-  }, [tierInfo.level, onLevelCelebrate, savedTotalUSD]);
   const progressPercent = Math.min(Math.max(goalProgress, 0), 1);
   const progressPercentLabel = Math.round(progressPercent * 100);
   const levelLabel = t("progressHeroLevel", { level: tierInfo.level });
@@ -10466,10 +10702,7 @@ const FeedScreen = React.memo(
     return ordered;
   }, [products, mainTemptationId, interactionStats]);
 
-  const filteredProducts = useMemo(() => {
-    if (activeCategory === "all") return orderedProducts;
-    return orderedProducts.filter((product) => product.categories?.includes(activeCategory));
-  }, [activeCategory, orderedProducts]);
+  const filteredProducts = orderedProducts;
   const frequencySections = useMemo(() => {
     const buckets = TEMPTATION_FREQUENCY_ORDER.map((bucketId) => ({
       id: bucketId,
@@ -10535,8 +10768,14 @@ const FeedScreen = React.memo(
     }
     return entries;
   }, [frequencyCollapseMap, frequencySections, interactionStats, t]);
+  const firstVisibleTemptationId = useMemo(() => {
+    const firstCard = feedEntries.find(
+      (entry) => entry?.type === "card" && entry.item?.id
+    );
+    return firstCard?.item?.id || null;
+  }, [feedEntries]);
   const tutorialHighlightTemptationId = tutorialTemptationStepId
-    ? filteredProducts[0]?.id || orderedProducts[0]?.id || null
+    ? firstVisibleTemptationId || filteredProducts[0]?.id || orderedProducts[0]?.id || null
     : null;
   const feedKeyExtractor = useCallback((entry) => entry.id, []);
   const renderTemptationCard = useCallback(
@@ -10560,6 +10799,7 @@ const FeedScreen = React.memo(
           language={language}
           colors={colors}
           t={t}
+          allowThinkAction={allowThinkAction}
           descriptionOverride={resolvedDescriptionOverride}
           isFocusTarget={item.id === focusTemplateId}
           onToggleEdit={() => onTemptationEditToggle?.(item)}
@@ -10594,6 +10834,9 @@ const FeedScreen = React.memo(
             await onTemptationAction(type, item);
           }}
           tutorialHighlightMode={isTutorialHighlightTarget ? tutorialTemptationStepId : null}
+          tutorialHighlightMeasureTick={
+            isTutorialHighlightTarget ? tutorialHighlightMeasureTick : 0
+          }
           onTutorialHighlightLayoutChange={
             isTutorialHighlightTarget ? onTutorialHighlightLayoutChange : null
           }
@@ -10636,6 +10879,7 @@ const FeedScreen = React.memo(
       t,
       timerNow,
       titleOverrides,
+      tutorialHighlightMeasureTick,
       wishesById,
       tutorialHighlightTemptationId,
       tutorialTemptationStepId,
@@ -10952,24 +11196,30 @@ const FeedScreen = React.memo(
             healthPoints={healthPoints}
             onBreakdownPress={onSavingsBreakdownPress}
             weeklyComparison={weeklyComparison}
-            />
-            <FreeDayCard
-              colors={colors}
-              t={t}
-              canLog={canLogFreeDay}
-              onLog={onFreeDayLog}
-              freeDayStats={freeDayStats}
-              todayKey={todayKey}
-              weekDays={weekDays}
-              weekCount={weekSuccessCount}
-              canRescue={canRescueFreeDay}
-              needsRescue={streakNeedsRescue}
-              rescueStatus={rescueStatus}
-              rescueCost={freeDayRescueCost}
-              onRescue={onFreeDayRescue}
-              hasRescueHealth={hasRescueHealth}
-            />
-            {showImpulseCard && (
+            dailyRewardUnlocked={dailyRewardUnlocked}
+            dailyRewardReady={dailyRewardReady}
+            dailyRewardAmount={dailyRewardAmount}
+            onDailyRewardClaim={onDailyRewardClaim}
+          />
+            {showFreeDayCard && (
+              <FreeDayCard
+                colors={colors}
+                t={t}
+                canLog={canLogFreeDay}
+                onLog={onFreeDayLog}
+                freeDayStats={freeDayStats}
+                todayKey={todayKey}
+                weekDays={weekDays}
+                weekCount={weekSuccessCount}
+                canRescue={canRescueFreeDay}
+                needsRescue={streakNeedsRescue}
+                rescueStatus={rescueStatus}
+                rescueCost={freeDayRescueCost}
+                onRescue={onFreeDayRescue}
+                hasRescueHealth={hasRescueHealth}
+              />
+            )}
+            {showImpulseMap && showImpulseCard && (
               <ImpulseMapCard
                 insights={impulseInsights}
                 colors={colors}
@@ -10979,17 +11229,6 @@ const FeedScreen = React.memo(
                 onToggle={() => setImpulseExpanded((prev) => !prev)}
               />
             )}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
-              {categories.map((cat) => (
-                <CategoryChip
-                  key={cat}
-                  label={resolveCategoryLabel(cat, language)}
-                  isActive={cat === activeCategory}
-                  onPress={() => onCategorySelect(cat)}
-                  colors={colors}
-                />
-              ))}
-            </ScrollView>
           </View>
         }
       />
@@ -12682,6 +12921,8 @@ const RewardsScreen = React.memo(function RewardsScreen({
   healthRewardAmount = HEALTH_PER_REWARD,
   language = DEFAULT_LANGUAGE,
   dailyChallenge = null,
+  showChallenges = true,
+  showDailyChallengeWidget = true,
 }) {
   const rewardList = Array.isArray(achievements) ? achievements.filter(Boolean) : [];
   const challengeList = useMemo(() => {
@@ -12699,7 +12940,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
       .map((item) => item.entry);
   }, [challenges]);
   const isDarkTheme = colors.background === THEMES.dark.background;
-  const pane = activePane === "rewards" ? "rewards" : "challenges";
+  const pane = showChallenges && activePane === "challenges" ? "challenges" : "rewards";
   const challengeSwipeCloserRef = useRef(null);
   const handleChallengeSwipeOpen = useCallback((closer) => {
     if (challengeSwipeCloserRef.current && challengeSwipeCloserRef.current !== closer) {
@@ -12961,7 +13202,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
     );
   };
   const renderDailyChallengeWidget = () => {
-    if (!dailyChallenge) return null;
+    if (!showDailyChallengeWidget || !dailyChallenge) return null;
     const progress = Math.min(
       Math.max(Number(dailyChallenge.progress) || 0, 0),
       Number(dailyChallenge.target) || 1
@@ -13021,10 +13262,13 @@ const RewardsScreen = React.memo(function RewardsScreen({
     );
   };
 
-  const tabItems = [
-    { id: "challenges", label: t("challengeTabTitle") },
-    { id: "rewards", label: t("challengeRewardsTabTitle") },
-  ];
+  const tabItems = useMemo(() => {
+    const tabs = [{ id: "rewards", label: t("challengeRewardsTabTitle") }];
+    if (showChallenges) {
+      tabs.unshift({ id: "challenges", label: t("challengeTabTitle") });
+    }
+    return tabs;
+  }, [showChallenges, t]);
 
   return (
     <ScrollView
@@ -13038,39 +13282,41 @@ const RewardsScreen = React.memo(function RewardsScreen({
           {t("purchasesSubtitle")}
         </Text>
       </View>
-      <View style={styles.rewardsTabs}>
-        {tabItems.map((tab) => {
-          const isActive = pane === tab.id;
-          return (
-            <TouchableOpacity
-              key={tab.id}
-              style={[
-                styles.rewardsTabButton,
-                {
-                  backgroundColor: isActive ? colors.text : "transparent",
-                  borderColor: isActive ? colors.text : colors.border,
-                },
-              ]}
-              activeOpacity={0.85}
-              onPress={() => {
-                if (tab.id !== pane) {
-                  onPaneChange?.(tab.id);
-                }
-              }}
-            >
-              <Text
+      {tabItems.length > 1 && (
+        <View style={styles.rewardsTabs}>
+          {tabItems.map((tab) => {
+            const isActive = pane === tab.id;
+            return (
+              <TouchableOpacity
+                key={tab.id}
                 style={[
-                  styles.rewardsTabText,
-                  { color: isActive ? colors.background : colors.text },
+                  styles.rewardsTabButton,
+                  {
+                    backgroundColor: isActive ? colors.text : "transparent",
+                    borderColor: isActive ? colors.text : colors.border,
+                  },
                 ]}
+                activeOpacity={0.85}
+                onPress={() => {
+                  if (tab.id !== pane) {
+                    onPaneChange?.(tab.id);
+                  }
+                }}
               >
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-      {pane === "challenges" ? (
+                <Text
+                  style={[
+                    styles.rewardsTabText,
+                    { color: isActive ? colors.background : colors.text },
+                  ]}
+                >
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+      {showChallenges && pane === "challenges" ? (
         <View style={{ gap: 16 }}>
           {renderDailyChallengeWidget()}
           {challengeList.map(renderChallengeCard)}
@@ -13875,6 +14121,7 @@ function AppContent() {
   const [activeTab, setActiveTabState] = useState("feed");
   const [tabHistory, setTabHistoryState] = useState([]);
   const tabHistoryRef = useRef(tabHistory);
+  const onboardingCompletedRef = useRef(false);
   useEffect(() => {
     tabHistoryRef.current = tabHistory;
   }, [tabHistory]);
@@ -13945,6 +14192,19 @@ function AppContent() {
   const [dailyChallengeHydrated, setDailyChallengeHydrated] = useState(false);
   const [savedTotalUSD, setSavedTotalUSD] = useState(0);
   const [savedTotalHydrated, setSavedTotalHydrated] = useState(false);
+  const [lastCelebratedLevel, setLastCelebratedLevel] = useState(1);
+  const [lastCelebratedLevelHydrated, setLastCelebratedLevelHydrated] = useState(false);
+  const persistLastCelebratedLevel = useCallback(
+    (nextLevel) => {
+      const normalized = Math.max(1, Number(nextLevel) || 1);
+      setLastCelebratedLevel(normalized);
+      AsyncStorage.setItem(
+        STORAGE_KEYS.LAST_CELEBRATED_LEVEL,
+        String(normalized)
+      ).catch(() => {});
+    },
+    []
+  );
   const [lifetimeSavedUSD, setLifetimeSavedUSD] = useState(0);
   const [lifetimeSavedHydrated, setLifetimeSavedHydrated] = useState(false);
   const [declineCount, setDeclineCount] = useState(0);
@@ -13954,6 +14214,8 @@ function AppContent() {
   const [freeDayStats, setFreeDayStats] = useState({ ...INITIAL_FREE_DAY_STATS });
   const [healthPoints, setHealthPoints] = useState(0);
   const [healthHydrated, setHealthHydrated] = useState(false);
+  const [dailyRewardState, setDailyRewardState] = useState({ ...DEFAULT_DAILY_REWARD_STATE });
+  const [dailyRewardHydrated, setDailyRewardHydrated] = useState(false);
   const [claimedRewards, setClaimedRewards] = useState({});
   const [claimedRewardsHydrated, setClaimedRewardsHydrated] = useState(false);
   const safeClaimedRewards = useMemo(
@@ -13979,20 +14241,146 @@ function AppContent() {
   const [challengesState, setChallengesState] = useState(() => createInitialChallengesState());
   const [challengesHydrated, setChallengesHydrated] = useState(false);
   const [rewardsPane, setRewardsPane] = useState("challenges");
+  useEffect(() => {
+    if (challengesUnlocked) return;
+    if (rewardsPane !== "rewards") {
+      setRewardsPane("rewards");
+    }
+  }, [challengesUnlocked, rewardsPane]);
   const [decisionStats, setDecisionStats] = useState({ ...INITIAL_DECISION_STATS });
   const [decisionStatsHydrated, setDecisionStatsHydrated] = useState(false);
   const [historyEvents, setHistoryEvents] = useState([]);
   const [historyHydrated, setHistoryHydrated] = useState(false);
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
   const declineStreak = useMemo(() => computeRefuseStreak(resolvedHistoryEvents), [resolvedHistoryEvents]);
+  const levelProgressUSD = Math.max(savedTotalUSD || 0, lifetimeSavedUSD || 0);
+  const profileCurrencyCode = profile?.currency || DEFAULT_PROFILE.currency;
+  const playerTierInfo = useMemo(
+    () => getTierProgress(levelProgressUSD || 0, profileCurrencyCode),
+    [levelProgressUSD, profileCurrencyCode]
+  );
+  const playerLevel = playerTierInfo.level;
+  const hasSpendHistory = useMemo(
+    () => resolvedHistoryEvents.some((entry) => entry.kind === "spend"),
+    [resolvedHistoryEvents]
+  );
+  const dailyChallengeUnlocked = playerLevel >= 2 && hasSpendHistory;
+  const dailyRewardUnlocked = playerLevel >= 2;
+  const focusModeUnlocked = playerLevel >= 3;
+  const dailySummaryUnlocked = playerLevel >= 3;
+  const focusTargetsUnlocked = playerLevel >= 4;
+  const catCustomizationUnlocked = playerLevel >= 4;
+  const rewardsUnlocked = playerLevel >= 4;
+  const challengesUnlocked = playerLevel >= 5;
+  const impulseFeaturesUnlocked = playerLevel >= 6;
+  const freeDayUnlocked = playerLevel >= 7;
+  const thinkingUnlocked = playerLevel >= 7;
+  const todayKey = getDayKey(Date.now());
+  const dailyRewardAmount = useMemo(
+    () => (dailyRewardUnlocked ? computeDailyAlmiReward(levelProgressUSD) : 0),
+    [dailyRewardUnlocked, levelProgressUSD]
+  );
+  const dailyRewardLastKey = useMemo(() => {
+    if (dailyRewardState.lastKey) return dailyRewardState.lastKey;
+    if (Number.isFinite(dailyRewardState.lastClaimAt) && dailyRewardState.lastClaimAt > 0) {
+      return getDayKey(dailyRewardState.lastClaimAt);
+    }
+    return null;
+  }, [dailyRewardState.lastClaimAt, dailyRewardState.lastKey]);
+  const dailyRewardReady =
+    dailyRewardUnlocked &&
+    dailyRewardHydrated &&
+    healthHydrated &&
+    dailyRewardLastKey !== todayKey &&
+    dailyRewardAmount > 0;
+  const dailyRewardDisplayAmount =
+    dailyRewardReady ? dailyRewardAmount : dailyRewardState.lastAmount || dailyRewardAmount || 0;
+  const handleDailyRewardClaim = useCallback(async () => {
+    if (!dailyRewardUnlocked || dailyRewardAmount <= 0) return;
+    const claimTimestamp = Date.now();
+    const claimKey = getDayKey(claimTimestamp);
+    const storedRaw = await AsyncStorage.getItem(STORAGE_KEYS.DAILY_REWARD).catch(() => null);
+    const storedDayKey = await AsyncStorage.getItem(STORAGE_KEYS.DAILY_REWARD_DAY_KEY).catch(
+      () => null
+    );
+    if (storedDayKey && storedDayKey === claimKey) {
+      return;
+    }
+    if (storedRaw) {
+      try {
+        const parsed = JSON.parse(storedRaw);
+        const storedKey =
+          typeof parsed?.lastKey === "string" && parsed.lastKey
+            ? parsed.lastKey
+            : Number(parsed?.lastClaimAt)
+            ? getDayKey(Number(parsed.lastClaimAt))
+            : null;
+        if (storedKey === claimKey) {
+          return;
+        }
+      } catch (error) {
+        console.warn("daily reward claim read", error);
+      }
+    }
+    if (!dailyRewardReady) return;
+    const rewardLabel = formatHealthRewardLabel(dailyRewardAmount, language);
+    const nextDailyRewardState = {
+      lastKey: claimKey,
+      lastAmount: dailyRewardAmount,
+      lastClaimAt: claimTimestamp,
+    };
+    setDailyRewardState(nextDailyRewardState);
+    AsyncStorage.setItem(
+      STORAGE_KEYS.DAILY_REWARD,
+      JSON.stringify(nextDailyRewardState)
+    ).catch(() => {});
+    AsyncStorage.setItem(STORAGE_KEYS.DAILY_REWARD_DAY_KEY, claimKey).catch(() => {});
+    setHealthPoints((prev) => prev + dailyRewardAmount);
+    ensureOverlayEnvironmentReady();
+    triggerOverlayState(
+      "daily_reward",
+      {
+        amount: rewardLabel,
+        reason: t("dailyRewardReason", { amount: rewardLabel }),
+      },
+      { force: true }
+    );
+    logEvent("daily_reward_claimed", { coins: dailyRewardAmount, level: playerLevel });
+  }, [
+    dailyRewardAmount,
+    dailyRewardReady,
+    dailyRewardUnlocked,
+    ensureOverlayEnvironmentReady,
+    language,
+    logEvent,
+    playerLevel,
+    setDailyRewardState,
+    setHealthPoints,
+    t,
+    triggerOverlayState,
+  ]);
+  const appTutorialSteps = useMemo(
+    () =>
+      APP_TUTORIAL_BASE_STEPS.filter((step) => {
+        if (step.requiresRewards && !rewardsUnlocked) {
+          return false;
+        }
+        return true;
+      }),
+    [rewardsUnlocked]
+  );
+  const priceLimitUSD = getTemptationPriceLimitForLevel(playerLevel);
+  const previousPlayerLevelRef = useRef(playerLevel);
   const [coinEntryVisible, setCoinEntryVisible] = useState(false);
   const coinEntryContextRef = useRef({ source: null, openedAt: 0, submitted: false });
   const [coinSliderMaxUSD, setCoinSliderMaxUSD] = useState(DEFAULT_COIN_SLIDER_MAX_USD);
   const [coinSliderHydrated, setCoinSliderHydrated] = useState(false);
   const [pendingGoalTargets, setPendingGoalTargets] = useState(null);
   const [savingsBreakdownVisible, setSavingsBreakdownVisible] = useState(false);
-  const products = temptations;
-  const [activeCategory, setActiveCategory] = useState("all");
+  const products = useMemo(
+    () => filterTemptationsByPrice(temptations, priceLimitUSD),
+    [temptations, priceLimitUSD]
+  );
   const [profile, setProfile] = useState(() => ({
     ...DEFAULT_PROFILE_PLACEHOLDER,
     joinedAt: new Date().toISOString(),
@@ -14010,6 +14398,10 @@ function AppContent() {
   }, []);
   const schedulePrimaryTemptationPrompt = useCallback(() => {
     setPrimaryTemptationPromptState("pending");
+    setPrimaryTemptationPromptHydrated(true);
+    setTemptationTutorialCompleted(false);
+    setTemptationTutorialStatus("pending");
+    setTemptationTutorialSeen(false);
     AsyncStorage.setItem(STORAGE_KEYS.PRIMARY_TEMPTATION_PROMPT, "pending").catch(() => {});
   }, []);
   const [northStarLogged, setNorthStarLogged] = useState(false);
@@ -14076,6 +14468,22 @@ function AppContent() {
   const isRomanceLocale = normalizedLanguageValue === "es" || normalizedLanguageValue === "fr";
   const baseTabFontSize = Platform.OS === "ios" ? 12 : 13;
   const tabLabelFontSize = isRomanceLocale ? baseTabFontSize - 1 : baseTabFontSize;
+  const tabOrder = ["feed", "cart", "pending", "purchases", "profile"];
+  const availableTabs = useMemo(
+    () =>
+      tabOrder.filter((tab) => {
+        if (tab === "pending") return thinkingUnlocked;
+        if (tab === "purchases") return rewardsUnlocked;
+        return true;
+      }),
+    [rewardsUnlocked, thinkingUnlocked]
+  );
+  useEffect(() => {
+    if (availableTabs.includes(activeTab)) return;
+    if (availableTabs.length) {
+      setActiveTabState(availableTabs[0]);
+    }
+  }, [activeTab, availableTabs]);
   const [homeLayoutReady, setHomeLayoutReady] = useState(false);
   const [startupHydrated, setStartupHydrated] = useState(false);
   const fontsReady = fontsLoaded || Boolean(fontsError);
@@ -14088,7 +14496,7 @@ function AppContent() {
   const [activeGoalId, setActiveGoalId] = useState(null);
   const [activeGoalHydrated, setActiveGoalHydrated] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [theme, setTheme] = useState("light");
+  const [theme, setTheme] = useState(DEFAULT_THEME);
   const [themeHydrated, setThemeHydrated] = useState(false);
   const isAndroid = Platform.OS === "android";
   const androidVersion = isAndroid ? Number(Platform.Version) : null;
@@ -14143,10 +14551,17 @@ function AppContent() {
   }, []);
   const overlayQueueRef = useRef([]);
   const overlayActiveRef = useRef(false);
+  const pendingLevelCelebrationRef = useRef(null);
+  const levelCelebrationQueuedRef = useRef(0);
   const [dailySummaryVisible, setDailySummaryVisible] = useState(false);
   const [dailySummaryData, setDailySummaryData] = useState(null);
   const [dailySummarySeenKey, setDailySummarySeenKey] = useState(null);
   const [pendingDailySummaryData, setPendingDailySummaryData] = useState(null);
+  const [dailySummaryOpenToken, setDailySummaryOpenToken] = useState(0);
+  const dailySummaryOpenProcessedRef = useRef(0);
+  const markDailySummaryOpen = useCallback(() => {
+    setDailySummaryOpenToken((prev) => prev + 1);
+  }, []);
   const [focusTemplateId, setFocusTemplateId] = useState(null);
   const [focusStateHydrated, setFocusStateHydrated] = useState(false);
   const [focusDigestSeenKey, setFocusDigestSeenKey] = useState(null);
@@ -14163,7 +14578,9 @@ function AppContent() {
     pendingIndex: null,
   });
   const isDailyChallengePromptPending =
-    dailyChallenge.status === DAILY_CHALLENGE_STATUS.OFFER && !dailyChallenge.offerDismissed;
+    dailyChallengeUnlocked &&
+    dailyChallenge.status === DAILY_CHALLENGE_STATUS.OFFER &&
+    !dailyChallenge.offerDismissed;
   const dailyNudgeIdsRef = useRef({});
   const smartRemindersRef = useRef([]);
   const smartReminderScheduleTailRef = useRef(0);
@@ -14174,13 +14591,23 @@ function AppContent() {
     setDailySummarySeenKey(todayKey);
     AsyncStorage.setItem(STORAGE_KEYS.DAILY_SUMMARY, todayKey).catch(() => {});
   }, [dailySummaryData]);
-  const [tutorialSeen, setTutorialSeen] = useState(true);
+  const [tutorialSeen, setTutorialSeen] = useState(false);
+  const [tutorialHydrated, setTutorialHydrated] = useState(false);
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
-  const [temptationTutorialSeen, setTemptationTutorialSeen] = useState(true);
+  const [temptationTutorialSeen, setTemptationTutorialSeen] = useState(false);
   const [temptationTutorialVisible, setTemptationTutorialVisible] = useState(false);
   const [temptationTutorialStepIndex, setTemptationTutorialStepIndex] = useState(0);
+  const [temptationTutorialHydrated, setTemptationTutorialHydrated] = useState(false);
+  const [temptationTutorialStatus, setTemptationTutorialStatus] = useState("pending");
+  const [temptationTutorialQueued, setTemptationTutorialQueued] = useState(false);
+  const [temptationTutorialCompleted, setTemptationTutorialCompleted] = useState(false);
+  const tutorialVisiblePrevRef = useRef(false);
   const [tutorialHighlightRect, setTutorialHighlightRect] = useState(null);
+  const [tutorialHighlightMeasureTick, setTutorialHighlightMeasureTick] = useState(0);
+  const tutorialHighlightMeasureTimerRef = useRef(null);
+  const tutorialHighlightAdjustCountRef = useRef(0);
+  const tutorialHighlightAlignAttemptsRef = useRef(0);
   const [ratingPromptState, setRatingPromptState] = useState(() => createInitialRatingPromptState());
   const [ratingPromptHydrated, setRatingPromptHydrated] = useState(false);
   const [ratingPromptVisible, setRatingPromptVisible] = useState(false);
@@ -14200,29 +14627,51 @@ function AppContent() {
   const fabButtonWrapperRef = useRef(null);
   const [fabTutorialAnchor, setFabTutorialAnchor] = useState(null);
   const [fabTutorialEligible, setFabTutorialEligible] = useState(false);
+  useEffect(() => {
+    if (!appTutorialSteps.length) {
+      setTutorialStepIndex(0);
+      return;
+    }
+    if (tutorialStepIndex >= appTutorialSteps.length) {
+      setTutorialStepIndex(appTutorialSteps.length - 1);
+    }
+  }, [appTutorialSteps.length, tutorialStepIndex]);
   const finishTutorial = useCallback(() => {
     setTutorialVisible(false);
     setTutorialSeen(true);
+    setHomeLayoutReady(true);
     setTutorialStepIndex(0);
     setTemptationTutorialSeen(false);
+    setTemptationTutorialStatus("pending");
     setTemptationTutorialStepIndex(0);
-    AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
+    setTemptationTutorialQueued(true);
+    setTemptationTutorialCompleted(false);
     AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "pending").catch(() => {});
-  }, []);
+    AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
+  }, [setHomeLayoutReady]);
   const handleTutorialNext = useCallback(() => {
-    if (tutorialStepIndex < APP_TUTORIAL_STEPS.length - 1) {
-      setTutorialStepIndex((prev) => Math.min(prev + 1, APP_TUTORIAL_STEPS.length - 1));
+    if (appTutorialSteps.length === 0) {
+      finishTutorial();
+      return;
+    }
+    if (tutorialStepIndex < appTutorialSteps.length - 1) {
+      setTutorialStepIndex((prev) =>
+        Math.min(prev + 1, Math.max(appTutorialSteps.length - 1, 0))
+      );
       return;
     }
     finishTutorial();
-  }, [tutorialStepIndex, finishTutorial]);
+  }, [appTutorialSteps.length, finishTutorial, tutorialStepIndex]);
   const handleTutorialSkip = useCallback(() => {
     finishTutorial();
   }, [finishTutorial]);
   const finishTemptationTutorial = useCallback(() => {
     setTemptationTutorialVisible(false);
     setTemptationTutorialSeen(true);
+    setTemptationTutorialStatus("done");
     setTemptationTutorialStepIndex(0);
+    setTemptationTutorialQueued(false);
+    setTemptationTutorialCompleted(true);
     AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "done").catch(() => {});
   }, []);
   const handleTemptationTutorialNext = useCallback(() => {
@@ -14237,9 +14686,47 @@ function AppContent() {
   const handleTemptationTutorialSkip = useCallback(() => {
     finishTemptationTutorial();
   }, [finishTemptationTutorial]);
+  useEffect(() => {
+    if (!tutorialSeen) return;
+    AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
+  }, [tutorialSeen]);
+  useEffect(() => {
+    const wasVisible = tutorialVisiblePrevRef.current;
+    if (
+      wasVisible &&
+      !tutorialVisible &&
+      tutorialSeen &&
+      temptationTutorialHydrated &&
+      temptationTutorialStatus === "pending"
+    ) {
+      setTemptationTutorialQueued(true);
+    }
+    tutorialVisiblePrevRef.current = tutorialVisible;
+  }, [
+    temptationTutorialHydrated,
+    temptationTutorialStatus,
+    tutorialSeen,
+    tutorialVisible,
+  ]);
   const handleTutorialHighlightLayoutChange = useCallback((rect) => {
     setTutorialHighlightRect(rect);
   }, []);
+  const scheduleTutorialHighlightMeasure = useCallback((delay = 0) => {
+    if (tutorialHighlightMeasureTimerRef.current) {
+      clearTimeout(tutorialHighlightMeasureTimerRef.current);
+    }
+    tutorialHighlightMeasureTimerRef.current = setTimeout(() => {
+      setTutorialHighlightMeasureTick((prev) => prev + 1);
+    }, Math.max(0, delay));
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (tutorialHighlightMeasureTimerRef.current) {
+        clearTimeout(tutorialHighlightMeasureTimerRef.current);
+      }
+    };
+  }, []);
+  const tutorialScrollExtraRef = useRef(0);
   const dismissTabHint = useCallback(() => {
     setTabHintVisible(null);
   }, []);
@@ -14597,10 +15084,11 @@ function AppContent() {
     return () => pulse.stop();
   }, [cartBadgeScale]);
   const openSkinPicker = useCallback(() => {
+    if (!catCustomizationUnlocked) return;
     triggerHaptic();
     setTamagotchiVisible(false);
     setSkinPickerVisible(true);
-  }, []);
+  }, [catCustomizationUnlocked]);
   const closeSkinPicker = useCallback(() => setSkinPickerVisible(false), []);
   const handleSkinSelect = useCallback(
     (skinId) => {
@@ -14647,6 +15135,16 @@ function AppContent() {
   useEffect(() => {
     onboardingStepRef.current = onboardingStep;
   }, [onboardingStep]);
+  useEffect(() => {
+    if (onboardingStep === "done") {
+      if (!onboardingCompletedRef.current) {
+        onboardingCompletedRef.current = true;
+        goToTab("feed", { recordHistory: false, resetHistory: true });
+      }
+    } else {
+      onboardingCompletedRef.current = false;
+    }
+  }, [goToTab, onboardingStep]);
   useEffect(() => {
     if (onboardingStep === "done") {
       setOnboardingSkipLocked(false);
@@ -14730,6 +15228,7 @@ function AppContent() {
         processTamagotchiDecay();
         beginHomeSession();
         tryLogHomeOpened();
+        markDailySummaryOpen();
         if (pendingFocusDigest) {
           setFocusDigestPromptShown(false);
         }
@@ -14739,11 +15238,15 @@ function AppContent() {
     return () => subscription.remove();
   }, [
     beginHomeSession,
+    markDailySummaryOpen,
     pendingFocusDigest,
     processTamagotchiDecay,
     tryLogHomeOpened,
     setFabTutorialVisible,
   ]);
+  useEffect(() => {
+    markDailySummaryOpen();
+  }, [markDailySummaryOpen]);
   useEffect(() => {
     if (!ratingPromptHydrated) return;
     if (ratingPromptCompleted) return;
@@ -15160,28 +15663,34 @@ function AppContent() {
     }
   }, [dailySummaryVisible, homeLayoutReady, onboardingStep, startupLogoVisible]);
   useEffect(() => {
+    if (onboardingStep !== "done") return;
     if (!primaryTemptationPromptHydrated) return;
     if (primaryTemptationPromptState !== "pending") return;
-    if (!primaryTemptationId || !profile?.customSpend) {
+    if (!profile?.customSpend) return;
+    if (!primaryTemptationId) {
       markPrimaryTemptationPromptDone();
       return;
     }
-    if (tutorialOverlayVisible || !tutorialSeen) return;
-    if (!temptationTutorialSeen) return;
-    if (!overlayEnvironmentReady) return;
+    if (!tutorialSeen || tutorialVisible) return;
+    if (tutorialOverlayVisible) return;
+    if (temptationTutorialStatus !== "done") return;
+    if (!temptationTutorialCompleted || temptationTutorialVisible) return;
     triggerOverlayState("primary_temptation", { templateId: primaryTemptationId });
     markPrimaryTemptationPromptDone();
   }, [
     markPrimaryTemptationPromptDone,
-    overlayEnvironmentReady,
+    onboardingStep,
     primaryTemptationId,
     primaryTemptationPromptHydrated,
     primaryTemptationPromptState,
     profile?.customSpend,
+    temptationTutorialCompleted,
+    temptationTutorialStatus,
+    temptationTutorialVisible,
     triggerOverlayState,
     tutorialSeen,
+    tutorialVisible,
     tutorialOverlayVisible,
-    temptationTutorialSeen,
   ]);
 
   const goToOnboardingStep = useCallback(
@@ -15244,6 +15753,22 @@ function AppContent() {
   const stormTimerRef = useRef(null);
   const [rewardCelebratedMap, setRewardCelebratedMap] = useState({});
   const [rewardCelebratedHydrated, setRewardCelebratedHydrated] = useState(false);
+  const persistRewardCelebrations = useCallback(
+    (updater) => {
+      setRewardCelebratedMap((prev) => {
+        const source = prev && typeof prev === "object" ? prev : {};
+        const next = typeof updater === "function" ? updater(source) : updater || {};
+        if (rewardCelebratedHydrated) {
+          AsyncStorage.setItem(
+            STORAGE_KEYS.REWARDS_CELEBRATED,
+            JSON.stringify(next)
+          ).catch(() => {});
+        }
+        return next;
+      });
+    },
+    [rewardCelebratedHydrated]
+  );
   const [rewardsReady, setRewardsReady] = useState(false);
   const challengesPrevRef = useRef(challengesState);
   const [temptationGoalMap, setTemptationGoalMap] = useState({});
@@ -15351,6 +15876,7 @@ function AppContent() {
     setProfile,
     setProfileDraft,
     t,
+    focusModeUnlocked,
   ]);
   const [moodDetailsVisible, setMoodDetailsVisible] = useState(false);
   const [potentialDetailsVisible, setPotentialDetailsVisible] = useState(false);
@@ -15364,6 +15890,37 @@ function AppContent() {
   const closePotentialDetails = useCallback(() => setPotentialDetailsVisible(false), []);
   const openSavingsBreakdown = useCallback(() => setSavingsBreakdownVisible(true), []);
   const closeSavingsBreakdown = useCallback(() => setSavingsBreakdownVisible(false), []);
+  const blockingModalVisible = useMemo(
+    () =>
+      savingsBreakdownVisible ||
+      dailyChallengePromptVisible ||
+      tamagotchiVisible ||
+      newGoalModal.visible ||
+      onboardingGoalModal.visible ||
+      goalTemptationPrompt.visible ||
+      goalEditorPrompt.visible ||
+      baselinePrompt.visible ||
+      goalRenewalPromptVisible ||
+      goalLinkPrompt.visible ||
+      streakRecoveryPrompt.visible ||
+      skinPickerVisible ||
+      priceEditor.item,
+    [
+      baselinePrompt.visible,
+      dailyChallengePromptVisible,
+      goalEditorPrompt.visible,
+      goalLinkPrompt.visible,
+      goalRenewalPromptVisible,
+      goalTemptationPrompt.visible,
+      newGoalModal.visible,
+      onboardingGoalModal.visible,
+      priceEditor.item,
+      savingsBreakdownVisible,
+      skinPickerVisible,
+      streakRecoveryPrompt.visible,
+      tamagotchiVisible,
+    ]
+  );
   const openGoalLinkPrompt = useCallback((item, intent = "edit") => {
     if (!item) return;
     setGoalLinkPrompt({ visible: true, item, intent, streakRecoveryValue: null });
@@ -15425,11 +15982,15 @@ function AppContent() {
     return Math.max(1, Math.ceil(remainingGoalUSD / divisor));
   }, [averageSaveActionUSD, remainingGoalUSD]);
   const activeGender = profile.gender || registrationData.gender || DEFAULT_PROFILE.gender || "none";
+  const safeAppTutorialIndex = Math.min(
+    tutorialStepIndex,
+    Math.max(appTutorialSteps.length - 1, 0)
+  );
   const tutorialContext = tutorialVisible
     ? {
         type: "app",
-        steps: APP_TUTORIAL_STEPS,
-        stepIndex: tutorialStepIndex,
+        steps: appTutorialSteps,
+        stepIndex: safeAppTutorialIndex,
       }
     : temptationTutorialVisible
     ? {
@@ -15459,8 +16020,22 @@ function AppContent() {
       }
     : null;
   const tutorialCardPositionStyle = tutorialIsTemptation
-    ? { alignSelf: "center", marginBottom: 24 }
+    ? {
+        alignSelf: "center",
+        marginBottom: 24,
+        marginTop: Platform.OS === "android" ? 24 : 0,
+      }
     : null;
+  // Push the temptation tutorial dialog lower on Android so it doesn't cover the highlighted card.
+  const baseTutorialBackdropPaddingBottom = 24 + tutorialCardOffset;
+  const androidGestureNav = Platform.OS === "android" && tabBarBottomInset <= 0;
+  const tutorialBackdropPaddingBottom =
+    tutorialIsTemptation && Platform.OS === "android"
+      ? Math.max(
+          24,
+          baseTutorialBackdropPaddingBottom - (androidGestureNav ? 0 : 120)
+        )
+      : baseTutorialBackdropPaddingBottom;
   const tutorialBackdropBottomInset = tutorialIsTemptation ? 0 : tutorialOverlayInset;
   const tutorialHighlightTabs = useMemo(() => {
     if (!tutorialContext) return null;
@@ -15471,16 +16046,11 @@ function AppContent() {
   }, [tutorialContext]);
   const tutorialHighlightMaskRect = useMemo(() => {
     if (!tutorialIsTemptation || !tutorialHighlightRect) return null;
-    const inset = TUTORIAL_HIGHLIGHT_INSET || { x: 0, y: 0 };
-    const maskWidth = tutorialHighlightRect.width + inset.x * 2;
-    const maskHeight = tutorialHighlightRect.height + inset.y * 2;
-    const maskX = Math.max(0, tutorialHighlightRect.x - inset.x);
-    const maskY = Math.max(0, tutorialHighlightRect.y - inset.y);
     return {
-      x: maskX,
-      y: maskY,
-      width: maskWidth,
-      height: maskHeight,
+      x: tutorialHighlightRect.x,
+      y: tutorialHighlightRect.y,
+      width: tutorialHighlightRect.width,
+      height: tutorialHighlightRect.height,
       radius: TEMPTATION_CARD_RADIUS,
     };
   }, [tutorialHighlightRect, tutorialIsTemptation]);
@@ -15685,6 +16255,7 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
+    if (!dailySummaryUnlocked) return;
     if (onboardingStep !== "done") return;
     const task = InteractionManager.runAfterInteractions(() => {
       ensureNotificationPermission();
@@ -15810,6 +16381,7 @@ function AppContent() {
     setPushDayThreePromptVisible(true);
   }, [
     notificationPermissionGranted,
+    dailySummaryUnlocked,
     onboardingStep,
     profileHydrated,
     profileJoinedAt,
@@ -16145,16 +16717,6 @@ function AppContent() {
     [ensureNotificationPermission, language, t]
   );
 
-  const categories = useMemo(() => {
-    const set = new Set(["all"]);
-    products.forEach((product) => product.categories?.forEach((c) => set.add(c)));
-    return Array.from(set);
-  }, [products]);
-
-  const filteredProducts = useMemo(() => {
-    if (activeCategory === "all") return products;
-    return products.filter((product) => product.categories?.includes(activeCategory));
-  }, [products, activeCategory]);
   const customGoalMap = useMemo(() => {
     const entries = registrationData.customGoals || [];
     return entries.reduce((acc, goal) => {
@@ -16180,6 +16742,8 @@ function AppContent() {
     if (!overlay?.message) return null;
     return { body: overlay.message };
   }, [overlay]);
+  const isFeatureUnlockOverlay =
+    overlay?.type === "cart" && overlay?.message && typeof overlay.message === "object" && overlay.message.featureUnlock;
   const systemOverlayActive = Boolean(overlay || fabMenuVisible);
 
   useEffect(() => {
@@ -16210,11 +16774,62 @@ function AppContent() {
       : null;
   const saveCelebrationRef = useRef(null);
   const handleSaveOverlayPress = useCallback(() => {
+    const triggerPendingLevelCelebrate = () => {
+      const queuedLevel = levelCelebrationQueuedRef.current || 0;
+      const celebratedLevel = Math.max(1, Number(lastCelebratedLevel) || 1);
+      if (
+        !pendingLevelCelebrationRef.current &&
+        playerLevel <= Math.max(queuedLevel, celebratedLevel)
+      ) {
+        return;
+      }
+      if (!pendingLevelCelebrationRef.current) {
+        const baseLevel = Math.max(
+          1,
+          Number(lastCelebratedLevel) || 1,
+          levelCelebrationQueuedRef.current || 0
+        );
+        if (playerLevel > baseLevel) {
+          pendingLevelCelebrationRef.current = {
+            level: playerLevel,
+            levelsEarned: playerLevel - baseLevel,
+          };
+          levelCelebrationQueuedRef.current = Math.max(
+            levelCelebrationQueuedRef.current || 0,
+            playerLevel
+          );
+        }
+      }
+      const pending = pendingLevelCelebrationRef.current;
+      if (pending && pending.level > Math.max(1, Number(lastCelebratedLevel) || 1)) {
+        persistLastCelebratedLevel(pending.level);
+        previousPlayerLevelRef.current = Math.max(
+          previousPlayerLevelRef.current || 1,
+          pending.level
+        );
+      }
+      runPendingLevelCelebration();
+    };
+    if (overlay?.type === "save" && pendingLevelCelebrationRef.current) {
+      // Make sure level celebration sequence isn't lost behind the save overlay.
+      setOverlay(null);
+      overlayActiveRef.current = false;
+    }
     if (saveCelebrationRef.current?.skipToCountdown?.()) {
+      triggerPendingLevelCelebrate();
       return;
     }
-    dismissOverlay({ clearQueue: true });
-  }, [dismissOverlay]);
+    const hasPendingLevel = !!pendingLevelCelebrationRef.current;
+    dismissOverlay({ clearQueue: hasPendingLevel ? false : true });
+    triggerPendingLevelCelebrate();
+  }, [
+    dismissOverlay,
+    lastCelebratedLevel,
+    overlay,
+    persistLastCelebratedLevel,
+    playerLevel,
+    runPendingLevelCelebration,
+  ]);
   const handlePrimaryTemptationOverlayAction = useCallback(
     async (type, sourceItem = null) => {
       const targetItem = sourceItem || primaryTemptationOverlayItem;
@@ -16514,9 +17129,11 @@ function AppContent() {
   const rewardsBadgeCount = useMemo(() => {
     if (!rewardsReady) return 0;
     const claimableRewards = achievements.filter((reward) => reward.unlocked && !reward.claimed).length;
-    const claimableChallenges = challengeList.filter((challenge) => challenge.canClaim).length;
+    const claimableChallenges = challengesUnlocked
+      ? challengeList.filter((challenge) => challenge.canClaim).length
+      : 0;
     return claimableRewards + claimableChallenges;
-  }, [achievements, challengeList, rewardsReady]);
+  }, [achievements, challengeList, rewardsReady, challengesUnlocked]);
   const activeDailyChallenge = useMemo(() => {
     if (dailyChallenge.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return null;
     const targetValue = dailyChallenge.target || 1;
@@ -16529,6 +17146,7 @@ function AppContent() {
       target: targetValue,
     };
   }, [dailyChallenge, t]);
+  const resolvedDailyChallenge = dailyChallengeUnlocked ? activeDailyChallenge : null;
 
   const profileStats = useMemo(() => {
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
@@ -16563,11 +17181,13 @@ function AppContent() {
   );
 
   useEffect(() => {
+    if (!impulseFeaturesUnlocked) return;
     if (!impulseInsights.activeRisk) return;
     notifyImpulseRisk(impulseInsights.activeRisk);
-  }, [impulseInsights.activeRisk, notifyImpulseRisk]);
+  }, [impulseFeaturesUnlocked, impulseInsights.activeRisk, notifyImpulseRisk]);
   useEffect(() => {
     if (!focusDigestHydrated) return;
+    if (!focusModeUnlocked) return;
     const todayKey = getDayKey(Date.now());
     if (focusDigestSeenKey === todayKey) return;
     if (pendingFocusDigest?.dateKey === todayKey) return;
@@ -16604,12 +17224,26 @@ function AppContent() {
   useEffect(() => {
     if (!pendingFocusDigest) return;
     if (focusDigestPromptShown) return;
+    if (!focusModeUnlocked) return;
     if (isDailyChallengePromptPending || overlay) return;
     triggerOverlayState("focus_digest", pendingFocusDigest.payload);
     setFocusDigestPromptShown(true);
-  }, [pendingFocusDigest, focusDigestPromptShown, isDailyChallengePromptPending, overlay, triggerOverlayState]);
+  }, [
+    focusModeUnlocked,
+    pendingFocusDigest,
+    focusDigestPromptShown,
+    isDailyChallengePromptPending,
+    overlay,
+    triggerOverlayState,
+  ]);
+  useEffect(() => {
+    if (focusModeUnlocked) return;
+    setPendingFocusDigest(null);
+    setFocusDigestPromptShown(false);
+  }, [focusModeUnlocked]);
   useEffect(() => {
     if (!dailyChallengeHydrated) return;
+    if (!dailyChallengeUnlocked) return;
     const todayKey = getDayKey(Date.now());
     if (dailyChallenge.dateKey === todayKey && dailyChallenge.templateId) return;
     const targetId = resolveDailyChallengeTemplateId(temptationPressure);
@@ -16654,7 +17288,24 @@ function AppContent() {
     resolveTemplateCard,
     resolveTemplateTitle,
   ]);
+  useEffect(() => {
+    if (!dailyChallengeHydrated) return;
+    if (dailyChallengeUnlocked) return;
+    if (
+      dailyChallenge.status === DAILY_CHALLENGE_STATUS.IDLE &&
+      !dailyChallenge.templateId
+    ) {
+      return;
+    }
+    setDailyChallenge(createInitialDailyChallengeState());
+  }, [
+    dailyChallenge.status,
+    dailyChallenge.templateId,
+    dailyChallengeHydrated,
+    dailyChallengeUnlocked,
+  ]);
   const handleDailyChallengeAccept = useCallback(() => {
+    if (!dailyChallengeUnlocked) return;
     if (!dailyChallenge.templateId) return;
     setDailyChallenge((prev) => {
       if (!prev || prev.status !== DAILY_CHALLENGE_STATUS.OFFER) return prev;
@@ -16666,14 +17317,16 @@ function AppContent() {
       };
     });
     logEvent("daily_challenge_accepted", { template_id: dailyChallenge.templateId });
-  }, [dailyChallenge.templateId, logEvent]);
+  }, [dailyChallenge.templateId, dailyChallengeUnlocked, logEvent]);
   const handleDailyChallengeLater = useCallback(() => {
+    if (!dailyChallengeUnlocked) return;
     setDailyChallenge((prev) => {
       if (!prev || prev.offerDismissed) return prev || createInitialDailyChallengeState();
       return { ...prev, offerDismissed: true };
     });
-  }, []);
+  }, [dailyChallengeUnlocked]);
   const completeDailyChallenge = useCallback(() => {
+    if (!dailyChallengeUnlocked) return;
     if (!dailyChallenge.templateId) return;
     setDailyChallenge((prev) => {
       if (!prev || prev.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return prev;
@@ -16706,6 +17359,7 @@ function AppContent() {
       reward_bonus: dailyChallenge.rewardBonus,
     });
   }, [
+    dailyChallengeUnlocked,
     dailyChallenge.rewardBonus,
     dailyChallenge.templateId,
     dailyChallenge.templateTitle,
@@ -16717,6 +17371,7 @@ function AppContent() {
     triggerOverlayState,
   ]);
   const failDailyChallenge = useCallback(() => {
+    if (!dailyChallengeUnlocked) return;
     if (!dailyChallenge.templateId) return;
     setDailyChallenge((prev) => {
       if (!prev || prev.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return prev;
@@ -16731,9 +17386,17 @@ function AppContent() {
       t("dailyChallengeFailedText", { temptation: dailyChallenge.templateLabel || dailyChallenge.templateTitle })
     );
     logEvent("daily_challenge_failed", { template_id: dailyChallenge.templateId });
-  }, [dailyChallenge.templateId, dailyChallenge.templateTitle, logEvent, t, triggerOverlayState]);
+  }, [
+    dailyChallengeUnlocked,
+    dailyChallenge.templateId,
+    dailyChallenge.templateTitle,
+    logEvent,
+    t,
+    triggerOverlayState,
+  ]);
   useEffect(() => {
     if (!dailyChallengeHydrated) return;
+    if (!dailyChallengeUnlocked) return;
     if (dailyChallenge.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return;
     if (!dailyChallenge.templateId || !dailyChallenge.dateKey) return;
     const acceptedAt = dailyChallenge.acceptedAt || 0;
@@ -16749,6 +17412,7 @@ function AppContent() {
     }
   }, [
     completeDailyChallenge,
+    dailyChallengeUnlocked,
     dailyChallenge.acceptedAt,
     dailyChallenge.dateKey,
     dailyChallenge.status,
@@ -16758,6 +17422,7 @@ function AppContent() {
   ]);
   useEffect(() => {
     if (!dailyChallengeHydrated) return;
+    if (!dailyChallengeUnlocked) return;
     if (dailyChallenge.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return;
     if (!dailyChallenge.templateId || !dailyChallenge.dateKey) return;
     const acceptedAt = dailyChallenge.acceptedAt || 0;
@@ -16777,6 +17442,7 @@ function AppContent() {
     dailyChallenge.status,
     dailyChallenge.templateId,
     dailyChallengeHydrated,
+    dailyChallengeUnlocked,
     failDailyChallenge,
     impulseTracker.events,
   ]);
@@ -16890,6 +17556,35 @@ function AppContent() {
 
   const loadStoredData = async () => {
     let resolvedHealthPoints = null;
+    let tutorialRaw = null;
+    let temptationTutorialRaw = null;
+    const safeGetItem = (key) => AsyncStorage.getItem(key).catch(() => null);
+    try {
+      tutorialRaw = await AsyncStorage.getItem(STORAGE_KEYS.TUTORIAL);
+    } catch (error) {
+      console.warn("tutorial hydrate", error);
+    }
+    try {
+      temptationTutorialRaw = await AsyncStorage.getItem(STORAGE_KEYS.TEMPTATION_TUTORIAL);
+    } catch (error) {
+      console.warn("temptation tutorial hydrate", error);
+    }
+    setTutorialSeen((prev) => prev || tutorialRaw === "done");
+    setTutorialHydrated(true);
+    const normalizedTemptationTutorial =
+      temptationTutorialRaw === "done" ? "done" : "pending";
+    setTemptationTutorialStatus((prev) =>
+      prev === "done" ? prev : normalizedTemptationTutorial
+    );
+    setTemptationTutorialSeen((prev) => prev || normalizedTemptationTutorial === "done");
+    setTemptationTutorialCompleted(normalizedTemptationTutorial === "done");
+    if (normalizedTemptationTutorial !== temptationTutorialRaw) {
+      AsyncStorage.setItem(
+        STORAGE_KEYS.TEMPTATION_TUTORIAL,
+        normalizedTemptationTutorial
+      ).catch(() => {});
+    }
+    setTemptationTutorialHydrated(true);
     try {
       const [
         wishesRaw,
@@ -16929,9 +17624,9 @@ function AppContent() {
         potentialPushProgressRaw,
         tamagotchiRaw,
         dailyChallengeRaw,
+        dailyRewardRaw,
+        dailyRewardDayKeyRaw,
         dailySummaryRaw,
-        tutorialRaw,
-        temptationTutorialRaw,
         termsAcceptedRaw,
         focusTargetRaw,
         focusDigestRaw,
@@ -16939,6 +17634,7 @@ function AppContent() {
         tamagotchiSkinRaw,
         tamagotchiSkinsUnlockedRaw,
         savedPeakRaw,
+        lastCelebratedLevelRaw,
         activeGoalRaw,
         coinSliderMaxRaw,
         fabTutorialRaw,
@@ -16947,60 +17643,61 @@ function AppContent() {
         tabHintsRaw,
         ratingPromptRaw,
       ] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEYS.WISHES),
-        AsyncStorage.getItem(STORAGE_KEYS.PENDING),
-        AsyncStorage.getItem(STORAGE_KEYS.PURCHASES),
-        AsyncStorage.getItem(STORAGE_KEYS.PROFILE),
-        AsyncStorage.getItem(STORAGE_KEYS.THEME),
-        AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
-        AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
-        AsyncStorage.getItem(STORAGE_KEYS.CATALOG),
-        AsyncStorage.getItem(STORAGE_KEYS.PRICE_PRECISION_OVERRIDES),
-        AsyncStorage.getItem(STORAGE_KEYS.TITLE_OVERRIDES),
-        AsyncStorage.getItem(STORAGE_KEYS.EMOJI_OVERRIDES),
-        AsyncStorage.getItem(STORAGE_KEYS.CATEGORY_OVERRIDES),
-        AsyncStorage.getItem(STORAGE_KEYS.DESCRIPTION_OVERRIDES),
-        AsyncStorage.getItem(STORAGE_KEYS.SAVED_TOTAL),
-        AsyncStorage.getItem(STORAGE_KEYS.DECLINES),
-        AsyncStorage.getItem(STORAGE_KEYS.FREE_DAY),
-        AsyncStorage.getItem(STORAGE_KEYS.DECISION_STATS),
-        AsyncStorage.getItem(STORAGE_KEYS.HISTORY),
-        AsyncStorage.getItem(STORAGE_KEYS.REFUSE_STATS),
-        AsyncStorage.getItem(STORAGE_KEYS.TEMPTATION_INTERACTIONS),
-        AsyncStorage.getItem(STORAGE_KEYS.REWARDS_CELEBRATED),
-        AsyncStorage.getItem(STORAGE_KEYS.ANALYTICS_OPT_OUT),
-        AsyncStorage.getItem(STORAGE_KEYS.TEMPTATION_GOALS),
-        AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_TEMPTATIONS),
-        AsyncStorage.getItem(STORAGE_KEYS.HIDDEN_TEMPTATIONS),
-        AsyncStorage.getItem(STORAGE_KEYS.HEALTH),
-        AsyncStorage.getItem(STORAGE_KEYS.CLAIMED_REWARDS),
-        AsyncStorage.getItem(STORAGE_KEYS.REWARD_TOTAL),
-        AsyncStorage.getItem(STORAGE_KEYS.IMPULSE_TRACKER),
-        AsyncStorage.getItem(STORAGE_KEYS.MOOD_STATE),
-        AsyncStorage.getItem(STORAGE_KEYS.CHALLENGES),
-        AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_REMINDER),
-        AsyncStorage.getItem(STORAGE_KEYS.DAILY_NUDGES),
-        AsyncStorage.getItem(STORAGE_KEYS.SMART_REMINDERS),
-        AsyncStorage.getItem(STORAGE_KEYS.POTENTIAL_PUSH_PROGRESS),
-        AsyncStorage.getItem(STORAGE_KEYS.TAMAGOTCHI),
-        AsyncStorage.getItem(STORAGE_KEYS.DAILY_CHALLENGE),
-        AsyncStorage.getItem(STORAGE_KEYS.DAILY_SUMMARY),
-        AsyncStorage.getItem(STORAGE_KEYS.TUTORIAL),
-        AsyncStorage.getItem(STORAGE_KEYS.TEMPTATION_TUTORIAL),
-        AsyncStorage.getItem(STORAGE_KEYS.TERMS_ACCEPTED),
-        AsyncStorage.getItem(STORAGE_KEYS.FOCUS_TARGET),
-        AsyncStorage.getItem(STORAGE_KEYS.FOCUS_DIGEST),
-        AsyncStorage.getItem(STORAGE_KEYS.FOCUS_DIGEST_PENDING),
-        AsyncStorage.getItem(STORAGE_KEYS.TAMAGOTCHI_SKIN),
-        AsyncStorage.getItem(STORAGE_KEYS.TAMAGOTCHI_SKINS_UNLOCKED),
-        AsyncStorage.getItem(STORAGE_KEYS.SAVED_TOTAL_PEAK),
-        AsyncStorage.getItem(STORAGE_KEYS.ACTIVE_GOAL),
-        AsyncStorage.getItem(STORAGE_KEYS.COIN_SLIDER_MAX),
-        AsyncStorage.getItem(STORAGE_KEYS.FAB_TUTORIAL),
-        AsyncStorage.getItem(STORAGE_KEYS.NORTH_STAR_METRIC),
-        AsyncStorage.getItem(STORAGE_KEYS.PRIMARY_TEMPTATION_PROMPT),
-        AsyncStorage.getItem(STORAGE_KEYS.TAB_HINTS),
-        AsyncStorage.getItem(STORAGE_KEYS.RATING_PROMPT),
+        safeGetItem(STORAGE_KEYS.WISHES),
+        safeGetItem(STORAGE_KEYS.PENDING),
+        safeGetItem(STORAGE_KEYS.PURCHASES),
+        safeGetItem(STORAGE_KEYS.PROFILE),
+        safeGetItem(STORAGE_KEYS.THEME),
+        safeGetItem(STORAGE_KEYS.LANGUAGE),
+        safeGetItem(STORAGE_KEYS.ONBOARDING),
+        safeGetItem(STORAGE_KEYS.CATALOG),
+        safeGetItem(STORAGE_KEYS.PRICE_PRECISION_OVERRIDES),
+        safeGetItem(STORAGE_KEYS.TITLE_OVERRIDES),
+        safeGetItem(STORAGE_KEYS.EMOJI_OVERRIDES),
+        safeGetItem(STORAGE_KEYS.CATEGORY_OVERRIDES),
+        safeGetItem(STORAGE_KEYS.DESCRIPTION_OVERRIDES),
+        safeGetItem(STORAGE_KEYS.SAVED_TOTAL),
+        safeGetItem(STORAGE_KEYS.DECLINES),
+        safeGetItem(STORAGE_KEYS.FREE_DAY),
+        safeGetItem(STORAGE_KEYS.DECISION_STATS),
+        safeGetItem(STORAGE_KEYS.HISTORY),
+        safeGetItem(STORAGE_KEYS.REFUSE_STATS),
+        safeGetItem(STORAGE_KEYS.TEMPTATION_INTERACTIONS),
+        safeGetItem(STORAGE_KEYS.REWARDS_CELEBRATED),
+        safeGetItem(STORAGE_KEYS.ANALYTICS_OPT_OUT),
+        safeGetItem(STORAGE_KEYS.TEMPTATION_GOALS),
+        safeGetItem(STORAGE_KEYS.CUSTOM_TEMPTATIONS),
+        safeGetItem(STORAGE_KEYS.HIDDEN_TEMPTATIONS),
+        safeGetItem(STORAGE_KEYS.HEALTH),
+        safeGetItem(STORAGE_KEYS.CLAIMED_REWARDS),
+        safeGetItem(STORAGE_KEYS.REWARD_TOTAL),
+        safeGetItem(STORAGE_KEYS.IMPULSE_TRACKER),
+        safeGetItem(STORAGE_KEYS.MOOD_STATE),
+        safeGetItem(STORAGE_KEYS.CHALLENGES),
+        safeGetItem(STORAGE_KEYS.CUSTOM_REMINDER),
+        safeGetItem(STORAGE_KEYS.DAILY_NUDGES),
+        safeGetItem(STORAGE_KEYS.SMART_REMINDERS),
+        safeGetItem(STORAGE_KEYS.POTENTIAL_PUSH_PROGRESS),
+        safeGetItem(STORAGE_KEYS.TAMAGOTCHI),
+        safeGetItem(STORAGE_KEYS.DAILY_CHALLENGE),
+        safeGetItem(STORAGE_KEYS.DAILY_REWARD),
+        safeGetItem(STORAGE_KEYS.DAILY_REWARD_DAY_KEY),
+        safeGetItem(STORAGE_KEYS.DAILY_SUMMARY),
+        safeGetItem(STORAGE_KEYS.TERMS_ACCEPTED),
+        safeGetItem(STORAGE_KEYS.FOCUS_TARGET),
+        safeGetItem(STORAGE_KEYS.FOCUS_DIGEST),
+        safeGetItem(STORAGE_KEYS.FOCUS_DIGEST_PENDING),
+        safeGetItem(STORAGE_KEYS.TAMAGOTCHI_SKIN),
+        safeGetItem(STORAGE_KEYS.TAMAGOTCHI_SKINS_UNLOCKED),
+        safeGetItem(STORAGE_KEYS.SAVED_TOTAL_PEAK),
+        safeGetItem(STORAGE_KEYS.LAST_CELEBRATED_LEVEL),
+        safeGetItem(STORAGE_KEYS.ACTIVE_GOAL),
+        safeGetItem(STORAGE_KEYS.COIN_SLIDER_MAX),
+        safeGetItem(STORAGE_KEYS.FAB_TUTORIAL),
+        safeGetItem(STORAGE_KEYS.NORTH_STAR_METRIC),
+        safeGetItem(STORAGE_KEYS.PRIMARY_TEMPTATION_PROMPT),
+        safeGetItem(STORAGE_KEYS.TAB_HINTS),
+        safeGetItem(STORAGE_KEYS.RATING_PROMPT),
       ]);
       if (wishesRaw) {
         setWishes(JSON.parse(wishesRaw));
@@ -17266,10 +17963,42 @@ function AppContent() {
         setDailyChallenge(createInitialDailyChallengeState());
       }
       setDailyChallengeHydrated(true);
+      if (dailyRewardRaw || dailyRewardDayKeyRaw) {
+        try {
+          const parsed = dailyRewardRaw ? JSON.parse(dailyRewardRaw) : null;
+          const parsedLastClaimAt = Number(parsed?.lastClaimAt) || 0;
+          const parsedLastKey = typeof parsed?.lastKey === "string" ? parsed.lastKey : null;
+          const fallbackDayKey =
+            typeof dailyRewardDayKeyRaw === "string" && dailyRewardDayKeyRaw.trim()
+              ? dailyRewardDayKeyRaw.trim()
+              : null;
+          setDailyRewardState({
+            lastKey:
+              parsedLastKey ||
+              (parsedLastClaimAt ? getDayKey(parsedLastClaimAt) : null) ||
+              fallbackDayKey,
+            lastAmount: Math.max(0, Number(parsed?.lastAmount) || 0),
+            lastClaimAt: parsedLastClaimAt,
+          });
+        } catch (err) {
+          console.warn("daily reward parse", err);
+          const fallbackDayKey =
+            typeof dailyRewardDayKeyRaw === "string" && dailyRewardDayKeyRaw.trim()
+              ? dailyRewardDayKeyRaw.trim()
+              : null;
+          setDailyRewardState({
+            ...DEFAULT_DAILY_REWARD_STATE,
+            lastKey: fallbackDayKey || null,
+          });
+        }
+      } else {
+        setDailyRewardState({ ...DEFAULT_DAILY_REWARD_STATE });
+      }
+      setDailyRewardHydrated(true);
       if (themeRaw) {
         setTheme(themeRaw === "dark" ? "dark" : "light");
       } else {
-        setTheme("light");
+        setTheme(DEFAULT_THEME);
       }
       setThemeHydrated(true);
       if (languageRaw) {
@@ -17372,8 +18101,6 @@ function AppContent() {
       }
       setPrimaryTemptationPromptHydrated(true);
       if (dailySummaryRaw) setDailySummarySeenKey(dailySummaryRaw);
-      setTutorialSeen(tutorialRaw === "pending" ? false : true);
-      setTemptationTutorialSeen(temptationTutorialRaw === "pending" ? false : true);
       if (termsAcceptedRaw === "1") {
         setTermsAccepted(true);
       }
@@ -17505,13 +18232,32 @@ function AppContent() {
         setSavedTotalUSD(0);
       }
       setSavedTotalHydrated(true);
-      if (savedPeakRaw) {
-        const parsedPeak = Number(savedPeakRaw) || 0;
-        setLifetimeSavedUSD(Math.max(parsedPeak, resolvedSavedTotal));
-      } else {
-        setLifetimeSavedUSD(Math.max(0, resolvedSavedTotal));
-      }
+      const parsedPeak = savedPeakRaw ? Number(savedPeakRaw) || 0 : Math.max(0, resolvedSavedTotal);
+      const resolvedPeakValue = Math.max(parsedPeak, resolvedSavedTotal);
+      setLifetimeSavedUSD(resolvedPeakValue);
       setLifetimeSavedHydrated(true);
+      const levelBaselineCurrency =
+        typeof parsedProfile?.currency === "string" && parsedProfile.currency.trim()
+          ? parsedProfile.currency
+          : DEFAULT_PROFILE.currency;
+      const resolvedLevelBaseline = getTierProgress(resolvedPeakValue, levelBaselineCurrency).level;
+      const storedCelebratedLevel =
+        lastCelebratedLevelRaw !== null && lastCelebratedLevelRaw !== undefined
+          ? Math.max(1, Number(lastCelebratedLevelRaw) || 1)
+          : Math.max(1, resolvedLevelBaseline);
+      const syncedCelebratedLevel =
+        storedCelebratedLevel < resolvedLevelBaseline
+          ? Math.max(1, resolvedLevelBaseline)
+          : storedCelebratedLevel;
+      if (syncedCelebratedLevel !== storedCelebratedLevel) {
+        AsyncStorage.setItem(
+          STORAGE_KEYS.LAST_CELEBRATED_LEVEL,
+          String(syncedCelebratedLevel)
+        ).catch(() => {});
+      }
+      setLastCelebratedLevel(syncedCelebratedLevel);
+      previousPlayerLevelRef.current = syncedCelebratedLevel;
+      setLastCelebratedLevelHydrated(true);
       if (declinesRaw) {
         setDeclineCount(Number(declinesRaw) || 0);
       } else {
@@ -17729,6 +18475,7 @@ function AppContent() {
       setAnalyticsOptOutState((prev) => (prev === null ? true : prev));
       setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
       setRatingPromptState(createInitialRatingPromptState());
+      setTutorialHydrated(true);
       setClaimedRewardsHydrated(true);
       setChallengesHydrated(true);
       setPendingList([]);
@@ -17743,7 +18490,7 @@ function AppContent() {
         typeof resolvedHealthPoints === "number" && !Number.isNaN(resolvedHealthPoints)
           ? resolvedHealthPoints
           : 0;
-      setHealthPoints((prev) => prev + safeHealthPoints);
+      setHealthPoints((prev) => (prev === safeHealthPoints ? prev : safeHealthPoints));
       setHealthHydrated(true);
       setNorthStarHydrated(true);
       setWishesHydrated(true);
@@ -17762,6 +18509,7 @@ function AppContent() {
       setDescriptionOverridesHydrated(true);
       setTamagotchiSkinHydrated(true);
       setLifetimeSavedHydrated(true);
+      setTemptationTutorialHydrated(true);
       setProfileHydrated(true);
       setPrimaryTemptationPromptHydrated(true);
       setTabHintsHydrated(true);
@@ -17867,13 +18615,14 @@ function AppContent() {
   }, [sendTamagotchiHungerNotification, tamagotchiState.hunger]);
 
   const tutorialOverlayVisible = tutorialVisible || temptationTutorialVisible;
-  const shouldShowTutorial = onboardingStep === "done" && !tutorialSeen && !tutorialVisible;
+  const shouldShowTutorial =
+    onboardingStep === "done" && tutorialHydrated && !tutorialSeen && !tutorialVisible;
   const shouldShowTemptationTutorial =
     onboardingStep === "done" &&
     tutorialSeen &&
-    !temptationTutorialSeen &&
+    temptationTutorialStatus === "pending" &&
+    temptationTutorialQueued &&
     !tutorialOverlayVisible &&
-    activeTab === "feed" &&
     homeLayoutReady &&
     !startupLogoVisible &&
     !dailySummaryVisible &&
@@ -17881,27 +18630,36 @@ function AppContent() {
 
   useEffect(() => {
     if (!shouldShowTutorial) return;
-    if (!APP_TUTORIAL_STEPS.length) return;
+    if (!appTutorialSteps.length) return;
     if (!homeLayoutReady) return;
     if (startupLogoVisible) return;
     setTutorialStepIndex(0);
     setTutorialVisible(true);
-  }, [homeLayoutReady, shouldShowTutorial, startupLogoVisible]);
+  }, [appTutorialSteps.length, homeLayoutReady, shouldShowTutorial, startupLogoVisible]);
 
   useEffect(() => {
     if (!shouldShowTutorial) return;
-    if (!APP_TUTORIAL_STEPS.length) return;
+    if (!appTutorialSteps.length) return;
     const fallbackTimer = setTimeout(() => {
       setTutorialStepIndex(0);
       setTutorialVisible(true);
     }, 1600);
     return () => clearTimeout(fallbackTimer);
-  }, [shouldShowTutorial]);
+  }, [appTutorialSteps.length, shouldShowTutorial]);
   useEffect(() => {
     if (!shouldShowTemptationTutorial) return;
-    setTemptationTutorialStepIndex(0);
-    setTemptationTutorialVisible(true);
-  }, [shouldShowTemptationTutorial]);
+    if (activeTab !== "feed") {
+      goToTab("feed", { recordHistory: false });
+    }
+    const timer = setTimeout(() => {
+      setTemptationTutorialStepIndex(0);
+      setTemptationTutorialCompleted(false);
+      setTemptationTutorialVisible(true);
+      setTemptationTutorialSeen(true);
+      setTemptationTutorialQueued(false);
+    }, 260);
+    return () => clearTimeout(timer);
+  }, [activeTab, goToTab, shouldShowTemptationTutorial]);
   useEffect(() => {
     if (!tutorialOverlayVisible) {
       setTutorialHighlightRect(null);
@@ -17909,20 +18667,41 @@ function AppContent() {
   }, [tutorialOverlayVisible]);
   useEffect(() => {
     if (!temptationTutorialVisible) return;
+    tutorialHighlightAdjustCountRef.current = 0;
+    tutorialHighlightAlignAttemptsRef.current = 0;
+    tutorialScrollExtraRef.current = 90;
     const attemptScroll = () => {
       const scroller = feedScreenRef.current;
       if (scroller && typeof scroller.scrollToTemptations === "function") {
-        return scroller.scrollToTemptations({ animated: true });
+        const didScroll = scroller.scrollToTemptations({
+          animated: true,
+          extraOffset: tutorialScrollExtraRef.current,
+        });
+        if (didScroll) {
+          scheduleTutorialHighlightMeasure(360);
+        }
+        return didScroll;
       }
       return false;
     };
     if (attemptScroll()) return;
-    const timer = setTimeout(attemptScroll, 400);
+    const timer = setTimeout(attemptScroll, 350);
     return () => clearTimeout(timer);
+  }, [scheduleTutorialHighlightMeasure, temptationTutorialVisible]);
+  // Align tutorial highlight without Android-specific adjustments: mirror iOS behavior.
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    if (!temptationTutorialVisible) {
+      tutorialHighlightAlignAttemptsRef.current = 0;
+    }
   }, [temptationTutorialVisible]);
 
   useEffect(() => {
+    if (dailySummaryOpenToken === dailySummaryOpenProcessedRef.current) return;
+    if (!historyHydrated) return;
+    dailySummaryOpenProcessedRef.current = dailySummaryOpenToken;
     if (onboardingStep !== "done") return;
+    if (!dailySummaryUnlocked) return;
     const hour = new Date().getHours();
     if (hour < 20) return;
     const todayKey = getDayKey(Date.now());
@@ -17940,7 +18719,10 @@ function AppContent() {
     setPendingDailySummaryData(summaryPayload);
     notifyDailySummaryReady(summaryPayload);
   }, [
+    dailySummaryOpenToken,
     dailySummarySeenKey,
+    dailySummaryUnlocked,
+    historyHydrated,
     notifyDailySummaryReady,
     onboardingStep,
     pendingDailySummaryData?.todayKey,
@@ -17948,6 +18730,7 @@ function AppContent() {
   ]);
 
   useEffect(() => {
+    if (!dailySummaryUnlocked) return;
     if (!pendingDailySummaryData) return;
     if (!interfaceReady) return;
     if (overlay) return;
@@ -17957,7 +18740,7 @@ function AppContent() {
     setDailySummarySeenKey(todayKey);
     AsyncStorage.setItem(STORAGE_KEYS.DAILY_SUMMARY, todayKey).catch(() => {});
     setPendingDailySummaryData(null);
-  }, [interfaceReady, overlay, pendingDailySummaryData]);
+  }, [dailySummaryUnlocked, interfaceReady, overlay, pendingDailySummaryData]);
   useEffect(() => {
     if (!spendLoggingReminderHydrated) return;
     if (onboardingStep !== "done") return;
@@ -18140,6 +18923,10 @@ function AppContent() {
     if (!healthHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.HEALTH, String(healthPoints)).catch(() => {});
   }, [healthHydrated, healthPoints]);
+  useEffect(() => {
+    if (!dailyRewardHydrated) return;
+    AsyncStorage.setItem(STORAGE_KEYS.DAILY_REWARD, JSON.stringify(dailyRewardState)).catch(() => {});
+  }, [dailyRewardHydrated, dailyRewardState]);
 
   useEffect(() => {
     if (!claimedRewardsHydrated) return;
@@ -18221,6 +19008,14 @@ useEffect(() => {
   }, [savedTotalUSD, savedTotalHydrated]);
 
   useEffect(() => {
+    if (!lastCelebratedLevelHydrated) return;
+    AsyncStorage.setItem(
+      STORAGE_KEYS.LAST_CELEBRATED_LEVEL,
+      String(Math.max(1, Number(lastCelebratedLevel) || 1))
+    ).catch(() => {});
+  }, [lastCelebratedLevel, lastCelebratedLevelHydrated]);
+
+  useEffect(() => {
     if (!savedTotalHydrated || !lifetimeSavedHydrated) return;
     setLifetimeSavedUSD((prev) => (savedTotalUSD > prev ? savedTotalUSD : prev));
   }, [savedTotalUSD, savedTotalHydrated, lifetimeSavedHydrated]);
@@ -18234,6 +19029,43 @@ useEffect(() => {
     if (!declinesHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.DECLINES, String(declineCount)).catch(() => {});
   }, [declineCount, declinesHydrated]);
+
+  useEffect(() => {
+    if (onboardingStep !== "done") return;
+    if (!profileHydrated) return;
+    if (!historyHydrated || !savedTotalHydrated || !lifetimeSavedHydrated || !declinesHydrated) return;
+    if (savedTotalUSD <= 0 && lifetimeSavedUSD <= 0) return;
+    const joinedAtTimestamp = profile?.joinedAt ? new Date(profile.joinedAt).getTime() : 0;
+    if (!Number.isFinite(joinedAtTimestamp) || joinedAtTimestamp <= 0) return;
+    if (Date.now() - joinedAtTimestamp > DAY_MS * 2) return;
+    const hasSavingsHistory = resolvedHistoryEvents.some(
+      (entry) => entry && (HISTORY_SAVED_GAIN_EVENTS.has(entry.kind) || HISTORY_SAVED_LOSS_EVENTS.has(entry.kind))
+    );
+    if (hasSavingsHistory || declineCount > 0) return;
+    setSavedTotalUSD(0);
+    setLifetimeSavedUSD(0);
+    setLastCelebratedLevel(1);
+    previousPlayerLevelRef.current = 1;
+    persistLastCelebratedLevel(1);
+    AsyncStorage.multiSet([
+      [STORAGE_KEYS.SAVED_TOTAL, "0"],
+      [STORAGE_KEYS.SAVED_TOTAL_PEAK, "0"],
+      [STORAGE_KEYS.LAST_CELEBRATED_LEVEL, "1"],
+    ]).catch(() => {});
+  }, [
+    declineCount,
+    declinesHydrated,
+    historyHydrated,
+    lifetimeSavedHydrated,
+    onboardingStep,
+    persistLastCelebratedLevel,
+    profile?.joinedAt,
+    profileHydrated,
+    resolvedHistoryEvents,
+    savedTotalHydrated,
+    savedTotalUSD,
+    lifetimeSavedUSD,
+  ]);
 
   useEffect(() => {
     if (!dailyNudgesHydrated) return;
@@ -18610,15 +19442,22 @@ useEffect(() => {
         condition: ACHIEVEMENT_CONDITION_MAP[reward.metricType] || reward.metricType || "unknown",
       });
     });
-    setRewardCelebratedMap((prev) => {
-      const next = { ...prev };
+    persistRewardCelebrations((prev) => {
+      const next = { ...(prev || {}) };
       newlyUnlocked.forEach((reward) => {
         next[reward.id] = true;
       });
       return next;
     });
-    triggerOverlayState("reward", newlyUnlocked[0].title);
-  }, [achievements, logEvent, rewardCelebratedHydrated, rewardCelebratedMap, rewardsReady]);
+    triggerOverlayState("reward", newlyUnlocked[0].title, { force: true });
+  }, [
+    achievements,
+    logEvent,
+    persistRewardCelebrations,
+    rewardCelebratedHydrated,
+    rewardCelebratedMap,
+    rewardsReady,
+  ]);
 
   useEffect(() => {
     if (!wishesHydrated || !savedTotalHydrated) return;
@@ -18812,11 +19651,6 @@ useEffect(() => {
       setFocusSaveCount(0);
     }
   }, [focusTemplateId, primaryTemptationId, quickTemptations, temptations]);
-
-  const handleCategorySelect = useCallback((category) => {
-    triggerHaptic();
-    setActiveCategory(category);
-  }, []);
 
   const handleTabChange = (tabKey) => {
     triggerHaptic();
@@ -19978,8 +20812,32 @@ useEffect(() => {
     setActiveGoalId(updatedProfile.goal);
     await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(updatedProfile)).catch(() => {});
     await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, "done").catch(() => {});
+    setSavedTotalUSD(0);
+    setLifetimeSavedUSD(0);
+    setLastCelebratedLevel(1);
+    previousPlayerLevelRef.current = 1;
+    setHistoryEvents([]);
+    setDeclineCount(0);
+    setDecisionStats({ ...INITIAL_DECISION_STATS });
+    setRefuseStats({});
+    AsyncStorage.multiSet([
+      [STORAGE_KEYS.SAVED_TOTAL, "0"],
+      [STORAGE_KEYS.SAVED_TOTAL_PEAK, "0"],
+      [STORAGE_KEYS.LAST_CELEBRATED_LEVEL, "1"],
+      [STORAGE_KEYS.HISTORY, "[]"],
+      [STORAGE_KEYS.DECLINES, "0"],
+      [STORAGE_KEYS.DECISION_STATS, JSON.stringify({ ...INITIAL_DECISION_STATS })],
+      [STORAGE_KEYS.REFUSE_STATS, "{}"],
+    ]).catch(() => {});
     await AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "pending").catch(() => {});
+    await AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "pending").catch(() => {});
     setTutorialSeen(false);
+    setTemptationTutorialSeen(false);
+    setTemptationTutorialStatus("pending");
+    setTemptationTutorialVisible(false);
+    setTemptationTutorialStepIndex(0);
+    setTemptationTutorialQueued(true);
+    setTemptationTutorialCompleted(false);
     setFabTutorialVisible(false);
     setFabTutorialStateAndPersist(FAB_TUTORIAL_STATUS.PENDING);
     setFabTutorialEligible(false);
@@ -20299,6 +21157,8 @@ useEffect(() => {
       if (!normalized.length) {
         setSavedTotalUSD(0);
         setLifetimeSavedUSD(0);
+        persistLastCelebratedLevel(1);
+        previousPlayerLevelRef.current = 1;
         return;
       }
       const sorted = normalized.slice().sort((a, b) => {
@@ -20322,8 +21182,14 @@ useEffect(() => {
       });
       setSavedTotalUSD(running);
       setLifetimeSavedUSD(peak);
+      const currentLevel = getTierProgress(
+        Math.max(running, peak),
+        profile.currency || DEFAULT_PROFILE.currency
+      ).level;
+      persistLastCelebratedLevel(currentLevel);
+      previousPlayerLevelRef.current = currentLevel;
     },
-    [setLifetimeSavedUSD, setSavedTotalUSD]
+    [persistLastCelebratedLevel, profile.currency, setLifetimeSavedUSD, setSavedTotalUSD]
   );
 
   const handleHistoryDelete = useCallback(
@@ -21021,6 +21887,10 @@ useEffect(() => {
       const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
       const priceLocal = convertToCurrency(priceUSD, currencyCode);
       const balanceLocal = convertToCurrency(savedTotalUSD, currencyCode);
+      if (type === "maybe" && !thinkingUnlocked) {
+        Alert.alert("Almost", t("thinkingLockedMessage"));
+        return;
+      }
       if (type === "spend") {
         if (bypassSpendPrompt) {
           if (spendExecutionLockRef.current) return;
@@ -21234,6 +22104,26 @@ useEffect(() => {
           }
         }
         const timestamp = saveTimestamp;
+        const baseLevel = Math.max(
+          1,
+          Number(lastCelebratedLevel) || 1,
+          levelCelebrationQueuedRef.current || 0
+        );
+        const projectedSavedTotal = savedTotalUSD + priceUSD;
+        const projectedLevel = getTierProgress(
+          Math.max(projectedSavedTotal, lifetimeSavedUSD || 0),
+          profile.currency || DEFAULT_PROFILE.currency
+        ).level;
+        if (projectedLevel > baseLevel) {
+          pendingLevelCelebrationRef.current = {
+            level: projectedLevel,
+            levelsEarned: projectedLevel - baseLevel,
+          };
+          levelCelebrationQueuedRef.current = Math.max(
+            levelCelebrationQueuedRef.current || 0,
+            projectedLevel
+          );
+        }
         setSavedTotalUSD((prev) => prev + priceUSD);
         setDeclineCount((prev) => prev + 1);
         const coinReward = priceUSD
@@ -21303,8 +22193,8 @@ useEffect(() => {
         triggerCardFeedback(templateId || item.id);
         triggerCoinHaptics();
         handleFocusSaveProgress(item);
-        ensureOverlayEnvironmentReady();
-        triggerOverlayState("save", { ...saveOverlayPayload, coinReward }, { clearQueueOnDismiss: true });
+      ensureOverlayEnvironmentReady();
+    triggerOverlayState("save", { ...saveOverlayPayload, coinReward }, { clearQueueOnDismiss: false });
         requestMascotAnimation("happy");
         saveActionLogRef.current = [...recentSaves, { itemId: templateId || item.id, timestamp: saveTimestamp }];
         recordTemptationInteraction(templateId || item.id, "save", item);
@@ -21346,6 +22236,7 @@ useEffect(() => {
     [
       language,
       t,
+      thinkingUnlocked,
       schedulePendingReminder,
       logHistoryEvent,
       triggerCardFeedback,
@@ -21376,6 +22267,8 @@ useEffect(() => {
       clearStreakRecoveryForTemptation,
       getLegacyRefuseStatsEntry,
       normalizeLegacyRecoveryRefs,
+      lastCelebratedLevel,
+      lifetimeSavedUSD,
       healthPoints,
       setHealthPoints,
       setStreakRecoveryPrompt,
@@ -21724,6 +22617,7 @@ useEffect(() => {
   ]);
 
   const handleLogFreeDay = useCallback(() => {
+    if (!freeDayUnlocked) return;
     const today = new Date();
     const todayKey = getDayKey(today);
     if (freeDayStats.lastDate === todayKey) {
@@ -21796,6 +22690,7 @@ useEffect(() => {
       },
     ]);
   }, [
+    freeDayUnlocked,
     freeDayStats,
     t,
     logEvent,
@@ -21803,6 +22698,7 @@ useEffect(() => {
     profile.goal,
     profile.persona,
     profile.primaryGoals,
+    resolveProfileGoalId,
     setHealthPoints,
     triggerOverlayState,
   ]);
@@ -22500,10 +23396,11 @@ useEffect(() => {
   );
 
   const processOverlayQueue = useCallback(() => {
-    if (!overlayEnvironmentReady) return;
     if (overlayActiveRef.current) return;
-    const next = overlayQueueRef.current.shift();
+    const next = overlayQueueRef.current[0];
     if (!next) return;
+    if ((!overlayEnvironmentReady || blockingModalVisible) && !next.force) return;
+    overlayQueueRef.current.shift();
     overlayActiveRef.current = true;
     if (overlayTimer.current) {
       clearTimeout(overlayTimer.current);
@@ -22518,6 +23415,8 @@ useEffect(() => {
         : next.type === "level"
         ? 3200
         : next.type === "reward"
+        ? 3200
+        : next.type === "daily_reward"
         ? 3200
         : next.type === "save"
         ? null
@@ -22538,45 +23437,55 @@ useEffect(() => {
     } else {
       overlayTimer.current = null;
     }
-  }, [overlayEnvironmentReady]);
+  }, [blockingModalVisible, overlayEnvironmentReady]);
 
   const scheduleOverlayRetry = useCallback(() => {
     if (overlayRetryTimerRef.current) return;
     if (!overlayQueueRef.current.length) return;
     overlayRetryTimerRef.current = setTimeout(() => {
       overlayRetryTimerRef.current = null;
-      if (!overlayEnvironmentReady && overlayQueueRef.current.length) {
+      if ((!overlayEnvironmentReady || blockingModalVisible) && overlayQueueRef.current.length) {
         scheduleOverlayRetry();
         return;
       }
       processOverlayQueue();
     }, 250);
-  }, [overlayEnvironmentReady, processOverlayQueue]);
+  }, [blockingModalVisible, overlayEnvironmentReady, processOverlayQueue]);
 
   const triggerOverlayState = useCallback(
     (type, message, config) => {
       let duration = null;
       let clearQueueOnDismiss = false;
+      let force = false;
       if (typeof config === "number") {
         duration = config;
       } else if (config && typeof config === "object") {
         duration = typeof config.duration === "number" ? config.duration : null;
         clearQueueOnDismiss = !!config.clearQueueOnDismiss;
+        force = !!config.force;
       }
-      overlayQueueRef.current.push({ type, message, duration, clearQueueOnDismiss });
+      overlayQueueRef.current.push({ type, message, duration, clearQueueOnDismiss, force });
       processOverlayQueue();
-      if (!overlayEnvironmentReady) {
+      if (!overlayEnvironmentReady || blockingModalVisible) {
         scheduleOverlayRetry();
       }
     },
-    [overlayEnvironmentReady, processOverlayQueue, scheduleOverlayRetry]
+    [blockingModalVisible, overlayEnvironmentReady, processOverlayQueue, scheduleOverlayRetry]
   );
 
   useEffect(() => {
-    if (overlayEnvironmentReady) {
+    if (overlayEnvironmentReady && !blockingModalVisible) {
       processOverlayQueue();
+    } else if (blockingModalVisible && overlayQueueRef.current.length) {
+      scheduleOverlayRetry();
     }
-  }, [overlayEnvironmentReady, processOverlayQueue]);
+  }, [blockingModalVisible, overlayEnvironmentReady, processOverlayQueue, scheduleOverlayRetry]);
+
+  useEffect(() => {
+    if (overlay?.type === "level") {
+      pendingLevelCelebrationRef.current = null;
+    }
+  }, [overlay]);
 
   const dismissOverlay = useCallback((maybeOptions = {}) => {
     const options =
@@ -22591,8 +23500,16 @@ useEffect(() => {
     if (overlayActiveRef.current) {
       overlayActiveRef.current = false;
     }
-    const shouldClearQueue =
-      typeof options.clearQueue === "boolean" ? options.clearQueue : !!overlay?.clearQueueOnDismiss;
+    const hasQueuedCelebrationFollowUp =
+      overlay?.type === "save" &&
+      overlayQueueRef.current.some((entry) => ["level", "health", "cart"].includes(entry?.type));
+    const requestedClearQueue =
+      typeof options.clearQueue === "boolean" ? options.clearQueue : null;
+    const shouldClearQueue = hasQueuedCelebrationFollowUp
+      ? false
+      : requestedClearQueue !== null
+      ? requestedClearQueue
+      : !!overlay?.clearQueueOnDismiss;
     if (shouldClearQueue) {
       overlayQueueRef.current = [];
     }
@@ -22607,6 +23524,7 @@ useEffect(() => {
 
   const promptFocusForTemptation = useCallback(
     (template) => {
+      if (!focusTargetsUnlocked) return;
       if (!template?.id) return;
       if (focusPromptActiveRef.current) return;
       if (overlay?.type === "focus_digest") return;
@@ -22622,11 +23540,12 @@ useEffect(() => {
         prompt: true,
       }, null);
     },
-    [language, overlay, t, titleOverrides, triggerOverlayState]
+    [focusTargetsUnlocked, language, overlay, t, titleOverrides, triggerOverlayState]
   );
 
   const registerFocusLoss = useCallback(
     (template) => {
+      if (!focusTargetsUnlocked) return;
       if (!template?.id) return;
       const key = template.id;
       const entry = focusLossCountersRef.current[key] || { count: 0 };
@@ -22638,11 +23557,12 @@ useEffect(() => {
         promptFocusForTemptation(template);
       }
     },
-    [focusTemplateId, promptFocusForTemptation]
+    [focusTargetsUnlocked, focusTemplateId, promptFocusForTemptation]
   );
 
   const celebrateFocusVictory = useCallback(
     (template) => {
+      if (!focusTargetsUnlocked) return;
       if (!template) return;
       const title = resolveTemptationTitle(template, language, titleOverrides[template.id]) || t("defaultDealTitle");
       setFocusTemplateId(null);
@@ -22655,11 +23575,12 @@ useEffect(() => {
       amount: FOCUS_VICTORY_REWARD,
     });
     },
-    [language, resetFocusLossCounter, setHealthPoints, t, titleOverrides, triggerOverlayState]
+    [focusTargetsUnlocked, language, resetFocusLossCounter, setHealthPoints, t, titleOverrides, triggerOverlayState]
   );
 
   const handleFocusSaveProgress = useCallback(
     (template) => {
+      if (!focusTargetsUnlocked) return;
       if (!template?.id || template.id !== focusTemplateId) return;
       resetFocusLossCounter(template.id);
       setFocusSaveCount((prev) => {
@@ -22671,19 +23592,21 @@ useEffect(() => {
         return next;
       });
     },
-    [celebrateFocusVictory, focusTemplateId, resetFocusLossCounter]
+    [celebrateFocusVictory, focusTargetsUnlocked, focusTemplateId, resetFocusLossCounter]
   );
 
   const handleFocusSpend = useCallback(
     (template) => {
+      if (!focusTargetsUnlocked) return;
       if (!template?.id || template.id !== focusTemplateId) return;
       setFocusSaveCount(0);
     },
-    [focusTemplateId]
+    [focusTargetsUnlocked, focusTemplateId]
   );
 
   const applyFocusTarget = useCallback(
     (templateId, source = "manual") => {
+      if (!focusTargetsUnlocked) return;
       if (!templateId) return;
       setFocusTemplateId(templateId);
       setFocusSaveCount(0);
@@ -22691,11 +23614,12 @@ useEffect(() => {
       logEvent("focus_target_set", { template_id: templateId, source });
       triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     },
-    [logEvent, resetFocusLossCounter]
+    [focusTargetsUnlocked, logEvent, resetFocusLossCounter]
   );
 
   const resolveFocusDigest = useCallback(
     (action = "later") => {
+      if (!focusModeUnlocked) return;
       if (!pendingFocusDigest) return;
       const targetDateKey = pendingFocusDigest.dateKey;
       setFocusDigestSeenKey(targetDateKey);
@@ -22708,7 +23632,7 @@ useEffect(() => {
         logEvent("focus_digest_focus", { date_key: targetDateKey });
       }
     },
-    [pendingFocusDigest, logEvent]
+    [focusModeUnlocked, pendingFocusDigest, logEvent]
   );
 
   const handleFocusOverlayConfirm = useCallback(
@@ -22737,6 +23661,7 @@ useEffect(() => {
 
   const notifyImpulseRisk = useCallback(
     async (risk) => {
+      if (!impulseFeaturesUnlocked) return;
       if (!risk?.templateId) return;
       const now = Date.now();
       const lastShown = impulseAlertCooldownRef.current?.[risk.templateId] || 0;
@@ -22790,7 +23715,7 @@ useEffect(() => {
         events: prev?.events || [],
       }));
     },
-    [profile.currency, sendImmediateNotification, t, triggerOverlayState, moodPreset]
+    [impulseFeaturesUnlocked, profile.currency, sendImmediateNotification, t, triggerOverlayState, moodPreset]
   );
 
   const triggerCelebration = () => {
@@ -22801,29 +23726,106 @@ useEffect(() => {
 
   const handleLevelCelebrate = useCallback(
     (level, levelsEarned = 1) => {
+      ensureOverlayEnvironmentReady();
       const rewardCoins = sumLevelRewardCoins(level, levelsEarned);
-      if (rewardCoins <= 0) {
-        triggerOverlayState("level", level);
-        triggerSuccessHaptic();
-        return;
+      const startLevel = Math.max(2, level - levelsEarned + 1);
+      const unlockPayloads = FEATURE_UNLOCK_STEPS.filter(
+        ({ level: unlockLevel }) => unlockLevel >= startLevel && unlockLevel <= level
+      )
+        .map(({ messageKey }) => {
+          const body = t(messageKey);
+          const variantKey = FEATURE_UNLOCK_VARIANT_MAP[messageKey];
+          if (variantKey && FEATURE_UNLOCK_VARIANT_CONFIG[variantKey]) {
+            return {
+              featureUnlock: true,
+              messageKey,
+              variant: variantKey,
+              body,
+            };
+          }
+          return body;
+        })
+        .filter(Boolean);
+      const queueUnlockAnnouncements = () => {
+        unlockPayloads.forEach((payload) => {
+          const isFeatureUnlock = payload && typeof payload === "object" && payload.featureUnlock;
+          triggerOverlayState("cart", payload, isFeatureUnlock ? { duration: 0 } : { duration: 4800 });
+        });
+      };
+      triggerOverlayState("level", level, { force: true });
+      if (rewardCoins > 0) {
+        const rewardAmount = rewardCoins * HEALTH_COIN_TIERS[1].value;
+        setHealthPoints((prev) => prev + rewardAmount);
+        triggerOverlayState(
+          "health",
+          {
+            amount: rewardAmount,
+            displayCoins: rewardCoins,
+            coinValue: rewardAmount,
+            reason: t("healthCelebrateLevel"),
+          },
+          3200
+        );
       }
-      const rewardAmount = rewardCoins * HEALTH_COIN_TIERS[1].value;
-      setHealthPoints((prev) => prev + rewardAmount);
-      triggerOverlayState("level", level);
-      triggerOverlayState(
-        "health",
-        {
-          amount: rewardAmount,
-          displayCoins: rewardCoins,
-          coinValue: rewardAmount,
-          reason: t("healthCelebrateLevel"),
-        },
-        3200
-      );
+      queueUnlockAnnouncements();
       triggerSuccessHaptic();
     },
-    [t, triggerOverlayState]
+    [ensureOverlayEnvironmentReady, t, triggerOverlayState]
   );
+  const runPendingLevelCelebration = useCallback(() => {
+    const pending = pendingLevelCelebrationRef.current;
+    if (!pending) return;
+    if (!overlayEnvironmentReady) return;
+    if (blockingModalVisible) return;
+    levelCelebrationQueuedRef.current = Math.max(
+      levelCelebrationQueuedRef.current || 0,
+      pending.level || 0
+    );
+    pendingLevelCelebrationRef.current = null;
+    handleLevelCelebrate(pending.level, pending.levelsEarned);
+  }, [blockingModalVisible, handleLevelCelebrate, overlayEnvironmentReady]);
+
+  useEffect(() => {
+    runPendingLevelCelebration();
+  }, [blockingModalVisible, overlay, overlayEnvironmentReady, runPendingLevelCelebration]);
+
+  useEffect(() => {
+    if (!lastCelebratedLevelHydrated) return;
+    const previousLevel = Math.max(
+      previousPlayerLevelRef.current || 1,
+      lastCelebratedLevel || 1
+    );
+    if (playerLevel <= (levelCelebrationQueuedRef.current || 0)) {
+      previousPlayerLevelRef.current = Math.max(playerLevel, previousLevel);
+      return;
+    }
+    if (playerLevel > previousLevel) {
+      const levelsEarned = playerLevel - previousLevel;
+      if (overlay?.type === "save") {
+        dismissOverlay({ clearQueue: false });
+      }
+      logEvent("savings_level_up", {
+        level: playerLevel,
+        saved_usd_total: savedTotalUSD,
+      });
+      logEvent("hero_level_unlocked", {
+        level: playerLevel,
+        saved_usd_total: savedTotalUSD,
+      });
+      pendingLevelCelebrationRef.current = { level: playerLevel, levelsEarned };
+      runPendingLevelCelebration();
+      persistLastCelebratedLevel(playerLevel);
+    }
+    previousPlayerLevelRef.current = Math.max(playerLevel, previousLevel);
+  }, [
+    handleLevelCelebrate,
+    lastCelebratedLevel,
+    lastCelebratedLevelHydrated,
+    persistLastCelebratedLevel,
+    playerLevel,
+    runPendingLevelCelebration,
+    savedTotalUSD,
+  ]);
 
   const handleRewardClaim = useCallback(
     (reward) => {
@@ -22985,6 +23987,7 @@ useEffect(() => {
   );
 
   const handleFreeDayRescue = useCallback(() => {
+    if (!freeDayUnlocked) return;
     const now = new Date();
     if (!freeDayStats.lastDate || healthPoints < FREE_DAY_RESCUE_COST) return;
     const yesterdayKey = getDayKey(new Date(now.getTime() - DAY_MS));
@@ -22998,7 +24001,7 @@ useEffect(() => {
       current_streak: freeDayStats.current,
       health_remaining: Math.max(healthPoints - FREE_DAY_RESCUE_COST, 0),
     });
-  }, [freeDayStats.lastDate, freeDayStats.current, healthPoints, triggerOverlayState, t]);
+  }, [freeDayUnlocked, freeDayStats.lastDate, freeDayStats.current, healthPoints, triggerOverlayState, t]);
 
   const handleResetData = () => {
     Alert.alert(
@@ -23016,6 +24019,7 @@ useEffect(() => {
             } catch (error) {
               console.warn("reset", error);
             }
+            AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "pending").catch(() => {});
             try {
               await Promise.all(
                 pendingList
@@ -23057,9 +24061,11 @@ useEffect(() => {
             goalSelectionTouchedRef.current = false;
             goToOnboardingStep("logo", { recordHistory: false, resetHistory: true });
             setActiveCategory("all");
+            setActiveTabState("feed");
+            updateTabHistory([]);
             goToTab("feed", { recordHistory: false, resetHistory: true });
             setOverlay(null);
-            setTheme("light");
+            setTheme(DEFAULT_THEME);
             setLanguage(DEFAULT_LANGUAGE);
             setActiveCurrency(DEFAULT_PROFILE.currency);
             setHealthPoints(0);
@@ -23076,9 +24082,30 @@ useEffect(() => {
             impulseAlertCooldownRef.current = {};
             setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
             setTabHintVisible(null);
-            setTemptationTutorialSeen(true);
+            setTutorialSeen(false);
+            setTutorialVisible(false);
+            setTutorialStepIndex(0);
+            setTemptationTutorialSeen(false);
+            setTemptationTutorialStatus("pending");
             setTemptationTutorialVisible(false);
             setTemptationTutorialStepIndex(0);
+            setTemptationTutorialQueued(false);
+            setTemptationTutorialCompleted(false);
+            setLastCelebratedLevel(1);
+            setLastCelebratedLevelHydrated(true);
+            previousPlayerLevelRef.current = 1;
+            levelCelebrationQueuedRef.current = 0;
+            pendingLevelCelebrationRef.current = null;
+            overlayQueueRef.current = [];
+            overlayActiveRef.current = false;
+            if (overlayRetryTimerRef.current) {
+              clearTimeout(overlayRetryTimerRef.current);
+              overlayRetryTimerRef.current = null;
+            }
+            if (overlayTimer.current) {
+              clearTimeout(overlayTimer.current);
+              overlayTimer.current = null;
+            }
             if (customReminderId) {
               Notifications.cancelScheduledNotificationAsync(customReminderId).catch(() => {});
             }
@@ -23268,7 +24295,9 @@ useEffect(() => {
             onRewardClaim={handleRewardClaim}
             healthRewardAmount={HEALTH_PER_REWARD}
             language={language}
-            dailyChallenge={activeDailyChallenge}
+            dailyChallenge={resolvedDailyChallenge}
+            showChallenges={challengesUnlocked}
+            showDailyChallengeWidget={dailyChallengeUnlocked}
           />
         );
       case "profile":
@@ -23304,10 +24333,7 @@ useEffect(() => {
         return (
           <FeedScreen
             ref={feedScreenRef}
-            products={filteredProducts}
-            categories={categories}
-            activeCategory={activeCategory}
-            onCategorySelect={handleCategorySelect}
+            products={products}
             savedTotalUSD={savedTotalUSD}
             wishes={wishes}
             onTemptationAction={handleTemptationAction}
@@ -23327,7 +24353,6 @@ useEffect(() => {
             profile={profile}
             titleOverrides={titleOverrides}
             descriptionOverrides={descriptionOverrides}
-            onLevelCelebrate={handleLevelCelebrate}
             onBaselineSetup={handleBaselineSetupPrompt}
             healthPoints={healthPoints}
             onFreeDayRescue={handleFreeDayRescue}
@@ -23338,6 +24363,10 @@ useEffect(() => {
             onPotentialDetailsOpen={openPotentialDetails}
             heroGoalTargetUSD={heroGoalTargetUSD}
             heroGoalSavedUSD={heroGoalSavedUSD}
+            dailyRewardUnlocked={dailyRewardUnlocked}
+            dailyRewardReady={dailyRewardReady}
+            dailyRewardAmount={dailyRewardDisplayAmount}
+            onDailyRewardClaim={handleDailyRewardClaim}
             mascotOverride={mascotOverride}
             onMascotAnimationComplete={handleMascotAnimationComplete}
             hideMascot={tamagotchiVisible}
@@ -23371,7 +24400,11 @@ useEffect(() => {
             interactionStats={temptationInteractions}
             resolveCardRefuseStats={resolveCardRefuseStats}
             tutorialTemptationStepId={tutorialTemptationStepId}
+            tutorialHighlightMeasureTick={tutorialHighlightMeasureTick}
             onTutorialHighlightLayoutChange={handleTutorialHighlightLayoutChange}
+            allowThinkAction={thinkingUnlocked}
+            showFreeDayCard={freeDayUnlocked}
+            showImpulseMap={impulseFeaturesUnlocked}
           />
         );
     }
@@ -24136,7 +25169,7 @@ useEffect(() => {
           ]}
           onLayout={handleTabBarLayout}
         >
-          {["feed", "cart", "pending", "purchases", "profile"].map((tab) => {
+          {availableTabs.map((tab) => {
             const isHighlighted =
               !tutorialIsTemptation && !!tutorialHighlightTabs?.has(tab);
             const isActiveTab = activeTab === tab;
@@ -24375,7 +25408,7 @@ useEffect(() => {
               style={[
                 styles.tutorialBackdrop,
                 tutorialBackdropPlacementStyle,
-                { paddingBottom: 24 + tutorialCardOffset },
+                { paddingBottom: tutorialBackdropPaddingBottom },
               ]}
               pointerEvents="box-none"
             >
@@ -24578,15 +25611,17 @@ useEffect(() => {
                       isStarving={tamagotchiMood.tone === "urgent"}
                       animations={tamagotchiAnimations}
                     />
-                    <TouchableOpacity
-                      style={[
-                        styles.skinPickerButton,
-                        { borderColor: colors.border, backgroundColor: colors.card },
-                      ]}
-                      onPress={openSkinPicker}
-                    >
-                      <Text style={styles.skinPickerIcon}>🧥</Text>
-                    </TouchableOpacity>
+                    {catCustomizationUnlocked && (
+                      <TouchableOpacity
+                        style={[
+                          styles.skinPickerButton,
+                          { borderColor: colors.border, backgroundColor: colors.card },
+                        ]}
+                        onPress={openSkinPicker}
+                      >
+                        <Text style={styles.skinPickerIcon}>🧥</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                   <View style={styles.tamagotchiStatRow}>
                     <Text style={[styles.tamagotchiStatLabel, { color: colors.muted }]}>
@@ -24915,6 +25950,7 @@ useEffect(() => {
                       language={language}
                       colors={colors}
                       t={t}
+                      allowThinkAction={thinkingUnlocked}
                       isFocusTarget={priceEditor.item?.id === focusTemplateId}
                       descriptionOverride={
                         descriptionOverrides[priceEditor.item.id] ||
@@ -25164,11 +26200,13 @@ useEffect(() => {
           overlay.type !== "custom_temptation" &&
           overlay.type !== "primary_temptation" &&
           overlay.type !== "reward" &&
+          overlay.type !== "daily_reward" &&
           overlay.type !== "health" &&
           overlay.type !== "focus_reward" &&
           overlay.type !== "goal_complete" &&
           overlay.type !== "impulse_alert" &&
-          overlay.type !== "focus_digest" && (
+          overlay.type !== "focus_digest" &&
+          !isFeatureUnlockOverlay && (
             <Modal visible transparent animationType="fade" statusBarTranslucent>
               <TouchableWithoutFeedback onPress={dismissOverlay}>
                 <View style={styles.confettiLayer}>
@@ -25329,6 +26367,29 @@ useEffect(() => {
             </View>
           </Modal>
         )}
+        {isFeatureUnlockOverlay && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View style={styles.overlayFullScreen}>
+                <View
+                  style={[
+                    styles.overlayDim,
+                    { backgroundColor: overlayDimColor },
+                  ]}
+                />
+                <View style={styles.featureUnlockWrapper}>
+                  <FeatureUnlockCelebration
+                    colors={colors}
+                    payload={overlay.message}
+                    t={t}
+                    tamagotchiAnimations={tamagotchiAnimations}
+                    onDismiss={dismissOverlay}
+                  />
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
         {overlay?.type === "level" && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <View style={styles.overlayFullScreen}>
@@ -25436,6 +26497,7 @@ useEffect(() => {
                       language={language}
                       colors={colors}
                       t={t}
+                      allowThinkAction={thinkingUnlocked}
                       currency={profile.currency || DEFAULT_PROFILE.currency}
                       stats={primaryTemptationOverlayStats}
                       feedback={primaryTemptationOverlayItem ? cardFeedback[primaryTemptationOverlayItem.id] : null}
@@ -25470,6 +26532,19 @@ useEffect(() => {
                   message={overlay.message}
                   t={t}
                   mascotHappySource={tamagotchiAnimations.happy}
+                />
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+        {overlay?.type === "daily_reward" && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View style={styles.overlayFullScreen}>
+                <DailyRewardCelebration
+                  colors={colors}
+                  payload={overlay.message}
+                  t={t}
                 />
               </View>
             </TouchableWithoutFeedback>
@@ -26467,6 +27542,210 @@ const styles = StyleSheet.create({
   skinUnlockButtonText: {
     ...createCtaText({ fontSize: 14, textTransform: "none" }),
   },
+  featureUnlockWrapper: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 24,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  featureUnlockCard: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 32,
+    padding: 24,
+    borderWidth: 1,
+  },
+  featureUnlockHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  featureUnlockCat: {
+    width: 72,
+    height: 72,
+    marginRight: 16,
+    resizeMode: "contain",
+  },
+  featureUnlockMessage: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: "600",
+    lineHeight: 24,
+  },
+  featureUnlockSection: {
+    marginTop: 20,
+    borderWidth: 1,
+    borderRadius: 22,
+    padding: 16,
+  },
+  featureUnlockSectionLabel: {
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  featureUnlockSectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginTop: 6,
+  },
+  featureUnlockSectionDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 6,
+  },
+  featureUnlockIllustration: {
+    marginTop: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+  },
+  featureUnlockTabs: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 14,
+  },
+  featureUnlockTab: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 10,
+    marginHorizontal: 4,
+    alignItems: "center",
+  },
+  featureUnlockTabIcon: {
+    fontSize: 16,
+  },
+  featureUnlockPreviewCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
+  },
+  featureUnlockPreviewBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  featureUnlockPreviewBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1F1300",
+  },
+  featureUnlockPreviewLines: {
+    marginTop: 10,
+  },
+  featureUnlockPreviewLine: {
+    height: 8,
+    borderRadius: 4,
+    marginTop: 6,
+  },
+  featureUnlockModalPreview: {
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 18,
+    alignItems: "stretch",
+  },
+  featureUnlockModalBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    marginBottom: 12,
+  },
+  featureUnlockModalBadgeText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1F1300",
+  },
+  featureUnlockModalButton: {
+    marginTop: 18,
+    borderRadius: 18,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  featureUnlockModalButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1F1300",
+  },
+  featureUnlockRewardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  featureUnlockRewardCoin: {
+    width: 24,
+    height: 24,
+    resizeMode: "contain",
+    marginRight: 8,
+  },
+  featureUnlockRewardAmount: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  featureUnlockHero: {
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 12,
+  },
+  featureUnlockHeroAccent: {
+    borderWidth: 2,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    alignSelf: "flex-start",
+    marginBottom: 8,
+  },
+  featureUnlockHeroLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  featureUnlockMap: {
+    paddingVertical: 6,
+  },
+  featureUnlockMapRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  featureUnlockMapDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+  },
+  featureUnlockList: {
+    paddingVertical: 4,
+  },
+  featureUnlockListItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  featureUnlockListBullet: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
+  },
+  featureUnlockListLine: {
+    height: 8,
+    borderRadius: 4,
+  },
+  featureUnlockButton: {
+    marginTop: 24,
+    borderRadius: 20,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  featureUnlockButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
   skinPickerItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -26736,13 +28015,15 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   savedHeroHeader: {
-    marginBottom: 0,
+    marginBottom: 2,
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 12,
     position: "relative",
-    paddingRight: 48,
+    paddingRight: 96,
+  },
+  savedHeroTitleWrap: {
+    flex: 1,
   },
   savedHeroSubtitle: {
     ...createBodyText({
@@ -26774,10 +28055,8 @@ const styles = StyleSheet.create({
   savedHeroLevelButton: {
     paddingHorizontal: 6,
     paddingVertical: 6,
-  },
-  savedHeroLevelButtonFloating: {
     position: "absolute",
-    top: -8,
+    top: -18,
     right: -8,
   },
   savedHeroLevelBadge: {
@@ -26789,8 +28068,38 @@ const styles = StyleSheet.create({
   savedHeroLevelText: {
     ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
+  dailyRewardButton: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  dailyRewardCoin: {
+    width: 22,
+    height: 22,
+    resizeMode: "contain",
+  },
+  dailyRewardAmount: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  dailyRewardCaption: {
+    fontSize: 9,
+    fontWeight: "600",
+    textTransform: "none",
+    textAlign: "center",
+  },
+  dailyRewardFloating: {
+    position: "absolute",
+    right: 0,
+    zIndex: 2,
+    elevation: 2,
+  },
   savedHeroAmountWrap: {
-    marginTop: 2,
+    marginTop: 0,
     marginBottom: 4,
   },
   heroLevelDetails: {
@@ -27521,17 +28830,6 @@ const styles = StyleSheet.create({
   savedHeroStatsLabel: {
     fontSize: 12,
     marginTop: 4,
-  },
-  categoryChip: {
-    marginRight: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 18,
-    borderWidth: 1,
-  },
-  categoryChipText: {
-    fontSize: 12,
-    textTransform: "uppercase",
   },
   payBackdrop: {
     flex: 1,
@@ -30775,6 +32073,86 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0,0,0,0.35)",
     textShadowRadius: 6,
   },
+  dailyRewardOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dailyRewardBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  dailyRewardCard: {
+    width: "86%",
+    borderRadius: 28,
+    borderWidth: 1,
+    padding: 22,
+    alignItems: "center",
+  },
+  dailyRewardBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    alignSelf: "flex-start",
+  },
+  dailyRewardBadgeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  dailyRewardHero: {
+    alignItems: "center",
+    marginTop: 18,
+    marginBottom: 12,
+  },
+  dailyRewardCoinWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  dailyRewardCoinLarge: {
+    width: 54,
+    height: 54,
+    resizeMode: "contain",
+  },
+  dailyRewardAmountLarge: {
+    fontSize: 36,
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+  dailyRewardTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  dailyRewardReason: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+    marginTop: 6,
+    marginBottom: 14,
+  },
+  dailyRewardFooter: {
+    borderTopWidth: 1,
+    paddingTop: 12,
+    width: "100%",
+    alignItems: "center",
+  },
+  dailyRewardHint: {
+    fontSize: 13,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   levelCoin: {
     position: "absolute",
     borderRadius: 999,
@@ -33602,8 +34980,15 @@ const SaveCelebration = forwardRef(
     ref
   ) => {
     const happySource = mascotHappySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
-    const progressStart = clampProgress(progressStartProp);
-    const progressEnd = clampProgress(progressEndProp < progressStart ? progressStart : progressEndProp);
+    const countdownEnabled = !!goalCopy;
+    const progressEnabled = !!goalCopy;
+    const rawProgressStart = clampProgress(progressStartProp);
+    const rawProgressEnd = clampProgress(
+      progressEndProp < rawProgressStart ? rawProgressStart : progressEndProp
+    );
+    const progressStart = rawProgressStart;
+    const progressEnd =
+      progressEnabled && rawProgressEnd === 0 ? MIN_PROGRESS_PULSE : rawProgressEnd;
     const displayActions = Math.max(0, Number(remainingActions) || 0);
     const countdownSlots = useMemo(
       () => buildSaveCountdownSlots(displayActions, language),
@@ -33638,7 +35023,6 @@ const SaveCelebration = forwardRef(
     const countdownScale = useRef(new Animated.Value(0.9)).current;
     const countdownZoom = useRef(new Animated.Value(1)).current;
     const glowPulse = useRef(new Animated.Value(0)).current;
-    const countdownEnabled = !!goalCopy;
     const [countdownActive, setCountdownActive] = useState(false);
     const [countdownReady, setCountdownReady] = useState(false);
     const introTimerRef = useRef(null);
@@ -33846,7 +35230,10 @@ const SaveCelebration = forwardRef(
       pulse.start();
       return () => pulse.stop();
     }, [countdownActive, countdownEnabled, countdownReady, countdownZoom, glowPulse]);
-    const percentLabel = Math.min(100, Math.max(0, Math.round(progressEnd * 100)));
+    const percentLabel =
+      progressEnd > 0
+        ? Math.min(100, Math.max(1, Math.round(progressEnd * 100)))
+        : 0;
     const progressCopy = getSaveProgressCopy(language);
     const countdownTitle = getSaveCountdownTitle(language);
     const rewardLabel = Math.max(0, Number(coinReward) || 0);
@@ -33896,23 +35283,25 @@ const SaveCelebration = forwardRef(
           {celebrationQuote ? (
             <Text style={[styles.saveQuote, { color: colors.text }]}>{celebrationQuote}</Text>
           ) : null}
-          <Animated.View style={[styles.saveProgressSection, { transform: [{ scaleY: progressPulse }] }]}>
-            <View style={[styles.saveProgressTrack, { backgroundColor: progressTrack }]}>
-              <Animated.View
-                style={[
-                  styles.saveProgressFill,
-                  {
-                    width: progressWidth,
-                    backgroundColor: progressAccent,
-                  },
-                ]}
-              />
-            </View>
-            <View style={styles.saveProgressLabelRow}>
-              <Text style={[styles.saveProgressValue, { color: colors.text }]}>{percentLabel}%</Text>
-              <Text style={[styles.saveProgressHint, { color: colors.muted }]}>{progressCopy}</Text>
-            </View>
-          </Animated.View>
+          {progressEnabled && (
+            <Animated.View style={[styles.saveProgressSection, { transform: [{ scaleY: progressPulse }] }]}>
+              <View style={[styles.saveProgressTrack, { backgroundColor: progressTrack }]}>
+                <Animated.View
+                  style={[
+                    styles.saveProgressFill,
+                    {
+                      width: progressWidth,
+                      backgroundColor: progressAccent,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={styles.saveProgressLabelRow}>
+                <Text style={[styles.saveProgressValue, { color: colors.text }]}>{percentLabel}%</Text>
+                <Text style={[styles.saveProgressHint, { color: colors.muted }]}>{progressCopy}</Text>
+              </View>
+            </Animated.View>
+          )}
         </Animated.View>
         {countdownEnabled && (
           <Animated.View
@@ -34288,6 +35677,248 @@ const GoalCelebration = ({ colors, payload, t, mascotHappySource }) => {
       </View>
     </View>
   );
+};
+
+const DailyRewardCelebration = ({ colors, payload, t }) => {
+  const rewardLabel = payload?.amount || "";
+  const reason = payload?.reason || "";
+  const isDarkTheme = colors.background === THEMES.dark.background;
+  const cardBg = isDarkTheme ? lightenColor(colors.card, 0.12) : "#FFF7EC";
+  const cardBorder = isDarkTheme ? lightenColor(colors.border, 0.3) : "#FFD0A6";
+  const badgeBg = isDarkTheme ? "rgba(255,210,140,0.2)" : "rgba(255,170,90,0.2)";
+  const accent = isDarkTheme ? "#FFD06A" : "#FF9B4A";
+  return (
+    <View style={styles.dailyRewardOverlay} pointerEvents="none">
+      <View style={[styles.dailyRewardBackdrop, { backgroundColor: isDarkTheme ? "rgba(0,0,0,0.82)" : "rgba(255,241,225,0.92)" }]} />
+      <View style={[styles.dailyRewardCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+        <View style={[styles.dailyRewardBadge, { backgroundColor: badgeBg, borderColor: cardBorder }]}>
+          <Text style={[styles.dailyRewardBadgeText, { color: colors.text }]}>
+            {t("dailyRewardButtonLabel")}
+          </Text>
+        </View>
+        <View style={styles.dailyRewardHero}>
+          <View style={[styles.dailyRewardCoinWrap, { backgroundColor: accent }]}>
+            <Image source={HEALTH_COIN_TIERS[0].asset} style={styles.dailyRewardCoinLarge} />
+          </View>
+          <Text style={[styles.dailyRewardAmountLarge, { color: colors.text }]}>
+            {rewardLabel ? `+${rewardLabel}` : t("dailyRewardCelebrateMessage", { amount: "" })}
+          </Text>
+          <Text style={[styles.dailyRewardTitle, { color: colors.text }]}>
+            {t("dailyRewardButtonLabel")}
+          </Text>
+        </View>
+        {reason ? (
+          <Text style={[styles.dailyRewardReason, { color: colors.muted }]}>{reason}</Text>
+        ) : null}
+        <View style={[styles.dailyRewardFooter, { borderColor: cardBorder }]}>
+          <Text style={[styles.dailyRewardHint, { color: colors.muted }]}>
+            {t("dailyRewardCollectedLabel")}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+};
+
+const FeatureUnlockCelebration = ({ colors, payload, t, tamagotchiAnimations, onDismiss }) => {
+  const happySource = tamagotchiAnimations?.happy || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
+  const messageText = typeof payload === "object" ? payload?.body || "" : payload || "";
+  const variantKey = typeof payload === "object" ? payload?.variant || null : null;
+  const variant = variantKey ? FEATURE_UNLOCK_VARIANT_CONFIG[variantKey] : null;
+  const whereLabel = t("featureUnlockWhereLabel");
+  const previewSectionLabel = t("featureUnlockPreviewLabel");
+  const sectionTitle = variant ? t(variant.titleKey) : "";
+  const sectionDescription = variant ? t(variant.descriptionKey) : "";
+  const previewBadgeLabel = variant ? t(variant.previewLabelKey) : "";
+  const previewActionLabel =
+    variantKey === "rewardsDaily" ? t("dailyRewardClaimHint") : null;
+  const isDarkTheme = colors.background === THEMES.dark.background;
+  const cardBg = isDarkTheme ? lightenColor(colors.card, 0.12) : lightenColor(colors.card, 0.22);
+  const cardBorder = isDarkTheme ? lightenColor(colors.border, 0.3) : "rgba(0,0,0,0.08)";
+  const sectionBg = isDarkTheme ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)";
+  return (
+    <View style={[styles.featureUnlockCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+      <View style={styles.featureUnlockHeader}>
+        <Image source={happySource} style={styles.featureUnlockCat} />
+        <Text style={[styles.featureUnlockMessage, { color: colors.text }]}>{messageText}</Text>
+      </View>
+      {variant ? (
+        <View style={[styles.featureUnlockSection, { backgroundColor: sectionBg, borderColor: colors.border }]}>
+          <Text style={[styles.featureUnlockSectionLabel, { color: colors.muted }]}>{whereLabel}</Text>
+          <Text style={[styles.featureUnlockSectionTitle, { color: colors.text }]}>{sectionTitle}</Text>
+          <Text style={[styles.featureUnlockSectionDescription, { color: colors.muted }]}>{sectionDescription}</Text>
+          <Text style={[styles.featureUnlockSectionLabel, { color: colors.muted, marginTop: 16 }]}>
+            {previewSectionLabel}
+          </Text>
+          <FeatureUnlockIllustration
+            variantKey={variantKey}
+            colors={colors}
+            label={previewBadgeLabel}
+            actionLabel={previewActionLabel}
+          />
+        </View>
+      ) : null}
+      <TouchableOpacity style={[styles.featureUnlockButton, { backgroundColor: colors.text }]} onPress={onDismiss}>
+        <Text style={[styles.featureUnlockButtonText, { color: colors.background }]}>
+          {t("profileOk") || "Ок"}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+const FeatureUnlockIllustration = ({ variantKey, colors, label, actionLabel }) => {
+  if (!variantKey || !FEATURE_UNLOCK_VARIANT_CONFIG[variantKey]) return null;
+  const isDarkTheme = colors.background === THEMES.dark.background;
+  const screenBg = isDarkTheme ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)";
+  const accent = isDarkTheme ? "#FFC857" : "#F5A524";
+  const baseLineColor = isDarkTheme ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.12)";
+  const borderColor = isDarkTheme ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)";
+  const tabIcons = ["🏠", "🛒", "💡", "🏆", "👤"];
+  const renderTabBar = (activeIndex) => (
+    <View style={styles.featureUnlockTabs}>
+      {tabIcons.map((icon, idx) => {
+        const active = idx === activeIndex;
+        return (
+          <View
+            key={`${icon}_${idx}`}
+            style={[
+              styles.featureUnlockTab,
+              {
+                borderColor: isDarkTheme ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)",
+                backgroundColor: active ? accent : "transparent",
+              },
+            ]}
+          >
+            <Text style={[styles.featureUnlockTabIcon, { color: active ? "#1F1300" : colors.muted }]}>{icon}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+  const renderPreviewCard = () => (
+    <View
+      style={[
+        styles.featureUnlockPreviewCard,
+        {
+          backgroundColor: isDarkTheme ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.92)",
+          borderColor: isDarkTheme ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
+        },
+      ]}
+    >
+      <View style={[styles.featureUnlockPreviewBadge, { backgroundColor: accent }]}>
+        <Text style={styles.featureUnlockPreviewBadgeText}>{label}</Text>
+      </View>
+      <View style={styles.featureUnlockPreviewLines}>
+        <View style={[styles.featureUnlockPreviewLine, { width: "70%", backgroundColor: baseLineColor }]} />
+        <View style={[styles.featureUnlockPreviewLine, { width: "50%", backgroundColor: baseLineColor }]} />
+      </View>
+    </View>
+  );
+  switch (variantKey) {
+    case "rewardsDaily":
+      return (
+        <View style={[styles.featureUnlockIllustration, { backgroundColor: screenBg, borderColor }]}>
+          <View
+            style={[
+              styles.featureUnlockModalPreview,
+              {
+                backgroundColor: isDarkTheme ? "rgba(12,12,16,0.9)" : "#FFFFFF",
+                borderColor,
+              },
+            ]}
+          >
+            <View style={[styles.featureUnlockModalBadge, { backgroundColor: accent }]}>
+              <Text style={styles.featureUnlockModalBadgeText}>{label}</Text>
+            </View>
+            <View style={styles.featureUnlockRewardRow}>
+              <Image source={HEALTH_COIN_TIERS[0].asset} style={styles.featureUnlockRewardCoin} />
+              <Text style={[styles.featureUnlockRewardAmount, { color: colors.text }]}>+1</Text>
+            </View>
+            <View style={styles.featureUnlockPreviewLines}>
+              <View style={[styles.featureUnlockPreviewLine, { width: "80%", backgroundColor: baseLineColor }]} />
+              <View style={[styles.featureUnlockPreviewLine, { width: "60%", backgroundColor: baseLineColor }]} />
+            </View>
+            <View style={[styles.featureUnlockModalButton, { backgroundColor: accent }]}>
+              <Text style={styles.featureUnlockModalButtonText}>{actionLabel || "✓"}</Text>
+            </View>
+          </View>
+        </View>
+      );
+    case "feedFocus":
+      return (
+        <View style={[styles.featureUnlockIllustration, { backgroundColor: screenBg, borderColor }]}>
+          <View style={styles.featureUnlockHero}>
+            <View style={[styles.featureUnlockHeroAccent, { borderColor: accent }]}>
+              <Text style={[styles.featureUnlockHeroLabel, { color: colors.text }]}>{label}</Text>
+            </View>
+            <View style={styles.featureUnlockPreviewLines}>
+              <View style={[styles.featureUnlockPreviewLine, { width: "60%", backgroundColor: baseLineColor }]} />
+              <View style={[styles.featureUnlockPreviewLine, { width: "45%", backgroundColor: baseLineColor }]} />
+            </View>
+          </View>
+          {renderTabBar(0)}
+        </View>
+      );
+    case "impulseMap":
+      return (
+        <View style={[styles.featureUnlockIllustration, { backgroundColor: screenBg, borderColor }]}>
+          <View style={styles.featureUnlockMap}>
+            {Array.from({ length: 6 }).map((_, row) => (
+              <View key={`map_row_${row}`} style={styles.featureUnlockMapRow}>
+                {Array.from({ length: 4 }).map((_, col) => {
+                  const isHotSpot = (row === 1 && col === 2) || (row === 3 && col === 1);
+                  return (
+                    <View
+                      key={`map_dot_${row}_${col}`}
+                      style={[
+                        styles.featureUnlockMapDot,
+                        {
+                          backgroundColor: isHotSpot ? accent : baseLineColor,
+                          opacity: isHotSpot ? 1 : 0.7,
+                        },
+                      ]}
+                    />
+                  );
+                })}
+              </View>
+            ))}
+          </View>
+          {renderTabBar(0)}
+        </View>
+      );
+    case "thinkingList":
+      return (
+        <View style={[styles.featureUnlockIllustration, { backgroundColor: screenBg, borderColor }]}>
+          <View style={styles.featureUnlockList}>
+            {Array.from({ length: 4 }).map((_, index) => (
+              <View key={`thinking_${index}`} style={styles.featureUnlockListItem}>
+                <View
+                  style={[
+                    styles.featureUnlockListBullet,
+                    { backgroundColor: index === 0 ? accent : baseLineColor },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.featureUnlockListLine,
+                    { width: `${80 - index * 10}%`, backgroundColor: baseLineColor },
+                  ]}
+                />
+              </View>
+            ))}
+          </View>
+          {renderTabBar(2)}
+        </View>
+      );
+    default:
+      return (
+        <View style={[styles.featureUnlockIllustration, { backgroundColor: screenBg, borderColor }]}>
+          {renderPreviewCard()}
+          {renderTabBar(3)}
+        </View>
+      );
+  }
 };
 
 const RewardHeart = ({ left, delay, duration }) => {
