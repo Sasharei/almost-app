@@ -48,6 +48,14 @@ import * as FileSystem from "expo-file-system";
 import { StatusBar } from "expo-status-bar";
 import { BlurView } from "expo-blur";
 import * as SplashScreen from "expo-splash-screen";
+let AudioModule = null;
+try {
+  // Optional native module – may be missing in some builds (e.g. older Expo Go).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  AudioModule = require("expo-av")?.Audio || null;
+} catch (error) {
+  console.warn("expo-av unavailable", error);
+}
 import {
   useFonts,
   Inter_300Light,
@@ -156,10 +164,10 @@ const STORAGE_KEYS = {
   SPEND_LOGGING_REMINDER: "@almost_spend_logging_reminder",
   TUTORIAL: "@almost_tutorial_state",
   TEMPTATION_TUTORIAL: "@almost_temptation_cards_tutorial",
+  COIN_VALUE_MODAL: "@almost_coin_value_modal",
   DAILY_CHALLENGE: "@almost_daily_challenge_state",
   DAILY_REWARD: "@almost_daily_reward",
   DAILY_REWARD_DAY_KEY: "@almost_daily_reward_day",
-  TAB_HINTS: "@almost_tab_hints",
   FOCUS_TARGET: "@almost_focus_target",
   FOCUS_DIGEST: "@almost_focus_digest",
   CATEGORY_OVERRIDES: "@almost_category_overrides",
@@ -167,6 +175,7 @@ const STORAGE_KEYS = {
   FOCUS_DIGEST_PENDING: "@almost_focus_digest_pending",
   TAMAGOTCHI_SKIN: "@almost_tamagotchi_skin",
   TAMAGOTCHI_SKINS_UNLOCKED: "@almost_tamagotchi_skins_unlocked",
+  TAMAGOTCHI_HUNGER_NOTIFICATIONS: "@almost_tamagotchi_hunger_notifications",
   SAVED_TOTAL_PEAK: "@almost_saved_total_peak",
   LAST_CELEBRATED_LEVEL: "@almost_last_celebrated_level",
   ACTIVE_GOAL: "@almost_active_goal",
@@ -178,11 +187,60 @@ const STORAGE_KEYS = {
   DAY_THREE_ACTIVITY: "@almost_day_three_activity",
   PRIMARY_TEMPTATION_PROMPT: "@almost_primary_temptation_prompt",
   LAST_NOTIFICATION_AT: "@almost_last_notification_at",
+  SOUND_ENABLED: "@almost_sound_enabled",
 };
+
+const COIN_VALUE_MODAL_STATUS = {
+  PENDING: "pending",
+  SHOWN: "shown",
+};
+
+const CELEBRATION_OVERLAY_GAP_MS = 15000;
 
 const DEFAULT_LANGUAGE = "en";
 const FALLBACK_LANGUAGE = "en";
 const SUPPORTED_LANGUAGES = ["en", "es", "fr", "ru"];
+const SPLASH_LOGO = require("./assets/Almost_logo.png");
+const SOUND_FILES = {
+  coin: require("./assets/sounds/coin.wav"),
+  tap: require("./assets/sounds/tap.wav"),
+  counter: require("./assets/sounds/counter.wav"),
+  cat: require("./assets/sounds/cat.wav"),
+  challenge_accept: require("./assets/sounds/challenge_accept.wav"),
+  focus_accept: require("./assets/sounds/focus_accept.wav"),
+  reward: require("./assets/sounds/reward.wav"),
+  thunder: require("./assets/sounds/thunder.wav"),
+  daily_reward: require("./assets/sounds/daily_reward.wav"),
+  level_up: require("./assets/sounds/level_up.wav"),
+  streak_restore: require("./assets/sounds/streak_restore.wav"),
+};
+const PRELOAD_SOUND_KEYS = new Set(["coin", "tap", "counter", "level_up"]);
+const SOUND_COOLDOWNS = {
+  coin: 200,
+  tap: 120,
+  counter: 60,
+  cat: 600,
+  challenge_accept: 500,
+  focus_accept: 500,
+  reward: 600,
+  thunder: 900,
+  daily_reward: 900,
+  level_up: 1200,
+  streak_restore: 800,
+};
+const SOUND_VOLUMES = {
+  coin: 0.85,
+  tap: 0.75,
+  counter: 1.0,
+  cat: 0.8,
+  challenge_accept: 0.85,
+  focus_accept: 0.85,
+  reward: 0.9,
+  thunder: 0.85,
+  daily_reward: 0.9,
+  level_up: 0.9,
+  streak_restore: 0.85,
+};
 const LANGUAGE_LABEL_KEYS = {
   ru: "languageRussian",
   en: "languageEnglish",
@@ -556,9 +614,10 @@ const DAILY_NUDGE_BODY_KEYS = [
 const DAILY_NUDGE_LANGUAGES = SUPPORTED_LANGUAGES;
 const DAILY_NUDGE_NOTIFICATION_TAG = "daily_nudge";
 const ANDROID_DAILY_NUDGE_CHANNEL_ID = "daily-nudges";
+const ANDROID_TAMAGOTCHI_CHANNEL_ID = "tamagotchi-hunger";
 const DAILY_CHALLENGE_MIN_SPEND_EVENTS = 2;
-const DAILY_CHALLENGE_REWARD_MULTIPLIER = 2;
-
+const DAILY_CHALLENGE_FIXED_REWARD = 2;
+const DAILY_CHALLENGE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const DAILY_CHALLENGE_STATUS = {
   IDLE: "idle",
   OFFER: "offer",
@@ -569,6 +628,7 @@ const DAILY_CHALLENGE_STATUS = {
 const FOCUS_VICTORY_THRESHOLD = 3;
 const FOCUS_VICTORY_REWARD = 3;
 const FOCUS_LOSS_THRESHOLD = 3;
+const FOCUS_RECENT_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
 const CHALLENGE_REWARD_SCALE = 0.5;
 const getScaledChallengeReward = (value = 0) =>
   Math.max(1, Math.round(Math.max(0, value) * CHALLENGE_REWARD_SCALE));
@@ -598,7 +658,8 @@ const buildTemptationPressureMap = (events = []) => {
 
 const resolveDailyChallengeTemplateId = (
   pressureMap = {},
-  minSpendEvents = DAILY_CHALLENGE_MIN_SPEND_EVENTS
+  minSpendEvents = DAILY_CHALLENGE_MIN_SPEND_EVENTS,
+  isValidTemplate = null
 ) => {
   const ranked = Object.entries(pressureMap || {})
     .map(([templateId, stats]) => ({
@@ -614,12 +675,12 @@ const resolveDailyChallengeTemplateId = (
       if (b.spend !== a.spend) return b.spend - a.spend;
       return b.lastTimestamp - a.lastTimestamp;
     });
-  if (ranked.length > 0) {
-    return ranked[0].templateId;
+  for (const entry of ranked) {
+    if (typeof isValidTemplate === "function" && !isValidTemplate(entry.templateId)) {
+      continue;
+    }
+    return entry.templateId;
   }
-  const desc = (typeof descriptionOverride === "string" && descriptionOverride.trim().length
-    ? descriptionOverride
-    : null) || desc || "";
   return null;
 };
 
@@ -676,6 +737,7 @@ const normalizeSmartReminderEntries = (list) => {
       timestamp,
       scheduledAt: Number(entry.scheduledAt) || timestamp + SMART_REMINDER_DELAY_MS,
       notificationId: entry.notificationId || null,
+      templateId: typeof entry.templateId === "string" ? entry.templateId : null,
     });
   });
   normalized.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
@@ -777,24 +839,10 @@ const FAB_TUTORIAL_STATUS = {
   PENDING: "pending",
   SHOWING: "showing",
 };
-const DEFAULT_TAB_HINTS_STATE = {
-  feed: false,
-  cart: false,
-  pending: false,
-  purchases: false,
-  profile: false,
-};
 const CARD_TEXTURE_ACCENTS = ["#8AB9FF", "#FFA4C0", "#8CE7CF", "#FFD48A", "#BBA4FF", "#7FD8FF"];
 const TEMPTATION_CARD_RADIUS = 28;
 // Fine-tune Android highlight alignment when using measureInWindow (positive moves the cutout lower).
 const ANDROID_TUTORIAL_HIGHLIGHT_OFFSET = 6;
-const TAB_HINT_CONFIG = {
-  feed: { titleKey: "tabHintFeedTitle", bodyKey: "tabHintFeedBody" },
-  cart: { titleKey: "tabHintCartTitle", bodyKey: "tabHintCartBody" },
-  pending: { titleKey: "tabHintPendingTitle", bodyKey: "tabHintPendingBody" },
-  purchases: { titleKey: "tabHintPurchasesTitle", bodyKey: "tabHintPurchasesBody" },
-  profile: { titleKey: "tabHintProfileTitle", bodyKey: "tabHintProfileBody" },
-};
 const TAB_BAR_BASE_HEIGHT = 64;
 const FAB_BUTTON_SIZE = 64;
 const FAB_CONTAINER_BOTTOM = 96;
@@ -975,9 +1023,9 @@ const ECONOMY_RULES = {
   maxSaveReward: 24,
   baseAchievementReward: 60,
   freeDayRescueCost: 60,
-  tamagotchiFeedCost: 1,
+  tamagotchiFeedCost: 2,
   tamagotchiFeedBoost: 24,
-  tamagotchiPartyCost: 20,
+  tamagotchiPartyCost: 40,
 };
 const DEFAULT_REMOTE_IMAGE =
   "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=600&q=80";
@@ -986,6 +1034,7 @@ const DAY_MS = 1000 * 60 * 60 * 24;
 const REWARD_RESET_INTERVAL_MS = DAY_MS * 14;
 const REMINDER_MS = REMINDER_DAYS * DAY_MS;
 const SAVE_SPAM_WINDOW_MS = 1000 * 60 * 5;
+const SAVED_TOTAL_RESET_GRACE_MS = 1000 * 5;
 const SAVE_SPAM_ITEM_LIMIT = 3;
 const SAVE_SPAM_GLOBAL_LIMIT = 5;
 const NORTH_STAR_SAVE_THRESHOLD = 2;
@@ -1029,6 +1078,26 @@ const getDayKey = (date) => {
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+};
+
+const parseDayKey = (key) => {
+  if (typeof key !== "string" || key.trim().length === 0) return null;
+  const [yearStr, monthStr, dayStr] = key.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  if (!year || !month || !day) return null;
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const getDayDiff = (fromKey, toKey) => {
+  const fromDate = parseDayKey(fromKey);
+  const toDate = parseDayKey(toKey);
+  if (!fromDate || !toDate) return null;
+  return Math.round((toDate.getTime() - fromDate.getTime()) / DAY_MS);
 };
 
 const isSameDay = (tsA, tsB = Date.now()) => {
@@ -1135,13 +1204,8 @@ const computeRefuseCoinReward = (amountUSD = 0, currencyCode = activeCurrency) =
   return Math.min(ECONOMY_RULES.maxSaveReward, adjusted);
 };
 
-const computeDailyChallengeBonus = (amountUSD = 0, currencyCode = activeCurrency) => {
-  const baseReward = computeRefuseCoinReward(amountUSD, currencyCode);
-  const multiplied = Math.round(baseReward * DAILY_CHALLENGE_REWARD_MULTIPLIER);
-  if (multiplied > 0) {
-    return Math.max(multiplied - baseReward, baseReward || 1);
-  }
-  return Math.max(1, baseReward || ECONOMY_RULES.minSaveReward);
+const computeDailyChallengeBonus = (_amountUSD = 0, _currencyCode = activeCurrency) => {
+  return Math.max(0, DAILY_CHALLENGE_FIXED_REWARD);
 };
 
 const computeLevelRewardCoins = (level) => {
@@ -1164,6 +1228,7 @@ const DEFAULT_DAILY_REWARD_STATE = {
   lastKey: null,
   lastAmount: 0,
   lastClaimAt: 0,
+  streak: 0,
 };
 
 const computeDailyAlmiReward = (savedUSD = 0) => {
@@ -2341,7 +2406,7 @@ const buildImpulseInsights = (events = []) => {
       hotLose: null,
       hotWin: null,
       activeRisk: null,
-      hottestCategory: null,
+      hottestSpendCategory: null,
       eventCount: 0,
       sequenceHotspots: { slip: null, rebound: null },
     };
@@ -2404,7 +2469,6 @@ const buildImpulseInsights = (events = []) => {
     return tsA - tsB;
   });
   const sequenceStats = new Map();
-  const previousByTemplate = new Map();
   const selectSequence = (current, candidate) => {
     if (!candidate) return current;
     if (!current) {
@@ -2414,11 +2478,7 @@ const buildImpulseInsights = (events = []) => {
       return { ...candidate };
     }
     if (candidate.count === current.count) {
-      if ((candidate.avgDelayMinutes || 0) < (current.avgDelayMinutes || 0)) {
-        return { ...candidate };
-      }
       if (
-        Math.round(candidate.avgDelayMinutes || 0) === Math.round(current.avgDelayMinutes || 0) &&
         (candidate.lastTimestamp || 0) > (current.lastTimestamp || 0)
       ) {
         return { ...candidate };
@@ -2428,46 +2488,43 @@ const buildImpulseInsights = (events = []) => {
   };
   let slipSequence = null;
   let reboundSequence = null;
+  let previousEvent = null;
   chronologicalEvents.forEach((event) => {
-    const prev = previousByTemplate.get(event.templateId);
-    previousByTemplate.set(event.templateId, event);
+    const prev = previousEvent;
+    previousEvent = event;
     if (!prev || !Number.isFinite(prev.timestamp) || prev.timestamp >= event.timestamp) return;
-    const deltaMinutes = Math.max(0, Math.round((event.timestamp - prev.timestamp) / (60 * 1000)));
-    const key = `${event.templateId}:${prev.action}->${event.action}`;
+    if (!prev.templateId || !event.templateId || prev.templateId === event.templateId) return;
+    if (!prev.action || !event.action) return;
+    const key = `${prev.templateId}->${event.templateId}:${prev.action}->${event.action}`;
     const stat =
       sequenceStats.get(key) || {
-        templateId: event.templateId,
-        title: event.title,
-        emoji: event.emoji,
-        category: event.category,
-        prevAction: prev.action,
-        nextAction: event.action,
+        fromTemplateId: prev.templateId,
+        toTemplateId: event.templateId,
+        fromTitle: prev.title,
+        toTitle: event.title,
+        fromAction: prev.action,
+        toAction: event.action,
         count: 0,
-        totalDelayMinutes: 0,
-        avgDelayMinutes: 0,
         lastTimestamp: 0,
       };
     stat.count += 1;
-    stat.totalDelayMinutes += deltaMinutes;
-    stat.avgDelayMinutes = stat.count ? stat.totalDelayMinutes / stat.count : 0;
     stat.lastTimestamp = event.timestamp;
     sequenceStats.set(key, stat);
-    if (prev.action === "save" && event.action === "spend") {
+    if (prev.action === "spend" && event.action === "spend") {
       slipSequence = selectSequence(slipSequence, stat);
-    } else if (prev.action === "spend" && event.action === "save") {
+    } else if (prev.action === "save" && event.action === "save") {
       reboundSequence = selectSequence(reboundSequence, stat);
     }
   });
   const makeSequencePayload = (stat) => {
     if (!stat) return null;
     return {
-      templateId: stat.templateId,
-      title: stat.title,
-      emoji: stat.emoji,
-      category: stat.category,
-      fromAction: stat.prevAction,
-      toAction: stat.nextAction,
-      avgDelayMinutes: Math.round(stat.avgDelayMinutes || 0),
+      fromTemplateId: stat.fromTemplateId,
+      toTemplateId: stat.toTemplateId,
+      fromTitle: stat.fromTitle,
+      toTitle: stat.toTitle,
+      fromAction: stat.fromAction,
+      toAction: stat.toAction,
       count: stat.count,
     };
   };
@@ -2552,20 +2609,20 @@ const buildImpulseInsights = (events = []) => {
       };
     }
   });
-  const hottestCategory = IMPULSE_CATEGORY_ORDER.reduce((best, id) => {
+  const hottestSpendCategory = IMPULSE_CATEGORY_ORDER.reduce((best, id) => {
     const entry = categories[id] || { save: 0, spend: 0 };
-    const saveCount = entry.save || 0;
     const spendCount = entry.spend || 0;
-    const interactions = saveCount + spendCount;
-    if (interactions === 0) {
+    const saveCount = entry.save || 0;
+    const interactions = spendCount + saveCount;
+    if (spendCount === 0) {
       return best;
     }
     if (
       !best ||
-      interactions > best.interactions ||
-      (interactions === best.interactions && spendCount > (best.spendCount || 0))
+      spendCount > best.spendCount ||
+      (spendCount === best.spendCount && interactions > (best.interactions || 0))
     ) {
-      return { id, interactions, spendCount };
+      return { id, spendCount, interactions, saveCount };
     }
     return best;
   }, null);
@@ -2594,7 +2651,7 @@ const buildImpulseInsights = (events = []) => {
         }
       : null,
     activeRisk,
-    hottestCategory,
+    hottestSpendCategory,
     eventCount: processedEvents,
     totalSaveCount: totalSaves,
     totalSpendCount: totalSpends,
@@ -3057,6 +3114,15 @@ const triggerSelectionHaptic = () => {
   Haptics.selectionAsync().catch(() => {});
 };
 
+const triggerCoinRewardHaptics = () => {
+  const pulses = [0, 90, 180, 270];
+  pulses.forEach((delay) => {
+    setTimeout(() => {
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    }, delay);
+  });
+};
+
 const convertToCurrency = (valueUSD = 0, currency = activeCurrency) => {
   if (!valueUSD) return 0;
   const rate = CURRENCY_RATES[currency] || 1;
@@ -3313,14 +3379,23 @@ const buildCustomTemptationDescription = (gender = "none") => {
   };
 };
 
-const createCustomHabitTemptation = (customSpend, fallbackCurrency, gender = "none") => {
-  if (!customSpend?.title) return null;
-  const price = resolveCustomPriceUSD(customSpend, fallbackCurrency);
-  if (!price) return null;
-  const title = customSpend.title;
+const CUSTOM_HABIT_FALLBACK_TITLES = {
+  ru: "Моя привычка",
+  en: "My impulse",
+  es: "Mi impulso",
+  fr: "Mon impulsion",
+};
+
+const createCustomHabitTemptation = (customSpend, fallbackCurrency = DEFAULT_PROFILE.currency, gender = "none") => {
+  const price = resolveCustomPriceUSD(customSpend, fallbackCurrency) || CUSTOM_SPEND_SAMPLE_USD;
+  const resolvedTitle = customSpend?.title;
+  const title =
+    resolvedTitle && resolvedTitle.trim().length
+      ? resolvedTitle.trim()
+      : CUSTOM_HABIT_FALLBACK_TITLES.en;
   const description = buildCustomTemptationDescription(gender);
   const impulseCategory =
-    customSpend.impulseCategory && IMPULSE_CATEGORY_DEFS[customSpend.impulseCategory]
+    customSpend?.impulseCategory && IMPULSE_CATEGORY_DEFS[customSpend.impulseCategory]
       ? customSpend.impulseCategory
       : null;
   const categories = ["habit", "custom"];
@@ -3335,10 +3410,10 @@ const createCustomHabitTemptation = (customSpend, fallbackCurrency, gender = "no
     basePriceUSD: price,
     priceUSD: price,
     title: {
-      ru: title,
-      en: title,
-      es: title,
-      fr: title,
+      ru: resolvedTitle || CUSTOM_HABIT_FALLBACK_TITLES.ru,
+      en: title || CUSTOM_HABIT_FALLBACK_TITLES.en,
+      es: resolvedTitle || CUSTOM_HABIT_FALLBACK_TITLES.es,
+      fr: resolvedTitle || CUSTOM_HABIT_FALLBACK_TITLES.fr,
     },
     description,
     impulseCategoryOverride: impulseCategory,
@@ -3393,8 +3468,9 @@ const matchesGenderAudience = (card, gender = "none") => {
 
 const buildPersonalizedTemptations = (profile, baseList = DEFAULT_TEMPTATIONS) => {
   const preset = getPersonaPreset(profile?.persona);
+  const personaExtras = PERSONA_TEMPTATION_PRESETS[preset?.id] || [];
   const customFirst = createCustomHabitTemptation(
-    profile.customSpend,
+    profile.customSpend || {},
     profile?.currency,
     profile?.gender
   );
@@ -3402,6 +3478,7 @@ const buildPersonalizedTemptations = (profile, baseList = DEFAULT_TEMPTATIONS) =
   const priorityIds = ["coffee_to_go", "netflix_subscription"];
   const gender = profile?.gender || "none";
   const seen = new Set();
+  const skippedIds = new Set();
   const result = [];
   const pushIfVisible = (card) => {
     if (!card || seen.has(card.id)) return;
@@ -3413,15 +3490,33 @@ const buildPersonalizedTemptations = (profile, baseList = DEFAULT_TEMPTATIONS) =
   // 1) Кастомная карта пользователя всегда первая, если есть.
   pushIfVisible(customFirst);
   // 2) Карта персоны - сразу после кастомной или первой, если кастомной нет.
-  pushIfVisible(personaCard);
+  const hasBaseCoffee = baseList.some((item) => item?.id === "coffee_to_go");
+  const personaHasCoffee =
+    preset?.id === "mindful_coffee" ||
+    (personaCard && Array.isArray(personaCard.categories) && personaCard.categories.includes("coffee"));
+  const shouldSkipPersona = !customFirst && hasBaseCoffee && personaHasCoffee;
+  if (!shouldSkipPersona) {
+    pushIfVisible(personaCard);
+  }
+  const sortedPersonaExtras = personaExtras
+    .filter((card) => matchesGenderAudience(card, gender))
+    .sort((a, b) => getTemptationPrice(a) - getTemptationPrice(b));
+  sortedPersonaExtras.forEach((card) => pushIfVisible(card));
   // 3) Держим кофе навынос и подписку Netflix сразу после кастомной/персоны.
-  priorityIds.forEach((id) => {
+  const resolvedPriorityIds = [...priorityIds];
+  if (preset?.id === "mindful_coffee" && personaHasCoffee) {
+    const altCoffee = baseList.find((item) => item?.id === "croissant_break")?.id || "croissant_break";
+    resolvedPriorityIds.splice(0, 1, altCoffee);
+    skippedIds.add("coffee_to_go");
+  }
+  resolvedPriorityIds.forEach((id) => {
+    if (skippedIds.has(id)) return;
     const card = baseList.find((item) => item?.id === id);
     pushIfVisible(card);
   });
 
   // Остальные, отсортированные по цене.
-  const pool = [...baseList].filter((item) => item && !seen.has(item.id));
+  const pool = [...baseList].filter((item) => item && !seen.has(item.id) && !skippedIds.has(item.id));
   const sortedPool = pool
     .filter((item) => matchesGenderAudience(item, gender))
     .sort((a, b) => {
@@ -3441,10 +3536,11 @@ const mergeInteractionStatMaps = (base = {}, incoming = {}) => {
     merged.saveCount = (current.saveCount || 0) + (stats.saveCount || 0);
     merged.spendCount = (current.spendCount || 0) + (stats.spendCount || 0);
     merged.lastInteractionAt = Math.max(current.lastInteractionAt || 0, stats.lastInteractionAt || 0);
-    const latestIsIncoming =
-      (stats.lastInteractionAt || 0) >= (current.lastInteractionAt || 0);
+    const latestIsIncoming = (stats.lastInteractionAt || 0) >= (current.lastInteractionAt || 0);
     if (latestIsIncoming) {
       merged.previousInteractionAt = stats.previousInteractionAt || merged.previousInteractionAt || null;
+      merged.secondPreviousInteractionAt =
+        stats.secondPreviousInteractionAt ?? merged.secondPreviousInteractionAt ?? null;
       merged.detectedIntervalMs = stats.detectedIntervalMs ?? merged.detectedIntervalMs ?? null;
       merged.frequency = stats.frequency ?? merged.frequency ?? null;
       merged.intervalMs = stats.intervalMs ?? merged.intervalMs ?? null;
@@ -3463,8 +3559,13 @@ const mergeInteractionStatMaps = (base = {}, incoming = {}) => {
       merged.frequencyReminderPlanKey =
         stats.frequencyReminderPlanKey ?? merged.frequencyReminderPlanKey ?? null;
       merged.templateTitle = stats.templateTitle ?? merged.templateTitle ?? null;
-    } else if (!merged.previousInteractionAt && stats.previousInteractionAt) {
-      merged.previousInteractionAt = stats.previousInteractionAt;
+    } else {
+      if (!merged.previousInteractionAt && stats.previousInteractionAt) {
+        merged.previousInteractionAt = stats.previousInteractionAt;
+      }
+      if (!merged.secondPreviousInteractionAt && stats.secondPreviousInteractionAt) {
+        merged.secondPreviousInteractionAt = stats.secondPreviousInteractionAt;
+      }
     }
     merged.missedCycles = (current.missedCycles || 0) + (stats.missedCycles || 0);
     if (!merged.templateTitle && stats.templateTitle) {
@@ -3494,25 +3595,31 @@ const useFadeIn = () => {
 };
 
 const FEED_FREQUENT_PIN_LIMIT = 5;
+const DAILY_FREQUENCY_INTERVAL_MS = 26 * 60 * 60 * 1000;
+const DAILY_SECOND_ACTION_THRESHOLD_MS = DAILY_FREQUENCY_INTERVAL_MS;
+const DAILY_COOLDOWN_TO_WEEKLY_MS = 36 * 60 * 60 * 1000;
+const WEEKLY_FREQUENCY_THRESHOLD_MS = DAY_MS * 7;
+const BIWEEKLY_FREQUENCY_THRESHOLD_MS = DAY_MS * 14;
+const MONTHLY_FREQUENCY_THRESHOLD_MS = DAY_MS * 14;
 const TEMPTATION_FREQUENCY_BUCKETS = {
   daily: {
     id: "daily",
-    intervalMs: DAY_MS,
-    thresholdMs: DAY_MS * 1.5,
+    intervalMs: DAILY_FREQUENCY_INTERVAL_MS,
+    thresholdMs: DAILY_SECOND_ACTION_THRESHOLD_MS,
     sectionKey: "frequencySectionDaily",
     badgeKey: "frequencyBadgeDaily",
   },
   weekly: {
     id: "weekly",
     intervalMs: DAY_MS * 7,
-    thresholdMs: DAY_MS * 10,
+    thresholdMs: WEEKLY_FREQUENCY_THRESHOLD_MS,
     sectionKey: "frequencySectionWeekly",
     badgeKey: "frequencyBadgeWeekly",
   },
   biweekly: {
     id: "biweekly",
     intervalMs: DAY_MS * 14,
-    thresholdMs: DAY_MS * 20,
+    thresholdMs: MONTHLY_FREQUENCY_THRESHOLD_MS,
     sectionKey: "frequencySectionBiweekly",
     badgeKey: "frequencyBadgeBiweekly",
   },
@@ -3525,6 +3632,20 @@ const TEMPTATION_FREQUENCY_BUCKETS = {
   },
 };
 const TEMPTATION_FREQUENCY_ORDER = ["daily", "weekly", "biweekly", "monthly"];
+const FREQUENCY_DEMOTION_THRESHOLDS = {
+  daily: DAILY_COOLDOWN_TO_WEEKLY_MS,
+  weekly: BIWEEKLY_FREQUENCY_THRESHOLD_MS,
+  biweekly: MONTHLY_FREQUENCY_THRESHOLD_MS,
+};
+const getDemotedFrequencyBucket = (bucketId, lastInteractionAt) => {
+  if (!bucketId || !Number.isFinite(lastInteractionAt)) return bucketId;
+  const threshold = FREQUENCY_DEMOTION_THRESHOLDS[bucketId];
+  if (!threshold) return bucketId;
+  if (Date.now() - lastInteractionAt < threshold) return bucketId;
+  const index = TEMPTATION_FREQUENCY_ORDER.indexOf(bucketId);
+  if (index < 0 || index >= TEMPTATION_FREQUENCY_ORDER.length - 1) return bucketId;
+  return TEMPTATION_FREQUENCY_ORDER[index + 1];
+};
 const FREQUENCY_COUNTDOWN_TOKENS = {
   ru: { day: "д", hour: "ч", minute: "м" },
   en: { day: "d", hour: "h", minute: "m" },
@@ -3535,9 +3656,9 @@ const FREQUENCY_CRITICAL_WINDOW_MS = 2 * 60 * 60 * 1000;
 const FREQUENCY_REMINDER_INTERVAL_MS = 30 * 60 * 1000;
 const resolveTemptationFrequencyBucket = (intervalMs) => {
   if (!Number.isFinite(intervalMs) || intervalMs <= 0) return null;
-  if (intervalMs <= TEMPTATION_FREQUENCY_BUCKETS.daily.thresholdMs) return "daily";
-  if (intervalMs <= TEMPTATION_FREQUENCY_BUCKETS.weekly.thresholdMs) return "weekly";
-  if (intervalMs <= TEMPTATION_FREQUENCY_BUCKETS.biweekly.thresholdMs) return "biweekly";
+  if (intervalMs <= DAILY_SECOND_ACTION_THRESHOLD_MS) return "daily";
+  if (intervalMs <= WEEKLY_FREQUENCY_THRESHOLD_MS) return "weekly";
+  if (intervalMs <= BIWEEKLY_FREQUENCY_THRESHOLD_MS) return "biweekly";
   return "monthly";
 };
 const getFrequencyIntervalMs = (bucketId) => {
@@ -3582,6 +3703,80 @@ const buildFrequencyReminderSchedule = (nextCheckAt, now = Date.now()) => {
     }
   }
   return triggers.sort((a, b) => a - b);
+};
+
+const normalizeInteractionKey = (value) => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+};
+
+const resolveEntryFrequency = (entry) => {
+  if (!entry) return null;
+  const lastInteractionAt = Number(entry.lastInteractionAt) || 0;
+  const previousInteractionAt = Number(entry.previousInteractionAt) || 0;
+  const secondPreviousInteractionAt = Number(entry.secondPreviousInteractionAt) || 0;
+  if (
+    lastInteractionAt &&
+    previousInteractionAt &&
+    lastInteractionAt - previousInteractionAt <= DAILY_SECOND_ACTION_THRESHOLD_MS
+  ) {
+    return "daily";
+  }
+  if (lastInteractionAt && previousInteractionAt) {
+    const intervalMs = lastInteractionAt - previousInteractionAt;
+    if (
+      intervalMs > DAILY_SECOND_ACTION_THRESHOLD_MS &&
+      intervalMs <= WEEKLY_FREQUENCY_THRESHOLD_MS
+    ) {
+      return "weekly";
+    }
+    if (
+      intervalMs > WEEKLY_FREQUENCY_THRESHOLD_MS &&
+      intervalMs <= BIWEEKLY_FREQUENCY_THRESHOLD_MS
+    ) {
+      return "biweekly";
+    }
+    if (intervalMs > BIWEEKLY_FREQUENCY_THRESHOLD_MS) {
+      return "monthly";
+    }
+  }
+  return null;
+};
+
+const buildHistoryInteractionMap = (entries = []) => {
+  if (!Array.isArray(entries) || !entries.length) return {};
+  const map = {};
+  entries.forEach((entry) => {
+    if (!entry || (entry.kind !== "refuse_spend" && entry.kind !== "spend")) return;
+    const templateId =
+      normalizeInteractionKey(entry?.meta?.templateId) ||
+      normalizeInteractionKey(entry?.meta?.id) ||
+      normalizeInteractionKey(entry?.meta?.template);
+    if (!templateId) return;
+    const timestamp = Number(entry.timestamp) || 0;
+    if (!timestamp) return;
+    const bucket = map[templateId] || {
+      saveCount: 0,
+      spendCount: 0,
+      timestamps: [],
+    };
+    bucket.timestamps.push(timestamp);
+    if (entry.kind === "refuse_spend") {
+      bucket.saveCount += 1;
+    } else if (entry.kind === "spend") {
+      bucket.spendCount += 1;
+    }
+    map[templateId] = bucket;
+  });
+  Object.values(map).forEach((bucket) => {
+    bucket.timestamps.sort((a, b) => b - a);
+    bucket.lastInteractionAt = bucket.timestamps[0] || null;
+    bucket.previousInteractionAt = bucket.timestamps[1] || null;
+    bucket.secondPreviousInteractionAt = bucket.timestamps[2] || null;
+    delete bucket.timestamps;
+  });
+  return map;
 };
 
 const TRANSLATIONS = {
@@ -3706,6 +3901,12 @@ const TRANSLATIONS = {
     dailyRewardClaimHint: "Забрать",
     dailyRewardCollectedLabel: "Завтра",
     dailyRewardCelebrateMessage: "+{{amount}}",
+    dailyRewardModalTitle: "Ежедневная награда",
+    dailyRewardModalDescription: "Забирай бонус и возвращайся завтра — каждый день награда чуть больше.",
+    dailyRewardModalGrowthNote: "7 дней подряд = максимальная отдача.",
+    dailyRewardModalCTA: "Собрать награду",
+    dailyRewardModalLater: "Позже",
+    dailyRewardModalDayLabel: "День {{day}}",
     level2UnlockMessage:
       "Уровень 2! Ежедневная награда открыта - забирай бонус каждый день. Мини-челлендж тоже появляется на главном экране, когда Almost посчитает нужным.",
     level3UnlockMessage:
@@ -3751,18 +3952,20 @@ const TRANSLATIONS = {
     impulseWinLabel: "Чаще побеждаешь",
     impulseWinCopy: "На {{temptation}} чаще всего отказываешь себе в {{time}}.",
     impulseWinEmpty: "Пока нет данных о победах - попробуй нажать «копить».",
-    impulseTrendLabel: "Больше всего импульсов в категории {{category}}",
+    impulseTrendLabel: "Больше всего трат в категории {{category}}",
     impulseCategorySave: "Спасения: {{count}}",
     impulseCategorySpend: "Срывы: {{count}}",
     impulseAnytimeLabel: "любое время",
     impulseExpand: "Развернуть",
     impulseCollapse: "Скрыть карту",
     impulseSequenceTitle: "Цепочки решений",
-    impulseSequenceSlip: "После {{before}} часто случается {{after}} на {{temptation}} примерно через {{time}}.",
-    impulseSequenceRebound: "После {{before}} ты часто выбираешь {{after}} на {{temptation}} через {{time}}.",
+    impulseSequenceSlip: "После трат на «{{from}}» ты чаще тратишь на «{{to}}».",
+    impulseSequenceRebound: "После экономии на «{{from}}» ты чаще копишь на «{{to}}».",
     impulseSequenceEmpty: "Нужно больше данных, чтобы показать цепочки.",
-    impulseActionSave: "«копить»",
-    impulseActionSpend: "«тратить»",
+    impulseActionSaveBefore: "копила",
+    impulseActionSpendBefore: "тратила",
+    impulseActionSaveAfter: "копишь",
+    impulseActionSpendAfter: "тратишь",
     streakBadgeActive: "Серия: {{count}}",
     streakBadgeBest: "Рекорд: {{count}}",
     streakRecoveryTitle: "Восстановить серию?",
@@ -3770,6 +3973,10 @@ const TRANSLATIONS = {
     streakRecoveryConfirm: "Вернуть за {{coins}}",
     streakRecoveryDecline: "Начать заново",
     streakRecoveryInsufficient: "Нужно {{coins}} синие монеты для восстановления.",
+    coinValueTitle: "Зачем нужны монеты?",
+    coinValueBody:
+      "Монеты нужны чтобы кормить кота Алми. Они хранятся в раскрытом главном виджете сверху экрана. Монеты также нужны для кастомизации Алми и восстановления серий на карточках.",
+    coinValueCta: "Понял",
     impulseReminderWinTitle: "Ты победил «{{temptation}}»",
     impulseReminderWinBody: "Вчера это сэкономило {{amount}}. Помни, ради чего держишь курс.",
     impulseReminderLoseTitle: "«{{temptation}}» вчера победил",
@@ -3841,6 +4048,10 @@ const TRANSLATIONS = {
     profileOk: "ок",
     profileJoinDate: "В осознанной экономии с {{date}}",
     settingsTitle: "Настройки и персонализация",
+    spendReductionLabel: "Уменьшать баланс при тратах",
+    spendReductionHint: "Если выключить, покупки не будут снижать прогресс.",
+    soundLabel: "Звуки приложения",
+    soundHint: "Полностью отключить звуковые эффекты.",
     themeLabel: "Тема",
     themeLight: "Светлая",
     themeDark: "Тёмная",
@@ -4040,13 +4251,13 @@ const TRANSLATIONS = {
     dailyChallengeOfferBadge: "мини-челлендж",
     dailyChallengeOfferTitle: "Вызов дня",
     dailyChallengeOfferSubtitle: "Попробуй провести день без «{{temptation}}»",
-    dailyChallengeOfferHint: "Откажись хотя бы один раз и получишь двойную награду.",
+    dailyChallengeOfferHint: "Откажись хотя бы один раз и получишь +2 монеты.",
     dailyChallengeOfferReward: "+{{amount}} сверху",
     dailyChallengeOfferAccept: "Принять вызов",
     dailyChallengeOfferLater: "Позже",
     dailyChallengeWidgetBadge: "мини-челлендж",
     dailyChallengeWidgetTitle: "Активный челлендж",
-    dailyChallengeWidgetDesc: "День без «{{temptation}}» = монеты х2",
+    dailyChallengeWidgetDesc: "День без «{{temptation}}» = +2 монеты",
     dailyChallengeWidgetProgress: "Прогресс {{current}} / {{target}}",
     dailyChallengeWidgetReward: "+{{amount}}",
     dailyChallengeRewardReason: "Мини-челлендж «{{temptation}}» выполнен",
@@ -4322,17 +4533,6 @@ const TRANSLATIONS = {
     temptationTutorialActionsDesc: "Жми «Копить» или «Потратить», чтобы Almost фиксировал исход искушения.",
     temptationTutorialSwipeTitle: "Свайпы по карточке",
     temptationTutorialSwipeDesc: "Свайпай вправо, чтобы закрепить цель, и влево, чтобы удалить или спрятать искушение.",
-    tabHintFeedTitle: "Главный экран",
-    tabHintFeedBody: "Фиксируй импульсы и выбирай: копить, добавить в цели или отложить на потом.",
-    tabHintCartTitle: "Цели",
-    tabHintCartBody: "Ставь мечты в приоритет и обновляй прогресс, когда копишь.",
-    tabHintPendingTitle: "Меню «Думаем»",
-    tabHintPendingBody: "Отправляй покупки на паузу и возвращайся через 14 дней, чтобы решить трезво.",
-    tabHintPurchasesTitle: "Награды",
-    tabHintPurchasesBody: "Собирай достижения и запускай челленджи с дополнительными монетами.",
-    tabHintProfileTitle: "Профиль",
-    tabHintProfileBody: "Настраивай тему, язык, напоминания и личные цели.",
-    tabHintGotIt: "Понятно",
   },
   en: {
     appTagline: "An offline temptation board that keeps savings safe",
@@ -4448,6 +4648,12 @@ const TRANSLATIONS = {
     dailyRewardClaimHint: "Tap to collect",
     dailyRewardCollectedLabel: "Collected today",
     dailyRewardCelebrateMessage: "+{{amount}}",
+    dailyRewardModalTitle: "Daily reward",
+    dailyRewardModalDescription: "Collect now and come back tomorrow — each day gets a little bigger.",
+    dailyRewardModalGrowthNote: "7 days in a row unlocks the best payout.",
+    dailyRewardModalCTA: "Collect reward",
+    dailyRewardModalLater: "Later",
+    dailyRewardModalDayLabel: "Day {{day}}",
     level2UnlockMessage:
       "Level 2! Daily rewards are unlocked - claim a bonus once per day. The daily mini challenge will also appear on Home when Almost thinks you’re ready.",
     level3UnlockMessage:
@@ -4494,18 +4700,20 @@ const TRANSLATIONS = {
     impulseWinLabel: "Winning streak",
     impulseWinCopy: "You resist {{temptation}} most often around {{time}}.",
     impulseWinEmpty: "Wins will show up once you log more saves.",
-    impulseTrendLabel: "Most impulses land in {{category}}",
+    impulseTrendLabel: "Most splurges land in {{category}}",
     impulseCategorySave: "Saves: {{count}}",
     impulseCategorySpend: "Splurges: {{count}}",
     impulseAnytimeLabel: "any time",
     impulseExpand: "Expand",
     impulseCollapse: "Hide map",
     impulseSequenceTitle: "Habit loops",
-    impulseSequenceSlip: "After {{before}} you often go for {{after}} on {{temptation}} about {{time}} later.",
-    impulseSequenceRebound: "After {{before}} you usually lean on {{after}} for {{temptation}} roughly {{time}} later.",
+    impulseSequenceSlip: "After spending on “{{from}}”, you often spend on “{{to}}”.",
+    impulseSequenceRebound: "After saving on “{{from}}”, you often save on “{{to}}”.",
     impulseSequenceEmpty: "Need more history to surface loops.",
-    impulseActionSave: "“save it”",
-    impulseActionSpend: "“spend it”",
+    impulseActionSaveBefore: "saved",
+    impulseActionSpendBefore: "spent",
+    impulseActionSaveAfter: "save",
+    impulseActionSpendAfter: "spend",
     streakBadgeActive: "Streak ×{{count}}",
     streakBadgeBest: "Best ×{{count}}",
     streakRecoveryTitle: "Restore streak?",
@@ -4513,6 +4721,10 @@ const TRANSLATIONS = {
     streakRecoveryConfirm: "Restore for {{coins}}",
     streakRecoveryDecline: "Start fresh",
     streakRecoveryInsufficient: "You need {{coins}} blue coins to restore it.",
+    coinValueTitle: "Why do coins matter?",
+    coinValueBody:
+      "Coins feed Almi the cat. They live inside the expanded hero widget at the top of Home. Coins also unlock Almi customization and restore streaks on cards.",
+    coinValueCta: "Got it",
     impulseReminderWinTitle: "You beat “{{temptation}}”",
     impulseReminderWinBody: "Yesterday that saved {{amount}}. Keep the streak going today.",
     impulseReminderLoseTitle: "“{{temptation}}” won yesterday",
@@ -4580,6 +4792,10 @@ const TRANSLATIONS = {
     profileOk: "Ok",
     profileJoinDate: "Mindful saving since {{date}}",
     settingsTitle: "Settings & personalisation",
+    spendReductionLabel: "Reduce savings on spends",
+    spendReductionHint: "Turn off to keep your balance and goal progress when you buy.",
+    soundLabel: "App sounds",
+    soundHint: "Disable all sound effects.",
     themeLabel: "Theme",
     themeLight: "Light",
     themeDark: "Dark",
@@ -4774,13 +4990,13 @@ const TRANSLATIONS = {
     dailyChallengeOfferBadge: "daily challenge",
     dailyChallengeOfferTitle: "Today’s mini challenge",
     dailyChallengeOfferSubtitle: "Go a day without “{{temptation}}”",
-    dailyChallengeOfferHint: "Skip it once today and grab double rewards.",
+    dailyChallengeOfferHint: "Skip it once today and get +2 coins.",
     dailyChallengeOfferReward: "+{{amount}} bonus",
     dailyChallengeOfferAccept: "Accept challenge",
     dailyChallengeOfferLater: "Maybe later",
     dailyChallengeWidgetBadge: "daily challenge",
     dailyChallengeWidgetTitle: "Active mini challenge",
-    dailyChallengeWidgetDesc: "Day without “{{temptation}}” = coins x2",
+    dailyChallengeWidgetDesc: "Day without “{{temptation}}” = +2 coins",
     dailyChallengeWidgetProgress: "Progress {{current}} / {{target}}",
     dailyChallengeWidgetReward: "+{{amount}}",
     dailyChallengeRewardReason: "Mini challenge “{{temptation}}” complete",
@@ -5041,17 +5257,6 @@ const TRANSLATIONS = {
     temptationTutorialActionsDesc: "Tap Save or Spend so Almost remembers how you handled a temptation.",
     temptationTutorialSwipeTitle: "Swipe gestures",
     temptationTutorialSwipeDesc: "Swipe right to pin a goal, left to delete or hide a temptation.",
-    tabHintFeedTitle: "Temptation feed",
-    tabHintFeedBody: "Log impulses here and decide to save, add to goals, or park for later.",
-    tabHintCartTitle: "Goals",
-    tabHintCartBody: "Track your dreams, set priorities, and update progress as you save.",
-    tabHintPendingTitle: "Thinking tab",
-    tabHintPendingBody: "Send wants to a 14-day pause and come back with a cooler head.",
-    tabHintPurchasesTitle: "Rewards",
-    tabHintPurchasesBody: "Claim achievements and start challenges for bonus health coins.",
-    tabHintProfileTitle: "Profile",
-    tabHintProfileBody: "Tune theme, language, reminders, and personal targets.",
-    tabHintGotIt: "Got it",
   },  fr: {
     appTagline: "Un tableau hors ligne des tentations qui protège tes économies",
     frequencySectionDaily: "Tentations quotidiennes",
@@ -5166,6 +5371,12 @@ const TRANSLATIONS = {
     dailyRewardClaimHint: "Appuie pour l’obtenir",
     dailyRewardCollectedLabel: "Déjà prise",
     dailyRewardCelebrateMessage: "+{{amount}}",
+    dailyRewardModalTitle: "Récompense du jour",
+    dailyRewardModalDescription: "Récupère-la et reviens demain : chaque jour elle grandit un peu.",
+    dailyRewardModalGrowthNote: "7 jours d’affilée pour un gain maximum.",
+    dailyRewardModalCTA: "Récupérer la récompense",
+    dailyRewardModalLater: "Plus tard",
+    dailyRewardModalDayLabel: "Jour {{day}}",
     level2UnlockMessage:
       "Niveau 2 ! Les récompenses quotidiennes sont actives : récupère un bonus chaque jour. Le mini-défi quotidien apparaît aussi sur l’accueil quand Almost juge que tu es prêt.",
     level3UnlockMessage:
@@ -5212,18 +5423,20 @@ const TRANSLATIONS = {
     impulseWinLabel: "Série gagnante",
     impulseWinCopy: "Tu résistes le plus souvent à {{temptation}} vers {{time}}.",
     impulseWinEmpty: "Les victoires apparaîtront quand tu loggueras plus d'économies.",
-    impulseTrendLabel: "La plupart des impulsions tombent dans {{category}}",
+    impulseTrendLabel: "La plupart des dépenses vont vers {{category}}",
     impulseCategorySave: "Économies : {{count}}",
     impulseCategorySpend: "Craquages : {{count}}",
     impulseAnytimeLabel: "n'importe quand",
     impulseExpand: "Déployer",
     impulseCollapse: "Masquer la carte",
     impulseSequenceTitle: "Boucles d'habitudes",
-    impulseSequenceSlip: "Après {{before}}, tu passes souvent à {{after}} pour {{temptation}} environ {{time}} plus tard.",
-    impulseSequenceRebound: "Après {{before}}, tu reviens souvent à {{after}} sur {{temptation}} vers {{time}} plus tard.",
+    impulseSequenceSlip: "Après des dépenses sur « {{from}} », tu dépenses souvent sur « {{to}} ».",
+    impulseSequenceRebound: "Après avoir économisé sur « {{from}} », tu économises souvent sur « {{to}} ».",
     impulseSequenceEmpty: "Pas encore assez de données pour ces boucles.",
-    impulseActionSave: "« économiser »",
-    impulseActionSpend: "« craquer »",
+    impulseActionSaveBefore: "épargné",
+    impulseActionSpendBefore: "dépensé",
+    impulseActionSaveAfter: "épargnes",
+    impulseActionSpendAfter: "dépenses",
     streakBadgeActive: "Série ×{{count}}",
     streakBadgeBest: "Record ×{{count}}",
     streakRecoveryTitle: "Restaurer la série ?",
@@ -5231,6 +5444,10 @@ const TRANSLATIONS = {
     streakRecoveryConfirm: "Restaurer pour {{coins}}",
     streakRecoveryDecline: "Repartir de zéro",
     streakRecoveryInsufficient: "Il faut {{coins}} pièces bleues pour la restaurer.",
+    coinValueTitle: "À quoi servent les pièces ?",
+    coinValueBody:
+      "Les pieces nourrissent Almi, le chat. Elles sont stockees dans le widget principal deploye en haut de l'accueil. Les pieces servent aussi a personnaliser Almi et restaurer les series sur les cartes.",
+    coinValueCta: "Compris",
     impulseReminderWinTitle: "Tu as tenu bon face à « {{temptation}} »",
     impulseReminderWinBody: "Hier tu as gardé {{amount}}. Rappelle-toi pourquoi tu résistes.",
     impulseReminderLoseTitle: "« {{temptation}} » a gagné hier",
@@ -5298,6 +5515,10 @@ const TRANSLATIONS = {
     profileOk: "Ok",
     profileJoinDate: "Épargne consciente depuis le {{date}}",
     settingsTitle: "Réglages et personnalisation",
+    spendReductionLabel: "Réduire l’épargne lors des dépenses",
+    spendReductionHint: "Désactive pour garder le solde et les objectifs intacts quand tu achètes.",
+    soundLabel: "Sons de l’app",
+    soundHint: "Couper tous les effets sonores.",
     themeLabel: "Thème",
     themeLight: "Clair",
     themeDark: "Sombre",
@@ -5486,13 +5707,13 @@ const TRANSLATIONS = {
     dailyChallengeOfferBadge: "défi du jour",
     dailyChallengeOfferTitle: "Mini défi du jour",
     dailyChallengeOfferSubtitle: "Passe une journée sans « {{temptation}} »",
-    dailyChallengeOfferHint: "Évite-le une fois aujourd'hui et gagne une récompense doublée.",
+    dailyChallengeOfferHint: "Évite-le une fois aujourd'hui et gagne +2 pièces.",
     dailyChallengeOfferReward: "+{{amount}} bonus",
     dailyChallengeOfferAccept: "Accepter le défi",
     dailyChallengeOfferLater: "Plus tard",
     dailyChallengeWidgetBadge: "défi du jour",
     dailyChallengeWidgetTitle: "Mini défi actif",
-    dailyChallengeWidgetDesc: "Journée sans « {{temptation}} » = pièces ×2",
+    dailyChallengeWidgetDesc: "Journée sans « {{temptation}} » = +2 pièces",
     dailyChallengeWidgetProgress: "Progression {{current}} / {{target}}",
     dailyChallengeWidgetReward: "+{{amount}}",
     dailyChallengeRewardReason: "Mini défi « {{temptation}} » réussi",
@@ -5754,17 +5975,6 @@ const TRANSLATIONS = {
     temptationTutorialActionsDesc: "Appuie sur « Épargner » ou « Dépenser » pour qu'Almost enregistre ton choix.",
     temptationTutorialSwipeTitle: "Gestes de balayage",
     temptationTutorialSwipeDesc: "Balaye à droite pour épingler un objectif, à gauche pour supprimer ou cacher la tentation.",
-    tabHintFeedTitle: "Flux de tentations",
-    tabHintFeedBody: "Note les impulsions et décide de les économiser, de les ajouter à un objectif ou de les mettre en pause.",
-    tabHintCartTitle: "Objectifs",
-    tabHintCartBody: "Classe tes rêves, fixe les priorités et mets à jour ton progrès.",
-    tabHintPendingTitle: "Onglet En pause",
-    tabHintPendingBody: "Envoie les envies dans une pause de 14 jours et reviens plus lucide.",
-    tabHintPurchasesTitle: "Récompenses",
-    tabHintPurchasesBody: "Récupère les succès et lance des défis pour gagner de la santé.",
-    tabHintProfileTitle: "Profil",
-    tabHintProfileBody: "Règle thème, langue, rappels et objectifs personnels.",
-    tabHintGotIt: "Compris",
   },
 
   es: {
@@ -5881,6 +6091,12 @@ const TRANSLATIONS = {
     dailyRewardClaimHint: "Toca para cobrar",
     dailyRewardCollectedLabel: "Ya cobrada hoy",
     dailyRewardCelebrateMessage: "+{{amount}}",
+    dailyRewardModalTitle: "Recompensa diaria",
+    dailyRewardModalDescription: "Cóbala y vuelve mañana: cada día crece un poco más.",
+    dailyRewardModalGrowthNote: "7 días seguidos dan el mejor premio.",
+    dailyRewardModalCTA: "Cobrar recompensa",
+    dailyRewardModalLater: "Después",
+    dailyRewardModalDayLabel: "Día {{day}}",
     level2UnlockMessage:
       "Nivel 2: Las recompensas diarias están activas; reclama un bonus cada día. El mini reto diario también aparece en Inicio cuando Almost lo considera.",
     level3UnlockMessage:
@@ -5927,18 +6143,20 @@ const TRANSLATIONS = {
     impulseWinLabel: "Racha ganadora",
     impulseWinCopy: "Resistes {{temptation}} sobre todo alrededor de las {{time}}.",
     impulseWinEmpty: "Los logros aparecen cuando registres más ahorros.",
-    impulseTrendLabel: "La mayoría de impulsos aparecen en {{category}}",
+    impulseTrendLabel: "La mayoría de los gastos van a {{category}}",
     impulseCategorySave: "Ahorros: {{count}}",
     impulseCategorySpend: "Gastos: {{count}}",
     impulseAnytimeLabel: "en cualquier momento",
     impulseExpand: "Expandir",
     impulseCollapse: "Ocultar mapa",
     impulseSequenceTitle: "Bucles de hábitos",
-    impulseSequenceSlip: "Después de {{before}} sueles pasar a {{after}} con {{temptation}} unos {{time}} después.",
-    impulseSequenceRebound: "Después de {{before}} normalmente vuelves a {{after}} con {{temptation}} cerca de {{time}} después.",
+    impulseSequenceSlip: "Después de gastar en «{{from}}», sueles gastar en «{{to}}».",
+    impulseSequenceRebound: "Después de ahorrar en «{{from}}», sueles ahorrar en «{{to}}».",
     impulseSequenceEmpty: "Aún no hay datos para mostrar bucles.",
-    impulseActionSave: "«guardar»",
-    impulseActionSpend: "«gastar»",
+    impulseActionSaveBefore: "ahorraste",
+    impulseActionSpendBefore: "gastaste",
+    impulseActionSaveAfter: "ahorras",
+    impulseActionSpendAfter: "gastas",
     streakBadgeActive: "Racha ×{{count}}",
     streakBadgeBest: "Mejor ×{{count}}",
     streakRecoveryTitle: "¿Restaurar la racha?",
@@ -5946,6 +6164,10 @@ const TRANSLATIONS = {
     streakRecoveryConfirm: "Restaurar por {{coins}}",
     streakRecoveryDecline: "Empezar de nuevo",
     streakRecoveryInsufficient: "Necesitas {{coins}} monedas azules para restaurarla.",
+    coinValueTitle: "¿Para qué sirven las monedas?",
+    coinValueBody:
+      "Las monedas alimentan a Almi, el gato. Se guardan en el widget principal desplegado arriba en Inicio. Las monedas tambien sirven para personalizar a Almi y restaurar las rachas en las tarjetas.",
+    coinValueCta: "Entendido",
     impulseReminderWinTitle: "Ayer domaste «{{temptation}}»",
     impulseReminderWinBody: "Guardaste {{amount}}. Sigue en modo ahorro hoy.",
     impulseReminderLoseTitle: "«{{temptation}}» ganó ayer",
@@ -6013,6 +6235,10 @@ const TRANSLATIONS = {
     profileOk: "Ok",
     profileJoinDate: "Ahorro consciente desde {{date}}",
     settingsTitle: "Ajustes y personalización",
+    spendReductionLabel: "Restar ahorros al gastar",
+    spendReductionHint: "Apágalo para no bajar saldo y progreso de objetivos al comprar.",
+    soundLabel: "Sonidos de la app",
+    soundHint: "Desactiva todos los efectos de sonido.",
     themeLabel: "Tema",
     themeLight: "Claro",
     themeDark: "Oscuro",
@@ -6198,13 +6424,13 @@ const TRANSLATIONS = {
     dailyChallengeOfferBadge: "reto diario",
     dailyChallengeOfferTitle: "Mini reto de hoy",
     dailyChallengeOfferSubtitle: "Pasa un día sin «{{temptation}}»",
-    dailyChallengeOfferHint: "Sáltalo una vez hoy y consigue recompensas dobles.",
+    dailyChallengeOfferHint: "Sáltalo una vez hoy y consigue +2 monedas.",
     dailyChallengeOfferReward: "+{{amount}} extra",
     dailyChallengeOfferAccept: "Aceptar reto",
     dailyChallengeOfferLater: "Quizá luego",
     dailyChallengeWidgetBadge: "reto diario",
     dailyChallengeWidgetTitle: "Mini reto activo",
-    dailyChallengeWidgetDesc: "Día sin «{{temptation}}» = monedas x2",
+    dailyChallengeWidgetDesc: "Día sin «{{temptation}}» = +2 monedas",
     dailyChallengeWidgetProgress: "Progreso {{current}} / {{target}}",
     dailyChallengeWidgetReward: "+{{amount}}",
     dailyChallengeRewardReason: "Mini reto «{{temptation}}» completado",
@@ -6465,17 +6691,6 @@ const TRANSLATIONS = {
     temptationTutorialActionsDesc: "Toca «Ahorrar» o «Gastar» para que Almost recuerde cómo resolviste la tentación.",
     temptationTutorialSwipeTitle: "Gestos de swipe",
     temptationTutorialSwipeDesc: "Desliza a la derecha para fijar una meta y a la izquierda para borrar u ocultar la tentación.",
-    tabHintFeedTitle: "Feed de tentaciones",
-    tabHintFeedBody: "Registra impulsos y decide si ahorras, lo añades a metas o lo pospones.",
-    tabHintCartTitle: "Metas",
-    tabHintCartBody: "Ordena tus sueños, fija prioridades y actualiza el progreso.",
-    tabHintPendingTitle: "En pausa",
-    tabHintPendingBody: "Envía compras a una espera de 14 días y vuelve más objetiva.",
-    tabHintPurchasesTitle: "Recompensas",
-    tabHintPurchasesBody: "Cobra logros y activa retos para ganar salud adicional.",
-    tabHintProfileTitle: "Perfil",
-    tabHintProfileBody: "Ajusta tema, idioma, recordatorios y metas personales.",
-    tabHintGotIt: "Entendido",
   },
 };
 
@@ -7015,6 +7230,85 @@ const PERSONA_PRESETS = {
   },
 };
 
+const PERSONA_TEMPTATION_PRESETS = {
+  glam_beauty: [
+    {
+      id: "beauty_budget_dupe",
+      emoji: "💅",
+      image:
+        "https://images.unsplash.com/photo-1515377905703-c4788e51af15?auto=format&fit=crop&w=900&q=80",
+      color: "#FFF0F7",
+      categories: ["beauty", "habit"],
+      audience: ["female"],
+      basePriceUSD: 15,
+      priceUSD: 15,
+      title: {
+        ru: "Бюджетный бьюти-дюп",
+        en: "Budget beauty dupe",
+        es: "Dupe beauty económico",
+        fr: "Dupe beauté abordable",
+      },
+      description: {
+        ru: "«Почти как люкс» из масс-маркета, который легко отправить в копилку.",
+        en: "A \"luxury lookalike\" from the drugstore that could go straight to savings.",
+        es: "Ese \"casi lujo\" de farmacia que puede ir directo al ahorro.",
+        fr: "Ce « faux luxe » de grande surface peut filer direct à la cagnotte.",
+      },
+    },
+    {
+      id: "beauty_spa_break",
+      emoji: "🧖‍♀️",
+      image:
+        "https://images.unsplash.com/photo-1506617420156-8e4536971650?auto=format&fit=crop&w=900&q=80",
+      color: "#FFF7F1",
+      categories: ["beauty", "lifestyle"],
+      audience: ["female"],
+      basePriceUSD: 45,
+      priceUSD: 45,
+      title: {
+        ru: "Спонтанный салон",
+        en: "Spontaneous salon day",
+        es: "Día de salón espontáneo",
+        fr: "Passage salon improvisé",
+      },
+      description: {
+        ru: "Маникюр или уход «просто потому что». Можно поймать прогресс вместо чека.",
+        en: "Mani or facial \"just because.\" Swap the receipt for progress instead.",
+        es: "Mani o facial \"porque sí\". Cambia el ticket por progreso.",
+        fr: "Manucure ou soin « juste parce que ». Remplace la note par du progrès.",
+      },
+    },
+    {
+      id: "beauty_pro_gadget",
+      emoji: "🌸",
+      image:
+        "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=900&q=80",
+      color: "#F6ECFF",
+      categories: ["beauty", "wow"],
+      audience: ["female"],
+      basePriceUSD: 140,
+      priceUSD: 140,
+      title: {
+        ru: "Домашний бьюти-гаджет",
+        en: "At-home beauty gadget",
+        es: "Gadget beauty en casa",
+        fr: "Appareil beauté maison",
+      },
+      description: {
+        ru: "Щётка, LED-маска или девайс, который может подождать ради большой цели.",
+        en: "Cleansing brush, LED mask or device that can wait for the big goal.",
+        es: "Cepillo, máscara LED o gadget que puede esperar a la gran meta.",
+        fr: "Brosse, masque LED ou gadget qui peut attendre l’objectif majeur.",
+      },
+    },
+  ],
+};
+
+const PERSONA_TEMPTATION_LOOKUP = Object.values(PERSONA_TEMPTATION_PRESETS).reduce(
+  (acc, list) => acc.concat(list || []),
+  []
+);
+
 const PERSONA_HABIT_TYPES = {
   mindful_coffee: "coffee",
   habit_smoking: "smoking",
@@ -7166,6 +7460,7 @@ const DEFAULT_PROFILE = {
   persona: "mindful_coffee",
   gender: "none",
   customSpend: null,
+  spendReducesSavings: false,
   spendingProfile: {
     baselineMonthlyWasteUSD: 0,
     baselineStartAt: null,
@@ -7181,6 +7476,9 @@ const DEFAULT_PROFILE_PLACEHOLDER = {
   subtitle: "",
   motto: "",
   bio: "",
+  goal: null,
+  goalTargetUSD: 0,
+  primaryGoals: [],
 };
 
 const resolvePotentialPushStepUSD = (currencyCode = DEFAULT_PROFILE.currency) => {
@@ -7218,6 +7516,24 @@ const INITIAL_REGISTRATION = {
   goalTargetMap: {},
   customGoals: [],
   goalTargetConfirmed: [],
+};
+
+const ONBOARDING_STEP_SEQUENCE = [
+  "logo",
+  "language",
+  "guide",
+  "register",
+  "persona",
+  "habit",
+  "baseline",
+  "goal",
+  "goal_target",
+  "analytics_consent",
+];
+
+const resolveOnboardingStepIndex = (step) => {
+  const idx = ONBOARDING_STEP_SEQUENCE.indexOf(step);
+  return idx >= 0 ? idx + 1 : null;
 };
 
 const DEFAULT_TEMPTATIONS = [
@@ -7777,7 +8093,9 @@ const DEFAULT_TEMPTATIONS = [
   },
 ];
 
-const findTemplateById = (id) => DEFAULT_TEMPTATIONS.find((item) => item.id === id);
+const findTemplateById = (id) =>
+  DEFAULT_TEMPTATIONS.find((item) => item.id === id) ||
+  PERSONA_TEMPTATION_LOOKUP.find((item) => item.id === id);
 
 const INITIAL_FREE_DAY_STATS = {
   total: 0,
@@ -8170,6 +8488,7 @@ function TemptationCardComponent({
   isPrimaryTemptation = false,
   tutorialHighlightMode = null,
   tutorialHighlightMeasureTick = 0,
+  tutorialHighlightOffset = null,
   onTutorialHighlightLayoutChange = null,
   interaction = null,
   timerNow = null,
@@ -8216,7 +8535,11 @@ function TemptationCardComponent({
     requestAnimationFrame(() => {
       measureTarget.measureInWindow((x, y, width, height) => {
         const androidFineTune =
-          Platform.OS === "android" ? ANDROID_TUTORIAL_HIGHLIGHT_OFFSET : 0;
+          Platform.OS === "android"
+            ? Number.isFinite(tutorialHighlightOffset)
+              ? tutorialHighlightOffset
+              : ANDROID_TUTORIAL_HIGHLIGHT_OFFSET
+            : 0;
         onTutorialHighlightLayoutChange({
           x,
           y: y + androidFineTune,
@@ -8379,8 +8702,7 @@ function TemptationCardComponent({
   const defaultGoalBadgeBackground = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)";
   const defaultGoalBadgeBorder = isDarkTheme ? "rgba(255,255,255,0.24)" : "rgba(0,0,0,0.08)";
   const defaultGoalBadgeText = isDarkTheme ? "#FFF7E1" : colors.text;
-  const canAssignGoal = !isPrimaryTemptation;
-  const hasGoalAssigned = !!resolvedGoalLabel && canAssignGoal;
+  const hasGoalAssigned = !!resolvedGoalLabel;
   const refuseCount = stats?.count || 0;
   const totalRefusedLabel = formatCurrency(
     convertToCurrency(stats?.totalUSD || 0, currency),
@@ -8395,18 +8717,16 @@ function TemptationCardComponent({
   }
   const interactionEntry = interaction || {};
   const frequencyId = interactionEntry.frequency || null;
-  const frequencyLabelKey = frequencyId ? TEMPTATION_FREQUENCY_BUCKETS[frequencyId]?.badgeKey : null;
-  const frequencyLabel = frequencyLabelKey ? t(frequencyLabelKey) : null;
   const timerReference = timerNow || Date.now();
+  const lastInteractionAt = Number(interactionEntry.lastInteractionAt) || 0;
+  const effectiveIntervalMs =
+    Number(interactionEntry.intervalMs) ||
+    (frequencyId ? getFrequencyIntervalMs(frequencyId) : null) ||
+    (lastInteractionAt ? DAILY_FREQUENCY_INTERVAL_MS : null);
   const rawDueAt =
-    interactionEntry.nextCheckAt ||
-    (interactionEntry.intervalMs && interactionEntry.lastInteractionAt
-      ? interactionEntry.lastInteractionAt + interactionEntry.intervalMs
-      : null);
-  const hasTimerSource =
-    Boolean(frequencyLabel) &&
-    Boolean(interactionEntry.previousInteractionAt) &&
-    Number.isFinite(rawDueAt);
+    Number(interactionEntry.nextCheckAt) ||
+    (effectiveIntervalMs && lastInteractionAt ? lastInteractionAt + effectiveIntervalMs : null);
+  const hasTimerSource = Number.isFinite(rawDueAt) && Boolean(lastInteractionAt);
   const timerExpired = hasTimerSource && rawDueAt <= timerReference;
   const timeRemaining = hasTimerSource ? rawDueAt - timerReference : null;
   const timerCritical =
@@ -8774,7 +9094,7 @@ function TemptationCardComponent({
           </Text>
         </View>
       )}
-      {(frequencyLabel || timerLabel) && (
+  {timerLabel && (
         <View
           style={[
             styles.temptationTimerBlock,
@@ -8792,9 +9112,6 @@ function TemptationCardComponent({
             },
           ]}
         >
-          {frequencyLabel ? (
-            <Text style={[styles.temptationTimerTitle, { color: cardTextColor }]}>{frequencyLabel}</Text>
-          ) : null}
           {timerLabel ? (
             <Text
               style={[
@@ -8948,6 +9265,8 @@ function TemptationCardComponent({
           />
         </View>
       )}
+          </View>
+        </TouchableWithoutFeedback>
       {!showEditorInline && (
         <View
           style={[
@@ -9067,8 +9386,6 @@ function TemptationCardComponent({
           </View>
         </View>
       )}
-          </View>
-        </TouchableWithoutFeedback>
       </Animated.View>
     </View>
   );
@@ -9105,6 +9422,7 @@ const FrequencySectionHeader = ({ title, count, collapsed, onToggle, colors, t }
 
 function SavingsHeroCard({
   goldPalette,
+  isDarkMode = false,
   heroSpendCopy,
   heroRecentEvents = [],
   heroEncouragementLine,
@@ -9135,11 +9453,13 @@ function SavingsHeroCard({
   dailyRewardUnlocked = false,
   dailyRewardReady = false,
   dailyRewardAmount = 0,
+  dailyRewardDay = 1,
   onDailyRewardClaim = () => {},
 }) {
   const [expanded, setExpanded] = useState(false);
   const [levelExpanded, setLevelExpanded] = useState(false);
   const [levelBadgeLayout, setLevelBadgeLayout] = useState({ width: 0, height: 0, y: 0 });
+  const [isDailyRewardModalVisible, setDailyRewardModalVisible] = useState(false);
   const maxAmount = Math.max(...dailySavings.map((day) => day.amountUSD), 0);
   const potentialLocal = formatCurrency(convertToCurrency(potentialSavedUSD || 0, currency), currency);
   const actualLocal = formatCurrency(convertToCurrency(actualSavedUSD || 0, currency), currency);
@@ -9186,12 +9506,23 @@ function SavingsHeroCard({
     if (!savingsTrend && !spendingTrend) return null;
     return { savings: savingsTrend, spending: spendingTrend };
   }, [currency, goldPalette.accent, goldPalette.danger, weeklyComparison]);
+  const dailyRewardPreview = useMemo(() => {
+    const baseAmount = Math.max(1, Math.round(dailyRewardAmount || 0));
+    return Array.from({ length: 7 }).map((_, index) => ({
+      day: index + 1,
+      amount: baseAmount + index,
+    }));
+  }, [dailyRewardAmount]);
   const rewardTileSize = useMemo(
     () => Math.max(levelBadgeLayout.width || 0, 68),
     [levelBadgeLayout.width]
   );
+  const rewardTileHeight = useMemo(
+    () => Math.max(44, rewardTileSize - 28),
+    [rewardTileSize]
+  );
   const rewardTileTop = useMemo(
-    () => (levelBadgeLayout.y || 0) + (levelBadgeLayout.height || 0) + 10,
+    () => (levelBadgeLayout.y || 0) + (levelBadgeLayout.height || 0) - 6,
     [levelBadgeLayout.height, levelBadgeLayout.y]
   );
   const handleLevelBadgeLayout = useCallback(
@@ -9218,13 +9549,46 @@ function SavingsHeroCard({
         shadow: "rgba(255,160,80,0.4)",
         text: "#6A390C",
       }
+    : isDarkMode
+    ? {
+        background: "rgba(255,255,255,0.08)",
+        border: "rgba(255,214,143,0.45)",
+        shadow: "transparent",
+        text: "rgba(255,238,208,0.75)",
+      }
     : {
         background: "rgba(130,130,130,0.25)",
         border: "rgba(130,130,130,0.5)",
         shadow: "transparent",
         text: "rgba(90,90,90,0.9)",
       };
+  const dailyRewardModalPalette = isDarkMode
+    ? {
+        background: "#3A2405",
+        border: "rgba(255,214,143,0.6)",
+        subtext: "rgba(255,238,208,0.92)",
+      }
+    : {
+        background: goldPalette.background,
+        border: goldPalette.border,
+        subtext: goldPalette.subtext,
+      };
   const dailyRewardLabel = dailyRewardReady ? t("dailyRewardClaimHint") : t("dailyRewardCollectedLabel");
+  const handleDailyRewardPress = useCallback(() => {
+    if (!dailyRewardReady) return;
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    setDailyRewardModalVisible(true);
+  }, [dailyRewardReady, triggerHaptic]);
+  const handleDailyRewardCollect = useCallback(() => {
+    if (!dailyRewardReady) {
+      setDailyRewardModalVisible(false);
+      return;
+    }
+    triggerSuccessHaptic();
+    setDailyRewardModalVisible(false);
+    onDailyRewardClaim?.();
+  }, [dailyRewardReady, onDailyRewardClaim, triggerSuccessHaptic]);
+  const activeDailyRewardDay = dailyRewardReady ? Math.min(7, Math.max(1, dailyRewardDay || 1)) : null;
   return (
     <View
       style={[
@@ -9281,8 +9645,8 @@ function SavingsHeroCard({
               styles.dailyRewardFloating,
               {
                 width: rewardTileSize,
-                height: rewardTileSize,
-                minHeight: rewardTileSize,
+                height: rewardTileHeight,
+                minHeight: rewardTileHeight,
                 minWidth: rewardTileSize,
                 top: rewardTileTop,
                 backgroundColor: dailyRewardButtonColors.background,
@@ -9297,7 +9661,7 @@ function SavingsHeroCard({
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             pressRetentionOffset={{ top: 10, bottom: 10, left: 10, right: 10 }}
             activeOpacity={dailyRewardReady ? 0.85 : 1}
-            onPress={onDailyRewardClaim}
+            onPress={handleDailyRewardPress}
             disabled={!dailyRewardReady}
           >
             <Image source={HEALTH_COIN_TIERS[0].asset} style={styles.dailyRewardCoin} />
@@ -9316,6 +9680,10 @@ function SavingsHeroCard({
                 styles.dailyRewardCaption,
                 { color: dailyRewardButtonColors.text },
               ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+              ellipsizeMode="clip"
             >
               {dailyRewardLabel}
             </Text>
@@ -9660,6 +10028,115 @@ function SavingsHeroCard({
           </View>
         </TouchableOpacity>
       )}
+      <Modal
+        visible={isDailyRewardModalVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setDailyRewardModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setDailyRewardModalVisible(false)}>
+          <View
+            style={[
+              styles.dailyRewardModalBackdrop,
+              { backgroundColor: isDarkMode ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.35)" },
+            ]}
+          />
+        </TouchableWithoutFeedback>
+        <View style={styles.dailyRewardModalWrap} pointerEvents="box-none">
+          <View
+            style={[
+              styles.dailyRewardModalCard,
+              {
+                backgroundColor: dailyRewardModalPalette.background,
+                borderColor: dailyRewardModalPalette.border,
+              },
+            ]}
+          >
+            <Text style={[styles.dailyRewardModalTitle, { color: goldPalette.text }]}>
+              {t("dailyRewardModalTitle")}
+            </Text>
+            <Text
+              style={[
+                styles.dailyRewardModalSubtitle,
+                { color: dailyRewardModalPalette.subtext },
+              ]}
+            >
+              {t("dailyRewardModalDescription")}
+            </Text>
+            <View style={styles.dailyRewardCalendar}>
+              {dailyRewardPreview.map((entry) => (
+                <View
+                  key={entry.day}
+                  style={[
+                    styles.dailyRewardCalendarDay,
+                    {
+                      borderColor: goldPalette.border,
+                      backgroundColor:
+                        entry.day === activeDailyRewardDay
+                          ? "rgba(45,166,106,0.14)"
+                          : goldPalette.badgeBg,
+                      borderWidth: entry.day === activeDailyRewardDay ? 1.5 : 1,
+                      borderColor:
+                        entry.day === activeDailyRewardDay ? "rgba(45,166,106,0.9)" : goldPalette.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.dailyRewardCalendarDayLabel,
+                      {
+                        color:
+                          entry.day === activeDailyRewardDay ? "#1F7A4F" : goldPalette.subtext,
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {t("dailyRewardModalDayLabel", { day: entry.day })}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.dailyRewardCalendarAmount,
+                      {
+                        color:
+                          entry.day === activeDailyRewardDay ? "#1F7A4F" : goldPalette.text,
+                      },
+                    ]}
+                  >
+                    +{entry.amount}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            <Text style={[styles.dailyRewardModalNote, { color: dailyRewardModalPalette.subtext }]}>
+              {t("dailyRewardModalGrowthNote")}
+            </Text>
+            <View style={styles.dailyRewardModalActions}>
+              <TouchableOpacity
+                style={[
+                  styles.dailyRewardModalSecondary,
+                  { borderColor: dailyRewardModalPalette.border },
+                ]}
+                onPress={() => setDailyRewardModalVisible(false)}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.dailyRewardModalSecondaryText, { color: goldPalette.text }]}>
+                  {t("dailyRewardModalLater")}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.dailyRewardModalPrimary, { backgroundColor: goldPalette.accent }]}
+                onPress={handleDailyRewardCollect}
+                activeOpacity={0.9}
+              >
+                <Text style={[styles.dailyRewardModalPrimaryText, { color: "#fff" }]}>
+                  {t("dailyRewardModalCTA")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       </View>
     </View>
   );
@@ -10069,8 +10546,6 @@ const hasImpulseHistory = (insights) => {
 function ImpulseMapCard({ insights, colors, t, language, expanded = false, onToggle }) {
   if (!insights) return null;
   const fallbackTime = t("impulseAnytimeLabel");
-  const describeImpulseAction = (action) =>
-    action === "save" ? t("impulseActionSave") : t("impulseActionSpend");
   const loseText = insights.hotLose
     ? t("impulseLoseCopy", {
         temptation: insights.hotLose.title,
@@ -10084,9 +10559,9 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
       })
     : t("impulseWinEmpty");
   const trendText =
-    insights.hottestCategory && insights.hottestCategory.interactions > 0
+    insights.hottestSpendCategory && insights.hottestSpendCategory.spendCount > 0
       ? t("impulseTrendLabel", {
-          category: getImpulseCategoryLabel(insights.hottestCategory.id, language),
+          category: getImpulseCategoryLabel(insights.hottestSpendCategory.id, language),
         })
       : null;
   const isDarkMode = colors.background === THEMES.dark.background;
@@ -10112,10 +10587,8 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
     sequenceEntries.push({
       key: "slip",
       text: t("impulseSequenceSlip", {
-        before: describeImpulseAction(sequenceData.slip.fromAction),
-        after: describeImpulseAction(sequenceData.slip.toAction),
-        temptation: sequenceData.slip.title,
-        time: formatImpulseDelayLabel(sequenceData.slip.avgDelayMinutes, language) || fallbackTime,
+        from: sequenceData.slip.fromTitle || "",
+        to: sequenceData.slip.toTitle || "",
       }),
     });
   }
@@ -10123,10 +10596,8 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
     sequenceEntries.push({
       key: "rebound",
       text: t("impulseSequenceRebound", {
-        before: describeImpulseAction(sequenceData.rebound.fromAction),
-        after: describeImpulseAction(sequenceData.rebound.toAction),
-        temptation: sequenceData.rebound.title,
-        time: formatImpulseDelayLabel(sequenceData.rebound.avgDelayMinutes, language) || fallbackTime,
+        from: sequenceData.rebound.fromTitle || "",
+        to: sequenceData.rebound.toTitle || "",
       }),
     });
   }
@@ -10282,6 +10753,7 @@ const FeedScreen = React.memo(
   dailyRewardUnlocked = false,
   dailyRewardReady = false,
   dailyRewardAmount = 0,
+  dailyRewardDay = 1,
   onDailyRewardClaim = () => {},
   editingTemptationId = null,
   editingTitleValue = "",
@@ -10324,8 +10796,26 @@ const FeedScreen = React.memo(
   },
     ref
   ) {
+  const safeAreaInsets = useSafeAreaInsets();
+  const tutorialHighlightOffset = useMemo(() => {
+    if (Platform.OS !== "android") return 0;
+    const bottomInset = Math.max(safeAreaInsets.bottom || 0, 0);
+    return bottomInset <= 8 ? 0 : ANDROID_TUTORIAL_HIGHLIGHT_OFFSET;
+  }, [safeAreaInsets.bottom]);
   const listRef = useRef(null);
   const heroSectionHeightRef = useRef(0);
+  const scrollToTop = useCallback(
+    ({ animated = false } = {}) => {
+      if (!listRef.current) return false;
+      try {
+        listRef.current.scrollToOffset({ offset: 0, animated });
+        return true;
+      } catch (error) {
+        return false;
+      }
+    },
+    []
+  );
   const scrollToTemptations = useCallback(
     ({ animated = true, extraOffset = 0 } = {}) => {
       if (!listRef.current) return false;
@@ -10348,12 +10838,22 @@ const FeedScreen = React.memo(
   useImperativeHandle(
     ref,
     () => ({
+      scrollToTop,
       scrollToTemptations,
     }),
-    [scrollToTemptations]
+    [scrollToTop, scrollToTemptations]
   );
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
   const [impulseExpanded, setImpulseExpanded] = useState(false);
+  const handleImpulseToggle = useCallback(() => {
+    setImpulseExpanded((prev) => {
+      const next = !prev;
+      if (next) {
+        logEvent("impulse_map_opened");
+      }
+      return next;
+    });
+  }, [logEvent]);
   const [timerNow, setTimerNow] = useState(Date.now());
   useEffect(() => {
     const intervalId = setInterval(() => setTimerNow(Date.now()), 30000);
@@ -10450,12 +10950,60 @@ const FeedScreen = React.memo(
     }
     return heroLine;
   }, [isGoalComplete, moodPreset, t]);
+  const historyInteractionMap = useMemo(
+    () => buildHistoryInteractionMap(resolvedHistoryEvents),
+    [resolvedHistoryEvents]
+  );
+  const resolveHistoryEntryForItem = useCallback(
+    (item) => {
+      if (!item) return null;
+      const keys = [
+        normalizeInteractionKey(item.id),
+        normalizeInteractionKey(item.templateId),
+      ].filter(Boolean);
+      if (!keys.length) return null;
+      let best = null;
+      keys.forEach((key) => {
+        const candidate = historyInteractionMap?.[key];
+        if (!candidate) return;
+        if (!best || (candidate.lastInteractionAt || 0) > (best.lastInteractionAt || 0)) {
+          best = candidate;
+        }
+      });
+      return best;
+    },
+    [historyInteractionMap]
+  );
   const isDarkMode = colors === THEMES.dark;
   const moodGradient = useMemo(
     () => applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), isDarkMode ? "dark" : "light"),
     [moodPreset?.id, isDarkMode]
   );
   const mainTemptationId = primaryTemptationId;
+  const resolveInteractionEntry = useCallback(
+    (item) => {
+      if (!item) return null;
+      const direct = interactionStats?.[item.id] || null;
+      const templateId = typeof item.templateId === "string" ? item.templateId : null;
+      const templated = templateId ? interactionStats?.[templateId] || null : null;
+      const historyEntry = resolveHistoryEntryForItem(item);
+      const base = direct || templated || historyEntry || null;
+      if (!base) return null;
+      const resolved = base.frequency
+        ? base
+        : (() => {
+            const inferred = resolveEntryFrequency(base);
+            return inferred ? { ...base, frequency: inferred } : base;
+          })();
+      if (resolved.frequency) return resolved;
+      const fallback = historyEntry || templated || direct;
+      if (!fallback || fallback === resolved) return resolved;
+      if (fallback.frequency) return { ...resolved, frequency: fallback.frequency };
+      const inferredFallback = resolveEntryFrequency(fallback);
+      return inferredFallback ? { ...resolved, frequency: inferredFallback } : resolved;
+    },
+    [interactionStats, resolveHistoryEntryForItem]
+  );
   const goldPalette = useMemo(
     () =>
       isGoalComplete
@@ -10668,10 +11216,9 @@ const FeedScreen = React.memo(
         return (a.id || "").localeCompare(b.id || "");
       })
       .map((item, index) => ({ item, baseIndex: index }));
-    const statsMap = interactionStats || {};
     const frequentEntries = sortedEntries
       .map((entry) => {
-        const stats = statsMap[entry.item.id];
+        const stats = resolveInteractionEntry(entry.item);
         if (!stats) return null;
         const total = (stats.saveCount || 0) + (stats.spendCount || 0);
         if (!total) return null;
@@ -10700,7 +11247,7 @@ const FeedScreen = React.memo(
       .filter((entry) => !pinnedIds.has(entry.item.id))
       .forEach((entry) => ordered.push(entry.item));
     return ordered;
-  }, [products, mainTemptationId, interactionStats]);
+  }, [products, mainTemptationId, resolveInteractionEntry]);
 
   const filteredProducts = orderedProducts;
   const frequencySections = useMemo(() => {
@@ -10715,8 +11262,11 @@ const FeedScreen = React.memo(
     }, {});
     const unscheduled = [];
     filteredProducts.forEach((product) => {
-      const entry = interactionStats?.[product.id];
-      const bucketId = entry?.frequency && bucketMap[entry.frequency] ? entry.frequency : null;
+      const entry = resolveInteractionEntry(product);
+      const rawBucketId = entry?.frequency && bucketMap[entry.frequency] ? entry.frequency : null;
+      const bucketId = rawBucketId
+        ? getDemotedFrequencyBucket(rawBucketId, entry?.lastInteractionAt || 0)
+        : null;
       if (bucketId) {
         bucketMap[bucketId].items.push(product);
       } else {
@@ -10724,7 +11274,7 @@ const FeedScreen = React.memo(
       }
     });
     return { buckets, unscheduled };
-  }, [filteredProducts, interactionStats, t]);
+  }, [filteredProducts, resolveInteractionEntry, t]);
   const feedEntries = useMemo(() => {
     const entries = [];
     frequencySections.buckets.forEach((section) => {
@@ -10742,7 +11292,7 @@ const FeedScreen = React.memo(
             type: "card",
             id: `${section.id}-${item.id}`,
             item,
-            interaction: interactionStats?.[item.id] || null,
+            interaction: resolveInteractionEntry(item),
           });
         });
       }
@@ -10761,13 +11311,13 @@ const FeedScreen = React.memo(
             type: "card",
             id: `unscheduled-${item.id}`,
             item,
-            interaction: interactionStats?.[item.id] || null,
+            interaction: resolveInteractionEntry(item),
           });
         });
       }
     }
     return entries;
-  }, [frequencyCollapseMap, frequencySections, interactionStats, t]);
+  }, [frequencyCollapseMap, frequencySections, resolveInteractionEntry, t]);
   const firstVisibleTemptationId = useMemo(() => {
     const firstCard = feedEntries.find(
       (entry) => entry?.type === "card" && entry.item?.id
@@ -10778,12 +11328,34 @@ const FeedScreen = React.memo(
     ? firstVisibleTemptationId || filteredProducts[0]?.id || orderedProducts[0]?.id || null
     : null;
   const feedKeyExtractor = useCallback((entry) => entry.id, []);
+  const resolveAssignedGoalLabel = useCallback(
+    (goalId, assignedGoal) => {
+      if (assignedGoal) return getWishTitleWithoutEmoji(assignedGoal);
+      if (!goalId || typeof goalId !== "string") return null;
+      if (!goalId.startsWith("wish_primary_goal_")) return null;
+      const primaryGoalId = goalId.replace("wish_primary_goal_", "");
+      if (!primaryGoalId) return null;
+      const primaryEntry = Array.isArray(profile.primaryGoals)
+        ? profile.primaryGoals.find((goal) => goal?.id === primaryGoalId)
+        : null;
+      const customTitle =
+        typeof primaryEntry?.customTitle === "string" ? primaryEntry.customTitle.trim() : "";
+      const preset = getGoalPreset(primaryGoalId);
+      return customTitle || preset?.[language] || preset?.en || primaryGoalId;
+    },
+    [language, profile.primaryGoals]
+  );
   const renderTemptationCard = useCallback(
     (entry) => {
       const item = entry.item;
       const interactionEntry = entry.interaction;
-      const assignedGoalId = goalAssignments?.[item.id];
+      const templateKey =
+        typeof item?.templateId === "string" && item.templateId.trim()
+          ? item.templateId.trim()
+          : item.id;
+      const assignedGoalId = goalAssignments?.[templateKey] || goalAssignments?.[item.id];
       const assignedGoal = assignedGoalId ? wishesById[assignedGoalId] : null;
+      const resolvedGoalLabel = resolveAssignedGoalLabel(assignedGoalId, assignedGoal);
       const wishlistEntry = swipePinnedByTemplate[item.id];
       const isWishlistGoal = !!wishlistEntry;
       const overrideDescription =
@@ -10807,7 +11379,7 @@ const FeedScreen = React.memo(
           stats={statsEntry}
           feedback={cardFeedback[item.id]}
           titleOverride={titleOverrides[item.id]}
-          goalLabel={assignedGoal ? getWishTitleWithoutEmoji(assignedGoal) : null}
+          goalLabel={resolvedGoalLabel}
           isWishlistGoal={isWishlistGoal}
           isEditing={editingTemptationId === item.id}
           editTitleValue={editingTemptationId === item.id ? editingTitleValue : ""}
@@ -10837,6 +11409,7 @@ const FeedScreen = React.memo(
           tutorialHighlightMeasureTick={
             isTutorialHighlightTarget ? tutorialHighlightMeasureTick : 0
           }
+          tutorialHighlightOffset={tutorialHighlightOffset}
           onTutorialHighlightLayoutChange={
             isTutorialHighlightTarget ? onTutorialHighlightLayoutChange : null
           }
@@ -10880,6 +11453,8 @@ const FeedScreen = React.memo(
       timerNow,
       titleOverrides,
       tutorialHighlightMeasureTick,
+      tutorialHighlightOffset,
+      resolveAssignedGoalLabel,
       wishesById,
       tutorialHighlightTemptationId,
       tutorialTemptationStepId,
@@ -11169,6 +11744,7 @@ const FeedScreen = React.memo(
           </View>
           <SavingsHeroCard
             goldPalette={goldPalette}
+            isDarkMode={isDarkMode}
             heroSpendCopy={heroSpendCopy}
             heroRecentEvents={heroRecentEvents}
             heroEncouragementLine={heroEncouragementLine}
@@ -11199,6 +11775,7 @@ const FeedScreen = React.memo(
             dailyRewardUnlocked={dailyRewardUnlocked}
             dailyRewardReady={dailyRewardReady}
             dailyRewardAmount={dailyRewardAmount}
+            dailyRewardDay={dailyRewardDay}
             onDailyRewardClaim={onDailyRewardClaim}
           />
             {showFreeDayCard && (
@@ -11226,7 +11803,7 @@ const FeedScreen = React.memo(
                 t={t}
                 language={language}
                 expanded={impulseExpanded}
-                onToggle={() => setImpulseExpanded((prev) => !prev)}
+                onToggle={handleImpulseToggle}
               />
             )}
           </View>
@@ -11418,6 +11995,19 @@ const WishListScreen = React.memo(function WishListScreen({
   const primaryGoalIds = Array.isArray(primaryGoals)
     ? primaryGoals.map((goal) => goal?.id).filter(Boolean)
     : [];
+  useEffect(() => {
+    const primaryEntries = (wishes || []).filter((wish) => wish?.kind === PRIMARY_GOAL_KIND);
+    if (primaryEntries.length) {
+      const summary = primaryEntries.map((wish) => ({
+        id: wish.id,
+        goalId: wish.goalId,
+        savedUSD: wish.savedUSD,
+        targetUSD: wish.targetUSD,
+        status: wish.status,
+      }));
+      console.warn("primary_goal_wishlist_state", summary);
+    }
+  }, [wishes]);
   const listData = useMemo(() => {
     if (!Array.isArray(wishes)) return [];
     return wishes
@@ -11959,6 +12549,7 @@ const ACHIEVEMENT_METRIC_TYPES = {
   FREE_DAYS_TOTAL: "FREE_DAYS_TOTAL",
   FREE_DAYS_STREAK: "FREE_DAYS_STREAK",
   REFUSE_COUNT: "REFUSE_COUNT",
+  REFUSE_STREAK: "REFUSE_STREAK",
   FRIDGE_ITEMS_COUNT: "FRIDGE_ITEMS_COUNT",
   FRIDGE_DECISIONS: "FRIDGE_DECISIONS",
 };
@@ -11967,6 +12558,7 @@ const ACHIEVEMENT_CONDITION_MAP = {
   [ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_TOTAL]: "streak_days",
   [ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_STREAK]: "streak_days",
   [ACHIEVEMENT_METRIC_TYPES.REFUSE_COUNT]: "saves_count",
+  [ACHIEVEMENT_METRIC_TYPES.REFUSE_STREAK]: "saves_streak",
   [ACHIEVEMENT_METRIC_TYPES.FRIDGE_ITEMS_COUNT]: "pending_items",
   [ACHIEVEMENT_METRIC_TYPES.FRIDGE_DECISIONS]: "decisions_logged",
 };
@@ -12000,15 +12592,41 @@ const ACHIEVEMENT_DEFS = [
   },
   {
     id: "refuse_10",
-    metricType: ACHIEVEMENT_METRIC_TYPES.REFUSE_COUNT,
+    metricType: ACHIEVEMENT_METRIC_TYPES.REFUSE_STREAK,
     targetValue: 10,
     emoji: "🧠",
     rewardHealth: 70,
     copy: {
-      ru: { title: "Осознанный герой", desc: "10 осознанных отказов подряд, дисциплина на месте." },
-      en: { title: "Mindful hero", desc: "10 deliberate skips keep savings safe." },
-      es: { title: "Héroe consciente", desc: "10 rechazos intencionales mantienen seguros los ahorros." },
-      fr: { title: "Héros conscient", desc: "10 refus réfléchis d'affilée sécurisent ton épargne." },
+      ru: { title: "Серия ×10", desc: "10 отказов подряд на одном искушении." },
+      en: { title: "10-save streak", desc: "10 saves in a row on one temptation." },
+      es: { title: "Racha ×10", desc: "10 rechazos seguidos en una misma tentación." },
+      fr: { title: "Série ×10", desc: "10 refus d'affilée sur une même tentation." },
+    },
+  },
+  {
+    id: "refuse_streak_20",
+    metricType: ACHIEVEMENT_METRIC_TYPES.REFUSE_STREAK,
+    targetValue: 20,
+    emoji: "🔥",
+    rewardHealth: 120,
+    copy: {
+      ru: { title: "Серия ×20", desc: "20 отказов подряд на одном искушении." },
+      en: { title: "20-save streak", desc: "20 saves in a row on one temptation." },
+      es: { title: "Racha ×20", desc: "20 rechazos seguidos en una misma tentación." },
+      fr: { title: "Série ×20", desc: "20 refus d'affilée sur une même tentation." },
+    },
+  },
+  {
+    id: "refuse_streak_50",
+    metricType: ACHIEVEMENT_METRIC_TYPES.REFUSE_STREAK,
+    targetValue: 50,
+    emoji: "🏅",
+    rewardHealth: 200,
+    copy: {
+      ru: { title: "Серия ×50", desc: "50 отказов подряд на одном искушении." },
+      en: { title: "50-save streak", desc: "50 saves in a row on one temptation." },
+      es: { title: "Racha ×50", desc: "50 rechazos seguidos en una misma tentación." },
+      fr: { title: "Série ×50", desc: "50 refus d'affilée sur une même tentation." },
     },
   },
   {
@@ -12843,6 +13461,7 @@ const getAchievementRemainingLabel = (metricType, remaining, currency, t) => {
     case ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_STREAK:
       return t("rewardRemainingDays", { count });
     case ACHIEVEMENT_METRIC_TYPES.REFUSE_COUNT:
+    case ACHIEVEMENT_METRIC_TYPES.REFUSE_STREAK:
       return t("rewardRemainingRefuse", { count });
     case ACHIEVEMENT_METRIC_TYPES.FRIDGE_ITEMS_COUNT:
       return t("rewardRemainingFridge", { count });
@@ -12858,6 +13477,7 @@ const buildAchievements = ({
   declineCount,
   freeDayStats,
   declineStreak = 0,
+  refuseStreak = 0,
   pendingCount,
   decisionStats,
   currency,
@@ -12871,6 +13491,7 @@ const buildAchievements = ({
     [ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_TOTAL]: freeDayStats?.total || 0,
     [ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_STREAK]: freeDayStats?.current || 0,
     [ACHIEVEMENT_METRIC_TYPES.REFUSE_COUNT]: declineStreak || 0,
+    [ACHIEVEMENT_METRIC_TYPES.REFUSE_STREAK]: refuseStreak || 0,
     [ACHIEVEMENT_METRIC_TYPES.FRIDGE_ITEMS_COUNT]: pendingCount,
     [ACHIEVEMENT_METRIC_TYPES.FRIDGE_DECISIONS]: fridgeDecisionsResolved,
   };
@@ -12956,6 +13577,10 @@ const RewardsScreen = React.memo(function RewardsScreen({
   const formatRewardLabel = useCallback(
     (amount) => formatHealthRewardLabel(amount, language),
     [language]
+  );
+  const dailyChallengeRewardLabel = useMemo(
+    () => formatHealthRewardLabel(dailyChallenge?.rewardBonus || 0, language),
+    [dailyChallenge?.rewardBonus, language]
   );
 
   const renderChallengeCard = (challenge) => {
@@ -13349,7 +13974,10 @@ const ProfileScreen = React.memo(function ProfileScreen({
   onThemeToggle,
   onLanguageChange,
   onCurrencyChange,
-  onGoalChange,
+  soundEnabled = true,
+  onSoundToggle,
+  spendReducesSavings = false,
+  onSpendReductionToggle,
   onResetData,
   onPickImage,
   onHistoryDelete = () => {},
@@ -13369,23 +13997,6 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const isDarkTheme = theme === "dark";
   const normalizedLanguageValue = normalizeLanguage(language || DEFAULT_LANGUAGE);
   const isRomanceLocale = normalizedLanguageValue === "es" || normalizedLanguageValue === "fr";
-  const resolvedProfileGoalId =
-    profile.goal ||
-    (Array.isArray(profile.primaryGoals) && profile.primaryGoals.length
-      ? profile.primaryGoals[0]?.id
-      : null);
-  const activeGoalId = resolvedProfileGoalId;
-  const primaryGoalsList =
-    Array.isArray(profile.primaryGoals) && profile.primaryGoals.length
-      ? profile.primaryGoals
-      : activeGoalId
-      ? [
-          {
-            id: activeGoalId,
-            targetUSD: getGoalDefaultTargetUSD(activeGoalId),
-          },
-        ]
-      : [];
   const historyEntries = Array.isArray(history) ? history : [];
   const locale = getFormatLocale(language);
   const formatLocalAmount = (valueUSD = 0) =>
@@ -13806,37 +14417,6 @@ const ProfileScreen = React.memo(function ProfileScreen({
 
         <View style={[styles.settingsCard, { backgroundColor: colors.card }] }>
           <View style={styles.profileSection}>
-            <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("primaryGoalLabel")}</Text>
-            <View style={styles.profileGoalGrid}>
-              {GOAL_PRESETS.map((goal) => {
-                const active = activeGoalId === goal.id;
-                return (
-                  <TouchableOpacity
-                    key={goal.id}
-                    style={[
-                      styles.profileGoalOption,
-                      {
-                        borderColor: colors.border,
-                        backgroundColor: active ? colors.text : "transparent",
-                      },
-                    ]}
-                    onPress={() => onGoalChange?.(goal.id)}
-                  >
-                    <Text style={styles.profileGoalEmoji}>{goal.emoji}</Text>
-                    <Text
-                      style={[
-                        styles.profileGoalText,
-                        { color: active ? colors.background : colors.text },
-                      ]}
-                    >
-                      {goal[language] || goal.en}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-          <View style={styles.profileSection}>
             <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("customSpendTitle")}</Text>
             {isEditing ? (
               <View style={{ gap: 10 }}>
@@ -14015,6 +14595,66 @@ const ProfileScreen = React.memo(function ProfileScreen({
             </ScrollView>
           </View>
         </View>
+        <View style={styles.settingRow}>
+          <View style={styles.settingRowContent}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("spendReductionLabel")}</Text>
+              <Text style={[styles.profileHintText, { color: colors.muted }]}>{t("spendReductionHint")}</Text>
+            </View>
+            <Pressable
+              onPress={() => onSpendReductionToggle?.(!spendReducesSavings)}
+              style={[
+                styles.settingToggle,
+                {
+                  backgroundColor: spendReducesSavings
+                    ? colors.text
+                    : colorWithAlpha(colors.text, 0.15),
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.settingToggleHandle,
+                  {
+                    backgroundColor: spendReducesSavings ? colors.background : colors.card,
+                    transform: [{ translateX: spendReducesSavings ? 20 : 0 }],
+                  },
+                ]}
+              />
+            </Pressable>
+          </View>
+        </View>
+        <View style={styles.settingRow}>
+          <View style={styles.settingRowContent}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("soundLabel")}</Text>
+              <Text style={[styles.profileHintText, { color: colors.muted }]}>{t("soundHint")}</Text>
+            </View>
+            <Pressable
+              onPress={() => onSoundToggle?.(!soundEnabled)}
+              style={[
+                styles.settingToggle,
+                {
+                  backgroundColor: soundEnabled
+                    ? colors.text
+                    : colorWithAlpha(colors.text, 0.15),
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.settingToggleHandle,
+                  {
+                    backgroundColor: soundEnabled ? colors.background : colors.card,
+                    transform: [{ translateX: soundEnabled ? 20 : 0 }],
+                  },
+                ]}
+              />
+            </Pressable>
+          </View>
+        </View>
         <TouchableOpacity
           style={[styles.resetButton, { borderColor: colors.border }]}
           onPress={onResetData}
@@ -14113,8 +14753,128 @@ function AppContent() {
     Inter_800ExtraBold,
     Inter_900Black,
   });
+  const soundsRef = useRef({});
+  const soundCooldownRef = useRef({});
+  const soundModeReadyRef = useRef(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundEnabledHydrated, setSoundEnabledHydrated] = useState(false);
+  const stopAllSounds = useCallback(() => {
+    Object.values(soundsRef.current).forEach((sound) => {
+      sound?.stopAsync?.().catch(() => {});
+    });
+  }, []);
+  const playSound = useCallback(async (key, options = {}) => {
+    if (!AudioModule) return;
+    if (!key) return;
+    if (!soundEnabled) return;
+    const now = Date.now();
+    const cooldown = SOUND_COOLDOWNS[key] || 0;
+    const lastPlayed = soundCooldownRef.current[key] || 0;
+    const skipCooldown = !!options?.skipCooldown;
+    if (!skipCooldown && cooldown && now - lastPlayed < cooldown) return;
+    if (!skipCooldown) {
+      soundCooldownRef.current[key] = now;
+    }
+    if (!soundModeReadyRef.current) {
+      const interruptionModeIOS =
+        AudioModule.InterruptionModeIOS?.DuckOthers ??
+        AudioModule.INTERRUPTION_MODE_IOS_DUCK_OTHERS ??
+        1;
+      const interruptionModeAndroid =
+        AudioModule.InterruptionModeAndroid?.DuckOthers ??
+        AudioModule.INTERRUPTION_MODE_ANDROID_DUCK_OTHERS ??
+        1;
+      try {
+        await AudioModule.setAudioModeAsync({
+          playsInSilentModeIOS: false,
+          interruptionModeIOS,
+          interruptionModeAndroid,
+          shouldDuckAndroid: true,
+          staysActiveInBackground: false,
+        });
+        soundModeReadyRef.current = true;
+      } catch (error) {
+        console.warn("sound mode", error);
+      }
+    }
+    const volume = SOUND_VOLUMES[key] ?? 0.8;
+    let sound = soundsRef.current[key];
+    if (!sound && SOUND_FILES[key]) {
+      try {
+        const loaded = await AudioModule.Sound.createAsync(SOUND_FILES[key], {
+          shouldPlay: false,
+          volume,
+        });
+        sound = loaded.sound;
+        soundsRef.current[key] = sound;
+      } catch (error) {
+        console.warn("sound lazy load", error);
+        return;
+      }
+    }
+    if (!sound) return;
+    try {
+      if (sound.setVolumeAsync) {
+        await sound.setVolumeAsync(volume);
+      }
+      await sound.setPositionAsync(0);
+      await sound.playAsync();
+    } catch (error) {
+      console.warn("sound play", error);
+    }
+  }, [soundEnabled]);
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        if (!AudioModule) return;
+        const interruptionModeIOS =
+          AudioModule.InterruptionModeIOS?.DuckOthers ??
+          AudioModule.INTERRUPTION_MODE_IOS_DUCK_OTHERS ??
+          1;
+        const interruptionModeAndroid =
+          AudioModule.InterruptionModeAndroid?.DuckOthers ??
+          AudioModule.INTERRUPTION_MODE_ANDROID_DUCK_OTHERS ??
+          1;
+        try {
+          await AudioModule.setAudioModeAsync({
+            playsInSilentModeIOS: false,
+            interruptionModeIOS,
+            interruptionModeAndroid,
+            shouldDuckAndroid: true,
+            staysActiveInBackground: false,
+          });
+          soundModeReadyRef.current = true;
+        } catch (error) {
+          console.warn("sound mode", error);
+        }
+        const entries = Object.entries(SOUND_FILES).filter(([key]) => PRELOAD_SOUND_KEYS.has(key));
+        let loadedCount = 0;
+        for (const [key, asset] of entries) {
+          const volume = SOUND_VOLUMES[key] ?? 0.8;
+          const { sound } = await AudioModule.Sound.createAsync(asset, { shouldPlay: false, volume });
+          if (!active) {
+            await sound.unloadAsync();
+            continue;
+          }
+          soundsRef.current[key] = sound;
+          loadedCount += 1;
+        }
+      } catch (error) {
+        console.warn("sound init", error);
+      }
+    })();
+    return () => {
+      active = false;
+      Object.values(soundsRef.current).forEach((sound) => {
+        sound?.unloadAsync?.().catch(() => {});
+      });
+      soundsRef.current = {};
+    };
+  }, []);
   const [wishes, setWishes] = useState([]);
   const [wishesHydrated, setWishesHydrated] = useState(false);
+  const wishesRef = useRef(wishes);
   const [freeDayHydrated, setFreeDayHydrated] = useState(false);
   const [purchases, setPurchases] = useState([]);
   const [purchasesHydrated, setPurchasesHydrated] = useState(false);
@@ -14122,6 +14882,10 @@ function AppContent() {
   const [tabHistory, setTabHistoryState] = useState([]);
   const tabHistoryRef = useRef(tabHistory);
   const onboardingCompletedRef = useRef(false);
+  useEffect(() => {
+    wishesRef.current = wishes;
+  }, [wishes]);
+
   useEffect(() => {
     tabHistoryRef.current = tabHistory;
   }, [tabHistory]);
@@ -14216,6 +14980,7 @@ function AppContent() {
   const [healthHydrated, setHealthHydrated] = useState(false);
   const [dailyRewardState, setDailyRewardState] = useState({ ...DEFAULT_DAILY_REWARD_STATE });
   const [dailyRewardHydrated, setDailyRewardHydrated] = useState(false);
+  const [currentDayKey, setCurrentDayKey] = useState(() => getDayKey(Date.now()));
   const [claimedRewards, setClaimedRewards] = useState({});
   const [claimedRewardsHydrated, setClaimedRewardsHydrated] = useState(false);
   const safeClaimedRewards = useMemo(
@@ -14238,6 +15003,28 @@ function AppContent() {
     const interval = setInterval(pruneClaimedRewards, DAY_MS);
     return () => clearInterval(interval);
   }, [pruneClaimedRewards]);
+  const dayRolloverTimerRef = useRef(null);
+  useEffect(() => {
+    const scheduleNextMidnight = () => {
+      if (dayRolloverTimerRef.current) {
+        clearTimeout(dayRolloverTimerRef.current);
+      }
+      const now = Date.now();
+      const nextMidnight = new Date(now);
+      nextMidnight.setHours(24, 0, 0, 0);
+      const delay = Math.max(1000, nextMidnight.getTime() - now);
+      dayRolloverTimerRef.current = setTimeout(() => {
+        setCurrentDayKey(getDayKey(Date.now()));
+        scheduleNextMidnight();
+      }, delay);
+    };
+    scheduleNextMidnight();
+    return () => {
+      if (dayRolloverTimerRef.current) {
+        clearTimeout(dayRolloverTimerRef.current);
+      }
+    };
+  }, []);
   const [challengesState, setChallengesState] = useState(() => createInitialChallengesState());
   const [challengesHydrated, setChallengesHydrated] = useState(false);
   const [rewardsPane, setRewardsPane] = useState("challenges");
@@ -14275,7 +15062,7 @@ function AppContent() {
   const impulseFeaturesUnlocked = playerLevel >= 6;
   const freeDayUnlocked = playerLevel >= 7;
   const thinkingUnlocked = playerLevel >= 7;
-  const todayKey = getDayKey(Date.now());
+  const todayKey = currentDayKey;
   const dailyRewardAmount = useMemo(
     () => (dailyRewardUnlocked ? computeDailyAlmiReward(levelProgressUSD) : 0),
     [dailyRewardUnlocked, levelProgressUSD]
@@ -14293,6 +15080,18 @@ function AppContent() {
     healthHydrated &&
     dailyRewardLastKey !== todayKey &&
     dailyRewardAmount > 0;
+  const dailyRewardDay = useMemo(() => {
+    if (!dailyRewardHydrated) return 1;
+    if (!dailyRewardLastKey) return 1;
+    const dayDiff = getDayDiff(dailyRewardLastKey, todayKey);
+    if (dayDiff === 0) {
+      return Math.min(7, Math.max(1, dailyRewardState.streak || 1));
+    }
+    if (dayDiff === 1) {
+      return Math.min(7, Math.max(1, (dailyRewardState.streak || 0) + 1));
+    }
+    return 1;
+  }, [dailyRewardHydrated, dailyRewardLastKey, dailyRewardState.streak, todayKey]);
   const dailyRewardDisplayAmount =
     dailyRewardReady ? dailyRewardAmount : dailyRewardState.lastAmount || dailyRewardAmount || 0;
   const handleDailyRewardClaim = useCallback(async () => {
@@ -14324,10 +15123,13 @@ function AppContent() {
     }
     if (!dailyRewardReady) return;
     const rewardLabel = formatHealthRewardLabel(dailyRewardAmount, language);
+    const dayDiff = getDayDiff(dailyRewardLastKey, claimKey);
+    const nextStreak = dayDiff === 1 ? Math.min(7, (dailyRewardState.streak || 0) + 1) : 1;
     const nextDailyRewardState = {
       lastKey: claimKey,
       lastAmount: dailyRewardAmount,
       lastClaimAt: claimTimestamp,
+      streak: nextStreak,
     };
     setDailyRewardState(nextDailyRewardState);
     AsyncStorage.setItem(
@@ -14336,6 +15138,7 @@ function AppContent() {
     ).catch(() => {});
     AsyncStorage.setItem(STORAGE_KEYS.DAILY_REWARD_DAY_KEY, claimKey).catch(() => {});
     setHealthPoints((prev) => prev + dailyRewardAmount);
+    triggerCoinRewardHaptics();
     ensureOverlayEnvironmentReady();
     triggerOverlayState(
       "daily_reward",
@@ -14345,14 +15148,21 @@ function AppContent() {
       },
       { force: true }
     );
-    logEvent("daily_reward_claimed", { coins: dailyRewardAmount, level: playerLevel });
+    logEvent("daily_reward_claimed", {
+      coins: dailyRewardAmount,
+      level: playerLevel,
+      day: nextStreak,
+    });
   }, [
     dailyRewardAmount,
     dailyRewardReady,
     dailyRewardUnlocked,
+    dailyRewardLastKey,
+    dailyRewardState.streak,
     ensureOverlayEnvironmentReady,
     language,
     logEvent,
+    playSound,
     playerLevel,
     setDailyRewardState,
     setHealthPoints,
@@ -14371,6 +15181,7 @@ function AppContent() {
   );
   const priceLimitUSD = getTemptationPriceLimitForLevel(playerLevel);
   const previousPlayerLevelRef = useRef(playerLevel);
+  const resetInProgressRef = useRef(false);
   const [coinEntryVisible, setCoinEntryVisible] = useState(false);
   const coinEntryContextRef = useRef({ source: null, openedAt: 0, submitted: false });
   const [coinSliderMaxUSD, setCoinSliderMaxUSD] = useState(DEFAULT_COIN_SLIDER_MAX_USD);
@@ -14385,6 +15196,7 @@ function AppContent() {
     ...DEFAULT_PROFILE_PLACEHOLDER,
     joinedAt: new Date().toISOString(),
   }));
+  const spendReducesSavings = !!(profile && profile.spendReducesSavings);
   const [profileHydrated, setProfileHydrated] = useState(false);
   const [profileDraft, setProfileDraft] = useState(() => ({
     ...DEFAULT_PROFILE_PLACEHOLDER,
@@ -14487,7 +15299,7 @@ function AppContent() {
   const [homeLayoutReady, setHomeLayoutReady] = useState(false);
   const [startupHydrated, setStartupHydrated] = useState(false);
   const fontsReady = fontsLoaded || Boolean(fontsError);
-  const primaryTemptationId = profile.customSpend ? profile.customSpend.id || "custom_habit" : null;
+  const primaryTemptationId = profile.customSpend?.id || "custom_habit";
   const primaryTemptationDescription = useMemo(() => {
     const gender = profile?.gender || "none";
     const description = buildCustomTemptationDescription(gender);
@@ -14551,8 +15363,14 @@ function AppContent() {
   }, []);
   const overlayQueueRef = useRef([]);
   const overlayActiveRef = useRef(false);
+  const lastOverlayDismissedAtRef = useRef(0);
+  const lastSaveOverlayDismissedAtRef = useRef(0);
   const pendingLevelCelebrationRef = useRef(null);
   const levelCelebrationQueuedRef = useRef(0);
+  const celebrationGapTimerRef = useRef(null);
+  const celebrationQueueRef = useRef([]);
+  const lastCelebrationAtRef = useRef(0);
+  const queueCelebrationOverlayRef = useRef(null);
   const [dailySummaryVisible, setDailySummaryVisible] = useState(false);
   const [dailySummaryData, setDailySummaryData] = useState(null);
   const [dailySummarySeenKey, setDailySummarySeenKey] = useState(null);
@@ -14581,6 +15399,11 @@ function AppContent() {
     dailyChallengeUnlocked &&
     dailyChallenge.status === DAILY_CHALLENGE_STATUS.OFFER &&
     !dailyChallenge.offerDismissed;
+  const [dailyChallengePromptGate, setDailyChallengePromptGate] = useState(false);
+  const dailyChallengePromptQueuedRef = useRef(false);
+  const dailyChallengePendingRef = useRef(false);
+  const dailyChallengeOfferDeferredRef = useRef(false);
+  const dailyChallengePendingPrevRef = useRef(false);
   const dailyNudgeIdsRef = useRef({});
   const smartRemindersRef = useRef([]);
   const smartReminderScheduleTailRef = useRef(0);
@@ -14616,9 +15439,6 @@ function AppContent() {
   const [levelShareModal, setLevelShareModal] = useState({ visible: false, level: 1 });
   const [levelShareSharing, setLevelShareSharing] = useState(false);
   const levelShareCardRef = useRef(null);
-  const [tabHintsSeen, setTabHintsSeen] = useState(DEFAULT_TAB_HINTS_STATE);
-  const [tabHintsHydrated, setTabHintsHydrated] = useState(false);
-  const [tabHintVisible, setTabHintVisible] = useState(null);
   const [tabBarHeight, setTabBarHeight] = useState(0);
   const [fabTutorialState, setFabTutorialState] = useState(FAB_TUTORIAL_STATUS.DONE);
   const [fabTutorialVisible, setFabTutorialVisible] = useState(false);
@@ -14727,23 +15547,6 @@ function AppContent() {
     };
   }, []);
   const tutorialScrollExtraRef = useRef(0);
-  const dismissTabHint = useCallback(() => {
-    setTabHintVisible(null);
-  }, []);
-  const markTabHintSeen = useCallback(
-    (tabId) => {
-      if (!tabId) return;
-      setTabHintsSeen((prev) => {
-        if (prev[tabId]) return prev;
-        const nextState = { ...prev, [tabId]: true };
-        if (tabHintsHydrated) {
-          AsyncStorage.setItem(STORAGE_KEYS.TAB_HINTS, JSON.stringify(nextState)).catch(() => {});
-        }
-        return nextState;
-      });
-    },
-    [tabHintsHydrated]
-  );
   const updateFabAnchor = useCallback(() => {
     const node = fabButtonWrapperRef.current;
     if (!node || typeof node.measureInWindow !== "function") return;
@@ -14794,37 +15597,59 @@ function AppContent() {
       return nextState;
     });
   }, []);
-  const triggerStoreReview = useCallback(async () => {
+  const triggerStoreReview = useCallback(async (source = "rating_prompt") => {
+    const isAndroid = Platform.OS === "android";
+    const primaryUrl = isAndroid ? ANDROID_REVIEW_URL : IOS_REVIEW_URL;
+    const fallbackUrl = isAndroid ? ANDROID_REVIEW_WEB_URL : IOS_REVIEW_WEB_URL;
+    const openStoreReview = async () => {
+      if (!primaryUrl && !fallbackUrl) return;
+      try {
+        if (primaryUrl) {
+          const canOpen = await Linking.canOpenURL(primaryUrl);
+          if (canOpen) {
+            logEvent("store_review_redirect", {
+              source,
+              platform: isAndroid ? "android" : "ios",
+              method: "native",
+            });
+            await Linking.openURL(primaryUrl);
+            return;
+          }
+        }
+      } catch (error) {
+        console.warn(`${isAndroid ? "android" : "ios"} review intent`, error);
+      }
+      if (fallbackUrl) {
+        logEvent("store_review_redirect", {
+          source,
+          platform: isAndroid ? "android" : "ios",
+          method: "web",
+        });
+        Linking.openURL(fallbackUrl).catch(() => {});
+      }
+    };
     try {
       if (StoreReview && typeof StoreReview.isAvailableAsync === "function") {
         const available = await StoreReview.isAvailableAsync();
         if (available && typeof StoreReview.requestReview === "function") {
+          // Play review can silently no-op; fallback to the store link if it returns too quickly.
+          const startedAt = Date.now();
+          logEvent("store_review_prompt_requested", {
+            source,
+            platform: isAndroid ? "android" : "ios",
+          });
           await StoreReview.requestReview();
-          return;
+          const elapsedMs = Date.now() - startedAt;
+          if (!isAndroid || elapsedMs > 1200) {
+            return;
+          }
         }
       }
     } catch (error) {
       console.warn("store review prompt", error);
     }
-    const isAndroid = Platform.OS === "android";
-    const primaryUrl = isAndroid ? ANDROID_REVIEW_URL : IOS_REVIEW_URL;
-    const fallbackUrl = isAndroid ? ANDROID_REVIEW_WEB_URL : IOS_REVIEW_WEB_URL;
-    if (!primaryUrl && !fallbackUrl) return;
-    try {
-      if (primaryUrl) {
-        const canOpen = await Linking.canOpenURL(primaryUrl);
-        if (canOpen) {
-          await Linking.openURL(primaryUrl);
-          return;
-        }
-      }
-    } catch (error) {
-      console.warn(`${isAndroid ? "android" : "ios"} review intent`, error);
-    }
-    if (fallbackUrl) {
-      Linking.openURL(fallbackUrl).catch(() => {});
-    }
-  }, []);
+    return openStoreReview();
+  }, [logEvent]);
   const handleRatingPromptLater = useCallback(() => {
     setRatingPromptVisible(false);
     const respondedAt = new Date().toISOString();
@@ -14988,8 +15813,32 @@ function AppContent() {
       const previousGoalId = activeGoalId || profile.goal;
       clearCompletedPrimaryGoal(previousGoalId);
       setActiveGoalId(newWish.id);
+      const newPrimaryEntry = {
+        id: newWish.id,
+        targetUSD,
+        savedUSD: Math.max(0, Number(newWish.savedUSD) || 0),
+        status: newWish.status || "active",
+        createdAt: newWish.createdAt || Date.now(),
+        customTitle: getWishTitleWithoutEmoji(newWish) || newWish.title || "",
+        customEmoji: normalizeEmojiValue(newWish.emoji, DEFAULT_GOAL_EMOJI),
+      };
+      const mergePrimaryGoals = (prevGoals = []) => {
+        const dedup = new Map();
+        const list = Array.isArray(prevGoals) ? prevGoals : [];
+        list.forEach((entry) => {
+          if (!entry?.id) return;
+          if (dedup.has(entry.id)) return;
+          dedup.set(entry.id, { ...entry });
+        });
+        dedup.set(newPrimaryEntry.id, {
+          ...newPrimaryEntry,
+          ...(dedup.get(newPrimaryEntry.id) || {}),
+        });
+        return Array.from(dedup.values());
+      };
       setProfile((prev) => ({
         ...prev,
+        primaryGoals: mergePrimaryGoals(prev.primaryGoals),
         goal: newWish.id,
         goalTargetUSD: targetUSD,
         goalCelebrated: false,
@@ -14997,11 +15846,13 @@ function AppContent() {
       }));
       setProfileDraft((prev) => ({
         ...prev,
+        primaryGoals: mergePrimaryGoals(prev.primaryGoals),
         goal: newWish.id,
         goalTargetUSD: targetUSD,
         goalCelebrated: false,
         goalRenewalPending: false,
       }));
+      ensurePrimaryGoalWish(mergePrimaryGoals(profile.primaryGoals), language, newWish.id);
       dismissGoalRenewalPrompt();
     },
     [
@@ -15011,6 +15862,9 @@ function AppContent() {
       mainGoalWish?.status,
       profile.goal,
       profile.goalCelebrated,
+      profile.primaryGoals,
+      ensurePrimaryGoalWish,
+      language,
     ]
   );
   const ensureGoalManualTracking = useCallback((wishId) => {
@@ -15046,6 +15900,7 @@ function AppContent() {
   const tamagotchiHungerPrevRef = useRef(
     Math.min(TAMAGOTCHI_MAX_HUNGER, Math.max(0, TAMAGOTCHI_START_STATE.hunger))
   );
+  const tamagotchiHungerNotificationIdsRef = useRef([]);
   const tamagotchiModalAnim = useRef(new Animated.Value(0)).current;
   const partyGlow = useRef(new Animated.Value(0)).current;
   const [partyActive, setPartyActive] = useState(false);
@@ -15061,6 +15916,7 @@ function AppContent() {
     [setTamagotchiState]
   );
   const saveActionLogRef = useRef([]);
+  const lastSaveActionAtRef = useRef(0);
   const cartBadgeScale = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     const pulse = Animated.loop(
@@ -15161,10 +16017,6 @@ function AppContent() {
     }
   }, [fontsError]);
   useEffect(() => {
-    if (!tabHintsHydrated) return;
-    AsyncStorage.setItem(STORAGE_KEYS.TAB_HINTS, JSON.stringify(tabHintsSeen)).catch(() => {});
-  }, [tabHintsSeen, tabHintsHydrated]);
-  useEffect(() => {
     if (!coinSliderHydrated) return;
     AsyncStorage.setItem(STORAGE_KEYS.COIN_SLIDER_MAX, String(coinSliderMaxUSD)).catch(() => {});
   }, [coinSliderHydrated, coinSliderMaxUSD]);
@@ -15225,6 +16077,11 @@ function AppContent() {
         return;
       }
       if (wasBackground && nextState === "active") {
+        if (dailyChallengePromptQueuedRef.current && dailyChallengePendingRef.current) {
+          setDailyChallengePromptGate(true);
+          dailyChallengeOfferDeferredRef.current = false;
+        }
+        setCurrentDayKey(getDayKey(Date.now()));
         processTamagotchiDecay();
         beginHomeSession();
         tryLogHomeOpened();
@@ -15238,9 +16095,11 @@ function AppContent() {
     return () => subscription.remove();
   }, [
     beginHomeSession,
+    setDailyChallengePromptGate,
     markDailySummaryOpen,
     pendingFocusDigest,
     processTamagotchiDecay,
+    setCurrentDayKey,
     tryLogHomeOpened,
     setFabTutorialVisible,
   ]);
@@ -15300,7 +16159,14 @@ function AppContent() {
     }
     AsyncStorage.setItem(STORAGE_KEYS.FOCUS_DIGEST_PENDING, JSON.stringify(pendingFocusDigest)).catch(() => {});
   }, [pendingFocusDigest, focusDigestHydrated]);
-  const openTamagotchiOverlay = useCallback(() => setTamagotchiVisible(true), []);
+  const openTamagotchiOverlay = useCallback(() => {
+    setTamagotchiVisible((prev) => {
+      if (!prev) {
+        logEvent("tamagotchi_opened");
+      }
+      return true;
+    });
+  }, [logEvent]);
   const closeTamagotchiOverlay = useCallback(() => setTamagotchiVisible(false), []);
   const [fabMenuVisible, setFabMenuVisible] = useState(false);
   const fabMenuAnim = useRef(new Animated.Value(0)).current;
@@ -15538,6 +16404,118 @@ function AppContent() {
   const streakRecoveryOverrideRef = useRef({});
   const impulseAlertCooldownRef = useRef({});
   const lastInstantNotificationRef = useRef(0);
+  const resolveNotificationTriggerTime = useCallback((trigger, nowTs = Date.now()) => {
+    if (!trigger) return nowTs;
+    if (trigger instanceof Date) return trigger.getTime();
+    if (typeof trigger === "number") return trigger;
+    if (typeof trigger === "string") {
+      const parsed = Date.parse(trigger);
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+    if (typeof trigger === "object") {
+      if (typeof trigger.seconds === "number") {
+        return nowTs + trigger.seconds * 1000;
+      }
+      if (typeof trigger.value === "number") return trigger.value;
+      if (typeof trigger.value === "string") {
+        const parsedValue = Date.parse(trigger.value);
+        if (!Number.isNaN(parsedValue)) return parsedValue;
+      }
+      const calendarSource = trigger.dateComponents || trigger;
+      const nowDate = new Date(nowTs);
+      if (
+        typeof calendarSource.hour === "number" &&
+        typeof calendarSource.minute === "number"
+      ) {
+        const next = new Date(nowDate);
+        next.setHours(calendarSource.hour, calendarSource.minute, calendarSource.second || 0, 0);
+        if (next.getTime() <= nowTs) {
+          next.setDate(next.getDate() + 1);
+        }
+        return next.getTime();
+      }
+      if (
+        typeof calendarSource.year === "number" ||
+        typeof calendarSource.month === "number" ||
+        typeof calendarSource.day === "number"
+      ) {
+        const computed = new Date(
+          typeof calendarSource.year === "number" ? calendarSource.year : nowDate.getFullYear(),
+          typeof calendarSource.month === "number" ? Math.max(0, calendarSource.month - 1) : nowDate.getMonth(),
+          typeof calendarSource.day === "number" ? calendarSource.day : nowDate.getDate(),
+          typeof calendarSource.hour === "number" ? calendarSource.hour : 0,
+          typeof calendarSource.minute === "number" ? calendarSource.minute : 0,
+          typeof calendarSource.second === "number" ? calendarSource.second : 0,
+          0
+        );
+        const ts = computed.getTime();
+        return Number.isFinite(ts) ? ts : null;
+      }
+    }
+    return null;
+  }, []);
+  const readScheduledNotificationTimes = useCallback(async () => {
+    try {
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const nowTs = Date.now();
+      return (Array.isArray(scheduled) ? scheduled : [])
+        .map((entry) => resolveNotificationTriggerTime(entry?.trigger, nowTs))
+        .filter((value) => Number.isFinite(value) && value >= nowTs)
+        .sort((a, b) => a - b);
+    } catch (error) {
+      console.warn("scheduled notifications read", error);
+      return [];
+    }
+  }, [resolveNotificationTriggerTime]);
+  const isNotificationOnCooldown = useCallback(
+    async (targetTime = Date.now()) => {
+      const lastSent = Number(lastInstantNotificationRef.current) || 0;
+      if (lastSent > 0 && targetTime - lastSent < PUSH_NOTIFICATION_COOLDOWN_MS) {
+        return true;
+      }
+      const scheduledTimes = await readScheduledNotificationTimes();
+      return scheduledTimes.some(
+        (scheduledAt) => Math.abs(scheduledAt - targetTime) < PUSH_NOTIFICATION_COOLDOWN_MS
+      );
+    },
+    [readScheduledNotificationTimes]
+  );
+  const scheduleNotificationWithCooldown = useCallback(
+    async (request) => {
+      if (!request?.content) return null;
+      const triggerInput = request.trigger;
+      const repeats = triggerInput && typeof triggerInput === "object" && triggerInput.repeats;
+      let finalTrigger = triggerInput ?? null;
+      let scheduledFor = resolveNotificationTriggerTime(triggerInput);
+      const requestedTime = scheduledFor;
+      if (!repeats && Number.isFinite(requestedTime)) {
+        const scheduledTimes = await readScheduledNotificationTimes();
+        const lastSent = Number(lastInstantNotificationRef.current) || 0;
+        let adjustedTime = Math.max(requestedTime, Date.now());
+        if (lastSent > 0 && adjustedTime - lastSent < PUSH_NOTIFICATION_COOLDOWN_MS) {
+          adjustedTime = lastSent + PUSH_NOTIFICATION_COOLDOWN_MS;
+        }
+        for (let idx = 0; idx < scheduledTimes.length; idx += 1) {
+          const scheduledAt = scheduledTimes[idx];
+          if (Math.abs(adjustedTime - scheduledAt) < PUSH_NOTIFICATION_COOLDOWN_MS) {
+            adjustedTime = scheduledAt + PUSH_NOTIFICATION_COOLDOWN_MS;
+          }
+        }
+        if (adjustedTime !== requestedTime) {
+          finalTrigger = new Date(adjustedTime);
+        }
+        scheduledFor = adjustedTime;
+      }
+      const id = await Notifications.scheduleNotificationAsync({
+        ...request,
+        trigger: finalTrigger,
+      });
+      const resolvedTrigger = resolveNotificationTriggerTime(finalTrigger);
+      const finalScheduledFor = Number.isFinite(resolvedTrigger) ? resolvedTrigger : scheduledFor;
+      return { id, scheduledFor: finalScheduledFor };
+    },
+    [readScheduledNotificationTimes, resolveNotificationTriggerTime]
+  );
   const [notificationPermissionGranted, setNotificationPermissionGranted] = useState(null);
   const [pushOptInHydrated, setPushOptInHydrated] = useState(false);
   const pushOptInLoggedRef = useRef(false);
@@ -15548,6 +16526,13 @@ function AppContent() {
   const lastSpendLoggingReminderRef = useRef(0);
   const handledNotificationResponseIdsRef = useRef(new Set());
   const [spendPrompt, setSpendPrompt] = useState({ visible: false, item: null });
+  const [coinValueModalStatus, setCoinValueModalStatus] = useState("none");
+  const [coinValueModalHydrated, setCoinValueModalHydrated] = useState(false);
+  const [coinValueModalVisible, setCoinValueModalVisible] = useState(false);
+  const coinValueModalStatusRef = useRef("none");
+  const coinBalancePrevRef = useRef(0);
+  const coinValueModalCheckTimerRef = useRef(null);
+  const resetCounterRef = useRef(0);
   const spendPromptLockRef = useRef(false);
   const spendExecutionLockRef = useRef(false);
   const [stormActive, setStormActive] = useState(false);
@@ -15641,6 +16626,10 @@ function AppContent() {
   }, [analyticsOptOut]);
   const [startupLogoVisible, setStartupLogoVisible] = useState(false);
   const startupLogoDismissedRef = useRef(false);
+  const markStartupLogoDismissed = useCallback(() => {
+    startupLogoDismissedRef.current = true;
+    setStartupLogoVisible(false);
+  }, []);
   const interfaceReady = useMemo(
     () =>
       onboardingStep === "done" &&
@@ -15650,7 +16639,18 @@ function AppContent() {
       !startupLogoVisible,
     [fontsReady, homeLayoutReady, onboardingStep, startupHydrated, startupLogoVisible]
   );
-  const dailyChallengePromptVisible = interfaceReady && isDailyChallengePromptPending;
+  useEffect(() => {
+    coinValueModalStatusRef.current = coinValueModalStatus;
+  }, [coinValueModalStatus]);
+  useEffect(() => {
+    const currentCoins = Math.max(0, Number(tamagotchiState?.coins) || 0);
+    const previousCoins = Math.max(0, Number(coinBalancePrevRef.current) || 0);
+    coinBalancePrevRef.current = currentCoins;
+    if (!coinValueModalHydrated) return;
+    if (previousCoins <= 0 && currentCoins > 0) {
+      queueCoinValueModal();
+    }
+  }, [coinValueModalHydrated, queueCoinValueModal, tamagotchiState?.coins]);
   const overlayEnvironmentReady = interfaceReady && !dailySummaryVisible && !tutorialOverlayVisible;
   const ensureOverlayEnvironmentReady = useCallback(() => {
     if (
@@ -15667,6 +16667,9 @@ function AppContent() {
     if (!primaryTemptationPromptHydrated) return;
     if (primaryTemptationPromptState !== "pending") return;
     if (!profile?.customSpend) return;
+    const hasPrimaryGoal = Array.isArray(profile.primaryGoals) && profile.primaryGoals.length > 0;
+    const primaryGoalReady = !hasPrimaryGoal || !!mainGoalWish?.id;
+    if (!primaryGoalReady) return;
     if (!primaryTemptationId) {
       markPrimaryTemptationPromptDone();
       return;
@@ -15683,7 +16686,9 @@ function AppContent() {
     primaryTemptationId,
     primaryTemptationPromptHydrated,
     primaryTemptationPromptState,
+    mainGoalWish?.id,
     profile?.customSpend,
+    profile.primaryGoals,
     temptationTutorialCompleted,
     temptationTutorialStatus,
     temptationTutorialVisible,
@@ -15782,6 +16787,8 @@ function AppContent() {
   const [streakRecoveryPrompt, setStreakRecoveryPrompt] = useState({
     ...INITIAL_STREAK_RECOVERY_PROMPT,
   });
+  const streakRestoreSoundPendingRef = useRef(false);
+  const streakRestoreSoundTaskRef = useRef(null);
   const hideStreakRecoveryPrompt = useCallback(
     () => setStreakRecoveryPrompt({ ...INITIAL_STREAK_RECOVERY_PROMPT }),
     []
@@ -15814,6 +16821,157 @@ function AppContent() {
     goalRenewalPromptPendingRef.current = false;
     setGoalRenewalPromptVisible(true);
   }, [goalRenewalPromptVisible, overlay]);
+  const dailyChallengePromptAllowed = useMemo(
+    () =>
+      interfaceReady &&
+      activeTab === "feed" &&
+      !dailySummaryVisible &&
+      !tutorialOverlayVisible &&
+      !overlay &&
+      !tamagotchiVisible &&
+      !newGoalModal.visible &&
+      !onboardingGoalModal.visible &&
+      !goalTemptationPrompt.visible &&
+      !goalEditorPrompt.visible &&
+      !baselinePrompt.visible &&
+      !goalRenewalPromptVisible &&
+      !goalLinkPrompt.visible &&
+      !streakRecoveryPrompt.visible &&
+      !skinPickerVisible &&
+      !priceEditor.item &&
+      !savingsBreakdownVisible,
+    [
+      activeTab,
+      baselinePrompt.visible,
+      dailySummaryVisible,
+      goalEditorPrompt.visible,
+      goalLinkPrompt.visible,
+      goalRenewalPromptVisible,
+      goalTemptationPrompt.visible,
+      interfaceReady,
+      newGoalModal.visible,
+      onboardingGoalModal.visible,
+      overlay,
+      priceEditor.item,
+      savingsBreakdownVisible,
+      skinPickerVisible,
+      streakRecoveryPrompt.visible,
+      tamagotchiVisible,
+      tutorialOverlayVisible,
+    ]
+  );
+  const dailyChallengePromptVisible =
+    dailyChallengePromptAllowed && isDailyChallengePromptPending && dailyChallengePromptGate;
+  const coinValueModalAllowed = useMemo(
+    () =>
+      interfaceReady &&
+      onboardingStep === "done" &&
+      tutorialSeen &&
+      activeTab === "feed" &&
+      !dailySummaryVisible &&
+      !tutorialOverlayVisible &&
+      !overlay &&
+      !tamagotchiVisible &&
+      !newGoalModal.visible &&
+      !onboardingGoalModal.visible &&
+      !goalTemptationPrompt.visible &&
+      !goalEditorPrompt.visible &&
+      !baselinePrompt.visible &&
+      !goalRenewalPromptVisible &&
+      !goalLinkPrompt.visible &&
+      !streakRecoveryPrompt.visible &&
+      !skinPickerVisible &&
+      !priceEditor.item &&
+      !savingsBreakdownVisible &&
+      !spendPrompt.visible &&
+      !dailyChallengePromptVisible,
+    [
+      activeTab,
+      baselinePrompt.visible,
+      dailyChallengePromptVisible,
+      dailySummaryVisible,
+      goalEditorPrompt.visible,
+      goalLinkPrompt.visible,
+      goalRenewalPromptVisible,
+      goalTemptationPrompt.visible,
+      interfaceReady,
+      newGoalModal.visible,
+      onboardingGoalModal.visible,
+      onboardingStep,
+      overlay,
+      priceEditor.item,
+      savingsBreakdownVisible,
+      skinPickerVisible,
+      spendPrompt.visible,
+      streakRecoveryPrompt.visible,
+      tamagotchiVisible,
+      tutorialOverlayVisible,
+      tutorialSeen,
+    ]
+  );
+  const canShowCoinValueModalNow = useCallback(() => {
+    if (!coinValueModalAllowed || coinValueModalVisible) return false;
+    if (overlay || overlayActiveRef.current) return false;
+    if (overlayQueueRef.current.length) return false;
+    if (celebrationQueueRef.current.length) return false;
+    if (celebrationGapTimerRef.current) return false;
+    if (blockingModalVisible) return false;
+    const lastSaveAt = Number(lastSaveActionAtRef.current) || 0;
+    const lastSaveDismissedAt = Number(lastSaveOverlayDismissedAtRef.current) || 0;
+    if (lastSaveAt > lastSaveDismissedAt && Date.now() - lastSaveAt < 15000) {
+      return false;
+    }
+    const lastDismissedAt = lastOverlayDismissedAtRef.current || 0;
+    if (Date.now() - lastDismissedAt < 600) return false;
+    if (Date.now() - lastSaveDismissedAt < 900) return false;
+    return true;
+  }, [blockingModalVisible, coinValueModalAllowed, coinValueModalVisible, overlay]);
+  useEffect(() => {
+    if (!coinValueModalHydrated) return undefined;
+    if (coinValueModalStatus !== COIN_VALUE_MODAL_STATUS.PENDING) {
+      if (coinValueModalCheckTimerRef.current) {
+        clearTimeout(coinValueModalCheckTimerRef.current);
+        coinValueModalCheckTimerRef.current = null;
+      }
+      return undefined;
+    }
+    const checkAndShow = () => {
+      if (canShowCoinValueModalNow()) {
+        setCoinValueModalVisible(true);
+        coinValueModalCheckTimerRef.current = null;
+        return;
+      }
+      coinValueModalCheckTimerRef.current = setTimeout(checkAndShow, 250);
+    };
+    checkAndShow();
+    return () => {
+      if (coinValueModalCheckTimerRef.current) {
+        clearTimeout(coinValueModalCheckTimerRef.current);
+        coinValueModalCheckTimerRef.current = null;
+      }
+    };
+  }, [canShowCoinValueModalNow, coinValueModalHydrated, coinValueModalStatus]);
+  const dismissCoinValueModal = useCallback(() => {
+    setCoinValueModalVisible(false);
+    if (coinValueModalStatusRef.current === COIN_VALUE_MODAL_STATUS.SHOWN) return;
+    coinValueModalStatusRef.current = COIN_VALUE_MODAL_STATUS.SHOWN;
+    setCoinValueModalStatus(COIN_VALUE_MODAL_STATUS.SHOWN);
+    AsyncStorage.setItem(
+      STORAGE_KEYS.COIN_VALUE_MODAL,
+      COIN_VALUE_MODAL_STATUS.SHOWN
+    ).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (!coinValueModalVisible) return undefined;
+    if (activeTab !== "feed") return undefined;
+    const task = InteractionManager.runAfterInteractions(() => {
+      const scroller = feedScreenRef.current;
+      if (scroller && typeof scroller.scrollToTop === "function") {
+        scroller.scrollToTop({ animated: false });
+      }
+    });
+    return () => task?.cancel?.();
+  }, [activeTab, coinValueModalVisible]);
   const openBaselinePrompt = useCallback(() => {
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
     const existingUSD = Math.max(0, Number(profile.spendingProfile?.baselineMonthlyWasteUSD) || 0);
@@ -15881,6 +17039,66 @@ function AppContent() {
   const [moodDetailsVisible, setMoodDetailsVisible] = useState(false);
   const [potentialDetailsVisible, setPotentialDetailsVisible] = useState(false);
   const [potentialDetailsText, setPotentialDetailsText] = useState("");
+  const tutorialBlockingVisible = useMemo(
+    () =>
+      blockingModalVisible ||
+      overlay ||
+      dailySummaryVisible ||
+      ratingPromptVisible ||
+      pushDayThreePromptVisible ||
+      levelShareModal.visible ||
+      coinEntryVisible ||
+      showCustomSpend ||
+      newPendingModal.visible ||
+      showImageSourceSheet ||
+      termsModalVisible ||
+      spendPrompt.visible ||
+      stormActive ||
+      moodDetailsVisible ||
+      potentialDetailsVisible ||
+      fabMenuVisible ||
+      editOverlayVisible,
+    [
+      blockingModalVisible,
+      coinEntryVisible,
+      dailySummaryVisible,
+      editOverlayVisible,
+      fabMenuVisible,
+      levelShareModal.visible,
+      moodDetailsVisible,
+      newPendingModal.visible,
+      overlay,
+      potentialDetailsVisible,
+      pushDayThreePromptVisible,
+      ratingPromptVisible,
+      showCustomSpend,
+      showImageSourceSheet,
+      spendPrompt.visible,
+      stormActive,
+      termsModalVisible,
+    ]
+  );
+  useEffect(() => {
+    if (!streakRestoreSoundPendingRef.current) return;
+    if (tutorialBlockingVisible) return;
+    streakRestoreSoundPendingRef.current = false;
+    if (streakRestoreSoundTaskRef.current) {
+      streakRestoreSoundTaskRef.current.cancel?.();
+      streakRestoreSoundTaskRef.current = null;
+    }
+    streakRestoreSoundTaskRef.current = InteractionManager.runAfterInteractions(() => {
+      playSound("streak_restore");
+      streakRestoreSoundTaskRef.current = null;
+    });
+  }, [playSound, tutorialBlockingVisible]);
+  useEffect(() => {
+    return () => {
+      if (streakRestoreSoundTaskRef.current) {
+        streakRestoreSoundTaskRef.current.cancel?.();
+        streakRestoreSoundTaskRef.current = null;
+      }
+    };
+  }, []);
   const openMoodDetails = useCallback(() => setMoodDetailsVisible(true), []);
   const closeMoodDetails = useCallback(() => setMoodDetailsVisible(false), []);
   const openPotentialDetails = useCallback((description) => {
@@ -15932,6 +17150,8 @@ function AppContent() {
     () => selectMainGoalWish(wishes, activeGoalId || profile.goal),
     [wishes, activeGoalId, profile.goal]
   );
+  const resolvedHeroGoalId =
+    mainGoalWish?.goalId || mainGoalWish?.id || activeGoalId || profile.goal || null;
   useEffect(() => {
     if (mainGoalWish?.id) {
       ensureGoalManualTracking(mainGoalWish.id);
@@ -15956,8 +17176,36 @@ function AppContent() {
     }
     return 0;
   }, [profile?.goalTargetUSD, profile?.goal]);
-  const heroGoalTargetUSD = mainGoalWish?.targetUSD || fallbackGoalTargetUSD;
-  const heroGoalSavedUSD = mainGoalWish?.savedUSD ?? 0;
+  const primaryGoalSavedUSD = useMemo(() => {
+    const goalId = resolvedHeroGoalId;
+    if (!goalId) return 0;
+    const entry = Array.isArray(profile.primaryGoals)
+      ? profile.primaryGoals.find((goal) => goal?.id === goalId)
+      : null;
+    return Number.isFinite(entry?.savedUSD) ? entry.savedUSD : 0;
+  }, [profile.primaryGoals, resolvedHeroGoalId]);
+  const heroGoalTargetUSD = useMemo(() => {
+    const wishTarget = mainGoalWish?.targetUSD;
+    if (Number.isFinite(wishTarget) && wishTarget > 0) {
+      return wishTarget;
+    }
+    const goalEntry = Array.isArray(profile.primaryGoals)
+      ? profile.primaryGoals.find((goal) => goal?.id === resolvedHeroGoalId)
+      : null;
+    if (goalEntry) {
+      const targetUSD =
+        Number.isFinite(goalEntry.targetUSD) && goalEntry.targetUSD > 0
+          ? goalEntry.targetUSD
+          : getGoalDefaultTargetUSD(goalEntry.id);
+      return targetUSD;
+    }
+    return resolvedHeroGoalId ? getGoalDefaultTargetUSD(resolvedHeroGoalId) : fallbackGoalTargetUSD;
+  }, [fallbackGoalTargetUSD, mainGoalWish?.targetUSD, profile.primaryGoals, resolvedHeroGoalId]);
+  const heroGoalSavedUSD = useMemo(() => {
+    const wishSaved = Number.isFinite(mainGoalWish?.savedUSD) ? Math.max(mainGoalWish.savedUSD, 0) : 0;
+    const primarySaved = Number.isFinite(primaryGoalSavedUSD) ? Math.max(primaryGoalSavedUSD, 0) : 0;
+    return Math.max(wishSaved, primarySaved);
+  }, [mainGoalWish?.savedUSD, primaryGoalSavedUSD]);
   const heroGoalProgressRatio = heroGoalTargetUSD > 0 ? heroGoalSavedUSD / heroGoalTargetUSD : 0;
   const remainingGoalUSD = Math.max(heroGoalTargetUSD - heroGoalSavedUSD, 0);
   const averageSaveActionUSD = useMemo(() => {
@@ -16295,6 +17543,18 @@ function AppContent() {
     };
   }, [handleNotificationOpenFromPush]);
   useEffect(() => {
+    const subscription = Notifications.addNotificationReceivedListener(() => {
+      const now = Date.now();
+      lastInstantNotificationRef.current = now;
+      AsyncStorage.setItem(STORAGE_KEYS.LAST_NOTIFICATION_AT, String(now)).catch(() => {});
+    });
+    return () => {
+      if (subscription?.remove) {
+        subscription.remove();
+      }
+    };
+  }, []);
+  useEffect(() => {
     let cancelled = false;
     AsyncStorage.getItem(STORAGE_KEYS.PUSH_NOTIFICATIONS_ENABLED_LOGGED)
       .then((value) => {
@@ -16399,7 +17659,8 @@ function AppContent() {
     async (content) => {
       if (!content) return false;
       const now = Date.now();
-      if (now - lastInstantNotificationRef.current < PUSH_NOTIFICATION_COOLDOWN_MS) {
+      const blocked = await isNotificationOnCooldown(now);
+      if (blocked) {
         return false;
       }
       const allowed = await ensureNotificationPermission();
@@ -16417,13 +17678,20 @@ function AppContent() {
         return false;
       }
     },
-    [ensureNotificationPermission]
+    [ensureNotificationPermission, isNotificationOnCooldown]
   );
 
   useEffect(() => {
     if (Platform.OS !== "android") return;
     Notifications.setNotificationChannelAsync(ANDROID_DAILY_NUDGE_CHANNEL_ID, {
       name: "Daily nudges",
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: true,
+      vibrationPattern: [250, 250, 250],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    }).catch(() => {});
+    Notifications.setNotificationChannelAsync(ANDROID_TAMAGOTCHI_CHANNEL_ID, {
+      name: "Tamagotchi hunger",
       importance: Notifications.AndroidImportance.HIGH,
       sound: true,
       vibrationPattern: [250, 250, 250],
@@ -16657,19 +17925,20 @@ function AppContent() {
           moodPreset?.pushPendingBody && moodPreset.pushPendingBody.trim()
             ? renderTemplateString(moodPreset.pushPendingBody, { title })
             : t("pendingNotificationBody", { title });
-        return await Notifications.scheduleNotificationAsync({
+        const scheduled = await scheduleNotificationWithCooldown({
           content: {
             title: pendingTitle,
             body: pendingBody,
           },
           trigger,
         });
+        return scheduled?.id || null;
       } catch (error) {
         console.warn("pending reminder", error);
         return null;
       }
     },
-    [ensureNotificationPermission, t, moodPreset]
+    [ensureNotificationPermission, scheduleNotificationWithCooldown, t, moodPreset]
   );
 
   const scheduleChallengeReminders = useCallback(
@@ -16703,18 +17972,21 @@ function AppContent() {
         if (!Number.isFinite(scheduledTime)) continue;
         if (expiresAt && scheduledTime >= expiresAt) continue;
         try {
-          const notificationId = await Notifications.scheduleNotificationAsync({
+          const scheduledEntry = await scheduleNotificationWithCooldown({
             content: { title, body },
             trigger: new Date(scheduledTime),
           });
-          scheduled.push(notificationId);
+          const notificationId = scheduledEntry?.id;
+          if (notificationId) {
+            scheduled.push(notificationId);
+          }
         } catch (error) {
           console.warn("challenge reminder", error);
         }
       }
       return scheduled;
     },
-    [ensureNotificationPermission, language, t]
+    [ensureNotificationPermission, language, scheduleNotificationWithCooldown, t]
   );
 
   const customGoalMap = useMemo(() => {
@@ -16773,7 +18045,64 @@ function AppContent() {
         : { title: overlay.message }
       : null;
   const saveCelebrationRef = useRef(null);
+  const saveOverlayShownAtRef = useRef(0);
+  useEffect(() => {
+    if (overlay?.type !== "save") return;
+    saveOverlayShownAtRef.current = Date.now();
+  }, [overlay?.type]);
+  const overlaySoundKeyRef = useRef(null);
+  const overlaySoundTimersRef = useRef([]);
+  const clearOverlaySoundTimers = useCallback(() => {
+    if (!overlaySoundTimersRef.current.length) return;
+    overlaySoundTimersRef.current.forEach((timerId) => clearTimeout(timerId));
+    overlaySoundTimersRef.current = [];
+  }, []);
+  useEffect(() => {
+    if (!overlay?.type) {
+      overlaySoundKeyRef.current = null;
+      clearOverlaySoundTimers();
+      return undefined;
+    }
+    const message = overlay.message;
+    const soundKey = (() => {
+      if (overlay.type === "level") return `level:${message ?? ""}`;
+      if (overlay.type === "health") return `health:${message?.amount ?? ""}:${message?.displayCoins ?? ""}`;
+      if (overlay.type === "daily_reward") return `daily_reward:${message?.amount ?? ""}`;
+      if (typeof message === "string") return `${overlay.type}:${message.slice(0, 32)}`;
+      return overlay.type;
+    })();
+    if (overlaySoundKeyRef.current === soundKey) {
+      return undefined;
+    }
+    overlaySoundKeyRef.current = soundKey;
+    clearOverlaySoundTimers();
+    const scheduleSound = (delay, key, options = undefined) => {
+      if (!key) return;
+      const timerId = setTimeout(() => {
+        playSound(key, options);
+      }, Math.max(0, delay));
+      overlaySoundTimersRef.current.push(timerId);
+    };
+    if (overlay.type === "level") {
+      scheduleSound(140, "level_up", { skipCooldown: true });
+    } else if (overlay.type === "reward") {
+      scheduleSound(180, "reward");
+    } else if (overlay.type === "daily_reward") {
+      scheduleSound(180, "daily_reward");
+      scheduleSound(300, "coin");
+    } else if (overlay.type === "health") {
+      scheduleSound(140, "coin");
+    } else if (overlay.type === "goal_complete") {
+      scheduleSound(220, "level_up");
+    }
+    return () => {
+      clearOverlaySoundTimers();
+    };
+  }, [clearOverlaySoundTimers, overlay, playSound]);
   const handleSaveOverlayPress = useCallback(() => {
+    if (overlay?.type === "save" && Date.now() - saveOverlayShownAtRef.current < 350) {
+      return;
+    }
     const triggerPendingLevelCelebrate = () => {
       const queuedLevel = levelCelebrationQueuedRef.current || 0;
       const celebratedLevel = Math.max(1, Number(lastCelebratedLevel) || 1);
@@ -16812,6 +18141,9 @@ function AppContent() {
     };
     if (overlay?.type === "save" && pendingLevelCelebrationRef.current) {
       // Make sure level celebration sequence isn't lost behind the save overlay.
+      const dismissedAt = Date.now();
+      lastOverlayDismissedAtRef.current = dismissedAt;
+      lastSaveOverlayDismissedAtRef.current = dismissedAt;
       setOverlay(null);
       overlayActiveRef.current = false;
     }
@@ -16830,20 +18162,63 @@ function AppContent() {
     playerLevel,
     runPendingLevelCelebration,
   ]);
-  const handlePrimaryTemptationOverlayAction = useCallback(
-    async (type, sourceItem = null) => {
-      const targetItem = sourceItem || primaryTemptationOverlayItem;
-      if (!targetItem) return;
-      dismissOverlay();
-      await handleTemptationAction(type, targetItem);
-    },
-    [dismissOverlay, handleTemptationAction, primaryTemptationOverlayItem]
-  );
   const assignableGoals = useMemo(
     () => (wishes || []).filter((wish) => wish.status !== "done"),
     [wishes]
   );
-  const hasPendingGoals = assignableGoals.length > 0;
+  const assignableGoalsCount = assignableGoals.length;
+  const handlePrimaryTemptationOverlayAction = useCallback(
+    async (type, sourceItem = null) => {
+      const targetItem = sourceItem || primaryTemptationOverlayItem;
+      if (!targetItem) return;
+      let activePrimaryGoalId = null;
+      if (typeof activeGoalId === "string" && activeGoalId.startsWith("wish_primary_goal_")) {
+        activePrimaryGoalId = activeGoalId.replace("wish_primary_goal_", "");
+      } else if (
+        typeof activeGoalId === "string" &&
+        Array.isArray(profile.primaryGoals) &&
+        profile.primaryGoals.some((goal) => goal?.id === activeGoalId)
+      ) {
+        activePrimaryGoalId = activeGoalId;
+      } else if (profile.goal) {
+        activePrimaryGoalId = profile.goal;
+      } else if (Array.isArray(profile.primaryGoals) && profile.primaryGoals[0]?.id) {
+        activePrimaryGoalId = profile.primaryGoals[0].id;
+      } else {
+        activePrimaryGoalId = DEFAULT_PROFILE.goal;
+      }
+      const forcedGoalId =
+        activePrimaryGoalId && !activePrimaryGoalId.startsWith("wish_primary_goal_")
+          ? getPrimaryGoalWishId(activePrimaryGoalId)
+          : activePrimaryGoalId;
+      const actionOptions =
+        type === "save"
+          ? {
+              skipPrompt: true,
+              goalId: forcedGoalId,
+              shouldAssign: true,
+              forcePrimaryGoal: true,
+              forceOverlay: true,
+            }
+          : {};
+      dismissOverlay({ clearQueue: false });
+      await new Promise((resolve) => {
+        InteractionManager.runAfterInteractions(() => {
+          setTimeout(resolve, 140);
+        });
+      });
+      await handleTemptationAction(type, targetItem, actionOptions);
+    },
+    [
+      activeGoalId,
+      dismissOverlay,
+      handleTemptationAction,
+      primaryTemptationOverlayItem,
+      profile.goal,
+      profile.primaryGoals,
+    ]
+  );
+  const hasPendingGoals = assignableGoalsCount > 0;
   const resolveTemptationGoalId = useCallback(
     (templateId) => {
       if (!templateId) return null;
@@ -16935,11 +18310,19 @@ function AppContent() {
     (goalId, savedUSD, status = "active") => {
       if (!goalId) return;
       const normalizedSaved = Number.isFinite(savedUSD) ? Math.max(savedUSD, 0) : 0;
+      const fallbackTargetUSD =
+        profile.goal === goalId &&
+        Number.isFinite(profile.goalTargetUSD) &&
+        profile.goalTargetUSD > 0
+          ? profile.goalTargetUSD
+          : getGoalDefaultTargetUSD(goalId);
       const updateEntry = (profileState = {}) => {
         const goals = Array.isArray(profileState.primaryGoals) ? profileState.primaryGoals : [];
         let changed = false;
+        let hasMatch = false;
         const nextGoals = goals.map((entry) => {
           if (entry.id !== goalId) return entry;
+          hasMatch = true;
           const nextEntry = { ...entry };
           if (nextEntry.savedUSD !== normalizedSaved) {
             nextEntry.savedUSD = normalizedSaved;
@@ -16951,12 +18334,63 @@ function AppContent() {
           }
           return nextEntry;
         });
+        if (!hasMatch) {
+          const primaryWish =
+            Array.isArray(wishesRef.current) &&
+            wishesRef.current.find(
+              (wish) =>
+                wish?.kind === PRIMARY_GOAL_KIND &&
+                (wish.goalId === goalId || wish.id === getPrimaryGoalWishId(goalId))
+            );
+          const targetUSD =
+            primaryWish && Number.isFinite(primaryWish.targetUSD) && primaryWish.targetUSD > 0
+              ? primaryWish.targetUSD
+              : fallbackTargetUSD;
+          nextGoals.unshift({
+            id: goalId,
+            targetUSD,
+            savedUSD: normalizedSaved,
+            status: status || "active",
+            createdAt: primaryWish?.createdAt || Date.now(),
+          });
+          changed = true;
+        }
         return changed ? { ...profileState, primaryGoals: nextGoals } : profileState;
       };
       setProfile((prev) => updateEntry(prev));
       setProfileDraft((prev) => updateEntry(prev));
+      setWishes((prev) => {
+        const targetWishId = getPrimaryGoalWishId(goalId);
+        let changed = false;
+        const next = prev.map((wish) => {
+          if (!wish) return wish;
+          if (wish.id !== targetWishId && wish.goalId !== goalId) return wish;
+          const updated = { ...wish };
+          if (updated.savedUSD !== normalizedSaved) {
+            updated.savedUSD = normalizedSaved;
+            changed = true;
+          }
+          if (status && updated.status !== status) {
+            updated.status = status;
+            changed = true;
+          }
+          if (updated.goalId !== goalId) {
+            updated.goalId = goalId;
+            changed = true;
+          }
+          if (updated.kind !== PRIMARY_GOAL_KIND) {
+            updated.kind = PRIMARY_GOAL_KIND;
+            changed = true;
+          }
+          return updated;
+        });
+        if (!next.some((wish) => wish?.id === targetWishId)) {
+          return next;
+        }
+        return changed ? next : prev;
+      });
     },
-    [setProfile, setProfileDraft]
+    [language, profile.goal, profile.goalTargetUSD, setProfile, setProfileDraft, setWishes]
   );
 
   const assignTemptationGoal = useCallback(
@@ -16988,25 +18422,97 @@ function AppContent() {
       let applied = 0;
       let goalSyncMeta = null;
       let completedGoalMeta = null;
+      const normalizedGoalId =
+        typeof wishId === "string" && wishId.startsWith("wish_primary_goal_")
+          ? wishId.replace("wish_primary_goal_", "")
+          : null;
+      const buildPrimaryGoalWishFromId = (targetWishId) => {
+        if (!targetWishId || typeof targetWishId !== "string") return null;
+        if (!targetWishId.startsWith("wish_primary_goal_")) return null;
+        const goalId = targetWishId.replace("wish_primary_goal_", "");
+        const primaryEntries = Array.isArray(profile.primaryGoals) ? profile.primaryGoals : [];
+        const primaryEntry = primaryEntries.find((entry) => entry?.id === goalId);
+        const canFallbackToProfileGoal = profile.goal === goalId;
+        if (!primaryEntry && !canFallbackToProfileGoal) return null;
+        const fallbackTargetUSD =
+          profile.goal === goalId &&
+          Number.isFinite(profile.goalTargetUSD) &&
+          profile.goalTargetUSD > 0
+            ? profile.goalTargetUSD
+            : getGoalDefaultTargetUSD(goalId);
+        const ensuredEntry =
+          primaryEntry || {
+            id: goalId,
+            targetUSD: fallbackTargetUSD,
+            savedUSD: 0,
+            status: "active",
+            createdAt: Date.now(),
+          };
+        const goalPreset = getGoalPreset(goalId);
+        const languageKey = language || "en";
+        const customTitle =
+          typeof ensuredEntry?.customTitle === "string" ? ensuredEntry.customTitle.trim() : "";
+        const hasCustomTitle = !!customTitle;
+        const customEmoji = ensuredEntry?.customEmoji
+          ? normalizeEmojiValue(ensuredEntry.customEmoji, DEFAULT_GOAL_EMOJI)
+          : null;
+        const resolvedEmoji =
+          hasCustomTitle ? customEmoji || DEFAULT_GOAL_EMOJI : goalPreset?.emoji || DEFAULT_GOAL_EMOJI;
+        const presetLabel = goalPreset?.[languageKey] || goalPreset?.en || goalId;
+        const resolvedLabel = hasCustomTitle ? customTitle : presetLabel || goalId;
+        const title = `${resolvedEmoji} ${resolvedLabel}`.trim();
+        const targetUSD =
+          Number.isFinite(ensuredEntry?.targetUSD) && ensuredEntry.targetUSD > 0
+            ? ensuredEntry.targetUSD
+            : getGoalDefaultTargetUSD(goalId);
+        const createdAt = ensuredEntry?.createdAt || Date.now();
+        return {
+          id: targetWishId,
+          templateId: `goal_${goalId}`,
+          title,
+          emoji: resolvedEmoji,
+          targetUSD,
+          savedUSD: 0,
+          status: "active",
+          createdAt,
+          autoManaged: true,
+          kind: PRIMARY_GOAL_KIND,
+          goalId,
+        };
+      };
       setWishes((prev) => {
         let changed = false;
+        let found = false;
         const next = prev.map((wish) => {
-          if (wish.id !== wishId) return wish;
+          const isMatchById = wish.id === wishId;
+          const isMatchByGoal =
+            normalizedGoalId &&
+            (wish.goalId === normalizedGoalId ||
+              (wish.kind === PRIMARY_GOAL_KIND && wish.id === PRIMARY_GOAL_WISH_ID_LEGACY));
+          if (!isMatchById && !isMatchByGoal) return wish;
+          found = true;
           const current = wish.savedUSD || 0;
           const target = wish.targetUSD || 0;
           const desired = current + amountUSD;
-          const nextSaved = Math.min(desired, target);
+          const capTarget = target > 0 ? target : Number.POSITIVE_INFINITY;
+          const nextSaved = Math.min(desired, capTarget);
           applied = nextSaved - current;
-          const status = nextSaved >= target ? "done" : "active";
-          const becameDone = status === "done" && wish.status !== "done" && target > 0;
+          const status = target > 0 && nextSaved >= target ? "done" : "active";
+          const becameDone = status === "done" && wish.status !== "done";
+          const hasPrimaryWishId =
+            typeof wish.id === "string" && wish.id.startsWith("wish_primary_goal_");
+          const derivedGoalId =
+            wish.goalId || (hasPrimaryWishId ? wish.id.replace("wish_primary_goal_", "") : null);
           if (
             nextSaved !== current ||
             wish.status !== status ||
-            wish.autoManaged !== false
+            wish.autoManaged !== false ||
+            (!!derivedGoalId && derivedGoalId !== wish.goalId) ||
+            (hasPrimaryWishId && wish.kind !== PRIMARY_GOAL_KIND)
           ) {
             changed = true;
-            if (wish.kind === PRIMARY_GOAL_KIND && wish.goalId) {
-              goalSyncMeta = { goalId: wish.goalId, savedUSD: nextSaved, status };
+            if (derivedGoalId) {
+              goalSyncMeta = { goalId: derivedGoalId, savedUSD: nextSaved, status };
             }
           if (becameDone) {
             completedGoalMeta = {
@@ -17017,15 +18523,94 @@ function AppContent() {
               createdAt: wish.createdAt || wish.metaCreatedAt || null,
             };
           }
-            return {
+            const updatedWish = {
               ...wish,
               savedUSD: nextSaved,
               status,
               autoManaged: false,
+              ...(derivedGoalId ? { goalId: derivedGoalId } : {}),
+              ...(hasPrimaryWishId ? { kind: PRIMARY_GOAL_KIND } : {}),
             };
+            if (__DEV__ && wishId.startsWith("wish_primary_goal_")) {
+              console.warn("primary_temptation_goal_update", {
+                wishId,
+                current,
+                nextSaved,
+                targetUSD: target,
+                applied,
+              });
+            }
+            return updatedWish;
           }
           return wish;
         });
+        if (!found) {
+          const created = buildPrimaryGoalWishFromId(wishId);
+          if (created) {
+            const target = created.targetUSD || 0;
+            const capTarget = target > 0 ? target : Number.POSITIVE_INFINITY;
+            const nextSaved = Math.min(Math.max(amountUSD, 0), capTarget);
+            applied = nextSaved;
+            const status = target > 0 && nextSaved >= target ? "done" : "active";
+            const becameDone = status === "done";
+            const nextCreated = {
+              ...created,
+              savedUSD: nextSaved,
+              status,
+            };
+            if (__DEV__ && wishId.startsWith("wish_primary_goal_")) {
+              console.warn("primary_temptation_goal_created", {
+                wishId,
+                nextSaved,
+                targetUSD: target,
+                applied,
+              });
+            }
+            changed = true;
+            if (nextCreated.kind === PRIMARY_GOAL_KIND && nextCreated.goalId) {
+              goalSyncMeta = {
+                goalId: nextCreated.goalId,
+                savedUSD: nextSaved,
+                status,
+              };
+            }
+            if (becameDone) {
+              completedGoalMeta = {
+                goalId: nextCreated.goalId || nextCreated.id,
+                wishId: nextCreated.id,
+                templateId: nextCreated.templateId || null,
+                targetUSD: target,
+                createdAt: nextCreated.createdAt || null,
+              };
+            }
+            return [nextCreated, ...prev];
+          }
+        }
+        if (__DEV__ && (wishId.startsWith("wish_primary_goal_") || normalizedGoalId)) {
+          const trackedWish =
+            next.find((w) => w?.id === wishId) ||
+            (normalizedGoalId
+              ? next.find((w) => w?.goalId === normalizedGoalId || w?.id === PRIMARY_GOAL_WISH_ID_LEGACY)
+              : null);
+          if (trackedWish) {
+            console.warn("primary_temptation_goal_state", {
+              wishId,
+              goalId: normalizedGoalId,
+              savedUSD: trackedWish.savedUSD,
+              targetUSD: trackedWish.targetUSD,
+              status: trackedWish.status,
+            });
+          } else {
+            console.warn("primary_temptation_goal_state", {
+              wishId,
+              goalId: normalizedGoalId,
+              savedUSD: null,
+              targetUSD: null,
+              status: null,
+              note: "not found in wishes",
+            });
+          }
+        }
         return changed ? next : prev;
       });
       if (goalSyncMeta) {
@@ -17051,7 +18636,15 @@ function AppContent() {
       }
       return applied;
     },
-    [syncPrimaryGoalProgress, logEvent, profile.currency]
+    [
+      language,
+      logEvent,
+      profile.currency,
+      profile.goal,
+      profile.goalTargetUSD,
+      profile.primaryGoals,
+      syncPrimaryGoalProgress,
+    ]
   );
   const getWishTitleById = useCallback(
     (wishId) => wishes.find((wish) => wish.id === wishId)?.title || "",
@@ -17085,12 +18678,22 @@ function AppContent() {
     saveOverlayPayload?.remainingTemptations > 0
       ? t("saveGoalRemaining")
       : null;
+  const maxTemptationStreak = useMemo(() => {
+    const entries = Object.values(refuseStats || {});
+    if (!entries.length) return 0;
+    return entries.reduce((max, entry) => {
+      const best = Number(entry?.bestStreak) || 0;
+      const current = Number(entry?.currentStreak) || 0;
+      return Math.max(max, best, current);
+    }, 0);
+  }, [refuseStats]);
   const achievements = useMemo(() => {
     const built = buildAchievements({
       savedTotalUSD,
       declineCount,
       freeDayStats,
       declineStreak,
+      refuseStreak: maxTemptationStreak,
       pendingCount: pendingList.length,
       decisionStats,
       currency: profile.currency || DEFAULT_PROFILE.currency,
@@ -17111,6 +18714,7 @@ function AppContent() {
     profile.currency,
     t,
     language,
+    maxTemptationStreak,
     safeClaimedRewards,
   ]);
 
@@ -17175,10 +18779,56 @@ function AppContent() {
     () => buildImpulseInsights(impulseTracker.events),
     [impulseTracker.events]
   );
-  const temptationPressure = useMemo(
-    () => buildTemptationPressureMap(impulseTracker.events),
-    [impulseTracker.events]
-  );
+  const focusRecentSpends = useMemo(() => {
+    const now = Date.now();
+    const cutoff = now - FOCUS_RECENT_WINDOW_MS;
+    const recent = [];
+    (impulseTracker.events || []).forEach((event) => {
+      if (!event || event.action !== "spend" || !event.templateId) return;
+      const timestamp = Number(event.timestamp);
+      if (!Number.isFinite(timestamp) || timestamp < cutoff) return;
+      const rawAmount = Number(event.amountUSD) || 0;
+      const template = resolveTemplateCard(event.templateId);
+      const templateAmount = Number(template?.priceUSD || template?.basePriceUSD || 0);
+      const amountUSD = rawAmount > 0 ? rawAmount : templateAmount;
+      if (!amountUSD) return;
+      recent.push({
+        templateId: event.templateId,
+        amountUSD,
+        timestamp,
+        eventTitle: event.title,
+        eventEmoji: event.emoji,
+      });
+    });
+    if (!recent.length) return [];
+    const resolved = recent.map((entry) => {
+      const template = resolveTemplateCard(entry.templateId);
+      const templateLabel =
+        (typeof template?.title === "string"
+          ? template.title
+          : template?.title?.[language] || template?.title?.en || template?.title?.ru || "") || "";
+      const resolvedTitle =
+        resolveTemplateTitle(entry.templateId, templateLabel) ||
+        templateLabel ||
+        entry.eventTitle ||
+        t("defaultDealTitle");
+      const resolvedEmoji = template?.emoji || entry.eventEmoji || "✨";
+      return { ...entry, title: resolvedTitle, emoji: resolvedEmoji };
+    });
+    resolved.sort((a, b) => {
+      if (b.amountUSD !== a.amountUSD) return b.amountUSD - a.amountUSD;
+      return (b.timestamp || 0) - (a.timestamp || 0);
+    });
+    return resolved;
+  }, [impulseTracker.events, language, resolveTemplateCard, resolveTemplateTitle, t]);
+  const dailyChallengePressure = useMemo(() => {
+    const cutoff = Date.now() - DAILY_CHALLENGE_LOOKBACK_MS;
+    const recentEvents = (impulseTracker.events || []).filter((event) => {
+      const timestamp = Number(event?.timestamp);
+      return Number.isFinite(timestamp) && timestamp >= cutoff;
+    });
+    return buildTemptationPressureMap(recentEvents);
+  }, [impulseTracker.events]);
 
   useEffect(() => {
     if (!impulseFeaturesUnlocked) return;
@@ -17191,13 +18841,16 @@ function AppContent() {
     const todayKey = getDayKey(Date.now());
     if (focusDigestSeenKey === todayKey) return;
     if (pendingFocusDigest?.dateKey === todayKey) return;
-    if (!impulseInsights || (impulseInsights.eventCount || 0) < 4) return;
+    if (!impulseInsights || (impulseInsights.eventCount || 0) < 1) return;
     if (!purchases.length) return;
-    if ((impulseInsights.totalSpendCount || 0) === 0) return;
+    if (!focusRecentSpends.length) return;
     const strong = impulseInsights.hotWin || null;
-    const weak = impulseInsights.hotLose || null;
-    if (!strong && !weak) return;
-    const positive = (impulseInsights.totalSpendCount || 0) <= (impulseInsights.totalSaveCount || 0);
+    const weak = strong?.templateId
+      ? focusRecentSpends.find((entry) => entry.templateId !== strong.templateId) || null
+      : focusRecentSpends[0] || null;
+    if (!weak) return;
+    const positive =
+      !!strong && (impulseInsights.totalSpendCount || 0) <= (impulseInsights.totalSaveCount || 0);
     const strongTitle = strong?.title || t("focusDigestMissing");
     const weakTitle = weak?.title || t("focusDigestMissing");
     const payload = {
@@ -17215,6 +18868,8 @@ function AppContent() {
   }, [
     focusDigestHydrated,
     focusDigestSeenKey,
+    focusModeUnlocked,
+    focusRecentSpends,
     impulseInsights,
     pendingFocusDigest,
     purchases.length,
@@ -17246,7 +18901,16 @@ function AppContent() {
     if (!dailyChallengeUnlocked) return;
     const todayKey = getDayKey(Date.now());
     if (dailyChallenge.dateKey === todayKey && dailyChallenge.templateId) return;
-    const targetId = resolveDailyChallengeTemplateId(temptationPressure);
+    const targetId = resolveDailyChallengeTemplateId(dailyChallengePressure, 1, (templateId) => {
+      const template = resolveTemplateCard(templateId);
+      if (!template) return false;
+      const rawTitle =
+        template.titleOverride ||
+        (typeof template.title === "string"
+          ? template.title
+          : template.title?.[language] || template.title?.en || template.title?.ru || template.title);
+      return typeof rawTitle === "string" && rawTitle.trim().length > 0;
+    });
     if (!targetId) {
       setDailyChallenge((prev) => ({
         ...createInitialDailyChallengeState(),
@@ -17283,13 +18947,14 @@ function AppContent() {
     dailyChallenge.templateId,
     dailyChallengeHydrated,
     language,
-    temptationPressure,
+    dailyChallengePressure,
     profile.currency,
     resolveTemplateCard,
     resolveTemplateTitle,
   ]);
   useEffect(() => {
     if (!dailyChallengeHydrated) return;
+    if (!historyHydrated) return;
     if (dailyChallengeUnlocked) return;
     if (
       dailyChallenge.status === DAILY_CHALLENGE_STATUS.IDLE &&
@@ -17303,6 +18968,7 @@ function AppContent() {
     dailyChallenge.templateId,
     dailyChallengeHydrated,
     dailyChallengeUnlocked,
+    historyHydrated,
   ]);
   const handleDailyChallengeAccept = useCallback(() => {
     if (!dailyChallengeUnlocked) return;
@@ -17340,12 +19006,15 @@ function AppContent() {
     });
     if (dailyChallenge.rewardBonus > 0) {
       setHealthPoints((coins) => coins + dailyChallenge.rewardBonus);
-      triggerOverlayState("health", {
-        amount: dailyChallenge.rewardBonus,
-        reason: t("dailyChallengeRewardReason", {
-          temptation: dailyChallenge.templateLabel || dailyChallenge.templateTitle,
-        }),
-      });
+      if (queueCelebrationOverlayRef.current) {
+        queueCelebrationOverlayRef.current("health", {
+          amount: dailyChallenge.rewardBonus,
+          reason: t("dailyChallengeRewardReason", {
+            temptation: dailyChallenge.templateLabel || dailyChallenge.templateTitle,
+          }),
+        });
+      }
+      playSound("reward");
     }
     sendImmediateNotification({
       title: t("dailyChallengeRewardNotificationTitle"),
@@ -17366,9 +19035,9 @@ function AppContent() {
     dailyChallengeRewardLabel,
     sendImmediateNotification,
     logEvent,
+    playSound,
     setHealthPoints,
     t,
-    triggerOverlayState,
   ]);
   const failDailyChallenge = useCallback(() => {
     if (!dailyChallengeUnlocked) return;
@@ -17483,17 +19152,17 @@ function AppContent() {
       const title = tVariant("smartReminderTitle", { temptation: customSpend.title });
       const body = tVariant("smartReminderBody", { temptation: customSpend.title });
       try {
-        const id = await Notifications.scheduleNotificationAsync({
+        const scheduled = await scheduleNotificationWithCooldown({
           content: { title, body },
           trigger: { seconds, repeats: true },
         });
-        persistCustomReminderId(id);
+        persistCustomReminderId(scheduled?.id || null);
       } catch (error) {
         console.warn("custom reminder", error);
         persistCustomReminderId(null);
       }
     },
-    [customReminderId, ensureNotificationPermission, persistCustomReminderId, tVariant]
+    [customReminderId, ensureNotificationPermission, persistCustomReminderId, scheduleNotificationWithCooldown, tVariant]
   );
   const clearLegacyDailyNudges = useCallback(async () => {
     try {
@@ -17532,7 +19201,7 @@ function AppContent() {
       try {
         const trigger = buildDailyNudgeTrigger(def.hour, def.minute);
         if (!trigger) continue;
-        const notificationId = await Notifications.scheduleNotificationAsync({
+        const scheduledEntry = await scheduleNotificationWithCooldown({
           content: {
             title: tVariant(def.titleKey),
             body: tVariant(def.bodyKey),
@@ -17541,13 +19210,22 @@ function AppContent() {
           },
           trigger,
         });
-        nextMap[def.id] = notificationId;
+        if (scheduledEntry?.id) {
+          nextMap[def.id] = scheduledEntry.id;
+        }
       } catch (error) {
         console.warn("daily nudge schedule", error);
       }
     }
     setDailyNudgeNotificationIds(nextMap);
-  }, [clearLegacyDailyNudges, dailyNudgesHydrated, ensureNotificationPermission, language, tVariant]);
+  }, [
+    clearLegacyDailyNudges,
+    dailyNudgesHydrated,
+    ensureNotificationPermission,
+    language,
+    scheduleNotificationWithCooldown,
+    tVariant,
+  ]);
 
   useEffect(() => {
     if (!dailyNudgesHydrated) return;
@@ -17555,6 +19233,7 @@ function AppContent() {
   }, [dailyNudgesHydrated, language, rescheduleDailyNudgeNotifications, tVariant]);
 
   const loadStoredData = async () => {
+    const resetCounterAtStart = resetCounterRef.current;
     let resolvedHealthPoints = null;
     let tutorialRaw = null;
     let temptationTutorialRaw = null;
@@ -17593,6 +19272,7 @@ function AppContent() {
         profileRaw,
         themeRaw,
         languageRaw,
+        soundEnabledRaw,
         onboardingRaw,
         catalogRaw,
         pricePrecisionRaw,
@@ -17623,6 +19303,7 @@ function AppContent() {
         smartRemindersRaw,
         potentialPushProgressRaw,
         tamagotchiRaw,
+        tamagotchiHungerNotificationsRaw,
         dailyChallengeRaw,
         dailyRewardRaw,
         dailyRewardDayKeyRaw,
@@ -17640,7 +19321,7 @@ function AppContent() {
         fabTutorialRaw,
         northStarMetricRaw,
         primaryTemptationPromptRaw,
-        tabHintsRaw,
+        coinValueModalRaw,
         ratingPromptRaw,
       ] = await Promise.all([
         safeGetItem(STORAGE_KEYS.WISHES),
@@ -17649,6 +19330,7 @@ function AppContent() {
         safeGetItem(STORAGE_KEYS.PROFILE),
         safeGetItem(STORAGE_KEYS.THEME),
         safeGetItem(STORAGE_KEYS.LANGUAGE),
+        safeGetItem(STORAGE_KEYS.SOUND_ENABLED),
         safeGetItem(STORAGE_KEYS.ONBOARDING),
         safeGetItem(STORAGE_KEYS.CATALOG),
         safeGetItem(STORAGE_KEYS.PRICE_PRECISION_OVERRIDES),
@@ -17679,6 +19361,7 @@ function AppContent() {
         safeGetItem(STORAGE_KEYS.SMART_REMINDERS),
         safeGetItem(STORAGE_KEYS.POTENTIAL_PUSH_PROGRESS),
         safeGetItem(STORAGE_KEYS.TAMAGOTCHI),
+        safeGetItem(STORAGE_KEYS.TAMAGOTCHI_HUNGER_NOTIFICATIONS),
         safeGetItem(STORAGE_KEYS.DAILY_CHALLENGE),
         safeGetItem(STORAGE_KEYS.DAILY_REWARD),
         safeGetItem(STORAGE_KEYS.DAILY_REWARD_DAY_KEY),
@@ -17696,7 +19379,7 @@ function AppContent() {
         safeGetItem(STORAGE_KEYS.FAB_TUTORIAL),
         safeGetItem(STORAGE_KEYS.NORTH_STAR_METRIC),
         safeGetItem(STORAGE_KEYS.PRIMARY_TEMPTATION_PROMPT),
-        safeGetItem(STORAGE_KEYS.TAB_HINTS),
+        safeGetItem(STORAGE_KEYS.COIN_VALUE_MODAL),
         safeGetItem(STORAGE_KEYS.RATING_PROMPT),
       ]);
       if (wishesRaw) {
@@ -17774,7 +19457,12 @@ function AppContent() {
                 }
                 return normalized;
               })
-              .filter((entry) => entry?.id)
+              .filter((entry) => {
+                if (!entry?.id) return false;
+                const customTitle =
+                  typeof entry.customTitle === "string" ? entry.customTitle.trim() : "";
+                return !!customTitle || !!getGoalPreset(entry.id);
+              })
           : [];
         const hasPrimaryGoals = normalizedPrimaryGoals.length > 0;
         const storedGoalId = hasPrimaryGoals ? activeGoalRaw || parsedProfile.goal || null : null;
@@ -17948,6 +19636,16 @@ function AppContent() {
         tamagotchiHungerPrevRef.current = TAMAGOTCHI_START_STATE.hunger;
         tamagotchiHydratedRef.current = true;
       }
+      if (tamagotchiHungerNotificationsRaw) {
+        try {
+          const parsedIds = JSON.parse(tamagotchiHungerNotificationsRaw);
+          tamagotchiHungerNotificationIdsRef.current = Array.isArray(parsedIds) ? parsedIds : [];
+        } catch (err) {
+          tamagotchiHungerNotificationIdsRef.current = [];
+        }
+      } else {
+        tamagotchiHungerNotificationIdsRef.current = [];
+      }
       if (dailyChallengeRaw) {
         try {
           const parsed = JSON.parse(dailyChallengeRaw);
@@ -17979,6 +19677,7 @@ function AppContent() {
               fallbackDayKey,
             lastAmount: Math.max(0, Number(parsed?.lastAmount) || 0),
             lastClaimAt: parsedLastClaimAt,
+            streak: Math.max(0, Number(parsed?.streak) || 0),
           });
         } catch (err) {
           console.warn("daily reward parse", err);
@@ -18007,6 +19706,12 @@ function AppContent() {
         setLanguage(DEFAULT_LANGUAGE);
       }
       setLanguageHydrated(true);
+      if (soundEnabledRaw === "0") {
+        setSoundEnabled(false);
+      } else {
+        setSoundEnabled(true);
+      }
+      setSoundEnabledHydrated(true);
       if (coinSliderMaxRaw) {
         const parsedSliderMax = parseFloat(coinSliderMaxRaw);
         if (Number.isFinite(parsedSliderMax) && parsedSliderMax > 0) {
@@ -18016,23 +19721,15 @@ function AppContent() {
         setCoinSliderMaxUSD(DEFAULT_COIN_SLIDER_MAX_USD);
       }
       setCoinSliderHydrated(true);
-      if (tabHintsRaw) {
-        try {
-          const parsed = JSON.parse(tabHintsRaw);
-          if (parsed && typeof parsed === "object") {
-            const { __disabled: _legacyDisabled, ...rest } = parsed;
-            setTabHintsSeen({ ...DEFAULT_TAB_HINTS_STATE, ...(rest || {}) });
-          } else {
-            setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
-          }
-        } catch (error) {
-          console.warn("tab hints parse", error);
-          setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
-        }
-      } else {
-        setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
-      }
-      setTabHintsHydrated(true);
+      const normalizedCoinValueModal =
+        coinValueModalRaw === COIN_VALUE_MODAL_STATUS.SHOWN
+          ? COIN_VALUE_MODAL_STATUS.SHOWN
+          : coinValueModalRaw === COIN_VALUE_MODAL_STATUS.PENDING
+          ? COIN_VALUE_MODAL_STATUS.PENDING
+          : "none";
+      setCoinValueModalStatus(normalizedCoinValueModal);
+      coinValueModalStatusRef.current = normalizedCoinValueModal;
+      setCoinValueModalHydrated(true);
       let normalizedRatingPrompt = createInitialRatingPromptState();
       let ratingPromptNeedsRewrite = false;
       if (ratingPromptRaw) {
@@ -18454,7 +20151,7 @@ function AppContent() {
         const placeholderProfile = { ...DEFAULT_PROFILE_PLACEHOLDER, joinedAt: new Date().toISOString() };
         setProfile(placeholderProfile);
         setProfileDraft(placeholderProfile);
-        setActiveGoalId(DEFAULT_PROFILE.goal);
+        setActiveGoalId(null);
         setRegistrationData((prev) => ({
           ...prev,
           firstName: "",
@@ -18473,7 +20170,6 @@ function AppContent() {
     } catch (error) {
       console.warn("load error", error);
       setAnalyticsOptOutState((prev) => (prev === null ? true : prev));
-      setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
       setRatingPromptState(createInitialRatingPromptState());
       setTutorialHydrated(true);
       setClaimedRewardsHydrated(true);
@@ -18490,7 +20186,9 @@ function AppContent() {
         typeof resolvedHealthPoints === "number" && !Number.isNaN(resolvedHealthPoints)
           ? resolvedHealthPoints
           : 0;
-      setHealthPoints((prev) => (prev === safeHealthPoints ? prev : safeHealthPoints));
+      if (resetCounterRef.current === resetCounterAtStart) {
+        setHealthPoints((prev) => (prev === safeHealthPoints ? prev : safeHealthPoints));
+      }
       setHealthHydrated(true);
       setNorthStarHydrated(true);
       setWishesHydrated(true);
@@ -18512,7 +20210,6 @@ function AppContent() {
       setTemptationTutorialHydrated(true);
       setProfileHydrated(true);
       setPrimaryTemptationPromptHydrated(true);
-      setTabHintsHydrated(true);
       setRatingPromptHydrated(true);
       setClaimedRewardsHydrated(true);
       setChallengesHydrated(true);
@@ -18555,9 +20252,84 @@ function AppContent() {
   }, [onboardingStep]);
 
   const handleStartupLogoComplete = useCallback(() => {
-    startupLogoDismissedRef.current = true;
-    setStartupLogoVisible(false);
+    markStartupLogoDismissed();
+  }, [markStartupLogoDismissed]);
+
+  const handleOnboardingLogoComplete = useCallback(() => {
+    markStartupLogoDismissed();
+    goToOnboardingStep("language", { recordHistory: false });
+  }, [goToOnboardingStep, markStartupLogoDismissed]);
+
+  const persistTamagotchiHungerNotificationIds = useCallback((ids = []) => {
+    tamagotchiHungerNotificationIdsRef.current = ids;
+    AsyncStorage.setItem(
+      STORAGE_KEYS.TAMAGOTCHI_HUNGER_NOTIFICATIONS,
+      JSON.stringify(ids)
+    ).catch(() => {});
   }, []);
+
+  const cancelTamagotchiHungerNotifications = useCallback(async () => {
+    const ids = Array.isArray(tamagotchiHungerNotificationIdsRef.current)
+      ? tamagotchiHungerNotificationIdsRef.current
+      : [];
+    if (!ids.length) return;
+    await Promise.all(
+      ids.map((notificationId) =>
+        Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => {})
+      )
+    );
+    persistTamagotchiHungerNotificationIds([]);
+  }, [persistTamagotchiHungerNotificationIds]);
+
+  const scheduleTamagotchiHungerNotifications = useCallback(async () => {
+    if (notificationPermissionGranted !== true) {
+      await cancelTamagotchiHungerNotifications();
+      return;
+    }
+    const currentHunger = Math.min(
+      TAMAGOTCHI_MAX_HUNGER,
+      Math.max(0, Number(tamagotchiState.hunger) || 0)
+    );
+    if (currentHunger <= 0) {
+      await cancelTamagotchiHungerNotifications();
+      return;
+    }
+    const copy = TAMAGOTCHI_NOTIFICATION_COPY[language] || TAMAGOTCHI_NOTIFICATION_COPY.ru;
+    const notifications = [];
+    const scheduleAt = async (timestamp, body) => {
+      if (!Number.isFinite(timestamp) || !body) return null;
+      const scheduledEntry = await scheduleNotificationWithCooldown({
+        content: {
+          title: t("tamagotchiName"),
+          body,
+          ...(Platform.OS === "android" ? { channelId: ANDROID_TAMAGOTCHI_CHANNEL_ID } : null),
+        },
+        trigger: new Date(Math.max(Date.now(), timestamp)),
+      });
+      return scheduledEntry?.id || null;
+    };
+    if (currentHunger > TAMAGOTCHI_HUNGER_LOW_THRESHOLD) {
+      const stepsToLow = Math.ceil(
+        (currentHunger - TAMAGOTCHI_HUNGER_LOW_THRESHOLD) / TAMAGOTCHI_DECAY_STEP
+      );
+      const lowAt = Date.now() + stepsToLow * TAMAGOTCHI_DECAY_INTERVAL_MS;
+      notifications.push(scheduleAt(lowAt, copy.low));
+    }
+    const stepsToStarving = Math.ceil(currentHunger / TAMAGOTCHI_DECAY_STEP);
+    const starvingAt = Date.now() + stepsToStarving * TAMAGOTCHI_DECAY_INTERVAL_MS;
+    notifications.push(scheduleAt(starvingAt, copy.starving));
+    const results = await Promise.all(notifications);
+    const ids = results.filter(Boolean);
+    persistTamagotchiHungerNotificationIds(ids);
+  }, [
+    cancelTamagotchiHungerNotifications,
+    language,
+    notificationPermissionGranted,
+    persistTamagotchiHungerNotificationIds,
+    scheduleNotificationWithCooldown,
+    t,
+    tamagotchiState.hunger,
+  ]);
 
   const sendTamagotchiHungerNotification = useCallback(
     async (kind) => {
@@ -18567,6 +20339,7 @@ function AppContent() {
       await sendImmediateNotification({
         title: t("tamagotchiName"),
         body,
+        ...(Platform.OS === "android" ? { channelId: ANDROID_TAMAGOTCHI_CHANNEL_ID } : null),
       });
     },
     [language, sendImmediateNotification, t]
@@ -18614,9 +20387,28 @@ function AppContent() {
     tamagotchiHungerPrevRef.current = currentHunger;
   }, [sendTamagotchiHungerNotification, tamagotchiState.hunger]);
 
+  useEffect(() => {
+    if (!tamagotchiHydratedRef.current) return;
+    scheduleTamagotchiHungerNotifications();
+  }, [scheduleTamagotchiHungerNotifications, tamagotchiState.hunger]);
+
   const tutorialOverlayVisible = tutorialVisible || temptationTutorialVisible;
+  const canShowTutorialNow = useCallback(() => {
+    if (overlay || overlayActiveRef.current) return false;
+    if (overlayQueueRef.current.length) return false;
+    if (celebrationQueueRef.current.length) return false;
+    if (celebrationGapTimerRef.current) return false;
+    if (blockingModalVisible) return false;
+    const lastDismissedAt = lastOverlayDismissedAtRef.current || 0;
+    if (Date.now() - lastDismissedAt < 600) return false;
+    return true;
+  }, [blockingModalVisible, overlay]);
   const shouldShowTutorial =
-    onboardingStep === "done" && tutorialHydrated && !tutorialSeen && !tutorialVisible;
+    onboardingStep === "done" &&
+    tutorialHydrated &&
+    !tutorialSeen &&
+    !tutorialVisible &&
+    canShowTutorialNow();
   const shouldShowTemptationTutorial =
     onboardingStep === "done" &&
     tutorialSeen &&
@@ -18626,32 +20418,65 @@ function AppContent() {
     homeLayoutReady &&
     !startupLogoVisible &&
     !dailySummaryVisible &&
-    !overlay;
+    canShowTutorialNow();
 
   useEffect(() => {
     if (!shouldShowTutorial) return;
     if (!appTutorialSteps.length) return;
     if (!homeLayoutReady) return;
     if (startupLogoVisible) return;
+    if (!canShowTutorialNow()) return;
     setTutorialStepIndex(0);
     setTutorialVisible(true);
-  }, [appTutorialSteps.length, homeLayoutReady, shouldShowTutorial, startupLogoVisible]);
+  }, [appTutorialSteps.length, canShowTutorialNow, homeLayoutReady, shouldShowTutorial, startupLogoVisible]);
 
   useEffect(() => {
     if (!shouldShowTutorial) return;
     if (!appTutorialSteps.length) return;
     const fallbackTimer = setTimeout(() => {
+      if (!canShowTutorialNow()) return;
       setTutorialStepIndex(0);
       setTutorialVisible(true);
     }, 1600);
     return () => clearTimeout(fallbackTimer);
-  }, [appTutorialSteps.length, shouldShowTutorial]);
+  }, [appTutorialSteps.length, canShowTutorialNow, shouldShowTutorial]);
+  useEffect(() => {
+    dailyChallengePendingRef.current = isDailyChallengePromptPending;
+    const wasPending = dailyChallengePendingPrevRef.current;
+    dailyChallengePendingPrevRef.current = isDailyChallengePromptPending;
+    if (!isDailyChallengePromptPending) {
+      dailyChallengePromptQueuedRef.current = false;
+      dailyChallengeOfferDeferredRef.current = false;
+      setDailyChallengePromptGate(false);
+      return;
+    }
+    if (!dailyChallengePromptQueuedRef.current) {
+      dailyChallengePromptQueuedRef.current = true;
+      setDailyChallengePromptGate(false);
+    }
+    if (!wasPending) {
+      dailyChallengeOfferDeferredRef.current = true;
+      setDailyChallengePromptGate(false);
+    }
+  }, [isDailyChallengePromptPending]);
+  useEffect(() => {
+    if (!dailyChallengePromptAllowed) return;
+    if (!isDailyChallengePromptPending) return;
+    if (dailyChallengePromptGate) return;
+    if (dailyChallengeOfferDeferredRef.current) return;
+    setDailyChallengePromptGate(true);
+  }, [
+    dailyChallengePromptAllowed,
+    dailyChallengePromptGate,
+    isDailyChallengePromptPending,
+  ]);
   useEffect(() => {
     if (!shouldShowTemptationTutorial) return;
     if (activeTab !== "feed") {
       goToTab("feed", { recordHistory: false });
     }
     const timer = setTimeout(() => {
+      if (!canShowTutorialNow()) return;
       setTemptationTutorialStepIndex(0);
       setTemptationTutorialCompleted(false);
       setTemptationTutorialVisible(true);
@@ -18659,7 +20484,7 @@ function AppContent() {
       setTemptationTutorialQueued(false);
     }, 260);
     return () => clearTimeout(timer);
-  }, [activeTab, goToTab, shouldShowTemptationTutorial]);
+  }, [activeTab, canShowTutorialNow, goToTab, shouldShowTemptationTutorial]);
   useEffect(() => {
     if (!tutorialOverlayVisible) {
       setTutorialHighlightRect(null);
@@ -18887,6 +20712,17 @@ function AppContent() {
     AsyncStorage.setItem(STORAGE_KEYS.ACTIVE_GOAL, value).catch(() => {});
   }, [activeGoalHydrated, activeGoalId]);
 
+  // Ensure we always have an active goal selected once profile is loaded.
+  useEffect(() => {
+    if (!activeGoalHydrated) return;
+    if (activeGoalId) return;
+    if (profile.goal) {
+      setActiveGoalId(profile.goal);
+    } else if (Array.isArray(profile.primaryGoals) && profile.primaryGoals[0]?.id) {
+      setActiveGoalId(profile.primaryGoals[0].id);
+    }
+  }, [activeGoalHydrated, activeGoalId, profile.goal, profile.primaryGoals]);
+
   useEffect(() => {
     if (!overlay && goalRenewalPromptPendingRef.current) {
       goalRenewalPromptPendingRef.current = false;
@@ -19039,9 +20875,14 @@ useEffect(() => {
     if (!Number.isFinite(joinedAtTimestamp) || joinedAtTimestamp <= 0) return;
     if (Date.now() - joinedAtTimestamp > DAY_MS * 2) return;
     const hasSavingsHistory = resolvedHistoryEvents.some(
-      (entry) => entry && (HISTORY_SAVED_GAIN_EVENTS.has(entry.kind) || HISTORY_SAVED_LOSS_EVENTS.has(entry.kind))
+      (entry) =>
+        entry &&
+        (HISTORY_SAVED_GAIN_EVENTS.has(entry.kind) ||
+          (spendReducesSavings && HISTORY_SAVED_LOSS_EVENTS.has(entry.kind)))
     );
     if (hasSavingsHistory || declineCount > 0) return;
+    const recentSaveAt = lastSaveActionAtRef.current || 0;
+    if (recentSaveAt && Date.now() - recentSaveAt < SAVED_TOTAL_RESET_GRACE_MS) return;
     setSavedTotalUSD(0);
     setLifetimeSavedUSD(0);
     setLastCelebratedLevel(1);
@@ -19065,6 +20906,7 @@ useEffect(() => {
     savedTotalHydrated,
     savedTotalUSD,
     lifetimeSavedUSD,
+    spendReducesSavings,
   ]);
 
   useEffect(() => {
@@ -19131,20 +20973,32 @@ useEffect(() => {
     const updates = {};
     Object.entries(temptationInteractions || {}).forEach(([templateId, entry]) => {
       if (!entry?.frequency) return;
-      const intervalMs =
-        entry.intervalMs ||
-        (entry.frequency ? getFrequencyIntervalMs(entry.frequency) : null);
+      const desiredIntervalMs = getFrequencyIntervalMs(entry.frequency);
+      const intervalMs = desiredIntervalMs || entry.intervalMs || null;
+      const lastInteractionAt = Number(entry.lastInteractionAt) || 0;
       const baseNextCheckAt =
-        entry.nextCheckAt ||
-        (intervalMs && entry.lastInteractionAt ? entry.lastInteractionAt + intervalMs : null);
+        Number(entry.nextCheckAt) ||
+        (intervalMs && lastInteractionAt ? lastInteractionAt + intervalMs : null);
       if (!intervalMs || !baseNextCheckAt) return;
-      if (baseNextCheckAt > now) return;
+      const shouldUpdateInterval =
+        Number.isFinite(desiredIntervalMs) && entry.intervalMs !== desiredIntervalMs;
+      if (baseNextCheckAt > now && !shouldUpdateInterval && entry.nextCheckAt) return;
+      if (baseNextCheckAt > now) {
+        updates[templateId] = {
+          nextCheckAt: baseNextCheckAt,
+          intervalMs,
+          missedCyclesDelta: 0,
+          resetStreak: false,
+        };
+        return;
+      }
       const cyclesMissed = Math.max(
         1,
         Math.floor((now - baseNextCheckAt) / intervalMs) + 1
       );
       updates[templateId] = {
         nextCheckAt: baseNextCheckAt + cyclesMissed * intervalMs,
+        intervalMs,
         missedCyclesDelta: cyclesMissed,
         resetStreak: (refuseStats?.[templateId]?.currentStreak || 0) > 0,
       };
@@ -19170,6 +21024,7 @@ useEffect(() => {
         next[templateId] = {
           ...prevEntry,
           nextCheckAt: update.nextCheckAt,
+          intervalMs: update.intervalMs || prevEntry.intervalMs || null,
           lastTimerResetAt: now,
           missedCycles: nextMissedCycles,
           frequencyReminderScheduledAt: null,
@@ -19312,7 +21167,7 @@ useEffect(() => {
           if (cancelled) break;
           const triggerTime = scheduleTriggers[idx];
           try {
-            const reminderId = await Notifications.scheduleNotificationAsync({
+            const scheduledEntry = await scheduleNotificationWithCooldown({
               content: {
                 title: t("frequencyReminderTitle", { temptation: label }),
                 body: t("frequencyReminderBody", { temptation: label }),
@@ -19320,7 +21175,9 @@ useEffect(() => {
               },
               trigger: new Date(triggerTime),
             });
-            reminderIds.push(reminderId);
+            if (scheduledEntry?.id) {
+              reminderIds.push(scheduledEntry.id);
+            }
           } catch (error) {
             console.warn("frequency reminder schedule", error);
           }
@@ -19360,6 +21217,7 @@ useEffect(() => {
   }, [
     language,
     notificationPermissionGranted,
+    scheduleNotificationWithCooldown,
     setTemptationInteractions,
     t,
     temptationInteractions,
@@ -19459,64 +21317,79 @@ useEffect(() => {
     rewardsReady,
   ]);
 
-  useEffect(() => {
-    if (!wishesHydrated || !savedTotalHydrated) return;
-    setWishes((prev) => {
-      if (!prev.length) return prev;
-      let changed = false;
-      const next = prev.slice();
-      let manualReserved = 0;
-      const manualEntries = [];
-      prev.forEach((wish, index) => {
-        const isManualWish = wish.autoManaged === false || wish.kind === PRIMARY_GOAL_KIND;
-        if (isManualWish) {
-          const saved = Math.max(0, wish.savedUSD || 0);
-          manualReserved += saved;
-          manualEntries.push({ index, saved });
-        }
-      });
-      if (manualReserved > savedTotalUSD) {
-        let deficit = manualReserved - savedTotalUSD;
-        for (let i = manualEntries.length - 1; i >= 0 && deficit > 0; i--) {
-          const entry = manualEntries[i];
-          const currentWish = next[entry.index];
-          const savedValue = currentWish.savedUSD || 0;
-          if (savedValue <= 0) continue;
-          const deduction = Math.min(savedValue, deficit);
-          if (deduction > 0) {
-            const newSaved = savedValue - deduction;
-            const status = newSaved >= (currentWish.targetUSD || 0) ? "done" : "active";
-            next[entry.index] = { ...currentWish, savedUSD: newSaved, status };
-            changed = true;
-            deficit -= deduction;
+  const rebalanceWishesFromSavedTotal = useCallback(
+    () => {
+      if (!wishesHydrated || !savedTotalHydrated) return;
+      const primaryGoalId = mainGoalWish?.goalId || activeGoalId || profile.goal || null;
+      const { targetUSD: primaryTargetUSD, savedUSD: primaryCurrentSaved } = (() => {
+        if (!primaryGoalId) return { targetUSD: 0, savedUSD: 0 };
+        const entry = Array.isArray(profile.primaryGoals)
+          ? profile.primaryGoals.find((goal) => goal?.id === primaryGoalId)
+          : null;
+        const target =
+          Number.isFinite(entry?.targetUSD) && entry.targetUSD > 0
+            ? entry.targetUSD
+            : getGoalDefaultTargetUSD(primaryGoalId);
+        const savedFromProfile = Number.isFinite(entry?.savedUSD) ? Math.max(entry.savedUSD, 0) : 0;
+        const wishSnapshot = Array.isArray(wishesRef.current)
+          ? wishesRef.current.find(
+              (wish) =>
+                (wish?.kind === PRIMARY_GOAL_KIND &&
+                  (wish.goalId === primaryGoalId || wish.id === getPrimaryGoalWishId(primaryGoalId))) ||
+                wish?.id === primaryGoalId
+            )
+          : null;
+        const savedFromWish = Number.isFinite(wishSnapshot?.savedUSD)
+          ? Math.max(wishSnapshot.savedUSD, 0)
+          : 0;
+        return { targetUSD: target, savedUSD: Math.max(savedFromProfile, savedFromWish) };
+      })();
+      const desiredPrimaryStatus =
+        primaryGoalId && primaryTargetUSD > 0 && primaryCurrentSaved >= primaryTargetUSD
+          ? "done"
+          : "active";
+
+      setWishes((prev) => {
+        if (!prev.length) return prev;
+        let changed = false;
+        const next = prev.map((wish) => {
+          const isPrimary = wish.kind === PRIMARY_GOAL_KIND && (wish.goalId || wish.id) === primaryGoalId;
+          if (isPrimary) {
+            if (wish.savedUSD !== primaryCurrentSaved || wish.status !== desiredPrimaryStatus) {
+              changed = true;
+              return { ...wish, savedUSD: primaryCurrentSaved, status: desiredPrimaryStatus };
+            }
+            return wish;
           }
-        }
-        manualReserved = Math.min(manualReserved, savedTotalUSD);
-      }
-      let remaining = Math.max(0, savedTotalUSD - manualReserved);
-      for (let i = 0; i < next.length; i++) {
-        const wish = next[i];
-        const isManualWish = wish.autoManaged === false || wish.kind === PRIMARY_GOAL_KIND;
-        if (isManualWish) {
           const status = (wish.savedUSD || 0) >= (wish.targetUSD || 0) ? "done" : "active";
           if (wish.status !== status) {
-            next[i] = { ...wish, status };
             changed = true;
+            return { ...wish, status };
           }
-          continue;
-        }
-        const target = wish.targetUSD || 0;
-        const newSaved = Math.min(target, Math.max(remaining, 0));
-        remaining = Math.max(0, remaining - newSaved);
-        const status = newSaved >= target ? "done" : "active";
-        if (newSaved !== (wish.savedUSD || 0) || status !== wish.status) {
-          next[i] = { ...wish, savedUSD: newSaved, status };
-          changed = true;
-        }
+          return wish;
+        });
+        return changed ? next : prev;
+      });
+
+      if (primaryGoalId) {
+        syncPrimaryGoalProgress(primaryGoalId, primaryCurrentSaved, desiredPrimaryStatus);
       }
-      return changed ? next : prev;
-    });
-  }, [savedTotalUSD, wishes, savedTotalHydrated, wishesHydrated]);
+    },
+    [
+      activeGoalId,
+      mainGoalWish?.goalId,
+      profile.goal,
+      profile.primaryGoals,
+      savedTotalHydrated,
+      syncPrimaryGoalProgress,
+      wishesHydrated,
+      setWishes,
+    ]
+  );
+
+  useEffect(() => {
+    rebalanceWishesFromSavedTotal();
+  }, [rebalanceWishesFromSavedTotal, savedTotalUSD]);
 
   useEffect(() => {
     if (!decisionStatsHydrated) return;
@@ -19550,29 +21423,8 @@ useEffect(() => {
   }, [impulseTracker, impulseTrackerHydrated]);
 
   useEffect(() => {
-    const nextList = DEFAULT_TEMPTATIONS.map((item) => {
-      const overrideCategory = categoryOverrides[item.id];
-      const normalizedCategory =
-        overrideCategory && IMPULSE_CATEGORY_DEFS[overrideCategory] ? overrideCategory : null;
-      const precisionOverride = pricePrecisionOverrides[item.id];
-      const normalizedPrecision =
-        typeof precisionOverride === "number" && Number.isFinite(precisionOverride) && precisionOverride >= 0
-          ? precisionOverride
-          : item.pricePrecision ?? null;
-      return {
-        ...item,
-        priceUSD: catalogOverrides[item.id] ?? item.basePriceUSD,
-        pricePrecision: normalizedPrecision,
-        titleOverride: titleOverrides[item.id] || null,
-        emoji: emojiOverrides[item.id] || item.emoji,
-        impulseCategoryOverride: normalizedCategory || item.impulseCategoryOverride || null,
-        descriptionOverride: descriptionOverrides[item.id] || item.descriptionOverride || null,
-      };
-    }).sort(
-      (a, b) =>
-        (a.priceUSD ?? a.basePriceUSD ?? 0) - (b.priceUSD ?? b.basePriceUSD ?? 0)
-    );
-    const personalized = buildPersonalizedTemptations(profile, nextList).map((card) => {
+    const applyOverrides = (card) => {
+      if (!card) return null;
       const overrideCategory = categoryOverrides[card.id];
       const normalizedCategory =
         overrideCategory && IMPULSE_CATEGORY_DEFS[overrideCategory] ? overrideCategory : null;
@@ -19588,37 +21440,36 @@ useEffect(() => {
         titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
         emoji: emojiOverrides[card.id] || card.emoji,
         impulseCategoryOverride: normalizedCategory || card.impulseCategoryOverride || null,
-        descriptionOverride:
-          descriptionOverrides[card.id] ?? card.descriptionOverride ?? null,
+        descriptionOverride: descriptionOverrides[card.id] ?? card.descriptionOverride ?? null,
       };
-    });
+    };
+    const nextList = DEFAULT_TEMPTATIONS.map(applyOverrides).sort(
+      (a, b) =>
+        (a.priceUSD ?? a.basePriceUSD ?? 0) - (b.priceUSD ?? b.basePriceUSD ?? 0)
+    );
+    const primaryTemplateId = profile.customSpend?.id || "custom_habit";
+    const personalized = buildPersonalizedTemptations(profile, nextList).map(applyOverrides);
     const hiddenSet = new Set(hiddenTemptations);
-    const personalizedVisible = personalized.filter((card) => !hiddenSet.has(card.id));
+    const personalizedVisible = personalized.filter(
+      (card) => card && (card.id === primaryTemplateId || !hiddenSet.has(card.id))
+    );
     const personalizedIds = new Set(personalizedVisible.map((c) => c.id));
     const quickAdjusted = quickTemptations
-      .filter((card) => card && !hiddenSet.has(card.id) && !personalizedIds.has(card.id))
-      .map((card) => {
-        const overrideCategory = categoryOverrides[card.id];
-        const normalizedCategory =
-          overrideCategory && IMPULSE_CATEGORY_DEFS[overrideCategory] ? overrideCategory : null;
-        const precisionOverride = pricePrecisionOverrides[card.id];
-        const normalizedPrecision =
-          typeof precisionOverride === "number" && Number.isFinite(precisionOverride) && precisionOverride >= 0
-            ? precisionOverride
-            : card.pricePrecision ?? null;
-        return {
-          ...card,
-          priceUSD: catalogOverrides[card.id] ?? card.priceUSD ?? card.basePriceUSD,
-          pricePrecision: normalizedPrecision,
-          titleOverride: titleOverrides[card.id] ?? card.titleOverride ?? null,
-          emoji: emojiOverrides[card.id] || card.emoji,
-          impulseCategoryOverride: normalizedCategory || card.impulseCategoryOverride || null,
-          descriptionOverride:
-            descriptionOverrides[card.id] ?? card.descriptionOverride ?? null,
-        };
-      });
+      .map(applyOverrides)
+      .filter(
+        (card) =>
+          card &&
+          (card.id === primaryTemplateId || (!hiddenSet.has(card.id) && !personalizedIds.has(card.id)))
+      );
+    const primaryCard =
+      personalizedVisible.find((card) => card.id === primaryTemplateId) ||
+      quickAdjusted.find((card) => card.id === primaryTemplateId) ||
+      applyOverrides(nextList.find((card) => card?.id === primaryTemplateId));
     // Быстрая кастомная карта всегда рендерится первой, затем идёт персонализированный порядок.
     const combined = [...quickAdjusted, ...personalizedVisible];
+    if (primaryCard && !combined.some((card) => card?.id === primaryTemplateId)) {
+      combined.unshift(primaryCard);
+    }
 
     setTemptations(combined);
   }, [
@@ -19793,121 +21644,6 @@ useEffect(() => {
     [dismissGoalRenewalPrompt, triggerHaptic, activeGoalId, profile.goal, clearCompletedPrimaryGoal]
   );
 
-  const handleProfileGoalChange = (goalId) => {
-    if (!goalId) return;
-    triggerHaptic();
-    const rawGoals = Array.isArray(profile.primaryGoals) ? profile.primaryGoals : [];
-    const normalizedGoals = [];
-    const dedupe = new Set();
-    rawGoals.forEach((entry) => {
-      const id = entry?.id;
-      if (!id || dedupe.has(id)) return;
-      dedupe.add(id);
-      const targetUSD =
-        Number.isFinite(entry?.targetUSD) && entry.targetUSD > 0
-          ? entry.targetUSD
-          : getGoalDefaultTargetUSD(id);
-      const normalized = {
-        ...entry,
-        id,
-        targetUSD,
-        savedUSD: Number.isFinite(entry?.savedUSD) ? entry.savedUSD : 0,
-        status: entry?.status || "active",
-        createdAt: entry?.createdAt || Date.now(),
-      };
-      normalizedGoals.push(normalized);
-    });
-    const previousGoalId = profile.goal || normalizedGoals[0]?.id || null;
-    if (previousGoalId && previousGoalId === goalId) return;
-    const previousWish = wishes.find(
-      (wish) =>
-        wish.kind === PRIMARY_GOAL_KIND &&
-        (wish.goalId === previousGoalId || wish.id === previousGoalId)
-    );
-    if (previousGoalId && !normalizedGoals.some((goal) => goal.id === previousGoalId)) {
-      const fallbackTarget = getGoalDefaultTargetUSD(previousGoalId);
-      normalizedGoals.unshift({
-        id: previousGoalId,
-        targetUSD: fallbackTarget,
-        savedUSD: Number(previousWish?.savedUSD) || 0,
-        status: previousWish?.status || "active",
-        createdAt: previousWish?.createdAt || Date.now(),
-      });
-    } else if (previousGoalId && previousWish) {
-      const prevIndex = normalizedGoals.findIndex((goal) => goal.id === previousGoalId);
-      if (prevIndex !== -1) {
-        normalizedGoals[prevIndex] = {
-          ...normalizedGoals[prevIndex],
-          savedUSD: Number.isFinite(previousWish.savedUSD)
-            ? previousWish.savedUSD
-            : normalizedGoals[prevIndex].savedUSD || 0,
-          status: previousWish.status || normalizedGoals[prevIndex].status || "active",
-          createdAt: previousWish.createdAt || normalizedGoals[prevIndex].createdAt || Date.now(),
-        };
-      }
-    }
-    const formatGoalLabel = (id, entry = null) => {
-      if (!id) return "";
-      const preset = getGoalPreset(id);
-      const customTitle = typeof entry?.customTitle === "string" ? entry.customTitle.trim() : "";
-      const hasCustomTitle = !!customTitle;
-      const customEmoji = entry?.customEmoji
-        ? normalizeEmojiValue(entry.customEmoji, DEFAULT_GOAL_EMOJI)
-        : null;
-      const resolvedEmoji = hasCustomTitle
-        ? customEmoji || DEFAULT_GOAL_EMOJI
-        : preset?.emoji || DEFAULT_GOAL_EMOJI;
-      const resolvedLabel = hasCustomTitle ? customTitle : preset?.[language] || preset?.en || id;
-      return `${resolvedEmoji} ${resolvedLabel || id}`.trim();
-    };
-    const existingEntry = normalizedGoals.find((goal) => goal.id === goalId) || null;
-    const nextGoalEntry = existingEntry
-      ? { ...existingEntry }
-      : {
-          id: goalId,
-          targetUSD: getGoalDefaultTargetUSD(goalId),
-          savedUSD: 0,
-          status: "active",
-          createdAt: Date.now(),
-        };
-    const filteredGoals = normalizedGoals.filter((goal) => goal.id !== goalId);
-    const nextPrimaryGoals = [nextGoalEntry, ...filteredGoals];
-    const activeGoal = nextGoalEntry.id || DEFAULT_PROFILE.goal;
-    const activeTargetUSD =
-      Number.isFinite(nextGoalEntry.targetUSD) && nextGoalEntry.targetUSD > 0
-        ? nextGoalEntry.targetUSD
-        : getGoalDefaultTargetUSD(activeGoal);
-    setActiveGoalId(activeGoal);
-    setProfile((prev) => ({
-      ...prev,
-      primaryGoals: nextPrimaryGoals,
-      goal: activeGoal,
-      goalTargetUSD: activeTargetUSD,
-      goalCelebrated: false,
-      goalRenewalPending: false,
-    }));
-    setProfileDraft((prev) => ({
-      ...prev,
-      primaryGoals: nextPrimaryGoals,
-      goal: activeGoal,
-      goalTargetUSD: activeTargetUSD,
-      goalCelebrated: false,
-      goalRenewalPending: false,
-    }));
-    ensurePrimaryGoalWish(nextPrimaryGoals, language, activeGoal);
-    if (previousGoalId && previousGoalId !== activeGoal) {
-      const previousEntry = normalizedGoals.find((goal) => goal.id === previousGoalId) || null;
-      logHistoryEvent("goal_cancelled", {
-        goalId: previousGoalId,
-        title: formatGoalLabel(previousGoalId, previousEntry),
-      });
-    }
-    logHistoryEvent("goal_started", {
-      goalId: activeGoal,
-      title: formatGoalLabel(activeGoal, nextGoalEntry),
-    });
-  };
-
   const handleLanguageContinue = () => {
     triggerHaptic();
     if (!termsAccepted) {
@@ -19932,7 +21668,7 @@ useEffect(() => {
     }
     if (field === "gender" && onboardingStep !== "done") {
       const genderValue = value || "none";
-      logEvent("onboarding_gender_chosen", { gender: genderValue });
+      logEvent("onboarding_gender_chosen", { gender: genderValue, selected: genderValue });
     }
     if (field === "persona" && onboardingStep !== "done") {
       const habitType = PERSONA_HABIT_TYPES[value] || "custom";
@@ -19944,9 +21680,21 @@ useEffect(() => {
   const ensurePrimaryGoalWish = useCallback(
     (goalEntries = [], lng, activeGoal = null) => {
       const entries = Array.isArray(goalEntries) ? goalEntries : [];
-      const targetEntry =
-        (activeGoal && entries.find((entry) => entry?.id === activeGoal)) || entries[0] || null;
-      const firstEntry = targetEntry ? [targetEntry] : [];
+      const trimmedEntries = entries.filter((entry) => entry?.id);
+      const validEntries = trimmedEntries.filter((entry) => {
+        const customTitle = typeof entry?.customTitle === "string" ? entry.customTitle.trim() : "";
+        return !!customTitle || !!getGoalPreset(entry.id);
+      });
+      const activeEntry =
+        activeGoal && validEntries.length
+          ? validEntries.find((entry) => entry?.id === activeGoal)
+          : null;
+      const orderedEntries = activeEntry
+        ? [activeEntry, ...validEntries.filter((entry) => entry?.id !== activeEntry.id)]
+        : validEntries;
+      if (!orderedEntries.length) return;
+      const languageKey = lng || "en";
+      const primaryGoalIds = new Set(orderedEntries.map((entry) => entry.id));
       setWishes((prev) => {
         const existingMap = new Map();
         prev.forEach((wish) => {
@@ -19955,55 +21703,85 @@ useEffect(() => {
             wish.id === PRIMARY_GOAL_WISH_ID_LEGACY ||
             (typeof wish.id === "string" && wish.id.startsWith("wish_primary_goal_"))
           ) {
-            const key = wish.goalId || wish.id.replace("wish_primary_goal_", "") || "legacy";
-            existingMap.set(key, wish);
+            let key = null;
+            if (wish.goalId) {
+              key = wish.goalId;
+            } else if (typeof wish.id === "string" && wish.id.startsWith("wish_primary_goal_")) {
+              key = wish.id.replace("wish_primary_goal_", "");
+            } else if (wish.id === PRIMARY_GOAL_WISH_ID_LEGACY && activeGoal) {
+              key = activeGoal;
+            } else {
+              key = "legacy";
+            }
+            const existing = existingMap.get(key);
+            if (!existing) {
+              existingMap.set(key, wish);
+              return;
+            }
+            const existingSaved = Number(existing.savedUSD) || 0;
+            const candidateSaved = Number(wish.savedUSD) || 0;
+            const existingIsNew =
+              typeof existing.id === "string" && existing.id.startsWith("wish_primary_goal_");
+            const candidateIsNew =
+              typeof wish.id === "string" && wish.id.startsWith("wish_primary_goal_");
+            const shouldReplace =
+              candidateSaved > existingSaved ||
+              (candidateSaved === existingSaved && candidateIsNew && !existingIsNew);
+            if (shouldReplace) {
+              existingMap.set(key, wish);
+            }
           }
         });
         const nonPrimary = prev.filter(
           (wish) =>
             wish.kind !== PRIMARY_GOAL_KIND &&
             wish.id !== PRIMARY_GOAL_WISH_ID_LEGACY &&
-            !(typeof wish.id === "string" && wish.id.startsWith("wish_primary_goal_"))
+            !(typeof wish.id === "string" && wish.id.startsWith("wish_primary_goal_")) &&
+            !primaryGoalIds.has(wish.id)
         );
-        const languageKey = lng || "en";
-        const nextPrimary = firstEntry
-          .filter((entry) => entry?.id)
-          .map((entry) => {
-            const goalPreset = getGoalPreset(entry.id);
-            const customTitle = typeof entry?.customTitle === "string" ? entry.customTitle.trim() : "";
-            const hasCustomTitle = !!customTitle;
-            const customEmoji = entry?.customEmoji
-              ? normalizeEmojiValue(entry.customEmoji, DEFAULT_GOAL_EMOJI)
-              : null;
-            const resolvedEmoji = hasCustomTitle
-              ? customEmoji || DEFAULT_GOAL_EMOJI
-              : goalPreset?.emoji || DEFAULT_GOAL_EMOJI;
-        const presetLabel = goalPreset?.[languageKey] || goalPreset?.en || entry.id;
-        const resolvedLabel = hasCustomTitle ? customTitle : presetLabel || entry.id;
-        const title = `${resolvedEmoji} ${resolvedLabel}`.trim();
-        const targetUSD =
-          Number.isFinite(entry.targetUSD) && entry.targetUSD > 0
-            ? entry.targetUSD
-            : getGoalDefaultTargetUSD(entry.id);
-        const existing = existingMap.get(entry.id);
-        const canReuseExisting = existing && existing.status !== "done";
-        const fallbackSavedUSD = Number.isFinite(entry.savedUSD) ? entry.savedUSD : 0;
-        const fallbackStatus = entry?.status && entry.status !== "done" ? entry.status : "active";
-        const fallbackCreatedAt = entry?.createdAt || Date.now();
-        return {
-          id: getPrimaryGoalWishId(entry.id),
-          templateId: `goal_${entry.id}`,
-          title,
-          emoji: resolvedEmoji,
-          targetUSD,
-          savedUSD: canReuseExisting ? existing.savedUSD || 0 : fallbackSavedUSD,
-          status: canReuseExisting ? existing.status || "active" : fallbackStatus,
-          createdAt: canReuseExisting ? existing.createdAt || Date.now() : fallbackCreatedAt,
-              autoManaged: true,
-              kind: PRIMARY_GOAL_KIND,
-              goalId: entry.id,
-            };
-          });
+        const nextPrimary = orderedEntries.map((entry) => {
+          const goalPreset = getGoalPreset(entry.id);
+          const customTitle = typeof entry?.customTitle === "string" ? entry.customTitle.trim() : "";
+          const hasCustomTitle = !!customTitle;
+          const customEmoji = entry?.customEmoji
+            ? normalizeEmojiValue(entry.customEmoji, DEFAULT_GOAL_EMOJI)
+            : null;
+          const resolvedEmoji = hasCustomTitle
+            ? customEmoji || DEFAULT_GOAL_EMOJI
+            : goalPreset?.emoji || DEFAULT_GOAL_EMOJI;
+          const presetLabel = goalPreset?.[languageKey] || goalPreset?.en || entry.id;
+          const resolvedLabel = hasCustomTitle ? customTitle : presetLabel || entry.id;
+          const title = `${resolvedEmoji} ${resolvedLabel}`.trim();
+          const targetUSD =
+            Number.isFinite(entry.targetUSD) && entry.targetUSD > 0
+              ? entry.targetUSD
+              : getGoalDefaultTargetUSD(entry.id);
+          const existing = existingMap.get(entry.id);
+          const entrySavedUSD = Number.isFinite(entry.savedUSD) ? entry.savedUSD : 0;
+          const existingSavedUSD = Number.isFinite(existing?.savedUSD) ? existing.savedUSD : 0;
+          const nextSavedUSD = Math.max(entrySavedUSD, existingSavedUSD);
+          const inferredStatus =
+            targetUSD > 0 && nextSavedUSD >= targetUSD
+              ? "done"
+              : existing?.status && existing.status !== "done"
+              ? existing.status
+              : entry?.status && entry.status !== "done"
+              ? entry.status
+              : "active";
+          return {
+            id: getPrimaryGoalWishId(entry.id),
+            templateId: `goal_${entry.id}`,
+            title,
+            emoji: resolvedEmoji,
+            targetUSD,
+            savedUSD: nextSavedUSD,
+            status: inferredStatus,
+            createdAt: existing?.createdAt || entry?.createdAt || Date.now(),
+            autoManaged: true,
+            kind: PRIMARY_GOAL_KIND,
+            goalId: entry.id,
+          };
+        });
         return [...nextPrimary, ...nonPrimary];
       });
     },
@@ -20194,21 +21972,38 @@ useEffect(() => {
         openedAt: entryContext.openedAt || Date.now(),
         submitted: true,
       };
+      handleCoinEntryClose();
       if (action === "save") {
-        const fallbackGoal = activeGoalId || profile.goal || getFallbackGoalId();
+        const fallbackGoal =
+          activeGoalId ||
+          profile.goal ||
+          mainGoalWish?.id ||
+          (Array.isArray(profile.primaryGoals) ? profile.primaryGoals[0]?.id : null) ||
+          getFallbackGoalId();
         await handleTemptationAction("save", virtualItem, {
           skipPrompt: true,
           goalId: fallbackGoal,
           shouldAssign: false,
+          forcePrimaryGoal: true,
+          forceOverlay: true,
         });
       } else {
         await handleTemptationAction("spend", virtualItem, {
           bypassSpendPrompt: true,
         });
       }
-      handleCoinEntryClose();
     },
-    [activeGoalId, getFallbackGoalId, handleCoinEntryClose, handleTemptationAction, logEvent, profile.goal, t]
+    [
+      activeGoalId,
+      getFallbackGoalId,
+      handleCoinEntryClose,
+      handleTemptationAction,
+      logEvent,
+      mainGoalWish?.id,
+      profile.goal,
+      profile.primaryGoals,
+      t,
+    ]
   );
 
   const handleFabNewTemptation = useCallback(() => {
@@ -20574,6 +22369,7 @@ useEffect(() => {
         goalTargetConfirmed: confirmed,
       };
     });
+    setPendingGoalTargets(null);
     if (!wasSelected && onboardingStep !== "done") {
       logEvent("onboarding_goal_chosen", {
         goal_id: goalId,
@@ -20696,6 +22492,15 @@ useEffect(() => {
   const handleGoalComplete = async (targetsOverride = null) => {
     const selections = registrationData.goalSelections || [];
     const currencyCode = registrationData.currency || DEFAULT_PROFILE.currency;
+    const dedupeTargetsById = (list = []) => {
+      const map = new Map();
+      list.forEach((entry) => {
+        if (entry?.id && !map.has(entry.id)) {
+          map.set(entry.id, entry);
+        }
+      });
+      return Array.from(map.values());
+    };
     let targets = [];
     if (Array.isArray(targetsOverride)) {
       targets = targetsOverride;
@@ -20709,6 +22514,7 @@ useEffect(() => {
         return { id: goalId, usd };
       });
     }
+    targets = dedupeTargetsById(targets);
     const primaryGoals = targets.map((entry) => {
       const goalId = entry.id;
       const targetUSD = entry.usd > 0 ? entry.usd : getGoalDefaultTargetUSD(goalId);
@@ -20867,11 +22673,19 @@ useEffect(() => {
   };
 
   const handleAnalyticsConsentComplete = async (allowAnalytics) => {
+    markStartupLogoDismissed();
     const optOut = !allowAnalytics;
     setAnalyticsOptOutState(optOut);
     setAnalyticsOptOutFlag(optOut);
     logEvent("consent_analytics_enabled", { enabled: allowAnalytics, source: "onboarding" });
-    const targets = pendingGoalTargets;
+    let targets = pendingGoalTargets;
+    if (Array.isArray(targets)) {
+      const selectionSet = new Set(registrationData.goalSelections || []);
+      const filtered = targets.filter((entry) => entry?.id && selectionSet.has(entry.id));
+      if (filtered.length !== targets.length) {
+        targets = filtered.length ? filtered : null;
+      }
+    }
     setPendingGoalTargets(null);
     await handleGoalComplete(Array.isArray(targets) ? targets : null);
   };
@@ -20978,42 +22792,92 @@ useEffect(() => {
       const title = metaTitle || t("defaultDealTitle");
       const isSpendEvent = entry.kind === "spend";
       try {
-        const notificationId = await Notifications.scheduleNotificationAsync({
+        const scheduledEntry = await scheduleNotificationWithCooldown({
           content: {
             title: isSpendEvent
               ? t("smartInsightSpendTitle", { temptation: title })
               : t("smartInsightDeclineTitle", { temptation: title }),
             body: isSpendEvent
               ? t("smartInsightSpendBody", { temptation: title })
-              : t("smartInsightDeclineBody", { temptation: title }),
+            : t("smartInsightDeclineBody", { temptation: title }),
           },
           trigger: new Date(triggerTime),
         });
-        smartReminderScheduleTailRef.current = triggerTime;
-        const payload = {
-          id: `smart-${entry.id}`,
-          eventId: entry.id,
-          kind: entry.kind,
-          title,
-          timestamp,
-          scheduledAt: triggerTime,
-          notificationId,
-        };
-        setSmartReminders((prev) => normalizeSmartReminderEntries([payload, ...prev]));
+        const notificationId = scheduledEntry?.id || null;
+        const scheduledFor = Number(scheduledEntry?.scheduledFor) || triggerTime;
+        if (notificationId) {
+          smartReminderScheduleTailRef.current = scheduledFor;
+          const payload = {
+            id: `smart-${entry.id}`,
+            eventId: entry.id,
+            kind: entry.kind,
+            title,
+            timestamp,
+            scheduledAt: scheduledFor,
+            notificationId,
+            templateId: templateId || null,
+          };
+          setSmartReminders((prev) => normalizeSmartReminderEntries([payload, ...prev]));
+        }
       } catch (error) {
         console.warn("smart reminder schedule", error);
       }
     },
-    [ensureNotificationPermission, resolveTemplateTitle, setSmartReminders, t]
+    [
+      ensureNotificationPermission,
+      resolveTemplateTitle,
+      scheduleNotificationWithCooldown,
+      setSmartReminders,
+      t,
+    ]
+  );
+
+  const cancelSameDaySmartReminders = useCallback(
+    async (templateId, dayKey) => {
+      if (!templateId || !dayKey) return;
+      const reminders = Array.isArray(smartRemindersRef.current) ? smartRemindersRef.current : [];
+      const keep = [];
+      const toCancel = [];
+      reminders.forEach((reminder) => {
+        const reminderDay =
+          reminder?.scheduledAt && Number.isFinite(reminder.scheduledAt)
+            ? getDayKey(reminder.scheduledAt)
+            : null;
+        if (reminder?.templateId === templateId && reminderDay === dayKey) {
+          if (reminder.notificationId) {
+            toCancel.push(reminder.notificationId);
+          }
+        } else {
+          keep.push(reminder);
+        }
+      });
+      if (toCancel.length) {
+        await Promise.all(
+          toCancel.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {}))
+        );
+      }
+      if (toCancel.length) {
+        setSmartReminders(normalizeSmartReminderEntries(keep));
+      }
+    },
+    [setSmartReminders]
   );
 
   const logHistoryEvent = useCallback(
     (kind, meta = {}) => {
       const timestamp = Date.now();
+      const templateId =
+        meta?.templateId || meta?.template_id || meta?.id || meta?.template || meta?.templateId;
+      const dayKey = getDayKey(timestamp);
+      if (templateId) {
+        cancelSameDaySmartReminders(templateId, dayKey);
+      }
+      const normalizedMeta =
+        templateId && !meta.templateId && !meta.template_id ? { ...meta, templateId } : meta;
       const entry = {
         id: `history-${timestamp}-${Math.random().toString(16).slice(2, 6)}`,
         kind,
-        meta,
+        meta: normalizedMeta,
         timestamp,
       };
       setHistoryEvents((prev) => {
@@ -21026,7 +22890,7 @@ useEffect(() => {
       setChallengesState((prev) => applyChallengeEvent(prev, entry));
       registerSmartReminder(entry);
     },
-    [registerSmartReminder, setChallengesState]
+    [cancelSameDaySmartReminders, registerSmartReminder, setChallengesState]
   );
 
   const recomputeHistoryAggregates = useCallback(
@@ -21151,15 +23015,11 @@ useEffect(() => {
     [setDeclineCount, setDecisionStats, setRefuseStats, setSavedTotalUSD]
   );
 
-  const rebuildSavingsFromHistory = useCallback(
-    (list) => {
+  const computeSavingsTotals = useCallback(
+    (list, shouldReduceSpends = spendReducesSavings) => {
       const normalized = Array.isArray(list) ? list.filter(Boolean) : [];
       if (!normalized.length) {
-        setSavedTotalUSD(0);
-        setLifetimeSavedUSD(0);
-        persistLastCelebratedLevel(1);
-        previousPlayerLevelRef.current = 1;
-        return;
+        return { running: 0, peak: 0 };
       }
       const sorted = normalized.slice().sort((a, b) => {
         const aStamp = typeof a?.timestamp === "number" ? a.timestamp : 0;
@@ -21174,12 +23034,20 @@ useEffect(() => {
         if (!amount) return;
         if (HISTORY_SAVED_GAIN_EVENTS.has(entry.kind)) {
           running += amount;
-        } else if (HISTORY_SAVED_LOSS_EVENTS.has(entry.kind)) {
+        } else if (shouldReduceSpends && HISTORY_SAVED_LOSS_EVENTS.has(entry.kind)) {
           running -= amount;
         }
         if (running < 0) running = 0;
         if (running > peak) peak = running;
       });
+      return { running, peak };
+    },
+    [spendReducesSavings]
+  );
+
+  const rebuildSavingsFromHistory = useCallback(
+    (list, shouldReduceSpends = spendReducesSavings) => {
+      const { running, peak } = computeSavingsTotals(list, shouldReduceSpends);
       setSavedTotalUSD(running);
       setLifetimeSavedUSD(peak);
       const currentLevel = getTierProgress(
@@ -21188,8 +23056,44 @@ useEffect(() => {
       ).level;
       persistLastCelebratedLevel(currentLevel);
       previousPlayerLevelRef.current = currentLevel;
+      return { running, peak };
     },
-    [persistLastCelebratedLevel, profile.currency, setLifetimeSavedUSD, setSavedTotalUSD]
+    [
+      computeSavingsTotals,
+      persistLastCelebratedLevel,
+      profile.currency,
+      setLifetimeSavedUSD,
+      setSavedTotalUSD,
+      spendReducesSavings,
+    ]
+  );
+
+  const handleSpendImpactToggle = useCallback(
+    (enabled) => {
+      const nextValue = !!enabled;
+      triggerHaptic();
+      setProfile((prev) => ({ ...prev, spendReducesSavings: nextValue }));
+      setProfileDraft((prev) => ({ ...prev, spendReducesSavings: nextValue }));
+      const totals = rebuildSavingsFromHistory(resolvedHistoryEvents, nextValue);
+      if (totals && typeof totals.running === "number") {
+        rebalanceWishesFromSavedTotal();
+      }
+      logEvent("spend_impact_toggle", { enabled: nextValue ? 1 : 0 });
+    },
+    [logEvent, rebuildSavingsFromHistory, rebalanceWishesFromSavedTotal, resolvedHistoryEvents, triggerHaptic]
+  );
+  const handleSoundToggle = useCallback(
+    (enabled) => {
+      const nextValue = !!enabled;
+      triggerHaptic();
+      setSoundEnabled(nextValue);
+      if (!nextValue) {
+        stopAllSounds();
+      }
+      AsyncStorage.setItem(STORAGE_KEYS.SOUND_ENABLED, nextValue ? "1" : "0").catch(() => {});
+      logEvent("sound_toggle", { enabled: nextValue ? 1 : 0 });
+    },
+    [logEvent, stopAllSounds, triggerHaptic]
   );
 
   const handleHistoryDelete = useCallback(
@@ -21295,13 +23199,9 @@ useEffect(() => {
   }, []);
 
   const triggerCoinHaptics = useCallback(() => {
-    const pulses = [0, 90, 180, 270];
-    pulses.forEach((delay) => {
-      setTimeout(() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      }, delay);
-    });
-  }, []);
+    triggerCoinRewardHaptics();
+    playSound("coin");
+  }, [playSound]);
 
   const closeSpendPrompt = useCallback(() => {
     spendPromptLockRef.current = false;
@@ -21328,8 +23228,9 @@ useEffect(() => {
       const resolvedDuration = duration || TAMAGOTCHI_REACTION_DURATION[type] || 3200;
       mascotQueueRef.current.push({ type, duration: resolvedDuration });
       processMascotQueue();
+      playSound("cat");
     },
-    [processMascotQueue]
+    [playSound, processMascotQueue]
   );
 
   const feedTamagotchi = useCallback(
@@ -21465,39 +23366,70 @@ useEffect(() => {
       clearTimeout(stormTimerRef.current);
     }
     setStormActive(true);
+    setTimeout(() => playSound("thunder"), 120);
     stormTimerRef.current = setTimeout(() => {
       stormTimerRef.current = null;
       setStormActive(false);
     }, STORM_OVERLAY_DURATION_MS);
-  }, []);
+  }, [playSound]);
   const recordTemptationInteraction = useCallback(
     (templateId, actionType, item = null) => {
-      if (!templateId) return;
+      if (!templateId && !item?.id && !item?.templateId) return;
       if (actionType !== "save" && actionType !== "spend") return;
       const resolvedTitle = item
         ? resolveTemptationTitle(item, language)
         : null;
       setTemptationInteractions((prev) => {
-        const prevEntry = prev?.[templateId] || {};
+        const baseKey = normalizeTemplateKey(templateId);
+        const itemIdKey = normalizeTemplateKey(item?.id);
+        const itemTemplateKey = normalizeTemplateKey(item?.templateId);
+        const candidateKeys = [baseKey, itemIdKey, itemTemplateKey].filter(Boolean);
+        if (!candidateKeys.length) return prev;
+        const primaryKey = candidateKeys[0];
+        const prevEntry = prev?.[primaryKey] || {};
         const now = Date.now();
-        const previousInteractionAt = prevEntry.lastInteractionAt || null;
+        const lastInteractionAt = prevEntry.lastInteractionAt || null;
+        const priorInteractionAt = prevEntry.previousInteractionAt || null;
+        const secondPriorInteractionAt = prevEntry.secondPreviousInteractionAt || null;
         let detectedIntervalMs = prevEntry.detectedIntervalMs || null;
         let frequency = prevEntry.frequency || null;
         let intervalMs = prevEntry.intervalMs || null;
         let nextCheckAt = prevEntry.nextCheckAt || null;
-        if (previousInteractionAt) {
-          detectedIntervalMs = now - previousInteractionAt;
-          const resolvedFrequency = resolveTemptationFrequencyBucket(detectedIntervalMs);
-          frequency = resolvedFrequency || frequency || null;
-          intervalMs = frequency ? getFrequencyIntervalMs(frequency) : detectedIntervalMs;
-          nextCheckAt = intervalMs ? now + intervalMs : null;
+        const latestIntervalMs = lastInteractionAt ? now - lastInteractionAt : null;
+        let resolvedFrequency = null;
+        if (latestIntervalMs !== null) {
+          detectedIntervalMs = latestIntervalMs;
         }
+        if (latestIntervalMs !== null) {
+          const hasTwoActionsInDay =
+            Number.isFinite(lastInteractionAt) &&
+            latestIntervalMs <= DAILY_SECOND_ACTION_THRESHOLD_MS;
+          if (hasTwoActionsInDay) {
+            resolvedFrequency = "daily";
+          } else if (
+            latestIntervalMs > DAILY_SECOND_ACTION_THRESHOLD_MS &&
+            latestIntervalMs <= WEEKLY_FREQUENCY_THRESHOLD_MS
+          ) {
+            resolvedFrequency = "weekly";
+          } else if (
+            latestIntervalMs > WEEKLY_FREQUENCY_THRESHOLD_MS &&
+            latestIntervalMs <= BIWEEKLY_FREQUENCY_THRESHOLD_MS
+          ) {
+            resolvedFrequency = "biweekly";
+          } else if (latestIntervalMs > BIWEEKLY_FREQUENCY_THRESHOLD_MS) {
+            resolvedFrequency = "monthly";
+          }
+        }
+        frequency = resolvedFrequency || frequency || null;
+        intervalMs = frequency ? getFrequencyIntervalMs(frequency) : detectedIntervalMs;
+        nextCheckAt = frequency && intervalMs ? now + intervalMs : null;
         const nextEntry = {
           ...(prevEntry || {}),
           saveCount: (prevEntry.saveCount || 0) + (actionType === "save" ? 1 : 0),
           spendCount: (prevEntry.spendCount || 0) + (actionType === "spend" ? 1 : 0),
           lastInteractionAt: now,
-          previousInteractionAt: previousInteractionAt || prevEntry.previousInteractionAt || null,
+          previousInteractionAt: lastInteractionAt || priorInteractionAt || null,
+          secondPreviousInteractionAt: priorInteractionAt || secondPriorInteractionAt || null,
           detectedIntervalMs,
           frequency: frequency || null,
           intervalMs: intervalMs || null,
@@ -21522,10 +23454,11 @@ useEffect(() => {
           nextEntry.frequencyReminderScheduledAt = prevEntry.frequencyReminderScheduledAt || null;
           nextEntry.frequencyReminderLocale = prevEntry.frequencyReminderLocale || null;
         }
-        return {
-          ...(prev || {}),
-          [templateId]: nextEntry,
-        };
+        const nextMap = { ...(prev || {}) };
+        candidateKeys.forEach((key) => {
+          nextMap[key] = nextEntry;
+        });
+        return nextMap;
       });
     },
     [language]
@@ -21605,6 +23538,68 @@ useEffect(() => {
     },
     [profile.customSpend]
   );
+      const ensureGoalWishExists = useCallback(
+        (wishId) => {
+          if (!wishId || typeof wishId !== "string") return false;
+          if (!wishId.startsWith("wish_primary_goal_")) return false;
+          const goalId = wishId.replace("wish_primary_goal_", "");
+          const primaryEntries = Array.isArray(profile.primaryGoals) ? profile.primaryGoals : [];
+          const primaryEntry = primaryEntries.find((entry) => entry?.id === goalId);
+          const canFallbackToProfileGoal = profile.goal === goalId;
+          if (!primaryEntry && !canFallbackToProfileGoal) return false;
+          const fallbackTargetUSD =
+            profile.goal === goalId &&
+            Number.isFinite(profile.goalTargetUSD) &&
+            profile.goalTargetUSD > 0
+              ? profile.goalTargetUSD
+              : getGoalDefaultTargetUSD(goalId);
+          const ensuredEntry =
+            primaryEntry || {
+              id: goalId,
+              targetUSD: fallbackTargetUSD,
+              savedUSD: 0,
+              status: "active",
+              createdAt: Date.now(),
+            };
+          setWishes((prev) => {
+            if (prev.some((wish) => wish?.id === wishId)) return prev;
+            const goalPreset = getGoalPreset(goalId);
+            const languageKey = language || "en";
+            const customTitle =
+          typeof ensuredEntry?.customTitle === "string" ? ensuredEntry.customTitle.trim() : "";
+        const hasCustomTitle = !!customTitle;
+        const customEmoji = ensuredEntry?.customEmoji
+          ? normalizeEmojiValue(ensuredEntry.customEmoji, DEFAULT_GOAL_EMOJI)
+          : null;
+        const resolvedEmoji =
+          hasCustomTitle ? customEmoji || DEFAULT_GOAL_EMOJI : goalPreset?.emoji || DEFAULT_GOAL_EMOJI;
+        const presetLabel = goalPreset?.[languageKey] || goalPreset?.en || goalId;
+        const resolvedLabel = hasCustomTitle ? customTitle : presetLabel || goalId;
+        const title = `${resolvedEmoji} ${resolvedLabel}`.trim();
+        const targetUSD =
+          Number.isFinite(ensuredEntry?.targetUSD) && ensuredEntry.targetUSD > 0
+            ? ensuredEntry.targetUSD
+            : getGoalDefaultTargetUSD(goalId);
+        const createdAt = ensuredEntry?.createdAt || Date.now();
+        const nextWish = {
+          id: wishId,
+          templateId: `goal_${goalId}`,
+          title,
+          emoji: resolvedEmoji,
+          targetUSD,
+          savedUSD: 0,
+          status: "active",
+          createdAt,
+          autoManaged: true,
+          kind: PRIMARY_GOAL_KIND,
+          goalId,
+        };
+        return [nextWish, ...prev];
+      });
+      return true;
+    },
+    [language, profile.goal, profile.goalTargetUSD, profile.primaryGoals, setWishes]
+  );
   const getLegacyRefuseStatsEntry = useCallback(
     (stats, templateId, item = null) => {
       if (!stats || typeof stats !== "object") {
@@ -21661,6 +23656,21 @@ useEffect(() => {
       };
     });
   }, []);
+  const queueCoinValueModal = useCallback(() => {
+    const currentStatus = coinValueModalStatusRef.current;
+    if (
+      currentStatus === COIN_VALUE_MODAL_STATUS.SHOWN ||
+      currentStatus === COIN_VALUE_MODAL_STATUS.PENDING
+    ) {
+      return;
+    }
+    coinValueModalStatusRef.current = COIN_VALUE_MODAL_STATUS.PENDING;
+    setCoinValueModalStatus(COIN_VALUE_MODAL_STATUS.PENDING);
+    AsyncStorage.setItem(
+      STORAGE_KEYS.COIN_VALUE_MODAL,
+      COIN_VALUE_MODAL_STATUS.PENDING
+    ).catch(() => {});
+  }, []);
   const priceEditorTemplateId = priceEditor.item ? resolveTemptationTemplateId(priceEditor.item) : null;
   const priceEditorAssignedGoalId = priceEditorTemplateId
     ? resolveTemptationGoalId(priceEditorTemplateId)
@@ -21677,7 +23687,26 @@ useEffect(() => {
     (item) => {
       if (!item) return;
       const templateId = resolveTemptationTemplateId(item);
-      const priceUSD = item.priceUSD || item.basePriceUSD || 0;
+      const rawPriceUSD =
+        item?.priceUSD ??
+        item?.basePriceUSD ??
+        item?.amountUSD ??
+        item?.amount ??
+        item?.amountLocal ??
+        0;
+      const normalizedPriceUSD = parseAmountValue(rawPriceUSD);
+      let priceUSD =
+        normalizedPriceUSD > 0
+          ? normalizedPriceUSD
+          : isCustomTemptation(item)
+          ? resolveCustomPriceUSD(item, profile.currency || DEFAULT_PROFILE.currency)
+          : 0;
+      if (priceUSD <= 0 && isCustomTemptation(item) && profile.customSpend) {
+        priceUSD = resolveCustomPriceUSD(
+          profile.customSpend,
+          profile.currency || DEFAULT_PROFILE.currency
+        );
+      }
       const title = `${item.emoji || "✨"} ${
         item.title?.[language] || item.title?.en || item.title || "wish"
       }`;
@@ -21685,7 +23714,9 @@ useEffect(() => {
       handleFocusSpend(item);
       logHistoryEvent("spend", { title, amountUSD: priceUSD, templateId: templateId || item.id });
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-      setSavedTotalUSD((prev) => Math.max(prev - priceUSD, 0));
+      if (spendReducesSavings) {
+        setSavedTotalUSD((prev) => Math.max(prev - priceUSD, 0));
+      }
       setPurchases((prev) => [
         {
           id: `spend-${item.id}-${Date.now()}`,
@@ -21759,6 +23790,8 @@ useEffect(() => {
       setFreeDayStats,
       setRefuseStats,
       getLegacyRefuseStatsEntry,
+      setSavedTotalUSD,
+      spendReducesSavings,
     ]
   );
 
@@ -21777,7 +23810,7 @@ useEffect(() => {
 
   const buildTemptationPayload = useCallback(
     (item, extra = {}) => {
-      const priceUSD = item.priceUSD || item.basePriceUSD || 0;
+      const priceUSD = Number(item.priceUSD ?? item.basePriceUSD ?? 0) || 0;
       return {
         item_id: item.id,
         price_usd: priceUSD,
@@ -21824,7 +23857,7 @@ useEffect(() => {
               body: t("impulseReminderLoseBody", { amount: amountLabel }),
             };
       try {
-        await Notifications.scheduleNotificationAsync({
+        await scheduleNotificationWithCooldown({
           content,
           trigger: new Date(triggerAt),
         });
@@ -21832,7 +23865,7 @@ useEffect(() => {
         console.warn("impulse reminder schedule", error);
       }
     },
-    [ensureNotificationPermission, profile.currency, t]
+    [ensureNotificationPermission, profile.currency, scheduleNotificationWithCooldown, t]
   );
 
   const logImpulseEvent = useCallback(
@@ -21868,6 +23901,48 @@ useEffect(() => {
     [language, resolveTemptationTemplateId, scheduleImpulseReminder, t]
   );
 
+  const buildPrimaryGoalWishSnapshot = useCallback(
+    (wishId) => {
+      if (!wishId || typeof wishId !== "string") return null;
+      const existing = wishes.find((wish) => wish?.id === wishId);
+      if (existing) return existing;
+      if (!wishId.startsWith("wish_primary_goal_")) return null;
+      const goalId = wishId.replace("wish_primary_goal_", "");
+      const primaryEntry = Array.isArray(profile.primaryGoals)
+        ? profile.primaryGoals.find((entry) => entry?.id === goalId)
+        : null;
+      const preset = getGoalPreset(goalId);
+      const customTitle =
+        typeof primaryEntry?.customTitle === "string" ? primaryEntry.customTitle.trim() : "";
+      const customEmoji = primaryEntry?.customEmoji
+        ? normalizeEmojiValue(primaryEntry.customEmoji, DEFAULT_GOAL_EMOJI)
+        : null;
+      const label = customTitle || preset?.[language] || preset?.en || goalId;
+      const emoji = customTitle
+        ? customEmoji || DEFAULT_GOAL_EMOJI
+        : preset?.emoji || DEFAULT_GOAL_EMOJI;
+      const targetUSD =
+        Number.isFinite(primaryEntry?.targetUSD) && primaryEntry.targetUSD > 0
+          ? primaryEntry.targetUSD
+          : profile.goal === goalId &&
+            Number.isFinite(profile.goalTargetUSD) &&
+            profile.goalTargetUSD > 0
+          ? profile.goalTargetUSD
+          : getGoalDefaultTargetUSD(goalId);
+      const savedUSD = Number.isFinite(primaryEntry?.savedUSD) ? primaryEntry.savedUSD : 0;
+      return {
+        id: wishId,
+        title: `${emoji} ${label}`.trim(),
+        targetUSD,
+        savedUSD,
+        status: primaryEntry?.status || "active",
+        kind: PRIMARY_GOAL_KIND,
+        goalId,
+      };
+    },
+    [language, profile.goal, profile.goalTargetUSD, profile.primaryGoals, wishes]
+  );
+
   const handleTemptationAction = useCallback(
     async (type, item, options = {}) => {
       const {
@@ -21878,9 +23953,56 @@ useEffect(() => {
         bypassSpendPrompt = false,
         skipStreakRecoveryPrompt = false,
         restoredStreakValue = null,
+        forceOverlay = false,
+        forcePrimaryGoal = false,
       } = options || {};
+      playSound("tap");
+      let resolvedForcedGoalId = forcedGoalId;
+      if (
+        typeof resolvedForcedGoalId === "string" &&
+        !resolvedForcedGoalId.startsWith("wish_primary_goal_") &&
+        Array.isArray(profile.primaryGoals) &&
+        profile.primaryGoals.some((goal) => goal?.id === resolvedForcedGoalId)
+      ) {
+        resolvedForcedGoalId = getPrimaryGoalWishId(resolvedForcedGoalId);
+      }
+      const normalizeTargetGoalId = (goalId) => {
+        if (
+          typeof goalId === "string" &&
+          !goalId.startsWith("wish_primary_goal_") &&
+          Array.isArray(profile.primaryGoals) &&
+          profile.primaryGoals.some((goal) => goal?.id === goalId)
+        ) {
+          return getPrimaryGoalWishId(goalId);
+        }
+        if (
+          typeof goalId === "string" &&
+          !goalId.startsWith("wish_primary_goal_") &&
+          profile.goal === goalId
+        ) {
+          return getPrimaryGoalWishId(goalId);
+        }
+        return goalId;
+      };
       const templateId = resolveTemptationTemplateId(item);
-      const priceUSD = item.priceUSD || item.basePriceUSD || 0;
+      const rawPriceUSD =
+        item?.priceUSD ??
+        item?.basePriceUSD ??
+        item?.amountUSD ??
+        item?.amount ??
+        item?.amountLocal ??
+        0;
+      const normalizedPriceUSD = parseAmountValue(rawPriceUSD);
+      let priceUSD = normalizedPriceUSD > 0 ? normalizedPriceUSD : 0;
+      if (priceUSD <= 0 && isCustomTemptation(item)) {
+        priceUSD = resolveCustomPriceUSD(item, profile.currency || DEFAULT_PROFILE.currency);
+        if (priceUSD <= 0 && profile.customSpend) {
+          priceUSD = resolveCustomPriceUSD(
+            profile.customSpend,
+            profile.currency || DEFAULT_PROFILE.currency
+          );
+        }
+      }
       const title = `${item.emoji || "✨"} ${
         item.title?.[language] || item.title?.en || item.title || "wish"
       }`;
@@ -21980,7 +24102,7 @@ useEffect(() => {
           streakStatsEntry.lastAction || (pendingRecovery ? "spend" : null);
         if (!skipStreakRecoveryPrompt && restoredStreakOverride == null) {
           const hasRecoverableStreak =
-            lastStreakAction === "spend" && recoverableStreak > 0;
+            lastStreakAction === "spend" && recoverableStreak >= 2;
           if (hasRecoverableStreak) {
             const recoveryUSD = recoverableAmountUSD || priceUSD;
             const coinCost = computeStreakRecoveryCost(recoveryUSD);
@@ -22001,23 +24123,28 @@ useEffect(() => {
           }
         }
         const saveTimestamp = Date.now();
-        const windowStart = saveTimestamp - SAVE_SPAM_WINDOW_MS;
-        const recentSaves = saveActionLogRef.current.filter(
-          (entry) => entry.timestamp >= windowStart
-        );
-        const targetItemId = templateId || item.id;
-        const sameItemCount = recentSaves.filter((entry) => entry.itemId === targetItemId).length;
-        const totalSaveCount = recentSaves.length;
-        if (sameItemCount >= SAVE_SPAM_ITEM_LIMIT) {
-          Alert.alert("Almost", t("saveSpamWarningItem"));
-          return;
-        }
-        if (totalSaveCount >= SAVE_SPAM_GLOBAL_LIMIT) {
-          Alert.alert("Almost", t("saveSpamWarningGlobal"));
-          return;
-        }
+        // Previously we blocked rapid repeated saves; removed to keep progress updating every time.
         const storedGoalId = resolveTemptationGoalId(templateId);
-        const desiredGoalId = forcedGoalId || storedGoalId;
+        let primaryGoalWishId = null;
+        if (overlay?.type === "primary_temptation" || forcePrimaryGoal) {
+          if (typeof activeGoalId === "string" && activeGoalId.startsWith("wish_primary_goal_")) {
+            primaryGoalWishId = activeGoalId;
+          } else if (
+            typeof activeGoalId === "string" &&
+            Array.isArray(profile.primaryGoals) &&
+            profile.primaryGoals.some((goal) => goal?.id === activeGoalId)
+          ) {
+            primaryGoalWishId = getPrimaryGoalWishId(activeGoalId);
+          } else if (mainGoalWish?.goalId) {
+            primaryGoalWishId = getPrimaryGoalWishId(mainGoalWish.goalId);
+          } else if (profile.goal) {
+            primaryGoalWishId = getPrimaryGoalWishId(profile.goal);
+          }
+        }
+        const normalizedStoredGoalId = normalizeTargetGoalId(storedGoalId);
+        const desiredGoalId = normalizeTargetGoalId(
+          resolvedForcedGoalId || primaryGoalWishId || normalizedStoredGoalId
+        );
         const shouldPrompt =
           !skipPrompt && assignableGoals.length > 1 && !desiredGoalId;
         if (shouldPrompt) {
@@ -22029,32 +24156,308 @@ useEffect(() => {
           });
           return;
         }
-        let targetGoalId = desiredGoalId || getFallbackGoalId();
+        const activeFallbackGoalId = activeGoalId || profile.goal || null;
+        let targetGoalId =
+          desiredGoalId || normalizeTargetGoalId(activeFallbackGoalId) || getFallbackGoalId();
         if (!targetGoalId && assignableGoals.length === 0 && wishes.length > 0) {
           targetGoalId = wishes[0].id;
         }
-        const shouldStoreGoal =
-          (shouldAssign && !!targetGoalId) ||
-          (!storedGoalId && !forcedGoalId && !!targetGoalId);
-        if (shouldStoreGoal) {
-          assignTemptationGoal(templateId || item.id, targetGoalId);
+        if (!targetGoalId) {
+          const fallbackGoal = activeGoalId || profile.goal || null;
+          if (fallbackGoal) {
+            targetGoalId = normalizeTargetGoalId(fallbackGoal);
+          }
         }
-        const targetWish = targetGoalId ? wishes.find((wish) => wish.id === targetGoalId) : null;
+        // Always normalize to primary-goal wish ids when applicable and ensure target exists.
+        let normalizedTargetGoalId = targetGoalId ? normalizeTargetGoalId(targetGoalId) : null;
+        const resolveExistingGoalId = () => {
+          const primaryActiveId =
+            (profile.goal &&
+              Array.isArray(profile.primaryGoals) &&
+              profile.primaryGoals.some((g) => g?.id === profile.goal) &&
+              getPrimaryGoalWishId(profile.goal)) ||
+            null;
+          const singleAssignableId =
+            assignableGoals.length === 1 && assignableGoals[0]?.id ? assignableGoals[0].id : null;
+          const candidates = [
+            normalizedTargetGoalId,
+            primaryActiveId,
+            activeGoalId,
+            mainGoalWish?.id,
+            singleAssignableId,
+            (wishes || []).find((wish) => wish.status !== "done")?.id,
+            wishes?.[0]?.id,
+          ].filter(Boolean);
+          for (const candidate of candidates) {
+            const matchesWish = wishes.some((wish) => wish?.id === candidate);
+            const matchedPrimary =
+              Array.isArray(profile.primaryGoals) &&
+              profile.primaryGoals.find(
+                (goal) =>
+                  normalizeTargetGoalId(goal.id) === candidate || getPrimaryGoalWishId(goal.id) === candidate
+              );
+            if (matchesWish) {
+              return candidate;
+            }
+            if (matchedPrimary) {
+              return getPrimaryGoalWishId(matchedPrimary.id);
+            }
+            if (candidate.startsWith("wish_primary_goal_")) {
+              return candidate;
+            }
+          }
+          return null;
+        };
+        normalizedTargetGoalId = resolveExistingGoalId();
+        if (
+          normalizedTargetGoalId &&
+          normalizedTargetGoalId.startsWith("wish_primary_goal_") &&
+          !ensureGoalWishExists(normalizedTargetGoalId)
+        ) {
+          normalizedTargetGoalId = null;
+        }
+        if (!normalizedTargetGoalId) {
+          const fallbackWishId =
+            (wishes || []).find((wish) => wish.status !== "done")?.id || wishes?.[0]?.id || null;
+          normalizedTargetGoalId = fallbackWishId ? normalizeTargetGoalId(fallbackWishId) : null;
+          if (!normalizedTargetGoalId) {
+            const primaryFallbackId =
+              profile.goal || (Array.isArray(profile.primaryGoals) ? profile.primaryGoals[0]?.id : null) || null;
+            if (primaryFallbackId) {
+              const primaryWishId = getPrimaryGoalWishId(primaryFallbackId);
+              if (ensureGoalWishExists(primaryWishId)) {
+                normalizedTargetGoalId = primaryWishId;
+              }
+            }
+          }
+          if (!normalizedTargetGoalId) {
+            const mainWishId = mainGoalWish?.id || null;
+            if (mainWishId) {
+              const normalizedMainWishId = normalizeTargetGoalId(mainWishId);
+              if (
+                normalizedMainWishId &&
+                (!normalizedMainWishId.startsWith("wish_primary_goal_") ||
+                  ensureGoalWishExists(normalizedMainWishId))
+              ) {
+                normalizedTargetGoalId = normalizedMainWishId;
+              }
+            }
+          }
+        }
+        if (overlay?.type === "primary_temptation") {
+          const activePrimaryId =
+            profile.goal ||
+            (Array.isArray(profile.primaryGoals) && profile.primaryGoals[0]?.id) ||
+            null;
+          const activePrimaryWishId = activePrimaryId ? getPrimaryGoalWishId(activePrimaryId) : null;
+          if (activePrimaryWishId && normalizedTargetGoalId !== activePrimaryWishId) {
+            normalizedTargetGoalId = activePrimaryWishId;
+            ensureGoalWishExists(normalizedTargetGoalId);
+            setActiveGoalId(activePrimaryId);
+          }
+        }
+        if (
+          __DEV__ &&
+          type === "save" &&
+          (overlay?.type === "primary_temptation" || isCustomTemptation(item))
+        ) {
+          console.warn("primary_temptation_save_debug", {
+            priceUSD,
+            targetGoalId,
+            itemId: item?.id,
+            templateId,
+            hasWishMatch: wishes.some((wish) => wish?.id === targetGoalId),
+            savedTotalUSD,
+            heroGoalSavedUSD,
+            heroGoalTargetUSD,
+            overlayType: overlay?.type || null,
+          });
+        }
+        const autoAssignSingleGoal =
+          !storedGoalId && !resolvedForcedGoalId && assignableGoals.length === 1;
+        const normalizedActiveFallbackGoalId = activeFallbackGoalId
+          ? normalizeTargetGoalId(activeFallbackGoalId)
+          : null;
+        const shouldStoreGoal =
+          normalizedTargetGoalId &&
+          (shouldAssign ||
+            !!primaryGoalWishId ||
+            autoAssignSingleGoal ||
+            (!storedGoalId &&
+              !resolvedForcedGoalId &&
+              normalizedActiveFallbackGoalId &&
+              normalizedTargetGoalId === normalizedActiveFallbackGoalId) ||
+            (!storedGoalId &&
+              !resolvedForcedGoalId &&
+              mainGoalWish?.id &&
+              normalizedTargetGoalId === mainGoalWish.id));
+        if (shouldStoreGoal) {
+          assignTemptationGoal(templateId || item.id, normalizedTargetGoalId);
+        }
+        const targetWish = normalizedTargetGoalId
+          ? wishes.find((wish) => wish.id === normalizedTargetGoalId)
+          : null;
+        const targetWishSnapshot = targetWish || buildPrimaryGoalWishSnapshot(normalizedTargetGoalId);
         logEvent("temptation_decision", {
           temptation_id: templateId || item.id,
           decision: "save",
           price: priceLocal,
           balance_before: balanceLocal,
-          saving_target_id: targetGoalId || null,
+          saving_target_id: normalizedTargetGoalId || null,
         });
         let appliedAmount = 0;
-        if (targetGoalId) {
-          appliedAmount = applySavingsToWish(targetGoalId, priceUSD);
+        if (normalizedTargetGoalId) {
+          appliedAmount = applySavingsToWish(normalizedTargetGoalId, priceUSD);
+        }
+        if (appliedAmount > 0 && normalizedTargetGoalId) {
+          setWishes((prev) => {
+            let changed = false;
+            let found = false;
+            const next = prev.map((wish) => {
+              if (!wish) return wish;
+              if (wish.id !== normalizedTargetGoalId) return wish;
+              found = true;
+              const targetUSD =
+                Number.isFinite(wish.targetUSD) && wish.targetUSD > 0
+                  ? wish.targetUSD
+                  : getGoalDefaultTargetUSD(wish.goalId || wish.id);
+              const previousSaved = Number.isFinite(wish.savedUSD) ? wish.savedUSD : 0;
+              const nextSaved = Math.min(previousSaved + appliedAmount, targetUSD || Number.POSITIVE_INFINITY);
+              const nextStatus = targetUSD > 0 && nextSaved >= targetUSD ? "done" : "active";
+              if (nextSaved !== previousSaved || nextStatus !== wish.status) {
+                changed = true;
+                return { ...wish, savedUSD: nextSaved, status: nextStatus };
+              }
+              return wish;
+            });
+            if (!found) return prev;
+            return changed ? next : prev;
+          });
+        }
+        if (
+          appliedAmount > 0 &&
+          typeof normalizedTargetGoalId === "string" &&
+          normalizedTargetGoalId.startsWith("wish_primary_goal_")
+        ) {
+          const goalId = normalizedTargetGoalId.replace("wish_primary_goal_", "");
+          const currentGoalEntry = Array.isArray(profile.primaryGoals)
+            ? profile.primaryGoals.find((goal) => goal?.id === goalId)
+            : null;
+          const currentSaved = Number.isFinite(currentGoalEntry?.savedUSD)
+            ? currentGoalEntry.savedUSD
+            : 0;
+          const targetUSD =
+            Number.isFinite(currentGoalEntry?.targetUSD) && currentGoalEntry.targetUSD > 0
+              ? currentGoalEntry.targetUSD
+              : getGoalDefaultTargetUSD(goalId);
+          const nextSaved = Math.max(0, currentSaved + appliedAmount);
+          const nextStatus = targetUSD > 0 && nextSaved >= targetUSD ? "done" : "active";
+          setActiveGoalId(goalId);
+          syncPrimaryGoalProgress(goalId, nextSaved, nextStatus);
+          setProfile((prev) => {
+            const existingGoals = Array.isArray(prev.primaryGoals) ? prev.primaryGoals : [];
+            const updatedGoals = [];
+            let found = false;
+            existingGoals.forEach((entry) => {
+              if (entry?.id !== goalId) {
+                updatedGoals.push(entry);
+                return;
+              }
+              found = true;
+              updatedGoals.push({
+                ...entry,
+                targetUSD: targetUSD,
+                savedUSD: Math.max(Number(entry.savedUSD) || 0, nextSaved),
+                status: nextStatus,
+              });
+            });
+            if (!found) {
+              updatedGoals.unshift({
+                id: goalId,
+                targetUSD,
+                savedUSD: nextSaved,
+                status: nextStatus,
+                createdAt: Date.now(),
+              });
+            }
+            return {
+              ...prev,
+              goal: goalId,
+              goalTargetUSD: targetUSD,
+              primaryGoals: updatedGoals,
+            };
+          });
+          setProfileDraft((prev) => {
+            const existingGoals = Array.isArray(prev.primaryGoals) ? prev.primaryGoals : [];
+            const updatedGoals = [];
+            let found = false;
+            existingGoals.forEach((entry) => {
+              if (entry?.id !== goalId) {
+                updatedGoals.push(entry);
+                return;
+              }
+              found = true;
+              updatedGoals.push({
+                ...entry,
+                targetUSD: targetUSD,
+                savedUSD: Math.max(Number(entry.savedUSD) || 0, nextSaved),
+                status: nextStatus,
+              });
+            });
+            if (!found) {
+              updatedGoals.unshift({
+                id: goalId,
+                targetUSD,
+                savedUSD: nextSaved,
+                status: nextStatus,
+                createdAt: Date.now(),
+              });
+            }
+            return {
+              ...prev,
+              goal: goalId,
+              goalTargetUSD: targetUSD,
+              primaryGoals: updatedGoals,
+            };
+          });
+          setWishes((prev) => {
+            const existing = prev.find((wish) => wish?.id === normalizedTargetGoalId);
+            if (existing) {
+              const updated = {
+                ...existing,
+                kind: PRIMARY_GOAL_KIND,
+                goalId: goalId,
+                targetUSD: existing.targetUSD || targetUSD,
+                savedUSD: Math.max(existing.savedUSD || 0, nextSaved),
+                status: nextStatus,
+                autoManaged: false,
+              };
+              return prev.map((wish) => (wish?.id === normalizedTargetGoalId ? updated : wish));
+            }
+            const preset = getGoalPreset(goalId);
+            const label = preset?.[language] || preset?.en || goalId;
+            const emoji = preset?.emoji || DEFAULT_GOAL_EMOJI;
+            const title = `${emoji} ${label}`.trim();
+            const nextWish = {
+              id: normalizedTargetGoalId,
+              templateId: `goal_${goalId}`,
+              title,
+              emoji,
+              targetUSD,
+              savedUSD: nextSaved,
+              status: nextStatus,
+              createdAt: Date.now(),
+              autoManaged: false,
+              kind: PRIMARY_GOAL_KIND,
+              goalId,
+            };
+            return [nextWish, ...prev];
+          });
         }
         let saveOverlayPayload = { title, moodLine: moodPreset?.saveOverlay || null };
-        if (targetWish && targetWish.targetUSD > 0 && priceUSD > 0) {
-          const previousSavedUSD = targetWish.savedUSD || 0;
-          const targetUSD = targetWish.targetUSD || 0;
+        if (targetWishSnapshot && targetWishSnapshot.targetUSD > 0 && priceUSD > 0) {
+          const previousSavedUSD = targetWishSnapshot.savedUSD || 0;
+          const targetUSD = targetWishSnapshot.targetUSD || 0;
           const nextSavedUSD = Math.min(previousSavedUSD + appliedAmount, targetUSD);
           const remainingUSD = Math.max(targetUSD - nextSavedUSD, 0);
           const remainingTemptations = Math.max(Math.ceil(remainingUSD / priceUSD), 0);
@@ -22062,7 +24465,7 @@ useEffect(() => {
           const progressEndValue = targetUSD > 0 ? nextSavedUSD / targetUSD : progressStartValue;
           saveOverlayPayload = {
             ...saveOverlayPayload,
-            goalTitle: targetWish.title || "",
+            goalTitle: targetWishSnapshot.title || "",
             remainingTemptations,
             goalComplete: remainingUSD <= 0,
             progressStart: progressStartValue,
@@ -22070,9 +24473,9 @@ useEffect(() => {
           };
           const progressPercent =
             targetUSD > 0 ? Math.min((nextSavedUSD / targetUSD) * 100, 100) : 0;
-          if (targetGoalId && appliedAmount > 0) {
+          if (normalizedTargetGoalId && appliedAmount > 0) {
             logEvent("saving_progress_updated", {
-              target_id: targetGoalId,
+              target_id: normalizedTargetGoalId,
               amount_added: convertToCurrency(appliedAmount, currencyCode),
               new_progress: progressPercent,
             });
@@ -22124,7 +24527,22 @@ useEffect(() => {
             projectedLevel
           );
         }
-        setSavedTotalUSD((prev) => prev + priceUSD);
+        const shouldDebugPrimarySave =
+          __DEV__ && (overlay?.type === "primary_temptation" || isCustomTemptation(item));
+        lastSaveActionAtRef.current = saveTimestamp;
+        setSavedTotalUSD((prev) => {
+          const nextValue = prev + priceUSD;
+          if (shouldDebugPrimarySave) {
+            console.warn("primary_temptation_saved_total_update", {
+              prev,
+              next: nextValue,
+              priceUSD,
+              itemId: item?.id,
+              templateId,
+            });
+          }
+          return nextValue;
+        });
         setDeclineCount((prev) => prev + 1);
         const coinReward = priceUSD
           ? computeRefuseCoinReward(priceUSD, profile.currency || DEFAULT_PROFILE.currency)
@@ -22188,13 +24606,17 @@ useEffect(() => {
             refuse_count_for_item: (refuseStatsEntry.count || 0) + 1,
           })
         );
-        logTemptationAction("save", item, { goal_id: targetGoalId || null });
+        logTemptationAction("save", item, { goal_id: normalizedTargetGoalId || null });
         logImpulseEvent("save", item, priceUSD, title);
         triggerCardFeedback(templateId || item.id);
         triggerCoinHaptics();
         handleFocusSaveProgress(item);
       ensureOverlayEnvironmentReady();
-    triggerOverlayState("save", { ...saveOverlayPayload, coinReward }, { clearQueueOnDismiss: false });
+    triggerOverlayState(
+      "save",
+      { ...saveOverlayPayload, coinReward },
+      { clearQueueOnDismiss: false, force: !!forceOverlay }
+    );
         requestMascotAnimation("happy");
         saveActionLogRef.current = [...recentSaves, { itemId: templateId || item.id, timestamp: saveTimestamp }];
         recordTemptationInteraction(templateId || item.id, "save", item);
@@ -22242,6 +24664,7 @@ useEffect(() => {
       triggerCardFeedback,
       triggerCoinHaptics,
       buildTemptationPayload,
+      buildPrimaryGoalWishSnapshot,
       savedTotalUSD,
       refuseStats,
       logImpulseEvent,
@@ -22250,6 +24673,10 @@ useEffect(() => {
       assignableGoals.length,
       assignTemptationGoal,
       applySavingsToWish,
+      syncPrimaryGoalProgress,
+      setProfile,
+      setProfileDraft,
+      setWishes,
       setGoalLinkPrompt,
       getFallbackGoalId,
       wishes,
@@ -22260,6 +24687,7 @@ useEffect(() => {
       logEvent,
       profile.currency,
       profile.customSpend,
+      profile.primaryGoals,
       executeSpend,
       triggerStormEffect,
       recordTemptationInteraction,
@@ -22274,6 +24702,11 @@ useEffect(() => {
       setStreakRecoveryPrompt,
       resolveTemptationTemplateId,
       dismissStormEffect,
+      activeGoalId,
+      mainGoalWish,
+      profile.goal,
+      profile.primaryGoals,
+      overlay,
     ]
   );
 
@@ -22287,15 +24720,37 @@ useEffect(() => {
     if (resolvedTemplateId) {
       normalizeLegacyRecoveryRefs(resolvedTemplateId, item);
       clearStreakRecoveryForTemptation(resolvedTemplateId);
+      setRefuseStats((prev) => {
+        const { entry: currentEntry, key: legacyKey } = getLegacyRefuseStatsEntry(prev, resolvedTemplateId, item);
+        const current = currentEntry || prev?.[resolvedTemplateId];
+        if (!current) return prev;
+        const next = {
+          ...prev,
+          [resolvedTemplateId]: {
+            ...current,
+            currentStreak: 0,
+            lastAction: "spend",
+            recoverableStreak: 0,
+            recoverableAmountUSD: 0,
+            streakLostAt: Date.now(),
+          },
+        };
+        if (legacyKey && legacyKey !== resolvedTemplateId) {
+          delete next[legacyKey];
+        }
+        return next;
+      });
     }
     hideStreakRecoveryPrompt();
     handleTemptationAction("save", item, options || {});
   }, [
     clearStreakRecoveryForTemptation,
+    getLegacyRefuseStatsEntry,
     handleTemptationAction,
     hideStreakRecoveryPrompt,
     normalizeLegacyRecoveryRefs,
     resolveTemptationTemplateId,
+    setRefuseStats,
     streakRecoveryPrompt,
   ]);
 
@@ -22325,6 +24780,7 @@ useEffect(() => {
       return;
     }
     setHealthPoints((prev) => Math.max(prev - coinCost, 0));
+    streakRestoreSoundPendingRef.current = true;
     const restoredValue = Math.max(recoverableStreak || 0, 0);
     const recoveryAmountUSD = Math.max(Number(recoverableAmountUSD) || 0, 0);
     normalizeLegacyRecoveryRefs(resolvedTemplateId, item);
@@ -22374,6 +24830,7 @@ useEffect(() => {
     hideStreakRecoveryPrompt,
     normalizeLegacyRecoveryRefs,
     pendingStreakRecoveryRef,
+    playSound,
     resolveTemptationTemplateId,
     streakRecoveryOverrideRef,
     setHealthPoints,
@@ -23394,6 +25851,15 @@ useEffect(() => {
     },
     []
   );
+  useEffect(
+    () => () => {
+      if (celebrationGapTimerRef.current) {
+        clearTimeout(celebrationGapTimerRef.current);
+        celebrationGapTimerRef.current = null;
+      }
+    },
+    []
+  );
 
   const processOverlayQueue = useCallback(() => {
     if (overlayActiveRef.current) return;
@@ -23430,6 +25896,7 @@ useEffect(() => {
     const timeout = next.duration ?? defaultDuration;
     if (typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0) {
       overlayTimer.current = setTimeout(() => {
+        lastOverlayDismissedAtRef.current = Date.now();
         setOverlay(null);
         overlayActiveRef.current = false;
         processOverlayQueue();
@@ -23473,6 +25940,40 @@ useEffect(() => {
     [blockingModalVisible, overlayEnvironmentReady, processOverlayQueue, scheduleOverlayRetry]
   );
 
+  const scheduleCelebrationOverlay = useCallback(() => {
+    if (celebrationGapTimerRef.current) return;
+    if (!celebrationQueueRef.current.length) return;
+    const now = Date.now();
+    const lastAt = lastCelebrationAtRef.current || 0;
+    const gapRemaining = Math.max(CELEBRATION_OVERLAY_GAP_MS - (now - lastAt), 0);
+    celebrationGapTimerRef.current = setTimeout(() => {
+      celebrationGapTimerRef.current = null;
+      const next = celebrationQueueRef.current.shift();
+      if (!next) return;
+      lastCelebrationAtRef.current = Date.now();
+      triggerOverlayState(next.type, next.message, next.config);
+      if (celebrationQueueRef.current.length) {
+        scheduleCelebrationOverlay();
+      }
+    }, gapRemaining);
+  }, [triggerOverlayState]);
+
+  const queueCelebrationOverlay = useCallback(
+    (type, message, config) => {
+      const now = Date.now();
+      const lastAt = lastCelebrationAtRef.current || 0;
+      if (now - lastAt >= CELEBRATION_OVERLAY_GAP_MS && !celebrationQueueRef.current.length) {
+        lastCelebrationAtRef.current = now;
+        triggerOverlayState(type, message, config);
+        return;
+      }
+      celebrationQueueRef.current.push({ type, message, config });
+      scheduleCelebrationOverlay();
+    },
+    [scheduleCelebrationOverlay, triggerOverlayState]
+  );
+  queueCelebrationOverlayRef.current = queueCelebrationOverlay;
+
   useEffect(() => {
     if (overlayEnvironmentReady && !blockingModalVisible) {
       processOverlayQueue();
@@ -23499,6 +26000,11 @@ useEffect(() => {
     }
     if (overlayActiveRef.current) {
       overlayActiveRef.current = false;
+    }
+    const dismissedAt = Date.now();
+    lastOverlayDismissedAtRef.current = dismissedAt;
+    if (overlay?.type === "save") {
+      lastSaveOverlayDismissedAtRef.current = dismissedAt;
     }
     const hasQueuedCelebrationFollowUp =
       overlay?.type === "save" &&
@@ -23569,13 +26075,15 @@ useEffect(() => {
       setFocusSaveCount(0);
       resetFocusLossCounter(template.id);
     setHealthPoints((prev) => prev + FOCUS_VICTORY_REWARD);
-    triggerOverlayState("focus_reward", {
-      title: t("focusRewardTitle"),
-      body: t("focusRewardSubtitle", { title, amount: FOCUS_VICTORY_REWARD }),
-      amount: FOCUS_VICTORY_REWARD,
-    });
+    if (queueCelebrationOverlayRef.current) {
+      queueCelebrationOverlayRef.current("focus_reward", {
+        title: t("focusRewardTitle"),
+        body: t("focusRewardSubtitle", { title, amount: FOCUS_VICTORY_REWARD }),
+        amount: FOCUS_VICTORY_REWARD,
+      });
+    }
     },
-    [focusTargetsUnlocked, language, resetFocusLossCounter, setHealthPoints, t, titleOverrides, triggerOverlayState]
+    [focusTargetsUnlocked, language, resetFocusLossCounter, setHealthPoints, t, titleOverrides]
   );
 
   const handleFocusSaveProgress = useCallback(
@@ -23612,9 +26120,11 @@ useEffect(() => {
       setFocusSaveCount(0);
       resetFocusLossCounter(templateId);
       logEvent("focus_target_set", { template_id: templateId, source });
+      logEvent("focus_accepted", { template_id: templateId, source });
       triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+      playSound("focus_accept");
     },
-    [focusTargetsUnlocked, logEvent, resetFocusLossCounter]
+    [focusTargetsUnlocked, logEvent, playSound, resetFocusLossCounter]
   );
 
   const resolveFocusDigest = useCallback(
@@ -23770,7 +26280,7 @@ useEffect(() => {
       queueUnlockAnnouncements();
       triggerSuccessHaptic();
     },
-    [ensureOverlayEnvironmentReady, t, triggerOverlayState]
+    [ensureOverlayEnvironmentReady, playSound, t, triggerOverlayState]
   );
   const runPendingLevelCelebration = useCallback(() => {
     const pending = pendingLevelCelebrationRef.current;
@@ -23791,6 +26301,13 @@ useEffect(() => {
 
   useEffect(() => {
     if (!lastCelebratedLevelHydrated) return;
+    if (resetInProgressRef.current) {
+      if (playerLevel <= 1 && savedTotalUSD === 0 && lifetimeSavedUSD === 0) {
+        resetInProgressRef.current = false;
+        previousPlayerLevelRef.current = Math.max(playerLevel, 1);
+      }
+      return;
+    }
     const previousLevel = Math.max(
       previousPlayerLevelRef.current || 1,
       lastCelebratedLevel || 1
@@ -23812,6 +26329,7 @@ useEffect(() => {
         level: playerLevel,
         saved_usd_total: savedTotalUSD,
       });
+      logEvent("level_reached", { level: playerLevel });
       pendingLevelCelebrationRef.current = { level: playerLevel, levelsEarned };
       runPendingLevelCelebration();
       persistLastCelebratedLevel(playerLevel);
@@ -23821,6 +26339,7 @@ useEffect(() => {
     handleLevelCelebrate,
     lastCelebratedLevel,
     lastCelebratedLevelHydrated,
+    lifetimeSavedUSD,
     persistLastCelebratedLevel,
     playerLevel,
     runPendingLevelCelebration,
@@ -23843,11 +26362,12 @@ useEffect(() => {
         },
         3200
       );
+      playSound("reward");
       triggerSuccessHaptic();
       logEvent("reward_claimed", { reward_id: reward.id });
       logHistoryEvent("reward_claimed", { rewardId: reward.id, title: reward.title });
     },
-    [t, triggerOverlayState, logHistoryEvent]
+    [t, triggerOverlayState, logHistoryEvent, playSound]
   );
 
   const handleChallengeAccept = useCallback(
@@ -23901,6 +26421,7 @@ useEffect(() => {
         return;
       }
       if (!activated) return;
+      playSound("challenge_accept");
       const copy = getChallengeCopy(def, language);
       const title = copy.title || challengeId;
       triggerOverlayState("cart", t("challengeStartedOverlay", { title }));
@@ -23924,7 +26445,7 @@ useEffect(() => {
         });
       }
     },
-    [challengesState, language, scheduleChallengeReminders, t, triggerOverlayState]
+    [challengesState, language, playSound, scheduleChallengeReminders, t, triggerOverlayState]
   );
 
   const handleChallengeClaim = useCallback(
@@ -23963,9 +26484,10 @@ useEffect(() => {
         },
         3200
       );
+      playSound("reward");
       logEvent("challenge_claimed", { challenge_id: challengeId });
     },
-    [challengesState, formatHealthRewardText, language, t, triggerOverlayState]
+    [challengesState, formatHealthRewardText, language, t, triggerOverlayState, playSound]
   );
 
   const handleChallengeCancel = useCallback(
@@ -24013,6 +26535,8 @@ useEffect(() => {
           text: t("developerResetApply"),
           style: "destructive",
           onPress: async () => {
+            resetCounterRef.current += 1;
+            resetInProgressRef.current = true;
             triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
             try {
               await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
@@ -24039,6 +26563,19 @@ useEffect(() => {
                 )
               );
             } catch {}
+            try {
+              const hungerIds = Array.isArray(tamagotchiHungerNotificationIdsRef.current)
+                ? tamagotchiHungerNotificationIdsRef.current
+                : [];
+              if (hungerIds.length) {
+                await Promise.all(
+                  hungerIds.map((id) =>
+                    Notifications.cancelScheduledNotificationAsync(id).catch(() => {})
+                  )
+                );
+              }
+              tamagotchiHungerNotificationIdsRef.current = [];
+            } catch {}
             setWishes([]);
             setPendingList([]);
             setPurchases([]);
@@ -24054,9 +26591,18 @@ useEffect(() => {
             setHistoryEvents([]);
             setRefuseStats({});
             setTemptationInteractions({});
-            const resetProfile = { ...DEFAULT_PROFILE, joinedAt: new Date().toISOString() };
+            const resetProfile = {
+              ...DEFAULT_PROFILE,
+              joinedAt: new Date().toISOString(),
+              goal: null,
+              goalTargetUSD: 0,
+              primaryGoals: [],
+              goalCelebrated: false,
+              goalRenewalPending: false,
+            };
             setProfile(resetProfile);
             setProfileDraft(resetProfile);
+            setActiveGoalId(null);
             setRegistrationData(INITIAL_REGISTRATION);
             goalSelectionTouchedRef.current = false;
             goToOnboardingStep("logo", { recordHistory: false, resetHistory: true });
@@ -24067,8 +26613,20 @@ useEffect(() => {
             setOverlay(null);
             setTheme(DEFAULT_THEME);
             setLanguage(DEFAULT_LANGUAGE);
+            setSoundEnabled(true);
+            setSoundEnabledHydrated(true);
             setActiveCurrency(DEFAULT_PROFILE.currency);
             setHealthPoints(0);
+            const resetTamagotchiState = {
+              ...TAMAGOTCHI_START_STATE,
+              coins: 0,
+              lastFedAt: null,
+              lastDecayAt: Date.now(),
+              coinTick: 0,
+            };
+            setTamagotchiState(resetTamagotchiState);
+            tamagotchiHungerPrevRef.current = TAMAGOTCHI_START_STATE.hunger;
+            tamagotchiHydratedRef.current = true;
             setTamagotchiSkinId(DEFAULT_TAMAGOTCHI_SKIN);
             setSkinPickerVisible(false);
             setClaimedRewards({});
@@ -24080,8 +26638,6 @@ useEffect(() => {
             setImpulseTracker({ ...INITIAL_IMPULSE_TRACKER });
             setMoodState(createMoodStateForToday());
             impulseAlertCooldownRef.current = {};
-            setTabHintsSeen(DEFAULT_TAB_HINTS_STATE);
-            setTabHintVisible(null);
             setTutorialSeen(false);
             setTutorialVisible(false);
             setTutorialStepIndex(0);
@@ -24093,6 +26649,11 @@ useEffect(() => {
             setTemptationTutorialCompleted(false);
             setLastCelebratedLevel(1);
             setLastCelebratedLevelHydrated(true);
+            setCoinValueModalVisible(false);
+            setCoinValueModalStatus("none");
+            coinValueModalStatusRef.current = "none";
+            coinBalancePrevRef.current = 0;
+            setCoinSliderMaxUSD(DEFAULT_COIN_SLIDER_MAX_USD);
             previousPlayerLevelRef.current = 1;
             levelCelebrationQueuedRef.current = 0;
             pendingLevelCelebrationRef.current = null;
@@ -24110,6 +26671,15 @@ useEffect(() => {
               Notifications.cancelScheduledNotificationAsync(customReminderId).catch(() => {});
             }
             persistCustomReminderId(null);
+            try {
+              await AsyncStorage.multiSet([
+                [STORAGE_KEYS.HEALTH, "0"],
+                [STORAGE_KEYS.TAMAGOTCHI, JSON.stringify(resetTamagotchiState)],
+                [STORAGE_KEYS.COIN_SLIDER_MAX, String(DEFAULT_COIN_SLIDER_MAX_USD)],
+              ]);
+            } catch (error) {
+              console.warn("reset storage", error);
+            }
           },
         },
       ]
@@ -24313,21 +26883,24 @@ useEffect(() => {
             onThemeToggle={handleThemeToggle}
             onLanguageChange={handleLanguageChange}
             onCurrencyChange={handleProfileCurrencyChange}
-          onGoalChange={handleProfileGoalChange}
-          onResetData={handleResetData}
-          onPickImage={handlePickImage}
-          theme={theme}
-          language={language}
-          currencyValue={profile.currency || DEFAULT_PROFILE.currency}
-          history={resolvedHistoryEvents}
-          onHistoryDelete={handleHistoryDelete}
-          freeDayStats={freeDayStats}
-          rewardBadgeCount={rewardClaimTotal}
-          t={t}
-          colors={colors}
-          moodPreset={moodPreset}
-          mascotImageSource={tamagotchiAvatarSource}
-        />
+            onResetData={handleResetData}
+            onPickImage={handlePickImage}
+            theme={theme}
+            language={language}
+            currencyValue={profile.currency || DEFAULT_PROFILE.currency}
+            soundEnabled={soundEnabled}
+            onSoundToggle={handleSoundToggle}
+            spendReducesSavings={spendReducesSavings}
+            onSpendReductionToggle={handleSpendImpactToggle}
+            history={resolvedHistoryEvents}
+            onHistoryDelete={handleHistoryDelete}
+            freeDayStats={freeDayStats}
+            rewardBadgeCount={rewardClaimTotal}
+            t={t}
+            colors={colors}
+            moodPreset={moodPreset}
+            mascotImageSource={tamagotchiAvatarSource}
+          />
       );
       default:
         return (
@@ -24366,6 +26939,7 @@ useEffect(() => {
             dailyRewardUnlocked={dailyRewardUnlocked}
             dailyRewardReady={dailyRewardReady}
             dailyRewardAmount={dailyRewardDisplayAmount}
+            dailyRewardDay={dailyRewardDay}
             onDailyRewardClaim={handleDailyRewardClaim}
             mascotOverride={mascotOverride}
             onMascotAnimationComplete={handleMascotAnimationComplete}
@@ -24422,36 +26996,6 @@ useEffect(() => {
     logScreenView(screenName);
   }, [activeTab]);
   useEffect(() => {
-    if (!tabHintsHydrated) return;
-    if (!tutorialSeen) return;
-    if (tutorialOverlayVisible) return;
-    if (tabHintVisible) return;
-    if (tabHintsSeen[activeTab]) return;
-    const config = TAB_HINT_CONFIG[activeTab];
-    if (!config) return;
-    setTabHintVisible({
-      tab: activeTab,
-      title: t(config.titleKey),
-      body: t(config.bodyKey),
-    });
-    markTabHintSeen(activeTab);
-  }, [
-    activeTab,
-    markTabHintSeen,
-    tabHintVisible,
-    tabHintsHydrated,
-    tabHintsSeen,
-    t,
-    tutorialSeen,
-    tutorialOverlayVisible,
-  ]);
-  useEffect(() => {
-    if (!tutorialOverlayVisible && !tutorialSeen) return;
-    if (!tabHintVisible) return;
-    setTabHintVisible(null);
-  }, [tutorialOverlayVisible, tutorialSeen, tabHintVisible]);
-
-  useEffect(() => {
     if (!termsAccepted) return;
     const onboardingScreens = {
       logo: "onboarding_logo",
@@ -24470,13 +27014,19 @@ useEffect(() => {
       logScreenView(screen);
     }
   }, [onboardingStep, termsAccepted]);
+  useEffect(() => {
+    if (onboardingStep === "done") return;
+    const index = resolveOnboardingStepIndex(onboardingStep);
+    if (!index) return;
+    logEvent("onboarding_step_reached", { step: onboardingStep, index });
+  }, [logEvent, onboardingStep]);
 
   if (onboardingStep !== "done") {
     const onboardingBackHandler = canGoBackOnboarding ? handleOnboardingBack : undefined;
     const onboardingSkipHandler = canShowOnboardingSkip ? handleOnboardingSkip : null;
     let onboardContent = null;
     if (onboardingStep === "logo") {
-      onboardContent = <LogoSplash onDone={() => goToOnboardingStep("language", { recordHistory: false })} />;
+      onboardContent = <LogoSplash onDone={handleOnboardingLogoComplete} />;
     } else if (onboardingStep === "language") {
       onboardContent = (
         <LanguageScreen
@@ -24623,9 +27173,7 @@ useEffect(() => {
               />
             )}
             <StatusBar style={theme === "dark" ? "light" : "dark"} backgroundColor={onboardingBackground} />
-            {onboardContent || (
-              <LogoSplash onDone={() => goToOnboardingStep("language", { recordHistory: false })} />
-            )}
+            {onboardContent || <LogoSplash onDone={handleOnboardingLogoComplete} />}
             {backGestureResponder && (
               <View pointerEvents="box-none" style={styles.backGestureWrapper}>
                 <View style={styles.backGestureEdge} {...backGestureResponder.panHandlers} />
@@ -24867,6 +27415,39 @@ useEffect(() => {
                 </TouchableWithoutFeedback>
               </View>
             </TouchableWithoutFeedback>
+          </Modal>
+        )}
+        {coinValueModalVisible && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <View style={styles.quickModalBackdrop}>
+              <View style={[styles.quickModalCard, { backgroundColor: colors.card }]}>
+                <View style={styles.coinValueHero}>
+                  <View style={styles.coinValueHeroGlow} />
+                  <Image source={LEVEL_SHARE_CAT} style={styles.coinValueHeroCat} />
+                  <View style={styles.coinValueHeroFooter}>
+                    <Image source={LEVEL_SHARE_LOGO} style={styles.coinValueHeroLogo} />
+                    <Text style={styles.coinValueHeroBrand}>Almost</Text>
+                  </View>
+                </View>
+                <Text style={[styles.quickModalTitle, { color: colors.text }]}>
+                  {t("coinValueTitle")}
+                </Text>
+                <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>
+                  {t("coinValueBody")}
+                </Text>
+                <View style={styles.quickModalActions}>
+                  <TouchableOpacity
+                    style={[styles.quickModalPrimary, { backgroundColor: colors.text }]}
+                    onPress={dismissCoinValueModal}
+                    activeOpacity={0.9}
+                  >
+                    <Text style={[styles.quickModalPrimaryText, { color: colors.background }]}>
+                      {t("coinValueCta")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
           </Modal>
         )}
         {dailySummaryVisible && dailySummaryData && (
@@ -25296,6 +27877,7 @@ useEffect(() => {
           onUpdateMaxUSD={handleCoinSliderMaxUpdate}
           onSubmit={handleCoinEntrySubmit}
           onCancel={handleCoinEntryClose}
+          playSound={playSound}
         />
 
         <QuickCustomModal
@@ -25530,38 +28112,6 @@ useEffect(() => {
             </View>
           </Modal>
         )}
-        {tabHintVisible && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
-            <TouchableWithoutFeedback onPress={dismissTabHint}>
-              <View style={styles.tabHintBackdrop}>
-                <TouchableWithoutFeedback onPress={() => {}}>
-                  <View
-                    style={[
-                      styles.tabHintCard,
-                      { backgroundColor: colors.card, borderColor: colors.border },
-                    ]}
-                  >
-                    <Text style={[styles.tabHintTitle, { color: colors.text }]}>
-                      {tabHintVisible.title}
-                    </Text>
-                    <Text style={[styles.tabHintBody, { color: colors.muted }]}>
-                      {tabHintVisible.body}
-                    </Text>
-                    <TouchableOpacity
-                      style={[styles.tabHintButton, { backgroundColor: colors.text }]}
-                      onPress={dismissTabHint}
-                    >
-                      <Text style={[styles.tabHintButtonText, { color: colors.background }]}>
-                        {t("tabHintGotIt")}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </TouchableWithoutFeedback>
-              </View>
-            </TouchableWithoutFeedback>
-          </Modal>
-        )}
-
         <Modal
           visible={tamagotchiVisible}
           transparent
@@ -26417,17 +28967,18 @@ useEffect(() => {
                   ]}
                 />
                 <CoinRainOverlay dropCount={16} />
-                <SaveCelebration
-                  ref={saveCelebrationRef}
-                  colors={colors}
-                  t={t}
-                  language={language}
-                  payload={saveOverlayPayload}
-                  goalCopy={saveOverlayGoalText}
-                  goalPrefix={saveOverlayGoalPrefix}
-                  coinReward={saveOverlayPayload?.coinReward}
-                  mascotHappySource={tamagotchiAnimations.happy}
-                  progressStart={
+                  <SaveCelebration
+                    ref={saveCelebrationRef}
+                    colors={colors}
+                    t={t}
+                    language={language}
+                    payload={saveOverlayPayload}
+                    goalCopy={saveOverlayGoalText}
+                    goalPrefix={saveOverlayGoalPrefix}
+                    coinReward={saveOverlayPayload?.coinReward}
+                    playSound={playSound}
+                    mascotHappySource={tamagotchiAnimations.happy}
+                    progressStart={
                     Number.isFinite(saveOverlayPayload?.progressStart)
                       ? saveOverlayPayload.progressStart
                       : heroGoalProgressRatio
@@ -28071,7 +30622,7 @@ const styles = StyleSheet.create({
   dailyRewardButton: {
     borderRadius: 16,
     borderWidth: 1,
-    paddingVertical: 10,
+    paddingVertical: 3,
     paddingHorizontal: 10,
     alignItems: "center",
     justifyContent: "center",
@@ -28083,20 +30634,115 @@ const styles = StyleSheet.create({
     resizeMode: "contain",
   },
   dailyRewardAmount: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "800",
+    lineHeight: 14,
   },
   dailyRewardCaption: {
-    fontSize: 9,
+    fontSize: 7,
     fontWeight: "600",
     textTransform: "none",
     textAlign: "center",
+    includeFontPadding: false,
+    lineHeight: 9,
   },
   dailyRewardFloating: {
     position: "absolute",
     right: 0,
     zIndex: 2,
     elevation: 2,
+  },
+  dailyRewardModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  dailyRewardModalWrap: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dailyRewardModalCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 18,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  dailyRewardModalTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+  dailyRewardModalSubtitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  dailyRewardCalendar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  dailyRewardCalendarDay: {
+    flex: 1,
+    paddingVertical: 8,
+    marginHorizontal: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    gap: 4,
+  },
+  dailyRewardCalendarDayLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  dailyRewardCalendarAmount: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  dailyRewardModalNote: {
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
+    marginTop: 4,
+  },
+  dailyRewardModalActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 14,
+  },
+  dailyRewardModalSecondary: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  dailyRewardModalSecondaryText: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  dailyRewardModalPrimary: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  dailyRewardModalPrimaryText: {
+    fontSize: 14,
+    fontWeight: "800",
   },
   savedHeroAmountWrap: {
     marginTop: 0,
@@ -29089,10 +31735,16 @@ const styles = StyleSheet.create({
     ...createBodyText({ fontSize: 14, lineHeight: 20, fontWeight: "600" }),
   },
   impulseTrendRow: {
-    paddingVertical: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
   },
   impulseTrendText: {
-    ...createBodyText({ fontSize: 13, fontWeight: "700" }),
+    ...createBodyText({ fontSize: 12, fontWeight: "700", letterSpacing: 0.3 }),
   },
   impulseCategoryList: {
     marginTop: 8,
@@ -29852,33 +32504,6 @@ const styles = StyleSheet.create({
   tutorialPrimaryText: {
     fontSize: 15,
     fontWeight: "700",
-  },
-  tabHintBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
-    padding: 24,
-  },
-  tabHintCard: {
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: 20,
-    gap: 10,
-  },
-  tabHintTitle: {
-    ...createBodyText({ fontSize: 17, fontWeight: "700" }),
-  },
-  tabHintBody: {
-    ...createBodyText({ fontSize: 14 }),
-  },
-  tabHintButton: {
-    marginTop: 4,
-    borderRadius: 14,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  tabHintButtonText: {
-    ...createCtaText({ fontSize: 14 }),
   },
   variantRow: {
     flexDirection: "row",
@@ -30853,6 +33478,11 @@ const styles = StyleSheet.create({
   settingRow: {
     marginBottom: 18,
   },
+  settingRowContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
   settingLabel: {
     marginBottom: 8,
   },
@@ -30938,6 +33568,19 @@ const styles = StyleSheet.create({
   guideDesc: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  settingToggle: {
+    width: 48,
+    height: 28,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 2,
+    justifyContent: "center",
+  },
+  settingToggleHandle: {
+    width: 22,
+    height: 22,
+    borderRadius: 12,
   },
   settingChip: {
     paddingHorizontal: 14,
@@ -31349,6 +33992,48 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     padding: 20,
     gap: 14,
+  },
+  coinValueHero: {
+    height: 140,
+    borderRadius: 22,
+    backgroundColor: LEVEL_SHARE_BG,
+    borderWidth: 1,
+    borderColor: "rgba(255,180,71,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  coinValueHeroGlow: {
+    position: "absolute",
+    top: -40,
+    right: -20,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(255,180,71,0.25)",
+  },
+  coinValueHeroCat: {
+    width: 92,
+    height: 92,
+    resizeMode: "contain",
+  },
+  coinValueHeroFooter: {
+    position: "absolute",
+    bottom: 12,
+    right: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  coinValueHeroLogo: {
+    width: 18,
+    height: 18,
+    resizeMode: "contain",
+  },
+  coinValueHeroBrand: {
+    color: LEVEL_SHARE_MUTED,
+    fontSize: 12,
+    fontWeight: "600",
   },
   quickModalTitle: {
     fontSize: 20,
@@ -32993,6 +35678,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  logoSplashImage: {
+    width: 140,
+    height: 140,
+    marginBottom: 8,
+  },
   logoSplashText: {
     ...TYPOGRAPHY.logo,
     fontSize: 48,
@@ -33567,6 +36257,7 @@ function CoinEntryModal({
   onUpdateMaxUSD,
   onSubmit,
   onCancel,
+  playSound,
 }) {
   const [sliderValue, setSliderValue] = useState(0.25);
   const [trackHeight, setTrackHeight] = useState(260);
@@ -33582,6 +36273,8 @@ function CoinEntryModal({
   const sliderValueThrottleRef = useRef(0);
   const hapticStepRef = useRef(0);
   const sliderHapticCooldownRef = useRef(0);
+  const sliderTickStepRef = useRef(null);
+  const sliderTickCooldownRef = useRef(0);
   const tossingRef = useRef(false);
   const [actionsUnlocked, setActionsUnlocked] = useState(false);
   const sliderGestureRef = useRef({
@@ -33605,6 +36298,8 @@ function CoinEntryModal({
     setManualError("");
     setManualExactLocal(null);
     directionAnim.setValue(0);
+    sliderTickStepRef.current = null;
+    sliderTickCooldownRef.current = 0;
     tossingRef.current = false;
     touchStartRef.current = 0;
     setActionsUnlocked(false);
@@ -33614,6 +36309,11 @@ function CoinEntryModal({
     CURRENCY_SIGNS[DEFAULT_PROFILE.currency] ||
     DEFAULT_PROFILE.currency ||
     "$";
+  const displayPrecision = useMemo(() => getCurrencyDisplayPrecision(currency), [currency]);
+  const tickStepLocal = useMemo(
+    () => (displayPrecision > 0 ? Math.pow(10, -displayPrecision) : 1),
+    [displayPrecision]
+  );
   const computeAmountUSDForValue = useCallback(
     (value) => {
       if (!Number.isFinite(value) || maxAmountUSD <= 0) return 0;
@@ -33657,6 +36357,32 @@ function CoinEntryModal({
     extrapolate: "clamp",
   });
   const currencyFineStep = useMemo(() => getCurrencyFineStep(currency), [currency]);
+  const computeTickIndex = useCallback(
+    (value) => {
+      if (!Number.isFinite(value)) return 0;
+      const amountUSD = computeAmountUSDForValue(value);
+      const localAmount = snapCurrencyValue(convertToCurrency(amountUSD, currency), currency);
+      const roundedLocal = roundCurrencyValue(localAmount, currency, displayPrecision);
+      const stepLocal = tickStepLocal || 1;
+      if (!Number.isFinite(stepLocal) || stepLocal <= 0) {
+        return Math.round(roundedLocal * 100);
+      }
+      return Math.round(roundedLocal / stepLocal);
+    },
+    [computeAmountUSDForValue, currency, displayPrecision, tickStepLocal]
+  );
+  const triggerSliderTick = useCallback(
+    (stepIndex) => {
+      if (stepIndex === null || stepIndex === undefined) return;
+      if (sliderTickStepRef.current === stepIndex) return;
+      sliderTickStepRef.current = stepIndex;
+      const now = Date.now();
+      if (now - sliderTickCooldownRef.current < 30) return;
+      sliderTickCooldownRef.current = now;
+      playSound?.("counter", { skipCooldown: true });
+    },
+    [playSound]
+  );
   const computeSteppedValue = useCallback(
     (rawValue) => {
       const clamped = Math.max(0, Math.min(1, rawValue));
@@ -33773,6 +36499,7 @@ function CoinEntryModal({
             if (Math.abs(nextValue - sliderValueRef.current) >= COIN_SLIDER_GESTURE_DEADBAND) {
               const applied = updateSliderValue(nextValue, { force: true, fromUser: true });
               hapticStepRef.current = Math.round(applied * 20);
+              triggerSliderTick(computeTickIndex(applied));
             }
           }
           touchStartRef.current = Date.now();
@@ -33794,6 +36521,7 @@ function CoinEntryModal({
                 sliderHapticCooldownRef.current = now;
               }
               hapticStepRef.current = nextStep;
+              triggerSliderTick(computeTickIndex(applied));
             }
           }
         },
@@ -33877,6 +36605,7 @@ function CoinEntryModal({
         triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
         return;
       }
+      playSound?.("coin");
       const computedAmountUSD = computeAmountUSDForValue(value);
       tossingRef.current = true;
       Animated.timing(directionAnim, {
@@ -33894,7 +36623,7 @@ function CoinEntryModal({
         });
       });
     },
-    [computeAmountUSDForValue, directionAnim, onSubmit, selectedCategory]
+    [computeAmountUSDForValue, directionAnim, onSubmit, playSound, selectedCategory]
   );
   const showActionButtons = actionsUnlocked && sliderValue > COIN_SLIDER_VALUE_DEADBAND;
   return (
@@ -34750,6 +37479,8 @@ function LanguageScreen({
 function LogoSplash({ onDone }) {
   const [text, setText] = useState("");
   const onDoneRef = useRef(onDone);
+  const animationIdRef = useRef(0);
+  const completedRef = useRef(false);
   useEffect(() => {
     onDoneRef.current = onDone;
   }, [onDone]);
@@ -34758,24 +37489,43 @@ function LogoSplash({ onDone }) {
   }, []);
   useEffect(() => {
     const word = "Almost";
+    const animationId = animationIdRef.current + 1;
+    animationIdRef.current = animationId;
+    completedRef.current = false;
+    setText("");
     let index = 0;
-    let timeoutId = null;
-    const intervalId = setInterval(() => {
+    let stepTimer = null;
+    let doneTimer = null;
+    const step = () => {
+      if (animationIdRef.current !== animationId || completedRef.current) return;
       index += 1;
       setText(word.slice(0, index));
-      if (index === word.length) {
-        clearInterval(intervalId);
-        timeoutId = setTimeout(() => onDoneRef.current?.(), 600);
+      if (index >= word.length) {
+        completedRef.current = true;
+        doneTimer = setTimeout(() => {
+          if (animationIdRef.current !== animationId) return;
+          onDoneRef.current?.();
+        }, 600);
+        return;
       }
-    }, 140);
+      stepTimer = setTimeout(step, 140);
+    };
+    stepTimer = setTimeout(step, 140);
     return () => {
-      clearInterval(intervalId);
-      if (timeoutId) clearTimeout(timeoutId);
+      if (stepTimer) clearTimeout(stepTimer);
+      if (doneTimer) clearTimeout(doneTimer);
     };
   }, []);
 
   return (
     <View style={styles.logoSplash} onLayout={handleLayout}>
+      {!text && (
+        <Image
+          source={SPLASH_LOGO}
+          style={styles.logoSplashImage}
+          resizeMode="contain"
+        />
+      )}
       <Text style={styles.logoSplashText}>{text}</Text>
     </View>
   );
@@ -34972,6 +37722,7 @@ const SaveCelebration = forwardRef(
       goalCopy,
       goalPrefix = null,
       coinReward = 0,
+      playSound,
       mascotHappySource,
       progressStart: progressStartProp = 0,
       progressEnd: progressEndProp = 0,
@@ -35017,6 +37768,11 @@ const SaveCelebration = forwardRef(
     const progressValue = useRef(new Animated.Value(progressStart)).current;
     const progressPulse = useRef(new Animated.Value(1)).current;
     const progressHapticTimersRef = useRef([]);
+    const progressSoundTimersRef = useRef([]);
+    const counterSoundTimersRef = useRef([]);
+    const countdownSoundTimerRef = useRef(null);
+    const counterSoundStartedRef = useRef(false);
+    const fanfarePlayedRef = useRef(false);
     const introOpacity = useRef(new Animated.Value(1)).current;
     const introScale = useRef(new Animated.Value(0.94)).current;
     const countdownOpacity = useRef(new Animated.Value(0)).current;
@@ -35040,11 +37796,12 @@ const SaveCelebration = forwardRef(
       }
       digitsCompletedRef.current += 1;
       triggerSelectionHaptic();
+      playCounterBurst();
       if (digitsCompletedRef.current >= digitCount) {
         setCountdownReady(true);
         triggerSuccessHaptic();
       }
-    }, [digitCount]);
+    }, [digitCount, playCounterBurst]);
     const progressWidth = progressValue.interpolate({
       inputRange: [0, 1],
       outputRange: [0, SAVE_PROGRESS_BAR_WIDTH],
@@ -35124,6 +37881,36 @@ const SaveCelebration = forwardRef(
         progressHapticTimersRef.current = [];
       }
     }, []);
+    const clearProgressSoundTimers = useCallback(() => {
+      if (progressSoundTimersRef.current.length) {
+        progressSoundTimersRef.current.forEach((timerId) => clearTimeout(timerId));
+        progressSoundTimersRef.current = [];
+      }
+    }, []);
+    const clearCounterSoundTimers = useCallback(() => {
+      if (counterSoundTimersRef.current.length) {
+        counterSoundTimersRef.current.forEach((timerId) => clearTimeout(timerId));
+        counterSoundTimersRef.current = [];
+      }
+    }, []);
+    const playCounterBurst = useCallback(() => {
+      if (!playSound) return;
+      clearCounterSoundTimers();
+      const spacing = 70;
+      [0, 1, 2].forEach((index) => {
+        const timerId = setTimeout(() => {
+          playSound("counter", { skipCooldown: index > 0 });
+        }, index * spacing);
+        counterSoundTimersRef.current.push(timerId);
+      });
+    }, [clearCounterSoundTimers, playSound]);
+    useEffect(() => () => clearCounterSoundTimers(), [clearCounterSoundTimers]);
+    const handleCounterSpinStart = useCallback(() => {
+      if (!playSound) return;
+      if (counterSoundStartedRef.current) return;
+      counterSoundStartedRef.current = true;
+      playCounterBurst();
+    }, [playCounterBurst, playSound]);
     useEffect(() => {
       clearProgressHapticTimers();
       const diff = Math.max(0, progressEnd - progressStart);
@@ -35142,6 +37929,26 @@ const SaveCelebration = forwardRef(
         clearProgressHapticTimers();
       };
     }, [clearProgressHapticTimers, progressEnd, progressStart]);
+    useEffect(() => {
+      clearProgressSoundTimers();
+      if (!playSound) return undefined;
+      if (countdownEnabled) return undefined;
+      const diff = Math.max(0, progressEnd - progressStart);
+      if (diff <= 0) return undefined;
+      const baseDelay = SAVE_PROGRESS_DELAY_MS + 120;
+      const diffScale = Math.min(Math.max(diff, MIN_PROGRESS_PULSE), 0.85);
+      const fillDuration = 640 + diffScale * 1600;
+      const scheduleSound = (timeout, key) => {
+        const timerId = setTimeout(() => playSound(key), Math.max(0, timeout));
+        progressSoundTimersRef.current.push(timerId);
+      };
+      scheduleSound(baseDelay, "counter");
+      scheduleSound(baseDelay + fillDuration * 0.55, "counter");
+      scheduleSound(baseDelay + fillDuration * 0.94, "coin");
+      return () => {
+        clearProgressSoundTimers();
+      };
+    }, [clearProgressSoundTimers, countdownEnabled, playSound, progressEnd, progressStart]);
     const clearIntroTimer = useCallback(() => {
       if (introTimerRef.current) {
         clearTimeout(introTimerRef.current);
@@ -35153,6 +37960,8 @@ const SaveCelebration = forwardRef(
       if (countdownActiveRef.current) return false;
       clearIntroTimer();
       digitsCompletedRef.current = 0;
+      counterSoundStartedRef.current = false;
+      fanfarePlayedRef.current = false;
       setCountdownReady(digitCount <= 0);
       countdownActiveRef.current = true;
       setCountdownActive(true);
@@ -35177,7 +37986,7 @@ const SaveCelebration = forwardRef(
         }),
       ]).start();
       return true;
-    }, [clearIntroTimer, countdownOpacity, countdownScale, digitCount, introOpacity]);
+    }, [clearIntroTimer, countdownOpacity, countdownScale, digitCount, introOpacity, playCounterBurst]);
     useEffect(() => {
       if (!countdownEnabled) return undefined;
       introTimerRef.current = setTimeout(() => {
@@ -35193,6 +38002,16 @@ const SaveCelebration = forwardRef(
     }, [countdownActive]);
     useEffect(() => {
       if (!countdownEnabled || !countdownActive || !countdownReady) return;
+      if (countdownSoundTimerRef.current) {
+        clearTimeout(countdownSoundTimerRef.current);
+        countdownSoundTimerRef.current = null;
+      }
+      if (playSound && !fanfarePlayedRef.current) {
+        fanfarePlayedRef.current = true;
+        countdownSoundTimerRef.current = setTimeout(() => {
+          playSound("reward");
+        }, 160);
+      }
       glowPulse.setValue(0);
       countdownZoom.setValue(1);
       const pulse = Animated.sequence([
@@ -35228,8 +38047,14 @@ const SaveCelebration = forwardRef(
         Animated.delay(SAVE_COUNTDOWN_FINAL_HOLD_DELAY),
       ]);
       pulse.start();
-      return () => pulse.stop();
-    }, [countdownActive, countdownEnabled, countdownReady, countdownZoom, glowPulse]);
+      return () => {
+        pulse.stop();
+        if (countdownSoundTimerRef.current) {
+          clearTimeout(countdownSoundTimerRef.current);
+          countdownSoundTimerRef.current = null;
+        }
+      };
+    }, [countdownActive, countdownEnabled, countdownReady, countdownZoom, glowPulse, playSound]);
     const percentLabel =
       progressEnd > 0
         ? Math.min(100, Math.max(1, Math.round(progressEnd * 100)))
@@ -35339,6 +38164,7 @@ const SaveCelebration = forwardRef(
                       active={countdownActive}
                       color={colors.text}
                       backgroundColor={counterDigitBackground}
+                      onSpinStart={index === 0 ? handleCounterSpinStart : undefined}
                       onSpinComplete={handleDigitSpinComplete}
                     />
                   );
@@ -35375,6 +38201,7 @@ const SaveCounterDigit = ({
   color = "#000",
   backgroundColor = "rgba(0,0,0,0.05)",
   index = 0,
+  onSpinStart,
   onSpinComplete,
 }) => {
   const spinProgress = useRef(new Animated.Value(0)).current;
@@ -35422,6 +38249,9 @@ const SaveCounterDigit = ({
     tiltProgress.setValue(0);
     shineProgress.setValue(0);
     if (!active) return;
+    const spinStartTimer = setTimeout(() => {
+      onSpinStart?.();
+    }, Math.max(0, delay));
     const animation = Animated.sequence([
       Animated.delay(delay),
       Animated.timing(spinProgress, {
@@ -35480,8 +38310,21 @@ const SaveCounterDigit = ({
         onSpinComplete?.();
       }
     });
-    return () => animation.stop();
-  }, [active, delay, digitScale, onSpinComplete, shineProgress, spinProgress, spinSteps, tiltProgress]);
+    return () => {
+      clearTimeout(spinStartTimer);
+      animation.stop();
+    };
+  }, [
+    active,
+    delay,
+    digitScale,
+    onSpinComplete,
+    onSpinStart,
+    shineProgress,
+    spinProgress,
+    spinSteps,
+    tiltProgress,
+  ]);
   useEffect(() => {
     clearSpinHaptics();
     if (!active) return undefined;
