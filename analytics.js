@@ -43,7 +43,8 @@ const EVENT_DEFINITIONS = {
   free_day_milestone: ["milestone", "current_streak"],
   onboarding_language_chosen: ["language"],
   onboarding_currency_chosen: ["currency"],
-  onboarding_gender_chosen: ["gender"],
+  onboarding_gender_chosen: ["gender", "selected"],
+  onboarding_step_reached: ["step", "index"],
   onboarding_goal_chosen: ["goal_id", "target_usd"],
   onboarding_goal_skipped: ["method"],
   onboarding_goal_custom_created: ["title", "target_usd", "currency"],
@@ -86,6 +87,7 @@ const EVENT_DEFINITIONS = {
   stats_screen_viewed: ["tab"],
   reminder_shown: ["reminder_type"],
   reminder_clicked: ["reminder_type", "target_screen"],
+  daily_reward_claimed: ["coins", "level", "day"],
   push_notifications_enabled: [],
   push_notification_open: [],
   savings_updated: ["saved_usd_total", "tier_level", "next_tier_usd", "profile_goal"],
@@ -100,9 +102,11 @@ const EVENT_DEFINITIONS = {
   focus_target_set: ["template_id", "source"],
   focus_digest_later: ["date_key"],
   focus_digest_focus: ["date_key"],
+  focus_accepted: ["template_id", "source"],
   tamagotchi_skin_selected: ["skin_id"],
   tamagotchi_skin_unlock_feedback: ["method"],
   tamagotchi_feed: ["food_id", "food_cost", "hunger_before", "hunger_after", "coins_before", "coins_after"],
+  tamagotchi_opened: [],
   goal_creator_opened: ["source", "make_primary"],
   goal_creator_cancelled: ["source", "make_primary"],
   coin_entry_opened: ["source"],
@@ -110,9 +114,15 @@ const EVENT_DEFINITIONS = {
   coin_entry_submit: ["source", "direction", "amount_usd", "category"],
   level_share_opened: ["level"],
   level_share_sent: ["level"],
+  level_reached: ["level"],
+  impulse_map_opened: [],
 };
 
-const FACEBOOK_EVENT_WHITELIST = new Set(["onboarding_completed", "north_star_two_saves"]);
+const FACEBOOK_EVENT_WHITELIST = new Set([
+  "onboarding_completed",
+  "north_star_two_saves",
+  "temptation_action",
+]);
 
 const APPSFLYER_DEV_KEY = process.env.APPSFLYER_DEV_KEY || "hccSDBqWuZXfQCRbRQbqBR";
 const APPSFLYER_APP_ID = process.env.APPSFLYER_APP_ID || "6756276744";

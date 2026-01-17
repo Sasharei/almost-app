@@ -2,7 +2,6 @@ import Expo
 import FirebaseCore
 import React
 import ReactAppDependencyProvider
-import FBSDKCoreKit
 
 @UIApplicationMain
 public class AppDelegate: ExpoAppDelegate {
@@ -23,17 +22,11 @@ public class AppDelegate: ExpoAppDelegate {
     reactNativeFactory = factory
     bindReactNativeFactory(factory)
 
-    if FirebaseApp.app() == nil {
-      FirebaseApp.configure()
-    }
-
-    ApplicationDelegate.shared.application(
-      application,
-      didFinishLaunchingWithOptions: launchOptions
-    )
-
 #if os(iOS) || os(tvOS)
     window = UIWindow(frame: UIScreen.main.bounds)
+// @generated begin @react-native-firebase/app-didFinishLaunchingWithOptions - expo prebuild (DO NOT MODIFY) sync-10e8520570672fd76b2403b7e1e27f5198a6349a
+FirebaseApp.configure()
+// @generated end @react-native-firebase/app-didFinishLaunchingWithOptions
     factory.startReactNative(
       withModuleName: "main",
       in: window,
@@ -43,21 +36,12 @@ public class AppDelegate: ExpoAppDelegate {
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
-  public override func applicationDidBecomeActive(_ application: UIApplication) {
-    super.applicationDidBecomeActive(application)
-    AppEvents.shared.activateApp()
-  }
-
   // Linking API
   public override func application(
     _ app: UIApplication,
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
-    AppsFlyerAttribution.shared().handleOpen(url, options: options)
-    if ApplicationDelegate.shared.application(app, open: url, options: options) {
-      return true
-    }
     return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
   }
 
@@ -67,12 +51,6 @@ public class AppDelegate: ExpoAppDelegate {
     continue userActivity: NSUserActivity,
     restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
   ) -> Bool {
-    AppsFlyerAttribution.shared().continue(
-      userActivity,
-      restorationHandler: { restoringObjects in
-        restorationHandler(restoringObjects as? [UIUserActivityRestoring])
-      }
-    )
     let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
     return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
   }

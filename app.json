@@ -2,7 +2,7 @@
   "expo": {
     "name": "Almost",
     "slug": "almost_clean",
-    "version": "2.3.3",
+    "version": "3.0.0",
     "orientation": "default",
     "icon": "./assets/Almost_icon.png",
     "userInterfaceStyle": "light",
@@ -16,19 +16,21 @@
       "bundleIdentifier": "com.sasarei.almostclean",
       "supportsTablet": true,
       "googleServicesFile": "./ios/GoogleService-Info.plist",
-      "buildNumber": "2.3.3",
+      "buildNumber": "40",
       "appStoreUrl": "https://apps.apple.com/app/id6756276744?action=write-review",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Almost lets you snap a portrait so your savings profile feels personal.",
         "NSPhotoLibraryUsageDescription": "Almost accesses your photos to update the avatar that keeps you motivated."
       }
     },
     "android": {
       "package": "com.sasarei.almostclean",
-      "versionCode": 33,
+      "versionCode": 40,
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.sasarei.almostclean",
+      "icon": "./assets/android/ic_launcher.png",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/Almost_icon.png",
+        "foregroundImage": "./assets/android/ic_launcher_foreground.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,

@@ -10,20 +10,18 @@ ENV['EX_DEV_CLIENT_NETWORK_INSPECTOR'] ||= podfile_properties['EX_DEV_CLIENT_NET
 ENV['RCT_USE_RN_DEP'] ||= '1' if podfile_properties['ios.buildReactNativeFromSource'] != 'true' && podfile_properties['newArchEnabled'] != 'false'
 ENV['RCT_USE_PREBUILT_RNCORE'] ||= '1' if podfile_properties['ios.buildReactNativeFromSource'] != 'true' && podfile_properties['newArchEnabled'] != 'false'
 platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
-use_modular_headers!
 
 prepare_react_native_project!
 
-target 'almostclean' do
+target 'Almost' do
+  use_modular_headers!
+# @generated begin AppsFlyer Strict Mode - expo prebuild (DO NOT MODIFY) sync-b29372208dd0dbd1274e957795cd756926086c3a
+$RNAppsFlyerStrictMode=false
+# @generated end AppsFlyer Strict Mode
   use_expo_modules!
-
-  # Facebook SDK pods bundled via react-native-fbsdk-next lag behind Expo's Android version.
-  # Pin them here so iOS picks up the latest SDK (required for SKAdNetwork + tracking flags).
-  fb_sdk_version = '18.0.2'
-  pod 'FBSDKCoreKit', fb_sdk_version
-  pod 'FBSDKLoginKit', fb_sdk_version
-  pod 'FBSDKShareKit', fb_sdk_version
-  pod 'FBSDKGamingServicesKit', fb_sdk_version
+# @generated begin AppsFlyer Purchase Connector - expo prebuild (DO NOT MODIFY) sync-40d043aa4472dc51990344aee6329be6fe164eba
+$AppsFlyerPurchaseConnector=false
+# @generated end AppsFlyer Purchase Connector
 
   if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
     config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
@@ -59,77 +57,67 @@ target 'almostclean' do
       :ccache_enabled => podfile_properties['apple.ccacheEnabled'] == 'true',
     )
 
-    sentry_header = File.join(__dir__, 'Pods', 'Sentry', 'Sources', 'Sentry', 'include', 'SentryThreadMetadataCache.hpp')
-    if File.exist?(sentry_header)
-      FileUtils.chmod('u+w', sentry_header)
-      contents = File.read(sentry_header)
-      patched = contents.gsub('std::vector<const ThreadHandleMetadataPair>', 'std::vector<ThreadHandleMetadataPair>')
-      File.write(sentry_header, patched) if contents != patched
-    end
-
-    # React 0.81 ships two modulemaps registering `react_runtime`, which Xcode 16.1 treats as an error.
-    # The `React-RuntimeCore` modulemap already exports everything we need, so drop the duplicate.
-    jsitooling_modulemap = File.join(__dir__, 'Pods', 'Headers', 'Public', 'react_runtime', 'React-jsitooling.modulemap')
-    if File.exist?(jsitooling_modulemap)
-      FileUtils.chmod('u+w', jsitooling_modulemap)
-      contents = File.read(jsitooling_modulemap)
-      patched = contents.gsub('module react_runtime', 'module react_runtime_jsitooling')
-      File.write(jsitooling_modulemap, patched) if contents != patched
-    end
-
-    runtime_apple_modulemap = File.join(__dir__, 'Pods', 'Headers', 'Public', 'ReactCommon', 'React-RuntimeApple.modulemap')
-    if File.exist?(runtime_apple_modulemap)
-      FileUtils.chmod('u+w', runtime_apple_modulemap)
-      contents = File.read(runtime_apple_modulemap)
-      patched = contents.gsub('module ReactCommon', 'module react_runtime_apple')
-      File.write(runtime_apple_modulemap, patched) if contents != patched
-    end
-
-    # Ensure the pod target itself emits a unique module name so that Xcode does not
-    # try to treat JSITooling headers as part of React-RuntimeCore.
-    min_ios_target = '15.1'
-    installer.pods_project.targets.each do |target|
-      case target.name
-      when 'React-jsitooling'
-        target.build_configurations.each do |config|
-          config.build_settings['PRODUCT_MODULE_NAME'] = 'react_runtime_jsitooling'
-        end
-      when 'React-RuntimeApple'
-        target.build_configurations.each do |config|
-          config.build_settings['PRODUCT_MODULE_NAME'] = 'react_runtime_apple'
-        end
-      end
-      target.build_configurations.each do |config|
-        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = min_ios_target
+    sentry_profiling_header = File.join(
+      installer.sandbox.root,
+      'Sentry',
+      'Sources',
+      'Sentry',
+      'Public',
+      'SentryProfilingConditionals.h'
+    )
+    if File.exist?(sentry_profiling_header)
+      FileUtils.chmod('u+w', sentry_profiling_header)
+      header_contents = File.read(sentry_profiling_header)
+      unless header_contents.include?('ifndef SENTRY_TARGET_PROFILING_SUPPORTED')
+        header_contents = header_contents.gsub(
+          /#if TARGET_OS_WATCH \|\| TARGET_OS_TV\n#    define SENTRY_TARGET_PROFILING_SUPPORTED 0\n#else\n#    define SENTRY_TARGET_PROFILING_SUPPORTED 1\n#endif/,
+          "#if !defined(SENTRY_TARGET_PROFILING_SUPPORTED)\n#    if TARGET_OS_WATCH || TARGET_OS_TV\n#        define SENTRY_TARGET_PROFILING_SUPPORTED 0\n#    else\n#        define SENTRY_TARGET_PROFILING_SUPPORTED 1\n#    endif\n#endif"
+        )
+        File.write(sentry_profiling_header, header_contents)
       end
     end
 
-    disable_flags = 'SENTRY_TARGET_PROFILING_SUPPORTED=0 SENTRY_PROFILING_SUPPORTED=0'
+    sentry_features_builder = File.join(
+      installer.sandbox.root,
+      'Sentry',
+      'Sources',
+      'Swift',
+      'Helper',
+      'SentryEnabledFeaturesBuilder.swift'
+    )
+    if File.exist?(sentry_features_builder)
+      FileUtils.chmod('u+w', sentry_features_builder)
+      builder_contents = File.read(sentry_features_builder)
+      unless builder_contents.include?('enableAppLaunchProfiling")')
+        builder_contents = builder_contents.gsub(
+          /#if os\(iOS\) \|\| os\(macOS\) \|\| targetEnvironment\(macCatalyst\)\n        if options\.enableAppLaunchProfiling \{\n            features\.append\("appLaunchProfiling"\)\n        \}\n#endif/s,
+          "#if os(iOS) || os(macOS) || targetEnvironment(macCatalyst)\n        if options.responds(to: NSSelectorFromString(\"enableAppLaunchProfiling\")) {\n            if let value = options.value(forKey: \"enableAppLaunchProfiling\") as? Bool, value {\n                features.append(\"appLaunchProfiling\")\n            }\n        }\n#endif"
+        )
+        File.write(sentry_features_builder, builder_contents)
+      end
+    end
+
     installer.pods_project.targets.each do |target|
-      next unless target.name == 'Sentry'
+      next unless target.name.include?('Sentry')
 
       target.build_configurations.each do |config|
-        definitions = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS']
-        definitions = Array(definitions).join(' ')
-        definitions = '$(inherited)' if definitions.strip.empty?
-        next if definitions.include?('SENTRY_TARGET_PROFILING_SUPPORTED')
-
-        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = "#{definitions} #{disable_flags}"
+        # Sentry's profiling code fails to compile under C++20 with some toolchains.
+        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+        config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
+        # Force-disable profiling in native Sentry SDK (prevents allocator errors).
+        config.build_settings['OTHER_CPLUSPLUSFLAGS'] = [
+          '$(inherited)',
+          '-DSENTRY_TARGET_PROFILING_SUPPORTED=0',
+          '-DSENTRY_PROFILING_SUPPORTED=0',
+          '-DSENTRY_DISABLE_PROFILING=1'
+        ].join(' ')
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = [
+          '$(inherited)',
+          'SENTRY_TARGET_PROFILING_SUPPORTED=0',
+          'SENTRY_PROFILING_SUPPORTED=0',
+          'SENTRY_DISABLE_PROFILING=1'
+        ]
       end
     end
-
-    sentry_support_dir = File.join(Pod::Config.instance.installation_root, 'Pods', 'Target Support Files', 'Sentry')
-    Dir.glob(File.join(sentry_support_dir, 'Sentry.*.xcconfig')).each do |xcconfig_path|
-      next unless File.exist?(xcconfig_path)
-      contents = File.read(xcconfig_path)
-      next if contents.include?('SENTRY_TARGET_PROFILING_SUPPORTED')
-
-      contents = contents.gsub(/(GCC_PREPROCESSOR_DEFINITIONS = .+)/) do |line|
-        "#{line} #{disable_flags}"
-      end
-      File.write(xcconfig_path, contents)
-    end
-
-    installer.pods_project.save
   end
 end

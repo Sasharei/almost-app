@@ -1,6 +1,6 @@
 {
   "name": "almost_clean",
-  "version": "2.3.3",
+  "version": "3.0.0",
   "main": "index.js",
   "scripts": {
     "start": "EXPO_NO_TYPESCRIPT_SETUP=1 expo start",
@@ -19,6 +19,7 @@
     "@react-native-firebase/perf": "^23.5.0",
     "@sentry/react-native": "^5.0.0",
     "expo": "54.0.0",
+    "expo-av": "~16.0.8",
     "expo-blur": "~13.0.2",
     "expo-file-system": "~17.0.1",
     "expo-font": "~14.0.9",
