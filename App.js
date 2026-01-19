@@ -176,6 +176,7 @@ const STORAGE_KEYS = {
   TAMAGOTCHI_SKIN: "@almost_tamagotchi_skin",
   TAMAGOTCHI_SKINS_UNLOCKED: "@almost_tamagotchi_skins_unlocked",
   TAMAGOTCHI_HUNGER_NOTIFICATIONS: "@almost_tamagotchi_hunger_notifications",
+  TAMAGOTCHI_HUNGER_DAILY_COUNT: "@almost_tamagotchi_hunger_daily_count",
   SAVED_TOTAL_PEAK: "@almost_saved_total_peak",
   LAST_CELEBRATED_LEVEL: "@almost_last_celebrated_level",
   ACTIVE_GOAL: "@almost_active_goal",
@@ -200,7 +201,6 @@ const CELEBRATION_OVERLAY_GAP_MS = 15000;
 const DEFAULT_LANGUAGE = "en";
 const FALLBACK_LANGUAGE = "en";
 const SUPPORTED_LANGUAGES = ["en", "es", "fr", "ru"];
-const SPLASH_LOGO = require("./assets/Almost_logo.png");
 const SOUND_FILES = {
   coin: require("./assets/sounds/coin.wav"),
   tap: require("./assets/sounds/tap.wav"),
@@ -838,6 +838,12 @@ const FAB_TUTORIAL_STATUS = {
   DONE: "done",
   PENDING: "pending",
   SHOWING: "showing",
+};
+const QUEUED_MODAL_TYPES = {
+  FAB_TUTORIAL: "fab_tutorial",
+  DAILY_CHALLENGE: "daily_challenge",
+  FOCUS_DIGEST: "focus_digest",
+  DAILY_SUMMARY: "daily_summary",
 };
 const CARD_TEXTURE_ACCENTS = ["#8AB9FF", "#FFA4C0", "#8CE7CF", "#FFD48A", "#BBA4FF", "#7FD8FF"];
 const TEMPTATION_CARD_RADIUS = 28;
@@ -2029,6 +2035,7 @@ const TAMAGOTCHI_DECAY_STEP = 2;
 const TAMAGOTCHI_COIN_DECAY_TICKS = 6;
 const TAMAGOTCHI_FEED_AMOUNT = ECONOMY_RULES.tamagotchiFeedBoost;
 const TAMAGOTCHI_MAX_HUNGER = 100;
+const TAMAGOTCHI_HUNGER_NOTIFICATION_DAILY_LIMIT = 2;
 const TAMAGOTCHI_FEED_COST = ECONOMY_RULES.tamagotchiFeedCost;
 const TAMAGOTCHI_PARTY_COST = ECONOMY_RULES.tamagotchiPartyCost;
 const PARTY_FIREWORK_CONFIGS = [
@@ -3469,11 +3476,13 @@ const matchesGenderAudience = (card, gender = "none") => {
 const buildPersonalizedTemptations = (profile, baseList = DEFAULT_TEMPTATIONS) => {
   const preset = getPersonaPreset(profile?.persona);
   const personaExtras = PERSONA_TEMPTATION_PRESETS[preset?.id] || [];
-  const customFirst = createCustomHabitTemptation(
-    profile.customSpend || {},
-    profile?.currency,
-    profile?.gender
-  );
+  const customFirst = profile?.customSpend
+    ? createCustomHabitTemptation(
+        profile.customSpend,
+        profile?.currency,
+        profile?.gender
+      )
+    : null;
   const personaCard = createPersonaTemptation(preset);
   const priorityIds = ["coffee_to_go", "netflix_subscription"];
   const gender = profile?.gender || "none";
@@ -3504,7 +3513,7 @@ const buildPersonalizedTemptations = (profile, baseList = DEFAULT_TEMPTATIONS) =
   sortedPersonaExtras.forEach((card) => pushIfVisible(card));
   // 3) Держим кофе навынос и подписку Netflix сразу после кастомной/персоны.
   const resolvedPriorityIds = [...priorityIds];
-  if (preset?.id === "mindful_coffee" && personaHasCoffee) {
+  if (!shouldSkipPersona && preset?.id === "mindful_coffee" && personaHasCoffee) {
     const altCoffee = baseList.find((item) => item?.id === "croissant_break")?.id || "croissant_break";
     resolvedPriorityIds.splice(0, 1, altCoffee);
     skippedIds.add("coffee_to_go");
@@ -3975,7 +3984,7 @@ const TRANSLATIONS = {
     streakRecoveryInsufficient: "Нужно {{coins}} синие монеты для восстановления.",
     coinValueTitle: "Зачем нужны монеты?",
     coinValueBody:
-      "Монеты нужны чтобы кормить кота Алми. Они хранятся в раскрытом главном виджете сверху экрана. Монеты также нужны для кастомизации Алми и восстановления серий на карточках.",
+      "Монеты — награда за старания. Они видны в главном виджете статистики сверху экрана. Монеты также нужны для кастомизации Алми и восстановления серий на карточках.",
     coinValueCta: "Понял",
     impulseReminderWinTitle: "Ты победил «{{temptation}}»",
     impulseReminderWinBody: "Вчера это сэкономило {{amount}}. Помни, ради чего держишь курс.",
@@ -4081,7 +4090,7 @@ const TRANSLATIONS = {
     priceEditCancel: "Отмена",
     priceEditDelete: "Удалить искушение",
     priceEditDeleteConfirm: "Удалить это искушение?",
-    priceEditError: "Введи сумму больше нуля",
+    priceEditError: "Введите сумму больше нуля",
     priceEditNameLabel: "Название карточки",
     priceEditAmountLabel: "Стоимость ({{currency}})",
     wishAdded: "Добавлено в цели: {{title}}",
@@ -4106,11 +4115,11 @@ const TRANSLATIONS = {
     analyticsPendingToDecline: "Отказы",
     analyticsFridgeCount: "Траты",
     analyticsBestStreak: "Бесплатных дней",
-    analyticsConsentTitle: "Almost становится умнее с твоей помощью",
+    analyticsConsentTitle: "Almost становится умнее с вашей помощью",
     analyticsConsentBody:
-      "Анонимные данные помогают нам:\n- улучшать фичи, которыми ты пользуешься\n- делать рекомендации точнее\n- быстрее выпускать обновления\n\nБез рекламы. Без продажи данных. Только улучшение приложения.",
+      "Анонимные данные помогают нам:\n- улучшать фичи, которыми вы пользуетесь\n- делать рекомендации точнее\n- быстрее выпускать обновления\n\nБез рекламы. Без продажи данных. Только улучшение приложения.",
     analyticsConsentAgree: "🚀 Помочь улучшить Almost",
-    analyticsConsentSkip: "Пропустить",
+    analyticsConsentSkip: "Не делиться",
     pushOptInPromptTitle: "Включи уведомления",
     pushOptInPromptBody: "Almost будет вовремя подсказывать и мягко напоминать. Так приложение помогает эффективнее.",
     pushOptInPromptPrimary: "Включить уведомления",
@@ -4278,20 +4287,20 @@ const TRANSLATIONS = {
     defaultDealDesc: "Опиши, зачем ты копишь",
     photoLibrary: "Из галереи",
     photoCamera: "Через камеру",
-    photoTapHint: "Тапни, чтобы добавить фото",
+    photoTapHint: "Нажмите, чтобы добавить фото",
     photoPromptTitle: "Добавим фото?",
-    photoPromptSubtitle: "Выбери: камера или галерея",
+    photoPromptSubtitle: "Выберите: камера или галерея",
     photoPermissionDenied: "Нужно разрешение на доступ к камере или фото, чтобы добавить аватар.",
-    photoPermissionSettings: "Открой настройки, чтобы дать доступ Almost к камере и фото.",
+    photoPermissionSettings: "Откройте настройки, чтобы дать доступ Almost к камере и фото.",
     photoPickerError: "Что-то пошло не так. Попробуй ещё раз.",
     registrationTitle: "Познакомимся",
-    registrationSubtitle: "Расскажи о себе, чтобы Almost говорил на твоём языке",
-    languageTitle: "Выбери язык",
+    registrationSubtitle: "Расскажите о себе, чтобы Almost говорил на вашем языке",
+    languageTitle: "Выберите язык",
     languageSubtitle: "Чтобы подсказки звучали естественно",
     languageCurrencyHint: "Язык и валюту можно поменять позже в профиле.",
     currencySwipeHint: "Свайпни, чтобы увидеть все валюты →",
     languageTermsHint: "Нажимая «Дальше», вы принимаете пользовательское соглашение Almost.",
-    languageTermsAccepted: "Прими пользовательское соглашение, чтобы двигаться дальше.",
+    languageTermsAccepted: "Примите пользовательское соглашение, чтобы двигаться дальше.",
     languageTermsLink: "Прочитать пользовательское соглашение",
     inputFirstName: "Имя (по желанию)",
     inputLastName: "Фамилия (по желанию)",
@@ -4299,18 +4308,18 @@ const TRANSLATIONS = {
     currencyLabel: "Валюта накоплений",
     nextButton: "Дальше",
     goalTitle: "Определим цель",
-    goalSubtitle: "Выбери главное направление экономии",
-    goalCustomSectionTitle: "Свои цели",
-    goalCustomCreate: "Добавить свою цель",
+    goalSubtitle: "Выберите главное направление экономии",
+    goalCustomSectionTitle: "Ваши цели",
+    goalCustomCreate: "Добавить вашу цель",
     goalButton: "Готово",
     goalSkip: "Пока пропустить",
     goalPrimaryBadge: "Главная цель",
     goalTargetTitle: "Сколько нужно на цель?",
-    goalTargetSubtitle: "Укажи сумму - Almost будет держать фокус и прогресс.",
-    goalTargetPlaceholder: "Введите сумму",
+    goalTargetSubtitle: "Укажите сумму - Almost будет держать фокус и прогресс.",
+    goalTargetPlaceholder: "Сумма",
     goalTargetHint: "Сумму можно поменять позже в профиле.",
     goalTargetCTA: "Запомнить",
-    goalTargetError: "Введи сумму цели",
+    goalTargetError: "Введите сумму цели",
     goalTargetLabel: "Сумма главной цели",
     primaryGoalLabel: "Главная цель",
     primaryGoalLocked: "Эту цель можно поменять только в профиле.",
@@ -4321,7 +4330,7 @@ const TRANSLATIONS = {
     goalWidgetTitle: "До цели",
     goalWidgetCompleteTagline: "Экономия продолжалась - и цель закрыта.",
     goalAssignPromptTitle: "Куда зачесть экономию?",
-    goalAssignPromptSubtitle: "Выбери цель, которую наполняет «{{title}}».",
+    goalAssignPromptSubtitle: "Выберите цель, которую наполняет «{{title}}».",
     goalAssignNone: "Пока без цели",
     goalAssignTemptationTitle: "Назначить искушение",
     goalAssignTemptationSubtitle: "Что будет пополнять «{{goal}}»?",
@@ -4342,20 +4351,20 @@ const TRANSLATIONS = {
     goalEditEmojiLabel: "Эмодзи цели",
     goalEditSave: "Сохранить",
     goalEditCancel: "Отмена",
-    goalEditNameError: "Введи название цели",
-    goalEditTargetError: "Введи сумму цели",
+    goalEditNameError: "Введите название цели",
+    goalEditTargetError: "Введите сумму цели",
     goalAssignPromptTitle: "Куда зачесть экономию?",
-    goalAssignPromptSubtitle: "Выбери цель, которую наполняет «{{title}}».",
+    goalAssignPromptSubtitle: "Выберите цель, которую наполняет «{{title}}».",
     goalAssignNone: "Пока без цели",
     goalAssignTemptationTitle: "Назначить искушение",
     goalAssignTemptationSubtitle: "Что будет пополнять «{{goal}}»?",
     goalAssignClear: "Сбросить назначение",
     goalAssignFieldLabel: "Куда копим",
     goalCelebrationTitle: "Главная цель достигнута!",
-    goalCelebrationSubtitle: "Алми гордится тобой. Можно выбрать новую мечту.",
+    goalCelebrationSubtitle: "Алми гордится вами. Можно выбрать новую мечту.",
     goalCelebrationTarget: "Собрано {{amount}}",
     goalRenewalTitle: "Новая главная цель?",
-    goalRenewalSubtitle: "Зафиксируй следующую мечту, чтобы Almost продолжал вести тебя к ней.",
+    goalRenewalSubtitle: "Зафиксируйте следующую мечту, чтобы Almost продолжал вести вас к ней.",
     goalRenewalCreate: "Создать цель",
     goalRenewalLater: "Позже",
     levelWidgetTitle: "Прогресс уровней",
@@ -4367,7 +4376,7 @@ const TRANSLATIONS = {
     onboardingGuideSubtitle: "Первые шаги в борьбе с потребительством и импульсивными тратами.",
     onboardingGuideButton: "Продолжить",
     termsTitle: "Пользовательское соглашение",
-    termsSubtitle: "Прочитай ключевые условия Almost. Продолжая, ты подтверждаешь согласие с ними.",
+    termsSubtitle: "Прочитайте ключевые условия Almost. Продолжая, вы подтверждаете согласие с ними.",
     termsViewFull: "Открыть полную версию",
     termsLinkHint: "Ссылка откроет документ в браузере.",
     termsAccept: "Принимаю",
@@ -4375,20 +4384,20 @@ const TRANSLATIONS = {
     guideStepTrackTitle: "Главная цель: осознанность",
     guideStepTrackDesc: "Мы помогаем тратить деньги только на важное, сохраняя бюджет и фокус на крупных целях.",
     guideStepDecisionTitle: "Меню искушений",
-    guideStepDecisionDesc: "Отмечай каждое искушение и уставай перед ним, и тогда деньги остаются в кошельке, а Almost фиксирует победы.",
+    guideStepDecisionDesc: "Отмечайте каждое искушение и делайте паузу перед ним, и тогда деньги остаются в кошельке, а Almost фиксирует победы.",
     guideStepRewardTitle: "Визуализация прогресса",
-    guideStepRewardDesc: "Не забывай отмечать, на чём сэкономила: приложение показывает путь к глобальной цели и даёт мотивацию.",
-    personaTitle: "Расскажи про себя",
-    personaSubtitle: "Расскажи о себе, чтобы приложение было персонализированным.",
-    personaGenderLabel: "Как к тебе обращаться?",
+    guideStepRewardDesc: "Не забывайте отмечать, на чём сэкономили: приложение показывает путь к глобальной цели и даёт мотивацию.",
+    personaTitle: "Теперь персонализируем приложение для вас",
+    personaSubtitle: "Расскажите о себе, чтобы приложение было персонализировано.",
+    personaGenderLabel: "Как к вам обращаться?",
     personaHabitLabel: "Профиль, который ближе всего",
     personaConfirm: "Продолжить",
-    customSpendTitle: "Твоё ежедневное искушение",
-    customSpendSubtitle: "Дай ему имя - Almost поможет отказываться чаще.",
+    customSpendTitle: "Ваше ежедневное искушение",
+    customSpendSubtitle: "Дайте ему имя - Almost поможет отказываться чаще.",
     customSpendNamePlaceholder: "Матча, сигареты, маникюр...",
     customSpendAmountLabel: "Сколько стоит один раз?",
     customSpendAmountPlaceholder: "Введите сумму",
-    customSpendFrequencyLabel: "Сколько раз в неделю поддаёшься?",
+    customSpendFrequencyLabel: "Сколько раз в неделю поддаётесь?",
     customSpendFrequencyPlaceholder: "Например 4",
     customSpendHint: "Это всегда можно поменять в профиле.",
     customSpendSkip: "Пропустить",
@@ -4448,12 +4457,12 @@ const TRANSLATIONS = {
     dailySummaryNotificationTitle: "Вечерний отчёт готов",
     dailySummaryNotificationBody: "+{{saved}} за {{declines}} отказа(ов). Запрыгни в Almost и подведём итоги.",
     baselineTitle: "Сколько уходит на мелкие импульсы?",
-    baselineSubtitle: "Прикинь месячную сумму - Almost сравнит её с реальными победами.",
+    baselineSubtitle: "Прикиньте месячную сумму - Almost сравнит её с реальными победами.",
     baselinePlaceholder: "Введите сумму",
     baselineCTA: "Запомнить",
     baselineSkip: "Пока пропустить",
     baselineHint: "Это ориентир, позже можно обновить его в профиле.",
-    baselineInputError: "Введи сумму ежемесячных необязательных трат",
+    baselineInputError: "Введите сумму ежемесячных необязательных трат",
     potentialBlockTitle: "Потенциал экономии",
     potentialBlockSubtitle: "",
     potentialBlockStatusAhead: "Ого! Ты опережаешь прогноз. Держи темп!",
@@ -4723,7 +4732,7 @@ const TRANSLATIONS = {
     streakRecoveryInsufficient: "You need {{coins}} blue coins to restore it.",
     coinValueTitle: "Why do coins matter?",
     coinValueBody:
-      "Coins feed Almi the cat. They live inside the expanded hero widget at the top of Home. Coins also unlock Almi customization and restore streaks on cards.",
+      "Coins are a reward for your effort. You can find them in the main stats widget at the top of Home. Coins also unlock Almi customization and restore streaks on cards.",
     coinValueCta: "Got it",
     impulseReminderWinTitle: "You beat “{{temptation}}”",
     impulseReminderWinBody: "Yesterday that saved {{amount}}. Keep the streak going today.",
@@ -4865,7 +4874,7 @@ const TRANSLATIONS = {
     analyticsConsentBody:
       "Anonymous data helps us:\n- improve the features you use\n- make recommendations more precise\n- ship updates faster\n\nNo ads. No selling data. Only a better app.",
     analyticsConsentAgree: "🚀 Help improve Almost",
-    analyticsConsentSkip: "Skip",
+    analyticsConsentSkip: "Don't share",
     pushOptInPromptTitle: "Turn on notifications",
     pushOptInPromptBody: "Timely nudges help Almost support you better. Allow notifications to get gentle reminders.",
     pushOptInPromptPrimary: "Enable notifications",
@@ -5046,7 +5055,7 @@ const TRANSLATIONS = {
     goalPrimaryBadge: "Primary goal",
     goalTargetTitle: "How big is this goal?",
     goalTargetSubtitle: "Set the amount so Almost tracks every dollar toward it.",
-    goalTargetPlaceholder: "Enter amount",
+    goalTargetPlaceholder: "Amount",
     goalTargetHint: "You can edit the amount later in the profile.",
     goalTargetCTA: "Save amount",
     goalTargetError: "Enter a goal amount",
@@ -5110,7 +5119,7 @@ const TRANSLATIONS = {
     guideStepDecisionDesc: "Log each temptation and resist it so Almost records the win and keeps that cash untouched.",
     guideStepRewardTitle: "See the big picture",
     guideStepRewardDesc: "Check off every saved item and watch the app visualize the bigger goal you’re working toward.",
-    personaTitle: "Tell us about you",
+    personaTitle: "Let's personalize the app",
     personaSubtitle: "Tell us about yourself so the app can be personalized.",
     personaGenderLabel: "How should we address you?",
     personaHabitLabel: "Pick a starter profile",
@@ -5446,7 +5455,7 @@ const TRANSLATIONS = {
     streakRecoveryInsufficient: "Il faut {{coins}} pièces bleues pour la restaurer.",
     coinValueTitle: "À quoi servent les pièces ?",
     coinValueBody:
-      "Les pieces nourrissent Almi, le chat. Elles sont stockees dans le widget principal deploye en haut de l'accueil. Les pieces servent aussi a personnaliser Almi et restaurer les series sur les cartes.",
+      "Les pieces sont une recompense pour tes efforts. Elles se trouvent dans le widget principal des stats en haut de l'accueil. Les pieces servent aussi a personnaliser Almi et restaurer les series sur les cartes.",
     coinValueCta: "Compris",
     impulseReminderWinTitle: "Tu as tenu bon face à « {{temptation}} »",
     impulseReminderWinBody: "Hier tu as gardé {{amount}}. Rappelle-toi pourquoi tu résistes.",
@@ -5577,11 +5586,11 @@ const TRANSLATIONS = {
     analyticsPendingToDecline: "Économies",
     analyticsFridgeCount: "Dépenses",
     analyticsBestStreak: "Jours gratuits",
-    analyticsConsentTitle: "Almost devient plus malin grâce à toi",
+    analyticsConsentTitle: "Almost devient plus malin grâce à vous",
     analyticsConsentBody:
-      "Les données anonymes nous aident à :\n- améliorer les fonctionnalités que tu utilises\n- rendre les recommandations plus précises\n- livrer les mises à jour plus vite\n\nPas de pub. Pas de revente de données. Juste une meilleure app.",
+      "Les données anonymes nous aident à :\n- améliorer les fonctionnalités que vous utilisez\n- rendre les recommandations plus précises\n- livrer les mises à jour plus vite\n\nPas de pub. Pas de revente de données. Juste une meilleure app.",
     analyticsConsentAgree: "🚀 Aider Almost à s'améliorer",
-    analyticsConsentSkip: "Ignorer",
+    analyticsConsentSkip: "Ne pas partager",
     pushOptInPromptTitle: "Activer les notifications",
     pushOptInPromptBody: "Almost pourra envoyer des rappels au bon moment et mieux t’accompagner.",
     pushOptInPromptPrimary: "Activer les notifs",
@@ -5734,42 +5743,42 @@ const TRANSLATIONS = {
     defaultDealDesc: "Décris ce que tu veux financer",
     photoLibrary: "Depuis la galerie",
     photoCamera: "Utiliser la caméra",
-    photoTapHint: "Tape pour ajouter une photo",
+    photoTapHint: "Appuyez pour ajouter une photo",
     photoPromptTitle: "Ajouter une photo ?",
-    photoPromptSubtitle: "Choisis caméra ou galerie",
-    photoPermissionDenied: "Nous avons besoin de l'accès caméra ou photos pour changer ton avatar.",
-    photoPermissionSettings: "Ouvre Réglages pour accorder l'accès à la caméra et aux photos.",
+    photoPromptSubtitle: "Choisissez caméra ou galerie",
+    photoPermissionDenied: "Nous avons besoin de l'accès caméra ou photos pour changer votre avatar.",
+    photoPermissionSettings: "Ouvrez Réglages pour accorder l'accès à la caméra et aux photos.",
     photoPickerError: "Un souci est survenu. Réessaie.",
     registrationTitle: "Mettons tout en place",
-    registrationSubtitle: "Présente-toi pour qu'Almost parle ta langue",
-    languageTitle: "Choisis une langue",
-    languageSubtitle: "Chaque astuce sera adaptée pour toi",
-    languageCurrencyHint: "Tu pourras changer la langue et la devise dans Profil.",
-    currencySwipeHint: "Balaye pour voir toutes les devises →",
+    registrationSubtitle: "Présentez-vous pour qu'Almost parle votre langue",
+    languageTitle: "Choisissez une langue",
+    languageSubtitle: "Chaque astuce sera adaptée pour vous",
+    languageCurrencyHint: "Vous pourrez changer la langue et la devise dans Profil.",
+    currencySwipeHint: "Balayez pour voir toutes les devises →",
     languageTermsHint: "En continuant, vous acceptez les conditions d'utilisation d'Almost.",
-    languageTermsAccepted: "Accepte les conditions d'utilisation pour continuer.",
+    languageTermsAccepted: "Acceptez les conditions d'utilisation pour continuer.",
     languageTermsLink: "Lire les Conditions complètes",
     inputFirstName: "Prénom (facultatif)",
     inputLastName: "Nom (facultatif)",
-    inputMotto: "Quelques mots sur toi (facultatif)",
+    inputMotto: "Quelques mots sur vous (facultatif)",
     currencyLabel: "Devise d'épargne",
     nextButton: "Continuer",
-    goalTitle: "Choisis un objectif",
-    goalSubtitle: "À quoi doivent servir tes décisions conscientes ?",
-    goalCustomSectionTitle: "Tes objectifs",
-    goalCustomCreate: "Ajouter ton propre objectif",
+    goalTitle: "Choisissez un objectif",
+    goalSubtitle: "À quoi doivent servir vos décisions conscientes ?",
+    goalCustomSectionTitle: "Vos objectifs",
+    goalCustomCreate: "Ajouter votre propre objectif",
     goalButton: "Commencer à épargner",
     goalSkip: "Passer pour l'instant",
     goalPrimaryBadge: "Objectif principal",
     goalTargetTitle: "Quelle taille pour cet objectif ?",
-    goalTargetSubtitle: "Définis le montant pour qu'Almost suive chaque unité.",
-    goalTargetPlaceholder: "Entre le montant",
-    goalTargetHint: "Tu pourras le modifier plus tard dans le profil.",
+    goalTargetSubtitle: "Définissez le montant pour qu'Almost suive chaque unité.",
+    goalTargetPlaceholder: "Montant",
+    goalTargetHint: "Vous pourrez le modifier plus tard dans le profil.",
     goalTargetCTA: "Enregistrer le montant",
-    goalTargetError: "Entre un montant",
+    goalTargetError: "Entrez un montant",
     goalTargetLabel: "Montant de l'objectif",
     primaryGoalLabel: "Objectif principal",
-    primaryGoalLocked: "Tu pourras changer ça plus tard dans ton profil.",
+    primaryGoalLocked: "Vous pourrez changer ça plus tard dans votre profil.",
     primaryGoalRemaining: "Il reste {{amount}}",
     goalWidgetTargetLabel: "Objectif : {{amount}}",
     goalWidgetRemaining: "Encore {{amount}}",
@@ -5777,7 +5786,7 @@ const TRANSLATIONS = {
     goalWidgetTitle: "Vers l'objectif",
     goalWidgetCompleteTagline: "Les économies continuent - mission accomplie.",
     goalAssignPromptTitle: "Où envoyer cette économie ?",
-    goalAssignPromptSubtitle: "Choisis l'objectif qui recevra « {{title}} ».",
+    goalAssignPromptSubtitle: "Choisissez l'objectif qui recevra « {{title}} ».",
     goalAssignNone: "Pas encore d'objectif",
     goalAssignTemptationTitle: "Associer une tentation",
     goalAssignTemptationSubtitle: "Quelle habitude alimente « {{goal}} » ?",
@@ -5798,13 +5807,13 @@ const TRANSLATIONS = {
     goalEditEmojiLabel: "Emoji",
     goalEditSave: "Enregistrer",
     goalEditCancel: "Annuler",
-    goalEditNameError: "Entre un nom",
-    goalEditTargetError: "Spécifie un montant",
+    goalEditNameError: "Entrez un nom",
+    goalEditTargetError: "Spécifiez un montant",
     goalCelebrationTitle: "Objectif principal atteint !",
-    goalCelebrationSubtitle: "Almi est fier : choisis le prochain rêve.",
+    goalCelebrationSubtitle: "Almi est fier : choisissez le prochain rêve.",
     goalCelebrationTarget: "Économisé {{amount}}",
-    goalRenewalTitle: "Choisis un nouvel objectif principal",
-    goalRenewalSubtitle: "Celui-ci est terminé : fixe-en un nouveau pour garder l'élan.",
+    goalRenewalTitle: "Choisissez un nouvel objectif principal",
+    goalRenewalSubtitle: "Celui-ci est terminé : fixez-en un nouveau pour garder l'élan.",
     goalRenewalCreate: "Créer un objectif",
     goalRenewalLater: "Plus tard",
     levelWidgetTitle: "Progression du niveau",
@@ -5816,30 +5825,30 @@ const TRANSLATIONS = {
     onboardingGuideSubtitle: "Un antidote conscient contre le consumérisme et les achats impulsifs.",
     onboardingGuideButton: "Compris",
     termsTitle: "Conditions d'utilisation",
-    termsSubtitle: "Lis les points clés. Continuer signifie accepter les Conditions Almost.",
+    termsSubtitle: "Lisez les points clés. Continuer signifie accepter les Conditions Almost.",
     termsViewFull: "Ouvrir le document complet",
-    termsLinkHint: "Nous l'ouvrirons dans ton navigateur.",
+    termsLinkHint: "Nous l'ouvrirons dans votre navigateur.",
     termsAccept: "J'accepte",
     termsDecline: "Pas maintenant",
-    guideStepTrackTitle: "Ta mission principale",
-    guideStepTrackDesc: "Dépense consciemment, protège ton budget et concentre-toi sur ce qui compte.",
+    guideStepTrackTitle: "Votre mission principale",
+    guideStepTrackDesc: "Dépensez consciemment, protégez votre budget et concentrez-vous sur ce qui compte.",
     guideStepDecisionTitle: "Menu des tentations",
-    guideStepDecisionDesc: "Note chaque tentation et résiste pour qu'Almost enregistre la victoire et garde l'argent au chaud.",
+    guideStepDecisionDesc: "Notez chaque tentation et résistez pour qu'Almost enregistre la victoire et garde l'argent au chaud.",
     guideStepRewardTitle: "Voir la vue d'ensemble",
-    guideStepRewardDesc: "Valide chaque économie et observe l'app dessiner le grand objectif.",
-    personaTitle: "Parle-nous de toi",
+    guideStepRewardDesc: "Validez chaque économie et observez l'app dessiner le grand objectif.",
+    personaTitle: "Personnalisons l'application pour vous",
     personaSubtitle: "Pour personnaliser l'expérience.",
-    personaGenderLabel: "Comment devons-nous t'appeler ?",
-    personaHabitLabel: "Choisis un profil de départ",
+    personaGenderLabel: "Comment devons-nous vous appeler ?",
+    personaHabitLabel: "Choisissez un profil de départ",
     personaConfirm: "Continuer",
-    customSpendTitle: "Ta tentation quotidienne",
-    customSpendSubtitle: "Donne-lui un petit nom et Almost t'aidera à la battre plus souvent.",
+    customSpendTitle: "Votre tentation quotidienne",
+    customSpendSubtitle: "Donnez-lui un petit nom et Almost vous aidera à la battre plus souvent.",
     customSpendNamePlaceholder: "Matcha du matin, cigarettes, nail art…",
     customSpendAmountLabel: "Coût par occasion",
-    customSpendAmountPlaceholder: "Entre le montant",
+    customSpendAmountPlaceholder: "Entrez le montant",
     customSpendFrequencyLabel: "Combien de fois par semaine gagne-t-elle ?",
     customSpendFrequencyPlaceholder: "Ex. 4",
-    customSpendHint: "Tu peux changer ça à tout moment dans le profil.",
+    customSpendHint: "Vous pouvez changer ça à tout moment dans le profil.",
     customSpendSkip: "Passer pour l'instant",
     smartReminderTitle: [
       "Almost a repéré « {{temptation}} »",
@@ -5890,12 +5899,12 @@ const TRANSLATIONS = {
     dailySummaryNotificationBody: "+{{saved}} en {{declines}} refus aujourd’hui. Ouvre Almost pour tout voir.",
     baselineTitle: "Combien part dans les petites folies ?",
     baselineSubtitle:
-      "Estime un mois de cafés, snacks et achats impulsifs pour le comparer aux vraies victoires.",
-    baselinePlaceholder: "Entre le montant",
+      "Estimez un mois de cafés, snacks et achats impulsifs pour le comparer aux vraies victoires.",
+    baselinePlaceholder: "Entrez le montant",
     baselineCTA: "Enregistrer le montant",
     baselineSkip: "Passer pour l'instant",
-    baselineHint: "Un chiffre approximatif suffit ; tu pourras l'ajuster dans Profil.",
-    baselineInputError: "Entre ta dépense mensuelle estimée en extras",
+    baselineHint: "Un chiffre approximatif suffit ; vous pourrez l'ajuster dans Profil.",
+    baselineInputError: "Entrez votre dépense mensuelle estimée en extras",
     potentialBlockTitle: "Potentiel vs épargne réelle",
     potentialBlockSubtitle: "",
     potentialBlockStatusAhead: "Wow, tu dépasses le pronostic !",
@@ -6166,7 +6175,7 @@ const TRANSLATIONS = {
     streakRecoveryInsufficient: "Necesitas {{coins}} monedas azules para restaurarla.",
     coinValueTitle: "¿Para qué sirven las monedas?",
     coinValueBody:
-      "Las monedas alimentan a Almi, el gato. Se guardan en el widget principal desplegado arriba en Inicio. Las monedas tambien sirven para personalizar a Almi y restaurar las rachas en las tarjetas.",
+      "Las monedas son una recompensa por tu esfuerzo. Las ves en el widget principal de estadisticas arriba en Inicio. Las monedas tambien sirven para personalizar a Almi y restaurar las rachas en las tarjetas.",
     coinValueCta: "Entendido",
     impulseReminderWinTitle: "Ayer domaste «{{temptation}}»",
     impulseReminderWinBody: "Guardaste {{amount}}. Sigue en modo ahorro hoy.",
@@ -6299,7 +6308,7 @@ const TRANSLATIONS = {
     analyticsConsentBody:
       "Los datos anónimos nos ayudan a:\n- mejorar las funciones que usas\n- hacer las recomendaciones más precisas\n- lanzar actualizaciones más rápido\n\nSin anuncios. Sin venta de datos. Solo mejorar la app.",
     analyticsConsentAgree: "🚀 Ayudar a mejorar Almost",
-    analyticsConsentSkip: "Omitir",
+    analyticsConsentSkip: "No compartir",
     pushOptInPromptTitle: "Activa las notificaciones",
     pushOptInPromptBody: "Así Almost puede enviarte recordatorios puntuales y ayudarte mejor.",
     pushOptInPromptPrimary: "Activar notificaciones",
@@ -6480,7 +6489,7 @@ const TRANSLATIONS = {
     goalPrimaryBadge: "Meta principal",
     goalTargetTitle: "¿Qué tan grande es esta meta?",
     goalTargetSubtitle: "Configura el monto para que Almost registre cada unidad.",
-    goalTargetPlaceholder: "Ingresa el monto",
+    goalTargetPlaceholder: "Importe",
     goalTargetHint: "Siempre podrás editarlo en el perfil.",
     goalTargetCTA: "Guardar monto",
     goalTargetError: "Introduce un monto objetivo",
@@ -6544,7 +6553,7 @@ const TRANSLATIONS = {
     guideStepDecisionDesc: "Registra cada impulso y resístelo para que Almost cuente la victoria.",
     guideStepRewardTitle: "Visualiza el panorama",
     guideStepRewardDesc: "Marca cada ahorro y observa cómo la app dibuja la meta mayor.",
-    personaTitle: "Cuéntanos de ti",
+    personaTitle: "Personalicemos la app",
     personaSubtitle: "Así personalizamos la experiencia.",
     personaGenderLabel: "¿Cómo te llamamos?",
     personaHabitLabel: "Perfil con el que más te identificas",
@@ -7521,14 +7530,13 @@ const INITIAL_REGISTRATION = {
 const ONBOARDING_STEP_SEQUENCE = [
   "logo",
   "language",
+  "analytics_consent",
   "guide",
   "register",
   "persona",
   "habit",
   "baseline",
   "goal",
-  "goal_target",
-  "analytics_consent",
 ];
 
 const resolveOnboardingStepIndex = (step) => {
@@ -8536,9 +8544,9 @@ function TemptationCardComponent({
       measureTarget.measureInWindow((x, y, width, height) => {
         const androidFineTune =
           Platform.OS === "android"
-            ? Number.isFinite(tutorialHighlightOffset)
-              ? tutorialHighlightOffset
-              : ANDROID_TUTORIAL_HIGHLIGHT_OFFSET
+            ? (Number.isFinite(tutorialHighlightOffset)
+                ? tutorialHighlightOffset
+                : ANDROID_TUTORIAL_HIGHLIGHT_OFFSET) + (RNStatusBar.currentHeight || 0)
             : 0;
         onTutorialHighlightLayoutChange({
           x,
@@ -9828,7 +9836,15 @@ function SavingsHeroCard({
         </Text>
         <TouchableOpacity
           style={styles.savedHeroToggleButton}
-          onPress={() => setExpanded((prev) => !prev)}
+          onPress={() =>
+            setExpanded((prev) => {
+              const next = !prev;
+              if (next) {
+                logEvent("stats_screen_viewed", { tab: "feed" });
+              }
+              return next;
+            })
+          }
         >
           <Text style={[styles.savedHeroToggleText, { color: goldPalette.subtext }]}>
             {expanded ? t("heroCollapse") : t("heroExpand")}
@@ -15186,7 +15202,6 @@ function AppContent() {
   const coinEntryContextRef = useRef({ source: null, openedAt: 0, submitted: false });
   const [coinSliderMaxUSD, setCoinSliderMaxUSD] = useState(DEFAULT_COIN_SLIDER_MAX_USD);
   const [coinSliderHydrated, setCoinSliderHydrated] = useState(false);
-  const [pendingGoalTargets, setPendingGoalTargets] = useState(null);
   const [savingsBreakdownVisible, setSavingsBreakdownVisible] = useState(false);
   const products = useMemo(
     () => filterTemptationsByPrice(temptations, priceLimitUSD),
@@ -15299,6 +15314,7 @@ function AppContent() {
   const [homeLayoutReady, setHomeLayoutReady] = useState(false);
   const [startupHydrated, setStartupHydrated] = useState(false);
   const fontsReady = fontsLoaded || Boolean(fontsError);
+  const startupLogoReady = fontsReady && startupHydrated;
   const primaryTemptationId = profile.customSpend?.id || "custom_habit";
   const primaryTemptationDescription = useMemo(() => {
     const gender = profile?.gender || "none";
@@ -15344,23 +15360,6 @@ function AppContent() {
   const overlayRetryTimerRef = useRef(null);
   const feedScreenRef = useRef(null);
 
-  useEffect(() => {
-    if (!FacebookSettings || typeof FacebookSettings.initializeSDK !== "function") return;
-    try {
-      if (typeof FacebookSettings.setAppID === "function") {
-        FacebookSettings.setAppID(FACEBOOK_APP_ID);
-      }
-      FacebookSettings.initializeSDK();
-      if (typeof FacebookSettings.setAdvertiserTrackingEnabled === "function") {
-        const trackingPromise = FacebookSettings.setAdvertiserTrackingEnabled(true);
-        if (trackingPromise?.catch) {
-          trackingPromise.catch(() => {});
-        }
-      }
-    } catch (error) {
-      console.warn("facebook sdk init", error);
-    }
-  }, []);
   const overlayQueueRef = useRef([]);
   const overlayActiveRef = useRef(false);
   const lastOverlayDismissedAtRef = useRef(0);
@@ -15377,6 +15376,10 @@ function AppContent() {
   const [pendingDailySummaryData, setPendingDailySummaryData] = useState(null);
   const [dailySummaryOpenToken, setDailySummaryOpenToken] = useState(0);
   const dailySummaryOpenProcessedRef = useRef(0);
+  const queuedModalQueueRef = useRef([]);
+  const queuedModalActiveRef = useRef(null);
+  const [queuedModalType, setQueuedModalType] = useState(null);
+  const [queuedModalProcessTick, setQueuedModalProcessTick] = useState(0);
   const markDailySummaryOpen = useCallback(() => {
     setDailySummaryOpenToken((prev) => prev + 1);
   }, []);
@@ -15407,13 +15410,37 @@ function AppContent() {
   const dailyNudgeIdsRef = useRef({});
   const smartRemindersRef = useRef([]);
   const smartReminderScheduleTailRef = useRef(0);
+  const requestQueuedModalProcess = useCallback(() => {
+    setQueuedModalProcessTick((prev) => prev + 1);
+  }, []);
+  const enqueueQueuedModal = useCallback(
+    (type) => {
+      if (!type) return;
+      if (queuedModalActiveRef.current === type) return;
+      const queue = queuedModalQueueRef.current;
+      if (queue.includes(type)) return;
+      queue.push(type);
+      requestQueuedModalProcess();
+    },
+    [requestQueuedModalProcess]
+  );
+  const clearQueuedModal = useCallback(
+    (type) => {
+      if (queuedModalActiveRef.current !== type) return;
+      queuedModalActiveRef.current = null;
+      setQueuedModalType(null);
+      requestQueuedModalProcess();
+    },
+    [requestQueuedModalProcess]
+  );
   const handleDailySummaryContinue = useCallback(() => {
     setDailySummaryVisible(false);
+    clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_SUMMARY);
     const todayKey = dailySummaryData?.todayKey || getDayKey(Date.now());
     if (!todayKey) return;
     setDailySummarySeenKey(todayKey);
     AsyncStorage.setItem(STORAGE_KEYS.DAILY_SUMMARY, todayKey).catch(() => {});
-  }, [dailySummaryData]);
+  }, [clearQueuedModal, dailySummaryData]);
   const [tutorialSeen, setTutorialSeen] = useState(false);
   const [tutorialHydrated, setTutorialHydrated] = useState(false);
   const [tutorialVisible, setTutorialVisible] = useState(false);
@@ -15585,10 +15612,11 @@ function AppContent() {
         return;
       }
       setFabTutorialVisible(false);
+      clearQueuedModal(QUEUED_MODAL_TYPES.FAB_TUTORIAL);
       setFabTutorialStateAndPersist(FAB_TUTORIAL_STATUS.DONE);
       logEvent("fab_tutorial_completed", { source });
     },
-    [logEvent, setFabTutorialStateAndPersist]
+    [clearQueuedModal, logEvent, setFabTutorialStateAndPersist]
   );
   const updateRatingPromptState = useCallback((updater) => {
     setRatingPromptState((prev) => {
@@ -15901,6 +15929,10 @@ function AppContent() {
     Math.min(TAMAGOTCHI_MAX_HUNGER, Math.max(0, TAMAGOTCHI_START_STATE.hunger))
   );
   const tamagotchiHungerNotificationIdsRef = useRef([]);
+  const tamagotchiHungerDailyCountRef = useRef({
+    dayKey: getDayKey(Date.now()),
+    count: 0,
+  });
   const tamagotchiModalAnim = useRef(new Animated.Value(0)).current;
   const partyGlow = useRef(new Animated.Value(0)).current;
   const [partyActive, setPartyActive] = useState(false);
@@ -15977,6 +16009,7 @@ function AppContent() {
   const [onboardingSkipLocked, setOnboardingSkipLocked] = useState(false);
   const onboardingSkippedRef = useRef(false);
   const [registrationData, setRegistrationData] = useState(INITIAL_REGISTRATION);
+  const goalTargetFocusRef = useRef(null);
   const [termsModalVisible, setTermsModalVisible] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsContinuePending, setTermsContinuePending] = useState(false);
@@ -16032,15 +16065,19 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, [fabTutorialVisible, updateFabAnchor]);
   const fabTutorialBlocked = Boolean(overlay || dailySummaryVisible || priceEditor.item);
+  const fabTutorialReady =
+    fabTutorialState === FAB_TUTORIAL_STATUS.SHOWING &&
+    onboardingStep === "done" &&
+    !tutorialOverlayVisible &&
+    homeLayoutReady &&
+    !startupLogoVisible &&
+    !fabTutorialBlocked;
   useEffect(() => {
-    if (
-      fabTutorialState !== FAB_TUTORIAL_STATUS.SHOWING ||
-      onboardingStep !== "done" ||
-      tutorialOverlayVisible ||
-      !homeLayoutReady ||
-      startupLogoVisible ||
-      fabTutorialBlocked
-    ) {
+    if (!fabTutorialReady) return;
+    enqueueQueuedModal(QUEUED_MODAL_TYPES.FAB_TUTORIAL);
+  }, [enqueueQueuedModal, fabTutorialReady]);
+  useEffect(() => {
+    if (queuedModalType !== QUEUED_MODAL_TYPES.FAB_TUTORIAL || !fabTutorialReady) {
       fabTutorialLoggedRef.current = false;
       if (fabTutorialVisible) {
         setFabTutorialVisible(false);
@@ -16057,14 +16094,10 @@ function AppContent() {
     }
   }, [
     activeTab,
-    fabTutorialState,
     fabTutorialVisible,
-    homeLayoutReady,
+    fabTutorialReady,
     logEvent,
-    onboardingStep,
-    startupLogoVisible,
-    tutorialOverlayVisible,
-    fabTutorialBlocked,
+    queuedModalType,
   ]);
   useEffect(() => {
     const handleAppStateChange = (nextState) => {
@@ -16467,6 +16500,24 @@ function AppContent() {
       return [];
     }
   }, [resolveNotificationTriggerTime]);
+  const getScheduledTamagotchiHungerCounts = useCallback(async () => {
+    try {
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const nowTs = Date.now();
+      return (Array.isArray(scheduled) ? scheduled : []).reduce((acc, entry) => {
+        if (entry?.content?.data?.kind !== "tamagotchi_hunger") return acc;
+        const triggerTs = resolveNotificationTriggerTime(entry?.trigger, nowTs);
+        if (!Number.isFinite(triggerTs)) return acc;
+        const dayKey = getDayKey(triggerTs);
+        if (!dayKey) return acc;
+        acc[dayKey] = (acc[dayKey] || 0) + 1;
+        return acc;
+      }, {});
+    } catch (error) {
+      console.warn("scheduled tamagotchi hunger count", error);
+      return {};
+    }
+  }, [resolveNotificationTriggerTime]);
   const isNotificationOnCooldown = useCallback(
     async (targetTime = Date.now()) => {
       const lastSent = Number(lastInstantNotificationRef.current) || 0;
@@ -16620,9 +16671,32 @@ function AppContent() {
     };
   }, [fabTutorialAnchor, tabBarBottomInset]);
   const [analyticsOptOut, setAnalyticsOptOutState] = useState(null);
+  const facebookInitRef = useRef(false);
+  const analyticsConsentGateRef = useRef(false);
   useEffect(() => {
     if (analyticsOptOut === null) return;
     bootstrapMonitoring();
+  }, [analyticsOptOut]);
+  useEffect(() => {
+    if (facebookInitRef.current) return;
+    if (__DEV__) return;
+    if (analyticsOptOut !== false) return;
+    if (!FacebookSettings || typeof FacebookSettings.initializeSDK !== "function") return;
+    facebookInitRef.current = true;
+    try {
+      if (typeof FacebookSettings.setAppID === "function") {
+        FacebookSettings.setAppID(FACEBOOK_APP_ID);
+      }
+      FacebookSettings.initializeSDK();
+      if (typeof FacebookSettings.setAdvertiserTrackingEnabled === "function") {
+        const trackingPromise = FacebookSettings.setAdvertiserTrackingEnabled(true);
+        if (trackingPromise?.catch) {
+          trackingPromise.catch(() => {});
+        }
+      }
+    } catch (error) {
+      console.warn("facebook sdk init", error);
+    }
   }, [analyticsOptOut]);
   const [startupLogoVisible, setStartupLogoVisible] = useState(false);
   const startupLogoDismissedRef = useRef(false);
@@ -16730,12 +16804,6 @@ function AppContent() {
     onboardingStep !== "logo" &&
     onboardingStep !== "language" &&
     onboardingStep !== "analytics_consent";
-  const handleOnboardingSkip = useCallback(() => {
-    if (!canShowOnboardingSkip) return;
-    onboardingSkippedRef.current = true;
-    logEvent("onboarding_skipped", { from_step: onboardingStep });
-    goToOnboardingStep("analytics_consent", { recordHistory: false, resetHistory: true });
-  }, [canShowOnboardingSkip, goToOnboardingStep, logEvent, onboardingStep]);
   useEffect(() => {
     if (onboardingStep !== "goal") return;
     if (goalSelectionTouchedRef.current) return;
@@ -16860,8 +16928,7 @@ function AppContent() {
       tutorialOverlayVisible,
     ]
   );
-  const dailyChallengePromptVisible =
-    dailyChallengePromptAllowed && isDailyChallengePromptPending && dailyChallengePromptGate;
+  const dailyChallengePromptVisible = queuedModalType === QUEUED_MODAL_TYPES.DAILY_CHALLENGE;
   const coinValueModalAllowed = useMemo(
     () =>
       interfaceReady &&
@@ -17139,6 +17206,73 @@ function AppContent() {
       tamagotchiVisible,
     ]
   );
+  const canShowQueuedModal = useCallback(
+    (type) => {
+      if (!interfaceReady) return false;
+      if (tutorialOverlayVisible) return false;
+      if (overlay) return false;
+      if (coinValueModalVisible) return false;
+      if (tutorialBlockingVisible) return false;
+      switch (type) {
+        case QUEUED_MODAL_TYPES.DAILY_SUMMARY:
+          return dailySummaryUnlocked && !!pendingDailySummaryData;
+        case QUEUED_MODAL_TYPES.DAILY_CHALLENGE:
+          return (
+            dailyChallengePromptAllowed &&
+            isDailyChallengePromptPending &&
+            dailyChallengePromptGate
+          );
+        case QUEUED_MODAL_TYPES.FOCUS_DIGEST:
+          return (
+            focusModeUnlocked &&
+            !!pendingFocusDigest &&
+            !focusDigestPromptShown
+          );
+        case QUEUED_MODAL_TYPES.FAB_TUTORIAL:
+          return (
+            fabTutorialState === FAB_TUTORIAL_STATUS.SHOWING &&
+            onboardingStep === "done" &&
+            homeLayoutReady &&
+            !startupLogoVisible &&
+            !fabTutorialBlocked &&
+            activeTab === "feed"
+          );
+        default:
+          return false;
+      }
+    },
+    [
+      activeTab,
+      coinValueModalVisible,
+      dailyChallengePromptAllowed,
+      dailyChallengePromptGate,
+      dailySummaryUnlocked,
+      fabTutorialBlocked,
+      fabTutorialState,
+      focusDigestPromptShown,
+      focusModeUnlocked,
+      homeLayoutReady,
+      interfaceReady,
+      isDailyChallengePromptPending,
+      onboardingStep,
+      overlay,
+      pendingDailySummaryData,
+      pendingFocusDigest,
+      startupLogoVisible,
+      tutorialBlockingVisible,
+      tutorialOverlayVisible,
+    ]
+  );
+  useEffect(() => {
+    if (queuedModalActiveRef.current || queuedModalType) return;
+    const queue = queuedModalQueueRef.current;
+    if (!queue.length) return;
+    const nextIndex = queue.findIndex((candidate) => canShowQueuedModal(candidate));
+    if (nextIndex < 0) return;
+    const [nextType] = queue.splice(nextIndex, 1);
+    queuedModalActiveRef.current = nextType;
+    setQueuedModalType(nextType);
+  }, [canShowQueuedModal, queuedModalProcessTick, queuedModalType]);
   const openGoalLinkPrompt = useCallback((item, intent = "edit") => {
     if (!item) return;
     setGoalLinkPrompt({ visible: true, item, intent, streakRecoveryValue: null });
@@ -17512,6 +17646,17 @@ function AppContent() {
       task?.cancel?.();
     };
   }, [ensureNotificationPermission, onboardingStep]);
+  const getReminderAnalyticsPayload = useCallback((notification) => {
+    const data = notification?.request?.content?.data || {};
+    const reminderType = typeof data.kind === "string" && data.kind.trim() ? data.kind : "generic";
+    const targetScreen =
+      typeof data.targetScreen === "string" && data.targetScreen.trim()
+        ? data.targetScreen
+        : typeof data.target_screen === "string" && data.target_screen.trim()
+        ? data.target_screen
+        : null;
+    return { reminder_type: reminderType, target_screen: targetScreen || undefined };
+  }, []);
   const handleNotificationOpenFromPush = useCallback(
     (response) => {
       if (!response?.notification?.request) return;
@@ -17520,9 +17665,11 @@ function AppContent() {
       if (identifier) {
         handledNotificationResponseIdsRef.current.add(identifier);
       }
+      const reminderPayload = getReminderAnalyticsPayload(response.notification);
       logEvent("push_notification_open");
+      logEvent("reminder_clicked", reminderPayload);
     },
-    [logEvent]
+    [getReminderAnalyticsPayload, logEvent]
   );
   useEffect(() => {
     let isMounted = true;
@@ -17543,17 +17690,19 @@ function AppContent() {
     };
   }, [handleNotificationOpenFromPush]);
   useEffect(() => {
-    const subscription = Notifications.addNotificationReceivedListener(() => {
+    const subscription = Notifications.addNotificationReceivedListener((notification) => {
       const now = Date.now();
       lastInstantNotificationRef.current = now;
       AsyncStorage.setItem(STORAGE_KEYS.LAST_NOTIFICATION_AT, String(now)).catch(() => {});
+      const reminderPayload = getReminderAnalyticsPayload(notification);
+      logEvent("reminder_shown", reminderPayload);
     });
     return () => {
       if (subscription?.remove) {
         subscription.remove();
       }
     };
-  }, []);
+  }, [getReminderAnalyticsPayload, logEvent]);
   useEffect(() => {
     let cancelled = false;
     AsyncStorage.getItem(STORAGE_KEYS.PUSH_NOTIFICATIONS_ENABLED_LOGGED)
@@ -18880,15 +19029,26 @@ function AppContent() {
     if (!pendingFocusDigest) return;
     if (focusDigestPromptShown) return;
     if (!focusModeUnlocked) return;
-    if (isDailyChallengePromptPending || overlay) return;
-    triggerOverlayState("focus_digest", pendingFocusDigest.payload);
-    setFocusDigestPromptShown(true);
+    enqueueQueuedModal(QUEUED_MODAL_TYPES.FOCUS_DIGEST);
   }, [
+    enqueueQueuedModal,
     focusModeUnlocked,
     pendingFocusDigest,
     focusDigestPromptShown,
-    isDailyChallengePromptPending,
-    overlay,
+  ]);
+  useEffect(() => {
+    if (queuedModalType !== QUEUED_MODAL_TYPES.FOCUS_DIGEST) return;
+    if (!pendingFocusDigest || !focusModeUnlocked) {
+      clearQueuedModal(QUEUED_MODAL_TYPES.FOCUS_DIGEST);
+      return;
+    }
+    triggerOverlayState("focus_digest", pendingFocusDigest.payload);
+    setFocusDigestPromptShown(true);
+  }, [
+    clearQueuedModal,
+    focusModeUnlocked,
+    pendingFocusDigest,
+    queuedModalType,
     triggerOverlayState,
   ]);
   useEffect(() => {
@@ -18982,15 +19142,17 @@ function AppContent() {
         offerDismissed: true,
       };
     });
+    clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
     logEvent("daily_challenge_accepted", { template_id: dailyChallenge.templateId });
-  }, [dailyChallenge.templateId, dailyChallengeUnlocked, logEvent]);
+  }, [clearQueuedModal, dailyChallenge.templateId, dailyChallengeUnlocked, logEvent]);
   const handleDailyChallengeLater = useCallback(() => {
     if (!dailyChallengeUnlocked) return;
     setDailyChallenge((prev) => {
       if (!prev || prev.offerDismissed) return prev || createInitialDailyChallengeState();
       return { ...prev, offerDismissed: true };
     });
-  }, [dailyChallengeUnlocked]);
+    clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
+  }, [clearQueuedModal, dailyChallengeUnlocked]);
   const completeDailyChallenge = useCallback(() => {
     if (!dailyChallengeUnlocked) return;
     if (!dailyChallenge.templateId) return;
@@ -19304,6 +19466,7 @@ function AppContent() {
         potentialPushProgressRaw,
         tamagotchiRaw,
         tamagotchiHungerNotificationsRaw,
+        tamagotchiHungerDailyCountRaw,
         dailyChallengeRaw,
         dailyRewardRaw,
         dailyRewardDayKeyRaw,
@@ -19362,6 +19525,7 @@ function AppContent() {
         safeGetItem(STORAGE_KEYS.POTENTIAL_PUSH_PROGRESS),
         safeGetItem(STORAGE_KEYS.TAMAGOTCHI),
         safeGetItem(STORAGE_KEYS.TAMAGOTCHI_HUNGER_NOTIFICATIONS),
+        safeGetItem(STORAGE_KEYS.TAMAGOTCHI_HUNGER_DAILY_COUNT),
         safeGetItem(STORAGE_KEYS.DAILY_CHALLENGE),
         safeGetItem(STORAGE_KEYS.DAILY_REWARD),
         safeGetItem(STORAGE_KEYS.DAILY_REWARD_DAY_KEY),
@@ -19645,6 +19809,26 @@ function AppContent() {
         }
       } else {
         tamagotchiHungerNotificationIdsRef.current = [];
+      }
+      const todayKey = getDayKey(Date.now());
+      if (tamagotchiHungerDailyCountRaw) {
+        try {
+          const parsed = JSON.parse(tamagotchiHungerDailyCountRaw);
+          const storedDayKey = typeof parsed?.dayKey === "string" ? parsed.dayKey : "";
+          const storedCount = Math.max(0, Number(parsed?.count) || 0);
+          if (storedDayKey === todayKey) {
+            tamagotchiHungerDailyCountRef.current = {
+              dayKey: storedDayKey,
+              count: Math.min(TAMAGOTCHI_HUNGER_NOTIFICATION_DAILY_LIMIT, storedCount),
+            };
+          } else {
+            tamagotchiHungerDailyCountRef.current = { dayKey: todayKey, count: 0 };
+          }
+        } catch (err) {
+          tamagotchiHungerDailyCountRef.current = { dayKey: todayKey, count: 0 };
+        }
+      } else {
+        tamagotchiHungerDailyCountRef.current = { dayKey: todayKey, count: 0 };
       }
       if (dailyChallengeRaw) {
         try {
@@ -20020,10 +20204,15 @@ function AppContent() {
         setRewardCelebratedMap({});
       }
       setRewardCelebratedHydrated(true);
-      if (analyticsOptOutRaw === "1" || analyticsOptOutRaw === "0") {
-        setAnalyticsOptOutState(analyticsOptOutRaw === "1");
+      const hasAnalyticsConsent =
+        analyticsOptOutRaw === "1" ||
+        analyticsOptOutRaw === "0" ||
+        analyticsOptOutRaw === "true" ||
+        analyticsOptOutRaw === "false";
+      if (hasAnalyticsConsent) {
+        setAnalyticsOptOutState(analyticsOptOutRaw === "1" || analyticsOptOutRaw === "true");
       } else {
-        setAnalyticsOptOutState(true);
+        setAnalyticsOptOutState(null);
       }
       if (goalMapRaw) {
         try {
@@ -20146,7 +20335,12 @@ function AppContent() {
         }
       }
       if (onboardingRaw === "done") {
-        goToOnboardingStep("done", { recordHistory: false, resetHistory: true });
+        if (hasAnalyticsConsent) {
+          goToOnboardingStep("done", { recordHistory: false, resetHistory: true });
+        } else {
+          analyticsConsentGateRef.current = true;
+          goToOnboardingStep("analytics_consent", { recordHistory: false, resetHistory: true });
+        }
       } else {
         const placeholderProfile = { ...DEFAULT_PROFILE_PLACEHOLDER, joinedAt: new Date().toISOString() };
         setProfile(placeholderProfile);
@@ -20169,7 +20363,7 @@ function AppContent() {
       setProfileHydrated(true);
     } catch (error) {
       console.warn("load error", error);
-      setAnalyticsOptOutState((prev) => (prev === null ? true : prev));
+      setAnalyticsOptOutState((prev) => (prev === null ? null : prev));
       setRatingPromptState(createInitialRatingPromptState());
       setTutorialHydrated(true);
       setClaimedRewardsHydrated(true);
@@ -20244,12 +20438,13 @@ function AppContent() {
   useEffect(() => {
     if (
       onboardingStep === "done" &&
+      startupLogoReady &&
       !startupLogoDismissedRef.current &&
       !onboardingSkippedRef.current
     ) {
       setStartupLogoVisible(true);
     }
-  }, [onboardingStep]);
+  }, [onboardingStep, startupLogoReady]);
 
   const handleStartupLogoComplete = useCallback(() => {
     markStartupLogoDismissed();
@@ -20267,6 +20462,32 @@ function AppContent() {
       JSON.stringify(ids)
     ).catch(() => {});
   }, []);
+
+  const persistTamagotchiHungerDailyCount = useCallback((dayKey, count) => {
+    tamagotchiHungerDailyCountRef.current = { dayKey, count };
+    AsyncStorage.setItem(
+      STORAGE_KEYS.TAMAGOTCHI_HUNGER_DAILY_COUNT,
+      JSON.stringify({ dayKey, count })
+    ).catch(() => {});
+  }, []);
+
+  const getTamagotchiHungerDailyCount = useCallback((timestamp = Date.now()) => {
+    const dayKey = getDayKey(timestamp);
+    const stored = tamagotchiHungerDailyCountRef.current || {};
+    const count =
+      stored.dayKey === dayKey ? Math.max(0, Number(stored.count) || 0) : 0;
+    return { dayKey, count };
+  }, []);
+
+  const bumpTamagotchiHungerDailyCount = useCallback(
+    (timestamp = Date.now()) => {
+      const { dayKey, count } = getTamagotchiHungerDailyCount(timestamp);
+      const nextCount = Math.min(TAMAGOTCHI_HUNGER_NOTIFICATION_DAILY_LIMIT, count + 1);
+      persistTamagotchiHungerDailyCount(dayKey, nextCount);
+      return nextCount;
+    },
+    [getTamagotchiHungerDailyCount, persistTamagotchiHungerDailyCount]
+  );
 
   const cancelTamagotchiHungerNotifications = useCallback(async () => {
     const ids = Array.isArray(tamagotchiHungerNotificationIdsRef.current)
@@ -20296,16 +20517,36 @@ function AppContent() {
     }
     const copy = TAMAGOTCHI_NOTIFICATION_COPY[language] || TAMAGOTCHI_NOTIFICATION_COPY.ru;
     const notifications = [];
+    const scheduledCounts = await getScheduledTamagotchiHungerCounts();
+    const nowTs = Date.now();
+    const { dayKey: todayKey, count: sentTodayCount } = getTamagotchiHungerDailyCount(nowTs);
+    const countsByDay = { ...scheduledCounts };
+    if (sentTodayCount > 0) {
+      countsByDay[todayKey] = (countsByDay[todayKey] || 0) + sentTodayCount;
+    }
     const scheduleAt = async (timestamp, body) => {
       if (!Number.isFinite(timestamp) || !body) return null;
+      const safeTimestamp = Math.max(nowTs, timestamp);
+      const dayKey = getDayKey(safeTimestamp);
+      if (!dayKey) return null;
+      const existingCount = countsByDay[dayKey] || 0;
+      if (existingCount >= TAMAGOTCHI_HUNGER_NOTIFICATION_DAILY_LIMIT) return null;
       const scheduledEntry = await scheduleNotificationWithCooldown({
         content: {
           title: t("tamagotchiName"),
           body,
+          data: { kind: "tamagotchi_hunger" },
           ...(Platform.OS === "android" ? { channelId: ANDROID_TAMAGOTCHI_CHANNEL_ID } : null),
         },
-        trigger: new Date(Math.max(Date.now(), timestamp)),
+        trigger: new Date(safeTimestamp),
       });
+      const scheduledFor = Number.isFinite(scheduledEntry?.scheduledFor)
+        ? scheduledEntry.scheduledFor
+        : safeTimestamp;
+      const scheduledDayKey = getDayKey(scheduledFor);
+      if (scheduledDayKey) {
+        countsByDay[scheduledDayKey] = (countsByDay[scheduledDayKey] || 0) + 1;
+      }
       return scheduledEntry?.id || null;
     };
     if (currentHunger > TAMAGOTCHI_HUNGER_LOW_THRESHOLD) {
@@ -20323,6 +20564,8 @@ function AppContent() {
     persistTamagotchiHungerNotificationIds(ids);
   }, [
     cancelTamagotchiHungerNotifications,
+    getScheduledTamagotchiHungerCounts,
+    getTamagotchiHungerDailyCount,
     language,
     notificationPermissionGranted,
     persistTamagotchiHungerNotificationIds,
@@ -20336,13 +20579,29 @@ function AppContent() {
       const copy = TAMAGOTCHI_NOTIFICATION_COPY[language] || TAMAGOTCHI_NOTIFICATION_COPY.ru;
       const body = copy[kind];
       if (!body) return;
-      await sendImmediateNotification({
+      const nowTs = Date.now();
+      const { dayKey: todayKey, count: sentTodayCount } = getTamagotchiHungerDailyCount(nowTs);
+      const scheduledCounts = await getScheduledTamagotchiHungerCounts();
+      const totalTodayCount = (scheduledCounts[todayKey] || 0) + sentTodayCount;
+      if (totalTodayCount >= TAMAGOTCHI_HUNGER_NOTIFICATION_DAILY_LIMIT) return;
+      const sent = await sendImmediateNotification({
         title: t("tamagotchiName"),
         body,
+        data: { kind: "tamagotchi_hunger" },
         ...(Platform.OS === "android" ? { channelId: ANDROID_TAMAGOTCHI_CHANNEL_ID } : null),
       });
+      if (sent) {
+        bumpTamagotchiHungerDailyCount(nowTs);
+      }
     },
-    [language, sendImmediateNotification, t]
+    [
+      bumpTamagotchiHungerDailyCount,
+      getScheduledTamagotchiHungerCounts,
+      getTamagotchiHungerDailyCount,
+      language,
+      sendImmediateNotification,
+      t,
+    ]
   );
   const notifyDailySummaryReady = useCallback(
     (summary) => {
@@ -20471,6 +20730,16 @@ function AppContent() {
     isDailyChallengePromptPending,
   ]);
   useEffect(() => {
+    if (!dailyChallengePromptGate) return;
+    if (!isDailyChallengePromptPending) return;
+    enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
+  }, [dailyChallengePromptGate, enqueueQueuedModal, isDailyChallengePromptPending]);
+  useEffect(() => {
+    if (queuedModalType !== QUEUED_MODAL_TYPES.DAILY_CHALLENGE) return;
+    if (isDailyChallengePromptPending) return;
+    clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
+  }, [clearQueuedModal, isDailyChallengePromptPending, queuedModalType]);
+  useEffect(() => {
     if (!shouldShowTemptationTutorial) return;
     if (activeTab !== "feed") {
       goToTab("feed", { recordHistory: false });
@@ -20558,14 +20827,21 @@ function AppContent() {
     if (!dailySummaryUnlocked) return;
     if (!pendingDailySummaryData) return;
     if (!interfaceReady) return;
-    if (overlay) return;
+    enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_SUMMARY);
+  }, [dailySummaryUnlocked, enqueueQueuedModal, interfaceReady, pendingDailySummaryData]);
+  useEffect(() => {
+    if (queuedModalType !== QUEUED_MODAL_TYPES.DAILY_SUMMARY) return;
+    if (!pendingDailySummaryData) {
+      clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_SUMMARY);
+      return;
+    }
     setDailySummaryData(pendingDailySummaryData);
     setDailySummaryVisible(true);
     const todayKey = pendingDailySummaryData.todayKey || getDayKey(Date.now());
     setDailySummarySeenKey(todayKey);
     AsyncStorage.setItem(STORAGE_KEYS.DAILY_SUMMARY, todayKey).catch(() => {});
     setPendingDailySummaryData(null);
-  }, [dailySummaryUnlocked, interfaceReady, overlay, pendingDailySummaryData]);
+  }, [clearQueuedModal, pendingDailySummaryData, queuedModalType]);
   useEffect(() => {
     if (!spendLoggingReminderHydrated) return;
     if (onboardingStep !== "done") return;
@@ -21607,7 +21883,7 @@ useEffect(() => {
     logEvent("onboarding_terms_accepted", { language });
     logEvent("consent_terms_accepted", { language });
     if (shouldAdvance) {
-      goToOnboardingStep("guide");
+      goToOnboardingStep("analytics_consent");
     }
   };
 
@@ -21651,7 +21927,7 @@ useEffect(() => {
       setTermsContinuePending(true);
       return;
     }
-    goToOnboardingStep("guide");
+    goToOnboardingStep("analytics_consent");
   };
 
   const handleGuideContinue = () => {
@@ -22369,7 +22645,6 @@ useEffect(() => {
         goalTargetConfirmed: confirmed,
       };
     });
-    setPendingGoalTargets(null);
     if (!wasSelected && onboardingStep !== "done") {
       logEvent("onboarding_goal_chosen", {
         goal_id: goalId,
@@ -22382,12 +22657,11 @@ useEffect(() => {
     const selections = registrationData.goalSelections || [];
     if (!selections.length) {
       logEvent("onboarding_goal_skipped", { method: "target_step_empty" });
-      setPendingGoalTargets([]);
       setRegistrationData((prev) => ({
         ...prev,
         goalTargetConfirmed: [],
       }));
-      goToOnboardingStep("analytics_consent");
+      await handleGoalComplete(null);
       return;
     }
     const currencyCode = registrationData.currency || DEFAULT_PROFILE.currency;
@@ -22404,12 +22678,11 @@ useEffect(() => {
         usd: convertFromCurrency(parsedLocal, currencyCode),
       });
     }
-    setPendingGoalTargets(targets);
     setRegistrationData((prev) => ({
       ...prev,
       goalTargetConfirmed: selections.slice(),
     }));
-    goToOnboardingStep("analytics_consent");
+    await handleGoalComplete(targets);
   };
 
   const handleGoalTargetDraftChange = (goalId, value) => {
@@ -22427,14 +22700,15 @@ useEffect(() => {
     if (!selections.length) {
       triggerHaptic();
       logEvent("onboarding_goal_skipped", { method: "empty_selection" });
-      setPendingGoalTargets([]);
-      goToOnboardingStep("analytics_consent");
+      await handleGoalComplete(null);
       return;
     }
     const currentMap = registrationData.goalTargetMap || {};
     let patchedMap = null;
-    let needsTargetStep = false;
-    const confirmedSet = new Set(registrationData.goalTargetConfirmed || []);
+    let hasInvalidTarget = false;
+    let firstInvalidGoalId = null;
+    const currencyCode = registrationData.currency || DEFAULT_PROFILE.currency;
+    const targets = [];
     for (const goalId of selections) {
       const workingMap = patchedMap || currentMap;
       const draftValue = workingMap[goalId];
@@ -22452,33 +22726,40 @@ useEffect(() => {
         }
       }
       if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
-        needsTargetStep = true;
+        if (!firstInvalidGoalId) {
+          firstInvalidGoalId = goalId;
+        }
+        hasInvalidTarget = true;
+        continue;
       }
-      if (!customGoalMap[goalId] && !confirmedSet.has(goalId)) {
-        needsTargetStep = true;
+      targets.push({
+        id: goalId,
+        usd: convertFromCurrency(parsedValue, currencyCode),
+      });
+    }
+    if (hasInvalidTarget) {
+      if (firstInvalidGoalId) {
+        goalTargetFocusRef.current?.(firstInvalidGoalId);
       }
-    }
-    if (patchedMap) {
-      const mapToPersist = patchedMap;
-      setRegistrationData((prev) => ({
-        ...prev,
-        goalTargetMap: {
-          ...(prev.goalTargetMap || {}),
-          ...mapToPersist,
-        },
-      }));
-    }
-    triggerHaptic();
-    if (needsTargetStep) {
-      goToOnboardingStep("goal_target");
+      Alert.alert("Almost", t("goalTargetError"));
       return;
     }
-    await handleGoalTargetSubmit();
+    triggerHaptic();
+    setRegistrationData((prev) => ({
+      ...prev,
+      goalTargetMap: patchedMap
+        ? {
+            ...(prev.goalTargetMap || {}),
+            ...patchedMap,
+          }
+        : prev.goalTargetMap || {},
+      goalTargetConfirmed: selections.slice(),
+    }));
+    await handleGoalComplete(targets);
   };
-  const handleGoalStageSkip = () => {
+  const handleGoalStageSkip = async () => {
     triggerHaptic();
     logEvent("onboarding_goal_skipped", { method: "skip_button" });
-    setPendingGoalTargets([]);
     goalSelectionTouchedRef.current = false;
     setRegistrationData((prev) => ({
       ...prev,
@@ -22486,7 +22767,7 @@ useEffect(() => {
       goalTargetMap: {},
       goalTargetConfirmed: [],
     }));
-    goToOnboardingStep("analytics_consent");
+    await handleGoalComplete(null);
   };
 
   const handleGoalComplete = async (targetsOverride = null) => {
@@ -22665,7 +22946,12 @@ useEffect(() => {
       skipped: onboardingSkippedRef.current ? 1 : 0,
     });
     setTimeout(() => {
-      goToOnboardingStep("done", { recordHistory: false, resetHistory: true });
+      if (analyticsOptOut === null) {
+        analyticsConsentGateRef.current = true;
+        goToOnboardingStep("analytics_consent", { recordHistory: false, resetHistory: true });
+      } else {
+        goToOnboardingStep("done", { recordHistory: false, resetHistory: true });
+      }
       setRegistrationData(INITIAL_REGISTRATION);
       goalSelectionTouchedRef.current = false;
       onboardingSkippedRef.current = false;
@@ -22677,18 +22963,25 @@ useEffect(() => {
     const optOut = !allowAnalytics;
     setAnalyticsOptOutState(optOut);
     setAnalyticsOptOutFlag(optOut);
+    AsyncStorage.setItem(
+      STORAGE_KEYS.ANALYTICS_OPT_OUT,
+      optOut ? "1" : "0"
+    ).catch(() => {});
     logEvent("consent_analytics_enabled", { enabled: allowAnalytics, source: "onboarding" });
-    let targets = pendingGoalTargets;
-    if (Array.isArray(targets)) {
-      const selectionSet = new Set(registrationData.goalSelections || []);
-      const filtered = targets.filter((entry) => entry?.id && selectionSet.has(entry.id));
-      if (filtered.length !== targets.length) {
-        targets = filtered.length ? filtered : null;
-      }
+    if (analyticsConsentGateRef.current) {
+      analyticsConsentGateRef.current = false;
+      goToOnboardingStep("done", { recordHistory: false, resetHistory: true });
+      return;
     }
-    setPendingGoalTargets(null);
-    await handleGoalComplete(Array.isArray(targets) ? targets : null);
+    goToOnboardingStep("guide");
   };
+
+  const handleOnboardingSkip = useCallback(async () => {
+    if (!canShowOnboardingSkip) return;
+    onboardingSkippedRef.current = true;
+    logEvent("onboarding_skipped", { from_step: onboardingStep });
+    await handleGoalComplete(null);
+  }, [canShowOnboardingSkip, handleGoalComplete, logEvent, onboardingStep]);
 
   const ensureMediaPermission = async (type) => {
     if (type === "library" && Platform.OS === "android") {
@@ -26135,6 +26428,7 @@ useEffect(() => {
       setFocusDigestSeenKey(targetDateKey);
       setPendingFocusDigest(null);
       setFocusDigestPromptShown(false);
+      clearQueuedModal(QUEUED_MODAL_TYPES.FOCUS_DIGEST);
       AsyncStorage.removeItem(STORAGE_KEYS.FOCUS_DIGEST_PENDING).catch(() => {});
       if (action === "later") {
         logEvent("focus_digest_later", { date_key: targetDateKey });
@@ -26142,7 +26436,7 @@ useEffect(() => {
         logEvent("focus_digest_focus", { date_key: targetDateKey });
       }
     },
-    [focusModeUnlocked, pendingFocusDigest, logEvent]
+    [clearQueuedModal, focusModeUnlocked, pendingFocusDigest, logEvent]
   );
 
   const handleFocusOverlayConfirm = useCallback(
@@ -27026,7 +27320,7 @@ useEffect(() => {
     const onboardingSkipHandler = canShowOnboardingSkip ? handleOnboardingSkip : null;
     let onboardContent = null;
     if (onboardingStep === "logo") {
-      onboardContent = <LogoSplash onDone={handleOnboardingLogoComplete} />;
+      onboardContent = startupLogoReady ? <LogoSplash onDone={handleOnboardingLogoComplete} /> : null;
     } else if (onboardingStep === "language") {
       onboardContent = (
         <LanguageScreen
@@ -27114,6 +27408,12 @@ useEffect(() => {
           selectedGoals={registrationData.goalSelections || []}
           onToggle={handleGoalToggle}
           onSubmit={handleGoalStageContinue}
+          goalTargets={registrationData.goalTargetMap || {}}
+          onGoalTargetChange={handleGoalTargetDraftChange}
+          currency={registrationData.currency || profile.currency || DEFAULT_PROFILE.currency}
+          onRegisterGoalTargetFocus={(handler) => {
+            goalTargetFocusRef.current = handler;
+          }}
           colors={colors}
           t={t}
           language={language}
@@ -27173,7 +27473,7 @@ useEffect(() => {
               />
             )}
             <StatusBar style={theme === "dark" ? "light" : "dark"} backgroundColor={onboardingBackground} />
-            {onboardContent || <LogoSplash onDone={handleOnboardingLogoComplete} />}
+            {onboardContent || (startupLogoReady ? <LogoSplash onDone={handleOnboardingLogoComplete} /> : null)}
             {backGestureResponder && (
               <View pointerEvents="box-none" style={styles.backGestureWrapper}>
                 <View style={styles.backGestureEdge} {...backGestureResponder.panHandlers} />
@@ -27452,7 +27752,7 @@ useEffect(() => {
         )}
         {dailySummaryVisible && dailySummaryData && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
-            <TouchableWithoutFeedback onPress={() => setDailySummaryVisible(false)}>
+            <TouchableWithoutFeedback onPress={handleDailySummaryContinue}>
               <View style={styles.dailySummaryBackdrop}>
                 <TouchableWithoutFeedback onPress={() => {}}>
                   <View
@@ -35433,6 +35733,11 @@ const styles = StyleSheet.create({
     fontSize: Math.max(TYPOGRAPHY.display.fontSize - 4, 26),
     lineHeight: Math.max(TYPOGRAPHY.display.fontSize - 2, 28),
   },
+  personaTitleCompact: {
+    ...TYPOGRAPHY.display,
+    fontSize: Math.max(TYPOGRAPHY.display.fontSize - 8, 22),
+    lineHeight: Math.max(TYPOGRAPHY.display.fontSize - 6, 24),
+  },
   onboardSubtitle: {
     ...createBodyText({ fontSize: 16, lineHeight: 22 }),
   },
@@ -35544,13 +35849,19 @@ const styles = StyleSheet.create({
   goalCustomButtonText: {
     ...createCtaText({ fontSize: 14 }),
   },
-  goalOption: {
+  goalOptionWrap: {
     width: "48%",
+    gap: 8,
+  },
+  goalOption: {
     borderWidth: 1,
     borderRadius: 22,
     padding: 16,
     alignItems: "center",
     gap: 8,
+  },
+  goalTargetInline: {
+    width: "100%",
   },
   personaGrid: {
     flexDirection: "row",
@@ -35814,6 +36125,10 @@ function GoalScreen({
   selectedGoals = [],
   onToggle,
   onSubmit,
+  goalTargets = {},
+  onGoalTargetChange,
+  currency,
+  onRegisterGoalTargetFocus,
   colors,
   t,
   language,
@@ -35825,9 +36140,50 @@ function GoalScreen({
 }) {
   const fade = useFadeIn();
   const selection = Array.isArray(selectedGoals) ? selectedGoals : [];
+  const targets = goalTargets && typeof goalTargets === "object" ? goalTargets : {};
+  const resolvedCurrency = currency || DEFAULT_PROFILE.currency;
+  const scrollRef = useRef(null);
+  const inputRefs = useRef({});
+  const layoutRefs = useRef({});
+  const focusGoalTarget = useCallback((goalId) => {
+    if (!goalId) return;
+    const layout = layoutRefs.current[goalId];
+    if (layout && scrollRef.current?.scrollTo) {
+      scrollRef.current.scrollTo({ y: Math.max(0, layout.y - 32), animated: true });
+    }
+    setTimeout(() => {
+      inputRefs.current?.[goalId]?.focus?.();
+    }, 120);
+  }, []);
+  const handleGoalPress = useCallback(
+    (goalId) => {
+      const wasActive = selection.includes(goalId);
+      onToggle?.(goalId);
+      if (!wasActive) {
+        setTimeout(() => {
+          focusGoalTarget(goalId);
+        }, 160);
+      }
+    },
+    [focusGoalTarget, onToggle, selection]
+  );
+  const handleSubmit = useCallback(() => {
+    onSubmit?.();
+  }, [onSubmit]);
+  useEffect(() => {
+    onRegisterGoalTargetFocus?.(focusGoalTarget);
+    return () => {
+      onRegisterGoalTargetFocus?.(null);
+    };
+  }, [focusGoalTarget, onRegisterGoalTargetFocus]);
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
-      <ScrollView contentContainerStyle={styles.onboardContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.onboardContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        ref={scrollRef}
+      >
         <OnboardingHeader onBack={onBack} onSkip={onSkip} colors={colors} t={t} />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("goalTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("goalSubtitle")}</Text>
@@ -35836,22 +36192,52 @@ function GoalScreen({
           {GOAL_PRESETS.map((goal) => {
             const active = selection.includes(goal.id);
             return (
-              <TouchableOpacity
-                key={goal.id}
-                style={[
-                  styles.goalOption,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor: active ? colors.card : "transparent",
-                  },
-                ]}
-                onPress={() => onToggle?.(goal.id)}
-              >
-                <Text style={styles.goalEmoji}>{goal.emoji}</Text>
-                <Text style={[styles.goalText, { color: colors.text }]}>
-                  {goal[language] || goal.en}
-                </Text>
-              </TouchableOpacity>
+              <View key={goal.id} style={styles.goalOptionWrap}>
+                <TouchableOpacity
+                  style={[
+                    styles.goalOption,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: active ? colors.card : "transparent",
+                    },
+                  ]}
+                  onPress={() => handleGoalPress(goal.id)}
+                >
+                  <Text style={styles.goalEmoji}>{goal.emoji}</Text>
+                  <Text style={[styles.goalText, { color: colors.text }]}>
+                    {goal[language] || goal.en}
+                  </Text>
+                </TouchableOpacity>
+                {active && (
+                  <View
+                    style={[
+                      styles.goalTargetInputWrap,
+                      styles.goalTargetInline,
+                      { borderColor: colors.border, backgroundColor: colors.card },
+                    ]}
+                    onLayout={(event) => {
+                      layoutRefs.current[goal.id] = event.nativeEvent.layout;
+                    }}
+                  >
+                    <TextInput
+                      ref={(node) => {
+                        if (node) {
+                          inputRefs.current[goal.id] = node;
+                        }
+                      }}
+                      style={[styles.goalTargetInput, { color: colors.text }]}
+                      placeholder={t("goalTargetPlaceholder")}
+                      placeholderTextColor={colors.muted}
+                      keyboardType="decimal-pad"
+                      value={targets[goal.id] || ""}
+                      onChangeText={(text) => onGoalTargetChange?.(goal.id, text)}
+                    />
+                    <Text style={[styles.goalTargetCurrency, { color: colors.muted }]}>
+                      {resolvedCurrency}
+                    </Text>
+                  </View>
+                )}
+              </View>
             );
           })}
         </View>
@@ -35865,20 +36251,50 @@ function GoalScreen({
               {customGoals.map((goal) => {
                 const active = selection.includes(goal.id);
                 return (
-                  <TouchableOpacity
-                    key={goal.id}
-                    style={[
-                      styles.goalOption,
-                      {
-                        borderColor: colors.border,
-                        backgroundColor: active ? colors.card : "transparent",
-                      },
-                    ]}
-                    onPress={() => onToggle?.(goal.id)}
-                  >
-                    <Text style={styles.goalEmoji}>{goal.emoji || "🎯"}</Text>
-                    <Text style={[styles.goalText, { color: colors.text }]}>{goal.title}</Text>
-                  </TouchableOpacity>
+                  <View key={goal.id} style={styles.goalOptionWrap}>
+                    <TouchableOpacity
+                      style={[
+                        styles.goalOption,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: active ? colors.card : "transparent",
+                        },
+                      ]}
+                      onPress={() => handleGoalPress(goal.id)}
+                    >
+                      <Text style={styles.goalEmoji}>{goal.emoji || "🎯"}</Text>
+                      <Text style={[styles.goalText, { color: colors.text }]}>{goal.title}</Text>
+                    </TouchableOpacity>
+                    {active && (
+                      <View
+                        style={[
+                          styles.goalTargetInputWrap,
+                          styles.goalTargetInline,
+                          { borderColor: colors.border, backgroundColor: colors.card },
+                        ]}
+                        onLayout={(event) => {
+                          layoutRefs.current[goal.id] = event.nativeEvent.layout;
+                        }}
+                      >
+                        <TextInput
+                          ref={(node) => {
+                            if (node) {
+                              inputRefs.current[goal.id] = node;
+                            }
+                          }}
+                          style={[styles.goalTargetInput, { color: colors.text }]}
+                          placeholder={t("goalTargetPlaceholder")}
+                          placeholderTextColor={colors.muted}
+                          keyboardType="decimal-pad"
+                          value={targets[goal.id] || ""}
+                          onChangeText={(text) => onGoalTargetChange?.(goal.id, text)}
+                        />
+                        <Text style={[styles.goalTargetCurrency, { color: colors.muted }]}>
+                          {resolvedCurrency}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                 );
               })}
             </View>
@@ -35896,7 +36312,7 @@ function GoalScreen({
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
+        <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={handleSubmit}>
           <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("goalButton")}</Text>
         </TouchableOpacity>
         {typeof onSkipStep === "function" && (
@@ -36066,10 +36482,9 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, 
         showsVerticalScrollIndicator={false}
       >
         <OnboardingHeader onBack={onBack} onSkip={onSkip} colors={colors} t={t} />
-        <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("personaTitle")}</Text>
-        <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("personaSubtitle")}</Text>
-
-        <Text style={[styles.currencyLabel, { color: colors.muted }]}>{t("personaGenderLabel")}</Text>
+        <Text style={[styles.personaTitleCompact, { color: colors.text }]}>
+          {t("personaTitle")}
+        </Text>
         <View style={styles.genderGrid}>
           {GENDER_OPTIONS.map((option) => {
             const active = option.id === data.gender;
@@ -36094,9 +36509,6 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, 
           })}
         </View>
 
-        <Text style={[styles.currencyLabel, { color: colors.muted, marginTop: 16 }]}>
-          {t("personaHabitLabel")}
-        </Text>
         <View style={styles.personaGrid}>
           {personaList.map((persona) => {
             const active = data.persona === persona.id;
@@ -37519,13 +37931,6 @@ function LogoSplash({ onDone }) {
 
   return (
     <View style={styles.logoSplash} onLayout={handleLayout}>
-      {!text && (
-        <Image
-          source={SPLASH_LOGO}
-          style={styles.logoSplashImage}
-          resizeMode="contain"
-        />
-      )}
       <Text style={styles.logoSplashText}>{text}</Text>
     </View>
   );
