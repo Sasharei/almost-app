@@ -197,6 +197,7 @@ const COIN_VALUE_MODAL_STATUS = {
 };
 
 const CELEBRATION_OVERLAY_GAP_MS = 15000;
+const APP_RESUME_MODAL_GUARD_MS = 1500;
 
 const DEFAULT_LANGUAGE = "en";
 const FALLBACK_LANGUAGE = "en";
@@ -1458,28 +1459,28 @@ const MOOD_PRESETS = {
       fr: "On reste calme même quand les envies montent.",
     },
     pushPendingTitle: {
-      ru: "Баланс проверяет хотелку",
-      en: "Balance check-in",
-      es: "Recordatorio de balance",
-      fr: "Contrôle équilibre",
+      ru: "Баланс проверяет хотелку 😺",
+      en: "Balance check-in 😺",
+      es: "Recordatorio de balance 😺",
+      fr: "Contrôle équilibre 😺",
     },
     pushPendingBody: {
-      ru: "«{{title}}» ждет решения. Подумай, стоит ли держать курс.",
-      en: "“{{title}}” is waiting. Decide if it fits the plan.",
-      es: "“{{title}}” sigue esperando. Decide si se queda en el plan.",
-      fr: "« {{title}} » attend. Décide si ça reste dans le plan.",
+      ru: "«{{title}}» ждет решения. Подумай, стоит ли держать курс. 🧭",
+      en: "“{{title}}” is waiting. Decide if it fits the plan. 🧭",
+      es: "“{{title}}” sigue esperando. Decide si se queda en el plan. 🧭",
+      fr: "« {{title}} » attend. Décide si ça reste dans le plan. 🧭",
     },
     pushImpulseTitle: {
-      ru: "Баланс в деле",
-      en: "Balance alert",
-      es: "Aviso de balance",
-      fr: "Alerte équilibre",
+      ru: "Баланс в деле 😺",
+      en: "Balance alert 😺",
+      es: "Aviso de balance 😺",
+      fr: "Alerte équilibre 😺",
     },
     pushImpulseBody: {
-      ru: "В это время хочется {{temptation}}, но баланс предлагает спасти {{amount}}.",
-      en: "This hour usually tempts {{temptation}}, but balance can bank {{amount}}.",
-      es: "A esta hora suele ganar {{temptation}}, pero el balance puede guardar {{amount}}.",
-      fr: "À cette heure {{temptation}} appelle, mais l'équilibre peut mettre {{amount}} de côté.",
+      ru: "В это время хочется {{temptation}}, но баланс предлагает спасти {{amount}}. 💧",
+      en: "This hour usually tempts {{temptation}}, but balance can bank {{amount}}. 💧",
+      es: "A esta hora suele ganar {{temptation}}, pero el balance puede guardar {{amount}}. 💧",
+      fr: "À cette heure {{temptation}} appelle, mais l'équilibre peut mettre {{amount}} de côté. 💧",
     },
   },
   [MOOD_IDS.FOCUSED]: {
@@ -1515,28 +1516,28 @@ const MOOD_PRESETS = {
       fr: "Le mode focus écrase les pics d'impulsion.",
     },
     pushPendingTitle: {
-      ru: "Волевой пинг",
-      en: "Focused ping",
-      es: "Ping de enfoque",
-      fr: "Ping focus",
+      ru: "Волевой пинг 😼",
+      en: "Focused ping 😼",
+      es: "Ping de enfoque 😼",
+      fr: "Ping focus 😼",
     },
     pushPendingBody: {
-      ru: "Ты в волевом режиме - реши, идем ли дальше с «{{title}}».",
-      en: "Focused mode speaking-decide what to do with “{{title}}”.",
-      es: "Modo enfoque al habla: decide qué hacer con «{{title}}».",
-      fr: "Le mode focus te parle : décide quoi faire de « {{title}} ».",
+      ru: "Ты в волевом режиме - реши, идем ли дальше с «{{title}}». 💪",
+      en: "Focused mode speaking-decide what to do with “{{title}}”. 💪",
+      es: "Modo enfoque al habla: decide qué hacer con «{{title}}». 💪",
+      fr: "Le mode focus te parle : décide quoi faire de « {{title}} ». 💪",
     },
     pushImpulseTitle: {
-      ru: "Волевой сигнал",
-      en: "Focused alert",
-      es: "Alerta de enfoque",
-      fr: "Alerte focus",
+      ru: "Волевой сигнал 😼",
+      en: "Focused alert 😼",
+      es: "Alerta de enfoque 😼",
+      fr: "Alerte focus 😼",
     },
     pushImpulseBody: {
-      ru: "Сейчас чаще хочется {{temptation}}, но волевой режим может отправить {{amount}} в копилку.",
-      en: "This hour begs for {{temptation}}, but focused mode can stash {{amount}}.",
-      es: "A esta hora pide {{temptation}}, pero el modo enfoque puede guardar {{amount}}.",
-      fr: "À cette heure {{temptation}} insiste, mais le mode focus peut mettre {{amount}} de côté.",
+      ru: "Сейчас чаще хочется {{temptation}}, но волевой режим может отправить {{amount}} в копилку. 🏦",
+      en: "This hour begs for {{temptation}}, but focused mode can stash {{amount}}. 🏦",
+      es: "A esta hora pide {{temptation}}, pero el modo enfoque puede guardar {{amount}}. 🏦",
+      fr: "À cette heure {{temptation}} insiste, mais le mode focus peut mettre {{amount}} de côté. 🏦",
     },
   },
   [MOOD_IDS.IMPULSIVE]: {
@@ -1572,28 +1573,28 @@ const MOOD_PRESETS = {
       fr: "Attrape la prochaine envie et transforme-la en épargne.",
     },
     pushPendingTitle: {
-      ru: "Импульс проверяет «{{title}}»",
-      en: "Impulse check-in",
-      es: "Aviso del impulso",
-      fr: "Contrôle impulsif",
+      ru: "Импульс проверяет «{{title}}» 🙀",
+      en: "Impulse check-in 🙀",
+      es: "Aviso del impulso 🙀",
+      fr: "Contrôle impulsif 🙀",
     },
     pushPendingBody: {
-      ru: "Импульсивный режим просит ясности: оставляем «{{title}}» или копим?",
-      en: "Impulse mode needs clarity: keep “{{title}}” or bank it?",
-      es: "El modo impulso pide claridad: ¿dejamos «{{title}}» o lo convertimos en ahorro?",
-      fr: "Le mode impulsif demande une décision : on garde « {{title}} » ou on le convertit en épargne ?",
+      ru: "Импульсивный режим просит ясности: оставляем «{{title}}» или копим? 🔥",
+      en: "Impulse mode needs clarity: keep “{{title}}” or bank it? 🔥",
+      es: "El modo impulso pide claridad: ¿dejamos «{{title}}» o lo convertimos en ahorro? 🔥",
+      fr: "Le mode impulsif demande une décision : on garde « {{title}} » ou on le convertit en épargne ? 🔥",
     },
     pushImpulseTitle: {
-      ru: "Импульс на подходе",
-      en: "Impulse incoming",
-      es: "Impulso en camino",
-      fr: "Impulsion en approche",
+      ru: "Импульс на подходе 🙀",
+      en: "Impulse incoming 🙀",
+      es: "Impulso en camino 🙀",
+      fr: "Impulsion en approche 🙀",
     },
     pushImpulseBody: {
-      ru: "Чаще всего сейчас берешь {{temptation}}. Попробуй отправить {{amount}} в копилку.",
-      en: "{{temptation}} usually wins now. Try sending {{amount}} to savings instead.",
-      es: "Ahora suele ganar {{temptation}}. Intenta enviar {{amount}} al ahorro.",
-      fr: "{{temptation}} gagne souvent maintenant. Essaie d'envoyer {{amount}} vers l'épargne.",
+      ru: "Чаще всего сейчас берешь {{temptation}}. Попробуй отправить {{amount}} в копилку. 🧲",
+      en: "{{temptation}} usually wins now. Try sending {{amount}} to savings instead. 🧲",
+      es: "Ahora suele ganar {{temptation}}. Intenta enviar {{amount}} al ahorro. 🧲",
+      fr: "{{temptation}} gagne souvent maintenant. Essaie d'envoyer {{amount}} vers l'épargne. 🧲",
     },
   },
   [MOOD_IDS.DOUBTER]: {
@@ -1629,28 +1630,28 @@ const MOOD_PRESETS = {
       fr: "Transforme les doutes en chiffres, pas en achats.",
     },
     pushPendingTitle: {
-      ru: "Сомнения просят ответа",
-      en: "Doubter check",
-      es: "Chequeo de dudas",
-      fr: "Contrôle des doutes",
+      ru: "Сомнения просят ответа 😿",
+      en: "Doubter check 😿",
+      es: "Chequeo de dudas 😿",
+      fr: "Contrôle des doutes 😿",
     },
     pushPendingBody: {
-      ru: "«{{title}}» висит в сомнениях. Реши, куда его направить.",
-      en: "“{{title}}” is stuck in limbo. Decide where it belongs.",
-      es: "“{{title}}” sigue en duda. Decide adónde va.",
-      fr: "« {{title}} » plane encore. Décide où l'envoyer.",
+      ru: "«{{title}}» висит в сомнениях. Реши, куда его направить. 🧩",
+      en: "“{{title}}” is stuck in limbo. Decide where it belongs. 🧩",
+      es: "“{{title}}” sigue en duda. Decide adónde va. 🧩",
+      fr: "« {{title}} » plane encore. Décide où l'envoyer. 🧩",
     },
     pushImpulseTitle: {
-      ru: "Сомневаешься?",
-      en: "Feeling unsure?",
-      es: "¿Con dudas?",
-      fr: "Un doute ?",
+      ru: "Сомневаешься? 😿",
+      en: "Feeling unsure? 😿",
+      es: "¿Con dudas? 😿",
+      fr: "Un doute ? 😿",
     },
     pushImpulseBody: {
-      ru: "Когда тянет к {{temptation}}, попробуй направить {{amount}} в копилку - уверенность вернётся.",
-      en: "When {{temptation}} calls, redirect {{amount}} to savings to regain certainty.",
-      es: "Cuando llame {{temptation}}, dirige {{amount}} al ahorro para recuperar seguridad.",
-      fr: "Quand {{temptation}} appelle, envoie {{amount}} vers l'épargne pour retrouver confiance.",
+      ru: "Когда тянет к {{temptation}}, попробуй направить {{amount}} в копилку - уверенность вернётся. 🧭",
+      en: "When {{temptation}} calls, redirect {{amount}} to savings to regain certainty. 🧭",
+      es: "Cuando llame {{temptation}}, dirige {{amount}} al ahorro para recuperar seguridad. 🧭",
+      fr: "Quand {{temptation}} appelle, envoie {{amount}} vers l'épargne pour retrouver confiance. 🧭",
     },
   },
   [MOOD_IDS.TIRED]: {
@@ -1686,28 +1687,28 @@ const MOOD_PRESETS = {
       fr: "Reposé·e, tu peux dire \"plus tard\" sans effort.",
     },
     pushPendingTitle: {
-      ru: "Вернись к «{{title}}»",
-      en: "Come back to “{{title}}”",
-      es: "Vuelve a «{{title}}»",
-      fr: "Reviens à « {{title}} »",
+      ru: "Вернись к «{{title}}» 😽💤",
+      en: "Come back to “{{title}}” 😽💤",
+      es: "Vuelve a «{{title}}» 😽💤",
+      fr: "Reviens à « {{title}} » 😽💤",
     },
     pushPendingBody: {
-      ru: "Режим отдыха не вечный. Реши, что делать с «{{title}}».",
-      en: "Recharge mode isn’t forever. Decide what to do with “{{title}}”.",
-      es: "El modo descanso no es eterno. Decide qué hacer con «{{title}}».",
-      fr: "Le mode recharge n'est pas éternel. Décide quoi faire de « {{title}} ».",
+      ru: "Режим отдыха не вечный. Реши, что делать с «{{title}}». 🫶",
+      en: "Recharge mode isn’t forever. Decide what to do with “{{title}}”. 🫶",
+      es: "El modo descanso no es eterno. Decide qué hacer con «{{title}}». 🫶",
+      fr: "Le mode recharge n'est pas éternel. Décide quoi faire de « {{title}} ». 🫶",
     },
     pushImpulseTitle: {
-      ru: "Мягкий сигнал",
-      en: "Gentle alert",
-      es: "Alerta suave",
-      fr: "Alerte douce",
+      ru: "Мягкий сигнал 😽💤",
+      en: "Gentle alert 😽💤",
+      es: "Alerta suave 😽💤",
+      fr: "Alerte douce 😽💤",
     },
     pushImpulseBody: {
-      ru: "Паузы были длинными, но даже сейчас можно сберечь {{amount}} от {{temptation}}.",
-      en: "Breaks ran long, yet this minute can still save {{amount}} from {{temptation}}.",
-      es: "El descanso fue largo, pero aún puedes salvar {{amount}} de {{temptation}}.",
-      fr: "La pause a duré, mais tu peux encore sauver {{amount}} de {{temptation}}.",
+      ru: "Паузы были длинными, но даже сейчас можно сберечь {{amount}} от {{temptation}}. 💫",
+      en: "Breaks ran long, yet this minute can still save {{amount}} from {{temptation}}. 💫",
+      es: "El descanso fue largo, pero aún puedes salvar {{amount}} de {{temptation}}. 💫",
+      fr: "La pause a duré, mais tu peux encore sauver {{amount}} de {{temptation}}. 💫",
     },
   },
   [MOOD_IDS.DREAMER]: {
@@ -1743,28 +1744,28 @@ const MOOD_PRESETS = {
       fr: "Que les rêves vivent en chiffres, pas en dépenses.",
     },
     pushPendingTitle: {
-      ru: "Мечты ждут старта",
-      en: "Dreams are waiting",
-      es: "Los sueños esperan",
-      fr: "Les rêves attendent",
+      ru: "Мечты ждут старта 😻",
+      en: "Dreams are waiting 😻",
+      es: "Los sueños esperan 😻",
+      fr: "Les rêves attendent 😻",
     },
     pushPendingBody: {
-      ru: "В «думаем» уже очередь. Реши, что делать с «{{title}}».",
-      en: "Thinking is crowded. Decide what to do with “{{title}}”.",
-      es: "Hay fila en En pausa. Decide qué hacer con «{{title}}».",
-      fr: "L'onglet En pause est plein. Décide quoi faire de « {{title}} ».",
+      ru: "В «думаем» уже очередь. Реши, что делать с «{{title}}». 🌈",
+      en: "Thinking is crowded. Decide what to do with “{{title}}”. 🌈",
+      es: "Hay fila en En pausa. Decide qué hacer con «{{title}}». 🌈",
+      fr: "L'onglet En pause est plein. Décide quoi faire de « {{title}} ». 🌈",
     },
     pushImpulseTitle: {
-      ru: "Мечтательный сигнал",
-      en: "Dreamer alert",
-      es: "Alerta soñadora",
-      fr: "Alerte rêveuse",
+      ru: "Мечтательный сигнал 😻",
+      en: "Dreamer alert 😻",
+      es: "Alerta soñadora 😻",
+      fr: "Alerte rêveuse 😻",
     },
     pushImpulseBody: {
-      ru: "Лучше добавить {{amount}} в мечту, чем снова брать {{temptation}}.",
-      en: "Add {{amount}} to the dream instead of grabbing {{temptation}} again.",
-      es: "Mejor suma {{amount}} al sueño antes que volver a tomar {{temptation}}.",
-      fr: "Ajoute {{amount}} au rêve plutôt que de reprendre {{temptation}}.",
+      ru: "Лучше добавить {{amount}} в мечту, чем снова брать {{temptation}}. 🌟",
+      en: "Add {{amount}} to the dream instead of grabbing {{temptation}} again. 🌟",
+      es: "Mejor suma {{amount}} al sueño antes que volver a tomar {{temptation}}. 🌟",
+      fr: "Ajoute {{amount}} au rêve plutôt que de reprendre {{temptation}}. 🌟",
     },
   },
 };
@@ -2122,7 +2123,7 @@ const resolveNextTamagotchiFoodId = (
   }
   return pickTamagotchiFoodByTier(nextTier, forceChange ? prevId : null) || prevId;
 };
-const TAMAGOTCHI_HUNGER_LOW_THRESHOLD = Math.round(TAMAGOTCHI_MAX_HUNGER * 0.25);
+const TAMAGOTCHI_HUNGER_LOW_THRESHOLD = Math.round(TAMAGOTCHI_MAX_HUNGER * 0.3);
 const TAMAGOTCHI_START_STATE = {
   hunger: 80,
   coins: 5,
@@ -2133,12 +2134,12 @@ const TAMAGOTCHI_START_STATE = {
 };
 const TAMAGOTCHI_NOTIFICATION_COPY = {
   ru: {
-    low: "Алми из Almost проголодался - загляни и покорми его.",
-    starving: "Алми совсем ослаб. Открой Almost и накорми его скорее.",
+    low: "Алми проголодался - загляни и покорми его. 😺🥣",
+    starving: "Алми совсем ослаб. Открой Almost и накорми его скорее. 😿🫶",
   },
   en: {
-    low: "Almi from Almost is hungry - drop in and feed him.",
-    starving: "Almi is starving. Open Almost and give him a snack.",
+    low: "Almi is hungry - drop in and feed him. 😺🥣",
+    starving: "Almi is starving. Open Almost and give him a snack. 😿🫶",
   },
 };
 
@@ -3265,6 +3266,17 @@ const applyFriendlyDisplayRounding = (value = 0, currency = activeCurrency) => {
   const step = Math.max(baseStep, fineStep || 0);
   if (!Number.isFinite(step) || step === 0) return value;
   return Math.round(value / step) * step;
+};
+
+const roundRemainingDisplayUSD = (value = 0, currency = activeCurrency) => {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  const localValue = convertToCurrency(value, currency);
+  const baseStep = getFriendlyDisplayStep(localValue);
+  const fineStep = getCurrencyFineStep(currency) || 0;
+  const step = Math.max(baseStep, fineStep || 0);
+  if (!Number.isFinite(step) || step <= 0) return value;
+  const roundedLocal = Math.ceil(localValue / step) * step;
+  return convertFromCurrency(roundedLocal, currency);
 };
 
 const formatSampleAmount = (valueUSD, currencyCode) =>
@@ -4454,8 +4466,8 @@ const TRANSLATIONS = {
     dailySummaryHint: "Загляну завтра с новыми цифрами.",
     spendLoggingReminderTitle: "Запиши траты",
     spendLoggingReminderBody: "Чем чаще отмечаешь расходы, тем точнее Almost помогает советами.",
-    dailySummaryNotificationTitle: "Вечерний отчёт готов",
-    dailySummaryNotificationBody: "+{{saved}} за {{declines}} отказа(ов). Запрыгни в Almost и подведём итоги.",
+    dailySummaryNotificationTitle: "Вечерний отчёт готов 📊",
+    dailySummaryNotificationBody: "+{{saved}} за {{declines}} отказа(ов). Запрыгни в Almost и подведём итоги. ✨",
     baselineTitle: "Сколько уходит на мелкие импульсы?",
     baselineSubtitle: "Прикиньте месячную сумму - Almost сравнит её с реальными победами.",
     baselinePlaceholder: "Введите сумму",
@@ -5178,8 +5190,8 @@ const TRANSLATIONS = {
     dailySummaryHint: "See you tomorrow with fresh numbers.",
     spendLoggingReminderTitle: "Log today’s spends",
     spendLoggingReminderBody: "The more often you record purchases, the smarter Almost can guide you.",
-    dailySummaryNotificationTitle: "Tonight’s recap is ready",
-    dailySummaryNotificationBody: "+{{saved}} from {{declines}} skips today. Open Almost for the full story.",
+    dailySummaryNotificationTitle: "Tonight’s recap is ready 📊",
+    dailySummaryNotificationBody: "+{{saved}} from {{declines}} skips today. Open Almost for the full story. ✨",
     baselineTitle: "How much slips on small stuff?",
     baselineSubtitle: "Estimate one month of coffees, snacks and impulse buys to compare with real wins.",
     baselinePlaceholder: "Enter amount",
@@ -5895,8 +5907,8 @@ const TRANSLATIONS = {
     dailySummaryHint: "À demain avec des chiffres frais.",
     spendLoggingReminderTitle: "Note tes dépenses",
     spendLoggingReminderBody: "Plus tu enregistres tes achats, plus Almost peut t’aider avec précision.",
-    dailySummaryNotificationTitle: "Le récap du soir est prêt",
-    dailySummaryNotificationBody: "+{{saved}} en {{declines}} refus aujourd’hui. Ouvre Almost pour tout voir.",
+    dailySummaryNotificationTitle: "Le récap du soir est prêt 📊",
+    dailySummaryNotificationBody: "+{{saved}} en {{declines}} refus aujourd’hui. Ouvre Almost pour tout voir. ✨",
     baselineTitle: "Combien part dans les petites folies ?",
     baselineSubtitle:
       "Estimez un mois de cafés, snacks et achats impulsifs pour le comparer aux vraies victoires.",
@@ -6612,8 +6624,8 @@ const TRANSLATIONS = {
     dailySummaryHint: "Mañana vuelvo con números frescos.",
     spendLoggingReminderTitle: "Registra tus gastos",
     spendLoggingReminderBody: "Mientras más compras anotes, mejor te guía Almost.",
-    dailySummaryNotificationTitle: "Resumen nocturno listo",
-    dailySummaryNotificationBody: "+{{saved}} en {{declines}} rechazos hoy. Abre Almost para ver los detalles.",
+    dailySummaryNotificationTitle: "Resumen nocturno listo 📊",
+    dailySummaryNotificationBody: "+{{saved}} en {{declines}} rechazos hoy. Abre Almost para ver los detalles. ✨",
     baselineTitle: "¿Cuánto se va en pequeños caprichos?",
     baselineSubtitle: "Calcula un mes de cafés, snacks y compras impulsivas para compararlo con tus victorias reales.",
     baselinePlaceholder: "Ingresa el monto",
@@ -8158,6 +8170,20 @@ const GOALS = [
 ];
 
 const SAVINGS_TIERS = [10, 20, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000, 50000, 100000, 250000];
+const LEVEL_XP_BASE_USD = 5;
+const LEVEL_XP_SCALE = 200;
+const LEVEL_XP_STEP = 200;
+const MAX_LEVEL = SAVINGS_TIERS.length + 1;
+const getLevelXP = (savedUSD = 0) => {
+  const normalized = Math.max(0, Number(savedUSD) || 0);
+  return LEVEL_XP_SCALE * Math.log1p(normalized / LEVEL_XP_BASE_USD);
+};
+const getUSDFromLevelXP = (xp = 0) => {
+  const normalizedXP = Math.max(0, Number(xp) || 0);
+  return LEVEL_XP_BASE_USD * Math.expm1(normalizedXP / LEVEL_XP_SCALE);
+};
+const getTierTargetsXP = () =>
+  Array.from({ length: Math.max(0, MAX_LEVEL - 1) }, (_, index) => (index + 1) * LEVEL_XP_STEP);
 const getLevelTwoTargetUSD = (currencyCode = activeCurrency) => {
   const code = currencyCode || activeCurrency;
   const localTargetRounded = Math.round(convertToCurrency(10, code));
@@ -8386,22 +8412,23 @@ const colorWithAlpha = (color, alpha = 1) => {
 };
 
 const getTierProgress = (savedUSD = 0, currencyCode = activeCurrency) => {
-  const tierTargets = getTierTargetsUSD(currencyCode);
-  let previousTarget = 0;
-  for (let i = 0; i < tierTargets.length; i += 1) {
-    const target = tierTargets[i];
-    if (savedUSD < target) {
+  const tierTargetsXP = getTierTargetsXP();
+  const savedXP = getLevelXP(savedUSD);
+  let previousTargetXP = 0;
+  for (let i = 0; i < tierTargetsXP.length; i += 1) {
+    const targetXP = tierTargetsXP[i];
+    if (savedXP < targetXP) {
       return {
         level: i + 1,
-        prevTargetUSD: previousTarget,
-        nextTargetUSD: target,
+        prevTargetUSD: getUSDFromLevelXP(previousTargetXP),
+        nextTargetUSD: getUSDFromLevelXP(targetXP),
       };
     }
-    previousTarget = target;
+    previousTargetXP = targetXP;
   }
   return {
-    level: tierTargets.length + 1,
-    prevTargetUSD: previousTarget,
+    level: tierTargetsXP.length + 1,
+    prevTargetUSD: getUSDFromLevelXP(previousTargetXP),
     nextTargetUSD: null,
   };
 };
@@ -11131,8 +11158,9 @@ const FeedScreen = React.memo(
   const heroLevelRemainingUSD = heroLevelHasNext
     ? Math.max(tierInfo.nextTargetUSD - levelProgressUSD, 0)
     : 0;
+  const heroLevelRemainingRoundedUSD = roundRemainingDisplayUSD(heroLevelRemainingUSD, heroLevelCurrency);
   const heroLevelRemainingLabel = heroLevelHasNext
-    ? formatCurrency(convertToCurrency(heroLevelRemainingUSD, heroLevelCurrency), heroLevelCurrency)
+    ? formatCurrency(convertToCurrency(heroLevelRemainingRoundedUSD, heroLevelCurrency), heroLevelCurrency)
     : "";
   const heroLevelTargetLabel = heroLevelHasNext
     ? formatCurrency(convertToCurrency(tierInfo.nextTargetUSD, heroLevelCurrency), heroLevelCurrency, {
@@ -11160,8 +11188,9 @@ const FeedScreen = React.memo(
   const levelRemainingUSD = tierInfo.nextTargetUSD
     ? Math.max(tierInfo.nextTargetUSD - levelProgressUSD, 0)
     : 0;
+  const levelRemainingRoundedUSD = roundRemainingDisplayUSD(levelRemainingUSD, levelCurrency);
   const levelRemainingLabel = formatCurrency(
-    convertToCurrency(levelRemainingUSD, levelCurrency),
+    convertToCurrency(levelRemainingRoundedUSD, levelCurrency),
     levelCurrency
   );
   const levelTargetLabel = tierInfo.nextTargetUSD
@@ -15328,6 +15357,8 @@ function AppContent() {
   const [themeHydrated, setThemeHydrated] = useState(false);
   const isAndroid = Platform.OS === "android";
   const androidVersion = isAndroid ? Number(Platform.Version) : null;
+  const canSetSystemBarColors =
+    isAndroid && typeof androidVersion === "number" && !Number.isNaN(androidVersion) && androidVersion < 35;
   const canToggleNavVisibility =
     isAndroid && typeof androidVersion === "number" && !Number.isNaN(androidVersion) && androidVersion < 35;
   const resolveTemplateCard = useCallback(
@@ -15391,6 +15422,7 @@ function AppContent() {
   const [focusDigestPromptShown, setFocusDigestPromptShown] = useState(false);
   const [focusSaveCount, setFocusSaveCount] = useState(0);
   const appStateRef = useRef(AppState.currentState || "active");
+  const appResumeAtRef = useRef(null);
   const focusLossCountersRef = useRef({});
   const focusPromptActiveRef = useRef(false);
   const homeSessionRef = useRef({
@@ -15424,6 +15456,46 @@ function AppContent() {
     },
     [requestQueuedModalProcess]
   );
+  const refreshQueuedModalsOnResume = useCallback(() => {
+    if (dailySummaryUnlocked && pendingDailySummaryData) {
+      enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_SUMMARY);
+    }
+    if (dailyChallengePromptAllowed && isDailyChallengePromptPending) {
+      dailyChallengeOfferDeferredRef.current = false;
+      setDailyChallengePromptGate(true);
+      enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
+    }
+    if (focusModeUnlocked && pendingFocusDigest && !focusDigestPromptShown) {
+      enqueueQueuedModal(QUEUED_MODAL_TYPES.FOCUS_DIGEST);
+    }
+    if (
+      fabTutorialState === FAB_TUTORIAL_STATUS.SHOWING &&
+      onboardingStep === "done" &&
+      homeLayoutReady &&
+      !startupLogoVisible &&
+      !fabTutorialBlocked &&
+      activeTab === "feed"
+    ) {
+      enqueueQueuedModal(QUEUED_MODAL_TYPES.FAB_TUTORIAL);
+    }
+    requestQueuedModalProcess();
+  }, [
+    activeTab,
+    dailyChallengePromptAllowed,
+    dailySummaryUnlocked,
+    enqueueQueuedModal,
+    fabTutorialBlocked,
+    fabTutorialState,
+    focusDigestPromptShown,
+    focusModeUnlocked,
+    homeLayoutReady,
+    isDailyChallengePromptPending,
+    onboardingStep,
+    pendingDailySummaryData,
+    pendingFocusDigest,
+    requestQueuedModalProcess,
+    startupLogoVisible,
+  ]);
   const clearQueuedModal = useCallback(
     (type) => {
       if (queuedModalActiveRef.current !== type) return;
@@ -16106,21 +16178,32 @@ function AppContent() {
         typeof previousState === "string" && /inactive|background/.test(previousState);
       appStateRef.current = nextState;
       if (nextState !== "active") {
+        Keyboard.dismiss();
+        setKeyboardInset(0);
+        setKeyboardVisible(false);
+        appResumeAtRef.current = Date.now();
         setFabTutorialVisible(false);
         return;
       }
       if (wasBackground && nextState === "active") {
-        if (dailyChallengePromptQueuedRef.current && dailyChallengePendingRef.current) {
-          setDailyChallengePromptGate(true);
-          dailyChallengeOfferDeferredRef.current = false;
-        }
-        setCurrentDayKey(getDayKey(Date.now()));
-        processTamagotchiDecay();
-        beginHomeSession();
-        tryLogHomeOpened();
-        markDailySummaryOpen();
-        if (pendingFocusDigest) {
-          setFocusDigestPromptShown(false);
+        const resumedAt = appResumeAtRef.current || 0;
+        appResumeAtRef.current = null;
+        const isTransientResume =
+          resumedAt && Date.now() - resumedAt < APP_RESUME_MODAL_GUARD_MS;
+        if (!isTransientResume) {
+          if (dailyChallengePromptQueuedRef.current && dailyChallengePendingRef.current) {
+            setDailyChallengePromptGate(true);
+            dailyChallengeOfferDeferredRef.current = false;
+          }
+          setCurrentDayKey(getDayKey(Date.now()));
+          processTamagotchiDecay();
+          beginHomeSession();
+          tryLogHomeOpened();
+          markDailySummaryOpen();
+          if (pendingFocusDigest) {
+            setFocusDigestPromptShown(false);
+          }
+          refreshQueuedModalsOnResume();
         }
       }
     };
@@ -16128,6 +16211,7 @@ function AppContent() {
     return () => subscription.remove();
   }, [
     beginHomeSession,
+    refreshQueuedModalsOnResume,
     setDailyChallengePromptGate,
     markDailySummaryOpen,
     pendingFocusDigest,
@@ -16135,6 +16219,8 @@ function AppContent() {
     setCurrentDayKey,
     tryLogHomeOpened,
     setFabTutorialVisible,
+    setKeyboardInset,
+    setKeyboardVisible,
   ]);
   useEffect(() => {
     markDailySummaryOpen();
@@ -17208,6 +17294,7 @@ function AppContent() {
   );
   const canShowQueuedModal = useCallback(
     (type) => {
+      if (appStateRef.current !== "active") return false;
       if (!interfaceReady) return false;
       if (tutorialOverlayVisible) return false;
       if (overlay) return false;
@@ -18168,7 +18255,7 @@ function AppContent() {
   const systemOverlayActive = Boolean(overlay || fabMenuVisible);
 
   useEffect(() => {
-    if (!isAndroid) return;
+    if (!isAndroid || !canSetSystemBarColors) return;
     const targetNavColor = systemOverlayActive ? overlaySystemColor : colors.card;
     const targetButtonStyle = systemOverlayActive ? "light" : isDarkTheme ? "light" : "dark";
     const targetStatusColor = systemOverlayActive ? overlaySystemColor : colors.background;
@@ -18186,7 +18273,17 @@ function AppContent() {
     };
     applyNav();
     RNStatusBar.setBackgroundColor(targetStatusColor, true);
-  }, [canToggleNavVisibility, colors.card, colors.background, isAndroid, isDarkTheme, overlayDimColor, overlaySystemColor, systemOverlayActive]);
+  }, [
+    canSetSystemBarColors,
+    canToggleNavVisibility,
+    colors.card,
+    colors.background,
+    isAndroid,
+    isDarkTheme,
+    overlayDimColor,
+    overlaySystemColor,
+    systemOverlayActive,
+  ]);
   const saveOverlayPayload =
     overlay?.type === "save"
       ? typeof overlay.message === "object" && overlay.message !== null
@@ -22078,6 +22175,10 @@ useEffect(() => {
     const resolver = imagePickerResolver.current;
     closeImagePickerSheet();
     if (!resolver) return;
+    if (Platform.OS === "ios") {
+      // Avoid presenting the picker while the modal sheet is still dismissing.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
     await pickImage(source, (uri) => {
       if (!uri) return;
       resolver(uri);
@@ -27472,7 +27573,10 @@ useEffect(() => {
                 solid={Platform.OS === "android"}
               />
             )}
-            <StatusBar style={theme === "dark" ? "light" : "dark"} backgroundColor={onboardingBackground} />
+            <StatusBar
+              style={theme === "dark" ? "light" : "dark"}
+              backgroundColor={canSetSystemBarColors ? onboardingBackground : undefined}
+            />
             {onboardContent || (startupLogoReady ? <LogoSplash onDone={handleOnboardingLogoComplete} /> : null)}
             {backGestureResponder && (
               <View pointerEvents="box-none" style={styles.backGestureWrapper}>
@@ -27547,7 +27651,9 @@ useEffect(() => {
             )}
             <StatusBar
               style={theme === "dark" ? "light" : "dark"}
-              backgroundColor={systemOverlayActive ? overlaySystemColor : colors.background}
+              backgroundColor={
+                canSetSystemBarColors ? (systemOverlayActive ? overlaySystemColor : colors.background) : undefined
+              }
             />
             {backGestureResponder && (
               <View pointerEvents="box-none" style={styles.backGestureWrapper}>
@@ -35796,7 +35902,7 @@ const styles = StyleSheet.create({
   },
   currencyLabel: {
     fontSize: 14,
-    textTransform: "uppercase",
+    textTransform: "none",
     marginTop: 4,
   },
   currencyScrollWrapper: {
