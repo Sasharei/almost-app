@@ -2036,7 +2036,7 @@ const TAMAGOTCHI_DECAY_STEP = 2;
 const TAMAGOTCHI_COIN_DECAY_TICKS = 6;
 const TAMAGOTCHI_FEED_AMOUNT = ECONOMY_RULES.tamagotchiFeedBoost;
 const TAMAGOTCHI_MAX_HUNGER = 100;
-const TAMAGOTCHI_HUNGER_NOTIFICATION_DAILY_LIMIT = 2;
+const TAMAGOTCHI_HUNGER_NOTIFICATION_DAILY_LIMIT = 3;
 const TAMAGOTCHI_FEED_COST = ECONOMY_RULES.tamagotchiFeedCost;
 const TAMAGOTCHI_PARTY_COST = ECONOMY_RULES.tamagotchiPartyCost;
 const PARTY_FIREWORK_CONFIGS = [
@@ -14822,6 +14822,8 @@ function AppContent() {
     }
     if (!soundModeReadyRef.current) {
       const interruptionModeIOS =
+        AudioModule.InterruptionModeIOS?.MixWithOthers ??
+        AudioModule.INTERRUPTION_MODE_IOS_MIX_WITH_OTHERS ??
         AudioModule.InterruptionModeIOS?.DuckOthers ??
         AudioModule.INTERRUPTION_MODE_IOS_DUCK_OTHERS ??
         1;
@@ -14874,6 +14876,8 @@ function AppContent() {
       try {
         if (!AudioModule) return;
         const interruptionModeIOS =
+          AudioModule.InterruptionModeIOS?.MixWithOthers ??
+          AudioModule.INTERRUPTION_MODE_IOS_MIX_WITH_OTHERS ??
           AudioModule.InterruptionModeIOS?.DuckOthers ??
           AudioModule.INTERRUPTION_MODE_IOS_DUCK_OTHERS ??
           1;
