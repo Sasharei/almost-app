@@ -1,5 +1,19 @@
 # Release Notes
 
+## 3.0.4 (from 3.0.3)
+
+### EN
+Minor fixes and improvements.
+
+### RU
+Мелкие исправления и улучшения.
+
+### ES
+Pequenas correcciones y mejoras.
+
+### FR
+Petites corrections et ameliorations.
+
 ## 3.0.3 (from 3.0.2)
 
 ### EN
