@@ -1060,6 +1060,8 @@ const CHALLENGE_SWIPE_ACTION_WIDTH = 120;
 const BASELINE_SAMPLE_USD = 120;
 const CUSTOM_SPEND_SAMPLE_USD = 7.5;
 const RATING_PROMPT_DELAY_DAYS = 2; // show on the third calendar day (after two full days)
+const RATING_PROMPT_ACTION_THRESHOLD = 3;
+const RATING_PROMPT_ACTION_TYPES = new Set(["save", "spend", "wish", "pending"]);
 const ANDROID_REVIEW_URL = "market://details?id=com.sasarei.almostclean";
 const ANDROID_REVIEW_WEB_URL = "https://play.google.com/store/apps/details?id=com.sasarei.almostclean";
 const IOS_REVIEW_URL = "itms-apps://itunes.apple.com/app/id6756276744?action=write-review";
@@ -1075,6 +1077,8 @@ const createInitialRatingPromptState = () => ({
   lastShownAt: null,
   lastAction: null,
   respondedAt: null,
+  actionCount: 0,
+  actionPrompted: false,
 });
 
 const getDayKey = (date) => {
@@ -1238,6 +1242,8 @@ const DEFAULT_DAILY_REWARD_STATE = {
   streak: 0,
 };
 
+const DAILY_REWARD_STREAK_LENGTH = 7;
+
 const computeDailyAlmiReward = (savedUSD = 0) => {
   const normalized = Math.max(0, Number(savedUSD) || 0);
   if (normalized <= 0) return ECONOMY_RULES.minSaveReward;
@@ -1246,6 +1252,22 @@ const computeDailyAlmiReward = (savedUSD = 0) => {
   if (normalized < 500) return 4;
   if (normalized < 1000) return 6;
   return Math.min(12, Math.round(normalized / 200));
+};
+
+const buildDailyRewardSchedule = (baseAmount = 0) => {
+  const base = Math.max(1, Math.round(baseAmount || 0));
+  const rewards = Array.from({ length: DAILY_REWARD_STREAK_LENGTH - 1 }).map(
+    (_, index) => base + index
+  );
+  const daySix = rewards[rewards.length - 1] || base;
+  const superPrize = Math.max(daySix + 2, base + Math.round(base * 1.5));
+  return [...rewards, superPrize];
+};
+
+const getDailyRewardForDay = (baseAmount = 0, day = 1) => {
+  const schedule = buildDailyRewardSchedule(baseAmount);
+  const index = Math.min(DAILY_REWARD_STREAK_LENGTH, Math.max(1, Number(day) || 1)) - 1;
+  return schedule[index] || schedule[0] || Math.max(1, Math.round(baseAmount || 0));
 };
 
 const getTemptationPriceLimitForLevel = (level = 1) => {
@@ -3282,9 +3304,13 @@ const roundRemainingDisplayUSD = (value = 0, currency = activeCurrency) => {
 const formatSampleAmount = (valueUSD, currencyCode) =>
   formatCurrency(convertToCurrency(valueUSD, currencyCode), currencyCode);
 
-const formatNumberInputValue = (value) => {
+const formatNumberInputValue = (value, precisionOverride = 2) => {
   if (!Number.isFinite(value)) return "";
-  const formatted = value.toFixed(2).replace(/\.?0+$/, "");
+  const precision =
+    typeof precisionOverride === "number" && Number.isFinite(precisionOverride)
+      ? Math.max(0, Math.min(6, precisionOverride))
+      : 2;
+  const formatted = value.toFixed(precision).replace(/\.?0+$/, "");
   return formatted;
 };
 
@@ -3407,6 +3433,10 @@ const CUSTOM_HABIT_FALLBACK_TITLES = {
 
 const createCustomHabitTemptation = (customSpend, fallbackCurrency = DEFAULT_PROFILE.currency, gender = "none") => {
   const price = resolveCustomPriceUSD(customSpend, fallbackCurrency) || CUSTOM_SPEND_SAMPLE_USD;
+  const precision =
+    typeof customSpend?.pricePrecision === "number" && Number.isFinite(customSpend.pricePrecision)
+      ? Math.max(0, Math.min(6, customSpend.pricePrecision))
+      : null;
   const resolvedTitle = customSpend?.title;
   const title =
     resolvedTitle && resolvedTitle.trim().length
@@ -3428,6 +3458,7 @@ const createCustomHabitTemptation = (customSpend, fallbackCurrency = DEFAULT_PRO
     categories,
     basePriceUSD: price,
     priceUSD: price,
+    pricePrecision: precision,
     title: {
       ru: resolvedTitle || CUSTOM_HABIT_FALLBACK_TITLES.ru,
       en: title || CUSTOM_HABIT_FALLBACK_TITLES.en,
@@ -3923,11 +3954,12 @@ const TRANSLATIONS = {
     dailyRewardCollectedLabel: "Завтра",
     dailyRewardCelebrateMessage: "+{{amount}}",
     dailyRewardModalTitle: "Ежедневная награда",
-    dailyRewardModalDescription: "Забирай бонус и возвращайся завтра — каждый день награда чуть больше.",
+    dailyRewardModalDescription: "Забирай бонус и возвращайся завтра, каждый день награда чуть больше.",
     dailyRewardModalGrowthNote: "7 дней подряд = максимальная отдача.",
     dailyRewardModalCTA: "Собрать награду",
     dailyRewardModalLater: "Позже",
     dailyRewardModalDayLabel: "День {{day}}",
+    dailyRewardSuperLabel: "Суперприз",
     level2UnlockMessage:
       "Уровень 2! Ежедневная награда открыта - забирай бонус каждый день. Мини-челлендж тоже появляется на главном экране, когда Almost посчитает нужным.",
     level3UnlockMessage:
@@ -3998,15 +4030,15 @@ const TRANSLATIONS = {
     coinValueBody:
       "Монеты — награда за старания. Они видны в главном виджете статистики сверху экрана. Монеты также нужны для кастомизации Алми и восстановления серий на карточках.",
     coinValueCta: "Понял",
-    impulseReminderWinTitle: "Ты победил «{{temptation}}»",
-    impulseReminderWinBody: "Вчера это сэкономило {{amount}}. Помни, ради чего держишь курс.",
-    impulseReminderLoseTitle: "«{{temptation}}» вчера победил",
-    impulseReminderLoseBody: "Это стоило {{amount}}. Сегодняшний выбор решает судьбу суммы.",
+    impulseReminderWinTitle: "✅ Ты победил «{{temptation}}»",
+    impulseReminderWinBody: "Вчера это сэкономило {{amount}}. Помни, ради чего держишь курс. 💪",
+    impulseReminderLoseTitle: "😬 «{{temptation}}» вчера победил",
+    impulseReminderLoseBody: "Это стоило {{amount}}. Сегодняшний выбор решает судьбу суммы. 💸",
     impulseAlertTitle: "Зона импульса",
     impulseAlertMessage:
       "Ты в зоне импульсивных трат на {{temptation}} ({{window}}). Откажись и отправь {{amount}} в копилку!",
-    impulseNotificationTitle: "Almost заметил импульс: «{{temptation}}»",
-    impulseNotificationBody: "В это время ты обычно тратишься. Сделай паузу и отправь {{amount}} в Almost.",
+    impulseNotificationTitle: "⚡️ Almost заметил импульс: «{{temptation}}»",
+    impulseNotificationBody: "В это время ты обычно тратишься. Сделай паузу и отправь {{amount}} в Almost. ⏸️",
     impulseAlertBadgeLabel: "умное уведомление",
     impulseAlertWindowLabel: "Пик импульса",
     impulseAlertAmountLabel: "Сумма риска",
@@ -4029,9 +4061,9 @@ const TRANSLATIONS = {
     focusVictoryReward: "Фокус «{{title}}» побеждён! +3 зелёных монеты",
     focusRewardTitle: "Фокус побеждён!",
     focusRewardSubtitle: "Ты трижды отказалась от «{{title}}». +{{amount}} зелёных монет.",
-    dailyReflectionReminderTitle: "Вечерний чек-ин Almost",
+    dailyReflectionReminderTitle: "Вечерний чек-ин Almost 🌙",
     dailyReflectionReminderBody:
-      "До полуночи {{time}}. Запиши трату или экономию - так умные подсказки останутся точными.",
+      "До полуночи {{time}}. Запиши трату или экономию - так умные подсказки останутся точными. 🗒️",
     pendingTab: "Думаем",
     pendingTitle: "Думаем",
     pendingEmptyTitle: "В «думаем» пусто",
@@ -4041,11 +4073,11 @@ const TRANSLATIONS = {
     pendingDueToday: "Реши сегодня",
     pendingActionWant: "Начать копить",
     pendingActionDecline: "Сэкономить",
-    pendingNotificationTitle: "Almost: пора решить «{{title}}»",
+    pendingNotificationTitle: "⏳ Almost: пора решить «{{title}}»",
     pendingNotificationBody: {
-      female: "Две недели прошли. Начнём копить на «{{title}}» или отпустим его?",
-      male: "Две недели прошли. Начнём копить на «{{title}}» или отпустим его?",
-      none: "Две недели прошли. Что делаем с «{{title}}» - копим или отпускаем?",
+      female: "Две недели прошли. Начнём копить на «{{title}}» или отпустим его? 🤔",
+      male: "Две недели прошли. Начнём копить на «{{title}}» или отпустим его? 🤔",
+      none: "Две недели прошли. Что делаем с «{{title}}» - копим или отпускаем? 🤔",
     },
     pendingAdded: "Добавлено в «думаем». Напомним вовремя.",
     pendingDeleteConfirm: "Убрать эту хотелку из «думаем»?",
@@ -4282,8 +4314,8 @@ const TRANSLATIONS = {
     dailyChallengeWidgetProgress: "Прогресс {{current}} / {{target}}",
     dailyChallengeWidgetReward: "+{{amount}}",
     dailyChallengeRewardReason: "Мини-челлендж «{{temptation}}» выполнен",
-    dailyChallengeRewardNotificationTitle: "Almost: мини-челлендж закрыт",
-    dailyChallengeRewardNotificationBody: "«{{temptation}}» сдалось - забери бонус +{{amount}}.",
+    dailyChallengeRewardNotificationTitle: "Almost: мини-челлендж закрыт 🏆",
+    dailyChallengeRewardNotificationBody: "«{{temptation}}» сдалось - забери бонус +{{amount}}. 🎁",
     dailyChallengeFailedText: "Сегодня «{{temptation}}» оказалось сильнее",
     healthCelebrateTitle: "+{{amount}}",
     healthCelebrateSubtitle: "Сохраняй серию бесплатных дней.",
@@ -4670,11 +4702,12 @@ const TRANSLATIONS = {
     dailyRewardCollectedLabel: "Collected today",
     dailyRewardCelebrateMessage: "+{{amount}}",
     dailyRewardModalTitle: "Daily reward",
-    dailyRewardModalDescription: "Collect now and come back tomorrow — each day gets a little bigger.",
+    dailyRewardModalDescription: "Collect now and come back tomorrow, each day gets a little bigger.",
     dailyRewardModalGrowthNote: "7 days in a row unlocks the best payout.",
     dailyRewardModalCTA: "Collect reward",
     dailyRewardModalLater: "Later",
     dailyRewardModalDayLabel: "Day {{day}}",
+    dailyRewardSuperLabel: "Super prize",
     level2UnlockMessage:
       "Level 2! Daily rewards are unlocked - claim a bonus once per day. The daily mini challenge will also appear on Home when Almost thinks you’re ready.",
     level3UnlockMessage:
@@ -4746,15 +4779,15 @@ const TRANSLATIONS = {
     coinValueBody:
       "Coins are a reward for your effort. You can find them in the main stats widget at the top of Home. Coins also unlock Almi customization and restore streaks on cards.",
     coinValueCta: "Got it",
-    impulseReminderWinTitle: "You beat “{{temptation}}”",
-    impulseReminderWinBody: "Yesterday that saved {{amount}}. Keep the streak going today.",
-    impulseReminderLoseTitle: "“{{temptation}}” won yesterday",
-    impulseReminderLoseBody: "It cost {{amount}}. Today’s choice can flip the script.",
+    impulseReminderWinTitle: "✅ You beat “{{temptation}}”",
+    impulseReminderWinBody: "Yesterday that saved {{amount}}. Keep the streak going today. 💪",
+    impulseReminderLoseTitle: "😬 “{{temptation}}” won yesterday",
+    impulseReminderLoseBody: "It cost {{amount}}. Today’s choice can flip the script. 💸",
     impulseAlertTitle: "Impulse alert",
     impulseAlertMessage:
       "You’re entering a high-impulse zone for {{temptation}} ({{window}}). Skip it and stash {{amount}}!",
-    impulseNotificationTitle: "Almost spotted an impulse: “{{temptation}}”",
-    impulseNotificationBody: "You usually cave now. Take an Almost pause and stash {{amount}}.",
+    impulseNotificationTitle: "⚡️ Almost spotted an impulse: “{{temptation}}”",
+    impulseNotificationBody: "You usually cave now. Take an Almost pause and stash {{amount}}. ⏸️",
     impulseAlertBadgeLabel: "smart insight",
     impulseAlertWindowLabel: "Hot zone",
     impulseAlertAmountLabel: "At stake",
@@ -4777,9 +4810,9 @@ const TRANSLATIONS = {
     focusVictoryReward: "Focus “{{title}}” conquered! +3 green coins",
     focusRewardTitle: "Focus conquered!",
     focusRewardSubtitle: "You resisted “{{title}}” three times. +{{amount}} green coins.",
-    dailyReflectionReminderTitle: "Almost nightly check-in",
+    dailyReflectionReminderTitle: "Almost nightly check-in 🌙",
     dailyReflectionReminderBody:
-      "{{time}} left today. Log a save or spend so our smart nudges stay relevant.",
+      "{{time}} left today. Log a save or spend so our smart nudges stay relevant. 🗒️",
     pendingTab: "Thinking",
     pendingTitle: "Thinking",
     pendingEmptyTitle: "Nothing in Thinking",
@@ -4789,8 +4822,8 @@ const TRANSLATIONS = {
     pendingDueToday: "Decide today",
     pendingActionWant: "Start saving",
     pendingActionDecline: "Save it",
-    pendingNotificationTitle: "Almost check-in: decide on “{{title}}”",
-    pendingNotificationBody: "Two weeks are up. Start saving for “{{title}}” or let it go?",
+    pendingNotificationTitle: "⏳ Almost check-in: decide on “{{title}}”",
+    pendingNotificationBody: "Two weeks are up. Start saving for “{{title}}” or let it go? 🤔",
     pendingAdded: "Sent to Thinking. We’ll remind you in 2 weeks.",
     pendingDeleteConfirm: "Remove this item from Thinking?",
     pendingCustomError: "Add a name and price for this temptation.",
@@ -5021,8 +5054,8 @@ const TRANSLATIONS = {
     dailyChallengeWidgetProgress: "Progress {{current}} / {{target}}",
     dailyChallengeWidgetReward: "+{{amount}}",
     dailyChallengeRewardReason: "Mini challenge “{{temptation}}” complete",
-    dailyChallengeRewardNotificationTitle: "Almost daily challenge complete",
-    dailyChallengeRewardNotificationBody: "“{{temptation}}” gave in - grab your +{{amount}} bonus.",
+    dailyChallengeRewardNotificationTitle: "Almost daily challenge complete 🏆",
+    dailyChallengeRewardNotificationBody: "“{{temptation}}” gave in - grab your +{{amount}} bonus. 🎁",
     dailyChallengeFailedText: "“{{temptation}}” won today",
     healthCelebrateTitle: "+{{amount}}",
     healthCelebrateSubtitle: "Use it to rescue your free-day streak.",
@@ -5398,6 +5431,7 @@ const TRANSLATIONS = {
     dailyRewardModalCTA: "Récupérer la récompense",
     dailyRewardModalLater: "Plus tard",
     dailyRewardModalDayLabel: "Jour {{day}}",
+    dailyRewardSuperLabel: "Super lot",
     level2UnlockMessage:
       "Niveau 2 ! Les récompenses quotidiennes sont actives : récupère un bonus chaque jour. Le mini-défi quotidien apparaît aussi sur l’accueil quand Almost juge que tu es prêt.",
     level3UnlockMessage:
@@ -5469,15 +5503,15 @@ const TRANSLATIONS = {
     coinValueBody:
       "Les pieces sont une recompense pour tes efforts. Elles se trouvent dans le widget principal des stats en haut de l'accueil. Les pieces servent aussi a personnaliser Almi et restaurer les series sur les cartes.",
     coinValueCta: "Compris",
-    impulseReminderWinTitle: "Tu as tenu bon face à « {{temptation}} »",
-    impulseReminderWinBody: "Hier tu as gardé {{amount}}. Rappelle-toi pourquoi tu résistes.",
-    impulseReminderLoseTitle: "« {{temptation}} » a gagné hier",
-    impulseReminderLoseBody: "Ça t'a coûté {{amount}}. La décision d'aujourd'hui change la donne.",
+    impulseReminderWinTitle: "✅ Tu as tenu bon face à « {{temptation}} »",
+    impulseReminderWinBody: "Hier tu as gardé {{amount}}. Rappelle-toi pourquoi tu résistes. 💪",
+    impulseReminderLoseTitle: "😬 « {{temptation}} » a gagné hier",
+    impulseReminderLoseBody: "Ça t'a coûté {{amount}}. La décision d'aujourd'hui change la donne. 💸",
     impulseAlertTitle: "Alerte d'impulsion",
     impulseAlertMessage:
       "Tu entres dans une zone à forte impulsion pour {{temptation}} ({{window}}). Résiste et mets {{amount}} de côté !",
-    impulseNotificationTitle: "Almost a détecté l'impulsion : « {{temptation}} »",
-    impulseNotificationBody: "Tu cèdes d'habitude maintenant. Fais une pause Almost et économise {{amount}}.",
+    impulseNotificationTitle: "⚡️ Almost a détecté l'impulsion : « {{temptation}} »",
+    impulseNotificationBody: "Tu cèdes d'habitude maintenant. Fais une pause Almost et économise {{amount}}. ⏸️",
     impulseAlertBadgeLabel: "astuce intelligente",
     impulseAlertWindowLabel: "Zone chaude",
     impulseAlertAmountLabel: "En jeu",
@@ -5500,9 +5534,9 @@ const TRANSLATIONS = {
     focusVictoryReward: "Focus « {{title}} » dompté ! +3 pièces vertes",
     focusRewardTitle: "Focus vaincu",
     focusRewardSubtitle: "Tu as résisté trois fois à « {{title}} ». +{{amount}} pièces vertes.",
-    dailyReflectionReminderTitle: "Check-in du soir Almost",
+    dailyReflectionReminderTitle: "Check-in du soir Almost 🌙",
     dailyReflectionReminderBody:
-      "Il reste {{time}} aujourd'hui. Note une économie ou une dépense pour garder nos rappels pertinents.",
+      "Il reste {{time}} aujourd'hui. Note une économie ou une dépense pour garder nos rappels pertinents. 🗒️",
     pendingTab: "En pause",
     pendingTitle: "En pause",
     pendingEmptyTitle: "Aucun élément en pause",
@@ -5512,8 +5546,8 @@ const TRANSLATIONS = {
     pendingDueToday: "Décider aujourd'hui",
     pendingActionWant: "Commencer à épargner",
     pendingActionDecline: "Économiser",
-    pendingNotificationTitle: "Almost te relance : que faire de « {{title}} » ?",
-    pendingNotificationBody: "Deux semaines sont passées. On commence à épargner pour « {{title}} » ou on laisse tomber ?",
+    pendingNotificationTitle: "⏳ Almost te relance : que faire de « {{title}} » ?",
+    pendingNotificationBody: "Deux semaines sont passées. On commence à épargner pour « {{title}} » ou on laisse tomber ? 🤔",
     pendingAdded: "Envoyé en pause. Rappel dans 2 semaines.",
     pendingDeleteConfirm: "Retirer cet élément de En pause ?",
     pendingCustomError: "Ajoute un nom et un prix pour cette tentation.",
@@ -5738,8 +5772,8 @@ const TRANSLATIONS = {
     dailyChallengeWidgetProgress: "Progression {{current}} / {{target}}",
     dailyChallengeWidgetReward: "+{{amount}}",
     dailyChallengeRewardReason: "Mini défi « {{temptation}} » réussi",
-    dailyChallengeRewardNotificationTitle: "Défi quotidien Almost terminé",
-    dailyChallengeRewardNotificationBody: "« {{temptation}} » a cédé - prends ton bonus de +{{amount}}.",
+    dailyChallengeRewardNotificationTitle: "Défi quotidien Almost terminé 🏆",
+    dailyChallengeRewardNotificationBody: "« {{temptation}} » a cédé - prends ton bonus de +{{amount}}. 🎁",
     dailyChallengeFailedText: "« {{temptation}} » a gagné aujourd'hui",
     healthCelebrateTitle: "+{{amount}}",
     healthCelebrateSubtitle: "À utiliser pour sauver ta série de jours gratuits.",
@@ -6118,6 +6152,7 @@ const TRANSLATIONS = {
     dailyRewardModalCTA: "Cobrar recompensa",
     dailyRewardModalLater: "Después",
     dailyRewardModalDayLabel: "Día {{day}}",
+    dailyRewardSuperLabel: "Super premio",
     level2UnlockMessage:
       "Nivel 2: Las recompensas diarias están activas; reclama un bonus cada día. El mini reto diario también aparece en Inicio cuando Almost lo considera.",
     level3UnlockMessage:
@@ -6189,15 +6224,15 @@ const TRANSLATIONS = {
     coinValueBody:
       "Las monedas son una recompensa por tu esfuerzo. Las ves en el widget principal de estadisticas arriba en Inicio. Las monedas tambien sirven para personalizar a Almi y restaurar las rachas en las tarjetas.",
     coinValueCta: "Entendido",
-    impulseReminderWinTitle: "Ayer domaste «{{temptation}}»",
-    impulseReminderWinBody: "Guardaste {{amount}}. Sigue en modo ahorro hoy.",
-    impulseReminderLoseTitle: "«{{temptation}}» ganó ayer",
-    impulseReminderLoseBody: "Costó {{amount}}. Hoy puedes recuperar el control.",
+    impulseReminderWinTitle: "✅ Ayer domaste «{{temptation}}»",
+    impulseReminderWinBody: "Guardaste {{amount}}. Sigue en modo ahorro hoy. 💪",
+    impulseReminderLoseTitle: "😬 «{{temptation}}» ganó ayer",
+    impulseReminderLoseBody: "Costó {{amount}}. Hoy puedes recuperar el control. 💸",
     impulseAlertTitle: "Alerta de impulso",
     impulseAlertMessage:
       "Estás entrando en una zona de alto impulso para {{temptation}} ({{window}}). Saltéalo y guarda {{amount}}.",
-    impulseNotificationTitle: "Almost detectó un impulso: «{{temptation}}»",
-    impulseNotificationBody: "Normalmente cedes ahora. Haz una pausa Almost y guarda {{amount}}.",
+    impulseNotificationTitle: "⚡️ Almost detectó un impulso: «{{temptation}}»",
+    impulseNotificationBody: "Normalmente cedes ahora. Haz una pausa Almost y guarda {{amount}}. ⏸️",
     impulseAlertBadgeLabel: "alerta inteligente",
     impulseAlertWindowLabel: "Pico de impulso",
     impulseAlertAmountLabel: "En juego",
@@ -6220,9 +6255,9 @@ const TRANSLATIONS = {
     focusVictoryReward: "Foco «{{title}}» conquistado. +3 monedas verdes",
     focusRewardTitle: "Foco conquistado",
     focusRewardSubtitle: "Resististe «{{title}}» tres veces. +{{amount}} monedas verdes.",
-    dailyReflectionReminderTitle: "Chequeo nocturno de Almost",
+    dailyReflectionReminderTitle: "Chequeo nocturno de Almost 🌙",
     dailyReflectionReminderBody:
-      "Quedan {{time}} hoy. Registra un ahorro o un gasto para que los recordatorios sigan siendo certeros.",
+      "Quedan {{time}} hoy. Registra un ahorro o un gasto para que los recordatorios sigan siendo certeros. 🗒️",
     pendingTab: "En pausa",
     pendingTitle: "En pausa",
     pendingEmptyTitle: "Nada en pausa",
@@ -6232,8 +6267,8 @@ const TRANSLATIONS = {
     pendingDueToday: "Decide hoy",
     pendingActionWant: "Empezar a ahorrar",
     pendingActionDecline: "Ahorrar",
-    pendingNotificationTitle: "Almost pregunta: ¿qué hacemos con «{{title}}»?",
-    pendingNotificationBody: "Han pasado dos semanas. ¿Empezamos a ahorrar para «{{title}}» o lo soltamos?",
+    pendingNotificationTitle: "⏳ Almost pregunta: ¿qué hacemos con «{{title}}»?",
+    pendingNotificationBody: "Han pasado dos semanas. ¿Empezamos a ahorrar para «{{title}}» o lo soltamos? 🤔",
     pendingAdded: "Enviado a En pausa. Recordaremos en dos semanas.",
     pendingDeleteConfirm: "¿Quitar este elemento de En pausa?",
     pendingCustomError: "Añade un nombre y un precio para esta tentación.",
@@ -6455,8 +6490,8 @@ const TRANSLATIONS = {
     dailyChallengeWidgetProgress: "Progreso {{current}} / {{target}}",
     dailyChallengeWidgetReward: "+{{amount}}",
     dailyChallengeRewardReason: "Mini reto «{{temptation}}» completado",
-    dailyChallengeRewardNotificationTitle: "Reto diario Almost completado",
-    dailyChallengeRewardNotificationBody: "«{{temptation}}» cedió. Toma tu bono de +{{amount}}.",
+    dailyChallengeRewardNotificationTitle: "Reto diario Almost completado 🏆",
+    dailyChallengeRewardNotificationBody: "«{{temptation}}» cedió. Toma tu bono de +{{amount}}. 🎁",
     dailyChallengeFailedText: "«{{temptation}}» ganó hoy",
     healthCelebrateTitle: "+{{amount}}",
     healthCelebrateSubtitle: "Úsalo para rescatar tu racha de días gratis.",
@@ -7539,7 +7574,7 @@ const INITIAL_REGISTRATION = {
   goalTargetConfirmed: [],
 };
 
-const ONBOARDING_STEP_SEQUENCE = [
+const ONBOARDING_SCREEN_SEQUENCE = [
   "logo",
   "language",
   "analytics_consent",
@@ -7549,10 +7584,11 @@ const ONBOARDING_STEP_SEQUENCE = [
   "habit",
   "baseline",
   "goal",
+  "goal_target",
 ];
 
-const resolveOnboardingStepIndex = (step) => {
-  const idx = ONBOARDING_STEP_SEQUENCE.indexOf(step);
+const resolveOnboardingScreenNumber = (step) => {
+  const idx = ONBOARDING_SCREEN_SEQUENCE.indexOf(step);
   return idx >= 0 ? idx + 1 : null;
 };
 
@@ -8482,7 +8518,7 @@ const formatTemptationPriceLabel = (item, currency) => {
 const filterTemptationsByPrice = (list, limitUSD) => {
   if (!Array.isArray(list)) return [];
   if (!Number.isFinite(limitUSD)) return list;
-  return list.filter((item) => getTemptationPrice(item) <= limitUSD);
+  return list.filter((item) => isCustomTemptation(item) || getTemptationPrice(item) <= limitUSD);
 };
 
 function TemptationCardComponent({
@@ -9488,6 +9524,7 @@ function SavingsHeroCard({
   dailyRewardUnlocked = false,
   dailyRewardReady = false,
   dailyRewardAmount = 0,
+  dailyRewardBaseAmount = 0,
   dailyRewardDay = 1,
   onDailyRewardClaim = () => {},
 }) {
@@ -9517,10 +9554,8 @@ function SavingsHeroCard({
     }
   }, [hasBaseline, onPotentialDetailsOpen]);
   const weeklyTrend = useMemo(() => {
-    if (!weeklyComparison) return null;
     const formatEntry = (entry, type) => {
-      if (!entry) return null;
-      const delta = Number(entry.deltaUSD) || 0;
+      const delta = Number(entry?.deltaUSD) || 0;
       const absDelta = Math.abs(delta);
       const localValue = formatCurrency(convertToCurrency(absDelta, currency), currency);
       const symbol = delta >= 0 ? "▲" : "▼";
@@ -9536,18 +9571,19 @@ function SavingsHeroCard({
         color,
       };
     };
-    const savingsTrend = formatEntry(weeklyComparison.savings, "savings");
-    const spendingTrend = formatEntry(weeklyComparison.spending, "spending");
-    if (!savingsTrend && !spendingTrend) return null;
+    const base = weeklyComparison || {};
+    const savingsTrend = formatEntry(base.savings, "savings");
+    const spendingTrend = formatEntry(base.spending, "spending");
     return { savings: savingsTrend, spending: spendingTrend };
   }, [currency, goldPalette.accent, goldPalette.danger, weeklyComparison]);
   const dailyRewardPreview = useMemo(() => {
-    const baseAmount = Math.max(1, Math.round(dailyRewardAmount || 0));
-    return Array.from({ length: 7 }).map((_, index) => ({
+    const schedule = buildDailyRewardSchedule(dailyRewardBaseAmount || dailyRewardAmount);
+    return schedule.map((amount, index) => ({
       day: index + 1,
-      amount: baseAmount + index,
+      amount,
+      isSuper: index + 1 === DAILY_REWARD_STREAK_LENGTH,
     }));
-  }, [dailyRewardAmount]);
+  }, [dailyRewardAmount, dailyRewardBaseAmount]);
   const rewardTileSize = useMemo(
     () => Math.max(levelBadgeLayout.width || 0, 68),
     [levelBadgeLayout.width]
@@ -9578,12 +9614,19 @@ function SavingsHeroCard({
     []
   );
   const dailyRewardButtonColors = dailyRewardReady
-    ? {
-        background: "rgba(255,173,74,0.25)",
-        border: "rgba(255,173,74,0.55)",
-        shadow: "rgba(255,160,80,0.4)",
-        text: "#6A390C",
-      }
+    ? isDarkMode
+      ? {
+          background: "rgba(255,214,143,0.32)",
+          border: "rgba(255,214,143,0.85)",
+          shadow: "rgba(255,214,143,0.55)",
+          text: "#FFEED0",
+        }
+      : {
+          background: "rgba(255,173,74,0.25)",
+          border: "rgba(255,173,74,0.55)",
+          shadow: "rgba(255,160,80,0.4)",
+          text: "#6A390C",
+        }
     : isDarkMode
     ? {
         background: "rgba(255,255,255,0.08)",
@@ -9600,14 +9643,19 @@ function SavingsHeroCard({
   const dailyRewardModalPalette = isDarkMode
     ? {
         background: "#3A2405",
-        border: "rgba(255,214,143,0.6)",
+        border: "rgba(255,214,143,0.7)",
         subtext: "rgba(255,238,208,0.92)",
+        text: "#FFEED0",
       }
     : {
         background: goldPalette.background,
         border: goldPalette.border,
         subtext: goldPalette.subtext,
+        text: goldPalette.text,
       };
+  const dailyRewardActiveAccent = isDarkMode ? "#7BFFB8" : "#1F7A4F";
+  const dailyRewardActiveBorder = isDarkMode ? "rgba(123,255,184,0.85)" : "rgba(45,166,106,0.9)";
+  const dailyRewardActiveBg = isDarkMode ? "rgba(123,255,184,0.18)" : "rgba(45,166,106,0.14)";
   const dailyRewardLabel = dailyRewardReady ? t("dailyRewardClaimHint") : t("dailyRewardCollectedLabel");
   const handleDailyRewardPress = useCallback(() => {
     if (!dailyRewardReady) return;
@@ -9623,7 +9671,9 @@ function SavingsHeroCard({
     setDailyRewardModalVisible(false);
     onDailyRewardClaim?.();
   }, [dailyRewardReady, onDailyRewardClaim, triggerSuccessHaptic]);
-  const activeDailyRewardDay = dailyRewardReady ? Math.min(7, Math.max(1, dailyRewardDay || 1)) : null;
+  const activeDailyRewardDay = dailyRewardReady
+    ? Math.min(DAILY_REWARD_STREAK_LENGTH, Math.max(1, dailyRewardDay || 1))
+    : null;
   return (
     <View
       style={[
@@ -10096,7 +10146,7 @@ function SavingsHeroCard({
               },
             ]}
           >
-            <Text style={[styles.dailyRewardModalTitle, { color: goldPalette.text }]}>
+            <Text style={[styles.dailyRewardModalTitle, { color: dailyRewardModalPalette.text }]}>
               {t("dailyRewardModalTitle")}
             </Text>
             <Text
@@ -10108,48 +10158,57 @@ function SavingsHeroCard({
               {t("dailyRewardModalDescription")}
             </Text>
             <View style={styles.dailyRewardCalendar}>
-              {dailyRewardPreview.map((entry) => (
-                <View
-                  key={entry.day}
-                  style={[
-                    styles.dailyRewardCalendarDay,
-                    {
-                      borderColor: goldPalette.border,
-                      backgroundColor:
-                        entry.day === activeDailyRewardDay
-                          ? "rgba(45,166,106,0.14)"
-                          : goldPalette.badgeBg,
-                      borderWidth: entry.day === activeDailyRewardDay ? 1.5 : 1,
-                      borderColor:
-                        entry.day === activeDailyRewardDay ? "rgba(45,166,106,0.9)" : goldPalette.border,
-                    },
-                  ]}
-                >
-                  <Text
+              {dailyRewardPreview.map((entry) => {
+                const isActive = entry.day === activeDailyRewardDay;
+                const isSuper = entry.isSuper;
+                const dayBg = isSuper ? "rgba(255,214,143,0.2)" : goldPalette.badgeBg;
+                const dayBorder = isSuper ? "rgba(255,171,64,0.85)" : goldPalette.border;
+                const superDayStyle = isSuper
+                  ? { minWidth: 72, maxWidth: 88, width: 80 }
+                  : null;
+                return (
+                  <View
+                    key={entry.day}
                     style={[
-                      styles.dailyRewardCalendarDayLabel,
+                      styles.dailyRewardCalendarDay,
+                      superDayStyle,
                       {
-                        color:
-                          entry.day === activeDailyRewardDay ? "#1F7A4F" : goldPalette.subtext,
-                      },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {t("dailyRewardModalDayLabel", { day: entry.day })}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.dailyRewardCalendarAmount,
-                      {
-                        color:
-                          entry.day === activeDailyRewardDay ? "#1F7A4F" : goldPalette.text,
+                        backgroundColor: isActive ? dailyRewardActiveBg : dayBg,
+                        borderWidth: isActive ? 1.5 : 1,
+                        borderColor: isActive ? dailyRewardActiveBorder : dayBorder,
                       },
                     ]}
                   >
-                    +{entry.amount}
-                  </Text>
-                </View>
-              ))}
+                    <Text
+                      style={[
+                        styles.dailyRewardCalendarDayLabel,
+                        { color: isActive ? dailyRewardActiveAccent : dailyRewardModalPalette.subtext },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {t("dailyRewardModalDayLabel", { day: entry.day })}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.dailyRewardCalendarAmount,
+                        { color: isActive ? dailyRewardActiveAccent : dailyRewardModalPalette.text },
+                      ]}
+                    >
+                      +{entry.amount}
+                    </Text>
+                    {isSuper && (
+                      <Text
+                        style={[
+                          styles.dailyRewardCalendarSuperLabel,
+                          { color: isActive ? dailyRewardActiveAccent : dailyRewardModalPalette.text },
+                        ]}
+                      >
+                        {t("dailyRewardSuperLabel")}
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
             </View>
             <Text style={[styles.dailyRewardModalNote, { color: dailyRewardModalPalette.subtext }]}>
               {t("dailyRewardModalGrowthNote")}
@@ -10163,7 +10222,7 @@ function SavingsHeroCard({
                 onPress={() => setDailyRewardModalVisible(false)}
                 activeOpacity={0.85}
               >
-                <Text style={[styles.dailyRewardModalSecondaryText, { color: goldPalette.text }]}>
+                <Text style={[styles.dailyRewardModalSecondaryText, { color: dailyRewardModalPalette.text }]}>
                   {t("dailyRewardModalLater")}
                 </Text>
               </TouchableOpacity>
@@ -10769,6 +10828,7 @@ const FeedScreen = React.memo(
   onTemptationAction,
   onTemptationEditToggle,
   onTemptationQuickGoalToggle,
+  onNewTemptation = () => {},
   t,
   language,
   colors,
@@ -10796,6 +10856,7 @@ const FeedScreen = React.memo(
   dailyRewardUnlocked = false,
   dailyRewardReady = false,
   dailyRewardAmount = 0,
+  dailyRewardBaseAmount = 0,
   dailyRewardDay = 1,
   onDailyRewardClaim = () => {},
   editingTemptationId = null,
@@ -11642,8 +11703,8 @@ const FeedScreen = React.memo(
         WEEKDAY_LABELS_MONDAY_FIRST.en[weekdayIndex];
       const saveLocal = convertToCurrency(saveUSD, currency);
       const spendLocal = convertToCurrency(spendUSD, currency);
-      const amountLabel = saveUSD ? formatCurrency(saveLocal, currency) : "";
-      const spendLabel = spendUSD ? `-${formatCurrency(spendLocal, currency)}` : "";
+      const amountLabel = saveUSD ? formatCurrency(saveLocal, currency) : formatCurrency(0, currency);
+      const spendLabel = spendUSD ? `-${formatCurrency(spendLocal, currency)}` : formatCurrency(0, currency);
       const amountParts = splitCurrencyLabel(amountLabel, currency);
       const spendParts = splitCurrencyLabel(spendLabel, currency);
       const amountValueLabel =
@@ -11820,6 +11881,7 @@ const FeedScreen = React.memo(
             dailyRewardUnlocked={dailyRewardUnlocked}
             dailyRewardReady={dailyRewardReady}
             dailyRewardAmount={dailyRewardAmount}
+            dailyRewardBaseAmount={dailyRewardBaseAmount}
             dailyRewardDay={dailyRewardDay}
             onDailyRewardClaim={onDailyRewardClaim}
           />
@@ -11851,6 +11913,21 @@ const FeedScreen = React.memo(
                 onToggle={handleImpulseToggle}
               />
             )}
+            <View style={styles.feedTemptationHeader}>
+              <Text style={[styles.feedTemptationTitle, { color: colors.text }]}>
+                {t("tutorialFeedTitle")}
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.feedTemptationAddButton,
+                  { backgroundColor: colors.text, borderColor: colors.text },
+                ]}
+                onPress={onNewTemptation}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.feedTemptationAddIcon, { color: colors.background }]}>+</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         }
       />
@@ -14085,11 +14162,17 @@ const ProfileScreen = React.memo(function ProfileScreen({
       profile.customSpend,
       profile.currency || DEFAULT_PROFILE.currency
     );
+    const customPrecision =
+      typeof profile.customSpend?.pricePrecision === "number" && Number.isFinite(profile.customSpend.pricePrecision)
+        ? Math.max(0, Math.min(6, profile.customSpend.pricePrecision))
+        : null;
+    const customInputPrecision =
+      customPrecision !== null ? customPrecision : getCurrencyDisplayPrecision(currentCurrency);
     setCustomSpendInputs({
       title: profile.customSpend?.title || "",
       amount:
         customAmountUSD > 0
-          ? formatNumberInputValue(convertToCurrency(customAmountUSD, currentCurrency))
+          ? formatNumberInputValue(convertToCurrency(customAmountUSD, currentCurrency), customInputPrecision)
           : "",
       frequency: profile.customSpend?.frequencyPerWeek
         ? `${profile.customSpend.frequencyPerWeek}`
@@ -14175,9 +14258,11 @@ const ProfileScreen = React.memo(function ProfileScreen({
       if (hasAmount) {
         next.amountUSD = convertFromCurrency(parsedAmount, currentCurrency);
         next.currency = currentCurrency;
+        next.pricePrecision = getManualInputPrecision(nextState.amount);
       } else {
         delete next.amountUSD;
         delete next.currency;
+        delete next.pricePrecision;
       }
       if (hasFrequency) {
         next.frequencyPerWeek = Math.max(1, Math.round(frequencyValue));
@@ -14803,6 +14888,20 @@ function AppContent() {
   const soundModeReadyRef = useRef(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [soundEnabledHydrated, setSoundEnabledHydrated] = useState(false);
+  const resolveInterruptionModeIOS = useCallback(() => {
+    return (
+      AudioModule?.InterruptionModeIOS?.MixWithOthers ??
+      AudioModule?.INTERRUPTION_MODE_IOS_MIX_WITH_OTHERS ??
+      2
+    );
+  }, []);
+  const resolveInterruptionModeAndroid = useCallback(() => {
+    return (
+      AudioModule?.InterruptionModeAndroid?.DuckOthers ??
+      AudioModule?.INTERRUPTION_MODE_ANDROID_DUCK_OTHERS ??
+      1
+    );
+  }, []);
   const stopAllSounds = useCallback(() => {
     Object.values(soundsRef.current).forEach((sound) => {
       sound?.stopAsync?.().catch(() => {});
@@ -14821,16 +14920,8 @@ function AppContent() {
       soundCooldownRef.current[key] = now;
     }
     if (!soundModeReadyRef.current) {
-      const interruptionModeIOS =
-        AudioModule.InterruptionModeIOS?.MixWithOthers ??
-        AudioModule.INTERRUPTION_MODE_IOS_MIX_WITH_OTHERS ??
-        AudioModule.InterruptionModeIOS?.DuckOthers ??
-        AudioModule.INTERRUPTION_MODE_IOS_DUCK_OTHERS ??
-        1;
-      const interruptionModeAndroid =
-        AudioModule.InterruptionModeAndroid?.DuckOthers ??
-        AudioModule.INTERRUPTION_MODE_ANDROID_DUCK_OTHERS ??
-        1;
+      const interruptionModeIOS = resolveInterruptionModeIOS();
+      const interruptionModeAndroid = resolveInterruptionModeAndroid();
       try {
         await AudioModule.setAudioModeAsync({
           playsInSilentModeIOS: false,
@@ -14875,16 +14966,8 @@ function AppContent() {
     (async () => {
       try {
         if (!AudioModule) return;
-        const interruptionModeIOS =
-          AudioModule.InterruptionModeIOS?.MixWithOthers ??
-          AudioModule.INTERRUPTION_MODE_IOS_MIX_WITH_OTHERS ??
-          AudioModule.InterruptionModeIOS?.DuckOthers ??
-          AudioModule.INTERRUPTION_MODE_IOS_DUCK_OTHERS ??
-          1;
-        const interruptionModeAndroid =
-          AudioModule.InterruptionModeAndroid?.DuckOthers ??
-          AudioModule.INTERRUPTION_MODE_ANDROID_DUCK_OTHERS ??
-          1;
+        const interruptionModeIOS = resolveInterruptionModeIOS();
+        const interruptionModeAndroid = resolveInterruptionModeAndroid();
         try {
           await AudioModule.setAudioModeAsync({
             playsInSilentModeIOS: false,
@@ -15112,7 +15195,7 @@ function AppContent() {
   const freeDayUnlocked = playerLevel >= 7;
   const thinkingUnlocked = playerLevel >= 7;
   const todayKey = currentDayKey;
-  const dailyRewardAmount = useMemo(
+  const baseDailyRewardAmount = useMemo(
     () => (dailyRewardUnlocked ? computeDailyAlmiReward(levelProgressUSD) : 0),
     [dailyRewardUnlocked, levelProgressUSD]
   );
@@ -15123,24 +15206,31 @@ function AppContent() {
     }
     return null;
   }, [dailyRewardState.lastClaimAt, dailyRewardState.lastKey]);
+  const dailyRewardDay = useMemo(() => {
+    if (!dailyRewardHydrated) return 1;
+    if (!dailyRewardLastKey) return 1;
+    const dayDiff = getDayDiff(dailyRewardLastKey, todayKey);
+    if (dayDiff === 0) {
+      return Math.min(DAILY_REWARD_STREAK_LENGTH, Math.max(1, dailyRewardState.streak || 1));
+    }
+    if (dayDiff === 1) {
+      return Math.min(
+        DAILY_REWARD_STREAK_LENGTH,
+        Math.max(1, (dailyRewardState.streak || 0) + 1)
+      );
+    }
+    return 1;
+  }, [dailyRewardHydrated, dailyRewardLastKey, dailyRewardState.streak, todayKey]);
+  const dailyRewardAmount = useMemo(
+    () => (dailyRewardUnlocked ? getDailyRewardForDay(baseDailyRewardAmount, dailyRewardDay) : 0),
+    [baseDailyRewardAmount, dailyRewardDay, dailyRewardUnlocked]
+  );
   const dailyRewardReady =
     dailyRewardUnlocked &&
     dailyRewardHydrated &&
     healthHydrated &&
     dailyRewardLastKey !== todayKey &&
     dailyRewardAmount > 0;
-  const dailyRewardDay = useMemo(() => {
-    if (!dailyRewardHydrated) return 1;
-    if (!dailyRewardLastKey) return 1;
-    const dayDiff = getDayDiff(dailyRewardLastKey, todayKey);
-    if (dayDiff === 0) {
-      return Math.min(7, Math.max(1, dailyRewardState.streak || 1));
-    }
-    if (dayDiff === 1) {
-      return Math.min(7, Math.max(1, (dailyRewardState.streak || 0) + 1));
-    }
-    return 1;
-  }, [dailyRewardHydrated, dailyRewardLastKey, dailyRewardState.streak, todayKey]);
   const dailyRewardDisplayAmount =
     dailyRewardReady ? dailyRewardAmount : dailyRewardState.lastAmount || dailyRewardAmount || 0;
   const handleDailyRewardClaim = useCallback(async () => {
@@ -15173,7 +15263,8 @@ function AppContent() {
     if (!dailyRewardReady) return;
     const rewardLabel = formatHealthRewardLabel(dailyRewardAmount, language);
     const dayDiff = getDayDiff(dailyRewardLastKey, claimKey);
-    const nextStreak = dayDiff === 1 ? Math.min(7, (dailyRewardState.streak || 0) + 1) : 1;
+    const nextStreak =
+      dayDiff === 1 ? Math.min(DAILY_REWARD_STREAK_LENGTH, (dailyRewardState.streak || 0) + 1) : 1;
     const nextDailyRewardState = {
       lastKey: claimKey,
       lastAmount: dailyRewardAmount,
@@ -15539,6 +15630,8 @@ function AppContent() {
   const [ratingPromptVisible, setRatingPromptVisible] = useState(false);
   const ratingPromptCompleted = ratingPromptState.completed;
   const ratingPromptFirstOpenAt = ratingPromptState.firstOpenAt;
+  const ratingPromptActionCount = ratingPromptState.actionCount || 0;
+  const ratingPromptActionPrompted = ratingPromptState.actionPrompted;
   const [levelShareModal, setLevelShareModal] = useState({ visible: false, level: 1 });
   const [levelShareSharing, setLevelShareSharing] = useState(false);
   const levelShareCardRef = useRef(null);
@@ -15701,6 +15794,62 @@ function AppContent() {
       return nextState;
     });
   }, []);
+  const ratingPromptQueuedRef = useRef(false);
+  const ratingPromptSourceRef = useRef(null);
+  const ratingPromptCheckTimerRef = useRef(null);
+  const storeReviewQueuedRef = useRef(false);
+  const storeReviewCheckTimerRef = useRef(null);
+  const canShowRatingPromptNowRef = useRef(() => false);
+  const canTriggerStoreReviewNowRef = useRef(() => false);
+  const showRatingPrompt = useCallback(
+    (source = "time") => {
+      if (ratingPromptVisible) return;
+      setRatingPromptVisible(true);
+      updateRatingPromptState((prev) => ({
+        ...prev,
+        lastShownAt: new Date().toISOString(),
+        actionPrompted: source === "actions" ? true : prev.actionPrompted,
+      }));
+    },
+    [ratingPromptVisible, updateRatingPromptState]
+  );
+  const queueRatingPrompt = useCallback(
+    (source = "time") => {
+      if (ratingPromptQueuedRef.current) {
+        if (!ratingPromptSourceRef.current || source === "actions") {
+          ratingPromptSourceRef.current = source;
+        }
+        return;
+      }
+      ratingPromptQueuedRef.current = true;
+      ratingPromptSourceRef.current = source;
+      const checkAndShow = () => {
+        if (!ratingPromptQueuedRef.current) return;
+        if (canShowRatingPromptNowRef.current()) {
+          ratingPromptQueuedRef.current = false;
+          const resolvedSource = ratingPromptSourceRef.current || source;
+          ratingPromptSourceRef.current = null;
+          showRatingPrompt(resolvedSource);
+          return;
+        }
+        ratingPromptCheckTimerRef.current = setTimeout(checkAndShow, 250);
+      };
+      checkAndShow();
+    },
+    [showRatingPrompt]
+  );
+  useEffect(() => {
+    return () => {
+      if (ratingPromptCheckTimerRef.current) {
+        clearTimeout(ratingPromptCheckTimerRef.current);
+        ratingPromptCheckTimerRef.current = null;
+      }
+      if (storeReviewCheckTimerRef.current) {
+        clearTimeout(storeReviewCheckTimerRef.current);
+        storeReviewCheckTimerRef.current = null;
+      }
+    };
+  }, []);
   const triggerStoreReview = useCallback(async (source = "rating_prompt") => {
     const isAndroid = Platform.OS === "android";
     const primaryUrl = isAndroid ? ANDROID_REVIEW_URL : IOS_REVIEW_URL;
@@ -15754,6 +15903,25 @@ function AppContent() {
     }
     return openStoreReview();
   }, [logEvent]);
+  const requestStoreReviewWhenReady = useCallback(
+    (source = "rating_prompt") => {
+      if (storeReviewQueuedRef.current) return;
+      storeReviewQueuedRef.current = true;
+      const checkAndRun = () => {
+        if (!storeReviewQueuedRef.current) return;
+        if (canTriggerStoreReviewNowRef.current()) {
+          storeReviewQueuedRef.current = false;
+          InteractionManager.runAfterInteractions(() => {
+            triggerStoreReview(source);
+          });
+          return;
+        }
+        storeReviewCheckTimerRef.current = setTimeout(checkAndRun, 250);
+      };
+      checkAndRun();
+    },
+    [triggerStoreReview]
+  );
   const handleRatingPromptLater = useCallback(() => {
     setRatingPromptVisible(false);
     const respondedAt = new Date().toISOString();
@@ -15775,11 +15943,8 @@ function AppContent() {
       respondedAt,
     }));
     logEvent("rating_prompt_action", { action: "rate" });
-    // Wait until the prompt modal is fully dismissed before attempting to show the native review UI.
-    InteractionManager.runAfterInteractions(() => {
-      triggerStoreReview();
-    });
-  }, [logEvent, triggerStoreReview, updateRatingPromptState]);
+    requestStoreReviewWhenReady();
+  }, [logEvent, requestStoreReviewWhenReady, updateRatingPromptState]);
   const openLevelShareModal = useCallback(
     (level = 1) => {
       setLevelShareModal({ visible: true, level });
@@ -16190,6 +16355,7 @@ function AppContent() {
         return;
       }
       if (wasBackground && nextState === "active") {
+        soundModeReadyRef.current = false;
         const resumedAt = appResumeAtRef.current || 0;
         appResumeAtRef.current = null;
         const isTransientResume =
@@ -16238,19 +16404,35 @@ function AppContent() {
     if (Number.isNaN(firstOpenDate.getTime())) return;
     const daysElapsed = Math.floor((Date.now() - firstOpenDate.getTime()) / DAY_MS);
     if (daysElapsed < RATING_PROMPT_DELAY_DAYS) return;
-    setRatingPromptVisible(true);
-    updateRatingPromptState((prev) => ({
-      ...prev,
-      lastShownAt: new Date().toISOString(),
-    }));
+    queueRatingPrompt("time");
   }, [
     onboardingStep,
     ratingPromptHydrated,
     ratingPromptCompleted,
     ratingPromptFirstOpenAt,
     ratingPromptVisible,
-    updateRatingPromptState,
+    queueRatingPrompt,
   ]);
+  const ratingPromptActionEligible =
+    ratingPromptHydrated &&
+    !ratingPromptCompleted &&
+    !ratingPromptVisible &&
+    !ratingPromptActionPrompted &&
+    ratingPromptActionCount >= RATING_PROMPT_ACTION_THRESHOLD;
+  useEffect(() => {
+    if (!ratingPromptActionEligible) return;
+    queueRatingPrompt("actions");
+  }, [queueRatingPrompt, ratingPromptActionEligible]);
+  useEffect(() => {
+    if (!ratingPromptVisible) return;
+    if (!ratingPromptQueuedRef.current) return;
+    ratingPromptQueuedRef.current = false;
+    ratingPromptSourceRef.current = null;
+    if (ratingPromptCheckTimerRef.current) {
+      clearTimeout(ratingPromptCheckTimerRef.current);
+      ratingPromptCheckTimerRef.current = null;
+    }
+  }, [ratingPromptVisible]);
   useEffect(() => {
     if (!ratingPromptVisible) return;
     logEvent("rating_prompt_shown");
@@ -17296,6 +17478,20 @@ function AppContent() {
       tamagotchiVisible,
     ]
   );
+  canShowRatingPromptNowRef.current = () => {
+    if (onboardingStep !== "done") return false;
+    if (!interfaceReady) return false;
+    if (tutorialBlockingVisible) return false;
+    if (overlayActiveRef.current) return false;
+    if (overlayQueueRef.current.length) return false;
+    if (celebrationQueueRef.current.length) return false;
+    if (celebrationGapTimerRef.current) return false;
+    return true;
+  };
+  canTriggerStoreReviewNowRef.current = () => {
+    if (!canShowRatingPromptNowRef.current()) return false;
+    return true;
+  };
   const canShowQueuedModal = useCallback(
     (type) => {
       if (appStateRef.current !== "active") return false;
@@ -20028,13 +20224,17 @@ function AppContent() {
             lastShownAt: typeof parsed?.lastShownAt === "string" ? parsed.lastShownAt : null,
             lastAction: typeof parsed?.lastAction === "string" ? parsed.lastAction : null,
             respondedAt: typeof parsed?.respondedAt === "string" ? parsed.respondedAt : null,
+            actionCount: Math.max(0, Number(parsed?.actionCount) || 0),
+            actionPrompted: Boolean(parsed?.actionPrompted),
           };
           ratingPromptNeedsRewrite =
             normalizedRatingPrompt.firstOpenAt !== parsed?.firstOpenAt ||
             normalizedRatingPrompt.lastShownAt !== parsed?.lastShownAt ||
             normalizedRatingPrompt.lastAction !== parsed?.lastAction ||
             normalizedRatingPrompt.respondedAt !== parsed?.respondedAt ||
-            normalizedRatingPrompt.completed !== Boolean(parsed?.completed);
+            normalizedRatingPrompt.completed !== Boolean(parsed?.completed) ||
+            normalizedRatingPrompt.actionCount !== Math.max(0, Number(parsed?.actionCount) || 0) ||
+            normalizedRatingPrompt.actionPrompted !== Boolean(parsed?.actionPrompted);
         } catch (error) {
           console.warn("rating prompt hydrate", error);
           normalizedRatingPrompt = createInitialRatingPromptState();
@@ -22279,12 +22479,13 @@ useEffect(() => {
 
   const handleQuickCustomSubmit = (customData) => {
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
-    const parsedAmount = parseFloat((customData.amount || "").replace(",", "."));
+    const parsedAmount = parseNumberInputValue(customData.amount || "");
     if (!customData.title?.trim() || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       Alert.alert("Almost", t("customSpendTitle"));
       return;
     }
     const amountUSD = convertFromCurrency(parsedAmount, currencyCode);
+    const manualPrecision = getManualInputPrecision(customData.amount || "");
     const ownerGender = profile.gender || "none";
     const emojiValue = normalizeEmojiValue(customData.emoji, DEFAULT_TEMPTATION_EMOJI);
     const category =
@@ -22294,6 +22495,7 @@ useEffect(() => {
     const newCustom = {
       title: customData.title.trim(),
       amountUSD,
+      pricePrecision: manualPrecision,
       currency: currencyCode,
       emoji: emojiValue,
       id: customData.id || `custom_habit_${Date.now()}`,
@@ -22423,6 +22625,11 @@ useEffect(() => {
       source: "unknown",
     });
   }, [logEvent, newGoalModal]);
+
+  const fabCurrencySymbol = useMemo(() => {
+    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+    return CURRENCY_SIGNS[currencyCode] || "$";
+  }, [profile.currency]);
 
   const handleNewGoalSubmit = useCallback(() => {
     const trimmedName = (newGoalModal.name || "").trim();
@@ -22624,7 +22831,7 @@ useEffect(() => {
         Alert.alert("Almost", t("customSpendTitle"));
         return;
       }
-      const parsed = parseFloat((registrationData.customSpendAmount || "").replace(",", "."));
+      const parsed = parseNumberInputValue(registrationData.customSpendAmount || "");
       if (!Number.isFinite(parsed) || parsed <= 0) {
         Alert.alert("Almost", t("customSpendAmountLabel"));
         return;
@@ -22650,7 +22857,7 @@ useEffect(() => {
         customSpendCategory: DEFAULT_IMPULSE_CATEGORY,
       }));
     }
-    const customAmountLocal = parseFloat((registrationData.customSpendAmount || "").replace(",", "."));
+    const customAmountLocal = parseNumberInputValue(registrationData.customSpendAmount || "");
     const hasCustom =
       !skip &&
       registrationData.customSpendTitle.trim() &&
@@ -22939,12 +23146,13 @@ useEffect(() => {
     });
     let customSpend = null;
     const customName = registrationData.customSpendTitle?.trim();
-    const customAmount = parseFloat((registrationData.customSpendAmount || "").replace(",", "."));
+    const customAmount = parseNumberInputValue(registrationData.customSpendAmount || "");
     const customFrequency = parseFloat(
       (registrationData.customSpendFrequency || "").replace(",", ".")
     );
     if (customName && Number.isFinite(customAmount) && customAmount > 0) {
       const amountUSD = convertFromCurrency(customAmount, registrationData.currency);
+      const manualPrecision = getManualInputPrecision(registrationData.customSpendAmount || "");
       const categoryValue =
         registrationData.customSpendCategory && IMPULSE_CATEGORY_DEFS[registrationData.customSpendCategory]
           ? registrationData.customSpendCategory
@@ -22952,6 +23160,7 @@ useEffect(() => {
       customSpend = {
         title: customName,
         amountUSD,
+        pricePrecision: manualPrecision,
         currency: registrationData.currency,
         frequencyPerWeek:
           Number.isFinite(customFrequency) && customFrequency > 0
@@ -23498,6 +23707,51 @@ useEffect(() => {
     (entry) => {
       if (!entry) return;
       const entryId = entry.id;
+      const resolveHistoryGoalId = () => {
+        const meta = entry.meta || {};
+        const storedGoalId =
+          meta.goalId || meta.goal_id || meta.savingTargetId || meta.saving_target_id || null;
+        if (storedGoalId) return storedGoalId;
+        const templateId = meta.templateId || meta.id || null;
+        return templateId ? resolveTemptationGoalId(templateId) : null;
+      };
+      const applyGoalRemoval = (targetGoalId, amountUSD) => {
+        if (!targetGoalId || amountUSD <= 0) return;
+        setWishes((prev) => {
+          let changed = false;
+          const next = prev.map((wish) => {
+            if (!wish) return wish;
+            if (wish.id !== targetGoalId && wish.goalId !== targetGoalId) return wish;
+            const targetUSD =
+              Number.isFinite(wish.targetUSD) && wish.targetUSD > 0
+                ? wish.targetUSD
+                : getGoalDefaultTargetUSD(wish.goalId || wish.id);
+            const previousSaved = Number.isFinite(wish.savedUSD) ? wish.savedUSD : 0;
+            const nextSaved = Math.max(0, previousSaved - amountUSD);
+            const nextStatus = targetUSD > 0 && nextSaved >= targetUSD ? "done" : "active";
+            if (nextSaved !== previousSaved || nextStatus !== wish.status) {
+              changed = true;
+              return { ...wish, savedUSD: nextSaved, status: nextStatus };
+            }
+            return wish;
+          });
+          return changed ? next : prev;
+        });
+        if (typeof targetGoalId === "string" && targetGoalId.startsWith("wish_primary_goal_")) {
+          const goalId = targetGoalId.replace("wish_primary_goal_", "");
+          const primaryEntry = Array.isArray(profile.primaryGoals)
+            ? profile.primaryGoals.find((goal) => goal?.id === goalId)
+            : null;
+          const currentSaved = Number.isFinite(primaryEntry?.savedUSD) ? primaryEntry.savedUSD : 0;
+          const targetUSD =
+            Number.isFinite(primaryEntry?.targetUSD) && primaryEntry.targetUSD > 0
+              ? primaryEntry.targetUSD
+              : getGoalDefaultTargetUSD(goalId);
+          const nextSaved = Math.max(0, currentSaved - amountUSD);
+          const nextStatus = targetUSD > 0 && nextSaved >= targetUSD ? "done" : "active";
+          syncPrimaryGoalProgress(goalId, nextSaved, nextStatus);
+        }
+      };
       if (entry.kind === "refuse_spend") {
         const amountUSD = Math.max(0, Number(entry.meta?.amountUSD) || 0);
         const metaCoinReward = Math.max(0, Number(entry.meta?.coinReward) || 0);
@@ -23507,6 +23761,10 @@ useEffect(() => {
           : computeRefuseCoinReward(amountUSD, resolvedCurrency);
         if (coinRefund > 0) {
           setHealthPoints((prev) => Math.max(0, prev - coinRefund));
+        }
+        const targetGoalId = resolveHistoryGoalId();
+        if (targetGoalId) {
+          applyGoalRemoval(targetGoalId, amountUSD);
         }
       }
       setHistoryEvents((prev) => {
@@ -23523,7 +23781,17 @@ useEffect(() => {
         setWishes((prev) => prev.filter((w) => w.id !== entry.meta.wishId));
       }
     },
-    [profile.currency, rebuildSavingsFromHistory, setPendingList, setWishes, setHealthPoints, setChallengesState]
+    [
+      profile.currency,
+      profile.primaryGoals,
+      rebuildSavingsFromHistory,
+      resolveTemptationGoalId,
+      setPendingList,
+      setWishes,
+      setHealthPoints,
+      setChallengesState,
+      syncPrimaryGoalProgress,
+    ]
   );
 
   useEffect(() => {
@@ -24221,13 +24489,27 @@ useEffect(() => {
     [profile.currency, profile.persona]
   );
 
+  const recordRatingPromptAction = useCallback(
+    (action) => {
+      if (!ratingPromptHydrated) return;
+      if (!RATING_PROMPT_ACTION_TYPES.has(action)) return;
+      updateRatingPromptState((prev) => {
+        if (prev.completed || prev.actionPrompted) return prev;
+        const nextCount = Math.max(0, Number(prev.actionCount) || 0) + 1;
+        return { ...prev, actionCount: nextCount };
+      });
+    },
+    [ratingPromptHydrated, updateRatingPromptState]
+  );
+
   const logTemptationAction = useCallback(
     (action, item, extra = {}) => {
       if (!item || !action) return;
+      recordRatingPromptAction(action);
       maybeLogDayMilestone(action);
       logEvent("temptation_action", buildTemptationPayload(item, { action, ...extra }));
     },
-    [buildTemptationPayload, maybeLogDayMilestone]
+    [buildTemptationPayload, maybeLogDayMilestone, recordRatingPromptAction]
   );
 
   const scheduleImpulseReminder = useCallback(
@@ -24993,6 +25275,7 @@ useEffect(() => {
           title,
           amountUSD: priceUSD,
           templateId: templateId || item.id,
+          goalId: normalizedTargetGoalId || null,
           coinReward,
           currency: profile.currency || DEFAULT_PROFILE.currency,
         });
@@ -25308,12 +25591,14 @@ useEffect(() => {
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
     const amountUSD = convertFromCurrency(parsedLocal, currencyCode);
     const emoji = normalizeEmojiValue(newPendingModal.emoji, DEFAULT_TEMPTATION_EMOJI);
+    const manualPrecision = getManualInputPrecision(newPendingModal.amount || "");
     const manualItem = {
       id: `manual_pending_${Date.now()}`,
       title: trimmedTitle,
       emoji,
       priceUSD: amountUSD,
       basePriceUSD: amountUSD,
+      pricePrecision: manualPrecision,
       categories: [],
     };
     await handleTemptationAction("maybe", manualItem);
@@ -25576,6 +25861,9 @@ useEffect(() => {
         }
         const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
         const currentValue = convertToCurrency(item.priceUSD || item.basePriceUSD || 0, currencyCode);
+        const precisionOverride = getTemptationPricePrecision(item);
+        const inputPrecision =
+          precisionOverride !== null ? precisionOverride : getCurrencyDisplayPrecision(currencyCode);
         const categorySlug = resolveTemptationCategory(item);
         const descriptionString = typeof item.description === "string" ? item.description : null;
         const descriptionMap =
@@ -25606,7 +25894,7 @@ useEffect(() => {
         });
         return {
           item,
-          value: formatNumberInputValue(Number(currentValue) || 0),
+          value: formatNumberInputValue(Number(currentValue) || 0, inputPrecision),
           title: resolveTemptationTitle(item, language, titleOverrides[item.id]),
           emoji: item.emoji || DEFAULT_TEMPTATION_EMOJI,
           category: categorySlug,
@@ -27311,6 +27599,7 @@ useEffect(() => {
             onTemptationAction={handleTemptationAction}
             onTemptationEditToggle={toggleTemptationEditor}
             onTemptationQuickGoalToggle={handleQuickGoalToggle}
+            onNewTemptation={handleFabNewTemptation}
             t={t}
             language={language}
             colors={colors}
@@ -27338,6 +27627,7 @@ useEffect(() => {
             dailyRewardUnlocked={dailyRewardUnlocked}
             dailyRewardReady={dailyRewardReady}
             dailyRewardAmount={dailyRewardDisplayAmount}
+            dailyRewardBaseAmount={baseDailyRewardAmount}
             dailyRewardDay={dailyRewardDay}
             onDailyRewardClaim={handleDailyRewardClaim}
             mascotOverride={mascotOverride}
@@ -27415,9 +27705,9 @@ useEffect(() => {
   }, [onboardingStep, termsAccepted]);
   useEffect(() => {
     if (onboardingStep === "done") return;
-    const index = resolveOnboardingStepIndex(onboardingStep);
-    if (!index) return;
-    logEvent("onboarding_step_reached", { step: onboardingStep, index });
+    const screenNumber = resolveOnboardingScreenNumber(onboardingStep);
+    if (!screenNumber) return;
+    logEvent("onboarding_step_reached", { step: onboardingStep, screen_number: screenNumber });
   }, [logEvent, onboardingStep]);
 
   if (onboardingStep !== "done") {
@@ -28271,7 +28561,12 @@ useEffect(() => {
                 onLongPress={handleFabLongPress}
                 delayLongPress={420}
               >
-                <Text style={[styles.cartBadgeIcon, { color: colors.background }]}>+</Text>
+                <Text
+                  style={[styles.cartBadgeIcon, { color: colors.background }]}
+                  numberOfLines={1}
+                >
+                  {fabCurrencySymbol}
+                </Text>
               </AnimatedTouchableOpacity>
             </View>
           </View>
@@ -30281,6 +30576,30 @@ const styles = StyleSheet.create({
   feedHero: {
     paddingBottom: 12,
   },
+  feedTemptationHeader: {
+    marginTop: 12,
+    marginBottom: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  feedTemptationTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  feedTemptationAddButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  feedTemptationAddIcon: {
+    fontSize: 18,
+    fontWeight: "700",
+    lineHeight: 20,
+  },
   feedHeroTop: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -31102,25 +31421,35 @@ const styles = StyleSheet.create({
   dailyRewardCalendar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
+    flexWrap: "wrap",
     marginBottom: 8,
+    gap: 6,
   },
   dailyRewardCalendarDay: {
-    flex: 1,
-    paddingVertical: 8,
-    marginHorizontal: 4,
+    minWidth: 44,
+    maxWidth: 52,
+    width: 46,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: "center",
-    gap: 4,
+    gap: 3,
   },
   dailyRewardCalendarDayLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "600",
   },
   dailyRewardCalendarAmount: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "800",
+  },
+  dailyRewardCalendarSuperLabel: {
+    fontSize: 8,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
   dailyRewardModalNote: {
     fontSize: 12,
@@ -34292,7 +34621,13 @@ const styles = StyleSheet.create({
     borderRadius: FAB_BUTTON_SIZE / 2,
   },
   cartBadgeIcon: {
-    fontSize: 32,
+    fontSize: 20,
+    lineHeight: 20,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textAlign: "center",
+    textAlignVertical: "center",
+    includeFontPadding: false,
   },
   fabMenuOverlay: {
     ...StyleSheet.absoluteFillObject,
