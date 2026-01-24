@@ -3,16 +3,20 @@
 ## 3.0.4 (from 3.0.3)
 
 ### EN
-Minor fixes and improvements.
+- Minor fixes and improvements.
+- Level experience requirements reduced by 30% for faster feature unlocks.
 
 ### RU
-Мелкие исправления и улучшения.
+- Мелкие исправления и улучшения.
+- Требования по опыту для уровней снижены на 30%, чтобы быстрее открывались функции.
 
 ### ES
-Pequenas correcciones y mejoras.
+- Pequenas correcciones y mejoras.
+- Requisitos de experiencia por nivel reducidos en 30% para desbloquear funciones mas rapido.
 
 ### FR
-Petites corrections et ameliorations.
+- Petites corrections et ameliorations.
+- Les exigences d'experience par niveau ont ete reduites de 30% pour debloquer les fonctions plus vite.
 
 ## 3.0.3 (from 3.0.2)
 

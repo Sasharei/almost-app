@@ -3,9 +3,33 @@
  * The module guards against missing dependencies and never emits events in dev.
  */
 import { Platform } from "react-native";
-import analytics from "@react-native-firebase/analytics";
-import perf from "@react-native-firebase/perf";
-import appsFlyer from "react-native-appsflyer";
+
+let analytics = null;
+try {
+  // Optional dependency – only available in native builds.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  analytics = require("@react-native-firebase/analytics")?.default || null;
+} catch (error) {
+  analytics = null;
+}
+
+let perf = null;
+try {
+  // Optional dependency – only available in native builds.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  perf = require("@react-native-firebase/perf")?.default || null;
+} catch (error) {
+  perf = null;
+}
+
+let appsFlyer = null;
+try {
+  // Optional dependency – only available in native builds.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  appsFlyer = require("react-native-appsflyer")?.default || null;
+} catch (error) {
+  appsFlyer = null;
+}
 
 let FacebookAppEvents = null;
 try {
@@ -149,9 +173,11 @@ const isAppsFlyerConfigured = () => {
   }
   return true;
 };
-const shouldUseAppsFlyer = () => baseEnabled && isAppsFlyerConfigured();
+const hasAppsFlyer = () => !!appsFlyer && typeof appsFlyer.initSdk === "function";
+const shouldUseAppsFlyer = () => baseEnabled && isAppsFlyerConfigured() && hasAppsFlyer();
 
 const getAnalyticsClient = () => {
+  if (!analytics || typeof analytics !== "function") return null;
   if (!isAnalyticsEnabled()) return null;
   try {
     return analytics();
@@ -162,7 +188,7 @@ const getAnalyticsClient = () => {
 };
 
 const getPerformanceClient = () => {
-  if (typeof perf !== "function") return null;
+  if (!perf || typeof perf !== "function") return null;
   try {
     return perf();
   } catch (error) {
@@ -176,6 +202,7 @@ const getPerformanceClient = () => {
 
 const syncAnalyticsCollection = async () => {
   if (!baseEnabled) return;
+  if (!analytics || typeof analytics !== "function") return;
   try {
     await analytics().setAnalyticsCollectionEnabled(isAnalyticsEnabled());
   } catch (error) {
@@ -195,6 +222,7 @@ const syncPerformanceCollection = async () => {
 
 const initAppsFlyerSdk = async () => {
   if (!shouldUseAppsFlyer() || !isAnalyticsEnabled()) return false;
+  if (!hasAppsFlyer()) return false;
   if (appsFlyerInitialized) return true;
   if (!appsFlyerInitPromise) {
     const options = {
@@ -232,6 +260,7 @@ const initAppsFlyerSdk = async () => {
 
 const syncAppsFlyerCollection = async () => {
   if (!shouldUseAppsFlyer()) return;
+  if (!hasAppsFlyer()) return;
   if (!isAnalyticsEnabled()) {
     if (appsFlyerInitialized) {
       try {
@@ -253,6 +282,7 @@ const syncAppsFlyerCollection = async () => {
 
 const logAppsFlyerEvent = async (eventName, params = {}) => {
   if (!shouldUseAppsFlyer() || !isAnalyticsEnabled()) return;
+  if (!hasAppsFlyer() || typeof appsFlyer.logEvent !== "function") return;
   const initialized = await initAppsFlyerSdk();
   if (!initialized) return;
   return new Promise((resolve) => {

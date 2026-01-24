@@ -46,7 +46,7 @@ import * as Notifications from "expo-notifications";
 import * as NavigationBar from "expo-navigation-bar";
 import * as FileSystem from "expo-file-system";
 import { StatusBar } from "expo-status-bar";
-import { BlurView } from "expo-blur";
+import { BlurView as ExpoBlurView } from "expo-blur";
 import * as SplashScreen from "expo-splash-screen";
 let AudioModule = null;
 try {
@@ -69,7 +69,6 @@ import {
 import Sentry, { initSentry } from "./sentry";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import ViewShot, { captureRef as captureViewShotRef } from "react-native-view-shot";
-import { Settings as FacebookSettings } from "react-native-fbsdk-next";
 import {
   initAnalytics,
   initPerformanceMonitoring,
@@ -97,6 +96,14 @@ try {
 } catch (error) {
   console.warn("Sharing unavailable", error);
 }
+let FacebookSettings = null;
+try {
+  // Optional: module might be missing on some builds (e.g. Expo Go).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  FacebookSettings = require("react-native-fbsdk-next")?.Settings || null;
+} catch (error) {
+  console.warn("Facebook SDK unavailable", error);
+}
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -105,6 +112,23 @@ Notifications.setNotificationHandler({
     shouldSetBadge: false,
   }),
 });
+
+let AndroidBlurView = null;
+try {
+  AndroidBlurView = require("@react-native-community/blur")?.BlurView || null;
+} catch (error) {
+  AndroidBlurView = null;
+}
+
+const BLUR_VIEW_MANAGER_NAMES = ["ViewManagerAdapter_ExpoBlurView", "ExpoBlurView"];
+const isBlurViewAvailable = () => {
+  if (Platform.OS === "android") return !!AndroidBlurView;
+  if (!UIManager) return false;
+  if (typeof UIManager.getViewManagerConfig === "function") {
+    return BLUR_VIEW_MANAGER_NAMES.some((name) => !!UIManager.getViewManagerConfig(name));
+  }
+  return BLUR_VIEW_MANAGER_NAMES.some((name) => !!UIManager[name]);
+};
 
 const bootstrapMonitoring = (() => {
   let queued = false;
@@ -171,6 +195,7 @@ const STORAGE_KEYS = {
   FOCUS_TARGET: "@almost_focus_target",
   FOCUS_DIGEST: "@almost_focus_digest",
   CATEGORY_OVERRIDES: "@almost_category_overrides",
+  CUSTOM_CATEGORIES: "@almost_custom_categories",
   DESCRIPTION_OVERRIDES: "@almost_description_overrides",
   FOCUS_DIGEST_PENDING: "@almost_focus_digest_pending",
   TAMAGOTCHI_SKIN: "@almost_tamagotchi_skin",
@@ -180,6 +205,7 @@ const STORAGE_KEYS = {
   SAVED_TOTAL_PEAK: "@almost_saved_total_peak",
   LAST_CELEBRATED_LEVEL: "@almost_last_celebrated_level",
   ACTIVE_GOAL: "@almost_active_goal",
+  POTENTIAL_OPEN_SNAPSHOT: "@almost_potential_open_snapshot",
   COIN_SLIDER_MAX: "@almost_coin_slider_max",
   FAB_TUTORIAL: "@almost_fab_tutorial",
   RATING_PROMPT: "@almost_rating_prompt",
@@ -634,6 +660,10 @@ const CHALLENGE_REWARD_SCALE = 0.5;
 const getScaledChallengeReward = (value = 0) =>
   Math.max(1, Math.round(Math.max(0, value) * CHALLENGE_REWARD_SCALE));
 const PUSH_NOTIFICATION_COOLDOWN_MS = 30 * 60 * 1000;
+const PUSH_DEDUPE_WINDOW_MS = 6 * 60 * 60 * 1000;
+const ACTIONABLE_NOTIFICATION_CATEGORY_ID = "impulse_action";
+const NOTIFICATION_ACTION_SAVE = "action_save";
+const NOTIFICATION_ACTION_SPEND = "action_spend";
 
 const buildTemptationPressureMap = (events = []) => {
   const map = {};
@@ -1040,6 +1070,8 @@ const REMINDER_DAYS = 14;
 const DAY_MS = 1000 * 60 * 60 * 24;
 const REWARD_RESET_INTERVAL_MS = DAY_MS * 14;
 const REMINDER_MS = REMINDER_DAYS * DAY_MS;
+const PENDING_EXTENSION_DAYS = 7;
+const PENDING_EXTENSION_MS = PENDING_EXTENSION_DAYS * DAY_MS;
 const SAVE_SPAM_WINDOW_MS = 1000 * 60 * 5;
 const SAVED_TOTAL_RESET_GRACE_MS = 1000 * 5;
 const SAVE_SPAM_ITEM_LIMIT = 3;
@@ -1280,18 +1312,18 @@ const getTemptationPriceLimitForLevel = (level = 1) => {
 const FEATURE_UNLOCK_STEPS = [
   { level: 2, messageKey: "level2UnlockMessage" },
   { level: 3, messageKey: "level3UnlockMessage" },
+  { level: 3, messageKey: "level3ThinkingUnlockMessage" },
   { level: 4, messageKey: "level4UnlockMessage" },
-  { level: 5, messageKey: "level5UnlockMessage" },
-  { level: 6, messageKey: "level6UnlockMessage" },
+  { level: 4, messageKey: "level4ImpulseMapUnlockMessage" },
   { level: 7, messageKey: "level7UnlockMessage" },
 ];
 const FEATURE_UNLOCK_VARIANT_MAP = {
   level2UnlockMessage: "rewardsDaily",
   level3UnlockMessage: "feedFocus",
+  level3ThinkingUnlockMessage: "thinkingList",
   level4UnlockMessage: "rewardsCustomization",
-  level5UnlockMessage: "rewardsChallenges",
-  level6UnlockMessage: "impulseMap",
-  level7UnlockMessage: "thinkingList",
+  level4ImpulseMapUnlockMessage: "impulseMap",
+  level7UnlockMessage: "freeDay",
 };
 const FEATURE_UNLOCK_VARIANT_CONFIG = {
   rewardsDaily: {
@@ -1324,6 +1356,20 @@ const FEATURE_UNLOCK_VARIANT_CONFIG = {
     descriptionKey: "featureUnlockThinkingDescription",
     previewLabelKey: "featureUnlockThinkingPreview",
   },
+  freeDay: {
+    titleKey: "featureUnlockFreeDayTitle",
+    descriptionKey: "featureUnlockFreeDayDescription",
+    previewLabelKey: "featureUnlockFreeDayTitle",
+  },
+};
+const FEATURE_UNLOCK_LEVELS = {
+  rewardsDaily: 2,
+  feedFocus: 3,
+  rewardsCustomization: 4,
+  rewardsChallenges: 1,
+  impulseMap: 4,
+  thinkingList: 3,
+  freeDay: 7,
 };
 
 const HEALTH_COIN_LABELS = {
@@ -2322,7 +2368,10 @@ const MIN_IMPULSE_EVENTS_FOR_MAP = 4;
 const IMPULSE_ALERT_COOLDOWN_MS = 1000 * 60 * 45;
 const IMPULSE_CATEGORY_DEFS = {
   food: { id: "food", ru: "Еда", en: "Food", es: "Comida", fr: "Nourriture", emoji: "🍜" },
-  things: { id: "things", ru: "Вещи", en: "Things", es: "Cosas", fr: "Objets", emoji: "🎁" },
+  home: { id: "home", ru: "Дом", en: "Home", es: "Hogar", fr: "Maison", emoji: "🏠" },
+  transport: { id: "transport", ru: "Транспорт", en: "Transport", es: "Transporte", fr: "Transport", emoji: "🚇" },
+  health: { id: "health", ru: "Здоровье", en: "Health", es: "Salud", fr: "Santé", emoji: "🫧" },
+  beauty: { id: "beauty", ru: "Бьюти", en: "Beauty", es: "Belleza", fr: "Beauté", emoji: "💅" },
   fun: {
     id: "fun",
     ru: "Развлечения",
@@ -2331,16 +2380,41 @@ const IMPULSE_CATEGORY_DEFS = {
     fr: "Divertissement",
     emoji: "🎉",
   },
+  things: { id: "things", ru: "Покупки", en: "Shopping", es: "Compras", fr: "Achats", emoji: "🛍️" },
+  clothing: { id: "clothing", ru: "Одежда", en: "Clothing", es: "Ropa", fr: "Vêtements", emoji: "👕" },
+  education: { id: "education", ru: "Образование", en: "Education", es: "Educación", fr: "Éducation", emoji: "🎓" },
+  pets: { id: "pets", ru: "Питомцы", en: "Pets", es: "Mascotas", fr: "Animaux", emoji: "🐾" },
+  subscriptions: {
+    id: "subscriptions",
+    ru: "Подписки",
+    en: "Subscriptions",
+    es: "Suscripciones",
+    fr: "Abonnements",
+    emoji: "🔁",
+  },
   vices: {
     id: "vices",
-    ru: "Вредные мелочи",
+    ru: "Слабости",
     en: "Small vices",
     es: "Pequeños vicios",
     fr: "Petits vices",
     emoji: "⚡️",
   },
 };
-const IMPULSE_CATEGORY_ORDER = ["food", "things", "fun", "vices"];
+const IMPULSE_CATEGORY_ORDER = [
+  "food",
+  "home",
+  "transport",
+  "health",
+  "beauty",
+  "fun",
+  "things",
+  "clothing",
+  "education",
+  "pets",
+  "subscriptions",
+  "vices",
+];
 const DEFAULT_IMPULSE_CATEGORY = "vices";
 const INITIAL_IMPULSE_TRACKER = {
   events: [],
@@ -2400,14 +2474,107 @@ const resolveImpulseCategory = (item = {}) => {
     : [];
   const price = Number(item.priceUSD ?? item.basePriceUSD ?? 0) || 0;
   const matches = (...keys) => categories.some((cat) => keys.includes(cat));
-  if (matches("food", "groceries", "meal", "dining")) return "food";
-  if (matches("coffee", "tea", "habit") && price <= 30) return "vices";
-  if (matches("travel", "wow", "game", "gaming", "fun", "experience", "movie", "concert")) return "fun";
-  if (matches("style", "tech", "phone", "wearable", "fashion", "beauty", "home", "sport", "flagship")) return "things";
+  if (matches("food", "groceries", "meal", "dining", "snack", "coffee", "tea")) return "food";
+  if (matches("transport", "ride", "taxi", "uber", "bus", "metro", "train", "commute")) return "transport";
+  if (matches("home", "rent", "utility", "utilities", "decor", "furniture", "appliance")) return "home";
+  if (matches("health", "fitness", "gym", "doctor", "medicine", "wellness")) return "health";
+  if (matches("beauty", "cosmetic", "cosmetics", "skincare", "makeup", "salon", "spa", "grooming")) return "beauty";
+  if (matches("subscription", "subscriptions", "software", "streaming", "membership", "plan")) return "subscriptions";
+  if (matches("travel", "wow", "game", "gaming", "fun", "experience", "movie", "concert", "event")) return "fun";
+  if (matches("clothing", "apparel", "fashion", "style", "shoe", "shoes", "sneaker", "sneakers")) return "clothing";
+  if (matches("tech", "phone", "wearable", "flagship", "gadget", "electronics")) return "things";
+  if (matches("education", "course", "study", "learning", "school", "university", "tuition")) return "education";
+  if (matches("pet", "pets", "animal", "vet", "veterinary")) return "pets";
   if (matches("lifestyle", "custom", "gift") && price <= 60) return "vices";
   if (price <= 18) return "vices";
   if (price <= 90) return "food";
-  return "things";
+  if (price <= 250) return "things";
+  return "fun";
+};
+
+const normalizeImpulseCategoryId = (value) => {
+  if (!value || typeof value !== "string") return DEFAULT_IMPULSE_CATEGORY;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return DEFAULT_IMPULSE_CATEGORY;
+  if (IMPULSE_CATEGORY_DEFS[normalized]) return normalized;
+  if (["subscription", "subscriptions", "plan", "membership"].includes(normalized)) {
+    return "subscriptions";
+  }
+  if (["entertainment", "fun", "experience", "movie", "gaming", "game", "event", "travel", "dream", "wow"].includes(normalized)) {
+    return "fun";
+  }
+  if (["coffee", "food", "groceries", "meal", "dining", "snack", "tea"].includes(normalized)) {
+    return "food";
+  }
+  if (["home", "rent", "utility", "utilities", "decor", "furniture", "appliance"].includes(normalized)) {
+    return "home";
+  }
+  if (["transport", "ride", "taxi", "uber", "bus", "metro", "train", "commute", "car"].includes(normalized)) {
+    return "transport";
+  }
+  if (["health", "fitness", "gym", "doctor", "medicine", "wellness"].includes(normalized)) {
+    return "health";
+  }
+  if (["beauty", "cosmetic", "cosmetics", "skincare", "makeup", "salon", "spa", "grooming"].includes(normalized)) {
+    return "beauty";
+  }
+  if (["clothing", "apparel", "fashion", "style", "shoe", "shoes", "sneaker", "sneakers"].includes(normalized)) {
+    return "clothing";
+  }
+  if (["education", "course", "study", "learning", "school", "university", "tuition"].includes(normalized)) {
+    return "education";
+  }
+  if (["pet", "pets", "animal", "vet", "veterinary"].includes(normalized)) {
+    return "pets";
+  }
+  if (["tech", "phone", "wearable", "sport", "flagship", "gadget", "gift", "shopping", "things", "electronics"].includes(normalized)) {
+    return "things";
+  }
+  if (["lifestyle", "custom", "vices", "vice"].includes(normalized)) {
+    return "vices";
+  }
+  return DEFAULT_IMPULSE_CATEGORY;
+};
+
+const slugifyCategoryName = (value = "") =>
+  value
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+const ensureUniqueCategoryId = (baseId) => {
+  if (!baseId) return `custom_${Date.now()}`;
+  if (!IMPULSE_CATEGORY_DEFS[baseId]) return baseId;
+  let suffix = 2;
+  let nextId = `${baseId}_${suffix}`;
+  while (IMPULSE_CATEGORY_DEFS[nextId]) {
+    suffix += 1;
+    nextId = `${baseId}_${suffix}`;
+  }
+  return nextId;
+};
+
+const registerCustomCategory = (entry) => {
+  if (!entry || typeof entry !== "object") return null;
+  const baseId = slugifyCategoryName(entry.id || entry.en || entry.ru || entry.es || entry.fr || "");
+  const id = ensureUniqueCategoryId(baseId);
+  if (!id) return null;
+  const normalized = {
+    id,
+    ru: entry.ru || entry.en || entry.es || entry.fr || "Категория",
+    en: entry.en || entry.ru || entry.es || entry.fr || "Category",
+    es: entry.es || entry.en || entry.ru || entry.fr || "Categoria",
+    fr: entry.fr || entry.en || entry.ru || entry.es || "Categorie",
+    emoji: entry.emoji || "✨",
+    custom: true,
+  };
+  IMPULSE_CATEGORY_DEFS[id] = normalized;
+  if (!IMPULSE_CATEGORY_ORDER.includes(id)) {
+    IMPULSE_CATEGORY_ORDER.push(id);
+  }
+  return normalized;
 };
 
 const resolveGoalTypeFromTarget = (targetUSD = 0) => {
@@ -2456,7 +2623,7 @@ const buildImpulseInsights = (events = []) => {
       chronologicalEvents.push(event);
     }
     processedEvents += 1;
-    const category = event.category || "things";
+    const category = normalizeImpulseCategoryId(event.category);
     if (!categories[category]) {
       categories[category] = { save: 0, spend: 0 };
     }
@@ -3907,10 +4074,10 @@ const TRANSLATIONS = {
     buyAllLabel: "Оформить всё и экономить",
     totalLabel: "Сумма",
     cartRemove: "Удалить",
-    wishlistTitle: "Мои цели",
+    wishlistTitle: "Прогресс",
     wishlistEmptyTitle: "Пока нет целей",
     wishlistEmptySubtitle: "Добавь мечту из ленты и начинай копить в своём темпе",
-    wishlistTab: "Цели",
+    wishlistTab: "Прогресс",
     wishlistProgress: "{{current}} из {{target}}",
     wishlistSavedHint: "Сколько нужно накопить",
     wishlistSaveProgress: "Обновить прогресс",
@@ -3920,6 +4087,21 @@ const TRANSLATIONS = {
     wishlistRemoveConfirm: "Убрать эту хотелку?",
     wishlistDoneLabel: "Готово",
     wishlistSummary: "Всего целей на {{amount}}",
+    progressTabSubtitle: "Цели, челленджи и аналитика в одном месте.",
+    progressGoalTitle: "Активная цель",
+    progressGoalRemaining: "Осталось {{amount}}",
+    progressGoalTarget: "Цель {{amount}}",
+    progressActiveChallengeTitle: "Активный челлендж",
+    progressNoActiveChallenge: "Нет активного челленджа - выбери ниже.",
+    progressCategoryTitle: "Категории экономии и трат",
+    progressCategorySubtitle: "Смотри, где легче копить и где чаще тратишь.",
+    progressCategorySave: "Экономия",
+    progressCategorySpend: "Траты",
+    progressBadgeTitle: "Ачивки",
+    progressGoalsTitle: "Цели",
+    progressChallengesSubtitle: "Открываются по уровням, первый доступен сразу.",
+    challengePotentialSavings: "Потенциальная экономия: {{amount}}",
+    challengeLockedLevel: "Откроется на уровне {{level}}",
     freeDayButton: "Бесплатный день",
     freeDayLocked: "После 18:00",
     freeDayBlocked: "Недоступно",
@@ -3964,16 +4146,21 @@ const TRANSLATIONS = {
       "Уровень 2! Ежедневная награда открыта - забирай бонус каждый день. Мини-челлендж тоже появляется на главном экране, когда Almost посчитает нужным.",
     level3UnlockMessage:
       "Уровень 3! В «Ленте» включились фокус-режим и вечерние сводки, чтобы подсказывать, куда двигаться дальше.",
+    level3ThinkingUnlockMessage:
+      "Уровень 3! Вкладка «Думаем» открыта — отправляй хотелки на паузу и возвращайся к решению позже.",
     level4UnlockMessage:
       "Уровень 4! Открыто меню «Награды» и фокус-цели. Зайди в «Награды», чтобы увидеть трофеи и выбрать импульс для фокуса. Кастомизация Алми — на главном экране, нажми на кота.",
+    level4ImpulseMapUnlockMessage:
+      "Уровень 4! Доступна карта импульсов — смотри, когда и где траты берут верх.",
     level5UnlockMessage:
-      "Уровень 5! Во вкладке «Награды» открылись полноценные челленджи. Выбирай испытания и прокачивай дисциплину.",
+      "Уровень 5! Новый этап прогресса — продолжай укреплять дисциплину.",
     level6UnlockMessage:
-      "Уровень 6! Карта импульсов и умные уведомления теперь показывают, где и когда обычно срываешься.",
+      "Уровень 6! Ты на новом рубеже — привычка укрепляется с каждым выбором.",
     level7UnlockMessage:
-      "Уровень 7! Доступны вкладка «Думаем» и учёт бесплатных дней. Записывай идеи и фиксируй дни без трат.",
+      "Уровень 7! Открыт учёт бесплатных дней — фиксируй дни без трат и усиливай серию.",
     featureUnlockWhereLabel: "Где искать",
     featureUnlockPreviewLabel: "Как это выглядит",
+    featureLockedLevelLabel: "Откроется на уровне {{level}}",
     featureUnlockRewardsDailyTitle: "Ежедневная награда",
     featureUnlockRewardsDailyDescription:
       "Вверху главного экрана появилась карточка ежедневной награды. Забирай бонус раз в день - монеты сразу попадают к Алми, а новая награда приходит завтра.",
@@ -3981,22 +4168,25 @@ const TRANSLATIONS = {
     featureUnlockFeedFocusTitle: "Лента",
     featureUnlockFeedFocusDescription: "Прокрути чуть вниз: блок фокуса и вечерняя сводка ждут тебя вверху ленты.",
     featureUnlockFeedFocusPreview: "Фокус-режим",
-    featureUnlockRewardsCustomizationTitle: "Награды",
+    featureUnlockRewardsCustomizationTitle: "Что это?",
     featureUnlockRewardsCustomizationDescription:
-      "Открылась вкладка «Награды»: там трофеи и фокус-цели. Кастомизация Алми — на главном экране, нажми на кота.",
+      "В «Наградах» собраны трофеи и прогресс достижений. Здесь видно, за что ты получаешь бонусы.",
     featureUnlockRewardsCustomizationPreview: "Меню наград",
     featureUnlockRewardsChallengesTitle: "Награды → Челленджи",
     featureUnlockRewardsChallengesDescription:
       "Переключись на вкладку «Челленджи» в трофее и запускай подходящие испытания.",
     featureUnlockRewardsChallengesPreview: "Челленджи",
-    featureUnlockImpulseMapTitle: "Лента → Карта импульсов",
+    featureUnlockImpulseMapTitle: "Карта импульсов",
     featureUnlockImpulseMapDescription:
-      "В ленте появился блок с тепловой картой. Он подскажет, когда и где чаще всего бывают соблазны.",
-    featureUnlockImpulseMapPreview: "Карта импульсов",
-    featureUnlockThinkingTitle: "Вкладка «Думаем»",
+      "В прогрессе появилась карта: она показывает, когда и где импульсы чаще всего побеждают.",
+    featureUnlockImpulseMapPreview: "Импульсы по времени",
+    featureUnlockThinkingTitle: "Что это?",
     featureUnlockThinkingDescription:
-      "Новая вкладка с лампочкой хранит список «думаем» и лог бесплатных дней. Добавляй крупные покупки и отмечай дни без трат.",
-    featureUnlockThinkingPreview: "Список «Думаем»",
+      "На карточках дороже $50 жми «Подумаю», чтобы отправить в «Думаем» на 14 дней. Внутри можно решить или продлить ещё на неделю.",
+    featureUnlockThinkingPreview: "Кнопка «Подумаю»",
+    featureUnlockFreeDayTitle: "Бесплатные дни",
+    featureUnlockFreeDayDescription:
+      "Серия бесплатных дней показывает, сколько дней подряд ты обходишься без импульсивных трат.",
     impulseCardTitle: "Импульс-карта",
     impulseCardSubtitle: "Фиксируем, где искушения чаще всего побеждают или проигрывают.",
     impulseLoseLabel: "Чаще сдаёшься",
@@ -4071,8 +4261,9 @@ const TRANSLATIONS = {
     pendingDaysLeft: "Осталось {{days}} д.",
     pendingExpired: "Срок вышел",
     pendingDueToday: "Реши сегодня",
-    pendingActionWant: "Начать копить",
-    pendingActionDecline: "Сэкономить",
+    pendingActionWant: "Потратить",
+    pendingActionDecline: "Отказаться",
+    pendingActionExtend: "Продлить на 7 дней",
     pendingNotificationTitle: "⏳ Almost: пора решить «{{title}}»",
     pendingNotificationBody: {
       female: "Две недели прошли. Начнём копить на «{{title}}» или отпустим его? 🤔",
@@ -4082,7 +4273,7 @@ const TRANSLATIONS = {
     pendingAdded: "Добавлено в «думаем». Напомним вовремя.",
     pendingDeleteConfirm: "Убрать эту хотелку из «думаем»?",
     pendingCustomError: "Укажи название и стоимость хотелки.",
-    thinkingLockedMessage: "Меню «думаем» появится на 7 уровне. Продолжай сохранять, чтобы разблокировать его.",
+    thinkingLockedMessage: "Меню «думаем» появится на 3 уровне. Продолжай сохранять, чтобы разблокировать его.",
     feedTab: "Лента",
     profileTab: "Профиль",
     payButton: "Оплатить",
@@ -4101,6 +4292,15 @@ const TRANSLATIONS = {
     profileOk: "ок",
     profileJoinDate: "В осознанной экономии с {{date}}",
     settingsTitle: "Настройки и персонализация",
+    addCategoryLabel: "Категории",
+    addCategoryHint: "Добавляй свои категории для аналитики и быстрых действий.",
+    addCategoryButton: "Добавить категорию",
+    addCategoryModalTitle: "Новая категория",
+    addCategoryNameLabel: "Название",
+    addCategoryEmojiLabel: "Эмодзи",
+    addCategorySave: "Сохранить",
+    addCategoryCancel: "Отмена",
+    addCategoryError: "Введи название категории",
     spendReductionLabel: "Уменьшать баланс при тратах",
     spendReductionHint: "Если выключить, покупки не будут снижать прогресс.",
     soundLabel: "Звуки приложения",
@@ -4498,6 +4698,8 @@ const TRANSLATIONS = {
     dailySummaryHint: "Загляну завтра с новыми цифрами.",
     spendLoggingReminderTitle: "Запиши траты",
     spendLoggingReminderBody: "Чем чаще отмечаешь расходы, тем точнее Almost помогает советами.",
+    pushActionSave: "Копить",
+    pushActionSpend: "Тратить",
     dailySummaryNotificationTitle: "Вечерний отчёт готов 📊",
     dailySummaryNotificationBody: "+{{saved}} за {{declines}} отказа(ов). Запрыгни в Almost и подведём итоги. ✨",
     baselineTitle: "Сколько уходит на мелкие импульсы?",
@@ -4535,6 +4737,7 @@ const TRANSLATIONS = {
     coinEntryTitle: "Сколько внести?",
     coinEntrySubtitle: "Проведи монетку вверх-вниз и выбери категорию.",
     coinEntryHint: "Нажми кнопку выше, чтобы подтвердить копилку или трату.",
+    coinEntryManualTapHint: "Нажми чтобы ввести вручную",
     coinEntryManual: "...",
     coinEntryManualTitle: "Выбери новый максимум",
     coinEntryManualPlaceholder: "Введите сумму",
@@ -4545,6 +4748,10 @@ const TRANSLATIONS = {
     coinEntryManualAmountPlaceholder: "Введите сумму",
     coinEntryCategoryLabel: "Категория",
     coinEntryCategoryError: "Сначала выбери категорию",
+    categoryPromptTitle: "Выбери категорию траты",
+    categoryPromptSubtitle: "Сохраним её для этой карточки, чтобы аналитика была точнее.",
+    categoryPromptConfirm: "Сохранить категорию",
+    categoryPromptCancel: "Не сейчас",
     coinEntrySaveLabel: "Быстрое накопление",
     coinEntrySpendLabel: "Быстрая трата",
     fabNewGoal: "Новая цель",
@@ -4572,10 +4779,10 @@ const TRANSLATIONS = {
     newPendingCancel: "Отмена",
     tutorialFeedTitle: "Лента искушений",
     tutorialFeedDesc: "Отмечай импульсы и выбирай: копить, добавить в цели или подумать 14 дней.",
-    tutorialGoalsTitle: "Цели",
-    tutorialGoalsDesc: "Здесь живут мечты. Следи за прогрессом и обновляй цель.",
-    tutorialRewardsTitle: "Награды и челленджи",
-    tutorialRewardsDesc: "Заглядывай сюда, чтобы собирать награды за прогресс и запускать челленджи с бонусами.",
+    tutorialGoalsTitle: "Прогресс",
+    tutorialGoalsDesc: "Цели, челленджи и аналитика — всё в одном месте.",
+    tutorialRewardsTitle: "Награды",
+    tutorialRewardsDesc: "Заглядывай сюда, чтобы собирать трофеи и бонусы за прогресс.",
     tutorialProfileTitle: "Профиль и мотивация",
     tutorialProfileDesc: "Тут меняешь тему, язык, напоминания и персонализацию приложения под себя.",
     tutorialSkip: "Пропустить",
@@ -4651,14 +4858,14 @@ const TRANSLATIONS = {
     buyNow: "Pay with {{pay}}",
     addToCart: "Save for later",
     buyExternal: "Open product page",
-    wishlistTitle: "Goals",
+    wishlistTitle: "Progress",
     wishlistEmptyTitle: "No goals yet",
     wishlistEmptySubtitle: "Pick a temptation from the feed and start saving for it",
     buyLabel: "Grab",
     buyAllLabel: "Check out everything",
     totalLabel: "Total",
     cartRemove: "Remove",
-    wishlistTab: "Goals",
+    wishlistTab: "Progress",
     wishlistProgress: "{{current}} of {{target}}",
     wishlistSavedHint: "How much you need to save",
     wishlistSaveProgress: "Update progress",
@@ -4668,6 +4875,21 @@ const TRANSLATIONS = {
     wishlistRemoveConfirm: "Remove this wish?",
     wishlistDoneLabel: "Done",
     wishlistSummary: "Total targets worth {{amount}}",
+    progressTabSubtitle: "Goals, challenges, and insights in one place.",
+    progressGoalTitle: "Active goal",
+    progressGoalRemaining: "{{amount}} to go",
+    progressGoalTarget: "Target {{amount}}",
+    progressActiveChallengeTitle: "Active challenge",
+    progressNoActiveChallenge: "No active challenge yet - pick one below.",
+    progressCategoryTitle: "Spending vs savings by category",
+    progressCategorySubtitle: "See where savings stick and where spending wins.",
+    progressCategorySave: "Saved",
+    progressCategorySpend: "Spent",
+    progressBadgeTitle: "Badges",
+    progressGoalsTitle: "Goals",
+    progressChallengesSubtitle: "Unlocks by level, first one is ready now.",
+    challengePotentialSavings: "Potential savings: {{amount}}",
+    challengeLockedLevel: "Unlocks at level {{level}}",
     freeDayButton: "Free day",
     freeDayLocked: "After 6 pm",
     freeDayBlocked: "Unavailable",
@@ -4712,16 +4934,21 @@ const TRANSLATIONS = {
       "Level 2! Daily rewards are unlocked - claim a bonus once per day. The daily mini challenge will also appear on Home when Almost thinks you’re ready.",
     level3UnlockMessage:
       "Level 3! Focus mode plus evening summaries now live on the Feed to keep you on track and show what to improve next.",
+    level3ThinkingUnlockMessage:
+      "Level 3! The Thinking tab is unlocked - park temptations there and return to decide later.",
     level4UnlockMessage:
       "Level 4! Rewards menu and focus targets unlocked. Open Rewards to see trophies and pick a temptation to focus on. Almi customization lives on Home, tap the cat.",
+    level4ImpulseMapUnlockMessage:
+      "Level 4! The impulse map is unlocked - see when and where spending spikes hit.",
     level5UnlockMessage:
-      "Level 5! Full challenges are ready inside Rewards → Challenges so you can choose longer missions and stay accountable.",
+      "Level 5! New milestone reached - keep building the habit.",
     level6UnlockMessage:
-      "Level 6! The impulse map and smart nudges highlight risky places and hours so you know where impulses strike.",
+      "Level 6! You hit a new milestone - the habit is getting stronger with every choice.",
     level7UnlockMessage:
-      "Level 7! The Thinking list and Free Day tracker are live. Log ideas and zero-spend days to celebrate mindful wins.",
+      "Level 7! The Free Day tracker is live. Log zero-spend days and keep the streak going.",
     featureUnlockWhereLabel: "Where it lives",
     featureUnlockPreviewLabel: "Looks like this",
+    featureLockedLevelLabel: "Unlocks at level {{level}}",
     featureUnlockRewardsDailyTitle: "Daily reward",
     featureUnlockRewardsDailyDescription:
       "A Daily Reward card now sits near the top of Home. Claim it once per day to get Almi coins instantly; it resets tomorrow.",
@@ -4730,22 +4957,25 @@ const TRANSLATIONS = {
     featureUnlockFeedFocusDescription:
       "Scroll near the top of the feed to see focus mode plus the evening recap keeping you on track.",
     featureUnlockFeedFocusPreview: "Focus mode",
-    featureUnlockRewardsCustomizationTitle: "Rewards menu",
+    featureUnlockRewardsCustomizationTitle: "What is this?",
     featureUnlockRewardsCustomizationDescription:
-      "The Rewards tab is now unlocked with trophies and focus targets. To customize Almi, tap the cat on Home.",
+      "Rewards collect your trophies and achievement progress so you can see what you’ve earned.",
     featureUnlockRewardsCustomizationPreview: "Rewards tab",
     featureUnlockRewardsChallengesTitle: "Rewards → Challenges",
     featureUnlockRewardsChallengesDescription:
       "Switch to the Challenges pane inside Rewards to pick a mission that matches your mood.",
     featureUnlockRewardsChallengesPreview: "Challenge board",
-    featureUnlockImpulseMapTitle: "Feed → Impulse map",
+    featureUnlockImpulseMapTitle: "Impulse map",
     featureUnlockImpulseMapDescription:
-      "Find the impulse insights block in the feed to see hot spots and hours where impulses sneak in.",
-    featureUnlockImpulseMapPreview: "Impulse map",
-    featureUnlockThinkingTitle: "Thinking tab",
+      "The progress view now includes a map that shows when and where spending spikes hit.",
+    featureUnlockImpulseMapPreview: "Impulse timeline",
+    featureUnlockThinkingTitle: "What is this?",
     featureUnlockThinkingDescription:
-      "Use the light bulb tab to park “thinking” purchases and log your free days without spending.",
-    featureUnlockThinkingPreview: "Thinking list",
+      "On cards over $50, tap Think later to park them for 14 days. In Thinking you can decide or extend by 7 more days.",
+    featureUnlockThinkingPreview: "Think later button",
+    featureUnlockFreeDayTitle: "Free-day streak",
+    featureUnlockFreeDayDescription:
+      "Free-day streak tracks how many days in a row you avoid impulse spending.",
     impulseCardTitle: "Impulse map",
     impulseCardSubtitle: "See when temptations usually win or when you stay strong.",
     impulseLoseLabel: "Weak spot",
@@ -4820,14 +5050,15 @@ const TRANSLATIONS = {
     pendingDaysLeft: "{{days}} days left",
     pendingExpired: "Decision overdue",
     pendingDueToday: "Decide today",
-    pendingActionWant: "Start saving",
-    pendingActionDecline: "Save it",
+    pendingActionWant: "Spend",
+    pendingActionDecline: "Decline",
+    pendingActionExtend: "Extend 7 days",
     pendingNotificationTitle: "⏳ Almost check-in: decide on “{{title}}”",
     pendingNotificationBody: "Two weeks are up. Start saving for “{{title}}” or let it go? 🤔",
     pendingAdded: "Sent to Thinking. We’ll remind you in 2 weeks.",
     pendingDeleteConfirm: "Remove this item from Thinking?",
     pendingCustomError: "Add a name and price for this temptation.",
-    thinkingLockedMessage: "Thinking unlocks at level 7. Keep logging mindful saves to get there faster.",
+    thinkingLockedMessage: "Thinking unlocks at level 3. Keep logging mindful saves to get there faster.",
     feedTab: "Feed",
     profileTab: "Profile",
     payButton: "Pay",
@@ -4846,6 +5077,15 @@ const TRANSLATIONS = {
     profileOk: "Ok",
     profileJoinDate: "Mindful saving since {{date}}",
     settingsTitle: "Settings & personalisation",
+    addCategoryLabel: "Categories",
+    addCategoryHint: "Add your own categories for analytics and quick actions.",
+    addCategoryButton: "Add category",
+    addCategoryModalTitle: "New category",
+    addCategoryNameLabel: "Name",
+    addCategoryEmojiLabel: "Emoji",
+    addCategorySave: "Save",
+    addCategoryCancel: "Cancel",
+    addCategoryError: "Enter a category name",
     spendReductionLabel: "Reduce savings on spends",
     spendReductionHint: "Turn off to keep your balance and goal progress when you buy.",
     soundLabel: "App sounds",
@@ -5223,6 +5463,8 @@ const TRANSLATIONS = {
     dailySummaryHint: "See you tomorrow with fresh numbers.",
     spendLoggingReminderTitle: "Log today’s spends",
     spendLoggingReminderBody: "The more often you record purchases, the smarter Almost can guide you.",
+    pushActionSave: "Save",
+    pushActionSpend: "Spend",
     dailySummaryNotificationTitle: "Tonight’s recap is ready 📊",
     dailySummaryNotificationBody: "+{{saved}} from {{declines}} skips today. Open Almost for the full story. ✨",
     baselineTitle: "How much slips on small stuff?",
@@ -5260,6 +5502,7 @@ const TRANSLATIONS = {
     coinEntryTitle: "How much?",
     coinEntrySubtitle: "Slide the coin and pick a category.",
     coinEntryHint: "Use the buttons above to save or spend.",
+    coinEntryManualTapHint: "Tap to enter manually",
     coinEntryManual: "...",
     coinEntryManualTitle: "Set new slider max",
     coinEntryManualPlaceholder: "Enter amount",
@@ -5270,6 +5513,10 @@ const TRANSLATIONS = {
     coinEntryManualAmountPlaceholder: "Enter amount",
     coinEntryCategoryLabel: "Category",
     coinEntryCategoryError: "Pick a category first",
+    categoryPromptTitle: "Choose a category",
+    categoryPromptSubtitle: "We’ll remember it for this card to keep analytics accurate.",
+    categoryPromptConfirm: "Save category",
+    categoryPromptCancel: "Not now",
     coinEntrySaveLabel: "Quick save",
     coinEntrySpendLabel: "Quick spend",
     fabNewGoal: "New goal",
@@ -5297,10 +5544,10 @@ const TRANSLATIONS = {
     newPendingCancel: "Cancel",
     tutorialFeedTitle: "Temptation feed",
     tutorialFeedDesc: "Log every impulse and choose: save it, add to goals, or park it for 14 days.",
-    tutorialGoalsTitle: "Goals",
-    tutorialGoalsDesc: "All dreams live here. Track progress and top up your goal.",
-    tutorialRewardsTitle: "Rewards & challenges",
-    tutorialRewardsDesc: "Visit this tab to claim achievements and start challenges with bonus health.",
+    tutorialGoalsTitle: "Progress",
+    tutorialGoalsDesc: "Goals, challenges, and insights live here.",
+    tutorialRewardsTitle: "Rewards",
+    tutorialRewardsDesc: "Visit this tab to claim achievements and track your trophies.",
     tutorialProfileTitle: "Profile & motivation",
     tutorialProfileDesc: "Adjust theme, language, reminders, and all personalization tweaks that keep Almost yours.",
     tutorialSkip: "Skip",
@@ -5375,14 +5622,14 @@ const TRANSLATIONS = {
     buyNow: "Payer avec {{pay}}",
     addToCart: "Mettre de côté",
     buyExternal: "Ouvrir la fiche produit",
-    wishlistTitle: "Objectifs",
+    wishlistTitle: "Progrès",
     wishlistEmptyTitle: "Aucun objectif pour l'instant",
     wishlistEmptySubtitle: "Choisis une tentation dans le flux et commence à économiser",
     buyLabel: "Prendre",
     buyAllLabel: "Tout valider",
     totalLabel: "Total",
     cartRemove: "Supprimer",
-    wishlistTab: "Objectifs",
+    wishlistTab: "Progrès",
     wishlistProgress: "{{current}} sur {{target}}",
     wishlistSavedHint: "Montant à économiser",
     wishlistSaveProgress: "Mettre à jour",
@@ -5392,6 +5639,21 @@ const TRANSLATIONS = {
     wishlistRemoveConfirm: "Retirer cette envie ?",
     wishlistDoneLabel: "Terminé",
     wishlistSummary: "Objectifs totalisant {{amount}}",
+    progressTabSubtitle: "Objectifs, défis et insights au même endroit.",
+    progressGoalTitle: "Objectif actif",
+    progressGoalRemaining: "{{amount}} restants",
+    progressGoalTarget: "Cible {{amount}}",
+    progressActiveChallengeTitle: "Défi actif",
+    progressNoActiveChallenge: "Aucun défi actif - choisis-en un ci-dessous.",
+    progressCategoryTitle: "Dépenses vs économies par catégorie",
+    progressCategorySubtitle: "Repère où l'épargne tient et où la dépense gagne.",
+    progressCategorySave: "Économisé",
+    progressCategorySpend: "Dépensé",
+    progressBadgeTitle: "Badges",
+    progressGoalsTitle: "Objectifs",
+    progressChallengesSubtitle: "Se débloque par niveau, le premier est prêt.",
+    challengePotentialSavings: "Économie potentielle : {{amount}}",
+    challengeLockedLevel: "Débloqué au niveau {{level}}",
     freeDayButton: "Jour gratuit",
     freeDayLocked: "Après 18 h",
     freeDayBlocked: "Indisponible",
@@ -5436,16 +5698,21 @@ const TRANSLATIONS = {
       "Niveau 2 ! Les récompenses quotidiennes sont actives : récupère un bonus chaque jour. Le mini-défi quotidien apparaît aussi sur l’accueil quand Almost juge que tu es prêt.",
     level3UnlockMessage:
       "Niveau 3 ! Le mode focus et les résumés du soir arrivent dans le flux pour t’expliquer quoi améliorer ensuite.",
+    level3ThinkingUnlockMessage:
+      "Niveau 3 ! L’onglet « En pause » est débloqué : mets tes envies en attente et reviens décider plus tard.",
     level4UnlockMessage:
       "Niveau 4 ! Le menu Récompenses et les cibles focus sont débloqués. Ouvre Récompenses pour voir les trophées et choisir une impulsion à surveiller. La personnalisation d’Almi se fait sur l’accueil : touche le chat.",
+    level4ImpulseMapUnlockMessage:
+      "Niveau 4 ! La carte des impulsions est débloquée : vois quand et où les dépenses frappent.",
     level5UnlockMessage:
-      "Niveau 5 ! Les défis complets sont disponibles dans Récompenses → Défis pour te lancer sur la durée.",
+      "Niveau 5 ! Nouveau palier atteint : continue à renforcer l’habitude.",
     level6UnlockMessage:
-      "Niveau 6 ! La carte des impulsions et les notifications intelligentes indiquent où et quand les envies frappent.",
+      "Niveau 6 ! Nouveau palier atteint : l’habitude se renforce à chaque choix.",
     level7UnlockMessage:
-      "Niveau 7 ! La liste « en pause » et le suivi des jours gratuits sont actifs : note tes idées et tes journées sans dépenses.",
+      "Niveau 7 ! Le suivi des jours gratuits est actif : note tes journées sans dépenses et garde la série.",
     featureUnlockWhereLabel: "Où le trouver",
     featureUnlockPreviewLabel: "Aperçu",
+    featureLockedLevelLabel: "Se débloque au niveau {{level}}",
     featureUnlockRewardsDailyTitle: "Récompense du jour",
     featureUnlockRewardsDailyDescription:
       "Une carte « Récompense du jour » apparaît en haut de l’accueil. Récupère le bonus une fois par jour pour gagner des pièces Almi ; elle revient demain.",
@@ -5454,22 +5721,25 @@ const TRANSLATIONS = {
     featureUnlockFeedFocusDescription:
       "Fais défiler le début du flux : le mode focus et le récap du soir apparaissent juste après le héros.",
     featureUnlockFeedFocusPreview: "Mode focus",
-    featureUnlockRewardsCustomizationTitle: "Menu Récompenses",
+    featureUnlockRewardsCustomizationTitle: "Qu’est-ce que c’est ?",
     featureUnlockRewardsCustomizationDescription:
-      "L’onglet Récompenses est maintenant ouvert avec les trophées et les cibles focus. Pour personnaliser Almi, touche le chat sur l’accueil.",
+      "Les Récompenses rassemblent trophées et progression pour voir ce que tu as gagné.",
     featureUnlockRewardsCustomizationPreview: "Onglet Récompenses",
     featureUnlockRewardsChallengesTitle: "Récompenses → Défis",
     featureUnlockRewardsChallengesDescription:
       "Passe sur l’onglet « Défis » dans Récompenses pour lancer une mission qui te motive.",
     featureUnlockRewardsChallengesPreview: "Tableau de défis",
-    featureUnlockImpulseMapTitle: "Flux → Carte des impulsions",
+    featureUnlockImpulseMapTitle: "Carte des impulsions",
     featureUnlockImpulseMapDescription:
-      "Dans le flux, repère la carte d’analyses d’impulsions : elle montre les moments et lieux sensibles.",
-    featureUnlockImpulseMapPreview: "Carte impulsions",
-    featureUnlockThinkingTitle: "Onglet « En pause »",
+      "Le suivi affiche maintenant une carte qui montre quand et où les dépenses montent.",
+    featureUnlockImpulseMapPreview: "Timeline des impulsions",
+    featureUnlockThinkingTitle: "Qu’est-ce que c’est ?",
     featureUnlockThinkingDescription:
-      "Le nouvel onglet ampoule enregistre les achats « en pause » et tes jours gratuits sans dépenses.",
-    featureUnlockThinkingPreview: "Liste « En pause »",
+      "Sur les cartes de plus de 50 $, touche « Je verrai » pour mettre en pause 14 jours. Dans En pause, tu peux décider ou prolonger de 7 jours.",
+    featureUnlockThinkingPreview: "Bouton « Je verrai »",
+    featureUnlockFreeDayTitle: "Série de jours gratuits",
+    featureUnlockFreeDayDescription:
+      "La série de jours gratuits suit tes journées sans dépenses impulsives.",
     impulseCardTitle: "Carte des impulsions",
     impulseCardSubtitle: "Vois quand les tentations gagnent ou quand tu restes solide.",
     impulseLoseLabel: "Zone fragile",
@@ -5544,14 +5814,15 @@ const TRANSLATIONS = {
     pendingDaysLeft: "{{days}} jours restants",
     pendingExpired: "Décision en retard",
     pendingDueToday: "Décider aujourd'hui",
-    pendingActionWant: "Commencer à épargner",
-    pendingActionDecline: "Économiser",
+    pendingActionWant: "Dépenser",
+    pendingActionDecline: "Refuser",
+    pendingActionExtend: "Prolonger de 7 jours",
     pendingNotificationTitle: "⏳ Almost te relance : que faire de « {{title}} » ?",
     pendingNotificationBody: "Deux semaines sont passées. On commence à épargner pour « {{title}} » ou on laisse tomber ? 🤔",
     pendingAdded: "Envoyé en pause. Rappel dans 2 semaines.",
     pendingDeleteConfirm: "Retirer cet élément de En pause ?",
     pendingCustomError: "Ajoute un nom et un prix pour cette tentation.",
-    thinkingLockedMessage: "L’onglet « En pause » se débloque au niveau 7. Continue d’économiser pour y accéder.",
+    thinkingLockedMessage: "L’onglet « En pause » se débloque au niveau 3. Continue d’économiser pour y accéder.",
     feedTab: "Flux",
     profileTab: "Profil",
     payButton: "Payer",
@@ -5570,6 +5841,15 @@ const TRANSLATIONS = {
     profileOk: "Ok",
     profileJoinDate: "Épargne consciente depuis le {{date}}",
     settingsTitle: "Réglages et personnalisation",
+    addCategoryLabel: "Catégories",
+    addCategoryHint: "Ajoute tes propres catégories pour les stats et les actions rapides.",
+    addCategoryButton: "Ajouter une catégorie",
+    addCategoryModalTitle: "Nouvelle catégorie",
+    addCategoryNameLabel: "Nom",
+    addCategoryEmojiLabel: "Emoji",
+    addCategorySave: "Enregistrer",
+    addCategoryCancel: "Annuler",
+    addCategoryError: "Renseigne un nom de catégorie",
     spendReductionLabel: "Réduire l’épargne lors des dépenses",
     spendReductionHint: "Désactive pour garder le solde et les objectifs intacts quand tu achètes.",
     soundLabel: "Sons de l’app",
@@ -5941,6 +6221,8 @@ const TRANSLATIONS = {
     dailySummaryHint: "À demain avec des chiffres frais.",
     spendLoggingReminderTitle: "Note tes dépenses",
     spendLoggingReminderBody: "Plus tu enregistres tes achats, plus Almost peut t’aider avec précision.",
+    pushActionSave: "Épargner",
+    pushActionSpend: "Dépenser",
     dailySummaryNotificationTitle: "Le récap du soir est prêt 📊",
     dailySummaryNotificationBody: "+{{saved}} en {{declines}} refus aujourd’hui. Ouvre Almost pour tout voir. ✨",
     baselineTitle: "Combien part dans les petites folies ?",
@@ -5979,6 +6261,7 @@ const TRANSLATIONS = {
     coinEntryTitle: "Quel montant ?",
     coinEntrySubtitle: "Fais glisser la pièce et choisis une catégorie.",
     coinEntryHint: "Utilise les boutons pour économiser ou dépenser.",
+    coinEntryManualTapHint: "Touchez pour saisir manuellement",
     coinEntryManual: "...",
     coinEntryManualTitle: "Définir un nouveau maximum",
     coinEntryManualPlaceholder: "Entre le montant",
@@ -5989,6 +6272,10 @@ const TRANSLATIONS = {
     coinEntryManualAmountPlaceholder: "Entre le montant",
     coinEntryCategoryLabel: "Catégorie",
     coinEntryCategoryError: "Choisis d'abord une catégorie",
+    categoryPromptTitle: "Choisis une catégorie",
+    categoryPromptSubtitle: "On la mémorise pour cette carte afin d'améliorer les stats.",
+    categoryPromptConfirm: "Enregistrer",
+    categoryPromptCancel: "Pas maintenant",
     coinEntrySaveLabel: "Économie rapide",
     coinEntrySpendLabel: "Dépense rapide",
     fabNewGoal: "Nouvel objectif",
@@ -6016,10 +6303,10 @@ const TRANSLATIONS = {
     newPendingCancel: "Annuler",
     tutorialFeedTitle: "Flux de tentations",
     tutorialFeedDesc: "Enregistre chaque impulsion et décide : économiser, ajouter à l'objectif ou mettre en pause 14 jours.",
-    tutorialGoalsTitle: "Objectifs",
-    tutorialGoalsDesc: "Tous les rêves vivent ici. Suis le progrès et recharge ton objectif.",
-    tutorialRewardsTitle: "Récompenses & défis",
-    tutorialRewardsDesc: "Dans cet onglet tu récoltes les succès et lances des défis avec bonus santé.",
+    tutorialGoalsTitle: "Progrès",
+    tutorialGoalsDesc: "Objectifs, défis et analyses sont réunis ici.",
+    tutorialRewardsTitle: "Récompenses",
+    tutorialRewardsDesc: "Dans cet onglet tu récoltes les succès et suis tes trophées.",
     tutorialProfileTitle: "Profil & motivation",
     tutorialProfileDesc: "Ajuste thème, langue, rappels et personnalisation.",
     tutorialSkip: "Passer",
@@ -6096,14 +6383,14 @@ const TRANSLATIONS = {
     buyNow: "Pagar con {{pay}}",
     addToCart: "Guardar para después",
     buyExternal: "Abrir página del producto",
-    wishlistTitle: "Metas",
+    wishlistTitle: "Progreso",
     wishlistEmptyTitle: "Todavía no hay metas",
     wishlistEmptySubtitle: "Elige una tentación del feed y empieza a ahorrar para ella",
     buyLabel: "Tomar",
     buyAllLabel: "Comprar todo",
     totalLabel: "Total",
     cartRemove: "Eliminar",
-    wishlistTab: "Metas",
+    wishlistTab: "Progreso",
     wishlistProgress: "{{current}} de {{target}}",
     wishlistSavedHint: "Lo que necesitas ahorrar",
     wishlistSaveProgress: "Actualizar progreso",
@@ -6113,6 +6400,21 @@ const TRANSLATIONS = {
     wishlistRemoveConfirm: "¿Quitar este deseo?",
     wishlistDoneLabel: "Listo",
     wishlistSummary: "Metas por un total de {{amount}}",
+    progressTabSubtitle: "Metas, retos e insights en un solo lugar.",
+    progressGoalTitle: "Meta activa",
+    progressGoalRemaining: "Faltan {{amount}}",
+    progressGoalTarget: "Objetivo {{amount}}",
+    progressActiveChallengeTitle: "Reto activo",
+    progressNoActiveChallenge: "No hay reto activo, elige uno abajo.",
+    progressCategoryTitle: "Gastos vs ahorros por categoría",
+    progressCategorySubtitle: "Mira dónde el ahorro resiste y dónde gana el gasto.",
+    progressCategorySave: "Ahorrado",
+    progressCategorySpend: "Gastado",
+    progressBadgeTitle: "Insignias",
+    progressGoalsTitle: "Metas",
+    progressChallengesSubtitle: "Se desbloquea por nivel, el primero ya está listo.",
+    challengePotentialSavings: "Ahorro potencial: {{amount}}",
+    challengeLockedLevel: "Se desbloquea en el nivel {{level}}",
     freeDayButton: "Día gratis",
     freeDayLocked: "Después de las 18:00",
     freeDayBlocked: "No disponible",
@@ -6157,16 +6459,21 @@ const TRANSLATIONS = {
       "Nivel 2: Las recompensas diarias están activas; reclama un bonus cada día. El mini reto diario también aparece en Inicio cuando Almost lo considera.",
     level3UnlockMessage:
       "Nivel 3: El modo foco y los resúmenes nocturnos llegan al Feed para recordarte qué mejorar.",
+    level3ThinkingUnlockMessage:
+      "Nivel 3: La pestaña «En pausa» ya está disponible; deja tentaciones ahí y decide después.",
     level4UnlockMessage:
       "Nivel 4: Desbloqueaste el menú Recompensas y los objetivos de enfoque. Abre Recompensas para ver trofeos y elegir una tentación a vigilar. Para personalizar a Almi, toca el gato en Inicio.",
+    level4ImpulseMapUnlockMessage:
+      "Nivel 4: El mapa de impulsos ya está disponible; mira cuándo y dónde suben los gastos.",
     level5UnlockMessage:
-      "Nivel 5: Los retos completos viven en Recompensas → Retos para que tomes misiones más largas.",
+      "Nivel 5: Nuevo hito alcanzado; sigue fortaleciendo el hábito.",
     level6UnlockMessage:
-      "Nivel 6: El mapa de impulsos y las notificaciones inteligentes muestran dónde y cuándo llegan los impulsos.",
+      "Nivel 6: Nuevo hito alcanzado; el hábito se fortalece con cada elección.",
     level7UnlockMessage:
-      "Nivel 7: La lista «en pausa» y el registro de días libres están disponibles; anota ideas y días sin gasto.",
+      "Nivel 7: El registro de días libres está disponible; anota días sin gasto y mantén la racha.",
     featureUnlockWhereLabel: "Dónde está",
     featureUnlockPreviewLabel: "Así se ve",
+    featureLockedLevelLabel: "Se desbloquea en el nivel {{level}}",
     featureUnlockRewardsDailyTitle: "Recompensa diaria",
     featureUnlockRewardsDailyDescription:
       "En la parte superior de Inicio aparece la tarjeta de recompensa diaria. Reclama el bonus una vez al día para ganar monedas Almi; se reinicia mañana.",
@@ -6175,22 +6482,25 @@ const TRANSLATIONS = {
     featureUnlockFeedFocusDescription:
       "Desliza por el inicio del feed: ahí aparecen el modo foco y el resumen nocturno con tus pistas.",
     featureUnlockFeedFocusPreview: "Modo foco",
-    featureUnlockRewardsCustomizationTitle: "Menú Recompensas",
+    featureUnlockRewardsCustomizationTitle: "¿Qué es esto?",
     featureUnlockRewardsCustomizationDescription:
-      "La pestaña Recompensas ya está abierta con trofeos y objetivos de enfoque. Para personalizar a Almi, toca el gato en Inicio.",
+      "Recompensas reúne tus trofeos y el progreso de logros para ver lo que has conseguido.",
     featureUnlockRewardsCustomizationPreview: "Pestaña Recompensas",
     featureUnlockRewardsChallengesTitle: "Recompensas → Retos",
     featureUnlockRewardsChallengesDescription:
       "Cambia a la pestaña «Retos» en Recompensas y arranca la misión que más te motive.",
     featureUnlockRewardsChallengesPreview: "Tablón de retos",
-    featureUnlockImpulseMapTitle: "Feed → Mapa de impulsos",
+    featureUnlockImpulseMapTitle: "Mapa de impulsos",
     featureUnlockImpulseMapDescription:
-      "Busca la tarjeta con el mapa de impulsos en el feed para ver horas y lugares donde más tientan.",
-    featureUnlockImpulseMapPreview: "Mapa de impulsos",
-    featureUnlockThinkingTitle: "Pestaña «En pausa»",
+      "El progreso ahora incluye un mapa que muestra cuándo y dónde suben los gastos.",
+    featureUnlockImpulseMapPreview: "Timeline de impulsos",
+    featureUnlockThinkingTitle: "¿Qué es esto?",
     featureUnlockThinkingDescription:
-      "El nuevo ícono con foco guarda la lista «en pausa» y tus días gratis sin gasto. Anota ideas ahí.",
-    featureUnlockThinkingPreview: "Lista «En pausa»",
+      "En tarjetas de más de 50 $, toca «Lo pensaré» para pausarlas 14 días. En En pausa puedes decidir o extender 7 días.",
+    featureUnlockThinkingPreview: "Botón «Lo pensaré»",
+    featureUnlockFreeDayTitle: "Racha de días gratis",
+    featureUnlockFreeDayDescription:
+      "La racha de días gratis indica cuántos días seguidos evitas gastos impulsivos.",
     impulseCardTitle: "Mapa de impulsos",
     impulseCardSubtitle: "Descubre cuándo suelen ganar las tentaciones o cuándo mantienes el control.",
     impulseLoseLabel: "Zona débil",
@@ -6265,14 +6575,15 @@ const TRANSLATIONS = {
     pendingDaysLeft: "Quedan {{days}} días",
     pendingExpired: "Decisión atrasada",
     pendingDueToday: "Decide hoy",
-    pendingActionWant: "Empezar a ahorrar",
-    pendingActionDecline: "Ahorrar",
+    pendingActionWant: "Gastar",
+    pendingActionDecline: "Rechazar",
+    pendingActionExtend: "Extender 7 días",
     pendingNotificationTitle: "⏳ Almost pregunta: ¿qué hacemos con «{{title}}»?",
     pendingNotificationBody: "Han pasado dos semanas. ¿Empezamos a ahorrar para «{{title}}» o lo soltamos? 🤔",
     pendingAdded: "Enviado a En pausa. Recordaremos en dos semanas.",
     pendingDeleteConfirm: "¿Quitar este elemento de En pausa?",
     pendingCustomError: "Añade un nombre y un precio para esta tentación.",
-    thinkingLockedMessage: "En pausa se desbloquea en el nivel 7. Sigue registrando ahorros para llegar pronto.",
+    thinkingLockedMessage: "En pausa se desbloquea en el nivel 3. Sigue registrando ahorros para llegar pronto.",
     feedTab: "Inicio",
     profileTab: "Perfil",
     payButton: "Pagar",
@@ -6291,6 +6602,15 @@ const TRANSLATIONS = {
     profileOk: "Ok",
     profileJoinDate: "Ahorro consciente desde {{date}}",
     settingsTitle: "Ajustes y personalización",
+    addCategoryLabel: "Categorías",
+    addCategoryHint: "Añade tus propias categorías para analíticas y acciones rápidas.",
+    addCategoryButton: "Añadir categoría",
+    addCategoryModalTitle: "Nueva categoría",
+    addCategoryNameLabel: "Nombre",
+    addCategoryEmojiLabel: "Emoji",
+    addCategorySave: "Guardar",
+    addCategoryCancel: "Cancelar",
+    addCategoryError: "Introduce un nombre de categoría",
     spendReductionLabel: "Restar ahorros al gastar",
     spendReductionHint: "Apágalo para no bajar saldo y progreso de objetivos al comprar.",
     soundLabel: "Sonidos de la app",
@@ -6659,6 +6979,8 @@ const TRANSLATIONS = {
     dailySummaryHint: "Mañana vuelvo con números frescos.",
     spendLoggingReminderTitle: "Registra tus gastos",
     spendLoggingReminderBody: "Mientras más compras anotes, mejor te guía Almost.",
+    pushActionSave: "Ahorrar",
+    pushActionSpend: "Gastar",
     dailySummaryNotificationTitle: "Resumen nocturno listo 📊",
     dailySummaryNotificationBody: "+{{saved}} en {{declines}} rechazos hoy. Abre Almost para ver los detalles. ✨",
     baselineTitle: "¿Cuánto se va en pequeños caprichos?",
@@ -6696,6 +7018,7 @@ const TRANSLATIONS = {
     coinEntryTitle: "¿Cuánto?",
     coinEntrySubtitle: "Desliza la moneda y elige categoría.",
     coinEntryHint: "Usa los botones de arriba para ahorrar o gastar.",
+    coinEntryManualTapHint: "Toca para ingresar manualmente",
     coinEntryManual: "...",
     coinEntryManualTitle: "Define un nuevo máximo",
     coinEntryManualPlaceholder: "Ingresa el monto",
@@ -6706,6 +7029,10 @@ const TRANSLATIONS = {
     coinEntryManualAmountPlaceholder: "Ingresa el monto",
     coinEntryCategoryLabel: "Categoría",
     coinEntryCategoryError: "Primero elige una categoría",
+    categoryPromptTitle: "Elige una categoría",
+    categoryPromptSubtitle: "La guardaremos para esta tarjeta y mejorar las métricas.",
+    categoryPromptConfirm: "Guardar categoría",
+    categoryPromptCancel: "Ahora no",
     coinEntrySaveLabel: "Ahorro rápido",
     coinEntrySpendLabel: "Gasto rápido",
     fabNewGoal: "Nueva meta",
@@ -6733,10 +7060,10 @@ const TRANSLATIONS = {
     newPendingCancel: "Cancelar",
     tutorialFeedTitle: "Feed de tentaciones",
     tutorialFeedDesc: "Registra cada impulso y decide: guardar, añadir a metas o pausar 14 días.",
-    tutorialGoalsTitle: "Metas",
-    tutorialGoalsDesc: "Aquí viven los sueños. Sigue el progreso y recarga tu meta.",
-    tutorialRewardsTitle: "Recompensas y retos",
-    tutorialRewardsDesc: "En esta pestaña cobras logros y lanzas retos con bono de salud.",
+    tutorialGoalsTitle: "Progreso",
+    tutorialGoalsDesc: "Metas, retos y métricas en un solo lugar.",
+    tutorialRewardsTitle: "Recompensas",
+    tutorialRewardsDesc: "En esta pestaña cobras logros y sigues tus trofeos.",
     tutorialProfileTitle: "Perfil y motivación",
     tutorialProfileDesc: "Ajusta tema, idioma, recordatorios y tus objetivos personales.",
     tutorialSkip: "Saltar",
@@ -6946,7 +7273,7 @@ const PERSONA_PRESETS = {
     habit: {
       emoji: "☕️",
       color: "#FFF3E0",
-      categories: ["habit", "daily"],
+      categories: ["habit", "food", "coffee"],
       basePriceUSD: 5,
       title: {
         ru: "Кофе навынос",
@@ -6986,7 +7313,7 @@ const PERSONA_PRESETS = {
     habit: {
       emoji: "🚬",
       color: "#FFE8E0",
-      categories: ["habit", "health"],
+      categories: ["habit", "vices"],
       basePriceUSD: 7,
       title: {
         ru: "Пачка сигарет",
@@ -7027,7 +7354,7 @@ const PERSONA_PRESETS = {
     habit: {
       emoji: "💄",
       color: "#FFE5F1",
-      categories: ["style", "habit"],
+      categories: ["habit", "beauty"],
       basePriceUSD: 18,
       title: {
         ru: "Мини бьюти-дроп",
@@ -7068,7 +7395,7 @@ const PERSONA_PRESETS = {
     habit: {
       emoji: "🎮",
       color: "#D9F7FF",
-      categories: ["wow", "habit"],
+      categories: ["habit", "fun"],
       basePriceUSD: 10,
       title: {
         ru: "Игровой донат",
@@ -7108,7 +7435,7 @@ const PERSONA_PRESETS = {
     habit: {
       emoji: "🍕",
       color: "#FFF8E3",
-      categories: ["food", "habit"],
+      categories: ["habit", "food"],
       basePriceUSD: 15,
       title: {
         ru: "Доставка вечерком",
@@ -7148,7 +7475,7 @@ const PERSONA_PRESETS = {
     habit: {
       emoji: "📦",
       color: "#E8F0FF",
-      categories: ["wow", "things", "habit"],
+      categories: ["habit", "clothing"],
       basePriceUSD: 25,
       title: {
         ru: "Онлайн-импульс",
@@ -7188,7 +7515,7 @@ const PERSONA_PRESETS = {
     habit: {
       emoji: "🎌",
       color: "#F2E8FF",
-      categories: ["wow", "habit", "style"],
+      categories: ["habit", "things"],
       basePriceUSD: 18,
       title: {
         ru: "Аниме-мерч",
@@ -7228,7 +7555,7 @@ const PERSONA_PRESETS = {
     habit: {
       emoji: "🧾",
       color: "#E9FFF3",
-      categories: ["habit", "daily"],
+      categories: ["habit", "subscriptions"],
       basePriceUSD: 12,
       title: {
         ru: "Лишняя подписка",
@@ -7268,7 +7595,7 @@ const PERSONA_PRESETS = {
     habit: {
       emoji: "👜",
       color: "#FFF0F2",
-      categories: ["style", "habit"],
+      categories: ["habit", "things"],
       basePriceUSD: 35,
       title: {
         ru: "Импульсный шоппинг",
@@ -7294,7 +7621,7 @@ const PERSONA_TEMPTATION_PRESETS = {
       image:
         "https://images.unsplash.com/photo-1515377905703-c4788e51af15?auto=format&fit=crop&w=900&q=80",
       color: "#FFF0F7",
-      categories: ["beauty", "habit"],
+      categories: ["beauty"],
       audience: ["female"],
       basePriceUSD: 15,
       priceUSD: 15,
@@ -7317,7 +7644,7 @@ const PERSONA_TEMPTATION_PRESETS = {
       image:
         "https://images.unsplash.com/photo-1506617420156-8e4536971650?auto=format&fit=crop&w=900&q=80",
       color: "#FFF7F1",
-      categories: ["beauty", "lifestyle"],
+      categories: ["beauty"],
       audience: ["female"],
       basePriceUSD: 45,
       priceUSD: 45,
@@ -7340,7 +7667,7 @@ const PERSONA_TEMPTATION_PRESETS = {
       image:
         "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=900&q=80",
       color: "#F6ECFF",
-      categories: ["beauty", "wow"],
+      categories: ["beauty"],
       audience: ["female"],
       basePriceUSD: 140,
       priceUSD: 140,
@@ -7599,7 +7926,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1517705008128-361805f42e86?auto=format&fit=crop&w=600&q=80",
     color: "#FFF3E0",
-    categories: ["coffee", "food"],
+    categories: ["food", "coffee"],
     basePriceUSD: 5,
     priceUSD: 5,
     title: {
@@ -7621,7 +7948,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1524985069026-dd778a71c7b4?auto=format&fit=crop&w=600&q=80",
     color: "#F2F2F2",
-    categories: ["subscription", "entertainment"],
+    categories: ["subscriptions"],
     basePriceUSD: 7,
     priceUSD: 7,
     title: {
@@ -7665,7 +7992,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1509043759401-136742328bb3?auto=format&fit=crop&w=600&q=80",
     color: "#E8F5E9",
-    categories: ["coffee", "lifestyle"],
+    categories: ["food", "coffee"],
     basePriceUSD: 12,
     priceUSD: 12,
     title: {
@@ -7687,7 +8014,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1501426026826-31c667bdf23d?auto=format&fit=crop&w=600&q=80",
     color: "#F6DFFF",
-    categories: ["tech", "flagship", "phone"],
+    categories: ["clothing"],
     basePriceUSD: 1199,
     priceUSD: 1199,
     title: {
@@ -7709,7 +8036,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1528701800489-20be3cbe2c05?auto=format&fit=crop&w=600&q=80",
     color: "#E3F6E8",
-    categories: ["style", "sport"],
+    categories: ["clothing"],
     basePriceUSD: 260,
     priceUSD: 260,
     title: {
@@ -7731,7 +8058,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1523475472560-d2df97ec485c?auto=format&fit=crop&w=600&q=80",
     color: "#FFE5F1",
-    categories: ["tech", "wearable"],
+    categories: ["things"],
     basePriceUSD: 799,
     priceUSD: 799,
     title: {
@@ -7753,7 +8080,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1486401899868-0e435ed85128?auto=format&fit=crop&w=600&q=80",
     color: "#D9F7FF",
-    categories: ["wow", "home"],
+    categories: ["things"],
     audience: ["male"],
     basePriceUSD: 549,
     priceUSD: 549,
@@ -7776,7 +8103,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1542281286-9e0a16bb7366?auto=format&fit=crop&w=600&q=80",
     color: "#FFF4D5",
-    categories: ["food", "wow"],
+    categories: ["food"],
     basePriceUSD: 25,
     priceUSD: 25,
     title: {
@@ -7798,7 +8125,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1466978913421-dad2ebd01d17?auto=format&fit=crop&w=900&q=80",
     color: "#FFEFE9",
-    categories: ["food", "wow"],
+    categories: ["food"],
     basePriceUSD: 35,
     priceUSD: 35,
     title: {
@@ -7820,7 +8147,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=900&q=80",
     color: "#F4F2FF",
-    categories: ["fun", "food"],
+    categories: ["fun"],
     basePriceUSD: 45,
     priceUSD: 45,
     title: {
@@ -7842,7 +8169,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=900&q=80",
     color: "#FFE9F2",
-    categories: ["beauty", "lifestyle"],
+    categories: ["beauty"],
     audience: ["female"],
     basePriceUSD: 65,
     priceUSD: 65,
@@ -7865,7 +8192,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?auto=format&fit=crop&w=900&q=80",
     color: "#E9F8FF",
-    categories: ["style", "lifestyle"],
+    categories: ["beauty"],
     audience: ["male"],
     basePriceUSD: 70,
     priceUSD: 70,
@@ -7888,7 +8215,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1517148815974-413097f4a0c0?auto=format&fit=crop&w=900&q=80",
     color: "#E9F5FF",
-    categories: ["tech", "wearable"],
+    categories: ["health"],
     basePriceUSD: 90,
     priceUSD: 90,
     title: {
@@ -7910,7 +8237,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=900&q=80",
     color: "#FFF7EA",
-    categories: ["food", "lifestyle"],
+    categories: ["food"],
     basePriceUSD: 120,
     priceUSD: 120,
     title: {
@@ -7932,7 +8259,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=900&q=80",
     color: "#E9FFF2",
-    categories: ["health", "lifestyle"],
+    categories: ["health"],
     basePriceUSD: 180,
     priceUSD: 180,
     title: {
@@ -7954,7 +8281,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1475180098004-ca77a66827be?auto=format&fit=crop&w=900&q=80",
     color: "#EAF2FF",
-    categories: ["style", "wow"],
+    categories: ["clothing"],
     basePriceUSD: 220,
     priceUSD: 220,
     title: {
@@ -7976,7 +8303,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1496417263034-38ec4f0b665a?auto=format&fit=crop&w=600&q=80",
     color: "#E0F7FA",
-    categories: ["travel", "dream"],
+    categories: ["fun"],
     basePriceUSD: 1800,
     priceUSD: 1800,
     title: {
@@ -7998,7 +8325,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1481391032119-d89fee407e44?auto=format&fit=crop&w=600&q=80",
     color: "#FAF0E6",
-    categories: ["home", "coffee"],
+    categories: ["home"],
     basePriceUSD: 320,
     priceUSD: 320,
     title: {
@@ -8020,7 +8347,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=600&q=80",
     color: "#F8F1FF",
-    categories: ["style", "gift"],
+    categories: ["clothing"],
     audience: ["female"],
     basePriceUSD: 950,
     priceUSD: 950,
@@ -8043,7 +8370,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1505765050516-f72dcac9c60e?auto=format&fit=crop&w=600&q=80",
     color: "#E3E5FF",
-    categories: ["travel", "dream"],
+    categories: ["fun"],
     basePriceUSD: 1200,
     priceUSD: 1200,
     title: {
@@ -8065,7 +8392,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1503736334956-4c8f8e92946d?auto=format&fit=crop&w=900&q=80",
     color: "#E0FFF6",
-    categories: ["travel", "wow"],
+    categories: ["fun"],
     basePriceUSD: 3200,
     priceUSD: 3200,
     title: {
@@ -8087,7 +8414,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1503736334956-4c8f8e92946d?auto=format&fit=crop&w=1200&q=80",
     color: "#FFE0E3",
-    categories: ["dream", "travel"],
+    categories: ["transport"],
     basePriceUSD: 28000,
     priceUSD: 28000,
     title: {
@@ -8109,7 +8436,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1568605114967-8130f3a36994?auto=format&fit=crop&w=1200&q=80",
     color: "#FFF1E6",
-    categories: ["dream", "home"],
+    categories: ["home"],
     basePriceUSD: 90000,
     priceUSD: 90000,
     title: {
@@ -8131,7 +8458,7 @@ const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1200&q=80",
     color: "#EDF7FF",
-    categories: ["dream", "wow"],
+    categories: ["transport"],
     basePriceUSD: 250000,
     priceUSD: 250000,
     title: {
@@ -8208,7 +8535,7 @@ const GOALS = [
 const SAVINGS_TIERS = [10, 20, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000, 50000, 100000, 250000];
 const LEVEL_XP_BASE_USD = 5;
 const LEVEL_XP_SCALE = 200;
-const LEVEL_XP_STEP = 200;
+const LEVEL_XP_STEP = 140;
 const MAX_LEVEL = SAVINGS_TIERS.length + 1;
 const getLevelXP = (savedUSD = 0) => {
   const normalized = Math.max(0, Number(savedUSD) || 0);
@@ -8779,13 +9106,16 @@ function TemptationCardComponent({
     convertToCurrency(stats?.totalUSD || 0, currency),
     currency
   );
-  const actionConfig = [
-    { type: "save", label: t("saveAction"), variant: "primary" },
-    { type: "spend", label: t("spendAction"), variant: "ghost" },
-  ];
-  if (allowThinkAction) {
+  const priceUSD = getTemptationPrice(item);
+  const showThinkAction = allowThinkAction && priceUSD > 50;
+  const actionConfig = [];
+  if (showThinkAction) {
     actionConfig.push({ type: "maybe", label: t("maybeAction"), variant: "outline" });
   }
+  actionConfig.push(
+    { type: "save", label: t("saveAction"), variant: "primary" },
+    { type: "spend", label: t("spendAction"), variant: "ghost" }
+  );
   const interactionEntry = interaction || {};
   const frequencyId = interactionEntry.frequency || null;
   const timerReference = timerNow || Date.now();
@@ -9505,10 +9835,11 @@ function SavingsHeroCard({
   isGoalComplete = false,
   completionLabel,
   t,
-  dailySavings = [],
   analyticsPreview = [],
   potentialSavedUSD = 0,
   actualSavedUSD = 0,
+  potentialGrowthUSD = 0,
+  showPotentialGrowth = false,
   currency,
   hasBaseline = false,
   hasActiveGoal = true,
@@ -9520,21 +9851,35 @@ function SavingsHeroCard({
   levelProgressValue = 0,
   healthPoints = 0,
   onBreakdownPress = () => {},
-  weeklyComparison = null,
   dailyRewardUnlocked = false,
   dailyRewardReady = false,
   dailyRewardAmount = 0,
   dailyRewardBaseAmount = 0,
   dailyRewardDay = 1,
   onDailyRewardClaim = () => {},
+  activeChallenge = null,
+  onActiveChallengePress = () => {},
 }) {
   const [expanded, setExpanded] = useState(false);
   const [levelExpanded, setLevelExpanded] = useState(false);
   const [levelBadgeLayout, setLevelBadgeLayout] = useState({ width: 0, height: 0, y: 0 });
   const [isDailyRewardModalVisible, setDailyRewardModalVisible] = useState(false);
-  const maxAmount = Math.max(...dailySavings.map((day) => day.amountUSD), 0);
-  const potentialLocal = formatCurrency(convertToCurrency(potentialSavedUSD || 0, currency), currency);
-  const actualLocal = formatCurrency(convertToCurrency(actualSavedUSD || 0, currency), currency);
+  const [potentialLayoutReady, setPotentialLayoutReady] = useState(false);
+  const potentialGrowthAnim = useRef(new Animated.Value(0)).current;
+  const potentialGrowthPlayedRef = useRef(false);
+  const potentialLocal = formatCurrency(convertToCurrency(potentialSavedUSD || 0, currency), currency, {
+    precisionOverride: getCurrencyPrecision(currency),
+  });
+  const actualLocal = formatCurrency(convertToCurrency(actualSavedUSD || 0, currency), currency, {
+    precisionOverride: getCurrencyPrecision(currency),
+  });
+  const potentialGrowthLabel = useMemo(() => {
+    const value = Math.max(0, Number(potentialGrowthUSD) || 0);
+    if (!Number.isFinite(value) || value <= 0) return "";
+    return formatCurrency(convertToCurrency(value, currency), currency, {
+      precisionOverride: getCurrencyPrecision(currency),
+    });
+  }, [currency, potentialGrowthUSD]);
   const coinEntries = useMemo(() => buildHealthCoinEntries(healthPoints), [healthPoints]);
   const hasCoinInventory = coinEntries.some((entry) => entry.count > 0);
   const potentialRatio = potentialSavedUSD > 0 ? Math.min(actualSavedUSD / potentialSavedUSD, 1) : 0;
@@ -9553,29 +9898,44 @@ function SavingsHeroCard({
       onPotentialDetailsOpen();
     }
   }, [hasBaseline, onPotentialDetailsOpen]);
-  const weeklyTrend = useMemo(() => {
-    const formatEntry = (entry, type) => {
-      const delta = Number(entry?.deltaUSD) || 0;
-      const absDelta = Math.abs(delta);
-      const localValue = formatCurrency(convertToCurrency(absDelta, currency), currency);
-      const symbol = delta >= 0 ? "▲" : "▼";
-      let color = goldPalette.accent;
-      if (type === "savings") {
-        color = delta >= 0 ? goldPalette.accent : goldPalette.danger;
-      } else {
-        color = delta >= 0 ? goldPalette.danger : goldPalette.accent;
-      }
-      return {
-        symbol,
-        label: localValue,
-        color,
-      };
-    };
-    const base = weeklyComparison || {};
-    const savingsTrend = formatEntry(base.savings, "savings");
-    const spendingTrend = formatEntry(base.spending, "spending");
-    return { savings: savingsTrend, spending: spendingTrend };
-  }, [currency, goldPalette.accent, goldPalette.danger, weeklyComparison]);
+  useEffect(() => {
+    if (!showPotentialGrowth) {
+      potentialGrowthPlayedRef.current = false;
+      return;
+    }
+    if (!potentialGrowthLabel) return;
+    if (potentialGrowthPlayedRef.current) return;
+    if (!potentialLayoutReady) return;
+    potentialGrowthPlayedRef.current = true;
+    const task = InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => {
+        requestAnimationFrame(() => {
+          potentialGrowthAnim.setValue(0);
+          Animated.sequence([
+            Animated.timing(potentialGrowthAnim, {
+              toValue: 1,
+              duration: 260,
+              useNativeDriver: true,
+            }),
+            Animated.timing(potentialGrowthAnim, {
+              toValue: 0,
+              duration: 240,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        });
+      });
+    });
+    return () => task?.cancel?.();
+  }, [potentialGrowthAnim, potentialGrowthLabel, potentialLayoutReady, showPotentialGrowth]);
+  const potentialGrowthScale = potentialGrowthAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.22],
+  });
+  const potentialGrowthOpacity = potentialGrowthAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.65, 1],
+  });
   const dailyRewardPreview = useMemo(() => {
     const schedule = buildDailyRewardSchedule(dailyRewardBaseAmount || dailyRewardAmount);
     return schedule.map((amount, index) => ({
@@ -9626,7 +9986,7 @@ function SavingsHeroCard({
           border: "rgba(255,173,74,0.55)",
           shadow: "rgba(255,160,80,0.4)",
           text: "#6A390C",
-        }
+      }
     : isDarkMode
     ? {
         background: "rgba(255,255,255,0.08)",
@@ -9639,6 +9999,17 @@ function SavingsHeroCard({
         border: "rgba(130,130,130,0.5)",
         shadow: "transparent",
         text: "rgba(90,90,90,0.9)",
+      };
+  const dailyRewardLockedColors = isDarkMode
+    ? {
+        background: "rgba(0,0,0,0.35)",
+        border: "rgba(255,255,255,0.2)",
+        text: "rgba(255,238,208,0.9)",
+      }
+    : {
+        background: "rgba(255,255,255,0.72)",
+        border: "rgba(90,90,90,0.18)",
+        text: "rgba(90,90,90,0.85)",
       };
   const dailyRewardModalPalette = isDarkMode
     ? {
@@ -9657,6 +10028,8 @@ function SavingsHeroCard({
   const dailyRewardActiveBorder = isDarkMode ? "rgba(123,255,184,0.85)" : "rgba(45,166,106,0.9)";
   const dailyRewardActiveBg = isDarkMode ? "rgba(123,255,184,0.18)" : "rgba(45,166,106,0.14)";
   const dailyRewardLabel = dailyRewardReady ? t("dailyRewardClaimHint") : t("dailyRewardCollectedLabel");
+  const dailyRewardUnlockLevel = FEATURE_UNLOCK_LEVELS.rewardsDaily || 2;
+  const dailyRewardLockedLabel = t("progressHeroLevel", { level: dailyRewardUnlockLevel });
   const handleDailyRewardPress = useCallback(() => {
     if (!dailyRewardReady) return;
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
@@ -9674,6 +10047,14 @@ function SavingsHeroCard({
   const activeDailyRewardDay = dailyRewardReady
     ? Math.min(DAILY_REWARD_STREAK_LENGTH, Math.max(1, dailyRewardDay || 1))
     : null;
+  const activeChallengeCount = activeChallenge?.targetValue || 0;
+  const activeChallengeProgress = activeChallenge?.progressValue || 0;
+  const showActiveChallenge =
+    activeChallenge && activeChallenge.status === "active" && activeChallengeProgress > 0;
+  const activeChallengePercent =
+    activeChallenge && activeChallenge.targetValue
+      ? Math.min(activeChallengeProgress / activeChallenge.targetValue, 1)
+      : 0;
   return (
     <View
       style={[
@@ -9723,7 +10104,7 @@ function SavingsHeroCard({
             </View>
           </TouchableOpacity>
         </View>
-        {dailyRewardUnlocked && !levelExpanded && (
+        {!levelExpanded && (
           <TouchableOpacity
             style={[
               styles.dailyRewardButton,
@@ -9734,44 +10115,68 @@ function SavingsHeroCard({
                 minHeight: rewardTileHeight,
                 minWidth: rewardTileSize,
                 top: rewardTileTop,
-                backgroundColor: dailyRewardButtonColors.background,
-                borderColor: dailyRewardButtonColors.border,
-                shadowColor: dailyRewardButtonColors.shadow,
-                shadowOpacity: dailyRewardReady ? 0.2 : 0,
-                shadowOffset: { width: 0, height: dailyRewardReady ? 3 : 0 },
-                shadowRadius: dailyRewardReady ? 4 : 0,
-                elevation: dailyRewardReady ? 1 : 0,
+                backgroundColor: dailyRewardUnlocked
+                  ? dailyRewardButtonColors.background
+                  : dailyRewardLockedColors.background,
+                borderColor: dailyRewardUnlocked
+                  ? dailyRewardButtonColors.border
+                  : dailyRewardLockedColors.border,
+                shadowColor: dailyRewardUnlocked
+                  ? dailyRewardButtonColors.shadow
+                  : "transparent",
+                shadowOpacity: dailyRewardUnlocked && dailyRewardReady ? 0.2 : 0,
+                shadowOffset: { width: 0, height: dailyRewardUnlocked && dailyRewardReady ? 3 : 0 },
+                shadowRadius: dailyRewardUnlocked && dailyRewardReady ? 4 : 0,
+                elevation: dailyRewardUnlocked && dailyRewardReady ? 1 : 0,
               },
             ]}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             pressRetentionOffset={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            activeOpacity={dailyRewardReady ? 0.85 : 1}
-            onPress={handleDailyRewardPress}
-            disabled={!dailyRewardReady}
+            activeOpacity={dailyRewardUnlocked && dailyRewardReady ? 0.85 : 1}
+            onPress={dailyRewardUnlocked ? handleDailyRewardPress : undefined}
+            disabled={!dailyRewardUnlocked || !dailyRewardReady}
           >
-            <Image source={HEALTH_COIN_TIERS[0].asset} style={styles.dailyRewardCoin} />
-            {dailyRewardReady && dailyRewardAmount > 0 && (
-              <Text
-                style={[
-                  styles.dailyRewardAmount,
-                  { color: dailyRewardButtonColors.text },
-                ]}
-              >
-                {`+${dailyRewardAmount}`}
-              </Text>
+            {dailyRewardUnlocked ? (
+              <>
+                <Image source={HEALTH_COIN_TIERS[0].asset} style={styles.dailyRewardCoin} />
+                {dailyRewardReady && dailyRewardAmount > 0 && (
+                  <Text
+                    style={[
+                      styles.dailyRewardAmount,
+                      { color: dailyRewardButtonColors.text },
+                    ]}
+                  >
+                    {`+${dailyRewardAmount}`}
+                  </Text>
+                )}
+                <Text
+                  style={[
+                    styles.dailyRewardCaption,
+                    { color: dailyRewardButtonColors.text },
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                  ellipsizeMode="clip"
+                >
+                  {dailyRewardLabel}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.dailyRewardLockedIcon, { color: dailyRewardLockedColors.text }]}>
+                  🔒
+                </Text>
+                <Text
+                  style={[styles.dailyRewardLockedLabel, { color: dailyRewardLockedColors.text }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  {dailyRewardLockedLabel}
+                </Text>
+              </>
             )}
-            <Text
-              style={[
-                styles.dailyRewardCaption,
-                { color: dailyRewardButtonColors.text },
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.7}
-              ellipsizeMode="clip"
-            >
-              {dailyRewardLabel}
-            </Text>
           </TouchableOpacity>
         )}
         {levelExpanded && (
@@ -9832,53 +10237,6 @@ function SavingsHeroCard({
           </Text>
         )}
 
-        <TouchableOpacity
-          style={[
-            styles.heroPotentialCard,
-            {
-              backgroundColor: goldPalette.badgeBg,
-              borderColor: goldPalette.badgeBorder,
-            },
-          ]}
-          activeOpacity={0.9}
-          onPress={handlePotentialDetailsOpen}
-        >
-          {hasBaseline ? (
-            <>
-              <View style={styles.heroPotentialHeader}>
-                <Text style={[styles.heroPotentialLabel, { color: goldPalette.text }]}>
-                  {t("potentialBlockTitle")}
-                </Text>
-                <Text style={[styles.heroPotentialValue, { color: goldPalette.text }]}>
-                  {potentialLocal}
-                </Text>
-              </View>
-              <Text style={[styles.heroPotentialStatus, { color: goldPalette.subtext }]}>
-                {t(statusKey)}
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text style={[styles.heroPotentialBody, { color: goldPalette.text }]}>
-                {t("potentialBlockCta")}
-              </Text>
-              <TouchableOpacity
-                style={[
-                  styles.heroPotentialButton,
-                  {
-                    borderColor: goldPalette.text,
-                  },
-                ]}
-                activeOpacity={0.85}
-                onPress={onBaselineSetup}
-              >
-                <Text style={[styles.heroPotentialButtonText, { color: goldPalette.text }]}>
-                  {t("baselineCTA")}
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </TouchableOpacity>
       {hasActiveGoal && (
         <View style={styles.savedHeroProgressRow}>
           <View
@@ -9911,22 +10269,6 @@ function SavingsHeroCard({
         <Text style={[styles.goalLabel, { color: goldPalette.subtext }]}>
           {hasActiveGoal ? t("goalWidgetTitle") : t("heroDailyTitle")}
         </Text>
-        <TouchableOpacity
-          style={styles.savedHeroToggleButton}
-          onPress={() =>
-            setExpanded((prev) => {
-              const next = !prev;
-              if (next) {
-                logEvent("stats_screen_viewed", { tab: "feed" });
-              }
-              return next;
-            })
-          }
-        >
-          <Text style={[styles.savedHeroToggleText, { color: goldPalette.subtext }]}>
-            {expanded ? t("heroCollapse") : t("heroExpand")}
-          </Text>
-        </TouchableOpacity>
       </View>
       {hasActiveGoal && (
         <View style={styles.savedHeroGoalMetaRow}>
@@ -9944,6 +10286,109 @@ function SavingsHeroCard({
             </View>
           )}
         </View>
+      )}
+      <TouchableOpacity
+        style={[
+          styles.heroPotentialCard,
+          {
+            backgroundColor: goldPalette.badgeBg,
+            borderColor: goldPalette.badgeBorder,
+          },
+        ]}
+        activeOpacity={0.9}
+        onPress={handlePotentialDetailsOpen}
+        onLayout={() => {
+          if (!potentialLayoutReady) setPotentialLayoutReady(true);
+        }}
+      >
+        {hasBaseline ? (
+          <>
+            <View style={styles.heroPotentialHeader}>
+              <View style={styles.heroPotentialRow}>
+                <Text style={[styles.heroPotentialLabel, { color: goldPalette.text }]}>
+                  {t("potentialBlockTitle")}
+                </Text>
+                <Text style={[styles.heroPotentialValue, { color: goldPalette.text }]}>
+                  {potentialLocal}
+                </Text>
+              </View>
+              <View style={styles.heroPotentialRow}>
+                <Text style={[styles.heroPotentialStatus, { color: goldPalette.subtext }]}>
+                  {t(statusKey)}
+                </Text>
+                {showPotentialGrowth && potentialGrowthLabel ? (
+                  <Animated.Text
+                    style={[
+                      styles.heroPotentialDelta,
+                      {
+                        color: SAVE_ACTION_COLOR,
+                        transform: [{ scale: potentialGrowthScale }],
+                        opacity: potentialGrowthOpacity,
+                      },
+                    ]}
+                  >
+                    {`+${potentialGrowthLabel}`}
+                  </Animated.Text>
+                ) : null}
+              </View>
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={[styles.heroPotentialBody, { color: goldPalette.text }]}>
+              {t("potentialBlockCta")}
+            </Text>
+            <TouchableOpacity
+              style={[
+                styles.heroPotentialButton,
+                {
+                  borderColor: goldPalette.text,
+                },
+              ]}
+              activeOpacity={0.85}
+              onPress={onBaselineSetup}
+            >
+              <Text style={[styles.heroPotentialButtonText, { color: goldPalette.text }]}>
+                {t("baselineCTA")}
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </TouchableOpacity>
+      {showActiveChallenge && (
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => onActiveChallengePress?.(activeChallenge.id)}
+          style={[
+            styles.heroChallengeBlock,
+            { backgroundColor: goldPalette.badgeBg, borderColor: goldPalette.badgeBorder },
+          ]}
+        >
+          <View style={styles.heroChallengeRow}>
+            <View style={styles.heroChallengeTitleRow}>
+              <Text style={styles.heroChallengeEmoji}>{activeChallenge.emoji}</Text>
+              <Text style={[styles.heroChallengeName, { color: goldPalette.text }]} numberOfLines={1}>
+                {activeChallenge.title}
+              </Text>
+            </View>
+            <Text style={[styles.heroChallengeMeta, { color: goldPalette.subtext }]}>
+              {activeChallenge.timerLabel}
+            </Text>
+          </View>
+          <View style={styles.heroChallengeProgressRow}>
+            <View style={[styles.heroChallengeBar, { backgroundColor: goldPalette.barBg }]}>
+              <View
+                style={[
+                  styles.heroChallengeFill,
+                  { backgroundColor: goldPalette.accent, width: `${activeChallengePercent * 100}%` },
+                ]}
+              />
+            </View>
+            <Text style={[styles.heroChallengeLabel, { color: goldPalette.subtext }]}>
+              {activeChallenge.progressLabel}
+            </Text>
+          </View>
+        </TouchableOpacity>
       )}
       {expanded && (
         <TouchableOpacity
@@ -9992,112 +10437,6 @@ function SavingsHeroCard({
             <Text style={[styles.savedHeroDailyTitle, { color: goldPalette.text }]}>
               {t("heroDailyTitle")}
             </Text>
-            {weeklyTrend && (
-              <View style={styles.weeklyTrendRow}>
-                {weeklyTrend.savings && (
-                  <View style={styles.weeklyTrendItem}>
-                    <Text style={[styles.weeklyTrendLabel, { color: goldPalette.subtext }]}>
-                      {t("heroWeeklySavingsDelta")}
-                    </Text>
-                    <Text style={[styles.weeklyTrendValue, { color: weeklyTrend.savings.color }]}>
-                      {weeklyTrend.savings.symbol} {weeklyTrend.savings.label}
-                    </Text>
-                  </View>
-                )}
-                {weeklyTrend.spending && (
-                  <View style={styles.weeklyTrendItem}>
-                    <Text style={[styles.weeklyTrendLabel, { color: goldPalette.subtext }]}>
-                      {t("heroWeeklySpendingDelta")}
-                    </Text>
-                    <Text style={[styles.weeklyTrendValue, { color: weeklyTrend.spending.color }]}>
-                      {weeklyTrend.spending.symbol} {weeklyTrend.spending.label}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            )}
-            {maxAmount > 0 ? (
-              <View style={styles.savedHeroBars}>
-                {dailySavings.map((day) => (
-                  <View key={day.key} style={styles.savedHeroBarItem}>
-                    <View style={styles.savedHeroBarAmountWrap}>
-                      {day.amountValueLabel ? (
-                        <View style={styles.savedHeroBarAmountBlock}>
-                          <Text
-                            style={[styles.savedHeroBarAmount, { color: goldPalette.text }]}
-                            numberOfLines={1}
-                          >
-                            {day.amountValueLabel}
-                            {day.amountCurrencySymbol ? (
-                              <Text
-                                style={[styles.savedHeroBarCurrency, { color: goldPalette.text }]}
-                              >
-                                {"\u00A0"}
-                                {day.amountCurrencySymbol}
-                              </Text>
-                            ) : null}
-                          </Text>
-                        </View>
-                      ) : null}
-                      {day.spendValueLabel ? (
-                        <View style={styles.savedHeroBarAmountBlock}>
-                          <Text
-                            style={[
-                              styles.savedHeroBarSpend,
-                              { color: day.amountUSD ? goldPalette.subtext : goldPalette.danger },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {day.spendValueLabel}
-                            {day.spendCurrencySymbol ? (
-                              <Text
-                                style={[
-                                  styles.savedHeroBarCurrency,
-                                  { color: day.amountUSD ? goldPalette.subtext : goldPalette.danger },
-                                ]}
-                              >
-                                {"\u00A0"}
-                                {day.spendCurrencySymbol}
-                              </Text>
-                            ) : null}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                    <View style={styles.savedHeroBarTrack}>
-                      <View
-                        style={[
-                          styles.savedHeroBarColumn,
-                          {
-                            height: `${day.percent}%`,
-                            backgroundColor: goldPalette.accent,
-                          },
-                        ]}
-                      />
-                      {day.spendPercent > 0 ? (
-                        <View
-                          style={[
-                            styles.savedHeroBarColumnSpend,
-                            {
-                              height: `${day.spendPercent}%`,
-                              backgroundColor: goldPalette.danger,
-                              opacity: day.spendOverflow ? 0.95 : 0.8,
-                            },
-                          ]}
-                        />
-                      ) : null}
-                    </View>
-                    <Text style={[styles.savedHeroBarLabel, { color: goldPalette.subtext }]}>
-                      {day.label}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <Text style={[styles.savedHeroDailyEmpty, { color: goldPalette.subtext }]}>
-                {t("heroDailyEmpty")}
-              </Text>
-            )}
             {analyticsPreview.length > 0 && (
               <View style={styles.savedHeroStatsRow}>
                 {analyticsPreview.map((stat) => (
@@ -10121,6 +10460,24 @@ function SavingsHeroCard({
           </View>
         </TouchableOpacity>
       )}
+      <View style={styles.savedHeroToggleRow}>
+        <TouchableOpacity
+          style={styles.savedHeroToggleButton}
+          onPress={() =>
+            setExpanded((prev) => {
+              const next = !prev;
+              if (next) {
+                logEvent("stats_screen_viewed", { tab: "feed" });
+              }
+              return next;
+            })
+          }
+        >
+          <Text style={[styles.savedHeroToggleText, { color: goldPalette.subtext }]}>
+            {expanded ? t("heroCollapse") : t("heroExpand")}
+          </Text>
+        </TouchableOpacity>
+      </View>
       <Modal
         visible={isDailyRewardModalVisible}
         transparent
@@ -10243,6 +10600,184 @@ function SavingsHeroCard({
     </View>
   );
 }
+
+const resolveFeatureUnlockCopy = (variantKey, t) => {
+  const config = FEATURE_UNLOCK_VARIANT_CONFIG[variantKey];
+  if (!config) {
+    return { title: "", description: "" };
+  }
+  return {
+    title: t(config.titleKey),
+    description: t(config.descriptionKey),
+  };
+};
+
+const LockedFeatureOverlay = ({
+  locked,
+  variantKey,
+  level,
+  colors,
+  t,
+  style,
+  contentStyle,
+  borderRadius = 20,
+  blurIntensity = 18,
+  compact = false,
+  centered = false,
+  children,
+}) => {
+  if (!locked) {
+    return <View style={style}>{children}</View>;
+  }
+  const { title, description } = resolveFeatureUnlockCopy(variantKey, t);
+  const unlockLevel = Number(level) || FEATURE_UNLOCK_LEVELS[variantKey] || null;
+  const isDarkMode = colors?.background === THEMES.dark.background;
+  const textColor = isDarkMode ? "#F7F2E6" : "#2A1C00";
+  const subTextColor = isDarkMode ? "rgba(247,242,230,0.8)" : "rgba(42,28,0,0.7)";
+  const badgeBg = isDarkMode ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.8)";
+  const badgeBorder = isDarkMode ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.1)";
+  const overlayScrim = isDarkMode
+    ? Platform.OS === "android"
+      ? "rgba(5,5,5,0.38)"
+      : "rgba(5,5,5,0.58)"
+    : Platform.OS === "android"
+    ? "rgba(255,255,255,0.35)"
+    : "rgba(255,255,255,0.7)";
+  const radiusStyle = Number.isFinite(borderRadius) ? { borderRadius } : null;
+  const compactOverlayStyle = compact ? styles.lockedFeatureOverlayCompact : null;
+  const compactContentStyle = compact ? styles.lockedFeatureOverlayContentCompact : null;
+  const compactTitleStyle = compact ? styles.lockedFeatureTitleCompact : null;
+  const compactDescriptionStyle = compact ? styles.lockedFeatureDescriptionCompact : null;
+  const compactBadgeStyle = compact ? styles.lockedFeatureLevelBadgeCompact : null;
+  const compactBadgeTextStyle = compact ? styles.lockedFeatureLevelTextCompact : null;
+  const compactLockStyle = compact ? styles.lockedFeatureLockIconCompact : null;
+  const centeredOverlayStyle = centered ? styles.lockedFeatureOverlayCentered : null;
+  const centeredContentStyle = centered ? styles.lockedFeatureOverlayContentCentered : null;
+  const centeredTitleStyle = centered ? styles.lockedFeatureTitleCentered : null;
+  const centeredDescriptionStyle = centered ? styles.lockedFeatureDescriptionCentered : null;
+  const centeredLockRowStyle = centered ? styles.lockedFeatureLockRowCentered : null;
+  const centeredBadgeStyle = centered ? styles.lockedFeatureLevelBadgeCentered : null;
+  const centeredLockStyle = centered ? styles.lockedFeatureLockIconCentered : null;
+  const blurAvailable = useMemo(() => isBlurViewAvailable(), []);
+  const androidBlurAmount = Math.max(2, Math.round((Number(blurIntensity) || 0) * 0.3));
+  const blurIntensityValue = Platform.OS === "android" ? androidBlurAmount : blurIntensity;
+  const androidBlurFallback = isDarkMode ? "#0B0B0B" : "#F2F2F2";
+  return (
+    <View style={[styles.lockedFeatureWrap, radiusStyle, style]}>
+      <View style={contentStyle} pointerEvents="none">
+        {children}
+      </View>
+        <View
+          style={[styles.lockedFeatureOverlay, radiusStyle, compactOverlayStyle, centeredOverlayStyle]}
+          pointerEvents="auto"
+        >
+          {blurAvailable ? (
+            Platform.OS === "android" && AndroidBlurView ? (
+              <AndroidBlurView
+                blurType={isDarkMode ? "dark" : "light"}
+                blurAmount={androidBlurAmount}
+                reducedTransparencyFallbackColor={androidBlurFallback}
+                style={[StyleSheet.absoluteFill, styles.lockedFeatureBlur, radiusStyle]}
+              />
+            ) : (
+              <ExpoBlurView
+                tint={isDarkMode ? "dark" : "light"}
+                intensity={blurIntensityValue}
+                experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
+                style={[StyleSheet.absoluteFill, styles.lockedFeatureBlur, radiusStyle]}
+              />
+            )
+          ) : null}
+          <View
+            style={[styles.lockedFeatureScrim, styles.lockedFeatureBlur, radiusStyle, { backgroundColor: overlayScrim }]}
+          />
+          <View style={[styles.lockedFeatureOverlayContent, compactContentStyle, centeredContentStyle]}>
+          <View style={[styles.lockedFeatureLockRow, centeredLockRowStyle]}>
+            <Text style={[styles.lockedFeatureLockIcon, compactLockStyle, centeredLockStyle, { color: textColor }]}>🔒</Text>
+          </View>
+          <Text
+            style={[
+              styles.lockedFeatureTitle,
+              compactTitleStyle,
+              centeredTitleStyle,
+              { color: textColor },
+            ]}
+            numberOfLines={compact ? 2 : undefined}
+          >
+            {title}
+          </Text>
+          <Text
+            style={[
+              styles.lockedFeatureDescription,
+              compactDescriptionStyle,
+              centeredDescriptionStyle,
+              { color: subTextColor },
+            ]}
+            numberOfLines={compact ? 3 : undefined}
+          >
+            {description}
+          </Text>
+          {unlockLevel ? (
+            <View
+              style={[
+                styles.lockedFeatureLevelBadge,
+                compactBadgeStyle,
+                centeredBadgeStyle,
+                { backgroundColor: badgeBg, borderColor: badgeBorder },
+              ]}
+            >
+              <Text style={[styles.lockedFeatureLevelText, compactBadgeTextStyle, { color: textColor }]}>
+                {t("featureLockedLevelLabel", { level: unlockLevel })}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
+};
+
+const LockedFeatureCard = ({
+  variantKey,
+  level,
+  colors,
+  t,
+  style,
+  compact = false,
+  square = false,
+  minHeight = null,
+  blurIntensity = 18,
+}) => {
+  const baseLineColor = colors?.border || "rgba(0,0,0,0.12)";
+  const placeholderStyle = compact ? styles.lockedFeaturePlaceholderCompact : styles.lockedFeaturePlaceholder;
+  const squareStyle = square ? styles.lockedFeaturePlaceholderSquare : null;
+  const sizeStyle = Number.isFinite(minHeight) ? { minHeight } : null;
+  return (
+    <LockedFeatureOverlay
+      locked
+      variantKey={variantKey}
+      level={level}
+      colors={colors}
+      t={t}
+      style={style}
+      blurIntensity={blurIntensity}
+      compact={compact}
+    >
+      <View
+        style={[
+          placeholderStyle,
+          squareStyle,
+          sizeStyle,
+          { backgroundColor: colors?.card, borderColor: colors?.border },
+        ]}
+      >
+        <View style={[styles.lockedFeaturePlaceholderLine, { width: "62%", backgroundColor: baseLineColor }]} />
+        <View style={[styles.lockedFeaturePlaceholderLine, { width: "92%", backgroundColor: baseLineColor }]} />
+        <View style={[styles.lockedFeaturePlaceholderLine, { width: "76%", backgroundColor: baseLineColor }]} />
+      </View>
+    </LockedFeatureOverlay>
+  );
+};
 
 function FreeDayCard({
   colors,
@@ -10674,15 +11209,27 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
   const neutralBg = isDarkMode ? "rgba(250,204,21,0.22)" : "#FFF4D5";
   const neutralBorder = isDarkMode ? "rgba(250,204,21,0.4)" : "rgba(250,204,21,0.45)";
   const toggleLabel = expanded ? t("impulseCollapse") : t("impulseExpand");
-  const categories = IMPULSE_CATEGORY_ORDER.map((id) => {
+  const categories = IMPULSE_CATEGORY_ORDER.map((id, index) => {
     const entry = insights.categories?.[id] || { save: 0, spend: 0 };
+    const save = entry.save || 0;
+    const spend = entry.spend || 0;
     return {
       id,
+      orderIndex: index,
       label: getImpulseCategoryLabel(id, language),
-      save: entry.save || 0,
-      spend: entry.spend || 0,
+      save,
+      spend,
+      total: save + spend,
     };
   });
+  const rankedCategories = [...categories].sort((a, b) => {
+    if (b.total !== a.total) return b.total - a.total;
+    return a.orderIndex - b.orderIndex;
+  });
+  const topRanked = rankedCategories.filter((entry) => entry.total > 0);
+  const visibleCategories = expanded
+    ? (topRanked.length ? topRanked : rankedCategories).slice(0, 4)
+    : categories;
   const sequenceEntries = [];
   const sequenceData = insights.sequenceHotspots || {};
   if (sequenceData.slip) {
@@ -10755,7 +11302,7 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
             </View>
           ) : null}
           <View style={styles.impulseCategoryList}>
-            {categories.map((category) => {
+            {visibleCategories.map((category) => {
               const hasData = (category.save || 0) + (category.spend || 0) > 0;
               const isRisk = hasData && category.spend > category.save;
               const isWin = hasData && category.save > category.spend;
@@ -10853,6 +11400,8 @@ const FeedScreen = React.memo(
   onPotentialDetailsOpen = null,
   heroGoalTargetUSD = 0,
   heroGoalSavedUSD = 0,
+  potentialGrowthUSD = 0,
+  showPotentialGrowth = false,
   dailyRewardUnlocked = false,
   dailyRewardReady = false,
   dailyRewardAmount = 0,
@@ -10891,12 +11440,12 @@ const FeedScreen = React.memo(
   lifetimeSavedUSD = 0,
   interactionStats = {},
   resolveCardRefuseStats = () => null,
+  activeChallenge = null,
+  onActiveChallengePress = () => {},
   tutorialTemptationStepId = null,
   tutorialHighlightMeasureTick = 0,
   onTutorialHighlightLayoutChange = null,
   allowThinkAction = true,
-  showFreeDayCard = true,
-  showImpulseMap = true,
   },
     ref
   ) {
@@ -10948,16 +11497,6 @@ const FeedScreen = React.memo(
     [scrollToTop, scrollToTemptations]
   );
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
-  const [impulseExpanded, setImpulseExpanded] = useState(false);
-  const handleImpulseToggle = useCallback(() => {
-    setImpulseExpanded((prev) => {
-      const next = !prev;
-      if (next) {
-        logEvent("impulse_map_opened");
-      }
-      return next;
-    });
-  }, [logEvent]);
   const [timerNow, setTimerNow] = useState(Date.now());
   useEffect(() => {
     const intervalId = setInterval(() => setTimerNow(Date.now()), 30000);
@@ -11261,22 +11800,6 @@ const FeedScreen = React.memo(
     : "";
   const todayDate = new Date();
   const todayTimestamp = todayDate.getTime();
-  const todayKey = getDayKey(todayDate);
-  const dayBeforeYesterdayKey = getDayKey(new Date(todayDate.getTime() - DAY_MS * 2));
-  const freeDayBlockedToday = freeDayStats.blockedDate === todayKey;
-  const isEvening = new Date().getHours() >= 18;
-  const canLogFreeDay = isEvening && freeDayStats.lastDate !== todayKey && !freeDayBlockedToday;
-  const streakNeedsRescue =
-    freeDayStats.current > 0 &&
-    freeDayStats.lastDate === dayBeforeYesterdayKey &&
-    freeDayStats.lastDate !== todayKey;
-  const hasRescueHealth = healthPoints >= freeDayRescueCost;
-  const canRescueFreeDay = streakNeedsRescue && hasRescueHealth;
-  const rescueStatus = !streakNeedsRescue
-    ? null
-    : !hasRescueHealth
-    ? t("freeDayRescueNeedHealth", { cost: freeDayRescueCost })
-    : null;
   const potentialSavedUSD = useSavingsSimulation(
     profile?.spendingProfile?.baselineMonthlyWasteUSD || 0,
     profile?.spendingProfile?.baselineStartAt || null
@@ -11287,7 +11810,9 @@ const FeedScreen = React.memo(
   const potentialDescription = useMemo(() => {
     const currencyCode = profile?.currency || DEFAULT_PROFILE.currency;
     const formatLocal = (valueUSD = 0) =>
-      formatCurrency(convertToCurrency(Math.max(valueUSD, 0), currencyCode), currencyCode);
+      formatCurrency(convertToCurrency(Math.max(valueUSD, 0), currencyCode), currencyCode, {
+        precisionOverride: getCurrencyPrecision(currencyCode),
+      });
     const potentialLocal = formatLocal(potentialSavedUSD);
     const actualLocal = formatLocal(realSavedUSD);
     const deltaLocal = formatLocal(Math.max(potentialSavedUSD - realSavedUSD, 0));
@@ -11589,162 +12114,7 @@ const FeedScreen = React.memo(
     },
     [colors, frequencyCollapseMap, renderTemptationCard, t, toggleFrequencySection]
   );
-  const freeDayEventKeys = useMemo(() => {
-    const keys = new Set();
-    resolvedHistoryEvents.forEach((entry) => {
-      if (entry.kind === "free_day") {
-        keys.add(getDayKey(entry.timestamp));
-      }
-    });
-    return keys;
-  }, [resolvedHistoryEvents]);
-  const weekLabels = WEEKDAY_LABELS_MONDAY_FIRST[language] || WEEKDAY_LABELS_MONDAY_FIRST.en;
-  const weekDays = useMemo(() => {
-    const today = new Date(todayTimestamp);
-    const start = new Date(today);
-    const weekday = (today.getDay() + 6) % 7;
-    start.setDate(today.getDate() - weekday);
-    return Array.from({ length: 7 }).map((_, index) => {
-      const date = new Date(start);
-      date.setDate(start.getDate() + index);
-      const key = getDayKey(date);
-      return {
-        key,
-        label: weekLabels[index],
-        active: freeDayEventKeys.has(key),
-        isToday: key === todayKey,
-      };
-    });
-  }, [freeDayEventKeys, todayTimestamp, todayKey, weekLabels]);
-  const weekSuccessCount = useMemo(
-    () => weekDays.filter((day) => day.active).length,
-    [weekDays]
-  );
-  const weeklyComparison = useMemo(() => {
-    const today = new Date(todayTimestamp);
-    const currentStart = new Date(today);
-    currentStart.setDate(today.getDate() - 6);
-    const prevStart = new Date(currentStart);
-    prevStart.setDate(currentStart.getDate() - 7);
-    const currentRange = { start: currentStart.getTime(), end: today.getTime() };
-    const prevRange = { start: prevStart.getTime(), end: currentStart.getTime() - 1 };
-    let currentSavings = 0;
-    let currentSpending = 0;
-    let prevSavings = 0;
-    let prevSpending = 0;
-    resolvedHistoryEvents.forEach((entry) => {
-      const timestamp = entry?.timestamp;
-      if (!timestamp) return;
-      const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
-      if (!amount) return;
-      if (timestamp >= currentRange.start && timestamp <= currentRange.end) {
-        if (entry.kind === "refuse_spend") {
-          currentSavings += amount;
-        } else if (entry.kind === "spend") {
-          currentSpending += amount;
-        }
-      } else if (timestamp >= prevRange.start && timestamp <= prevRange.end) {
-        if (entry.kind === "refuse_spend") {
-          prevSavings += amount;
-        } else if (entry.kind === "spend") {
-          prevSpending += amount;
-        }
-      }
-    });
-    const buildDelta = (current, previous) => {
-      const deltaUSD = current - previous;
-      const direction = deltaUSD >= 0 ? "up" : "down";
-      return {
-        deltaUSD,
-        direction,
-        previous,
-      };
-    };
-    return {
-      savings: buildDelta(currentSavings, prevSavings),
-      spending: buildDelta(currentSpending, prevSpending),
-      currentSavings,
-      currentSpending,
-    };
-  }, [resolvedHistoryEvents, todayTimestamp]);
   const analyticsPreview = analyticsStats.slice(0, 3);
-  const savingsDaily = useMemo(() => {
-    const today = new Date(todayTimestamp);
-    const start = new Date(today);
-    start.setDate(today.getDate() - 6);
-    const minTimestamp = start.getTime();
-    const map = new Map();
-    resolvedHistoryEvents.forEach((entry) => {
-      if (!entry.timestamp || entry.timestamp < minTimestamp) return;
-      if (entry.kind !== "refuse_spend" && entry.kind !== "spend") return;
-      const amount = Math.max(0, Number(entry.meta?.amountUSD) || 0);
-      if (!amount) return;
-      const key = getDayKey(entry.timestamp);
-      const current = map.get(key) || { saveUSD: 0, spendUSD: 0 };
-      if (entry.kind === "refuse_spend") {
-        current.saveUSD += amount;
-      } else {
-        current.spendUSD += amount;
-      }
-      map.set(key, current);
-    });
-    let maxSave = 0;
-    const baseItems = Array.from({ length: 7 }).map((_, index) => {
-      const date = new Date(start);
-      date.setDate(start.getDate() + index);
-      const key = getDayKey(date);
-      const stats = map.get(key) || { saveUSD: 0, spendUSD: 0 };
-      const saveUSD = stats.saveUSD || 0;
-      const spendUSD = stats.spendUSD || 0;
-      if (saveUSD > maxSave) maxSave = saveUSD;
-      const weekdayIndex = (date.getDay() + 6) % 7;
-      const label =
-        WEEKDAY_LABELS_MONDAY_FIRST[language]?.[weekdayIndex] ||
-        WEEKDAY_LABELS_MONDAY_FIRST.en[weekdayIndex];
-      const saveLocal = convertToCurrency(saveUSD, currency);
-      const spendLocal = convertToCurrency(spendUSD, currency);
-      const amountLabel = saveUSD ? formatCurrency(saveLocal, currency) : formatCurrency(0, currency);
-      const spendLabel = spendUSD ? `-${formatCurrency(spendLocal, currency)}` : formatCurrency(0, currency);
-      const amountParts = splitCurrencyLabel(amountLabel, currency);
-      const spendParts = splitCurrencyLabel(spendLabel, currency);
-      const amountValueLabel =
-        amountParts.value && typeof amountParts.value === "string"
-          ? amountParts.value.replace(/ /g, "\u00A0")
-          : amountParts.value;
-      const spendValueLabel =
-        spendParts.value && typeof spendParts.value === "string"
-          ? spendParts.value.replace(/ /g, "\u00A0")
-          : spendParts.value;
-      return {
-        key,
-        label,
-        amountUSD: saveUSD,
-        saveUSD,
-        spendUSD,
-        amountLabel,
-        amountValueLabel,
-        amountCurrencySymbol: amountParts.symbol,
-        spendLabel,
-        spendValueLabel,
-        spendCurrencySymbol: spendParts.symbol,
-      };
-    });
-    const maxValue = Math.max(maxSave, 0.01);
-    return baseItems.map((item) => {
-      const percent = item.saveUSD > 0 ? Math.max((item.saveUSD / maxValue) * 100, 8) : 0;
-      const spendPercent =
-        item.saveUSD > 0 && item.spendUSD > 0
-          ? Math.min(percent, Math.max((item.spendUSD / item.saveUSD) * percent, 2))
-          : 0;
-      return {
-        ...item,
-        percent,
-        spendPercent,
-        spendOverflow: item.spendUSD > item.saveUSD,
-      };
-    });
-  }, [currency, resolvedHistoryEvents, language, todayTimestamp]);
-  const showImpulseCard = useMemo(() => hasImpulseHistory(impulseInsights), [impulseInsights]);
   const { wishesById, swipePinnedByTemplate } = useMemo(() => {
     const byId = {};
     const swipePinned = {};
@@ -11862,10 +12232,11 @@ const FeedScreen = React.memo(
             isGoalComplete={isGoalComplete}
             completionLabel={t("goalWidgetComplete")}
             t={t}
-            dailySavings={savingsDaily}
             analyticsPreview={analyticsPreview}
             potentialSavedUSD={potentialSavedUSD}
             actualSavedUSD={realSavedUSD}
+            potentialGrowthUSD={potentialGrowthUSD}
+            showPotentialGrowth={showPotentialGrowth}
             currency={currency}
             hasBaseline={hasBaseline}
             hasActiveGoal={heroHasActiveGoal}
@@ -11877,42 +12248,15 @@ const FeedScreen = React.memo(
             levelProgressValue={heroLevelProgress}
             healthPoints={healthPoints}
             onBreakdownPress={onSavingsBreakdownPress}
-            weeklyComparison={weeklyComparison}
             dailyRewardUnlocked={dailyRewardUnlocked}
             dailyRewardReady={dailyRewardReady}
             dailyRewardAmount={dailyRewardAmount}
             dailyRewardBaseAmount={dailyRewardBaseAmount}
             dailyRewardDay={dailyRewardDay}
             onDailyRewardClaim={onDailyRewardClaim}
+            activeChallenge={activeChallenge}
+            onActiveChallengePress={onActiveChallengePress}
           />
-            {showFreeDayCard && (
-              <FreeDayCard
-                colors={colors}
-                t={t}
-                canLog={canLogFreeDay}
-                onLog={onFreeDayLog}
-                freeDayStats={freeDayStats}
-                todayKey={todayKey}
-                weekDays={weekDays}
-                weekCount={weekSuccessCount}
-                canRescue={canRescueFreeDay}
-                needsRescue={streakNeedsRescue}
-                rescueStatus={rescueStatus}
-                rescueCost={freeDayRescueCost}
-                onRescue={onFreeDayRescue}
-                hasRescueHealth={hasRescueHealth}
-              />
-            )}
-            {showImpulseMap && showImpulseCard && (
-              <ImpulseMapCard
-                insights={impulseInsights}
-                colors={colors}
-                t={t}
-                language={language}
-                expanded={impulseExpanded}
-                onToggle={handleImpulseToggle}
-              />
-            )}
             <View style={styles.feedTemptationHeader}>
               <Text style={[styles.feedTemptationTitle, { color: colors.text }]}>
                 {t("tutorialFeedTitle")}
@@ -12098,7 +12442,76 @@ const selectMainGoalWish = (wishes = [], activeGoalId = null) => {
   return list.find((wish) => wish?.status !== "done") || null;
 };
 
-const WishListScreen = React.memo(function WishListScreen({
+const ProgressRing = React.memo(function ProgressRing({
+  size = 76,
+  strokeWidth = 8,
+  progress = 0,
+  trackColor = "rgba(0,0,0,0.08)",
+  progressColor = "#111",
+}) {
+  const normalized = Math.min(Math.max(progress, 0), 1);
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference * (1 - normalized);
+  return (
+    <Svg width={size} height={size}>
+      <SvgCircle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        stroke={trackColor}
+        strokeWidth={strokeWidth}
+        fill="none"
+      />
+      <SvgCircle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        stroke={progressColor}
+        strokeWidth={strokeWidth}
+        fill="none"
+        strokeDasharray={`${circumference} ${circumference}`}
+        strokeDashoffset={dashOffset}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+    </Svg>
+  );
+});
+
+const ChallengeProgressDots = React.memo(function ChallengeProgressDots({
+  total = 0,
+  progress = 0,
+  colors,
+}) {
+  const count = Math.max(0, Math.round(total));
+  if (!count) return null;
+  return (
+    <View style={styles.challengeDotRow}>
+      {Array.from({ length: count }).map((_, index) => {
+        const filled = index < progress;
+        return (
+          <View
+            key={`dot-${index}`}
+            style={[
+              styles.challengeDot,
+              {
+                borderColor: filled ? colors.text : colors.border,
+                backgroundColor: filled ? colors.text : "transparent",
+              },
+            ]}
+          >
+            {filled ? (
+              <Text style={[styles.challengeDotCheck, { color: colors.background }]}>✓</Text>
+            ) : null}
+          </View>
+        );
+      })}
+    </View>
+  );
+});
+
+const ProgressScreen = React.memo(function ProgressScreen({
   wishes,
   currency = DEFAULT_PROFILE.currency,
   t,
@@ -12111,9 +12524,34 @@ const WishListScreen = React.memo(function WishListScreen({
   onSetActiveGoal = null,
   language = DEFAULT_LANGUAGE,
   catCuriousSource,
+  healthPoints = 0,
+  freeDayStats = INITIAL_FREE_DAY_STATS,
+  onFreeDayLog,
+  onFreeDayRescue,
+  freeDayRescueCost = FREE_DAY_RESCUE_COST,
+  historyEvents = [],
+  impulseInsights,
+  showImpulseMap = false,
+  showFreeDayCard = false,
+  challenges = [],
+  onChallengeAccept = () => {},
+  onChallengeClaim = () => {},
+  onChallengeCancel = () => {},
+  onCreateGoal = () => {},
+  focusChallengeId = null,
+  onFocusHandled = () => {},
+  challengeBadges = [],
+  challengeBadgeCount = 0,
+  playerLevel = 1,
+  resolveTemplateCard = null,
+  resolveTemptationCategory = null,
+  customCategories = [],
 }) {
-  const curiousImage = catCuriousSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.curious;
   const isDarkTheme = colors.background === THEMES.dark.background;
+  const [impulseExpanded, setImpulseExpanded] = useState(false);
+  const handleImpulseToggle = useCallback(() => {
+    setImpulseExpanded((prev) => !prev);
+  }, []);
   const primaryGoalIds = Array.isArray(primaryGoals)
     ? primaryGoals.map((goal) => goal?.id).filter(Boolean)
     : [];
@@ -12159,6 +12597,306 @@ const WishListScreen = React.memo(function WishListScreen({
   const totalTarget = formatCurrency(
     convertToCurrency(listData.reduce((sum, wish) => sum + (wish.targetUSD || 0), 0), currency),
     currency
+  );
+  const resolvedActiveGoalId = activeGoalId || primaryGoalIds[0] || null;
+  const activeGoalEntry = Array.isArray(primaryGoals)
+    ? primaryGoals.find((goal) => goal?.id === resolvedActiveGoalId)
+    : null;
+  const activeGoalWish = listData.find((wish) => (wish.goalId || wish.id) === resolvedActiveGoalId) || null;
+  const goalPreset = resolvedActiveGoalId ? getGoalPreset(resolvedActiveGoalId) : null;
+  const goalTitle = activeGoalWish
+    ? getWishTitleWithoutEmoji(activeGoalWish)
+    : activeGoalEntry?.customTitle
+    ? activeGoalEntry.customTitle
+    : resolvedActiveGoalId
+    ? goalPreset?.[language] || goalPreset?.en || ""
+    : t("wishlistEmptyTitle");
+  const goalEmoji =
+    activeGoalWish?.emoji ||
+    (activeGoalWish ? resolveWishEmoji(activeGoalWish) : null) ||
+    activeGoalEntry?.customEmoji ||
+    goalPreset?.emoji ||
+    "🎯";
+  const goalTargetUSD =
+    Number.isFinite(activeGoalEntry?.targetUSD) && activeGoalEntry.targetUSD > 0
+      ? activeGoalEntry.targetUSD
+      : activeGoalWish?.targetUSD || (resolvedActiveGoalId ? getGoalDefaultTargetUSD(resolvedActiveGoalId) : 0);
+  const goalSavedUSD = Number.isFinite(activeGoalEntry?.savedUSD)
+    ? Math.max(activeGoalEntry.savedUSD, 0)
+    : Math.max(activeGoalWish?.savedUSD || 0, 0);
+  const goalProgress = goalTargetUSD > 0 ? Math.min(goalSavedUSD / goalTargetUSD, 1) : 0;
+  const goalTargetLabel = formatCurrency(convertToCurrency(goalTargetUSD || 0, currency), currency);
+  const goalRemainingLabel = formatCurrency(
+    convertToCurrency(Math.max(goalTargetUSD - goalSavedUSD, 0), currency),
+    currency
+  );
+  const coinEntries = useMemo(() => buildHealthCoinEntries(healthPoints), [healthPoints]);
+  const hasCoinInventory = coinEntries.some((entry) => entry.count > 0);
+  const activeChallenges = challenges.filter(
+    (entry) => entry.status === CHALLENGE_STATUS.ACTIVE
+  );
+  const bestActiveChallenge = activeChallenges.reduce((best, current) => {
+    if (!best) return current;
+    if ((current.progressPercent || 0) > (best.progressPercent || 0)) return current;
+    if ((current.progressPercent || 0) < (best.progressPercent || 0)) return best;
+    return (current.progressValue || 0) >= (best.progressValue || 0) ? current : best;
+  }, null);
+  const activeChallenge = bestActiveChallenge || null;
+  const activeChallengeIsAmount = activeChallenge ? !activeChallenge.isCountMetric : false;
+  const activeChallengeProgressValue = activeChallenge?.progressValue || 0;
+  const activeChallengeTargetValue = activeChallenge?.targetValue || 0;
+  const activeChallengePercent =
+    activeChallenge && activeChallengeTargetValue
+      ? Math.min(activeChallengeProgressValue / activeChallengeTargetValue, 1)
+      : 0;
+  const activeChallengeActionEnabled =
+    activeChallenge?.canClaim || activeChallenge?.canStart || false;
+
+  const resolvedHistoryEvents = useMemo(
+    () => (Array.isArray(historyEvents) ? historyEvents : []),
+    [historyEvents]
+  );
+  const scrollRef = useRef(null);
+  const challengeLayoutsRef = useRef({});
+  const registerChallengeLayout = useCallback(
+    (challengeId, event) => {
+      if (!challengeId || !event?.nativeEvent?.layout) return;
+      const layout = event.nativeEvent.layout;
+      challengeLayoutsRef.current[challengeId] = layout;
+      if (focusChallengeId && challengeId === focusChallengeId && scrollRef.current) {
+        const targetY = Math.max(layout.y - 16, 0);
+        scrollRef.current.scrollTo({ y: targetY, animated: true });
+        onFocusHandled?.();
+      }
+    },
+    [focusChallengeId, onFocusHandled]
+  );
+  const freeDayEventKeys = useMemo(() => {
+    const keys = new Set();
+    resolvedHistoryEvents.forEach((entry) => {
+      if (entry.kind === "free_day") {
+        keys.add(getDayKey(entry.timestamp));
+      }
+    });
+    return keys;
+  }, [resolvedHistoryEvents]);
+  const todayDate = new Date();
+  const todayTimestamp = todayDate.getTime();
+  const todayKey = getDayKey(todayDate);
+  const dayBeforeYesterdayKey = getDayKey(new Date(todayDate.getTime() - DAY_MS * 2));
+  const freeDayBlockedToday = freeDayStats?.blockedDate === todayKey;
+  const isEvening = new Date().getHours() >= 18;
+  const canLogFreeDay = isEvening && freeDayStats?.lastDate !== todayKey && !freeDayBlockedToday;
+  const streakNeedsRescue =
+    (freeDayStats?.current || 0) > 0 &&
+    freeDayStats?.lastDate === dayBeforeYesterdayKey &&
+    freeDayStats?.lastDate !== todayKey;
+  const hasRescueHealth = healthPoints >= freeDayRescueCost;
+  const canRescueFreeDay = streakNeedsRescue && hasRescueHealth;
+  const rescueStatus = !streakNeedsRescue
+    ? null
+    : !hasRescueHealth
+    ? t("freeDayRescueNeedHealth", { cost: freeDayRescueCost })
+    : null;
+  const weekLabels = WEEKDAY_LABELS_MONDAY_FIRST[language] || WEEKDAY_LABELS_MONDAY_FIRST.en;
+  const weekDays = useMemo(() => {
+    const today = new Date(todayTimestamp);
+    const start = new Date(today);
+    const weekday = (today.getDay() + 6) % 7;
+    start.setDate(today.getDate() - weekday);
+    return Array.from({ length: 7 }).map((_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      const key = getDayKey(date);
+      return {
+        key,
+        label: weekLabels[index],
+        active: freeDayEventKeys.has(key),
+        isToday: key === todayKey,
+      };
+    });
+  }, [freeDayEventKeys, todayTimestamp, todayKey, weekLabels]);
+  const weekSuccessCount = useMemo(
+    () => weekDays.filter((day) => day.active).length,
+    [weekDays]
+  );
+  const categoryData = useMemo(() => {
+    const categories = IMPULSE_CATEGORY_ORDER.map((id, index) => {
+      const entry = impulseInsights?.categories?.[id] || { save: 0, spend: 0 };
+      const total = (entry.save || 0) + (entry.spend || 0);
+      return {
+        id,
+        orderIndex: index,
+        label: getImpulseCategoryLabel(id, language),
+        save: entry.save || 0,
+        spend: entry.spend || 0,
+        total,
+      };
+    });
+    const maxTotal = categories.reduce((max, entry) => Math.max(max, entry.total || 0), 0);
+    const sorted = [...categories].sort((a, b) => {
+      if (b.total !== a.total) return b.total - a.total;
+      return a.orderIndex - b.orderIndex;
+    });
+    return { categories: sorted, maxTotal: Math.max(maxTotal, 1) };
+  }, [customCategories, impulseInsights?.categories, language]);
+  const categoryListHeight = useMemo(() => 64 * 5, []);
+  const weeklyComparison = useMemo(() => {
+    const today = new Date(todayTimestamp);
+    const currentStart = new Date(today);
+    currentStart.setDate(today.getDate() - 6);
+    const prevStart = new Date(currentStart);
+    prevStart.setDate(currentStart.getDate() - 7);
+    const currentRange = { start: currentStart.getTime(), end: today.getTime() };
+    const prevRange = { start: prevStart.getTime(), end: currentStart.getTime() - 1 };
+    let currentSavings = 0;
+    let currentSpending = 0;
+    let prevSavings = 0;
+    let prevSpending = 0;
+    resolvedHistoryEvents.forEach((entry) => {
+      const timestamp = entry?.timestamp;
+      if (!timestamp) return;
+      const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
+      if (!amount) return;
+      if (timestamp >= currentRange.start && timestamp <= currentRange.end) {
+        if (entry.kind === "refuse_spend") {
+          currentSavings += amount;
+        } else if (entry.kind === "spend") {
+          currentSpending += amount;
+        }
+      } else if (timestamp >= prevRange.start && timestamp <= prevRange.end) {
+        if (entry.kind === "refuse_spend") {
+          prevSavings += amount;
+        } else if (entry.kind === "spend") {
+          prevSpending += amount;
+        }
+      }
+    });
+    const buildDelta = (current, previous) => {
+      const deltaUSD = current - previous;
+      return {
+        deltaUSD,
+        previous,
+      };
+    };
+    return {
+      savings: buildDelta(currentSavings, prevSavings),
+      spending: buildDelta(currentSpending, prevSpending),
+      currentSavings,
+      currentSpending,
+    };
+  }, [resolvedHistoryEvents, todayTimestamp]);
+  const weeklyTrend = useMemo(() => {
+    const formatEntry = (entry, type) => {
+      const delta = Number(entry?.deltaUSD) || 0;
+      const absDelta = Math.abs(delta);
+      const localValue = formatCurrency(convertToCurrency(absDelta, currency), currency);
+      const symbol = delta >= 0 ? "▲" : "▼";
+      let color = SAVE_ACTION_COLOR;
+      if (type === "savings") {
+        color = delta >= 0 ? SAVE_ACTION_COLOR : SPEND_ACTION_COLOR;
+      } else {
+        color = delta >= 0 ? SPEND_ACTION_COLOR : SAVE_ACTION_COLOR;
+      }
+      return {
+        symbol,
+        label: localValue,
+        color,
+      };
+    };
+    const base = weeklyComparison || {};
+    const savingsTrend = formatEntry(base.savings, "savings");
+    const spendingTrend = formatEntry(base.spending, "spending");
+    return { savings: savingsTrend, spending: spendingTrend };
+  }, [currency, weeklyComparison]);
+  const weeklyDailySavings = useMemo(() => {
+    const today = new Date(todayTimestamp);
+    const start = new Date(today);
+    start.setDate(today.getDate() - 6);
+    const minTimestamp = start.getTime();
+    const map = new Map();
+    resolvedHistoryEvents.forEach((entry) => {
+      if (!entry.timestamp || entry.timestamp < minTimestamp) return;
+      if (entry.kind !== "refuse_spend" && entry.kind !== "spend") return;
+      const amount = Math.max(0, Number(entry.meta?.amountUSD) || 0);
+      if (!amount) return;
+      const key = getDayKey(entry.timestamp);
+      const current = map.get(key) || { saveUSD: 0, spendUSD: 0 };
+      if (entry.kind === "refuse_spend") {
+        current.saveUSD += amount;
+      } else {
+        current.spendUSD += amount;
+      }
+      map.set(key, current);
+    });
+    let maxSave = 0;
+    const baseItems = Array.from({ length: 7 }).map((_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      const key = getDayKey(date);
+      const stats = map.get(key) || { saveUSD: 0, spendUSD: 0 };
+      const saveUSD = stats.saveUSD || 0;
+      const spendUSD = stats.spendUSD || 0;
+      if (saveUSD > maxSave) maxSave = saveUSD;
+      const weekdayIndex = (date.getDay() + 6) % 7;
+      const label =
+        WEEKDAY_LABELS_MONDAY_FIRST[language]?.[weekdayIndex] ||
+        WEEKDAY_LABELS_MONDAY_FIRST.en[weekdayIndex];
+      const saveLocal = convertToCurrency(saveUSD, currency);
+      const spendLocal = convertToCurrency(spendUSD, currency);
+      const amountLabel = saveUSD ? formatCurrency(saveLocal, currency) : formatCurrency(0, currency);
+      const spendLabel = spendUSD ? `-${formatCurrency(spendLocal, currency)}` : formatCurrency(0, currency);
+      const amountParts = splitCurrencyLabel(amountLabel, currency);
+      const spendParts = splitCurrencyLabel(spendLabel, currency);
+      const amountValueLabel =
+        amountParts.value && typeof amountParts.value === "string"
+          ? amountParts.value.replace(/ /g, "\u00A0")
+          : amountParts.value;
+      const spendValueLabel =
+        spendParts.value && typeof spendParts.value === "string"
+          ? spendParts.value.replace(/ /g, "\u00A0")
+          : spendParts.value;
+      return {
+        key,
+        label,
+        amountUSD: saveUSD,
+        saveUSD,
+        spendUSD,
+        amountLabel,
+        amountValueLabel,
+        amountCurrencySymbol: amountParts.symbol,
+        spendLabel,
+        spendValueLabel,
+        spendCurrencySymbol: spendParts.symbol,
+      };
+    });
+    const maxValue = Math.max(maxSave, 0.01);
+    return baseItems.map((item) => {
+      const percent = item.saveUSD > 0 ? Math.max((item.saveUSD / maxValue) * 100, 8) : 0;
+      const spendPercent =
+        item.saveUSD > 0 && item.spendUSD > 0
+          ? Math.min(percent, Math.max((item.spendUSD / item.saveUSD) * percent, 2))
+          : 0;
+      return {
+        ...item,
+        percent,
+        spendPercent,
+        spendOverflow: item.spendUSD > item.saveUSD,
+      };
+    });
+  }, [currency, language, resolvedHistoryEvents, todayTimestamp]);
+  const weeklyCardPalette = {
+    background: "#FFFFFF",
+    border: "rgba(0,0,0,0.08)",
+    text: "#2A1C00",
+    subtext: "rgba(42,28,0,0.6)",
+    track: "rgba(0,0,0,0.06)",
+    save: SAVE_ACTION_COLOR,
+    spend: SPEND_ACTION_COLOR,
+  };
+  const weeklyHasData = useMemo(
+    () => weeklyDailySavings.some((day) => (day.amountUSD || 0) > 0 || (day.spendUSD || 0) > 0),
+    [weeklyDailySavings]
   );
 
   const renderWithLongPress = useCallback(
@@ -12224,9 +12962,6 @@ const WishListScreen = React.memo(function WishListScreen({
           const fillColor = isDarkTheme
             ? "rgba(14,15,22,0.85)"
             : "rgba(246,247,251,0.95)";
-          const auraColor = isDarkTheme
-            ? "rgba(0,0,0,0.06)"
-            : "rgba(255,255,255,0.18)";
           const cardContent = (
             <View
               style={[
@@ -12423,6 +13158,7 @@ const WishListScreen = React.memo(function WishListScreen({
         );
       },
       [
+        activeGoalId,
         colors,
         currency,
         handleSwipeClose,
@@ -12436,38 +13172,814 @@ const WishListScreen = React.memo(function WishListScreen({
         t,
       ]
     );
-  if (listData.length === 0) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }] }>
-        <Text style={[styles.header, { color: colors.text }]}>{t("wishlistTitle")}</Text>
-        <View style={styles.cartEmptyState}>
-          <Image source={curiousImage} style={[styles.catImage, styles.catImageLarge]} />
-          <Text style={[styles.cartEmptyTitle, { color: colors.text }]}>{t("wishlistEmptyTitle")}</Text>
-          <Text style={[styles.cartEmptySubtitle, { color: colors.muted }]}>
-            {t("wishlistEmptySubtitle")}
-          </Text>
+
+  const renderChallengeCard = useCallback(
+    (challenge) => {
+      const actionPalette = challenge.canClaim
+        ? { background: SAVE_ACTION_COLOR, text: "#fff" }
+        : challenge.canStart
+        ? { background: colors.text, text: colors.background }
+        : { background: colors.border, text: colors.muted };
+      const confirmAccept = () => {
+        Alert.alert(
+          t("challengeAcceptConfirmTitle"),
+          t("challengeAcceptConfirmMessage", { title: challenge.title }),
+          [
+            { text: t("challengeAcceptConfirmNo"), style: "cancel" },
+            {
+              text: t("challengeAcceptConfirmYes"),
+              style: "default",
+              onPress: () => onChallengeAccept?.(challenge.id),
+            },
+          ]
+        );
+      };
+      const confirmCancel = () => {
+        Alert.alert(
+          t("challengeCancelConfirmTitle"),
+          t("challengeCancelConfirmMessage", { title: challenge.title }),
+          [
+            { text: t("challengeCancelConfirmNo"), style: "cancel" },
+            {
+              text: t("challengeCancelConfirmYes"),
+              style: "destructive",
+              onPress: () => onChallengeCancel?.(challenge.id),
+            },
+          ]
+        );
+      };
+      const handleActionPress = () => {
+        if (challenge.canClaim) {
+          onChallengeClaim?.(challenge.id);
+        } else if (challenge.canStart) {
+          confirmAccept();
+        }
+      };
+      const isActionEnabled = challenge.canClaim || challenge.canStart;
+      const isSwipeEnabled = challenge.status === CHALLENGE_STATUS.ACTIVE;
+      const isCountMetric = challenge.isCountMetric;
+      const isLocked = challenge.isLevelLocked;
+      const cardBody = (
+        <View
+          style={[
+            styles.challengeCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+            isLocked && styles.challengeCardLocked,
+          ]}
+          onLayout={(event) => registerChallengeLayout(challenge.id, event)}
+        >
+          <View
+            style={[
+              styles.challengeRewardChip,
+              styles.challengeRewardChipFloating,
+              { backgroundColor: colors.text },
+            ]}
+          >
+            <HealthRewardTokens
+              amount={challenge.rewardHealth}
+              color={colors.background}
+              iconSize={12}
+              maxItems={2}
+              textSize={10}
+              rowStyle={styles.healthRewardTokenRowCompact}
+            />
+          </View>
+          <View style={styles.challengeHeader}>
+            <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text
+                style={[styles.challengeTitle, { color: colors.text }]}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.9}
+              >
+                {challenge.title}
+              </Text>
+              <Text style={[styles.challengeDesc, { color: colors.muted }]} numberOfLines={3}>
+                {challenge.description}
+              </Text>
+              {challenge.potentialSavingsLabel ? (
+                <Text style={[styles.challengePotential, { color: colors.text }]}>
+                  {t("challengePotentialSavings", { amount: challenge.potentialSavingsLabel })}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+          <View style={styles.challengeMetaRow}>
+            <Text style={[styles.challengeStatus, { color: colors.muted }]}>{challenge.statusLabel}</Text>
+            <Text style={[styles.challengeTimer, { color: colors.muted }]}>{challenge.timerLabel}</Text>
+          </View>
+          {isCountMetric ? (
+            <ChallengeProgressDots total={challenge.targetValue} progress={challenge.progressValue} colors={colors} />
+          ) : (
+            <View style={[styles.challengeProgressBar, { backgroundColor: colors.border }]}>
+              <View
+                style={[
+                  styles.challengeProgressFill,
+                  { width: `${challenge.progressPercent * 100}%`, backgroundColor: colors.text },
+                ]}
+              />
+            </View>
+          )}
+          <Text style={[styles.challengeProgressLabel, { color: colors.muted }]}>{challenge.progressLabel}</Text>
+          {isLocked ? (
+            <View style={styles.challengeLockRow}>
+              <Text style={[styles.challengeLockText, { color: colors.muted }]}>
+                {t("challengeLockedLevel", { level: challenge.unlockLevel || playerLevel })}
+              </Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.challengeActionButton, { backgroundColor: actionPalette.background }]}
+              activeOpacity={0.9}
+              disabled={!isActionEnabled}
+              onPress={handleActionPress}
+            >
+              <Text style={[styles.challengeActionText, { color: actionPalette.text }]}>
+                {challenge.actionLabel}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
-      </View>
-    );
-  }
+      );
+      if (isSwipeEnabled) {
+        return (
+          <SwipeableChallengeCard
+            key={challenge.id}
+            colors={colors}
+            cancelLabel={t("challengeCancelAction")}
+            onCancel={confirmCancel}
+          >
+            {cardBody}
+          </SwipeableChallengeCard>
+        );
+      }
+      return (
+        <View key={challenge.id}>
+          {cardBody}
+        </View>
+      );
+    },
+    [colors, onChallengeAccept, onChallengeCancel, onChallengeClaim, playerLevel, t]
+  );
+
+  const [activeCategoryId, setActiveCategoryId] = useState(null);
+  const activeCategoryLabel = useMemo(() => {
+    if (!activeCategoryId) return "";
+    return getImpulseCategoryLabel(activeCategoryId, language);
+  }, [activeCategoryId, language]);
+  const formatLocalAmount = useCallback(
+    (valueUSD = 0) => formatCurrency(convertToCurrency(valueUSD || 0, currency), currency),
+    [currency]
+  );
+  const resolveHistoryCategoryId = useCallback(
+    (entry) => {
+      const metaCategory =
+        entry?.meta?.category || entry?.meta?.impulseCategory || entry?.meta?.impulseCategoryOverride;
+      if (metaCategory && IMPULSE_CATEGORY_DEFS[metaCategory]) return metaCategory;
+      const templateId = entry?.meta?.templateId;
+      if (!templateId || typeof resolveTemplateCard !== "function" || typeof resolveTemptationCategory !== "function") {
+        return DEFAULT_IMPULSE_CATEGORY;
+      }
+      const template = resolveTemplateCard(templateId);
+      if (!template) return DEFAULT_IMPULSE_CATEGORY;
+      return resolveTemptationCategory(template);
+    },
+    [resolveTemplateCard, resolveTemptationCategory]
+  );
+  const categoryHistoryEntries = useMemo(() => {
+    if (!activeCategoryId) return [];
+    return resolvedHistoryEvents.filter((entry) => {
+      if (!entry || (entry.kind !== "refuse_spend" && entry.kind !== "spend")) return false;
+      return resolveHistoryCategoryId(entry) === activeCategoryId;
+    });
+  }, [activeCategoryId, resolvedHistoryEvents, resolveHistoryCategoryId]);
+  const locale = useMemo(() => getFormatLocale(language), [language]);
+  const describeCategoryHistory = useCallback(
+    (entry) => {
+      if (!entry) return t("historyUnknown");
+      const title = entry?.meta?.title || t("historyUnknown");
+      if (entry.kind === "refuse_spend") {
+        return t("historyRefuseSpend", { title, amount: formatLocalAmount(entry.meta?.amountUSD) });
+      }
+      if (entry.kind === "spend") {
+        return t("historySpend", { title, amount: formatLocalAmount(entry.meta?.amountUSD) });
+      }
+      return t("historyUnknown");
+    },
+    [formatLocalAmount, t]
+  );
+  const formatCategoryHistoryMeta = useCallback(
+    (entry) => {
+      if (!entry?.timestamp) return "";
+      try {
+        const date = new Date(entry.timestamp);
+        const dateLabel = date.toLocaleDateString(locale, { day: "numeric", month: "short" });
+        const timeLabel = date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+        return t("historyTimestamp", { date: dateLabel, time: timeLabel });
+      } catch {
+        return "";
+      }
+    },
+    [locale, t]
+  );
+  const closeCategoryHistory = useCallback(() => setActiveCategoryId(null), []);
+  const [categoryModalHeight, setCategoryModalHeight] = useState(0);
+  const categoryModalOpacity = useMemo(() => {
+    const screenHeight = Dimensions.get("window").height || 1;
+    const ratio = Math.max(0, Math.min((categoryModalHeight || 0) / screenHeight, 1));
+    return Math.min(0.5, Math.max(0.22, 0.18 + ratio * 0.45));
+  }, [categoryModalHeight]);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }] }>
-      <FlatList
-        data={listData}
-        keyExtractor={(item) => item.id}
-        renderItem={renderWishRow}
-        contentContainerStyle={{ paddingBottom: 200 }}
-        ListHeaderComponent={
-          <>
-            <Text style={[styles.header, { color: colors.text }]}>{t("wishlistTitle")}</Text>
-            <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
-              {t("wishlistSummary", { amount: totalTarget })}
+    <>
+      <ScrollView
+        ref={scrollRef}
+        style={[styles.container, { backgroundColor: colors.background }]}
+        contentContainerStyle={{ paddingBottom: 200, gap: 16 }}
+        showsVerticalScrollIndicator={false}
+      >
+      <View>
+        <Text style={[styles.header, { color: colors.text }]}>{t("wishlistTitle")}</Text>
+        <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
+          {t("progressTabSubtitle")}
+        </Text>
+      </View>
+
+      <View style={styles.progressHeroGrid}>
+        <View style={[styles.progressGoalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.progressGoalHeader}>
+            <Text style={[styles.progressGoalTitle, { color: colors.text }]}>{t("progressGoalTitle")}</Text>
+            <Text style={styles.progressGoalEmoji}>{goalEmoji}</Text>
+          </View>
+          <Text style={[styles.progressGoalName, { color: colors.text }]} numberOfLines={2}>
+            {goalTitle}
+          </Text>
+          <Text style={[styles.progressGoalMeta, { color: colors.muted }]}>
+            {t("progressGoalRemaining", { amount: goalRemainingLabel })}
+          </Text>
+          <View style={styles.progressGoalRingRow}>
+            <ProgressRing
+              progress={goalProgress}
+              trackColor={isDarkTheme ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)"}
+              progressColor={colors.text}
+            />
+            <View style={styles.progressGoalRingText}>
+              <Text
+                style={[styles.progressGoalPercent, { color: colors.text }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
+                {`${Math.round(goalProgress * 100)}%`}
+              </Text>
+              <Text
+                style={[styles.progressGoalTarget, { color: colors.muted }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
+                {t("progressGoalTarget", { amount: goalTargetLabel })}
+              </Text>
+            </View>
+          </View>
+        </View>
+        <View style={[styles.progressCoinCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.progressCoinHeader}>
+            <Text style={[styles.progressCoinTitle, { color: colors.text }]}>{t("freeDayHealthTitle")}</Text>
+            <Text style={styles.progressCoinEmoji}>🪙</Text>
+          </View>
+          <Text style={[styles.progressCoinValue, { color: colors.text }]}>{healthPoints}</Text>
+          <Text style={[styles.progressCoinSubtitle, { color: colors.muted }]}>
+            {t("freeDayHealthSubtitle")}
+          </Text>
+          {hasCoinInventory ? (
+            <View style={styles.progressCoinRow}>
+              {coinEntries.map((entry) =>
+                entry.count ? (
+                  <View
+                    key={entry.id}
+                    style={[
+                      styles.progressCoinBadge,
+                      { borderColor: colors.border, backgroundColor: colors.background },
+                    ]}
+                  >
+                    <Image source={entry.asset} style={styles.progressCoinImage} />
+                    <Text style={[styles.progressCoinCount, { color: colors.text }]}>×{entry.count}</Text>
+                  </View>
+                ) : null
+              )}
+            </View>
+          ) : null}
+        </View>
+      </View>
+
+      <View
+        style={[
+          styles.progressWeeklyCard,
+          { backgroundColor: weeklyCardPalette.background, borderColor: weeklyCardPalette.border },
+        ]}
+      >
+        <Text style={[styles.progressWeeklyTitle, { color: weeklyCardPalette.text }]}>
+          {t("heroDailyTitle")}
+        </Text>
+        {weeklyTrend && (
+          <View style={styles.weeklyTrendRow}>
+            {weeklyTrend.savings && (
+              <View style={styles.weeklyTrendItem}>
+                <Text style={[styles.weeklyTrendLabel, { color: weeklyCardPalette.subtext }]}>
+                  {t("heroWeeklySavingsDelta")}
+                </Text>
+                <Text style={[styles.weeklyTrendValue, { color: weeklyTrend.savings.color }]}>
+                  {weeklyTrend.savings.symbol} {weeklyTrend.savings.label}
+                </Text>
+              </View>
+            )}
+            {weeklyTrend.spending && (
+              <View style={styles.weeklyTrendItem}>
+                <Text style={[styles.weeklyTrendLabel, { color: weeklyCardPalette.subtext }]}>
+                  {t("heroWeeklySpendingDelta")}
+                </Text>
+                <Text style={[styles.weeklyTrendValue, { color: weeklyTrend.spending.color }]}>
+                  {weeklyTrend.spending.symbol} {weeklyTrend.spending.label}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+        {weeklyHasData ? (
+          <View style={styles.savedHeroBars}>
+            {weeklyDailySavings.map((day) => (
+              <View key={day.key} style={styles.savedHeroBarItem}>
+                <View style={styles.savedHeroBarAmountWrap}>
+                  {day.amountValueLabel ? (
+                    <View style={styles.savedHeroBarAmountBlock}>
+                      <Text
+                        style={[styles.savedHeroBarAmount, { color: weeklyCardPalette.text }]}
+                        numberOfLines={1}
+                      >
+                        {day.amountValueLabel}
+                        {day.amountCurrencySymbol ? (
+                          <Text
+                            style={[styles.savedHeroBarCurrency, { color: weeklyCardPalette.text }]}
+                          >
+                            {"\u00A0"}
+                            {day.amountCurrencySymbol}
+                          </Text>
+                        ) : null}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {day.spendValueLabel ? (
+                    <View style={styles.savedHeroBarAmountBlock}>
+                      <Text
+                        style={[styles.savedHeroBarSpend, { color: weeklyCardPalette.spend }]}
+                        numberOfLines={1}
+                      >
+                        {day.spendValueLabel}
+                        {day.spendCurrencySymbol ? (
+                          <Text
+                            style={[styles.savedHeroBarCurrency, { color: weeklyCardPalette.spend }]}
+                          >
+                            {"\u00A0"}
+                            {day.spendCurrencySymbol}
+                          </Text>
+                        ) : null}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={[styles.savedHeroBarTrack, { backgroundColor: weeklyCardPalette.track }]}>
+                  <View
+                    style={[
+                      styles.savedHeroBarColumn,
+                      {
+                        height: `${day.percent}%`,
+                        backgroundColor: weeklyCardPalette.save,
+                      },
+                    ]}
+                  />
+                  {day.spendPercent > 0 ? (
+                    <View
+                      style={[
+                        styles.savedHeroBarColumnSpend,
+                        {
+                          height: `${day.spendPercent}%`,
+                          backgroundColor: weeklyCardPalette.spend,
+                          opacity: day.spendOverflow ? 0.95 : 0.8,
+                        },
+                      ]}
+                    />
+                  ) : null}
+                </View>
+                <Text style={[styles.savedHeroBarLabel, { color: weeklyCardPalette.subtext }]}>
+                  {day.label}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={[styles.savedHeroDailyEmpty, { color: weeklyCardPalette.subtext }]}>
+            {t("heroDailyEmpty")}
+          </Text>
+        )}
+      </View>
+
+      <View style={[styles.progressActiveChallenge, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.progressActiveChallengeHeader}>
+          <Text style={[styles.progressActiveChallengeTitle, { color: colors.text }]}>
+            {t("progressActiveChallengeTitle")}
+          </Text>
+          {activeChallenge ? (
+            <Text style={[styles.progressActiveChallengeMeta, { color: colors.muted }]}>
+              {activeChallenge.timerLabel}
             </Text>
+          ) : null}
+        </View>
+        {activeChallenge ? (
+          <>
+            <View style={styles.progressActiveChallengeRow}>
+              <Text style={styles.challengeEmoji}>{activeChallenge.emoji}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.progressActiveChallengeName, { color: colors.text }]} numberOfLines={2}>
+                  {activeChallenge.title}
+                </Text>
+                <Text style={[styles.progressActiveChallengeDesc, { color: colors.muted }]} numberOfLines={2}>
+                  {activeChallenge.description}
+                </Text>
+                {activeChallenge.potentialSavingsLabel ? (
+                  <Text style={[styles.challengePotential, { color: colors.text }]}>
+                    {t("challengePotentialSavings", { amount: activeChallenge.potentialSavingsLabel })}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+            {activeChallengeIsAmount ? (
+              <View style={[styles.challengeProgressBar, { backgroundColor: colors.border }]}>
+                <View
+                  style={[
+                    styles.challengeProgressFill,
+                    { width: `${activeChallengePercent * 100}%`, backgroundColor: colors.text },
+                  ]}
+                />
+              </View>
+            ) : (
+              <ChallengeProgressDots
+                total={activeChallengeTargetValue}
+                progress={activeChallengeProgressValue}
+                colors={colors}
+              />
+            )}
+            <Text style={[styles.challengeProgressLabel, { color: colors.muted }]}>
+              {activeChallenge.progressLabel}
+            </Text>
+            <TouchableOpacity
+              style={[
+                styles.progressActiveChallengeButton,
+                { backgroundColor: activeChallengeActionEnabled ? colors.text : colors.border },
+              ]}
+              activeOpacity={0.9}
+              disabled={!activeChallengeActionEnabled}
+              onPress={() => {
+                if (activeChallenge.canClaim) {
+                  onChallengeClaim?.(activeChallenge.id);
+                } else if (activeChallenge.canStart) {
+                  Alert.alert(
+                    t("challengeAcceptConfirmTitle"),
+                    t("challengeAcceptConfirmMessage", { title: activeChallenge.title }),
+                    [
+                      { text: t("challengeAcceptConfirmNo"), style: "cancel" },
+                      {
+                        text: t("challengeAcceptConfirmYes"),
+                        style: "default",
+                        onPress: () => onChallengeAccept?.(activeChallenge.id),
+                      },
+                    ]
+                  );
+                }
+              }}
+            >
+              <Text
+                style={[
+                  styles.progressActiveChallengeButtonText,
+                  { color: activeChallengeActionEnabled ? colors.background : colors.muted },
+                ]}
+              >
+                {activeChallenge.actionLabel}
+              </Text>
+            </TouchableOpacity>
           </>
-        }
-      />
-    </View>
+        ) : (
+          <Text style={[styles.progressActiveChallengeEmpty, { color: colors.muted }]}>
+            {t("progressNoActiveChallenge")}
+          </Text>
+        )}
+      </View>
+
+      <View style={[styles.progressAnalyticsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.progressAnalyticsHeader}>
+          <Text style={[styles.progressAnalyticsTitle, { color: colors.text }]}>
+            {t("progressCategoryTitle")}
+          </Text>
+          <View style={styles.progressAnalyticsLegend}>
+            <View style={styles.progressAnalyticsLegendItem}>
+              <View style={[styles.progressAnalyticsDot, { backgroundColor: SAVE_ACTION_COLOR }]} />
+              <Text style={[styles.progressAnalyticsLegendText, { color: colors.muted }]}>
+                {t("progressCategorySave")}
+              </Text>
+            </View>
+            <View style={styles.progressAnalyticsLegendItem}>
+              <View style={[styles.progressAnalyticsDot, { backgroundColor: SPEND_ACTION_COLOR }]} />
+              <Text style={[styles.progressAnalyticsLegendText, { color: colors.muted }]}>
+                {t("progressCategorySpend")}
+              </Text>
+            </View>
+          </View>
+        </View>
+        <Text style={[styles.progressAnalyticsSubtitle, { color: colors.muted }]}>
+          {t("progressCategorySubtitle")}
+        </Text>
+        {challengeBadges.length > 0 && (
+          <View style={styles.progressBadgeRow}>
+            <Text style={[styles.progressBadgeLabel, { color: colors.muted }]}>
+              {t("progressBadgeTitle")}
+            </Text>
+            <View style={styles.progressBadgeList}>
+              {challengeBadges.slice(0, 6).map((emoji, index) => (
+                <Text key={`${emoji}-${index}`} style={styles.progressBadgeEmoji}>
+                  {emoji}
+                </Text>
+              ))}
+              {challengeBadgeCount > 6 && (
+                <Text style={[styles.progressBadgeCount, { color: colors.muted }]}>
+                  +{challengeBadgeCount - 6}
+                </Text>
+              )}
+            </View>
+          </View>
+        )}
+        <ScrollView
+          style={[styles.progressAnalyticsScroll, { maxHeight: categoryListHeight }]}
+          contentContainerStyle={styles.progressAnalyticsList}
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
+        >
+          {categoryData.categories.map((entry) => {
+            const total = entry.save + entry.spend;
+            const totalPercent = total > 0 ? (total / categoryData.maxTotal) * 100 : 4;
+            const savePercent = total > 0 ? (entry.save / total) * 100 : 0;
+            return (
+              <TouchableOpacity
+                key={entry.id}
+                style={styles.progressAnalyticsRow}
+                activeOpacity={0.86}
+                onPress={() => setActiveCategoryId(entry.id)}
+              >
+                <View style={styles.progressAnalyticsRowHeader}>
+                  <Text style={[styles.progressAnalyticsLabel, { color: colors.text }]}>
+                    {entry.label}
+                  </Text>
+                  <Text style={[styles.progressAnalyticsValue, { color: colors.muted }]}>
+                    {`${entry.save} / ${entry.spend}`}
+                  </Text>
+                </View>
+                <View style={[styles.progressAnalyticsTrack, { backgroundColor: colors.border }]}>
+                  <View style={[styles.progressAnalyticsFill, { width: `${totalPercent}%` }]}>
+                    <View
+                      style={[
+                        styles.progressAnalyticsSave,
+                        { width: `${savePercent}%`, backgroundColor: SAVE_ACTION_COLOR },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.progressAnalyticsSpend,
+                        { width: `${100 - savePercent}%`, backgroundColor: SPEND_ACTION_COLOR },
+                      ]}
+                    />
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {showImpulseMap ? (
+        <ImpulseMapCard
+          insights={impulseInsights}
+          colors={colors}
+          t={t}
+          language={language}
+          expanded={impulseExpanded}
+          onToggle={handleImpulseToggle}
+        />
+      ) : (
+        <LockedFeatureCard
+          variantKey="impulseMap"
+          colors={colors}
+          t={t}
+          style={styles.lockedFeatureCard}
+          minHeight={182}
+          blurIntensity={10}
+        />
+      )}
+
+      {showFreeDayCard ? (
+        <FreeDayCard
+          colors={colors}
+          t={t}
+          canLog={canLogFreeDay}
+          onLog={onFreeDayLog}
+          freeDayStats={freeDayStats}
+          todayKey={todayKey}
+          weekDays={weekDays}
+          weekCount={weekSuccessCount}
+          canRescue={canRescueFreeDay}
+          needsRescue={streakNeedsRescue}
+          rescueStatus={rescueStatus}
+          rescueCost={freeDayRescueCost}
+          onRescue={onFreeDayRescue}
+          hasRescueHealth={hasRescueHealth}
+        />
+      ) : (
+        <LockedFeatureCard
+          variantKey="freeDay"
+          colors={colors}
+          t={t}
+          style={styles.lockedFeatureCard}
+          minHeight={182}
+          blurIntensity={10}
+        />
+      )}
+
+      <View style={styles.progressSectionHeader}>
+        <Text style={[styles.progressSectionTitle, { color: colors.text }]}>{t("progressGoalsTitle")}</Text>
+        <Text style={[styles.progressSectionSubtitle, { color: colors.muted }]}>
+          {t("wishlistSummary", { amount: totalTarget })}
+        </Text>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.progressGoalScroll}
+      >
+        {listData.map((wish) => {
+          const goalId = wish.goalId || wish.id;
+          const isActiveGoal = !!activeGoalId && activeGoalId === goalId;
+          const title = getWishTitleWithoutEmoji(wish);
+          const emoji = resolveWishEmoji(wish);
+          return (
+            <TouchableOpacity
+              key={wish.id}
+              style={[
+                styles.progressGoalMiniCard,
+                {
+                  borderColor: isActiveGoal ? colors.text : colors.border,
+                  backgroundColor: isActiveGoal ? colors.text : colors.card,
+                },
+              ]}
+              activeOpacity={0.9}
+              onPress={() => onGoalEdit?.(wish)}
+              onLongPress={() => onSetActiveGoal?.(goalId)}
+            >
+              <Text
+                style={[
+                  styles.progressGoalMiniEmoji,
+                  { color: isActiveGoal ? colors.background : colors.text },
+                ]}
+              >
+                {emoji}
+              </Text>
+              <Text
+                style={[
+                  styles.progressGoalMiniTitle,
+                  { color: isActiveGoal ? colors.background : colors.text },
+                ]}
+                numberOfLines={2}
+              >
+                {title}
+              </Text>
+              <Text
+                style={[
+                  styles.progressGoalMiniMeta,
+                  { color: isActiveGoal ? "rgba(255,255,255,0.75)" : colors.muted },
+                ]}
+              >
+                {isActiveGoal ? t("wishlistActive") : t("wishlistSetActive")}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+        {listData.length < 2 ? (
+          <TouchableOpacity
+            style={[
+              styles.progressGoalMiniCard,
+              styles.progressGoalMiniPlaceholder,
+              { borderColor: colors.border },
+            ]}
+            activeOpacity={0.9}
+            onPress={() => onCreateGoal?.()}
+          >
+            <Text style={[styles.progressGoalMiniPlus, { color: colors.text }]}>+</Text>
+            <Text style={[styles.progressGoalMiniMeta, { color: colors.muted, textAlign: "center" }]}>
+              {t("goalCustomCreate")}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+      </ScrollView>
+
+      <View style={styles.progressSectionHeader}>
+        <Text style={[styles.progressSectionTitle, { color: colors.text }]}>
+          {t("challengeTabTitle")}
+        </Text>
+        <Text style={[styles.progressSectionSubtitle, { color: colors.muted }]}>
+          {t("progressChallengesSubtitle")}
+        </Text>
+      </View>
+
+      <View style={{ gap: 16 }}>
+        {challenges.map(renderChallengeCard)}
+        {!challenges.length && (
+          <Text style={[styles.historyEmpty, { color: colors.muted }]}>
+            {t("rewardsEmpty")}
+          </Text>
+        )}
+      </View>
+      </ScrollView>
+      <Modal
+        visible={!!activeCategoryId}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={closeCategoryHistory}
+      >
+        <View style={styles.progressCategoryModalRoot}>
+          <TouchableWithoutFeedback onPress={closeCategoryHistory}>
+            <View
+              style={[
+                styles.progressCategoryBackdrop,
+                { backgroundColor: `rgba(0,0,0,${categoryModalOpacity})` },
+              ]}
+            />
+          </TouchableWithoutFeedback>
+          <View style={styles.progressCategoryModalWrap} pointerEvents="box-none">
+            <View
+              style={[styles.progressCategoryModalCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onLayout={(event) => {
+                const nextHeight = event?.nativeEvent?.layout?.height || 0;
+                if (nextHeight && nextHeight !== categoryModalHeight) {
+                  setCategoryModalHeight(nextHeight);
+                }
+              }}
+            >
+              <View style={styles.progressCategoryModalHeader}>
+                <Text style={[styles.progressCategoryModalTitle, { color: colors.text }]}>
+                  {t("historyTitle")} · {activeCategoryLabel}
+                </Text>
+                <TouchableOpacity onPress={closeCategoryHistory} style={styles.progressCategoryModalClose}>
+                  <Text style={[styles.progressCategoryModalCloseText, { color: colors.muted }]}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              {categoryHistoryEntries.length === 0 ? (
+                <Text style={[styles.historyEmpty, { color: colors.muted }]}>{t("historyEmpty")}</Text>
+              ) : (
+                <ScrollView
+                  style={[styles.progressCategoryModalList, { borderColor: colors.border }]}
+                  contentContainerStyle={styles.historyListContent}
+                  showsVerticalScrollIndicator
+                >
+                  {categoryHistoryEntries.map((entry, index) => (
+                    <View
+                      key={entry.id}
+                      style={[
+                        styles.historyItem,
+                        {
+                          borderColor: colors.border,
+                          borderBottomWidth:
+                            index === categoryHistoryEntries.length - 1 ? 0 : StyleSheet.hairlineWidth,
+                        },
+                      ]}
+                    >
+                      <View style={styles.historyRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.historyItemTitle, { color: colors.text }]}>
+                            {describeCategoryHistory(entry)}
+                          </Text>
+                          <Text style={[styles.historyItemMeta, { color: colors.muted }]}>
+                            {formatCategoryHistoryMeta(entry)}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 });
 
@@ -12547,9 +14059,12 @@ const PendingScreen = React.memo(function PendingScreen({
   colors,
   onResolve,
   onDelete,
+  onExtend,
   language,
   catCuriousSource,
+  locked = false,
 }) {
+  const isDarkMode = colors.background === THEMES.dark.background;
   const curiousImage = catCuriousSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.curious;
   const [nowTick, setNowTick] = useState(Date.now());
   const sorted = useMemo(
@@ -12581,32 +14096,26 @@ const PendingScreen = React.memo(function PendingScreen({
     [language, t]
   );
 
-  if (!sorted.length) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }] }>
-        <Text style={[styles.header, { color: colors.text }]}>{t("pendingTitle")}</Text>
-        <View style={styles.cartEmptyState}>
-          <Image source={curiousImage} style={[styles.catImage, styles.catImageLarge]} />
-          <Text style={[styles.cartEmptyTitle, { color: colors.text }]}>{t("pendingEmptyTitle")}</Text>
-          <Text style={[styles.cartEmptySubtitle, { color: colors.muted }]}>
-            {t("pendingEmptySubtitle")}
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }] }
-      contentContainerStyle={{ paddingBottom: 160, gap: 16 }}
-    >
-      <Text style={[styles.header, { color: colors.text }]}>{t("pendingTitle")}</Text>
+  const header = <Text style={[styles.header, { color: colors.text }]}>{t("pendingTitle")}</Text>;
+  const emptyBody = (
+    <View style={styles.cartEmptyState}>
+      <Image source={curiousImage} style={[styles.catImage, styles.catImageLarge]} />
+      <Text style={[styles.cartEmptyTitle, { color: colors.text }]}>{t("pendingEmptyTitle")}</Text>
+      <Text style={[styles.cartEmptySubtitle, { color: colors.muted }]}>
+        {t("pendingEmptySubtitle")}
+      </Text>
+    </View>
+  );
+  const listBody = (
+    <ScrollView contentContainerStyle={{ paddingBottom: 160, gap: 16 }}>
       {sorted.map((item) => {
         const diff = (item.decisionDue || 0) - nowTick;
         const countdownLabel = formatCountdown(diff);
         const overdue = diff <= 0;
         const priceLabel = formatTemptationPriceLabel(item, currency);
+        const pendingCardBg = isDarkMode ? colors.card : "#D2E6FF";
+        const pendingCardBorder = isDarkMode ? colors.border : "rgba(120,170,255,0.85)";
+        const pendingCardShadow = isDarkMode ? "rgba(0,0,0,0.35)" : "rgba(120,170,255,0.45)";
         return (
           <SwipeablePendingCard
             key={item.id}
@@ -12619,10 +14128,10 @@ const PendingScreen = React.memo(function PendingScreen({
               style={[
                 styles.pendingCard,
                 {
-                  backgroundColor: "rgba(210,230,255,0.9)",
-                  borderColor: "rgba(120,170,255,0.65)",
+                  backgroundColor: pendingCardBg,
+                  borderColor: pendingCardBorder,
                   borderWidth: 1,
-                  shadowColor: "rgba(120,170,255,0.45)",
+                  shadowColor: pendingCardShadow,
                   shadowOpacity: 0.12,
                   shadowRadius: 10,
                   shadowOffset: { width: 0, height: 6 },
@@ -12645,7 +14154,7 @@ const PendingScreen = React.memo(function PendingScreen({
               <View style={styles.pendingButtons}>
                 <TouchableOpacity
                   style={[styles.pendingButtonPrimary, { backgroundColor: colors.text }]}
-                  onPress={() => onResolve(item, "want")}
+                  onPress={() => onResolve(item, "spend")}
                 >
                   <Text style={[styles.pendingButtonPrimaryText, { color: colors.background }]}>
                     {t("pendingActionWant")}
@@ -12657,12 +14166,48 @@ const PendingScreen = React.memo(function PendingScreen({
                 >
                   <Text style={{ color: colors.muted }}>{t("pendingActionDecline")}</Text>
                 </TouchableOpacity>
+                {overdue && onExtend ? (
+                  <TouchableOpacity
+                    style={[styles.pendingButtonSecondary, { borderColor: colors.border }]}
+                    onPress={() => onExtend(item)}
+                  >
+                    <Text style={{ color: colors.muted }}>{t("pendingActionExtend")}</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             </View>
           </SwipeablePendingCard>
         );
       })}
     </ScrollView>
+  );
+  const body = sorted.length ? listBody : emptyBody;
+
+  if (!locked) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }] }>
+        {header}
+        {body}
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }] }>
+      {header}
+      <LockedFeatureOverlay
+        locked
+        variantKey="thinkingList"
+        colors={colors}
+        t={t}
+        style={styles.lockedFeatureScreen}
+        contentStyle={styles.lockedFeatureScreenContent}
+        borderRadius={0}
+        centered
+      >
+        {body}
+      </LockedFeatureOverlay>
+    </View>
   );
 });
 
@@ -12871,6 +14416,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.REFUSE_DAY_STREAK,
     targetValue: 7,
     durationDays: 12,
+    unlockLevel: 1,
     rewardHealth: 140,
     reminderOffsetsHours: [24, 96, 168],
     copy: {
@@ -12898,6 +14444,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.FREE_DAY_STREAK,
     targetValue: 3,
     durationDays: 5,
+    unlockLevel: 1,
     rewardHealth: 80,
     reminderOffsetsHours: [24, 72],
     copy: {
@@ -12925,6 +14472,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.SAVE_COUNT,
     targetValue: 6,
     durationDays: 4,
+    unlockLevel: 1,
     rewardHealth: 60,
     reminderOffsetsHours: [24, 72],
     copy: {
@@ -12952,6 +14500,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.SAVE_AMOUNT,
     targetValue: 80,
     durationDays: 7,
+    unlockLevel: 1,
     rewardHealth: 120,
     reminderOffsetsHours: [24, 96],
     copy: {
@@ -12979,6 +14528,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.PENDING_DECISIONS,
     targetValue: 3,
     durationDays: 6,
+    unlockLevel: 1,
     rewardHealth: 80,
     reminderOffsetsHours: [24, 72, 120],
     copy: {
@@ -13006,6 +14556,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.WISH_ADDED,
     targetValue: 2,
     durationDays: 4,
+    unlockLevel: 1,
     rewardHealth: 60,
     reminderOffsetsHours: [24, 48],
     copy: {
@@ -13033,6 +14584,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.WEEKEND_SAVES,
     targetValue: 3,
     durationDays: 8,
+    unlockLevel: 1,
     rewardHealth: 90,
     reminderOffsetsHours: [48, 96],
     copy: {
@@ -13060,6 +14612,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.MORNING_FREE_DAY,
     targetValue: 2,
     durationDays: 5,
+    unlockLevel: 1,
     rewardHealth: 70,
     reminderOffsetsHours: [12, 48],
     copy: {
@@ -13087,6 +14640,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.HIGH_VALUE_SAVE,
     targetValue: 2,
     durationDays: 7,
+    unlockLevel: 1,
     rewardHealth: 140,
     minAmountUSD: 35,
     reminderOffsetsHours: [48, 120],
@@ -13115,6 +14669,7 @@ const CHALLENGE_DEFS = [
     metricType: CHALLENGE_METRIC_TYPES.PENDING_ADDED,
     targetValue: 3,
     durationDays: 5,
+    unlockLevel: 1,
     rewardHealth: 60,
     reminderOffsetsHours: [24, 72],
     copy: {
@@ -13485,7 +15040,15 @@ const formatChallengeTimeLeft = (ms, t) => {
   return `${Math.max(minutes, 1)}${t("challengeTimeMinuteShort")}`;
 };
 
-const buildChallengesDisplay = ({ state, currency, language, t, maxActiveChallenges = Infinity }) => {
+const buildChallengesDisplay = ({
+  state,
+  currency,
+  language,
+  t,
+  maxActiveChallenges = Infinity,
+  averageSaveActionUSD = FALLBACK_SAVE_ACTION_USD,
+  playerLevel = 1,
+}) => {
   const currencyCode = currency || DEFAULT_PROFILE.currency;
   const now = Date.now();
   const limitThreshold = Number.isFinite(maxActiveChallenges) ? maxActiveChallenges : Infinity;
@@ -13520,6 +15083,8 @@ const buildChallengesDisplay = ({ state, currency, language, t, maxActiveChallen
             limit: limitLabel,
           })
         : "";
+    const unlockLevel = def.unlockLevel || 1;
+    const isLevelLocked = playerLevel < unlockLevel;
     let timerLabel = t("challengeDurationLabel", { days: def.durationDays });
     if (entry.status === CHALLENGE_STATUS.ACTIVE && entry.expiresAt) {
       timerLabel = t("challengeTimeLeftLabel", {
@@ -13535,9 +15100,12 @@ const buildChallengesDisplay = ({ state, currency, language, t, maxActiveChallen
       entry.status === CHALLENGE_STATUS.EXPIRED ||
       entry.status === CHALLENGE_STATUS.CLAIMED;
     const limitBlocksStart = baseCanStart && isLimitBlockingNewStart;
-    const canStart = baseCanStart && !limitBlocksStart;
+    const canStart = baseCanStart && !limitBlocksStart && !isLevelLocked;
     const canClaim = entry.status === CHALLENGE_STATUS.COMPLETED;
     let actionLabel = t("challengeActiveCta");
+    if (isLevelLocked) {
+      actionLabel = t("challengeLockedLevel", { level: unlockLevel });
+    }
     if (limitBlocksStart) {
       actionLabel = t("challengeLimitReachedAction", { limit: maxActiveChallenges });
     } else if (canClaim) {
@@ -13546,6 +15114,16 @@ const buildChallengesDisplay = ({ state, currency, language, t, maxActiveChallen
       actionLabel = t("challengeStartCta");
     }
     const scaledReward = getScaledChallengeReward(def.rewardHealth);
+    const potentialSavingsUSD =
+      def.metricType === CHALLENGE_METRIC_TYPES.SAVE_AMOUNT
+        ? def.targetValue
+        : def.metricType === CHALLENGE_METRIC_TYPES.SAVE_COUNT
+        ? Math.max(1, averageSaveActionUSD) * def.targetValue
+        : 0;
+    const potentialSavingsLabel =
+      potentialSavingsUSD > 0
+        ? formatCurrency(convertToCurrency(potentialSavingsUSD, currencyCode), currencyCode)
+        : "";
     return {
       id: def.id,
       emoji: def.emoji,
@@ -13556,6 +15134,11 @@ const buildChallengesDisplay = ({ state, currency, language, t, maxActiveChallen
       status: entry.status,
       statusLabel: t(CHALLENGE_STATUS_LABELS[entry.status] || CHALLENGE_STATUS_LABELS[CHALLENGE_STATUS.IDLE]),
       progressPercent: percent,
+      progressValue,
+      targetValue: def.targetValue,
+      durationDays: def.durationDays,
+      metricType: def.metricType,
+      isCountMetric: def.metricType !== CHALLENGE_METRIC_TYPES.SAVE_AMOUNT,
       progressLabel: t("challengeProgressLabel", {
         current: progressLabelValue,
         target: targetLabel,
@@ -13563,12 +15146,18 @@ const buildChallengesDisplay = ({ state, currency, language, t, maxActiveChallen
       timerLabel,
       canStart,
       canClaim,
+      isLevelLocked,
+      unlockLevel,
       actionLabel,
+      potentialSavingsLabel,
     };
   });
-  return list.sort(
-    (a, b) => (CHALLENGE_STATUS_ORDER[a.status] || 99) - (CHALLENGE_STATUS_ORDER[b.status] || 99)
-  );
+  return list.sort((a, b) => {
+    if (a.unlockLevel !== b.unlockLevel) return a.unlockLevel - b.unlockLevel;
+    if (a.durationDays !== b.durationDays) return a.durationDays - b.durationDays;
+    if (a.targetValue !== b.targetValue) return a.targetValue - b.targetValue;
+    return (CHALLENGE_STATUS_ORDER[a.status] || 99) - (CHALLENGE_STATUS_ORDER[b.status] || 99);
+  });
 };
 
 const getAchievementRemainingLabel = (metricType, remaining, currency, t) => {
@@ -13666,13 +15255,26 @@ const RewardsScreen = React.memo(function RewardsScreen({
   dailyChallenge = null,
   showChallenges = true,
   showDailyChallengeWidget = true,
+  rewardsLocked = false,
+  challengesLocked = false,
+  dailyChallengeLocked = false,
 }) {
   const rewardList = Array.isArray(achievements) ? achievements.filter(Boolean) : [];
+  const displayRewards = rewardsLocked ? rewardList.slice(0, 2) : rewardList;
   const challengeList = useMemo(() => {
     const list = Array.isArray(challenges) ? challenges.filter(Boolean) : [];
     return list
       .map((entry, index) => ({ entry, index }))
       .sort((a, b) => {
+        if (a.entry.unlockLevel !== b.entry.unlockLevel) {
+          return a.entry.unlockLevel - b.entry.unlockLevel;
+        }
+        if (a.entry.durationDays !== b.entry.durationDays) {
+          return a.entry.durationDays - b.entry.durationDays;
+        }
+        if (a.entry.targetValue !== b.entry.targetValue) {
+          return a.entry.targetValue - b.entry.targetValue;
+        }
         const orderA = CHALLENGE_STATUS_ORDER[a.entry.status] ?? 99;
         const orderB = CHALLENGE_STATUS_ORDER[b.entry.status] ?? 99;
         if (orderA !== orderB) {
@@ -13683,7 +15285,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
       .map((item) => item.entry);
   }, [challenges]);
   const isDarkTheme = colors.background === THEMES.dark.background;
-  const pane = showChallenges && activePane === "challenges" ? "challenges" : "rewards";
+  const pane = activePane === "challenges" ? "challenges" : "rewards";
   const challengeSwipeCloserRef = useRef(null);
   const handleChallengeSwipeOpen = useCallback((closer) => {
     if (challengeSwipeCloserRef.current && challengeSwipeCloserRef.current !== closer) {
@@ -13706,9 +15308,10 @@ const RewardsScreen = React.memo(function RewardsScreen({
   );
 
   const renderChallengeCard = (challenge) => {
-    const actionPalette = challenge.canClaim
+    const isLocked = challenge.isLevelLocked;
+    const actionPalette = challenge.canClaim && !isLocked
       ? { background: SAVE_ACTION_COLOR, text: "#fff" }
-      : challenge.canStart
+      : challenge.canStart && !isLocked
       ? { background: colors.text, text: colors.background }
       : { background: colors.border, text: colors.muted };
     const confirmAccept = () => {
@@ -13746,10 +15349,16 @@ const RewardsScreen = React.memo(function RewardsScreen({
         confirmAccept();
       }
     };
-    const isActionEnabled = challenge.canClaim || challenge.canStart;
+    const isActionEnabled = !isLocked && (challenge.canClaim || challenge.canStart);
     const isSwipeEnabled = challenge.status === CHALLENGE_STATUS.ACTIVE;
     const cardBody = (
-      <View style={[styles.challengeCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View
+        style={[
+          styles.challengeCard,
+          { backgroundColor: colors.card, borderColor: colors.border },
+          isLocked && styles.challengeCardLocked,
+        ]}
+      >
         <View
           style={[
             styles.challengeRewardChip,
@@ -13768,43 +15377,60 @@ const RewardsScreen = React.memo(function RewardsScreen({
         </View>
         <View style={styles.challengeHeader}>
           <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
-          <View style={{ flex: 1, gap: 4 }}>
-            <Text
-              style={[styles.challengeTitle, { color: colors.text }]}
-              numberOfLines={2}
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text
+                style={[styles.challengeTitle, { color: colors.text }]}
+                numberOfLines={2}
               adjustsFontSizeToFit
               minimumFontScale={0.9}
             >
               {challenge.title}
-            </Text>
-            <Text style={[styles.challengeDesc, { color: colors.muted }]} numberOfLines={3}>
-              {challenge.description}
-            </Text>
+              </Text>
+              <Text style={[styles.challengeDesc, { color: colors.muted }]} numberOfLines={3}>
+                {challenge.description}
+              </Text>
+              {challenge.potentialSavingsLabel ? (
+                <Text style={[styles.challengePotential, { color: colors.text }]}>
+                  {t("challengePotentialSavings", { amount: challenge.potentialSavingsLabel })}
+                </Text>
+              ) : null}
+            </View>
           </View>
-        </View>
         <View style={styles.challengeMetaRow}>
           <Text style={[styles.challengeStatus, { color: colors.muted }]}>{challenge.statusLabel}</Text>
           <Text style={[styles.challengeTimer, { color: colors.muted }]}>{challenge.timerLabel}</Text>
         </View>
-        <View style={[styles.challengeProgressBar, { backgroundColor: colors.border }]}>
-          <View
-            style={[
-              styles.challengeProgressFill,
-              { width: `${challenge.progressPercent * 100}%`, backgroundColor: colors.text },
-            ]}
-          />
-        </View>
+        {challenge.isCountMetric ? (
+          <ChallengeProgressDots total={challenge.targetValue} progress={challenge.progressValue} colors={colors} />
+        ) : (
+          <View style={[styles.challengeProgressBar, { backgroundColor: colors.border }]}>
+            <View
+              style={[
+                styles.challengeProgressFill,
+                { width: `${challenge.progressPercent * 100}%`, backgroundColor: colors.text },
+              ]}
+            />
+          </View>
+        )}
         <Text style={[styles.challengeProgressLabel, { color: colors.muted }]}>{challenge.progressLabel}</Text>
-        <TouchableOpacity
-          style={[styles.challengeActionButton, { backgroundColor: actionPalette.background }]}
-          activeOpacity={0.9}
-          disabled={!isActionEnabled}
-          onPress={handleActionPress}
-        >
-          <Text style={[styles.challengeActionText, { color: actionPalette.text }]}>
-            {challenge.actionLabel}
-          </Text>
-        </TouchableOpacity>
+        {isLocked ? (
+          <View style={styles.challengeLockRow}>
+            <Text style={[styles.challengeLockText, { color: colors.muted }]}>
+              {t("challengeLockedLevel", { level: challenge.unlockLevel })}
+            </Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.challengeActionButton, { backgroundColor: actionPalette.background }]}
+            activeOpacity={0.9}
+            disabled={!isActionEnabled}
+            onPress={handleActionPress}
+          >
+            <Text style={[styles.challengeActionText, { color: actionPalette.text }]}>
+              {challenge.actionLabel}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
     if (isSwipeEnabled) {
@@ -13949,6 +15575,16 @@ const RewardsScreen = React.memo(function RewardsScreen({
     );
   };
   const renderDailyChallengeWidget = () => {
+    if (dailyChallengeLocked) {
+      return (
+        <LockedFeatureCard
+          variantKey="rewardsDaily"
+          colors={colors}
+          t={t}
+          style={styles.lockedFeatureInlineCard}
+        />
+      );
+    }
     if (!showDailyChallengeWidget || !dailyChallenge) return null;
     const progress = Math.min(
       Math.max(Number(dailyChallenge.progress) || 0, 0),
@@ -14064,19 +15700,58 @@ const RewardsScreen = React.memo(function RewardsScreen({
         </View>
       )}
       {showChallenges && pane === "challenges" ? (
-        <View style={{ gap: 16 }}>
-          {renderDailyChallengeWidget()}
-          {challengeList.map(renderChallengeCard)}
-          {!challengeList.length && (
-            <Text style={[styles.historyEmpty, { color: colors.muted }]}>
-              {t("rewardsEmpty")}
-            </Text>
-          )}
-        </View>
+        challengesLocked ? (
+          <LockedFeatureOverlay
+            locked
+            variantKey="rewardsChallenges"
+            colors={colors}
+            t={t}
+            style={styles.lockedFeaturePane}
+            contentStyle={styles.lockedFeaturePaneContent}
+            centered
+          >
+            <View style={{ gap: 16 }}>
+              {renderDailyChallengeWidget()}
+              {challengeList.map(renderChallengeCard)}
+              {!challengeList.length && (
+                <Text style={[styles.historyEmpty, { color: colors.muted }]}>
+                  {t("rewardsEmpty")}
+                </Text>
+              )}
+            </View>
+          </LockedFeatureOverlay>
+        ) : (
+          <View style={{ gap: 16 }}>
+            {renderDailyChallengeWidget()}
+            {challengeList.map(renderChallengeCard)}
+            {!challengeList.length && (
+              <Text style={[styles.historyEmpty, { color: colors.muted }]}>
+                {t("rewardsEmpty")}
+              </Text>
+            )}
+          </View>
+        )
+      ) : rewardsLocked ? (
+        <LockedFeatureOverlay
+          locked
+          variantKey="rewardsCustomization"
+          colors={colors}
+          t={t}
+          style={styles.lockedFeaturePane}
+          contentStyle={styles.lockedFeaturePaneContent}
+          centered
+        >
+          <View style={{ gap: 16 }}>
+            {displayRewards.map(renderRewardCard)}
+            {!displayRewards.some((item) => item.unlocked) && (
+              <Text style={[styles.historyEmpty, { color: colors.muted }]}>{t("rewardsEmpty")}</Text>
+            )}
+          </View>
+        </LockedFeatureOverlay>
       ) : (
         <View style={{ gap: 16 }}>
-          {rewardList.map(renderRewardCard)}
-          {!rewardList.some((item) => item.unlocked) && (
+          {displayRewards.map(renderRewardCard)}
+          {!displayRewards.some((item) => item.unlocked) && (
             <Text style={[styles.historyEmpty, { color: colors.muted }]}>{t("rewardsEmpty")}</Text>
           )}
         </View>
@@ -14109,10 +15784,13 @@ const ProfileScreen = React.memo(function ProfileScreen({
   history = [],
   freeDayStats = INITIAL_FREE_DAY_STATS,
   rewardBadgeCount = 0,
+  challengeBadges = [],
+  challengeBadgeCount = 0,
   t,
   colors,
   moodPreset = null,
   mascotImageSource,
+  openAddCategoryModal,
 }) {
   const fallbackAvatar = mascotImageSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.idle;
   const currentCurrency = currencyValue || profile.currency || DEFAULT_PROFILE.currency;
@@ -14470,14 +16148,30 @@ const ProfileScreen = React.memo(function ProfileScreen({
               >
                 {profileNameText}
               </Text>
-              {rewardBadgeCount > 0 && (
-                <View style={[styles.rewardBadgeSmall, { backgroundColor: colors.text }]}>
-                  <Text style={[styles.rewardBadgeSmallText, { color: colors.background }]}>
-                    {rewardBadgeCount}{" "}
-                    {rewardBadgeCount === 1 ? t("rewardBadgeLabel") : t("rewardBadgeLabelPlural")}
-                  </Text>
-                </View>
-              )}
+              <View style={styles.profileBadgeRow}>
+                {rewardBadgeCount > 0 && (
+                  <View style={[styles.rewardBadgeSmall, { backgroundColor: colors.text }]}>
+                    <Text style={[styles.rewardBadgeSmallText, { color: colors.background }]}>
+                      {rewardBadgeCount}{" "}
+                      {rewardBadgeCount === 1 ? t("rewardBadgeLabel") : t("rewardBadgeLabelPlural")}
+                    </Text>
+                  </View>
+                )}
+                {challengeBadgeCount > 0 && (
+                  <View style={[styles.profileChallengeBadge, { borderColor: colors.border }]}>
+                    <View style={styles.profileChallengeBadgeList}>
+                      {challengeBadges.slice(0, 3).map((emoji, index) => (
+                        <Text key={`${emoji}-${index}`} style={styles.profileChallengeBadgeEmoji}>
+                          {emoji}
+                        </Text>
+                      ))}
+                    </View>
+                    <Text style={[styles.profileChallengeBadgeCount, { color: colors.muted }]}>
+                      {challengeBadgeCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
             {joinDateLabel && (
               <Text
@@ -14723,6 +16417,22 @@ const ProfileScreen = React.memo(function ProfileScreen({
                 </TouchableOpacity>
               ))}
             </ScrollView>
+          </View>
+        </View>
+        <View style={styles.settingRow}>
+          <View style={styles.settingRowContent}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("addCategoryLabel")}</Text>
+              <Text style={[styles.profileHintText, { color: colors.muted }]}>{t("addCategoryHint")}</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.settingChip, { borderColor: colors.border, backgroundColor: colors.text }]}
+              onPress={openAddCategoryModal}
+            >
+              <Text style={{ color: colors.background, fontWeight: "600" }}>
+                {t("addCategoryButton")}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
         <View style={styles.settingRow}>
@@ -15049,6 +16759,15 @@ function AppContent() {
     },
     [updateTabHistory]
   );
+  const handleProgressChallengeOpen = useCallback(
+    (challengeId) => {
+      if (challengeId) {
+        setProgressFocusChallengeId(challengeId);
+      }
+      goToTab("cart");
+    },
+    [goToTab]
+  );
   const [catalogOverrides, setCatalogOverrides] = useState({});
   const [catalogHydrated, setCatalogHydrated] = useState(false);
   const [pricePrecisionOverrides, setPricePrecisionOverrides] = useState({});
@@ -15059,6 +16778,8 @@ function AppContent() {
   const [emojiOverridesHydrated, setEmojiOverridesHydrated] = useState(false);
   const [categoryOverrides, setCategoryOverrides] = useState({});
   const [categoryOverridesHydrated, setCategoryOverridesHydrated] = useState(false);
+  const [customCategories, setCustomCategories] = useState([]);
+  const [customCategoriesHydrated, setCustomCategoriesHydrated] = useState(false);
   const [descriptionOverrides, setDescriptionOverrides] = useState({});
   const [descriptionOverridesHydrated, setDescriptionOverridesHydrated] = useState(false);
   const [temptations, setTemptations] = useState(DEFAULT_TEMPTATIONS);
@@ -15159,7 +16880,7 @@ function AppContent() {
   }, []);
   const [challengesState, setChallengesState] = useState(() => createInitialChallengesState());
   const [challengesHydrated, setChallengesHydrated] = useState(false);
-  const [rewardsPane, setRewardsPane] = useState("challenges");
+  const [rewardsPane, setRewardsPane] = useState("rewards");
   useEffect(() => {
     if (challengesUnlocked) return;
     if (rewardsPane !== "rewards") {
@@ -15171,9 +16892,18 @@ function AppContent() {
   const [historyEvents, setHistoryEvents] = useState([]);
   const [historyHydrated, setHistoryHydrated] = useState(false);
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
+  const [progressFocusChallengeId, setProgressFocusChallengeId] = useState(null);
   const declineStreak = useMemo(() => computeRefuseStreak(resolvedHistoryEvents), [resolvedHistoryEvents]);
   const levelProgressUSD = Math.max(savedTotalUSD || 0, lifetimeSavedUSD || 0);
   const profileCurrencyCode = profile?.currency || DEFAULT_PROFILE.currency;
+  const fabMainIcon = useMemo(() => {
+    if (activeTab === "feed") {
+      const label = formatCurrency(0, profileCurrencyCode);
+      const parts = splitCurrencyLabel(label, profileCurrencyCode);
+      return parts.symbol || "$";
+    }
+    return "+";
+  }, [activeTab, profileCurrencyCode]);
   const playerTierInfo = useMemo(
     () => getTierProgress(levelProgressUSD || 0, profileCurrencyCode),
     [levelProgressUSD, profileCurrencyCode]
@@ -15190,10 +16920,10 @@ function AppContent() {
   const focusTargetsUnlocked = playerLevel >= 4;
   const catCustomizationUnlocked = playerLevel >= 4;
   const rewardsUnlocked = playerLevel >= 4;
-  const challengesUnlocked = playerLevel >= 5;
-  const impulseFeaturesUnlocked = playerLevel >= 6;
+  const challengesUnlocked = true;
+  const impulseFeaturesUnlocked = playerLevel >= 4;
   const freeDayUnlocked = playerLevel >= 7;
-  const thinkingUnlocked = playerLevel >= 7;
+  const thinkingUnlocked = playerLevel >= 3;
   const todayKey = currentDayKey;
   const baseDailyRewardAmount = useMemo(
     () => (dailyRewardUnlocked ? computeDailyAlmiReward(levelProgressUSD) : 0),
@@ -15358,6 +17088,11 @@ function AppContent() {
   const [northStarLogged, setNorthStarLogged] = useState(false);
   const [northStarHydrated, setNorthStarHydrated] = useState(false);
   const northStarLoggedRef = useRef(false);
+  const potentialOpenSnapshotRef = useRef(null);
+  const potentialGrowthInitialCheckRef = useRef(false);
+  const [potentialSnapshotHydrated, setPotentialSnapshotHydrated] = useState(false);
+  const [potentialGrowthUSD, setPotentialGrowthUSD] = useState(0);
+  const [potentialGrowthVisible, setPotentialGrowthVisible] = useState(false);
   const potentialSavedUSD = useSavingsSimulation(
     profile?.spendingProfile?.baselineMonthlyWasteUSD || 0,
     profile?.spendingProfile?.baselineStartAt || null
@@ -15413,6 +17148,74 @@ function AppContent() {
     baselineMonthlyWasteUSD > 0 && baselineStartAt
       ? `${baselineStartAt}:${baselineMonthlyWasteUSD}`
       : null;
+  const dismissPotentialGrowth = useCallback(() => {
+    setPotentialGrowthVisible(false);
+  }, []);
+  const storePotentialSnapshot = useCallback((valueUSD) => {
+    const normalized = Number(valueUSD);
+    if (!Number.isFinite(normalized)) return;
+    potentialOpenSnapshotRef.current = normalized;
+    AsyncStorage.setItem(STORAGE_KEYS.POTENTIAL_OPEN_SNAPSHOT, String(normalized)).catch(() => {});
+  }, []);
+  const maybeShowPotentialGrowth = useCallback(
+    (currentUSD) => {
+      const normalized = Number(currentUSD);
+      if (!Number.isFinite(normalized)) return;
+      if (!potentialBaselineKey) {
+        storePotentialSnapshot(normalized);
+        return;
+      }
+      const previous = Number(potentialOpenSnapshotRef.current);
+      storePotentialSnapshot(normalized);
+      if (!Number.isFinite(previous)) return;
+      const delta = normalized - previous;
+      if (delta <= 0.01) return;
+      setPotentialGrowthUSD(delta);
+      setPotentialGrowthVisible(true);
+    },
+    [potentialBaselineKey, storePotentialSnapshot]
+  );
+  const prevActiveTabRef = useRef(activeTab);
+  useEffect(() => {
+    if (prevActiveTabRef.current && prevActiveTabRef.current !== activeTab) {
+      dismissPotentialGrowth();
+    }
+    prevActiveTabRef.current = activeTab;
+  }, [activeTab, dismissPotentialGrowth]);
+  const prevOnboardingStepRef = useRef(onboardingStep);
+  useEffect(() => {
+    if (prevOnboardingStepRef.current && prevOnboardingStepRef.current !== onboardingStep) {
+      dismissPotentialGrowth();
+    }
+    prevOnboardingStepRef.current = onboardingStep;
+  }, [dismissPotentialGrowth, onboardingStep]);
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(STORAGE_KEYS.POTENTIAL_OPEN_SNAPSHOT)
+      .then((value) => {
+        if (cancelled) return;
+        if (typeof value === "string" && value.length > 0) {
+          const parsed = Number(value);
+          if (Number.isFinite(parsed)) {
+            potentialOpenSnapshotRef.current = parsed;
+          }
+        }
+        setPotentialSnapshotHydrated(true);
+      })
+      .catch(() => {
+        setPotentialSnapshotHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (!potentialSnapshotHydrated) return;
+    const normalized = Number(potentialSavedUSD);
+    if (!Number.isFinite(normalized)) return;
+    if (Number.isFinite(potentialOpenSnapshotRef.current)) return;
+    storePotentialSnapshot(normalized);
+  }, [potentialSavedUSD, potentialSnapshotHydrated, storePotentialSnapshot]);
   const [language, setLanguage] = useState(DEFAULT_LANGUAGE);
   const [languageHydrated, setLanguageHydrated] = useState(false);
   const normalizedLanguageValue = normalizeLanguage(language);
@@ -15420,25 +17223,19 @@ function AppContent() {
   const baseTabFontSize = Platform.OS === "ios" ? 12 : 13;
   const tabLabelFontSize = isRomanceLocale ? baseTabFontSize - 1 : baseTabFontSize;
   const tabOrder = ["feed", "cart", "pending", "purchases", "profile"];
-  const availableTabs = useMemo(
-    () =>
-      tabOrder.filter((tab) => {
-        if (tab === "pending") return thinkingUnlocked;
-        if (tab === "purchases") return rewardsUnlocked;
-        return true;
-      }),
-    [rewardsUnlocked, thinkingUnlocked]
-  );
-  useEffect(() => {
-    if (availableTabs.includes(activeTab)) return;
-    if (availableTabs.length) {
-      setActiveTabState(availableTabs[0]);
-    }
-  }, [activeTab, availableTabs]);
   const [homeLayoutReady, setHomeLayoutReady] = useState(false);
   const [startupHydrated, setStartupHydrated] = useState(false);
   const fontsReady = fontsLoaded || Boolean(fontsError);
   const startupLogoReady = fontsReady && startupHydrated;
+  useEffect(() => {
+    if (potentialGrowthInitialCheckRef.current) return;
+    if (!startupHydrated) return;
+    if (!potentialSnapshotHydrated) return;
+    const normalized = Number(potentialSavedUSD);
+    if (!Number.isFinite(normalized)) return;
+    potentialGrowthInitialCheckRef.current = true;
+    maybeShowPotentialGrowth(normalized);
+  }, [maybeShowPotentialGrowth, potentialSavedUSD, potentialSnapshotHydrated, startupHydrated]);
   const primaryTemptationId = profile.customSpend?.id || "custom_habit";
   const primaryTemptationDescription = useMemo(() => {
     const gender = profile?.gender || "none";
@@ -15620,6 +17417,20 @@ function AppContent() {
   const [temptationTutorialQueued, setTemptationTutorialQueued] = useState(false);
   const [temptationTutorialCompleted, setTemptationTutorialCompleted] = useState(false);
   const tutorialVisiblePrevRef = useRef(false);
+  const availableTabs = useMemo(() => {
+    if (!tutorialVisible) return tabOrder;
+    return tabOrder.filter((tab) => {
+      if (tab === "pending" && !thinkingUnlocked) return false;
+      if (tab === "purchases" && !rewardsUnlocked) return false;
+      return true;
+    });
+  }, [rewardsUnlocked, tabOrder, thinkingUnlocked, tutorialVisible]);
+  useEffect(() => {
+    if (availableTabs.includes(activeTab)) return;
+    if (availableTabs.length) {
+      setActiveTabState(availableTabs[0]);
+    }
+  }, [activeTab, availableTabs]);
   const [tutorialHighlightRect, setTutorialHighlightRect] = useState(null);
   const [tutorialHighlightMeasureTick, setTutorialHighlightMeasureTick] = useState(0);
   const tutorialHighlightMeasureTimerRef = useRef(null);
@@ -16352,6 +18163,7 @@ function AppContent() {
         setKeyboardVisible(false);
         appResumeAtRef.current = Date.now();
         setFabTutorialVisible(false);
+        storePotentialSnapshot(potentialSavedUSD);
         return;
       }
       if (wasBackground && nextState === "active") {
@@ -16370,6 +18182,7 @@ function AppContent() {
           beginHomeSession();
           tryLogHomeOpened();
           markDailySummaryOpen();
+          maybeShowPotentialGrowth(potentialSavedUSD);
           if (pendingFocusDigest) {
             setFocusDigestPromptShown(false);
           }
@@ -16381,11 +18194,14 @@ function AppContent() {
     return () => subscription.remove();
   }, [
     beginHomeSession,
+    maybeShowPotentialGrowth,
     refreshQueuedModalsOnResume,
+    storePotentialSnapshot,
     setDailyChallengePromptGate,
     markDailySummaryOpen,
     pendingFocusDigest,
     processTamagotchiDecay,
+    potentialSavedUSD,
     setCurrentDayKey,
     tryLogHomeOpened,
     setFabTutorialVisible,
@@ -16772,6 +18588,26 @@ function AppContent() {
       return [];
     }
   }, [resolveNotificationTriggerTime]);
+  const findScheduledNotificationByDedupeKey = useCallback(
+    async (dedupeKey) => {
+      if (!dedupeKey) return null;
+      try {
+        const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+        const entries = Array.isArray(scheduled) ? scheduled : [];
+        for (let idx = 0; idx < entries.length; idx += 1) {
+          const entry = entries[idx];
+          const entryKey = entry?.content?.data?.dedupeKey;
+          if (entryKey && entryKey === dedupeKey) {
+            return entry;
+          }
+        }
+      } catch (error) {
+        console.warn("scheduled notifications read", error);
+      }
+      return null;
+    },
+    []
+  );
   const getScheduledTamagotchiHungerCounts = useCallback(async () => {
     try {
       const scheduled = await Notifications.getAllScheduledNotificationsAsync();
@@ -16806,6 +18642,17 @@ function AppContent() {
   const scheduleNotificationWithCooldown = useCallback(
     async (request) => {
       if (!request?.content) return null;
+      const dedupeKey = request?.content?.data?.dedupeKey || null;
+      if (dedupeKey) {
+        const existing = await findScheduledNotificationByDedupeKey(dedupeKey);
+        if (existing) {
+          const scheduledFor = resolveNotificationTriggerTime(existing?.trigger);
+          return {
+            id: existing?.identifier || existing?.id || null,
+            scheduledFor: Number.isFinite(scheduledFor) ? scheduledFor : null,
+          };
+        }
+      }
       const triggerInput = request.trigger;
       const repeats = triggerInput && typeof triggerInput === "object" && triggerInput.repeats;
       let finalTrigger = triggerInput ?? null;
@@ -16837,7 +18684,7 @@ function AppContent() {
       const finalScheduledFor = Number.isFinite(resolvedTrigger) ? resolvedTrigger : scheduledFor;
       return { id, scheduledFor: finalScheduledFor };
     },
-    [readScheduledNotificationTimes, resolveNotificationTriggerTime]
+    [findScheduledNotificationByDedupeKey, readScheduledNotificationTimes, resolveNotificationTriggerTime]
   );
   const [notificationPermissionGranted, setNotificationPermissionGranted] = useState(null);
   const [pushOptInHydrated, setPushOptInHydrated] = useState(false);
@@ -16848,12 +18695,22 @@ function AppContent() {
   const [spendLoggingReminderHydrated, setSpendLoggingReminderHydrated] = useState(false);
   const lastSpendLoggingReminderRef = useRef(0);
   const handledNotificationResponseIdsRef = useRef(new Set());
+  const notificationActionHandlerRef = useRef(null);
+  const notificationDedupeRef = useRef(new Map());
+  const pendingListRef = useRef([]);
   const [spendPrompt, setSpendPrompt] = useState({ visible: false, item: null });
+  const [categoryPrompt, setCategoryPrompt] = useState({ visible: false, item: null, action: null, options: null });
+  const [categoryPromptSelection, setCategoryPromptSelection] = useState(DEFAULT_IMPULSE_CATEGORY);
+  const [addCategoryModalVisible, setAddCategoryModalVisible] = useState(false);
+  const [addCategoryName, setAddCategoryName] = useState("");
+  const [addCategoryEmoji, setAddCategoryEmoji] = useState("✨");
+  const [addCategoryError, setAddCategoryError] = useState(false);
   const [coinValueModalStatus, setCoinValueModalStatus] = useState("none");
   const [coinValueModalHydrated, setCoinValueModalHydrated] = useState(false);
   const [coinValueModalVisible, setCoinValueModalVisible] = useState(false);
   const coinValueModalStatusRef = useRef("none");
   const coinBalancePrevRef = useRef(0);
+  const tutorialSeenPrevRef = useRef(false);
   const coinValueModalCheckTimerRef = useRef(null);
   const resetCounterRef = useRef(0);
   const spendPromptLockRef = useRef(false);
@@ -16895,12 +18752,7 @@ function AppContent() {
   const shouldRenderStatusGlass = topSafeInset > 0;
   const statusBlurAvailable = useMemo(() => {
     if (!shouldRenderStatusGlass) return false;
-    if (Platform.OS !== "ios") return false;
-    const viewName = "ViewManagerAdapter_ExpoBlurView";
-    if (typeof UIManager.getViewManagerConfig === "function") {
-      return !!UIManager.getViewManagerConfig(viewName);
-    }
-    return !!UIManager[viewName];
+    return isBlurViewAvailable();
   }, [shouldRenderStatusGlass]);
   const screenKeyboardAdjustmentStyle = useMemo(() => {
     if (Platform.OS === "ios") return null;
@@ -16988,15 +18840,37 @@ function AppContent() {
   useEffect(() => {
     coinValueModalStatusRef.current = coinValueModalStatus;
   }, [coinValueModalStatus]);
+  const canQueueCoinValueModal = useCallback(() => {
+    if (!coinValueModalHydrated) return false;
+    if (!tutorialSeen) return false;
+    if (coinValueModalStatusRef.current !== "none") return false;
+    const currentCoins = Math.max(0, Number(tamagotchiState?.coins) || 0);
+    if (currentCoins <= 0) return false;
+    const lastSaveAt = Number(lastSaveActionAtRef.current) || 0;
+    const lastSaveDismissedAt = Number(lastSaveOverlayDismissedAtRef.current) || 0;
+    if (!lastSaveAt || lastSaveDismissedAt < lastSaveAt) return false;
+    return true;
+  }, [coinValueModalHydrated, tamagotchiState?.coins, tutorialSeen]);
+  useEffect(() => {
+    if (tutorialSeen && !tutorialSeenPrevRef.current) {
+      coinBalancePrevRef.current = 0;
+    }
+    tutorialSeenPrevRef.current = tutorialSeen;
+  }, [tutorialSeen]);
   useEffect(() => {
     const currentCoins = Math.max(0, Number(tamagotchiState?.coins) || 0);
     const previousCoins = Math.max(0, Number(coinBalancePrevRef.current) || 0);
     coinBalancePrevRef.current = currentCoins;
     if (!coinValueModalHydrated) return;
-    if (previousCoins <= 0 && currentCoins > 0) {
+    if (!tutorialSeen) return;
+    if (previousCoins <= 0 && currentCoins > 0 && canQueueCoinValueModal()) {
       queueCoinValueModal();
     }
-  }, [coinValueModalHydrated, queueCoinValueModal, tamagotchiState?.coins]);
+  }, [canQueueCoinValueModal, coinValueModalHydrated, queueCoinValueModal, tamagotchiState?.coins, tutorialSeen]);
+  useEffect(() => {
+    if (!canQueueCoinValueModal()) return;
+    queueCoinValueModal();
+  }, [canQueueCoinValueModal, queueCoinValueModal, overlay]);
   const overlayEnvironmentReady = interfaceReady && !dailySummaryVisible && !tutorialOverlayVisible;
   const ensureOverlayEnvironmentReady = useCallback(() => {
     if (
@@ -17952,6 +19826,16 @@ function AppContent() {
       if (identifier) {
         handledNotificationResponseIdsRef.current.add(identifier);
       }
+      const actionIdentifier = response?.actionIdentifier;
+      if (
+        actionIdentifier &&
+        actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER
+      ) {
+        notificationActionHandlerRef.current?.({
+          actionIdentifier,
+          notification: response.notification,
+        });
+      }
       const reminderPayload = getReminderAnalyticsPayload(response.notification);
       logEvent("push_notification_open");
       logEvent("reminder_clicked", reminderPayload);
@@ -18092,9 +19976,17 @@ function AppContent() {
   }, [ensureNotificationPermission]);
 
   const sendImmediateNotification = useCallback(
-    async (content) => {
+    async (content, options = {}) => {
       if (!content) return false;
       const now = Date.now();
+      const dedupeKey = options?.dedupeKey || content?.data?.dedupeKey || null;
+      const dedupeWindowMs = Number(options?.dedupeWindowMs) || PUSH_DEDUPE_WINDOW_MS;
+      if (dedupeKey) {
+        const lastSent = Number(notificationDedupeRef.current.get(dedupeKey)) || 0;
+        if (lastSent > 0 && now - lastSent < dedupeWindowMs) {
+          return false;
+        }
+      }
       const blocked = await isNotificationOnCooldown(now);
       if (blocked) {
         return false;
@@ -18107,6 +19999,9 @@ function AppContent() {
           trigger: null,
         });
         lastInstantNotificationRef.current = now;
+        if (dedupeKey) {
+          notificationDedupeRef.current.set(dedupeKey, now);
+        }
         AsyncStorage.setItem(STORAGE_KEYS.LAST_NOTIFICATION_AT, String(now)).catch(() => {});
         return true;
       } catch (error) {
@@ -18134,10 +20029,28 @@ function AppContent() {
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     }).catch(() => {});
   }, []);
+  useEffect(() => {
+    const actions = [
+      {
+        identifier: NOTIFICATION_ACTION_SAVE,
+        buttonTitle: t("pushActionSave"),
+        options: { opensAppToForeground: true },
+      },
+      {
+        identifier: NOTIFICATION_ACTION_SPEND,
+        buttonTitle: t("pushActionSpend"),
+        options: { opensAppToForeground: true },
+      },
+    ];
+    Notifications.setNotificationCategoryAsync(ACTIONABLE_NOTIFICATION_CATEGORY_ID, actions).catch(() => {});
+  }, [t]);
 
   useEffect(() => {
     dailyNudgeIdsRef.current = dailyNudgeNotificationIds || {};
   }, [dailyNudgeNotificationIds]);
+  useEffect(() => {
+    pendingListRef.current = Array.isArray(pendingList) ? pendingList : [];
+  }, [pendingList]);
 
   useEffect(() => {
     smartRemindersRef.current = smartReminders || [];
@@ -18226,16 +20139,21 @@ function AppContent() {
         actual: formatLocal(savedTotalUSD),
         shortfall: formatLocal(Math.max(resolvedPotential - savedTotalUSD, 0)),
       };
-      await sendImmediateNotification({
-        title: t(
-          status === "ahead" ? "potentialPushAheadTitle" : "potentialPushBehindTitle",
-          replacements
-        ),
-        body: t(
-          status === "ahead" ? "potentialPushAheadBody" : "potentialPushBehindBody",
-          replacements
-        ),
-      });
+      const dedupeKey = `potential:${potentialBaselineKey}:${status}:${currentStep}`;
+      await sendImmediateNotification(
+        {
+          title: t(
+            status === "ahead" ? "potentialPushAheadTitle" : "potentialPushBehindTitle",
+            replacements
+          ),
+          body: t(
+            status === "ahead" ? "potentialPushAheadBody" : "potentialPushBehindBody",
+            replacements
+          ),
+          data: { kind: "potential_push", status, dedupeKey },
+        },
+        { dedupeKey, dedupeWindowMs: POTENTIAL_PUSH_COOLDOWN_WINDOW_MS }
+      );
       if (cancelled) return;
       setPotentialPushProgress({
         lastStep: currentStep,
@@ -18348,7 +20266,7 @@ function AppContent() {
   }, []);
 
   const schedulePendingReminder = useCallback(
-    async (title, dueDate) => {
+    async (title, dueDate, meta = {}) => {
       try {
         const allowed = await ensureNotificationPermission();
         if (!allowed) return null;
@@ -18361,10 +20279,26 @@ function AppContent() {
           moodPreset?.pushPendingBody && moodPreset.pushPendingBody.trim()
             ? renderTemplateString(moodPreset.pushPendingBody, { title })
             : t("pendingNotificationBody", { title });
+        const dedupeKey =
+          meta?.dedupeKey ||
+          (typeof meta?.pendingId === "string" && meta.pendingId
+            ? `pending:${meta.pendingId}`
+            : null);
         const scheduled = await scheduleNotificationWithCooldown({
           content: {
             title: pendingTitle,
             body: pendingBody,
+            data: {
+              kind: "pending_decision",
+              pendingId: meta?.pendingId || null,
+              templateId: meta?.templateId || null,
+              title: meta?.title || title,
+              emoji: meta?.emoji || null,
+              amountUSD: Number(meta?.amountUSD) || null,
+              targetScreen: "pending",
+              dedupeKey,
+            },
+            categoryIdentifier: ACTIONABLE_NOTIFICATION_CATEGORY_ID,
           },
           trigger,
         });
@@ -19173,9 +21107,35 @@ function AppContent() {
         language,
         t,
         maxActiveChallenges: MAX_ACTIVE_CHALLENGES,
+        averageSaveActionUSD,
+        playerLevel,
       }),
-    [challengesState, profile.currency, language, t]
+    [challengesState, profile.currency, language, t, averageSaveActionUSD, playerLevel]
   );
+  const challengeBadgeEmojis = useMemo(
+    () =>
+      challengeList
+        .filter(
+          (challenge) =>
+            challenge.status === CHALLENGE_STATUS.COMPLETED || challenge.status === CHALLENGE_STATUS.CLAIMED
+        )
+        .map((challenge) => challenge.emoji)
+        .filter(Boolean),
+    [challengeList]
+  );
+  const challengeBadgeCount = challengeBadgeEmojis.length;
+  const activeChallenge = useMemo(() => {
+    const activeChallenges = challengeList.filter(
+      (challenge) => challenge.status === CHALLENGE_STATUS.ACTIVE
+    );
+    if (!activeChallenges.length) return null;
+    return activeChallenges.reduce((best, current) => {
+      if (!best) return current;
+      if ((current.progressPercent || 0) > (best.progressPercent || 0)) return current;
+      if ((current.progressPercent || 0) < (best.progressPercent || 0)) return best;
+      return (current.progressValue || 0) >= (best.progressValue || 0) ? current : best;
+    }, null);
+  }, [challengeList]);
   const rewardsBadgeCount = useMemo(() => {
     if (!rewardsReady) return 0;
     const claimableRewards = achievements.filter((reward) => reward.unlocked && !reward.claimed).length;
@@ -19738,6 +21698,7 @@ function AppContent() {
         titleRaw,
         emojiOverridesRaw,
         categoryOverridesRaw,
+        customCategoriesRaw,
         descriptionOverridesRaw,
         savedTotalRaw,
         declinesRaw,
@@ -19797,6 +21758,7 @@ function AppContent() {
         safeGetItem(STORAGE_KEYS.TITLE_OVERRIDES),
         safeGetItem(STORAGE_KEYS.EMOJI_OVERRIDES),
         safeGetItem(STORAGE_KEYS.CATEGORY_OVERRIDES),
+        safeGetItem(STORAGE_KEYS.CUSTOM_CATEGORIES),
         safeGetItem(STORAGE_KEYS.DESCRIPTION_OVERRIDES),
         safeGetItem(STORAGE_KEYS.SAVED_TOTAL),
         safeGetItem(STORAGE_KEYS.DECLINES),
@@ -19875,7 +21837,17 @@ function AppContent() {
       const storedActiveGoalId = activeGoalRaw || null;
       let hydratedGoalId = storedActiveGoalId;
       if (profileRaw) {
-        parsedProfile = { ...DEFAULT_PROFILE, ...JSON.parse(profileRaw) };
+        const rawProfile = JSON.parse(profileRaw);
+        parsedProfile = { ...DEFAULT_PROFILE, ...rawProfile };
+        if (!Object.prototype.hasOwnProperty.call(rawProfile, "goal")) {
+          parsedProfile.goal = null;
+        }
+        if (!Object.prototype.hasOwnProperty.call(rawProfile, "primaryGoals")) {
+          parsedProfile.primaryGoals = [];
+        }
+        if (!Object.prototype.hasOwnProperty.call(rawProfile, "goalTargetUSD")) {
+          parsedProfile.goalTargetUSD = 0;
+        }
         const trimmedFirstName = (parsedProfile.firstName || "").trim();
         const trimmedLastName = (parsedProfile.lastName || "").trim();
         const trimmedName = (parsedProfile.name || "").trim();
@@ -20395,6 +22367,22 @@ function AppContent() {
         setCategoryOverrides({});
       }
       setCategoryOverridesHydrated(true);
+      if (customCategoriesRaw) {
+        try {
+          const parsed = JSON.parse(customCategoriesRaw);
+          const normalizedList = Array.isArray(parsed) ? parsed : [];
+          const registered = normalizedList
+            .map((entry) => registerCustomCategory(entry))
+            .filter(Boolean);
+          setCustomCategories(registered);
+        } catch (error) {
+          console.warn("custom categories parse", error);
+          setCustomCategories([]);
+        }
+      } else {
+        setCustomCategories([]);
+      }
+      setCustomCategoriesHydrated(true);
       if (descriptionOverridesRaw) {
         try {
           setDescriptionOverrides(JSON.parse(descriptionOverridesRaw));
@@ -20580,10 +22568,19 @@ function AppContent() {
       if (impulseTrackerRaw) {
         try {
           const parsed = JSON.parse(impulseTrackerRaw);
+          const normalizedEvents = Array.isArray(parsed?.events)
+            ? parsed.events.slice(0, MAX_IMPULSE_EVENTS).map((event) => {
+                if (!event) return event;
+                const normalizedCategory = normalizeImpulseCategoryId(event.category);
+                if (!normalizedCategory) return event;
+                if (event.category === normalizedCategory) return event;
+                return { ...event, category: normalizedCategory };
+              })
+            : [];
           setImpulseTracker({
             ...INITIAL_IMPULSE_TRACKER,
             ...parsed,
-            events: Array.isArray(parsed?.events) ? parsed.events.slice(0, MAX_IMPULSE_EVENTS) : [],
+            events: normalizedEvents,
             lastAlerts: parsed?.lastAlerts || {},
           });
         } catch (err) {
@@ -21147,6 +23144,19 @@ function AppContent() {
     if (!spendLoggingReminderHydrated) return;
     if (onboardingStep !== "done") return;
     const now = Date.now();
+    const todayKey = getDayKey(now);
+    const hasActionToday = resolvedHistoryEvents.some((entry) => {
+      if (!entry?.timestamp) return false;
+      if (getDayKey(entry.timestamp) !== todayKey) return false;
+      return [
+        "refuse_spend",
+        "spend",
+        "pending_added",
+        "pending_to_wish",
+        "pending_to_decline",
+      ].includes(entry.kind);
+    });
+    if (hasActionToday) return;
     const lastSpendTimestamp = resolvedHistoryEvents.reduce((max, entry) => {
       if (entry?.kind !== "spend") return max;
       const ts = Number(entry.timestamp) || 0;
@@ -21160,10 +23170,15 @@ function AppContent() {
     if (lastReminderAt && now - lastReminderAt < SPEND_LOGGING_REMINDER_COOLDOWN_MS) return;
     lastSpendLoggingReminderRef.current = now;
     AsyncStorage.setItem(STORAGE_KEYS.SPEND_LOGGING_REMINDER, String(now)).catch(() => {});
-    sendImmediateNotification({
-      title: t("spendLoggingReminderTitle"),
-      body: t("spendLoggingReminderBody"),
-    });
+    const dedupeKey = `spend_logging:${todayKey}`;
+    sendImmediateNotification(
+      {
+        title: t("spendLoggingReminderTitle"),
+        body: t("spendLoggingReminderBody"),
+        data: { kind: "spend_logging", dedupeKey },
+      },
+      { dedupeKey }
+    );
   }, [
     onboardingStep,
     profileJoinedAt,
@@ -21407,6 +23422,13 @@ useEffect(() => {
       () => {}
     );
   }, [categoryOverrides, categoryOverridesHydrated]);
+
+  useEffect(() => {
+    if (!customCategoriesHydrated) return;
+    AsyncStorage.setItem(STORAGE_KEYS.CUSTOM_CATEGORIES, JSON.stringify(customCategories)).catch(
+      () => {}
+    );
+  }, [customCategories, customCategoriesHydrated]);
 
   useEffect(() => {
     if (!descriptionOverridesHydrated) return;
@@ -21739,16 +23761,22 @@ useEffect(() => {
           if (cancelled) return;
         }
         const label = entry.templateTitle || t("defaultDealTitle");
-        const reminderIds = [];
+          const reminderIds = [];
         for (let idx = 0; idx < scheduleTriggers.length; idx += 1) {
           if (cancelled) break;
           const triggerTime = scheduleTriggers[idx];
           try {
+            const dedupeKey = `frequency:${templateId}:${triggerTime}`;
             const scheduledEntry = await scheduleNotificationWithCooldown({
               content: {
                 title: t("frequencyReminderTitle", { temptation: label }),
                 body: t("frequencyReminderBody", { temptation: label }),
                 sound: false,
+                data: {
+                  kind: "frequency_reminder",
+                  templateId,
+                  dedupeKey,
+                },
               },
               trigger: new Date(triggerTime),
             });
@@ -22477,6 +24505,38 @@ useEffect(() => {
     [categoryOverrides]
   );
 
+  const shouldPromptCategory = useCallback(
+    (item, action, options = {}) => {
+      if (options?.skipCategoryPrompt) return false;
+      if (action !== "save" && action !== "spend") return false;
+      if (!categoryOverridesHydrated) return false;
+      if (!isCustomTemptation(item)) return false;
+      const templateId = resolveTemptationTemplateId(item);
+      if (!templateId) return false;
+      const override = categoryOverrides?.[templateId];
+      if (override && IMPULSE_CATEGORY_DEFS[override]) return false;
+      if (item?.impulseCategoryOverride && IMPULSE_CATEGORY_DEFS[item.impulseCategoryOverride] && !item?.quickTemptation) {
+        return false;
+      }
+      return true;
+    },
+    [categoryOverrides, categoryOverridesHydrated, resolveTemptationTemplateId]
+  );
+
+  const openCategoryPrompt = useCallback(
+    (item, action, options = {}) => {
+      if (!item) return;
+      const inferred = resolveTemptationCategory(item) || DEFAULT_IMPULSE_CATEGORY;
+      setCategoryPromptSelection(inferred);
+      setCategoryPrompt({ visible: true, item, action, options });
+    },
+    [resolveTemptationCategory]
+  );
+
+  const closeCategoryPrompt = useCallback(() => {
+    setCategoryPrompt({ visible: false, item: null, action: null, options: null });
+  }, []);
+
   const handleQuickCustomSubmit = (customData) => {
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
     const parsedAmount = parseNumberInputValue(customData.amount || "");
@@ -22626,10 +24686,6 @@ useEffect(() => {
     });
   }, [logEvent, newGoalModal]);
 
-  const fabCurrencySymbol = useMemo(() => {
-    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
-    return CURRENCY_SIGNS[currencyCode] || "$";
-  }, [profile.currency]);
 
   const handleNewGoalSubmit = useCallback(() => {
     const trimmedName = (newGoalModal.name || "").trim();
@@ -23398,6 +25454,7 @@ useEffect(() => {
         "";
       const title = metaTitle || t("defaultDealTitle");
       const isSpendEvent = entry.kind === "spend";
+      const dedupeKey = `smart:${entry.id || timestamp}`;
       try {
         const scheduledEntry = await scheduleNotificationWithCooldown({
           content: {
@@ -23407,6 +25464,11 @@ useEffect(() => {
             body: isSpendEvent
               ? t("smartInsightSpendBody", { temptation: title })
             : t("smartInsightDeclineBody", { temptation: title }),
+            data: {
+              kind: "smart_insight",
+              templateId: templateId || null,
+              dedupeKey,
+            },
           },
           trigger: new Date(triggerTime),
         });
@@ -24042,6 +26104,7 @@ useEffect(() => {
     (templateId, actionType, item = null) => {
       if (!templateId && !item?.id && !item?.templateId) return;
       if (actionType !== "save" && actionType !== "spend") return;
+      dismissPotentialGrowth();
       const resolvedTitle = item
         ? resolveTemptationTitle(item, language)
         : null;
@@ -24127,7 +26190,7 @@ useEffect(() => {
         return nextMap;
       });
     },
-    [language]
+    [dismissPotentialGrowth, language]
   );
   const normalizeTemplateKey = (value) => {
     if (typeof value !== "string") return null;
@@ -24526,6 +26589,7 @@ useEffect(() => {
         currencyCode
       );
       const templateTitle = event.title || t("defaultDealTitle");
+      const dedupeKey = `impulse_reminder:${event.id || event.templateId || Date.now()}`;
       const content =
         event.action === "save"
           ? {
@@ -24538,7 +26602,18 @@ useEffect(() => {
             };
       try {
         await scheduleNotificationWithCooldown({
-          content,
+          content: {
+            ...content,
+            data: {
+              kind: "impulse_reminder",
+              templateId: event.templateId || null,
+              title: templateTitle,
+              emoji: event.emoji || "✨",
+              amountUSD: Number(event.amountUSD) || 0,
+              dedupeKey,
+            },
+            categoryIdentifier: ACTIONABLE_NOTIFICATION_CATEGORY_ID,
+          },
           trigger: new Date(triggerAt),
         });
       } catch (error) {
@@ -24691,6 +26766,10 @@ useEffect(() => {
       const balanceLocal = convertToCurrency(savedTotalUSD, currencyCode);
       if (type === "maybe" && !thinkingUnlocked) {
         Alert.alert("Almost", t("thinkingLockedMessage"));
+        return;
+      }
+      if (shouldPromptCategory(item, type, options)) {
+        openCategoryPrompt(item, type, options);
         return;
       }
       if (type === "spend") {
@@ -25326,7 +27405,13 @@ useEffect(() => {
             remind_at: pendingEntry.decisionDue,
           })
         );
-        const reminderId = await schedulePendingReminder(title, pendingEntry.decisionDue);
+        const reminderId = await schedulePendingReminder(title, pendingEntry.decisionDue, {
+          pendingId: pendingEntry.id,
+          templateId: pendingEntry.templateId,
+          title,
+          emoji: item?.emoji || "✨",
+          amountUSD: priceUSD,
+        });
         if (reminderId) pendingEntry.notificationId = reminderId;
         setPendingList((prev) => [pendingEntry, ...prev]);
         logHistoryEvent("pending_added", { title, amountUSD: priceUSD, pendingId: pendingEntry.id });
@@ -25388,8 +27473,75 @@ useEffect(() => {
       profile.goal,
       profile.primaryGoals,
       overlay,
+      openCategoryPrompt,
+      shouldPromptCategory,
     ]
   );
+
+  const handleCategoryPromptConfirm = useCallback(() => {
+    const item = categoryPrompt.item;
+    if (!item) {
+      closeCategoryPrompt();
+      return;
+    }
+    const templateId = resolveTemptationTemplateId(item) || item.id;
+    const selected =
+      categoryPromptSelection && IMPULSE_CATEGORY_DEFS[categoryPromptSelection]
+        ? categoryPromptSelection
+        : resolveTemptationCategory(item);
+    if (templateId && selected && IMPULSE_CATEGORY_DEFS[selected]) {
+      setCategoryOverrides((prev) => ({ ...prev, [templateId]: selected }));
+    }
+    const nextAction = categoryPrompt.action;
+    const nextOptions = categoryPrompt.options || {};
+    closeCategoryPrompt();
+    if (nextAction) {
+      handleTemptationAction(nextAction, item, { ...nextOptions, skipCategoryPrompt: true });
+    }
+  }, [
+    categoryPrompt.action,
+    categoryPrompt.item,
+    categoryPrompt.options,
+    categoryPromptSelection,
+    closeCategoryPrompt,
+    handleTemptationAction,
+    resolveTemptationCategory,
+    resolveTemptationTemplateId,
+    setCategoryOverrides,
+  ]);
+
+  const openAddCategoryModal = useCallback(() => {
+    setAddCategoryName("");
+    setAddCategoryEmoji("✨");
+    setAddCategoryError(false);
+    setAddCategoryModalVisible(true);
+  }, []);
+
+  const closeAddCategoryModal = useCallback(() => {
+    setAddCategoryModalVisible(false);
+    setAddCategoryError(false);
+  }, []);
+
+  const handleAddCategorySave = useCallback(() => {
+    const trimmed = (addCategoryName || "").trim();
+    if (!trimmed) {
+      setAddCategoryError(true);
+      return;
+    }
+    const emoji = limitEmojiInput(addCategoryEmoji) || "✨";
+    const def = registerCustomCategory({
+      id: trimmed,
+      ru: trimmed,
+      en: trimmed,
+      es: trimmed,
+      fr: trimmed,
+      emoji,
+    });
+    if (def) {
+      setCustomCategories((prev) => [...prev, def]);
+    }
+    closeAddCategoryModal();
+  }, [addCategoryEmoji, addCategoryName, closeAddCategoryModal]);
 
   const handleStreakRecoveryDecline = useCallback(() => {
     const { item, options, templateId } = streakRecoveryPrompt;
@@ -26427,6 +28579,17 @@ useEffect(() => {
         0,
         Math.round((decisionTimestamp - (pendingItem.createdAt || decisionTimestamp)) / DAY_MS)
       );
+      const actionTemplateId = template?.id || pendingItem.templateId || pendingItem.id;
+      const actionItem = {
+        ...(template || {}),
+        id: actionTemplateId,
+        templateId: actionTemplateId,
+        title: template?.title || pendingItem.title || "Wish",
+        emoji: pendingItem.emoji || template?.emoji || DEFAULT_TEMPTATION_EMOJI,
+        priceUSD,
+        basePriceUSD: template?.basePriceUSD || priceUSD,
+        categories: template?.categories || pendingItem.categories || [],
+      };
       if (decision === "want") {
         const targetUSD = pendingItem.priceUSD || template?.basePriceUSD || 0;
         const newWish = {
@@ -26460,6 +28623,13 @@ useEffect(() => {
         triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
         return;
       }
+      if (decision === "spend") {
+        await handleTemptationAction("spend", actionItem, {
+          skipPrompt: true,
+          shouldAssign: false,
+        });
+        return;
+      }
       if (decision === "decline") {
         const price = priceUSD;
         setDecisionStats((prev) => ({
@@ -26476,17 +28646,6 @@ useEffect(() => {
           )
         );
         logHistoryEvent("pending_to_decline", { title, amountUSD: price });
-        const actionTemplateId = template?.id || pendingItem.templateId || pendingItem.id;
-        const actionItem = {
-          ...(template || {}),
-          id: actionTemplateId,
-          templateId: actionTemplateId,
-          title: template?.title || pendingItem.title || "Wish",
-          emoji: pendingItem.emoji || template?.emoji || DEFAULT_TEMPTATION_EMOJI,
-          priceUSD: price,
-          basePriceUSD: template?.basePriceUSD || price,
-          categories: template?.categories || pendingItem.categories || [],
-        };
         await handleTemptationAction("save", actionItem, {
           skipPrompt: true,
           shouldAssign: false,
@@ -26496,6 +28655,55 @@ useEffect(() => {
     },
     [buildTemptationPayload, findTemplateById, handleTemptationAction, language, logHistoryEvent, profile.currency, t]
   );
+  useEffect(() => {
+    notificationActionHandlerRef.current = async ({ actionIdentifier, notification }) => {
+      const action =
+        actionIdentifier === NOTIFICATION_ACTION_SAVE
+          ? "save"
+          : actionIdentifier === NOTIFICATION_ACTION_SPEND
+          ? "spend"
+          : null;
+      if (!action) return;
+      const data = notification?.request?.content?.data || {};
+      const kind = typeof data.kind === "string" ? data.kind : null;
+      const pendingId = typeof data.pendingId === "string" ? data.pendingId : null;
+      if (kind === "pending_decision" && pendingId) {
+        const pendingItem = (pendingListRef.current || []).find((entry) => entry?.id === pendingId);
+        if (pendingItem) {
+          await handlePendingDecision(pendingItem, action === "spend" ? "spend" : "decline");
+          return;
+        }
+      }
+      const templateId =
+        data?.templateId || data?.template_id || data?.templateID || data?.template || null;
+      const template = templateId ? findTemplateById(templateId) : null;
+      const fallbackTitle =
+        typeof data?.title === "string" && data.title.trim() ? data.title.trim() : t("defaultDealTitle");
+      const fallbackEmoji = typeof data?.emoji === "string" && data.emoji.trim() ? data.emoji : "✨";
+      const fallbackAmount = Math.max(0, Number(data?.amountUSD ?? data?.priceUSD ?? data?.amount) || 0);
+      const item = template
+        ? { ...template, id: template.id || templateId, emoji: template.emoji || fallbackEmoji }
+        : {
+            id: templateId || `push_${Date.now()}`,
+            title: fallbackTitle,
+            emoji: fallbackEmoji,
+            priceUSD: fallbackAmount,
+            basePriceUSD: fallbackAmount,
+            categories: [],
+          };
+      if (action === "spend") {
+        await handleTemptationAction("spend", item, {
+          bypassSpendPrompt: true,
+          skipPrompt: true,
+        });
+        return;
+      }
+      await handleTemptationAction("save", item, {
+        skipPrompt: true,
+        skipStreakRecoveryPrompt: true,
+      });
+    };
+  }, [handlePendingDecision, handleTemptationAction, t]);
   const handlePendingDelete = useCallback(
     (pendingItem) => {
       if (!pendingItem) return;
@@ -26526,6 +28734,37 @@ useEffect(() => {
       ]);
     },
     [findTemplateById, language, logEvent, logHistoryEvent, setPendingList, t]
+  );
+
+  const handlePendingExtend = useCallback(
+    async (pendingItem) => {
+      if (!pendingItem) return;
+      const template = findTemplateById(pendingItem.templateId);
+      const title = pendingItem.title || template?.title?.[language] || template?.title?.en || "Wish";
+      const nextDue = Date.now() + PENDING_EXTENSION_MS;
+      if (pendingItem.notificationId) {
+        Notifications.cancelScheduledNotificationAsync(pendingItem.notificationId).catch(() => {});
+      }
+      const reminderId = await schedulePendingReminder(title, nextDue, {
+        pendingId: pendingItem.id,
+        templateId: pendingItem.templateId,
+        title,
+        emoji: pendingItem.emoji || template?.emoji || DEFAULT_TEMPTATION_EMOJI,
+        amountUSD: pendingItem.priceUSD || template?.basePriceUSD || 0,
+      });
+      setPendingList((prev) =>
+        prev.map((entry) =>
+          entry.id === pendingItem.id
+            ? {
+                ...entry,
+                decisionDue: nextDue,
+                notificationId: reminderId || null,
+              }
+            : entry
+        )
+      );
+    },
+    [findTemplateById, language, schedulePendingReminder, setPendingList]
   );
 
   useEffect(
@@ -27227,10 +29466,12 @@ useEffect(() => {
             triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
             try {
               await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
+              await AsyncStorage.clear();
             } catch (error) {
               console.warn("reset", error);
             }
             AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "pending").catch(() => {});
+            Notifications.cancelAllScheduledNotificationsAsync?.().catch(() => {});
             try {
               await Promise.all(
                 pendingList
@@ -27278,6 +29519,10 @@ useEffect(() => {
             setHistoryEvents([]);
             setRefuseStats({});
             setTemptationInteractions({});
+            setSmartReminders([]);
+            setSmartRemindersHydrated(true);
+            setPotentialPushProgress({ ...DEFAULT_POTENTIAL_PUSH_STATE });
+            setPotentialPushHydrated(true);
             const resetProfile = {
               ...DEFAULT_PROFILE,
               joinedAt: new Date().toISOString(),
@@ -27291,6 +29536,20 @@ useEffect(() => {
             setProfileDraft(resetProfile);
             setActiveGoalId(null);
             setRegistrationData(INITIAL_REGISTRATION);
+            setDailyRewardState({ ...DEFAULT_DAILY_REWARD_STATE });
+            setDailyRewardHydrated(true);
+            setDailyChallenge(createInitialDailyChallengeState());
+            setDailyChallengeHydrated(true);
+            setDailySummaryData(null);
+            setDailySummaryVisible(false);
+            setPendingDailySummaryData(null);
+            setDailySummarySeenKey(null);
+            setDailyNudgeNotificationIds({});
+            dailyNudgeIdsRef.current = {};
+            setDailyNudgesHydrated(true);
+            pushOptInLoggedRef.current = false;
+            pushDayThreePromptShownRef.current = false;
+            lastSpendLoggingReminderRef.current = 0;
             goalSelectionTouchedRef.current = false;
             goToOnboardingStep("logo", { recordHistory: false, resetHistory: true });
             setActiveCategory("all");
@@ -27507,7 +29766,7 @@ useEffect(() => {
     switch (activeTab) {
       case "cart":
         return (
-          <WishListScreen
+          <ProgressScreen
             wishes={wishes}
             currency={profile.currency || DEFAULT_PROFILE.currency}
             onRemoveWish={handleRemoveWish}
@@ -27520,6 +29779,28 @@ useEffect(() => {
             onSetActiveGoal={handleActiveGoalSelect}
             language={language}
             catCuriousSource={tamagotchiAnimations.curious}
+            healthPoints={healthPoints}
+            freeDayStats={freeDayStats}
+            onFreeDayLog={handleLogFreeDay}
+            onFreeDayRescue={handleFreeDayRescue}
+            freeDayRescueCost={FREE_DAY_RESCUE_COST}
+            historyEvents={resolvedHistoryEvents}
+            impulseInsights={impulseInsights}
+            showImpulseMap={impulseFeaturesUnlocked}
+            showFreeDayCard={freeDayUnlocked}
+            challenges={challengeList}
+            onChallengeAccept={handleChallengeAccept}
+            onChallengeClaim={handleChallengeClaim}
+            onChallengeCancel={handleChallengeCancel}
+            onCreateGoal={() => openNewGoalModal(false, "progress_goal_add")}
+            focusChallengeId={progressFocusChallengeId}
+            onFocusHandled={() => setProgressFocusChallengeId(null)}
+            challengeBadges={challengeBadgeEmojis}
+            challengeBadgeCount={challengeBadgeCount}
+            playerLevel={playerLevel}
+            resolveTemplateCard={resolveTemplateCard}
+            resolveTemptationCategory={resolveTemptationCategory}
+            customCategories={customCategories}
           />
         );
       case "pending":
@@ -27531,8 +29812,10 @@ useEffect(() => {
             colors={colors}
             onResolve={handlePendingDecision}
             onDelete={handlePendingDelete}
+            onExtend={handlePendingExtend}
             language={language}
             catCuriousSource={tamagotchiAnimations.curious}
+            locked={!thinkingUnlocked}
           />
         );
       case "purchases":
@@ -27553,8 +29836,11 @@ useEffect(() => {
             healthRewardAmount={HEALTH_PER_REWARD}
             language={language}
             dailyChallenge={resolvedDailyChallenge}
-            showChallenges={challengesUnlocked}
-            showDailyChallengeWidget={dailyChallengeUnlocked}
+            showChallenges={false}
+            showDailyChallengeWidget={false}
+            rewardsLocked={!rewardsUnlocked}
+            challengesLocked={!challengesUnlocked}
+            dailyChallengeLocked={playerLevel < 2}
           />
         );
       case "profile":
@@ -27583,10 +29869,13 @@ useEffect(() => {
             onHistoryDelete={handleHistoryDelete}
             freeDayStats={freeDayStats}
             rewardBadgeCount={rewardClaimTotal}
+            challengeBadges={challengeBadgeEmojis}
+            challengeBadgeCount={challengeBadgeCount}
             t={t}
             colors={colors}
             moodPreset={moodPreset}
             mascotImageSource={tamagotchiAvatarSource}
+            openAddCategoryModal={openAddCategoryModal}
           />
       );
       default:
@@ -27624,6 +29913,8 @@ useEffect(() => {
             onPotentialDetailsOpen={openPotentialDetails}
             heroGoalTargetUSD={heroGoalTargetUSD}
             heroGoalSavedUSD={heroGoalSavedUSD}
+            potentialGrowthUSD={potentialGrowthUSD}
+            showPotentialGrowth={potentialGrowthVisible}
             dailyRewardUnlocked={dailyRewardUnlocked}
             dailyRewardReady={dailyRewardReady}
             dailyRewardAmount={dailyRewardDisplayAmount}
@@ -27666,8 +29957,8 @@ useEffect(() => {
             tutorialHighlightMeasureTick={tutorialHighlightMeasureTick}
             onTutorialHighlightLayoutChange={handleTutorialHighlightLayoutChange}
             allowThinkAction={thinkingUnlocked}
-            showFreeDayCard={freeDayUnlocked}
-            showImpulseMap={impulseFeaturesUnlocked}
+            activeChallenge={activeChallenge}
+            onActiveChallengePress={handleProgressChallengeOpen}
           />
         );
     }
@@ -28445,7 +30736,7 @@ useEffect(() => {
               borderTopColor: colors.border,
               paddingBottom: tabBarBottomInset + (Platform.OS === "android" ? 12 : 0),
               marginBottom: Platform.OS === "ios" ? -(safeAreaInsets.bottom || 0) : 0,
-              paddingTop: 12,
+              paddingTop: 18,
             },
           ]}
           onLayout={handleTabBarLayout}
@@ -28454,6 +30745,9 @@ useEffect(() => {
             const isHighlighted =
               !tutorialIsTemptation && !!tutorialHighlightTabs?.has(tab);
             const isActiveTab = activeTab === tab;
+            const isTabLocked =
+              (tab === "pending" && !thinkingUnlocked) ||
+              (tab === "purchases" && !rewardsUnlocked);
             const highlightBackground = theme === "dark" ? "rgba(255,255,255,0.2)" : "#FFFFFF";
             const highlightTextColor = theme === "dark" ? "#05070D" : colors.text;
             const defaultTextColor = isActiveTab ? colors.text : colors.muted;
@@ -28493,7 +30787,10 @@ useEffect(() => {
                     ? t("purchasesTitle")
                     : t("profileTab")}
                 </Text>
-                {tab === "purchases" && rewardsBadgeCount > 0 && (
+                {isTabLocked && (
+                  <Text style={[styles.tabLockIconOverlay, { color: textColor }]}>🔒</Text>
+                )}
+                {tab === "purchases" && rewardsBadgeCount > 0 && rewardsUnlocked && (
                   <View
                     style={[
                       styles.tabBadge,
@@ -28518,7 +30815,7 @@ useEffect(() => {
           })}
         </View>
 
-        {activeTab !== "profile" && activeTab !== "purchases" && (
+        {activeTab !== "profile" && activeTab !== "purchases" && !(activeTab === "pending" && !thinkingUnlocked) && (
           <View
             pointerEvents="box-none"
             style={[
@@ -28565,7 +30862,7 @@ useEffect(() => {
                   style={[styles.cartBadgeIcon, { color: colors.background }]}
                   numberOfLines={1}
                 >
-                  {fabCurrencySymbol}
+                  {fabMainIcon}
                 </Text>
               </AnimatedTouchableOpacity>
             </View>
@@ -30360,6 +32657,133 @@ useEffect(() => {
           onClose={closeImagePickerSheet}
           onSelect={handleImageSourceChoice}
         />
+        <Modal
+          visible={categoryPrompt.visible}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+        >
+          <TouchableWithoutFeedback onPress={closeCategoryPrompt}>
+            <View style={[styles.priceModalBackdrop, modalKeyboardPaddingStyle]}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={[styles.priceModalCard, { backgroundColor: colors.card }]}>
+                  <Text style={[styles.priceModalTitle, { color: colors.text }]}>
+                    {t("categoryPromptTitle")}
+                  </Text>
+                  <Text style={[styles.priceModalLabel, { color: colors.muted, marginTop: 0 }]}>
+                    {t("categoryPromptSubtitle")}
+                  </Text>
+                  <ImpulseCategorySelector
+                    value={categoryPromptSelection || DEFAULT_IMPULSE_CATEGORY}
+                    onChange={setCategoryPromptSelection}
+                    colors={colors}
+                    language={language}
+                    horizontal
+                    visibleCount={5}
+                  />
+                  <View style={styles.priceModalButtons}>
+                    <TouchableOpacity
+                      style={[styles.priceModalPrimary, { backgroundColor: colors.text }]}
+                      onPress={handleCategoryPromptConfirm}
+                    >
+                      <Text style={[styles.priceModalPrimaryText, { color: colors.background }]}>
+                        {t("categoryPromptConfirm")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.priceModalSecondary, { borderColor: colors.border }]}
+                      onPress={closeCategoryPrompt}
+                    >
+                      <Text style={[styles.priceModalSecondaryText, { color: colors.muted }]}>
+                        {t("categoryPromptCancel")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+        <Modal
+          visible={addCategoryModalVisible}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+        >
+          <TouchableWithoutFeedback onPress={closeAddCategoryModal}>
+            <View style={[styles.priceModalBackdrop, modalKeyboardPaddingStyle]}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={[styles.priceModalCard, { backgroundColor: colors.card }]}>
+                  <Text style={[styles.priceModalTitle, { color: colors.text }]}>
+                    {t("addCategoryModalTitle")}
+                  </Text>
+                  <Text style={[styles.priceModalLabel, { color: colors.muted, marginTop: 0 }]}>
+                    {t("addCategoryNameLabel")}
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.priceModalInput,
+                      {
+                        borderColor: colors.border,
+                        color: colors.text,
+                        backgroundColor: colors.card,
+                      },
+                    ]}
+                    value={addCategoryName}
+                    onChangeText={(text) => {
+                      setAddCategoryName(text);
+                      setAddCategoryError(false);
+                    }}
+                    placeholder={t("addCategoryNameLabel")}
+                    placeholderTextColor={colors.muted}
+                  />
+                  <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
+                    {t("addCategoryEmojiLabel")}
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.priceModalInput,
+                      {
+                        borderColor: colors.border,
+                        color: colors.text,
+                        backgroundColor: colors.card,
+                      },
+                    ]}
+                    value={addCategoryEmoji}
+                    onChangeText={(text) => setAddCategoryEmoji(limitEmojiInput(text))}
+                    placeholder={t("addCategoryEmojiLabel")}
+                    placeholderTextColor={colors.muted}
+                    selectTextOnFocus
+                    maxLength={2}
+                  />
+                  {addCategoryError && (
+                    <Text style={[styles.priceModalDeleteText, { color: "#E15555" }]}>
+                      {t("addCategoryError")}
+                    </Text>
+                  )}
+                  <View style={styles.priceModalButtons}>
+                    <TouchableOpacity
+                      style={[styles.priceModalPrimary, { backgroundColor: colors.text }]}
+                      onPress={handleAddCategorySave}
+                    >
+                      <Text style={[styles.priceModalPrimaryText, { color: colors.background }]}>
+                        {t("addCategorySave")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.priceModalSecondary, { borderColor: colors.border }]}
+                      onPress={closeAddCategoryModal}
+                    >
+                      <Text style={[styles.priceModalSecondaryText, { color: colors.muted }]}>
+                        {t("addCategoryCancel")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
         <SpendConfirmSheet
           visible={spendPrompt.visible}
           item={spendPrompt.item}
@@ -30435,7 +32859,21 @@ const StatusGlass = React.memo(({ height, colors, theme, blurAvailable = false, 
   if (blurAvailable) {
     return (
       <View pointerEvents="none" style={[styles.statusGlass, { height }]}>
-        <BlurView tint={theme === "dark" ? "dark" : "extraLight"} intensity={35} style={StyleSheet.absoluteFill} />
+        {Platform.OS === "android" && AndroidBlurView ? (
+          <AndroidBlurView
+            blurType={theme === "dark" ? "dark" : "light"}
+            blurAmount={4}
+            reducedTransparencyFallbackColor={isDarkTheme ? "#0B0B0B" : "#F2F2F2"}
+            style={StyleSheet.absoluteFill}
+          />
+        ) : (
+          <ExpoBlurView
+            tint={theme === "dark" ? "dark" : "extraLight"}
+            intensity={18}
+            experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
+            style={StyleSheet.absoluteFill}
+          />
+        )}
         {overlay}
         {border}
       </View>
@@ -31026,6 +33464,164 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
+  lockedFeatureWrap: {
+    position: "relative",
+    overflow: "hidden",
+  },
+  lockedFeatureOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "flex-start",
+    alignItems: "flex-start",
+    paddingTop: 18,
+    paddingBottom: 24,
+    paddingHorizontal: 18,
+  },
+  lockedFeatureOverlayCentered: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  lockedFeatureOverlayCompact: {
+    paddingTop: 12,
+    paddingBottom: 12,
+    paddingHorizontal: 12,
+  },
+  lockedFeatureBlur: {
+    zIndex: 0,
+  },
+  lockedFeatureScrim: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  lockedFeatureOverlayContent: {
+    gap: 8,
+    maxWidth: "100%",
+    flexShrink: 1,
+    zIndex: 1,
+  },
+  lockedFeatureOverlayContentCentered: {
+    alignItems: "center",
+    width: "100%",
+  },
+  lockedFeatureOverlayContentCompact: {
+    gap: 6,
+  },
+  lockedFeatureLockRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  lockedFeatureLockRowCentered: {
+    justifyContent: "center",
+    width: "100%",
+  },
+  lockedFeatureLockIcon: {
+    fontSize: 16,
+  },
+  lockedFeatureLockIconCentered: {
+    alignSelf: "center",
+    textAlign: "center",
+    textAlignVertical: "center",
+  },
+  lockedFeatureLockIconCompact: {
+    fontSize: 12,
+  },
+  lockedFeatureTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 18,
+    flexShrink: 1,
+  },
+  lockedFeatureTitleCentered: {
+    textAlign: "center",
+  },
+  lockedFeatureTitleCompact: {
+    fontSize: 14,
+  },
+  lockedFeatureDescription: {
+    ...createBodyText({ fontSize: 14 }),
+    lineHeight: 20,
+    flexShrink: 1,
+  },
+  lockedFeatureDescriptionCentered: {
+    textAlign: "center",
+  },
+  lockedFeatureDescriptionCompact: {
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  lockedFeatureLevelBadge: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    maxWidth: "100%",
+  },
+  lockedFeatureLevelBadgeCentered: {
+    alignSelf: "center",
+  },
+  lockedFeatureLevelBadgeCompact: {
+    marginTop: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  lockedFeatureLevelText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  lockedFeatureLevelTextCompact: {
+    fontSize: 10,
+  },
+  lockedFeaturePlaceholder: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 18,
+    gap: 10,
+    minHeight: 140,
+  },
+  lockedFeaturePlaceholderCompact: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+    gap: 8,
+    minHeight: 110,
+  },
+  lockedFeaturePlaceholderSquare: {
+    aspectRatio: 1,
+    width: "100%",
+    minHeight: 0,
+  },
+  lockedFeaturePlaceholderLine: {
+    height: 10,
+    borderRadius: 6,
+  },
+  lockedFeatureCard: {
+    borderRadius: 20,
+    marginTop: 12,
+  },
+  lockedFeatureRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 12,
+  },
+  lockedFeatureMiniCard: {
+    flex: 1,
+    borderRadius: 18,
+  },
+  lockedFeatureInlineCard: {
+    borderRadius: 20,
+  },
+  lockedFeaturePane: {
+    borderRadius: 24,
+    minHeight: 220,
+  },
+  lockedFeaturePaneContent: {
+    padding: 6,
+  },
+  lockedFeatureScreen: {
+    flex: 1,
+  },
+  lockedFeatureScreenContent: {
+    flex: 1,
+  },
   skinPickerItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -31375,6 +33971,18 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     lineHeight: 9,
   },
+  dailyRewardLockedIcon: {
+    fontSize: 12,
+    lineHeight: 14,
+  },
+  dailyRewardLockedLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    textAlign: "center",
+    includeFontPadding: false,
+    lineHeight: 12,
+  },
   dailyRewardFloating: {
     position: "absolute",
     right: 0,
@@ -31503,6 +34111,7 @@ const styles = StyleSheet.create({
     ...createSecondaryText({ marginTop: 8 }),
   },
   heroPotentialCard: {
+    marginTop: 10,
     marginBottom: 12,
     borderRadius: 18,
     padding: 14,
@@ -31512,21 +34121,37 @@ const styles = StyleSheet.create({
     ...createBodyText({ fontSize: 14 }),
   },
   heroPotentialHeader: {
+    gap: 6,
+  },
+  heroPotentialRow: {
     flexDirection: "row",
+    alignItems: "baseline",
     justifyContent: "space-between",
-    alignItems: "center",
+    width: "100%",
+    gap: 12,
   },
   heroPotentialLabel: {
     ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
+    lineHeight: 16,
+    flex: 1,
   },
   heroPotentialValue: {
     ...createBodyText({ fontSize: 16, fontWeight: "700" }),
+    lineHeight: 20,
+    textAlign: "right",
   },
   heroPotentialHint: {
     ...createSecondaryText({ fontSize: 12 }),
   },
   heroPotentialStatus: {
     ...createSecondaryText({ fontSize: 12 }),
+    lineHeight: 16,
+    flex: 1,
+  },
+  heroPotentialDelta: {
+    ...createCtaText({ fontSize: 13 }),
+    marginTop: 0,
+    textAlign: "right",
   },
   heroPotentialButton: {
     borderWidth: 1,
@@ -31583,6 +34208,54 @@ const styles = StyleSheet.create({
   },
   goalCompleteBadgeText: {
     ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
+  },
+  heroChallengeBlock: {
+    marginTop: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 10,
+    gap: 6,
+    opacity: 0.9,
+  },
+  heroChallengeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  heroChallengeTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flex: 1,
+  },
+  heroChallengeEmoji: {
+    fontSize: 16,
+  },
+  heroChallengeMeta: {
+    ...createSecondaryText({ fontSize: 11 }),
+  },
+  heroChallengeName: {
+    ...createBodyText({ fontSize: 13, fontWeight: "700" }),
+    flex: 1,
+  },
+  heroChallengeProgressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  heroChallengeBar: {
+    flex: 1,
+    height: 6,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  heroChallengeFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  heroChallengeLabel: {
+    ...createSecondaryText({ fontSize: 11 }),
   },
   goalSelectButton: {
     marginTop: 10,
@@ -32028,6 +34701,10 @@ const styles = StyleSheet.create({
   breakdownLegendText: {
     fontSize: 12,
     fontWeight: "700",
+  },
+  savedHeroToggleRow: {
+    marginTop: 10,
+    alignItems: "flex-end",
   },
   savedHeroToggleButton: {
     paddingVertical: 4,
@@ -32627,6 +35304,358 @@ const styles = StyleSheet.create({
   freeDayCalendarDotToday: {
     borderColor: "#1EB25F",
     borderWidth: 2,
+  },
+  progressHeroGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  progressWeeklyCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 14,
+    gap: 10,
+  },
+  progressWeeklyTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  progressGoalCard: {
+    flex: 1,
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: 1,
+    gap: 8,
+  },
+  progressGoalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  progressGoalTitle: {
+    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+  },
+  progressGoalEmoji: {
+    fontSize: 20,
+  },
+  progressGoalName: {
+    ...createBodyText({ fontSize: 16, fontWeight: "700" }),
+  },
+  progressGoalMeta: {
+    ...createSecondaryText({ fontSize: 12 }),
+  },
+  progressGoalRingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 4,
+  },
+  progressGoalRingText: {
+    gap: 2,
+    flex: 1,
+    minWidth: 0,
+  },
+  progressGoalPercent: {
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  progressGoalTarget: {
+    ...createSecondaryText({ fontSize: 11 }),
+  },
+  progressCoinCard: {
+    flex: 1,
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: 1,
+    gap: 8,
+  },
+  progressCoinHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  progressCoinTitle: {
+    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+  },
+  progressCoinEmoji: {
+    fontSize: 20,
+  },
+  progressCoinValue: {
+    fontSize: 26,
+    fontWeight: "800",
+  },
+  progressCoinSubtitle: {
+    ...createSecondaryText({ fontSize: 12 }),
+  },
+  progressCoinRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  progressCoinBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  progressCoinImage: {
+    width: 14,
+    height: 14,
+    resizeMode: "contain",
+  },
+  progressCoinCount: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  progressActiveChallenge: {
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: 1,
+    gap: 10,
+  },
+  progressActiveChallengeHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  progressActiveChallengeTitle: {
+    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+  },
+  progressActiveChallengeMeta: {
+    ...createSecondaryText({ fontSize: 11 }),
+  },
+  progressActiveChallengeRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  progressActiveChallengeName: {
+    ...createBodyText({ fontSize: 16, fontWeight: "700" }),
+  },
+  progressActiveChallengeDesc: {
+    ...createBodyText({ fontSize: 13 }),
+  },
+  progressActiveChallengeButton: {
+    borderRadius: 14,
+    paddingVertical: 10,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  progressActiveChallengeButtonText: {
+    ...createCtaText({ fontSize: 13 }),
+  },
+  progressActiveChallengeEmpty: {
+    ...createSecondaryText({ fontSize: 13 }),
+  },
+  progressAnalyticsCard: {
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: 1,
+    gap: 10,
+  },
+  progressAnalyticsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+  },
+  progressAnalyticsTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 16,
+  },
+  progressAnalyticsLegend: {
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: 4,
+    flexWrap: "nowrap",
+  },
+  progressAnalyticsLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  progressAnalyticsDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  progressAnalyticsLegendText: {
+    ...createSecondaryText({ fontSize: 10 }),
+    flexShrink: 1,
+  },
+  progressAnalyticsSubtitle: {
+    ...createSecondaryText({ fontSize: 12 }),
+  },
+  progressAnalyticsScroll: {
+    width: "100%",
+  },
+  progressAnalyticsList: {
+    gap: 10,
+    marginTop: 4,
+  },
+  progressBadgeRow: {
+    marginTop: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  progressBadgeLabel: {
+    ...createSecondaryText({ fontSize: 11 }),
+  },
+  progressBadgeList: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  progressBadgeEmoji: {
+    fontSize: 14,
+  },
+  progressBadgeCount: {
+    ...createSecondaryText({ fontSize: 11 }),
+  },
+  progressAnalyticsRow: {
+    gap: 6,
+  },
+  progressAnalyticsRowHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  progressAnalyticsLabel: {
+    ...createBodyText({ fontSize: 13, fontWeight: "600" }),
+  },
+  progressAnalyticsValue: {
+    ...createSecondaryText({ fontSize: 12 }),
+  },
+  progressAnalyticsTrack: {
+    height: 10,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  progressAnalyticsFill: {
+    height: "100%",
+    flexDirection: "row",
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  progressAnalyticsSave: {
+    height: "100%",
+  },
+  progressAnalyticsSpend: {
+    height: "100%",
+  },
+  progressCategoryModalRoot: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  progressCategoryBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  progressCategoryModalWrap: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 18,
+  },
+  progressCategoryModalCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 16,
+    maxHeight: "70%",
+  },
+  progressCategoryModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 8,
+  },
+  progressCategoryModalTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    flex: 1,
+  },
+  progressCategoryModalClose: {
+    padding: 4,
+  },
+  progressCategoryModalCloseText: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  progressCategoryModalList: {
+    borderWidth: 1,
+    borderRadius: 12,
+    maxHeight: 380,
+  },
+  progressSectionHeader: {
+    gap: 2,
+  },
+  progressSectionTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 18,
+  },
+  progressSectionSubtitle: {
+    ...createSecondaryText({ fontSize: 12 }),
+  },
+  progressGoalScroll: {
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+    paddingRight: 12,
+    gap: 12,
+  },
+  progressGoalMiniCard: {
+    width: 150,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 14,
+    gap: 6,
+    justifyContent: "center",
+  },
+  progressGoalMiniPlaceholder: {
+    borderStyle: "dashed",
+    alignItems: "center",
+  },
+  progressGoalMiniEmoji: {
+    fontSize: 20,
+  },
+  progressGoalMiniTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  progressGoalMiniMeta: {
+    ...createSecondaryText({ fontSize: 11 }),
+  },
+  progressGoalMiniPlus: {
+    fontSize: 22,
+    fontWeight: "700",
+  },
+  profileBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  profileChallengeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  profileChallengeBadgeList: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  profileChallengeBadgeEmoji: {
+    fontSize: 12,
+  },
+  profileChallengeBadgeCount: {
+    ...createSecondaryText({ fontSize: 11 }),
   },
   stormOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -33890,6 +36919,41 @@ const styles = StyleSheet.create({
   challengeProgressLabel: {
     ...createSecondaryText({ fontSize: CHALLENGE_META_FONT_SIZE }),
   },
+  challengeDotRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  challengeDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  challengeDotCheck: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  challengePotential: {
+    ...createSecondaryText({ fontSize: 12 }),
+  },
+  challengeLockRow: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "transparent",
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  challengeLockText: {
+    ...createSecondaryText({ fontSize: 12 }),
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  challengeCardLocked: {
+    opacity: 0.75,
+  },
   challengeActionButton: {
     borderRadius: 16,
     paddingVertical: 12,
@@ -34432,6 +37496,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     borderTopWidth: 1,
     paddingHorizontal: 12,
+    overflow: "visible",
   },
   tabBarDimmed: {
     opacity: 0.35,
@@ -34456,6 +37521,17 @@ const styles = StyleSheet.create({
   },
   tabButtonText: {
     ...createCtaText({ fontSize: 13, textTransform: "uppercase" }),
+    marginTop: 6,
+  },
+  tabLockIconOverlay: {
+    fontSize: 12,
+    lineHeight: 14,
+    position: "absolute",
+    top: 4,
+    left: "50%",
+    marginLeft: -7,
+    textAlign: "center",
+    textAlignVertical: "center",
   },
   tabBadge: {
     minWidth: 20,
@@ -34857,6 +37933,11 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.blockTitle,
     fontSize: 28,
   },
+  coinEntryManualTapHint: {
+    ...createBodyText({ fontSize: 12, lineHeight: 16 }),
+    textAlign: "center",
+    marginTop: 6,
+  },
   coinSliderWrapper: {
     marginTop: 20,
     alignItems: "center",
@@ -34976,13 +38057,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
+  coinEntryCategoryScroll: {
+    width: "100%",
+  },
   coinEntryCategoryRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     gap: 10,
+    paddingHorizontal: 4,
   },
   coinEntryCategoryButton: {
-    flex: 1,
     borderWidth: 1,
     borderRadius: 16,
     paddingVertical: 14,
@@ -34994,7 +38077,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
   },
   coinEntryCategoryText: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "700",
     textAlign: "center",
   },
@@ -35246,6 +38329,13 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
   },
+  impulseCategoryPickerScroll: {
+    width: "100%",
+  },
+  impulseCategoryPickerScrollContent: {
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
   impulseCategoryPickerCompact: {
     marginTop: 2,
   },
@@ -35253,14 +38343,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 18,
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
   },
   impulseCategoryChipCompact: {
     paddingVertical: 4,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
   },
   impulseCategoryChipText: {
-    ...createCtaText({ fontSize: 12 }),
+    ...createCtaText({ fontSize: 9 }),
+  },
+  impulseCategoryChipTextCompact: {
+    fontSize: 8,
   },
   impulseAlertCard: {
     marginHorizontal: 24,
@@ -37064,8 +40157,69 @@ function CustomHabitScreen({ data, onChange, onSubmit, colors, t, currency, onBa
   );
 }
 
-function ImpulseCategorySelector({ value, onChange, colors, language, compact = false }) {
+function ImpulseCategorySelector({
+  value,
+  onChange,
+  colors,
+  language,
+  compact = false,
+  horizontal = false,
+  visibleCount = 5,
+}) {
   const selected = value && IMPULSE_CATEGORY_DEFS[value] ? value : DEFAULT_IMPULSE_CATEGORY;
+  const gap = 8;
+  const horizontalPadding = 24;
+  const chipWidth = horizontal
+    ? Math.max(
+        64,
+        Math.floor(
+          (SCREEN_WIDTH - horizontalPadding * 2 - gap * Math.max(visibleCount - 1, 0)) /
+            Math.max(visibleCount, 1)
+        )
+      )
+    : null;
+  const chips = IMPULSE_CATEGORY_ORDER.map((categoryId) => {
+    const active = selected === categoryId;
+    return (
+      <TouchableOpacity
+        key={categoryId}
+        style={[
+          styles.impulseCategoryChip,
+          compact && styles.impulseCategoryChipCompact,
+          horizontal && chipWidth ? { width: chipWidth } : null,
+          {
+            borderColor: active ? colors.text : colors.border,
+            backgroundColor: active ? colors.text : "transparent",
+          },
+        ]}
+        onPress={() => onChange?.(categoryId)}
+        activeOpacity={0.85}
+      >
+        <Text
+          style={[
+            styles.impulseCategoryChipText,
+            compact && styles.impulseCategoryChipTextCompact,
+            { color: active ? colors.background : colors.text },
+          ]}
+          numberOfLines={2}
+        >
+          {getImpulseCategoryLabel(categoryId, language)}
+        </Text>
+      </TouchableOpacity>
+    );
+  });
+  if (horizontal) {
+    return (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.impulseCategoryPickerScroll}
+        contentContainerStyle={[styles.impulseCategoryPickerScrollContent, { gap }]}
+      >
+        {chips}
+      </ScrollView>
+    );
+  }
   return (
     <View
       style={[
@@ -37073,33 +40227,7 @@ function ImpulseCategorySelector({ value, onChange, colors, language, compact = 
         compact && styles.impulseCategoryPickerCompact,
       ]}
     >
-      {IMPULSE_CATEGORY_ORDER.map((categoryId) => {
-        const active = selected === categoryId;
-        return (
-          <TouchableOpacity
-            key={categoryId}
-            style={[
-              styles.impulseCategoryChip,
-              compact && styles.impulseCategoryChipCompact,
-              {
-                borderColor: active ? colors.text : colors.border,
-                backgroundColor: active ? colors.text : "transparent",
-              },
-            ]}
-            onPress={() => onChange?.(categoryId)}
-            activeOpacity={0.85}
-          >
-            <Text
-              style={[
-                styles.impulseCategoryChipText,
-                { color: active ? colors.background : colors.text },
-              ]}
-            >
-              {getImpulseCategoryLabel(categoryId, language)}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
+      {chips}
     </View>
   );
 }
@@ -37444,6 +40572,13 @@ function CoinEntryModal({
     closeManual();
   };
   const categoryLabelKey = getShortLanguageKey(language);
+  const categoryChipWidth = useMemo(() => {
+    const visibleCount = 3;
+    const gap = 10;
+    const horizontalPadding = 32;
+    const available = SCREEN_WIDTH - horizontalPadding * 2 - gap * (visibleCount - 1);
+    return Math.max(96, Math.floor(available / visibleCount));
+  }, []);
   const manualTitle = manualIsAmountMode ? t("coinEntryManualAmountTitle") : t("coinEntryManualTitle");
   const manualPlaceholder = manualIsAmountMode
     ? t("coinEntryManualAmountPlaceholder", { amount: sliderAmountLocal })
@@ -37516,6 +40651,9 @@ function CoinEntryModal({
                   </Text>
                 </TouchableOpacity>
               </View>
+              <Text style={[styles.coinEntryManualTapHint, { color: colors.muted }]}>
+                {t("coinEntryManualTapHint")}
+              </Text>
               <View style={styles.coinSliderWrapper}>
                 <Animated.View style={[styles.coinSliderBackdrop, { backgroundColor: sliderBackground }]} />
                 <Animated.View
@@ -37594,7 +40732,12 @@ function CoinEntryModal({
                   {t("coinEntryCategoryError")}
                 </Text>
               )}
-              <View style={styles.coinEntryCategoryRow}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.coinEntryCategoryScroll}
+                contentContainerStyle={styles.coinEntryCategoryRow}
+              >
                 {IMPULSE_CATEGORY_ORDER.map((categoryId) => {
                   const def = IMPULSE_CATEGORY_DEFS[categoryId];
                   const active = selectedCategory === categoryId;
@@ -37604,6 +40747,7 @@ function CoinEntryModal({
                       style={[
                         styles.coinEntryCategoryButton,
                         {
+                          width: categoryChipWidth,
                           borderColor: active ? colors.text : colors.border,
                           backgroundColor: active ? colors.text : "transparent",
                         },
@@ -37626,7 +40770,7 @@ function CoinEntryModal({
                     </TouchableOpacity>
                   );
                 })}
-              </View>
+              </ScrollView>
             </View>
           </TouchableWithoutFeedback>
         </View>
@@ -37754,6 +40898,8 @@ function QuickCustomModal({
                     onChange={(cat) => onChange("category", cat)}
                     colors={colors}
                     language={language}
+                    horizontal
+                    visibleCount={3}
                   />
                 </View>
               </View>
@@ -38381,6 +41527,13 @@ function LogoSplash({ onDone }) {
   );
 }
 const LevelUpCelebration = ({ colors, message, t, onSharePress }) => {
+  const isDarkMode = colors.background === THEMES.dark.background;
+  const backdropColor = isDarkMode ? "rgba(6,10,18,0.92)" : "rgba(255,247,214,0.95)";
+  const cardBackground = isDarkMode ? "rgba(18,24,38,0.95)" : "rgba(255,255,255,0.95)";
+  const cardBorder = isDarkMode ? "rgba(255,214,130,0.35)" : "rgba(255,186,0,0.4)";
+  const textColor = isDarkMode ? "#F7E7C2" : colors.text;
+  const shareButtonBg = isDarkMode ? "#F6C16B" : colors.text;
+  const shareButtonText = isDarkMode ? "#1A1205" : colors.background;
   const coins = useMemo(
     () =>
       Array.from({ length: 28 }).map((_, index) => ({
@@ -38395,19 +41548,19 @@ const LevelUpCelebration = ({ colors, message, t, onSharePress }) => {
   const levelNumber = Number(message) || 1;
   return (
     <View style={styles.levelOverlay} pointerEvents="box-none">
-      <View style={styles.levelBackdrop} />
-      <View style={styles.levelContent}>
-        <Text style={[styles.levelTitle, { color: colors.text }]}>{t("progressHeroLevel", { level: levelNumber })}</Text>
-        <Text style={[styles.levelSubtitle, { color: colors.text }]}>
+      <View style={[styles.levelBackdrop, { backgroundColor: backdropColor }]} />
+      <View style={[styles.levelContent, { backgroundColor: cardBackground, borderColor: cardBorder }]}>
+        <Text style={[styles.levelTitle, { color: textColor }]}>{t("progressHeroLevel", { level: levelNumber })}</Text>
+        <Text style={[styles.levelSubtitle, { color: textColor }]}>
           {t("levelCelebrate", { level: levelNumber })}
         </Text>
         {onSharePress && (
           <TouchableOpacity
-            style={[styles.levelShareButton, { backgroundColor: colors.text }]}
+            style={[styles.levelShareButton, { backgroundColor: shareButtonBg }]}
             activeOpacity={0.92}
             onPress={() => onSharePress(levelNumber)}
           >
-            <Text style={[styles.levelShareButtonText, { color: colors.background }]}>
+            <Text style={[styles.levelShareButtonText, { color: shareButtonText }]}>
               {t("levelShareButton")}
             </Text>
           </TouchableOpacity>
