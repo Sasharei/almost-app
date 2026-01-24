@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { calcPotentialSaved } from "../utils/savingsSimulation";
 
 const UPDATE_INTERVAL_MS = 1000; // Tick every second so cents keep moving.
-const MIN_VALUE_DELTA = 0;
+const MIN_VALUE_DELTA = 0.01;
+const roundToCents = (value: number) => Math.round(value * 100) / 100;
 
 export function useSavingsSimulation(
   baselineMonthlyWaste: number | null,
@@ -21,7 +22,7 @@ export function useSavingsSimulation(
     }
 
     const update = () => {
-      const nextValue = calcPotentialSaved(baselineMonthlyWaste, baselineStartAt);
+      const nextValue = roundToCents(calcPotentialSaved(baselineMonthlyWaste, baselineStartAt));
       if (Math.abs(nextValue - latestValueRef.current) < MIN_VALUE_DELTA) {
         return;
       }
