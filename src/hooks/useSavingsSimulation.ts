@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { calcPotentialSaved } from "../utils/savingsSimulation";
 
-const UPDATE_INTERVAL_MS = 60 * 1000; // Avoid re-rendering huge tree every second.
-const MIN_VALUE_DELTA = 0.01;
+const UPDATE_INTERVAL_MS = 1000; // Tick every second so cents keep moving.
+const MIN_VALUE_DELTA = 0;
 
 export function useSavingsSimulation(
   baselineMonthlyWaste: number | null,
