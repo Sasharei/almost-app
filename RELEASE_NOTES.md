@@ -1,13 +1,40 @@
 # Release Notes
 
-## 4.0.0 (from 3.0.4)
+## 4.0.2 (from 4.0.1)
+
+### EN
+- Everything feels faster and snappier across the app.
+- Timers, sliders, and stats are clearer in dark mode.
+- Almi is happier now that things move quickly.
+
+### RU
+- Все стало быстрее и шустрее по всей аппке.
+- Таймеры, слайдеры и статистика в темной теме читаются лучше.
+- Алми доволен: теперь все летает.
+
+### ES
+- Todo va mas rapido y fluido en la app.
+- Temporizadores, slider y estadisticas se ven mejor en modo oscuro.
+- Almi esta mas contento porque ahora todo va volando.
+
+### FR
+- Tout est plus rapide et plus fluide dans l'app.
+- Timers, slider et stats sont plus lisibles en mode sombre.
+- Almi est content : maintenant tout va vite.
+
+## 4.0.1 (from 3.0.4)
 
 ### EN
 - Goals and savings journey redesigned with clearer milestones and progress flow.
 - New challenges and achievements system to track progress over time.
 - Almi now speaks in the home bubble with context-based messages.
 - Personalized temptation and wish suggestions based on your profile.
+- Added analytics tracking for persona, language, currency, and gender selections.
 - Expanded insights and history breakdowns for savings and spending.
+- Rating reminder popup now appears on day 3 if you have not rated the app.
+- Daily reward streak resets after a missed day.
+- Level-up feature tutorials now resume after returning from sharing.
+- Level share card now includes our Instagram handle.
 - Stability and performance improvements across the app.
 
 ### RU
@@ -15,7 +42,12 @@
 - Новая система челленджей и достижений для отслеживания прогресса.
 - Алми теперь говорит в бабле на главном экране и реагирует на контекст.
 - Персонализированные предложения желаний и искушений по профилю.
+- Добавлены ивенты аналитики для выбора персоны, языка, валюты и пола.
 - Расширенные инсайты и разбор истории по сбережениям и тратам.
+- Напоминание оценить приложение теперь показывается на 3-й день, если вы ещё не оставили оценку.
+- Ежедневная награда сбрасывается, если пропущен день.
+- Туториал нового уровня снова продолжается после возврата из шеринга.
+- На карточке шаринга уровня добавлен Instagram @almostsavings.
 - Улучшена стабильность и производительность приложения.
 
 ### ES
@@ -23,7 +55,12 @@
 - Nuevo sistema de desafios y logros para seguir el progreso.
 - Almi ahora habla en el globo de inicio con mensajes segun contexto.
 - Sugerencias personalizadas de deseos y tentaciones segun el perfil.
+- Añadido seguimiento analitico de elecciones de persona, idioma, moneda y genero.
 - Informes mas amplios de insights y desglose del historial de ahorros y gastos.
+- El recordatorio para calificar la app ahora aparece en el dia 3 si aun no la has calificado.
+- La recompensa diaria se reinicia si se pierde un dia.
+- Los tutoriales de nivel vuelven a mostrarse tras regresar del compartir.
+- La tarjeta para compartir nivel ahora incluye nuestro Instagram.
 - Mejoras de estabilidad y rendimiento en toda la app.
 
 ### FR
@@ -31,7 +68,12 @@
 - Nouveau systeme de defis et de succes pour suivre la progression.
 - Almi parle maintenant dans la bulle d'accueil avec des messages contextuels.
 - Suggestions personnalisees de souhaits et de tentations selon le profil.
+- Suivi analytique ajoute pour les choix de persona, langue, devise et genre.
 - Insights elargis et detail de l'historique des economies et depenses.
+- Le rappel de notation apparait desormais au 3e jour si l'app n'a pas encore ete evaluee.
+- La recompense quotidienne se reinitialise si un jour est manque.
+- Les tutoriels de niveau reprennent apres le retour du partage.
+- La carte de partage de niveau affiche maintenant notre Instagram.
 - Ameliorations de stabilite et de performance dans toute l'app.
 
 ## 3.0.4 (from 3.0.3)
