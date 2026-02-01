@@ -1,26 +1,48 @@
 # Release Notes
 
+## 4.0.3 (from 4.0.2)
+
+### EN
+- Added a crying cat animation to the in-store rating modal.
+
+### RU
+- Добавили анимацию плачущего кота в модалку оценки в сторе.
+
+### ES
+- Se agrego una animacion del gato llorando en el modal de calificacion en el store.
+
+### FR
+- Ajoute une animation du chat qui pleure dans la modale de notation du store.
+
 ## 4.0.2 (from 4.0.1)
 
 ### EN
 - Everything feels faster and snappier across the app.
 - Timers, sliders, and stats are clearer in dark mode.
 - Almi is happier now that things move quickly.
+- Impulse map and habit loops now surface smarter insights from your history.
+- Profile photos now stay in place after updates or restarts.
 
 ### RU
 - Все стало быстрее и шустрее по всей аппке.
 - Таймеры, слайдеры и статистика в темной теме читаются лучше.
 - Алми доволен: теперь все летает.
+- Импульс-карта и habit loop теперь дают более умные инсайты на основе истории.
+- Фото профиля больше не слетает после обновлений или перезапусков.
 
 ### ES
 - Todo va mas rapido y fluido en la app.
 - Temporizadores, slider y estadisticas se ven mejor en modo oscuro.
 - Almi esta mas contento porque ahora todo va volando.
+- El mapa de impulsos y los bucles de habitos ahora muestran insights mas inteligentes segun tu historial.
+- La foto de perfil ahora se conserva despues de actualizaciones o reinicios.
 
 ### FR
 - Tout est plus rapide et plus fluide dans l'app.
 - Timers, slider et stats sont plus lisibles en mode sombre.
 - Almi est content : maintenant tout va vite.
+- La carte des impulsions et les boucles d'habitudes donnent maintenant des insights plus intelligents bases sur l'historique.
+- La photo de profil ne disparait plus apres les mises a jour ou redemarrages.
 
 ## 4.0.1 (from 3.0.4)
 
@@ -28,7 +50,7 @@
 - Goals and savings journey redesigned with clearer milestones and progress flow.
 - New challenges and achievements system to track progress over time.
 - Almi now speaks in the home bubble with context-based messages.
-- Personalized temptation and wish suggestions based on your profile.
+- Personalized temptation and goal suggestions based on your profile.
 - Added analytics tracking for persona, language, currency, and gender selections.
 - Expanded insights and history breakdowns for savings and spending.
 - Rating reminder popup now appears on day 3 if you have not rated the app.
