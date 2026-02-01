@@ -109,6 +109,14 @@ try {
 } catch (error) {
   console.warn("Facebook SDK unavailable", error);
 }
+let TrackingTransparency = null;
+try {
+  // Optional: module might be missing in older builds or Expo Go.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  TrackingTransparency = require("expo-tracking-transparency") || null;
+} catch (error) {
+  console.warn("Tracking transparency unavailable", error);
+}
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -907,7 +915,7 @@ const TAB_BAR_BASE_HEIGHT = 64;
 const HERO_MASCOT_SIZE = 96;
 const FAB_BUTTON_SIZE = 64;
 const FAB_CONTAINER_BOTTOM = 96;
-const FAB_TUTORIAL_MIN_SESSIONS = 3;
+const FAB_TUTORIAL_MIN_SESSIONS = 2;
 const FAB_TUTORIAL_HALO_SIZE = 128;
 const FAB_TUTORIAL_CARD_SPACING = 140;
 const FAB_TUTORIAL_HALO_INSET = (FAB_TUTORIAL_HALO_SIZE - FAB_BUTTON_SIZE) / 2;
@@ -1092,6 +1100,7 @@ const DEFAULT_REMOTE_IMAGE =
   "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=600&q=80";
 const REMINDER_DAYS = 14;
 const DAY_MS = 1000 * 60 * 60 * 24;
+const CHALLENGE_REPEAT_COOLDOWN_MS = DAY_MS * 7;
 const HOUR_MS = 1000 * 60 * 60;
 const MINUTE_MS = 1000 * 60;
 const REWARD_RESET_INTERVAL_MS = DAY_MS * 14;
@@ -1252,6 +1261,60 @@ const HISTORY_ITEM_HEIGHT = 60;
 const HISTORY_VIEWPORT_HEIGHT = HISTORY_VIEWPORT_ROWS * HISTORY_ITEM_HEIGHT;
 const HISTORY_SAVED_GAIN_EVENTS = new Set(["refuse_spend", "pending_to_decline"]);
 const HISTORY_SAVED_LOSS_EVENTS = new Set(["spend"]);
+const describeHistoryEntry = (entry, { t, formatLocalAmount }) => {
+  if (!entry) return t("historyUnknown");
+  const { kind, meta = {} } = entry;
+  const title = meta.title || t("historyUnknown");
+  switch (kind) {
+    case "wish_added":
+      return t("historyWishAdded", { title });
+    case "wish_progress":
+      return t("historyWishProgress", {
+        title,
+        amount: formatLocalAmount(meta.savedUSD),
+        target: formatLocalAmount(meta.targetUSD),
+      });
+    case "wish_completed":
+      return t("historyWishDone", { title });
+    case "decline":
+      return t("historyDecline", { title, amount: formatLocalAmount(meta.amountUSD) });
+    case "refuse_spend":
+      return t("historyRefuseSpend", { title, amount: formatLocalAmount(meta.amountUSD) });
+    case "pending_added":
+      return t("historyPendingAdded", { title });
+    case "pending_to_wish":
+      return t("historyPendingWant", { title });
+    case "pending_to_decline":
+      return t("historyPendingDecline", { title, amount: formatLocalAmount(meta.amountUSD) });
+    case "pending_removed":
+      return t("historyPendingRemoved", { title });
+    case "free_day":
+      return t("historyFreeDay", { total: meta.total || 0 });
+    case "spend":
+      return t("historySpend", { title, amount: formatLocalAmount(meta.amountUSD) });
+    case "wish_removed":
+      return t("historyWishRemoved", { title });
+    case "goal_started":
+      return t("historyGoalStarted", { title });
+    case "goal_cancelled":
+      return t("historyGoalCancelled", { title });
+    case "reward_claimed":
+      return t("historyRewardClaimed", { title: title || meta.rewardId || t("historyUnknown") });
+    default:
+      return t("historyUnknown");
+  }
+};
+const formatHistoryEntryMeta = (entry, { t, locale }) => {
+  if (!entry?.timestamp) return "";
+  try {
+    const date = new Date(entry.timestamp);
+    const dateLabel = date.toLocaleDateString(locale, { day: "numeric", month: "short" });
+    const timeLabel = date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+    return t("historyTimestamp", { date: dateLabel, time: timeLabel });
+  } catch {
+    return "";
+  }
+};
 const normalizeClaimedRewardEntry = (value, now = Date.now()) => {
   if (!value) return null;
   if (typeof value === "object" && Number.isFinite(value.claimedAt)) {
@@ -2489,6 +2552,12 @@ function AlmiTamagotchi({
 }
 const MAX_IMPULSE_EVENTS = 180;
 const MIN_IMPULSE_EVENTS_FOR_MAP = 4;
+const IMPULSE_SEQUENCE_WINDOW_MS = 12 * 60 * 60 * 1000;
+const IMPULSE_SEQUENCE_MAX_FOLLOWUPS = 4;
+const IMPULSE_SEQUENCE_MIN_HITS = 2;
+const IMPULSE_SEQUENCE_MIN_WEIGHT = 2;
+const IMPULSE_SEQUENCE_TOP_INSIGHTS = 2;
+const IMPULSE_SEQUENCE_RECENCY_DAYS = 21;
 const IMPULSE_ALERT_COOLDOWN_MS = 1000 * 60 * 45;
 const IMPULSE_CATEGORY_DEFS = {
   food: { id: "food", ru: "Еда", en: "Food", es: "Comida", fr: "Nourriture", emoji: "🍜" },
@@ -2729,6 +2798,7 @@ const buildImpulseInsights = (events = []) => {
       activeRisk: null,
       hottestSpendCategory: null,
       eventCount: 0,
+      sequenceInsights: [],
       sequenceHotspots: { slip: null, rebound: null },
     };
   }
@@ -2790,53 +2860,111 @@ const buildImpulseInsights = (events = []) => {
     return tsA - tsB;
   });
   const sequenceStats = new Map();
-  const selectSequence = (current, candidate) => {
-    if (!candidate) return current;
-    if (!current) {
-      return { ...candidate };
-    }
-    if (candidate.count > current.count) {
-      return { ...candidate };
-    }
-    if (candidate.count === current.count) {
-      if (
-        (candidate.lastTimestamp || 0) > (current.lastTimestamp || 0)
-      ) {
-        return { ...candidate };
-      }
-    }
-    return current;
+  const sequenceEvents = chronologicalEvents.filter(
+    (event) =>
+      event &&
+      event.templateId &&
+      event.action &&
+      Number.isFinite(event.timestamp)
+  );
+  const nowTimestamp = Date.now();
+  const cleanSequenceTitle = (value) => {
+    const stripped = stripEmojis(value || "");
+    return stripped || value || "";
   };
-  let slipSequence = null;
-  let reboundSequence = null;
-  let previousEvent = null;
-  chronologicalEvents.forEach((event) => {
-    const prev = previousEvent;
-    previousEvent = event;
-    if (!prev || !Number.isFinite(prev.timestamp) || prev.timestamp >= event.timestamp) return;
-    if (!prev.templateId || !event.templateId || prev.templateId === event.templateId) return;
-    if (!prev.action || !event.action) return;
-    const key = `${prev.templateId}->${event.templateId}:${prev.action}->${event.action}`;
+  const addSequenceStat = (from, to, delayMs) => {
+    if (!from || !to) return;
+    const key = `${from.templateId}->${to.templateId}:${from.action}->${to.action}`;
+    const weight =
+      1 +
+      Math.max(0, 1 - delayMs / IMPULSE_SEQUENCE_WINDOW_MS) * 0.4;
     const stat =
       sequenceStats.get(key) || {
-        fromTemplateId: prev.templateId,
-        toTemplateId: event.templateId,
-        fromTitle: prev.title,
-        toTitle: event.title,
-        fromAction: prev.action,
-        toAction: event.action,
+        fromTemplateId: from.templateId,
+        toTemplateId: to.templateId,
+        fromTitle: cleanSequenceTitle(from.title),
+        toTitle: cleanSequenceTitle(to.title),
+        fromAction: from.action,
+        toAction: to.action,
         count: 0,
+        weightedCount: 0,
         lastTimestamp: 0,
+        totalDelayMs: 0,
+        toHours: Array(24).fill(0),
       };
     stat.count += 1;
-    stat.lastTimestamp = event.timestamp;
-    sequenceStats.set(key, stat);
-    if (prev.action === "spend" && event.action === "spend") {
-      slipSequence = selectSequence(slipSequence, stat);
-    } else if (prev.action === "save" && event.action === "save") {
-      reboundSequence = selectSequence(reboundSequence, stat);
+    stat.weightedCount += weight;
+    stat.totalDelayMs += delayMs;
+    stat.lastTimestamp = Math.max(stat.lastTimestamp || 0, to.timestamp || 0);
+    const hour =
+      Number.isInteger(to.hour) ? to.hour : Number.isFinite(to.timestamp) ? new Date(to.timestamp).getHours() : null;
+    if (Number.isInteger(hour)) {
+      stat.toHours[hour] = (stat.toHours[hour] || 0) + 1;
     }
+    sequenceStats.set(key, stat);
+  };
+  for (let i = 0; i < sequenceEvents.length; i += 1) {
+    const from = sequenceEvents[i];
+    let followups = 0;
+    for (let j = i + 1; j < sequenceEvents.length; j += 1) {
+      const to = sequenceEvents[j];
+      const delay = (to.timestamp || 0) - (from.timestamp || 0);
+      if (delay <= 0) continue;
+      if (delay > IMPULSE_SEQUENCE_WINDOW_MS) break;
+      if (!to.templateId || !to.action) continue;
+      if (from.templateId === to.templateId) continue;
+      addSequenceStat(from, to, delay);
+      followups += 1;
+      if (followups >= IMPULSE_SEQUENCE_MAX_FOLLOWUPS) break;
+    }
+  }
+  const scoreSequence = (stat) => {
+    if (!stat) return 0;
+    const recencyDays = Number.isFinite(stat.lastTimestamp)
+      ? (nowTimestamp - stat.lastTimestamp) / DAY_MS
+      : Number.POSITIVE_INFINITY;
+    const recencyBoost =
+      Number.isFinite(recencyDays) && recencyDays >= 0
+        ? Math.max(0, 1 - recencyDays / IMPULSE_SEQUENCE_RECENCY_DAYS) * 0.35
+        : 0;
+    return (stat.weightedCount || 0) + recencyBoost;
+  };
+  const sequenceCandidates = Array.from(sequenceStats.values()).filter((stat) => {
+    if (!stat) return false;
+    if ((stat.count || 0) < IMPULSE_SEQUENCE_MIN_HITS) return false;
+    if ((stat.weightedCount || 0) < IMPULSE_SEQUENCE_MIN_WEIGHT) return false;
+    return true;
   });
+  const pickSequence = (predicate) => {
+    let best = null;
+    sequenceCandidates.forEach((stat) => {
+      if (predicate && !predicate(stat)) return;
+      const score = scoreSequence(stat);
+      if (!best || score > best.score) {
+        best = { ...stat, score };
+        return;
+      }
+      if (score === best.score) {
+        if ((stat.count || 0) > (best.count || 0)) {
+          best = { ...stat, score };
+          return;
+        }
+        if (
+          (stat.count || 0) === (best.count || 0) &&
+          (stat.lastTimestamp || 0) > (best.lastTimestamp || 0)
+        ) {
+          best = { ...stat, score };
+        }
+      }
+    });
+    return best;
+  };
+  const slipSequence = pickSequence(
+    (stat) => stat.fromAction === "spend" && stat.toAction === "spend"
+  );
+  const reboundSequence = pickSequence(
+    (stat) => stat.fromAction === "save" && stat.toAction === "save"
+  );
   const makeSequencePayload = (stat) => {
     if (!stat) return null;
     return {
@@ -2847,6 +2975,7 @@ const buildImpulseInsights = (events = []) => {
       fromAction: stat.fromAction,
       toAction: stat.toAction,
       count: stat.count,
+      windowLabel: selectHotHour(stat.toHours || []).label || null,
     };
   };
   const selectHotHour = (hours = []) => {
@@ -2864,6 +2993,23 @@ const buildImpulseInsights = (events = []) => {
       label: Number.isInteger(chosen) ? formatImpulseWindowLabel(chosen) : null,
     };
   };
+  const sequenceInsights = sequenceCandidates
+    .map((stat) => ({ ...stat, score: scoreSequence(stat) }))
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if ((b.count || 0) !== (a.count || 0)) return (b.count || 0) - (a.count || 0);
+      return (b.lastTimestamp || 0) - (a.lastTimestamp || 0);
+    })
+    .slice(0, IMPULSE_SEQUENCE_TOP_INSIGHTS)
+    .map((stat) => ({
+      key: `${stat.fromTemplateId}-${stat.toTemplateId}-${stat.fromAction}-${stat.toAction}`,
+      fromTitle: stat.fromTitle,
+      toTitle: stat.toTitle,
+      fromAction: stat.fromAction,
+      toAction: stat.toAction,
+      count: stat.count,
+      windowLabel: selectHotHour(stat.toHours || []).label || null,
+    }));
   let hotLose = null;
   let hotWin = null;
   templateStats.forEach((stat) => {
@@ -2976,6 +3122,7 @@ const buildImpulseInsights = (events = []) => {
     eventCount: processedEvents,
     totalSaveCount: totalSaves,
     totalSpendCount: totalSpends,
+    sequenceInsights,
     sequenceHotspots: {
       slip: makeSequencePayload(slipSequence),
       rebound: makeSequencePayload(reboundSequence),
@@ -3316,6 +3463,184 @@ const buildSavingsBreakdown = (
   }
   const formatLocal = (usd) => formatCurrency(convertToCurrency(usd || 0, currency), currency);
   return { days, legend, formatLocal };
+};
+
+const buildSpendingBreakdown = (
+  history = [],
+  currency = DEFAULT_PROFILE.currency,
+  resolveTemplateTitle,
+  language = DEFAULT_LANGUAGE,
+  { range = "day", offset = 0 } = {}
+) => {
+  const resolveTemplate = (template, params = {}) => {
+    if (!template) return "";
+    return template.replace(/\{\{(\w+)\}\}/g, (match, key) =>
+      Object.prototype.hasOwnProperty.call(params, key) ? params[key] : match
+    );
+  };
+  const locale = getFormatLocale(language);
+  const defaultSpendTitle = resolveTranslationValueForLanguage(language, "defaultSpendLabel") || "Spend";
+  const otherLabel = resolveTranslationValueForLanguage(language, "savingsBreakdownOtherLabel") || "Other";
+  const dayLabels = WEEKDAY_LABELS[language] || WEEKDAY_LABELS.en;
+  const palette = ["#E15555", "#F6A23D", "#8F7CF6", "#3E8EED", "#2EB873", "#FFC857"];
+  const spendEntries = Array.isArray(history)
+    ? history.filter((entry) => entry?.kind === "spend" && entry?.timestamp)
+    : [];
+  const totalsByTitle = {};
+  const buckets = [];
+  const now = new Date();
+  const startOfDay = (date) => {
+    const next = new Date(date);
+    next.setHours(0, 0, 0, 0);
+    return next;
+  };
+  const getWeekStart = (date) => {
+    const next = startOfDay(date);
+    const weekday = (next.getDay() + 6) % 7;
+    next.setDate(next.getDate() - weekday);
+    return next;
+  };
+  const addMonths = (date, delta) => new Date(date.getFullYear(), date.getMonth() + delta, 1);
+  const formatMonthLabel = (date) => {
+    const raw = date.toLocaleDateString(locale, { month: "short" }).replace(".", "").trim();
+    if (!raw) return "";
+    return raw[0].toUpperCase() + raw.slice(1);
+  };
+  const formatWeekRangeLabel = (startDate, endDate) => {
+    const startMonth = formatMonthLabel(startDate);
+    const endMonth = formatMonthLabel(endDate);
+    const startDay = startDate.getDate();
+    const endDay = endDate.getDate();
+    if (startMonth === endMonth) {
+      return `${startMonth}${startDay}-${endDay}`;
+    }
+    return `${startMonth}${startDay}-${endMonth}${endDay}`;
+  };
+  const addBucket = (label, startMs, endMs, divisor = 1) => {
+    const stacks = {};
+    spendEntries.forEach((entry) => {
+      const timestamp = Number(entry.timestamp) || 0;
+      if (!timestamp || timestamp < startMs || timestamp >= endMs) return;
+      const resolvedTitle =
+        (resolveTemplateTitle &&
+          resolveTemplateTitle(entry.meta?.templateId, entry.meta?.title || entry.title)) ||
+        null;
+      const baseTitle =
+        (resolvedTitle ||
+          entry.meta?.title ||
+          entry.title ||
+          entry.meta?.templateId ||
+          entry.emoji ||
+          entry.id ||
+          defaultSpendTitle)
+          .toString()
+          .slice(0, 42);
+      const stripped = stripEmojis(baseTitle);
+      const title = (stripped || baseTitle || defaultSpendTitle).trim();
+      const amount = Math.max(0, Number(entry.meta?.amountUSD) || 0) / divisor;
+      stacks[title] = (stacks[title] || 0) + amount;
+      totalsByTitle[title] = (totalsByTitle[title] || 0) + amount;
+    });
+    const total = Object.values(stacks).reduce((sum, v) => sum + v, 0);
+    buckets.push({ label, stacks, total });
+  };
+
+  let rangeCount = 0;
+  let isAverage = false;
+  if (range === "week") {
+    rangeCount = 4;
+    isAverage = true;
+    const baseEnd = new Date(getWeekStart(now).getTime() + DAY_MS * 7);
+    const windowEnd = new Date(baseEnd.getTime() - offset * rangeCount * DAY_MS * 7);
+    const windowStart = new Date(windowEnd.getTime() - rangeCount * DAY_MS * 7);
+    Array.from({ length: rangeCount }).forEach((_, index) => {
+      const weekStart = new Date(windowStart.getTime() + index * DAY_MS * 7);
+      const weekEnd = new Date(weekStart.getTime() + DAY_MS * 7);
+      const label = formatWeekRangeLabel(weekStart, new Date(weekEnd.getTime() - DAY_MS));
+      addBucket(label, weekStart.getTime(), weekEnd.getTime(), 7);
+    });
+  } else if (range === "month") {
+    rangeCount = 6;
+    isAverage = true;
+    const baseEnd = addMonths(addMonths(now, 0), 1);
+    const windowEnd = addMonths(baseEnd, -offset * rangeCount);
+    const windowStart = addMonths(windowEnd, -rangeCount);
+    Array.from({ length: rangeCount }).forEach((_, index) => {
+      const monthStart = addMonths(windowStart, index);
+      const monthEnd = addMonths(monthStart, 1);
+      const daysInMonth = Math.max(1, Math.round((monthEnd.getTime() - monthStart.getTime()) / DAY_MS));
+      addBucket(formatMonthLabel(monthStart), monthStart.getTime(), monthEnd.getTime(), daysInMonth);
+    });
+  } else {
+    rangeCount = 7;
+    const baseEnd = new Date(startOfDay(now).getTime() + DAY_MS);
+    const windowEnd = new Date(baseEnd.getTime() - offset * rangeCount * DAY_MS);
+    const windowStart = new Date(windowEnd.getTime() - rangeCount * DAY_MS);
+    Array.from({ length: rangeCount }).forEach((_, index) => {
+      const dayStart = new Date(windowStart.getTime() + index * DAY_MS);
+      const dayEnd = new Date(dayStart.getTime() + DAY_MS);
+      const label = dayLabels[dayStart.getDay()] || "";
+      addBucket(label, dayStart.getTime(), dayEnd.getTime(), 1);
+    });
+  }
+
+  const sortedTitles = Object.entries(totalsByTitle)
+    .sort((a, b) => b[1] - a[1])
+    .map(([title]) => title);
+  const topTitles = sortedTitles.slice(0, 5);
+  const colorMap = {};
+  topTitles.forEach((title, idx) => {
+    colorMap[title] = palette[idx % palette.length];
+  });
+  const otherColor = "#F6C16B";
+  const normalizedBuckets = buckets.map((bucket) => {
+    const stacksArray = [];
+    const otherSum = Object.entries(bucket.stacks).reduce((acc, [title, value]) => {
+      if (colorMap[title]) {
+        stacksArray.push({ title, value, color: colorMap[title] });
+        return acc;
+      }
+      return acc + value;
+    }, 0);
+    if (otherSum > 0) {
+      stacksArray.push({ title: otherLabel, value: otherSum, color: otherColor });
+    }
+    return { label: bucket.label, total: bucket.total, stacks: stacksArray };
+  });
+  const grandTotal = Object.values(totalsByTitle).reduce((sum, v) => sum + v, 0) || 1;
+  const legend = topTitles.map((title, idx) => ({
+    id: title,
+    label: title,
+    value: totalsByTitle[title],
+    percent: Math.round((totalsByTitle[title] / grandTotal) * 100),
+    color: palette[idx % palette.length],
+  }));
+  const otherTotal = grandTotal - legend.reduce((sum, item) => sum + item.value, 0);
+  if (otherTotal > 0) {
+    legend.push({
+      id: "other",
+      label: otherLabel,
+      value: otherTotal,
+      percent: Math.max(1, Math.round((otherTotal / grandTotal) * 100)),
+      color: otherColor,
+    });
+  }
+  const formatLocal = (usd) => formatCurrency(convertToCurrency(usd || 0, currency), currency);
+  const rangeTitleKey =
+    range === "week" ? "spendStatsRangeWeeks" : range === "month" ? "spendStatsRangeMonths" : "spendStatsRangeDays";
+  const rangeTitleTemplate =
+    resolveTranslationValueForLanguage(language, rangeTitleKey) || "Last {{count}}";
+  const rangeTitle = resolveTemplate(rangeTitleTemplate, { count: rangeCount });
+  const averageLabel =
+    isAverage && (resolveTranslationValueForLanguage(language, "spendStatsAverageLabel") || "Daily average");
+  return {
+    buckets: normalizedBuckets,
+    legend,
+    formatLocal,
+    rangeCount,
+    rangeTitle,
+    averageLabel: averageLabel || "",
+  };
 };
 
 const computeRefuseStreak = (history = []) => {
@@ -5011,12 +5336,30 @@ const ONBOARDING_SCREEN_SEQUENCE = [
   "baseline",
   "goal",
   "goal_target",
+  "push_optin",
 ];
+
+const ONBOARDING_STEP_REACHED_EVENTS = {
+  1: "onboarding_step_1_reached",
+  2: "onboarding_step_2_reached",
+  3: "onboarding_step_3_reached",
+  4: "onboarding_step_4_reached",
+  5: "onboarding_step_5_reached",
+  6: "onboarding_step_6_reached",
+  7: "onboarding_step_7_reached",
+  8: "onboarding_step_8_reached",
+  9: "onboarding_step_9_reached",
+  10: "onboarding_step_10_reached",
+  11: "onboarding_step_11_reached",
+};
 
 const resolveOnboardingScreenNumber = (step) => {
   const idx = ONBOARDING_SCREEN_SEQUENCE.indexOf(step);
   return idx >= 0 ? idx + 1 : null;
 };
+
+const getOnboardingStepReachedEvent = (stepNumber) =>
+  ONBOARDING_STEP_REACHED_EVENTS[stepNumber] || null;
 
 const findTemplateById = (id) =>
   DEFAULT_TEMPTATIONS.find((item) => item.id === id) ||
@@ -5347,11 +5690,11 @@ const resolveTemptationTitle = (item, language, override) => {
     source?.[language] ||
     source?.en ||
     (typeof source === "object" ? Object.values(source)[0] : null) ||
-    "Wish"
+    "Goal"
   );
 };
 
-const buildTemptationDisplayTitle = (emojiValue, titleValue, fallbackTitle = "Wish") => {
+const buildTemptationDisplayTitle = (emojiValue, titleValue, fallbackTitle = "Goal") => {
   const emoji = (emojiValue || "").trim();
   const title = (titleValue || "").trim() || fallbackTitle || "";
   return emoji ? `${emoji} ${title}`.trim() : title;
@@ -5959,7 +6302,6 @@ function TemptationCardComponent({
                 selectTextOnFocus
                 maxLength={2}
               />
-              <Text style={[styles.emojiEditIcon, { color: colors.muted }]}>✏️</Text>
             </View>
             <View style={styles.titleEditInputContainer}>
               <TextInput
@@ -5976,7 +6318,6 @@ function TemptationCardComponent({
                 placeholder={t("priceEditNameLabel")}
                 placeholderTextColor={colors.muted}
               />
-              <Text style={[styles.titleEditIcon, { color: colors.muted }]}>✏️</Text>
             </View>
           </View>
         ) : (
@@ -6115,7 +6456,6 @@ function TemptationCardComponent({
           <Text style={[styles.temptationGoalBadgeText, { color: colors.text }]}>
             {goalLabel || t("goalAssignFieldLabel")}
           </Text>
-          <Text style={[styles.editorHintIcon, { color: colors.muted, marginLeft: 6 }]}>✏️</Text>
         </TouchableOpacity>
       ) : null}
       {showEditorInline ? (
@@ -6135,7 +6475,6 @@ function TemptationCardComponent({
             placeholder={t("priceEditDescriptionLabel")}
             placeholderTextColor={colors.muted}
           />
-          <Text style={[styles.editorHintIcon, { color: colors.muted }]}>✏️</Text>
         </View>
       ) : desc ? (
         <Text style={[styles.temptationDesc, { color: cardMutedColor }]}>
@@ -6166,7 +6505,6 @@ function TemptationCardComponent({
           placeholder={t("priceEditAmountLabel", { currency })}
           placeholderTextColor={colors.muted}
         />
-        <Text style={[styles.editorHintIcon, { color: colors.muted }]}>✏️</Text>
       </View>
     ) : (
       <>
@@ -6495,6 +6833,7 @@ function SavingsHeroCard({
   heroSpendCopy,
   heroRecentEvents = [],
   heroEncouragementLine,
+  onRecentEventsPress = null,
   levelLabel,
   playerLevel = null,
   totalSavedLabel,
@@ -6755,6 +7094,7 @@ function SavingsHeroCard({
     activeChallenge && activeChallenge.targetValue
       ? Math.min(activeChallengeProgress / activeChallenge.targetValue, 1)
       : 0;
+  const RecentEventsWrap = onRecentEventsPress ? TouchableOpacity : View;
   return (
     <View
       style={[
@@ -6856,7 +7196,10 @@ function SavingsHeroCard({
           </Text>
         </View>
         {heroRecentEvents.length > 0 ? (
-          <View style={styles.savedHeroRecentList}>
+          <RecentEventsWrap
+            style={styles.savedHeroRecentList}
+            {...(onRecentEventsPress ? { activeOpacity: 0.85, onPress: onRecentEventsPress } : {})}
+          >
             <Text style={[styles.savedHeroRecentTitle, { color: goldPalette.subtext }]}>
               {t("heroSpendRecentTitle")}
             </Text>
@@ -6873,7 +7216,7 @@ function SavingsHeroCard({
                 {entry.label}
               </Text>
             ))}
-          </View>
+          </RecentEventsWrap>
         ) : (
           <Text style={[styles.savedHeroSubtitle, { color: goldPalette.subtext }]}>
             {heroSpendCopy || heroEncouragementLine}
@@ -7827,31 +8170,36 @@ const hasImpulseHistory = (insights) => {
 function ImpulseMapCard({ insights, colors, t, language, expanded = false, onToggle }) {
   if (!insights) return null;
   const fallbackTime = t("impulseAnytimeLabel");
+  const cleanTitle = (value) => {
+    const stripped = stripEmojis(value || "");
+    return stripped || value || "";
+  };
+  const formatInsightLine = (title, timeLabel) =>
+    t("impulseInsightLine", {
+      temptation: cleanTitle(title),
+      time: timeLabel || fallbackTime,
+    });
   const loseText = insights.hotLose
-    ? t("impulseLoseCopy", {
-        temptation: insights.hotLose.title,
-        time: insights.hotLose.windowLabel || fallbackTime,
-      })
-    : t("impulseLoseEmpty");
+    ? formatInsightLine(insights.hotLose.title, insights.hotLose.windowLabel || fallbackTime)
+    : t("impulseLoseEmptyShort");
   const winText = insights.hotWin
-    ? t("impulseWinCopy", {
-        temptation: insights.hotWin.title,
-        time: insights.hotWin.windowLabel || fallbackTime,
-      })
-    : t("impulseWinEmpty");
+    ? formatInsightLine(insights.hotWin.title, insights.hotWin.windowLabel || fallbackTime)
+    : t("impulseWinEmptyShort");
   const trendText =
     insights.hottestSpendCategory && insights.hottestSpendCategory.spendCount > 0
-      ? t("impulseTrendLabel", {
+      ? t("impulseTrendShort", {
           category: getImpulseCategoryLabel(insights.hottestSpendCategory.id, language),
         })
       : null;
   const isDarkMode = colors.background === THEMES.dark.background;
-  const dangerBg = isDarkMode ? "rgba(255,108,108,0.25)" : "#FFE5E5";
-  const dangerBorder = isDarkMode ? "rgba(255,108,108,0.5)" : "rgba(255,108,108,0.45)";
-  const successBg = isDarkMode ? "rgba(33,209,160,0.22)" : "#E5F8EE";
-  const successBorder = isDarkMode ? "rgba(33,209,160,0.45)" : "rgba(33,209,160,0.4)";
-  const neutralBg = isDarkMode ? "rgba(250,204,21,0.22)" : "#FFF4D5";
-  const neutralBorder = isDarkMode ? "rgba(250,204,21,0.4)" : "rgba(250,204,21,0.45)";
+  const cardBackground = isDarkMode ? lightenColor(colors.card, 0.12) : colors.card;
+  const cardBorder = isDarkMode ? lightenColor(colors.border, 0.3) : colors.border;
+  const dangerBg = isDarkMode ? "rgba(255,108,108,0.2)" : "#FFE6E6";
+  const dangerBorder = isDarkMode ? "rgba(255,108,108,0.42)" : "rgba(255,108,108,0.35)";
+  const successBg = isDarkMode ? "rgba(33,209,160,0.2)" : "#E6FBF2";
+  const successBorder = isDarkMode ? "rgba(33,209,160,0.4)" : "rgba(33,209,160,0.32)";
+  const neutralBg = isDarkMode ? "rgba(250,204,21,0.18)" : "#FFF5D9";
+  const neutralBorder = isDarkMode ? "rgba(250,204,21,0.35)" : "rgba(250,204,21,0.3)";
   const toggleLabel = expanded ? t("impulseCollapse") : t("impulseExpand");
   const categories = IMPULSE_CATEGORY_ORDER.map((id, index) => {
     const entry = insights.categories?.[id] || { save: 0, spend: 0 };
@@ -7871,31 +8219,59 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
     return a.orderIndex - b.orderIndex;
   });
   const topRanked = rankedCategories.filter((entry) => entry.total > 0);
-  const visibleCategories = expanded
-    ? (topRanked.length ? topRanked : rankedCategories).slice(0, 4)
-    : categories;
+  const visibleCategories = expanded ? topRanked.slice(0, 4) : [];
   const sequenceEntries = [];
-  const sequenceData = insights.sequenceHotspots || {};
-  if (sequenceData.slip) {
-    sequenceEntries.push({
-      key: "slip",
-      text: t("impulseSequenceSlip", {
-        from: sequenceData.slip.fromTitle || "",
-        to: sequenceData.slip.toTitle || "",
-      }),
+  const sequenceInsights = Array.isArray(insights.sequenceInsights) ? insights.sequenceInsights : [];
+  const resolveBefore = (action) =>
+    action === "save" ? t("impulseActionSaveBefore") : t("impulseActionSpendBefore");
+  const resolveAfter = (action) =>
+    action === "save" ? t("impulseActionSaveAfter") : t("impulseActionSpendAfter");
+  if (sequenceInsights.length) {
+    sequenceInsights.forEach((entry, index) => {
+      sequenceEntries.push({
+        key: entry.key || `sequence-${index}`,
+        text: t("impulseSequenceInsight", {
+          before: resolveBefore(entry.fromAction),
+          after: resolveAfter(entry.toAction),
+          from: entry.fromTitle || "",
+          to: entry.toTitle || "",
+          time: entry.windowLabel || fallbackTime,
+        }),
+      });
     });
-  }
-  if (sequenceData.rebound) {
-    sequenceEntries.push({
-      key: "rebound",
-      text: t("impulseSequenceRebound", {
-        from: sequenceData.rebound.fromTitle || "",
-        to: sequenceData.rebound.toTitle || "",
-      }),
-    });
+  } else {
+    const sequenceData = insights.sequenceHotspots || {};
+    if (sequenceData.slip) {
+      sequenceEntries.push({
+        key: "slip",
+        text: t("impulseSequenceInsight", {
+          before: resolveBefore(sequenceData.slip.fromAction || "spend"),
+          after: resolveAfter(sequenceData.slip.toAction || "spend"),
+          from: sequenceData.slip.fromTitle || "",
+          to: sequenceData.slip.toTitle || "",
+          time: sequenceData.slip.windowLabel || fallbackTime,
+        }),
+      });
+    }
+    if (sequenceData.rebound) {
+      sequenceEntries.push({
+        key: "rebound",
+        text: t("impulseSequenceInsight", {
+          before: resolveBefore(sequenceData.rebound.fromAction || "save"),
+          after: resolveAfter(sequenceData.rebound.toAction || "save"),
+          from: sequenceData.rebound.fromTitle || "",
+          to: sequenceData.rebound.toTitle || "",
+          time: sequenceData.rebound.windowLabel || fallbackTime,
+        }),
+      });
+    }
   }
   return (
-    <View style={[styles.impulseCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <View style={[styles.impulseCard, { backgroundColor: cardBackground, borderColor: cardBorder }]}>
+      <View
+        pointerEvents="none"
+        style={[styles.impulseCardGlow, { backgroundColor: isDarkMode ? "#4A3A6E" : "#FFD8A9" }]}
+      />
       <View style={styles.impulseHeaderRow}>
         <View style={styles.impulseHeader}>
           <Text style={[styles.impulseCardTitle, { color: colors.text }]}>{t("impulseCardTitle")}</Text>
@@ -7907,7 +8283,7 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
           onPress={onToggle}
           style={[
             styles.impulseToggle,
-            { borderColor: colors.border, backgroundColor: lightenColor(colors.card, isDarkMode ? 0.1 : 0.25) },
+            { borderColor: cardBorder, backgroundColor: lightenColor(cardBackground, isDarkMode ? 0.08 : 0.2) },
           ]}
         >
           <Text style={[styles.impulseToggleText, { color: colors.text }]}>{toggleLabel}</Text>
@@ -7945,50 +8321,52 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
               <Text style={[styles.impulseTrendText, { color: colors.text }]}>{trendText}</Text>
             </View>
           ) : null}
-          <View style={styles.impulseCategoryList}>
-            {visibleCategories.map((category) => {
-              const hasData = (category.save || 0) + (category.spend || 0) > 0;
-              const isRisk = hasData && category.spend > category.save;
-              const isWin = hasData && category.save > category.spend;
-              let categoryBg = colors.card;
-              let categoryBorder = colors.border;
-              if (isRisk) {
-                categoryBg = dangerBg;
-                categoryBorder = dangerBorder;
-              } else if (isWin) {
-                categoryBg = successBg;
-                categoryBorder = successBorder;
-              }
-              return (
-                <View
-                  key={category.id}
-                  style={[
-                    styles.impulseCategoryRow,
-                    {
-                      borderColor: categoryBorder,
-                      backgroundColor: categoryBg,
-                    },
-                  ]}
-                >
+          {visibleCategories.length ? (
+            <View style={styles.impulseCategoryList}>
+              {visibleCategories.map((category) => {
+                const hasData = (category.save || 0) + (category.spend || 0) > 0;
+                const isRisk = hasData && category.spend > category.save;
+                const isWin = hasData && category.save > category.spend;
+                let categoryBg = colors.card;
+                let categoryBorder = colors.border;
+                if (isRisk) {
+                  categoryBg = dangerBg;
+                  categoryBorder = dangerBorder;
+                } else if (isWin) {
+                  categoryBg = successBg;
+                  categoryBorder = successBorder;
+                }
+                return (
+                  <View
+                    key={category.id}
+                    style={[
+                      styles.impulseCategoryRow,
+                      {
+                        borderColor: categoryBorder,
+                        backgroundColor: categoryBg,
+                      },
+                    ]}
+                  >
                   <Text style={[styles.impulseCategoryLabel, { color: colors.text }]}>
                     {category.label}
                   </Text>
                   <View style={styles.impulseCategoryStats}>
-                    <Text style={[styles.impulseCategoryStat, { color: colors.text }]}>
-                      {t("impulseCategorySave", { count: category.save })}
+                    <Text style={[styles.impulseCategoryStat, { color: SAVE_ACTION_COLOR }]}>
+                      {`▲ ${category.save}`}
                     </Text>
-                    <Text style={[styles.impulseCategoryStatSecondary, { color: colors.muted }]}>
-                      {t("impulseCategorySpend", { count: category.spend })}
+                    <Text style={[styles.impulseCategoryStat, { color: SPEND_ACTION_COLOR }]}>
+                      {`▼ ${category.spend}`}
                     </Text>
                   </View>
                 </View>
               );
             })}
           </View>
+          ) : null}
           <View
             style={[
               styles.impulseSequenceSection,
-              { borderColor: colors.border, backgroundColor: lightenColor(colors.card, isDarkMode ? 0.05 : 0.12) },
+              { borderColor: colors.border, backgroundColor: lightenColor(cardBackground, isDarkMode ? 0.08 : 0.16) },
             ]}
           >
             <Text style={[styles.impulseSequenceTitle, { color: colors.text }]}>{t("impulseSequenceTitle")}</Text>
@@ -8000,7 +8378,7 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
               ))
             ) : (
               <Text style={[styles.impulseSequenceEntry, { color: colors.muted }]}>
-                {t("impulseSequenceEmpty")}
+                {t("impulseSequenceEmptyShort")}
               </Text>
             )}
           </View>
@@ -8009,6 +8387,123 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
     </View>
   );
 }
+
+const HistoryModal = React.memo(function HistoryModal({
+  visible = false,
+  history = [],
+  onClose = () => {},
+  onHistoryDelete = () => {},
+  t,
+  colors,
+  currency,
+  language,
+}) {
+  const historyEntries = Array.isArray(history) ? history : [];
+  const locale = getFormatLocale(language);
+  const formatLocalAmount = useCallback(
+    (valueUSD = 0) => formatCurrency(convertToCurrency(valueUSD || 0, currency), currency),
+    [currency]
+  );
+  const describeHistory = useCallback(
+    (entry) => describeHistoryEntry(entry, { t, formatLocalAmount }),
+    [formatLocalAmount, t]
+  );
+  const formatHistoryMeta = useCallback(
+    (entry) => formatHistoryEntryMeta(entry, { t, locale }),
+    [locale, t]
+  );
+  const [modalHeight, setModalHeight] = useState(0);
+  const modalOpacity = useMemo(() => {
+    const screenHeight = Dimensions.get("window").height || 1;
+    const ratio = Math.max(0, Math.min((modalHeight || 0) / screenHeight, 1));
+    return Math.min(0.5, Math.max(0.22, 0.18 + ratio * 0.45));
+  }, [modalHeight]);
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={styles.progressCategoryModalRoot}>
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View
+            style={[
+              styles.progressCategoryBackdrop,
+              { backgroundColor: `rgba(0,0,0,${modalOpacity})` },
+            ]}
+          />
+        </TouchableWithoutFeedback>
+        <View style={styles.progressCategoryModalWrap} pointerEvents="box-none">
+          <View
+            style={[
+              styles.progressCategoryModalCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+            onLayout={(event) => {
+              const nextHeight = event?.nativeEvent?.layout?.height || 0;
+              if (nextHeight && nextHeight !== modalHeight) {
+                setModalHeight(nextHeight);
+              }
+            }}
+          >
+            <View style={styles.progressCategoryModalHeader}>
+              <Text style={[styles.progressCategoryModalTitle, { color: colors.text }]}>
+                {t("historyTitle")}
+              </Text>
+              <TouchableOpacity onPress={onClose} style={styles.progressCategoryModalClose}>
+                <Text style={[styles.progressCategoryModalCloseText, { color: colors.muted }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            {historyEntries.length === 0 ? (
+              <Text style={[styles.historyEmpty, { color: colors.muted }]}>
+                {t("historyEmpty")}
+              </Text>
+            ) : (
+              <ScrollView
+                style={[styles.progressCategoryModalList, { borderColor: colors.border }]}
+                contentContainerStyle={styles.historyListContent}
+                showsVerticalScrollIndicator
+              >
+                {historyEntries.map((entry, index) => (
+                  <View
+                    key={entry.id}
+                    style={[
+                      styles.historyItem,
+                      {
+                        borderColor: colors.border,
+                        borderBottomWidth:
+                          index === historyEntries.length - 1 ? 0 : StyleSheet.hairlineWidth,
+                      },
+                    ]}
+                  >
+                    <View style={styles.historyRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.historyItemTitle, { color: colors.text }]}>
+                          {describeHistory(entry)}
+                        </Text>
+                        <Text style={[styles.historyItemMeta, { color: colors.muted }]}>
+                          {formatHistoryMeta(entry)}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.historyDeleteBtn, { borderColor: colors.border }]}
+                        onPress={() => onHistoryDelete?.(entry)}
+                      >
+                        <Text style={[styles.historyDeleteText, { color: colors.muted }]}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+});
 
 const FeedScreen = React.memo(
   forwardRef(function FeedScreen(
@@ -8034,6 +8529,7 @@ const FeedScreen = React.memo(
   refuseStats = {},
   cardFeedback = {},
   historyEvents = [],
+  onHistoryDelete = () => {},
   profile,
   titleOverrides = {},
   descriptionOverrides = {},
@@ -8150,6 +8646,9 @@ const FeedScreen = React.memo(
     [scrollToTop, scrollToTemptations]
   );
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
+  const [historyModalVisible, setHistoryModalVisible] = useState(false);
+  const openHistoryModal = useCallback(() => setHistoryModalVisible(true), []);
+  const closeHistoryModal = useCallback(() => setHistoryModalVisible(false), []);
   const [frequencyCollapseMap, setFrequencyCollapseMap] = useState({
     daily: false,
     weekly: false,
@@ -9114,6 +9613,12 @@ const FeedScreen = React.memo(
         typeof item?.templateId === "string" && item.templateId.trim()
           ? item.templateId.trim()
           : item.id;
+      const focusTargetKey =
+        typeof focusTemplateId === "string" && focusTemplateId.trim()
+          ? focusTemplateId.trim()
+          : focusTemplateId;
+      const isFocusTargetMatch =
+        !!focusTargetKey && (templateKey === focusTargetKey || item?.id === focusTargetKey);
       const assignedGoalId = goalAssignments?.[templateKey] || goalAssignments?.[item.id];
       const assignedGoal = assignedGoalId ? wishesById[assignedGoalId] : null;
       const resolvedGoalLabel = resolveAssignedGoalLabel(assignedGoalId, assignedGoal);
@@ -9134,7 +9639,7 @@ const FeedScreen = React.memo(
           t={t}
           allowThinkAction={allowThinkAction}
           descriptionOverride={resolvedDescriptionOverride}
-          isFocusTarget={item.id === focusTemplateId}
+          isFocusTarget={isFocusTargetMatch}
           onToggleEdit={() => onTemptationEditToggle?.(item)}
           currency={currency}
           stats={statsEntry}
@@ -9368,6 +9873,7 @@ const FeedScreen = React.memo(
             heroSpendCopy={heroSpendCopy}
             heroRecentEvents={heroRecentEvents}
             heroEncouragementLine={heroEncouragementLine}
+            onRecentEventsPress={openHistoryModal}
             levelLabel={levelLabel}
             playerLevel={playerLevel}
             totalSavedLabel={totalSavedLabel}
@@ -9404,11 +9910,11 @@ const FeedScreen = React.memo(
           activeChallenge={activeChallenge}
           onActiveChallengePress={onActiveChallengePress}
         />
-            <View style={styles.feedTemptationHeader}>
-              <Text style={[styles.feedTemptationTitle, { color: colors.text }]}>
-                {t("tutorialFeedTitle")}
-              </Text>
-              <TouchableOpacity
+          <View style={styles.feedTemptationHeader}>
+            <Text style={[styles.feedTemptationTitle, { color: colors.text }]}>
+              {t("tutorialFeedTitle")}
+            </Text>
+            <TouchableOpacity
                 style={[
                   styles.feedTemptationAddButton,
                   { backgroundColor: colors.text, borderColor: colors.text },
@@ -9421,6 +9927,16 @@ const FeedScreen = React.memo(
             </View>
           </View>
         }
+      />
+      <HistoryModal
+        visible={historyModalVisible}
+        history={resolvedHistoryEvents}
+        onClose={closeHistoryModal}
+        onHistoryDelete={onHistoryDelete}
+        t={t}
+        colors={colors}
+        currency={currency}
+        language={language}
       />
     </SafeAreaView>
   );
@@ -9695,6 +10211,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
   resolveTemplateCard = null,
   resolveTemptationCategory = null,
   customCategories = [],
+  onWeeklySpendPress = null,
 }) {
   const isDarkTheme = colors.background === THEMES.dark.background;
   const [impulseExpanded, setImpulseExpanded] = useState(false);
@@ -10078,6 +10595,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
     () => weeklyDailySavings.some((day) => (day.amountUSD || 0) > 0 || (day.spendUSD || 0) > 0),
     [weeklyDailySavings]
   );
+  const WeeklyCardWrap = onWeeklySpendPress ? TouchableOpacity : View;
 
   const renderWithLongPress = useCallback(
     (wish, content) => {
@@ -10732,11 +11250,12 @@ const ProgressScreen = React.memo(function ProgressScreen({
         </View>
       </View>
 
-      <View
+      <WeeklyCardWrap
         style={[
           styles.progressWeeklyCard,
           { backgroundColor: weeklyCardPalette.background, borderColor: weeklyCardPalette.border },
         ]}
+        {...(onWeeklySpendPress ? { activeOpacity: 0.9, onPress: onWeeklySpendPress } : {})}
       >
         <Text style={[styles.progressWeeklyTitle, { color: weeklyCardPalette.text }]}>
           {t("heroDailyTitle")}
@@ -10841,7 +11360,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
             {t("heroDailyEmpty")}
           </Text>
         )}
-      </View>
+      </WeeklyCardWrap>
 
       <View style={[styles.progressActiveChallenge, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.progressActiveChallengeHeader}>
@@ -11858,15 +12377,15 @@ const CHALLENGE_DEFS = [
       },
       en: {
         title: "Goal-mapping",
-        desc: "Add {{count}} new wishes to remember why you save.",
+        desc: "Add {{count}} new goals to remember why you save.",
       },
       es: {
         title: "Mapa de metas",
-        desc: "Añade {{count}} nuevos deseos para recordar por qué ahorras.",
+        desc: "Añade {{count}} nuevas metas para recordar por qué ahorras.",
       },
       fr: {
         title: "Carte des objectifs",
-        desc: "Ajoute {{count}} nouvelles envies pour te rappeler pourquoi tu épargnes.",
+        desc: "Ajoute {{count}} nouveaux objectifs pour te rappeler pourquoi tu épargnes.",
       },
     },
   },
@@ -12517,6 +13036,13 @@ const formatChallengeTimeLeft = (ms, t) => {
   return `${Math.max(minutes, 1)}${t("challengeTimeMinuteShort")}`;
 };
 
+const getChallengeCooldownRemaining = (entry, now = Date.now()) => {
+  if (!entry) return 0;
+  const completedAt = Number(entry.completedAt || entry.claimedAt || 0) || 0;
+  if (!completedAt) return 0;
+  return Math.max(0, completedAt + CHALLENGE_REPEAT_COOLDOWN_MS - now);
+};
+
 const getChallengeSortGroup = (challenge) => {
   if (!challenge) return 3;
   if (challenge.status === CHALLENGE_STATUS.ACTIVE) return 0;
@@ -12585,6 +13111,13 @@ const buildChallengesDisplay = ({
     const unlockLevel = def.unlockLevel || 1;
     const isLevelLocked = playerLevel < unlockLevel;
     let timerLabel = t("challengeDurationLabel", { days: def.durationDays });
+    const cooldownRemaining =
+      entry.status === CHALLENGE_STATUS.CLAIMED ? getChallengeCooldownRemaining(entry, now) : 0;
+    const cooldownLabel = cooldownRemaining
+      ? t("challengeCooldownLabel", {
+          time: formatChallengeTimeLeft(cooldownRemaining, t),
+        })
+      : "";
     if (entry.status === CHALLENGE_STATUS.ACTIVE && entry.expiresAt) {
       timerLabel = t("challengeTimeLeftLabel", {
         time: formatChallengeTimeLeft(Math.max(0, entry.expiresAt - now), t),
@@ -12592,14 +13125,16 @@ const buildChallengesDisplay = ({
     } else if (entry.status === CHALLENGE_STATUS.COMPLETED) {
       timerLabel = t("challengeReadyToClaim");
     } else if (entry.status === CHALLENGE_STATUS.CLAIMED) {
-      timerLabel = t("challengeRestartHint", { days: def.durationDays });
+      timerLabel = cooldownLabel || t("challengeRestartHint", { days: def.durationDays });
     }
     const baseCanStart =
       entry.status === CHALLENGE_STATUS.IDLE ||
       entry.status === CHALLENGE_STATUS.EXPIRED ||
       entry.status === CHALLENGE_STATUS.CLAIMED;
+    const cooldownBlocksStart =
+      entry.status === CHALLENGE_STATUS.CLAIMED && cooldownRemaining > 0;
     const limitBlocksStart = baseCanStart && isLimitBlockingNewStart;
-    const canStart = baseCanStart && !limitBlocksStart && !isLevelLocked;
+    const canStart = baseCanStart && !limitBlocksStart && !isLevelLocked && !cooldownBlocksStart;
     const canClaim = entry.status === CHALLENGE_STATUS.COMPLETED;
     let actionLabel = t("challengeActiveCta");
     if (isLevelLocked) {
@@ -12607,6 +13142,8 @@ const buildChallengesDisplay = ({
     }
     if (limitBlocksStart) {
       actionLabel = t("challengeLimitReachedAction", { limit: maxActiveChallenges });
+    } else if (cooldownBlocksStart) {
+      actionLabel = cooldownLabel;
     } else if (canClaim) {
       actionLabel = t("challengeClaimCta");
     } else if (canStart) {
@@ -13452,60 +13989,8 @@ const ProfileScreen = React.memo(function ProfileScreen({
     },
     [applyCustomSpendDraft]
   );
-  const describeHistory = (entry) => {
-    if (!entry) return t("historyUnknown");
-    const { kind, meta = {} } = entry;
-    const title = meta.title || t("historyUnknown");
-    switch (kind) {
-      case "wish_added":
-        return t("historyWishAdded", { title });
-      case "wish_progress":
-        return t("historyWishProgress", {
-          title,
-          amount: formatLocalAmount(meta.savedUSD),
-          target: formatLocalAmount(meta.targetUSD),
-        });
-      case "wish_completed":
-        return t("historyWishDone", { title });
-      case "decline":
-        return t("historyDecline", { title, amount: formatLocalAmount(meta.amountUSD) });
-      case "refuse_spend":
-        return t("historyRefuseSpend", { title, amount: formatLocalAmount(meta.amountUSD) });
-      case "pending_added":
-        return t("historyPendingAdded", { title });
-      case "pending_to_wish":
-        return t("historyPendingWant", { title });
-      case "pending_to_decline":
-        return t("historyPendingDecline", { title, amount: formatLocalAmount(meta.amountUSD) });
-      case "pending_removed":
-        return t("historyPendingRemoved", { title });
-      case "free_day":
-        return t("historyFreeDay", { total: meta.total || 0 });
-      case "spend":
-        return t("historySpend", { title, amount: formatLocalAmount(meta.amountUSD) });
-      case "wish_removed":
-        return t("historyWishRemoved", { title });
-      case "goal_started":
-        return t("historyGoalStarted", { title });
-      case "goal_cancelled":
-        return t("historyGoalCancelled", { title });
-      case "reward_claimed":
-        return t("historyRewardClaimed", { title: title || meta.rewardId || t("historyUnknown") });
-      default:
-        return t("historyUnknown");
-    }
-  };
-  const formatHistoryMeta = (entry) => {
-    if (!entry?.timestamp) return "";
-    try {
-      const date = new Date(entry.timestamp);
-      const dateLabel = date.toLocaleDateString(locale, { day: "numeric", month: "short" });
-      const timeLabel = date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
-      return t("historyTimestamp", { date: dateLabel, time: timeLabel });
-    } catch {
-      return "";
-    }
-  };
+  const describeHistory = (entry) => describeHistoryEntry(entry, { t, formatLocalAmount });
+  const formatHistoryMeta = (entry) => formatHistoryEntryMeta(entry, { t, locale });
   const joinDateLabel = useMemo(() => {
     const stamp = profile.joinedAt || profile.spendingProfile?.baselineStartAt;
     if (!stamp) return null;
@@ -13640,14 +14125,6 @@ const ProfileScreen = React.memo(function ProfileScreen({
                 {profileNameText}
               </Text>
               <View style={styles.profileBadgeRow}>
-                {rewardBadgeCount > 0 && (
-                  <View style={[styles.rewardBadgeSmall, { backgroundColor: colors.text }]}>
-                    <Text style={[styles.rewardBadgeSmallText, { color: colors.background }]}>
-                      {rewardBadgeCount}{" "}
-                      {rewardBadgeCount === 1 ? t("rewardBadgeLabel") : t("rewardBadgeLabelPlural")}
-                    </Text>
-                  </View>
-                )}
                 {challengeBadgeCount > 0 && (
                   <View style={[styles.profileChallengeBadge, { borderColor: colors.border }]}>
                     <View style={styles.profileChallengeBadgeList}>
@@ -14655,6 +15132,9 @@ function AppContent() {
   const [coinSliderMaxUSD, setCoinSliderMaxUSD] = useState(DEFAULT_COIN_SLIDER_MAX_USD);
   const [coinSliderHydrated, setCoinSliderHydrated] = useState(false);
   const [savingsBreakdownVisible, setSavingsBreakdownVisible] = useState(false);
+  const [spendBreakdownVisible, setSpendBreakdownVisible] = useState(false);
+  const [spendBreakdownRange, setSpendBreakdownRange] = useState("week");
+  const [spendBreakdownOffset, setSpendBreakdownOffset] = useState(0);
   const products = useMemo(
     () => filterTemptationsByPrice(temptations, priceLimitUSD),
     [temptations, priceLimitUSD]
@@ -14923,6 +15403,7 @@ function AppContent() {
   const [focusDigestPromptShown, setFocusDigestPromptShown] = useState(false);
   const [focusSaveCount, setFocusSaveCount] = useState(0);
   const appStateRef = useRef(AppState.currentState || "active");
+  const suppressResumeOnceRef = useRef(false);
   const appResumeAtRef = useRef(null);
   const focusLossCountersRef = useRef({});
   const focusPromptActiveRef = useRef(false);
@@ -14972,6 +15453,7 @@ function AppContent() {
     if (
       fabTutorialState === FAB_TUTORIAL_STATUS.SHOWING &&
       onboardingStep === "done" &&
+      tutorialSeen &&
       homeLayoutReady &&
       !startupLogoVisible &&
       !fabTutorialBlocked &&
@@ -14996,6 +15478,7 @@ function AppContent() {
     pendingFocusDigest,
     requestQueuedModalProcess,
     startupLogoVisible,
+    tutorialSeen,
   ]);
   const clearQueuedModal = useCallback(
     (type) => {
@@ -15055,6 +15538,35 @@ function AppContent() {
   const ratingPromptActionPrompted = ratingPromptState.actionPrompted;
   const ratingPromptLastAction = ratingPromptState.lastAction;
   const ratingPromptRespondedAt = ratingPromptState.respondedAt;
+  const ratingPromptCatFloat = useRef(new Animated.Value(0)).current;
+  const ratingPromptCatBob = ratingPromptCatFloat.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -8],
+  });
+  useEffect(() => {
+    if (!ratingPromptVisible) {
+      ratingPromptCatFloat.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(ratingPromptCatFloat, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(ratingPromptCatFloat, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [ratingPromptCatFloat, ratingPromptVisible]);
   const [levelShareModal, setLevelShareModal] = useState({ visible: false, level: 1 });
   const [levelShareSharing, setLevelShareSharing] = useState(false);
   const levelShareCardRef = useRef(null);
@@ -15745,6 +16257,7 @@ function AppContent() {
   const fabTutorialReady =
     fabTutorialState === FAB_TUTORIAL_STATUS.SHOWING &&
     onboardingStep === "done" &&
+    tutorialSeen &&
     !tutorialOverlayVisible &&
     homeLayoutReady &&
     !startupLogoVisible &&
@@ -15779,8 +16292,7 @@ function AppContent() {
   useEffect(() => {
     const handleAppStateChange = (nextState) => {
       const previousState = appStateRef.current;
-      const wasBackground =
-        typeof previousState === "string" && /inactive|background/.test(previousState);
+      const wasBackground = previousState === "background";
       appStateRef.current = nextState;
       if (nextState !== "active") {
         Keyboard.dismiss();
@@ -15795,8 +16307,13 @@ function AppContent() {
         soundModeReadyRef.current = false;
         const resumedAt = appResumeAtRef.current || 0;
         appResumeAtRef.current = null;
+        const suppressResumeOnce = suppressResumeOnceRef.current;
+        if (suppressResumeOnce) {
+          suppressResumeOnceRef.current = false;
+        }
         const isTransientResume =
-          resumedAt && Date.now() - resumedAt < APP_RESUME_MODAL_GUARD_MS;
+          suppressResumeOnce ||
+          (resumedAt && Date.now() - resumedAt < APP_RESUME_MODAL_GUARD_MS);
         if (!isTransientResume) {
           if (dailyChallengePromptQueuedRef.current && dailyChallengePendingRef.current) {
             setDailyChallengePromptGate(true);
@@ -15953,13 +16470,7 @@ function AppContent() {
       return sessionCount >= FAB_TUTORIAL_MIN_SESSIONS;
     });
     homeSessionRef.current.pendingIndex = homeSessionRef.current.sessionCount;
-    if (
-      onboardingStepRef.current === "done" &&
-      fabTutorialStateRef.current === FAB_TUTORIAL_STATUS.PENDING
-    ) {
-      setFabTutorialStateAndPersist(FAB_TUTORIAL_STATUS.SHOWING);
-    }
-  }, [setFabTutorialStateAndPersist]);
+  }, []);
   const tryLogHomeOpened = useCallback(() => {
     if (activeTab !== "feed") return;
     const pendingIndex = homeSessionRef.current.pendingIndex;
@@ -15970,10 +16481,11 @@ function AppContent() {
   const isFabTutorialEnvironmentReady = useMemo(
     () =>
       onboardingStep === "done" &&
+      tutorialSeen &&
       homeLayoutReady &&
       !tutorialOverlayVisible &&
       !startupLogoVisible,
-    [homeLayoutReady, onboardingStep, startupLogoVisible, tutorialOverlayVisible]
+    [homeLayoutReady, onboardingStep, startupLogoVisible, tutorialOverlayVisible, tutorialSeen]
   );
   useEffect(() => {
     if (
@@ -16506,6 +17018,7 @@ function AppContent() {
       !skinPickerVisible &&
       !coinEntryVisible &&
       !savingsBreakdownVisible &&
+      !spendBreakdownVisible &&
       !editOverlayVisible &&
       !priceEditor.item &&
       !newPendingModal.visible &&
@@ -16553,6 +17066,7 @@ function AppContent() {
       queuedModalType,
       ratingPromptVisible,
       savingsBreakdownVisible,
+      spendBreakdownVisible,
       skinPickerVisible,
       startupLogoVisible,
       tamagotchiVisible,
@@ -16826,7 +17340,8 @@ function AppContent() {
       !streakRecoveryPrompt.visible &&
       !skinPickerVisible &&
       !priceEditor.item &&
-      !savingsBreakdownVisible,
+      !savingsBreakdownVisible &&
+      !spendBreakdownVisible,
     [
       activeTab,
       baselinePrompt.visible,
@@ -16841,6 +17356,7 @@ function AppContent() {
       overlay,
       priceEditor.item,
       savingsBreakdownVisible,
+      spendBreakdownVisible,
       skinPickerVisible,
       streakRecoveryPrompt.visible,
       tamagotchiVisible,
@@ -16869,6 +17385,7 @@ function AppContent() {
       !skinPickerVisible &&
       !priceEditor.item &&
       !savingsBreakdownVisible &&
+      !spendBreakdownVisible &&
       !spendPrompt.visible &&
       !dailyChallengePromptVisible,
     [
@@ -16887,6 +17404,7 @@ function AppContent() {
       overlay,
       priceEditor.item,
       savingsBreakdownVisible,
+      spendBreakdownVisible,
       skinPickerVisible,
       spendPrompt.visible,
       streakRecoveryPrompt.visible,
@@ -17092,11 +17610,32 @@ function AppContent() {
     setPotentialDetailsVisible(true);
   }, []);
   const closePotentialDetails = useCallback(() => setPotentialDetailsVisible(false), []);
-  const openSavingsBreakdown = useCallback(() => setSavingsBreakdownVisible(true), []);
+  const openSavingsBreakdown = useCallback(() => {
+    setSpendBreakdownVisible(false);
+    setSavingsBreakdownVisible(true);
+  }, []);
   const closeSavingsBreakdown = useCallback(() => setSavingsBreakdownVisible(false), []);
+  const openSpendBreakdown = useCallback(() => {
+    setSavingsBreakdownVisible(false);
+    setSpendBreakdownRange("week");
+    setSpendBreakdownOffset(0);
+    setSpendBreakdownVisible(true);
+  }, []);
+  const closeSpendBreakdown = useCallback(() => setSpendBreakdownVisible(false), []);
+  const setSpendBreakdownRangeMode = useCallback((next) => {
+    setSpendBreakdownRange(next);
+    setSpendBreakdownOffset(0);
+  }, []);
+  const handleSpendBreakdownPrev = useCallback(() => {
+    setSpendBreakdownOffset((prev) => prev + 1);
+  }, []);
+  const handleSpendBreakdownNext = useCallback(() => {
+    setSpendBreakdownOffset((prev) => Math.max(0, prev - 1));
+  }, []);
   const blockingModalVisible = useMemo(
     () =>
       savingsBreakdownVisible ||
+      spendBreakdownVisible ||
       dailyChallengePromptVisible ||
       tamagotchiVisible ||
       levelShareModal.visible ||
@@ -17122,6 +17661,7 @@ function AppContent() {
       onboardingGoalModal.visible,
       priceEditor.item,
       savingsBreakdownVisible,
+      spendBreakdownVisible,
       skinPickerVisible,
       streakRecoveryPrompt.visible,
       tamagotchiVisible,
@@ -17169,6 +17709,7 @@ function AppContent() {
           return (
             fabTutorialState === FAB_TUTORIAL_STATUS.SHOWING &&
             onboardingStep === "done" &&
+            tutorialSeen &&
             homeLayoutReady &&
             !startupLogoVisible &&
             !fabTutorialBlocked &&
@@ -17198,6 +17739,7 @@ function AppContent() {
       startupLogoVisible,
       tutorialBlockingVisible,
       tutorialOverlayVisible,
+      tutorialSeen,
     ]
   );
   useEffect(() => {
@@ -17237,6 +17779,17 @@ function AppContent() {
         language
       ),
     [resolvedHistoryEvents, profile.currency, resolveTemplateTitle, language]
+  );
+  const spendBreakdown = useMemo(
+    () =>
+      buildSpendingBreakdown(
+        resolvedHistoryEvents,
+        profile.currency || DEFAULT_PROFILE.currency,
+        resolveTemplateTitle,
+        language,
+        { range: spendBreakdownRange, offset: spendBreakdownOffset }
+      ),
+    [resolvedHistoryEvents, profile.currency, resolveTemplateTitle, language, spendBreakdownRange, spendBreakdownOffset]
   );
   const fallbackGoalTargetUSD = useMemo(() => {
     if (Number.isFinite(profile?.goalTargetUSD) && profile.goalTargetUSD > 0) {
@@ -17587,14 +18140,18 @@ function AppContent() {
       }
     };
   }, [refreshMoodForToday]);
-  const ensureNotificationPermission = useCallback(async () => {
+  const ensureNotificationPermission = useCallback(async ({ request = true } = {}) => {
     try {
       let settings = await Notifications.getPermissionsAsync();
       let granted =
         settings.granted ||
         settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
-      if (!granted) {
+      if (!granted && request) {
+        suppressResumeOnceRef.current = true;
         settings = await Notifications.requestPermissionsAsync();
+        if (appStateRef.current === "active") {
+          suppressResumeOnceRef.current = false;
+        }
         granted =
           settings.granted ||
           settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
@@ -17612,7 +18169,7 @@ function AppContent() {
     if (!dailySummaryUnlocked) return;
     if (onboardingStep !== "done") return;
     const task = InteractionManager.runAfterInteractions(() => {
-      ensureNotificationPermission();
+      ensureNotificationPermission({ request: false });
     });
     return () => {
       task?.cancel?.();
@@ -17629,6 +18186,48 @@ function AppContent() {
         : null;
     return { reminder_type: reminderType, target_screen: targetScreen || undefined };
   }, []);
+  const applyDailySummaryFromNotification = useCallback(
+    (data) => {
+      if (!dailySummaryUnlocked) return false;
+      if (!data || typeof data !== "object") return false;
+      const hasPayload =
+        data.todayKey != null ||
+        data.today_key != null ||
+        data.savedUSD != null ||
+        data.saved_usd != null ||
+        data.declines != null ||
+        data.spends != null;
+      if (!hasPayload) return false;
+      const rawKey =
+        typeof data.todayKey === "string" && data.todayKey.trim()
+          ? data.todayKey.trim()
+          : typeof data.today_key === "string" && data.today_key.trim()
+          ? data.today_key.trim()
+          : null;
+      const todayKey = rawKey || getDayKey(Date.now());
+      if (!todayKey) return false;
+      if (dailySummarySeenKey === todayKey) return false;
+      const savedUSD = Math.max(
+        0,
+        Number(
+          data.savedUSD ??
+            data.saved_usd ??
+            data.saved ??
+            data.amountUSD ??
+            data.amount
+        ) || 0
+      );
+      const declines = Math.max(0, Number(data.declines) || 0);
+      const spends = Math.max(0, Number(data.spends) || 0);
+      const summaryPayload = { savedUSD, declines, spends, todayKey };
+      setPendingDailySummaryData((prev) =>
+        prev?.todayKey === todayKey ? prev : summaryPayload
+      );
+      enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_SUMMARY);
+      return true;
+    },
+    [dailySummarySeenKey, dailySummaryUnlocked, enqueueQueuedModal, getDayKey]
+  );
   const handleNotificationOpenFromPush = useCallback(
     (response) => {
       if (!response?.notification?.request) return;
@@ -17655,7 +18254,9 @@ function AppContent() {
             ? data.target_screen.trim()
             : null;
         const pendingId = typeof data.pendingId === "string" ? data.pendingId : null;
-        if ((targetScreen === "pending" || data.kind === "pending_decision") && pendingId) {
+        if (data.kind === "daily_summary") {
+          applyDailySummaryFromNotification(data);
+        } else if ((targetScreen === "pending" || data.kind === "pending_decision") && pendingId) {
           setPendingFocusId(pendingId);
           goToTab("pending");
         }
@@ -17664,7 +18265,7 @@ function AppContent() {
       logEvent("push_notification_open");
       logEvent("reminder_clicked", reminderPayload);
     },
-    [getReminderAnalyticsPayload, goToTab, logEvent]
+    [applyDailySummaryFromNotification, getReminderAnalyticsPayload, goToTab, logEvent]
   );
   useEffect(() => {
     let isMounted = true;
@@ -17820,7 +18421,7 @@ function AppContent() {
       if (blocked) {
         return false;
       }
-      const allowed = await ensureNotificationPermission();
+      const allowed = await ensureNotificationPermission({ request: false });
       if (!allowed) return false;
       try {
         await Notifications.scheduleNotificationAsync({
@@ -18040,7 +18641,13 @@ function AppContent() {
   useEffect(() => {
     if (!profileHydrated || !customReminderHydrated) return;
     schedulePersonalTemptationReminder(profile.customSpend);
-  }, [customReminderHydrated, profile.customSpend, profileHydrated, schedulePersonalTemptationReminder]);
+  }, [
+    customReminderHydrated,
+    notificationPermissionGranted,
+    profile.customSpend,
+    profileHydrated,
+    schedulePersonalTemptationReminder,
+  ]);
 
   useEffect(() => {
     const tick = () => {
@@ -18141,7 +18748,7 @@ function AppContent() {
   const schedulePendingReminder = useCallback(
     async (title, dueDate, meta = {}) => {
       try {
-        const allowed = await ensureNotificationPermission();
+        const allowed = await ensureNotificationPermission({ request: false });
         if (!allowed) return null;
         const dueTimestamp = Number(dueDate);
         if (!Number.isFinite(dueTimestamp)) return null;
@@ -18194,7 +18801,7 @@ function AppContent() {
   const scheduleChallengeReminders = useCallback(
     async (challengeId, def, startAt, expiresAt) => {
       if (!def?.reminderOffsetsHours?.length) return [];
-      const permitted = await ensureNotificationPermission();
+      const permitted = await ensureNotificationPermission({ request: false });
       if (!permitted) return [];
       const copy = getChallengeCopy(def, language);
       const title = t("challengeReminderTitle", { title: copy.title || challengeId });
@@ -19017,13 +19624,13 @@ function AppContent() {
     }, null);
   }, [challengeList]);
   const rewardsBadgeCount = useMemo(() => {
-    if (!rewardsReady) return 0;
-    const claimableRewards = achievements.filter((reward) => reward.unlocked && !reward.claimed).length;
-    const claimableChallenges = challengesUnlocked
-      ? challengeList.filter((challenge) => challenge.canClaim).length
-      : 0;
-    return claimableRewards + claimableChallenges;
-  }, [achievements, challengeList, rewardsReady, challengesUnlocked]);
+    if (!rewardsReady || !rewardsUnlocked) return 0;
+    return achievements.filter((reward) => reward.unlocked && !reward.claimed).length;
+  }, [achievements, rewardsReady, rewardsUnlocked]);
+  const challengeRewardsBadgeCount = useMemo(() => {
+    if (!rewardsReady || !challengesUnlocked) return 0;
+    return challengeList.filter((challenge) => challenge.canClaim).length;
+  }, [challengeList, rewardsReady, challengesUnlocked]);
   const activeDailyChallenge = useMemo(() => {
     if (dailyChallenge.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return null;
     const targetValue = dailyChallenge.target || 1;
@@ -19174,7 +19781,7 @@ function AppContent() {
       return Number.isFinite(timestamp) && timestamp >= cutoff;
     });
     return buildTemptationPressureMap(recentEvents);
-  }, [impulseTracker.events]);
+  }, [impulseTracker.events, todayKey]);
 
   useEffect(() => {
     if (!impulseFeaturesUnlocked) return;
@@ -19256,8 +19863,8 @@ function AppContent() {
   useEffect(() => {
     if (!dailyChallengeHydrated) return;
     if (!dailyChallengeUnlocked) return;
-    const todayKey = getDayKey(Date.now());
-    if (dailyChallenge.dateKey === todayKey && dailyChallenge.templateId) return;
+    const resolvedTodayKey = todayKey || getDayKey(Date.now());
+    if (dailyChallenge.dateKey === resolvedTodayKey && dailyChallenge.templateId) return;
     const targetId = resolveDailyChallengeTemplateId(dailyChallengePressure, 1, (templateId) => {
       const template = resolveTemplateCard(templateId);
       if (!template) return false;
@@ -19271,7 +19878,7 @@ function AppContent() {
     if (!targetId) {
       setDailyChallenge((prev) => ({
         ...createInitialDailyChallengeState(),
-        dateKey: todayKey,
+        dateKey: resolvedTodayKey,
         status: DAILY_CHALLENGE_STATUS.IDLE,
       }));
       return;
@@ -19287,8 +19894,8 @@ function AppContent() {
     const rewardBonus = computeDailyChallengeBonus(priceUSD, profile.currency || DEFAULT_PROFILE.currency);
     setDailyChallenge({
       ...createInitialDailyChallengeState(),
-      id: `daily-${todayKey}-${targetId}`,
-      dateKey: todayKey,
+      id: `daily-${resolvedTodayKey}-${targetId}`,
+      dateKey: resolvedTodayKey,
       templateId: targetId,
       templateTitle,
       templateLabel,
@@ -19308,6 +19915,7 @@ function AppContent() {
     profile.currency,
     resolveTemplateCard,
     resolveTemplateTitle,
+    todayKey,
   ]);
   useEffect(() => {
     if (!dailyChallengeHydrated) return;
@@ -19502,7 +20110,7 @@ function AppContent() {
         }
         return;
       }
-      const permitted = await ensureNotificationPermission();
+      const permitted = await ensureNotificationPermission({ request: false });
       if (!permitted) return;
       if (customReminderId) {
         await Notifications.cancelScheduledNotificationAsync(customReminderId).catch(() => {});
@@ -19566,7 +20174,7 @@ function AppContent() {
     if (storedSignature === signature && existingIds.length) {
       return;
     }
-    const permitted = await ensureNotificationPermission();
+    const permitted = await ensureNotificationPermission({ request: false });
     if (!permitted) return;
     const existing = Object.values(dailyNudgeIdsRef.current || {});
     if (existing.length) {
@@ -19612,7 +20220,13 @@ function AppContent() {
   useEffect(() => {
     if (!dailyNudgesHydrated) return;
     rescheduleDailyNudgeNotifications();
-  }, [dailyNudgesHydrated, language, rescheduleDailyNudgeNotifications, tVariant]);
+  }, [
+    dailyNudgesHydrated,
+    language,
+    notificationPermissionGranted,
+    rescheduleDailyNudgeNotifications,
+    tVariant,
+  ]);
 
   const runDeferredHydration = useCallback(() => {
       if (deferredHydrationReadyRef.current || deferredHydrationInFlightRef.current) return;
@@ -20968,20 +21582,38 @@ function AppContent() {
   const notifyDailySummaryReady = useCallback(
     (summary) => {
       if (!summary) return;
+      const todayKey =
+        typeof summary.todayKey === "string" && summary.todayKey.trim()
+          ? summary.todayKey.trim()
+          : getDayKey(Date.now());
+      if (!todayKey) return;
+      const savedUSD = Math.max(0, Number(summary.savedUSD) || 0);
+      const declines = Math.max(0, Number(summary.declines) || 0);
+      if (declines < 3) return;
+      const spends = Math.max(0, Number(summary.spends) || 0);
       const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
       const savedLabel = formatCurrency(
-        convertToCurrency(summary.savedUSD || 0, currencyCode),
+        convertToCurrency(savedUSD, currencyCode),
         currencyCode
       );
       sendImmediateNotification({
         title: t("dailySummaryNotificationTitle"),
         body: t("dailySummaryNotificationBody", {
           saved: savedLabel,
-          declines: summary.declines || 0,
+          declines,
         }),
+        data: {
+          kind: "daily_summary",
+          targetScreen: "daily_summary",
+          dedupeKey: `daily_summary_${todayKey}`,
+          todayKey,
+          savedUSD,
+          declines,
+          spends,
+        },
       });
     },
-    [profile.currency, sendImmediateNotification, t]
+    [getDayKey, profile.currency, sendImmediateNotification, t]
   );
 
   useEffect(() => {
@@ -22253,9 +22885,6 @@ useEffect(() => {
     if (languageEvent) {
       logEvent(languageEvent);
     }
-    if (onboardingStep !== "done") {
-      logEvent("onboarding_language_chosen", { language: nextLanguage });
-    }
   };
 
   const handleTermsOpen = () => {
@@ -22351,9 +22980,6 @@ useEffect(() => {
       if (currencyEvent) {
         logEvent(currencyEvent);
       }
-      if (onboardingStep !== "done") {
-        logEvent("onboarding_currency_chosen", { currency: value });
-      }
     }
     if (field === "gender" && onboardingStep !== "done") {
       const genderValue = value || "none";
@@ -22361,15 +22987,12 @@ useEffect(() => {
       if (genderEvent) {
         logEvent(genderEvent);
       }
-      logEvent("onboarding_gender_chosen", { gender: genderValue, selected: genderValue });
     }
     if (field === "persona" && onboardingStep !== "done") {
-      const habitType = PERSONA_HABIT_TYPES[value] || "custom";
       const personaEvent = getPersonaSelectedEvent(value);
       if (personaEvent) {
         logEvent(personaEvent);
       }
-      logEvent("onboarding_persona_chosen", { persona_id: value, habit_type: habitType });
     }
     setRegistrationData((prev) => ({ ...prev, [field]: value }));
   };
@@ -23412,7 +24035,7 @@ useEffect(() => {
         analyticsConsentGateRef.current = true;
         goToOnboardingStep("analytics_consent", { recordHistory: false, resetHistory: true });
       } else {
-        goToOnboardingStep("done", { recordHistory: false, resetHistory: true });
+        goToOnboardingStep("push_optin", { recordHistory: false, resetHistory: true });
       }
       setRegistrationData(INITIAL_REGISTRATION);
       goalSelectionTouchedRef.current = false;
@@ -23420,8 +24043,29 @@ useEffect(() => {
     }, 500);
   };
 
+  const requestTrackingTransparencyIfNeeded = useCallback(async () => {
+    if (Platform.OS !== "ios") return null;
+    if (!TrackingTransparency) return null;
+    const getter = TrackingTransparency.getTrackingPermissionsAsync;
+    const requester = TrackingTransparency.requestTrackingPermissionsAsync;
+    if (typeof getter !== "function" || typeof requester !== "function") return null;
+    try {
+      const current = await getter();
+      const status = current?.status;
+      if (status && status !== "undetermined" && status !== "not-determined") {
+        return status;
+      }
+      const result = await requester();
+      return result?.status || status || null;
+    } catch (error) {
+      console.warn("tracking transparency", error);
+      return null;
+    }
+  }, []);
+
   const handleAnalyticsConsentComplete = async (allowAnalytics) => {
     markStartupLogoDismissed();
+    await requestTrackingTransparencyIfNeeded();
     const optOut = !allowAnalytics;
     setAnalyticsOptOutState(optOut);
     setAnalyticsOptOutFlag(optOut);
@@ -23432,10 +24076,16 @@ useEffect(() => {
     logEvent("consent_analytics_enabled", { enabled: allowAnalytics, source: "onboarding" });
     if (analyticsConsentGateRef.current) {
       analyticsConsentGateRef.current = false;
-      goToOnboardingStep("done", { recordHistory: false, resetHistory: true });
+      goToOnboardingStep("push_optin", { recordHistory: false, resetHistory: true });
       return;
     }
     goToOnboardingStep("guide");
+  };
+
+  const handleOnboardingNotificationsContinue = async () => {
+    triggerHaptic();
+    await ensureNotificationPermission();
+    goToOnboardingStep("done", { recordHistory: false, resetHistory: true });
   };
 
   const handleOnboardingSkip = useCallback(async () => {
@@ -23482,6 +24132,63 @@ useEffect(() => {
     return false;
   };
 
+  const persistAvatarUri = useCallback(async (uri, fileName) => {
+    if (!uri || typeof uri !== "string") return uri;
+    const documentDir = FileSystem.documentDirectory;
+    if (!documentDir) return uri;
+    if (uri.startsWith(documentDir)) return uri;
+    const isFileUri = uri.startsWith("file://");
+    const isContentUri = uri.startsWith("content://");
+    if (!isFileUri && !isContentUri) return uri;
+    if (isFileUri) {
+      const fileInfo = await FileSystem.getInfoAsync(uri).catch(() => null);
+      if (!fileInfo?.exists) return uri;
+    }
+    const targetDir = `${documentDir}profile-avatars/`;
+    await FileSystem.makeDirectoryAsync(targetDir, { intermediates: true }).catch(() => {});
+    const cleanedUri = uri.split("?")[0];
+    const cleanedName = typeof fileName === "string" ? fileName.split("?")[0] : "";
+    const fileNameMatch = cleanedName.match(/\.([a-zA-Z0-9]+)$/);
+    const extensionMatch = cleanedUri.match(/\.([a-zA-Z0-9]+)$/);
+    const extension = (fileNameMatch?.[1] || extensionMatch?.[1] || "jpg").toLowerCase();
+    const generatedName = `avatar-${Date.now()}-${Math.random().toString(16).slice(2)}.${extension}`;
+    const targetUri = `${targetDir}${generatedName}`;
+    try {
+      await FileSystem.copyAsync({ from: uri, to: targetUri });
+      return targetUri;
+    } catch (error) {
+      console.warn("avatar persist", error);
+      return uri;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!profileHydrated) return;
+    let cancelled = false;
+    const migrateAvatar = async () => {
+      const currentAvatar = profile?.avatar;
+      if (!currentAvatar || typeof currentAvatar !== "string") return;
+      if (!currentAvatar.startsWith("file://") && !currentAvatar.startsWith("content://")) return;
+      const documentDir = FileSystem.documentDirectory;
+      if (!documentDir || currentAvatar.startsWith(documentDir)) return;
+      if (currentAvatar.startsWith("file://")) {
+        const info = await FileSystem.getInfoAsync(currentAvatar).catch(() => null);
+        if (!info?.exists) return;
+      }
+      const persistedUri = await persistAvatarUri(currentAvatar);
+      if (!persistedUri || persistedUri === currentAvatar || cancelled) return;
+      setProfile((prev) => (prev?.avatar === currentAvatar ? { ...prev, avatar: persistedUri } : prev));
+      setProfileDraft((prev) => (prev?.avatar === currentAvatar ? { ...prev, avatar: persistedUri } : prev));
+      setRegistrationData((prev) =>
+        prev?.avatar === currentAvatar ? { ...prev, avatar: persistedUri } : prev
+      );
+    };
+    migrateAvatar();
+    return () => {
+      cancelled = true;
+    };
+  }, [profileHydrated, profile?.avatar, persistAvatarUri]);
+
   const pickImage = async (source = "library", onPicked) => {
     try {
       triggerHaptic();
@@ -23498,8 +24205,9 @@ useEffect(() => {
           ? await ImagePicker.launchCameraAsync(pickerOptions)
           : await ImagePicker.launchImageLibraryAsync(pickerOptions);
       if (!result.canceled && result.assets?.length) {
-        const uri = result.assets[0].uri;
-        onPicked?.(uri);
+        const asset = result.assets[0];
+        const persistedUri = await persistAvatarUri(asset.uri, asset.fileName);
+        onPicked?.(persistedUri);
       }
     } catch (error) {
       const errorMessage =
@@ -23537,7 +24245,7 @@ useEffect(() => {
         lastScheduledAt > 0
           ? Math.max(baseTriggerTime, lastScheduledAt + SMART_REMINDER_MIN_INTERVAL_MS)
           : baseTriggerTime;
-      const permitted = await ensureNotificationPermission();
+      const permitted = await ensureNotificationPermission({ request: false });
       if (!permitted) return;
       const templateId = entry.meta?.templateId || entry.meta?.id || entry.meta?.template_id;
       const metaTitle =
@@ -23857,10 +24565,90 @@ useEffect(() => {
     [logEvent, stopAllSounds, triggerHaptic]
   );
 
+  const normalizeHistoryGoalId = useCallback(
+    (goalId) => {
+      if (!goalId || typeof goalId !== "string") return null;
+      if (goalId.startsWith("wish_primary_goal_")) return goalId;
+      const isPrimary =
+        (Array.isArray(profile.primaryGoals) &&
+          profile.primaryGoals.some((goal) => goal?.id === goalId)) ||
+        profile.goal === goalId;
+      return isPrimary ? getPrimaryGoalWishId(goalId) : goalId;
+    },
+    [profile.goal, profile.primaryGoals]
+  );
+
+  const applyHistoryGoalDelta = useCallback(
+    (rawGoalId, deltaUSD) => {
+      if (!rawGoalId || !Number.isFinite(deltaUSD) || deltaUSD === 0) return;
+      const normalizedGoalId = normalizeHistoryGoalId(rawGoalId);
+      if (!normalizedGoalId) return;
+      if (normalizedGoalId.startsWith("wish_primary_goal_")) {
+        const goalId = normalizedGoalId.replace("wish_primary_goal_", "");
+        const primaryEntry = Array.isArray(profile.primaryGoals)
+          ? profile.primaryGoals.find((goal) => goal?.id === goalId)
+          : null;
+        const primaryWish =
+          Array.isArray(wishesRef.current) &&
+          wishesRef.current.find(
+            (wish) => wish?.id === normalizedGoalId || wish?.goalId === goalId
+          );
+        const currentSaved = Number.isFinite(primaryEntry?.savedUSD)
+          ? primaryEntry.savedUSD
+          : Number.isFinite(primaryWish?.savedUSD)
+          ? primaryWish.savedUSD
+          : 0;
+        const targetUSD =
+          Number.isFinite(primaryEntry?.targetUSD) && primaryEntry.targetUSD > 0
+            ? primaryEntry.targetUSD
+            : Number.isFinite(primaryWish?.targetUSD) && primaryWish.targetUSD > 0
+            ? primaryWish.targetUSD
+            : profile.goal === goalId &&
+              Number.isFinite(profile.goalTargetUSD) &&
+              profile.goalTargetUSD > 0
+            ? profile.goalTargetUSD
+            : getGoalDefaultTargetUSD(goalId);
+        const nextSaved = Math.max(0, currentSaved + deltaUSD);
+        const nextStatus = targetUSD > 0 && nextSaved >= targetUSD ? "done" : "active";
+        syncPrimaryGoalProgress(goalId, nextSaved, nextStatus);
+        return;
+      }
+      setWishes((prev) => {
+        let changed = false;
+        const next = prev.map((wish) => {
+          if (!wish) return wish;
+          if (wish.id !== normalizedGoalId && wish.goalId !== normalizedGoalId) return wish;
+          const targetUSD =
+            Number.isFinite(wish.targetUSD) && wish.targetUSD > 0
+              ? wish.targetUSD
+              : getGoalDefaultTargetUSD(wish.goalId || wish.id);
+          const previousSaved = Number.isFinite(wish.savedUSD) ? wish.savedUSD : 0;
+          const nextSaved = Math.max(0, previousSaved + deltaUSD);
+          const nextStatus = targetUSD > 0 && nextSaved >= targetUSD ? "done" : "active";
+          if (nextSaved !== previousSaved || nextStatus !== wish.status) {
+            changed = true;
+            return { ...wish, savedUSD: nextSaved, status: nextStatus };
+          }
+          return wish;
+        });
+        return changed ? next : prev;
+      });
+    },
+    [
+      normalizeHistoryGoalId,
+      profile.goal,
+      profile.goalTargetUSD,
+      profile.primaryGoals,
+      setWishes,
+      syncPrimaryGoalProgress,
+    ]
+  );
+
   const handleHistoryDelete = useCallback(
     (entry) => {
       if (!entry) return;
       const entryId = entry.id;
+      const amountUSD = Math.max(0, Number(entry.meta?.amountUSD) || 0);
       const resolveHistoryGoalId = () => {
         const meta = entry.meta || {};
         const storedGoalId =
@@ -23869,45 +24657,7 @@ useEffect(() => {
         const templateId = meta.templateId || meta.id || null;
         return templateId ? resolveTemptationGoalId(templateId) : null;
       };
-      const applyGoalRemoval = (targetGoalId, amountUSD) => {
-        if (!targetGoalId || amountUSD <= 0) return;
-        setWishes((prev) => {
-          let changed = false;
-          const next = prev.map((wish) => {
-            if (!wish) return wish;
-            if (wish.id !== targetGoalId && wish.goalId !== targetGoalId) return wish;
-            const targetUSD =
-              Number.isFinite(wish.targetUSD) && wish.targetUSD > 0
-                ? wish.targetUSD
-                : getGoalDefaultTargetUSD(wish.goalId || wish.id);
-            const previousSaved = Number.isFinite(wish.savedUSD) ? wish.savedUSD : 0;
-            const nextSaved = Math.max(0, previousSaved - amountUSD);
-            const nextStatus = targetUSD > 0 && nextSaved >= targetUSD ? "done" : "active";
-            if (nextSaved !== previousSaved || nextStatus !== wish.status) {
-              changed = true;
-              return { ...wish, savedUSD: nextSaved, status: nextStatus };
-            }
-            return wish;
-          });
-          return changed ? next : prev;
-        });
-        if (typeof targetGoalId === "string" && targetGoalId.startsWith("wish_primary_goal_")) {
-          const goalId = targetGoalId.replace("wish_primary_goal_", "");
-          const primaryEntry = Array.isArray(profile.primaryGoals)
-            ? profile.primaryGoals.find((goal) => goal?.id === goalId)
-            : null;
-          const currentSaved = Number.isFinite(primaryEntry?.savedUSD) ? primaryEntry.savedUSD : 0;
-          const targetUSD =
-            Number.isFinite(primaryEntry?.targetUSD) && primaryEntry.targetUSD > 0
-              ? primaryEntry.targetUSD
-              : getGoalDefaultTargetUSD(goalId);
-          const nextSaved = Math.max(0, currentSaved - amountUSD);
-          const nextStatus = targetUSD > 0 && nextSaved >= targetUSD ? "done" : "active";
-          syncPrimaryGoalProgress(goalId, nextSaved, nextStatus);
-        }
-      };
       if (entry.kind === "refuse_spend") {
-        const amountUSD = Math.max(0, Number(entry.meta?.amountUSD) || 0);
         const metaCoinReward = Math.max(0, Number(entry.meta?.coinReward) || 0);
         const resolvedCurrency = entry.meta?.currency || profile.currency || DEFAULT_PROFILE.currency;
         const coinRefund = metaCoinReward > 0
@@ -23918,13 +24668,19 @@ useEffect(() => {
         }
         const targetGoalId = resolveHistoryGoalId();
         if (targetGoalId) {
-          applyGoalRemoval(targetGoalId, amountUSD);
+          applyHistoryGoalDelta(targetGoalId, -amountUSD);
+        }
+      }
+      if (amountUSD > 0) {
+        if (entry.kind === "refuse_spend") {
+          setSavedTotalUSD((prev) => Math.max(0, prev - amountUSD));
+        } else if (entry.kind === "spend" && spendReducesSavings) {
+          setSavedTotalUSD((prev) => Math.max(0, prev + amountUSD));
         }
       }
       setHistoryEvents((prev) => {
         const next = prev.filter((h) => h.id !== entryId);
         AsyncStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(next)).catch(() => {});
-        rebuildSavingsFromHistory(next);
         setChallengesState((prevState) => rebuildChallengeProgressFromHistory(next, prevState));
         return next;
       });
@@ -23936,15 +24692,15 @@ useEffect(() => {
       }
     },
     [
+      applyHistoryGoalDelta,
       profile.currency,
-      profile.primaryGoals,
-      rebuildSavingsFromHistory,
       resolveTemptationGoalId,
       setPendingList,
       setWishes,
       setHealthPoints,
+      setSavedTotalUSD,
       setChallengesState,
-      syncPrimaryGoalProgress,
+      spendReducesSavings,
     ]
   );
 
@@ -24207,12 +24963,26 @@ useEffect(() => {
       Alert.alert(t("tamagotchiName"), `${needText}\n\n${hint}`);
       return;
     }
+    const coinsAfter = Math.max(0, tamagotchiCoins - TAMAGOTCHI_PARTY_COST);
+    logEvent("tamagotchi_party_started", {
+      party_cost: TAMAGOTCHI_PARTY_COST,
+      coins_before: tamagotchiCoins,
+      coins_after: coinsAfter,
+    });
     setHealthPoints((coins) => Math.max(0, coins - TAMAGOTCHI_PARTY_COST));
     stopPartyEffects();
     setPartyActive(true);
     runPartyEffects(2);
     requestMascotAnimation("happyHeadshake", 3600);
-  }, [requestMascotAnimation, runPartyEffects, setHealthPoints, stopPartyEffects, t, tamagotchiCoins]);
+  }, [
+    logEvent,
+    requestMascotAnimation,
+    runPartyEffects,
+    setHealthPoints,
+    stopPartyEffects,
+    t,
+    tamagotchiCoins,
+  ]);
 
   const handleMascotAnimationComplete = useCallback(() => {
     mascotBusyRef.current = false;
@@ -24582,7 +25352,7 @@ useEffect(() => {
         );
       }
       const title = `${item.emoji || "✨"} ${
-        item.title?.[language] || item.title?.en || item.title || "wish"
+        item.title?.[language] || item.title?.en || item.title || "goal"
       }`;
       registerFocusLoss(item);
       handleFocusSpend(item);
@@ -24728,7 +25498,7 @@ useEffect(() => {
       const triggerAt = getImpulseReminderTimestamp(event.timestamp);
       if (!triggerAt) return;
       if (triggerAt - Date.now() < IMPULSE_REMINDER_MIN_DELAY_MS) return;
-      const allowed = await ensureNotificationPermission();
+      const allowed = await ensureNotificationPermission({ request: false });
       if (!allowed) return;
       const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
       const amountLabel = formatCurrency(
@@ -24916,7 +25686,7 @@ useEffect(() => {
         }
       }
       const title = `${item.emoji || "✨"} ${
-        item.title?.[language] || item.title?.en || item.title || "wish"
+        item.title?.[language] || item.title?.en || item.title || "goal"
       }`;
       const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
       const priceLocal = convertToCurrency(priceUSD, currencyCode);
@@ -26475,7 +27245,7 @@ useEffect(() => {
   const propagateTemptationEdit = useCallback(
     (templateId, { label, emoji, priceUSD, category, pricePrecision = null }) => {
       if (!templateId) return;
-      const fallbackTitle = resolveTranslationValueForLanguage(language, "defaultWishTitle") || "Wish";
+      const fallbackTitle = resolveTranslationValueForLanguage(language, "defaultWishTitle") || "Goal";
       const normalizedLabel = (label && label.trim()) || fallbackTitle;
       const decoratedTitle = buildTemptationDisplayTitle(emoji, normalizedLabel, fallbackTitle);
       const numericPrice = Number(priceUSD);
@@ -26551,45 +27321,86 @@ useEffect(() => {
         if (!mutated) return current;
         return { ...current, events: nextEvents };
       });
-      setHistoryEvents((prev) => {
-        let mutated = false;
-        const next = (prev || []).map((entry) => {
-          if (!entry || !entry.meta) return entry;
-          const metaTemplateId =
-            entry?.meta?.templateId || entry?.meta?.template_id || entry?.meta?.templateID;
-          if (metaTemplateId !== templateId) return entry;
-          const nextMeta = { ...(entry.meta || {}) };
-          let metaChanged = false;
-          if (decoratedTitle && nextMeta.title !== decoratedTitle) {
-            nextMeta.title = decoratedTitle;
+      const historySnapshot = Array.isArray(resolvedHistoryEvents) ? resolvedHistoryEvents : [];
+      let historyMutated = false;
+      let savedDelta = 0;
+      const goalDeltas = {};
+      const nextHistory = historySnapshot.map((entry) => {
+        if (!entry || !entry.meta) return entry;
+        const metaTemplateId =
+          entry?.meta?.templateId || entry?.meta?.template_id || entry?.meta?.templateID;
+        if (metaTemplateId !== templateId) return entry;
+        const nextMeta = { ...(entry.meta || {}) };
+        let metaChanged = false;
+        if (decoratedTitle && nextMeta.title !== decoratedTitle) {
+          nextMeta.title = decoratedTitle;
+          metaChanged = true;
+        }
+        if (emoji && nextMeta.emoji !== emoji) {
+          nextMeta.emoji = emoji;
+          metaChanged = true;
+        }
+        if (hasPrice) {
+          if (typeof nextMeta.amountUSD === "number" && nextMeta.amountUSD !== numericPrice) {
+            const delta = numericPrice - nextMeta.amountUSD;
+            if (delta) {
+              if (entry.kind === "refuse_spend") {
+                savedDelta += delta;
+                const goalId =
+                  entry.meta?.goalId ||
+                  entry.meta?.goal_id ||
+                  entry.meta?.savingTargetId ||
+                  entry.meta?.saving_target_id ||
+                  null;
+                if (goalId) {
+                  goalDeltas[goalId] = (goalDeltas[goalId] || 0) + delta;
+                }
+              } else if (entry.kind === "spend" && spendReducesSavings) {
+                savedDelta -= delta;
+              }
+            }
+            nextMeta.amountUSD = numericPrice;
             metaChanged = true;
           }
-          if (emoji && nextMeta.emoji !== emoji) {
-            nextMeta.emoji = emoji;
+          if (typeof nextMeta.targetUSD === "number" && nextMeta.targetUSD !== numericPrice) {
+            nextMeta.targetUSD = numericPrice;
             metaChanged = true;
           }
-          if (hasPrice) {
-            if (typeof nextMeta.amountUSD === "number" && nextMeta.amountUSD !== numericPrice) {
-              nextMeta.amountUSD = numericPrice;
-              metaChanged = true;
-            }
-            if (typeof nextMeta.targetUSD === "number" && nextMeta.targetUSD !== numericPrice) {
-              nextMeta.targetUSD = numericPrice;
-              metaChanged = true;
-            }
-            if (typeof nextMeta.priceUSD === "number" && nextMeta.priceUSD !== numericPrice) {
-              nextMeta.priceUSD = numericPrice;
-              metaChanged = true;
-            }
+          if (typeof nextMeta.priceUSD === "number" && nextMeta.priceUSD !== numericPrice) {
+            nextMeta.priceUSD = numericPrice;
+            metaChanged = true;
           }
-          if (!metaChanged) return entry;
-          mutated = true;
-          return { ...entry, meta: nextMeta };
-        });
-        return mutated ? next : prev;
+        }
+        if (!metaChanged) return entry;
+        historyMutated = true;
+        return { ...entry, meta: nextMeta };
       });
+      if (historyMutated) {
+        setHistoryEvents(nextHistory);
+        if (savedDelta) {
+          setSavedTotalUSD((prev) => Math.max(0, prev + savedDelta));
+        }
+        Object.entries(goalDeltas).forEach(([goalId, delta]) => {
+          applyHistoryGoalDelta(goalId, delta);
+        });
+        if (hasPrice) {
+          setChallengesState((prev) => rebuildChallengeProgressFromHistory(nextHistory, prev));
+        }
+      }
     },
-    [language, setHistoryEvents, setImpulseTracker, setPendingList, setWishes]
+    [
+      applyHistoryGoalDelta,
+      language,
+      rebuildChallengeProgressFromHistory,
+      resolvedHistoryEvents,
+      setChallengesState,
+      setHistoryEvents,
+      setImpulseTracker,
+      setPendingList,
+      setSavedTotalUSD,
+      setWishes,
+      spendReducesSavings,
+    ]
   );
 
   const savePriceEdit = () => {
@@ -26639,7 +27450,7 @@ useEffect(() => {
         priceEditor.item,
         language,
         titleOverrides[priceEditor.item.id] || priceEditor.item.titleOverride || null
-      ) || resolveTranslationValueForLanguage(language, "defaultWishTitle") || "Wish";
+      ) || resolveTranslationValueForLanguage(language, "defaultWishTitle") || "Goal";
     const normalizedLabel = titleValue || fallbackTitle;
     propagateTemptationEdit(priceEditor.item.id, {
       label: normalizedLabel,
@@ -26735,7 +27546,7 @@ useEffect(() => {
       setPendingList((prev) => prev.filter((entry) => entry.id !== pendingItem.id));
       const template = findTemplateById(pendingItem.templateId);
       const title =
-        pendingItem.title || template?.title?.[language] || template?.title?.en || "Wish";
+        pendingItem.title || template?.title?.[language] || template?.title?.en || "Goal";
       const priceUSD = pendingItem.priceUSD || template?.basePriceUSD || 0;
       const decisionTimestamp = Date.now();
       const daysWaited = Math.max(
@@ -26747,7 +27558,7 @@ useEffect(() => {
         ...(template || {}),
         id: actionTemplateId,
         templateId: actionTemplateId,
-        title: template?.title || pendingItem.title || "Wish",
+        title: template?.title || pendingItem.title || "Goal",
         emoji: pendingItem.emoji || template?.emoji || DEFAULT_TEMPTATION_EMOJI,
         priceUSD,
         basePriceUSD: template?.basePriceUSD || priceUSD,
@@ -26872,7 +27683,7 @@ useEffect(() => {
       if (!pendingItem) return;
       const template = findTemplateById(pendingItem.templateId);
       const title =
-        pendingItem.title || template?.title?.[language] || template?.title?.en || "Wish";
+        pendingItem.title || template?.title?.[language] || template?.title?.en || "Goal";
       const performDelete = async () => {
         if (pendingItem.notificationId) {
           try {
@@ -26903,7 +27714,7 @@ useEffect(() => {
     async (pendingItem) => {
       if (!pendingItem) return;
       const template = findTemplateById(pendingItem.templateId);
-      const title = pendingItem.title || template?.title?.[language] || template?.title?.en || "Wish";
+      const title = pendingItem.title || template?.title?.[language] || template?.title?.en || "Goal";
       const nextDue = Date.now() + PENDING_EXTENSION_MS;
       if (pendingItem.notificationId) {
         Notifications.cancelScheduledNotificationAsync(pendingItem.notificationId).catch(() => {});
@@ -27555,7 +28366,8 @@ useEffect(() => {
         const canStart =
           entry.status === CHALLENGE_STATUS.IDLE ||
           entry.status === CHALLENGE_STATUS.EXPIRED ||
-          entry.status === CHALLENGE_STATUS.CLAIMED;
+          (entry.status === CHALLENGE_STATUS.CLAIMED &&
+            getChallengeCooldownRemaining(entry, Date.now()) <= 0);
         if (!canStart) {
           return prev;
         }
@@ -28048,6 +28860,7 @@ useEffect(() => {
             resolveTemplateCard={resolveTemplateCard}
             resolveTemptationCategory={resolveTemptationCategory}
             customCategories={customCategories}
+            onWeeklySpendPress={openSpendBreakdown}
           />
         );
       case "pending":
@@ -28150,6 +28963,7 @@ useEffect(() => {
             refuseStats={refuseStats}
             cardFeedback={cardFeedback}
             historyEvents={resolvedHistoryEvents}
+            onHistoryDelete={handleHistoryDelete}
             profile={profile}
             titleOverrides={titleOverrides}
             descriptionOverrides={descriptionOverrides}
@@ -28245,6 +29059,7 @@ useEffect(() => {
       goal: "onboarding_goal",
       goal_target: "onboarding_goal_target",
       analytics_consent: "onboarding_analytics_consent",
+      push_optin: "onboarding_push_optin",
     };
     const screen = onboardingScreens[onboardingStep];
     if (screen) {
@@ -28255,7 +29070,10 @@ useEffect(() => {
     if (onboardingStep === "done") return;
     const screenNumber = resolveOnboardingScreenNumber(onboardingStep);
     if (!screenNumber) return;
-    logEvent("onboarding_step_reached", { step: onboardingStep, screen_number: screenNumber });
+    const stepEvent = getOnboardingStepReachedEvent(screenNumber);
+    if (stepEvent) {
+      logEvent(stepEvent);
+    }
   }, [logEvent, onboardingStep]);
 
   if (onboardingStep !== "done") {
@@ -28390,6 +29208,15 @@ useEffect(() => {
           t={t}
           onSubmit={(allow) => handleAnalyticsConsentComplete(allow)}
           onBack={onboardingBackHandler}
+        />
+      );
+    } else if (onboardingStep === "push_optin") {
+      onboardContent = (
+        <OnboardingNotificationsScreen
+          colors={colors}
+          t={t}
+          onContinue={handleOnboardingNotificationsContinue}
+          mascotHappySource={tamagotchiAnimations.happy}
         />
       );
     }
@@ -28578,6 +29405,157 @@ useEffect(() => {
                           />
                           <Text style={[styles.breakdownLegendText, { color: colors.text }]}>
                             {entry.label} · {entry.percent}%
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+        {spendBreakdownVisible && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={closeSpendBreakdown}>
+              <View style={styles.breakdownOverlay}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
+                    style={[
+                      styles.spendStatsCard,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <View style={styles.spendStatsHeader}>
+                      <View style={[styles.spendStatsTabs, { backgroundColor: colors.background }]}>
+                        {[
+                          { id: "day", label: t("spendStatsTabDay") },
+                          { id: "week", label: t("spendStatsTabWeek") },
+                          { id: "month", label: t("spendStatsTabMonth") },
+                        ].map((tab) => {
+                          const active = spendBreakdownRange === tab.id;
+                          return (
+                            <TouchableOpacity
+                              key={tab.id}
+                              style={[
+                                styles.spendStatsTab,
+                                active && styles.spendStatsTabActive,
+                                active && { backgroundColor: colors.card },
+                              ]}
+                              activeOpacity={0.85}
+                              onPress={() => setSpendBreakdownRangeMode(tab.id)}
+                            >
+                              <Text
+                                style={[
+                                  styles.spendStatsTabText,
+                                  { color: active ? colors.text : colors.muted },
+                                ]}
+                              >
+                                {tab.label}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                      <TouchableOpacity
+                        onPress={closeSpendBreakdown}
+                        style={[styles.spendStatsCloseButton, { backgroundColor: colors.background }]}
+                      >
+                        <Text style={[styles.spendStatsCloseText, { color: colors.muted }]}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.spendStatsTitleRow}>
+                      <TouchableOpacity
+                        onPress={handleSpendBreakdownPrev}
+                        style={[styles.spendStatsNavButton, { backgroundColor: colors.background }]}
+                      >
+                        <Text style={[styles.spendStatsNavText, { color: colors.muted }]}>‹</Text>
+                      </TouchableOpacity>
+                      <View style={styles.spendStatsTitleBlock}>
+                        {!!spendBreakdown.averageLabel && (
+                          <Text style={[styles.spendStatsSubtitle, { color: colors.muted }]}>
+                            {spendBreakdown.averageLabel}
+                          </Text>
+                        )}
+                        <Text style={[styles.spendStatsTitle, { color: colors.text }]}>
+                          {spendBreakdown.rangeTitle}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={handleSpendBreakdownNext}
+                        disabled={spendBreakdownOffset === 0}
+                        style={[
+                          styles.spendStatsNavButton,
+                          { backgroundColor: colors.background },
+                          spendBreakdownOffset === 0 && styles.spendStatsNavButtonDisabled,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.spendStatsNavText,
+                            { color: spendBreakdownOffset === 0 ? colors.border : colors.muted },
+                          ]}
+                        >
+                          ›
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.spendStatsChart}>
+                      {(() => {
+                        const maxTotal = Math.max(
+                          ...spendBreakdown.buckets.map((bucket) => bucket.total || 0),
+                          1
+                        );
+                        return spendBreakdown.buckets.map((bucket) => (
+                          <View key={bucket.label} style={styles.spendStatsBarItem}>
+                            <Text style={[styles.spendStatsValue, { color: colors.text }]}>
+                              {bucket.total > 0 ? spendBreakdown.formatLocal(bucket.total) : ""}
+                            </Text>
+                            <View
+                              style={[
+                                styles.spendStatsBarTrack,
+                                { backgroundColor: colors.background },
+                              ]}
+                            >
+                              {bucket.stacks.slice().reverse().map((stack) => {
+                                const share = maxTotal ? (stack.value / maxTotal) * 100 : 0;
+                                const height = Math.max(6, Math.min(92, share));
+                                return (
+                                  <View
+                                    key={stack.title}
+                                    style={[
+                                      styles.spendStatsBarStack,
+                                      {
+                                        height: `${height}%`,
+                                        backgroundColor: stack.color,
+                                      },
+                                    ]}
+                                  />
+                                );
+                              })}
+                            </View>
+                            <Text style={[styles.spendStatsBarLabel, { color: colors.muted }]}>
+                              {bucket.label}
+                            </Text>
+                          </View>
+                        ));
+                      })()}
+                    </View>
+                    <View style={[styles.spendStatsDivider, { backgroundColor: colors.border }]} />
+                    <View style={styles.spendStatsLegend}>
+                      {spendBreakdown.legend.map((entry) => (
+                        <View
+                          key={entry.id}
+                          style={[
+                            styles.spendStatsLegendPill,
+                            { backgroundColor: colorWithAlpha(entry.color, 0.18) },
+                          ]}
+                        >
+                          <Text style={[styles.spendStatsLegendPercent, { color: entry.color }]}>
+                            {entry.percent}%
+                          </Text>
+                          <Text style={[styles.spendStatsLegendLabel, { color: colors.text }]}>
+                            {entry.label}
                           </Text>
                         </View>
                       ))}
@@ -28890,6 +29868,15 @@ useEffect(() => {
                       { backgroundColor: colors.card, borderColor: colors.border },
                     ]}
                   >
+                    <Animated.View
+                      style={[styles.ratingPromptCatWrap, { transform: [{ translateY: ratingPromptCatBob }] }]}
+                    >
+                      <Image
+                        source={tamagotchiAnimations?.cry || CLASSIC_TAMAGOTCHI_ANIMATIONS.cry}
+                        style={styles.ratingPromptCat}
+                        resizeMode="contain"
+                      />
+                    </Animated.View>
                     <Text style={[styles.ratingPromptTitle, { color: colors.text }]}>
                       {t("ratingPromptTitle")}
                     </Text>
@@ -29057,7 +30044,27 @@ useEffect(() => {
                 {isTabLocked && (
                   <Text style={[styles.tabLockIconOverlay, { color: textColor }]}>🔒</Text>
                 )}
-                {tab === "cart" && rewardsBadgeCount > 0 && rewardsUnlocked && (
+                {tab === "cart" && challengeRewardsBadgeCount > 0 && challengesUnlocked && (
+                  <View
+                    style={[
+                      styles.tabBadge,
+                      styles.tabBadgeFloating,
+                      {
+                        backgroundColor: theme === "dark" ? "#FEE5A8" : colors.text,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.tabBadgeText,
+                        { color: theme === "dark" ? "#05070D" : colors.background },
+                      ]}
+                    >
+                      {challengeRewardsBadgeCount > 99 ? "99+" : `${challengeRewardsBadgeCount}`}
+                    </Text>
+                  </View>
+                )}
+                {tab === "purchases" && rewardsBadgeCount > 0 && rewardsUnlocked && (
                   <View
                     style={[
                       styles.tabBadge,
@@ -32734,6 +33741,13 @@ const styles = StyleSheet.create({
     gap: 16,
     borderWidth: 1,
   },
+  ratingPromptCatWrap: {
+    alignItems: "center",
+  },
+  ratingPromptCat: {
+    width: 130,
+    height: 130,
+  },
   ratingPromptTitle: {
     ...TYPOGRAPHY.blockTitle,
     textAlign: "center",
@@ -33042,6 +34056,145 @@ const styles = StyleSheet.create({
   },
   breakdownLegendText: {
     fontSize: 12,
+    fontWeight: "700",
+  },
+  spendStatsCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 18,
+    gap: 12,
+  },
+  spendStatsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  spendStatsTabs: {
+    flex: 1,
+    flexDirection: "row",
+    padding: 4,
+    borderRadius: 999,
+    gap: 4,
+  },
+  spendStatsTab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  spendStatsTabActive: {
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  spendStatsTabText: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  spendStatsCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  spendStatsCloseText: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  spendStatsTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  spendStatsNavButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  spendStatsNavButtonDisabled: {
+    opacity: 0.4,
+  },
+  spendStatsNavText: {
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  spendStatsTitleBlock: {
+    flex: 1,
+    alignItems: "center",
+    gap: 4,
+  },
+  spendStatsSubtitle: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  spendStatsTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  spendStatsChart: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: 10,
+    minHeight: 190,
+  },
+  spendStatsBarItem: {
+    flex: 1,
+    alignItems: "center",
+    gap: 6,
+  },
+  spendStatsValue: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  spendStatsBarTrack: {
+    width: "100%",
+    height: 140,
+    borderRadius: 16,
+    padding: 6,
+    justifyContent: "flex-end",
+  },
+  spendStatsBarStack: {
+    width: "100%",
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  spendStatsBarLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  spendStatsDivider: {
+    height: 1,
+  },
+  spendStatsLegend: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    justifyContent: "center",
+  },
+  spendStatsLegendPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  spendStatsLegendPercent: {
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  spendStatsLegendLabel: {
+    fontSize: 14,
     fontWeight: "700",
   },
   savedHeroToggleRow: {
@@ -33444,10 +34597,21 @@ const styles = StyleSheet.create({
   },
   impulseCard: {
     marginTop: 12,
-    padding: 16,
-    borderRadius: 20,
+    padding: 18,
+    borderRadius: 24,
     borderWidth: 1,
     gap: 12,
+    position: "relative",
+    overflow: "hidden",
+  },
+  impulseCardGlow: {
+    position: "absolute",
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    top: -90,
+    right: -80,
+    opacity: 0.2,
   },
   impulseHeaderRow: {
     flexDirection: "row",
@@ -33461,71 +34625,80 @@ const styles = StyleSheet.create({
   },
   impulseCardTitle: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: 22,
+    fontSize: 21,
   },
   impulseCardSubtitle: {
-    ...createBodyText({ fontSize: 15, lineHeight: 22 }),
+    ...createBodyText({ fontSize: 13, lineHeight: 18 }),
   },
   impulseToggle: {
     borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
   },
   impulseToggleText: {
-    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
+    ...createCtaText({ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4 }),
   },
   impulseSummaryGrid: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
   },
   impulseBadge: {
     flex: 1,
-    borderRadius: 16,
+    minWidth: "47%",
+    borderRadius: 18,
     padding: 12,
     borderWidth: 1,
     gap: 6,
   },
   impulseSummaryLabel: {
-    ...createCtaText({ fontSize: 11, textTransform: "none", letterSpacing: 0.2 }),
+    ...createCtaText({ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }),
   },
   impulseSummaryValue: {
-    ...createBodyText({ fontSize: 14, lineHeight: 20, fontWeight: "600" }),
+    ...createBodyText({ fontSize: 13, lineHeight: 17, fontWeight: "600" }),
   },
   impulseTrendRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
     borderWidth: 1,
+    alignSelf: "flex-start",
   },
   impulseTrendText: {
-    ...createBodyText({ fontSize: 12, fontWeight: "700", letterSpacing: 0.3 }),
+    ...createBodyText({ fontSize: 11, fontWeight: "700", letterSpacing: 0.2 }),
   },
   impulseCategoryList: {
     marginTop: 8,
-    gap: 10,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
   impulseCategoryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexBasis: "48%",
+    flexGrow: 1,
+    flexDirection: "column",
+    alignItems: "flex-start",
     borderWidth: 1,
     borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    gap: 8,
   },
   impulseCategoryLabel: {
-    ...createBodyText({ fontWeight: "700", flex: 1, marginRight: 12 }),
+    ...createBodyText({ fontSize: 12, fontWeight: "700" }),
   },
   impulseCategoryStats: {
-    alignItems: "flex-end",
-    gap: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 8,
   },
   impulseCategoryStat: {
-    ...createBodyText({ fontSize: 13, fontWeight: "700" }),
+    ...createBodyText({ fontSize: 11, fontWeight: "700" }),
   },
   impulseCategoryStatSecondary: {
     ...createSecondaryText({ fontSize: 12 }),
@@ -33535,14 +34708,14 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     padding: 12,
-    gap: 4,
+    gap: 6,
   },
   impulseSequenceTitle: {
-    ...createBodyText({ fontSize: 13, fontWeight: "700" }),
+    ...createBodyText({ fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.4 }),
     marginBottom: 2,
   },
   impulseSequenceEntry: {
-    ...createSecondaryText({ fontSize: 13 }),
+    ...createSecondaryText({ fontSize: 11, lineHeight: 16 }),
   },
   freeDayHealthRow: {
     flexDirection: "row",
@@ -34206,13 +35379,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
   },
-  titleEditIcon: {
-    position: "absolute",
-    right: 12,
-    top: "50%",
-    transform: [{ translateY: -10 }],
-    fontSize: 14,
-  },
   emojiEditWrapper: {
     width: 60,
     borderWidth: 1,
@@ -34227,13 +35393,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     paddingRight: 14,
-  },
-  emojiEditIcon: {
-    position: "absolute",
-    right: 6,
-    top: "50%",
-    transform: [{ translateY: -9 }],
-    fontSize: 12,
   },
   temptationDesc: {
     lineHeight: 20,
@@ -34409,9 +35568,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-  },
-  editorHintIcon: {
-    fontSize: 14,
   },
   temptationEditorActions: {
     gap: 8,
@@ -37766,6 +38922,13 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingBottom: 60,
   },
+  onboardCenteredContent: {
+    alignItems: "center",
+  },
+  onboardWideButton: {
+    alignSelf: "stretch",
+    width: "100%",
+  },
   onboardContentWithFooter: {
     paddingBottom: 140,
   },
@@ -38461,6 +39624,11 @@ function GoalTargetScreen({
 }
 
 function AnalyticsConsentScreen({ colors, t, onSubmit, onBack }) {
+  const isTrackingPrePrompt = Platform.OS === "ios";
+  const titleKey = isTrackingPrePrompt ? "trackingConsentTitle" : "analyticsConsentTitle";
+  const bodyKey = isTrackingPrePrompt ? "trackingConsentBody" : "analyticsConsentBody";
+  const primaryKey = isTrackingPrePrompt ? "trackingConsentContinue" : "analyticsConsentAgree";
+
   return (
     <View style={[styles.analyticsConsentScreen, { backgroundColor: colors.background }]}>
       <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
@@ -38471,29 +39639,61 @@ function AnalyticsConsentScreen({ colors, t, onSubmit, onBack }) {
         ]}
       >
         <Text style={[styles.analyticsConsentTitle, { color: colors.text }]}>
-          {t("analyticsConsentTitle")}
+          {t(titleKey)}
         </Text>
         <Text style={[styles.analyticsConsentBody, { color: colors.muted }]}>
-          {t("analyticsConsentBody")}
+          {t(bodyKey)}
         </Text>
         <TouchableOpacity
           style={[styles.analyticsConsentPrimary, { backgroundColor: colors.text }]}
           onPress={() => onSubmit(true)}
         >
           <Text style={[styles.analyticsConsentPrimaryText, { color: colors.background }]}>
-            {t("analyticsConsentAgree")}
+            {t(primaryKey)}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.analyticsConsentSecondary, { borderColor: colors.border }]}
-          onPress={() => onSubmit(false)}
-        >
-          <Text style={[styles.analyticsConsentSecondaryText, { color: colors.muted }]}>
-            {t("analyticsConsentSkip")}
-          </Text>
-        </TouchableOpacity>
+        {!isTrackingPrePrompt && (
+          <TouchableOpacity
+            style={[styles.analyticsConsentSecondary, { borderColor: colors.border }]}
+            onPress={() => onSubmit(false)}
+          >
+            <Text style={[styles.analyticsConsentSecondaryText, { color: colors.muted }]}>
+              {t("analyticsConsentSkip")}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
+  );
+}
+
+function OnboardingNotificationsScreen({ colors, t, onContinue, mascotHappySource }) {
+  const fade = useFadeIn();
+  const happySource = mascotHappySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
+
+  return (
+    <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
+      <ScrollView
+        contentContainerStyle={[styles.onboardContent, styles.onboardCenteredContent]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Image source={happySource} style={styles.languageMascot} />
+        <Text style={[styles.onboardTitleCompact, { color: colors.text, textAlign: "center" }]}>
+          {t("onboardingNotificationsTitle")}
+        </Text>
+        <Text style={[styles.onboardSubtitle, { color: colors.muted, textAlign: "center" }]}>
+          {t("onboardingNotificationsBody")}
+        </Text>
+        <TouchableOpacity
+          style={[styles.primaryButton, styles.onboardWideButton, { backgroundColor: colors.text }]}
+          onPress={onContinue}
+        >
+          <Text style={[styles.primaryButtonText, { color: colors.background }]}>
+            {t("onboardingNotificationsCTA")}
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </Animated.View>
   );
 }
 

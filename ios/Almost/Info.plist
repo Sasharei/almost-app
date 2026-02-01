@@ -41,6 +41,8 @@
 	<string>Almost lets you snap a portrait so your savings profile feels personal.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Almost accesses your photos to update the avatar that keeps you motivated.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>We use analytics to improve Almost and deliver a better experience.</string>
 	<key>RCTNewArchEnabled</key>
 	<false/>
 	<key>UILaunchStoryboardName</key>
