@@ -215,9 +215,13 @@ const APPSFLYER_APP_ID = process.env.APPSFLYER_APP_ID || "6756276744";
 const baseEnabled = !__DEV__;
 let analyticsOptedOut = false;
 let analyticsConsentGranted = false;
+let analyticsConsentKnown = false;
 let performanceUnavailableLogged = false;
 let appsFlyerInitialized = false;
 let appsFlyerInitPromise = null;
+let facebookSdkReady = false;
+const MAX_FACEBOOK_EVENT_QUEUE = 25;
+const pendingFacebookEvents = [];
 
 const isAnalyticsEnabled = () => baseEnabled && analyticsConsentGranted && !analyticsOptedOut;
 const isAppsFlyerConfigured = () => {
@@ -357,6 +361,27 @@ const logAppsFlyerEvent = async (eventName, params = {}) => {
   });
 };
 
+const enqueueFacebookEvent = (eventName, params) => {
+  pendingFacebookEvents.push({ eventName, params });
+  if (pendingFacebookEvents.length > MAX_FACEBOOK_EVENT_QUEUE) {
+    pendingFacebookEvents.shift();
+  }
+};
+
+const flushFacebookEventQueue = () => {
+  if (!facebookSdkReady) return;
+  if (!FacebookAppEvents || typeof FacebookAppEvents.logEvent !== "function") return;
+  if (!isAnalyticsEnabled()) return;
+  while (pendingFacebookEvents.length) {
+    const { eventName, params } = pendingFacebookEvents.shift();
+    try {
+      FacebookAppEvents.logEvent(eventName, undefined, params);
+    } catch (error) {
+      console.warn("Failed to log Facebook event:", eventName, error?.message || error);
+    }
+  }
+};
+
 const filterParams = (eventName, params = {}) => {
   const allowedKeys = EVENT_DEFINITIONS[eventName] || [];
   return allowedKeys.reduce((acc, key) => {
@@ -381,9 +406,15 @@ export const setAnalyticsOptOut = async (optOut) => {
   if (optOut === null || optOut === undefined) return;
   analyticsOptedOut = !!optOut;
   analyticsConsentGranted = !analyticsOptedOut || analyticsConsentGranted;
+  analyticsConsentKnown = true;
   await syncAnalyticsCollection();
   await syncPerformanceCollection();
   await syncAppsFlyerCollection();
+  if (analyticsOptedOut) {
+    pendingFacebookEvents.length = 0;
+  } else {
+    flushFacebookEventQueue();
+  }
 };
 
 export const logEvent = async (eventName, params = {}) => {
@@ -417,12 +448,27 @@ export const logScreenView = async (screenName) => {
 
 const logFacebookEvent = (eventName, params = {}) => {
   if (!FACEBOOK_EVENT_WHITELIST.has(eventName)) return;
+  if (!analyticsConsentKnown) {
+    enqueueFacebookEvent(eventName, params);
+    return;
+  }
   if (!isAnalyticsEnabled()) return;
   if (!FacebookAppEvents || typeof FacebookAppEvents.logEvent !== "function") return;
+  if (!facebookSdkReady) {
+    enqueueFacebookEvent(eventName, params);
+    return;
+  }
   try {
     FacebookAppEvents.logEvent(eventName, undefined, params);
   } catch (error) {
     console.warn("Failed to log Facebook event:", eventName, error?.message || error);
+  }
+};
+
+export const setFacebookSdkReady = (ready = true) => {
+  facebookSdkReady = !!ready;
+  if (facebookSdkReady) {
+    flushFacebookEventQueue();
   }
 };
 

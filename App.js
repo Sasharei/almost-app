@@ -76,6 +76,7 @@ import {
   logEvent,
   logScreenView,
   setAnalyticsOptOut as setAnalyticsOptOutFlag,
+  setFacebookSdkReady,
   setUserProperties,
 } from "./analytics";
 import { SavingsProvider, useRealSavedAmount } from "./src/hooks/useRealSavedAmount";
@@ -3380,23 +3381,56 @@ const buildSavingsBreakdown = (
   history = [],
   currency = DEFAULT_PROFILE.currency,
   resolveTemplateTitle,
-  language = DEFAULT_LANGUAGE
+  language = DEFAULT_LANGUAGE,
+  { range = "day", offset = 0 } = {}
 ) => {
-  const now = Date.now();
+  const resolveTemplate = (template, params = {}) => {
+    if (!template) return "";
+    return template.replace(/\{\{(\w+)\}\}/g, (match, key) =>
+      Object.prototype.hasOwnProperty.call(params, key) ? params[key] : match
+    );
+  };
+  const locale = getFormatLocale(language);
   const defaultDeclineTitle = resolveTranslationValueForLanguage(language, "defaultDeclineLabel") || "Skip";
   const otherLabel = resolveTranslationValueForLanguage(language, "savingsBreakdownOtherLabel") || "Other";
   const dayLabels = WEEKDAY_LABELS[language] || WEEKDAY_LABELS.en;
   const palette = ["#3E8EED", "#F6A23D", "#8F7CF6", "#2EB873", "#E15555", "#FFC857"];
   const totalsByTitle = {};
-  const daysRaw = Array.from({ length: 7 }).map((_, idx) => {
-    const dayStart = new Date(now - (6 - idx) * DAY_MS);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = dayStart.getTime() + DAY_MS;
-    const label = dayLabels[dayStart.getDay()];
+  const buckets = [];
+  const now = new Date();
+  const startOfDay = (date) => {
+    const next = new Date(date);
+    next.setHours(0, 0, 0, 0);
+    return next;
+  };
+  const getWeekStart = (date) => {
+    const next = startOfDay(date);
+    const weekday = (next.getDay() + 6) % 7;
+    next.setDate(next.getDate() - weekday);
+    return next;
+  };
+  const addMonths = (date, delta) => new Date(date.getFullYear(), date.getMonth() + delta, 1);
+  const formatMonthLabel = (date) => {
+    const raw = date.toLocaleDateString(locale, { month: "short" }).replace(".", "").trim();
+    if (!raw) return "";
+    return raw[0].toUpperCase() + raw.slice(1);
+  };
+  const formatWeekRangeLabel = (startDate, endDate) => {
+    const startMonth = formatMonthLabel(startDate);
+    const endMonth = formatMonthLabel(endDate);
+    const startDay = startDate.getDate();
+    const endDay = endDate.getDate();
+    if (startMonth === endMonth) {
+      return `${startMonth}${startDay}-${endDay}`;
+    }
+    return `${startMonth}${startDay}-${endMonth}${endDay}`;
+  };
+  const addBucket = (label, startMs, endMs, divisor = 1) => {
     const stacks = {};
-    history.forEach((entry) => {
-      if (entry?.kind !== "refuse_spend") return;
-      if (!entry?.timestamp || entry.timestamp < dayStart.getTime() || entry.timestamp >= dayEnd) return;
+    (Array.isArray(history) ? history : []).forEach((entry) => {
+      if (!isSaveEvent(entry?.kind)) return;
+      const timestamp = Number(entry.timestamp) || 0;
+      if (!timestamp || timestamp < startMs || timestamp >= endMs) return;
       const resolvedTitle =
         (resolveTemplateTitle &&
           resolveTemplateTitle(entry.meta?.templateId, entry.meta?.title || entry.title)) ||
@@ -3413,13 +3447,53 @@ const buildSavingsBreakdown = (
           .slice(0, 42);
       const stripped = stripEmojis(baseTitle);
       const title = (stripped || baseTitle || defaultDeclineTitle).trim();
-      const amount = Math.max(0, Number(entry.meta?.amountUSD) || 0);
+      const amount = Math.max(0, Number(entry.meta?.amountUSD) || 0) / divisor;
       stacks[title] = (stacks[title] || 0) + amount;
       totalsByTitle[title] = (totalsByTitle[title] || 0) + amount;
     });
     const total = Object.values(stacks).reduce((sum, v) => sum + v, 0);
-    return { label, stacks, total };
-  });
+    buckets.push({ label, stacks, total });
+  };
+
+  let rangeCount = 0;
+  let isAverage = false;
+  if (range === "week") {
+    rangeCount = 4;
+    isAverage = true;
+    const baseEnd = new Date(getWeekStart(now).getTime() + DAY_MS * 7);
+    const windowEnd = new Date(baseEnd.getTime() - offset * rangeCount * DAY_MS * 7);
+    const windowStart = new Date(windowEnd.getTime() - rangeCount * DAY_MS * 7);
+    Array.from({ length: rangeCount }).forEach((_, index) => {
+      const weekStart = new Date(windowStart.getTime() + index * DAY_MS * 7);
+      const weekEnd = new Date(weekStart.getTime() + DAY_MS * 7);
+      const label = formatWeekRangeLabel(weekStart, new Date(weekEnd.getTime() - DAY_MS));
+      addBucket(label, weekStart.getTime(), weekEnd.getTime(), 7);
+    });
+  } else if (range === "month") {
+    rangeCount = 6;
+    isAverage = true;
+    const baseEnd = addMonths(addMonths(now, 0), 1);
+    const windowEnd = addMonths(baseEnd, -offset * rangeCount);
+    const windowStart = addMonths(windowEnd, -rangeCount);
+    Array.from({ length: rangeCount }).forEach((_, index) => {
+      const monthStart = addMonths(windowStart, index);
+      const monthEnd = addMonths(monthStart, 1);
+      const daysInMonth = Math.max(1, Math.round((monthEnd.getTime() - monthStart.getTime()) / DAY_MS));
+      addBucket(formatMonthLabel(monthStart), monthStart.getTime(), monthEnd.getTime(), daysInMonth);
+    });
+  } else {
+    rangeCount = 7;
+    const baseEnd = new Date(startOfDay(now).getTime() + DAY_MS);
+    const windowEnd = new Date(baseEnd.getTime() - offset * rangeCount * DAY_MS);
+    const windowStart = new Date(windowEnd.getTime() - rangeCount * DAY_MS);
+    Array.from({ length: rangeCount }).forEach((_, index) => {
+      const dayStart = new Date(windowStart.getTime() + index * DAY_MS);
+      const dayEnd = new Date(dayStart.getTime() + DAY_MS);
+      const label = dayLabels[dayStart.getDay()] || "";
+      addBucket(label, dayStart.getTime(), dayEnd.getTime(), 1);
+    });
+  }
+
   const sortedTitles = Object.entries(totalsByTitle)
     .sort((a, b) => b[1] - a[1])
     .map(([title]) => title);
@@ -3429,9 +3503,9 @@ const buildSavingsBreakdown = (
     colorMap[title] = palette[idx % palette.length];
   });
   const otherColor = "#F6C16B";
-  const days = daysRaw.map((day) => {
+  const normalizedBuckets = buckets.map((bucket) => {
     const stacksArray = [];
-    const otherSum = Object.entries(day.stacks).reduce((acc, [title, value]) => {
+    const otherSum = Object.entries(bucket.stacks).reduce((acc, [title, value]) => {
       if (colorMap[title]) {
         stacksArray.push({ title, value, color: colorMap[title] });
         return acc;
@@ -3441,7 +3515,7 @@ const buildSavingsBreakdown = (
     if (otherSum > 0) {
       stacksArray.push({ title: otherLabel, value: otherSum, color: otherColor });
     }
-    return { label: day.label, total: day.total, stacks: stacksArray };
+    return { label: bucket.label, total: bucket.total, stacks: stacksArray };
   });
   const grandTotal = Object.values(totalsByTitle).reduce((sum, v) => sum + v, 0) || 1;
   const legend = topTitles.map((title, idx) => ({
@@ -3462,7 +3536,21 @@ const buildSavingsBreakdown = (
     });
   }
   const formatLocal = (usd) => formatCurrency(convertToCurrency(usd || 0, currency), currency);
-  return { days, legend, formatLocal };
+  const rangeTitleKey =
+    range === "week" ? "spendStatsRangeWeeks" : range === "month" ? "spendStatsRangeMonths" : "spendStatsRangeDays";
+  const rangeTitleTemplate =
+    resolveTranslationValueForLanguage(language, rangeTitleKey) || "Last {{count}}";
+  const rangeTitle = resolveTemplate(rangeTitleTemplate, { count: rangeCount });
+  const averageLabel =
+    isAverage && (resolveTranslationValueForLanguage(language, "spendStatsAverageLabel") || "Daily average");
+  return {
+    buckets: normalizedBuckets,
+    legend,
+    formatLocal,
+    rangeCount,
+    rangeTitle,
+    averageLabel: averageLabel || "",
+  };
 };
 
 const buildSpendingBreakdown = (
@@ -5421,6 +5509,8 @@ const SAVINGS_TIERS = [10, 20, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000
 const LEVEL_XP_BASE_USD = 5;
 const LEVEL_XP_SCALE = 200;
 const LEVEL_XP_STEP = 140;
+const EARLY_LEVEL_XP_MULTIPLIER = 1.3;
+const EARLY_LEVEL_XP_STEPS = 2;
 const MAX_LEVEL = SAVINGS_TIERS.length + 1;
 const getLevelXP = (savedUSD = 0) => {
   const normalized = Math.max(0, Number(savedUSD) || 0);
@@ -5431,7 +5521,13 @@ const getUSDFromLevelXP = (xp = 0) => {
   return LEVEL_XP_BASE_USD * Math.expm1(normalizedXP / LEVEL_XP_SCALE);
 };
 const getTierTargetsXP = () =>
-  Array.from({ length: Math.max(0, MAX_LEVEL - 1) }, (_, index) => (index + 1) * LEVEL_XP_STEP);
+  Array.from({ length: Math.max(0, MAX_LEVEL - 1) }, (_, index) => {
+    const baseTarget = (index + 1) * LEVEL_XP_STEP;
+    if (index < EARLY_LEVEL_XP_STEPS) {
+      return baseTarget * EARLY_LEVEL_XP_MULTIPLIER;
+    }
+    return baseTarget;
+  });
 const getLevelTwoTargetUSD = (currencyCode = activeCurrency) => {
   const code = currencyCode || activeCurrency;
   const localTargetRounded = Math.round(convertToCurrency(10, code));
@@ -5906,6 +6002,7 @@ function TemptationCardComponent({
     typeof goalLabel === "string" && goalLabel.trim().length ? goalLabel.trim() : "";
   const coinBurstColor = isDarkTheme ? "#FFD78B" : "#FFF4B3";
   const effectiveWishlistGoal = isWishlistGoal && !isPrimaryTemptation;
+  const canAssignGoal = !isPrimaryTemptation;
   const highlightPinned = effectiveWishlistGoal && !showEditorInline;
   const textureSeedSource = item.id || title || "";
   const textureSeed = textureSeedSource
@@ -6138,7 +6235,7 @@ function TemptationCardComponent({
         useNativeDriver: true,
       }).start();
     },
-    [item, onQuickGoalToggle, onSwipeDelete, showEditorInline, translateX]
+    [canAssignGoal, item, onQuickGoalToggle, onSwipeDelete, showEditorInline, t, translateX]
   );
 
   const panResponder = useMemo(
@@ -7377,11 +7474,7 @@ function SavingsHeroCard({
         </TouchableOpacity>
       )}
       {expanded && (
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={onBreakdownPress}
-          style={styles.savedHeroExpanded}
-        >
+        <View style={styles.savedHeroExpanded}>
           <View
             style={[
               styles.savedHeroCoinsCard,
@@ -7444,7 +7537,7 @@ function SavingsHeroCard({
               </View>
             )}
           </View>
-        </TouchableOpacity>
+        </View>
       )}
       <View style={styles.savedHeroToggleRow}>
         <TouchableOpacity
@@ -8686,7 +8779,7 @@ const FeedScreen = React.memo(
     currency
   );
   const goalProgressLabel = heroGoalTargetUSD
-    ? t("progressGoal", { current: heroGoalSavedLabel, goal: heroTargetLabel })
+    ? t("progressGoal", { current: remainingLocal, goal: heroTargetLabel })
     : t("progressGoal", { current: heroGoalSavedLabel, goal: heroGoalSavedLabel });
   const personaPreset = useMemo(() => getPersonaPreset(profile?.persona), [profile?.persona]);
   const recentActivity = useMemo(() => {
@@ -9002,8 +9095,22 @@ const FeedScreen = React.memo(
     if (!speechAllowed) {
       clearTamagotchiSpeechTimer();
       setTamagotchiSpeechVisible(false);
+      return;
     }
-  }, [clearTamagotchiSpeechTimer, speechAllowed]);
+    if (tamagotchiSpeechVisible) return;
+    const nextText = getNextTamagotchiSpeech("ready");
+    if (nextText) {
+      setTamagotchiSpeech(nextText);
+    }
+    setTamagotchiSpeechVisible(true);
+    scheduleNextTamagotchiSpeech();
+  }, [
+    clearTamagotchiSpeechTimer,
+    getNextTamagotchiSpeech,
+    scheduleNextTamagotchiSpeech,
+    speechAllowed,
+    tamagotchiSpeechVisible,
+  ]);
   const showTamagotchiSpeech = useCallback(
     (text) => {
       if (!text) return;
@@ -9338,7 +9445,7 @@ const FeedScreen = React.memo(
   useEffect(() => {
     if (!speechAllowed) return;
     if (tamagotchiSpeechReadyShownRef.current) return;
-    if (homeSpeechTick > 0 || tamagotchiSpeechVisible || tamagotchiSpeechLastAtRef.current > 0) {
+    if (homeSpeechTick > 0 || tamagotchiSpeechVisible) {
       tamagotchiSpeechReadyShownRef.current = true;
       return;
     }
@@ -15131,10 +15238,12 @@ function AppContent() {
   const coinEntryContextRef = useRef({ source: null, openedAt: 0, submitted: false });
   const [coinSliderMaxUSD, setCoinSliderMaxUSD] = useState(DEFAULT_COIN_SLIDER_MAX_USD);
   const [coinSliderHydrated, setCoinSliderHydrated] = useState(false);
-  const [savingsBreakdownVisible, setSavingsBreakdownVisible] = useState(false);
-  const [spendBreakdownVisible, setSpendBreakdownVisible] = useState(false);
+  const [breakdownVisible, setBreakdownVisible] = useState(false);
+  const [breakdownMode, setBreakdownMode] = useState("spend");
   const [spendBreakdownRange, setSpendBreakdownRange] = useState("week");
   const [spendBreakdownOffset, setSpendBreakdownOffset] = useState(0);
+  const [saveBreakdownRange, setSaveBreakdownRange] = useState("day");
+  const [saveBreakdownOffset, setSaveBreakdownOffset] = useState(0);
   const products = useMemo(
     () => filterTemptationsByPrice(temptations, priceLimitUSD),
     [temptations, priceLimitUSD]
@@ -15386,8 +15495,10 @@ function AppContent() {
   const [dailySummaryData, setDailySummaryData] = useState(null);
   const [dailySummarySeenKey, setDailySummarySeenKey] = useState(null);
   const [pendingDailySummaryData, setPendingDailySummaryData] = useState(null);
+  const [dailySummaryHydrated, setDailySummaryHydrated] = useState(false);
   const [dailySummaryOpenToken, setDailySummaryOpenToken] = useState(0);
   const dailySummaryOpenProcessedRef = useRef(0);
+  const pendingDailySummaryNotificationRef = useRef(null);
   const queuedModalQueueRef = useRef([]);
   const queuedModalActiveRef = useRef(null);
   const [queuedModalType, setQueuedModalType] = useState(null);
@@ -16982,6 +17093,7 @@ function AppContent() {
         FacebookSettings.setAppID(FACEBOOK_APP_ID);
       }
       FacebookSettings.initializeSDK();
+      setFacebookSdkReady(true);
       if (typeof FacebookSettings.setAdvertiserTrackingEnabled === "function") {
         const trackingPromise = FacebookSettings.setAdvertiserTrackingEnabled(true);
         if (trackingPromise?.catch) {
@@ -17017,8 +17129,7 @@ function AppContent() {
       !tamagotchiVisible &&
       !skinPickerVisible &&
       !coinEntryVisible &&
-      !savingsBreakdownVisible &&
-      !spendBreakdownVisible &&
+      !breakdownVisible &&
       !editOverlayVisible &&
       !priceEditor.item &&
       !newPendingModal.visible &&
@@ -17065,8 +17176,7 @@ function AppContent() {
       pushDayThreePromptVisible,
       queuedModalType,
       ratingPromptVisible,
-      savingsBreakdownVisible,
-      spendBreakdownVisible,
+      breakdownVisible,
       skinPickerVisible,
       startupLogoVisible,
       tamagotchiVisible,
@@ -17340,8 +17450,7 @@ function AppContent() {
       !streakRecoveryPrompt.visible &&
       !skinPickerVisible &&
       !priceEditor.item &&
-      !savingsBreakdownVisible &&
-      !spendBreakdownVisible,
+      !breakdownVisible,
     [
       activeTab,
       baselinePrompt.visible,
@@ -17355,8 +17464,7 @@ function AppContent() {
       onboardingGoalModal.visible,
       overlay,
       priceEditor.item,
-      savingsBreakdownVisible,
-      spendBreakdownVisible,
+      breakdownVisible,
       skinPickerVisible,
       streakRecoveryPrompt.visible,
       tamagotchiVisible,
@@ -17384,8 +17492,7 @@ function AppContent() {
       !streakRecoveryPrompt.visible &&
       !skinPickerVisible &&
       !priceEditor.item &&
-      !savingsBreakdownVisible &&
-      !spendBreakdownVisible &&
+      !breakdownVisible &&
       !spendPrompt.visible &&
       !dailyChallengePromptVisible,
     [
@@ -17403,8 +17510,7 @@ function AppContent() {
       onboardingStep,
       overlay,
       priceEditor.item,
-      savingsBreakdownVisible,
-      spendBreakdownVisible,
+      breakdownVisible,
       skinPickerVisible,
       spendPrompt.visible,
       streakRecoveryPrompt.visible,
@@ -17603,6 +17709,8 @@ function AppContent() {
       }
     };
   }, []);
+  const colors = THEMES[theme] || THEMES[DEFAULT_THEME];
+  const isDarkTheme = theme === "dark";
   const openMoodDetails = useCallback(() => setMoodDetailsVisible(true), []);
   const closeMoodDetails = useCallback(() => setMoodDetailsVisible(false), []);
   const openPotentialDetails = useCallback((description) => {
@@ -17610,32 +17718,95 @@ function AppContent() {
     setPotentialDetailsVisible(true);
   }, []);
   const closePotentialDetails = useCallback(() => setPotentialDetailsVisible(false), []);
+  const switchToSavingsBreakdown = useCallback(() => setBreakdownMode("save"), []);
+  const switchToSpendBreakdown = useCallback(() => setBreakdownMode("spend"), []);
   const openSavingsBreakdown = useCallback(() => {
-    setSpendBreakdownVisible(false);
-    setSavingsBreakdownVisible(true);
+    setBreakdownMode("save");
+    setSaveBreakdownRange("day");
+    setSaveBreakdownOffset(0);
+    setBreakdownVisible(true);
   }, []);
-  const closeSavingsBreakdown = useCallback(() => setSavingsBreakdownVisible(false), []);
   const openSpendBreakdown = useCallback(() => {
-    setSavingsBreakdownVisible(false);
+    setBreakdownMode("spend");
     setSpendBreakdownRange("week");
     setSpendBreakdownOffset(0);
-    setSpendBreakdownVisible(true);
+    setBreakdownVisible(true);
   }, []);
-  const closeSpendBreakdown = useCallback(() => setSpendBreakdownVisible(false), []);
-  const setSpendBreakdownRangeMode = useCallback((next) => {
-    setSpendBreakdownRange(next);
-    setSpendBreakdownOffset(0);
-  }, []);
-  const handleSpendBreakdownPrev = useCallback(() => {
-    setSpendBreakdownOffset((prev) => prev + 1);
-  }, []);
-  const handleSpendBreakdownNext = useCallback(() => {
-    setSpendBreakdownOffset((prev) => Math.max(0, prev - 1));
-  }, []);
+  const closeBreakdown = useCallback(() => setBreakdownVisible(false), []);
+  const setBreakdownRangeMode = useCallback(
+    (next) => {
+      if (breakdownMode === "spend") {
+        setSpendBreakdownRange(next);
+        setSpendBreakdownOffset(0);
+        return;
+      }
+      setSaveBreakdownRange(next);
+      setSaveBreakdownOffset(0);
+    },
+    [breakdownMode]
+  );
+  const handleBreakdownPrev = useCallback(() => {
+    if (breakdownMode === "spend") {
+      setSpendBreakdownOffset((prev) => prev + 1);
+      return;
+    }
+    setSaveBreakdownOffset((prev) => prev + 1);
+  }, [breakdownMode]);
+  const handleBreakdownNext = useCallback(() => {
+    if (breakdownMode === "spend") {
+      setSpendBreakdownOffset((prev) => Math.max(0, prev - 1));
+      return;
+    }
+    setSaveBreakdownOffset((prev) => Math.max(0, prev - 1));
+  }, [breakdownMode]);
+  const activeBreakdownRange = breakdownMode === "spend" ? spendBreakdownRange : saveBreakdownRange;
+  const activeBreakdownOffset = breakdownMode === "spend" ? spendBreakdownOffset : saveBreakdownOffset;
+  const renderBreakdownModeToggle = useCallback(
+    (activeMode) => (
+      <View style={[styles.breakdownModeToggle, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        {[
+          {
+            id: "save",
+            label: "+",
+            color: BREAKDOWN_TOGGLE_SAVE_COLOR,
+            onPress: switchToSavingsBreakdown,
+          },
+          {
+            id: "spend",
+            label: "-",
+            color: BREAKDOWN_TOGGLE_SPEND_COLOR,
+            onPress: switchToSpendBreakdown,
+          },
+        ].map((entry) => {
+          const isActive = activeMode === entry.id;
+          return (
+            <TouchableOpacity
+              key={entry.id}
+              onPress={entry.onPress}
+              activeOpacity={0.85}
+              disabled={isActive}
+              style={[
+                styles.breakdownModeToggleOption,
+                isActive && styles.breakdownModeToggleOptionActive,
+                { borderColor: entry.color, backgroundColor: isActive ? entry.color : "transparent" },
+              ]}
+            >
+              <Text
+                style={[styles.breakdownModeToggleText, { color: isActive ? "#FFFFFF" : entry.color }]}
+                numberOfLines={1}
+              >
+                {entry.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    ),
+    [colors.border, colors.card, switchToSavingsBreakdown, switchToSpendBreakdown]
+  );
   const blockingModalVisible = useMemo(
     () =>
-      savingsBreakdownVisible ||
-      spendBreakdownVisible ||
+      breakdownVisible ||
       dailyChallengePromptVisible ||
       tamagotchiVisible ||
       levelShareModal.visible ||
@@ -17660,8 +17831,7 @@ function AppContent() {
       newGoalModal.visible,
       onboardingGoalModal.visible,
       priceEditor.item,
-      savingsBreakdownVisible,
-      spendBreakdownVisible,
+      breakdownVisible,
       skinPickerVisible,
       streakRecoveryPrompt.visible,
       tamagotchiVisible,
@@ -17776,9 +17946,17 @@ function AppContent() {
         resolvedHistoryEvents,
         profile.currency || DEFAULT_PROFILE.currency,
         resolveTemplateTitle,
-        language
+        language,
+        { range: saveBreakdownRange, offset: saveBreakdownOffset }
       ),
-    [resolvedHistoryEvents, profile.currency, resolveTemplateTitle, language]
+    [
+      resolvedHistoryEvents,
+      profile.currency,
+      resolveTemplateTitle,
+      language,
+      saveBreakdownRange,
+      saveBreakdownOffset,
+    ]
   );
   const spendBreakdown = useMemo(
     () =>
@@ -17791,6 +17969,18 @@ function AppContent() {
       ),
     [resolvedHistoryEvents, profile.currency, resolveTemplateTitle, language, spendBreakdownRange, spendBreakdownOffset]
   );
+  const breakdownData = useMemo(() => {
+    if (breakdownMode === "spend") {
+      return spendBreakdown;
+    }
+    return {
+      buckets: savingsBreakdown.buckets || [],
+      legend: savingsBreakdown.legend || [],
+      formatLocal: savingsBreakdown.formatLocal || ((value) => value),
+      rangeTitle: savingsBreakdown.rangeTitle || "",
+      averageLabel: savingsBreakdown.averageLabel || "",
+    };
+  }, [breakdownMode, savingsBreakdown, spendBreakdown]);
   const fallbackGoalTargetUSD = useMemo(() => {
     if (Number.isFinite(profile?.goalTargetUSD) && profile.goalTargetUSD > 0) {
       return profile.goalTargetUSD;
@@ -18186,48 +18376,111 @@ function AppContent() {
         : null;
     return { reminder_type: reminderType, target_screen: targetScreen || undefined };
   }, []);
-  const applyDailySummaryFromNotification = useCallback(
+  const resolveDailySummaryPayloadFromData = useCallback(
     (data) => {
-      if (!dailySummaryUnlocked) return false;
-      if (!data || typeof data !== "object") return false;
+      if (!data || typeof data !== "object") return null;
+      const summarySource =
+        data.summary && typeof data.summary === "object" ? data.summary : data;
       const hasPayload =
-        data.todayKey != null ||
-        data.today_key != null ||
-        data.savedUSD != null ||
-        data.saved_usd != null ||
-        data.declines != null ||
-        data.spends != null;
-      if (!hasPayload) return false;
+        summarySource.todayKey != null ||
+        summarySource.today_key != null ||
+        summarySource.savedUSD != null ||
+        summarySource.saved_usd != null ||
+        summarySource.declines != null ||
+        summarySource.spends != null;
       const rawKey =
-        typeof data.todayKey === "string" && data.todayKey.trim()
+        typeof summarySource.todayKey === "string" && summarySource.todayKey.trim()
+          ? summarySource.todayKey.trim()
+          : typeof summarySource.today_key === "string" && summarySource.today_key.trim()
+          ? summarySource.today_key.trim()
+          : typeof data.todayKey === "string" && data.todayKey.trim()
           ? data.todayKey.trim()
           : typeof data.today_key === "string" && data.today_key.trim()
           ? data.today_key.trim()
           : null;
       const todayKey = rawKey || getDayKey(Date.now());
-      if (!todayKey) return false;
-      if (dailySummarySeenKey === todayKey) return false;
-      const savedUSD = Math.max(
-        0,
-        Number(
-          data.savedUSD ??
-            data.saved_usd ??
-            data.saved ??
-            data.amountUSD ??
-            data.amount
-        ) || 0
-      );
-      const declines = Math.max(0, Number(data.declines) || 0);
-      const spends = Math.max(0, Number(data.spends) || 0);
-      const summaryPayload = { savedUSD, declines, spends, todayKey };
+      if (!todayKey) return null;
+      if (hasPayload) {
+        const savedUSD = Math.max(
+          0,
+          Number(
+            summarySource.savedUSD ??
+              summarySource.saved_usd ??
+              summarySource.saved ??
+              summarySource.amountUSD ??
+              summarySource.amount
+          ) || 0
+        );
+        const declines = Math.max(0, Number(summarySource.declines) || 0);
+        const spends = Math.max(0, Number(summarySource.spends) || 0);
+        return { savedUSD, declines, spends, todayKey };
+      }
+      if (!historyHydrated) return null;
+      const hour = new Date().getHours();
+      if (hour < 20) return null;
+      const todayEvents = resolvedHistoryEvents.filter((e) => getDayKey(e.timestamp) === todayKey);
+      if (!todayEvents.length) return null;
+      const saves = todayEvents.filter((e) => e.kind === "refuse_spend");
+      const spends = todayEvents.filter((e) => e.kind === "spend");
+      const savedUSD = saves.reduce((sum, e) => sum + (Number(e.meta?.amountUSD) || 0), 0);
+      const declines = saves.length;
+      if (declines < 3) return null;
+      const spendCount = spends.length;
+      return { savedUSD, declines, spends: spendCount, todayKey };
+    },
+    [getDayKey, historyHydrated, resolvedHistoryEvents]
+  );
+  const applyDailySummaryFromNotification = useCallback(
+    (data) => {
+      if (!data || typeof data !== "object") return false;
+      const summaryPayload = resolveDailySummaryPayloadFromData(data);
+      if (!summaryPayload) return false;
+      if (dailySummarySeenKey === summaryPayload.todayKey) return false;
       setPendingDailySummaryData((prev) =>
-        prev?.todayKey === todayKey ? prev : summaryPayload
+        prev?.todayKey === summaryPayload.todayKey ? prev : summaryPayload
       );
       enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_SUMMARY);
       return true;
     },
-    [dailySummarySeenKey, dailySummaryUnlocked, enqueueQueuedModal, getDayKey]
+    [dailySummarySeenKey, enqueueQueuedModal, resolveDailySummaryPayloadFromData]
   );
+  const handleDailySummaryNotificationOpen = useCallback(
+    (data) => {
+      if (!data || typeof data !== "object") return false;
+      if (!dailySummaryUnlocked || !dailySummaryHydrated) {
+        pendingDailySummaryNotificationRef.current = data;
+        return false;
+      }
+      const applied = applyDailySummaryFromNotification(data);
+      if (!applied && !historyHydrated) {
+        pendingDailySummaryNotificationRef.current = data;
+      }
+      return applied;
+    },
+    [
+      applyDailySummaryFromNotification,
+      dailySummaryHydrated,
+      dailySummaryUnlocked,
+      historyHydrated,
+    ]
+  );
+  const flushPendingDailySummaryNotification = useCallback(() => {
+    const pending = pendingDailySummaryNotificationRef.current;
+    if (!pending) return;
+    if (!dailySummaryUnlocked || !dailySummaryHydrated) return;
+    const applied = applyDailySummaryFromNotification(pending);
+    if (applied || historyHydrated) {
+      pendingDailySummaryNotificationRef.current = null;
+    }
+  }, [
+    applyDailySummaryFromNotification,
+    dailySummaryHydrated,
+    dailySummaryUnlocked,
+    historyHydrated,
+  ]);
+  useEffect(() => {
+    flushPendingDailySummaryNotification();
+  }, [flushPendingDailySummaryNotification]);
   const handleNotificationOpenFromPush = useCallback(
     (response) => {
       if (!response?.notification?.request) return;
@@ -18254,8 +18507,8 @@ function AppContent() {
             ? data.target_screen.trim()
             : null;
         const pendingId = typeof data.pendingId === "string" ? data.pendingId : null;
-        if (data.kind === "daily_summary") {
-          applyDailySummaryFromNotification(data);
+        if (data.kind === "daily_summary" || targetScreen === "daily_summary") {
+          handleDailySummaryNotificationOpen(data);
         } else if ((targetScreen === "pending" || data.kind === "pending_decision") && pendingId) {
           setPendingFocusId(pendingId);
           goToTab("pending");
@@ -18265,7 +18518,7 @@ function AppContent() {
       logEvent("push_notification_open");
       logEvent("reminder_clicked", reminderPayload);
     },
-    [applyDailySummaryFromNotification, getReminderAnalyticsPayload, goToTab, logEvent]
+    [getReminderAnalyticsPayload, goToTab, handleDailySummaryNotificationOpen, logEvent]
   );
   useEffect(() => {
     let isMounted = true;
@@ -18854,8 +19107,6 @@ function AppContent() {
     }, {});
   }, [registrationData.customGoals]);
 
-  const colors = THEMES[theme];
-  const isDarkTheme = theme === "dark";
   const overlayDimColor = isDarkTheme ? "rgba(0,0,0,0.65)" : "rgba(5,6,15,0.2)";
   const overlaySystemColor = useMemo(
     () => blendHexColors(colors.background, isDarkTheme ? "#000000" : "#05060F", isDarkTheme ? 0.5 : 0.15),
@@ -20903,6 +21154,7 @@ function AppContent() {
       }
       setPrimaryTemptationPromptHydrated(true);
       if (dailySummaryRaw) setDailySummarySeenKey(dailySummaryRaw);
+      setDailySummaryHydrated(true);
       if (termsAcceptedRaw === "1") {
         setTermsAccepted(true);
       }
@@ -23307,7 +23559,14 @@ useEffect(() => {
       const action = direction === "save" ? "save" : "spend";
       const entryId = `coin_entry_${Date.now()}`;
       const categoryDef = IMPULSE_CATEGORY_DEFS[category];
-      const title = action === "save" ? t("coinEntrySaveLabel") : t("coinEntrySpendLabel");
+      const categoryLabelKey = getShortLanguageKey(language);
+      const title =
+        categoryDef?.[categoryLabelKey] ||
+        categoryDef?.en ||
+        categoryDef?.ru ||
+        categoryDef?.es ||
+        categoryDef?.fr ||
+        category;
       const virtualItem = {
         id: entryId,
         title,
@@ -23357,10 +23616,10 @@ useEffect(() => {
       handleCoinEntryClose,
       handleTemptationAction,
       logEvent,
+      language,
       mainGoalWish?.id,
       profile.goal,
       profile.primaryGoals,
-      t,
     ]
   );
 
@@ -29337,87 +29596,9 @@ useEffect(() => {
               </View>
             )}
             <View style={[styles.screenWrapper, screenKeyboardAdjustmentStyle]}>{renderActiveScreen()}</View>
-        {savingsBreakdownVisible && (
+        {breakdownVisible && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
-            <TouchableWithoutFeedback onPress={closeSavingsBreakdown}>
-              <View style={styles.breakdownOverlay}>
-                <TouchableWithoutFeedback onPress={() => {}}>
-                  <View
-                    style={[
-                      styles.breakdownCard,
-                      { backgroundColor: colors.card, borderColor: colors.border },
-                    ]}
-                  >
-                    <View style={styles.breakdownHeader}>
-                      <Text style={[styles.breakdownTitle, { color: colors.text }]}>
-                        {t("savingsBreakdownTitle")}
-                      </Text>
-                      <TouchableOpacity onPress={closeSavingsBreakdown}>
-                        <Text style={[styles.breakdownClose, { color: colors.muted }]}>✕</Text>
-                      </TouchableOpacity>
-                    </View>
-                  <View style={styles.breakdownBars}>
-                    {(() => {
-                        const maxTotal = Math.max(...savingsBreakdown.days.map((d) => d.total || 0), 1);
-                        return savingsBreakdown.days.map((day) => (
-                          <View key={day.label} style={styles.breakdownBarItem}>
-                            <View style={[styles.breakdownBarTrack, { backgroundColor: colors.border }]}>
-                              {day.stacks.map((stack) => {
-                                const share = day.total ? (stack.value / (day.total || 1)) * 100 : 0;
-                                const height = Math.max(6, Math.min(90, share));
-                                return (
-                                  <View
-                                    key={stack.title}
-                                    style={[
-                                      styles.breakdownBarStack,
-                                      {
-                                        height: `${height}%`,
-                                        backgroundColor: stack.color,
-                                      },
-                                    ]}
-                                  />
-                                );
-                              })}
-                            </View>
-                            <Text style={[styles.breakdownBarLabel, { color: colors.muted }]}>{day.label}</Text>
-                            <View style={styles.breakdownAmountWrapper}>
-                              <Text
-                                style={[styles.breakdownBarAmount, { color: colors.text }]}
-                                numberOfLines={1}
-                                adjustsFontSizeToFit
-                                minimumFontScale={0.6}
-                              >
-                                {savingsBreakdown.formatLocal(day.total)}
-                              </Text>
-                            </View>
-                          </View>
-                        ));
-                      })()}
-                    </View>
-                    <View style={styles.breakdownLegend}>
-                      {savingsBreakdown.legend.map((entry) => (
-                        <View
-                          key={entry.id}
-                          style={[styles.breakdownLegendItem, { borderColor: colors.border }]}
-                        >
-                          <View
-                            style={[styles.breakdownLegendDot, { backgroundColor: entry.color }]}
-                          />
-                          <Text style={[styles.breakdownLegendText, { color: colors.text }]}>
-                            {entry.label} · {entry.percent}%
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                </TouchableWithoutFeedback>
-              </View>
-            </TouchableWithoutFeedback>
-          </Modal>
-        )}
-        {spendBreakdownVisible && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
-            <TouchableWithoutFeedback onPress={closeSpendBreakdown}>
+            <TouchableWithoutFeedback onPress={closeBreakdown}>
               <View style={styles.breakdownOverlay}>
                 <TouchableWithoutFeedback onPress={() => {}}>
                   <View
@@ -29433,7 +29614,7 @@ useEffect(() => {
                           { id: "week", label: t("spendStatsTabWeek") },
                           { id: "month", label: t("spendStatsTabMonth") },
                         ].map((tab) => {
-                          const active = spendBreakdownRange === tab.id;
+                          const active = activeBreakdownRange === tab.id;
                           return (
                             <TouchableOpacity
                               key={tab.id}
@@ -29443,7 +29624,7 @@ useEffect(() => {
                                 active && { backgroundColor: colors.card },
                               ]}
                               activeOpacity={0.85}
-                              onPress={() => setSpendBreakdownRangeMode(tab.id)}
+                              onPress={() => setBreakdownRangeMode(tab.id)}
                             >
                               <Text
                                 style={[
@@ -29457,93 +29638,142 @@ useEffect(() => {
                           );
                         })}
                       </View>
-                      <TouchableOpacity
-                        onPress={closeSpendBreakdown}
-                        style={[styles.spendStatsCloseButton, { backgroundColor: colors.background }]}
-                      >
-                        <Text style={[styles.spendStatsCloseText, { color: colors.muted }]}>✕</Text>
-                      </TouchableOpacity>
+                      <View style={styles.spendStatsHeaderActions}>
+                        <TouchableOpacity
+                          onPress={closeBreakdown}
+                          style={[styles.spendStatsCloseButton, { backgroundColor: colors.background }]}
+                        >
+                          <Text style={[styles.spendStatsCloseText, { color: colors.muted }]}>✕</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                     <View style={styles.spendStatsTitleRow}>
                       <TouchableOpacity
-                        onPress={handleSpendBreakdownPrev}
-                        style={[styles.spendStatsNavButton, { backgroundColor: colors.background }]}
-                      >
-                        <Text style={[styles.spendStatsNavText, { color: colors.muted }]}>‹</Text>
-                      </TouchableOpacity>
-                      <View style={styles.spendStatsTitleBlock}>
-                        {!!spendBreakdown.averageLabel && (
-                          <Text style={[styles.spendStatsSubtitle, { color: colors.muted }]}>
-                            {spendBreakdown.averageLabel}
-                          </Text>
-                        )}
-                        <Text style={[styles.spendStatsTitle, { color: colors.text }]}>
-                          {spendBreakdown.rangeTitle}
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        onPress={handleSpendBreakdownNext}
-                        disabled={spendBreakdownOffset === 0}
+                        onPress={handleBreakdownPrev}
                         style={[
                           styles.spendStatsNavButton,
                           { backgroundColor: colors.background },
-                          spendBreakdownOffset === 0 && styles.spendStatsNavButtonDisabled,
                         ]}
                       >
                         <Text
                           style={[
                             styles.spendStatsNavText,
-                            { color: spendBreakdownOffset === 0 ? colors.border : colors.muted },
+                            { color: colors.muted },
                           ]}
                         >
-                          ›
+                          ‹
                         </Text>
                       </TouchableOpacity>
+                      <View style={styles.spendStatsTitleBlock}>
+                        {!!breakdownData.averageLabel && (
+                          <Text style={[styles.spendStatsSubtitle, { color: colors.muted }]}>
+                            {breakdownData.averageLabel}
+                          </Text>
+                        )}
+                        <Text style={[styles.spendStatsTitle, { color: colors.text }]}>
+                          {breakdownData.rangeTitle}
+                        </Text>
+                      </View>
+                      <View style={styles.spendStatsTitleActions}>
+                        <TouchableOpacity
+                          onPress={handleBreakdownNext}
+                          disabled={activeBreakdownOffset === 0}
+                          style={[
+                            styles.spendStatsNavButton,
+                            { backgroundColor: colors.background },
+                            activeBreakdownOffset === 0 && styles.spendStatsNavButtonDisabled,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.spendStatsNavText,
+                              {
+                                color: activeBreakdownOffset === 0 ? colors.border : colors.muted,
+                              },
+                            ]}
+                          >
+                            ›
+                          </Text>
+                        </TouchableOpacity>
+                        {renderBreakdownModeToggle(breakdownMode)}
+                      </View>
                     </View>
                     <View style={styles.spendStatsChart}>
                       {(() => {
                         const maxTotal = Math.max(
-                          ...spendBreakdown.buckets.map((bucket) => bucket.total || 0),
+                          ...breakdownData.buckets.map((bucket) => bucket.total || 0),
                           1
                         );
-                        return spendBreakdown.buckets.map((bucket) => (
-                          <View key={bucket.label} style={styles.spendStatsBarItem}>
-                            <Text style={[styles.spendStatsValue, { color: colors.text }]}>
-                              {bucket.total > 0 ? spendBreakdown.formatLocal(bucket.total) : ""}
-                            </Text>
-                            <View
-                              style={[
-                                styles.spendStatsBarTrack,
-                                { backgroundColor: colors.background },
-                              ]}
-                            >
-                              {bucket.stacks.slice().reverse().map((stack) => {
-                                const share = maxTotal ? (stack.value / maxTotal) * 100 : 0;
-                                const height = Math.max(6, Math.min(92, share));
-                                return (
+                        const trackInnerHeight = Math.max(
+                          0,
+                          SPEND_STATS_TRACK_HEIGHT - SPEND_STATS_TRACK_PADDING * 2
+                        );
+                        return breakdownData.buckets.map((bucket) => {
+                          const stacks = bucket.stacks.slice().reverse();
+                          const stackCount = Math.max(stacks.length, 1);
+                          const availableHeight = Math.max(
+                            0,
+                            trackInnerHeight - SPEND_STATS_STACK_GAP * (stackCount - 1)
+                          );
+                          const minStackHeight = Math.min(
+                            SPEND_STATS_MIN_STACK_HEIGHT,
+                            availableHeight / stackCount
+                          );
+                          const rawHeights = stacks.map((stack) =>
+                            maxTotal ? (stack.value / maxTotal) * availableHeight : 0
+                          );
+                          const adjustedHeights = rawHeights.map((height) => Math.max(minStackHeight, height));
+                          const adjustedTotal = adjustedHeights.reduce((sum, height) => sum + height, 0);
+                          const scale =
+                            adjustedTotal > availableHeight && adjustedTotal > 0
+                              ? availableHeight / adjustedTotal
+                              : 1;
+                          return (
+                            <View key={bucket.label} style={styles.spendStatsBarItem}>
+                              <Text
+                                style={[
+                                  styles.spendStatsValue,
+                                  { color: breakdownMode === "spend" ? SPEND_ACTION_COLOR : SAVE_ACTION_COLOR },
+                                ]}
+                              >
+                                {bucket.total > 0 ? breakdownData.formatLocal(bucket.total) : ""}
+                              </Text>
+                              <View
+                                style={[
+                                  styles.spendStatsBarTrack,
+                                  { backgroundColor: colors.background },
+                                ]}
+                              >
+                                {stacks.map((stack, index) => (
                                   <View
                                     key={stack.title}
                                     style={[
                                       styles.spendStatsBarStack,
                                       {
-                                        height: `${height}%`,
+                                        height: adjustedHeights[index] * scale,
+                                        marginTop: index === 0 ? 0 : SPEND_STATS_STACK_GAP,
                                         backgroundColor: stack.color,
                                       },
                                     ]}
                                   />
-                                );
-                              })}
+                                ))}
+                              </View>
+                              <Text
+                                style={[styles.spendStatsBarLabel, { color: colors.muted }]}
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.7}
+                              >
+                                {bucket.label}
+                              </Text>
                             </View>
-                            <Text style={[styles.spendStatsBarLabel, { color: colors.muted }]}>
-                              {bucket.label}
-                            </Text>
-                          </View>
-                        ));
+                          );
+                        });
                       })()}
                     </View>
                     <View style={[styles.spendStatsDivider, { backgroundColor: colors.border }]} />
                     <View style={styles.spendStatsLegend}>
-                      {spendBreakdown.legend.map((entry) => (
+                      {breakdownData.legend.map((entry) => (
                         <View
                           key={entry.id}
                           style={[
@@ -30150,6 +30380,7 @@ useEffect(() => {
           currency={profile.currency || DEFAULT_PROFILE.currency}
           language={language}
           maxAmountUSD={coinSliderMaxUSD}
+          categoryStats={impulseInsights?.categories}
           onUpdateMaxUSD={handleCoinSliderMaxUpdate}
           onSubmit={handleCoinEntrySubmit}
           onCancel={handleCoinEntryClose}
@@ -32222,6 +32453,13 @@ const createSecondaryText = (overrides = {}) => ({
 });
 const createCtaText = (overrides = {}) => ({ ...TYPOGRAPHY.cta, ...scaleTypographyOverrides(overrides) });
 
+const SPEND_STATS_TRACK_HEIGHT = 140;
+const SPEND_STATS_TRACK_PADDING = 6;
+const SPEND_STATS_STACK_GAP = 4;
+const SPEND_STATS_MIN_STACK_HEIGHT = 6;
+const BREAKDOWN_TOGGLE_SAVE_COLOR = "#2EB873";
+const BREAKDOWN_TOGGLE_SPEND_COLOR = "#E15555";
+
 const styles = StyleSheet.create({
   appBackground: {
     flex: 1,
@@ -33992,14 +34230,48 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 12,
+    gap: 12,
   },
   breakdownTitle: {
     fontSize: 18,
     fontWeight: "800",
+    flexShrink: 1,
   },
   breakdownClose: {
     fontSize: 18,
     fontWeight: "700",
+  },
+  breakdownHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  breakdownModeToggle: {
+    flexDirection: "row",
+    padding: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    gap: 4,
+  },
+  breakdownModeToggleOption: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  breakdownModeToggleOptionActive: {
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  breakdownModeToggleText: {
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 14,
   },
   breakdownBars: {
     flexDirection: "row",
@@ -34023,8 +34295,9 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   breakdownBarLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
+    textAlign: "center",
   },
   breakdownBarAmount: {
     fontSize: 11,
@@ -34077,6 +34350,7 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: 999,
     gap: 4,
+    flexShrink: 1,
   },
   spendStatsTab: {
     flex: 1,
@@ -34107,11 +34381,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
+  spendStatsHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   spendStatsTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
+  },
+  spendStatsTitleActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   spendStatsNavButton: {
     width: 38,
@@ -34158,19 +34442,19 @@ const styles = StyleSheet.create({
   },
   spendStatsBarTrack: {
     width: "100%",
-    height: 140,
+    height: SPEND_STATS_TRACK_HEIGHT,
     borderRadius: 16,
-    padding: 6,
+    padding: SPEND_STATS_TRACK_PADDING,
     justifyContent: "flex-end",
   },
   spendStatsBarStack: {
     width: "100%",
     borderRadius: 10,
-    marginTop: 4,
   },
   spendStatsBarLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
+    textAlign: "center",
   },
   spendStatsDivider: {
     height: 1,
@@ -39984,6 +40268,7 @@ function CoinEntryModal({
   currency,
   language,
   maxAmountUSD = DEFAULT_COIN_SLIDER_MAX_USD,
+  categoryStats,
   onUpdateMaxUSD,
   onSubmit,
   onCancel,
@@ -40344,6 +40629,22 @@ function CoinEntryModal({
   const manualPlaceholder = manualIsAmountMode
     ? t("coinEntryManualAmountPlaceholder", { amount: sliderAmountLocal })
     : t("coinEntryManualPlaceholder", { amount: sliderMaxLocal });
+  const categoryOrder = useMemo(() => {
+    const baseOrder = [...IMPULSE_CATEGORY_ORDER];
+    if (!categoryStats) return baseOrder;
+    const baseIndex = new Map(baseOrder.map((id, index) => [id, index]));
+    return baseOrder.sort((a, b) => {
+      const aStats = categoryStats[a] || {};
+      const bStats = categoryStats[b] || {};
+      const aSpend = Number(aStats.spend) || 0;
+      const bSpend = Number(bStats.spend) || 0;
+      if (bSpend !== aSpend) return bSpend - aSpend;
+      const aTotal = aSpend + (Number(aStats.save) || 0);
+      const bTotal = bSpend + (Number(bStats.save) || 0);
+      if (bTotal !== aTotal) return bTotal - aTotal;
+      return (baseIndex.get(a) ?? 0) - (baseIndex.get(b) ?? 0);
+    });
+  }, [categoryStats]);
   const handleAction = useCallback(
     (direction) => {
       if (tossingRef.current) return;
@@ -40499,7 +40800,7 @@ function CoinEntryModal({
                 style={styles.coinEntryCategoryScroll}
                 contentContainerStyle={styles.coinEntryCategoryRow}
               >
-                {IMPULSE_CATEGORY_ORDER.map((categoryId) => {
+                {categoryOrder.map((categoryId) => {
                   const def = IMPULSE_CATEGORY_DEFS[categoryId];
                   const active = selectedCategory === categoryId;
                   return (
