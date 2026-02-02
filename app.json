@@ -2,7 +2,7 @@
   "expo": {
     "name": "Almost",
     "slug": "almost_clean",
-    "version": "4.0.3",
+    "version": "4.0.4",
     "orientation": "default",
     "icon": "./assets/Almost_icon.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,7 @@
       "bundleIdentifier": "com.sasarei.almostclean",
       "supportsTablet": true,
       "googleServicesFile": "./ios/GoogleService-Info.plist",
-      "buildNumber": "47",
+      "buildNumber": "49",
       "appStoreUrl": "https://apps.apple.com/app/id6756276744?action=write-review",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -26,7 +26,7 @@
     },
     "android": {
       "package": "com.sasarei.almostclean",
-      "versionCode": 48,
+      "versionCode": 49,
       "googleServicesFile": "./android/app/google-services.json",
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.sasarei.almostclean",
       "icon": "./assets/android/ic_launcher.png",
@@ -59,6 +59,19 @@
           "backgroundColor": "#ffffff",
           "image": "./assets/splash-blank.png",
           "resizeMode": "contain"
+        }
+      ],
+      [
+        "react-native-fbsdk-next",
+        {
+          "appID": "1653035139013896",
+          "clientToken": "c17d5adb7d4e8b7a284ea24dc4d4542f",
+          "displayName": "Almost",
+          "scheme": "fb1653035139013896",
+          "advertiserIDCollectionEnabled": true,
+          "autoLogAppEventsEnabled": true,
+          "isAutoInitEnabled": true,
+          "iosUserTrackingPermission": "We use analytics to improve Almost and deliver a better experience."
         }
       ],
       "@react-native-firebase/app",

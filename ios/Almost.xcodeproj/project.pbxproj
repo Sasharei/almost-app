@@ -11,8 +11,8 @@
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		4C844D10E6B33036DD700665 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 848F000B85CA5B43A40D01BE /* ExpoModulesProvider.swift */; };
-		5A1F2C3D4E5F60718293A4B5 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 6B1C2D3E4F5061728394A5B6 /* GoogleService-Info.plist */; };
 		6F42D00884589F074EA5BF96 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 46AFD3CF6A027E5B2C13D5DB /* PrivacyInfo.xcprivacy */; };
+		AEDB28E3630946E9AD9BD82C /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1736D10533954F28ADABB2CA /* GoogleService-Info.plist */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
@@ -22,8 +22,8 @@
 		13B07F961A680F5B00A75B9A /* Almost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Almost.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Almost/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Almost/Info.plist; sourceTree = "<group>"; };
+		1736D10533954F28ADABB2CA /* GoogleService-Info.plist */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "Almost/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		46AFD3CF6A027E5B2C13D5DB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = Almost/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		6B1C2D3E4F5061728394A5B6 /* GoogleService-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		848F000B85CA5B43A40D01BE /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-Almost/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = Almost/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
@@ -64,6 +64,7 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
 				46AFD3CF6A027E5B2C13D5DB /* PrivacyInfo.xcprivacy */,
+				1736D10533954F28ADABB2CA /* GoogleService-Info.plist */,
 			);
 			name = Almost;
 			sourceTree = "<group>";
@@ -97,7 +98,6 @@
 			isa = PBXGroup;
 			children = (
 				13B07FAE1A68108700A75B9A /* Almost */,
-				6B1C2D3E4F5061728394A5B6 /* GoogleService-Info.plist */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
@@ -201,7 +201,7 @@
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
 				6F42D00884589F074EA5BF96 /* PrivacyInfo.xcprivacy in Resources */,
-				5A1F2C3D4E5F60718293A4B5 /* GoogleService-Info.plist in Resources */,
+				AEDB28E3630946E9AD9BD82C /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -340,6 +340,7 @@
 			inputPaths = (
 				"$(SRCROOT)/.xcode.env",
 				"$(SRCROOT)/.xcode.env.local",
+				"$(SRCROOT)/Almost/Almost.entitlements",
 				"$(SRCROOT)/Pods/Target Support Files/Pods-Almost/expo-configure-project.sh",
 			);
 			name = "[Expo] Configure project";
@@ -416,6 +417,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Almost/Almost.entitlements;
 				CURRENT_PROJECT_VERSION = 47;
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				ENABLE_BITCODE = NO;
@@ -453,6 +455,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Almost/Almost.entitlements;
 				CURRENT_PROJECT_VERSION = 47;
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				INFOPLIST_FILE = Almost/Info.plist;
