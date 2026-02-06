@@ -1,5 +1,23 @@
 # Release Notes
 
+## 4.0.5 (from 4.0.4)
+
+### EN
+- Custom categories created in Profile now appear in the coin slider spend category list.
+- Fixed UI glitches and stability issues on older devices, with broader device support.
+
+### RU
+- Пользовательские категории, созданные в профиле, теперь появляются в списке категорий трат в модалке монетки.
+- Исправили ошибки интерфейса и баги на более старых устройствах, улучшили поддержку устройств.
+
+### ES
+- Las categorias personalizadas creadas en el perfil ahora aparecen en la lista de categorias de gasto del slider de monedas.
+- Se corrigieron errores de interfaz y fallos en dispositivos mas antiguos, con mayor compatibilidad de dispositivos.
+
+### FR
+- Les categories personnalisees creees dans le profil apparaissent maintenant dans la liste des categories de depense du slider de pieces.
+- Corrections d'erreurs d'interface et de bugs sur les appareils plus anciens, avec une meilleure compatibilite des appareils.
+
 ## 4.0.3 (from 4.0.2)
 
 ### EN

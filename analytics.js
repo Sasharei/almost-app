@@ -392,6 +392,17 @@ const filterParams = (eventName, params = {}) => {
   }, {});
 };
 
+export const registerLevelEvents = (maxLevel) => {
+  const upper = Math.floor(Number(maxLevel));
+  if (!Number.isFinite(upper) || upper < 1) return;
+  for (let level = 1; level <= upper; level += 1) {
+    const eventName = `level_reached_${level}`;
+    if (!EVENT_DEFINITIONS[eventName]) {
+      EVENT_DEFINITIONS[eventName] = ["level"];
+    }
+  }
+};
+
 export const initAnalytics = async () => {
   await syncAnalyticsCollection();
   await syncAppsFlyerCollection();
