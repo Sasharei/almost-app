@@ -87,6 +87,10 @@ const patches = [
     dest: 'node_modules/react-native/ReactCommon/react/runtime/platform/ios/React-RuntimeApple.podspec',
   },
   {
+    src: 'patches/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt',
+    dest: 'node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt',
+  },
+  {
     src: 'patches/@sentry/react-native/ios/RNSentry.mm',
     dest: 'node_modules/@sentry/react-native/ios/RNSentry.mm',
   },
