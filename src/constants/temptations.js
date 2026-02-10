@@ -5,7 +5,7 @@ export const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1517705008128-361805f42e86?auto=format&fit=crop&w=600&q=80",
     color: "#FFF3E0",
-    categories: ["food", "coffee"],
+    categories: ["food"],
     basePriceUSD: 5,
     priceUSD: 5,
     title: {
@@ -49,7 +49,7 @@ export const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1464306076886-da185f6a9d12?auto=format&fit=crop&w=600&q=80",
     color: "#FFFBEA",
-    categories: ["food", "coffee"],
+    categories: ["food"],
     basePriceUSD: 8,
     priceUSD: 8,
     title: {
@@ -71,7 +71,7 @@ export const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1509043759401-136742328bb3?auto=format&fit=crop&w=600&q=80",
     color: "#E8F5E9",
-    categories: ["food", "coffee"],
+    categories: ["food"],
     basePriceUSD: 12,
     priceUSD: 12,
     title: {
@@ -243,6 +243,72 @@ export const DEFAULT_TEMPTATIONS = [
     },
   },
   {
+    id: "cocktail_night",
+    emoji: "🍸",
+    image:
+      "https://images.unsplash.com/photo-1514361892635-6b07e31e75f9?auto=format&fit=crop&w=900&q=80",
+    color: "#FFF2E8",
+    categories: ["vices"],
+    basePriceUSD: 55,
+    priceUSD: 55,
+    title: {
+      ru: "Коктейльная ночь",
+      en: "Cocktail night",
+      es: "Noche de cócteles",
+      fr: "Soirée cocktails",
+    },
+    description: {
+      ru: "Пара бокалов и лёгкий автопилот по карте. Попробуй паузу и забери победу.",
+      en: "A couple of rounds on autopilot. Pause once and claim the win.",
+      es: "Un par de rondas en piloto automático. Pausa y gana.",
+      fr: "Deux tournées en pilote automatique. Fais une pause et gagne.",
+    },
+  },
+  {
+    id: "comfort_utilities",
+    emoji: "💡",
+    image:
+      "https://images.unsplash.com/photo-1509395176047-4a66953fd231?auto=format&fit=crop&w=900&q=80",
+    color: "#F5F9FF",
+    categories: ["utilities"],
+    basePriceUSD: 65,
+    priceUSD: 65,
+    title: {
+      ru: "Комфортный счёт за коммуналку",
+      en: "Comfort-first utilities",
+      es: "Servicios sin límites",
+      fr: "Confort sans limites",
+    },
+    description: {
+      ru: "Тёплый пол и кондиционер на максимум — счёт вырастает незаметно.",
+      en: "Heat and AC at full blast make the bill climb quietly.",
+      es: "Calefacción y aire a tope: la cuenta sube sin aviso.",
+      fr: "Chauffage et clim à fond : la facture grimpe sans prévenir.",
+    },
+  },
+  {
+    id: "pet_spa_day",
+    emoji: "🐶",
+    image:
+      "https://images.unsplash.com/photo-1507146426996-ef05306b995a?auto=format&fit=crop&w=900&q=80",
+    color: "#FFF7E8",
+    categories: ["pets"],
+    basePriceUSD: 95,
+    priceUSD: 95,
+    title: {
+      ru: "SPA-день для питомца",
+      en: "Pet spa day",
+      es: "Spa para tu mascota",
+      fr: "Spa pour ton animal",
+    },
+    description: {
+      ru: "Груминг, игрушки и лакомства — мило, но можно отложить ради цели.",
+      en: "Grooming, toys and treats are cute, but goals can wait less.",
+      es: "Peluquería, juguetes y premios: lindo, pero tus metas importan.",
+      fr: "Toilettage, jouets, friandises : mignon, mais tes objectifs comptent.",
+    },
+  },
+  {
     id: "beauty_box",
     emoji: "💄",
     image:
@@ -352,6 +418,50 @@ export const DEFAULT_TEMPTATIONS = [
       en: "A shiny class pack that pays off only if the jar stays priority.",
       es: "Un paquete brillante que solo rinde si el ahorro sigue siendo prioridad.",
       fr: "Un pack de cours canon qui ne vaut le coup que si la cagnotte reste prioritaire.",
+    },
+  },
+  {
+    id: "insurance_renewal",
+    emoji: "🧾",
+    image:
+      "https://images.unsplash.com/photo-1450101499163-c8848c66ca85?auto=format&fit=crop&w=900&q=80",
+    color: "#F6F2FF",
+    categories: ["mandatory"],
+    basePriceUSD: 220,
+    priceUSD: 220,
+    title: {
+      ru: "Продление страховки",
+      en: "Insurance renewal",
+      es: "Renovación de seguro",
+      fr: "Renouvellement d'assurance",
+    },
+    description: {
+      ru: "Обязательный платёж, который легко сделать легче — проверь опции.",
+      en: "A required payment that can feel lighter when you check the options.",
+      es: "Pago obligatorio que puede aliviarse si revisas opciones.",
+      fr: "Paiement obligatoire qui peut être allégé en comparant les options.",
+    },
+  },
+  {
+    id: "online_course_bundle",
+    emoji: "🎓",
+    image:
+      "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=900&q=80",
+    color: "#F0F7FF",
+    categories: ["education"],
+    basePriceUSD: 240,
+    priceUSD: 240,
+    title: {
+      ru: "Пакет онлайн-курсов",
+      en: "Online course bundle",
+      es: "Paquete de cursos online",
+      fr: "Pack de cours en ligne",
+    },
+    description: {
+      ru: "Классный апгрейд навыков, но можно подождать и накопить спокойно.",
+      en: "A skills upgrade that’s great, but can wait while you save.",
+      es: "Un impulso de habilidades genial, pero puede esperar mientras ahorras.",
+      fr: "Une amélioration des compétences sympa, mais ça peut attendre.",
     },
   },
   {
@@ -493,7 +603,7 @@ export const DEFAULT_TEMPTATIONS = [
     image:
       "https://images.unsplash.com/photo-1503736334956-4c8f8e92946d?auto=format&fit=crop&w=1200&q=80",
     color: "#FFE0E3",
-    categories: ["transport"],
+    categories: ["car"],
     basePriceUSD: 28000,
     priceUSD: 28000,
     title: {
@@ -551,6 +661,28 @@ export const DEFAULT_TEMPTATIONS = [
       en: "Pure gamification: the jet tier proves your discipline is first class.",
       es: "Gamificación pura: nivel jet demuestra disciplina de primera clase.",
       fr: "Pure gamification : ce palier “jet” prouve une discipline première classe.",
+    },
+  },
+  {
+    id: "rent_upgrade",
+    emoji: "🏠",
+    image:
+      "https://images.unsplash.com/photo-1527030280862-64139fba04ca?auto=format&fit=crop&w=900&q=80",
+    color: "#EFFFF4",
+    categories: ["rent"],
+    basePriceUSD: 450,
+    priceUSD: 450,
+    title: {
+      ru: "Апгрейд аренды",
+      en: "Rent upgrade",
+      es: "Mejora de alquiler",
+      fr: "Upgrade de loyer",
+    },
+    description: {
+      ru: "Больше пространства и света звучит классно, но можно подготовиться без стресса.",
+      en: "More space and light sound great, but you can prep for it without stress.",
+      es: "Más espacio y luz suenan bien, pero puedes prepararlo sin estrés.",
+      fr: "Plus d'espace et de lumière, c'est tentant, mais tu peux te préparer sereinement.",
     },
   },
 ];
