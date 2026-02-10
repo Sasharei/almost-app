@@ -1,5 +1,35 @@
 # Release Notes
 
+## 4.1.0 (from 4.0.5)
+
+### EN
+- Major new feature: Monthly Budget with automatic category allocation based on income and habits.
+- Smart budget analytics highlight remaining balance and help keep spending under control.
+- Completed challenges now pin to the top of the Progress list.
+- New rewards in the Rewards menu for daily challenges, focus victories, and adding new temptations.
+- Added analytics event to capture whether profile sound is enabled.
+
+### RU
+- Большая новая фишка: Бюджет месяца с автоматическим распределением по категориям на основе дохода и привычек.
+- Умная аналитика бюджета показывает остаток и помогает держать траты под контролем.
+- Выполненные челленджи теперь поднимаются в начало списка прогресса.
+- В меню наград появились новые достижения: 3 ежедневных челленджа, 3 победы фокуса и 5 новых искушений.
+- Добавили ивент аналитики для статуса звука в профиле.
+
+### ES
+- Nueva gran funcion: Presupuesto mensual con distribucion automatica por categorias segun tu ingreso y habitos.
+- Analitica inteligente del presupuesto muestra el saldo restante y ayuda a mantener el gasto bajo control.
+- Los desafios completados ahora aparecen arriba en la lista de progreso.
+- Nuevas recompensas en el menu de logros por retos diarios, victorias de enfoque y nuevas tentaciones.
+- Se anadio un evento de analitica para saber si el sonido del perfil esta activado.
+
+### FR
+- Grande nouveaute : budget mensuel avec repartition automatique par categories selon ton revenu et tes habitudes.
+- Analytique intelligente du budget affiche le restant et aide a garder les depenses sous controle.
+- Les defis completes remontent maintenant en haut de la liste Progress.
+- Nouvelles recompenses dans le menu des succes pour les defis quotidiens, victoires focus et nouvelles tentations.
+- Ajout d'un evenement analytique pour savoir si le son du profil est active.
+
 ## 4.0.5 (from 4.0.4)
 
 ### EN
