@@ -87,6 +87,25 @@ import { TRANSLATIONS } from "./src/constants/translations";
 import { DEFAULT_TEMPTATIONS } from "./src/constants/temptations";
 import { PRIVACY_LINKS, TERMS_LINKS, TERMS_POINTS } from "./src/constants/legal";
 
+const safeUseFonts =
+  typeof useFonts === "function"
+    ? useFonts
+    : () => {
+        if (__DEV__) {
+          console.warn("useFonts is unavailable; continuing without custom fonts.");
+        }
+        return [true, new Error("useFonts is unavailable")];
+      };
+const safeUseSafeAreaInsets =
+  typeof useSafeAreaInsets === "function"
+    ? useSafeAreaInsets
+    : () => {
+        if (__DEV__) {
+          console.warn("useSafeAreaInsets is unavailable; using zero insets.");
+        }
+        return { top: 0, bottom: 0, left: 0, right: 0 };
+      };
+
 let StoreReview = null;
 try {
   // Optional native module – older builds might not include it.
@@ -120,13 +139,76 @@ try {
   console.warn("Tracking transparency unavailable", error);
 }
 
-Notifications.setNotificationHandler({
+const safeNotifications = (() => {
+  const api = Notifications || {};
+  const isFn = (value) => typeof value === "function";
+  const safeCall = (label, fn, ...args) => {
+    if (!isFn(fn)) return null;
+    try {
+      return fn(...args);
+    } catch (error) {
+      console.warn(label, error);
+      return null;
+    }
+  };
+  const safeAsync = async (label, fn, ...args) => {
+    if (!isFn(fn)) return null;
+    try {
+      return await fn(...args);
+    } catch (error) {
+      console.warn(label, error);
+      return null;
+    }
+  };
+  const swallow = (value) => {
+    if (value && typeof value.catch === "function") {
+      value.catch(() => {});
+    }
+  };
+  return {
+    setNotificationHandler: (handler) =>
+      safeCall("notification handler", api.setNotificationHandler, handler),
+    getPermissionsAsync: async () => safeAsync("notifications permissions", api.getPermissionsAsync),
+    requestPermissionsAsync: async () =>
+      safeAsync("notifications permissions", api.requestPermissionsAsync),
+    getAllScheduledNotificationsAsync: async () => {
+      const result = await safeAsync(
+        "notifications scheduled list",
+        api.getAllScheduledNotificationsAsync
+      );
+      return Array.isArray(result) ? result : [];
+    },
+    scheduleNotificationAsync: async (payload) =>
+      safeAsync("notifications schedule", api.scheduleNotificationAsync, payload),
+    cancelScheduledNotificationAsync: async (id) =>
+      safeAsync("notifications cancel", api.cancelScheduledNotificationAsync, id),
+    cancelAllScheduledNotificationsAsync: async () =>
+      safeAsync("notifications cancel all", api.cancelAllScheduledNotificationsAsync),
+    setNotificationChannelAsync: (id, config) =>
+      swallow(safeCall("notifications channel", api.setNotificationChannelAsync, id, config)),
+    setNotificationCategoryAsync: (id, actions) =>
+      swallow(safeCall("notifications category", api.setNotificationCategoryAsync, id, actions)),
+    setBadgeCountAsync: (count) =>
+      swallow(safeCall("notifications badge", api.setBadgeCountAsync, count)),
+    getLastNotificationResponseAsync: async () =>
+      safeAsync("notifications last response", api.getLastNotificationResponseAsync),
+    addNotificationResponseReceivedListener: (handler) =>
+      safeCall("notifications response listener", api.addNotificationResponseReceivedListener, handler),
+    addNotificationReceivedListener: (handler) =>
+      safeCall("notifications listener", api.addNotificationReceivedListener, handler),
+  };
+})();
+
+safeNotifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: false,
     shouldSetBadge: false,
   }),
 });
+
+const DEFAULT_NOTIFICATION_ACTION_IDENTIFIER =
+  Notifications?.DEFAULT_ACTION_IDENTIFIER ?? "default";
 
 let AndroidBlurView = null;
 try {
@@ -5112,6 +5194,18 @@ const useFadeIn = () => {
   return fade;
 };
 
+const getSessionShuffleValue = (seed, value) => {
+  const normalizedSeed = Number.isFinite(seed) ? seed : 0;
+  const seedInt = Math.floor(normalizedSeed * 0x7fffffff) | 0;
+  const text = String(value ?? "");
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) | 0;
+  }
+  const combined = (hash ^ seedInt) >>> 0;
+  return combined / 0xffffffff;
+};
+
 const FEED_FREQUENT_PIN_LIMIT = 5;
 const DAILY_FREQUENCY_INTERVAL_MS = 26 * 60 * 60 * 1000;
 const DAILY_SECOND_ACTION_THRESHOLD_MS = DAILY_FREQUENCY_INTERVAL_MS;
@@ -7694,7 +7788,6 @@ function TemptationCardComponent({
 
 const TemptationCard = React.memo(TemptationCardComponent);
 
-let cachedLevelBadgeLayout = { width: 0, height: 0, y: 0 };
 
 const FrequencySectionHeader = ({ title, count, collapsed, onToggle, colors, t }) => {
   const arrowIcon = collapsed ? "▾" : "▴";
@@ -7835,19 +7928,17 @@ const DailyRewardButton = React.memo(
     prev.onPress === next.onPress
 );
 
-function SavingsHeroCard({
+const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   goldPalette,
   isDarkMode = false,
   heroSpendCopy,
   heroRecentEvents = [],
   heroEncouragementLine,
   onRecentEventsPress = null,
-  levelLabel,
   playerLevel = null,
   totalSavedLabel,
   progressPercent,
   progressPercentLabel,
-  goalProgressLabel,
   isGoalComplete = false,
   completionLabel,
   t,
@@ -7862,10 +7953,6 @@ function SavingsHeroCard({
   hasActiveGoal = true,
   onBaselineSetup = () => {},
   onPotentialDetailsOpen = null,
-  levelHasNext = false,
-  levelRemainingLabel = "",
-  levelTargetLabel = "",
-  levelProgressValue = 0,
   healthPoints = 0,
   onBreakdownPress = () => {},
   onAnchorChange = null,
@@ -7878,13 +7965,10 @@ function SavingsHeroCard({
   onDailyRewardModalVisibilityChange = null,
   activeChallenge = null,
   onActiveChallengePress = () => {},
-}) {
+}, ref) {
   const [expanded, setExpanded] = useState(false);
-  const [levelExpanded, setLevelExpanded] = useState(false);
-  const [levelBadgeLayout, setLevelBadgeLayout] = useState(() => cachedLevelBadgeLayout);
   const heroCardRef = useRef(null);
   const heroAnchorRef = useRef(null);
-  const isLevelBadgeReady = levelBadgeLayout.width > 0 && levelBadgeLayout.height > 0;
   const [isDailyRewardModalVisible, setDailyRewardModalVisible] = useState(false);
   const measureHeroAnchor = useCallback(() => {
     if (!onAnchorChange) return;
@@ -8016,75 +8100,6 @@ function SavingsHeroCard({
       isSuper: index + 1 === DAILY_REWARD_STREAK_LENGTH,
     }));
   }, [dailyRewardAmount, dailyRewardBaseAmount]);
-  const rewardTileSize = useMemo(() => {
-    const badgeWidth = levelBadgeLayout.width || 0;
-    return Math.min(Math.max(badgeWidth, 68), 80);
-  }, [levelBadgeLayout.width]);
-  const rewardTileHeight = useMemo(
-    () => Math.max(44, rewardTileSize - 28),
-    [rewardTileSize]
-  );
-  const rewardTileTop = useMemo(
-    () => (levelBadgeLayout.y || 0) + (levelBadgeLayout.height || 0) - 6,
-    [levelBadgeLayout.height, levelBadgeLayout.y]
-  );
-  const handleLevelBadgeLayout = useCallback(
-    (event) => {
-      const layout = event?.nativeEvent?.layout;
-      if (!layout) return;
-      setLevelBadgeLayout((prev) => {
-        if (
-          prev.width === layout.width &&
-          prev.height === layout.height &&
-          prev.y === layout.y
-        ) {
-          return prev;
-        }
-        const next = { width: layout.width, height: layout.height, y: layout.y };
-        cachedLevelBadgeLayout = next;
-        return next;
-      });
-    },
-    []
-  );
-  const dailyRewardButtonColors = dailyRewardReady
-    ? isDarkMode
-      ? {
-          background: "rgba(255,214,143,0.32)",
-          border: "rgba(255,214,143,0.85)",
-          shadow: "rgba(255,214,143,0.55)",
-          text: "#FFEED0",
-        }
-      : {
-          background: "rgba(255,173,74,0.25)",
-          border: "rgba(255,173,74,0.55)",
-          shadow: "rgba(255,160,80,0.4)",
-          text: "#6A390C",
-      }
-    : isDarkMode
-    ? {
-        background: "rgba(255,255,255,0.08)",
-        border: "rgba(255,214,143,0.45)",
-        shadow: "transparent",
-        text: "rgba(255,238,208,0.75)",
-      }
-    : {
-        background: "rgba(130,130,130,0.25)",
-        border: "rgba(130,130,130,0.5)",
-        shadow: "transparent",
-        text: "rgba(90,90,90,0.9)",
-      };
-  const dailyRewardLockedColors = isDarkMode
-    ? {
-        background: "rgba(0,0,0,0.35)",
-        border: "rgba(255,255,255,0.2)",
-        text: "rgba(255,238,208,0.9)",
-      }
-    : {
-        background: "rgba(255,255,255,0.72)",
-        border: "rgba(90,90,90,0.18)",
-        text: "rgba(90,90,90,0.85)",
-      };
   const dailyRewardModalPalette = isDarkMode
     ? {
         background: "#3A2405",
@@ -8101,9 +8116,6 @@ function SavingsHeroCard({
   const dailyRewardActiveAccent = isDarkMode ? "#7BFFB8" : "#1F7A4F";
   const dailyRewardActiveBorder = isDarkMode ? "rgba(123,255,184,0.85)" : "rgba(45,166,106,0.9)";
   const dailyRewardActiveBg = isDarkMode ? "rgba(123,255,184,0.18)" : "rgba(45,166,106,0.14)";
-  const dailyRewardLabel = dailyRewardReady ? t("dailyRewardClaimHint") : t("dailyRewardCollectedLabel");
-  const dailyRewardUnlockLevel = FEATURE_UNLOCK_LEVELS.rewardsDaily || 2;
-  const dailyRewardLockedLabel = t("progressHeroLevel", { level: dailyRewardUnlockLevel });
   const handleDailyRewardPress = useCallback(() => {
     if (!dailyRewardReady) return;
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
@@ -8131,6 +8143,18 @@ function SavingsHeroCard({
     setDailyRewardModalState(false);
     onDailyRewardClaim?.();
   }, [dailyRewardReady, onDailyRewardClaim, setDailyRewardModalState, triggerSuccessHaptic]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      openDailyRewardModal: () => {
+        handleDailyRewardPress();
+      },
+      closeDailyRewardModal: () => {
+        setDailyRewardModalState(false);
+      },
+    }),
+    [handleDailyRewardPress, setDailyRewardModalState]
+  );
   const activeDailyRewardDay = dailyRewardReady
     ? Math.min(DAILY_REWARD_STREAK_LENGTH, Math.max(1, dailyRewardDay || 1))
     : null;
@@ -8169,85 +8193,16 @@ function SavingsHeroCard({
       </View>
       <View style={styles.savedHeroContent}>
         <View style={styles.savedHeroHeader}>
-          <View style={styles.savedHeroTitleWrap}>
-            <Text style={[styles.progressHeroTitle, { color: goldPalette.text }]}>
-              {t("progressHeroTitle")}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.savedHeroLevelButton}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            activeOpacity={0.85}
-            onPress={() => {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-              setLevelExpanded((prev) => !prev);
-            }}
-          >
-            <View
-              onLayout={handleLevelBadgeLayout}
-              style={[
-                styles.savedHeroLevelBadge,
-                {
-                  backgroundColor: goldPalette.badgeBg,
-                  borderColor: goldPalette.badgeBorder,
-                },
-              ]}
-            >
-              <Text style={[styles.savedHeroLevelText, { color: goldPalette.badgeText }]}>{levelLabel}</Text>
-            </View>
-          </TouchableOpacity>
+          <Text style={[styles.progressHeroTitle, { color: goldPalette.subtext }]}>
+            {t("progressHeroTitle")}
+          </Text>
         </View>
-        <DailyRewardButton
-          visible={!levelExpanded && isLevelBadgeReady}
-          width={rewardTileSize}
-          height={rewardTileHeight}
-          top={rewardTileTop}
-          unlocked={dailyRewardUnlocked}
-          ready={dailyRewardReady}
-          amount={dailyRewardAmount}
-          label={dailyRewardUnlocked ? dailyRewardLabel : dailyRewardLockedLabel}
-          buttonBg={dailyRewardButtonColors.background}
-          buttonBorder={dailyRewardButtonColors.border}
-          buttonShadow={dailyRewardButtonColors.shadow}
-          buttonText={dailyRewardButtonColors.text}
-          lockedBg={dailyRewardLockedColors.background}
-          lockedBorder={dailyRewardLockedColors.border}
-          lockedText={dailyRewardLockedColors.text}
-          onPress={handleDailyRewardPress}
-        />
-        {levelExpanded && (
-          <View
-            style={[
-              styles.heroLevelDetails,
-              {
-                backgroundColor: goldPalette.badgeBg,
-                borderColor: goldPalette.badgeBorder,
-              },
-            ]}
-          >
-            <Text style={[styles.heroLevelTitle, { color: goldPalette.text }]}>
-              {t("levelWidgetTitle")}
-            </Text>
-            <Text style={[styles.heroLevelSubtitle, { color: goldPalette.subtext }]}>
-              {levelHasNext
-                ? t("levelWidgetSubtitle", { amount: levelRemainingLabel })
-                : t("levelWidgetMaxed")}
-            </Text>
-            <View style={[styles.levelWidgetBar, { backgroundColor: goldPalette.barBg }]}>
-              <View
-                style={[
-                  styles.levelWidgetFill,
-                  { backgroundColor: goldPalette.accent, width: `${Math.min(Math.max(levelProgressValue, 0), 1) * 100}%` },
-                ]}
-              />
-            </View>
-          </View>
-        )}
         <View style={styles.savedHeroAmountWrap}>
           <Text style={[styles.progressHeroAmount, { color: SAVE_ACTION_COLOR }]}>
             {totalSavedLabel}
           </Text>
         </View>
+        <View style={[styles.savedHeroDivider, { backgroundColor: goldPalette.border }]} />
         {heroRecentEvents.length > 0 ? (
           <RecentEventsWrap
             style={styles.savedHeroRecentList}
@@ -8276,55 +8231,56 @@ function SavingsHeroCard({
           </Text>
         )}
 
-      {hasActiveGoal && (
-        <View style={styles.savedHeroProgressRow}>
-          <View
-            style={[
-              styles.progressHeroBar,
-              styles.savedHeroBar,
-              { backgroundColor: goldPalette.barBg },
-            ]}
-          >
-            <View
-              style={[
-                styles.progressHeroFill,
-                { backgroundColor: goldPalette.accent, width: `${progressPercent * 100}%` },
-              ]}
-            />
-          </View>
-          <View
-            style={[
-              styles.savedHeroPercentTag,
-              { backgroundColor: goldPalette.badgeBg, borderColor: goldPalette.border },
-            ]}
-          >
-            <Text style={[styles.savedHeroPercentText, { color: goldPalette.text }]}>
-              {progressPercentLabel}%
-            </Text>
-          </View>
-        </View>
-      )}
-      <View style={styles.savedHeroGoalRow}>
-        <Text style={[styles.goalLabel, { color: goldPalette.subtext }]}>
-          {hasActiveGoal ? t("goalWidgetTitle") : t("heroDailyTitle")}
-        </Text>
-      </View>
-      {hasActiveGoal && (
-        <View style={styles.savedHeroGoalMetaRow}>
-          <Text style={[styles.savedHeroGoalLabel, { color: goldPalette.subtext }]}>{goalProgressLabel}</Text>
-          <View style={styles.savedHeroGoalMetaActions}>
-            {isGoalComplete && (
+        {hasActiveGoal ? (
+          <>
+            <View style={styles.savedHeroGoalRow}>
+              <Text style={[styles.goalLabel, { color: goldPalette.subtext }]}>
+                {t("goalWidgetTitle")}
+              </Text>
+              <Text style={[styles.savedHeroGoalPercent, { color: goldPalette.text }]}>
+                {progressPercentLabel}%
+              </Text>
+            </View>
+            <View style={styles.savedHeroProgressRow}>
               <View
                 style={[
-                  styles.goalCompleteBadge,
-                  { backgroundColor: goldPalette.badgeBg, borderColor: goldPalette.badgeBorder },
+                  styles.progressHeroBar,
+                  styles.savedHeroBar,
+                  { backgroundColor: goldPalette.barBg },
                 ]}
               >
-                <Text style={[styles.goalCompleteBadgeText, { color: goldPalette.badgeText }]}>
-                  {completionLabel}
-                </Text>
+                <View
+                  style={[
+                    styles.progressHeroFill,
+                    { backgroundColor: goldPalette.accent, width: `${progressPercent * 100}%` },
+                  ]}
+                />
               </View>
-            )}
+            </View>
+          </>
+        ) : (
+          <View style={styles.savedHeroGoalRow}>
+            <Text style={[styles.goalLabel, { color: goldPalette.subtext }]}>
+              {t("heroDailyTitle")}
+            </Text>
+          </View>
+        )}
+        {hasActiveGoal && (
+          <View style={styles.savedHeroGoalMetaRow}>
+            <View style={styles.savedHeroGoalMetaActions}>
+              {isGoalComplete && (
+                <View
+                  style={[
+                    styles.goalCompleteBadge,
+                    { backgroundColor: goldPalette.badgeBg, borderColor: goldPalette.badgeBorder },
+                  ]}
+                >
+                  <Text style={[styles.goalCompleteBadgeText, { color: goldPalette.badgeText }]}>
+                    {completionLabel}
+                  </Text>
+                </View>
+              )}
+            </View>
             <TouchableOpacity
               style={styles.savedHeroToggleButton}
               onPress={() => {
@@ -8344,8 +8300,7 @@ function SavingsHeroCard({
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
-      )}
+        )}
       {expanded && (
         <View style={styles.savedHeroExpanded}>
           {showActiveChallenge && (
@@ -8658,7 +8613,7 @@ function SavingsHeroCard({
       </View>
     </View>
   );
-}
+});
 
 const resolveFeatureUnlockCopy = (variantKey, t) => {
   const config = FEATURE_UNLOCK_VARIANT_CONFIG[variantKey];
@@ -8685,6 +8640,7 @@ const LockedFeatureOverlay = ({
   centered = false,
   children,
 }) => {
+  const blurAvailable = useMemo(() => isBlurViewAvailable(), []);
   if (!locked) {
     return <View style={style}>{children}</View>;
   }
@@ -8717,7 +8673,6 @@ const LockedFeatureOverlay = ({
   const centeredLockRowStyle = centered ? styles.lockedFeatureLockRowCentered : null;
   const centeredBadgeStyle = centered ? styles.lockedFeatureLevelBadgeCentered : null;
   const centeredLockStyle = centered ? styles.lockedFeatureLockIconCentered : null;
-  const blurAvailable = useMemo(() => isBlurViewAvailable(), []);
   const androidBlurAmount = Math.max(2, Math.round((Number(blurIntensity) || 0) * 0.3));
   const blurIntensityValue = Platform.OS === "android" ? androidBlurAmount : blurIntensity;
   const androidBlurFallback = isDarkMode ? "#0B0B0B" : "#F2F2F2";
@@ -10036,6 +9991,7 @@ const FeedScreen = React.memo(
   onTemptationGoalSelect,
   onTemptationSwipeDelete,
   onSavingsBreakdownPress = () => {},
+  savingsHeroRef = null,
   mascotOverride = null,
   onMascotAnimationComplete = () => {},
   hideMascot = false,
@@ -10072,7 +10028,7 @@ const FeedScreen = React.memo(
   },
     ref
   ) {
-  const safeAreaInsets = useSafeAreaInsets();
+  const safeAreaInsets = safeUseSafeAreaInsets();
   const resolvedBudgetSpeechDataRef =
     typeof budgetSpeechDataRef === "undefined" ? null : budgetSpeechDataRef;
   const resolvedProgressSavedTotalUSD = Number.isFinite(progressSavedTotalUSD)
@@ -10131,19 +10087,7 @@ const FeedScreen = React.memo(
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
   const openHistoryModal = useCallback(() => setHistoryModalVisible(true), []);
   const closeHistoryModal = useCallback(() => setHistoryModalVisible(false), []);
-  const [frequencyCollapseMap, setFrequencyCollapseMap] = useState({
-    daily: false,
-    weekly: false,
-    biweekly: false,
-    monthly: false,
-    unscheduled: false,
-  });
-  const toggleFrequencySection = useCallback((sectionId) => {
-    setFrequencyCollapseMap((prev) => ({
-      ...prev,
-      [sectionId]: !prev?.[sectionId],
-    }));
-  }, []);
+  const feedShuffleSeedRef = useRef(Math.random());
   const handleBaselineSetup = onBaselineSetup || (() => {});
   const realSavedUSD = useRealSavedAmount();
   const totalSavedLabel = useMemo(
@@ -10167,9 +10111,6 @@ const FeedScreen = React.memo(
     convertToCurrency(Math.max(heroGoalTargetUSD - heroGoalSavedUSD, 0), currency),
     currency
   );
-  const goalProgressLabel = heroGoalTargetUSD
-    ? t("progressGoal", { current: remainingLocal, goal: heroTargetLabel })
-    : t("progressGoal", { current: heroGoalSavedLabel, goal: heroGoalSavedLabel });
   const personaPreset = useMemo(() => getPersonaPreset(profile?.persona), [profile?.persona]);
   const recentActivity = useMemo(() => {
     const filtered = resolvedHistoryEvents.filter(
@@ -10413,15 +10354,6 @@ const FeedScreen = React.memo(
           },
     [isDarkMode, isGoalComplete]
   );
-  const heroMoodBadgeStyle = useMemo(
-    () =>
-      isDarkMode
-        ? { backgroundColor: "rgba(0,0,0,0.45)", borderWidth: 1, borderColor: "rgba(255,255,255,0.15)" }
-        : null,
-    [isDarkMode]
-  );
-  const heroMoodBadgeTextColor = isDarkMode ? colors.text : moodGradient.accent;
-  const isRussianLanguage = typeof language === "string" && language.toLowerCase().startsWith("ru");
   const heroMascotWrapStyle = useMemo(
     () =>
       isDarkMode
@@ -10458,6 +10390,8 @@ const FeedScreen = React.memo(
   const tamagotchiSpeechPrimedRef = useRef(false);
   const tamagotchiSpeechWarmupShownRef = useRef(false);
   const [tamagotchiSpeechWarmupVisible, setTamagotchiSpeechWarmupVisible] = useState(true);
+  const [heroLevelExpanded, setHeroLevelExpanded] = useState(false);
+  const heroLevelAnim = useRef(new Animated.Value(heroLevelExpanded ? 1 : 0)).current;
   const [heroRowWidth, setHeroRowWidth] = useState(0);
   const [heroLogoRight, setHeroLogoRight] = useState(0);
   const heroBubbleMaxWidth = useMemo(() => {
@@ -10465,6 +10399,18 @@ const FeedScreen = React.memo(
     return Math.max(90, heroRowWidth - heroLogoRight + 16);
   }, [heroRowWidth, heroLogoRight]);
   const heroBubbleTextMaxWidth = Math.max(0, heroBubbleMaxWidth - 16);
+  const toggleHeroLevelExpanded = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setHeroLevelExpanded((prev) => !prev);
+  }, []);
+  useEffect(() => {
+    Animated.timing(heroLevelAnim, {
+      toValue: heroLevelExpanded ? 1 : 0,
+      duration: 240,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [heroLevelAnim, heroLevelExpanded]);
   const clearTamagotchiSpeechTimer = useCallback(() => {
     if (tamagotchiSpeechTimerRef.current) {
       clearTimeout(tamagotchiSpeechTimerRef.current);
@@ -11085,124 +11031,78 @@ const FeedScreen = React.memo(
   const orderedProducts = useMemo(() => {
     const entries = Array.isArray(products) ? [...products] : [];
     if (!entries.length) return entries;
-    let primaryCard = null;
-    if (mainTemptationId) {
-      const primaryIndex = entries.findIndex((item) => item.id === mainTemptationId);
-      if (primaryIndex >= 0) {
-        primaryCard = entries.splice(primaryIndex, 1)[0];
-      }
-    }
-    const sortedEntries = entries
-      .sort((a, b) => {
-        const priceDiff = getTemptationPrice(a) - getTemptationPrice(b);
-        if (priceDiff !== 0) {
-          return priceDiff;
-        }
-        return (a.id || "").localeCompare(b.id || "");
-      })
-      .map((item, index) => ({ item, baseIndex: index }));
-    const frequentEntries = sortedEntries
-      .map((entry) => {
-        const stats = getInteractionEntry(entry.item);
-        if (!stats) return null;
-        const total = (stats.saveCount || 0) + (stats.spendCount || 0);
-        if (!total) return null;
-        return {
-          ...entry,
-          total,
-          lastInteractionAt: stats.lastInteractionAt || 0,
-        };
-      })
-      .filter(Boolean)
+    const shuffleSeed = feedShuffleSeedRef.current;
+    const enrichedEntries = entries.map((item, index) => {
+      const stats = getInteractionEntry(item);
+      const key = item?.id || item?.templateId || `item-${index}`;
+      const total = (stats?.saveCount || 0) + (stats?.spendCount || 0);
+      const lastInteractionAt = Number(stats?.lastInteractionAt) || 0;
+      const price = getTemptationPrice(item);
+      return {
+        item,
+        key,
+        total,
+        lastInteractionAt,
+        price,
+        shuffle: getSessionShuffleValue(shuffleSeed, key),
+      };
+    });
+    const recentEntries = enrichedEntries
+      .filter((entry) => entry.lastInteractionAt > 0)
+      .sort((a, b) => b.lastInteractionAt - a.lastInteractionAt)
+      .slice(0, 3);
+    const recentKeys = new Set(recentEntries.map((entry) => entry.key));
+    const popularEntries = enrichedEntries
+      .filter((entry) => entry.total > 0)
       .sort((a, b) => {
         if (b.total !== a.total) return b.total - a.total;
         if (b.lastInteractionAt !== a.lastInteractionAt) {
-          return (b.lastInteractionAt || 0) - (a.lastInteractionAt || 0);
+          return b.lastInteractionAt - a.lastInteractionAt;
         }
-        return a.baseIndex - b.baseIndex;
+        return a.price - b.price;
       })
       .slice(0, FEED_FREQUENT_PIN_LIMIT);
-    const pinnedIds = new Set(frequentEntries.map((entry) => entry.item.id));
-    const ordered = [];
-    if (primaryCard) {
-      ordered.push(primaryCard);
-    }
-    frequentEntries.forEach((entry) => ordered.push(entry.item));
-    sortedEntries
-      .filter((entry) => !pinnedIds.has(entry.item.id))
-      .forEach((entry) => ordered.push(entry.item));
-    return ordered;
-  }, [products, mainTemptationId, getInteractionEntry]);
+    const averagePopularPrice = popularEntries.length
+      ? popularEntries.reduce((sum, entry) => sum + entry.price, 0) / popularEntries.length
+      : null;
+    const popularPriceCap = Number.isFinite(averagePopularPrice)
+      ? averagePopularPrice * 1.3
+      : Number.POSITIVE_INFINITY;
+    const affordableEntries = [];
+    const premiumEntries = [];
+    enrichedEntries.forEach((entry) => {
+      if (recentKeys.has(entry.key)) return;
+      if (entry.price <= popularPriceCap) {
+        affordableEntries.push(entry);
+      } else {
+        premiumEntries.push(entry);
+      }
+    });
+    const priceSort = (a, b) => {
+      const priceDiff = a.price - b.price;
+      if (priceDiff !== 0) return priceDiff;
+      if (a.shuffle !== b.shuffle) return a.shuffle - b.shuffle;
+      return a.key.localeCompare(b.key);
+    };
+    affordableEntries.sort(priceSort);
+    premiumEntries.sort(priceSort);
+    return [...recentEntries, ...affordableEntries, ...premiumEntries].map(
+      (entry) => entry.item
+    );
+  }, [products, getInteractionEntry]);
 
   const filteredProducts = orderedProducts;
-  const frequencySections = useMemo(() => {
-    const buckets = TEMPTATION_FREQUENCY_ORDER.map((bucketId) => ({
-      id: bucketId,
-      title: t(TEMPTATION_FREQUENCY_BUCKETS[bucketId].sectionKey),
-      items: [],
-    }));
-    const bucketMap = buckets.reduce((acc, bucket) => {
-      acc[bucket.id] = bucket;
-      return acc;
-    }, {});
-    const unscheduled = [];
-    filteredProducts.forEach((product) => {
-      const entry = getInteractionEntry(product);
-      const rawBucketId = entry?.frequency && bucketMap[entry.frequency] ? entry.frequency : null;
-      const bucketId = rawBucketId
-        ? getDemotedFrequencyBucket(rawBucketId, entry?.lastInteractionAt || 0)
-        : null;
-      if (bucketId) {
-        bucketMap[bucketId].items.push(product);
-      } else {
-        unscheduled.push(product);
-      }
-    });
-    return { buckets, unscheduled };
-  }, [filteredProducts, getInteractionEntry, t]);
   const feedEntries = useMemo(() => {
-    const entries = [];
-    frequencySections.buckets.forEach((section) => {
-      if (!section.items.length) return;
-      entries.push({
-        type: "section",
-        id: `freq-${section.id}`,
-        sectionId: section.id,
-        title: section.title,
-        count: section.items.length,
-      });
-      if (!frequencyCollapseMap[section.id]) {
-        section.items.forEach((item) => {
-          entries.push({
-            type: "card",
-            id: `${section.id}-${item.id}`,
-            item,
-            interaction: getInteractionEntry(item),
-          });
-        });
-      }
+    return filteredProducts.map((item, index) => {
+      const key = item?.id || item?.templateId || `item-${index}`;
+      return {
+        type: "card",
+        id: `card-${key}`,
+        item,
+        interaction: getInteractionEntry(item),
+      };
     });
-    if (frequencySections.unscheduled.length) {
-      entries.push({
-        type: "section",
-        id: "freq-unscheduled",
-        sectionId: "unscheduled",
-        title: t("frequencySectionUnscheduled"),
-        count: frequencySections.unscheduled.length,
-      });
-      if (!frequencyCollapseMap.unscheduled) {
-        frequencySections.unscheduled.forEach((item) => {
-          entries.push({
-            type: "card",
-            id: `unscheduled-${item.id}`,
-            item,
-            interaction: getInteractionEntry(item),
-          });
-        });
-      }
-    }
-    return entries;
-  }, [frequencyCollapseMap, frequencySections, getInteractionEntry, t]);
+  }, [filteredProducts, getInteractionEntry]);
   const firstVisibleTemptationId = useMemo(() => {
     const firstCard = feedEntries.find(
       (entry) => entry?.type === "card" && entry.item?.id
@@ -11380,25 +11280,12 @@ const FeedScreen = React.memo(
   );
   const renderFeedItem = useCallback(
     ({ item: entry }) => {
-      if (entry.type === "section") {
-        const collapsed = !!frequencyCollapseMap[entry.sectionId];
-        return (
-          <FrequencySectionHeader
-            title={entry.title}
-            count={entry.count}
-            collapsed={collapsed}
-            onToggle={() => toggleFrequencySection(entry.sectionId)}
-            colors={colors}
-            t={t}
-          />
-        );
-      }
       if (entry.type === "card") {
         return renderTemptationCard(entry);
       }
       return null;
     },
-    [colors, frequencyCollapseMap, renderTemptationCard, t, toggleFrequencySection]
+    [renderTemptationCard]
   );
   const analyticsPreview = analyticsStats.slice(0, 3);
   const { wishesById, swipePinnedByTemplate } = useMemo(() => {
@@ -11457,84 +11344,136 @@ const FeedScreen = React.memo(
                     <Text style={[styles.heroTagline, { color: colors.muted }]}>
                       {t("appTagline")}
                     </Text>
-                  {moodPreset?.label && (
                     <TouchableOpacity
-                      style={[styles.moodBadge, heroMoodBadgeStyle]}
-                      onPress={onMoodDetailsOpen}
+                      style={[
+                        styles.heroLevelBadge,
+                        {
+                          backgroundColor: goldPalette.badgeBg,
+                          borderColor: goldPalette.badgeBorder,
+                        },
+                      ]}
+                      onPress={toggleHeroLevelExpanded}
+                      activeOpacity={0.85}
                     >
-                      <Text
-                        style={[
-                          styles.moodBadgeText,
-                          isRussianLanguage && styles.moodBadgeTextRu,
-                          { color: heroMoodBadgeTextColor },
-                        ]}
-                      >
-                        {moodPreset.label}
+                      <Text style={[styles.heroLevelBadgeText, { color: goldPalette.badgeText }]}>
+                        {levelLabel}
                       </Text>
                     </TouchableOpacity>
-                  )}
-                </View>
-                {!hideMascot && (
-                  <View style={styles.heroMascotContainer}>
-                    {showTamagotchiBubble && (
-                      <View pointerEvents="none" style={styles.mascotBubbleWrap}>
-                        <View
-                          style={[
-                            styles.mascotBubble,
-                            {
-                              maxWidth: heroBubbleMaxWidth,
-                              backgroundColor: tamagotchiBubbleTheme.backgroundColor,
-                              borderColor: tamagotchiBubbleTheme.borderColor,
-                              shadowColor: tamagotchiBubbleTheme.shadowColor,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.mascotBubbleText,
-                              { color: tamagotchiBubbleTheme.textColor, maxWidth: heroBubbleTextMaxWidth },
-                            ]}
-                            numberOfLines={3}
-                            ellipsizeMode="tail"
-                          >
-                            {tamagotchiSpeech}
-                          </Text>
+                  </View>
+                  {!hideMascot && (
+                    <View style={styles.heroMascotContainer}>
+                      {showTamagotchiBubble && (
+                        <View pointerEvents="none" style={styles.mascotBubbleWrap}>
                           <View
                             style={[
-                              styles.mascotBubbleTail,
-                              { backgroundColor: tamagotchiBubbleTheme.backgroundColor },
+                              styles.mascotBubble,
+                              {
+                                maxWidth: heroBubbleMaxWidth,
+                                backgroundColor: tamagotchiBubbleTheme.backgroundColor,
+                                borderColor: tamagotchiBubbleTheme.borderColor,
+                                shadowColor: tamagotchiBubbleTheme.shadowColor,
+                              },
                             ]}
-                          />
+                          >
+                            <Text
+                              style={[
+                                styles.mascotBubbleText,
+                                { color: tamagotchiBubbleTheme.textColor, maxWidth: heroBubbleTextMaxWidth },
+                              ]}
+                              numberOfLines={3}
+                              ellipsizeMode="tail"
+                            >
+                              {tamagotchiSpeech}
+                            </Text>
+                            <View
+                              style={[
+                                styles.mascotBubbleTail,
+                                { backgroundColor: tamagotchiBubbleTheme.backgroundColor },
+                              ]}
+                            />
+                          </View>
                         </View>
-                      </View>
-                    )}
-                    <TouchableOpacity onPress={onMascotPress} activeOpacity={0.9}>
-                    <AlmiTamagotchi
-                      style={heroMascotWrapStyle}
-                      override={mascotOverride}
-                      onOverrideComplete={onMascotAnimationComplete}
-                      isStarving={tamagotchiMood?.tone === "urgent"}
-                      animations={tamagotchiAnimations}
-                    />
-                    </TouchableOpacity>
-                  </View>
-                )}
+                      )}
+                      <TouchableOpacity onPress={onMascotPress} activeOpacity={0.9}>
+                        <AlmiTamagotchi
+                          style={heroMascotWrapStyle}
+                          override={mascotOverride}
+                          onOverrideComplete={onMascotAnimationComplete}
+                          isStarving={tamagotchiMood?.tone === "urgent"}
+                          animations={tamagotchiAnimations}
+                        />
+                      </TouchableOpacity>
+                      {dailyRewardReady && (
+                        <View style={styles.heroMascotBadge}>
+                          <Text style={styles.heroMascotBadgeText}>1</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
               </View>
+              <Animated.View
+                pointerEvents={heroLevelExpanded ? "auto" : "none"}
+                style={[
+                  styles.heroLevelExpandedCard,
+                  {
+                    maxHeight: heroLevelExpanded ? 240 : 0,
+                    marginTop: heroLevelExpanded ? 12 : 0,
+                    opacity: heroLevelAnim,
+                    transform: [
+                      {
+                        translateY: heroLevelAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [-6, 0],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.heroLevelDetails,
+                    {
+                      backgroundColor: goldPalette.badgeBg,
+                      borderColor: goldPalette.badgeBorder,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.heroLevelTitle, { color: goldPalette.text }]}>
+                    {t("levelWidgetTitle")}
+                  </Text>
+                  <Text style={[styles.heroLevelSubtitle, { color: goldPalette.subtext }]}>
+                    {heroLevelHasNext
+                      ? t("levelWidgetSubtitle", { amount: heroLevelRemainingLabel })
+                      : t("levelWidgetMaxed")}
+                  </Text>
+                  <View style={[styles.levelWidgetBar, { backgroundColor: goldPalette.barBg }]}>
+                    <View
+                      style={[
+                        styles.levelWidgetFill,
+                        {
+                          backgroundColor: goldPalette.accent,
+                          width: `${Math.min(Math.max(heroLevelProgress, 0), 1) * 100}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              </Animated.View>
             </MoodGradientBlock>
           </View>
           <SavingsHeroCard
+            ref={savingsHeroRef}
             goldPalette={goldPalette}
             isDarkMode={isDarkMode}
             heroSpendCopy={heroSpendCopy}
             heroRecentEvents={heroRecentEvents}
             heroEncouragementLine={heroEncouragementLine}
             onRecentEventsPress={openHistoryModal}
-            levelLabel={levelLabel}
             playerLevel={playerLevel}
             totalSavedLabel={totalSavedLabel}
             progressPercent={progressPercent}
             progressPercentLabel={progressPercentLabel}
-            goalProgressLabel={goalProgressLabel}
             isGoalComplete={isGoalComplete}
             completionLabel={t("goalWidgetComplete")}
             t={t}
@@ -11549,16 +11488,12 @@ const FeedScreen = React.memo(
             hasActiveGoal={heroHasActiveGoal}
             onBaselineSetup={handleBaselineSetup}
             onPotentialDetailsOpen={handlePotentialDetailsOpen}
-            levelHasNext={heroLevelHasNext}
-            levelRemainingLabel={heroLevelRemainingLabel}
-            levelTargetLabel={heroLevelTargetLabel}
-            levelProgressValue={heroLevelProgress}
             healthPoints={healthPoints}
             onBreakdownPress={onSavingsBreakdownPress}
-          dailyRewardUnlocked={dailyRewardUnlocked}
-          dailyRewardReady={dailyRewardReady}
-          dailyRewardAmount={dailyRewardAmount}
-          dailyRewardBaseAmount={dailyRewardBaseAmount}
+            dailyRewardUnlocked={dailyRewardUnlocked}
+            dailyRewardReady={dailyRewardReady}
+            dailyRewardAmount={dailyRewardAmount}
+            dailyRewardBaseAmount={dailyRewardBaseAmount}
             dailyRewardDay={dailyRewardDay}
             onDailyRewardClaim={onDailyRewardClaim}
             onDailyRewardModalVisibilityChange={onDailyRewardModalVisibilityChange}
@@ -17474,7 +17409,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
 });
 
 function AppContent() {
-  const [fontsLoaded, fontsError] = useFonts({
+  const [fontsLoaded, fontsError] = safeUseFonts({
     Inter_300Light,
     Inter_400Regular,
     Inter_500Medium,
@@ -17507,7 +17442,7 @@ function AppContent() {
   }, []);
   const stopAllSounds = useCallback(() => {
     Object.values(soundsRef.current).forEach((sound) => {
-      sound?.stopAsync?.().catch(() => {});
+      sound?.stopAsync?.()?.catch?.(() => {});
     });
   }, []);
   const playSound = useCallback(async (key, options = {}) => {
@@ -17608,7 +17543,7 @@ function AppContent() {
       active = false;
       task?.cancel?.();
       Object.values(soundsRef.current).forEach((sound) => {
-        sound?.unloadAsync?.().catch(() => {});
+        sound?.unloadAsync?.()?.catch?.(() => {});
       });
       soundsRef.current = {};
     };
@@ -17985,6 +17920,7 @@ function AppContent() {
     healthHydrated &&
     dailyRewardLastKey !== todayKey &&
     dailyRewardAmount > 0;
+  const dailyRewardUnlockLevel = FEATURE_UNLOCK_LEVELS.rewardsDaily || 2;
   const dailyRewardDisplayAmount =
     dailyRewardReady ? dailyRewardAmount : dailyRewardState.lastAmount || dailyRewardAmount || 0;
   useEffect(() => {
@@ -18461,6 +18397,7 @@ function AppContent() {
   const overlayTimer = useRef(null);
   const overlayRetryTimerRef = useRef(null);
   const feedScreenRef = useRef(null);
+  const savingsHeroRef = useRef(null);
 
   const overlayQueueRef = useRef([]);
   const overlayActiveRef = useRef(false);
@@ -19596,6 +19533,13 @@ function AppContent() {
     });
   }, [logEvent]);
   const closeTamagotchiOverlay = useCallback(() => setTamagotchiVisible(false), []);
+  const handleTamagotchiDailyRewardPress = useCallback(() => {
+    if (!dailyRewardReady) return;
+    closeTamagotchiOverlay();
+    setTimeout(() => {
+      savingsHeroRef.current?.openDailyRewardModal?.();
+    }, 220);
+  }, [closeTamagotchiOverlay, dailyRewardReady]);
   const [fabMenuVisible, setFabMenuVisible] = useState(false);
   const fabMenuAnim = useRef(new Animated.Value(0)).current;
   const tamagotchiMood = useMemo(
@@ -19891,7 +19835,7 @@ function AppContent() {
   }, []);
   const readScheduledNotificationTimes = useCallback(async () => {
     try {
-      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const scheduled = await safeNotifications.getAllScheduledNotificationsAsync();
       const nowTs = Date.now();
       return (Array.isArray(scheduled) ? scheduled : [])
         .map((entry) => resolveNotificationTriggerTime(entry?.trigger, nowTs))
@@ -19906,7 +19850,7 @@ function AppContent() {
     async (dedupeKey) => {
       if (!dedupeKey) return null;
       try {
-        const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+        const scheduled = await safeNotifications.getAllScheduledNotificationsAsync();
         const entries = Array.isArray(scheduled) ? scheduled : [];
         for (let idx = 0; idx < entries.length; idx += 1) {
           const entry = entries[idx];
@@ -19924,7 +19868,7 @@ function AppContent() {
   );
   const getScheduledTamagotchiHungerCounts = useCallback(async () => {
     try {
-      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const scheduled = await safeNotifications.getAllScheduledNotificationsAsync();
       const nowTs = Date.now();
       return (Array.isArray(scheduled) ? scheduled : []).reduce((acc, entry) => {
         if (entry?.content?.data?.kind !== "tamagotchi_hunger") return acc;
@@ -19942,7 +19886,7 @@ function AppContent() {
   }, [resolveNotificationTriggerTime]);
   const cleanupStaleEventNotifications = useCallback(async () => {
     try {
-      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const scheduled = await safeNotifications.getAllScheduledNotificationsAsync();
       const nowTs = Date.now();
       const staleIds = (Array.isArray(scheduled) ? scheduled : []).reduce((acc, entry) => {
         const data = entry?.content?.data || {};
@@ -19967,7 +19911,7 @@ function AppContent() {
       }, []);
       if (!staleIds.length) return;
       await Promise.all(
-        staleIds.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {}))
+        staleIds.map((id) => safeNotifications.cancelScheduledNotificationAsync(id))
       );
     } catch (error) {
       console.warn("stale notification cleanup", error);
@@ -20023,7 +19967,7 @@ function AppContent() {
         }
         scheduledFor = adjustedTime;
       }
-      const id = await Notifications.scheduleNotificationAsync({
+      const id = await safeNotifications.scheduleNotificationAsync({
         ...request,
         trigger: finalTrigger,
       });
@@ -20068,7 +20012,7 @@ function AppContent() {
   const spendPromptLockRef = useRef(false);
   const spendExecutionLockRef = useRef(false);
   const [stormActive, setStormActive] = useState(false);
-  const safeAreaInsets = useSafeAreaInsets();
+  const safeAreaInsets = safeUseSafeAreaInsets();
   const iosTabInset = Platform.OS === "ios" ? Math.max((safeAreaInsets.bottom || 0) - 8, 0) : 0;
   const androidNavInset = Platform.OS === "android" ? Math.max(safeAreaInsets.bottom || 0, 0) : 0;
   const tabBarBottomInset = Platform.OS === "ios" ? iosTabInset : androidNavInset;
@@ -21394,6 +21338,11 @@ function AppContent() {
     },
     [formatTranslationText, resolveTranslationValue]
   );
+  const dailyRewardButtonLabel = dailyRewardUnlocked
+    ? dailyRewardReady
+      ? t("dailyRewardClaimHint")
+      : t("dailyRewardCollectedLabel")
+    : t("progressHeroLevel", { level: dailyRewardUnlockLevel });
   const formatHealthRewardText = useCallback(
     (amount) => formatHealthRewardLabel(amount, language),
     [language]
@@ -21544,19 +21493,20 @@ function AppContent() {
   }, [refreshMoodForToday]);
   const ensureNotificationPermission = useCallback(async ({ request = true } = {}) => {
     try {
-      let settings = await Notifications.getPermissionsAsync();
+      const provisionalStatus = Notifications?.IosAuthorizationStatus?.PROVISIONAL;
+      let settings = (await safeNotifications.getPermissionsAsync()) || {};
       let granted =
         settings.granted ||
-        settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+        (provisionalStatus && settings.ios?.status === provisionalStatus);
       if (!granted && request) {
         suppressResumeOnceRef.current = true;
-        settings = await Notifications.requestPermissionsAsync();
+        settings = (await safeNotifications.requestPermissionsAsync()) || {};
         if (appStateRef.current === "active") {
           suppressResumeOnceRef.current = false;
         }
         granted =
           settings.granted ||
-          settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+          (provisionalStatus && settings.ios?.status === provisionalStatus);
       }
       setNotificationPermissionGranted(granted);
       return granted;
@@ -21703,7 +21653,7 @@ function AppContent() {
       }
       const actionIdentifier = response?.actionIdentifier;
       const isDefaultTap =
-        !actionIdentifier || actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER;
+        !actionIdentifier || actionIdentifier === DEFAULT_NOTIFICATION_ACTION_IDENTIFIER;
       if (!isDefaultTap) {
         notificationActionHandlerRef.current?.({
           actionIdentifier,
@@ -21742,13 +21692,15 @@ function AppContent() {
   );
   useEffect(() => {
     let isMounted = true;
-    Notifications.getLastNotificationResponseAsync()
+    safeNotifications
+      .getLastNotificationResponseAsync()
       .then((response) => {
         if (!isMounted) return;
+        if (!response) return;
         handleNotificationOpenFromPush(response);
       })
       .catch(() => {});
-    const subscription = Notifications.addNotificationResponseReceivedListener(
+    const subscription = safeNotifications.addNotificationResponseReceivedListener(
       handleNotificationOpenFromPush
     );
     return () => {
@@ -21759,7 +21711,7 @@ function AppContent() {
     };
   }, [handleNotificationOpenFromPush]);
   useEffect(() => {
-    const subscription = Notifications.addNotificationReceivedListener((notification) => {
+    const subscription = safeNotifications.addNotificationReceivedListener((notification) => {
       const now = Date.now();
       lastInstantNotificationRef.current = now;
       AsyncStorage.setItem(STORAGE_KEYS.LAST_NOTIFICATION_AT, String(now)).catch(() => {});
@@ -21904,7 +21856,7 @@ function AppContent() {
       const allowed = await ensureNotificationPermission({ request: false });
       if (!allowed) return false;
       try {
-        await Notifications.scheduleNotificationAsync({
+        await safeNotifications.scheduleNotificationAsync({
           content,
           trigger: null,
         });
@@ -21924,27 +21876,32 @@ function AppContent() {
 
   useEffect(() => {
     if (Platform.OS !== "android") return;
-    Notifications.setNotificationChannelAsync(ANDROID_DAILY_NUDGE_CHANNEL_ID, {
+    const importance =
+      Notifications?.AndroidImportance?.HIGH ?? Notifications?.AndroidImportance?.DEFAULT ?? 4;
+    const visibility =
+      Notifications?.AndroidNotificationVisibility?.PUBLIC ??
+      Notifications?.AndroidNotificationVisibility?.PRIVATE;
+    safeNotifications.setNotificationChannelAsync(ANDROID_DAILY_NUDGE_CHANNEL_ID, {
       name: "Daily nudges",
-      importance: Notifications.AndroidImportance.HIGH,
+      importance,
       sound: true,
       vibrationPattern: [250, 250, 250],
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    }).catch(() => {});
-    Notifications.setNotificationChannelAsync(ANDROID_TAMAGOTCHI_CHANNEL_ID, {
+      lockscreenVisibility: visibility,
+    });
+    safeNotifications.setNotificationChannelAsync(ANDROID_TAMAGOTCHI_CHANNEL_ID, {
       name: "Tamagotchi hunger",
-      importance: Notifications.AndroidImportance.HIGH,
+      importance,
       sound: true,
       vibrationPattern: [250, 250, 250],
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    }).catch(() => {});
-    Notifications.setNotificationChannelAsync(ANDROID_REPORTS_CHANNEL_ID, {
+      lockscreenVisibility: visibility,
+    });
+    safeNotifications.setNotificationChannelAsync(ANDROID_REPORTS_CHANNEL_ID, {
       name: "Weekly reports",
-      importance: Notifications.AndroidImportance.HIGH,
+      importance,
       sound: true,
       vibrationPattern: [250, 250, 250],
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    }).catch(() => {});
+      lockscreenVisibility: visibility,
+    });
   }, []);
   useEffect(() => {
     const actions = [
@@ -21959,29 +21916,46 @@ function AppContent() {
         options: { opensAppToForeground: true },
       },
     ];
-    Notifications.setNotificationCategoryAsync(ACTIONABLE_NOTIFICATION_CATEGORY_ID, actions).catch(() => {});
+    safeNotifications.setNotificationCategoryAsync(ACTIONABLE_NOTIFICATION_CATEGORY_ID, actions);
   }, [t]);
 
   useEffect(() => {
     dailyNudgeIdsRef.current = dailyNudgeNotificationIds || {};
   }, [dailyNudgeNotificationIds]);
   useEffect(() => {
-    pendingListRef.current = Array.isArray(pendingList) ? pendingList : [];
+    pendingListRef.current =
+      pendingList && typeof pendingList.length === "number" ? pendingList : [];
   }, [pendingList]);
+  const pendingListLength =
+    pendingList && typeof pendingList.length === "number" ? pendingList.length : 0;
   useEffect(() => {
-    if (Platform.OS !== "ios") return;
-    if (!pendingList?.length) {
-      setPendingBadgeTick(0);
+    try {
+      if (Platform.OS !== "ios") return undefined;
+      const canSchedule = typeof setInterval === "function" && typeof clearInterval === "function";
+      const canSetTick = typeof setPendingBadgeTick === "function";
+      if (!pendingListLength || !canSchedule || !canSetTick) {
+        if (canSetTick) {
+          setPendingBadgeTick(0);
+        }
+        return undefined;
+      }
+      const intervalId = setInterval(() => {
+        try {
+          setPendingBadgeTick((prev) => prev + 1);
+        } catch (error) {
+          console.warn("pending badge tick", error);
+        }
+      }, PENDING_BADGE_TICK_MS);
+      return () => clearInterval(intervalId);
+    } catch (error) {
+      console.warn("pending badge effect", error);
       return undefined;
     }
-    const intervalId = setInterval(() => {
-      setPendingBadgeTick((prev) => prev + 1);
-    }, PENDING_BADGE_TICK_MS);
-    return () => clearInterval(intervalId);
-  }, [pendingList?.length]);
+  }, [pendingListLength]);
   const pendingActionCount = useMemo(() => {
     const now = Date.now();
-    return (Array.isArray(pendingList) ? pendingList : []).reduce((count, item) => {
+    const list = pendingList && typeof pendingList.length === "number" ? pendingList : [];
+    return list.reduce((count, item) => {
       const dueAt = Number(item?.decisionDue) || 0;
       if (dueAt > 0 && dueAt <= now) return count + 1;
       return count;
@@ -21990,7 +21964,7 @@ function AppContent() {
   useEffect(() => {
     if (Platform.OS !== "ios") return;
     const count = Math.max(0, pendingActionCount || 0);
-    Notifications.setBadgeCountAsync(count).catch(() => {});
+    safeNotifications.setBadgeCountAsync(count);
   }, [pendingActionCount]);
 
   useEffect(() => {
@@ -22152,7 +22126,7 @@ function AppContent() {
     if (!staleEntries.length) return;
     staleEntries.forEach((entry) => {
       entry.reminderNotificationIds.forEach((id) => {
-        Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+        safeNotifications.cancelScheduledNotificationAsync(id);
       });
     });
     setChallengesState((prev) => {
@@ -22258,7 +22232,7 @@ function AppContent() {
           (typeof meta?.pendingId === "string" && meta.pendingId
             ? `pending:${meta.pendingId}`
             : null);
-        const scheduledId = await Notifications.scheduleNotificationAsync({
+        const scheduledId = await safeNotifications.scheduleNotificationAsync({
           content: {
             title: pendingTitle,
             body: pendingBody,
@@ -23626,7 +23600,7 @@ function AppContent() {
         customSpend.frequencyPerWeek <= 0
       ) {
         if (customReminderId) {
-          Notifications.cancelScheduledNotificationAsync(customReminderId).catch(() => {});
+          safeNotifications.cancelScheduledNotificationAsync(customReminderId);
           persistCustomReminderId(null);
         }
         return;
@@ -23634,7 +23608,7 @@ function AppContent() {
       const permitted = await ensureNotificationPermission({ request: false });
       if (!permitted) return;
       if (customReminderId) {
-        await Notifications.cancelScheduledNotificationAsync(customReminderId).catch(() => {});
+        await safeNotifications.cancelScheduledNotificationAsync(customReminderId);
       }
       const frequency = Math.max(1, customSpend.frequencyPerWeek);
       const intervalDays = Math.max(1, Math.round(7 / frequency));
@@ -23656,7 +23630,7 @@ function AppContent() {
   );
   const clearLegacyDailyNudges = useCallback(async () => {
     try {
-      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const scheduled = await safeNotifications.getAllScheduledNotificationsAsync();
       if (!Array.isArray(scheduled) || !scheduled.length) return;
       const identifiers = scheduled
         .filter((entry) => isKnownDailyNudgeNotification(entry?.content))
@@ -23664,9 +23638,7 @@ function AppContent() {
         .filter(Boolean);
       if (!identifiers.length) return;
       await Promise.all(
-        identifiers.map((id) =>
-          Notifications.cancelScheduledNotificationAsync(id).catch(() => {})
-        )
+        identifiers.map((id) => safeNotifications.cancelScheduledNotificationAsync(id))
       );
     } catch (error) {
       console.warn("daily nudge cleanup", error);
@@ -23701,7 +23673,7 @@ function AppContent() {
     if (existing.length) {
       await Promise.all(
         existing.map((notificationId) =>
-          Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => {})
+          safeNotifications.cancelScheduledNotificationAsync(notificationId)
         )
       );
     }
@@ -23788,7 +23760,7 @@ function AppContent() {
     if (!reportsWeeklyNotificationHydrated) return;
     if (notificationPermissionGranted !== false) return;
     if (!reportsWeeklyNotificationId) return;
-    Notifications.cancelScheduledNotificationAsync(reportsWeeklyNotificationId).catch(() => {});
+    safeNotifications.cancelScheduledNotificationAsync(reportsWeeklyNotificationId);
     setReportsWeeklyNotificationId(null);
   }, [notificationPermissionGranted, reportsWeeklyNotificationHydrated, reportsWeeklyNotificationId]);
 
@@ -25265,7 +25237,7 @@ function AppContent() {
     if (!ids.length) return;
     await Promise.all(
       ids.map((notificationId) =>
-        Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => {})
+        safeNotifications.cancelScheduledNotificationAsync(notificationId)
       )
     );
     persistTamagotchiHungerNotificationIds([]);
@@ -26319,9 +26291,7 @@ useEffect(() => {
       if (ids.length) {
         await Promise.all(
           ids.map((reminderId) =>
-            Notifications.cancelScheduledNotificationAsync(reminderId).catch((error) =>
-              console.warn("frequency reminder cancel", error)
-            )
+            safeNotifications.cancelScheduledNotificationAsync(reminderId)
           )
         );
       }
@@ -26419,7 +26389,7 @@ useEffect(() => {
         if (cancelled) {
           if (reminderIds.length) {
             reminderIds.forEach((reminderId) =>
-              Notifications.cancelScheduledNotificationAsync(reminderId).catch(() => {})
+              safeNotifications.cancelScheduledNotificationAsync(reminderId)
             );
           }
           return;
@@ -28455,7 +28425,7 @@ useEffect(() => {
       });
       if (toCancel.length) {
         await Promise.all(
-          toCancel.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {}))
+          toCancel.map((id) => safeNotifications.cancelScheduledNotificationAsync(id))
         );
       }
       if (toCancel.length) {
@@ -32149,7 +32119,7 @@ useEffect(() => {
       if (!pendingItem) return;
       if (pendingItem.notificationId) {
         try {
-          await Notifications.cancelScheduledNotificationAsync(pendingItem.notificationId);
+          await safeNotifications.cancelScheduledNotificationAsync(pendingItem.notificationId);
         } catch (error) {
           console.warn("cancel reminder", error);
         }
@@ -32298,7 +32268,7 @@ useEffect(() => {
       const performDelete = async () => {
         if (pendingItem.notificationId) {
           try {
-            await Notifications.cancelScheduledNotificationAsync(pendingItem.notificationId);
+            await safeNotifications.cancelScheduledNotificationAsync(pendingItem.notificationId);
           } catch (error) {
             console.warn("cancel reminder", error);
           }
@@ -32328,7 +32298,7 @@ useEffect(() => {
       const title = pendingItem.title || template?.title?.[language] || template?.title?.en || "Goal";
       const nextDue = Date.now() + PENDING_EXTENSION_MS;
       if (pendingItem.notificationId) {
-        Notifications.cancelScheduledNotificationAsync(pendingItem.notificationId).catch(() => {});
+        safeNotifications.cancelScheduledNotificationAsync(pendingItem.notificationId);
       }
       const reminderId = await schedulePendingReminder(title, nextDue, {
         pendingId: pendingItem.id,
@@ -33078,7 +33048,7 @@ useEffect(() => {
       const currentEntry = challengesState[challengeId];
       if (!currentEntry || currentEntry.status !== CHALLENGE_STATUS.COMPLETED) return;
       (currentEntry.reminderNotificationIds || []).forEach((id) => {
-        Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+        safeNotifications.cancelScheduledNotificationAsync(id);
       });
       triggerSuccessHaptic();
       setChallengesState((prev) => {
@@ -33119,7 +33089,7 @@ useEffect(() => {
         const entry = prev[challengeId];
         if (!entry || entry.status !== CHALLENGE_STATUS.ACTIVE) return prev;
         (entry.reminderNotificationIds || []).forEach((id) => {
-          Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+          safeNotifications.cancelScheduledNotificationAsync(id);
         });
         logEvent("challenge_cancelled", { challenge_id: challengeId });
         return {
@@ -33168,13 +33138,13 @@ useEffect(() => {
               console.warn("reset", error);
             }
             AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "pending").catch(() => {});
-            Notifications.cancelAllScheduledNotificationsAsync?.().catch(() => {});
+            safeNotifications.cancelAllScheduledNotificationsAsync();
             try {
               await Promise.all(
                 pendingList
                   .filter((entry) => entry.notificationId)
                   .map((entry) =>
-                    Notifications.cancelScheduledNotificationAsync(entry.notificationId).catch(() => {})
+                    safeNotifications.cancelScheduledNotificationAsync(entry.notificationId)
                   )
               );
             } catch {}
@@ -33184,7 +33154,7 @@ useEffect(() => {
               );
               await Promise.all(
                 challengeReminderIds.map((id) =>
-                  Notifications.cancelScheduledNotificationAsync(id).catch(() => {})
+                  safeNotifications.cancelScheduledNotificationAsync(id)
                 )
               );
             } catch {}
@@ -33195,7 +33165,7 @@ useEffect(() => {
               if (hungerIds.length) {
                 await Promise.all(
                   hungerIds.map((id) =>
-                    Notifications.cancelScheduledNotificationAsync(id).catch(() => {})
+                    safeNotifications.cancelScheduledNotificationAsync(id)
                   )
                 );
               }
@@ -33321,7 +33291,7 @@ useEffect(() => {
               overlayTimer.current = null;
             }
             if (customReminderId) {
-              Notifications.cancelScheduledNotificationAsync(customReminderId).catch(() => {});
+              safeNotifications.cancelScheduledNotificationAsync(customReminderId);
             }
             persistCustomReminderId(null);
             try {
@@ -33685,6 +33655,7 @@ useEffect(() => {
             onTemptationGoalSelect={openGoalLinkPrompt}
             onTemptationSwipeDelete={handleTemptationDelete}
             onSavingsBreakdownPress={openSavingsBreakdown}
+            savingsHeroRef={savingsHeroRef}
             resolveTemplateTitle={resolveTemplateTitle}
             resolveTemptationCategory={resolveTemptationCategory}
             tamagotchiMood={tamagotchiMood}
@@ -35218,6 +35189,30 @@ useEffect(() => {
                   </Text>
                   {renderTamagotchiFoodList()}
                   <View style={styles.tamagotchiActions}>
+                    <TouchableOpacity
+                      style={[
+                        styles.tamagotchiButton,
+                        {
+                          backgroundColor: colors.card,
+                          borderColor: dailyRewardReady ? SAVE_ACTION_COLOR : colors.border,
+                          opacity: dailyRewardReady ? 1 : 0.6,
+                        },
+                      ]}
+                      onPress={handleTamagotchiDailyRewardPress}
+                      activeOpacity={dailyRewardReady ? 0.85 : 1}
+                    >
+                      <View style={styles.tamagotchiButtonContent}>
+                        <Text style={styles.tamagotchiRewardIcon}>🎁</Text>
+                        <Text
+                          style={[styles.tamagotchiButtonText, { color: colors.text }]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.8}
+                        >
+                          {dailyRewardButtonLabel}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
                     <TouchableOpacity
                       style={[
                         styles.tamagotchiButton,
@@ -37331,6 +37326,23 @@ const styles = StyleSheet.create({
   moodBadgeTextRu: {
     ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
   },
+  heroLevelBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginTop: 16,
+  },
+  heroLevelBadgeText: {
+    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+  },
+  heroLevelExpandedCard: {
+    alignSelf: "stretch",
+    marginTop: 12,
+    marginBottom: 0,
+    overflow: "hidden",
+  },
   moodDetailsBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -37401,6 +37413,27 @@ const styles = StyleSheet.create({
     marginTop: 52,
     width: HERO_MASCOT_SIZE,
     height: HERO_MASCOT_SIZE,
+  },
+  heroMascotBadge: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 999,
+    backgroundColor: "#FF4D4F",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.9)",
+    zIndex: 8,
+    elevation: 6,
+  },
+  heroMascotBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#fff",
   },
   heroTextWrap: {
     flex: 1,
@@ -38049,6 +38082,9 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
   },
+  tamagotchiRewardIcon: {
+    fontSize: 16,
+  },
   tamagotchiPreview: {
     alignItems: "center",
     justifyContent: "center",
@@ -38164,19 +38200,19 @@ const styles = StyleSheet.create({
     marginTop: Platform.OS === "ios" ? 6 : 10,
   },
   progressHeroCard: {
-    marginTop: 8,
-    borderRadius: 24,
+    marginTop: 10,
+    borderRadius: 28,
     padding: 18,
     borderWidth: 1,
   },
   savedHeroCard: {
     marginTop: 12,
-    padding: 18,
-    borderRadius: 26,
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
+    padding: IS_SHORT_DEVICE ? 16 : 22,
+    borderRadius: 30,
+    shadowOpacity: 0.12,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 9,
     overflow: "hidden",
     position: "relative",
   },
@@ -38186,19 +38222,19 @@ const styles = StyleSheet.create({
   },
   savedHeroGlow: {
     position: "absolute",
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    top: -40,
-    right: -30,
-    opacity: 0.6,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    top: -120,
+    left: -40,
+    opacity: 0.35,
     zIndex: -1,
   },
   savedHeroGlowBottom: {
-    width: 120,
-    height: 120,
-    bottom: -30,
-    left: -10,
+    width: 200,
+    height: 200,
+    bottom: -120,
+    right: -40,
     zIndex: -1,
   },
   savedHeroContent: {
@@ -38206,34 +38242,35 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   savedHeroHeader: {
-    marginBottom: 2,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
+    marginBottom: 4,
+    alignItems: "center",
+    justifyContent: "center",
     position: "relative",
-    paddingRight: 96,
   },
   savedHeroTitleWrap: {
     flex: 1,
+    paddingRight: 8,
   },
   savedHeroSubtitle: {
     ...createBodyText({
-      fontSize: Platform.OS === "ios" ? 13 : 15,
-      marginTop: Platform.OS === "ios" ? 4 : 6,
-      marginBottom: 8,
+      fontSize: Platform.OS === "ios" ? 12 : 14,
+      marginTop: 6,
+      marginBottom: 10,
       lineHeight: Platform.OS === "ios" ? 18 : 20,
       width: "100%",
+      textAlign: "center",
     }),
   },
   savedHeroRecentList: {
     width: "100%",
     alignSelf: "stretch",
-    marginTop: 0,
+    marginTop: 10,
     gap: Platform.OS === "ios" ? 4 : 6,
-    marginBottom: 14,
+    marginBottom: 10,
+    paddingHorizontal: 6,
   },
   savedHeroRecentTitle: {
-    ...createCtaText({ fontSize: 11 }),
+    ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
   },
   savedHeroRecentItem: {
     ...createBodyText({
@@ -38242,22 +38279,14 @@ const styles = StyleSheet.create({
     }),
     width: "100%",
     flexShrink: 1,
+    textAlign: "left",
   },
-  savedHeroLevelButton: {
-    paddingHorizontal: 6,
-    paddingVertical: 6,
-    position: "absolute",
-    top: -18,
-    right: -8,
-  },
-  savedHeroLevelBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderWidth: 1,
-  },
-  savedHeroLevelText: {
-    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
+  savedHeroDivider: {
+    height: 1,
+    width: "100%",
+    opacity: 0.6,
+    marginTop: 2,
+    marginBottom: 12,
   },
   dailyRewardButton: {
     borderRadius: 16,
@@ -38408,8 +38437,11 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   savedHeroAmountWrap: {
-    marginTop: 0,
-    marginBottom: 4,
+    marginTop: 2,
+    marginBottom: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   heroLevelDetails: {
     borderRadius: 16,
@@ -38482,7 +38514,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginBottom: 10,
+    marginBottom: 6,
   },
   savedHeroBar: {
     flex: 1,
@@ -38502,24 +38534,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
+    marginTop: 0,
+    marginBottom: 8,
   },
   goalLabel: {
     ...createCtaText({ fontSize: 12 }),
+  },
+  savedHeroGoalPercent: {
+    fontSize: 14,
+    fontWeight: "700",
   },
   savedHeroGoalMetaRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-    marginTop: 2,
+    marginTop: 8,
   },
   savedHeroGoalMetaActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-  },
-  savedHeroGoalLabel: {
-    ...createBodyText({ fontSize: 13, flex: 1 }),
   },
   goalCompleteBadge: {
     borderRadius: 999,
@@ -39368,24 +39403,24 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   progressHeroTitle: {
-    ...TYPOGRAPHY.blockTitle,
-    fontSize: Platform.OS === "ios" ? 22 : 24,
-    lineHeight: Platform.OS === "ios" ? 26 : undefined,
-    fontFamily: INTER_FONTS.extraBold,
-    marginRight: Platform.OS === "ios" ? 8 : 0,
+    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+    letterSpacing: scaleLetterSpacing(1.1),
+    textAlign: "center",
   },
   progressHeroAmount: {
-    fontSize: 26,
+    fontSize: IS_SHORT_DEVICE ? 36 : Platform.OS === "ios" ? 44 : 46,
     fontWeight: "900",
     fontFamily: INTER_FONTS.extraBold,
-    marginBottom: 6,
+    lineHeight: IS_SHORT_DEVICE ? 40 : Platform.OS === "ios" ? 48 : 50,
+    letterSpacing: Platform.OS === "ios" ? -0.6 : -0.8,
+    textAlign: "center",
   },
   progressHeroLevel: {
     fontSize: 14,
     fontWeight: "600",
   },
   progressHeroBar: {
-    height: 10,
+    height: 8,
     borderRadius: 999,
     overflow: "hidden",
     marginBottom: 8,
