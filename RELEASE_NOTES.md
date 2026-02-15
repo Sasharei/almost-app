@@ -8,6 +8,8 @@
 - Completed challenges now pin to the top of the Progress list.
 - New rewards in the Rewards menu for daily challenges, focus victories, and adding new temptations.
 - Added analytics event to capture whether profile sound is enabled.
+- Moved the floating quick-spend button to the bottom-right on Home, Progress, and the "Think" menu for easier thumb reach.
+- In the Home feed menu, the button icon now matches the currency selected by the user.
 
 ### RU
 - Большая новая фишка: Бюджет месяца с автоматическим распределением по категориям на основе дохода и привычек.
@@ -15,6 +17,8 @@
 - Выполненные челленджи теперь поднимаются в начало списка прогресса.
 - В меню наград появились новые достижения: 3 ежедневных челленджа, 3 победы фокуса и 5 новых искушений.
 - Добавили ивент аналитики для статуса звука в профиле.
+- Перенесли плавающую кнопку быстрой траты в правый нижний угол на главном экране, экране прогресса и в меню «Думаем».
+- В ленте на главном экране значок кнопки теперь показывает выбранную пользователем валюту.
 
 ### ES
 - Nueva gran funcion: Presupuesto mensual con distribucion automatica por categorias segun tu ingreso y habitos.
@@ -22,6 +26,8 @@
 - Los desafios completados ahora aparecen arriba en la lista de progreso.
 - Nuevas recompensas en el menu de logros por retos diarios, victorias de enfoque y nuevas tentaciones.
 - Se anadio un evento de analitica para saber si el sonido del perfil esta activado.
+- Movimos el boton flotante de gasto rapido a la esquina inferior derecha en Inicio, Progreso y el menu "Pensar" para que quede al alcance del pulgar.
+- En el feed de Inicio, el icono del boton ahora muestra la moneda elegida por el usuario.
 
 ### FR
 - Grande nouveaute : budget mensuel avec repartition automatique par categories selon ton revenu et tes habitudes.
@@ -29,6 +35,8 @@
 - Les defis completes remontent maintenant en haut de la liste Progress.
 - Nouvelles recompenses dans le menu des succes pour les defis quotidiens, victoires focus et nouvelles tentations.
 - Ajout d'un evenement analytique pour savoir si le son du profil est active.
+- Le bouton flottant de depense rapide est deplace en bas a droite sur Accueil, Progression et le menu « Penser » pour etre plus accessible au pouce.
+- Dans le feed d'accueil, l'icone du bouton affiche maintenant la devise choisie par l'utilisateur.
 
 ## 4.0.5 (from 4.0.4)
 

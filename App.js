@@ -138,6 +138,30 @@ try {
 } catch (error) {
   console.warn("Tracking transparency unavailable", error);
 }
+let Accelerometer = null;
+try {
+  // Optional: module might be missing in some builds (e.g. Expo Go).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  Accelerometer = require("expo-sensors")?.Accelerometer || null;
+} catch (error) {
+  console.warn("expo-sensors unavailable", error);
+}
+let Gyroscope = null;
+try {
+  // Optional: module might be missing in some builds (e.g. Expo Go).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  Gyroscope = require("expo-sensors")?.Gyroscope || null;
+} catch (error) {
+  console.warn("expo-sensors gyro unavailable", error);
+}
+let DeviceMotion = null;
+try {
+  // Optional: module might be missing in some builds (e.g. Expo Go).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  DeviceMotion = require("expo-sensors")?.DeviceMotion || null;
+} catch (error) {
+  console.warn("expo-sensors device motion unavailable", error);
+}
 
 const safeNotifications = (() => {
   const api = Notifications || {};
@@ -272,6 +296,7 @@ const STORAGE_KEYS = {
   TEMPTATION_INTERACTIONS: "@almost_temptation_interactions",
   CUSTOM_TEMPTATIONS: "@almost_custom_temptations",
   HIDDEN_TEMPTATIONS: "@almost_hidden_temptations",
+  ARCHIVED_TEMPTATIONS: "@almost_archived_temptations",
   IMPULSE_TRACKER: "@almost_impulse_tracker",
   MOOD_STATE: "@almost_mood_state",
   CHALLENGES: "@almost_challenges",
@@ -666,8 +691,11 @@ const HEALTH_COIN_TIERS = [
 ];
 const BLUE_HEALTH_COIN_TIER =
   HEALTH_COIN_TIERS.find((tier) => tier.id === "blue") || HEALTH_COIN_TIERS[1];
+const GREEN_HEALTH_COIN_TIER =
+  HEALTH_COIN_TIERS.find((tier) => tier.id === "green") || HEALTH_COIN_TIERS[0];
 const BLUE_HEALTH_COIN_ASSET = BLUE_HEALTH_COIN_TIER?.asset || null;
 const BLUE_HEALTH_COIN_VALUE = BLUE_HEALTH_COIN_TIER?.value || 10;
+const GREEN_HEALTH_COIN_ASSET = GREEN_HEALTH_COIN_TIER?.asset || null;
 const GOAL_COMPLETION_REWARD_COINS = 5;
 const GOAL_COMPLETION_REWARD_TIER = BLUE_HEALTH_COIN_TIER || HEALTH_COIN_TIERS[1];
 const GOAL_COMPLETION_REWARD_VALUE =
@@ -1094,11 +1122,13 @@ const TAB_BAR_BASE_HEIGHT_COMPACT = 56;
 const HERO_MASCOT_SIZE = 96;
 const FAB_BUTTON_SIZE = 64;
 const FAB_CONTAINER_BOTTOM = 96;
+const FAB_CONTAINER_SIDE = 24;
+const FAB_HIDE_TRANSLATE = FAB_BUTTON_SIZE + FAB_CONTAINER_SIDE + 12;
 const FAB_TUTORIAL_MIN_SESSIONS = 2;
 const FAB_TUTORIAL_HALO_SIZE = 128;
 const FAB_TUTORIAL_CARD_SPACING = 140;
 const FAB_TUTORIAL_HALO_INSET = (FAB_TUTORIAL_HALO_SIZE - FAB_BUTTON_SIZE) / 2;
-const TUTORIAL_HIGHLIGHT_INSET = { x: 0, y: 0 };
+const TUTORIAL_HIGHLIGHT_INSET = { top: 0, right: 0, bottom: 0, left: 0 };
 const BACK_GESTURE_EDGE_WIDTH = 32;
 const BACK_GESTURE_TRIGGER_DISTANCE = 60;
 const BACK_GESTURE_VERTICAL_SLOP = 60;
@@ -1444,6 +1474,24 @@ const HISTORY_VIEWPORT_HEIGHT = HISTORY_VIEWPORT_ROWS * HISTORY_ITEM_HEIGHT;
 const HISTORY_SAVED_GAIN_EVENTS = new Set(["refuse_spend", "pending_to_decline", "income_savings"]);
 const HISTORY_PROGRESS_GAIN_EVENTS = new Set(["refuse_spend", "pending_to_decline"]);
 const HISTORY_SAVED_LOSS_EVENTS = new Set(["spend"]);
+const DAILY_GOAL_COIN_EVENTS = new Set(HISTORY_SAVED_GAIN_EVENTS);
+const DAILY_GOAL_WEEKDAY_BOOST = [0.95, 1.02, 1.0, 1.05, 1.08, 0.94, 0.9];
+const DAILY_GOAL_SHAKE_THRESHOLD = 1.2;
+const DAILY_GOAL_SHAKE_COOLDOWN_MS = 700;
+const DAILY_GOAL_GYRO_THRESHOLD = 0.6;
+const DAILY_GOAL_GYRO_COOLDOWN_MS = 350;
+const DAILY_GOAL_GYRO_ACCEL = 520;
+const DAILY_GOAL_GYRO_CLAMP = 3.2;
+const DAILY_GOAL_TILT_ACCEL = 380;
+const DAILY_GOAL_TILT_FRICTION = 0.05;
+const DAILY_GOAL_TILT_BOUNCE = 0.6;
+const DAILY_GOAL_COIN_COLLISION_BOUNCE = 0.22;
+const DAILY_GOAL_TILT_MAX_SPEED = 1400;
+const DAILY_GOAL_TILT_DEADZONE = 0.001;
+const DAILY_GOAL_GRAVITY = 150;
+const PIGGY_COIN_PADDING_X = 18;
+const PIGGY_COIN_PADDING_Y = 12;
+const HERO_CAROUSEL_ITEM_GUTTER = 16;
 const REPORTS_WEEK_COUNT = 8;
 const REPORTS_MONTH_COUNT = 6;
 const REPORTS_MAX_INSIGHTS = 3;
@@ -2838,6 +2886,8 @@ const MAX_INCOME_ENTRIES = 24;
 const BUDGET_SPEECH_LOW_THRESHOLD = 0.2;
 const BUDGET_CARD_LOW_THRESHOLD = BUDGET_SPEECH_LOW_THRESHOLD;
 const BUDGET_SPEECH_ESSENTIAL_IDS = new Set(["rent", "utilities", "mandatory", "car"]);
+const isEssentialImpulseCategory = (id) =>
+  typeof id === "string" && BUDGET_SPEECH_ESSENTIAL_IDS.has(id);
 
 const DEFAULT_SAVINGS_CATEGORY_DEF = {
   id: "savings",
@@ -2987,6 +3037,7 @@ const normalizeBudgetOverrides = (value) => {
 
 const buildBudgetPlan = ({
   incomeUSD = 0,
+  carryoverUSD = 0,
   budgetOverrides = {},
   spendDistribution = {},
   spendToDateByCategory = {},
@@ -2996,6 +3047,7 @@ const buildBudgetPlan = ({
   language = DEFAULT_LANGUAGE,
 }) => {
   const normalizedIncome = Math.max(0, Number(incomeUSD) || 0);
+  const normalizedCarryover = Number.isFinite(carryoverUSD) ? carryoverUSD : 0;
   const locale = getFormatLocale(language);
   const monthLabel = getMonthLabel(Date.now(), locale);
   const safeOverrides = normalizeBudgetOverrides(budgetOverrides);
@@ -3068,10 +3120,11 @@ const buildBudgetPlan = ({
   const totalSpentUSD = Number.isFinite(spendToDateTotalUSD)
     ? Math.max(0, spendToDateTotalUSD)
     : categories.reduce((sum, entry) => sum + (entry.spentUSD || 0), 0);
-  const remainingUSD = normalizedIncome - totalSpentUSD;
+  const remainingUSD = normalizedIncome + normalizedCarryover - totalSpentUSD;
   return {
     monthLabel,
     incomeUSD: normalizedIncome,
+    carryoverUSD: normalizedCarryover,
     savingsRate,
     allocatedTotalUSD,
     totalSpentUSD,
@@ -4981,6 +5034,7 @@ const CUSTOM_HABIT_FALLBACK_TITLES = {
 
 const createCustomHabitTemptation = (customSpend, fallbackCurrency = DEFAULT_PROFILE.currency, gender = "none") => {
   const price = resolveCustomPriceUSD(customSpend, fallbackCurrency) || CUSTOM_SPEND_SAMPLE_USD;
+  const createdAt = Number.isFinite(Number(customSpend?.createdAt)) ? Number(customSpend.createdAt) : null;
   const precision =
     typeof customSpend?.pricePrecision === "number" && Number.isFinite(customSpend.pricePrecision)
       ? Math.max(0, Math.min(6, customSpend.pricePrecision))
@@ -5007,6 +5061,7 @@ const createCustomHabitTemptation = (customSpend, fallbackCurrency = DEFAULT_PRO
     basePriceUSD: price,
     priceUSD: price,
     pricePrecision: precision,
+    createdAt: createdAt || null,
     title: {
       ru: resolvedTitle || CUSTOM_HABIT_FALLBACK_TITLES.ru,
       en: title || CUSTOM_HABIT_FALLBACK_TITLES.en,
@@ -6293,7 +6348,8 @@ const INITIAL_REGISTRATION = {
   customSpendTitle: "",
   customSpendAmount: "",
   customSpendFrequency: "",
-   customSpendCategory: DEFAULT_IMPULSE_CATEGORY,
+  customSpendCategory: DEFAULT_IMPULSE_CATEGORY,
+  incomeMonthlyAmount: "",
   baselineMonthlyWaste: "",
   baselineCapturedAt: null,
   goalSelections: [],
@@ -6766,6 +6822,8 @@ function TemptationCardComponent({
   language,
   colors,
   onAction,
+  playSound,
+  onAmountSliderToggle,
   t,
   currency = activeCurrency,
   stats = {},
@@ -6793,15 +6851,17 @@ function TemptationCardComponent({
   onEditDelete,
   onEditGoalSelect,
   onSwipeDelete,
-  onQuickGoalToggle,
+  onSwipeArchive,
   showEditorInline = false,
   cardStyle = null,
   isPrimaryTemptation = false,
+  isArchived = false,
   tutorialHighlightMode = null,
   tutorialHighlightMeasureTick = 0,
   tutorialHighlightOffset = null,
   onTutorialHighlightLayoutChange = null,
   interaction = null,
+  interactionRefreshKey = "",
   allowThinkAction = true,
   onFocusBadgePress,
   budgetStatus = null,
@@ -6895,7 +6955,6 @@ function TemptationCardComponent({
       }
     };
   }, [onTutorialHighlightLayoutChange]);
-  const priceLabel = formatTemptationPriceLabel(item, currency);
   const highlight = true;
   const isDarkTheme = colors.background === THEMES.dark.background;
   const baseColor = item.color || colors.card;
@@ -7068,6 +7127,17 @@ function TemptationCardComponent({
     currency
   );
   const priceUSD = getTemptationPrice(item);
+  const lastAmountUSD = Number(interaction?.lastAmountUSD) || 0;
+  const defaultBaseAmountUSD =
+    lastAmountUSD > 0
+      ? lastAmountUSD
+      : priceUSD > 0
+      ? priceUSD
+      : 1;
+  const resolvedBaseAmountUSD =
+    Number(amountSliderBaseOverrideUSD) > 0
+      ? Number(amountSliderBaseOverrideUSD)
+      : defaultBaseAmountUSD;
   const showThinkAction = allowThinkAction && priceUSD > 50;
   const actionConfig = [];
   if (showThinkAction) {
@@ -7119,6 +7189,8 @@ function TemptationCardComponent({
     ? t("streakBadgeActive", { count: currentStreak })
     : t("streakBadgeBest", { count: bestStreak });
   const showStreakFire = streakActive && currentStreak >= 3;
+  const archiveSwipeLabel = isArchived ? t("archiveSwipeRestore") : t("archiveSwipeAdd");
+  const archiveSwipeIcon = isArchived ? "↩️" : "📦";
   const streakGlowStyle = useMemo(() => {
     if (!showStreakFire) return null;
     if (Platform.OS === "ios") {
@@ -7140,6 +7212,22 @@ function TemptationCardComponent({
   const translateX = useRef(new Animated.Value(0)).current;
   const streakFireAnim = useRef(new Animated.Value(0)).current;
   const swipeActionRef = useRef(false);
+  const [amountSliderVisible, setAmountSliderVisible] = useState(false);
+  const [amountSliderAction, setAmountSliderAction] = useState(null);
+  const [amountSliderValue, setAmountSliderValue] = useState(0.5);
+  const [amountSliderTrackWidth, setAmountSliderTrackWidth] = useState(0);
+  const [amountSliderBaseOverrideUSD, setAmountSliderBaseOverrideUSD] = useState(null);
+  const [amountManualVisible, setAmountManualVisible] = useState(false);
+  const [amountManualValue, setAmountManualValue] = useState("");
+  const [amountManualError, setAmountManualError] = useState("");
+  const amountSliderValueRef = useRef(0.5);
+  const amountSliderTrackWidthRef = useRef(0);
+  const amountSliderTrackPageXRef = useRef(0);
+  const amountSliderTrackRef = useRef(null);
+  const amountSliderStepRef = useRef(null);
+  const amountSliderHapticCooldownRef = useRef(0);
+  const amountSliderRafRef = useRef(null);
+  const amountSliderPendingValueRef = useRef(null);
   useEffect(() => {
     if (!showStreakFire) {
       streakFireAnim.stopAnimation?.();
@@ -7195,16 +7283,319 @@ function TemptationCardComponent({
     translateX.setValue(0);
   }, [item.id, translateX]);
 
+  const amountSliderMinUSD = 0;
+  const amountSliderMaxUSD = Math.max(resolvedBaseAmountUSD * 2, resolvedBaseAmountUSD);
+  const amountSliderAmountUSD =
+    amountSliderMinUSD + amountSliderValue * (amountSliderMaxUSD - amountSliderMinUSD);
+  const amountSliderLocalValue = snapCurrencyValue(
+    convertToCurrency(amountSliderAmountUSD, currency),
+    currency
+  );
+  const amountSliderAmountUSDNormalized = convertFromCurrency(amountSliderLocalValue, currency);
+  const amountSliderLabel = formatCurrency(amountSliderLocalValue, currency);
+  const amountSliderMinLabel = formatCurrency(
+    convertToCurrency(amountSliderMinUSD, currency),
+    currency
+  );
+  const amountSliderMaxLabel = formatCurrency(
+    convertToCurrency(amountSliderMaxUSD, currency),
+    currency
+  );
+  const amountSliderFillWidth = Math.max(
+    0,
+    Math.min(amountSliderTrackWidth, amountSliderTrackWidth * amountSliderValue)
+  );
+  const amountSliderThumbX = amountSliderTrackWidth * amountSliderValue;
+  const amountSliderThumbSize = 22;
+  const amountSliderThumbRadius = amountSliderThumbSize / 2;
+  const amountSliderThumbTranslate = amountSliderTrackWidth
+    ? Math.max(
+        0,
+        Math.min(
+          amountSliderThumbX - amountSliderThumbRadius,
+          amountSliderTrackWidth - amountSliderThumbSize
+        )
+      )
+    : 0;
+  const amountSliderAccent =
+    amountSliderAction === "spend" ? SPEND_ACTION_COLOR : SAVE_ACTION_COLOR;
+  const amountSliderAccentSoft = colorWithAlpha(
+    amountSliderAccent,
+    isDarkTheme ? 0.28 : 0.22
+  );
+  const amountSliderTrackBase = isDarkTheme
+    ? "rgba(255,255,255,0.16)"
+    : "rgba(0,0,0,0.08)";
+  const amountSliderSurface = isDarkTheme
+    ? colorWithAlpha("#101622", 0.92)
+    : colorWithAlpha("#FFFFFF", 0.95);
+  const amountSliderBorder = colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.4 : 0.25);
+  const amountSliderStepCount = 24;
+  const amountSliderHapticCooldownMs = 40;
+
+  const updateAmountSliderValue = useCallback(
+    (nextValue, { fromUser = false, force = false } = {}) => {
+      const clamped = Math.max(0, Math.min(1, Number.isFinite(nextValue) ? nextValue : 0));
+      amountSliderValueRef.current = clamped;
+      if (fromUser) {
+        const stepIndex = Math.round(clamped * amountSliderStepCount);
+        if (stepIndex !== amountSliderStepRef.current) {
+          amountSliderStepRef.current = stepIndex;
+          const now = Date.now();
+          if (now - amountSliderHapticCooldownRef.current > amountSliderHapticCooldownMs) {
+            triggerSelectionHaptic();
+            playSound?.("counter", { skipCooldown: true });
+            amountSliderHapticCooldownRef.current = now;
+          }
+        }
+      }
+      if (force) {
+        if (amountSliderRafRef.current) {
+          cancelAnimationFrame(amountSliderRafRef.current);
+          amountSliderRafRef.current = null;
+        }
+        amountSliderPendingValueRef.current = null;
+        setAmountSliderValue(clamped);
+        return clamped;
+      }
+      amountSliderPendingValueRef.current = clamped;
+      if (amountSliderRafRef.current) {
+        return clamped;
+      }
+      amountSliderRafRef.current = requestAnimationFrame(() => {
+        amountSliderRafRef.current = null;
+        const pending = amountSliderPendingValueRef.current;
+        if (pending === null || pending === undefined) return;
+        amountSliderPendingValueRef.current = null;
+        setAmountSliderValue(pending);
+      });
+      return clamped;
+    },
+    [
+      amountSliderHapticCooldownMs,
+      amountSliderStepCount,
+      playSound,
+    ]
+  );
+
+  const notifyAmountSliderTouch = useCallback(
+    (isTouching) => {
+      if (typeof onAmountSliderToggle !== "function") return;
+      onAmountSliderToggle(Boolean(isTouching), item?.id || null);
+    },
+    [item?.id, onAmountSliderToggle]
+  );
+
+  const openAmountSlider = useCallback(
+    (actionType) => {
+      if (showEditorInline) return;
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setAmountSliderAction(actionType);
+      setAmountSliderVisible(true);
+      setAmountSliderBaseOverrideUSD(null);
+      setAmountManualVisible(false);
+      setAmountManualValue("");
+      setAmountManualError("");
+      amountSliderStepRef.current = Math.round(0.5 * amountSliderStepCount);
+      amountSliderHapticCooldownRef.current = 0;
+      updateAmountSliderValue(0.5, { fromUser: false });
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+      playSound?.("tap", { skipCooldown: true });
+    },
+    [
+      amountSliderStepCount,
+      playSound,
+      showEditorInline,
+      updateAmountSliderValue,
+    ]
+  );
+
+  const closeAmountSlider = useCallback(() => {
+    if (!amountSliderVisible) return;
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setAmountSliderVisible(false);
+    setAmountSliderAction(null);
+    setAmountSliderBaseOverrideUSD(null);
+    setAmountManualVisible(false);
+    setAmountManualError("");
+    notifyAmountSliderTouch(false);
+    if (amountSliderRafRef.current) {
+      cancelAnimationFrame(amountSliderRafRef.current);
+      amountSliderRafRef.current = null;
+    }
+    amountSliderPendingValueRef.current = null;
+  }, [amountSliderVisible, notifyAmountSliderTouch]);
+
+  useEffect(() => {
+    if (!amountSliderVisible) return;
+    amountSliderTrackWidthRef.current = amountSliderTrackWidth;
+  }, [amountSliderTrackWidth, amountSliderVisible]);
+
+  useEffect(() => {
+    if (!showEditorInline && !isEditing) return;
+    if (!amountSliderVisible) return;
+    closeAmountSlider();
+  }, [amountSliderVisible, closeAmountSlider, isEditing, showEditorInline]);
+
+  useEffect(() => {
+    if (!amountSliderVisible) return;
+    amountSliderValueRef.current = 0.5;
+    amountSliderStepRef.current = Math.round(0.5 * amountSliderStepCount);
+    setAmountSliderValue(0.5);
+  }, [amountSliderStepCount, amountSliderVisible, item.id]);
+
+  useEffect(() => {
+    return () => {
+      notifyAmountSliderTouch(false);
+    };
+  }, [notifyAmountSliderTouch]);
+
+  useEffect(() => {
+    return () => {
+      if (amountSliderRafRef.current) {
+        cancelAnimationFrame(amountSliderRafRef.current);
+        amountSliderRafRef.current = null;
+      }
+    };
+  }, []);
+
+  const commitAmountSliderTrackLayout = useCallback((width, pageX) => {
+    const nextWidth = Number(width) || 0;
+    if (nextWidth > 0 && Math.abs(amountSliderTrackWidthRef.current - nextWidth) > 0.5) {
+      amountSliderTrackWidthRef.current = nextWidth;
+      setAmountSliderTrackWidth(nextWidth);
+    }
+    if (Number.isFinite(pageX)) {
+      amountSliderTrackPageXRef.current = pageX;
+    }
+  }, []);
+
+  const measureAmountSliderTrack = useCallback(() => {
+    const trackNode = amountSliderTrackRef.current;
+    if (!trackNode?.measureInWindow) return;
+    trackNode.measureInWindow((x, _y, width) => {
+      commitAmountSliderTrackLayout(width, x);
+    });
+  }, [commitAmountSliderTrackLayout]);
+
+  const handleAmountSliderTrackLayout = useCallback(
+    (event) => {
+      const width = Number(event?.nativeEvent?.layout?.width) || 0;
+      commitAmountSliderTrackLayout(width, amountSliderTrackPageXRef.current);
+      requestAnimationFrame(() => {
+        measureAmountSliderTrack();
+      });
+    },
+    [commitAmountSliderTrackLayout, measureAmountSliderTrack]
+  );
+
+  useEffect(() => {
+    if (!amountSliderVisible) return;
+    requestAnimationFrame(() => {
+      measureAmountSliderTrack();
+    });
+  }, [amountSliderVisible, measureAmountSliderTrack]);
+
+  const openAmountManual = useCallback(() => {
+    const precision = getCurrencyPrecision(currency);
+    const formatted = formatNumberInputValue(amountSliderLocalValue, precision);
+    setAmountManualValue(formatted);
+    setAmountManualError("");
+    setAmountManualVisible(true);
+    triggerSelectionHaptic();
+    playSound?.("tap", { skipCooldown: true });
+  }, [amountSliderLocalValue, currency, playSound]);
+
+  const closeAmountManual = useCallback(() => {
+    setAmountManualVisible(false);
+    setAmountManualError("");
+  }, []);
+
+  const handleAmountManualSave = useCallback(() => {
+    const parsedLocal = parseNumberInputValue(amountManualValue);
+    if (!Number.isFinite(parsedLocal) || parsedLocal <= 0) {
+      setAmountManualError(t("coinEntryManualError"));
+      return;
+    }
+    const normalizedLocal = snapCurrencyValue(parsedLocal, currency);
+    const parsedUSD = convertFromCurrency(normalizedLocal, currency);
+    if (!Number.isFinite(parsedUSD) || parsedUSD <= 0) {
+      setAmountManualError(t("coinEntryManualError"));
+      return;
+    }
+    setAmountSliderBaseOverrideUSD(parsedUSD);
+    updateAmountSliderValue(0.5, { fromUser: false });
+    setAmountManualVisible(false);
+    setAmountManualError("");
+    Keyboard.dismiss();
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    playSound?.("tap", { skipCooldown: true });
+  }, [amountManualValue, currency, playSound, t, updateAmountSliderValue]);
+
+  const handleAmountSliderTouch = useCallback(
+    (event) => {
+      const width = amountSliderTrackWidthRef.current || amountSliderTrackWidth;
+      if (!width) return;
+      const pageX = Number(event?.nativeEvent?.pageX);
+      if (!Number.isFinite(pageX)) return;
+      const localX = pageX - amountSliderTrackPageXRef.current;
+      const nextValue = localX / width;
+      updateAmountSliderValue(nextValue, { fromUser: true });
+    },
+    [amountSliderTrackWidth, updateAmountSliderValue]
+  );
+
+  const amountSliderPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (event) => {
+          notifyAmountSliderTouch(true);
+          handleAmountSliderTouch(event);
+        },
+        onPanResponderMove: (event) => {
+          handleAmountSliderTouch(event);
+        },
+        onPanResponderRelease: () => {
+          updateAmountSliderValue(amountSliderValueRef.current, { force: true });
+          notifyAmountSliderTouch(false);
+        },
+        onPanResponderTerminate: () => {
+          updateAmountSliderValue(amountSliderValueRef.current, { force: true });
+          notifyAmountSliderTouch(false);
+        },
+      }),
+    [handleAmountSliderTouch, notifyAmountSliderTouch, updateAmountSliderValue]
+  );
+
+  const confirmAmountAction = useCallback(
+    (actionType) => {
+      const normalizedAmount = Number(amountSliderAmountUSDNormalized) || 0;
+      if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+        playSound?.("counter", { skipCooldown: true });
+        return;
+      }
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+      closeAmountSlider();
+      onAction?.(actionType, item, { amountUSD: normalizedAmount });
+    },
+    [
+      amountSliderAmountUSDNormalized,
+      closeAmountSlider,
+      item,
+      onAction,
+      playSound,
+    ]
+  );
+
   const handleSwipeRelease = useCallback(
     (dx = 0) => {
       if (!showEditorInline) {
-        if (dx > GOAL_SWIPE_THRESHOLD && onQuickGoalToggle) {
-          if (!canAssignGoal) {
-            Alert.alert(t("tamagotchiName"), t("goalMainTemptationError"));
-          } else {
-            swipeActionRef.current = true;
-            onQuickGoalToggle(item);
-          }
+        if (dx > GOAL_SWIPE_THRESHOLD && onSwipeArchive) {
+          swipeActionRef.current = true;
+          onSwipeArchive(item);
         } else if (dx < -DELETE_SWIPE_THRESHOLD && onSwipeDelete) {
           swipeActionRef.current = true;
           onSwipeDelete(item);
@@ -7217,7 +7608,7 @@ function TemptationCardComponent({
         useNativeDriver: true,
       }).start();
     },
-    [canAssignGoal, item, onQuickGoalToggle, onSwipeDelete, showEditorInline, t, translateX]
+    [item, onSwipeArchive, onSwipeDelete, showEditorInline, translateX]
   );
 
   const panResponder = useMemo(
@@ -7226,6 +7617,7 @@ function TemptationCardComponent({
         onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (_, gestureState) =>
           !showEditorInline &&
+          !amountSliderVisible &&
           Math.abs(gestureState.dx) > Math.abs(gestureState.dy) &&
           Math.abs(gestureState.dx) > 6,
         onPanResponderGrant: () => {
@@ -7242,7 +7634,7 @@ function TemptationCardComponent({
         onPanResponderTerminationRequest: () => false,
         onPanResponderTerminate: () => handleSwipeRelease(0),
       }),
-    [handleSwipeRelease, showEditorInline, translateX]
+    [amountSliderVisible, handleSwipeRelease, showEditorInline, translateX]
   );
 
   useEffect(() => {
@@ -7276,8 +7668,12 @@ function TemptationCardComponent({
       swipeActionRef.current = false;
       return;
     }
+    if (amountSliderVisible) {
+      closeAmountSlider();
+      return;
+    }
     onToggleEdit?.(item);
-  }, [item, onToggleEdit]);
+  }, [amountSliderVisible, closeAmountSlider, item, onToggleEdit]);
 
   return (
     <View style={styles.temptationSwipeWrapper}>
@@ -7298,9 +7694,11 @@ function TemptationCardComponent({
             },
           ]}
         >
-          <Text style={[styles.swipeHintIcon, { color: GOAL_HIGHLIGHT_COLOR }]}>🎯</Text>
+          <Text style={[styles.swipeHintIcon, { color: GOAL_HIGHLIGHT_COLOR }]}>
+            {archiveSwipeIcon}
+          </Text>
           <Text style={[styles.swipeHintText, { color: GOAL_HIGHLIGHT_COLOR }]}>
-            {isWishlistGoal ? t("goalAssignClear") : t("goalSwipeAdd")}
+            {archiveSwipeLabel}
           </Text>
         </View>
         <View
@@ -7588,8 +7986,8 @@ function TemptationCardComponent({
           {t("tileRefuseCount", { count: refuseCount, amount: totalRefusedLabel })}
         </Text>
       )}
-  <View style={styles.temptationPriceRow}>
-    {showEditorInline ? (
+  {showEditorInline ? (
+    <View style={styles.temptationPriceRow}>
       <View
         style={[
           styles.temptationPricePill,
@@ -7608,35 +8006,25 @@ function TemptationCardComponent({
           placeholderTextColor={colors.muted}
         />
       </View>
-    ) : (
-      <>
-        <Text
-          style={[
-            styles.temptationPrice,
-            { color: cardTextColor },
-          ]}
-        >
-          {priceLabel}
+    </View>
+  ) : hasGoalAssigned ? (
+    <View style={styles.temptationGoalRow}>
+      <View
+        style={[
+          styles.temptationGoalBadge,
+          styles.temptationGoalBadgeInline,
+          {
+            backgroundColor: isDarkTheme ? "rgba(246,193,107,0.18)" : "rgba(246,193,107,0.12)",
+            borderColor: isDarkTheme ? "rgba(246,193,107,0.55)" : "rgba(246,193,107,0.65)",
+          },
+        ]}
+      >
+        <Text style={[styles.temptationGoalBadgeText, { color: isDarkTheme ? "#FEEAC4" : "#5C3A00" }]}>
+          {t("goalDestinationLabel")}: {resolvedGoalLabel}
         </Text>
-        {hasGoalAssigned && (
-          <View
-            style={[
-              styles.temptationGoalBadge,
-              styles.temptationGoalBadgeInline,
-              {
-                backgroundColor: isDarkTheme ? "rgba(246,193,107,0.18)" : "rgba(246,193,107,0.12)",
-                borderColor: isDarkTheme ? "rgba(246,193,107,0.55)" : "rgba(246,193,107,0.65)",
-              },
-            ]}
-          >
-            <Text style={[styles.temptationGoalBadgeText, { color: isDarkTheme ? "#FEEAC4" : "#5C3A00" }]}>
-              {t("goalDestinationLabel")}: {resolvedGoalLabel}
-            </Text>
-          </View>
-        )}
-      </>
-    )}
-  </View>
+      </View>
+    </View>
+  ) : null}
       {showEditorInline && (
         <View style={styles.categoryEditSection}>
           <Text style={[styles.categoryEditLabel, { color: colors.muted }]}>
@@ -7648,11 +8036,151 @@ function TemptationCardComponent({
             colors={colors}
             language={language}
             compact
+            horizontal
+            visibleCount={4}
           />
         </View>
       )}
           </View>
         </TouchableWithoutFeedback>
+      {!showEditorInline && amountSliderVisible && (
+        <View
+          style={[
+            styles.temptationAmountPanel,
+            { backgroundColor: amountSliderSurface, borderColor: amountSliderBorder },
+          ]}
+        >
+          <View style={styles.temptationAmountHeader}>
+            <View style={[styles.temptationAmountPill, { backgroundColor: amountSliderAccentSoft }]}>
+              <Text style={[styles.temptationAmountPillText, { color: amountSliderAccent }]}>
+                {amountSliderAction === "spend" ? t("spendAction") : t("saveAction")}
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.temptationAmountClose} onPress={closeAmountSlider}>
+              <Text style={[styles.temptationAmountCloseText, { color: colors.muted }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity onPress={openAmountManual} activeOpacity={0.8}>
+            <Text style={[styles.temptationAmountValue, { color: cardTextColor }]}>
+              {amountSliderLabel}
+            </Text>
+          </TouchableOpacity>
+          <View style={styles.temptationAmountTrackWrap} {...amountSliderPanResponder.panHandlers}>
+            <View
+              style={[styles.temptationAmountTrack, { backgroundColor: amountSliderTrackBase }]}
+              onLayout={handleAmountSliderTrackLayout}
+              ref={amountSliderTrackRef}
+              collapsable={false}
+            >
+              <View
+                style={[
+                  styles.temptationAmountTrackFill,
+                  { width: amountSliderFillWidth, backgroundColor: amountSliderAccentSoft },
+                ]}
+              />
+            </View>
+            <View
+              style={[
+                styles.temptationAmountTrackMid,
+                { backgroundColor: colorWithAlpha(amountSliderAccent, 0.4) },
+              ]}
+            />
+            <View
+              style={[
+                styles.temptationAmountThumb,
+                {
+                  width: amountSliderThumbSize,
+                  height: amountSliderThumbSize,
+                  borderRadius: amountSliderThumbRadius,
+                  borderColor: amountSliderAccent,
+                  backgroundColor: colors.card,
+                  transform: [{ translateX: amountSliderThumbTranslate }],
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.temptationAmountThumbInner,
+                  { backgroundColor: amountSliderAccent },
+                ]}
+              />
+            </View>
+          </View>
+          <View style={styles.temptationAmountScale}>
+            <Text style={[styles.temptationAmountScaleText, { color: colors.muted }]}>
+              {amountSliderMinLabel}
+            </Text>
+            <Text style={[styles.temptationAmountScaleText, { color: colors.muted }]}>
+              {amountSliderMaxLabel}
+            </Text>
+          </View>
+        </View>
+      )}
+      {amountManualVisible && (
+        <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={closeAmountManual}>
+          <TouchableWithoutFeedback onPress={closeAmountManual}>
+            <View style={styles.coinEntryManualBackdrop}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View
+                  style={[
+                    styles.coinEntryManualCard,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                  ]}
+                >
+                  <Text style={[styles.coinEntryManualTitle, { color: colors.text }]}>
+                    {t("coinEntryManualAmountTitle")}
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.coinEntryManualInput,
+                      { color: colors.text, borderColor: colors.border },
+                    ]}
+                    placeholder={t("coinEntryManualAmountPlaceholder")}
+                    placeholderTextColor={colors.muted}
+                    keyboardType="decimal-pad"
+                    value={amountManualValue}
+                    onChangeText={(value) => {
+                      setAmountManualValue(value);
+                      if (amountManualError) setAmountManualError("");
+                    }}
+                    returnKeyType="done"
+                    onSubmitEditing={handleAmountManualSave}
+                    autoFocus
+                  />
+                  {!!amountManualError && (
+                    <Text style={[styles.coinEntryManualError, { color: SPEND_ACTION_COLOR }]}>
+                      {amountManualError}
+                    </Text>
+                  )}
+                  <View style={styles.coinEntryManualActions}>
+                    <TouchableOpacity
+                      style={[styles.coinEntryManualButtonGhost, { borderColor: colors.border }]}
+                      onPress={closeAmountManual}
+                    >
+                      <Text style={[styles.coinEntryManualButtonGhostText, { color: colors.muted }]}>
+                        {t("coinEntryManualCancel")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.coinEntryManualButtonPrimary, { backgroundColor: colors.text }]}
+                      onPress={handleAmountManualSave}
+                    >
+                      <Text
+                        style={[
+                          styles.coinEntryManualButtonPrimaryText,
+                          { color: colors.background },
+                        ]}
+                      >
+                        {t("coinEntryManualSave")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+      )}
       {!showEditorInline && (
         <View
           style={[
@@ -7707,11 +8235,41 @@ function TemptationCardComponent({
               { color: colors.text },
             ];
           }
+          if (amountSliderVisible && (action.type === "save" || action.type === "spend")) {
+            buttonStyle = [...buttonStyle, styles.temptationButtonConfirm];
+            if (action.type === amountSliderAction) {
+              buttonStyle = [
+                ...buttonStyle,
+                styles.temptationButtonConfirmActive,
+                { borderColor: amountSliderAccent, shadowColor: amountSliderAccent },
+              ];
+            }
+          }
           return (
             <TouchableOpacity
               key={action.type}
               style={buttonStyle}
-              onPress={() => onAction(action.type, item)}
+              onPress={() => {
+                if (action.disabled) return;
+                if (action.type === "save" || action.type === "spend") {
+                  if (!amountSliderVisible) {
+                    openAmountSlider(action.type);
+                    return;
+                  }
+                  if (amountSliderAction !== action.type) {
+                    setAmountSliderAction(action.type);
+                    triggerSelectionHaptic();
+                    playSound?.("tap", { skipCooldown: true });
+                    return;
+                  }
+                  confirmAmountAction(action.type);
+                  return;
+                }
+                if (amountSliderVisible) {
+                  closeAmountSlider();
+                }
+                onAction?.(action.type, item);
+              }}
             >
               <Text style={textStyle}>{action.label}</Text>
             </TouchableOpacity>
@@ -7787,6 +8345,201 @@ function TemptationCardComponent({
 }
 
 const TemptationCard = React.memo(TemptationCardComponent);
+
+const TemptationEditSheet = React.memo(function TemptationEditSheet({
+  item,
+  language,
+  colors,
+  t,
+  currency,
+  titleOverride,
+  editTitleValue,
+  editPriceValue,
+  editGoalLabel,
+  editEmojiValue,
+  editDescriptionValue,
+  editCategoryValue,
+  onEditTitleChange,
+  onEditPriceChange,
+  onEditEmojiChange,
+  onEditDescriptionChange,
+  onEditCategoryChange,
+  onEditGoalSelect,
+  onEditSave,
+  onEditCancel,
+  onEditDelete,
+}) {
+  if (!item) return null;
+  const fallbackTitle = resolveTemptationTitle(item, language, titleOverride);
+  const previewTitle = buildTemptationDisplayTitle(editEmojiValue, editTitleValue, fallbackTitle);
+  const goalLabelText =
+    (typeof editGoalLabel === "string" && editGoalLabel.trim().length
+      ? editGoalLabel.trim()
+      : "") || t("goalAssignFieldLabel");
+  const descriptionPlaceholder =
+    t("priceEditDescriptionLabel") || t("priceEditPlaceholder") || "";
+
+  return (
+    <View
+      style={[
+        styles.temptationEditSheet,
+        { backgroundColor: colors.card, borderColor: colors.border },
+      ]}
+    >
+      <ScrollView
+        style={styles.temptationEditScroll}
+        contentContainerStyle={styles.temptationEditContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.temptationEditFieldRow}>
+          <View style={styles.temptationEditField}>
+            <Text style={[styles.temptationEditLabel, { color: colors.muted }]}>
+              {t("quickCustomEmojiLabel")}
+            </Text>
+            <View
+              style={[
+                styles.temptationEditInputWrap,
+                styles.temptationEditEmojiWrap,
+                { borderColor: colors.border, backgroundColor: colors.background },
+              ]}
+            >
+              <TextInput
+                style={[styles.temptationEditEmojiInput, { color: colors.text }]}
+                value={editEmojiValue ?? ""}
+                onChangeText={onEditEmojiChange}
+                placeholder={item.emoji || DEFAULT_TEMPTATION_EMOJI}
+                placeholderTextColor={colorWithAlpha(colors.muted, 0.7)}
+                selectTextOnFocus
+                maxLength={2}
+              />
+            </View>
+          </View>
+          <View style={[styles.temptationEditField, styles.temptationEditFieldGrow]}>
+            <Text style={[styles.temptationEditLabel, { color: colors.muted }]}>
+              {t("priceEditNameLabel")}
+            </Text>
+            <View
+              style={[
+                styles.temptationEditInputWrap,
+                { borderColor: colors.border, backgroundColor: colors.background },
+              ]}
+            >
+              <TextInput
+                style={[styles.temptationEditTextInput, { color: colors.text }]}
+                value={editTitleValue}
+                onChangeText={onEditTitleChange}
+                placeholder={previewTitle}
+                placeholderTextColor={colorWithAlpha(colors.muted, 0.7)}
+              />
+            </View>
+          </View>
+        </View>
+        <View style={styles.temptationEditField}>
+          <Text style={[styles.temptationEditLabel, { color: colors.muted }]}>
+            {t("priceEditAmountLabel", { currency })}
+          </Text>
+          <View
+            style={[
+              styles.temptationEditInputWrap,
+              styles.temptationEditAmountWrap,
+              { borderColor: colors.border, backgroundColor: colors.background },
+            ]}
+          >
+            <TextInput
+              style={[styles.temptationEditAmountInput, { color: colors.text }]}
+              value={editPriceValue ?? ""}
+              onChangeText={onEditPriceChange}
+              keyboardType="decimal-pad"
+              placeholder={t("priceEditPlaceholder")}
+              placeholderTextColor={colorWithAlpha(colors.muted, 0.7)}
+            />
+          </View>
+        </View>
+        <View style={styles.temptationEditField}>
+          <Text style={[styles.temptationEditLabel, { color: colors.muted }]}>
+            {t("goalDestinationLabel")}
+          </Text>
+          <TouchableOpacity
+            style={[
+              styles.temptationEditGoalButton,
+              { borderColor: colors.border, backgroundColor: colors.background },
+            ]}
+            onPress={onEditGoalSelect}
+            activeOpacity={0.85}
+          >
+            <Text
+              style={[styles.temptationEditGoalText, { color: colors.text }]}
+              numberOfLines={1}
+            >
+              {goalLabelText}
+            </Text>
+            <Text style={[styles.temptationEditGoalChevron, { color: colors.muted }]}>›</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.temptationEditField}>
+          <Text style={[styles.temptationEditLabel, { color: colors.muted }]}>
+            {t("priceEditDescriptionLabel")}
+          </Text>
+          <View
+            style={[
+              styles.temptationEditInputWrap,
+              { borderColor: colors.border, backgroundColor: colors.background },
+            ]}
+          >
+            <TextInput
+              style={[styles.temptationEditDescriptionInput, { color: colors.text }]}
+              value={editDescriptionValue ?? ""}
+              onChangeText={onEditDescriptionChange}
+              placeholder={descriptionPlaceholder}
+              placeholderTextColor={colorWithAlpha(colors.muted, 0.7)}
+              multiline
+              textAlignVertical="top"
+            />
+          </View>
+        </View>
+        <View style={styles.temptationEditField}>
+          <Text style={[styles.temptationEditLabel, { color: colors.muted }]}>
+            {t("impulseCategoryLabel")}
+          </Text>
+          <View style={styles.temptationEditCategoryWrap}>
+            <ImpulseCategorySelector
+              value={editCategoryValue || DEFAULT_IMPULSE_CATEGORY}
+              onChange={onEditCategoryChange}
+              colors={colors}
+              language={language}
+              compact
+              horizontal
+              visibleCount={4}
+            />
+          </View>
+        </View>
+      </ScrollView>
+      <View style={[styles.temptationEditFooter, { borderTopColor: colors.border }]}>
+        <TouchableOpacity
+          style={[styles.temptationEditSave, { backgroundColor: colors.text }]}
+          onPress={onEditSave}
+        >
+          <Text style={[styles.temptationEditSaveText, { color: colors.background }]}>
+            {t("priceEditSave")}
+          </Text>
+        </TouchableOpacity>
+        <View style={styles.temptationEditFooterRow}>
+          <TouchableOpacity onPress={onEditCancel}>
+            <Text style={[styles.temptationEditCancelText, { color: colors.muted }]}>
+              {t("priceEditCancel")}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onEditDelete}>
+            <Text style={[styles.temptationEditDeleteText, { color: "#E15555" }]}>
+              {t("priceEditDelete")}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+});
 
 
 const FrequencySectionHeader = ({ title, count, collapsed, onToggle, colors, t }) => {
@@ -7965,6 +8718,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   onDailyRewardModalVisibilityChange = null,
   activeChallenge = null,
   onActiveChallengePress = () => {},
+  style = null,
 }, ref) {
   const [expanded, setExpanded] = useState(false);
   const heroCardRef = useRef(null);
@@ -8022,6 +8776,21 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const actualLocal = formatCurrency(convertToCurrency(actualSavedUSD || 0, currency), currency, {
     precisionOverride: getCurrencyPrecision(currency),
   });
+  const heroAmountBaseFontSize = IS_SHORT_DEVICE ? 36 : Platform.OS === "ios" ? 44 : 46;
+  const heroAmountBaseLineHeight = IS_SHORT_DEVICE ? 40 : Platform.OS === "ios" ? 48 : 50;
+  const heroAmountMinScale = 0.6;
+  const heroAmountScale = useMemo(() => {
+    const label = totalSavedLabel ? String(totalSavedLabel) : "";
+    const digitCount = (label.match(/\d/g) || []).length;
+    const roughLength = label.replace(/\s/g, "").length;
+    const lengthScore = Math.max(digitCount, roughLength);
+    if (lengthScore <= 6) return 1;
+    const shrinkSteps = Math.min(lengthScore - 6, 10);
+    const scale = 1 - shrinkSteps * 0.045;
+    return Math.max(heroAmountMinScale, scale);
+  }, [totalSavedLabel]);
+  const heroAmountFontSize = Math.round(heroAmountBaseFontSize * heroAmountScale);
+  const heroAmountLineHeight = Math.round(heroAmountBaseLineHeight * heroAmountScale);
   const potentialGrowthLabel = useMemo(() => {
     const value = Math.max(0, Number(potentialGrowthUSD) || 0);
     if (!Number.isFinite(value) || value <= 0) return "";
@@ -8179,6 +8948,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
           borderColor: goldPalette.border,
           shadowColor: goldPalette.shadow,
         },
+        style,
       ]}
     >
       <View pointerEvents="none" style={styles.savedHeroGlowWrap}>
@@ -8198,7 +8968,15 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
           </Text>
         </View>
         <View style={styles.savedHeroAmountWrap}>
-          <Text style={[styles.progressHeroAmount, { color: SAVE_ACTION_COLOR }]}>
+          <Text
+            style={[
+              styles.progressHeroAmount,
+              { color: SAVE_ACTION_COLOR, fontSize: heroAmountFontSize, lineHeight: heroAmountLineHeight },
+            ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={heroAmountMinScale}
+          >
             {totalSavedLabel}
           </Text>
         </View>
@@ -8615,6 +9393,979 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   );
 });
 
+const BudgetHeroCard = React.memo(function BudgetHeroCard({
+  colors,
+  isDarkMode = false,
+  t,
+  monthLabel,
+  remainingLabel,
+  remainingNegative = false,
+  categories = [],
+  budgetHasIncome = false,
+  formatLocalAmount = () => "",
+  style = null,
+}) {
+  const accent = remainingNegative ? SPEND_ACTION_COLOR : SAVE_ACTION_COLOR;
+  const subtitle = monthLabel
+    ? t("budgetWidgetMonthLabel", { month: monthLabel })
+    : t("budgetWidgetSubtitle");
+  const budgetLimitWarningColor = isDarkMode ? "#FFD59A" : "#F6C16B";
+  const glowColor = colorWithAlpha(accent, isDarkMode ? 0.25 : 0.2);
+  return (
+    <View
+      style={[
+        styles.progressHeroCard,
+        styles.savedHeroCard,
+        styles.heroBudgetCard,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+          shadowColor: isDarkMode ? "#000" : "rgba(0,0,0,0.2)",
+        },
+        style,
+      ]}
+    >
+      <View pointerEvents="none" style={styles.savedHeroGlowWrap}>
+        <View style={[styles.savedHeroGlow, { backgroundColor: glowColor }]} />
+        <View style={[styles.savedHeroGlow, styles.savedHeroGlowBottom, { backgroundColor: glowColor }]} />
+      </View>
+      <View style={styles.heroBudgetHeader}>
+        <View style={styles.heroBudgetTitleBlock}>
+          <Text style={[styles.heroBudgetTitle, { color: colors.text }]}>
+            {t("budgetWidgetTitle")}
+          </Text>
+          <Text style={[styles.heroBudgetSubtitle, { color: colors.muted }]}>
+            {subtitle}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.heroBudgetChip,
+            {
+              borderColor: colorWithAlpha(accent, 0.35),
+              backgroundColor: colorWithAlpha(accent, 0.12),
+            },
+          ]}
+        >
+          <Text style={[styles.heroBudgetChipText, { color: accent }]}>
+            {budgetHasIncome ? t("budgetRemainingLabel") : t("budgetAddIncome")}
+          </Text>
+        </View>
+      </View>
+      {budgetHasIncome ? (
+        <>
+          <View style={styles.heroBudgetSummary}>
+            <Text style={[styles.heroBudgetSummaryLabel, { color: colors.muted }]}>
+              {t("budgetRemainingLabel")}
+            </Text>
+            <Text
+              style={[
+                styles.heroBudgetSummaryValue,
+                { color: remainingNegative ? SPEND_ACTION_COLOR : colors.text },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+            >
+              {remainingNegative ? `-${remainingLabel}` : remainingLabel}
+            </Text>
+          </View>
+          <View style={styles.heroBudgetCategoryList}>
+            {categories.map((entry) => {
+              const limitUSD = entry.limitUSD || 0;
+              const spentUSD = entry.spentUSD || 0;
+              const ratio = limitUSD > 0 ? spentUSD / limitUSD : spentUSD > 0 ? 1.5 : 0;
+              const spendPercent = limitUSD > 0 ? Math.min(Math.max(ratio, 0), 1) : spentUSD > 0 ? 1 : 0;
+              const overflowPercent = limitUSD > 0 ? Math.min(Math.max(ratio - 1, 0), 1) : spentUSD > 0 ? 1 : 0;
+              const remainingUSD = limitUSD - spentUSD;
+              const remainingLabelLocal = formatLocalAmount(Math.abs(remainingUSD));
+              const remainingValue = remainingUSD < -0.01 ? `-${remainingLabelLocal}` : remainingLabelLocal;
+              const isLimitLow =
+                limitUSD > 0 && remainingUSD >= 0 && remainingUSD / limitUSD <= BUDGET_CARD_LOW_THRESHOLD;
+              return (
+                <View key={entry.id} style={styles.heroBudgetRow}>
+                  <View style={styles.heroBudgetRowHeader}>
+                    <View style={styles.heroBudgetRowTitle}>
+                      <Text style={styles.heroBudgetRowEmoji}>{entry.emoji}</Text>
+                      <Text
+                        style={[styles.heroBudgetRowLabel, { color: colors.text }]}
+                        numberOfLines={1}
+                      >
+                        {entry.label}
+                      </Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.heroBudgetRowValue,
+                        { color: remainingUSD < -0.01 ? SPEND_ACTION_COLOR : colors.text },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {remainingValue}
+                    </Text>
+                  </View>
+                  <View style={[styles.heroBudgetRowTrack, { backgroundColor: colors.border }]}>
+                    <View
+                      style={[
+                        styles.heroBudgetRowFill,
+                        {
+                          width: `${spendPercent > 0 ? Math.max(6, spendPercent * 100) : 0}%`,
+                          backgroundColor: isLimitLow ? budgetLimitWarningColor : SAVE_ACTION_COLOR,
+                        },
+                      ]}
+                    />
+                    {overflowPercent > 0 ? (
+                      <View
+                        style={[
+                          styles.heroBudgetRowOverflow,
+                          {
+                            width: `${Math.max(6, overflowPercent * 100)}%`,
+                            backgroundColor: SPEND_ACTION_COLOR,
+                          },
+                        ]}
+                      />
+                    ) : null}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </>
+      ) : (
+        <View style={styles.heroBudgetEmpty}>
+          <Text style={[styles.heroBudgetEmptyTitle, { color: colors.text }]}>
+            {t("budgetEmptyTitle")}
+          </Text>
+          <Text style={[styles.heroBudgetEmptySubtitle, { color: colors.muted }]}>
+            {t("budgetEmptySubtitle")}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+});
+
+const parsePercentValue = (value) => {
+  if (typeof value === "string" && value.includes("%")) {
+    return Number.parseFloat(value) / 100;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+};
+
+const DailyGoalCard = React.memo(function DailyGoalCard({
+  colors,
+  isDarkMode = false,
+  t,
+  monthLabel,
+  dailyGoalLabel = "",
+  dailyGoalUSD = 0,
+  todaySavedUSD = 0,
+  savedCardCount = 0,
+  coinDropTick = 0,
+  isActive = false,
+  playSound = null,
+  shakeEnabled = true,
+  style = null,
+}) {
+  const palette = useMemo(
+    () => ({
+      background: colors.card,
+      border: colors.border,
+      text: colors.text,
+      subtext: colors.muted,
+    }),
+    [colors]
+  );
+  const glowColor = colorWithAlpha(SAVE_ACTION_COLOR, isDarkMode ? 0.25 : 0.2);
+  const blurAvailable = useMemo(() => isBlurViewAvailable(), []);
+  const piggyPalette = useMemo(
+    () => ({
+      fill: isDarkMode ? "rgba(20,24,36,0.58)" : "rgba(235,244,255,0.46)",
+      border: isDarkMode ? "rgba(255,255,255,0.28)" : "rgba(126,146,170,0.34)",
+      highlight: isDarkMode ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.72)",
+      shadow: isDarkMode ? "rgba(0,0,0,0.55)" : "rgba(22,32,54,0.18)",
+      value: isDarkMode ? "#F7F7FF" : "#1B1C2A",
+      rim: isDarkMode ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.78)",
+      innerShadow: isDarkMode ? "rgba(0,0,0,0.4)" : "rgba(120,140,160,0.25)",
+      tint: isDarkMode ? "rgba(60,80,110,0.24)" : "rgba(180,210,235,0.22)",
+    }),
+    [isDarkMode]
+  );
+  const glassGradientId = useMemo(
+    () => `piggy-glass-${Math.round(Math.random() * 1e9)}`,
+    []
+  );
+  const glassShadeId = useMemo(
+    () => `piggy-glass-shade-${Math.round(Math.random() * 1e9)}`,
+    []
+  );
+  const hasGoal = Number.isFinite(dailyGoalUSD) && dailyGoalUSD > 0;
+  const safeGoalUSD = hasGoal ? dailyGoalUSD : 0;
+  const safeSavedUSD = Math.max(0, Number(todaySavedUSD) || 0);
+  const progress = hasGoal ? Math.min(safeSavedUSD / safeGoalUSD, 1) : 0;
+  const glassBlurIntensity = Platform.OS === "android" ? 12 : 18;
+  const glassBlurAmount = Math.max(3, Math.round(glassBlurIntensity * 0.4));
+  const baseCoinSize = IS_SHORT_DEVICE ? 18 : 22;
+  const coinSlots = useMemo(
+    () => [
+      { left: "18%", bottom: "18%", size: baseCoinSize, rotate: "-14deg" },
+      { left: "32%", bottom: "26%", size: baseCoinSize * 0.92, rotate: "9deg" },
+      { left: "48%", bottom: "16%", size: baseCoinSize * 0.96, rotate: "-6deg" },
+      { left: "62%", bottom: "26%", size: baseCoinSize, rotate: "12deg" },
+      { left: "72%", bottom: "18%", size: baseCoinSize * 0.86, rotate: "-8deg" },
+      { left: "24%", bottom: "40%", size: baseCoinSize * 0.9, rotate: "6deg" },
+      { left: "42%", bottom: "36%", size: baseCoinSize, rotate: "-10deg" },
+      { left: "58%", bottom: "44%", size: baseCoinSize * 0.86, rotate: "8deg" },
+      { left: "36%", bottom: "54%", size: baseCoinSize * 0.82, rotate: "-6deg" },
+      { left: "54%", bottom: "56%", size: baseCoinSize * 0.76, rotate: "10deg" },
+      { left: "16%", bottom: "58%", size: baseCoinSize * 0.7, rotate: "-4deg" },
+      { left: "26%", bottom: "68%", size: baseCoinSize * 0.62, rotate: "8deg" },
+      { left: "40%", bottom: "66%", size: baseCoinSize * 0.66, rotate: "-12deg" },
+      { left: "52%", bottom: "70%", size: baseCoinSize * 0.6, rotate: "6deg" },
+      { left: "68%", bottom: "62%", size: baseCoinSize * 0.64, rotate: "-8deg" },
+      { left: "62%", bottom: "76%", size: baseCoinSize * 0.58, rotate: "12deg" },
+    ],
+    [baseCoinSize]
+  );
+  const jiggleAnim = useRef(new Animated.Value(0)).current;
+  const dropAnim = useRef(new Animated.Value(0)).current;
+  const lastDropTickRef = useRef(coinDropTick);
+  const dropQueueRef = useRef(0);
+  const dropRunningRef = useRef(false);
+  const dropTimerRef = useRef(null);
+  const [extraCoinCount, setExtraCoinCount] = useState(0);
+  const lastSavedCountRef = useRef(0);
+  const shakeStateRef = useRef({ lastMagnitude: 0, lastShakeAt: 0 });
+  const gyroStateRef = useRef({ lastSpinAt: 0 });
+  const [coinsClipLayout, setCoinsClipLayout] = useState({ width: 0, height: 0 });
+  const [coinPhysics, setCoinPhysics] = useState([]);
+  const coinPhysicsRef = useRef([]);
+  const tiltRef = useRef({ x: 0, y: 0 });
+  const tiltSmoothRef = useRef({ x: 0, y: 0 });
+  const gyroRef = useRef({ x: 0, y: 0, z: 0 });
+  const gyroSmoothRef = useRef({ x: 0, y: 0, z: 0 });
+  const physicsLoopRef = useRef(null);
+  const [appState, setAppState] = useState(() => AppState?.currentState || "active");
+  const [tiltSource, setTiltSource] = useState(null);
+  const [gyroSource, setGyroSource] = useState(null);
+  const jiggleFactors = useMemo(
+    () =>
+      coinSlots.map(() => ({
+        x: (Math.random() * 2 - 1) * 2.4,
+        y: (Math.random() * 2 - 1) * 2.1,
+        r: (Math.random() * 2 - 1) * 10,
+      })),
+    [coinSlots.length]
+  );
+  const handleCoinsClipLayout = useCallback((event) => {
+    const { width, height } = event?.nativeEvent?.layout || {};
+    if (!width || !height) return;
+    setCoinsClipLayout((prev) =>
+      prev.width === width && prev.height === height ? prev : { width, height }
+    );
+  }, []);
+  const triggerJiggle = useCallback(() => {
+    jiggleAnim.stopAnimation();
+    jiggleAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(jiggleAnim, {
+        toValue: 1,
+        duration: 170,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(jiggleAnim, {
+        toValue: 0,
+        duration: 230,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [jiggleAnim]);
+  useEffect(() => {
+    const subscription = AppState?.addEventListener?.("change", (nextState) => {
+      setAppState(nextState || "active");
+    });
+    return () => subscription?.remove?.();
+  }, []);
+  useEffect(() => {
+    let active = true;
+    const isAvailable = async (sensor) => {
+      if (!sensor) return false;
+      if (typeof sensor.isAvailableAsync === "function") {
+        try {
+          return await sensor.isAvailableAsync();
+        } catch (error) {
+          console.warn("sensor availability", error);
+          return false;
+        }
+      }
+      return true;
+    };
+    const resolveSource = async (primary, fallback) => {
+      if (await isAvailable(primary)) return primary;
+      if (await isAvailable(fallback)) return fallback;
+      return null;
+    };
+    (async () => {
+      const tiltPrimary = Platform.OS === "android" ? Accelerometer : DeviceMotion;
+      const tiltFallback = Platform.OS === "android" ? DeviceMotion : Accelerometer;
+      const tilt = await resolveSource(tiltPrimary, tiltFallback);
+      const gyro = await resolveSource(Gyroscope, DeviceMotion);
+      if (!active) return;
+      setTiltSource(tilt);
+      setGyroSource(gyro);
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (dropTimerRef.current) {
+        clearTimeout(dropTimerRef.current);
+        dropTimerRef.current = null;
+      }
+    };
+  }, []);
+  useEffect(() => {
+    if (!coinsClipLayout.width || !coinsClipLayout.height) return;
+    const width = coinsClipLayout.width;
+    const height = coinsClipLayout.height;
+    const innerWidth = Math.max(0, width - PIGGY_COIN_PADDING_X * 2);
+    const innerHeight = Math.max(0, height - PIGGY_COIN_PADDING_Y * 2);
+    const nextPhysics = coinSlots.map((slot, index) => {
+      const leftPercent = parsePercentValue(slot.left);
+      const bottomPercent = parsePercentValue(slot.bottom);
+      const size = slot.size;
+      const leftPx = PIGGY_COIN_PADDING_X + leftPercent * innerWidth;
+      const bottomPx = PIGGY_COIN_PADDING_Y + bottomPercent * innerHeight;
+      const maxX = Math.max(PIGGY_COIN_PADDING_X, width - PIGGY_COIN_PADDING_X - size);
+      const maxY = Math.max(PIGGY_COIN_PADDING_Y, height - PIGGY_COIN_PADDING_Y - size);
+      const x = Math.max(PIGGY_COIN_PADDING_X, Math.min(leftPx, maxX));
+      const y = Math.max(PIGGY_COIN_PADDING_Y, Math.min(height - bottomPx - size, maxY));
+      return {
+        id: `piggy-coin-${index}`,
+        x,
+        y,
+        vx: 0,
+        vy: 0,
+        size,
+        animX: new Animated.Value(x),
+        animY: new Animated.Value(y),
+        rotate: slot.rotate,
+      };
+    });
+    coinPhysicsRef.current = nextPhysics;
+    setCoinPhysics(nextPhysics);
+  }, [coinSlots, coinsClipLayout.height, coinsClipLayout.width]);
+  const runNextDrop = useCallback(() => {
+    if (dropRunningRef.current) return;
+    if (!isActive) return;
+    if (dropQueueRef.current <= 0) return;
+    dropRunningRef.current = true;
+    dropQueueRef.current -= 1;
+    dropAnim.stopAnimation();
+    dropAnim.setValue(0);
+    Animated.timing(dropAnim, {
+      toValue: 1,
+      duration: 720,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start(() => {
+      dropAnim.setValue(0);
+      dropRunningRef.current = false;
+      if (dropQueueRef.current > 0) {
+        dropTimerRef.current = setTimeout(runNextDrop, 140);
+      }
+    });
+    triggerJiggle();
+  }, [dropAnim, isActive, triggerJiggle]);
+  useEffect(() => {
+    if (!GREEN_HEALTH_COIN_ASSET) return;
+    if (coinDropTick === lastDropTickRef.current) return;
+    const delta = coinDropTick - lastDropTickRef.current;
+    lastDropTickRef.current = coinDropTick;
+    if (delta <= 0) return;
+    dropQueueRef.current += delta * 2;
+    setExtraCoinCount((prev) => Math.min(coinSlots.length, prev + delta * 2));
+    if (isActive) {
+      runNextDrop();
+    }
+  }, [coinDropTick, coinSlots.length, isActive, runNextDrop]);
+  useEffect(() => {
+    if (!isActive) return;
+    if (dropQueueRef.current > 0) {
+      runNextDrop();
+    }
+  }, [isActive, runNextDrop]);
+  const isAppActive = appState !== "background" && appState !== "inactive";
+  const sensorActive = isAppActive;
+  const effectiveTiltSource = Accelerometer || tiltSource || DeviceMotion;
+  const effectiveGyroSource = Gyroscope || gyroSource || DeviceMotion;
+  const gyroEnabled = Boolean(effectiveGyroSource);
+  const physicsEnabled = isActive && isAppActive;
+  const shakeActive = isActive && shakeEnabled && isAppActive;
+  useEffect(() => {
+    if (!Accelerometer || !shakeActive) return;
+    try {
+      Accelerometer.setUpdateInterval(120);
+    } catch (error) {
+      console.warn("accelerometer interval", error);
+    }
+    const subscription = Accelerometer.addListener(({ x, y, z }) => {
+      const magnitude = Math.sqrt(x * x + y * y + z * z);
+      const previous = shakeStateRef.current.lastMagnitude || magnitude;
+      shakeStateRef.current.lastMagnitude = magnitude;
+      const delta = Math.abs(magnitude - previous);
+      const now = Date.now();
+      if (
+        delta > DAILY_GOAL_SHAKE_THRESHOLD &&
+        now - shakeStateRef.current.lastShakeAt > DAILY_GOAL_SHAKE_COOLDOWN_MS
+      ) {
+        shakeStateRef.current.lastShakeAt = now;
+        triggerJiggle();
+      }
+    });
+    return () => subscription?.remove?.();
+  }, [shakeActive, triggerJiggle]);
+  useEffect(() => {
+    if (!isAppActive) return;
+    const activeTiltSource = effectiveTiltSource;
+    if (!activeTiltSource) return;
+    const requestPermissions = async () => {
+      try {
+        if (typeof activeTiltSource.getPermissionsAsync === "function") {
+          await activeTiltSource.getPermissionsAsync();
+          if (typeof activeTiltSource.requestPermissionsAsync === "function") {
+            await activeTiltSource.requestPermissionsAsync();
+          }
+        } else if (typeof activeTiltSource.requestPermissionsAsync === "function") {
+          await activeTiltSource.requestPermissionsAsync();
+        }
+      } catch (error) {
+        // Swallow permission errors to avoid interrupting tilt updates.
+      }
+    };
+    requestPermissions();
+    try {
+      activeTiltSource.setUpdateInterval?.(60);
+    } catch (error) {
+      console.warn("tilt interval", error);
+    }
+    const subscription = activeTiltSource.addListener((payload) => {
+      let x = 0;
+      let y = 0;
+      if (payload?.gravity) {
+        x = Number(payload.gravity.x ?? 0);
+        y = Number(payload.gravity.y ?? 0);
+      } else if (payload?.accelerationIncludingGravity) {
+        x = Number(payload.accelerationIncludingGravity.x ?? 0);
+        y = Number(payload.accelerationIncludingGravity.y ?? 0);
+      } else if (typeof payload?.x === "number") {
+        x = Number(payload.x);
+        y = Number(payload.y);
+      }
+      if (Math.abs(x) > 2 || Math.abs(y) > 2) {
+        x /= 9.81;
+        y /= 9.81;
+      }
+      const clampedX = Math.max(-1, Math.min(1, x));
+      const clampedY = Math.max(-1, Math.min(1, y));
+      const prev = tiltSmoothRef.current;
+      const smoothing = 0.48;
+      const nextX = prev.x + (clampedX - prev.x) * smoothing;
+      const nextY = prev.y + (clampedY - prev.y) * smoothing;
+      tiltSmoothRef.current.x = nextX;
+      tiltSmoothRef.current.y = nextY;
+      tiltRef.current.x = nextX;
+      tiltRef.current.y = nextY;
+
+      const rotation = payload?.rotationRate || payload?.rotation || null;
+      if (rotation) {
+        const rawX = Number(rotation.x ?? rotation.alpha ?? 0);
+        const rawY = Number(rotation.y ?? rotation.beta ?? 0);
+        const rawZ = Number(rotation.z ?? rotation.gamma ?? 0);
+        const clamp = (value) =>
+          Math.max(-DAILY_GOAL_GYRO_CLAMP, Math.min(DAILY_GOAL_GYRO_CLAMP, value));
+        const next = gyroSmoothRef.current;
+        const gyroSmoothing = 0.18;
+        const targetX = clamp(rawX);
+        const targetY = clamp(rawY);
+        const targetZ = clamp(rawZ);
+        next.x = next.x + (targetX - next.x) * gyroSmoothing;
+        next.y = next.y + (targetY - next.y) * gyroSmoothing;
+        next.z = next.z + (targetZ - next.z) * gyroSmoothing;
+        gyroRef.current.x = next.x;
+        gyroRef.current.y = next.y;
+        gyroRef.current.z = next.z;
+      }
+    });
+    return () => {
+      subscription?.remove?.();
+    };
+  }, [appState, effectiveTiltSource, isAppActive]);
+  useEffect(() => {
+    if (!gyroEnabled) return;
+    const activeGyroSource = effectiveGyroSource;
+    if (!activeGyroSource) return;
+    try {
+      activeGyroSource.setUpdateInterval?.(60);
+    } catch (error) {
+      console.warn("gyro interval", error);
+    }
+    const subscription = activeGyroSource.addListener((payload) => {
+      const rotation = payload?.rotationRate || payload?.rotation || payload || {};
+      const rawX = Number(rotation?.x ?? rotation?.alpha ?? 0);
+      const rawY = Number(rotation?.y ?? rotation?.beta ?? 0);
+      const rawZ = Number(rotation?.z ?? rotation?.gamma ?? 0);
+      const clamp = (value) =>
+        Math.max(-DAILY_GOAL_GYRO_CLAMP, Math.min(DAILY_GOAL_GYRO_CLAMP, value));
+      const next = gyroSmoothRef.current;
+      const gyroSmoothing = 0.18;
+      const targetX = clamp(rawX);
+      const targetY = clamp(rawY);
+      const targetZ = clamp(rawZ);
+      next.x = next.x + (targetX - next.x) * gyroSmoothing;
+      next.y = next.y + (targetY - next.y) * gyroSmoothing;
+      next.z = next.z + (targetZ - next.z) * gyroSmoothing;
+      gyroRef.current.x = next.x;
+      gyroRef.current.y = next.y;
+      gyroRef.current.z = next.z;
+    });
+    return () => subscription?.remove?.();
+  }, [effectiveGyroSource, gyroEnabled]);
+  useEffect(() => {
+    if (!physicsEnabled) return;
+    if (!coinsClipLayout.width || !coinsClipLayout.height) return;
+    if (!coinPhysics.length) return;
+    let cancelled = false;
+    let lastTime = Date.now();
+    const step = () => {
+      if (cancelled) return;
+      const now = Date.now();
+      const dt = Math.min(32, now - lastTime) / 1000;
+      lastTime = now;
+      const tiltX = Math.abs(tiltRef.current.x) < DAILY_GOAL_TILT_DEADZONE ? 0 : tiltRef.current.x;
+      const tiltY = Math.abs(tiltRef.current.y) < DAILY_GOAL_TILT_DEADZONE ? 0 : tiltRef.current.y;
+      const gyro = gyroRef.current;
+      const gyroX = gyro?.y ?? 0;
+      const gyroY = gyro?.x ?? 0;
+      const gyroAccelX = gyroX * DAILY_GOAL_GYRO_ACCEL;
+      const gyroAccelY = -gyroY * DAILY_GOAL_GYRO_ACCEL;
+      const tiltMagnitude = Math.hypot(tiltX, tiltY);
+      const gravityDir =
+        tiltMagnitude > DAILY_GOAL_TILT_DEADZONE
+          ? { x: tiltX / tiltMagnitude, y: -tiltY / tiltMagnitude }
+          : { x: 0, y: 1 };
+      const accelX = gravityDir.x * DAILY_GOAL_GRAVITY + gyroAccelX;
+      const accelY = gravityDir.y * DAILY_GOAL_GRAVITY + gyroAccelY;
+      const friction = Math.pow(1 - DAILY_GOAL_TILT_FRICTION, dt * 60);
+      const maxSpeed = DAILY_GOAL_TILT_MAX_SPEED;
+      const bounce = DAILY_GOAL_TILT_BOUNCE;
+      const width = coinsClipLayout.width;
+      const height = coinsClipLayout.height;
+      const minX = PIGGY_COIN_PADDING_X;
+      const minY = PIGGY_COIN_PADDING_Y;
+      const maxX = width - PIGGY_COIN_PADDING_X;
+      const maxY = height - PIGGY_COIN_PADDING_Y;
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const baseRadiusX = Math.max(1, (width - PIGGY_COIN_PADDING_X * 2) / 2);
+      const baseRadiusY = Math.max(1, (height - PIGGY_COIN_PADDING_Y * 2) / 2);
+      const coins = coinPhysicsRef.current;
+      const collisionBounce = DAILY_GOAL_COIN_COLLISION_BOUNCE;
+      const clampCoinToBounds = (coin) => {
+        const limitX = Math.max(minX, maxX - coin.size);
+        const limitY = Math.max(minY, maxY - coin.size);
+        if (coin.x < minX) {
+          coin.x = minX;
+          coin.vx *= -bounce;
+        } else if (coin.x > limitX) {
+          coin.x = limitX;
+          coin.vx *= -bounce;
+        }
+        if (coin.y < minY) {
+          coin.y = minY;
+          coin.vy *= -bounce;
+        } else if (coin.y > limitY) {
+          coin.y = limitY;
+          coin.vy *= -bounce;
+        }
+        const radiusX = Math.max(1, baseRadiusX - coin.size / 2);
+        const radiusY = Math.max(1, baseRadiusY - coin.size / 2);
+        const coinCenterX = coin.x + coin.size / 2;
+        const coinCenterY = coin.y + coin.size / 2;
+        const normX = (coinCenterX - centerX) / radiusX;
+        const normY = (coinCenterY - centerY) / radiusY;
+        const distSq = normX * normX + normY * normY;
+        if (distSq > 1) {
+          const dist = Math.sqrt(distSq) || 1;
+          const scale = 1 / dist;
+          const clampedCenterX = centerX + (coinCenterX - centerX) * scale;
+          const clampedCenterY = centerY + (coinCenterY - centerY) * scale;
+          coin.x = clampedCenterX - coin.size / 2;
+          coin.y = clampedCenterY - coin.size / 2;
+          const normalXRaw = (clampedCenterX - centerX) / (radiusX * radiusX);
+          const normalYRaw = (clampedCenterY - centerY) / (radiusY * radiusY);
+          const normalLength = Math.hypot(normalXRaw, normalYRaw) || 1;
+          const normalX = normalXRaw / normalLength;
+          const normalY = normalYRaw / normalLength;
+          const velocityDot = coin.vx * normalX + coin.vy * normalY;
+          if (velocityDot > 0) {
+            coin.vx -= (1 + bounce) * velocityDot * normalX;
+            coin.vy -= (1 + bounce) * velocityDot * normalY;
+          }
+        }
+      };
+      coins.forEach((coin) => {
+        if (!coin) return;
+        coin.vx = (coin.vx + accelX * dt) * friction;
+        coin.vy = (coin.vy + accelY * dt) * friction;
+        const speed = Math.hypot(coin.vx, coin.vy);
+        if (speed > maxSpeed && speed > 0) {
+          const scale = maxSpeed / speed;
+          coin.vx *= scale;
+          coin.vy *= scale;
+        }
+        coin.x += coin.vx * dt;
+        coin.y += coin.vy * dt;
+        clampCoinToBounds(coin);
+      });
+      for (let i = 0; i < coins.length; i += 1) {
+        const coinA = coins[i];
+        if (!coinA) continue;
+        for (let j = i + 1; j < coins.length; j += 1) {
+          const coinB = coins[j];
+          if (!coinB) continue;
+          const radiusA = coinA.size * 0.5;
+          const radiusB = coinB.size * 0.5;
+          const centerAx = coinA.x + radiusA;
+          const centerAy = coinA.y + radiusA;
+          const centerBx = coinB.x + radiusB;
+          const centerBy = coinB.y + radiusB;
+          const dx = centerBx - centerAx;
+          const dy = centerBy - centerAy;
+          const minDist = radiusA + radiusB;
+          const distSq = dx * dx + dy * dy;
+          if (distSq < minDist * minDist) {
+            const dist = Math.sqrt(distSq);
+            const safeDist = dist > 0 ? dist : 0.001;
+            const normalX = dist > 0 ? dx / dist : 1;
+            const normalY = dist > 0 ? dy / dist : 0;
+            const overlap = minDist - safeDist;
+            if (overlap > 0) {
+              const separation = overlap / 2;
+              coinA.x -= normalX * separation;
+              coinA.y -= normalY * separation;
+              coinB.x += normalX * separation;
+              coinB.y += normalY * separation;
+            }
+            const relVelX = coinA.vx - coinB.vx;
+            const relVelY = coinA.vy - coinB.vy;
+            const relVel = relVelX * normalX + relVelY * normalY;
+            if (relVel < 0) {
+              const impulse = (-(1 + collisionBounce) * relVel) / 2;
+              const impulseX = impulse * normalX;
+              const impulseY = impulse * normalY;
+              coinA.vx += impulseX;
+              coinA.vy += impulseY;
+              coinB.vx -= impulseX;
+              coinB.vy -= impulseY;
+            }
+          }
+        }
+      }
+      coins.forEach((coin) => {
+        if (!coin) return;
+        clampCoinToBounds(coin);
+        coin.animX.setValue(coin.x);
+        coin.animY.setValue(coin.y);
+      });
+      physicsLoopRef.current = requestAnimationFrame(step);
+    };
+    physicsLoopRef.current = requestAnimationFrame(step);
+    return () => {
+      cancelled = true;
+      if (physicsLoopRef.current) {
+        cancelAnimationFrame(physicsLoopRef.current);
+        physicsLoopRef.current = null;
+      }
+    };
+  }, [coinPhysics.length, coinsClipLayout.height, coinsClipLayout.width, physicsEnabled]);
+  useEffect(() => {
+    if (!shakeActive) return;
+    const activeGyroSource = effectiveGyroSource;
+    if (!activeGyroSource) return;
+    try {
+      if (activeGyroSource !== DeviceMotion || !sensorActive) {
+        activeGyroSource.setUpdateInterval?.(120);
+      }
+    } catch (error) {
+      console.warn("gyro interval", error);
+    }
+    const subscription = activeGyroSource.addListener((payload) => {
+      const rotation = payload?.rotationRate || payload?.rotation || payload || {};
+      const x = Number(rotation.x ?? rotation.alpha ?? 0);
+      const y = Number(rotation.y ?? rotation.beta ?? 0);
+      const z = Number(rotation.z ?? rotation.gamma ?? 0);
+      const spin = Math.sqrt(x * x + y * y + z * z);
+      const now = Date.now();
+    if (spin > DAILY_GOAL_GYRO_THRESHOLD && now - gyroStateRef.current.lastSpinAt > DAILY_GOAL_GYRO_COOLDOWN_MS) {
+      gyroStateRef.current.lastSpinAt = now;
+      triggerJiggle();
+    }
+  });
+    return () => subscription?.remove?.();
+  }, [effectiveGyroSource, sensorActive, shakeActive, triggerJiggle]);
+  const safeSavedCardCount = Math.max(0, Math.floor(Number(savedCardCount) || 0));
+  useEffect(() => {
+    const prev = lastSavedCountRef.current;
+    if (safeSavedCardCount === prev) return;
+    lastSavedCountRef.current = safeSavedCardCount;
+    const delta = safeSavedCardCount - prev;
+    setExtraCoinCount((current) => {
+      if (delta <= 0) return 0;
+      const next = Math.max(0, current - delta * 2);
+      return next;
+    });
+  }, [safeSavedCardCount]);
+  const coinsToShow = Math.min(coinSlots.length, safeSavedCardCount * 2 + extraCoinCount);
+  const displayGoalLabel = dailyGoalLabel || "0";
+  const dropTranslateY = dropAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-60, 24],
+  });
+  const dropOpacity = dropAnim.interpolate({
+    inputRange: [0, 0.12, 1],
+    outputRange: [0, 1, 0.9],
+  });
+  const dropScale = dropAnim.interpolate({
+    inputRange: [0, 0.45, 1],
+    outputRange: [0.9, 1.05, 0.98],
+  });
+  return (
+    <View
+      style={[
+        styles.progressHeroCard,
+        styles.savedHeroCard,
+        styles.heroDailyCard,
+        {
+          backgroundColor: palette.background,
+          borderColor: palette.border,
+          shadowColor: isDarkMode ? "#000" : "rgba(0,0,0,0.2)",
+        },
+        style,
+      ]}
+    >
+      <View pointerEvents="none" style={styles.savedHeroGlowWrap}>
+        <View style={[styles.savedHeroGlow, { backgroundColor: glowColor }]} />
+        <View style={[styles.savedHeroGlow, styles.savedHeroGlowBottom, { backgroundColor: glowColor }]} />
+      </View>
+      <View style={styles.heroDailyHeader}>
+        <Text style={[styles.heroDailyTitle, { color: palette.subtext }]}>
+          {t("dailyGoalTitle")}
+        </Text>
+        {monthLabel ? (
+          <View style={[styles.heroDailyChip, { borderColor: palette.border }]}>
+            <Text style={[styles.heroDailyChipText, { color: palette.subtext }]} numberOfLines={1}>
+              {monthLabel}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      <View style={styles.heroDailyGoalBody}>
+        <View style={styles.piggyWrap}>
+          <View style={styles.piggyBodyWrap}>
+            <View style={[styles.piggyShadow, { shadowColor: piggyPalette.shadow }]} />
+            <View
+              style={[
+                styles.piggyBody,
+                {
+                  backgroundColor: piggyPalette.fill,
+                  borderColor: piggyPalette.border,
+                  shadowColor: piggyPalette.shadow,
+                },
+              ]}
+            >
+              {blurAvailable ? (
+                Platform.OS === "android" && AndroidBlurView ? (
+                  <AndroidBlurView
+                    blurType={isDarkMode ? "dark" : "light"}
+                    blurAmount={glassBlurAmount}
+                    reducedTransparencyFallbackColor={piggyPalette.tint}
+                    style={[StyleSheet.absoluteFill, styles.piggyGlassBlur]}
+                  />
+                ) : (
+                  <ExpoBlurView
+                    tint={isDarkMode ? "dark" : "light"}
+                    intensity={glassBlurIntensity}
+                    experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
+                    style={[StyleSheet.absoluteFill, styles.piggyGlassBlur]}
+                  />
+                )
+              ) : (
+                <View
+                  style={[
+                    StyleSheet.absoluteFill,
+                    styles.piggyGlassBlurFallback,
+                    { backgroundColor: piggyPalette.tint },
+                  ]}
+                />
+              )}
+              <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+                <Defs>
+                  <SvgLinearGradient id={glassGradientId} x1="0" y1="0" x2="1" y2="1">
+                    <SvgStop offset="0" stopColor={colorWithAlpha("#FFFFFF", isDarkMode ? 0.16 : 0.5)} />
+                    <SvgStop
+                      offset="0.52"
+                      stopColor={colorWithAlpha("#FFFFFF", isDarkMode ? 0.06 : 0.2)}
+                    />
+                    <SvgStop
+                      offset="1"
+                      stopColor={colorWithAlpha("#9FB3CF", isDarkMode ? 0.18 : 0.26)}
+                    />
+                  </SvgLinearGradient>
+                  <SvgLinearGradient id={glassShadeId} x1="0.1" y1="0" x2="0.9" y2="1">
+                    <SvgStop
+                      offset="0"
+                      stopColor={colorWithAlpha("#FFFFFF", isDarkMode ? 0.12 : 0.3)}
+                    />
+                    <SvgStop
+                      offset="0.65"
+                      stopColor={colorWithAlpha("#FFFFFF", isDarkMode ? 0.04 : 0.1)}
+                    />
+                    <SvgStop
+                      offset="1"
+                      stopColor={colorWithAlpha("#5D6C8A", isDarkMode ? 0.35 : 0.22)}
+                    />
+                  </SvgLinearGradient>
+                </Defs>
+                <SvgRect x="0" y="0" width="100%" height="100%" fill={`url(#${glassGradientId})`} />
+                <SvgRect x="0" y="0" width="100%" height="100%" fill={`url(#${glassShadeId})`} />
+              </Svg>
+              <View style={[styles.piggyGlassInner, { borderColor: piggyPalette.innerShadow }]} />
+              <View style={[styles.piggyGlassHighlight, { backgroundColor: piggyPalette.highlight }]} />
+              <View
+                style={[
+                  styles.piggyGlassHighlight,
+                  styles.piggyGlassHighlightSecondary,
+                  { backgroundColor: piggyPalette.highlight },
+                ]}
+              />
+              <View style={[styles.piggyGlassRim, { backgroundColor: piggyPalette.rim }]} />
+              <View style={styles.piggyCoinsClip} onLayout={handleCoinsClipLayout} pointerEvents="none">
+                {GREEN_HEALTH_COIN_ASSET
+                  ? coinSlots.slice(0, coinsToShow).map((slot, index) => {
+                      const jiggle = jiggleFactors[index] || { x: 0, y: 0, r: 0 };
+                      const jiggleX = Animated.multiply(jiggleAnim, jiggle.x);
+                      const jiggleY = Animated.multiply(jiggleAnim, jiggle.y);
+                      const rotate = jiggleAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ["0deg", `${jiggle.r}deg`],
+                      });
+                      const opacity = Math.max(0.3, 0.95 - index * 0.05);
+                      const physicsCoin = coinPhysics[index];
+                      const translateX = physicsCoin ? Animated.add(physicsCoin.animX, jiggleX) : jiggleX;
+                      const translateY = physicsCoin ? Animated.add(physicsCoin.animY, jiggleY) : jiggleY;
+                      const size = physicsCoin?.size ?? slot.size;
+                      const baseStyle = physicsCoin
+                        ? { left: 0, top: 0, width: size, height: size }
+                        : { left: slot.left, bottom: slot.bottom, width: size, height: size };
+                      return (
+                        <Animated.Image
+                          key={`piggy-coin-${index}`}
+                          source={GREEN_HEALTH_COIN_ASSET}
+                          style={[
+                            styles.piggyCoin,
+                            baseStyle,
+                            {
+                              opacity,
+                              transform: [
+                                { translateX },
+                                { translateY },
+                                { rotate: slot.rotate },
+                                { rotate: rotate },
+                              ],
+                            },
+                          ]}
+                          pointerEvents="none"
+                        />
+                      );
+                    })
+                  : null}
+              </View>
+              <View style={styles.piggyGoalValueWrap}>
+                <Text
+                  style={[styles.piggyGoalValue, { color: piggyPalette.value }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  {displayGoalLabel}
+                </Text>
+              </View>
+            </View>
+            <View
+              style={[
+                styles.piggyEarLeft,
+                { backgroundColor: piggyPalette.fill, borderColor: piggyPalette.border },
+              ]}
+            />
+            <View
+              style={[
+                styles.piggyEarRight,
+                { backgroundColor: piggyPalette.fill, borderColor: piggyPalette.border },
+              ]}
+            />
+            <View
+              style={[
+                styles.piggySnout,
+                { backgroundColor: piggyPalette.fill, borderColor: piggyPalette.border },
+              ]}
+            >
+              <View style={styles.piggyNostrilRow}>
+                <View style={[styles.piggyNostril, { backgroundColor: piggyPalette.border }]} />
+                <View style={[styles.piggyNostril, { backgroundColor: piggyPalette.border }]} />
+              </View>
+            </View>
+            <View
+              style={[
+                styles.piggyLegLeft,
+                { backgroundColor: piggyPalette.fill, borderColor: piggyPalette.border },
+              ]}
+            />
+            <View
+              style={[
+                styles.piggyLegRight,
+                { backgroundColor: piggyPalette.fill, borderColor: piggyPalette.border },
+              ]}
+            />
+            <View style={[styles.piggyTail, { backgroundColor: piggyPalette.border }]} />
+            {GREEN_HEALTH_COIN_ASSET ? (
+              <Animated.Image
+                source={GREEN_HEALTH_COIN_ASSET}
+                style={[
+                  styles.piggyDropCoin,
+                  {
+                    opacity: dropOpacity,
+                    transform: [{ translateY: dropTranslateY }, { scale: dropScale }],
+                  },
+                ]}
+                pointerEvents="none"
+              />
+            ) : null}
+          </View>
+        </View>
+        <Text style={[styles.heroDailySubtitle, { color: palette.subtext }]}>
+          {t("dailyGoalSubtitle")}
+        </Text>
+      </View>
+    </View>
+  );
+});
+
 const resolveFeatureUnlockCopy = (variantKey, t) => {
   const config = FEATURE_UNLOCK_VARIANT_CONFIG[variantKey];
   if (!config) {
@@ -8763,9 +10514,30 @@ const LockedFeatureCard = ({
   blurIntensity = 18,
 }) => {
   const baseLineColor = colors?.border || "rgba(0,0,0,0.12)";
+  const { title, description } = resolveFeatureUnlockCopy(variantKey, t);
+  const copyLength = `${title} ${description}`.trim().length;
+  const baseMinHeight = compact ? (IS_SHORT_DEVICE ? 150 : 140) : IS_SHORT_DEVICE ? 210 : 200;
+  const boostedMinHeight = compact
+    ? copyLength > 120
+      ? baseMinHeight + 30
+      : copyLength > 90
+      ? baseMinHeight + 20
+      : copyLength > 60
+      ? baseMinHeight + 12
+      : baseMinHeight
+    : copyLength > 120
+    ? baseMinHeight + (IS_SHORT_DEVICE ? 50 : 40)
+    : copyLength > 90
+    ? baseMinHeight + (IS_SHORT_DEVICE ? 35 : 25)
+    : copyLength > 60
+    ? baseMinHeight + (IS_SHORT_DEVICE ? 20 : 15)
+    : baseMinHeight;
+  const resolvedMinHeight = square
+    ? null
+    : Math.max(Number.isFinite(minHeight) ? minHeight : 0, boostedMinHeight);
   const placeholderStyle = compact ? styles.lockedFeaturePlaceholderCompact : styles.lockedFeaturePlaceholder;
   const squareStyle = square ? styles.lockedFeaturePlaceholderSquare : null;
-  const sizeStyle = Number.isFinite(minHeight) ? { minHeight } : null;
+  const sizeStyle = Number.isFinite(resolvedMinHeight) ? { minHeight: resolvedMinHeight } : null;
   return (
     <LockedFeatureOverlay
       locked
@@ -9004,6 +10776,7 @@ function FreeDayCard({
 function SpendConfirmSheet({
   visible,
   item,
+  amountUSD = null,
   currency = DEFAULT_PROFILE.currency,
   language = DEFAULT_LANGUAGE,
   onCancel,
@@ -9012,7 +10785,10 @@ function SpendConfirmSheet({
   t,
   theme,
 }) {
-  const priceLabel = item
+  const hasOverrideAmount = Number.isFinite(Number(amountUSD)) && Number(amountUSD) > 0;
+  const priceLabel = hasOverrideAmount
+    ? formatCurrency(convertToCurrency(Number(amountUSD), currency), currency)
+    : item
     ? formatTemptationPriceLabel(item, currency)
     : formatCurrency(0, currency, { friendly: true });
   const displayTitle =
@@ -9931,12 +11707,13 @@ const FeedScreen = React.memo(
   forwardRef(function FeedScreen(
     {
   products,
+  archivedItems = [],
   savedTotalUSD,
   progressSavedTotalUSD,
   wishes = [],
   onTemptationAction,
   onTemptationEditToggle,
-  onTemptationQuickGoalToggle,
+  onTemptationArchiveToggle,
   onNewTemptation = () => {},
   t,
   tVariant,
@@ -9954,6 +11731,10 @@ const FeedScreen = React.memo(
   historyEvents = [],
   onHistoryDelete = () => {},
   profile,
+  incomeEntries = [],
+  budgetOverrides = {},
+  decisionStats = {},
+  customCategories = [],
   titleOverrides = {},
   descriptionOverrides = {},
   onBaselineSetup,
@@ -9973,6 +11754,7 @@ const FeedScreen = React.memo(
   dailyRewardDay = 1,
   onDailyRewardClaim = () => {},
   onDailyRewardModalVisibilityChange = null,
+  dailyGoalCoinDropTick = 0,
   editingTemptationId = null,
   editingTitleValue = "",
   editingPriceValue = "",
@@ -9992,11 +11774,17 @@ const FeedScreen = React.memo(
   onTemptationSwipeDelete,
   onSavingsBreakdownPress = () => {},
   savingsHeroRef = null,
+  heroCarouselIndex = 0,
+  heroCarouselLocked = false,
+  onHeroCarouselIndexChange = null,
+  onHeroCarouselLocked = null,
+  heroCarouselHintAllowed = false,
   mascotOverride = null,
   onMascotAnimationComplete = () => {},
   hideMascot = false,
   onMascotPress = () => {},
   resolveTemplateTitle = () => null,
+  resolveTemplateCard = () => null,
   resolveTemptationCategory = null,
   tamagotchiMood = null,
   tamagotchiDesiredFood = null,
@@ -10011,6 +11799,7 @@ const FeedScreen = React.memo(
   playerLevel = 1,
   interactionStats = {},
   resolveCardRefuseStats = () => null,
+  playSound = null,
   activeChallenge = null,
   onActiveChallengePress = () => {},
   onSavingsHeroAnchorChange = null,
@@ -10025,6 +11814,7 @@ const FeedScreen = React.memo(
   onTutorialHighlightLayoutChange = null,
   allowThinkAction = true,
   budgetSpeechDataRef = null,
+  onScrollActivityChange = null,
   },
     ref
   ) {
@@ -10043,7 +11833,375 @@ const FeedScreen = React.memo(
     return bottomInset <= 8 ? 0 : ANDROID_TUTORIAL_HIGHLIGHT_OFFSET;
   }, [safeAreaInsets.bottom]);
   const listRef = useRef(null);
+  const [feedScrollLocked, setFeedScrollLocked] = useState(false);
+  const activeAmountSliderCardIdRef = useRef(null);
   const heroSectionHeightRef = useRef(0);
+  const heroCarouselRef = useRef(null);
+  const [heroCarouselHeight, setHeroCarouselHeight] = useState(0);
+  const heroCarouselHintAnim = useRef(new Animated.Value(0)).current;
+  const heroCarouselHintPlayedRef = useRef(false);
+  const heroCarouselScrollX = useRef(new Animated.Value(0)).current;
+  const [heroCarouselWidth, setHeroCarouselWidth] = useState(
+    Math.max(0, SCREEN_WIDTH - BASE_HORIZONTAL_PADDING * 2)
+  );
+  const heroCarouselPageWidth = useMemo(
+    () => heroCarouselWidth + HERO_CAROUSEL_ITEM_GUTTER,
+    [heroCarouselWidth]
+  );
+  const heroCarouselSnapThreshold = useMemo(() => Math.max(0.5, 1 / PixelRatio.get()), []);
+  const heroCarouselIndexRef = useRef(heroCarouselIndex);
+  const heroCarouselSnappingRef = useRef(false);
+  const heroCarouselAutoScrollingRef = useRef(false);
+  const heroCarouselDraggingRef = useRef(false);
+  const heroCarouselUserSwipedRef = useRef(false);
+  const heroCarouselWiggleDisabledRef = useRef(false);
+  const heroCarouselIdleLoopRef = useRef(null);
+  const heroCarouselIdleTimerRef = useRef(null);
+  const feedScrollTimerRef = useRef(null);
+  const feedScrollMomentumRef = useRef(false);
+  const feedScrollingRef = useRef(false);
+  const notifyFeedScrollState = useCallback(
+    (next) => {
+      if (feedScrollingRef.current === next) return;
+      feedScrollingRef.current = next;
+      if (typeof onScrollActivityChange === "function") {
+        onScrollActivityChange(next);
+      }
+    },
+    [onScrollActivityChange]
+  );
+  const handleFeedScrollBegin = useCallback(() => {
+    if (feedScrollTimerRef.current) {
+      clearTimeout(feedScrollTimerRef.current);
+      feedScrollTimerRef.current = null;
+    }
+    feedScrollMomentumRef.current = false;
+    notifyFeedScrollState(true);
+  }, [notifyFeedScrollState]);
+  const handleFeedScrollEnd = useCallback(() => {
+    if (feedScrollMomentumRef.current) return;
+    if (feedScrollTimerRef.current) {
+      clearTimeout(feedScrollTimerRef.current);
+    }
+    feedScrollTimerRef.current = setTimeout(() => {
+      notifyFeedScrollState(false);
+    }, 140);
+  }, [notifyFeedScrollState]);
+  const handleFeedMomentumBegin = useCallback(() => {
+    if (feedScrollTimerRef.current) {
+      clearTimeout(feedScrollTimerRef.current);
+      feedScrollTimerRef.current = null;
+    }
+    feedScrollMomentumRef.current = true;
+    notifyFeedScrollState(true);
+  }, [notifyFeedScrollState]);
+  const handleFeedMomentumEnd = useCallback(() => {
+    feedScrollMomentumRef.current = false;
+    if (feedScrollTimerRef.current) {
+      clearTimeout(feedScrollTimerRef.current);
+      feedScrollTimerRef.current = null;
+    }
+    notifyFeedScrollState(false);
+  }, [notifyFeedScrollState]);
+  const handleAmountSliderToggle = useCallback((isTouching, cardId) => {
+    if (isTouching) {
+      activeAmountSliderCardIdRef.current = cardId || null;
+      setFeedScrollLocked(true);
+      return;
+    }
+    if (!cardId || activeAmountSliderCardIdRef.current === cardId) {
+      activeAmountSliderCardIdRef.current = null;
+      setFeedScrollLocked(false);
+    }
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (feedScrollTimerRef.current) {
+        clearTimeout(feedScrollTimerRef.current);
+        feedScrollTimerRef.current = null;
+      }
+    };
+  }, []);
+  const heroCarouselRealCount = 3;
+  const heroCarouselLoopCount = heroCarouselRealCount + 2;
+  const heroCarouselIntervalMs = 0;
+  useEffect(() => {
+    heroCarouselIndexRef.current = heroCarouselIndex;
+    heroCarouselSnappingRef.current = false;
+  }, [heroCarouselIndex]);
+  const heroCarouselLoopIndexForReal = useCallback((realIndex) => realIndex + 1, []);
+  const resolveHeroCarouselRealIndex = useCallback(
+    (loopIndex) => {
+      if (loopIndex === 0) return heroCarouselRealCount - 1;
+      if (loopIndex === heroCarouselRealCount + 1) return 0;
+      return Math.min(Math.max(loopIndex - 1, 0), heroCarouselRealCount - 1);
+    },
+    [heroCarouselRealCount]
+  );
+  const setHeroCarouselIndexSafe = useCallback(
+    (nextIndex) => {
+      const clamped = Math.min(Math.max(nextIndex, 0), heroCarouselRealCount - 1);
+      heroCarouselIndexRef.current = clamped;
+      if (typeof onHeroCarouselIndexChange === "function") {
+        onHeroCarouselIndexChange(clamped);
+      }
+    },
+    [heroCarouselRealCount, onHeroCarouselIndexChange]
+  );
+  const scrollHeroCarouselToLoopIndex = useCallback(
+    (loopIndex, animated = true) => {
+      if (!heroCarouselRef.current || !heroCarouselPageWidth) return;
+      const offsetX = heroCarouselPageWidth * loopIndex;
+      heroCarouselRef.current.scrollTo({
+        x: offsetX,
+        y: 0,
+        animated,
+      });
+      if (!animated) {
+        heroCarouselScrollX.setValue(offsetX);
+      }
+    },
+    [heroCarouselPageWidth, heroCarouselScrollX]
+  );
+  const handleHeroCarouselLayout = useCallback((event) => {
+    const width = event?.nativeEvent?.layout?.width || 0;
+    if (!width) return;
+    setHeroCarouselWidth((prev) => (Math.abs(prev - width) < 1 ? prev : width));
+  }, []);
+  const handleHeroCardLayout = useCallback((event) => {
+    const height = event?.nativeEvent?.layout?.height || 0;
+    if (!height) return;
+    setHeroCarouselHeight((prev) => (Math.abs(prev - height) < 1 ? prev : height));
+  }, []);
+  const stopHeroCarouselIdleWiggle = useCallback(
+    (reset = true) => {
+      if (heroCarouselIdleTimerRef.current) {
+        clearTimeout(heroCarouselIdleTimerRef.current);
+        heroCarouselIdleTimerRef.current = null;
+      }
+      if (heroCarouselIdleLoopRef.current) {
+        heroCarouselIdleLoopRef.current.stop();
+        heroCarouselIdleLoopRef.current = null;
+      }
+      if (reset) {
+        heroCarouselHintAnim.stopAnimation(() => {
+          heroCarouselHintAnim.setValue(0);
+        });
+      }
+    },
+    [heroCarouselHintAnim]
+  );
+  const startHeroCarouselIdleWiggle = useCallback(() => {
+    if (heroCarouselIdleLoopRef.current) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(heroCarouselHintAnim, {
+          toValue: -18,
+          duration: 280,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(heroCarouselHintAnim, {
+          toValue: 0,
+          duration: 300,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.delay(1800),
+      ])
+    );
+    heroCarouselIdleLoopRef.current = loop;
+    loop.start();
+  }, [heroCarouselHintAnim]);
+  const scheduleHeroCarouselIdleWiggle = useCallback(() => {
+    if (!heroCarouselHintAllowed) return;
+    if (heroCarouselLocked) return;
+    if (!heroCarouselPageWidth) return;
+    if (heroCarouselWiggleDisabledRef.current) return;
+    if (heroCarouselDraggingRef.current || heroCarouselAutoScrollingRef.current) return;
+    stopHeroCarouselIdleWiggle(false);
+    heroCarouselIdleTimerRef.current = setTimeout(() => {
+      if (
+        heroCarouselDraggingRef.current ||
+        heroCarouselAutoScrollingRef.current ||
+        heroCarouselLocked ||
+        !heroCarouselHintAllowed ||
+        heroCarouselWiggleDisabledRef.current
+      ) {
+        return;
+      }
+      startHeroCarouselIdleWiggle();
+    }, 200);
+  }, [
+    heroCarouselHintAllowed,
+    heroCarouselLocked,
+    heroCarouselPageWidth,
+    startHeroCarouselIdleWiggle,
+    stopHeroCarouselIdleWiggle,
+  ]);
+  const handleHeroCarouselScrollBegin = useCallback(() => {
+    heroCarouselDraggingRef.current = true;
+    heroCarouselUserSwipedRef.current = true;
+    heroCarouselWiggleDisabledRef.current = true;
+    stopHeroCarouselIdleWiggle();
+  }, [stopHeroCarouselIdleWiggle]);
+  const handleHeroCarouselScrollEnd = useCallback(
+    (event) => {
+      heroCarouselDraggingRef.current = false;
+      if (!heroCarouselPageWidth) return;
+      const offsetX = event?.nativeEvent?.contentOffset?.x || 0;
+      const loopIndex = Math.round(offsetX / heroCarouselPageWidth);
+      const targetOffsetX = loopIndex * heroCarouselPageWidth;
+      const offsetDelta = Math.abs(offsetX - targetOffsetX);
+      if (offsetDelta > heroCarouselSnapThreshold) {
+        if (!heroCarouselSnappingRef.current) {
+          heroCarouselSnappingRef.current = true;
+          scrollHeroCarouselToLoopIndex(loopIndex, true);
+        }
+        return;
+      }
+      heroCarouselSnappingRef.current = false;
+      const resolvedRealIndex = resolveHeroCarouselRealIndex(loopIndex);
+      const previousIndex = heroCarouselIndexRef.current;
+      const atLoopHead = loopIndex === 0;
+      const atLoopTail = loopIndex === heroCarouselRealCount + 1;
+      if (heroCarouselAutoScrollingRef.current) {
+        heroCarouselAutoScrollingRef.current = false;
+      }
+      const didSwipe = heroCarouselUserSwipedRef.current;
+      if (didSwipe) {
+        heroCarouselUserSwipedRef.current = false;
+        if (resolvedRealIndex !== previousIndex) {
+          triggerSelectionHaptic();
+        }
+        if (resolvedRealIndex !== previousIndex && !heroCarouselLocked && typeof onHeroCarouselLocked === "function") {
+          onHeroCarouselLocked(true);
+        }
+      }
+      setHeroCarouselIndexSafe(resolvedRealIndex);
+      if (atLoopHead) {
+        scrollHeroCarouselToLoopIndex(heroCarouselRealCount, false);
+        scheduleHeroCarouselIdleWiggle();
+        return;
+      }
+      if (atLoopTail) {
+        scrollHeroCarouselToLoopIndex(1, false);
+        scheduleHeroCarouselIdleWiggle();
+        return;
+      }
+      scheduleHeroCarouselIdleWiggle();
+    },
+    [
+      heroCarouselLocked,
+      heroCarouselRealCount,
+      heroCarouselPageWidth,
+      heroCarouselSnapThreshold,
+      onHeroCarouselLocked,
+      resolveHeroCarouselRealIndex,
+      scrollHeroCarouselToLoopIndex,
+      scheduleHeroCarouselIdleWiggle,
+      setHeroCarouselIndexSafe,
+      stopHeroCarouselIdleWiggle,
+    ]
+  );
+  useEffect(() => {
+    if (!heroCarouselPageWidth) return;
+    const loopIndex = heroCarouselLoopIndexForReal(heroCarouselIndexRef.current || 0);
+    scrollHeroCarouselToLoopIndex(loopIndex, false);
+  }, [heroCarouselLoopIndexForReal, heroCarouselPageWidth, scrollHeroCarouselToLoopIndex]);
+  useEffect(() => {
+    if (!heroCarouselPageWidth) return;
+    if (!heroCarouselIntervalMs) return;
+    if (heroCarouselLocked) return;
+    const timer = setInterval(() => {
+      if (
+        heroCarouselLocked ||
+        heroCarouselDraggingRef.current ||
+        heroCarouselAutoScrollingRef.current
+      ) {
+        return;
+      }
+      const nextIndex = (heroCarouselIndexRef.current + 1) % heroCarouselRealCount;
+      const currentLoopIndex = heroCarouselLoopIndexForReal(heroCarouselIndexRef.current || 0);
+      const nextLoopIndex = Math.min(currentLoopIndex + 1, heroCarouselLoopCount - 1);
+      heroCarouselAutoScrollingRef.current = true;
+      setHeroCarouselIndexSafe(nextIndex);
+      scrollHeroCarouselToLoopIndex(nextLoopIndex, true);
+    }, heroCarouselIntervalMs);
+    return () => clearInterval(timer);
+  }, [
+    heroCarouselIntervalMs,
+    heroCarouselLocked,
+    heroCarouselLoopCount,
+    heroCarouselLoopIndexForReal,
+    heroCarouselRealCount,
+    heroCarouselPageWidth,
+    scrollHeroCarouselToLoopIndex,
+    setHeroCarouselIndexSafe,
+  ]);
+  useEffect(() => {
+    if (!heroCarouselHintAllowed) return;
+    if (heroCarouselHintPlayedRef.current) return;
+    if (!heroCarouselPageWidth) return;
+    if (heroCarouselLocked) return;
+    if (heroCarouselWiggleDisabledRef.current) return;
+    heroCarouselHintPlayedRef.current = true;
+    stopHeroCarouselIdleWiggle(false);
+    Animated.sequence([
+      Animated.timing(heroCarouselHintAnim, {
+        toValue: -16,
+        duration: 240,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(heroCarouselHintAnim, {
+        toValue: 0,
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      heroCarouselHintAnim.setValue(0);
+      startHeroCarouselIdleWiggle();
+    });
+  }, [
+    heroCarouselHintAllowed,
+    heroCarouselHintAnim,
+    heroCarouselLocked,
+    heroCarouselPageWidth,
+    startHeroCarouselIdleWiggle,
+    stopHeroCarouselIdleWiggle,
+  ]);
+  useEffect(() => {
+    if (!heroCarouselHintAllowed || heroCarouselLocked) {
+      stopHeroCarouselIdleWiggle();
+      return;
+    }
+    if (!heroCarouselHintPlayedRef.current) return;
+    if (!heroCarouselWiggleDisabledRef.current) {
+      startHeroCarouselIdleWiggle();
+    }
+    return () => stopHeroCarouselIdleWiggle();
+  }, [
+    heroCarouselHintAllowed,
+    heroCarouselLocked,
+    startHeroCarouselIdleWiggle,
+    stopHeroCarouselIdleWiggle,
+  ]);
+  useEffect(() => {
+    if (!heroCarouselPageWidth) return;
+    if (heroCarouselLocked) {
+      stopHeroCarouselIdleWiggle();
+      return;
+    }
+    if (heroCarouselWiggleDisabledRef.current) {
+      stopHeroCarouselIdleWiggle();
+      return;
+    }
+    if (heroCarouselDraggingRef.current || heroCarouselAutoScrollingRef.current) return;
+    startHeroCarouselIdleWiggle();
+    return () => stopHeroCarouselIdleWiggle();
+  }, [heroCarouselLocked, heroCarouselPageWidth, startHeroCarouselIdleWiggle, stopHeroCarouselIdleWiggle]);
   const scrollToTop = useCallback(
     ({ animated = false } = {}) => {
       if (!listRef.current) return false;
@@ -10084,6 +12242,11 @@ const FeedScreen = React.memo(
     [scrollToTop, scrollToTemptations]
   );
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
+  const isEssentialHistoryEntry = useCallback((entry) => {
+    const categoryId =
+      entry?.meta?.category || entry?.meta?.impulseCategory || entry?.meta?.impulseCategoryOverride;
+    return isEssentialImpulseCategory(categoryId);
+  }, []);
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
   const openHistoryModal = useCallback(() => setHistoryModalVisible(true), []);
   const closeHistoryModal = useCallback(() => setHistoryModalVisible(false), []);
@@ -10122,12 +12285,13 @@ const FeedScreen = React.memo(
       return bTime - aTime;
     });
     return filtered.slice(0, 3);
-  }, [resolvedHistoryEvents]);
+  }, [resolvedHistoryEvents, isEssentialHistoryEntry]);
   const { latestSaveEvent, latestSpendEvent } = useMemo(() => {
     let latestSave = null;
     let latestSpend = null;
     resolvedHistoryEvents.forEach((entry) => {
       if (!entry || !entry.kind) return;
+      if (isEssentialHistoryEntry(entry)) return;
       const timestamp = Number(entry.timestamp) || 0;
       if (!timestamp) return;
       if (entry.kind === "refuse_spend") {
@@ -10265,7 +12429,10 @@ const FeedScreen = React.memo(
   );
   const interactionEntryMap = useMemo(() => {
     const map = new Map();
-    const list = Array.isArray(products) ? products : [];
+    const list = [
+      ...(Array.isArray(products) ? products : []),
+      ...(Array.isArray(archivedItems) ? archivedItems : []),
+    ];
     list.forEach((item) => {
       if (!item) return;
       const entry = resolveInteractionEntry(item);
@@ -10279,7 +12446,7 @@ const FeedScreen = React.memo(
       }
     });
     return map;
-  }, [products, resolveInteractionEntry]);
+  }, [archivedItems, products, resolveInteractionEntry]);
   const getInteractionEntry = useCallback(
     (item) => {
       if (!item) return null;
@@ -10587,6 +12754,9 @@ const FeedScreen = React.memo(
       const lastVisitAtValue =
         reason === "ready" && lastVisitAtSnapshot ? lastVisitAtSnapshot : lastVisitAt;
       const lastVisitTimestamp = Number(lastVisitAtValue) || 0;
+      const todayKey = getDayKey(now);
+      const greetedToday =
+        lastVisitTimestamp > 0 && getDayKey(lastVisitTimestamp) === todayKey;
       const minutesAway =
         lastVisitTimestamp > 0 ? Math.floor((now - lastVisitTimestamp) / (1000 * 60)) : 0;
       const daysAway =
@@ -10603,10 +12773,12 @@ const FeedScreen = React.memo(
       const spendTitleRaw = latestSpendEvent ? resolveSpeechTitle(latestSpendEvent) : "";
       const saveTitle = shortenSpeechTitle(saveTitleRaw);
       const spendTitle = shortenSpeechTitle(spendTitleRaw);
-      const recentEntry =
-        recentActivity && recentActivity.length
-          ? recentActivity[Math.floor(Math.random() * recentActivity.length)]
-          : null;
+      const speechRecentActivity = Array.isArray(recentActivity)
+        ? recentActivity.filter((entry) => !isEssentialHistoryEntry(entry))
+        : [];
+      const recentEntry = speechRecentActivity.length
+        ? speechRecentActivity[Math.floor(Math.random() * speechRecentActivity.length)]
+        : null;
       const recentTitleRaw = recentEntry ? resolveSpeechTitle(recentEntry) : "";
       const recentTitle = shortenSpeechTitle(recentTitleRaw);
       const focusTitleRaw = focusTemplateId
@@ -10632,7 +12804,7 @@ const FeedScreen = React.memo(
       const levelTarget = heroLevelHasNext ? heroLevelTargetLabel : "";
       const heroLevel = tierInfo?.level || 1;
 
-      if (greetingReason) {
+      if (greetingReason && !greetedToday) {
         if (awayLong) {
           return tone === "urgent" || tone === "sad"
             ? pickVariantText("tamagotchiSpeechMissedHungry", { food: foodEmoji })
@@ -10733,6 +12905,15 @@ const FeedScreen = React.memo(
           : pickVariantText("tamagotchiSpeechMissed", { days: daysAway });
       }
 
+      if (
+        (tone === "urgent" || tone === "sad") &&
+        !TAMAGOTCHI_ACTION_SPEECH_REASONS.has(reason)
+      ) {
+        return tone === "urgent"
+          ? pickVariantText("tamagotchiSpeechHungry", { food: foodEmoji })
+          : pickVariantText("tamagotchiSpeechHungrySoft", { food: foodEmoji });
+      }
+
       if (Math.random() < 0.22) {
         const budgetSpeechData = resolvedBudgetSpeechDataRef?.current;
         if (budgetSpeechData?.hasIncome) {
@@ -10745,6 +12926,9 @@ const FeedScreen = React.memo(
             lowCategories = [],
             okCategories = [],
           } = budgetSpeechData;
+          const filteredOver = overCategories.filter((entry) => !entry?.essential);
+          const filteredLow = lowCategories.filter((entry) => !entry?.essential);
+          const filteredOk = okCategories.filter((entry) => !entry?.essential);
           const pickFrom = (list) => list[Math.floor(Math.random() * list.length)];
           const hasMonthValue = Math.abs(monthRemainingValue || 0) > 0.01;
           if (hasMonthValue && Math.random() < 0.28) {
@@ -10760,16 +12944,16 @@ const FeedScreen = React.memo(
             });
           }
           let bucket = null;
-          if (overCategories.length && Math.random() < 0.55) {
-            bucket = overCategories;
-          } else if (lowCategories.length && Math.random() < 0.6) {
-            bucket = lowCategories;
-          } else if (okCategories.length) {
-            bucket = okCategories;
-          } else if (lowCategories.length) {
-            bucket = lowCategories;
-          } else if (overCategories.length) {
-            bucket = overCategories;
+          if (filteredOver.length && Math.random() < 0.55) {
+            bucket = filteredOver;
+          } else if (filteredLow.length && Math.random() < 0.6) {
+            bucket = filteredLow;
+          } else if (filteredOk.length) {
+            bucket = filteredOk;
+          } else if (filteredLow.length) {
+            bucket = filteredLow;
+          } else if (filteredOver.length) {
+            bucket = filteredOver;
           }
           if (bucket?.length) {
             const choice = pickFrom(bucket);
@@ -10898,6 +13082,7 @@ const FeedScreen = React.memo(
       heroLevelRemainingLabel,
       heroLevelTargetLabel,
       isGoalComplete,
+      isEssentialHistoryEntry,
       lastVisitAt,
       lastVisitAtSnapshot,
       latestSaveEvent,
@@ -11028,6 +13213,289 @@ const FeedScreen = React.memo(
     }
   }, [baselineMonthlyWasteUSD, baselineStartAt, onPotentialDetailsOpen, profile?.currency, realSavedUSD, t]);
 
+  const formatLocalAmount = useCallback(
+    (valueUSD = 0) => formatCurrency(convertToCurrency(valueUSD || 0, currency), currency),
+    [currency]
+  );
+  const resolveHistoryCategoryId = useCallback(
+    (entry) => {
+      const metaCategory =
+        entry?.meta?.category || entry?.meta?.impulseCategory || entry?.meta?.impulseCategoryOverride;
+      if (metaCategory && IMPULSE_CATEGORY_DEFS[metaCategory]) return metaCategory;
+      const templateId = entry?.meta?.templateId;
+      if (!templateId || typeof resolveTemplateCard !== "function" || typeof resolveTemptationCategory !== "function") {
+        return DEFAULT_IMPULSE_CATEGORY;
+      }
+      const template = resolveTemplateCard(templateId);
+      if (!template) return DEFAULT_IMPULSE_CATEGORY;
+      return resolveTemptationCategory(template);
+    },
+    [resolveTemplateCard, resolveTemptationCategory]
+  );
+  const budgetMonthKey = getMonthKey(todayTimestamp);
+  const monthlyIncomeUSD = useMemo(
+    () => getIncomeForMonth(incomeEntries, budgetMonthKey),
+    [incomeEntries, budgetMonthKey]
+  );
+  const budgetSpendDistribution = useMemo(() => {
+    const cutoff = Date.now() - DAY_MS * 30;
+    const map = {};
+    resolvedHistoryEvents.forEach((entry) => {
+      if (!entry || entry.kind !== "spend") return;
+      if (!entry.timestamp || entry.timestamp < cutoff) return;
+      const impulseCategory = resolveHistoryCategoryId(entry);
+      const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
+      if (!amount) return;
+      map[impulseCategory] = (map[impulseCategory] || 0) + amount;
+    });
+    return map;
+  }, [resolvedHistoryEvents, resolveHistoryCategoryId]);
+  const budgetMonthSpend = useMemo(() => {
+    const map = {};
+    let total = 0;
+    resolvedHistoryEvents.forEach((entry) => {
+      if (!entry || entry.kind !== "spend") return;
+      if (!entry.timestamp) return;
+      if (getMonthKey(entry.timestamp) !== budgetMonthKey) return;
+      const impulseCategory = resolveHistoryCategoryId(entry);
+      const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
+      if (!amount) return;
+      map[impulseCategory] = (map[impulseCategory] || 0) + amount;
+      total += amount;
+    });
+    return { map, total };
+  }, [resolvedHistoryEvents, resolveHistoryCategoryId, budgetMonthKey]);
+  const budgetCarryoverUSD = useMemo(() => {
+    const monthStart = new Date(todayTimestamp);
+    if (Number.isNaN(monthStart.getTime())) return 0;
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const cutoff = monthStart.getTime();
+    let incomeTotal = 0;
+    (Array.isArray(incomeEntries) ? incomeEntries : []).forEach((entry) => {
+      const receivedAt = Number(entry?.receivedAt) || 0;
+      if (!receivedAt || receivedAt >= cutoff) return;
+      incomeTotal += Math.max(0, Number(entry?.amountUSD) || 0);
+    });
+    let spendTotal = 0;
+    resolvedHistoryEvents.forEach((entry) => {
+      if (!entry || entry.kind !== "spend") return;
+      const timestamp = Number(entry?.timestamp) || 0;
+      if (!timestamp || timestamp >= cutoff) return;
+      const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
+      if (!amount) return;
+      spendTotal += amount;
+    });
+    return incomeTotal - spendTotal;
+  }, [incomeEntries, resolvedHistoryEvents, todayTimestamp]);
+  const budgetPlan = useMemo(
+    () =>
+      buildBudgetPlan({
+        incomeUSD: monthlyIncomeUSD,
+        carryoverUSD: budgetCarryoverUSD,
+        budgetOverrides,
+        spendDistribution: budgetSpendDistribution,
+        spendToDateByCategory: budgetMonthSpend.map,
+        spendToDateTotalUSD: budgetMonthSpend.total,
+        decisionStats,
+        baselineMonthlyWasteUSD,
+        language,
+      }),
+    [
+      baselineMonthlyWasteUSD,
+      budgetCarryoverUSD,
+      budgetOverrides,
+      budgetSpendDistribution,
+      budgetMonthSpend,
+      customCategories,
+      decisionStats,
+      language,
+      monthlyIncomeUSD,
+    ]
+  );
+  const budgetDisplayCategories = useMemo(
+    () => (budgetPlan?.categories || []).filter((entry) => entry.id !== "savings"),
+    [budgetPlan?.categories]
+  );
+  const budgetWidgetCategories = useMemo(() => {
+    const list = [...budgetDisplayCategories];
+    if (list.length < 2) return list;
+    const locale = getFormatLocale(language);
+    const baseSorted = list.sort((a, b) => {
+      const aSpent = Number(a?.spentUSD) || 0;
+      const bSpent = Number(b?.spentUSD) || 0;
+      if (bSpent !== aSpent) return bSpent - aSpent;
+      const aLimit = Number(a?.limitUSD) || 0;
+      const bLimit = Number(b?.limitUSD) || 0;
+      if (bLimit !== aLimit) return bLimit - aLimit;
+      const aLabel = a?.label || "";
+      const bLabel = b?.label || "";
+      return aLabel.localeCompare(bLabel, locale, { sensitivity: "base" });
+    });
+    const enriched = baseSorted.map((entry, index) => {
+      const limit = Number(entry?.limitUSD) || 0;
+      const spent = Number(entry?.spentUSD) || 0;
+      const ratio = limit > 0 ? spent / limit : spent > 0 ? 1.5 : 0;
+      return { entry, index, ratio };
+    });
+    const hasProgress = enriched.some((item) => item.ratio > 0);
+    if (!hasProgress) return baseSorted;
+    enriched.sort((a, b) => {
+      if (b.ratio !== a.ratio) return b.ratio - a.ratio;
+      return a.index - b.index;
+    });
+    return enriched.map((item) => item.entry);
+  }, [budgetDisplayCategories, language]);
+  const budgetHeroCategories = useMemo(
+    () => budgetWidgetCategories.slice(0, 3),
+    [budgetWidgetCategories]
+  );
+  const budgetHasIncome = (budgetPlan?.incomeUSD || 0) > 0;
+  const budgetRemainingLabel = useMemo(
+    () => formatLocalAmount(Math.abs(budgetPlan?.remainingUSD || 0)),
+    [budgetPlan?.remainingUSD, formatLocalAmount]
+  );
+  const budgetRemainingNegative = (budgetPlan?.remainingUSD || 0) < -0.01;
+  const daysInMonth = useMemo(() => {
+    const date = new Date(todayTimestamp);
+    if (Number.isNaN(date.getTime())) return 30;
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  }, [todayTimestamp]);
+  const dayOfMonth = useMemo(() => {
+    const date = new Date(todayTimestamp);
+    if (Number.isNaN(date.getTime())) return 1;
+    return Math.max(1, date.getDate());
+  }, [todayTimestamp]);
+  const daysRemaining = useMemo(
+    () => Math.max(1, Math.max(daysInMonth, 1) - dayOfMonth + 1),
+    [dayOfMonth, daysInMonth]
+  );
+  const dailyGoalStats = useMemo(() => {
+    const monthKey = budgetMonthKey;
+    const todayKey = getDayKey(todayTimestamp);
+    const cutoff30 = todayTimestamp - DAY_MS * 30;
+    const cutoff7 = todayTimestamp - DAY_MS * 7;
+    let savedMonth = 0;
+    let saved30 = 0;
+    let saved7 = 0;
+    let savedToday = 0;
+    let savedCardCountToday = 0;
+    let savedCardCountTotal = 0;
+    resolvedHistoryEvents.forEach((entry) => {
+      if (!entry || !HISTORY_SAVED_GAIN_EVENTS.has(entry.kind)) return;
+      const timestamp = Number(entry.timestamp) || 0;
+      if (!timestamp) return;
+      if (getDayKey(timestamp) === todayKey) {
+        if (DAILY_GOAL_COIN_EVENTS.has(entry.kind)) {
+          savedCardCountToday += 1;
+        }
+      }
+      if (DAILY_GOAL_COIN_EVENTS.has(entry.kind)) {
+        savedCardCountTotal += 1;
+      }
+      const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
+      if (!amount) return;
+      if (getMonthKey(timestamp) === monthKey) savedMonth += amount;
+      if (timestamp >= cutoff30) saved30 += amount;
+      if (timestamp >= cutoff7) saved7 += amount;
+      if (getDayKey(timestamp) === todayKey) {
+        savedToday += amount;
+      }
+    });
+    return {
+      savedMonth,
+      saved30,
+      saved7,
+      savedToday,
+      savedCardCountToday,
+      savedCardCountTotal,
+    };
+  }, [budgetMonthKey, resolvedHistoryEvents, todayTimestamp]);
+  const baselineDailyPotentialUSD = baselineMonthlyWasteUSD > 0 ? baselineMonthlyWasteUSD / 30 : 0;
+  const recentDailyAvgUSD = dailyGoalStats.saved7 / 7;
+  const budgetMonthlyGoalUSD =
+    Number.isFinite(budgetPlan?.incomeUSD) && Number.isFinite(budgetPlan?.savingsRate)
+      ? Math.max(0, budgetPlan.incomeUSD * budgetPlan.savingsRate)
+      : 0;
+  const monthlyTargetUSD = Math.max(
+    budgetMonthlyGoalUSD,
+    baselineMonthlyWasteUSD > 0 ? baselineMonthlyWasteUSD * 0.6 : 0,
+    dailyGoalStats.saved30 > 0 ? dailyGoalStats.saved30 * 1.15 : 0,
+    baselineDailyPotentialUSD * Math.max(daysInMonth, 1) * 0.35
+  );
+  const remainingTargetUSD = Math.max(monthlyTargetUSD - dailyGoalStats.savedMonth, 0);
+  const rawDailyGoalUSD = remainingTargetUSD / daysRemaining;
+  const weekdayBoost = DAILY_GOAL_WEEKDAY_BOOST[new Date(todayTimestamp).getDay() || 0] || 1;
+  const momentumBoost =
+    rawDailyGoalUSD > 0 && recentDailyAvgUSD > 0
+      ? clampNumber(0.9 + (recentDailyAvgUSD / rawDailyGoalUSD - 1) * 0.15, 0.85, 1.15)
+      : 1;
+  const joinedAtTimestamp = profile?.joinedAt ? new Date(profile.joinedAt).getTime() : NaN;
+  const lifetimeDays = Number.isFinite(joinedAtTimestamp)
+    ? Math.max(1, Math.floor((todayTimestamp - joinedAtTimestamp) / DAY_MS) + 1)
+    : 1;
+  const lifetimeDailyAvgUSD =
+    Number.isFinite(savedTotalUSD) && lifetimeDays > 0 ? savedTotalUSD / lifetimeDays : 0;
+  const dailyGoalUSD = Math.max(
+    0,
+    Math.max(
+      rawDailyGoalUSD * weekdayBoost * momentumBoost,
+      baselineDailyPotentialUSD * 0.35,
+      recentDailyAvgUSD * 0.4,
+      lifetimeDailyAvgUSD * 0.5
+    ) * 0.4
+  );
+  const todaySavedUSD = dailyGoalStats.savedToday;
+  const todaySavedCardCount = dailyGoalStats.savedCardCountToday;
+  const dailyGoalRemainingUSD = Math.max(dailyGoalUSD - todaySavedUSD, 0);
+  const dailyGoalLabel = useMemo(
+    () => formatLocalAmount(Math.max(dailyGoalRemainingUSD, 0)),
+    [dailyGoalRemainingUSD, formatLocalAmount]
+  );
+  useEffect(() => {
+    if (!resolvedBudgetSpeechDataRef) {
+      return;
+    }
+    if (!budgetHasIncome) {
+      resolvedBudgetSpeechDataRef.current = null;
+      return;
+    }
+    const entries = (budgetPlan?.categories || [])
+      .filter((entry) => entry.id !== "savings" && (Number(entry.limitUSD) || 0) > 0)
+      .map((entry) => {
+        const limit = Number(entry.limitUSD) || 0;
+        const spent = Number(entry.spentUSD) || 0;
+        const remaining = limit - spent;
+        const over = remaining < -0.01;
+        const low = !over && limit > 0 && remaining / limit <= BUDGET_SPEECH_LOW_THRESHOLD;
+        return {
+          id: entry.id,
+          label: entry.label || getBudgetCategoryLabel(entry.id, language),
+          remainingValue: remaining,
+          remainingLabel: formatLocalAmount(Math.max(0, remaining)),
+          overLabel: over ? formatLocalAmount(Math.abs(remaining)) : "",
+          status: over ? "over" : low ? "low" : "ok",
+          essential: BUDGET_SPEECH_ESSENTIAL_IDS.has(entry.id),
+        };
+      })
+      .filter((entry) => entry.label);
+    if (!entries.length) {
+      resolvedBudgetSpeechDataRef.current = null;
+      return;
+    }
+    const monthRemainingValue = Number(budgetPlan?.remainingUSD) || 0;
+    resolvedBudgetSpeechDataRef.current = {
+      hasIncome: true,
+      monthRemainingValue,
+      monthRemainingLabel: formatLocalAmount(Math.max(0, monthRemainingValue)),
+      monthOverLabel: formatLocalAmount(Math.abs(Math.min(0, monthRemainingValue))),
+      monthLabel: budgetPlan?.monthLabel || "",
+      overCategories: entries.filter((entry) => entry.status === "over"),
+      lowCategories: entries.filter((entry) => entry.status === "low"),
+      okCategories: entries.filter((entry) => entry.status === "ok"),
+    };
+  }, [budgetHasIncome, budgetPlan, formatLocalAmount, language, resolvedBudgetSpeechDataRef]);
+
   const orderedProducts = useMemo(() => {
     const entries = Array.isArray(products) ? [...products] : [];
     if (!entries.length) return entries;
@@ -11047,6 +13515,16 @@ const FeedScreen = React.memo(
         shuffle: getSessionShuffleValue(shuffleSeed, key),
       };
     });
+    const freshEntries = enrichedEntries
+      .filter((entry) => {
+        if (!entry?.item) return false;
+        if (!entry.item.quickTemptation && !isCustomTemptation(entry.item)) return false;
+        const createdAt = Number(entry.item?.createdAt);
+        if (!Number.isFinite(createdAt) || createdAt <= 0) return false;
+        return entry.total <= 0 && entry.lastInteractionAt <= 0;
+      })
+      .sort((a, b) => Number(b.item?.createdAt || 0) - Number(a.item?.createdAt || 0));
+    const freshKeys = new Set(freshEntries.map((entry) => entry.key));
     const recentEntries = enrichedEntries
       .filter((entry) => entry.lastInteractionAt > 0)
       .sort((a, b) => b.lastInteractionAt - a.lastInteractionAt)
@@ -11071,6 +13549,7 @@ const FeedScreen = React.memo(
     const affordableEntries = [];
     const premiumEntries = [];
     enrichedEntries.forEach((entry) => {
+      if (freshKeys.has(entry.key)) return;
       if (recentKeys.has(entry.key)) return;
       if (entry.price <= popularPriceCap) {
         affordableEntries.push(entry);
@@ -11086,7 +13565,7 @@ const FeedScreen = React.memo(
     };
     affordableEntries.sort(priceSort);
     premiumEntries.sort(priceSort);
-    return [...recentEntries, ...affordableEntries, ...premiumEntries].map(
+    return [...freshEntries, ...recentEntries, ...affordableEntries, ...premiumEntries].map(
       (entry) => entry.item
     );
   }, [products, getInteractionEntry]);
@@ -11103,6 +13582,21 @@ const FeedScreen = React.memo(
       };
     });
   }, [filteredProducts, getInteractionEntry]);
+  const archiveEntries = useMemo(() => {
+    const entries = Array.isArray(archivedItems) ? archivedItems : [];
+    return entries
+      .map((item, index) => {
+        if (!item) return null;
+        const key = item?.id || item?.templateId || `archive-${index}`;
+        return {
+          type: "archive",
+          id: `archive-${key}`,
+          item,
+          interaction: getInteractionEntry(item),
+        };
+      })
+      .filter(Boolean);
+  }, [archivedItems, getInteractionEntry]);
   const firstVisibleTemptationId = useMemo(() => {
     const firstCard = feedEntries.find(
       (entry) => entry?.type === "card" && entry.item?.id
@@ -11113,6 +13607,12 @@ const FeedScreen = React.memo(
     ? firstVisibleTemptationId || filteredProducts[0]?.id || orderedProducts[0]?.id || null
     : null;
   const feedKeyExtractor = useCallback((entry) => entry.id, []);
+  const [archiveExpanded, setArchiveExpanded] = useState(false);
+  const archiveCount = archiveEntries.length;
+  const toggleArchiveExpanded = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setArchiveExpanded((prev) => !prev);
+  }, []);
   const resolveAssignedGoalLabel = useCallback(
     (goalId, assignedGoal) => {
       if (assignedGoal) return getWishTitleWithoutEmoji(assignedGoal);
@@ -11131,9 +13631,12 @@ const FeedScreen = React.memo(
     [language, profile.primaryGoals]
   );
   const renderTemptationCard = useCallback(
-    (entry) => {
+    (entry, { archived = false } = {}) => {
       const item = entry.item;
       const interactionEntry = entry.interaction;
+      const interactionRefreshKey = interactionEntry
+        ? `${interactionEntry.lastInteractionAt || 0}:${interactionEntry.lastTimerResetAt || 0}:${interactionEntry.nextCheckAt || 0}`
+        : "0";
       const templateKey =
         typeof item?.templateId === "string" && item.templateId.trim()
           ? item.templateId.trim()
@@ -11194,6 +13697,7 @@ const FeedScreen = React.memo(
           titleOverride={titleOverrides[item.id]}
           goalLabel={resolvedGoalLabel}
           isWishlistGoal={isWishlistGoal}
+          isArchived={archived}
           isEditing={editingTemptationId === item.id}
           editTitleValue={editingTemptationId === item.id ? editingTitleValue : ""}
           editPriceValue={editingTemptationId === item.id ? editingPriceValue : ""}
@@ -11213,11 +13717,13 @@ const FeedScreen = React.memo(
           onEditDelete={() => onTemptationEditDelete?.(item)}
           onEditGoalSelect={() => onTemptationGoalSelect?.(item)}
           onSwipeDelete={() => onTemptationSwipeDelete?.(item)}
-          onQuickGoalToggle={() => onTemptationQuickGoalToggle?.(item)}
+          onSwipeArchive={() => onTemptationArchiveToggle?.(item)}
           isPrimaryTemptation={item.id === mainTemptationId}
-          onAction={async (type) => {
-            await onTemptationAction(type, item);
+          onAction={async (type, _, actionOptions) => {
+            await onTemptationAction(type, item, actionOptions);
           }}
+          playSound={playSound}
+          onAmountSliderToggle={handleAmountSliderToggle}
           onFocusBadgePress={onFocusCancel}
           tutorialHighlightMode={isTutorialHighlightTarget ? tutorialTemptationStepId : null}
           tutorialHighlightMeasureTick={
@@ -11228,6 +13734,7 @@ const FeedScreen = React.memo(
             isTutorialHighlightTarget ? onTutorialHighlightLayoutChange : null
           }
           interaction={interactionEntry}
+          interactionRefreshKey={interactionRefreshKey}
           budgetStatus={budgetStatus}
           budgetAlertText={budgetAlertText}
         />
@@ -11248,6 +13755,7 @@ const FeedScreen = React.memo(
       editingTitleValue,
       focusTemplateId,
       goalAssignments,
+      handleAmountSliderToggle,
       language,
       mainTemptationId,
       onTemptationAction,
@@ -11260,9 +13768,10 @@ const FeedScreen = React.memo(
       onTemptationEditTitleChange,
       onTemptationEditToggle,
       onTemptationGoalSelect,
-      onTemptationQuickGoalToggle,
+      onTemptationArchiveToggle,
       onTemptationSwipeDelete,
       onFocusCancel,
+      playSound,
       primaryTemptationDescription,
       resolveCardRefuseStats,
       resolveTemptationCategory,
@@ -11287,6 +13796,46 @@ const FeedScreen = React.memo(
     },
     [renderTemptationCard]
   );
+  const renderArchiveItem = useCallback(
+    (entry) => renderTemptationCard(entry, { archived: true }),
+    [renderTemptationCard]
+  );
+  const archiveFooter = useMemo(
+    () => (
+      <View style={styles.archiveSection}>
+        <FrequencySectionHeader
+          title={t("archiveSectionTitle")}
+          count={String(archiveCount)}
+          collapsed={!archiveExpanded}
+          onToggle={toggleArchiveExpanded}
+          colors={colors}
+          t={t}
+        />
+        {archiveExpanded && (
+          archiveCount > 0 ? (
+            <View style={styles.archiveList}>
+              {archiveEntries.map((entry) => (
+                <View key={entry.id}>{renderArchiveItem(entry)}</View>
+              ))}
+            </View>
+          ) : (
+            <Text style={[styles.archiveEmptyText, { color: colors.muted }]}>
+              {t("archiveEmpty")}
+            </Text>
+          )
+        )}
+      </View>
+    ),
+    [
+      archiveCount,
+      archiveEntries,
+      archiveExpanded,
+      colors,
+      renderArchiveItem,
+      t,
+      toggleArchiveExpanded,
+    ]
+  );
   const analyticsPreview = analyticsStats.slice(0, 3);
   const { wishesById, swipePinnedByTemplate } = useMemo(() => {
     const byId = {};
@@ -11310,6 +13859,7 @@ const FeedScreen = React.memo(
         data={feedEntries}
         keyExtractor={feedKeyExtractor}
         showsVerticalScrollIndicator={false}
+        scrollEnabled={!feedScrollLocked}
         contentContainerStyle={styles.feedListContent}
         renderItem={renderFeedItem}
         initialNumToRender={6}
@@ -11317,6 +13867,11 @@ const FeedScreen = React.memo(
         windowSize={7}
         updateCellsBatchingPeriod={50}
         removeClippedSubviews={Platform.OS === "android"}
+        scrollEventThrottle={16}
+        onScrollBeginDrag={handleFeedScrollBegin}
+        onScrollEndDrag={handleFeedScrollEnd}
+        onMomentumScrollBegin={handleFeedMomentumBegin}
+        onMomentumScrollEnd={handleFeedMomentumEnd}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={[styles.emptyStateTitle, { color: colors.text }]}>{t("feedEmptyTitle")}</Text>
@@ -11462,45 +14017,158 @@ const FeedScreen = React.memo(
               </Animated.View>
             </MoodGradientBlock>
           </View>
-          <SavingsHeroCard
-            ref={savingsHeroRef}
-            goldPalette={goldPalette}
-            isDarkMode={isDarkMode}
-            heroSpendCopy={heroSpendCopy}
-            heroRecentEvents={heroRecentEvents}
-            heroEncouragementLine={heroEncouragementLine}
-            onRecentEventsPress={openHistoryModal}
-            playerLevel={playerLevel}
-            totalSavedLabel={totalSavedLabel}
-            progressPercent={progressPercent}
-            progressPercentLabel={progressPercentLabel}
-            isGoalComplete={isGoalComplete}
-            completionLabel={t("goalWidgetComplete")}
-            t={t}
-            analyticsPreview={analyticsPreview}
-            baselineMonthlyWasteUSD={baselineMonthlyWasteUSD}
-            baselineStartAt={baselineStartAt}
-            actualSavedUSD={realSavedUSD}
-            potentialGrowthUSD={potentialGrowthUSD}
-            showPotentialGrowth={showPotentialGrowth}
-            currency={currency}
-            hasBaseline={hasBaseline}
-            hasActiveGoal={heroHasActiveGoal}
-            onBaselineSetup={handleBaselineSetup}
-            onPotentialDetailsOpen={handlePotentialDetailsOpen}
-            healthPoints={healthPoints}
-            onBreakdownPress={onSavingsBreakdownPress}
-            dailyRewardUnlocked={dailyRewardUnlocked}
-            dailyRewardReady={dailyRewardReady}
-            dailyRewardAmount={dailyRewardAmount}
-            dailyRewardBaseAmount={dailyRewardBaseAmount}
-            dailyRewardDay={dailyRewardDay}
-            onDailyRewardClaim={onDailyRewardClaim}
-            onDailyRewardModalVisibilityChange={onDailyRewardModalVisibilityChange}
-            activeChallenge={activeChallenge}
-            onActiveChallengePress={onActiveChallengePress}
-            onAnchorChange={onSavingsHeroAnchorChange}
-          />
+          <View style={styles.heroCarousel} onLayout={handleHeroCarouselLayout}>
+            <Animated.View style={{ transform: [{ translateX: heroCarouselHintAnim }] }}>
+              <Animated.ScrollView
+                ref={heroCarouselRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                scrollEventThrottle={16}
+                directionalLockEnabled
+                nestedScrollEnabled
+                decelerationRate="fast"
+                snapToInterval={heroCarouselPageWidth}
+                snapToAlignment="start"
+                disableIntervalMomentum
+                onScrollBeginDrag={handleHeroCarouselScrollBegin}
+                onMomentumScrollEnd={handleHeroCarouselScrollEnd}
+                onScrollEndDrag={handleHeroCarouselScrollEnd}
+                contentOffset={{ x: heroCarouselPageWidth * (heroCarouselIndex + 1), y: 0 }}
+                onScroll={Animated.event(
+                  [{ nativeEvent: { contentOffset: { x: heroCarouselScrollX } } }],
+                  { useNativeDriver: true }
+                )}
+              >
+                {Array.from({ length: heroCarouselLoopCount }, (_, loopIndex) => {
+                  const realIndex = resolveHeroCarouselRealIndex(loopIndex);
+                  const isClone = loopIndex === 0 || loopIndex === heroCarouselRealCount + 1;
+                  const itemHeight = heroCarouselHeight ? { height: heroCarouselHeight } : null;
+                  const itemCenter = heroCarouselPageWidth * loopIndex;
+                  const inputRange = [
+                    itemCenter - heroCarouselPageWidth,
+                    itemCenter,
+                    itemCenter + heroCarouselPageWidth,
+                  ];
+                  const wiggleRotate = heroCarouselScrollX.interpolate({
+                    inputRange,
+                    outputRange: ["-2.4deg", "0deg", "2.4deg"],
+                    extrapolate: "clamp",
+                  });
+                  const wiggleScale = heroCarouselScrollX.interpolate({
+                    inputRange,
+                    outputRange: [0.985, 1, 0.985],
+                    extrapolate: "clamp",
+                  });
+                  const wiggleTranslateY = heroCarouselScrollX.interpolate({
+                    inputRange,
+                    outputRange: [6, 0, 6],
+                    extrapolate: "clamp",
+                  });
+                  const wiggleStyle = {
+                    transform: [
+                      { translateY: wiggleTranslateY },
+                      { rotate: wiggleRotate },
+                      { scale: wiggleScale },
+                    ],
+                  };
+                  if (realIndex === 0) {
+                    return (
+                      <Animated.View
+                        key={`hero-carousel-${loopIndex}`}
+                        style={[styles.heroCarouselItem, { width: heroCarouselWidth }, itemHeight, wiggleStyle]}
+                        onLayout={!isClone ? handleHeroCardLayout : undefined}
+                        pointerEvents={isClone ? "none" : "auto"}
+                      >
+                          <SavingsHeroCard
+                            ref={isClone ? null : savingsHeroRef}
+                            goldPalette={goldPalette}
+                            isDarkMode={isDarkMode}
+                            heroSpendCopy={heroSpendCopy}
+                            heroRecentEvents={heroRecentEvents}
+                          heroEncouragementLine={heroEncouragementLine}
+                          onRecentEventsPress={openHistoryModal}
+                          playerLevel={playerLevel}
+                          totalSavedLabel={totalSavedLabel}
+                          progressPercent={progressPercent}
+                          progressPercentLabel={progressPercentLabel}
+                          isGoalComplete={isGoalComplete}
+                          completionLabel={t("goalWidgetComplete")}
+                          t={t}
+                          analyticsPreview={analyticsPreview}
+                          baselineMonthlyWasteUSD={baselineMonthlyWasteUSD}
+                          baselineStartAt={baselineStartAt}
+                          actualSavedUSD={realSavedUSD}
+                          potentialGrowthUSD={potentialGrowthUSD}
+                          showPotentialGrowth={showPotentialGrowth}
+                          currency={currency}
+                          hasBaseline={hasBaseline}
+                          hasActiveGoal={heroHasActiveGoal}
+                          onBaselineSetup={handleBaselineSetup}
+                          onPotentialDetailsOpen={handlePotentialDetailsOpen}
+                          healthPoints={healthPoints}
+                          onBreakdownPress={onSavingsBreakdownPress}
+                          dailyRewardUnlocked={dailyRewardUnlocked}
+                          dailyRewardReady={dailyRewardReady}
+                          dailyRewardAmount={dailyRewardAmount}
+                          dailyRewardBaseAmount={dailyRewardBaseAmount}
+                          dailyRewardDay={dailyRewardDay}
+                            onDailyRewardClaim={onDailyRewardClaim}
+                            onDailyRewardModalVisibilityChange={onDailyRewardModalVisibilityChange}
+                            activeChallenge={activeChallenge}
+                            onActiveChallengePress={onActiveChallengePress}
+                            onAnchorChange={isClone ? null : onSavingsHeroAnchorChange}
+                            style={styles.heroCarouselSizedCard}
+                          />
+                      </Animated.View>
+                    );
+                  }
+                  if (realIndex === 1) {
+                    return (
+                      <Animated.View
+                        key={`hero-carousel-${loopIndex}`}
+                        style={[styles.heroCarouselItem, { width: heroCarouselWidth }, itemHeight, wiggleStyle]}
+                      >
+                        <BudgetHeroCard
+                          colors={colors}
+                          isDarkMode={isDarkMode}
+                          t={t}
+                          monthLabel={budgetPlan?.monthLabel || ""}
+                          remainingLabel={budgetRemainingLabel}
+                          remainingNegative={budgetRemainingNegative}
+                          categories={budgetHeroCategories}
+                          budgetHasIncome={budgetHasIncome}
+                          formatLocalAmount={formatLocalAmount}
+                          style={[itemHeight, styles.heroCarouselSizedCard]}
+                        />
+                      </Animated.View>
+                    );
+                  }
+                  return (
+                    <Animated.View
+                      key={`hero-carousel-${loopIndex}`}
+                      style={[styles.heroCarouselItem, { width: heroCarouselWidth }, itemHeight, wiggleStyle]}
+                    >
+                      <DailyGoalCard
+                        colors={colors}
+                        isDarkMode={isDarkMode}
+                        t={t}
+                        monthLabel={budgetPlan?.monthLabel || ""}
+                        dailyGoalLabel={dailyGoalLabel}
+                        dailyGoalUSD={dailyGoalUSD}
+                        todaySavedUSD={todaySavedUSD}
+                        savedCardCount={todaySavedCardCount}
+                        coinDropTick={dailyGoalCoinDropTick}
+                        isActive={!isClone && heroCarouselIndex === 2}
+                        playSound={playSound}
+                        shakeEnabled
+                        style={[itemHeight, styles.heroCarouselSizedCard]}
+                      />
+                    </Animated.View>
+                  );
+                })}
+              </Animated.ScrollView>
+            </Animated.View>
+          </View>
           <View style={styles.feedTemptationHeader}>
             <Text style={[styles.feedTemptationTitle, { color: colors.text }]}>
               {t("tutorialFeedTitle")}
@@ -11518,6 +14186,7 @@ const FeedScreen = React.memo(
             </View>
           </View>
         }
+        ListFooterComponent={archiveFooter}
       />
       <HistoryModal
         visible={historyModalVisible}
@@ -12009,6 +14678,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
   customCategories = [],
   onWeeklySpendPress = null,
   budgetSpeechDataRef = null,
+  scrollRef: externalScrollRef,
 }) {
   const isDarkTheme = colors.background === THEMES.dark.background;
   const budgetLimitWarningColor = isDarkTheme ? "#FFD59A" : "#F6C16B";
@@ -12130,7 +14800,8 @@ const ProgressScreen = React.memo(function ProgressScreen({
     () => (Array.isArray(historyEvents) ? historyEvents : []),
     [historyEvents]
   );
-  const scrollRef = useRef(null);
+  const internalScrollRef = useRef(null);
+  const scrollRef = externalScrollRef || internalScrollRef;
   const challengeSwipeCloserRef = useRef(null);
   const handleChallengeSwipeOpen = useCallback((closeFn) => {
     if (challengeSwipeCloserRef.current && challengeSwipeCloserRef.current !== closeFn) {
@@ -12320,7 +14991,6 @@ const ProgressScreen = React.memo(function ProgressScreen({
       }
       map.set(key, current);
     });
-    let maxSave = 0;
     const baseItems = Array.from({ length: 7 }).map((_, index) => {
       const date = new Date(start);
       date.setDate(start.getDate() + index);
@@ -12328,7 +14998,6 @@ const ProgressScreen = React.memo(function ProgressScreen({
       const stats = map.get(key) || { saveUSD: 0, spendUSD: 0 };
       const saveUSD = stats.saveUSD || 0;
       const spendUSD = stats.spendUSD || 0;
-      if (saveUSD > maxSave) maxSave = saveUSD;
       const weekdayIndex = (date.getDay() + 6) % 7;
       const label =
         WEEKDAY_LABELS_MONDAY_FIRST[language]?.[weekdayIndex] ||
@@ -12361,16 +15030,12 @@ const ProgressScreen = React.memo(function ProgressScreen({
         spendCurrencySymbol: spendParts.symbol,
       };
     });
-    const maxValue = Math.max(maxSave, 0.01);
     return baseItems.map((item) => {
-      const percent = item.saveUSD > 0 ? Math.max((item.saveUSD / maxValue) * 100, 8) : 0;
-      const spendPercent =
-        item.saveUSD > 0 && item.spendUSD > 0
-          ? Math.min(percent, Math.max((item.spendUSD / item.saveUSD) * percent, 2))
-          : 0;
+      const total = (item.saveUSD || 0) + (item.spendUSD || 0);
+      const spendPercent = total > 0 ? (item.spendUSD / total) * 100 : 0;
       return {
         ...item,
-        percent,
+        percent: 100,
         spendPercent,
         spendOverflow: item.spendUSD > item.saveUSD,
       };
@@ -12961,10 +15626,34 @@ const ProgressScreen = React.memo(function ProgressScreen({
     });
     return { map, total };
   }, [resolvedHistoryEvents, resolveHistoryCategoryId, budgetMonthKey]);
+  const budgetCarryoverUSD = useMemo(() => {
+    const monthStart = new Date(todayTimestamp);
+    if (Number.isNaN(monthStart.getTime())) return 0;
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const cutoff = monthStart.getTime();
+    let incomeTotal = 0;
+    (Array.isArray(incomeEntries) ? incomeEntries : []).forEach((entry) => {
+      const receivedAt = Number(entry?.receivedAt) || 0;
+      if (!receivedAt || receivedAt >= cutoff) return;
+      incomeTotal += Math.max(0, Number(entry?.amountUSD) || 0);
+    });
+    let spendTotal = 0;
+    resolvedHistoryEvents.forEach((entry) => {
+      if (!entry || entry.kind !== "spend") return;
+      const timestamp = Number(entry?.timestamp) || 0;
+      if (!timestamp || timestamp >= cutoff) return;
+      const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
+      if (!amount) return;
+      spendTotal += amount;
+    });
+    return incomeTotal - spendTotal;
+  }, [incomeEntries, resolvedHistoryEvents, todayTimestamp]);
   const budgetPlan = useMemo(
     () =>
       buildBudgetPlan({
         incomeUSD: monthlyIncomeUSD,
+        carryoverUSD: budgetCarryoverUSD,
         budgetOverrides,
         spendDistribution: budgetSpendDistribution,
         spendToDateByCategory: budgetMonthSpend.map,
@@ -12975,6 +15664,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
       }),
     [
       baselineMonthlyWasteUSD,
+      budgetCarryoverUSD,
       budgetOverrides,
       budgetSpendDistribution,
       budgetMonthSpend,
@@ -12992,7 +15682,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
     const list = [...budgetDisplayCategories];
     if (list.length < 2) return list;
     const locale = getFormatLocale(language);
-    return list.sort((a, b) => {
+    const baseSorted = list.sort((a, b) => {
       const aSpent = Number(a?.spentUSD) || 0;
       const bSpent = Number(b?.spentUSD) || 0;
       if (bSpent !== aSpent) return bSpent - aSpent;
@@ -13003,6 +15693,19 @@ const ProgressScreen = React.memo(function ProgressScreen({
       const bLabel = b?.label || "";
       return aLabel.localeCompare(bLabel, locale, { sensitivity: "base" });
     });
+    const enriched = baseSorted.map((entry, index) => {
+      const limit = Number(entry?.limitUSD) || 0;
+      const spent = Number(entry?.spentUSD) || 0;
+      const ratio = limit > 0 ? spent / limit : spent > 0 ? 1.5 : 0;
+      return { entry, index, ratio };
+    });
+    const hasProgress = enriched.some((item) => item.ratio > 0);
+    if (!hasProgress) return baseSorted;
+    enriched.sort((a, b) => {
+      if (b.ratio !== a.ratio) return b.ratio - a.ratio;
+      return a.index - b.index;
+    });
+    return enriched.map((item) => item.entry);
   }, [budgetDisplayCategories, language]);
   const budgetPlanMap = useMemo(() => {
     const map = {};
@@ -13416,8 +16119,26 @@ const ProgressScreen = React.memo(function ProgressScreen({
                 <Text style={[styles.budgetWidgetStatLabel, { color: colors.muted }]}>
                   {t("budgetIncomeLabel")}
                 </Text>
-                <Text style={[styles.budgetWidgetStatValue, { color: colors.text }]}>
+                <Text
+                  style={[styles.budgetWidgetStatValue, { color: colors.text }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
+                >
                   {budgetIncomeLabel}
+                </Text>
+              </View>
+              <View style={styles.budgetWidgetStat}>
+                <Text style={[styles.budgetWidgetStatLabel, { color: colors.muted }]}>
+                  {t("budgetSavingsLabel")}
+                </Text>
+                <Text
+                  style={[styles.budgetWidgetStatValue, { color: SAVE_ACTION_COLOR }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
+                >
+                  {budgetSavingsLabel}
                 </Text>
               </View>
               <View style={styles.budgetWidgetStat}>
@@ -13435,6 +16156,9 @@ const ProgressScreen = React.memo(function ProgressScreen({
                         : colors.text,
                     },
                   ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
                 >
                   {budgetPlannedIsZero
                     ? "✓"
@@ -13452,6 +16176,9 @@ const ProgressScreen = React.memo(function ProgressScreen({
                     styles.budgetWidgetStatValue,
                     { color: budgetRemainingNegative ? "#E15555" : colors.text },
                   ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
                 >
                   {budgetRemainingNegative ? `-${budgetRemainingLabel}` : budgetRemainingLabel}
                 </Text>
@@ -14308,7 +17035,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
                   <Text style={[styles.budgetModalStatLabel, { color: colors.muted }]}>
                     {t("budgetSavingsLabel")}
                   </Text>
-                  <Text style={[styles.budgetModalStatValue, { color: colors.text }]}>
+                  <Text style={[styles.budgetModalStatValue, { color: SAVE_ACTION_COLOR }]}>
                     {budgetSavingsLabel}
                   </Text>
                 </View>
@@ -15775,16 +18502,10 @@ const getChallengeCooldownRemaining = (entry, now = Date.now()) => {
 };
 
 const getChallengeSortGroup = (challenge) => {
-  if (!challenge) return 4;
-  if (
-    challenge.status === CHALLENGE_STATUS.COMPLETED ||
-    challenge.status === CHALLENGE_STATUS.CLAIMED
-  ) {
-    return 0;
-  }
-  if (challenge.status === CHALLENGE_STATUS.ACTIVE) return 1;
-  if (!challenge.isLevelLocked) return 2;
-  return 3;
+  if (!challenge) return 3;
+  if (challenge.status === CHALLENGE_STATUS.ACTIVE) return 0;
+  if (challenge.canClaim || challenge.canStart) return 1;
+  return 2;
 };
 
 const compareChallengesForDisplay = (a, b) => {
@@ -16044,6 +18765,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
   rewardsLocked = false,
   challengesLocked = false,
   dailyChallengeLocked = false,
+  scrollRef,
 }) {
   const rewardList = Array.isArray(achievements) ? achievements.filter(Boolean) : [];
   const displayRewards = rewardsLocked ? rewardList.slice(0, 2) : rewardList;
@@ -16434,6 +19156,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={{ paddingBottom: 200, gap: 16 }}
       showsVerticalScrollIndicator={false}
@@ -16575,6 +19298,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
   mascotImageSource,
   openAddCategoryModal,
   openManageCategoriesModal,
+  scrollRef,
 }) {
   const fallbackAvatar = mascotImageSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.idle;
   const resolvedAvatarUri = useMemo(() => resolveAvatarUri(profile?.avatar), [profile?.avatar]);
@@ -16721,6 +19445,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
         ...existing,
       };
       next.id = next.id || existing.id || "custom_habit";
+      if (!next.createdAt) {
+        next.createdAt = existing.createdAt || Date.now();
+      }
       if (trimmedTitle) {
         next.title = trimmedTitle;
       } else {
@@ -16818,6 +19545,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
   return (
     <View style={[styles.container, { backgroundColor: colors.background }] }>
       <ScrollView
+        ref={scrollRef}
         style={{ flex: 1 }}
         contentContainerStyle={styles.profileScrollContent}
         keyboardShouldPersistTaps="handled"
@@ -17559,9 +20287,15 @@ function AppContent() {
   const deferredHydrationInFlightRef = useRef(false);
   const [deferredHydrationReady, setDeferredHydrationReady] = useState(false);
   const [activeTab, setActiveTabState] = useState("feed");
+  const [heroCarouselIndex, setHeroCarouselIndex] = useState(0);
+  const [heroCarouselLocked, setHeroCarouselLocked] = useState(false);
+  const [dailyGoalCoinDropTick, setDailyGoalCoinDropTick] = useState(0);
   const [tabHistory, setTabHistoryState] = useState([]);
   const tabHistoryRef = useRef(tabHistory);
   const pendingScrollRef = useRef(null);
+  const progressScrollRef = useRef(null);
+  const rewardsScrollRef = useRef(null);
+  const profileScrollRef = useRef(null);
   const pendingCardLayoutsRef = useRef(new Map());
   const [pendingFocusId, setPendingFocusId] = useState(null);
   const persistQueueRef = useRef(new Map());
@@ -17684,6 +20418,8 @@ function AppContent() {
   const [customTemptationsCreatedHydrated, setCustomTemptationsCreatedHydrated] = useState(false);
   const [hiddenTemptations, setHiddenTemptations] = useState([]);
   const [hiddenTemptationsHydrated, setHiddenTemptationsHydrated] = useState(false);
+  const [archivedTemptations, setArchivedTemptations] = useState([]);
+  const [archivedTemptationsHydrated, setArchivedTemptationsHydrated] = useState(false);
   const customTemptationCount = quickTemptations.length;
   const temptationLimitWarningShownRef = useRef(false);
   const [priceEditor, setPriceEditor] = useState({
@@ -17834,12 +20570,12 @@ function AppContent() {
   const profileCurrencyCode = profile?.currency || DEFAULT_PROFILE.currency;
   const fabMainIcon = useMemo(() => {
     if (activeTab === "feed") {
-      const label = formatCurrency(0, profileCurrencyCode);
-      const parts = splitCurrencyLabel(label, profileCurrencyCode);
+      const label = formatCurrency(0, fabCurrencyCode);
+      const parts = splitCurrencyLabel(label, fabCurrencyCode);
       return parts.symbol || "$";
     }
     return "+";
-  }, [activeTab, profileCurrencyCode]);
+  }, [activeTab, fabCurrencyCode]);
   const playerTierInfo = useMemo(
     () => getTierProgress(levelProgressUSD || 0, profileCurrencyCode),
     [levelProgressUSD, profileCurrencyCode]
@@ -18058,10 +20794,35 @@ function AppContent() {
   const [saveBreakdownOffset, setSaveBreakdownOffset] = useState(0);
   const [reportsModalVisible, setReportsModalVisible] = useState(false);
   const [reportsTab, setReportsTab] = useState("weekly");
-  const products = useMemo(
+  const visibleTemptations = useMemo(
     () => filterTemptationsByPrice(temptations, priceLimitUSD),
     [temptations, priceLimitUSD]
   );
+  const archivedTemptationSet = useMemo(
+    () => new Set(archivedTemptations),
+    [archivedTemptations]
+  );
+  const hiddenTemptationSet = useMemo(
+    () => new Set(hiddenTemptations),
+    [hiddenTemptations]
+  );
+  const products = useMemo(
+    () =>
+      visibleTemptations.filter((item) => {
+        const templateId = item?.id || item?.templateId;
+        return !templateId || !archivedTemptationSet.has(templateId);
+      }),
+    [visibleTemptations, archivedTemptationSet]
+  );
+  const archivedProducts = useMemo(() => {
+    if (!archivedTemptations.length) return [];
+    const map = new Map();
+    visibleTemptations.forEach((item) => {
+      const templateId = item?.id || item?.templateId;
+      if (templateId) map.set(templateId, item);
+    });
+    return archivedTemptations.map((id) => map.get(id)).filter(Boolean);
+  }, [archivedTemptations, visibleTemptations]);
   const [profile, setProfile] = useState(() => ({
     ...DEFAULT_PROFILE_PLACEHOLDER,
     joinedAt: new Date().toISOString(),
@@ -18072,6 +20833,9 @@ function AppContent() {
     ...DEFAULT_PROFILE_PLACEHOLDER,
     joinedAt: new Date().toISOString(),
   }));
+  const [fabCurrencyCode, setFabCurrencyCode] = useState(
+    () => profile?.currency || DEFAULT_PROFILE.currency
+  );
   const reportsSnapshot = useMemo(
     () => normalizeProfileReports(profile?.reports),
     [profile?.reports]
@@ -18082,6 +20846,7 @@ function AppContent() {
   const [reportsLastAutoWeekHydrated, setReportsLastAutoWeekHydrated] = useState(false);
   const [reportsWeeklyNotificationId, setReportsWeeklyNotificationId] = useState(null);
   const [reportsWeeklyNotificationHydrated, setReportsWeeklyNotificationHydrated] = useState(false);
+  const reportsWeeklyNotificationLocaleRef = useRef(null);
   const reportsLastAutoWeekRef = useRef(null);
   const reportsAutoUpdateRef = useRef({ dayKey: null, digest: null });
   const [primaryTemptationPromptState, setPrimaryTemptationPromptState] = useState("done");
@@ -18370,6 +21135,34 @@ function AppContent() {
     },
     [quickTemptations, temptations]
   );
+  const isTemplateReminderEligible = useCallback(
+    (templateId) => {
+      if (!templateId) return false;
+      if (hiddenTemptationSet.has(templateId) || archivedTemptationSet.has(templateId)) {
+        return false;
+      }
+      if (templateId === primaryTemptationId) return true;
+      return Boolean(resolveTemplateCard(templateId));
+    },
+    [archivedTemptationSet, hiddenTemptationSet, primaryTemptationId, resolveTemplateCard]
+  );
+  const focusCandidateIds = useMemo(() => {
+    const ids = new Set();
+    [...quickTemptations, ...temptations].forEach((card) => {
+      if (card?.id) ids.add(card.id);
+    });
+    if (primaryTemptationId) ids.add(primaryTemptationId);
+    return ids;
+  }, [primaryTemptationId, quickTemptations, temptations]);
+  const isFocusCandidateInFeed = useCallback(
+    (templateId) => {
+      if (!templateId) return false;
+      const normalized = typeof templateId === "string" ? templateId.trim() : templateId;
+      if (!normalized) return false;
+      return focusCandidateIds.has(normalized);
+    },
+    [focusCandidateIds]
+  );
   const resolveTemplateTitle = useCallback(
     (templateId, fallback = null) => {
       if (!templateId) return fallback;
@@ -18398,6 +21191,35 @@ function AppContent() {
   const overlayRetryTimerRef = useRef(null);
   const feedScreenRef = useRef(null);
   const savingsHeroRef = useRef(null);
+  const scrollActiveTabToTop = useCallback(
+    (tabKey, { animated = true } = {}) => {
+      if (tabKey === "feed") {
+        const scroller = feedScreenRef.current;
+        if (scroller && typeof scroller.scrollToTop === "function") {
+          return scroller.scrollToTop({ animated });
+        }
+        return false;
+      }
+      if (tabKey === "cart") {
+        progressScrollRef.current?.scrollTo?.({ y: 0, animated });
+        return true;
+      }
+      if (tabKey === "pending") {
+        pendingScrollRef.current?.scrollTo?.({ y: 0, animated });
+        return true;
+      }
+      if (tabKey === "purchases") {
+        rewardsScrollRef.current?.scrollTo?.({ y: 0, animated });
+        return true;
+      }
+      if (tabKey === "profile") {
+        profileScrollRef.current?.scrollTo?.({ y: 0, animated });
+        return true;
+      }
+      return false;
+    },
+    []
+  );
 
   const overlayQueueRef = useRef([]);
   const overlayActiveRef = useRef(false);
@@ -19542,6 +22364,21 @@ function AppContent() {
   }, [closeTamagotchiOverlay, dailyRewardReady]);
   const [fabMenuVisible, setFabMenuVisible] = useState(false);
   const fabMenuAnim = useRef(new Animated.Value(0)).current;
+  const fabSlideAnim = useRef(new Animated.Value(0)).current;
+  const fabScrollHiddenRef = useRef(false);
+  const setFabScrollHidden = useCallback(
+    (hidden) => {
+      if (fabScrollHiddenRef.current === hidden) return;
+      fabScrollHiddenRef.current = hidden;
+      Animated.timing(fabSlideAnim, {
+        toValue: hidden ? 1 : 0,
+        duration: hidden ? 140 : 200,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    },
+    [fabSlideAnim]
+  );
   const tamagotchiMood = useMemo(
     () => getTamagotchiMood(tamagotchiState.hunger, language),
     [tamagotchiState.hunger, language]
@@ -19719,11 +22556,24 @@ function AppContent() {
       openFabMenu();
     }
   }, [closeFabMenu, fabMenuVisible, handleFabTutorialDismiss, openFabMenu, triggerHaptic]);
+  const handleFeedScrollActivity = useCallback(
+    (isScrolling) => {
+      if (activeTab !== "feed") return;
+      if (fabMenuVisible || fabTutorialVisible) return;
+      setFabScrollHidden(isScrolling);
+    },
+    [activeTab, fabMenuVisible, fabTutorialVisible, setFabScrollHidden]
+  );
   useEffect(() => {
     if (activeTab === "profile" && fabMenuVisible) {
       closeFabMenu();
     }
   }, [activeTab, closeFabMenu, fabMenuVisible]);
+  useEffect(() => {
+    if (activeTab !== "feed" || fabMenuVisible || fabTutorialVisible) {
+      setFabScrollHidden(false);
+    }
+  }, [activeTab, fabMenuVisible, fabTutorialVisible, setFabScrollHidden]);
   const imagePickerResolver = useRef(null);
   const [refuseStats, setRefuseStats] = useState({});
   const [refuseStatsHydrated, setRefuseStatsHydrated] = useState(false);
@@ -19917,6 +22767,52 @@ function AppContent() {
       console.warn("stale notification cleanup", error);
     }
   }, [resolveNotificationTriggerTime]);
+  const cancelScheduledNotificationsForTemplate = useCallback(async (templateId) => {
+    if (!templateId) return;
+    try {
+      const scheduled = await safeNotifications.getAllScheduledNotificationsAsync();
+      const matchingIds = (Array.isArray(scheduled) ? scheduled : []).reduce((acc, entry) => {
+        const data = entry?.content?.data || {};
+        if (data?.templateId !== templateId) return acc;
+        const id = entry?.identifier || entry?.id || null;
+        if (id) acc.push(id);
+        return acc;
+      }, []);
+      if (!matchingIds.length) return;
+      await Promise.all(
+        matchingIds.map((id) => safeNotifications.cancelScheduledNotificationAsync(id))
+      );
+    } catch (error) {
+      console.warn("template notification cleanup", error);
+    }
+  }, []);
+  const clearFrequencyReminderStateForTemplate = useCallback((templateId) => {
+    if (!templateId) return;
+    setTemptationInteractions((prev) => {
+      const prevEntry = prev?.[templateId];
+      if (!prevEntry) return prev;
+      if (
+        !prevEntry.frequencyReminderId &&
+        !(prevEntry.frequencyReminderIds && prevEntry.frequencyReminderIds.length) &&
+        !prevEntry.frequencyReminderScheduledAt &&
+        !prevEntry.frequencyReminderLocale &&
+        !prevEntry.frequencyReminderPlanKey
+      ) {
+        return prev;
+      }
+      return {
+        ...(prev || {}),
+        [templateId]: {
+          ...prevEntry,
+          frequencyReminderId: null,
+          frequencyReminderIds: [],
+          frequencyReminderScheduledAt: null,
+          frequencyReminderLocale: null,
+          frequencyReminderPlanKey: null,
+        },
+      };
+    });
+  }, [setTemptationInteractions]);
   const isNotificationOnCooldown = useCallback(
     async (targetTime = Date.now()) => {
       const lastSent = Number(lastInstantNotificationRef.current) || 0;
@@ -19988,8 +22884,9 @@ function AppContent() {
   const handledNotificationResponseIdsRef = useRef(new Set());
   const notificationActionHandlerRef = useRef(null);
   const notificationDedupeRef = useRef(new Map());
+  const pushLocaleRef = useRef(null);
   const pendingListRef = useRef([]);
-  const [spendPrompt, setSpendPrompt] = useState({ visible: false, item: null });
+  const [spendPrompt, setSpendPrompt] = useState({ visible: false, item: null, amountUSD: null });
   const [categoryPrompt, setCategoryPrompt] = useState({ visible: false, item: null, action: null, options: null });
   const [categoryPromptSelection, setCategoryPromptSelection] = useState(DEFAULT_IMPULSE_CATEGORY);
   const [addCategoryModalVisible, setAddCategoryModalVisible] = useState(false);
@@ -20059,6 +22956,19 @@ function AppContent() {
     if (Platform.OS === "ios") return null;
     return keyboardInset ? { paddingBottom: keyboardInset } : null;
   }, [keyboardInset]);
+  const fabSlideStyle = useMemo(
+    () => ({
+      transform: [
+        {
+          translateX: fabSlideAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, FAB_HIDE_TRANSLATE],
+          }),
+        },
+      ],
+    }),
+    [fabSlideAnim]
+  );
 
   const keyboardModalOffset = useMemo(() => {
     if (!keyboardInset) return 0;
@@ -20071,14 +22981,37 @@ function AppContent() {
     () => (keyboardModalOffset ? { paddingBottom: keyboardModalOffset } : null),
     [keyboardModalOffset]
   );
-  const handleRootTouchStart = useCallback(() => {
-    if (!keyboardVisible) return;
-    Keyboard.dismiss();
-  }, [keyboardVisible]);
+  const handleRootTouchStart = useCallback(
+    (event) => {
+      if (!keyboardVisible) return;
+      const target = event?.target;
+      const targetTag =
+        event?.nativeEvent?.target ?? (typeof target === "number" ? target : null);
+      const focusedField =
+        typeof RNTextInput?.State?.currentlyFocusedField === "function"
+          ? RNTextInput.State.currentlyFocusedField()
+          : null;
+      if (focusedField && targetTag === focusedField) {
+        return;
+      }
+      if (
+        target &&
+        typeof target !== "number" &&
+        typeof RNTextInput?.State?.isTextInput === "function" &&
+        RNTextInput.State.isTextInput(target)
+      ) {
+        return;
+      }
+      Keyboard.dismiss();
+    },
+    [keyboardVisible]
+  );
 
   const fabTutorialCutout = useMemo(() => {
     const radius = FAB_TUTORIAL_HALO_SIZE / 2;
-    const fallbackCenterX = SCREEN_WIDTH / 2;
+    const rightSafeInset = Math.max(safeAreaInsets.right || 0, 0);
+    const fallbackCenterX =
+      SCREEN_WIDTH - FAB_CONTAINER_SIDE - rightSafeInset - FAB_BUTTON_SIZE / 2;
     const androidStatusBarOffset = Platform.OS === "android" ? RNStatusBar.currentHeight || 0 : 0;
     const fallbackCenterY =
       SCREEN_HEIGHT - (tabBarBottomInset + FAB_CONTAINER_BOTTOM + FAB_BUTTON_SIZE / 2) + androidStatusBarOffset;
@@ -20098,7 +23031,7 @@ function AppContent() {
       centerX,
       centerY,
     };
-  }, [fabTutorialAnchor, tabBarBottomInset]);
+  }, [fabTutorialAnchor, safeAreaInsets.right, tabBarBottomInset]);
   const [analyticsOptOut, setAnalyticsOptOutState] = useState(null);
   const facebookInitRef = useRef(false);
   const analyticsConsentGateRef = useRef(false);
@@ -20216,6 +23149,10 @@ function AppContent() {
       tutorialOverlayVisible,
       tutorialVisible,
     ]
+  );
+  const heroCarouselHintAllowed = useMemo(
+    () => interfaceReady && speechAllowed,
+    [interfaceReady, speechAllowed]
   );
   useEffect(() => {
     if (activeTab !== "feed") return;
@@ -20429,6 +23366,7 @@ function AppContent() {
     item: null,
     intent: null,
     streakRecoveryValue: null,
+    amountUSD: null,
   });
   const [streakRecoveryPrompt, setStreakRecoveryPrompt] = useState({
     ...INITIAL_STREAK_RECOVERY_PROMPT,
@@ -21046,7 +23984,7 @@ function AppContent() {
   }, [canShowQueuedModal, queuedModalProcessTick, queuedModalType]);
   const openGoalLinkPrompt = useCallback((item, intent = "edit") => {
     if (!item) return;
-    setGoalLinkPrompt({ visible: true, item, intent, streakRecoveryValue: null });
+    setGoalLinkPrompt({ visible: true, item, intent, streakRecoveryValue: null, amountUSD: null });
   }, []);
   const [moodGradient, setMoodGradient] = useState(() =>
     applyThemeToMoodGradient(getMoodGradient(), theme)
@@ -21251,13 +24189,14 @@ function AppContent() {
   // Push the temptation tutorial dialog lower on Android so it doesn't cover the highlighted card.
   const baseTutorialBackdropPaddingBottom = 24 + tutorialCardOffset;
   const androidGestureNav = Platform.OS === "android" && tabBarBottomInset <= 0;
-  const tutorialBackdropPaddingBottom =
-    tutorialIsTemptation && Platform.OS === "android"
-      ? Math.max(
-          24,
-          baseTutorialBackdropPaddingBottom - (androidGestureNav ? 0 : 120)
-        )
-      : baseTutorialBackdropPaddingBottom;
+  const temptationTutorialBottomShift = Platform.OS === "android"
+    ? androidGestureNav
+      ? 0
+      : 120
+    : 72;
+  const tutorialBackdropPaddingBottom = tutorialIsTemptation
+    ? Math.max(24, baseTutorialBackdropPaddingBottom - temptationTutorialBottomShift)
+    : baseTutorialBackdropPaddingBottom;
   const tutorialBackdropBottomInset = tutorialIsTemptation ? 0 : tutorialOverlayInset;
   const tutorialHighlightTabs = useMemo(() => {
     if (!tutorialContext) return null;
@@ -21268,12 +24207,24 @@ function AppContent() {
   }, [tutorialContext]);
   const tutorialHighlightMaskRect = useMemo(() => {
     if (!tutorialIsTemptation || !tutorialHighlightRect) return null;
+    const inset = TUTORIAL_HIGHLIGHT_INSET || {};
+    const insetX = Number.isFinite(inset.x) ? inset.x : 0;
+    const insetY = Number.isFinite(inset.y) ? inset.y : 0;
+    const insetTop = Number.isFinite(inset.top) ? inset.top : insetY;
+    const insetBottom = Number.isFinite(inset.bottom) ? inset.bottom : insetY;
+    const insetLeft = Number.isFinite(inset.left) ? inset.left : insetX;
+    const insetRight = Number.isFinite(inset.right) ? inset.right : insetX;
+    const width = Math.max(0, tutorialHighlightRect.width - insetLeft - insetRight);
+    const height = Math.max(0, tutorialHighlightRect.height - insetTop - insetBottom);
     return {
-      x: tutorialHighlightRect.x,
-      y: tutorialHighlightRect.y,
-      width: tutorialHighlightRect.width,
-      height: tutorialHighlightRect.height,
-      radius: TEMPTATION_CARD_RADIUS,
+      x: tutorialHighlightRect.x + insetLeft,
+      y: tutorialHighlightRect.y + insetTop,
+      width,
+      height,
+      radius: Math.max(
+        0,
+        TEMPTATION_CARD_RADIUS - Math.min(insetLeft, insetRight, insetTop, insetBottom)
+      ),
     };
   }, [tutorialHighlightRect, tutorialIsTemptation]);
   const fabOverlayColor = theme === "dark" ? "rgba(5,7,13,0.78)" : "rgba(5,7,13,0.55)";
@@ -22494,7 +25445,7 @@ function AppContent() {
   );
   const assignableGoalsCount = assignableGoals.length;
   const handlePrimaryTemptationOverlayAction = useCallback(
-    async (type, sourceItem = null) => {
+    async (type, sourceItem = null, extraOptions = {}) => {
       const targetItem = sourceItem || primaryTemptationOverlayItem;
       if (!targetItem) return;
       let activePrimaryGoalId = null;
@@ -22527,13 +25478,14 @@ function AppContent() {
               forceOverlay: true,
             }
           : {};
+      const mergedOptions = { ...actionOptions, ...(extraOptions || {}) };
       dismissOverlay({ clearQueue: false });
       await new Promise((resolve) => {
         InteractionManager.runAfterInteractions(() => {
           setTimeout(resolve, 140);
         });
       });
-      await handleTemptationAction(type, targetItem, actionOptions);
+      await handleTemptationAction(type, targetItem, mergedOptions);
     },
     [
       activeGoalId,
@@ -23147,8 +26099,15 @@ function AppContent() {
     ],
     [wishes.length, declineCount, purchases.length, t]
   );
+  const impulseEventsForInsights = useMemo(
+    () =>
+      (impulseTracker.events || []).filter(
+        (event) => !isEssentialImpulseCategory(event?.category)
+      ),
+    [impulseTracker.events]
+  );
   const impulseInsights = useMemo(() => {
-    const raw = buildImpulseInsights(impulseTracker.events);
+    const raw = buildImpulseInsights(impulseEventsForInsights);
     if (!raw) return raw;
     const resolveTitle = (templateId, fallbackTitle) => {
       if (!templateId) return fallbackTitle || "";
@@ -23205,22 +26164,25 @@ function AppContent() {
         rebound: resolveSequence(raw.sequenceHotspots?.rebound),
       },
     };
-  }, [impulseTracker.events, language, resolveTemplateCard, titleOverrides]);
+  }, [impulseEventsForInsights, language, resolveTemplateCard, titleOverrides]);
   const focusRecentSpends = useMemo(() => {
     const now = Date.now();
     const cutoff = now - FOCUS_RECENT_WINDOW_MS;
     const recent = [];
-    (impulseTracker.events || []).forEach((event) => {
+    impulseEventsForInsights.forEach((event) => {
       if (!event || event.action !== "spend" || !event.templateId) return;
+      const templateId =
+        typeof event.templateId === "string" ? event.templateId.trim() : event.templateId;
+      if (!templateId || !isFocusCandidateInFeed(templateId)) return;
       const timestamp = Number(event.timestamp);
       if (!Number.isFinite(timestamp) || timestamp < cutoff) return;
       const rawAmount = Number(event.amountUSD) || 0;
-      const template = resolveTemplateCard(event.templateId);
+      const template = resolveTemplateCard(templateId);
       const templateAmount = Number(template?.priceUSD || template?.basePriceUSD || 0);
       const amountUSD = rawAmount > 0 ? rawAmount : templateAmount;
       if (!amountUSD) return;
       recent.push({
-        templateId: event.templateId,
+        templateId,
         amountUSD,
         timestamp,
         eventTitle: event.title,
@@ -23247,19 +26209,26 @@ function AppContent() {
       return (b.timestamp || 0) - (a.timestamp || 0);
     });
     return resolved;
-  }, [impulseTracker.events, language, resolveTemplateCard, resolveTemplateTitle, t]);
+  }, [
+    impulseEventsForInsights,
+    isFocusCandidateInFeed,
+    language,
+    resolveTemplateCard,
+    resolveTemplateTitle,
+    t,
+  ]);
   const dailyChallengePressure = useMemo(() => {
     const cutoff = Date.now() - DAILY_CHALLENGE_LOOKBACK_MS;
-    const recentEvents = (impulseTracker.events || []).filter((event) => {
+    const recentEvents = impulseEventsForInsights.filter((event) => {
       const timestamp = Number(event?.timestamp);
       return Number.isFinite(timestamp) && timestamp >= cutoff;
     });
     return buildTemptationPressureMap(recentEvents);
-  }, [impulseTracker.events, todayKey]);
+  }, [impulseEventsForInsights, todayKey]);
   const dailyChallengeRecentSaveIds = useMemo(() => {
     const cutoff = Date.now() - DAILY_CHALLENGE_POSITIVE_COOLDOWN_MS;
     const ids = new Set();
-    (impulseTracker.events || []).forEach((event) => {
+    impulseEventsForInsights.forEach((event) => {
       if (!event || event.action !== "save") return;
       const timestamp = Number(event.timestamp);
       if (!Number.isFinite(timestamp) || timestamp < cutoff) return;
@@ -23268,7 +26237,7 @@ function AppContent() {
       }
     });
     return ids;
-  }, [impulseTracker.events, todayKey]);
+  }, [impulseEventsForInsights, todayKey]);
 
   useEffect(() => {
     if (!impulseFeaturesUnlocked) return;
@@ -23285,23 +26254,26 @@ function AppContent() {
     if (!purchases.length) return;
     if (!focusRecentSpends.length) return;
     const strong = impulseInsights.hotWin || null;
-    const weak = strong?.templateId
-      ? focusRecentSpends.find((entry) => entry.templateId !== strong.templateId) || null
+    const eligibleStrong =
+      strong?.templateId && isFocusCandidateInFeed(strong.templateId) ? strong : null;
+    const weak = eligibleStrong?.templateId
+      ? focusRecentSpends.find((entry) => entry.templateId !== eligibleStrong.templateId) || null
       : focusRecentSpends[0] || null;
     if (!weak) return;
     const positive =
-      !!strong && (impulseInsights.totalSpendCount || 0) <= (impulseInsights.totalSaveCount || 0);
-    const strongTitle = keepEmojiWithText(strong?.title || t("focusDigestMissing"));
+      !!eligibleStrong &&
+      (impulseInsights.totalSpendCount || 0) <= (impulseInsights.totalSaveCount || 0);
+    const strongTitle = keepEmojiWithText(eligibleStrong?.title || t("focusDigestMissing"));
     const weakTitle = keepEmojiWithText(weak?.title || t("focusDigestMissing"));
     const payload = {
       title: positive ? t("focusDigestPositiveTitle") : t("focusDigestNegativeTitle"),
       body: positive
         ? t("focusDigestPositiveBody", { strong: strongTitle, weak: weakTitle })
         : t("focusDigestNegativeBody", { weak: weakTitle }),
-      strong: strong ? { ...strong, title: strongTitle } : strong,
+      strong: eligibleStrong ? { ...eligibleStrong, title: strongTitle } : eligibleStrong,
       weak: weak ? { ...weak, title: weakTitle } : weak,
       positive,
-      targetId: weak?.templateId || strong?.templateId || null,
+      targetId: weak?.templateId || eligibleStrong?.templateId || null,
     };
     setPendingFocusDigest({ dateKey: todayKey, payload });
     setFocusDigestPromptShown(false);
@@ -23310,6 +26282,7 @@ function AppContent() {
     focusDigestSeenKey,
     focusModeUnlocked,
     focusRecentSpends,
+    isFocusCandidateInFeed,
     impulseInsights,
     pendingFocusDigest,
     purchases.length,
@@ -23318,12 +26291,20 @@ function AppContent() {
 
   useEffect(() => {
     if (!pendingFocusDigest) return;
+    const targetId = pendingFocusDigest?.payload?.targetId;
+    if (targetId && !isFocusCandidateInFeed(targetId)) {
+      setPendingFocusDigest(null);
+      setFocusDigestPromptShown(false);
+      AsyncStorage.removeItem(STORAGE_KEYS.FOCUS_DIGEST_PENDING).catch(() => {});
+      return;
+    }
     if (focusDigestPromptShown) return;
     if (!focusModeUnlocked) return;
     enqueueQueuedModal(QUEUED_MODAL_TYPES.FOCUS_DIGEST);
   }, [
     enqueueQueuedModal,
     focusModeUnlocked,
+    isFocusCandidateInFeed,
     pendingFocusDigest,
     focusDigestPromptShown,
   ]);
@@ -23351,6 +26332,21 @@ function AppContent() {
     if (!dailyChallengeHydrated) return;
     if (!dailyChallengeUnlocked) return;
     const resolvedTodayKey = todayKey || getDayKey(Date.now());
+    const existingTemplate = dailyChallenge.templateId
+      ? resolveTemplateCard(dailyChallenge.templateId)
+      : null;
+    const existingCategory =
+      existingTemplate && typeof resolveTemptationCategory === "function"
+        ? resolveTemptationCategory(existingTemplate)
+        : null;
+    if (isEssentialImpulseCategory(existingCategory)) {
+      setDailyChallenge({
+        ...createInitialDailyChallengeState(),
+        dateKey: resolvedTodayKey,
+        status: DAILY_CHALLENGE_STATUS.IDLE,
+      });
+      return;
+    }
     if (dailyChallenge.dateKey === resolvedTodayKey && dailyChallenge.templateId) return;
     const targetId = resolveDailyChallengeTemplateId(dailyChallengePressure, 1, (templateId) => {
       const normalizedTemplateId =
@@ -23359,6 +26355,10 @@ function AppContent() {
       if (dailyChallengeRecentSaveIds.has(normalizedTemplateId)) return false;
       const template = resolveTemplateCard(normalizedTemplateId);
       if (!template) return false;
+      if (typeof resolveTemptationCategory === "function") {
+        const categoryId = resolveTemptationCategory(template);
+        if (isEssentialImpulseCategory(categoryId)) return false;
+      }
       const rawTitle =
         template.titleOverride ||
         (typeof template.title === "string"
@@ -23404,6 +26404,7 @@ function AppContent() {
     language,
     dailyChallengePressure,
     profile.currency,
+    resolveTemptationCategory,
     resolveTemplateCard,
     resolveTemplateTitle,
     todayKey,
@@ -23559,7 +26560,7 @@ function AppContent() {
     if (dailyChallenge.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return;
     if (!dailyChallenge.templateId || !dailyChallenge.dateKey) return;
     const acceptedAt = dailyChallenge.acceptedAt || 0;
-    const lost = (impulseTracker.events || []).some((event) => {
+    const lost = impulseEventsForInsights.some((event) => {
       if (event.action !== "spend") return false;
       if (event.templateId !== dailyChallenge.templateId) return false;
       if (getDayKey(event.timestamp) !== dailyChallenge.dateKey) return false;
@@ -23577,7 +26578,7 @@ function AppContent() {
     dailyChallengeHydrated,
     dailyChallengeUnlocked,
     failDailyChallenge,
-    impulseTracker.events,
+    impulseEventsForInsights,
   ]);
 
   const persistCustomReminderId = useCallback(
@@ -23721,33 +26722,49 @@ function AppContent() {
     tVariant,
   ]);
 
-  const scheduleWeeklyReportNotification = useCallback(async () => {
-    if (!reportsUnlocked) return;
-    const permitted = await ensureNotificationPermission({ request: false });
-    if (!permitted) return;
-    try {
-      const trigger = {
-        weekday: WEEKLY_REPORT_WEEKDAY,
-        hour: WEEKLY_REPORT_HOUR,
-        minute: WEEKLY_REPORT_MINUTE,
-        repeats: true,
-      };
-      const scheduledEntry = await scheduleNotificationWithCooldown({
-        content: {
-          title: t("reportsWeeklyNotificationTitle"),
-          body: t("reportsWeeklyNotificationBody"),
-          data: { kind: "weekly_report", targetScreen: "reports", dedupeKey: REPORTS_WEEKLY_NOTIFICATION_DEDUPE },
-          ...(Platform.OS === "android" ? { channelId: ANDROID_REPORTS_CHANNEL_ID } : null),
-        },
-        trigger,
-      });
-      if (scheduledEntry?.id) {
-        setReportsWeeklyNotificationId(scheduledEntry.id);
+  const scheduleWeeklyReportNotification = useCallback(
+    async ({ force = false } = {}) => {
+      if (!reportsUnlocked) return;
+      const permitted = await ensureNotificationPermission({ request: false });
+      if (!permitted) return;
+      const normalizedLanguage = normalizeLanguage(language);
+      const shouldReschedule =
+        force ||
+        !reportsWeeklyNotificationId ||
+        reportsWeeklyNotificationLocaleRef.current !== normalizedLanguage;
+      if (!shouldReschedule && reportsWeeklyNotificationId) return;
+      try {
+        const trigger = {
+          weekday: WEEKLY_REPORT_WEEKDAY,
+          hour: WEEKLY_REPORT_HOUR,
+          minute: WEEKLY_REPORT_MINUTE,
+          repeats: true,
+        };
+        const scheduledId = await safeNotifications.scheduleNotificationAsync({
+          content: {
+            title: t("reportsWeeklyNotificationTitle"),
+            body: t("reportsWeeklyNotificationBody"),
+            data: {
+              kind: "weekly_report",
+              targetScreen: "reports",
+              dedupeKey: REPORTS_WEEKLY_NOTIFICATION_DEDUPE,
+            },
+            ...(Platform.OS === "android" ? { channelId: ANDROID_REPORTS_CHANNEL_ID } : null),
+          },
+          trigger,
+        });
+        if (!scheduledId) return;
+        if (reportsWeeklyNotificationId && reportsWeeklyNotificationId !== scheduledId) {
+          await safeNotifications.cancelScheduledNotificationAsync(reportsWeeklyNotificationId);
+        }
+        setReportsWeeklyNotificationId(scheduledId);
+        reportsWeeklyNotificationLocaleRef.current = normalizedLanguage;
+      } catch (error) {
+        console.warn("weekly report schedule", error);
       }
-    } catch (error) {
-      console.warn("weekly report schedule", error);
-    }
-  }, [ensureNotificationPermission, reportsUnlocked, scheduleNotificationWithCooldown, t]);
+    },
+    [ensureNotificationPermission, language, reportsUnlocked, reportsWeeklyNotificationId, t]
+  );
 
   useEffect(() => {
     if (!reportsWeeklyNotificationHydrated) return;
@@ -23856,6 +26873,7 @@ function AppContent() {
         STORAGE_KEYS.CUSTOM_TEMPTATIONS,
         STORAGE_KEYS.CUSTOM_TEMPTATIONS_CREATED,
         STORAGE_KEYS.HIDDEN_TEMPTATIONS,
+        STORAGE_KEYS.ARCHIVED_TEMPTATIONS,
         STORAGE_KEYS.HEALTH,
         STORAGE_KEYS.CLAIMED_REWARDS,
         STORAGE_KEYS.REWARD_TOTAL,
@@ -23937,6 +26955,7 @@ function AppContent() {
       const customTemptationsCreatedRaw =
         storedMap[STORAGE_KEYS.CUSTOM_TEMPTATIONS_CREATED] ?? null;
       const hiddenTemptationsRaw = storedMap[STORAGE_KEYS.HIDDEN_TEMPTATIONS] ?? null;
+      const archivedTemptationsRaw = storedMap[STORAGE_KEYS.ARCHIVED_TEMPTATIONS] ?? null;
       const healthRaw = storedMap[STORAGE_KEYS.HEALTH] ?? null;
       const claimedRewardsRaw = storedMap[STORAGE_KEYS.CLAIMED_REWARDS] ?? null;
       const rewardTotalRaw = storedMap[STORAGE_KEYS.REWARD_TOTAL] ?? null;
@@ -24871,6 +27890,18 @@ function AppContent() {
         setHiddenTemptations([]);
       }
       setHiddenTemptationsHydrated(true);
+      if (archivedTemptationsRaw) {
+        try {
+          const parsed = JSON.parse(archivedTemptationsRaw);
+          setArchivedTemptations(Array.isArray(parsed) ? parsed : []);
+        } catch (err) {
+          console.warn("archived temptations parse", err);
+          setArchivedTemptations([]);
+        }
+      } else {
+        setArchivedTemptations([]);
+      }
+      setArchivedTemptationsHydrated(true);
       if (healthRaw) {
         const parsedHealth = Number(healthRaw) || 0;
         resolvedHealthPoints = Math.max(0, parsedHealth);
@@ -25549,7 +28580,7 @@ function AppContent() {
     if (!temptationTutorialVisible) return;
     tutorialHighlightAdjustCountRef.current = 0;
     tutorialHighlightAlignAttemptsRef.current = 0;
-    tutorialScrollExtraRef.current = 90;
+    tutorialScrollExtraRef.current = IS_SHORT_DEVICE ? -24 : -12;
     const attemptScroll = () => {
       const scroller = feedScreenRef.current;
       if (scroller && typeof scroller.scrollToTemptations === "function") {
@@ -25830,6 +28861,10 @@ function AppContent() {
   useEffect(() => {
     setActiveCurrency(profile.currency || DEFAULT_PROFILE.currency);
   }, [profile.currency]);
+  useEffect(() => {
+    const nextCurrency = profile?.currency || DEFAULT_PROFILE.currency;
+    setFabCurrencyCode((prev) => (prev === nextCurrency ? prev : nextCurrency));
+  }, [profile?.currency]);
 
   useEffect(() => {
     if (!themeHydrated) return;
@@ -26329,12 +29364,21 @@ useEffect(() => {
         if (!entry) continue;
         const frequency = entry.frequency;
         const nextCheckAt = entry.nextCheckAt;
-        const hasFrequency = !!frequency && Number.isFinite(nextCheckAt);
         const existingReminderIds = Array.isArray(entry.frequencyReminderIds)
           ? entry.frequencyReminderIds
           : entry.frequencyReminderId
           ? [entry.frequencyReminderId]
           : [];
+        const hasInteractions =
+          (Number(entry.saveCount) || 0) + (Number(entry.spendCount) || 0) > 0 ||
+          Number(entry.lastInteractionAt) > 0;
+        if (!hasInteractions || !isTemplateReminderEligible(templateId)) {
+          if (existingReminderIds.length) {
+            await cancelAndClearReminders(templateId, existingReminderIds);
+          }
+          continue;
+        }
+        const hasFrequency = !!frequency && Number.isFinite(nextCheckAt);
         if (!hasFrequency) {
           if (existingReminderIds.length) {
             await cancelAndClearReminders(templateId, existingReminderIds);
@@ -26420,6 +29464,7 @@ useEffect(() => {
     };
   }, [
     language,
+    isTemplateReminderEligible,
     notificationPermissionGranted,
     scheduleNotificationWithCooldown,
     setTemptationInteractions,
@@ -26654,6 +29699,11 @@ useEffect(() => {
   }, [queuePersist, hiddenTemptations, hiddenTemptationsHydrated]);
 
   useEffect(() => {
+    if (!archivedTemptationsHydrated) return;
+    queuePersist(STORAGE_KEYS.ARCHIVED_TEMPTATIONS, JSON.stringify(archivedTemptations));
+  }, [queuePersist, archivedTemptations, archivedTemptationsHydrated]);
+
+  useEffect(() => {
     if (!impulseTrackerHydrated) return;
     queuePersist(STORAGE_KEYS.IMPULSE_TRACKER, JSON.stringify(impulseTracker));
   }, [queuePersist, impulseTracker, impulseTrackerHydrated]);
@@ -26741,7 +29791,11 @@ useEffect(() => {
 
   const handleTabChange = (tabKey) => {
     triggerHaptic();
-    if (tabKey !== activeTab && tabKey === "cart") {
+    if (tabKey === activeTab) {
+      scrollActiveTabToTop(tabKey, { animated: true });
+      return;
+    }
+    if (tabKey === "cart") {
       logEvent("menu_progress_opened");
     }
     goToTab(tabKey);
@@ -26858,6 +29912,7 @@ useEffect(() => {
     setProfileDraft((prev) => ({ ...prev, currency: code }));
     setRegistrationData((prev) => ({ ...prev, currency: code }));
     setActiveCurrency(code);
+    setFabCurrencyCode(code);
     const currencyEvent = getCurrencySelectedEvent(code);
     if (currencyEvent) {
       logEvent(currencyEvent);
@@ -26878,14 +29933,14 @@ useEffect(() => {
   }, []);
 
   const addIncomeEntry = useCallback(
-    ({ amountText = "", note = "", receivedAt = Date.now() }) => {
+    ({ amountText = "", note = "", receivedAt = Date.now(), currencyCode } = {}) => {
       const parsed = parseNumberInputValue(amountText);
       if (!Number.isFinite(parsed) || parsed <= 0) {
         Alert.alert("Almost", t("incomeEntryInvalid"));
         return null;
       }
-      const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
-      const amountUSD = convertFromCurrency(parsed, currencyCode);
+      const resolvedCurrency = currencyCode || profile.currency || DEFAULT_PROFILE.currency;
+      const amountUSD = convertFromCurrency(parsed, resolvedCurrency);
       const entry = normalizeIncomeEntry({ amountUSD, receivedAt, note });
       if (!entry) {
         Alert.alert("Almost", t("incomeEntryInvalid"));
@@ -27320,15 +30375,17 @@ useEffect(() => {
       customData.category && IMPULSE_CATEGORY_DEFS[customData.category]
         ? customData.category
         : DEFAULT_IMPULSE_CATEGORY;
+    const createdAt = Date.now();
     const newCustom = {
       title: customData.title.trim(),
       amountUSD,
       pricePrecision: manualPrecision,
       currency: currencyCode,
       emoji: emojiValue,
-      id: customData.id || `custom_habit_${Date.now()}`,
+      id: customData.id || `custom_habit_${createdAt}`,
       gender: ownerGender,
       impulseCategory: category,
+      createdAt,
     };
     const card = createCustomHabitTemptation(newCustom, currencyCode, ownerGender);
     if (card) {
@@ -27722,22 +30779,55 @@ useEffect(() => {
       Alert.alert("Almost", t("baselineInputError"));
       return;
     }
+    const incomeRaw = (registrationData.incomeMonthlyAmount || "").trim();
+    const parsedIncome = incomeRaw ? parseNumberInputValue(incomeRaw) : null;
+    if (incomeRaw && (!Number.isFinite(parsedIncome) || parsedIncome <= 0)) {
+      Alert.alert("Almost", t("baselineIncomeInputError"));
+      return;
+    }
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
     const timestamp = new Date().toISOString();
     setRegistrationData((prev) => ({
       ...prev,
       baselineMonthlyWaste: formatNumberInputValue(parsedLocal),
       baselineCapturedAt: timestamp,
+      incomeMonthlyAmount:
+        Number.isFinite(parsedIncome) && parsedIncome > 0
+          ? formatNumberInputValue(parsedIncome)
+          : "",
     }));
+    const monthKey = getMonthKey(Date.now());
+    setIncomePromptState({ lastPromptMonthKey: monthKey, lastPromptAt: Date.now() });
+    if (Number.isFinite(parsedIncome) && parsedIncome > 0) {
+      const amountUSD = addIncomeEntry({
+        amountText: formatNumberInputValue(parsedIncome),
+        receivedAt: Date.now(),
+        currencyCode,
+      });
+      if (Number.isFinite(amountUSD) && amountUSD > 0) {
+        logEvent("income_entry_added", {
+          source: "onboarding",
+          month_key: monthKey,
+          amount_usd: amountUSD,
+          currency: currencyCode,
+        });
+      }
+    } else {
+      logEvent("income_entry_skipped", { source: "onboarding", month_key: monthKey });
+    }
     goToOnboardingStep("goal");
   };
 
   const handleBaselineSkip = () => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    const monthKey = getMonthKey(Date.now());
+    setIncomePromptState({ lastPromptMonthKey: monthKey, lastPromptAt: Date.now() });
+    logEvent("income_entry_skipped", { source: "onboarding", month_key: monthKey });
     setRegistrationData((prev) => ({
       ...prev,
       baselineMonthlyWaste: "",
       baselineCapturedAt: null,
+      incomeMonthlyAmount: "",
     }));
     goToOnboardingStep("goal");
   };
@@ -27753,6 +30843,7 @@ useEffect(() => {
       currency: profile.currency || prev.currency || DEFAULT_PROFILE.currency,
       baselineMonthlyWaste: "",
       baselineCapturedAt: null,
+      incomeMonthlyAmount: prev.incomeMonthlyAmount || "",
     }));
     setOnboardingSkipLocked(true);
     goToOnboardingStep("baseline");
@@ -28005,6 +31096,7 @@ useEffect(() => {
             ? Math.round(customFrequency)
             : 0,
         impulseCategory: categoryValue,
+        createdAt: Date.now(),
       };
       logEvent("temptation_created", {
         temptation_id: profile.customSpend?.id || "custom_habit",
@@ -28022,6 +31114,7 @@ useEffect(() => {
     const baselineLocal = parseNumberInputValue(registrationData.baselineMonthlyWaste || "");
     if (Number.isFinite(baselineLocal) && baselineLocal > 0) {
       spendingProfile = {
+        ...spendingProfile,
         baselineMonthlyWasteUSD: convertFromCurrency(baselineLocal, currencyCode),
         baselineStartAt: registrationData.baselineCapturedAt || new Date().toISOString(),
       };
@@ -28164,10 +31257,23 @@ useEffect(() => {
 
   const handleOnboardingSkip = useCallback(async () => {
     if (!canShowOnboardingSkip) return;
-    onboardingSkippedRef.current = true;
-    logEvent("onboarding_skipped", { from_step: onboardingStep });
-    await handleGoalComplete(null);
-  }, [canShowOnboardingSkip, handleGoalComplete, logEvent, onboardingStep]);
+    Alert.alert(
+      t("onboardingSkipConfirmTitle"),
+      t("onboardingSkipConfirmBody"),
+      [
+        { text: t("onboardingSkipConfirmCancel"), style: "cancel" },
+        {
+          text: t("onboardingSkipConfirmConfirm"),
+          style: "destructive",
+          onPress: async () => {
+            onboardingSkippedRef.current = true;
+            logEvent("onboarding_skipped", { from_step: onboardingStep });
+            await handleGoalComplete(null);
+          },
+        },
+      ]
+    );
+  }, [canShowOnboardingSkip, handleGoalComplete, logEvent, onboardingStep, t]);
 
   const ensureMediaPermission = async (type) => {
     if (type === "library" && Platform.OS === "android") {
@@ -28350,6 +31456,16 @@ useEffect(() => {
       const permitted = await ensureNotificationPermission({ request: false });
       if (!permitted) return;
       const templateId = entry.meta?.templateId || entry.meta?.id || entry.meta?.template_id;
+      if (!templateId || !isTemplateReminderEligible(templateId)) return;
+      let categoryId =
+        entry?.meta?.category || entry?.meta?.impulseCategory || entry?.meta?.impulseCategoryOverride || null;
+      if (!categoryId && templateId && typeof resolveTemptationCategory === "function") {
+        const template = findTemplateById(templateId);
+        if (template) {
+          categoryId = resolveTemptationCategory(template);
+        }
+      }
+      if (isEssentialImpulseCategory(categoryId)) return;
       const metaTitle =
         (typeof entry.meta?.title === "string" && entry.meta.title.trim()) ||
         resolveTemplateTitle(templateId, "") ||
@@ -28397,6 +31513,8 @@ useEffect(() => {
     },
     [
       ensureNotificationPermission,
+      isTemplateReminderEligible,
+      resolveTemptationCategory,
       resolveTemplateTitle,
       scheduleNotificationWithCooldown,
       setSmartReminders,
@@ -29008,12 +32126,11 @@ useEffect(() => {
 
   const triggerCoinHaptics = useCallback(() => {
     triggerCoinRewardHaptics();
-    playSound("coin");
-  }, [playSound]);
+  }, []);
 
   const closeSpendPrompt = useCallback(() => {
     spendPromptLockRef.current = false;
-    setSpendPrompt({ visible: false, item: null });
+    setSpendPrompt({ visible: false, item: null, amountUSD: null });
   }, []);
 
   const processMascotQueue = useCallback(() => {
@@ -29267,7 +32384,7 @@ useEffect(() => {
     }, STORM_OVERLAY_DURATION_MS);
   }, [playSound]);
   const recordTemptationInteraction = useCallback(
-    (templateId, actionType, item = null) => {
+    (templateId, actionType, item = null, amountUSD = null) => {
       if (!templateId && !item?.id && !item?.templateId) return;
       if (actionType !== "save" && actionType !== "spend") return;
       dismissPotentialGrowth();
@@ -29327,6 +32444,13 @@ useEffect(() => {
             : detectedIntervalValue || previousIntervalValue || DAILY_FREQUENCY_INTERVAL_MS);
         intervalMs = resolvedIntervalMs;
         nextCheckAt = Number.isFinite(resolvedIntervalMs) ? now + resolvedIntervalMs : null;
+        const normalizedAmount = Number(amountUSD);
+        const resolvedAmount =
+          Number.isFinite(normalizedAmount) && normalizedAmount > 0
+            ? normalizedAmount
+            : Number.isFinite(Number(prevEntry.lastAmountUSD)) && Number(prevEntry.lastAmountUSD) > 0
+            ? Number(prevEntry.lastAmountUSD)
+            : null;
         const nextEntry = {
           ...(prevEntry || {}),
           saveCount: (prevEntry.saveCount || 0) + (actionType === "save" ? 1 : 0),
@@ -29341,6 +32465,7 @@ useEffect(() => {
           lastTimerResetAt: now,
           missedCycles: 0,
           templateTitle: resolvedTitle || prevEntry.templateTitle || null,
+          lastAmountUSD: resolvedAmount,
         };
         if (frequency && nextCheckAt) {
           nextEntry.frequencyReminderScheduledAt = null;
@@ -29588,9 +32713,10 @@ useEffect(() => {
   const goalLinkTemplateId = goalLinkPrompt.item ? resolveTemptationTemplateId(goalLinkPrompt.item) : null;
   const goalLinkCurrentGoalId = goalLinkTemplateId ? resolveTemptationGoalId(goalLinkTemplateId) : null;
   const executeSpend = useCallback(
-    (item) => {
+    (item, overrideAmountUSD = null) => {
       if (!item) return;
       const templateId = resolveTemptationTemplateId(item);
+      const overrideAmount = parseAmountValue(overrideAmountUSD);
       const rawPriceUSD =
         item?.priceUSD ??
         item?.basePriceUSD ??
@@ -29611,11 +32737,17 @@ useEffect(() => {
           profile.currency || DEFAULT_PROFILE.currency
         );
       }
+      if (overrideAmount > 0) {
+        priceUSD = overrideAmount;
+      }
       const title = `${item.emoji || "✨"} ${
         item.title?.[language] || item.title?.en || item.title || "goal"
       }`;
       const spendCategory = resolveTemptationCategory(item);
-      registerFocusLoss(item);
+      const isEssentialSpendCategory = isEssentialImpulseCategory(spendCategory);
+      if (!isEssentialSpendCategory) {
+        registerFocusLoss(item);
+      }
       handleFocusSpend(item);
       logHistoryEvent("spend", {
         title,
@@ -29685,10 +32817,14 @@ useEffect(() => {
         }
         return next;
       });
-      logImpulseEvent("spend", item, priceUSD, title);
-      requestMascotAnimation(Math.random() > 0.5 ? "sad" : "ohno");
-      recordTemptationInteraction(templateId || item.id, "spend", item);
-      queueHomeSpeech("spend");
+      if (!isEssentialSpendCategory) {
+        logImpulseEvent("spend", item, priceUSD, title);
+        requestMascotAnimation(Math.random() > 0.5 ? "sad" : "ohno");
+      }
+      recordTemptationInteraction(templateId || item.id, "spend", item, priceUSD);
+      if (!isEssentialSpendCategory) {
+        queueHomeSpeech("spend");
+      }
     },
     [
       handleFocusSpend,
@@ -29713,15 +32849,16 @@ useEffect(() => {
   const handleSpendConfirm = useCallback(() => {
     if (!spendPrompt.item || spendExecutionLockRef.current) return;
     const item = spendPrompt.item;
+    const amountUSD = spendPrompt.amountUSD;
     spendExecutionLockRef.current = true;
     closeSpendPrompt();
     triggerStormEffect();
     try {
-      executeSpend(item);
+      executeSpend(item, amountUSD);
     } finally {
       spendExecutionLockRef.current = false;
     }
-  }, [closeSpendPrompt, executeSpend, spendPrompt.item, triggerStormEffect]);
+  }, [closeSpendPrompt, executeSpend, spendPrompt.amountUSD, spendPrompt.item, triggerStormEffect]);
 
   const buildTemptationPayload = useCallback(
     (item, extra = {}) => {
@@ -29767,6 +32904,7 @@ useEffect(() => {
       const now = Date.now();
       const eventTimestamp = Number(event.timestamp);
       if (!Number.isFinite(eventTimestamp)) return;
+      if (isEssentialImpulseCategory(event.category)) return;
       if (now - eventTimestamp > RECENT_EVENT_NOTIFICATION_WINDOW_MS) return;
       const triggerAt = getImpulseReminderTimestamp(eventTimestamp);
       if (!triggerAt) return;
@@ -29778,7 +32916,10 @@ useEffect(() => {
         convertToCurrency(Math.max(event.amountUSD || 0, 0), currencyCode),
         currencyCode
       );
-      const templateTitle = event.title || t("defaultDealTitle");
+      const resolvedTemplateTitle = event.templateId
+        ? resolveTemplateTitle(event.templateId, event.title || t("defaultDealTitle"))
+        : event.title || t("defaultDealTitle");
+      const templateTitle = resolvedTemplateTitle || t("defaultDealTitle");
       const dedupeKey = `impulse_reminder:${event.id || event.templateId || Date.now()}`;
       const dayLabel =
         formatRelativeDayLabel(eventTimestamp, triggerAt, language) ||
@@ -29821,12 +32962,14 @@ useEffect(() => {
         console.warn("impulse reminder schedule", error);
       }
     },
-    [ensureNotificationPermission, profile.currency, scheduleNotificationWithCooldown, t]
+    [ensureNotificationPermission, profile.currency, resolveTemplateTitle, scheduleNotificationWithCooldown, t]
   );
 
   const logImpulseEvent = useCallback(
     (action, item, amountUSD = 0, overrideTitle = null) => {
       if (!item || (action !== "save" && action !== "spend")) return;
+      const category = resolveImpulseCategory(item);
+      if (isEssentialImpulseCategory(category)) return;
       const timestamp = Date.now();
       const entryTitle =
         overrideTitle ||
@@ -29839,7 +32982,7 @@ useEffect(() => {
         templateId: eventTemplateId,
         title: entryTitle,
         emoji: item.emoji || "✨",
-        category: resolveImpulseCategory(item),
+        category,
         action,
         amountUSD: amountUSD || item.priceUSD || item.basePriceUSD || 0,
         timestamp,
@@ -29856,6 +32999,280 @@ useEffect(() => {
     },
     [language, resolveTemptationTemplateId, scheduleImpulseReminder, t]
   );
+
+  const resyncPushNotificationsForLanguage = useCallback(
+    async () => {
+      if (notificationPermissionGranted !== true) return;
+      if (pendingHydrated) {
+        const pendingItems = Array.isArray(pendingListRef.current) ? pendingListRef.current : [];
+        if (pendingItems.length) {
+          const updates = new Map();
+          for (const item of pendingItems) {
+            if (!item?.id) continue;
+            if (item?.notificationId) {
+              try {
+                await safeNotifications.cancelScheduledNotificationAsync(item.notificationId);
+              } catch (error) {
+                console.warn("pending reminder cancel", error);
+              }
+            }
+            const dueTimestamp = Number(item?.decisionDue) || 0;
+            if (!Number.isFinite(dueTimestamp) || dueTimestamp <= Date.now()) {
+              updates.set(item.id, null);
+              continue;
+            }
+            const template = item?.templateId ? findTemplateById(item.templateId) : null;
+            const resolvedTitle =
+              resolveTemplateTitle(item?.templateId, item?.title || t("defaultDealTitle")) ||
+              item?.title ||
+              t("defaultDealTitle");
+            const reminderId = await schedulePendingReminder(resolvedTitle, dueTimestamp, {
+              pendingId: item.id,
+              templateId: item?.templateId || null,
+              title: resolvedTitle,
+              emoji: item?.emoji || template?.emoji || DEFAULT_TEMPTATION_EMOJI,
+              amountUSD: Number(item?.priceUSD) || Number(template?.basePriceUSD) || 0,
+            });
+            updates.set(item.id, reminderId || null);
+          }
+          if (updates.size) {
+            setPendingList((prev) =>
+              (Array.isArray(prev) ? prev : []).map((entry) =>
+                updates.has(entry.id)
+                  ? { ...entry, notificationId: updates.get(entry.id) }
+                  : entry
+              )
+            );
+          }
+        }
+      }
+
+      if (challengesHydrated) {
+        const updates = new Map();
+        const entries = Object.entries(challengesState || {});
+        for (const [challengeId, entry] of entries) {
+          if (!entry || entry.status !== CHALLENGE_STATUS.ACTIVE) continue;
+          const def = CHALLENGE_DEF_MAP[challengeId];
+          if (!def) continue;
+          const existingIds = Array.isArray(entry.reminderNotificationIds)
+            ? entry.reminderNotificationIds
+            : [];
+          if (existingIds.length) {
+            await Promise.all(
+              existingIds.map((id) =>
+                safeNotifications.cancelScheduledNotificationAsync(id).catch(() => {})
+              )
+            );
+          }
+          const reminderIds = await scheduleChallengeReminders(
+            challengeId,
+            def,
+            entry.startedAt,
+            entry.expiresAt
+          );
+          updates.set(challengeId, reminderIds);
+        }
+        if (updates.size) {
+          setChallengesState((prev) => {
+            const next = { ...(prev || {}) };
+            updates.forEach((ids, challengeId) => {
+              if (!next[challengeId]) return;
+              next[challengeId] = {
+                ...next[challengeId],
+                reminderNotificationIds: ids,
+              };
+            });
+            return next;
+          });
+        }
+      }
+
+      if (smartRemindersHydrated) {
+        const reminders = Array.isArray(smartRemindersRef.current) ? smartRemindersRef.current : [];
+        if (reminders.length) {
+          for (const reminder of reminders) {
+            if (!reminder?.notificationId) continue;
+            try {
+              await safeNotifications.cancelScheduledNotificationAsync(reminder.notificationId);
+            } catch (error) {
+              console.warn("smart reminder cancel", error);
+            }
+          }
+          const now = Date.now();
+          const updates = new Map();
+          const sorted = reminders
+            .slice()
+            .sort((a, b) => (Number(a.scheduledAt) || 0) - (Number(b.scheduledAt) || 0));
+          for (const reminder of sorted) {
+            if (!reminder?.id) continue;
+            const scheduledAt = Number(reminder.scheduledAt);
+            if (!Number.isFinite(scheduledAt) || scheduledAt <= now) {
+              updates.set(reminder.id, null);
+              continue;
+            }
+            const resolvedTitle =
+              resolveTemplateTitle(reminder.templateId, reminder.title || t("defaultDealTitle")) ||
+              reminder.title ||
+              t("defaultDealTitle");
+            const isSpendEvent = reminder.kind === "spend";
+            const dedupeKey = `smart:${reminder.eventId || reminder.id}`;
+            try {
+              const scheduledId = await safeNotifications.scheduleNotificationAsync({
+                content: {
+                  title: isSpendEvent
+                    ? t("smartInsightSpendTitle", { temptation: resolvedTitle })
+                    : t("smartInsightDeclineTitle", { temptation: resolvedTitle }),
+                  body: isSpendEvent
+                    ? t("smartInsightSpendBody", { temptation: resolvedTitle })
+                    : t("smartInsightDeclineBody", { temptation: resolvedTitle }),
+                  data: {
+                    kind: "smart_insight",
+                    templateId: reminder.templateId || null,
+                    eventTimestamp: Number(reminder.timestamp) || 0,
+                    dedupeKey,
+                  },
+                },
+                trigger: new Date(scheduledAt),
+              });
+              updates.set(reminder.id, scheduledId || null);
+            } catch (error) {
+              console.warn("smart reminder reschedule", error);
+              updates.set(reminder.id, null);
+            }
+          }
+          if (updates.size) {
+            setSmartReminders((prev) =>
+              normalizeSmartReminderEntries(
+                (Array.isArray(prev) ? prev : []).map((entry) =>
+                  updates.has(entry.id)
+                    ? { ...entry, notificationId: updates.get(entry.id) }
+                    : entry
+                )
+              )
+            );
+          }
+        }
+      }
+
+      const shouldScanScheduled = impulseTrackerHydrated || dailySummaryUnlocked;
+      let scheduled = [];
+      if (shouldScanScheduled) {
+        try {
+          const list = await safeNotifications.getAllScheduledNotificationsAsync();
+          scheduled = Array.isArray(list) ? list : [];
+        } catch (error) {
+          console.warn("scheduled notifications resync", error);
+        }
+      }
+
+      if (impulseTrackerHydrated) {
+        const impulseIds = scheduled
+          .filter((entry) => entry?.content?.data?.kind === "impulse_reminder")
+          .map((entry) => entry?.identifier || entry?.id)
+          .filter(Boolean);
+        if (impulseIds.length) {
+          await Promise.all(
+            impulseIds.map((id) =>
+              safeNotifications.cancelScheduledNotificationAsync(id).catch(() => {})
+            )
+          );
+        }
+        const events = Array.isArray(impulseTracker?.events)
+          ? impulseTracker.events.slice()
+          : [];
+        events.sort((a, b) => (Number(a.timestamp) || 0) - (Number(b.timestamp) || 0));
+        for (const event of events) {
+          await scheduleImpulseReminder(event);
+        }
+      }
+
+      if (dailySummaryUnlocked && scheduled.length) {
+        const summaryEntries = scheduled.filter(
+          (entry) => entry?.content?.data?.kind === "daily_summary"
+        );
+        for (const entry of summaryEntries) {
+          const entryId = entry?.identifier || entry?.id;
+          if (entryId) {
+            try {
+              await safeNotifications.cancelScheduledNotificationAsync(entryId);
+            } catch (error) {
+              console.warn("daily summary cancel", error);
+            }
+          }
+          const data = entry?.content?.data || {};
+          const trigger = entry?.trigger || null;
+          const scheduledAt = resolveNotificationTriggerTime(trigger);
+          if (!Number.isFinite(scheduledAt) || scheduledAt <= Date.now()) {
+            continue;
+          }
+          const todayKey = typeof data.todayKey === "string" ? data.todayKey : null;
+          if (!todayKey) continue;
+          const savedUSD = Math.max(0, Number(data.savedUSD) || 0);
+          const declines = Math.max(0, Number(data.declines) || 0);
+          const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+          const savedLabel = formatCurrency(
+            convertToCurrency(savedUSD, currencyCode),
+            currencyCode
+          );
+          try {
+            await safeNotifications.scheduleNotificationAsync({
+              content: {
+                title: t("dailySummaryNotificationTitle"),
+                body: t("dailySummaryNotificationBody", { saved: savedLabel, declines }),
+                data: {
+                  ...data,
+                  kind: "daily_summary",
+                  targetScreen: "daily_summary",
+                  dedupeKey: data.dedupeKey || `daily_summary_${todayKey}`,
+                },
+              },
+              trigger,
+            });
+          } catch (error) {
+            console.warn("daily summary reschedule", error);
+          }
+        }
+      }
+    },
+    [
+      challengesHydrated,
+      challengesState,
+      dailySummaryUnlocked,
+      convertToCurrency,
+      findTemplateById,
+      formatCurrency,
+      impulseTracker,
+      impulseTrackerHydrated,
+      notificationPermissionGranted,
+      normalizeSmartReminderEntries,
+      pendingHydrated,
+      profile.currency,
+      resolveNotificationTriggerTime,
+      resolveTemplateTitle,
+      scheduleChallengeReminders,
+      scheduleImpulseReminder,
+      schedulePendingReminder,
+      setChallengesState,
+      setPendingList,
+      setSmartReminders,
+      smartRemindersHydrated,
+      t,
+    ]
+  );
+
+  useEffect(() => {
+    if (!languageHydrated) return;
+    const normalizedLanguage = normalizeLanguage(language);
+    if (pushLocaleRef.current === null) {
+      pushLocaleRef.current = normalizedLanguage;
+      return;
+    }
+    if (pushLocaleRef.current === normalizedLanguage) return;
+    pushLocaleRef.current = normalizedLanguage;
+    resyncPushNotificationsForLanguage().catch((error) => {
+      console.warn("push locale resync", error);
+    });
+  }, [language, languageHydrated, resyncPushNotificationsForLanguage]);
 
   const buildPrimaryGoalWishSnapshot = useCallback(
     (wishId) => {
@@ -29911,6 +33328,7 @@ useEffect(() => {
         restoredStreakValue = null,
         forceOverlay = false,
         forcePrimaryGoal = false,
+        amountUSD: overrideAmountUSD = null,
       } = options || {};
       playSound("tap");
       let resolvedForcedGoalId = forcedGoalId;
@@ -29941,16 +33359,21 @@ useEffect(() => {
         return goalId;
       };
       const templateId = resolveTemptationTemplateId(item);
+      const normalizedOverrideAmountUSD = parseAmountValue(overrideAmountUSD);
+      const hasOverrideAmount =
+        Number.isFinite(normalizedOverrideAmountUSD) && normalizedOverrideAmountUSD > 0;
       const rawPriceUSD =
-        item?.priceUSD ??
-        item?.basePriceUSD ??
-        item?.amountUSD ??
-        item?.amount ??
-        item?.amountLocal ??
-        0;
+        hasOverrideAmount
+          ? normalizedOverrideAmountUSD
+          : item?.priceUSD ??
+            item?.basePriceUSD ??
+            item?.amountUSD ??
+            item?.amount ??
+            item?.amountLocal ??
+            0;
       const normalizedPriceUSD = parseAmountValue(rawPriceUSD);
       let priceUSD = normalizedPriceUSD > 0 ? normalizedPriceUSD : 0;
-      if (priceUSD <= 0 && isCustomTemptation(item)) {
+      if (priceUSD <= 0 && !hasOverrideAmount && isCustomTemptation(item)) {
         priceUSD = resolveCustomPriceUSD(item, profile.currency || DEFAULT_PROFILE.currency);
         if (priceUSD <= 0 && profile.customSpend) {
           priceUSD = resolveCustomPriceUSD(
@@ -29984,8 +33407,11 @@ useEffect(() => {
         }
         dismissStormEffect();
         try {
-          logTemptationAction("spend", item);
-          logEvent("temptation_spend", buildTemptationPayload(item, { total_saved_usd: savedTotalUSD }));
+          logTemptationAction("spend", item, { price_usd: priceUSD });
+          logEvent(
+            "temptation_spend",
+            buildTemptationPayload(item, { total_saved_usd: savedTotalUSD, price_usd: priceUSD })
+          );
           logEvent("temptation_decision", {
             temptation_id: templateId || item.id,
             decision: "spend",
@@ -29994,9 +33420,9 @@ useEffect(() => {
           });
           if (bypassSpendPrompt) {
             triggerStormEffect();
-            executeSpend(item);
+            executeSpend(item, priceUSD);
           } else {
-            setSpendPrompt({ visible: true, item });
+            setSpendPrompt({ visible: true, item, amountUSD: priceUSD });
           }
         } catch (error) {
           if (bypassSpendPrompt) {
@@ -30113,6 +33539,7 @@ useEffect(() => {
             item,
             intent: "save",
             streakRecoveryValue: restoredStreakOverride ?? null,
+            amountUSD: priceUSD,
           });
           return;
         }
@@ -30530,6 +33957,8 @@ useEffect(() => {
         if (coinReward > 0) {
           setHealthPoints((prev) => prev + coinReward);
         }
+        const resolvedCategory = resolveTemptationCategory(item);
+        const isEssentialSaveCategory = isEssentialImpulseCategory(resolvedCategory);
         setRefuseStats((prev) => {
           if (!templateId) return prev;
           const { entry: currentEntry, key: legacyKey } = getLegacyRefuseStatsEntry(prev, templateId, item);
@@ -30578,6 +34007,7 @@ useEffect(() => {
           goalId: normalizedTargetGoalId || null,
           coinReward,
           currency: profile.currency || DEFAULT_PROFILE.currency,
+          category: resolvedCategory,
         });
         const refuseStatsEntry = streakStatsEntry || {};
         logEvent(
@@ -30585,23 +34015,36 @@ useEffect(() => {
           buildTemptationPayload(item, {
             total_saved_usd: savedTotalUSD + priceUSD,
             refuse_count_for_item: (refuseStatsEntry.count || 0) + 1,
+            price_usd: priceUSD,
           })
         );
-        logTemptationAction("save", item, { goal_id: normalizedTargetGoalId || null });
-        logImpulseEvent("save", item, priceUSD, title);
+        logTemptationAction("save", item, {
+          goal_id: normalizedTargetGoalId || null,
+          price_usd: priceUSD,
+        });
+        if (!isEssentialSaveCategory) {
+          logImpulseEvent("save", item, priceUSD, title);
+        }
         triggerCardFeedback(templateId || item.id);
         triggerCoinHaptics();
+        if (priceUSD > 0) {
+          setDailyGoalCoinDropTick((prev) => prev + 1);
+        }
         handleFocusSaveProgress(item);
-      ensureOverlayEnvironmentReady();
-    triggerOverlayState(
-      "save",
-      { ...saveOverlayPayload, coinReward },
-      { clearQueueOnDismiss: false, force: !!forceOverlay }
-    );
-        requestMascotAnimation("happy");
+        ensureOverlayEnvironmentReady();
+        triggerOverlayState(
+          "save",
+          { ...saveOverlayPayload, coinReward },
+          { clearQueueOnDismiss: false, force: !!forceOverlay }
+        );
+        if (!isEssentialSaveCategory) {
+          requestMascotAnimation("happy");
+        }
         saveActionLogRef.current = [...recentSaves, { itemId: templateId || item.id, timestamp: saveTimestamp }];
-        recordTemptationInteraction(templateId || item.id, "save", item);
-        queueHomeSpeech("save");
+        recordTemptationInteraction(templateId || item.id, "save", item, priceUSD);
+        if (!isEssentialSaveCategory) {
+          queueHomeSpeech("save");
+        }
         return;
       }
       if (type === "maybe") {
@@ -30673,6 +34116,7 @@ useEffect(() => {
       moodPreset,
       requestMascotAnimation,
       handleFocusSaveProgress,
+      setDailyGoalCoinDropTick,
       ensureOverlayEnvironmentReady,
       logEvent,
       primaryTemptationId,
@@ -30695,6 +34139,7 @@ useEffect(() => {
       setHealthPoints,
       setProgressSavedTotalUSD,
       setStreakRecoveryPrompt,
+      resolveTemptationCategory,
       resolveTemptationTemplateId,
       dismissStormEffect,
       activeGoalId,
@@ -31187,7 +34632,13 @@ useEffect(() => {
   ]);
 
   const closeGoalLinkPrompt = useCallback(() => {
-    setGoalLinkPrompt({ visible: false, item: null, intent: null, streakRecoveryValue: null });
+    setGoalLinkPrompt({
+      visible: false,
+      item: null,
+      intent: null,
+      streakRecoveryValue: null,
+      amountUSD: null,
+    });
   }, []);
 
   const handleGoalLinkSelect = useCallback(
@@ -31195,6 +34646,7 @@ useEffect(() => {
       const sourceItem = goalLinkPrompt.item;
       const intent = goalLinkPrompt.intent;
       const streakRecoveryValue = goalLinkPrompt.streakRecoveryValue;
+      const amountUSD = goalLinkPrompt.amountUSD;
       const templateId = resolveTemptationTemplateId(sourceItem);
       closeGoalLinkPrompt();
       if (!wishId || !sourceItem) return;
@@ -31204,6 +34656,7 @@ useEffect(() => {
           goalId: wishId,
           shouldAssign: true,
           restoredStreakValue: streakRecoveryValue ?? null,
+          amountUSD,
         });
         return;
       }
@@ -31584,18 +35037,22 @@ useEffect(() => {
 
   useEffect(() => {
     if (priceEditor.item) {
-      if (!editOverlayVisible) setEditOverlayVisible(true);
-      Animated.timing(editOverlayAnim, {
+      if (!editOverlayVisible) {
+        setEditOverlayVisible(true);
+        editOverlayAnim.setValue(0);
+      }
+      Animated.spring(editOverlayAnim, {
         toValue: 1,
-        duration: 220,
-        easing: Easing.out(Easing.cubic),
+        damping: 22,
+        stiffness: 180,
+        mass: 0.9,
         useNativeDriver: true,
       }).start();
     } else if (editOverlayVisible) {
       Animated.timing(editOverlayAnim, {
         toValue: 0,
-        duration: 180,
-        easing: Easing.in(Easing.cubic),
+        duration: 200,
+        easing: Easing.inOut(Easing.cubic),
         useNativeDriver: true,
       }).start(({ finished }) => {
         if (finished) setEditOverlayVisible(false);
@@ -31616,28 +35073,32 @@ useEffect(() => {
     setPriceEditor((prev) => ({ ...prev, category: value }));
   };
 
-  const handleQuickGoalToggle = useCallback(
+  const handleTemptationArchiveToggle = useCallback(
     (item) => {
       if (!item) return;
-      const existing = (wishes || []).find((wish) => wish.templateId === item.id);
-      if (existing) {
-        setWishes((prev) => prev.filter((wish) => wish.id !== existing.id));
-        assignTemptationGoal(item.id, null);
-        logHistoryEvent("wish_removed", { title: existing.title });
-        triggerOverlayState("cart", t("goalRemoved"));
-        triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-        return;
+      const templateId = item.id || item.templateId;
+      if (!templateId) return;
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+      if (!archivedTemptationSet.has(templateId)) {
+        cancelScheduledNotificationsForTemplate(templateId);
+        clearFrequencyReminderStateForTemplate(templateId);
+        setSmartReminders((prev) =>
+          normalizeSmartReminderEntries((prev || []).filter((entry) => entry?.templateId !== templateId))
+        );
       }
-      handleTemptationAction("want", item, { pinnedBy: "swipe" });
+      setArchivedTemptations((prev) => {
+        if (prev.includes(templateId)) {
+          return prev.filter((id) => id !== templateId);
+        }
+        return [templateId, ...prev.filter((id) => id !== templateId)];
+      });
     },
     [
-      assignTemptationGoal,
-      handleTemptationAction,
-      logHistoryEvent,
-      t,
+      archivedTemptationSet,
+      cancelScheduledNotificationsForTemplate,
+      clearFrequencyReminderStateForTemplate,
+      setSmartReminders,
       triggerHaptic,
-      triggerOverlayState,
-      wishes,
     ]
   );
 
@@ -31668,12 +35129,18 @@ useEffect(() => {
   const removeTemptationTemplate = useCallback(
     (templateId) => {
       if (!templateId) return;
+      cancelScheduledNotificationsForTemplate(templateId);
+      clearFrequencyReminderStateForTemplate(templateId);
+      setSmartReminders((prev) =>
+        normalizeSmartReminderEntries((prev || []).filter((entry) => entry?.templateId !== templateId))
+      );
       const existsInQuick = quickTemptations.some((card) => card.id === templateId);
       if (existsInQuick) {
         setQuickTemptations((prev) => prev.filter((card) => card.id !== templateId));
       } else {
         setHiddenTemptations((prev) => (prev.includes(templateId) ? prev : [...prev, templateId]));
       }
+      setArchivedTemptations((prev) => prev.filter((id) => id !== templateId));
       setTemptationGoalMap((prev) => {
         if (!prev[templateId]) return prev;
         const next = { ...prev };
@@ -31725,9 +35192,12 @@ useEffect(() => {
       setPendingList((prev) => prev.filter((entry) => entry.templateId !== templateId));
     },
     [
+      cancelScheduledNotificationsForTemplate,
+      clearFrequencyReminderStateForTemplate,
       quickTemptations,
       setQuickTemptations,
       setHiddenTemptations,
+      setArchivedTemptations,
       setTemptationGoalMap,
       setCatalogOverrides,
       setPricePrecisionOverrides,
@@ -31736,6 +35206,7 @@ useEffect(() => {
       setDescriptionOverrides,
       setRefuseStats,
       setPendingList,
+      setSmartReminders,
     ]
   );
 
@@ -32187,6 +35658,7 @@ useEffect(() => {
       }
       if (decision === "decline") {
         const price = priceUSD;
+        const resolvedCategory = resolveTemptationCategory(actionItem);
         setDecisionStats((prev) => ({
           ...prev,
           resolvedToDeclines: prev.resolvedToDeclines + 1,
@@ -32200,7 +35672,7 @@ useEffect(() => {
             }
           )
         );
-        logHistoryEvent("pending_to_decline", { title, amountUSD: price });
+        logHistoryEvent("pending_to_decline", { title, amountUSD: price, category: resolvedCategory });
         await handleTemptationAction("save", actionItem, {
           skipPrompt: true,
           shouldAssign: false,
@@ -32208,7 +35680,16 @@ useEffect(() => {
         return;
       }
     },
-    [buildTemptationPayload, findTemplateById, handleTemptationAction, language, logHistoryEvent, profile.currency, t]
+    [
+      buildTemptationPayload,
+      findTemplateById,
+      handleTemptationAction,
+      language,
+      logHistoryEvent,
+      profile.currency,
+      resolveTemptationCategory,
+      t,
+    ]
   );
   useEffect(() => {
     notificationActionHandlerRef.current = async ({ actionIdentifier, notification }) => {
@@ -32547,6 +36028,11 @@ useEffect(() => {
     (template) => {
       if (!focusTargetsUnlocked) return;
       if (!template?.id) return;
+      if (!isFocusCandidateInFeed(template.id)) return;
+      if (typeof resolveTemptationCategory === "function") {
+        const categoryId = resolveTemptationCategory(template);
+        if (isEssentialImpulseCategory(categoryId)) return;
+      }
       if (focusPromptActiveRef.current) return;
       if (overlay?.type === "focus_digest") return;
       focusPromptActiveRef.current = true;
@@ -32561,13 +36047,26 @@ useEffect(() => {
         prompt: true,
       }, null);
     },
-    [focusTargetsUnlocked, language, overlay, t, titleOverrides, triggerOverlayState]
+    [
+      focusTargetsUnlocked,
+      isFocusCandidateInFeed,
+      language,
+      overlay,
+      resolveTemptationCategory,
+      t,
+      titleOverrides,
+      triggerOverlayState,
+    ]
   );
 
   const registerFocusLoss = useCallback(
     (template) => {
       if (!focusTargetsUnlocked) return;
       if (!template?.id) return;
+      if (typeof resolveTemptationCategory === "function") {
+        const categoryId = resolveTemptationCategory(template);
+        if (isEssentialImpulseCategory(categoryId)) return;
+      }
       const key = template.id;
       const entry = focusLossCountersRef.current[key] || { count: 0 };
       const nextCount = entry.count + 1;
@@ -32578,7 +36077,7 @@ useEffect(() => {
         promptFocusForTemptation(template);
       }
     },
-    [focusTargetsUnlocked, focusTemplateId, promptFocusForTemptation]
+    [focusTargetsUnlocked, focusTemplateId, promptFocusForTemptation, resolveTemptationCategory]
   );
 
   const celebrateFocusVictory = useCallback(
@@ -32632,6 +36131,12 @@ useEffect(() => {
     (templateId, source = "manual") => {
       if (!focusTargetsUnlocked) return;
       if (!templateId) return;
+      if (!isFocusCandidateInFeed(templateId)) return;
+      if (typeof resolveTemplateCard === "function" && typeof resolveTemptationCategory === "function") {
+        const template = resolveTemplateCard(templateId);
+        const categoryId = template ? resolveTemptationCategory(template) : null;
+        if (isEssentialImpulseCategory(categoryId)) return;
+      }
       setFocusTemplateId(templateId);
       setFocusSaveCount(0);
       resetFocusLossCounter(templateId);
@@ -32641,7 +36146,16 @@ useEffect(() => {
       playSound("focus_accept");
       queueHomeSpeech("focus_set");
     },
-    [focusTargetsUnlocked, logEvent, playSound, queueHomeSpeech, resetFocusLossCounter]
+    [
+      focusTargetsUnlocked,
+      isFocusCandidateInFeed,
+      logEvent,
+      playSound,
+      queueHomeSpeech,
+      resetFocusLossCounter,
+      resolveTemptationCategory,
+      resolveTemplateCard,
+    ]
   );
 
   const requestFocusCancel = useCallback(
@@ -32711,6 +36225,11 @@ useEffect(() => {
     async (risk) => {
       if (!impulseFeaturesUnlocked) return;
       if (!risk?.templateId) return;
+      if (typeof resolveTemplateCard === "function" && typeof resolveTemptationCategory === "function") {
+        const template = resolveTemplateCard(risk.templateId);
+        const categoryId = template ? resolveTemptationCategory(template) : null;
+        if (isEssentialImpulseCategory(categoryId)) return;
+      }
       const now = Date.now();
       const lastShown = impulseAlertCooldownRef.current?.[risk.templateId] || 0;
       if (now - lastShown < IMPULSE_ALERT_COOLDOWN_MS) return;
@@ -32763,7 +36282,16 @@ useEffect(() => {
         events: prev?.events || [],
       }));
     },
-    [impulseFeaturesUnlocked, profile.currency, sendImmediateNotification, t, triggerOverlayState, moodPreset]
+    [
+      impulseFeaturesUnlocked,
+      moodPreset,
+      profile.currency,
+      resolveTemptationCategory,
+      resolveTemplateCard,
+      sendImmediateNotification,
+      t,
+      triggerOverlayState,
+    ]
   );
 
   const triggerCelebration = () => {
@@ -33502,6 +37030,7 @@ useEffect(() => {
             customCategories={customCategories}
             onWeeklySpendPress={openSpendBreakdown}
             budgetSpeechDataRef={resolvedBudgetSpeechDataRef}
+            scrollRef={progressScrollRef}
           />
         );
       case "pending":
@@ -33544,6 +37073,7 @@ useEffect(() => {
             rewardsLocked={!rewardsUnlocked}
             challengesLocked={!challengesUnlocked}
             dailyChallengeLocked={playerLevel < 2}
+            scrollRef={rewardsScrollRef}
           />
         );
       case "profile":
@@ -33584,6 +37114,7 @@ useEffect(() => {
             mascotImageSource={tamagotchiAvatarSource}
             openAddCategoryModal={openAddCategoryModal}
             openManageCategoriesModal={openManageCategoriesModal}
+            scrollRef={profileScrollRef}
           />
       );
       default:
@@ -33591,12 +37122,13 @@ useEffect(() => {
           <FeedScreen
             ref={feedScreenRef}
             products={products}
+            archivedItems={archivedProducts}
             savedTotalUSD={savedTotalUSD}
             progressSavedTotalUSD={progressSavedTotalUSD}
             wishes={wishes}
             onTemptationAction={handleTemptationAction}
             onTemptationEditToggle={toggleTemptationEditor}
-            onTemptationQuickGoalToggle={handleQuickGoalToggle}
+            onTemptationArchiveToggle={handleTemptationArchiveToggle}
             onNewTemptation={handleFabNewTemptation}
             t={t}
             tVariant={tVariant}
@@ -33612,6 +37144,10 @@ useEffect(() => {
             historyEvents={resolvedHistoryEvents}
             onHistoryDelete={handleHistoryDelete}
             profile={profile}
+            incomeEntries={incomeEntries}
+            budgetOverrides={budgetOverrides}
+            decisionStats={decisionStats}
+            customCategories={customCategories}
             titleOverrides={titleOverrides}
             descriptionOverrides={descriptionOverrides}
             onBaselineSetup={handleBaselineSetupPrompt}
@@ -33633,6 +37169,7 @@ useEffect(() => {
             dailyRewardDay={dailyRewardDay}
             onDailyRewardClaim={handleDailyRewardClaim}
             onDailyRewardModalVisibilityChange={setDailyRewardModalVisible}
+            dailyGoalCoinDropTick={dailyGoalCoinDropTick}
             mascotOverride={mascotOverride}
             onMascotAnimationComplete={handleMascotAnimationComplete}
             hideMascot={tamagotchiVisible}
@@ -33656,7 +37193,13 @@ useEffect(() => {
             onTemptationSwipeDelete={handleTemptationDelete}
             onSavingsBreakdownPress={openSavingsBreakdown}
             savingsHeroRef={savingsHeroRef}
+            heroCarouselIndex={heroCarouselIndex}
+            heroCarouselLocked={heroCarouselLocked}
+            onHeroCarouselIndexChange={setHeroCarouselIndex}
+            onHeroCarouselLocked={setHeroCarouselLocked}
+            heroCarouselHintAllowed={heroCarouselHintAllowed}
             resolveTemplateTitle={resolveTemplateTitle}
+            resolveTemplateCard={resolveTemplateCard}
             resolveTemptationCategory={resolveTemptationCategory}
             tamagotchiMood={tamagotchiMood}
             tamagotchiDesiredFood={tamagotchiDesiredFood}
@@ -33670,6 +37213,7 @@ useEffect(() => {
             levelProgressOffsetUSD={levelProgressOffsetUSD}
             interactionStats={temptationInteractions}
             resolveCardRefuseStats={resolveCardRefuseStats}
+            playSound={playSound}
             tutorialTemptationStepId={tutorialTemptationStepId}
             tutorialHighlightMeasureTick={tutorialHighlightMeasureTick}
             onTutorialHighlightLayoutChange={handleTutorialHighlightLayoutChange}
@@ -33684,6 +37228,7 @@ useEffect(() => {
             lastVisitAt={moodState.lastVisitAt}
             lastVisitAtSnapshot={lastVisitAtSnapshotRef.current}
             budgetSpeechDataRef={resolvedBudgetSpeechDataRef}
+            onScrollActivityChange={handleFeedScrollActivity}
           />
         );
     }
@@ -33812,8 +37357,10 @@ useEffect(() => {
       onboardContent = (
         <SpendingBaselineScreen
           value={registrationData.baselineMonthlyWaste || ""}
+          incomeValue={registrationData.incomeMonthlyAmount || ""}
           currency={registrationData.currency || profile.currency || DEFAULT_PROFILE.currency}
           onChange={(text) => updateRegistrationData("baselineMonthlyWaste", text)}
+          onIncomeChange={(text) => updateRegistrationData("incomeMonthlyAmount", text)}
           onSubmit={handleBaselineSubmit}
           colors={colors}
           t={t}
@@ -33958,57 +37505,57 @@ useEffect(() => {
         style={[styles.appBackground, { backgroundColor: colors.background }]}
         onTouchStart={handleRootTouchStart}
       >
-        <SafeAreaView
-          style={[
-            styles.appShell,
-            {
-              backgroundColor: colors.background,
-              paddingTop: topSafeInset,
-            },
-          ]}
-          onLayout={handleHomeLayout}
-        >
-            {shouldRenderStatusGlass && (
-              <StatusGlass
-                height={topSafeInset}
-                colors={colors}
-                theme={theme}
-                blurAvailable={statusBlurAvailable}
-                solid={Platform.OS === "android"}
+          <SafeAreaView
+            style={[
+              styles.appShell,
+              {
+                backgroundColor: colors.background,
+                paddingTop: topSafeInset,
+              },
+            ]}
+            onLayout={handleHomeLayout}
+          >
+              {shouldRenderStatusGlass && (
+                <StatusGlass
+                  height={topSafeInset}
+                  colors={colors}
+                  theme={theme}
+                  blurAvailable={statusBlurAvailable}
+                  solid={Platform.OS === "android"}
+                />
+              )}
+              {startupLogoVisible && (
+                <View style={[styles.logoSplashOverlay, { backgroundColor: colors.background }]}>
+                  <LogoSplash onDone={handleStartupLogoComplete} />
+                </View>
+              )}
+              <StatusBar
+                style={theme === "dark" ? "light" : "dark"}
+                backgroundColor={
+                  canSetSystemBarColors ? (systemOverlayActive ? overlaySystemColor : colors.background) : undefined
+                }
               />
-            )}
-            {startupLogoVisible && (
-              <View style={[styles.logoSplashOverlay, { backgroundColor: colors.background }]}>
-                <LogoSplash onDone={handleStartupLogoComplete} />
-              </View>
-            )}
-            <StatusBar
-              style={theme === "dark" ? "light" : "dark"}
-              backgroundColor={
-                canSetSystemBarColors ? (systemOverlayActive ? overlaySystemColor : colors.background) : undefined
-              }
-            />
-            {backGestureResponder && (
-              <View pointerEvents="box-none" style={styles.backGestureWrapper}>
-                <View style={styles.backGestureEdge} {...backGestureResponder.panHandlers} />
-              </View>
-            )}
-            <View style={[styles.screenWrapper, screenKeyboardAdjustmentStyle]}>{renderActiveScreen()}</View>
-        <ReportsModal
-          visible={reportsModalVisible}
-          reports={reportsSnapshot}
-          activeTab={reportsTab}
-          onTabChange={setReportsTab}
-          onClose={closeReportsModal}
-          t={t}
-          colors={colors}
-          currency={profile.currency || DEFAULT_PROFILE.currency}
-          language={language}
-        />
-        {breakdownVisible && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
-            <View style={styles.breakdownOverlay}>
-              <Pressable style={StyleSheet.absoluteFillObject} onPress={closeBreakdown} />
+              {backGestureResponder && (
+                <View pointerEvents="box-none" style={styles.backGestureWrapper}>
+                  <View style={styles.backGestureEdge} {...backGestureResponder.panHandlers} />
+                </View>
+              )}
+              <View style={[styles.screenWrapper, screenKeyboardAdjustmentStyle]}>{renderActiveScreen()}</View>
+          <ReportsModal
+            visible={reportsModalVisible}
+            reports={reportsSnapshot}
+            activeTab={reportsTab}
+            onTabChange={setReportsTab}
+            onClose={closeReportsModal}
+            t={t}
+            colors={colors}
+            currency={profile.currency || DEFAULT_PROFILE.currency}
+            language={language}
+          />
+          {breakdownVisible && (
+            <Modal visible transparent animationType="fade" statusBarTranslucent>
+              <View style={styles.breakdownOverlay}>
+                <Pressable style={StyleSheet.absoluteFillObject} onPress={closeBreakdown} />
               <View
                 style={[
                   styles.spendStatsCard,
@@ -34758,10 +38305,11 @@ useEffect(() => {
         </View>
 
         {activeTab !== "profile" && activeTab !== "purchases" && !(activeTab === "pending" && !thinkingUnlocked) && (
-          <View
+          <Animated.View
             pointerEvents="box-none"
             style={[
               styles.fabCenterContainer,
+              fabSlideStyle,
               Platform.OS === "android"
                 ? { bottom: FAB_CONTAINER_BOTTOM + tabBarBottomInset }
                 : null,
@@ -34772,6 +38320,7 @@ useEffect(() => {
               style={styles.fabButtonWrapper}
               pointerEvents="box-none"
               onLayout={handleFabWrapperLayout}
+              collapsable={false}
             >
               {fabTutorialVisible && (
                 <View
@@ -34808,7 +38357,7 @@ useEffect(() => {
                 </Text>
               </AnimatedTouchableOpacity>
             </View>
-          </View>
+          </Animated.View>
         )}
 
         <CoinEntryModal
@@ -35424,47 +38973,33 @@ useEffect(() => {
                 <TouchableWithoutFeedback onPress={() => {}}>
                   <Animated.View
                     style={[
-                      styles.temptationEditCardContainer,
+                      styles.temptationEditSheetContainer,
                       {
                         opacity: editOverlayAnim,
                         transform: [
                           {
-                            scale: editOverlayAnim.interpolate({
+                            translateY: editOverlayAnim.interpolate({
                               inputRange: [0, 1],
-                              outputRange: [0.92, 1],
+                              outputRange: [30, 0],
                             }),
                           },
                           {
-                            translateY: editOverlayAnim.interpolate({
+                            scale: editOverlayAnim.interpolate({
                               inputRange: [0, 1],
-                              outputRange: [40, 0],
+                              outputRange: [0.96, 1],
                             }),
                           },
                         ],
                       },
                     ]}
                   >
-                    <TemptationCard
+                    <TemptationEditSheet
                       item={priceEditor.item}
                       language={language}
                       colors={colors}
                       t={t}
-                      allowThinkAction={thinkingUnlocked}
-                      isFocusTarget={priceEditor.item?.id === focusTemplateId}
-                      descriptionOverride={
-                        descriptionOverrides[priceEditor.item.id] ||
-                        (priceEditor.item.id === primaryTemptationId
-                          ? primaryTemptationDescription
-                          : null)
-                      }
                       currency={profile.currency || DEFAULT_PROFILE.currency}
-                      stats={resolveCardRefuseStats(priceEditor.item)}
-                      feedback={cardFeedback[priceEditor.item.id]}
                       titleOverride={titleOverrides[priceEditor.item.id]}
-                      goalLabel={priceEditorAssignedGoalTitle || null}
-                      isEditing
-                      showEditorInline
-                      cardStyle={styles.temptationOverlayCard}
                       editTitleValue={priceEditor.title}
                       editPriceValue={priceEditor.value}
                       editGoalLabel={priceEditorAssignedGoalTitle || ""}
@@ -35485,14 +39020,9 @@ useEffect(() => {
                           item: priceEditor.item,
                           intent: "edit",
                           streakRecoveryValue: null,
+                          amountUSD: null,
                         });
                       }}
-                      onQuickGoalToggle={handleQuickGoalToggle}
-                      onSwipeDelete={() => promptTemptationDelete(priceEditor.item)}
-                      onAction={async (type) => {
-                        await handleTemptationAction(type, priceEditor.item);
-                      }}
-                      onFocusBadgePress={requestFocusCancel}
                     />
                   </Animated.View>
                 </TouchableWithoutFeedback>
@@ -36006,7 +39536,10 @@ useEffect(() => {
                       descriptionOverride={primaryTemptationOverlayDescription}
                       goalLabel={primaryTemptationOverlayGoalLabel}
                       isPrimaryTemptation={primaryTemptationOverlayItem.id === primaryTemptationId}
-                      onAction={(type, item) => handlePrimaryTemptationOverlayAction(type, item)}
+                      onAction={(type, item, actionOptions) =>
+                        handlePrimaryTemptationOverlayAction(type, item, actionOptions)
+                      }
+                      playSound={playSound}
                       onToggleEdit={null}
                       cardStyle={styles.primaryTemptationCard}
                     />
@@ -37022,6 +40555,7 @@ useEffect(() => {
         <SpendConfirmSheet
           visible={spendPrompt.visible}
           item={spendPrompt.item}
+          amountUSD={spendPrompt.amountUSD}
           currency={profile.currency || DEFAULT_PROFILE.currency}
           language={language}
           onCancel={closeSpendPrompt}
@@ -37262,6 +40796,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginLeft: 6,
   },
+  archiveSection: {
+    marginTop: 8,
+  },
+  archiveList: {
+    marginTop: 8,
+  },
+  archiveEmptyText: {
+    marginTop: 6,
+    marginBottom: 12,
+    fontSize: 13,
+    fontWeight: "500",
+  },
   feedHero: {
     paddingBottom: 12,
   },
@@ -37293,6 +40839,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+  },
+  heroCarousel: {
+    marginTop: 12,
+  },
+  heroCarouselItem: {
+    width: "100%",
+    alignItems: "stretch",
+    paddingHorizontal: 0,
+    marginRight: HERO_CAROUSEL_ITEM_GUTTER,
+  },
+  heroCarouselSizedCard: {
+    marginTop: 0,
+    marginBottom: 0,
+    alignSelf: "stretch",
   },
   moodGradientBlock: {
     position: "relative",
@@ -38240,6 +41800,338 @@ const styles = StyleSheet.create({
   savedHeroContent: {
     position: "relative",
     zIndex: 1,
+  },
+  heroBudgetCard: {
+    gap: 12,
+  },
+  heroBudgetHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  heroBudgetTitleBlock: {
+    flex: 1,
+  },
+  heroBudgetTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 18,
+  },
+  heroBudgetSubtitle: {
+    ...createSecondaryText({ fontSize: 12 }),
+    marginTop: 2,
+  },
+  heroBudgetChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  heroBudgetChipText: {
+    ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
+  },
+  heroBudgetSummary: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  heroBudgetSummaryLabel: {
+    ...createSecondaryText({ fontSize: 10, textTransform: "uppercase" }),
+  },
+  heroBudgetSummaryValue: {
+    ...TYPOGRAPHY.display,
+    fontSize: 22,
+  },
+  heroBudgetCategoryList: {
+    gap: 8,
+  },
+  heroBudgetRow: {
+    gap: 6,
+  },
+  heroBudgetRowHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  heroBudgetRowTitle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+  },
+  heroBudgetRowEmoji: {
+    fontSize: 16,
+  },
+  heroBudgetRowLabel: {
+    ...createBodyText({ fontSize: 12, fontWeight: "600" }),
+    flex: 1,
+  },
+  heroBudgetRowValue: {
+    ...createBodyText({ fontSize: 12, fontWeight: "700" }),
+  },
+  heroBudgetRowTrack: {
+    height: 8,
+    borderRadius: 999,
+    overflow: "hidden",
+    position: "relative",
+  },
+  heroBudgetRowFill: {
+    height: "100%",
+    borderRadius: 999,
+    position: "absolute",
+    left: 0,
+  },
+  heroBudgetRowOverflow: {
+    height: "100%",
+    borderRadius: 999,
+    position: "absolute",
+    right: 0,
+  },
+  heroBudgetEmpty: {
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+  },
+  heroBudgetEmptyTitle: {
+    ...createBodyText({ fontSize: 14, fontWeight: "700", textAlign: "center" }),
+  },
+  heroBudgetEmptySubtitle: {
+    ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
+  },
+  heroDailyCard: {
+    gap: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroDailyHeader: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  heroDailyTitle: {
+    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+  },
+  heroDailyChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  heroDailyChipText: {
+    ...createSecondaryText({ fontSize: 10 }),
+  },
+  heroDailyAmount: {
+    ...TYPOGRAPHY.display,
+    fontSize: 34,
+    textAlign: "center",
+  },
+  heroDailySubtitle: {
+    ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
+  },
+  heroDailyEmpty: {
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+  },
+  heroDailyEmptyTitle: {
+    ...createBodyText({ fontSize: 14, fontWeight: "700", textAlign: "center" }),
+  },
+  heroDailyEmptySubtitle: {
+    ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
+  },
+  heroDailyGoalBody: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    flex: 1,
+  },
+  piggyWrap: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 2,
+    position: "relative",
+  },
+  piggyBodyWrap: {
+    width: IS_SHORT_DEVICE ? 160 : 176,
+    height: IS_SHORT_DEVICE ? 160 : 176,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  piggyShadow: {
+    position: "absolute",
+    bottom: -8,
+    width: "78%",
+    height: 14,
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.08)",
+    opacity: 0.45,
+  },
+  piggyBody: {
+    width: IS_SHORT_DEVICE ? 150 : 170,
+    height: IS_SHORT_DEVICE ? 134 : 152,
+    borderRadius: 999,
+    borderWidth: 1,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOpacity: 0.2,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  piggyCoinsClip: {
+    ...StyleSheet.absoluteFillObject,
+    paddingHorizontal: PIGGY_COIN_PADDING_X,
+    paddingVertical: PIGGY_COIN_PADDING_Y,
+    zIndex: 3,
+  },
+  piggyCoin: {
+    position: "absolute",
+    resizeMode: "contain",
+  },
+  piggyGlassBlur: {
+    opacity: 0.45,
+  },
+  piggyGlassBlurFallback: {
+    opacity: 0.35,
+  },
+  piggyGlassInner: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    right: 6,
+    bottom: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    opacity: 0.55,
+  },
+  piggyGlassHighlight: {
+    position: "absolute",
+    top: 8,
+    left: 18,
+    width: "34%",
+    height: "72%",
+    borderRadius: 80,
+    transform: [{ rotate: "-14deg" }],
+  },
+  piggyGlassHighlightSecondary: {
+    top: 16,
+    left: "52%",
+    width: "18%",
+    height: "46%",
+    opacity: 0.35,
+    transform: [{ rotate: "10deg" }],
+  },
+  piggyGlassRim: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 7,
+    opacity: 0.7,
+  },
+  piggyGoalValueWrap: {
+    position: "absolute",
+    left: 10,
+    right: 10,
+    top: "30%",
+    alignItems: "center",
+    zIndex: 4,
+  },
+  piggyGoalValue: {
+    ...TYPOGRAPHY.display,
+    fontSize: IS_SHORT_DEVICE ? 24 : 28,
+    textAlign: "center",
+    letterSpacing: -0.4,
+  },
+  piggyEarLeft: {
+    position: "absolute",
+    top: -16,
+    left: "32%",
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    borderWidth: 1,
+    zIndex: 3,
+  },
+  piggyEarRight: {
+    position: "absolute",
+    top: -16,
+    left: "58%",
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    borderWidth: 1,
+    zIndex: 3,
+  },
+  piggySnout: {
+    position: "absolute",
+    left: "50%",
+    top: "54%",
+    width: 46,
+    height: 28,
+    marginLeft: -23,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 3,
+  },
+  piggyNostrilRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  piggyNostril: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    opacity: 0.7,
+  },
+  piggyLegLeft: {
+    position: "absolute",
+    left: "34%",
+    bottom: -8,
+    width: 22,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    zIndex: 2,
+  },
+  piggyLegRight: {
+    position: "absolute",
+    left: "54%",
+    bottom: -8,
+    width: 22,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    zIndex: 2,
+  },
+  piggyTail: {
+    position: "absolute",
+    left: -6,
+    top: "60%",
+    width: 20,
+    height: 4,
+    borderRadius: 999,
+    opacity: 0.6,
+  },
+  piggyDropCoin: {
+    position: "absolute",
+    top: -12,
+    left: "50%",
+    width: IS_SHORT_DEVICE ? 24 : 28,
+    height: IS_SHORT_DEVICE ? 24 : 28,
+    marginLeft: IS_SHORT_DEVICE ? -12 : -14,
+    zIndex: 5,
+    resizeMode: "contain",
   },
   savedHeroHeader: {
     marginBottom: 4,
@@ -39899,8 +43791,8 @@ const styles = StyleSheet.create({
   budgetWidgetCard: {
     borderRadius: 22,
     borderWidth: 1,
-    padding: 16,
-    gap: 12,
+    padding: 14,
+    gap: 10,
   },
   budgetWidgetHeader: {
     flexDirection: "row",
@@ -39933,22 +43825,23 @@ const styles = StyleSheet.create({
   },
   budgetWidgetStatsRow: {
     flexDirection: "row",
-    gap: 12,
-    flexWrap: "wrap",
-    justifyContent: "center",
+    gap: 8,
+    flexWrap: "nowrap",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   budgetWidgetStat: {
     flex: 1,
-    minWidth: 90,
+    minWidth: 70,
     alignItems: "center",
   },
   budgetWidgetStatLabel: {
-    ...createSecondaryText({ fontSize: 11 }),
+    ...createSecondaryText({ fontSize: 10 }),
     textAlign: "center",
   },
   budgetWidgetStatValue: {
-    ...createBodyText({ fontSize: 14, fontWeight: "700" }),
-    marginTop: 2,
+    ...createBodyText({ fontSize: 12, fontWeight: "700" }),
+    marginTop: 1,
     textAlign: "center",
   },
   budgetWidgetList: {
@@ -40787,6 +44680,12 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginBottom: 6,
   },
+  temptationGoalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 6,
+    marginBottom: 6,
+  },
   temptationPricePill: {
     paddingVertical: 6,
     paddingHorizontal: 14,
@@ -40806,6 +44705,106 @@ const styles = StyleSheet.create({
   temptationPrice: {
     fontSize: 20,
     fontWeight: "700",
+  },
+  temptationAmountPanel: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 12,
+    gap: 8,
+    marginTop: 4,
+    position: "relative",
+    zIndex: 6,
+    shadowColor: "rgba(15,23,42,0.25)",
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  temptationAmountHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  temptationAmountPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  temptationAmountPillText: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+  },
+  temptationAmountClose: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  temptationAmountCloseText: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  temptationAmountValue: {
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  temptationAmountTrackWrap: {
+    width: "100%",
+    height: 36,
+    justifyContent: "center",
+    position: "relative",
+    paddingVertical: 4,
+  },
+  temptationAmountTrack: {
+    height: 12,
+    borderRadius: 999,
+    overflow: "hidden",
+    justifyContent: "center",
+    width: "100%",
+  },
+  temptationAmountTrackFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  temptationAmountTrackMid: {
+    position: "absolute",
+    width: 2,
+    height: 18,
+    left: "50%",
+    top: "50%",
+    marginTop: -9,
+    marginLeft: -1,
+    borderRadius: 1,
+  },
+  temptationAmountThumb: {
+    position: "absolute",
+    top: 7,
+    left: 0,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "rgba(15,23,42,0.35)",
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
+  temptationAmountThumbInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    opacity: 0.9,
+  },
+  temptationAmountScale: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  temptationAmountScaleText: {
+    fontSize: 11,
+    fontWeight: "600",
   },
   temptationGoalBadge: {
     alignSelf: "flex-start",
@@ -41007,6 +45006,16 @@ const styles = StyleSheet.create({
   },
   temptationButtonOutlineText: {
     fontWeight: "600",
+  },
+  temptationButtonConfirm: {
+    transform: [{ scale: 1.01 }],
+  },
+  temptationButtonConfirmActive: {
+    borderWidth: 1.5,
+    shadowOpacity: Platform.OS === "ios" ? 0.25 : 0.5,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
   temptationTutorialAccentButton: {
     borderWidth: 2,
@@ -42751,9 +46760,8 @@ const styles = StyleSheet.create({
   fabCenterContainer: {
     position: "absolute",
     bottom: FAB_CONTAINER_BOTTOM,
-    left: 0,
-    right: 0,
-    alignItems: "center",
+    right: FAB_CONTAINER_SIDE,
+    alignItems: "flex-end",
     justifyContent: "center",
   },
   fabButtonWrapper: {
@@ -42797,7 +46805,7 @@ const styles = StyleSheet.create({
   fabMenuOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "flex-end",
-    alignItems: "center",
+    alignItems: "flex-end",
     paddingBottom: 180,
     paddingHorizontal: 24,
   },
@@ -42810,7 +46818,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   fabOptionRow: {
-    alignSelf: "center",
+    alignSelf: "flex-end",
   },
   fabOptionRowContent: {
     flexDirection: "row",
@@ -43571,16 +47579,19 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     paddingVertical: 6,
     paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
   impulseCategoryChipCompact: {
     paddingVertical: 4,
     paddingHorizontal: 12,
   },
   impulseCategoryChipText: {
-    ...createCtaText({ fontSize: 9 }),
+    ...createCtaText({ fontSize: 11 }),
+    textAlign: "center",
   },
   impulseCategoryChipTextCompact: {
-    fontSize: 8,
+    fontSize: 10,
   },
   impulseAlertCard: {
     marginHorizontal: 24,
@@ -44475,6 +48486,8 @@ const styles = StyleSheet.create({
     zIndex: 400,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
   },
   temptationEditBackdrop: {
     position: "absolute",
@@ -44484,18 +48497,124 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: "#05060F",
   },
-  temptationEditCardContainer: {
-    width: "86%",
-    maxWidth: 360,
-    paddingHorizontal: 0,
-    paddingTop: 0,
-  },
-  temptationOverlayCard: {
-    width: "100%",
+  temptationEditSheetContainer: {
+    width: "88%",
+    maxWidth: 420,
     alignSelf: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+  },
+  temptationEditSheet: {
+    width: "100%",
     borderRadius: 24,
+    borderWidth: 1,
+    overflow: "hidden",
+    maxHeight: SCREEN_HEIGHT * 0.7,
+  },
+  temptationEditScroll: {
+    maxHeight: SCREEN_HEIGHT * (IS_SHORT_DEVICE ? 0.4 : 0.52),
+  },
+  temptationEditContent: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+    gap: 10,
+  },
+  temptationEditFieldRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  temptationEditField: {
+    gap: 6,
+  },
+  temptationEditFieldGrow: {
+    flex: 1,
+  },
+  temptationEditLabel: {
+    ...createSecondaryText({ fontSize: 10, textTransform: "uppercase" }),
+  },
+  temptationEditInputWrap: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  temptationEditEmojiWrap: {
+    width: 62,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  temptationEditEmojiInput: {
+    fontSize: 18,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  temptationEditTextInput: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  temptationEditAmountWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  temptationEditAmountInput: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  temptationEditGoalButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  temptationEditGoalText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  temptationEditGoalChevron: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  temptationEditDescriptionInput: {
+    minHeight: 70,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  temptationEditCategoryWrap: {
+    marginTop: 2,
+  },
+  temptationEditFooter: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+  },
+  temptationEditSave: {
+    borderRadius: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  temptationEditSaveText: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  temptationEditFooterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  temptationEditCancelText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  temptationEditDeleteText: {
+    fontSize: 13,
+    fontWeight: "700",
   },
   priceModalButtons: {
     gap: 10,
@@ -44812,6 +48931,9 @@ const styles = StyleSheet.create({
     bottom: 24,
     paddingTop: 12,
   },
+  onboardFloatingActionsTight: {
+    bottom: 0,
+  },
   onboardFloatingPrimary: {
     shadowColor: "#000",
     shadowOpacity: 0.15,
@@ -44835,6 +48957,26 @@ const styles = StyleSheet.create({
   baselineInputGroup: {
     marginTop: 8,
     gap: 4,
+  },
+  baselineStack: {
+    marginTop: 10,
+    gap: 12,
+  },
+  baselineCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 12,
+    gap: 8,
+  },
+  baselineCardTitle: {
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase", marginBottom: 2 }),
+  },
+  baselineCardHint: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16 }),
+  },
+  baselineInputCompact: {
+    paddingVertical: 10,
+    fontSize: 16,
   },
   baselineHint: {
     ...createSecondaryText({ fontSize: 14, lineHeight: 20 }),
@@ -45029,6 +49171,16 @@ const styles = StyleSheet.create({
     ...createCtaText({ fontSize: 13 }),
     color: "#FFFFFF",
   },
+  onboardHeaderCta: {
+    marginLeft: "auto",
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  onboardHeaderCtaText: {
+    ...createCtaText({ fontSize: 13 }),
+  },
   languageHint: {
     ...createSecondaryText({ marginTop: 6, fontSize: 12 }),
   },
@@ -45116,6 +49268,10 @@ function RegistrationScreen({
   const fade = useFadeIn();
   const resolvedAvatarUri = useMemo(() => resolveAvatarUri(data?.avatar), [data?.avatar]);
   const bottomInsetStyle = addBottomInsetStyle(styles.onboardContent, bottomInset);
+  const swapActions = IS_SHORT_DEVICE && typeof onSkip === "function";
+  const headerAction = swapActions ? (
+    <OnboardingHeaderAction label={t("nextButton")} onPress={onSubmit} colors={colors} />
+  ) : null;
 
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
@@ -45124,7 +49280,13 @@ function RegistrationScreen({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <OnboardingHeader onBack={onBack} colors={colors} t={t} />
+        <OnboardingHeader
+          onBack={onBack}
+          onSkip={swapActions ? null : onSkip}
+          rightAction={headerAction}
+          colors={colors}
+          t={t}
+        />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("registrationTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("registrationSubtitle")}</Text>
 
@@ -45185,9 +49347,15 @@ function RegistrationScreen({
           onSubmitEditing={Keyboard.dismiss}
         />
 
-        <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
-          <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("nextButton")}</Text>
-        </TouchableOpacity>
+        {swapActions ? (
+          <TouchableOpacity style={styles.secondaryButtonClear} onPress={onSkip}>
+            <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>{t("onboardingSkip")}</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
+            <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("nextButton")}</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </Animated.View>
   );
@@ -45219,6 +49387,13 @@ function GoalScreen({
   const inputRefs = useRef({});
   const layoutRefs = useRef({});
   const bottomInsetStyle = addBottomInsetStyle(styles.onboardContent, bottomInset);
+  const swapActions = IS_SHORT_DEVICE && typeof onSkip === "function";
+  const handleSubmit = useCallback(() => {
+    onSubmit?.();
+  }, [onSubmit]);
+  const headerAction = swapActions ? (
+    <OnboardingHeaderAction label={t("goalButton")} onPress={handleSubmit} colors={colors} />
+  ) : null;
   const focusGoalTarget = useCallback((goalId) => {
     if (!goalId) return;
     const layout = layoutRefs.current[goalId];
@@ -45241,9 +49416,17 @@ function GoalScreen({
     },
     [focusGoalTarget, onToggle, selection]
   );
-  const handleSubmit = useCallback(() => {
-    onSubmit?.();
-  }, [onSubmit]);
+  const primaryAction = (
+    <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={handleSubmit}>
+      <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("goalButton")}</Text>
+    </TouchableOpacity>
+  );
+  const skipAction =
+    typeof onSkipStep === "function" ? (
+      <TouchableOpacity style={styles.secondaryButtonClear} onPress={onSkipStep}>
+        <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>{t("goalSkip")}</Text>
+      </TouchableOpacity>
+    ) : null;
   useEffect(() => {
     onRegisterGoalTargetFocus?.(focusGoalTarget);
     return () => {
@@ -45258,7 +49441,13 @@ function GoalScreen({
         keyboardShouldPersistTaps="handled"
         ref={scrollRef}
       >
-        <OnboardingHeader onBack={onBack} onSkip={onSkip} colors={colors} t={t} />
+        <OnboardingHeader
+          onBack={onBack}
+          onSkip={swapActions ? null : onSkip}
+          rightAction={headerAction}
+          colors={colors}
+          t={t}
+        />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("goalTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("goalSubtitle")}</Text>
 
@@ -45392,13 +49581,20 @@ function GoalScreen({
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={handleSubmit}>
-          <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("goalButton")}</Text>
-        </TouchableOpacity>
-        {typeof onSkipStep === "function" && (
-          <TouchableOpacity style={styles.secondaryButtonClear} onPress={onSkipStep}>
-            <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>{t("goalSkip")}</Text>
-          </TouchableOpacity>
+        {swapActions ? (
+          <>
+            {skipAction}
+            <TouchableOpacity style={styles.secondaryButtonClear} onPress={onSkip}>
+              <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>
+                {t("onboardingSkip")}
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            {primaryAction}
+            {skipAction}
+          </>
         )}
       </ScrollView>
     </Animated.View>
@@ -45429,6 +49625,10 @@ function GoalTargetScreen({
     }, {});
   }, [customGoals]);
   const bottomInsetStyle = addBottomInsetStyle(styles.onboardContent, bottomInset);
+  const swapActions = IS_SHORT_DEVICE && typeof onSkip === "function";
+  const headerAction = swapActions ? (
+    <OnboardingHeaderAction label={t("goalTargetCTA")} onPress={onSubmit} colors={colors} />
+  ) : null;
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView
@@ -45436,7 +49636,13 @@ function GoalTargetScreen({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <OnboardingHeader onBack={onBack} onSkip={onSkip} colors={colors} t={t} />
+        <OnboardingHeader
+          onBack={onBack}
+          onSkip={swapActions ? null : onSkip}
+          rightAction={headerAction}
+          colors={colors}
+          t={t}
+        />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("goalTargetTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("goalTargetSubtitle")}</Text>
         {selectionList.map((goalId) => {
@@ -45470,9 +49676,17 @@ function GoalTargetScreen({
           );
         })}
         <Text style={[styles.goalTargetHint, { color: colors.muted }]}>{t("goalTargetHint")}</Text>
-        <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
-          <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("goalTargetCTA")}</Text>
-        </TouchableOpacity>
+        {swapActions ? (
+          <TouchableOpacity style={styles.secondaryButtonClear} onPress={onSkip}>
+            <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>
+              {t("onboardingSkip")}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
+            <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("goalTargetCTA")}</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </Animated.View>
   );
@@ -45570,8 +49784,10 @@ function OnboardingNotificationsScreen({ colors, t, onContinue, mascotHappySourc
 
 function SpendingBaselineScreen({
   value,
+  incomeValue,
   currency,
   onChange,
+  onIncomeChange,
   onSubmit,
   colors,
   t,
@@ -45583,6 +49799,21 @@ function SpendingBaselineScreen({
   const fade = useFadeIn();
   const baselineSampleLabel = formatSampleAmount(BASELINE_SAMPLE_USD, currency || DEFAULT_PROFILE.currency);
   const bottomInsetStyle = addBottomInsetStyle(styles.onboardContent, bottomInset);
+  const swapActions = IS_SHORT_DEVICE && typeof onSkip === "function";
+  const headerAction = swapActions ? (
+    <OnboardingHeaderAction label={t("baselineCTA")} onPress={onSubmit} colors={colors} />
+  ) : null;
+  const primaryAction = (
+    <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
+      <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("baselineCTA")}</Text>
+    </TouchableOpacity>
+  );
+  const skipAction =
+    typeof onSkipStep === "function" ? (
+      <TouchableOpacity style={styles.secondaryButtonClear} onPress={onSkipStep}>
+        <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>{t("baselineSkip")}</Text>
+      </TouchableOpacity>
+    ) : null;
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView
@@ -45590,33 +49821,85 @@ function SpendingBaselineScreen({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <OnboardingHeader onBack={onBack} onSkip={onSkip} colors={colors} t={t} />
+        <OnboardingHeader
+          onBack={onBack}
+          onSkip={swapActions ? null : onSkip}
+          rightAction={headerAction}
+          colors={colors}
+          t={t}
+        />
         <Text style={[styles.onboardTitle, { color: colors.text }]}>{t("baselineTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("baselineSubtitle")}</Text>
-        <View style={styles.baselineInputGroup}>
+        <View style={styles.baselineStack}>
+          <View
+            style={[
+              styles.baselineCard,
+              { borderColor: colors.border, backgroundColor: colors.card },
+            ]}
+          >
+            <Text style={[styles.baselineCardTitle, { color: colors.text }]}>
+              {t("baselineIncomeLabel")}
+            </Text>
           <TextInput
             style={[
               styles.primaryInput,
-              { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+              styles.baselineInputCompact,
+              { borderColor: colors.border, color: colors.text, backgroundColor: colors.background },
             ]}
-            placeholder={t("baselinePlaceholder", { amount: baselineSampleLabel })}
+            placeholder={t("baselineIncomePlaceholder")}
             placeholderTextColor={colors.muted}
             keyboardType="decimal-pad"
-            value={value}
-            onChangeText={onChange}
+            value={incomeValue}
+            onChangeText={onIncomeChange}
             returnKeyType="done"
             blurOnSubmit
             onSubmitEditing={Keyboard.dismiss}
           />
+          <Text style={[styles.baselineCardHint, { color: colors.muted }]}>
+            {t("baselineIncomeHint")}
+          </Text>
+        </View>
+          <View
+            style={[
+              styles.baselineCard,
+              { borderColor: colors.border, backgroundColor: colors.card },
+            ]}
+          >
+            <Text style={[styles.baselineCardTitle, { color: colors.text }]}>
+              {t("baselineSpendLabel")}
+            </Text>
+            <TextInput
+              style={[
+                styles.primaryInput,
+                styles.baselineInputCompact,
+                { borderColor: colors.border, color: colors.text, backgroundColor: colors.background },
+              ]}
+              placeholder={t("baselinePlaceholder", { amount: baselineSampleLabel })}
+              placeholderTextColor={colors.muted}
+              keyboardType="decimal-pad"
+              value={value}
+              onChangeText={onChange}
+              returnKeyType="done"
+              blurOnSubmit
+              onSubmitEditing={Keyboard.dismiss}
+            />
+          </View>
         </View>
         <Text style={[styles.baselineHint, { color: colors.muted }]}>{t("baselineHint")}</Text>
-        <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
-          <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("baselineCTA")}</Text>
-        </TouchableOpacity>
-        {typeof onSkipStep === "function" && (
-          <TouchableOpacity style={styles.secondaryButtonClear} onPress={onSkipStep}>
-            <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>{t("baselineSkip")}</Text>
-          </TouchableOpacity>
+        {swapActions ? (
+          <>
+            {skipAction}
+            <TouchableOpacity style={styles.secondaryButtonClear} onPress={onSkip}>
+              <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>
+                {t("onboardingSkip")}
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            {primaryAction}
+            {skipAction}
+          </>
         )}
       </ScrollView>
     </Animated.View>
@@ -45630,7 +49913,16 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, 
     [styles.onboardContent, styles.onboardContentWithFooter],
     bottomInset
   );
-  const floatingInsetStyle = addBottomOffsetStyle(styles.onboardFloatingActions, bottomInset);
+  const floatingInsetStyle = addBottomOffsetStyle(
+    Platform.OS === "android"
+      ? [styles.onboardFloatingActions, styles.onboardFloatingActionsTight]
+      : styles.onboardFloatingActions,
+    bottomInset
+  );
+  const swapActions = IS_SHORT_DEVICE && typeof onSkip === "function";
+  const headerAction = swapActions ? (
+    <OnboardingHeaderAction label={t("personaConfirm")} onPress={onSubmit} colors={colors} />
+  ) : null;
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView
@@ -45641,7 +49933,13 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, 
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <OnboardingHeader onBack={onBack} onSkip={onSkip} colors={colors} t={t} />
+        <OnboardingHeader
+          onBack={onBack}
+          onSkip={swapActions ? null : onSkip}
+          rightAction={headerAction}
+          colors={colors}
+          t={t}
+        />
         <Text style={[styles.personaTitleCompact, { color: colors.text }]}>
           {t("personaTitle")}
         </Text>
@@ -45704,12 +50002,18 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, 
           floatingInsetStyle,
         ]}
       >
-        <TouchableOpacity
-          style={[styles.primaryButton, styles.onboardFloatingPrimary, { backgroundColor: colors.text }]}
-          onPress={onSubmit}
-        >
-          <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("personaConfirm")}</Text>
-        </TouchableOpacity>
+        {swapActions ? (
+          <TouchableOpacity style={styles.secondaryButtonClear} onPress={onSkip}>
+            <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>{t("onboardingSkip")}</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.primaryButton, styles.onboardFloatingPrimary, { backgroundColor: colors.text }]}
+            onPress={onSubmit}
+          >
+            <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("personaConfirm")}</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </Animated.View>
   );
@@ -45730,13 +50034,33 @@ function CustomHabitScreen({
   const fade = useFadeIn();
   const customSpendSampleLabel = formatSampleAmount(CUSTOM_SPEND_SAMPLE_USD, currency || DEFAULT_PROFILE.currency);
   const bottomInsetStyle = addBottomInsetStyle(styles.onboardContentCompact, bottomInset);
+  const swapActions = IS_SHORT_DEVICE && typeof onSkip === "function";
+  const headerAction = swapActions ? (
+    <OnboardingHeaderAction label={t("personaConfirm")} onPress={() => onSubmit(false)} colors={colors} />
+  ) : null;
+  const primaryAction = (
+    <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={() => onSubmit(false)}>
+      <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("personaConfirm")}</Text>
+    </TouchableOpacity>
+  );
+  const skipAction = (
+    <TouchableOpacity style={styles.secondaryButtonClear} onPress={() => onSubmit(true)}>
+      <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>{t("customSpendSkip")}</Text>
+    </TouchableOpacity>
+  );
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView
         contentContainerStyle={[styles.onboardContentCompact, bottomInsetStyle]}
         showsVerticalScrollIndicator={false}
       >
-        <OnboardingHeader onBack={onBack} onSkip={onSkip} colors={colors} t={t} />
+        <OnboardingHeader
+          onBack={onBack}
+          onSkip={swapActions ? null : onSkip}
+          rightAction={headerAction}
+          colors={colors}
+          t={t}
+        />
         <Text style={[styles.onboardTitleCompact, { color: colors.text }]}>{t("customSpendTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("customSpendSubtitle")}</Text>
 
@@ -45794,16 +50118,27 @@ function CustomHabitScreen({
             onChange={(cat) => onChange("customSpendCategory", cat)}
             colors={colors}
             language={language}
+            compact
+            horizontal
+            visibleCount={4}
           />
         </View>
         <Text style={{ color: colors.muted }}>{t("customSpendHint")}</Text>
-
-        <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={() => onSubmit(false)}>
-          <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("personaConfirm")}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.secondaryButtonClear} onPress={() => onSubmit(true)}>
-          <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>{t("customSpendSkip")}</Text>
-        </TouchableOpacity>
+        {swapActions ? (
+          <>
+            {skipAction}
+            <TouchableOpacity style={styles.secondaryButtonClear} onPress={onSkip}>
+              <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>
+                {t("onboardingSkip")}
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            {primaryAction}
+            {skipAction}
+          </>
+        )}
       </ScrollView>
     </Animated.View>
   );
@@ -47265,12 +51600,25 @@ function OnboardingSkipButton({ onPress, t }) {
   );
 }
 
-function OnboardingHeader({ onBack, onSkip, colors, t }) {
-  if (!onBack && !onSkip) return null;
+function OnboardingHeaderAction({ label, onPress, colors }) {
+  if (!onPress) return null;
+  return (
+    <TouchableOpacity
+      style={[styles.onboardHeaderCta, { backgroundColor: colors.text }]}
+      onPress={onPress}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    >
+      <Text style={[styles.onboardHeaderCtaText, { color: colors.background }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function OnboardingHeader({ onBack, onSkip, rightAction, colors, t }) {
+  if (!onBack && !onSkip && !rightAction) return null;
   return (
     <View style={styles.onboardHeaderRow}>
       <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
-      <OnboardingSkipButton onPress={onSkip} t={t} />
+      {rightAction || <OnboardingSkipButton onPress={onSkip} t={t} />}
     </View>
   );
 }
@@ -47281,13 +51629,23 @@ function HowItWorksScreen({ colors, t, onContinue, onBack, onSkip, bottomInset =
     [styles.onboardContent, styles.onboardGuideContent],
     bottomInset
   );
+  const swapActions = IS_SHORT_DEVICE && typeof onSkip === "function";
+  const headerAction = swapActions ? (
+    <OnboardingHeaderAction label={t("onboardingGuideButton")} onPress={onContinue} colors={colors} />
+  ) : null;
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView
         contentContainerStyle={[styles.onboardContent, styles.onboardGuideContent, bottomInsetStyle]}
         showsVerticalScrollIndicator={false}
       >
-        <OnboardingHeader onBack={onBack} onSkip={onSkip} colors={colors} t={t} />
+        <OnboardingHeader
+          onBack={onBack}
+          onSkip={swapActions ? null : onSkip}
+          rightAction={headerAction}
+          colors={colors}
+          t={t}
+        />
         <Text style={[styles.onboardTitleCompact, { color: colors.text }]}>{t("onboardingGuideTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("onboardingGuideSubtitle")}</Text>
         <View style={styles.guideCards}>
@@ -47308,12 +51666,18 @@ function HowItWorksScreen({ colors, t, onContinue, onBack, onSkip, bottomInset =
             </View>
           ))}
         </View>
-        <TouchableOpacity
-          style={[styles.primaryButton, { backgroundColor: colors.text }]}
-          onPress={onContinue}
-        >
-          <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("onboardingGuideButton")}</Text>
-        </TouchableOpacity>
+        {swapActions ? (
+          <TouchableOpacity style={styles.secondaryButtonClear} onPress={onSkip}>
+            <Text style={[styles.secondaryButtonClearText, { color: colors.muted }]}>{t("onboardingSkip")}</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.primaryButton, { backgroundColor: colors.text }]}
+            onPress={onContinue}
+          >
+            <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("onboardingGuideButton")}</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </Animated.View>
   );

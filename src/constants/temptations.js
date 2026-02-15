@@ -280,7 +280,7 @@ export const DEFAULT_TEMPTATIONS = [
       fr: "Confort sans limites",
     },
     description: {
-      ru: "Тёплый пол и кондиционер на максимум — счёт вырастает незаметно.",
+      ru: "Тёплый пол и кондиционер на максимум. Счёт вырастает незаметно.",
       en: "Heat and AC at full blast make the bill climb quietly.",
       es: "Calefacción y aire a tope: la cuenta sube sin aviso.",
       fr: "Chauffage et clim à fond : la facture grimpe sans prévenir.",
@@ -302,7 +302,7 @@ export const DEFAULT_TEMPTATIONS = [
       fr: "Spa pour ton animal",
     },
     description: {
-      ru: "Груминг, игрушки и лакомства — мило, но можно отложить ради цели.",
+      ru: "Груминг, игрушки и лакомства: мило, но можно отложить ради цели.",
       en: "Grooming, toys and treats are cute, but goals can wait less.",
       es: "Peluquería, juguetes y premios: lindo, pero tus metas importan.",
       fr: "Toilettage, jouets, friandises : mignon, mais tes objectifs comptent.",
@@ -436,7 +436,7 @@ export const DEFAULT_TEMPTATIONS = [
       fr: "Renouvellement d'assurance",
     },
     description: {
-      ru: "Обязательный платёж, который легко сделать легче — проверь опции.",
+      ru: "Обязательный платёж, который легко сделать легче: проверь опции.",
       en: "A required payment that can feel lighter when you check the options.",
       es: "Pago obligatorio que puede aliviarse si revisas opciones.",
       fr: "Paiement obligatoire qui peut être allégé en comparant les options.",
