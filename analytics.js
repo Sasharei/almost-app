@@ -171,6 +171,7 @@ const EVENT_DEFINITIONS = {
   savings_level_up: ["level", "saved_usd_total"],
   hero_level_unlocked: ["level", "saved_usd_total"],
   hero_show_more_toggled: ["expanded"],
+  hero_widget_stopped: ["widget"],
   custom_category_created: ["count", "category_id"],
   budget_category_limit_updated: ["category_id", "limit_usd", "previous_limit_usd", "source"],
   day_2: [],
