@@ -87,6 +87,7 @@ const EVENT_DEFINITIONS = {
   persona_gaming_selected: [],
   persona_delivery_selected: [],
   persona_shopping_selected: [],
+  persona_home_selected: [],
   persona_anime_selected: [],
   persona_subscriptions_selected: [],
   persona_fashion_selected: [],
