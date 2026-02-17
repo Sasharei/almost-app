@@ -241,9 +241,13 @@ try {
   AndroidBlurView = null;
 }
 
+// Android BlurView (Dimezis) can crash during layout animations on newer OS versions.
+const ANDROID_BLUR_DISABLED =
+  Platform.OS === "android" && Number(Platform.Version || 0) >= 34;
+
 const BLUR_VIEW_MANAGER_NAMES = ["ViewManagerAdapter_ExpoBlurView", "ExpoBlurView"];
 const isBlurViewAvailable = () => {
-  if (Platform.OS === "android") return !!AndroidBlurView;
+  if (Platform.OS === "android") return !ANDROID_BLUR_DISABLED && !!AndroidBlurView;
   if (!UIManager) return false;
   if (typeof UIManager.getViewManagerConfig === "function") {
     return BLUR_VIEW_MANAGER_NAMES.some((name) => !!UIManager.getViewManagerConfig(name));
@@ -284,6 +288,8 @@ const STORAGE_KEYS = {
   DECLINES: "@almost_declines",
   PENDING: "@almost_pending",
   FREE_DAY: "@almost_free_day_stats",
+  USAGE_STREAK: "@almost_usage_streak",
+  STREAK_PLEDGE: "@almost_streak_pledge",
   DECISION_STATS: "@almost_decision_stats",
   HISTORY: "@almost_history",
   REFUSE_STATS: "@almost_refuse_stats",
@@ -314,6 +320,7 @@ const STORAGE_KEYS = {
   TUTORIAL: "@almost_tutorial_state",
   BUDGET_WIDGET_TUTORIAL: "@almost_budget_widget_tutorial",
   HERO_CAROUSEL_WIGGLE_SWIPE_AT: "@almost_hero_carousel_wiggle_swipe_at",
+  HERO_CAROUSEL_WIGGLE_SEEN: "@almost_hero_carousel_wiggle_seen",
   TEMPTATION_TUTORIAL: "@almost_temptation_cards_tutorial",
   COIN_VALUE_MODAL: "@almost_coin_value_modal",
   DAILY_CHALLENGE: "@almost_daily_challenge_state",
@@ -383,7 +390,6 @@ const SOUND_FILES = {
   thunder: require("./assets/sounds/thunder.wav"),
   daily_reward: require("./assets/sounds/daily_reward.wav"),
   level_up: require("./assets/sounds/level_up.wav"),
-  streak_restore: require("./assets/sounds/streak_restore.wav"),
   party_beat: require("./assets/sounds/counter.wav"),
   party_clap: require("./assets/sounds/tap.wav"),
   party_cheer: require("./assets/sounds/reward.wav"),
@@ -400,7 +406,6 @@ const SOUND_COOLDOWNS = {
   thunder: 900,
   daily_reward: 900,
   level_up: 1200,
-  streak_restore: 800,
   party_beat: 60,
   party_clap: 80,
   party_cheer: 600,
@@ -416,7 +421,6 @@ const SOUND_VOLUMES = {
   thunder: 0.85,
   daily_reward: 0.9,
   level_up: 0.9,
-  streak_restore: 0.85,
   party_beat: 0.95,
   party_clap: 0.8,
   party_cheer: 0.85,
@@ -747,6 +751,9 @@ const IS_ANDROID_COMPACT = Platform.OS === "android" && (IS_COMPACT_DEVICE || IS
 const SAVE_INTRO_STAGE_DURATION = 3400;
 const SAVE_COUNTER_DIGIT_HEIGHT = 64;
 const SAVE_COUNTER_SPIN_LOOPS = 2;
+const STREAK_COUNTER_DIGIT_HEIGHT = IS_SHORT_DEVICE ? 90 : 112;
+const STREAK_COUNTER_DIGIT_WIDTH = IS_SHORT_DEVICE ? 60 : 76;
+const STREAK_COUNTER_SPIN_LOOPS = 2;
 const SAVE_PROGRESS_DELAY_MS = 800;
 const SAVE_PROGRESS_PULSE_SCALE = 1.08;
 const SAVE_COUNTDOWN_ZOOM_DELAY_AFTER_SPIN = 1500;
@@ -808,18 +815,33 @@ const DAILY_NUDGE_REMINDERS = [
     bodyKey: "dailyNudgeAfternoonBody",
   },
   { id: "evening", hour: 19, minute: 0, titleKey: "dailyNudgeEveningTitle", bodyKey: "dailyNudgeEveningBody" },
+  { id: "streak_20", hour: 20, minute: 0, titleKey: "dailyNudgeStreak20Title", bodyKey: "dailyNudgeStreak20Body" },
+  { id: "streak_21", hour: 21, minute: 0, titleKey: "dailyNudgeStreak21Title", bodyKey: "dailyNudgeStreak21Body" },
+  { id: "streak_22", hour: 22, minute: 0, titleKey: "dailyNudgeStreak22Title", bodyKey: "dailyNudgeStreak22Body" },
+  { id: "streak_23", hour: 23, minute: 0, titleKey: "dailyNudgeStreak23Title", bodyKey: "dailyNudgeStreak23Body" },
+  { id: "streak_2330", hour: 23, minute: 30, titleKey: "dailyNudgeStreak2330Title", bodyKey: "dailyNudgeStreak2330Body" },
 ];
 const DAILY_NUDGE_TITLE_KEYS = [
   "dailyNudgeMorningTitle",
   "dailyNudgeDayTitle",
   "dailyNudgeAfternoonTitle",
   "dailyNudgeEveningTitle",
+  "dailyNudgeStreak20Title",
+  "dailyNudgeStreak21Title",
+  "dailyNudgeStreak22Title",
+  "dailyNudgeStreak23Title",
+  "dailyNudgeStreak2330Title",
 ];
 const DAILY_NUDGE_BODY_KEYS = [
   "dailyNudgeMorningBody",
   "dailyNudgeDayBody",
   "dailyNudgeAfternoonBody",
   "dailyNudgeEveningBody",
+  "dailyNudgeStreak20Body",
+  "dailyNudgeStreak21Body",
+  "dailyNudgeStreak22Body",
+  "dailyNudgeStreak23Body",
+  "dailyNudgeStreak2330Body",
 ];
 const DAILY_NUDGE_LANGUAGES = SUPPORTED_LANGUAGES;
 const DAILY_NUDGE_NOTIFICATION_TAG = "daily_nudge";
@@ -924,7 +946,18 @@ const createInitialDailyChallengeState = () => ({
   offerDismissed: false,
   rewardGranted: false,
 });
-const buildDailyNudgeTrigger = (hour, minute) => {
+const buildDailyNudgeTrigger = (hour, minute, options = {}) => {
+  const { repeats = true, allowPast = false } = options || {};
+  if (!repeats) {
+    const now = new Date();
+    const target = new Date(now);
+    target.setHours(hour, minute, 0, 0);
+    if (target.getTime() <= now.getTime()) {
+      if (!allowPast) return null;
+      target.setDate(target.getDate() + 1);
+    }
+    return target;
+  }
   if (Platform.OS === "android") {
     const now = new Date();
     const next = new Date(now);
@@ -1323,7 +1356,6 @@ const DEFAULT_REMOTE_IMAGE =
   "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=600&q=80";
 const REMINDER_DAYS = 14;
 const DAY_MS = 1000 * 60 * 60 * 24;
-const HERO_CAROUSEL_WIGGLE_DISABLE_MS = DAY_MS * 2;
 const CHALLENGE_REPEAT_COOLDOWN_MS = DAY_MS * 7;
 const CHALLENGE_FAIL_COOLDOWN_MS = DAY_MS * 14;
 const HOUR_MS = 1000 * 60 * 60;
@@ -1353,8 +1385,10 @@ const DELETE_SWIPE_THRESHOLD = 130;
 const CHALLENGE_SWIPE_ACTION_WIDTH = 120;
 const BASELINE_SAMPLE_USD = 120;
 const CUSTOM_SPEND_SAMPLE_USD = 7.5;
+const CUSTOM_SPEND_SAVINGS_RANGE = { low: 0.7, high: 1.3 };
+const CUSTOM_SPEND_MONTHLY_WEEKS = 4.33;
 const RATING_PROMPT_DELAY_DAYS = 2; // show on the third calendar day (after two full days)
-const RATING_PROMPT_ACTION_THRESHOLD = 3;
+const RATING_PROMPT_ACTION_THRESHOLD = 2;
 const RATING_PROMPT_ACTION_TYPES = new Set(["save", "spend", "wish", "pending"]);
 const ANDROID_REVIEW_URL = "market://details?id=com.sasarei.almostclean";
 const ANDROID_REVIEW_WEB_URL = "https://play.google.com/store/apps/details?id=com.sasarei.almostclean";
@@ -1372,6 +1406,7 @@ const createInitialRatingPromptState = () => ({
   lastAction: null,
   respondedAt: null,
   actionCount: 0,
+  actionCountStart: null,
   actionPrompted: false,
 });
 
@@ -1403,6 +1438,13 @@ const getDayDiff = (fromKey, toKey) => {
   const toDate = parseDayKey(toKey);
   if (!fromDate || !toDate) return null;
   return Math.round((toDate.getTime() - fromDate.getTime()) / DAY_MS);
+};
+
+const getMissedUsageStreakDays = (lastDayKey, todayKey) => {
+  if (!lastDayKey || !todayKey) return 0;
+  const diff = getDayDiff(lastDayKey, todayKey);
+  if (!Number.isFinite(diff) || diff <= 1) return 0;
+  return Math.max(0, diff - 1);
 };
 
 const isSameDay = (tsA, tsB = Date.now()) => {
@@ -1842,7 +1884,8 @@ const ZERO_HEALTH_REWARD_LABELS = {
 };
 const formatHealthRewardLabel = (amount = 0, language = DEFAULT_LANGUAGE) => {
   const entries = buildHealthCoinEntries(amount);
-  const labels = HEALTH_COIN_LABELS[language] || HEALTH_COIN_LABELS.en;
+  const normalizedLang = normalizeLanguage(language);
+  const labels = HEALTH_COIN_LABELS[normalizedLang] || HEALTH_COIN_LABELS.en;
   const parts = entries
     .filter((entry) => entry.count > 0)
     .map((entry) => `${entry.count} ${labels[entry.id] || entry.id}`);
@@ -4690,20 +4733,52 @@ const buildReportsSnapshot = ({
   };
 };
 
-const computeRefuseStreak = (history = []) => {
-  if (!Array.isArray(history)) return 0;
-  const sorted = [...history]
-    .filter((entry) => entry?.timestamp)
-    .sort((a, b) => b.timestamp - a.timestamp);
-  let streak = 0;
-  for (const entry of sorted) {
-    if (entry.kind === "refuse_spend") {
-      streak += 1;
+const computeUsageStreakFromHistory = (history = [], now = Date.now()) => {
+  if (!Array.isArray(history) || !history.length) return { ...INITIAL_USAGE_STREAK };
+  const dayIndices = new Set();
+  let latestTimestamp = 0;
+  history.forEach((entry) => {
+    if (!entry?.timestamp) return;
+    if (entry.kind !== "refuse_spend" && entry.kind !== "spend") return;
+    const dayIndex = getDayIndexFromTimestamp(entry.timestamp);
+    if (!Number.isFinite(dayIndex)) return;
+    dayIndices.add(dayIndex);
+    if (entry.timestamp > latestTimestamp) {
+      latestTimestamp = entry.timestamp;
+    }
+  });
+  if (!dayIndices.size) return { ...INITIAL_USAGE_STREAK };
+  const sortedIndices = Array.from(dayIndices).sort((a, b) => a - b);
+  let best = 0;
+  let run = 0;
+  let prevIndex = null;
+  sortedIndices.forEach((idx) => {
+    if (prevIndex !== null && idx === prevIndex + 1) {
+      run += 1;
     } else {
-      break;
+      run = 1;
+    }
+    best = Math.max(best, run);
+    prevIndex = idx;
+  });
+  const todayIndex = getDayIndexFromTimestamp(now);
+  const yesterdayIndex = todayIndex - 1;
+  const latestIndex = sortedIndices[sortedIndices.length - 1];
+  const isActive = latestIndex === todayIndex || latestIndex === yesterdayIndex;
+  let current = 0;
+  if (isActive) {
+    let cursor = latestIndex;
+    while (dayIndices.has(cursor)) {
+      current += 1;
+      cursor -= 1;
     }
   }
-  return streak;
+  return {
+    total: dayIndices.size,
+    current,
+    best,
+    lastDate: latestTimestamp ? getDayKey(latestTimestamp) : null,
+  };
 };
 
 const deriveMoodFromState = (state = createMoodStateForToday(), pendingCount = 0, now = Date.now()) => {
@@ -4862,24 +4937,6 @@ const convertFromCurrency = (valueLocal = 0, currency = activeCurrency) => {
   const rate = CURRENCY_RATES[currency] || 1;
   if (!rate) return valueLocal;
   return valueLocal / rate;
-};
-
-const STREAK_RECOVERY_COST_STEP_RUB = 500;
-const computeStreakRecoveryCost = (amountUSD = 0) => {
-  const rubValue = convertToCurrency(Math.max(amountUSD, 0), "RUB");
-  if (!rubValue || rubValue <= 0) return 1;
-  return Math.max(1, Math.ceil(rubValue / STREAK_RECOVERY_COST_STEP_RUB));
-};
-
-const INITIAL_STREAK_RECOVERY_PROMPT = {
-  visible: false,
-  item: null,
-  templateId: null,
-  coinCost: 0,
-  options: null,
-  recoverableStreak: 0,
-  recoverableAmountUSD: 0,
-  errorMessage: "",
 };
 
 const POTENTIAL_PUSH_STEP_EUR = 10;
@@ -5739,9 +5796,9 @@ const CURRENCY_LOCALES = {
 };
 
 const HOW_IT_WORKS_STEPS = [
-  { id: "track", emoji: "📸", titleKey: "guideStepTrackTitle", descKey: "guideStepTrackDesc" },
-  { id: "decide", emoji: "🎯", titleKey: "guideStepDecisionTitle", descKey: "guideStepDecisionDesc" },
-  { id: "reward", emoji: "🏆", titleKey: "guideStepRewardTitle", descKey: "guideStepRewardDesc" },
+  { id: "impact", emoji: "📉", titleKey: "guideStepRewardTitle", descKey: "guideStepRewardDesc" },
+  { id: "mindset", emoji: "🧠", titleKey: "guideStepTrackTitle", descKey: "guideStepTrackDesc" },
+  { id: "smart", emoji: "🤖", titleKey: "guideStepDecisionTitle", descKey: "guideStepDecisionDesc" },
 ];
 
 const PERSONA_PRESETS = {
@@ -5987,6 +6044,46 @@ const PERSONA_PRESETS = {
       },
     },
   },
+  home_picks: {
+    id: "home_picks",
+    emoji: "🛋️",
+    title: {
+      ru: "Любитель аксессуаров для дома",
+      en: "Home picks",
+      es: "Detalles para el hogar",
+      fr: "Fan de déco",
+    },
+    description: {
+      ru: "Главная цель: меньше импульсивного декора и покупок для дома.",
+      en: "Main goal: fewer impulse home-decor buys.",
+      es: "Meta principal: menos compras impulsivas para el hogar.",
+      fr: "Objectif : moins d’achats déco impulsifs.",
+    },
+    tagline: {
+      ru: "Каждая пропущенная покупка для дома = {{amount}} к цели.",
+      en: "Every skipped home pick adds {{amount}} toward the goal.",
+      es: "Cada compra de hogar que evitas suma {{amount}} a la meta.",
+      fr: "Chaque achat déco évité ajoute {{amount}} à ton objectif.",
+    },
+    habit: {
+      emoji: "🏡",
+      color: "#F1F7F2",
+      categories: ["habit", "home"],
+      basePriceUSD: 22,
+      title: {
+        ru: "Домашний декор",
+        en: "Home decor pick",
+        es: "Detalle para el hogar",
+        fr: "Déco maison",
+      },
+      description: {
+        ru: "Ваза, свеча или подушка — решай осознанно.",
+        en: "Vase, candle or pillow—decide mindfully.",
+        es: "Jarrón, vela o cojín: decide con calma.",
+        fr: "Vase, bougie ou coussin : choisis en conscience.",
+      },
+    },
+  },
   anime_fan: {
     id: "anime_fan",
     emoji: "🎌",
@@ -6181,6 +6278,74 @@ const PERSONA_TEMPTATION_PRESETS = {
       },
     },
   ],
+  home_picks: [
+    {
+      id: "home_candle_glow",
+      emoji: "🕯️",
+      image:
+        "https://images.unsplash.com/photo-1501004318641-b39e6451bec6?auto=format&fit=crop&w=900&q=80",
+      color: "#FFF6E8",
+      categories: ["home"],
+      basePriceUSD: 18,
+      priceUSD: 18,
+      title: {
+        ru: "Аромасвеча",
+        en: "Scented candle",
+        es: "Vela aromática",
+        fr: "Bougie parfumée",
+      },
+      description: {
+        ru: "Уютный ритуал, который может подождать.",
+        en: "A cozy ritual that can wait.",
+        es: "Un ritual cozy que puede esperar.",
+        fr: "Un rituel cosy qui peut attendre.",
+      },
+    },
+    {
+      id: "home_pillow_drop",
+      emoji: "🛋️",
+      image:
+        "https://images.unsplash.com/photo-1519710164239-da123dc03ef4?auto=format&fit=crop&w=900&q=80",
+      color: "#EEF3FF",
+      categories: ["home"],
+      basePriceUSD: 35,
+      priceUSD: 35,
+      title: {
+        ru: "Декоративные подушки",
+        en: "Throw pillows",
+        es: "Cojines decorativos",
+        fr: "Coussins déco",
+      },
+      description: {
+        ru: "Ещё один «милый сет» — или шаг к цели.",
+        en: "Another cute set, or a step toward your goal.",
+        es: "Otro set bonito o un paso a tu meta.",
+        fr: "Encore un joli set, ou un pas vers ton objectif.",
+      },
+    },
+    {
+      id: "home_wall_art",
+      emoji: "🖼️",
+      image:
+        "https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=900&q=80",
+      color: "#F3F0FF",
+      categories: ["home"],
+      basePriceUSD: 48,
+      priceUSD: 48,
+      title: {
+        ru: "Картина/постер",
+        en: "Wall art",
+        es: "Arte de pared",
+        fr: "Déco murale",
+      },
+      description: {
+        ru: "Новая эстетика может подождать ради большой цели.",
+        en: "That new aesthetic can wait for the bigger goal.",
+        es: "Esa nueva estética puede esperar por la gran meta.",
+        fr: "Cette nouvelle esthétique peut attendre pour le grand objectif.",
+      },
+    },
+  ],
 };
 
 const PERSONA_TEMPTATION_LOOKUP = Object.values(PERSONA_TEMPTATION_PRESETS).reduce(
@@ -6195,6 +6360,7 @@ const PERSONA_HABIT_TYPES = {
   gamer_loot: "gaming",
   foodie_delivery: "delivery",
   online_impulse: "shopping",
+  home_picks: "home",
   anime_fan: "anime",
   sub_lover: "subscriptions",
   fashion_fan: "fashion",
@@ -6207,6 +6373,7 @@ const PERSONA_SELECTED_EVENTS = {
   gaming: "persona_gaming_selected",
   delivery: "persona_delivery_selected",
   shopping: "persona_shopping_selected",
+  home: "persona_home_selected",
   anime: "persona_anime_selected",
   subscriptions: "persona_subscriptions_selected",
   fashion: "persona_fashion_selected",
@@ -6528,12 +6695,12 @@ const ONBOARDING_SCREEN_SEQUENCE = [
   "language",
   "analytics_consent",
   "guide",
-  "register",
   "persona",
   "habit",
   "baseline",
   "goal",
   "goal_target",
+  "register",
   "push_optin",
 ];
 
@@ -6572,10 +6739,81 @@ const INITIAL_FREE_DAY_STATS = {
   blockedDate: null,
 };
 
+const INITIAL_USAGE_STREAK = {
+  total: 0,
+  current: 0,
+  best: 0,
+  lastDate: null,
+  lostCount: 0,
+};
+
 const FREE_DAY_MILESTONES = [3, 7, 30];
 const HEALTH_PER_REWARD = ECONOMY_RULES.baseAchievementReward;
 const FREE_DAY_RESCUE_COST = ECONOMY_RULES.freeDayRescueCost;
 const FREE_DAY_LOGIN_BLUE_COINS = 2;
+const STREAK_RESTORE_BLUE_COINS_PER_DAY = 10;
+const STREAK_RESTORE_COST_PER_DAY = STREAK_RESTORE_BLUE_COINS_PER_DAY * BLUE_HEALTH_COIN_VALUE;
+const STREAK_PLEDGE_STATUS = {
+  IDLE: "idle",
+  ACTIVE: "active",
+  COMPLETED: "completed",
+  FAILED: "failed",
+};
+const INITIAL_STREAK_PLEDGE = {
+  status: STREAK_PLEDGE_STATUS.IDLE,
+  targetDays: 0,
+  startCount: 0,
+  startDayKey: null,
+  rewardBlueCoins: 0,
+  rewardValue: 0,
+  rewardPending: false,
+  rewardDeliveredAt: 0,
+  lastPromptDayKey: null,
+  introSeen: false,
+};
+const STREAK_PLEDGE_BLUE_COINS_PER_DAY = 10;
+const STREAK_PLEDGE_OPTIONS = [
+  { id: "week", days: 7, labelKey: "streakPledgeOptionWeek" },
+  { id: "two_weeks", days: 14, labelKey: "streakPledgeOptionTwoWeeks" },
+  { id: "month", days: 30, labelKey: "streakPledgeOptionMonth" },
+  { id: "fifty_days", days: 50, labelKey: "streakPledgeOptionFiftyDays" },
+];
+const normalizeStreakPledgeStatus = (value) => {
+  const values = Object.values(STREAK_PLEDGE_STATUS);
+  return values.includes(value) ? value : STREAK_PLEDGE_STATUS.IDLE;
+};
+const normalizeStreakPledgeState = (value) => {
+  if (!value || typeof value !== "object") return { ...INITIAL_STREAK_PLEDGE };
+  const status = normalizeStreakPledgeStatus(value.status);
+  const targetDays = Math.max(0, Number(value.targetDays) || 0);
+  const startCount = Math.max(0, Number(value.startCount) || 0);
+  const startDayKey = typeof value.startDayKey === "string" ? value.startDayKey : null;
+  const rewardBlueCoins = Math.max(0, Number(value.rewardBlueCoins) || 0);
+  const rewardValue = Math.max(0, Number(value.rewardValue) || 0);
+  const rewardPending = Boolean(value.rewardPending);
+  const rewardDeliveredAt = Math.max(0, Number(value.rewardDeliveredAt) || 0);
+  const lastPromptDayKey = typeof value.lastPromptDayKey === "string" ? value.lastPromptDayKey : null;
+  const introSeen = Boolean(value.introSeen);
+  return {
+    ...INITIAL_STREAK_PLEDGE,
+    status,
+    targetDays,
+    startCount,
+    startDayKey,
+    rewardBlueCoins,
+    rewardValue,
+    rewardPending,
+    rewardDeliveredAt,
+    lastPromptDayKey,
+    introSeen,
+  };
+};
+const computeStreakPledgeReward = (days) => {
+  const normalizedDays = Math.max(0, Number(days) || 0);
+  const blueCoins = Math.max(0, Math.round(normalizedDays * STREAK_PLEDGE_BLUE_COINS_PER_DAY));
+  const rewardValue = blueCoins * BLUE_HEALTH_COIN_VALUE;
+  return { blueCoins, rewardValue };
+};
 
 let activeCurrency = DEFAULT_PROFILE.currency;
 const setActiveCurrency = (code) => {
@@ -7345,37 +7583,12 @@ function TemptationCardComponent({
       ? t("frequencyTimerDue")
       : t("frequencyTimerLabel", { time: countdownLabel })
     : null;
-  const currentStreak = Math.max(0, stats?.currentStreak || 0);
-  const bestStreak = Math.max(stats?.bestStreak || 0, currentStreak);
-  const streakLastAction = stats?.lastAction || null;
-  const showStreakBadge = currentStreak > 0 || (bestStreak > 0 && streakLastAction === "spend");
-  const streakActive = currentStreak > 0;
-  const streakBadgeLabel = streakActive
-    ? t("streakBadgeActive", { count: currentStreak })
-    : t("streakBadgeBest", { count: bestStreak });
-  const showStreakFire = streakActive && currentStreak >= 3;
   const archiveSwipeLabel = isArchived ? t("archiveSwipeRestore") : t("archiveSwipeAdd");
   const archiveSwipeIcon = isArchived ? "↩️" : "📦";
-  const streakGlowStyle = useMemo(() => {
-    if (!showStreakFire) return null;
-    if (Platform.OS === "ios") {
-      return {
-        shadowColor: "rgba(255,180,0,0.9)",
-        shadowOpacity: 0.9,
-        shadowRadius: shadowRadius + 10,
-        shadowOffset: { width: 0, height: shadowOffsetHeight + 4 },
-      };
-    }
-    return {
-      elevation: Math.max(shadowElevation, 22),
-      shadowColor: "#FFB347",
-    };
-  }, [showStreakFire, shadowElevation, shadowOffsetHeight, shadowRadius]);
   const [coinBursts, setCoinBursts] = useState([]);
   const messageActive = feedback?.message;
   const burstKey = feedback?.burstKey;
   const translateX = useRef(new Animated.Value(0)).current;
-  const streakFireAnim = useRef(new Animated.Value(0)).current;
   const swipeActionRef = useRef(false);
   const [amountSliderVisible, setAmountSliderVisible] = useState(false);
   const [amountSliderAction, setAmountSliderAction] = useState(null);
@@ -7395,57 +7608,6 @@ function TemptationCardComponent({
   const amountSliderHapticCooldownRef = useRef(0);
   const amountSliderRafRef = useRef(null);
   const amountSliderPendingValueRef = useRef(null);
-  useEffect(() => {
-    if (!showStreakFire) {
-      streakFireAnim.stopAnimation?.();
-      streakFireAnim.setValue(0);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(streakFireAnim, {
-          toValue: 1,
-          duration: 520,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(streakFireAnim, {
-          toValue: 0,
-          duration: 520,
-          easing: Easing.in(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    loop.start();
-    return () => {
-      loop.stop();
-      streakFireAnim.setValue(0);
-    };
-  }, [showStreakFire, streakFireAnim]);
-  const streakFlameStyle = {
-    transform: [
-      {
-        scale: streakFireAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [1, 1.2],
-        }),
-      },
-      {
-        translateY: streakFireAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0, -3],
-        }),
-      },
-      {
-        rotate: streakFireAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: ["0deg", "8deg"],
-        }),
-      },
-    ],
-  };
-
   useEffect(() => {
     translateX.setValue(0);
   }, [item.id, translateX]);
@@ -7903,7 +8065,6 @@ function TemptationCardComponent({
         styles.temptationCard,
         cardShadowStyle,
         cardStyle,
-        streakGlowStyle,
         {
           backgroundColor: budgetSurfaceTint,
           borderWidth: showBudgetAlert ? 1.2 : 0,
@@ -8089,39 +8250,6 @@ function TemptationCardComponent({
           >
             {budgetAlertText}
           </Text>
-        </View>
-      )}
-      {showStreakBadge && (
-        <View style={styles.temptationStreakBadgeFloating} pointerEvents="none">
-          <View
-            style={[
-              styles.temptationStreakBadge,
-              {
-                borderColor: streakActive
-                  ? "#F6A218"
-                  : colors.border,
-                backgroundColor: streakActive
-                  ? "#FFF6DB"
-                  : colors.card,
-              },
-            ]}
-          >
-            {showStreakFire ? (
-              <AnimatedText style={[styles.temptationStreakEmoji, streakFlameStyle]}>🔥</AnimatedText>
-            ) : (
-              <Text style={[styles.temptationStreakEmoji, { color: streakActive ? "#FF8C1A" : colors.muted }]}>
-                {streakActive ? "✨" : "⏳"}
-              </Text>
-            )}
-            <Text
-              style={[
-                styles.temptationStreakText,
-                { color: streakActive ? "#5C2F00" : colors.muted },
-              ]}
-            >
-              {streakBadgeLabel}
-            </Text>
-          </View>
         </View>
       )}
       {showEditorInline ? (
@@ -12037,6 +12165,8 @@ const FeedScreen = React.memo(
   colors,
   currency,
   freeDayStats,
+  usageStreak = INITIAL_USAGE_STREAK,
+  onUsageStreakPress = null,
   onFreeDayLog,
   healthPoints = 0,
   onFreeDayRescue,
@@ -12176,7 +12306,9 @@ const FeedScreen = React.memo(
   const heroCarouselDraggingRef = useRef(false);
   const heroCarouselUserSwipedRef = useRef(false);
   const heroCarouselWiggleDisabledRef = useRef(false);
-  const heroCarouselWiggleDisabledUntilRef = useRef(0);
+  const heroCarouselSeenMaskRef = useRef(0);
+  const heroCarouselSeenPendingMaskRef = useRef(0);
+  const heroCarouselWiggleCompletedRef = useRef(false);
   const [heroCarouselWiggleHydrated, setHeroCarouselWiggleHydrated] = useState(false);
   const heroCarouselIdleLoopRef = useRef(null);
   const heroCarouselIdleTimerRef = useRef(null);
@@ -12246,6 +12378,7 @@ const FeedScreen = React.memo(
     };
   }, []);
   const heroCarouselRealCount = 3;
+  const heroCarouselSeenMaskAll = (1 << heroCarouselRealCount) - 1;
   const heroCarouselLoopCount = heroCarouselRealCount + 2;
   const heroCarouselIntervalMs = 0;
   useEffect(() => {
@@ -12320,6 +12453,9 @@ const FeedScreen = React.memo(
   );
   const startHeroCarouselIdleWiggle = useCallback(() => {
     if (heroCarouselIdleLoopRef.current) return;
+    if (!heroCarouselHintAllowed) return;
+    if (heroExpanded) return;
+    if (heroCarouselWiggleCompletedRef.current || heroCarouselWiggleDisabledRef.current) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(heroCarouselHintAnim, {
@@ -12339,37 +12475,54 @@ const FeedScreen = React.memo(
     );
     heroCarouselIdleLoopRef.current = loop;
     loop.start();
-  }, [heroCarouselHintAnim]);
-  const refreshHeroCarouselWiggleDisabled = useCallback(
-    (now = Date.now()) => {
-      if (!heroCarouselWiggleHydrated) return true;
-      const disabledUntil = heroCarouselWiggleDisabledUntilRef.current || 0;
-      if (disabledUntil && now < disabledUntil) {
+  }, [heroCarouselHintAllowed, heroCarouselHintAnim, heroExpanded]);
+  const refreshHeroCarouselWiggleDisabled = useCallback(() => {
+    if (!heroCarouselWiggleHydrated) return true;
+    if (heroCarouselWiggleCompletedRef.current) {
+      heroCarouselWiggleDisabledRef.current = true;
+      return true;
+    }
+    heroCarouselWiggleDisabledRef.current = false;
+    return false;
+  }, [heroCarouselWiggleHydrated]);
+  const markHeroCarouselWidgetSeen = useCallback(
+    (index) => {
+      if (heroCarouselWiggleCompletedRef.current) return;
+      const rawIndex = Number(index);
+      if (!Number.isFinite(rawIndex)) return;
+      const clampedIndex = Math.min(Math.max(Math.round(rawIndex), 0), heroCarouselRealCount - 1);
+      const bit = 1 << clampedIndex;
+      if (!heroCarouselWiggleHydrated) {
+        heroCarouselSeenPendingMaskRef.current |= bit;
+        return;
+      }
+      const prevMask = heroCarouselSeenMaskRef.current || 0;
+      const nextMask = (prevMask | bit) & heroCarouselSeenMaskAll;
+      if (nextMask === prevMask) return;
+      heroCarouselSeenMaskRef.current = nextMask;
+      AsyncStorage.setItem(
+        STORAGE_KEYS.HERO_CAROUSEL_WIGGLE_SEEN,
+        String(nextMask)
+      ).catch(() => {});
+      if (nextMask === heroCarouselSeenMaskAll) {
+        heroCarouselWiggleCompletedRef.current = true;
         heroCarouselWiggleDisabledRef.current = true;
-        return true;
+        stopHeroCarouselIdleWiggle();
       }
-      if (disabledUntil && now >= disabledUntil) {
-        heroCarouselWiggleDisabledUntilRef.current = 0;
-        AsyncStorage.removeItem(STORAGE_KEYS.HERO_CAROUSEL_WIGGLE_SWIPE_AT).catch(() => {});
-      }
-      heroCarouselWiggleDisabledRef.current = false;
-      return false;
     },
-    [heroCarouselWiggleHydrated]
+    [
+      heroCarouselRealCount,
+      heroCarouselSeenMaskAll,
+      heroCarouselWiggleHydrated,
+      stopHeroCarouselIdleWiggle,
+    ]
   );
-  const markHeroCarouselWiggleDisabled = useCallback(() => {
-    const now = Date.now();
-    heroCarouselWiggleDisabledUntilRef.current = now + HERO_CAROUSEL_WIGGLE_DISABLE_MS;
-    heroCarouselWiggleDisabledRef.current = true;
-    setHeroCarouselWiggleHydrated(true);
-    AsyncStorage.setItem(STORAGE_KEYS.HERO_CAROUSEL_WIGGLE_SWIPE_AT, String(now)).catch(() => {});
-    stopHeroCarouselIdleWiggle();
-  }, [stopHeroCarouselIdleWiggle]);
   const scheduleHeroCarouselIdleWiggle = useCallback(() => {
     if (!heroCarouselWiggleHydrated) return;
     if (!heroCarouselHintAllowed) return;
     if (heroCarouselLocked) return;
     if (!heroCarouselPageWidth) return;
+    if (heroExpanded) return;
     if (refreshHeroCarouselWiggleDisabled()) return;
     if (heroCarouselDraggingRef.current || heroCarouselAutoScrollingRef.current) return;
     stopHeroCarouselIdleWiggle(false);
@@ -12377,6 +12530,7 @@ const FeedScreen = React.memo(
       if (
         heroCarouselDraggingRef.current ||
         heroCarouselAutoScrollingRef.current ||
+        heroExpanded ||
         heroCarouselLocked ||
         !heroCarouselHintAllowed ||
         heroCarouselWiggleDisabledRef.current
@@ -12386,6 +12540,7 @@ const FeedScreen = React.memo(
       startHeroCarouselIdleWiggle();
     }, 200);
   }, [
+    heroExpanded,
     heroCarouselWiggleHydrated,
     heroCarouselHintAllowed,
     heroCarouselLocked,
@@ -12397,24 +12552,27 @@ const FeedScreen = React.memo(
   useEffect(() => {
     let active = true;
     const hydrateHeroCarouselWiggle = async () => {
-      const raw = await AsyncStorage.getItem(
-        STORAGE_KEYS.HERO_CAROUSEL_WIGGLE_SWIPE_AT
+      const rawSeen = await AsyncStorage.getItem(
+        STORAGE_KEYS.HERO_CAROUSEL_WIGGLE_SEEN
       ).catch(() => null);
       if (!active) return;
-      const lastSwipeAt = Number(raw) || 0;
-      if (lastSwipeAt > 0) {
-        const disabledUntil = lastSwipeAt + HERO_CAROUSEL_WIGGLE_DISABLE_MS;
-        if (Date.now() < disabledUntil) {
-          heroCarouselWiggleDisabledUntilRef.current = disabledUntil;
-          heroCarouselWiggleDisabledRef.current = true;
-          stopHeroCarouselIdleWiggle();
-        } else {
-          heroCarouselWiggleDisabledUntilRef.current = 0;
-          heroCarouselWiggleDisabledRef.current = false;
-          AsyncStorage.removeItem(STORAGE_KEYS.HERO_CAROUSEL_WIGGLE_SWIPE_AT).catch(() => {});
-        }
+      const storedMask = Math.max(0, Number(rawSeen) || 0);
+      const pendingMask = heroCarouselSeenPendingMaskRef.current || 0;
+      const combinedMask = (storedMask | pendingMask) & heroCarouselSeenMaskAll;
+      heroCarouselSeenPendingMaskRef.current = 0;
+      heroCarouselSeenMaskRef.current = combinedMask;
+      if (combinedMask !== (storedMask & heroCarouselSeenMaskAll)) {
+        AsyncStorage.setItem(
+          STORAGE_KEYS.HERO_CAROUSEL_WIGGLE_SEEN,
+          String(combinedMask)
+        ).catch(() => {});
+      }
+      if (combinedMask === heroCarouselSeenMaskAll) {
+        heroCarouselWiggleCompletedRef.current = true;
+        heroCarouselWiggleDisabledRef.current = true;
+        stopHeroCarouselIdleWiggle();
       } else {
-        heroCarouselWiggleDisabledUntilRef.current = 0;
+        heroCarouselWiggleCompletedRef.current = false;
         heroCarouselWiggleDisabledRef.current = false;
       }
       setHeroCarouselWiggleHydrated(true);
@@ -12423,7 +12581,11 @@ const FeedScreen = React.memo(
     return () => {
       active = false;
     };
-  }, [stopHeroCarouselIdleWiggle]);
+  }, [heroCarouselSeenMaskAll, stopHeroCarouselIdleWiggle]);
+  useEffect(() => {
+    if (!heroCarouselWiggleHydrated) return;
+    markHeroCarouselWidgetSeen(heroCarouselIndexRef.current || 0);
+  }, [heroCarouselWiggleHydrated, markHeroCarouselWidgetSeen]);
   const handleHeroCarouselScrollBegin = useCallback(() => {
     heroCarouselDraggingRef.current = true;
     heroCarouselUserSwipedRef.current = true;
@@ -12447,6 +12609,7 @@ const FeedScreen = React.memo(
       }
       heroCarouselSnappingRef.current = false;
       const resolvedRealIndex = resolveHeroCarouselRealIndex(loopIndex);
+      markHeroCarouselWidgetSeen(resolvedRealIndex);
       const previousIndex = heroCarouselIndexRef.current;
       const atLoopHead = loopIndex === 0;
       const atLoopTail = loopIndex === heroCarouselRealCount + 1;
@@ -12460,7 +12623,6 @@ const FeedScreen = React.memo(
           HERO_CAROUSEL_WIDGET_ANALYTICS_KEYS[resolvedRealIndex] ||
           HERO_CAROUSEL_WIDGET_ANALYTICS_KEYS[0];
         logEvent("hero_widget_stopped", { widget: widgetKey });
-        markHeroCarouselWiggleDisabled();
         if (resolvedRealIndex !== previousIndex) {
           triggerSelectionHaptic();
         }
@@ -12486,7 +12648,7 @@ const FeedScreen = React.memo(
       heroCarouselRealCount,
       heroCarouselPageWidth,
       heroCarouselSnapThreshold,
-      markHeroCarouselWiggleDisabled,
+      markHeroCarouselWidgetSeen,
       onHeroCarouselLocked,
       resolveHeroCarouselRealIndex,
       scrollHeroCarouselToLoopIndex,
@@ -12537,6 +12699,7 @@ const FeedScreen = React.memo(
     if (heroCarouselHintPlayedRef.current) return;
     if (!heroCarouselPageWidth) return;
     if (heroCarouselLocked) return;
+    if (heroExpanded) return;
     if (refreshHeroCarouselWiggleDisabled()) return;
     heroCarouselHintPlayedRef.current = true;
     stopHeroCarouselIdleWiggle(false);
@@ -12562,6 +12725,7 @@ const FeedScreen = React.memo(
     heroCarouselHintAnim,
     heroCarouselLocked,
     heroCarouselPageWidth,
+    heroExpanded,
     heroCarouselWiggleHydrated,
     refreshHeroCarouselWiggleDisabled,
     startHeroCarouselIdleWiggle,
@@ -12569,7 +12733,7 @@ const FeedScreen = React.memo(
   ]);
   useEffect(() => {
     if (!heroCarouselWiggleHydrated) return;
-    if (!heroCarouselHintAllowed || heroCarouselLocked) {
+    if (!heroCarouselHintAllowed || heroCarouselLocked || heroExpanded) {
       stopHeroCarouselIdleWiggle();
       return;
     }
@@ -12581,6 +12745,7 @@ const FeedScreen = React.memo(
   }, [
     heroCarouselHintAllowed,
     heroCarouselLocked,
+    heroExpanded,
     heroCarouselWiggleHydrated,
     refreshHeroCarouselWiggleDisabled,
     startHeroCarouselIdleWiggle,
@@ -12588,8 +12753,12 @@ const FeedScreen = React.memo(
   ]);
   useEffect(() => {
     if (!heroCarouselWiggleHydrated) return;
+    if (!heroCarouselHintAllowed) {
+      stopHeroCarouselIdleWiggle();
+      return;
+    }
     if (!heroCarouselPageWidth) return;
-    if (heroCarouselLocked) {
+    if (heroCarouselLocked || heroExpanded) {
       stopHeroCarouselIdleWiggle();
       return;
     }
@@ -12601,7 +12770,9 @@ const FeedScreen = React.memo(
     startHeroCarouselIdleWiggle();
     return () => stopHeroCarouselIdleWiggle();
   }, [
+    heroCarouselHintAllowed,
     heroCarouselLocked,
+    heroExpanded,
     heroCarouselPageWidth,
     heroCarouselWiggleHydrated,
     refreshHeroCarouselWiggleDisabled,
@@ -13634,6 +13805,57 @@ const FeedScreen = React.memo(
   const progressPercent = Math.min(Math.max(goalProgress, 0), 1);
   const progressPercentLabel = Math.round(progressPercent * 100);
   const levelLabel = t("progressHeroLevel", { level: tierInfo.level });
+  const usageStreakCount = Math.max(0, Number(usageStreak?.current) || 0);
+  const usageStreakLostCount = Math.max(0, Number(usageStreak?.lostCount) || 0);
+  const usageStreakLost = usageStreakCount === 0 && usageStreakLostCount > 0;
+  const usageStreakDisplayCount = usageStreakLost ? usageStreakLostCount : usageStreakCount;
+  const showUsageStreak = usageStreakDisplayCount > 0;
+  const streakBadgePalette = usageStreakLost
+    ? {
+        bg: isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
+        border: isDarkMode ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.12)",
+        text: isDarkMode ? "#E5E7EB" : "#5B5B5B",
+      }
+    : {
+        bg: isDarkMode ? "rgba(255,170,90,0.2)" : "rgba(255,168,90,0.28)",
+        border: isDarkMode ? "rgba(255,206,150,0.55)" : "rgba(255,162,92,0.6)",
+        text: isDarkMode ? "#FFD7A1" : "#7A2E00",
+      };
+  const handleUsageStreakPress = useCallback(() => {
+    if (!showUsageStreak) return;
+    if (typeof onUsageStreakPress !== "function") return;
+    const now = Date.now();
+    const todayKey = getDayKey(now);
+    const resolvedDayKey =
+      typeof usageStreak?.lastDate === "string" && usageStreak.lastDate
+        ? usageStreak.lastDate
+        : todayKey;
+    const missedDays = usageStreakLost
+      ? getMissedUsageStreakDays(resolvedDayKey, todayKey)
+      : 0;
+    const missedDayKey = usageStreakLost
+      ? getDayKey((parseDayKey(resolvedDayKey)?.getTime() || now) + DAY_MS)
+      : null;
+    onUsageStreakPress({
+      count: Math.max(1, Number(usageStreakDisplayCount) || 1),
+      dayKey: resolvedDayKey,
+      streakEndDayKey: resolvedDayKey,
+      timestamp: now,
+      missed: usageStreakLost,
+      previousCount: usageStreakLost ? usageStreakLostCount : usageStreakCount,
+      missedDayKey,
+      missedDays,
+      lostCount: usageStreakLostCount,
+    });
+  }, [
+    onUsageStreakPress,
+    showUsageStreak,
+    usageStreak,
+    usageStreakCount,
+    usageStreakDisplayCount,
+    usageStreakLost,
+    usageStreakLostCount,
+  ]);
   const levelCurrency = profile?.currency || DEFAULT_PROFILE.currency;
   const levelProgress = Math.min(Math.max(tierProgress, 0), 1);
   const levelRemainingUSD = tierInfo.nextTargetUSD
@@ -14365,21 +14587,53 @@ const FeedScreen = React.memo(
                     <Text style={[styles.heroTagline, { color: colors.muted }]}>
                       {t("appTagline")}
                     </Text>
-                    <TouchableOpacity
-                      style={[
-                        styles.heroLevelBadge,
-                        {
-                          backgroundColor: goldPalette.badgeBg,
-                          borderColor: goldPalette.badgeBorder,
-                        },
-                      ]}
-                      onPress={toggleHeroLevelExpanded}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={[styles.heroLevelBadgeText, { color: goldPalette.badgeText }]}>
-                        {levelLabel}
-                      </Text>
-                    </TouchableOpacity>
+                    <View style={styles.heroBadgeRow}>
+                      <TouchableOpacity
+                        style={[
+                          styles.heroLevelBadge,
+                          {
+                            backgroundColor: goldPalette.badgeBg,
+                            borderColor: goldPalette.badgeBorder,
+                          },
+                        ]}
+                        onPress={toggleHeroLevelExpanded}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={[styles.heroLevelBadgeText, { color: goldPalette.badgeText }]}>
+                          {levelLabel}
+                        </Text>
+                      </TouchableOpacity>
+                      {showUsageStreak && (
+                        <TouchableOpacity
+                          style={[
+                            styles.heroStreakBadge,
+                            {
+                              backgroundColor: streakBadgePalette.bg,
+                              borderColor: streakBadgePalette.border,
+                            },
+                          ]}
+                          onPress={handleUsageStreakPress}
+                          activeOpacity={0.85}
+                        >
+                          <Text
+                            style={[
+                              styles.heroStreakEmoji,
+                              usageStreakLost && styles.heroStreakEmojiLost,
+                            ]}
+                          >
+                            🔥
+                          </Text>
+                          <Text
+                            style={[
+                              styles.heroStreakBadgeText,
+                              { color: streakBadgePalette.text },
+                            ]}
+                          >
+                            {usageStreakDisplayCount}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
                   {!hideMascot && (
                     <View style={styles.heroMascotContainer}>
@@ -17910,7 +18164,6 @@ const ACHIEVEMENT_METRIC_TYPES = {
   FREE_DAYS_TOTAL: "FREE_DAYS_TOTAL",
   FREE_DAYS_STREAK: "FREE_DAYS_STREAK",
   REFUSE_COUNT: "REFUSE_COUNT",
-  REFUSE_STREAK: "REFUSE_STREAK",
   FRIDGE_ITEMS_COUNT: "FRIDGE_ITEMS_COUNT",
   FRIDGE_DECISIONS: "FRIDGE_DECISIONS",
   DAILY_CHALLENGE_COMPLETED: "DAILY_CHALLENGE_COMPLETED",
@@ -17922,7 +18175,6 @@ const ACHIEVEMENT_CONDITION_MAP = {
   [ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_TOTAL]: "streak_days",
   [ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_STREAK]: "streak_days",
   [ACHIEVEMENT_METRIC_TYPES.REFUSE_COUNT]: "saves_count",
-  [ACHIEVEMENT_METRIC_TYPES.REFUSE_STREAK]: "saves_streak",
   [ACHIEVEMENT_METRIC_TYPES.FRIDGE_ITEMS_COUNT]: "pending_items",
   [ACHIEVEMENT_METRIC_TYPES.FRIDGE_DECISIONS]: "decisions_logged",
   [ACHIEVEMENT_METRIC_TYPES.DAILY_CHALLENGE_COMPLETED]: "daily_challenges_completed",
@@ -17955,45 +18207,6 @@ const ACHIEVEMENT_DEFS = [
       en: { title: "{{amount}} saved already", desc: "Time to plan for a bigger goal." },
       es: { title: "Ya van {{amount}}", desc: "Hora de planear una meta más grande." },
       fr: { title: "{{amount}} déjà épargnés", desc: "Il est temps de viser un objectif plus grand." },
-    },
-  },
-  {
-    id: "refuse_10",
-    metricType: ACHIEVEMENT_METRIC_TYPES.REFUSE_STREAK,
-    targetValue: 10,
-    emoji: "🧠",
-    rewardHealth: 70,
-    copy: {
-      ru: { title: "Серия ×10", desc: "10 отказов подряд на одном искушении." },
-      en: { title: "10-save streak", desc: "10 saves in a row on one temptation." },
-      es: { title: "Racha ×10", desc: "10 rechazos seguidos en una misma tentación." },
-      fr: { title: "Série ×10", desc: "10 refus d'affilée sur une même tentation." },
-    },
-  },
-  {
-    id: "refuse_streak_20",
-    metricType: ACHIEVEMENT_METRIC_TYPES.REFUSE_STREAK,
-    targetValue: 20,
-    emoji: "🔥",
-    rewardHealth: 120,
-    copy: {
-      ru: { title: "Серия ×20", desc: "20 отказов подряд на одном искушении." },
-      en: { title: "20-save streak", desc: "20 saves in a row on one temptation." },
-      es: { title: "Racha ×20", desc: "20 rechazos seguidos en una misma tentación." },
-      fr: { title: "Série ×20", desc: "20 refus d'affilée sur une même tentation." },
-    },
-  },
-  {
-    id: "refuse_streak_50",
-    metricType: ACHIEVEMENT_METRIC_TYPES.REFUSE_STREAK,
-    targetValue: 50,
-    emoji: "🏅",
-    rewardHealth: 200,
-    copy: {
-      ru: { title: "Серия ×50", desc: "50 отказов подряд на одном искушении." },
-      en: { title: "50-save streak", desc: "50 saves in a row on one temptation." },
-      es: { title: "Racha ×50", desc: "50 rechazos seguidos en una misma tentación." },
-      fr: { title: "Série ×50", desc: "50 refus d'affilée sur une même tentation." },
     },
   },
   {
@@ -18093,7 +18306,6 @@ const CHALLENGE_METRIC_TYPES = {
   SAVE_COUNT: "SAVE_COUNT",
   SAVE_AMOUNT: "SAVE_AMOUNT",
   FREE_DAY_STREAK: "FREE_DAY_STREAK",
-  REFUSE_DAY_STREAK: "REFUSE_DAY_STREAK",
   PENDING_DECISIONS: "PENDING_DECISIONS",
   WISH_ADDED: "WISH_ADDED",
   PENDING_ADDED: "PENDING_ADDED",
@@ -18149,34 +18361,6 @@ const alignReminderSlotTime = (timestamp, slot, jitterMinutes = 0) => {
 };
 
 const CHALLENGE_DEFS = [
-  {
-    id: "coffee_free_week",
-    emoji: "🛡️",
-    metricType: CHALLENGE_METRIC_TYPES.REFUSE_DAY_STREAK,
-    targetValue: 7,
-    durationDays: 12,
-    unlockLevel: 2,
-    rewardHealth: 140,
-    reminderOffsetsHours: [24, 96, 168],
-    copy: {
-      ru: {
-        title: "Неделя привычки",
-        desc: "Каждый день в течение недели отметь хотя бы один отказ.",
-      },
-      en: {
-        title: "Habit week",
-        desc: "Log at least one refusal every day for a full week.",
-      },
-      es: {
-        title: "Semana del hábito",
-        desc: "Registra al menos un rechazo cada día durante toda la semana.",
-      },
-      fr: {
-        title: "Semaine habitude",
-        desc: "Note au moins un refus par jour pendant toute une semaine.",
-      },
-    },
-  },
   {
     id: "micro_detox",
     emoji: "🌀",
@@ -18437,7 +18621,6 @@ const CHALLENGE_DEF_MAP = CHALLENGE_DEFS.reduce((acc, def) => {
   return acc;
 }, {});
 const CHALLENGE_TYPE_LABELS = {
-  [CHALLENGE_METRIC_TYPES.REFUSE_DAY_STREAK]: "no_spend_day",
   [CHALLENGE_METRIC_TYPES.FREE_DAY_STREAK]: "no_spend_day",
   [CHALLENGE_METRIC_TYPES.SAVE_COUNT]: "decline_count",
   [CHALLENGE_METRIC_TYPES.SAVE_AMOUNT]: "savings_amount",
@@ -18809,39 +18992,6 @@ const processChallengeEvent = (entry, def, event, now) => {
         );
       }
       break;
-    case CHALLENGE_METRIC_TYPES.REFUSE_DAY_STREAK:
-      if (isSaveEvent(event.kind)) {
-        const dayIndex = getDayIndexFromTimestamp(timestamp);
-        const lastDay =
-          typeof entry.extra?.lastRefuseDayIndex === "number"
-            ? entry.extra.lastRefuseDayIndex
-            : null;
-        const prevStreak = entry.extra?.refuseStreak ?? 0;
-        let nextStreak = 1;
-        if (lastDay === dayIndex) {
-          nextStreak = prevStreak;
-        } else if (lastDay === dayIndex - 1) {
-          nextStreak = prevStreak + 1;
-        }
-        const nextExtra = {
-          ...entry.extra,
-          lastRefuseDayIndex: dayIndex,
-          refuseStreak: nextStreak,
-        };
-        if (nextStreak === prevStreak && lastDay === dayIndex) {
-          return entry;
-        }
-        return finalizeChallengeEntry(
-          {
-            ...entry,
-            progress: Math.min(def.targetValue, nextStreak),
-            extra: nextExtra,
-          },
-          def,
-          now
-        );
-      }
-      break;
     case CHALLENGE_METRIC_TYPES.MORNING_FREE_DAY:
       if (event.kind === "free_day" && isEveningTimestamp(timestamp)) {
         const dayIndex = getDayIndexFromTimestamp(timestamp);
@@ -19155,7 +19305,6 @@ const getAchievementRemainingLabel = (metricType, remaining, currency, t) => {
     case ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_STREAK:
       return t("rewardRemainingDays", { count });
     case ACHIEVEMENT_METRIC_TYPES.REFUSE_COUNT:
-    case ACHIEVEMENT_METRIC_TYPES.REFUSE_STREAK:
       return t("rewardRemainingRefuse", { count });
     case ACHIEVEMENT_METRIC_TYPES.FRIDGE_ITEMS_COUNT:
       return t("rewardRemainingFridge", { count });
@@ -19170,8 +19319,6 @@ const buildAchievements = ({
   savedTotalUSD,
   declineCount,
   freeDayStats,
-  declineStreak = 0,
-  refuseStreak = 0,
   pendingCount,
   decisionStats,
   dailyChallengeCompletedCount = 0,
@@ -19187,8 +19334,7 @@ const buildAchievements = ({
     [ACHIEVEMENT_METRIC_TYPES.SAVED_AMOUNT]: savedTotalUSD,
     [ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_TOTAL]: freeDayStats?.total || 0,
     [ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_STREAK]: freeDayStats?.current || 0,
-    [ACHIEVEMENT_METRIC_TYPES.REFUSE_COUNT]: declineStreak || 0,
-    [ACHIEVEMENT_METRIC_TYPES.REFUSE_STREAK]: refuseStreak || 0,
+    [ACHIEVEMENT_METRIC_TYPES.REFUSE_COUNT]: declineCount || 0,
     [ACHIEVEMENT_METRIC_TYPES.FRIDGE_ITEMS_COUNT]: pendingCount,
     [ACHIEVEMENT_METRIC_TYPES.FRIDGE_DECISIONS]: fridgeDecisionsResolved,
     [ACHIEVEMENT_METRIC_TYPES.DAILY_CHALLENGE_COMPLETED]: dailyChallengeCompletedCount,
@@ -21005,6 +21151,19 @@ function AppContent() {
     pendingCardLayoutsRef.current.clear();
   }, [pendingList]);
   const [freeDayStats, setFreeDayStats] = useState({ ...INITIAL_FREE_DAY_STATS });
+  const [usageStreak, setUsageStreak] = useState({ ...INITIAL_USAGE_STREAK });
+  const [usageStreakHydrated, setUsageStreakHydrated] = useState(false);
+  const usageStreakBackfillRef = useRef(false);
+  const usageStreakRef = useRef(usageStreak);
+  useEffect(() => {
+    usageStreakRef.current = usageStreak;
+  }, [usageStreak]);
+  const [streakPledge, setStreakPledge] = useState({ ...INITIAL_STREAK_PLEDGE });
+  const [streakPledgeHydrated, setStreakPledgeHydrated] = useState(false);
+  const streakPledgeRef = useRef(streakPledge);
+  useEffect(() => {
+    streakPledgeRef.current = streakPledge;
+  }, [streakPledge]);
   const [healthPoints, setHealthPoints] = useState(0);
   const [healthHydrated, setHealthHydrated] = useState(false);
   const [dailyRewardState, setDailyRewardState] = useState({ ...DEFAULT_DAILY_REWARD_STATE });
@@ -21055,6 +21214,81 @@ function AppContent() {
       }
     };
   }, []);
+  useEffect(() => {
+    if (!usageStreakHydrated) return;
+    const todayKey = currentDayKey;
+    const yesterdayKey = getDayKey(Date.now() - DAY_MS);
+    setUsageStreak((prev) => {
+      if (!prev?.lastDate) return prev;
+      if (prev.lastDate === todayKey || prev.lastDate === yesterdayKey) return prev;
+      const prevCount = Math.max(0, Number(prev.current) || 0);
+      if (!prevCount) return prev;
+      return { ...prev, current: 0, lostCount: prevCount };
+    });
+  }, [currentDayKey, usageStreakHydrated]);
+  const usageStreakLoggedToday = useMemo(
+    () => usageStreak?.lastDate === currentDayKey,
+    [currentDayKey, usageStreak?.lastDate]
+  );
+  useEffect(() => {
+    if (!streakPledgeHydrated || !usageStreakHydrated) return;
+    if (streakPledge.status !== STREAK_PLEDGE_STATUS.ACTIVE) return;
+    if (streakPledge.rewardPending) return;
+    const targetDays = Math.max(0, Number(streakPledge.targetDays) || 0);
+    if (!targetDays) return;
+    const startCount = Math.max(1, Number(streakPledge.startCount) || 1);
+    const targetCount = startCount + targetDays - 1;
+    const currentCount = Math.max(0, Number(usageStreak?.current) || 0);
+    const lostCount = Math.max(0, Number(usageStreak?.lostCount) || 0);
+    if (lostCount > 0 && currentCount <= 1) {
+      setStreakPledge((prev) => ({
+        ...prev,
+        status: STREAK_PLEDGE_STATUS.FAILED,
+        rewardPending: false,
+      }));
+      logEvent("streak_goal_failed", {
+        target_days: targetDays,
+        start_count: startCount,
+        current_streak: currentCount,
+      });
+      return;
+    }
+    if (currentCount >= targetCount) {
+      const computed = computeStreakPledgeReward(targetDays);
+      const rewardBlueCoins = Math.max(
+        0,
+        Number(streakPledge.rewardBlueCoins) || computed.blueCoins
+      );
+      const rewardValue = Math.max(
+        0,
+        Number(streakPledge.rewardValue) || computed.rewardValue
+      );
+      if (rewardValue > 0) {
+        setHealthPoints((prev) => prev + rewardValue);
+      }
+      setStreakPledge((prev) => ({
+        ...prev,
+        status: STREAK_PLEDGE_STATUS.COMPLETED,
+        rewardPending: true,
+        rewardBlueCoins,
+        rewardValue,
+      }));
+      logEvent("streak_goal_completed", {
+        target_days: targetDays,
+        reward_blue: rewardBlueCoins,
+        reward_value: rewardValue,
+        current_streak: currentCount,
+        start_count: startCount,
+      });
+    }
+  }, [
+    logEvent,
+    setHealthPoints,
+    streakPledge,
+    streakPledgeHydrated,
+    usageStreak,
+    usageStreakHydrated,
+  ]);
   const [challengesState, setChallengesState] = useState(() => createInitialChallengesState());
   const [challengesHydrated, setChallengesHydrated] = useState(false);
   const [rewardsPane, setRewardsPane] = useState("rewards");
@@ -21085,7 +21319,6 @@ function AppContent() {
   const incomeEntrySourceRef = useRef("manual");
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
   const [progressFocusChallengeId, setProgressFocusChallengeId] = useState(null);
-  const declineStreak = useMemo(() => computeRefuseStreak(resolvedHistoryEvents), [resolvedHistoryEvents]);
   const levelProgressBaseUSD = Math.max(
     progressSavedTotalUSD || 0,
     progressLifetimeSavedUSD || 0
@@ -21759,6 +21992,29 @@ function AppContent() {
   );
   const [overlay, setOverlay] = useState(null);
   const [pendingGoalCelebration, setPendingGoalCelebration] = useState(null);
+  const pendingUsageStreakRef = useRef(null);
+  useEffect(() => {
+    if (overlay?.type !== "streak_pledge_reward") return;
+    if (!streakPledge.rewardPending) return;
+    setStreakPledge((prev) => ({
+      ...prev,
+      rewardPending: false,
+      rewardDeliveredAt: Date.now(),
+    }));
+    logEvent("streak_goal_reward_shown", {
+      target_days: Math.max(0, Number(streakPledge.targetDays) || 0),
+      reward_blue: Math.max(0, Number(streakPledge.rewardBlueCoins) || 0),
+      reward_value: Math.max(0, Number(streakPledge.rewardValue) || 0),
+    });
+  }, [
+    logEvent,
+    overlay?.type,
+    setStreakPledge,
+    streakPledge.rewardBlueCoins,
+    streakPledge.rewardPending,
+    streakPledge.rewardValue,
+    streakPledge.targetDays,
+  ]);
   const [confettiKey, setConfettiKey] = useState(0);
   const overlayTimer = useRef(null);
   const overlayRetryTimerRef = useRef(null);
@@ -21981,7 +22237,12 @@ function AppContent() {
   const ratingPromptCompleted =
     ratingPromptState.completed || ratingPromptState.lastAction === "rate";
   const ratingPromptFirstOpenAt = ratingPromptState.firstOpenAt;
-  const ratingPromptActionCount = ratingPromptState.actionCount || 0;
+  const ratingPromptActionBase = ratingPromptState.actionCountStart;
+  const ratingPromptActionCount = Math.max(
+    0,
+    (Number(ratingPromptState.actionCount) || 0) -
+      (Number.isFinite(ratingPromptActionBase) ? ratingPromptActionBase : 0)
+  );
   const ratingPromptActionPrompted = ratingPromptState.actionPrompted;
   const ratingPromptLastAction = ratingPromptState.lastAction;
   const ratingPromptRespondedAt = ratingPromptState.respondedAt;
@@ -22687,6 +22948,12 @@ function AppContent() {
   const [termsContinuePending, setTermsContinuePending] = useState(false);
   const [showImageSourceSheet, setShowImageSourceSheet] = useState(false);
   const [showCustomSpend, setShowCustomSpend] = useState(false);
+  const [customSpendSavingsModal, setCustomSpendSavingsModal] = useState({
+    visible: false,
+    title: "",
+    lowLabel: "",
+    highLabel: "",
+  });
   const [quickSpendDraft, setQuickSpendDraft] = useState({
     title: "",
     amount: "",
@@ -22843,11 +23110,31 @@ function AppContent() {
   useEffect(() => {
     markDailySummaryOpen();
   }, [markDailySummaryOpen]);
+  const ratingPromptActionGateReady =
+    onboardingStep === "done" && tutorialSeen && temptationTutorialCompleted;
+  const ratingPromptActionBaseReady =
+    ratingPromptActionGateReady && Number.isFinite(ratingPromptActionBase);
+  useEffect(() => {
+    if (!ratingPromptHydrated) return;
+    if (!ratingPromptActionGateReady) return;
+    if (Number.isFinite(ratingPromptActionBase)) return;
+    updateRatingPromptState((prev) => {
+      if (prev.completed || prev.actionPrompted) return prev;
+      const baseline = Math.max(0, Number(prev.actionCount) || 0);
+      return { ...prev, actionCountStart: baseline };
+    });
+  }, [
+    ratingPromptActionBase,
+    ratingPromptActionGateReady,
+    ratingPromptHydrated,
+    updateRatingPromptState,
+  ]);
   useEffect(() => {
     if (!ratingPromptHydrated) return;
     if (ratingPromptCompleted) return;
     if (ratingPromptVisible) return;
     if (onboardingStep !== "done") return;
+    if (!ratingPromptActionGateReady) return;
     const firstOpenDate = new Date(ratingPromptFirstOpenAt || "");
     if (Number.isNaN(firstOpenDate.getTime())) return;
     const day3AtMs = firstOpenDate.getTime() + RATING_PROMPT_DELAY_DAYS * DAY_MS;
@@ -22868,10 +23155,12 @@ function AppContent() {
     ratingPromptLastAction,
     ratingPromptRespondedAt,
     ratingPromptVisible,
+    ratingPromptActionGateReady,
     queueRatingPrompt,
   ]);
   const ratingPromptActionEligible =
     ratingPromptHydrated &&
+    ratingPromptActionBaseReady &&
     !ratingPromptCompleted &&
     !ratingPromptVisible &&
     !ratingPromptActionPrompted &&
@@ -23205,8 +23494,6 @@ function AppContent() {
   const editOverlayAnim = useRef(new Animated.Value(0)).current;
   const [editOverlayVisible, setEditOverlayVisible] = useState(false);
   const cardFeedbackTimers = useRef({});
-  const pendingStreakRecoveryRef = useRef({});
-  const streakRecoveryOverrideRef = useRef({});
   const impulseAlertCooldownRef = useRef({});
   const lastInstantNotificationRef = useRef(0);
   const resolveNotificationTriggerTime = useCallback((trigger, nowTs = Date.now()) => {
@@ -23726,9 +24013,18 @@ function AppContent() {
       tutorialVisible,
     ]
   );
+  const heroCarouselSecondDayAllowed = useMemo(() => {
+    const joinedAtTimestamp = profile?.joinedAt
+      ? new Date(profile.joinedAt).getTime()
+      : NaN;
+    if (!Number.isFinite(joinedAtTimestamp)) return false;
+    const todayDate = parseDayKey(currentDayKey) || new Date();
+    const ordinalDay = Math.floor((todayDate.getTime() - joinedAtTimestamp) / DAY_MS) + 1;
+    return ordinalDay === 2;
+  }, [profile?.joinedAt, currentDayKey]);
   const heroCarouselHintAllowed = useMemo(
-    () => interfaceReady && speechAllowed,
-    [interfaceReady, speechAllowed]
+    () => interfaceReady && speechAllowed && heroCarouselSecondDayAllowed,
+    [interfaceReady, speechAllowed, heroCarouselSecondDayAllowed]
   );
   useEffect(() => {
     if (activeTab !== "feed") return;
@@ -23789,6 +24085,7 @@ function AppContent() {
     if (!coinValueModalHydrated) return false;
     if (!tutorialSeen) return false;
     if (coinValueModalStatusRef.current !== "none") return false;
+    if (pendingUsageStreakRef.current) return false;
     const currentCoins = Math.max(0, Number(tamagotchiState?.coins) || 0);
     if (currentCoins <= 0) return false;
     const lastSaveAt = Number(lastSaveActionAtRef.current) || 0;
@@ -23941,18 +24238,8 @@ function AppContent() {
     visible: false,
     item: null,
     intent: null,
-    streakRecoveryValue: null,
     amountUSD: null,
   });
-  const [streakRecoveryPrompt, setStreakRecoveryPrompt] = useState({
-    ...INITIAL_STREAK_RECOVERY_PROMPT,
-  });
-  const streakRestoreSoundPendingRef = useRef(false);
-  const streakRestoreSoundTaskRef = useRef(null);
-  const hideStreakRecoveryPrompt = useCallback(
-    () => setStreakRecoveryPrompt({ ...INITIAL_STREAK_RECOVERY_PROMPT }),
-    []
-  );
   const [goalTemptationPrompt, setGoalTemptationPrompt] = useState({ visible: false, wish: null });
   const [goalEditorPrompt, setGoalEditorPrompt] = useState({
     visible: false,
@@ -23997,7 +24284,6 @@ function AppContent() {
       !baselinePrompt.visible &&
       !goalRenewalPromptVisible &&
       !goalLinkPrompt.visible &&
-      !streakRecoveryPrompt.visible &&
       !skinPickerVisible &&
       !priceEditor.item &&
       !breakdownVisible,
@@ -24016,7 +24302,6 @@ function AppContent() {
       priceEditor.item,
       breakdownVisible,
       skinPickerVisible,
-      streakRecoveryPrompt.visible,
       tamagotchiVisible,
       tutorialOverlayVisible,
     ]
@@ -24039,7 +24324,6 @@ function AppContent() {
       !baselinePrompt.visible &&
       !goalRenewalPromptVisible &&
       !goalLinkPrompt.visible &&
-      !streakRecoveryPrompt.visible &&
       !skinPickerVisible &&
       !priceEditor.item &&
       !breakdownVisible &&
@@ -24063,7 +24347,6 @@ function AppContent() {
       breakdownVisible,
       skinPickerVisible,
       spendPrompt.visible,
-      streakRecoveryPrompt.visible,
       tamagotchiVisible,
       tutorialOverlayVisible,
       tutorialSeen,
@@ -24072,6 +24355,7 @@ function AppContent() {
   const canShowCoinValueModalNow = useCallback(() => {
     if (!coinValueModalAllowed || coinValueModalVisible) return false;
     if (overlay || overlayActiveRef.current) return false;
+    if (pendingUsageStreakRef.current) return false;
     if (overlayQueueRef.current.length) return false;
     if (celebrationQueueRef.current.length) return false;
     if (celebrationGapTimerRef.current) return false;
@@ -24240,27 +24524,6 @@ function AppContent() {
       termsModalVisible,
     ]
   );
-  useEffect(() => {
-    if (!streakRestoreSoundPendingRef.current) return;
-    if (tutorialBlockingVisible) return;
-    streakRestoreSoundPendingRef.current = false;
-    if (streakRestoreSoundTaskRef.current) {
-      streakRestoreSoundTaskRef.current.cancel?.();
-      streakRestoreSoundTaskRef.current = null;
-    }
-    streakRestoreSoundTaskRef.current = InteractionManager.runAfterInteractions(() => {
-      playSound("streak_restore");
-      streakRestoreSoundTaskRef.current = null;
-    });
-  }, [playSound, tutorialBlockingVisible]);
-  useEffect(() => {
-    return () => {
-      if (streakRestoreSoundTaskRef.current) {
-        streakRestoreSoundTaskRef.current.cancel?.();
-        streakRestoreSoundTaskRef.current = null;
-      }
-    };
-  }, []);
   const colors = THEMES[theme] || THEMES[DEFAULT_THEME];
   const isDarkTheme = theme === "dark";
   const openMoodDetails = useCallback(() => setMoodDetailsVisible(true), []);
@@ -24447,7 +24710,6 @@ function AppContent() {
       baselinePrompt.visible ||
       goalRenewalPromptVisible ||
       goalLinkPrompt.visible ||
-      streakRecoveryPrompt.visible ||
       skinPickerVisible ||
       dailyGoalCollectModal.visible ||
       priceEditor.item,
@@ -24467,7 +24729,6 @@ function AppContent() {
       incomeEntryModalVisible,
       skinPickerVisible,
       dailyGoalCollectModal.visible,
-      streakRecoveryPrompt.visible,
       tamagotchiVisible,
     ]
   );
@@ -24563,7 +24824,7 @@ function AppContent() {
   }, [canShowQueuedModal, queuedModalProcessTick, queuedModalType]);
   const openGoalLinkPrompt = useCallback((item, intent = "edit") => {
     if (!item) return;
-    setGoalLinkPrompt({ visible: true, item, intent, streakRecoveryValue: null, amountUSD: null });
+    setGoalLinkPrompt({ visible: true, item, intent, amountUSD: null });
   }, []);
   const [moodGradient, setMoodGradient] = useState(() =>
     applyThemeToMoodGradient(getMoodGradient(), theme)
@@ -25955,6 +26216,65 @@ function AppContent() {
       clearOverlaySoundTimers();
     };
   }, [clearOverlaySoundTimers, overlay, playSound]);
+  const triggerOverlayStateRef = useRef(null);
+  const queueStreakPledgeFollowUpsRef = useRef(null);
+  const queueStreakPledgeFollowUps = useCallback(
+    (payload, { allowPrompt = true } = {}) => {
+      const trigger = triggerOverlayStateRef.current;
+      if (typeof trigger !== "function") return false;
+      const snapshot = streakPledgeRef.current || INITIAL_STREAK_PLEDGE;
+      const todayKey = getDayKey(Date.now());
+      if (snapshot.rewardPending) {
+        const computed = computeStreakPledgeReward(snapshot.targetDays);
+        const rewardBlueCoins = Math.max(0, Number(snapshot.rewardBlueCoins) || computed.blueCoins);
+        const rewardValue = Math.max(0, Number(snapshot.rewardValue) || computed.rewardValue);
+        trigger("streak_pledge_reward", {
+          targetDays: Math.max(0, Number(snapshot.targetDays) || 0),
+          rewardBlueCoins,
+          rewardValue,
+        });
+        return true;
+      }
+      if (!allowPrompt) return false;
+      if (!streakPledgeHydrated) return false;
+      if (snapshot.status !== STREAK_PLEDGE_STATUS.IDLE) return false;
+      const streakCount = Math.max(
+        1,
+        Number(payload?.count) || Number(usageStreakRef.current?.current) || 1
+      );
+      trigger("streak_pledge", {
+        streakCount,
+        dayKey: typeof payload?.dayKey === "string" ? payload.dayKey : todayKey,
+      });
+      setStreakPledge((prev) => ({
+        ...prev,
+        introSeen: true,
+        lastPromptDayKey: todayKey,
+      }));
+      logEvent("streak_goal_prompt_shown", {
+        streak_count: streakCount,
+      });
+      return true;
+    },
+    [logEvent, setStreakPledge, streakPledgeHydrated]
+  );
+  queueStreakPledgeFollowUpsRef.current = queueStreakPledgeFollowUps;
+  const queueUsageStreakOverlay = useCallback(
+    (source = null) => {
+      const pending = pendingUsageStreakRef.current;
+      if (!pending) return false;
+      if (source && pending.source && pending.source !== source) return false;
+      const trigger = triggerOverlayStateRef.current;
+      if (typeof trigger !== "function") return false;
+      pendingUsageStreakRef.current = null;
+      trigger("usage_streak", pending.payload);
+      if (queueStreakPledgeFollowUpsRef.current) {
+        queueStreakPledgeFollowUpsRef.current(pending.payload);
+      }
+      return true;
+    },
+    []
+  );
   const handleSaveOverlayPress = useCallback(() => {
     if (overlay?.type === "save" && Date.now() - saveOverlayShownAtRef.current < 350) {
       return;
@@ -25995,20 +26315,18 @@ function AppContent() {
       }
       runPendingLevelCelebration();
     };
-    if (overlay?.type === "save" && pendingLevelCelebrationRef.current) {
-      // Make sure level celebration sequence isn't lost behind the save overlay.
-      const dismissedAt = Date.now();
-      lastOverlayDismissedAtRef.current = dismissedAt;
-      lastSaveOverlayDismissedAtRef.current = dismissedAt;
-      setOverlay(null);
-      overlayActiveRef.current = false;
-    }
     if (saveCelebrationRef.current?.skipToCountdown?.()) {
-      triggerPendingLevelCelebrate();
+      return;
+    }
+    if (
+      saveCelebrationRef.current?.isCountdownActive?.() &&
+      !saveCelebrationRef.current?.isCountdownReady?.()
+    ) {
       return;
     }
     const hasPendingLevel = !!pendingLevelCelebrationRef.current;
     dismissOverlay({ clearQueue: hasPendingLevel ? false : true });
+    queueUsageStreakOverlay("save");
     triggerPendingLevelCelebrate();
   }, [
     dismissOverlay,
@@ -26016,6 +26334,7 @@ function AppContent() {
     overlay,
     persistLastCelebratedLevel,
     playerLevel,
+    queueUsageStreakOverlay,
     runPendingLevelCelebration,
   ]);
   const assignableGoals = useMemo(
@@ -26535,22 +26854,11 @@ function AppContent() {
     saveOverlayPayload?.remainingTemptations > 0
       ? t("saveGoalRemaining")
       : null;
-  const maxTemptationStreak = useMemo(() => {
-    const entries = Object.values(refuseStats || {});
-    if (!entries.length) return 0;
-    return entries.reduce((max, entry) => {
-      const best = Number(entry?.bestStreak) || 0;
-      const current = Number(entry?.currentStreak) || 0;
-      return Math.max(max, best, current);
-    }, 0);
-  }, [refuseStats]);
   const achievements = useMemo(() => {
     const built = buildAchievements({
       savedTotalUSD: progressSavedTotalUSD,
       declineCount,
       freeDayStats,
-      declineStreak,
-      refuseStreak: maxTemptationStreak,
       pendingCount: pendingList.length,
       decisionStats,
       dailyChallengeCompletedCount,
@@ -26586,7 +26894,6 @@ function AppContent() {
     profile.currency,
     t,
     language,
-    maxTemptationStreak,
     safeClaimedRewards,
   ]);
 
@@ -27231,7 +27538,7 @@ function AppContent() {
     }
   }, []);
 
-  const rescheduleDailyNudgeNotifications = useCallback(async () => {
+  const rescheduleDailyNudgeNotifications = useCallback(async ({ force = false } = {}) => {
     if (!dailyNudgesHydrated || !DAILY_NUDGE_REMINDERS.length) return;
     const signatureVersion = "v1";
     const signaturePayload = {
@@ -27250,7 +27557,7 @@ function AppContent() {
     const storedSignature = await AsyncStorage.getItem(
       STORAGE_KEYS.DAILY_NUDGE_SCHEDULE_SIGNATURE
     ).catch(() => null);
-    if (storedSignature === signature && existingIds.length) {
+    if (!force && storedSignature === signature && existingIds.length) {
       return;
     }
     const permitted = await ensureNotificationPermission({ request: false });
@@ -27267,7 +27574,13 @@ function AppContent() {
     const nextMap = {};
     for (const def of DAILY_NUDGE_REMINDERS) {
       try {
-        const trigger = buildDailyNudgeTrigger(def.hour, def.minute);
+        const isStreakNudge = typeof def.id === "string" && def.id.startsWith("streak_");
+        if (isStreakNudge && usageStreakLoggedToday) {
+          continue;
+        }
+        const trigger = isStreakNudge
+          ? buildDailyNudgeTrigger(def.hour, def.minute, { repeats: false, allowPast: false })
+          : buildDailyNudgeTrigger(def.hour, def.minute);
         if (!trigger) continue;
         const scheduledEntry = await scheduleNotificationWithCooldown({
           content: {
@@ -27294,6 +27607,7 @@ function AppContent() {
     language,
     scheduleNotificationWithCooldown,
     tVariant,
+    usageStreakLoggedToday,
   ]);
 
   useEffect(() => {
@@ -27305,6 +27619,17 @@ function AppContent() {
     notificationPermissionGranted,
     rescheduleDailyNudgeNotifications,
     tVariant,
+  ]);
+  useEffect(() => {
+    if (!dailyNudgesHydrated) return;
+    if (notificationPermissionGranted !== true) return;
+    rescheduleDailyNudgeNotifications({ force: true });
+  }, [
+    currentDayKey,
+    dailyNudgesHydrated,
+    notificationPermissionGranted,
+    rescheduleDailyNudgeNotifications,
+    usageStreakLoggedToday,
   ]);
 
   const scheduleWeeklyReportNotification = useCallback(
@@ -27448,6 +27773,8 @@ function AppContent() {
         STORAGE_KEYS.LEVEL_PROGRESS_OFFSET,
         STORAGE_KEYS.DECLINES,
         STORAGE_KEYS.FREE_DAY,
+        STORAGE_KEYS.USAGE_STREAK,
+        STORAGE_KEYS.STREAK_PLEDGE,
         STORAGE_KEYS.DECISION_STATS,
         STORAGE_KEYS.HISTORY,
         STORAGE_KEYS.REFUSE_STATS,
@@ -27530,6 +27857,8 @@ function AppContent() {
       const levelProgressOffsetRaw = storedMap[STORAGE_KEYS.LEVEL_PROGRESS_OFFSET] ?? null;
       const declinesRaw = storedMap[STORAGE_KEYS.DECLINES] ?? null;
       const freeDayRaw = storedMap[STORAGE_KEYS.FREE_DAY] ?? null;
+      const usageStreakRaw = storedMap[STORAGE_KEYS.USAGE_STREAK] ?? null;
+      const streakPledgeRaw = storedMap[STORAGE_KEYS.STREAK_PLEDGE] ?? null;
       const decisionStatsRaw = storedMap[STORAGE_KEYS.DECISION_STATS] ?? null;
       const historyRaw = storedMap[STORAGE_KEYS.HISTORY] ?? null;
       const refuseStatsRaw = storedMap[STORAGE_KEYS.REFUSE_STATS] ?? null;
@@ -28036,6 +28365,17 @@ function AppContent() {
           const normalizedCompleted = parsedLastAction
             ? parsedLastAction === "rate"
             : Boolean(parsed?.completed);
+          const rawActionCountStart = parsed?.actionCountStart;
+          const parsedActionCountStart =
+            rawActionCountStart === null || rawActionCountStart === undefined
+              ? null
+              : Number(rawActionCountStart);
+          const normalizedActionCountStart =
+            parsedActionCountStart !== null &&
+            Number.isFinite(parsedActionCountStart) &&
+            parsedActionCountStart >= 0
+              ? parsedActionCountStart
+              : null;
           normalizedRatingPrompt = {
             firstOpenAt:
               typeof parsed?.firstOpenAt === "string" ? parsed.firstOpenAt : fallback.firstOpenAt,
@@ -28044,6 +28384,7 @@ function AppContent() {
             lastAction: parsedLastAction,
             respondedAt: typeof parsed?.respondedAt === "string" ? parsed.respondedAt : null,
             actionCount: Math.max(0, Number(parsed?.actionCount) || 0),
+            actionCountStart: normalizedActionCountStart,
             actionPrompted: Boolean(parsed?.actionPrompted),
           };
           ratingPromptNeedsRewrite =
@@ -28053,6 +28394,7 @@ function AppContent() {
             normalizedRatingPrompt.respondedAt !== parsed?.respondedAt ||
             normalizedRatingPrompt.completed !== Boolean(parsed?.completed) ||
             normalizedRatingPrompt.actionCount !== Math.max(0, Number(parsed?.actionCount) || 0) ||
+            normalizedRatingPrompt.actionCountStart !== rawActionCountStart ||
             normalizedRatingPrompt.actionPrompted !== Boolean(parsed?.actionPrompted);
         } catch (error) {
           console.warn("rating prompt hydrate", error);
@@ -28369,6 +28711,32 @@ function AppContent() {
       if (freeDayRaw) {
         setFreeDayStats({ ...INITIAL_FREE_DAY_STATS, ...JSON.parse(freeDayRaw) });
       }
+      if (usageStreakRaw) {
+        try {
+          const parsedUsage = JSON.parse(usageStreakRaw);
+          setUsageStreak({ ...INITIAL_USAGE_STREAK, ...parsedUsage });
+        } catch (error) {
+          console.warn("usage streak parse", error);
+          setUsageStreak({ ...INITIAL_USAGE_STREAK });
+          usageStreakBackfillRef.current = true;
+        }
+      } else {
+        setUsageStreak({ ...INITIAL_USAGE_STREAK });
+        usageStreakBackfillRef.current = true;
+      }
+      setUsageStreakHydrated(true);
+      if (streakPledgeRaw) {
+        try {
+          const parsedPledge = JSON.parse(streakPledgeRaw);
+          setStreakPledge(normalizeStreakPledgeState(parsedPledge));
+        } catch (error) {
+          console.warn("streak pledge parse", error);
+          setStreakPledge({ ...INITIAL_STREAK_PLEDGE });
+        }
+      } else {
+        setStreakPledge({ ...INITIAL_STREAK_PLEDGE });
+      }
+      setStreakPledgeHydrated(true);
       const deferHistoryHydration = shouldDeferLargeParse(historyRaw);
       const hydrateHistory = () => {
         try {
@@ -29800,6 +30168,15 @@ useEffect(() => {
   }, [queuePersist, freeDayStats, freeDayHydrated]);
 
   useEffect(() => {
+    if (!usageStreakHydrated) return;
+    queuePersist(STORAGE_KEYS.USAGE_STREAK, JSON.stringify(usageStreak));
+  }, [queuePersist, usageStreak, usageStreakHydrated]);
+  useEffect(() => {
+    if (!streakPledgeHydrated) return;
+    queuePersist(STORAGE_KEYS.STREAK_PLEDGE, JSON.stringify(streakPledge));
+  }, [queuePersist, streakPledge, streakPledgeHydrated]);
+
+  useEffect(() => {
     if (!refuseStatsHydrated) return;
     queuePersist(STORAGE_KEYS.REFUSE_STATS, JSON.stringify(refuseStats));
   }, [queuePersist, refuseStats, refuseStatsHydrated]);
@@ -29829,7 +30206,6 @@ useEffect(() => {
           nextCheckAt: baseNextCheckAt,
           intervalMs,
           missedCyclesDelta: 0,
-          resetStreak: false,
         };
         return;
       }
@@ -29841,7 +30217,6 @@ useEffect(() => {
         nextCheckAt: baseNextCheckAt + cyclesMissed * intervalMs,
         intervalMs,
         missedCyclesDelta: cyclesMissed,
-        resetStreak: (refuseStats?.[templateId]?.currentStreak || 0) > 0,
       };
     });
     const templateIds = Object.keys(updates);
@@ -29875,45 +30250,7 @@ useEffect(() => {
       });
       return changed ? next : prev;
     });
-    if (!refuseStatsHydrated) return;
-    const resetTargets = templateIds.filter((templateId) => updates[templateId].resetStreak);
-    if (!resetTargets.length) return;
-    setRefuseStats((prev) => {
-      const source = prev || {};
-      let changed = false;
-      const next = { ...source };
-      resetTargets.forEach((templateId) => {
-        const current = source[templateId];
-        if (!current) return;
-        const previousStreak = Math.max(current.currentStreak || 0, 0);
-        if (previousStreak === 0 && current.lastAction !== "save") {
-          return;
-        }
-        const lastSavedAmountRaw = Number(current.lastSavedAmountUSD);
-        const fallbackRecoverableRaw = Number(current.recoverableAmountUSD);
-        const lastSavedAmount = Number.isFinite(lastSavedAmountRaw)
-          ? Math.max(lastSavedAmountRaw, 0)
-          : Number.isFinite(fallbackRecoverableRaw)
-          ? Math.max(fallbackRecoverableRaw, 0)
-          : 0;
-        const bestStreakValue = Math.max(current.bestStreak || 0, previousStreak);
-        next[templateId] = {
-          ...current,
-          currentStreak: 0,
-          bestStreak: bestStreakValue,
-          lastAction: "spend",
-          streakLostAt: now,
-          recoverableStreak: previousStreak,
-          recoverableAmountUSD: lastSavedAmount,
-        };
-        changed = true;
-      });
-      return changed ? next : prev;
-    });
   }, [
-    refuseStats,
-    refuseStatsHydrated,
-    setRefuseStats,
     setTemptationInteractions,
     temptationInteractions,
     temptationInteractionsHydrated,
@@ -30634,7 +30971,7 @@ useEffect(() => {
 
   const handleGuideContinue = () => {
     triggerHaptic();
-    goToOnboardingStep("register");
+    goToOnboardingStep("persona");
   };
 
   const updateRegistrationData = (field, value) => {
@@ -30819,8 +31156,7 @@ useEffect(() => {
       Alert.alert("Almost", t("currencyLabel"));
       return;
     }
-    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    goToOnboardingStep("persona");
+    handleGoalComplete(null);
   };
 
   const handleCoinSliderMaxUpdate = useCallback((nextUSD) => {
@@ -31395,6 +31731,11 @@ useEffect(() => {
     goToOnboardingStep("habit");
   };
 
+  const handleCustomSpendSavingsContinue = useCallback(() => {
+    setCustomSpendSavingsModal((prev) => ({ ...prev, visible: false }));
+    goToOnboardingStep("baseline");
+  }, [goToOnboardingStep]);
+
   const handleHabitSubmit = (skip = false) => {
     let sanitizedFrequency = null;
     if (!skip) {
@@ -31444,6 +31785,21 @@ useEffect(() => {
       frequency_per_week: frequencyPerWeek,
     });
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    if (!skip && hasCustom && Number.isFinite(customAmountLocal) && Number.isFinite(frequencyPerWeek)) {
+      const currencyCode = registrationData.currency || DEFAULT_PROFILE.currency;
+      const monthlyBase = Math.max(0, customAmountLocal) * Math.max(0, frequencyPerWeek) * CUSTOM_SPEND_MONTHLY_WEEKS;
+      if (monthlyBase > 0) {
+        const lowEstimate = monthlyBase * CUSTOM_SPEND_SAVINGS_RANGE.low;
+        const highEstimate = monthlyBase * CUSTOM_SPEND_SAVINGS_RANGE.high;
+        setCustomSpendSavingsModal({
+          visible: true,
+          title: registrationData.customSpendTitle.trim(),
+          lowLabel: formatCurrency(lowEstimate, currencyCode, { friendly: true }),
+          highLabel: formatCurrency(highEstimate, currencyCode, { friendly: true }),
+        });
+        return;
+      }
+    }
     goToOnboardingStep("baseline");
   };
 
@@ -31578,7 +31934,7 @@ useEffect(() => {
         ...prev,
         goalTargetConfirmed: [],
       }));
-      await handleGoalComplete(null);
+      goToOnboardingStep("register");
       return;
     }
     const currencyCode = registrationData.currency || DEFAULT_PROFILE.currency;
@@ -31599,7 +31955,7 @@ useEffect(() => {
       ...prev,
       goalTargetConfirmed: selections.slice(),
     }));
-    await handleGoalComplete(targets);
+    goToOnboardingStep("register");
   };
 
   const handleGoalTargetDraftChange = (goalId, value) => {
@@ -31617,7 +31973,7 @@ useEffect(() => {
     if (!selections.length) {
       triggerHaptic();
       logEvent("onboarding_goal_skipped", { method: "empty_selection" });
-      await handleGoalComplete(null);
+      goToOnboardingStep("register");
       return;
     }
     const currentMap = registrationData.goalTargetMap || {};
@@ -31672,7 +32028,7 @@ useEffect(() => {
         : prev.goalTargetMap || {},
       goalTargetConfirmed: selections.slice(),
     }));
-    await handleGoalComplete(targets);
+    goToOnboardingStep("register");
   };
   const handleGoalStageSkip = async () => {
     triggerHaptic();
@@ -31684,12 +32040,19 @@ useEffect(() => {
       goalTargetMap: {},
       goalTargetConfirmed: [],
     }));
-    await handleGoalComplete(null);
+    goToOnboardingStep("register");
   };
 
   const handleGoalComplete = async (targetsOverride = null) => {
     const selections = registrationData.goalSelections || [];
     const currencyCode = registrationData.currency || DEFAULT_PROFILE.currency;
+    const isValidGoalSelection = (goalId) => {
+      if (!goalId) return false;
+      if (getGoalPreset(goalId)) return true;
+      const customGoal = customGoalMap[goalId];
+      const customTitle = typeof customGoal?.title === "string" ? customGoal.title.trim() : "";
+      return !!customTitle;
+    };
     const dedupeTargetsById = (list = []) => {
       const map = new Map();
       list.forEach((entry) => {
@@ -31701,18 +32064,19 @@ useEffect(() => {
     };
     let targets = [];
     if (Array.isArray(targetsOverride)) {
-      targets = targetsOverride;
+      targets = targetsOverride.filter((entry) => isValidGoalSelection(entry?.id));
     } else if (selections.length) {
       targets = selections.map((goalId) => {
+        if (!isValidGoalSelection(goalId)) return null;
         const draftValue = registrationData.goalTargetMap?.[goalId];
         const parsedLocal = parseNumberInputValue(draftValue || "");
         const usd = Number.isFinite(parsedLocal) && parsedLocal > 0
           ? convertFromCurrency(parsedLocal, currencyCode)
           : getGoalDefaultTargetUSD(goalId);
         return { id: goalId, usd };
-      });
+      }).filter(Boolean);
     }
-    targets = dedupeTargetsById(targets);
+    targets = dedupeTargetsById(targets).filter((entry) => isValidGoalSelection(entry?.id));
     const primaryGoals = targets.map((entry) => {
       const goalId = entry.id;
       const targetUSD = entry.usd > 0 ? entry.usd : getGoalDefaultTargetUSD(goalId);
@@ -32259,6 +32623,56 @@ useEffect(() => {
     [cancelSameDaySmartReminders, registerSmartReminder, setChallengesState]
   );
 
+  const registerUsageStreakAction = useCallback((actionType = "save", timestamp = Date.now()) => {
+    const dayKey = getDayKey(timestamp);
+    if (!dayKey) return;
+    const normalizedAction = actionType === "spend" ? "spend" : "save";
+    const prev = usageStreakRef.current || INITIAL_USAGE_STREAK;
+    const lastDate = prev?.lastDate || null;
+    if (lastDate === dayKey) return;
+    const yesterdayKey = getDayKey(timestamp - DAY_MS);
+    const previousCount = Math.max(0, Number(prev?.current) || 0);
+    const prevLostCount = Math.max(0, Number(prev?.lostCount) || 0);
+    const lossCount = previousCount > 0 ? previousCount : prevLostCount;
+    const missed = Boolean(lastDate && lastDate !== yesterdayKey && lossCount > 0);
+    const continues = lastDate === yesterdayKey;
+    const nextCurrent = continues ? Math.max(1, previousCount + 1) : 1;
+    const nextBest = Math.max(prev.best || 0, nextCurrent);
+    const nextTotal = Math.max(0, prev.total || 0) + 1;
+    const nextSnapshot = {
+      ...prev,
+      current: nextCurrent,
+      best: nextBest,
+      total: nextTotal,
+      lastDate: dayKey,
+      lostCount: missed ? lossCount : 0,
+    };
+    usageStreakRef.current = nextSnapshot;
+    setUsageStreak(nextSnapshot);
+    usageStreakBackfillRef.current = false;
+    const streakEndDayKey =
+      missed && typeof lastDate === "string" && lastDate ? lastDate : nextSnapshot.lastDate;
+    const missedDayKey =
+      missed && streakEndDayKey
+        ? getDayKey((parseDayKey(streakEndDayKey)?.getTime() || timestamp) + DAY_MS)
+        : null;
+    const missedDays = missed ? getMissedUsageStreakDays(streakEndDayKey, dayKey) : 0;
+    pendingUsageStreakRef.current = {
+      source: normalizedAction,
+      payload: {
+        count: nextSnapshot.current,
+        dayKey: nextSnapshot.lastDate,
+        streakEndDayKey,
+        timestamp,
+        missed,
+        previousCount,
+        missedDayKey,
+        missedDays,
+        lostCount: lossCount,
+      },
+    };
+  }, []);
+
   const promptIncomeSavingsTransfer = useCallback(
     (amountUSD = 0) => {
       const depositUSD = Math.max(0, Number(amountUSD) || 0) * INCOME_SAVINGS_SHARE;
@@ -32358,85 +32772,6 @@ useEffect(() => {
         } else if (entry.kind === "pending_to_decline") {
           resolvedToDeclines += 1;
         }
-      });
-      const chronologicalEntries = (Array.isArray(list) ? list : [])
-        .filter((entry) => entry?.meta?.templateId && Number.isFinite(entry.timestamp))
-        .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-      const streakTracker = {};
-      chronologicalEntries.forEach((entry) => {
-        const templateId = entry.meta.templateId;
-        const prev = streakTracker[templateId] || {
-          current: 0,
-          best: 0,
-          lastAction: null,
-          lostAt: null,
-          recoverable: 0,
-          recoverableAmountUSD: 0,
-        };
-        if (entry.kind === "refuse_spend") {
-          const nextCurrent = prev.lastAction === "save" ? prev.current + 1 : 1;
-          streakTracker[templateId] = {
-            current: nextCurrent,
-            best: Math.max(prev.best, nextCurrent),
-            lastAction: "save",
-            lostAt: null,
-            recoverable: 0,
-            recoverableAmountUSD: 0,
-          };
-        } else if (entry.kind === "spend") {
-          const previousRecoverable =
-            prev.lastAction === "save" ? prev.current : prev.recoverable || 0;
-          const spendAmountUSD = Math.max(0, Number(entry.meta?.amountUSD) || 0);
-          streakTracker[templateId] = {
-            current: 0,
-            best: Math.max(prev.best, prev.current),
-            lastAction: "spend",
-            lostAt: entry.timestamp || null,
-            recoverable: previousRecoverable,
-            recoverableAmountUSD: spendAmountUSD || prev.recoverableAmountUSD || 0,
-          };
-        } else if (entry.kind === "streak_restore") {
-          const restoredValue = Math.max(
-            0,
-            Number(entry.meta?.restoredStreak) ||
-              prev.recoverable ||
-              prev.current ||
-              0
-          );
-          streakTracker[templateId] = {
-            current: restoredValue,
-            best: Math.max(prev.best, restoredValue),
-            lastAction: "save",
-            lostAt: null,
-            recoverable: 0,
-            recoverableAmountUSD: 0,
-          };
-        } else {
-          streakTracker[templateId] = prev;
-        }
-      });
-      Object.entries(streakTracker).forEach(([templateId, streak]) => {
-        const base = nextRefuseStats[templateId] || {
-          count: 0,
-          totalUSD: 0,
-          lastSavedAt: 0,
-          lastSavedAmountUSD: 0,
-          recoverableStreak: 0,
-          recoverableAmountUSD: 0,
-        };
-        const recoverableStreakValue =
-          streak.lastAction === "spend" ? Math.max(streak.recoverable || 0, 0) : 0;
-        const recoverableAmountValue =
-          streak.lastAction === "spend" ? Math.max(streak.recoverableAmountUSD || 0, 0) : 0;
-        nextRefuseStats[templateId] = {
-          ...base,
-          currentStreak: streak.lastAction === "save" ? streak.current : 0,
-          bestStreak: Math.max(base.bestStreak || 0, streak.best),
-          lastAction: streak.lastAction,
-          streakLostAt: streak.lastAction === "spend" ? streak.lostAt : null,
-          recoverableStreak: recoverableStreakValue,
-          recoverableAmountUSD: recoverableAmountValue,
-        };
       });
       setDeclineCount(nextDeclines);
       setRefuseStats(nextRefuseStats);
@@ -32689,6 +33024,19 @@ useEffect(() => {
   useEffect(() => {
     recomputeHistoryAggregates(resolvedHistoryEvents);
   }, [resolvedHistoryEvents, recomputeHistoryAggregates]);
+  useEffect(() => {
+    if (!usageStreakHydrated || !historyHydrated) return;
+    if (!usageStreakBackfillRef.current) return;
+    const computed = computeUsageStreakFromHistory(resolvedHistoryEvents, Date.now());
+    setUsageStreak((prev) => ({
+      ...prev,
+      current: computed.current,
+      lastDate: computed.lastDate,
+      total: Math.max(prev.total || 0, computed.total || 0),
+      best: Math.max(prev.best || 0, computed.best || 0),
+    }));
+    usageStreakBackfillRef.current = false;
+  }, [historyHydrated, resolvedHistoryEvents, usageStreakHydrated]);
   const maybeTriggerNorthStarMetric = useCallback(() => {
     if (!northStarHydrated || !profileHydrated || northStarLoggedRef.current) return;
     if (!profileJoinedAt) return;
@@ -33093,6 +33441,14 @@ useEffect(() => {
       setStormActive(false);
     }, STORM_OVERLAY_DURATION_MS);
   }, [playSound]);
+  const stormActivePrevRef = useRef(false);
+  useEffect(() => {
+    const wasActive = stormActivePrevRef.current;
+    if (wasActive && !stormActive) {
+      queueUsageStreakOverlay("spend");
+    }
+    stormActivePrevRef.current = stormActive;
+  }, [queueUsageStreakOverlay, stormActive]);
   const recordTemptationInteraction = useCallback(
     (templateId, actionType, item = null, amountUSD = null) => {
       if (!templateId && !item?.id && !item?.templateId) return;
@@ -33345,45 +33701,6 @@ useEffect(() => {
     },
     [buildLegacyTemplateKeys]
   );
-  const normalizeLegacyRecoveryRefs = useCallback(
-    (templateId, item = null) => {
-      if (!templateId) return;
-      const keysToCheck = buildLegacyTemplateKeys(templateId, item);
-      keysToCheck.forEach((key) => {
-        if (!key || key === templateId) return;
-        if (pendingStreakRecoveryRef.current?.[key]) {
-          if (!pendingStreakRecoveryRef.current[templateId]) {
-            pendingStreakRecoveryRef.current[templateId] = pendingStreakRecoveryRef.current[key];
-          }
-          delete pendingStreakRecoveryRef.current[key];
-        }
-        if (streakRecoveryOverrideRef.current?.[key]) {
-          if (!streakRecoveryOverrideRef.current[templateId]) {
-            streakRecoveryOverrideRef.current[templateId] = streakRecoveryOverrideRef.current[key];
-          }
-          delete streakRecoveryOverrideRef.current[key];
-        }
-      });
-    },
-    [buildLegacyTemplateKeys]
-  );
-  const clearStreakRecoveryForTemptation = useCallback((templateId) => {
-    if (!templateId) return;
-    delete pendingStreakRecoveryRef.current?.[templateId];
-    delete streakRecoveryOverrideRef.current?.[templateId];
-    setRefuseStats((prev) => {
-      const current = prev?.[templateId];
-      if (!current) return prev;
-      return {
-        ...prev,
-        [templateId]: {
-          ...current,
-          recoverableStreak: 0,
-          recoverableAmountUSD: 0,
-        },
-      };
-    });
-  }, []);
   const queueCoinValueModal = useCallback(() => {
     const currentStatus = coinValueModalStatusRef.current;
     if (
@@ -33454,6 +33771,7 @@ useEffect(() => {
         templateId: templateId || item.id,
         category: spendCategory,
       });
+      registerUsageStreakAction("spend", Date.now());
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
       if (spendReducesSavings) {
         setSavedTotalUSD((prev) => Math.max(prev - priceUSD, 0));
@@ -33484,38 +33802,6 @@ useEffect(() => {
         };
         return next;
       });
-      setRefuseStats((prev) => {
-        if (!templateId) return prev;
-        const { entry: current, key: legacyKey } = getLegacyRefuseStatsEntry(prev, templateId, item);
-        if (!current) return prev;
-        const normalizedBest = Math.max(current.bestStreak || 0, current.currentStreak || 0);
-        const recoverableValue = Math.max(current.currentStreak || 0, 0);
-        if (recoverableValue > 0) {
-          pendingStreakRecoveryRef.current = {
-            ...(pendingStreakRecoveryRef.current || {}),
-            [templateId]: {
-              streak: recoverableValue,
-              amountUSD: priceUSD,
-            },
-          };
-        }
-        const next = {
-          ...prev,
-          [templateId]: {
-            ...current,
-            currentStreak: 0,
-            bestStreak: normalizedBest,
-            lastAction: "spend",
-            streakLostAt: Date.now(),
-            recoverableStreak: recoverableValue,
-            recoverableAmountUSD: priceUSD,
-          },
-        };
-        if (legacyKey && legacyKey !== templateId) {
-          delete next[legacyKey];
-        }
-        return next;
-      });
       if (!isEssentialSpendCategory) {
         logImpulseEvent("spend", item, priceUSD, title);
         requestMascotAnimation(Math.random() > 0.5 ? "sad" : "ohno");
@@ -33534,10 +33820,9 @@ useEffect(() => {
       logImpulseEvent,
       recordTemptationInteraction,
       registerFocusLoss,
+      registerUsageStreakAction,
       requestMascotAnimation,
       setFreeDayStats,
-      setRefuseStats,
-      getLegacyRefuseStatsEntry,
       setSavedTotalUSD,
       setProgressSavedTotalUSD,
       resolveTemptationCategory,
@@ -33581,10 +33866,16 @@ useEffect(() => {
       updateRatingPromptState((prev) => {
         if (prev.completed || prev.actionPrompted) return prev;
         const nextCount = Math.max(0, Number(prev.actionCount) || 0) + 1;
-        return { ...prev, actionCount: nextCount };
+        const hasBase = Number.isFinite(prev.actionCountStart);
+        const nextBase = hasBase
+          ? prev.actionCountStart
+          : ratingPromptActionGateReady
+          ? Math.max(0, Number(prev.actionCount) || 0)
+          : prev.actionCountStart;
+        return { ...prev, actionCount: nextCount, actionCountStart: nextBase };
       });
     },
-    [ratingPromptHydrated, updateRatingPromptState]
+    [ratingPromptActionGateReady, ratingPromptHydrated, updateRatingPromptState]
   );
 
   const logTemptationAction = useCallback(
@@ -34023,8 +34314,6 @@ useEffect(() => {
         shouldAssign = false,
         pinnedBy = null,
         bypassSpendPrompt = false,
-        skipStreakRecoveryPrompt = false,
-        restoredStreakValue = null,
         forceOverlay = false,
         forcePrimaryGoal = false,
         amountUSD: overrideAmountUSD = null,
@@ -34164,49 +34453,8 @@ useEffect(() => {
         return;
       }
       if (type === "save") {
-        if (templateId) {
-          normalizeLegacyRecoveryRefs(templateId, item);
-        }
-        const { entry: resolvedStreakStats } = getLegacyRefuseStatsEntry(refuseStats, templateId, item);
-        const streakStatsEntry = resolvedStreakStats || {};
-        const overrideEntry = templateId ? streakRecoveryOverrideRef.current?.[templateId] : null;
-        const restoredStreakOverride =
-          restoredStreakValue !== null && restoredStreakValue !== undefined
-            ? restoredStreakValue
-            : overrideEntry?.streak ?? null;
-        const pendingRecovery = templateId ? pendingStreakRecoveryRef.current?.[templateId] : null;
-        const recoverableStreak =
-          streakStatsEntry.recoverableStreak ||
-          pendingRecovery?.streak ||
-          0;
-        const recoverableAmountUSD =
-          streakStatsEntry.recoverableAmountUSD ||
-          pendingRecovery?.amountUSD ||
-          0;
-        const lastStreakAction =
-          streakStatsEntry.lastAction || (pendingRecovery ? "spend" : null);
-        if (!skipStreakRecoveryPrompt && restoredStreakOverride == null) {
-          const hasRecoverableStreak =
-            lastStreakAction === "spend" && recoverableStreak >= 2;
-          if (hasRecoverableStreak) {
-            const recoveryUSD = recoverableAmountUSD || priceUSD;
-            const coinCost = computeStreakRecoveryCost(recoveryUSD);
-            const nextOptions = { ...options, skipStreakRecoveryPrompt: true };
-            const fallbackTemplateId =
-              templateId || (isCustomTemptation(item) ? profile.customSpend?.id || "custom_habit" : null);
-            setStreakRecoveryPrompt({
-              visible: true,
-              item,
-              templateId: fallbackTemplateId,
-              coinCost,
-              options: nextOptions,
-              recoverableStreak,
-              recoverableAmountUSD: recoveryUSD,
-              errorMessage: "",
-            });
-            return;
-          }
-        }
+        const { entry: resolvedRefuseStats } = getLegacyRefuseStatsEntry(refuseStats, templateId, item);
+        const refuseStatsEntry = resolvedRefuseStats || {};
         const saveTimestamp = Date.now();
         // Previously we blocked rapid repeated saves; removed to keep progress updating every time.
         const storedGoalId = resolveTemptationGoalId(templateId);
@@ -34237,7 +34485,6 @@ useEffect(() => {
             visible: true,
             item,
             intent: "save",
-            streakRecoveryValue: restoredStreakOverride ?? null,
             amountUSD: priceUSD,
           });
           return;
@@ -34664,31 +34911,14 @@ useEffect(() => {
           const current = currentEntry || {};
           const count = (current.count || 0) + 1;
           const totalUSD = (current.totalUSD || 0) + priceUSD;
-          const previousStreak =
-            restoredStreakOverride !== null
-              ? restoredStreakOverride
-              : current.lastAction === "save"
-              ? current.currentStreak || 0
-              : 0;
-          const currentStreak = previousStreak + 1;
-          const bestStreak = Math.max(current.bestStreak || 0, currentStreak);
-          if (pendingStreakRecoveryRef.current?.[templateId]) {
-            delete pendingStreakRecoveryRef.current[templateId];
-          }
           const next = {
             ...prev,
             [templateId]: {
               ...current,
               count,
               totalUSD,
-              lastSavedAt: timestamp,
+              lastSavedAt: saveTimestamp,
               lastSavedAmountUSD: priceUSD,
-              currentStreak,
-              bestStreak,
-              lastAction: "save",
-              streakLostAt: null,
-              recoverableStreak: 0,
-              recoverableAmountUSD: 0,
             },
           };
           if (legacyKey && legacyKey !== templateId) {
@@ -34696,9 +34926,6 @@ useEffect(() => {
           }
           return next;
         });
-        if (templateId && streakRecoveryOverrideRef.current?.[templateId]) {
-          delete streakRecoveryOverrideRef.current[templateId];
-        }
         logHistoryEvent("refuse_spend", {
           title,
           amountUSD: priceUSD,
@@ -34708,7 +34935,7 @@ useEffect(() => {
           currency: profile.currency || DEFAULT_PROFILE.currency,
           category: resolvedCategory,
         });
-        const refuseStatsEntry = streakStatsEntry || {};
+        registerUsageStreakAction("save", saveTimestamp);
         logEvent(
           "temptation_save",
           buildTemptationPayload(item, {
@@ -34791,6 +35018,7 @@ useEffect(() => {
       thinkingUnlocked,
       schedulePendingReminder,
       logHistoryEvent,
+      registerUsageStreakAction,
       triggerCardFeedback,
       triggerCoinHaptics,
       buildTemptationPayload,
@@ -34827,9 +35055,7 @@ useEffect(() => {
       triggerStormEffect,
       recordTemptationInteraction,
       triggerOverlayState,
-      clearStreakRecoveryForTemptation,
       getLegacyRefuseStatsEntry,
-      normalizeLegacyRecoveryRefs,
       queueHomeSpeech,
       lastCelebratedLevel,
       lifetimeSavedUSD,
@@ -34837,7 +35063,6 @@ useEffect(() => {
       healthPoints,
       setHealthPoints,
       setProgressSavedTotalUSD,
-      setStreakRecoveryPrompt,
       resolveTemptationCategory,
       resolveTemptationTemplateId,
       dismissStormEffect,
@@ -35199,143 +35424,11 @@ useEffect(() => {
     [language, removeCategory, t]
   );
 
-  const handleStreakRecoveryDecline = useCallback(() => {
-    const { item, options, templateId } = streakRecoveryPrompt;
-    if (!item) {
-      hideStreakRecoveryPrompt();
-      return;
-    }
-    const resolvedTemplateId = resolveTemptationTemplateId(item, templateId);
-    if (resolvedTemplateId) {
-      normalizeLegacyRecoveryRefs(resolvedTemplateId, item);
-      clearStreakRecoveryForTemptation(resolvedTemplateId);
-      setRefuseStats((prev) => {
-        const { entry: currentEntry, key: legacyKey } = getLegacyRefuseStatsEntry(prev, resolvedTemplateId, item);
-        const current = currentEntry || prev?.[resolvedTemplateId];
-        if (!current) return prev;
-        const next = {
-          ...prev,
-          [resolvedTemplateId]: {
-            ...current,
-            currentStreak: 0,
-            lastAction: "spend",
-            recoverableStreak: 0,
-            recoverableAmountUSD: 0,
-            streakLostAt: Date.now(),
-          },
-        };
-        if (legacyKey && legacyKey !== resolvedTemplateId) {
-          delete next[legacyKey];
-        }
-        return next;
-      });
-    }
-    hideStreakRecoveryPrompt();
-    handleTemptationAction("save", item, options || {});
-  }, [
-    clearStreakRecoveryForTemptation,
-    getLegacyRefuseStatsEntry,
-    handleTemptationAction,
-    hideStreakRecoveryPrompt,
-    normalizeLegacyRecoveryRefs,
-    resolveTemptationTemplateId,
-    setRefuseStats,
-    streakRecoveryPrompt,
-  ]);
-
-  const handleStreakRecoveryConfirm = useCallback(() => {
-    const {
-      item,
-      options,
-      coinCost,
-      recoverableStreak,
-      recoverableAmountUSD,
-      templateId,
-    } = streakRecoveryPrompt;
-    if (!item) {
-      hideStreakRecoveryPrompt();
-      return;
-    }
-    const resolvedTemplateId = resolveTemptationTemplateId(item, templateId);
-    if (!resolvedTemplateId) {
-      hideStreakRecoveryPrompt();
-      return;
-    }
-    if (healthPoints < coinCost) {
-      setStreakRecoveryPrompt((prev) => ({
-        ...prev,
-        errorMessage: t("streakRecoveryInsufficient", { coins: prev.coinCost }),
-      }));
-      return;
-    }
-    setHealthPoints((prev) => Math.max(prev - coinCost, 0));
-    streakRestoreSoundPendingRef.current = true;
-    const restoredValue = Math.max(recoverableStreak || 0, 0);
-    const recoveryAmountUSD = Math.max(Number(recoverableAmountUSD) || 0, 0);
-    normalizeLegacyRecoveryRefs(resolvedTemplateId, item);
-    streakRecoveryOverrideRef.current[resolvedTemplateId] = { streak: restoredValue };
-    setRefuseStats((prev) => {
-      const { entry: current, key: legacyKey } = getLegacyRefuseStatsEntry(prev, resolvedTemplateId, item);
-      if (!current) return prev;
-      const restoredCurrent = Math.max(
-        recoverableStreak || current.recoverableStreak || 0,
-        0
-      );
-      const next = {
-        ...prev,
-        [resolvedTemplateId]: {
-          ...current,
-          currentStreak: restoredCurrent,
-          lastAction: "save",
-          recoverableStreak: 0,
-          recoverableAmountUSD: 0,
-        },
-      };
-      if (legacyKey && legacyKey !== resolvedTemplateId) {
-        delete next[legacyKey];
-      }
-      return next;
-    });
-    if (pendingStreakRecoveryRef.current?.[resolvedTemplateId]) {
-      delete pendingStreakRecoveryRef.current[resolvedTemplateId];
-    }
-    logHistoryEvent("streak_restore", {
-      templateId: resolvedTemplateId,
-      restoredStreak: restoredValue,
-      amountUSD: recoveryAmountUSD,
-      coinCost,
-    });
-    hideStreakRecoveryPrompt();
-    const nextOptions = {
-      ...(options || {}),
-      skipStreakRecoveryPrompt: true,
-      restoredStreakValue: restoredValue,
-    };
-    handleTemptationAction("save", item, nextOptions);
-  }, [
-    getLegacyRefuseStatsEntry,
-    handleTemptationAction,
-    healthPoints,
-    hideStreakRecoveryPrompt,
-    normalizeLegacyRecoveryRefs,
-    pendingStreakRecoveryRef,
-    playSound,
-    resolveTemptationTemplateId,
-    streakRecoveryOverrideRef,
-    setHealthPoints,
-    setRefuseStats,
-    setStreakRecoveryPrompt,
-    streakRecoveryPrompt,
-    t,
-    logHistoryEvent,
-  ]);
-
   const closeGoalLinkPrompt = useCallback(() => {
     setGoalLinkPrompt({
       visible: false,
       item: null,
       intent: null,
-      streakRecoveryValue: null,
       amountUSD: null,
     });
   }, []);
@@ -35344,7 +35437,6 @@ useEffect(() => {
     (wishId) => {
       const sourceItem = goalLinkPrompt.item;
       const intent = goalLinkPrompt.intent;
-      const streakRecoveryValue = goalLinkPrompt.streakRecoveryValue;
       const amountUSD = goalLinkPrompt.amountUSD;
       const templateId = resolveTemptationTemplateId(sourceItem);
       closeGoalLinkPrompt();
@@ -35354,7 +35446,6 @@ useEffect(() => {
           skipPrompt: true,
           goalId: wishId,
           shouldAssign: true,
-          restoredStreakValue: streakRecoveryValue ?? null,
           amountUSD,
         });
         return;
@@ -36719,6 +36810,12 @@ useEffect(() => {
         ? 3200
         : next.type === "save"
         ? null
+        : next.type === "usage_streak"
+        ? null
+        : next.type === "streak_pledge"
+        ? null
+        : next.type === "streak_pledge_reward"
+        ? null
         : next.type === "impulse_alert"
         ? null
         : next.type === "focus_digest"
@@ -36772,6 +36869,7 @@ useEffect(() => {
     },
     [blockingModalVisible, overlayEnvironmentReady, processOverlayQueue, scheduleOverlayRetry]
   );
+  triggerOverlayStateRef.current = triggerOverlayState;
 
   const scheduleCelebrationOverlay = useCallback(() => {
     if (celebrationGapTimerRef.current) return;
@@ -37146,6 +37244,112 @@ useEffect(() => {
     triggerOverlayState("purchase", messages[Math.floor(Math.random() * messages.length)]);
   };
 
+  const handleStreakPledgeConfirm = useCallback(
+    (option, payloadOverride) => {
+      if (!option) return;
+      const targetDays = Math.max(0, Number(option.days) || 0);
+      if (!targetDays) return;
+      const payload =
+        payloadOverride && typeof payloadOverride === "object"
+          ? payloadOverride
+          : overlay?.message && typeof overlay.message === "object"
+          ? overlay.message
+          : {};
+      const streakCount = Math.max(
+        1,
+        Number(payload?.streakCount) || Number(usageStreakRef.current?.current) || 1
+      );
+      const startDayKey =
+        typeof payload?.dayKey === "string" ? payload.dayKey : getDayKey(Date.now());
+      const computed = computeStreakPledgeReward(targetDays);
+      const rewardBlueCoins = computed.blueCoins;
+      const rewardValue = computed.rewardValue;
+      setStreakPledge((prev) => ({
+        ...prev,
+        status: STREAK_PLEDGE_STATUS.ACTIVE,
+        targetDays,
+        startCount: streakCount,
+        startDayKey,
+        rewardBlueCoins,
+        rewardValue,
+        rewardPending: false,
+        rewardDeliveredAt: 0,
+        introSeen: true,
+        lastPromptDayKey: getDayKey(Date.now()),
+      }));
+      logEvent("streak_goal_selected", {
+        target_days: targetDays,
+        start_count: streakCount,
+        reward_blue: rewardBlueCoins,
+        reward_value: rewardValue,
+      });
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+      dismissOverlay();
+    },
+    [dismissOverlay, logEvent, overlay?.message, setStreakPledge]
+  );
+
+  const handleStreakPledgeDismiss = useCallback(() => {
+    const todayKey = getDayKey(Date.now());
+    setStreakPledge((prev) => ({
+      ...prev,
+      introSeen: true,
+      lastPromptDayKey: todayKey,
+    }));
+    logEvent("streak_goal_prompt_dismissed", { day_key: todayKey });
+    dismissOverlay();
+  }, [dismissOverlay, logEvent, setStreakPledge]);
+
+  const handleUsageStreakPress = useCallback(
+    (payload) => {
+      if (!payload || typeof payload !== "object") return;
+      ensureOverlayEnvironmentReady();
+      triggerOverlayState("usage_streak", payload);
+      queueStreakPledgeFollowUps(payload);
+    },
+    [ensureOverlayEnvironmentReady, queueStreakPledgeFollowUps, triggerOverlayState]
+  );
+
+  const handleUsageStreakRestore = useCallback(
+    (restoreData) => {
+      if (!restoreData || typeof restoreData !== "object") return;
+      const lostCount = Math.max(0, Number(restoreData.lostCount) || 0);
+      const todayKey = getDayKey(Date.now());
+      const computedMissed = getMissedUsageStreakDays(restoreData.streakEndDayKey, todayKey);
+      const missedDays = Math.max(
+        0,
+        Math.floor(Number(restoreData.missedDays) || computedMissed || 0)
+      );
+      if (!lostCount || !missedDays) return;
+      const costBlueCount = missedDays * STREAK_RESTORE_BLUE_COINS_PER_DAY;
+      const costValue = missedDays * STREAK_RESTORE_COST_PER_DAY;
+      if (healthPoints < costValue) return;
+      const yesterdayKey = getDayKey(Date.now() - DAY_MS);
+      const hasLoggedToday = !!restoreData.hasLoggedToday;
+      const nextCurrent = lostCount + missedDays + (hasLoggedToday ? 1 : 0);
+      const nextLastDate = hasLoggedToday ? todayKey : yesterdayKey;
+      setHealthPoints((prev) => Math.max(0, prev - costValue));
+      setUsageStreak((prev) => ({
+        ...prev,
+        current: nextCurrent,
+        best: Math.max(prev?.best || 0, nextCurrent),
+        total: Math.max(0, Number(prev?.total) || 0) + missedDays,
+        lastDate: nextLastDate,
+        lostCount: 0,
+      }));
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+      playSound?.("coin");
+      dismissOverlay();
+      logEvent("usage_streak_restored", {
+        missed_days: missedDays,
+        cost_blue: costBlueCount,
+        cost_value: costValue,
+        current_streak: nextCurrent,
+      });
+    },
+    [dismissOverlay, healthPoints, logEvent, playSound]
+  );
+
   const handleLevelCelebrate = useCallback(
     (level, levelsEarned = 1) => {
       ensureOverlayEnvironmentReady();
@@ -37270,6 +37474,7 @@ useEffect(() => {
       const levelsEarned = playerLevel - previousLevel;
       if (overlay?.type === "save") {
         dismissOverlay({ clearQueue: false });
+        queueUsageStreakOverlay("save");
       }
       logEvent("savings_level_up", {
         level: playerLevel,
@@ -37293,6 +37498,7 @@ useEffect(() => {
     persistLastCelebratedLevel,
     playerLevel,
     queueHomeSpeech,
+    queueUsageStreakOverlay,
     runPendingLevelCelebration,
     progressSavedTotalUSD,
   ]);
@@ -37560,6 +37766,11 @@ useEffect(() => {
             setEmojiOverrides({});
             setQuickTemptations([]);
             setFreeDayStats({ ...INITIAL_FREE_DAY_STATS });
+            setUsageStreak({ ...INITIAL_USAGE_STREAK });
+            setUsageStreakHydrated(true);
+            usageStreakBackfillRef.current = false;
+            setStreakPledge({ ...INITIAL_STREAK_PLEDGE });
+            setStreakPledgeHydrated(true);
             setDecisionStats({ ...INITIAL_DECISION_STATS });
             setHistoryEvents([]);
             setIncomeEntries([]);
@@ -37983,6 +38194,8 @@ useEffect(() => {
             colors={colors}
             currency={profile.currency || DEFAULT_PROFILE.currency}
             freeDayStats={freeDayStats}
+            usageStreak={usageStreak}
+            onUsageStreakPress={handleUsageStreakPress}
             onFreeDayLog={handleLogFreeDay}
             goalAssignments={temptationGoalMap}
             analyticsStats={analyticsStats}
@@ -38157,6 +38370,7 @@ useEffect(() => {
           onContinue={handleGuideContinue}
           onBack={onboardingBackHandler}
           onSkip={onboardingSkipHandler}
+          mascotSpeakSource={tamagotchiAnimations.speak}
           bottomInset={androidNavInset}
         />
       );
@@ -38345,6 +38559,15 @@ useEffect(() => {
           onAccept={handleTermsAccept}
           onCancel={handleTermsCancel}
           onOpenLink={handleTermsLinkOpen}
+        />
+        <CustomSpendSavingsModal
+          visible={customSpendSavingsModal.visible}
+          colors={colors}
+          t={t}
+          title={customSpendSavingsModal.title}
+          lowLabel={customSpendSavingsModal.lowLabel}
+          highLabel={customSpendSavingsModal.highLabel}
+          onContinue={handleCustomSpendSavingsContinue}
         />
       </>
     );
@@ -39934,7 +40157,6 @@ useEffect(() => {
                           visible: true,
                           item: priceEditor.item,
                           intent: "edit",
-                          streakRecoveryValue: null,
                           amountUSD: null,
                         });
                       }}
@@ -40147,6 +40369,9 @@ useEffect(() => {
           overlay.type !== "reward" &&
           overlay.type !== "daily_reward" &&
           overlay.type !== "health" &&
+          overlay.type !== "usage_streak" &&
+          overlay.type !== "streak_pledge" &&
+          overlay.type !== "streak_pledge_reward" &&
           overlay.type !== "focus_reward" &&
           overlay.type !== "goal_complete" &&
           overlay.type !== "impulse_alert" &&
@@ -40499,6 +40724,58 @@ useEffect(() => {
             </TouchableWithoutFeedback>
           </Modal>
         )}
+        {overlay?.type === "usage_streak" && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View style={styles.overlayFullScreen}>
+                <UsageStreakCelebration
+                  colors={colors}
+                  payload={overlay.message}
+                  t={t}
+                  language={language}
+                  mascotHappySource={tamagotchiAnimations.happy}
+                  healthPoints={healthPoints}
+                  onRestore={handleUsageStreakRestore}
+                />
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+        {overlay?.type === "streak_pledge_reward" && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View style={styles.overlayFullScreen}>
+                <StreakPledgeRewardCelebration
+                  colors={colors}
+                  payload={overlay.message}
+                  t={t}
+                  language={language}
+                  onClose={dismissOverlay}
+                />
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+        {overlay?.type === "streak_pledge" && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={handleStreakPledgeDismiss}>
+              <View style={styles.overlayFullScreen}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <StreakPledgePrompt
+                    colors={colors}
+                    payload={overlay.message}
+                    t={t}
+                    language={language}
+                    options={STREAK_PLEDGE_OPTIONS}
+                    mascotHappySource={tamagotchiAnimations.happy}
+                    onConfirm={handleStreakPledgeConfirm}
+                    onDismiss={handleStreakPledgeDismiss}
+                  />
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
         {overlay?.type === "focus_reward" && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
@@ -40827,85 +41104,6 @@ useEffect(() => {
                       {t("priceEditCancel")}
                     </Text>
                   </TouchableOpacity>
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
-
-        <Modal
-          visible={streakRecoveryPrompt.visible}
-          transparent
-          animationType="fade"
-          statusBarTranslucent
-        >
-          <TouchableWithoutFeedback onPress={handleStreakRecoveryDecline}>
-            <View style={[styles.priceModalBackdrop, modalKeyboardPaddingStyle]}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View style={[styles.streakRecoveryCard, { backgroundColor: colors.card }]}>
-                  <Text style={[styles.streakRecoveryTitle, { color: colors.text }]}>
-                    {t("streakRecoveryTitle")}
-                  </Text>
-                  <Text style={[styles.streakRecoveryBody, { color: colors.muted }]}>
-                    {t("streakRecoveryBody", { coins: streakRecoveryPrompt.coinCost })}
-                  </Text>
-                  {Boolean(streakRecoveryPrompt.coinCost) && (
-                    <View style={styles.streakRecoveryCoinRow}>
-                      {BLUE_HEALTH_COIN_ASSET ? (
-                        <>
-                          {Array.from({
-                            length: Math.min(streakRecoveryPrompt.coinCost || 0, 6),
-                          }).map((_, index) => (
-                            <Image
-                              key={`recovery-coin-${index}`}
-                              source={BLUE_HEALTH_COIN_ASSET}
-                              style={styles.streakRecoveryCoinIcon}
-                            />
-                          ))}
-                          {streakRecoveryPrompt.coinCost > 6 ? (
-                            <Text style={[styles.streakRecoveryCoinOverflow, { color: colors.muted }]}>
-                              +{streakRecoveryPrompt.coinCost - 6}
-                            </Text>
-                          ) : null}
-                        </>
-                      ) : (
-                        <Text style={[styles.streakRecoveryCoinOverflow, { color: colors.text }]}>
-                          ×{streakRecoveryPrompt.coinCost}
-                        </Text>
-                      )}
-                    </View>
-                  )}
-                  {Boolean(streakRecoveryPrompt.errorMessage) && (
-                    <Text style={styles.streakRecoveryErrorText}>
-                      {streakRecoveryPrompt.errorMessage}
-                    </Text>
-                  )}
-                  <View style={styles.streakRecoveryActions}>
-                    <TouchableOpacity
-                      style={[
-                        styles.streakRecoveryButton,
-                        styles.streakRecoveryButtonSecondary,
-                        { borderColor: colors.border },
-                      ]}
-                      onPress={handleStreakRecoveryDecline}
-                    >
-                      <Text style={[styles.streakRecoveryButtonText, { color: colors.text }]}>
-                        {t("streakRecoveryDecline")}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.streakRecoveryButton,
-                        styles.streakRecoveryButtonPrimary,
-                        { backgroundColor: colors.text },
-                      ]}
-                      onPress={handleStreakRecoveryConfirm}
-                    >
-                      <Text style={[styles.streakRecoveryButtonText, { color: colors.background }]}>
-                        {t("streakRecoveryConfirm", { coins: streakRecoveryPrompt.coinCost })}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
                 </View>
               </TouchableWithoutFeedback>
             </View>
@@ -41802,15 +42000,41 @@ const styles = StyleSheet.create({
     ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
   },
   heroLevelBadge: {
-    alignSelf: "flex-start",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    marginTop: 16,
   },
   heroLevelBadgeText: {
     ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+  },
+  heroBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 16,
+    alignSelf: "flex-start",
+  },
+  heroStreakBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    minHeight: 26,
+  },
+  heroStreakEmoji: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  heroStreakEmojiLost: {
+    opacity: 0.35,
+  },
+  heroStreakBadgeText: {
+    ...createCtaText({ fontSize: 11 }),
+    lineHeight: 14,
   },
   heroLevelExpandedCard: {
     alignSelf: "stretch",
@@ -45826,28 +46050,6 @@ const styles = StyleSheet.create({
   temptationFocusBadgeText: {
     ...createCtaText({ fontSize: 11 }),
   },
-  temptationStreakBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    borderWidth: 1,
-    gap: 4,
-    minHeight: 22,
-  },
-  temptationStreakEmoji: {
-    fontSize: 12,
-  },
-  temptationStreakText: {
-    ...createCtaText({ fontSize: 10 }),
-  },
-  temptationStreakBadgeFloating: {
-    position: "absolute",
-    top: -26,
-    right: -2,
-    zIndex: 2,
-  },
   editPriceText: {
     fontSize: 13,
     fontWeight: "600",
@@ -47283,6 +47485,59 @@ const styles = StyleSheet.create({
   goalTargetHint: {
     fontSize: 12,
   },
+  onboardGuideHero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  onboardGuideHeroStacked: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+  },
+  onboardGuideMascotWrap: {
+    width: 92,
+    height: 92,
+    borderRadius: 24,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  onboardGuideMascot: {
+    width: "120%",
+    height: "120%",
+  },
+  onboardGuideBubbleWrap: {
+    flex: 1,
+    alignItems: "flex-start",
+  },
+  onboardGuideBubble: {
+    position: "relative",
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    shadowColor: "rgba(0,0,0,0.3)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  onboardGuideBubbleText: {
+    ...createBodyText({ fontSize: 18, lineHeight: 23 }),
+    fontWeight: "700",
+  },
+  onboardGuideBubbleTail: {
+    position: "absolute",
+    left: 18,
+    bottom: -6,
+    width: 12,
+    height: 12,
+    transform: [{ rotate: "45deg" }],
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderLeftWidth: 0,
+  },
   guideCards: {
     width: "100%",
     gap: 12,
@@ -47292,6 +47547,14 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
     gap: 8,
+  },
+  guideTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  guideEmojiInline: {
+    fontSize: 22,
   },
   guideEmoji: {
     fontSize: 28,
@@ -48075,6 +48338,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
+  quickModalHint: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
   quickModalActions: {
     flexDirection: "row",
     gap: 12,
@@ -48100,6 +48367,33 @@ const styles = StyleSheet.create({
   },
   quickModalPrimaryText: {
     ...createCtaText(),
+  },
+  savingsModalHero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  savingsModalBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#FFE7A3",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  savingsModalBadgeText: {
+    fontSize: 18,
+  },
+  savingsModalRange: {
+    width: "100%",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    alignItems: "center",
+  },
+  savingsModalRangeText: {
+    fontSize: 18,
+    fontWeight: "800",
   },
   frequencyPickerWrap: {
     width: "100%",
@@ -49180,6 +49474,409 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
+  streakPledgeOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  streakPledgeBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  streakPledgeCard: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 30,
+    borderWidth: 1,
+    padding: 22,
+    gap: 14,
+    alignItems: "stretch",
+  },
+  streakPledgeHeader: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 12,
+  },
+  streakPledgeBubble: {
+    flex: 1,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  streakPledgeBubbleText: {
+    ...createBodyText({ fontSize: 14, lineHeight: 20, fontWeight: "700" }),
+  },
+  streakPledgeBubbleTail: {
+    position: "absolute",
+    width: 14,
+    height: 14,
+    bottom: -6,
+    left: 28,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    transform: [{ rotate: "45deg" }],
+  },
+  streakPledgeMascot: {
+    width: 72,
+    height: 72,
+  },
+  streakPledgeSubtitle: {
+    ...createBodyText({ fontSize: 14, lineHeight: 20 }),
+  },
+  streakPledgeOptions: {
+    gap: 10,
+  },
+  streakPledgeOption: {
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  streakPledgeOptionRewardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  streakPledgeOptionLabel: {
+    ...createCtaText({ fontSize: 14 }),
+  },
+  streakPledgeOptionReward: {
+    ...createBodyText({ fontSize: 12, lineHeight: 16 }),
+  },
+  streakPledgeOptionRewardIcon: {
+    width: 18,
+    height: 18,
+    resizeMode: "contain",
+  },
+  streakPledgeOptionRewardIconFallback: {
+    fontSize: 14,
+  },
+  streakPledgePrimaryButton: {
+    borderRadius: 18,
+    paddingVertical: 12,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  streakPledgePrimaryText: {
+    ...createCtaText({ fontSize: 14 }),
+  },
+  streakPledgeSecondaryButton: {
+    alignItems: "center",
+    paddingVertical: 6,
+  },
+  streakPledgeSecondaryText: {
+    ...createCtaText({ fontSize: 13 }),
+  },
+  streakPledgeRewardOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  streakPledgeRewardBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  streakPledgeRewardCard: {
+    width: "86%",
+    maxWidth: 360,
+    borderRadius: 28,
+    borderWidth: 1,
+    padding: 22,
+    alignItems: "center",
+    gap: 10,
+  },
+  streakPledgeRewardHero: {
+    alignItems: "center",
+    gap: 6,
+  },
+  streakPledgeRewardCoinWrap: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  streakPledgeRewardCoin: {
+    width: 48,
+    height: 48,
+    resizeMode: "contain",
+  },
+  streakPledgeRewardCoinFallback: {
+    fontSize: 32,
+  },
+  streakPledgeRewardAmount: {
+    ...createCtaText({ fontSize: 28 }),
+  },
+  streakPledgeRewardLabel: {
+    ...createBodyText({ fontSize: 13, lineHeight: 18 }),
+  },
+  streakPledgeRewardTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 22,
+    textAlign: "center",
+  },
+  streakPledgeRewardSubtitle: {
+    ...createBodyText({ fontSize: 14, lineHeight: 20 }),
+    textAlign: "center",
+  },
+  streakPledgeRewardButton: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    marginTop: 6,
+  },
+  streakPledgeRewardButtonText: {
+    ...createCtaText({ fontSize: 14 }),
+  },
+  usageStreakOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  usageStreakBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  usageStreakCard: {
+    width: "100%",
+    maxWidth: 380,
+    borderRadius: 32,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: "center",
+    gap: 10,
+    overflow: "hidden",
+  },
+  usageStreakAura: {
+    position: "absolute",
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    top: -50,
+    right: -70,
+    opacity: 0.6,
+  },
+  usageStreakBubble: {
+    alignSelf: "stretch",
+    borderRadius: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    marginBottom: 4,
+  },
+  usageStreakBubbleText: {
+    ...createBodyText({ fontSize: 14, lineHeight: 20 }),
+  },
+  usageStreakBubbleTail: {
+    position: "absolute",
+    width: 14,
+    height: 14,
+    bottom: -6,
+    left: 30,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    transform: [{ rotate: "45deg" }],
+  },
+  usageStreakFlameWrap: {
+    width: 86,
+    height: 86,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 6,
+  },
+  usageStreakFlameGlow: {
+    position: "absolute",
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+  },
+  usageStreakFlame: {
+    fontSize: 46,
+  },
+  usageStreakSmoke: {
+    position: "absolute",
+    fontSize: 34,
+  },
+  usageStreakNumber: {
+    fontSize: IS_SHORT_DEVICE ? 76 : 96,
+    lineHeight: IS_SHORT_DEVICE ? 80 : 100,
+    fontWeight: "900",
+    letterSpacing: -1,
+    position: "absolute",
+  },
+  usageStreakNumberWrap: {
+    height: STREAK_COUNTER_DIGIT_HEIGHT + 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: -4,
+  },
+  usageStreakCounterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  usageStreakCounterDigit: {
+    width: STREAK_COUNTER_DIGIT_WIDTH,
+    height: STREAK_COUNTER_DIGIT_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  usageStreakCounterDigitSurface: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  usageStreakCounterDigitColumn: {
+    position: "absolute",
+    top: -4,
+    left: 0,
+    right: 0,
+    width: "100%",
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+  usageStreakCounterDigitText: {
+    fontSize: IS_SHORT_DEVICE ? 78 : 102,
+    lineHeight: STREAK_COUNTER_DIGIT_HEIGHT,
+    fontWeight: "900",
+    letterSpacing: -1,
+    fontVariant: ["tabular-nums"],
+    textAlign: "center",
+    width: "100%",
+  },
+  usageStreakCounterDigitDivider: {
+    position: "absolute",
+    height: 2,
+    left: 6,
+    right: 6,
+    top: STREAK_COUNTER_DIGIT_HEIGHT / 2 - 1,
+    backgroundColor: "rgba(0,0,0,0.12)",
+    opacity: 0.4,
+  },
+  usageStreakCounterSeparator: {
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  usageStreakCounterSeparatorText: {
+    fontSize: IS_SHORT_DEVICE ? 54 : 68,
+    fontWeight: "800",
+  },
+  usageStreakNumberLabel: {
+    fontSize: 18,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  usageStreakWeekRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  usageStreakWeekDay: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  usageStreakWeekGlow: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    borderRadius: 17,
+  },
+  usageStreakWeekLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  usageStreakRestoreCard: {
+    alignSelf: "stretch",
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginTop: 6,
+    gap: 6,
+  },
+  usageStreakRestoreTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  usageStreakRestoreSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: "center",
+  },
+  usageStreakRestoreCostRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  usageStreakRestoreCoin: {
+    width: 20,
+    height: 20,
+    resizeMode: "contain",
+  },
+  usageStreakRestoreCoinFallback: {
+    fontSize: 16,
+  },
+  usageStreakRestoreCostText: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  usageStreakRestoreButton: {
+    marginTop: 6,
+    paddingVertical: 8,
+    borderRadius: 18,
+    alignItems: "center",
+  },
+  usageStreakRestoreButtonDisabled: {
+    opacity: 0.55,
+  },
+  usageStreakRestoreButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  usageStreakRestoreButtonTextDisabled: {
+    opacity: 0.85,
+  },
+  usageStreakRestoreNeed: {
+    fontSize: 12,
+    textAlign: "center",
+  },
+  usageStreakMissedMark: {
+    position: "absolute",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  usageStreakCat: {
+    width: 160,
+    height: 130,
+    marginTop: 2,
+  },
+  usageStreakHint: {
+    ...createBodyText({ fontSize: 13, lineHeight: 18, textAlign: "center" }),
+  },
   levelCoin: {
     position: "absolute",
     borderRadius: 999,
@@ -49870,64 +50567,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: "center",
   },
-  streakRecoveryCard: {
-    width: "88%",
-    maxWidth: 360,
-    borderRadius: 28,
-    padding: 24,
-    gap: 14,
-    alignSelf: "center",
-  },
-  streakRecoveryTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  streakRecoveryBody: {
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: "center",
-  },
-  streakRecoveryCoinRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 6,
-  },
-  streakRecoveryCoinIcon: {
-    width: 32,
-    height: 32,
-    resizeMode: "contain",
-  },
-  streakRecoveryCoinOverflow: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  streakRecoveryErrorText: {
-    textAlign: "center",
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#D9381E",
-  },
-  streakRecoveryActions: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  streakRecoveryButton: {
-    flex: 1,
-    borderRadius: 18,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  streakRecoveryButtonSecondary: {
-    borderWidth: 1,
-  },
-  streakRecoveryButtonPrimary: {},
-  streakRecoveryButtonText: {
-    fontWeight: "700",
-  },
   goalOptionButton: {
     borderWidth: 1,
     borderRadius: 18,
@@ -50383,7 +51022,7 @@ function RegistrationScreen({
   const bottomInsetStyle = addBottomInsetStyle(styles.onboardContent, bottomInset);
   const swapActions = IS_SHORT_DEVICE && typeof onSkip === "function";
   const headerAction = swapActions ? (
-    <OnboardingHeaderAction label={t("nextButton")} onPress={onSubmit} colors={colors} />
+    <OnboardingHeaderAction label={t("goalButton")} onPress={onSubmit} colors={colors} />
   ) : null;
 
   return (
@@ -50466,7 +51105,7 @@ function RegistrationScreen({
           </TouchableOpacity>
         ) : (
           <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={onSubmit}>
-            <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("nextButton")}</Text>
+            <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("goalButton")}</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -50505,7 +51144,7 @@ function GoalScreen({
     onSubmit?.();
   }, [onSubmit]);
   const headerAction = swapActions ? (
-    <OnboardingHeaderAction label={t("goalButton")} onPress={handleSubmit} colors={colors} />
+    <OnboardingHeaderAction label={t("nextButton")} onPress={handleSubmit} colors={colors} />
   ) : null;
   const focusGoalTarget = useCallback((goalId) => {
     if (!goalId) return;
@@ -50531,7 +51170,7 @@ function GoalScreen({
   );
   const primaryAction = (
     <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.text }]} onPress={handleSubmit}>
-      <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("goalButton")}</Text>
+      <Text style={[styles.primaryButtonText, { color: colors.background }]}>{t("nextButton")}</Text>
     </TouchableOpacity>
   );
   const skipAction =
@@ -52945,6 +53584,73 @@ function OnboardingGoalModal({
   );
 }
 
+function CustomSpendSavingsModal({
+  visible,
+  colors,
+  t,
+  title,
+  lowLabel,
+  highLabel,
+  onContinue,
+}) {
+  const resolvedTitle = (title || "").trim() || t("customSpendTitle");
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onContinue}
+      statusBarTranslucent
+    >
+      <View style={styles.quickModalBackdrop}>
+        {visible && (
+          <ConfettiCannon
+            count={50}
+            origin={{ x: SCREEN_WIDTH / 2, y: -20 }}
+            fallSpeed={2800}
+            fadeOut
+          />
+        )}
+        <View style={[styles.quickModalCard, { backgroundColor: colors.card }]}>
+          <View style={styles.savingsModalHero}>
+            <View style={styles.savingsModalBadge}>
+              <Text style={styles.savingsModalBadgeText}>🎉</Text>
+            </View>
+            <Text style={[styles.quickModalTitle, { color: colors.text }]}>
+              {t("customSpendSavingsTitle")}
+            </Text>
+          </View>
+          <View style={[styles.savingsModalRange, { backgroundColor: colors.background }]}>
+            <Text style={[styles.savingsModalRangeText, { color: colors.text }]}>
+              {lowLabel} - {highLabel}
+            </Text>
+          </View>
+          <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>
+            {t("customSpendSavingsBody", {
+              title: resolvedTitle,
+              low: lowLabel,
+              high: highLabel,
+            })}
+          </Text>
+          <Text style={[styles.quickModalHint, { color: colors.muted }]}>
+            {t("customSpendSavingsHint")}
+          </Text>
+          <View style={styles.quickModalActions}>
+            <TouchableOpacity
+              style={[styles.quickModalPrimary, { backgroundColor: colors.text }]}
+              onPress={onContinue}
+            >
+              <Text style={[styles.quickModalPrimaryText, { color: colors.background }]}>
+                {t("customSpendSavingsCta")}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function TermsModal({ visible, colors, t, language, onAccept, onCancel, onOpenLink }) {
   const normalizedLanguage = normalizeLanguage(language);
   const points = TERMS_POINTS[normalizedLanguage] || TERMS_POINTS.en;
@@ -53057,7 +53763,15 @@ function OnboardingHeader({ onBack, onSkip, rightAction, colors, t }) {
   );
 }
 
-function HowItWorksScreen({ colors, t, onContinue, onBack, onSkip, bottomInset = 0 }) {
+function HowItWorksScreen({
+  colors,
+  t,
+  onContinue,
+  onBack,
+  onSkip,
+  bottomInset = 0,
+  mascotSpeakSource,
+}) {
   const fade = useFadeIn();
   const bottomInsetStyle = addBottomInsetStyle(
     [styles.onboardContent, styles.onboardGuideContent],
@@ -53067,6 +53781,9 @@ function HowItWorksScreen({ colors, t, onContinue, onBack, onSkip, bottomInset =
   const headerAction = swapActions ? (
     <OnboardingHeaderAction label={t("onboardingGuideButton")} onPress={onContinue} colors={colors} />
   ) : null;
+  const speakingSource =
+    mascotSpeakSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.speak || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
+  const heroLayoutStyle = [styles.onboardGuideHero, IS_SHORT_DEVICE && styles.onboardGuideHeroStacked];
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView
@@ -53080,7 +53797,34 @@ function HowItWorksScreen({ colors, t, onContinue, onBack, onSkip, bottomInset =
           colors={colors}
           t={t}
         />
-        <Text style={[styles.onboardTitleCompact, { color: colors.text }]}>{t("onboardingGuideTitle")}</Text>
+        <View style={heroLayoutStyle}>
+          <View
+            style={[
+              styles.onboardGuideMascotWrap,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <Image source={speakingSource} style={styles.onboardGuideMascot} />
+          </View>
+          <View style={styles.onboardGuideBubbleWrap}>
+            <View
+              style={[
+                styles.onboardGuideBubble,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.onboardGuideBubbleText, { color: colors.text }]}>
+                {t("onboardingGuideTitle")}
+              </Text>
+              <View
+                style={[
+                  styles.onboardGuideBubbleTail,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              />
+            </View>
+          </View>
+        </View>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("onboardingGuideSubtitle")}</Text>
         <View style={styles.guideCards}>
           {HOW_IT_WORKS_STEPS.map((step) => (
@@ -53094,8 +53838,12 @@ function HowItWorksScreen({ colors, t, onContinue, onBack, onSkip, bottomInset =
                 },
               ]}
             >
-              <Text style={styles.guideEmoji}>{step.emoji}</Text>
-              <Text style={[styles.guideTitle, { color: colors.text }]}>{t(step.titleKey)}</Text>
+              <View style={styles.guideTitleRow}>
+                <Text style={styles.guideEmojiInline}>{step.emoji}</Text>
+                <Text style={[styles.guideTitle, { color: colors.text }]} numberOfLines={1}>
+                  {t(step.titleKey)}
+                </Text>
+              </View>
               <Text style={[styles.guideDesc, { color: colors.muted }]}>{t(step.descKey)}</Text>
             </View>
           ))}
@@ -53485,11 +54233,23 @@ const getSaveCountdownCopy = (language, count) => {
 };
 
 const buildSaveCountdownSlots = (count, language) => {
-  const safeCount = Math.max(0, Number(count) || 0);
-  const formattedLocale = getFormatLocale(language);
-  let formattedValue =
-    safeCount >= 1000 ? safeCount.toLocaleString(formattedLocale) : safeCount.toString().padStart(3, "0");
-  formattedValue = formattedValue.replace(/\u202F/g, " ").replace(/\u00A0/g, " ");
+  const rawCount = Number(count);
+  const safeCount = Number.isFinite(rawCount) ? Math.max(0, rawCount) : 0;
+  const formattedLocale = getFormatLocale(language) || "en-US";
+  let formattedValue;
+  if (safeCount >= 1000) {
+    try {
+      formattedValue =
+        typeof safeCount.toLocaleString === "function"
+          ? safeCount.toLocaleString(formattedLocale)
+          : `${safeCount}`;
+    } catch (error) {
+      formattedValue = `${safeCount}`;
+    }
+  } else {
+    formattedValue = safeCount.toString().padStart(3, "0");
+  }
+  formattedValue = String(formattedValue).replace(/\u202F/g, " ").replace(/\u00A0/g, " ");
   return formattedValue.split("").map((char, index) => {
     if (/[0-9]/.test(char)) {
       return { type: "digit", value: Number(char), key: `digit_${index}_${char}` };
@@ -53498,6 +54258,20 @@ const buildSaveCountdownSlots = (count, language) => {
       return { type: "space", value: char, key: `space_${index}` };
     }
     return { type: "separator", value: char, key: `separator_${index}_${char}` };
+  });
+};
+
+const buildUsageStreakCounterSlots = (count, language) => {
+  const rawCount = Number(count);
+  const safeCount = Number.isFinite(rawCount) ? Math.max(0, rawCount) : 0;
+  const formattedLocale = getFormatLocale(language) || "en-US";
+  let formattedValue = safeCount >= 1000 ? safeCount.toLocaleString(formattedLocale) : `${safeCount}`;
+  formattedValue = String(formattedValue).replace(/\u202F/g, " ").replace(/\u00A0/g, " ");
+  return formattedValue.split("").map((char, index) => {
+    if (/[0-9]/.test(char)) {
+      return { type: "digit", value: Number(char), key: `streak_digit_${index}_${char}` };
+    }
+    return { type: "separator", value: char, key: `streak_separator_${index}_${char}` };
   });
 };
 
@@ -53550,7 +54324,9 @@ const SaveCelebration = forwardRef(
     const progressStart = rawProgressStart;
     const progressEnd =
       progressEnabled && rawProgressEnd === 0 ? MIN_PROGRESS_PULSE : rawProgressEnd;
-    const displayActions = Math.max(0, Number(remainingActions) || 0);
+    const displayActions = Number.isFinite(Number(remainingActions))
+      ? Math.max(0, Number(remainingActions))
+      : 0;
     const countdownSlots = useMemo(
       () => buildSaveCountdownSlots(displayActions, language),
       [displayActions, language]
@@ -53605,13 +54381,14 @@ const SaveCelebration = forwardRef(
         return;
       }
       digitsCompletedRef.current += 1;
-      triggerSelectionHaptic();
-      playCounterBurst();
+      if (digitsCompletedRef.current === 1) {
+        triggerSelectionHaptic();
+      }
       if (digitsCompletedRef.current >= digitCount) {
         setCountdownReady(true);
         triggerSuccessHaptic();
       }
-    }, [digitCount, playCounterBurst]);
+    }, [digitCount]);
     const progressWidth = progressValue.interpolate({
       inputRange: [0, 1],
       outputRange: [0, SAVE_PROGRESS_BAR_WIDTH],
@@ -53880,8 +54657,9 @@ const SaveCelebration = forwardRef(
       () => ({
         skipToCountdown: () => (countdownEnabled ? startCountdownPhase() : false),
         isCountdownActive: () => (countdownEnabled ? countdownActiveRef.current : false),
+        isCountdownReady: () => (countdownEnabled ? countdownReady : true),
       }),
-      [countdownEnabled, startCountdownPhase]
+      [countdownEnabled, countdownReady, startCountdownPhase]
     );
     return (
       <View style={styles.saveCelebrationOverlay} pointerEvents="none">
@@ -53967,7 +54745,7 @@ const SaveCelebration = forwardRef(
                 if (slot.type === "digit") {
                   return (
                     <SaveCounterDigit
-                      key={`${slot.key}-${countdownActive}`}
+                      key={slot.key}
                       index={index}
                       digit={slot.value}
                       delay={index * 110}
@@ -54004,7 +54782,7 @@ const SaveCelebration = forwardRef(
   }
 );
 
-const SaveCounterDigit = ({
+const SaveCounterDigit = React.memo(({
   digit = 0,
   delay = 0,
   active = false,
@@ -54019,6 +54797,7 @@ const SaveCounterDigit = ({
   const tiltProgress = useRef(new Animated.Value(0)).current;
   const shineProgress = useRef(new Animated.Value(0)).current;
   const loops = Math.max(1, SAVE_COUNTER_SPIN_LOOPS + index);
+  const hapticsEnabled = active && index === 0;
   const spinHapticTimeoutsRef = useRef([]);
   const spinHapticIntervalRef = useRef(null);
   const clearSpinHaptics = useCallback(() => {
@@ -54040,6 +54819,15 @@ const SaveCounterDigit = ({
     values.push(safeDigit);
     return values;
   }, [digit, loops]);
+  const digitNodes = useMemo(
+    () =>
+      digitsSequence.map((value, valueIndex) => (
+        <Text key={`${value}-${valueIndex}`} style={[styles.saveCounterDigitText, { color }]}>
+          {value}
+        </Text>
+      )),
+    [color, digitsSequence]
+  );
   const spinSteps = Math.max(1, digitsSequence.length - 1);
   const translateY = spinProgress.interpolate({
     inputRange: [0, spinSteps],
@@ -54059,9 +54847,11 @@ const SaveCounterDigit = ({
     tiltProgress.setValue(0);
     shineProgress.setValue(0);
     if (!active) return;
-    const spinStartTimer = setTimeout(() => {
-      onSpinStart?.();
-    }, Math.max(0, delay));
+    const spinStartTimer = onSpinStart
+      ? setTimeout(() => {
+          onSpinStart();
+        }, Math.max(0, delay))
+      : null;
     const animation = Animated.sequence([
       Animated.delay(delay),
       Animated.timing(spinProgress, {
@@ -54121,7 +54911,9 @@ const SaveCounterDigit = ({
       }
     });
     return () => {
-      clearTimeout(spinStartTimer);
+      if (spinStartTimer !== null) {
+        clearTimeout(spinStartTimer);
+      }
       animation.stop();
     };
   }, [
@@ -54137,7 +54929,7 @@ const SaveCounterDigit = ({
   ]);
   useEffect(() => {
     clearSpinHaptics();
-    if (!active) return undefined;
+    if (!hapticsEnabled) return undefined;
     const startDelay = Math.max(0, delay + 60);
     const spinDuration = 900 + spinSteps * 12 + 160;
     const tickInterval = Math.max(70, Math.min(170, spinDuration / Math.max(2, loops * 1.2)));
@@ -54154,7 +54946,7 @@ const SaveCounterDigit = ({
     return () => {
       clearSpinHaptics();
     };
-  }, [active, clearSpinHaptics, delay, loops, spinSteps]);
+  }, [clearSpinHaptics, delay, hapticsEnabled, loops, spinSteps]);
   return (
     <Animated.View style={[styles.saveCounterDigit, { transform: [{ scale: digitScale }] }]}>
       <Animated.View
@@ -54176,11 +54968,7 @@ const SaveCounterDigit = ({
             },
           ]}
         >
-          {digitsSequence.map((value, valueIndex) => (
-            <Text key={`${value}-${valueIndex}`} style={[styles.saveCounterDigitText, { color }]}>
-              {value}
-            </Text>
-          ))}
+          {digitNodes}
         </Animated.View>
         <Animated.View
           pointerEvents="none"
@@ -54188,6 +54976,76 @@ const SaveCounterDigit = ({
         />
         <View pointerEvents="none" style={styles.saveCounterDigitDivider} />
       </Animated.View>
+    </Animated.View>
+  );
+});
+
+const UsageStreakCounterDigit = ({
+  digit = 0,
+  delay = 0,
+  active = false,
+  color = "#000",
+  backgroundColor = "rgba(0,0,0,0.08)",
+  borderColor = "rgba(0,0,0,0.12)",
+  dividerColor = "rgba(0,0,0,0.12)",
+  index = 0,
+}) => {
+  const spinProgress = useRef(new Animated.Value(0)).current;
+  const digitScale = useRef(new Animated.Value(0.92)).current;
+  const loops = Math.max(1, STREAK_COUNTER_SPIN_LOOPS + index);
+  const digitsSequence = useMemo(() => {
+    const safeDigit = Math.max(0, Number(digit) || 0);
+    const values = [];
+    for (let counter = 0; counter < loops * 10; counter += 1) {
+      values.push(counter % 10);
+    }
+    values.push(safeDigit);
+    return values;
+  }, [digit, loops]);
+  const spinSteps = Math.max(1, digitsSequence.length - 1);
+  const translateY = spinProgress.interpolate({
+    inputRange: [0, spinSteps],
+    outputRange: [0, -STREAK_COUNTER_DIGIT_HEIGHT * spinSteps],
+  });
+  useEffect(() => {
+    spinProgress.setValue(0);
+    digitScale.setValue(0.92);
+    if (!active) return;
+    const animation = Animated.sequence([
+      Animated.delay(delay),
+      Animated.timing(spinProgress, {
+        toValue: spinSteps,
+        duration: 720 + spinSteps * 10,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.spring(digitScale, {
+        toValue: 1,
+        friction: 6,
+        tension: 130,
+        useNativeDriver: true,
+      }),
+    ]);
+    animation.start();
+    return () => {
+      animation.stop();
+    };
+  }, [active, delay, digitScale, spinProgress, spinSteps]);
+  return (
+    <Animated.View style={[styles.usageStreakCounterDigit, { transform: [{ scale: digitScale }] }]}>
+      <View style={[styles.usageStreakCounterDigitSurface, { backgroundColor, borderColor }]}>
+        <Animated.View style={[styles.usageStreakCounterDigitColumn, { transform: [{ translateY }] }]}>
+          {digitsSequence.map((value, valueIndex) => (
+            <Text key={`${value}-${valueIndex}`} style={[styles.usageStreakCounterDigitText, { color }]}>
+              {value}
+            </Text>
+          ))}
+        </Animated.View>
+        <View
+          pointerEvents="none"
+          style={[styles.usageStreakCounterDigitDivider, { backgroundColor: dividerColor }]}
+        />
+      </View>
     </Animated.View>
   );
 };
@@ -54634,6 +55492,685 @@ const DailyRewardCelebration = ({ colors, payload, t }) => {
             {t("dailyRewardCollectedLabel")}
           </Text>
         </View>
+      </View>
+    </View>
+  );
+};
+
+const StreakPledgeRewardCelebration = ({ colors, payload, t, language, onClose }) => {
+  const data = payload && typeof payload === "object" ? payload : {};
+  const targetDays = Math.max(0, Number(data.targetDays) || Number(data.days) || 0);
+  let rewardBlueCoins = Math.max(0, Number(data.rewardBlueCoins) || 0);
+  if (!rewardBlueCoins) {
+    const computed = computeStreakPledgeReward(targetDays);
+    rewardBlueCoins = computed.blueCoins;
+  }
+  const labels = HEALTH_COIN_LABELS[language] || HEALTH_COIN_LABELS.en;
+  const blueLabel = labels.blue || "blue coins";
+  const isDarkTheme = colors.background === THEMES.dark.background;
+  const cardBg = isDarkTheme ? lightenColor(colors.card, 0.12) : "#FFF7F0";
+  const cardBorder = isDarkTheme ? lightenColor(colors.border, 0.3) : "rgba(0,0,0,0.08)";
+  const accent = isDarkTheme ? "#7ED9FF" : "#2D9CDB";
+  return (
+    <View style={styles.streakPledgeRewardOverlay}>
+      <View
+        style={[
+          styles.streakPledgeRewardBackdrop,
+          { backgroundColor: isDarkTheme ? "rgba(0,0,0,0.82)" : "rgba(255,244,233,0.9)" },
+        ]}
+      />
+      <View style={[styles.streakPledgeRewardCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+        <View style={styles.streakPledgeRewardHero}>
+          <View style={[styles.streakPledgeRewardCoinWrap, { backgroundColor: accent }]}>
+            {BLUE_HEALTH_COIN_ASSET ? (
+              <Image source={BLUE_HEALTH_COIN_ASSET} style={styles.streakPledgeRewardCoin} />
+            ) : (
+              <Text style={styles.streakPledgeRewardCoinFallback}>🟦</Text>
+            )}
+          </View>
+          <Text style={[styles.streakPledgeRewardAmount, { color: colors.text }]}>
+            +{rewardBlueCoins}
+          </Text>
+          <Text style={[styles.streakPledgeRewardLabel, { color: colors.muted }]}>
+            {blueLabel}
+          </Text>
+        </View>
+        <Text style={[styles.streakPledgeRewardTitle, { color: colors.text }]}>
+          {t("streakPledgeRewardTitle")}
+        </Text>
+        <Text style={[styles.streakPledgeRewardSubtitle, { color: colors.muted }]}>
+          {t("streakPledgeRewardSubtitle", { days: targetDays })}
+        </Text>
+        <TouchableOpacity
+          style={[styles.streakPledgeRewardButton, { borderColor: colors.text }]}
+          onPress={onClose}
+        >
+          <Text style={[styles.streakPledgeRewardButtonText, { color: colors.text }]}>
+            {t("streakPledgeRewardButton")}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+const StreakPledgePrompt = ({
+  colors,
+  payload,
+  t,
+  language,
+  options = [],
+  mascotHappySource,
+  onConfirm,
+  onDismiss,
+}) => {
+  const [selectedId, setSelectedId] = useState(options[0]?.id || null);
+  const selectedOption = useMemo(
+    () => options.find((option) => option.id === selectedId) || null,
+    [options, selectedId]
+  );
+  const labels = HEALTH_COIN_LABELS[language] || HEALTH_COIN_LABELS.en;
+  const isDarkTheme = colors.background === THEMES.dark.background;
+  const cardBg = isDarkTheme ? lightenColor(colors.card, 0.08) : colors.card;
+  const cardBorder = isDarkTheme ? lightenColor(colors.border, 0.25) : colors.border;
+  const bubbleBg = isDarkTheme ? "rgba(9,12,18,0.95)" : "#FFFFFF";
+  const bubbleBorder = isDarkTheme ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.08)";
+  const bubbleText = isDarkTheme ? "#F6EBDD" : "#2B1C0D";
+  const mascotSource = mascotHappySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
+  return (
+    <View style={styles.streakPledgeOverlay}>
+      <View
+        style={[
+          styles.streakPledgeBackdrop,
+          { backgroundColor: isDarkTheme ? "rgba(0,0,0,0.86)" : "rgba(8,8,14,0.55)" },
+        ]}
+      />
+      <View style={[styles.streakPledgeCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+        <View style={styles.streakPledgeHeader}>
+          <View style={[styles.streakPledgeBubble, { backgroundColor: bubbleBg, borderColor: bubbleBorder }]}>
+            <Text style={[styles.streakPledgeBubbleText, { color: bubbleText }]}>
+              {t("streakPledgePromptTitle")}
+            </Text>
+            <View style={[styles.streakPledgeBubbleTail, { backgroundColor: bubbleBg, borderColor: bubbleBorder }]} />
+          </View>
+          <Image source={mascotSource} style={styles.streakPledgeMascot} resizeMode="contain" />
+        </View>
+        <Text style={[styles.streakPledgeSubtitle, { color: colors.muted }]}>
+          {t("streakPledgePromptSubtitle")}
+        </Text>
+        <View style={styles.streakPledgeOptions}>
+          {options.map((option) => {
+            const active = selectedId === option.id;
+            const reward = computeStreakPledgeReward(option.days);
+            return (
+              <TouchableOpacity
+                key={option.id}
+                style={[
+                  styles.streakPledgeOption,
+                  {
+                    borderColor: active ? colors.text : colors.border,
+                    backgroundColor: active ? colors.text : "transparent",
+                  },
+                ]}
+                onPress={() => setSelectedId(option.id)}
+                activeOpacity={0.85}
+                >
+                  <Text
+                    style={[
+                      styles.streakPledgeOptionLabel,
+                      { color: active ? colors.background : colors.text },
+                    ]}
+                  >
+                    {t(option.labelKey)}
+                  </Text>
+                  <View style={styles.streakPledgeOptionRewardRow}>
+                    <Text
+                      style={[
+                        styles.streakPledgeOptionReward,
+                        { color: active ? colors.background : colors.muted },
+                      ]}
+                    >
+                      {reward.blueCoins}
+                    </Text>
+                    {BLUE_HEALTH_COIN_ASSET ? (
+                      <Image
+                        source={BLUE_HEALTH_COIN_ASSET}
+                        style={[
+                          styles.streakPledgeOptionRewardIcon,
+                          { opacity: active ? 1 : 0.9 },
+                        ]}
+                      />
+                    ) : (
+                      <Text
+                        style={[
+                          styles.streakPledgeOptionRewardIconFallback,
+                          { opacity: active ? 1 : 0.9 },
+                        ]}
+                      >
+                        🟦
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+          })}
+        </View>
+        <TouchableOpacity
+          style={[
+            styles.streakPledgePrimaryButton,
+            {
+              backgroundColor: colors.text,
+              opacity: selectedOption ? 1 : 0.6,
+            },
+          ]}
+          onPress={() => onConfirm?.(selectedOption, payload)}
+          disabled={!selectedOption}
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.streakPledgePrimaryText, { color: colors.background }]}>
+            {t("streakPledgeConfirmButton")}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onDismiss} style={styles.streakPledgeSecondaryButton}>
+          <Text style={[styles.streakPledgeSecondaryText, { color: colors.muted }]}>
+            {t("streakPledgeLater")}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+const UsageStreakCelebration = ({
+  colors,
+  payload,
+  t,
+  language,
+  mascotHappySource,
+  healthPoints = 0,
+  onRestore = null,
+}) => {
+  const data = payload && typeof payload === "object" ? payload : {};
+  const rawCount = Number(data.count);
+  const count = Math.max(1, Number.isFinite(rawCount) ? rawCount : 1);
+  const previousCount = Math.max(0, Number(data.previousCount) || 0);
+  const missed = !!data.missed;
+  const lostCount = Math.max(0, Number(data.lostCount) || 0, previousCount);
+  const displayCount = missed ? (previousCount > 0 ? previousCount : lostCount || count) : count;
+  const timestamp = Number.isFinite(data.timestamp) ? data.timestamp : Date.now();
+  const todayKey = getDayKey(Date.now());
+  const fallbackDayKey = getDayKey(timestamp);
+  const missedDayKey =
+    typeof data.missedDayKey === "string" && data.missedDayKey
+      ? data.missedDayKey
+      : missed
+      ? getDayKey(timestamp - DAY_MS)
+      : null;
+  const dayKey = typeof data.dayKey === "string" && data.dayKey ? data.dayKey : fallbackDayKey;
+  const streakEndDayKey =
+    typeof data.streakEndDayKey === "string" && data.streakEndDayKey
+      ? data.streakEndDayKey
+      : dayKey;
+  const resolvedDayKey = missed && missedDayKey ? missedDayKey : dayKey;
+  const resolvedDate = resolvedDayKey ? parseDayKey(resolvedDayKey) : null;
+  const dayIndex = resolvedDate instanceof Date && !Number.isNaN(resolvedDate.getTime())
+    ? resolvedDate.getDay()
+    : new Date(timestamp).getDay();
+  const mondayIndex = (dayIndex + 6) % 7;
+  const streakEndDate = streakEndDayKey ? parseDayKey(streakEndDayKey) : null;
+  const streakEndTimestamp =
+    streakEndDate instanceof Date && !Number.isNaN(streakEndDate.getTime())
+      ? streakEndDate.getTime()
+      : timestamp;
+  const weekLabels = WEEKDAY_LABELS_MONDAY_FIRST[language] || WEEKDAY_LABELS_MONDAY_FIRST.en;
+  const isDarkTheme = colors.background === THEMES.dark.background;
+  const accent = missed
+    ? isDarkTheme
+      ? "#9CA3AF"
+      : "#B6BDC9"
+    : isDarkTheme
+    ? "#FFB347"
+    : "#FF8C3C";
+  const accentSoft = missed
+    ? isDarkTheme
+      ? "rgba(148,163,184,0.22)"
+      : "rgba(176,186,198,0.28)"
+    : isDarkTheme
+    ? "rgba(255,179,90,0.25)"
+    : "rgba(255,183,104,0.28)";
+  const accentGlow = missed
+    ? isDarkTheme
+      ? "rgba(148,163,184,0.35)"
+      : "rgba(176,186,198,0.3)"
+    : isDarkTheme
+    ? "rgba(255,186,110,0.4)"
+    : "rgba(255,179,105,0.5)";
+  const cardBg = isDarkTheme ? "rgba(15,14,16,0.96)" : "#FFF7E8";
+  const cardBorder = isDarkTheme ? "rgba(255,205,145,0.35)" : "rgba(255,172,104,0.45)";
+  const bubbleBg = isDarkTheme ? "rgba(9,10,14,0.92)" : "#FFFFFF";
+  const bubbleBorder = isDarkTheme ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.08)";
+  const bubbleText = isDarkTheme ? "#FCE7C8" : "#2A1A0B";
+  const bubbleCopy = missed ? t("usageStreakLostBubble") : t("usageStreakBubble");
+  const streakDayAccent = isDarkTheme ? "#7FE4AC" : SAVE_ACTION_COLOR;
+  const streakDayGlow = colorWithAlpha(streakDayAccent, isDarkTheme ? 0.45 : 0.4);
+  const streakDayText = "#FFFFFF";
+  const mutedDayBg = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)";
+  const mutedDayBorder = isDarkTheme ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)";
+  const missedDayBg = isDarkTheme ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)";
+  const missedDayBorder = isDarkTheme ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.14)";
+  const missedMarkColor = isDarkTheme ? "rgba(255,255,255,0.9)" : "rgba(45,45,45,0.8)";
+  const counterDigitBackground = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.92)";
+  const counterDigitBorder = isDarkTheme ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)";
+  const counterDividerColor = isDarkTheme ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.12)";
+  const counterTextColor = missed ? (isDarkTheme ? "#E5E7EB" : "#4B5563") : accent;
+  const missedDays = Number.isFinite(data.missedDays)
+    ? Math.max(0, Math.floor(Number(data.missedDays) || 0))
+    : getMissedUsageStreakDays(streakEndDayKey, todayKey);
+  const shouldOfferRestore = missed && lostCount > 0 && missedDays > 0;
+  const costBlueCount = shouldOfferRestore ? missedDays * STREAK_RESTORE_BLUE_COINS_PER_DAY : 0;
+  const costValue = shouldOfferRestore ? missedDays * STREAK_RESTORE_COST_PER_DAY : 0;
+  const canRestore = shouldOfferRestore && healthPoints >= costValue && typeof onRestore === "function";
+  const labels = HEALTH_COIN_LABELS[language] || HEALTH_COIN_LABELS.en;
+  const costLabel = costBlueCount ? `${costBlueCount} ${labels.blue || "blue coins"}` : "";
+  const hasLoggedToday = dayKey === todayKey;
+  const restorePulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!shouldOfferRestore) return undefined;
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(restorePulse, {
+          toValue: 1.1,
+          duration: 420,
+          useNativeDriver: true,
+        }),
+        Animated.timing(restorePulse, {
+          toValue: 1,
+          duration: 420,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [restorePulse, shouldOfferRestore]);
+  const handleRestorePress = useCallback(() => {
+    if (!shouldOfferRestore) return;
+    if (!canRestore || typeof onRestore !== "function") return;
+    onRestore({ lostCount, missedDays, streakEndDayKey, hasLoggedToday });
+  }, [canRestore, hasLoggedToday, lostCount, missedDays, onRestore, shouldOfferRestore, streakEndDayKey]);
+  const activeWeekIndices = useMemo(() => {
+    const indices = new Set();
+    const streakLength = Math.max(1, Number(displayCount) || 1);
+    const limit = Math.min(streakLength, 7);
+    if (!Number.isFinite(streakEndTimestamp) || limit <= 0) return indices;
+    const baseDate = new Date(streakEndTimestamp);
+    baseDate.setHours(0, 0, 0, 0);
+    const baseDayMs = baseDate.getTime();
+    if (Number.isNaN(baseDayMs)) return indices;
+    const baseDayIndex = baseDate.getDay();
+    const mondayOffset = (baseDayIndex + 6) % 7;
+    const weekStartMs = baseDayMs - mondayOffset * DAY_MS;
+    for (let i = 0; i < limit; i += 1) {
+      const dayMs = baseDayMs - i * DAY_MS;
+      if (dayMs < weekStartMs) break;
+      const dayKey = getDayKey(dayMs);
+      if (!dayKey) continue;
+      const dayDate = parseDayKey(dayKey);
+      if (!dayDate) continue;
+      const index = (dayDate.getDay() + 6) % 7;
+      indices.add(index);
+    }
+    return indices;
+  }, [displayCount, streakEndTimestamp]);
+  const counterSlots = useMemo(
+    () => buildUsageStreakCounterSlots(displayCount, language),
+    [displayCount, language]
+  );
+  const [counterActive, setCounterActive] = useState(false);
+  useEffect(() => {
+    setCounterActive(false);
+    const timer = setTimeout(() => setCounterActive(true), 120);
+    return () => clearTimeout(timer);
+  }, [displayCount]);
+  const flameScale = useRef(new Animated.Value(0.7)).current;
+  const flameGlow = useRef(new Animated.Value(0)).current;
+  const numberScale = useRef(new Animated.Value(0.4)).current;
+  const flameOpacity = useRef(new Animated.Value(1)).current;
+  const smokeOpacity = useRef(new Animated.Value(0)).current;
+  const smokeScale = useRef(new Animated.Value(0.9)).current;
+  const dayGlow = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    flameScale.setValue(0.8);
+    numberScale.setValue(0.4);
+    dayGlow.setValue(0);
+    flameGlow.setValue(missed ? 0.8 : 0.2);
+    flameOpacity.setValue(1);
+    smokeOpacity.setValue(0);
+    smokeScale.setValue(0.9);
+    const numberIn = Animated.spring(numberScale, {
+      toValue: 1,
+      friction: 6,
+      tension: 90,
+      useNativeDriver: true,
+    });
+    if (missed) {
+      numberIn.start();
+      const extinguish = Animated.sequence([
+        Animated.timing(flameScale, {
+          toValue: 1.05,
+          duration: 220,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.parallel([
+          Animated.timing(flameScale, {
+            toValue: 0.85,
+            duration: 380,
+            easing: Easing.in(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(flameOpacity, {
+            toValue: 0,
+            duration: 360,
+            easing: Easing.in(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(flameGlow, {
+            toValue: 0,
+            duration: 360,
+            easing: Easing.in(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.parallel([
+          Animated.timing(smokeOpacity, {
+            toValue: 0.65,
+            duration: 220,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.spring(smokeScale, {
+            toValue: 1.1,
+            friction: 6,
+            tension: 90,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.timing(smokeOpacity, {
+          toValue: 0,
+          duration: 260,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]);
+      extinguish.start();
+      return () => {
+        extinguish.stop();
+      };
+    }
+    const flameLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(flameScale, {
+          toValue: 1.08,
+          duration: 420,
+          useNativeDriver: true,
+        }),
+        Animated.timing(flameScale, {
+          toValue: 0.95,
+          duration: 420,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const glowLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(flameGlow, {
+          toValue: 1,
+          duration: 360,
+          useNativeDriver: true,
+        }),
+        Animated.timing(flameGlow, {
+          toValue: 0.25,
+          duration: 420,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const dayLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(dayGlow, {
+          toValue: 1,
+          duration: 520,
+          useNativeDriver: true,
+        }),
+        Animated.timing(dayGlow, {
+          toValue: 0,
+          duration: 520,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    numberIn.start();
+    flameLoop.start();
+    glowLoop.start();
+    dayLoop.start();
+    return () => {
+      flameLoop.stop();
+      glowLoop.stop();
+      dayLoop.stop();
+    };
+  }, [
+    dayGlow,
+    flameGlow,
+    flameOpacity,
+    flameScale,
+    missed,
+    numberScale,
+    smokeOpacity,
+    smokeScale,
+  ]);
+  const dayGlowScale = dayGlow.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.22],
+  });
+  const dayGlowOpacity = dayGlow.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.5, 1],
+  });
+  const resolveDayLabel = useCallback(
+    (value) => {
+      const safeCount = Math.max(1, Number(value) || 1);
+      const normalized = normalizeLanguage(language);
+      if (normalized === "ru") {
+        const mod10 = safeCount % 10;
+        const mod100 = safeCount % 100;
+        if (mod10 === 1 && mod100 !== 11) return "день в ударе";
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+          return "дня в ударе";
+        }
+        return "дней в ударе";
+      }
+      if (normalized === "es") return safeCount === 1 ? "día de racha" : "días de racha";
+      if (normalized === "fr") return safeCount === 1 ? "jour de série" : "jours de série";
+      return "day streak";
+    },
+    [language]
+  );
+  const dayLabel = useMemo(() => resolveDayLabel(displayCount), [displayCount, resolveDayLabel]);
+  const happySource = mascotHappySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
+  return (
+    <View style={styles.usageStreakOverlay}>
+      <View style={[styles.usageStreakBackdrop, { backgroundColor: isDarkTheme ? "rgba(0,0,0,0.86)" : "rgba(8,8,14,0.55)" }]} />
+      <View style={[styles.usageStreakCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+        <View style={[styles.usageStreakAura, { backgroundColor: accentSoft }]} />
+        <View style={[styles.usageStreakBubble, { backgroundColor: bubbleBg, borderColor: bubbleBorder }]}>
+          <Text style={[styles.usageStreakBubbleText, { color: bubbleText }]}>
+            {bubbleCopy}
+          </Text>
+          <View style={[styles.usageStreakBubbleTail, { backgroundColor: bubbleBg, borderColor: bubbleBorder }]} />
+        </View>
+        <Animated.View style={[styles.usageStreakFlameWrap, { transform: [{ scale: flameScale }] }]}>
+          <Animated.View
+            style={[
+              styles.usageStreakFlameGlow,
+              {
+                backgroundColor: accentGlow,
+                opacity: flameGlow,
+              },
+            ]}
+          />
+          <Animated.Text style={[styles.usageStreakFlame, { opacity: flameOpacity }]}>🔥</Animated.Text>
+          {missed && (
+            <Animated.Text
+              style={[
+                styles.usageStreakSmoke,
+                { opacity: smokeOpacity, transform: [{ scale: smokeScale }] },
+              ]}
+            >
+              💨
+            </Animated.Text>
+          )}
+        </Animated.View>
+        <Animated.View style={[styles.usageStreakNumberWrap, { transform: [{ scale: numberScale }] }]}>
+          <View style={styles.usageStreakCounterRow}>
+            {counterSlots.map((slot, index) => {
+              if (slot.type === "digit") {
+                return (
+                  <UsageStreakCounterDigit
+                    key={`${slot.key}-${counterActive}`}
+                    index={index}
+                    digit={slot.value}
+                    delay={index * 90}
+                    active={counterActive}
+                    color={counterTextColor}
+                    backgroundColor={counterDigitBackground}
+                    borderColor={counterDigitBorder}
+                    dividerColor={counterDividerColor}
+                  />
+                );
+              }
+              return (
+                <View key={slot.key} style={styles.usageStreakCounterSeparator}>
+                  <Text style={[styles.usageStreakCounterSeparatorText, { color: counterTextColor }]}>
+                    {slot.value}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </Animated.View>
+        <Text style={[styles.usageStreakNumberLabel, { color: colors.text }]}>{dayLabel}</Text>
+        <View style={styles.usageStreakWeekRow}>
+          {weekLabels.map((label, index) => {
+            const isMissedDay = missed && index === mondayIndex;
+            const isActive = activeWeekIndices.has(index) && !isMissedDay;
+            const dayBg = isActive ? streakDayAccent : isMissedDay ? missedDayBg : mutedDayBg;
+            const dayBorder = isActive ? streakDayAccent : isMissedDay ? missedDayBorder : mutedDayBorder;
+            return (
+              <View
+                key={`${label}_${index}`}
+                style={[
+                  styles.usageStreakWeekDay,
+                  {
+                    backgroundColor: dayBg,
+                    borderColor: dayBorder,
+                  },
+                ]}
+              >
+                {isActive && (
+                  <Animated.View
+                    style={[
+                      styles.usageStreakWeekGlow,
+                      {
+                        backgroundColor: streakDayGlow,
+                        opacity: dayGlowOpacity,
+                        transform: [{ scale: dayGlowScale }],
+                      },
+                    ]}
+                  />
+                )}
+                {isMissedDay && (
+                  <Text style={[styles.usageStreakMissedMark, { color: missedMarkColor }]}>✕</Text>
+                )}
+                <Text
+                  style={[
+                    styles.usageStreakWeekLabel,
+                    { color: isActive ? streakDayText : colors.muted, opacity: isMissedDay ? 0.5 : 1 },
+                  ]}
+                >
+                  {label}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+        {shouldOfferRestore && (
+          <View
+            style={[
+              styles.usageStreakRestoreCard,
+              { backgroundColor: bubbleBg, borderColor: bubbleBorder },
+            ]}
+          >
+            <Text style={[styles.usageStreakRestoreTitle, { color: colors.text }]}>
+              {t("usageStreakRestoreTitle")}
+            </Text>
+            <Text style={[styles.usageStreakRestoreSubtitle, { color: colors.muted }]}>
+              {t("usageStreakRestoreSubtitle", { days: missedDays, cost: costLabel })}
+            </Text>
+            <View style={styles.usageStreakRestoreCostRow}>
+              {BLUE_HEALTH_COIN_ASSET ? (
+                <Animated.Image
+                  source={BLUE_HEALTH_COIN_ASSET}
+                  style={[
+                    styles.usageStreakRestoreCoin,
+                    { transform: [{ scale: restorePulse }] },
+                  ]}
+                />
+              ) : (
+                <Animated.Text
+                  style={[
+                    styles.usageStreakRestoreCoinFallback,
+                    { transform: [{ scale: restorePulse }] },
+                  ]}
+                >
+                  🟦
+                </Animated.Text>
+              )}
+              <Text style={[styles.usageStreakRestoreCostText, { color: colors.text }]}>
+                {costLabel}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.usageStreakRestoreButton,
+                { backgroundColor: colors.text },
+                !canRestore && styles.usageStreakRestoreButtonDisabled,
+              ]}
+              onPress={handleRestorePress}
+              disabled={!canRestore}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[
+                  styles.usageStreakRestoreButtonText,
+                  { color: colors.background },
+                  !canRestore && styles.usageStreakRestoreButtonTextDisabled,
+                ]}
+              >
+                {t("usageStreakRestoreButton")}
+              </Text>
+            </TouchableOpacity>
+            {!canRestore && (
+              <Text style={[styles.usageStreakRestoreNeed, { color: colors.muted }]}>
+                {t("usageStreakRestoreNeedCoins", { cost: costLabel })}
+              </Text>
+            )}
+          </View>
+        )}
+        <Image source={happySource} style={styles.usageStreakCat} resizeMode="contain" />
+        <Text style={[styles.usageStreakHint, { color: colors.muted }]}>
+          {t("usageStreakSubtitle")}
+        </Text>
       </View>
     </View>
   );
