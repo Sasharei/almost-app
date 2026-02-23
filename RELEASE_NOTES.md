@@ -1,5 +1,43 @@
 # Release Notes
 
+## 5.0.0 (from 4.1.1)
+
+### EN
+- Dynamic home widget with savings, streaks, and daily goal progress at a glance.
+- Budget widget and category history in Progress for faster limits and insights.
+- Think menu redesign for a clearer flow.
+- New slider-based input for spending and savings amounts.
+- Daily goal piggy bank rewards plus a smoother daily reward flow.
+- New animations and celebration overlays for rewards, streaks, and level-ups.
+- UI polish and performance improvements across Home, Progress, and goals.
+
+### RU
+- Динамический виджет на главном экране с накоплениями, стриками и целью дня.
+- Виджет бюджета и история по категориям в прогрессе для быстрых лимитов и инсайтов.
+- Редизайн меню «Думаем».
+- Новая система ввода суммы трат и накоплений через слайдер.
+- Копилка цели дня и более плавный поток ежедневных наград.
+- Новые анимации и празднования наград, стриков и уровней.
+- Полировка интерфейса и производительности на главных экранах и целях.
+
+### ES
+- Widget principal dinamico con ahorros, rachas y meta diaria.
+- Widget de presupuesto e historial por categorias en Progreso para limites mas rapidos e insights.
+- Redisenamos el menu "Pensar" para un flujo mas claro.
+- Nuevo sistema para ingresar montos de gastos y ahorros con slider.
+- Alcancia de meta diaria y un flujo mas suave de recompensa diaria.
+- Nuevas animaciones y celebraciones para recompensas, rachas y niveles.
+- Pulido de UI y rendimiento en Inicio, Progreso y metas.
+
+### FR
+- Widget principal dynamique avec economies, series et objectif du jour.
+- Widget budget et historique par categorie dans Progression pour des limites plus rapides et des insights.
+- Refonte du menu « Penser » pour un parcours plus clair.
+- Nouveau systeme pour saisir les montants de depenses et d'epargne via un slider.
+- Tirelire d'objectif quotidien et flux de recompense quotidienne plus fluide.
+- Nouvelles animations et celebrations pour recompenses, series et niveaux.
+- Polissage UI et performance sur Accueil, Progression et objectifs.
+
 ## 4.1.0 (from 4.0.5)
 
 ### EN

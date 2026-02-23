@@ -686,3 +686,15 @@ export const DEFAULT_TEMPTATIONS = [
     },
   },
 ];
+
+export const DAILY_CHALLENGE_POPULAR_IDS = [
+  "coffee_to_go",
+  "croissant_break",
+  "fancy_latte",
+  "pizza",
+  "late_night_takeout",
+  "movie_premiere_combo",
+  "cocktail_night",
+  "weekend_brunch",
+  "netflix_subscription",
+];

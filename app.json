@@ -2,7 +2,7 @@
   "expo": {
     "name": "Almost",
     "slug": "almost_clean",
-    "version": "4.1.1",
+    "version": "5.0.0",
     "orientation": "portrait",
     "icon": "./assets/Almost_icon.png",
     "userInterfaceStyle": "light",
@@ -16,24 +16,46 @@
       "bundleIdentifier": "com.sasarei.almostclean",
       "supportsTablet": true,
       "googleServicesFile": "./ios/GoogleService-Info.plist",
-      "buildNumber": "52",
+      "buildNumber": "54",
       "appStoreUrl": "https://apps.apple.com/app/id6756276744?action=write-review",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSAdvertisingAttributionReportEndpoint": "https://appsflyer-skadnetwork.com/",
         "AttributionCopyEndpoint": "https://appsflyer-skadnetwork.com/",
         "SKAdNetworkItems": [
-          { "SKAdNetworkIdentifier": "v9wttpbfk9.skadnetwork" },
-          { "SKAdNetworkIdentifier": "n38lu8286q.skadnetwork" },
-          { "SKAdNetworkIdentifier": "238da6jt44.skadnetwork" },
-          { "SKAdNetworkIdentifier": "899vrgt9g8.skadnetwork" },
-          { "SKAdNetworkIdentifier": "mj797d8u6f.skadnetwork" },
-          { "SKAdNetworkIdentifier": "22mmun2rn5.skadnetwork" },
-          { "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork" },
-          { "SKAdNetworkIdentifier": "eqhxz8m8av.skadnetwork" },
-          { "SKAdNetworkIdentifier": "4dzt52r2t5.skadnetwork" },
-          { "SKAdNetworkIdentifier": "ludvb6z3bs.skadnetwork" },
-          { "SKAdNetworkIdentifier": "x8jxxk4ff5.skadnetwork" }
+          {
+            "SKAdNetworkIdentifier": "v9wttpbfk9.skadnetwork"
+          },
+          {
+            "SKAdNetworkIdentifier": "n38lu8286q.skadnetwork"
+          },
+          {
+            "SKAdNetworkIdentifier": "238da6jt44.skadnetwork"
+          },
+          {
+            "SKAdNetworkIdentifier": "899vrgt9g8.skadnetwork"
+          },
+          {
+            "SKAdNetworkIdentifier": "mj797d8u6f.skadnetwork"
+          },
+          {
+            "SKAdNetworkIdentifier": "22mmun2rn5.skadnetwork"
+          },
+          {
+            "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork"
+          },
+          {
+            "SKAdNetworkIdentifier": "eqhxz8m8av.skadnetwork"
+          },
+          {
+            "SKAdNetworkIdentifier": "4dzt52r2t5.skadnetwork"
+          },
+          {
+            "SKAdNetworkIdentifier": "ludvb6z3bs.skadnetwork"
+          },
+          {
+            "SKAdNetworkIdentifier": "x8jxxk4ff5.skadnetwork"
+          }
         ],
         "NSCameraUsageDescription": "Almost lets you snap a portrait so your savings profile feels personal.",
         "NSPhotoLibraryUsageDescription": "Almost accesses your photos to update the avatar that keeps you motivated.",
@@ -42,7 +64,7 @@
     },
     "android": {
       "package": "com.sasarei.almostclean",
-      "versionCode": 52,
+      "versionCode": 54,
       "googleServicesFile": "./android/app/google-services.json",
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.sasarei.almostclean",
       "icon": "./assets/android/ic_launcher.png",
