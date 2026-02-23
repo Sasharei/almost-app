@@ -18,6 +18,7 @@ import {
   Animated,
   Easing,
   Linking,
+  NativeModules,
   PanResponder,
   LayoutAnimation,
   UIManager,
@@ -51,7 +52,7 @@ import { BlurView as ExpoBlurView } from "expo-blur";
 import * as SplashScreen from "expo-splash-screen";
 let AudioModule = null;
 try {
-  // Optional native module – may be missing in some builds (e.g. older Expo Go).
+  // Optional native module - may be missing in some builds (e.g. older Expo Go).
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   AudioModule = require("expo-av")?.Audio || null;
 } catch (error) {
@@ -84,7 +85,7 @@ import { SavingsProvider, useRealSavedAmount } from "./src/hooks/useRealSavedAmo
 import { useSavingsSimulation } from "./src/hooks/useSavingsSimulation";
 import { calcPotentialSaved } from "./src/utils/savingsSimulation";
 import { TRANSLATIONS } from "./src/constants/translations";
-import { DEFAULT_TEMPTATIONS } from "./src/constants/temptations";
+import { DAILY_CHALLENGE_POPULAR_IDS, DEFAULT_TEMPTATIONS } from "./src/constants/temptations";
 import { PRIVACY_LINKS, TERMS_LINKS, TERMS_POINTS } from "./src/constants/legal";
 
 const safeUseFonts =
@@ -108,7 +109,7 @@ const safeUseSafeAreaInsets =
 
 let StoreReview = null;
 try {
-  // Optional native module – older builds might not include it.
+  // Optional native module - older builds might not include it.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   StoreReview = require("expo-store-review");
 } catch (error) {
@@ -240,19 +241,43 @@ try {
 } catch (error) {
   AndroidBlurView = null;
 }
+const getWidgetStorage = () => NativeModules?.WidgetStorage ?? null;
+const canUpdateWidgetStorage = () => {
+  const storage = getWidgetStorage();
+  return !!storage && typeof storage.setWidgetData === "function";
+};
+const setWidgetDataSafely = (payload) => {
+  const storage = getWidgetStorage();
+  if (!storage || typeof storage.setWidgetData !== "function") return false;
+  storage.setWidgetData(payload).catch(() => {});
+  return true;
+};
 
 // Android BlurView (Dimezis) can crash during layout animations on newer OS versions.
-const ANDROID_BLUR_DISABLED =
-  Platform.OS === "android" && Number(Platform.Version || 0) >= 34;
+// Keep blur enabled, but avoid aggressive auto-updates to reduce crashes.
+const ANDROID_DIMEZIS_DISABLED = false;
+const ANDROID_BLUR_AUTO_UPDATE = false;
 
 const BLUR_VIEW_MANAGER_NAMES = ["ViewManagerAdapter_ExpoBlurView", "ExpoBlurView"];
-const isBlurViewAvailable = () => {
-  if (Platform.OS === "android") return !ANDROID_BLUR_DISABLED && !!AndroidBlurView;
+const isExpoBlurViewAvailable = () => {
   if (!UIManager) return false;
   if (typeof UIManager.getViewManagerConfig === "function") {
     return BLUR_VIEW_MANAGER_NAMES.some((name) => !!UIManager.getViewManagerConfig(name));
   }
   return BLUR_VIEW_MANAGER_NAMES.some((name) => !!UIManager[name]);
+};
+const isBlurViewAvailable = () => {
+  if (Platform.OS === "android") {
+    return (!!AndroidBlurView && !ANDROID_DIMEZIS_DISABLED) || isExpoBlurViewAvailable();
+  }
+  return isExpoBlurViewAvailable();
+};
+
+const runLayoutAnimation = (preset = LayoutAnimation.Presets.easeInEaseOut) => {
+  if (!LayoutAnimation || typeof LayoutAnimation.configureNext !== "function") return;
+  // Skip layout animations on Android when Dimezis blur is enabled to avoid pre-ordered draw crashes.
+  if (Platform.OS === "android" && !ANDROID_DIMEZIS_DISABLED) return;
+  LayoutAnimation.configureNext(preset);
 };
 
 const bootstrapMonitoring = (() => {
@@ -306,12 +331,14 @@ const STORAGE_KEYS = {
   IMPULSE_TRACKER: "@almost_impulse_tracker",
   MOOD_STATE: "@almost_mood_state",
   CHALLENGES: "@almost_challenges",
+  CHALLENGE_BADGES: "@almost_challenge_badges",
   CUSTOM_REMINDER: "@almost_custom_reminder",
   SMART_REMINDERS: "@almost_smart_reminders",
   DAILY_NUDGES: "@almost_daily_nudges",
   DAILY_NUDGE_SCHEDULE_SIGNATURE: "@almost_daily_nudge_schedule_signature",
   LANGUAGE_CURRENCY_NUDGE: "@almost_language_currency_nudge",
   TAMAGOTCHI: "@almost_tamagotchi_state",
+  TAMAGOTCHI_GREETING_DAY: "@almost_tamagotchi_greeting_day",
   DAILY_SUMMARY: "@almost_daily_summary",
   POTENTIAL_PUSH_PROGRESS: "@almost_potential_push_progress",
   PUSH_NOTIFICATIONS_ENABLED_LOGGED: "@almost_push_notifications_enabled_logged",
@@ -748,7 +775,6 @@ const OVERLAY_CARD_MAX_WIDTH = Math.min(SCREEN_WIDTH - 40, 440);
 const IS_COMPACT_DEVICE = SCREEN_WIDTH <= 380;
 const IS_SHORT_DEVICE = SCREEN_HEIGHT <= 740;
 const IS_ANDROID_COMPACT = Platform.OS === "android" && (IS_COMPACT_DEVICE || IS_SHORT_DEVICE);
-const SAVE_INTRO_STAGE_DURATION = 3400;
 const SAVE_COUNTER_DIGIT_HEIGHT = 64;
 const SAVE_COUNTER_SPIN_LOOPS = 2;
 const STREAK_COUNTER_DIGIT_HEIGHT = IS_SHORT_DEVICE ? 90 : 112;
@@ -850,8 +876,18 @@ const ANDROID_TAMAGOTCHI_CHANNEL_ID = "tamagotchi-hunger";
 const ANDROID_REPORTS_CHANNEL_ID = "weekly-reports";
 const DAILY_CHALLENGE_MIN_SPEND_EVENTS = 2;
 const DAILY_CHALLENGE_FIXED_REWARD = 2;
+const DAILY_CHALLENGE_REWARD_MULTIPLIER = 10;
+const DAILY_CHALLENGE_DRAW_COUNT = 3;
+const DAILY_CHALLENGE_DRAW_CARD_WIDTH = Math.min(
+  122,
+  Math.max(64, (SCREEN_WIDTH - 108) / DAILY_CHALLENGE_DRAW_COUNT)
+);
+const DAILY_CHALLENGE_DRAW_CARD_HEIGHT = Math.round(DAILY_CHALLENGE_DRAW_CARD_WIDTH * 1.38);
+const DAILY_CHALLENGE_DRAW_CARD_TILT = [-8, 0, 8];
 const DAILY_CHALLENGE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const DAILY_CHALLENGE_POSITIVE_COOLDOWN_MS = 2 * 24 * 60 * 60 * 1000;
+const DAILY_CHALLENGE_POPULAR_TEMPLATE_IDS = new Set(DAILY_CHALLENGE_POPULAR_IDS);
+const DAILY_CHALLENGE_POPULAR_CUSTOM_PRICE_CAP_USD = 120;
 const DAILY_CHALLENGE_STATUS = {
   IDLE: "idle",
   OFFER: "offer",
@@ -945,6 +981,8 @@ const createInitialDailyChallengeState = () => ({
   failedAt: null,
   offerDismissed: false,
   rewardGranted: false,
+  completionDismissed: false,
+  deferUntilKey: null,
 });
 const buildDailyNudgeTrigger = (hour, minute, options = {}) => {
   const { repeats = true, allowPast = false } = options || {};
@@ -1154,6 +1192,7 @@ const FAB_TUTORIAL_STATUS = {
 const QUEUED_MODAL_TYPES = {
   FAB_TUTORIAL: "fab_tutorial",
   DAILY_CHALLENGE: "daily_challenge",
+  DAILY_CHALLENGE_COMPLETE: "daily_challenge_complete",
   FOCUS_DIGEST: "focus_digest",
   DAILY_SUMMARY: "daily_summary",
   INCOME_PROMPT: "income_prompt",
@@ -1197,7 +1236,7 @@ const CELEBRATION_MESSAGES = {
       "Boom! Another mindful deal",
       "Less impulse, more plan",
       "Wallet just sighed with relief",
-      "Smart deal locked – savings are safe",
+      "Smart deal locked - savings are safe",
     ],
     level: "Level {{level}}! Savings armor upgraded ✨",
   },
@@ -1206,7 +1245,7 @@ const CELEBRATION_MESSAGES = {
       "Boom ! Encore un choix conscient",
       "Moins d'impulsions, plus de plan",
       "Le portefeuille respire enfin",
-      "Accord malin verrouillé – l'épargne est en sécurité",
+      "Accord malin verrouillé - l'épargne est en sécurité",
     ],
     level: "Niveau {{level}} ! Armure d'épargne améliorée ✨",
   },
@@ -1447,6 +1486,39 @@ const getMissedUsageStreakDays = (lastDayKey, todayKey) => {
   return Math.max(0, diff - 1);
 };
 
+const getUsageStreakRestoreBase = (payload, todayKey = getDayKey(Date.now())) => {
+  const data = payload && typeof payload === "object" ? payload : {};
+  const missed = !!data.missed;
+  const previousCount = Math.max(0, Number(data.previousCount) || 0);
+  const lostCount = Math.max(0, Number(data.lostCount) || 0, previousCount);
+  const timestamp = Number.isFinite(data.timestamp) ? data.timestamp : Date.now();
+  const fallbackDayKey = getDayKey(timestamp);
+  const dayKey = typeof data.dayKey === "string" && data.dayKey ? data.dayKey : fallbackDayKey;
+  const streakEndDayKey =
+    typeof data.streakEndDayKey === "string" && data.streakEndDayKey ? data.streakEndDayKey : dayKey;
+  const missedDays = Number.isFinite(data.missedDays)
+    ? Math.max(0, Math.floor(Number(data.missedDays) || 0))
+    : getMissedUsageStreakDays(streakEndDayKey, todayKey);
+  const shouldOfferRestore = missed && lostCount > 0 && missedDays > 0;
+  const hasLoggedToday = dayKey === todayKey;
+  return { shouldOfferRestore, missedDays, lostCount, streakEndDayKey, hasLoggedToday };
+};
+
+const resolveUsageStreakRestoreDetails = (
+  payload,
+  { healthPoints = 0, language = DEFAULT_LANGUAGE, todayKey = getDayKey(Date.now()) } = {}
+) => {
+  const base = getUsageStreakRestoreBase(payload, todayKey);
+  const costBlueCount = base.shouldOfferRestore
+    ? base.missedDays * STREAK_RESTORE_BLUE_COINS_PER_DAY
+    : 0;
+  const costValue = base.shouldOfferRestore ? base.missedDays * STREAK_RESTORE_COST_PER_DAY : 0;
+  const labels = HEALTH_COIN_LABELS[language] || HEALTH_COIN_LABELS.en;
+  const costLabel = costBlueCount ? `${costBlueCount} ${labels.blue || "blue coins"}` : "";
+  const canRestore = base.shouldOfferRestore && healthPoints >= costValue;
+  return { ...base, costBlueCount, costValue, costLabel, canRestore };
+};
+
 const isSameDay = (tsA, tsB = Date.now()) => {
   if (!tsA) return false;
   return getDayKey(tsA) === getDayKey(tsB);
@@ -1564,6 +1636,43 @@ const REPORTS_WEEK_COUNT = 8;
 const REPORTS_MONTH_COUNT = 6;
 const REPORTS_MAX_INSIGHTS = 3;
 const REPORTS_MAX_STEPS = 3;
+const REPORTS_MIN_ACTIONS_WEEK = 3;
+const REPORTS_MIN_ACTIONS_MONTH = 6;
+const getReportsMinActions = (type = "week") =>
+  type === "month" ? REPORTS_MIN_ACTIONS_MONTH : REPORTS_MIN_ACTIONS_WEEK;
+const getReportsActiveDaysTarget = ({ type = "week", dayCount = 0 } = {}) => {
+  const safeDayCount = Math.max(1, Number(dayCount) || 0);
+  const minTarget = type === "month" ? 6 : 3;
+  const ratio = type === "month" ? 0.4 : 0.6;
+  const baseTarget = Math.ceil(safeDayCount * ratio);
+  return Math.min(safeDayCount, Math.max(minTarget, baseTarget));
+};
+const getReportsShareTarget = ({
+  percent = 0,
+  type = "week",
+  activeDays = 0,
+  dayCount = 0,
+  totalActions = 0,
+} = {}) => {
+  const safePercent = Math.round(Number(percent) || 0);
+  if (!safePercent || safePercent >= 90) return null;
+  const minActions = getReportsMinActions(type);
+  if (totalActions < minActions) return null;
+  const safeDayCount = Math.max(1, Number(dayCount) || 0);
+  const activityRatio = Math.max(0, Math.min(1, Number(activeDays) / safeDayCount));
+  let step = type === "month" ? 6 : 8;
+  if (safePercent < 30) step += type === "month" ? 3 : 5;
+  else if (safePercent < 45) step += 2;
+  else if (safePercent < 60) step += 1;
+  else if (safePercent < 75) step -= 1;
+  else if (safePercent < 85) step -= 2;
+  else step -= 3;
+  if (activityRatio < 0.35) step = Math.max(3, step - 2);
+  if (activityRatio > 0.7) step += 1;
+  const target = Math.min(95, Math.round(safePercent + step));
+  if (!Number.isFinite(target) || target <= safePercent + 2) return null;
+  return target;
+};
 const describeHistoryEntry = (entry, { t, formatLocalAmount }) => {
   if (!entry) return t("historyUnknown");
   const { kind, meta = {} } = entry;
@@ -1710,7 +1819,10 @@ const computeRefuseCoinReward = (amountUSD = 0, currencyCode = activeCurrency) =
 };
 
 const computeDailyChallengeBonus = (amountUSD = 0, currencyCode = activeCurrency) => {
-  return computeRefuseCoinReward(amountUSD, currencyCode);
+  const baseReward = computeRefuseCoinReward(amountUSD, currencyCode);
+  const multiplier = Math.max(1, DAILY_CHALLENGE_REWARD_MULTIPLIER);
+  if (!baseReward || multiplier <= 1) return 0;
+  return baseReward * (multiplier - 1);
 };
 
 const computeLevelRewardCoins = (level) => {
@@ -3135,6 +3247,18 @@ const getMonthKey = (value = Date.now()) => {
   return `${year}-${month}`;
 };
 
+const parseMonthKey = (key) => {
+  if (typeof key !== "string" || key.trim().length === 0) return null;
+  const [yearStr, monthStr] = key.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  if (!year || !month) return null;
+  const date = new Date(year, month - 1, 1);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
 const getMonthLabel = (value = Date.now(), locale = "en-US") => {
   try {
     const date = new Date(value);
@@ -3143,6 +3267,20 @@ const getMonthLabel = (value = Date.now(), locale = "en-US") => {
     return "";
   }
 };
+
+const getMonthLabelForKey = (monthKey, locale = "en-US") => {
+  const parsed = parseMonthKey(monthKey);
+  if (!parsed) return "";
+  return getMonthLabel(parsed, locale);
+};
+
+const INCOME_ENTRY_TYPES = {
+  MONTHLY: "monthly",
+  EXTRA: "extra",
+};
+
+const normalizeIncomeEntryType = (value) =>
+  value === INCOME_ENTRY_TYPES.EXTRA ? INCOME_ENTRY_TYPES.EXTRA : INCOME_ENTRY_TYPES.MONTHLY;
 
 const normalizeIncomeEntry = (entry) => {
   if (!entry || typeof entry !== "object") return null;
@@ -3154,12 +3292,14 @@ const normalizeIncomeEntry = (entry) => {
     typeof entry.id === "string" && entry.id.trim()
       ? entry.id
       : `income_${receivedAt}_${Math.random().toString(16).slice(2, 8)}`;
+  const entryType = normalizeIncomeEntryType(entry.entryType);
   return {
     id,
     amountUSD,
     receivedAt,
     createdAt: Number(entry.createdAt) || receivedAt,
     note: typeof entry.note === "string" ? entry.note : "",
+    entryType,
   };
 };
 
@@ -3170,11 +3310,18 @@ const normalizeIncomeEntries = (list) => {
   return normalized;
 };
 
-const getIncomeForMonth = (entries, monthKey) => {
+const getIncomeForMonth = (entries, monthKey, options = {}) => {
   if (!monthKey) return 0;
+  const entryTypeFilter = options?.entryType;
   return (Array.isArray(entries) ? entries : []).reduce((sum, entry) => {
     if (!entry?.receivedAt) return sum;
     if (getMonthKey(entry.receivedAt) !== monthKey) return sum;
+    if (
+      entryTypeFilter &&
+      normalizeIncomeEntryType(entry?.entryType) !== entryTypeFilter
+    ) {
+      return sum;
+    }
     return sum + Math.max(0, Number(entry.amountUSD) || 0);
   }, 0);
 };
@@ -3226,11 +3373,13 @@ const buildBudgetPlan = ({
   decisionStats = {},
   baselineMonthlyWasteUSD = 0,
   language = DEFAULT_LANGUAGE,
+  monthKey = "",
 }) => {
   const normalizedIncome = Math.max(0, Number(incomeUSD) || 0);
   const normalizedCarryover = Number.isFinite(carryoverUSD) ? carryoverUSD : 0;
   const locale = getFormatLocale(language);
-  const monthLabel = getMonthLabel(Date.now(), locale);
+  const resolvedMonthLabel = monthKey ? getMonthLabelForKey(monthKey, locale) : "";
+  const monthLabel = resolvedMonthLabel || getMonthLabel(Date.now(), locale);
   const safeOverrides = normalizeBudgetOverrides(budgetOverrides);
   const budgetOrder = getBudgetCategoryOrder();
   const essentialIds = budgetOrder.filter((id) => getBudgetCategoryMeta(id).group === "essential");
@@ -3319,7 +3468,7 @@ const formatImpulseWindowLabel = (hour, span = 2) => {
   if (!Number.isInteger(hour)) return null;
   const start = padHour(hour);
   const end = padHour((hour + span) % 24);
-  return `${start}:00–${end}:00`;
+  return `${start}:00-${end}:00`;
 };
 const IMPULSE_DELAY_UNITS = {
   ru: { hour: "ч", minute: "мин" },
@@ -5777,6 +5926,10 @@ const isKnownDailyNudgeNotification = (content = {}) => {
 };
 
 const CURRENCIES = ["USD", "AED", "AUD", "BYN", "CAD", "EUR", "GBP", "JPY", "KZT", "KRW", "MXN", "PLN", "RUB", "SAR"];
+const normalizeCurrencyCode = (value) => {
+  const raw = typeof value === "string" ? value.trim().toUpperCase() : "";
+  return CURRENCIES.includes(raw) ? raw : DEFAULT_PROFILE.currency;
+};
 
 const CURRENCY_LOCALES = {
   AED: "en-AE",
@@ -6077,8 +6230,8 @@ const PERSONA_PRESETS = {
         fr: "Déco maison",
       },
       description: {
-        ru: "Ваза, свеча или подушка — решай осознанно.",
-        en: "Vase, candle or pillow—decide mindfully.",
+        ru: "Ваза, свеча или подушка - решай осознанно.",
+        en: "Vase, candle or pillow - decide mindfully.",
         es: "Jarrón, vela o cojín: decide con calma.",
         fr: "Vase, bougie ou coussin : choisis en conscience.",
       },
@@ -6317,7 +6470,7 @@ const PERSONA_TEMPTATION_PRESETS = {
         fr: "Coussins déco",
       },
       description: {
-        ru: "Ещё один «милый сет» — или шаг к цели.",
+        ru: "Ещё один «милый сет» - или шаг к цели.",
         en: "Another cute set, or a step toward your goal.",
         es: "Otro set bonito o un paso a tu meta.",
         fr: "Encore un joli set, ou un pas vers ton objectif.",
@@ -7220,6 +7373,20 @@ const filterTemptationsByPrice = (list, limitUSD) => {
   return list.filter((item) => isCustomTemptation(item) || getTemptationPrice(item) <= limitUSD);
 };
 
+const isDailyChallengePopularTemplate = (template) => {
+  if (!template || !template.id) return false;
+  if (DAILY_CHALLENGE_POPULAR_TEMPLATE_IDS.has(template.id)) return true;
+  if (isCustomTemptation(template) || template.quickTemptation) {
+    const priceUSD = getTemptationPrice(template);
+    return (
+      Number.isFinite(priceUSD) &&
+      priceUSD > 0 &&
+      priceUSD <= DAILY_CHALLENGE_POPULAR_CUSTOM_PRICE_CAP_USD
+    );
+  }
+  return false;
+};
+
 function TemptationCardComponent({
   item,
   language,
@@ -7558,9 +7725,17 @@ function TemptationCardComponent({
     Number(interactionEntry.intervalMs) ||
     (frequencyId ? getFrequencyIntervalMs(frequencyId) : null) ||
     (lastInteractionAt ? DAILY_FREQUENCY_INTERVAL_MS : null);
+  const rawNextCheckAt = Number(interactionEntry.nextCheckAt);
+  const nextCheckAt =
+    Number.isFinite(rawNextCheckAt) && rawNextCheckAt > 0 ? rawNextCheckAt : null;
+  const derivedDueAt =
+    effectiveIntervalMs && lastInteractionAt ? lastInteractionAt + effectiveIntervalMs : null;
   const rawDueAt =
-    Number(interactionEntry.nextCheckAt) ||
-    (effectiveIntervalMs && lastInteractionAt ? lastInteractionAt + effectiveIntervalMs : null);
+    Number.isFinite(derivedDueAt) && Number.isFinite(nextCheckAt)
+      ? Math.max(derivedDueAt, nextCheckAt)
+      : Number.isFinite(derivedDueAt)
+      ? derivedDueAt
+      : nextCheckAt;
   const hasTimerSource = Number.isFinite(rawDueAt) && Boolean(lastInteractionAt);
   const minuteTick = useMinuteTicker(hasTimerSource);
   const timerReference = Number.isFinite(minuteTick)
@@ -7726,7 +7901,7 @@ function TemptationCardComponent({
   const openAmountSlider = useCallback(
     (actionType) => {
       if (showEditorInline) return;
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      runLayoutAnimation();
       setAmountSliderAction(actionType);
       setAmountSliderVisible(true);
       amountSliderInteractedRef.current = false;
@@ -7751,7 +7926,7 @@ function TemptationCardComponent({
 
   const closeAmountSlider = useCallback(() => {
     if (!amountSliderVisible) return;
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    runLayoutAnimation();
     setAmountSliderVisible(false);
     setAmountSliderAction(null);
     amountSliderInteractedRef.current = false;
@@ -8346,6 +8521,7 @@ function TemptationCardComponent({
             compact
             horizontal
             visibleCount={4}
+            tall
           />
         </View>
       )}
@@ -8546,10 +8722,14 @@ function TemptationCardComponent({
           if (amountSliderVisible && (action.type === "save" || action.type === "spend")) {
             buttonStyle = [...buttonStyle, styles.temptationButtonConfirm];
             if (action.type === amountSliderAction) {
+              const confirmActiveStyle = { borderColor: amountSliderAccent };
+              if (Platform.OS === "ios") {
+                confirmActiveStyle.shadowColor = amountSliderAccent;
+              }
               buttonStyle = [
                 ...buttonStyle,
                 styles.temptationButtonConfirmActive,
-                { borderColor: amountSliderAccent, shadowColor: amountSliderAccent },
+                confirmActiveStyle,
               ];
             }
           }
@@ -8845,6 +9025,7 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
               compact
               horizontal
               visibleCount={4}
+              tall
             />
           </View>
         </View>
@@ -9271,7 +9452,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
       ? Math.min(activeChallengeProgress / activeChallenge.targetValue, 1)
       : 0;
   const handleToggleExpanded = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    runLayoutAnimation();
     setExpanded((prev) => {
       const next = !prev;
       logEvent("hero_show_more_toggled", { expanded: next ? 1 : 0 });
@@ -9942,7 +10123,7 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
         border: isDarkMode ? "rgba(255,255,255,0.28)" : "rgba(126,146,170,0.34)",
         highlight: isDarkMode ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.72)",
         shadow: isDarkMode ? "rgba(0,0,0,0.55)" : "rgba(22,32,54,0.18)",
-        value: isDarkMode ? "#F7F7FF" : "#1B1C2A",
+        value: isDarkMode ? "#7FE4AC" : "#1B1C2A",
         rim: isDarkMode ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.78)",
         innerShadow: isDarkMode ? "rgba(0,0,0,0.4)" : "rgba(120,140,160,0.25)",
         tint: isDarkMode ? "rgba(60,80,110,0.24)" : "rgba(180,210,235,0.22)",
@@ -10216,6 +10397,10 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
       if (Math.abs(x) > 2 || Math.abs(y) > 2) {
         x /= 9.81;
         y /= 9.81;
+      }
+      if (Platform.OS === "android") {
+        // Android sensor Y axis is inverted relative to our screen physics.
+        y = -y;
       }
       const clampedX = Math.max(-1, Math.min(1, x));
       const clampedY = Math.max(-1, Math.min(1, y));
@@ -10602,10 +10787,11 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
               ]}
             >
               {blurAvailable ? (
-                Platform.OS === "android" && AndroidBlurView ? (
+                Platform.OS === "android" && AndroidBlurView && !ANDROID_DIMEZIS_DISABLED ? (
                   <AndroidBlurView
                     blurType={isDarkMode ? "dark" : "light"}
                     blurAmount={glassBlurAmount}
+                    autoUpdate={ANDROID_BLUR_AUTO_UPDATE}
                     reducedTransparencyFallbackColor={piggyPalette.tint}
                     style={[StyleSheet.absoluteFill, styles.piggyGlassBlur]}
                   />
@@ -10613,7 +10799,11 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
                   <ExpoBlurView
                     tint={isDarkMode ? "dark" : "light"}
                     intensity={glassBlurIntensity}
-                    experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
+                    experimentalBlurMethod={
+                      Platform.OS === "android" && !ANDROID_DIMEZIS_DISABLED
+                        ? "dimezisBlurView"
+                        : undefined
+                    }
                     style={[StyleSheet.absoluteFill, styles.piggyGlassBlur]}
                   />
                 )
@@ -10881,10 +11071,11 @@ const LockedFeatureOverlay = ({
           pointerEvents="auto"
         >
           {blurAvailable ? (
-            Platform.OS === "android" && AndroidBlurView ? (
+            Platform.OS === "android" && AndroidBlurView && !ANDROID_DIMEZIS_DISABLED ? (
               <AndroidBlurView
                 blurType={isDarkMode ? "dark" : "light"}
                 blurAmount={androidBlurAmount}
+                autoUpdate={ANDROID_BLUR_AUTO_UPDATE}
                 reducedTransparencyFallbackColor={androidBlurFallback}
                 style={[StyleSheet.absoluteFill, styles.lockedFeatureBlur, radiusStyle]}
               />
@@ -10892,7 +11083,11 @@ const LockedFeatureOverlay = ({
               <ExpoBlurView
                 tint={isDarkMode ? "dark" : "light"}
                 intensity={blurIntensityValue}
-                experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
+                experimentalBlurMethod={
+                  Platform.OS === "android" && !ANDROID_DIMEZIS_DISABLED
+                    ? "dimezisBlurView"
+                    : undefined
+                }
                 style={[StyleSheet.absoluteFill, styles.lockedFeatureBlur, radiusStyle]}
               />
             )
@@ -11122,7 +11317,7 @@ function FreeDayCard({
         <TouchableOpacity
           style={styles.freeDayToggle}
           onPress={() => {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            runLayoutAnimation();
             setExpanded((prev) => !prev);
           }}
         >
@@ -11667,6 +11862,55 @@ const HistoryModal = React.memo(function HistoryModal({
     (entry) => formatHistoryEntryMeta(entry, { t, locale }),
     [locale, t]
   );
+  const historyLastIndex = historyEntries.length - 1;
+  const renderHistoryItem = useCallback(
+    ({ item: entry, index }) => (
+      <View
+        style={[
+          styles.historyItem,
+          {
+            borderColor: colors.border,
+            borderBottomWidth:
+              index === historyLastIndex ? 0 : StyleSheet.hairlineWidth,
+          },
+        ]}
+      >
+        <View style={styles.historyRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.historyItemTitle, { color: colors.text }]}>
+              {describeHistory(entry)}
+            </Text>
+            <Text style={[styles.historyItemMeta, { color: colors.muted }]}>
+              {formatHistoryMeta(entry)}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.historyDeleteBtn, { borderColor: colors.border }]}
+            onPress={() => onHistoryDelete?.(entry)}
+          >
+            <Text style={[styles.historyDeleteText, { color: colors.muted }]}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    ),
+    [
+      colors.border,
+      colors.muted,
+      colors.text,
+      describeHistory,
+      formatHistoryMeta,
+      historyLastIndex,
+      onHistoryDelete,
+    ]
+  );
+  const historyItemLayout = useCallback(
+    (_, index) => ({
+      length: HISTORY_ITEM_HEIGHT,
+      offset: HISTORY_ITEM_HEIGHT * index,
+      index,
+    }),
+    []
+  );
   const [modalHeight, setModalHeight] = useState(0);
   const modalOpacity = useMemo(() => {
     const screenHeight = Dimensions.get("window").height || 1;
@@ -11716,42 +11960,18 @@ const HistoryModal = React.memo(function HistoryModal({
                 {t("historyEmpty")}
               </Text>
             ) : (
-              <ScrollView
+              <FlatList
                 style={[styles.progressCategoryModalList, { borderColor: colors.border }]}
                 contentContainerStyle={styles.historyListContent}
                 showsVerticalScrollIndicator
-              >
-                {historyEntries.map((entry, index) => (
-                  <View
-                    key={entry.id}
-                    style={[
-                      styles.historyItem,
-                      {
-                        borderColor: colors.border,
-                        borderBottomWidth:
-                          index === historyEntries.length - 1 ? 0 : StyleSheet.hairlineWidth,
-                      },
-                    ]}
-                  >
-                    <View style={styles.historyRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.historyItemTitle, { color: colors.text }]}>
-                          {describeHistory(entry)}
-                        </Text>
-                        <Text style={[styles.historyItemMeta, { color: colors.muted }]}>
-                          {formatHistoryMeta(entry)}
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        style={[styles.historyDeleteBtn, { borderColor: colors.border }]}
-                        onPress={() => onHistoryDelete?.(entry)}
-                      >
-                        <Text style={[styles.historyDeleteText, { color: colors.muted }]}>✕</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
+                data={historyEntries}
+                keyExtractor={(entry) => entry.id}
+                renderItem={renderHistoryItem}
+                getItemLayout={historyItemLayout}
+                initialNumToRender={12}
+                maxToRenderPerBatch={12}
+                windowSize={5}
+              />
             )}
           </View>
         </View>
@@ -11811,20 +12031,51 @@ const ReportsModal = React.memo(function ReportsModal({
   const buildInsights = useCallback(
     (report) => {
       if (!report?.totals) return [];
-      const savedUSD = Math.max(0, Number(report.totals.savedUSD) || 0);
-      const spendUSD = Math.max(0, Number(report.totals.spendUSD) || 0);
+      const totals = report.totals || {};
+      const metrics = report.metrics || {};
+      const savedUSD = Math.max(0, Number(totals.savedUSD) || 0);
+      const spendUSD = Math.max(0, Number(totals.spendUSD) || 0);
+      const savedCount = Math.max(0, Number(totals.savedCount) || 0);
+      const spendCount = Math.max(0, Number(totals.spendCount) || 0);
+      const totalActions = savedCount + spendCount;
       const deltaUSD = savedUSD - spendUSD;
       const threshold = Math.max(1, Math.min(savedUSD, spendUSD) * 0.05);
-      const metrics = report.metrics || {};
+      const reportType = report.type === "month" ? "month" : "week";
+      const dayCount = Math.max(1, Number(totals.dayCount) || 0);
+      const activeDays = Math.max(0, Number(metrics.activeDays) || 0);
+      const saveShare = Math.max(0, Number(metrics.saveShare) || 0);
+      const sharePercent = Math.round(saveShare * 100);
+      const shareTarget = getReportsShareTarget({
+        percent: sharePercent,
+        type: reportType,
+        activeDays,
+        dayCount,
+        totalActions,
+      });
+      const targetDays = getReportsActiveDaysTarget({ type: reportType, dayCount });
+      const minActions = getReportsMinActions(reportType);
+      const hasData = savedUSD > 0 || spendUSD > 0;
+      const hasEnoughData = totalActions >= minActions;
       const insights = [];
       const pushInsight = (id, text, priority = 1) => {
         if (!text) return;
+        if (insights.some((entry) => entry.id === id)) return;
         insights.push({ id, text, priority });
       };
-      if (savedUSD === 0 && spendUSD === 0) {
-        pushInsight("empty", t("reportsInsightEmpty"), 3);
+      if (!hasData) {
+        pushInsight("empty", t("reportsInsightEmpty"), 3.5);
+      } else if (!hasEnoughData) {
+        pushInsight(
+          "low_data",
+          t("reportsInsightLowData", { count: totalActions, target: minActions }),
+          3.4
+        );
+      } else if (savedUSD === 0 && spendUSD > 0) {
+        pushInsight("no_save", t("reportsInsightNoSave", { amount: formatLocalAmount(spendUSD) }), 3.4);
+      } else if (spendUSD === 0 && savedUSD > 0) {
+        pushInsight("no_spend", t("reportsInsightNoSpend", { amount: formatLocalAmount(savedUSD) }), 3.4);
       } else if (Math.abs(deltaUSD) <= threshold) {
-        pushInsight("even", t("reportsInsightEvenAdvice"), 3);
+        pushInsight("even", t("reportsInsightEvenAdvice"), 3.3);
       } else if (deltaUSD > 0) {
         if (report.topSpend?.displayTitle) {
           pushInsight(
@@ -11833,13 +12084,13 @@ const ReportsModal = React.memo(function ReportsModal({
               amount: formatLocalAmount(deltaUSD),
               title: report.topSpend.displayTitle,
             }),
-            3
+            3.3
           );
         } else {
           pushInsight(
             "win",
             t("reportsInsightWinAdvice", { amount: formatLocalAmount(deltaUSD) }),
-            3
+            3.3
           );
         }
       } else {
@@ -11850,42 +12101,42 @@ const ReportsModal = React.memo(function ReportsModal({
               amount: formatLocalAmount(Math.abs(deltaUSD)),
               title: report.topSpend.displayTitle,
             }),
-            3
+            3.3
           );
         } else {
           pushInsight(
             "loss",
             t("reportsInsightLossAdvice", { amount: formatLocalAmount(Math.abs(deltaUSD)) }),
-            3
+            3.3
           );
         }
       }
-      if ((metrics.saveShare || 0) > 0) {
-        const percent = Math.round((metrics.saveShare || 0) * 100);
-        let target = null;
-        if (percent < 60) target = 60;
-        else if (percent < 80) target = 80;
-        else if (percent < 90) target = 90;
-        else if (percent < 100) target = 100;
-        if (target && target > percent) {
-          pushInsight("share", t("reportsInsightShare", { percent, target }), 2.2);
-        }
+      const topSpendShare =
+        spendUSD > 0 && report.topSpend?.amountUSD ? report.topSpend.amountUSD / spendUSD : 0;
+      const dominantShareThreshold = reportType === "month" ? 0.4 : 0.45;
+      if (report.topSpend?.displayTitle && topSpendShare >= dominantShareThreshold) {
+        pushInsight(
+          "dominant_spend",
+          t("reportsInsightDominantSpend", {
+            title: report.topSpend.displayTitle,
+            percent: Math.round(topSpendShare * 100),
+          }),
+          2.7
+        );
       }
-      if (metrics.activeDays && report.totals?.dayCount) {
-        const totalDays = report.totals.dayCount;
-        const activeDays = metrics.activeDays;
-        const targetDays = Math.min(totalDays, Math.max(3, Math.ceil(totalDays * 0.6)));
-        if (activeDays < targetDays) {
-          pushInsight(
-            "active_days",
-            t("reportsInsightActiveDays", { active: activeDays, total: totalDays, target: targetDays }),
-            2.1
-          );
-        }
+      if (shareTarget) {
+        pushInsight("share", t("reportsInsightShare", { percent: sharePercent, target: shareTarget }), 2.4);
+      }
+      if (activeDays && dayCount && activeDays < targetDays) {
+        pushInsight(
+          "active_days",
+          t("reportsInsightActiveDays", { active: activeDays, total: dayCount, target: targetDays }),
+          2.3
+        );
       }
       if ((metrics.weekendSpendShare || 0) >= 0.6 && spendUSD > 0) {
         const percent = Math.round(metrics.weekendSpendShare * 100);
-        pushInsight("weekend_spend", t("reportsInsightWeekendSpend", { percent }), 2);
+        pushInsight("weekend_spend", t("reportsInsightWeekendSpend", { percent }), 2.2);
       }
       if (report.peakSpendDay?.dayKey && (report.peakSpendDay.spendUSD || 0) > 0) {
         pushInsight(
@@ -11908,27 +12159,30 @@ const ReportsModal = React.memo(function ReportsModal({
         );
       }
       if ((metrics.avgSpendPerAction || 0) > 0 && (metrics.avgSavePerAction || 0) > 0) {
-        pushInsight(
-          "avg_ticket",
-          t("reportsInsightAvgTicket", {
-            spendAvg: formatLocalAmount(metrics.avgSpendPerAction || 0),
-            saveAvg: formatLocalAmount(metrics.avgSavePerAction || 0),
-          }),
-          1.4
-        );
+        const ratio = metrics.avgSpendPerAction / Math.max(metrics.avgSavePerAction || 1, 1);
+        if (ratio >= 1.25) {
+          pushInsight(
+            "avg_ticket",
+            t("reportsInsightAvgTicket", {
+              spendAvg: formatLocalAmount(metrics.avgSpendPerAction || 0),
+              saveAvg: formatLocalAmount(metrics.avgSavePerAction || 0),
+            }),
+            1.9
+          );
+        }
       }
       if (report.topSave?.displayTitle) {
         pushInsight(
           "top_save",
           t("reportsInsightTopSaveAdvice", { title: report.topSave.displayTitle }),
-          1.3
+          1.6
         );
       }
       if (report.topSpend?.displayTitle) {
         pushInsight(
           "top_spend",
           t("reportsInsightTopSpendAdvice", { title: report.topSpend.displayTitle }),
-          1.2
+          1.5
         );
       }
       const sorted = insights.sort((a, b) => b.priority - a.priority);
@@ -11939,19 +12193,67 @@ const ReportsModal = React.memo(function ReportsModal({
   const buildNextSteps = useCallback(
     (report) => {
       if (!report?.totals) return [t("reportsNextStepStart")];
+      const totals = report.totals || {};
+      const metrics = report.metrics || {};
+      const savedUSD = Math.max(0, Number(totals.savedUSD) || 0);
+      const spendUSD = Math.max(0, Number(totals.spendUSD) || 0);
+      const savedCount = Math.max(0, Number(totals.savedCount) || 0);
+      const spendCount = Math.max(0, Number(totals.spendCount) || 0);
+      const totalActions = savedCount + spendCount;
+      const reportType = report.type === "month" ? "month" : "week";
+      const dayCount = Math.max(1, Number(totals.dayCount) || 0);
+      const activeDays = Math.max(0, Number(metrics.activeDays) || 0);
+      const sharePercent = Math.round(Math.max(0, Number(metrics.saveShare) || 0) * 100);
+      const shareTarget = getReportsShareTarget({
+        percent: sharePercent,
+        type: reportType,
+        activeDays,
+        dayCount,
+        totalActions,
+      });
+      const targetDays = getReportsActiveDaysTarget({ type: reportType, dayCount });
+      const minActions = getReportsMinActions(reportType);
       const steps = [];
-      if (report.topSpend?.displayTitle) {
-        steps.push(t("reportsNextStepCut", { title: report.topSpend.displayTitle }));
+      const pushStep = (id, text, priority = 1) => {
+        if (!text) return;
+        if (steps.some((entry) => entry.id === id)) return;
+        steps.push({ id, text, priority });
+      };
+      const hasData = savedUSD > 0 || spendUSD > 0;
+      if (!hasData) {
+        return [t("reportsNextStepStart")];
+      }
+      if (totalActions < minActions) {
+        pushStep("start", t("reportsNextStepStart"), 3.3);
+      }
+      const topSpendTitle = report.topSpend?.displayTitle;
+      const topSpendShare =
+        spendUSD > 0 && report.topSpend?.amountUSD ? report.topSpend.amountUSD / spendUSD : 0;
+      const dominantShareThreshold = reportType === "month" ? 0.4 : 0.45;
+      if (topSpendTitle) {
+        if (topSpendShare >= dominantShareThreshold) {
+          pushStep("cap_category", t("reportsNextStepCap", { title: topSpendTitle }), 3.1);
+        } else if (spendUSD >= savedUSD) {
+          pushStep("cut_category", t("reportsNextStepCut", { title: topSpendTitle }), 2.9);
+        } else {
+          pushStep("cut_category", t("reportsNextStepCut", { title: topSpendTitle }), 2.3);
+        }
+      }
+      if ((metrics.weekendSpendShare || 0) >= 0.6 && spendUSD > 0) {
+        pushStep("weekend_cap", t("reportsNextStepWeekendCap"), 2.8);
+      }
+      if (activeDays && dayCount && activeDays < targetDays) {
+        pushStep("active_days", t("reportsNextStepActiveDays", { target: targetDays }), 2.7);
+      }
+      if (shareTarget) {
+        pushStep("share_target", t("reportsNextStepShare", { target: shareTarget }), 2.6);
       }
       if (report.topSave?.displayTitle) {
-        steps.push(t("reportsNextStepRepeat", { title: report.topSave.displayTitle }));
+        pushStep("repeat", t("reportsNextStepRepeat", { title: report.topSave.displayTitle }), 2.4);
       }
-      if ((report.totals.savedUSD || 0) > 0 || (report.totals.spendUSD || 0) > 0) {
-        steps.push(t("reportsNextStepGoal"));
-      } else {
-        steps.push(t("reportsNextStepStart"));
-      }
-      return steps.slice(0, REPORTS_MAX_STEPS);
+      pushStep("goal", t("reportsNextStepGoal"), 1.4);
+      const sorted = steps.sort((a, b) => b.priority - a.priority);
+      return sorted.slice(0, REPORTS_MAX_STEPS).map((entry) => entry.text);
     },
     [t]
   );
@@ -12259,6 +12561,8 @@ const FeedScreen = React.memo(
   speechWarmupTick = 0,
   lastVisitAt = null,
   lastVisitAtSnapshot = null,
+  tamagotchiGreetingDayKey = null,
+  onTamagotchiGreeting = () => {},
   tutorialTemptationStepId = null,
   tutorialHighlightMeasureTick = 0,
   onTutorialHighlightLayoutChange = null,
@@ -13193,6 +13497,10 @@ const FeedScreen = React.memo(
   const tamagotchiSpeechPrimedRef = useRef(false);
   const tamagotchiSpeechWarmupShownRef = useRef(false);
   const [tamagotchiSpeechWarmupVisible, setTamagotchiSpeechWarmupVisible] = useState(true);
+  const speechAllowedRef = useRef(speechAllowed);
+  useEffect(() => {
+    speechAllowedRef.current = speechAllowed;
+  }, [speechAllowed]);
   const [heroLevelExpanded, setHeroLevelExpanded] = useState(false);
   const heroLevelAnim = useRef(new Animated.Value(heroLevelExpanded ? 1 : 0)).current;
   const [heroRowWidth, setHeroRowWidth] = useState(0);
@@ -13203,7 +13511,7 @@ const FeedScreen = React.memo(
   }, [heroRowWidth, heroLogoRight]);
   const heroBubbleTextMaxWidth = Math.max(0, heroBubbleMaxWidth - 16);
   const toggleHeroLevelExpanded = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    runLayoutAnimation();
     setHeroLevelExpanded((prev) => !prev);
   }, []);
   useEffect(() => {
@@ -13272,8 +13580,9 @@ const FeedScreen = React.memo(
   const scheduleNextTamagotchiSpeech = useCallback(() => {
     clearTamagotchiSpeechTimer();
     tamagotchiSpeechTimerRef.current = setTimeout(() => {
-      if (!speechAllowed) {
+      if (!speechAllowedRef.current) {
         setTamagotchiSpeechVisible(false);
+        scheduleNextTamagotchiSpeech();
         return;
       }
       const nextText = getNextTamagotchiSpeech("unknown");
@@ -13285,20 +13594,29 @@ const FeedScreen = React.memo(
       setTamagotchiSpeechVisible(true);
       scheduleNextTamagotchiSpeech();
     }, TAMAGOTCHI_SPEECH_DURATION_MS);
-  }, [clearTamagotchiSpeechTimer, getNextTamagotchiSpeech, speechAllowed]);
+  }, [clearTamagotchiSpeechTimer, getNextTamagotchiSpeech]);
   useEffect(() => () => clearTamagotchiSpeechTimer(), [clearTamagotchiSpeechTimer]);
   useEffect(() => {
     if (!speechAllowed) {
-      clearTamagotchiSpeechTimer();
       if (!tamagotchiSpeechWarmupVisible) {
         setTamagotchiSpeechVisible(false);
+      }
+      if (!tamagotchiSpeechTimerRef.current) {
+        scheduleNextTamagotchiSpeech();
       }
       return;
     }
     if (tamagotchiSpeechWarmupVisible) {
       setTamagotchiSpeechWarmupVisible(false);
     }
-    if (tamagotchiSpeechVisible && tamagotchiSpeechTimerRef.current) return;
+    const now = Date.now();
+    const speechStale =
+      tamagotchiSpeechLastAtRef.current > 0 &&
+      now - tamagotchiSpeechLastAtRef.current > TAMAGOTCHI_SPEECH_DURATION_MS * 2;
+    if (tamagotchiSpeechVisible && tamagotchiSpeechTimerRef.current && !speechStale) return;
+    if (speechStale) {
+      tamagotchiSpeechLastAtRef.current = now;
+    }
     if (!tamagotchiSpeech) {
       const nextText = getNextTamagotchiSpeech("ready");
       if (nextText) {
@@ -13307,13 +13625,12 @@ const FeedScreen = React.memo(
       }
     } else {
       tamagotchiSpeechLastTextRef.current = tamagotchiSpeech;
-      tamagotchiSpeechLastAtRef.current = Date.now();
+      tamagotchiSpeechLastAtRef.current = now;
       tamagotchiSpeechPrimedRef.current = true;
     }
     setTamagotchiSpeechVisible(true);
     scheduleNextTamagotchiSpeech();
   }, [
-    clearTamagotchiSpeechTimer,
     getNextTamagotchiSpeech,
     scheduleNextTamagotchiSpeech,
     speechAllowed,
@@ -13334,13 +13651,10 @@ const FeedScreen = React.memo(
       tamagotchiSpeechLastAtRef.current = Date.now();
     }
     setTamagotchiSpeechVisible(true);
-    if (speechAllowed) {
-      scheduleNextTamagotchiSpeech();
-    }
+    scheduleNextTamagotchiSpeech();
   }, [
     peekTamagotchiSpeech,
     scheduleNextTamagotchiSpeech,
-    speechAllowed,
     speechWarmupTick,
     tamagotchiSpeech,
   ]);
@@ -13392,7 +13706,9 @@ const FeedScreen = React.memo(
       const lastVisitTimestamp = Number(lastVisitAtValue) || 0;
       const todayKey = getDayKey(now);
       const greetedToday =
-        lastVisitTimestamp > 0 && getDayKey(lastVisitTimestamp) === todayKey;
+        (typeof tamagotchiGreetingDayKey === "string" &&
+          tamagotchiGreetingDayKey === todayKey) ||
+        (lastVisitTimestamp > 0 && getDayKey(lastVisitTimestamp) === todayKey);
       const minutesAway =
         lastVisitTimestamp > 0 ? Math.floor((now - lastVisitTimestamp) / (1000 * 60)) : 0;
       const daysAway =
@@ -13721,6 +14037,7 @@ const FeedScreen = React.memo(
       isEssentialHistoryEntry,
       lastVisitAt,
       lastVisitAtSnapshot,
+      tamagotchiGreetingDayKey,
       latestSaveEvent,
       latestSpendEvent,
       recentActivity,
@@ -13742,6 +14059,20 @@ const FeedScreen = React.memo(
   const triggerTamagotchiSpeech = useCallback(
     (reason = "unknown") => {
       const now = Date.now();
+      const isGreetingReason = reason === "ready" || reason === "resume";
+      const todayKey = isGreetingReason ? getDayKey(now) : "";
+      const greetedByKey =
+        isGreetingReason &&
+        typeof tamagotchiGreetingDayKey === "string" &&
+        tamagotchiGreetingDayKey === todayKey;
+      const greetingVisitValue =
+        reason === "ready" && lastVisitAtSnapshot ? lastVisitAtSnapshot : lastVisitAt;
+      const greetingVisitTimestamp = Number(greetingVisitValue) || 0;
+      const greetedByVisit =
+        isGreetingReason &&
+        greetingVisitTimestamp > 0 &&
+        getDayKey(greetingVisitTimestamp) === todayKey;
+      const shouldMarkGreeting = isGreetingReason && !greetedByKey && !greetedByVisit;
       const sinceLast = now - tamagotchiSpeechLastAtRef.current;
       const isActionReason = TAMAGOTCHI_ACTION_SPEECH_REASONS.has(reason);
       const actionCooldown = reason === "feed" ? 0 : TAMAGOTCHI_SPEECH_ACTION_COOLDOWN_MS;
@@ -13753,8 +14084,18 @@ const FeedScreen = React.memo(
       const text = getNextTamagotchiSpeech(reason);
       if (!text) return;
       showTamagotchiSpeech(text);
+      if (shouldMarkGreeting) {
+        onTamagotchiGreeting(todayKey);
+      }
     },
-    [getNextTamagotchiSpeech, showTamagotchiSpeech]
+    [
+      getNextTamagotchiSpeech,
+      lastVisitAt,
+      lastVisitAtSnapshot,
+      onTamagotchiGreeting,
+      showTamagotchiSpeech,
+      tamagotchiGreetingDayKey,
+    ]
   );
   useEffect(() => {
     if (!homeSpeechTick) return;
@@ -13765,7 +14106,7 @@ const FeedScreen = React.memo(
   useEffect(() => {
     if (!speechAllowed) return;
     if (tamagotchiSpeechReadyShownRef.current) return;
-    if (homeSpeechTick > 0 || tamagotchiSpeechVisible) {
+    if (homeSpeechTick > 0 || (tamagotchiSpeechVisible && tamagotchiSpeechTimerRef.current)) {
       tamagotchiSpeechReadyShownRef.current = true;
       return;
     }
@@ -13989,6 +14330,7 @@ const FeedScreen = React.memo(
         decisionStats,
         baselineMonthlyWasteUSD,
         language,
+        monthKey: budgetMonthKey,
       }),
     [
       baselineMonthlyWasteUSD,
@@ -14299,9 +14641,34 @@ const FeedScreen = React.memo(
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const archiveCount = archiveEntries.length;
   const toggleArchiveExpanded = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    runLayoutAnimation();
     setArchiveExpanded((prev) => !prev);
   }, []);
+  const feedEmptyEntry = useMemo(() => ({ type: "feed_empty", id: "feed-empty" }), []);
+  const archiveHeaderEntry = useMemo(
+    () => ({ type: "archive_header", id: "archive-header" }),
+    []
+  );
+  const feedData = useMemo(() => {
+    const data = [];
+    if (feedEntries.length) {
+      data.push(...feedEntries);
+    } else {
+      data.push(feedEmptyEntry);
+    }
+    data.push(archiveHeaderEntry);
+    if (archiveExpanded && archiveCount > 0) {
+      data.push(...archiveEntries);
+    }
+    return data;
+  }, [
+    archiveCount,
+    archiveEntries,
+    archiveExpanded,
+    archiveHeaderEntry,
+    feedEmptyEntry,
+    feedEntries,
+  ]);
   const resolveAssignedGoalLabel = useCallback(
     (goalId, assignedGoal) => {
       if (assignedGoal) return getWishTitleWithoutEmoji(assignedGoal);
@@ -14480,49 +14847,43 @@ const FeedScreen = React.memo(
       if (entry.type === "card") {
         return renderTemptationCard(entry);
       }
+      if (entry.type === "archive") {
+        return renderTemptationCard(entry, { archived: true });
+      }
+      if (entry.type === "archive_header") {
+        return (
+          <View style={styles.archiveSection}>
+            <FrequencySectionHeader
+              title={t("archiveSectionTitle")}
+              count={String(archiveCount)}
+              collapsed={!archiveExpanded}
+              onToggle={toggleArchiveExpanded}
+              colors={colors}
+              t={t}
+            />
+            {archiveExpanded && archiveCount === 0 ? (
+              <Text style={[styles.archiveEmptyText, { color: colors.muted }]}>
+                {t("archiveEmpty")}
+              </Text>
+            ) : null}
+          </View>
+        );
+      }
+      if (entry.type === "feed_empty") {
+        return (
+          <View style={styles.emptyState}>
+            <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
+              {t("feedEmptyTitle")}
+            </Text>
+            <Text style={[styles.emptyStateText, { color: colors.muted }]}>
+              {t("feedEmptySubtitle")}
+            </Text>
+          </View>
+        );
+      }
       return null;
     },
-    [renderTemptationCard]
-  );
-  const renderArchiveItem = useCallback(
-    (entry) => renderTemptationCard(entry, { archived: true }),
-    [renderTemptationCard]
-  );
-  const archiveFooter = useMemo(
-    () => (
-      <View style={styles.archiveSection}>
-        <FrequencySectionHeader
-          title={t("archiveSectionTitle")}
-          count={String(archiveCount)}
-          collapsed={!archiveExpanded}
-          onToggle={toggleArchiveExpanded}
-          colors={colors}
-          t={t}
-        />
-        {archiveExpanded && (
-          archiveCount > 0 ? (
-            <View style={styles.archiveList}>
-              {archiveEntries.map((entry) => (
-                <View key={entry.id}>{renderArchiveItem(entry)}</View>
-              ))}
-            </View>
-          ) : (
-            <Text style={[styles.archiveEmptyText, { color: colors.muted }]}>
-              {t("archiveEmpty")}
-            </Text>
-          )
-        )}
-      </View>
-    ),
-    [
-      archiveCount,
-      archiveEntries,
-      archiveExpanded,
-      colors,
-      renderArchiveItem,
-      t,
-      toggleArchiveExpanded,
-    ]
+    [archiveCount, archiveExpanded, colors, renderTemptationCard, t, toggleArchiveExpanded]
   );
   const analyticsPreview = analyticsStats.slice(0, 3);
   const { wishesById, swipePinnedByTemplate } = useMemo(() => {
@@ -14544,7 +14905,7 @@ const FeedScreen = React.memo(
       <FlatList
         ref={listRef}
         style={styles.feedList}
-        data={feedEntries}
+        data={feedData}
         keyExtractor={feedKeyExtractor}
         showsVerticalScrollIndicator={false}
         scrollEnabled={!feedScrollLocked}
@@ -14560,12 +14921,6 @@ const FeedScreen = React.memo(
         onScrollEndDrag={handleFeedScrollEnd}
         onMomentumScrollBegin={handleFeedMomentumBegin}
         onMomentumScrollEnd={handleFeedMomentumEnd}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={[styles.emptyStateTitle, { color: colors.text }]}>{t("feedEmptyTitle")}</Text>
-            <Text style={[styles.emptyStateText, { color: colors.muted }]}>{t("feedEmptySubtitle")}</Text>
-          </View>
-        }
         ListHeaderComponent={
           <View style={styles.feedHero} onLayout={handleHeroLayout}>
             <View style={styles.feedHeroTop}>
@@ -14920,7 +15275,6 @@ const FeedScreen = React.memo(
             </View>
           </View>
         }
-        ListFooterComponent={archiveFooter}
       />
       <HistoryModal
         visible={historyModalVisible}
@@ -15392,6 +15746,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
   baselineMonthlyWasteUSD = 0,
   onBudgetOverrideChange = () => {},
   onIncomeEntryOpen = () => {},
+  onExtraIncomeEntryOpen = () => {},
   impulseInsights,
   showImpulseMap = false,
   showFreeDayCard = false,
@@ -15421,7 +15776,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
     typeof budgetSpeechDataRef === "undefined" ? null : budgetSpeechDataRef;
   const [impulseExpanded, setImpulseExpanded] = useState(false);
   const handleImpulseToggle = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    runLayoutAnimation();
     setImpulseExpanded((prev) => !prev);
   }, []);
   const primaryGoalIds = Array.isArray(primaryGoals)
@@ -15524,12 +15879,14 @@ const ProgressScreen = React.memo(function ProgressScreen({
   const activeChallengeActionEnabled =
     activeChallenge?.canClaim || activeChallenge?.canStart || false;
   useEffect(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    runLayoutAnimation();
   }, [activeChallenge?.id]);
   const dailyChallengeRewardLabel = useMemo(() => {
     const bonus = Number(dailyChallenge?.rewardBonus) || 0;
-    return formatHealthRewardLabel(bonus * 2, language);
-  }, [dailyChallenge?.rewardBonus, language]);
+    const base = Number(dailyChallenge?.baseReward) || 0;
+    const total = Number(dailyChallenge?.rewardTotal) || base + bonus;
+    return formatHealthRewardLabel(total, language);
+  }, [dailyChallenge?.baseReward, dailyChallenge?.rewardBonus, dailyChallenge?.rewardTotal, language]);
 
   const resolvedHistoryEvents = useMemo(
     () => (Array.isArray(historyEvents) ? historyEvents : []),
@@ -16244,6 +16601,10 @@ const ProgressScreen = React.memo(function ProgressScreen({
     );
     const target = Math.max(Number(dailyChallenge.target) || 1, 1);
     const rewardLabel = dailyChallengeRewardLabel;
+    const rewardAmount = Math.max(
+      0,
+      Number(dailyChallenge.rewardTotal ?? dailyChallenge.rewardBonus) || 0
+    );
     const percent = Math.min(Math.max(progress / target, 0), 1);
     const widgetBackground = isDarkTheme ? "rgba(255,255,255,0.05)" : "#FFF7EA";
     const widgetBorder = isDarkTheme ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.06)";
@@ -16254,17 +16615,27 @@ const ProgressScreen = React.memo(function ProgressScreen({
           { backgroundColor: widgetBackground, borderColor: widgetBorder },
         ]}
       >
+        <View
+          style={[
+            styles.challengeRewardChip,
+            styles.challengeRewardChipFloating,
+            { backgroundColor: colors.text },
+          ]}
+        >
+          <HealthRewardTokens
+            amount={rewardAmount}
+            color={colors.background}
+            iconSize={12}
+            maxItems={2}
+            textSize={10}
+            rowStyle={styles.healthRewardTokenRowCompact}
+          />
+        </View>
         <View style={styles.dailyChallengeWidgetHeader}>
           <View style={[styles.dailyChallengeBadge, { borderColor: widgetBorder }]}>
             <Text style={[styles.dailyChallengeBadgeText, { color: colors.text }]}>
               {t("dailyChallengeWidgetBadge")}
             </Text>
-          </View>
-          <View style={styles.dailyChallengeWidgetRewardRow}>
-            <HealthRewardTokens amount={dailyChallenge.rewardBonus} color={colors.text} iconSize={16} />
-            <View style={[styles.dailyChallengeMultiplierPill, { borderColor: widgetBorder }]}>
-              <Text style={[styles.dailyChallengeMultiplierText, { color: colors.text }]}>×2</Text>
-            </View>
           </View>
         </View>
         <View style={styles.dailyChallengeWidgetBody}>
@@ -16276,7 +16647,9 @@ const ProgressScreen = React.memo(function ProgressScreen({
               {t("dailyChallengeWidgetTitle")}
             </Text>
             <Text style={[styles.dailyChallengeWidgetDesc, { color: colors.muted }]}>
-              {t("dailyChallengeWidgetDesc", { temptation: dailyChallenge.title })}
+              {t("dailyChallengeWidgetDesc", {
+                temptation: dailyChallenge.title,
+              })}
             </Text>
           </View>
         </View>
@@ -16329,6 +16702,93 @@ const ProgressScreen = React.memo(function ProgressScreen({
     [resolveTemplateCard, resolveTemptationCategory]
   );
   const budgetMonthKey = getMonthKey(todayTimestamp);
+  const [budgetWidgetMonthKey, setBudgetWidgetMonthKey] = useState(() => budgetMonthKey);
+  const availableBudgetMonths = useMemo(() => {
+    const keys = new Set();
+    if (budgetMonthKey) {
+      keys.add(budgetMonthKey);
+    }
+    (Array.isArray(incomeEntries) ? incomeEntries : []).forEach((entry) => {
+      const key = getMonthKey(entry?.receivedAt);
+      if (key) keys.add(key);
+    });
+    resolvedHistoryEvents.forEach((entry) => {
+      if (!entry?.timestamp) return;
+      const key = getMonthKey(entry.timestamp);
+      if (key) keys.add(key);
+    });
+    const list = Array.from(keys);
+    list.sort((a, b) => (a < b ? 1 : -1));
+    return list;
+  }, [budgetMonthKey, incomeEntries, resolvedHistoryEvents]);
+  const budgetMonthLabels = useMemo(() => {
+    const locale = getFormatLocale(language);
+    return availableBudgetMonths.reduce((acc, key) => {
+      acc[key] = getMonthLabelForKey(key, locale) || key;
+      return acc;
+    }, {});
+  }, [availableBudgetMonths, language]);
+  const budgetMonthOptions = useMemo(
+    () => [...availableBudgetMonths].reverse(),
+    [availableBudgetMonths]
+  );
+  useEffect(() => {
+    if (!availableBudgetMonths.length) return;
+    const fallbackKey = availableBudgetMonths.includes(budgetMonthKey)
+      ? budgetMonthKey
+      : availableBudgetMonths[0];
+    if (!budgetWidgetMonthKey || !availableBudgetMonths.includes(budgetWidgetMonthKey)) {
+      setBudgetWidgetMonthKey(fallbackKey);
+    }
+  }, [availableBudgetMonths, budgetMonthKey, budgetWidgetMonthKey]);
+  const budgetMonthlyStats = useMemo(() => {
+    const stats = {};
+    const ensure = (key) => {
+      if (!key) return null;
+      if (!stats[key]) {
+        stats[key] = { incomeUSD: 0, spendTotalUSD: 0, spendByCategory: {} };
+      }
+      return stats[key];
+    };
+    availableBudgetMonths.forEach((key) => {
+      ensure(key);
+    });
+    (Array.isArray(incomeEntries) ? incomeEntries : []).forEach((entry) => {
+      const key = getMonthKey(entry?.receivedAt);
+      if (!key) return;
+      const target = ensure(key);
+      if (!target) return;
+      target.incomeUSD += Math.max(0, Number(entry?.amountUSD) || 0);
+    });
+    resolvedHistoryEvents.forEach((entry) => {
+      if (!entry || entry.kind !== "spend") return;
+      const timestamp = Number(entry?.timestamp) || 0;
+      if (!timestamp) return;
+      const key = getMonthKey(timestamp);
+      if (!key) return;
+      const target = ensure(key);
+      if (!target) return;
+      const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
+      if (!amount) return;
+      target.spendTotalUSD += amount;
+      const categoryId = resolveHistoryCategoryId(entry);
+      target.spendByCategory[categoryId] =
+        (target.spendByCategory[categoryId] || 0) + amount;
+    });
+    return stats;
+  }, [availableBudgetMonths, incomeEntries, resolvedHistoryEvents, resolveHistoryCategoryId]);
+  const budgetMonthlyCarryover = useMemo(() => {
+    if (!availableBudgetMonths.length) return {};
+    const sorted = [...availableBudgetMonths].sort();
+    let running = 0;
+    const map = {};
+    sorted.forEach((key) => {
+      map[key] = running;
+      const stats = budgetMonthlyStats[key];
+      running += (stats?.incomeUSD || 0) - (stats?.spendTotalUSD || 0);
+    });
+    return map;
+  }, [availableBudgetMonths, budgetMonthlyStats]);
   const monthlyIncomeUSD = useMemo(
     () => getIncomeForMonth(incomeEntries, budgetMonthKey),
     [incomeEntries, budgetMonthKey]
@@ -16396,6 +16856,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
         decisionStats,
         baselineMonthlyWasteUSD,
         language,
+        monthKey: budgetMonthKey,
       }),
     [
       baselineMonthlyWasteUSD,
@@ -16409,9 +16870,55 @@ const ProgressScreen = React.memo(function ProgressScreen({
       monthlyIncomeUSD,
     ]
   );
+  const budgetCurrentHasIncome = (budgetPlan?.incomeUSD || 0) > 0;
+  const budgetWidgetActiveMonthKey = budgetWidgetMonthKey || budgetMonthKey;
+  const budgetWidgetStats = budgetMonthlyStats[budgetWidgetActiveMonthKey] || null;
+  const budgetWidgetMonthSpend = useMemo(() => {
+    const stats = budgetWidgetStats || {};
+    return {
+      map: stats.spendByCategory || {},
+      total: stats.spendTotalUSD || 0,
+    };
+  }, [budgetWidgetStats]);
+  const budgetWidgetIncomeUSD = budgetWidgetStats?.incomeUSD || 0;
+  const budgetWidgetCarryoverUSD = useMemo(
+    () => budgetMonthlyCarryover[budgetWidgetActiveMonthKey] || 0,
+    [budgetMonthlyCarryover, budgetWidgetActiveMonthKey]
+  );
+  const budgetWidgetSpendDistribution = useMemo(() => {
+    if (budgetWidgetActiveMonthKey === budgetMonthKey) return budgetSpendDistribution;
+    return budgetWidgetStats?.spendByCategory || {};
+  }, [budgetMonthKey, budgetSpendDistribution, budgetWidgetActiveMonthKey, budgetWidgetStats]);
+  const budgetWidgetPlan = useMemo(
+    () =>
+      buildBudgetPlan({
+        incomeUSD: budgetWidgetIncomeUSD,
+        carryoverUSD: budgetWidgetCarryoverUSD,
+        budgetOverrides,
+        spendDistribution: budgetWidgetSpendDistribution,
+        spendToDateByCategory: budgetWidgetMonthSpend.map,
+        spendToDateTotalUSD: budgetWidgetMonthSpend.total,
+        decisionStats,
+        baselineMonthlyWasteUSD,
+        language,
+        monthKey: budgetWidgetActiveMonthKey,
+      }),
+    [
+      baselineMonthlyWasteUSD,
+      budgetOverrides,
+      budgetWidgetActiveMonthKey,
+      budgetWidgetCarryoverUSD,
+      budgetWidgetIncomeUSD,
+      budgetWidgetMonthSpend,
+      budgetWidgetSpendDistribution,
+      decisionStats,
+      language,
+    ]
+  );
+  const isBudgetStatsOnly = budgetWidgetActiveMonthKey !== budgetMonthKey;
   const budgetDisplayCategories = useMemo(
-    () => (budgetPlan?.categories || []).filter((entry) => entry.id !== "savings"),
-    [budgetPlan?.categories]
+    () => (budgetWidgetPlan?.categories || []).filter((entry) => entry.id !== "savings"),
+    [budgetWidgetPlan?.categories]
   );
   const budgetWidgetCategories = useMemo(() => {
     const list = [...budgetDisplayCategories];
@@ -16442,19 +16949,14 @@ const ProgressScreen = React.memo(function ProgressScreen({
     });
     return enriched.map((item) => item.entry);
   }, [budgetDisplayCategories, language]);
-  const budgetPlanMap = useMemo(() => {
-    const map = {};
-    (budgetPlan?.categories || []).forEach((entry) => {
-      map[entry.id] = entry;
-    });
-    return map;
-  }, [budgetPlan?.categories]);
   const budgetHasIncome = (budgetPlan?.incomeUSD || 0) > 0;
+  const budgetWidgetShowStats = isBudgetStatsOnly || budgetHasIncome;
+  const budgetWidgetShowActions = !isBudgetStatsOnly;
   useEffect(() => {
     if (!resolvedBudgetSpeechDataRef) {
       return;
     }
-    if (!budgetHasIncome) {
+    if (!budgetCurrentHasIncome) {
       resolvedBudgetSpeechDataRef.current = null;
       return;
     }
@@ -16492,10 +16994,10 @@ const ProgressScreen = React.memo(function ProgressScreen({
       lowCategories: entries.filter((entry) => entry.status === "low"),
       okCategories: entries.filter((entry) => entry.status === "ok"),
     };
-  }, [budgetHasIncome, budgetPlan, resolvedBudgetSpeechDataRef, formatLocalAmount, language]);
+  }, [budgetCurrentHasIncome, budgetPlan, resolvedBudgetSpeechDataRef, formatLocalAmount, language]);
   const budgetIncomeLabel = useMemo(
-    () => formatLocalAmount(budgetPlan?.incomeUSD || 0),
-    [budgetPlan?.incomeUSD, formatLocalAmount]
+    () => formatLocalAmount(budgetWidgetPlan?.incomeUSD || 0),
+    [budgetWidgetPlan?.incomeUSD, formatLocalAmount]
   );
   const budgetSavingsBalanceUSD = useMemo(
     () => Math.max(0, Number(savedTotalUSD) || 0),
@@ -16505,13 +17007,13 @@ const ProgressScreen = React.memo(function ProgressScreen({
     return formatLocalAmount(budgetSavingsBalanceUSD);
   }, [budgetSavingsBalanceUSD, formatLocalAmount]);
   const budgetRemainingLabel = useMemo(
-    () => formatLocalAmount(Math.abs(budgetPlan?.remainingUSD || 0)),
-    [budgetPlan?.remainingUSD, formatLocalAmount]
+    () => formatLocalAmount(Math.abs(budgetWidgetPlan?.remainingUSD || 0)),
+    [budgetWidgetPlan?.remainingUSD, formatLocalAmount]
   );
-  const budgetRemainingNegative = (budgetPlan?.remainingUSD || 0) < -0.01;
+  const budgetRemainingNegative = (budgetWidgetPlan?.remainingUSD || 0) < -0.01;
   const budgetPlannedUSD = useMemo(
-    () => (budgetPlan?.incomeUSD || 0) - (budgetPlan?.allocatedTotalUSD || 0),
-    [budgetPlan?.incomeUSD, budgetPlan?.allocatedTotalUSD]
+    () => (budgetWidgetPlan?.incomeUSD || 0) - (budgetWidgetPlan?.allocatedTotalUSD || 0),
+    [budgetWidgetPlan?.incomeUSD, budgetWidgetPlan?.allocatedTotalUSD]
   );
   const budgetPlannedLabel = useMemo(
     () => formatLocalAmount(Math.abs(budgetPlannedUSD || 0)),
@@ -16520,20 +17022,23 @@ const ProgressScreen = React.memo(function ProgressScreen({
   const budgetPlannedNegative = (budgetPlannedUSD || 0) < -0.01;
   const budgetPlannedIsZero = Math.abs(budgetPlannedUSD || 0) < 0.01;
   const handleBudgetWidgetPress = useCallback(() => {
-    if (budgetHasIncome) {
+    if (budgetWidgetShowStats) {
       openBudgetModal();
       return;
     }
     onIncomeEntryOpen?.("widget");
-  }, [budgetHasIncome, onIncomeEntryOpen, openBudgetModal]);
+  }, [budgetWidgetShowStats, onIncomeEntryOpen, openBudgetModal]);
   const categoryHistoryEntries = useMemo(() => {
     if (!activeCategoryId) return [];
     const filtered = resolvedHistoryEvents.filter((entry) => {
       if (!entry || (entry.kind !== "refuse_spend" && entry.kind !== "spend")) return false;
+      if (budgetWidgetActiveMonthKey && getMonthKey(entry.timestamp) !== budgetWidgetActiveMonthKey) {
+        return false;
+      }
       return resolveHistoryCategoryId(entry) === activeCategoryId;
     });
     return filtered.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
-  }, [activeCategoryId, resolvedHistoryEvents, resolveHistoryCategoryId]);
+  }, [activeCategoryId, budgetWidgetActiveMonthKey, resolvedHistoryEvents, resolveHistoryCategoryId]);
   const locale = useMemo(() => getFormatLocale(language), [language]);
   const describeCategoryHistory = useCallback(
     (entry) => {
@@ -16606,6 +17111,9 @@ const ProgressScreen = React.memo(function ProgressScreen({
   const [progressAnalyticsExpanded, setProgressAnalyticsExpanded] = useState(false);
   const progressAnalyticsAnim = useRef(new Animated.Value(0)).current;
   const [budgetModalVisible, setBudgetModalVisible] = useState(false);
+  const [budgetModalMonthKey, setBudgetModalMonthKey] = useState(
+    () => budgetWidgetMonthKey || budgetMonthKey
+  );
   const budgetModalAnim = useRef(new Animated.Value(0)).current;
   const [budgetDraft, setBudgetDraft] = useState({});
   const [budgetManualPrompt, setBudgetManualPrompt] = useState({
@@ -16621,24 +17129,123 @@ const ProgressScreen = React.memo(function ProgressScreen({
     budgetDraftRef.current = budgetDraft;
   }, [budgetDraft]);
   useEffect(() => {
+    if (!availableBudgetMonths.length) return;
+    const fallbackKey = availableBudgetMonths.includes(budgetWidgetMonthKey)
+      ? budgetWidgetMonthKey
+      : availableBudgetMonths.includes(budgetMonthKey)
+      ? budgetMonthKey
+      : availableBudgetMonths[0];
+    if (!budgetModalMonthKey || !availableBudgetMonths.includes(budgetModalMonthKey)) {
+      setBudgetModalMonthKey(fallbackKey);
+    }
+  }, [availableBudgetMonths, budgetModalMonthKey, budgetMonthKey, budgetWidgetMonthKey]);
+  const budgetModalActiveMonthKey =
+    budgetModalMonthKey || budgetWidgetMonthKey || budgetMonthKey;
+  const budgetModalStatsOnly = budgetModalActiveMonthKey !== budgetMonthKey;
+  const budgetModalMonthSpend = useMemo(() => {
+    const stats = budgetMonthlyStats[budgetModalActiveMonthKey];
+    return {
+      map: stats?.spendByCategory || {},
+      total: stats?.spendTotalUSD || 0,
+    };
+  }, [budgetModalActiveMonthKey, budgetMonthlyStats]);
+  const budgetModalIncomeUSD = useMemo(() => {
+    const stats = budgetMonthlyStats[budgetModalActiveMonthKey];
+    return stats?.incomeUSD || 0;
+  }, [budgetModalActiveMonthKey, budgetMonthlyStats]);
+  const budgetModalCarryoverUSD = useMemo(
+    () => budgetMonthlyCarryover[budgetModalActiveMonthKey] || 0,
+    [budgetModalActiveMonthKey, budgetMonthlyCarryover]
+  );
+  const budgetModalSpendDistribution = useMemo(() => {
+    if (budgetModalActiveMonthKey === budgetMonthKey) return budgetSpendDistribution;
+    const stats = budgetMonthlyStats[budgetModalActiveMonthKey];
+    return stats?.spendByCategory || {};
+  }, [budgetModalActiveMonthKey, budgetMonthKey, budgetMonthlyStats, budgetSpendDistribution]);
+  const budgetModalPlan = useMemo(
+    () =>
+      buildBudgetPlan({
+        incomeUSD: budgetModalIncomeUSD,
+        carryoverUSD: budgetModalCarryoverUSD,
+        budgetOverrides,
+        spendDistribution: budgetModalSpendDistribution,
+        spendToDateByCategory: budgetModalMonthSpend.map,
+        spendToDateTotalUSD: budgetModalMonthSpend.total,
+        decisionStats,
+        baselineMonthlyWasteUSD,
+        language,
+        monthKey: budgetModalActiveMonthKey,
+      }),
+    [
+      baselineMonthlyWasteUSD,
+      budgetModalActiveMonthKey,
+      budgetModalCarryoverUSD,
+      budgetModalIncomeUSD,
+      budgetModalMonthSpend,
+      budgetModalSpendDistribution,
+      budgetOverrides,
+      decisionStats,
+      language,
+    ]
+  );
+  const budgetModalDisplayCategories = useMemo(
+    () => (budgetModalPlan?.categories || []).filter((entry) => entry.id !== "savings"),
+    [budgetModalPlan?.categories]
+  );
+  const budgetModalPlanMap = useMemo(() => {
+    const map = {};
+    (budgetModalPlan?.categories || []).forEach((entry) => {
+      map[entry.id] = entry;
+    });
+    return map;
+  }, [budgetModalPlan?.categories]);
+  const budgetModalIncomeLabel = useMemo(
+    () => formatLocalAmount(budgetModalPlan?.incomeUSD || 0),
+    [budgetModalPlan?.incomeUSD, formatLocalAmount]
+  );
+  const budgetModalRemainingLabel = useMemo(
+    () => formatLocalAmount(Math.abs(budgetModalPlan?.remainingUSD || 0)),
+    [budgetModalPlan?.remainingUSD, formatLocalAmount]
+  );
+  const budgetModalRemainingNegative = (budgetModalPlan?.remainingUSD || 0) < -0.01;
+  const budgetModalPlannedUSD = useMemo(
+    () => (budgetModalPlan?.incomeUSD || 0) - (budgetModalPlan?.allocatedTotalUSD || 0),
+    [budgetModalPlan?.incomeUSD, budgetModalPlan?.allocatedTotalUSD]
+  );
+  const budgetModalPlannedLabel = useMemo(
+    () => formatLocalAmount(Math.abs(budgetModalPlannedUSD || 0)),
+    [budgetModalPlannedUSD, formatLocalAmount]
+  );
+  const budgetModalPlannedNegative = (budgetModalPlannedUSD || 0) < -0.01;
+  const budgetModalPlannedIsZero = Math.abs(budgetModalPlannedUSD || 0) < 0.01;
+  useEffect(() => {
     if (!budgetModalVisible) return;
     const nextDraft = {};
-    budgetDisplayCategories.forEach((entry) => {
+    budgetModalDisplayCategories.forEach((entry) => {
       nextDraft[entry.id] = entry.limitUSD || 0;
     });
     setBudgetDraft(nextDraft);
-  }, [budgetDisplayCategories, budgetModalVisible]);
+  }, [budgetModalDisplayCategories, budgetModalVisible]);
   useEffect(() => {
     return () => {
       Object.values(budgetCommitTimersRef.current || {}).forEach((timer) => clearTimeout(timer));
       budgetCommitTimersRef.current = {};
     };
   }, []);
-  const openBudgetModal = useCallback(() => setBudgetModalVisible(true), []);
+  const openBudgetModal = useCallback(() => {
+    setBudgetModalMonthKey(budgetWidgetMonthKey || budgetMonthKey);
+    setBudgetModalVisible(true);
+  }, [budgetMonthKey, budgetWidgetMonthKey]);
   const closeBudgetModal = useCallback(() => {
     setBudgetModalVisible(false);
     setBudgetManualPrompt((prev) => (prev.visible ? { ...prev, visible: false, error: false } : prev));
   }, []);
+  const confirmBudgetModal = useCallback(() => {
+    if (budgetModalActiveMonthKey) {
+      setBudgetWidgetMonthKey(budgetModalActiveMonthKey);
+    }
+    closeBudgetModal();
+  }, [budgetModalActiveMonthKey, closeBudgetModal]);
   const handleBudgetDraftChange = useCallback((categoryId, valueUSD) => {
     if (!categoryId) return;
     const normalized = Math.max(0, Number(valueUSD) || 0);
@@ -16652,7 +17259,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
     (categoryId, valueUSD, source = "budget_modal") => {
       if (!categoryId) return;
       const normalized = Math.max(0, Number(valueUSD) || 0);
-      const current = budgetPlanMap?.[categoryId]?.limitUSD || 0;
+      const current = budgetModalPlanMap?.[categoryId]?.limitUSD || 0;
       if (Math.abs(normalized - current) < 0.01) return;
       const label = getBudgetCategoryLabel(categoryId, language);
       const amountLabel = formatLocalAmount(normalized);
@@ -16689,7 +17296,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
         ]
       );
     },
-    [budgetPlanMap, formatLocalAmount, language, logEvent, onBudgetOverrideChange, t]
+    [budgetModalPlanMap, formatLocalAmount, language, logEvent, onBudgetOverrideChange, t]
   );
   const handleBudgetLimitCommit = useCallback(
     (categoryId, valueUSD, options = {}) => {
@@ -16757,7 +17364,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
     handleBudgetLimitCommit,
   ]);
   const toggleProgressAnalytics = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    runLayoutAnimation();
     setProgressAnalyticsExpanded((prev) => {
       const next = !prev;
       Animated.timing(progressAnalyticsAnim, {
@@ -16833,23 +17440,25 @@ const ProgressScreen = React.memo(function ProgressScreen({
                 {t("budgetWidgetTitle")}
               </Text>
               <Text style={[styles.budgetWidgetSubtitle, { color: colors.muted }]}>
-                {budgetPlan?.monthLabel
-                  ? t("budgetWidgetMonthLabel", { month: budgetPlan.monthLabel })
+                {budgetWidgetPlan?.monthLabel
+                  ? t("budgetWidgetMonthLabel", { month: budgetWidgetPlan.monthLabel })
                   : t("budgetWidgetSubtitle")}
               </Text>
             </View>
-            <View
-              style={[
-                styles.budgetWidgetEditChip,
-                { borderColor: colors.border, backgroundColor: colors.background },
-              ]}
-            >
-              <Text style={[styles.budgetWidgetEditChipText, { color: colors.muted }]}>
-                {t("budgetEditChip")}
-              </Text>
-            </View>
+            {budgetWidgetShowActions ? (
+              <View
+                style={[
+                  styles.budgetWidgetEditChip,
+                  { borderColor: colors.border, backgroundColor: colors.background },
+                ]}
+              >
+                <Text style={[styles.budgetWidgetEditChipText, { color: colors.muted }]}>
+                  {t("budgetEditChip")}
+                </Text>
+              </View>
+            ) : null}
           </View>
-          {budgetHasIncome ? (
+          {budgetWidgetShowStats ? (
             <View style={styles.budgetWidgetStatsRow}>
               <View style={styles.budgetWidgetStat}>
                 <Text style={[styles.budgetWidgetStatLabel, { color: colors.muted }]}>
@@ -16922,7 +17531,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
             </View>
           ) : null}
         </Pressable>
-        {budgetHasIncome ? (
+        {budgetWidgetShowStats ? (
           <>
             <ScrollView
               style={[styles.budgetWidgetList, { maxHeight: categoryListHeight }]}
@@ -17003,11 +17612,13 @@ const ProgressScreen = React.memo(function ProgressScreen({
                 );
               })}
             </ScrollView>
-            <Pressable onPress={handleBudgetWidgetPress}>
-              <Text style={[styles.budgetWidgetHint, { color: colors.muted }]}>
-                {t("budgetWidgetHint")}
-              </Text>
-            </Pressable>
+            {budgetWidgetShowActions ? (
+              <Pressable onPress={handleBudgetWidgetPress}>
+                <Text style={[styles.budgetWidgetHint, { color: colors.muted }]}>
+                  {t("budgetWidgetHint")}
+                </Text>
+              </Pressable>
+            ) : null}
           </>
         ) : (
           <Pressable style={styles.budgetWidgetEmpty} onPress={handleBudgetWidgetPress}>
@@ -17749,8 +18360,8 @@ const ProgressScreen = React.memo(function ProgressScreen({
                     {t("budgetModalTitle")}
                   </Text>
                   <Text style={[styles.budgetModalSubtitle, { color: colors.muted }]}>
-                    {budgetPlan?.monthLabel
-                      ? t("budgetWidgetMonthLabel", { month: budgetPlan.monthLabel })
+                    {budgetModalPlan?.monthLabel
+                      ? t("budgetWidgetMonthLabel", { month: budgetModalPlan.monthLabel })
                       : t("budgetWidgetSubtitle")}
                   </Text>
                 </View>
@@ -17758,13 +18369,49 @@ const ProgressScreen = React.memo(function ProgressScreen({
                   <Text style={[styles.budgetModalCloseText, { color: colors.muted }]}>✕</Text>
                 </TouchableOpacity>
               </View>
+              {budgetMonthOptions.length > 1 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.budgetModalMonthScroll}
+                  contentContainerStyle={styles.budgetModalMonthContent}
+                >
+                  {budgetMonthOptions.map((monthKey) => {
+                    const isActive = monthKey === budgetModalActiveMonthKey;
+                    const label = budgetMonthLabels[monthKey] || monthKey;
+                    return (
+                      <TouchableOpacity
+                        key={monthKey}
+                        style={[
+                          styles.budgetModalMonthChip,
+                          {
+                            borderColor: isActive ? colors.text : colors.border,
+                            backgroundColor: isActive ? colors.text : colors.background,
+                          },
+                        ]}
+                        activeOpacity={0.85}
+                        onPress={() => setBudgetModalMonthKey(monthKey)}
+                      >
+                        <Text
+                          style={[
+                            styles.budgetModalMonthChipText,
+                            { color: isActive ? colors.background : colors.text },
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              ) : null}
               <View style={styles.budgetModalStatsRow}>
                 <View style={styles.budgetModalStat}>
                   <Text style={[styles.budgetModalStatLabel, { color: colors.muted }]}>
                     {t("budgetIncomeLabel")}
                   </Text>
                   <Text style={[styles.budgetModalStatValue, { color: colors.text }]}>
-                    {budgetIncomeLabel}
+                    {budgetModalIncomeLabel}
                   </Text>
                 </View>
                 <View style={styles.budgetModalStat}>
@@ -17783,19 +18430,19 @@ const ProgressScreen = React.memo(function ProgressScreen({
                     style={[
                       styles.budgetModalStatValue,
                       {
-                        color: budgetPlannedIsZero
+                        color: budgetModalPlannedIsZero
                           ? SAVE_ACTION_COLOR
-                          : budgetPlannedNegative
+                          : budgetModalPlannedNegative
                           ? "#E15555"
                           : colors.text,
                       },
                     ]}
                   >
-                    {budgetPlannedIsZero
+                    {budgetModalPlannedIsZero
                       ? "✓"
-                      : budgetPlannedNegative
-                      ? `-${budgetPlannedLabel}`
-                      : budgetPlannedLabel}
+                      : budgetModalPlannedNegative
+                      ? `-${budgetModalPlannedLabel}`
+                      : budgetModalPlannedLabel}
                   </Text>
                 </View>
                 <View style={styles.budgetModalStat}>
@@ -17805,22 +18452,26 @@ const ProgressScreen = React.memo(function ProgressScreen({
                   <Text
                     style={[
                       styles.budgetModalStatValue,
-                      { color: budgetRemainingNegative ? "#E15555" : colors.text },
+                      { color: budgetModalRemainingNegative ? "#E15555" : colors.text },
                     ]}
                   >
-                    {budgetRemainingNegative ? `-${budgetRemainingLabel}` : budgetRemainingLabel}
+                    {budgetModalRemainingNegative
+                      ? `-${budgetModalRemainingLabel}`
+                      : budgetModalRemainingLabel}
                   </Text>
                 </View>
               </View>
-              <Text style={[styles.budgetModalHint, { color: colors.muted }]}>
-                {t("budgetEditHint")}
-              </Text>
+              {!budgetModalStatsOnly ? (
+                <Text style={[styles.budgetModalHint, { color: colors.muted }]}>
+                  {t("budgetEditHint")}
+                </Text>
+              ) : null}
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.budgetModalBars}
               >
-                {budgetDisplayCategories.map((entry) => (
+                {budgetModalDisplayCategories.map((entry) => (
                   <BudgetBarItem
                     key={entry.id}
                     entry={entry}
@@ -17828,26 +18479,28 @@ const ProgressScreen = React.memo(function ProgressScreen({
                     spentUSD={entry.spentUSD || 0}
                     maxHeight={BUDGET_BAR_MAX_HEIGHT}
                     colors={colors}
-                    onManualEdit={openBudgetManualPrompt}
+                    onManualEdit={budgetModalStatsOnly ? null : openBudgetManualPrompt}
                     formatAmount={formatLocalAmount}
                   />
                 ))}
               </ScrollView>
               <View style={styles.budgetModalActions}>
-                <TouchableOpacity
-                  style={[styles.budgetModalAction, { borderColor: colors.border }]}
-                  onPress={() => {
-                    closeBudgetModal();
-                    onIncomeEntryOpen?.("budget_modal");
-                  }}
-                >
-                  <Text style={[styles.budgetModalActionText, { color: colors.text }]}>
-                    {t("budgetAddIncome")}
-                  </Text>
-                </TouchableOpacity>
+                {!budgetModalStatsOnly ? (
+                  <TouchableOpacity
+                    style={[styles.budgetModalAction, { borderColor: colors.border }]}
+                    onPress={() => {
+                      closeBudgetModal();
+                      onExtraIncomeEntryOpen?.("budget_modal");
+                    }}
+                  >
+                    <Text style={[styles.budgetModalActionText, { color: colors.text }]}>
+                      {t("budgetAddIncome")}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
                 <TouchableOpacity
                   style={[styles.budgetModalActionPrimary, { backgroundColor: colors.text }]}
-                  onPress={closeBudgetModal}
+                  onPress={confirmBudgetModal}
                 >
                   <Text style={[styles.budgetModalActionPrimaryText, { color: colors.background }]}>
                     {t("budgetModalClose")}
@@ -17991,6 +18644,19 @@ function SwipeablePendingCard({ children, colors, t, onDelete, itemId, onLayout 
   );
 }
 
+const FRIDGE_HANDLE_HINT = {
+  ru: "Тапни по ручке",
+  en: "Tap the handle",
+  es: "Toca la manija",
+  fr: "Touche la poignée",
+};
+const FRIDGE_DOOR_COUNTER_LABELS = {
+  ru: { items: "Хотелок", overdue: "Просрочено", total: "Сумма" },
+  en: { items: "Temptations", overdue: "Overdue", total: "Total" },
+  es: { items: "Tentaciones", overdue: "Atrasadas", total: "Total" },
+  fr: { items: "Tentations", overdue: "Échéances", total: "Total" },
+};
+
 const PendingScreen = React.memo(function PendingScreen({
   items,
   currency,
@@ -18004,10 +18670,16 @@ const PendingScreen = React.memo(function PendingScreen({
   locked = false,
   onItemLayout,
   scrollRef,
+  playSound,
 }) {
   const isDarkMode = colors.background === THEMES.dark.background;
   const curiousImage = catCuriousSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.curious;
   const [nowTick, setNowTick] = useState(Date.now());
+  const [fridgeOpen, setFridgeOpen] = useState(false);
+  const doorProgress = useRef(new Animated.Value(0)).current;
+  const handlePressAnim = useRef(new Animated.Value(0)).current;
+  const handlePulseAnim = useRef(new Animated.Value(0)).current;
+  const coldBreathAnim = useRef(new Animated.Value(0)).current;
   const sorted = useMemo(
     () => [...items].sort((a, b) => (a.decisionDue || 0) - (b.decisionDue || 0)),
     [items]
@@ -18019,6 +18691,64 @@ const PendingScreen = React.memo(function PendingScreen({
     }, PENDING_COUNTDOWN_FAST_MS);
     return () => clearInterval(intervalId);
   }, [sorted.length]);
+  useEffect(() => {
+    Animated.timing(doorProgress, {
+      toValue: fridgeOpen ? 1 : 0,
+      duration: fridgeOpen ? 640 : 520,
+      easing: fridgeOpen ? Easing.out(Easing.cubic) : Easing.inOut(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [doorProgress, fridgeOpen]);
+  useEffect(() => {
+    if (fridgeOpen) {
+      handlePulseAnim.stopAnimation();
+      handlePulseAnim.setValue(0);
+      return undefined;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(handlePulseAnim, {
+          toValue: 1,
+          duration: 1400,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(handlePulseAnim, {
+          toValue: 0,
+          duration: 1400,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [fridgeOpen, handlePulseAnim]);
+  useEffect(() => {
+    if (!fridgeOpen) {
+      coldBreathAnim.stopAnimation();
+      coldBreathAnim.setValue(0);
+      return undefined;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(coldBreathAnim, {
+          toValue: 1,
+          duration: 2400,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(coldBreathAnim, {
+          toValue: 0,
+          duration: 2200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [coldBreathAnim, fridgeOpen]);
 
   const formatCountdown = useCallback(
     (ms) => {
@@ -18037,123 +18767,402 @@ const PendingScreen = React.memo(function PendingScreen({
     [language, t]
   );
 
-  const header = <Text style={[styles.header, { color: colors.text }]}>{t("pendingTitle")}</Text>;
+  const handleHint =
+    resolveLanguageMapValue(FRIDGE_HANDLE_HINT, language) || FRIDGE_HANDLE_HINT.en;
+  const doorLabels = FRIDGE_DOOR_COUNTER_LABELS[language] || FRIDGE_DOOR_COUNTER_LABELS.en;
+  const overdueCount = useMemo(
+    () => sorted.filter((item) => (item.decisionDue || 0) - nowTick <= 0).length,
+    [nowTick, sorted]
+  );
+  const pendingCount = sorted.length;
+  const totalPendingUSD = useMemo(
+    () =>
+      sorted.reduce(
+        (sum, item) => sum + (Number(item.priceUSD) || Number(item.basePriceUSD) || 0),
+        0
+      ),
+    [sorted]
+  );
+  const totalPendingLabel = formatCurrency(
+    convertToCurrency(totalPendingUSD, currency),
+    currency,
+    { friendly: true }
+  );
+  const heroTotalFontSize =
+    totalPendingLabel.length > 11
+      ? 24
+      : totalPendingLabel.length > 9
+      ? 26
+      : totalPendingLabel.length > 7
+      ? 28
+      : 32;
+  const cabinetWidth = Math.max(0, SCREEN_WIDTH - BASE_HORIZONTAL_PADDING * 2);
+  const doorWidth = Math.max(0, cabinetWidth - 20);
+  const doorOffset = Math.min(doorWidth * 0.98, SCREEN_WIDTH * 0.95);
+  const doorTranslateX = doorProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -doorOffset],
+  });
+  const doorRotate = doorProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "-12deg"],
+  });
+  const doorScaleX = doorProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0.88],
+  });
+  const doorHintOpacity = doorProgress.interpolate({
+    inputRange: [0, 0.15],
+    outputRange: [1, 0],
+  });
+  const doorShadowOpacity = doorProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.18, 0],
+  });
+  const interiorOpacity = doorProgress.interpolate({
+    inputRange: [0, 0.35, 1],
+    outputRange: [0, 0.35, 1],
+  });
+  const interiorTranslateY = doorProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [18, 0],
+  });
+  const handlePulseScale = handlePulseAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.05],
+  });
+  const handlePressScale = handlePressAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0.92],
+  });
+  const handleScale = Animated.multiply(handlePulseScale, handlePressScale);
+  const handleGlowOpacity = handlePulseAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.35, 0.85],
+  });
+  const mistOpacity = coldBreathAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.12, 0.28],
+  });
+  const mistTranslateY = coldBreathAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [12, -8],
+  });
+  const fridgeFrameColor = isDarkMode ? "#0C121A" : "#E7F1FF";
+  const fridgeDoorColor = isDarkMode ? "#17202B" : "#F5F9FF";
+  const fridgeInteriorColor = isDarkMode ? "#0B1119" : "#D9E8FF";
+  const fridgeEdgeColor = isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(72,120,200,0.18)";
+  const fridgeShelfColor = isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(120,170,255,0.35)";
+  const fridgeShelfLipColor = isDarkMode ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.7)";
+  const fridgeGlowColor = isDarkMode ? "rgba(86,160,255,0.35)" : "rgba(140,210,255,0.45)";
+  const handleColor = isDarkMode ? "#C8D2E0" : "#D1DBEA";
+  const handleInnerColor = isDarkMode ? "rgba(25,32,45,0.9)" : "rgba(255,255,255,0.9)";
+  const badgeBg = isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.88)";
+  const badgeBorder = isDarkMode ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.08)";
+
+  const handleToggleFridge = useCallback(() => {
+    if (locked) return;
+    const nextOpen = !fridgeOpen;
+    setFridgeOpen(nextOpen);
+    if (nextOpen) {
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+      logEvent("fridge_door_opened", {
+        pending_count: pendingCount,
+        overdue_count: overdueCount,
+      });
+    } else {
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    }
+    playSound?.("tap");
+    Animated.sequence([
+      Animated.timing(handlePressAnim, {
+        toValue: 1,
+        duration: 90,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(handlePressAnim, {
+        toValue: 0,
+        duration: 140,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
+    if (nextOpen) {
+      scrollRef?.current?.scrollTo?.({ y: 0, animated: true });
+    }
+  }, [fridgeOpen, handlePressAnim, locked, logEvent, overdueCount, pendingCount, playSound, scrollRef]);
+
   const emptyBody = (
-    <View style={styles.cartEmptyState}>
-      <Image source={curiousImage} style={[styles.catImage, styles.catImageLarge]} />
-      <Text style={[styles.cartEmptyTitle, { color: colors.text }]}>{t("pendingEmptyTitle")}</Text>
-      <Text style={[styles.cartEmptySubtitle, { color: colors.muted }]}>
-        {t("pendingEmptySubtitle")}
-      </Text>
+    <View style={styles.fridgeEmptyWrap}>
+      <View style={styles.cartEmptyState}>
+        <Image source={curiousImage} style={[styles.catImage, styles.catImageLarge]} />
+        <Text style={[styles.cartEmptyTitle, { color: colors.text }]}>{t("pendingEmptyTitle")}</Text>
+        <Text style={[styles.cartEmptySubtitle, { color: colors.muted }]}>
+          {t("pendingEmptySubtitle")}
+        </Text>
+      </View>
     </View>
   );
-  const listBody = (
-    <ScrollView contentContainerStyle={{ paddingBottom: 160, gap: 16 }} ref={scrollRef}>
-      {sorted.map((item) => {
+  const shelfContent = sorted.length
+    ? sorted.map((item) => {
         const diff = (item.decisionDue || 0) - nowTick;
         const countdownLabel = formatCountdown(diff);
         const overdue = diff <= 0;
         const priceLabel = formatTemptationPriceLabel(item, currency);
-        const pendingCardBg = isDarkMode ? colors.card : "#D2E6FF";
-        const pendingCardBorder = isDarkMode ? colors.border : "rgba(120,170,255,0.85)";
-        const pendingCardShadow = isDarkMode ? "rgba(0,0,0,0.35)" : "rgba(120,170,255,0.45)";
+        const itemCardBg = isDarkMode ? "#111A26" : "#FFFFFF";
+        const itemCardBorder = isDarkMode ? "rgba(120,160,220,0.25)" : "rgba(140,180,235,0.6)";
+        const itemCardShadow = isDarkMode ? "rgba(0,0,0,0.45)" : "rgba(100,150,220,0.25)";
+        const pillBg = overdue
+          ? isDarkMode
+            ? "rgba(224,90,90,0.18)"
+            : "rgba(255,220,220,0.92)"
+          : isDarkMode
+          ? "rgba(120,180,255,0.18)"
+          : "rgba(255,255,255,0.92)";
+        const pillBorder = overdue
+          ? isDarkMode
+            ? "rgba(255,120,120,0.4)"
+            : "rgba(240,120,120,0.45)"
+          : isDarkMode
+          ? "rgba(120,180,255,0.4)"
+          : "rgba(120,180,255,0.4)";
+        const pillText = overdue ? "#E66A6A" : isDarkMode ? "#B8D9FF" : "#2C68C4";
         return (
-          <SwipeablePendingCard
-            key={item.id}
-            colors={colors}
-            t={t}
-            onDelete={onDelete ? () => onDelete(item) : undefined}
-            itemId={item.id}
-            onLayout={
-              onItemLayout
-                ? (event) => {
-                    onItemLayout(item.id, event.nativeEvent.layout);
-                  }
-                : undefined
-            }
-          >
-            <View
-              style={[
-                styles.pendingCard,
-                {
-                  backgroundColor: pendingCardBg,
-                  borderColor: pendingCardBorder,
-                  borderWidth: 1,
-                  shadowColor: pendingCardShadow,
-                  shadowOpacity: 0.12,
-                  shadowRadius: 10,
-                  shadowOffset: { width: 0, height: 6 },
-                  elevation: 3,
-                },
-              ]}
+          <View key={item.id} style={styles.fridgeShelfRow}>
+            <View style={[styles.fridgeShelfLine, { backgroundColor: fridgeShelfColor }]} />
+            <View style={[styles.fridgeShelfLip, { backgroundColor: fridgeShelfLipColor }]} />
+            <SwipeablePendingCard
+              colors={colors}
+              t={t}
+              onDelete={onDelete ? () => onDelete(item) : undefined}
+              itemId={item.id}
+              onLayout={
+                onItemLayout
+                  ? (event) => {
+                      onItemLayout(item.id, event.nativeEvent.layout);
+                    }
+                  : undefined
+              }
             >
-              <View style={styles.pendingHeader}>
-                <Text style={[styles.pendingTitle, { color: colors.text }]}>{item.title}</Text>
-              </View>
-              <Text
+              <View
                 style={[
-                  styles.pendingCountdown,
-                  { color: overdue ? "#D9534F" : colors.text, textAlign: "center", fontSize: 20 },
+                  styles.fridgeItemCard,
+                  {
+                    backgroundColor: itemCardBg,
+                    borderColor: itemCardBorder,
+                    shadowColor: itemCardShadow,
+                    shadowOpacity: 0.16,
+                    shadowRadius: 12,
+                    shadowOffset: { width: 0, height: 8 },
+                    elevation: 4,
+                  },
                 ]}
               >
-                {countdownLabel}
-              </Text>
-              <Text style={[styles.pendingPrice, { color: colors.text }]}>{priceLabel}</Text>
-              <View style={styles.pendingButtons}>
-                <TouchableOpacity
-                  style={[styles.pendingButtonPrimary, { backgroundColor: colors.text }]}
-                  onPress={() => onResolve(item, "spend")}
-                >
-                  <Text style={[styles.pendingButtonPrimaryText, { color: colors.background }]}>
-                    {t("pendingActionWant")}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.pendingButtonSecondary, { borderColor: colors.border }]}
-                  onPress={() => onResolve(item, "decline")}
-                >
-                  <Text style={{ color: colors.muted }}>{t("pendingActionDecline")}</Text>
-                </TouchableOpacity>
-                {overdue && onExtend ? (
+                <View style={styles.fridgeItemHeader}>
+                  <View style={styles.fridgeItemTitleRow}>
+                    <Text style={[styles.fridgeItemEmoji, { color: colors.text }]}>
+                      {item.emoji || "✨"}
+                    </Text>
+                    <Text style={[styles.fridgeItemTitle, { color: colors.text }]} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                  </View>
+                  <View style={[styles.fridgeCountdownPill, { backgroundColor: pillBg, borderColor: pillBorder }]}>
+                    <Text style={[styles.fridgeCountdownText, { color: pillText }]}>{countdownLabel}</Text>
+                  </View>
+                </View>
+                <View style={styles.fridgeItemMetaRow}>
+                  <Text style={[styles.fridgeItemPrice, { color: colors.text }]}>{priceLabel}</Text>
+                </View>
+                <View style={styles.fridgeActionRow}>
                   <TouchableOpacity
-                    style={[styles.pendingButtonSecondary, { borderColor: colors.border }]}
-                    onPress={() => onExtend(item)}
+                    style={[styles.fridgeActionPrimary, { backgroundColor: colors.text }]}
+                    onPress={() => onResolve(item, "spend")}
                   >
-                    <Text style={{ color: colors.muted }}>{t("pendingActionExtend")}</Text>
+                    <Text style={[styles.fridgeActionPrimaryText, { color: colors.background }]}>
+                      {t("pendingActionWant")}
+                    </Text>
                   </TouchableOpacity>
-                ) : null}
+                  <TouchableOpacity
+                    style={[styles.fridgeActionSecondary, { borderColor: colors.border }]}
+                    onPress={() => onResolve(item, "decline")}
+                  >
+                    <Text style={{ color: colors.muted }}>{t("pendingActionDecline")}</Text>
+                  </TouchableOpacity>
+                  {overdue && onExtend ? (
+                    <TouchableOpacity
+                      style={[styles.fridgeActionSecondary, { borderColor: colors.border }]}
+                      onPress={() => onExtend(item)}
+                    >
+                      <Text style={{ color: colors.muted }}>{t("pendingActionExtend")}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </View>
+            </SwipeablePendingCard>
+          </View>
+        );
+      })
+    : emptyBody;
+  const fridgeBody = (
+    <View style={styles.fridgeStage}>
+      <View style={[styles.fridgeCabinet, { backgroundColor: fridgeFrameColor, borderColor: fridgeEdgeColor }]}>
+        <View style={[styles.fridgeAura, { backgroundColor: fridgeGlowColor }]} pointerEvents="none" />
+        <View
+          style={[
+            styles.fridgeInteriorWrap,
+            {
+              backgroundColor: fridgeInteriorColor,
+              borderColor: fridgeEdgeColor,
+            },
+          ]}
+        >
+          <Animated.View
+            style={[
+              styles.fridgeInterior,
+              {
+                opacity: interiorOpacity,
+                transform: [{ translateY: interiorTranslateY }],
+              },
+            ]}
+            pointerEvents={fridgeOpen ? "auto" : "none"}
+          >
+            <ScrollView
+              ref={scrollRef}
+              scrollEnabled={fridgeOpen}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.fridgeShelfContent}
+              style={styles.fridgeShelfScroll}
+            >
+              <View style={styles.fridgeInteriorHeader}>
+                <Text style={[styles.fridgeInteriorTitle, { color: colors.text }]}>{t("pendingTitle")}</Text>
+                <View style={[styles.fridgeInteriorBadge, { backgroundColor: badgeBg, borderColor: badgeBorder }]}>
+                  <Text style={[styles.fridgeInteriorBadgeText, { color: colors.text }]}>
+                    {sorted.length}
+                  </Text>
+                </View>
+              </View>
+              {shelfContent}
+            </ScrollView>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.fridgeMist,
+                {
+                  opacity: mistOpacity,
+                  transform: [{ translateY: mistTranslateY }],
+                  backgroundColor: fridgeGlowColor,
+                },
+              ]}
+            />
+          </Animated.View>
+        </View>
+        <Animated.View
+          pointerEvents={fridgeOpen ? "box-none" : "auto"}
+          style={[
+            styles.fridgeDoor,
+            {
+              backgroundColor: fridgeDoorColor,
+              borderColor: fridgeEdgeColor,
+              transform: [
+                { perspective: 900 },
+                { translateX: doorTranslateX },
+                { rotateY: doorRotate },
+                { scaleX: doorScaleX },
+              ],
+            },
+          ]}
+        >
+          <View style={[styles.fridgeDoorInset, { borderColor: fridgeEdgeColor }]} pointerEvents="none" />
+          <View style={styles.fridgeDoorContent} pointerEvents="none">
+            <Text style={[styles.fridgeDoorTitleLarge, { color: colors.text }]} numberOfLines={1}>
+              {t("pendingTitle")}
+            </Text>
+            <View style={[styles.fridgeDoorHeroStat, { borderColor: fridgeEdgeColor }]}>
+              <Text
+                style={[
+                  styles.fridgeDoorHeroNumber,
+                  { color: colors.text, fontSize: heroTotalFontSize, lineHeight: heroTotalFontSize + 6 },
+                ]}
+                numberOfLines={1}
+              >
+                {totalPendingLabel}
+              </Text>
+              <Text
+                style={[styles.fridgeDoorHeroLabel, { color: colors.muted }]}
+                numberOfLines={1}
+              >
+                {doorLabels.total}
+              </Text>
+            </View>
+            <View style={styles.fridgeDoorStatsRow}>
+              <View
+                style={[
+                  styles.fridgeDoorStatCard,
+                  { borderColor: fridgeEdgeColor, backgroundColor: badgeBg },
+                ]}
+              >
+                <Text style={[styles.fridgeDoorStatNumber, { color: colors.text }]} numberOfLines={1}>
+                  {sorted.length}
+                </Text>
+                <Text style={[styles.fridgeDoorStatLabel, { color: colors.muted }]} numberOfLines={1}>
+                  {doorLabels.items}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.fridgeDoorStatCard,
+                  { borderColor: fridgeEdgeColor, backgroundColor: badgeBg },
+                ]}
+              >
+                <Text style={[styles.fridgeDoorStatNumber, { color: colors.text }]} numberOfLines={1}>
+                  {overdueCount}
+                </Text>
+                <Text style={[styles.fridgeDoorStatLabel, { color: colors.muted }]} numberOfLines={1}>
+                  {doorLabels.overdue}
+                </Text>
               </View>
             </View>
-          </SwipeablePendingCard>
-        );
-      })}
-    </ScrollView>
+          </View>
+          <Animated.Text
+            style={[styles.fridgeDoorHint, { color: colors.muted, opacity: doorHintOpacity }]}
+            numberOfLines={2}
+          >
+            {handleHint}
+          </Animated.Text>
+          <Pressable style={styles.fridgeHandleWrap} onPress={handleToggleFridge} hitSlop={12}>
+            <Animated.View style={[styles.fridgeHandle, { backgroundColor: handleColor, transform: [{ scale: handleScale }] }]}>
+              <View style={[styles.fridgeHandleInner, { backgroundColor: handleInnerColor }]} />
+              <Animated.View style={[styles.fridgeHandleGlow, { opacity: handleGlowOpacity }]} />
+            </Animated.View>
+          </Pressable>
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.fridgeDoorShadow, { opacity: doorShadowOpacity }]}
+          />
+        </Animated.View>
+      </View>
+    </View>
   );
-  const body = sorted.length ? listBody : emptyBody;
 
   if (!locked) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }] }>
-        {header}
-        {body}
-      </View>
-    );
+    return <View style={[styles.pendingFridgeScreen, { backgroundColor: colors.background }]}>{fridgeBody}</View>;
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }] }>
-      {header}
+    <View style={[styles.pendingFridgeScreen, { backgroundColor: colors.background }]}>
       <LockedFeatureOverlay
         locked
         variantKey="thinkingList"
         colors={colors}
         t={t}
-        style={styles.lockedFeatureScreen}
-        contentStyle={styles.lockedFeatureScreenContent}
+        style={styles.pendingFridgeLocked}
+        contentStyle={styles.pendingFridgeLockedContent}
         borderRadius={0}
         centered
       >
-        {body}
+        {fridgeBody}
       </LockedFeatureOverlay>
     </View>
   );
@@ -18677,6 +19686,74 @@ const normalizeChallengesState = (rawState) => {
     };
   });
   return base;
+};
+
+const normalizeChallengeBadgeList = (value) => {
+  if (!Array.isArray(value)) return [];
+  const list = [];
+  value.forEach((entry) => {
+    if (!entry) return;
+    if (typeof entry === "string") {
+      const id = entry.trim();
+      if (!id) return;
+      const emoji = CHALLENGE_DEF_MAP[id]?.emoji || "";
+      list.push({ id, emoji });
+      return;
+    }
+    if (typeof entry !== "object") return;
+    const id = typeof entry.id === "string" ? entry.id.trim() : "";
+    if (!id) return;
+    const emoji =
+      typeof entry.emoji === "string" ? entry.emoji : CHALLENGE_DEF_MAP[id]?.emoji || "";
+    list.push({ id, emoji });
+  });
+  const seen = new Set();
+  return list.filter((entry) => {
+    if (!entry?.id) return false;
+    if (seen.has(entry.id)) return false;
+    seen.add(entry.id);
+    return true;
+  });
+};
+
+const mergeChallengeBadgeLists = (stored, current) => {
+  const normalizedStored = normalizeChallengeBadgeList(stored);
+  const normalizedCurrent = normalizeChallengeBadgeList(current);
+  if (!normalizedStored.length && !normalizedCurrent.length) return [];
+  const next = [];
+  const indexById = new Map();
+  normalizedStored.forEach((entry) => {
+    const emoji = CHALLENGE_DEF_MAP[entry.id]?.emoji || entry.emoji || "";
+    const nextEntry = { id: entry.id, emoji };
+    indexById.set(entry.id, next.length);
+    next.push(nextEntry);
+  });
+  normalizedCurrent.forEach((entry) => {
+    const emoji = CHALLENGE_DEF_MAP[entry.id]?.emoji || entry.emoji || "";
+    if (indexById.has(entry.id)) {
+      const idx = indexById.get(entry.id);
+      const existing = next[idx];
+      if (existing && existing.emoji !== emoji) {
+        next[idx] = { ...existing, emoji };
+      }
+      return;
+    }
+    indexById.set(entry.id, next.length);
+    next.push({ id: entry.id, emoji });
+  });
+  return next.filter((entry) => entry?.id && entry?.emoji);
+};
+
+const areChallengeBadgeListsEqual = (left, right) => {
+  if (left === right) return true;
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    const a = left[i];
+    const b = right[i];
+    if (a?.id !== b?.id || a?.emoji !== b?.emoji) return false;
+  }
+  return true;
 };
 
 const getChallengeCopy = (def, language = DEFAULT_LANGUAGE) => {
@@ -19428,8 +20505,10 @@ const RewardsScreen = React.memo(function RewardsScreen({
   );
   const dailyChallengeRewardLabel = useMemo(() => {
     const bonus = Number(dailyChallenge?.rewardBonus) || 0;
-    return formatHealthRewardLabel(bonus * 2, language);
-  }, [dailyChallenge?.rewardBonus, language]);
+    const base = Number(dailyChallenge?.baseReward) || 0;
+    const total = Number(dailyChallenge?.rewardTotal) || base + bonus;
+    return formatHealthRewardLabel(total, language);
+  }, [dailyChallenge?.baseReward, dailyChallenge?.rewardBonus, dailyChallenge?.rewardTotal, language]);
 
   const renderChallengeCard = (challenge) => {
     const isLocked = challenge.isLevelLocked;
@@ -19716,6 +20795,10 @@ const RewardsScreen = React.memo(function RewardsScreen({
     );
     const target = Math.max(Number(dailyChallenge.target) || 1, 1);
     const rewardLabel = dailyChallengeRewardLabel;
+    const rewardAmount = Math.max(
+      0,
+      Number(dailyChallenge.rewardTotal ?? dailyChallenge.rewardBonus) || 0
+    );
     const percent = Math.min(Math.max(progress / target, 0), 1);
     const widgetBackground = colors.background === THEMES.dark.background ? "rgba(255,255,255,0.05)" : "#FFF7EA";
     const widgetBorder = colors.background === THEMES.dark.background ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.06)";
@@ -19726,17 +20809,27 @@ const RewardsScreen = React.memo(function RewardsScreen({
           { backgroundColor: widgetBackground, borderColor: widgetBorder },
         ]}
       >
+        <View
+          style={[
+            styles.challengeRewardChip,
+            styles.challengeRewardChipFloating,
+            { backgroundColor: colors.text },
+          ]}
+        >
+          <HealthRewardTokens
+            amount={rewardAmount}
+            color={colors.background}
+            iconSize={12}
+            maxItems={2}
+            textSize={10}
+            rowStyle={styles.healthRewardTokenRowCompact}
+          />
+        </View>
         <View style={styles.dailyChallengeWidgetHeader}>
           <View style={[styles.dailyChallengeBadge, { borderColor: widgetBorder }]}>
             <Text style={[styles.dailyChallengeBadgeText, { color: colors.text }]}>
               {t("dailyChallengeWidgetBadge")}
             </Text>
-          </View>
-          <View style={styles.dailyChallengeWidgetRewardRow}>
-            <HealthRewardTokens amount={dailyChallenge.rewardBonus} color={colors.text} iconSize={16} />
-            <View style={[styles.dailyChallengeMultiplierPill, { borderColor: widgetBorder }]}>
-              <Text style={[styles.dailyChallengeMultiplierText, { color: colors.text }]}>×2</Text>
-            </View>
           </View>
         </View>
         <View style={styles.dailyChallengeWidgetBody}>
@@ -19748,7 +20841,9 @@ const RewardsScreen = React.memo(function RewardsScreen({
               {t("dailyChallengeWidgetTitle")}
             </Text>
             <Text style={[styles.dailyChallengeWidgetDesc, { color: colors.muted }]}>
-              {t("dailyChallengeWidgetDesc", { temptation: dailyChallenge.title })}
+              {t("dailyChallengeWidgetDesc", {
+                temptation: dailyChallenge.title,
+              })}
             </Text>
           </View>
         </View>
@@ -19893,9 +20988,10 @@ const RewardsScreen = React.memo(function RewardsScreen({
 const ProfileScreen = React.memo(function ProfileScreen({
   profile,
   stats,
-  isEditing,
+  editMode = "none",
   onFieldChange,
   onEditPress,
+  onSpendEditPress,
   onReportsPress,
   reportsBadgeVisible = false,
   reportsLocked = false,
@@ -19905,6 +21001,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
   onThemeToggle,
   onLanguageChange,
   onCurrencyChange,
+  onIncomeEntryOpen,
   soundEnabled = true,
   onSoundToggle,
   spendReducesSavings = false,
@@ -19920,6 +21017,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
   rewardBadgeCount = 0,
   challengeBadges = [],
   challengeBadgeCount = 0,
+  monthlyIncomeUSD = 0,
   t,
   colors,
   moodPreset = null,
@@ -19931,12 +21029,17 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const fallbackAvatar = mascotImageSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.idle;
   const resolvedAvatarUri = useMemo(() => resolveAvatarUri(profile?.avatar), [profile?.avatar]);
   const currentCurrency = currencyValue || profile.currency || DEFAULT_PROFILE.currency;
+  const isEditingIdentity = editMode === "identity";
+  const isEditingSpend = editMode === "spend";
+  const isEditing = isEditingIdentity || isEditingSpend;
+  const canStartSpendEdit = editMode === "none";
   const isDarkTheme = theme === "dark";
   const normalizedLanguageValue = normalizeLanguage(language || DEFAULT_LANGUAGE);
   const isRomanceLocale = normalizedLanguageValue === "es" || normalizedLanguageValue === "fr";
   const reportsDisabled = reportsLocked || !onReportsPress;
   const reportsLockLabel = t("featureLockedLevelLabel", { level: reportsUnlockLevel });
   const historyEntries = Array.isArray(history) ? history : [];
+  const historyLastIndex = historyEntries.length - 1;
   const locale = getFormatLocale(language);
   const formatLocalAmount = (valueUSD = 0) =>
     formatCurrency(convertToCurrency(valueUSD || 0, currentCurrency), currentCurrency);
@@ -19946,7 +21049,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
     amount: "",
     frequency: "",
   });
-  const profileEditingRef = useRef(isEditing);
+  const profileEditingRef = useRef(isEditingSpend);
   const profileCurrencyRef = useRef(currentCurrency);
   const profileCurrencyScrollRef = useRef(null);
   const profileCurrencyNudgeRan = useRef(false);
@@ -19966,9 +21069,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
     };
   }, []);
   useEffect(() => {
-    const editingJustOpened = isEditing && !profileEditingRef.current;
-    const currencyChanged = isEditing && profileCurrencyRef.current !== currentCurrency;
-    profileEditingRef.current = isEditing;
+    const editingJustOpened = isEditingSpend && !profileEditingRef.current;
+    const currencyChanged = isEditingSpend && profileCurrencyRef.current !== currentCurrency;
+    profileEditingRef.current = isEditingSpend;
     profileCurrencyRef.current = currentCurrency;
     if (!editingJustOpened && !currencyChanged) return;
     const baselineUSD = profile.spendingProfile?.baselineMonthlyWasteUSD || 0;
@@ -19997,7 +21100,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
     });
   }, [
     currentCurrency,
-    isEditing,
+    isEditingSpend,
     profile.currency,
     profile.customSpend,
     profile.spendingProfile?.baselineMonthlyWasteUSD,
@@ -20006,6 +21109,10 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const baselineLocalDisplay = baselineDisplayUSD
     ? formatCurrency(convertToCurrency(baselineDisplayUSD, currentCurrency), currentCurrency)
     : null;
+  const monthlyIncomeDisplay =
+    Number.isFinite(monthlyIncomeUSD) && monthlyIncomeUSD > 0
+      ? formatLocalAmount(monthlyIncomeUSD)
+      : null;
   const incomePayday = useMemo(() => {
     const raw = Number(profile?.incomePayday);
     if (Number.isFinite(raw) && raw >= 1 && raw <= 31) return Math.round(raw);
@@ -20139,7 +21246,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
     if (PROFILE_BIO_FALLBACK_VALUES.includes(raw)) return "";
     return raw;
   }, [profileBioValue]);
-  const profileNameDisplay = (profile?.name || "").trim();
+  const profileNameDisplay =
+    (profile?.name || "").trim() ||
+    [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim();
   const profileNameText = profileNameDisplay || profileNamePlaceholder;
   const profileBioDisplay = profileBioText || profileBioPlaceholder;
   const profileBioColor = profileBioText ? colors.muted : colorWithAlpha(colors.muted, 0.7);
@@ -20170,6 +21279,266 @@ const ProfileScreen = React.memo(function ProfileScreen({
     triggerHaptic();
     Linking.openURL(INSTAGRAM_URL).catch((error) => console.warn("instagram link", error));
   }, []);
+  const handleSpendEditPress = useCallback(() => {
+    if (!canStartSpendEdit) return;
+    onSpendEditPress?.();
+  }, [canStartSpendEdit, onSpendEditPress]);
+  const customSpendSection = (
+    <View style={styles.profileSection}>
+      <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("customSpendTitle")}</Text>
+      {isEditingSpend ? (
+        <View style={{ gap: 10 }}>
+          <TextInput
+            style={[
+              styles.profileInput,
+              { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+            ]}
+            value={customSpendInputs.title}
+            onChangeText={(text) => handleCustomSpendInputChange("title", text)}
+            placeholder={t("customSpendNamePlaceholder")}
+            placeholderTextColor={colors.muted}
+          />
+          <TextInput
+            style={[
+              styles.profileInput,
+              { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+            ]}
+            value={customSpendInputs.amount}
+            onChangeText={(text) => handleCustomSpendInputChange("amount", text)}
+            placeholder={t("customSpendAmountPlaceholder", { amount: customSpendPlaceholderLabel })}
+            keyboardType="decimal-pad"
+            placeholderTextColor={colors.muted}
+          />
+          <TextInput
+            style={[
+              styles.profileInput,
+              { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+            ]}
+            value={customSpendInputs.frequency}
+            onChangeText={(text) => handleCustomSpendInputChange("frequency", text)}
+            placeholder={t("customSpendFrequencyPlaceholder")}
+            keyboardType="number-pad"
+            placeholderTextColor={colors.muted}
+          />
+        </View>
+      ) : profile.customSpend ? (
+        <View style={{ gap: 4 }}>
+          <Text style={[styles.profileSettingValue, { color: colors.text }]}>
+            {profile.customSpend.title}
+          </Text>
+          {customSpendAmountDisplay && (
+            <Text style={[styles.profileHintText, { color: colors.muted }]}>
+              {t("customSpendAmountLabel")}: {customSpendAmountDisplay}
+            </Text>
+          )}
+          {customSpendFrequency ? (
+            <Text style={[styles.profileHintText, { color: colors.muted }]}>
+              {t("customSpendFrequencyLabel")}: {customSpendFrequency}
+            </Text>
+          ) : null}
+        </View>
+      ) : (
+        <Text style={[styles.profileHintText, { color: colors.muted }]}>{t("customSpendHint")}</Text>
+      )}
+    </View>
+  );
+  const baselineSection = (
+    <View style={styles.profileSection}>
+      <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("baselineTitle")}</Text>
+      <View style={{ gap: 12 }}>
+        {isEditingSpend ? (
+          <View style={{ gap: 4 }}>
+            <Text style={[styles.profileHintText, { color: colors.muted }]}>
+              {t("incomeEntryAmountLabel")}
+            </Text>
+            {monthlyIncomeDisplay ? (
+              <Text style={[styles.profileSettingValue, { color: colors.text }]}>
+                {monthlyIncomeDisplay}
+              </Text>
+            ) : (
+              <Text style={[styles.profileHintText, { color: colors.muted }]}>
+                {t("baselineIncomeHint")}
+              </Text>
+            )}
+          </View>
+        ) : canStartSpendEdit ? (
+          <Pressable onPress={() => onIncomeEntryOpen?.("profile")}>
+            <View style={{ gap: 4 }}>
+              <Text style={[styles.profileHintText, { color: colors.muted }]}>
+                {t("incomeEntryAmountLabel")}
+              </Text>
+              {monthlyIncomeDisplay ? (
+                <Text style={[styles.profileSettingValue, { color: colors.text }]}>
+                  {monthlyIncomeDisplay}
+                </Text>
+              ) : (
+                <Text style={[styles.profileHintText, { color: colors.muted }]}>
+                  {t("baselineIncomeHint")}
+                </Text>
+              )}
+            </View>
+          </Pressable>
+        ) : (
+          <View style={{ gap: 4 }}>
+            <Text style={[styles.profileHintText, { color: colors.muted }]}>
+              {t("incomeEntryAmountLabel")}
+            </Text>
+            {monthlyIncomeDisplay ? (
+              <Text style={[styles.profileSettingValue, { color: colors.text }]}>
+                {monthlyIncomeDisplay}
+              </Text>
+            ) : (
+              <Text style={[styles.profileHintText, { color: colors.muted }]}>
+                {t("baselineIncomeHint")}
+              </Text>
+            )}
+          </View>
+        )}
+        {isEditingSpend ? (
+          <View style={{ gap: 6 }}>
+            <Text style={[styles.profileHintText, { color: colors.muted }]}>
+              {t("baselineSpendLabel")}
+            </Text>
+            <TextInput
+              style={[
+                styles.profileInput,
+                { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+              ]}
+              value={baselineInput}
+              onChangeText={handleBaselineInputChange}
+              placeholder={t("baselinePlaceholder", { amount: baselinePlaceholderLabel })}
+              keyboardType="decimal-pad"
+              placeholderTextColor={colors.muted}
+            />
+          </View>
+        ) : canStartSpendEdit ? (
+          <Pressable onPress={handleSpendEditPress}>
+            <View style={{ gap: 4 }}>
+              <Text style={[styles.profileHintText, { color: colors.muted }]}>
+                {t("baselineSpendLabel")}
+              </Text>
+              {baselineLocalDisplay ? (
+                <Text style={[styles.profileSettingValue, { color: colors.text }]}>
+                  {baselineLocalDisplay}
+                </Text>
+              ) : (
+                <Text style={[styles.profileHintText, { color: colors.muted }]}>
+                  {t("baselineHint")}
+                </Text>
+              )}
+            </View>
+          </Pressable>
+        ) : (
+          <View style={{ gap: 4 }}>
+            <Text style={[styles.profileHintText, { color: colors.muted }]}>
+              {t("baselineSpendLabel")}
+            </Text>
+            {baselineLocalDisplay ? (
+              <Text style={[styles.profileSettingValue, { color: colors.text }]}>
+                {baselineLocalDisplay}
+              </Text>
+            ) : (
+              <Text style={[styles.profileHintText, { color: colors.muted }]}>
+                {t("baselineHint")}
+              </Text>
+            )}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+  const incomePaydaySection = (
+    <View style={styles.profileSection}>
+      <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("incomePaydayLabel")}</Text>
+      {isEditingSpend ? (
+        <>
+          <View style={styles.incomeCalendarGrid}>
+            {incomeDayOptions.map((day) => {
+              const active = incomePayday === day;
+              return (
+                <TouchableOpacity
+                  key={`income-day-${day}`}
+                  style={[
+                    styles.incomeCalendarDay,
+                    {
+                      backgroundColor: active ? colors.text : "transparent",
+                      borderColor: active ? colors.text : colors.border,
+                    },
+                  ]}
+                  onPress={() => onFieldChange?.("incomePayday", day)}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={[
+                      styles.incomeCalendarDayText,
+                      { color: active ? colors.background : colors.muted },
+                    ]}
+                  >
+                    {day}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={[styles.profileHintText, { color: colors.muted }]}>
+            {t("incomePaydayHint")}
+          </Text>
+        </>
+      ) : (
+        <Text style={[styles.profileSettingValue, { color: colors.text }]}>
+          {t("incomePaydayValue", { day: incomePayday })}
+        </Text>
+      )}
+    </View>
+  );
+  const renderHistoryItem = useCallback(
+    ({ item: entry, index }) => (
+      <View
+        style={[
+          styles.historyItem,
+          {
+            borderColor: colors.border,
+            borderBottomWidth:
+              index === historyLastIndex ? 0 : StyleSheet.hairlineWidth,
+          },
+        ]}
+      >
+        <View style={styles.historyRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.historyItemTitle, { color: colors.text }]}>
+              {describeHistory(entry)}
+            </Text>
+            <Text style={[styles.historyItemMeta, { color: colors.muted }]}>
+              {formatHistoryMeta(entry)}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.historyDeleteBtn, { borderColor: colors.border }]}
+            onPress={() => onHistoryDelete?.(entry)}
+          >
+            <Text style={[styles.historyDeleteText, { color: colors.muted }]}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    ),
+    [
+      colors.border,
+      colors.muted,
+      colors.text,
+      describeHistory,
+      formatHistoryMeta,
+      historyLastIndex,
+      onHistoryDelete,
+    ]
+  );
+  const historyItemLayout = useCallback(
+    (_, index) => ({
+      length: HISTORY_ITEM_HEIGHT,
+      offset: HISTORY_ITEM_HEIGHT * index,
+      index,
+    }),
+    []
+  );
   return (
     <View style={[styles.container, { backgroundColor: colors.background }] }>
       <ScrollView
@@ -20184,15 +21553,15 @@ const ProfileScreen = React.memo(function ProfileScreen({
             <MoodGradientBlock colors={profileMoodGradient} style={styles.profileMoodGradient}>
               <TouchableOpacity
                 style={styles.profileAvatarWrap}
-                activeOpacity={isEditing ? 0.85 : 1}
-                onPress={() => isEditing && onPickImage?.()}
+                activeOpacity={isEditingIdentity ? 0.85 : 1}
+                onPress={() => isEditingIdentity && onPickImage?.()}
               >
                 <Image
                   source={resolvedAvatarUri ? { uri: resolvedAvatarUri } : fallbackAvatar}
                   style={styles.profileAvatar}
                   resizeMode="cover"
                 />
-                {isEditing && (
+                {isEditingIdentity && (
                   <View
                     style={[
                       styles.profileAvatarEditBadge,
@@ -20204,7 +21573,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
                 )}
               </TouchableOpacity>
             </MoodGradientBlock>
-            {isEditing && (
+            {isEditingIdentity && (
               <Text style={[styles.profileAvatarHint, { color: colors.muted }]}>{t("photoTapHint")}</Text>
             )}
             {moodPreset?.label && (
@@ -20213,27 +21582,41 @@ const ProfileScreen = React.memo(function ProfileScreen({
               </Text>
             )}
           </View>
-          {isEditing ? (
+          {isEditingIdentity ? (
             <>
-              <TextInput
-                style={[
-                  styles.profileInput,
-                  { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                ]}
-                value={profile.name}
-                onChangeText={(text) => onFieldChange("name", text)}
-                placeholder={t("profileNamePlaceholder")}
-                placeholderTextColor={colors.muted}
-              />
+              <View style={styles.inputRow}>
+                <TextInput
+                  style={[
+                    styles.profileInput,
+                    styles.profileInputHalf,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  value={profile.firstName || ""}
+                  onChangeText={(text) => onFieldChange("firstName", text)}
+                  placeholder={t("inputFirstName")}
+                  placeholderTextColor={colors.muted}
+                />
+                <TextInput
+                  style={[
+                    styles.profileInput,
+                    styles.profileInputHalf,
+                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                  ]}
+                  value={profile.lastName || ""}
+                  onChangeText={(text) => onFieldChange("lastName", text)}
+                  placeholder={t("inputLastName")}
+                  placeholderTextColor={colors.muted}
+                />
+              </View>
               <TextInput
                 style={[
                   styles.profileInput,
                   styles.profileBioInput,
                   { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
                 ]}
-                value={profile.bio}
+                value={profile.bio || ""}
                 onChangeText={(text) => onFieldChange("bio", text)}
-                placeholder={t("profileBioPlaceholder")}
+                placeholder={t("inputMotto")}
                 multiline
                 placeholderTextColor={colors.muted}
               />
@@ -20365,130 +21748,17 @@ const ProfileScreen = React.memo(function ProfileScreen({
         </View>
 
         <View style={[styles.settingsCard, { backgroundColor: colors.card }] }>
-          <View style={styles.profileSection}>
-            <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("customSpendTitle")}</Text>
-            {isEditing ? (
-              <View style={{ gap: 10 }}>
-                <TextInput
-                  style={[
-                    styles.profileInput,
-                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                  ]}
-                  value={customSpendInputs.title}
-                  onChangeText={(text) => handleCustomSpendInputChange("title", text)}
-                  placeholder={t("customSpendNamePlaceholder")}
-                  placeholderTextColor={colors.muted}
-                />
-                <TextInput
-                  style={[
-                    styles.profileInput,
-                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                  ]}
-                  value={customSpendInputs.amount}
-                  onChangeText={(text) => handleCustomSpendInputChange("amount", text)}
-                  placeholder={t("customSpendAmountPlaceholder", { amount: customSpendPlaceholderLabel })}
-                  keyboardType="decimal-pad"
-                  placeholderTextColor={colors.muted}
-                />
-                <TextInput
-                  style={[
-                    styles.profileInput,
-                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                  ]}
-                  value={customSpendInputs.frequency}
-                  onChangeText={(text) => handleCustomSpendInputChange("frequency", text)}
-                  placeholder={t("customSpendFrequencyPlaceholder")}
-                  keyboardType="number-pad"
-                  placeholderTextColor={colors.muted}
-                />
-              </View>
-            ) : profile.customSpend ? (
-              <View style={{ gap: 4 }}>
-                <Text style={[styles.profileSettingValue, { color: colors.text }]}>
-                  {profile.customSpend.title}
-                </Text>
-                {customSpendAmountDisplay && (
-                  <Text style={[styles.profileHintText, { color: colors.muted }]}>
-                    {t("customSpendAmountLabel")}: {customSpendAmountDisplay}
-                  </Text>
-                )}
-                {customSpendFrequency ? (
-                  <Text style={[styles.profileHintText, { color: colors.muted }]}>
-                    {t("customSpendFrequencyLabel")}: {customSpendFrequency}
-                  </Text>
-                ) : null}
-              </View>
-            ) : (
-              <Text style={[styles.profileHintText, { color: colors.muted }]}>{t("customSpendHint")}</Text>
-            )}
-          </View>
-          <View style={styles.profileSection}>
-            <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("baselineTitle")}</Text>
-            {isEditing ? (
-              <View style={{ gap: 10 }}>
-                <TextInput
-                  style={[
-                    styles.profileInput,
-                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                  ]}
-                  value={baselineInput}
-                  onChangeText={handleBaselineInputChange}
-                  placeholder={t("baselinePlaceholder", { amount: baselinePlaceholderLabel })}
-                  keyboardType="decimal-pad"
-                  placeholderTextColor={colors.muted}
-                />
-              </View>
-            ) : baselineLocalDisplay ? (
-              <Text style={[styles.profileSettingValue, { color: colors.text }]}>
-                {baselineLocalDisplay}
-              </Text>
-            ) : (
-              <Text style={[styles.profileHintText, { color: colors.muted }]}>{t("baselineHint")}</Text>
-            )}
-          </View>
-
-          <View style={styles.profileSection}>
-            <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("incomePaydayLabel")}</Text>
-            {isEditing ? (
-              <>
-                <View style={styles.incomeCalendarGrid}>
-                  {incomeDayOptions.map((day) => {
-                    const active = incomePayday === day;
-                    return (
-                      <TouchableOpacity
-                        key={`income-day-${day}`}
-                        style={[
-                          styles.incomeCalendarDay,
-                          {
-                            backgroundColor: active ? colors.text : "transparent",
-                            borderColor: active ? colors.text : colors.border,
-                          },
-                        ]}
-                        onPress={() => onFieldChange?.("incomePayday", day)}
-                        activeOpacity={0.85}
-                      >
-                        <Text
-                          style={[
-                            styles.incomeCalendarDayText,
-                            { color: active ? colors.background : colors.muted },
-                          ]}
-                        >
-                          {day}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                <Text style={[styles.profileHintText, { color: colors.muted }]}>
-                  {t("incomePaydayHint")}
-                </Text>
-              </>
-            ) : (
-              <Text style={[styles.profileSettingValue, { color: colors.text }]}>
-                {t("incomePaydayValue", { day: incomePayday })}
-              </Text>
-            )}
-          </View>
+          {canStartSpendEdit ? (
+            <Pressable onPress={handleSpendEditPress}>{customSpendSection}</Pressable>
+          ) : (
+            customSpendSection
+          )}
+          {baselineSection}
+          {canStartSpendEdit ? (
+            <Pressable onPress={handleSpendEditPress}>{incomePaydaySection}</Pressable>
+          ) : (
+            incomePaydaySection
+          )}
 
           <View style={[styles.settingsDivider, { backgroundColor: colors.border }]} />
 
@@ -20680,7 +21950,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
           {historyEntries.length === 0 ? (
             <Text style={[styles.historyEmpty, { color: colors.muted }]}>{t("historyEmpty")}</Text>
           ) : (
-            <ScrollView
+            <FlatList
               style={[
                 styles.historyList,
                 {
@@ -20692,38 +21962,14 @@ const ProfileScreen = React.memo(function ProfileScreen({
               showsVerticalScrollIndicator
               nestedScrollEnabled
               scrollEventThrottle={16}
-            >
-              {historyEntries.map((entry, index) => (
-                <View
-                  key={entry.id}
-                  style={[
-                    styles.historyItem,
-                    {
-                      borderColor: colors.border,
-                      borderBottomWidth:
-                        index === historyEntries.length - 1 ? 0 : StyleSheet.hairlineWidth,
-                    },
-                  ]}
-                >
-                  <View style={styles.historyRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.historyItemTitle, { color: colors.text }]}>
-                        {describeHistory(entry)}
-                      </Text>
-                      <Text style={[styles.historyItemMeta, { color: colors.muted }]}>
-                        {formatHistoryMeta(entry)}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      style={[styles.historyDeleteBtn, { borderColor: colors.border }]}
-                      onPress={() => onHistoryDelete?.(entry)}
-                    >
-                      <Text style={[styles.historyDeleteText, { color: colors.muted }]}>✕</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
+              data={historyEntries}
+              keyExtractor={(entry) => entry.id}
+              renderItem={renderHistoryItem}
+              getItemLayout={historyItemLayout}
+              initialNumToRender={HISTORY_VIEWPORT_ROWS}
+              maxToRenderPerBatch={HISTORY_VIEWPORT_ROWS}
+              windowSize={5}
+            />
           )}
         </View>
         <TouchableOpacity
@@ -21291,6 +22537,8 @@ function AppContent() {
   ]);
   const [challengesState, setChallengesState] = useState(() => createInitialChallengesState());
   const [challengesHydrated, setChallengesHydrated] = useState(false);
+  const [challengeBadgeStore, setChallengeBadgeStore] = useState([]);
+  const [challengeBadgeStoreHydrated, setChallengeBadgeStoreHydrated] = useState(false);
   const [rewardsPane, setRewardsPane] = useState("rewards");
   useEffect(() => {
     if (challengesUnlocked) return;
@@ -21317,6 +22565,7 @@ function AppContent() {
   const [incomeEntryModalVisible, setIncomeEntryModalVisible] = useState(false);
   const [incomeEntryInput, setIncomeEntryInput] = useState({ amount: "" });
   const incomeEntrySourceRef = useRef("manual");
+  const incomeEntryModeRef = useRef(INCOME_ENTRY_TYPES.MONTHLY);
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
   const [progressFocusChallengeId, setProgressFocusChallengeId] = useState(null);
   const levelProgressBaseUSD = Math.max(
@@ -21324,7 +22573,15 @@ function AppContent() {
     progressLifetimeSavedUSD || 0
   );
   const levelProgressUSD = Math.max(0, levelProgressBaseUSD - levelProgressOffsetUSD);
-  const profileCurrencyCode = profile?.currency || DEFAULT_PROFILE.currency;
+  const profileCurrencyCode = normalizeCurrencyCode(
+    profile?.currency || DEFAULT_PROFILE.currency
+  );
+  const widgetCurrencyCode = normalizeCurrencyCode(activeCurrency || profileCurrencyCode);
+  const formatWidgetAmount = useCallback(
+    (valueUSD = 0) =>
+      formatCurrency(convertToCurrency(valueUSD || 0, widgetCurrencyCode), widgetCurrencyCode),
+    [widgetCurrencyCode]
+  );
   const fabMainIcon = useMemo(() => {
     if (activeTab === "feed") {
       const label = formatCurrency(0, fabCurrencyCode);
@@ -21357,9 +22614,204 @@ function AppContent() {
   const thinkingUnlocked = playerLevel >= 3;
   const todayKey = currentDayKey;
   const currentMonthKey = useMemo(() => getMonthKey(Date.now()), [currentDayKey]);
+  const widgetSavedMonthUSD = useMemo(() => {
+    let total = 0;
+    resolvedHistoryEvents.forEach((entry) => {
+      if (!entry || !HISTORY_SAVED_GAIN_EVENTS.has(entry.kind)) return;
+      const timestamp = Number(entry.timestamp) || 0;
+      if (!timestamp) return;
+      if (getMonthKey(timestamp) !== currentMonthKey) return;
+      const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
+      if (!amount) return;
+      total += amount;
+    });
+    return total;
+  }, [currentMonthKey, resolvedHistoryEvents]);
+  const widgetStreakDisplayCount = useMemo(() => {
+    const currentCount = Math.max(0, Number(usageStreak?.current) || 0);
+    const lostCount = Math.max(0, Number(usageStreak?.lostCount) || 0);
+    return currentCount === 0 && lostCount > 0 ? lostCount : currentCount;
+  }, [usageStreak]);
+  const widgetSavedTodayUSD = useMemo(() => {
+    let total = 0;
+    resolvedHistoryEvents.forEach((entry) => {
+      if (!entry || !HISTORY_SAVED_GAIN_EVENTS.has(entry.kind)) return;
+      const timestamp = Number(entry.timestamp) || 0;
+      if (!timestamp) return;
+      if (getDayKey(timestamp) !== todayKey) return;
+      const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
+      if (!amount) return;
+      total += amount;
+    });
+    return total;
+  }, [resolvedHistoryEvents, todayKey]);
+  const widgetMonthlyTargetUSD = useMemo(() => {
+    if (widgetSavedMonthUSD <= 0 && widgetSavedTodayUSD <= 0) return 0;
+    const baselineFromMonth = widgetSavedMonthUSD > 0 ? widgetSavedMonthUSD * 1.15 : 0;
+    const baselineFromToday = widgetSavedTodayUSD > 0 ? widgetSavedTodayUSD * 30 : 0;
+    const fallback = Math.max(widgetSavedMonthUSD, widgetSavedTodayUSD * 30);
+    return Math.max(baselineFromMonth, baselineFromToday, fallback);
+  }, [widgetSavedMonthUSD, widgetSavedTodayUSD]);
+  const widgetDailyGoalUSD = useMemo(() => {
+    if (widgetMonthlyTargetUSD <= 0) return 0;
+    const now = Date.now();
+    const date = new Date(now);
+    if (Number.isNaN(date.getTime())) return 0;
+    const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    const dayOfMonth = Math.max(1, date.getDate());
+    const daysRemaining = Math.max(1, daysInMonth - dayOfMonth + 1);
+    const remaining = Math.max(widgetMonthlyTargetUSD - widgetSavedMonthUSD, 0);
+    return remaining / daysRemaining;
+  }, [currentDayKey, widgetMonthlyTargetUSD, widgetSavedMonthUSD]);
+  const widgetBudgetStats = useMemo(() => {
+    const stats = {};
+    const ensure = (key) => {
+      if (!key) return null;
+      if (!stats[key]) {
+        stats[key] = { incomeUSD: 0, spendTotalUSD: 0 };
+      }
+      return stats[key];
+    };
+    (Array.isArray(incomeEntries) ? incomeEntries : []).forEach((entry) => {
+      const key = getMonthKey(entry?.receivedAt);
+      if (!key) return;
+      const target = ensure(key);
+      if (!target) return;
+      target.incomeUSD += Math.max(0, Number(entry?.amountUSD) || 0);
+    });
+    resolvedHistoryEvents.forEach((entry) => {
+      if (!entry || entry.kind !== "spend") return;
+      const timestamp = Number(entry?.timestamp) || 0;
+      if (!timestamp) return;
+      const key = getMonthKey(timestamp);
+      if (!key) return;
+      const target = ensure(key);
+      if (!target) return;
+      const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
+      if (!amount) return;
+      target.spendTotalUSD += amount;
+    });
+    return stats;
+  }, [incomeEntries, resolvedHistoryEvents]);
+  const widgetBudgetCarryover = useMemo(() => {
+    const keys = Object.keys(widgetBudgetStats);
+    if (!keys.length) return {};
+    const sorted = [...keys].sort();
+    let running = 0;
+    const map = {};
+    sorted.forEach((key) => {
+      map[key] = running;
+      const stats = widgetBudgetStats[key];
+      running += (stats?.incomeUSD || 0) - (stats?.spendTotalUSD || 0);
+    });
+    return map;
+  }, [widgetBudgetStats]);
+  const widgetBudgetMonthStats = widgetBudgetStats[currentMonthKey] || {
+    incomeUSD: 0,
+    spendTotalUSD: 0,
+  };
+  const widgetBudgetTotalValue =
+    (Number(widgetBudgetMonthStats.incomeUSD) || 0) +
+    (Number(widgetBudgetCarryover[currentMonthKey]) || 0);
+  const widgetBudgetRemainingValue =
+    widgetBudgetTotalValue - (Number(widgetBudgetMonthStats.spendTotalUSD) || 0);
+  const widgetBudgetRemainingLabel = formatWidgetAmount(Math.abs(widgetBudgetRemainingValue));
+  useEffect(() => {
+    if (!canUpdateWidgetStorage()) return;
+    if (!profileHydrated || !usageStreakHydrated || !historyHydrated || !savedTotalHydrated) {
+      return;
+    }
+    const savedMonthValue = Math.max(0, Number(widgetSavedMonthUSD) || 0);
+    const savedTotalValue = Math.max(0, Number(savedTotalUSD) || 0);
+    const monthlyTargetValue = Math.max(0, Number(widgetMonthlyTargetUSD) || 0);
+    const savedTodayValue = Math.max(0, Number(widgetSavedTodayUSD) || 0);
+    const dailyGoalValue = Math.max(0, Number(widgetDailyGoalUSD) || 0);
+    const savedMonthLabel = formatWidgetAmount(savedMonthValue);
+    const savedTotalLabel = formatWidgetAmount(savedTotalValue);
+    const savedTodayLabel = formatWidgetAmount(savedTodayValue);
+    const streakDays = Math.max(0, Number(widgetStreakDisplayCount) || 0);
+    const hasData =
+      savedTotalValue > 0 ||
+      (Array.isArray(resolvedHistoryEvents) && resolvedHistoryEvents.length > 0) ||
+      streakDays > 0;
+    const currencyCode = widgetCurrencyCode;
+    const prev = widgetDataRef.current || {};
+    if (
+      prev.currencyCode === currencyCode &&
+      prev.savedMonthLabel === savedMonthLabel &&
+      prev.savedTotalLabel === savedTotalLabel &&
+      prev.savedTodayLabel === savedTodayLabel &&
+      prev.streakDays === streakDays &&
+      prev.hasData === hasData &&
+      prev.savedMonthValue === savedMonthValue &&
+      prev.savedTotalValue === savedTotalValue &&
+      prev.monthlyTargetValue === monthlyTargetValue &&
+      prev.savedTodayValue === savedTodayValue &&
+      prev.dailyGoalValue === dailyGoalValue &&
+      prev.refreshTick === widgetRefreshTick
+    ) {
+      return;
+    }
+    widgetDataRef.current = {
+      savedMonthLabel,
+      savedTotalLabel,
+      savedTodayLabel,
+      streakDays,
+      hasData,
+      savedMonthValue,
+      savedTotalValue,
+      monthlyTargetValue,
+      savedTodayValue,
+      dailyGoalValue,
+      currencyCode,
+      refreshTick: widgetRefreshTick,
+    };
+    setWidgetDataSafely({
+      savedMonthLabel,
+      savedTotalLabel,
+      savedTodayLabel,
+      streakDays,
+      hasData,
+      savedMonthValue,
+      savedTotalValue,
+      monthlyTargetValue,
+      savedTodayValue,
+      dailyGoalValue,
+      widgetCurrencyCode: currencyCode,
+    });
+  }, [
+    formatWidgetAmount,
+    historyHydrated,
+    profileHydrated,
+    widgetCurrencyCode,
+    resolvedHistoryEvents,
+    savedTotalHydrated,
+    savedTotalUSD,
+    usageStreakHydrated,
+    widgetDailyGoalUSD,
+    widgetMonthlyTargetUSD,
+    widgetSavedMonthUSD,
+    widgetSavedTodayUSD,
+    widgetStreakDisplayCount,
+    widgetRefreshTick,
+  ]);
   const currentMonthIncomeUSD = useMemo(
     () => getIncomeForMonth(incomeEntries, currentMonthKey),
     [incomeEntries, currentMonthKey]
+  );
+  const currentMonthRecurringIncomeUSD = useMemo(
+    () =>
+      getIncomeForMonth(incomeEntries, currentMonthKey, {
+        entryType: INCOME_ENTRY_TYPES.MONTHLY,
+      }),
+    [incomeEntries, currentMonthKey]
+  );
+  const hasMonthlyIncomeEntries = useMemo(
+    () =>
+      (Array.isArray(incomeEntries) ? incomeEntries : []).some(
+        (entry) => normalizeIncomeEntryType(entry?.entryType) === INCOME_ENTRY_TYPES.MONTHLY
+      ),
+    [incomeEntries]
   );
   const currentMonthSpendUSD = useMemo(() => {
     let total = 0;
@@ -21588,6 +23040,7 @@ function AppContent() {
   const levelReachedLoggedRef = useRef(0);
   const [levelReachedLoggedHydrated, setLevelReachedLoggedHydrated] = useState(false);
   const [coinEntryVisible, setCoinEntryVisible] = useState(false);
+  const [coinEntryPresetAction, setCoinEntryPresetAction] = useState(null);
   const coinEntryContextRef = useRef({ source: null, openedAt: 0, submitted: false });
   const [coinSliderMaxUSD, setCoinSliderMaxUSD] = useState(DEFAULT_COIN_SLIDER_MAX_USD);
   const [coinSliderHydrated, setCoinSliderHydrated] = useState(false);
@@ -21635,6 +23088,41 @@ function AppContent() {
   }));
   const spendReducesSavings = !!(profile && profile.spendReducesSavings);
   const [profileHydrated, setProfileHydrated] = useState(false);
+  const [widgetRefreshTick, setWidgetRefreshTick] = useState(0);
+  const triggerWidgetRefresh = useCallback(
+    () => setWidgetRefreshTick((prev) => prev + 1),
+    []
+  );
+  const widgetDataRef = useRef({
+    savedMonthLabel: null,
+    savedTotalLabel: null,
+    savedTodayLabel: null,
+    streakDays: null,
+    hasData: null,
+    savedMonthValue: null,
+    savedTotalValue: null,
+    monthlyTargetValue: null,
+    savedTodayValue: null,
+    dailyGoalValue: null,
+    currencyCode: null,
+    refreshTick: null,
+  });
+  const widgetSupplementRef = useRef({
+    goalTargetValue: null,
+    goalSavedValue: null,
+    budgetRemainingValue: null,
+    budgetRemainingLabel: null,
+    budgetTotalValue: null,
+    recentEventsKey: null,
+    currencyCode: null,
+    refreshTick: null,
+  });
+  const widgetMetaRef = useRef({
+    language: null,
+    currencyCode: null,
+    labelsKey: null,
+    refreshTick: null,
+  });
   const [profileDraft, setProfileDraft] = useState(() => ({
     ...DEFAULT_PROFILE_PLACEHOLDER,
     joinedAt: new Date().toISOString(),
@@ -21805,7 +23293,7 @@ function AppContent() {
     const monthKey = currentMonthKey || getMonthKey(Date.now());
     if (!monthKey) return false;
     if (incomePromptState?.lastPromptMonthKey === monthKey) return false;
-    if (currentMonthIncomeUSD > 0) return false;
+    if (currentMonthRecurringIncomeUSD > 0) return false;
     const paydayRaw = Number(profile?.incomePayday);
     const payday =
       Number.isFinite(paydayRaw) && paydayRaw >= 1 && paydayRaw <= 31
@@ -21817,11 +23305,13 @@ function AppContent() {
     const effectivePayday = Math.min(payday, daysInMonth);
     const windowEnd = Math.min(effectivePayday + INCOME_PROMPT_GRACE_DAYS, daysInMonth);
     const withinWindow = day >= effectivePayday && day <= windowEnd;
-    return withinWindow || (incomeEntries.length === 0 && !incomePromptState?.lastPromptMonthKey);
+    return (
+      withinWindow || (!hasMonthlyIncomeEntries && !incomePromptState?.lastPromptMonthKey)
+    );
   }, [
-    currentMonthIncomeUSD,
+    currentMonthRecurringIncomeUSD,
     currentMonthKey,
-    incomeEntries.length,
+    hasMonthlyIncomeEntries,
     incomeEntriesHydrated,
     incomePromptHydrated,
     incomePromptState?.lastPromptMonthKey,
@@ -21839,6 +23329,7 @@ function AppContent() {
     }
     if (incomePromptPending || incomeEntryModalVisible) return;
     incomeEntrySourceRef.current = "monthly_prompt";
+    incomeEntryModeRef.current = INCOME_ENTRY_TYPES.MONTHLY;
     setIncomeEntryInput({ amount: "" });
     setIncomePromptPending(true);
   }, [incomeEntryModalVisible, incomePromptPending, shouldPromptIncome]);
@@ -21924,7 +23415,7 @@ function AppContent() {
   }, [language, profile?.gender]);
   const [activeGoalId, setActiveGoalId] = useState(null);
   const [activeGoalHydrated, setActiveGoalHydrated] = useState(false);
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileEditMode, setProfileEditMode] = useState("none");
   const [theme, setTheme] = useState(DEFAULT_THEME);
   const [themeHydrated, setThemeHydrated] = useState(false);
   const isAndroid = Platform.OS === "android";
@@ -22094,10 +23585,22 @@ function AppContent() {
     sessionCount: 0,
     pendingIndex: null,
   });
+  const isDailyChallengeDeferred = useMemo(() => {
+    if (!dailyChallenge?.deferUntilKey) return false;
+    const deferDate = parseDayKey(dailyChallenge.deferUntilKey);
+    const todayDate = parseDayKey(todayKey || getDayKey(Date.now()));
+    if (!deferDate || !todayDate) return false;
+    return deferDate.getTime() > todayDate.getTime();
+  }, [dailyChallenge?.deferUntilKey, todayKey]);
   const isDailyChallengePromptPending =
     dailyChallengeUnlocked &&
     dailyChallenge.status === DAILY_CHALLENGE_STATUS.OFFER &&
-    !dailyChallenge.offerDismissed;
+    !dailyChallenge.offerDismissed &&
+    !isDailyChallengeDeferred;
+  const isDailyChallengeCompletePending =
+    dailyChallengeUnlocked &&
+    dailyChallenge.status === DAILY_CHALLENGE_STATUS.COMPLETED &&
+    !dailyChallenge.completionDismissed;
   const [dailyChallengePromptGate, setDailyChallengePromptGate] = useState(false);
   const dailyChallengePromptQueuedRef = useRef(false);
   const dailyChallengePendingRef = useRef(false);
@@ -22129,6 +23632,9 @@ function AppContent() {
       setDailyChallengePromptGate(true);
       enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
     }
+    if (dailyChallengePromptAllowed && isDailyChallengeCompletePending) {
+      enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE_COMPLETE);
+    }
     if (focusModeUnlocked && pendingFocusDigest && !focusDigestPromptShown) {
       enqueueQueuedModal(QUEUED_MODAL_TYPES.FOCUS_DIGEST);
     }
@@ -22159,6 +23665,7 @@ function AppContent() {
     homeLayoutReady,
     incomePromptPending,
     isDailyChallengePromptPending,
+    isDailyChallengeCompletePending,
     onboardingStep,
     pendingDailySummaryData,
     pendingFocusDigest,
@@ -22186,6 +23693,7 @@ function AppContent() {
       return;
     }
     incomeEntrySourceRef.current = "monthly_prompt";
+    incomeEntryModeRef.current = INCOME_ENTRY_TYPES.MONTHLY;
     setIncomeEntryModalVisible(true);
   }, [clearQueuedModal, incomePromptPending, queuedModalType, shouldPromptIncome]);
   const handleDailySummaryContinue = useCallback(() => {
@@ -22844,6 +24352,8 @@ function AppContent() {
   const mascotQueueRef = useRef([]);
   const mascotBusyRef = useRef(false);
   const [tamagotchiState, setTamagotchiState] = useState({ ...TAMAGOTCHI_START_STATE });
+  const [tamagotchiGreetingDayKey, setTamagotchiGreetingDayKey] = useState(null);
+  const [tamagotchiGreetingDayHydrated, setTamagotchiGreetingDayHydrated] = useState(false);
   const [tamagotchiVisible, setTamagotchiVisible] = useState(false);
   const [tamagotchiSkinId, setTamagotchiSkinId] = useState(DEFAULT_TAMAGOTCHI_SKIN);
   const [tamagotchiSkinHydrated, setTamagotchiSkinHydrated] = useState(false);
@@ -22880,6 +24390,10 @@ function AppContent() {
     },
     [setTamagotchiState]
   );
+  const markTamagotchiGreetingDay = useCallback((dayKey) => {
+    if (!dayKey) return;
+    setTamagotchiGreetingDayKey((prev) => (prev === dayKey ? prev : dayKey));
+  }, []);
   const saveActionLogRef = useRef([]);
   const lastSaveActionAtRef = useRef(0);
   const cartBadgeScale = useRef(new Animated.Value(1)).current;
@@ -23082,6 +24596,7 @@ function AppContent() {
           if (!overlayActiveRef.current && !overlay && overlayQueueRef.current.length) {
             processOverlayQueue();
           }
+          triggerWidgetRefresh();
         }
       }
     };
@@ -23106,6 +24621,7 @@ function AppContent() {
     setFabTutorialVisible,
     setKeyboardInset,
     setKeyboardVisible,
+    triggerWidgetRefresh,
   ]);
   useEffect(() => {
     markDailySummaryOpen();
@@ -23940,6 +25456,32 @@ function AppContent() {
       !startupLogoVisible,
     [fontsReady, homeLayoutReady, onboardingStep, startupHydrated, startupLogoVisible]
   );
+  useEffect(() => {
+    if (!pendingWidgetActionRef.current) return;
+    if (!interfaceReady) return;
+    const action = pendingWidgetActionRef.current;
+    clearWidgetAction();
+    InteractionManager.runAfterInteractions(() => {
+      if (!action) return;
+      if (action.type === "quick-entry") {
+        const preset =
+          action.presetAction === "spend" || action.presetAction === "save"
+            ? action.presetAction
+            : "save";
+        openCoinEntry(`widget_${preset}`, preset);
+        return;
+      }
+      if (action.type === "add-temptation") {
+        handleFabNewTemptation();
+      }
+    });
+  }, [
+    clearWidgetAction,
+    handleFabNewTemptation,
+    interfaceReady,
+    openCoinEntry,
+    pendingWidgetAction,
+  ]);
   const speechInterfaceReady = useMemo(
     () => onboardingStep === "done" && !startupLogoVisible,
     [onboardingStep, startupLogoVisible]
@@ -24307,6 +25849,116 @@ function AppContent() {
     ]
   );
   const dailyChallengePromptVisible = queuedModalType === QUEUED_MODAL_TYPES.DAILY_CHALLENGE;
+  const dailyChallengeCompleteVisible =
+    queuedModalType === QUEUED_MODAL_TYPES.DAILY_CHALLENGE_COMPLETE;
+  const [dailyChallengeDrawnIndex, setDailyChallengeDrawnIndex] = useState(null);
+  const dailyChallengeRevealAnim = useRef(new Animated.Value(0)).current;
+  const dailyChallengeSelectAnim = useRef(new Animated.Value(0)).current;
+  const dailyChallengeCardIntroAnims = useRef(
+    Array.from({ length: DAILY_CHALLENGE_DRAW_COUNT }, () => new Animated.Value(0))
+  ).current;
+  const dailyChallengeCardFloatAnims = useRef(
+    Array.from({ length: DAILY_CHALLENGE_DRAW_COUNT }, () => new Animated.Value(0))
+  ).current;
+  const dailyChallengeFloatLoopsRef = useRef([]);
+  const dailyChallengeCompleteAnim = useRef(new Animated.Value(0)).current;
+  const dailyChallengeCardAccents = useMemo(() => {
+    const palette = CARD_TEXTURE_ACCENTS.length
+      ? CARD_TEXTURE_ACCENTS
+      : ["#8AB9FF", "#FFA4C0", "#8CE7CF"];
+    const seed = (dailyChallenge?.templateId || "").length;
+    return Array.from({ length: DAILY_CHALLENGE_DRAW_COUNT }, (_, index) => {
+      const offset = (seed + index) % palette.length;
+      return palette[offset] || palette[0];
+    });
+  }, [dailyChallenge?.templateId]);
+  const dailyChallengeDrawn = dailyChallengeDrawnIndex !== null;
+  useEffect(() => {
+    if (!dailyChallengePromptVisible) return;
+    setDailyChallengeDrawnIndex(null);
+    dailyChallengeRevealAnim.setValue(0);
+    dailyChallengeSelectAnim.setValue(0);
+    dailyChallengeCardIntroAnims.forEach((anim) => anim.setValue(0));
+    dailyChallengeCardFloatAnims.forEach((anim) => anim.setValue(0));
+    const introAnimations = dailyChallengeCardIntroAnims.map((anim) =>
+      Animated.spring(anim, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 7,
+        tension: 80,
+      })
+    );
+    Animated.stagger(120, introAnimations).start();
+    dailyChallengeFloatLoopsRef.current.forEach((loop) => loop?.stop?.());
+    dailyChallengeFloatLoopsRef.current = dailyChallengeCardFloatAnims.map((anim, index) => {
+      const duration = 1700 + index * 140;
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.delay(180 + index * 120),
+          Animated.timing(anim, {
+            toValue: 1,
+            duration,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(anim, {
+            toValue: 0,
+            duration,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      loop.start();
+      return loop;
+    });
+    return () => {
+      dailyChallengeFloatLoopsRef.current.forEach((loop) => loop?.stop?.());
+      dailyChallengeFloatLoopsRef.current = [];
+    };
+  }, [
+    dailyChallengeCardFloatAnims,
+    dailyChallengeCardIntroAnims,
+    dailyChallengePromptVisible,
+    dailyChallengeRevealAnim,
+    dailyChallengeSelectAnim,
+  ]);
+  useEffect(() => {
+    if (!dailyChallengeCompleteVisible) return;
+    dailyChallengeCompleteAnim.setValue(0);
+    Animated.timing(dailyChallengeCompleteAnim, {
+      toValue: 1,
+      duration: 420,
+      easing: Easing.out(Easing.exp),
+      useNativeDriver: true,
+    }).start();
+  }, [dailyChallengeCompleteAnim, dailyChallengeCompleteVisible]);
+  const handleDailyChallengeDrawSelect = useCallback(
+    (index) => {
+      setDailyChallengeDrawnIndex((prev) => {
+        if (prev !== null) return prev;
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+        dailyChallengeRevealAnim.setValue(0);
+        dailyChallengeSelectAnim.setValue(0);
+        Animated.parallel([
+          Animated.timing(dailyChallengeRevealAnim, {
+            toValue: 1,
+            duration: 520,
+            easing: Easing.out(Easing.exp),
+            useNativeDriver: true,
+          }),
+          Animated.spring(dailyChallengeSelectAnim, {
+            toValue: 1,
+            useNativeDriver: true,
+            friction: 6,
+            tension: 80,
+          }),
+        ]).start();
+        return index;
+      });
+    },
+    [dailyChallengeRevealAnim, dailyChallengeSelectAnim]
+  );
   const coinValueModalAllowed = useMemo(
     () =>
       interfaceReady &&
@@ -24328,10 +25980,12 @@ function AppContent() {
       !priceEditor.item &&
       !breakdownVisible &&
       !spendPrompt.visible &&
-      !dailyChallengePromptVisible,
+      !dailyChallengePromptVisible &&
+      !dailyChallengeCompleteVisible,
     [
       activeTab,
       baselinePrompt.visible,
+      dailyChallengeCompleteVisible,
       dailyChallengePromptVisible,
       dailySummaryVisible,
       goalEditorPrompt.visible,
@@ -24658,6 +26312,7 @@ function AppContent() {
         {[
           {
             id: "save",
+            icon: "shield",
             label: "+",
             color: BREAKDOWN_TOGGLE_SAVE_COLOR,
             onPress: switchToSavingsBreakdown,
@@ -24670,6 +26325,7 @@ function AppContent() {
           },
         ].map((entry) => {
           const isActive = activeMode === entry.id;
+          const iconColor = isActive ? "#FFFFFF" : entry.color;
           return (
             <TouchableOpacity
               key={entry.id}
@@ -24682,12 +26338,15 @@ function AppContent() {
                 { borderColor: entry.color, backgroundColor: isActive ? entry.color : "transparent" },
               ]}
             >
-              <Text
-                style={[styles.breakdownModeToggleText, { color: isActive ? "#FFFFFF" : entry.color }]}
-                numberOfLines={1}
-              >
-                {entry.label}
-              </Text>
+              {entry.icon === "shield" ? (
+                <Svg width={12} height={12} viewBox="0 0 24 24">
+                  <SvgPath d={BREAKDOWN_TOGGLE_SHIELD_PATH} fill={iconColor} />
+                </Svg>
+              ) : (
+                <Text style={[styles.breakdownModeToggleText, { color: iconColor }]} numberOfLines={1}>
+                  {entry.label}
+                </Text>
+              )}
             </TouchableOpacity>
           );
         })}
@@ -24700,6 +26359,7 @@ function AppContent() {
       breakdownVisible ||
       reportsModalVisible ||
       dailyChallengePromptVisible ||
+      dailyChallengeCompleteVisible ||
       tamagotchiVisible ||
       levelShareModal.visible ||
       incomeEntryModalVisible ||
@@ -24716,6 +26376,7 @@ function AppContent() {
     [
       baselinePrompt.visible,
       dailyChallengePromptVisible,
+      dailyChallengeCompleteVisible,
       levelShareModal.visible,
       goalEditorPrompt.visible,
       goalLinkPrompt.visible,
@@ -24765,6 +26426,8 @@ function AppContent() {
             isDailyChallengePromptPending &&
             dailyChallengePromptGate
           );
+        case QUEUED_MODAL_TYPES.DAILY_CHALLENGE_COMPLETE:
+          return dailyChallengePromptAllowed && isDailyChallengeCompletePending;
         case QUEUED_MODAL_TYPES.FOCUS_DIGEST:
           return (
             focusModeUnlocked &&
@@ -24800,6 +26463,7 @@ function AppContent() {
       homeLayoutReady,
       incomePromptPending,
       interfaceReady,
+      isDailyChallengeCompletePending,
       isDailyChallengePromptPending,
       onboardingStep,
       overlay,
@@ -25129,11 +26793,158 @@ function AppContent() {
     },
     [formatTranslationText, resolveTranslationValue]
   );
+  const widgetLabels = useMemo(
+    () => ({
+      savedMonthLabel: t("homeWidgetSavedMonthLabel"),
+      totalLabel: t("homeWidgetTotalLabel"),
+      balanceLabel: t("homeWidgetBalanceLabel"),
+      todayLabel: t("homeWidgetTodayLabel"),
+      goalLabel: t("homeWidgetGoalLabel"),
+      monthGoalLabel: t("homeWidgetMonthGoalLabel"),
+      budgetRemainingLabel: t("homeWidgetBudgetRemainingLabel"),
+      recentLabel: t("homeWidgetRecentLabel"),
+      recentEmptyLabel: t("homeWidgetRecentEmptyLabel"),
+      emptyStateLabel: t("homeWidgetEmptyStateLabel"),
+      actionSaveLabel: t("homeWidgetActionSave"),
+      actionSpendLabel: t("homeWidgetActionSpend"),
+      streakLabel: t("homeWidgetStreakLabel"),
+      addTemptationLabel: t("quickCustomTitle"),
+    }),
+    [t]
+  );
+  useEffect(() => {
+    if (!canUpdateWidgetStorage()) return;
+    const labelsKey = [
+      widgetLabels.savedMonthLabel,
+      widgetLabels.totalLabel,
+      widgetLabels.balanceLabel,
+      widgetLabels.todayLabel,
+      widgetLabels.goalLabel,
+      widgetLabels.monthGoalLabel,
+      widgetLabels.budgetRemainingLabel,
+      widgetLabels.recentLabel,
+      widgetLabels.recentEmptyLabel,
+      widgetLabels.emptyStateLabel,
+      widgetLabels.actionSaveLabel,
+      widgetLabels.actionSpendLabel,
+      widgetLabels.streakLabel,
+      widgetLabels.addTemptationLabel,
+    ].join("||");
+    const prev = widgetMetaRef.current || {};
+    if (
+      prev.language === normalizedLanguageValue &&
+      prev.currencyCode === widgetCurrencyCode &&
+      prev.labelsKey === labelsKey &&
+      prev.refreshTick === widgetRefreshTick
+    ) {
+      return;
+    }
+    widgetMetaRef.current = {
+      language: normalizedLanguageValue,
+      currencyCode: widgetCurrencyCode,
+      labelsKey,
+      refreshTick: widgetRefreshTick,
+    };
+    setWidgetDataSafely({
+      widgetLanguage: normalizedLanguageValue,
+      widgetCurrencyCode: widgetCurrencyCode,
+      widgetLabelSavedMonth: widgetLabels.savedMonthLabel,
+      widgetLabelTotal: widgetLabels.totalLabel,
+      widgetLabelBalance: widgetLabels.balanceLabel,
+      widgetLabelToday: widgetLabels.todayLabel,
+      widgetLabelGoal: widgetLabels.goalLabel,
+      widgetLabelMonthGoal: widgetLabels.monthGoalLabel,
+      widgetLabelBudgetRemaining: widgetLabels.budgetRemainingLabel,
+      widgetLabelRecent: widgetLabels.recentLabel,
+      widgetLabelRecentEmpty: widgetLabels.recentEmptyLabel,
+      widgetLabelEmptyState: widgetLabels.emptyStateLabel,
+      widgetActionSave: widgetLabels.actionSaveLabel,
+      widgetActionSpend: widgetLabels.actionSpendLabel,
+      widgetLabelStreak: widgetLabels.streakLabel,
+      widgetLabelAddTemptation: widgetLabels.addTemptationLabel,
+    });
+  }, [normalizedLanguageValue, widgetCurrencyCode, widgetLabels, widgetRefreshTick]);
+  const widgetRecentEvents = useMemo(() => {
+    const filtered = resolvedHistoryEvents.filter(
+      (entry) => entry?.kind === "refuse_spend" || entry?.kind === "spend"
+    );
+    filtered.sort((a, b) => (Number(b?.timestamp) || 0) - (Number(a?.timestamp) || 0));
+    return filtered.slice(0, 3).map((entry) => {
+      const resolvedTitle =
+        resolveTemplateTitle(entry?.meta?.templateId, entry?.meta?.title) ||
+        entry?.title ||
+        t("defaultDealTitle");
+      const timestampLabel = formatLatestSavingTimestamp(entry?.timestamp, language);
+      const prefix = entry?.kind === "spend" ? "- " : "";
+      return `${prefix}${resolvedTitle}${timestampLabel ? ` · ${timestampLabel}` : ""}`;
+    });
+  }, [language, resolvedHistoryEvents, resolveTemplateTitle, t]);
   const dailyRewardButtonLabel = dailyRewardUnlocked
     ? dailyRewardReady
       ? t("dailyRewardClaimHint")
       : t("dailyRewardCollectedLabel")
     : t("progressHeroLevel", { level: dailyRewardUnlockLevel });
+  useEffect(() => {
+    if (!canUpdateWidgetStorage()) return;
+    if (!profileHydrated || !historyHydrated || !incomeEntriesHydrated || !wishesHydrated) {
+      return;
+    }
+    const goalTargetValue = Math.max(0, Number(heroGoalTargetUSD) || 0);
+    const goalSavedValue = Math.max(0, Number(heroGoalSavedUSD) || 0);
+    const budgetTotalValue = Number(widgetBudgetTotalValue) || 0;
+    const budgetRemainingValue = Number(widgetBudgetRemainingValue) || 0;
+    const budgetRemainingLabel = widgetBudgetRemainingLabel || "--";
+    const recentEvents = Array.isArray(widgetRecentEvents)
+      ? widgetRecentEvents.slice(0, 3)
+      : [];
+    const recentEventsKey = recentEvents.join("||");
+    const currencyCode = widgetCurrencyCode;
+    const prev = widgetSupplementRef.current || {};
+    if (
+      prev.currencyCode === currencyCode &&
+      prev.goalTargetValue === goalTargetValue &&
+      prev.goalSavedValue === goalSavedValue &&
+      prev.budgetTotalValue === budgetTotalValue &&
+      prev.budgetRemainingValue === budgetRemainingValue &&
+      prev.budgetRemainingLabel === budgetRemainingLabel &&
+      prev.recentEventsKey === recentEventsKey &&
+      prev.refreshTick === widgetRefreshTick
+    ) {
+      return;
+    }
+    widgetSupplementRef.current = {
+      goalTargetValue,
+      goalSavedValue,
+      budgetTotalValue,
+      budgetRemainingValue,
+      budgetRemainingLabel,
+      recentEventsKey,
+      currencyCode,
+      refreshTick: widgetRefreshTick,
+    };
+    setWidgetDataSafely({
+      goalTargetValue,
+      goalSavedValue,
+      budgetTotalValue,
+      budgetRemainingValue,
+      budgetRemainingLabel,
+      recentEvents,
+      widgetCurrencyCode: currencyCode,
+    });
+  }, [
+    heroGoalSavedUSD,
+    heroGoalTargetUSD,
+    historyHydrated,
+    incomeEntriesHydrated,
+    profileHydrated,
+    widgetCurrencyCode,
+    widgetBudgetRemainingLabel,
+    widgetBudgetRemainingValue,
+    widgetBudgetTotalValue,
+    widgetRecentEvents,
+    wishesHydrated,
+    widgetRefreshTick,
+  ]);
   const formatHealthRewardText = useCallback(
     (amount) => formatHealthRewardLabel(amount, language),
     [language]
@@ -25179,6 +26990,15 @@ function AppContent() {
   const dailyChallengeRewardLabel = useMemo(
     () => formatHealthRewardText(dailyChallengeRewardBonus || 0),
     [dailyChallengeRewardBonus, formatHealthRewardText]
+  );
+  const dailyChallengeTotalReward = useMemo(() => {
+    const base = Number(dailyChallenge.baseReward) || 0;
+    const bonus = Number(dailyChallengeRewardBonus) || 0;
+    return base + bonus;
+  }, [dailyChallenge.baseReward, dailyChallengeRewardBonus]);
+  const dailyChallengeTotalRewardLabel = useMemo(
+    () => formatHealthRewardText(dailyChallengeTotalReward || 0),
+    [dailyChallengeTotalReward, formatHealthRewardText]
   );
   const currentMood = useMemo(
     () => deriveMoodFromState(moodState, pendingList.length),
@@ -26275,6 +28095,19 @@ function AppContent() {
     },
     []
   );
+  useEffect(() => {
+    const pending = pendingUsageStreakRef.current;
+    if (!pending || pending.source !== "save") return;
+    const hasSaveOverlay =
+      overlay?.type === "save" ||
+      overlayQueueRef.current.some((entry) => entry?.type === "save");
+    if (hasSaveOverlay) return;
+    const hasStreakOverlay =
+      overlay?.type === "usage_streak" ||
+      overlayQueueRef.current.some((entry) => entry?.type === "usage_streak");
+    if (hasStreakOverlay) return;
+    queueUsageStreakOverlay("save");
+  }, [overlay?.type, queueUsageStreakOverlay, usageStreak?.lastDate]);
   const handleSaveOverlayPress = useCallback(() => {
     if (overlay?.type === "save" && Date.now() - saveOverlayShownAtRef.current < 350) {
       return;
@@ -26316,6 +28149,9 @@ function AppContent() {
       runPendingLevelCelebration();
     };
     if (saveCelebrationRef.current?.skipToCountdown?.()) {
+      return;
+    }
+    if (saveCelebrationRef.current?.skipCountdownAnimation?.()) {
       return;
     }
     if (
@@ -26911,16 +28747,41 @@ function AppContent() {
       }),
     [challengesState, profile.currency, language, t, averageSaveActionUSD, playerLevel]
   );
-  const challengeBadgeEmojis = useMemo(
+  const currentChallengeBadges = useMemo(
     () =>
       challengeList
         .filter(
           (challenge) =>
             challenge.status === CHALLENGE_STATUS.COMPLETED || challenge.status === CHALLENGE_STATUS.CLAIMED
         )
-        .map((challenge) => challenge.emoji)
-        .filter(Boolean),
+        .map((challenge) => ({
+          id: challenge.id,
+          emoji: challenge.emoji || CHALLENGE_DEF_MAP[challenge.id]?.emoji || "",
+        }))
+        .filter((entry) => entry.id && entry.emoji),
     [challengeList]
+  );
+  const mergedChallengeBadges = useMemo(
+    () =>
+      mergeChallengeBadgeLists(
+        challengeBadgeStoreHydrated ? challengeBadgeStore : [],
+        currentChallengeBadges
+      ),
+    [challengeBadgeStore, challengeBadgeStoreHydrated, currentChallengeBadges]
+  );
+  useEffect(() => {
+    if (!challengeBadgeStoreHydrated) return;
+    if (areChallengeBadgeListsEqual(mergedChallengeBadges, challengeBadgeStore)) return;
+    setChallengeBadgeStore(mergedChallengeBadges);
+  }, [
+    challengeBadgeStore,
+    challengeBadgeStoreHydrated,
+    mergedChallengeBadges,
+    setChallengeBadgeStore,
+  ]);
+  const challengeBadgeEmojis = useMemo(
+    () => mergedChallengeBadges.map((entry) => entry.emoji).filter(Boolean),
+    [mergedChallengeBadges]
   );
   const challengeBadgeCount = challengeBadgeEmojis.length;
   const activeChallenge = useMemo(() => {
@@ -26946,11 +28807,15 @@ function AppContent() {
   const activeDailyChallenge = useMemo(() => {
     if (dailyChallenge.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return null;
     const targetValue = dailyChallenge.target || 1;
+    const rewardBonus = dailyChallengeRewardBonus || ECONOMY_RULES.minSaveReward;
+    const baseReward = Number(dailyChallenge.baseReward) || 0;
     return {
       id: dailyChallenge.id,
       emoji: dailyChallengeTemplate?.emoji || dailyChallenge.emoji || "✨",
       title: dailyChallengeDisplayTitle,
-      rewardBonus: dailyChallengeRewardBonus || ECONOMY_RULES.minSaveReward,
+      rewardBonus,
+      baseReward,
+      rewardTotal: baseReward + rewardBonus,
       progress: Math.min(dailyChallenge.progress || 0, targetValue),
       target: targetValue,
     };
@@ -27224,6 +29089,14 @@ function AppContent() {
     if (!dailyChallengeHydrated) return;
     if (!dailyChallengeUnlocked) return;
     const resolvedTodayKey = todayKey || getDayKey(Date.now());
+    const todayDate = parseDayKey(resolvedTodayKey);
+    const deferDate = dailyChallenge.deferUntilKey
+      ? parseDayKey(dailyChallenge.deferUntilKey)
+      : null;
+    const preservedDeferUntilKey =
+      deferDate && todayDate && deferDate.getTime() > todayDate.getTime()
+        ? dailyChallenge.deferUntilKey
+        : null;
     const existingTemplate = dailyChallenge.templateId
       ? resolveTemplateCard(dailyChallenge.templateId)
       : null;
@@ -27236,6 +29109,7 @@ function AppContent() {
         ...createInitialDailyChallengeState(),
         dateKey: resolvedTodayKey,
         status: DAILY_CHALLENGE_STATUS.IDLE,
+        deferUntilKey: preservedDeferUntilKey,
       });
       return;
     }
@@ -27251,6 +29125,7 @@ function AppContent() {
         const categoryId = resolveTemptationCategory(template);
         if (isEssentialImpulseCategory(categoryId)) return false;
       }
+      if (!isDailyChallengePopularTemplate(template)) return false;
       const rawTitle =
         template.titleOverride ||
         (typeof template.title === "string"
@@ -27263,6 +29138,7 @@ function AppContent() {
         ...createInitialDailyChallengeState(),
         dateKey: resolvedTodayKey,
         status: DAILY_CHALLENGE_STATUS.IDLE,
+        deferUntilKey: preservedDeferUntilKey,
       }));
       return;
     }
@@ -27288,10 +29164,12 @@ function AppContent() {
       rewardBonus,
       status: DAILY_CHALLENGE_STATUS.OFFER,
       offerDismissed: false,
+      deferUntilKey: preservedDeferUntilKey,
     });
   }, [
     dailyChallenge.dateKey,
     dailyChallenge.templateId,
+    dailyChallenge.deferUntilKey,
     dailyChallengeHydrated,
     language,
     dailyChallengePressure,
@@ -27330,6 +29208,7 @@ function AppContent() {
         status: DAILY_CHALLENGE_STATUS.ACTIVE,
         acceptedAt: Date.now(),
         offerDismissed: true,
+        deferUntilKey: null,
       };
     });
     clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
@@ -27337,12 +29216,57 @@ function AppContent() {
   }, [clearQueuedModal, dailyChallenge.templateId, dailyChallengeUnlocked, logEvent]);
   const handleDailyChallengeLater = useCallback(() => {
     if (!dailyChallengeUnlocked) return;
-    setDailyChallenge((prev) => {
-      if (!prev || prev.offerDismissed) return prev || createInitialDailyChallengeState();
-      return { ...prev, offerDismissed: true };
-    });
+    dailyChallengeOfferDeferredRef.current = true;
+    setDailyChallengePromptGate(false);
     clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
-  }, [clearQueuedModal, dailyChallengeUnlocked]);
+  }, [clearQueuedModal, dailyChallengeUnlocked, setDailyChallengePromptGate]);
+  const deferDailyChallenge = useCallback(
+    (days) => {
+      if (!dailyChallengeUnlocked) return;
+      const normalizedDays = Math.max(0, Math.floor(Number(days) || 0));
+      if (!normalizedDays) return;
+      const deferUntilKey = getDayKey(Date.now() + normalizedDays * DAY_MS);
+      setDailyChallenge((prev) => {
+        const next = prev || createInitialDailyChallengeState();
+        return {
+          ...next,
+          deferUntilKey,
+          offerDismissed: true,
+        };
+      });
+      clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
+    },
+    [clearQueuedModal, dailyChallengeUnlocked]
+  );
+  const handleDailyChallengeSkip = useCallback(() => {
+    Alert.alert(
+      t("dailyChallengeSkipTitle"),
+      t("dailyChallengeSkipMessage"),
+      [
+        {
+          text: t("dailyChallengeSkipOption3"),
+          onPress: () => deferDailyChallenge(3),
+        },
+        {
+          text: t("dailyChallengeSkipOption5"),
+          onPress: () => deferDailyChallenge(5),
+        },
+        {
+          text: t("dailyChallengeSkipOption7"),
+          onPress: () => deferDailyChallenge(7),
+        },
+        { text: t("dailyChallengeSkipCancel"), style: "cancel" },
+      ]
+    );
+  }, [deferDailyChallenge, t]);
+  const handleDailyChallengeCompleteClose = useCallback(() => {
+    setDailyChallenge((prev) => {
+      if (!prev || prev.status !== DAILY_CHALLENGE_STATUS.COMPLETED) return prev;
+      if (prev.completionDismissed) return prev;
+      return { ...prev, completionDismissed: true };
+    });
+    clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE_COMPLETE);
+  }, [clearQueuedModal]);
   const completeDailyChallenge = useCallback(() => {
     if (!dailyChallengeUnlocked) return;
     if (!dailyChallenge.templateId) return;
@@ -27357,9 +29281,11 @@ function AppContent() {
         completedAt: Date.now(),
         rewardGranted: true,
         rewardBonus,
+        completionDismissed: false,
       };
     });
     setDailyChallengeCompletedCount((prev) => Math.max(0, Number(prev) || 0) + 1);
+    enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE_COMPLETE);
     if (rewardBonus > 0) {
       setHealthPoints((coins) => coins + rewardBonus);
       if (queueCelebrationOverlayRef.current) {
@@ -27390,6 +29316,7 @@ function AppContent() {
     dailyChallenge.templateId,
     dailyChallenge.status,
     dailyChallengeRewardLabel,
+    enqueueQueuedModal,
     sendImmediateNotification,
     logEvent,
     playSound,
@@ -27796,11 +29723,13 @@ function AppContent() {
         STORAGE_KEYS.IMPULSE_TRACKER,
         STORAGE_KEYS.MOOD_STATE,
         STORAGE_KEYS.CHALLENGES,
+        STORAGE_KEYS.CHALLENGE_BADGES,
         STORAGE_KEYS.CUSTOM_REMINDER,
         STORAGE_KEYS.DAILY_NUDGES,
         STORAGE_KEYS.SMART_REMINDERS,
         STORAGE_KEYS.POTENTIAL_PUSH_PROGRESS,
         STORAGE_KEYS.TAMAGOTCHI,
+        STORAGE_KEYS.TAMAGOTCHI_GREETING_DAY,
         STORAGE_KEYS.TAMAGOTCHI_HUNGER_NOTIFICATIONS,
         STORAGE_KEYS.TAMAGOTCHI_HUNGER_DAILY_COUNT,
         STORAGE_KEYS.TAMAGOTCHI_HUNGER_LAST_AT,
@@ -27881,11 +29810,13 @@ function AppContent() {
       const impulseTrackerRaw = storedMap[STORAGE_KEYS.IMPULSE_TRACKER] ?? null;
       const moodRaw = storedMap[STORAGE_KEYS.MOOD_STATE] ?? null;
       const challengesRaw = storedMap[STORAGE_KEYS.CHALLENGES] ?? null;
+      const challengeBadgesRaw = storedMap[STORAGE_KEYS.CHALLENGE_BADGES] ?? null;
       const customReminderRaw = storedMap[STORAGE_KEYS.CUSTOM_REMINDER] ?? null;
       const dailyNudgesRaw = storedMap[STORAGE_KEYS.DAILY_NUDGES] ?? null;
       const smartRemindersRaw = storedMap[STORAGE_KEYS.SMART_REMINDERS] ?? null;
       const potentialPushProgressRaw = storedMap[STORAGE_KEYS.POTENTIAL_PUSH_PROGRESS] ?? null;
       const tamagotchiRaw = storedMap[STORAGE_KEYS.TAMAGOTCHI] ?? null;
+      const tamagotchiGreetingDayRaw = storedMap[STORAGE_KEYS.TAMAGOTCHI_GREETING_DAY] ?? null;
       const tamagotchiHungerNotificationsRaw = storedMap[STORAGE_KEYS.TAMAGOTCHI_HUNGER_NOTIFICATIONS] ?? null;
       const tamagotchiHungerDailyCountRaw = storedMap[STORAGE_KEYS.TAMAGOTCHI_HUNGER_DAILY_COUNT] ?? null;
       const tamagotchiHungerLastAtRaw = storedMap[STORAGE_KEYS.TAMAGOTCHI_HUNGER_LAST_AT] ?? null;
@@ -28252,6 +30183,14 @@ function AppContent() {
       } else {
         tamagotchiHungerLastAtRef.current = 0;
       }
+      const rawGreetingDayKey =
+        typeof tamagotchiGreetingDayRaw === "string" ? tamagotchiGreetingDayRaw.trim() : "";
+      if (rawGreetingDayKey && parseDayKey(rawGreetingDayKey)) {
+        setTamagotchiGreetingDayKey(rawGreetingDayKey);
+      } else {
+        setTamagotchiGreetingDayKey(null);
+      }
+      setTamagotchiGreetingDayHydrated(true);
       if (dailyChallengeRaw) {
         try {
           const parsed = JSON.parse(dailyChallengeRaw);
@@ -28839,29 +30778,47 @@ function AppContent() {
         setCustomTemptationsCreatedCount(storedCustomTemptationsCreated ?? 0);
       }
       setCustomTemptationsCreatedHydrated(true);
-      if (hiddenTemptationsRaw) {
-        try {
-          setHiddenTemptations(JSON.parse(hiddenTemptationsRaw) || []);
-        } catch (err) {
-          console.warn("hidden temptations parse", err);
+      const deferHiddenHydration = shouldDeferLargeParse(hiddenTemptationsRaw);
+      const hydrateHiddenTemptations = () => {
+        if (hiddenTemptationsRaw) {
+          try {
+            setHiddenTemptations(JSON.parse(hiddenTemptationsRaw) || []);
+          } catch (err) {
+            console.warn("hidden temptations parse", err);
+            setHiddenTemptations([]);
+          }
+        } else {
           setHiddenTemptations([]);
         }
-      } else {
+        setHiddenTemptationsHydrated(true);
+      };
+      if (deferHiddenHydration) {
         setHiddenTemptations([]);
+        InteractionManager.runAfterInteractions(hydrateHiddenTemptations);
+      } else {
+        hydrateHiddenTemptations();
       }
-      setHiddenTemptationsHydrated(true);
-      if (archivedTemptationsRaw) {
-        try {
-          const parsed = JSON.parse(archivedTemptationsRaw);
-          setArchivedTemptations(Array.isArray(parsed) ? parsed : []);
-        } catch (err) {
-          console.warn("archived temptations parse", err);
+      const deferArchivedHydration = shouldDeferLargeParse(archivedTemptationsRaw);
+      const hydrateArchivedTemptations = () => {
+        if (archivedTemptationsRaw) {
+          try {
+            const parsed = JSON.parse(archivedTemptationsRaw);
+            setArchivedTemptations(Array.isArray(parsed) ? parsed : []);
+          } catch (err) {
+            console.warn("archived temptations parse", err);
+            setArchivedTemptations([]);
+          }
+        } else {
           setArchivedTemptations([]);
         }
-      } else {
+        setArchivedTemptationsHydrated(true);
+      };
+      if (deferArchivedHydration) {
         setArchivedTemptations([]);
+        InteractionManager.runAfterInteractions(hydrateArchivedTemptations);
+      } else {
+        hydrateArchivedTemptations();
       }
-      setArchivedTemptationsHydrated(true);
       if (healthRaw) {
         const parsedHealth = Number(healthRaw) || 0;
         resolvedHealthPoints = Math.max(0, parsedHealth);
@@ -28990,6 +30947,18 @@ function AppContent() {
         setChallengesState(fallback);
       }
       setChallengesHydrated(true);
+      if (challengeBadgesRaw) {
+        try {
+          const parsed = JSON.parse(challengeBadgesRaw);
+          setChallengeBadgeStore(normalizeChallengeBadgeList(parsed));
+        } catch (err) {
+          console.warn("challenge badges parse", err);
+          setChallengeBadgeStore([]);
+        }
+      } else {
+        setChallengeBadgeStore([]);
+      }
+      setChallengeBadgeStoreHydrated(true);
       if (moodRaw) {
         try {
           const parsed = JSON.parse(moodRaw);
@@ -29048,9 +31017,12 @@ function AppContent() {
       console.warn("load error", error);
       setAnalyticsOptOutState((prev) => (prev === null ? null : prev));
       setRatingPromptState(createInitialRatingPromptState());
+      setTamagotchiGreetingDayKey(null);
       setTutorialHydrated(true);
       setClaimedRewardsHydrated(true);
       setChallengesHydrated(true);
+      setChallengeBadgeStore([]);
+      setChallengeBadgeStoreHydrated(true);
       setDailyChallengeCompletedCount(0);
       setDailyChallengeCompletedHydrated(true);
       setFocusVictoryCount(0);
@@ -29098,6 +31070,7 @@ function AppContent() {
       setEmojiOverridesHydrated(true);
       setCategoryOverridesHydrated(true);
       setDescriptionOverridesHydrated(true);
+      setTamagotchiGreetingDayHydrated(true);
       setTamagotchiSkinHydrated(true);
       setLifetimeSavedHydrated(true);
       setTemptationTutorialHydrated(true);
@@ -29505,7 +31478,8 @@ function AppContent() {
       setDailyChallengePromptGate(false);
     }
     if (!wasPending) {
-      dailyChallengeOfferDeferredRef.current = true;
+      const sessionCount = homeSessionRef.current?.sessionCount || 0;
+      dailyChallengeOfferDeferredRef.current = sessionCount > 1;
       setDailyChallengePromptGate(false);
     }
   }, [isDailyChallengePromptPending]);
@@ -29893,6 +31867,10 @@ function AppContent() {
     queuePersist(STORAGE_KEYS.CHALLENGES, JSON.stringify(challengesState));
   }, [queuePersist, challengesState, challengesHydrated]);
   useEffect(() => {
+    if (!challengeBadgeStoreHydrated) return;
+    queuePersist(STORAGE_KEYS.CHALLENGE_BADGES, JSON.stringify(challengeBadgeStore));
+  }, [queuePersist, challengeBadgeStore, challengeBadgeStoreHydrated]);
+  useEffect(() => {
     if (!dailyChallengeHydrated) return;
     queuePersist(STORAGE_KEYS.DAILY_CHALLENGE, JSON.stringify(dailyChallenge));
   }, [queuePersist, dailyChallenge, dailyChallengeHydrated]);
@@ -29915,6 +31893,11 @@ useEffect(() => {
   if (!tamagotchiHydratedRef.current) return;
   queuePersist(STORAGE_KEYS.TAMAGOTCHI, JSON.stringify(tamagotchiState));
 }, [queuePersist, tamagotchiState]);
+
+useEffect(() => {
+  if (!tamagotchiGreetingDayHydrated) return;
+  queuePersist(STORAGE_KEYS.TAMAGOTCHI_GREETING_DAY, tamagotchiGreetingDayKey || "");
+}, [queuePersist, tamagotchiGreetingDayHydrated, tamagotchiGreetingDayKey]);
 
   useEffect(() => {
     if (!tamagotchiSkinHydrated) return;
@@ -30807,7 +32790,10 @@ useEffect(() => {
   const handleLanguageChange = (lng) => {
     const nextLanguage = normalizeLanguage(lng);
     triggerHaptic();
-    setLanguage(nextLanguage);
+    if (nextLanguage !== language) {
+      setLanguage(nextLanguage);
+      triggerWidgetRefresh();
+    }
     const languageEvent = getLanguageSelectedEvent(nextLanguage);
     if (languageEvent) {
       logEvent(languageEvent);
@@ -30856,6 +32842,7 @@ useEffect(() => {
     setRegistrationData((prev) => ({ ...prev, currency: code }));
     setActiveCurrency(code);
     setFabCurrencyCode(code);
+    triggerWidgetRefresh();
     const currencyEvent = getCurrencySelectedEvent(code);
     if (currencyEvent) {
       logEvent(currencyEvent);
@@ -30865,6 +32852,17 @@ useEffect(() => {
   const openIncomeEntryModal = useCallback(
     (source = "manual") => {
       incomeEntrySourceRef.current = source;
+      incomeEntryModeRef.current = INCOME_ENTRY_TYPES.MONTHLY;
+      setIncomeEntryInput({ amount: "" });
+      setIncomeEntryModalVisible(true);
+    },
+    []
+  );
+
+  const openExtraIncomeEntryModal = useCallback(
+    (source = "manual") => {
+      incomeEntrySourceRef.current = source;
+      incomeEntryModeRef.current = INCOME_ENTRY_TYPES.EXTRA;
       setIncomeEntryInput({ amount: "" });
       setIncomeEntryModalVisible(true);
     },
@@ -30876,7 +32874,13 @@ useEffect(() => {
   }, []);
 
   const addIncomeEntry = useCallback(
-    ({ amountText = "", note = "", receivedAt = Date.now(), currencyCode } = {}) => {
+    ({
+      amountText = "",
+      note = "",
+      receivedAt = Date.now(),
+      currencyCode,
+      entryType = INCOME_ENTRY_TYPES.MONTHLY,
+    } = {}) => {
       const parsed = parseNumberInputValue(amountText);
       if (!Number.isFinite(parsed) || parsed <= 0) {
         Alert.alert("Almost", t("incomeEntryInvalid"));
@@ -30884,7 +32888,7 @@ useEffect(() => {
       }
       const resolvedCurrency = currencyCode || profile.currency || DEFAULT_PROFILE.currency;
       const amountUSD = convertFromCurrency(parsed, resolvedCurrency);
-      const entry = normalizeIncomeEntry({ amountUSD, receivedAt, note });
+      const entry = normalizeIncomeEntry({ amountUSD, receivedAt, note, entryType });
       if (!entry) {
         Alert.alert("Almost", t("incomeEntryInvalid"));
         return null;
@@ -30918,6 +32922,16 @@ useEffect(() => {
 
   const handleIncomeEntrySkip = useCallback(() => {
     const monthKey = getMonthKey(Date.now());
+    const entryType = incomeEntryModeRef.current || INCOME_ENTRY_TYPES.MONTHLY;
+    if (entryType !== INCOME_ENTRY_TYPES.MONTHLY) {
+      setIncomeEntryModalVisible(false);
+      logEvent("income_entry_skipped", {
+        source: incomeEntrySourceRef.current || "manual",
+        month_key: monthKey,
+        entry_type: entryType,
+      });
+      return;
+    }
     setIncomePromptState({ lastPromptMonthKey: monthKey, lastPromptAt: Date.now() });
     setIncomeEntryModalVisible(false);
     setIncomePromptPending(false);
@@ -30925,6 +32939,7 @@ useEffect(() => {
     logEvent("income_entry_skipped", {
       source: incomeEntrySourceRef.current || "monthly_prompt",
       month_key: monthKey,
+      entry_type: entryType,
     });
   }, [clearQueuedModal, logEvent]);
   const handleIncomeEntryDismiss = useCallback(() => {
@@ -30976,11 +32991,22 @@ useEffect(() => {
 
   const updateRegistrationData = (field, value) => {
     if (field === "currency") {
-      setActiveCurrency(value);
-      const currencyEvent = getCurrencySelectedEvent(value);
+      const raw = typeof value === "string" ? value.trim().toUpperCase() : "";
+      const normalized = CURRENCIES.includes(raw) ? raw : DEFAULT_PROFILE.currency;
+      setActiveCurrency(normalized);
+      setProfile((prev) =>
+        prev?.currency === normalized ? prev : { ...prev, currency: normalized }
+      );
+      setProfileDraft((prev) =>
+        prev?.currency === normalized ? prev : { ...prev, currency: normalized }
+      );
+      triggerWidgetRefresh();
+      const currencyEvent = getCurrencySelectedEvent(normalized);
       if (currencyEvent) {
         logEvent(currencyEvent);
       }
+      setRegistrationData((prev) => ({ ...prev, [field]: normalized }));
+      return;
     }
     if (field === "gender" && onboardingStep !== "done") {
       const genderValue = value || "none";
@@ -31180,14 +33206,15 @@ useEffect(() => {
     });
   }, []);
   const openCoinEntry = useCallback(
-    (source = "unknown") => {
+    (source = "unknown", presetAction = null) => {
       coinEntryContextRef.current = {
         source,
         openedAt: Date.now(),
         submitted: false,
       };
+      setCoinEntryPresetAction(presetAction);
       setCoinEntryVisible(true);
-      logEvent("coin_entry_opened", { source });
+      logEvent("coin_entry_opened", { source, preset_action: presetAction || "none" });
     },
     [logEvent]
   );
@@ -31201,6 +33228,7 @@ useEffect(() => {
       });
     }
     coinEntryContextRef.current = { source: null, openedAt: 0, submitted: false };
+    setCoinEntryPresetAction(null);
     setCoinEntryVisible(false);
   }, [logEvent]);
 
@@ -31418,6 +33446,17 @@ useEffect(() => {
     });
     setShowCustomSpend(false);
   };
+  const [pendingWidgetAction, setPendingWidgetAction] = useState(null);
+  const pendingWidgetActionRef = useRef(null);
+  const queueWidgetAction = useCallback((action) => {
+    if (!action) return;
+    pendingWidgetActionRef.current = action;
+    setPendingWidgetAction(action);
+  }, []);
+  const clearWidgetAction = useCallback(() => {
+    pendingWidgetActionRef.current = null;
+    setPendingWidgetAction(null);
+  }, []);
 
   const handleCoinEntrySubmit = useCallback(
     async ({ amountUSD, category, direction }) => {
@@ -31506,6 +33545,79 @@ useEffect(() => {
     });
     setShowCustomSpend(true);
   }, [closeFabMenu, ensureTemptationCapacity, triggerHaptic]);
+
+  const parseWidgetDeepLink = useCallback((url) => {
+    if (!url || typeof url !== "string") return null;
+    const normalized = url.trim();
+    const parts = normalized.split("://");
+    if (parts.length < 2) return null;
+    const remainder = parts.slice(1).join("://");
+    const [pathPart, queryPart] = remainder.split("?");
+    const pathSegments = (pathPart || "").split("/").filter(Boolean);
+    const route = (pathSegments[0] || "").toLowerCase();
+    const params = {};
+    if (queryPart) {
+      const searchParams = new URLSearchParams(queryPart);
+      searchParams.forEach((value, key) => {
+        params[key] = value;
+      });
+    }
+    return { route, params };
+  }, []);
+
+  const handleWidgetDeepLink = useCallback(
+    (url) => {
+      const parsed = parseWidgetDeepLink(url);
+      if (!parsed?.route) return;
+      if (parsed.route === "home" || parsed.route === "feed") {
+        goToTab("feed", { recordHistory: false });
+        return;
+      }
+      if (parsed.route === "add-temptation" || parsed.route === "add") {
+        goToTab("feed", { recordHistory: false });
+        if (interfaceReady) {
+          InteractionManager.runAfterInteractions(() => {
+            handleFabNewTemptation();
+          });
+        } else {
+          queueWidgetAction({ type: "add-temptation" });
+        }
+        return;
+      }
+      if (parsed.route === "quick-entry" || parsed.route === "quick") {
+        const type = typeof parsed.params?.type === "string" ? parsed.params.type.toLowerCase() : "";
+        const presetAction = type === "spend" ? "spend" : "save";
+        goToTab("feed", { recordHistory: false });
+        if (interfaceReady) {
+          InteractionManager.runAfterInteractions(() => {
+            openCoinEntry(`widget_${presetAction}`, presetAction);
+          });
+        } else {
+          queueWidgetAction({ type: "quick-entry", presetAction });
+        }
+        return;
+      }
+      if (parsed.route === "progress" || parsed.route === "cart") {
+        goToTab("cart", { recordHistory: false });
+      }
+    },
+    [goToTab, handleFabNewTemptation, interfaceReady, openCoinEntry, parseWidgetDeepLink, queueWidgetAction]
+  );
+
+  useEffect(() => {
+    const handleUrlEvent = (event) => {
+      handleWidgetDeepLink(event?.url);
+    };
+    const subscription = Linking.addEventListener("url", handleUrlEvent);
+    Linking.getInitialURL()
+      .then((url) => {
+        if (url) {
+          handleWidgetDeepLink(url);
+        }
+      })
+      .catch(() => {});
+    return () => subscription?.remove?.();
+  }, [handleWidgetDeepLink]);
 
   const handleFabNewGoal = useCallback(() => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
@@ -32512,13 +34624,24 @@ useEffect(() => {
         "";
       const title = metaTitle || t("defaultDealTitle");
       const isSpendEvent = entry.kind === "spend";
+      const normalizedLanguage = normalizeLanguage(language);
+      const dayLabel =
+        formatRelativeDayLabel(timestamp, triggerTime, normalizedLanguage) ||
+        formatRelativeDayLabel(timestamp, now, normalizedLanguage) ||
+        (normalizedLanguage === "ru"
+          ? "вчера"
+          : normalizedLanguage === "es"
+          ? "ayer"
+          : normalizedLanguage === "fr"
+          ? "hier"
+          : "yesterday");
       const dedupeKey = `smart:${entry.id || timestamp}`;
       try {
         const scheduledEntry = await scheduleNotificationWithCooldown({
           content: {
             title: isSpendEvent
-              ? t("smartInsightSpendTitle", { temptation: title })
-              : t("smartInsightDeclineTitle", { temptation: title }),
+              ? t("smartInsightSpendTitle", { temptation: title, dayLabel })
+              : t("smartInsightDeclineTitle", { temptation: title, dayLabel }),
             body: isSpendEvent
               ? t("smartInsightSpendBody", { temptation: title })
             : t("smartInsightDeclineBody", { temptation: title }),
@@ -32554,6 +34677,7 @@ useEffect(() => {
     [
       ensureNotificationPermission,
       isTemplateReminderEligible,
+      language,
       resolveTemptationCategory,
       resolveTemplateTitle,
       scheduleNotificationWithCooldown,
@@ -32671,7 +34795,15 @@ useEffect(() => {
         lostCount: lossCount,
       },
     };
-  }, []);
+    logEvent("usage_streak_logged", {
+      current_streak: nextSnapshot.current,
+      previous_streak: previousCount,
+      best_streak: nextSnapshot.best,
+      total: nextSnapshot.total,
+      action: normalizedAction,
+      missed: missed ? 1 : 0,
+    });
+  }, [logEvent]);
 
   const promptIncomeSavingsTransfer = useCallback(
     (amountUSD = 0) => {
@@ -32683,7 +34815,17 @@ useEffect(() => {
         t("incomeSavingsPromptTitle"),
         t("incomeSavingsPromptMessage", { amount: amountLabel, percent }),
         [
-          { text: t("incomeSavingsPromptSkip"), style: "cancel" },
+          {
+            text: t("incomeSavingsPromptSkip"),
+            style: "cancel",
+            onPress: () => {
+              logEvent("income_savings_skipped", {
+                amount_usd: depositUSD,
+                percent,
+                reason: "prompt_skip",
+              });
+            },
+          },
           {
             text: t("incomeSavingsPromptConfirm"),
             style: "default",
@@ -32692,14 +34834,24 @@ useEffect(() => {
                 t("incomeSavingsConfirmTitle"),
                 t("incomeSavingsConfirmMessage", { amount: amountLabel }),
                 [
-                  { text: t("incomeSavingsConfirmCancel"), style: "cancel" },
+                  {
+                    text: t("incomeSavingsConfirmCancel"),
+                    style: "cancel",
+                    onPress: () => {
+                      logEvent("income_savings_skipped", {
+                        amount_usd: depositUSD,
+                        percent,
+                        reason: "confirm_cancel",
+                      });
+                    },
+                  },
                   {
                     text: t("incomeSavingsConfirmYes"),
                     style: "default",
                     onPress: () => {
                       setSavedTotalUSD((prev) => Math.max(0, prev + depositUSD));
                       logHistoryEvent("income_savings", { amountUSD: depositUSD });
-                      logEvent("income_savings_confirmed", { amount_usd: depositUSD });
+                      logEvent("income_savings_confirmed", { amount_usd: depositUSD, percent });
                       triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
                     },
                   },
@@ -32714,22 +34866,27 @@ useEffect(() => {
   );
 
   const handleIncomeEntrySubmit = useCallback(() => {
+    const entryType = incomeEntryModeRef.current || INCOME_ENTRY_TYPES.MONTHLY;
     const amountUSD = addIncomeEntry({
       amountText: incomeEntryInput.amount,
       receivedAt: Date.now(),
+      entryType,
     });
     if (!Number.isFinite(amountUSD) || amountUSD <= 0) return;
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
     const monthKey = getMonthKey(Date.now());
-    setIncomePromptState({ lastPromptMonthKey: monthKey, lastPromptAt: Date.now() });
     setIncomeEntryModalVisible(false);
-    setIncomePromptPending(false);
-    clearQueuedModal(QUEUED_MODAL_TYPES.INCOME_PROMPT);
+    if (entryType === INCOME_ENTRY_TYPES.MONTHLY) {
+      setIncomePromptState({ lastPromptMonthKey: monthKey, lastPromptAt: Date.now() });
+      setIncomePromptPending(false);
+      clearQueuedModal(QUEUED_MODAL_TYPES.INCOME_PROMPT);
+    }
     logEvent("income_entry_added", {
       source: incomeEntrySourceRef.current || "manual",
       month_key: monthKey,
       amount_usd: amountUSD,
       currency: currencyCode,
+      entry_type: entryType,
     });
     promptIncomeSavingsTransfer(amountUSD);
   }, [
@@ -33548,6 +35705,9 @@ useEffect(() => {
     [dismissPotentialGrowth, language]
   );
   const normalizeTemplateKey = (value) => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value);
+    }
     if (typeof value !== "string") return null;
     const trimmed = value.trim();
     return trimmed.length ? trimmed : null;
@@ -34105,13 +36265,25 @@ useEffect(() => {
               reminder.title ||
               t("defaultDealTitle");
             const isSpendEvent = reminder.kind === "spend";
+            const reminderTimestamp = Number(reminder.timestamp);
+            const normalizedLanguage = normalizeLanguage(language);
+            const dayLabel =
+              formatRelativeDayLabel(reminderTimestamp, scheduledAt, normalizedLanguage) ||
+              formatRelativeDayLabel(reminderTimestamp, now, normalizedLanguage) ||
+              (normalizedLanguage === "ru"
+                ? "вчера"
+                : normalizedLanguage === "es"
+                ? "ayer"
+                : normalizedLanguage === "fr"
+                ? "hier"
+                : "yesterday");
             const dedupeKey = `smart:${reminder.eventId || reminder.id}`;
             try {
               const scheduledId = await safeNotifications.scheduleNotificationAsync({
                 content: {
                   title: isSpendEvent
-                    ? t("smartInsightSpendTitle", { temptation: resolvedTitle })
-                    : t("smartInsightDeclineTitle", { temptation: resolvedTitle }),
+                    ? t("smartInsightSpendTitle", { temptation: resolvedTitle, dayLabel })
+                    : t("smartInsightDeclineTitle", { temptation: resolvedTitle, dayLabel }),
                   body: isSpendEvent
                     ? t("smartInsightSpendBody", { temptation: resolvedTitle })
                     : t("smartInsightDeclineBody", { temptation: resolvedTitle }),
@@ -34233,6 +36405,7 @@ useEffect(() => {
       formatCurrency,
       impulseTracker,
       impulseTrackerHydrated,
+      language,
       notificationPermissionGranted,
       normalizeSmartReminderEntries,
       pendingHydrated,
@@ -34314,7 +36487,6 @@ useEffect(() => {
         shouldAssign = false,
         pinnedBy = null,
         bypassSpendPrompt = false,
-        forceOverlay = false,
         forcePrimaryGoal = false,
         amountUSD: overrideAmountUSD = null,
       } = options || {};
@@ -34455,6 +36627,7 @@ useEffect(() => {
       if (type === "save") {
         const { entry: resolvedRefuseStats } = getLegacyRefuseStatsEntry(refuseStats, templateId, item);
         const refuseStatsEntry = resolvedRefuseStats || {};
+        const nextRefuseCount = (refuseStatsEntry.count || 0) + 1;
         const saveTimestamp = Date.now();
         // Previously we blocked rapid repeated saves; removed to keep progress updating every time.
         const storedGoalId = resolveTemptationGoalId(templateId);
@@ -34787,7 +36960,16 @@ useEffect(() => {
             return [nextWish, ...prev];
           });
         }
-        let saveOverlayPayload = { title, moodLine: moodPreset?.saveOverlay || null };
+        const totalSavedForCardUSD = Math.max(0, (refuseStatsEntry.totalUSD || 0) + priceUSD);
+        const totalSavedForCardLocal = convertToCurrency(totalSavedForCardUSD, currencyCode);
+        const savedAmountLabel = formatCurrency(totalSavedForCardLocal, currencyCode);
+        let saveOverlayPayload = {
+          title,
+          moodLine: moodPreset?.saveOverlay || null,
+          savedAmountUSD: priceUSD,
+          savedAmountLabel,
+          saveCount: nextRefuseCount,
+        };
         if (targetWishSnapshot && targetWishSnapshot.targetUSD > 0 && priceUSD > 0) {
           const previousSavedUSD = targetWishSnapshot.savedUSD || 0;
           const targetUSD = targetWishSnapshot.targetUSD || 0;
@@ -34903,6 +37085,10 @@ useEffect(() => {
         if (coinReward > 0) {
           setHealthPoints((prev) => prev + coinReward);
         }
+        const saveOverlayPayloadWithReward = {
+          ...saveOverlayPayload,
+          coinReward,
+        };
         const resolvedCategory = resolveTemptationCategory(item);
         const isEssentialSaveCategory = isEssentialImpulseCategory(resolvedCategory);
         setRefuseStats((prev) => {
@@ -34958,11 +37144,8 @@ useEffect(() => {
         }
         handleFocusSaveProgress(item);
         ensureOverlayEnvironmentReady();
-        triggerOverlayState(
-          "save",
-          { ...saveOverlayPayload, coinReward },
-          { clearQueueOnDismiss: false, force: !!forceOverlay }
-        );
+        triggerOverlayState("save", saveOverlayPayloadWithReward);
+        lastSaveOverlayDismissedAtRef.current = saveTimestamp;
         if (!isEssentialSaveCategory) {
           requestMascotAnimation("happy");
         }
@@ -35057,6 +37240,7 @@ useEffect(() => {
       triggerOverlayState,
       getLegacyRefuseStatsEntry,
       queueHomeSpeech,
+      queueUsageStreakOverlay,
       lastCelebratedLevel,
       lifetimeSavedUSD,
       progressLifetimeSavedUSD,
@@ -35780,7 +37964,7 @@ useEffect(() => {
   const toggleTemptationEditor = useCallback(
     (item) => {
       if (!item) return;
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      runLayoutAnimation();
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
       setPriceEditor((prev) => {
         if (prev.item?.id === item.id) {
@@ -35853,7 +38037,7 @@ useEffect(() => {
 
   const closePriceEditor = useCallback(() => {
     if (!priceEditor.item) return;
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    runLayoutAnimation();
     setPriceEditor({
       item: null,
       value: "",
@@ -36812,6 +38996,8 @@ useEffect(() => {
         ? null
         : next.type === "usage_streak"
         ? null
+        : next.type === "usage_streak_restore"
+        ? null
         : next.type === "streak_pledge"
         ? null
         : next.type === "streak_pledge_reward"
@@ -36939,6 +39125,9 @@ useEffect(() => {
     if (overlay?.type === "save") {
       lastSaveOverlayDismissedAtRef.current = dismissedAt;
     }
+    const usageStreakRestoreCandidate =
+      overlay?.type === "usage_streak" ? getUsageStreakRestoreBase(overlay?.message) : null;
+    const shouldQueueUsageStreakRestore = !!usageStreakRestoreCandidate?.shouldOfferRestore;
     const hasQueuedCelebrationFollowUp =
       overlay?.type === "save" &&
       overlayQueueRef.current.some((entry) => ["level", "health", "cart"].includes(entry?.type));
@@ -36953,15 +39142,35 @@ useEffect(() => {
       overlayQueueRef.current = [];
     }
     setOverlay(null);
+    if (shouldQueueUsageStreakRestore) {
+      const alreadyQueued = overlayQueueRef.current.some(
+        (entry) => entry?.type === "usage_streak_restore"
+      );
+      if (!alreadyQueued) {
+        overlayQueueRef.current.unshift({
+          type: "usage_streak_restore",
+          message: overlay?.message,
+          duration: null,
+          clearQueueOnDismiss: false,
+          force: false,
+        });
+      }
+    }
     processOverlayQueue();
-    if (shouldPromptGoalRenewal) {
+    const shouldPromptGoalRenewalFallback =
+      !shouldPromptGoalRenewal &&
+      goalRenewalPromptAfterGoalRef.current &&
+      !pendingGoalCelebration &&
+      overlayQueueRef.current.length === 0 &&
+      celebrationQueueRef.current.length === 0;
+    if (shouldPromptGoalRenewal || shouldPromptGoalRenewalFallback) {
       goalRenewalPromptAfterGoalRef.current = false;
       goalRenewalPromptPendingRef.current = false;
       if (!goalRenewalPromptVisible) {
         setGoalRenewalPromptVisible(true);
       }
     }
-  }, [goalRenewalPromptVisible, overlay, processOverlayQueue]);
+  }, [goalRenewalPromptVisible, overlay, pendingGoalCelebration, processOverlayQueue]);
 
   const resetFocusLossCounter = useCallback((templateId) => {
     if (!templateId) return;
@@ -37835,6 +40044,8 @@ useEffect(() => {
             setTamagotchiState(resetTamagotchiState);
             tamagotchiHungerPrevRef.current = TAMAGOTCHI_START_STATE.hunger;
             tamagotchiHydratedRef.current = true;
+            setTamagotchiGreetingDayKey(null);
+            setTamagotchiGreetingDayHydrated(true);
             setTamagotchiSkinId(DEFAULT_TAMAGOTCHI_SKIN);
             setSkinPickerVisible(false);
             setClaimedRewards({});
@@ -37843,6 +40054,8 @@ useEffect(() => {
             const resetChallenges = createInitialChallengesState();
             challengesPrevRef.current = resetChallenges;
             setChallengesState(resetChallenges);
+            setChallengeBadgeStore([]);
+            setChallengeBadgeStoreHydrated(true);
             setImpulseTracker({ ...INITIAL_IMPULSE_TRACKER });
             setMoodState(createMoodStateForToday());
             impulseAlertCooldownRef.current = {};
@@ -37894,16 +40107,31 @@ useEffect(() => {
     );
   };
 
-  const startProfileEdit = () => {
+  const startProfileEdit = (mode = "identity") => {
+    if (profileEditMode !== "none") return;
     triggerHaptic();
-    setProfileDraft(profile);
-    setIsEditingProfile(true);
+    const nextDraft = { ...profile };
+    if (mode === "identity") {
+      const hasFirstName =
+        typeof nextDraft.firstName === "string" && nextDraft.firstName.trim().length > 0;
+      const hasLastName =
+        typeof nextDraft.lastName === "string" && nextDraft.lastName.trim().length > 0;
+      if (!hasFirstName && !hasLastName) {
+        const nameParts = (nextDraft.name || "").trim().split(/\s+/).filter(Boolean);
+        if (nameParts.length) {
+          nextDraft.firstName = nameParts[0];
+          nextDraft.lastName = nameParts.slice(1).join(" ");
+        }
+      }
+    }
+    setProfileDraft(nextDraft);
+    setProfileEditMode(mode);
   };
 
   const cancelProfileEdit = () => {
     triggerHaptic();
     setProfileDraft(profile);
-    setIsEditingProfile(false);
+    setProfileEditMode("none");
   };
 
   const saveProfileEdit = () => {
@@ -37973,8 +40201,16 @@ useEffect(() => {
       Number.isFinite(rawIncomePayday) && rawIncomePayday >= 1 && rawIncomePayday <= 31
         ? Math.round(rawIncomePayday)
         : DEFAULT_INCOME_PAYDAY;
+    const trimmedFirstName = (profileDraft.firstName || "").trim();
+    const trimmedLastName = (profileDraft.lastName || "").trim();
+    const combinedName = `${trimmedFirstName} ${trimmedLastName}`.trim();
+    const displayName =
+      combinedName || (profileEditMode === "identity" ? "" : (profileDraft.name || "").trim());
     const nextProfile = {
       ...profileDraft,
+      name: displayName,
+      firstName: trimmedFirstName,
+      lastName: trimmedLastName,
       incomePayday: normalizedIncomePayday,
       primaryGoals: primaryGoalEntries,
       goal: primaryGoalEntries[0]?.id || null,
@@ -38026,10 +40262,28 @@ useEffect(() => {
       });
     }
     setProfile(nextProfile);
-    setIsEditingProfile(false);
+    setProfileEditMode("none");
     Keyboard.dismiss();
   };
 
+  const isProfileEditing = profileEditMode !== "none";
+  const handleProfileFieldChange = useCallback(
+    (field, value) => setProfileDraft((prev) => ({ ...prev, [field]: value })),
+    []
+  );
+  const handleProfileEditPress = useCallback(() => startProfileEdit("identity"), [startProfileEdit]);
+  const handleProfileSpendEditPress = useCallback(
+    () => startProfileEdit("spend"),
+    [startProfileEdit]
+  );
+  const handleProgressCreateGoal = useCallback(
+    () => openNewGoalModal(false, "progress_goal_add"),
+    [openNewGoalModal]
+  );
+  const handleProgressFocusHandled = useCallback(
+    () => setProgressFocusChallengeId(null),
+    []
+  );
   const renderActiveScreen = () => {
     if (activeTab === "purchases" && !deferredHydrationReady) {
       return (
@@ -38067,6 +40321,7 @@ useEffect(() => {
             baselineMonthlyWasteUSD={baselineMonthlyWasteUSD}
             onBudgetOverrideChange={handleBudgetOverrideChange}
             onIncomeEntryOpen={openIncomeEntryModal}
+            onExtraIncomeEntryOpen={openExtraIncomeEntryModal}
             impulseInsights={impulseInsights}
             showImpulseMap={impulseFeaturesUnlocked}
             showFreeDayCard={freeDayUnlocked}
@@ -38075,10 +40330,10 @@ useEffect(() => {
             onChallengeAccept={handleChallengeAccept}
             onChallengeClaim={handleChallengeClaim}
             onChallengeCancel={handleChallengeCancel}
-            onCreateGoal={() => openNewGoalModal(false, "progress_goal_add")}
+            onCreateGoal={handleProgressCreateGoal}
             onFocusCancel={requestFocusCancel}
             focusChallengeId={progressFocusChallengeId}
-            onFocusHandled={() => setProgressFocusChallengeId(null)}
+            onFocusHandled={handleProgressFocusHandled}
             challengeBadges={challengeBadgeEmojis}
             challengeBadgeCount={challengeBadgeCount}
             playerLevel={playerLevel}
@@ -38106,6 +40361,7 @@ useEffect(() => {
             locked={!thinkingUnlocked}
             onItemLayout={registerPendingCardLayout}
             scrollRef={pendingScrollRef}
+            playSound={playSound}
           />
         );
       case "purchases":
@@ -38137,11 +40393,12 @@ useEffect(() => {
       case "profile":
         return (
           <ProfileScreen
-            profile={isEditingProfile ? profileDraft : profile}
+            profile={isProfileEditing ? profileDraft : profile}
             stats={profileStats}
-            isEditing={isEditingProfile}
-            onFieldChange={(field, value) => setProfileDraft((prev) => ({ ...prev, [field]: value }))}
-            onEditPress={startProfileEdit}
+            editMode={profileEditMode}
+            onFieldChange={handleProfileFieldChange}
+            onEditPress={handleProfileEditPress}
+            onSpendEditPress={handleProfileSpendEditPress}
             onReportsPress={handleReportsPress}
             reportsBadgeVisible={reportsBadgeVisible}
             reportsLocked={!reportsUnlocked}
@@ -38166,6 +40423,8 @@ useEffect(() => {
             rewardBadgeCount={rewardClaimTotal}
             challengeBadges={challengeBadgeEmojis}
             challengeBadgeCount={challengeBadgeCount}
+            monthlyIncomeUSD={currentMonthRecurringIncomeUSD}
+            onIncomeEntryOpen={openIncomeEntryModal}
             t={t}
             colors={colors}
             moodPreset={moodPreset}
@@ -38291,6 +40550,8 @@ useEffect(() => {
             speechWarmupTick={speechWarmupTick}
             lastVisitAt={moodState.lastVisitAt}
             lastVisitAtSnapshot={lastVisitAtSnapshotRef.current}
+            tamagotchiGreetingDayKey={tamagotchiGreetingDayKey}
+            onTamagotchiGreeting={markTamagotchiGreetingDay}
             budgetSpeechDataRef={resolvedBudgetSpeechDataRef}
             onScrollActivityChange={handleFeedScrollActivity}
           />
@@ -38573,6 +40834,22 @@ useEffect(() => {
     );
   }
 
+  const isExtraIncomeEntry = incomeEntryModeRef.current === INCOME_ENTRY_TYPES.EXTRA;
+  const incomeEntryTitleKey = isExtraIncomeEntry ? "extraIncomeEntryTitle" : "incomeEntryTitle";
+  const incomeEntrySubtitleKey = isExtraIncomeEntry
+    ? "extraIncomeEntrySubtitle"
+    : "incomeEntrySubtitle";
+  const incomeEntryExplanationKey = isExtraIncomeEntry
+    ? "extraIncomeEntryExplanation"
+    : "incomeEntryExplanation";
+  const incomeEntryAmountLabelKey = isExtraIncomeEntry
+    ? "extraIncomeEntryAmountLabel"
+    : "incomeEntryAmountLabel";
+  const incomeEntryConfirmKey = isExtraIncomeEntry
+    ? "extraIncomeEntryConfirm"
+    : "incomeEntryConfirm";
+  const incomeEntrySkipKey = isExtraIncomeEntry ? "extraIncomeEntrySkip" : "incomeEntrySkip";
+
   return (
     <SavingsProvider value={{ savedTotalUSD }}>
       <View
@@ -38845,65 +41122,387 @@ useEffect(() => {
             </View>
           </Modal>
         )}
+        {dailyChallengeCompleteVisible && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={handleDailyChallengeCompleteClose}>
+              <View style={styles.dailyChallengeBackdrop}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <Animated.View
+                    style={[
+                      styles.dailyChallengeCompleteCard,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                      {
+                        opacity: dailyChallengeCompleteAnim,
+                        transform: [
+                          {
+                            translateY: dailyChallengeCompleteAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [26, 0],
+                            }),
+                          },
+                          {
+                            scale: dailyChallengeCompleteAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.96, 1],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.dailyChallengeCompleteGlow,
+                        {
+                          backgroundColor: isDarkTheme
+                            ? "rgba(255,200,87,0.35)"
+                            : "rgba(255,160,60,0.25)",
+                        },
+                      ]}
+                    />
+                    <View style={styles.dailyChallengeCompleteHeader}>
+                      <View
+                        style={[
+                          styles.dailyChallengeBadge,
+                          { borderColor: colors.border, backgroundColor: colors.background },
+                        ]}
+                      >
+                        <Text style={[styles.dailyChallengeBadgeText, { color: colors.muted }]}>
+                          {t("dailyChallengeCompleteBadge")}
+                        </Text>
+                      </View>
+                      <Text style={[styles.dailyChallengeCompleteTitle, { color: colors.text }]}>
+                        {t("dailyChallengeCompleteTitle")}
+                      </Text>
+                      <Text style={[styles.dailyChallengeCompleteSubtitle, { color: colors.muted }]}>
+                        {t("dailyChallengeCompleteSubtitle", {
+                          temptation: dailyChallengeDisplayTitle,
+                        })}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.dailyChallengeCompleteReward,
+                        {
+                          backgroundColor: isDarkTheme
+                            ? "rgba(255,255,255,0.06)"
+                            : "rgba(17,17,17,0.04)",
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <HealthRewardTokens amount={dailyChallengeTotalReward} color={colors.text} iconSize={20} />
+                      <Text style={[styles.dailyChallengeCompleteRewardText, { color: colors.text }]}>
+                        +{dailyChallengeTotalRewardLabel}
+                      </Text>
+                    </View>
+                    <Text style={[styles.dailyChallengeCompleteHint, { color: colors.muted }]}>
+                      {t("dailyChallengeCompleteHint")}
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.dailyChallengeCompleteButton, { backgroundColor: colors.text }]}
+                      activeOpacity={0.9}
+                      onPress={handleDailyChallengeCompleteClose}
+                    >
+                      <Text style={[styles.dailyChallengeCompleteButtonText, { color: colors.background }]}>
+                        {t("dailyChallengeCompleteCta")}
+                      </Text>
+                    </TouchableOpacity>
+                  </Animated.View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
         {dailyChallengePromptVisible && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={handleDailyChallengeLater}>
-              <View style={styles.dailySummaryBackdrop}>
+              <View style={styles.dailyChallengeBackdrop}>
                 <TouchableWithoutFeedback onPress={() => {}}>
                   <View
                     style={[
-                      styles.dailyChallengeCard,
+                      styles.dailyChallengeDrawPanel,
                       { backgroundColor: colors.card, borderColor: colors.border },
                     ]}
                   >
                     <View
                       style={[
-                        styles.dailyChallengeGlow,
-                        { backgroundColor: isDarkTheme ? "rgba(255,200,87,0.4)" : "rgba(255,160,60,0.25)" },
+                        styles.dailyChallengeDrawGlow,
+                        { backgroundColor: isDarkTheme ? "rgba(255,200,87,0.35)" : "rgba(255,160,60,0.25)" },
                       ]}
                     />
-                    <View style={styles.dailyChallengeContent}>
-                      <View style={styles.dailyChallengeHeroRow}>
-                        <View style={{ flex: 1, gap: 6 }}>
-                          <View
-                            style={[
-                              styles.dailyChallengeBadge,
-                              { borderColor: colors.border, backgroundColor: colors.background },
-                            ]}
-                          >
-                            <Text style={[styles.dailyChallengeBadgeText, { color: colors.muted }]}>
-                              {t("dailyChallengeOfferBadge")}
-                            </Text>
-                          </View>
-                          <Text style={[styles.dailyChallengeTitle, { color: colors.text }]}>
-                            {t("dailyChallengeOfferTitle")}
-                          </Text>
-                          <Text style={[styles.dailyChallengeSubtitle, { color: colors.muted }]}>
-                            {t("dailyChallengeOfferSubtitle", { temptation: dailyChallengeDisplayTitle })}
-                          </Text>
-                        </View>
-                        <View style={styles.dailyChallengeRewardStack}>
-                          <HealthRewardTokens amount={dailyChallengeRewardBonus} color={colors.text} iconSize={18} />
-                          <Text style={[styles.dailyChallengeRewardHint, { color: colors.text }]}>
-                            {t("dailyChallengeOfferReward", { amount: dailyChallengeRewardLabel })}
-                          </Text>
-                        </View>
+                    <View style={styles.dailyChallengeDrawHeader}>
+                      <View
+                        style={[
+                          styles.dailyChallengeBadge,
+                          { borderColor: colors.border, backgroundColor: colors.background },
+                        ]}
+                      >
+                        <Text style={[styles.dailyChallengeBadgeText, { color: colors.muted }]}>
+                          {t("dailyChallengeOfferBadge")}
+                        </Text>
                       </View>
-                        <View style={styles.dailyChallengeTemptationRow}>
-                          <View style={styles.dailyChallengeEmojiCard}>
-                          <Text style={styles.dailyChallengeEmojiCardText}>
+                      <Text style={[styles.dailyChallengeTitle, { color: colors.text }]}>
+                        {dailyChallengeDrawn
+                          ? t("dailyChallengeOfferTitle")
+                          : t("dailyChallengeDrawTitle")}
+                      </Text>
+                      <Text style={[styles.dailyChallengeSubtitle, { color: colors.muted }]}>
+                        {dailyChallengeDrawn
+                          ? t("dailyChallengeOfferSubtitle", { temptation: dailyChallengeDisplayTitle })
+                          : t("dailyChallengeDrawSubtitle")}
+                      </Text>
+                    </View>
+                    <View style={styles.dailyChallengeDrawRow}>
+                      {Array.from({ length: DAILY_CHALLENGE_DRAW_COUNT }).map((_, index) => {
+                        const accent =
+                          dailyChallengeCardAccents[index] || CARD_TEXTURE_ACCENTS[0] || "#8AB9FF";
+                        const intro = dailyChallengeCardIntroAnims[index];
+                        const float = dailyChallengeCardFloatAnims[index];
+                        const tilt = DAILY_CHALLENGE_DRAW_CARD_TILT[index] || 0;
+                        const isSelected = dailyChallengeDrawnIndex === index;
+                        const introTranslate = intro.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [28, 0],
+                        });
+                        const floatTranslate = float.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0, -6],
+                        });
+                        let translateY = Animated.add(introTranslate, floatTranslate);
+                        let scale = intro.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] });
+                        let opacity = intro;
+                        if (dailyChallengeDrawn) {
+                          if (isSelected) {
+                            const lift = dailyChallengeSelectAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0, -12],
+                            });
+                            translateY = Animated.add(translateY, lift);
+                            const selectedScale = dailyChallengeSelectAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [1, 1.06],
+                            });
+                            scale = Animated.multiply(scale, selectedScale);
+                          } else {
+                            const fade = dailyChallengeRevealAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [1, 0],
+                            });
+                            opacity = Animated.multiply(opacity, fade);
+                            const drop = dailyChallengeRevealAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0, 18],
+                            });
+                            translateY = Animated.add(translateY, drop);
+                            const shrink = dailyChallengeRevealAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [1, 0.95],
+                            });
+                            scale = Animated.multiply(scale, shrink);
+                          }
+                        }
+                        const backRotation = isSelected
+                          ? dailyChallengeRevealAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: ["0deg", "180deg"],
+                            })
+                          : "0deg";
+                        const frontRotation = isSelected
+                          ? dailyChallengeRevealAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: ["180deg", "360deg"],
+                            })
+                          : "180deg";
+                        const shadowColor = colorWithAlpha(accent, isSelected ? 0.4 : 0.25);
+                        return (
+                          <Pressable
+                            key={`daily-challenge-card-${index}`}
+                            style={styles.dailyChallengeDrawCardWrap}
+                            disabled={dailyChallengeDrawn}
+                            onPress={() => handleDailyChallengeDrawSelect(index)}
+                          >
+                            <Animated.View
+                              style={[
+                                styles.dailyChallengeDrawCard,
+                                {
+                                  width: DAILY_CHALLENGE_DRAW_CARD_WIDTH,
+                                  height: DAILY_CHALLENGE_DRAW_CARD_HEIGHT,
+                                  borderColor: colorWithAlpha(accent, 0.55),
+                                  shadowColor,
+                                  opacity,
+                                  transform: [
+                                    { perspective: 900 },
+                                    { translateY },
+                                    { rotateZ: `${tilt}deg` },
+                                    { scale },
+                                  ],
+                                },
+                              ]}
+                            >
+                              <Animated.View
+                                style={[
+                                  styles.dailyChallengeDrawCardFace,
+                                  styles.dailyChallengeDrawCardBack,
+                                  {
+                                    backgroundColor: colorWithAlpha(accent, 0.18),
+                                    borderColor: colorWithAlpha(accent, 0.6),
+                                    transform: [{ perspective: 900 }, { rotateY: backRotation }],
+                                  },
+                                ]}
+                              >
+                                <View
+                                  style={[
+                                    styles.dailyChallengeDrawCardBackGlow,
+                                    { backgroundColor: colorWithAlpha(accent, 0.35) },
+                                  ]}
+                                />
+                                <View style={styles.dailyChallengeDrawCardBackPattern} />
+                                <View
+                                  style={[
+                                    styles.dailyChallengeDrawCardBackSigil,
+                                    { borderColor: colorWithAlpha(accent, 0.5) },
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.dailyChallengeDrawCardBackSigilText,
+                                      { color: colorWithAlpha(accent, 0.9) },
+                                    ]}
+                                  >
+                                    A
+                                  </Text>
+                                </View>
+                              </Animated.View>
+                              <Animated.View
+                                style={[
+                                  styles.dailyChallengeDrawCardFace,
+                                  styles.dailyChallengeDrawCardFront,
+                                  {
+                                    backgroundColor: colors.card,
+                                    borderColor: colors.border,
+                                    transform: [{ perspective: 900 }, { rotateY: frontRotation }],
+                                  },
+                                ]}
+                              >
+                                <View
+                                  style={[
+                                    styles.dailyChallengeDrawCardFrontEmoji,
+                                    { backgroundColor: colorWithAlpha(accent, 0.18) },
+                                  ]}
+                                >
+                                  <Text style={styles.dailyChallengeDrawCardFrontEmojiText}>
+                                    {dailyChallengeTemplate?.emoji || dailyChallenge.emoji || "✨"}
+                                  </Text>
+                                </View>
+                                <Text
+                                  style={[styles.dailyChallengeDrawCardFrontTitle, { color: colors.text }]}
+                                  numberOfLines={2}
+                                >
+                                  {dailyChallengeDisplayTitle}
+                                </Text>
+                              </Animated.View>
+                            </Animated.View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    <Animated.View
+                      style={[
+                        styles.dailyChallengeDrawHintWrap,
+                        {
+                          opacity: dailyChallengeRevealAnim.interpolate({
+                            inputRange: [0, 0.6, 1],
+                            outputRange: [1, 0.1, 0],
+                          }),
+                          transform: [
+                            {
+                              translateY: dailyChallengeRevealAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [0, -8],
+                              }),
+                            },
+                          ],
+                        },
+                      ]}
+                      pointerEvents="none"
+                    >
+                      <Text style={[styles.dailyChallengeDrawHint, { color: colors.muted }]}>
+                        {t("dailyChallengeDrawHint")}
+                      </Text>
+                    </Animated.View>
+                  <Animated.View
+                      style={[
+                        styles.dailyChallengeRevealPanel,
+                        !dailyChallengeDrawn && styles.dailyChallengeDrawHidden,
+                        {
+                          opacity: dailyChallengeRevealAnim,
+                          backgroundColor: isDarkTheme
+                            ? "rgba(255,255,255,0.05)"
+                            : "rgba(17,17,17,0.03)",
+                          borderColor: colors.border,
+                          transform: [
+                            {
+                              translateY: dailyChallengeRevealAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [18, 0],
+                              }),
+                            },
+                          ],
+                        },
+                      ]}
+                      pointerEvents={dailyChallengeDrawn ? "auto" : "none"}
+                    >
+                      <View style={styles.dailyChallengeRevealRow}>
+                        <View
+                          style={[
+                            styles.dailyChallengeRevealEmoji,
+                            {
+                              backgroundColor: isDarkTheme
+                                ? "rgba(255,255,255,0.12)"
+                                : "rgba(17,17,17,0.06)",
+                              borderColor: colors.border,
+                            },
+                          ]}
+                        >
+                          <Text style={styles.dailyChallengeRevealEmojiText}>
                             {dailyChallengeTemplate?.emoji || dailyChallenge.emoji || "✨"}
                           </Text>
                         </View>
-                        <View style={{ flex: 1, gap: 4 }}>
-                          <Text style={[styles.dailyChallengeTemptationTitle, { color: colors.text }]}>
+                        <View style={{ flex: 1, gap: 6 }}>
+                          <Text style={[styles.dailyChallengeRevealTitle, { color: colors.text }]}>
                             {dailyChallengeDisplayTitle}
                           </Text>
-                          <Text style={[styles.dailyChallengeTemptationHint, { color: colors.muted }]}>
+                          <Text style={[styles.dailyChallengeRevealHint, { color: colors.muted }]}>
                             {t("dailyChallengeOfferHint")}
                           </Text>
                         </View>
                       </View>
+                      <View style={styles.dailyChallengeRewardStack}>
+                        <HealthRewardTokens amount={dailyChallengeRewardBonus} color={colors.text} iconSize={18} />
+                        <Text style={[styles.dailyChallengeRewardHint, { color: colors.text }]}>
+                          {t("dailyChallengeOfferReward", { amount: dailyChallengeRewardLabel })}
+                        </Text>
+                      </View>
+                    </Animated.View>
+                    <Animated.View
+                      style={[
+                        styles.dailyChallengeActionsWrap,
+                        !dailyChallengeDrawn && styles.dailyChallengeDrawHidden,
+                        {
+                          opacity: dailyChallengeRevealAnim,
+                          transform: [
+                            {
+                              translateY: dailyChallengeRevealAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [22, 0],
+                              }),
+                            },
+                          ],
+                        },
+                      ]}
+                      pointerEvents={dailyChallengeDrawn ? "auto" : "none"}
+                    >
                       <View style={styles.dailyChallengeActions}>
                         <TouchableOpacity
                           style={[styles.dailyChallengePrimaryButton, { backgroundColor: colors.text }]}
@@ -38924,7 +41523,15 @@ useEffect(() => {
                           </Text>
                         </TouchableOpacity>
                       </View>
-                    </View>
+                      <Pressable
+                        style={styles.dailyChallengeSkipButton}
+                        onPress={handleDailyChallengeSkip}
+                      >
+                        <Text style={[styles.dailyChallengeSkipText, { color: colors.muted }]}>
+                          {t("dailyChallengeSkip")}
+                        </Text>
+                      </Pressable>
+                    </Animated.View>
                   </View>
                 </TouchableWithoutFeedback>
               </View>
@@ -39427,6 +42034,16 @@ useEffect(() => {
                     </Text>
                   </View>
                 )}
+                {tab === "profile" && reportsBadgeVisible && reportsUnlocked && (
+                  <View
+                    style={[
+                      styles.tabBadge,
+                      styles.tabBadgeDot,
+                      styles.tabBadgeFloating,
+                      { backgroundColor: theme === "dark" ? "#FEE5A8" : colors.text },
+                    ]}
+                  />
+                )}
               </TouchableOpacity>
             );
           })}
@@ -39490,6 +42107,7 @@ useEffect(() => {
 
         <CoinEntryModal
           visible={coinEntryVisible}
+          presetAction={coinEntryPresetAction}
           colors={colors}
           t={t}
           currency={profile.currency || DEFAULT_PROFILE.currency}
@@ -40370,6 +42988,7 @@ useEffect(() => {
           overlay.type !== "daily_reward" &&
           overlay.type !== "health" &&
           overlay.type !== "usage_streak" &&
+          overlay.type !== "usage_streak_restore" &&
           overlay.type !== "streak_pledge" &&
           overlay.type !== "streak_pledge_reward" &&
           overlay.type !== "focus_reward" &&
@@ -40587,18 +43206,21 @@ useEffect(() => {
                   ]}
                 />
                 <CoinRainOverlay dropCount={16} />
-                  <SaveCelebration
-                    ref={saveCelebrationRef}
-                    colors={colors}
-                    t={t}
-                    language={language}
-                    payload={saveOverlayPayload}
-                    goalCopy={saveOverlayGoalText}
-                    goalPrefix={saveOverlayGoalPrefix}
-                    coinReward={saveOverlayPayload?.coinReward}
-                    playSound={playSound}
-                    mascotHappySource={tamagotchiAnimations.happy}
-                    progressStart={
+                <SaveCelebration
+                  ref={saveCelebrationRef}
+                  colors={colors}
+                  t={t}
+                  language={language}
+                  payload={saveOverlayPayload}
+                  goalCopy={saveOverlayGoalText}
+                  goalPrefix={saveOverlayGoalPrefix}
+                  coinReward={saveOverlayPayload?.coinReward}
+                  onPrimaryAction={handleSaveOverlayPress}
+                  onCountdownAction={handleSaveOverlayPress}
+                  playSound={playSound}
+                  mascotHappySource={tamagotchiAnimations.happy}
+                  autoCountdown={false}
+                  progressStart={
                     Number.isFinite(saveOverlayPayload?.progressStart)
                       ? saveOverlayPayload.progressStart
                       : heroGoalProgressRatio
@@ -40734,6 +43356,20 @@ useEffect(() => {
                   t={t}
                   language={language}
                   mascotHappySource={tamagotchiAnimations.happy}
+                />
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+        {overlay?.type === "usage_streak_restore" && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View style={styles.overlayFullScreen}>
+                <UsageStreakRestorePrompt
+                  colors={colors}
+                  payload={overlay.message}
+                  t={t}
+                  language={language}
                   healthPoints={healthPoints}
                   onRestore={handleUsageStreakRestore}
                 />
@@ -41257,10 +43893,10 @@ useEffect(() => {
               <TouchableWithoutFeedback onPress={() => {}}>
                 <View style={[styles.priceModalCard, { backgroundColor: colors.card }]}>
                   <Text style={[styles.priceModalTitle, { color: colors.text }]}>
-                    {t("incomeEntryTitle")}
+                    {t(incomeEntryTitleKey)}
                   </Text>
                   <Text style={[styles.priceModalLabel, { color: colors.muted, marginTop: 0 }]}>
-                    {t("incomeEntrySubtitle")}
+                    {t(incomeEntrySubtitleKey)}
                   </Text>
                   <View
                     style={[
@@ -41307,10 +43943,10 @@ useEffect(() => {
                     </View>
                   </View>
                   <Text style={[styles.incomeEntryExplanation, { color: colors.muted }]}>
-                    {t("incomeEntryExplanation")}
+                    {t(incomeEntryExplanationKey)}
                   </Text>
                   <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
-                    {t("incomeEntryAmountLabel")}
+                    {t(incomeEntryAmountLabelKey)}
                   </Text>
                   <TextInput
                     style={[
@@ -41325,7 +43961,7 @@ useEffect(() => {
                     onChangeText={(text) =>
                       setIncomeEntryInput((prev) => ({ ...prev, amount: text }))
                     }
-                    placeholder={t("incomeEntryAmountLabel")}
+                    placeholder={t(incomeEntryAmountLabelKey)}
                     placeholderTextColor={colors.muted}
                     keyboardType="decimal-pad"
                   />
@@ -41335,7 +43971,7 @@ useEffect(() => {
                       onPress={handleIncomeEntrySubmit}
                     >
                       <Text style={[styles.priceModalPrimaryText, { color: colors.background }]}>
-                        {t("incomeEntryConfirm")}
+                        {t(incomeEntryConfirmKey)}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -41343,7 +43979,7 @@ useEffect(() => {
                       onPress={handleIncomeEntrySkip}
                     >
                       <Text style={[styles.priceModalSecondaryText, { color: colors.muted }]}>
-                        {t("incomeEntrySkip")}
+                        {t(incomeEntrySkipKey)}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -41740,10 +44376,11 @@ const StatusGlass = React.memo(({ height, colors, theme, blurAvailable = false, 
   if (blurAvailable) {
     return (
       <View pointerEvents="none" style={[styles.statusGlass, { height }]}>
-        {Platform.OS === "android" && AndroidBlurView ? (
+        {Platform.OS === "android" && AndroidBlurView && !ANDROID_DIMEZIS_DISABLED ? (
           <AndroidBlurView
             blurType={theme === "dark" ? "dark" : "light"}
             blurAmount={4}
+            autoUpdate={ANDROID_BLUR_AUTO_UPDATE}
             reducedTransparencyFallbackColor={isDarkTheme ? "#0B0B0B" : "#F2F2F2"}
             style={StyleSheet.absoluteFill}
           />
@@ -41751,7 +44388,11 @@ const StatusGlass = React.memo(({ height, colors, theme, blurAvailable = false, 
           <ExpoBlurView
             tint={theme === "dark" ? "dark" : "extraLight"}
             intensity={18}
-            experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
+            experimentalBlurMethod={
+              Platform.OS === "android" && !ANDROID_DIMEZIS_DISABLED
+                ? "dimezisBlurView"
+                : undefined
+            }
             style={StyleSheet.absoluteFill}
           />
         )}
@@ -41819,6 +44460,7 @@ const SPEND_STATS_VISIBLE_COLUMNS = 4;
 const BREAKDOWN_OVERLAY_PADDING = 16;
 const BREAKDOWN_TOGGLE_SAVE_COLOR = "#2EB873";
 const BREAKDOWN_TOGGLE_SPEND_COLOR = "#E15555";
+const BREAKDOWN_TOGGLE_SHIELD_PATH = "M12 2L4 5V11C4 16 8 19 12 22C16 19 20 16 20 11V5L12 2Z";
 
 const styles = StyleSheet.create({
   appBackground: {
@@ -43727,6 +46369,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 24,
   },
+  dailyChallengeBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(7,9,16,0.68)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
   dailySummaryCard: {
     width: "100%",
     maxWidth: 360,
@@ -44026,16 +46675,14 @@ const styles = StyleSheet.create({
     ...createBodyText({ fontSize: 15, marginTop: 4 }),
   },
   dailyChallengeRewardStack: {
-    alignItems: "flex-end",
-    gap: 6,
-    flexShrink: 1,
-    maxWidth: "45%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
   },
   dailyChallengeRewardHint: {
     ...createBodyText({ fontSize: 13 }),
     fontWeight: "700",
-    textAlign: "right",
-    flexShrink: 1,
   },
   dailyChallengeTemptationRow: {
     flexDirection: "row",
@@ -44068,6 +46715,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
   },
+  dailyChallengeActionsWrap: {
+    gap: 10,
+  },
+  dailyChallengeSkipButton: {
+    alignSelf: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  dailyChallengeSkipText: {
+    ...createCtaText({ fontSize: 13 }),
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
   dailyChallengePrimaryButton: {
     flex: 1,
     borderRadius: 18,
@@ -44085,6 +46745,219 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   dailyChallengeGhostText: {
+    ...createCtaText({ fontSize: 15 }),
+  },
+  dailyChallengeDrawPanel: {
+    width: "100%",
+    maxWidth: 380,
+    borderRadius: 28,
+    padding: 20,
+    borderWidth: 1,
+    overflow: "hidden",
+    gap: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
+  dailyChallengeDrawGlow: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.22,
+  },
+  dailyChallengeDrawHeader: {
+    gap: 8,
+  },
+  dailyChallengeDrawRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+    alignItems: "flex-end",
+  },
+  dailyChallengeDrawCardWrap: {
+    flex: 1,
+    alignItems: "center",
+  },
+  dailyChallengeDrawCard: {
+    position: "relative",
+    borderRadius: 18,
+    borderWidth: 1,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  dailyChallengeDrawCardFace: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 18,
+    borderWidth: 1,
+    backfaceVisibility: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 10,
+  },
+  dailyChallengeDrawCardBack: {
+    overflow: "hidden",
+  },
+  dailyChallengeDrawCardBackGlow: {
+    position: "absolute",
+    top: -8,
+    left: -12,
+    right: -12,
+    height: 48,
+    borderRadius: 40,
+    opacity: 0.6,
+    transform: [{ rotate: "-12deg" }],
+  },
+  dailyChallengeDrawCardBackPattern: {
+    position: "absolute",
+    top: 14,
+    left: 12,
+    right: 12,
+    bottom: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+    borderStyle: "dashed",
+    opacity: 0.6,
+  },
+  dailyChallengeDrawCardBackSigil: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  dailyChallengeDrawCardBackSigilText: {
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 2,
+  },
+  dailyChallengeDrawCardFront: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    padding: 10,
+  },
+  dailyChallengeDrawCardFrontEmoji: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dailyChallengeDrawCardFrontEmojiText: {
+    fontSize: 24,
+  },
+  dailyChallengeDrawCardFrontTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "center",
+    lineHeight: 16,
+    minHeight: 32,
+  },
+  dailyChallengeDrawCardFrontMeta: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  dailyChallengeDrawHintWrap: {
+    alignItems: "center",
+  },
+  dailyChallengeDrawHint: {
+    ...createBodyText({ fontSize: 13 }),
+    textAlign: "center",
+  },
+  dailyChallengeDrawHidden: {
+    display: "none",
+  },
+  dailyChallengeRevealPanel: {
+    borderRadius: 20,
+    padding: 14,
+    borderWidth: 1,
+    gap: 12,
+    backgroundColor: "rgba(17,17,17,0.03)",
+  },
+  dailyChallengeRevealRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  dailyChallengeRevealEmoji: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dailyChallengeRevealEmojiText: {
+    fontSize: 28,
+  },
+  dailyChallengeRevealTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  dailyChallengeRevealHint: {
+    ...createBodyText({ fontSize: 14 }),
+  },
+  dailyChallengeCompleteCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 28,
+    padding: 22,
+    borderWidth: 1,
+    overflow: "hidden",
+    gap: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
+  dailyChallengeCompleteGlow: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.2,
+  },
+  dailyChallengeCompleteHeader: {
+    gap: 8,
+  },
+  dailyChallengeCompleteTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  dailyChallengeCompleteSubtitle: {
+    ...createBodyText({ fontSize: 15 }),
+    lineHeight: 20,
+  },
+  dailyChallengeCompleteReward: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingVertical: 12,
+  },
+  dailyChallengeCompleteRewardText: {
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  dailyChallengeCompleteHint: {
+    ...createBodyText({ fontSize: 13 }),
+    textAlign: "center",
+  },
+  dailyChallengeCompleteButton: {
+    borderRadius: 18,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  dailyChallengeCompleteButtonText: {
     ...createCtaText({ fontSize: 15 }),
   },
   breakdownCard: {
@@ -45170,6 +48043,24 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
   },
+  budgetModalMonthScroll: {
+    marginTop: 4,
+  },
+  budgetModalMonthContent: {
+    gap: 8,
+    paddingVertical: 4,
+    paddingRight: 4,
+  },
+  budgetModalMonthChip: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  budgetModalMonthChipText: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
   budgetModalStatsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -46195,14 +49086,21 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   temptationButtonConfirm: {
-    transform: [{ scale: 1.01 }],
+    ...Platform.select({
+      android: {},
+      default: { transform: [{ scale: 1.01 }] },
+    }),
   },
   temptationButtonConfirmActive: {
     borderWidth: 1.5,
-    shadowOpacity: Platform.OS === "ios" ? 0.25 : 0.5,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+    ...Platform.select({
+      android: { elevation: 0 },
+      default: {
+        shadowOpacity: 0.25,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
+      },
+    }),
   },
   temptationTutorialAccentButton: {
     borderWidth: 2,
@@ -46746,6 +49644,324 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     alignItems: "center",
+  },
+  pendingFridgeScreen: {
+    flex: 1,
+    paddingHorizontal: BASE_HORIZONTAL_PADDING,
+    paddingTop: 14,
+    paddingBottom: 14,
+  },
+  fridgeStage: {
+    flex: 1,
+  },
+  fridgeCabinet: {
+    flex: 1,
+    borderRadius: 36,
+    padding: 10,
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 6,
+  },
+  fridgeAura: {
+    position: "absolute",
+    top: -40,
+    left: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    opacity: 0.6,
+  },
+  fridgeInteriorWrap: {
+    flex: 1,
+    borderRadius: 26,
+    borderWidth: 1,
+    overflow: "hidden",
+    position: "relative",
+    zIndex: 0,
+  },
+  fridgeInterior: {
+    flex: 1,
+  },
+  fridgeInteriorHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 26,
+    paddingBottom: 12,
+  },
+  fridgeInteriorTitle: {
+    ...createBodyText({ fontSize: 20, fontWeight: "800" }),
+  },
+  fridgeInteriorBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderWidth: 1,
+  },
+  fridgeInteriorBadgeText: {
+    ...createCtaText({ fontSize: 12 }),
+  },
+  fridgeShelfScroll: {
+    flex: 1,
+  },
+  fridgeShelfContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 140,
+    paddingTop: 10,
+    gap: 18,
+  },
+  fridgeShelfRow: {
+    position: "relative",
+    paddingBottom: 18,
+  },
+  fridgeShelfLine: {
+    position: "absolute",
+    left: 8,
+    right: 8,
+    bottom: 4,
+    height: 7,
+    borderRadius: 8,
+  },
+  fridgeShelfLip: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    bottom: 7,
+    height: 2,
+    borderRadius: 2,
+  },
+  fridgeItemCard: {
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: 1,
+    gap: 10,
+    overflow: "hidden",
+  },
+  fridgeItemHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  fridgeItemTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  fridgeItemEmoji: {
+    fontSize: 22,
+  },
+  fridgeItemTitle: {
+    ...createBodyText({ fontSize: 16, fontWeight: "700", flex: 1 }),
+  },
+  fridgeCountdownPill: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  fridgeCountdownText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  fridgeItemMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  fridgeItemPrice: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  fridgeActionRow: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  fridgeActionPrimary: {
+    flexGrow: 1,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignItems: "center",
+  },
+  fridgeActionPrimaryText: {
+    ...createCtaText({ fontSize: 13 }),
+  },
+  fridgeActionSecondary: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: "center",
+  },
+  fridgeDoor: {
+    position: "absolute",
+    top: 10,
+    bottom: 10,
+    left: 10,
+    right: 10,
+    borderRadius: 26,
+    borderWidth: 1,
+    padding: 18,
+    justifyContent: "flex-start",
+    backfaceVisibility: "hidden",
+    zIndex: 3,
+    elevation: 8,
+  },
+  fridgeDoorInset: {
+    position: "absolute",
+    top: 12,
+    bottom: 12,
+    left: 12,
+    right: 12,
+    borderRadius: 22,
+    borderWidth: 1,
+    opacity: 0.55,
+  },
+  fridgeDoorContent: {
+    flex: 1,
+    paddingTop: 16,
+    paddingRight: 70,
+    gap: 12,
+  },
+  fridgeDoorTitleLarge: {
+    ...createBodyText({ fontSize: 20, fontWeight: "900", lineHeight: 24 }),
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  fridgeDoorHeroStat: {
+    alignSelf: "stretch",
+    width: "100%",
+    borderWidth: 1,
+    borderRadius: 22,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  fridgeDoorHeroNumber: {
+    fontSize: 52,
+    lineHeight: 58,
+    fontWeight: "900",
+    letterSpacing: -0.5,
+  },
+  fridgeDoorHeroLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
+  },
+  fridgeDoorStatsRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  fridgeDoorStatCard: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  fridgeDoorStatNumber: {
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: "800",
+  },
+  fridgeDoorStatLabel: {
+    marginTop: 6,
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  fridgeDoorHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  fridgeDoorTitle: {
+    ...createBodyText({ fontSize: 22, fontWeight: "800" }),
+  },
+  fridgeDoorBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderWidth: 1,
+  },
+  fridgeDoorBadgeText: {
+    ...createCtaText({ fontSize: 12 }),
+  },
+  fridgeDoorHint: {
+    position: "absolute",
+    right: 92,
+    top: "54%",
+    width: 140,
+    textAlign: "right",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  fridgeHandleWrap: {
+    position: "absolute",
+    right: 16,
+    top: "40%",
+  },
+  fridgeHandle: {
+    width: 52,
+    height: 150,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  fridgeHandleInner: {
+    width: 16,
+    height: 110,
+    borderRadius: 12,
+  },
+  fridgeHandleGlow: {
+    position: "absolute",
+    top: 10,
+    left: 8,
+    right: 8,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "rgba(255,255,255,0.8)",
+  },
+  fridgeDoorShadow: {
+    position: "absolute",
+    right: -6,
+    top: 0,
+    bottom: 0,
+    width: 18,
+    borderRadius: 12,
+    backgroundColor: "rgba(0,0,0,0.12)",
+  },
+  fridgeMist: {
+    position: "absolute",
+    left: 24,
+    right: 24,
+    top: 70,
+    height: 120,
+    borderRadius: 80,
+  },
+  fridgeEmptyWrap: {
+    paddingTop: 40,
+    paddingBottom: 80,
+  },
+  pendingFridgeLocked: {
+    flex: 1,
+  },
+  pendingFridgeLockedContent: {
+    flex: 1,
   },
   cartTotalRow: {
     flexDirection: "row",
@@ -47884,6 +51100,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  tabBadgeDot: {
+    width: 20,
+    paddingHorizontal: 0,
+  },
   tabBadgeFloating: {
     position: "absolute",
     top: -6,
@@ -48989,12 +52209,20 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 12,
   },
+  impulseCategoryChipTall: {
+    paddingVertical: 8,
+    minHeight: 36,
+  },
+  impulseCategoryChipTallCompact: {
+    paddingVertical: 6,
+    minHeight: 34,
+  },
   impulseCategoryChipText: {
-    ...createCtaText({ fontSize: 11 }),
+    ...createCtaText({ fontSize: 10 }),
     textAlign: "center",
   },
   impulseCategoryChipTextCompact: {
-    fontSize: 10,
+    fontSize: 9,
   },
   impulseAlertCard: {
     marginHorizontal: 24,
@@ -49806,13 +53034,14 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   usageStreakRestoreCard: {
-    alignSelf: "stretch",
-    borderRadius: 18,
+    width: "100%",
+    maxWidth: 360,
+    alignSelf: "center",
+    borderRadius: 22,
     borderWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginTop: 6,
-    gap: 6,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    gap: 8,
   },
   usageStreakRestoreTitle: {
     fontSize: 16,
@@ -49924,65 +53153,162 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   saveCelebrationCard: {
-    paddingVertical: 26,
-    paddingHorizontal: 26,
-    borderRadius: 34,
-    alignItems: "center",
+    paddingVertical: 22,
+    paddingHorizontal: 22,
+    borderRadius: 32,
+    alignItems: "stretch",
     width: OVERLAY_CARD_MAX_WIDTH,
     maxWidth: OVERLAY_CARD_MAX_WIDTH,
     borderWidth: 2,
+    overflow: "hidden",
+  },
+  saveCelebrationPrimary: {},
+  saveCelebrationGlow: {
+    position: "absolute",
+    top: -40,
+    left: -30,
+    right: -30,
+    height: 140,
+    borderRadius: 999,
+    opacity: 0.55,
+  },
+  saveCelebrationGlowTop: {
+    top: -90,
+    height: 180,
+    opacity: 0.25,
+  },
+  saveCelebrationContent: {
     gap: 16,
   },
-  saveCelebrationPrimary: {
-    gap: 18,
-  },
-  saveCelebrationCat: {
-    width: 150,
-    height: 150,
-    resizeMode: "contain",
-    marginBottom: 4,
-  },
-  saveCelebrationTitle: {
-    fontSize: 22,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  saveCelebrationSubtitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  saveRewardRow: {
+  saveCelebrationHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 16,
+    gap: 14,
   },
-  saveRewardIcon: {
-    width: 26,
-    height: 26,
+  saveCelebrationMascotWrap: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  saveCelebrationCat: {
+    width: 68,
+    height: 68,
     resizeMode: "contain",
   },
-  saveRewardText: {
-    fontSize: 15,
-    fontWeight: "700",
+  saveCelebrationTitleBlock: {
+    flex: 1,
+    gap: 6,
   },
-  saveQuote: {
+  saveCelebrationTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    textAlign: "left",
+    lineHeight: 24,
+  },
+  saveCelebrationSubtitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "left",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  saveCelebrationStatsRow: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "stretch",
+    justifyContent: "space-between",
+  },
+  saveCelebrationStatCard: {
+    flex: 1,
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  saveCelebrationStatAccent: {
+    width: 24,
+    height: 4,
+    borderRadius: 999,
+  },
+  saveCelebrationStatIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveCelebrationStatIcon: {
+    width: 16,
+    height: 16,
+    resizeMode: "contain",
+  },
+  saveCelebrationStatDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  saveCelebrationStatValue: {
     fontSize: 16,
+    fontWeight: "800",
+    textAlign: "center",
+    fontVariant: ["tabular-nums"],
+  },
+  saveCelebrationStatLabel: {
+    fontSize: 11,
     fontWeight: "600",
     textAlign: "center",
-    opacity: 0.9,
+    lineHeight: 14,
+  },
+  saveQuoteCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignSelf: "stretch",
+  },
+  saveQuote: {
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
+    lineHeight: 18,
+    fontStyle: "italic",
+  },
+  saveCelebrationPrimaryButton: {
+    alignSelf: "stretch",
+    borderRadius: 18,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    marginTop: 2,
+  },
+  saveCelebrationPrimaryButtonText: {
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
   },
   saveProgressSection: {
     width: "100%",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
   saveProgressTrack: {
     width: SAVE_PROGRESS_BAR_WIDTH,
-    height: 12,
+    height: 10,
     borderRadius: 999,
     overflow: "hidden",
   },
@@ -49997,16 +53323,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   saveProgressValue: {
-    fontSize: 22,
-    fontWeight: "900",
+    fontSize: 18,
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
   },
   saveProgressHint: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "600",
   },
   saveCountdownCard: {
     position: "absolute",
-    gap: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    borderRadius: 26,
+    gap: 14,
+    alignItems: "center",
     overflow: "hidden",
   },
   saveCountdownGlow: {
@@ -50017,56 +53348,68 @@ const styles = StyleSheet.create({
     bottom: -40,
     borderRadius: 999,
   },
-  saveCountdownTitle: {
-    fontSize: 18,
+  saveCountdownHeaderRow: {
+    width: "100%",
+    alignItems: "center",
+  },
+  saveCountdownBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  saveCountdownBadgeText: {
+    fontSize: 12,
     fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
     textAlign: "center",
   },
   saveCountdownGoal: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "800",
     textAlign: "center",
   },
   saveCountdownGoalPrefix: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "700",
     textAlign: "center",
     marginTop: 4,
   },
   saveCounterRow: {
     flexDirection: "row",
-    gap: 8,
+    gap: 6,
     alignItems: "center",
     justifyContent: "center",
   },
   saveCounterSeparator: {
     paddingHorizontal: 2,
-    paddingVertical: 6,
+    paddingVertical: 4,
   },
   saveCounterSeparatorText: {
-    fontSize: 28,
-    fontWeight: "800",
+    fontSize: 22,
+    fontWeight: "900",
   },
   saveCounterSpace: {
-    width: 12,
+    width: 10,
   },
   saveCounterDigit: {
-    width: 58,
+    width: 54,
     height: SAVE_COUNTER_DIGIT_HEIGHT,
-    borderRadius: 18,
+    borderRadius: 16,
     padding: 2,
     shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
     elevation: 4,
   },
   saveCounterDigitSurface: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.08)",
+    borderColor: "rgba(0,0,0,0.12)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -50080,8 +53423,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   saveCounterDigitText: {
-    fontSize: 36,
-    fontWeight: "800",
+    fontSize: 32,
+    fontWeight: "900",
     fontVariant: ["tabular-nums"],
     textAlign: "center",
     height: SAVE_COUNTER_DIGIT_HEIGHT,
@@ -50093,7 +53436,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: SAVE_COUNTER_DIGIT_HEIGHT / 2,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.22)",
   },
   saveCounterDigitEdgeBottom: {
     position: "absolute",
@@ -50101,7 +53444,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: SAVE_COUNTER_DIGIT_HEIGHT / 2,
-    backgroundColor: "rgba(0,0,0,0.08)",
+    backgroundColor: "rgba(0,0,0,0.12)",
   },
   saveCounterDigitHighlight: {
     position: "absolute",
@@ -50110,7 +53453,7 @@ const styles = StyleSheet.create({
     right: 6,
     height: 16,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.85)",
+    backgroundColor: "rgba(255,255,255,0.7)",
   },
   saveCounterDigitDivider: {
     position: "absolute",
@@ -50119,7 +53462,21 @@ const styles = StyleSheet.create({
     right: 8,
     height: 2,
     borderRadius: 999,
-    backgroundColor: "rgba(0,0,0,0.18)",
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  saveCountdownButton: {
+    alignSelf: "stretch",
+    borderRadius: 18,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderWidth: 1,
+    marginTop: 2,
+  },
+  saveCountdownButtonText: {
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
   },
   saveRemainingCopy: {
     fontSize: 16,
@@ -51905,14 +55262,21 @@ function ImpulseCategorySelector({
   horizontal = false,
   visibleCount = 5,
   allowEmpty = false,
+  tall = false,
 }) {
   const selected = value && IMPULSE_CATEGORY_DEFS[value] ? value : allowEmpty ? null : DEFAULT_IMPULSE_CATEGORY;
   const categoryOrder = getBudgetCategoryOrder().filter((id) => id !== "savings");
-  const gap = 8;
-  const horizontalPadding = 24;
+  const gap = compact ? 6 : 8;
+  const horizontalPadding = compact ? 16 : 24;
+  const minChipWidth = compact ? 72 : 64;
+  const tallChipStyle = tall
+    ? compact
+      ? styles.impulseCategoryChipTallCompact
+      : styles.impulseCategoryChipTall
+    : null;
   const chipWidth = horizontal
     ? Math.max(
-        64,
+        minChipWidth,
         Math.floor(
           (SCREEN_WIDTH - horizontalPadding * 2 - gap * Math.max(visibleCount - 1, 0)) /
             Math.max(visibleCount, 1)
@@ -51927,6 +55291,7 @@ function ImpulseCategorySelector({
         style={[
           styles.impulseCategoryChip,
           compact && styles.impulseCategoryChipCompact,
+          tallChipStyle,
           horizontal && chipWidth ? { width: chipWidth } : null,
           {
             borderColor: active ? colors.text : colors.border,
@@ -51975,6 +55340,7 @@ function ImpulseCategorySelector({
 
 function CoinEntryModal({
   visible,
+  presetAction = null,
   colors,
   t,
   currency,
@@ -51999,6 +55365,8 @@ function CoinEntryModal({
   const [manualExactLocal, setManualExactLocal] = useState(null);
   const [flightCoinAsset, setFlightCoinAsset] = useState(HEALTH_COIN_TIERS[0]?.asset || null);
   const [flightDirection, setFlightDirection] = useState("save");
+  const preferredAction =
+    presetAction === "save" || presetAction === "spend" ? presetAction : null;
   const [closeTintColor, setCloseTintColor] = useState("transparent");
   const revealAnim = useRef(new Animated.Value(0)).current;
   const cardAnim = useRef(new Animated.Value(0)).current;
@@ -52556,6 +55924,15 @@ function CoinEntryModal({
   const manualPlaceholder = manualIsAmountMode
     ? t("coinEntryManualAmountPlaceholder", { amount: sliderAmountLocal })
     : t("coinEntryManualPlaceholder", { amount: sliderMaxLocal });
+  const customCategoryMap = useMemo(() => {
+    const map = new Map();
+    (customCategories || []).forEach((entry) => {
+      if (entry?.id) {
+        map.set(entry.id, entry);
+      }
+    });
+    return map;
+  }, [customCategories]);
   const categoryOrder = useMemo(() => {
     const baseOrder = [...IMPULSE_CATEGORY_ORDER];
     if (customCategories.length) {
@@ -52759,7 +56136,13 @@ function CoinEntryModal({
               {showActionButtons && (
                 <View style={styles.coinEntryActions}>
                   <TouchableOpacity
-                    style={[styles.coinEntryActionButton, styles.coinEntryActionButtonSpend]}
+                    style={[
+                      styles.coinEntryActionButton,
+                      styles.coinEntryActionButtonSpend,
+                      preferredAction === "spend"
+                        ? { borderWidth: 2, borderColor: colors.text }
+                        : null,
+                    ]}
                     onPress={() => handleAction("spend")}
                     activeOpacity={0.85}
                   >
@@ -52768,7 +56151,13 @@ function CoinEntryModal({
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.coinEntryActionButton, styles.coinEntryActionButtonSave]}
+                    style={[
+                      styles.coinEntryActionButton,
+                      styles.coinEntryActionButtonSave,
+                      preferredAction === "save"
+                        ? { borderWidth: 2, borderColor: colors.text }
+                        : null,
+                    ]}
                     onPress={() => handleAction("save")}
                     activeOpacity={0.85}
                   >
@@ -52794,8 +56183,17 @@ function CoinEntryModal({
                 contentContainerStyle={styles.coinEntryCategoryRow}
               >
                 {categoryOrder.map((categoryId) => {
-                  const def = IMPULSE_CATEGORY_DEFS[categoryId];
+                  const def = IMPULSE_CATEGORY_DEFS[categoryId] || customCategoryMap.get(categoryId);
+                  if (!def) return null;
                   const active = selectedCategory === categoryId;
+                  const emoji = def.emoji || "✨";
+                  const label =
+                    def[categoryLabelKey] ||
+                    def.en ||
+                    def.ru ||
+                    def.es ||
+                    def.fr ||
+                    categoryId;
                   return (
                     <TouchableOpacity
                       key={categoryId}
@@ -52812,7 +56210,7 @@ function CoinEntryModal({
                         setCategoryError(false);
                       }}
                     >
-                      <Text style={styles.coinEntryCategoryEmoji}>{def.emoji}</Text>
+                      <Text style={styles.coinEntryCategoryEmoji}>{emoji}</Text>
                       <Text
                         style={[
                           styles.coinEntryCategoryText,
@@ -52820,7 +56218,7 @@ function CoinEntryModal({
                         ]}
                         numberOfLines={2}
                       >
-                        {def[categoryLabelKey]}
+                        {label}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -53946,12 +57344,14 @@ function LanguageScreen({
                   styles.languageButton,
                   {
                     borderColor: colors.border,
-                    backgroundColor: active ? colors.card : "transparent",
+                    backgroundColor: active ? colors.text : "transparent",
                   },
                 ]}
                 onPress={() => onLanguageChange?.(langKey)}
               >
-                <Text style={{ color: colors.text, fontWeight: "700" }}>{label}</Text>
+                <Text style={{ color: active ? colors.background : colors.text, fontWeight: "700" }}>
+                  {label}
+                </Text>
               </TouchableOpacity>
             );
           })}
@@ -54306,11 +57706,14 @@ const SaveCelebration = forwardRef(
       goalCopy,
       goalPrefix = null,
       coinReward = 0,
+      onPrimaryAction,
+      onCountdownAction,
       playSound,
       mascotHappySource,
       progressStart: progressStartProp = 0,
       progressEnd: progressEndProp = 0,
       remainingActions = 0,
+      autoCountdown = true,
     },
     ref
   ) => {
@@ -54351,6 +57754,15 @@ const SaveCelebration = forwardRef(
     const progressTrack = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(17,7,0,0.08)";
     const counterDigitBackground = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.92)";
     const glowColor = isDarkTheme ? "rgba(255,214,165,0.35)" : "rgba(255,178,120,0.35)";
+    const mascotWrapBg = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.96)";
+    const mascotWrapBorder = colorWithAlpha(progressAccent, isDarkTheme ? 0.45 : 0.25);
+    const statBaseBg = isDarkTheme ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.92)";
+    const statBaseBorder = isDarkTheme ? "rgba(255,255,255,0.16)" : "rgba(28,26,42,0.08)";
+    const statShadowColor = isDarkTheme ? "rgba(0,0,0,0.5)" : "rgba(31,24,59,0.12)";
+    const quoteBg = isDarkTheme ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.9)";
+    const quoteBorder = isDarkTheme ? "rgba(255,255,255,0.14)" : "rgba(28,26,42,0.08)";
+    const coinsAccent = isDarkTheme ? "#63D0FF" : "#4DA3FF";
+    const skipsAccent = isDarkTheme ? "#FFB278" : "#FF8D54";
     const progressValue = useRef(new Animated.Value(progressStart)).current;
     const progressPulse = useRef(new Animated.Value(1)).current;
     const progressHapticTimersRef = useRef([]);
@@ -54361,12 +57773,15 @@ const SaveCelebration = forwardRef(
     const fanfarePlayedRef = useRef(false);
     const introOpacity = useRef(new Animated.Value(1)).current;
     const introScale = useRef(new Animated.Value(0.94)).current;
+    const statIntro = useRef(Array.from({ length: 3 }, () => new Animated.Value(0))).current;
+    const mascotFloat = useRef(new Animated.Value(0)).current;
     const countdownOpacity = useRef(new Animated.Value(0)).current;
     const countdownScale = useRef(new Animated.Value(0.9)).current;
     const countdownZoom = useRef(new Animated.Value(1)).current;
     const glowPulse = useRef(new Animated.Value(0)).current;
     const [countdownActive, setCountdownActive] = useState(false);
     const [countdownReady, setCountdownReady] = useState(false);
+    const [counterSkipToken, setCounterSkipToken] = useState(0);
     const introTimerRef = useRef(null);
     const countdownActiveRef = useRef(false);
     const digitsCompletedRef = useRef(0);
@@ -54378,6 +57793,9 @@ const SaveCelebration = forwardRef(
       if (digitCount <= 0) {
         setCountdownReady(true);
         triggerSuccessHaptic();
+        return;
+      }
+      if (digitsCompletedRef.current >= digitCount) {
         return;
       }
       digitsCompletedRef.current += 1;
@@ -54403,6 +57821,26 @@ const SaveCelebration = forwardRef(
       introEntrance.start();
       return () => introEntrance.stop();
     }, [introScale]);
+    useEffect(() => {
+      const floatAnim = Animated.loop(
+        Animated.sequence([
+          Animated.timing(mascotFloat, {
+            toValue: 1,
+            duration: 1600,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(mascotFloat, {
+            toValue: 0,
+            duration: 1600,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      floatAnim.start();
+      return () => floatAnim.stop();
+    }, [mascotFloat]);
     useEffect(() => {
       progressValue.setValue(progressStart);
       progressPulse.setValue(1);
@@ -54575,14 +58013,32 @@ const SaveCelebration = forwardRef(
       return true;
     }, [clearIntroTimer, countdownOpacity, countdownScale, digitCount, introOpacity, playCounterBurst]);
     useEffect(() => {
+      clearIntroTimer();
       if (!countdownEnabled) return undefined;
+      if (!autoCountdown) return undefined;
+      if (countdownActiveRef.current) return undefined;
+      const diff = Math.max(0, progressEnd - progressStart);
+      const diffScale = Math.min(Math.max(diff, MIN_PROGRESS_PULSE), 0.85);
+      const fillDuration = 640 + diffScale * 1600;
+      const autoDelay = SAVE_PROGRESS_DELAY_MS + 100 + fillDuration + 240;
       introTimerRef.current = setTimeout(() => {
         startCountdownPhase();
-      }, SAVE_INTRO_STAGE_DURATION);
+      }, Math.max(0, autoDelay));
       return () => {
         clearIntroTimer();
       };
-    }, [clearIntroTimer, countdownEnabled, startCountdownPhase]);
+    }, [autoCountdown, clearIntroTimer, countdownEnabled, progressEnd, progressStart, startCountdownPhase]);
+    const skipCountdownAnimation = useCallback(() => {
+      if (!countdownEnabled) return false;
+      if (!countdownActiveRef.current) return false;
+      if (countdownReady) return false;
+      clearCounterSoundTimers();
+      digitsCompletedRef.current = digitCount;
+      setCountdownReady(true);
+      setCounterSkipToken((prev) => prev + 1);
+      triggerSuccessHaptic();
+      return true;
+    }, [clearCounterSoundTimers, countdownEnabled, countdownReady, digitCount]);
     useEffect(() => {
       if (!countdownEnabled) return;
       countdownActiveRef.current = countdownActive;
@@ -54649,24 +58105,95 @@ const SaveCelebration = forwardRef(
     const progressCopy = getSaveProgressCopy(language);
     const countdownTitle = getSaveCountdownTitle(language);
     const rewardLabel = Math.max(0, Number(coinReward) || 0);
+    const savedAmountLabel = typeof payload?.savedAmountLabel === "string" ? payload.savedAmountLabel : "";
+    const saveCount = Math.max(0, Number(payload?.saveCount) || 0);
+    const saveCountLocale = getFormatLocale(language) || "en-US";
+    const savedValue = savedAmountLabel || "0";
+    const coinsValue = rewardLabel > 0 ? `+${rewardLabel}` : "0";
+    const skipsValue = saveCount.toLocaleString(saveCountLocale);
+    const statCards = useMemo(
+      () => [
+        { key: "saved", label: t("saveOverlayStatSaved"), value: savedValue, accent: SAVE_ACTION_COLOR },
+        { key: "coins", label: t("saveOverlayStatCoins"), value: coinsValue, accent: coinsAccent, icon: HEALTH_COIN_TIERS[0].asset },
+        { key: "skips", label: t("saveOverlayStatSkips"), value: skipsValue, accent: skipsAccent },
+      ],
+      [coinsValue, coinsAccent, savedValue, skipsAccent, skipsValue, t]
+    );
+    const mascotTranslateY = mascotFloat.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, -6],
+    });
+    const statAnimatedStyles = useMemo(
+      () =>
+        statIntro.map((value, index) => {
+          const direction = index % 2 === 0 ? 1 : -1;
+          return {
+            opacity: value.interpolate({
+              inputRange: [0, 0.2, 1],
+              outputRange: [0, 0.65, 1],
+            }),
+            transform: [
+              {
+                translateY: value.interpolate({
+                  inputRange: [0, 0.7, 1],
+                  outputRange: [18, -6, 0],
+                }),
+              },
+              {
+                scale: value.interpolate({
+                  inputRange: [0, 0.6, 1],
+                  outputRange: [0.9, 1.05, 1],
+                }),
+              },
+              {
+                rotate: value.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [`${direction * -1.4}deg`, "0deg"],
+                }),
+              },
+            ],
+          };
+        }),
+      [statIntro]
+    );
     const [goalQuoteStart, goalQuoteEnd] = useMemo(() => getGoalQuoteMarks(language), [language]);
     const goalDisplay = goalPrefix && goalCopy ? `${goalQuoteStart}${goalCopy}${goalQuoteEnd}` : goalCopy;
-    const rewardRowBg = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(33,150,243,0.08)";
+    useEffect(() => {
+      statIntro.forEach((value) => value.setValue(0));
+      const animation = Animated.sequence([
+        Animated.delay(180),
+        Animated.stagger(
+          160,
+          statIntro.map((value) =>
+            Animated.spring(value, {
+              toValue: 1,
+              useNativeDriver: true,
+              friction: 6,
+              tension: 140,
+            })
+          )
+        ),
+      ]);
+      animation.start();
+      return () => animation.stop();
+    }, [coinsValue, savedValue, skipsValue, statIntro]);
     useImperativeHandle(
       ref,
       () => ({
         skipToCountdown: () => (countdownEnabled ? startCountdownPhase() : false),
+        skipCountdownAnimation,
         isCountdownActive: () => (countdownEnabled ? countdownActiveRef.current : false),
         isCountdownReady: () => (countdownEnabled ? countdownReady : true),
       }),
-      [countdownEnabled, countdownReady, startCountdownPhase]
+      [countdownEnabled, countdownReady, skipCountdownAnimation, startCountdownPhase]
     );
     return (
-      <View style={styles.saveCelebrationOverlay} pointerEvents="none">
+      <View style={styles.saveCelebrationOverlay} pointerEvents="box-none">
         {hearts.map((heart) => (
           <RewardHeart key={heart.id} {...heart} />
         ))}
         <Animated.View
+          pointerEvents={countdownActive ? "none" : "auto"}
           style={[
             styles.saveCelebrationCard,
             styles.saveCelebrationPrimary,
@@ -54678,46 +58205,125 @@ const SaveCelebration = forwardRef(
             },
           ]}
         >
-          <Image source={happySource} style={styles.saveCelebrationCat} />
-          <Text style={[styles.saveCelebrationTitle, { color: colors.text }]}>
-            {t("saveCelebrateTitlePrefix")}
-          </Text>
-          <Text style={[styles.saveCelebrationSubtitle, { color: colors.text }]}>
-            {payload?.title || ""}
-          </Text>
-          {rewardLabel > 0 && (
-            <View style={[styles.saveRewardRow, { backgroundColor: rewardRowBg }]}>
-              <Image source={HEALTH_COIN_TIERS[0].asset} style={styles.saveRewardIcon} />
-              <Text style={[styles.saveRewardText, { color: colors.text }]}>
-                {t("saveOverlayCoinReward", { amount: rewardLabel })}
-              </Text>
-            </View>
-          )}
-          {celebrationQuote ? (
-            <Text style={[styles.saveQuote, { color: colors.text }]}>{celebrationQuote}</Text>
-          ) : null}
-          {progressEnabled && (
-            <Animated.View style={[styles.saveProgressSection, { transform: [{ scaleY: progressPulse }] }]}>
-              <View style={[styles.saveProgressTrack, { backgroundColor: progressTrack }]}>
-                <Animated.View
-                  style={[
-                    styles.saveProgressFill,
-                    {
-                      width: progressWidth,
-                      backgroundColor: progressAccent,
-                    },
-                  ]}
+          <View pointerEvents="none" style={[styles.saveCelebrationGlow, { backgroundColor: glowColor }]} />
+          <View
+            pointerEvents="none"
+            style={[styles.saveCelebrationGlow, styles.saveCelebrationGlowTop, { backgroundColor: progressAccent }]}
+          />
+          <View style={styles.saveCelebrationContent}>
+            <View style={styles.saveCelebrationHeader}>
+              <View
+                style={[
+                  styles.saveCelebrationMascotWrap,
+                  { backgroundColor: mascotWrapBg, borderColor: mascotWrapBorder },
+                ]}
+              >
+                <Animated.Image
+                  source={happySource}
+                  style={[styles.saveCelebrationCat, { transform: [{ translateY: mascotTranslateY }] }]}
                 />
               </View>
-              <View style={styles.saveProgressLabelRow}>
-                <Text style={[styles.saveProgressValue, { color: colors.text }]}>{percentLabel}%</Text>
-                <Text style={[styles.saveProgressHint, { color: colors.muted }]}>{progressCopy}</Text>
+              <View style={styles.saveCelebrationTitleBlock}>
+                <Text style={[styles.saveCelebrationSubtitle, { color: colors.muted }]}>
+                  {t("saveCelebrateTitlePrefix")}
+                </Text>
+                <Text style={[styles.saveCelebrationTitle, { color: colors.text }]} numberOfLines={2}>
+                  {payload?.title || ""}
+                </Text>
               </View>
-            </Animated.View>
-          )}
+            </View>
+            <View style={styles.saveCelebrationStatsRow}>
+              {statCards.map((stat, index) => (
+                <Animated.View
+                  key={stat.key}
+                  style={[
+                    styles.saveCelebrationStatCard,
+                    {
+                      backgroundColor: statBaseBg,
+                      borderColor: statBaseBorder,
+                      shadowColor: statShadowColor,
+                    },
+                    statAnimatedStyles[index],
+                  ]}
+                >
+                  <View style={[styles.saveCelebrationStatAccent, { backgroundColor: stat.accent }]} />
+                  <View
+                    style={[
+                      styles.saveCelebrationStatIconWrap,
+                      { backgroundColor: colorWithAlpha(stat.accent, isDarkTheme ? 0.25 : 0.18) },
+                    ]}
+                  >
+                    {stat.icon ? (
+                      <Image source={stat.icon} style={styles.saveCelebrationStatIcon} />
+                    ) : (
+                      <View style={[styles.saveCelebrationStatDot, { backgroundColor: stat.accent }]} />
+                    )}
+                  </View>
+                  <Text
+                    style={[styles.saveCelebrationStatValue, { color: colors.text }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                  >
+                    {stat.value}
+                  </Text>
+                  <Text style={[styles.saveCelebrationStatLabel, { color: colors.muted }]} numberOfLines={2}>
+                    {stat.label}
+                  </Text>
+                </Animated.View>
+              ))}
+            </View>
+            {celebrationQuote ? (
+              <View style={[styles.saveQuoteCard, { backgroundColor: quoteBg, borderColor: quoteBorder }]}>
+                <Text style={[styles.saveQuote, { color: colors.text }]}>{celebrationQuote}</Text>
+              </View>
+            ) : null}
+            {progressEnabled && (
+              <Animated.View style={[styles.saveProgressSection, { transform: [{ scaleY: progressPulse }] }]}>
+                <View style={[styles.saveProgressTrack, { backgroundColor: progressTrack }]}>
+                  <Animated.View
+                    style={[
+                      styles.saveProgressFill,
+                      {
+                        width: progressWidth,
+                        backgroundColor: progressAccent,
+                      },
+                    ]}
+                  />
+                </View>
+                <View style={styles.saveProgressLabelRow}>
+                  <Text style={[styles.saveProgressValue, { color: colors.text }]}>{percentLabel}%</Text>
+                  <Text style={[styles.saveProgressHint, { color: colors.muted }]}>{progressCopy}</Text>
+                </View>
+              </Animated.View>
+            )}
+            {onPrimaryAction ? (
+              <TouchableOpacity
+                style={[
+                  styles.saveCelebrationPrimaryButton,
+                  {
+                    backgroundColor: progressAccent,
+                    borderColor: colorWithAlpha(progressAccent, isDarkTheme ? 0.6 : 0.4),
+                  },
+                ]}
+                activeOpacity={0.86}
+                onPress={onPrimaryAction}
+              >
+                <Text
+                  style={[
+                    styles.saveCelebrationPrimaryButtonText,
+                    { color: isDarkTheme ? "#1C1A2A" : "#ffffff" },
+                  ]}
+                >
+                  {t("saveOverlayPrimaryCta")}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </Animated.View>
         {countdownEnabled && (
           <Animated.View
+            pointerEvents={countdownActive ? "auto" : "none"}
             style={[
               styles.saveCelebrationCard,
               styles.saveCountdownCard,
@@ -54739,7 +58345,21 @@ const SaveCelebration = forwardRef(
                 },
               ]}
             />
-            <Text style={[styles.saveCountdownTitle, { color: colors.text }]}>{countdownTitle}</Text>
+            <View style={styles.saveCountdownHeaderRow}>
+              <View
+                style={[
+                  styles.saveCountdownBadge,
+                  {
+                    backgroundColor: colorWithAlpha(progressAccent, isDarkTheme ? 0.22 : 0.16),
+                    borderColor: colorWithAlpha(progressAccent, isDarkTheme ? 0.5 : 0.35),
+                  },
+                ]}
+              >
+                <Text style={[styles.saveCountdownBadgeText, { color: colors.text }]}>
+                  {countdownTitle}
+                </Text>
+              </View>
+            </View>
             <View style={styles.saveCounterRow}>
               {countdownSlots.map((slot, index) => {
                 if (slot.type === "digit") {
@@ -54750,6 +58370,7 @@ const SaveCelebration = forwardRef(
                       digit={slot.value}
                       delay={index * 110}
                       active={countdownActive}
+                      skipToken={counterSkipToken}
                       color={colors.text}
                       backgroundColor={counterDigitBackground}
                       onSpinStart={index === 0 ? handleCounterSpinStart : undefined}
@@ -54775,6 +58396,28 @@ const SaveCelebration = forwardRef(
             ) : goalDisplay ? (
               <Text style={[styles.saveCountdownGoal, { color: colors.text }]}>{goalDisplay}</Text>
             ) : null}
+            {onCountdownAction ? (
+              <TouchableOpacity
+                style={[
+                  styles.saveCountdownButton,
+                  {
+                    backgroundColor: progressAccent,
+                    borderColor: colorWithAlpha(progressAccent, isDarkTheme ? 0.6 : 0.4),
+                  },
+                ]}
+                activeOpacity={0.86}
+                onPress={onCountdownAction}
+              >
+                <Text
+                  style={[
+                    styles.saveCountdownButtonText,
+                    { color: isDarkTheme ? "#1C1A2A" : "#ffffff" },
+                  ]}
+                >
+                  {t("saveOverlayNextCta")}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </Animated.View>
         )}
       </View>
@@ -54786,6 +58429,7 @@ const SaveCounterDigit = React.memo(({
   digit = 0,
   delay = 0,
   active = false,
+  skipToken = 0,
   color = "#000",
   backgroundColor = "rgba(0,0,0,0.05)",
   index = 0,
@@ -54796,8 +58440,11 @@ const SaveCounterDigit = React.memo(({
   const digitScale = useRef(new Animated.Value(0.96)).current;
   const tiltProgress = useRef(new Animated.Value(0)).current;
   const shineProgress = useRef(new Animated.Value(0)).current;
+  const animationRef = useRef(null);
+  const spinStartTimerRef = useRef(null);
+  const completedRef = useRef(false);
   const loops = Math.max(1, SAVE_COUNTER_SPIN_LOOPS + index);
-  const hapticsEnabled = active && index === 0;
+  const hapticsEnabled = active && index === 0 && skipToken === 0;
   const spinHapticTimeoutsRef = useRef([]);
   const spinHapticIntervalRef = useRef(null);
   const clearSpinHaptics = useCallback(() => {
@@ -54842,16 +58489,35 @@ const SaveCounterDigit = React.memo(({
     outputRange: [0.1, 0.7],
   });
   useEffect(() => {
+    if (spinStartTimerRef.current) {
+      clearTimeout(spinStartTimerRef.current);
+      spinStartTimerRef.current = null;
+    }
+    if (animationRef.current) {
+      animationRef.current.stop();
+      animationRef.current = null;
+    }
+    if (skipToken > 0) {
+      clearSpinHaptics();
+      spinProgress.setValue(spinSteps);
+      digitScale.setValue(1);
+      tiltProgress.setValue(0);
+      shineProgress.setValue(0.35);
+      completedRef.current = true;
+      return;
+    }
     spinProgress.setValue(0);
     digitScale.setValue(0.96);
     tiltProgress.setValue(0);
     shineProgress.setValue(0);
+    completedRef.current = false;
     if (!active) return;
     const spinStartTimer = onSpinStart
       ? setTimeout(() => {
           onSpinStart();
         }, Math.max(0, delay))
       : null;
+    spinStartTimerRef.current = spinStartTimer;
     const animation = Animated.sequence([
       Animated.delay(delay),
       Animated.timing(spinProgress, {
@@ -54905,24 +58571,32 @@ const SaveCounterDigit = React.memo(({
         useNativeDriver: true,
       }),
     ]);
+    animationRef.current = animation;
     animation.start(({ finished }) => {
-      if (finished) {
+      if (finished && !completedRef.current) {
+        completedRef.current = true;
         onSpinComplete?.();
       }
     });
     return () => {
-      if (spinStartTimer !== null) {
-        clearTimeout(spinStartTimer);
+      if (spinStartTimerRef.current) {
+        clearTimeout(spinStartTimerRef.current);
+        spinStartTimerRef.current = null;
       }
-      animation.stop();
+      if (animationRef.current) {
+        animationRef.current.stop();
+        animationRef.current = null;
+      }
     };
   }, [
     active,
+    clearSpinHaptics,
     delay,
     digitScale,
     onSpinComplete,
     onSpinStart,
     shineProgress,
+    skipToken,
     spinProgress,
     spinSteps,
     tiltProgress,
@@ -55687,8 +59361,6 @@ const UsageStreakCelebration = ({
   t,
   language,
   mascotHappySource,
-  healthPoints = 0,
-  onRestore = null,
 }) => {
   const data = payload && typeof payload === "object" ? payload : {};
   const rawCount = Number(data.count);
@@ -55698,7 +59370,6 @@ const UsageStreakCelebration = ({
   const lostCount = Math.max(0, Number(data.lostCount) || 0, previousCount);
   const displayCount = missed ? (previousCount > 0 ? previousCount : lostCount || count) : count;
   const timestamp = Number.isFinite(data.timestamp) ? data.timestamp : Date.now();
-  const todayKey = getDayKey(Date.now());
   const fallbackDayKey = getDayKey(timestamp);
   const missedDayKey =
     typeof data.missedDayKey === "string" && data.missedDayKey
@@ -55763,41 +59434,6 @@ const UsageStreakCelebration = ({
   const counterDigitBorder = isDarkTheme ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)";
   const counterDividerColor = isDarkTheme ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.12)";
   const counterTextColor = missed ? (isDarkTheme ? "#E5E7EB" : "#4B5563") : accent;
-  const missedDays = Number.isFinite(data.missedDays)
-    ? Math.max(0, Math.floor(Number(data.missedDays) || 0))
-    : getMissedUsageStreakDays(streakEndDayKey, todayKey);
-  const shouldOfferRestore = missed && lostCount > 0 && missedDays > 0;
-  const costBlueCount = shouldOfferRestore ? missedDays * STREAK_RESTORE_BLUE_COINS_PER_DAY : 0;
-  const costValue = shouldOfferRestore ? missedDays * STREAK_RESTORE_COST_PER_DAY : 0;
-  const canRestore = shouldOfferRestore && healthPoints >= costValue && typeof onRestore === "function";
-  const labels = HEALTH_COIN_LABELS[language] || HEALTH_COIN_LABELS.en;
-  const costLabel = costBlueCount ? `${costBlueCount} ${labels.blue || "blue coins"}` : "";
-  const hasLoggedToday = dayKey === todayKey;
-  const restorePulse = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    if (!shouldOfferRestore) return undefined;
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(restorePulse, {
-          toValue: 1.1,
-          duration: 420,
-          useNativeDriver: true,
-        }),
-        Animated.timing(restorePulse, {
-          toValue: 1,
-          duration: 420,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [restorePulse, shouldOfferRestore]);
-  const handleRestorePress = useCallback(() => {
-    if (!shouldOfferRestore) return;
-    if (!canRestore || typeof onRestore !== "function") return;
-    onRestore({ lostCount, missedDays, streakEndDayKey, hasLoggedToday });
-  }, [canRestore, hasLoggedToday, lostCount, missedDays, onRestore, shouldOfferRestore, streakEndDayKey]);
   const activeWeekIndices = useMemo(() => {
     const indices = new Set();
     const streakLength = Math.max(1, Number(displayCount) || 1);
@@ -56104,73 +59740,129 @@ const UsageStreakCelebration = ({
             );
           })}
         </View>
-        {shouldOfferRestore && (
-          <View
-            style={[
-              styles.usageStreakRestoreCard,
-              { backgroundColor: bubbleBg, borderColor: bubbleBorder },
-            ]}
-          >
-            <Text style={[styles.usageStreakRestoreTitle, { color: colors.text }]}>
-              {t("usageStreakRestoreTitle")}
-            </Text>
-            <Text style={[styles.usageStreakRestoreSubtitle, { color: colors.muted }]}>
-              {t("usageStreakRestoreSubtitle", { days: missedDays, cost: costLabel })}
-            </Text>
-            <View style={styles.usageStreakRestoreCostRow}>
-              {BLUE_HEALTH_COIN_ASSET ? (
-                <Animated.Image
-                  source={BLUE_HEALTH_COIN_ASSET}
-                  style={[
-                    styles.usageStreakRestoreCoin,
-                    { transform: [{ scale: restorePulse }] },
-                  ]}
-                />
-              ) : (
-                <Animated.Text
-                  style={[
-                    styles.usageStreakRestoreCoinFallback,
-                    { transform: [{ scale: restorePulse }] },
-                  ]}
-                >
-                  🟦
-                </Animated.Text>
-              )}
-              <Text style={[styles.usageStreakRestoreCostText, { color: colors.text }]}>
-                {costLabel}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={[
-                styles.usageStreakRestoreButton,
-                { backgroundColor: colors.text },
-                !canRestore && styles.usageStreakRestoreButtonDisabled,
-              ]}
-              onPress={handleRestorePress}
-              disabled={!canRestore}
-              activeOpacity={0.85}
-            >
-              <Text
-                style={[
-                  styles.usageStreakRestoreButtonText,
-                  { color: colors.background },
-                  !canRestore && styles.usageStreakRestoreButtonTextDisabled,
-                ]}
-              >
-                {t("usageStreakRestoreButton")}
-              </Text>
-            </TouchableOpacity>
-            {!canRestore && (
-              <Text style={[styles.usageStreakRestoreNeed, { color: colors.muted }]}>
-                {t("usageStreakRestoreNeedCoins", { cost: costLabel })}
-              </Text>
-            )}
-          </View>
-        )}
         <Image source={happySource} style={styles.usageStreakCat} resizeMode="contain" />
         <Text style={[styles.usageStreakHint, { color: colors.muted }]}>
           {t("usageStreakSubtitle")}
         </Text>
+      </View>
+    </View>
+  );
+};
+
+const UsageStreakRestorePrompt = ({
+  colors,
+  payload,
+  t,
+  language,
+  healthPoints = 0,
+  onRestore = null,
+}) => {
+  const {
+    shouldOfferRestore,
+    canRestore,
+    costLabel,
+    missedDays,
+    lostCount,
+    streakEndDayKey,
+    hasLoggedToday,
+  } = resolveUsageStreakRestoreDetails(payload, { healthPoints, language });
+  const isDarkTheme = colors.background === THEMES.dark.background;
+  const bubbleBg = isDarkTheme ? "rgba(9,10,14,0.92)" : "#FFFFFF";
+  const bubbleBorder = isDarkTheme ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.08)";
+  const restorePulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!shouldOfferRestore) return undefined;
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(restorePulse, {
+          toValue: 1.1,
+          duration: 420,
+          useNativeDriver: true,
+        }),
+        Animated.timing(restorePulse, {
+          toValue: 1,
+          duration: 420,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [restorePulse, shouldOfferRestore]);
+  const handleRestorePress = useCallback(() => {
+    if (!shouldOfferRestore) return;
+    if (!canRestore || typeof onRestore !== "function") return;
+    onRestore({ lostCount, missedDays, streakEndDayKey, hasLoggedToday });
+  }, [canRestore, hasLoggedToday, lostCount, missedDays, onRestore, shouldOfferRestore, streakEndDayKey]);
+  if (!shouldOfferRestore) return null;
+  return (
+    <View style={styles.usageStreakOverlay}>
+      <View
+        style={[
+          styles.usageStreakBackdrop,
+          { backgroundColor: isDarkTheme ? "rgba(0,0,0,0.86)" : "rgba(8,8,14,0.55)" },
+        ]}
+      />
+      <View
+        style={[
+          styles.usageStreakRestoreCard,
+          { backgroundColor: bubbleBg, borderColor: bubbleBorder },
+        ]}
+      >
+        <Text style={[styles.usageStreakRestoreTitle, { color: colors.text }]}>
+          {t("usageStreakRestoreTitle")}
+        </Text>
+        <Text style={[styles.usageStreakRestoreSubtitle, { color: colors.muted }]}>
+          {t("usageStreakRestoreSubtitle", { days: missedDays, cost: costLabel })}
+        </Text>
+        <View style={styles.usageStreakRestoreCostRow}>
+          {BLUE_HEALTH_COIN_ASSET ? (
+            <Animated.Image
+              source={BLUE_HEALTH_COIN_ASSET}
+              style={[
+                styles.usageStreakRestoreCoin,
+                { transform: [{ scale: restorePulse }] },
+              ]}
+            />
+          ) : (
+            <Animated.Text
+              style={[
+                styles.usageStreakRestoreCoinFallback,
+                { transform: [{ scale: restorePulse }] },
+              ]}
+            >
+              🟦
+            </Animated.Text>
+          )}
+          <Text style={[styles.usageStreakRestoreCostText, { color: colors.text }]}>
+            {costLabel}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={[
+            styles.usageStreakRestoreButton,
+            { backgroundColor: colors.text },
+            !canRestore && styles.usageStreakRestoreButtonDisabled,
+          ]}
+          onPress={handleRestorePress}
+          disabled={!canRestore}
+          activeOpacity={0.85}
+        >
+          <Text
+            style={[
+              styles.usageStreakRestoreButtonText,
+              { color: colors.background },
+              !canRestore && styles.usageStreakRestoreButtonTextDisabled,
+            ]}
+          >
+            {t("usageStreakRestoreButton")}
+          </Text>
+        </TouchableOpacity>
+        {!canRestore && (
+          <Text style={[styles.usageStreakRestoreNeed, { color: colors.muted }]}>
+            {t("usageStreakRestoreNeedCoins", { cost: costLabel })}
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -56467,6 +60159,7 @@ const RewardHeart = ({ left, delay, duration }) => {
 
   return (
     <AnimatedText
+      pointerEvents="none"
       style={[
         styles.rewardHeart,
         {
