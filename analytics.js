@@ -75,6 +75,7 @@ const EVENT_DEFINITIONS = {
     "action",
     "missed",
   ],
+  usage_streak_weekly_reward: ["current_streak", "reward_blue", "reward_value", "week_index"],
   usage_streak_restored: ["missed_days", "cost_blue", "cost_value", "current_streak"],
   streak_goal_prompt_shown: ["streak_count"],
   streak_goal_prompt_dismissed: ["day_key"],
