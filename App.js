@@ -2511,7 +2511,8 @@ const MoodGradientBlock = ({ colors: palette, style, children }) => {
   );
 };
 
-const CoinRainOverlay = React.memo(({ dropCount = 14 }) => {
+const CoinRainOverlay = React.memo(({ dropCount = 14, asset = null }) => {
+  const coinAsset = asset || HEALTH_COIN_TIERS[0].asset;
   const drops = useRef(
     Array.from({ length: dropCount }).map((_, idx) => {
       const anim = new Animated.Value(Math.random());
@@ -2574,7 +2575,7 @@ const CoinRainOverlay = React.memo(({ dropCount = 14 }) => {
         return (
           <Animated.Image
             key={key}
-            source={HEALTH_COIN_TIERS[0].asset}
+            source={coinAsset}
             style={{
               position: "absolute",
               left: 0,
@@ -6924,7 +6925,17 @@ const INITIAL_STREAK_PLEDGE = {
   lastPromptDayKey: null,
   introSeen: false,
 };
-const STREAK_PLEDGE_BLUE_COINS_PER_DAY = 10;
+const STREAK_PLEDGE_BLUE_COINS_PER_DAY = 1;
+const USAGE_STREAK_WEEKLY_BONUS_DAYS = 7;
+const USAGE_STREAK_WEEKLY_BONUS_MULTIPLIER = 2;
+const USAGE_STREAK_WEEKLY_BONUS_BLUE_COINS = Math.max(
+  0,
+  Math.round(
+    USAGE_STREAK_WEEKLY_BONUS_DAYS *
+      STREAK_PLEDGE_BLUE_COINS_PER_DAY *
+      USAGE_STREAK_WEEKLY_BONUS_MULTIPLIER
+  )
+);
 const STREAK_PLEDGE_OPTIONS = [
   { id: "week", days: 7, labelKey: "streakPledgeOptionWeek" },
   { id: "two_weeks", days: 14, labelKey: "streakPledgeOptionTwoWeeks" },
@@ -6966,6 +6977,15 @@ const computeStreakPledgeReward = (days) => {
   const blueCoins = Math.max(0, Math.round(normalizedDays * STREAK_PLEDGE_BLUE_COINS_PER_DAY));
   const rewardValue = blueCoins * BLUE_HEALTH_COIN_VALUE;
   return { blueCoins, rewardValue };
+};
+const computeUsageStreakWeeklyBonus = (streakCount) => {
+  const normalized = Math.max(0, Number(streakCount) || 0);
+  if (!normalized || normalized % USAGE_STREAK_WEEKLY_BONUS_DAYS !== 0) return null;
+  const rewardBlueCoins = Math.max(0, USAGE_STREAK_WEEKLY_BONUS_BLUE_COINS);
+  if (!rewardBlueCoins) return null;
+  const rewardValue = rewardBlueCoins * BLUE_HEALTH_COIN_VALUE;
+  const weekIndex = Math.max(1, Math.floor(normalized / USAGE_STREAK_WEEKLY_BONUS_DAYS));
+  return { days: normalized, weekIndex, rewardBlueCoins, rewardValue };
 };
 
 let activeCurrency = DEFAULT_PROFILE.currency;
@@ -9239,6 +9259,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const [expanded, setExpanded] = useState(false);
   const heroCardRef = useRef(null);
   const heroAnchorRef = useRef(null);
+  const dailyRewardClaimPendingRef = useRef(false);
   const [isDailyRewardModalVisible, setDailyRewardModalVisible] = useState(false);
   const measureHeroAnchor = useCallback(() => {
     if (!onAnchorChange) return;
@@ -9419,15 +9440,38 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
     setDailyRewardModalState,
     triggerHaptic,
   ]);
+  const runDailyRewardClaim = useCallback(() => {
+    try {
+      const result = onDailyRewardClaim?.();
+      Promise.resolve(result)
+        .catch(() => {})
+        .finally(() => {
+          dailyRewardClaimPendingRef.current = false;
+        });
+    } catch (error) {
+      dailyRewardClaimPendingRef.current = false;
+    }
+  }, [onDailyRewardClaim]);
+  const handleDailyRewardModalDismiss = useCallback(() => {
+    if (!dailyRewardClaimPendingRef.current) return;
+    runDailyRewardClaim();
+  }, [runDailyRewardClaim]);
   const handleDailyRewardCollect = useCallback(() => {
     if (!dailyRewardReady) {
       setDailyRewardModalState(false);
       return;
     }
+    if (dailyRewardClaimPendingRef.current) {
+      setDailyRewardModalState(false);
+      return;
+    }
     triggerSuccessHaptic();
+    dailyRewardClaimPendingRef.current = true;
     setDailyRewardModalState(false);
-    onDailyRewardClaim?.();
-  }, [dailyRewardReady, onDailyRewardClaim, setDailyRewardModalState, triggerSuccessHaptic]);
+    if (Platform.OS !== "ios") {
+      runDailyRewardClaim();
+    }
+  }, [dailyRewardReady, runDailyRewardClaim, setDailyRewardModalState, triggerSuccessHaptic]);
   useImperativeHandle(
     ref,
     () => ({
@@ -9786,6 +9830,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
         animationType="fade"
         statusBarTranslucent
         onRequestClose={() => setDailyRewardModalState(false)}
+        onDismiss={handleDailyRewardModalDismiss}
       >
         <TouchableWithoutFeedback onPress={() => setDailyRewardModalState(false)}>
           <View
@@ -15887,6 +15932,20 @@ const ProgressScreen = React.memo(function ProgressScreen({
     const total = Number(dailyChallenge?.rewardTotal) || base + bonus;
     return formatHealthRewardLabel(total, language);
   }, [dailyChallenge?.baseReward, dailyChallenge?.rewardBonus, dailyChallenge?.rewardTotal, language]);
+  const progressChallengeList = useMemo(() => {
+    const list = Array.isArray(challenges) ? challenges.filter(Boolean) : [];
+    return list
+      .map((entry, index) => ({ entry, index }))
+      .sort((a, b) => {
+        const aClaimable = a.entry?.canClaim ? 0 : 1;
+        const bClaimable = b.entry?.canClaim ? 0 : 1;
+        if (aClaimable !== bClaimable) return aClaimable - bClaimable;
+        const base = compareChallengesForDisplay(a.entry, b.entry);
+        if (base !== 0) return base;
+        return a.index - b.index;
+      })
+      .map((item) => item.entry);
+  }, [challenges]);
 
   const resolvedHistoryEvents = useMemo(
     () => (Array.isArray(historyEvents) ? historyEvents : []),
@@ -17654,11 +17713,24 @@ const ProgressScreen = React.memo(function ProgressScreen({
             {t("progressGoalRemaining", { amount: goalRemainingLabel })}
           </Text>
           <View style={styles.progressGoalRingRow}>
-            <ProgressRing
-              progress={goalProgress}
-              trackColor={isDarkTheme ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)"}
-              progressColor={colors.text}
-            />
+            <View style={styles.progressGoalRingWrap}>
+              <ProgressRing
+                size={76}
+                progress={goalProgress}
+                trackColor={isDarkTheme ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)"}
+                progressColor={colors.text}
+              />
+              <View style={styles.progressGoalRingInner} pointerEvents="none">
+                <Text
+                  style={[styles.progressGoalTarget, { color: colors.text }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}
+                >
+                  {goalTargetLabel}
+                </Text>
+              </View>
+            </View>
             <View style={styles.progressGoalRingText}>
               <Text
                 style={[styles.progressGoalPercent, { color: colors.text }]}
@@ -17667,14 +17739,6 @@ const ProgressScreen = React.memo(function ProgressScreen({
                 minimumFontScale={0.7}
               >
                 {`${Math.round(goalProgress * 100)}%`}
-              </Text>
-              <Text
-                style={[styles.progressGoalTarget, { color: colors.muted }]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.7}
-              >
-                {t("progressGoalTarget", { amount: goalTargetLabel })}
               </Text>
             </View>
           </View>
@@ -18235,8 +18299,8 @@ const ProgressScreen = React.memo(function ProgressScreen({
 
       <View style={{ gap: 16 }}>
         {renderDailyChallengeWidget()}
-        {challenges.map(renderChallengeCard)}
-        {!challenges.length && !dailyChallenge && (
+        {progressChallengeList.map(renderChallengeCard)}
+        {!progressChallengeList.length && !dailyChallenge && (
           <Text style={[styles.historyEmpty, { color: colors.muted }]}>
             {t("rewardsEmpty")}
           </Text>
@@ -28027,6 +28091,12 @@ function AppContent() {
     } else if (overlay.type === "daily_reward") {
       scheduleSound(180, "daily_reward");
       scheduleSound(300, "coin");
+    } else if (overlay.type === "usage_streak_weekly_reward") {
+      scheduleSound(160, "reward");
+      scheduleSound(320, "coin");
+    } else if (overlay.type === "streak_pledge_reward") {
+      scheduleSound(160, "reward");
+      scheduleSound(320, "coin");
     } else if (overlay.type === "health") {
       scheduleSound(140, "coin");
     } else if (overlay.type === "goal_complete") {
@@ -28857,6 +28927,28 @@ function AppContent() {
       ),
     [impulseTracker.events]
   );
+  const quickCategoryRecency = useMemo(() => {
+    const map = new Map();
+    resolvedHistoryEvents.forEach((entry) => {
+      if (!entry?.timestamp) return;
+      if (
+        entry.kind !== "spend" &&
+        entry.kind !== "refuse_spend" &&
+        entry.kind !== "pending_to_decline"
+      ) {
+        return;
+      }
+      const categoryId = entry?.meta?.category;
+      if (!categoryId || !IMPULSE_CATEGORY_DEFS[categoryId]) return;
+      const timestamp = Number(entry.timestamp) || 0;
+      if (!Number.isFinite(timestamp)) return;
+      const prev = map.get(categoryId) || 0;
+      if (timestamp > prev) {
+        map.set(categoryId, timestamp);
+      }
+    });
+    return map;
+  }, [resolvedHistoryEvents]);
   const impulseInsights = useMemo(() => {
     const raw = buildImpulseInsights(impulseEventsForInsights);
     if (!raw) return raw;
@@ -29214,7 +29306,7 @@ function AppContent() {
     clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
     logEvent("daily_challenge_accepted", { template_id: dailyChallenge.templateId });
   }, [clearQueuedModal, dailyChallenge.templateId, dailyChallengeUnlocked, logEvent]);
-  const handleDailyChallengeLater = useCallback(() => {
+  const handleDailyChallengeDismiss = useCallback(() => {
     if (!dailyChallengeUnlocked) return;
     dailyChallengeOfferDeferredRef.current = true;
     setDailyChallengePromptGate(false);
@@ -29238,11 +29330,16 @@ function AppContent() {
     },
     [clearQueuedModal, dailyChallengeUnlocked]
   );
-  const handleDailyChallengeSkip = useCallback(() => {
+  const handleDailyChallengeLater = useCallback(() => {
+    if (!dailyChallengeUnlocked) return;
     Alert.alert(
       t("dailyChallengeSkipTitle"),
       t("dailyChallengeSkipMessage"),
       [
+        {
+          text: t("dailyChallengeSkipOption1"),
+          onPress: () => deferDailyChallenge(1),
+        },
         {
           text: t("dailyChallengeSkipOption3"),
           onPress: () => deferDailyChallenge(3),
@@ -29258,7 +29355,7 @@ function AppContent() {
         { text: t("dailyChallengeSkipCancel"), style: "cancel" },
       ]
     );
-  }, [deferDailyChallenge, t]);
+  }, [dailyChallengeUnlocked, deferDailyChallenge, t]);
   const handleDailyChallengeCompleteClose = useCallback(() => {
     setDailyChallenge((prev) => {
       if (!prev || prev.status !== DAILY_CHALLENGE_STATUS.COMPLETED) return prev;
@@ -29288,14 +29385,6 @@ function AppContent() {
     enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE_COMPLETE);
     if (rewardBonus > 0) {
       setHealthPoints((coins) => coins + rewardBonus);
-      if (queueCelebrationOverlayRef.current) {
-        queueCelebrationOverlayRef.current("health", {
-          amount: rewardBonus,
-          reason: t("dailyChallengeRewardReason", {
-            temptation: dailyChallengeDisplayTitle,
-          }),
-        });
-      }
       playSound("reward");
     }
     sendImmediateNotification({
@@ -34771,6 +34860,16 @@ useEffect(() => {
       lastDate: dayKey,
       lostCount: missed ? lossCount : 0,
     };
+    const weeklyReward = computeUsageStreakWeeklyBonus(nextSnapshot.current);
+    if (weeklyReward) {
+      setHealthPoints((prevPoints) => prevPoints + weeklyReward.rewardValue);
+      logEvent("usage_streak_weekly_reward", {
+        current_streak: nextSnapshot.current,
+        reward_blue: weeklyReward.rewardBlueCoins,
+        reward_value: weeklyReward.rewardValue,
+        week_index: weeklyReward.weekIndex,
+      });
+    }
     usageStreakRef.current = nextSnapshot;
     setUsageStreak(nextSnapshot);
     usageStreakBackfillRef.current = false;
@@ -34781,19 +34880,23 @@ useEffect(() => {
         ? getDayKey((parseDayKey(streakEndDayKey)?.getTime() || timestamp) + DAY_MS)
         : null;
     const missedDays = missed ? getMissedUsageStreakDays(streakEndDayKey, dayKey) : 0;
+    const streakPayload = {
+      count: nextSnapshot.current,
+      dayKey: nextSnapshot.lastDate,
+      streakEndDayKey,
+      timestamp,
+      missed,
+      previousCount,
+      missedDayKey,
+      missedDays,
+      lostCount: lossCount,
+    };
+    if (weeklyReward) {
+      streakPayload.weeklyReward = weeklyReward;
+    }
     pendingUsageStreakRef.current = {
       source: normalizedAction,
-      payload: {
-        count: nextSnapshot.current,
-        dayKey: nextSnapshot.lastDate,
-        streakEndDayKey,
-        timestamp,
-        missed,
-        previousCount,
-        missedDayKey,
-        missedDays,
-        lostCount: lossCount,
-      },
+      payload: streakPayload,
     };
     logEvent("usage_streak_logged", {
       current_streak: nextSnapshot.current,
@@ -34803,7 +34906,7 @@ useEffect(() => {
       action: normalizedAction,
       missed: missed ? 1 : 0,
     });
-  }, [logEvent]);
+  }, [logEvent, setHealthPoints]);
 
   const promptIncomeSavingsTransfer = useCallback(
     (amountUSD = 0) => {
@@ -38996,6 +39099,8 @@ useEffect(() => {
         ? null
         : next.type === "usage_streak"
         ? null
+        : next.type === "usage_streak_weekly_reward"
+        ? null
         : next.type === "usage_streak_restore"
         ? null
         : next.type === "streak_pledge"
@@ -39128,6 +39233,12 @@ useEffect(() => {
     const usageStreakRestoreCandidate =
       overlay?.type === "usage_streak" ? getUsageStreakRestoreBase(overlay?.message) : null;
     const shouldQueueUsageStreakRestore = !!usageStreakRestoreCandidate?.shouldOfferRestore;
+    const weeklyRewardPayload =
+      overlay?.type === "usage_streak" &&
+      overlay?.message?.weeklyReward &&
+      Number(overlay.message.weeklyReward.rewardBlueCoins) > 0
+        ? overlay.message.weeklyReward
+        : null;
     const hasQueuedCelebrationFollowUp =
       overlay?.type === "save" &&
       overlayQueueRef.current.some((entry) => ["level", "health", "cart"].includes(entry?.type));
@@ -39142,6 +39253,20 @@ useEffect(() => {
       overlayQueueRef.current = [];
     }
     setOverlay(null);
+    if (weeklyRewardPayload) {
+      const alreadyQueued = overlayQueueRef.current.some(
+        (entry) => entry?.type === "usage_streak_weekly_reward"
+      );
+      if (!alreadyQueued) {
+        overlayQueueRef.current.unshift({
+          type: "usage_streak_weekly_reward",
+          message: weeklyRewardPayload,
+          duration: null,
+          clearQueueOnDismiss: false,
+          force: false,
+        });
+      }
+    }
     if (shouldQueueUsageStreakRestore) {
       const alreadyQueued = overlayQueueRef.current.some(
         (entry) => entry?.type === "usage_streak_restore"
@@ -41216,7 +41341,7 @@ useEffect(() => {
         )}
         {dailyChallengePromptVisible && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
-            <TouchableWithoutFeedback onPress={handleDailyChallengeLater}>
+            <TouchableWithoutFeedback onPress={handleDailyChallengeDismiss}>
               <View style={styles.dailyChallengeBackdrop}>
                 <TouchableWithoutFeedback onPress={() => {}}>
                   <View
@@ -41523,14 +41648,6 @@ useEffect(() => {
                           </Text>
                         </TouchableOpacity>
                       </View>
-                      <Pressable
-                        style={styles.dailyChallengeSkipButton}
-                        onPress={handleDailyChallengeSkip}
-                      >
-                        <Text style={[styles.dailyChallengeSkipText, { color: colors.muted }]}>
-                          {t("dailyChallengeSkip")}
-                        </Text>
-                      </Pressable>
                     </Animated.View>
                   </View>
                 </TouchableWithoutFeedback>
@@ -42114,6 +42231,7 @@ useEffect(() => {
           language={language}
           maxAmountUSD={coinSliderMaxUSD}
           categoryStats={impulseInsights?.categories}
+          categoryRecency={quickCategoryRecency}
           customCategories={customCategories}
           onUpdateMaxUSD={handleCoinSliderMaxUpdate}
           onSubmit={handleCoinEntrySubmit}
@@ -43356,6 +43474,22 @@ useEffect(() => {
                   t={t}
                   language={language}
                   mascotHappySource={tamagotchiAnimations.happy}
+                />
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+        {overlay?.type === "usage_streak_weekly_reward" && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <TouchableWithoutFeedback onPress={dismissOverlay}>
+              <View style={styles.overlayFullScreen}>
+                <UsageStreakWeeklyRewardCelebration
+                  colors={colors}
+                  payload={overlay.message}
+                  t={t}
+                  language={language}
+                  mascotHappySource={tamagotchiAnimations.happy}
+                  onClose={dismissOverlay}
                 />
               </View>
             </TouchableWithoutFeedback>
@@ -48183,17 +48317,33 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 4,
   },
+  progressGoalRingWrap: {
+    width: 76,
+    height: 76,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  progressGoalRingInner: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
   progressGoalRingText: {
     gap: 2,
     flex: 1,
     minWidth: 0,
+    minHeight: 76,
+    justifyContent: "center",
   },
   progressGoalPercent: {
     fontSize: 18,
     fontWeight: "800",
   },
   progressGoalTarget: {
-    ...createSecondaryText({ fontSize: 11 }),
+    ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
   },
   progressCoinCard: {
     flex: 1,
@@ -52386,40 +52536,101 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 24,
   },
   healthBackdrop: {
     ...StyleSheet.absoluteFillObject,
   },
-  healthHeartWrap: {
-    width: 220,
-    height: 220,
-    borderRadius: 110,
+  healthCoinStage: {
+    width: 190,
+    height: 190,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 20,
+    marginBottom: 6,
+  },
+  healthHalo: {
+    position: "absolute",
+    width: 180,
+    height: 180,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  healthHaloSvg: {
+    width: 180,
+    height: 180,
+  },
+  healthCoinWrap: {
+    width: 118,
+    height: 118,
+    borderRadius: 59,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.24,
+    shadowOffset: { width: 0, height: 12 },
+    shadowRadius: 20,
+    elevation: 10,
+    overflow: "hidden",
   },
   healthCoinImage: {
-    width: 140,
-    height: 140,
+    width: 76,
+    height: 76,
     resizeMode: "contain",
+  },
+  healthCoinShine: {
+    position: "absolute",
+    width: 52,
+    height: 140,
+    top: -30,
+    left: -38,
+    borderRadius: 30,
+    backgroundColor: "rgba(255,255,255,0.35)",
   },
   healthCard: {
     paddingHorizontal: 24,
-    paddingVertical: 24,
-    borderRadius: 30,
+    paddingVertical: 22,
+    borderRadius: 28,
     borderWidth: 1,
     alignItems: "center",
     width: OVERLAY_CARD_MAX_WIDTH,
     maxWidth: OVERLAY_CARD_MAX_WIDTH,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.16,
+    shadowOffset: { width: 0, height: 14 },
+    shadowRadius: 24,
+    elevation: 9,
+  },
+  healthCardGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  healthCardOrb: {
+    position: "absolute",
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    top: -90,
+    right: -70,
+    opacity: 0.6,
+  },
+  healthCardOrbSecondary: {
+    width: 180,
+    height: 180,
+    left: -80,
+    bottom: -80,
+  },
+  healthCardContent: {
+    alignItems: "center",
+    gap: 8,
   },
   healthTitle: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "800",
     textAlign: "center",
   },
   healthSubtitle: {
-    fontSize: 16,
-    marginTop: 8,
+    fontSize: 15,
+    lineHeight: 21,
     textAlign: "center",
   },
   goalCelebrateOverlay: {
@@ -52810,36 +53021,101 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   streakPledgeRewardCard: {
-    width: "86%",
+    width: "88%",
     maxWidth: 360,
-    borderRadius: 28,
+    borderRadius: 30,
     borderWidth: 1,
-    padding: 22,
+    padding: 24,
     alignItems: "center",
     gap: 10,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowOffset: { width: 0, height: 16 },
+    shadowRadius: 26,
+    elevation: 10,
+  },
+  streakPledgeRewardGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  streakPledgeRewardOrb: {
+    position: "absolute",
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    top: -90,
+    right: -70,
+    opacity: 0.6,
   },
   streakPledgeRewardHero: {
     alignItems: "center",
-    gap: 6,
+    gap: 12,
   },
-  streakPledgeRewardCoinWrap: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
+  streakPledgeRewardCoinStage: {
+    width: 150,
+    height: 150,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 6,
+  },
+  streakPledgeRewardHalo: {
+    position: "absolute",
+    width: 150,
+    height: 150,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  streakPledgeRewardHaloSvg: {
+    width: 150,
+    height: 150,
+  },
+  streakPledgeRewardCoinWrap: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.24,
+    shadowOffset: { width: 0, height: 12 },
+    shadowRadius: 20,
+    elevation: 10,
+    overflow: "hidden",
   },
   streakPledgeRewardCoin: {
-    width: 48,
-    height: 48,
+    width: 52,
+    height: 52,
     resizeMode: "contain",
   },
+  streakPledgeRewardCoinShine: {
+    position: "absolute",
+    width: 50,
+    height: 120,
+    top: -20,
+    left: -30,
+    borderRadius: 30,
+    backgroundColor: "rgba(255,255,255,0.35)",
+  },
   streakPledgeRewardCoinFallback: {
-    fontSize: 32,
+    fontSize: 34,
+  },
+  streakPledgeRewardAmountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   streakPledgeRewardAmount: {
-    ...createCtaText({ fontSize: 28 }),
+    ...createCtaText({ fontSize: 30 }),
+  },
+  streakPledgeRewardAmountPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  streakPledgeRewardAmountPillText: {
+    ...createBodyText({ fontSize: 12, lineHeight: 16, fontWeight: "700" }),
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
   streakPledgeRewardLabel: {
     ...createBodyText({ fontSize: 13, lineHeight: 18 }),
@@ -52848,6 +53124,7 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.blockTitle,
     fontSize: 22,
     textAlign: "center",
+    marginTop: 2,
   },
   streakPledgeRewardSubtitle: {
     ...createBodyText({ fontSize: 14, lineHeight: 20 }),
@@ -52855,12 +53132,190 @@ const styles = StyleSheet.create({
   },
   streakPledgeRewardButton: {
     borderWidth: 1,
-    borderRadius: 18,
+    borderRadius: 20,
     paddingHorizontal: 24,
-    paddingVertical: 10,
-    marginTop: 6,
+    paddingVertical: 11,
+    marginTop: 8,
   },
   streakPledgeRewardButtonText: {
+    ...createCtaText({ fontSize: 14 }),
+  },
+  usageStreakWeeklyOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  usageStreakWeeklyBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  usageStreakWeeklyCard: {
+    width: "92%",
+    maxWidth: 392,
+    borderRadius: 30,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: "center",
+    gap: 6,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 16 },
+    shadowRadius: 26,
+    elevation: 10,
+  },
+  usageStreakWeeklyCardGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  usageStreakWeeklyOrb: {
+    position: "absolute",
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    top: -90,
+    right: -70,
+    opacity: 0.6,
+  },
+  usageStreakWeeklyOrbSecondary: {
+    width: 200,
+    height: 200,
+    left: -80,
+    bottom: -90,
+  },
+  usageStreakWeeklyBadgeRow: {
+    alignSelf: "stretch",
+    alignItems: "flex-start",
+  },
+  usageStreakWeeklyBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  usageStreakWeeklyBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  usageStreakWeeklyHero: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginTop: 6,
+  },
+  usageStreakWeeklyCoinStage: {
+    width: 150,
+    height: 150,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  usageStreakWeeklyHalo: {
+    position: "absolute",
+    width: 150,
+    height: 150,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  usageStreakWeeklyHaloSvg: {
+    width: 150,
+    height: 150,
+  },
+  usageStreakWeeklyCoinWrap: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.24,
+    shadowOffset: { width: 0, height: 12 },
+    shadowRadius: 20,
+    elevation: 10,
+    overflow: "hidden",
+  },
+  usageStreakWeeklyCoin: {
+    width: 52,
+    height: 52,
+    resizeMode: "contain",
+  },
+  usageStreakWeeklyCoinShine: {
+    position: "absolute",
+    width: 50,
+    height: 120,
+    top: -20,
+    left: -30,
+    borderRadius: 30,
+    backgroundColor: "rgba(255,255,255,0.35)",
+  },
+  usageStreakWeeklyCoinFallback: {
+    fontSize: 34,
+  },
+  usageStreakWeeklyAmount: {
+    ...createCtaText({ fontSize: 30 }),
+  },
+  usageStreakWeeklyAmountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 2,
+  },
+  usageStreakWeeklyAmountPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  usageStreakWeeklyAmountPillText: {
+    ...createBodyText({ fontSize: 12, lineHeight: 16, fontWeight: "700" }),
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  usageStreakWeeklyLabel: {
+    ...createBodyText({ fontSize: 13, lineHeight: 18 }),
+  },
+  usageStreakWeeklyRewardLabel: {
+    ...createBodyText({ fontSize: 12, lineHeight: 16 }),
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  usageStreakWeeklyCat: {
+    width: 86,
+    height: 76,
+  },
+  usageStreakWeeklyTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 22,
+    textAlign: "center",
+    marginTop: 2,
+  },
+  usageStreakWeeklySubtitle: {
+    ...createBodyText({ fontSize: 14, lineHeight: 20 }),
+    textAlign: "center",
+  },
+  usageStreakWeeklyThanks: {
+    ...createBodyText({ fontSize: 14, lineHeight: 20, fontWeight: "700" }),
+    textAlign: "center",
+    marginTop: 4,
+  },
+  usageStreakWeeklyMotivation: {
+    ...createBodyText({ fontSize: 13, lineHeight: 18 }),
+    textAlign: "center",
+  },
+  usageStreakWeeklyButton: {
+    marginTop: 8,
+    borderRadius: 20,
+    paddingHorizontal: 26,
+    paddingVertical: 11,
+    shadowColor: "#000",
+    shadowOpacity: 0.14,
+    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 18,
+    elevation: 6,
+  },
+  usageStreakWeeklyButtonText: {
     ...createCtaText({ fontSize: 14 }),
   },
   usageStreakOverlay: {
@@ -55347,6 +55802,7 @@ function CoinEntryModal({
   language,
   maxAmountUSD = DEFAULT_COIN_SLIDER_MAX_USD,
   categoryStats,
+  categoryRecency,
   customCategories = [],
   onUpdateMaxUSD,
   onSubmit,
@@ -55943,20 +56399,30 @@ function CoinEntryModal({
         }
       });
     }
-    if (!categoryStats) return baseOrder;
     const baseIndex = new Map(baseOrder.map((id, index) => [id, index]));
+    const recencyMap = categoryRecency instanceof Map ? categoryRecency : null;
+    const hasRecency = recencyMap && recencyMap.size > 0;
+    const hasStats = !!categoryStats;
+    if (!hasRecency && !hasStats) return baseOrder;
     return baseOrder.sort((a, b) => {
-      const aStats = categoryStats[a] || {};
-      const bStats = categoryStats[b] || {};
-      const aSpend = Number(aStats.spend) || 0;
-      const bSpend = Number(bStats.spend) || 0;
-      if (bSpend !== aSpend) return bSpend - aSpend;
-      const aTotal = aSpend + (Number(aStats.save) || 0);
-      const bTotal = bSpend + (Number(bStats.save) || 0);
-      if (bTotal !== aTotal) return bTotal - aTotal;
+      if (hasRecency) {
+        const aRecent = recencyMap.get(a) || 0;
+        const bRecent = recencyMap.get(b) || 0;
+        if (bRecent !== aRecent) return bRecent - aRecent;
+      }
+      if (hasStats) {
+        const aStats = categoryStats[a] || {};
+        const bStats = categoryStats[b] || {};
+        const aSpend = Number(aStats.spend) || 0;
+        const bSpend = Number(bStats.spend) || 0;
+        if (bSpend !== aSpend) return bSpend - aSpend;
+        const aTotal = aSpend + (Number(aStats.save) || 0);
+        const bTotal = bSpend + (Number(bStats.save) || 0);
+        if (bTotal !== aTotal) return bTotal - aTotal;
+      }
       return (baseIndex.get(a) ?? 0) - (baseIndex.get(b) ?? 0);
     });
-  }, [categoryStats, customCategories]);
+  }, [categoryRecency, categoryStats, customCategories]);
   const handleAction = useCallback(
     (direction) => {
       if (tossingRef.current || closingRef.current || dismissingRef.current) return;
@@ -58765,25 +59231,6 @@ const RewardCelebration = ({ colors, message, t, mascotHappySource }) => {
 };
 
 const HealthCelebration = ({ colors, payload, t, language }) => {
-  const scale = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(scale, {
-          toValue: 1.2,
-          duration: 460,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scale, {
-          toValue: 1,
-          duration: 460,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [scale]);
   const data = payload && typeof payload === "object" ? payload : { reason: payload };
   const amount =
     typeof data.amount === "number" && Number.isFinite(data.amount) ? data.amount : HEALTH_PER_REWARD;
@@ -58791,33 +59238,271 @@ const HealthCelebration = ({ colors, payload, t, language }) => {
     typeof data.coinValue === "number" && Number.isFinite(data.coinValue) ? data.coinValue : amount;
   const baseSubtitle = t("healthCelebrateSubtitle");
   const reason = data.reason || baseSubtitle;
-  const isDarkTheme = colors.background === THEMES.dark.background;
-  const backdropColor = isDarkTheme ? "rgba(0,0,0,0.85)" : "rgba(6,9,19,0.35)";
-  const cardBg = isDarkTheme ? lightenColor(colors.card, 0.15) : colors.card;
-  const cardBorder = isDarkTheme ? lightenColor(colors.border, 0.25) : "rgba(0,0,0,0.1)";
-  const heartBackground = isDarkTheme ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.8)";
   const rewardCoinTier = getHealthCoinTierForAmount(coinValue);
   const titleAmount = formatHealthRewardLabel(coinValue, language);
+  const isDarkTheme = colors.background === THEMES.dark.background;
+  const tierId = rewardCoinTier?.id || "blue";
+  const accentMap = {
+    green: "#43D18B",
+    blue: "#2F9BEB",
+    orange: "#FFB257",
+    red: "#FF6A6A",
+    pink: "#FF7AC8",
+  };
+  const accent = accentMap[tierId] || accentMap.blue;
+  const accentSoft = colorWithAlpha(accent, isDarkTheme ? 0.35 : 0.22);
+  const accentText = isDarkTheme ? "#ECF7FF" : "#103252";
+  const cardBg = isDarkTheme ? "rgba(9,16,28,0.96)" : "#F7FAFF";
+  const cardBorder = colorWithAlpha(accent, isDarkTheme ? 0.32 : 0.2);
+  const backdropColor = isDarkTheme ? "rgba(3,6,12,0.86)" : "rgba(5,18,34,0.45)";
+  const gradientStart = isDarkTheme ? "#0C2036" : blendHexColors("#FFFFFF", accent, 0.12);
+  const gradientEnd = isDarkTheme ? "#142C45" : "#FFFFFF";
+  const gradientId = useRef(`health_reward_${Math.random().toString(36).slice(2, 8)}`).current;
+  const ringId = useRef(`health_ring_${Math.random().toString(36).slice(2, 8)}`).current;
+  const entryOpacity = useRef(new Animated.Value(0)).current;
+  const entryTranslate = useRef(new Animated.Value(18)).current;
+  const cardScale = useRef(new Animated.Value(0.96)).current;
+  const coinScale = useRef(new Animated.Value(0.9)).current;
+  const coinTilt = useRef(new Animated.Value(0)).current;
+  const haloSpin = useRef(new Animated.Value(0)).current;
+  const glowPulse = useRef(new Animated.Value(0)).current;
+  const shineSweep = useRef(new Animated.Value(-1)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(entryOpacity, {
+        toValue: 1,
+        duration: 360,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(entryTranslate, {
+        toValue: 0,
+        duration: 360,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.spring(cardScale, {
+        toValue: 1,
+        friction: 6,
+        tension: 80,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(coinScale, {
+          toValue: 1.03,
+          duration: 520,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(coinScale, {
+          toValue: 0.95,
+          duration: 520,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const tilt = Animated.loop(
+      Animated.sequence([
+        Animated.timing(coinTilt, {
+          toValue: 1,
+          duration: 1200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(coinTilt, {
+          toValue: 0,
+          duration: 1200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const spin = Animated.loop(
+      Animated.timing(haloSpin, {
+        toValue: 1,
+        duration: 7600,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    const glow = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowPulse, {
+          toValue: 1,
+          duration: 1400,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(glowPulse, {
+          toValue: 0,
+          duration: 1400,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const shine = Animated.loop(
+      Animated.sequence([
+        Animated.delay(420),
+        Animated.timing(shineSweep, {
+          toValue: 1,
+          duration: 920,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(shineSweep, {
+          toValue: -1,
+          duration: 0,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    pulse.start();
+    tilt.start();
+    spin.start();
+    glow.start();
+    shine.start();
+
+    return () => {
+      pulse.stop();
+      tilt.stop();
+      spin.stop();
+      glow.stop();
+      shine.stop();
+    };
+  }, [
+    cardScale,
+    coinScale,
+    coinTilt,
+    entryOpacity,
+    entryTranslate,
+    glowPulse,
+    haloSpin,
+    shineSweep,
+  ]);
+
+  const haloRotation = haloSpin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+  const coinRotation = coinTilt.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["-6deg", "6deg"],
+  });
+  const glowScale = glowPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.96, 1.08],
+  });
+  const glowOpacity = glowPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.4, 0.85],
+  });
+  const shineTranslate = shineSweep.interpolate({
+    inputRange: [-1, 1],
+    outputRange: [-70, 70],
+  });
+
   return (
     <View style={styles.healthOverlay}>
       <View style={[styles.healthBackdrop, { backgroundColor: backdropColor }]} />
+      <CoinRainOverlay dropCount={12} asset={rewardCoinTier?.asset || HEALTH_COIN_TIERS[0].asset} />
       <Animated.View
         style={[
-          styles.healthHeartWrap,
-          { transform: [{ scale }], backgroundColor: heartBackground },
+          styles.healthCoinStage,
+          { opacity: entryOpacity, transform: [{ translateY: entryTranslate }] },
         ]}
       >
-        <Image source={rewardCoinTier.asset} style={styles.healthCoinImage} />
+        <Animated.View
+          style={[
+            styles.healthHalo,
+            { opacity: glowOpacity, transform: [{ rotate: haloRotation }] },
+          ]}
+        >
+          <Svg style={styles.healthHaloSvg} width="180" height="180">
+            <Defs>
+              <SvgLinearGradient id={ringId} x1="0" y1="0" x2="1" y2="1">
+                <SvgStop offset="0" stopColor={accent} stopOpacity={0.95} />
+                <SvgStop offset="1" stopColor={accentText} stopOpacity={0.45} />
+              </SvgLinearGradient>
+            </Defs>
+            <SvgCircle cx="90" cy="90" r="62" stroke={`url(#${ringId})`} strokeWidth="3" fill="none" />
+            <SvgCircle
+              cx="90"
+              cy="90"
+              r="48"
+              stroke={`url(#${ringId})`}
+              strokeWidth="1.5"
+              opacity="0.6"
+              fill="none"
+            />
+          </Svg>
+        </Animated.View>
+        <Animated.View
+          style={[
+            styles.healthCoinWrap,
+            { backgroundColor: accent, transform: [{ scale: coinScale }, { rotate: coinRotation }] },
+          ]}
+        >
+          <Image source={rewardCoinTier.asset} style={styles.healthCoinImage} />
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.healthCoinShine,
+              { transform: [{ translateX: shineTranslate }, { rotate: "18deg" }] },
+            ]}
+          />
+        </Animated.View>
       </Animated.View>
-      <View style={[styles.healthCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
-        <Text style={[styles.healthTitle, { color: colors.text }]}>
-          {t("healthCelebrateTitle", { amount: titleAmount })}
-        </Text>
-        <Text style={[styles.healthSubtitle, { color: colors.muted }]}>{reason}</Text>
-        {reason !== baseSubtitle && (
-          <Text style={[styles.healthSubtitle, { color: colors.muted }]}>{baseSubtitle}</Text>
-        )}
-      </View>
+      <Animated.View
+        style={[
+          styles.healthCard,
+          { backgroundColor: cardBg, borderColor: cardBorder },
+          { opacity: entryOpacity, transform: [{ translateY: entryTranslate }, { scale: cardScale }] },
+        ]}
+      >
+        <Svg
+          style={styles.healthCardGradient}
+          width="100%"
+          height="100%"
+          preserveAspectRatio="xMidYMid slice"
+        >
+          <Defs>
+            <SvgLinearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+              <SvgStop offset="0" stopColor={gradientStart} stopOpacity={0.95} />
+              <SvgStop offset="1" stopColor={gradientEnd} stopOpacity={0.9} />
+            </SvgLinearGradient>
+          </Defs>
+          <SvgRect x="0" y="0" width="100%" height="100%" rx="28" ry="28" fill={`url(#${gradientId})`} />
+        </Svg>
+        <Animated.View
+          style={[
+            styles.healthCardOrb,
+            { backgroundColor: accentSoft, opacity: glowOpacity, transform: [{ scale: glowScale }] },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.healthCardOrb,
+            styles.healthCardOrbSecondary,
+            { backgroundColor: accentSoft, opacity: glowOpacity, transform: [{ scale: glowScale }] },
+          ]}
+        />
+        <View style={styles.healthCardContent}>
+          <Text style={[styles.healthTitle, { color: colors.text }]}>
+            {t("healthCelebrateTitle", { amount: titleAmount })}
+          </Text>
+          <Text style={[styles.healthSubtitle, { color: colors.muted }]}>{reason}</Text>
+          {reason !== baseSubtitle && (
+            <Text style={[styles.healthSubtitle, { color: colors.muted }]}>{baseSubtitle}</Text>
+          )}
+        </View>
+      </Animated.View>
     </View>
   );
 };
@@ -59171,6 +59856,364 @@ const DailyRewardCelebration = ({ colors, payload, t }) => {
   );
 };
 
+const UsageStreakWeeklyRewardCelebration = ({
+  colors,
+  payload,
+  t,
+  language,
+  mascotHappySource,
+  onClose,
+}) => {
+  const data = payload && typeof payload === "object" ? payload : {};
+  const days = Math.max(0, Number(data.days) || Number(data.count) || 0);
+  const weekIndex = Math.max(1, Math.floor(days / USAGE_STREAK_WEEKLY_BONUS_DAYS));
+  let rewardBlueCoins = Math.max(0, Number(data.rewardBlueCoins) || Number(data.blueCoins) || 0);
+  if (!rewardBlueCoins && days) {
+    const computed = computeUsageStreakWeeklyBonus(days);
+    rewardBlueCoins = Math.max(0, Number(computed?.rewardBlueCoins) || 0);
+  }
+  const labels = HEALTH_COIN_LABELS[language] || HEALTH_COIN_LABELS.en;
+  const blueLabel = labels.blue || "blue coins";
+  const happySource = mascotHappySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
+  const isDarkTheme = colors.background === THEMES.dark.background;
+  const cardBg = isDarkTheme ? "rgba(9,16,28,0.96)" : "#F6FBFF";
+  const cardBorder = isDarkTheme ? "rgba(255,255,255,0.12)" : "rgba(32,86,140,0.16)";
+  const accent = isDarkTheme ? "#6FD3FF" : "#2F9BEB";
+  const accentSoft = isDarkTheme ? "rgba(72,164,255,0.35)" : "rgba(74,160,255,0.22)";
+  const accentText = isDarkTheme ? "#E8F7FF" : "#0B3A66";
+  const badgeBg = isDarkTheme ? "rgba(111,211,255,0.18)" : "rgba(47,155,235,0.12)";
+  const backdropColor = isDarkTheme ? "rgba(3,6,12,0.86)" : "rgba(4,20,38,0.55)";
+  const gradientId = useRef(`weekly_reward_${Math.random().toString(36).slice(2, 8)}`).current;
+  const ringId = useRef(`weekly_ring_${Math.random().toString(36).slice(2, 8)}`).current;
+  const entryOpacity = useRef(new Animated.Value(0)).current;
+  const entryTranslate = useRef(new Animated.Value(18)).current;
+  const cardScale = useRef(new Animated.Value(0.95)).current;
+  const coinScale = useRef(new Animated.Value(0.92)).current;
+  const coinTilt = useRef(new Animated.Value(0)).current;
+  const haloSpin = useRef(new Animated.Value(0)).current;
+  const glowPulse = useRef(new Animated.Value(0)).current;
+  const catFloat = useRef(new Animated.Value(0)).current;
+  const shineSweep = useRef(new Animated.Value(-1)).current;
+  const didHapticRef = useRef(false);
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(entryOpacity, {
+        toValue: 1,
+        duration: 360,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(entryTranslate, {
+        toValue: 0,
+        duration: 360,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.spring(cardScale, {
+        toValue: 1,
+        friction: 6,
+        tension: 80,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    const coinPulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(coinScale, {
+          toValue: 1.02,
+          duration: 520,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(coinScale, {
+          toValue: 0.96,
+          duration: 520,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const tilt = Animated.loop(
+      Animated.sequence([
+        Animated.timing(coinTilt, {
+          toValue: 1,
+          duration: 1200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(coinTilt, {
+          toValue: 0,
+          duration: 1200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const spin = Animated.loop(
+      Animated.timing(haloSpin, {
+        toValue: 1,
+        duration: 7200,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    const glow = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowPulse, {
+          toValue: 1,
+          duration: 1400,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(glowPulse, {
+          toValue: 0,
+          duration: 1400,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const float = Animated.loop(
+      Animated.sequence([
+        Animated.timing(catFloat, {
+          toValue: -6,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(catFloat, {
+          toValue: 6,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const shine = Animated.loop(
+      Animated.sequence([
+        Animated.delay(420),
+        Animated.timing(shineSweep, {
+          toValue: 1,
+          duration: 920,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(shineSweep, {
+          toValue: -1,
+          duration: 0,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    coinPulse.start();
+    tilt.start();
+    spin.start();
+    glow.start();
+    float.start();
+    shine.start();
+
+    return () => {
+      coinPulse.stop();
+      tilt.stop();
+      spin.stop();
+      glow.stop();
+      float.stop();
+      shine.stop();
+    };
+  }, [
+    cardScale,
+    catFloat,
+    coinScale,
+    coinTilt,
+    entryOpacity,
+    entryTranslate,
+    glowPulse,
+    haloSpin,
+    shineSweep,
+  ]);
+
+  useEffect(() => {
+    if (didHapticRef.current) return undefined;
+    didHapticRef.current = true;
+    triggerSuccessHaptic();
+    const timerId = setTimeout(() => {
+      triggerCoinRewardHaptics();
+    }, 140);
+    return () => clearTimeout(timerId);
+  }, []);
+
+  const haloRotation = haloSpin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+  const coinRotation = coinTilt.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["-6deg", "6deg"],
+  });
+  const glowScale = glowPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.96, 1.08],
+  });
+  const glowOpacity = glowPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.45, 0.85],
+  });
+  const shineTranslate = shineSweep.interpolate({
+    inputRange: [-1, 1],
+    outputRange: [-70, 70],
+  });
+  const handleClose = useCallback(() => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    onClose?.();
+  }, [onClose]);
+
+  return (
+    <View style={styles.usageStreakWeeklyOverlay}>
+      <View style={[styles.usageStreakWeeklyBackdrop, { backgroundColor: backdropColor }]} />
+      <CoinRainOverlay dropCount={16} asset={BLUE_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[0].asset} />
+      <Animated.View
+        style={[
+          styles.usageStreakWeeklyCard,
+          { backgroundColor: cardBg, borderColor: cardBorder },
+          { opacity: entryOpacity, transform: [{ translateY: entryTranslate }, { scale: cardScale }] },
+        ]}
+      >
+        <Svg
+          style={styles.usageStreakWeeklyCardGradient}
+          width="100%"
+          height="100%"
+          preserveAspectRatio="xMidYMid slice"
+        >
+          <Defs>
+            <SvgLinearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+              <SvgStop
+                offset="0"
+                stopColor={isDarkTheme ? "#0C223A" : "#E1F0FF"}
+                stopOpacity={0.95}
+              />
+              <SvgStop
+                offset="1"
+                stopColor={isDarkTheme ? "#132B48" : "#FFFFFF"}
+                stopOpacity={0.9}
+              />
+            </SvgLinearGradient>
+          </Defs>
+          <SvgRect x="0" y="0" width="100%" height="100%" rx="30" ry="30" fill={`url(#${gradientId})`} />
+        </Svg>
+        <Animated.View
+          style={[
+            styles.usageStreakWeeklyOrb,
+            { backgroundColor: accentSoft, opacity: glowOpacity, transform: [{ scale: glowScale }] },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.usageStreakWeeklyOrb,
+            styles.usageStreakWeeklyOrbSecondary,
+            { backgroundColor: accentSoft, opacity: glowOpacity, transform: [{ scale: glowScale }] },
+          ]}
+        />
+        <View style={styles.usageStreakWeeklyBadgeRow}>
+          <View style={[styles.usageStreakWeeklyBadge, { backgroundColor: badgeBg, borderColor: cardBorder }]}>
+            <Text style={[styles.usageStreakWeeklyBadgeText, { color: accentText }]}>
+              {t("usageStreakWeeklyBadge", { week: weekIndex, days: USAGE_STREAK_WEEKLY_BONUS_DAYS })}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.usageStreakWeeklyHero}>
+          <View style={styles.usageStreakWeeklyCoinStage}>
+            <Animated.View
+              style={[
+                styles.usageStreakWeeklyHalo,
+                { opacity: glowOpacity, transform: [{ rotate: haloRotation }] },
+              ]}
+            >
+              <Svg style={styles.usageStreakWeeklyHaloSvg} width="150" height="150">
+                <Defs>
+                  <SvgLinearGradient id={ringId} x1="0" y1="0" x2="1" y2="1">
+                    <SvgStop offset="0" stopColor={accent} stopOpacity={0.95} />
+                    <SvgStop offset="1" stopColor={accentText} stopOpacity={0.45} />
+                  </SvgLinearGradient>
+                </Defs>
+                <SvgCircle cx="75" cy="75" r="54" stroke={`url(#${ringId})`} strokeWidth="3" fill="none" />
+                <SvgCircle
+                  cx="75"
+                  cy="75"
+                  r="42"
+                  stroke={`url(#${ringId})`}
+                  strokeWidth="1.5"
+                  opacity="0.6"
+                  fill="none"
+                />
+              </Svg>
+            </Animated.View>
+            <Animated.View
+              style={[
+                styles.usageStreakWeeklyCoinWrap,
+                { backgroundColor: accent, transform: [{ scale: coinScale }, { rotate: coinRotation }] },
+              ]}
+            >
+              {BLUE_HEALTH_COIN_ASSET ? (
+                <Image source={BLUE_HEALTH_COIN_ASSET} style={styles.usageStreakWeeklyCoin} />
+              ) : (
+                <Text style={styles.usageStreakWeeklyCoinFallback}>🟦</Text>
+              )}
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.usageStreakWeeklyCoinShine,
+                  { transform: [{ translateX: shineTranslate }, { rotate: "18deg" }] },
+                ]}
+              />
+            </Animated.View>
+          </View>
+          <Animated.Image
+            source={happySource}
+            style={[styles.usageStreakWeeklyCat, { transform: [{ translateY: catFloat }] }]}
+            resizeMode="contain"
+          />
+        </View>
+        <View style={styles.usageStreakWeeklyAmountRow}>
+          <Text style={[styles.usageStreakWeeklyAmount, { color: colors.text }]}>+{rewardBlueCoins}</Text>
+          <View style={[styles.usageStreakWeeklyAmountPill, { backgroundColor: badgeBg, borderColor: cardBorder }]}>
+            <Text style={[styles.usageStreakWeeklyAmountPillText, { color: accentText }]}>
+              {blueLabel}
+            </Text>
+          </View>
+        </View>
+        <Text style={[styles.usageStreakWeeklyRewardLabel, { color: colors.muted }]}>
+          {t("usageStreakWeeklyRewardLabel")}
+        </Text>
+        <Text style={[styles.usageStreakWeeklyTitle, { color: colors.text }]}>
+          {t("usageStreakWeeklyTitle", { week: weekIndex, days })}
+        </Text>
+        {days ? (
+          <Text style={[styles.usageStreakWeeklySubtitle, { color: colors.muted }]}>
+            {t("usageStreakWeeklySubtitle", { days })}
+          </Text>
+        ) : null}
+        <Text style={[styles.usageStreakWeeklyThanks, { color: colors.text }]}>
+          {t("usageStreakWeeklyThanks")}
+        </Text>
+        <Text style={[styles.usageStreakWeeklyMotivation, { color: colors.muted }]}>
+          {t("usageStreakWeeklyMotivation")}
+        </Text>
+        <TouchableOpacity
+          style={[styles.usageStreakWeeklyButton, { backgroundColor: colors.text }]}
+          onPress={handleClose}
+          activeOpacity={0.9}
+        >
+          <Text style={[styles.usageStreakWeeklyButtonText, { color: colors.background }]}>
+            {t("usageStreakWeeklyButton")}
+          </Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </View>
+  );
+};
+
 const StreakPledgeRewardCelebration = ({ colors, payload, t, language, onClose }) => {
   const data = payload && typeof payload === "object" ? payload : {};
   const targetDays = Math.max(0, Number(data.targetDays) || Number(data.days) || 0);
@@ -59182,32 +60225,264 @@ const StreakPledgeRewardCelebration = ({ colors, payload, t, language, onClose }
   const labels = HEALTH_COIN_LABELS[language] || HEALTH_COIN_LABELS.en;
   const blueLabel = labels.blue || "blue coins";
   const isDarkTheme = colors.background === THEMES.dark.background;
-  const cardBg = isDarkTheme ? lightenColor(colors.card, 0.12) : "#FFF7F0";
-  const cardBorder = isDarkTheme ? lightenColor(colors.border, 0.3) : "rgba(0,0,0,0.08)";
+  const cardBg = isDarkTheme ? "rgba(9,18,30,0.96)" : "#F4F9FF";
+  const cardBorder = isDarkTheme ? "rgba(255,255,255,0.12)" : "rgba(30,82,138,0.16)";
   const accent = isDarkTheme ? "#7ED9FF" : "#2D9CDB";
+  const accentSoft = isDarkTheme ? "rgba(97,196,255,0.35)" : "rgba(62,145,235,0.22)";
+  const accentText = isDarkTheme ? "#E8F7FF" : "#0B3A66";
+  const badgeBg = isDarkTheme ? "rgba(126,217,255,0.18)" : "rgba(45,156,219,0.12)";
+  const backdropColor = isDarkTheme ? "rgba(3,7,12,0.86)" : "rgba(6,24,46,0.55)";
+  const gradientId = useRef(`pledge_reward_${Math.random().toString(36).slice(2, 8)}`).current;
+  const ringId = useRef(`pledge_ring_${Math.random().toString(36).slice(2, 8)}`).current;
+  const entryOpacity = useRef(new Animated.Value(0)).current;
+  const entryTranslate = useRef(new Animated.Value(16)).current;
+  const cardScale = useRef(new Animated.Value(0.96)).current;
+  const coinScale = useRef(new Animated.Value(0.92)).current;
+  const coinTilt = useRef(new Animated.Value(0)).current;
+  const haloSpin = useRef(new Animated.Value(0)).current;
+  const glowPulse = useRef(new Animated.Value(0)).current;
+  const shineSweep = useRef(new Animated.Value(-1)).current;
+  const didHapticRef = useRef(false);
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(entryOpacity, {
+        toValue: 1,
+        duration: 360,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(entryTranslate, {
+        toValue: 0,
+        duration: 360,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.spring(cardScale, {
+        toValue: 1,
+        friction: 6,
+        tension: 80,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    const coinPulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(coinScale, {
+          toValue: 1.02,
+          duration: 520,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(coinScale, {
+          toValue: 0.96,
+          duration: 520,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const tilt = Animated.loop(
+      Animated.sequence([
+        Animated.timing(coinTilt, {
+          toValue: 1,
+          duration: 1200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(coinTilt, {
+          toValue: 0,
+          duration: 1200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const spin = Animated.loop(
+      Animated.timing(haloSpin, {
+        toValue: 1,
+        duration: 7400,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    const glow = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowPulse, {
+          toValue: 1,
+          duration: 1400,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(glowPulse, {
+          toValue: 0,
+          duration: 1400,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const shine = Animated.loop(
+      Animated.sequence([
+        Animated.delay(420),
+        Animated.timing(shineSweep, {
+          toValue: 1,
+          duration: 920,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(shineSweep, {
+          toValue: -1,
+          duration: 0,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    coinPulse.start();
+    tilt.start();
+    spin.start();
+    glow.start();
+    shine.start();
+
+    return () => {
+      coinPulse.stop();
+      tilt.stop();
+      spin.stop();
+      glow.stop();
+      shine.stop();
+    };
+  }, [cardScale, coinScale, coinTilt, entryOpacity, entryTranslate, glowPulse, haloSpin, shineSweep]);
+
+  useEffect(() => {
+    if (didHapticRef.current) return undefined;
+    didHapticRef.current = true;
+    triggerSuccessHaptic();
+    const timerId = setTimeout(() => {
+      triggerCoinRewardHaptics();
+    }, 140);
+    return () => clearTimeout(timerId);
+  }, []);
+
+  const haloRotation = haloSpin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+  const coinRotation = coinTilt.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["-6deg", "6deg"],
+  });
+  const glowScale = glowPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.96, 1.08],
+  });
+  const glowOpacity = glowPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.45, 0.85],
+  });
+  const shineTranslate = shineSweep.interpolate({
+    inputRange: [-1, 1],
+    outputRange: [-70, 70],
+  });
+  const handleClose = useCallback(() => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    onClose?.();
+  }, [onClose]);
+
   return (
     <View style={styles.streakPledgeRewardOverlay}>
-      <View
+      <View style={[styles.streakPledgeRewardBackdrop, { backgroundColor: backdropColor }]} />
+      <CoinRainOverlay dropCount={12} asset={BLUE_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[0].asset} />
+      <Animated.View
         style={[
-          styles.streakPledgeRewardBackdrop,
-          { backgroundColor: isDarkTheme ? "rgba(0,0,0,0.82)" : "rgba(255,244,233,0.9)" },
+          styles.streakPledgeRewardCard,
+          { backgroundColor: cardBg, borderColor: cardBorder },
+          { opacity: entryOpacity, transform: [{ translateY: entryTranslate }, { scale: cardScale }] },
         ]}
-      />
-      <View style={[styles.streakPledgeRewardCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+      >
+        <Svg
+          style={styles.streakPledgeRewardGradient}
+          width="100%"
+          height="100%"
+          preserveAspectRatio="xMidYMid slice"
+        >
+          <Defs>
+            <SvgLinearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+              <SvgStop
+                offset="0"
+                stopColor={isDarkTheme ? "#0D233A" : "#E4F2FF"}
+                stopOpacity={0.95}
+              />
+              <SvgStop
+                offset="1"
+                stopColor={isDarkTheme ? "#142C48" : "#FFFFFF"}
+                stopOpacity={0.9}
+              />
+            </SvgLinearGradient>
+          </Defs>
+          <SvgRect x="0" y="0" width="100%" height="100%" rx="30" ry="30" fill={`url(#${gradientId})`} />
+        </Svg>
+        <Animated.View
+          style={[
+            styles.streakPledgeRewardOrb,
+            { backgroundColor: accentSoft, opacity: glowOpacity, transform: [{ scale: glowScale }] },
+          ]}
+        />
         <View style={styles.streakPledgeRewardHero}>
-          <View style={[styles.streakPledgeRewardCoinWrap, { backgroundColor: accent }]}>
-            {BLUE_HEALTH_COIN_ASSET ? (
-              <Image source={BLUE_HEALTH_COIN_ASSET} style={styles.streakPledgeRewardCoin} />
-            ) : (
-              <Text style={styles.streakPledgeRewardCoinFallback}>🟦</Text>
-            )}
+          <View style={styles.streakPledgeRewardCoinStage}>
+            <Animated.View
+              style={[
+                styles.streakPledgeRewardHalo,
+                { opacity: glowOpacity, transform: [{ rotate: haloRotation }] },
+              ]}
+            >
+              <Svg style={styles.streakPledgeRewardHaloSvg} width="150" height="150">
+                <Defs>
+                  <SvgLinearGradient id={ringId} x1="0" y1="0" x2="1" y2="1">
+                    <SvgStop offset="0" stopColor={accent} stopOpacity={0.95} />
+                    <SvgStop offset="1" stopColor={accentText} stopOpacity={0.45} />
+                  </SvgLinearGradient>
+                </Defs>
+                <SvgCircle cx="75" cy="75" r="54" stroke={`url(#${ringId})`} strokeWidth="3" fill="none" />
+                <SvgCircle
+                  cx="75"
+                  cy="75"
+                  r="42"
+                  stroke={`url(#${ringId})`}
+                  strokeWidth="1.5"
+                  opacity="0.6"
+                  fill="none"
+                />
+              </Svg>
+            </Animated.View>
+            <Animated.View
+              style={[
+                styles.streakPledgeRewardCoinWrap,
+                { backgroundColor: accent, transform: [{ scale: coinScale }, { rotate: coinRotation }] },
+              ]}
+            >
+              {BLUE_HEALTH_COIN_ASSET ? (
+                <Image source={BLUE_HEALTH_COIN_ASSET} style={styles.streakPledgeRewardCoin} />
+              ) : (
+                <Text style={styles.streakPledgeRewardCoinFallback}>🟦</Text>
+              )}
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.streakPledgeRewardCoinShine,
+                  { transform: [{ translateX: shineTranslate }, { rotate: "18deg" }] },
+                ]}
+              />
+            </Animated.View>
           </View>
-          <Text style={[styles.streakPledgeRewardAmount, { color: colors.text }]}>
-            +{rewardBlueCoins}
-          </Text>
-          <Text style={[styles.streakPledgeRewardLabel, { color: colors.muted }]}>
-            {blueLabel}
-          </Text>
+          <View style={styles.streakPledgeRewardAmountRow}>
+            <Text style={[styles.streakPledgeRewardAmount, { color: colors.text }]}>+{rewardBlueCoins}</Text>
+            <View style={[styles.streakPledgeRewardAmountPill, { backgroundColor: badgeBg, borderColor: cardBorder }]}>
+              <Text style={[styles.streakPledgeRewardAmountPillText, { color: accentText }]}>
+                {blueLabel}
+              </Text>
+            </View>
+          </View>
         </View>
         <Text style={[styles.streakPledgeRewardTitle, { color: colors.text }]}>
           {t("streakPledgeRewardTitle")}
@@ -59216,14 +60491,21 @@ const StreakPledgeRewardCelebration = ({ colors, payload, t, language, onClose }
           {t("streakPledgeRewardSubtitle", { days: targetDays })}
         </Text>
         <TouchableOpacity
-          style={[styles.streakPledgeRewardButton, { borderColor: colors.text }]}
-          onPress={onClose}
+          style={[
+            styles.streakPledgeRewardButton,
+            {
+              borderColor: colors.text,
+              backgroundColor: isDarkTheme ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.7)",
+            },
+          ]}
+          onPress={handleClose}
+          activeOpacity={0.9}
         >
           <Text style={[styles.streakPledgeRewardButtonText, { color: colors.text }]}>
             {t("streakPledgeRewardButton")}
           </Text>
         </TouchableOpacity>
-      </View>
+      </Animated.View>
     </View>
   );
 };
