@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: almost-monetization-backend
+    runtime: node
+    rootDir: backend
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APPLE_BUNDLE_ID
+        value: com.sasarei.almostclean
+      - key: APPLE_ENVIRONMENT
+        value: production
+      - key: REQUEST_TTL_MS
+        value: "900000"
+      - key: REPLAY_WINDOW_MS
+        value: "86400000"
+      - key: STORE_FLUSH_MS
+        value: "2000"
+      - key: STORE_PATH
+        value: /var/data/almost-store.json
+      - key: APP_SHARED_SECRET
+        generateValue: true
+      - key: APPLE_WEBHOOK_SECRET
+        generateValue: true
+      - key: WEBHOOK_SHARED_SECRET
+        generateValue: true
+      - key: GOOGLE_RTDN_SECRET
+        generateValue: true
+      - key: APPLE_WEBHOOK_VERIFY_SIGNATURE
+        value: "1"
+      - key: APPLE_WEBHOOK_REQUIRE_VERIFIED
+        value: "1"
+      - key: APPLE_WEBHOOK_ONLINE_CHECKS
+        value: "0"
+      - key: APPLE_ROOT_CA_PATHS
+        value: ./certs/AppleRootCA-G3.cer,./certs/AppleRootCA-G2.cer
+      - key: APPLE_VALIDATION_ENABLED
+        value: "0"
+      - key: GOOGLE_VALIDATION_ENABLED
+        value: "0"
+      - key: GOOGLE_PACKAGE_NAME
+        value: com.sasarei.almostclean
+    disks:
+      - name: almost-backend-data
+        mountPath: /var/data
+        sizeGB: 1
