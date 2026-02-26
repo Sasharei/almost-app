@@ -44,7 +44,7 @@ services:
         value: "0"
       - key: GOOGLE_PACKAGE_NAME
         value: com.sasarei.almostclean
-    disks:
-      - name: almost-backend-data
-        mountPath: /var/data
-        sizeGB: 1
+    disk:
+      name: almost-backend-data
+      mountPath: /var/data
+      sizeGB: 1
