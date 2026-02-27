@@ -3,7 +3,17 @@ require File.join(File.dirname(`node --print "require.resolve('react-native/pack
 
 require 'json'
 require 'fileutils'
+require 'xcodeproj'
 podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties.json'))) rescue {}
+
+# CocoaPods 1.16 + xcodeproj 1.27 misses compatibility for objectVersion 70.
+# Patch in-place so pod install works on newer Xcode project formats.
+unless Xcodeproj::Constants::COMPATIBILITY_VERSION_BY_OBJECT_VERSION.key?(70)
+  compatibility = Xcodeproj::Constants::COMPATIBILITY_VERSION_BY_OBJECT_VERSION.dup
+  compatibility[70] = 'Xcode 16.0'
+  Xcodeproj::Constants.send(:remove_const, :COMPATIBILITY_VERSION_BY_OBJECT_VERSION)
+  Xcodeproj::Constants.const_set(:COMPATIBILITY_VERSION_BY_OBJECT_VERSION, compatibility.freeze)
+end
 
 ENV['RCT_NEW_ARCH_ENABLED'] ||= '0' if podfile_properties['newArchEnabled'] == 'false'
 ENV['EX_DEV_CLIENT_NETWORK_INSPECTOR'] ||= podfile_properties['EX_DEV_CLIENT_NETWORK_INSPECTOR']
@@ -118,6 +128,38 @@ $AppsFlyerPurchaseConnector=false
           'SENTRY_DISABLE_PROFILING=1'
         ]
       end
+    end
+
+    # Keep RNFB scripts after widget embedding to avoid Xcode dependency cycles.
+    installer.aggregate_targets.map(&:user_project).uniq.compact.each do |project|
+      app_target = project.targets.find { |target| target.name == 'Almost' }
+      next unless app_target
+
+      embed_phase = app_target.build_phases.find do |phase|
+        phase.isa == 'PBXCopyFilesBuildPhase' && phase.name == 'Embed Foundation Extensions'
+      end
+      core_phase = app_target.build_phases.find do |phase|
+        phase.isa == 'PBXShellScriptBuildPhase' && phase.name == '[CP-User] [RNFB] Core Configuration'
+      end
+      crash_phase = app_target.build_phases.find do |phase|
+        phase.isa == 'PBXShellScriptBuildPhase' && phase.name == '[CP-User] [RNFB] Crashlytics Configuration'
+      end
+
+      [core_phase, crash_phase].compact.each do |phase|
+        phase.input_paths = []
+        phase.output_paths = []
+      end
+
+      if embed_phase
+        [core_phase, crash_phase].compact.each { |phase| app_target.build_phases.delete(phase) }
+        embed_index = app_target.build_phases.index(embed_phase)
+        insert_index = embed_index ? embed_index + 1 : app_target.build_phases.length
+        [core_phase, crash_phase].compact.each_with_index do |phase, offset|
+          app_target.build_phases.insert(insert_index + offset, phase)
+        end
+      end
+
+      project.save
     end
   end
 end

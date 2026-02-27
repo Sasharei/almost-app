@@ -9,6 +9,7 @@ private let keyWidgetLabelSavedMonth = "widget_label_saved_month"
 private let keyWidgetLabelStreak = "widget_label_streak"
 private let keyWidgetLabelEmptyState = "widget_label_empty_state"
 private let keyWidgetLabelAddTemptation = "widget_label_add_temptation"
+private let keyWidgetInstalledMarker = "widget_home_installed_marker"
 
 struct AlmostWidgetEntry: TimelineEntry {
   let date: Date
@@ -47,6 +48,7 @@ struct AlmostWidgetProvider: TimelineProvider {
 
   private func loadEntry() -> AlmostWidgetEntry {
     let defaults = UserDefaults(suiteName: appGroupId)
+    defaults?.set(true, forKey: keyWidgetInstalledMarker)
     let savedMonthLabel = defaults?.string(forKey: keySavedMonthLabel) ?? "--"
     let streakDays = defaults?.integer(forKey: keyStreakDays) ?? 0
     let hasData = defaults?.object(forKey: keyHasData) as? Bool ?? false

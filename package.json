@@ -1,12 +1,15 @@
 {
   "name": "almost_clean",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "main": "index.js",
   "scripts": {
     "start": "EXPO_NO_TYPESCRIPT_SETUP=1 expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "backend:dev": "cd backend && npm run dev",
+    "backend:start": "cd backend && npm run start",
+    "backend:tunnel": "bash scripts/start-backend-tunnel.sh",
     "postinstall": "node scripts/apply-patches.js",
     "version:bump": "node scripts/bump-version.js"
   },
@@ -42,8 +45,10 @@
     "react-native-appsflyer": "^6.17.8",
     "react-native-confetti-cannon": "^1.5.2",
     "react-native-fbsdk-next": "^13.4.1",
+    "react-native-purchases": "^8.12.0",
     "react-native-safe-area-context": "^5.6.2",
     "react-native-svg": "^15.15.1",
+    "react-native-tiktok-business-sdk": "^1.6.0",
     "react-native-view-shot": "^3.8.0"
   },
   "devDependencies": {

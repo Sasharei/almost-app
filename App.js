@@ -87,6 +87,29 @@ import { calcPotentialSaved } from "./src/utils/savingsSimulation";
 import { TRANSLATIONS } from "./src/constants/translations";
 import { DAILY_CHALLENGE_POPULAR_IDS, DEFAULT_TEMPTATIONS } from "./src/constants/temptations";
 import { PRIVACY_LINKS, TERMS_LINKS, TERMS_POINTS } from "./src/constants/legal";
+import PremiumPaywallModal from "./src/components/PremiumPaywallModal";
+import {
+  buildDefaultPlanCards,
+  buildPaywallCopy,
+  FREE_PLAN_LIMITS,
+  PREMIUM_FEATURE_KEYS,
+  PREMIUM_PLAN_ORDER,
+  resolveFallbackPlanPricing,
+} from "./src/monetization/constants";
+import {
+  addCustomerInfoUpdateListener,
+  configurePurchases,
+  getActivePremiumEntitlement,
+  getCustomerInfoSafe,
+  getOfferingsSafe,
+  isPremiumFromCustomerInfo,
+  isPurchasesAvailable,
+  mapOfferingPackagesByPlan,
+  purchasePlanPackage,
+  restorePurchasesSafe,
+  setPurchasesAttributesSafe,
+} from "./src/monetization/purchasesClient";
+import { syncEntitlementSnapshot } from "./src/monetization/backendSync";
 
 const safeUseFonts =
   typeof useFonts === "function"
@@ -252,6 +275,23 @@ const setWidgetDataSafely = (payload) => {
   storage.setWidgetData(payload).catch(() => {});
   return true;
 };
+const hasInstalledHomeWidget = async () => {
+  if (Platform.OS !== "ios" && Platform.OS !== "android") return false;
+  const storage = getWidgetStorage();
+  if (!storage || typeof storage.hasInstalledHomeWidget !== "function") return false;
+  try {
+    const value = await storage.hasInstalledHomeWidget();
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value === 1;
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      return normalized === "1" || normalized === "true";
+    }
+  } catch (error) {
+    console.warn("widget install check", error);
+  }
+  return false;
+};
 
 // Android BlurView (Dimezis) can crash during layout animations on newer OS versions.
 // Keep blur enabled, but avoid aggressive auto-updates to reduce crashes.
@@ -299,6 +339,7 @@ const STORAGE_KEYS = {
   PURCHASES: "@almost_purchases",
   PROFILE: "@almost_profile",
   THEME: "@almost_theme",
+  PRO_THEME_ACCENT: "@almost_pro_theme_accent",
   LANGUAGE: "@almost_language",
   ONBOARDING: "@almost_onboarded",
   TERMS_ACCEPTED: "@almost_terms_accepted",
@@ -342,6 +383,7 @@ const STORAGE_KEYS = {
   DAILY_SUMMARY: "@almost_daily_summary",
   POTENTIAL_PUSH_PROGRESS: "@almost_potential_push_progress",
   PUSH_NOTIFICATIONS_ENABLED_LOGGED: "@almost_push_notifications_enabled_logged",
+  HOME_WIDGET_INSTALLED_LOGGED: "@almost_home_widget_installed_logged",
   PUSH_DAY_THREE_PROMPT: "@almost_push_day_three_prompt",
   SPEND_LOGGING_REMINDER: "@almost_spend_logging_reminder",
   TUTORIAL: "@almost_tutorial_state",
@@ -382,6 +424,8 @@ const STORAGE_KEYS = {
   NORTH_STAR_METRIC: "@almost_north_star_metric",
   DAY_TWO_ACTIVITY: "@almost_day_two_activity",
   DAY_THREE_ACTIVITY: "@almost_day_three_activity",
+  RETENTION_ACTIVE_DAYS: "@almost_retention_active_days",
+  RETENTION_MILESTONES: "@almost_retention_milestones",
   PRIMARY_TEMPTATION_PROMPT: "@almost_primary_temptation_prompt",
   LAST_NOTIFICATION_AT: "@almost_last_notification_at",
   SOUND_ENABLED: "@almost_sound_enabled",
@@ -393,6 +437,10 @@ const STORAGE_KEYS = {
   INCOME_PROMPT: "@almost_income_prompt",
   BUDGET_OVERSPEND: "@almost_budget_overspend",
   DAILY_GOAL_COLLECTED: "@almost_daily_goal_collected",
+  PREMIUM_INSTALL_ID: "@almost_premium_install_id",
+  PREMIUM_SOFT_PAYWALL_SHOWN: "@almost_premium_soft_paywall_shown",
+  PREMIUM_HARD_PAYWALL_SHOWN: "@almost_premium_hard_paywall_shown",
+  PREMIUM_CHALLENGE_CLAIMS: "@almost_premium_challenge_claims",
 };
 
 const COIN_VALUE_MODAL_STATUS = {
@@ -554,6 +602,16 @@ const FINANCIAL_QUOTES = [
 ];
 const MAX_ACTIVE_CHALLENGES = 3;
 const MAX_ACTIVE_GOALS = 5;
+const FREE_GOAL_LIMIT = FREE_PLAN_LIMITS.activeGoals;
+const FREE_PENDING_LIMIT = FREE_PLAN_LIMITS.activePendingCards || 2;
+const FREE_HISTORY_WINDOW_MS = FREE_PLAN_LIMITS.historyDays * 1000 * 60 * 60 * 24;
+const FREE_CUSTOM_TEMPTATION_LIMIT = FREE_PLAN_LIMITS.customTemptationCards;
+const FREE_CHALLENGE_CLAIMS_LIMIT = FREE_PLAN_LIMITS.challengeClaims;
+const FREE_REPORTS_WEEK_COUNT = FREE_PLAN_LIMITS.reportsWeeks;
+const FREE_REPORTS_MONTH_COUNT = FREE_PLAN_LIMITS.reportsMonths;
+const FREE_BUDGET_AUTO_DAYS = FREE_PLAN_LIMITS.budgetAutoFreeDays || 30;
+const SOFT_PAYWALL_DELAY_MS = 950;
+const HARD_PAYWALL_DELAY_MS = 700;
 const ANDROID_API_LEVEL =
   Platform.OS === "android"
     ? typeof Platform.Version === "string"
@@ -623,6 +681,175 @@ const keepEmojiWithText = (value = "") => {
     return `${firstToken}\u00A0${rest}`;
   }
   return trimmed;
+};
+const createMonetizationInstallId = () =>
+  `m_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+const resolvePlanIdFromPackage = (pkg) => {
+  const packageType = typeof pkg?.packageType === "string" ? pkg.packageType : "";
+  if (packageType === "ANNUAL") return "yearly";
+  if (packageType === "MONTHLY") return "monthly";
+  if (packageType === "LIFETIME") return "lifetime";
+  const identifier = String(pkg?.product?.identifier || pkg?.identifier || "").toLowerCase();
+  if (identifier.includes("lifetime") || identifier.includes("life_time")) return "lifetime";
+  if (identifier.includes("year") || identifier.includes("annual")) return "yearly";
+  if (identifier.includes("month")) return "monthly";
+  return null;
+};
+const resolvePlanLabel = (planId, language = "en") => {
+  const isRussian = language === "ru";
+  if (planId === "yearly") return isRussian ? "Год" : "Yearly";
+  if (planId === "monthly") return isRussian ? "Месяц" : "Monthly";
+  if (planId === "lifetime") return "Lifetime";
+  return isRussian ? "Premium" : "Premium";
+};
+const resolveMonetizationLanguage = (language = "en") => (language === "ru" ? "ru" : "en");
+const PAYWALL_EQUIVALENT_SOURCE_IDS = [
+  "coffee_to_go",
+  "netflix_subscription",
+  "croissant_break",
+  "fancy_latte",
+  "pizza",
+  "late_night_takeout",
+  "movie_premiere_combo",
+  "cocktail_night",
+  "comfort_utilities",
+  "beauty_box",
+  "grooming_upgrade_set",
+  "studio_pass",
+  "rent_upgrade",
+];
+const PAYWALL_YEAR_SUFFIX_BY_LANGUAGE = {
+  ru: "/год",
+  en: "/yr",
+};
+const PAYWALL_MONTH_SUFFIX_BY_LANGUAGE = {
+  ru: "/мес",
+  en: "/mo",
+};
+const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
+  monthly: {
+    ru: "Списание каждый месяц",
+    en: "Billed monthly",
+  },
+  lifetime: {
+    ru: "Разовый платеж",
+    en: "One-time purchase",
+  },
+};
+const PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE = {
+  ru: {
+    monthly: "≈ {{emoji}} {{count}} × {{item}} в месяц",
+    yearly: "≈ {{emoji}} {{count}} × {{item}} в год",
+    lifetime: "≈ {{emoji}} {{count}} × {{item}} разово",
+  },
+  en: {
+    monthly: "≈ {{emoji}} {{count}}x {{item}} / month",
+    yearly: "≈ {{emoji}} {{count}}x {{item}} / year",
+    lifetime: "≈ {{emoji}} {{count}}x {{item}} one-time",
+  },
+};
+const DEFAULT_TEMPTATION_BY_ID = new Map(DEFAULT_TEMPTATIONS.map((item) => [item.id, item]));
+const parseLocalizedPriceValue = (value) => {
+  if (Number.isFinite(value)) return Number(value);
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  let normalized = raw.replace(/\s/g, "").replace(/[^\d,.-]/g, "");
+  if (!normalized) return null;
+  const hasDot = normalized.includes(".");
+  const hasComma = normalized.includes(",");
+  if (hasDot && hasComma) {
+    if (normalized.lastIndexOf(",") > normalized.lastIndexOf(".")) {
+      normalized = normalized.replace(/\./g, "").replace(",", ".");
+    } else {
+      normalized = normalized.replace(/,/g, "");
+    }
+  } else if (hasComma) {
+    const commaParts = normalized.split(",");
+    const lastPart = commaParts[commaParts.length - 1] || "";
+    if (lastPart.length <= 2) {
+      normalized = `${commaParts.slice(0, -1).join("")}.${lastPart}`;
+    } else {
+      normalized = normalized.replace(/,/g, "");
+    }
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+const formatEquivalentUnits = (value, language = "en") => {
+  const lang = resolveMonetizationLanguage(language);
+  const safeValue = Number.isFinite(value) ? Math.max(0.1, value) : 1;
+  const rounded = safeValue >= 10 ? Math.round(safeValue) : Math.round(safeValue * 10) / 10;
+  const formatted = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return lang === "ru" ? formatted.replace(".", ",") : formatted;
+};
+const pickClosestTemptationEquivalent = ({
+  targetLocal = 0,
+  currencyCode = DEFAULT_PROFILE.currency,
+  preferCoffee = false,
+  excludeCoffee = false,
+} = {}) => {
+  if (!Number.isFinite(targetLocal) || targetLocal <= 0) return null;
+  const candidates = PAYWALL_EQUIVALENT_SOURCE_IDS.map((id) => DEFAULT_TEMPTATION_BY_ID.get(id))
+    .filter(Boolean)
+    .filter((item) => !(excludeCoffee && item.id === "coffee_to_go"))
+    .map((item) => {
+      const usdValue = Number(item.priceUSD || item.basePriceUSD || 0);
+      const localValue = convertToCurrency(usdValue, currencyCode);
+      if (!Number.isFinite(localValue) || localValue <= 0) return null;
+      return { ...item, localValue };
+    })
+    .filter(Boolean);
+  if (!candidates.length) return null;
+  if (preferCoffee) {
+    const coffeeCandidate = candidates.find((item) => item.id === "coffee_to_go");
+    if (coffeeCandidate) {
+      const coffeeUnits = targetLocal / coffeeCandidate.localValue;
+      if (coffeeUnits >= 0.4 && coffeeUnits <= 2.5) {
+        return {
+          ...coffeeCandidate,
+          units: coffeeUnits,
+        };
+      }
+    }
+  }
+  let bestCandidate = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+  candidates.forEach((item) => {
+    const units = targetLocal / item.localValue;
+    if (!Number.isFinite(units) || units <= 0) return;
+    const score = Math.abs(Math.log(units));
+    if (score < bestScore) {
+      bestScore = score;
+      bestCandidate = { ...item, units };
+    }
+  });
+  return bestCandidate;
+};
+const buildTemptationEquivalentLine = ({
+  planId = "monthly",
+  amountLocal = 0,
+  currencyCode = DEFAULT_PROFILE.currency,
+  language = "en",
+} = {}) => {
+  if (!Number.isFinite(amountLocal) || amountLocal <= 0) return null;
+  const lang = resolveMonetizationLanguage(language);
+  const planKey =
+    planId === "yearly" || planId === "lifetime" || planId === "monthly" ? planId : "monthly";
+  const matched = pickClosestTemptationEquivalent({
+    targetLocal: amountLocal,
+    currencyCode,
+    preferCoffee: planKey === "monthly",
+    excludeCoffee: planKey !== "monthly",
+  });
+  if (!matched) return null;
+  const template =
+    PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE[lang]?.[planKey] ||
+    PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE.en.monthly;
+  const title = matched.title?.[lang] || matched.title?.en || "temptation";
+  return template
+    .replace("{{emoji}}", matched.emoji || "💸")
+    .replace("{{count}}", formatEquivalentUnits(matched.units, lang))
+    .replace("{{item}}", title);
 };
 const YELLOW_TAMAGOTCHI_ANIMATIONS = {
   idle: require("./assets/tamagotchi_skins/yellow/Cat_idle.gif"),
@@ -812,8 +1039,115 @@ const THEMES = {
     border: "#2E374F",
     primary: "#FFC857",
   },
+  pro: {
+    background: "#EEF1FF",
+    card: "#FFFFFF",
+    text: "#101B45",
+    muted: "#5F6B98",
+    border: "#C7D1FF",
+    primary: "#4353FF",
+  },
 };
 const DEFAULT_THEME = "light";
+const PRO_THEME_ID = "pro";
+const THEME_IDS = ["light", "dark", PRO_THEME_ID];
+const PRO_THEME_ACCENT_OPTIONS = [
+  {
+    id: "indigo",
+    accent: "#4353FF",
+    label: { ru: "Индиго", en: "Indigo", es: "Índigo", fr: "Indigo" },
+    emoji: "🫐",
+  },
+  {
+    id: "emerald",
+    accent: "#1FBF8F",
+    label: { ru: "Изумруд", en: "Emerald", es: "Esmeralda", fr: "Émeraude" },
+    emoji: "💚",
+  },
+  {
+    id: "sunset",
+    accent: "#FF7A59",
+    label: { ru: "Сансет", en: "Sunset", es: "Atardecer", fr: "Coucher" },
+    emoji: "🌇",
+  },
+  {
+    id: "gold",
+    accent: "#E3A62B",
+    label: { ru: "Золото", en: "Gold", es: "Oro", fr: "Or" },
+    emoji: "✨",
+  },
+  {
+    id: "violet",
+    accent: "#8B61FF",
+    label: { ru: "Фиолет", en: "Violet", es: "Violeta", fr: "Violet" },
+    emoji: "🪻",
+  },
+  {
+    id: "aqua",
+    accent: "#2FA8FF",
+    label: { ru: "Аква", en: "Aqua", es: "Aqua", fr: "Aqua" },
+    emoji: "🌊",
+  },
+];
+const DEFAULT_PRO_THEME_ACCENT_ID = "indigo";
+const normalizeProThemeAccentId = (value) => {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return PRO_THEME_ACCENT_OPTIONS.some((option) => option.id === normalized)
+    ? normalized
+    : DEFAULT_PRO_THEME_ACCENT_ID;
+};
+const resolveProThemeAccentOption = (accentId) =>
+  PRO_THEME_ACCENT_OPTIONS.find((option) => option.id === normalizeProThemeAccentId(accentId)) ||
+  PRO_THEME_ACCENT_OPTIONS[0];
+const resolveProAccentLabel = (option, language = DEFAULT_LANGUAGE) => {
+  const normalizedLanguage = normalizeLanguage(language);
+  return (
+    option?.label?.[normalizedLanguage] ||
+    option?.label?.en ||
+    option?.label?.ru ||
+    option?.id ||
+    "Accent"
+  );
+};
+const PRO_THEME_ACCENT_COPY = {
+  ru: {
+    title: "Акцент PRO-темы",
+    subtitle: "Выбери цвет, который будет использоваться для кнопок и акцентов интерфейса.",
+    selected: "Выбрано",
+  },
+  en: {
+    title: "PRO theme accent",
+    subtitle: "Pick the color used for buttons and highlighted UI accents.",
+    selected: "Selected",
+  },
+  es: {
+    title: "Acento del tema PRO",
+    subtitle: "Elige el color para botones y acentos principales de la interfaz.",
+    selected: "Seleccionado",
+  },
+  fr: {
+    title: "Accent du thème PRO",
+    subtitle: "Choisis la couleur utilisée pour les boutons et accents d'interface.",
+    selected: "Sélectionné",
+  },
+};
+const normalizeThemeId = (value) => {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return THEME_IDS.includes(normalized) ? normalized : DEFAULT_THEME;
+};
+const resolveThemeColors = (themeId = DEFAULT_THEME, proAccentId = DEFAULT_PRO_THEME_ACCENT_ID) => {
+  if (themeId !== PRO_THEME_ID) return THEMES[themeId] || THEMES[DEFAULT_THEME];
+  const accentOption = resolveProThemeAccentOption(proAccentId);
+  const accent = accentOption.accent;
+  return {
+    ...THEMES.pro,
+    background: blendHexColors(THEMES.pro.background, accent, 0.12),
+    text: blendHexColors(THEMES.pro.text, accent, 0.06),
+    muted: blendHexColors(THEMES.pro.muted, accent, 0.12),
+    border: blendHexColors(THEMES.pro.border, accent, 0.32),
+    primary: accent,
+  };
+};
 
 const INTER_FONTS = {
   light: "Inter_300Light",
@@ -1142,46 +1476,88 @@ const AnimatedText = Animated.createAnimatedComponent(AppText);
 const APP_TUTORIAL_BASE_STEPS = [
   {
     id: "feed",
-    icon: "🧠",
+    icon: "⚡",
     titleKey: "tutorialFeedTitle",
     descriptionKey: "tutorialFeedDesc",
     tabs: ["feed"],
+    featureKeys: ["feedTab", "coinEntrySaveLabel", "quickCustomTitle"],
+    visualBars: [0.92, 0.58, 0.8, 0.66, 0.84],
+    palette: {
+      primary: "#62AEFF",
+      secondary: "#7FE3C7",
+      glow: "#79A9FF",
+    },
   },
   {
     id: "goals",
-    icon: "🎯",
+    icon: "📊",
     titleKey: "tutorialGoalsTitle",
     descriptionKey: "tutorialGoalsDesc",
     tabs: ["cart"],
+    featureKeys: ["wishlistTab", "budgetWidgetTitle", "challengeTabTitle"],
+    visualBars: [0.86, 0.48, 0.72, 0.94, 0.61],
+    palette: {
+      primary: "#FFB169",
+      secondary: "#FFD98E",
+      glow: "#FFB784",
+    },
   },
   {
     id: "rewards",
-    icon: "🏆",
+    icon: "🎁",
     titleKey: "tutorialRewardsTitle",
     descriptionKey: "tutorialRewardsDesc",
     tabs: ["purchases"],
     requiresRewards: true,
+    featureKeys: ["purchasesTitle", "dailyRewardButtonLabel", "challengeRewardsTabTitle"],
+    visualBars: [0.68, 0.92, 0.56, 0.79, 0.88],
+    palette: {
+      primary: "#9E8CFF",
+      secondary: "#FF9EC7",
+      glow: "#A498FF",
+    },
   },
   {
     id: "profile",
-    icon: "⚙️",
+    icon: "🛠️",
     titleKey: "tutorialProfileTitle",
     descriptionKey: "tutorialProfileDesc",
     tabs: ["profile"],
+    featureKeys: ["profileTab", "languageTitle", "themeLabel", "soundLabel"],
+    visualBars: [0.72, 0.54, 0.88, 0.64, 0.77],
+    palette: {
+      primary: "#7FD5FF",
+      secondary: "#A7F0BC",
+      glow: "#7FCBFF",
+    },
   },
 ];
 const TEMPTATION_TUTORIAL_STEPS = [
   {
     id: "actions",
-    icon: "👆",
+    icon: "✅",
     titleKey: "temptationTutorialActionsTitle",
     descriptionKey: "temptationTutorialActionsDesc",
+    featureKeys: ["coinEntrySaveLabel", "coinEntrySpendLabel", "newPendingTitle"],
+    visualBars: [0.62, 0.91, 0.73, 0.55, 0.84],
+    palette: {
+      primary: "#65C1FF",
+      secondary: "#8BE2C8",
+      glow: "#7DB8FF",
+    },
   },
   {
     id: "swipe",
     icon: "↔️",
     titleKey: "temptationTutorialSwipeTitle",
     descriptionKey: "temptationTutorialSwipeDesc",
+    featureKeys: ["temptationTutorialSwipeTitle", "tutorialFeedTitle"],
+    visualBars: [0.9, 0.52, 0.77, 0.68, 0.59],
+    palette: {
+      primary: "#FFB96E",
+      secondary: "#FFC9A0",
+      glow: "#FFBE7D",
+    },
   },
 ];
 const FAB_TUTORIAL_STATUS = {
@@ -1448,6 +1824,32 @@ const createInitialRatingPromptState = () => ({
   actionCountStart: null,
   actionPrompted: false,
 });
+const RETENTION_MILESTONE_DAYS = new Set([2, 3, 7, 14, 30, 60, 90, 180, 365]);
+
+const normalizeRetentionDayKeys = (value) => {
+  if (!Array.isArray(value)) return [];
+  const unique = new Set();
+  value.forEach((entry) => {
+    if (typeof entry !== "string") return;
+    const trimmed = entry.trim();
+    if (!trimmed) return;
+    if (!parseDayKey(trimmed)) return;
+    unique.add(trimmed);
+  });
+  return Array.from(unique).sort((a, b) => a.localeCompare(b));
+};
+
+const normalizeRetentionMilestoneDays = (value) => {
+  if (!Array.isArray(value)) return [];
+  const unique = new Set();
+  value.forEach((entry) => {
+    const day = Math.floor(Number(entry) || 0);
+    if (day > 0) {
+      unique.add(day);
+    }
+  });
+  return Array.from(unique).sort((a, b) => a - b);
+};
 
 const getDayKey = (date) => {
   const d = new Date(date);
@@ -1477,6 +1879,19 @@ const getDayDiff = (fromKey, toKey) => {
   const toDate = parseDayKey(toKey);
   if (!fromDate || !toDate) return null;
   return Math.round((toDate.getTime() - fromDate.getTime()) / DAY_MS);
+};
+
+const getConsecutiveActiveDays = (dayKeys = []) => {
+  if (!Array.isArray(dayKeys) || !dayKeys.length) return 0;
+  let streak = 1;
+  for (let index = dayKeys.length - 1; index > 0; index -= 1) {
+    const diff = getDayDiff(dayKeys[index - 1], dayKeys[index]);
+    if (diff !== 1) {
+      break;
+    }
+    streak += 1;
+  }
+  return streak;
 };
 
 const getMissedUsageStreakDays = (lastDayKey, todayKey) => {
@@ -1593,6 +2008,8 @@ const DEFAULT_TEMPTATION_EMOJI = "✨";
 const DEFAULT_GOAL_EMOJI = "🎯";
 const MAX_HISTORY_EVENTS = 200;
 const HISTORY_RETENTION_MS = DAY_MS * 31;
+const HERO_RECENT_HISTORY_WINDOW_MS = DAY_MS * 7;
+const PROFILE_HISTORY_PAGE_WINDOW_MS = DAY_MS * 14;
 const SPEND_LOGGING_REMINDER_DELAY_MS = DAY_MS * 1.5;
 const SPEND_LOGGING_REMINDER_COOLDOWN_MS = DAY_MS * 2;
 const HISTORY_VIEWPORT_ROWS = 5;
@@ -2481,6 +2898,13 @@ const getMoodGradient = (moodId = MOOD_IDS.NEUTRAL) =>
 
 const applyThemeToMoodGradient = (palette, themeKey = "light") => {
   if (!palette) return getMoodGradient();
+  if (themeKey === PRO_THEME_ID) {
+    return {
+      start: lightenColor(palette.start, 0.24),
+      end: lightenColor(palette.end, 0.18),
+      accent: lightenColor(palette.accent, 0.32),
+    };
+  }
   if (themeKey !== "dark") return palette;
   return {
     start: lightenColor(palette.start, -0.55),
@@ -3327,6 +3751,84 @@ const getIncomeForMonth = (entries, monthKey, options = {}) => {
   }, 0);
 };
 
+const getRecurringIncomeForMonth = (entries, monthKey) => {
+  if (!monthKey) return 0;
+  let latestMonthlyEntry = null;
+  (Array.isArray(entries) ? entries : []).forEach((entry) => {
+    const entryType = normalizeIncomeEntryType(entry?.entryType);
+    if (entryType !== INCOME_ENTRY_TYPES.MONTHLY) return;
+    const entryMonthKey = getMonthKey(entry?.receivedAt);
+    if (!entryMonthKey || entryMonthKey > monthKey) return;
+    const receivedAt = Number(entry?.receivedAt) || 0;
+    if (!latestMonthlyEntry || receivedAt >= (Number(latestMonthlyEntry?.receivedAt) || 0)) {
+      latestMonthlyEntry = entry;
+    }
+  });
+  return Math.max(0, Number(latestMonthlyEntry?.amountUSD) || 0);
+};
+
+const getExtraIncomeForMonth = (entries, monthKey) =>
+  getIncomeForMonth(entries, monthKey, { entryType: INCOME_ENTRY_TYPES.EXTRA });
+
+const getBudgetIncomeForMonth = (entries, monthKey) =>
+  getRecurringIncomeForMonth(entries, monthKey) + getExtraIncomeForMonth(entries, monthKey);
+
+const getNextMonthKey = (monthKey) => {
+  const parsed = parseMonthKey(monthKey);
+  if (!parsed) return "";
+  parsed.setMonth(parsed.getMonth() + 1);
+  return getMonthKey(parsed.getTime());
+};
+
+const collectBudgetMonthKeys = (incomeEntries = [], historyEvents = [], currentMonthKey = "") => {
+  const keys = new Set();
+  if (currentMonthKey) {
+    keys.add(currentMonthKey);
+  }
+  let earliestRecurringMonthKey = "";
+  (Array.isArray(incomeEntries) ? incomeEntries : []).forEach((entry) => {
+    const monthKey = getMonthKey(entry?.receivedAt);
+    if (!monthKey) return;
+    keys.add(monthKey);
+    const entryType = normalizeIncomeEntryType(entry?.entryType);
+    if (entryType === INCOME_ENTRY_TYPES.MONTHLY) {
+      if (!earliestRecurringMonthKey || monthKey < earliestRecurringMonthKey) {
+        earliestRecurringMonthKey = monthKey;
+      }
+    }
+  });
+  (Array.isArray(historyEvents) ? historyEvents : []).forEach((entry) => {
+    const timestamp = Number(entry?.timestamp) || 0;
+    if (!timestamp) return;
+    const monthKey = getMonthKey(timestamp);
+    if (monthKey) {
+      keys.add(monthKey);
+    }
+  });
+  let latestMonthKey = "";
+  keys.forEach((key) => {
+    if (!latestMonthKey || key > latestMonthKey) {
+      latestMonthKey = key;
+    }
+  });
+  if (
+    earliestRecurringMonthKey &&
+    latestMonthKey &&
+    earliestRecurringMonthKey <= latestMonthKey
+  ) {
+    let cursor = earliestRecurringMonthKey;
+    let guard = 0;
+    while (cursor && cursor <= latestMonthKey && guard < 240) {
+      keys.add(cursor);
+      cursor = getNextMonthKey(cursor);
+      guard += 1;
+    }
+  }
+  const list = Array.from(keys).filter(Boolean);
+  list.sort((a, b) => (a < b ? 1 : -1));
+  return list;
+};
+
 const clampNumber = (value, min = 0, max = 1) => Math.min(Math.max(value, min), max);
 
 const deriveSavingStyle = (decisionStats = {}) => {
@@ -3375,6 +3877,7 @@ const buildBudgetPlan = ({
   baselineMonthlyWasteUSD = 0,
   language = DEFAULT_LANGUAGE,
   monthKey = "",
+  autoAllocationEnabled = true,
 }) => {
   const normalizedIncome = Math.max(0, Number(incomeUSD) || 0);
   const normalizedCarryover = Number.isFinite(carryoverUSD) ? carryoverUSD : 0;
@@ -3423,14 +3926,16 @@ const buildBudgetPlan = ({
     const meta = getBudgetCategoryMeta(id);
     const group = meta.group || "flex";
     let rate = 0;
-    if (group === "savings") {
-      rate = savingsRate;
-    } else if (group === "essential") {
-      rate = (Number(meta.baseWeight) || 0) * essentialScale;
-    } else {
-      rate = remainingRate * (flexWeights[id] || 0);
+    if (autoAllocationEnabled) {
+      if (group === "savings") {
+        rate = savingsRate;
+      } else if (group === "essential") {
+        rate = (Number(meta.baseWeight) || 0) * essentialScale;
+      } else {
+        rate = remainingRate * (flexWeights[id] || 0);
+      }
     }
-    let limitUSD = normalizedIncome > 0 ? normalizedIncome * rate : 0;
+    let limitUSD = autoAllocationEnabled && normalizedIncome > 0 ? normalizedIncome * rate : 0;
     let isOverride = false;
     if (Number.isFinite(safeOverrides[id])) {
       limitUSD = Math.max(0, safeOverrides[id]);
@@ -3457,6 +3962,7 @@ const buildBudgetPlan = ({
     incomeUSD: normalizedIncome,
     carryoverUSD: normalizedCarryover,
     savingsRate,
+    autoAllocationEnabled: !!autoAllocationEnabled,
     allocatedTotalUSD,
     totalSpentUSD,
     remainingUSD,
@@ -4883,6 +5389,47 @@ const buildReportsSnapshot = ({
   };
 };
 
+const reportHasMeaningfulData = (report) => {
+  if (!report || typeof report !== "object") return false;
+  const totals = report.totals || {};
+  const savedUSD = Math.max(0, Number(totals.savedUSD) || 0);
+  const spendUSD = Math.max(0, Number(totals.spendUSD) || 0);
+  const savedCount = Math.max(0, Number(totals.savedCount) || 0);
+  const spendCount = Math.max(0, Number(totals.spendCount) || 0);
+  return savedUSD > 0 || spendUSD > 0 || savedCount + spendCount > 0;
+};
+
+const reportsSnapshotHasMeaningfulData = (snapshot) => {
+  if (!snapshot || typeof snapshot !== "object") return false;
+  const weekly = Array.isArray(snapshot.weekly) ? snapshot.weekly : [];
+  const monthly = Array.isArray(snapshot.monthly) ? snapshot.monthly : [];
+  const latestWeekly = weekly[0] || null;
+  const latestMonthly = monthly[0] || null;
+  return reportHasMeaningfulData(latestWeekly) || reportHasMeaningfulData(latestMonthly);
+};
+
+const reportsSnapshotHasWeeklyData = (snapshot) => {
+  if (!snapshot || typeof snapshot !== "object") return false;
+  const weekly = Array.isArray(snapshot.weekly) ? snapshot.weekly : [];
+  return reportHasMeaningfulData(weekly[0] || null);
+};
+
+const getReportsSnapshotComparablePayload = (snapshot) => ({
+  weekly: Array.isArray(snapshot?.weekly) ? snapshot.weekly : [],
+  monthly: Array.isArray(snapshot?.monthly) ? snapshot.monthly : [],
+});
+
+const reportsSnapshotsEquivalent = (leftSnapshot, rightSnapshot) => {
+  try {
+    return (
+      JSON.stringify(getReportsSnapshotComparablePayload(leftSnapshot)) ===
+      JSON.stringify(getReportsSnapshotComparablePayload(rightSnapshot))
+    );
+  } catch {
+    return false;
+  }
+};
+
 const computeUsageStreakFromHistory = (history = [], now = Date.now()) => {
   if (!Array.isArray(history) || !history.length) return { ...INITIAL_USAGE_STREAK };
   const dayIndices = new Set();
@@ -5219,20 +5766,70 @@ const formatNumberInputValue = (value, precisionOverride = 2) => {
   return formatted;
 };
 
+const normalizeNumberInputParts = (value = "") => {
+  if (typeof value !== "string") {
+    return { normalized: "", fractionDigits: 0 };
+  }
+  const cleaned = value.replace(/[^\d,.\s]/g, "").replace(/\s+/g, "");
+  if (!cleaned) {
+    return { normalized: "", fractionDigits: 0 };
+  }
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+  const decimalIndex = Math.max(lastComma, lastDot);
+  if (decimalIndex < 0) {
+    return { normalized: cleaned, fractionDigits: 0 };
+  }
+  const integerPartRaw = cleaned.slice(0, decimalIndex).replace(/[.,]/g, "");
+  const fractionPartRaw = cleaned.slice(decimalIndex + 1).replace(/[.,]/g, "");
+  const integerPart = integerPartRaw.length ? integerPartRaw : "0";
+  const normalized = `${integerPart}.${fractionPartRaw}`;
+  return {
+    normalized,
+    fractionDigits: fractionPartRaw.length,
+  };
+};
+
 const parseNumberInputValue = (value = "") => {
-  if (typeof value !== "string") return NaN;
-  const normalized = value.replace(/[^\d,.\s]/g, "").replace(",", ".");
+  const { normalized } = normalizeNumberInputParts(value);
+  if (!normalized) return NaN;
   const parsed = parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : NaN;
 };
 
 const getManualInputPrecision = (value = "") => {
-  if (typeof value !== "string") return 0;
-  const normalized = value.replace(/[^\d,.\s]/g, "").replace(",", ".").trim();
-  const [, fraction = ""] = normalized.split(".");
-  if (!fraction) return 0;
-  const digits = fraction.replace(/\D/g, "");
-  return Math.max(0, Math.min(6, digits.length));
+  const { fractionDigits } = normalizeNumberInputParts(value);
+  return Math.max(0, Math.min(6, fractionDigits));
+};
+
+const normalizeTimestampMs = (value) => {
+  if (value === null || value === undefined) return 0;
+  let parsed = 0;
+  if (typeof value === "number") {
+    parsed = value;
+  } else if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return 0;
+    const numericValue = Number(trimmed);
+    if (Number.isFinite(numericValue)) {
+      parsed = numericValue;
+    } else {
+      const dateValue = Date.parse(trimmed);
+      parsed = Number.isFinite(dateValue) ? dateValue : 0;
+    }
+  } else if (value instanceof Date) {
+    parsed = value.getTime();
+  }
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  // Support legacy timestamps stored in seconds/microseconds/nanoseconds.
+  if (parsed > 1e18) {
+    parsed = Math.round(parsed / 1e6);
+  } else if (parsed > 1e15) {
+    parsed = Math.round(parsed / 1e3);
+  } else if (parsed < 1e11) {
+    parsed = Math.round(parsed * 1e3);
+  }
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 };
 
 const formatLatestSavingTimestamp = (timestamp, language = DEFAULT_LANGUAGE) => {
@@ -5659,10 +6256,10 @@ const TEMPTATION_FREQUENCY_BUCKETS = {
   },
 };
 const FREQUENCY_PICKER_OPTIONS = [
-  { id: "daily", labelKey: "frequencyBadgeDaily" },
-  { id: "weekly", labelKey: "frequencyBadgeWeekly" },
-  { id: "monthly", labelKey: "frequencyBadgeMonthly" },
-  { id: "custom", labelKey: "frequencyBadgeCustom" },
+  { id: "daily", labelKey: "frequencyPickerDaily" },
+  { id: "weekly", labelKey: "frequencyPickerWeekly" },
+  { id: "monthly", labelKey: "frequencyPickerMonthly" },
+  { id: "custom", labelKey: "frequencyPickerCustom" },
 ];
 const CUSTOM_FREQUENCY_UNITS = [
   { id: "day", ms: DAY_MS, shortKey: "frequencyUnitDayShort", longKey: "frequencyUnitDay" },
@@ -7717,17 +8314,6 @@ function TemptationCardComponent({
     currency
   );
   const priceUSD = getTemptationPrice(item);
-  const lastAmountUSD = Number(interaction?.lastAmountUSD) || 0;
-  const defaultBaseAmountUSD =
-    lastAmountUSD > 0
-      ? lastAmountUSD
-      : priceUSD > 0
-      ? priceUSD
-      : 1;
-  const resolvedBaseAmountUSD =
-    Number(amountSliderBaseOverrideUSD) > 0
-      ? Number(amountSliderBaseOverrideUSD)
-      : defaultBaseAmountUSD;
   const showThinkAction = allowThinkAction && priceUSD > 50;
   const actionConfig = [];
   if (showThinkAction) {
@@ -7794,6 +8380,8 @@ function TemptationCardComponent({
   const [amountManualVisible, setAmountManualVisible] = useState(false);
   const [amountManualValue, setAmountManualValue] = useState("");
   const [amountManualError, setAmountManualError] = useState("");
+  const amountSliderBaseOverrideUSDRef = useRef(null);
+  const amountSliderManualUSDRef = useRef(null);
   const amountSliderValueRef = useRef(0.5);
   const amountSliderInteractedRef = useRef(false);
   const amountSliderTrackWidthRef = useRef(0);
@@ -7803,6 +8391,17 @@ function TemptationCardComponent({
   const amountSliderHapticCooldownRef = useRef(0);
   const amountSliderRafRef = useRef(null);
   const amountSliderPendingValueRef = useRef(null);
+  const lastAmountUSD = Number(interaction?.lastAmountUSD) || 0;
+  const defaultBaseAmountUSD =
+    lastAmountUSD > 0
+      ? lastAmountUSD
+      : priceUSD > 0
+      ? priceUSD
+      : 1;
+  const resolvedBaseAmountUSD =
+    Number(amountSliderBaseOverrideUSD) > 0
+      ? Number(amountSliderBaseOverrideUSD)
+      : defaultBaseAmountUSD;
   useEffect(() => {
     translateX.setValue(0);
   }, [item.id, translateX]);
@@ -7815,7 +8414,6 @@ function TemptationCardComponent({
     convertToCurrency(amountSliderAmountUSD, currency),
     currency
   );
-  const amountSliderAmountUSDNormalized = convertFromCurrency(amountSliderLocalValue, currency);
   const amountSliderLabel = formatCurrency(amountSliderLocalValue, currency);
   const amountSliderMinLabel = formatCurrency(
     convertToCurrency(amountSliderMinUSD, currency),
@@ -7868,6 +8466,7 @@ function TemptationCardComponent({
       const clamped = Math.max(0, Math.min(1, Number.isFinite(nextValue) ? nextValue : 0));
       amountSliderValueRef.current = clamped;
       if (fromUser) {
+        amountSliderManualUSDRef.current = null;
         markAmountSliderInteracted();
         const stepIndex = Math.round(clamped * amountSliderStepCount);
         if (stepIndex !== amountSliderStepRef.current) {
@@ -7926,6 +8525,8 @@ function TemptationCardComponent({
       setAmountSliderVisible(true);
       amountSliderInteractedRef.current = false;
       setAmountSliderInteracted(false);
+      amountSliderBaseOverrideUSDRef.current = null;
+      amountSliderManualUSDRef.current = null;
       setAmountSliderBaseOverrideUSD(null);
       setAmountManualVisible(false);
       setAmountManualValue("");
@@ -7951,6 +8552,8 @@ function TemptationCardComponent({
     setAmountSliderAction(null);
     amountSliderInteractedRef.current = false;
     setAmountSliderInteracted(false);
+    amountSliderBaseOverrideUSDRef.current = null;
+    amountSliderManualUSDRef.current = null;
     setAmountSliderBaseOverrideUSD(null);
     setAmountManualVisible(false);
     setAmountManualError("");
@@ -8059,6 +8662,8 @@ function TemptationCardComponent({
       setAmountManualError(t("coinEntryManualError"));
       return;
     }
+    amountSliderBaseOverrideUSDRef.current = parsedUSD;
+    amountSliderManualUSDRef.current = parsedUSD;
     setAmountSliderBaseOverrideUSD(parsedUSD);
     updateAmountSliderValue(0.5, { fromUser: false });
     markAmountSliderInteracted();
@@ -8108,7 +8713,19 @@ function TemptationCardComponent({
 
   const confirmAmountAction = useCallback(
     (actionType) => {
-      const normalizedAmount = Number(amountSliderAmountUSDNormalized) || 0;
+      const manualAmountUSD = Number(amountSliderManualUSDRef.current);
+      let normalizedAmount =
+        Number.isFinite(manualAmountUSD) && manualAmountUSD > 0 ? manualAmountUSD : 0;
+      if (!normalizedAmount) {
+        const sliderValue = Math.max(0, Math.min(1, Number(amountSliderValueRef.current) || 0));
+        const manualBaseUSD = Number(amountSliderBaseOverrideUSDRef.current);
+        const resolvedBaseUSD =
+          Number.isFinite(manualBaseUSD) && manualBaseUSD > 0 ? manualBaseUSD : defaultBaseAmountUSD;
+        const maxAmountUSD = Math.max(resolvedBaseUSD * 2, resolvedBaseUSD);
+        const amountUSD = amountSliderMinUSD + sliderValue * (maxAmountUSD - amountSliderMinUSD);
+        const amountLocal = snapCurrencyValue(convertToCurrency(amountUSD, currency), currency);
+        normalizedAmount = convertFromCurrency(amountLocal, currency);
+      }
       if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
         triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
         playSound?.("counter", { skipCooldown: true });
@@ -8119,8 +8736,10 @@ function TemptationCardComponent({
       onAction?.(actionType, item, { amountUSD: normalizedAmount });
     },
     [
-      amountSliderAmountUSDNormalized,
       closeAmountSlider,
+      currency,
+      defaultBaseAmountUSD,
+      amountSliderMinUSD,
       item,
       onAction,
       playSound,
@@ -9257,6 +9876,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   style = null,
 }, ref) {
   const [expanded, setExpanded] = useState(false);
+  const heroRecentNowTick = useMinuteTicker(true);
   const heroCardRef = useRef(null);
   const heroAnchorRef = useRef(null);
   const dailyRewardClaimPendingRef = useRef(false);
@@ -9509,6 +10129,18 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
       return next;
     });
   }, [onExpandedChange]);
+  const resolvedHeroRecentEvents = useMemo(() => {
+    const nowTimestamp = heroRecentNowTick || Date.now();
+    const cutoffTimestamp = nowTimestamp - HERO_RECENT_HISTORY_WINDOW_MS;
+    const safeList = Array.isArray(heroRecentEvents) ? heroRecentEvents : [];
+    return safeList
+      .filter((entry) => {
+        const timestamp = normalizeTimestampMs(entry?.timestamp);
+        if (!timestamp) return false;
+        return timestamp >= cutoffTimestamp && timestamp <= nowTimestamp;
+      })
+      .slice(0, 3);
+  }, [heroRecentEvents, heroRecentNowTick]);
   const RecentEventsWrap = onRecentEventsPress ? TouchableOpacity : View;
   return (
     <View
@@ -9555,7 +10187,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
           </Text>
         </View>
         <View style={[styles.savedHeroDivider, { backgroundColor: goldPalette.border }]} />
-        {heroRecentEvents.length > 0 ? (
+        {resolvedHeroRecentEvents.length > 0 ? (
           <RecentEventsWrap
             style={styles.savedHeroRecentList}
             {...(onRecentEventsPress ? { activeOpacity: 0.85, onPress: onRecentEventsPress } : {})}
@@ -9563,7 +10195,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
             <Text style={[styles.savedHeroRecentTitle, { color: goldPalette.subtext }]}>
               {t("heroSpendRecentTitle")}
             </Text>
-            {heroRecentEvents.map((entry) => (
+            {resolvedHeroRecentEvents.map((entry) => (
               <Text
                 key={entry.id}
                 style={[
@@ -11477,7 +12109,7 @@ function SpendConfirmSheet({
     : formatCurrency(0, currency, { friendly: true });
   const displayTitle =
     item?.title?.[language] || item?.title?.en || item?.title || t("defaultDealTitle");
-  const cancelColor = theme === "dark" ? "#64F2B5" : "#1BA868";
+  const cancelColor = theme === "dark" ? "#64F2B5" : theme === PRO_THEME_ID ? colors.primary : "#1BA868";
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
       <View style={styles.payBackdrop}>
@@ -12570,6 +13202,7 @@ const FeedScreen = React.memo(
   onTemptationSwipeDelete,
   onSavingsBreakdownPress = () => {},
   onBudgetHeroPress = null,
+  budgetAutoEnabled = true,
   savingsHeroRef = null,
   heroCarouselIndex = 0,
   heroCarouselLocked = false,
@@ -12585,6 +13218,8 @@ const FeedScreen = React.memo(
   resolveTemptationCategory = null,
   tamagotchiMood = null,
   tamagotchiDesiredFood = null,
+  tamagotchiHungerImmunityUntil = 0,
+  tamagotchiHasHungerImmunity = false,
   primaryTemptationId = null,
   primaryTemptationDescription = "",
   focusTemplateId = null,
@@ -12612,6 +13247,7 @@ const FeedScreen = React.memo(
   tutorialHighlightMeasureTick = 0,
   onTutorialHighlightLayoutChange = null,
   allowThinkAction = true,
+  isPremiumUser = false,
   budgetSpeechDataRef = null,
   onScrollActivityChange = null,
   },
@@ -13177,6 +13813,7 @@ const FeedScreen = React.memo(
   const openHistoryModal = useCallback(() => setHistoryModalVisible(true), []);
   const closeHistoryModal = useCallback(() => setHistoryModalVisible(false), []);
   const feedShuffleSeedRef = useRef(Math.random());
+  const heroNowTick = useMinuteTicker(true);
   const handleBaselineSetup = onBaselineSetup || (() => {});
   const realSavedUSD = useRealSavedAmount();
   const totalSavedLabel = useMemo(
@@ -13206,12 +13843,34 @@ const FeedScreen = React.memo(
       (entry) => entry.kind === "refuse_spend" || entry.kind === "spend"
     );
     filtered.sort((a, b) => {
-      const aTime = Number(a?.timestamp) || 0;
-      const bTime = Number(b?.timestamp) || 0;
+      const aTime = normalizeTimestampMs(a?.timestamp);
+      const bTime = normalizeTimestampMs(b?.timestamp);
       return bTime - aTime;
     });
     return filtered.slice(0, 3);
   }, [resolvedHistoryEvents, isEssentialHistoryEntry]);
+  const heroRecentActivity = useMemo(() => {
+    const nowTimestamp = heroNowTick || Date.now();
+    const cutoffTimestamp = nowTimestamp - HERO_RECENT_HISTORY_WINDOW_MS;
+    const filtered = resolvedHistoryEvents.filter((entry) => {
+      if (entry?.kind !== "refuse_spend" && entry?.kind !== "spend") return false;
+      const timestamp = normalizeTimestampMs(entry?.timestamp);
+      return timestamp >= cutoffTimestamp && timestamp <= nowTimestamp;
+    });
+    filtered.sort((a, b) => normalizeTimestampMs(b?.timestamp) - normalizeTimestampMs(a?.timestamp));
+    return filtered.slice(0, 3);
+  }, [heroNowTick, resolvedHistoryEvents]);
+  const heroHistoryEntries = useMemo(() => {
+    const nowTimestamp = heroNowTick || Date.now();
+    const cutoffTimestamp = nowTimestamp - HERO_RECENT_HISTORY_WINDOW_MS;
+    const filtered = resolvedHistoryEvents.filter((entry) => {
+      const timestamp = normalizeTimestampMs(entry?.timestamp);
+      if (!timestamp) return false;
+      return timestamp >= cutoffTimestamp && timestamp <= nowTimestamp;
+    });
+    filtered.sort((a, b) => normalizeTimestampMs(b?.timestamp) - normalizeTimestampMs(a?.timestamp));
+    return filtered;
+  }, [heroNowTick, resolvedHistoryEvents]);
   const { latestSaveEvent, latestSpendEvent } = useMemo(() => {
     let latestSave = null;
     let latestSpend = null;
@@ -13234,21 +13893,23 @@ const FeedScreen = React.memo(
   }, [resolvedHistoryEvents]);
   const heroRecentEvents = useMemo(
     () =>
-      recentActivity.map((entry) => {
+      heroRecentActivity.map((entry) => {
+        const entryTimestamp = normalizeTimestampMs(entry?.timestamp);
         const resolvedTitle =
           resolveTemplateTitle(entry?.meta?.templateId, entry?.meta?.title) ||
           entry?.title ||
           t("defaultDealTitle");
-        const timestampLabel = formatLatestSavingTimestamp(entry?.timestamp, language);
+        const timestampLabel = formatLatestSavingTimestamp(entryTimestamp, language);
         const isSpend = entry.kind === "spend";
         const prefix = isSpend ? "- " : "";
         return {
           id: entry.id,
           label: `${prefix}${resolvedTitle}${timestampLabel ? ` · ${timestampLabel}` : ""}`,
           isSpend,
+          timestamp: entryTimestamp,
         };
       }),
-    [language, recentActivity, resolveTemplateTitle, t]
+    [heroRecentActivity, language, resolveTemplateTitle, t]
   );
   const resolveEventTitle = useCallback(
     (entry) =>
@@ -13333,9 +13994,22 @@ const FeedScreen = React.memo(
     [historyInteractionMap]
   );
   const isDarkMode = colors === THEMES.dark;
+  const isProMode = colors === THEMES.pro || colors?.background === THEMES.pro.background;
+  const heroProBadgePalette = useMemo(
+    () => ({
+      background: "#0C0C0C",
+      border: "#0C0C0C",
+      text: "#FFFFFF",
+    }),
+    []
+  );
   const moodGradient = useMemo(
-    () => applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), isDarkMode ? "dark" : "light"),
-    [moodPreset?.id, isDarkMode]
+    () =>
+      applyThemeToMoodGradient(
+        getMoodGradient(moodPreset?.id),
+        isDarkMode ? "dark" : isProMode ? PRO_THEME_ID : "light"
+      ),
+    [isDarkMode, isProMode, moodPreset?.id]
   );
   const mainTemptationId = primaryTemptationId;
   const resolveInteractionEntry = useCallback(
@@ -14176,6 +14850,129 @@ const FeedScreen = React.memo(
           },
     [isDarkMode]
   );
+  const tamagotchiImmunityUntilTimestamp = Math.max(
+    0,
+    Number(tamagotchiHungerImmunityUntil) || 0
+  );
+  const tamagotchiImmunityMinuteNow = useMinuteTicker(tamagotchiImmunityUntilTimestamp > 0);
+  const hasTamagotchiHungerImmunity =
+    tamagotchiHasHungerImmunity ||
+    tamagotchiImmunityUntilTimestamp > (Number(tamagotchiImmunityMinuteNow) || Date.now());
+  const [immunityHintVisible, setImmunityHintVisible] = useState(false);
+  const [immunityHintTarget, setImmunityHintTarget] = useState("hero");
+  const [immunityHintNow, setImmunityHintNow] = useState(() => Date.now());
+  const immunityHintAnim = useRef(new Animated.Value(0)).current;
+  const immunityHintHideTimerRef = useRef(null);
+  const immunityHintRemainingMs = Math.max(0, tamagotchiImmunityUntilTimestamp - immunityHintNow);
+  const immunityHintPalette = useMemo(
+    () =>
+      isDarkMode
+        ? {
+            backgroundColor: "rgba(8,13,24,0.96)",
+            borderColor: "rgba(126,178,255,0.42)",
+            titleColor: "#DCEAFF",
+            textColor: "#9CC4FF",
+          }
+        : {
+            backgroundColor: "rgba(255,255,255,0.98)",
+            borderColor: "rgba(62,129,255,0.3)",
+            titleColor: "#244A84",
+            textColor: "#2F70FF",
+          },
+    [isDarkMode]
+  );
+  const clearImmunityHintTimer = useCallback(() => {
+    if (immunityHintHideTimerRef.current) {
+      clearTimeout(immunityHintHideTimerRef.current);
+      immunityHintHideTimerRef.current = null;
+    }
+  }, []);
+  const hideImmunityHint = useCallback(
+    (immediate = false) => {
+      clearImmunityHintTimer();
+      immunityHintAnim.stopAnimation();
+      if (immediate) {
+        immunityHintAnim.setValue(0);
+        setImmunityHintVisible(false);
+        return;
+      }
+      Animated.timing(immunityHintAnim, {
+        toValue: 0,
+        duration: 180,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) {
+          setImmunityHintVisible(false);
+        }
+      });
+    },
+    [clearImmunityHintTimer, immunityHintAnim]
+  );
+  const formatImmunityCountdown = useCallback(
+    (ms) => {
+      if (ms <= 0) return "00:00:00";
+      const totalSeconds = Math.floor(ms / 1000);
+      const days = Math.floor(totalSeconds / 86400);
+      const hours = Math.floor((totalSeconds % 86400) / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      const hh = String(hours).padStart(2, "0");
+      const mm = String(minutes).padStart(2, "0");
+      const ss = String(seconds).padStart(2, "0");
+      if (days > 0) {
+        return `${days}${t("challengeTimeDayShort")} ${hh}:${mm}:${ss}`.trim();
+      }
+      return `${hh}:${mm}:${ss}`;
+    },
+    [t]
+  );
+  const immunityHintCountdownLabel = useMemo(
+    () => formatImmunityCountdown(immunityHintRemainingMs),
+    [formatImmunityCountdown, immunityHintRemainingMs]
+  );
+  const showImmunityHint = useCallback(
+    (target = "hero") => {
+      if (!hasTamagotchiHungerImmunity || !tamagotchiImmunityUntilTimestamp) return;
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+      setImmunityHintTarget(target);
+      setImmunityHintNow(Date.now());
+      setImmunityHintVisible(true);
+      clearImmunityHintTimer();
+      immunityHintAnim.stopAnimation();
+      immunityHintAnim.setValue(0);
+      Animated.spring(immunityHintAnim, {
+        toValue: 1,
+        tension: 180,
+        friction: 16,
+        useNativeDriver: true,
+      }).start();
+      immunityHintHideTimerRef.current = setTimeout(() => {
+        hideImmunityHint();
+      }, 3600);
+    },
+    [
+      clearImmunityHintTimer,
+      hasTamagotchiHungerImmunity,
+      hideImmunityHint,
+      immunityHintAnim,
+      tamagotchiImmunityUntilTimestamp,
+    ]
+  );
+  useEffect(() => () => clearImmunityHintTimer(), [clearImmunityHintTimer]);
+  useEffect(() => {
+    if (!immunityHintVisible) return;
+    setImmunityHintNow(Date.now());
+    const intervalId = setInterval(() => {
+      setImmunityHintNow(Date.now());
+    }, 1000);
+    return () => clearInterval(intervalId);
+  }, [immunityHintVisible]);
+  useEffect(() => {
+    if (!immunityHintVisible) return;
+    if (immunityHintRemainingMs > 0) return;
+    hideImmunityHint(true);
+  }, [hideImmunityHint, immunityHintRemainingMs, immunityHintVisible]);
   const previousSavedTotal = useRef(savedTotalUSD);
   useEffect(() => {
     if (savedTotalUSD > previousSavedTotal.current) {
@@ -14309,7 +15106,7 @@ const FeedScreen = React.memo(
   );
   const budgetMonthKey = getMonthKey(todayTimestamp);
   const monthlyIncomeUSD = useMemo(
-    () => getIncomeForMonth(incomeEntries, budgetMonthKey),
+    () => getBudgetIncomeForMonth(incomeEntries, budgetMonthKey),
     [incomeEntries, budgetMonthKey]
   );
   const budgetSpendDistribution = useMemo(() => {
@@ -14340,29 +15137,34 @@ const FeedScreen = React.memo(
     });
     return { map, total };
   }, [resolvedHistoryEvents, resolveHistoryCategoryId, budgetMonthKey]);
-  const budgetCarryoverUSD = useMemo(() => {
-    const monthStart = new Date(todayTimestamp);
-    if (Number.isNaN(monthStart.getTime())) return 0;
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
-    const cutoff = monthStart.getTime();
-    let incomeTotal = 0;
-    (Array.isArray(incomeEntries) ? incomeEntries : []).forEach((entry) => {
-      const receivedAt = Number(entry?.receivedAt) || 0;
-      if (!receivedAt || receivedAt >= cutoff) return;
-      incomeTotal += Math.max(0, Number(entry?.amountUSD) || 0);
-    });
-    let spendTotal = 0;
+  const budgetMonthSpendTotals = useMemo(() => {
+    const totals = {};
     resolvedHistoryEvents.forEach((entry) => {
       if (!entry || entry.kind !== "spend") return;
       const timestamp = Number(entry?.timestamp) || 0;
-      if (!timestamp || timestamp >= cutoff) return;
+      if (!timestamp) return;
+      const monthKey = getMonthKey(timestamp);
+      if (!monthKey) return;
       const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
       if (!amount) return;
-      spendTotal += amount;
+      totals[monthKey] = (totals[monthKey] || 0) + amount;
     });
-    return incomeTotal - spendTotal;
-  }, [incomeEntries, resolvedHistoryEvents, todayTimestamp]);
+    return totals;
+  }, [resolvedHistoryEvents]);
+  const budgetCarryoverUSD = useMemo(() => {
+    if (!budgetMonthKey) return 0;
+    const monthKeys = collectBudgetMonthKeys(incomeEntries, resolvedHistoryEvents, budgetMonthKey);
+    if (!monthKeys.length) return 0;
+    const sortedAsc = [...monthKeys].sort();
+    let running = 0;
+    sortedAsc.forEach((monthKey) => {
+      if (monthKey >= budgetMonthKey) return;
+      const incomeUSD = getBudgetIncomeForMonth(incomeEntries, monthKey);
+      const spendUSD = Math.max(0, Number(budgetMonthSpendTotals[monthKey]) || 0);
+      running += incomeUSD - spendUSD;
+    });
+    return running;
+  }, [budgetMonthKey, budgetMonthSpendTotals, incomeEntries, resolvedHistoryEvents]);
   const budgetPlan = useMemo(
     () =>
       buildBudgetPlan({
@@ -14376,6 +15178,7 @@ const FeedScreen = React.memo(
         baselineMonthlyWasteUSD,
         language,
         monthKey: budgetMonthKey,
+        autoAllocationEnabled: budgetAutoEnabled,
       }),
     [
       baselineMonthlyWasteUSD,
@@ -14387,6 +15190,7 @@ const FeedScreen = React.memo(
       decisionStats,
       language,
       monthlyIncomeUSD,
+      budgetAutoEnabled,
     ]
   );
   const budgetDisplayCategories = useMemo(
@@ -14975,15 +15779,30 @@ const FeedScreen = React.memo(
                   onLayout={(event) => setHeroRowWidth(event.nativeEvent.layout.width)}
                 >
                   <View style={styles.heroTextWrap}>
-                    <Text
-                      style={[styles.appName, { color: colors.text }]}
-                      onLayout={(event) => {
-                        const { x, width } = event.nativeEvent.layout;
-                        setHeroLogoRight(x + width);
-                      }}
-                    >
-                      Almost
-                    </Text>
+                    <View style={styles.heroTitleRow}>
+                      <Text
+                        style={[styles.appName, { color: colors.text }]}
+                        onLayout={(event) => {
+                          const { x, width } = event.nativeEvent.layout;
+                          setHeroLogoRight(x + width);
+                        }}
+                      >
+                        Almost
+                      </Text>
+                      {isPremiumUser && (
+                        <View
+                          style={[
+                            styles.heroProBadge,
+                            {
+                              backgroundColor: heroProBadgePalette.background,
+                              borderColor: heroProBadgePalette.border,
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.heroProBadgeText, { color: heroProBadgePalette.text }]}>PRO</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={[styles.heroTagline, { color: colors.muted }]}>
                       {t("appTagline")}
                     </Text>
@@ -15078,6 +15897,11 @@ const FeedScreen = React.memo(
                           animations={tamagotchiAnimations}
                         />
                       </TouchableOpacity>
+                      {hasTamagotchiHungerImmunity && (
+                        <View pointerEvents="none" style={styles.heroMascotShieldOverlay}>
+                          <Text style={styles.heroMascotShieldIcon}>🛡️</Text>
+                        </View>
+                      )}
                       {dailyRewardReady && (
                         <View style={styles.heroMascotBadge}>
                           <Text style={styles.heroMascotBadgeText}>1</Text>
@@ -15323,7 +16147,7 @@ const FeedScreen = React.memo(
       />
       <HistoryModal
         visible={historyModalVisible}
-        history={resolvedHistoryEvents}
+        history={heroHistoryEntries}
         onClose={closeHistoryModal}
         onHistoryDelete={onHistoryDelete}
         t={t}
@@ -15575,10 +16399,12 @@ const BudgetWidgetTutorialModal = React.memo(function BudgetWidgetTutorialModal(
   onClose,
 }) {
   if (!visible) return null;
-  const accent = theme === "dark" ? "#FFD06A" : "#FFB24A";
-  const accentSoft = colorWithAlpha(accent, theme === "dark" ? 0.18 : 0.22);
-  const accentBorder = colorWithAlpha(accent, theme === "dark" ? 0.45 : 0.35);
-  const trackColor = colorWithAlpha(colors.text, theme === "dark" ? 0.2 : 0.12);
+  const isDarkTheme = theme === "dark";
+  const isProTheme = theme === PRO_THEME_ID;
+  const accent = isDarkTheme ? "#FFD06A" : isProTheme ? colors.primary : "#FFB24A";
+  const accentSoft = colorWithAlpha(accent, isDarkTheme ? 0.18 : isProTheme ? 0.24 : 0.22);
+  const accentBorder = colorWithAlpha(accent, isDarkTheme ? 0.45 : isProTheme ? 0.5 : 0.35);
+  const trackColor = colorWithAlpha(colors.text, isDarkTheme ? 0.2 : isProTheme ? 0.2 : 0.12);
   const bars = [
     { id: "food", emoji: "🍲", width: "72%", color: SAVE_ACTION_COLOR },
     { id: "move", emoji: "🚕", width: "48%", color: "#6BA9FF" },
@@ -15786,6 +16612,8 @@ const ProgressScreen = React.memo(function ProgressScreen({
   historyEvents = [],
   incomeEntries = [],
   budgetOverrides = {},
+  budgetAutoEnabled = true,
+  onBudgetAutoLocked = null,
   savedTotalUSD = 0,
   decisionStats = {},
   baselineMonthlyWasteUSD = 0,
@@ -16763,22 +17591,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
   const budgetMonthKey = getMonthKey(todayTimestamp);
   const [budgetWidgetMonthKey, setBudgetWidgetMonthKey] = useState(() => budgetMonthKey);
   const availableBudgetMonths = useMemo(() => {
-    const keys = new Set();
-    if (budgetMonthKey) {
-      keys.add(budgetMonthKey);
-    }
-    (Array.isArray(incomeEntries) ? incomeEntries : []).forEach((entry) => {
-      const key = getMonthKey(entry?.receivedAt);
-      if (key) keys.add(key);
-    });
-    resolvedHistoryEvents.forEach((entry) => {
-      if (!entry?.timestamp) return;
-      const key = getMonthKey(entry.timestamp);
-      if (key) keys.add(key);
-    });
-    const list = Array.from(keys);
-    list.sort((a, b) => (a < b ? 1 : -1));
-    return list;
+    return collectBudgetMonthKeys(incomeEntries, resolvedHistoryEvents, budgetMonthKey);
   }, [budgetMonthKey, incomeEntries, resolvedHistoryEvents]);
   const budgetMonthLabels = useMemo(() => {
     const locale = getFormatLocale(language);
@@ -16812,12 +17625,10 @@ const ProgressScreen = React.memo(function ProgressScreen({
     availableBudgetMonths.forEach((key) => {
       ensure(key);
     });
-    (Array.isArray(incomeEntries) ? incomeEntries : []).forEach((entry) => {
-      const key = getMonthKey(entry?.receivedAt);
-      if (!key) return;
+    availableBudgetMonths.forEach((key) => {
       const target = ensure(key);
       if (!target) return;
-      target.incomeUSD += Math.max(0, Number(entry?.amountUSD) || 0);
+      target.incomeUSD = getBudgetIncomeForMonth(incomeEntries, key);
     });
     resolvedHistoryEvents.forEach((entry) => {
       if (!entry || entry.kind !== "spend") return;
@@ -16849,7 +17660,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
     return map;
   }, [availableBudgetMonths, budgetMonthlyStats]);
   const monthlyIncomeUSD = useMemo(
-    () => getIncomeForMonth(incomeEntries, budgetMonthKey),
+    () => getBudgetIncomeForMonth(incomeEntries, budgetMonthKey),
     [incomeEntries, budgetMonthKey]
   );
   const budgetSpendDistribution = useMemo(() => {
@@ -16881,28 +17692,9 @@ const ProgressScreen = React.memo(function ProgressScreen({
     return { map, total };
   }, [resolvedHistoryEvents, resolveHistoryCategoryId, budgetMonthKey]);
   const budgetCarryoverUSD = useMemo(() => {
-    const monthStart = new Date(todayTimestamp);
-    if (Number.isNaN(monthStart.getTime())) return 0;
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
-    const cutoff = monthStart.getTime();
-    let incomeTotal = 0;
-    (Array.isArray(incomeEntries) ? incomeEntries : []).forEach((entry) => {
-      const receivedAt = Number(entry?.receivedAt) || 0;
-      if (!receivedAt || receivedAt >= cutoff) return;
-      incomeTotal += Math.max(0, Number(entry?.amountUSD) || 0);
-    });
-    let spendTotal = 0;
-    resolvedHistoryEvents.forEach((entry) => {
-      if (!entry || entry.kind !== "spend") return;
-      const timestamp = Number(entry?.timestamp) || 0;
-      if (!timestamp || timestamp >= cutoff) return;
-      const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
-      if (!amount) return;
-      spendTotal += amount;
-    });
-    return incomeTotal - spendTotal;
-  }, [incomeEntries, resolvedHistoryEvents, todayTimestamp]);
+    if (!budgetMonthKey) return 0;
+    return budgetMonthlyCarryover[budgetMonthKey] || 0;
+  }, [budgetMonthKey, budgetMonthlyCarryover]);
   const budgetPlan = useMemo(
     () =>
       buildBudgetPlan({
@@ -16916,6 +17708,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
         baselineMonthlyWasteUSD,
         language,
         monthKey: budgetMonthKey,
+        autoAllocationEnabled: budgetAutoEnabled,
       }),
     [
       baselineMonthlyWasteUSD,
@@ -16927,6 +17720,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
       decisionStats,
       language,
       monthlyIncomeUSD,
+      budgetAutoEnabled,
     ]
   );
   const budgetCurrentHasIncome = (budgetPlan?.incomeUSD || 0) > 0;
@@ -16961,6 +17755,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
         baselineMonthlyWasteUSD,
         language,
         monthKey: budgetWidgetActiveMonthKey,
+        autoAllocationEnabled: budgetAutoEnabled,
       }),
     [
       baselineMonthlyWasteUSD,
@@ -16972,6 +17767,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
       budgetWidgetSpendDistribution,
       decisionStats,
       language,
+      budgetAutoEnabled,
     ]
   );
   const isBudgetStatsOnly = budgetWidgetActiveMonthKey !== budgetMonthKey;
@@ -17234,6 +18030,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
         baselineMonthlyWasteUSD,
         language,
         monthKey: budgetModalActiveMonthKey,
+        autoAllocationEnabled: budgetAutoEnabled,
       }),
     [
       baselineMonthlyWasteUSD,
@@ -17245,6 +18042,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
       budgetOverrides,
       decisionStats,
       language,
+      budgetAutoEnabled,
     ]
   );
   const budgetModalDisplayCategories = useMemo(
@@ -17292,9 +18090,12 @@ const ProgressScreen = React.memo(function ProgressScreen({
     };
   }, []);
   const openBudgetModal = useCallback(() => {
+    if (!budgetAutoEnabled) {
+      onBudgetAutoLocked?.();
+    }
     setBudgetModalMonthKey(budgetWidgetMonthKey || budgetMonthKey);
     setBudgetModalVisible(true);
-  }, [budgetMonthKey, budgetWidgetMonthKey]);
+  }, [budgetAutoEnabled, budgetMonthKey, budgetWidgetMonthKey, onBudgetAutoLocked]);
   const closeBudgetModal = useCallback(() => {
     setBudgetModalVisible(false);
     setBudgetManualPrompt((prev) => (prev.visible ? { ...prev, visible: false, error: false } : prev));
@@ -21074,6 +21875,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
   onPickImage,
   onHistoryDelete = () => {},
   theme,
+  isPremiumUser = false,
   language,
   currencyValue,
   history = [],
@@ -21100,10 +21902,37 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const isDarkTheme = theme === "dark";
   const normalizedLanguageValue = normalizeLanguage(language || DEFAULT_LANGUAGE);
   const isRomanceLocale = normalizedLanguageValue === "es" || normalizedLanguageValue === "fr";
-  const reportsDisabled = reportsLocked || !onReportsPress;
-  const reportsLockLabel = t("featureLockedLevelLabel", { level: reportsUnlockLevel });
+  const reportsDisabled = !onReportsPress;
+  const reportsLockedState = !!reportsLocked;
+  const reportsLockLabel = reportsLocked
+    ? normalizedLanguageValue === "ru"
+      ? "Доступно в Premium"
+      : "Available in Premium"
+    : t("featureLockedLevelLabel", { level: reportsUnlockLevel });
   const historyEntries = Array.isArray(history) ? history : [];
-  const historyLastIndex = historyEntries.length - 1;
+  const [historyVisibleWindowMs, setHistoryVisibleWindowMs] = useState(PROFILE_HISTORY_PAGE_WINDOW_MS);
+  const visibleHistoryEntries = useMemo(
+    () => {
+      const cutoffTimestamp = Date.now() - historyVisibleWindowMs;
+      return historyEntries.filter((entry) => {
+        const timestamp = Number(entry?.timestamp) || 0;
+        if (!timestamp) return true;
+        return timestamp >= cutoffTimestamp;
+      });
+    },
+    [historyEntries, historyVisibleWindowMs]
+  );
+  const hasMoreHistoryEntries = useMemo(
+    () => {
+      const cutoffTimestamp = Date.now() - historyVisibleWindowMs;
+      return historyEntries.some((entry) => {
+        const timestamp = Number(entry?.timestamp) || 0;
+        return timestamp > 0 && timestamp < cutoffTimestamp;
+      });
+    },
+    [historyEntries, historyVisibleWindowMs]
+  );
+  const historyLastIndex = visibleHistoryEntries.length - 1;
   const locale = getFormatLocale(language);
   const formatLocalAmount = (valueUSD = 0) =>
     formatCurrency(convertToCurrency(valueUSD || 0, currentCurrency), currentCurrency);
@@ -21197,10 +22026,11 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const avatarEditBadgeColors = useMemo(
     () => {
       const dark = theme === "dark";
+      const pro = theme === PRO_THEME_ID;
       return {
-        background: dark ? "rgba(0,0,0,0.6)" : "rgba(255,255,255,0.92)",
-        border: dark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.08)",
-        icon: dark ? colors.card : colors.text,
+        background: dark ? "rgba(0,0,0,0.6)" : pro ? "#0C0C0C" : "rgba(255,255,255,0.92)",
+        border: dark ? "rgba(255,255,255,0.2)" : pro ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.08)",
+        icon: dark ? colors.card : pro ? "#FFFFFF" : colors.text,
       };
     },
     [theme, colors.card, colors.text]
@@ -21324,9 +22154,8 @@ const ProfileScreen = React.memo(function ProfileScreen({
     };
   }, [isRomanceLocale]);
   const profileMoodGradient = useMemo(
-    () =>
-      applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), isDarkTheme ? "dark" : "light"),
-    [moodPreset?.id, isDarkTheme]
+    () => applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), theme),
+    [moodPreset?.id, theme]
   );
   const handlePrivacyPolicyOpen = useCallback(() => {
     const normalizedLanguage = normalizeLanguage(language);
@@ -21603,6 +22432,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
     }),
     []
   );
+  const handleHistoryLoadMore = useCallback(() => {
+    setHistoryVisibleWindowMs((prev) => prev + PROFILE_HISTORY_PAGE_WINDOW_MS);
+  }, []);
   return (
     <View style={[styles.container, { backgroundColor: colors.background }] }>
       <ScrollView
@@ -21781,9 +22613,10 @@ const ProfileScreen = React.memo(function ProfileScreen({
                     style={[
                       styles.profileActionSecondary,
                       { borderColor: colors.border },
+                      reportsLockedState ? { opacity: 0.88 } : null,
                       reportsDisabled ? { opacity: 0.7 } : null,
                     ]}
-                    onPress={reportsDisabled ? undefined : onReportsPress}
+                    onPress={onReportsPress}
                     disabled={reportsDisabled}
                     activeOpacity={reportsDisabled ? 1 : 0.85}
                   >
@@ -21791,7 +22624,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
                       <Text style={[styles.profileActionSecondaryText, { color: colors.muted }]}>
                         {t("reportsButton")}
                       </Text>
-                      {!reportsDisabled && reportsBadgeVisible && (
+                      {!reportsLockedState && !reportsDisabled && reportsBadgeVisible && (
                         <View style={[styles.reportsBadgeChip, { backgroundColor: colors.text }]}>
                           <Text style={[styles.reportsBadgeText, { color: colors.background }]}>
                             {t("reportsBadgeNew")}
@@ -21799,7 +22632,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
                         </View>
                       )}
                     </View>
-                    {reportsDisabled ? (
+                    {reportsLockedState ? (
                       <Text style={[styles.profileActionLockedLabel, { color: colors.muted }]}>
                         {`🔒 ${reportsLockLabel}`}
                       </Text>
@@ -21827,33 +22660,50 @@ const ProfileScreen = React.memo(function ProfileScreen({
           <View style={[styles.settingsDivider, { backgroundColor: colors.border }]} />
 
           <Text style={[styles.settingsTitle, { color: colors.text }]}>{t("settingsTitle")}</Text>
-        <View style={styles.settingRow}>
-          <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("themeLabel")}</Text>
-          <View style={styles.settingChoices}>
-            {(["light", "dark"]).map((mode) => (
-              <TouchableOpacity
-                key={mode}
-                style={[
-                  styles.settingChip,
-                  {
-                    backgroundColor: theme === mode ? colors.text : "transparent",
-                    borderColor: colors.border,
-                  },
-                ]}
-                onPress={() => onThemeToggle(mode)}
-              >
-                <Text
-                  style={{
-                    color: theme === mode ? colors.background : colors.muted,
-                    fontWeight: "600",
-                  }}
-                >
-                  {mode === "light" ? t("themeLight") : t("themeDark")}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+          <>
+            <View style={styles.settingRow}>
+              <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("themeLabel")}</Text>
+              <View style={styles.settingChoices}>
+                {[
+                  { id: "light", label: t("themeLight"), locked: false },
+                  { id: "dark", label: t("themeDark"), locked: false },
+                  { id: PRO_THEME_ID, label: t("themePro"), locked: !isPremiumUser },
+                ].map((option) => {
+                  const active = theme === option.id;
+                  const activeProChip = active && option.id === PRO_THEME_ID;
+                  return (
+                    <TouchableOpacity
+                      key={option.id}
+                      style={[
+                        styles.settingChip,
+                        {
+                          backgroundColor: active ? (activeProChip ? colors.primary : colors.text) : "transparent",
+                          borderColor: colors.border,
+                          opacity: option.locked && !active ? 0.7 : 1,
+                        },
+                      ]}
+                      onPress={() => onThemeToggle(option.id)}
+                    >
+                      <Text
+                        style={{
+                          color: active ? "#FFFFFF" : colors.muted,
+                          fontWeight: "600",
+                        }}
+                      >
+                        {option.label}
+                        {option.locked ? " 🔒" : ""}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+            {!isPremiumUser && (
+              <Text style={[styles.profileHintText, { color: colors.muted, marginTop: -6, marginBottom: 8 }]}>
+                {t("themeProLockedHint")}
+              </Text>
+            )}
+          </>
         <View style={styles.settingRow}>
           <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("languageLabel")}</Text>
           <View style={styles.settingChoices}>
@@ -22011,7 +22861,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
 
         <View style={[styles.historyCard, { backgroundColor: colors.card }] }>
           <Text style={[styles.historyTitle, { color: colors.text }]}>{t("historyTitle")}</Text>
-          {historyEntries.length === 0 ? (
+          {visibleHistoryEntries.length === 0 ? (
             <Text style={[styles.historyEmpty, { color: colors.muted }]}>{t("historyEmpty")}</Text>
           ) : (
             <FlatList
@@ -22026,7 +22876,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
               showsVerticalScrollIndicator
               nestedScrollEnabled
               scrollEventThrottle={16}
-              data={historyEntries}
+              data={visibleHistoryEntries}
               keyExtractor={(entry) => entry.id}
               renderItem={renderHistoryItem}
               getItemLayout={historyItemLayout}
@@ -22035,6 +22885,15 @@ const ProfileScreen = React.memo(function ProfileScreen({
               windowSize={5}
             />
           )}
+          {hasMoreHistoryEntries ? (
+            <TouchableOpacity
+              style={[styles.historyMoreButton, { borderColor: colors.border }]}
+              onPress={handleHistoryLoadMore}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.historyMoreText, { color: colors.text }]}>{t("historyLoadMore")}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
         <TouchableOpacity
           style={[
@@ -22290,6 +23149,38 @@ function AppContent() {
     setHomeSpeechTrigger((prev) => ({ tick: prev.tick + 1, reason }));
   }, []);
   const onboardingCompletedRef = useRef(false);
+  const [premiumInstallId, setPremiumInstallId] = useState("");
+  const [premiumInstallIdHydrated, setPremiumInstallIdHydrated] = useState(false);
+  const [premiumSoftPaywallShown, setPremiumSoftPaywallShown] = useState(false);
+  const [premiumSoftPaywallHydrated, setPremiumSoftPaywallHydrated] = useState(false);
+  const [premiumHardPaywallShown, setPremiumHardPaywallShown] = useState(false);
+  const [premiumHardPaywallHydrated, setPremiumHardPaywallHydrated] = useState(false);
+  const [premiumChallengeClaims, setPremiumChallengeClaims] = useState(0);
+  const [premiumChallengeClaimsHydrated, setPremiumChallengeClaimsHydrated] = useState(false);
+  const [premiumState, setPremiumState] = useState({
+    enabled: false,
+    isPremium: false,
+    entitlement: null,
+    customerInfo: null,
+    offerings: null,
+    offeringsByPlan: {},
+    lastSource: "boot",
+    error: null,
+  });
+  const premiumPaywallTimerRef = useRef(null);
+  const [premiumPaywallState, setPremiumPaywallState] = useState({
+    visible: false,
+    kind: "feature",
+    featureKey: null,
+    savedAmountLabel: "",
+  });
+  const [premiumPurchaseLoadingPlan, setPremiumPurchaseLoadingPlan] = useState(null);
+  const [premiumRestoreLoading, setPremiumRestoreLoading] = useState(false);
+  const showPremiumPaywallRef = useRef(() => false);
+  const lastDeclineCountRef = useRef(null);
+  const lastCompletedGoalsCountRef = useRef(null);
+  const premiumUnlockTransitionRef = useRef(null);
+  const premiumUnlockIntentRef = useRef(null);
   useEffect(() => {
     wishesRef.current = wishes;
   }, [wishes]);
@@ -22341,9 +23232,16 @@ function AppContent() {
     setBudgetWidgetLayoutTick((tick) => tick + 1);
   }, []);
   const requestProgressBudgetFocus = useCallback(() => {
+    if (!premiumState.isPremium) {
+      showPremiumPaywallRef.current({
+        kind: "feature",
+        featureKey: PREMIUM_FEATURE_KEYS.homeWidget,
+      });
+      return;
+    }
     setPendingProgressScrollTarget("budget");
     goToTab("cart");
-  }, [goToTab]);
+  }, [goToTab, premiumState.isPremium]);
   const registerPendingCardLayout = useCallback((id, layout) => {
     if (!id || !layout) return;
     pendingCardLayoutsRef.current.set(id, layout.y);
@@ -22631,6 +23529,14 @@ function AppContent() {
   const incomeEntrySourceRef = useRef("manual");
   const incomeEntryModeRef = useRef(INCOME_ENTRY_TYPES.MONTHLY);
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
+  const visibleHistoryEvents = useMemo(() => {
+    if (premiumState.isPremium) return resolvedHistoryEvents;
+    const cutoffTimestamp = Date.now() - FREE_HISTORY_WINDOW_MS;
+    return resolvedHistoryEvents.filter((entry) => {
+      const timestamp = Number(entry?.timestamp) || 0;
+      return timestamp > 0 && timestamp >= cutoffTimestamp;
+    });
+  }, [premiumState.isPremium, resolvedHistoryEvents]);
   const [progressFocusChallengeId, setProgressFocusChallengeId] = useState(null);
   const levelProgressBaseUSD = Math.max(
     progressSavedTotalUSD || 0,
@@ -22659,23 +23565,40 @@ function AppContent() {
     [levelProgressUSD, profileCurrencyCode]
   );
   const playerLevel = playerTierInfo.level;
+  const premiumActive = premiumState.isPremium;
+  const budgetAutoTrialStartTimestamp = useMemo(() => {
+    const joinedValue = profile?.joinedAt || profile?.spendingProfile?.baselineStartAt || null;
+    if (!joinedValue) return null;
+    if (typeof joinedValue === "number" && Number.isFinite(joinedValue)) {
+      return joinedValue;
+    }
+    const parsed = Date.parse(String(joinedValue));
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [profile?.joinedAt, profile?.spendingProfile?.baselineStartAt]);
+  const freeBudgetAutoTrialActive = useMemo(() => {
+    if (premiumActive) return false;
+    if (!Number.isFinite(budgetAutoTrialStartTimestamp)) return true;
+    const elapsedMs = Math.max(0, Date.now() - Number(budgetAutoTrialStartTimestamp));
+    return elapsedMs < FREE_BUDGET_AUTO_DAYS * DAY_MS;
+  }, [budgetAutoTrialStartTimestamp, currentDayKey, premiumActive]);
+  const budgetAutoEnabled = premiumActive || freeBudgetAutoTrialActive;
   const hasSpendHistory = useMemo(
     () => resolvedHistoryEvents.some((entry) => entry.kind === "spend"),
     [resolvedHistoryEvents]
   );
   const reportsUnlockLevel = FEATURE_UNLOCK_LEVELS.reports || 6;
-  const reportsUnlocked = playerLevel >= reportsUnlockLevel;
-  const dailyChallengeUnlocked = playerLevel >= 2 && hasSpendHistory;
-  const dailyRewardUnlocked = playerLevel >= 2;
-  const focusModeUnlocked = playerLevel >= 3;
-  const dailySummaryUnlocked = playerLevel >= 3;
-  const focusTargetsUnlocked = playerLevel >= 5;
-  const catCustomizationUnlocked = playerLevel >= 6;
-  const rewardsUnlocked = playerLevel >= 5;
+  const reportsUnlocked = premiumActive;
+  const dailyChallengeUnlocked = premiumActive || (playerLevel >= 2 && hasSpendHistory);
+  const dailyRewardUnlocked = premiumActive || playerLevel >= 2;
+  const focusModeUnlocked = premiumActive || playerLevel >= 3;
+  const dailySummaryUnlocked = premiumActive || playerLevel >= 3;
+  const focusTargetsUnlocked = premiumActive || playerLevel >= 5;
+  const catCustomizationUnlocked = premiumActive;
+  const rewardsUnlocked = premiumActive || playerLevel >= 5;
   const challengesUnlocked = true;
-  const impulseFeaturesUnlocked = playerLevel >= 4;
-  const freeDayUnlocked = playerLevel >= 7;
-  const thinkingUnlocked = playerLevel >= 3;
+  const impulseFeaturesUnlocked = premiumActive;
+  const freeDayUnlocked = premiumActive || playerLevel >= 7;
+  const thinkingUnlocked = premiumActive || playerLevel >= 3;
   const todayKey = currentDayKey;
   const currentMonthKey = useMemo(() => getMonthKey(Date.now()), [currentDayKey]);
   const widgetSavedMonthUSD = useMemo(() => {
@@ -22736,12 +23659,11 @@ function AppContent() {
       }
       return stats[key];
     };
-    (Array.isArray(incomeEntries) ? incomeEntries : []).forEach((entry) => {
-      const key = getMonthKey(entry?.receivedAt);
-      if (!key) return;
+    const monthKeys = collectBudgetMonthKeys(incomeEntries, resolvedHistoryEvents, currentMonthKey);
+    monthKeys.forEach((key) => {
       const target = ensure(key);
       if (!target) return;
-      target.incomeUSD += Math.max(0, Number(entry?.amountUSD) || 0);
+      target.incomeUSD = getBudgetIncomeForMonth(incomeEntries, key);
     });
     resolvedHistoryEvents.forEach((entry) => {
       if (!entry || entry.kind !== "spend") return;
@@ -22756,7 +23678,7 @@ function AppContent() {
       target.spendTotalUSD += amount;
     });
     return stats;
-  }, [incomeEntries, resolvedHistoryEvents]);
+  }, [currentMonthKey, incomeEntries, resolvedHistoryEvents]);
   const widgetBudgetCarryover = useMemo(() => {
     const keys = Object.keys(widgetBudgetStats);
     if (!keys.length) return {};
@@ -22860,14 +23782,11 @@ function AppContent() {
     widgetRefreshTick,
   ]);
   const currentMonthIncomeUSD = useMemo(
-    () => getIncomeForMonth(incomeEntries, currentMonthKey),
+    () => getBudgetIncomeForMonth(incomeEntries, currentMonthKey),
     [incomeEntries, currentMonthKey]
   );
   const currentMonthRecurringIncomeUSD = useMemo(
-    () =>
-      getIncomeForMonth(incomeEntries, currentMonthKey, {
-        entryType: INCOME_ENTRY_TYPES.MONTHLY,
-      }),
+    () => getRecurringIncomeForMonth(incomeEntries, currentMonthKey),
     [incomeEntries, currentMonthKey]
   );
   const hasMonthlyIncomeEntries = useMemo(
@@ -23198,6 +24117,14 @@ function AppContent() {
     () => normalizeProfileReports(profile?.reports),
     [profile?.reports]
   );
+  const reportsHaveData = useMemo(
+    () => reportsSnapshotHasMeaningfulData(reportsSnapshot),
+    [reportsSnapshot]
+  );
+  const reportsHaveWeeklyData = useMemo(
+    () => reportsSnapshotHasWeeklyData(reportsSnapshot),
+    [reportsSnapshot]
+  );
   const [reportsBadgeVisible, setReportsBadgeVisible] = useState(false);
   const [reportsBadgeHydrated, setReportsBadgeHydrated] = useState(false);
   const [reportsLastAutoWeekKey, setReportsLastAutoWeekKey] = useState(null);
@@ -23242,6 +24169,9 @@ function AppContent() {
   );
   const profileJoinedAt = profile?.joinedAt || null;
   const dayMilestonesLoggedRef = useRef({ day2: false, day3: false });
+  const retentionActiveDaysRef = useRef([]);
+  const retentionMilestonesLoggedRef = useRef({});
+  const [retentionAnalyticsHydrated, setRetentionAnalyticsHydrated] = useState(false);
   useEffect(() => {
     let cancelled = false;
     AsyncStorage.getItem(STORAGE_KEYS.LEVEL_REACHED_LOGGED)
@@ -23261,10 +24191,17 @@ function AppContent() {
   }, []);
   useEffect(() => {
     let cancelled = false;
-    AsyncStorage.multiGet([STORAGE_KEYS.DAY_TWO_ACTIVITY, STORAGE_KEYS.DAY_THREE_ACTIVITY])
+    AsyncStorage.multiGet([
+      STORAGE_KEYS.DAY_TWO_ACTIVITY,
+      STORAGE_KEYS.DAY_THREE_ACTIVITY,
+      STORAGE_KEYS.RETENTION_ACTIVE_DAYS,
+      STORAGE_KEYS.RETENTION_MILESTONES,
+    ])
       .then((entries) => {
         if (cancelled || !Array.isArray(entries)) return;
         const logged = { ...dayMilestonesLoggedRef.current };
+        let retentionDays = retentionActiveDaysRef.current;
+        const retentionMilestones = { ...retentionMilestonesLoggedRef.current };
         entries.forEach(([key, value]) => {
           if (key === STORAGE_KEYS.DAY_TWO_ACTIVITY && value) {
             logged.day2 = true;
@@ -23272,10 +24209,40 @@ function AppContent() {
           if (key === STORAGE_KEYS.DAY_THREE_ACTIVITY && value) {
             logged.day3 = true;
           }
+          if (key === STORAGE_KEYS.RETENTION_ACTIVE_DAYS && value) {
+            try {
+              const parsed = JSON.parse(value);
+              retentionDays = normalizeRetentionDayKeys(parsed);
+            } catch {
+              retentionDays = [];
+            }
+          }
+          if (key === STORAGE_KEYS.RETENTION_MILESTONES && value) {
+            try {
+              const parsed = JSON.parse(value);
+              normalizeRetentionMilestoneDays(parsed).forEach((day) => {
+                retentionMilestones[day] = true;
+              });
+            } catch {
+              // Ignore malformed legacy data.
+            }
+          }
         });
+        if (logged.day2) {
+          retentionMilestones[2] = true;
+        }
+        if (logged.day3) {
+          retentionMilestones[3] = true;
+        }
         dayMilestonesLoggedRef.current = logged;
+        retentionActiveDaysRef.current = retentionDays;
+        retentionMilestonesLoggedRef.current = retentionMilestones;
+        setRetentionAnalyticsHydrated(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (cancelled) return;
+        setRetentionAnalyticsHydrated(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -23482,6 +24449,9 @@ function AppContent() {
   const [profileEditMode, setProfileEditMode] = useState("none");
   const [theme, setTheme] = useState(DEFAULT_THEME);
   const [themeHydrated, setThemeHydrated] = useState(false);
+  const [proThemeAccentId, setProThemeAccentId] = useState(DEFAULT_PRO_THEME_ACCENT_ID);
+  const [proThemeAccentHydrated, setProThemeAccentHydrated] = useState(false);
+  const [proThemeAccentPickerVisible, setProThemeAccentPickerVisible] = useState(false);
   const isAndroid = Platform.OS === "android";
   const androidVersion = isAndroid ? Number(Platform.Version) : null;
   const canSetSystemBarColors =
@@ -23772,6 +24742,9 @@ function AppContent() {
   const [tutorialHydrated, setTutorialHydrated] = useState(false);
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
+  const tutorialCardEntrance = useRef(new Animated.Value(0)).current;
+  const tutorialAmbientMotion = useRef(new Animated.Value(0)).current;
+  const tutorialPulseMotion = useRef(new Animated.Value(0)).current;
   const [budgetWidgetTutorialSeen, setBudgetWidgetTutorialSeen] = useState(false);
   const [budgetWidgetTutorialHydrated, setBudgetWidgetTutorialHydrated] = useState(false);
   const [budgetWidgetTutorialVisible, setBudgetWidgetTutorialVisible] = useState(false);
@@ -24483,7 +25456,13 @@ function AppContent() {
     return () => pulse.stop();
   }, [cartBadgeScale]);
   const openSkinPicker = useCallback(() => {
-    if (!catCustomizationUnlocked) return;
+    if (!catCustomizationUnlocked) {
+      showPremiumPaywallRef.current({
+        kind: "feature",
+        featureKey: PREMIUM_FEATURE_KEYS.catCustomization,
+      });
+      return;
+    }
     triggerHaptic();
     setTamagotchiVisible(false);
     setSkinPickerVisible(true);
@@ -24877,6 +25856,133 @@ function AppContent() {
     [tamagotchiState.hunger]
   );
   const tamagotchiIsFull = tamagotchiHungerPercent >= TAMAGOTCHI_MAX_HUNGER;
+  const tamagotchiHungerImmunityUntil = Math.max(
+    0,
+    Number(tamagotchiState.hungerImmunityUntil) || 0
+  );
+  const tamagotchiHasHungerImmunity = tamagotchiHungerImmunityUntil > Date.now();
+  const [tamagotchiImmunityHintVisible, setTamagotchiImmunityHintVisible] = useState(false);
+  const [tamagotchiImmunityHintNow, setTamagotchiImmunityHintNow] = useState(() =>
+    Date.now()
+  );
+  const tamagotchiImmunityHintAnim = useRef(new Animated.Value(0)).current;
+  const tamagotchiImmunityHintHideTimerRef = useRef(null);
+  const tamagotchiImmunityHintRemainingMs = Math.max(
+    0,
+    tamagotchiHungerImmunityUntil - tamagotchiImmunityHintNow
+  );
+  const tamagotchiImmunityHintPalette = useMemo(
+    () =>
+      isDarkTheme
+        ? {
+            backgroundColor: "rgba(8,13,24,0.96)",
+            borderColor: "rgba(126,178,255,0.42)",
+            titleColor: "#DCEAFF",
+            textColor: "#9CC4FF",
+          }
+        : {
+            backgroundColor: "rgba(255,255,255,0.98)",
+            borderColor: "rgba(62,129,255,0.3)",
+            titleColor: "#244A84",
+            textColor: "#2F70FF",
+          },
+    [isDarkTheme]
+  );
+  const clearTamagotchiImmunityHintTimer = useCallback(() => {
+    if (tamagotchiImmunityHintHideTimerRef.current) {
+      clearTimeout(tamagotchiImmunityHintHideTimerRef.current);
+      tamagotchiImmunityHintHideTimerRef.current = null;
+    }
+  }, []);
+  const hideTamagotchiImmunityHint = useCallback(
+    (immediate = false) => {
+      clearTamagotchiImmunityHintTimer();
+      tamagotchiImmunityHintAnim.stopAnimation();
+      if (immediate) {
+        tamagotchiImmunityHintAnim.setValue(0);
+        setTamagotchiImmunityHintVisible(false);
+        return;
+      }
+      Animated.timing(tamagotchiImmunityHintAnim, {
+        toValue: 0,
+        duration: 180,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) {
+          setTamagotchiImmunityHintVisible(false);
+        }
+      });
+    },
+    [clearTamagotchiImmunityHintTimer, tamagotchiImmunityHintAnim]
+  );
+  const formatTamagotchiImmunityCountdown = useCallback(
+    (ms) => {
+      if (ms <= 0) return "00:00:00";
+      const totalSeconds = Math.floor(ms / 1000);
+      const days = Math.floor(totalSeconds / 86400);
+      const hours = Math.floor((totalSeconds % 86400) / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      const hh = String(hours).padStart(2, "0");
+      const mm = String(minutes).padStart(2, "0");
+      const ss = String(seconds).padStart(2, "0");
+      if (days > 0) {
+        return `${days}${t("challengeTimeDayShort")} ${hh}:${mm}:${ss}`.trim();
+      }
+      return `${hh}:${mm}:${ss}`;
+    },
+    [t]
+  );
+  const tamagotchiImmunityHintCountdownLabel = useMemo(
+    () => formatTamagotchiImmunityCountdown(tamagotchiImmunityHintRemainingMs),
+    [formatTamagotchiImmunityCountdown, tamagotchiImmunityHintRemainingMs]
+  );
+  const showTamagotchiImmunityHint = useCallback(() => {
+    if (!tamagotchiHasHungerImmunity || !tamagotchiHungerImmunityUntil) return;
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    setTamagotchiImmunityHintNow(Date.now());
+    setTamagotchiImmunityHintVisible(true);
+    clearTamagotchiImmunityHintTimer();
+    tamagotchiImmunityHintAnim.stopAnimation();
+    tamagotchiImmunityHintAnim.setValue(0);
+    Animated.spring(tamagotchiImmunityHintAnim, {
+      toValue: 1,
+      tension: 180,
+      friction: 16,
+      useNativeDriver: true,
+    }).start();
+    tamagotchiImmunityHintHideTimerRef.current = setTimeout(() => {
+      hideTamagotchiImmunityHint();
+    }, 3600);
+  }, [
+    clearTamagotchiImmunityHintTimer,
+    hideTamagotchiImmunityHint,
+    tamagotchiHasHungerImmunity,
+    tamagotchiHungerImmunityUntil,
+    tamagotchiImmunityHintAnim,
+  ]);
+  useEffect(
+    () => () => clearTamagotchiImmunityHintTimer(),
+    [clearTamagotchiImmunityHintTimer]
+  );
+  useEffect(() => {
+    if (!tamagotchiImmunityHintVisible) return;
+    setTamagotchiImmunityHintNow(Date.now());
+    const intervalId = setInterval(() => {
+      setTamagotchiImmunityHintNow(Date.now());
+    }, 1000);
+    return () => clearInterval(intervalId);
+  }, [tamagotchiImmunityHintVisible]);
+  useEffect(() => {
+    if (!tamagotchiImmunityHintVisible) return;
+    if (tamagotchiImmunityHintRemainingMs > 0) return;
+    hideTamagotchiImmunityHint(true);
+  }, [
+    hideTamagotchiImmunityHint,
+    tamagotchiImmunityHintRemainingMs,
+    tamagotchiImmunityHintVisible,
+  ]);
   const tamagotchiCoins = healthPoints;
   const tamagotchiDesiredFood =
     TAMAGOTCHI_FOOD_MAP[tamagotchiState.desiredFoodId] ||
@@ -24900,21 +26006,40 @@ function AppContent() {
     return wishes.filter((wish) => wish && wish.status !== "done").length;
   }, [wishes]);
   const openNewPendingModal = useCallback(
-    () =>
-      setNewPendingModal({
+    () => {
+      const activePendingCount = Array.isArray(pendingListRef.current)
+        ? pendingListRef.current.length
+        : 0;
+      if (activePendingCount >= FREE_PENDING_LIMIT) {
+        const opened = showPremiumPaywallRef.current({
+          kind: "feature",
+          featureKey: PREMIUM_FEATURE_KEYS.thinkingQueue,
+        });
+        if (opened) return;
+      }
+      return setNewPendingModal({
         visible: true,
         title: "",
         amount: "",
         emoji: DEFAULT_TEMPTATION_EMOJI,
-      }),
+      });
+    },
     []
   );
   const openNewGoalModal = useCallback(
     (makePrimary = false, source = "unknown") => {
-      if (activeGoalCount >= MAX_ACTIVE_GOALS) {
+      const activeGoalLimit = premiumState.isPremium ? MAX_ACTIVE_GOALS : FREE_GOAL_LIMIT;
+      if (activeGoalCount >= activeGoalLimit) {
+        if (!premiumState.isPremium) {
+          showPremiumPaywallRef.current({
+            kind: "feature",
+            featureKey: PREMIUM_FEATURE_KEYS.multipleGoals,
+          });
+          return;
+        }
         Alert.alert(
-          t("goalLimitReachedTitle", { limit: MAX_ACTIVE_GOALS }),
-          t("goalLimitReachedMessage", { limit: MAX_ACTIVE_GOALS })
+          t("goalLimitReachedTitle", { limit: activeGoalLimit }),
+          t("goalLimitReachedMessage", { limit: activeGoalLimit })
         );
         return;
       }
@@ -24931,7 +26056,7 @@ function AppContent() {
         make_primary: makePrimary ? 1 : 0,
       });
     },
-    [activeGoalCount, logEvent, t]
+    [activeGoalCount, logEvent, premiumState.isPremium, t]
   );
   const handleNewPendingChange = useCallback((field, value) => {
     setNewPendingModal((prev) => ({
@@ -25319,6 +26444,9 @@ function AppContent() {
   const [notificationPermissionGranted, setNotificationPermissionGranted] = useState(null);
   const [pushOptInHydrated, setPushOptInHydrated] = useState(false);
   const pushOptInLoggedRef = useRef(false);
+  const [homeWidgetInstallLoggedHydrated, setHomeWidgetInstallLoggedHydrated] = useState(false);
+  const homeWidgetInstallLoggedRef = useRef(false);
+  const homeWidgetInstallCheckInFlightRef = useRef(false);
   const [pushDayThreePromptVisible, setPushDayThreePromptVisible] = useState(false);
   const [pushDayThreePromptHydrated, setPushDayThreePromptHydrated] = useState(false);
   const pushDayThreePromptShownRef = useRef(false);
@@ -26242,8 +27370,21 @@ function AppContent() {
       termsModalVisible,
     ]
   );
-  const colors = THEMES[theme] || THEMES[DEFAULT_THEME];
+  const proThemeAccentOption = useMemo(
+    () => resolveProThemeAccentOption(proThemeAccentId),
+    [proThemeAccentId]
+  );
+  const proThemeAccentColor = proThemeAccentOption.accent;
+  const colors = useMemo(
+    () => resolveThemeColors(theme, proThemeAccentId),
+    [proThemeAccentId, theme]
+  );
+  const proThemeAccentCopy = useMemo(
+    () => PRO_THEME_ACCENT_COPY[normalizeLanguage(language)] || PRO_THEME_ACCENT_COPY.en,
+    [language]
+  );
   const isDarkTheme = theme === "dark";
+  const isProTheme = theme === PRO_THEME_ID;
   const openMoodDetails = useCallback(() => setMoodDetailsVisible(true), []);
   const closeMoodDetails = useCallback(() => setMoodDetailsVisible(false), []);
   const openPotentialDetails = useCallback((description) => {
@@ -26278,28 +27419,44 @@ function AppContent() {
         now,
         joinedAt: profile.joinedAt,
       });
-      setProfile((prev) => ({ ...prev, reports: snapshot }));
-      setProfileDraft((prev) => ({ ...prev, reports: snapshot }));
+      setProfile((prev) => {
+        if (reportsSnapshotsEquivalent(prev?.reports, snapshot)) {
+          return prev;
+        }
+        return { ...prev, reports: snapshot };
+      });
+      setProfileDraft((prev) => {
+        if (reportsSnapshotsEquivalent(prev?.reports, snapshot)) {
+          return prev;
+        }
+        return { ...prev, reports: snapshot };
+      });
       return snapshot;
     },
     [language, profile.currency, profile.joinedAt, resolveTemplateTitle, resolvedHistoryEvents, t]
   );
   const handleReportsPress = useCallback(() => {
-    if (!reportsUnlocked) return;
+    if (!reportsUnlocked) {
+      ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.reports);
+      return;
+    }
     triggerHaptic();
     buildAndStoreReportsSnapshot();
     setReportsTab("weekly");
     setReportsBadgeVisible(false);
     setReportsModalVisible(true);
-  }, [buildAndStoreReportsSnapshot, reportsUnlocked, triggerHaptic]);
+  }, [buildAndStoreReportsSnapshot, ensurePremiumFeatureAccess, reportsUnlocked, triggerHaptic]);
   const openReportsFromNotification = useCallback(() => {
-    if (!reportsUnlocked) return;
+    if (!reportsUnlocked) {
+      ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.reports);
+      return;
+    }
     buildAndStoreReportsSnapshot();
     setReportsTab("weekly");
     setReportsBadgeVisible(false);
     setReportsModalVisible(true);
     goToTab("profile");
-  }, [buildAndStoreReportsSnapshot, goToTab, reportsUnlocked]);
+  }, [buildAndStoreReportsSnapshot, ensurePremiumFeatureAccess, goToTab, reportsUnlocked]);
   const reportsHistoryDigest = useMemo(() => {
     const first = resolvedHistoryEvents[0];
     const firstTimestamp = Number(first?.timestamp) || 0;
@@ -26330,7 +27487,11 @@ function AppContent() {
       const isReportDay = weekday === 5 || weekday === 6 || weekday === 0;
       if (!isReportDay) return false;
       if (reportsLastAutoWeekRef.current === weekKey) return false;
-      buildAndStoreReportsSnapshot({ now: nowTs });
+      const snapshot = buildAndStoreReportsSnapshot({ now: nowTs });
+      if (!reportsSnapshotHasMeaningfulData(snapshot)) {
+        setReportsBadgeVisible(false);
+        return false;
+      }
       reportsLastAutoWeekRef.current = weekKey;
       setReportsLastAutoWeekKey(weekKey);
       setReportsBadgeVisible(true);
@@ -26342,6 +27503,12 @@ function AppContent() {
     if (!reportsBadgeHydrated || !reportsLastAutoWeekHydrated) return;
     maybeAutoGenerateWeeklyReport(Date.now());
   }, [currentDayKey, maybeAutoGenerateWeeklyReport, reportsBadgeHydrated, reportsLastAutoWeekHydrated]);
+  useEffect(() => {
+    if (!reportsBadgeHydrated) return;
+    if (reportsHaveData) return;
+    if (!reportsBadgeVisible) return;
+    setReportsBadgeVisible(false);
+  }, [reportsBadgeHydrated, reportsBadgeVisible, reportsHaveData]);
   const setBreakdownRangeMode = useCallback(
     (next) => {
       if (breakdownMode === "spend") {
@@ -26750,8 +27917,8 @@ function AppContent() {
   const tutorialCardPositionStyle = tutorialIsTemptation
     ? {
         alignSelf: "center",
-        marginBottom: 24,
-        marginTop: Platform.OS === "android" ? 24 : 0,
+        marginBottom: Platform.OS === "android" ? 56 : 52,
+        marginTop: Platform.OS === "android" ? 12 : 0,
       }
     : null;
   // Push the temptation tutorial dialog lower on Android so it doesn't cover the highlighted card.
@@ -26795,7 +27962,156 @@ function AppContent() {
       ),
     };
   }, [tutorialHighlightRect, tutorialIsTemptation]);
-  const fabOverlayColor = theme === "dark" ? "rgba(5,7,13,0.78)" : "rgba(5,7,13,0.55)";
+  const tutorialVisualPalette = activeTutorialStep?.palette || {
+    primary: "#6FAFFF",
+    secondary: "#95E7CE",
+    glow: "#7FA9FF",
+  };
+  const tutorialFeatureKeys = Array.isArray(activeTutorialStep?.featureKeys)
+    ? activeTutorialStep.featureKeys
+    : [];
+  const tutorialBadgeLabelKey =
+    tutorialFeatureKeys[0] || activeTutorialStep?.titleKey || "tutorialFeedTitle";
+  const tutorialVisualBars = Array.isArray(activeTutorialStep?.visualBars)
+    ? activeTutorialStep.visualBars
+    : [0.84, 0.56, 0.72, 0.9, 0.63];
+  const tutorialIsDarkTheme = theme === "dark";
+  const tutorialIsProTheme = theme === PRO_THEME_ID;
+  const tutorialCardBackground = tutorialIsDarkTheme ? "#0E1626" : tutorialIsProTheme ? "#EEF1FF" : "#F8FAFF";
+  const tutorialCardBorderColor = tutorialIsDarkTheme
+    ? "rgba(255,255,255,0.12)"
+    : tutorialIsProTheme
+    ? colorWithAlpha(proThemeAccentColor, 0.34)
+    : "rgba(7,16,35,0.08)";
+  const tutorialFeatureBackground = tutorialIsDarkTheme
+    ? "rgba(255,255,255,0.08)"
+    : tutorialIsProTheme
+    ? "rgba(255,255,255,0.96)"
+    : "rgba(255,255,255,0.92)";
+  const tutorialFeatureBorderColor = tutorialIsDarkTheme
+    ? "rgba(255,255,255,0.2)"
+    : tutorialIsProTheme
+    ? colorWithAlpha(proThemeAccentColor, 0.24)
+    : "rgba(18,26,45,0.08)";
+  const tutorialFeatureTextColor = tutorialIsDarkTheme ? "#E9F0FF" : tutorialIsProTheme ? "#24347C" : "#17223F";
+  const tutorialDotInactiveColor = tutorialIsDarkTheme
+    ? "rgba(255,255,255,0.18)"
+    : tutorialIsProTheme
+    ? colorWithAlpha(proThemeAccentColor, 0.2)
+    : "rgba(11,22,48,0.14)";
+  const tutorialPrimaryButtonBg = tutorialIsProTheme ? proThemeAccentColor : colors.text;
+  const tutorialPrimaryButtonTextColor = tutorialIsProTheme ? "#FFFFFF" : colors.background;
+  useEffect(() => {
+    if (!tutorialContext || !activeTutorialStep) {
+      tutorialCardEntrance.setValue(0);
+      return;
+    }
+    tutorialCardEntrance.setValue(0);
+    const enter = Animated.timing(tutorialCardEntrance, {
+      toValue: 1,
+      duration: 380,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    enter.start();
+    return () => enter.stop();
+  }, [activeTutorialStep?.id, tutorialCardEntrance, tutorialContext?.type]);
+  useEffect(() => {
+    if (!tutorialContext || !activeTutorialStep) {
+      tutorialAmbientMotion.setValue(0);
+      tutorialPulseMotion.setValue(0);
+      return;
+    }
+    tutorialAmbientMotion.setValue(0);
+    tutorialPulseMotion.setValue(0);
+    const ambientLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(tutorialAmbientMotion, {
+          toValue: 1,
+          duration: 1800,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(tutorialAmbientMotion, {
+          toValue: 0,
+          duration: 1800,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(tutorialPulseMotion, {
+          toValue: 1,
+          duration: 1300,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(tutorialPulseMotion, {
+          toValue: 0,
+          duration: 1300,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    ambientLoop.start();
+    pulseLoop.start();
+    return () => {
+      ambientLoop.stop();
+      pulseLoop.stop();
+    };
+  }, [activeTutorialStep?.id, tutorialAmbientMotion, tutorialContext?.type, tutorialPulseMotion]);
+  const tutorialCardOpacity = tutorialCardEntrance.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const tutorialCardTranslateY = tutorialCardEntrance.interpolate({
+    inputRange: [0, 1],
+    outputRange: [22, 0],
+  });
+  const tutorialCardScale = tutorialCardEntrance.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.96, 1],
+  });
+  const tutorialBackdropOpacity = tutorialCardEntrance.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.2, 1],
+  });
+  const tutorialAmbientLift = tutorialAmbientMotion.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-8, 8],
+  });
+  const tutorialAmbientDrift = tutorialAmbientMotion.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-10, 10],
+  });
+  const tutorialAmbientRotate = tutorialAmbientMotion.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["-6deg", "6deg"],
+  });
+  const tutorialPulseScale = tutorialPulseMotion.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.9, 1.08],
+  });
+  const tutorialPulseOpacity = tutorialPulseMotion.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.34, 0.08],
+  });
+  const tutorialBarsOpacity = tutorialCardEntrance.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const tutorialBarsTranslateY = tutorialCardEntrance.interpolate({
+    inputRange: [0, 1],
+    outputRange: [18, 0],
+  });
+  const fabOverlayColor = theme === "dark"
+    ? "rgba(5,7,13,0.78)"
+    : theme === PRO_THEME_ID
+    ? colorWithAlpha(proThemeAccentColor, 0.42)
+    : "rgba(5,7,13,0.55)";
   const resolveTranslationValue = useCallback((key) => {
     const normalizedLanguage = normalizeLanguage(language);
     const override = LANGUAGE_OVERRIDES[normalizedLanguage]?.[key];
@@ -26857,6 +28173,549 @@ function AppContent() {
     },
     [formatTranslationText, resolveTranslationValue]
   );
+  const premiumPlanCards = useMemo(() => {
+    const fallbackCurrency = profile.currency || DEFAULT_PROFILE.currency;
+    const monetizationLanguage = resolveMonetizationLanguage(language);
+    const baseCards = buildDefaultPlanCards(fallbackCurrency);
+    const preliminaryCards = baseCards.map((card) => {
+      const pkg = premiumState.offeringsByPlan?.[card.id] || null;
+      const product = pkg?.product || null;
+      const currencyCode =
+        typeof product?.currencyCode === "string" && product.currencyCode.trim().length > 0
+          ? product.currencyCode.trim().toUpperCase()
+          : fallbackCurrency;
+      const parsedPriceLocal =
+        parseLocalizedPriceValue(product?.price) ??
+        parseLocalizedPriceValue(product?.priceString) ??
+        parseLocalizedPriceValue(card.priceLabel);
+      const chargePriceLabel =
+        product?.priceString ||
+        (Number.isFinite(parsedPriceLocal)
+          ? formatCurrency(parsedPriceLocal, currencyCode)
+          : card.priceLabel);
+      return {
+        ...card,
+        label: resolvePlanLabel(card.id, language),
+        package: pkg,
+        available: !!pkg || !premiumState.enabled,
+        currencyCode,
+        rawPriceLocal: Number.isFinite(parsedPriceLocal) ? Math.max(0, parsedPriceLocal) : null,
+        chargePriceLabel,
+      };
+    });
+
+    const monthlyRawPrice = preliminaryCards.find((card) => card.id === "monthly")?.rawPriceLocal;
+    const yearlyRawPrice = preliminaryCards.find((card) => card.id === "yearly")?.rawPriceLocal;
+    const yearlyFullPrice =
+      Number.isFinite(monthlyRawPrice) && monthlyRawPrice > 0 ? monthlyRawPrice * 12 : null;
+    const yearlySavePercent =
+      Number.isFinite(yearlyRawPrice) &&
+      yearlyRawPrice > 0 &&
+      Number.isFinite(yearlyFullPrice) &&
+      yearlyFullPrice > yearlyRawPrice
+        ? Math.max(1, Math.round((1 - yearlyRawPrice / yearlyFullPrice) * 100))
+        : null;
+
+    return preliminaryCards.map((card) => {
+      const isYearly = card.id === "yearly";
+      const isMonthly = card.id === "monthly";
+      const isLifetime = card.id === "lifetime";
+      const currencyCode = card.currencyCode || fallbackCurrency;
+      const yearSuffix = PAYWALL_YEAR_SUFFIX_BY_LANGUAGE[monetizationLanguage] || PAYWALL_YEAR_SUFFIX_BY_LANGUAGE.en;
+      const monthSuffix = PAYWALL_MONTH_SUFFIX_BY_LANGUAGE[monetizationLanguage] || PAYWALL_MONTH_SUFFIX_BY_LANGUAGE.en;
+      const amountLocal = Number.isFinite(card.rawPriceLocal) ? Math.max(0, card.rawPriceLocal) : null;
+
+      let priceLabel = card.chargePriceLabel;
+      let secondaryLabel = null;
+      let secondaryKind = "muted";
+      let equivalentLabel = null;
+      let ctaPriceLabel = card.chargePriceLabel;
+      let badge = card.badge;
+
+      if (isYearly && Number.isFinite(amountLocal) && amountLocal > 0) {
+        const discountedMonthlyLocal = amountLocal / 12;
+        priceLabel = `${formatCurrency(discountedMonthlyLocal, currencyCode)}${monthSuffix}`;
+        ctaPriceLabel = formatCurrency(amountLocal, currencyCode);
+        if (Number.isFinite(yearlyFullPrice) && yearlyFullPrice > amountLocal) {
+          secondaryLabel = `${formatCurrency(yearlyFullPrice, currencyCode)}${yearSuffix}`;
+          secondaryKind = "strike";
+        } else {
+          secondaryLabel = `${formatCurrency(amountLocal, currencyCode)}${yearSuffix}`;
+        }
+        equivalentLabel = buildTemptationEquivalentLine({
+          planId: "yearly",
+          amountLocal,
+          currencyCode,
+          language: monetizationLanguage,
+        });
+        if (yearlySavePercent) {
+          badge =
+            monetizationLanguage === "ru"
+              ? `Экономия ${yearlySavePercent}%`
+              : `Save ${yearlySavePercent}%`;
+        }
+      } else if (isMonthly) {
+        secondaryLabel =
+          PAYWALL_BILLING_LABEL_BY_LANGUAGE.monthly[monetizationLanguage] ||
+          PAYWALL_BILLING_LABEL_BY_LANGUAGE.monthly.en;
+        if (Number.isFinite(amountLocal) && amountLocal > 0) {
+          equivalentLabel = buildTemptationEquivalentLine({
+            planId: "monthly",
+            amountLocal,
+            currencyCode,
+            language: monetizationLanguage,
+          });
+        }
+      } else if (isLifetime) {
+        secondaryLabel =
+          PAYWALL_BILLING_LABEL_BY_LANGUAGE.lifetime[monetizationLanguage] ||
+          PAYWALL_BILLING_LABEL_BY_LANGUAGE.lifetime.en;
+        if (Number.isFinite(amountLocal) && amountLocal > 0) {
+          equivalentLabel = buildTemptationEquivalentLine({
+            planId: "lifetime",
+            amountLocal,
+            currencyCode,
+            language: monetizationLanguage,
+          });
+        }
+      }
+
+      return {
+        ...card,
+        badge,
+        priceLabel,
+        secondaryLabel: secondaryLabel || null,
+        secondaryKind,
+        equivalentLabel,
+        ctaPriceLabel,
+      };
+    });
+  }, [language, premiumState.enabled, premiumState.offeringsByPlan, profile.currency]);
+  const premiumMonthlyPriceLabel = useMemo(() => {
+    const monthlyCard = premiumPlanCards.find((card) => card.id === "monthly");
+    if (monthlyCard?.ctaPriceLabel) return monthlyCard.ctaPriceLabel;
+    const fallback = resolveFallbackPlanPricing(profile.currency || DEFAULT_PROFILE.currency);
+    return fallback?.monthly?.label || "$5.99";
+  }, [premiumPlanCards, profile.currency]);
+  const premiumCopy = useMemo(
+    () =>
+      buildPaywallCopy({
+        language,
+        kind: premiumPaywallState.kind,
+        monthlyPriceLabel: premiumMonthlyPriceLabel,
+        savedAmountLabel: premiumPaywallState.savedAmountLabel || "",
+        featureKey: premiumPaywallState.featureKey,
+      }),
+    [
+      language,
+      premiumMonthlyPriceLabel,
+      premiumPaywallState.featureKey,
+      premiumPaywallState.kind,
+      premiumPaywallState.savedAmountLabel,
+    ]
+  );
+  const premiumUnlockFeatureList = useMemo(
+    () =>
+      (Array.isArray(premiumCopy?.comparisonRows) ? premiumCopy.comparisonRows : [])
+        .filter((row) => row?.premium && !row?.free)
+        .map((row) => String(row.label || "").trim())
+        .filter(Boolean),
+    [premiumCopy]
+  );
+  const closePremiumPaywall = useCallback(() => {
+    if (premiumPaywallTimerRef.current) {
+      clearTimeout(premiumPaywallTimerRef.current);
+      premiumPaywallTimerRef.current = null;
+    }
+    setPremiumPaywallState((prev) => ({ ...prev, visible: false }));
+  }, []);
+  const openPremiumPaywall = useCallback(
+    ({ kind = "feature", featureKey = null, savedAmountUSD = null, delayMs = 0 } = {}) => {
+      if (premiumState.isPremium) return false;
+      const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+      const savedValue = Number.isFinite(savedAmountUSD)
+        ? Math.max(0, Number(savedAmountUSD) || 0)
+        : Math.max(0, Number(savedTotalUSD) || 0);
+      const savedAmountLabel = formatCurrency(convertToCurrency(savedValue, currencyCode), currencyCode);
+      const show = () => {
+        setPremiumPaywallState({
+          visible: true,
+          kind: kind || "feature",
+          featureKey: featureKey || null,
+          savedAmountLabel,
+        });
+      };
+      if (premiumPaywallTimerRef.current) {
+        clearTimeout(premiumPaywallTimerRef.current);
+        premiumPaywallTimerRef.current = null;
+      }
+      if (delayMs > 0) {
+        premiumPaywallTimerRef.current = setTimeout(() => {
+          premiumPaywallTimerRef.current = null;
+          show();
+        }, delayMs);
+      } else {
+        show();
+      }
+      return true;
+    },
+    [premiumState.isPremium, profile.currency, savedTotalUSD]
+  );
+  useEffect(() => {
+    showPremiumPaywallRef.current = (options = {}) => openPremiumPaywall(options);
+  }, [openPremiumPaywall]);
+  const refreshPremiumState = useCallback(
+    async (source = "manual") => {
+      if (!isPurchasesAvailable()) {
+        setPremiumState((prev) => ({
+          ...prev,
+          enabled: false,
+          isPremium: false,
+          entitlement: null,
+          customerInfo: null,
+          offerings: null,
+          offeringsByPlan: {},
+        }));
+        return { ok: false, reason: "module_unavailable" };
+      }
+      const [customerInfo, offerings] = await Promise.all([
+        getCustomerInfoSafe(),
+        getOfferingsSafe(),
+      ]);
+      const offeringsByPlan = mapOfferingPackagesByPlan(offerings || null);
+      const entitlement = getActivePremiumEntitlement(customerInfo);
+      const isPremium = isPremiumFromCustomerInfo(customerInfo);
+      setPremiumState((prev) => ({
+        ...prev,
+        enabled: true,
+        isPremium,
+        entitlement: entitlement || null,
+        customerInfo: customerInfo || null,
+        offerings: offerings || null,
+        offeringsByPlan,
+        lastSource: source,
+        error: null,
+      }));
+      if (premiumInstallIdHydrated) {
+        syncEntitlementSnapshot({
+          appUserId: premiumInstallId || null,
+          installId: premiumInstallId || null,
+          platform: Platform.OS,
+          source,
+          entitlement,
+          customerInfo,
+        }).catch(() => {});
+      }
+      return { ok: true, isPremium, entitlement, offeringsByPlan };
+    },
+    [premiumInstallId, premiumInstallIdHydrated]
+  );
+  useEffect(() => {
+    if (!premiumInstallIdHydrated) return;
+    let active = true;
+    let unsubscribe = () => {};
+    const bootstrapPurchases = async () => {
+      if (!isPurchasesAvailable()) {
+        setPremiumState((prev) => ({
+          ...prev,
+          enabled: false,
+          isPremium: false,
+          offeringsByPlan: {},
+          error: "module_unavailable",
+        }));
+        return;
+      }
+      const configured = await configurePurchases({ appUserId: premiumInstallId || null });
+      if (!active) return;
+      if (!configured?.ok) {
+        setPremiumState((prev) => ({
+          ...prev,
+          enabled: false,
+          isPremium: false,
+          offeringsByPlan: {},
+          error: configured?.reason || "configure_failed",
+        }));
+        return;
+      }
+      setPurchasesAttributesSafe({
+        install_id: premiumInstallId || "",
+        app_platform: Platform.OS,
+      }).catch(() => {});
+      await refreshPremiumState("bootstrap");
+      unsubscribe = addCustomerInfoUpdateListener((customerInfo) => {
+        if (!active) return;
+        const entitlement = getActivePremiumEntitlement(customerInfo);
+        const isPremium = isPremiumFromCustomerInfo(customerInfo);
+        setPremiumState((prev) => ({
+          ...prev,
+          enabled: true,
+          isPremium,
+          entitlement: entitlement || null,
+          customerInfo: customerInfo || null,
+          lastSource: "listener",
+          error: null,
+        }));
+        if (premiumInstallIdHydrated) {
+          syncEntitlementSnapshot({
+            appUserId: premiumInstallId || null,
+            installId: premiumInstallId || null,
+            platform: Platform.OS,
+            source: "listener",
+            entitlement,
+            customerInfo,
+          }).catch(() => {});
+        }
+      });
+    };
+    bootstrapPurchases().catch((error) => {
+      console.warn("premium bootstrap", error);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [premiumInstallId, premiumInstallIdHydrated, refreshPremiumState]);
+  const handlePremiumPlanPress = useCallback(
+    async (planId) => {
+      if (premiumPurchaseLoadingPlan || premiumRestoreLoading) return;
+      const targetPlanId = PREMIUM_PLAN_ORDER.includes(planId) ? planId : "yearly";
+      const selectedCard = premiumPlanCards.find((entry) => entry.id === targetPlanId) || null;
+      if (!selectedCard?.package) {
+        Alert.alert(
+          "Almost",
+          language === "ru"
+            ? "Покупка пока недоступна: пакет не найден в сторе. Проверьте RevenueCat Offering."
+            : "Purchase is unavailable: package was not found in store offerings."
+        );
+        return;
+      }
+      premiumUnlockIntentRef.current = {
+        kind: "purchase",
+        planId: targetPlanId,
+        startedAt: Date.now(),
+      };
+      setPremiumPurchaseLoadingPlan(targetPlanId);
+      const result = await purchasePlanPackage(selectedCard.package);
+      setPremiumPurchaseLoadingPlan(null);
+      if (!result.ok) {
+        premiumUnlockIntentRef.current = null;
+        if (!result.cancelled) {
+          Alert.alert(
+            "Almost",
+            language === "ru"
+              ? "Не удалось завершить покупку. Попробуйте снова."
+              : "Could not finish the purchase. Please try again."
+          );
+        }
+        return;
+      }
+      let refreshed = await refreshPremiumState("purchase");
+      if (!refreshed?.isPremium) {
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        refreshed = await refreshPremiumState("purchase_retry");
+      }
+      if (!refreshed?.isPremium) {
+        const restoreAttempt = await restorePurchasesSafe();
+        if (restoreAttempt?.ok) {
+          refreshed = await refreshPremiumState("purchase_restore");
+        }
+      }
+      if (!refreshed?.isPremium) {
+        premiumUnlockIntentRef.current = null;
+        Alert.alert("Almost", t("premiumPurchasePendingActivation"));
+        return;
+      }
+      closePremiumPaywall();
+      logEvent("premium_purchase_success", {
+        plan: targetPlanId,
+      });
+    },
+    [
+      closePremiumPaywall,
+      language,
+      premiumPlanCards,
+      premiumPurchaseLoadingPlan,
+      premiumRestoreLoading,
+      refreshPremiumState,
+      t,
+    ]
+  );
+  const handlePremiumRestore = useCallback(async () => {
+    if (premiumPurchaseLoadingPlan || premiumRestoreLoading) return;
+    premiumUnlockIntentRef.current = {
+      kind: "restore",
+      startedAt: Date.now(),
+    };
+    setPremiumRestoreLoading(true);
+    const result = await restorePurchasesSafe();
+    setPremiumRestoreLoading(false);
+    if (!result.ok) {
+      premiumUnlockIntentRef.current = null;
+      Alert.alert(
+        "Almost",
+        language === "ru"
+          ? "Не удалось восстановить покупки."
+          : "Could not restore purchases."
+      );
+      return;
+    }
+    const refreshed = await refreshPremiumState("restore");
+    if (!refreshed?.isPremium) {
+      premiumUnlockIntentRef.current = null;
+      Alert.alert(
+        "Almost",
+        language === "ru"
+          ? "Активная подписка не найдена. Проверьте Apple ID в Sandbox и повторите попытку."
+          : "No active subscription was found. Verify your Sandbox Apple ID and try again."
+      );
+      return;
+    }
+    closePremiumPaywall();
+  }, [closePremiumPaywall, language, premiumPurchaseLoadingPlan, premiumRestoreLoading, refreshPremiumState]);
+  useEffect(() => {
+    if (!premiumState.isPremium) return;
+    if (!premiumPaywallState.visible) return;
+    closePremiumPaywall();
+  }, [closePremiumPaywall, premiumPaywallState.visible, premiumState.isPremium]);
+  useEffect(() => {
+    if (!premiumState.enabled) return;
+    if (premiumUnlockTransitionRef.current === null) {
+      premiumUnlockTransitionRef.current = premiumState.isPremium;
+      return;
+    }
+    const wasPremium = !!premiumUnlockTransitionRef.current;
+    const isPremium = !!premiumState.isPremium;
+    premiumUnlockTransitionRef.current = isPremium;
+    if (wasPremium || !isPremium) return;
+    const source = premiumState.lastSource || "";
+    const pendingIntent = premiumUnlockIntentRef.current;
+    const hasRecentUnlockIntent =
+      !!pendingIntent &&
+      Number.isFinite(Number(pendingIntent.startedAt)) &&
+      Date.now() - Number(pendingIntent.startedAt) <= 10 * 60 * 1000;
+    const activatedViaPurchaseFlow =
+      source === "purchase" ||
+      source === "purchase_retry" ||
+      source === "purchase_restore" ||
+      source === "restore";
+    const activatedViaListenerPurchase = source === "listener" && hasRecentUnlockIntent;
+    if (!activatedViaPurchaseFlow && !activatedViaListenerPurchase) return;
+    if (typeof queueCelebrationOverlayRef.current !== "function") return;
+    closePremiumPaywall();
+    queueCelebrationOverlayRef.current(
+      "premium_unlock",
+      {
+        title: t("premiumUnlockTitle"),
+        subtitle: t("premiumUnlockSubtitle"),
+        cta: t("premiumUnlockContinue"),
+        features: premiumUnlockFeatureList,
+        accentColor: proThemeAccentColor,
+      },
+      { duration: null, clearQueueOnDismiss: false }
+    );
+    premiumUnlockIntentRef.current = null;
+    logEvent("premium_unlock_shown", {
+      source,
+      entitlement: premiumState.entitlement?.identifier || "none",
+    });
+  }, [
+    closePremiumPaywall,
+    logEvent,
+    premiumState.enabled,
+    premiumState.entitlement?.identifier,
+    premiumState.isPremium,
+    premiumState.lastSource,
+    proThemeAccentColor,
+    premiumUnlockFeatureList,
+    t,
+  ]);
+  const ensurePremiumFeatureAccess = useCallback(
+    (featureKey, { kind = "feature", delayMs = 0, savedAmountUSD = null } = {}) => {
+      if (premiumState.isPremium) return true;
+      const opened = openPremiumPaywall({
+        kind,
+        featureKey,
+        delayMs,
+        savedAmountUSD,
+      });
+      if (opened) {
+        logEvent("premium_gate_blocked", {
+          feature: featureKey || "unknown",
+          kind,
+        });
+      }
+      return false;
+    },
+    [openPremiumPaywall, premiumState.isPremium]
+  );
+  useEffect(() => {
+    const previousCount = lastDeclineCountRef.current;
+    if (previousCount === null) {
+      lastDeclineCountRef.current = declineCount;
+      return;
+    }
+    const increased = declineCount > previousCount;
+    lastDeclineCountRef.current = declineCount;
+    if (!increased) return;
+    if (premiumState.isPremium) return;
+    if (!premiumSoftPaywallHydrated || premiumSoftPaywallShown) return;
+    if (onboardingStep !== "done" || !tutorialSeen || temptationTutorialStatus !== "done") return;
+    setPremiumSoftPaywallShown(true);
+    openPremiumPaywall({
+      kind: "soft",
+      savedAmountUSD: savedTotalUSD,
+      delayMs: SOFT_PAYWALL_DELAY_MS,
+    });
+    logEvent("premium_soft_paywall_shown", {
+      trigger: "first_save_after_tutorial",
+    });
+  }, [
+    declineCount,
+    logEvent,
+    onboardingStep,
+    openPremiumPaywall,
+    premiumSoftPaywallHydrated,
+    premiumSoftPaywallShown,
+    premiumState.isPremium,
+    savedTotalUSD,
+    temptationTutorialStatus,
+    tutorialSeen,
+  ]);
+  useEffect(() => {
+    const completedCount = (Array.isArray(wishes) ? wishes : []).filter(
+      (wish) => wish && wish.status === "done"
+    ).length;
+    const previousCount = lastCompletedGoalsCountRef.current;
+    if (previousCount === null) {
+      lastCompletedGoalsCountRef.current = completedCount;
+      return;
+    }
+    const reachedFirstCompletion = previousCount < 1 && completedCount >= 1;
+    lastCompletedGoalsCountRef.current = completedCount;
+    if (!reachedFirstCompletion) return;
+    if (premiumState.isPremium) return;
+    if (!premiumHardPaywallHydrated || premiumHardPaywallShown) return;
+    if (onboardingStep !== "done") return;
+    setPremiumHardPaywallShown(true);
+    openPremiumPaywall({
+      kind: "hard",
+      savedAmountUSD: savedTotalUSD,
+      delayMs: HARD_PAYWALL_DELAY_MS,
+    });
+    logEvent("premium_hard_paywall_shown", {
+      trigger: "first_goal_completed",
+      saved_total_usd: Math.max(0, Number(savedTotalUSD) || 0),
+    });
+  }, [
+    logEvent,
+    onboardingStep,
+    openPremiumPaywall,
+    premiumHardPaywallHydrated,
+    premiumHardPaywallShown,
+    premiumState.isPremium,
+    savedTotalUSD,
+    wishes,
+  ]);
   const widgetLabels = useMemo(
     () => ({
       savedMonthLabel: t("homeWidgetSavedMonthLabel"),
@@ -26929,20 +28788,27 @@ function AppContent() {
     });
   }, [normalizedLanguageValue, widgetCurrencyCode, widgetLabels, widgetRefreshTick]);
   const widgetRecentEvents = useMemo(() => {
+    const nowTimestamp = Date.now();
+    const cutoffTimestamp = nowTimestamp - HERO_RECENT_HISTORY_WINDOW_MS;
     const filtered = resolvedHistoryEvents.filter(
-      (entry) => entry?.kind === "refuse_spend" || entry?.kind === "spend"
+      (entry) => {
+        if (entry?.kind !== "refuse_spend" && entry?.kind !== "spend") return false;
+        const timestamp = normalizeTimestampMs(entry?.timestamp);
+        return timestamp >= cutoffTimestamp && timestamp <= nowTimestamp;
+      }
     );
-    filtered.sort((a, b) => (Number(b?.timestamp) || 0) - (Number(a?.timestamp) || 0));
+    filtered.sort((a, b) => normalizeTimestampMs(b?.timestamp) - normalizeTimestampMs(a?.timestamp));
     return filtered.slice(0, 3).map((entry) => {
+      const entryTimestamp = normalizeTimestampMs(entry?.timestamp);
       const resolvedTitle =
         resolveTemplateTitle(entry?.meta?.templateId, entry?.meta?.title) ||
         entry?.title ||
         t("defaultDealTitle");
-      const timestampLabel = formatLatestSavingTimestamp(entry?.timestamp, language);
+      const timestampLabel = formatLatestSavingTimestamp(entryTimestamp, language);
       const prefix = entry?.kind === "spend" ? "- " : "";
       return `${prefix}${resolvedTitle}${timestampLabel ? ` · ${timestampLabel}` : ""}`;
     });
-  }, [language, resolvedHistoryEvents, resolveTemplateTitle, t]);
+  }, [currentDayKey, language, resolvedHistoryEvents, resolveTemplateTitle, t]);
   const dailyRewardButtonLabel = dailyRewardUnlocked
     ? dailyRewardReady
       ? t("dailyRewardClaimHint")
@@ -27470,6 +29336,58 @@ function AppContent() {
       cancelled = true;
     };
   }, []);
+  useEffect(() => {
+    if (Platform.OS !== "ios" && Platform.OS !== "android") {
+      setHomeWidgetInstallLoggedHydrated(true);
+      return;
+    }
+    let cancelled = false;
+    AsyncStorage.getItem(STORAGE_KEYS.HOME_WIDGET_INSTALLED_LOGGED)
+      .then((value) => {
+        if (cancelled) return;
+        homeWidgetInstallLoggedRef.current = value === "1";
+        setHomeWidgetInstallLoggedHydrated(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setHomeWidgetInstallLoggedHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const checkAndLogHomeWidgetInstall = useCallback(async () => {
+    if (Platform.OS !== "ios" && Platform.OS !== "android") return;
+    if (homeWidgetInstallLoggedRef.current) return;
+    if (homeWidgetInstallCheckInFlightRef.current) return;
+    homeWidgetInstallCheckInFlightRef.current = true;
+    try {
+      const installed = await hasInstalledHomeWidget();
+      if (!installed) return;
+      homeWidgetInstallLoggedRef.current = true;
+      AsyncStorage.setItem(STORAGE_KEYS.HOME_WIDGET_INSTALLED_LOGGED, "1").catch(() => {});
+      logEvent("home_widget_installed");
+    } finally {
+      homeWidgetInstallCheckInFlightRef.current = false;
+    }
+  }, [logEvent]);
+  useEffect(() => {
+    if (Platform.OS !== "ios" && Platform.OS !== "android") return;
+    if (analyticsOptOut !== false) return;
+    if (!homeWidgetInstallLoggedHydrated) return;
+    checkAndLogHomeWidgetInstall();
+  }, [analyticsOptOut, checkAndLogHomeWidgetInstall, homeWidgetInstallLoggedHydrated]);
+  useEffect(() => {
+    if (Platform.OS !== "ios" && Platform.OS !== "android") return;
+    if (analyticsOptOut !== false) return;
+    if (!homeWidgetInstallLoggedHydrated) return;
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        checkAndLogHomeWidgetInstall();
+      }
+    });
+    return () => subscription.remove();
+  }, [analyticsOptOut, checkAndLogHomeWidgetInstall, homeWidgetInstallLoggedHydrated]);
   useEffect(() => {
     if (!pushOptInHydrated) return;
     if (notificationPermissionGranted !== true) return;
@@ -28097,6 +30015,9 @@ function AppContent() {
     } else if (overlay.type === "streak_pledge_reward") {
       scheduleSound(160, "reward");
       scheduleSound(320, "coin");
+    } else if (overlay.type === "premium_unlock") {
+      scheduleSound(140, "level_up");
+      scheduleSound(320, "reward", { skipCooldown: true });
     } else if (overlay.type === "health") {
       scheduleSound(140, "coin");
     } else if (overlay.type === "goal_complete") {
@@ -29182,6 +31103,15 @@ function AppContent() {
     if (!dailyChallengeUnlocked) return;
     const resolvedTodayKey = todayKey || getDayKey(Date.now());
     const todayDate = parseDayKey(resolvedTodayKey);
+    const resolveDailyChallengeFrequencyId = (templateId, template = null) => {
+      const normalizedTemplateId =
+        typeof templateId === "string" ? templateId.trim() : templateId;
+      const interactionFrequency = normalizeFrequencyId(
+        normalizedTemplateId ? temptationInteractions?.[normalizedTemplateId]?.frequency : null
+      );
+      const templateFrequency = normalizeFrequencyId(template?.frequency);
+      return interactionFrequency || templateFrequency || "daily";
+    };
     const deferDate = dailyChallenge.deferUntilKey
       ? parseDayKey(dailyChallenge.deferUntilKey)
       : null;
@@ -29196,6 +31126,11 @@ function AppContent() {
       existingTemplate && typeof resolveTemptationCategory === "function"
         ? resolveTemptationCategory(existingTemplate)
         : null;
+    const existingTemplateFrequency =
+      dailyChallenge.templateId && existingTemplate
+        ? resolveDailyChallengeFrequencyId(dailyChallenge.templateId, existingTemplate)
+        : null;
+    const existingTemplateIsDaily = existingTemplateFrequency === "daily";
     if (isEssentialImpulseCategory(existingCategory)) {
       setDailyChallenge({
         ...createInitialDailyChallengeState(),
@@ -29205,7 +31140,22 @@ function AppContent() {
       });
       return;
     }
-    if (dailyChallenge.dateKey === resolvedTodayKey && dailyChallenge.templateId) return;
+    if (
+      dailyChallenge.dateKey === resolvedTodayKey &&
+      dailyChallenge.templateId &&
+      existingTemplateIsDaily
+    ) {
+      return;
+    }
+    if (
+      dailyChallenge.dateKey === resolvedTodayKey &&
+      dailyChallenge.templateId &&
+      !existingTemplateIsDaily &&
+      dailyChallenge.status !== DAILY_CHALLENGE_STATUS.OFFER &&
+      dailyChallenge.status !== DAILY_CHALLENGE_STATUS.IDLE
+    ) {
+      return;
+    }
     const targetId = resolveDailyChallengeTemplateId(dailyChallengePressure, 1, (templateId) => {
       const normalizedTemplateId =
         typeof templateId === "string" ? templateId.trim() : templateId;
@@ -29213,6 +31163,8 @@ function AppContent() {
       if (dailyChallengeRecentSaveIds.has(normalizedTemplateId)) return false;
       const template = resolveTemplateCard(normalizedTemplateId);
       if (!template) return false;
+      const frequencyId = resolveDailyChallengeFrequencyId(normalizedTemplateId, template);
+      if (frequencyId !== "daily") return false;
       if (typeof resolveTemptationCategory === "function") {
         const categoryId = resolveTemptationCategory(template);
         if (isEssentialImpulseCategory(categoryId)) return false;
@@ -29262,10 +31214,12 @@ function AppContent() {
     dailyChallenge.dateKey,
     dailyChallenge.templateId,
     dailyChallenge.deferUntilKey,
+    dailyChallenge.status,
     dailyChallengeHydrated,
     language,
     dailyChallengePressure,
     profile.currency,
+    temptationInteractions,
     resolveTemptationCategory,
     resolveTemplateCard,
     resolveTemplateTitle,
@@ -29650,7 +31604,18 @@ function AppContent() {
 
   const scheduleWeeklyReportNotification = useCallback(
     async ({ force = false } = {}) => {
-      if (!reportsUnlocked) return;
+      if (!reportsUnlocked || !reportsHaveWeeklyData) {
+        if (reportsWeeklyNotificationId) {
+          try {
+            await safeNotifications.cancelScheduledNotificationAsync(reportsWeeklyNotificationId);
+          } catch (error) {
+            console.warn("weekly report cancel", error);
+          }
+          setReportsWeeklyNotificationId(null);
+        }
+        reportsWeeklyNotificationLocaleRef.current = null;
+        return;
+      }
       const permitted = await ensureNotificationPermission({ request: false });
       if (!permitted) return;
       const normalizedLanguage = normalizeLanguage(language);
@@ -29689,15 +31654,45 @@ function AppContent() {
         console.warn("weekly report schedule", error);
       }
     },
-    [ensureNotificationPermission, language, reportsUnlocked, reportsWeeklyNotificationId, t]
+    [
+      ensureNotificationPermission,
+      language,
+      reportsHaveWeeklyData,
+      reportsUnlocked,
+      reportsWeeklyNotificationId,
+      t,
+    ]
   );
 
   useEffect(() => {
     if (!reportsWeeklyNotificationHydrated) return;
     if (notificationPermissionGranted !== true) return;
     if (!reportsUnlocked) return;
+    if (!reportsHaveWeeklyData) return;
     scheduleWeeklyReportNotification();
-  }, [notificationPermissionGranted, reportsWeeklyNotificationHydrated, reportsUnlocked, scheduleWeeklyReportNotification]);
+  }, [
+    notificationPermissionGranted,
+    reportsHaveWeeklyData,
+    reportsUnlocked,
+    reportsWeeklyNotificationHydrated,
+    scheduleWeeklyReportNotification,
+  ]);
+
+  useEffect(() => {
+    if (!reportsWeeklyNotificationHydrated) return;
+    if (notificationPermissionGranted !== true) return;
+    if (reportsUnlocked && reportsHaveWeeklyData) return;
+    if (!reportsWeeklyNotificationId) return;
+    safeNotifications.cancelScheduledNotificationAsync(reportsWeeklyNotificationId);
+    setReportsWeeklyNotificationId(null);
+    reportsWeeklyNotificationLocaleRef.current = null;
+  }, [
+    notificationPermissionGranted,
+    reportsHaveWeeklyData,
+    reportsUnlocked,
+    reportsWeeklyNotificationHydrated,
+    reportsWeeklyNotificationId,
+  ]);
 
   useEffect(() => {
     if (!reportsWeeklyNotificationHydrated) return;
@@ -29771,6 +31766,7 @@ function AppContent() {
         STORAGE_KEYS.PURCHASES,
         STORAGE_KEYS.PROFILE,
         STORAGE_KEYS.THEME,
+        STORAGE_KEYS.PRO_THEME_ACCENT,
         STORAGE_KEYS.LANGUAGE,
         STORAGE_KEYS.SOUND_ENABLED,
         STORAGE_KEYS.ONBOARDING,
@@ -29849,6 +31845,10 @@ function AppContent() {
         STORAGE_KEYS.REPORTS_BADGE,
         STORAGE_KEYS.REPORTS_LAST_AUTO_WEEK,
         STORAGE_KEYS.REPORTS_WEEKLY_NOTIFICATION,
+        STORAGE_KEYS.PREMIUM_INSTALL_ID,
+        STORAGE_KEYS.PREMIUM_SOFT_PAYWALL_SHOWN,
+        STORAGE_KEYS.PREMIUM_HARD_PAYWALL_SHOWN,
+        STORAGE_KEYS.PREMIUM_CHALLENGE_CLAIMS,
       ];
       const storedPairs = await AsyncStorage.multiGet(hydrationKeys);
       const storedMap = Object.fromEntries(storedPairs || []);
@@ -29857,6 +31857,7 @@ function AppContent() {
       const purchasesRaw = storedMap[STORAGE_KEYS.PURCHASES] ?? null;
       const profileRaw = storedMap[STORAGE_KEYS.PROFILE] ?? null;
       const themeRaw = storedMap[STORAGE_KEYS.THEME] ?? null;
+      const proThemeAccentRaw = storedMap[STORAGE_KEYS.PRO_THEME_ACCENT] ?? null;
       const languageRaw = storedMap[STORAGE_KEYS.LANGUAGE] ?? null;
       const soundEnabledRaw = storedMap[STORAGE_KEYS.SOUND_ENABLED] ?? null;
       const onboardingRaw = storedMap[STORAGE_KEYS.ONBOARDING] ?? null;
@@ -29938,6 +31939,10 @@ function AppContent() {
       const reportsLastAutoWeekRaw = storedMap[STORAGE_KEYS.REPORTS_LAST_AUTO_WEEK] ?? null;
       const reportsWeeklyNotificationRaw =
         storedMap[STORAGE_KEYS.REPORTS_WEEKLY_NOTIFICATION] ?? null;
+      const premiumInstallIdRaw = storedMap[STORAGE_KEYS.PREMIUM_INSTALL_ID] ?? null;
+      const premiumSoftPaywallRaw = storedMap[STORAGE_KEYS.PREMIUM_SOFT_PAYWALL_SHOWN] ?? null;
+      const premiumHardPaywallRaw = storedMap[STORAGE_KEYS.PREMIUM_HARD_PAYWALL_SHOWN] ?? null;
+      const premiumChallengeClaimsRaw = storedMap[STORAGE_KEYS.PREMIUM_CHALLENGE_CLAIMS] ?? null;
       const deferWishesHydration = shouldDeferLargeParse(wishesRaw);
       const hydrateWishes = () => {
         try {
@@ -30334,11 +32339,17 @@ function AppContent() {
         setDailyGoalCollectedKey(null);
       }
       if (themeRaw) {
-        setTheme(themeRaw === "dark" ? "dark" : "light");
+        setTheme(normalizeThemeId(themeRaw));
       } else {
         setTheme(DEFAULT_THEME);
       }
       setThemeHydrated(true);
+      if (proThemeAccentRaw) {
+        setProThemeAccentId(normalizeProThemeAccentId(proThemeAccentRaw));
+      } else {
+        setProThemeAccentId(DEFAULT_PRO_THEME_ACCENT_ID);
+      }
+      setProThemeAccentHydrated(true);
       if (languageRaw) {
         setLanguage(normalizeLanguage(languageRaw));
       } else {
@@ -30383,6 +32394,19 @@ function AppContent() {
           : null
       );
       setReportsWeeklyNotificationHydrated(true);
+      const normalizedPremiumInstallId =
+        typeof premiumInstallIdRaw === "string" && premiumInstallIdRaw.trim().length
+          ? premiumInstallIdRaw.trim()
+          : createMonetizationInstallId();
+      setPremiumInstallId(normalizedPremiumInstallId);
+      setPremiumInstallIdHydrated(true);
+      setPremiumSoftPaywallShown(premiumSoftPaywallRaw === "1");
+      setPremiumSoftPaywallHydrated(true);
+      setPremiumHardPaywallShown(premiumHardPaywallRaw === "1");
+      setPremiumHardPaywallHydrated(true);
+      const parsedPremiumChallengeClaims = Math.max(0, Number(premiumChallengeClaimsRaw) || 0);
+      setPremiumChallengeClaims(parsedPremiumChallengeClaims);
+      setPremiumChallengeClaimsHydrated(true);
       let normalizedRatingPrompt = createInitialRatingPromptState();
       let ratingPromptNeedsRewrite = false;
       if (ratingPromptRaw) {
@@ -30772,7 +32796,18 @@ function AppContent() {
             const parsedHistory = JSON.parse(historyRaw);
             const now = Date.now();
             const filteredHistory = (Array.isArray(parsedHistory) ? parsedHistory : [])
-              .filter((entry) => entry?.timestamp && now - entry.timestamp <= HISTORY_RETENTION_MS)
+              .map((entry) => {
+                if (!entry || typeof entry !== "object") return null;
+                const timestamp = normalizeTimestampMs(entry.timestamp);
+                if (!timestamp) return null;
+                return timestamp === entry.timestamp ? entry : { ...entry, timestamp };
+              })
+              .filter((entry) => {
+                if (!entry?.timestamp) return false;
+                // Ignore events with broken future timestamps.
+                if (entry.timestamp > now + DAY_MS) return false;
+                return now - entry.timestamp <= HISTORY_RETENTION_MS;
+              })
               .slice(0, MAX_HISTORY_EVENTS);
             setHistoryEvents(filteredHistory);
           } else {
@@ -31907,6 +33942,10 @@ function AppContent() {
     if (!themeHydrated) return;
     queuePersist(STORAGE_KEYS.THEME, theme);
   }, [queuePersist, theme, themeHydrated]);
+  useEffect(() => {
+    if (!proThemeAccentHydrated) return;
+    queuePersist(STORAGE_KEYS.PRO_THEME_ACCENT, proThemeAccentId);
+  }, [proThemeAccentHydrated, proThemeAccentId, queuePersist]);
 
   useEffect(() => {
     if (!languageHydrated) return;
@@ -31932,6 +33971,30 @@ function AppContent() {
       AsyncStorage.removeItem(STORAGE_KEYS.REPORTS_WEEKLY_NOTIFICATION).catch(() => {});
     }
   }, [reportsWeeklyNotificationHydrated, reportsWeeklyNotificationId]);
+  useEffect(() => {
+    if (!premiumInstallIdHydrated) return;
+    const normalized = premiumInstallId || createMonetizationInstallId();
+    if (normalized !== premiumInstallId) {
+      setPremiumInstallId(normalized);
+      return;
+    }
+    queuePersist(STORAGE_KEYS.PREMIUM_INSTALL_ID, normalized);
+  }, [premiumInstallId, premiumInstallIdHydrated, queuePersist]);
+  useEffect(() => {
+    if (!premiumSoftPaywallHydrated) return;
+    queuePersist(STORAGE_KEYS.PREMIUM_SOFT_PAYWALL_SHOWN, premiumSoftPaywallShown ? "1" : "0");
+  }, [premiumSoftPaywallHydrated, premiumSoftPaywallShown, queuePersist]);
+  useEffect(() => {
+    if (!premiumHardPaywallHydrated) return;
+    queuePersist(STORAGE_KEYS.PREMIUM_HARD_PAYWALL_SHOWN, premiumHardPaywallShown ? "1" : "0");
+  }, [premiumHardPaywallHydrated, premiumHardPaywallShown, queuePersist]);
+  useEffect(() => {
+    if (!premiumChallengeClaimsHydrated) return;
+    queuePersist(
+      STORAGE_KEYS.PREMIUM_CHALLENGE_CLAIMS,
+      String(Math.max(0, Number(premiumChallengeClaims) || 0))
+    );
+  }, [premiumChallengeClaims, premiumChallengeClaimsHydrated, queuePersist]);
 
   useEffect(() => {
     if (!healthHydrated) return;
@@ -32525,7 +34588,7 @@ useEffect(() => {
       preferred_currency: currencyCode,
       saving_style: savingStyle,
       locale: language,
-      is_premium: false,
+      is_premium: premiumState.isPremium,
       gender: genderValue,
       persona_type: personaType,
       notifications_allowed: notificationsAllowed,
@@ -32544,12 +34607,83 @@ useEffect(() => {
     profile.persona,
     profile.primaryGoals,
     profileHydrated,
+    premiumState.isPremium,
     wishes,
   ]);
+  const trackRetentionActivityForToday = useCallback(() => {
+    if (analyticsOptOut !== false) return;
+    if (!profileHydrated) return;
+    if (!retentionAnalyticsHydrated) return;
+    const dayKey = currentDayKey || getDayKey(Date.now());
+    if (!dayKey) return;
+    const knownDays = normalizeRetentionDayKeys(retentionActiveDaysRef.current);
+    if (knownDays.includes(dayKey)) return;
+    const nextDays = normalizeRetentionDayKeys([...knownDays, dayKey]);
+    retentionActiveDaysRef.current = nextDays;
+    AsyncStorage.setItem(STORAGE_KEYS.RETENTION_ACTIVE_DAYS, JSON.stringify(nextDays)).catch(() => {});
+    const activeDaysTotal = Math.max(1, nextDays.length);
+    const activeStreak = Math.max(1, getConsecutiveActiveDays(nextDays));
+    const previousDayKey = nextDays.length > 1 ? nextDays[nextDays.length - 2] : null;
+    const gapDays = previousDayKey ? getDayDiff(previousDayKey, dayKey) : null;
+    const missedDays = Number.isFinite(gapDays) ? Math.max(0, gapDays - 1) : 0;
+    let lifetimeDay = activeDaysTotal;
+    const joinedAtTimestamp = profileJoinedAt ? new Date(profileJoinedAt).getTime() : NaN;
+    if (Number.isFinite(joinedAtTimestamp)) {
+      const joinedDayKey = getDayKey(joinedAtTimestamp);
+      const dayDiff = getDayDiff(joinedDayKey, dayKey);
+      if (Number.isFinite(dayDiff)) {
+        lifetimeDay = Math.max(1, dayDiff + 1);
+      }
+    }
+    logEvent("retention_day_active", {
+      lifetime_day: lifetimeDay,
+      active_days_total: activeDaysTotal,
+      active_streak: activeStreak,
+      missed_days: missedDays,
+    });
+    setUserProperties({
+      lifetime_days: String(lifetimeDay),
+      active_days_total: String(activeDaysTotal),
+      active_days_streak: String(activeStreak),
+    });
+    if (!RETENTION_MILESTONE_DAYS.has(lifetimeDay)) return;
+    if (retentionMilestonesLoggedRef.current[lifetimeDay]) return;
+    const nextMilestones = { ...retentionMilestonesLoggedRef.current, [lifetimeDay]: true };
+    retentionMilestonesLoggedRef.current = nextMilestones;
+    const persistedMilestones = normalizeRetentionMilestoneDays(
+      Object.keys(nextMilestones).map((key) => Number(key))
+    );
+    AsyncStorage.setItem(STORAGE_KEYS.RETENTION_MILESTONES, JSON.stringify(persistedMilestones)).catch(() => {});
+    logEvent("retention_day_milestone", {
+      day: lifetimeDay,
+      active_days_total: activeDaysTotal,
+      active_streak: activeStreak,
+    });
+    if (lifetimeDay === 2 && !dayMilestonesLoggedRef.current.day2) {
+      dayMilestonesLoggedRef.current = { ...dayMilestonesLoggedRef.current, day2: true };
+      AsyncStorage.setItem(STORAGE_KEYS.DAY_TWO_ACTIVITY, "1").catch(() => {});
+      logEvent("day_2");
+    } else if (lifetimeDay === 3 && !dayMilestonesLoggedRef.current.day3) {
+      dayMilestonesLoggedRef.current = { ...dayMilestonesLoggedRef.current, day3: true };
+      AsyncStorage.setItem(STORAGE_KEYS.DAY_THREE_ACTIVITY, "1").catch(() => {});
+      logEvent("day_3");
+    }
+  }, [
+    analyticsOptOut,
+    currentDayKey,
+    logEvent,
+    profileHydrated,
+    profileJoinedAt,
+    retentionAnalyticsHydrated,
+    setUserProperties,
+  ]);
+  useEffect(() => {
+    trackRetentionActivityForToday();
+  }, [trackRetentionActivityForToday]);
   useEffect(() => {
     if (analyticsOptOut !== false) return;
     if (!soundEnabledHydrated) return;
-    logEvent("sound_setting_status", { enabled: soundEnabled ? 1 : 0 });
+    logEvent(soundEnabled ? "sound_setting_enabled" : "sound_setting_disabled");
   }, [analyticsOptOut, logEvent, soundEnabled, soundEnabledHydrated]);
   useEffect(() => {
     if (!profileHydrated) return;
@@ -32868,13 +35002,51 @@ useEffect(() => {
   }, [canUseBackGesture, handleAppBack]);
 
   const handleThemeToggle = (mode) => {
-    const nextTheme = mode === "dark" ? "dark" : "light";
+    const nextTheme = normalizeThemeId(mode);
+    if (nextTheme === PRO_THEME_ID && !premiumState.isPremium) {
+      ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.proTheme, { kind: "feature" });
+      return;
+    }
     triggerHaptic();
+    if (nextTheme === PRO_THEME_ID) {
+      setProThemeAccentPickerVisible(true);
+    } else {
+      setProThemeAccentPickerVisible(false);
+    }
     setTheme(nextTheme);
     if (nextTheme !== theme) {
       logEvent("theme_changed", { theme: nextTheme });
     }
   };
+  const handleProThemeAccentSelect = useCallback(
+    (accentId, { close = true } = {}) => {
+      const normalizedAccentId = normalizeProThemeAccentId(accentId);
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+      setProThemeAccentId(normalizedAccentId);
+      if (close) {
+        setProThemeAccentPickerVisible(false);
+      }
+      logEvent("pro_theme_accent_changed", { accent_id: normalizedAccentId });
+    },
+    [logEvent, triggerHaptic]
+  );
+  const closeProThemeAccentPicker = useCallback(() => {
+    setProThemeAccentPickerVisible(false);
+  }, []);
+
+  useEffect(() => {
+    if (theme !== PRO_THEME_ID) return;
+    const premiumStateResolved = premiumState.enabled || !!premiumState.error;
+    if (!premiumStateResolved) return;
+    if (premiumState.isPremium) return;
+    setTheme(DEFAULT_THEME);
+    setProThemeAccentPickerVisible(false);
+  }, [premiumState.enabled, premiumState.error, premiumState.isPremium, theme]);
+  useEffect(() => {
+    if (theme === PRO_THEME_ID) return;
+    if (!proThemeAccentPickerVisible) return;
+    setProThemeAccentPickerVisible(false);
+  }, [proThemeAccentPickerVisible, theme]);
 
   const handleLanguageChange = (lng) => {
     const nextLanguage = normalizeLanguage(lng);
@@ -33427,6 +35599,10 @@ useEffect(() => {
   );
 
   const handleQuickCustomSubmit = (customData) => {
+    if (!premiumState.isPremium && customTemptationCount >= FREE_CUSTOM_TEMPTATION_LIMIT) {
+      ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.customTemptationCards);
+      return;
+    }
     if (!ensureTemptationCapacity({ showSoft: false })) return;
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
     if (!customData.title?.trim()) {
@@ -35134,9 +37310,8 @@ useEffect(() => {
         stopAllSounds();
       }
       AsyncStorage.setItem(STORAGE_KEYS.SOUND_ENABLED, nextValue ? "1" : "0").catch(() => {});
-      logEvent("sound_toggle", { enabled: nextValue ? 1 : 0 });
     },
-    [logEvent, stopAllSounds, triggerHaptic]
+    [stopAllSounds, triggerHaptic]
   );
 
   const normalizeHistoryGoalId = useCallback(
@@ -35656,18 +37831,19 @@ useEffect(() => {
         </TouchableOpacity>
       );
     });
-    if (IS_SHORT_DEVICE) {
-      return (
-        <ScrollView
-          style={styles.tamagotchiFoodScroll}
-          contentContainerStyle={styles.tamagotchiFoodList}
-          showsVerticalScrollIndicator={false}
-        >
-          {buttons}
-        </ScrollView>
-      );
-    }
-    return <View style={styles.tamagotchiFoodList}>{buttons}</View>;
+    return (
+      <ScrollView
+        style={styles.tamagotchiFoodScroll}
+        contentContainerStyle={styles.tamagotchiFoodList}
+        scrollEnabled
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+        bounces
+      >
+        {buttons}
+      </ScrollView>
+    );
   };
 
   const handleMascotAnimationComplete = useCallback(() => {
@@ -37260,6 +39436,13 @@ useEffect(() => {
         return;
       }
       if (type === "maybe") {
+        const activePendingCount = Array.isArray(pendingListRef.current)
+          ? pendingListRef.current.length
+          : 0;
+        if (!premiumState.isPremium && activePendingCount >= FREE_PENDING_LIMIT) {
+          ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.thinkingQueue);
+          return;
+        }
         logEvent(
           "temptation_think_later",
           buildTemptationPayload(item, { reminder_days: REMINDER_DAYS })
@@ -37361,6 +39544,8 @@ useEffect(() => {
       temptationTutorialStatus,
       openCategoryPrompt,
       shouldPromptCategory,
+      ensurePremiumFeatureAccess,
+      premiumState.isPremium,
     ]
   );
 
@@ -37397,6 +39582,7 @@ useEffect(() => {
   ]);
 
   const openAddCategoryModal = useCallback(() => {
+    if (!ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.customCategories)) return;
     setAddCategoryName("");
     setAddCategoryEmoji("✨");
     setAddCategoryError(false);
@@ -37405,7 +39591,7 @@ useEffect(() => {
       setManageCategoriesVisible(false);
     }
     setAddCategoryModalVisible(true);
-  }, [manageCategoriesVisible]);
+  }, [ensurePremiumFeatureAccess, manageCategoriesVisible]);
 
   const closeAddCategoryModal = useCallback(() => {
     setAddCategoryModalVisible(false);
@@ -37417,6 +39603,7 @@ useEffect(() => {
   }, [resumeManageCategoriesAfterAdd]);
 
   const handleAddCategorySave = useCallback(() => {
+    if (!ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.customCategories)) return;
     const trimmed = (addCategoryName || "").trim();
     if (!trimmed) {
       setAddCategoryError(true);
@@ -37439,11 +39626,18 @@ useEffect(() => {
       });
     }
     closeAddCategoryModal();
-  }, [addCategoryEmoji, addCategoryName, closeAddCategoryModal, logEvent]);
+  }, [
+    addCategoryEmoji,
+    addCategoryName,
+    closeAddCategoryModal,
+    ensurePremiumFeatureAccess,
+    logEvent,
+  ]);
 
   const openManageCategoriesModal = useCallback(() => {
+    if (!ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.customCategories)) return;
     setManageCategoriesVisible(true);
-  }, []);
+  }, [ensurePremiumFeatureAccess]);
 
   const closeManageCategoriesModal = useCallback(() => {
     setManageCategoriesVisible(false);
@@ -39107,6 +41301,8 @@ useEffect(() => {
         ? null
         : next.type === "streak_pledge_reward"
         ? null
+        : next.type === "premium_unlock"
+        ? null
         : next.type === "impulse_alert"
         ? null
         : next.type === "focus_digest"
@@ -39957,6 +42153,13 @@ useEffect(() => {
 
   const handleChallengeClaim = useCallback(
     (challengeId) => {
+      if (
+        !premiumState.isPremium &&
+        premiumChallengeClaims >= FREE_CHALLENGE_CLAIMS_LIMIT
+      ) {
+        ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.unlimitedChallenges);
+        return;
+      }
       const def = CHALLENGE_DEF_MAP[challengeId];
       if (!def) return;
       const currentEntry = challengesState[challengeId];
@@ -39993,8 +42196,19 @@ useEffect(() => {
       );
       playSound("reward");
       logEvent("challenge_claimed", { challenge_id: challengeId });
+      setPremiumChallengeClaims((prev) => Math.max(0, Number(prev) || 0) + 1);
     },
-    [challengesState, formatHealthRewardText, language, t, triggerOverlayState, playSound]
+    [
+      challengesState,
+      ensurePremiumFeatureAccess,
+      formatHealthRewardText,
+      language,
+      playSound,
+      premiumChallengeClaims,
+      premiumState.isPremium,
+      t,
+      triggerOverlayState,
+    ]
   );
 
   const handleChallengeCancel = useCallback(
@@ -40409,6 +42623,41 @@ useEffect(() => {
     () => setProgressFocusChallengeId(null),
     []
   );
+  const handleBudgetAutoLocked = useCallback(() => {
+    if (budgetAutoEnabled) return;
+    ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.budgetAuto);
+  }, [budgetAutoEnabled, ensurePremiumFeatureAccess]);
+  const handleHeroCarouselIndexChange = useCallback(
+    (nextIndex) => {
+      const normalized = Math.max(0, Number(nextIndex) || 0);
+      if (!premiumState.isPremium && normalized > 0) {
+        ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.widgetSlider);
+        setHeroCarouselIndex(0);
+        return;
+      }
+      setHeroCarouselIndex(normalized);
+    },
+    [ensurePremiumFeatureAccess, premiumState.isPremium]
+  );
+  const handleHeroCarouselLockChange = useCallback(
+    (nextLocked) => {
+      if (!premiumState.isPremium) {
+        setHeroCarouselLocked(true);
+        return;
+      }
+      setHeroCarouselLocked(!!nextLocked);
+    },
+    [premiumState.isPremium]
+  );
+  useEffect(() => {
+    if (premiumState.isPremium) return;
+    if (heroCarouselIndex !== 0) {
+      setHeroCarouselIndex(0);
+    }
+    if (!heroCarouselLocked) {
+      setHeroCarouselLocked(true);
+    }
+  }, [heroCarouselIndex, heroCarouselLocked, premiumState.isPremium]);
   const renderActiveScreen = () => {
     if (activeTab === "purchases" && !deferredHydrationReady) {
       return (
@@ -40438,9 +42687,11 @@ useEffect(() => {
             onFreeDayLog={handleLogFreeDay}
             onFreeDayRescue={handleFreeDayRescue}
             freeDayRescueCost={FREE_DAY_RESCUE_COST}
-            historyEvents={resolvedHistoryEvents}
+            historyEvents={visibleHistoryEvents}
             incomeEntries={incomeEntries}
             budgetOverrides={budgetOverrides}
+            budgetAutoEnabled={budgetAutoEnabled}
+            onBudgetAutoLocked={handleBudgetAutoLocked}
             savedTotalUSD={savedTotalUSD}
             decisionStats={decisionStats}
             baselineMonthlyWasteUSD={baselineMonthlyWasteUSD}
@@ -40536,13 +42787,14 @@ useEffect(() => {
             onResetData={handleResetData}
             onPickImage={handlePickImage}
             theme={theme}
+            isPremiumUser={premiumState.isPremium}
             language={language}
             currencyValue={profile.currency || DEFAULT_PROFILE.currency}
             soundEnabled={soundEnabled}
             onSoundToggle={handleSoundToggle}
             spendReducesSavings={spendReducesSavings}
             onSpendReductionToggle={handleSpendImpactToggle}
-            history={resolvedHistoryEvents}
+            history={visibleHistoryEvents}
             onHistoryDelete={handleHistoryDelete}
             freeDayStats={freeDayStats}
             rewardBadgeCount={rewardClaimTotal}
@@ -40585,11 +42837,12 @@ useEffect(() => {
             analyticsStats={analyticsStats}
             refuseStats={refuseStats}
             cardFeedback={cardFeedback}
-            historyEvents={resolvedHistoryEvents}
+            historyEvents={visibleHistoryEvents}
             onHistoryDelete={handleHistoryDelete}
             profile={profile}
             incomeEntries={incomeEntries}
             budgetOverrides={budgetOverrides}
+            budgetAutoEnabled={budgetAutoEnabled}
             decisionStats={decisionStats}
             customCategories={customCategories}
             titleOverrides={titleOverrides}
@@ -40642,15 +42895,17 @@ useEffect(() => {
             onBudgetHeroPress={requestProgressBudgetFocus}
             savingsHeroRef={savingsHeroRef}
             heroCarouselIndex={heroCarouselIndex}
-            heroCarouselLocked={heroCarouselLocked}
-            onHeroCarouselIndexChange={setHeroCarouselIndex}
-            onHeroCarouselLocked={setHeroCarouselLocked}
+            heroCarouselLocked={!premiumState.isPremium || heroCarouselLocked}
+            onHeroCarouselIndexChange={handleHeroCarouselIndexChange}
+            onHeroCarouselLocked={handleHeroCarouselLockChange}
             heroCarouselHintAllowed={heroCarouselHintAllowed}
             resolveTemplateTitle={resolveTemplateTitle}
             resolveTemplateCard={resolveTemplateCard}
             resolveTemptationCategory={resolveTemptationCategory}
             tamagotchiMood={tamagotchiMood}
             tamagotchiDesiredFood={tamagotchiDesiredFood}
+            tamagotchiHungerImmunityUntil={tamagotchiHungerImmunityUntil}
+            tamagotchiHasHungerImmunity={tamagotchiHasHungerImmunity}
             primaryTemptationId={primaryTemptationId}
             primaryTemptationDescription={primaryTemptationDescription}
             focusTemplateId={focusTemplateId}
@@ -40666,6 +42921,7 @@ useEffect(() => {
             tutorialHighlightMeasureTick={tutorialHighlightMeasureTick}
             onTutorialHighlightLayoutChange={handleTutorialHighlightLayoutChange}
             allowThinkAction={thinkingUnlocked}
+            isPremiumUser={premiumState.isPremium}
             activeChallenge={activeChallenge}
             onActiveChallengePress={handleProgressChallengeOpen}
             onSavingsHeroAnchorChange={handleSavingsHeroAnchor}
@@ -42043,8 +44299,8 @@ useEffect(() => {
             styles.tabBar,
             tutorialIsTemptation && styles.tabBarDimmed,
             {
-              backgroundColor: colors.card,
-              borderTopColor: colors.border,
+              backgroundColor: isProTheme ? "#F3F5FF" : colors.card,
+              borderTopColor: isProTheme ? colorWithAlpha(proThemeAccentColor, 0.32) : colors.border,
               paddingBottom: tabBarBottomInset + (Platform.OS === "android" ? androidTabBarExtra : 0),
               marginBottom: Platform.OS === "ios" ? -(safeAreaInsets.bottom || 0) : 0,
               paddingTop: tabBarTopPadding,
@@ -42059,12 +44315,21 @@ useEffect(() => {
             const isTabLocked =
               (tab === "pending" && !thinkingUnlocked) ||
               (tab === "purchases" && !rewardsUnlocked);
-            const highlightBackground = theme === "dark" ? "rgba(255,255,255,0.2)" : "#FFFFFF";
-            const highlightTextColor = theme === "dark" ? "#05070D" : colors.text;
-            const defaultTextColor = isActiveTab ? colors.text : colors.muted;
+            const highlightBackground = isDarkTheme
+              ? "rgba(255,255,255,0.2)"
+              : isProTheme
+              ? colorWithAlpha(proThemeAccentColor, 0.16)
+              : "#FFFFFF";
+            const highlightTextColor = isDarkTheme ? "#05070D" : isProTheme ? "#1C2F86" : colors.text;
+            const defaultTextColor = isActiveTab ? (isProTheme ? proThemeAccentColor : colors.text) : colors.muted;
             const textColor = isHighlighted ? highlightTextColor : defaultTextColor;
-            const highlightBorderColor =
-              theme === "dark" ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.08)";
+            const highlightBorderColor = isDarkTheme
+              ? "rgba(255,255,255,0.4)"
+              : isProTheme
+              ? colorWithAlpha(proThemeAccentColor, 0.44)
+              : "rgba(0,0,0,0.08)";
+            const tabBadgeBackground = isDarkTheme ? "#FEE5A8" : isProTheme ? proThemeAccentColor : colors.text;
+            const tabBadgeTextColor = isDarkTheme ? "#05070D" : isProTheme ? "#FFFFFF" : colors.background;
             return (
               <TouchableOpacity
                 key={tab}
@@ -42117,14 +44382,14 @@ useEffect(() => {
                       styles.tabBadge,
                       styles.tabBadgeFloating,
                       {
-                        backgroundColor: theme === "dark" ? "#FEE5A8" : colors.text,
+                        backgroundColor: tabBadgeBackground,
                       },
                     ]}
                   >
                     <Text
                       style={[
                         styles.tabBadgeText,
-                        { color: theme === "dark" ? "#05070D" : colors.background },
+                        { color: tabBadgeTextColor },
                       ]}
                     >
                       {challengeRewardsBadgeCount > 99 ? "99+" : `${challengeRewardsBadgeCount}`}
@@ -42137,14 +44402,14 @@ useEffect(() => {
                       styles.tabBadge,
                       styles.tabBadgeFloating,
                       {
-                        backgroundColor: theme === "dark" ? "#FEE5A8" : colors.text,
+                        backgroundColor: tabBadgeBackground,
                       },
                     ]}
                   >
                     <Text
                       style={[
                         styles.tabBadgeText,
-                        { color: theme === "dark" ? "#05070D" : colors.background },
+                        { color: tabBadgeTextColor },
                       ]}
                     >
                       {rewardsBadgeCount > 99 ? "99+" : `${rewardsBadgeCount}`}
@@ -42157,7 +44422,7 @@ useEffect(() => {
                       styles.tabBadge,
                       styles.tabBadgeDot,
                       styles.tabBadgeFloating,
-                      { backgroundColor: theme === "dark" ? "#FEE5A8" : colors.text },
+                      { backgroundColor: tabBadgeBackground },
                     ]}
                   />
                 )}
@@ -42190,9 +44455,13 @@ useEffect(() => {
                   style={[
                     styles.fabTutorialHalo,
                     {
-                      backgroundColor: theme === "dark" ? "rgba(255,214,140,0.22)" : "rgba(245,200,105,0.22)",
-                      borderColor: theme === "dark" ? "#FFE08A" : "#F5C869",
-                      shadowColor: theme === "dark" ? "#FFE08A" : "#F5C869",
+                      backgroundColor: isDarkTheme
+                        ? "rgba(255,214,140,0.22)"
+                        : isProTheme
+                        ? colorWithAlpha(proThemeAccentColor, 0.2)
+                        : "rgba(245,200,105,0.22)",
+                      borderColor: isDarkTheme ? "#FFE08A" : isProTheme ? proThemeAccentColor : "#F5C869",
+                      shadowColor: isDarkTheme ? "#FFE08A" : isProTheme ? proThemeAccentColor : "#F5C869",
                     },
                   ]}
                 />
@@ -42201,8 +44470,8 @@ useEffect(() => {
                 style={[
                   styles.cartBadge,
                   {
-                    backgroundColor: colors.text,
-                    borderColor: colors.border,
+                    backgroundColor: isProTheme ? proThemeAccentColor : colors.text,
+                    borderColor: isProTheme ? colorWithAlpha(proThemeAccentColor, 0.78) : colors.border,
                     transform: [{ scale: cartBadgeScale }],
                   },
                   fabTutorialVisible && styles.cartBadgeHighlight,
@@ -42212,7 +44481,7 @@ useEffect(() => {
                 delayLongPress={420}
               >
                 <Text
-                  style={[styles.cartBadgeIcon, { color: colors.background }]}
+                  style={[styles.cartBadgeIcon, { color: isProTheme ? "#FFFFFF" : colors.background }]}
                   numberOfLines={1}
                 >
                   {fabMainIcon}
@@ -42417,67 +44686,298 @@ useEffect(() => {
               ) : (
                 <View
                   pointerEvents="none"
-                  style={[
-                    StyleSheet.absoluteFillObject,
-                    styles.tutorialBackdropDim,
-                    { bottom: tutorialBackdropBottomInset },
-                  ]}
-                />
+                  style={[StyleSheet.absoluteFillObject, { bottom: tutorialBackdropBottomInset }]}
+                >
+                  <Animated.View
+                    style={[
+                      StyleSheet.absoluteFillObject,
+                      styles.tutorialBackdropDim,
+                      { opacity: tutorialBackdropOpacity },
+                    ]}
+                  />
+                  <Animated.View
+                    style={[
+                      styles.tutorialBackdropBlob,
+                      styles.tutorialBackdropBlobPrimary,
+                      {
+                        backgroundColor: tutorialVisualPalette.glow,
+                        opacity: tutorialPulseOpacity,
+                        transform: [{ translateY: tutorialAmbientLift }],
+                      },
+                    ]}
+                  />
+                  <Animated.View
+                    style={[
+                      styles.tutorialBackdropBlob,
+                      styles.tutorialBackdropBlobSecondary,
+                      {
+                        backgroundColor: tutorialVisualPalette.secondary,
+                        opacity: tutorialPulseOpacity,
+                        transform: [{ translateY: tutorialAmbientDrift }],
+                      },
+                    ]}
+                  />
+                </View>
               )}
-              <View
+              <Animated.View
                 style={[
                   styles.tutorialCard,
+                  tutorialIsTemptation && styles.tutorialCardCompact,
                   tutorialCardPositionStyle,
-                  { backgroundColor: colors.card, borderColor: colors.border },
+                  { backgroundColor: tutorialCardBackground, borderColor: tutorialCardBorderColor },
+                  {
+                    opacity: tutorialCardOpacity,
+                    transform: [{ translateY: tutorialCardTranslateY }, { scale: tutorialCardScale }],
+                  },
                 ]}
               >
-                <Text style={styles.tutorialIcon}>{activeTutorialStep.icon}</Text>
-                <Text style={[styles.tutorialTitle, { color: colors.text }]}>
-                  {t(activeTutorialStep.titleKey)}
-                </Text>
-                <Text style={[styles.tutorialDescription, { color: colors.muted }]}>
-                  {t(activeTutorialStep.descriptionKey)}
-                </Text>
-                <View style={styles.tutorialProgressRow}>
-                  <View style={styles.tutorialDots}>
-                    {tutorialContext.steps.map((step, index) => (
+                {tutorialIsTemptation ? (
+                  <>
+                    <View style={styles.tutorialCompactHeader}>
                       <View
-                        key={step.id}
                         style={[
-                          styles.tutorialDot,
+                          styles.tutorialCompactIconWrap,
                           {
-                            backgroundColor:
-                              index <= tutorialCurrentIndex ? colors.text : colors.border,
+                            backgroundColor: tutorialFeatureBackground,
+                            borderColor: tutorialFeatureBorderColor,
+                          },
+                        ]}
+                      >
+                        <Text style={styles.tutorialCompactIcon}>{activeTutorialStep.icon}</Text>
+                      </View>
+                      <View style={styles.tutorialCompactHeaderCopy}>
+                        <Text style={[styles.tutorialCompactTitle, { color: colors.text }]}>
+                          {t(activeTutorialStep.titleKey)}
+                        </Text>
+                        <Text style={[styles.tutorialCompactStepText, { color: colors.muted }]}>
+                          {`${Math.min(tutorialCurrentIndex + 1, tutorialStepCount)}/${tutorialStepCount}`}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.tutorialCompactDescription, { color: colors.muted }]}>
+                      {t(activeTutorialStep.descriptionKey)}
+                    </Text>
+                    <View style={styles.tutorialCompactProgressRow}>
+                      <View style={styles.tutorialDots}>
+                        {tutorialContext.steps.map((step, index) => (
+                          <View
+                            key={step.id}
+                            style={[
+                              styles.tutorialDot,
+                              index < tutorialCurrentIndex && styles.tutorialDotCompleted,
+                              index === tutorialCurrentIndex && styles.tutorialDotActive,
+                              {
+                                backgroundColor:
+                                  index <= tutorialCurrentIndex
+                                    ? colors.text
+                                    : tutorialDotInactiveColor,
+                              },
+                            ]}
+                          />
+                        ))}
+                      </View>
+                      <Text style={[styles.tutorialProgressText, { color: colors.muted }]}>
+                        {t("tutorialProgress", {
+                          current: `${Math.min(tutorialCurrentIndex + 1, tutorialStepCount)}`,
+                          total: `${tutorialStepCount}`,
+                        })}
+                      </Text>
+                    </View>
+                    <View style={styles.tutorialCompactActions}>
+                      <TouchableOpacity
+                        style={[
+                          styles.tutorialCompactSkipButton,
+                          {
+                            backgroundColor: tutorialFeatureBackground,
+                            borderColor: tutorialFeatureBorderColor,
+                          },
+                        ]}
+                        onPress={tutorialSkipHandler}
+                      >
+                        <Text style={[styles.tutorialCompactSkipText, { color: colors.muted }]}>
+                          {t("tutorialSkip")}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.tutorialCompactPrimaryButton, { backgroundColor: tutorialPrimaryButtonBg }]}
+                        onPress={tutorialAdvanceHandler}
+                        activeOpacity={0.9}
+                      >
+                        <Text style={[styles.tutorialCompactPrimaryText, { color: tutorialPrimaryButtonTextColor }]}>
+                          {tutorialStepCount && tutorialCurrentIndex === tutorialStepCount - 1
+                            ? t("tutorialDone")
+                            : t("tutorialNext")}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.tutorialTopRow}>
+                      <View
+                        style={[
+                          styles.tutorialStepBadge,
+                          {
+                            backgroundColor: tutorialFeatureBackground,
+                            borderColor: tutorialFeatureBorderColor,
+                          },
+                        ]}
+                      >
+                        <Text style={styles.tutorialIcon}>{activeTutorialStep.icon}</Text>
+                        <Text style={[styles.tutorialStepBadgeText, { color: tutorialFeatureTextColor }]} numberOfLines={1}>
+                          {t(tutorialBadgeLabelKey)}
+                        </Text>
+                      </View>
+                      <View style={[styles.tutorialStepCounter, { borderColor: tutorialFeatureBorderColor }]}>
+                        <Text style={[styles.tutorialStepCounterText, { color: colors.muted }]}>
+                          {`${Math.min(tutorialCurrentIndex + 1, tutorialStepCount)}/${tutorialStepCount}`}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={[styles.tutorialVisualWrap, { borderColor: tutorialFeatureBorderColor }]}>
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[
+                          styles.tutorialVisualPulse,
+                          {
+                            borderColor: tutorialVisualPalette.glow,
+                            opacity: tutorialPulseOpacity,
+                            transform: [{ scale: tutorialPulseScale }],
                           },
                         ]}
                       />
-                    ))}
-                  </View>
-                  <Text style={[styles.tutorialProgressText, { color: colors.muted }]}>
-                    {t("tutorialProgress", {
-                      current: `${Math.min(tutorialCurrentIndex + 1, tutorialStepCount)}`,
-                      total: `${tutorialStepCount}`,
-                    })}
-                  </Text>
-                </View>
-                <View style={styles.tutorialActions}>
-                  <TouchableOpacity style={styles.tutorialSkipButton} onPress={tutorialSkipHandler}>
-                    <Text style={[styles.tutorialSkipText, { color: colors.muted }]}>
-                      {t("tutorialSkip")}
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[
+                          styles.tutorialVisualOrb,
+                          styles.tutorialVisualOrbPrimary,
+                          {
+                            backgroundColor: tutorialVisualPalette.primary,
+                            transform: [{ translateY: tutorialAmbientLift }, { rotate: tutorialAmbientRotate }],
+                          },
+                        ]}
+                      />
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[
+                          styles.tutorialVisualOrb,
+                          styles.tutorialVisualOrbSecondary,
+                          {
+                            backgroundColor: tutorialVisualPalette.secondary,
+                            transform: [{ translateY: tutorialAmbientDrift }, { rotate: tutorialAmbientRotate }],
+                          },
+                        ]}
+                      />
+                      <View style={styles.tutorialVisualGrid} pointerEvents="none" />
+                      <View style={styles.tutorialVisualBarsRow} pointerEvents="none">
+                        {tutorialVisualBars.map((value, index) => {
+                          const normalized = Math.min(1, Math.max(0.18, Number(value) || 0));
+                          return (
+                            <View key={`${activeTutorialStep.id}_bar_${index}`} style={styles.tutorialVisualBarTrack}>
+                              <Animated.View
+                                style={[
+                                  styles.tutorialVisualBarFill,
+                                  {
+                                    height: `${Math.round(normalized * 100)}%`,
+                                    backgroundColor:
+                                      index % 2 === 0
+                                        ? tutorialVisualPalette.primary
+                                        : tutorialVisualPalette.secondary,
+                                    opacity: tutorialBarsOpacity,
+                                    transform: [{ translateY: tutorialBarsTranslateY }],
+                                  },
+                                ]}
+                              />
+                            </View>
+                          );
+                        })}
+                      </View>
+                    </View>
+                    <Text style={[styles.tutorialTitle, { color: colors.text }]}>
+                      {t(activeTutorialStep.titleKey)}
                     </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.tutorialPrimaryButton, { backgroundColor: colors.text }]}
-                    onPress={tutorialAdvanceHandler}
-                  >
-                    <Text style={[styles.tutorialPrimaryText, { color: colors.background }]}>
-                      {tutorialStepCount && tutorialCurrentIndex === tutorialStepCount - 1
-                        ? t("tutorialDone")
-                        : t("tutorialNext")}
+                    <Text style={[styles.tutorialDescription, { color: colors.muted }]}>
+                      {t(activeTutorialStep.descriptionKey)}
                     </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+                    {!!tutorialFeatureKeys.length && (
+                      <View style={styles.tutorialFeatureRow}>
+                        {tutorialFeatureKeys.slice(0, 4).map((key) => (
+                          <View
+                            key={`${activeTutorialStep.id}_${key}`}
+                            style={[
+                              styles.tutorialFeatureChip,
+                              {
+                                backgroundColor: tutorialFeatureBackground,
+                                borderColor: tutorialFeatureBorderColor,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[styles.tutorialFeatureChipText, { color: tutorialFeatureTextColor }]}
+                              numberOfLines={1}
+                            >
+                              {t(key)}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                    <View style={styles.tutorialProgressRow}>
+                      <View style={styles.tutorialDots}>
+                        {tutorialContext.steps.map((step, index) => (
+                          <View
+                            key={step.id}
+                            style={[
+                              styles.tutorialDot,
+                              index < tutorialCurrentIndex && styles.tutorialDotCompleted,
+                              index === tutorialCurrentIndex && styles.tutorialDotActive,
+                              {
+                                backgroundColor:
+                                  index <= tutorialCurrentIndex
+                                    ? colors.text
+                                    : tutorialDotInactiveColor,
+                              },
+                            ]}
+                          />
+                        ))}
+                      </View>
+                      <Text style={[styles.tutorialProgressText, { color: colors.muted }]}>
+                        {t("tutorialProgress", {
+                          current: `${Math.min(tutorialCurrentIndex + 1, tutorialStepCount)}`,
+                          total: `${tutorialStepCount}`,
+                        })}
+                      </Text>
+                    </View>
+                    <View style={styles.tutorialActions}>
+                      <TouchableOpacity
+                        style={[
+                          styles.tutorialSkipButton,
+                          {
+                            backgroundColor: tutorialFeatureBackground,
+                            borderColor: tutorialFeatureBorderColor,
+                          },
+                        ]}
+                        onPress={tutorialSkipHandler}
+                      >
+                        <Text style={[styles.tutorialSkipText, { color: colors.muted }]}>
+                          {t("tutorialSkip")}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.tutorialPrimaryButton, { backgroundColor: tutorialPrimaryButtonBg }]}
+                        onPress={tutorialAdvanceHandler}
+                        activeOpacity={0.9}
+                      >
+                        <Text style={[styles.tutorialPrimaryText, { color: tutorialPrimaryButtonTextColor }]}>
+                          {tutorialStepCount && tutorialCurrentIndex === tutorialStepCount - 1
+                            ? t("tutorialDone")
+                            : t("tutorialNext")}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </Animated.View>
             </View>
           </Modal>
         )}
@@ -42488,39 +44988,38 @@ useEffect(() => {
           onRequestClose={closeTamagotchiOverlay}
           statusBarTranslucent
         >
-          <TouchableWithoutFeedback onPress={closeTamagotchiOverlay}>
-            <View style={styles.tamagotchiBackdrop}>
-              {partyActive && (
-                <>
-                  <PartyFireworksLayer isDarkMode={isDarkTheme} />
-                  <PartySparklesLayer isDarkMode={isDarkTheme} />
-                  <CoinRainOverlay dropCount={12} />
-                </>
-              )}
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <Animated.View
-                  style={[
-                    styles.tamagotchiCard,
-                    { backgroundColor: colors.card, borderColor: colors.border },
+          <View style={styles.tamagotchiBackdrop}>
+            <Pressable style={StyleSheet.absoluteFillObject} onPress={closeTamagotchiOverlay} />
+            {partyActive && (
+              <>
+                <PartyFireworksLayer isDarkMode={isDarkTheme} />
+                <PartySparklesLayer isDarkMode={isDarkTheme} />
+                <CoinRainOverlay dropCount={12} />
+              </>
+            )}
+            <Animated.View
+              style={[
+                styles.tamagotchiCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+                {
+                  transform: [
                     {
-                      transform: [
-                        {
-                          translateY: tamagotchiModalAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [20, 0],
-                          }),
-                        },
-                        {
-                          scale: tamagotchiModalAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0.95, 1],
-                          }),
-                        },
-                      ],
-                      opacity: tamagotchiModalAnim,
+                      translateY: tamagotchiModalAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [20, 0],
+                      }),
                     },
-                  ]}
-                >
+                    {
+                      scale: tamagotchiModalAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.95, 1],
+                      }),
+                    },
+                  ],
+                  opacity: tamagotchiModalAnim,
+                },
+              ]}
+            >
                   <View style={styles.tamagotchiHeader}>
                     <Text style={[styles.tamagotchiTitle, { color: colors.text }]}>
                       {t("tamagotchiName")}
@@ -42530,12 +45029,71 @@ useEffect(() => {
                     </Text>
                   </View>
                   <View style={styles.tamagotchiPreview}>
-                  <AlmiTamagotchi
-                    override={mascotOverride}
-                    onOverrideComplete={handleMascotAnimationComplete}
-                    isStarving={tamagotchiMood.tone === "urgent"}
-                    animations={tamagotchiAnimations}
-                  />
+                    <View style={styles.tamagotchiMascotWrap}>
+                      <AlmiTamagotchi
+                        override={mascotOverride}
+                        onOverrideComplete={handleMascotAnimationComplete}
+                        isStarving={tamagotchiMood.tone === "urgent"}
+                        animations={tamagotchiAnimations}
+                      />
+                      {tamagotchiHasHungerImmunity && (
+                        <Pressable
+                          style={styles.tamagotchiShieldOverlay}
+                          onPress={showTamagotchiImmunityHint}
+                          hitSlop={8}
+                        >
+                          <Text style={styles.tamagotchiShieldOverlayIcon}>🛡️</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                    {tamagotchiImmunityHintVisible &&
+                      tamagotchiHasHungerImmunity && (
+                        <Animated.View
+                          pointerEvents="none"
+                          style={[
+                            styles.tamagotchiImmunityHintBubble,
+                            {
+                              backgroundColor: tamagotchiImmunityHintPalette.backgroundColor,
+                              borderColor: tamagotchiImmunityHintPalette.borderColor,
+                              opacity: tamagotchiImmunityHintAnim.interpolate({
+                                inputRange: [0, 0.35, 1],
+                                outputRange: [0, 0.85, 1],
+                              }),
+                              transform: [
+                                {
+                                  translateY: tamagotchiImmunityHintAnim.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: [12, 0],
+                                  }),
+                                },
+                                {
+                                  scale: tamagotchiImmunityHintAnim.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: [0.92, 1],
+                                  }),
+                                },
+                              ],
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.immunityHintTitle,
+                              { color: tamagotchiImmunityHintPalette.titleColor },
+                            ]}
+                          >
+                            {t("tamagotchiImmunityHintTitle")}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.immunityHintTimer,
+                              { color: tamagotchiImmunityHintPalette.textColor },
+                            ]}
+                          >
+                            {tamagotchiImmunityHintCountdownLabel}
+                          </Text>
+                        </Animated.View>
+                      )}
                     <View style={styles.skinPickerControl}>
                       <TouchableOpacity
                         style={[
@@ -42543,9 +45101,8 @@ useEffect(() => {
                           { borderColor: colors.border, backgroundColor: colors.card },
                           !catCustomizationUnlocked && styles.skinPickerButtonLocked,
                         ]}
-                        onPress={catCustomizationUnlocked ? openSkinPicker : undefined}
-                        disabled={!catCustomizationUnlocked}
-                        activeOpacity={catCustomizationUnlocked ? 0.85 : 1}
+                        onPress={openSkinPicker}
+                        activeOpacity={0.85}
                       >
                         <Text style={styles.skinPickerIcon}>🧥</Text>
                         {!catCustomizationUnlocked && (
@@ -42561,11 +45118,27 @@ useEffect(() => {
                       </TouchableOpacity>
                       {!catCustomizationUnlocked && (
                         <Text style={[styles.skinPickerLockedLabel, { color: colors.muted }]}>
-                          {t("tamagotchiCustomizationLocked", { level: 6 })}
+                          {language === "ru" ? "Доступно в Premium" : "Available in Premium"}
                         </Text>
                       )}
                     </View>
                   </View>
+                  {tamagotchiHasHungerImmunity && (
+                    <View
+                      style={[
+                        styles.tamagotchiImmunityPill,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.08 : 0.2),
+                        },
+                      ]}
+                    >
+                      <Text style={styles.tamagotchiImmunityPillIcon}>🛡️</Text>
+                      <Text style={[styles.tamagotchiImmunityPillText, { color: colors.text }]}>
+                        {t("tamagotchiImmunityActiveLabel")}
+                      </Text>
+                    </View>
+                  )}
                   <View style={styles.tamagotchiStatRow}>
                     <Text style={[styles.tamagotchiStatLabel, { color: colors.muted }]}>
                       {t("tamagotchiFullnessLabel")}
@@ -42657,35 +45230,33 @@ useEffect(() => {
                       {t("levelShareModalClose")}
                     </Text>
                   </TouchableOpacity>
-                  {partyActive && (
-                    <>
-                      <ConfettiCannon
-                        key={`party_confetti_${partyBurstKey}`}
-                        count={180}
-                        origin={{ x: SCREEN_WIDTH / 2, y: 0 }}
-                        fadeOut
-                        explosionSpeed={520}
-                        fallSpeed={3600}
-                      />
-                      <Animated.View
-                        pointerEvents="none"
-                        style={[
-                          styles.partyGlowOverlay,
-                          {
-                            opacity: partyGlow.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [0.1, 0.4],
-                            }),
-                            backgroundColor: isDarkTheme ? "rgba(110,155,255,0.6)" : "rgba(255,210,120,0.7)",
-                          },
-                        ]}
-                      />
-                    </>
-                  )}
-                </Animated.View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
+              {partyActive && (
+                <>
+                  <ConfettiCannon
+                    key={`party_confetti_${partyBurstKey}`}
+                    count={180}
+                    origin={{ x: SCREEN_WIDTH / 2, y: 0 }}
+                    fadeOut
+                    explosionSpeed={520}
+                    fallSpeed={3600}
+                  />
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.partyGlowOverlay,
+                      {
+                        opacity: partyGlow.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.1, 0.4],
+                        }),
+                        backgroundColor: isDarkTheme ? "rgba(110,155,255,0.6)" : "rgba(255,210,120,0.7)",
+                      },
+                    ]}
+                  />
+                </>
+              )}
+            </Animated.View>
+          </View>
         </Modal>
         <Modal
           visible={skinPickerVisible}
@@ -42816,6 +45387,137 @@ useEffect(() => {
                       );
                     })}
                   </ScrollView>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+        <Modal
+          visible={proThemeAccentPickerVisible}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+          onRequestClose={closeProThemeAccentPicker}
+        >
+          <TouchableWithoutFeedback onPress={closeProThemeAccentPicker}>
+            <View style={styles.proAccentBackdrop}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View
+                  style={[
+                    styles.proAccentCard,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                  ]}
+                >
+                  <Text style={[styles.proAccentTitle, { color: colors.text }]}>
+                    {proThemeAccentCopy.title}
+                  </Text>
+                  <Text style={[styles.proAccentSubtitle, { color: colors.muted }]}>
+                    {proThemeAccentCopy.subtitle}
+                  </Text>
+
+                  <View
+                    style={[
+                      styles.proAccentHero,
+                      {
+                        borderColor: colorWithAlpha(proThemeAccentColor, 0.4),
+                        backgroundColor: blendHexColors("#0A1E72", proThemeAccentColor, 0.24),
+                      },
+                    ]}
+                  >
+                    <View
+                      pointerEvents="none"
+                      style={[
+                        styles.proAccentHeroOrbPrimary,
+                        { backgroundColor: colorWithAlpha(proThemeAccentColor, 0.5) },
+                      ]}
+                    />
+                    <View
+                      pointerEvents="none"
+                      style={[
+                        styles.proAccentHeroOrbSecondary,
+                        { backgroundColor: colorWithAlpha(proThemeAccentColor, 0.3) },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.proAccentHeroBadge,
+                        { backgroundColor: colorWithAlpha(proThemeAccentColor, 0.8) },
+                      ]}
+                    >
+                      <Text style={styles.proAccentHeroBadgeText}>ALMOST PRO</Text>
+                    </View>
+                    <Text style={styles.proAccentHeroText}>🪽💸</Text>
+                  </View>
+
+                  <View style={styles.proAccentGrid}>
+                    {PRO_THEME_ACCENT_OPTIONS.map((option) => {
+                      const active = proThemeAccentId === option.id;
+                      const optionLabel = resolveProAccentLabel(option, language);
+                      return (
+                        <TouchableOpacity
+                          key={option.id}
+                          style={[
+                            styles.proAccentOption,
+                            {
+                              borderColor: active ? option.accent : colors.border,
+                              backgroundColor: active
+                                ? colorWithAlpha(option.accent, 0.14)
+                                : "transparent",
+                            },
+                          ]}
+                          activeOpacity={0.9}
+                          onPress={() => handleProThemeAccentSelect(option.id, { close: false })}
+                        >
+                          <View style={styles.proAccentOptionTopRow}>
+                            <View
+                              style={[styles.proAccentSwatch, { backgroundColor: option.accent }]}
+                            />
+                            <Text style={[styles.proAccentOptionLabel, { color: colors.text }]}>
+                              {`${option.emoji} ${optionLabel}`}
+                            </Text>
+                          </View>
+                          <View style={[styles.proAccentMiniPreview, { borderColor: colorWithAlpha(option.accent, 0.35) }]}>
+                            <View
+                              style={[
+                                styles.proAccentMiniPreviewPill,
+                                { backgroundColor: option.accent },
+                              ]}
+                            />
+                            <View style={styles.proAccentMiniPreviewBars}>
+                              <View
+                                style={[
+                                  styles.proAccentMiniPreviewBar,
+                                  { backgroundColor: colorWithAlpha(option.accent, 0.22), width: "78%" },
+                                ]}
+                              />
+                              <View
+                                style={[
+                                  styles.proAccentMiniPreviewBar,
+                                  { backgroundColor: colorWithAlpha(option.accent, 0.14), width: "58%" },
+                                ]}
+                              />
+                            </View>
+                          </View>
+                          {active ? (
+                            <Text style={[styles.proAccentOptionSelected, { color: option.accent }]}>
+                              {proThemeAccentCopy.selected}
+                            </Text>
+                          ) : null}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.proAccentDoneButton,
+                      { backgroundColor: proThemeAccentColor, shadowColor: proThemeAccentColor },
+                    ]}
+                    onPress={closeProThemeAccentPicker}
+                    activeOpacity={0.9}
+                  >
+                    <Text style={styles.proAccentDoneButtonText}>{t("profileOk") || "OK"}</Text>
+                  </TouchableOpacity>
                 </View>
               </TouchableWithoutFeedback>
             </View>
@@ -43109,6 +45811,7 @@ useEffect(() => {
           overlay.type !== "usage_streak_restore" &&
           overlay.type !== "streak_pledge" &&
           overlay.type !== "streak_pledge_reward" &&
+          overlay.type !== "premium_unlock" &&
           overlay.type !== "focus_reward" &&
           overlay.type !== "goal_complete" &&
           overlay.type !== "impulse_alert" &&
@@ -43276,25 +45979,26 @@ useEffect(() => {
         )}
         {isFeatureUnlockOverlay && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
-            <TouchableWithoutFeedback onPress={dismissOverlay}>
-              <View style={styles.overlayFullScreen}>
-                <View
-                  style={[
-                    styles.overlayDim,
-                    { backgroundColor: overlayDimColor },
-                  ]}
+            <View style={styles.overlayFullScreen}>
+              <View
+                style={[
+                  styles.overlayDim,
+                  { backgroundColor: overlayDimColor },
+                ]}
+              />
+              <TouchableWithoutFeedback onPress={dismissOverlay}>
+                <View style={styles.overlayTouchable} />
+              </TouchableWithoutFeedback>
+              <View style={styles.featureUnlockWrapper} pointerEvents="box-none">
+                <FeatureUnlockCelebration
+                  colors={colors}
+                  payload={overlay.message}
+                  t={t}
+                  tamagotchiAnimations={tamagotchiAnimations}
+                  onDismiss={dismissOverlay}
                 />
-                <View style={styles.featureUnlockWrapper}>
-                  <FeatureUnlockCelebration
-                    colors={colors}
-                    payload={overlay.message}
-                    t={t}
-                    tamagotchiAnimations={tamagotchiAnimations}
-                    onDismiss={dismissOverlay}
-                  />
-                </View>
               </View>
-            </TouchableWithoutFeedback>
+            </View>
           </Modal>
         )}
         {overlay?.type === "level" && (
@@ -43526,6 +46230,15 @@ useEffect(() => {
             </TouchableWithoutFeedback>
           </Modal>
         )}
+        {overlay?.type === "premium_unlock" && (
+          <Modal visible transparent animationType="fade" statusBarTranslucent>
+            <PremiumUnlockCelebration
+              payload={overlay.message}
+              playSound={playSound}
+              onClose={dismissOverlay}
+            />
+          </Modal>
+        )}
         {overlay?.type === "streak_pledge" && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={handleStreakPledgeDismiss}>
@@ -43711,6 +46424,17 @@ useEffect(() => {
             </TouchableWithoutFeedback>
           </Modal>
         )}
+        <PremiumPaywallModal
+          visible={premiumPaywallState.visible}
+          copy={premiumCopy}
+          planCards={premiumPlanCards}
+          purchaseLoadingPlan={premiumPurchaseLoadingPlan}
+          restoring={premiumRestoreLoading}
+          onPlanPress={handlePremiumPlanPress}
+          onRestorePress={handlePremiumRestore}
+          onClose={closePremiumPaywall}
+          colors={colors}
+        />
 
         <Modal
           visible={goalLinkPrompt.visible}
@@ -44889,6 +47613,50 @@ const styles = StyleSheet.create({
     width: HERO_MASCOT_SIZE,
     height: HERO_MASCOT_SIZE,
   },
+  heroMascotShieldOverlay: {
+    position: "absolute",
+    top: -10,
+    left: -8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(47,112,255,0.45)",
+    zIndex: 7,
+    elevation: 5,
+  },
+  heroMascotShieldIcon: {
+    fontSize: 14,
+  },
+  heroImmunityHintBubble: {
+    position: "absolute",
+    top: -42,
+    right: "100%",
+    marginRight: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    shadowColor: "#0A1324",
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
+    zIndex: 20,
+    alignItems: "flex-start",
+  },
+  immunityHintTitle: {
+    ...createBodyText({ fontSize: 11 }),
+    fontWeight: "700",
+  },
+  immunityHintTimer: {
+    ...createBodyText({ fontSize: 13 }),
+    fontWeight: "700",
+    marginTop: 2,
+  },
   heroMascotBadge: {
     position: "absolute",
     top: -6,
@@ -44914,8 +47682,29 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingRight: 6,
   },
+  heroTitleRow: {
+    alignSelf: "flex-start",
+    position: "relative",
+    paddingRight: 16,
+  },
   appName: {
     ...TYPOGRAPHY.logo,
+  },
+  heroProBadge: {
+    position: "absolute",
+    top: -8,
+    right: -1,
+    minHeight: 11,
+    paddingHorizontal: 3,
+    paddingVertical: 0.5,
+    borderRadius: 6,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  heroProBadgeText: {
+    ...createCtaText({ fontSize: 6, textTransform: "uppercase" }),
+    letterSpacing: 0.35,
   },
   heroTagline: {
     ...TYPOGRAPHY.body,
@@ -45013,6 +47802,139 @@ const styles = StyleSheet.create({
     ...createBodyText({ fontSize: 11 }),
     fontWeight: "600",
   },
+  proAccentBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(4,10,33,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+  },
+  proAccentCard: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 26,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 14,
+    gap: 10,
+  },
+  proAccentTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 21,
+    textAlign: "center",
+  },
+  proAccentSubtitle: {
+    ...createBodyText({ fontSize: 13, lineHeight: 18, textAlign: "center" }),
+  },
+  proAccentHero: {
+    borderRadius: 20,
+    borderWidth: 1,
+    minHeight: 106,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    position: "relative",
+  },
+  proAccentHeroOrbPrimary: {
+    position: "absolute",
+    width: 140,
+    height: 140,
+    borderRadius: 999,
+    top: -60,
+    right: -25,
+  },
+  proAccentHeroOrbSecondary: {
+    position: "absolute",
+    width: 118,
+    height: 118,
+    borderRadius: 999,
+    bottom: -58,
+    left: -20,
+  },
+  proAccentHeroBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    marginBottom: 7,
+  },
+  proAccentHeroBadgeText: {
+    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+    color: "#FFFFFF",
+  },
+  proAccentHeroText: {
+    fontSize: 33,
+    color: "#FFFFFF",
+  },
+  proAccentGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  proAccentOption: {
+    width: "48%",
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    gap: 6,
+  },
+  proAccentOptionTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  proAccentSwatch: {
+    width: 14,
+    height: 14,
+    borderRadius: 999,
+  },
+  proAccentOptionLabel: {
+    ...createBodyText({ fontSize: 12, lineHeight: 16 }),
+    fontWeight: "700",
+    flex: 1,
+  },
+  proAccentMiniPreview: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 5,
+  },
+  proAccentMiniPreviewPill: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    width: 42,
+    height: 8,
+  },
+  proAccentMiniPreviewBars: {
+    gap: 4,
+  },
+  proAccentMiniPreviewBar: {
+    height: 6,
+    borderRadius: 999,
+  },
+  proAccentOptionSelected: {
+    ...createBodyText({ fontSize: 11, lineHeight: 14 }),
+    fontWeight: "700",
+  },
+  proAccentDoneButton: {
+    marginTop: 4,
+    minHeight: 46,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#4353FF",
+    shadowOpacity: 0.24,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  proAccentDoneButtonText: {
+    ...createCtaText({ fontSize: 14, textTransform: "none" }),
+    color: "#FFFFFF",
+  },
   skinPickerBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.55)",
@@ -45077,6 +47999,7 @@ const styles = StyleSheet.create({
   featureUnlockCard: {
     width: "100%",
     maxWidth: 420,
+    maxHeight: SCREEN_HEIGHT * 0.86,
     borderRadius: 32,
     padding: 24,
     borderWidth: 1,
@@ -45510,10 +48433,10 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 360,
     borderRadius: 24,
-    padding: IS_SHORT_DEVICE ? 16 : 20,
+    padding: IS_SHORT_DEVICE ? 14 : 16,
     borderWidth: 1,
-    gap: IS_SHORT_DEVICE ? 8 : 10,
-    maxHeight: IS_SHORT_DEVICE ? SCREEN_HEIGHT * 0.82 : undefined,
+    gap: IS_SHORT_DEVICE ? 6 : 8,
+    maxHeight: SCREEN_HEIGHT * (IS_SHORT_DEVICE ? 0.78 : 0.72),
   },
   tamagotchiHeader: {
     flexDirection: "row",
@@ -45550,11 +48473,11 @@ const styles = StyleSheet.create({
   tamagotchiActions: {
     flexDirection: "row",
     gap: 10,
-    marginTop: IS_SHORT_DEVICE ? 4 : 6,
+    marginTop: 4,
   },
   tamagotchiButton: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: IS_SHORT_DEVICE ? 10 : 11,
     borderRadius: 14,
     borderWidth: 1,
     alignItems: "center",
@@ -45574,7 +48497,69 @@ const styles = StyleSheet.create({
   tamagotchiPreview: {
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 6,
+    marginBottom: 4,
+  },
+  tamagotchiMascotWrap: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tamagotchiShieldOverlay: {
+    position: "absolute",
+    top: -8,
+    left: -8,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(47,112,255,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "rgba(47,112,255,0.35)",
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
+  },
+  tamagotchiShieldOverlayIcon: {
+    fontSize: 18,
+  },
+  tamagotchiImmunityHintBubble: {
+    position: "absolute",
+    top: -30,
+    right: "50%",
+    marginRight: 74,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    shadowColor: "#0A1324",
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
+    zIndex: 20,
+    alignItems: "flex-start",
+  },
+  tamagotchiImmunityPill: {
+    marginTop: 2,
+    marginBottom: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+  },
+  tamagotchiImmunityPillIcon: {
+    fontSize: 14,
+  },
+  tamagotchiImmunityPillText: {
+    ...createBodyText({ fontSize: 12 }),
+    fontWeight: "700",
   },
   tamagotchiButtonText: {
     ...createCtaText({ fontSize: 14 }),
@@ -45582,24 +48567,24 @@ const styles = StyleSheet.create({
   tamagotchiFoodTitle: {
     ...TYPOGRAPHY.blockTitle,
     fontSize: 16,
-    marginTop: IS_SHORT_DEVICE ? 8 : 12,
+    marginTop: IS_SHORT_DEVICE ? 6 : 8,
   },
   tamagotchiFoodList: {
     marginTop: IS_SHORT_DEVICE ? 4 : 6,
   },
   tamagotchiFoodScroll: {
-    maxHeight: Math.min(220, SCREEN_HEIGHT * 0.3),
+    height: Math.min(IS_SHORT_DEVICE ? 156 : 180, SCREEN_HEIGHT * (IS_SHORT_DEVICE ? 0.24 : 0.26)),
   },
   tamagotchiFoodButton: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
     borderRadius: 18,
-    paddingVertical: IS_SHORT_DEVICE ? 10 : 12,
+    paddingVertical: IS_SHORT_DEVICE ? 8 : 10,
     paddingHorizontal: IS_SHORT_DEVICE ? 12 : 14,
     gap: IS_SHORT_DEVICE ? 10 : 12,
     position: "relative",
-    marginBottom: IS_SHORT_DEVICE ? 8 : 10,
+    marginBottom: IS_SHORT_DEVICE ? 6 : 8,
   },
   tamagotchiFoodButtonLast: {
     marginBottom: 0,
@@ -49306,18 +52291,49 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: 20,
   },
   tutorialBackdropDim: {
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: "rgba(4,8,20,0.75)",
+  },
+  tutorialBackdropBlob: {
+    position: "absolute",
+    width: 280,
+    height: 280,
+    borderRadius: 999,
+  },
+  tutorialBackdropBlobPrimary: {
+    top: -72,
+    left: -92,
+  },
+  tutorialBackdropBlobSecondary: {
+    bottom: 120,
+    right: -90,
   },
   tutorialCard: {
     width: "100%",
-    maxWidth: 360,
-    borderRadius: 28,
-    padding: 24,
+    maxWidth: 372,
+    borderRadius: 30,
+    padding: 20,
     borderWidth: 1,
-    gap: 12,
+    gap: 14,
+    ...Platform.select({
+      android: {
+        elevation: 8,
+      },
+      default: {
+        shadowColor: "rgba(5,9,20,0.45)",
+        shadowOpacity: 0.42,
+        shadowRadius: 24,
+        shadowOffset: { width: 0, height: 14 },
+      },
+    }),
+  },
+  tutorialCardCompact: {
+    maxWidth: 326,
+    borderRadius: 22,
+    padding: 14,
+    gap: 10,
   },
   tutorialHighlightFocus: {
     position: "absolute",
@@ -49337,60 +52353,277 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  tutorialIcon: {
-    fontSize: 32,
+  tutorialCompactHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  tutorialCompactIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "visible",
+  },
+  tutorialCompactIcon: {
+    fontSize: 22,
+    lineHeight: Platform.OS === "android" ? 30 : 26,
     textAlign: "center",
+    ...Platform.select({
+      android: {
+        includeFontPadding: true,
+        textAlignVertical: "center",
+      },
+      default: null,
+    }),
+    transform: [{ translateY: 1 }],
+  },
+  tutorialCompactHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  tutorialCompactTitle: {
+    fontSize: 19,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+    flexShrink: 1,
+  },
+  tutorialCompactStepText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  tutorialCompactDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  tutorialCompactProgressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  tutorialCompactActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  tutorialCompactSkipButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 13,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  tutorialCompactSkipText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  tutorialCompactPrimaryButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  tutorialCompactPrimaryText: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  tutorialTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  tutorialStepBadge: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  tutorialStepBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    flexShrink: 1,
+  },
+  tutorialStepCounter: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  tutorialStepCounterText: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  tutorialVisualWrap: {
+    borderRadius: 22,
+    minHeight: 128,
+    borderWidth: 1,
+    overflow: "hidden",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  tutorialVisualPulse: {
+    position: "absolute",
+    width: 160,
+    height: 160,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    top: -42,
+    right: -24,
+  },
+  tutorialVisualOrb: {
+    position: "absolute",
+    borderRadius: 999,
+  },
+  tutorialVisualOrbPrimary: {
+    width: 76,
+    height: 76,
+    top: -12,
+    left: -20,
+    opacity: 0.45,
+  },
+  tutorialVisualOrbSecondary: {
+    width: 58,
+    height: 58,
+    top: 44,
+    right: 18,
+    opacity: 0.48,
+  },
+  tutorialVisualGrid: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  tutorialVisualBarsRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    height: 78,
+    gap: 8,
+  },
+  tutorialVisualBarTrack: {
+    flex: 1,
+    borderRadius: 999,
+    overflow: "hidden",
+    justifyContent: "flex-end",
+    height: "100%",
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  tutorialVisualBarFill: {
+    width: "100%",
+    borderRadius: 999,
+  },
+  tutorialIcon: {
+    fontSize: 20,
+    lineHeight: 20,
   },
   tutorialTitle: {
-    fontSize: 22,
+    fontSize: 23,
     fontWeight: "800",
-    textAlign: "center",
+    textAlign: "left",
+    letterSpacing: -0.3,
   },
   tutorialDescription: {
     fontSize: 15,
-    lineHeight: 20,
-    textAlign: "center",
+    lineHeight: 22,
+    textAlign: "left",
+  },
+  tutorialFeatureRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  tutorialFeatureChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    maxWidth: "100%",
+  },
+  tutorialFeatureChipText: {
+    fontSize: 12,
+    fontWeight: "600",
   },
   tutorialProgressRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 8,
+    marginTop: 4,
+    gap: 12,
   },
   tutorialDots: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 7,
   },
   tutorialDot: {
     width: 10,
     height: 10,
-    borderRadius: 5,
+    borderRadius: 999,
+  },
+  tutorialDotCompleted: {
+    width: 14,
+  },
+  tutorialDotActive: {
+    width: 28,
   },
   tutorialProgressText: {
-    fontSize: 12,
-    fontWeight: "600",
+    fontSize: 11,
+    fontWeight: "700",
   },
   tutorialActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginTop: 4,
+    marginTop: 2,
   },
   tutorialSkipButton: {
     flex: 1,
     paddingVertical: 12,
+    borderRadius: 15,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   tutorialSkipText: {
     textAlign: "center",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
   },
   tutorialPrimaryButton: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 16,
+    borderRadius: 15,
     alignItems: "center",
+    ...Platform.select({
+      android: {},
+      default: {
+        shadowColor: "rgba(7,16,35,0.36)",
+        shadowOpacity: 0.26,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 8 },
+      },
+    }),
   },
   tutorialPrimaryText: {
     fontSize: 15,
@@ -51009,6 +54242,17 @@ const styles = StyleSheet.create({
   },
   historyListContent: {
     paddingHorizontal: 12,
+  },
+  historyMoreButton: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    alignSelf: "flex-start",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  historyMoreText: {
+    ...createBodyText({ fontWeight: "600", fontSize: 13 }),
   },
   historyItem: {
     paddingVertical: 12,
@@ -59190,6 +62434,373 @@ const UsageStreakCounterDigit = ({
   );
 };
 
+const premiumUnlockStyles = StyleSheet.create({
+  root: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 24,
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  card: {
+    width: "100%",
+    maxWidth: 520,
+    maxHeight: Math.min(SCREEN_HEIGHT - 32, IS_SHORT_DEVICE ? 560 : 620),
+    borderRadius: 28,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  hero: {
+    backgroundColor: "#0A1E72",
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 14,
+    alignItems: "center",
+  },
+  heroOrbMain: {
+    position: "absolute",
+    top: -58,
+    right: -30,
+    width: 190,
+    height: 190,
+    borderRadius: 999,
+    backgroundColor: "rgba(99,113,255,0.55)",
+  },
+  heroOrbSub: {
+    position: "absolute",
+    bottom: -80,
+    left: -40,
+    width: 168,
+    height: 168,
+    borderRadius: 999,
+    backgroundColor: "rgba(67,83,255,0.4)",
+  },
+  badge: {
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    backgroundColor: "rgba(136,103,255,0.9)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+    marginBottom: 10,
+  },
+  badgeText: {
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
+    color: "#FFFFFF",
+  },
+  heroEmoji: {
+    fontSize: 40,
+    marginBottom: 6,
+  },
+  title: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 24,
+    lineHeight: 30,
+    textAlign: "center",
+    color: "#F5F7FF",
+  },
+  subtitle: {
+    ...createBodyText({ fontSize: 13, lineHeight: 19, textAlign: "center" }),
+    marginTop: 6,
+    color: "rgba(227,234,255,0.94)",
+  },
+  body: {
+    flexShrink: 1,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 14,
+    backgroundColor: "#FFFFFF",
+  },
+  featuresScroll: {
+    maxHeight: Math.min(250, IS_SHORT_DEVICE ? 180 : SCREEN_HEIGHT * 0.3),
+  },
+  features: {
+    gap: 8,
+    paddingRight: 2,
+  },
+  featureRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(67,83,255,0.14)",
+    backgroundColor: "rgba(67,83,255,0.08)",
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+  },
+  featureCheckWrap: {
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#4353FF",
+  },
+  featureCheck: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    lineHeight: 14,
+    fontWeight: "800",
+  },
+  featureText: {
+    ...createBodyText({ fontSize: 14, lineHeight: 20 }),
+    flex: 1,
+    fontWeight: "600",
+    color: "#182250",
+  },
+  cta: {
+    marginTop: 16,
+    borderRadius: 14,
+    minHeight: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 22,
+    backgroundColor: "#4353FF",
+    shadowColor: "#4353FF",
+    shadowOpacity: 0.34,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+  ctaText: {
+    ...createCtaText({ fontSize: 14, textTransform: "none" }),
+    color: "#FFFFFF",
+  },
+});
+
+const PremiumUnlockCelebration = ({ payload, onClose, playSound }) => {
+  const data = payload && typeof payload === "object" ? payload : {};
+  const title = typeof data.title === "string" && data.title.trim() ? data.title.trim() : "Premium unlocked";
+  const subtitle =
+    typeof data.subtitle === "string" && data.subtitle.trim()
+      ? data.subtitle.trim()
+      : "Your Premium access is now active.";
+  const cta = typeof data.cta === "string" && data.cta.trim() ? data.cta.trim() : "Continue";
+  const accentColor =
+    typeof data.accentColor === "string" && data.accentColor.trim()
+      ? data.accentColor.trim()
+      : "#4353FF";
+  const heroBackground = blendHexColors("#0A1E72", accentColor, 0.18);
+  const features = Array.isArray(data.features)
+    ? data.features
+        .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+        .map((entry) => entry.trim())
+        .slice(0, 14)
+    : [];
+  const entryAnim = useRef(new Animated.Value(0)).current;
+  const badgePulseAnim = useRef(new Animated.Value(0)).current;
+  const emojiFloatAnim = useRef(new Animated.Value(0)).current;
+  const fanfarePlayedRef = useRef(false);
+
+  useEffect(() => {
+    entryAnim.setValue(0);
+    const entrance = Animated.spring(entryAnim, {
+      toValue: 1,
+      friction: 8,
+      tension: 92,
+      useNativeDriver: true,
+    });
+    const badgeLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(badgePulseAnim, {
+          toValue: 1,
+          duration: 1100,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(badgePulseAnim, {
+          toValue: 0,
+          duration: 1100,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const emojiLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(emojiFloatAnim, {
+          toValue: 1,
+          duration: 1800,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(emojiFloatAnim, {
+          toValue: 0,
+          duration: 1800,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    entrance.start();
+    badgeLoop.start();
+    emojiLoop.start();
+    return () => {
+      entrance.stop();
+      badgeLoop.stop();
+      emojiLoop.stop();
+    };
+  }, [badgePulseAnim, emojiFloatAnim, entryAnim]);
+
+  useEffect(() => {
+    if (!playSound || fanfarePlayedRef.current) return;
+    fanfarePlayedRef.current = true;
+    const timers = [
+      setTimeout(() => {
+        playSound("level_up", { skipCooldown: true });
+      }, 0),
+      setTimeout(() => {
+        playSound("reward", { skipCooldown: true });
+      }, 220),
+      setTimeout(() => {
+        playSound("party_cheer", { skipCooldown: true });
+      }, 460),
+    ];
+    return () => {
+      timers.forEach((timer) => clearTimeout(timer));
+    };
+  }, [playSound]);
+
+  const cardAnimatedStyle = {
+    opacity: entryAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }),
+    transform: [
+      { translateY: entryAnim.interpolate({ inputRange: [0, 1], outputRange: [36, 0] }) },
+      { scale: entryAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }) },
+    ],
+  };
+  const badgeAnimatedStyle = {
+    transform: [
+      {
+        scale: badgePulseAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [1, 1.05],
+        }),
+      },
+    ],
+  };
+  const emojiAnimatedStyle = {
+    transform: [
+      {
+        translateY: emojiFloatAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [-6, 6],
+        }),
+      },
+    ],
+  };
+  const featureCount = Math.max(1, features.length);
+  const getFeatureAnimatedStyle = (index) => {
+    const start = 0.2 + (index / featureCount) * 0.45;
+    const end = Math.min(1, start + 0.2);
+    return {
+      opacity: entryAnim.interpolate({
+        inputRange: [start, end],
+        outputRange: [0, 1],
+        extrapolate: "clamp",
+      }),
+      transform: [
+        {
+          translateY: entryAnim.interpolate({
+            inputRange: [start, end],
+            outputRange: [14, 0],
+            extrapolate: "clamp",
+          }),
+        },
+      ],
+    };
+  };
+
+  return (
+    <View style={premiumUnlockStyles.root}>
+      <View style={[premiumUnlockStyles.backdrop, { backgroundColor: "rgba(4,10,38,0.86)" }]} />
+      <ConfettiCannon
+        count={110}
+        origin={{ x: SCREEN_WIDTH / 2, y: -20 }}
+        fadeOut
+        explosionSpeed={300}
+        fallSpeed={3200}
+      />
+      <Animated.View
+        style={[
+          premiumUnlockStyles.card,
+          cardAnimatedStyle,
+          { backgroundColor: "#FFFFFF", borderColor: colorWithAlpha(accentColor, 0.34) },
+        ]}
+      >
+        <View style={[premiumUnlockStyles.hero, { backgroundColor: heroBackground }]}>
+          <View
+            pointerEvents="none"
+            style={[premiumUnlockStyles.heroOrbMain, { backgroundColor: colorWithAlpha(accentColor, 0.5) }]}
+          />
+          <View
+            pointerEvents="none"
+            style={[premiumUnlockStyles.heroOrbSub, { backgroundColor: colorWithAlpha(accentColor, 0.36) }]}
+          />
+          <Animated.View style={badgeAnimatedStyle}>
+            <View
+              style={[
+                premiumUnlockStyles.badge,
+                {
+                  backgroundColor: colorWithAlpha(accentColor, 0.72),
+                  borderColor: colorWithAlpha("#FFFFFF", 0.3),
+                },
+              ]}
+            >
+              <Text style={premiumUnlockStyles.badgeText}>ALMOST PRO</Text>
+            </View>
+          </Animated.View>
+          <Animated.View style={emojiAnimatedStyle}>
+            <Text style={premiumUnlockStyles.heroEmoji}>🪽💸</Text>
+          </Animated.View>
+          <Text style={premiumUnlockStyles.title}>{title}</Text>
+          <Text style={premiumUnlockStyles.subtitle}>{subtitle}</Text>
+        </View>
+        <View style={premiumUnlockStyles.body}>
+          {!!features.length && (
+            <ScrollView
+              style={premiumUnlockStyles.featuresScroll}
+              contentContainerStyle={premiumUnlockStyles.features}
+              showsVerticalScrollIndicator={features.length > 5}
+              alwaysBounceVertical={false}
+              nestedScrollEnabled
+            >
+              {features.map((feature, index) => (
+                <Animated.View
+                  key={`${feature}_${index}`}
+                  style={[
+                    premiumUnlockStyles.featureRow,
+                    {
+                      borderColor: colorWithAlpha(accentColor, 0.16),
+                      backgroundColor: colorWithAlpha(accentColor, 0.08),
+                    },
+                    getFeatureAnimatedStyle(index),
+                  ]}
+                >
+                  <View style={[premiumUnlockStyles.featureCheckWrap, { backgroundColor: accentColor }]}>
+                    <Text style={premiumUnlockStyles.featureCheck}>✓</Text>
+                  </View>
+                  <Text style={premiumUnlockStyles.featureText}>{feature}</Text>
+                </Animated.View>
+              ))}
+            </ScrollView>
+          )}
+          <TouchableOpacity
+            style={[premiumUnlockStyles.cta, { backgroundColor: accentColor, shadowColor: accentColor }]}
+            onPress={onClose}
+            activeOpacity={0.92}
+          >
+            <Text style={premiumUnlockStyles.ctaText}>{cta}</Text>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+    </View>
+  );
+};
+
 const RewardCelebration = ({ colors, message, t, mascotHappySource }) => {
   const happySource = mascotHappySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
   const hearts = useMemo(
@@ -61166,6 +64777,7 @@ const FeatureUnlockCelebration = ({ colors, payload, t, tamagotchiAnimations, on
   const cardBg = isDarkTheme ? lightenColor(colors.card, 0.12) : lightenColor(colors.card, 0.22);
   const cardBorder = isDarkTheme ? lightenColor(colors.border, 0.3) : "rgba(0,0,0,0.08)";
   const sectionBg = isDarkTheme ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)";
+  const compactLayout = IS_SHORT_DEVICE || IS_COMPACT_DEVICE || IS_EXTRA_COMPACT_DEVICE;
   const content = (
     <>
       <View style={styles.featureUnlockHeader}>
@@ -61199,20 +64811,18 @@ const FeatureUnlockCelebration = ({ colors, payload, t, tamagotchiAnimations, on
     <View
       style={[
         styles.featureUnlockCard,
-        IS_SHORT_DEVICE && styles.featureUnlockCardCompact,
+        compactLayout && styles.featureUnlockCardCompact,
         { backgroundColor: cardBg, borderColor: cardBorder },
       ]}
     >
-      {IS_SHORT_DEVICE ? (
-        <ScrollView
-          contentContainerStyle={styles.featureUnlockCardScroll}
-          showsVerticalScrollIndicator={false}
-        >
-          {content}
-        </ScrollView>
-      ) : (
-        content
-      )}
+      <ScrollView
+        contentContainerStyle={styles.featureUnlockCardScroll}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        alwaysBounceVertical={false}
+      >
+        {content}
+      </ScrollView>
     </View>
   );
 };

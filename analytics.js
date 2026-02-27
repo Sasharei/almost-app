@@ -40,6 +40,16 @@ try {
   FacebookAppEvents = null;
 }
 
+let TikTokBusiness = null;
+try {
+  // Optional dependency – only available on native builds.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const TikTokModule = require("react-native-tiktok-business-sdk");
+  TikTokBusiness = TikTokModule?.TikTokBusiness || TikTokModule?.default || null;
+} catch (error) {
+  TikTokBusiness = null;
+}
+
 const EVENT_DEFINITIONS = {
   temptation_want: ["item_id", "price_usd", "categories", "persona", "currency"],
   temptation_save: [
@@ -204,6 +214,7 @@ const EVENT_DEFINITIONS = {
   hero_level_unlocked: ["level", "saved_usd_total"],
   hero_show_more_toggled: ["expanded"],
   hero_widget_stopped: ["widget"],
+  home_widget_installed: [],
   custom_category_created: ["count", "category_id"],
   budget_category_limit_updated: ["category_id", "limit_usd", "previous_limit_usd", "source"],
   budget_category_history_opened: ["category_id"],
@@ -211,14 +222,16 @@ const EVENT_DEFINITIONS = {
   budget_widget_tutorial_dismissed: ["source"],
   day_2: [],
   day_3: [],
+  retention_day_active: ["lifetime_day", "active_days_total", "active_streak", "missed_days"],
+  retention_day_milestone: ["day", "active_days_total", "active_streak"],
   north_star_two_saves: ["saves_in_window", "hours_since_join"],
   north_star2: ["decision_days", "decisions_total"],
   free_day_rescue: ["current_streak", "health_remaining"],
   profile_baseline_updated: ["previous_usd", "baseline_usd", "currency"],
   profile_custom_spend_updated: ["title", "amount_usd", "frequency_per_week", "removed"],
   spend_impact_toggle: ["enabled"],
-  sound_toggle: ["enabled"],
-  sound_setting_status: ["enabled"],
+  sound_setting_enabled: [],
+  sound_setting_disabled: [],
   focus_target_set: ["template_id", "source"],
   focus_digest_later: ["date_key"],
   focus_digest_focus: ["date_key"],
@@ -250,9 +263,22 @@ const FACEBOOK_EVENT_WHITELIST = new Set([
   "north_star2",
   "temptation_action",
 ]);
+const TIKTOK_EVENT_WHITELIST = new Set([
+  "onboarding_completed",
+  "north_star_two_saves",
+  "north_star2",
+  "temptation_action",
+]);
 
 const APPSFLYER_DEV_KEY = process.env.APPSFLYER_DEV_KEY || "hccSDBqWuZXfQCRbRQbqBR";
 const APPSFLYER_APP_ID = process.env.APPSFLYER_APP_ID || "6756276744";
+const TIKTOK_APP_ID_IOS =
+  process.env.TIKTOK_APP_ID_IOS || process.env.TIKTOK_APP_ID || process.env.APPSFLYER_APP_ID || "";
+const TIKTOK_APP_ID_ANDROID =
+  process.env.TIKTOK_APP_ID_ANDROID || process.env.TIKTOK_APP_ID || "com.sasarei.almostclean";
+const TIKTOK_TT_APP_ID = process.env.TIKTOK_TT_APP_ID || "";
+const TIKTOK_ACCESS_TOKEN = process.env.TIKTOK_ACCESS_TOKEN || "";
+const TIKTOK_DEBUG = process.env.TIKTOK_DEBUG === "1" || process.env.TIKTOK_DEBUG === "true";
 
 const baseEnabled = !__DEV__;
 let analyticsOptedOut = false;
@@ -262,6 +288,8 @@ let performanceUnavailableLogged = false;
 let appsFlyerInitialized = false;
 let appsFlyerInitPromise = null;
 let facebookSdkReady = false;
+let tiktokInitialized = false;
+let tiktokInitPromise = null;
 const MAX_FACEBOOK_EVENT_QUEUE = 25;
 const pendingFacebookEvents = [];
 
@@ -275,6 +303,13 @@ const isAppsFlyerConfigured = () => {
 };
 const hasAppsFlyer = () => !!appsFlyer && typeof appsFlyer.initSdk === "function";
 const shouldUseAppsFlyer = () => baseEnabled && isAppsFlyerConfigured() && hasAppsFlyer();
+const getTikTokAppId = () => (Platform.OS === "ios" ? TIKTOK_APP_ID_IOS : TIKTOK_APP_ID_ANDROID);
+const hasTikTok = () =>
+  !!TikTokBusiness &&
+  typeof TikTokBusiness.initializeSdk === "function" &&
+  typeof TikTokBusiness.trackCustomEvent === "function";
+const isTikTokConfigured = () => !!getTikTokAppId() && !!TIKTOK_TT_APP_ID && !!TIKTOK_ACCESS_TOKEN;
+const shouldUseTikTok = () => baseEnabled && hasTikTok() && isTikTokConfigured();
 
 const getAnalyticsClient = () => {
   if (!analytics || typeof analytics !== "function") return null;
@@ -403,6 +438,61 @@ const logAppsFlyerEvent = async (eventName, params = {}) => {
   });
 };
 
+const initTikTokSdk = async () => {
+  if (!shouldUseTikTok() || !isAnalyticsEnabled()) return false;
+  if (!hasTikTok()) return false;
+  if (tiktokInitialized) return true;
+  if (!tiktokInitPromise) {
+    const appId = getTikTokAppId();
+    tiktokInitPromise = new Promise((resolve) => {
+      try {
+        Promise.resolve(
+          TikTokBusiness.initializeSdk(appId, TIKTOK_TT_APP_ID, TIKTOK_ACCESS_TOKEN, TIKTOK_DEBUG)
+        )
+          .then(() => {
+            tiktokInitialized = true;
+            resolve(true);
+          })
+          .catch((error) => {
+            console.warn("TikTok init failed:", error?.message || error);
+            tiktokInitPromise = null;
+            resolve(false);
+          });
+      } catch (error) {
+        console.warn("TikTok init threw:", error?.message || error);
+        tiktokInitPromise = null;
+        resolve(false);
+      }
+    });
+  }
+  return tiktokInitPromise;
+};
+
+const sanitizeTikTokParams = (params = {}) =>
+  Object.entries(params).reduce((acc, [key, value]) => {
+    if (value === undefined || value === null) return acc;
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      acc[key] = value;
+      return acc;
+    }
+    acc[key] = JSON.stringify(value);
+    return acc;
+  }, {});
+
+const logTikTokEvent = async (eventName, params = {}) => {
+  if (!TIKTOK_EVENT_WHITELIST.has(eventName)) return;
+  if (!shouldUseTikTok() || !isAnalyticsEnabled()) return;
+  if (!hasTikTok() || typeof TikTokBusiness.trackCustomEvent !== "function") return;
+  const initialized = await initTikTokSdk();
+  if (!initialized) return;
+  const normalizedParams = sanitizeTikTokParams(params);
+  try {
+    await TikTokBusiness.trackCustomEvent(eventName, normalizedParams);
+  } catch (error) {
+    console.warn("TikTok event exception:", eventName, error?.message || error);
+  }
+};
+
 const enqueueFacebookEvent = (eventName, params) => {
   pendingFacebookEvents.push({ eventName, params });
   if (pendingFacebookEvents.length > MAX_FACEBOOK_EVENT_QUEUE) {
@@ -448,6 +538,7 @@ export const registerLevelEvents = (maxLevel) => {
 export const initAnalytics = async () => {
   await syncAnalyticsCollection();
   await syncAppsFlyerCollection();
+  await initTikTokSdk();
 };
 
 export const initPerformanceMonitoring = async () => {
@@ -463,6 +554,9 @@ export const setAnalyticsOptOut = async (optOut) => {
   await syncAnalyticsCollection();
   await syncPerformanceCollection();
   await syncAppsFlyerCollection();
+  if (!analyticsOptedOut) {
+    await initTikTokSdk();
+  }
   if (analyticsOptedOut) {
     pendingFacebookEvents.length = 0;
   } else {
@@ -482,6 +576,7 @@ export const logEvent = async (eventName, params = {}) => {
     }
   }
   await logAppsFlyerEvent(eventName, filteredParams);
+  await logTikTokEvent(eventName, filteredParams);
   logFacebookEvent(eventName, filteredParams);
 };
 

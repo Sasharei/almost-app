@@ -5,6 +5,7 @@ import React
 @objc(WidgetStorage)
 class WidgetStorage: NSObject {
   private let appGroupId = "group.com.sasarei.almostclean"
+  private let keyWidgetInstalledMarker = "widget_home_installed_marker"
   private let keySavedMonthLabel = "widget_saved_month_label"
   private let keySavedTotalLabel = "widget_saved_total_label"
   private let keySavedTodayLabel = "widget_saved_today_label"
@@ -156,6 +157,29 @@ class WidgetStorage: NSObject {
     }
 
     resolve(true)
+  }
+
+  @objc
+  func hasInstalledHomeWidget(
+    _ resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    let defaults = UserDefaults(suiteName: appGroupId)
+    if #available(iOS 15.0, *) {
+      WidgetCenter.shared.getCurrentConfigurations { result in
+        switch result {
+        case .success(let configurations):
+          let installed = configurations.contains { configuration in
+            configuration.kind == "Almost_Widget" || configuration.kind == "AlmostWidget"
+          }
+          resolve(installed)
+        case .failure:
+          resolve(defaults?.bool(forKey: self.keyWidgetInstalledMarker) ?? false)
+        }
+      }
+      return
+    }
+    resolve(defaults?.bool(forKey: keyWidgetInstalledMarker) ?? false)
   }
 
   @objc

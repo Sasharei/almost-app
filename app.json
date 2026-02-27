@@ -2,7 +2,7 @@
   "expo": {
     "name": "Almost",
     "slug": "almost_clean",
-    "version": "5.0.0",
+    "version": "5.0.1",
     "orientation": "portrait",
     "icon": "./assets/Almost_icon.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,7 @@
       "bundleIdentifier": "com.sasarei.almostclean",
       "supportsTablet": true,
       "googleServicesFile": "./ios/GoogleService-Info.plist",
-      "buildNumber": "54",
+      "buildNumber": "55",
       "appStoreUrl": "https://apps.apple.com/app/id6756276744?action=write-review",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -64,7 +64,7 @@
     },
     "android": {
       "package": "com.sasarei.almostclean",
-      "versionCode": 54,
+      "versionCode": 55,
       "googleServicesFile": "./android/app/google-services.json",
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.sasarei.almostclean",
       "icon": "./assets/android/ic_launcher.png",
