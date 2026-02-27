@@ -37,6 +37,7 @@ private let keyWidgetLabelRecentEmpty = "widget_label_recent_empty"
 private let keyWidgetLabelEmptyState = "widget_label_empty_state"
 private let keyWidgetActionSave = "widget_action_save"
 private let keyWidgetActionSpend = "widget_action_spend"
+private let keyWidgetInstalledMarker = "widget_home_installed_marker"
 
 private let saveGreen = Color(red: 0.18, green: 0.72, blue: 0.45)
 
@@ -119,6 +120,7 @@ struct AlmostWidgetProvider: TimelineProvider {
 
     private func loadEntry() -> AlmostWidgetEntry {
         let defaults = UserDefaults(suiteName: appGroupId)
+        defaults?.set(true, forKey: keyWidgetInstalledMarker)
         let savedMonthLabel = defaults?.string(forKey: keySavedMonthLabel) ?? "--"
         let savedTotalLabel = defaults?.string(forKey: keySavedTotalLabel) ?? "--"
         let savedTodayLabel = defaults?.string(forKey: keySavedTodayLabel) ?? "--"

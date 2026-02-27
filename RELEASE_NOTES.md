@@ -1,5 +1,19 @@
 # Release Notes
 
+## 5.0.1 (from 5.0.0)
+
+### EN
+- Minor fixes and improvements.
+
+### RU
+- Мелкие исправления и улучшения.
+
+### ES
+- Pequenas correcciones y mejoras.
+
+### FR
+- Petites corrections et ameliorations.
+
 ## 5.0.0 (from 4.1.1)
 
 ### EN

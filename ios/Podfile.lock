@@ -284,6 +284,8 @@ PODS:
   - PromisesObjC (2.4.0)
   - PromisesSwift (2.4.0):
     - PromisesObjC (= 2.4.0)
+  - PurchasesHybridCommon (14.3.0):
+    - RevenueCat (= 5.32.0)
   - RCT-Folly (2024.11.18.00):
     - boost
     - DoubleConversion
@@ -2579,6 +2581,7 @@ PODS:
     - React-perflogger (= 0.81.4)
     - React-utils (= 0.81.4)
     - SocketRocket
+  - RevenueCat (5.32.0)
   - RNCAsyncStorage (2.2.0):
     - React-Core
   - RNFBAnalytics (23.5.0):
@@ -2598,6 +2601,9 @@ PODS:
     - Firebase/Performance (= 12.4.0)
     - React-Core
     - RNFBApp
+  - RNPurchases (8.12.0):
+    - PurchasesHybridCommon (= 14.3.0)
+    - React-Core
   - RNSentry (5.36.0):
     - boost
     - DoubleConversion
@@ -2632,6 +2638,36 @@ PODS:
     - React-Core
   - Sentry/HybridSDK (8.41.0)
   - SocketRocket (0.7.1)
+  - TikTokBusiness (1.6.0):
+    - boost
+    - DoubleConversion
+    - fast_float
+    - fmt
+    - glog
+    - hermes-engine
+    - RCT-Folly
+    - RCT-Folly/Fabric
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - SocketRocket
+    - TikTokBusinessSDK (= 1.6.0)
+    - Yoga
+  - TikTokBusinessSDK (1.6.0)
   - Yoga (0.0.0)
 
 DEPENDENCIES:
@@ -2737,9 +2773,11 @@ DEPENDENCIES:
   - "RNFBApp (from `../node_modules/@react-native-firebase/app`)"
   - "RNFBCrashlytics (from `../node_modules/@react-native-firebase/crashlytics`)"
   - "RNFBPerf (from `../node_modules/@react-native-firebase/perf`)"
+  - RNPurchases (from `../node_modules/react-native-purchases`)
   - "RNSentry (from `../node_modules/@sentry/react-native`)"
   - RNSVG (from `../node_modules/react-native-svg`)
   - SocketRocket (~> 0.7.1)
+  - TikTokBusiness (from `../node_modules/react-native-tiktok-business-sdk`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
 SPEC REPOS:
@@ -2770,8 +2808,11 @@ SPEC REPOS:
     - nanopb
     - PromisesObjC
     - PromisesSwift
+    - PurchasesHybridCommon
+    - RevenueCat
     - Sentry
     - SocketRocket
+    - TikTokBusinessSDK
 
 EXTERNAL SOURCES:
   boost:
@@ -2977,10 +3018,14 @@ EXTERNAL SOURCES:
     :path: "../node_modules/@react-native-firebase/crashlytics"
   RNFBPerf:
     :path: "../node_modules/@react-native-firebase/perf"
+  RNPurchases:
+    :path: "../node_modules/react-native-purchases"
   RNSentry:
     :path: "../node_modules/@sentry/react-native"
   RNSVG:
     :path: "../node_modules/react-native-svg"
+  TikTokBusiness:
+    :path: "../node_modules/react-native-tiktok-business-sdk"
   Yoga:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
@@ -3039,6 +3084,7 @@ SPEC CHECKSUMS:
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
   PromisesSwift: 9d77319bbe72ebf6d872900551f7eeba9bce2851
+  PurchasesHybridCommon: 7f0944cc5411bdcd1ea5d69affa6a6f9aaf87b13
   RCT-Folly: 846fda9475e61ec7bcbf8a3fe81edfcaeb090669
   RCTDeprecation: c0ed3249a97243002615517dff789bf4666cf585
   RCTRequired: 58719f5124f9267b5f9649c08bf23d9aea845b23
@@ -3107,17 +3153,21 @@ SPEC CHECKSUMS:
   ReactAppDependencyProvider: 433ddfb4536948630aadd5bd925aff8a632d2fe3
   ReactCodegen: 1d05923ad119796be9db37830d5e5dc76586aa00
   ReactCommon: 394c6b92765cf6d211c2c3f7f6bc601dffb316a6
+  RevenueCat: 7e1d0768fb287c9983173c9b28e39ccbeeb828a9
   RNCAsyncStorage: b44e8a4e798c3e1f56bffccd0f591f674fb9198f
   RNFBAnalytics: c8f3d38ea6cb396cac0265d9b077b9a98a7a0c9f
   RNFBApp: 255fa19a91d6c1309e021ee75d5d209754e5961b
   RNFBCrashlytics: ab632410ce1383051ac26ef44c966da651b7cf91
   RNFBPerf: 66843b59e5b078a5d5494b57ddf5858aff56cdbd
+  RNPurchases: 6070b60f5d8f525a58905df50773f7a3252f0cfa
   RNSentry: 5b0d112e3a7e6ecc614bae56f1b28e877cf25b52
   RNSVG: 866f818ba926c5d3f7863705abed51bb09d8ddd3
   Sentry: 54d0fe6c0df448497c8ed4cce66ccf7027e1823e
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
+  TikTokBusiness: 01a0e574e04976dec205bead98ebda687d4699db
+  TikTokBusinessSDK: 6fe49b5b06a24cfe6bf42da789e2f3c6ba39c0e3
   Yoga: a3ed390a19db0459bd6839823a6ac6d9c6db198d
 
-PODFILE CHECKSUM: dcd74bc8d052b22d928f7fcfaa6adb21466e5530
+PODFILE CHECKSUM: 9d88ae21c37806d370ef11f208f25f6f2e36db1b
 
 COCOAPODS: 1.16.2
