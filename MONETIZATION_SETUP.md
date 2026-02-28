@@ -54,6 +54,11 @@ See [backend/README.md](backend/README.md).
 Fast local + public tunnel mode: `npm run backend:tunnel` (prints ready-to-paste webhook URLs).
 Permanent deploy guide: [backend/DEPLOY_QUICKSTART.md](backend/DEPLOY_QUICKSTART.md).
 
+Production flags:
+
+- `APPLE_VALIDATION_ENABLED=1`
+- `GOOGLE_VALIDATION_ENABLED=1`
+
 Main endpoints:
 
 - `POST /v1/entitlements/sync`
@@ -61,3 +66,5 @@ Main endpoints:
 - `POST /v1/webhooks/apple`
 - `POST /v1/webhooks/google/rtdn`
 - `GET /v1/entitlements/:appUserId`
+
+Client purchase flow now attempts server validation (`/v1/iap/validate`) after purchase/restore when transaction identifiers are available, with entitlement sync as fallback.

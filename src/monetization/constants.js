@@ -271,6 +271,16 @@ const PLAN_UNAVAILABLE_LABEL_BY_LANGUAGE = {
   en: "Unavailable",
 };
 
+const PAYWALL_BILLING_NOTICE_BY_LANGUAGE = {
+  ru: "Подписка продлевается автоматически. Управлять и отменять можно в App Store / Google Play.",
+  en: "Subscription renews automatically. Manage or cancel anytime in App Store / Google Play.",
+};
+
+const PAYWALL_LEGAL_NOTICE_BY_LANGUAGE = {
+  ru: "Продолжая, вы соглашаетесь с Условиями использования и Политикой конфиденциальности.",
+  en: "By continuing, you agree to the Terms of Use and Privacy Policy.",
+};
+
 const PAYWALL_BADGE_BY_KIND = {
   soft: "ALMOST PRO",
   hard: "ALMOST PRO",
@@ -308,32 +318,36 @@ export const buildPaywallCopy = ({
   featureKey = null,
 } = {}) => {
   const lang = resolveLanguage(language);
-  const featureName = FEATURE_NAME_BY_KEY[featureKey]?.[lang] || null;
-  const featureSuffix =
-    featureName && lang === "ru"
-      ? `: ${featureName}.`
-      : featureName
-      ? `: ${featureName}.`
-      : ".";
+  const normalizedKind = kind === "hard" ? "hard" : kind === "feature" ? "feature" : "soft";
+  const normalizedFeatureKey =
+    typeof featureKey === "string" && featureKey.trim().length ? featureKey.trim() : null;
+  const effectiveKind = normalizedFeatureKey ? "feature" : normalizedKind;
+  const featureName = normalizedFeatureKey
+    ? FEATURE_NAME_BY_KEY[normalizedFeatureKey]?.[lang] || null
+    : null;
 
-  const title =
-    kind === "hard"
-      ? HARD_TITLE_BY_LANGUAGE[lang]
-      : kind === "feature"
-      ? FEATURE_TITLE_BY_LANGUAGE[lang]
-      : SOFT_TITLE_BY_LANGUAGE[lang];
+  let title = SOFT_TITLE_BY_LANGUAGE[lang];
+  let subtitle = template(SOFT_MARKETING_LINE_BY_LANGUAGE[lang], { monthly: monthlyPriceLabel });
+  let psychologyLine = SOFT_PSYCHOLOGY_LINE_BY_LANGUAGE[lang];
 
-  const subtitle =
-    kind === "hard"
-      ? template(HARD_MARKETING_LINE_BY_LANGUAGE[lang], { saved: savedAmountLabel })
-      : kind === "feature"
-      ? `${FEATURE_MARKETING_LINE_BY_LANGUAGE[lang]}${featureSuffix}`
-      : template(SOFT_MARKETING_LINE_BY_LANGUAGE[lang], { monthly: monthlyPriceLabel });
-
-  const psychologyLine = kind === "soft" ? SOFT_PSYCHOLOGY_LINE_BY_LANGUAGE[lang] : null;
+  if (effectiveKind === "hard") {
+    title = HARD_TITLE_BY_LANGUAGE[lang];
+    subtitle = template(HARD_MARKETING_LINE_BY_LANGUAGE[lang], {
+      saved: savedAmountLabel || "$0",
+    });
+    psychologyLine = null;
+  } else if (effectiveKind === "feature") {
+    title = FEATURE_TITLE_BY_LANGUAGE[lang];
+    subtitle = featureName
+      ? lang === "ru"
+        ? `Открой Premium, чтобы получить ${featureName} и полный набор инструментов.`
+        : `Unlock Premium to access ${featureName} and get the full toolkit.`
+      : FEATURE_MARKETING_LINE_BY_LANGUAGE[lang];
+    psychologyLine = null;
+  }
 
   return {
-    badgeLabel: PAYWALL_BADGE_BY_KIND[kind] || PAYWALL_BADGE_BY_KIND.feature,
+    badgeLabel: PAYWALL_BADGE_BY_KIND[effectiveKind] || PAYWALL_BADGE_BY_KIND.soft,
     title,
     subtitle,
     psychologyLine,
@@ -348,6 +362,11 @@ export const buildPaywallCopy = ({
     ctaPrimary: lang === "ru" ? "Открыть Premium" : "Unlock Premium",
     ctaRestore: lang === "ru" ? "Восстановить покупки" : "Restore purchases",
     ctaClose: lang === "ru" ? "Позже" : "Maybe later",
+    ctaManage: lang === "ru" ? "Управлять подпиской" : "Manage subscription",
+    legalNotice: PAYWALL_LEGAL_NOTICE_BY_LANGUAGE[lang],
+    billingNotice: PAYWALL_BILLING_NOTICE_BY_LANGUAGE[lang],
+    legalTermsLabel: lang === "ru" ? "Условия" : "Terms",
+    legalPrivacyLabel: lang === "ru" ? "Конфиденциальность" : "Privacy",
   };
 };
 
