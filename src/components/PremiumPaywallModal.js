@@ -4,16 +4,19 @@ import {
   Animated,
   Easing,
   Modal,
+  Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from "react-native";
 
 const pickDefaultPlanId = (planCards = []) => {
   const availableCards = planCards.filter((card) => card?.available !== false);
+  const yearly = availableCards.find((card) => card?.id === "yearly");
+  if (yearly?.id) return yearly.id;
   const preferred = availableCards.find((card) => card?.recommended);
   if (preferred?.id) return preferred.id;
   if (availableCards[0]?.id) return availableCards[0].id;
@@ -26,8 +29,12 @@ const PremiumPaywallModal = ({
   planCards = [],
   purchaseLoadingPlan = null,
   restoring = false,
+  onPlanSelect = () => {},
   onPlanPress = () => {},
   onRestorePress = () => {},
+  onManagePress = () => {},
+  onTermsPress = () => {},
+  onPrivacyPress = () => {},
   onClose = () => {},
   colors,
 }) => {
@@ -41,6 +48,8 @@ const PremiumPaywallModal = ({
   const mutedColor = colors?.muted || "#6C7289";
   const borderColor = colors?.border || "rgba(11,22,48,0.12)";
   const accent = "#4353FF";
+  const isAndroid = Platform.OS === "android";
+  const disableAndroidMotion = Platform.OS === "android";
 
   const comparisonRows = Array.isArray(copy?.comparisonRows) ? copy.comparisonRows : [];
 
@@ -135,7 +144,7 @@ const PremiumPaywallModal = ({
 
   const handlePrimaryPress = () => {
     if (purchaseDisabled || !selectedPlan?.id) return;
-    onPlanPress(selectedPlan.id);
+    onPlanPress(selectedPlan.id, { source: "primary_button" });
   };
 
   const backdropOpacity = openProgress.interpolate({
@@ -174,6 +183,7 @@ const PremiumPaywallModal = ({
   });
 
   const getRowAnimatedStyle = (index, total) => {
+    if (disableAndroidMotion) return null;
     const safeTotal = Math.max(1, total);
     const start = 0.3 + (index / safeTotal) * 0.42;
     const end = Math.min(1, start + 0.18);
@@ -197,236 +207,317 @@ const PremiumPaywallModal = ({
 
   if (!copy) return null;
 
+  const footerContent = (
+    <>
+      <Animated.View style={{ transform: [{ scale: ctaScale }] }}>
+        <TouchableOpacity
+          style={[
+            styles.primaryButton,
+            { backgroundColor: purchaseDisabled ? "rgba(67,83,255,0.45)" : accent },
+          ]}
+          onPress={handlePrimaryPress}
+          disabled={purchaseDisabled}
+          activeOpacity={0.9}
+        >
+          {purchaseLoadingPlan ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <Text style={styles.primaryButtonText}>{primaryButtonTitle}</Text>
+          )}
+        </TouchableOpacity>
+      </Animated.View>
+
+      <View style={styles.footerRow}>
+        <TouchableOpacity
+          style={[styles.footerSecondaryButton, { borderColor }]}
+          onPress={() => onRestorePress({ source: "restore_button" })}
+          disabled={!!purchaseLoadingPlan || restoring}
+          activeOpacity={0.85}
+        >
+          {restoring ? (
+            <ActivityIndicator size="small" color={textColor} />
+          ) : (
+            <Text style={[styles.footerSecondaryButtonText, { color: textColor }]}>{copy.ctaRestore}</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.footerGhostButton, { borderColor }]}
+          onPress={() => onClose("footer_close")}
+          disabled={!!purchaseLoadingPlan || restoring}
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.footerGhostButtonText, { color: mutedColor }]}>{copy.ctaClose}</Text>
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity
+        style={[styles.footerManageButton, { borderColor }]}
+        onPress={() => onManagePress({ source: "manage_button" })}
+        activeOpacity={0.85}
+      >
+        <Text style={[styles.footerManageButtonText, { color: textColor }]}>
+          {copy?.ctaManage || "Manage subscription"}
+        </Text>
+      </TouchableOpacity>
+
+      {!!copy?.billingNotice && (
+        <Text style={[styles.footerLegalNotice, { color: mutedColor }]}>{copy.billingNotice}</Text>
+      )}
+      {!!copy?.legalNotice && (
+        <Text style={[styles.footerLegalNotice, { color: mutedColor }]}>{copy.legalNotice}</Text>
+      )}
+
+      <View style={styles.footerLegalLinksRow}>
+        <TouchableOpacity
+          onPress={() => onTermsPress({ source: "terms_link" })}
+          activeOpacity={0.8}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={[styles.footerLegalLinkText, { color: textColor }]}>
+            {copy?.legalTermsLabel || "Terms"}
+          </Text>
+        </TouchableOpacity>
+        <Text style={[styles.footerLegalDot, { color: mutedColor }]}>•</Text>
+        <TouchableOpacity
+          onPress={() => onPrivacyPress({ source: "privacy_link" })}
+          activeOpacity={0.8}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={[styles.footerLegalLinkText, { color: textColor }]}>
+            {copy?.legalPrivacyLabel || "Privacy"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  );
+
+  const headerContent = (
+    <Animated.View
+      style={[
+        styles.header,
+        isAndroid ? styles.headerCompactAndroid : null,
+        disableAndroidMotion ? null : { transform: [{ translateY: headerTranslateY }] },
+      ]}
+    >
+      <TouchableOpacity
+        style={styles.closeButton}
+        onPress={() => onClose("header_close")}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.closeButtonText}>✕</Text>
+      </TouchableOpacity>
+
+      <View style={styles.headerBadge}>
+        <Text style={styles.headerBadgeText}>{copy.badgeLabel}</Text>
+      </View>
+
+      <Text style={styles.headerTitle}>{copy.title}</Text>
+      <Text style={styles.headerSubtitle}>{copy.subtitle}</Text>
+
+      {!!copy.psychologyLine && (
+        <View style={styles.psychologyChip}>
+          <Text style={styles.psychologyChipText}>{copy.psychologyLine}</Text>
+        </View>
+      )}
+
+      <Animated.View
+        style={[
+          styles.mascotWrap,
+          disableAndroidMotion ? null : { transform: [{ translateY: mascotTranslateY }] },
+        ]}
+      >
+        <Text style={styles.mascot}>🪽💸</Text>
+      </Animated.View>
+    </Animated.View>
+  );
+
+  const sheetContent = (
+    <>
+      <View style={[styles.comparisonCard, { borderColor }]}>
+        <View style={styles.comparisonHeader}>
+          <View style={styles.comparisonFeatureColumn} />
+          <Text style={[styles.comparisonHeaderText, { color: mutedColor }]}>
+            {copy.freeColumnLabel || "FREE"}
+          </Text>
+          <View style={styles.proHeaderPill}>
+            <Text style={styles.proHeaderPillText}>{copy.proColumnLabel || "PRO"}</Text>
+          </View>
+        </View>
+
+        {comparisonRows.map((row, index) => (
+          <Animated.View
+            key={`${row.label}_${index}`}
+            style={[
+              styles.comparisonRow,
+              index === comparisonRows.length - 1 && styles.comparisonRowLast,
+              getRowAnimatedStyle(index, comparisonRows.length),
+            ]}
+          >
+            <Text style={[styles.comparisonFeatureText, { color: textColor }]}>{row.label}</Text>
+            <Text style={[styles.comparisonMark, { color: row.free ? "#4D5A78" : "#B7BDCF" }]}>
+              {row.free ? "✓" : "—"}
+            </Text>
+            <View style={styles.proMarkWrap}>
+              <Text style={styles.proMark}>✓</Text>
+            </View>
+          </Animated.View>
+        ))}
+      </View>
+
+      {!!copy.unlockLevelsLine && (
+        <View style={styles.unlockLevelCard}>
+          <Text style={[styles.unlockLevelCardText, { color: textColor }]}>{copy.unlockLevelsLine}</Text>
+        </View>
+      )}
+
+      <View style={styles.planSection}>
+        <Text style={[styles.planSectionTitle, { color: textColor }]}>
+          {copy.planSectionTitle || "Choose your Premium plan"}
+        </Text>
+        <Text style={[styles.planSectionHint, { color: mutedColor }]}>
+          {copy.planHint || "Select a plan and tap the button below"}
+        </Text>
+
+        <View style={styles.planList}>
+          {planCards.map((plan) => {
+            const selected = plan.id === selectedPlanId;
+            const unavailable = plan.available === false;
+            const loading = purchaseLoadingPlan === plan.id;
+            return (
+              <TouchableOpacity
+                key={plan.id}
+                activeOpacity={0.9}
+                onPress={() => {
+                  setSelectedPlanId(plan.id);
+                  onPlanSelect(plan.id, { source: "plan_card" });
+                }}
+                disabled={!!purchaseLoadingPlan || restoring}
+                style={[
+                  styles.planCard,
+                  {
+                    borderColor: selected ? accent : borderColor,
+                    backgroundColor: selected ? "rgba(67,83,255,0.1)" : "#FFFFFF",
+                    opacity: unavailable ? 0.52 : 1,
+                  },
+                ]}
+              >
+                <View style={styles.planTopRow}>
+                  <Text style={[styles.planTitle, { color: textColor }]}>{plan.label}</Text>
+                  {plan.badge ? (
+                    <View
+                      style={[
+                        styles.planBadge,
+                        { backgroundColor: selected ? accent : "rgba(11,22,48,0.08)" },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.planBadgeText,
+                          { color: selected ? "#FFFFFF" : textColor },
+                        ]}
+                      >
+                        {unavailable ? copy.planUnavailableLabel || "Unavailable" : plan.badge}
+                      </Text>
+                    </View>
+                  ) : unavailable ? (
+                    <View style={[styles.planBadge, { backgroundColor: "rgba(11,22,48,0.08)" }]}>
+                      <Text style={[styles.planBadgeText, { color: textColor }]}>
+                        {copy.planUnavailableLabel || "Unavailable"}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={styles.planBottomRow}>
+                  <Text style={[styles.planPrice, { color: textColor }]}>{plan.priceLabel}</Text>
+                  <View style={styles.planPriceMeta}>
+                    {!!plan.secondaryLabel && (
+                      <Text
+                        style={[
+                          styles.planSecondary,
+                          { color: mutedColor },
+                          plan.secondaryKind === "strike" && styles.planSecondaryStrike,
+                        ]}
+                      >
+                        {plan.secondaryLabel}
+                      </Text>
+                    )}
+                    {!!plan.secondarySubLabel && (
+                      <Text
+                        style={[
+                          styles.planSecondarySub,
+                          { color: selected ? "#313EEA" : mutedColor },
+                        ]}
+                      >
+                        {plan.secondarySubLabel}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+                {!!plan.equivalentLabel && (
+                  <Text style={[styles.planEquivalent, { color: selected ? "#313EEA" : mutedColor }]}>
+                    {plan.equivalentLabel}
+                  </Text>
+                )}
+                {loading && (
+                  <View style={styles.planLoader}>
+                    <ActivityIndicator size="small" color={accent} />
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    </>
+  );
+
   return (
     <Modal
       visible={visible}
       transparent
       animationType="none"
       statusBarTranslucent
-      onRequestClose={onClose}
+      onRequestClose={() => onClose("system_back")}
     >
       <View style={styles.root}>
-        <TouchableWithoutFeedback onPress={onClose}>
+        <Pressable style={styles.backdropPressable} onPress={() => onClose("backdrop")}>
           <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]} />
-        </TouchableWithoutFeedback>
+        </Pressable>
 
         <Animated.View
           style={[
             styles.shell,
-            {
-              opacity: shellOpacity,
-              transform: [{ translateY: shellTranslateY }],
-            },
+            disableAndroidMotion
+              ? null
+              : {
+                  opacity: shellOpacity,
+                  transform: [{ translateY: shellTranslateY }],
+                },
           ]}
         >
-          <Animated.View style={[styles.header, { transform: [{ translateY: headerTranslateY }] }]}>
-            <TouchableOpacity style={styles.closeButton} onPress={onClose} activeOpacity={0.85}>
-              <Text style={styles.closeButtonText}>✕</Text>
-            </TouchableOpacity>
-
-            <View style={styles.headerBadge}>
-              <Text style={styles.headerBadgeText}>{copy.badgeLabel}</Text>
-            </View>
-
-            <Text style={styles.headerTitle}>{copy.title}</Text>
-            <Text style={styles.headerSubtitle}>{copy.subtitle}</Text>
-
-            {!!copy.psychologyLine && (
-              <View style={styles.psychologyChip}>
-                <Text style={styles.psychologyChipText}>{copy.psychologyLine}</Text>
-              </View>
-            )}
-
-            <Animated.View
-              style={[
-                styles.mascotWrap,
-                {
-                  transform: [{ translateY: mascotTranslateY }],
-                },
-              ]}
-            >
-              <Text style={styles.mascot}>🪽💸</Text>
-            </Animated.View>
-          </Animated.View>
-
+          {headerContent}
           <Animated.View
             style={[
               styles.sheet,
               {
                 backgroundColor: cardBg,
-                transform: [{ translateY: sheetTranslateY }],
               },
+              disableAndroidMotion ? null : { transform: [{ translateY: sheetTranslateY }] },
             ]}
           >
             <ScrollView
+              style={styles.sheetScroll}
               showsVerticalScrollIndicator={false}
+              scrollEnabled
+              nestedScrollEnabled={isAndroid}
+              keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.sheetScrollContent}
             >
-              <View style={[styles.comparisonCard, { borderColor }]}> 
-                <View style={styles.comparisonHeader}>
-                  <View style={styles.comparisonFeatureColumn} />
-                  <Text style={[styles.comparisonHeaderText, { color: mutedColor }]}>
-                    {copy.freeColumnLabel || "FREE"}
-                  </Text>
-                  <View style={styles.proHeaderPill}>
-                    <Text style={styles.proHeaderPillText}>{copy.proColumnLabel || "PRO"}</Text>
-                  </View>
-                </View>
-
-                {comparisonRows.map((row, index) => (
-                  <Animated.View
-                    key={`${row.label}_${index}`}
-                    style={[
-                      styles.comparisonRow,
-                      index === comparisonRows.length - 1 && styles.comparisonRowLast,
-                      getRowAnimatedStyle(index, comparisonRows.length),
-                    ]}
-                  >
-                    <Text style={[styles.comparisonFeatureText, { color: textColor }]}>{row.label}</Text>
-                    <Text style={[styles.comparisonMark, { color: row.free ? "#4D5A78" : "#B7BDCF" }]}>
-                      {row.free ? "✓" : "—"}
-                    </Text>
-                    <View style={styles.proMarkWrap}>
-                      <Text style={styles.proMark}>✓</Text>
-                    </View>
-                  </Animated.View>
-                ))}
-              </View>
-
-              {!!copy.unlockLevelsLine && (
-                <View style={styles.unlockLevelCard}>
-                  <Text style={[styles.unlockLevelCardText, { color: textColor }]}>{copy.unlockLevelsLine}</Text>
-                </View>
-              )}
-
-              <View style={styles.planSection}>
-                <Text style={[styles.planSectionTitle, { color: textColor }]}>
-                  {copy.planSectionTitle || "Choose your Premium plan"}
-                </Text>
-                <Text style={[styles.planSectionHint, { color: mutedColor }]}>
-                  {copy.planHint || "Select a plan and tap the button below"}
-                </Text>
-
-                <View style={styles.planList}>
-                  {planCards.map((plan) => {
-                    const selected = plan.id === selectedPlanId;
-                    const unavailable = plan.available === false;
-                    const loading = purchaseLoadingPlan === plan.id;
-                    return (
-                      <TouchableOpacity
-                        key={plan.id}
-                        activeOpacity={0.9}
-                        onPress={() => setSelectedPlanId(plan.id)}
-                        disabled={!!purchaseLoadingPlan || restoring}
-                        style={[
-                          styles.planCard,
-                          {
-                            borderColor: selected ? accent : borderColor,
-                            backgroundColor: selected ? "rgba(67,83,255,0.1)" : "#FFFFFF",
-                            opacity: unavailable ? 0.52 : 1,
-                          },
-                        ]}
-                      >
-                        <View style={styles.planTopRow}>
-                          <Text style={[styles.planTitle, { color: textColor }]}>{plan.label}</Text>
-                          {plan.badge ? (
-                            <View
-                              style={[
-                                styles.planBadge,
-                                { backgroundColor: selected ? accent : "rgba(11,22,48,0.08)" },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.planBadgeText,
-                                  { color: selected ? "#FFFFFF" : textColor },
-                                ]}
-                              >
-                                {unavailable ? copy.planUnavailableLabel || "Unavailable" : plan.badge}
-                              </Text>
-                            </View>
-                          ) : unavailable ? (
-                            <View style={[styles.planBadge, { backgroundColor: "rgba(11,22,48,0.08)" }]}> 
-                              <Text style={[styles.planBadgeText, { color: textColor }]}>
-                                {copy.planUnavailableLabel || "Unavailable"}
-                              </Text>
-                            </View>
-                          ) : null}
-                        </View>
-                        <View style={styles.planBottomRow}>
-                          <Text style={[styles.planPrice, { color: textColor }]}>{plan.priceLabel}</Text>
-                          {!!plan.secondaryLabel && (
-                            <Text
-                              style={[
-                                styles.planSecondary,
-                                { color: mutedColor },
-                                plan.secondaryKind === "strike" && styles.planSecondaryStrike,
-                              ]}
-                            >
-                              {plan.secondaryLabel}
-                            </Text>
-                          )}
-                        </View>
-                        {!!plan.equivalentLabel && (
-                          <Text style={[styles.planEquivalent, { color: selected ? "#313EEA" : mutedColor }]}>
-                            {plan.equivalentLabel}
-                          </Text>
-                        )}
-                        {loading && (
-                          <View style={styles.planLoader}>
-                            <ActivityIndicator size="small" color={accent} />
-                          </View>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-
+              {sheetContent}
             </ScrollView>
-
-            <View style={[styles.footer, { borderTopColor: borderColor }]}> 
-              <Animated.View style={{ transform: [{ scale: ctaScale }] }}>
-                <TouchableOpacity
-                  style={[
-                    styles.primaryButton,
-                    { backgroundColor: purchaseDisabled ? "rgba(67,83,255,0.45)" : accent },
-                  ]}
-                  onPress={handlePrimaryPress}
-                  disabled={purchaseDisabled}
-                  activeOpacity={0.9}
-                >
-                  {purchaseLoadingPlan ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                  ) : (
-                    <Text style={styles.primaryButtonText}>{primaryButtonTitle}</Text>
-                  )}
-                </TouchableOpacity>
-              </Animated.View>
-
-              <View style={styles.footerRow}>
-                <TouchableOpacity
-                  style={[styles.footerSecondaryButton, { borderColor }]}
-                  onPress={onRestorePress}
-                  disabled={!!purchaseLoadingPlan || restoring}
-                  activeOpacity={0.85}
-                >
-                  {restoring ? (
-                    <ActivityIndicator size="small" color={textColor} />
-                  ) : (
-                    <Text style={[styles.footerSecondaryButtonText, { color: textColor }]}>{copy.ctaRestore}</Text>
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.footerGhostButton, { borderColor }]}
-                  onPress={onClose}
-                  disabled={!!purchaseLoadingPlan || restoring}
-                  activeOpacity={0.85}
-                >
-                  <Text style={[styles.footerGhostButtonText, { color: mutedColor }]}>{copy.ctaClose}</Text>
-                </TouchableOpacity>
-              </View>
+            <View style={[styles.footer, styles.footerSticky, { borderTopColor: borderColor }]}>
+              {footerContent}
             </View>
           </Animated.View>
         </Animated.View>
@@ -444,9 +535,15 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(1,7,30,0.76)",
   },
+  backdropPressable: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
   shell: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     justifyContent: "flex-end",
+    minHeight: 0,
+    zIndex: 2,
   },
   header: {
     backgroundColor: "#0A1E72",
@@ -455,6 +552,11 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     minHeight: 298,
     position: "relative",
+  },
+  headerCompactAndroid: {
+    paddingTop: 52,
+    paddingBottom: 18,
+    minHeight: 270,
   },
   closeButton: {
     position: "absolute",
@@ -531,6 +633,7 @@ const styles = StyleSheet.create({
   },
   sheet: {
     flex: 1,
+    minHeight: 0,
     marginTop: -18,
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
@@ -539,8 +642,12 @@ const styles = StyleSheet.create({
   sheetScrollContent: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 22,
+    paddingBottom: 16,
     gap: 12,
+  },
+  sheetScroll: {
+    flex: 1,
+    minHeight: 0,
   },
   comparisonCard: {
     borderRadius: 18,
@@ -663,9 +770,13 @@ const styles = StyleSheet.create({
   },
   planBottomRow: {
     flexDirection: "row",
-    alignItems: "baseline",
+    alignItems: "flex-end",
     justifyContent: "space-between",
     gap: 8,
+  },
+  planPriceMeta: {
+    alignItems: "flex-end",
+    gap: 2,
   },
   planTitle: {
     fontSize: 15,
@@ -695,6 +806,11 @@ const styles = StyleSheet.create({
   planSecondaryStrike: {
     textDecorationLine: "line-through",
   },
+  planSecondarySub: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "700",
+  },
   planEquivalent: {
     fontSize: 12,
     lineHeight: 16,
@@ -709,9 +825,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 12,
+    paddingBottom: Platform.OS === "android" ? 20 : 12,
     gap: 9,
     backgroundColor: "#FFFFFF",
+    marginTop: 4,
+  },
+  footerSticky: {
+    flexShrink: 0,
   },
   primaryButton: {
     minHeight: 54,
@@ -763,6 +883,42 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 17,
     fontWeight: "700",
+  },
+  footerManageButton: {
+    minHeight: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  footerManageButtonText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700",
+  },
+  footerLegalNotice: {
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "500",
+    textAlign: "center",
+  },
+  footerLegalLinksRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  footerLegalDot: {
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: "600",
+  },
+  footerLegalLinkText: {
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: "800",
+    textDecorationLine: "underline",
   },
 });
 
