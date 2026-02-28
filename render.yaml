@@ -14,6 +14,14 @@ services:
         value: com.sasarei.almostclean
       - key: APPLE_ENVIRONMENT
         value: production
+      - key: APPLE_ISSUER_ID
+        value: 9008af26-e870-436b-8e80-c46408d6d1fd
+      - key: APPLE_KEY_ID
+        sync: false
+      - key: APPLE_PRIVATE_KEY
+        sync: false
+      - key: APPLE_APPLE_ID
+        value: "6756276744"
       - key: REQUEST_TTL_MS
         value: "900000"
       - key: REPLAY_WINDOW_MS
@@ -44,6 +52,8 @@ services:
         value: "0"
       - key: GOOGLE_PACKAGE_NAME
         value: com.sasarei.almostclean
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
     disk:
       name: almost-backend-data
       mountPath: /var/data

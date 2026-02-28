@@ -1,8 +1,10 @@
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
+import fs from "node:fs";
+import path from "node:path";
 import { z } from "zod";
-import { config } from "./config.js";
+import { config, getBackendReadiness } from "./config.js";
 import { scoreFraudRisk } from "./risk.js";
 import {
   bootstrapStore,
@@ -117,12 +119,52 @@ const parseBody = (schema, payload) => {
   };
 };
 
-app.get("/health", (_, res) => {
-  res.json({
+const resolveAppleRootCaDiagnostics = () => {
+  const configuredPaths = Array.isArray(config.apple.webhook.rootCaPaths)
+    ? config.apple.webhook.rootCaPaths
+    : [];
+  if (!configuredPaths.length) {
+    return {
+      configured: false,
+      missingFiles: [],
+      checkedFiles: [],
+    };
+  }
+  const checkedFiles = configuredPaths.map((filePath) => path.resolve(process.cwd(), filePath));
+  const missingFiles = checkedFiles.filter((absolutePath) => !fs.existsSync(absolutePath));
+  return {
+    configured: true,
+    missingFiles,
+    checkedFiles,
+  };
+};
+
+const buildHealthPayload = () => {
+  const readiness = getBackendReadiness();
+  const appleRootCa = resolveAppleRootCaDiagnostics();
+  const appleWebhookReady =
+    readiness.webhooks.apple.ready && (!appleRootCa.configured || !appleRootCa.missingFiles.length);
+  return {
     ok: true,
     service: "almost-monetization",
     now: new Date().toISOString(),
-  });
+    readiness: {
+      ...readiness,
+      webhooks: {
+        ...readiness.webhooks,
+        apple: {
+          ...readiness.webhooks.apple,
+          ready: appleWebhookReady,
+          rootCaConfigured: appleRootCa.configured,
+          missingRootCaFiles: appleRootCa.missingFiles,
+        },
+      },
+    },
+  };
+};
+
+app.get("/health", (_, res) => {
+  res.json(buildHealthPayload());
 });
 
 app.get("/v1/entitlements/:appUserId", requireSharedSecret, (req, res) => {
@@ -409,6 +451,21 @@ app.post(
 
 const start = async () => {
   await bootstrapStore();
+  const readiness = buildHealthPayload().readiness;
+  // eslint-disable-next-line no-console
+  console.log(
+    JSON.stringify(
+      {
+        msg: "backend_readiness",
+        sharedSecretConfigured: readiness.sharedSecretConfigured,
+        appleValidation: readiness.validation.apple,
+        googleValidation: readiness.validation.google,
+        appleWebhook: readiness.webhooks.apple,
+      },
+      null,
+      2
+    )
+  );
   const server = app.listen(config.port, () => {
     // eslint-disable-next-line no-console
     console.log(`almost monetization backend listening on :${config.port}`);
