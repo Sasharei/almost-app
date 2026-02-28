@@ -705,6 +705,16 @@ const normalizeMonetizationToken = (value = "", fallback = "unknown") => {
   if (!normalized) return fallback;
   return normalized.slice(0, 40);
 };
+const hashAnalyticsText = (value = "") => {
+  const normalized = String(value || "").trim().toLowerCase().slice(0, 160);
+  if (!normalized) return "none";
+  let hash = 2166136261;
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash ^= normalized.charCodeAt(index);
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+  }
+  return `h_${(hash >>> 0).toString(36)}`;
+};
 const resolvePlanIdFromProductIdentifier = (productIdentifier = "") => {
   const identifier = String(productIdentifier || "").toLowerCase();
   if (identifier.includes("lifetime") || identifier.includes("life_time")) return "lifetime";
@@ -29943,7 +29953,7 @@ function AppContent() {
         lastSource: source,
         error: null,
       }));
-      if (premiumInstallIdHydrated) {
+      if (premiumInstallIdHydrated && premiumInstallId) {
         syncEntitlementSnapshot({
           appUserId: premiumInstallId || null,
           installId: premiumInstallId || null,
@@ -30074,7 +30084,7 @@ function AppContent() {
           lastSource: "listener",
           error: null,
         }));
-        if (premiumInstallIdHydrated) {
+        if (premiumInstallIdHydrated && premiumInstallId) {
           syncEntitlementSnapshot({
             appUserId: premiumInstallId || null,
             installId: premiumInstallId || null,
@@ -34891,62 +34901,71 @@ function AppContent() {
         setBudgetOverspendMap({});
       }
       setBudgetOverspendHydrated(true);
-      if (impulseTrackerRaw) {
-        try {
-          const parsed = JSON.parse(impulseTrackerRaw);
-          const normalizedEvents = Array.isArray(parsed?.events)
-            ? parsed.events.slice(0, MAX_IMPULSE_EVENTS).map((event) => {
-                if (!event) return event;
-                const normalizedCategory = normalizeImpulseCategoryId(event.category);
-                if (!normalizedCategory) return event;
-                if (event.category === normalizedCategory) return event;
-                return { ...event, category: normalizedCategory };
-              })
-            : [];
-          setImpulseTracker({
-            ...INITIAL_IMPULSE_TRACKER,
-            ...parsed,
-            events: normalizedEvents,
-            lastAlerts: parsed?.lastAlerts || {},
-          });
-        } catch (err) {
-          console.warn("impulse tracker parse", err);
+      const hydrateImpulseTracker = () => {
+        if (impulseTrackerRaw) {
+          try {
+            const parsed = JSON.parse(impulseTrackerRaw);
+            const normalizedEvents = Array.isArray(parsed?.events)
+              ? parsed.events.slice(0, MAX_IMPULSE_EVENTS).map((event) => {
+                  if (!event) return event;
+                  const normalizedCategory = normalizeImpulseCategoryId(event.category);
+                  if (!normalizedCategory) return event;
+                  if (event.category === normalizedCategory) return event;
+                  return { ...event, category: normalizedCategory };
+                })
+              : [];
+            setImpulseTracker({
+              ...INITIAL_IMPULSE_TRACKER,
+              ...parsed,
+              events: normalizedEvents,
+              lastAlerts: parsed?.lastAlerts || {},
+            });
+          } catch (err) {
+            console.warn("impulse tracker parse", err);
+            setImpulseTracker({ ...INITIAL_IMPULSE_TRACKER });
+          }
+        } else {
           setImpulseTracker({ ...INITIAL_IMPULSE_TRACKER });
         }
-      } else {
-        setImpulseTracker({ ...INITIAL_IMPULSE_TRACKER });
-      }
-      setImpulseTrackerHydrated(true);
-      if (challengesRaw) {
-        try {
-          const parsed = JSON.parse(challengesRaw);
-          const normalized = normalizeChallengesState(parsed);
-          challengesPrevRef.current = normalized;
-          setChallengesState(normalized);
-        } catch (err) {
-          console.warn("challenges parse", err);
+        setImpulseTrackerHydrated(true);
+      };
+      const hydrateChallenges = () => {
+        if (challengesRaw) {
+          try {
+            const parsed = JSON.parse(challengesRaw);
+            const normalized = normalizeChallengesState(parsed);
+            challengesPrevRef.current = normalized;
+            setChallengesState(normalized);
+          } catch (err) {
+            console.warn("challenges parse", err);
+            const fallback = createInitialChallengesState();
+            challengesPrevRef.current = fallback;
+            setChallengesState(fallback);
+          }
+        } else {
           const fallback = createInitialChallengesState();
           challengesPrevRef.current = fallback;
           setChallengesState(fallback);
         }
-      } else {
-        const fallback = createInitialChallengesState();
-        challengesPrevRef.current = fallback;
-        setChallengesState(fallback);
-      }
-      setChallengesHydrated(true);
-      if (challengeBadgesRaw) {
-        try {
-          const parsed = JSON.parse(challengeBadgesRaw);
-          setChallengeBadgeStore(normalizeChallengeBadgeList(parsed));
-        } catch (err) {
-          console.warn("challenge badges parse", err);
+        setChallengesHydrated(true);
+      };
+      const hydrateChallengeBadges = () => {
+        if (challengeBadgesRaw) {
+          try {
+            const parsed = JSON.parse(challengeBadgesRaw);
+            setChallengeBadgeStore(normalizeChallengeBadgeList(parsed));
+          } catch (err) {
+            console.warn("challenge badges parse", err);
+            setChallengeBadgeStore([]);
+          }
+        } else {
           setChallengeBadgeStore([]);
         }
-      } else {
-        setChallengeBadgeStore([]);
-      }
-      setChallengeBadgeStoreHydrated(true);
+        setChallengeBadgeStoreHydrated(true);
+      };
+      deferNonFeedHydration(hydrateImpulseTracker);
+      deferNonFeedHydration(hydrateChallenges);
+      deferNonFeedHydration(hydrateChallengeBadges);
       if (moodRaw) {
         try {
           const parsed = JSON.parse(moodRaw);
@@ -37899,7 +37918,7 @@ useEffect(() => {
         wishId: getPrimaryGoalWishId(goalId),
       });
       logEvent("goal_manual_created", {
-        title: trimmedName,
+        title_hash: hashAnalyticsText(trimmedName),
         target_usd: targetUSD,
         currency: currencyCode,
         is_primary: 1,
@@ -37925,7 +37944,7 @@ useEffect(() => {
       ensureActiveGoalForNewWish(newWish);
       logHistoryEvent("wish_added", { title: trimmedName, targetUSD, templateId: "manual_goal", wishId: newWish.id });
       logEvent("goal_manual_created", {
-        title: trimmedName,
+        title_hash: hashAnalyticsText(trimmedName),
         target_usd: targetUSD,
         currency: currencyCode,
       });
@@ -38014,7 +38033,7 @@ useEffect(() => {
       };
     });
     logEvent("onboarding_goal_custom_created", {
-      title: trimmedName,
+      title_hash: hashAnalyticsText(trimmedName),
       target_usd: targetUSD,
       currency: currencyCode,
     });
@@ -45241,7 +45260,7 @@ useEffect(() => {
       prevCustomFrequency !== nextCustomFrequency;
     if (customSpendChanged) {
       logEvent("profile_custom_spend_updated", {
-        title: nextCustomTitle || null,
+        title_hash: hashAnalyticsText(nextCustomTitle || ""),
         amount_usd: nextCustomAmountUSD || 0,
         frequency_per_week: nextCustomFrequency || 0,
         removed: nextCustomSpend ? 0 : 1,

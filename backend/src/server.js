@@ -3,8 +3,16 @@ import express from "express";
 import helmet from "helmet";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { z } from "zod";
 import { config, getBackendReadiness } from "./config.js";
+import {
+  getBearerTokenFromHeader,
+  isSessionAuthEnabled,
+  issueSessionToken,
+  sessionClaimsMatch,
+  verifySessionToken,
+} from "./auth/session.js";
 import { scoreFraudRisk } from "./risk.js";
 import {
   bootstrapStore,
@@ -12,6 +20,7 @@ import {
   flushStore,
   getCachedIdempotentResponse,
   getEntitlementByUser,
+  getSeenTransaction,
   markTransactionSeen,
   upsertEntitlement,
 } from "./store/entitlementsStore.js";
@@ -23,8 +32,28 @@ import { parseGoogleRtdnMessage } from "./webhooks/google.js";
 const app = express();
 
 app.use(helmet());
-app.use(cors());
+if (Array.isArray(config.corsOrigins) && config.corsOrigins.length) {
+  const allowedOrigins = new Set(config.corsOrigins);
+  app.use(
+    cors({
+      origin(origin, callback) {
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+        callback(null, allowedOrigins.has(origin));
+      },
+    })
+  );
+}
 app.use(express.json({ limit: "1mb" }));
+
+const timingSafeEquals = (left = "", right = "") => {
+  const leftBuffer = Buffer.from(String(left || ""), "utf8");
+  const rightBuffer = Buffer.from(String(right || ""), "utf8");
+  if (leftBuffer.length !== rightBuffer.length) return false;
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+};
 
 const requireSharedSecret = (req, res, next) => {
   if (!config.appSharedSecret) {
@@ -32,11 +61,40 @@ const requireSharedSecret = (req, res, next) => {
     return;
   }
   const headerSecret = req.header("x-app-secret") || "";
-  if (headerSecret !== config.appSharedSecret) {
+  if (!timingSafeEquals(headerSecret, config.appSharedSecret)) {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
   next();
+};
+
+const requireAppAuth = (req, res, next) => {
+  if (isSessionAuthEnabled()) {
+    const token = getBearerTokenFromHeader(req.header("authorization") || "");
+    if (!token) {
+      res.status(401).json({ error: "missing_auth_token" });
+      return;
+    }
+    const verified = verifySessionToken(token);
+    if (!verified.ok) {
+      res.status(401).json({ error: "invalid_auth_token", reason: verified.reason || "unknown" });
+      return;
+    }
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const claimCheck = sessionClaimsMatch(verified.payload, {
+      appUserId: req.params?.appUserId || body.appUserId || null,
+      installId: body.installId || null,
+      platform: body.platform || null,
+    });
+    if (!claimCheck) {
+      res.status(401).json({ error: "auth_claims_mismatch" });
+      return;
+    }
+    req.authSession = verified.payload;
+    next();
+    return;
+  }
+  requireSharedSecret(req, res, next);
 };
 
 const requireWebhookSecret = (getSecret) => (req, res, next) => {
@@ -51,8 +109,10 @@ const requireWebhookSecret = (getSecret) => (req, res, next) => {
     req.header("x-apple-webhook-secret") ||
     req.header("x-google-rtdn-secret") ||
     "";
-  const querySecret = String(req.query?.secret || "");
-  if (headerSecret !== expectedSecret && querySecret !== expectedSecret) {
+  const querySecret = config.webhookAllowQuerySecret ? String(req.query?.secret || "") : "";
+  const headerMatched = timingSafeEquals(headerSecret, expectedSecret);
+  const queryMatched = querySecret ? timingSafeEquals(querySecret, expectedSecret) : false;
+  if (!headerMatched && !queryMatched) {
     res.status(401).json({ error: "unauthorized_webhook" });
     return;
   }
@@ -101,6 +161,12 @@ const googleWebhookSchema = z
     appUserId: z.string().min(1).max(200).optional().nullable(),
   })
   .passthrough();
+
+const authSessionSchema = z.object({
+  appUserId: z.string().min(1).max(200).optional().nullable(),
+  installId: z.string().min(1).max(200),
+  platform: z.enum(["ios", "android"]).optional().nullable(),
+});
 
 const parseBody = (schema, payload) => {
   const parsed = schema.safeParse(payload);
@@ -167,7 +233,30 @@ app.get("/health", (_, res) => {
   res.json(buildHealthPayload());
 });
 
-app.get("/v1/entitlements/:appUserId", requireSharedSecret, (req, res) => {
+app.post("/v1/auth/session", (req, res) => {
+  if (!isSessionAuthEnabled()) {
+    res.status(503).json({ ok: false, error: "session_auth_disabled" });
+    return;
+  }
+  const parsed = parseBody(authSessionSchema, req.body || {});
+  if (!parsed.ok) {
+    res.status(400).json({ error: "invalid_payload", details: parsed.errors });
+    return;
+  }
+  const issued = issueSessionToken(parsed.data);
+  if (!issued.ok) {
+    res.status(503).json({ ok: false, error: issued.reason || "session_issue_failed" });
+    return;
+  }
+  res.json({
+    ok: true,
+    token: issued.token,
+    expiresAt: issued.payload?.exp || null,
+    issuedAt: issued.payload?.iat || null,
+  });
+});
+
+app.get("/v1/entitlements/:appUserId", requireAppAuth, (req, res) => {
   const appUserId = String(req.params.appUserId || "").trim();
   if (!appUserId) {
     res.status(400).json({ error: "missing_app_user_id" });
@@ -180,7 +269,7 @@ app.get("/v1/entitlements/:appUserId", requireSharedSecret, (req, res) => {
   });
 });
 
-app.post("/v1/entitlements/sync", requireSharedSecret, (req, res) => {
+app.post("/v1/entitlements/sync", requireAppAuth, (req, res) => {
   const parsed = parseBody(syncSchema, req.body || {});
   if (!parsed.ok) {
     res.status(400).json({ error: "invalid_payload", details: parsed.errors });
@@ -189,32 +278,18 @@ app.post("/v1/entitlements/sync", requireSharedSecret, (req, res) => {
 
   const payload = parsed.data;
   const risk = scoreFraudRisk({ payload, trustedValidation: false });
-
-  const entitlement = upsertEntitlement(payload.appUserId, {
-    source: payload.source || "client_snapshot",
-    platform: payload.platform || null,
-    installId: payload.installId || null,
-    isPremium: !!payload.entitlement?.isActive,
-    productId: payload.entitlement?.productIdentifier || null,
-    transactionId: null,
-    originalTransactionId: null,
-    expiresDate: payload.entitlement?.expirationDate || null,
-    raw: {
-      entitlement: payload.entitlement || null,
-      customerInfo: payload.customerInfo || null,
-      risk,
-    },
-  });
+  const entitlement = getEntitlementByUser(payload.appUserId);
 
   res.json({
     ok: true,
+    accepted: true,
     trusted: false,
     risk,
-    entitlement,
+    entitlement: entitlement || null,
   });
 });
 
-app.post("/v1/iap/validate", requireSharedSecret, async (req, res) => {
+app.post("/v1/iap/validate", requireAppAuth, async (req, res) => {
   const idempotencyKey = req.header("idempotency-key") || "";
   if (idempotencyKey) {
     const cached = getCachedIdempotentResponse(idempotencyKey);
@@ -231,6 +306,22 @@ app.post("/v1/iap/validate", requireSharedSecret, async (req, res) => {
   }
 
   const payload = parsed.data;
+  const initialRisk = scoreFraudRisk({
+    payload,
+    trustedValidation: false,
+  });
+  if (initialRisk.reasons.includes("reused_transaction_other_user")) {
+    const failurePayload = {
+      ok: false,
+      error: "reused_transaction_other_user",
+      risk: initialRisk,
+    };
+    if (idempotencyKey) {
+      cacheIdempotentResponse(idempotencyKey, failurePayload);
+    }
+    res.status(409).json(failurePayload);
+    return;
+  }
   const validate = payload.platform === "ios" ? validateApplePurchase : validateGooglePurchase;
   const validation = await validate(payload);
 
@@ -262,11 +353,37 @@ app.post("/v1/iap/validate", requireSharedSecret, async (req, res) => {
     return;
   }
 
-  const transactionReference =
-    validation.transactionId || payload.transactionId || payload.purchaseToken || null;
-  if (transactionReference) {
-    markTransactionSeen(transactionReference, payload.appUserId);
+  const transactionReferences = [
+    validation.transactionId,
+    validation.originalTransactionId,
+    payload.transactionId,
+    payload.purchaseToken,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const uniqueTransactionReferences = Array.from(new Set(transactionReferences));
+  const reusedReference = uniqueTransactionReferences.find((reference) => {
+    const previous = getSeenTransaction(reference);
+    return previous?.appUserId && previous.appUserId !== payload.appUserId;
+  });
+  if (reusedReference) {
+    const failurePayload = {
+      ok: false,
+      error: "reused_transaction_other_user",
+      risk: {
+        ...risk,
+        reasons: Array.from(new Set([...(risk.reasons || []), "reused_transaction_other_user"])),
+      },
+    };
+    if (idempotencyKey) {
+      cacheIdempotentResponse(idempotencyKey, failurePayload);
+    }
+    res.status(409).json(failurePayload);
+    return;
   }
+  uniqueTransactionReferences.forEach((reference) => {
+    markTransactionSeen(reference, payload.appUserId);
+  });
 
   const entitlement = upsertEntitlement(payload.appUserId, {
     source: "store_validation",
@@ -457,7 +574,8 @@ const start = async () => {
     JSON.stringify(
       {
         msg: "backend_readiness",
-        sharedSecretConfigured: readiness.sharedSecretConfigured,
+        appAuth: readiness.appAuth,
+        cors: readiness.cors,
         appleValidation: readiness.validation.apple,
         googleValidation: readiness.validation.google,
         appleWebhook: readiness.webhooks.apple,
