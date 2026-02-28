@@ -18,8 +18,9 @@ This command:
 It prints:
 
 - Health URL: `https://.../health`
-- Apple webhook URL: `https://.../v1/webhooks/apple?secret=...`
+- Apple webhook URL: `https://.../v1/webhooks/apple`
 - Google RTDN webhook URL: `https://.../v1/webhooks/google/rtdn`
+- Apple webhook secret header value for `x-apple-webhook-secret`
 
 Keep that terminal open while testing.
 
@@ -40,6 +41,7 @@ Prerequisite: push current `main` branch to GitHub (`git push origin main`).
 6. In Render service `Environment`, ensure:
    - `APPLE_VALIDATION_ENABLED=1` only after Apple credentials are filled (otherwise keep `0`)
    - `GOOGLE_VALIDATION_ENABLED=1` only after Google credentials are filled (otherwise keep `0`)
+   - `APP_SESSION_SECRET` is set (required for app session auth)
 7. Deploy.
 8. Copy backend URL from Render, for example:
    - `https://almost-monetization-backend.onrender.com`
@@ -51,18 +53,20 @@ Prerequisite: push current `main` branch to GitHub (`git push origin main`).
 ## EAS env vars to set
 
 - `EXPO_PUBLIC_MONETIZATION_BACKEND_URL` = your backend base URL
-- `EXPO_PUBLIC_MONETIZATION_SHARED_SECRET` = value of `APP_SHARED_SECRET` from backend environment
 
 Commands:
 
 ```bash
 cd /Users/sasarei/Downloads/almost_clean
 eas secret:create --scope project --name EXPO_PUBLIC_MONETIZATION_BACKEND_URL --type string --value "https://<backend-domain>" --non-interactive --force
-eas secret:create --scope project --name EXPO_PUBLIC_MONETIZATION_SHARED_SECRET --type string --value "<APP_SHARED_SECRET>" --non-interactive --force
 ```
 
 ## App Store Server Notifications URL
 
 Set in App Store Connect:
 
-`https://<backend-domain>/v1/webhooks/apple?secret=<APPLE_WEBHOOK_SECRET>`
+`https://<backend-domain>/v1/webhooks/apple`
+
+Send header:
+
+`x-apple-webhook-secret: <APPLE_WEBHOOK_SECRET>`

@@ -30,8 +30,10 @@ services:
         value: "2000"
       - key: STORE_PATH
         value: /var/data/almost-store.json
-      - key: APP_SHARED_SECRET
+      - key: APP_SESSION_SECRET
         generateValue: true
+      - key: APP_SESSION_TTL_MS
+        value: "300000"
       - key: APPLE_WEBHOOK_SECRET
         generateValue: true
       - key: WEBHOOK_SHARED_SECRET

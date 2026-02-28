@@ -29,12 +29,16 @@ if [[ ! -f "${BACKEND_DIR}/certs/AppleRootCA-G3.cer" ]]; then
 fi
 
 if [[ ! -f "${BACKEND_DIR}/.env" ]]; then
-  APP_SHARED_SECRET="$(openssl rand -hex 32)"
+  APP_SESSION_SECRET="$(openssl rand -hex 32)"
   APPLE_WEBHOOK_SECRET="$(openssl rand -hex 32)"
   cat > "${BACKEND_DIR}/.env" <<EOF
 PORT=${PORT}
 NODE_ENV=production
-APP_SHARED_SECRET=${APP_SHARED_SECRET}
+APP_SHARED_SECRET=
+APP_SESSION_SECRET=${APP_SESSION_SECRET}
+APP_SESSION_TTL_MS=300000
+CORS_ORIGINS=
+WEBHOOK_QUERY_SECRET_ENABLED=0
 WEBHOOK_SHARED_SECRET=
 APPLE_VALIDATION_ENABLED=0
 APPLE_ENVIRONMENT=production
@@ -58,6 +62,17 @@ fi
 APPLE_WEBHOOK_SECRET="$(
   awk -F= '/^APPLE_WEBHOOK_SECRET=/{print $2}' "${BACKEND_DIR}/.env" | tr -d '\r' | tr -d '\n'
 )"
+APP_SESSION_SECRET="$(
+  awk -F= '/^APP_SESSION_SECRET=/{print $2}' "${BACKEND_DIR}/.env" | tr -d '\r' | tr -d '\n'
+)"
+
+if [[ -z "${APP_SESSION_SECRET}" ]]; then
+  APP_SESSION_SECRET="$(openssl rand -hex 32)"
+  {
+    echo "APP_SESSION_SECRET=${APP_SESSION_SECRET}"
+    echo "APP_SESSION_TTL_MS=300000"
+  } >> "${BACKEND_DIR}/.env"
+fi
 
 if [[ -z "${APPLE_WEBHOOK_SECRET}" ]]; then
   echo "APPLE_WEBHOOK_SECRET is missing in ${BACKEND_DIR}/.env" >&2
@@ -116,7 +131,8 @@ if [[ "${TUNNEL_URL}" != http://* && "${TUNNEL_URL}" != https://* ]]; then
 fi
 
 echo "Backend health URL: ${TUNNEL_URL}/health"
-echo "Apple webhook URL: ${TUNNEL_URL}/v1/webhooks/apple?secret=${APPLE_WEBHOOK_SECRET}"
+echo "Apple webhook URL: ${TUNNEL_URL}/v1/webhooks/apple"
+echo "Apple webhook header: x-apple-webhook-secret: ${APPLE_WEBHOOK_SECRET}"
 echo "Google RTDN webhook URL: ${TUNNEL_URL}/v1/webhooks/google/rtdn"
 echo
 echo "Keep this terminal open while testing."

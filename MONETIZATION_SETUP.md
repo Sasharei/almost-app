@@ -7,7 +7,6 @@ Set these for mobile builds:
 - `EXPO_PUBLIC_RC_IOS_API_KEY`
 - `EXPO_PUBLIC_RC_ANDROID_API_KEY`
 - `EXPO_PUBLIC_MONETIZATION_BACKEND_URL` (example: `https://api.almost.app`)
-- `EXPO_PUBLIC_MONETIZATION_SHARED_SECRET` (optional, should match backend `APP_SHARED_SECRET`)
 
 ## RevenueCat setup
 
@@ -63,8 +62,9 @@ Main endpoints:
 
 - `POST /v1/entitlements/sync`
 - `POST /v1/iap/validate`
+- `POST /v1/auth/session`
 - `POST /v1/webhooks/apple`
 - `POST /v1/webhooks/google/rtdn`
 - `GET /v1/entitlements/:appUserId`
 
-Client purchase flow now attempts server validation (`/v1/iap/validate`) after purchase/restore when transaction identifiers are available, with entitlement sync as fallback.
+Client purchase flow now requests a short-lived backend auth session (`/v1/auth/session`) and then attempts server validation (`/v1/iap/validate`) after purchase/restore when transaction identifiers are available, with entitlement sync as telemetry fallback.

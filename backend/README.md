@@ -8,11 +8,12 @@ Production-grade baseline backend for subscription validation and anti-fraud.
 - Maintains server-side entitlement state per user.
 - Supports idempotent validation requests.
 - Applies anti-fraud risk scoring (replay, missing identifiers, request bursts).
-- Accepts client entitlement snapshots as low-trust sync events.
+- Accepts client entitlement snapshots as low-trust telemetry sync events (does not grant premium access).
 
 ## Endpoints
 
 - `GET /health`
+- `POST /v1/auth/session`
 - `GET /v1/entitlements/:appUserId`
 - `POST /v1/entitlements/sync`
 - `POST /v1/iap/validate`
@@ -33,9 +34,11 @@ Server default URL: `http://localhost:8787`
 
 ## Security notes
 
-- Set `APP_SHARED_SECRET` and require clients to send `x-app-secret`.
+- Set `APP_SESSION_SECRET` to enable short-lived bearer auth for app endpoints.
+- `APP_SHARED_SECRET` is legacy fallback and should be removed after session auth rollout.
 - Set webhook secret (`WEBHOOK_SHARED_SECRET`, or provider-specific secrets) for S2S endpoints.
-- For Apple notifications in production, enable signature verification and configure `APPLE_ROOT_CA_PATHS`.
+- For Apple notifications in production, keep signature verification enabled and configure `APPLE_ROOT_CA_PATHS`.
+- Pass webhook secret only via headers (`x-webhook-secret` / provider-specific header), not query params.
 - Put backend behind HTTPS + API gateway.
 - Set `STORE_PATH` to persist entitlement/replay state to disk across restarts (single-instance durability).
 - For HA/multi-instance, move store to Postgres/Redis.

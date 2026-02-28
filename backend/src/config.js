@@ -7,6 +7,12 @@ const parseIntOrDefault = (value, fallback) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const parseBooleanEnv = (value, fallback = false) => {
+  if (value === "1" || value === "true") return true;
+  if (value === "0" || value === "false") return false;
+  return fallback;
+};
+
 const normalizePem = (value = "") => {
   if (!value) return "";
   return String(value).replace(/\\n/g, "\n");
@@ -28,11 +34,23 @@ const parseCsvEnv = (value = "") =>
     .filter(Boolean);
 
 const isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
+const nodeEnv = process.env.NODE_ENV || "development";
+const isProductionEnv = nodeEnv === "production";
+const forceAppleWebhookVerificationInProd =
+  isProductionEnv && process.env.ALLOW_INSECURE_APPLE_WEBHOOKS !== "1";
+const sessionSecret = process.env.APP_SESSION_SECRET || "";
 
 export const config = {
-  nodeEnv: process.env.NODE_ENV || "development",
+  nodeEnv,
   port: parseIntOrDefault(process.env.PORT, 8787),
+  corsOrigins: parseCsvEnv(process.env.CORS_ORIGINS || ""),
+  webhookAllowQuerySecret: parseBooleanEnv(process.env.WEBHOOK_QUERY_SECRET_ENABLED || "", false),
   appSharedSecret: process.env.APP_SHARED_SECRET || "",
+  session: {
+    enabled: isNonEmptyString(sessionSecret),
+    secret: sessionSecret,
+    ttlMs: parseIntOrDefault(process.env.APP_SESSION_TTL_MS, 5 * 60 * 1000),
+  },
   requestTtlMs: parseIntOrDefault(process.env.REQUEST_TTL_MS, 15 * 60 * 1000),
   replayWindowMs: parseIntOrDefault(process.env.REPLAY_WINDOW_MS, 24 * 60 * 60 * 1000),
   storePath: process.env.STORE_PATH || "",
@@ -47,8 +65,10 @@ export const config = {
     appAppleId: parseIntOrDefault(process.env.APPLE_APPLE_ID, 0) || null,
     webhook: {
       secret: process.env.APPLE_WEBHOOK_SECRET || process.env.WEBHOOK_SHARED_SECRET || "",
-      verifySignature: process.env.APPLE_WEBHOOK_VERIFY_SIGNATURE === "1",
-      requireVerified: process.env.APPLE_WEBHOOK_REQUIRE_VERIFIED === "1",
+      verifySignature:
+        forceAppleWebhookVerificationInProd || process.env.APPLE_WEBHOOK_VERIFY_SIGNATURE === "1",
+      requireVerified:
+        forceAppleWebhookVerificationInProd || process.env.APPLE_WEBHOOK_REQUIRE_VERIFIED === "1",
       enableOnlineChecks: process.env.APPLE_WEBHOOK_ONLINE_CHECKS === "1",
       rootCaPaths: parseCsvEnv(process.env.APPLE_ROOT_CA_PATHS || ""),
     },
@@ -65,7 +85,7 @@ export const config = {
   },
 };
 
-export const isProduction = config.nodeEnv === "production";
+export const isProduction = isProductionEnv;
 
 const getAppleValidationMissing = () => {
   const missing = [];
@@ -85,20 +105,38 @@ const getGoogleValidationMissing = () => {
 
 const getAppleWebhookVerificationMissing = () => {
   const missing = [];
+  if (config.apple.webhook.requireVerified && !config.apple.webhook.verifySignature) {
+    missing.push("APPLE_WEBHOOK_VERIFY_SIGNATURE");
+  }
   if (!config.apple.webhook.verifySignature) return missing;
   if (!Array.isArray(config.apple.webhook.rootCaPaths) || !config.apple.webhook.rootCaPaths.length) {
     missing.push("APPLE_ROOT_CA_PATHS");
+  }
+  if (isProduction && !isNonEmptyString(config.apple.webhook.secret)) {
+    missing.push("APPLE_WEBHOOK_SECRET");
   }
   return missing;
 };
 
 export const getBackendReadiness = () => {
+  const sharedSecretConfigured = isNonEmptyString(config.appSharedSecret);
+  const sessionAuthEnabled = !!config.session.enabled;
+  const appAuthMode = sessionAuthEnabled ? "session_token" : sharedSecretConfigured ? "shared_secret" : "none";
   const appleValidationMissing = config.apple.enabled ? getAppleValidationMissing() : [];
   const googleValidationMissing = config.google.enabled ? getGoogleValidationMissing() : [];
   const appleWebhookVerificationMissing = getAppleWebhookVerificationMissing();
 
   return {
-    sharedSecretConfigured: isNonEmptyString(config.appSharedSecret),
+    sharedSecretConfigured,
+    appAuth: {
+      mode: appAuthMode,
+      sessionEnabled: sessionAuthEnabled,
+      sharedSecretConfigured,
+    },
+    cors: {
+      restricted: Array.isArray(config.corsOrigins) && config.corsOrigins.length > 0,
+      allowedOrigins: Array.isArray(config.corsOrigins) ? config.corsOrigins : [],
+    },
     validation: {
       apple: {
         enabled: config.apple.enabled,
@@ -114,6 +152,8 @@ export const getBackendReadiness = () => {
     webhooks: {
       apple: {
         verifySignature: config.apple.webhook.verifySignature,
+        requireVerified: config.apple.webhook.requireVerified,
+        acceptQuerySecret: config.webhookAllowQuerySecret,
         ready: !appleWebhookVerificationMissing.length,
         missing: appleWebhookVerificationMissing,
       },
