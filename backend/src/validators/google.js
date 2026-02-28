@@ -3,6 +3,17 @@ import { config } from "../config.js";
 
 let androidPublisher = null;
 
+const getGoogleValidationMissingConfig = () => {
+  const missing = [];
+  if (!String(config.google.packageName || "").trim()) {
+    missing.push("GOOGLE_PACKAGE_NAME");
+  }
+  if (!config.google.serviceAccountJson) {
+    missing.push("GOOGLE_SERVICE_ACCOUNT_JSON");
+  }
+  return missing;
+};
+
 const getAndroidPublisher = async () => {
   if (androidPublisher) return androidPublisher;
   if (!config.google.serviceAccountJson) {
@@ -82,18 +93,20 @@ export const validateGooglePurchase = async ({ purchaseToken, productId }) => {
       reason: "google_validation_disabled",
     };
   }
+  const missingConfig = getGoogleValidationMissingConfig();
+  if (missingConfig.length) {
+    return {
+      ok: false,
+      trusted: false,
+      reason: "google_config_incomplete",
+      missing: missingConfig,
+    };
+  }
   if (!purchaseToken) {
     return {
       ok: false,
       trusted: false,
       reason: "missing_purchase_token",
-    };
-  }
-  if (!config.google.packageName) {
-    return {
-      ok: false,
-      trusted: false,
-      reason: "missing_google_package_name",
     };
   }
 

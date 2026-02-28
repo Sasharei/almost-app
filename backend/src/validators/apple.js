@@ -3,6 +3,15 @@ import { config } from "../config.js";
 
 let appleClient = null;
 
+const getAppleValidationMissingConfig = () => {
+  const missing = [];
+  if (!String(config.apple.bundleId || "").trim()) missing.push("APPLE_BUNDLE_ID");
+  if (!String(config.apple.issuerId || "").trim()) missing.push("APPLE_ISSUER_ID");
+  if (!String(config.apple.keyId || "").trim()) missing.push("APPLE_KEY_ID");
+  if (!String(config.apple.privateKey || "").trim()) missing.push("APPLE_PRIVATE_KEY");
+  return missing;
+};
+
 const decodeJwsPayload = (jws = "") => {
   if (!jws || typeof jws !== "string") return null;
   const parts = jws.split(".");
@@ -43,6 +52,15 @@ export const validateApplePurchase = async ({ transactionId }) => {
       ok: false,
       trusted: false,
       reason: "apple_validation_disabled",
+    };
+  }
+  const missingConfig = getAppleValidationMissingConfig();
+  if (missingConfig.length) {
+    return {
+      ok: false,
+      trusted: false,
+      reason: "apple_config_incomplete",
+      missing: missingConfig,
     };
   }
   if (!transactionId) {

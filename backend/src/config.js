@@ -27,6 +27,8 @@ const parseCsvEnv = (value = "") =>
     .map((part) => part.trim())
     .filter(Boolean);
 
+const isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
+
 export const config = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: parseIntOrDefault(process.env.PORT, 8787),
@@ -64,3 +66,57 @@ export const config = {
 };
 
 export const isProduction = config.nodeEnv === "production";
+
+const getAppleValidationMissing = () => {
+  const missing = [];
+  if (!isNonEmptyString(config.apple.bundleId)) missing.push("APPLE_BUNDLE_ID");
+  if (!isNonEmptyString(config.apple.issuerId)) missing.push("APPLE_ISSUER_ID");
+  if (!isNonEmptyString(config.apple.keyId)) missing.push("APPLE_KEY_ID");
+  if (!isNonEmptyString(config.apple.privateKey)) missing.push("APPLE_PRIVATE_KEY");
+  return missing;
+};
+
+const getGoogleValidationMissing = () => {
+  const missing = [];
+  if (!isNonEmptyString(config.google.packageName)) missing.push("GOOGLE_PACKAGE_NAME");
+  if (!config.google.serviceAccountJson) missing.push("GOOGLE_SERVICE_ACCOUNT_JSON");
+  return missing;
+};
+
+const getAppleWebhookVerificationMissing = () => {
+  const missing = [];
+  if (!config.apple.webhook.verifySignature) return missing;
+  if (!Array.isArray(config.apple.webhook.rootCaPaths) || !config.apple.webhook.rootCaPaths.length) {
+    missing.push("APPLE_ROOT_CA_PATHS");
+  }
+  return missing;
+};
+
+export const getBackendReadiness = () => {
+  const appleValidationMissing = config.apple.enabled ? getAppleValidationMissing() : [];
+  const googleValidationMissing = config.google.enabled ? getGoogleValidationMissing() : [];
+  const appleWebhookVerificationMissing = getAppleWebhookVerificationMissing();
+
+  return {
+    sharedSecretConfigured: isNonEmptyString(config.appSharedSecret),
+    validation: {
+      apple: {
+        enabled: config.apple.enabled,
+        ready: !config.apple.enabled || !appleValidationMissing.length,
+        missing: appleValidationMissing,
+      },
+      google: {
+        enabled: config.google.enabled,
+        ready: !config.google.enabled || !googleValidationMissing.length,
+        missing: googleValidationMissing,
+      },
+    },
+    webhooks: {
+      apple: {
+        verifySignature: config.apple.webhook.verifySignature,
+        ready: !appleWebhookVerificationMissing.length,
+        missing: appleWebhookVerificationMissing,
+      },
+    },
+  };
+};

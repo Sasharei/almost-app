@@ -37,12 +37,16 @@ Prerequisite: push current `main` branch to GitHub (`git push origin main`).
    - `APPLE_PRIVATE_KEY` (full `.p8` content, including header/footer)
    - `APPLE_APPLE_ID` (numeric app id from App Store Connect)
    - `GOOGLE_SERVICE_ACCOUNT_JSON` (when Android validation is enabled)
-6. In Render service `Environment`, switch:
-   - `APPLE_VALIDATION_ENABLED=1` (when Apple credentials are added)
-   - `GOOGLE_VALIDATION_ENABLED=1` (when Google credentials are added)
+6. In Render service `Environment`, ensure:
+   - `APPLE_VALIDATION_ENABLED=1` only after Apple credentials are filled (otherwise keep `0`)
+   - `GOOGLE_VALIDATION_ENABLED=1` only after Google credentials are filled (otherwise keep `0`)
 7. Deploy.
 8. Copy backend URL from Render, for example:
    - `https://almost-monetization-backend.onrender.com`
+9. Verify readiness:
+   - Open `https://<backend-domain>/health`
+   - Ensure `readiness.validation.apple.ready` and `readiness.validation.google.ready` are `true`
+   - If `false`, check `readiness.validation.<provider>.missing` for exact missing env vars
 
 ## EAS env vars to set
 

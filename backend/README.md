@@ -19,6 +19,8 @@ Production-grade baseline backend for subscription validation and anti-fraud.
 - `POST /v1/webhooks/apple`
 - `POST /v1/webhooks/google/rtdn`
 
+`GET /health` now includes a `readiness` section showing whether Apple/Google validation is enabled and which required env vars are missing.
+
 ## Quick start
 
 1. `cd backend`
@@ -38,3 +40,9 @@ Server default URL: `http://localhost:8787`
 - Set `STORE_PATH` to persist entitlement/replay state to disk across restarts (single-instance durability).
 - For HA/multi-instance, move store to Postgres/Redis.
 - App Store/RTDN handlers are included; wire them to your production app ids and credentials.
+
+## Validation readiness
+
+- Apple validation returns `apple_config_incomplete` if required Apple credentials are missing while `APPLE_VALIDATION_ENABLED=1`.
+- Google validation returns `google_config_incomplete` with `missing` env var names when misconfigured and `GOOGLE_VALIDATION_ENABLED=1`.
+- Check `/health` after deploy to confirm readiness before sending users to paywall.
