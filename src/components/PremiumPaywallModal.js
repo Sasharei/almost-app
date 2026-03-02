@@ -8,6 +8,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   Text,
   TouchableOpacity,
   View,
@@ -49,9 +50,19 @@ const PremiumPaywallModal = ({
   const borderColor = colors?.border || "rgba(11,22,48,0.12)";
   const accent = "#4353FF";
   const isAndroid = Platform.OS === "android";
+  const isNativeMobile = Platform.OS === "android" || Platform.OS === "ios";
+  const { height: viewportHeight } = useWindowDimensions();
+  const isCompactAndroid = isNativeMobile && viewportHeight <= 860;
+  const isVeryCompactAndroid = isNativeMobile && viewportHeight <= 760;
+  const showSecondaryLegalNotice = !isVeryCompactAndroid;
   const disableAndroidMotion = Platform.OS === "android";
 
   const comparisonRows = Array.isArray(copy?.comparisonRows) ? copy.comparisonRows : [];
+  const visibleComparisonRows = useMemo(() => {
+    if (!isCompactAndroid) return comparisonRows;
+    const maxRows = isVeryCompactAndroid ? 4 : 6;
+    return comparisonRows.slice(0, maxRows);
+  }, [comparisonRows, isCompactAndroid, isVeryCompactAndroid]);
 
   useEffect(() => {
     if (!visible) return;
@@ -213,6 +224,7 @@ const PremiumPaywallModal = ({
         <TouchableOpacity
           style={[
             styles.primaryButton,
+            isCompactAndroid ? styles.primaryButtonCompactAndroid : null,
             { backgroundColor: purchaseDisabled ? "rgba(67,83,255,0.45)" : accent },
           ]}
           onPress={handlePrimaryPress}
@@ -222,14 +234,20 @@ const PremiumPaywallModal = ({
           {purchaseLoadingPlan ? (
             <ActivityIndicator color="#FFFFFF" size="small" />
           ) : (
-            <Text style={styles.primaryButtonText}>{primaryButtonTitle}</Text>
+            <Text style={[styles.primaryButtonText, isCompactAndroid ? styles.primaryButtonTextCompactAndroid : null]}>
+              {primaryButtonTitle}
+            </Text>
           )}
         </TouchableOpacity>
       </Animated.View>
 
-      <View style={styles.footerRow}>
+      <View style={[styles.footerRow, isCompactAndroid ? styles.footerRowCompactAndroid : null]}>
         <TouchableOpacity
-          style={[styles.footerSecondaryButton, { borderColor }]}
+          style={[
+            styles.footerSecondaryButton,
+            isCompactAndroid ? styles.footerSecondaryButtonCompactAndroid : null,
+            { borderColor },
+          ]}
           onPress={() => onRestorePress({ source: "restore_button" })}
           disabled={!!purchaseLoadingPlan || restoring}
           activeOpacity={0.85}
@@ -237,54 +255,88 @@ const PremiumPaywallModal = ({
           {restoring ? (
             <ActivityIndicator size="small" color={textColor} />
           ) : (
-            <Text style={[styles.footerSecondaryButtonText, { color: textColor }]}>{copy.ctaRestore}</Text>
+            <Text
+              style={[
+                styles.footerSecondaryButtonText,
+                isCompactAndroid ? styles.footerSecondaryButtonTextCompactAndroid : null,
+                { color: textColor },
+              ]}
+            >
+              {copy.ctaRestore}
+            </Text>
           )}
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.footerGhostButton, { borderColor }]}
+          style={[styles.footerGhostButton, isCompactAndroid ? styles.footerGhostButtonCompactAndroid : null, { borderColor }]}
           onPress={() => onClose("footer_close")}
           disabled={!!purchaseLoadingPlan || restoring}
           activeOpacity={0.85}
         >
-          <Text style={[styles.footerGhostButtonText, { color: mutedColor }]}>{copy.ctaClose}</Text>
+          <Text
+            style={[
+              styles.footerGhostButtonText,
+              isCompactAndroid ? styles.footerGhostButtonTextCompactAndroid : null,
+              { color: mutedColor },
+            ]}
+          >
+            {copy.ctaClose}
+          </Text>
         </TouchableOpacity>
       </View>
 
       <TouchableOpacity
-        style={[styles.footerManageButton, { borderColor }]}
+        style={[styles.footerManageButton, isCompactAndroid ? styles.footerManageButtonCompactAndroid : null, { borderColor }]}
         onPress={() => onManagePress({ source: "manage_button" })}
         activeOpacity={0.85}
       >
-        <Text style={[styles.footerManageButtonText, { color: textColor }]}>
+        <Text
+          style={[
+            styles.footerManageButtonText,
+            isCompactAndroid ? styles.footerManageButtonTextCompactAndroid : null,
+            { color: textColor },
+          ]}
+        >
           {copy?.ctaManage || "Manage subscription"}
         </Text>
       </TouchableOpacity>
 
       {!!copy?.billingNotice && (
-        <Text style={[styles.footerLegalNotice, { color: mutedColor }]}>{copy.billingNotice}</Text>
+        <Text
+          style={[styles.footerLegalNotice, isCompactAndroid ? styles.footerLegalNoticeCompactAndroid : null, { color: mutedColor }]}
+          numberOfLines={isCompactAndroid ? 2 : undefined}
+        >
+          {copy.billingNotice}
+        </Text>
       )}
-      {!!copy?.legalNotice && (
-        <Text style={[styles.footerLegalNotice, { color: mutedColor }]}>{copy.legalNotice}</Text>
+      {!!copy?.legalNotice && showSecondaryLegalNotice && (
+        <Text
+          style={[styles.footerLegalNotice, isCompactAndroid ? styles.footerLegalNoticeCompactAndroid : null, { color: mutedColor }]}
+          numberOfLines={isCompactAndroid ? 2 : undefined}
+        >
+          {copy.legalNotice}
+        </Text>
       )}
 
-      <View style={styles.footerLegalLinksRow}>
+      <View style={[styles.footerLegalLinksRow, isCompactAndroid ? styles.footerLegalLinksRowCompactAndroid : null]}>
         <TouchableOpacity
           onPress={() => onTermsPress({ source: "terms_link" })}
           activeOpacity={0.8}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Text style={[styles.footerLegalLinkText, { color: textColor }]}>
+          <Text style={[styles.footerLegalLinkText, isCompactAndroid ? styles.footerLegalLinkTextCompactAndroid : null, { color: textColor }]}>
             {copy?.legalTermsLabel || "Terms"}
           </Text>
         </TouchableOpacity>
-        <Text style={[styles.footerLegalDot, { color: mutedColor }]}>•</Text>
+        <Text style={[styles.footerLegalDot, isCompactAndroid ? styles.footerLegalDotCompactAndroid : null, { color: mutedColor }]}>
+          •
+        </Text>
         <TouchableOpacity
           onPress={() => onPrivacyPress({ source: "privacy_link" })}
           activeOpacity={0.8}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Text style={[styles.footerLegalLinkText, { color: textColor }]}>
+          <Text style={[styles.footerLegalLinkText, isCompactAndroid ? styles.footerLegalLinkTextCompactAndroid : null, { color: textColor }]}>
             {copy?.legalPrivacyLabel || "Privacy"}
           </Text>
         </TouchableOpacity>
@@ -296,45 +348,111 @@ const PremiumPaywallModal = ({
     <Animated.View
       style={[
         styles.header,
-        isAndroid ? styles.headerCompactAndroid : null,
+        isNativeMobile ? styles.headerCompactAndroid : null,
+        isCompactAndroid ? styles.headerCompactAndroidSmall : null,
+        isVeryCompactAndroid ? styles.headerCompactAndroidTiny : null,
         disableAndroidMotion ? null : { transform: [{ translateY: headerTranslateY }] },
       ]}
     >
       <TouchableOpacity
-        style={styles.closeButton}
+        style={[
+          styles.closeButton,
+          isNativeMobile ? styles.closeButtonAndroid : null,
+          isCompactAndroid ? styles.closeButtonCompactAndroid : null,
+          isVeryCompactAndroid ? styles.closeButtonVeryCompactAndroid : null,
+        ]}
         onPress={() => onClose("header_close")}
         activeOpacity={0.85}
       >
-        <Text style={styles.closeButtonText}>✕</Text>
+        <Text
+          style={[
+            styles.closeButtonText,
+            isCompactAndroid ? styles.closeButtonTextCompactAndroid : null,
+          ]}
+        >
+          ✕
+        </Text>
       </TouchableOpacity>
 
-      <View style={styles.headerBadge}>
-        <Text style={styles.headerBadgeText}>{copy.badgeLabel}</Text>
+      <View
+        style={[
+          styles.headerBadge,
+          isNativeMobile ? styles.headerBadgeAndroid : null,
+          isCompactAndroid ? styles.headerBadgeCompactAndroid : null,
+          isVeryCompactAndroid ? styles.headerBadgeVeryCompactAndroid : null,
+        ]}
+      >
+        <Text
+          style={[
+            styles.headerBadgeText,
+            isCompactAndroid ? styles.headerBadgeTextCompactAndroid : null,
+          ]}
+        >
+          {copy.badgeLabel}
+        </Text>
       </View>
 
-      <Text style={styles.headerTitle}>{copy.title}</Text>
-      <Text style={styles.headerSubtitle}>{copy.subtitle}</Text>
+      <Text
+        style={[
+          styles.headerTitle,
+          isNativeMobile ? styles.headerTitleAndroid : null,
+          isCompactAndroid ? styles.headerTitleCompactAndroid : null,
+          isVeryCompactAndroid ? styles.headerTitleVeryCompactAndroid : null,
+        ]}
+      >
+        {copy.title}
+      </Text>
+      {!!copy.subtitle && !copy.psychologyLine && (
+        <Text
+          style={[
+            styles.headerSubtitle,
+            isCompactAndroid ? styles.headerSubtitleCompactAndroid : null,
+            isVeryCompactAndroid ? styles.headerSubtitleVeryCompactAndroid : null,
+          ]}
+        >
+          {copy.subtitle}
+        </Text>
+      )}
 
       {!!copy.psychologyLine && (
-        <View style={styles.psychologyChip}>
-          <Text style={styles.psychologyChipText}>{copy.psychologyLine}</Text>
+        <View
+          style={[
+            styles.psychologyChip,
+            isCompactAndroid ? styles.psychologyChipCompactAndroid : null,
+            isVeryCompactAndroid ? styles.psychologyChipVeryCompactAndroid : null,
+          ]}
+        >
+          <Text
+            style={[
+              styles.psychologyChipText,
+              isCompactAndroid ? styles.psychologyChipTextCompactAndroid : null,
+            ]}
+          >
+            {copy.psychologyLine}
+          </Text>
         </View>
       )}
 
-      <Animated.View
-        style={[
-          styles.mascotWrap,
-          disableAndroidMotion ? null : { transform: [{ translateY: mascotTranslateY }] },
-        ]}
-      >
-        <Text style={styles.mascot}>🪽💸</Text>
-      </Animated.View>
+      {!isVeryCompactAndroid && (
+        <Animated.View
+          style={[
+            styles.mascotWrap,
+            isNativeMobile ? styles.mascotWrapAndroid : null,
+            isCompactAndroid ? styles.mascotWrapCompactAndroid : null,
+            disableAndroidMotion ? null : { transform: [{ translateY: mascotTranslateY }] },
+          ]}
+        >
+          <Text style={[styles.mascot, isNativeMobile ? styles.mascotAndroid : null, isCompactAndroid ? styles.mascotCompactAndroid : null]}>
+            🪽💸
+          </Text>
+        </Animated.View>
+      )}
     </Animated.View>
   );
 
   const sheetContent = (
     <>
-      <View style={[styles.comparisonCard, { borderColor }]}>
+      <View style={[styles.comparisonCard, isCompactAndroid ? styles.comparisonCardCompactAndroid : null, { borderColor }]}>
         <View style={styles.comparisonHeader}>
           <View style={styles.comparisonFeatureColumn} />
           <Text style={[styles.comparisonHeaderText, { color: mutedColor }]}>
@@ -345,16 +463,19 @@ const PremiumPaywallModal = ({
           </View>
         </View>
 
-        {comparisonRows.map((row, index) => (
+        {visibleComparisonRows.map((row, index) => (
           <Animated.View
             key={`${row.label}_${index}`}
             style={[
               styles.comparisonRow,
-              index === comparisonRows.length - 1 && styles.comparisonRowLast,
-              getRowAnimatedStyle(index, comparisonRows.length),
+              isCompactAndroid ? styles.comparisonRowCompactAndroid : null,
+              index === visibleComparisonRows.length - 1 && styles.comparisonRowLast,
+              getRowAnimatedStyle(index, visibleComparisonRows.length),
             ]}
           >
-            <Text style={[styles.comparisonFeatureText, { color: textColor }]}>{row.label}</Text>
+            <Text style={[styles.comparisonFeatureText, isCompactAndroid ? styles.comparisonFeatureTextCompactAndroid : null, { color: textColor }]}>
+              {row.label}
+            </Text>
             <Text style={[styles.comparisonMark, { color: row.free ? "#4D5A78" : "#B7BDCF" }]}>
               {row.free ? "✓" : "—"}
             </Text>
@@ -365,21 +486,23 @@ const PremiumPaywallModal = ({
         ))}
       </View>
 
-      {!!copy.unlockLevelsLine && (
-        <View style={styles.unlockLevelCard}>
+      {!!copy.unlockLevelsLine && !isVeryCompactAndroid && (
+        <View style={[styles.unlockLevelCard, isCompactAndroid ? styles.unlockLevelCardCompactAndroid : null]}>
           <Text style={[styles.unlockLevelCardText, { color: textColor }]}>{copy.unlockLevelsLine}</Text>
         </View>
       )}
 
       <View style={styles.planSection}>
-        <Text style={[styles.planSectionTitle, { color: textColor }]}>
+        <Text style={[styles.planSectionTitle, isCompactAndroid ? styles.planSectionTitleCompactAndroid : null, { color: textColor }]}>
           {copy.planSectionTitle || "Choose your Premium plan"}
         </Text>
-        <Text style={[styles.planSectionHint, { color: mutedColor }]}>
-          {copy.planHint || "Select a plan and tap the button below"}
-        </Text>
+        {!isVeryCompactAndroid && (
+          <Text style={[styles.planSectionHint, isCompactAndroid ? styles.planSectionHintCompactAndroid : null, { color: mutedColor }]}>
+            {copy.planHint || "Select a plan and tap the button below"}
+          </Text>
+        )}
 
-        <View style={styles.planList}>
+        <View style={[styles.planList, isCompactAndroid ? styles.planListCompactAndroid : null]}>
           {planCards.map((plan) => {
             const selected = plan.id === selectedPlanId;
             const unavailable = plan.available === false;
@@ -395,6 +518,7 @@ const PremiumPaywallModal = ({
                 disabled={!!purchaseLoadingPlan || restoring}
                 style={[
                   styles.planCard,
+                  isCompactAndroid ? styles.planCardCompactAndroid : null,
                   {
                     borderColor: selected ? accent : borderColor,
                     backgroundColor: selected ? "rgba(67,83,255,0.1)" : "#FFFFFF",
@@ -403,17 +527,21 @@ const PremiumPaywallModal = ({
                 ]}
               >
                 <View style={styles.planTopRow}>
-                  <Text style={[styles.planTitle, { color: textColor }]}>{plan.label}</Text>
+                  <Text style={[styles.planTitle, isCompactAndroid ? styles.planTitleCompactAndroid : null, { color: textColor }]}>
+                    {plan.label}
+                  </Text>
                   {plan.badge ? (
                     <View
                       style={[
                         styles.planBadge,
+                        isCompactAndroid ? styles.planBadgeCompactAndroid : null,
                         { backgroundColor: selected ? accent : "rgba(11,22,48,0.08)" },
                       ]}
                     >
                       <Text
                         style={[
                           styles.planBadgeText,
+                          isCompactAndroid ? styles.planBadgeTextCompactAndroid : null,
                           { color: selected ? "#FFFFFF" : textColor },
                         ]}
                       >
@@ -429,12 +557,15 @@ const PremiumPaywallModal = ({
                   ) : null}
                 </View>
                 <View style={styles.planBottomRow}>
-                  <Text style={[styles.planPrice, { color: textColor }]}>{plan.priceLabel}</Text>
+                  <Text style={[styles.planPrice, isCompactAndroid ? styles.planPriceCompactAndroid : null, { color: textColor }]}>
+                    {plan.priceLabel}
+                  </Text>
                   <View style={styles.planPriceMeta}>
                     {!!plan.secondaryLabel && (
                       <Text
                         style={[
                           styles.planSecondary,
+                          isCompactAndroid ? styles.planSecondaryCompactAndroid : null,
                           { color: mutedColor },
                           plan.secondaryKind === "strike" && styles.planSecondaryStrike,
                         ]}
@@ -446,6 +577,7 @@ const PremiumPaywallModal = ({
                       <Text
                         style={[
                           styles.planSecondarySub,
+                          isCompactAndroid ? styles.planSecondarySubCompactAndroid : null,
                           { color: selected ? "#313EEA" : mutedColor },
                         ]}
                       >
@@ -455,7 +587,13 @@ const PremiumPaywallModal = ({
                   </View>
                 </View>
                 {!!plan.equivalentLabel && (
-                  <Text style={[styles.planEquivalent, { color: selected ? "#313EEA" : mutedColor }]}>
+                  <Text
+                    style={[
+                      styles.planEquivalent,
+                      isCompactAndroid ? styles.planEquivalentCompactAndroid : null,
+                      { color: selected ? "#313EEA" : mutedColor },
+                    ]}
+                  >
                     {plan.equivalentLabel}
                   </Text>
                 )}
@@ -500,6 +638,7 @@ const PremiumPaywallModal = ({
           <Animated.View
             style={[
               styles.sheet,
+              isCompactAndroid ? styles.sheetCompactAndroid : null,
               {
                 backgroundColor: cardBg,
               },
@@ -512,11 +651,23 @@ const PremiumPaywallModal = ({
               scrollEnabled
               nestedScrollEnabled={isAndroid}
               keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.sheetScrollContent}
+              contentContainerStyle={[
+                styles.sheetScrollContent,
+                isCompactAndroid ? styles.sheetScrollContentCompactAndroid : null,
+                isVeryCompactAndroid ? styles.sheetScrollContentVeryCompactAndroid : null,
+              ]}
             >
               {sheetContent}
             </ScrollView>
-            <View style={[styles.footer, styles.footerSticky, { borderTopColor: borderColor }]}>
+            <View
+              style={[
+                styles.footer,
+                styles.footerSticky,
+                isCompactAndroid ? styles.footerCompactAndroid : null,
+                isVeryCompactAndroid ? styles.footerVeryCompactAndroid : null,
+                { borderTopColor: borderColor },
+              ]}
+            >
               {footerContent}
             </View>
           </Animated.View>
@@ -554,9 +705,19 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   headerCompactAndroid: {
-    paddingTop: 52,
-    paddingBottom: 18,
-    minHeight: 270,
+    paddingTop: 48,
+    paddingBottom: 16,
+    minHeight: 244,
+  },
+  headerCompactAndroidSmall: {
+    paddingTop: 42,
+    paddingBottom: 12,
+    minHeight: 212,
+  },
+  headerCompactAndroidTiny: {
+    paddingTop: 40,
+    paddingBottom: 10,
+    minHeight: 188,
   },
   closeButton: {
     position: "absolute",
@@ -571,11 +732,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
   },
+  closeButtonAndroid: {
+    top: 42,
+  },
+  closeButtonCompactAndroid: {
+    top: 34,
+    left: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  closeButtonVeryCompactAndroid: {
+    top: 30,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+  },
   closeButtonText: {
     color: "#FFFFFF",
     fontSize: 22,
     fontWeight: "500",
     lineHeight: 23,
+  },
+  closeButtonTextCompactAndroid: {
+    fontSize: 19,
+    lineHeight: 20,
   },
   headerBadge: {
     position: "absolute",
@@ -586,11 +767,27 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     backgroundColor: "rgba(136,103,255,0.95)",
   },
+  headerBadgeAndroid: {
+    top: 44,
+  },
+  headerBadgeCompactAndroid: {
+    top: 34,
+    right: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  headerBadgeVeryCompactAndroid: {
+    top: 30,
+  },
   headerBadgeText: {
     color: "#FFFFFF",
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 0.5,
+  },
+  headerBadgeTextCompactAndroid: {
+    fontSize: 10,
+    letterSpacing: 0.3,
   },
   headerTitle: {
     marginTop: 48,
@@ -600,6 +797,21 @@ const styles = StyleSheet.create({
     lineHeight: 39,
     fontWeight: "800",
   },
+  headerTitleAndroid: {
+    marginTop: 40,
+    fontSize: 30,
+    lineHeight: 35,
+  },
+  headerTitleCompactAndroid: {
+    marginTop: 32,
+    fontSize: 26,
+    lineHeight: 30,
+  },
+  headerTitleVeryCompactAndroid: {
+    marginTop: 30,
+    fontSize: 24,
+    lineHeight: 28,
+  },
   headerSubtitle: {
     marginTop: 10,
     color: "rgba(239,244,255,0.9)",
@@ -607,6 +819,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "600",
+  },
+  headerSubtitleCompactAndroid: {
+    marginTop: 7,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  headerSubtitleVeryCompactAndroid: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 16,
   },
   psychologyChip: {
     alignSelf: "center",
@@ -618,18 +840,42 @@ const styles = StyleSheet.create({
     borderColor: "rgba(21,225,141,0.48)",
     backgroundColor: "rgba(21,225,141,0.18)",
   },
+  psychologyChipCompactAndroid: {
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  psychologyChipVeryCompactAndroid: {
+    marginTop: 6,
+  },
   psychologyChipText: {
     color: "#B9FFE3",
     fontSize: 12,
     fontWeight: "700",
     textAlign: "center",
   },
+  psychologyChipTextCompactAndroid: {
+    fontSize: 11,
+    lineHeight: 14,
+  },
   mascotWrap: {
     alignSelf: "center",
     marginTop: 14,
   },
+  mascotWrapAndroid: {
+    marginTop: 10,
+  },
+  mascotWrapCompactAndroid: {
+    marginTop: 8,
+  },
   mascot: {
     fontSize: 56,
+  },
+  mascotAndroid: {
+    fontSize: 46,
+  },
+  mascotCompactAndroid: {
+    fontSize: 38,
   },
   sheet: {
     flex: 1,
@@ -639,11 +885,26 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 30,
     overflow: "hidden",
   },
+  sheetCompactAndroid: {
+    marginTop: -12,
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+  },
   sheetScrollContent: {
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 16,
     gap: 12,
+  },
+  sheetScrollContentCompactAndroid: {
+    paddingTop: 12,
+    paddingBottom: 12,
+    gap: 10,
+  },
+  sheetScrollContentVeryCompactAndroid: {
+    paddingTop: 10,
+    paddingBottom: 10,
+    gap: 8,
   },
   sheetScroll: {
     flex: 1,
@@ -654,6 +915,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     backgroundColor: "#FFFFFF",
     overflow: "hidden",
+  },
+  comparisonCardCompactAndroid: {
+    borderRadius: 16,
   },
   comparisonHeader: {
     flexDirection: "row",
@@ -696,6 +960,9 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "rgba(18,28,58,0.12)",
   },
+  comparisonRowCompactAndroid: {
+    paddingVertical: 8,
+  },
   comparisonRowLast: {
     paddingBottom: 12,
   },
@@ -705,6 +972,10 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     fontWeight: "600",
     paddingRight: 8,
+  },
+  comparisonFeatureTextCompactAndroid: {
+    fontSize: 12,
+    lineHeight: 16,
   },
   comparisonMark: {
     width: 54,
@@ -733,6 +1004,9 @@ const styles = StyleSheet.create({
     borderColor: "rgba(67,83,255,0.24)",
     backgroundColor: "rgba(67,83,255,0.08)",
   },
+  unlockLevelCardCompactAndroid: {
+    paddingVertical: 8,
+  },
   unlockLevelCardText: {
     fontSize: 13,
     lineHeight: 18,
@@ -746,14 +1020,25 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: "800",
   },
+  planSectionTitleCompactAndroid: {
+    fontSize: 16,
+    lineHeight: 21,
+  },
   planSectionHint: {
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "600",
   },
+  planSectionHintCompactAndroid: {
+    fontSize: 11,
+    lineHeight: 14,
+  },
   planList: {
     marginTop: 2,
     gap: 8,
+  },
+  planListCompactAndroid: {
+    gap: 7,
   },
   planCard: {
     borderRadius: 14,
@@ -761,6 +1046,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     gap: 8,
+  },
+  planCardCompactAndroid: {
+    borderRadius: 12,
+    paddingVertical: 8,
+    gap: 6,
   },
   planTopRow: {
     flexDirection: "row",
@@ -783,25 +1073,45 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: "800",
   },
+  planTitleCompactAndroid: {
+    fontSize: 14,
+    lineHeight: 17,
+  },
   planBadge: {
     borderRadius: 999,
     paddingHorizontal: 9,
     paddingVertical: 3,
+  },
+  planBadgeCompactAndroid: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
   },
   planBadgeText: {
     fontSize: 10,
     lineHeight: 13,
     fontWeight: "800",
   },
+  planBadgeTextCompactAndroid: {
+    fontSize: 9,
+    lineHeight: 11,
+  },
   planPrice: {
     fontSize: 24,
     lineHeight: 26,
     fontWeight: "900",
   },
+  planPriceCompactAndroid: {
+    fontSize: 21,
+    lineHeight: 23,
+  },
   planSecondary: {
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "700",
+  },
+  planSecondaryCompactAndroid: {
+    fontSize: 11,
+    lineHeight: 14,
   },
   planSecondaryStrike: {
     textDecorationLine: "line-through",
@@ -811,10 +1121,18 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     fontWeight: "700",
   },
+  planSecondarySubCompactAndroid: {
+    fontSize: 10,
+    lineHeight: 13,
+  },
   planEquivalent: {
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "700",
+  },
+  planEquivalentCompactAndroid: {
+    fontSize: 11,
+    lineHeight: 14,
   },
   planLoader: {
     position: "absolute",
@@ -830,6 +1148,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     marginTop: 4,
   },
+  footerCompactAndroid: {
+    paddingTop: 9,
+    paddingBottom: 14,
+    gap: 7,
+  },
+  footerVeryCompactAndroid: {
+    paddingTop: 8,
+    gap: 6,
+  },
   footerSticky: {
     flexShrink: 0,
   },
@@ -844,6 +1171,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 9,
   },
+  primaryButtonCompactAndroid: {
+    minHeight: 48,
+    borderRadius: 14,
+  },
   primaryButtonText: {
     color: "#FFFFFF",
     fontSize: 15,
@@ -852,9 +1183,16 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: 12,
   },
+  primaryButtonTextCompactAndroid: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
   footerRow: {
     flexDirection: "row",
     gap: 8,
+  },
+  footerRowCompactAndroid: {
+    gap: 6,
   },
   footerSecondaryButton: {
     flex: 1,
@@ -865,10 +1203,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#FFFFFF",
   },
+  footerSecondaryButtonCompactAndroid: {
+    minHeight: 38,
+    borderRadius: 11,
+  },
   footerSecondaryButtonText: {
     fontSize: 13,
     lineHeight: 17,
     fontWeight: "700",
+  },
+  footerSecondaryButtonTextCompactAndroid: {
+    fontSize: 12,
+    lineHeight: 16,
   },
   footerGhostButton: {
     flex: 1,
@@ -879,10 +1225,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#FFFFFF",
   },
+  footerGhostButtonCompactAndroid: {
+    minHeight: 38,
+    borderRadius: 11,
+  },
   footerGhostButtonText: {
     fontSize: 13,
     lineHeight: 17,
     fontWeight: "700",
+  },
+  footerGhostButtonTextCompactAndroid: {
+    fontSize: 12,
+    lineHeight: 16,
   },
   footerManageButton: {
     minHeight: 38,
@@ -892,16 +1246,28 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#FFFFFF",
   },
+  footerManageButtonCompactAndroid: {
+    minHeight: 34,
+    borderRadius: 9,
+  },
   footerManageButtonText: {
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "700",
   },
-  footerLegalNotice: {
+  footerManageButtonTextCompactAndroid: {
     fontSize: 11,
-    lineHeight: 15,
+    lineHeight: 14,
+  },
+  footerLegalNotice: {
+    fontSize: 10,
+    lineHeight: 13,
     fontWeight: "500",
     textAlign: "center",
+  },
+  footerLegalNoticeCompactAndroid: {
+    fontSize: 9,
+    lineHeight: 12,
   },
   footerLegalLinksRow: {
     flexDirection: "row",
@@ -909,16 +1275,27 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
   },
+  footerLegalLinksRowCompactAndroid: {
+    gap: 6,
+  },
   footerLegalDot: {
-    fontSize: 12,
-    lineHeight: 14,
+    fontSize: 11,
+    lineHeight: 12,
     fontWeight: "600",
   },
+  footerLegalDotCompactAndroid: {
+    fontSize: 10,
+    lineHeight: 11,
+  },
   footerLegalLinkText: {
-    fontSize: 12,
-    lineHeight: 14,
+    fontSize: 11,
+    lineHeight: 12,
     fontWeight: "800",
     textDecorationLine: "underline",
+  },
+  footerLegalLinkTextCompactAndroid: {
+    fontSize: 10,
+    lineHeight: 11,
   },
 });
 

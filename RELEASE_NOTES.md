@@ -1,5 +1,35 @@
 # Release Notes
 
+## 5.0.2 (from 5.0.1)
+
+### EN
+- Improved overall stability and fixed issues reported after 5.0.1.
+- Faster startup and smoother performance on key screens.
+- Strengthened security and reliability of backend communication.
+- Improved background sync and recovery flows.
+- Minor UI polish and quality improvements across the app.
+
+### RU
+- Повысили общую стабильность и исправили ошибки после 5.0.1.
+- Ускорили запуск и улучшили плавность работы ключевых экранов.
+- Усилили безопасность и надежность взаимодействия с backend.
+- Улучшили фоновую синхронизацию и сценарии восстановления.
+- Добавили мелкие UI-правки и общее улучшение качества приложения.
+
+### ES
+- Mejoramos la estabilidad general y corregimos errores detectados despues de 5.0.1.
+- Inicio mas rapido y mejor fluidez en pantallas clave.
+- Reforzamos la seguridad y confiabilidad de la comunicacion con el backend.
+- Mejoramos la sincronizacion en segundo plano y los flujos de recuperacion.
+- Ajustes menores de UI y mejoras generales de calidad en toda la app.
+
+### FR
+- Stabilite generale amelioree et corrections des problemes signales apres 5.0.1.
+- Demarrage plus rapide et meilleure fluidite sur les ecrans principaux.
+- Securite et fiabilite renforcees pour la communication avec le backend.
+- Synchronisation en arriere-plan et flux de recuperation ameliores.
+- Petits ajustements UI et ameliorations globales de qualite dans l'app.
+
 ## 5.0.1 (from 5.0.0)
 
 ### EN
