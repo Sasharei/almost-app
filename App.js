@@ -1137,6 +1137,9 @@ const MAX_MODAL_KEYBOARD_OFFSET = Math.min(SCREEN_HEIGHT * 0.45, 360);
 const OVERLAY_CARD_MAX_WIDTH = Math.min(SCREEN_WIDTH - 40, 440);
 const IS_COMPACT_DEVICE = SCREEN_WIDTH <= 380;
 const IS_SHORT_DEVICE = SCREEN_HEIGHT <= 740;
+const TAMAGOTCHI_LAYOUT_SCALE = Math.max(0.68, Math.min(1, SCREEN_HEIGHT / 980));
+const scaleTamagotchiMetric = (value, min = 0) =>
+  Math.max(min, Math.round((Number(value) || 0) * TAMAGOTCHI_LAYOUT_SCALE));
 const IS_ANDROID_COMPACT = Platform.OS === "android" && (IS_COMPACT_DEVICE || IS_SHORT_DEVICE);
 const SAVE_COUNTER_DIGIT_HEIGHT = 64;
 const SAVE_COUNTER_SPIN_LOOPS = 2;
@@ -6844,6 +6847,61 @@ const buildHistoryInteractionMap = (entries = []) => {
   return map;
 };
 
+const getRussianPluralWord = (count, one, few, many) => {
+  const safeCount = Math.abs(Math.round(Number(count) || 0));
+  const mod10 = safeCount % 10;
+  const mod100 = safeCount % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+  return many;
+};
+
+const shortenGoalContextTitle = (value, maxLength = 24) => {
+  const normalized = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "";
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(1, maxLength - 3)).trim()}...`;
+};
+
+const buildGoalCompletionHeroLine = ({
+  language = DEFAULT_LANGUAGE,
+  title = "",
+  count = 0,
+  hasOther = false,
+} = {}) => {
+  const normalizedLanguage = normalizeLanguage(language);
+  const safeCount = Math.max(0, Number(count) || 0);
+  if (!safeCount) {
+    const fallbackMap = {
+      ru: "Цель достигнута. Отличный темп.",
+      en: "Goal reached. Keep this momentum.",
+      es: "Meta lograda. Mantén este ritmo.",
+      fr: "Objectif atteint. Garde ce rythme.",
+    };
+    return fallbackMap[normalizedLanguage] || fallbackMap.en;
+  }
+  const locale = getFormatLocale(normalizedLanguage) || "en-US";
+  const compactTitle = shortenGoalContextTitle(stripEmojis(title || ""), 24) || title || "цели";
+  const formattedCount = safeCount.toLocaleString(locale);
+  if (normalizedLanguage === "ru") {
+    const actionWord = getRussianPluralWord(safeCount, "отказ", "отказа", "отказов");
+    const suffix = hasOther ? " и других" : "";
+    return `Цель достигнута: ${formattedCount} ${actionWord} от ${compactTitle}${suffix}.`;
+  }
+  if (normalizedLanguage === "es") {
+    const suffix = hasOther ? " y otras" : "";
+    return `Meta lograda: ${formattedCount} rechazos de ${compactTitle}${suffix}.`;
+  }
+  if (normalizedLanguage === "fr") {
+    const suffix = hasOther ? " et autres" : "";
+    return `Objectif atteint : ${formattedCount} refus de ${compactTitle}${suffix}.`;
+  }
+  const suffix = hasOther ? " and others" : "";
+  return `Goal reached: ${formattedCount} skips on ${compactTitle}${suffix}.`;
+};
+
 const LANGUAGE_OVERRIDES = {
   es: {
     languageLabel: "Idioma",
@@ -8270,7 +8328,7 @@ const parseColor = (value) => {
     if (Number.isNaN(num)) return { r: 0, g: 0, b: 0 };
     return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
   }
-  const rgbMatch = value.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/i);
+  const rgbMatch = value.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)$/i);
   if (rgbMatch) {
     return { r: Number(rgbMatch[1]), g: Number(rgbMatch[2]), b: Number(rgbMatch[3]) };
   }
@@ -8304,6 +8362,15 @@ const colorWithAlpha = (color, alpha = 1) => {
   const normalized = Math.max(0, Math.min(1, alpha));
   const { r, g, b } = parseColor(color);
   return `rgba(${r}, ${g}, ${b}, ${normalized})`;
+};
+
+const getReadableTextColor = (
+  backgroundColor,
+  { light = "#FFFFFF", dark = "#05070D", threshold = 150 } = {}
+) => {
+  const { r, g, b } = parseColor(backgroundColor);
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= threshold ? dark : light;
 };
 
 const getTierProgress = (savedUSD = 0, currencyCode = activeCurrency) => {
@@ -10051,6 +10118,7 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
               onChange={onEditCategoryChange}
               colors={colors}
               language={language}
+              prioritizeSelected
               compact
               horizontal
               visibleCount={4}
@@ -10445,6 +10513,9 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const dailyRewardActiveAccent = isDarkMode ? "#7BFFB8" : "#1F7A4F";
   const dailyRewardActiveBorder = isDarkMode ? "rgba(123,255,184,0.85)" : "rgba(45,166,106,0.9)";
   const dailyRewardActiveBg = isDarkMode ? "rgba(123,255,184,0.18)" : "rgba(45,166,106,0.14)";
+  const dailyRewardCtaTextColor = getReadableTextColor(goldPalette.accent, {
+    dark: "#2A1A03",
+  });
   const clearDailyRewardSfxTimers = useCallback(() => {
     if (!dailyRewardSfxTimersRef.current.length) return;
     dailyRewardSfxTimersRef.current.forEach((timerId) => clearTimeout(timerId));
@@ -11251,7 +11322,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
                   onPress={handleDailyRewardCollect}
                   activeOpacity={0.9}
                 >
-                  <Text style={[styles.dailyRewardModalPrimaryText, { color: "#fff" }]}>
+                  <Text style={[styles.dailyRewardModalPrimaryText, { color: dailyRewardCtaTextColor }]}>
                     {t("dailyRewardModalCTA")}
                   </Text>
                 </TouchableOpacity>
@@ -12698,6 +12769,9 @@ function FreeDayCard({
   const rescuePillDisabled = !hasRescueHealth;
   const rescuePillColor = "#FFD75E";
   const rescuePillTextColor = "#3C2A00";
+  const rescueButtonTextColor = getReadableTextColor(palette.accent, {
+    dark: "#0B1020",
+  });
   return (
     <View
       style={[
@@ -12802,6 +12876,7 @@ function FreeDayCard({
             <Text
               style={[
                 styles.freeDayRescueButtonText,
+                { color: rescueButtonTextColor },
                 !canRescue && { color: palette.accent, opacity: 0.6 },
               ]}
             >
@@ -14898,19 +14973,67 @@ const FeedScreen = React.memo(
     }
     return t("heroSpendFallback");
   }, [heroRecentEvents.length, language, personaPreset, realSavedUSD, t, totalSavedLabel]);
-  const heroEncouragementLine = useMemo(() => {
-    const heroLine = isGoalComplete
-      ? moodPreset?.heroComplete || t("goalWidgetCompleteTagline")
-      : moodPreset?.hero || t("heroEconomyContinues");
-    if (moodPreset?.motivation) {
-      return `${heroLine} ${moodPreset.motivation}`;
-    }
-    return heroLine;
-  }, [isGoalComplete, moodPreset, t]);
   const historyInteractionMap = useMemo(
     () => buildHistoryInteractionMap(resolvedHistoryEvents),
     [resolvedHistoryEvents]
   );
+  const goalCompletionTopSave = useMemo(() => {
+    const entries = Object.entries(historyInteractionMap || {});
+    if (!entries.length) return null;
+    let topTemplateId = null;
+    let topCount = 0;
+    let topLastInteractionAt = 0;
+    let totalSaveCount = 0;
+    entries.forEach(([templateId, stats]) => {
+      const saveCount = Math.max(0, Number(stats?.saveCount) || 0);
+      if (!templateId || !saveCount) return;
+      totalSaveCount += saveCount;
+      const lastInteractionAt = Math.max(0, Number(stats?.lastInteractionAt) || 0);
+      if (
+        saveCount > topCount ||
+        (saveCount === topCount && lastInteractionAt > topLastInteractionAt)
+      ) {
+        topTemplateId = templateId;
+        topCount = saveCount;
+        topLastInteractionAt = lastInteractionAt;
+      }
+    });
+    if (!topTemplateId || topCount <= 0) return null;
+    const rawTitle =
+      resolveTemplateTitle(topTemplateId, "") ||
+      t("defaultDealTitle");
+    const normalizedTitle = stripEmoji(rawTitle) || String(rawTitle || "").trim();
+    return {
+      templateId: topTemplateId,
+      topCount,
+      totalSaveCount,
+      title: normalizedTitle || t("defaultDealTitle"),
+    };
+  }, [historyInteractionMap, resolveTemplateTitle, stripEmoji, t]);
+  const goalCompletionHeroLine = useMemo(() => {
+    if (!isGoalComplete) return null;
+    if (goalCompletionTopSave?.title && goalCompletionTopSave?.topCount > 0) {
+      return buildGoalCompletionHeroLine({
+        language,
+        title: goalCompletionTopSave.title,
+        count: goalCompletionTopSave.topCount,
+        hasOther:
+          Math.max(0, Number(goalCompletionTopSave.totalSaveCount) || 0) >
+          Math.max(0, Number(goalCompletionTopSave.topCount) || 0),
+      });
+    }
+    return moodPreset?.heroComplete || t("goalWidgetCompleteTagline");
+  }, [goalCompletionTopSave, isGoalComplete, language, moodPreset, t]);
+  const heroEncouragementLine = useMemo(() => {
+    if (isGoalComplete) {
+      return goalCompletionHeroLine;
+    }
+    const heroLine = moodPreset?.hero || t("heroEconomyContinues");
+    if (moodPreset?.motivation) {
+      return `${heroLine} ${moodPreset.motivation}`;
+    }
+    return heroLine;
+  }, [goalCompletionHeroLine, isGoalComplete, moodPreset, t]);
   const resolveHistoryEntryForItem = useCallback(
     (item) => {
       if (!item) return null;
@@ -23810,7 +23933,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
                     >
                       <Text
                         style={{
-                          color: active ? "#FFFFFF" : colors.muted,
+                          color: active
+                            ? getReadableTextColor(activeProChip ? colors.primary : colors.text)
+                            : colors.muted,
                           fontWeight: "600",
                         }}
                       >
@@ -27312,6 +27437,28 @@ function AppContent() {
     if (!Array.isArray(wishes)) return 0;
     return wishes.filter((wish) => wish && wish.status !== "done").length;
   }, [wishes]);
+  const totalGoalCount = useMemo(() => {
+    const goalIds = new Set();
+    const wishEntries = Array.isArray(wishes) ? wishes : [];
+    wishEntries.forEach((wish) => {
+      if (!wish) return;
+      const goalKey =
+        (typeof wish.goalId === "string" && wish.goalId.trim()) ||
+        (typeof wish.id === "string" && wish.id.trim()) ||
+        null;
+      if (goalKey) {
+        goalIds.add(goalKey);
+      }
+    });
+    const primaryGoalEntries = Array.isArray(profile.primaryGoals) ? profile.primaryGoals : [];
+    primaryGoalEntries.forEach((entry) => {
+      const goalId = typeof entry?.id === "string" ? entry.id.trim() : "";
+      if (goalId) {
+        goalIds.add(goalId);
+      }
+    });
+    return goalIds.size;
+  }, [profile.primaryGoals, wishes]);
   const openNewPendingModal = useCallback(
     () => {
       const activePendingCount = Array.isArray(pendingListRef.current)
@@ -27335,12 +27482,21 @@ function AppContent() {
   );
   const openNewGoalModal = useCallback(
     (makePrimary = false, source = "unknown") => {
+      if (!premiumState.isPremium && totalGoalCount >= FREE_GOAL_LIMIT) {
+        showPremiumPaywallRef.current({
+          kind: "hard",
+          featureKey: PREMIUM_FEATURE_KEYS.multipleGoals,
+          trigger: "goal_create_second_block",
+        });
+        return;
+      }
       const activeGoalLimit = premiumState.isPremium ? MAX_ACTIVE_GOALS : FREE_GOAL_LIMIT;
       if (activeGoalCount >= activeGoalLimit) {
         if (!premiumState.isPremium) {
           showPremiumPaywallRef.current({
-            kind: "feature",
+            kind: "hard",
             featureKey: PREMIUM_FEATURE_KEYS.multipleGoals,
+            trigger: "goal_create_limit_block",
           });
           return;
         }
@@ -27363,7 +27519,7 @@ function AppContent() {
         make_primary: makePrimary ? 1 : 0,
       });
     },
-    [activeGoalCount, logEvent, premiumState.isPremium, t]
+    [activeGoalCount, logEvent, premiumState.isPremium, t, totalGoalCount]
   );
   const handleNewPendingChange = useCallback((field, value) => {
     setNewPendingModal((prev) => ({
@@ -30477,19 +30633,24 @@ function AppContent() {
     if (coinValueModalVisible) return false;
     if (overlay || overlayActiveRef.current) return false;
     if (pendingUsageStreakRef.current) return false;
+    if (pendingGoalCelebration) return false;
+    if (pendingLevelCelebrationRef.current) return false;
     if (overlayQueueRef.current.length) return false;
     if (celebrationQueueRef.current.length) return false;
     if (celebrationGapTimerRef.current) return false;
+    const lastSaveAt = Number(lastSaveActionAtRef.current) || 0;
+    const saveOverlayDismissedAt = Number(lastSaveOverlayDismissedAtRef.current) || 0;
+    if (lastSaveAt > 0 && saveOverlayDismissedAt < lastSaveAt) return false;
     const lastDismissedAt = lastOverlayDismissedAtRef.current || 0;
     if (Date.now() - lastDismissedAt < 600) return false;
-    const lastSaveDismissedAt = Number(lastSaveOverlayDismissedAtRef.current) || 0;
-    if (lastSaveDismissedAt > 0 && Date.now() - lastSaveDismissedAt < 900) return false;
+    if (saveOverlayDismissedAt > 0 && Date.now() - saveOverlayDismissedAt < 900) return false;
     return true;
   }, [
     coinValueModalVisible,
     interfaceReady,
     onboardingStep,
     overlay,
+    pendingGoalCelebration,
     premiumPaywallState.visible,
     premiumState.isPremium,
     queuedModalType,
@@ -31252,7 +31413,9 @@ function AppContent() {
       if (!installed) return;
       homeWidgetInstallLoggedRef.current = true;
       AsyncStorage.setItem(STORAGE_KEYS.HOME_WIDGET_INSTALLED_LOGGED, "1").catch(() => {});
-      logEvent("home_widget_installed");
+      logEvent("home_widget_installed", {
+        platform: Platform.OS,
+      });
     } finally {
       homeWidgetInstallCheckInFlightRef.current = false;
     }
@@ -37886,6 +38049,14 @@ useEffect(() => {
 
 
   const handleNewGoalSubmit = useCallback(() => {
+    if (!premiumState.isPremium && totalGoalCount >= FREE_GOAL_LIMIT) {
+      showPremiumPaywallRef.current({
+        kind: "hard",
+        featureKey: PREMIUM_FEATURE_KEYS.multipleGoals,
+        trigger: "goal_submit_blocked",
+      });
+      return;
+    }
     const trimmedName = (newGoalModal.name || "").trim();
     if (!trimmedName) {
       Alert.alert("Almost", t("goalEditNameError"));
@@ -37996,10 +38167,12 @@ useEffect(() => {
     logEvent,
     logHistoryEvent,
     newGoalModal,
+    premiumState.isPremium,
     profile.primaryGoals,
     profile.currency,
     setProfile,
     setProfileDraft,
+    totalGoalCount,
     setWishes,
     t,
     triggerHaptic,
@@ -39889,7 +40062,7 @@ useEffect(() => {
       requestMascotAnimation("happyHeadshake", 2800);
       playSound("reward");
       queueHomeSpeech("clean");
-      logEvent("tamagotchi_clean_cycle", {
+      logEvent("tamagotchi_clean", {
         tool_id: tool.id,
         soap_hits: nextSoapHits,
         brush_hits: nextBrushHits,
@@ -47806,10 +47979,14 @@ useEffect(() => {
 	                      styles.tamagotchiCardContent,
 	                      {
 	                        paddingTop: Math.max(
-	                          IS_SHORT_DEVICE ? 108 : 116,
-	                          (safeAreaInsets.top || topSafeInset || 0) + 82
+	                          scaleTamagotchiMetric(IS_SHORT_DEVICE ? 96 : 104, 78),
+	                          (safeAreaInsets.top || topSafeInset || 0) +
+	                            scaleTamagotchiMetric(66, 52)
 	                        ),
-	                        paddingBottom: Math.max(16, (safeAreaInsets.bottom || 0) + 14),
+	                        paddingBottom: Math.max(
+	                          scaleTamagotchiMetric(12, 10),
+	                          (safeAreaInsets.bottom || 0) + scaleTamagotchiMetric(10, 8)
+	                        ),
 	                      },
 	                    ]}
                     showsVerticalScrollIndicator={false}
@@ -51729,8 +51906,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tamagotchiCardContent: {
-    paddingHorizontal: IS_SHORT_DEVICE ? 16 : 18,
-    gap: IS_SHORT_DEVICE ? 10 : 12,
+    paddingHorizontal: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 16 : 18, 12),
+    gap: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 10 : 12, 6),
   },
   tamagotchiStickyRewardWrap: {
     position: "absolute",
@@ -51793,7 +51970,7 @@ const styles = StyleSheet.create({
     ...createCtaText({ fontSize: 12 }),
   },
   tamagotchiHeader: {
-    minHeight: 44,
+    minHeight: scaleTamagotchiMetric(44, 34),
   },
   tamagotchiBackButton: {
     minWidth: 66,
@@ -51826,34 +52003,37 @@ const styles = StyleSheet.create({
   },
   tamagotchiHeaderTextWrap: {
     flex: 1,
-    minHeight: 44,
+    minHeight: scaleTamagotchiMetric(44, 34),
     justifyContent: "flex-start",
     alignSelf: "flex-start",
   },
   tamagotchiHeaderLine: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    minHeight: 40,
+    gap: scaleTamagotchiMetric(8, 4),
+    minHeight: scaleTamagotchiMetric(40, 30),
   },
   tamagotchiTitle: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: IS_SHORT_DEVICE ? 29 : 32,
-    lineHeight: IS_SHORT_DEVICE ? 31 : 34,
+    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 29 : 32, 24),
+    lineHeight: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 31 : 34, 26),
     textAlign: "left",
     flexShrink: 0,
   },
   tamagotchiMood: {
-    ...createBodyText({ fontSize: IS_SHORT_DEVICE ? 14 : 15, lineHeight: 18 }),
+    ...createBodyText({
+      fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 14 : 15, 12),
+      lineHeight: scaleTamagotchiMetric(18, 14),
+    }),
     textAlign: "left",
     flexShrink: 1,
   },
   tamagotchiStatsStack: {
-    gap: 8,
+    gap: scaleTamagotchiMetric(8, 4),
     borderWidth: 1,
-    borderRadius: 24,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    borderRadius: scaleTamagotchiMetric(24, 16),
+    paddingHorizontal: scaleTamagotchiMetric(14, 10),
+    paddingVertical: scaleTamagotchiMetric(14, 10),
     shadowColor: "#0A1324",
     shadowOpacity: 0.08,
     shadowRadius: 10,
@@ -51866,13 +52046,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   tamagotchiStatLabel: {
-    ...createBodyText({ fontSize: 14 }),
+    ...createBodyText({ fontSize: scaleTamagotchiMetric(14, 12) }),
   },
   tamagotchiStatValue: {
-    ...createBodyText({ fontSize: 16, fontWeight: "700" }),
+    ...createBodyText({ fontSize: scaleTamagotchiMetric(16, 13), fontWeight: "700" }),
   },
   tamagotchiProgress: {
-    height: 13,
+    height: scaleTamagotchiMetric(13, 9),
     borderRadius: 999,
     overflow: "hidden",
   },
@@ -51882,17 +52062,17 @@ const styles = StyleSheet.create({
   },
   tamagotchiActions: {
     flexDirection: "row",
-    gap: 10,
-    marginTop: 8,
-    marginBottom: 6,
+    gap: scaleTamagotchiMetric(10, 6),
+    marginTop: scaleTamagotchiMetric(8, 4),
+    marginBottom: scaleTamagotchiMetric(6, 2),
   },
   tamagotchiActionsSingle: {
-    marginTop: 10,
+    marginTop: scaleTamagotchiMetric(10, 6),
   },
   tamagotchiButton: {
     flex: 1,
-    paddingVertical: IS_SHORT_DEVICE ? 12 : 13,
-    borderRadius: 16,
+    paddingVertical: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 12 : 13, 8),
+    borderRadius: scaleTamagotchiMetric(16, 12),
     borderWidth: 1,
     alignItems: "center",
     shadowColor: "#0A1324",
@@ -51902,29 +52082,29 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   tamagotchiPartyButton: {
-    borderRadius: 18,
+    borderRadius: scaleTamagotchiMetric(18, 13),
   },
   tamagotchiButtonContent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: scaleTamagotchiMetric(8, 4),
   },
   tamagotchiButtonIcon: {
-    width: 20,
-    height: 20,
+    width: scaleTamagotchiMetric(20, 15),
+    height: scaleTamagotchiMetric(20, 15),
   },
   tamagotchiRewardIcon: {
-    fontSize: 16,
+    fontSize: scaleTamagotchiMetric(16, 12),
   },
   tamagotchiPreview: {
     width: "100%",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderRadius: 30,
-    paddingTop: 26,
-    paddingBottom: 20,
-    marginBottom: 4,
+    borderRadius: scaleTamagotchiMetric(30, 20),
+    paddingTop: scaleTamagotchiMetric(18, 12),
+    paddingBottom: scaleTamagotchiMetric(12, 8),
+    marginBottom: scaleTamagotchiMetric(4, 2),
     overflow: "hidden",
     shadowColor: "#0A1324",
     shadowOpacity: 0.14,
@@ -51934,35 +52114,35 @@ const styles = StyleSheet.create({
   },
   tamagotchiPreviewAura: {
     position: "absolute",
-    top: -34,
-    width: 240,
-    height: 180,
-    borderRadius: 120,
+    top: -scaleTamagotchiMetric(34, 22),
+    width: scaleTamagotchiMetric(240, 168),
+    height: scaleTamagotchiMetric(180, 128),
+    borderRadius: scaleTamagotchiMetric(120, 84),
   },
   tamagotchiPreviewAuraSecondary: {
     position: "absolute",
-    bottom: -42,
-    right: -28,
-    width: 160,
-    height: 120,
-    borderRadius: 100,
+    bottom: -scaleTamagotchiMetric(42, 26),
+    right: -scaleTamagotchiMetric(28, 18),
+    width: scaleTamagotchiMetric(160, 112),
+    height: scaleTamagotchiMetric(120, 84),
+    borderRadius: scaleTamagotchiMetric(100, 70),
   },
   tamagotchiMascotWrap: {
     position: "relative",
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 228,
+    minHeight: scaleTamagotchiMetric(190, 130),
   },
   tamagotchiMascotLarge: {
-    width: 172,
-    height: 172,
+    width: scaleTamagotchiMetric(148, 106),
+    height: scaleTamagotchiMetric(148, 106),
   },
   tamagotchiToyOrbit: {
     position: "absolute",
     zIndex: 10,
   },
   tamagotchiToyOrbitText: {
-    fontSize: 30,
+    fontSize: scaleTamagotchiMetric(30, 21),
   },
   tamagotchiHeartBurst: {
     position: "absolute",
@@ -51972,7 +52152,7 @@ const styles = StyleSheet.create({
     zIndex: 9,
   },
   tamagotchiHeartBurstText: {
-    fontSize: 20,
+    fontSize: scaleTamagotchiMetric(20, 14),
   },
   tamagotchiCleanTapOverlay: {
     position: "absolute",
@@ -52040,47 +52220,47 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   tamagotchiImmunityPill: {
-    marginTop: 2,
-    marginBottom: 4,
-    borderRadius: 12,
+    marginTop: scaleTamagotchiMetric(2, 1),
+    marginBottom: scaleTamagotchiMetric(4, 2),
+    borderRadius: scaleTamagotchiMetric(12, 8),
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: scaleTamagotchiMetric(10, 7),
+    paddingVertical: scaleTamagotchiMetric(6, 4),
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: scaleTamagotchiMetric(6, 4),
     alignSelf: "flex-start",
   },
   tamagotchiImmunityPillIcon: {
-    fontSize: 14,
+    fontSize: scaleTamagotchiMetric(14, 11),
   },
   tamagotchiImmunityPillText: {
-    ...createBodyText({ fontSize: 12 }),
+    ...createBodyText({ fontSize: scaleTamagotchiMetric(12, 10) }),
     fontWeight: "700",
   },
   tamagotchiButtonText: {
-    ...createCtaText({ fontSize: 14 }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(14, 11) }),
   },
   tamagotchiFoodTitle: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: 28,
-    lineHeight: 32,
-    marginTop: IS_SHORT_DEVICE ? 8 : 10,
-    marginBottom: 6,
+    fontSize: scaleTamagotchiMetric(28, 21),
+    lineHeight: scaleTamagotchiMetric(32, 24),
+    marginTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 8 : 10, 4),
+    marginBottom: scaleTamagotchiMetric(6, 3),
     position: "relative",
     zIndex: 4,
   },
   tamagotchiTabsRow: {
     flexDirection: "row",
-    gap: 10,
-    marginTop: 6,
+    gap: scaleTamagotchiMetric(10, 6),
+    marginTop: scaleTamagotchiMetric(6, 3),
   },
   tamagotchiTabButton: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 9,
-    paddingHorizontal: 6,
+    borderRadius: scaleTamagotchiMetric(14, 10),
+    paddingVertical: scaleTamagotchiMetric(9, 6),
+    paddingHorizontal: scaleTamagotchiMetric(6, 4),
     alignItems: "center",
     justifyContent: "center",
     ...Platform.select({
@@ -52095,33 +52275,39 @@ const styles = StyleSheet.create({
     }),
   },
   tamagotchiTabButtonText: {
-    ...createCtaText({ fontSize: 12 }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(12, 10) }),
   },
   tamagotchiTabContentWrap: {
-    minHeight: 180,
-    marginTop: 2,
+    minHeight: scaleTamagotchiMetric(180, 126),
+    marginTop: scaleTamagotchiMetric(2, 1),
     overflow: "hidden",
   },
   tamagotchiFoodList: {
-    marginTop: IS_SHORT_DEVICE ? 1 : 2,
-    paddingTop: 20,
-    paddingBottom: 2,
+    marginTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 1 : 2, 1),
+    paddingTop: scaleTamagotchiMetric(20, 10),
+    paddingBottom: scaleTamagotchiMetric(2, 1),
   },
   tamagotchiFoodScroll: {
-    height: Math.min(IS_SHORT_DEVICE ? 250 : 290, SCREEN_HEIGHT * (IS_SHORT_DEVICE ? 0.38 : 0.42)),
+    height: Math.max(
+      scaleTamagotchiMetric(128, 120),
+      scaleTamagotchiMetric(
+        Math.min(IS_SHORT_DEVICE ? 210 : 230, SCREEN_HEIGHT * (IS_SHORT_DEVICE ? 0.28 : 0.31)),
+        124
+      )
+    ),
     overflow: "hidden",
   },
   tamagotchiFoodButton: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderRadius: 20,
-    paddingTop: IS_SHORT_DEVICE ? 12 : 14,
-    paddingBottom: IS_SHORT_DEVICE ? 9 : 11,
-    paddingHorizontal: IS_SHORT_DEVICE ? 12 : 14,
-    gap: IS_SHORT_DEVICE ? 10 : 12,
+    borderRadius: scaleTamagotchiMetric(20, 14),
+    paddingTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 12 : 14, 8),
+    paddingBottom: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 9 : 11, 6),
+    paddingHorizontal: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 12 : 14, 8),
+    gap: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 10 : 12, 6),
     position: "relative",
-    marginBottom: IS_SHORT_DEVICE ? 6 : 8,
+    marginBottom: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 6 : 8, 4),
     ...Platform.select({
       android: {
         elevation: 0,
@@ -52144,7 +52330,7 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 8 },
       },
     }),
-    paddingTop: IS_SHORT_DEVICE ? 16 : 18,
+    paddingTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 16 : 18, 12),
   },
   tamagotchiFoodButtonLast: {
     marginBottom: 0,
@@ -52153,7 +52339,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   tamagotchiFoodEmoji: {
-    fontSize: IS_SHORT_DEVICE ? 24 : 28,
+    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 24 : 28, 18),
   },
   tamagotchiFoodInfo: {
     flex: 1,
@@ -52161,10 +52347,10 @@ const styles = StyleSheet.create({
   },
   tamagotchiFoodLabel: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: IS_SHORT_DEVICE ? 14 : 15,
+    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 14 : 15, 11),
   },
   tamagotchiFoodBoost: {
-    ...createSecondaryText({ fontSize: IS_SHORT_DEVICE ? 11 : 12 }),
+    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 11 : 12, 10) }),
   },
   tamagotchiFoodCost: {
     flexDirection: "row",
@@ -52174,15 +52360,15 @@ const styles = StyleSheet.create({
   tamagotchiToyMetaWrap: {
     alignItems: "flex-end",
     justifyContent: "center",
-    minWidth: 62,
-    gap: 1,
+    minWidth: scaleTamagotchiMetric(62, 46),
+    gap: scaleTamagotchiMetric(1, 1),
   },
   tamagotchiFoodCostIcon: {
-    width: 18,
-    height: 18,
+    width: scaleTamagotchiMetric(18, 14),
+    height: scaleTamagotchiMetric(18, 14),
   },
   tamagotchiFoodCostText: {
-    ...createCtaText({ fontSize: 13 }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(13, 10) }),
   },
   tamagotchiToyPenaltyWrap: {
     alignItems: "flex-end",
@@ -52190,12 +52376,12 @@ const styles = StyleSheet.create({
     minWidth: 44,
   },
   tamagotchiToyPenaltyText: {
-    ...createCtaText({ fontSize: 12 }),
-    lineHeight: 14,
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(12, 10) }),
+    lineHeight: scaleTamagotchiMetric(14, 11),
   },
   tamagotchiToyPenaltySub: {
-    ...createSecondaryText({ fontSize: 10 }),
-    lineHeight: 12,
+    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(10, 9) }),
+    lineHeight: scaleTamagotchiMetric(12, 10),
   },
   tamagotchiFoodBadge: {
     position: "absolute",
@@ -52224,18 +52410,18 @@ const styles = StyleSheet.create({
     lineHeight: 10,
   },
   tamagotchiSub: {
-    ...createSecondaryText({ fontSize: 12 }),
+    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(12, 10) }),
   },
   tamagotchiCleanPanel: {
-    marginTop: 4,
-    gap: 8,
+    marginTop: scaleTamagotchiMetric(4, 2),
+    gap: scaleTamagotchiMetric(8, 4),
   },
   tamagotchiCleanHint: {
-    ...createSecondaryText({ fontSize: 12 }),
+    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(12, 10) }),
     textAlign: "center",
   },
   tamagotchiCleanTapHint: {
-    ...createBodyText({ fontSize: 13, textAlign: "center" }),
+    ...createBodyText({ fontSize: scaleTamagotchiMetric(13, 11), textAlign: "center" }),
     fontWeight: "700",
   },
   tamagotchiCleanToolsRow: {
@@ -62963,9 +63149,16 @@ function ImpulseCategorySelector({
   visibleCount = 5,
   allowEmpty = false,
   tall = false,
+  prioritizeSelected = false,
 }) {
   const selected = value && IMPULSE_CATEGORY_DEFS[value] ? value : allowEmpty ? null : DEFAULT_IMPULSE_CATEGORY;
-  const categoryOrder = getBudgetCategoryOrder().filter((id) => id !== "savings");
+  const categoryOrder = useMemo(() => {
+    const baseOrder = getBudgetCategoryOrder().filter((id) => id !== "savings");
+    if (!prioritizeSelected || !selected || !baseOrder.includes(selected)) {
+      return baseOrder;
+    }
+    return [selected, ...baseOrder.filter((id) => id !== selected)];
+  }, [prioritizeSelected, selected]);
   const gap = compact ? 6 : 8;
   const horizontalPadding = compact ? 16 : 24;
   const minChipWidth = compact ? 72 : 64;
