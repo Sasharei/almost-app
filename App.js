@@ -28007,9 +28007,11 @@ function AppContent() {
       !startupLogoVisible,
     [fontsReady, homeLayoutReady, onboardingStep, startupHydrated, startupLogoVisible]
   );
+  const premiumAccessResolved = premiumState.enabled || !!premiumState.error;
   useEffect(() => {
     if (!pendingWidgetActionRef.current) return;
     if (!interfaceReady) return;
+    if (!premiumAccessResolved) return;
     const action = pendingWidgetActionRef.current;
     clearWidgetAction();
     InteractionManager.runAfterInteractions(() => {
@@ -28039,6 +28041,7 @@ function AppContent() {
     interfaceReady,
     openCoinEntry,
     pendingWidgetAction,
+    premiumAccessResolved,
     premiumState.isPremium,
   ]);
   const speechInterfaceReady = useMemo(
@@ -37640,6 +37643,8 @@ useEffect(() => {
   };
   const [pendingWidgetAction, setPendingWidgetAction] = useState(null);
   const pendingWidgetActionRef = useRef(null);
+  const initialWidgetUrlHandledRef = useRef(false);
+  const handleWidgetDeepLinkRef = useRef(() => {});
   const queueWidgetAction = useCallback((action) => {
     if (!action) return;
     pendingWidgetActionRef.current = action;
@@ -37763,17 +37768,24 @@ useEffect(() => {
       if (!parsed?.route) return;
       if (parsed.route === "home" || parsed.route === "feed") {
         goToTab("feed", { recordHistory: false });
+        if (!premiumAccessResolved) {
+          queueWidgetAction({ type: "home" });
+          return;
+        }
         if (!premiumState.isPremium) {
           ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.homeWidget);
         }
         return;
       }
       if (parsed.route === "add-temptation" || parsed.route === "add") {
-        if (!ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.homeWidget)) {
-          goToTab("feed", { recordHistory: false });
+        goToTab("feed", { recordHistory: false });
+        if (!premiumAccessResolved) {
+          queueWidgetAction({ type: "add-temptation" });
           return;
         }
-        goToTab("feed", { recordHistory: false });
+        if (!ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.homeWidget)) {
+          return;
+        }
         if (interfaceReady) {
           InteractionManager.runAfterInteractions(() => {
             handleFabNewTemptation();
@@ -37784,13 +37796,16 @@ useEffect(() => {
         return;
       }
       if (parsed.route === "quick-entry" || parsed.route === "quick") {
-        if (!ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.homeWidget)) {
-          goToTab("feed", { recordHistory: false });
-          return;
-        }
         const type = typeof parsed.params?.type === "string" ? parsed.params.type.toLowerCase() : "";
         const presetAction = type === "spend" ? "spend" : "save";
         goToTab("feed", { recordHistory: false });
+        if (!premiumAccessResolved) {
+          queueWidgetAction({ type: "quick-entry", presetAction });
+          return;
+        }
+        if (!ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.homeWidget)) {
+          return;
+        }
         if (interfaceReady) {
           InteractionManager.runAfterInteractions(() => {
             openCoinEntry(`widget_${presetAction}`, presetAction);
@@ -37811,25 +37826,33 @@ useEffect(() => {
       interfaceReady,
       openCoinEntry,
       parseWidgetDeepLink,
+      premiumAccessResolved,
       premiumState.isPremium,
       queueWidgetAction,
     ]
   );
 
   useEffect(() => {
+    handleWidgetDeepLinkRef.current = handleWidgetDeepLink;
+  }, [handleWidgetDeepLink]);
+
+  useEffect(() => {
     const handleUrlEvent = (event) => {
-      handleWidgetDeepLink(event?.url);
+      handleWidgetDeepLinkRef.current?.(event?.url);
     };
     const subscription = Linking.addEventListener("url", handleUrlEvent);
-    Linking.getInitialURL()
-      .then((url) => {
-        if (url) {
-          handleWidgetDeepLink(url);
-        }
-      })
-      .catch(() => {});
+    if (!initialWidgetUrlHandledRef.current) {
+      initialWidgetUrlHandledRef.current = true;
+      Linking.getInitialURL()
+        .then((url) => {
+          if (url) {
+            handleWidgetDeepLinkRef.current?.(url);
+          }
+        })
+        .catch(() => {});
+    }
     return () => subscription?.remove?.();
-  }, [handleWidgetDeepLink]);
+  }, []);
 
   const handleFabNewGoal = useCallback(() => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);

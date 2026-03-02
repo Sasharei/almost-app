@@ -272,8 +272,17 @@ const PLAN_UNAVAILABLE_LABEL_BY_LANGUAGE = {
 };
 
 const PAYWALL_BILLING_NOTICE_BY_LANGUAGE = {
-  ru: "Подписка продлевается автоматически. Управлять и отменять можно в App Store / Google Play.",
-  en: "Subscription renews automatically. Manage or cancel anytime in App Store / Google Play.",
+  ru: {
+    ios: "Подписка продлевается автоматически. Управлять и отменять можно в App Store.",
+    android: "Подписка продлевается автоматически. Управлять и отменять можно в Google Play.",
+    default:
+      "Подписка продлевается автоматически. Управлять и отменять можно в App Store / Google Play.",
+  },
+  en: {
+    ios: "Subscription renews automatically. Manage or cancel anytime in App Store.",
+    android: "Subscription renews automatically. Manage or cancel anytime in Google Play.",
+    default: "Subscription renews automatically. Manage or cancel anytime in App Store / Google Play.",
+  },
 };
 
 const PAYWALL_LEGAL_NOTICE_BY_LANGUAGE = {
@@ -316,9 +325,11 @@ export const buildPaywallCopy = ({
   monthlyPriceLabel = "$5.99/mo",
   savedAmountLabel = "$0",
   featureKey = null,
+  platform = "unknown",
 } = {}) => {
   const lang = resolveLanguage(language);
   const normalizedKind = kind === "hard" ? "hard" : kind === "feature" ? "feature" : "soft";
+  const normalizedPlatform = platform === "ios" ? "ios" : platform === "android" ? "android" : "default";
   const normalizedFeatureKey =
     typeof featureKey === "string" && featureKey.trim().length ? featureKey.trim() : null;
   const effectiveKind = normalizedFeatureKey ? "feature" : normalizedKind;
@@ -364,7 +375,10 @@ export const buildPaywallCopy = ({
     ctaClose: lang === "ru" ? "Позже" : "Maybe later",
     ctaManage: lang === "ru" ? "Управлять подпиской" : "Manage subscription",
     legalNotice: PAYWALL_LEGAL_NOTICE_BY_LANGUAGE[lang],
-    billingNotice: PAYWALL_BILLING_NOTICE_BY_LANGUAGE[lang],
+    billingNotice:
+      PAYWALL_BILLING_NOTICE_BY_LANGUAGE[lang]?.[normalizedPlatform] ||
+      PAYWALL_BILLING_NOTICE_BY_LANGUAGE[lang]?.default ||
+      "",
     legalTermsLabel: lang === "ru" ? "Условия" : "Terms",
     legalPrivacyLabel: lang === "ru" ? "Конфиденциальность" : "Privacy",
   };
