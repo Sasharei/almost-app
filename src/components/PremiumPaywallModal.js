@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -32,6 +32,7 @@ const PremiumPaywallModal = ({
   restoring = false,
   onPlanSelect = () => {},
   onPlanPress = () => {},
+  onFeatureInsightPress = () => {},
   onRestorePress = () => {},
   onManagePress = () => {},
   onTermsPress = () => {},
@@ -40,6 +41,7 @@ const PremiumPaywallModal = ({
   colors,
 }) => {
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCards));
+  const [selectedComparisonRowId, setSelectedComparisonRowId] = useState(null);
   const openProgress = useRef(new Animated.Value(0)).current;
   const mascotFloat = useRef(new Animated.Value(0)).current;
   const ctaPulse = useRef(new Animated.Value(0)).current;
@@ -58,16 +60,67 @@ const PremiumPaywallModal = ({
   const disableAndroidMotion = Platform.OS === "android";
 
   const comparisonRows = Array.isArray(copy?.comparisonRows) ? copy.comparisonRows : [];
-  const visibleComparisonRows = useMemo(() => {
-    if (!isCompactAndroid) return comparisonRows;
-    const maxRows = isVeryCompactAndroid ? 4 : 6;
-    return comparisonRows.slice(0, maxRows);
-  }, [comparisonRows, isCompactAndroid, isVeryCompactAndroid]);
+  const visibleComparisonRows = comparisonRows;
+
+  const activeInsightRow = useMemo(() => {
+    if (!selectedComparisonRowId) return null;
+    return (
+      comparisonRows.find(
+        (row) =>
+          row?.interactive &&
+          String(row?.id || "") === selectedComparisonRowId
+      ) || null
+    );
+  }, [comparisonRows, selectedComparisonRowId]);
+
+  const headerTitle = activeInsightRow?.lossTitle || copy?.title || "";
+  const headerSubtitle = activeInsightRow?.lossSubtitle || copy?.subtitle || "";
+  const showPsychologyChip = !!copy?.psychologyLine && !activeInsightRow;
+  const headerBenefitValue = activeInsightRow
+    ? activeInsightRow?.lossAmountLabel || copy?.lossAmountLabel || ""
+    : "";
+
+  const renderBenefitHighlight = useCallback((value = "", benefitValue = "") => {
+    const text = String(value || "");
+    const token = String(benefitValue || "");
+    if (!token || !text.includes(token)) return text;
+    const chunks = text.split(token);
+    return chunks.map((chunk, index) => (
+      <React.Fragment key={`benefit_chunk_${index}`}>
+        {chunk}
+        {index < chunks.length - 1 ? (
+          <Text style={styles.headerBenefitHighlight}>{token}</Text>
+        ) : null}
+      </React.Fragment>
+    ));
+  }, []);
 
   useEffect(() => {
     if (!visible) return;
     setSelectedPlanId(pickDefaultPlanId(planCards));
   }, [planCards, visible]);
+
+  useEffect(() => {
+    if (!visible) {
+      setSelectedComparisonRowId(null);
+      return;
+    }
+    const activeFeatureKey =
+      typeof copy?.activeFeatureKey === "string" && copy.activeFeatureKey.trim().length
+        ? copy.activeFeatureKey.trim()
+        : "";
+    if (!activeFeatureKey) {
+      setSelectedComparisonRowId(null);
+      return;
+    }
+    const matchingRow =
+      comparisonRows.find((row) => {
+        if (!row?.interactive) return false;
+        if (Array.isArray(row?.featureKeys) && row.featureKeys.includes(activeFeatureKey)) return true;
+        return row?.featureKey === activeFeatureKey;
+      }) || null;
+    setSelectedComparisonRowId(matchingRow ? String(matchingRow.id || "") : null);
+  }, [comparisonRows, copy?.activeFeatureKey, visible]);
 
   useEffect(() => {
     if (!visible) {
@@ -149,6 +202,7 @@ const PremiumPaywallModal = ({
     selectedPlan.available === false;
 
   const selectedPlanCtaPrice = selectedPlan?.ctaPriceLabel || selectedPlan?.priceLabel || "";
+  const selectedPlanTrialNotice = selectedPlan?.trialNoticeLabel || "";
   const primaryButtonTitle = selectedPlan
     ? `${copy?.ctaPrimary || "Unlock Premium"} · ${selectedPlanCtaPrice}`
     : copy?.ctaPrimary || "Unlock Premium";
@@ -309,6 +363,14 @@ const PremiumPaywallModal = ({
           {copy.billingNotice}
         </Text>
       )}
+      {!!selectedPlanTrialNotice && (
+        <Text
+          style={[styles.footerLegalNotice, isCompactAndroid ? styles.footerLegalNoticeCompactAndroid : null, { color: mutedColor }]}
+          numberOfLines={isCompactAndroid ? 3 : undefined}
+        >
+          {selectedPlanTrialNotice}
+        </Text>
+      )}
       {!!copy?.legalNotice && showSecondaryLegalNotice && (
         <Text
           style={[styles.footerLegalNotice, isCompactAndroid ? styles.footerLegalNoticeCompactAndroid : null, { color: mutedColor }]}
@@ -400,9 +462,9 @@ const PremiumPaywallModal = ({
           isVeryCompactAndroid ? styles.headerTitleVeryCompactAndroid : null,
         ]}
       >
-        {copy.title}
+        {renderBenefitHighlight(headerTitle, headerBenefitValue)}
       </Text>
-      {!!copy.subtitle && !copy.psychologyLine && (
+      {!!headerSubtitle && !showPsychologyChip && (
         <Text
           style={[
             styles.headerSubtitle,
@@ -410,11 +472,11 @@ const PremiumPaywallModal = ({
             isVeryCompactAndroid ? styles.headerSubtitleVeryCompactAndroid : null,
           ]}
         >
-          {copy.subtitle}
+          {renderBenefitHighlight(headerSubtitle, headerBenefitValue)}
         </Text>
       )}
 
-      {!!copy.psychologyLine && (
+      {showPsychologyChip && (
         <View
           style={[
             styles.psychologyChip,
@@ -462,28 +524,76 @@ const PremiumPaywallModal = ({
             <Text style={styles.proHeaderPillText}>{copy.proColumnLabel || "PRO"}</Text>
           </View>
         </View>
+        {!!copy?.comparisonTapHint && (
+          <Text style={[styles.comparisonTapHint, isCompactAndroid ? styles.comparisonTapHintCompactAndroid : null, { color: mutedColor }]}>
+            {copy.comparisonTapHint}
+          </Text>
+        )}
 
-        {visibleComparisonRows.map((row, index) => (
-          <Animated.View
-            key={`${row.label}_${index}`}
-            style={[
-              styles.comparisonRow,
-              isCompactAndroid ? styles.comparisonRowCompactAndroid : null,
-              index === visibleComparisonRows.length - 1 && styles.comparisonRowLast,
-              getRowAnimatedStyle(index, visibleComparisonRows.length),
-            ]}
-          >
-            <Text style={[styles.comparisonFeatureText, isCompactAndroid ? styles.comparisonFeatureTextCompactAndroid : null, { color: textColor }]}>
-              {row.label}
-            </Text>
-            <Text style={[styles.comparisonMark, { color: row.free ? "#4D5A78" : "#B7BDCF" }]}>
-              {row.free ? "✓" : "—"}
-            </Text>
-            <View style={styles.proMarkWrap}>
-              <Text style={styles.proMark}>✓</Text>
-            </View>
-          </Animated.View>
-        ))}
+        {visibleComparisonRows.map((row, index) => {
+          const rowId = String(row?.id || `${row?.label || "row"}_${index}`);
+          const isInteractive = !!row?.interactive && !row?.isCosmetic;
+          const isSelected = isInteractive && rowId === selectedComparisonRowId;
+          const rowContent = (
+            <>
+              <Text
+                style={[
+                  styles.comparisonFeatureText,
+                  isCompactAndroid ? styles.comparisonFeatureTextCompactAndroid : null,
+                  isSelected ? styles.comparisonFeatureTextActive : null,
+                  { color: isSelected ? "#2F3ADE" : textColor },
+                ]}
+              >
+                {row.label}
+              </Text>
+              <Text
+                style={[
+                  styles.comparisonMark,
+                  isSelected
+                    ? styles.comparisonMarkActive
+                    : { color: row.free ? "#4D5A78" : "#B7BDCF" },
+                ]}
+              >
+                {row.free ? "✓" : "—"}
+              </Text>
+              <View style={styles.proMarkWrap}>
+                <Text style={[styles.proMark, isSelected ? styles.proMarkActive : null]}>✓</Text>
+              </View>
+            </>
+          );
+          const rowStyles = [
+            styles.comparisonRow,
+            isCompactAndroid ? styles.comparisonRowCompactAndroid : null,
+            index === visibleComparisonRows.length - 1 && styles.comparisonRowLast,
+            isInteractive ? styles.comparisonRowInteractive : null,
+            isSelected ? styles.comparisonRowSelected : null,
+          ];
+
+          return (
+            <Animated.View
+              key={rowId}
+              style={getRowAnimatedStyle(index, visibleComparisonRows.length)}
+            >
+              {isInteractive ? (
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  style={rowStyles}
+                  onPress={() => {
+                    setSelectedComparisonRowId(rowId);
+                    onFeatureInsightPress(row?.featureKey || rowId, {
+                      source: "comparison_row",
+                      rowId,
+                    });
+                  }}
+                >
+                  {rowContent}
+                </TouchableOpacity>
+              ) : (
+                <View style={rowStyles}>{rowContent}</View>
+              )}
+            </Animated.View>
+          );
+        })}
       </View>
 
       {!!copy.unlockLevelsLine && !isVeryCompactAndroid && (
@@ -507,6 +617,10 @@ const PremiumPaywallModal = ({
             const selected = plan.id === selectedPlanId;
             const unavailable = plan.available === false;
             const loading = purchaseLoadingPlan === plan.id;
+            const showBillingMeta =
+              !!plan.billingLabel &&
+              plan.billingLabel !== plan.secondaryLabel &&
+              plan.billingLabel !== plan.secondarySubLabel;
             return (
               <TouchableOpacity
                 key={plan.id}
@@ -582,6 +696,17 @@ const PremiumPaywallModal = ({
                         ]}
                       >
                         {plan.secondarySubLabel}
+                      </Text>
+                    )}
+                    {showBillingMeta && (
+                      <Text
+                        style={[
+                          styles.planBillingMeta,
+                          isCompactAndroid ? styles.planBillingMetaCompactAndroid : null,
+                          { color: mutedColor },
+                        ]}
+                      >
+                        {plan.billingLabel}
                       </Text>
                     )}
                   </View>
@@ -812,6 +937,10 @@ const styles = StyleSheet.create({
     fontSize: 24,
     lineHeight: 28,
   },
+  headerBenefitHighlight: {
+    color: "#8AF3BC",
+    fontWeight: "900",
+  },
   headerSubtitle: {
     marginTop: 10,
     color: "rgba(239,244,255,0.9)",
@@ -927,6 +1056,20 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     backgroundColor: "#F5F7FF",
   },
+  comparisonTapHint: {
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 8,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "600",
+  },
+  comparisonTapHintCompactAndroid: {
+    paddingTop: 4,
+    paddingBottom: 6,
+    fontSize: 10,
+    lineHeight: 13,
+  },
   comparisonFeatureColumn: {
     flex: 1,
   },
@@ -960,6 +1103,13 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "rgba(18,28,58,0.12)",
   },
+  comparisonRowInteractive: {
+    backgroundColor: "rgba(67,83,255,0.035)",
+  },
+  comparisonRowSelected: {
+    backgroundColor: "rgba(67,83,255,0.12)",
+    borderTopColor: "rgba(67,83,255,0.42)",
+  },
   comparisonRowCompactAndroid: {
     paddingVertical: 8,
   },
@@ -973,6 +1123,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     paddingRight: 8,
   },
+  comparisonFeatureTextActive: {
+    fontWeight: "700",
+  },
   comparisonFeatureTextCompactAndroid: {
     fontSize: 12,
     lineHeight: 16,
@@ -983,6 +1136,9 @@ const styles = StyleSheet.create({
     fontSize: 24,
     lineHeight: 24,
     fontWeight: "500",
+  },
+  comparisonMarkActive: {
+    color: "#3643D7",
   },
   proMarkWrap: {
     width: 64,
@@ -995,6 +1151,9 @@ const styles = StyleSheet.create({
     fontSize: 27,
     lineHeight: 27,
     fontWeight: "600",
+  },
+  proMarkActive: {
+    color: "#2D38CC",
   },
   unlockLevelCard: {
     borderRadius: 14,
@@ -1124,6 +1283,15 @@ const styles = StyleSheet.create({
   planSecondarySubCompactAndroid: {
     fontSize: 10,
     lineHeight: 13,
+  },
+  planBillingMeta: {
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: "600",
+  },
+  planBillingMetaCompactAndroid: {
+    fontSize: 9,
+    lineHeight: 12,
   },
   planEquivalent: {
     fontSize: 12,

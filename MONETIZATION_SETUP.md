@@ -22,6 +22,14 @@ Products:
 
 Offerings must include Monthly / Annual / Lifetime packages so client can map plans.
 
+### 3-day free trial
+
+- Configure the free trial directly in App Store Connect / Google Play Console for the subscription you want (usually monthly).
+- Keep the same product IDs in RevenueCat (`almost_premium_monthly`, `almost_premium_yearly`, `almost_premium_lifetime`) and include them in the active Offering.
+- The client now reads trial metadata from store products and shows `3 days free` with `then ...` pricing on the paywall.
+- iOS eligibility is checked via RevenueCat SDK (`checkTrialOrIntroductoryPriceEligibility`) so trial is only shown when the user is eligible.
+- Android trial visibility is derived from the product/package offer returned by Google Play Billing through RevenueCat.
+
 ## Pricing defaults baked into app
 
 - CA: `CAD 6.99 / month`, `CAD 49.99 / year`, `CAD 99.99 lifetime`

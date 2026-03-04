@@ -186,6 +186,9 @@ const EVENT_DEFINITIONS = {
   daily_challenge_failed: ["template_id"],
   stats_screen_viewed: ["tab"],
   menu_progress_opened: [],
+  profile_terms_clicked: [],
+  profile_instagram_clicked: [],
+  profile_support_clicked: [],
   progress_analytics_opened: ["category_id"],
   reminder_shown: ["reminder_type"],
   reminder_clicked: ["reminder_type", "target_screen"],
@@ -258,7 +261,7 @@ const EVENT_DEFINITIONS = {
   level_reached: ["level"],
   premium_paywall_shown: ["kind", "feature", "trigger", "view_index", "saved_total_usd"],
   premium_paywall_closed: ["kind", "feature", "close_action", "view_index", "duration_ms"],
-  premium_paywall_plan_selected: ["kind", "feature", "plan", "view_index"],
+  premium_paywall_plan_selected: ["kind", "feature", "plan", "view_index", "has_trial", "trial_days"],
   premium_paywall_primary_tapped: [
     "kind",
     "feature",
@@ -267,6 +270,8 @@ const EVENT_DEFINITIONS = {
     "price_local",
     "currency",
     "product_id",
+    "has_trial",
+    "trial_days",
   ],
   premium_purchase_started: [
     "kind",
@@ -276,6 +281,8 @@ const EVENT_DEFINITIONS = {
     "price_local",
     "currency",
     "product_id",
+    "has_trial",
+    "trial_days",
   ],
   premium_purchase_result: [
     "kind",
@@ -285,6 +292,8 @@ const EVENT_DEFINITIONS = {
     "result",
     "reason",
     "error_code",
+    "has_trial",
+    "trial_days",
   ],
   premium_purchase_success: [
     "plan",
@@ -294,6 +303,18 @@ const EVENT_DEFINITIONS = {
     "price_local",
     "currency",
     "product_id",
+    "has_trial",
+    "trial_days",
+  ],
+  premium_trial_started: [
+    "plan",
+    "product_id",
+    "source",
+    "kind",
+    "feature",
+    "view_index",
+    "period_type",
+    "trial_days",
   ],
   premium_restore_started: ["kind", "feature", "view_index"],
   premium_restore_result: ["kind", "feature", "view_index", "result", "reason", "error_code"],
@@ -343,6 +364,7 @@ let analyticsConsentKnown = false;
 let performanceUnavailableLogged = false;
 let appsFlyerInitialized = false;
 let appsFlyerInitPromise = null;
+let appsFlyerEnabled = true;
 let facebookSdkReady = false;
 let tiktokInitialized = false;
 let tiktokInitPromise = null;
@@ -358,7 +380,8 @@ const isAppsFlyerConfigured = () => {
   return true;
 };
 const hasAppsFlyer = () => !!appsFlyer && typeof appsFlyer.initSdk === "function";
-const shouldUseAppsFlyer = () => baseEnabled && isAppsFlyerConfigured() && hasAppsFlyer();
+const shouldUseAppsFlyer = () =>
+  baseEnabled && appsFlyerEnabled && isAppsFlyerConfigured() && hasAppsFlyer();
 const getTikTokAppId = () => (Platform.OS === "ios" ? TIKTOK_APP_ID_IOS : TIKTOK_APP_ID_ANDROID);
 const hasTikTok = () =>
   !!TikTokBusiness &&
@@ -450,9 +473,8 @@ const initAppsFlyerSdk = async () => {
 };
 
 const syncAppsFlyerCollection = async () => {
-  if (!shouldUseAppsFlyer()) return;
   if (!hasAppsFlyer()) return;
-  if (!isAnalyticsEnabled()) {
+  if (!shouldUseAppsFlyer() || !isAnalyticsEnabled()) {
     if (appsFlyerInitialized) {
       try {
         appsFlyer.stop(true);
@@ -618,6 +640,11 @@ export const setAnalyticsOptOut = async (optOut) => {
   } else {
     flushFacebookEventQueue();
   }
+};
+
+export const setAppsFlyerEnabled = async (enabled = true) => {
+  appsFlyerEnabled = enabled !== false;
+  await syncAppsFlyerCollection();
 };
 
 export const logEvent = async (eventName, params = {}) => {
