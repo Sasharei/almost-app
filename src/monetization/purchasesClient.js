@@ -3,6 +3,7 @@ import { PREMIUM_ENTITLEMENT_ID, PREMIUM_PRODUCT_IDS } from "./constants";
 
 let Purchases = null;
 let PurchasesLogLevel = null;
+let PurchasesIntroEligibilityStatus = null;
 
 try {
   // Optional in old builds; keep app alive if native module is not linked yet.
@@ -10,6 +11,7 @@ try {
   const purchasesModule = require("react-native-purchases");
   Purchases = purchasesModule?.default || purchasesModule || null;
   PurchasesLogLevel = purchasesModule?.LOG_LEVEL || null;
+  PurchasesIntroEligibilityStatus = purchasesModule?.INTRO_ELIGIBILITY_STATUS || null;
 } catch (error) {
   console.warn("react-native-purchases unavailable", error);
 }
@@ -19,6 +21,15 @@ const PACKAGE_TYPE_TO_PLAN = {
   ANNUAL: "yearly",
   LIFETIME: "lifetime",
 };
+
+export const INTRO_ELIGIBILITY_STATUS = Object.freeze({
+  unknown: Number(PurchasesIntroEligibilityStatus?.INTRO_ELIGIBILITY_STATUS_UNKNOWN ?? 0),
+  ineligible: Number(PurchasesIntroEligibilityStatus?.INTRO_ELIGIBILITY_STATUS_INELIGIBLE ?? 1),
+  eligible: Number(PurchasesIntroEligibilityStatus?.INTRO_ELIGIBILITY_STATUS_ELIGIBLE ?? 2),
+  noIntroOffer: Number(
+    PurchasesIntroEligibilityStatus?.INTRO_ELIGIBILITY_STATUS_NO_INTRO_OFFER_EXISTS ?? 3
+  ),
+});
 
 const resolveApiKey = () => {
   if (Platform.OS === "ios") {
@@ -199,6 +210,45 @@ export const getOfferingsSafe = async () => {
   } catch (error) {
     console.warn("purchases offerings", error);
     return null;
+  }
+};
+
+export const getTrialEligibilityByProductIdsSafe = async (productIdentifiers = []) => {
+  if (!isPurchasesAvailable()) return {};
+  if (typeof Purchases.checkTrialOrIntroductoryPriceEligibility !== "function") {
+    return {};
+  }
+  const uniqueIdentifiers = Array.from(
+    new Set(
+      (Array.isArray(productIdentifiers) ? productIdentifiers : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
+  );
+  const normalizedIdentifiers = uniqueIdentifiers
+    .map((value) => normalizeProductIdentifier(value))
+    .filter(Boolean);
+  if (!normalizedIdentifiers.length) return {};
+  try {
+    const rawResponse = await Purchases.checkTrialOrIntroductoryPriceEligibility(uniqueIdentifiers);
+    const normalizedResponse = {};
+    if (rawResponse && typeof rawResponse === "object") {
+      Object.entries(rawResponse).forEach(([productId, eligibility]) => {
+        const normalizedId = normalizeProductIdentifier(productId);
+        if (!normalizedId) return;
+        normalizedResponse[normalizedId] =
+          Number(eligibility?.status) === INTRO_ELIGIBILITY_STATUS.eligible;
+      });
+    }
+    normalizedIdentifiers.forEach((productId) => {
+      if (normalizedResponse[productId] === undefined) {
+        normalizedResponse[productId] = false;
+      }
+    });
+    return normalizedResponse;
+  } catch (error) {
+    console.warn("purchases intro eligibility", error);
+    return {};
   }
 };
 

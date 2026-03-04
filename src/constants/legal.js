@@ -1,8 +1,10 @@
+const STANDARD_APPLE_EULA_URL = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
+
 export const TERMS_LINKS = {
-  ru: "https://www.notion.so/RU-2b24e58ea9a0809ea04fe54138975e96",
-  en: "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b",
-  es: "https://www.notion.so/T-RMINOS-DE-USO-ES-2d14e58ea9a080988f5bed55ccea3c2e?source=copy_link",
-  fr: "https://www.notion.so/CONDITIONS-D-UTILISATION-FR-2d14e58ea9a080dd9c53dcf52d5eb3e0?source=copy_link",
+  ru: STANDARD_APPLE_EULA_URL,
+  en: STANDARD_APPLE_EULA_URL,
+  es: STANDARD_APPLE_EULA_URL,
+  fr: STANDARD_APPLE_EULA_URL,
 };
 
 export const PRIVACY_LINKS = {
