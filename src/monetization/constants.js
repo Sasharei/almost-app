@@ -16,7 +16,6 @@ export const FREE_PLAN_LIMITS = {
   challengeClaims: 3,
   reportsWeeks: 4,
   reportsMonths: 1,
-  budgetAutoFreeDays: 30,
 };
 
 export const PREMIUM_FEATURE_KEYS = {
@@ -114,28 +113,30 @@ const FEATURE_TITLE_BY_LANGUAGE = {
 
 const BASE_FEATURES_BY_LANGUAGE = {
   ru: [
-    "Поддержка разработчика",
-    "Impulse-карта",
-    "Кастомизация кота + полная кастомизация Pro-темы",
+    "Умная аналитика бюджета и лимиты по категориям",
     "Недельные и месячные умные анализы расходов с инсайтами",
-    "Автоматический бюджет на месяц с умной адаптацией",
+    "Неограниченное количество целей",
+    "Impulse-карта с триггерами и точками срыва",
+    "Неограниченные карточки искушений",
+    "Больше челленджей и наград",
     "Home Screen виджеты и слайдер",
     "Мгновенная разблокировка всех функций, закрытых уровнем",
     "Неограниченное количество кастомных категорий",
-    "Неограниченное количество целей",
-    "Неограниченные карточки искушений",
+    "Расширенная очередь карточек «Думаю»",
+    "Кастомизация кота + полная кастомизация Pro-темы",
   ],
   en: [
-    "Support the developer",
-    "Impulse map",
-    "Cat customization + full Pro theme customization",
+    "Smart budget analytics with category limits",
     "Weekly and monthly smart spending analysis with insights",
-    "Automatic monthly budget with smart adaptation",
+    "Unlimited goals",
+    "Impulse map with trigger and slip-zone insights",
+    "Unlimited temptation cards",
+    "More challenges and rewards",
     "Home screen widgets and slider",
     "Instant unlock of all level-gated features",
     "Unlimited custom categories",
-    "Unlimited goals",
-    "Unlimited temptation cards",
+    "Extended Think queue",
+    "Cat customization + full Pro theme customization",
   ],
 };
 
@@ -169,8 +170,8 @@ const FEATURE_NAME_BY_KEY = {
     en: "widget slider",
   },
   budgetAuto: {
-    ru: "авторасчет бюджета",
-    en: "automatic budget planning",
+    ru: "умную аналитику бюджета",
+    en: "smart budget analytics",
   },
   multipleGoals: {
     ru: "несколько целей",
@@ -204,21 +205,13 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       interactive: false,
     },
     {
-      id: "supportDeveloper",
-      label: "Поддержка разработчика",
+      id: "budgetAuto",
+      label: "Умная аналитика бюджета и лимиты по категориям",
+      featureKeys: [PREMIUM_FEATURE_KEYS.budgetAuto],
       free: false,
       premium: true,
-      interactive: false,
-    },
-    {
-      id: "impulseMap",
-      label: "Impulse-карта",
-      featureKeys: [PREMIUM_FEATURE_KEYS.impulseMap],
-      free: false,
-      premium: true,
-      lossTitle: "Impulse-карта может вернуть {{amount}} за {{days}} дней.",
-      lossSubtitle:
-        "Impulse-карта показывает, где именно ты чаще всего срываешься, чтобы перехватить трату до оплаты.",
+      lossTitle: "Умный бюджет может сохранить {{amount}} за {{days}} дней.",
+      lossSubtitle: "Авто-лимиты по категориям помогают сократить перерасход до конца месяца.",
     },
     {
       id: "reports",
@@ -228,16 +221,45 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       premium: true,
       lossTitle:
         "Люди, которые видят персональные отчёты и советы по оптимизации расходов, экономят в среднем на 30% больше.",
-      lossSubtitle: "Отчёты показывают конкретные шаги по твоим категориям, а не общие советы.",
+      lossSubtitle:
+        "Отчёты показывают конкретные шаги по твоим категориям, а не общие советы.",
     },
     {
-      id: "budgetAuto",
-      label: "Автоматический бюджет на месяц",
-      featureKeys: [PREMIUM_FEATURE_KEYS.budgetAuto],
+      id: "multipleGoals",
+      label: "Неограниченные цели",
+      featureKeys: [PREMIUM_FEATURE_KEYS.multipleGoals],
       free: false,
       premium: true,
-      lossTitle: "Автоплан бюджета помогает снизить перерасход примерно на 22% уже в первый месяц.",
-      lossSubtitle: "Лимиты автоматически подстраиваются под твой реальный ритм трат.",
+      lossTitle: "Когда деньги распределены по нескольким целям, шанс импульсивной траты заметно ниже.",
+      lossSubtitle: "Premium позволяет вести несколько целей параллельно и сохранять фокус.",
+    },
+    {
+      id: "impulseMap",
+      label: "Impulse-карта: триггеры и точки срыва",
+      featureKeys: [PREMIUM_FEATURE_KEYS.impulseMap],
+      free: false,
+      premium: true,
+      lossTitle: "Impulse-карта может вернуть {{amount}} за {{days}} дней.",
+      lossSubtitle:
+        "Карта показывает, где и в какие моменты ты чаще срываешься, чтобы перехватить трату до оплаты.",
+    },
+    {
+      id: "unlimitedChallenges",
+      label: "Больше челленджей и наград",
+      featureKeys: [PREMIUM_FEATURE_KEYS.unlimitedChallenges],
+      free: false,
+      premium: true,
+      lossTitle: "Челленджи усиливают дисциплину: регулярные участники сохраняют заметно больше уже в первые недели.",
+      lossSubtitle: "Больше челленджей = больше точек контроля, где ты не даёшь деньгам утечь.",
+    },
+    {
+      id: "customTemptationCards",
+      label: "Неограниченные карточки искушений",
+      featureKeys: [PREMIUM_FEATURE_KEYS.customTemptationCards],
+      free: false,
+      premium: true,
+      lossTitle: "Без дополнительных карточек мелкие повторяющиеся траты остаются незамеченными.",
+      lossSubtitle: "Premium даёт безлимит карточек, чтобы перекрывать новые утечки сразу.",
     },
     {
       id: "widgets",
@@ -268,15 +290,6 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       lossSubtitle: "Чем точнее категории, тем точнее отчёты и рекомендации.",
     },
     {
-      id: "multipleGoals",
-      label: "Неограниченные цели",
-      featureKeys: [PREMIUM_FEATURE_KEYS.multipleGoals],
-      free: false,
-      premium: true,
-      lossTitle: "Когда деньги распределены по нескольким целям, шанс импульсивной траты заметно ниже.",
-      lossSubtitle: "Premium позволяет вести несколько целей параллельно и сохранять фокус.",
-    },
-    {
       id: "thinkingQueue",
       label: "Расширенная очередь карточек «Думаю»",
       featureKeys: [PREMIUM_FEATURE_KEYS.thinkingQueue],
@@ -284,24 +297,6 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       premium: true,
       lossTitle: "Без очереди «Думаю» сложнее переждать импульс, и лишние траты случаются чаще.",
       lossSubtitle: "Отложенные решения дают время остыть и не терять деньги на эмоциях.",
-    },
-    {
-      id: "unlimitedChallenges",
-      label: "Больше челленджей и наград",
-      featureKeys: [PREMIUM_FEATURE_KEYS.unlimitedChallenges],
-      free: false,
-      premium: true,
-      lossTitle: "Челленджи усиливают дисциплину: регулярные участники сохраняют заметно больше уже в первые недели.",
-      lossSubtitle: "Больше челленджей = больше точек контроля, где ты не даёшь деньгам утечь.",
-    },
-    {
-      id: "customTemptationCards",
-      label: "Неограниченные карточки искушений",
-      featureKeys: [PREMIUM_FEATURE_KEYS.customTemptationCards],
-      free: false,
-      premium: true,
-      lossTitle: "Без дополнительных карточек мелкие повторяющиеся траты остаются незамеченными.",
-      lossSubtitle: "Premium даёт безлимит карточек, чтобы перекрывать новые утечки сразу.",
     },
     {
       id: "catCustomization",
@@ -322,21 +317,13 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       interactive: false,
     },
     {
-      id: "supportDeveloper",
-      label: "Support the developer",
+      id: "budgetAuto",
+      label: "Smart budget analytics and category limits",
+      featureKeys: [PREMIUM_FEATURE_KEYS.budgetAuto],
       free: false,
       premium: true,
-      interactive: false,
-    },
-    {
-      id: "impulseMap",
-      label: "Impulse map",
-      featureKeys: [PREMIUM_FEATURE_KEYS.impulseMap],
-      free: false,
-      premium: true,
-      lossTitle: "Impulse map can recover {{amount}} in {{days}} days.",
-      lossSubtitle:
-        "The map shows your repeating triggers so you can intercept overspending before checkout.",
+      lossTitle: "Smart budget can protect {{amount}} in {{days}} days.",
+      lossSubtitle: "Auto category limits reduce overspending before month-end.",
     },
     {
       id: "reports",
@@ -349,13 +336,43 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       lossSubtitle: "Reports give clear next steps based on your own categories and behavior.",
     },
     {
-      id: "budgetAuto",
-      label: "Automatic monthly budget planning",
-      featureKeys: [PREMIUM_FEATURE_KEYS.budgetAuto],
+      id: "multipleGoals",
+      label: "Unlimited goals",
+      featureKeys: [PREMIUM_FEATURE_KEYS.multipleGoals],
       free: false,
       premium: true,
-      lossTitle: "Auto budget planning can cut overspending by roughly 22% in the first month.",
-      lossSubtitle: "Your limits adapt automatically to your real spending rhythm.",
+      lossTitle:
+        "When money is split into multiple goals, impulse buys drop and progress accelerates.",
+      lossSubtitle: "Track several goals in parallel and keep motivation high.",
+    },
+    {
+      id: "impulseMap",
+      label: "Impulse map: triggers and slip zones",
+      featureKeys: [PREMIUM_FEATURE_KEYS.impulseMap],
+      free: false,
+      premium: true,
+      lossTitle: "Impulse map can recover {{amount}} in {{days}} days.",
+      lossSubtitle:
+        "It shows when and where urges spike so you can stop overspending before checkout.",
+    },
+    {
+      id: "unlimitedChallenges",
+      label: "More challenges and rewards",
+      featureKeys: [PREMIUM_FEATURE_KEYS.unlimitedChallenges],
+      free: false,
+      premium: true,
+      lossTitle:
+        "Challenge-driven routines improve discipline: active users typically keep more money in the first weeks.",
+      lossSubtitle: "More challenges mean more checkpoints where spending gets interrupted.",
+    },
+    {
+      id: "customTemptationCards",
+      label: "Unlimited temptation cards",
+      featureKeys: [PREMIUM_FEATURE_KEYS.customTemptationCards],
+      free: false,
+      premium: true,
+      lossTitle: "Without extra cards, small recurring leaks stay invisible.",
+      lossSubtitle: "Unlimited cards help you patch new spending leaks as soon as they appear.",
     },
     {
       id: "widgets",
@@ -386,16 +403,6 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       lossSubtitle: "Better categories lead to more precise reports and recommendations.",
     },
     {
-      id: "multipleGoals",
-      label: "Unlimited goals",
-      featureKeys: [PREMIUM_FEATURE_KEYS.multipleGoals],
-      free: false,
-      premium: true,
-      lossTitle:
-        "When money is split into multiple goals, impulse buys drop and progress accelerates.",
-      lossSubtitle: "Track several goals in parallel and keep motivation high.",
-    },
-    {
       id: "thinkingQueue",
       label: "Extended “Think” queue",
       featureKeys: [PREMIUM_FEATURE_KEYS.thinkingQueue],
@@ -403,25 +410,6 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       premium: true,
       lossTitle: "Without a longer Think queue, impulse urges are harder to cool off in time.",
       lossSubtitle: "Delayed decisions create a pause that protects your budget.",
-    },
-    {
-      id: "unlimitedChallenges",
-      label: "More challenges and rewards",
-      featureKeys: [PREMIUM_FEATURE_KEYS.unlimitedChallenges],
-      free: false,
-      premium: true,
-      lossTitle:
-        "Challenge-driven routines improve discipline: active users typically keep more money in the first weeks.",
-      lossSubtitle: "More challenges mean more checkpoints where spending gets interrupted.",
-    },
-    {
-      id: "customTemptationCards",
-      label: "Unlimited temptation cards",
-      featureKeys: [PREMIUM_FEATURE_KEYS.customTemptationCards],
-      free: false,
-      premium: true,
-      lossTitle: "Without extra cards, small recurring leaks stay invisible.",
-      lossSubtitle: "Unlimited cards help you patch new spending leaks as soon as they appear.",
     },
     {
       id: "catCustomization",
@@ -691,6 +679,9 @@ export const buildPaywallCopy = ({
     psychologyLine = null;
   }
 
+  const ctaPrimaryTrial = lang === "ru" ? "Попробовать бесплатно" : "Try for free";
+  const ctaPrimaryRegular = lang === "ru" ? "Продолжить" : "Continue";
+
   return {
     badgeLabel: PAYWALL_BADGE_BY_KIND[effectiveKind] || PAYWALL_BADGE_BY_KIND.soft,
     title,
@@ -709,7 +700,9 @@ export const buildPaywallCopy = ({
     proColumnLabel: PRO_LABEL_BY_LANGUAGE[lang],
     comparisonTapHint: COMPARISON_TAP_HINT_BY_LANGUAGE[lang],
     planUnavailableLabel: PLAN_UNAVAILABLE_LABEL_BY_LANGUAGE[lang],
-    ctaPrimary: lang === "ru" ? "Открыть Premium" : "Unlock Premium",
+    ctaPrimary: ctaPrimaryTrial,
+    ctaPrimaryTrial,
+    ctaPrimaryRegular,
     ctaRestore: lang === "ru" ? "Восстановить покупки" : "Restore purchases",
     ctaClose: lang === "ru" ? "Позже" : "Maybe later",
     ctaManage: lang === "ru" ? "Управлять подпиской" : "Manage subscription",
