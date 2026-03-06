@@ -15,13 +15,15 @@ import {
 } from "react-native";
 
 const pickDefaultPlanId = (planCards = []) => {
+  const monthly = planCards.find((card) => card?.id === "monthly");
+  if (monthly?.id) return monthly.id;
   const availableCards = planCards.filter((card) => card?.available !== false);
-  const yearly = availableCards.find((card) => card?.id === "yearly");
-  if (yearly?.id) return yearly.id;
   const preferred = availableCards.find((card) => card?.recommended);
   if (preferred?.id) return preferred.id;
+  const yearly = availableCards.find((card) => card?.id === "yearly");
+  if (yearly?.id) return yearly.id;
   if (availableCards[0]?.id) return availableCards[0].id;
-  return planCards[0]?.id || "yearly";
+  return planCards[0]?.id || "monthly";
 };
 
 const PremiumPaywallModal = ({
@@ -203,9 +205,16 @@ const PremiumPaywallModal = ({
 
   const selectedPlanCtaPrice = selectedPlan?.ctaPriceLabel || selectedPlan?.priceLabel || "";
   const selectedPlanTrialNotice = selectedPlan?.trialNoticeLabel || "";
+  const selectedPlanIsMonthly = selectedPlan?.id === "monthly";
+  const trialCtaLabel =
+    selectedPlan?.ctaTrialLabel || copy?.ctaPrimaryTrial || copy?.ctaPrimary || "Try for free";
+  const regularCtaLabel = copy?.ctaPrimaryRegular || "Continue";
+  const primaryCtaLabel = selectedPlanIsMonthly ? trialCtaLabel : regularCtaLabel;
   const primaryButtonTitle = selectedPlan
-    ? `${copy?.ctaPrimary || "Unlock Premium"} · ${selectedPlanCtaPrice}`
-    : copy?.ctaPrimary || "Unlock Premium";
+    ? selectedPlanIsMonthly
+      ? primaryCtaLabel
+      : `${primaryCtaLabel} · ${selectedPlanCtaPrice}`
+    : trialCtaLabel;
 
   const handlePrimaryPress = () => {
     if (purchaseDisabled || !selectedPlan?.id) return;

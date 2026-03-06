@@ -1,5 +1,5 @@
 /**
- * Analytics helper responsible for routing events to Firebase Analytics.
+ * Analytics helper responsible for routing events to multiple providers.
  * The module guards against missing dependencies and never emits events in dev.
  */
 import { Platform } from "react-native";
@@ -48,6 +48,25 @@ try {
   TikTokBusiness = TikTokModule?.TikTokBusiness || TikTokModule?.default || null;
 } catch (error) {
   TikTokBusiness = null;
+}
+
+let amplitudeAnalytics = null;
+try {
+  // Optional dependency – only available on native builds.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  amplitudeAnalytics = require("@amplitude/analytics-react-native");
+} catch (error) {
+  amplitudeAnalytics = null;
+}
+
+let AmplitudeSessionReplayPlugin = null;
+try {
+  // Optional dependency – only available on native builds.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  AmplitudeSessionReplayPlugin =
+    require("@amplitude/plugin-session-replay-react-native")?.SessionReplayPlugin || null;
+} catch (error) {
+  AmplitudeSessionReplayPlugin = null;
 }
 
 const EVENT_DEFINITIONS = {
@@ -356,6 +375,8 @@ const TIKTOK_APP_ID_ANDROID =
 const TIKTOK_TT_APP_ID = process.env.TIKTOK_TT_APP_ID || "";
 const TIKTOK_ACCESS_TOKEN = process.env.TIKTOK_ACCESS_TOKEN || "";
 const TIKTOK_DEBUG = process.env.TIKTOK_DEBUG === "1" || process.env.TIKTOK_DEBUG === "true";
+const AMPLITUDE_API_KEY =
+  process.env.AMPLITUDE_API_KEY || "df42f60f7c184d85c3406cb63d49f066";
 
 const baseEnabled = !__DEV__;
 let analyticsOptedOut = false;
@@ -368,6 +389,9 @@ let appsFlyerEnabled = true;
 let facebookSdkReady = false;
 let tiktokInitialized = false;
 let tiktokInitPromise = null;
+let amplitudeInitialized = false;
+let amplitudeInitPromise = null;
+let amplitudeSessionReplayAttached = false;
 const MAX_FACEBOOK_EVENT_QUEUE = 25;
 const pendingFacebookEvents = [];
 
@@ -389,6 +413,11 @@ const hasTikTok = () =>
   typeof TikTokBusiness.trackCustomEvent === "function";
 const isTikTokConfigured = () => !!getTikTokAppId() && !!TIKTOK_TT_APP_ID && !!TIKTOK_ACCESS_TOKEN;
 const shouldUseTikTok = () => baseEnabled && hasTikTok() && isTikTokConfigured();
+const hasAmplitude = () =>
+  !!amplitudeAnalytics &&
+  typeof amplitudeAnalytics.init === "function" &&
+  typeof amplitudeAnalytics.track === "function";
+const shouldUseAmplitude = () => baseEnabled && !!AMPLITUDE_API_KEY && hasAmplitude();
 
 const getAnalyticsClient = () => {
   if (!analytics || typeof analytics !== "function") return null;
@@ -431,6 +460,65 @@ const syncPerformanceCollection = async () => {
     await perfClient.setPerformanceCollectionEnabled(isAnalyticsEnabled());
   } catch (error) {
     console.warn("Performance toggle failed:", error?.message || error);
+  }
+};
+
+const waitForAmplitudeResult = async (result) => {
+  if (!result || typeof result !== "object") return;
+  if (result.promise && typeof result.promise.then === "function") {
+    await result.promise;
+  }
+};
+
+const initAmplitudeSdk = async () => {
+  if (!shouldUseAmplitude() || !isAnalyticsEnabled()) return false;
+  if (amplitudeInitialized) return true;
+  if (!amplitudeInitPromise) {
+    amplitudeInitPromise = (async () => {
+      try {
+        await waitForAmplitudeResult(amplitudeAnalytics.init(AMPLITUDE_API_KEY));
+        if (
+          !amplitudeSessionReplayAttached &&
+          AmplitudeSessionReplayPlugin &&
+          typeof amplitudeAnalytics.add === "function"
+        ) {
+          await waitForAmplitudeResult(
+            amplitudeAnalytics.add(new AmplitudeSessionReplayPlugin())
+          );
+          amplitudeSessionReplayAttached = true;
+        }
+        if (typeof amplitudeAnalytics.setOptOut === "function") {
+          amplitudeAnalytics.setOptOut(false);
+        }
+        amplitudeInitialized = true;
+        return true;
+      } catch (error) {
+        console.warn("Amplitude init failed:", error?.message || error);
+        amplitudeInitPromise = null;
+        return false;
+      }
+    })();
+  }
+  return amplitudeInitPromise;
+};
+
+const syncAmplitudeCollection = async () => {
+  if (!shouldUseAmplitude()) return;
+  if (typeof amplitudeAnalytics.setOptOut !== "function") return;
+  if (!isAnalyticsEnabled()) {
+    try {
+      amplitudeAnalytics.setOptOut(true);
+    } catch (error) {
+      console.warn("Amplitude opt-out toggle failed:", error?.message || error);
+    }
+    return;
+  }
+  const initialized = await initAmplitudeSdk();
+  if (!initialized) return;
+  try {
+    amplitudeAnalytics.setOptOut(false);
+  } catch (error) {
+    console.warn("Amplitude opt-in toggle failed:", error?.message || error);
   }
 };
 
@@ -571,6 +659,52 @@ const logTikTokEvent = async (eventName, params = {}) => {
   }
 };
 
+const logAmplitudeEvent = async (eventName, params = {}) => {
+  if (!shouldUseAmplitude() || !isAnalyticsEnabled()) return;
+  if (!hasAmplitude()) return;
+  const initialized = await initAmplitudeSdk();
+  if (!initialized) return;
+  try {
+    await waitForAmplitudeResult(amplitudeAnalytics.track(eventName, params));
+  } catch (error) {
+    console.warn("Amplitude track failed:", eventName, error?.message || error);
+  }
+};
+
+const logAmplitudeScreenView = async (screenName) => {
+  if (!screenName) return;
+  await logAmplitudeEvent("screen_view", {
+    screen_name: screenName,
+    screen_class: screenName,
+  });
+};
+
+const setAmplitudeUserProperties = async (properties = {}) => {
+  if (!shouldUseAmplitude() || !isAnalyticsEnabled()) return;
+  if (!hasAmplitude()) return;
+  const initialized = await initAmplitudeSdk();
+  if (!initialized) return;
+  if (typeof amplitudeAnalytics.identify !== "function") return;
+  if (typeof amplitudeAnalytics.Identify !== "function") return;
+  const identify = new amplitudeAnalytics.Identify();
+  let hasProperties = false;
+  Object.entries(properties).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    hasProperties = true;
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      identify.set(key, value);
+      return;
+    }
+    identify.set(key, JSON.stringify(value));
+  });
+  if (!hasProperties) return;
+  try {
+    await waitForAmplitudeResult(amplitudeAnalytics.identify(identify));
+  } catch (error) {
+    console.warn("Amplitude identify failed:", error?.message || error);
+  }
+};
+
 const enqueueFacebookEvent = (eventName, params) => {
   pendingFacebookEvents.push({ eventName, params });
   if (pendingFacebookEvents.length > MAX_FACEBOOK_EVENT_QUEUE) {
@@ -615,6 +749,7 @@ export const registerLevelEvents = (maxLevel) => {
 
 export const initAnalytics = async () => {
   await syncAnalyticsCollection();
+  await syncAmplitudeCollection();
   await syncAppsFlyerCollection();
   await initTikTokSdk();
 };
@@ -630,6 +765,7 @@ export const setAnalyticsOptOut = async (optOut) => {
   analyticsConsentGranted = !analyticsOptedOut || analyticsConsentGranted;
   analyticsConsentKnown = true;
   await syncAnalyticsCollection();
+  await syncAmplitudeCollection();
   await syncPerformanceCollection();
   await syncAppsFlyerCollection();
   if (!analyticsOptedOut) {
@@ -658,6 +794,7 @@ export const logEvent = async (eventName, params = {}) => {
       console.warn("Failed to log analytics event:", eventName, error?.message || error);
     }
   }
+  await logAmplitudeEvent(eventName, filteredParams);
   await logAppsFlyerEvent(eventName, filteredParams);
   await logTikTokEvent(eventName, filteredParams);
   logFacebookEvent(eventName, filteredParams);
@@ -666,15 +803,17 @@ export const logEvent = async (eventName, params = {}) => {
 export const logScreenView = async (screenName) => {
   if (!screenName) return;
   const client = getAnalyticsClient();
-  if (!client) return;
-  try {
-    await client.logScreenView({
-      screen_name: screenName,
-      screen_class: screenName,
-    });
-  } catch (error) {
-    console.warn("Failed to log screen view:", error?.message || error);
+  if (client) {
+    try {
+      await client.logScreenView({
+        screen_name: screenName,
+        screen_class: screenName,
+      });
+    } catch (error) {
+      console.warn("Failed to log screen view:", error?.message || error);
+    }
   }
+  await logAmplitudeScreenView(screenName);
 };
 
 const logFacebookEvent = (eventName, params = {}) => {
@@ -706,10 +845,12 @@ export const setFacebookSdkReady = (ready = true) => {
 export const setUserProperties = async (properties = {}) => {
   if (!properties || typeof properties !== "object") return;
   const client = getAnalyticsClient();
-  if (!client) return;
-  try {
-    await client.setUserProperties(properties);
-  } catch (error) {
-    console.warn("Failed to set analytics user properties:", error?.message || error);
+  if (client) {
+    try {
+      await client.setUserProperties(properties);
+    } catch (error) {
+      console.warn("Failed to set analytics user properties:", error?.message || error);
+    }
   }
+  await setAmplitudeUserProperties(properties);
 };
