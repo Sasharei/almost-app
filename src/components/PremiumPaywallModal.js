@@ -15,15 +15,15 @@ import {
 } from "react-native";
 
 const pickDefaultPlanId = (planCards = []) => {
-  const monthly = planCards.find((card) => card?.id === "monthly");
-  if (monthly?.id) return monthly.id;
   const availableCards = planCards.filter((card) => card?.available !== false);
-  const preferred = availableCards.find((card) => card?.recommended);
-  if (preferred?.id) return preferred.id;
   const yearly = availableCards.find((card) => card?.id === "yearly");
   if (yearly?.id) return yearly.id;
+  const preferred = availableCards.find((card) => card?.recommended);
+  if (preferred?.id) return preferred.id;
+  const monthly = availableCards.find((card) => card?.id === "monthly");
+  if (monthly?.id) return monthly.id;
   if (availableCards[0]?.id) return availableCards[0].id;
-  return planCards[0]?.id || "monthly";
+  return planCards[0]?.id || "yearly";
 };
 
 const PremiumPaywallModal = ({
@@ -45,7 +45,6 @@ const PremiumPaywallModal = ({
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCards));
   const [selectedComparisonRowId, setSelectedComparisonRowId] = useState(null);
   const openProgress = useRef(new Animated.Value(0)).current;
-  const mascotFloat = useRef(new Animated.Value(0)).current;
   const ctaPulse = useRef(new Animated.Value(0)).current;
 
   const cardBg = colors?.card || "#FFFFFF";
@@ -142,29 +141,10 @@ const PremiumPaywallModal = ({
 
   useEffect(() => {
     if (!visible) {
-      mascotFloat.setValue(0);
       ctaPulse.setValue(0);
       return;
     }
-    mascotFloat.setValue(0);
     ctaPulse.setValue(0);
-
-    const floatLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(mascotFloat, {
-          toValue: 1,
-          duration: 1700,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(mascotFloat, {
-          toValue: 0,
-          duration: 1700,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ])
-    );
 
     const pulseLoop = Animated.loop(
       Animated.sequence([
@@ -183,14 +163,12 @@ const PremiumPaywallModal = ({
       ])
     );
 
-    floatLoop.start();
     pulseLoop.start();
 
     return () => {
-      floatLoop.stop();
       pulseLoop.stop();
     };
-  }, [ctaPulse, mascotFloat, visible]);
+  }, [ctaPulse, visible]);
 
   const selectedPlan = useMemo(
     () => planCards.find((plan) => plan.id === selectedPlanId) || null,
@@ -205,16 +183,14 @@ const PremiumPaywallModal = ({
 
   const selectedPlanCtaPrice = selectedPlan?.ctaPriceLabel || selectedPlan?.priceLabel || "";
   const selectedPlanTrialNotice = selectedPlan?.trialNoticeLabel || "";
-  const selectedPlanIsMonthly = selectedPlan?.id === "monthly";
-  const trialCtaLabel =
-    selectedPlan?.ctaTrialLabel || copy?.ctaPrimaryTrial || copy?.ctaPrimary || "Try for free";
-  const regularCtaLabel = copy?.ctaPrimaryRegular || "Continue";
-  const primaryCtaLabel = selectedPlanIsMonthly ? trialCtaLabel : regularCtaLabel;
-  const primaryButtonTitle = selectedPlan
-    ? selectedPlanIsMonthly
-      ? primaryCtaLabel
-      : `${primaryCtaLabel} · ${selectedPlanCtaPrice}`
-    : trialCtaLabel;
+  const selectedPlanCurrencyCode =
+    (typeof selectedPlan?.currencyCode === "string" && selectedPlan.currencyCode.trim().toUpperCase()) ||
+    (planCards.find((entry) => typeof entry?.currencyCode === "string" && entry.currencyCode.trim())?.currencyCode
+      ?.trim()
+      .toUpperCase()) ||
+    (typeof selectedPlanCtaPrice === "string" && (selectedPlanCtaPrice.match(/[A-Z]{3}/) || [])[0]) ||
+    "USD";
+  const primaryButtonTitle = `Попробуйте за ${selectedPlanCurrencyCode} 0.00`;
 
   const handlePrimaryPress = () => {
     if (purchaseDisabled || !selectedPlan?.id) return;
@@ -244,11 +220,6 @@ const PremiumPaywallModal = ({
   const sheetTranslateY = openProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [52, 0],
-  });
-
-  const mascotTranslateY = mascotFloat.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-7, 7],
   });
 
   const ctaScale = ctaPulse.interpolate({
@@ -364,53 +335,55 @@ const PremiumPaywallModal = ({
         </Text>
       </TouchableOpacity>
 
-      {!!copy?.billingNotice && (
-        <Text
-          style={[styles.footerLegalNotice, isCompactAndroid ? styles.footerLegalNoticeCompactAndroid : null, { color: mutedColor }]}
-          numberOfLines={isCompactAndroid ? 2 : undefined}
-        >
-          {copy.billingNotice}
-        </Text>
-      )}
-      {!!selectedPlanTrialNotice && (
-        <Text
-          style={[styles.footerLegalNotice, isCompactAndroid ? styles.footerLegalNoticeCompactAndroid : null, { color: mutedColor }]}
-          numberOfLines={isCompactAndroid ? 3 : undefined}
-        >
-          {selectedPlanTrialNotice}
-        </Text>
-      )}
-      {!!copy?.legalNotice && showSecondaryLegalNotice && (
-        <Text
-          style={[styles.footerLegalNotice, isCompactAndroid ? styles.footerLegalNoticeCompactAndroid : null, { color: mutedColor }]}
-          numberOfLines={isCompactAndroid ? 2 : undefined}
-        >
-          {copy.legalNotice}
-        </Text>
-      )}
+      <View style={[styles.footerLegalBlock, isCompactAndroid ? styles.footerLegalBlockCompactAndroid : null]}>
+        {!!copy?.billingNotice && (
+          <Text
+            style={[styles.footerLegalNotice, isCompactAndroid ? styles.footerLegalNoticeCompactAndroid : null, { color: mutedColor }]}
+            numberOfLines={isCompactAndroid ? 2 : undefined}
+          >
+            {copy.billingNotice}
+          </Text>
+        )}
+        {!!selectedPlanTrialNotice && (
+          <Text
+            style={[styles.footerLegalNotice, isCompactAndroid ? styles.footerLegalNoticeCompactAndroid : null, { color: mutedColor }]}
+            numberOfLines={isCompactAndroid ? 3 : undefined}
+          >
+            {selectedPlanTrialNotice}
+          </Text>
+        )}
+        {!!copy?.legalNotice && showSecondaryLegalNotice && (
+          <Text
+            style={[styles.footerLegalNotice, isCompactAndroid ? styles.footerLegalNoticeCompactAndroid : null, { color: mutedColor }]}
+            numberOfLines={isCompactAndroid ? 2 : undefined}
+          >
+            {copy.legalNotice}
+          </Text>
+        )}
 
-      <View style={[styles.footerLegalLinksRow, isCompactAndroid ? styles.footerLegalLinksRowCompactAndroid : null]}>
-        <TouchableOpacity
-          onPress={() => onTermsPress({ source: "terms_link" })}
-          activeOpacity={0.8}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text style={[styles.footerLegalLinkText, isCompactAndroid ? styles.footerLegalLinkTextCompactAndroid : null, { color: textColor }]}>
-            {copy?.legalTermsLabel || "Terms"}
+        <View style={[styles.footerLegalLinksRow, isCompactAndroid ? styles.footerLegalLinksRowCompactAndroid : null]}>
+          <TouchableOpacity
+            onPress={() => onTermsPress({ source: "terms_link" })}
+            activeOpacity={0.8}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={[styles.footerLegalLinkText, isCompactAndroid ? styles.footerLegalLinkTextCompactAndroid : null, { color: textColor }]}>
+              {copy?.legalTermsLabel || "Terms"}
+            </Text>
+          </TouchableOpacity>
+          <Text style={[styles.footerLegalDot, isCompactAndroid ? styles.footerLegalDotCompactAndroid : null, { color: mutedColor }]}>
+            •
           </Text>
-        </TouchableOpacity>
-        <Text style={[styles.footerLegalDot, isCompactAndroid ? styles.footerLegalDotCompactAndroid : null, { color: mutedColor }]}>
-          •
-        </Text>
-        <TouchableOpacity
-          onPress={() => onPrivacyPress({ source: "privacy_link" })}
-          activeOpacity={0.8}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text style={[styles.footerLegalLinkText, isCompactAndroid ? styles.footerLegalLinkTextCompactAndroid : null, { color: textColor }]}>
-            {copy?.legalPrivacyLabel || "Privacy"}
-          </Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => onPrivacyPress({ source: "privacy_link" })}
+            activeOpacity={0.8}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={[styles.footerLegalLinkText, isCompactAndroid ? styles.footerLegalLinkTextCompactAndroid : null, { color: textColor }]}>
+              {copy?.legalPrivacyLabel || "Privacy"}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </>
   );
@@ -463,61 +436,49 @@ const PremiumPaywallModal = ({
         </Text>
       </View>
 
-      <Text
-        style={[
-          styles.headerTitle,
-          isNativeMobile ? styles.headerTitleAndroid : null,
-          isCompactAndroid ? styles.headerTitleCompactAndroid : null,
-          isVeryCompactAndroid ? styles.headerTitleVeryCompactAndroid : null,
-        ]}
-      >
-        {renderBenefitHighlight(headerTitle, headerBenefitValue)}
-      </Text>
-      {!!headerSubtitle && !showPsychologyChip && (
+      <View style={styles.headerTextWrap}>
         <Text
           style={[
-            styles.headerSubtitle,
-            isCompactAndroid ? styles.headerSubtitleCompactAndroid : null,
-            isVeryCompactAndroid ? styles.headerSubtitleVeryCompactAndroid : null,
+            styles.headerTitle,
+            isNativeMobile ? styles.headerTitleAndroid : null,
+            isCompactAndroid ? styles.headerTitleCompactAndroid : null,
+            isVeryCompactAndroid ? styles.headerTitleVeryCompactAndroid : null,
           ]}
         >
-          {renderBenefitHighlight(headerSubtitle, headerBenefitValue)}
+          {renderBenefitHighlight(headerTitle, headerBenefitValue)}
         </Text>
-      )}
-
-      {showPsychologyChip && (
-        <View
-          style={[
-            styles.psychologyChip,
-            isCompactAndroid ? styles.psychologyChipCompactAndroid : null,
-            isVeryCompactAndroid ? styles.psychologyChipVeryCompactAndroid : null,
-          ]}
-        >
+        {!!headerSubtitle && !showPsychologyChip && (
           <Text
             style={[
-              styles.psychologyChipText,
-              isCompactAndroid ? styles.psychologyChipTextCompactAndroid : null,
+              styles.headerSubtitle,
+              isCompactAndroid ? styles.headerSubtitleCompactAndroid : null,
+              isVeryCompactAndroid ? styles.headerSubtitleVeryCompactAndroid : null,
             ]}
           >
-            {copy.psychologyLine}
+            {renderBenefitHighlight(headerSubtitle, headerBenefitValue)}
           </Text>
-        </View>
-      )}
+        )}
 
-      {!isVeryCompactAndroid && (
-        <Animated.View
-          style={[
-            styles.mascotWrap,
-            isNativeMobile ? styles.mascotWrapAndroid : null,
-            isCompactAndroid ? styles.mascotWrapCompactAndroid : null,
-            disableAndroidMotion ? null : { transform: [{ translateY: mascotTranslateY }] },
-          ]}
-        >
-          <Text style={[styles.mascot, isNativeMobile ? styles.mascotAndroid : null, isCompactAndroid ? styles.mascotCompactAndroid : null]}>
-            🪽💸
-          </Text>
-        </Animated.View>
-      )}
+        {showPsychologyChip && (
+          <View
+            style={[
+              styles.psychologyChip,
+              isCompactAndroid ? styles.psychologyChipCompactAndroid : null,
+              isVeryCompactAndroid ? styles.psychologyChipVeryCompactAndroid : null,
+            ]}
+          >
+            <Text
+              style={[
+                styles.psychologyChipText,
+                isCompactAndroid ? styles.psychologyChipTextCompactAndroid : null,
+              ]}
+            >
+              {copy.psychologyLine}
+            </Text>
+          </View>
+        )}
+      </View>
+
     </Animated.View>
   );
 
@@ -923,8 +884,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.3,
   },
+  headerTextWrap: {
+    width: "100%",
+    alignItems: "center",
+  },
   headerTitle: {
     marginTop: 48,
+    width: "100%",
     color: "#FFFFFF",
     textAlign: "center",
     fontSize: 34,
@@ -952,6 +918,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     marginTop: 10,
+    width: "100%",
     color: "rgba(239,244,255,0.9)",
     textAlign: "center",
     fontSize: 14,
@@ -995,25 +962,6 @@ const styles = StyleSheet.create({
   psychologyChipTextCompactAndroid: {
     fontSize: 11,
     lineHeight: 14,
-  },
-  mascotWrap: {
-    alignSelf: "center",
-    marginTop: 14,
-  },
-  mascotWrapAndroid: {
-    marginTop: 10,
-  },
-  mascotWrapCompactAndroid: {
-    marginTop: 8,
-  },
-  mascot: {
-    fontSize: 56,
-  },
-  mascotAndroid: {
-    fontSize: 46,
-  },
-  mascotCompactAndroid: {
-    fontSize: 38,
   },
   sheet: {
     flex: 1,
@@ -1373,7 +1321,7 @@ const styles = StyleSheet.create({
   },
   footerSecondaryButton: {
     flex: 1,
-    minHeight: 42,
+    minHeight: 36,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: "center",
@@ -1381,7 +1329,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   footerSecondaryButtonCompactAndroid: {
-    minHeight: 38,
+    minHeight: 33,
     borderRadius: 11,
   },
   footerSecondaryButtonText: {
@@ -1416,7 +1364,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   footerManageButton: {
-    minHeight: 38,
+    minHeight: 34,
     borderRadius: 10,
     borderWidth: 1,
     alignItems: "center",
@@ -1424,7 +1372,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   footerManageButtonCompactAndroid: {
-    minHeight: 34,
+    minHeight: 30,
     borderRadius: 9,
   },
   footerManageButtonText: {
@@ -1436,15 +1384,23 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
   },
+  footerLegalBlock: {
+    gap: 4,
+    marginTop: -2,
+  },
+  footerLegalBlockCompactAndroid: {
+    gap: 3,
+    marginTop: -2,
+  },
   footerLegalNotice: {
-    fontSize: 10,
-    lineHeight: 13,
+    fontSize: 9,
+    lineHeight: 12,
     fontWeight: "500",
     textAlign: "center",
   },
   footerLegalNoticeCompactAndroid: {
-    fontSize: 9,
-    lineHeight: 12,
+    fontSize: 8,
+    lineHeight: 11,
   },
   footerLegalLinksRow: {
     flexDirection: "row",
@@ -1456,23 +1412,23 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   footerLegalDot: {
-    fontSize: 11,
-    lineHeight: 12,
+    fontSize: 10,
+    lineHeight: 11,
     fontWeight: "600",
   },
   footerLegalDotCompactAndroid: {
-    fontSize: 10,
-    lineHeight: 11,
+    fontSize: 9,
+    lineHeight: 10,
   },
   footerLegalLinkText: {
-    fontSize: 11,
-    lineHeight: 12,
+    fontSize: 10,
+    lineHeight: 11,
     fontWeight: "800",
     textDecorationLine: "underline",
   },
   footerLegalLinkTextCompactAndroid: {
-    fontSize: 10,
-    lineHeight: 11,
+    fontSize: 9,
+    lineHeight: 10,
   },
 });
 

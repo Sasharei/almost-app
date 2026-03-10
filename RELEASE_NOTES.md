@@ -1,5 +1,49 @@
 # Release Notes
 
+## 5.0.6 (from 5.0.5)
+
+### EN
+- Small changes and quality improvements.
+
+### RU
+- Небольшие изменения и улучшение качества.
+
+### ES
+- Pequenos cambios y mejoras de calidad.
+
+### FR
+- Petits changements et ameliorations de qualite.
+
+## 5.0.5 (from 5.0.4)
+
+### EN
+- Fixed layout regressions in the Monthly Budget edit modal on Progress.
+- Increased modal height and improved spacing for budget categories.
+- Updated budget sliders with a thinner track and cleaner category cards.
+- Fixed limit slider interaction issues (no more jump-back or stuck value while dragging).
+- Improved gesture handling so list scrolling and slider dragging no longer conflict.
+
+### RU
+- Исправили проблемы верстки в модалке редактирования «Бюджет месяца» в разделе «Прогресс».
+- Увеличили высоту модалки и улучшили отступы для категорий бюджета.
+- Обновили внешний вид слайдеров: более тонкий трек и более аккуратные карточки категорий.
+- Исправили баги лимит-слайдера (значение больше не дергается и не залипает при перетаскивании).
+- Улучшили обработку жестов: прокрутка списка и перетаскивание слайдера больше не конфликтуют.
+
+### ES
+- Corregimos problemas de layout en el modal de edicion del Presupuesto mensual en Progreso.
+- Aumentamos la altura del modal y mejoramos los espacios entre categorias.
+- Actualizamos la apariencia de los sliders: pista mas fina y tarjetas de categoria mas limpias.
+- Corregimos errores del slider de limite (ya no tiembla ni se queda bloqueado al arrastrar).
+- Mejoramos los gestos para que el scroll de la lista y el arrastre del slider no entren en conflicto.
+
+### FR
+- Correction des problemes de mise en page dans la modale d'edition du budget mensuel dans Progression.
+- Hauteur de la modale augmentee et espacements des categories ameliores.
+- Apparence des sliders mise a jour : piste plus fine et cartes de categorie plus nettes.
+- Correction des bugs du slider de limite (plus de valeur qui saute ou reste bloquee pendant le glisser).
+- Gestion des gestes amelioree pour eviter les conflits entre le scroll de la liste et le glisser du slider.
+
 ## 5.0.3 (from 5.0.2)
 
 ### EN

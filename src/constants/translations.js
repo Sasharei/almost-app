@@ -470,7 +470,7 @@ export const TRANSLATIONS = {
     budgetCustomTag: "свой лимит",
     budgetEmptyTitle: "Добавь доход, чтобы распределить бюджет",
     budgetEmptySubtitle: "Внеси сумму вручную - мы разложим её по категориям.",
-    budgetEditHint: "Тапни по столбику, чтобы менять лимит.",
+    budgetEditHint: "Потяни слайдер, чтобы менять лимит.",
     budgetModalTitle: "Бюджет на месяц",
     budgetModalClose: "Готово",
     budgetApplyTitle: "Применить лимит?",
@@ -483,6 +483,19 @@ export const TRANSLATIONS = {
     budgetLimitPromptConfirm: "Применить",
     budgetCardLimitLow: "Лимит «{{category}}» на исходе, осталось {{amount}}.",
     budgetCardLimitOver: "Лимит «{{category}}» исчерпан.",
+    budgetLegendLimit: "Лимит",
+    budgetLegendSpent: "Потрачено",
+    budgetLegendRecommended: "Рекомендовано",
+    budgetAdaptiveTitle: "Адаптивные подсказки",
+    budgetAdaptiveSubtitle: "Обновляется по тратам и остатку дней: {{days}}.",
+    budgetAdaptiveBalanced: "Лимиты уже выглядят сбалансировано.",
+    budgetAdaptiveMoveHint: "Перенеси {{amount}} из «{{from}}» в «{{to}}».",
+    budgetAdaptiveForecastHint: "По прогнозу возможен перерасход {{amount}}.",
+    budgetSpentLabel: "Потрачено: {{amount}}",
+    budgetRecommendedLabel: "Рекомендовано: {{amount}}",
+    budgetForecastOnTrack: "Прогноз: в рамках лимита",
+    budgetForecastUnder: "Прогноз: запас {{amount}}",
+    budgetForecastOver: "Прогноз: перерасход {{amount}}",
     incomeEntryTitle: "Внеси доход",
     incomeEntrySubtitle: "Новая функция: умный бюджет от дохода.",
     incomeEntryExplanation:
@@ -600,44 +613,75 @@ export const TRANSLATIONS = {
       "Уровень 6! Отчёты и кастомизация Алми доступны в Premium.",
     level7UnlockMessage:
       "Уровень 7! Открыт трекер бесплатных дней без трат.",
+    level2UnlockMessagePremium:
+      "А вы знали? Ежедневная награда находится в модалке Алми на главном экране.",
+    level3UnlockMessagePremium:
+      "А вы знали? Во вкладке «Думаем» можно откладывать решения, а фокус-режим и вечерняя сводка появляются автоматически.",
+    level4UnlockMessagePremium:
+      "А вы знали? В меню «Прогресс» есть Impulse-карта с зонами риска.",
+    level5UnlockMessagePremium:
+      "А вы знали? В меню «Награды» можно смотреть трофеи, прогресс и фокус-цели.",
+    level6UnlockMessagePremium:
+      "А вы знали? В профиле есть отчёты, а в модалке Алми - кастомизация образов.",
+    level7UnlockMessagePremium:
+      "А вы знали? Трекер бесплатных дней помогает следить за серией дней без лишних трат.",
     featureUnlockWhereLabel: "Где искать",
     featureUnlockPreviewLabel: "Как это выглядит",
     featureLockedLevelLabel: "Откроется на уровне {{level}}",
     featureLockedPremiumLabel: "Доступно в Premium",
+    featureUnlockDidYouKnowBadge: "А вы знали что?",
     featureUnlockRewardsDailyTitle: "Ежедневная награда",
     featureUnlockRewardsDailyDescription:
       "На главном экране нажми на Алми: ежедневная награда теперь внутри его модалки.",
+    featureUnlockRewardsDailyPremiumDescription:
+      "На главном экране нажми на Алми: внутри модалки можно забрать ежедневную награду.",
     featureUnlockRewardsDailyPreview: "Ежедневная награда",
     featureUnlockFeedFocusTitle: "Лента + «Думаем»",
     featureUnlockFeedFocusDescription:
       "Открой «Ленту»: сверху появились фокус-режим и вечерняя сводка. Вкладка «Думаем» - для решений на потом.",
+    featureUnlockFeedFocusPremiumDescription:
+      "В «Ленте» сверху есть фокус-режим и вечерняя сводка, а «Думаем» помогает отложить решение.",
     featureUnlockFeedFocusPreview: "Фокус-режим",
     featureUnlockRewardsCustomizationTitle: "Меню «Награды»",
     featureUnlockRewardsCustomizationDescription:
       "Во вкладке «Награды» теперь трофеи, прогресс и фокус-цели.",
+    featureUnlockRewardsCustomizationPremiumDescription:
+      "Во вкладке «Награды» собраны трофеи, прогресс и фокус-цели.",
     featureUnlockRewardsCustomizationPreview: "Меню наград",
     featureUnlockCatCustomizationTitle: "Кастомизация Алми",
     featureUnlockCatCustomizationDescription:
       "На главном экране нажми на Алми и открой выбор образов.",
+    featureUnlockCatCustomizationPremiumDescription:
+      "На главном экране нажми на Алми, чтобы открыть образы и настроить внешний вид.",
     featureUnlockCatCustomizationPreview: "Образы Алми",
     featureUnlockReportsTitle: "Отчёты за неделю и месяц",
     featureUnlockReportsDescription:
       "В профиле нажми «Отчёты». Функция доступна в Premium.",
+    featureUnlockReportsPremiumDescription:
+      "В профиле нажми «Отчёты», чтобы посмотреть недельную и месячную динамику.",
     featureUnlockReportsPreview: "Профиль → Отчёты",
     featureUnlockRewardsChallengesTitle: "Награды → Челленджи",
     featureUnlockRewardsChallengesDescription:
       "Во вкладке «Награды» открой «Челленджи» и выбери испытание.",
+    featureUnlockRewardsChallengesPremiumDescription:
+      "Во вкладке «Награды» открой «Челленджи» и запусти миссию.",
     featureUnlockRewardsChallengesPreview: "Челленджи",
     featureUnlockImpulseMapTitle: "Карта импульсов",
     featureUnlockImpulseMapDescription:
       "В меню «Прогресс» Premium-пользователям доступна Impulse-карта с зонами пиковых срывов.",
+    featureUnlockImpulseMapPremiumDescription:
+      "В меню «Прогресс» открой Impulse-карту, чтобы видеть зоны пикового риска.",
     featureUnlockImpulseMapPreview: "Прогресс → Impulse-карта",
     featureUnlockThinkingTitle: "Меню «Думаем»",
     featureUnlockThinkingDescription:
       "Во вкладке «Думаем» хранятся отложенные решения. Фокус-режим и вечерние сводки работают в фоне и появляются автоматически.",
+    featureUnlockThinkingPremiumDescription:
+      "Во вкладке «Думаем» можно хранить решения на потом; фокус-режим и сводки работают автоматически.",
     featureUnlockThinkingPreview: "Вкладка «Думаем»",
     featureUnlockFreeDayTitle: "Бесплатные дни",
     featureUnlockFreeDayDescription:
+      "Трекер бесплатных дней показывает серию дней без импульсивных трат.",
+    featureUnlockFreeDayPremiumDescription:
       "Трекер бесплатных дней показывает серию дней без импульсивных трат.",
     impulseCardTitle: "Импульс-карта",
     impulseCardSubtitle: "Где импульсы сильнее всего.",
@@ -764,6 +808,7 @@ export const TRANSLATIONS = {
     reportsMonthlyTab: "Месяцы",
     reportsWeeklyBadge: "Неделя",
     reportsMonthlyBadge: "Месяц",
+    reportsExcludedMandatoryNote: "(Обязательные платежи исключены)",
     reportsEmpty: "Пока нет отчётов. Добавь сохранения или траты.",
     reportsEmptyShort: "Нет данных",
     reportsSavedLabel: "Сохранено",
@@ -1204,6 +1249,7 @@ export const TRANSLATIONS = {
     homeWidgetActionSave: "Копить",
     homeWidgetActionSpend: "Тратить",
     homeWidgetStreakLabel: "Серия",
+    homeWidgetDailySummaryLabel: "Отчёт",
     goalAssignPromptTitle: "Куда зачесть экономию?",
     goalAssignPromptSubtitle: "Выберите цель, которую наполняет «{{title}}».",
     goalAssignNone: "Пока без цели",
@@ -1370,19 +1416,28 @@ export const TRANSLATIONS = {
       "23:30. Запиши отказы и траты сейчас, иначе серия обнулится.",
     ],
     dailySummaryBadgeLabel: "вечерний отчёт",
+    dailySummaryBadgeCTA: "отчёт",
     dailySummaryTitle: "Итоги дня",
     dailySummarySubtitle: "Так держать, продолжай в том же духе!",
+    dailySummarySubtitleEmpty: "Сегодня тихий день. Это тоже часть пути.",
     dailySummarySavedLabel: "Сэкономлено сегодня",
     dailySummarySavedSub: "Каждый отказ приближает к цели",
+    dailySummarySavedSubEmpty: "Сегодня без сохранений, но завтра можно начать с малого.",
     dailySummarySpendsLabel: "Траты",
     dailySummaryContinue: "Продолжить",
+    dailySummaryBurnLabel: "Сгорит через {{time}}",
+    dailySummaryEmptyMessage: "К сожалению, сегодня ничего не было спасено.",
+    dailySummaryEmptyMotivation: "Завтра начнём заново. Один маленький отказ уже победа.",
     dailySummaryHint: "Загляну завтра с новыми цифрами.",
     spendLoggingReminderTitle: "Запиши траты",
     spendLoggingReminderBody: "Чем чаще отмечаешь расходы, тем точнее Almost помогает советами.",
+    freeDayEveningReminderTitle: "Удалось провести бесплатный день?",
+    freeDayEveningReminderBody: "Удалось провести бесплатный день? Отметь в приложении.",
     pushActionSave: "Копить",
     pushActionSpend: "Тратить",
     dailySummaryNotificationTitle: "Вечерний отчёт готов 📊",
-    dailySummaryNotificationBody: "+{{saved}} за {{declines}} отказа(ов). Запрыгни в Almost и подведём итоги. ✨",
+    dailySummaryNotificationBody: "Отчёт доступен до 00:00 по вашему времени ⏳",
+    dailySummaryDynamicIslandTitle: "Заберите ежедневный отчёт!",
     baselineTitle: "Доход и мелкие траты",
     baselineSubtitle: "Укажи доход и сколько уходит на ерунду - так умный бюджет станет точнее.",
     baselinePlaceholder: "Введите сумму",
@@ -1428,7 +1483,7 @@ export const TRANSLATIONS = {
     coinEntryTitle: "Сколько внести?",
     coinEntrySubtitle: "Проведи монетку вверх-вниз и выбери категорию.",
     coinEntryHint: "Нажми кнопку выше, чтобы подтвердить копилку или трату.",
-    coinEntryManualTapHint: "Нажми чтобы ввести вручную",
+    coinEntryManualTapHint: "Двойной тап по монетке для ручного ввода",
     coinEntryManual: "...",
     coinEntryManualTitle: "Выбери новый максимум",
     coinEntryManualPlaceholder: "Введите сумму",
@@ -1931,7 +1986,7 @@ export const TRANSLATIONS = {
     budgetCustomTag: "custom",
     budgetEmptyTitle: "Add income to plan your budget",
     budgetEmptySubtitle: "Enter a number and we’ll split it across categories.",
-    budgetEditHint: "Tap a bar to change limits.",
+    budgetEditHint: "Drag the slider to adjust limits.",
     budgetModalTitle: "Monthly budget",
     budgetModalClose: "Done",
     budgetApplyTitle: "Apply new limit?",
@@ -1944,6 +1999,19 @@ export const TRANSLATIONS = {
     budgetLimitPromptConfirm: "Apply",
     budgetCardLimitLow: "“{{category}}” limit is low - {{amount}} left.",
     budgetCardLimitOver: "“{{category}}” limit is spent.",
+    budgetLegendLimit: "Limit",
+    budgetLegendSpent: "Spent",
+    budgetLegendRecommended: "Recommended",
+    budgetAdaptiveTitle: "Adaptive suggestions",
+    budgetAdaptiveSubtitle: "Updated by spending pace and days left: {{days}}.",
+    budgetAdaptiveBalanced: "Your limits are already well balanced.",
+    budgetAdaptiveMoveHint: "Move {{amount}} from “{{from}}” to “{{to}}”.",
+    budgetAdaptiveForecastHint: "Forecast shows a potential overrun of {{amount}}.",
+    budgetSpentLabel: "Spent: {{amount}}",
+    budgetRecommendedLabel: "Recommended: {{amount}}",
+    budgetForecastOnTrack: "Forecast: on track",
+    budgetForecastUnder: "Forecast: {{amount}} buffer",
+    budgetForecastOver: "Forecast: {{amount}} over",
     incomeEntryTitle: "Add income",
     incomeEntrySubtitle: "New feature: smart budget based on your income.",
     incomeEntryExplanation:
@@ -2060,44 +2128,75 @@ export const TRANSLATIONS = {
       "Level 6! Reports and Almi customization are available in Premium.",
     level7UnlockMessage:
       "Level 7! Free-day tracker is unlocked.",
+    level2UnlockMessagePremium:
+      "Did you know? Daily reward is in the Almi modal on Home.",
+    level3UnlockMessagePremium:
+      "Did you know? The Thinking tab helps you park decisions, while focus mode and evening summaries appear automatically.",
+    level4UnlockMessagePremium:
+      "Did you know? The Progress menu includes an Impulse map with risk zones.",
+    level5UnlockMessagePremium:
+      "Did you know? The Rewards menu shows trophies, progress, and focus targets.",
+    level6UnlockMessagePremium:
+      "Did you know? Profile includes Reports, and the Almi modal has customization.",
+    level7UnlockMessagePremium:
+      "Did you know? Free-day tracker helps you keep a streak of no-spend days.",
     featureUnlockWhereLabel: "Where it lives",
     featureUnlockPreviewLabel: "Looks like this",
     featureLockedLevelLabel: "Unlocks at level {{level}}",
     featureLockedPremiumLabel: "Available in Premium",
+    featureUnlockDidYouKnowBadge: "Did you know?",
     featureUnlockRewardsDailyTitle: "Daily reward",
     featureUnlockRewardsDailyDescription:
       "On Home, tap Almi: daily reward is now inside the modal.",
+    featureUnlockRewardsDailyPremiumDescription:
+      "On Home, tap Almi to collect your daily reward in the modal.",
     featureUnlockRewardsDailyPreview: "Daily reward",
     featureUnlockFeedFocusTitle: "Feed + Thinking",
     featureUnlockFeedFocusDescription:
       "Open Feed: focus mode and evening summary are at the top. Use Thinking to decide later.",
+    featureUnlockFeedFocusPremiumDescription:
+      "Open Feed for focus mode and evening summary, then use Thinking to decide later.",
     featureUnlockFeedFocusPreview: "Focus mode",
     featureUnlockRewardsCustomizationTitle: "Rewards menu",
     featureUnlockRewardsCustomizationDescription:
       "Rewards menu now shows trophies, progress, and focus targets.",
+    featureUnlockRewardsCustomizationPremiumDescription:
+      "Rewards menu shows trophies, progress, and focus targets.",
     featureUnlockRewardsCustomizationPreview: "Rewards tab",
     featureUnlockCatCustomizationTitle: "Almi customization",
     featureUnlockCatCustomizationDescription:
+      "On Home, tap Almi to open skins and customize the look.",
+    featureUnlockCatCustomizationPremiumDescription:
       "On Home, tap Almi to open skins and customize the look.",
     featureUnlockCatCustomizationPreview: "Almi skins",
     featureUnlockReportsTitle: "Weekly & monthly reports",
     featureUnlockReportsDescription:
       "In Profile, tap Reports. This feature is available in Premium.",
+    featureUnlockReportsPremiumDescription:
+      "In Profile, tap Reports to review weekly and monthly trends.",
     featureUnlockReportsPreview: "Profile → Reports",
     featureUnlockRewardsChallengesTitle: "Rewards → Challenges",
     featureUnlockRewardsChallengesDescription:
+      "In Rewards, open Challenges and start a mission.",
+    featureUnlockRewardsChallengesPremiumDescription:
       "In Rewards, open Challenges and start a mission.",
     featureUnlockRewardsChallengesPreview: "Challenge board",
     featureUnlockImpulseMapTitle: "Impulse map",
     featureUnlockImpulseMapDescription:
       "In the Progress menu, Premium users get the Impulse map with peak-risk zones.",
+    featureUnlockImpulseMapPremiumDescription:
+      "In the Progress menu, open Impulse map to spot peak-risk zones.",
     featureUnlockImpulseMapPreview: "Progress → Impulse map",
     featureUnlockThinkingTitle: "Thinking menu",
     featureUnlockThinkingDescription:
       "Use the Thinking tab to store decisions for later. Focus mode and evening summaries run in the background and appear automatically.",
+    featureUnlockThinkingPremiumDescription:
+      "Use the Thinking tab to park decisions for later; focus mode and evening summaries run automatically.",
     featureUnlockThinkingPreview: "Thinking tab",
     featureUnlockFreeDayTitle: "Free-day streak",
     featureUnlockFreeDayDescription:
+      "Tracks your streak of zero-spend days.",
+    featureUnlockFreeDayPremiumDescription:
       "Tracks your streak of zero-spend days.",
     impulseCardTitle: "Impulse map",
     impulseCardSubtitle: "Where impulses hit most.",
@@ -2220,6 +2319,7 @@ export const TRANSLATIONS = {
     reportsMonthlyTab: "Months",
     reportsWeeklyBadge: "Week",
     reportsMonthlyBadge: "Month",
+    reportsExcludedMandatoryNote: "(Mandatory payments excluded)",
     reportsEmpty: "No reports yet. Log saves or spends to get a summary.",
     reportsEmptyShort: "No data",
     reportsSavedLabel: "Saved",
@@ -2652,6 +2752,7 @@ export const TRANSLATIONS = {
     homeWidgetActionSave: "Save",
     homeWidgetActionSpend: "Spend",
     homeWidgetStreakLabel: "Streak",
+    homeWidgetDailySummaryLabel: "Recap",
     goalAssignPromptTitle: "Where should this savings go?",
     goalAssignPromptSubtitle: "Pick the goal that “{{title}}” will fund.",
     goalAssignNone: "No goal yet",
@@ -2803,19 +2904,28 @@ export const TRANSLATIONS = {
       "23:30. Log declines and spends now or the streak resets.",
     ],
     dailySummaryBadgeLabel: "daily recap",
+    dailySummaryBadgeCTA: "recap",
     dailySummaryTitle: "Today’s recap",
     dailySummarySubtitle: "Great momentum - keep it up!",
+    dailySummarySubtitleEmpty: "Quiet day today. That is still part of the process.",
     dailySummarySavedLabel: "Saved today",
     dailySummarySavedSub: "Every skip nudges the goal closer",
+    dailySummarySavedSubEmpty: "No saves today yet. Tomorrow starts with one small win.",
     dailySummarySpendsLabel: "Spends",
     dailySummaryContinue: "Continue",
+    dailySummaryBurnLabel: "Expires in {{time}}",
+    dailySummaryEmptyMessage: "No savings were protected today.",
+    dailySummaryEmptyMotivation: "Tomorrow is a reset. One small skip is already progress.",
     dailySummaryHint: "See you tomorrow with fresh numbers.",
     spendLoggingReminderTitle: "Log today’s spends",
     spendLoggingReminderBody: "The more often you record purchases, the smarter Almost can guide you.",
+    freeDayEveningReminderTitle: "Did you get a free day?",
+    freeDayEveningReminderBody: "Was today a no-spend day? Mark it in the app!",
     pushActionSave: "Save",
     pushActionSpend: "Spend",
     dailySummaryNotificationTitle: "Tonight’s recap is ready 📊",
-    dailySummaryNotificationBody: "+{{saved}} from {{declines}} skips today. Open Almost for the full story. ✨",
+    dailySummaryNotificationBody: "Your recap is available until 00:00 local time ⏳",
+    dailySummaryDynamicIslandTitle: "Claim your daily recap!",
     baselineTitle: "Income and small stuff",
     baselineSubtitle: "Add your income and small‑stuff spend to keep Smart Budget accurate.",
     baselinePlaceholder: "Enter amount",
@@ -2861,7 +2971,7 @@ export const TRANSLATIONS = {
     coinEntryTitle: "How much?",
     coinEntrySubtitle: "Slide the coin and pick a category.",
     coinEntryHint: "Use the buttons above to save or spend.",
-    coinEntryManualTapHint: "Tap to enter manually",
+    coinEntryManualTapHint: "Double tap the coin to enter manually",
     coinEntryManual: "...",
     coinEntryManualTitle: "Set new slider max",
     coinEntryManualPlaceholder: "Enter amount",
@@ -3363,7 +3473,7 @@ export const TRANSLATIONS = {
     budgetCustomTag: "perso",
     budgetEmptyTitle: "Ajoute un revenu pour planifier le budget",
     budgetEmptySubtitle: "Saisis un montant et on le répartit par catégorie.",
-    budgetEditHint: "Touchez une barre pour modifier les limites.",
+    budgetEditHint: "Faites glisser le curseur pour ajuster les limites.",
     budgetModalTitle: "Budget mensuel",
     budgetModalClose: "Terminé",
     budgetApplyTitle: "Appliquer la limite ?",
@@ -3376,6 +3486,19 @@ export const TRANSLATIONS = {
     budgetLimitPromptConfirm: "Appliquer",
     budgetCardLimitLow: "La limite « {{category}} » touche à la fin - il reste {{amount}}.",
     budgetCardLimitOver: "La limite « {{category}} » est épuisée.",
+    budgetLegendLimit: "Limite",
+    budgetLegendSpent: "Dépensé",
+    budgetLegendRecommended: "Recommandé",
+    budgetAdaptiveTitle: "Suggestions adaptatives",
+    budgetAdaptiveSubtitle: "Mis à jour selon le rythme de dépense et les jours restants : {{days}}.",
+    budgetAdaptiveBalanced: "Tes limites sont déjà bien équilibrées.",
+    budgetAdaptiveMoveHint: "Déplace {{amount}} de « {{from}} » vers « {{to}} ».",
+    budgetAdaptiveForecastHint: "Le prévisionnel indique un dépassement possible de {{amount}}.",
+    budgetSpentLabel: "Dépensé : {{amount}}",
+    budgetRecommendedLabel: "Recommandé : {{amount}}",
+    budgetForecastOnTrack: "Prévision : dans la limite",
+    budgetForecastUnder: "Prévision : marge de {{amount}}",
+    budgetForecastOver: "Prévision : dépassement de {{amount}}",
     incomeEntryTitle: "Ajouter un revenu",
     incomeEntrySubtitle: "Nouvelle fonctionnalité : budget intelligent basé sur ton revenu.",
     incomeEntryExplanation:
@@ -3492,44 +3615,75 @@ export const TRANSLATIONS = {
       "Niveau 6 ! Nouveau palier atteint. Les rapports et la personnalisation d’Almi sont disponibles en Premium.",
     level7UnlockMessage:
       "Niveau 7 ! Le suivi des jours gratuits est actif : note tes journées sans dépenses et garde la série.",
+    level2UnlockMessagePremium:
+      "Le savais-tu ? La récompense du jour est dans la modale d’Almi sur l’accueil.",
+    level3UnlockMessagePremium:
+      "Le savais-tu ? L’onglet « En pause » aide à repousser une décision, et le mode focus avec le récap du soir apparaît automatiquement.",
+    level4UnlockMessagePremium:
+      "Le savais-tu ? Le menu Progression contient la carte des impulsions avec les zones de risque.",
+    level5UnlockMessagePremium:
+      "Le savais-tu ? Le menu Récompenses affiche trophées, progression et cibles focus.",
+    level6UnlockMessagePremium:
+      "Le savais-tu ? Les rapports sont dans Profil, et la personnalisation d’Almi se trouve dans sa modale.",
+    level7UnlockMessagePremium:
+      "Le savais-tu ? Le suivi des jours gratuits t’aide à garder une série de jours sans dépenses.",
     featureUnlockWhereLabel: "Où le trouver",
     featureUnlockPreviewLabel: "Aperçu",
     featureLockedLevelLabel: "Se débloque au niveau {{level}}",
     featureLockedPremiumLabel: "Disponible en Premium",
+    featureUnlockDidYouKnowBadge: "Le savais-tu ?",
     featureUnlockRewardsDailyTitle: "Récompense du jour",
     featureUnlockRewardsDailyDescription:
       "La récompense du jour est maintenant dans la modale d’Almi. Sur l’accueil, touche le chat, ouvre la modale et récupère le bonus une fois par jour ; elle revient demain.",
+    featureUnlockRewardsDailyPremiumDescription:
+      "Sur l’accueil, touche Almi pour ouvrir la modale et récupérer la récompense du jour.",
     featureUnlockRewardsDailyPreview: "Récompense du jour",
     featureUnlockFeedFocusTitle: "Flux + « En pause »",
     featureUnlockFeedFocusDescription:
       "Au début du flux, le mode focus et le récap du soir t’attendent. L’onglet « En pause » te permet de décider plus tard.",
+    featureUnlockFeedFocusPremiumDescription:
+      "Au début du flux, retrouve le mode focus et le récap du soir, puis utilise « En pause » pour décider plus tard.",
     featureUnlockFeedFocusPreview: "Mode focus",
     featureUnlockRewardsCustomizationTitle: "Menu Récompenses",
     featureUnlockRewardsCustomizationDescription:
       "Les Récompenses rassemblent trophées et progression pour voir ce que tu as gagné.",
+    featureUnlockRewardsCustomizationPremiumDescription:
+      "Les Récompenses rassemblent trophées, progression et cibles focus.",
     featureUnlockRewardsCustomizationPreview: "Onglet Récompenses",
     featureUnlockCatCustomizationTitle: "Personnalisation d’Almi",
     featureUnlockCatCustomizationDescription:
+      "Sur l’accueil, touche Almi pour changer ses skins et ajuster le style.",
+    featureUnlockCatCustomizationPremiumDescription:
       "Sur l’accueil, touche Almi pour changer ses skins et ajuster le style.",
     featureUnlockCatCustomizationPreview: "Skins d’Almi",
     featureUnlockReportsTitle: "Rapports hebdo & mensuels",
     featureUnlockReportsDescription:
       "Dans Profil, touche « Rapports » pour voir les résumés hebdo/mensuels, le solde et les insights.",
+    featureUnlockReportsPremiumDescription:
+      "Dans Profil, touche « Rapports » pour voir tes tendances hebdo et mensuelles.",
     featureUnlockReportsPreview: "Profil → Rapports",
     featureUnlockRewardsChallengesTitle: "Récompenses → Défis",
     featureUnlockRewardsChallengesDescription:
       "Passe sur l’onglet « Défis » dans Récompenses pour lancer une mission qui te motive.",
+    featureUnlockRewardsChallengesPremiumDescription:
+      "Dans Récompenses, ouvre « Défis » et lance une mission.",
     featureUnlockRewardsChallengesPreview: "Tableau de défis",
     featureUnlockImpulseMapTitle: "Carte des impulsions",
     featureUnlockImpulseMapDescription:
       "La carte des impulsions est disponible en Premium et montre quand et où les dépenses montent.",
+    featureUnlockImpulseMapPremiumDescription:
+      "Dans Progression, ouvre la carte des impulsions pour repérer les zones de risque.",
     featureUnlockImpulseMapPreview: "Timeline des impulsions",
     featureUnlockThinkingTitle: "Menu « En pause »",
     featureUnlockThinkingDescription:
       "Sur les cartes de plus de 50 $, touche « Je verrai » pour mettre en pause 14 jours. Dans En pause, tu peux décider ou prolonger de 7 jours.",
+    featureUnlockThinkingPremiumDescription:
+      "Utilise « En pause » pour garder une décision pour plus tard ; le mode focus et le récap du soir fonctionnent automatiquement.",
     featureUnlockThinkingPreview: "Bouton « Je verrai »",
     featureUnlockFreeDayTitle: "Série de jours gratuits",
     featureUnlockFreeDayDescription:
+      "La série de jours gratuits suit tes journées sans dépenses impulsives.",
+    featureUnlockFreeDayPremiumDescription:
       "La série de jours gratuits suit tes journées sans dépenses impulsives.",
     impulseCardTitle: "Carte des impulsions",
     impulseCardSubtitle: "Là où l'impulsion frappe.",
@@ -3652,6 +3806,7 @@ export const TRANSLATIONS = {
     reportsMonthlyTab: "Mois",
     reportsWeeklyBadge: "Semaine",
     reportsMonthlyBadge: "Mois",
+    reportsExcludedMandatoryNote: "(Paiements obligatoires exclus)",
     reportsEmpty: "Pas encore de rapports. Enregistre des économies ou des dépenses.",
     reportsEmptyShort: "Pas de données",
     reportsSavedLabel: "Économisé",
@@ -4079,6 +4234,7 @@ export const TRANSLATIONS = {
     homeWidgetActionSave: "Épargner",
     homeWidgetActionSpend: "Dépenser",
     homeWidgetStreakLabel: "Série",
+    homeWidgetDailySummaryLabel: "Récap",
     goalAssignPromptTitle: "Où envoyer cette économie ?",
     goalAssignPromptSubtitle: "Choisissez l'objectif qui recevra « {{title}} ».",
     goalAssignNone: "Pas encore d'objectif",
@@ -4230,19 +4386,28 @@ export const TRANSLATIONS = {
       "23:30. Note refus et dépenses maintenant ou la série se réinitialise.",
     ],
     dailySummaryBadgeLabel: "récap du jour",
+    dailySummaryBadgeCTA: "récap",
     dailySummaryTitle: "Récap du jour",
     dailySummarySubtitle: "Super rythme - continue !",
+    dailySummarySubtitleEmpty: "Journée calme aujourd'hui. Ça fait aussi partie du parcours.",
     dailySummarySavedLabel: "Économisé aujourd'hui",
     dailySummarySavedSub: "Chaque refus rapproche la cible",
+    dailySummarySavedSubEmpty: "Aucune économie aujourd'hui. Demain, on repart avec un petit pas.",
     dailySummarySpendsLabel: "Dépenses",
     dailySummaryContinue: "Continuer",
+    dailySummaryBurnLabel: "Expire dans {{time}}",
+    dailySummaryEmptyMessage: "Désolé, rien n’a été sauvé aujourd’hui.",
+    dailySummaryEmptyMotivation: "Demain on recommence. Un seul refus est déjà une victoire.",
     dailySummaryHint: "À demain avec des chiffres frais.",
     spendLoggingReminderTitle: "Note tes dépenses",
     spendLoggingReminderBody: "Plus tu enregistres tes achats, plus Almost peut t’aider avec précision.",
+    freeDayEveningReminderTitle: "Journée gratuite réussie ?",
+    freeDayEveningReminderBody: "Tu as eu une journée sans dépenses aujourd’hui ? Note-la dans l’app !",
     pushActionSave: "Épargner",
     pushActionSpend: "Dépenser",
     dailySummaryNotificationTitle: "Le récap du soir est prêt 📊",
-    dailySummaryNotificationBody: "+{{saved}} en {{declines}} refus aujourd’hui. Ouvre Almost pour tout voir. ✨",
+    dailySummaryNotificationBody: "Ton récap est disponible jusqu’à 00:00 (heure locale) ⏳",
+    dailySummaryDynamicIslandTitle: "Récupère ton récap quotidien !",
     baselineTitle: "Revenu et petites folies",
     baselineSubtitle:
       "Indiquez votre revenu et vos petites dépenses pour aider le budget intelligent.",
@@ -4289,7 +4454,7 @@ export const TRANSLATIONS = {
     coinEntryTitle: "Quel montant ?",
     coinEntrySubtitle: "Fais glisser la pièce et choisis une catégorie.",
     coinEntryHint: "Utilise les boutons pour économiser ou dépenser.",
-    coinEntryManualTapHint: "Touchez pour saisir manuellement",
+    coinEntryManualTapHint: "Touchez deux fois la pièce pour saisir manuellement",
     coinEntryManual: "...",
     coinEntryManualTitle: "Définir un nouveau maximum",
     coinEntryManualPlaceholder: "Entre le montant",
@@ -4793,7 +4958,7 @@ export const TRANSLATIONS = {
     budgetCustomTag: "personal",
     budgetEmptyTitle: "Agrega un ingreso para planificar el presupuesto",
     budgetEmptySubtitle: "Ingresa un monto y lo distribuimos por categorías.",
-    budgetEditHint: "Toca una barra para cambiar los límites.",
+    budgetEditHint: "Arrastra el control para ajustar los límites.",
     budgetModalTitle: "Presupuesto mensual",
     budgetModalClose: "Listo",
     budgetApplyTitle: "¿Aplicar límite?",
@@ -4806,6 +4971,19 @@ export const TRANSLATIONS = {
     budgetLimitPromptConfirm: "Aplicar",
     budgetCardLimitLow: "El límite de «{{category}}» está casi agotado - quedan {{amount}}.",
     budgetCardLimitOver: "El límite de «{{category}}» se agotó.",
+    budgetLegendLimit: "Límite",
+    budgetLegendSpent: "Gastado",
+    budgetLegendRecommended: "Recomendado",
+    budgetAdaptiveTitle: "Sugerencias adaptativas",
+    budgetAdaptiveSubtitle: "Se actualiza con tu ritmo de gasto y días restantes: {{days}}.",
+    budgetAdaptiveBalanced: "Tus límites ya se ven equilibrados.",
+    budgetAdaptiveMoveHint: "Mueve {{amount}} de «{{from}}» a «{{to}}».",
+    budgetAdaptiveForecastHint: "El pronóstico muestra un posible exceso de {{amount}}.",
+    budgetSpentLabel: "Gastado: {{amount}}",
+    budgetRecommendedLabel: "Recomendado: {{amount}}",
+    budgetForecastOnTrack: "Pronóstico: en línea",
+    budgetForecastUnder: "Pronóstico: margen de {{amount}}",
+    budgetForecastOver: "Pronóstico: exceso de {{amount}}",
     incomeEntryTitle: "Agregar ingreso",
     incomeEntrySubtitle: "Nueva función: presupuesto inteligente según tu ingreso.",
     incomeEntryExplanation:
@@ -4922,44 +5100,75 @@ export const TRANSLATIONS = {
       "Nivel 6: Nuevo hito alcanzado. Reportes y personalización de Almi están disponibles en Premium.",
     level7UnlockMessage:
       "Nivel 7: El registro de días libres está disponible; anota días sin gasto y mantén la racha.",
+    level2UnlockMessagePremium:
+      "¿Sabías que? La recompensa diaria está en la modal de Almi en Inicio.",
+    level3UnlockMessagePremium:
+      "¿Sabías que? La pestaña «En pausa» te ayuda a decidir después, y el modo foco con el resumen nocturno aparecen automáticamente.",
+    level4UnlockMessagePremium:
+      "¿Sabías que? En Progreso tienes el mapa de impulsos con zonas de riesgo.",
+    level5UnlockMessagePremium:
+      "¿Sabías que? El menú Recompensas muestra trofeos, progreso y objetivos de enfoque.",
+    level6UnlockMessagePremium:
+      "¿Sabías que? En Perfil están los reportes, y la personalización de Almi está en su modal.",
+    level7UnlockMessagePremium:
+      "¿Sabías que? El registro de días libres te ayuda a mantener una racha sin gastos.",
     featureUnlockWhereLabel: "Dónde está",
     featureUnlockPreviewLabel: "Así se ve",
     featureLockedLevelLabel: "Se desbloquea en el nivel {{level}}",
     featureLockedPremiumLabel: "Disponible en Premium",
+    featureUnlockDidYouKnowBadge: "¿Sabías que?",
     featureUnlockRewardsDailyTitle: "Recompensa diaria",
     featureUnlockRewardsDailyDescription:
       "La recompensa diaria ahora está dentro de la modal de Almi. En Inicio, toca el gato, abre la modal y reclama el bonus una vez al día; se reinicia mañana.",
+    featureUnlockRewardsDailyPremiumDescription:
+      "En Inicio, toca a Almi para abrir la modal y recoger tu recompensa diaria.",
     featureUnlockRewardsDailyPreview: "Recompensa diaria",
     featureUnlockFeedFocusTitle: "Feed + En pausa",
     featureUnlockFeedFocusDescription:
       "Al inicio del feed verás el modo foco y el resumen nocturno. La pestaña «En pausa» te deja decidir más tarde.",
+    featureUnlockFeedFocusPremiumDescription:
+      "En el Feed tienes modo foco y resumen nocturno, y «En pausa» para decidir más tarde.",
     featureUnlockFeedFocusPreview: "Modo foco",
     featureUnlockRewardsCustomizationTitle: "Menú Recompensas",
     featureUnlockRewardsCustomizationDescription:
       "Recompensas reúne tus trofeos y el progreso de logros para ver lo que has conseguido.",
+    featureUnlockRewardsCustomizationPremiumDescription:
+      "Recompensas reúne trofeos, progreso y objetivos de enfoque.",
     featureUnlockRewardsCustomizationPreview: "Pestaña Recompensas",
     featureUnlockCatCustomizationTitle: "Personalización de Almi",
     featureUnlockCatCustomizationDescription:
+      "En Inicio, toca a Almi para cambiar skins y ajustar el estilo.",
+    featureUnlockCatCustomizationPremiumDescription:
       "En Inicio, toca a Almi para cambiar skins y ajustar el estilo.",
     featureUnlockCatCustomizationPreview: "Skins de Almi",
     featureUnlockReportsTitle: "Reportes semanales y mensuales",
     featureUnlockReportsDescription:
       "En Perfil, toca «Reportes» para ver resúmenes semanales/mensuales, balance e insights.",
+    featureUnlockReportsPremiumDescription:
+      "En Perfil, toca «Reportes» para revisar tendencias semanales y mensuales.",
     featureUnlockReportsPreview: "Perfil → Reportes",
     featureUnlockRewardsChallengesTitle: "Recompensas → Retos",
     featureUnlockRewardsChallengesDescription:
       "Cambia a la pestaña «Retos» en Recompensas y arranca la misión que más te motive.",
+    featureUnlockRewardsChallengesPremiumDescription:
+      "En Recompensas, abre «Retos» y arranca una misión.",
     featureUnlockRewardsChallengesPreview: "Tablón de retos",
     featureUnlockImpulseMapTitle: "Mapa de impulsos",
     featureUnlockImpulseMapDescription:
       "El mapa de impulsos está disponible en Premium y muestra cuándo y dónde suben los gastos.",
+    featureUnlockImpulseMapPremiumDescription:
+      "En Progreso, abre el mapa de impulsos para detectar zonas de riesgo.",
     featureUnlockImpulseMapPreview: "Timeline de impulsos",
     featureUnlockThinkingTitle: "Menú En pausa",
     featureUnlockThinkingDescription:
       "En tarjetas de más de 50 $, toca «Lo pensaré» para pausarlas 14 días. En En pausa puedes decidir o extender 7 días.",
+    featureUnlockThinkingPremiumDescription:
+      "Usa «En pausa» para guardar decisiones para después; el modo foco y el resumen nocturno funcionan automáticamente.",
     featureUnlockThinkingPreview: "Botón «Lo pensaré»",
     featureUnlockFreeDayTitle: "Racha de días gratis",
     featureUnlockFreeDayDescription:
+      "La racha de días gratis indica cuántos días seguidos evitas gastos impulsivos.",
+    featureUnlockFreeDayPremiumDescription:
       "La racha de días gratis indica cuántos días seguidos evitas gastos impulsivos.",
     impulseCardTitle: "Mapa de impulsos",
     impulseCardSubtitle: "Dónde pican más los impulsos.",
@@ -5082,6 +5291,7 @@ export const TRANSLATIONS = {
     reportsMonthlyTab: "Meses",
     reportsWeeklyBadge: "Semana",
     reportsMonthlyBadge: "Mes",
+    reportsExcludedMandatoryNote: "(Pagos obligatorios excluidos)",
     reportsEmpty: "Aún no hay reportes. Registra ahorros o gastos.",
     reportsEmptyShort: "Sin datos",
     reportsSavedLabel: "Ahorrado",
@@ -5506,6 +5716,7 @@ export const TRANSLATIONS = {
     homeWidgetActionSave: "Ahorrar",
     homeWidgetActionSpend: "Gastar",
     homeWidgetStreakLabel: "Racha",
+    homeWidgetDailySummaryLabel: "Resumen",
     goalAssignPromptTitle: "¿A qué meta irá este ahorro?",
     goalAssignPromptSubtitle: "Elige la meta que financiará «{{title}}».",
     goalAssignNone: "Sin meta aún",
@@ -5657,19 +5868,28 @@ export const TRANSLATIONS = {
       "23:30. Registra rechazos y gastos ahora o la racha se reinicia.",
     ],
     dailySummaryBadgeLabel: "reporte nocturno",
+    dailySummaryBadgeCTA: "reporte",
     dailySummaryTitle: "Resumen del día",
     dailySummarySubtitle: "Qué ritmo, sigue así.",
+    dailySummarySubtitleEmpty: "Hoy fue un día tranquilo. También cuenta.",
     dailySummarySavedLabel: "Ahorro de hoy",
     dailySummarySavedSub: "Cada renuncia acerca la meta.",
+    dailySummarySavedSubEmpty: "Hoy no hubo ahorro, pero mañana empezamos con un paso pequeño.",
     dailySummarySpendsLabel: "Gastos",
     dailySummaryContinue: "Continuar",
+    dailySummaryBurnLabel: "Se quema en {{time}}",
+    dailySummaryEmptyMessage: "Hoy no se logró salvar nada.",
+    dailySummaryEmptyMotivation: "Mañana se reinicia. Un solo “no” ya es progreso.",
     dailySummaryHint: "Mañana vuelvo con números frescos.",
     spendLoggingReminderTitle: "Registra tus gastos",
     spendLoggingReminderBody: "Mientras más compras anotes, mejor te guía Almost.",
+    freeDayEveningReminderTitle: "¿Lograste día gratis?",
+    freeDayEveningReminderBody: "¿Hoy fue un día sin gastos? ¡Márcalo en la app!",
     pushActionSave: "Ahorrar",
     pushActionSpend: "Gastar",
     dailySummaryNotificationTitle: "Resumen nocturno listo 📊",
-    dailySummaryNotificationBody: "+{{saved}} en {{declines}} rechazos hoy. Abre Almost para ver los detalles. ✨",
+    dailySummaryNotificationBody: "Tu resumen está disponible hasta las 00:00 (hora local) ⏳",
+    dailySummaryDynamicIslandTitle: "¡Recoge tu resumen diario!",
     baselineTitle: "Ingreso y pequeños caprichos",
     baselineSubtitle: "Indica tu ingreso y tus gastos pequeños para ayudar al presupuesto inteligente.",
     baselinePlaceholder: "Ingresa el monto",
@@ -5715,7 +5935,7 @@ export const TRANSLATIONS = {
     coinEntryTitle: "¿Cuánto?",
     coinEntrySubtitle: "Desliza la moneda y elige categoría.",
     coinEntryHint: "Usa los botones de arriba para ahorrar o gastar.",
-    coinEntryManualTapHint: "Toca para ingresar manualmente",
+    coinEntryManualTapHint: "Toca dos veces la moneda para ingresar manualmente",
     coinEntryManual: "...",
     coinEntryManualTitle: "Define un nuevo máximo",
     coinEntryManualPlaceholder: "Ingresa el monto",

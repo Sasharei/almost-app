@@ -38,6 +38,9 @@ private let keyWidgetLabelEmptyState = "widget_label_empty_state"
 private let keyWidgetActionSave = "widget_action_save"
 private let keyWidgetActionSpend = "widget_action_spend"
 private let keyWidgetInstalledMarker = "widget_home_installed_marker"
+private let keyWidgetDailySummaryAvailable = "widget_daily_summary_available"
+private let keyWidgetDailySummaryExpiresAt = "widget_daily_summary_expires_at"
+private let keyWidgetDailySummaryLabel = "widget_daily_summary_label"
 
 private let saveGreen = Color(red: 0.18, green: 0.72, blue: 0.45)
 
@@ -71,6 +74,9 @@ struct AlmostWidgetEntry: TimelineEntry {
     let labelEmptyState: String
     let actionSaveLabel: String
     let actionSpendLabel: String
+    let dailySummaryAvailable: Bool
+    let dailySummaryExpiresAt: Double
+    let dailySummaryLabel: String
 }
 
 struct AlmostWidgetProvider: TimelineProvider {
@@ -104,7 +110,10 @@ struct AlmostWidgetProvider: TimelineProvider {
             labelRecentEmpty: "Нет событий",
             labelEmptyState: "Start saving today",
             actionSaveLabel: "Копить",
-            actionSpendLabel: "Тратить"
+            actionSpendLabel: "Тратить",
+            dailySummaryAvailable: false,
+            dailySummaryExpiresAt: 0,
+            dailySummaryLabel: "Отчёт"
         )
     }
 
@@ -150,6 +159,9 @@ struct AlmostWidgetProvider: TimelineProvider {
         let labelEmptyState = defaults?.string(forKey: keyWidgetLabelEmptyState) ?? "Start saving today"
         let actionSaveLabel = defaults?.string(forKey: keyWidgetActionSave) ?? "Копить"
         let actionSpendLabel = defaults?.string(forKey: keyWidgetActionSpend) ?? "Тратить"
+        let dailySummaryAvailable = defaults?.bool(forKey: keyWidgetDailySummaryAvailable) ?? false
+        let dailySummaryExpiresAt = defaults?.double(forKey: keyWidgetDailySummaryExpiresAt) ?? 0
+        let dailySummaryLabel = defaults?.string(forKey: keyWidgetDailySummaryLabel) ?? "Отчёт"
         return AlmostWidgetEntry(
             date: Date(),
             savedMonthLabel: savedMonthLabel,
@@ -179,7 +191,10 @@ struct AlmostWidgetProvider: TimelineProvider {
             labelRecentEmpty: labelRecentEmpty,
             labelEmptyState: labelEmptyState,
             actionSaveLabel: actionSaveLabel,
-            actionSpendLabel: actionSpendLabel
+            actionSpendLabel: actionSpendLabel,
+            dailySummaryAvailable: dailySummaryAvailable,
+            dailySummaryExpiresAt: dailySummaryExpiresAt,
+            dailySummaryLabel: dailySummaryLabel
         )
     }
 }
@@ -191,7 +206,12 @@ struct Almost_WidgetEntryView: View {
     var body: some View {
         let background = Color(red: 0.97, green: 0.95, blue: 0.92)
         let edgePadding: CGFloat = 8
-        let content = contentView
+        let content = ZStack(alignment: .topTrailing) {
+            contentView
+            if dailySummaryReady {
+                dailySummaryBadge
+            }
+        }
             .padding(edgePadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .widgetURL(URL(string: "com.sasarei.almostclean://home"))
@@ -355,13 +375,39 @@ struct Almost_WidgetEntryView: View {
     }
 
     private var headerRow: some View {
-        HStack(spacing: 8) {
+        return HStack(spacing: 8) {
             catImage
             Text("Almost")
                 .font(.system(size: 12, weight: .bold))
                 .foregroundColor(.black)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             Spacer()
         }
+    }
+
+    private var dailySummaryReady: Bool {
+        entry.dailySummaryAvailable &&
+            entry.dailySummaryExpiresAt > Date().timeIntervalSince1970 * 1000
+    }
+
+    private var dailySummaryBadge: some View {
+        let summaryBadgeSize: CGFloat = family == .systemSmall ? 24 : 26
+        let summaryEmojiSize: CGFloat = family == .systemSmall ? 12 : 13
+        return Link(destination: URL(string: "com.sasarei.almostclean://daily-summary")!) {
+            Text("📊")
+                .font(.system(size: summaryEmojiSize))
+                .frame(width: summaryBadgeSize, height: summaryBadgeSize)
+                .background(Color.black.opacity(0.08))
+                .overlay(
+                    Circle()
+                        .stroke(Color.black.opacity(0.12), lineWidth: 1)
+                )
+                .clipShape(Circle())
+        }
+        .accessibilityLabel(Text(entry.dailySummaryLabel))
+        .padding(.top, 2)
+        .padding(.trailing, 2)
     }
 
     private var catImage: some View {
@@ -530,7 +576,10 @@ struct Almost_Widget: Widget {
         labelRecentEmpty: "Нет событий",
         labelEmptyState: "Start saving today",
         actionSaveLabel: "Копить",
-        actionSpendLabel: "Тратить"
+        actionSpendLabel: "Тратить",
+        dailySummaryAvailable: true,
+        dailySummaryExpiresAt: Date().addingTimeInterval(60 * 60 * 2).timeIntervalSince1970 * 1000,
+        dailySummaryLabel: "Отчёт"
     )
     AlmostWidgetEntry(
         date: .now,
@@ -561,6 +610,9 @@ struct Almost_Widget: Widget {
         labelRecentEmpty: "Нет событий",
         labelEmptyState: "Start saving today",
         actionSaveLabel: "Копить",
-        actionSpendLabel: "Тратить"
+        actionSpendLabel: "Тратить",
+        dailySummaryAvailable: false,
+        dailySummaryExpiresAt: 0,
+        dailySummaryLabel: "Отчёт"
     )
 }

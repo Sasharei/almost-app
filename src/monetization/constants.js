@@ -99,16 +99,28 @@ const DEFAULT_LOSS_WINDOW_DAYS = 30;
 const SOFT_TITLE_BY_LANGUAGE = {
   ru: "За последние {{days}} дней ты мог(ла) сохранить ещё {{amount}}.",
   en: "In the last {{days}} days, you could have saved {{amount}} more.",
+  es: "En los últimos {{days}} días, podrías haber ahorrado {{amount}} más.",
+  fr: "Sur les {{days}} derniers jours, tu aurais pu économiser {{amount}} de plus.",
+};
+const SOFT_FRESH_START_TITLE_BY_LANGUAGE = {
+  ru: "Отличный старт. С Premium можно сохранить до {{percent}}% больше за следующие {{days}} дней.",
+  en: "Great start. With Premium, you can save up to {{percent}}% more over the next {{days}} days.",
+  es: "Buen comienzo. Con Premium puedes ahorrar hasta un {{percent}}% más en los próximos {{days}} días.",
+  fr: "Très bon départ. Avec Premium, tu peux économiser jusqu'à {{percent}}% de plus sur les {{days}} prochains jours.",
 };
 
 const HARD_TITLE_BY_LANGUAGE = {
   ru: "Ты уже экономишь. Но ещё {{amount}} за {{days}} дней можно было не потерять.",
   en: "You are already saving. But {{amount}} over {{days}} days could still be kept.",
+  es: "Ya estás ahorrando. Pero aún podrías conservar {{amount}} en {{days}} días.",
+  fr: "Tu économises déjà. Mais tu pourrais encore conserver {{amount}} sur {{days}} jours.",
 };
 
 const FEATURE_TITLE_BY_LANGUAGE = {
   ru: "Эта функция возвращает деньги, которые обычно утекают незаметно",
   en: "This feature helps recover money that usually slips away unnoticed",
+  es: "Esta función te ayuda a recuperar dinero que suele escaparse sin darte cuenta",
+  fr: "Cette fonctionnalité aide à récupérer l'argent qui s'échappe souvent sans s'en rendre compte",
 };
 
 const BASE_FEATURES_BY_LANGUAGE = {
@@ -138,60 +150,112 @@ const BASE_FEATURES_BY_LANGUAGE = {
     "Extended Think queue",
     "Cat customization + full Pro theme customization",
   ],
+  es: [
+    "Analítica inteligente del presupuesto con límites por categoría",
+    "Análisis semanales y mensuales de gastos con insights",
+    "Metas ilimitadas",
+    "Mapa de impulsos con disparadores y zonas de riesgo",
+    "Tarjetas de tentación ilimitadas",
+    "Más desafíos y recompensas",
+    "Widgets y deslizador en pantalla de inicio",
+    "Desbloqueo instantáneo de todas las funciones por nivel",
+    "Categorías personalizadas ilimitadas",
+    "Cola de \"Pensar\" ampliada",
+    "Personalización del gato + personalización completa del tema Pro",
+  ],
+  fr: [
+    "Analyse intelligente du budget avec limites par catégorie",
+    "Analyses hebdomadaires et mensuelles des dépenses avec insights",
+    "Objectifs illimités",
+    "Carte des impulsions avec déclencheurs et zones à risque",
+    "Cartes de tentation illimitées",
+    "Plus de défis et de récompenses",
+    "Widgets et curseur sur l'écran d'accueil",
+    "Déverrouillage instantané de toutes les fonctions bloquées par niveau",
+    "Catégories personnalisées illimitées",
+    "File \"Je réfléchis\" étendue",
+    "Personnalisation du chat + personnalisation complète du thème Pro",
+  ],
 };
 
 const FEATURE_NAME_BY_KEY = {
   catCustomization: {
     ru: "кастомизация кота",
     en: "cat customization",
+    es: "personalización del gato",
+    fr: "personnalisation du chat",
   },
   impulseMap: {
     ru: "impulse-карта",
     en: "impulse map",
+    es: "mapa de impulsos",
+    fr: "carte des impulsions",
   },
   reports: {
     ru: "умные анализы расходов",
     en: "smart spending analysis",
+    es: "análisis inteligente de gastos",
+    fr: "analyses intelligentes des dépenses",
   },
   customCategories: {
     ru: "кастомные категории",
     en: "custom categories",
+    es: "categorías personalizadas",
+    fr: "catégories personnalisées",
   },
   thinkingQueue: {
     ru: "больше карточек «Думаю»",
     en: "more Think cards",
+    es: "más tarjetas de «Pensar»",
+    fr: "plus de cartes «Je réfléchis»",
   },
   homeWidget: {
     ru: "домашний виджет",
     en: "home widget",
+    es: "widget de inicio",
+    fr: "widget d'accueil",
   },
   widgetSlider: {
     ru: "слайдер виджетов",
     en: "widget slider",
+    es: "deslizador de widgets",
+    fr: "curseur de widgets",
   },
   budgetAuto: {
     ru: "умную аналитику бюджета",
     en: "smart budget analytics",
+    es: "analítica inteligente del presupuesto",
+    fr: "analyse intelligente du budget",
   },
   multipleGoals: {
     ru: "несколько целей",
     en: "multiple goals",
+    es: "varias metas",
+    fr: "plusieurs objectifs",
   },
   fullHistory: {
     ru: "полная история",
     en: "full history",
+    es: "historial completo",
+    fr: "historique complet",
   },
   customTemptationCards: {
     ru: "дополнительные карточки искушений",
     en: "extra temptation cards",
+    es: "tarjetas de tentación extra",
+    fr: "cartes de tentation supplémentaires",
   },
   unlimitedChallenges: {
     ru: "больше челленджей",
     en: "more challenge claims",
+    es: "más desafíos",
+    fr: "plus de défis",
   },
   proTheme: {
     ru: "полная кастомизация Pro-темы",
     en: "full Pro theme customization",
+    es: "personalización completa del tema Pro",
+    fr: "personnalisation complète du thème Pro",
   },
 };
 
@@ -421,70 +485,347 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       interactive: false,
     },
   ],
+  es: [
+    {
+      id: "basicTracker",
+      label: "Rastreador básico de impulsos",
+      free: true,
+      premium: true,
+      interactive: false,
+    },
+    {
+      id: "budgetAuto",
+      label: "Analítica inteligente del presupuesto y límites por categoría",
+      featureKeys: [PREMIUM_FEATURE_KEYS.budgetAuto],
+      free: false,
+      premium: true,
+      lossTitle: "El presupuesto inteligente puede proteger {{amount}} en {{days}} días.",
+      lossSubtitle: "Los límites automáticos por categoría reducen el gasto excesivo antes de fin de mes.",
+    },
+    {
+      id: "reports",
+      label: "Informes personales semanales y mensuales",
+      featureKeys: [PREMIUM_FEATURE_KEYS.reports],
+      free: false,
+      premium: true,
+      lossTitle:
+        "Quienes usan informes personales y consejos de optimización ahorran en promedio un 30% más.",
+      lossSubtitle: "Los informes te dan pasos claros según tus categorías y hábitos.",
+    },
+    {
+      id: "multipleGoals",
+      label: "Metas ilimitadas",
+      featureKeys: [PREMIUM_FEATURE_KEYS.multipleGoals],
+      free: false,
+      premium: true,
+      lossTitle:
+        "Cuando el dinero se reparte entre varias metas, bajan las compras impulsivas y el progreso acelera.",
+      lossSubtitle: "Sigue varias metas en paralelo y mantén la motivación.",
+    },
+    {
+      id: "impulseMap",
+      label: "Mapa de impulsos: disparadores y zonas de riesgo",
+      featureKeys: [PREMIUM_FEATURE_KEYS.impulseMap],
+      free: false,
+      premium: true,
+      lossTitle: "El mapa de impulsos puede recuperar {{amount}} en {{days}} días.",
+      lossSubtitle: "Muestra cuándo y dónde suben los impulsos para frenar el gasto antes de pagar.",
+    },
+    {
+      id: "unlimitedChallenges",
+      label: "Más desafíos y recompensas",
+      featureKeys: [PREMIUM_FEATURE_KEYS.unlimitedChallenges],
+      free: false,
+      premium: true,
+      lossTitle:
+        "Las rutinas con desafíos mejoran la disciplina: los usuarios activos suelen retener más dinero en las primeras semanas.",
+      lossSubtitle: "Más desafíos significan más puntos de control para frenar gastos.",
+    },
+    {
+      id: "customTemptationCards",
+      label: "Tarjetas de tentación ilimitadas",
+      featureKeys: [PREMIUM_FEATURE_KEYS.customTemptationCards],
+      free: false,
+      premium: true,
+      lossTitle: "Sin tarjetas extra, las fugas pequeñas y repetidas pasan desapercibidas.",
+      lossSubtitle: "Las tarjetas ilimitadas te ayudan a cerrar nuevas fugas de gasto en cuanto aparecen.",
+    },
+    {
+      id: "widgets",
+      label: "Widgets y deslizador en pantalla de inicio",
+      featureKeys: [PREMIUM_FEATURE_KEYS.homeWidget, PREMIUM_FEATURE_KEYS.widgetSlider],
+      free: false,
+      premium: true,
+      lossTitle: "Los widgets en inicio pueden proteger {{amount}} en {{days}} días.",
+      lossSubtitle: "Ves tus límites antes de comprar y haces menos compras en piloto automático.",
+    },
+    {
+      id: "levelUnlocks",
+      label: "Desbloqueo instantáneo de todas las herramientas por nivel",
+      free: false,
+      premium: true,
+      lossTitle:
+        "Mientras las herramientas clave sigan bloqueadas por nivel, pierdes ahorros que podrían sumar {{amount}} en {{days}} días.",
+      lossSubtitle: "Premium lo desbloquea todo al instante.",
+    },
+    {
+      id: "customCategories",
+      label: "Categorías personalizadas ilimitadas",
+      featureKeys: [PREMIUM_FEATURE_KEYS.customCategories],
+      free: false,
+      premium: true,
+      lossTitle:
+        "Las categorías personalizadas hacen visibles las fugas y pueden recuperar hasta {{amount}} en {{days}} días.",
+      lossSubtitle: "Mejores categorías dan informes y recomendaciones más precisos.",
+    },
+    {
+      id: "thinkingQueue",
+      label: "Cola de «Pensar» ampliada",
+      featureKeys: [PREMIUM_FEATURE_KEYS.thinkingQueue],
+      free: false,
+      premium: true,
+      lossTitle: "Sin una cola «Pensar» más larga, es más difícil enfriar impulsos a tiempo.",
+      lossSubtitle: "Aplazar decisiones crea una pausa que protege tu presupuesto.",
+    },
+    {
+      id: "catCustomization",
+      label: "Skins del gato + tema Pro",
+      featureKeys: [PREMIUM_FEATURE_KEYS.catCustomization, PREMIUM_FEATURE_KEYS.proTheme],
+      free: false,
+      premium: true,
+      isCosmetic: true,
+      interactive: false,
+    },
+  ],
+  fr: [
+    {
+      id: "basicTracker",
+      label: "Suivi d'impulsions de base",
+      free: true,
+      premium: true,
+      interactive: false,
+    },
+    {
+      id: "budgetAuto",
+      label: "Analyse intelligente du budget et limites par catégorie",
+      featureKeys: [PREMIUM_FEATURE_KEYS.budgetAuto],
+      free: false,
+      premium: true,
+      lossTitle: "Le budget intelligent peut protéger {{amount}} en {{days}} jours.",
+      lossSubtitle: "Les limites automatiques par catégorie réduisent les dépassements avant la fin du mois.",
+    },
+    {
+      id: "reports",
+      label: "Rapports personnels hebdomadaires et mensuels",
+      featureKeys: [PREMIUM_FEATURE_KEYS.reports],
+      free: false,
+      premium: true,
+      lossTitle:
+        "Les personnes qui utilisent des rapports personnels et des conseils d'optimisation économisent en moyenne 30% de plus.",
+      lossSubtitle: "Les rapports donnent des actions concrètes selon tes catégories et habitudes.",
+    },
+    {
+      id: "multipleGoals",
+      label: "Objectifs illimités",
+      featureKeys: [PREMIUM_FEATURE_KEYS.multipleGoals],
+      free: false,
+      premium: true,
+      lossTitle:
+        "Quand l'argent est réparti sur plusieurs objectifs, les achats impulsifs baissent et la progression s'accélère.",
+      lossSubtitle: "Suis plusieurs objectifs en parallèle et garde la motivation.",
+    },
+    {
+      id: "impulseMap",
+      label: "Carte des impulsions : déclencheurs et zones à risque",
+      featureKeys: [PREMIUM_FEATURE_KEYS.impulseMap],
+      free: false,
+      premium: true,
+      lossTitle: "La carte des impulsions peut récupérer {{amount}} en {{days}} jours.",
+      lossSubtitle: "Elle montre quand et où les envies montent pour arrêter les dépenses avant le paiement.",
+    },
+    {
+      id: "unlimitedChallenges",
+      label: "Plus de défis et de récompenses",
+      featureKeys: [PREMIUM_FEATURE_KEYS.unlimitedChallenges],
+      free: false,
+      premium: true,
+      lossTitle:
+        "Les routines basées sur des défis améliorent la discipline : les utilisateurs actifs gardent généralement plus d'argent dès les premières semaines.",
+      lossSubtitle: "Plus de défis = plus de points de contrôle pour interrompre les dépenses.",
+    },
+    {
+      id: "customTemptationCards",
+      label: "Cartes de tentation illimitées",
+      featureKeys: [PREMIUM_FEATURE_KEYS.customTemptationCards],
+      free: false,
+      premium: true,
+      lossTitle: "Sans cartes supplémentaires, les petites fuites récurrentes restent invisibles.",
+      lossSubtitle: "Les cartes illimitées aident à bloquer les nouvelles fuites dès qu'elles apparaissent.",
+    },
+    {
+      id: "widgets",
+      label: "Widgets et curseur sur l'écran d'accueil",
+      featureKeys: [PREMIUM_FEATURE_KEYS.homeWidget, PREMIUM_FEATURE_KEYS.widgetSlider],
+      free: false,
+      premium: true,
+      lossTitle: "Les widgets d'accueil peuvent protéger {{amount}} en {{days}} jours.",
+      lossSubtitle: "Tu vois tes limites avant d'acheter, donc moins d'achats en pilote automatique.",
+    },
+    {
+      id: "levelUnlocks",
+      label: "Déverrouillage instantané de tous les outils bloqués par niveau",
+      free: false,
+      premium: true,
+      lossTitle:
+        "Tant que les outils clés restent bloqués par niveau, tu rates des économies qui pourraient ajouter {{amount}} sur {{days}} jours.",
+      lossSubtitle: "Premium débloque tout immédiatement.",
+    },
+    {
+      id: "customCategories",
+      label: "Catégories personnalisées illimitées",
+      featureKeys: [PREMIUM_FEATURE_KEYS.customCategories],
+      free: false,
+      premium: true,
+      lossTitle:
+        "Les catégories personnalisées rendent les fuites visibles et peuvent récupérer jusqu'à {{amount}} sur {{days}} jours.",
+      lossSubtitle: "De meilleures catégories donnent des rapports et recommandations plus précis.",
+    },
+    {
+      id: "thinkingQueue",
+      label: "File «Je réfléchis» étendue",
+      featureKeys: [PREMIUM_FEATURE_KEYS.thinkingQueue],
+      free: false,
+      premium: true,
+      lossTitle: "Sans file «Je réfléchis» plus longue, il est plus difficile de laisser retomber l'impulsion à temps.",
+      lossSubtitle: "Reporter une décision crée une pause qui protège ton budget.",
+    },
+    {
+      id: "catCustomization",
+      label: "Skins du chat + thème Pro",
+      featureKeys: [PREMIUM_FEATURE_KEYS.catCustomization, PREMIUM_FEATURE_KEYS.proTheme],
+      free: false,
+      premium: true,
+      isCosmetic: true,
+      interactive: false,
+    },
+  ],
 };
 
 const SOFT_PSYCHOLOGY_LINE_BY_LANGUAGE = {
   ru: "Цена Premium = стоимость одного отказа от импульсивной покупки.",
   en: "Premium costs the price of a single impulse you choose to skip.",
+  es: "Premium cuesta lo mismo que un solo impulso que decides evitar.",
+  fr: "Premium coûte le prix d'une seule impulsion que tu décides d'éviter.",
+};
+const SOFT_FRESH_START_PSYCHOLOGY_LINE_BY_LANGUAGE = {
+  ru: "С Premium проще закрепить привычку контролировать траты с первого дня.",
+  en: "Premium helps lock in your spending-control habit from day one.",
+  es: "Premium te ayuda a fijar el hábito de controlar gastos desde el primer día.",
+  fr: "Premium aide à ancrer l'habitude de contrôler les dépenses dès le premier jour.",
 };
 
 const SOFT_MARKETING_LINE_BY_LANGUAGE = {
   ru: "Premium стоит {{monthly}}. С инструментами контроля ты можешь вернуть до {{amount}} за следующие {{days}} дней.",
   en: "Premium is {{monthly}}. With the full toolkit, you can recover up to {{amount}} over the next {{days}} days.",
+  es: "Premium cuesta {{monthly}}. Con el kit completo, puedes recuperar hasta {{amount}} en los próximos {{days}} días.",
+  fr: "Premium coûte {{monthly}}. Avec tous les outils, tu peux récupérer jusqu'à {{amount}} sur les {{days}} prochains jours.",
+};
+const SOFT_FRESH_START_MARKETING_LINE_BY_LANGUAGE = {
+  ru: "Сейчас лучший момент настроить систему трат: лимиты, отчёты и контроль с первого дня.",
+  en: "Now is the best moment to set your spending system: limits, reports, and control from day one.",
+  es: "Ahora es el mejor momento para ordenar tu sistema de gasto: límites, informes y control desde el primer día.",
+  fr: "C'est le meilleur moment pour structurer ton système de dépenses : limites, rapports et contrôle dès le premier jour.",
 };
 
 const HARD_MARKETING_LINE_BY_LANGUAGE = {
   ru: "Almost уже помог сохранить {{saved}}. Premium закрывает оставшиеся утечки и помогает удерживать прогресс.",
   en: "Almost has already helped you save {{saved}}. Premium closes remaining leaks and keeps momentum going.",
+  es: "Almost ya te ayudó a ahorrar {{saved}}. Premium cierra las fugas restantes y mantiene el impulso.",
+  fr: "Almost t'a déjà aidé à économiser {{saved}}. Premium ferme les fuites restantes et maintient l'élan.",
+};
+const SAVE_LIMIT_REACHED_TITLE_BY_LANGUAGE = {
+  ru: "Лимит записей достигнут.",
+  en: "Entry limit reached.",
+  es: "Se alcanzó el límite de registros.",
+  fr: "Limite d'entrées atteinte.",
+};
+const SAVE_LIMIT_REACHED_SUBTITLE_BY_LANGUAGE = {
+  ru: "На Free доступно 10 сохранений в сутки, счётчик обнуляется в полночь. На Premium записи безлимитные.",
+  en: "Free includes 10 saves per day and resets at midnight. Premium unlocks unlimited entries.",
+  es: "En Free hay 10 guardados por día y se restablece a medianoche. Premium desbloquea registros ilimitados.",
+  fr: "En Free, tu as 10 sauvegardes par jour avec remise à zéro à minuit. Premium débloque les entrées illimitées.",
 };
 
 const FEATURE_MARKETING_LINE_BY_LANGUAGE = {
   ru: "Открой Premium, чтобы получить полный набор инструментов и сохранять больше каждый месяц.",
   en: "Unlock Premium for the full toolkit and keep more money every month.",
+  es: "Desbloquea Premium para tener el kit completo y conservar más dinero cada mes.",
+  fr: "Débloque Premium pour obtenir la boîte à outils complète et garder plus d'argent chaque mois.",
+};
+
+const FEATURE_SUBTITLE_BY_LANGUAGE = {
+  ru: "Открой Premium, чтобы получить {{featureName}} и полный набор инструментов.",
+  en: "Unlock Premium to access {{featureName}} and get the full toolkit.",
+  es: "Desbloquea Premium para acceder a {{featureName}} y obtener el kit completo.",
+  fr: "Débloque Premium pour accéder à {{featureName}} et obtenir tous les outils.",
 };
 
 const LEVEL_UNLOCK_LINE_BY_LANGUAGE = {
   ru: "Premium сразу откроет все функции, которые закрыты уровнями.",
   en: "Premium instantly unlocks all features gated by user levels.",
+  es: "Premium desbloquea al instante todas las funciones bloqueadas por nivel.",
+  fr: "Premium débloque instantanément toutes les fonctions bloquées par niveau.",
 };
 
 const PLAN_SECTION_TITLE_BY_LANGUAGE = {
   ru: "Выберите план Premium",
   en: "Choose your Premium plan",
+  es: "Elige tu plan Premium",
+  fr: "Choisis ton plan Premium",
 };
 
 const PLAN_HINT_BY_LANGUAGE = {
   ru: "Выберите тариф и нажмите кнопку ниже",
   en: "Select a plan and tap the button below",
+  es: "Selecciona un plan y pulsa el botón de abajo",
+  fr: "Choisis un plan puis appuie sur le bouton ci-dessous",
 };
 
 const FREE_LABEL_BY_LANGUAGE = {
   ru: "БЕСПЛ.",
   en: "FREE",
+  es: "GRATIS",
+  fr: "GRATUIT",
 };
 
 const PRO_LABEL_BY_LANGUAGE = {
   ru: "PRO",
   en: "PRO",
+  es: "PRO",
+  fr: "PRO",
 };
 
 const COMPARISON_TAP_HINT_BY_LANGUAGE = {
   ru: "Нажми на функцию и увидишь её влияние на экономию.",
   en: "Tap a feature to see its savings impact.",
+  es: "Toca una función para ver su impacto en tus ahorros.",
+  fr: "Touche une fonction pour voir son impact sur tes économies.",
 };
 
 const PLAN_UNAVAILABLE_LABEL_BY_LANGUAGE = {
   ru: "Недоступно",
   en: "Unavailable",
+  es: "No disponible",
+  fr: "Indisponible",
 };
 
 const PAYWALL_BILLING_NOTICE_BY_LANGUAGE = {
   ru: {
-    ios: "Ежемесячный и годовой планы — автопродлеваемые подписки. Управлять и отменять можно в App Store. Lifetime — разовая покупка.",
+    ios: "Ежемесячный и годовой планы, автопродлеваемые подписки. Управлять и отменять можно в App Store. Lifetime, разовая покупка.",
     android:
-      "Ежемесячный и годовой планы — автопродлеваемые подписки. Управлять и отменять можно в Google Play. Lifetime — разовая покупка.",
+      "Ежемесячный и годовой планы, автопродлеваемые подписки. Управлять и отменять можно в Google Play. Lifetime, разовая покупка.",
     default:
-      "Ежемесячный и годовой планы — автопродлеваемые подписки. Управлять и отменять можно в App Store / Google Play. Lifetime — разовая покупка.",
+      "Ежемесячный и годовой планы, автопродлеваемые подписки. Управлять и отменять можно в App Store / Google Play. Lifetime, разовая покупка.",
   },
   en: {
     ios: "Monthly and yearly plans are auto-renewable subscriptions. Manage or cancel anytime in App Store. Lifetime is a one-time purchase.",
@@ -493,11 +834,127 @@ const PAYWALL_BILLING_NOTICE_BY_LANGUAGE = {
     default:
       "Monthly and yearly plans are auto-renewable subscriptions. Manage or cancel anytime in App Store / Google Play. Lifetime is a one-time purchase.",
   },
+  es: {
+    ios: "Los planes mensual y anual son suscripciones con renovación automática. Puedes gestionarlas o cancelarlas en App Store. El plan de por vida es un pago único.",
+    android:
+      "Los planes mensual y anual son suscripciones con renovación automática. Puedes gestionarlas o cancelarlas en Google Play. El plan de por vida es un pago único.",
+    default:
+      "Los planes mensual y anual son suscripciones con renovación automática. Puedes gestionarlas o cancelarlas en App Store / Google Play. El plan de por vida es un pago único.",
+  },
+  fr: {
+    ios: "Les plans mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans l'App Store. Le plan à vie est un achat unique.",
+    android:
+      "Les plans mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans Google Play. Le plan à vie est un achat unique.",
+    default:
+      "Les plans mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans l'App Store / Google Play. Le plan à vie est un achat unique.",
+  },
 };
 
 const PAYWALL_LEGAL_NOTICE_BY_LANGUAGE = {
-  ru: "Продолжая, вы соглашаетесь с Условиями использования (EULA) и Политикой конфиденциальности.",
-  en: "By continuing, you agree to the Terms of Use (EULA) and Privacy Policy.",
+  ru: {
+    ios: "Продолжая, вы соглашаетесь с Условиями использования (EULA) и Политикой конфиденциальности.",
+    android: "Продолжая, вы соглашаетесь с Условиями использования и Политикой конфиденциальности.",
+    default: "Продолжая, вы соглашаетесь с Условиями использования и Политикой конфиденциальности.",
+  },
+  en: {
+    ios: "By continuing, you agree to the Terms of Use (EULA) and Privacy Policy.",
+    android: "By continuing, you agree to the Terms of Use and Privacy Policy.",
+    default: "By continuing, you agree to the Terms of Use and Privacy Policy.",
+  },
+  es: {
+    ios: "Al continuar, aceptas los Términos de uso (EULA) y la Política de privacidad.",
+    android: "Al continuar, aceptas los Términos de uso y la Política de privacidad.",
+    default: "Al continuar, aceptas los Términos de uso y la Política de privacidad.",
+  },
+  fr: {
+    ios: "En continuant, vous acceptez les Conditions d'utilisation (EULA) et la Politique de confidentialité.",
+    android: "En continuant, vous acceptez les Conditions d'utilisation et la Politique de confidentialité.",
+    default: "En continuant, vous acceptez les Conditions d'utilisation et la Politique de confidentialité.",
+  },
+};
+
+const CTA_PRIMARY_TRIAL_BY_LANGUAGE = {
+  ru: "Попробовать бесплатно",
+  en: "Try for free",
+  es: "Probar gratis",
+  fr: "Essayer gratuitement",
+};
+
+const CTA_PRIMARY_REGULAR_BY_LANGUAGE = {
+  ru: "Продолжить",
+  en: "Continue",
+  es: "Continuar",
+  fr: "Continuer",
+};
+
+const CTA_RESTORE_BY_LANGUAGE = {
+  ru: "Восстановить покупки",
+  en: "Restore purchases",
+  es: "Restaurar compras",
+  fr: "Restaurer les achats",
+};
+
+const CTA_CLOSE_BY_LANGUAGE = {
+  ru: "Позже",
+  en: "Maybe later",
+  es: "Quizás más tarde",
+  fr: "Plus tard",
+};
+
+const CTA_MANAGE_BY_LANGUAGE = {
+  ru: "Управлять подпиской",
+  en: "Manage subscription",
+  es: "Gestionar suscripción",
+  fr: "Gérer l'abonnement",
+};
+
+const LEGAL_TERMS_LABEL_BY_LANGUAGE = {
+  ru: "Условия",
+  en: "Terms",
+  es: "Términos",
+  fr: "Conditions",
+};
+
+const LEGAL_PRIVACY_LABEL_BY_LANGUAGE = {
+  ru: "Конфиденциальность",
+  en: "Privacy",
+  es: "Privacidad",
+  fr: "Confidentialité",
+};
+
+const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
+  yearly: {
+    ru: "Год",
+    en: "Yearly",
+    es: "Anual",
+    fr: "Annuel",
+  },
+  monthly: {
+    ru: "Месяц",
+    en: "Monthly",
+    es: "Mensual",
+    fr: "Mensuel",
+  },
+  lifetime: {
+    ru: "Навсегда",
+    en: "Lifetime",
+    es: "De por vida",
+    fr: "À vie",
+  },
+};
+
+const SAVE_BADGE_TEMPLATE_BY_LANGUAGE = {
+  ru: "Экономия {{percent}}%",
+  en: "Save {{percent}}%",
+  es: "Ahorra {{percent}}%",
+  fr: "Économisez {{percent}}%",
+};
+
+const LIFETIME_BADGE_BY_LANGUAGE = {
+  ru: "Навсегда",
+  en: "Lifetime",
+  es: "De por vida",
+  fr: "À vie",
 };
 
 const PAYWALL_BADGE_BY_KIND = {
@@ -507,7 +964,13 @@ const PAYWALL_BADGE_BY_KIND = {
 };
 
 const resolveLanguage = (language) => {
-  if (language === "ru") return "ru";
+  const normalized = String(language || "")
+    .trim()
+    .toLowerCase();
+  if (normalized.startsWith("ru")) return "ru";
+  if (normalized.startsWith("es")) return "es";
+  if (normalized.startsWith("fr")) return "fr";
+  if (normalized.startsWith("en")) return "en";
   return "en";
 };
 
@@ -517,6 +980,23 @@ const template = (value, replacements = {}) => {
     nextValue = nextValue.replace(`{{${token}}}`, String(tokenValue));
   });
   return nextValue;
+};
+
+const localizeFallbackBadge = (badge, language = "en") => {
+  const lang = resolveLanguage(language);
+  const raw = typeof badge === "string" ? badge.trim() : "";
+  if (!raw) return null;
+  if (/^lifetime$/i.test(raw)) {
+    return LIFETIME_BADGE_BY_LANGUAGE[lang] || LIFETIME_BADGE_BY_LANGUAGE.en;
+  }
+  const saveMatch = raw.match(/^save\s+(\d+)%$/i);
+  if (saveMatch) {
+    return template(
+      SAVE_BADGE_TEMPLATE_BY_LANGUAGE[lang] || SAVE_BADGE_TEMPLATE_BY_LANGUAGE.en,
+      { percent: saveMatch[1] }
+    );
+  }
+  return raw;
 };
 
 const normalizeFeatureToken = (value = "") => {
@@ -542,6 +1022,25 @@ const resolveLossAmountLabel = (lossAmountLabel, savedAmountLabel) => {
     return savedAmountLabel.trim();
   }
   return "$0";
+};
+
+const resolveFreshStartGainPercent = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 37.4;
+  const clamped = Math.min(68.9, Math.max(16.3, parsed));
+  const rounded = Math.round(clamped * 10) / 10;
+  if (Math.abs(rounded - Math.round(rounded)) < 0.001) {
+    return Math.round((rounded + 0.4) * 10) / 10;
+  }
+  return rounded;
+};
+
+const formatPercentToken = (value) => {
+  const normalized = Math.round((Number(value) || 0) * 10) / 10;
+  if (Math.abs(normalized - Math.round(normalized)) < 0.001) {
+    return String(Math.round(normalized));
+  }
+  return normalized.toFixed(1);
 };
 
 const normalizeLossAmountByFeature = (value = {}) => {
@@ -618,7 +1117,9 @@ export const buildPaywallCopy = ({
   lossAmountLabel = "",
   lossAmountByFeature = {},
   lossWindowDays = DEFAULT_LOSS_WINDOW_DAYS,
+  freshStartGainPercent = null,
   featureKey = null,
+  trigger = "manual",
   platform = "unknown",
 } = {}) => {
   const lang = resolveLanguage(language);
@@ -632,12 +1133,14 @@ export const buildPaywallCopy = ({
   const resolvedLossAmountLabel = resolveLossAmountLabel(lossAmountLabel, savedAmountLabel);
   const normalizedLossAmountByFeature = normalizeLossAmountByFeature(lossAmountByFeature);
   const effectiveKind = normalizedFeatureKey ? "feature" : normalizedKind;
-  const featureName = normalizedFeatureKey
-    ? FEATURE_NAME_BY_KEY[normalizedFeatureKey]?.[lang] ||
-      (Object.entries(FEATURE_NAME_BY_KEY).find(
+  const featureNameEntry = normalizedFeatureKey
+    ? FEATURE_NAME_BY_KEY[normalizedFeatureKey] ||
+      Object.entries(FEATURE_NAME_BY_KEY).find(
         ([candidateKey]) => normalizeFeatureToken(candidateKey) === normalizedFeatureKey
-      )?.[1]?.[lang] || null)
+      )?.[1] ||
+      null
     : null;
+  const featureName = featureNameEntry?.[lang] || featureNameEntry?.en || null;
   const comparisonRows = resolveComparisonRows({
     lang,
     lossAmountLabel: resolvedLossAmountLabel,
@@ -654,23 +1157,46 @@ export const buildPaywallCopy = ({
     saved: savedAmountLabel || "$0",
     amount: resolvedLossAmountLabel,
     days: resolvedLossWindowDays,
+    percent: formatPercentToken(resolveFreshStartGainPercent(freshStartGainPercent)),
   };
+  const normalizedTrigger =
+    typeof trigger === "string" && trigger.trim().length ? trigger.trim() : "manual";
+  const isSaveLimitHardTrigger =
+    normalizedTrigger === "save_daily_limit_reached" ||
+    normalizedTrigger === "save_daily_limit_blocked";
+  const isFreshStartSoftPaywall =
+    effectiveKind === "soft" &&
+    (normalizedTrigger === "first_action_after_onboarding" ||
+      normalizedTrigger === "first_save_after_onboarding" ||
+      normalizedTrigger === "onboarding_completed");
 
-  let title = template(SOFT_TITLE_BY_LANGUAGE[lang], copyTokens);
-  let subtitle = template(SOFT_MARKETING_LINE_BY_LANGUAGE[lang], copyTokens);
-  let psychologyLine = SOFT_PSYCHOLOGY_LINE_BY_LANGUAGE[lang];
+  let title = template(SOFT_TITLE_BY_LANGUAGE[lang] || SOFT_TITLE_BY_LANGUAGE.en, copyTokens);
+  let subtitle = template(SOFT_MARKETING_LINE_BY_LANGUAGE[lang] || SOFT_MARKETING_LINE_BY_LANGUAGE.en, copyTokens);
+  let psychologyLine = SOFT_PSYCHOLOGY_LINE_BY_LANGUAGE[lang] || SOFT_PSYCHOLOGY_LINE_BY_LANGUAGE.en;
+  if (isFreshStartSoftPaywall) {
+    title = template(SOFT_FRESH_START_TITLE_BY_LANGUAGE[lang] || SOFT_FRESH_START_TITLE_BY_LANGUAGE.en, copyTokens);
+    subtitle = template(
+      SOFT_FRESH_START_MARKETING_LINE_BY_LANGUAGE[lang] || SOFT_FRESH_START_MARKETING_LINE_BY_LANGUAGE.en,
+      copyTokens
+    );
+    psychologyLine =
+      SOFT_FRESH_START_PSYCHOLOGY_LINE_BY_LANGUAGE[lang] || SOFT_FRESH_START_PSYCHOLOGY_LINE_BY_LANGUAGE.en;
+  }
 
   if (effectiveKind === "hard") {
-    title = template(HARD_TITLE_BY_LANGUAGE[lang], copyTokens);
-    subtitle = template(HARD_MARKETING_LINE_BY_LANGUAGE[lang], copyTokens);
+    title = template(HARD_TITLE_BY_LANGUAGE[lang] || HARD_TITLE_BY_LANGUAGE.en, copyTokens);
+    subtitle = template(HARD_MARKETING_LINE_BY_LANGUAGE[lang] || HARD_MARKETING_LINE_BY_LANGUAGE.en, copyTokens);
     psychologyLine = null;
   } else if (effectiveKind === "feature") {
-    title = FEATURE_TITLE_BY_LANGUAGE[lang];
+    title = FEATURE_TITLE_BY_LANGUAGE[lang] || FEATURE_TITLE_BY_LANGUAGE.en;
     subtitle = featureName
-      ? lang === "ru"
-        ? `Открой Premium, чтобы получить ${featureName} и полный набор инструментов.`
-        : `Unlock Premium to access ${featureName} and get the full toolkit.`
-      : FEATURE_MARKETING_LINE_BY_LANGUAGE[lang];
+      ? template(FEATURE_SUBTITLE_BY_LANGUAGE[lang] || FEATURE_SUBTITLE_BY_LANGUAGE.en, { featureName })
+      : FEATURE_MARKETING_LINE_BY_LANGUAGE[lang] || FEATURE_MARKETING_LINE_BY_LANGUAGE.en;
+    psychologyLine = null;
+  }
+  if (isSaveLimitHardTrigger) {
+    title = SAVE_LIMIT_REACHED_TITLE_BY_LANGUAGE[lang] || SAVE_LIMIT_REACHED_TITLE_BY_LANGUAGE.en;
+    subtitle = SAVE_LIMIT_REACHED_SUBTITLE_BY_LANGUAGE[lang] || SAVE_LIMIT_REACHED_SUBTITLE_BY_LANGUAGE.en;
     psychologyLine = null;
   }
   if (activeFeatureInsightRow?.lossTitle) {
@@ -679,8 +1205,8 @@ export const buildPaywallCopy = ({
     psychologyLine = null;
   }
 
-  const ctaPrimaryTrial = lang === "ru" ? "Попробовать бесплатно" : "Try for free";
-  const ctaPrimaryRegular = lang === "ru" ? "Продолжить" : "Continue";
+  const ctaPrimaryTrial = CTA_PRIMARY_TRIAL_BY_LANGUAGE[lang] || CTA_PRIMARY_TRIAL_BY_LANGUAGE.en;
+  const ctaPrimaryRegular = CTA_PRIMARY_REGULAR_BY_LANGUAGE[lang] || CTA_PRIMARY_REGULAR_BY_LANGUAGE.en;
 
   return {
     badgeLabel: PAYWALL_BADGE_BY_KIND[effectiveKind] || PAYWALL_BADGE_BY_KIND.soft,
@@ -691,56 +1217,68 @@ export const buildPaywallCopy = ({
     lossAmountLabel: resolvedLossAmountLabel,
     lossAmountByFeature: normalizedLossAmountByFeature,
     lossWindowDays: resolvedLossWindowDays,
-    features: BASE_FEATURES_BY_LANGUAGE[lang],
+    features: BASE_FEATURES_BY_LANGUAGE[lang] || BASE_FEATURES_BY_LANGUAGE.en,
     comparisonRows,
-    unlockLevelsLine: LEVEL_UNLOCK_LINE_BY_LANGUAGE[lang],
-    planSectionTitle: PLAN_SECTION_TITLE_BY_LANGUAGE[lang],
-    planHint: PLAN_HINT_BY_LANGUAGE[lang],
-    freeColumnLabel: FREE_LABEL_BY_LANGUAGE[lang],
-    proColumnLabel: PRO_LABEL_BY_LANGUAGE[lang],
-    comparisonTapHint: COMPARISON_TAP_HINT_BY_LANGUAGE[lang],
-    planUnavailableLabel: PLAN_UNAVAILABLE_LABEL_BY_LANGUAGE[lang],
+    unlockLevelsLine: LEVEL_UNLOCK_LINE_BY_LANGUAGE[lang] || LEVEL_UNLOCK_LINE_BY_LANGUAGE.en,
+    planSectionTitle: PLAN_SECTION_TITLE_BY_LANGUAGE[lang] || PLAN_SECTION_TITLE_BY_LANGUAGE.en,
+    planHint: PLAN_HINT_BY_LANGUAGE[lang] || PLAN_HINT_BY_LANGUAGE.en,
+    freeColumnLabel: FREE_LABEL_BY_LANGUAGE[lang] || FREE_LABEL_BY_LANGUAGE.en,
+    proColumnLabel: PRO_LABEL_BY_LANGUAGE[lang] || PRO_LABEL_BY_LANGUAGE.en,
+    comparisonTapHint: COMPARISON_TAP_HINT_BY_LANGUAGE[lang] || COMPARISON_TAP_HINT_BY_LANGUAGE.en,
+    planUnavailableLabel: PLAN_UNAVAILABLE_LABEL_BY_LANGUAGE[lang] || PLAN_UNAVAILABLE_LABEL_BY_LANGUAGE.en,
     ctaPrimary: ctaPrimaryTrial,
     ctaPrimaryTrial,
     ctaPrimaryRegular,
-    ctaRestore: lang === "ru" ? "Восстановить покупки" : "Restore purchases",
-    ctaClose: lang === "ru" ? "Позже" : "Maybe later",
-    ctaManage: lang === "ru" ? "Управлять подпиской" : "Manage subscription",
-    legalNotice: PAYWALL_LEGAL_NOTICE_BY_LANGUAGE[lang],
+    ctaRestore: CTA_RESTORE_BY_LANGUAGE[lang] || CTA_RESTORE_BY_LANGUAGE.en,
+    ctaClose: CTA_CLOSE_BY_LANGUAGE[lang] || CTA_CLOSE_BY_LANGUAGE.en,
+    ctaManage: CTA_MANAGE_BY_LANGUAGE[lang] || CTA_MANAGE_BY_LANGUAGE.en,
+    legalNotice:
+      PAYWALL_LEGAL_NOTICE_BY_LANGUAGE[lang]?.[normalizedPlatform] ||
+      PAYWALL_LEGAL_NOTICE_BY_LANGUAGE[lang]?.default ||
+      PAYWALL_LEGAL_NOTICE_BY_LANGUAGE.en?.[normalizedPlatform] ||
+      PAYWALL_LEGAL_NOTICE_BY_LANGUAGE.en?.default ||
+      "",
     billingNotice:
       PAYWALL_BILLING_NOTICE_BY_LANGUAGE[lang]?.[normalizedPlatform] ||
       PAYWALL_BILLING_NOTICE_BY_LANGUAGE[lang]?.default ||
+      PAYWALL_BILLING_NOTICE_BY_LANGUAGE.en?.[normalizedPlatform] ||
+      PAYWALL_BILLING_NOTICE_BY_LANGUAGE.en?.default ||
       "",
-    legalTermsLabel: lang === "ru" ? "Условия" : "Terms",
-    legalPrivacyLabel: lang === "ru" ? "Конфиденциальность" : "Privacy",
+    legalTermsLabel: LEGAL_TERMS_LABEL_BY_LANGUAGE[lang] || LEGAL_TERMS_LABEL_BY_LANGUAGE.en,
+    legalPrivacyLabel: LEGAL_PRIVACY_LABEL_BY_LANGUAGE[lang] || LEGAL_PRIVACY_LABEL_BY_LANGUAGE.en,
   };
 };
 
-export const buildDefaultPlanCards = (currencyCode = "USD") => {
+export const buildDefaultPlanCards = (currencyCode = "USD", language = "en") => {
+  const lang = resolveLanguage(language);
   const pricing = resolveFallbackPlanPricing(currencyCode);
+  const resolvePlanLabel = (planId) =>
+    DEFAULT_PLAN_LABELS_BY_LANGUAGE?.[planId]?.[lang] ||
+    DEFAULT_PLAN_LABELS_BY_LANGUAGE?.[planId]?.en ||
+    "Premium";
   return [
     {
       id: "yearly",
-      label: "Yearly",
+      label: resolvePlanLabel("yearly"),
       priceLabel: pricing.yearly.label,
       secondaryLabel: pricing.yearly.perMonth,
-      badge: pricing.yearly.badge,
+      badge: localizeFallbackBadge(pricing.yearly.badge, lang),
       recommended: true,
     },
     {
       id: "monthly",
-      label: "Monthly",
+      label: resolvePlanLabel("monthly"),
       priceLabel: pricing.monthly.label,
       secondaryLabel: pricing.monthly.perMonth,
-      badge: pricing.monthly.badge,
+      badge: localizeFallbackBadge(pricing.monthly.badge, lang),
       recommended: false,
     },
     {
       id: "lifetime",
-      label: "Lifetime",
+      label: resolvePlanLabel("lifetime"),
       priceLabel: pricing.lifetime.label,
       secondaryLabel: pricing.lifetime.perMonth,
-      badge: pricing.lifetime.badge,
+      badge: localizeFallbackBadge(pricing.lifetime.badge, lang),
       recommended: false,
     },
   ];
