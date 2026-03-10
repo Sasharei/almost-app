@@ -59,6 +59,111 @@ const PREMIUM_PRODUCT_IDENTIFIER_SET = new Set(
 );
 const PREMIUM_PRODUCT_IDENTIFIER_ALIASES = new Set(["monthly", "yearly", "lifetime"]);
 
+const parseBooleanValue = (value) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return null;
+    if (normalized === "true" || normalized === "1" || normalized === "yes") return true;
+    if (normalized === "false" || normalized === "0" || normalized === "no") return false;
+  }
+  return null;
+};
+
+const parseDateMs = (value) => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return null;
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const resolveEntitlementPeriodType = (entitlement = null) =>
+  String(
+    entitlement?.periodType ||
+      entitlement?.period_type ||
+      entitlement?.periodTypeIdentifier ||
+      entitlement?.period_type_identifier ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
+
+const isTrialLikePeriodType = (periodType = "") => {
+  const normalized = String(periodType || "").trim().toLowerCase();
+  if (!normalized) return false;
+  return normalized.includes("trial") || normalized.includes("intro");
+};
+
+const resolveEntitlementProductIdentifier = (entitlement = null) =>
+  String(
+    entitlement?.productIdentifier || entitlement?.productId || entitlement?.product_id || ""
+  )
+    .trim()
+    .toLowerCase();
+
+const resolveSubscriptionByProductIdentifier = (customerInfo, productIdentifier = "") => {
+  if (!customerInfo || typeof customerInfo !== "object") return null;
+  const subscriptionsByProductIdentifier =
+    customerInfo?.subscriptionsByProductIdentifier &&
+    typeof customerInfo.subscriptionsByProductIdentifier === "object"
+      ? customerInfo.subscriptionsByProductIdentifier
+      : null;
+  if (!subscriptionsByProductIdentifier) return null;
+  const normalizedProductIdentifier = normalizeProductIdentifier(productIdentifier);
+  if (!normalizedProductIdentifier) return null;
+  const match = Object.entries(subscriptionsByProductIdentifier).find(
+    ([entryProductIdentifier]) =>
+      normalizeProductIdentifier(entryProductIdentifier) === normalizedProductIdentifier
+  );
+  return match?.[1] && typeof match[1] === "object" ? match[1] : null;
+};
+
+const resolveEntitlementWillRenew = (entitlement = null, customerInfo = null) => {
+  const direct = parseBooleanValue(
+    entitlement?.willRenew ??
+      entitlement?.will_renew ??
+      entitlement?.isAutoRenewing ??
+      entitlement?.is_auto_renewing
+  );
+  if (direct !== null) return direct;
+  const productIdentifier = resolveEntitlementProductIdentifier(entitlement);
+  const subscriptionEntry = resolveSubscriptionByProductIdentifier(customerInfo, productIdentifier);
+  if (!subscriptionEntry) return null;
+  return parseBooleanValue(
+    subscriptionEntry?.willRenew ??
+      subscriptionEntry?.will_renew ??
+      subscriptionEntry?.isAutoRenewing ??
+      subscriptionEntry?.is_auto_renewing
+  );
+};
+
+const hasEntitlementUnsubscribeSignal = (entitlement = null, customerInfo = null) => {
+  const directUnsubscribeDetectedAt = parseDateMs(
+    entitlement?.unsubscribeDetectedAt || entitlement?.unsubscribe_detected_at || ""
+  );
+  if (directUnsubscribeDetectedAt) return true;
+  const productIdentifier = resolveEntitlementProductIdentifier(entitlement);
+  const subscriptionEntry = resolveSubscriptionByProductIdentifier(customerInfo, productIdentifier);
+  if (!subscriptionEntry) return false;
+  const subscriptionUnsubscribeDetectedAt = parseDateMs(
+    subscriptionEntry?.unsubscribeDetectedAt || subscriptionEntry?.unsubscribe_detected_at || ""
+  );
+  return !!subscriptionUnsubscribeDetectedAt;
+};
+
+const resolveEntitlementExpirationMs = (entitlement = null) =>
+  parseDateMs(
+    entitlement?.expirationDate ||
+      entitlement?.expiration_date ||
+      entitlement?.expiresDate ||
+      entitlement?.expires_date ||
+      ""
+  );
+
+const resolveCustomerInfoRequestDateMs = (customerInfo = null) =>
+  parseDateMs(customerInfo?.requestDate || customerInfo?.request_date || "") || Date.now();
+
 const isKnownPremiumProductIdentifier = (value = "") => {
   const normalized = normalizeProductIdentifier(value);
   if (!normalized) return false;
@@ -132,7 +237,21 @@ export const isPurchasesAvailable = () => {
 };
 
 export const isPremiumFromCustomerInfo = (customerInfo) => {
-  return !!getActivePremiumEntitlement(customerInfo);
+  const entitlement = getActivePremiumEntitlement(customerInfo);
+  if (!entitlement) return false;
+  const requestDateMs = resolveCustomerInfoRequestDateMs(customerInfo);
+  const expirationMs = resolveEntitlementExpirationMs(entitlement);
+  if (expirationMs && requestDateMs >= expirationMs) {
+    return false;
+  }
+  const periodType = resolveEntitlementPeriodType(entitlement);
+  if (isTrialLikePeriodType(periodType)) {
+    const willRenew = resolveEntitlementWillRenew(entitlement, customerInfo);
+    if (willRenew === false || hasEntitlementUnsubscribeSignal(entitlement, customerInfo)) {
+      return false;
+    }
+  }
+  return true;
 };
 
 export const getActivePremiumEntitlement = (customerInfo) => {
@@ -157,13 +276,34 @@ export const getActivePremiumEntitlement = (customerInfo) => {
   }
   const productIdentifier = resolveActivePremiumProductIdentifier(customerInfo);
   if (!productIdentifier) return null;
+  const subscriptionEntry = resolveSubscriptionByProductIdentifier(customerInfo, productIdentifier);
   return {
     identifier: PREMIUM_ENTITLEMENT_ID,
     isActive: true,
     productIdentifier,
-    latestPurchaseDate: customerInfo?.requestDate || null,
-    expirationDate: null,
-    store: null,
+    latestPurchaseDate:
+      subscriptionEntry?.purchaseDate ||
+      subscriptionEntry?.purchase_date ||
+      customerInfo?.requestDate ||
+      null,
+    expirationDate:
+      subscriptionEntry?.expiresDate ||
+      subscriptionEntry?.expires_date ||
+      subscriptionEntry?.expirationDate ||
+      subscriptionEntry?.expiration_date ||
+      null,
+    periodType:
+      subscriptionEntry?.periodType ||
+      subscriptionEntry?.period_type ||
+      subscriptionEntry?.periodTypeIdentifier ||
+      subscriptionEntry?.period_type_identifier ||
+      null,
+    willRenew: subscriptionEntry?.willRenew ?? subscriptionEntry?.will_renew ?? null,
+    unsubscribeDetectedAt:
+      subscriptionEntry?.unsubscribeDetectedAt ||
+      subscriptionEntry?.unsubscribe_detected_at ||
+      null,
+    store: subscriptionEntry?.store || null,
     source: "product_fallback",
   };
 };

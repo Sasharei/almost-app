@@ -38,8 +38,10 @@ class WidgetStorage: NSObject {
   private let keyWidgetActionSave = "widget_action_save"
   private let keyWidgetActionSpend = "widget_action_spend"
   private let keyWidgetLabelStreak = "widget_label_streak"
+  private let keyWidgetDailySummaryAvailable = "widget_daily_summary_available"
+  private let keyWidgetDailySummaryExpiresAt = "widget_daily_summary_expires_at"
+  private let keyWidgetDailySummaryLabel = "widget_daily_summary_label"
   private let keyWidgetLabelAddTemptation = "widget_label_add_temptation"
-
   @objc
   func setWidgetData(
     _ data: NSDictionary,
@@ -143,6 +145,15 @@ class WidgetStorage: NSObject {
     }
     if let widgetLabelStreak = data["widgetLabelStreak"] as? String {
       defaults.set(widgetLabelStreak, forKey: keyWidgetLabelStreak)
+    }
+    if let dailySummaryAvailable = data["dailySummaryAvailable"] as? NSNumber {
+      defaults.set(dailySummaryAvailable.boolValue, forKey: keyWidgetDailySummaryAvailable)
+    }
+    if let dailySummaryExpiresAt = data["dailySummaryExpiresAt"] as? NSNumber {
+      defaults.set(dailySummaryExpiresAt.doubleValue, forKey: keyWidgetDailySummaryExpiresAt)
+    }
+    if let widgetDailySummaryLabel = data["widgetDailySummaryLabel"] as? String {
+      defaults.set(widgetDailySummaryLabel, forKey: keyWidgetDailySummaryLabel)
     }
     if let widgetLabelAddTemptation = data["widgetLabelAddTemptation"] as? String {
       defaults.set(widgetLabelAddTemptation, forKey: keyWidgetLabelAddTemptation)
