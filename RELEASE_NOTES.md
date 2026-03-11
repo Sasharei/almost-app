@@ -1,5 +1,55 @@
 # Release Notes
 
+## 5.0.9 (from 5.0.8)
+
+### EN
+- Faster app launch and smoother performance across key screens.
+- Improved overall responsiveness: animations, timers, and transitions feel more stable.
+- Fixed push reminder logic for temptation cards: if you already acted on a card today, decision reminders for that same card are paused for the rest of the day.
+- Major localization update: added 4 new languages - German, Arabic (Saudi Arabia), Arabic (UAE), and Chinese.
+
+### RU
+- Ускорили запуск приложения и повысили плавность на ключевых экранах.
+- Улучшили общую отзывчивость: анимации, таймеры и переходы работают стабильнее.
+- Исправили логику push-напоминаний по карточкам искушений: если сегодня по карточке уже было действие, напоминания «принять решение» по этой же карточке до конца дня не приходят.
+- Крупное обновление локализации: добавили 4 новых языка - немецкий, арабский (Саудовская Аравия), арабский (ОАЭ) и китайский.
+
+### ES
+- Inicio de la app más rápido y mejor fluidez en las pantallas principales.
+- Mejoramos la capacidad de respuesta general: animaciones, temporizadores y transiciones más estables.
+- Corregimos la lógica de recordatorios push de tentaciones: si hoy ya actuaste en una tarjeta, los recordatorios de decisión de esa misma tarjeta se pausan hasta el final del día.
+- Gran actualización de localización: añadimos 4 nuevos idiomas - alemán, árabe (Arabia Saudita), árabe (EAU) y chino.
+
+### FR
+- Demarrage de l'app plus rapide et performance plus fluide sur les ecrans principaux.
+- Reponse generale amelioree : animations, minuteurs et transitions plus stables.
+- Correction de la logique des rappels push de tentations : si une action a deja ete faite aujourd'hui sur une carte, les rappels de decision pour cette meme carte sont mis en pause jusqu'a la fin de la journee.
+- Grosse mise a jour de localisation : ajout de 4 nouvelles langues - allemand, arabe (Arabie saoudite), arabe (EAU) et chinois.
+
+### DE
+- Schnellere App-Starts und flüssigere Performance auf den wichtigsten Screens.
+- Bessere Gesamtreaktion: Animationen, Timer und Übergänge laufen stabiler.
+- Push-Erinnerungslogik für Versuchungskarten korrigiert: Wenn heute bereits eine Aktion zu einer Karte erfolgt ist, werden Entscheidungs-Erinnerungen für diese Karte bis Tagesende pausiert.
+- Großes Lokalisierungs-Update: 4 neue Sprachen hinzugefügt - Deutsch, Arabisch (Saudi-Arabien), Arabisch (VAE) und Chinesisch.
+
+### AR (SA)
+- تشغيل أسرع للتطبيق وأداء أكثر سلاسة في الشاشات الأساسية.
+- تحسين الاستجابة العامة: الأنيميشن والمؤقتات والتنقلات أصبحت أكثر ثباتاً.
+- إصلاح منطق إشعارات بطاقات الإغراء: إذا تم اتخاذ إجراء على البطاقة اليوم، يتم إيقاف تذكيرات القرار لنفس البطاقة حتى نهاية اليوم.
+- تحديث كبير للتوطين: تمت إضافة 4 لغات جديدة - الألمانية، العربية (السعودية)، العربية (الإمارات)، والصينية.
+
+### AR (AE)
+- تشغيل أسرع للتطبيق وأداء أكثر سلاسة في الشاشات الأساسية.
+- تحسين الاستجابة العامة: الأنيميشن والمؤقتات والتنقلات أصبحت أكثر ثباتاً.
+- إصلاح منطق إشعارات بطاقات الإغراء: إذا تم اتخاذ إجراء على البطاقة اليوم، يتم إيقاف تذكيرات القرار لنفس البطاقة حتى نهاية اليوم.
+- تحديث كبير للتوطين: تمت إضافة 4 لغات جديدة - الألمانية، العربية (السعودية)، العربية (الإمارات)، والصينية.
+
+### ZH
+- 应用启动更快，核心页面运行更流畅。
+- 整体响应性提升：动画、计时器和页面过渡更稳定。
+- 修复了诱惑卡片推送提醒逻辑：如果你今天已经对某张卡片执行过操作，该卡片的“做决定”提醒将在当天剩余时间暂停。
+- 本地化重大更新：新增 4 种语言 - 德语、阿拉伯语（沙特）、阿拉伯语（阿联酋）和中文。
+
 ## 5.0.6 (from 5.0.5)
 
 ### EN

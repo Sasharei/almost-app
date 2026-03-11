@@ -1,3 +1,5 @@
+import { LANGUAGE_MAP_FALLBACK_TRANSLATIONS } from "../constants/languageMapFallback.generated.js";
+
 export const PREMIUM_ENTITLEMENT_ID = "premium";
 
 export const PREMIUM_PRODUCT_IDS = {
@@ -810,6 +812,8 @@ const COMPARISON_TAP_HINT_BY_LANGUAGE = {
   en: "Tap a feature to see its savings impact.",
   es: "Toca una función para ver su impacto en tus ahorros.",
   fr: "Touche une fonction pour voir son impact sur tes économies.",
+  de: "Tippe auf eine Funktion, um ihren Spareffekt zu sehen.",
+  ar: "اضغط على الميزة لمعرفة تأثيرها على الادخار.",
 };
 
 const PLAN_UNAVAILABLE_LABEL_BY_LANGUAGE = {
@@ -817,6 +821,8 @@ const PLAN_UNAVAILABLE_LABEL_BY_LANGUAGE = {
   en: "Unavailable",
   es: "No disponible",
   fr: "Indisponible",
+  de: "Nicht verfügbar",
+  ar: "غير متاح",
 };
 
 const PAYWALL_BILLING_NOTICE_BY_LANGUAGE = {
@@ -848,6 +854,20 @@ const PAYWALL_BILLING_NOTICE_BY_LANGUAGE = {
     default:
       "Les plans mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans l'App Store / Google Play. Le plan à vie est un achat unique.",
   },
+  de: {
+    ios: "Monats- und Jahrespläne sind automatisch verlängerbare Abos. Verwalten oder kündigen kannst du jederzeit im App Store. Lifetime ist ein Einmalkauf.",
+    android:
+      "Monats- und Jahrespläne sind automatisch verlängerbare Abos. Verwalten oder kündigen kannst du jederzeit in Google Play. Lifetime ist ein Einmalkauf.",
+    default:
+      "Monats- und Jahrespläne sind automatisch verlängerbare Abos. Verwalten oder kündigen kannst du jederzeit im App Store / Google Play. Lifetime ist ein Einmalkauf.",
+  },
+  ar: {
+    ios: "الخطتان الشهرية والسنوية اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من App Store. خطة مدى الحياة شراء لمرة واحدة.",
+    android:
+      "الخطتان الشهرية والسنوية اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من Google Play. خطة مدى الحياة شراء لمرة واحدة.",
+    default:
+      "الخطتان الشهرية والسنوية اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من App Store / Google Play. خطة مدى الحياة شراء لمرة واحدة.",
+  },
 };
 
 const PAYWALL_LEGAL_NOTICE_BY_LANGUAGE = {
@@ -871,6 +891,16 @@ const PAYWALL_LEGAL_NOTICE_BY_LANGUAGE = {
     android: "En continuant, vous acceptez les Conditions d'utilisation et la Politique de confidentialité.",
     default: "En continuant, vous acceptez les Conditions d'utilisation et la Politique de confidentialité.",
   },
+  de: {
+    ios: "Wenn du fortfährst, stimmst du den Nutzungsbedingungen (EULA) und der Datenschutzrichtlinie zu.",
+    android: "Wenn du fortfährst, stimmst du den Nutzungsbedingungen und der Datenschutzrichtlinie zu.",
+    default: "Wenn du fortfährst, stimmst du den Nutzungsbedingungen und der Datenschutzrichtlinie zu.",
+  },
+  ar: {
+    ios: "بالمتابعة فإنك توافق على شروط الاستخدام (EULA) وسياسة الخصوصية.",
+    android: "بالمتابعة فإنك توافق على شروط الاستخدام وسياسة الخصوصية.",
+    default: "بالمتابعة فإنك توافق على شروط الاستخدام وسياسة الخصوصية.",
+  },
 };
 
 const CTA_PRIMARY_TRIAL_BY_LANGUAGE = {
@@ -878,6 +908,8 @@ const CTA_PRIMARY_TRIAL_BY_LANGUAGE = {
   en: "Try for free",
   es: "Probar gratis",
   fr: "Essayer gratuitement",
+  de: "Kostenlos testen",
+  ar: "جرّب مجاناً",
 };
 
 const CTA_PRIMARY_REGULAR_BY_LANGUAGE = {
@@ -885,6 +917,8 @@ const CTA_PRIMARY_REGULAR_BY_LANGUAGE = {
   en: "Continue",
   es: "Continuar",
   fr: "Continuer",
+  de: "Weiter",
+  ar: "متابعة",
 };
 
 const CTA_RESTORE_BY_LANGUAGE = {
@@ -892,6 +926,8 @@ const CTA_RESTORE_BY_LANGUAGE = {
   en: "Restore purchases",
   es: "Restaurar compras",
   fr: "Restaurer les achats",
+  de: "Käufe wiederherstellen",
+  ar: "استعادة المشتريات",
 };
 
 const CTA_CLOSE_BY_LANGUAGE = {
@@ -899,6 +935,8 @@ const CTA_CLOSE_BY_LANGUAGE = {
   en: "Maybe later",
   es: "Quizás más tarde",
   fr: "Plus tard",
+  de: "Vielleicht später",
+  ar: "لاحقاً",
 };
 
 const CTA_MANAGE_BY_LANGUAGE = {
@@ -906,6 +944,8 @@ const CTA_MANAGE_BY_LANGUAGE = {
   en: "Manage subscription",
   es: "Gestionar suscripción",
   fr: "Gérer l'abonnement",
+  de: "Abo verwalten",
+  ar: "إدارة الاشتراك",
 };
 
 const LEGAL_TERMS_LABEL_BY_LANGUAGE = {
@@ -913,6 +953,8 @@ const LEGAL_TERMS_LABEL_BY_LANGUAGE = {
   en: "Terms",
   es: "Términos",
   fr: "Conditions",
+  de: "AGB",
+  ar: "الشروط",
 };
 
 const LEGAL_PRIVACY_LABEL_BY_LANGUAGE = {
@@ -920,6 +962,8 @@ const LEGAL_PRIVACY_LABEL_BY_LANGUAGE = {
   en: "Privacy",
   es: "Privacidad",
   fr: "Confidentialité",
+  de: "Datenschutz",
+  ar: "الخصوصية",
 };
 
 const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
@@ -928,18 +972,24 @@ const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
     en: "Yearly",
     es: "Anual",
     fr: "Annuel",
+    de: "Jährlich",
+    ar: "سنوي",
   },
   monthly: {
     ru: "Месяц",
     en: "Monthly",
     es: "Mensual",
     fr: "Mensuel",
+    de: "Monatlich",
+    ar: "شهري",
   },
   lifetime: {
     ru: "Навсегда",
     en: "Lifetime",
     es: "De por vida",
     fr: "À vie",
+    de: "Lebenslang",
+    ar: "مدى الحياة",
   },
 };
 
@@ -948,6 +998,8 @@ const SAVE_BADGE_TEMPLATE_BY_LANGUAGE = {
   en: "Save {{percent}}%",
   es: "Ahorra {{percent}}%",
   fr: "Économisez {{percent}}%",
+  de: "Spare {{percent}}%",
+  ar: "وفّر {{percent}}%",
 };
 
 const LIFETIME_BADGE_BY_LANGUAGE = {
@@ -955,6 +1007,8 @@ const LIFETIME_BADGE_BY_LANGUAGE = {
   en: "Lifetime",
   es: "De por vida",
   fr: "À vie",
+  de: "Lebenslang",
+  ar: "مدى الحياة",
 };
 
 const PAYWALL_BADGE_BY_KIND = {
@@ -970,6 +1024,9 @@ const resolveLanguage = (language) => {
   if (normalized.startsWith("ru")) return "ru";
   if (normalized.startsWith("es")) return "es";
   if (normalized.startsWith("fr")) return "fr";
+  if (normalized.startsWith("de")) return "de";
+  if (normalized.startsWith("ar")) return "ar";
+  if (normalized.startsWith("zh")) return "zh";
   if (normalized.startsWith("en")) return "en";
   return "en";
 };
@@ -982,6 +1039,44 @@ const template = (value, replacements = {}) => {
   return nextValue;
 };
 
+const localizeTemplateString = (value, language = "en") => {
+  const raw = typeof value === "string" ? value : "";
+  if (!raw) return "";
+  return localizeFallbackString(raw, language);
+};
+
+const resolveTemplateSource = (dictionary, language = "en") => {
+  const direct = typeof dictionary?.[language] === "string" ? dictionary[language] : "";
+  if (direct) return direct;
+  const english = typeof dictionary?.en === "string" ? dictionary.en : "";
+  if (!english) return "";
+  return localizeTemplateString(english, language) || english;
+};
+
+const localizeFallbackString = (value, language = "en") => {
+  if (typeof value !== "string" || !value.length) return value;
+  const lang = resolveLanguage(language);
+  const dictionary = LANGUAGE_MAP_FALLBACK_TRANSLATIONS?.[lang];
+  if (!dictionary || typeof dictionary !== "object") return value;
+  return dictionary[value] || value;
+};
+
+const localizeFallbackStructure = (value, language = "en") => {
+  if (typeof value === "string") {
+    return localizeFallbackString(value, language);
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => localizeFallbackStructure(entry, language));
+  }
+  if (value && typeof value === "object") {
+    return Object.entries(value).reduce((acc, [key, entry]) => {
+      acc[key] = localizeFallbackStructure(entry, language);
+      return acc;
+    }, {});
+  }
+  return value;
+};
+
 const localizeFallbackBadge = (badge, language = "en") => {
   const lang = resolveLanguage(language);
   const raw = typeof badge === "string" ? badge.trim() : "";
@@ -991,12 +1086,15 @@ const localizeFallbackBadge = (badge, language = "en") => {
   }
   const saveMatch = raw.match(/^save\s+(\d+)%$/i);
   if (saveMatch) {
-    return template(
+    return localizeFallbackString(
+      template(
       SAVE_BADGE_TEMPLATE_BY_LANGUAGE[lang] || SAVE_BADGE_TEMPLATE_BY_LANGUAGE.en,
       { percent: saveMatch[1] }
+      ),
+      lang
     );
   }
-  return raw;
+  return localizeFallbackString(raw, lang);
 };
 
 const normalizeFeatureToken = (value = "") => {
@@ -1081,13 +1179,28 @@ const resolveComparisonRows = ({
       amount: rowLossAmountLabel,
       days: lossWindowDays,
     };
-    const lossTitle = row?.lossTitle ? template(row.lossTitle, replacements) : null;
-    const lossSubtitle = row?.lossSubtitle ? template(row.lossSubtitle, replacements) : null;
+    const localizedLabel =
+      typeof row?.label === "string" && row.label.trim().length > 0
+        ? localizeTemplateString(row.label, lang)
+        : row?.label;
+    const localizedLossTitleTemplate =
+      typeof row?.lossTitle === "string" && row.lossTitle.trim().length > 0
+        ? localizeTemplateString(row.lossTitle, lang)
+        : "";
+    const localizedLossSubtitleTemplate =
+      typeof row?.lossSubtitle === "string" && row.lossSubtitle.trim().length > 0
+        ? localizeTemplateString(row.lossSubtitle, lang)
+        : "";
+    const lossTitle = localizedLossTitleTemplate ? template(localizedLossTitleTemplate, replacements) : null;
+    const lossSubtitle = localizedLossSubtitleTemplate
+      ? template(localizedLossSubtitleTemplate, replacements)
+      : null;
     const explicitInteractive = typeof row?.interactive === "boolean" ? row.interactive : null;
     const interactive =
       explicitInteractive !== null ? explicitInteractive : !row?.isCosmetic && !!lossTitle;
     return {
       ...row,
+      label: localizedLabel,
       id: row?.id || `row_${index}`,
       featureKey: featureKeys[0] || null,
       featureKeys,
@@ -1140,7 +1253,7 @@ export const buildPaywallCopy = ({
       )?.[1] ||
       null
     : null;
-  const featureName = featureNameEntry?.[lang] || featureNameEntry?.en || null;
+  const localizedFeatureName = localizeFallbackString(featureNameEntry?.[lang] || featureNameEntry?.en || null, lang);
   const comparisonRows = resolveComparisonRows({
     lang,
     lossAmountLabel: resolvedLossAmountLabel,
@@ -1170,33 +1283,32 @@ export const buildPaywallCopy = ({
       normalizedTrigger === "first_save_after_onboarding" ||
       normalizedTrigger === "onboarding_completed");
 
-  let title = template(SOFT_TITLE_BY_LANGUAGE[lang] || SOFT_TITLE_BY_LANGUAGE.en, copyTokens);
-  let subtitle = template(SOFT_MARKETING_LINE_BY_LANGUAGE[lang] || SOFT_MARKETING_LINE_BY_LANGUAGE.en, copyTokens);
-  let psychologyLine = SOFT_PSYCHOLOGY_LINE_BY_LANGUAGE[lang] || SOFT_PSYCHOLOGY_LINE_BY_LANGUAGE.en;
+  let title = template(resolveTemplateSource(SOFT_TITLE_BY_LANGUAGE, lang), copyTokens);
+  let subtitle = template(resolveTemplateSource(SOFT_MARKETING_LINE_BY_LANGUAGE, lang), copyTokens);
+  let psychologyLine = resolveTemplateSource(SOFT_PSYCHOLOGY_LINE_BY_LANGUAGE, lang);
   if (isFreshStartSoftPaywall) {
-    title = template(SOFT_FRESH_START_TITLE_BY_LANGUAGE[lang] || SOFT_FRESH_START_TITLE_BY_LANGUAGE.en, copyTokens);
+    title = template(resolveTemplateSource(SOFT_FRESH_START_TITLE_BY_LANGUAGE, lang), copyTokens);
     subtitle = template(
-      SOFT_FRESH_START_MARKETING_LINE_BY_LANGUAGE[lang] || SOFT_FRESH_START_MARKETING_LINE_BY_LANGUAGE.en,
+      resolveTemplateSource(SOFT_FRESH_START_MARKETING_LINE_BY_LANGUAGE, lang),
       copyTokens
     );
-    psychologyLine =
-      SOFT_FRESH_START_PSYCHOLOGY_LINE_BY_LANGUAGE[lang] || SOFT_FRESH_START_PSYCHOLOGY_LINE_BY_LANGUAGE.en;
+    psychologyLine = resolveTemplateSource(SOFT_FRESH_START_PSYCHOLOGY_LINE_BY_LANGUAGE, lang);
   }
 
   if (effectiveKind === "hard") {
-    title = template(HARD_TITLE_BY_LANGUAGE[lang] || HARD_TITLE_BY_LANGUAGE.en, copyTokens);
-    subtitle = template(HARD_MARKETING_LINE_BY_LANGUAGE[lang] || HARD_MARKETING_LINE_BY_LANGUAGE.en, copyTokens);
+    title = template(resolveTemplateSource(HARD_TITLE_BY_LANGUAGE, lang), copyTokens);
+    subtitle = template(resolveTemplateSource(HARD_MARKETING_LINE_BY_LANGUAGE, lang), copyTokens);
     psychologyLine = null;
   } else if (effectiveKind === "feature") {
-    title = FEATURE_TITLE_BY_LANGUAGE[lang] || FEATURE_TITLE_BY_LANGUAGE.en;
-    subtitle = featureName
-      ? template(FEATURE_SUBTITLE_BY_LANGUAGE[lang] || FEATURE_SUBTITLE_BY_LANGUAGE.en, { featureName })
-      : FEATURE_MARKETING_LINE_BY_LANGUAGE[lang] || FEATURE_MARKETING_LINE_BY_LANGUAGE.en;
+    title = resolveTemplateSource(FEATURE_TITLE_BY_LANGUAGE, lang);
+    subtitle = localizedFeatureName
+      ? template(resolveTemplateSource(FEATURE_SUBTITLE_BY_LANGUAGE, lang), { featureName: localizedFeatureName })
+      : resolveTemplateSource(FEATURE_MARKETING_LINE_BY_LANGUAGE, lang);
     psychologyLine = null;
   }
   if (isSaveLimitHardTrigger) {
-    title = SAVE_LIMIT_REACHED_TITLE_BY_LANGUAGE[lang] || SAVE_LIMIT_REACHED_TITLE_BY_LANGUAGE.en;
-    subtitle = SAVE_LIMIT_REACHED_SUBTITLE_BY_LANGUAGE[lang] || SAVE_LIMIT_REACHED_SUBTITLE_BY_LANGUAGE.en;
+    title = resolveTemplateSource(SAVE_LIMIT_REACHED_TITLE_BY_LANGUAGE, lang);
+    subtitle = resolveTemplateSource(SAVE_LIMIT_REACHED_SUBTITLE_BY_LANGUAGE, lang);
     psychologyLine = null;
   }
   if (activeFeatureInsightRow?.lossTitle) {
@@ -1208,7 +1320,7 @@ export const buildPaywallCopy = ({
   const ctaPrimaryTrial = CTA_PRIMARY_TRIAL_BY_LANGUAGE[lang] || CTA_PRIMARY_TRIAL_BY_LANGUAGE.en;
   const ctaPrimaryRegular = CTA_PRIMARY_REGULAR_BY_LANGUAGE[lang] || CTA_PRIMARY_REGULAR_BY_LANGUAGE.en;
 
-  return {
+  return localizeFallbackStructure({
     badgeLabel: PAYWALL_BADGE_BY_KIND[effectiveKind] || PAYWALL_BADGE_BY_KIND.soft,
     title,
     subtitle,
@@ -1246,7 +1358,7 @@ export const buildPaywallCopy = ({
       "",
     legalTermsLabel: LEGAL_TERMS_LABEL_BY_LANGUAGE[lang] || LEGAL_TERMS_LABEL_BY_LANGUAGE.en,
     legalPrivacyLabel: LEGAL_PRIVACY_LABEL_BY_LANGUAGE[lang] || LEGAL_PRIVACY_LABEL_BY_LANGUAGE.en,
-  };
+  }, lang);
 };
 
 export const buildDefaultPlanCards = (currencyCode = "USD", language = "en") => {
@@ -1256,7 +1368,7 @@ export const buildDefaultPlanCards = (currencyCode = "USD", language = "en") => 
     DEFAULT_PLAN_LABELS_BY_LANGUAGE?.[planId]?.[lang] ||
     DEFAULT_PLAN_LABELS_BY_LANGUAGE?.[planId]?.en ||
     "Premium";
-  return [
+  return localizeFallbackStructure([
     {
       id: "yearly",
       label: resolvePlanLabel("yearly"),
@@ -1281,5 +1393,5 @@ export const buildDefaultPlanCards = (currencyCode = "USD", language = "en") => 
       badge: localizeFallbackBadge(pricing.lifetime.badge, lang),
       recommended: false,
     },
-  ];
+  ], lang);
 };
