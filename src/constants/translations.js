@@ -1,3 +1,5 @@
+import { GENERATED_TRANSLATIONS } from "./translations.generated.js";
+
 export const TRANSLATIONS = {
   ru: {
     appTagline: "Витрина искушений которая помогает копить",
@@ -6006,3 +6008,5 @@ export const TRANSLATIONS = {
     budgetWidgetTutorialCta: "Entendido",
   },
 };
+
+Object.assign(TRANSLATIONS, GENERATED_TRANSLATIONS);

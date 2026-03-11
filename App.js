@@ -87,6 +87,7 @@ import { SavingsProvider, useRealSavedAmount } from "./src/hooks/useRealSavedAmo
 import { useSavingsSimulation } from "./src/hooks/useSavingsSimulation";
 import { calcPotentialSaved } from "./src/utils/savingsSimulation";
 import { TRANSLATIONS } from "./src/constants/translations";
+import { LANGUAGE_MAP_FALLBACK_TRANSLATIONS } from "./src/constants/languageMapFallback.generated.js";
 import { DAILY_CHALLENGE_POPULAR_IDS, DEFAULT_TEMPTATIONS } from "./src/constants/temptations";
 import { PRIVACY_LINKS, TERMS_LINKS, TERMS_POINTS } from "./src/constants/legal";
 import PremiumPaywallModal from "./src/components/PremiumPaywallModal";
@@ -343,7 +344,7 @@ const endDailySummaryLiveActivitySafely = async () => {
 
 // Crashlytics: @react-native-community/blur can throw NPE in BlurViewManagerImpl.createViewInstance
 // on some Android devices. Keep community blur disabled on Android and use Expo blur path.
-const ANDROID_DIMEZIS_DISABLED = false;
+const ANDROID_DIMEZIS_DISABLED = true;
 const ANDROID_BLUR_AUTO_UPDATE = false;
 const ANDROID_EXPO_BLUR_ENABLED = true;
 const ANDROID_EXPO_BLUR_REDUCTION_FACTOR = 1;
@@ -518,7 +519,50 @@ const APP_RESUME_MODAL_GUARD_MS = 1500;
 
 const DEFAULT_LANGUAGE = "en";
 const FALLBACK_LANGUAGE = "en";
-const SUPPORTED_LANGUAGES = ["en", "es", "fr", "ru"];
+const DEFAULT_ARABIC_LANGUAGE = "ar-sa";
+const SUPPORTED_LANGUAGES = ["en", "es", "fr", "ru", "de", "ar-sa", "ar-ae", "zh"];
+const RTL_LANGUAGES = new Set(["ar-sa", "ar-ae"]);
+const LANGUAGE_ALIASES = {
+  en: "en",
+  "en-us": "en",
+  "en-gb": "en",
+  "en-au": "en",
+  "en-ca": "en",
+  es: "es",
+  "es-es": "es",
+  "es-mx": "es",
+  fr: "fr",
+  "fr-fr": "fr",
+  "fr-ca": "fr",
+  ru: "ru",
+  "ru-ru": "ru",
+  de: "de",
+  "de-de": "de",
+  "de-at": "de",
+  "de-ch": "de",
+  deu: "de",
+  ger: "de",
+  german: "de",
+  ar: DEFAULT_ARABIC_LANGUAGE,
+  "ar-sa": "ar-sa",
+  "ar-ae": "ar-ae",
+  ara: DEFAULT_ARABIC_LANGUAGE,
+  arabic: DEFAULT_ARABIC_LANGUAGE,
+  "arabic-saudi": "ar-sa",
+  "arabic-uae": "ar-ae",
+  zh: "zh",
+  "zh-cn": "zh",
+  "zh-hans": "zh",
+  "zh-sg": "zh",
+  "zh-hk": "zh",
+  "zh-tw": "zh",
+  "zh-hant": "zh",
+  "zh-hant-hk": "zh",
+  "zh-hant-tw": "zh",
+  zho: "zh",
+  chi: "zh",
+  chinese: "zh",
+};
 const SOUND_FILES = {
   coin: require("./assets/sounds/coin.wav"),
   tap: require("./assets/sounds/tap.wav"),
@@ -572,33 +616,164 @@ const LANGUAGE_LABEL_KEYS = {
   en: "languageEnglish",
   es: "languageSpanish",
   fr: "languageFrench",
+  de: "languageGerman",
+  "ar-sa": "languageArabicSaudi",
+  "ar-ae": "languageArabicUAE",
+  zh: "languageChinese",
 };
 const LANGUAGE_NATIVE_LABELS = {
   ru: "Русский",
   en: "English",
   es: "Español",
   fr: "Français",
+  de: "Deutsch",
+  "ar-sa": "العربية (السعودية)",
+  "ar-ae": "العربية (الإمارات)",
+  zh: "中文",
 };
-const normalizeLanguage = (value) =>
-  SUPPORTED_LANGUAGES.includes(value) ? value : DEFAULT_LANGUAGE;
+const canonicalizeLanguageCode = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-");
+const normalizeLanguage = (value) => {
+  const normalized = canonicalizeLanguageCode(value);
+  if (!normalized) return DEFAULT_LANGUAGE;
+  const aliased = LANGUAGE_ALIASES[normalized] || normalized;
+  if (SUPPORTED_LANGUAGES.includes(aliased)) return aliased;
+  const base = aliased.split("-")[0];
+  if (base === "ar") return DEFAULT_ARABIC_LANGUAGE;
+  return SUPPORTED_LANGUAGES.includes(base) ? base : DEFAULT_LANGUAGE;
+};
+const resolveTranslationLanguage = (language) => {
+  const normalized = normalizeLanguage(language);
+  if (normalized === "ar-sa" || normalized === "ar-ae") return "ar";
+  return normalized;
+};
+const isRtlLanguage = (language) => RTL_LANGUAGES.has(normalizeLanguage(language));
+const getLanguageDirection = (language) => (isRtlLanguage(language) ? "rtl" : "ltr");
 const getLanguageLabelKey = (language) =>
-  LANGUAGE_LABEL_KEYS[language] || LANGUAGE_LABEL_KEYS[FALLBACK_LANGUAGE];
+  LANGUAGE_LABEL_KEYS[normalizeLanguage(language)] || LANGUAGE_LABEL_KEYS[FALLBACK_LANGUAGE];
 const FORMAT_LOCALES = {
   ru: "ru-RU",
   en: "en-US",
   es: "es-ES",
   fr: "fr-FR",
+  de: "de-DE",
+  "ar-sa": "ar-SA",
+  "ar-ae": "ar-AE",
+  zh: "zh-CN",
 };
 const SHORT_LANGUAGE_MAP = {
   ru: "ru",
   en: "en",
   es: "es",
   fr: "fr",
+  de: "de",
+  "ar-sa": "ar",
+  "ar-ae": "ar",
+  zh: "zh",
 };
 const getFormatLocale = (language) =>
-  FORMAT_LOCALES[language] || FORMAT_LOCALES[FALLBACK_LANGUAGE];
+  FORMAT_LOCALES[normalizeLanguage(language)] || FORMAT_LOCALES[FALLBACK_LANGUAGE];
 const getShortLanguageKey = (language) =>
-  SHORT_LANGUAGE_MAP[language] || SHORT_LANGUAGE_MAP[FALLBACK_LANGUAGE];
+  SHORT_LANGUAGE_MAP[normalizeLanguage(language)] || SHORT_LANGUAGE_MAP[FALLBACK_LANGUAGE];
+const localizeFallbackTextByLanguage = (text, language = DEFAULT_LANGUAGE) => {
+  if (typeof text !== "string" || !text.length) return text;
+  const normalizedLanguage = normalizeLanguage(language);
+  const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
+  const fallbackDictionary =
+    LANGUAGE_MAP_FALLBACK_TRANSLATIONS?.[translationLanguage] ||
+    LANGUAGE_MAP_FALLBACK_TRANSLATIONS?.[normalizedLanguage] ||
+    null;
+  if (!fallbackDictionary || typeof fallbackDictionary !== "object") {
+    return text;
+  }
+  return fallbackDictionary[text] || text;
+};
+const ARABIC_INDIC_DIGITS = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+const EASTERN_ARABIC_DIGITS = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
+const ARABIC_DIGIT_TO_WESTERN = {
+  "٠": "0",
+  "١": "1",
+  "٢": "2",
+  "٣": "3",
+  "٤": "4",
+  "٥": "5",
+  "٦": "6",
+  "٧": "7",
+  "٨": "8",
+  "٩": "9",
+  "۰": "0",
+  "۱": "1",
+  "۲": "2",
+  "۳": "3",
+  "۴": "4",
+  "۵": "5",
+  "۶": "6",
+  "۷": "7",
+  "۸": "8",
+  "۹": "9",
+};
+const normalizeArabicDigitsToWestern = (value = "") =>
+  String(value || "")
+    .replace(/[٠-٩۰-۹]/g, (digit) => ARABIC_DIGIT_TO_WESTERN[digit] || digit)
+    .replace(/٪/g, "%");
+const localizeDigitsForLanguage = (value, language = DEFAULT_LANGUAGE) => {
+  if (typeof value !== "string" || !value.length) return value;
+  const normalizedLanguage = normalizeLanguage(language);
+  const westernDigits = normalizeArabicDigitsToWestern(value);
+  if (normalizedLanguage !== "ar-sa" && normalizedLanguage !== "ar-ae") {
+    return westernDigits;
+  }
+  return westernDigits
+    .replace(/\d/g, (digit) => ARABIC_INDIC_DIGITS[Number(digit)] || EASTERN_ARABIC_DIGITS[Number(digit)] || digit)
+    .replace(/%/g, "٪");
+};
+const localizeTextTreeDigits = (value, language = DEFAULT_LANGUAGE) => {
+  if (typeof value === "string") {
+    return localizeDigitsForLanguage(value, language);
+  }
+  if (typeof value === "number" || typeof value === "bigint") {
+    return localizeDigitsForLanguage(String(value), language);
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => localizeTextTreeDigits(entry, language));
+  }
+  if (React.isValidElement(value) && value.props && "children" in value.props) {
+    const localizedChildren = localizeTextTreeDigits(value.props.children, language);
+    if (localizedChildren === value.props.children) return value;
+    return React.cloneElement(value, { ...value.props, children: localizedChildren });
+  }
+  return value;
+};
+const LANGUAGE_DEFAULT_CURRENCY_BY_CODE = {
+  de: "EUR",
+  "ar-sa": "SAR",
+  "ar-ae": "AED",
+};
+const getDefaultCurrencyForLanguage = (language, fallbackCurrency = "USD") => {
+  const normalizedLanguage = normalizeLanguage(language);
+  return LANGUAGE_DEFAULT_CURRENCY_BY_CODE[normalizedLanguage] || fallbackCurrency;
+};
+const getPreferredDeviceLanguage = () => {
+  let intlLocale = "";
+  try {
+    intlLocale = Intl?.DateTimeFormat?.().resolvedOptions?.().locale || "";
+  } catch {
+    intlLocale = "";
+  }
+  const settings = NativeModules?.SettingsManager?.settings || {};
+  const appleLanguages = Array.isArray(settings?.AppleLanguages) ? settings.AppleLanguages : [];
+  const rawCandidates = [
+    intlLocale,
+    appleLanguages[0],
+    settings?.AppleLocale,
+    NativeModules?.I18nManager?.localeIdentifier,
+  ];
+  const candidate = rawCandidates.find((entry) => typeof entry === "string" && entry.trim().length > 0);
+  return normalizeLanguage(candidate || DEFAULT_LANGUAGE);
+};
 
 const PURCHASE_GOAL = 20000;
 const FALLBACK_SAVE_ACTION_USD = 20;
@@ -976,7 +1151,17 @@ const resolveMonetizationLanguage = (language = "en") => {
     .trim()
     .toLowerCase();
   const base = normalized.split(/[-_]/)[0];
-  if (base === "ru" || base === "en" || base === "es" || base === "fr") return base;
+  if (
+    base === "ru" ||
+    base === "en" ||
+    base === "es" ||
+    base === "fr" ||
+    base === "de" ||
+    base === "ar" ||
+    base === "zh"
+  ) {
+    return base;
+  }
   return "en";
 };
 const PAYWALL_PLAN_LABEL_BY_LANGUAGE = {
@@ -985,42 +1170,65 @@ const PAYWALL_PLAN_LABEL_BY_LANGUAGE = {
     en: "Yearly",
     es: "Anual",
     fr: "Annuel",
+    de: "Jährlich",
+    ar: "سنوي",
+    zh: "年付",
   },
   monthly: {
     ru: "Месяц",
     en: "Monthly",
     es: "Mensual",
     fr: "Mensuel",
+    de: "Monatlich",
+    ar: "شهري",
+    zh: "月付",
   },
   lifetime: {
     ru: "Навсегда",
     en: "Lifetime",
     es: "De por vida",
     fr: "À vie",
+    de: "Lebenslang",
+    ar: "مدى الحياة",
+    zh: "终身",
   },
   premium: {
     ru: "Premium",
     en: "Premium",
     es: "Premium",
     fr: "Premium",
+    de: "Premium",
+    ar: "Premium",
+    zh: "Premium",
   },
 };
 const resolvePlanLabel = (planId, language = "en") => {
   const lang = resolveMonetizationLanguage(language);
   const normalizedPlanId = planId === "yearly" || planId === "monthly" || planId === "lifetime" ? planId : "premium";
-  return PAYWALL_PLAN_LABEL_BY_LANGUAGE[normalizedPlanId]?.[lang] || PAYWALL_PLAN_LABEL_BY_LANGUAGE[normalizedPlanId]?.en || "Premium";
+  return localizeFallbackTextByLanguage(
+    PAYWALL_PLAN_LABEL_BY_LANGUAGE[normalizedPlanId]?.[lang] ||
+      PAYWALL_PLAN_LABEL_BY_LANGUAGE[normalizedPlanId]?.en ||
+      "Premium",
+    lang
+  );
 };
 const PAYWALL_SAVE_BADGE_TEMPLATE_BY_LANGUAGE = {
   ru: "Экономия {{percent}}%",
   en: "Save {{percent}}%",
   es: "Ahorra {{percent}}%",
   fr: "Économisez {{percent}}%",
+  de: "Spare {{percent}}%",
+  ar: "وفّر {{percent}}%",
+  zh: "省 {{percent}}%",
 };
 const PAYWALL_TRIAL_BADGE_BY_LANGUAGE = {
   ru: "Пробный период",
   en: "Free trial",
   es: "Prueba gratis",
   fr: "Essai gratuit",
+  de: "Kostenlos testen",
+  ar: "تجربة مجانية",
+  zh: "免费试用",
 };
 const PAYWALL_EQUIVALENT_SOURCE_IDS = [
   "coffee_to_go",
@@ -1042,12 +1250,18 @@ const PAYWALL_YEAR_SUFFIX_BY_LANGUAGE = {
   en: "/yr",
   es: "/año",
   fr: "/an",
+  de: "/Jahr",
+  ar: "/سنة",
+  zh: "/年",
 };
 const PAYWALL_MONTH_SUFFIX_BY_LANGUAGE = {
   ru: "/мес",
   en: "/mo",
   es: "/mes",
   fr: "/mois",
+  de: "/Monat",
+  ar: "/شهر",
+  zh: "/月",
 };
 const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
   yearly: {
@@ -1055,18 +1269,27 @@ const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
     en: "Billed yearly",
     es: "Facturado anualmente",
     fr: "Facturé annuellement",
+    de: "Jährliche Abrechnung",
+    ar: "يتم الفوترة سنوياً",
+    zh: "按年计费",
   },
   monthly: {
     ru: "Списание каждый месяц",
     en: "Billed monthly",
     es: "Facturado mensualmente",
     fr: "Facturé mensuellement",
+    de: "Monatliche Abrechnung",
+    ar: "يتم الفوترة شهرياً",
+    zh: "按月计费",
   },
   lifetime: {
     ru: "Разовый платеж",
     en: "One-time purchase",
     es: "Pago único",
     fr: "Achat unique",
+    de: "Einmaliger Kauf",
+    ar: "شراء لمرة واحدة",
+    zh: "一次性购买",
   },
 };
 const PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE = {
@@ -1089,6 +1312,21 @@ const PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE = {
     monthly: "≈ {{emoji}} {{count}}x {{item}} / mois",
     yearly: "≈ {{emoji}} {{count}}x {{item}} / an",
     lifetime: "≈ {{emoji}} {{count}}x {{item}} une fois",
+  },
+  de: {
+    monthly: "≈ {{emoji}} {{count}}x {{item}} / Monat",
+    yearly: "≈ {{emoji}} {{count}}x {{item}} / Jahr",
+    lifetime: "≈ {{emoji}} {{count}}x {{item}} einmalig",
+  },
+  ar: {
+    monthly: "≈ {{emoji}} {{count}}× {{item}} / شهر",
+    yearly: "≈ {{emoji}} {{count}}× {{item}} / سنة",
+    lifetime: "≈ {{emoji}} {{count}}× {{item}} لمرة واحدة",
+  },
+  zh: {
+    monthly: "≈ {{emoji}} {{count}}×{{item}} / 月",
+    yearly: "≈ {{emoji}} {{count}}×{{item}} / 年",
+    lifetime: "≈ {{emoji}} {{count}}×{{item}} 一次性",
   },
 };
 const DEFAULT_TEMPTATION_BY_ID = new Map(DEFAULT_TEMPTATIONS.map((item) => [item.id, item]));
@@ -1233,12 +1471,27 @@ const PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE = {
   en: "Try for free",
   es: "probar gratis",
   fr: "essayer gratuitement",
+  de: "Kostenlos testen",
+  ar: "جرّب مجاناً",
+  zh: "免费试用",
 };
 const PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE = {
   ru: "Потом",
   en: "Then",
   es: "Luego",
   fr: "Puis",
+  de: "Dann",
+  ar: "ثم",
+  zh: "随后",
+};
+const PAYWALL_NOW_PREFIX_BY_LANGUAGE = {
+  ru: "Сейчас",
+  en: "Now",
+  es: "Ahora",
+  fr: "Maintenant",
+  de: "Jetzt",
+  ar: "الآن",
+  zh: "现在",
 };
 const buildPaywallTrialLabel = ({ days = 0, language = "en" } = {}) => {
   const normalizedDays = Math.max(0, Math.round(Number(days) || 0));
@@ -1253,15 +1506,27 @@ const buildPaywallTrialLabel = ({ days = 0, language = "en" } = {}) => {
   if (lang === "fr") {
     return `${normalizedDays} ${resolveFrenchDaysWord(normalizedDays)} ${resolveFrenchFreeWord(normalizedDays)}`;
   }
-  return `${normalizedDays}-day free trial`;
+  if (lang === "de") {
+    return `${normalizedDays} Tage kostenlos testen`;
+  }
+  if (lang === "ar") {
+    return `${normalizedDays} أيام تجربة مجانية`;
+  }
+  if (lang === "zh") {
+    return `${normalizedDays} 天免费试用`;
+  }
+  return localizeFallbackTextByLanguage(`${normalizedDays}-day free trial`, lang);
 };
-const PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS = 3;
-const PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS = 3;
+const PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS = null;
+const PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS = null;
 const buildPaywallTrialCtaLabel = ({ days = 0, language = "en" } = {}) => {
   const normalizedDays = Math.max(0, Math.round(Number(days) || 0));
   const lang = resolveMonetizationLanguage(language);
   if (!normalizedDays) {
-    return PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE[lang] || PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE.en;
+    return localizeFallbackTextByLanguage(
+      PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE[lang] || PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE.en,
+      lang
+    );
   }
   if (lang === "ru") {
     return `попробовать ${normalizedDays} ${resolveRussianDaysWord(normalizedDays)} бесплатно`;
@@ -1272,14 +1537,40 @@ const buildPaywallTrialCtaLabel = ({ days = 0, language = "en" } = {}) => {
   if (lang === "fr") {
     return `essayer ${normalizedDays} ${resolveFrenchDaysWord(normalizedDays)} gratuitement`;
   }
-  return `Try ${normalizedDays}-day free`;
+  if (lang === "de") {
+    return `${normalizedDays} Tage kostenlos testen`;
+  }
+  if (lang === "ar") {
+    return `جرّب مجاناً لمدة ${normalizedDays} أيام`;
+  }
+  if (lang === "zh") {
+    return `免费试用 ${normalizedDays} 天`;
+  }
+  return localizeFallbackTextByLanguage(`Try ${normalizedDays}-day free`, lang);
 };
 const buildPaywallPostTrialLabel = ({ priceLabel = "", language = "en" } = {}) => {
   const normalizedPriceLabel = String(priceLabel || "").trim();
   if (!normalizedPriceLabel) return "";
   const lang = resolveMonetizationLanguage(language);
   const prefix = PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE[lang] || PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE.en;
-  return `${prefix} ${normalizedPriceLabel}`;
+  return localizeFallbackTextByLanguage(`${prefix} ${normalizedPriceLabel}`, lang);
+};
+const buildPaywallNowPriceLabel = ({
+  currencyCode = DEFAULT_PROFILE.currency,
+  language = "en",
+} = {}) => {
+  const lang = resolveMonetizationLanguage(language);
+  const prefix = localizeFallbackTextByLanguage(
+    PAYWALL_NOW_PREFIX_BY_LANGUAGE[lang] || PAYWALL_NOW_PREFIX_BY_LANGUAGE.en,
+    lang
+  );
+  const zeroPriceLabel = normalizePaywallPriceLabel(
+    formatCurrency(0, currencyCode, {
+      precisionOverride: 0,
+    }),
+    currencyCode
+  );
+  return localizeFallbackTextByLanguage(`${prefix} ${zeroPriceLabel}`, lang);
 };
 const buildPaywallTrialNotice = ({
   days = 0,
@@ -1302,7 +1593,19 @@ const buildPaywallTrialNotice = ({
   if (lang === "fr") {
     return `${trialLabel}. Ensuite, renouvellement automatique à ${normalizedPriceLabel}. Annulez à tout moment dans ${storeLabel}.`;
   }
-  return `${trialLabel}. Then auto-renews at ${normalizedPriceLabel}. Cancel anytime in ${storeLabel}.`;
+  if (lang === "de") {
+    return `${trialLabel}. Danach automatische Verlängerung für ${normalizedPriceLabel}. Jederzeit im ${storeLabel} kündbar.`;
+  }
+  if (lang === "ar") {
+    return `${trialLabel}. ثم يتجدد الاشتراك تلقائياً بسعر ${normalizedPriceLabel}. يمكنك الإلغاء في أي وقت من ${storeLabel}.`;
+  }
+  if (lang === "zh") {
+    return `${trialLabel}。之后将按 ${normalizedPriceLabel} 自动续订。可随时在 ${storeLabel} 取消。`;
+  }
+  return localizeFallbackTextByLanguage(
+    `${trialLabel}. Then auto-renews at ${normalizedPriceLabel}. Cancel anytime in ${storeLabel}.`,
+    lang
+  );
 };
 const PAYWALL_SAR_MARKERS_REGEX = /(﷼|sar|ر\.?\s*س\.?|ريال(?:ات)?)/gi;
 const PAYWALL_BIDI_MARKS_REGEX = /[\u200e\u200f\u061c]/g;
@@ -1400,17 +1703,23 @@ const buildTemptationEquivalentLine = ({
   const template =
     PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE[lang]?.[planKey] ||
     PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE.en.monthly;
-  const title = matched.title?.[lang] || matched.title?.en || "temptation";
-  return template
+  const title = resolveLanguageMapValue(matched.title, lang) || matched.title?.en || "temptation";
+  return localizeFallbackTextByLanguage(
+    template
     .replace("{{emoji}}", matched.emoji || "💸")
     .replace("{{count}}", formatEquivalentUnits(matched.units, lang))
-    .replace("{{item}}", title);
+    .replace("{{item}}", title),
+    lang
+  );
 };
 const buildPaywallSaveBadge = ({ percent = 0, language = "en" } = {}) => {
   const normalizedPercent = Math.max(1, Math.round(Number(percent) || 0));
   const lang = resolveMonetizationLanguage(language);
   const template = PAYWALL_SAVE_BADGE_TEMPLATE_BY_LANGUAGE[lang] || PAYWALL_SAVE_BADGE_TEMPLATE_BY_LANGUAGE.en;
-  return template.replace("{{percent}}", String(normalizedPercent));
+  return localizeFallbackTextByLanguage(
+    template.replace("{{percent}}", String(normalizedPercent)),
+    lang
+  );
 };
 const PAYWALL_ALERT_COPY = {
   missingAndroidApiKey: {
@@ -1452,7 +1761,10 @@ const PAYWALL_ALERT_COPY = {
 };
 const resolvePaywallAlertCopy = (key, language = "en") => {
   const lang = resolveMonetizationLanguage(language);
-  return PAYWALL_ALERT_COPY[key]?.[lang] || PAYWALL_ALERT_COPY[key]?.en || "";
+  return localizeFallbackTextByLanguage(
+    PAYWALL_ALERT_COPY[key]?.[lang] || PAYWALL_ALERT_COPY[key]?.en || "",
+    lang
+  );
 };
 const YELLOW_TAMAGOTCHI_ANIMATIONS = {
   idle: require("./assets/tamagotchi_skins/yellow/Cat_idle.gif"),
@@ -1707,13 +2019,15 @@ const resolveProThemeAccentOption = (accentId) =>
   PRO_THEME_ACCENT_OPTIONS[0];
 const resolveProAccentLabel = (option, language = DEFAULT_LANGUAGE) => {
   const normalizedLanguage = normalizeLanguage(language);
-  return (
+  const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
+  const rawLabel =
     option?.label?.[normalizedLanguage] ||
+    option?.label?.[translationLanguage] ||
     option?.label?.en ||
     option?.label?.ru ||
     option?.id ||
-    "Accent"
-  );
+    "Accent";
+  return localizeFallbackTextByLanguage(rawLabel, normalizedLanguage);
 };
 const PRO_THEME_ACCENT_COPY = {
   ru: {
@@ -2090,29 +2404,48 @@ const AppText = React.memo(
       maxFontSizeMultiplier = 1,
       ...restProps
     } = props || {};
+    const localizedChildren = localizeTextTreeDigits(restProps.children, activeLanguageForFormatting);
+    const textProps =
+      localizedChildren === restProps.children
+        ? restProps
+        : { ...restProps, children: localizedChildren };
     const baseStyles = Array.isArray(style) ? style.filter(Boolean) : style ? [style] : [];
     const flattened = baseStyles.length ? StyleSheet.flatten(baseStyles) || {} : {};
+    const isRtlLayout = isRtlLanguage(activeLanguageForFormatting);
+    const directionStyle = isRtlLayout ? { writingDirection: "rtl", textAlign: "right" } : null;
+    const styleWithDirection = directionStyle ? [directionStyle, ...baseStyles] : baseStyles;
     if (flattened.fontFamily) {
       return (
         <RNText
           ref={ref}
-          style={style}
+          style={styleWithDirection.length ? styleWithDirection : style}
           allowFontScaling={allowFontScaling}
           maxFontSizeMultiplier={maxFontSizeMultiplier}
-          {...restProps}
+          {...textProps}
+        />
+      );
+    }
+    if (isRtlLayout) {
+      return (
+        <RNText
+          ref={ref}
+          style={styleWithDirection.length ? styleWithDirection : style}
+          allowFontScaling={allowFontScaling}
+          maxFontSizeMultiplier={maxFontSizeMultiplier}
+          {...textProps}
         />
       );
     }
     const resolvedFontFamily = resolveInterFontFamily(flattened.fontWeight);
     const fontStyle = { fontFamily: resolvedFontFamily };
-    const nextStyle = baseStyles.length ? [...baseStyles, fontStyle] : fontStyle;
+    const nextStyle = styleWithDirection.length ? [...styleWithDirection, fontStyle] : fontStyle;
     return (
       <RNText
         ref={ref}
         style={nextStyle}
         allowFontScaling={allowFontScaling}
         maxFontSizeMultiplier={maxFontSizeMultiplier}
-        {...restProps}
+        {...textProps}
       />
     );
   })
@@ -2125,29 +2458,52 @@ const AppTextInput = React.memo(
       maxFontSizeMultiplier = 1,
       ...restProps
     } = props || {};
+    const rawPlaceholder = restProps.placeholder;
+    const localizedPlaceholder =
+      typeof rawPlaceholder === "string"
+        ? localizeDigitsForLanguage(rawPlaceholder, activeLanguageForFormatting)
+        : rawPlaceholder;
+    const inputProps =
+      localizedPlaceholder === restProps.placeholder
+        ? restProps
+        : { ...restProps, placeholder: localizedPlaceholder };
     const baseStyles = Array.isArray(style) ? style.filter(Boolean) : style ? [style] : [];
     const flattened = baseStyles.length ? StyleSheet.flatten(baseStyles) || {} : {};
+    const isRtlLayout = isRtlLanguage(activeLanguageForFormatting);
+    const directionStyle = isRtlLayout ? { writingDirection: "rtl", textAlign: "right" } : null;
+    const styleWithDirection = directionStyle ? [directionStyle, ...baseStyles] : baseStyles;
     if (flattened.fontFamily) {
       return (
         <RNTextInput
           ref={ref}
-          style={style}
+          style={styleWithDirection.length ? styleWithDirection : style}
           allowFontScaling={allowFontScaling}
           maxFontSizeMultiplier={maxFontSizeMultiplier}
-          {...restProps}
+          {...inputProps}
+        />
+      );
+    }
+    if (isRtlLayout) {
+      return (
+        <RNTextInput
+          ref={ref}
+          style={styleWithDirection.length ? styleWithDirection : style}
+          allowFontScaling={allowFontScaling}
+          maxFontSizeMultiplier={maxFontSizeMultiplier}
+          {...inputProps}
         />
       );
     }
     const resolvedFontFamily = resolveInterFontFamily(flattened.fontWeight);
     const fontStyle = { fontFamily: resolvedFontFamily };
-    const nextStyle = baseStyles.length ? [...baseStyles, fontStyle] : fontStyle;
+    const nextStyle = styleWithDirection.length ? [...styleWithDirection, fontStyle] : fontStyle;
     return (
       <RNTextInput
         ref={ref}
         style={nextStyle}
         allowFontScaling={allowFontScaling}
         maxFontSizeMultiplier={maxFontSizeMultiplier}
-        {...restProps}
+        {...inputProps}
       />
     );
   })
@@ -2633,7 +2989,10 @@ const resolveUsageStreakRestoreDetails = (
     ? base.missedDays * STREAK_RESTORE_BLUE_COINS_PER_DAY
     : 0;
   const costValue = base.shouldOfferRestore ? base.missedDays * STREAK_RESTORE_COST_PER_DAY : 0;
-  const labels = HEALTH_COIN_LABELS[language] || HEALTH_COIN_LABELS.en;
+  const labels =
+    HEALTH_COIN_LABELS[getShortLanguageKey(language)] ||
+    HEALTH_COIN_LABELS[normalizeLanguage(language)] ||
+    HEALTH_COIN_LABELS.en;
   const costLabel = costBlueCount ? `${costBlueCount} ${labels.blue || "blue coins"}` : "";
   const canRestore = base.shouldOfferRestore && healthPoints >= costValue;
   return { ...base, costBlueCount, costValue, costLabel, canRestore };
@@ -2648,6 +3007,9 @@ const WEEKDAY_FULL_LABELS = {
   en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
   es: ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"],
   fr: ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"],
+  de: ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"],
+  ar: ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"],
+  zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
 };
 const formatRelativeDayLabel = (timestamp, referenceTs, language = DEFAULT_LANGUAGE) => {
   if (!Number.isFinite(timestamp) || !Number.isFinite(referenceTs)) return null;
@@ -2656,7 +3018,10 @@ const formatRelativeDayLabel = (timestamp, referenceTs, language = DEFAULT_LANGU
   const diff = getDayDiff(fromKey, toKey);
   if (diff === null) return null;
   const normalizedLanguage = normalizeLanguage(language);
-  const weekdayLabels = WEEKDAY_FULL_LABELS[normalizedLanguage] || WEEKDAY_FULL_LABELS[DEFAULT_LANGUAGE];
+  const weekdayLabels =
+    WEEKDAY_FULL_LABELS[getShortLanguageKey(normalizedLanguage)] ||
+    WEEKDAY_FULL_LABELS[normalizedLanguage] ||
+    WEEKDAY_FULL_LABELS[DEFAULT_LANGUAGE];
   const weekday = weekdayLabels[new Date(timestamp).getDay()] || weekdayLabels[0];
   const formatDaysAgo = (count) => {
     if (!Number.isFinite(count) || count <= 0) return null;
@@ -2677,6 +3042,15 @@ const formatRelativeDayLabel = (timestamp, referenceTs, language = DEFAULT_LANGU
     if (normalizedLanguage === "fr") {
       return `il y a ${count} jour${count === 1 ? "" : "s"}`;
     }
+    if (normalizedLanguage === "de") {
+      return `vor ${count} Tag${count === 1 ? "" : "en"}`;
+    }
+    if (normalizedLanguage === "ar-sa" || normalizedLanguage === "ar-ae") {
+      return `منذ ${count} يوم`;
+    }
+    if (normalizedLanguage === "zh") {
+      return `${count}天前`;
+    }
     return `${count} day${count === 1 ? "" : "s"} ago`;
   };
   const formatOnWeekday = (dayLabel) => {
@@ -2684,18 +3058,27 @@ const formatRelativeDayLabel = (timestamp, referenceTs, language = DEFAULT_LANGU
     if (normalizedLanguage === "ru") return `в ${dayLabel}`;
     if (normalizedLanguage === "es") return `el ${dayLabel}`;
     if (normalizedLanguage === "fr") return `le ${dayLabel}`;
+    if (normalizedLanguage === "de") return `am ${dayLabel}`;
+    if (normalizedLanguage === "ar-sa" || normalizedLanguage === "ar-ae") return `في ${dayLabel}`;
+    if (normalizedLanguage === "zh") return `在${dayLabel}`;
     return `on ${dayLabel}`;
   };
   if (diff === 0) {
     if (normalizedLanguage === "ru") return "сегодня";
     if (normalizedLanguage === "es") return "hoy";
     if (normalizedLanguage === "fr") return "aujourd'hui";
+    if (normalizedLanguage === "de") return "heute";
+    if (normalizedLanguage === "ar-sa" || normalizedLanguage === "ar-ae") return "اليوم";
+    if (normalizedLanguage === "zh") return "今天";
     return "today";
   }
   if (diff === 1) {
     if (normalizedLanguage === "ru") return "вчера";
     if (normalizedLanguage === "es") return "ayer";
     if (normalizedLanguage === "fr") return "hier";
+    if (normalizedLanguage === "de") return "gestern";
+    if (normalizedLanguage === "ar-sa" || normalizedLanguage === "ar-ae") return "أمس";
+    if (normalizedLanguage === "zh") return "昨天";
     return "yesterday";
   }
   if (diff === 2) {
@@ -3133,22 +3516,53 @@ const HEALTH_COIN_LABELS = {
     blue: "pièces bleues",
     green: "pièces vertes",
   },
+  de: {
+    pink: "rosa Münzen",
+    red: "rote Münzen",
+    orange: "orange Münzen",
+    blue: "blaue Münzen",
+    green: "grüne Münzen",
+  },
+  ar: {
+    pink: "عملات وردية",
+    red: "عملات حمراء",
+    orange: "عملات برتقالية",
+    blue: "عملات زرقاء",
+    green: "عملات خضراء",
+  },
+  zh: {
+    pink: "粉色币",
+    red: "红色币",
+    orange: "橙色币",
+    blue: "蓝色币",
+    green: "绿色币",
+  },
 };
 const ZERO_HEALTH_REWARD_LABELS = {
   ru: "0 монет",
   en: "0 coins",
   es: "0 monedas",
   fr: "0 pièce",
+  de: "0 Münzen",
+  ar: "0 عملات",
+  zh: "0 个币",
 };
 const formatHealthRewardLabel = (amount = 0, language = DEFAULT_LANGUAGE) => {
   const entries = buildHealthCoinEntries(amount);
   const normalizedLang = normalizeLanguage(language);
-  const labels = HEALTH_COIN_LABELS[normalizedLang] || HEALTH_COIN_LABELS.en;
+  const labels =
+    HEALTH_COIN_LABELS[normalizedLang] ||
+    HEALTH_COIN_LABELS[resolveTranslationLanguage(normalizedLang)] ||
+    HEALTH_COIN_LABELS.en;
   const parts = entries
     .filter((entry) => entry.count > 0)
     .map((entry) => `${entry.count} ${labels[entry.id] || entry.id}`);
   if (!parts.length) {
-    return ZERO_HEALTH_REWARD_LABELS[language] || ZERO_HEALTH_REWARD_LABELS.en;
+    return (
+      ZERO_HEALTH_REWARD_LABELS[normalizedLang] ||
+      ZERO_HEALTH_REWARD_LABELS[resolveTranslationLanguage(normalizedLang)] ||
+      ZERO_HEALTH_REWARD_LABELS.en
+    );
   }
   return parts.join(" · ");
 };
@@ -4426,8 +4840,38 @@ const getTamagotchiMood = (
 	      needClean: "est sale et veut être lavé",
 	      needFood: "a faim",
 	    },
+      de: {
+        happy: "ist in Topform",
+        calm: "ist okay, braucht aber Aufmerksamkeit",
+        sad: "ist traurig und will spielen",
+        missed: "vermisst dich und ist traurig",
+        urgent: "braucht dringend Hilfe!",
+        needPlay: "will spielen",
+        needClean: "ist schmutzig und muss gereinigt werden",
+        needFood: "hat Hunger",
+      },
+      ar: {
+        happy: "بحالة ممتازة",
+        calm: "بخير لكنه يحتاج انتباهًا",
+        sad: "حزين ويريد اللعب",
+        missed: "يشتاق إليك وهو حزين",
+        urgent: "يحتاج مساعدة عاجلة!",
+        needPlay: "يريد اللعب",
+        needClean: "اتسخ ويحتاج تنظيفًا",
+        needFood: "جائع",
+      },
+      zh: {
+        happy: "状态很好",
+        calm: "还好，但需要关注",
+        sad: "有点难过，想玩",
+        missed: "想你了，有点难过",
+        urgent: "急需照顾！",
+        needPlay: "想玩",
+        needClean: "脏了，需要清洁",
+        needFood: "饿了",
+      },
 	  };
-  const dict = texts[language] || texts.ru;
+  const dict = texts[resolveMonetizationLanguage(language)] || texts.en;
   const hungerPressure = Math.max(0, 100 - hunger);
   const playPressure = Math.max(0, 100 - mood);
   const cleanPressure = Math.max(0, 100 - cleanliness);
@@ -4772,7 +5216,16 @@ const getBudgetCategoryLabel = (id, language = DEFAULT_LANGUAGE) => {
   if (id === "savings") {
     const entry = BUDGET_SPECIAL_CATEGORY_DEFS.savings;
     const key = getShortLanguageKey(language);
-    return entry[key] || entry.en || entry.ru || id;
+    const normalizedLanguage = normalizeLanguage(language);
+    const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
+    const rawLabel =
+      entry[normalizedLanguage] ||
+      entry[translationLanguage] ||
+      entry[key] ||
+      entry.en ||
+      entry.ru ||
+      id;
+    return localizeFallbackTextByLanguage(rawLabel, normalizedLanguage);
   }
   return getImpulseCategoryName(id, language);
 };
@@ -5193,6 +5646,9 @@ const IMPULSE_DELAY_UNITS = {
   en: { hour: "h", minute: "m" },
   es: { hour: "h", minute: "min" },
   fr: { hour: "h", minute: "min" },
+  de: { hour: "Std", minute: "Min" },
+  ar: { hour: "س", minute: "د" },
+  zh: { hour: "小时", minute: "分" },
 };
 const IMPULSE_REMINDER_MIN_DELAY_MS = 5 * 60 * 1000;
 const formatImpulseDelayLabel = (minutes, language = DEFAULT_LANGUAGE) => {
@@ -5889,7 +6345,7 @@ const getMoodPreset = (moodId = MOOD_IDS.NEUTRAL, language = DEFAULT_LANGUAGE) =
   const localize = (value) => {
     if (!value) return "";
     if (typeof value === "string") return value;
-    return value[language] || value.en || "";
+    return resolveLanguageMapValue(value, language) || value.en || "";
   };
   return {
     id: preset.id || moodId,
@@ -5990,14 +6446,20 @@ const WEEKDAY_LABELS = {
   en: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
   es: ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"],
   fr: ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"],
+  de: ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"],
+  ar: ["أحد", "اثن", "ثلا", "أرب", "خمي", "جمع", "سبت"],
+  zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
 };
 const WEEKDAY_LABELS_MONDAY_FIRST = {
   ru: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
   en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
   es: ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
   fr: ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"],
+  de: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
+  ar: ["اثن", "ثلا", "أرب", "خمي", "جمع", "سبت", "أحد"],
+  zh: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
 };
-const PENDING_DAY_SUFFIX = { ru: "д", en: "d", es: "d", fr: "j" };
+const PENDING_DAY_SUFFIX = { ru: "д", en: "d", es: "d", fr: "j", de: "T", ar: "ي", zh: "天" };
 
 const buildSavingsBreakdown = (
   history = [],
@@ -6019,7 +6481,8 @@ const buildSavingsBreakdown = (
     resolveTranslationValueForLanguage(language, "budgetSavingsLabel") ||
     "Savings";
   const otherLabel = resolveTranslationValueForLanguage(language, "savingsBreakdownOtherLabel") || "Other";
-  const dayLabels = WEEKDAY_LABELS[language] || WEEKDAY_LABELS.en;
+  const dayLabelKey = getShortLanguageKey(language);
+  const dayLabels = WEEKDAY_LABELS[dayLabelKey] || WEEKDAY_LABELS.en;
   const palette = ["#3E8EED", "#F6A23D", "#8F7CF6", "#2EB873", "#E15555", "#FFC857"];
   const totalsByTitle = {};
   const buckets = [];
@@ -6194,7 +6657,8 @@ const buildSpendingBreakdown = (
   const locale = getFormatLocale(language);
   const defaultSpendTitle = resolveTranslationValueForLanguage(language, "defaultSpendLabel") || "Spend";
   const otherLabel = resolveTranslationValueForLanguage(language, "savingsBreakdownOtherLabel") || "Other";
-  const dayLabels = WEEKDAY_LABELS[language] || WEEKDAY_LABELS.en;
+  const dayLabelKey = getShortLanguageKey(language);
+  const dayLabels = WEEKDAY_LABELS[dayLabelKey] || WEEKDAY_LABELS.en;
   const palette = ["#E15555", "#F6A23D", "#8F7CF6", "#3E8EED", "#2EB873", "#FFC857"];
   const spendEntries = Array.isArray(history)
     ? history.filter((entry) => entry?.kind === "spend" && entry?.timestamp)
@@ -6801,7 +7265,16 @@ const getImpulseCategoryName = (id, language = "en") => {
   const entry = IMPULSE_CATEGORY_DEFS[id];
   if (!entry) return id || "";
   const localeKey = getShortLanguageKey(language);
-  return entry[localeKey] || entry.en || entry.ru || id;
+  const normalizedLanguage = normalizeLanguage(language);
+  const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
+  const rawLabel =
+    entry[normalizedLanguage] ||
+    entry[translationLanguage] ||
+    entry[localeKey] ||
+    entry.en ||
+    entry.ru ||
+    id;
+  return localizeFallbackTextByLanguage(rawLabel, normalizedLanguage);
 };
 
 const getImpulseCategoryLabel = (id, language = "en") => {
@@ -7040,11 +7513,19 @@ const formatNumberInputValue = (value, precisionOverride = 2) => {
   return formatted;
 };
 
+const normalizeLocaleDigits = (value = "") =>
+  String(value || "")
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x06f0))
+    .replace(/\u066B/g, ".")
+    .replace(/\u066C/g, ",");
+
 const normalizeNumberInputParts = (value = "") => {
   if (typeof value !== "string") {
     return { normalized: "", fractionDigits: 0 };
   }
-  const cleaned = value.replace(/[^\d,.\s]/g, "").replace(/\s+/g, "");
+  const normalizedValue = normalizeLocaleDigits(value);
+  const cleaned = normalizedValue.replace(/[^\d,.\s]/g, "").replace(/\s+/g, "");
   if (!cleaned) {
     return { normalized: "", fractionDigits: 0 };
   }
@@ -7785,6 +8266,9 @@ const FREQUENCY_COUNTDOWN_TOKENS = {
   en: { day: "d", hour: "h", minute: "m" },
   es: { day: "d", hour: "h", minute: "m" },
   fr: { day: "j", hour: "h", minute: "m" },
+  de: { day: "T", hour: "Std", minute: "Min" },
+  ar: { day: "ي", hour: "س", minute: "د" },
+  zh: { day: "天", hour: "小时", minute: "分" },
 };
 const FREQUENCY_CRITICAL_WINDOW_MS = 2 * 60 * 60 * 1000;
 const FREQUENCY_REMINDER_INTERVAL_MS = 30 * 60 * 1000;
@@ -7795,7 +8279,10 @@ const getFrequencyIntervalMs = (bucketId) => {
 const formatFrequencyCountdown = (ms, language = DEFAULT_LANGUAGE) => {
   if (!Number.isFinite(ms) || ms <= 0) return "";
   const normalized = Math.max(0, Math.round(ms / (1000 * 60))); // minutes
-  const tokens = FREQUENCY_COUNTDOWN_TOKENS[language] || FREQUENCY_COUNTDOWN_TOKENS[DEFAULT_LANGUAGE];
+  const tokens =
+    FREQUENCY_COUNTDOWN_TOKENS[getShortLanguageKey(language)] ||
+    FREQUENCY_COUNTDOWN_TOKENS[normalizeLanguage(language)] ||
+    FREQUENCY_COUNTDOWN_TOKENS[DEFAULT_LANGUAGE];
   const minutesInDay = 60 * 24;
   const days = Math.floor(normalized / minutesInDay);
   const hours = Math.floor((normalized % minutesInDay) / 60);
@@ -7908,15 +8395,25 @@ const formatSaveCountLabel = (count = 0, language = DEFAULT_LANGUAGE) => {
   const safeCount = Math.max(0, Math.floor(Number(count) || 0));
   const formattedCount = formatSaveCountValue(safeCount, language);
   const normalizedLanguage = normalizeLanguage(language);
+  const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
   if (normalizedLanguage === "ru") {
     const suffix = getRussianPluralWord(safeCount, "сохранение", "сохранения", "сохранений");
     return `${formattedCount} ${suffix}`;
   }
-  if (normalizedLanguage === "es") {
+  if (translationLanguage === "es") {
     return `${formattedCount} ${safeCount === 1 ? "ahorro" : "ahorros"}`;
   }
-  if (normalizedLanguage === "fr") {
+  if (translationLanguage === "fr") {
     return `${formattedCount} ${safeCount === 1 ? "economie" : "economies"}`;
+  }
+  if (translationLanguage === "de") {
+    return `${formattedCount} ${safeCount === 1 ? "Sparschritt" : "Sparschritte"}`;
+  }
+  if (translationLanguage === "ar") {
+    return `${formattedCount} ${safeCount === 1 ? "توفير" : "عمليات توفير"}`;
+  }
+  if (translationLanguage === "zh") {
+    return `${formattedCount} 次节省`;
   }
   return `${formattedCount} ${safeCount === 1 ? "save" : "saves"}`;
 };
@@ -7944,6 +8441,10 @@ const buildGoalCompletionHeroLine = ({
       en: "Goal reached. Keep this momentum.",
       es: "Meta lograda. Mantén este ritmo.",
       fr: "Objectif atteint. Garde ce rythme.",
+      de: "Ziel erreicht. Genau so weitermachen.",
+      "ar-sa": "تم تحقيق الهدف. استمر بهذا الإيقاع.",
+      "ar-ae": "تم تحقيق الهدف. استمر بهذا الإيقاع.",
+      zh: "目标达成，继续保持这个节奏。",
     };
     return fallbackMap[normalizedLanguage] || fallbackMap.en;
   }
@@ -7963,11 +8464,37 @@ const buildGoalCompletionHeroLine = ({
     const suffix = hasOther ? " et autres" : "";
     return `Objectif atteint : ${formattedCount} refus de ${compactTitle}${suffix}.`;
   }
+  if (normalizedLanguage === "de") {
+    const suffix = hasOther ? " und weitere" : "";
+    return `Ziel erreicht: ${formattedCount} Ablehnungen bei ${compactTitle}${suffix}.`;
+  }
+  if (normalizedLanguage === "ar-sa" || normalizedLanguage === "ar-ae") {
+    const suffix = hasOther ? " وغيرها" : "";
+    return `تم تحقيق الهدف: ${formattedCount} رفضًا لـ ${compactTitle}${suffix}.`;
+  }
+  if (normalizedLanguage === "zh") {
+    const suffix = hasOther ? "及其他" : "";
+    return `目标达成：对 ${compactTitle} 的拒绝次数为 ${formattedCount}${suffix}。`;
+  }
   const suffix = hasOther ? " and others" : "";
   return `Goal reached: ${formattedCount} skips on ${compactTitle}${suffix}.`;
 };
 
 const LANGUAGE_OVERRIDES = {
+  en: {
+    languageGerman: "German",
+    languageArabicSaudi: "Arabic (Saudi Arabia)",
+    languageArabicUAE: "Arabic (UAE)",
+    languageChinese: "Chinese",
+    saveCelebrateTitlePrefix: "Saved on:",
+  },
+  ru: {
+    languageGerman: "Немецкий",
+    languageArabicSaudi: "Арабский (Саудовская Аравия)",
+    languageArabicUAE: "Арабский (ОАЭ)",
+    languageChinese: "Китайский",
+    saveCelebrateTitlePrefix: "Сэкономлено на:",
+  },
   es: {
     languageLabel: "Idioma",
     languageTitle: "Elige idioma",
@@ -7975,6 +8502,12 @@ const LANGUAGE_OVERRIDES = {
     languageRussian: "Ruso",
     languageEnglish: "Inglés",
     languageSpanish: "Español",
+    languageFrench: "Francés",
+    languageGerman: "Alemán",
+    languageArabicSaudi: "Árabe (Arabia Saudí)",
+    languageArabicUAE: "Árabe (EAU)",
+    languageChinese: "Chino",
+    saveCelebrateTitlePrefix: "Ahorrado en:",
   },
   fr: {
     languageLabel: "Langue",
@@ -7984,16 +8517,200 @@ const LANGUAGE_OVERRIDES = {
     languageEnglish: "Anglais",
     languageSpanish: "Espagnol",
     languageFrench: "Français",
+    languageGerman: "Allemand",
+    languageArabicSaudi: "Arabe (Arabie saoudite)",
+    languageArabicUAE: "Arabe (EAU)",
+    languageChinese: "Chinois",
+    saveCelebrateTitlePrefix: "Économisé sur :",
+  },
+  de: {
+    languageLabel: "Sprache",
+    languageTitle: "Sprache wählen",
+    languageSubtitle: "Passe die App an deine Region an",
+    languageCurrencyHint: "Sprache und Währung kannst du später im Profil ändern.",
+    nextButton: "Weiter",
+    onboardingBack: "Zurück",
+    onboardingSkip: "Überspringen",
+    onboardingGuideButton: "Weiter",
+    currencyLabel: "Sparwährung",
+    languageTermsHint: "Wenn du fortfährst, akzeptierst du die Nutzungsbedingungen (EULA).",
+    languageTermsAccepted: "Bitte akzeptiere die Nutzungsbedingungen, um weiterzumachen.",
+    languageTermsLink: "Nutzungsbedingungen lesen",
+    languageRussian: "Russisch",
+    languageEnglish: "Englisch",
+    languageSpanish: "Spanisch",
+    languageFrench: "Französisch",
+    languageGerman: "Deutsch",
+    languageArabicSaudi: "Arabisch (Saudi-Arabien)",
+    languageArabicUAE: "Arabisch (VAE)",
+    languageChinese: "Chinesisch",
+    feedTab: "Feed",
+    wishlistTab: "Fortschritt",
+    pendingTab: "Merkliste",
+    purchasesTitle: "Belohnungen",
+    profileTab: "Profil",
+    progressHeroTitle: "Erfasste Ersparnisse",
+    heroSpendRecentTitle: "Letzte Aktivitäten:",
+    heroExpand: "Details anzeigen",
+    heroCollapse: "Details ausblenden",
+    goalWidgetTitle: "Bis zum Ziel",
+    homeWidgetGoalLabel: "Bis zum Ziel",
+    tutorialFeedTitle: "Feed und Sofortentscheidungen",
+    saveCelebrateTitlePrefix: "Gespart bei:",
+    dailyGoalCollectTitle: "Tagesziel erreicht!",
+    dailyGoalCollectSubtitle: "Du hast {{count}} grüne Münzen gesammelt.",
+    dailyGoalCollectCta: "Einsammeln",
+    dailyRewardReason:
+      "Tägliche Almi-Belohnung · +{{amount}}. Komm morgen für die nächste Belohnung zurück!",
+    freeDayCoinReward: "Freier Tag eingetragen: +{{coins}} blaue Münzen.",
+    freeDayCoinRewardStreak: "🔥 {{days}}-Tage-Serie: +{{coins}} blaue Münzen.",
+    focusVictoryReward: "Fokus „{{title}}“ geschafft! +3 grüne Münzen",
+    focusRewardSubtitle: "Du hast „{{title}}“ dreimal widerstanden. +{{amount}} grüne Münzen.",
+  },
+  "ar-sa": {
+    languageLabel: "اللغة",
+    languageTitle: "اختر اللغة",
+    languageSubtitle: "خصّص التطبيق حسب منطقتك",
+    languageCurrencyHint: "يمكنك تغيير اللغة والعملة لاحقاً من الملف الشخصي.",
+    nextButton: "التالي",
+    onboardingBack: "رجوع",
+    onboardingSkip: "تخطي",
+    onboardingGuideButton: "التالي",
+    currencyLabel: "عملة الادخار",
+    languageTermsHint: "بالمتابعة فإنك توافق على شروط الاستخدام (EULA).",
+    languageTermsAccepted: "يرجى قبول شروط الاستخدام للمتابعة.",
+    languageTermsLink: "قراءة شروط الاستخدام",
+    languageRussian: "الروسية",
+    languageEnglish: "الإنجليزية",
+    languageSpanish: "الإسبانية",
+    languageFrench: "الفرنسية",
+    languageGerman: "الألمانية",
+    languageArabicSaudi: "العربية (السعودية)",
+    languageArabicUAE: "العربية (الإمارات)",
+    languageChinese: "الصينية",
+    feedTab: "الخلاصة",
+    wishlistTab: "التقدم",
+    pendingTab: "التفكير",
+    purchasesTitle: "المكافآت",
+    profileTab: "الملف الشخصي",
+    progressHeroTitle: "المدخرات المسجلة",
+    heroSpendRecentTitle: "النشاط الأخير:",
+    heroExpand: "عرض التفاصيل",
+    heroCollapse: "إخفاء التفاصيل",
+    goalWidgetTitle: "إلى الهدف",
+    homeWidgetGoalLabel: "إلى الهدف",
+    tutorialFeedTitle: "الخلاصة والقرارات الفورية",
+    saveCelebrateTitlePrefix: "تم التوفير على:",
+    dailyGoalCollectTitle: "اكتمل هدف اليوم!",
+    dailyGoalCollectSubtitle: "جمعت {{count}} من العملات الخضراء.",
+    dailyGoalCollectCta: "تحصيل",
+    dailyRewardReason:
+      "مكافأة Almi اليومية · +{{amount}}. ارجع غدًا لتحصل على مكافأة جديدة!",
+    freeDayCoinReward: "تم تسجيل يوم بدون إنفاق: +{{coins}} عملات زرقاء.",
+    freeDayCoinRewardStreak: "🔥 سلسلة {{days}} أيام: +{{coins}} عملات زرقاء.",
+    focusVictoryReward: "تم التغلب على «{{title}}»! +3 عملات خضراء",
+    focusRewardSubtitle: "قاومت «{{title}}» ثلاث مرات. +{{amount}} عملات خضراء.",
+  },
+  "ar-ae": {
+    languageLabel: "اللغة",
+    languageTitle: "اختر اللغة",
+    languageSubtitle: "خصّص التطبيق حسب منطقتك",
+    languageCurrencyHint: "يمكنك تغيير اللغة والعملة لاحقاً من الملف الشخصي.",
+    nextButton: "التالي",
+    onboardingBack: "رجوع",
+    onboardingSkip: "تخطي",
+    onboardingGuideButton: "التالي",
+    currencyLabel: "عملة الادخار",
+    languageTermsHint: "بالمتابعة فإنك توافق على شروط الاستخدام (EULA).",
+    languageTermsAccepted: "يرجى قبول شروط الاستخدام للمتابعة.",
+    languageTermsLink: "قراءة شروط الاستخدام",
+    languageRussian: "الروسية",
+    languageEnglish: "الإنجليزية",
+    languageSpanish: "الإسبانية",
+    languageFrench: "الفرنسية",
+    languageGerman: "الألمانية",
+    languageArabicSaudi: "العربية (السعودية)",
+    languageArabicUAE: "العربية (الإمارات)",
+    languageChinese: "الصينية",
+    feedTab: "الخلاصة",
+    wishlistTab: "التقدم",
+    pendingTab: "التفكير",
+    purchasesTitle: "المكافآت",
+    profileTab: "الملف الشخصي",
+    progressHeroTitle: "المدخرات المسجلة",
+    heroSpendRecentTitle: "النشاط الأخير:",
+    heroExpand: "عرض التفاصيل",
+    heroCollapse: "إخفاء التفاصيل",
+    goalWidgetTitle: "إلى الهدف",
+    homeWidgetGoalLabel: "إلى الهدف",
+    tutorialFeedTitle: "الخلاصة والقرارات الفورية",
+    saveCelebrateTitlePrefix: "تم التوفير على:",
+    dailyGoalCollectTitle: "اكتمل هدف اليوم!",
+    dailyGoalCollectSubtitle: "جمعت {{count}} من العملات الخضراء.",
+    dailyGoalCollectCta: "تحصيل",
+    dailyRewardReason:
+      "مكافأة Almi اليومية · +{{amount}}. ارجع غدًا لتحصل على مكافأة جديدة!",
+    freeDayCoinReward: "تم تسجيل يوم بدون إنفاق: +{{coins}} عملات زرقاء.",
+    freeDayCoinRewardStreak: "🔥 سلسلة {{days}} أيام: +{{coins}} عملات زرقاء.",
+    focusVictoryReward: "تم التغلب على «{{title}}»! +3 عملات خضراء",
+    focusRewardSubtitle: "قاومت «{{title}}» ثلاث مرات. +{{amount}} عملات خضراء.",
+  },
+  zh: {
+    languageLabel: "语言",
+    languageTitle: "选择语言",
+    languageSubtitle: "按你的地区个性化设置应用",
+    languageCurrencyHint: "你可以稍后在个人资料里更改语言和货币。",
+    nextButton: "继续",
+    onboardingBack: "返回",
+    onboardingSkip: "跳过",
+    onboardingGuideButton: "继续",
+    currencyLabel: "储蓄货币",
+    languageTermsHint: "继续即表示你同意使用条款。",
+    languageTermsAccepted: "请先同意使用条款再继续。",
+    languageTermsLink: "阅读完整使用条款",
+    languageRussian: "俄语",
+    languageEnglish: "英语",
+    languageSpanish: "西班牙语",
+    languageFrench: "法语",
+    languageGerman: "德语",
+    languageArabicSaudi: "阿拉伯语（沙特）",
+    languageArabicUAE: "阿拉伯语（阿联酋）",
+    languageChinese: "中文",
+    feedTab: "动态",
+    wishlistTab: "进度",
+    pendingTab: "思考",
+    purchasesTitle: "奖励",
+    profileTab: "个人资料",
+    progressHeroTitle: "已记录储蓄",
+    heroSpendRecentTitle: "最近活动：",
+    heroExpand: "查看详情",
+    heroCollapse: "隐藏详情",
+    goalWidgetTitle: "距离目标",
+    homeWidgetGoalLabel: "距离目标",
+    tutorialFeedTitle: "动态与即时决策",
+    saveCelebrateTitlePrefix: "省下于：",
+    dailyGoalCollectTitle: "今日目标完成！",
+    dailyGoalCollectSubtitle: "你收集了 {{count}} 枚绿色硬币。",
+    dailyGoalCollectCta: "领取",
+    dailyRewardReason: "每日 Almi 奖励 · +{{amount}}。明天再来领取下一次奖励！",
+    freeDayCoinReward: "已记录无消费日：+{{coins}} 枚蓝色硬币。",
+    freeDayCoinRewardStreak: "🔥 连续 {{days}} 天：+{{coins}} 枚蓝色硬币。",
+    focusVictoryReward: "已攻克「{{title}}」！+3 枚绿色硬币",
+    focusRewardSubtitle: "你已连续三次抵挡「{{title}}」。+{{amount}} 枚绿色硬币。",
   },
 };
 const resolveTranslationValueForLanguage = (language, key, gender = "none") => {
   const normalizedLanguage = normalizeLanguage(language);
-  const override = LANGUAGE_OVERRIDES[normalizedLanguage]?.[key];
-  const dictionary = TRANSLATIONS[normalizedLanguage] || {};
+  const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
+  const override =
+    LANGUAGE_OVERRIDES[normalizedLanguage]?.[key] ??
+    LANGUAGE_OVERRIDES[translationLanguage]?.[key];
+  const dictionary = TRANSLATIONS[normalizedLanguage] || TRANSLATIONS[translationLanguage] || {};
   let raw =
     override !== undefined
       ? override
       : dictionary[key] ??
+        TRANSLATIONS[translationLanguage]?.[key] ??
         TRANSLATIONS[FALLBACK_LANGUAGE]?.[key] ??
         TRANSLATIONS[DEFAULT_LANGUAGE]?.[key];
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
@@ -8013,25 +8730,35 @@ const resolveTranslationValueForLanguage = (language, key, gender = "none") => {
 const resolveLanguageMapValue = (value, language) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const normalizedLanguage = normalizeLanguage(language);
+  const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
+  const resolveFallbackText = (text = "") => {
+    if (typeof text !== "string" || !text.length) return text;
+    return localizeFallbackTextByLanguage(text, normalizedLanguage);
+  };
   const direct = value[normalizedLanguage];
   if (typeof direct === "string" && direct.length) {
     return direct;
   }
+  const translatedDirect = value[translationLanguage];
+  if (typeof translatedDirect === "string" && translatedDirect.length) {
+    return translatedDirect;
+  }
   const fallback = value[FALLBACK_LANGUAGE];
   if (typeof fallback === "string" && fallback.length) {
-    return fallback;
+    return resolveFallbackText(fallback);
   }
   const defaultValue = value[DEFAULT_LANGUAGE];
   if (typeof defaultValue === "string" && defaultValue.length) {
-    return defaultValue;
+    return resolveFallbackText(defaultValue);
   }
   const generic = Object.values(value).find((entry) => typeof entry === "string" && entry.length);
-  return typeof generic === "string" ? generic : null;
+  return typeof generic === "string" ? resolveFallbackText(generic) : null;
 };
 const collectDailyNudgeVariants = (keys = []) => {
   const variants = new Set();
   DAILY_NUDGE_LANGUAGES.forEach((lng) => {
-    const dict = TRANSLATIONS[lng] || TRANSLATIONS[FALLBACK_LANGUAGE] || {};
+    const dictLanguage = resolveTranslationLanguage(lng);
+    const dict = TRANSLATIONS[lng] || TRANSLATIONS[dictLanguage] || TRANSLATIONS[FALLBACK_LANGUAGE] || {};
     keys.forEach((key) => {
       const raw = dict[key];
       if (Array.isArray(raw)) {
@@ -8091,9 +8818,18 @@ const CURRENCY_LOCALES = {
   MXN: "es-MX",
   PLN: "pl-PL",
   RUB: "ru-RU",
-  SAR: "en-US", // keep layout LTR; symbol handled manually
+  SAR: "ar-SA",
   USD: "en-US",
 };
+const resolveCurrencyLocale = (currency, language = activeLanguageForFormatting) => {
+  const languageLocale = getFormatLocale(language);
+  if (typeof languageLocale === "string" && languageLocale.trim().length > 0) {
+    return languageLocale;
+  }
+  return CURRENCY_LOCALES[currency] || "en-US";
+};
+const shouldForceLtrCurrencyLayout = (currency, language = activeLanguageForFormatting) =>
+  RTL_CURRENCIES.has(currency) && !isRtlLanguage(language);
 
 const HOW_IT_WORKS_STEPS = [
   { id: "impact", emoji: "📉", titleKey: "guideStepRewardTitle", descKey: "guideStepRewardDesc" },
@@ -8685,6 +9421,9 @@ const LANGUAGE_SELECTED_EVENTS = {
   en: "language_en_selected",
   es: "language_es_selected",
   fr: "language_fr_selected",
+  de: "language_de_selected",
+  "ar-sa": "language_ar_sa_selected",
+  "ar-ae": "language_ar_ae_selected",
 };
 
 const GENDER_SELECTED_EVENTS = {
@@ -9102,6 +9841,10 @@ let activeCurrency = DEFAULT_PROFILE.currency;
 const setActiveCurrency = (code) => {
   activeCurrency = CURRENCIES.includes(code) ? code : DEFAULT_PROFILE.currency;
 };
+let activeLanguageForFormatting = DEFAULT_LANGUAGE;
+const setActiveLanguageForFormatting = (language) => {
+  activeLanguageForFormatting = normalizeLanguage(language);
+};
 
 const GOALS = [
   {
@@ -9193,14 +9936,14 @@ const formatNumberWithGrouping = (value, fractionDigits = 0) => {
 
 const formatCurrencyFallback = (value, currency, fractionDigits = 0) => {
   const digits = formatNumberWithGrouping(value, fractionDigits);
-  const isRtl = RTL_CURRENCIES.has(currency);
+  const isRtl = shouldForceLtrCurrencyLayout(currency);
   const symbol = CURRENCY_SIGNS[currency] || (isRtl ? "" : "$");
   const prefix = isRtl ? `${LTR_MARK}${symbol}` : symbol;
   return `${prefix}${digits}`;
 };
 
 const formatCurrency = (value = 0, currency = activeCurrency, options = null) => {
-  const locale = CURRENCY_LOCALES[currency] || "en-US";
+  const locale = resolveCurrencyLocale(currency);
   const displayPrecision = getCurrencyDisplayPrecision(currency);
   const precisionOverride =
     typeof options?.precisionOverride === "number" && Number.isFinite(options.precisionOverride)
@@ -9214,8 +9957,9 @@ const formatCurrency = (value = 0, currency = activeCurrency, options = null) =>
   const normalized = roundCurrencyValue(adjusted, currency, precision);
   const minFractionDigits = precisionOverride !== null ? precision : 0;
   const maxFractionDigits = precision;
+  const forceLtrRtlCurrency = shouldForceLtrCurrencyLayout(currency);
   try {
-    if (RTL_CURRENCIES.has(currency)) {
+    if (forceLtrRtlCurrency) {
       const digits = new Intl.NumberFormat("en-US", {
         minimumFractionDigits: minFractionDigits,
         maximumFractionDigits: maxFractionDigits,
@@ -9232,7 +9976,7 @@ const formatCurrency = (value = 0, currency = activeCurrency, options = null) =>
   } catch (intlError) {
     warnIntlFallback(currency, locale, intlError);
     try {
-      if (RTL_CURRENCIES.has(currency)) {
+      if (forceLtrRtlCurrency) {
         const digits = normalized.toLocaleString("en-US", {
           minimumFractionDigits: minFractionDigits,
           maximumFractionDigits: maxFractionDigits,
@@ -9254,15 +9998,16 @@ const formatCurrency = (value = 0, currency = activeCurrency, options = null) =>
 };
 
 const formatCurrencyWhole = (value = 0, currency = activeCurrency, precisionOverride = null) => {
-  const locale = CURRENCY_LOCALES[currency] || "en-US";
+  const locale = resolveCurrencyLocale(currency);
   const basePrecision = getCurrencyDisplayPrecision(currency);
   const normalizedPrecision =
     typeof precisionOverride === "number" && Number.isFinite(precisionOverride)
       ? Math.max(0, Math.min(6, precisionOverride))
       : basePrecision;
   const rounded = roundCurrencyValue(Number(value) || 0, currency, normalizedPrecision);
+  const forceLtrRtlCurrency = shouldForceLtrCurrencyLayout(currency);
   try {
-    if (RTL_CURRENCIES.has(currency)) {
+    if (forceLtrRtlCurrency) {
       const digits = new Intl.NumberFormat("en-US", {
         minimumFractionDigits: normalizedPrecision,
         maximumFractionDigits: normalizedPrecision,
@@ -9279,7 +10024,7 @@ const formatCurrencyWhole = (value = 0, currency = activeCurrency, precisionOver
   } catch (intlError) {
     warnIntlFallback(currency, locale, intlError);
     try {
-      if (RTL_CURRENCIES.has(currency)) {
+      if (forceLtrRtlCurrency) {
         const digits = rounded.toLocaleString("en-US", {
           minimumFractionDigits: normalizedPrecision,
           maximumFractionDigits: normalizedPrecision,
@@ -9302,11 +10047,14 @@ const formatCurrencyWhole = (value = 0, currency = activeCurrency, precisionOver
 
 const splitCurrencyLabel = (label = "", currency = activeCurrency) => {
   if (!label) return { value: "", symbol: "" };
-  const normalized = `${label}`.replace(/[\u00A0\u202F]/g, " ").trim();
+  const normalized = `${label}`
+    .replace(/[\u00A0\u202F]/g, " ")
+    .replace(/[\u200E\u200F]/g, "")
+    .trim();
   if (!normalized) return { value: "", symbol: "" };
   const preferredSymbol = CURRENCY_SIGNS[currency] || "";
   const hasPreferredSymbol = preferredSymbol && normalized.includes(preferredSymbol);
-  const fallbackSymbol = normalized.replace(/[-\d\s.,]/g, "").trim();
+  const fallbackSymbol = normalized.replace(/[-0-9٠-٩۰-۹\s.,٬٫]/g, "").trim();
   const symbol = hasPreferredSymbol ? preferredSymbol : fallbackSymbol;
   const value = symbol ? normalized.replace(symbol, "").trim() : normalized;
   return {
@@ -9316,12 +10064,16 @@ const splitCurrencyLabel = (label = "", currency = activeCurrency) => {
 };
 
 const getCopyForPurchase = (item, language, t) => {
-  if (item.copy?.[language]) return item.copy[language];
+  const localizedCopy = resolveLanguageMapValue(item.copy, language);
+  if (localizedCopy) return localizedCopy;
   const product = DEFAULT_TEMPTATIONS.find((prod) => prod.id === item.productId);
   if (product) {
     return {
-      title: product.title?.[language] || product.title?.en || product.id,
-      desc: product.description?.[language] || product.description?.en || t("defaultDealDesc"),
+      title: resolveLanguageMapValue(product.title, language) || product.title?.en || product.id,
+      desc:
+        resolveLanguageMapValue(product.description, language) ||
+        product.description?.en ||
+        t("defaultDealDesc"),
     };
   }
   return {
@@ -9414,7 +10166,7 @@ const resolveTemptationTitle = (item, language, override) => {
   const source = item.title;
   if (typeof source === "string") return source;
   return (
-    source?.[language] ||
+    resolveLanguageMapValue(source, language) ||
     source?.en ||
     (typeof source === "object" ? Object.values(source)[0] : null) ||
     "Goal"
@@ -13683,7 +14435,7 @@ const resolveFeatureUnlockCopy = (variantKey, t) => {
 const compactUnlockCopy = (value, maxLength = 132) => {
   const raw = String(value || "").replace(/\s+/g, " ").trim();
   if (!raw) return "";
-  const sentenceMatch = raw.match(/^(.+?[.!?])(\s|$)/);
+  const sentenceMatch = raw.match(/^(.+?[.!?؟。！？])(\s|$)/u);
   const firstSentence = sentenceMatch ? sentenceMatch[1].trim() : raw;
   if (
     firstSentence.length >= Math.max(24, Math.floor(maxLength * 0.4)) &&
@@ -13693,14 +14445,17 @@ const compactUnlockCopy = (value, maxLength = 132) => {
   }
   if (raw.length <= maxLength) return raw;
   const sliced = raw.slice(0, Math.max(16, maxLength)).trim();
-  const clipped = sliced.replace(/[.,;:!?-]+$/g, "").trim();
+  const clipped = sliced.replace(/[.,;:!?؟。！\-–—،]+$/u, "").trim();
   return `${clipped}...`;
 };
 
 const stripUnlockLevelPrefix = (value) =>
   String(value || "")
     .replace(/\s+/g, " ")
-    .replace(/^(?:level|уровень|niveau|nivel)\s*\d+\s*[:!.\-–—]?\s*/i, "")
+    .replace(
+      /^(?:level|stufe|уровень|niveau|nivel|المستوى|مرحلة|等级|級別|级别|級|级)\s*\d+\s*[:!！.\-–—،。؟]?\s*/iu,
+      ""
+    )
     .trim();
 
 const LockedFeatureOverlay = ({
@@ -14214,7 +14969,7 @@ function SpendConfirmSheet({
     ? formatTemptationPriceLabel(item, currency)
     : formatCurrency(0, currency, { friendly: true });
   const displayTitle =
-    item?.title?.[language] || item?.title?.en || item?.title || t("defaultDealTitle");
+    resolveLanguageMapValue(item?.title, language) || item?.title?.en || item?.title || t("defaultDealTitle");
   const cancelColor = theme === "dark" ? "#64F2B5" : theme === PRO_THEME_ID ? colors.primary : "#1BA868";
   return (
     <Modal
@@ -14842,6 +15597,7 @@ const HistoryModal = React.memo(function HistoryModal({
                 style={[styles.progressCategoryModalList, { borderColor: colors.border }]}
                 contentContainerStyle={styles.historyListContent}
                 showsVerticalScrollIndicator
+                removeClippedSubviews={false}
                 data={historyEntries}
                 keyExtractor={(entry) => entry.id}
                 renderItem={renderHistoryItem}
@@ -15661,7 +16417,10 @@ const FeedScreen = React.memo(
       if (heroExpanded) return;
       const height = event?.nativeEvent?.layout?.height || 0;
       if (!height) return;
-      setHeroCarouselHeight((prev) => (Math.abs(prev - height) < 1 ? prev : height));
+      setHeroCarouselHeight((prev) => {
+        if (Math.abs(prev - height) < 1) return prev;
+        return Math.max(prev, height);
+      });
     },
     [heroExpanded]
   );
@@ -16394,7 +17153,7 @@ const FeedScreen = React.memo(
     if (!realSavedUSD || realSavedUSD <= 0) {
       return t("heroSpendFallback");
     }
-    const template = personaPreset?.tagline?.[language];
+    const template = resolveLanguageMapValue(personaPreset?.tagline, language);
     if (template) {
       return template.replace("{{amount}}", totalSavedLabel);
     }
@@ -18095,7 +18854,7 @@ const FeedScreen = React.memo(
       const customTitle =
         typeof primaryEntry?.customTitle === "string" ? primaryEntry.customTitle.trim() : "";
       const preset = getGoalPreset(primaryGoalId);
-      return customTitle || preset?.[language] || preset?.en || primaryGoalId;
+      return customTitle || resolveLanguageMapValue(preset, language) || preset?.en || primaryGoalId;
     },
     [language, profile.primaryGoals]
   );
@@ -18359,7 +19118,7 @@ const FeedScreen = React.memo(
         maxToRenderPerBatch={6}
         windowSize={7}
         updateCellsBatchingPeriod={50}
-        removeClippedSubviews={Platform.OS === "android"}
+        removeClippedSubviews={false}
         scrollEventThrottle={16}
         onScrollBeginDrag={handleFeedScrollBegin}
         onScrollEndDrag={handleFeedScrollEnd}
@@ -18614,7 +19373,7 @@ const FeedScreen = React.memo(
                 {Array.from({ length: heroCarouselLoopCount }, (_, loopIndex) => {
                   const realIndex = resolveHeroCarouselRealIndex(loopIndex);
                   const isClone = loopIndex === 0 || loopIndex === heroCarouselRealCount + 1;
-                  const baseItemHeight = heroCarouselHeight ? { height: heroCarouselHeight } : null;
+                  const baseItemHeight = heroCarouselHeight ? { minHeight: heroCarouselHeight } : null;
                   const itemHeight =
                     heroExpanded && realIndex === 0 ? null : baseItemHeight;
                   const itemCenter = heroCarouselPageWidth * loopIndex;
@@ -19567,7 +20326,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
     : activeGoalEntry?.customTitle
     ? activeGoalEntry.customTitle
     : resolvedActiveGoalId
-    ? goalPreset?.[language] || goalPreset?.en || ""
+    ? resolveLanguageMapValue(goalPreset, language) || goalPreset?.en || ""
     : t("wishlistEmptyTitle");
   const goalEmoji =
     activeGoalWish?.emoji ||
@@ -19697,7 +20456,8 @@ const ProgressScreen = React.memo(function ProgressScreen({
     : !hasRescueHealth
     ? t("freeDayRescueNeedHealth", { cost: freeDayRescueCost })
     : null;
-  const weekLabels = WEEKDAY_LABELS_MONDAY_FIRST[language] || WEEKDAY_LABELS_MONDAY_FIRST.en;
+  const weekLabelKey = getShortLanguageKey(language);
+  const weekLabels = WEEKDAY_LABELS_MONDAY_FIRST[weekLabelKey] || WEEKDAY_LABELS_MONDAY_FIRST.en;
   const weekDays = useMemo(() => {
     const today = new Date(todayTimestamp);
     const start = new Date(today);
@@ -19836,8 +20596,10 @@ const ProgressScreen = React.memo(function ProgressScreen({
       const saveUSD = stats.saveUSD || 0;
       const spendUSD = stats.spendUSD || 0;
       const weekdayIndex = (date.getDay() + 6) % 7;
+      const weekLabelKey = getShortLanguageKey(language);
       const label =
-        WEEKDAY_LABELS_MONDAY_FIRST[language]?.[weekdayIndex] ||
+        WEEKDAY_LABELS_MONDAY_FIRST[weekLabelKey]?.[weekdayIndex] ||
+        WEEKDAY_LABELS_MONDAY_FIRST[resolveTranslationLanguage(language)]?.[weekdayIndex] ||
         WEEKDAY_LABELS_MONDAY_FIRST.en[weekdayIndex];
       const saveLocal = convertToCurrency(saveUSD, currency);
       const spendLocal = convertToCurrency(spendUSD, currency);
@@ -22660,12 +23422,18 @@ const FRIDGE_HANDLE_HINT = {
   en: "Tap the handle",
   es: "Toca la manija",
   fr: "Touche la poignée",
+  de: "Tippe auf den Griff",
+  ar: "اضغط على المقبض",
+  zh: "轻点把手",
 };
 const FRIDGE_DOOR_COUNTER_LABELS = {
   ru: { items: "Хотелок", overdue: "Просрочено", total: "Сумма" },
   en: { items: "Temptations", overdue: "Overdue", total: "Total" },
   es: { items: "Tentaciones", overdue: "Atrasadas", total: "Total" },
   fr: { items: "Tentations", overdue: "Échéances", total: "Total" },
+  de: { items: "Versuchungen", overdue: "Überfällig", total: "Gesamt" },
+  ar: { items: "الإغراءات", overdue: "متأخر", total: "الإجمالي" },
+  zh: { items: "诱惑", overdue: "逾期", total: "总计" },
 };
 
 const PendingScreen = React.memo(function PendingScreen({
@@ -22782,7 +23550,18 @@ const PendingScreen = React.memo(function PendingScreen({
 
   const handleHint =
     resolveLanguageMapValue(FRIDGE_HANDLE_HINT, language) || FRIDGE_HANDLE_HINT.en;
-  const doorLabels = FRIDGE_DOOR_COUNTER_LABELS[language] || FRIDGE_DOOR_COUNTER_LABELS.en;
+  const rawDoorLabels =
+    FRIDGE_DOOR_COUNTER_LABELS[normalizeLanguage(language)] ||
+    FRIDGE_DOOR_COUNTER_LABELS[resolveTranslationLanguage(language)] ||
+    FRIDGE_DOOR_COUNTER_LABELS.en;
+  const doorLabels = {
+    items: localizeFallbackTextByLanguage(rawDoorLabels?.items || FRIDGE_DOOR_COUNTER_LABELS.en.items, language),
+    overdue: localizeFallbackTextByLanguage(
+      rawDoorLabels?.overdue || FRIDGE_DOOR_COUNTER_LABELS.en.overdue,
+      language
+    ),
+    total: localizeFallbackTextByLanguage(rawDoorLabels?.total || FRIDGE_DOOR_COUNTER_LABELS.en.total, language),
+  };
   const overdueCount = useMemo(
     () => sorted.filter((item) => (item.decisionDue || 0) - nowTick <= 0).length,
     [nowTick, sorted]
@@ -23859,8 +24638,30 @@ const areChallengeBadgeListsEqual = (left, right) => {
 };
 
 const getChallengeCopy = (def, language = DEFAULT_LANGUAGE) => {
-  const locale = getShortLanguageKey(language);
-  return def.copy?.[locale] || def.copy?.en || {};
+  const normalizedLanguage = normalizeLanguage(language);
+  const locale = getShortLanguageKey(normalizedLanguage);
+  const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
+  const copyEntry =
+    def.copy?.[normalizedLanguage] ||
+    def.copy?.[translationLanguage] ||
+    def.copy?.[locale] ||
+    def.copy?.en ||
+    {};
+  const fallbackEntry = def.copy?.en || {};
+  const title = localizeFallbackTextByLanguage(
+    copyEntry?.title || fallbackEntry?.title || "",
+    normalizedLanguage
+  );
+  const desc = localizeFallbackTextByLanguage(
+    copyEntry?.desc || fallbackEntry?.desc || "",
+    normalizedLanguage
+  );
+  return {
+    ...fallbackEntry,
+    ...copyEntry,
+    title,
+    desc,
+  };
 };
 
 const isSaveEvent = (kind) => kind === "refuse_spend" || kind === "pending_to_decline";
@@ -24531,15 +25332,23 @@ const buildAchievements = ({
       def.metricType === ACHIEVEMENT_METRIC_TYPES.SAVED_AMOUNT
         ? formatCurrency(convertToCurrency(def.targetValue || 0, currency), currency, { friendly: true })
         : null;
-    const copySource = def.copy[language] || def.copy.en;
+    const normalizedLanguage = normalizeLanguage(language);
+    const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
+    const copySource = {
+      ...(def.copy?.en || {}),
+      ...(def.copy?.[translationLanguage] || {}),
+      ...(def.copy?.[normalizedLanguage] || {}),
+    };
     const applyAmount = (text) =>
       typeof text === "string" && amountLabel ? text.replace("{{amount}}", amountLabel) : text || "";
     const remainingLabel = getAchievementRemainingLabel(def.metricType, remaining, currency, t);
+    const localizedTitle = localizeFallbackTextByLanguage(applyAmount(copySource.title), normalizedLanguage);
+    const localizedDesc = localizeFallbackTextByLanguage(applyAmount(copySource.desc), normalizedLanguage);
     return {
       id: def.id,
       emoji: def.emoji,
-      title: applyAmount(copySource.title),
-      desc: applyAmount(copySource.desc),
+      title: localizedTitle,
+      desc: localizedDesc,
       unlocked,
       progress,
       currentValue: value,
@@ -25144,13 +25953,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const reportsDisabled = !onReportsPress;
   const reportsLockedState = !!reportsLocked;
   const reportsLockLabel = reportsLocked
-    ? normalizedLanguageValue === "ru"
-      ? "Доступно в Premium"
-      : normalizedLanguageValue === "fr"
-      ? "Disponible en Premium"
-      : normalizedLanguageValue === "es"
-      ? "Disponible en Premium"
-      : "Available in Premium"
+    ? t("featureLockedPremiumLabel")
     : t("featureLockedLevelLabel", { level: reportsUnlockLevel });
   const reportsPremiumAccent = useMemo(() => {
     if (!reportsLockedState) return colors.muted;
@@ -26011,33 +26814,42 @@ const ProfileScreen = React.memo(function ProfileScreen({
             )}
           </>
         <View style={styles.settingRow}>
-          <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("languageLabel")}</Text>
-          <View style={styles.settingChoices}>
-            {SUPPORTED_LANGUAGES.map((lng) => {
-              const active = language === lng;
-              return (
-                <TouchableOpacity
-                  key={lng}
-                  style={[
-                    styles.settingChip,
-                    {
-                      backgroundColor: active ? colors.text : "transparent",
-                      borderColor: colors.border,
-                    },
-                  ]}
-                  onPress={() => onLanguageChange(lng)}
-                >
-                  <Text
-                    style={{
-                      color: active ? colors.background : colors.muted,
-                      fontWeight: "600",
-                    }}
+          <Text style={[styles.settingLabel, { color: colors.muted }]}>
+            {t("languageLabel")} <Text style={{ fontSize: 16 }}>{isRtlLanguage(language) ? "←" : "→"}</Text>
+          </Text>
+          <View style={styles.settingCurrencyScrollWrapper}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.settingCurrencyScroll}
+              contentContainerStyle={styles.settingCurrencyScrollContent}
+            >
+              {SUPPORTED_LANGUAGES.map((lng) => {
+                const active = normalizeLanguage(language) === lng;
+                return (
+                  <TouchableOpacity
+                    key={lng}
+                    style={[
+                      styles.settingChip,
+                      {
+                        backgroundColor: active ? colors.text : "transparent",
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    onPress={() => onLanguageChange(lng)}
                   >
-                    {t(getLanguageLabelKey(lng))}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+                    <Text
+                      style={{
+                        color: active ? colors.background : colors.muted,
+                        fontWeight: "600",
+                      }}
+                    >
+                      {LANGUAGE_NATIVE_LABELS[lng] || t(getLanguageLabelKey(lng))}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
         </View>
         <View style={styles.settingRow}>
@@ -26215,6 +27027,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
               showsVerticalScrollIndicator
               nestedScrollEnabled
               scrollEventThrottle={16}
+              removeClippedSubviews={false}
               data={visibleHistoryEntries}
               keyExtractor={(entry) => entry.id}
               renderItem={renderHistoryItem}
@@ -27418,7 +28231,6 @@ function AppContent() {
       }
     }
     if (!dailyRewardReady) return;
-    const rewardLabel = formatHealthRewardLabel(dailyRewardAmount, language);
     const dayDiff = getDayDiff(dailyRewardLastKey, claimKey);
     const normalizedStreak =
       ((Math.max(1, dailyRewardState.streak || 1) - 1) % DAILY_REWARD_STREAK_LENGTH) + 1;
@@ -27441,9 +28253,7 @@ function AppContent() {
     triggerOverlayState(
       "daily_reward",
       {
-        amount: rewardLabel,
         amountValue: dailyRewardAmount,
-        reason: t("dailyRewardReason", { amount: rewardLabel }),
       },
       { force: true }
     );
@@ -27465,13 +28275,10 @@ function AppContent() {
     dailyRewardLastKey,
     dailyRewardState.streak,
     ensureOverlayEnvironmentReady,
-    language,
     logEvent,
-    playSound,
     playerLevel,
     setDailyRewardState,
     setHealthPoints,
-    t,
     triggerOverlayState,
   ]);
   const dailyGoalCollectedToday = dailyGoalCollectedKey === todayKey;
@@ -28013,10 +28820,16 @@ function AppContent() {
   const [language, setLanguage] = useState(DEFAULT_LANGUAGE);
   const [languageHydrated, setLanguageHydrated] = useState(false);
   const normalizedLanguageValue = normalizeLanguage(language);
+  setActiveLanguageForFormatting(normalizedLanguageValue);
   const isRomanceLocale = normalizedLanguageValue === "es" || normalizedLanguageValue === "fr";
+  const isGermanLocale = normalizedLanguageValue === "de";
   const isCompactAndroid = IS_ANDROID_COMPACT;
   const baseTabFontSize = Platform.OS === "ios" ? 11 : isCompactAndroid ? 10 : 12;
-  const tabLabelFontSize = Math.max(10, isRomanceLocale ? baseTabFontSize - 1 : baseTabFontSize);
+  const tabLabelFontSize = Math.max(
+    9,
+    baseTabFontSize - (isRomanceLocale ? 1 : 0) - (isGermanLocale ? 2 : 0)
+  );
+  const tabLabelTextTransform = isGermanLocale ? "none" : "uppercase";
   const tabOrder = ["feed", "cart", "pending", "purchases", "profile"];
   const [homeLayoutReady, setHomeLayoutReady] = useState(false);
   const [startupHydrated, setStartupHydrated] = useState(false);
@@ -28036,7 +28849,7 @@ function AppContent() {
   const primaryTemptationDescription = useMemo(() => {
     const gender = profile?.gender || "none";
     const description = buildCustomTemptationDescription(gender);
-    return description?.[language] || description?.en || "";
+    return resolveLanguageMapValue(description, language) || description?.en || "";
   }, [language, profile?.gender]);
   const [activeGoalId, setActiveGoalId] = useState(null);
   const [activeGoalHydrated, setActiveGoalHydrated] = useState(false);
@@ -28102,7 +28915,10 @@ function AppContent() {
         source.titleOverride ||
         (typeof source.title === "string"
           ? source.title
-          : source.title?.[language] || source.title?.en || source.title?.ru || source.title) ||
+          : resolveLanguageMapValue(source.title, language) ||
+            source.title?.en ||
+            source.title?.ru ||
+            source.title) ||
         fallback;
       const decorated = `${source.emoji || ""} ${rawTitle || ""}`.trim();
       return decorated || fallback;
@@ -30355,6 +31171,68 @@ function AppContent() {
       console.warn("template notification cleanup", error);
     }
   }, []);
+  const cancelScheduledDecisionNotificationsForTemplate = useCallback(
+    async (templateId, { todayOnly = true } = {}) => {
+      const normalizedTemplateId =
+        typeof templateId === "number" && Number.isFinite(templateId)
+          ? String(templateId)
+          : typeof templateId === "string"
+          ? templateId.trim()
+          : "";
+      if (!normalizedTemplateId) return;
+      try {
+        const scheduled = await safeNotifications.getAllScheduledNotificationsAsync();
+        const nowTs = Date.now();
+        const todayKey = getDayKey(nowTs);
+        const idsToCancel = (Array.isArray(scheduled) ? scheduled : []).reduce((acc, entry) => {
+          const data = entry?.content?.data || {};
+          const kind = typeof data.kind === "string" ? data.kind : "";
+          if (kind !== "pending_decision" && kind !== "frequency_reminder") return acc;
+          const entryTemplateId =
+            typeof data.templateId === "number" && Number.isFinite(data.templateId)
+              ? String(data.templateId)
+              : typeof data.templateId === "string"
+              ? data.templateId.trim()
+              : "";
+          if (entryTemplateId !== normalizedTemplateId) return acc;
+          if (todayOnly) {
+            const triggerTs = resolveNotificationTriggerTime(entry?.trigger, nowTs);
+            if (!Number.isFinite(triggerTs) || getDayKey(triggerTs) !== todayKey) {
+              return acc;
+            }
+          }
+          const id = entry?.identifier || entry?.id || null;
+          if (id) acc.push(id);
+          return acc;
+        }, []);
+        if (!idsToCancel.length) return;
+        await Promise.all(
+          idsToCancel.map((id) => safeNotifications.cancelScheduledNotificationAsync(id))
+        );
+      } catch (error) {
+        console.warn("template decision notification cleanup", error);
+      }
+    },
+    [resolveNotificationTriggerTime]
+  );
+  const hasTemptationActionToday = useCallback(
+    (templateId, referenceTs = Date.now()) => {
+      const normalizedTemplateId =
+        typeof templateId === "number" && Number.isFinite(templateId)
+          ? String(templateId)
+          : typeof templateId === "string"
+          ? templateId.trim()
+          : "";
+      if (!normalizedTemplateId) return false;
+      const entry =
+        temptationInteractions && typeof temptationInteractions === "object"
+          ? temptationInteractions[normalizedTemplateId]
+          : null;
+      const lastInteractionAt = Number(entry?.lastInteractionAt) || 0;
+      return lastInteractionAt > 0 && isSameDay(lastInteractionAt, referenceTs);
+    },
+    [temptationInteractions]
+  );
   const clearFrequencyReminderStateForTemplate = useCallback((templateId) => {
     if (!templateId) return;
     setTemptationInteractions((prev) => {
@@ -31511,10 +32389,25 @@ function AppContent() {
     () => resolveThemeColors(theme, proThemeAccentId),
     [proThemeAccentId, theme]
   );
-  const proThemeAccentCopy = useMemo(
-    () => PRO_THEME_ACCENT_COPY[normalizeLanguage(language)] || PRO_THEME_ACCENT_COPY.en,
-    [language]
-  );
+  const proThemeAccentCopy = useMemo(() => {
+    const normalizedLanguage = normalizeLanguage(language);
+    const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
+    const rawCopy =
+      PRO_THEME_ACCENT_COPY[normalizedLanguage] ||
+      PRO_THEME_ACCENT_COPY[translationLanguage] ||
+      PRO_THEME_ACCENT_COPY.en;
+    return {
+      title: localizeFallbackTextByLanguage(rawCopy?.title || PRO_THEME_ACCENT_COPY.en.title, normalizedLanguage),
+      subtitle: localizeFallbackTextByLanguage(
+        rawCopy?.subtitle || PRO_THEME_ACCENT_COPY.en.subtitle,
+        normalizedLanguage
+      ),
+      selected: localizeFallbackTextByLanguage(
+        rawCopy?.selected || PRO_THEME_ACCENT_COPY.en.selected,
+        normalizedLanguage
+      ),
+    };
+  }, [language]);
   const isDarkTheme = theme === "dark";
   const isProTheme = theme === PRO_THEME_ID;
   const openMoodDetails = useCallback(() => setMoodDetailsVisible(true), []);
@@ -32285,12 +33178,16 @@ function AppContent() {
     : "rgba(5,7,13,0.55)";
   const resolveTranslationValue = useCallback((key) => {
     const normalizedLanguage = normalizeLanguage(language);
-    const override = LANGUAGE_OVERRIDES[normalizedLanguage]?.[key];
-    const dictionary = TRANSLATIONS[normalizedLanguage] || {};
+    const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
+    const override =
+      LANGUAGE_OVERRIDES[normalizedLanguage]?.[key] ??
+      LANGUAGE_OVERRIDES[translationLanguage]?.[key];
+    const dictionary = TRANSLATIONS[normalizedLanguage] || TRANSLATIONS[translationLanguage] || {};
     let raw =
       override !== undefined
         ? override
         : dictionary[key] ??
+          TRANSLATIONS[translationLanguage]?.[key] ??
           TRANSLATIONS[FALLBACK_LANGUAGE]?.[key] ??
           TRANSLATIONS[DEFAULT_LANGUAGE]?.[key];
     if (raw && typeof raw === "object" && !Array.isArray(raw)) {
@@ -32350,6 +33247,18 @@ function AppContent() {
     const formatPaywallPrice = (value = 0, currencyCode = fallbackCurrency) =>
       formatCurrency(value, currencyCode, {
         precisionOverride: getCurrencyPrecision(currencyCode),
+      });
+    const formatTrialZeroPrice = (currencyCode = fallbackCurrency) =>
+      normalizePaywallPriceLabel(
+        formatCurrency(0, currencyCode, {
+          precisionOverride: 0,
+        }),
+        currencyCode
+      );
+    const formatTrialNowPrice = (currencyCode = fallbackCurrency) =>
+      buildPaywallNowPriceLabel({
+        currencyCode,
+        language: monetizationLanguage,
       });
     const baseCards = buildDefaultPlanCards(fallbackCurrency, monetizationLanguage);
     const preliminaryCards = baseCards.map((card) => {
@@ -32413,8 +33322,14 @@ function AppContent() {
       const isMonthly = card.id === "monthly";
       const isLifetime = card.id === "lifetime";
       const currencyCode = card.currencyCode || fallbackCurrency;
-      const yearSuffix = PAYWALL_YEAR_SUFFIX_BY_LANGUAGE[monetizationLanguage] || PAYWALL_YEAR_SUFFIX_BY_LANGUAGE.en;
-      const monthSuffix = PAYWALL_MONTH_SUFFIX_BY_LANGUAGE[monetizationLanguage] || PAYWALL_MONTH_SUFFIX_BY_LANGUAGE.en;
+      const yearSuffix = localizeFallbackTextByLanguage(
+        PAYWALL_YEAR_SUFFIX_BY_LANGUAGE[monetizationLanguage] || PAYWALL_YEAR_SUFFIX_BY_LANGUAGE.en,
+        monetizationLanguage
+      );
+      const monthSuffix = localizeFallbackTextByLanguage(
+        PAYWALL_MONTH_SUFFIX_BY_LANGUAGE[monetizationLanguage] || PAYWALL_MONTH_SUFFIX_BY_LANGUAGE.en,
+        monetizationLanguage
+      );
       const amountLocal = Number.isFinite(card.rawPriceLocal) ? Math.max(0, card.rawPriceLocal) : null;
       const currencyPrecision = getCurrencyPrecision(currencyCode);
 
@@ -32465,8 +33380,11 @@ function AppContent() {
 
       if (isYearly && Number.isFinite(amountLocal) && amountLocal > 0) {
         billingLabel =
-          PAYWALL_BILLING_LABEL_BY_LANGUAGE.yearly[monetizationLanguage] ||
-          PAYWALL_BILLING_LABEL_BY_LANGUAGE.yearly.en;
+          localizeFallbackTextByLanguage(
+            PAYWALL_BILLING_LABEL_BY_LANGUAGE.yearly[monetizationLanguage] ||
+              PAYWALL_BILLING_LABEL_BY_LANGUAGE.yearly.en,
+            monetizationLanguage
+          );
         const discountedMonthlyLocal = amountLocal / 12;
         const monthlyPrecision = Math.max(0, Math.min(2, getCurrencyPrecision(currencyCode)));
         const discountedMonthlyLabel = normalizePaywallPriceLabel(
@@ -32513,8 +33431,11 @@ function AppContent() {
         }
       } else if (isMonthly) {
         billingLabel =
-          PAYWALL_BILLING_LABEL_BY_LANGUAGE.monthly[monetizationLanguage] ||
-          PAYWALL_BILLING_LABEL_BY_LANGUAGE.monthly.en;
+          localizeFallbackTextByLanguage(
+            PAYWALL_BILLING_LABEL_BY_LANGUAGE.monthly[monetizationLanguage] ||
+              PAYWALL_BILLING_LABEL_BY_LANGUAGE.monthly.en,
+            monetizationLanguage
+          );
         secondaryLabel = billingLabel;
         if (Number.isFinite(amountLocal) && amountLocal > 0) {
           equivalentLabel = buildTemptationEquivalentLine({
@@ -32526,8 +33447,11 @@ function AppContent() {
         }
       } else if (isLifetime) {
         billingLabel =
-          PAYWALL_BILLING_LABEL_BY_LANGUAGE.lifetime[monetizationLanguage] ||
-          PAYWALL_BILLING_LABEL_BY_LANGUAGE.lifetime.en;
+          localizeFallbackTextByLanguage(
+            PAYWALL_BILLING_LABEL_BY_LANGUAGE.lifetime[monetizationLanguage] ||
+              PAYWALL_BILLING_LABEL_BY_LANGUAGE.lifetime.en,
+            monetizationLanguage
+          );
         secondaryLabel = billingLabel;
         if (Number.isFinite(amountLocal) && amountLocal > 0) {
           equivalentLabel = buildTemptationEquivalentLine({
@@ -32546,15 +33470,27 @@ function AppContent() {
         : "";
       const hasTrial = !!trialLabel;
       const trialCtaLabel = hasTrial
-        ? PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE[monetizationLanguage] ||
-          PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE.en
+        ? localizeFallbackTextByLanguage(
+            PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE[monetizationLanguage] ||
+              PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE.en,
+            monetizationLanguage
+          )
         : "";
+      const trialZeroPriceLabel = hasTrial ? formatTrialZeroPrice(currencyCode) : null;
+      const trialNowPriceLabel = hasTrial ? formatTrialNowPrice(currencyCode) : null;
       const trialCtaPriceLabel = hasTrial
-        ? isYearly
-          ? ctaPriceLabel || recurringChargePriceLabel || null
-          : recurringChargePriceLabel || ctaPriceLabel || null
+        ? trialZeroPriceLabel
         : null;
       if (hasTrial) {
+        if (trialNowPriceLabel) {
+          priceLabel = trialNowPriceLabel;
+        } else if (trialZeroPriceLabel) {
+          priceLabel = trialZeroPriceLabel;
+        }
+        if (trialZeroPriceLabel) {
+          ctaPriceLabel = trialZeroPriceLabel;
+        }
+        equivalentLabel = null;
         postTrialPriceLabel = recurringChargePriceLabel || null;
         secondaryKind = "muted";
         if (postTrialPriceLabel) {
@@ -32567,7 +33503,10 @@ function AppContent() {
           secondaryLabel = billingLabel;
         }
         if (!badge) {
-          badge = PAYWALL_TRIAL_BADGE_BY_LANGUAGE[monetizationLanguage] || PAYWALL_TRIAL_BADGE_BY_LANGUAGE.en;
+          badge = localizeFallbackTextByLanguage(
+            PAYWALL_TRIAL_BADGE_BY_LANGUAGE[monetizationLanguage] || PAYWALL_TRIAL_BADGE_BY_LANGUAGE.en,
+            monetizationLanguage
+          );
         }
       }
 
@@ -32769,7 +33708,7 @@ function AppContent() {
       lossAmountByFeature,
       lossWindowDays,
     };
-  }, [baselineMonthlyWasteUSD, baselineStartAt, profile.currency, savedTotalUSD]);
+  }, [baselineMonthlyWasteUSD, baselineStartAt, language, profile.currency, savedTotalUSD]);
   const premiumFreshStartGainPercent = useMemo(() => {
     const lossAmountUSD = Math.max(0, Number(premiumLossPersonalization.lossAmountUSD) || 0);
     const baselineSignalUSD = Math.max(
@@ -33311,10 +34250,15 @@ function AppContent() {
       const targetPlanId = PREMIUM_PLAN_ORDER.includes(planId) ? planId : "monthly";
       const selectedCard = premiumPlanCards.find((entry) => entry.id === targetPlanId) || null;
       const selectedPackage = selectedCard?.package || null;
-      const productId = String(
-        selectedPackage?.product?.identifier || selectedPackage?.identifier || ""
-      ).trim();
+      const packageIdentifier = resolveNonEmptyString(selectedPackage?.identifier || "");
+      const packageType = resolveNonEmptyString(selectedPackage?.packageType || "");
+      const storeProductIdentifier = resolveNonEmptyString(selectedPackage?.product?.identifier || "");
+      const productId = storeProductIdentifier || packageIdentifier;
       const normalizedProductId = productId || "unknown";
+      const inferredPlanFromPackage =
+        resolvePlanIdFromProductIdentifier(packageType) ||
+        resolvePlanIdFromProductIdentifier(packageIdentifier) ||
+        resolvePlanIdFromProductIdentifier(storeProductIdentifier);
       const currencyCode = String(
         selectedCard?.currencyCode || profile.currency || DEFAULT_PROFILE.currency || ""
       ).trim();
@@ -33354,6 +34298,16 @@ function AppContent() {
           "Almost",
           resolvePaywallAlertCopy("packageUnavailable", language)
         );
+        return;
+      }
+      if (inferredPlanFromPackage && inferredPlanFromPackage !== targetPlanId) {
+        logEvent("premium_purchase_result", {
+          ...eventMeta,
+          result: "failed",
+          reason: "package_plan_mismatch",
+          error_code: "none",
+        });
+        Alert.alert("Almost", resolvePaywallAlertCopy("packageUnavailable", language));
         return;
       }
       premiumUnlockIntentRef.current = {
@@ -35273,6 +36227,16 @@ function AppContent() {
         const triggerAt = Math.max(dueTimestamp - PENDING_REMINDER_LEAD_MS, now);
         if (triggerAt > latestAllowed) return null;
         const trigger = triggerAt <= now + 1000 ? null : new Date(triggerAt);
+        const templateId =
+          typeof meta?.templateId === "number" && Number.isFinite(meta.templateId)
+            ? String(meta.templateId)
+            : typeof meta?.templateId === "string"
+            ? meta.templateId.trim()
+            : "";
+        const triggerTs = trigger ? trigger.getTime() : now;
+        if (templateId && isSameDay(triggerTs, now) && hasTemptationActionToday(templateId, now)) {
+          return null;
+        }
         const pendingTitle =
           moodPreset?.pushPendingTitle && moodPreset.pushPendingTitle.trim()
             ? renderTemplateString(moodPreset.pushPendingTitle, { title })
@@ -35310,7 +36274,7 @@ function AppContent() {
         return null;
       }
     },
-    [ensureNotificationPermission, moodPreset, scheduleNotificationWithCooldown, t]
+    [ensureNotificationPermission, hasTemptationActionToday, moodPreset, scheduleNotificationWithCooldown, t]
   );
 
   const scheduleChallengeReminders = useCallback(
@@ -35462,7 +36426,12 @@ function AppContent() {
     const soundKey = (() => {
       if (overlay.type === "level") return `level:${message ?? ""}`;
       if (overlay.type === "health") return `health:${message?.amount ?? ""}:${message?.displayCoins ?? ""}`;
-      if (overlay.type === "daily_reward") return `daily_reward:${message?.amount ?? ""}`;
+      if (overlay.type === "daily_reward") {
+        const amountKey = Number.isFinite(message?.amountValue)
+          ? message.amountValue
+          : message?.amount ?? "";
+        return `daily_reward:${amountKey}`;
+      }
       if (typeof message === "string") return `${overlay.type}:${message.slice(0, 32)}`;
       return overlay.type;
     })();
@@ -35937,7 +36906,7 @@ function AppContent() {
           : null;
         const resolvedEmoji =
           hasCustomTitle ? customEmoji || DEFAULT_GOAL_EMOJI : goalPreset?.emoji || DEFAULT_GOAL_EMOJI;
-        const presetLabel = goalPreset?.[languageKey] || goalPreset?.en || goalId;
+        const presetLabel = resolveLanguageMapValue(goalPreset, languageKey) || goalId;
         const resolvedLabel = hasCustomTitle ? customTitle : presetLabel || goalId;
         const title = `${resolvedEmoji} ${resolvedLabel}`.trim();
         const targetUSD =
@@ -36439,7 +37408,10 @@ function AppContent() {
         const templateLabel =
           (typeof template?.title === "string"
             ? template.title
-            : template?.title?.[language] || template?.title?.en || template?.title?.ru || "") ||
+            : resolveLanguageMapValue(template?.title, language) ||
+              template?.title?.en ||
+              template?.title?.ru ||
+              "") ||
           "";
         const resolvedTitle =
           resolveTemplateTitle(entry.templateId, templateLabel) ||
@@ -36650,7 +37622,10 @@ function AppContent() {
         template.titleOverride ||
         (typeof template.title === "string"
           ? template.title
-          : template.title?.[language] || template.title?.en || template.title?.ru || template.title);
+          : resolveLanguageMapValue(template.title, language) ||
+            template.title?.en ||
+            template.title?.ru ||
+            template.title);
       return typeof rawTitle === "string" && rawTitle.trim().length > 0;
     });
     if (!targetId) {
@@ -36667,7 +37642,10 @@ function AppContent() {
     const templateLabel =
       (typeof template?.title === "string"
         ? template.title
-        : template?.title?.[language] || template?.title?.en || template?.title?.ru || "") || "";
+        : resolveLanguageMapValue(template?.title, language) ||
+          template?.title?.en ||
+          template?.title?.ru ||
+          "") || "";
     const templateTitle = resolveTemplateTitle(targetId, templateLabel) || templateLabel;
     const baseReward = computeRefuseCoinReward(priceUSD, profile.currency || DEFAULT_PROFILE.currency);
     const rewardBonus = computeDailyChallengeBonus(priceUSD, profile.currency || DEFAULT_PROFILE.currency);
@@ -37903,7 +38881,7 @@ function AppContent() {
       if (languageRaw) {
         setLanguage(normalizeLanguage(languageRaw));
       } else {
-        setLanguage(DEFAULT_LANGUAGE);
+        setLanguage(getPreferredDeviceLanguage());
       }
       setLanguageHydrated(true);
       if (soundEnabledRaw === "0") {
@@ -39077,7 +40055,11 @@ function AppContent() {
     const nextAllowedAt =
       lastSentAt > 0 ? lastSentAt + TAMAGOTCHI_HUNGER_NOTIFICATION_WINDOW_MS : nowTs;
     await cancelTamagotchiHungerNotifications();
-    const copy = TAMAGOTCHI_NOTIFICATION_COPY[language] || TAMAGOTCHI_NOTIFICATION_COPY.ru;
+    const notificationLanguageKey = getShortLanguageKey(language);
+    const copy =
+      TAMAGOTCHI_NOTIFICATION_COPY[notificationLanguageKey] ||
+      TAMAGOTCHI_NOTIFICATION_COPY[normalizeLanguage(language)] ||
+      TAMAGOTCHI_NOTIFICATION_COPY.en;
     const candidates = [];
     if (currentHunger > TAMAGOTCHI_HUNGER_LOW_THRESHOLD) {
       const stepsToLow = Math.ceil(
@@ -39122,7 +40104,11 @@ function AppContent() {
 
   const sendTamagotchiHungerNotification = useCallback(
     async (kind) => {
-      const copy = TAMAGOTCHI_NOTIFICATION_COPY[language] || TAMAGOTCHI_NOTIFICATION_COPY.ru;
+      const notificationLanguageKey = getShortLanguageKey(language);
+      const copy =
+        TAMAGOTCHI_NOTIFICATION_COPY[notificationLanguageKey] ||
+        TAMAGOTCHI_NOTIFICATION_COPY[normalizeLanguage(language)] ||
+        TAMAGOTCHI_NOTIFICATION_COPY.en;
       const body = copy[kind];
       if (!body) return;
       const immunityUntil = Math.max(0, Number(tamagotchiState.hungerImmunityUntil) || 0);
@@ -40520,10 +41506,16 @@ useEffect(() => {
           }
           continue;
         }
-        const scheduleTriggers = buildFrequencyReminderSchedule(nextCheckAt, Date.now(), {
+        const nowTs = Date.now();
+        const scheduleTriggers = buildFrequencyReminderSchedule(nextCheckAt, nowTs, {
           strictTime: !!customReminderTime,
         });
-        if (!scheduleTriggers.length) {
+        const lastInteractionAt = Number(entry.lastInteractionAt) || 0;
+        const hadActionToday = lastInteractionAt > 0 && isSameDay(lastInteractionAt, nowTs);
+        const effectiveScheduleTriggers = hadActionToday
+          ? scheduleTriggers.filter((triggerTime) => !isSameDay(triggerTime, nowTs))
+          : scheduleTriggers;
+        if (!effectiveScheduleTriggers.length) {
           if (existingReminderIds.length) {
             await cancelAndClearReminders(templateId, existingReminderIds);
           }
@@ -40532,11 +41524,11 @@ useEffect(() => {
         const reminderTimeKey = customReminderTime
           ? `${customReminderTime.hour}:${customReminderTime.minute}`
           : "auto";
-        const planKey = `${normalizedLanguage}:${reminderTimeKey}:${scheduleTriggers.join(",")}`;
+        const planKey = `${normalizedLanguage}:${reminderTimeKey}:${effectiveScheduleTriggers.join(",")}`;
         const allowSameTime = entry.frequencyReminderManualConfigured === true;
         if (
           entry.frequencyReminderPlanKey === planKey &&
-          existingReminderIds.length === scheduleTriggers.length
+          existingReminderIds.length === effectiveScheduleTriggers.length
         ) {
           continue;
         }
@@ -40545,10 +41537,10 @@ useEffect(() => {
           if (cancelled) return;
         }
         const label = entry.templateTitle || t("defaultDealTitle");
-          const reminderIds = [];
-        for (let idx = 0; idx < scheduleTriggers.length; idx += 1) {
+        const reminderIds = [];
+        for (let idx = 0; idx < effectiveScheduleTriggers.length; idx += 1) {
           if (cancelled) break;
-          const triggerTime = scheduleTriggers[idx];
+          const triggerTime = effectiveScheduleTriggers[idx];
           try {
             const dedupeKey = `frequency:${templateId}:${triggerTime}`;
             const scheduledEntry = await scheduleNotificationWithCooldown({
@@ -41396,6 +42388,9 @@ useEffect(() => {
     }
     setRegistrationData((prev) => ({ ...prev, [field]: value }));
   };
+  const handleLanguageCurrencyChange = (code) => {
+    updateRegistrationData("currency", code);
+  };
 
   const ensurePrimaryGoalWish = useCallback(
     (goalEntries = [], lng, activeGoal = null) => {
@@ -41469,7 +42464,7 @@ useEffect(() => {
           const resolvedEmoji = hasCustomTitle
             ? customEmoji || DEFAULT_GOAL_EMOJI
             : goalPreset?.emoji || DEFAULT_GOAL_EMOJI;
-          const presetLabel = goalPreset?.[languageKey] || goalPreset?.en || entry.id;
+          const presetLabel = resolveLanguageMapValue(goalPreset, languageKey) || entry.id;
           const resolvedLabel = hasCustomTitle ? customTitle : presetLabel || entry.id;
           const title = `${resolvedEmoji} ${resolvedLabel}`.trim();
           const targetUSD =
@@ -41934,9 +42929,8 @@ useEffect(() => {
       adjustCoinSliderMaxFromEntry(normalizedAmountUSD);
       const entryId = `coin_entry_${Date.now()}`;
       const categoryDef = IMPULSE_CATEGORY_DEFS[category];
-      const categoryLabelKey = getShortLanguageKey(language);
       const title =
-        categoryDef?.[categoryLabelKey] ||
+        resolveLanguageMapValue(categoryDef, language) ||
         categoryDef?.en ||
         categoryDef?.ru ||
         categoryDef?.es ||
@@ -43194,6 +44188,10 @@ useEffect(() => {
           ? "ayer"
           : normalizedLanguage === "fr"
           ? "hier"
+          : normalizedLanguage === "de"
+          ? "gestern"
+          : normalizedLanguage === "ar-sa" || normalizedLanguage === "ar-ae"
+          ? "أمس"
           : "yesterday");
       const dedupeKey = `smart:${entry.id || timestamp}`;
       try {
@@ -44502,7 +45500,7 @@ useEffect(() => {
 
   const renderTamagotchiFoodList = () => {
     const buttons = TAMAGOTCHI_FOOD_OPTIONS.map((food, index) => {
-      const label = food.label[language] || food.label.en;
+      const label = resolveLanguageMapValue(food.label, language) || food.label.en;
       const coinTier = getHealthCoinTierForAmount(food.cost);
       const displayCost = getHealthCoinDisplayCount(food.cost);
       const affordable = tamagotchiCoins >= food.cost;
@@ -44583,7 +45581,7 @@ useEffect(() => {
   };
   const renderTamagotchiToyList = () => {
     const buttons = TAMAGOTCHI_TOY_OPTIONS.map((toy, index) => {
-      const label = toy.label[language] || toy.label.en;
+      const label = resolveLanguageMapValue(toy.label, language) || toy.label.en;
       const isDesired = tamagotchiDesiredToy?.id === toy.id;
       const affordable = tamagotchiCoins >= toy.cost;
       const coinTier = getHealthCoinTierForAmount(toy.cost);
@@ -44701,7 +45699,7 @@ useEffect(() => {
           </Text>
           <View style={styles.tamagotchiCleanToolsRow}>
             {TAMAGOTCHI_CLEAN_TOOLS.map((tool) => {
-              const label = tool.label[language] || tool.label.en;
+              const label = resolveLanguageMapValue(tool.label, language) || tool.label.en;
               const selected = tamagotchiSelectedCleanTool?.id === tool.id;
               const remaining = Math.max(0, Number(tamagotchiCleanToolSupplies?.[tool.id]) || 0);
               const maxUses = Math.max(1, Number(tool.maxUses) || 1);
@@ -45126,6 +46124,14 @@ useEffect(() => {
         });
         return nextMap;
       });
+      const templateKeysToCancel = Array.from(new Set(candidateKeys));
+      if (templateKeysToCancel.length) {
+        Promise.all(
+          templateKeysToCancel.map((key) =>
+            cancelScheduledDecisionNotificationsForTemplate(key, { todayOnly: true })
+          )
+        ).catch(() => {});
+      }
       if (firstActionPromptPayload) {
         setPendingFrequencyReminderPrompt((prev) => {
           if (prev?.templateId === firstActionPromptPayload.templateId) return prev;
@@ -45133,7 +46139,7 @@ useEffect(() => {
         });
       }
     },
-    [dismissPotentialGrowth, language, temptationInteractions]
+    [cancelScheduledDecisionNotificationsForTemplate, dismissPotentialGrowth, language, temptationInteractions]
   );
   useEffect(() => {
     if (!temptationInteractionsHydrated) return;
@@ -45551,7 +46557,7 @@ useEffect(() => {
           : null;
         const resolvedEmoji =
           hasCustomTitle ? customEmoji || DEFAULT_GOAL_EMOJI : goalPreset?.emoji || DEFAULT_GOAL_EMOJI;
-        const presetLabel = goalPreset?.[languageKey] || goalPreset?.en || goalId;
+        const presetLabel = resolveLanguageMapValue(goalPreset, languageKey) || goalId;
         const resolvedLabel = hasCustomTitle ? customTitle : presetLabel || goalId;
         const title = `${resolvedEmoji} ${resolvedLabel}`.trim();
         const targetUSD =
@@ -45653,7 +46659,7 @@ useEffect(() => {
       priceUSD = clampTransactionAmountUSD(priceUSD);
       if (priceUSD <= 0) return;
       const title = `${item.emoji || "✨"} ${
-        item.title?.[language] || item.title?.en || item.title || "goal"
+        resolveLanguageMapValue(item.title, language) || item.title?.en || item.title || "goal"
       }`;
       const spendCategory = resolveTemptationCategory(item);
       const isEssentialSpendCategory = isEssentialImpulseCategory(spendCategory);
@@ -45822,6 +46828,10 @@ useEffect(() => {
           ? "ayer"
           : normalizeLanguage(language) === "fr"
           ? "hier"
+          : normalizeLanguage(language) === "de"
+          ? "gestern"
+          : normalizeLanguage(language) === "ar-sa" || normalizeLanguage(language) === "ar-ae"
+          ? "أمس"
           : "yesterday");
       const content =
         event.action === "save"
@@ -45866,7 +46876,7 @@ useEffect(() => {
       const entryTitle =
         overrideTitle ||
         `${item.emoji || "✨"} ${
-          item.title?.[language] || item.title?.en || item.title || t("defaultDealTitle")
+          resolveLanguageMapValue(item.title, language) || item.title?.en || item.title || t("defaultDealTitle")
         }`;
       const eventTemplateId = resolveTemptationTemplateId(item) || item.id;
       const event = {
@@ -46018,6 +47028,10 @@ useEffect(() => {
                 ? "ayer"
                 : normalizedLanguage === "fr"
                 ? "hier"
+                : normalizedLanguage === "de"
+                ? "gestern"
+                : normalizedLanguage === "ar-sa" || normalizedLanguage === "ar-ae"
+                ? "أمس"
                 : "yesterday");
             const dedupeKey = `smart:${reminder.eventId || reminder.id}`;
             try {
@@ -46167,7 +47181,7 @@ useEffect(() => {
       const customEmoji = primaryEntry?.customEmoji
         ? normalizeEmojiValue(primaryEntry.customEmoji, DEFAULT_GOAL_EMOJI)
         : null;
-      const label = customTitle || preset?.[language] || preset?.en || goalId;
+      const label = customTitle || resolveLanguageMapValue(preset, language) || preset?.en || goalId;
       const emoji = customTitle
         ? customEmoji || DEFAULT_GOAL_EMOJI
         : preset?.emoji || DEFAULT_GOAL_EMOJI;
@@ -46267,7 +47281,7 @@ useEffect(() => {
         }
       }
       const title = `${item.emoji || "✨"} ${
-        item.title?.[language] || item.title?.en || item.title || "goal"
+        resolveLanguageMapValue(item.title, language) || item.title?.en || item.title || "goal"
       }`;
       const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
       let priceLocal = convertToCurrency(priceUSD, currencyCode);
@@ -46730,7 +47744,7 @@ useEffect(() => {
               return prev.map((wish) => (wish?.id === normalizedTargetGoalId ? updated : wish));
             }
             const preset = getGoalPreset(goalId);
-            const label = preset?.[language] || preset?.en || goalId;
+            const label = resolveLanguageMapValue(preset, language) || preset?.en || goalId;
             const emoji = preset?.emoji || DEFAULT_GOAL_EMOJI;
             const title = `${emoji} ${label}`.trim();
             const nextWish = {
@@ -48741,7 +49755,7 @@ useEffect(() => {
       setPendingList((prev) => prev.filter((entry) => entry.id !== pendingItem.id));
       const template = findTemplateById(pendingItem.templateId);
       const title =
-        pendingItem.title || template?.title?.[language] || template?.title?.en || "Goal";
+        pendingItem.title || resolveLanguageMapValue(template?.title, language) || template?.title?.en || "Goal";
       const priceUSD = pendingItem.priceUSD || template?.basePriceUSD || 0;
       const decisionTimestamp = Date.now();
       const daysWaited = Math.max(
@@ -48888,7 +49902,7 @@ useEffect(() => {
       if (!pendingItem) return;
       const template = findTemplateById(pendingItem.templateId);
       const title =
-        pendingItem.title || template?.title?.[language] || template?.title?.en || "Goal";
+        pendingItem.title || resolveLanguageMapValue(template?.title, language) || template?.title?.en || "Goal";
       const performDelete = async () => {
         if (pendingItem.notificationId) {
           try {
@@ -48919,7 +49933,8 @@ useEffect(() => {
     async (pendingItem) => {
       if (!pendingItem) return;
       const template = findTemplateById(pendingItem.templateId);
-      const title = pendingItem.title || template?.title?.[language] || template?.title?.en || "Goal";
+      const title =
+        pendingItem.title || resolveLanguageMapValue(template?.title, language) || template?.title?.en || "Goal";
       const nextDue = Date.now() + PENDING_EXTENSION_MS;
       if (pendingItem.notificationId) {
         safeNotifications.cancelScheduledNotificationAsync(pendingItem.notificationId);
@@ -50793,6 +51808,7 @@ useEffect(() => {
     const screenName = tabScreens[activeTab] || "feed";
     logScreenView(screenName);
   }, [activeTab]);
+  const languageDirection = getLanguageDirection(language);
   if (onboardingStep !== "done") {
     const onboardingBackHandler = canGoBackOnboarding ? handleOnboardingBack : undefined;
     const onboardingSkipHandler = canShowOnboardingSkip ? handleOnboardingSkip : null;
@@ -50807,7 +51823,7 @@ useEffect(() => {
           selectedLanguage={language}
           selectedCurrency={registrationData.currency || DEFAULT_PROFILE.currency}
           onLanguageChange={handleLanguageChange}
-          onCurrencyChange={(code) => updateRegistrationData("currency", code)}
+          onCurrencyChange={handleLanguageCurrencyChange}
           onContinue={handleLanguageContinue}
           onBack={onboardingBackHandler}
           onShowTerms={handleTermsOpen}
@@ -50894,7 +51910,7 @@ useEffect(() => {
     return (
       <>
         <View
-          style={[styles.appBackground, { backgroundColor: onboardingBackground }]}
+          style={[styles.appBackground, { backgroundColor: onboardingBackground, direction: languageDirection }]}
           onTouchStart={handleRootTouchStart}
         >
           <SafeAreaView
@@ -50903,6 +51919,7 @@ useEffect(() => {
               {
                 backgroundColor: onboardingBackground,
                 paddingTop: topSafeInset,
+                direction: languageDirection,
               },
             ]}
           >
@@ -50986,7 +52003,7 @@ useEffect(() => {
   return (
     <SavingsProvider value={{ savedTotalUSD }}>
       <View
-        style={[styles.appBackground, { backgroundColor: colors.background }]}
+        style={[styles.appBackground, { backgroundColor: colors.background, direction: languageDirection }]}
         onTouchStart={handleRootTouchStart}
       >
           <SafeAreaView
@@ -50995,6 +52012,7 @@ useEffect(() => {
               {
                 backgroundColor: colors.background,
                 paddingTop: topSafeInset,
+                direction: languageDirection,
               },
             ]}
             onLayout={handleHomeLayout}
@@ -52234,6 +53252,10 @@ useEffect(() => {
                 onPress={() => handleTabChange(tab)}
               >
                 <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                  ellipsizeMode="clip"
                   style={[
                     styles.tabButtonText,
                     {
@@ -52241,6 +53263,7 @@ useEffect(() => {
                       fontWeight: isActiveTab || isHighlighted ? "700" : "500",
                       fontSize: tabLabelFontSize,
                       marginTop: tabLabelTopMargin,
+                      textTransform: tabLabelTextTransform,
                     },
                   ]}
                 >
@@ -53392,7 +54415,7 @@ useEffect(() => {
                   {tamagotchiState.lastFedAt ? (
                     <Text style={[styles.tamagotchiSub, { color: colors.muted }]}>
                       {t("tamagotchiFedAtLabel")}:{" "}
-                      {new Date(tamagotchiState.lastFedAt).toLocaleString()}
+                      {new Date(tamagotchiState.lastFedAt).toLocaleString(getFormatLocale(language))}
                     </Text>
                   ) : (
                     <Text style={[styles.tamagotchiSub, { color: colors.muted }]}>
@@ -53540,9 +54563,9 @@ useEffect(() => {
                   >
                     {TAMAGOTCHI_SKIN_OPTIONS.map((skin) => {
                       const active = skin.id === tamagotchiSkinId;
-                      const label = skin.label?.[language] || skin.label?.en || skin.id;
+                      const label = resolveLanguageMapValue(skin.label, language) || skin.label?.en || skin.id;
                       const description =
-                        skin.description?.[language] || skin.description?.en || "";
+                        resolveLanguageMapValue(skin.description, language) || skin.description?.en || "";
                       return (
                         <TouchableOpacity
                           key={skin.id}
@@ -54466,6 +55489,7 @@ useEffect(() => {
                   colors={colors}
                   payload={overlay.message}
                   t={t}
+                  language={language}
                 />
               </View>
             </TouchableWithoutFeedback>
@@ -54731,6 +55755,7 @@ useEffect(() => {
           visible={premiumPaywallState.visible}
           copy={premiumCopy}
           planCards={premiumPlanCards}
+          language={language}
           purchaseLoadingPlan={premiumPurchaseLoadingPlan}
           restoring={premiumRestoreLoading}
           onPlanSelect={handlePremiumPlanSelected}
@@ -56397,6 +57422,7 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 420,
     maxHeight: SCREEN_HEIGHT * 0.86,
+    minHeight: Math.min(SCREEN_HEIGHT * 0.58, 560),
     borderRadius: 34,
     padding: 22,
     borderWidth: 1,
@@ -56409,9 +57435,11 @@ const styles = StyleSheet.create({
   },
   featureUnlockCardCompact: {
     padding: 16,
-    maxHeight: SCREEN_HEIGHT * 0.82,
+    maxHeight: SCREEN_HEIGHT * 0.86,
+    minHeight: Math.min(SCREEN_HEIGHT * 0.54, 500),
   },
   featureUnlockCardScroll: {
+    flexGrow: 1,
     paddingBottom: 8,
   },
   featureUnlockHeader: {
@@ -67764,6 +68792,9 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 10,
   },
+  languageButtonsDense: {
+    gap: 8,
+  },
   languageTermsBlock: {
     width: "100%",
     marginTop: 12,
@@ -67812,6 +68843,15 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     paddingHorizontal: 12,
     alignItems: "center",
+  },
+  languageButtonDense: {
+    borderRadius: 16,
+    paddingVertical: IS_SHORT_DEVICE ? 10 : 12,
+    paddingHorizontal: IS_SHORT_DEVICE ? 8 : 10,
+  },
+  languageButtonText: {
+    textAlign: "center",
+    fontWeight: "700",
   },
   onboardBackButton: {
     flexDirection: "row",
@@ -68030,7 +69070,7 @@ function GoalScreen({
                 >
                   <Text style={styles.goalEmoji}>{goal.emoji}</Text>
                   <Text style={[styles.goalText, { color: colors.text }]}>
-                    {goal[language] || goal.en}
+                    {resolveLanguageMapValue(goal, language) || goal.en}
                   </Text>
                 </TouchableOpacity>
                 {active && (
@@ -68211,7 +69251,7 @@ function GoalTargetScreen({
           const preset = getGoalPreset(goalId);
           const customGoal = customGoalMap[goalId];
           const goalLabel =
-            customGoal?.title || preset?.[language] || preset?.en || goalId;
+            customGoal?.title || resolveLanguageMapValue(preset, language) || preset?.en || goalId;
           return (
             <View key={goalId} style={styles.goalTargetRow}>
               <Text style={[styles.goalTargetLabel, { color: colors.muted }]}>{goalLabel}</Text>
@@ -68466,7 +69506,7 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, 
               >
                 <Text style={styles.genderEmoji}>{option.emoji}</Text>
                 <Text style={[styles.genderLabel, { color: colors.text }]}>
-                  {option.label[language] || option.label.en}
+                  {resolveLanguageMapValue(option.label, language) || option.label.en}
                 </Text>
               </TouchableOpacity>
             );
@@ -68490,10 +69530,10 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, 
               >
                 <Text style={styles.personaEmoji}>{persona.emoji}</Text>
                 <Text style={[styles.personaTitle, { color: colors.text }]}>
-                  {persona.title[language] || persona.title.en}
+                  {resolveLanguageMapValue(persona.title, language) || persona.title.en}
                 </Text>
                 <Text style={[styles.personaSubtitleCard, { color: colors.muted }]}>
-                  {persona.description[language] || persona.description.en}
+                  {resolveLanguageMapValue(persona.description, language) || persona.description.en}
                 </Text>
               </TouchableOpacity>
             );
@@ -69334,7 +70374,6 @@ function CoinEntryModal({
     onUpdateMaxUSD?.(parsedUSD);
     closeManual();
   };
-  const categoryLabelKey = getShortLanguageKey(language);
   const categoryChipWidth = useMemo(() => {
     const visibleCount = 3;
     const gap = 10;
@@ -69632,7 +70671,7 @@ function CoinEntryModal({
                   const active = selectedCategory === categoryId;
                   const emoji = def.emoji || "✨";
                   const label =
-                    def[categoryLabelKey] ||
+                    resolveLanguageMapValue(def, language) ||
                     def.en ||
                     def.ru ||
                     def.es ||
@@ -70973,13 +72012,14 @@ function addBottomOffsetStyle(baseStyle, inset) {
 
 function OnboardingBackButton({ onPress, colors, t }) {
   if (!onPress) return null;
+  const isRtl = isRtlLanguage(activeLanguageForFormatting);
   return (
     <TouchableOpacity
       style={[styles.onboardBackButton, { borderColor: colors.border }]}
       onPress={onPress}
       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
     >
-      <Text style={[styles.onboardBackIcon, { color: colors.text }]}>←</Text>
+      <Text style={[styles.onboardBackIcon, { color: colors.text }]}>{isRtl ? "→" : "←"}</Text>
       <Text style={[styles.onboardBackLabel, { color: colors.text }]}>{t("onboardingBack")}</Text>
     </TouchableOpacity>
   );
@@ -71136,8 +72176,19 @@ function LanguageScreen({
   bottomInset = 0,
 }) {
   const fade = useFadeIn();
+  const normalizedSelectedLanguage = normalizeLanguage(selectedLanguage);
+  const isRtl = isRtlLanguage(normalizedSelectedLanguage);
+  const isDenseLanguageGrid = SUPPORTED_LANGUAGES.length > 6;
   const wavingSource = mascotWaveSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.waving;
   const bottomInsetStyle = addBottomInsetStyle(styles.onboardContent, bottomInset);
+  const languageTermsHint = useMemo(() => {
+    const base = String(t("languageTermsHint") || "");
+    if (Platform.OS !== "android") return base;
+    return base
+      .replace(/\s*\(EULA\)/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }, [t]);
   const [currencyIndicatorVisible, setCurrencyIndicatorVisible] = useState(true);
   const currencyScrollRef = useRef(null);
   const currencyNudgeRan = useRef(false);
@@ -71167,6 +72218,7 @@ function LanguageScreen({
     };
   }, []);
   useEffect(() => {
+    if (isRtl) return undefined;
     if (!shouldAnimateCurrencyNudge || currencyNudgeRan.current) return undefined;
     currencyNudgeRan.current = true;
     let backTimeout;
@@ -71181,7 +72233,7 @@ function LanguageScreen({
       clearTimeout(forwardTimeout);
       if (backTimeout) clearTimeout(backTimeout);
     };
-  }, [shouldAnimateCurrencyNudge]);
+  }, [isRtl, shouldAnimateCurrencyNudge]);
   return (
     <Animated.View style={[styles.onboardContainer, { backgroundColor: colors.background, opacity: fade }]}>
       <ScrollView
@@ -71192,7 +72244,7 @@ function LanguageScreen({
         <Image source={wavingSource} style={styles.languageMascot} />
         <Text style={[styles.onboardTitleCompact, { color: colors.text }]}>{t("languageTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("languageSubtitle")}</Text>
-        <View style={styles.languageButtons}>
+        <View style={[styles.languageButtons, isDenseLanguageGrid && styles.languageButtonsDense]}>
           {SUPPORTED_LANGUAGES.map((langKey) => {
             const label = LANGUAGE_NATIVE_LABELS[langKey] || langKey.toUpperCase();
             const active = selectedLanguage === langKey;
@@ -71201,6 +72253,7 @@ function LanguageScreen({
                 key={langKey}
                 style={[
                   styles.languageButton,
+                  isDenseLanguageGrid && styles.languageButtonDense,
                   {
                     borderColor: colors.border,
                     backgroundColor: active ? colors.text : "transparent",
@@ -71208,7 +72261,12 @@ function LanguageScreen({
                 ]}
                 onPress={() => onLanguageChange?.(langKey)}
               >
-                <Text style={{ color: active ? colors.background : colors.text, fontWeight: "700" }}>
+                <Text
+                  style={[styles.languageButtonText, { color: active ? colors.background : colors.text }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                >
                   {label}
                 </Text>
               </TouchableOpacity>
@@ -71217,7 +72275,7 @@ function LanguageScreen({
         </View>
         <View style={{ width: "100%", marginTop: 20 }}>
           <Text style={[styles.currencyLabel, { color: colors.muted }]}>
-            {t("currencyLabel")} <Text style={{ fontSize: 16 }}>→</Text>
+            {t("currencyLabel")} <Text style={{ fontSize: 16 }}>{isRtl ? "←" : "→"}</Text>
           </Text>
           <View style={styles.currencyScrollWrapper}>
             <ScrollView
@@ -71259,7 +72317,7 @@ function LanguageScreen({
               <View pointerEvents="none" style={styles.currencyScrollFadeWrapper}>
                 <Svg style={styles.currencyScrollFade} width="100%" height="100%">
                   <Defs>
-                    <SvgLinearGradient id="currencyFade" x1="0" y1="0" x2="1" y2="0">
+                    <SvgLinearGradient id="currencyFade" x1={isRtl ? "1" : "0"} y1="0" x2={isRtl ? "0" : "1"} y2="0">
                       <SvgStop offset="0%" stopColor={colors.background} stopOpacity="0" />
                       <SvgStop offset="100%" stopColor={colors.background} stopOpacity="1" />
                     </SvgLinearGradient>
@@ -71279,7 +72337,7 @@ function LanguageScreen({
         </TouchableOpacity>
         <View style={styles.languageTermsBlock}>
           <Text style={[styles.languageTermsNote, { color: colors.muted }]}>
-            {t("languageTermsHint")}{" "}
+            {languageTermsHint}{" "}
             <Text style={[styles.languageTermsInlineLink, { color: colors.text }]} onPress={() => onShowTerms?.()}>
               {t("languageTermsLink")}
             </Text>
@@ -71611,35 +72669,48 @@ const FallingCoin = ({ left, size, delay, duration }) => {
 
 const getRandomFinancialQuote = (language) => {
   const normalized = normalizeLanguage(language);
-  const pool = FINANCIAL_QUOTES.map((entry) => entry[normalized] || entry.en).filter(Boolean);
+  const translationLanguage = resolveTranslationLanguage(normalized);
+  const pool = FINANCIAL_QUOTES.map((entry) => {
+    const raw = entry[normalized] || entry[translationLanguage] || entry.en;
+    return localizeFallbackTextByLanguage(raw, normalized);
+  }).filter(Boolean);
   if (!pool.length) return "";
   return pool[Math.floor(Math.random() * pool.length)];
 };
 
 const getSaveProgressCopy = (language) => {
   const normalized = normalizeLanguage(language);
+  const translationLanguage = resolveTranslationLanguage(normalized);
   const map = {
     ru: "До цели",
     en: "Closer to goal",
     es: "Más cerca de la meta",
     fr: "Plus près de l'objectif",
+    de: "Näher am Ziel",
+    ar: "أقرب إلى الهدف",
+    zh: "更接近目标",
   };
-  return map[normalized] || map.en;
+  return map[normalized] || map[translationLanguage] || map.en;
 };
 
 const getSaveCountdownTitle = (language) => {
   const normalized = normalizeLanguage(language);
+  const translationLanguage = resolveTranslationLanguage(normalized);
   const map = {
     ru: "Сколько осталось до цели",
     en: "Steps left to reach it",
     es: "Lo que falta para llegar",
     fr: "Combien reste-t-il",
+    de: "Was noch bis zum Ziel fehlt",
+    ar: "كم تبقّى للوصول إلى الهدف",
+    zh: "距离目标还差多少",
   };
-  return map[normalized] || map.en;
+  return map[normalized] || map[translationLanguage] || map.en;
 };
 
 const getSaveCountdownCopy = (language, count) => {
   const normalized = normalizeLanguage(language);
+  const translationLanguage = resolveTranslationLanguage(normalized);
   const safeCount = Math.max(0, Number(count) || 0);
   if (safeCount <= 0) {
     const doneMap = {
@@ -71647,8 +72718,11 @@ const getSaveCountdownCopy = (language, count) => {
       en: "Goal is within reach!",
       es: "La meta está al alcance.",
       fr: "L'objectif est tout proche !",
+      de: "Das Ziel ist in Reichweite!",
+      ar: "الهدف أصبح قريباً!",
+      zh: "目标触手可及！",
     };
-    return doneMap[normalized] || doneMap.en;
+    return doneMap[normalized] || doneMap[translationLanguage] || doneMap.en;
   }
   if (normalized === "ru") {
     const suffix =
@@ -71663,8 +72737,11 @@ const getSaveCountdownCopy = (language, count) => {
     en: `${safeCount} more actions like this to reach your goal`,
     es: `Quedan ${safeCount} pasos como este hasta la meta`,
     fr: `Encore ${safeCount} actions comme celle-ci pour la cible`,
+    de: `Noch ${safeCount} Aktionen wie diese bis zu deinem Ziel`,
+    ar: `تبقّى ${safeCount} خطوات مماثلة للوصول إلى هدفك`,
+    zh: `再完成 ${safeCount} 次类似行动即可到达目标`,
   };
-  return map[normalized] || map.en;
+  return map[normalized] || map[translationLanguage] || map.en;
 };
 
 const buildSaveCountdownSlots = (count, language) => {
@@ -73750,14 +74827,15 @@ const GoalCelebration = ({ colors, payload, t, mascotHappySource, onClose }) => 
   );
 };
 
-const DailyRewardCelebration = ({ colors, payload, t }) => {
-  const rewardLabel = payload?.amount || "";
+const DailyRewardCelebration = ({ colors, payload, t, language }) => {
+  const payloadRewardLabel = typeof payload?.amount === "string" ? payload.amount : "";
   const amountValue =
     typeof payload === "object" && Number.isFinite(payload?.amountValue)
       ? payload.amountValue
       : 0;
+  const rewardLabel = amountValue > 0 ? formatHealthRewardLabel(amountValue, language) : payloadRewardLabel;
+  const reason = rewardLabel ? t("dailyRewardReason", { amount: rewardLabel }) : payload?.reason || "";
   const coinTier = getHealthCoinTierForAmount(amountValue) || HEALTH_COIN_TIERS[0];
-  const reason = payload?.reason || "";
   const isDarkTheme = colors.background === THEMES.dark.background;
   const cardBg = isDarkTheme ? lightenColor(colors.card, 0.12) : "#FFF7EC";
   const cardBorder = isDarkTheme ? lightenColor(colors.border, 0.3) : "#FFD0A6";
@@ -73812,7 +74890,10 @@ const UsageStreakWeeklyRewardCelebration = ({
     const computed = computeUsageStreakWeeklyBonus(days);
     rewardBlueCoins = Math.max(0, Number(computed?.rewardBlueCoins) || 0);
   }
-  const labels = HEALTH_COIN_LABELS[language] || HEALTH_COIN_LABELS.en;
+  const labels =
+    HEALTH_COIN_LABELS[getShortLanguageKey(language)] ||
+    HEALTH_COIN_LABELS[normalizeLanguage(language)] ||
+    HEALTH_COIN_LABELS.en;
   const blueLabel = labels.blue || "blue coins";
   const happySource = mascotHappySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
   const isDarkTheme = colors.background === THEMES.dark.background;
@@ -74162,7 +75243,10 @@ const StreakPledgeRewardCelebration = ({ colors, payload, t, language, onClose }
     const computed = computeStreakPledgeReward(targetDays);
     rewardBlueCoins = computed.blueCoins;
   }
-  const labels = HEALTH_COIN_LABELS[language] || HEALTH_COIN_LABELS.en;
+  const labels =
+    HEALTH_COIN_LABELS[getShortLanguageKey(language)] ||
+    HEALTH_COIN_LABELS[normalizeLanguage(language)] ||
+    HEALTH_COIN_LABELS.en;
   const blueLabel = labels.blue || "blue coins";
   const isDarkTheme = colors.background === THEMES.dark.background;
   const cardBg = isDarkTheme ? "rgba(9,18,30,0.96)" : "#F4F9FF";
@@ -74465,7 +75549,10 @@ const StreakPledgePrompt = ({
     () => options.find((option) => option.id === selectedId) || null,
     [options, selectedId]
   );
-  const labels = HEALTH_COIN_LABELS[language] || HEALTH_COIN_LABELS.en;
+  const labels =
+    HEALTH_COIN_LABELS[getShortLanguageKey(language)] ||
+    HEALTH_COIN_LABELS[normalizeLanguage(language)] ||
+    HEALTH_COIN_LABELS.en;
   const isDarkTheme = colors.background === THEMES.dark.background;
   const cardBg = isDarkTheme ? lightenColor(colors.card, 0.08) : colors.card;
   const cardBorder = isDarkTheme ? lightenColor(colors.border, 0.25) : colors.border;
@@ -74615,7 +75702,8 @@ const UsageStreakCelebration = ({
     streakEndDate instanceof Date && !Number.isNaN(streakEndDate.getTime())
       ? streakEndDate.getTime()
       : timestamp;
-  const weekLabels = WEEKDAY_LABELS_MONDAY_FIRST[language] || WEEKDAY_LABELS_MONDAY_FIRST.en;
+  const weekLabelKey = getShortLanguageKey(language);
+  const weekLabels = WEEKDAY_LABELS_MONDAY_FIRST[weekLabelKey] || WEEKDAY_LABELS_MONDAY_FIRST.en;
   const isDarkTheme = colors.background === THEMES.dark.background;
   const accent = missed
     ? isDarkTheme
@@ -74850,6 +75938,11 @@ const UsageStreakCelebration = ({
       }
       if (normalized === "es") return safeCount === 1 ? "día de racha" : "días de racha";
       if (normalized === "fr") return safeCount === 1 ? "jour de série" : "jours de série";
+      if (normalized === "de") return safeCount === 1 ? "Tagesserie" : "Tage in Folge";
+      if (normalized === "zh") return "天连胜";
+      if (normalized === "ar-sa" || normalized === "ar-ae") {
+        return safeCount === 1 ? "يوم متتالٍ" : "أيام متتالية";
+      }
       return "day streak";
     },
     [language]
@@ -75111,7 +76204,9 @@ const FeatureUnlockCelebration = ({
   const sectionDescription = variant
     ? t(isPremiumReminder && variant.premiumDescriptionKey ? variant.premiumDescriptionKey : variant.descriptionKey)
     : "";
-  const compactLayout = IS_SHORT_DEVICE || IS_COMPACT_DEVICE || IS_EXTRA_COMPACT_DEVICE;
+  const denseUnlockCopy =
+    stripUnlockLevelPrefix(messageText).length > 92 || sectionDescription.length > 96;
+  const compactLayout = (IS_SHORT_DEVICE || IS_EXTRA_COMPACT_DEVICE) && !denseUnlockCopy;
   const normalizedHeroCopy = compactUnlockCopy(
     stripUnlockLevelPrefix(messageText),
     compactLayout ? 112 : 128
@@ -75250,7 +76345,7 @@ const FeatureUnlockCelebration = ({
             {heroSubtitleText ? (
               <Text
                 style={[styles.featureUnlockMessageSub, { color: colors.muted }]}
-                numberOfLines={compactLayout ? 3 : 4}
+                numberOfLines={compactLayout ? 2 : 3}
               >
                 {heroSubtitleText}
               </Text>
@@ -75264,7 +76359,7 @@ const FeatureUnlockCelebration = ({
           <Text style={[styles.featureUnlockSectionTitle, { color: colors.text }]}>{sectionTitle}</Text>
           <Text
             style={[styles.featureUnlockSectionDescription, { color: colors.muted }]}
-            numberOfLines={compactLayout ? 3 : 4}
+            numberOfLines={compactLayout ? 3 : 5}
           >
             {compactSectionDescription}
           </Text>

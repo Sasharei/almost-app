@@ -39,6 +39,14 @@ const patches = [
     dest: 'node_modules/expo-constants/scripts/get-app-config-android.gradle',
   },
   {
+    src: 'patches/expo-blur/android/src/main/java/expo/modules/blur/ExpoBlurView.kt',
+    dest: 'node_modules/expo-blur/android/src/main/java/expo/modules/blur/ExpoBlurView.kt',
+  },
+  {
+    src: 'patches/expo-notifications/android/src/main/java/expo/modules/notifications/service/NotificationForwarderActivity.kt',
+    dest: 'node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/NotificationForwarderActivity.kt',
+  },
+  {
     src: 'patches/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt',
     dest: 'node_modules/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt',
   },
@@ -89,6 +97,10 @@ const patches = [
   {
     src: 'patches/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt',
     dest: 'node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt',
+  },
+  {
+    src: 'patches/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/ReactViewGroup.kt',
+    dest: 'node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/ReactViewGroup.kt',
   },
   {
     src: 'patches/@sentry/react-native/ios/RNSentry.mm',

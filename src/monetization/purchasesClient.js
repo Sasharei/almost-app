@@ -399,8 +399,9 @@ export const mapOfferingPackagesByPlan = (offerings) => {
   packages.forEach((pkg) => {
     const packageType = typeof pkg?.packageType === "string" ? pkg.packageType : "";
     const byType = PACKAGE_TYPE_TO_PLAN[packageType] || null;
-    const byIdentifier = findPlanByIdentifier(pkg?.product?.identifier || pkg?.identifier || "");
-    const planId = byType || byIdentifier;
+    const byPackageIdentifier = findPlanByIdentifier(pkg?.identifier || "");
+    const byProductIdentifier = findPlanByIdentifier(pkg?.product?.identifier || "");
+    const planId = byType || byPackageIdentifier || byProductIdentifier;
     if (!planId || byPlan[planId]) return;
     byPlan[planId] = pkg;
   });

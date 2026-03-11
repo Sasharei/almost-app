@@ -9,7 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   useWindowDimensions,
-  Text,
+  Text as RNText,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -26,6 +26,68 @@ const pickDefaultPlanId = (planCards = []) => {
   return planCards[0]?.id || "yearly";
 };
 
+const ARABIC_INDIC_DIGITS = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+const EASTERN_ARABIC_DIGITS = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
+const ARABIC_INDIC_TO_WESTERN_DIGIT = {
+  "٠": "0",
+  "١": "1",
+  "٢": "2",
+  "٣": "3",
+  "٤": "4",
+  "٥": "5",
+  "٦": "6",
+  "٧": "7",
+  "٨": "8",
+  "٩": "9",
+  "۰": "0",
+  "۱": "1",
+  "۲": "2",
+  "۳": "3",
+  "۴": "4",
+  "۵": "5",
+  "۶": "6",
+  "۷": "7",
+  "۸": "8",
+  "۹": "9",
+};
+const normalizePaywallLanguage = (value = "en") =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-");
+const isArabicLanguage = (language = "en") => normalizePaywallLanguage(language).startsWith("ar");
+const normalizeWesternDigits = (value) => {
+  if (typeof value !== "string" || !value.length) return value;
+  return value
+    .replace(/[٠-٩۰-۹]/g, (digit) => ARABIC_INDIC_TO_WESTERN_DIGIT[digit] || digit)
+    .replace(/٪/g, "%");
+};
+const localizePaywallDigits = (value, language = "en") => {
+  if (typeof value !== "string" || !value.length) return value;
+  if (!isArabicLanguage(language)) return normalizeWesternDigits(value);
+  const normalizedValue = normalizeWesternDigits(value);
+  return normalizedValue
+    .replace(/\d/g, (digit) => ARABIC_INDIC_DIGITS[Number(digit)] || EASTERN_ARABIC_DIGITS[Number(digit)] || digit)
+    .replace(/%/g, "٪");
+};
+const localizePaywallTextTree = (value, language = "en") => {
+  if (typeof value === "string") {
+    return localizePaywallDigits(value, language);
+  }
+  if (typeof value === "number" || typeof value === "bigint") {
+    return localizePaywallDigits(String(value), language);
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => localizePaywallTextTree(entry, language));
+  }
+  if (React.isValidElement(value) && value.props && "children" in value.props) {
+    const localizedChildren = localizePaywallTextTree(value.props.children, language);
+    if (localizedChildren === value.props.children) return value;
+    return React.cloneElement(value, { ...value.props, children: localizedChildren });
+  }
+  return value;
+};
+
 const PremiumPaywallModal = ({
   visible = false,
   copy = null,
@@ -40,6 +102,7 @@ const PremiumPaywallModal = ({
   onTermsPress = () => {},
   onPrivacyPress = () => {},
   onClose = () => {},
+  language = "en",
   colors,
 }) => {
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCards));
@@ -59,6 +122,21 @@ const PremiumPaywallModal = ({
   const isVeryCompactAndroid = isNativeMobile && viewportHeight <= 760;
   const showSecondaryLegalNotice = !isVeryCompactAndroid;
   const disableAndroidMotion = Platform.OS === "android";
+  const normalizedLanguage = normalizePaywallLanguage(language);
+  const isRtlLanguage = isArabicLanguage(normalizedLanguage);
+  const Text = useCallback(
+    ({ style, children, ...props }) => {
+      const localizedChildren = localizePaywallTextTree(children, normalizedLanguage);
+      const rtlStyle = isRtlLanguage ? { writingDirection: "rtl", textAlign: "right" } : null;
+      const resolvedStyle = rtlStyle ? [rtlStyle, style] : style;
+      return (
+        <RNText {...props} style={resolvedStyle}>
+          {localizedChildren}
+        </RNText>
+      );
+    },
+    [isRtlLanguage, normalizedLanguage]
+  );
 
   const comparisonRows = Array.isArray(copy?.comparisonRows) ? copy.comparisonRows : [];
   const visibleComparisonRows = comparisonRows;
@@ -74,12 +152,16 @@ const PremiumPaywallModal = ({
     );
   }, [comparisonRows, selectedComparisonRowId]);
 
-  const headerTitle = activeInsightRow?.lossTitle || copy?.title || "";
-  const headerSubtitle = activeInsightRow?.lossSubtitle || copy?.subtitle || "";
+  const headerTitle = localizePaywallDigits(activeInsightRow?.lossTitle || copy?.title || "", normalizedLanguage);
+  const headerSubtitle = localizePaywallDigits(
+    activeInsightRow?.lossSubtitle || copy?.subtitle || "",
+    normalizedLanguage
+  );
   const showPsychologyChip = !!copy?.psychologyLine && !activeInsightRow;
-  const headerBenefitValue = activeInsightRow
-    ? activeInsightRow?.lossAmountLabel || copy?.lossAmountLabel || ""
-    : "";
+  const headerBenefitValue = localizePaywallDigits(
+    activeInsightRow ? activeInsightRow?.lossAmountLabel || copy?.lossAmountLabel || "" : "",
+    normalizedLanguage
+  );
 
   const renderBenefitHighlight = useCallback((value = "", benefitValue = "") => {
     const text = String(value || "");
@@ -181,8 +263,11 @@ const PremiumPaywallModal = ({
     !selectedPlan ||
     selectedPlan.available === false;
 
-  const selectedPlanCtaPrice = selectedPlan?.ctaPriceLabel || selectedPlan?.priceLabel || "";
-  const selectedPlanTrialNotice = selectedPlan?.trialNoticeLabel || "";
+  const selectedPlanCtaPrice = localizePaywallDigits(
+    selectedPlan?.ctaPriceLabel || selectedPlan?.priceLabel || "",
+    normalizedLanguage
+  );
+  const selectedPlanTrialNotice = localizePaywallDigits(selectedPlan?.trialNoticeLabel || "", normalizedLanguage);
   const selectedPlanCurrencyCode =
     (typeof selectedPlan?.currencyCode === "string" && selectedPlan.currencyCode.trim().toUpperCase()) ||
     (planCards.find((entry) => typeof entry?.currencyCode === "string" && entry.currencyCode.trim())?.currencyCode
@@ -190,7 +275,16 @@ const PremiumPaywallModal = ({
       .toUpperCase()) ||
     (typeof selectedPlanCtaPrice === "string" && (selectedPlanCtaPrice.match(/[A-Z]{3}/) || [])[0]) ||
     "USD";
-  const primaryButtonTitle = `Попробуйте за ${selectedPlanCurrencyCode} 0.00`;
+  const selectedPlanHasTrial = !!selectedPlan?.hasTrial;
+  const selectedPlanTrialCta = selectedPlan?.ctaTrialLabel || copy?.ctaPrimaryTrial || copy?.ctaPrimary || "";
+  const selectedPlanRegularCta = copy?.ctaPrimaryRegular || copy?.ctaPrimary || "";
+  const selectedPlanTrialPrice = localizePaywallDigits(
+    selectedPlan?.ctaTrialPriceLabel || `${selectedPlanCurrencyCode} 0`,
+    normalizedLanguage
+  );
+  const primaryButtonTitle = selectedPlanHasTrial
+    ? [selectedPlanTrialCta, selectedPlanTrialPrice].filter(Boolean).join(" ")
+    : selectedPlanRegularCta || selectedPlanCtaPrice || copy?.ctaPrimary || "";
 
   const handlePrimaryPress = () => {
     if (purchaseDisabled || !selectedPlan?.id) return;
@@ -303,7 +397,7 @@ const PremiumPaywallModal = ({
 
         <TouchableOpacity
           style={[styles.footerGhostButton, isCompactAndroid ? styles.footerGhostButtonCompactAndroid : null, { borderColor }]}
-          onPress={() => onClose("footer_close")}
+          onPress={() => onManagePress({ source: "manage_button" })}
           disabled={!!purchaseLoadingPlan || restoring}
           activeOpacity={0.85}
         >
@@ -311,29 +405,13 @@ const PremiumPaywallModal = ({
             style={[
               styles.footerGhostButtonText,
               isCompactAndroid ? styles.footerGhostButtonTextCompactAndroid : null,
-              { color: mutedColor },
+              { color: textColor },
             ]}
           >
-            {copy.ctaClose}
+            {copy?.ctaManage || "Manage subscription"}
           </Text>
         </TouchableOpacity>
       </View>
-
-      <TouchableOpacity
-        style={[styles.footerManageButton, isCompactAndroid ? styles.footerManageButtonCompactAndroid : null, { borderColor }]}
-        onPress={() => onManagePress({ source: "manage_button" })}
-        activeOpacity={0.85}
-      >
-        <Text
-          style={[
-            styles.footerManageButtonText,
-            isCompactAndroid ? styles.footerManageButtonTextCompactAndroid : null,
-            { color: textColor },
-          ]}
-        >
-          {copy?.ctaManage || "Manage subscription"}
-        </Text>
-      </TouchableOpacity>
 
       <View style={[styles.footerLegalBlock, isCompactAndroid ? styles.footerLegalBlockCompactAndroid : null]}>
         {!!copy?.billingNotice && (
@@ -1269,18 +1347,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: Platform.OS === "android" ? 20 : 12,
-    gap: 9,
+    gap: 10,
     backgroundColor: "#FFFFFF",
     marginTop: 4,
   },
   footerCompactAndroid: {
     paddingTop: 9,
     paddingBottom: 14,
-    gap: 7,
+    gap: 8,
   },
   footerVeryCompactAndroid: {
     paddingTop: 8,
-    gap: 6,
+    gap: 7,
   },
   footerSticky: {
     flexShrink: 0,
@@ -1314,14 +1392,14 @@ const styles = StyleSheet.create({
   },
   footerRow: {
     flexDirection: "row",
-    gap: 8,
+    gap: 10,
   },
   footerRowCompactAndroid: {
-    gap: 6,
+    gap: 8,
   },
   footerSecondaryButton: {
     flex: 1,
-    minHeight: 36,
+    minHeight: 42,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: "center",
@@ -1329,7 +1407,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   footerSecondaryButtonCompactAndroid: {
-    minHeight: 33,
+    minHeight: 38,
     borderRadius: 11,
   },
   footerSecondaryButtonText: {
@@ -1363,34 +1441,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
   },
-  footerManageButton: {
-    minHeight: 34,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-  },
-  footerManageButtonCompactAndroid: {
-    minHeight: 30,
-    borderRadius: 9,
-  },
-  footerManageButtonText: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "700",
-  },
-  footerManageButtonTextCompactAndroid: {
-    fontSize: 11,
-    lineHeight: 14,
-  },
   footerLegalBlock: {
     gap: 4,
-    marginTop: -2,
+    marginTop: 0,
   },
   footerLegalBlockCompactAndroid: {
     gap: 3,
-    marginTop: -2,
+    marginTop: 0,
   },
   footerLegalNotice: {
     fontSize: 9,

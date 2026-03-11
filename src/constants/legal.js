@@ -3,6 +3,10 @@ export const TERMS_LINKS = {
   ru: "https://www.notion.so/RU-2b24e58ea9a0809ea04fe54138975e96?",
   es: "https://www.notion.so/T-RMINOS-DE-USO-ES-2d14e58ea9a080988f5bed55ccea3c2e?",
   fr: "https://www.notion.so/CONDITIONS-D-UTILISATION-FR-2d14e58ea9a080dd9c53dcf52d5eb3e0?",
+  de: "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b?",
+  "ar-sa": "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b?",
+  "ar-ae": "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b?",
+  zh: "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b?",
 };
 
 export const PRIVACY_LINKS = {
@@ -10,6 +14,10 @@ export const PRIVACY_LINKS = {
   en: "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
   es: "https://www.notion.so/POL-TICA-DE-PRIVACIDAD-ES-2d14e58ea9a080a09132c0bc8d722b7b?source=copy_link",
   fr: "https://www.notion.so/POLITIQUE-DE-CONFIDENTIALIT-FR-2d14e58ea9a080628e6bc7cdaef3f451?source=copy_link",
+  de: "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
+  "ar-sa": "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
+  "ar-ae": "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
+  zh: "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
 };
 
 export const TERMS_POINTS = {
@@ -36,5 +44,35 @@ export const TERMS_POINTS = {
     "Tu confirmes que les informations fournies sont exactes et transmises volontairement pour qu’Almost puisse personnaliser les conseils, notifications et analyses anonymisées.",
     "Nous conservons uniquement les données minimales du profil nécessaires au fonctionnement de l’app. Tu peux les modifier ou demander leur suppression via les réglages ou le support ; la suppression efface aussi l’historique lié.",
     "Le présent accord est régi par les lois de la juridiction où Almost est enregistré. Les litiges se règlent d’abord à l’amiable puis, si besoin, devant les tribunaux compétents de cette juridiction.",
+  ],
+  de: [
+    "Almost ist ein Tool für bewusstes Ausgeben und keine Bank, kein Broker und keine Finanzberatung. Jede Spar- und Ausgabenentscheidung triffst du selbst.",
+    "Du bestätigst, dass deine Angaben korrekt und freiwillig sind, damit Almost Hinweise, Benachrichtigungen und anonymisierte Analysen personalisieren kann.",
+    "Wir speichern nur die minimal nötigen Profildaten für den App-Betrieb. Du kannst Daten in den Einstellungen ändern oder über den Support löschen lassen; dabei wird auch zugehörige Historie entfernt.",
+    "Diese Vereinbarung unterliegt dem Recht der Jurisdiktion, in der Almost registriert ist. Streitigkeiten werden zuerst einvernehmlich und falls nötig vor den zuständigen Gerichten geklärt.",
+  ],
+  ar: [
+    "Almost تطبيق لمساعدتك على الإنفاق الواعي، وليس بنكاً أو وسيطاً أو مستشاراً مالياً. قرارات الادخار والإنفاق تبقى مسؤوليتك.",
+    "أنت تؤكد أن البيانات التي تقدمها صحيحة وطوعية لكي يتمكن Almost من تخصيص التلميحات والإشعارات والتحليلات المجهولة.",
+    "نحتفظ فقط بالحد الأدنى من بيانات الملف الشخصي اللازمة لتشغيل التطبيق. يمكنك تعديلها أو طلب حذفها عبر الإعدادات أو الدعم، وعند الحذف يتم حذف السجل المرتبط.",
+    "تخضع هذه الاتفاقية لقوانين الجهة القضائية التي تم تسجيل Almost فيها. تتم معالجة النزاعات ودياً أولاً، وعند الحاجة أمام المحاكم المختصة في تلك الجهة.",
+  ],
+  "ar-sa": [
+    "Almost تطبيق لمساعدتك على الإنفاق الواعي، وليس بنكاً أو وسيطاً أو مستشاراً مالياً. قرارات الادخار والإنفاق تبقى مسؤوليتك.",
+    "أنت تؤكد أن البيانات التي تقدمها صحيحة وطوعية لكي يتمكن Almost من تخصيص التلميحات والإشعارات والتحليلات المجهولة.",
+    "نحتفظ فقط بالحد الأدنى من بيانات الملف الشخصي اللازمة لتشغيل التطبيق. يمكنك تعديلها أو طلب حذفها عبر الإعدادات أو الدعم، وعند الحذف يتم حذف السجل المرتبط.",
+    "تخضع هذه الاتفاقية لقوانين الجهة القضائية التي تم تسجيل Almost فيها. تتم معالجة النزاعات ودياً أولاً، وعند الحاجة أمام المحاكم المختصة في تلك الجهة.",
+  ],
+  "ar-ae": [
+    "Almost تطبيق لمساعدتك على الإنفاق الواعي، وليس بنكاً أو وسيطاً أو مستشاراً مالياً. قرارات الادخار والإنفاق تبقى مسؤوليتك.",
+    "أنت تؤكد أن البيانات التي تقدمها صحيحة وطوعية لكي يتمكن Almost من تخصيص التلميحات والإشعارات والتحليلات المجهولة.",
+    "نحتفظ فقط بالحد الأدنى من بيانات الملف الشخصي اللازمة لتشغيل التطبيق. يمكنك تعديلها أو طلب حذفها عبر الإعدادات أو الدعم، وعند الحذف يتم حذف السجل المرتبط.",
+    "تخضع هذه الاتفاقية لقوانين الجهة القضائية التي تم تسجيل Almost فيها. تتم معالجة النزاعات ودياً أولاً، وعند الحاجة أمام المحاكم المختصة في تلك الجهة.",
+  ],
+  zh: [
+    "Almost 是帮助你建立理性消费习惯的应用，不是银行、券商或财务顾问。所有储蓄与消费决定仍由你自行负责。",
+    "你确认所提供信息真实且自愿，用于 Almost 个性化提示、通知与匿名分析。",
+    "我们仅保存运行应用所需的最少个人资料数据。你可在设置或通过支持修改/删除数据；删除资料时相关历史也会一并清除。",
+    "本协议适用 Almost 注册地所在司法辖区法律。争议将先友好协商，必要时提交该辖区有管辖权法院处理。",
   ],
 };
