@@ -1528,6 +1528,17 @@ export const TRANSLATIONS = {
     tutorialFeedTitle: "Лента и решения в моменте",
     tutorialFeedDesc:
       "Сверху карусель с прогрессом, бюджетом и целью дня. Ниже карточки искушений: «Копить», «Потратить» или «Думаем 14 дней».",
+    feedTutorialWelcomeBadge: "Гид Almost",
+    feedTutorialWelcomeTitle: "Almost поможет дойти до цели",
+    feedTutorialWelcomeDesc:
+      "Отмечай решения на карточке: «Копить», если удержался(ась) от искушения, и «Потратить», если всё же потратил(а).",
+    feedTutorialWelcomeHint:
+      "Оба действия важны: Almost подстроится под твои привычки и будет точнее вести к цели. Сделаем первое действие.",
+    feedTutorialWelcomeAction: "Начать",
+    feedTutorialAddTitle: "Создавай свои искушения",
+    feedTutorialAddDesc:
+      "Нажми «+», чтобы добавить своё искушение. Существующие карточки можно редактировать обычным тапом.",
+    feedTutorialAddAction: "Создать искушение",
     tutorialGoalsTitle: "Прогресс и бюджет",
     tutorialGoalsDesc: "Здесь живут цели, лимиты по категориям, челленджи и отчёты по решениям.",
     tutorialRewardsTitle: "Награды и бонусы",
@@ -3016,6 +3027,17 @@ export const TRANSLATIONS = {
     tutorialFeedTitle: "Feed & instant decisions",
     tutorialFeedDesc:
       "The top carousel shows progress, budget, and the daily goal. Below are temptation cards: Save, Spend, or park for 14 days.",
+    feedTutorialWelcomeBadge: "Almost Guide",
+    feedTutorialWelcomeTitle: "Almost helps you stay on track",
+    feedTutorialWelcomeDesc:
+      "Use each card to log decisions: tap Save if you resisted the temptation, or Spent if you bought it anyway.",
+    feedTutorialWelcomeHint:
+      "Both actions matter. Almost adapts to your real behavior and gets better at guiding you to your goal.",
+    feedTutorialWelcomeAction: "Start",
+    feedTutorialAddTitle: "Create your own temptations",
+    feedTutorialAddDesc:
+      "Tap + to add a custom temptation. Existing cards can be edited with a regular tap.",
+    feedTutorialAddAction: "Create temptation",
     tutorialGoalsTitle: "Progress & budget",
     tutorialGoalsDesc: "This tab combines goals, category limits, challenges, and report insights.",
     tutorialRewardsTitle: "Rewards & bonuses",
@@ -4499,6 +4521,17 @@ export const TRANSLATIONS = {
     tutorialFeedTitle: "Flux et décisions instantanées",
     tutorialFeedDesc:
       "En haut, le carrousel montre progrès, budget et objectif du jour. En dessous : Épargner, Dépenser ou mettre en pause 14 jours.",
+    feedTutorialWelcomeBadge: "Guide Almost",
+    feedTutorialWelcomeTitle: "Almost t'aide à garder le cap",
+    feedTutorialWelcomeDesc:
+      "Sur chaque carte, note ta décision : « Épargner » si tu as résisté, ou « Dépenser » si tu as finalement craqué.",
+    feedTutorialWelcomeHint:
+      "Les deux actions sont utiles. Almost s'adapte à ton comportement réel et te guide mieux vers ton objectif.",
+    feedTutorialWelcomeAction: "Commencer",
+    feedTutorialAddTitle: "Crée tes propres tentations",
+    feedTutorialAddDesc:
+      "Appuie sur + pour créer une tentation perso. Les cartes existantes se modifient avec un simple tap.",
+    feedTutorialAddAction: "Créer une tentation",
     tutorialGoalsTitle: "Progrès et budget",
     tutorialGoalsDesc: "Tu y retrouves objectifs, limites par catégorie, défis et rapports d'analyse.",
     tutorialRewardsTitle: "Récompenses et bonus",
@@ -5980,6 +6013,17 @@ export const TRANSLATIONS = {
     tutorialFeedTitle: "Feed y decisiones al instante",
     tutorialFeedDesc:
       "Arriba, el carrusel muestra progreso, presupuesto y meta del día. Abajo: Ahorrar, Gastar o pausar 14 días.",
+    feedTutorialWelcomeBadge: "Guía Almost",
+    feedTutorialWelcomeTitle: "Almost te ayuda a seguir el plan",
+    feedTutorialWelcomeDesc:
+      "En cada tarjeta registra tu decisión: «Ahorrar» si resististe la tentación, o «Gastar» si terminaste comprando.",
+    feedTutorialWelcomeHint:
+      "Ambas acciones importan. Almost se adapta a tu comportamiento real y te guía mejor hacia tu meta.",
+    feedTutorialWelcomeAction: "Empezar",
+    feedTutorialAddTitle: "Crea tus propias tentaciones",
+    feedTutorialAddDesc:
+      "Pulsa + para crear una tentación personalizada. Las tarjetas existentes se editan con un toque.",
+    feedTutorialAddAction: "Crear tentación",
     tutorialGoalsTitle: "Progreso y presupuesto",
     tutorialGoalsDesc: "Aquí están tus metas, límites por categoría, retos e informes con insights.",
     tutorialRewardsTitle: "Recompensas y bonus",
