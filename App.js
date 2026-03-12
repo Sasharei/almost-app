@@ -87,9 +87,32 @@ import { SavingsProvider, useRealSavedAmount } from "./src/hooks/useRealSavedAmo
 import { useSavingsSimulation } from "./src/hooks/useSavingsSimulation";
 import { calcPotentialSaved } from "./src/utils/savingsSimulation";
 import { TRANSLATIONS } from "./src/constants/translations";
-import { LANGUAGE_MAP_FALLBACK_TRANSLATIONS } from "./src/constants/languageMapFallback.generated.js";
 import { DAILY_CHALLENGE_POPULAR_IDS, DEFAULT_TEMPTATIONS } from "./src/constants/temptations";
 import { PRIVACY_LINKS, TERMS_LINKS, TERMS_POINTS } from "./src/constants/legal";
+import {
+  DEFAULT_LANGUAGE,
+  FALLBACK_LANGUAGE,
+  SUPPORTED_LANGUAGES,
+  LANGUAGE_NATIVE_LABELS,
+  normalizeLanguage,
+  getLanguageDirection,
+  getLanguageLabelKey,
+  getFormatLocale,
+  getShortLanguageKey,
+  localizeFallbackTextByLanguage,
+  localizeDigitsForLanguage,
+  localizeTextTreeDigits,
+  getDefaultCurrencyForLanguage,
+  getPreferredDeviceLanguage,
+} from "./src/utils/language";
+import {
+  SOUND_FILES,
+  PRELOAD_SOUND_KEYS,
+  SOUND_COOLDOWNS,
+  SOUND_VOLUMES,
+  ANDROID_SOUND_MIN_GAP_MS,
+  ANDROID_SOUND_KEY_GUARD_MS,
+} from "./src/constants/soundConfig";
 import PremiumPaywallModal from "./src/components/PremiumPaywallModal";
 import {
   buildDefaultPlanCards,
@@ -517,264 +540,6 @@ const COIN_VALUE_MODAL_STATUS = {
 const CELEBRATION_OVERLAY_GAP_MS = 15000;
 const APP_RESUME_MODAL_GUARD_MS = 1500;
 
-const DEFAULT_LANGUAGE = "en";
-const FALLBACK_LANGUAGE = "en";
-const DEFAULT_ARABIC_LANGUAGE = "ar-sa";
-const SUPPORTED_LANGUAGES = ["en", "es", "fr", "ru", "de", "ar-sa", "ar-ae", "zh"];
-const RTL_LANGUAGES = new Set(["ar-sa", "ar-ae"]);
-const LANGUAGE_ALIASES = {
-  en: "en",
-  "en-us": "en",
-  "en-gb": "en",
-  "en-au": "en",
-  "en-ca": "en",
-  es: "es",
-  "es-es": "es",
-  "es-mx": "es",
-  fr: "fr",
-  "fr-fr": "fr",
-  "fr-ca": "fr",
-  ru: "ru",
-  "ru-ru": "ru",
-  de: "de",
-  "de-de": "de",
-  "de-at": "de",
-  "de-ch": "de",
-  deu: "de",
-  ger: "de",
-  german: "de",
-  ar: DEFAULT_ARABIC_LANGUAGE,
-  "ar-sa": "ar-sa",
-  "ar-ae": "ar-ae",
-  ara: DEFAULT_ARABIC_LANGUAGE,
-  arabic: DEFAULT_ARABIC_LANGUAGE,
-  "arabic-saudi": "ar-sa",
-  "arabic-uae": "ar-ae",
-  zh: "zh",
-  "zh-cn": "zh",
-  "zh-hans": "zh",
-  "zh-sg": "zh",
-  "zh-hk": "zh",
-  "zh-tw": "zh",
-  "zh-hant": "zh",
-  "zh-hant-hk": "zh",
-  "zh-hant-tw": "zh",
-  zho: "zh",
-  chi: "zh",
-  chinese: "zh",
-};
-const SOUND_FILES = {
-  coin: require("./assets/sounds/coin.wav"),
-  tap: require("./assets/sounds/tap.wav"),
-  counter: require("./assets/sounds/counter.wav"),
-  cat: require("./assets/sounds/cat.wav"),
-  challenge_accept: require("./assets/sounds/challenge_accept.wav"),
-  focus_accept: require("./assets/sounds/focus_accept.wav"),
-  reward: require("./assets/sounds/reward.wav"),
-  thunder: require("./assets/sounds/thunder.wav"),
-  daily_reward: require("./assets/sounds/daily_reward.wav"),
-  level_up: require("./assets/sounds/level_up.wav"),
-  party_beat: require("./assets/sounds/counter.wav"),
-  party_clap: require("./assets/sounds/tap.wav"),
-  party_cheer: require("./assets/sounds/reward.wav"),
-};
-const PRELOAD_SOUND_KEYS = new Set(["coin", "tap", "counter", "level_up"]);
-const SOUND_COOLDOWNS = {
-  coin: 200,
-  tap: 120,
-  counter: 60,
-  cat: 600,
-  challenge_accept: 500,
-  focus_accept: 500,
-  reward: 600,
-  thunder: 900,
-  daily_reward: 900,
-  level_up: 1200,
-  party_beat: 60,
-  party_clap: 80,
-  party_cheer: 600,
-};
-const SOUND_VOLUMES = {
-  coin: 0.85,
-  tap: 0.75,
-  counter: 1.0,
-  cat: 0.8,
-  challenge_accept: 0.85,
-  focus_accept: 0.85,
-  reward: 0.9,
-  thunder: 0.85,
-  daily_reward: 0.9,
-  level_up: 0.9,
-  party_beat: 0.95,
-  party_clap: 0.8,
-  party_cheer: 0.85,
-};
-const ANDROID_SOUND_MIN_GAP_MS = 120;
-const ANDROID_SOUND_KEY_GUARD_MS = 90;
-const LANGUAGE_LABEL_KEYS = {
-  ru: "languageRussian",
-  en: "languageEnglish",
-  es: "languageSpanish",
-  fr: "languageFrench",
-  de: "languageGerman",
-  "ar-sa": "languageArabicSaudi",
-  "ar-ae": "languageArabicUAE",
-  zh: "languageChinese",
-};
-const LANGUAGE_NATIVE_LABELS = {
-  ru: "Русский",
-  en: "English",
-  es: "Español",
-  fr: "Français",
-  de: "Deutsch",
-  "ar-sa": "العربية (السعودية)",
-  "ar-ae": "العربية (الإمارات)",
-  zh: "中文",
-};
-const canonicalizeLanguageCode = (value) =>
-  String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/_/g, "-");
-const normalizeLanguage = (value) => {
-  const normalized = canonicalizeLanguageCode(value);
-  if (!normalized) return DEFAULT_LANGUAGE;
-  const aliased = LANGUAGE_ALIASES[normalized] || normalized;
-  if (SUPPORTED_LANGUAGES.includes(aliased)) return aliased;
-  const base = aliased.split("-")[0];
-  if (base === "ar") return DEFAULT_ARABIC_LANGUAGE;
-  return SUPPORTED_LANGUAGES.includes(base) ? base : DEFAULT_LANGUAGE;
-};
-const resolveTranslationLanguage = (language) => {
-  const normalized = normalizeLanguage(language);
-  if (normalized === "ar-sa" || normalized === "ar-ae") return "ar";
-  return normalized;
-};
-const isRtlLanguage = (language) => RTL_LANGUAGES.has(normalizeLanguage(language));
-const getLanguageDirection = (language) => (isRtlLanguage(language) ? "rtl" : "ltr");
-const getLanguageLabelKey = (language) =>
-  LANGUAGE_LABEL_KEYS[normalizeLanguage(language)] || LANGUAGE_LABEL_KEYS[FALLBACK_LANGUAGE];
-const FORMAT_LOCALES = {
-  ru: "ru-RU",
-  en: "en-US",
-  es: "es-ES",
-  fr: "fr-FR",
-  de: "de-DE",
-  "ar-sa": "ar-SA",
-  "ar-ae": "ar-AE",
-  zh: "zh-CN",
-};
-const SHORT_LANGUAGE_MAP = {
-  ru: "ru",
-  en: "en",
-  es: "es",
-  fr: "fr",
-  de: "de",
-  "ar-sa": "ar",
-  "ar-ae": "ar",
-  zh: "zh",
-};
-const getFormatLocale = (language) =>
-  FORMAT_LOCALES[normalizeLanguage(language)] || FORMAT_LOCALES[FALLBACK_LANGUAGE];
-const getShortLanguageKey = (language) =>
-  SHORT_LANGUAGE_MAP[normalizeLanguage(language)] || SHORT_LANGUAGE_MAP[FALLBACK_LANGUAGE];
-const localizeFallbackTextByLanguage = (text, language = DEFAULT_LANGUAGE) => {
-  if (typeof text !== "string" || !text.length) return text;
-  const normalizedLanguage = normalizeLanguage(language);
-  const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
-  const fallbackDictionary =
-    LANGUAGE_MAP_FALLBACK_TRANSLATIONS?.[translationLanguage] ||
-    LANGUAGE_MAP_FALLBACK_TRANSLATIONS?.[normalizedLanguage] ||
-    null;
-  if (!fallbackDictionary || typeof fallbackDictionary !== "object") {
-    return text;
-  }
-  return fallbackDictionary[text] || text;
-};
-const ARABIC_INDIC_DIGITS = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
-const EASTERN_ARABIC_DIGITS = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
-const ARABIC_DIGIT_TO_WESTERN = {
-  "٠": "0",
-  "١": "1",
-  "٢": "2",
-  "٣": "3",
-  "٤": "4",
-  "٥": "5",
-  "٦": "6",
-  "٧": "7",
-  "٨": "8",
-  "٩": "9",
-  "۰": "0",
-  "۱": "1",
-  "۲": "2",
-  "۳": "3",
-  "۴": "4",
-  "۵": "5",
-  "۶": "6",
-  "۷": "7",
-  "۸": "8",
-  "۹": "9",
-};
-const normalizeArabicDigitsToWestern = (value = "") =>
-  String(value || "")
-    .replace(/[٠-٩۰-۹]/g, (digit) => ARABIC_DIGIT_TO_WESTERN[digit] || digit)
-    .replace(/٪/g, "%");
-const localizeDigitsForLanguage = (value, language = DEFAULT_LANGUAGE) => {
-  if (typeof value !== "string" || !value.length) return value;
-  const normalizedLanguage = normalizeLanguage(language);
-  const westernDigits = normalizeArabicDigitsToWestern(value);
-  if (normalizedLanguage !== "ar-sa" && normalizedLanguage !== "ar-ae") {
-    return westernDigits;
-  }
-  return westernDigits
-    .replace(/\d/g, (digit) => ARABIC_INDIC_DIGITS[Number(digit)] || EASTERN_ARABIC_DIGITS[Number(digit)] || digit)
-    .replace(/%/g, "٪");
-};
-const localizeTextTreeDigits = (value, language = DEFAULT_LANGUAGE) => {
-  if (typeof value === "string") {
-    return localizeDigitsForLanguage(value, language);
-  }
-  if (typeof value === "number" || typeof value === "bigint") {
-    return localizeDigitsForLanguage(String(value), language);
-  }
-  if (Array.isArray(value)) {
-    return value.map((entry) => localizeTextTreeDigits(entry, language));
-  }
-  if (React.isValidElement(value) && value.props && "children" in value.props) {
-    const localizedChildren = localizeTextTreeDigits(value.props.children, language);
-    if (localizedChildren === value.props.children) return value;
-    return React.cloneElement(value, { ...value.props, children: localizedChildren });
-  }
-  return value;
-};
-const LANGUAGE_DEFAULT_CURRENCY_BY_CODE = {
-  de: "EUR",
-  "ar-sa": "SAR",
-  "ar-ae": "AED",
-};
-const getDefaultCurrencyForLanguage = (language, fallbackCurrency = "USD") => {
-  const normalizedLanguage = normalizeLanguage(language);
-  return LANGUAGE_DEFAULT_CURRENCY_BY_CODE[normalizedLanguage] || fallbackCurrency;
-};
-const getPreferredDeviceLanguage = () => {
-  let intlLocale = "";
-  try {
-    intlLocale = Intl?.DateTimeFormat?.().resolvedOptions?.().locale || "";
-  } catch {
-    intlLocale = "";
-  }
-  const settings = NativeModules?.SettingsManager?.settings || {};
-  const appleLanguages = Array.isArray(settings?.AppleLanguages) ? settings.AppleLanguages : [];
-  const rawCandidates = [
-    intlLocale,
-    appleLanguages[0],
-    settings?.AppleLocale,
-    NativeModules?.I18nManager?.localeIdentifier,
-  ];
-  const candidate = rawCandidates.find((entry) => typeof entry === "string" && entry.trim().length > 0);
-  return normalizeLanguage(candidate || DEFAULT_LANGUAGE);
-};
-
 const PURCHASE_GOAL = 20000;
 const FALLBACK_SAVE_ACTION_USD = 20;
 const FINANCIAL_QUOTES = [
@@ -853,6 +618,7 @@ const FREE_REPORTS_WEEK_COUNT = FREE_PLAN_LIMITS.reportsWeeks;
 const FREE_REPORTS_MONTH_COUNT = FREE_PLAN_LIMITS.reportsMonths;
 const HARD_PAYWALL_DELAY_MS = 700;
 const PREMIUM_PAYWALL_REOPEN_GUARD_MS = 1200;
+const MODAL_HANDOFF_GUARD_MS = 450;
 const ANDROID_API_LEVEL =
   Platform.OS === "android"
     ? typeof Platform.Version === "string"
@@ -2604,6 +2370,14 @@ const FAB_TUTORIAL_STATUS = {
   DONE: "done",
   PENDING: "pending",
   SHOWING: "showing",
+};
+const FEED_FIRST_TUTORIAL_STAGE = {
+  IDLE: "idle",
+  WELCOME: "welcome",
+  SAVE: "save",
+  ADD_PENDING: "add_pending",
+  ADD: "add",
+  DONE: "done",
 };
 const QUEUED_MODAL_TYPES = {
   FAB_TUTORIAL: "fab_tutorial",
@@ -8486,6 +8260,17 @@ const LANGUAGE_OVERRIDES = {
     languageArabicSaudi: "Arabic (Saudi Arabia)",
     languageArabicUAE: "Arabic (UAE)",
     languageChinese: "Chinese",
+    feedTutorialWelcomeBadge: "Almost Guide",
+    feedTutorialWelcomeTitle: "Almost helps you stay on track",
+    feedTutorialWelcomeDesc:
+      "Use each card to log decisions: tap Save if you resisted the temptation, or Spent if you bought it anyway.",
+    feedTutorialWelcomeHint:
+      "Both actions matter. Almost adapts to your real behavior and gets better at guiding you to your goal.",
+    feedTutorialWelcomeAction: "Start",
+    feedTutorialAddTitle: "Create your own temptations",
+    feedTutorialAddDesc:
+      "Tap + to add a custom temptation. Existing cards can be edited with a regular tap.",
+    feedTutorialAddAction: "Create temptation",
     saveCelebrateTitlePrefix: "Saved on:",
   },
   ru: {
@@ -8493,6 +8278,17 @@ const LANGUAGE_OVERRIDES = {
     languageArabicSaudi: "Арабский (Саудовская Аравия)",
     languageArabicUAE: "Арабский (ОАЭ)",
     languageChinese: "Китайский",
+    feedTutorialWelcomeBadge: "Гид Almost",
+    feedTutorialWelcomeTitle: "Almost поможет дойти до цели",
+    feedTutorialWelcomeDesc:
+      "Отмечай решения на карточке: «Копить», если удержался(ась) от искушения, и «Потратить», если всё же потратил(а).",
+    feedTutorialWelcomeHint:
+      "Оба действия важны: Almost подстроится под твои привычки и будет точнее вести к цели. Сделаем первое действие.",
+    feedTutorialWelcomeAction: "Начать",
+    feedTutorialAddTitle: "Создавай свои искушения",
+    feedTutorialAddDesc:
+      "Нажми «+», чтобы добавить своё искушение. Существующие карточки можно редактировать обычным тапом.",
+    feedTutorialAddAction: "Создать искушение",
     saveCelebrateTitlePrefix: "Сэкономлено на:",
   },
   es: {
@@ -8507,6 +8303,17 @@ const LANGUAGE_OVERRIDES = {
     languageArabicSaudi: "Árabe (Arabia Saudí)",
     languageArabicUAE: "Árabe (EAU)",
     languageChinese: "Chino",
+    feedTutorialWelcomeBadge: "Guía Almost",
+    feedTutorialWelcomeTitle: "Almost te ayuda a seguir el plan",
+    feedTutorialWelcomeDesc:
+      "En cada tarjeta registra tu decisión: «Ahorrar» si resististe la tentación, o «Gastar» si terminaste comprando.",
+    feedTutorialWelcomeHint:
+      "Ambas acciones importan. Almost se adapta a tu comportamiento real y te guía mejor hacia tu meta.",
+    feedTutorialWelcomeAction: "Empezar",
+    feedTutorialAddTitle: "Crea tus propias tentaciones",
+    feedTutorialAddDesc:
+      "Pulsa + para crear una tentación personalizada. Las tarjetas existentes se editan con un toque.",
+    feedTutorialAddAction: "Crear tentación",
     saveCelebrateTitlePrefix: "Ahorrado en:",
   },
   fr: {
@@ -8521,6 +8328,17 @@ const LANGUAGE_OVERRIDES = {
     languageArabicSaudi: "Arabe (Arabie saoudite)",
     languageArabicUAE: "Arabe (EAU)",
     languageChinese: "Chinois",
+    feedTutorialWelcomeBadge: "Guide Almost",
+    feedTutorialWelcomeTitle: "Almost t'aide à garder le cap",
+    feedTutorialWelcomeDesc:
+      "Sur chaque carte, note ta décision : « Épargner » si tu as résisté, ou « Dépenser » si tu as finalement craqué.",
+    feedTutorialWelcomeHint:
+      "Les deux actions sont utiles. Almost s'adapte à ton comportement réel et te guide mieux vers ton objectif.",
+    feedTutorialWelcomeAction: "Commencer",
+    feedTutorialAddTitle: "Crée tes propres tentations",
+    feedTutorialAddDesc:
+      "Appuie sur + pour créer une tentation perso. Les cartes existantes se modifient avec un simple tap.",
+    feedTutorialAddAction: "Créer une tentation",
     saveCelebrateTitlePrefix: "Économisé sur :",
   },
   de: {
@@ -8556,6 +8374,17 @@ const LANGUAGE_OVERRIDES = {
     goalWidgetTitle: "Bis zum Ziel",
     homeWidgetGoalLabel: "Bis zum Ziel",
     tutorialFeedTitle: "Feed und Sofortentscheidungen",
+    feedTutorialWelcomeBadge: "Almost Guide",
+    feedTutorialWelcomeTitle: "Almost bringt dich sicher ans Ziel",
+    feedTutorialWelcomeDesc:
+      "Markiere jede Entscheidung auf der Karte: „Sparen“, wenn du widerstanden hast, und „Ausgegeben“, wenn du doch gekauft hast.",
+    feedTutorialWelcomeHint:
+      "Beides ist wichtig. Almost lernt aus deinem Verhalten und hilft dir Schritt fuer Schritt zum Ziel.",
+    feedTutorialWelcomeAction: "Los geht's",
+    feedTutorialAddTitle: "Erstelle eigene Versuchungen",
+    feedTutorialAddDesc:
+      "Tippe auf +, um eine eigene Versuchung anzulegen. Vorhandene Karten kannst du mit einem Tap bearbeiten.",
+    feedTutorialAddAction: "Versuchung erstellen",
     saveCelebrateTitlePrefix: "Gespart bei:",
     dailyGoalCollectTitle: "Tagesziel erreicht!",
     dailyGoalCollectSubtitle: "Du hast {{count}} grüne Münzen gesammelt.",
@@ -8600,6 +8429,17 @@ const LANGUAGE_OVERRIDES = {
     goalWidgetTitle: "إلى الهدف",
     homeWidgetGoalLabel: "إلى الهدف",
     tutorialFeedTitle: "الخلاصة والقرارات الفورية",
+    feedTutorialWelcomeBadge: "دليل Almost",
+    feedTutorialWelcomeTitle: "Almost يساعدك على الالتزام بهدفك",
+    feedTutorialWelcomeDesc:
+      "سجّل قرارك في كل بطاقة: اضغط «ادخار» إذا قاومت الإغراء، أو «إنفاق» إذا اشتريت في النهاية.",
+    feedTutorialWelcomeHint:
+      "كلا الإجراءين مهمان. Almost يتكيّف مع سلوكك الحقيقي ليساعدك على الوصول إلى هدفك.",
+    feedTutorialWelcomeAction: "ابدأ",
+    feedTutorialAddTitle: "أنشئ إغراءاتك الخاصة",
+    feedTutorialAddDesc:
+      "اضغط + لإنشاء إغراء مخصص. ويمكنك تعديل البطاقات الحالية بلمسة عادية.",
+    feedTutorialAddAction: "إنشاء إغراء",
     saveCelebrateTitlePrefix: "تم التوفير على:",
     dailyGoalCollectTitle: "اكتمل هدف اليوم!",
     dailyGoalCollectSubtitle: "جمعت {{count}} من العملات الخضراء.",
@@ -8644,6 +8484,17 @@ const LANGUAGE_OVERRIDES = {
     goalWidgetTitle: "إلى الهدف",
     homeWidgetGoalLabel: "إلى الهدف",
     tutorialFeedTitle: "الخلاصة والقرارات الفورية",
+    feedTutorialWelcomeBadge: "دليل Almost",
+    feedTutorialWelcomeTitle: "Almost يساعدك على الالتزام بهدفك",
+    feedTutorialWelcomeDesc:
+      "سجّل قرارك في كل بطاقة: اضغط «ادخار» إذا قاومت الإغراء، أو «إنفاق» إذا اشتريت في النهاية.",
+    feedTutorialWelcomeHint:
+      "كلا الإجراءين مهمان. Almost يتكيّف مع سلوكك الحقيقي ليساعدك على الوصول إلى هدفك.",
+    feedTutorialWelcomeAction: "ابدأ",
+    feedTutorialAddTitle: "أنشئ إغراءاتك الخاصة",
+    feedTutorialAddDesc:
+      "اضغط + لإنشاء إغراء مخصص. ويمكنك تعديل البطاقات الحالية بلمسة عادية.",
+    feedTutorialAddAction: "إنشاء إغراء",
     saveCelebrateTitlePrefix: "تم التوفير على:",
     dailyGoalCollectTitle: "اكتمل هدف اليوم!",
     dailyGoalCollectSubtitle: "جمعت {{count}} من العملات الخضراء.",
@@ -8688,6 +8539,16 @@ const LANGUAGE_OVERRIDES = {
     goalWidgetTitle: "距离目标",
     homeWidgetGoalLabel: "距离目标",
     tutorialFeedTitle: "动态与即时决策",
+    feedTutorialWelcomeBadge: "Almost 指南",
+    feedTutorialWelcomeTitle: "Almost 帮你稳步达成目标",
+    feedTutorialWelcomeDesc:
+      "在每张卡片记录结果：如果你忍住了就点「已省下」，如果还是花了就点「已花费」。",
+    feedTutorialWelcomeHint:
+      "两个动作都很重要。Almost 会根据你的真实习惯调整，持续帮助你靠近目标。",
+    feedTutorialWelcomeAction: "开始",
+    feedTutorialAddTitle: "创建你的专属诱惑",
+    feedTutorialAddDesc: "点击 + 创建自定义诱惑。已有卡片可通过点击进行编辑。",
+    feedTutorialAddAction: "创建诱惑",
     saveCelebrateTitlePrefix: "省下于：",
     dailyGoalCollectTitle: "今日目标完成！",
     dailyGoalCollectSubtitle: "你收集了 {{count}} 枚绿色硬币。",
@@ -11765,8 +11626,21 @@ function TemptationCardComponent({
           return (
             <View key={action.type} style={styles.temptationCoachMarkSlot}>
               <View style={styles.temptationCoachMarkTooltipWrap} pointerEvents="none">
-                <View style={[styles.temptationCoachMarkTooltip, { backgroundColor: colors.text }]}>
-                  <Text style={[styles.temptationCoachMarkTooltipText, { color: colors.background }]}>
+                <View
+                  style={[
+                    styles.temptationCoachMarkTooltip,
+                    {
+                      backgroundColor: isDarkTheme ? "rgba(48,36,13,0.97)" : "#FFF7E6",
+                      borderColor: isDarkTheme ? "rgba(245,200,105,0.54)" : "rgba(232,183,74,0.6)",
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.temptationCoachMarkTooltipText,
+                      { color: isDarkTheme ? "#FFE8B8" : "#6E4600" },
+                    ]}
+                  >
                     {t("temptationSavedCoachmark")}
                   </Text>
                 </View>
@@ -11774,6 +11648,9 @@ function TemptationCardComponent({
                   style={[
                     styles.temptationCoachMarkTooltipArrow,
                     { borderTopColor: colors.text },
+                    {
+                      borderTopColor: isDarkTheme ? "rgba(48,36,13,0.97)" : "#FFF7E6",
+                    },
                   ]}
                 />
               </View>
@@ -11782,7 +11659,7 @@ function TemptationCardComponent({
                 style={[
                   styles.temptationCoachMarkGlow,
                   {
-                    borderColor: colorWithAlpha(SAVE_ACTION_COLOR, 0.9),
+                    borderColor: colorWithAlpha("#F5C869", 0.95),
                     opacity: coachMarkGlowOpacity,
                     transform: [{ scale: coachMarkGlowScale }],
                   },
@@ -16221,6 +16098,9 @@ const FeedScreen = React.memo(
   onTutorialHighlightLayoutChange = null,
   showTemptationCoachMark = false,
   onTemptationCoachMarkAction = () => {},
+  showTemptationAddCoachMark = false,
+  onTemptationAddCoachDismiss = () => {},
+  onTemptationAddCoachCreate = () => {},
   allowThinkAction = true,
   isPremiumUser = false,
   budgetSpeechDataRef = null,
@@ -16279,6 +16159,8 @@ const FeedScreen = React.memo(
   const feedScrollTimerRef = useRef(null);
   const feedScrollMomentumRef = useRef(false);
   const feedScrollingRef = useRef(false);
+  const addCoachEntrance = useRef(new Animated.Value(0)).current;
+  const addCoachPulse = useRef(new Animated.Value(0)).current;
   const notifyFeedScrollState = useCallback(
     (next) => {
       if (feedScrollingRef.current === next) return;
@@ -16322,6 +16204,63 @@ const FeedScreen = React.memo(
     }
     notifyFeedScrollState(false);
   }, [notifyFeedScrollState]);
+  useEffect(() => {
+    if (!showTemptationAddCoachMark) {
+      addCoachEntrance.stopAnimation();
+      addCoachPulse.stopAnimation();
+      addCoachEntrance.setValue(0);
+      addCoachPulse.setValue(0);
+      return;
+    }
+    addCoachEntrance.stopAnimation();
+    addCoachPulse.stopAnimation();
+    addCoachEntrance.setValue(0);
+    addCoachPulse.setValue(0);
+    const entrance = Animated.spring(addCoachEntrance, {
+      toValue: 1,
+      friction: 8,
+      tension: 120,
+      useNativeDriver: true,
+    });
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(addCoachPulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(addCoachPulse, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    entrance.start();
+    pulseLoop.start();
+    return () => {
+      entrance.stop();
+      pulseLoop.stop();
+    };
+  }, [addCoachEntrance, addCoachPulse, showTemptationAddCoachMark]);
+  const addCoachOpacity = addCoachEntrance.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const addCoachTranslateY = addCoachEntrance.interpolate({
+    inputRange: [0, 1],
+    outputRange: [14, 0],
+  });
+  const addButtonPulseScale = addCoachPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.08],
+  });
+  const addButtonPulseOpacity = addCoachPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.62, 1],
+  });
   const handleAmountSliderToggle = useCallback((isTouching, cardId) => {
     if (isTouching) {
       activeAmountSliderCardIdRef.current = cardId || null;
@@ -19546,21 +19485,118 @@ const FeedScreen = React.memo(
               </View>
             </View>
           )}
-          <View style={styles.feedTemptationHeader}>
+          <View
+            style={[
+              styles.feedTemptationHeader,
+              showTemptationAddCoachMark && styles.feedTemptationHeaderCoachExpanded,
+            ]}
+          >
             <Text style={[styles.feedTemptationTitle, { color: colors.text }]}>
               {t("tutorialFeedTitle")}
             </Text>
-            <TouchableOpacity
+            <View
+              style={[
+                styles.feedTemptationAddWrap,
+                showTemptationAddCoachMark && styles.feedTemptationAddWrapExpanded,
+              ]}
+            >
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.feedTemptationAddHalo,
+                  showTemptationAddCoachMark && styles.feedTemptationAddHaloVisible,
+                  {
+                    backgroundColor: colorWithAlpha("#F5C869", 0.26),
+                    borderColor: colorWithAlpha("#F5C869", 0.8),
+                    opacity: showTemptationAddCoachMark ? addButtonPulseOpacity : 0,
+                    transform: [{ scale: showTemptationAddCoachMark ? addButtonPulseScale : 1 }],
+                  },
+                ]}
+              />
+              <TouchableOpacity
                 style={[
                   styles.feedTemptationAddButton,
-                  { backgroundColor: colors.text, borderColor: colors.text },
+                  {
+                    backgroundColor: showTemptationAddCoachMark ? "#F5C869" : colors.text,
+                    borderColor: showTemptationAddCoachMark ? "#F5C869" : colors.text,
+                  },
+                  showTemptationAddCoachMark && styles.feedTemptationAddButtonFocused,
                 ]}
-                onPress={onNewTemptation}
+                onPress={
+                  showTemptationAddCoachMark
+                    ? () => onTemptationAddCoachCreate?.()
+                    : onNewTemptation
+                }
                 activeOpacity={0.85}
               >
-                <Text style={[styles.feedTemptationAddIcon, { color: colors.background }]}>+</Text>
+                <Text
+                  style={[
+                    styles.feedTemptationAddIcon,
+                    { color: showTemptationAddCoachMark ? "#3B2A00" : colors.background },
+                  ]}
+                >
+                  +
+                </Text>
               </TouchableOpacity>
+              {showTemptationAddCoachMark ? (
+                <Animated.View
+                  style={[
+                    styles.feedTemptationAddCoachBubble,
+                    {
+                      backgroundColor: isDarkMode ? "rgba(44,33,12,0.97)" : "#FFF8EA",
+                      borderColor: isDarkMode ? "rgba(245,200,105,0.58)" : "rgba(232,183,74,0.62)",
+                      opacity: addCoachOpacity,
+                      transform: [{ translateY: addCoachTranslateY }],
+                    },
+                  ]}
+                >
+                  <Text style={[styles.feedTemptationAddCoachTitle, { color: isDarkMode ? "#FFE8B8" : "#6E4600" }]}>
+                    {t("feedTutorialAddTitle")}
+                  </Text>
+                  <Text
+                    style={[styles.feedTemptationAddCoachDesc, { color: isDarkMode ? "#E5CE9A" : "#7C6542" }]}
+                  >
+                    {t("feedTutorialAddDesc")}
+                  </Text>
+                  <View style={styles.feedTemptationAddCoachActions}>
+                    <TouchableOpacity
+                      style={[
+                        styles.feedTemptationAddCoachGhost,
+                        { borderColor: isDarkMode ? "rgba(245,200,105,0.45)" : "rgba(232,183,74,0.42)" },
+                      ]}
+                      activeOpacity={0.85}
+                      onPress={onTemptationAddCoachDismiss}
+                    >
+                      <Text
+                        style={[styles.feedTemptationAddCoachGhostText, { color: isDarkMode ? "#E5CE9A" : "#7C6542" }]}
+                      >
+                        {t("tutorialSkip")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.feedTemptationAddCoachPrimary, { backgroundColor: "#F5C869" }]}
+                      activeOpacity={0.9}
+                      onPress={onTemptationAddCoachCreate}
+                    >
+                      <Text style={[styles.feedTemptationAddCoachPrimaryText, { color: "#3B2A00" }]}>
+                        {t("feedTutorialAddAction")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View
+                    style={[
+                      styles.feedTemptationAddCoachArrow,
+                      {
+                        borderTopColor: isDarkMode ? "rgba(44,33,12,0.97)" : "#FFF8EA",
+                        borderRightColor: isDarkMode ? "rgba(245,200,105,0.58)" : "rgba(232,183,74,0.62)",
+                        borderBottomColor: isDarkMode ? "rgba(245,200,105,0.58)" : "rgba(232,183,74,0.62)",
+                      },
+                    ]}
+                  />
+                </Animated.View>
+              ) : null}
             </View>
+          </View>
           </View>
         }
       />
@@ -28928,6 +28964,7 @@ function AppContent() {
   const [overlay, setOverlay] = useState(null);
   const [pendingGoalCelebration, setPendingGoalCelebration] = useState(null);
   const pendingUsageStreakRef = useRef(null);
+  const pendingSaveStreakAfterReminderRef = useRef(false);
   useEffect(() => {
     if (overlay?.type !== "streak_pledge_reward") return;
     if (!streakPledge.rewardPending) return;
@@ -28987,6 +29024,7 @@ function AppContent() {
 
   const overlayQueueRef = useRef([]);
   const overlayActiveRef = useRef(false);
+  const processOverlayQueueRef = useRef(() => {});
   const lastOverlayDismissedAtRef = useRef(0);
   const lastSaveOverlayDismissedAtRef = useRef(0);
   const pendingLevelCelebrationRef = useRef(null);
@@ -29271,6 +29309,12 @@ function AppContent() {
   const [tutorialCardShown, setTutorialCardShown] = useState(false);
   const [tutorialCardHydrated, setTutorialCardHydrated] = useState(false);
   const [tutorialCardVisible, setTutorialCardVisible] = useState(false);
+  const [feedFirstTutorialStage, setFeedFirstTutorialStage] = useState(FEED_FIRST_TUTORIAL_STAGE.IDLE);
+  const feedFirstTutorialWelcomeAnim = useRef(new Animated.Value(0)).current;
+  const feedFirstTutorialAmbientAnim = useRef(new Animated.Value(0)).current;
+  const feedFirstTutorialAddScrolledRef = useRef(false);
+  const [feedFirstTutorialSaveCoachVisible, setFeedFirstTutorialSaveCoachVisible] = useState(true);
+  const [feedFirstTutorialNeedSoftPaywall, setFeedFirstTutorialNeedSoftPaywall] = useState(false);
   const tutorialCardTimerRef = useRef(null);
   const tutorialCardCompletedLoggedRef = useRef(false);
   const tutorialCardShownLoggedRef = useRef(false);
@@ -29433,6 +29477,67 @@ function AppContent() {
     AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
   }, [tutorialSeen]);
   useEffect(() => {
+    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.WELCOME) {
+      feedFirstTutorialWelcomeAnim.stopAnimation();
+      feedFirstTutorialAmbientAnim.stopAnimation();
+      feedFirstTutorialWelcomeAnim.setValue(0);
+      feedFirstTutorialAmbientAnim.setValue(0);
+      return;
+    }
+    feedFirstTutorialWelcomeAnim.stopAnimation();
+    feedFirstTutorialAmbientAnim.stopAnimation();
+    feedFirstTutorialWelcomeAnim.setValue(0);
+    feedFirstTutorialAmbientAnim.setValue(0);
+    const appear = Animated.spring(feedFirstTutorialWelcomeAnim, {
+      toValue: 1,
+      friction: 8,
+      tension: 120,
+      useNativeDriver: true,
+    });
+    const ambientLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(feedFirstTutorialAmbientAnim, {
+          toValue: 1,
+          duration: 2200,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(feedFirstTutorialAmbientAnim, {
+          toValue: 0,
+          duration: 2200,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    appear.start();
+    ambientLoop.start();
+    return () => {
+      appear.stop();
+      ambientLoop.stop();
+    };
+  }, [feedFirstTutorialAmbientAnim, feedFirstTutorialStage, feedFirstTutorialWelcomeAnim]);
+  const feedFirstTutorialWelcomeOpacity = feedFirstTutorialWelcomeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const feedFirstTutorialWelcomeTranslateY = feedFirstTutorialWelcomeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [18, 0],
+  });
+  const feedFirstTutorialWelcomeScale = feedFirstTutorialWelcomeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.97, 1],
+  });
+  const feedFirstTutorialOrbLift = feedFirstTutorialAmbientAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -10],
+  });
+  const feedFirstTutorialOrbDrift = feedFirstTutorialAmbientAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 12],
+  });
+  useEffect(() => {
     const wasVisible = tutorialVisiblePrevRef.current;
     if (
       wasVisible &&
@@ -29536,8 +29641,54 @@ function AppContent() {
     },
     [clearQueuedModal, logEvent, setFabTutorialStateAndPersist]
   );
+  const completeFeedFirstTutorial = useCallback(
+    (source = "completed") => {
+      setTutorialCardVisible(false);
+      setFeedFirstTutorialSaveCoachVisible(false);
+      setFeedFirstTutorialNeedSoftPaywall(false);
+      setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.DONE);
+      if (!tutorialCardShown) {
+        setTutorialCardShown(true);
+        AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL_CARD_SHOWN, "true").catch(() => {});
+      }
+      if (!tutorialCardCompletedLoggedRef.current) {
+        tutorialCardCompletedLoggedRef.current = true;
+      }
+      logEvent("feed_first_tutorial_completed", { source });
+    },
+    [logEvent, tutorialCardShown]
+  );
+  const handleFeedFirstTutorialWelcomeContinue = useCallback(() => {
+    setFeedFirstTutorialSaveCoachVisible(true);
+    setFeedFirstTutorialNeedSoftPaywall(false);
+    setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.SAVE);
+    logEvent("feed_first_tutorial_step", { step: "welcome_continue" });
+  }, [logEvent]);
+  const handleFeedFirstTutorialWelcomeSkip = useCallback(() => {
+    completeFeedFirstTutorial("welcome_skip");
+  }, [completeFeedFirstTutorial]);
+  const handleFeedFirstTutorialAddDismiss = useCallback(() => {
+    completeFeedFirstTutorial("add_skip");
+  }, [completeFeedFirstTutorial]);
   const dismissTutorialCardCoach = useCallback(
     (source = "dismiss") => {
+      if (feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE) {
+        if (source === "action_save" || source === "action_spend") {
+          setTutorialCardVisible(false);
+          setFeedFirstTutorialSaveCoachVisible(false);
+          setFeedFirstTutorialNeedSoftPaywall(
+            !premiumState.isPremium && !premiumSoftPaywallShown
+          );
+          setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING);
+          logEvent("feed_first_tutorial_step", {
+            step: source === "action_save" ? "save_done" : "spend_done",
+          });
+          return;
+        }
+        setTutorialCardVisible(false);
+        completeFeedFirstTutorial(source);
+        return;
+      }
       setTutorialCardVisible(false);
       if (tutorialCardShown) return;
       setTutorialCardShown(true);
@@ -29547,17 +29698,32 @@ function AppContent() {
         logEvent("fab_tutorial_completed", { source });
       }
     },
-    [logEvent, tutorialCardShown]
+    [
+      completeFeedFirstTutorial,
+      feedFirstTutorialStage,
+      logEvent,
+      premiumSoftPaywallShown,
+      premiumState.isPremium,
+      tutorialCardShown,
+    ]
   );
   const handleTutorialCardCoachAction = useCallback(
     (actionType) => {
+      if (feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE) {
+        if (actionType === "save") {
+          setFeedFirstTutorialSaveCoachVisible(false);
+          return;
+        }
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+        return;
+      }
       if (actionType === "spend") {
         dismissTutorialCardCoach("action_spend");
         return;
       }
       dismissTutorialCardCoach("action_save");
     },
-    [dismissTutorialCardCoach]
+    [dismissTutorialCardCoach, feedFirstTutorialStage, triggerHaptic]
   );
   useEffect(() => {
     return () => {
@@ -31361,6 +31527,8 @@ function AppContent() {
   });
   const [pendingFrequencyReminderPrompt, setPendingFrequencyReminderPrompt] = useState(null);
   const frequencyReminderPriorityLockRef = useRef(false);
+  const modalHandoffBlockUntilRef = useRef(0);
+  const blockingModalVisiblePrevRef = useRef(false);
   const legacyFrequencyResetDoneRef = useRef(false);
   const [addCategoryModalVisible, setAddCategoryModalVisible] = useState(false);
   const [manageCategoriesVisible, setManageCategoriesVisible] = useState(false);
@@ -31660,6 +31828,10 @@ function AppContent() {
       speechInterfaceReady &&
       activeTab === "feed" &&
       !overlay &&
+      feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.WELCOME &&
+      feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.SAVE &&
+      feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING &&
+      feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.ADD &&
       !dailySummaryVisible &&
       !tutorialOverlayVisible &&
       !tamagotchiVisible &&
@@ -31700,6 +31872,7 @@ function AppContent() {
       editOverlayVisible,
       fabMenuVisible,
       fabTutorialVisible,
+      feedFirstTutorialStage,
       goalRenewalPromptVisible,
       speechInterfaceReady,
       keyboardVisible,
@@ -31841,6 +32014,16 @@ function AppContent() {
     if (!primaryTemptationPromptHydrated) return;
     if (primaryTemptationPromptState !== "pending") return;
     if (!profile?.customSpend) return;
+    if (
+      feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.IDLE ||
+      feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.WELCOME
+    ) {
+      return;
+    }
+    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.SAVE) {
+      markPrimaryTemptationPromptDone();
+      return;
+    }
     const hasPrimaryGoal = Array.isArray(profile.primaryGoals) && profile.primaryGoals.length > 0;
     const primaryGoalReady = !hasPrimaryGoal || !!mainGoalWish?.id;
     if (!primaryGoalReady) return;
@@ -31855,6 +32038,7 @@ function AppContent() {
     triggerOverlayState("primary_temptation", { templateId: primaryTemptationId });
     markPrimaryTemptationPromptDone();
   }, [
+    feedFirstTutorialStage,
     markPrimaryTemptationPromptDone,
     onboardingStep,
     primaryTemptationId,
@@ -32355,12 +32539,17 @@ function AppContent() {
       potentialDetailsVisible ||
       budgetWidgetTutorialVisible ||
       fabMenuVisible ||
+      (activeTab === "feed" &&
+        (feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.WELCOME ||
+          feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD)) ||
       editOverlayVisible,
     [
+      activeTab,
       blockingModalVisible,
       coinEntryVisible,
       dailySummaryVisible,
       editOverlayVisible,
+      feedFirstTutorialStage,
       fabMenuVisible,
       levelShareModal.visible,
       moodDetailsVisible,
@@ -32675,6 +32864,16 @@ function AppContent() {
       tamagotchiVisible,
     ]
   );
+  useEffect(() => {
+    const wasVisible = blockingModalVisiblePrevRef.current;
+    if (wasVisible && !blockingModalVisible) {
+      modalHandoffBlockUntilRef.current = Math.max(
+        modalHandoffBlockUntilRef.current || 0,
+        Date.now() + MODAL_HANDOFF_GUARD_MS
+      );
+    }
+    blockingModalVisiblePrevRef.current = blockingModalVisible;
+  }, [blockingModalVisible]);
   canShowRatingPromptNowRef.current = () => {
     if (onboardingStep !== "done") return false;
     if (!interfaceReady) return false;
@@ -32695,6 +32894,7 @@ function AppContent() {
     (type) => {
       if (appStateRef.current !== "active") return false;
       if (!interfaceReady) return false;
+      if (Date.now() < (modalHandoffBlockUntilRef.current || 0)) return false;
       if (tutorialOverlayVisible) return false;
       if (overlay) return false;
       if (blockingModalVisible) return false;
@@ -33853,6 +34053,10 @@ function AppContent() {
     }
     premiumPaywallActiveViewRef.current = null;
     premiumPaywallDismissedAtRef.current = Date.now();
+    if (context.kind === "soft") {
+      setPremiumSoftPaywallShown((prev) => (prev ? prev : true));
+    }
+    setPremiumSoftPaywallPending(false);
     setPremiumPaywallState((prev) => ({ ...prev, visible: false }));
   }, [getPremiumPaywallContext, logEvent]);
   const openPremiumPaywall = useCallback(
@@ -33934,6 +34138,17 @@ function AppContent() {
             savedAmountLabel,
             trigger: effectiveTrigger,
           }));
+          return;
+        }
+        const modalHandoffRemaining = Math.max(
+          0,
+          (modalHandoffBlockUntilRef.current || 0) - Date.now()
+        );
+        if (modalHandoffRemaining > 0) {
+          premiumPaywallTimerRef.current = setTimeout(() => {
+            premiumPaywallTimerRef.current = null;
+            show();
+          }, modalHandoffRemaining + 24);
           return;
         }
         if (
@@ -34621,6 +34836,23 @@ function AppContent() {
   const canShowSoftPaywallNow = useCallback(() => {
     if (premiumState.isPremium || premiumPaywallState.visible) return false;
     if (onboardingStep !== "done" || !interfaceReady) return false;
+    const hasPendingReminderPrompt = !!pendingFrequencyReminderPrompt;
+    if (
+      frequencyReminderPriorityLockRef.current &&
+      !frequencyReminderPrompt.visible &&
+      !hasPendingReminderPrompt
+    ) {
+      // Unlock stale reminder priority lock before evaluating paywall readiness.
+      frequencyReminderPriorityLockRef.current = false;
+    }
+    if (
+      frequencyReminderPrompt.visible ||
+      hasPendingReminderPrompt ||
+      frequencyReminderPriorityLockRef.current
+    ) {
+      return false;
+    }
+    if (Date.now() < (modalHandoffBlockUntilRef.current || 0)) return false;
     if (tutorialBlockingVisible) return false;
     if (queuedModalType || queuedModalActiveRef.current) return false;
     const hasQueuedModalReady = queuedModalQueueRef.current.some((candidate) =>
@@ -34652,6 +34884,8 @@ function AppContent() {
     premiumState.isPremium,
     queuedModalType,
     tutorialBlockingVisible,
+    frequencyReminderPrompt.visible,
+    pendingFrequencyReminderPrompt,
   ]);
   const shouldShowPaywall = useCallback(() => {
     if (temptationActionCount < 3) return false;
@@ -36534,6 +36768,16 @@ function AppContent() {
   useEffect(() => {
     const pending = pendingUsageStreakRef.current;
     if (!pending || pending.source !== "save") return;
+    const feedAddPendingStage = feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING;
+    if (pendingSaveStreakAfterReminderRef.current) return;
+    if (
+      feedAddPendingStage &&
+      (frequencyReminderPrompt.visible ||
+        pendingFrequencyReminderPrompt ||
+        frequencyReminderPriorityLockRef.current)
+    ) {
+      return;
+    }
     const hasSaveOverlay =
       overlay?.type === "save" ||
       overlayQueueRef.current.some((entry) => entry?.type === "save");
@@ -36543,7 +36787,14 @@ function AppContent() {
       overlayQueueRef.current.some((entry) => entry?.type === "usage_streak");
     if (hasStreakOverlay) return;
     queueUsageStreakOverlay("save");
-  }, [overlay?.type, queueUsageStreakOverlay, usageStreak?.lastDate]);
+  }, [
+    feedFirstTutorialStage,
+    frequencyReminderPrompt.visible,
+    overlay?.type,
+    pendingFrequencyReminderPrompt,
+    queueUsageStreakOverlay,
+    usageStreak?.lastDate,
+  ]);
   const handleSaveOverlayPress = useCallback(() => {
     if (overlay?.type === "save" && Date.now() - saveOverlayShownAtRef.current < 350) {
       return;
@@ -36597,13 +36848,36 @@ function AppContent() {
       return;
     }
     const hasPendingLevel = !!pendingLevelCelebrationRef.current;
-    dismissOverlay({ clearQueue: hasPendingLevel ? false : true });
+    const tutorialFlowActive =
+      feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE ||
+      feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING;
+    const shouldDelayStreakForReminder =
+      tutorialFlowActive &&
+      (frequencyReminderPrompt.visible ||
+        frequencyReminderPriorityLockRef.current ||
+        !!pendingFrequencyReminderPrompt);
+    if (tutorialFlowActive) {
+      pendingSaveStreakAfterReminderRef.current = shouldDelayStreakForReminder;
+      triggerPendingLevelCelebrate();
+      dismissOverlay({ clearQueue: false });
+      if (!shouldDelayStreakForReminder) {
+        queueUsageStreakOverlay("save");
+      }
+      return;
+    }
+    pendingSaveStreakAfterReminderRef.current = false;
+    dismissOverlay({
+      clearQueue: hasPendingLevel ? false : true,
+    });
     queueUsageStreakOverlay("save");
     triggerPendingLevelCelebrate();
   }, [
     dismissOverlay,
+    feedFirstTutorialStage,
+    frequencyReminderPrompt.visible,
     lastCelebratedLevel,
     overlay,
+    pendingFrequencyReminderPrompt,
     persistLastCelebratedLevel,
     playerLevel,
     queueUsageStreakOverlay,
@@ -39868,6 +40142,10 @@ function AppContent() {
     if (onboardingStep !== "done") {
       setHomeLayoutReady(false);
       setTutorialVisible(false);
+      setTutorialCardVisible(false);
+      setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.IDLE);
+      setFeedFirstTutorialSaveCoachVisible(true);
+      setFeedFirstTutorialNeedSoftPaywall(false);
     }
   }, [onboardingStep]);
 
@@ -40446,12 +40724,111 @@ function AppContent() {
 
   const tutorialOverlayVisible = tutorialVisible || temptationTutorialVisible;
   const primaryTemptationOverlayVisible = overlay?.type === "primary_temptation";
+  const primaryTemptationInteraction = useMemo(() => {
+    if (!temptationInteractionsHydrated) return null;
+    const normalizedPrimaryId = normalizeInteractionKey(primaryTemptationId);
+    if (!normalizedPrimaryId) return null;
+    const directEntry =
+      temptationInteractions && typeof temptationInteractions === "object"
+        ? temptationInteractions[normalizedPrimaryId]
+        : null;
+    if (directEntry && typeof directEntry === "object") {
+      return directEntry;
+    }
+    const entries =
+      temptationInteractions && typeof temptationInteractions === "object"
+        ? Object.entries(temptationInteractions)
+        : [];
+    for (let index = 0; index < entries.length; index += 1) {
+      const [key, value] = entries[index];
+      if (
+        normalizeInteractionKey(key) === normalizedPrimaryId &&
+        value &&
+        typeof value === "object"
+      ) {
+        return value;
+      }
+    }
+    return null;
+  }, [primaryTemptationId, temptationInteractions, temptationInteractionsHydrated]);
+  const primaryTemptationHasActionLogged = useMemo(() => {
+    if (!primaryTemptationInteraction) return false;
+    const saveCount = Math.max(0, Number(primaryTemptationInteraction.saveCount) || 0);
+    const spendCount = Math.max(0, Number(primaryTemptationInteraction.spendCount) || 0);
+    if (saveCount + spendCount > 0) return true;
+    return (Number(primaryTemptationInteraction.lastInteractionAt) || 0) > 0;
+  }, [primaryTemptationInteraction]);
+  const primaryTemptationHasHistoryAction = useMemo(() => {
+    if (!historyHydrated) return false;
+    if (!Array.isArray(historyEvents) || !historyEvents.length) return false;
+    const normalizedPrimaryId = normalizeInteractionKey(primaryTemptationId);
+    if (!normalizedPrimaryId) return false;
+    return historyEvents.some((entry) => {
+      if (!entry || (entry.kind !== "refuse_spend" && entry.kind !== "spend")) return false;
+      const entryTemplateId =
+        normalizeInteractionKey(entry?.meta?.templateId) ||
+        normalizeInteractionKey(entry?.meta?.id) ||
+        normalizeInteractionKey(entry?.meta?.template);
+      return entryTemplateId === normalizedPrimaryId;
+    });
+  }, [historyEvents, historyHydrated, primaryTemptationId]);
+  const shouldResumePrimaryTemptationAddPending =
+    onboardingStep === "done" &&
+    tutorialCardHydrated &&
+    !tutorialCardShown &&
+    primaryTemptationPromptHydrated &&
+    !!profile?.customSpend &&
+    (temptationInteractionsHydrated || historyHydrated) &&
+    (primaryTemptationHasActionLogged || primaryTemptationHasHistoryAction);
+  const feedFirstTutorialCanStart =
+    onboardingStep === "done" &&
+    interfaceReady &&
+    activeTab === "feed" &&
+    tutorialCardHydrated &&
+    !tutorialCardShown &&
+    (!profile?.customSpend ||
+      (primaryTemptationPromptHydrated &&
+        (temptationInteractionsHydrated || historyHydrated))) &&
+    !shouldResumePrimaryTemptationAddPending &&
+    Array.isArray(products) &&
+    products.length > 0 &&
+    !tutorialBlockingVisible &&
+    !overlay &&
+    !overlayActiveRef.current &&
+    !blockingModalVisible &&
+    overlayQueueRef.current.length === 0 &&
+    celebrationQueueRef.current.length === 0 &&
+    !celebrationGapTimerRef.current;
+  useEffect(() => {
+    if (!shouldResumePrimaryTemptationAddPending) return;
+    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.IDLE) return;
+    setTutorialCardVisible(false);
+    setFeedFirstTutorialSaveCoachVisible(false);
+    setFeedFirstTutorialNeedSoftPaywall(
+      !premiumState.isPremium && !premiumSoftPaywallShown
+    );
+    setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING);
+    logEvent("feed_first_tutorial_step", { step: "add_resume" });
+  }, [
+    feedFirstTutorialStage,
+    logEvent,
+    premiumSoftPaywallShown,
+    premiumState.isPremium,
+    shouldResumePrimaryTemptationAddPending,
+  ]);
+  useEffect(() => {
+    if (!feedFirstTutorialCanStart) return;
+    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.IDLE) return;
+    setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.WELCOME);
+    logEvent("feed_first_tutorial_step", { step: "welcome_shown" });
+  }, [feedFirstTutorialCanStart, feedFirstTutorialStage, logEvent]);
   const tutorialCardEligible =
     onboardingStep === "done" &&
     interfaceReady &&
     activeTab === "feed" &&
     tutorialCardHydrated &&
     !tutorialCardShown &&
+    feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE &&
     (!tutorialBlockingVisible || primaryTemptationOverlayVisible) &&
     Array.isArray(products) &&
     products.length > 0;
@@ -40466,31 +40843,182 @@ function AppContent() {
     setTutorialCardVisible(true);
     if (!tutorialCardShownLoggedRef.current) {
       tutorialCardShownLoggedRef.current = true;
-      logEvent("fab_tutorial_shown");
+      logEvent("feed_first_tutorial_step", { step: "save_shown" });
     }
   }, [logEvent, tutorialCardEligible, tutorialCardVisible]);
   useEffect(() => {
-    if (!tutorialCardVisible) {
-      if (tutorialCardTimerRef.current) {
-        clearTimeout(tutorialCardTimerRef.current);
-        tutorialCardTimerRef.current = null;
-      }
+    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.SAVE) return;
+    if (activeTab !== "feed") {
+      goToTab("feed", { recordHistory: false });
       return;
     }
-    if (tutorialCardTimerRef.current) {
-      clearTimeout(tutorialCardTimerRef.current);
+    const timer = setTimeout(() => {
+      const scroller = feedScreenRef.current;
+      scroller?.scrollToTemptations?.({
+        animated: true,
+        extraOffset: IS_SHORT_DEVICE ? -18 : -10,
+      });
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [activeTab, feedFirstTutorialStage, goToTab]);
+  useEffect(() => {
+    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING) {
+      feedFirstTutorialAddScrolledRef.current = false;
+      return;
     }
-    tutorialCardTimerRef.current = setTimeout(() => {
-      tutorialCardTimerRef.current = null;
-      dismissTutorialCardCoach("timeout");
-    }, 5000);
-    return () => {
-      if (tutorialCardTimerRef.current) {
-        clearTimeout(tutorialCardTimerRef.current);
-        tutorialCardTimerRef.current = null;
+    if (activeTab !== "feed") {
+      feedFirstTutorialAddScrolledRef.current = false;
+      goToTab("feed", { recordHistory: false });
+      return;
+    }
+    if (!interfaceReady) {
+      feedFirstTutorialAddScrolledRef.current = false;
+      return;
+    }
+    if (overlay || overlayActiveRef.current) {
+      feedFirstTutorialAddScrolledRef.current = false;
+      return;
+    }
+    if (overlayQueueRef.current.length) {
+      if (
+        !overlay &&
+        !overlayActiveRef.current &&
+        !blockingModalVisible &&
+        !frequencyReminderPrompt.visible &&
+        !pendingFrequencyReminderPrompt
+      ) {
+        if (frequencyReminderPriorityLockRef.current) {
+          frequencyReminderPriorityLockRef.current = false;
+        }
+        processOverlayQueueRef.current();
+      }
+      feedFirstTutorialAddScrolledRef.current = false;
+      return;
+    }
+    if (
+      frequencyReminderPriorityLockRef.current &&
+      !frequencyReminderPrompt.visible &&
+      !pendingFrequencyReminderPrompt
+    ) {
+      // Recover from a stale reminder-priority lock so onboarding flow can continue.
+      frequencyReminderPriorityLockRef.current = false;
+    }
+    const reminderFlowBlocking =
+      frequencyReminderPrompt.visible ||
+      pendingFrequencyReminderPrompt ||
+      frequencyReminderPriorityLockRef.current;
+    if (pendingUsageStreakRef.current) {
+      if (!reminderFlowBlocking) {
+        queueUsageStreakOverlay();
+      }
+      feedFirstTutorialAddScrolledRef.current = false;
+      return;
+    }
+    if (pendingLevelCelebrationRef.current || pendingGoalCelebration) {
+      feedFirstTutorialAddScrolledRef.current = false;
+      return;
+    }
+    if (coinValueModalVisible) {
+      feedFirstTutorialAddScrolledRef.current = false;
+      return;
+    }
+    if (blockingModalVisible || tutorialBlockingVisible) {
+      feedFirstTutorialAddScrolledRef.current = false;
+      return;
+    }
+    if (queuedModalType) {
+      if (queuedModalType === QUEUED_MODAL_TYPES.FAB_TUTORIAL) {
+        clearQueuedModal(QUEUED_MODAL_TYPES.FAB_TUTORIAL);
+      } else {
+        feedFirstTutorialAddScrolledRef.current = false;
+        return;
+      }
+    }
+    if (celebrationQueueRef.current.length || celebrationGapTimerRef.current) {
+      feedFirstTutorialAddScrolledRef.current = false;
+      return;
+    }
+    if (feedFirstTutorialNeedSoftPaywall) {
+      if (premiumState.isPremium || premiumSoftPaywallShown) {
+        setFeedFirstTutorialNeedSoftPaywall(false);
+      } else {
+        if (premiumPaywallState.visible) {
+          feedFirstTutorialAddScrolledRef.current = false;
+          return;
+        }
+        if (!premiumSoftPaywallPending) {
+          premiumSoftPaywallTriggerRef.current = "first_action_after_onboarding";
+          setPremiumSoftPaywallPending(true);
+        }
+        feedFirstTutorialAddScrolledRef.current = false;
+        return;
+      }
+      feedFirstTutorialAddScrolledRef.current = false;
+      return;
+    }
+    if (premiumPaywallState.visible) {
+      feedFirstTutorialAddScrolledRef.current = false;
+      return;
+    }
+    if (feedFirstTutorialAddScrolledRef.current) return;
+    feedFirstTutorialAddScrolledRef.current = true;
+    const scrollFeedForAddCoach = (animated = true) => {
+      const scroller = feedScreenRef.current;
+      const didScrollTop = scroller?.scrollToTop?.({ animated });
+      if (!didScrollTop) {
+        scroller?.scrollToTemptations?.({
+          animated,
+          extraOffset: IS_SHORT_DEVICE ? -18 : -10,
+        });
       }
     };
-  }, [dismissTutorialCardCoach, tutorialCardVisible]);
+    const scrollTimer = setTimeout(() => {
+      scrollFeedForAddCoach(true);
+    }, 120);
+    const settleScrollTimer = setTimeout(() => {
+      // Reinforce top position after modal handoff animations finish.
+      scrollFeedForAddCoach(false);
+    }, 420);
+    const showTimer = setTimeout(() => {
+      setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.ADD);
+      logEvent("feed_first_tutorial_step", { step: "add_shown" });
+    }, 760);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(settleScrollTimer);
+      clearTimeout(showTimer);
+      feedFirstTutorialAddScrolledRef.current = false;
+    };
+  }, [
+    activeTab,
+    blockingModalVisible,
+    clearQueuedModal,
+    coinValueModalVisible,
+    frequencyReminderPrompt.visible,
+    feedFirstTutorialNeedSoftPaywall,
+    feedFirstTutorialStage,
+    goToTab,
+    interfaceReady,
+    logEvent,
+    overlay,
+    pendingFrequencyReminderPrompt,
+    pendingGoalCelebration,
+    premiumPaywallState.visible,
+    premiumSoftPaywallPending,
+    premiumSoftPaywallShown,
+    premiumState.isPremium,
+    queueUsageStreakOverlay,
+    queuedModalType,
+    tutorialBlockingVisible,
+  ]);
+  useEffect(() => {
+    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.ADD) return;
+    if (activeTab !== "feed") return;
+    const timer = setTimeout(() => {
+      feedScreenRef.current?.scrollToTop?.({ animated: true });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [activeTab, feedFirstTutorialStage]);
   const canShowTutorialNow = useCallback(() => {
     if (overlay || overlayActiveRef.current) return false;
     if (overlayQueueRef.current.length) return false;
@@ -43027,6 +43555,10 @@ useEffect(() => {
     requestTemptationPremiumUnlock,
     triggerHaptic,
   ]);
+  const handleFeedFirstTutorialAddCreate = useCallback(() => {
+    completeFeedFirstTutorial("add_create");
+    handleFabNewTemptation();
+  }, [completeFeedFirstTutorial, handleFabNewTemptation]);
 
   const parseWidgetDeepLink = useCallback((url) => {
     if (!url || typeof url !== "string") return null;
@@ -43882,6 +44414,9 @@ useEffect(() => {
     setTutorialCardShown(false);
     setTutorialCardHydrated(true);
     setTutorialCardVisible(false);
+    setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.IDLE);
+    setFeedFirstTutorialSaveCoachVisible(true);
+    setFeedFirstTutorialNeedSoftPaywall(false);
     tutorialCardCompletedLoggedRef.current = false;
     tutorialCardShownLoggedRef.current = false;
     setFabTutorialVisible(false);
@@ -46245,6 +46780,8 @@ useEffect(() => {
     temptationInteractionsHydrated,
   ]);
   const closeFrequencyReminderPrompt = useCallback(() => {
+    // Keep a slightly longer handoff after reminder modal close to avoid iOS/Android modal overlap races.
+    modalHandoffBlockUntilRef.current = Date.now() + MODAL_HANDOFF_GUARD_MS + 220;
     frequencyReminderPriorityLockRef.current = false;
     setFrequencyReminderPrompt({
       visible: false,
@@ -46258,7 +46795,11 @@ useEffect(() => {
       weeklyDay: DEFAULT_FREQUENCY_WEEKLY_DAY,
       monthlyDay: DEFAULT_FREQUENCY_MONTHLY_DAY,
     });
-  }, []);
+    if (pendingSaveStreakAfterReminderRef.current) {
+      pendingSaveStreakAfterReminderRef.current = false;
+      queueUsageStreakOverlay("save");
+    }
+  }, [queueUsageStreakOverlay]);
   const handleFrequencyReminderPromptFrequencyChange = useCallback((value) => {
     const normalized = normalizeFrequencyId(value) || "daily";
     setFrequencyReminderPrompt((prev) => ({
@@ -46396,6 +46937,7 @@ useEffect(() => {
   const openPendingFrequencyReminderPromptWithPriority = useCallback(
     ({ lockQueue = false } = {}) => {
       if (onboardingStep !== "done") return false;
+      if (Date.now() < (modalHandoffBlockUntilRef.current || 0)) return false;
       if (frequencyReminderPrompt.visible) return false;
       if (!pendingFrequencyReminderPrompt) return false;
       const opened = openFrequencyReminderPromptFromPending(pendingFrequencyReminderPrompt);
@@ -46419,6 +46961,16 @@ useEffect(() => {
     if (blockingModalVisible) return;
     if (stormActive) return;
     if (spendPrompt.visible) return;
+    const modalHandoffRemaining = Math.max(
+      0,
+      (modalHandoffBlockUntilRef.current || 0) - Date.now()
+    );
+    if (modalHandoffRemaining > 0) {
+      const timer = setTimeout(() => {
+        openPendingFrequencyReminderPromptWithPriority();
+      }, modalHandoffRemaining + 24);
+      return () => clearTimeout(timer);
+    }
     const opened = openPendingFrequencyReminderPromptWithPriority();
     if (!opened) return;
   }, [
@@ -46443,6 +46995,18 @@ useEffect(() => {
     overlay,
     queueUsageStreakOverlay,
     stormActive,
+  ]);
+  useEffect(() => {
+    if (!pendingSaveStreakAfterReminderRef.current) return;
+    if (frequencyReminderPrompt.visible) return;
+    if (pendingFrequencyReminderPrompt) return;
+    if (frequencyReminderPriorityLockRef.current) return;
+    pendingSaveStreakAfterReminderRef.current = false;
+    queueUsageStreakOverlay("save");
+  }, [
+    frequencyReminderPrompt.visible,
+    pendingFrequencyReminderPrompt,
+    queueUsageStreakOverlay,
   ]);
   const normalizeTemplateKey = (value) => {
     if (typeof value === "number" && Number.isFinite(value)) {
@@ -47222,7 +47786,10 @@ useEffect(() => {
         skipSaveSpamCheck = false,
       } = options || {};
       playSound("tap");
-      if ((type === "save" || type === "spend") && tutorialCardVisible) {
+      if (
+        (type === "save" || type === "spend") &&
+        (tutorialCardVisible || feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE)
+      ) {
         dismissTutorialCardCoach(type === "spend" ? "action_spend" : "action_save");
       }
       let resolvedForcedGoalId = forcedGoalId;
@@ -48067,6 +48634,7 @@ useEffect(() => {
       mainGoalWish,
       profile.goal,
       profile.primaryGoals,
+      feedFirstTutorialStage,
       tutorialCardVisible,
       overlay,
       temptationTutorialStatus,
@@ -50063,6 +50631,7 @@ useEffect(() => {
       overlayTimer.current = null;
     }
   }, [blockingModalVisible, overlayEnvironmentReady]);
+  processOverlayQueueRef.current = processOverlayQueue;
 
   const scheduleOverlayRetry = useCallback(() => {
     if (overlayRetryTimerRef.current) return;
@@ -50140,6 +50709,36 @@ useEffect(() => {
       scheduleOverlayRetry();
     }
   }, [blockingModalVisible, overlayEnvironmentReady, processOverlayQueue, scheduleOverlayRetry]);
+  useEffect(() => {
+    if (blockingModalVisible) return;
+    if (overlay || overlayActiveRef.current) return;
+    if (overlayQueueRef.current.length) return;
+    if (!celebrationQueueRef.current.length) return;
+    if (celebrationGapTimerRef.current) return;
+    scheduleCelebrationOverlay();
+  }, [blockingModalVisible, overlay, scheduleCelebrationOverlay]);
+  useEffect(() => {
+    if (frequencyReminderPrompt.visible) return;
+    if (pendingFrequencyReminderPrompt) return;
+    const hadPriorityLock = frequencyReminderPriorityLockRef.current;
+    if (hadPriorityLock) {
+      frequencyReminderPriorityLockRef.current = false;
+    }
+    if (!overlayActiveRef.current && !overlay && overlayQueueRef.current.length) {
+      processOverlayQueue();
+      if ((!overlayEnvironmentReady || blockingModalVisible) && overlayQueueRef.current.length) {
+        scheduleOverlayRetry();
+      }
+    }
+  }, [
+    blockingModalVisible,
+    frequencyReminderPrompt.visible,
+    overlay,
+    overlayEnvironmentReady,
+    pendingFrequencyReminderPrompt,
+    processOverlayQueue,
+    scheduleOverlayRetry,
+  ]);
 
   useEffect(() => {
     if (overlay?.type === "level") {
@@ -51210,6 +51809,9 @@ useEffect(() => {
             setTutorialCardShown(false);
             setTutorialCardHydrated(true);
             setTutorialCardVisible(false);
+            setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.IDLE);
+            setFeedFirstTutorialSaveCoachVisible(true);
+            setFeedFirstTutorialNeedSoftPaywall(false);
             tutorialCardCompletedLoggedRef.current = false;
             tutorialCardShownLoggedRef.current = false;
             setLastCelebratedLevel(1);
@@ -51772,8 +52374,16 @@ useEffect(() => {
             tutorialTemptationStepId={tutorialTemptationStepId}
             tutorialHighlightMeasureTick={tutorialHighlightMeasureTick}
             onTutorialHighlightLayoutChange={handleTutorialHighlightLayoutChange}
-            showTemptationCoachMark={tutorialCardVisible && overlay?.type !== "primary_temptation"}
+            showTemptationCoachMark={
+              feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE &&
+              feedFirstTutorialSaveCoachVisible &&
+              tutorialCardVisible &&
+              overlay?.type !== "primary_temptation"
+            }
             onTemptationCoachMarkAction={handleTutorialCardCoachAction}
+            showTemptationAddCoachMark={feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD}
+            onTemptationAddCoachDismiss={handleFeedFirstTutorialAddDismiss}
+            onTemptationAddCoachCreate={handleFeedFirstTutorialAddCreate}
             allowThinkAction={thinkingUnlocked}
             isPremiumUser={premiumState.isPremium}
             activeChallenge={activeChallenge}
@@ -53514,6 +54124,105 @@ useEffect(() => {
                       </TouchableOpacity>
                     </View>
                   </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+        {feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.WELCOME && activeTab === "feed" && (
+          <Modal
+            visible
+            transparent
+            animationType="fade"
+            statusBarTranslucent
+            onRequestClose={handleFeedFirstTutorialWelcomeSkip}
+          >
+            <TouchableWithoutFeedback onPress={handleFeedFirstTutorialWelcomeSkip}>
+              <View style={styles.feedFirstTutorialBackdrop}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <Animated.View
+                    style={[
+                      styles.feedFirstTutorialCard,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: isDarkTheme ? "rgba(245,200,105,0.42)" : "rgba(232,183,74,0.38)",
+                        opacity: feedFirstTutorialWelcomeOpacity,
+                        transform: [
+                          { translateY: feedFirstTutorialWelcomeTranslateY },
+                          { scale: feedFirstTutorialWelcomeScale },
+                        ],
+                      },
+                    ]}
+                  >
+                    <Animated.View
+                      pointerEvents="none"
+                      style={[
+                        styles.feedFirstTutorialOrbPrimary,
+                        {
+                          backgroundColor: colorWithAlpha("#F5C869", isDarkTheme ? 0.2 : 0.24),
+                          transform: [{ translateY: feedFirstTutorialOrbLift }],
+                        },
+                      ]}
+                    />
+                    <Animated.View
+                      pointerEvents="none"
+                      style={[
+                        styles.feedFirstTutorialOrbSecondary,
+                        {
+                          backgroundColor: colorWithAlpha("#FFDFA4", isDarkTheme ? 0.14 : 0.2),
+                          transform: [{ translateY: feedFirstTutorialOrbDrift }],
+                        },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.feedFirstTutorialBadge,
+                        {
+                          backgroundColor: isDarkTheme ? "rgba(245,200,105,0.14)" : "rgba(245,200,105,0.2)",
+                          borderColor: isDarkTheme ? "rgba(245,200,105,0.45)" : "rgba(232,183,74,0.55)",
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.feedFirstTutorialBadgeEmoji, { color: isDarkTheme ? "#FFE8B8" : "#6E4600" }]}>
+                        ✨
+                      </Text>
+                      <Text style={[styles.feedFirstTutorialBadgeText, { color: isDarkTheme ? "#FFE8B8" : "#6E4600" }]}>
+                        {t("feedTutorialWelcomeBadge")}
+                      </Text>
+                    </View>
+                    <Text style={[styles.feedFirstTutorialTitle, { color: colors.text }]}>
+                      {t("feedTutorialWelcomeTitle")}
+                    </Text>
+                    <Text style={[styles.feedFirstTutorialDesc, { color: isDarkTheme ? "#E9D5AE" : "#6D5A3E" }]}>
+                      {t("feedTutorialWelcomeDesc")}
+                    </Text>
+                    <Text style={[styles.feedFirstTutorialHint, { color: isDarkTheme ? "#D9C395" : "#7C6643" }]}>
+                      {t("feedTutorialWelcomeHint")}
+                    </Text>
+                    <View style={styles.feedFirstTutorialActions}>
+                      <TouchableOpacity
+                        style={[
+                          styles.feedFirstTutorialGhost,
+                          { borderColor: isDarkTheme ? "rgba(245,200,105,0.45)" : "rgba(232,183,74,0.42)" },
+                        ]}
+                        onPress={handleFeedFirstTutorialWelcomeSkip}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={[styles.feedFirstTutorialGhostText, { color: isDarkTheme ? "#E9D5AE" : "#7C6643" }]}>
+                          {t("tutorialSkip")}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.feedFirstTutorialPrimary, { backgroundColor: "#F5C869" }]}
+                        onPress={handleFeedFirstTutorialWelcomeContinue}
+                        activeOpacity={0.9}
+                      >
+                        <Text style={[styles.feedFirstTutorialPrimaryText, { color: "#3B2A00" }]}>
+                          {t("feedTutorialWelcomeAction")}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </Animated.View>
                 </TouchableWithoutFeedback>
               </View>
             </TouchableWithoutFeedback>
@@ -55447,7 +56156,12 @@ useEffect(() => {
                       onAction={(type, item, actionOptions) =>
                         handlePrimaryTemptationOverlayAction(type, item, actionOptions)
                       }
-                      showSavedCoachMark={tutorialCardVisible && overlay?.type === "primary_temptation"}
+                      showSavedCoachMark={
+                        feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE &&
+                        feedFirstTutorialSaveCoachVisible &&
+                        tutorialCardVisible &&
+                        overlay?.type === "primary_temptation"
+                      }
                       onSavedCoachMarkAction={handleTutorialCardCoachAction}
                       playSound={playSound}
                       onToggleEdit={null}
@@ -56774,6 +57488,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    position: "relative",
+    overflow: "visible",
+    zIndex: 6,
+  },
+  feedTemptationHeaderCoachExpanded: {
+    marginBottom: 176,
+    zIndex: 40,
+    elevation: 20,
   },
   dayTwoIncomePromptCard: {
     marginTop: 12,
@@ -56823,6 +57545,92 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     lineHeight: 20,
+  },
+  feedTemptationAddWrap: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "visible",
+    zIndex: 18,
+  },
+  feedTemptationAddWrapExpanded: {
+    zIndex: 42,
+    elevation: 22,
+  },
+  feedTemptationAddHalo: {
+    position: "absolute",
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1,
+    opacity: 0,
+  },
+  feedTemptationAddHaloVisible: {
+    opacity: 1,
+  },
+  feedTemptationAddButtonFocused: {
+    shadowColor: "#FFCE73",
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 8,
+  },
+  feedTemptationAddCoachBubble: {
+    position: "absolute",
+    width: Math.min(SCREEN_WIDTH - 32, 318),
+    right: -4,
+    top: 44,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 12,
+    zIndex: 24,
+    shadowColor: "#000",
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+  },
+  feedTemptationAddCoachTitle: {
+    ...createBodyText({ fontSize: 14, fontWeight: "700", lineHeight: 18 }),
+  },
+  feedTemptationAddCoachDesc: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 17, fontWeight: "500" }),
+    marginTop: 6,
+  },
+  feedTemptationAddCoachActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    marginTop: 10,
+  },
+  feedTemptationAddCoachGhost: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  feedTemptationAddCoachGhostText: {
+    ...createSecondaryText({ fontSize: 12, fontWeight: "600" }),
+  },
+  feedTemptationAddCoachPrimary: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  feedTemptationAddCoachPrimaryText: {
+    ...createCtaText({ fontSize: 12 }),
+  },
+  feedTemptationAddCoachArrow: {
+    position: "absolute",
+    top: -7,
+    right: 16,
+    width: 14,
+    height: 14,
+    transform: [{ rotate: "45deg" }],
+    borderTopWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
   },
   feedHeroTop: {
     flexDirection: "row",
@@ -62769,6 +63577,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 8,
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
   },
   temptationCoachMarkTooltipText: {
     ...createBodyText({ fontSize: 12, lineHeight: 16, fontWeight: "600" }),
@@ -65445,6 +66259,92 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     textAlign: "center",
+  },
+  feedFirstTutorialBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(55,42,16,0.44)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  feedFirstTutorialCard: {
+    width: "100%",
+    maxWidth: 380,
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 22,
+    overflow: "hidden",
+  },
+  feedFirstTutorialOrbPrimary: {
+    position: "absolute",
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    top: -96,
+    right: -72,
+  },
+  feedFirstTutorialOrbSecondary: {
+    position: "absolute",
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    bottom: -84,
+    left: -66,
+  },
+  feedFirstTutorialBadge: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 10,
+  },
+  feedFirstTutorialBadgeEmoji: {
+    fontSize: 13,
+    lineHeight: 16,
+  },
+  feedFirstTutorialBadgeText: {
+    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+    letterSpacing: 0.7,
+  },
+  feedFirstTutorialTitle: {
+    ...createBodyText({ fontSize: 20, lineHeight: 26, fontWeight: "800", textAlign: "center" }),
+  },
+  feedFirstTutorialDesc: {
+    ...createBodyText({ fontSize: 14, lineHeight: 21, textAlign: "center" }),
+    marginTop: 10,
+  },
+  feedFirstTutorialHint: {
+    ...createSecondaryText({ fontSize: 13, lineHeight: 19, textAlign: "center", fontWeight: "600" }),
+    marginTop: 8,
+  },
+  feedFirstTutorialActions: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 16,
+    gap: 10,
+  },
+  feedFirstTutorialGhost: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  feedFirstTutorialGhostText: {
+    ...createSecondaryText({ fontSize: 13, fontWeight: "600" }),
+  },
+  feedFirstTutorialPrimary: {
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  feedFirstTutorialPrimaryText: {
+    ...createCtaText({ fontSize: 13 }),
   },
   budgetTutorialBackdrop: {
     ...StyleSheet.absoluteFillObject,

@@ -476,7 +476,7 @@ const PremiumPaywallModal = ({
         disableAndroidMotion ? null : { transform: [{ translateY: headerTranslateY }] },
       ]}
     >
-      <TouchableOpacity
+      <Pressable
         style={[
           styles.closeButton,
           isNativeMobile ? styles.closeButtonAndroid : null,
@@ -484,7 +484,7 @@ const PremiumPaywallModal = ({
           isVeryCompactAndroid ? styles.closeButtonVeryCompactAndroid : null,
         ]}
         onPress={() => onClose("header_close")}
-        activeOpacity={0.85}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         <Text
           style={[
@@ -494,7 +494,7 @@ const PremiumPaywallModal = ({
         >
           ✕
         </Text>
-      </TouchableOpacity>
+      </Pressable>
 
       <View
         style={[
@@ -904,6 +904,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
+    zIndex: 6,
+    elevation: 6,
   },
   closeButtonAndroid: {
     top: 42,
