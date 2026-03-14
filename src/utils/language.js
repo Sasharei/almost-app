@@ -134,13 +134,13 @@ export const normalizeLanguage = (value) => {
   return SUPPORTED_LANGUAGES.includes(base) ? base : DEFAULT_LANGUAGE;
 };
 
-const resolveTranslationLanguage = (language) => {
+export const resolveTranslationLanguage = (language) => {
   const normalized = normalizeLanguage(language);
   if (normalized === "ar-sa" || normalized === "ar-ae") return "ar";
   return normalized;
 };
 
-const isRtlLanguage = (language) => RTL_LANGUAGES.has(normalizeLanguage(language));
+export const isRtlLanguage = (language) => RTL_LANGUAGES.has(normalizeLanguage(language));
 
 export const getLanguageDirection = (language) => (isRtlLanguage(language) ? "rtl" : "ltr");
 

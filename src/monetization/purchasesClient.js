@@ -78,30 +78,6 @@ const parseDateMs = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const resolveEntitlementPeriodType = (entitlement = null) =>
-  String(
-    entitlement?.periodType ||
-      entitlement?.period_type ||
-      entitlement?.periodTypeIdentifier ||
-      entitlement?.period_type_identifier ||
-      ""
-  )
-    .trim()
-    .toLowerCase();
-
-const isTrialLikePeriodType = (periodType = "") => {
-  const normalized = String(periodType || "").trim().toLowerCase();
-  if (!normalized) return false;
-  return normalized.includes("trial") || normalized.includes("intro");
-};
-
-const resolveEntitlementProductIdentifier = (entitlement = null) =>
-  String(
-    entitlement?.productIdentifier || entitlement?.productId || entitlement?.product_id || ""
-  )
-    .trim()
-    .toLowerCase();
-
 const resolveSubscriptionByProductIdentifier = (customerInfo, productIdentifier = "") => {
   if (!customerInfo || typeof customerInfo !== "object") return null;
   const subscriptionsByProductIdentifier =
@@ -117,39 +93,6 @@ const resolveSubscriptionByProductIdentifier = (customerInfo, productIdentifier 
       normalizeProductIdentifier(entryProductIdentifier) === normalizedProductIdentifier
   );
   return match?.[1] && typeof match[1] === "object" ? match[1] : null;
-};
-
-const resolveEntitlementWillRenew = (entitlement = null, customerInfo = null) => {
-  const direct = parseBooleanValue(
-    entitlement?.willRenew ??
-      entitlement?.will_renew ??
-      entitlement?.isAutoRenewing ??
-      entitlement?.is_auto_renewing
-  );
-  if (direct !== null) return direct;
-  const productIdentifier = resolveEntitlementProductIdentifier(entitlement);
-  const subscriptionEntry = resolveSubscriptionByProductIdentifier(customerInfo, productIdentifier);
-  if (!subscriptionEntry) return null;
-  return parseBooleanValue(
-    subscriptionEntry?.willRenew ??
-      subscriptionEntry?.will_renew ??
-      subscriptionEntry?.isAutoRenewing ??
-      subscriptionEntry?.is_auto_renewing
-  );
-};
-
-const hasEntitlementUnsubscribeSignal = (entitlement = null, customerInfo = null) => {
-  const directUnsubscribeDetectedAt = parseDateMs(
-    entitlement?.unsubscribeDetectedAt || entitlement?.unsubscribe_detected_at || ""
-  );
-  if (directUnsubscribeDetectedAt) return true;
-  const productIdentifier = resolveEntitlementProductIdentifier(entitlement);
-  const subscriptionEntry = resolveSubscriptionByProductIdentifier(customerInfo, productIdentifier);
-  if (!subscriptionEntry) return false;
-  const subscriptionUnsubscribeDetectedAt = parseDateMs(
-    subscriptionEntry?.unsubscribeDetectedAt || subscriptionEntry?.unsubscribe_detected_at || ""
-  );
-  return !!subscriptionUnsubscribeDetectedAt;
 };
 
 const resolveEntitlementExpirationMs = (entitlement = null) =>
@@ -239,17 +182,16 @@ export const isPurchasesAvailable = () => {
 export const isPremiumFromCustomerInfo = (customerInfo) => {
   const entitlement = getActivePremiumEntitlement(customerInfo);
   if (!entitlement) return false;
+  const explicitActive = parseBooleanValue(
+    entitlement?.isActive ?? entitlement?.is_active ?? entitlement?.active
+  );
+  if (explicitActive === false) {
+    return false;
+  }
   const requestDateMs = resolveCustomerInfoRequestDateMs(customerInfo);
   const expirationMs = resolveEntitlementExpirationMs(entitlement);
   if (expirationMs && requestDateMs >= expirationMs) {
     return false;
-  }
-  const periodType = resolveEntitlementPeriodType(entitlement);
-  if (isTrialLikePeriodType(periodType)) {
-    const willRenew = resolveEntitlementWillRenew(entitlement, customerInfo);
-    if (willRenew === false || hasEntitlementUnsubscribeSignal(entitlement, customerInfo)) {
-      return false;
-    }
   }
   return true;
 };
