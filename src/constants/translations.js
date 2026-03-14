@@ -411,6 +411,7 @@ export const TRANSLATIONS = {
     defaultWishTitle: "Цель",
     heroWeeklySavingsDelta: "Сбережения",
     heroWeeklySpendingDelta: "Траты",
+    heroWeeklyDetailsHint: "тапни чтобы увидеть подробности",
     feedEmptyTitle: "Фильтр пуст",
     feedEmptySubtitle: "Попробуй другой тег или обнови каталог",
     buyNow: "Оплатить через {{pay}}",
@@ -754,10 +755,18 @@ export const TRANSLATIONS = {
     focusCancelConfirmTitle: "Отменить фокус?",
     focusCancelConfirmAction: "Отменить",
     focusPromptTitle: "Возьми под контроль",
-    focusPromptBody: "Ты несколько раз поддалась на «{{title}}». Сделаем его фокусом?",
+    focusPromptBody: {
+      female: "Ты несколько раз поддалась на «{{title}}». Сделаем его фокусом?",
+      male: "Ты несколько раз поддался на «{{title}}». Сделаем его фокусом?",
+      none: "«{{title}}» уже несколько раз взяло верх. Сделаем его фокусом?",
+    },
     focusVictoryReward: "Фокус «{{title}}» побеждён! +3 зелёных монеты",
     focusRewardTitle: "Фокус побеждён!",
-    focusRewardSubtitle: "Ты трижды отказалась от «{{title}}». +{{amount}} зелёных монет.",
+    focusRewardSubtitle: {
+      female: "Ты трижды отказалась от «{{title}}». +{{amount}} зелёных монет.",
+      male: "Ты трижды отказался от «{{title}}». +{{amount}} зелёных монет.",
+      none: "Три отказа от «{{title}}» подряд. +{{amount}} зелёных монет.",
+    },
     dailyReflectionReminderTitle: "Вечерний чек-ин Almost 🌙",
     dailyReflectionReminderBody:
       "До полуночи {{time}}. Запиши трату или экономию - так умные подсказки останутся точными. 🗒️",
@@ -1462,7 +1471,7 @@ export const TRANSLATIONS = {
     potentialBlockPotentialLabel: "Потенциал",
     potentialBlockHint: "Потенциал ещё {{amount}}. Не всё потеряно 🙂",
     potentialBlockDetails:
-      "Он берёт ваш ежемесячный бюджет на искушения (тот, что вы указали при регистрации), делит сумму на секунды и показывает, сколько денег можно было бы спасти прямо сейчас.",
+      "Как это работает: берём сумму «мелких трат в месяц» из профиля и равномерно распределяем её по времени. Так получаем потенциальную экономию на сейчас — {{potential}}. Ниже сравниваем её с вашей реальной экономией — {{actual}}.",
     potentialBlockCta: "Расскажи, сколько уходит на мелкие траты, и мы покажем, сколько ты мог бы уже спасти.",
     potentialPushAheadTitle: "Опередил потенциал!",
     potentialPushAheadBody:
@@ -1941,6 +1950,7 @@ export const TRANSLATIONS = {
     defaultWishTitle: "Goal",
     heroWeeklySavingsDelta: "Saved",
     heroWeeklySpendingDelta: "Spent",
+    heroWeeklyDetailsHint: "Tap to see details",
     feedEmptyTitle: "Nothing here",
     feedEmptySubtitle: "Try another tag or refresh the catalog",
     buyNow: "Pay with {{pay}}",
@@ -2961,7 +2971,7 @@ export const TRANSLATIONS = {
     potentialBlockPotentialLabel: "Potential",
     potentialBlockHint: "There’s still {{amount}} of potential left. Keep it up 🙂",
     potentialBlockDetails:
-      "It grabs the monthly temptation budget you set during onboarding, slices it into seconds, and shows how much you could have already saved right now.",
+      "How it works: we take your “small extras per month” amount from profile and spread it evenly over time. That gives your potential savings by now — {{potential}}. Then we compare it with your real logged savings — {{actual}}.",
     potentialBlockCta: "Tell us how much usually slips on small extras and we’ll show the potential savings.",
     potentialPushAheadTitle: "Ahead of potential!",
     potentialPushAheadBody:
@@ -3439,6 +3449,7 @@ export const TRANSLATIONS = {
     defaultWishTitle: "Objectif",
     heroWeeklySavingsDelta: "Économisé",
     heroWeeklySpendingDelta: "Dépensé",
+    heroWeeklyDetailsHint: "Touchez pour voir les détails",
     feedEmptyTitle: "Rien ici",
     feedEmptySubtitle: "Essaie un autre tag ou rafraîchis le catalogue",
     buyNow: "Payer avec {{pay}}",
@@ -4455,7 +4466,7 @@ export const TRANSLATIONS = {
     potentialBlockPotentialLabel: "Potentiel",
     potentialBlockHint: "Il reste {{amount}} de potentiel. On garde le rythme 🙂",
     potentialBlockDetails:
-      "On utilise le budget mensuel des tentations défini à l'onboarding, on le découpe par seconde et on montre combien tu pourrais déjà avoir économisé.",
+      "Comment ça marche : on prend le montant « petits extras par mois » de ton profil et on le répartit dans le temps. On obtient ainsi ton économie potentielle à cet instant — {{potential}}. Puis on la compare à ton économie réellement enregistrée — {{actual}}.",
     potentialBlockCta: "Dis-nous combien fuient dans les extras et on t'affiche le potentiel.",
     potentialPushAheadTitle: "En avance sur le potentiel !",
     potentialPushAheadBody:
@@ -4935,6 +4946,7 @@ export const TRANSLATIONS = {
     defaultWishTitle: "Meta",
     heroWeeklySavingsDelta: "Ahorrado",
     heroWeeklySpendingDelta: "Gastado",
+    heroWeeklyDetailsHint: "Toca para ver detalles",
     feedEmptyTitle: "Aquí no hay nada",
     feedEmptySubtitle: "Prueba otro tag o actualiza el catálogo",
     buyNow: "Pagar con {{pay}}",
@@ -5947,7 +5959,7 @@ export const TRANSLATIONS = {
     potentialBlockPotentialLabel: "Potencial",
     potentialBlockHint: "Aún quedan {{amount}} de potencial. Nothing is lost 🙂",
     potentialBlockDetails:
-      "Usamos el presupuesto mensual de tentaciones que pusiste en el onboarding, lo dividimos en segundos y mostramos cuánto podrías haber ahorrado hasta ahora.",
+      "Cómo funciona: tomamos el importe de «gastos pequeños al mes» de tu perfil y lo distribuimos en el tiempo. Así calculamos tu ahorro potencial hasta ahora — {{potential}}. Luego lo comparamos con tu ahorro real registrado — {{actual}}.",
     potentialBlockCta: "Cuéntanos cuánto suele escaparse en extras y te mostraremos el potencial.",
     potentialPushAheadTitle: "¡Vas delante del potencial!",
     potentialPushAheadBody:

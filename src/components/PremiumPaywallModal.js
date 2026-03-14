@@ -56,6 +56,7 @@ const normalizePaywallLanguage = (value = "en") =>
     .toLowerCase()
     .replace(/_/g, "-");
 const isArabicLanguage = (language = "en") => normalizePaywallLanguage(language).startsWith("ar");
+const PAYWALL_SCROLL_TRACK_THRESHOLD = 48;
 const normalizeWesternDigits = (value) => {
   if (typeof value !== "string" || !value.length) return value;
   return value
@@ -101,12 +102,14 @@ const PremiumPaywallModal = ({
   onManagePress = () => {},
   onTermsPress = () => {},
   onPrivacyPress = () => {},
+  onScrollPastThreshold = () => {},
   onClose = () => {},
   language = "en",
   colors,
 }) => {
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCards));
   const [selectedComparisonRowId, setSelectedComparisonRowId] = useState(null);
+  const hasTrackedScrollRef = useRef(false);
   const openProgress = useRef(new Animated.Value(0)).current;
   const ctaPulse = useRef(new Animated.Value(0)).current;
 
@@ -182,6 +185,9 @@ const PremiumPaywallModal = ({
     if (!visible) return;
     setSelectedPlanId(pickDefaultPlanId(planCards));
   }, [planCards, visible]);
+  useEffect(() => {
+    hasTrackedScrollRef.current = false;
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) {
@@ -290,6 +296,16 @@ const PremiumPaywallModal = ({
     if (purchaseDisabled || !selectedPlan?.id) return;
     onPlanPress(selectedPlan.id, { source: "primary_button" });
   };
+  const handleSheetScroll = useCallback(
+    (event) => {
+      if (!visible || hasTrackedScrollRef.current) return;
+      const offsetY = Number(event?.nativeEvent?.contentOffset?.y || 0);
+      if (!Number.isFinite(offsetY) || offsetY < PAYWALL_SCROLL_TRACK_THRESHOLD) return;
+      hasTrackedScrollRef.current = true;
+      onScrollPastThreshold({ offsetY: Math.max(0, Math.round(offsetY)) });
+    },
+    [onScrollPastThreshold, visible]
+  );
 
   const backdropOpacity = openProgress.interpolate({
     inputRange: [0, 1],
@@ -823,6 +839,8 @@ const PremiumPaywallModal = ({
               showsVerticalScrollIndicator={false}
               scrollEnabled
               nestedScrollEnabled={isAndroid}
+              onScroll={handleSheetScroll}
+              scrollEventThrottle={16}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={[
                 styles.sheetScrollContent,

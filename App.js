@@ -1,4 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import {
   View,
   Text as RNText,
@@ -87,18 +96,350 @@ import { SavingsProvider, useRealSavedAmount } from "./src/hooks/useRealSavedAmo
 import { useSavingsSimulation } from "./src/hooks/useSavingsSimulation";
 import { calcPotentialSaved } from "./src/utils/savingsSimulation";
 import { TRANSLATIONS } from "./src/constants/translations";
-import { DAILY_CHALLENGE_POPULAR_IDS, DEFAULT_TEMPTATIONS } from "./src/constants/temptations";
+import { DEFAULT_TEMPTATIONS } from "./src/constants/temptations";
 import { PRIVACY_LINKS, TERMS_LINKS, TERMS_POINTS } from "./src/constants/legal";
+import {
+  COIN_VALUE_MODAL_STATUS,
+  RAIN_DROPS,
+  CELEBRATION_OVERLAY_GAP_MS,
+  APP_RESUME_MODAL_GUARD_MS,
+  DAILY_SUMMARY_LIVE_ACTIVITY_ENABLED,
+  MAX_ACTIVE_CHALLENGES,
+  MAX_ACTIVE_GOALS,
+  ANDROID_DIMEZIS_DISABLED,
+  ANDROID_BLUR_AUTO_UPDATE,
+  ANDROID_EXPO_BLUR_ENABLED,
+  ANDROID_EXPO_BLUR_REDUCTION_FACTOR,
+  BLUR_VIEW_MANAGER_NAMES,
+  IOS_TRACKING_BLOCKED_STATUSES,
+  HARD_PAYWALL_DELAY_MS,
+  PREMIUM_PAYWALL_REOPEN_GUARD_MS,
+  MODAL_HANDOFF_GUARD_MS,
+  PENDING_COUNTDOWN_FAST_MS,
+  PENDING_BADGE_TICK_MS,
+  PERSIST_DEBOUNCE_MS,
+  STORM_OVERLAY_DURATION_MS,
+  DEFAULT_TEMPTATION_EMOJI,
+  DEFAULT_GOAL_EMOJI,
+  MAX_HISTORY_EVENTS,
+  HISTORY_RETENTION_MS,
+  HERO_RECENT_HISTORY_WINDOW_MS,
+  PROFILE_HISTORY_PAGE_WINDOW_MS,
+  SPEND_LOGGING_REMINDER_DELAY_MS,
+  SPEND_LOGGING_REMINDER_COOLDOWN_MS,
+  HISTORY_VIEWPORT_ROWS,
+  HISTORY_ITEM_HEIGHT,
+  HISTORY_VIEWPORT_HEIGHT,
+  HISTORY_SAVED_GAIN_EVENTS,
+  HISTORY_PROGRESS_GAIN_EVENTS,
+  HISTORY_SAVED_LOSS_EVENTS,
+  DAILY_GOAL_COIN_EVENTS,
+  DAILY_GOAL_WEEKDAY_BOOST,
+  DAILY_GOAL_SHAKE_THRESHOLD,
+  DAILY_GOAL_SHAKE_COOLDOWN_MS,
+  DAILY_GOAL_GYRO_THRESHOLD,
+  DAILY_GOAL_GYRO_COOLDOWN_MS,
+  DAILY_GOAL_GYRO_ACCEL,
+  DAILY_GOAL_GYRO_CLAMP,
+  DAILY_GOAL_TILT_ACCEL,
+  DAILY_GOAL_TILT_FRICTION,
+  DAILY_GOAL_TILT_DRAG,
+  DAILY_GOAL_TILT_BOUNCE,
+  DAILY_GOAL_COIN_COLLISION_BOUNCE,
+  DAILY_GOAL_COIN_COLLISION_SLOP,
+  DAILY_GOAL_COIN_COLLISION_PERCENT,
+  DAILY_GOAL_COIN_COLLISION_VELOCITY_EPS,
+  DAILY_GOAL_COIN_COLLISION_ITERATIONS,
+  DAILY_GOAL_COIN_COLLISION_RESTITUTION_MIN_SPEED,
+  DAILY_GOAL_COIN_COLLISION_RESTITUTION_RANGE,
+  DAILY_GOAL_COIN_COLLISION_REST_SPEED,
+  DAILY_GOAL_COIN_COLLISION_REST_DAMPING,
+  DAILY_GOAL_TILT_MAX_SPEED,
+  DAILY_GOAL_TILT_DEADZONE,
+  DAILY_GOAL_TILT_STOP_SPEED,
+  DAILY_GOAL_TILT_STOP_TILT,
+  DAILY_GOAL_TILT_STOP_GYRO,
+  DAILY_GOAL_GRAVITY,
+  PIGGY_COIN_PADDING_X,
+  PIGGY_COIN_PADDING_Y,
+  HERO_CAROUSEL_ITEM_GUTTER,
+  HERO_CAROUSEL_PREMIUM_ATTEMPT_TRIGGER_PX,
+  HERO_CAROUSEL_PREMIUM_DRAG_LIMIT_PX,
+  HERO_CAROUSEL_WIDGET_ANALYTICS_KEYS,
+  REPORTS_WEEK_COUNT,
+  REPORTS_MONTH_COUNT,
+  REPORTS_MAX_INSIGHTS,
+  REPORTS_MAX_STEPS,
+  REPORTS_MIN_ACTIONS_WEEK,
+  REPORTS_MIN_ACTIONS_MONTH,
+  STORAGE_KEYS,
+} from "./src/constants/appBehavior";
+import {
+  SUPPORT_EMAIL,
+  INSTAGRAM_URL,
+  FACEBOOK_APP_ID,
+  HEALTH_COIN_TIERS,
+  BLUE_HEALTH_COIN_TIER,
+  GREEN_HEALTH_COIN_TIER,
+  BLUE_HEALTH_COIN_ASSET,
+  BLUE_HEALTH_COIN_VALUE,
+  GREEN_HEALTH_COIN_ASSET,
+  GOAL_COMPLETION_REWARD_COINS,
+  GOAL_COMPLETION_REWARD_TIER,
+  GOAL_COMPLETION_REWARD_VALUE,
+  LEVEL_SHARE_CAT,
+  LEVEL_SHARE_LOGO,
+  LEVEL_SHARE_ACCENT,
+  LEVEL_SHARE_BG,
+  LEVEL_SHARE_MUTED,
+  CELEBRATION_MESSAGES,
+} from "./src/constants/appStaticConfig";
+import {
+  PAYWALL_PLAN_LABEL_BY_LANGUAGE,
+  PAYWALL_SAVE_BADGE_TEMPLATE_BY_LANGUAGE,
+  PAYWALL_TRIAL_BADGE_BY_LANGUAGE,
+  PAYWALL_EQUIVALENT_SOURCE_IDS,
+  PAYWALL_YEAR_SUFFIX_BY_LANGUAGE,
+  PAYWALL_MONTH_SUFFIX_BY_LANGUAGE,
+  PAYWALL_BILLING_LABEL_BY_LANGUAGE,
+  PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE,
+  PAYWALL_PERIOD_UNIT_TO_DAYS,
+  PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE,
+  PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE,
+  PAYWALL_NOW_PREFIX_BY_LANGUAGE,
+  PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS,
+  PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS,
+  PAYWALL_SAR_MARKERS_REGEX,
+  PAYWALL_BIDI_MARKS_REGEX,
+  PAYWALL_DIGIT_FRAGMENT_REGEX,
+  PAYWALL_ALERT_COPY,
+} from "./src/constants/paywallCopy";
+import {
+  WEEKDAY_FULL_LABELS,
+  HEALTH_COIN_LABELS,
+  ZERO_HEALTH_REWARD_LABELS,
+  WEEKDAY_LABELS,
+  WEEKDAY_LABELS_MONDAY_FIRST,
+  WEEKDAY_SELECTOR_ORDER,
+  WEEKDAY_LABEL_KEYS,
+  FREQUENCY_COUNTDOWN_TOKENS,
+} from "./src/constants/localizedUiCopy";
+import {
+  FEATURE_UNLOCK_STEPS,
+  FEATURE_UNLOCK_VARIANT_MAP,
+  FEATURE_UNLOCK_PREMIUM_MESSAGE_MAP,
+  FEATURE_UNLOCK_VARIANT_CONFIG,
+  FEATURE_UNLOCK_LEVELS,
+  FEATURE_UNLOCK_PREMIUM_VARIANTS,
+} from "./src/constants/featureUnlock";
+import {
+  APP_TUTORIAL_BASE_STEPS,
+  TEMPTATION_TUTORIAL_STEPS,
+  FAB_TUTORIAL_STATUS,
+  FEED_FIRST_TUTORIAL_STAGE,
+  QUEUED_MODAL_TYPES,
+  CARD_TEXTURE_ACCENTS,
+  TEMPTATION_CARD_RADIUS,
+  ANDROID_TUTORIAL_HIGHLIGHT_OFFSET,
+  TAB_BAR_BASE_HEIGHT,
+  TAB_BAR_BASE_HEIGHT_COMPACT,
+  HERO_MASCOT_SIZE,
+  ALMI_MASCOT_BORDER_RADIUS,
+  ALMI_MASCOT_IMAGE_OFFSET_X,
+  FAB_BUTTON_SIZE,
+  FAB_CONTAINER_BOTTOM,
+  FAB_CONTAINER_SIDE,
+  FAB_HIDE_TRANSLATE,
+  FAB_TUTORIAL_MIN_SESSIONS,
+  FAB_TUTORIAL_HALO_SIZE,
+  FAB_TUTORIAL_CARD_SPACING,
+  FAB_TUTORIAL_HALO_INSET,
+  TUTORIAL_HIGHLIGHT_INSET,
+  BACK_GESTURE_EDGE_WIDTH,
+  BACK_GESTURE_TRIGGER_DISTANCE,
+  BACK_GESTURE_VERTICAL_SLOP,
+  MAX_TAB_HISTORY,
+} from "./src/constants/tutorialUiConstants";
+import {
+  THEMES,
+  DEFAULT_THEME,
+  PRO_THEME_ID,
+  THEME_IDS,
+  PRO_THEME_ACCENT_OPTIONS,
+  DEFAULT_PRO_THEME_ACCENT_ID,
+  PRO_THEME_ACCENT_COPY,
+  INTER_FONTS,
+} from "./src/constants/themeConfig";
+import {
+  SMART_REMINDER_DELAY_MS,
+  SMART_REMINDER_MIN_INTERVAL_MS,
+  SMART_REMINDER_RETENTION_MS,
+  SMART_REMINDER_LIMIT,
+  RECENT_EVENT_NOTIFICATION_WINDOW_MS,
+  DAILY_NUDGE_REMINDERS,
+  DAILY_NUDGE_TITLE_KEYS,
+  DAILY_NUDGE_BODY_KEYS,
+  DAILY_NUDGE_NOTIFICATION_TAG,
+  TAMAGOTCHI_MISS_YOU_NOTIFICATION_KIND,
+  ANDROID_DAILY_NUDGE_CHANNEL_ID,
+  ANDROID_TAMAGOTCHI_CHANNEL_ID,
+  ANDROID_REPORTS_CHANNEL_ID,
+  DAILY_CHALLENGE_MIN_SPEND_EVENTS,
+  DAILY_CHALLENGE_FIXED_REWARD,
+  DAILY_CHALLENGE_REWARD_MULTIPLIER,
+  DAILY_CHALLENGE_DRAW_COUNT,
+  DAILY_CHALLENGE_DRAW_CARD_WIDTH,
+  DAILY_CHALLENGE_DRAW_CARD_HEIGHT,
+  DAILY_CHALLENGE_DRAW_CARD_TILT,
+  DAILY_CHALLENGE_LOOKBACK_MS,
+  DAILY_CHALLENGE_POSITIVE_COOLDOWN_MS,
+  DAILY_CHALLENGE_POPULAR_TEMPLATE_IDS,
+  DAILY_CHALLENGE_POPULAR_CUSTOM_PRICE_CAP_USD,
+  DAILY_CHALLENGE_STATUS,
+  FOCUS_VICTORY_THRESHOLD,
+  FOCUS_VICTORY_REWARD,
+  FOCUS_LOSS_THRESHOLD,
+  FOCUS_RECENT_WINDOW_MS,
+  FOCUS_RECENT_MIN_SPEND_COUNT,
+  CHALLENGE_REWARD_SCALE,
+  PUSH_NOTIFICATION_COOLDOWN_MS,
+  PUSH_DEDUPE_WINDOW_MS,
+  ACTIONABLE_NOTIFICATION_CATEGORY_ID,
+  NOTIFICATION_ACTION_SAVE,
+  NOTIFICATION_ACTION_SPEND,
+  WEEKLY_REPORT_WEEKDAY,
+  WEEKLY_REPORT_HOUR,
+  WEEKLY_REPORT_MINUTE,
+  REPORTS_WEEKLY_NOTIFICATION_DEDUPE,
+  DAILY_SUMMARY_RELEASE_HOUR,
+  DAILY_SUMMARY_RELEASE_MINUTE,
+  DAILY_SUMMARY_NOTIFICATION_DEDUPE,
+  FREE_DAY_EVENING_REMINDER_KIND,
+  FREE_DAY_EVENING_REMINDER_HOUR,
+  FREE_DAY_EVENING_REMINDER_MINUTE,
+  FREE_DAY_EVENING_REMINDER_DEDUPE_PREFIX,
+  DAILY_SUMMARY_DEEPLINK_ROUTE,
+} from "./src/constants/engagementConfig";
+import {
+  ECONOMY_RULES,
+  DEFAULT_REMOTE_IMAGE,
+  REMINDER_DAYS,
+  DAY_MS,
+  CHALLENGE_REPEAT_COOLDOWN_MS,
+  CHALLENGE_FAIL_COOLDOWN_MS,
+  HOUR_MS,
+  MINUTE_MS,
+  REWARD_RESET_INTERVAL_MS,
+  REMINDER_MS,
+  PENDING_EXTENSION_DAYS,
+  PENDING_EXTENSION_MS,
+  PENDING_REMINDER_LEAD_MS,
+  PENDING_REMINDER_GRACE_MS,
+  SAVE_SPAM_WINDOW_MS,
+  SAVED_TOTAL_RESET_GRACE_MS,
+  SAVE_SPAM_ITEM_LIMIT,
+  SAVE_SPAM_GLOBAL_LIMIT,
+  DAILY_SAVE_HARD_LIMIT,
+  NORTH_STAR_SAVE_THRESHOLD,
+  NORTH_STAR_WINDOW_MS,
+  SAVE_ACTION_COLOR,
+  SPEND_ACTION_COLOR,
+  COIN_ENTRY_SAVE_BACKGROUND,
+  COIN_ENTRY_SPEND_BACKGROUND,
+  GOAL_HIGHLIGHT_COLOR,
+  GOAL_SWIPE_THRESHOLD,
+  DELETE_SWIPE_THRESHOLD,
+  CHALLENGE_SWIPE_ACTION_WIDTH,
+  BASELINE_SAMPLE_USD,
+  CUSTOM_SPEND_SAMPLE_USD,
+  CUSTOM_SPEND_SAVINGS_RANGE,
+  CUSTOM_SPEND_MONTHLY_WEEKS,
+  RATING_PROMPT_DELAY_DAYS,
+  RATING_PROMPT_FOLLOWUP_DELAY_DAYS,
+  RATING_PROMPT_ACTION_THRESHOLD,
+  RATING_PROMPT_ACTION_TYPES,
+  ANDROID_REVIEW_URL,
+  ANDROID_REVIEW_WEB_URL,
+  IOS_REVIEW_URL,
+  IOS_REVIEW_WEB_URL,
+  IOS_MANAGE_SUBSCRIPTIONS_URL,
+  ANDROID_MANAGE_SUBSCRIPTIONS_URL,
+  RETENTION_MILESTONE_DAYS,
+  LTR_MARK,
+  RTL_CURRENCIES,
+  CURRENCY_RATES,
+  CURRENCY_REWARD_STEPS,
+  DEFAULT_COIN_SLIDER_MAX_USD,
+  MAX_TRANSACTION_AMOUNT_USD,
+  MAX_SAVED_BALANCE_USD,
+  COIN_SLIDER_VALUE_DEADBAND,
+  COIN_SLIDER_STATE_MIN_INTERVAL,
+  COIN_SLIDER_HAPTIC_COOLDOWN_MS,
+  COIN_ENTRY_MANUAL_DOUBLE_TAP_MS,
+  COIN_SLIDER_STEP_STICKINESS,
+  COIN_SLIDER_GESTURE_DEADBAND,
+  COIN_FILL_MIN_HEIGHT,
+  CURRENCY_SIGNS,
+  CURRENCY_FINE_STEPS,
+  CURRENCY_DISPLAY_PRECISION,
+} from "./src/constants/economyConfig";
+import {
+  TEMPTATION_SOFT_LIMIT,
+  TEMPTATION_HARD_LIMIT,
+  SCREEN_WIDTH,
+  SCREEN_HEIGHT,
+  SAVE_PROGRESS_BAR_WIDTH,
+  CTA_LETTER_SPACING,
+  scaleFontSize,
+  scaleLetterSpacing,
+  scaleTypographyOverrides,
+  MAX_MODAL_KEYBOARD_OFFSET,
+  OVERLAY_CARD_MAX_WIDTH,
+  IS_EXTRA_COMPACT_DEVICE,
+  IS_COMPACT_DEVICE,
+  IS_SHORT_DEVICE,
+  scaleTamagotchiMetric,
+  IS_ANDROID_COMPACT,
+  SAVE_COUNTER_DIGIT_HEIGHT,
+  SAVE_COUNTER_SPIN_LOOPS,
+  STREAK_COUNTER_DIGIT_HEIGHT,
+  STREAK_COUNTER_DIGIT_WIDTH,
+  STREAK_COUNTER_SPIN_LOOPS,
+  SAVE_PROGRESS_DELAY_MS,
+  SAVE_PROGRESS_PULSE_SCALE,
+  SAVE_COUNTDOWN_ZOOM_DELAY_AFTER_SPIN,
+  SAVE_COUNTDOWN_FINAL_HOLD_DELAY,
+  PROFILE_SUBTITLE_FONT_SIZE,
+  PROFILE_SUBTITLE_LINE_HEIGHT,
+  PROFILE_STAT_LABEL_FONT_SIZE,
+  PROFILE_STAT_LETTER_SPACING,
+  CHALLENGE_TITLE_FONT_SIZE,
+  CHALLENGE_DESC_FONT_SIZE,
+  CHALLENGE_LINE_HEIGHT,
+  CHALLENGE_META_FONT_SIZE,
+  COIN_SLIDER_SIZE,
+  COIN_REVEAL_SIZE,
+  COIN_FLIGHT_SIZE,
+} from "./src/constants/layoutConfig";
+import { PURCHASE_GOAL, FALLBACK_SAVE_ACTION_USD, FINANCIAL_QUOTES } from "./src/constants/financialQuotes";
+import {
+  CLASSIC_TAMAGOTCHI_ANIMATIONS,
+  TAMAGOTCHI_SKIN_OPTIONS,
+  TAMAGOTCHI_SKINS,
+  DEFAULT_TAMAGOTCHI_SKIN,
+} from "./src/constants/tamagotchiSkins";
 import {
   DEFAULT_LANGUAGE,
   FALLBACK_LANGUAGE,
   SUPPORTED_LANGUAGES,
   LANGUAGE_NATIVE_LABELS,
   normalizeLanguage,
+  isRtlLanguage,
   getLanguageDirection,
   getLanguageLabelKey,
   getFormatLocale,
   getShortLanguageKey,
+  resolveTranslationLanguage,
   localizeFallbackTextByLanguage,
   localizeDigitsForLanguage,
   localizeTextTreeDigits,
@@ -286,7 +627,7 @@ const DEFAULT_NOTIFICATION_ACTION_IDENTIFIER =
   Notifications?.DEFAULT_ACTION_IDENTIFIER ?? "default";
 
 let AndroidBlurView = null;
-if (Platform.OS !== "android") {
+if (Platform.OS === "android") {
   try {
     AndroidBlurView = require("@react-native-community/blur")?.BlurView || null;
   } catch (error) {
@@ -321,7 +662,6 @@ const hasInstalledHomeWidget = async () => {
   }
   return false;
 };
-const DAILY_SUMMARY_LIVE_ACTIVITY_ENABLED = false;
 const canControlDailySummaryLiveActivity = () => {
   if (!DAILY_SUMMARY_LIVE_ACTIVITY_ENABLED) return false;
   if (Platform.OS !== "ios") return false;
@@ -365,14 +705,6 @@ const endDailySummaryLiveActivitySafely = async () => {
   return false;
 };
 
-// Crashlytics: @react-native-community/blur can throw NPE in BlurViewManagerImpl.createViewInstance
-// on some Android devices. Keep community blur disabled on Android and use Expo blur path.
-const ANDROID_DIMEZIS_DISABLED = true;
-const ANDROID_BLUR_AUTO_UPDATE = false;
-const ANDROID_EXPO_BLUR_ENABLED = true;
-const ANDROID_EXPO_BLUR_REDUCTION_FACTOR = 1;
-
-const BLUR_VIEW_MANAGER_NAMES = ["ViewManagerAdapter_ExpoBlurView", "ExpoBlurView"];
 const isExpoBlurViewAvailable = () => {
   if (!UIManager) return false;
   if (typeof UIManager.getViewManagerConfig === "function") {
@@ -380,23 +712,30 @@ const isExpoBlurViewAvailable = () => {
   }
   return BLUR_VIEW_MANAGER_NAMES.some((name) => !!UIManager[name]);
 };
+const isAndroidExpoBlurAvailable = () =>
+  Platform.OS === "android" && ANDROID_EXPO_BLUR_ENABLED && isExpoBlurViewAvailable();
+const shouldUseAndroidCommunityBlur = () => {
+  if (Platform.OS !== "android" || !AndroidBlurView) return false;
+  if (!ANDROID_DIMEZIS_DISABLED) return true;
+  // Fallback to community blur on Android binaries where Expo blur manager is missing.
+  return !isAndroidExpoBlurAvailable();
+};
 const isBlurViewAvailable = () => {
   if (Platform.OS === "android") {
-    // Keep community blur disabled on Android and render Expo blur only when
-    // the native ExpoBlurView manager is actually available in this binary.
-    return ANDROID_EXPO_BLUR_ENABLED && isExpoBlurViewAvailable();
+    if (shouldUseAndroidCommunityBlur()) return true;
+    // On Android we keep Expo blur enabled even when manager detection is flaky.
+    return ANDROID_EXPO_BLUR_ENABLED;
   }
   return isExpoBlurViewAvailable();
 };
 
 const runLayoutAnimation = (preset = LayoutAnimation.Presets.easeInEaseOut) => {
   if (!LayoutAnimation || typeof LayoutAnimation.configureNext !== "function") return;
-  // Skip layout animations on Android when Dimezis blur is enabled to avoid pre-ordered draw crashes.
-  if (Platform.OS === "android" && !ANDROID_DIMEZIS_DISABLED) return;
+  // Skip layout animations when Android community blur is active to avoid pre-ordered draw crashes.
+  if (Platform.OS === "android" && shouldUseAndroidCommunityBlur()) return;
   LayoutAnimation.configureNext(preset);
 };
 
-const IOS_TRACKING_BLOCKED_STATUSES = new Set(["denied", "restricted"]);
 const isTrackingStatusBlocked = (status) => {
   if (!status || typeof status !== "string") return false;
   return IOS_TRACKING_BLOCKED_STATUSES.has(status.trim().toLowerCase());
@@ -417,198 +756,6 @@ const bootstrapMonitoring = (() => {
 // Keep native splash visible until our custom LogoSplash is ready.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-const STORAGE_KEYS = {
-  PURCHASES: "@almost_purchases",
-  PROFILE: "@almost_profile",
-  THEME: "@almost_theme",
-  PRO_THEME_ACCENT: "@almost_pro_theme_accent",
-  LANGUAGE: "@almost_language",
-  ONBOARDING: "@almost_onboarded",
-  TERMS_ACCEPTED: "@almost_terms_accepted",
-  CATALOG: "@almost_catalog_overrides",
-  PRICE_PRECISION_OVERRIDES: "@almost_price_precision_overrides",
-  TITLE_OVERRIDES: "@almost_title_overrides",
-  EMOJI_OVERRIDES: "@almost_emoji_overrides",
-  WISHES: "@almost_wishes",
-  SAVED_TOTAL: "@almost_saved_total",
-  SAVED_TOTAL_PROGRESS: "@almost_saved_total_progress",
-  LEVEL_PROGRESS_OFFSET: "@almost_level_progress_offset",
-  DECLINES: "@almost_declines",
-  PENDING: "@almost_pending",
-  FREE_DAY: "@almost_free_day_stats",
-  USAGE_STREAK: "@almost_usage_streak",
-  STREAK_PLEDGE: "@almost_streak_pledge",
-  DECISION_STATS: "@almost_decision_stats",
-  HISTORY: "@almost_history",
-  REFUSE_STATS: "@almost_refuse_stats",
-  REWARDS_CELEBRATED: "@almost_rewards_celebrated",
-  HEALTH: "@almost_health_points",
-  CLAIMED_REWARDS: "@almost_claimed_rewards",
-  REWARD_TOTAL: "@almost_reward_total",
-  ANALYTICS_OPT_OUT: "@almost_analytics_opt_out",
-  ANDROID_APPSFLYER_ENABLED: "@almost_android_appsflyer_enabled",
-  TEMPTATION_GOALS: "@almost_temptation_goals",
-  TEMPTATION_INTERACTIONS: "@almost_temptation_interactions",
-  CUSTOM_TEMPTATIONS: "@almost_custom_temptations",
-  HIDDEN_TEMPTATIONS: "@almost_hidden_temptations",
-  ARCHIVED_TEMPTATIONS: "@almost_archived_temptations",
-  IMPULSE_TRACKER: "@almost_impulse_tracker",
-  MOOD_STATE: "@almost_mood_state",
-  CHALLENGES: "@almost_challenges",
-  CHALLENGE_BADGES: "@almost_challenge_badges",
-  CUSTOM_REMINDER: "@almost_custom_reminder",
-  SMART_REMINDERS: "@almost_smart_reminders",
-  DAILY_NUDGES: "@almost_daily_nudges",
-  DAILY_NUDGE_SCHEDULE_SIGNATURE: "@almost_daily_nudge_schedule_signature",
-  LANGUAGE_CURRENCY_NUDGE: "@almost_language_currency_nudge",
-  TAMAGOTCHI: "@almost_tamagotchi_state",
-  TAMAGOTCHI_GREETING_DAY: "@almost_tamagotchi_greeting_day",
-  DAILY_SUMMARY: "@almost_daily_summary",
-  DAILY_SAVE_LIMIT: "@almost_daily_save_limit",
-  POTENTIAL_PUSH_PROGRESS: "@almost_potential_push_progress",
-  PUSH_NOTIFICATIONS_ENABLED_LOGGED: "@almost_push_notifications_enabled_logged",
-  HOME_WIDGET_INSTALLED_LOGGED: "@almost_home_widget_installed_logged",
-  PUSH_DAY_THREE_PROMPT: "@almost_push_day_three_prompt",
-  SPEND_LOGGING_REMINDER: "@almost_spend_logging_reminder",
-  TUTORIAL: "@almost_tutorial_state",
-  TUTORIAL_CARD_SHOWN: "tutorial_card_shown",
-  BUDGET_WIDGET_TUTORIAL: "@almost_budget_widget_tutorial",
-  HERO_CAROUSEL_WIGGLE_SWIPE_AT: "@almost_hero_carousel_wiggle_swipe_at",
-  HERO_CAROUSEL_WIGGLE_SEEN: "@almost_hero_carousel_wiggle_seen",
-  TEMPTATION_TUTORIAL: "@almost_temptation_cards_tutorial",
-  COIN_VALUE_MODAL: "@almost_coin_value_modal",
-  DAILY_CHALLENGE: "@almost_daily_challenge_state",
-  DAILY_CHALLENGE_COMPLETED_TOTAL: "@almost_daily_challenge_completed_total",
-  DAILY_REWARD: "@almost_daily_reward",
-  DAILY_REWARD_DAY_KEY: "@almost_daily_reward_day",
-  FOCUS_TARGET: "@almost_focus_target",
-  FOCUS_DIGEST: "@almost_focus_digest",
-  FOCUS_VICTORY_TOTAL: "@almost_focus_victory_total",
-  CATEGORY_OVERRIDES: "@almost_category_overrides",
-  CUSTOM_CATEGORIES: "@almost_custom_categories",
-  REMOVED_CATEGORIES: "@almost_removed_categories",
-  SAVINGS_CATEGORY_OVERRIDE: "@almost_savings_category_override",
-  CATEGORY_DEF_OVERRIDES: "@almost_category_def_overrides",
-  DESCRIPTION_OVERRIDES: "@almost_description_overrides",
-  FOCUS_DIGEST_PENDING: "@almost_focus_digest_pending",
-  CUSTOM_TEMPTATIONS_CREATED: "@almost_custom_temptations_created",
-  TAMAGOTCHI_SKIN: "@almost_tamagotchi_skin",
-  TAMAGOTCHI_SKINS_UNLOCKED: "@almost_tamagotchi_skins_unlocked",
-  TAMAGOTCHI_HUNGER_NOTIFICATIONS: "@almost_tamagotchi_hunger_notifications",
-  TAMAGOTCHI_HUNGER_DAILY_COUNT: "@almost_tamagotchi_hunger_daily_count",
-  TAMAGOTCHI_HUNGER_LAST_AT: "@almost_tamagotchi_hunger_last_at",
-  TAMAGOTCHI_MISS_YOU_NOTIFICATION: "@almost_tamagotchi_miss_you_notification",
-  TAMAGOTCHI_LAST_ACTIVE_AT: "@almost_tamagotchi_last_active_at",
-  SAVED_TOTAL_PEAK: "@almost_saved_total_peak",
-  SAVED_TOTAL_PROGRESS_PEAK: "@almost_saved_total_progress_peak",
-  LAST_CELEBRATED_LEVEL: "@almost_last_celebrated_level",
-  LEVEL_REACHED_LOGGED: "@almost_level_reached_logged",
-  ACTIVE_GOAL: "@almost_active_goal",
-  POTENTIAL_OPEN_SNAPSHOT: "@almost_potential_open_snapshot",
-  COIN_SLIDER_MAX: "@almost_coin_slider_max",
-  FAB_TUTORIAL: "@almost_fab_tutorial",
-  RATING_PROMPT: "@almost_rating_prompt",
-  NORTH_STAR_METRIC: "@almost_north_star_metric",
-  DAY_TWO_ACTIVITY: "@almost_day_two_activity",
-  DAY_THREE_ACTIVITY: "@almost_day_three_activity",
-  DAY_TWO_INCOME_PROMPT_DISMISSED: "@almost_day_two_income_prompt_dismissed",
-  RETENTION_ACTIVE_DAYS: "@almost_retention_active_days",
-  RETENTION_MILESTONES: "@almost_retention_milestones",
-  PRIMARY_TEMPTATION_PROMPT: "@almost_primary_temptation_prompt",
-  LAST_NOTIFICATION_AT: "@almost_last_notification_at",
-  SOUND_ENABLED: "@almost_sound_enabled",
-  REPORTS_BADGE: "@almost_reports_badge",
-  REPORTS_LAST_AUTO_WEEK: "@almost_reports_last_auto_week",
-  REPORTS_WEEKLY_NOTIFICATION: "@almost_reports_weekly_notification",
-  INCOME_ENTRIES: "@almost_income_entries",
-  BUDGET_LIMITS: "@almost_budget_limits",
-  INCOME_PROMPT: "@almost_income_prompt",
-  BUDGET_OVERSPEND: "@almost_budget_overspend",
-  DAILY_GOAL_COLLECTED: "@almost_daily_goal_collected",
-  PREMIUM_INSTALL_ID: "@almost_premium_install_id",
-  INSTALL_DATE: "install_date",
-  PREMIUM_SOFT_PAYWALL_SHOWN: "@almost_premium_soft_paywall_shown",
-  PREMIUM_HARD_PAYWALL_SHOWN: "@almost_premium_hard_paywall_shown",
-  PREMIUM_CHALLENGE_CLAIMS: "@almost_premium_challenge_claims",
-};
-
-const COIN_VALUE_MODAL_STATUS = {
-  PENDING: "pending",
-  SHOWN: "shown",
-};
-
-const CELEBRATION_OVERLAY_GAP_MS = 15000;
-const APP_RESUME_MODAL_GUARD_MS = 1500;
-
-const PURCHASE_GOAL = 20000;
-const FALLBACK_SAVE_ACTION_USD = 20;
-const FINANCIAL_QUOTES = [
-  {
-    id: "franklin",
-    en: "“A penny saved is a penny earned.” Benjamin Franklin",
-    ru: "«Сбережённый рубль равен заработанному.» Бенджамин Франклин",
-    es: "“Un centavo ahorrado es un centavo ganado.” Benjamin Franklin",
-    fr: "«Un sou économisé est un sou gagné.» Benjamin Franklin",
-  },
-  {
-    id: "seneca",
-    en: "“Wealth is the slave of a wise man and the master of a fool.” Seneca",
-    ru: "«Богатство служит мудрому и правит глупцом.» Сенека",
-    es: "“La riqueza es la esclava del sabio y la dueña del necio.” Séneca",
-    fr: "«La richesse est l'esclave du sage et la maîtresse du fou.» Sénèque",
-  },
-  {
-    id: "buffett",
-    en: "“Do not save what is left after spending; spend what is left after saving.” Warren Buffett",
-    ru: "«Не откладывай то, что осталось после расходов, трать то, что осталось после сбережений.» Уоррен Баффет",
-    es: "“No ahorres lo que quede después de gastar; gasta lo que quede después de ahorrar.” Warren Buffett",
-    fr: "«N'épargne pas ce qui reste après avoir dépensé, dépense ce qui reste après avoir épargné.» Warren Buffett",
-  },
-  {
-    id: "ramsey",
-    en: "“You must gain control over your money or the lack of it will forever control you.” Dave Ramsey",
-    ru: "«Либо ты управляешь деньгами, либо их отсутствие будет управлять тобой всегда.» Дейв Рэмси",
-    es: "“Debes controlar tu dinero o la falta de él te controlará para siempre.” Dave Ramsey",
-    fr: "«Prends le contrôle de ton argent sinon son absence te contrôlera pour toujours.» Dave Ramsey",
-  },
-  {
-    id: "orman",
-    en: "“A big part of financial freedom is having your heart and mind free from worry about the what-ifs of life.” Suze Orman",
-    ru: "«Финансовая свобода начинается, когда сердце и разум свободны от тревоги о том, что будет, если.» Сьюз Орман",
-    es: "“Gran parte de la libertad financiera es tener la mente y el corazón libres de preocuparse por los «qué pasaría si».” Suze Orman",
-    fr: "«Une grande part de la liberté financière consiste à avoir l'esprit et le cœur libérés des inquiétudes du et si.» Suze Orman",
-  },
-  {
-    id: "lynch",
-    en: "“Know what you own, and know why you own it.” Peter Lynch",
-    ru: "«Знай, чем владеешь, и понимай, зачем это тебе.» Питер Линч",
-    es: "“Sabe qué posees y por qué lo posees.” Peter Lynch",
-    fr: "«Sache ce que tu possèdes et pourquoi tu le possèdes.» Peter Lynch",
-  },
-  {
-    id: "jefferson",
-    en: "“Never spend your money before you have it.” Thomas Jefferson",
-    ru: "«Никогда не трать деньги раньше, чем они у тебя есть.» Томас Джефферсон",
-    es: "“Nunca gastes tu dinero antes de tenerlo.” Thomas Jefferson",
-    fr: "«Ne dépense jamais ton argent avant de l'avoir.» Thomas Jefferson",
-  },
-  {
-    id: "thatcher",
-    en: "“Pennies do not come from heaven. They have to be earned here on earth.” Margaret Thatcher",
-    ru: "«Монеты не падают с небес, их нужно заработать на земле.» Маргарет Тэтчер",
-    es: "“Los centavos no caen del cielo, hay que ganarlos aquí en la tierra.” Margaret Thatcher",
-    fr: "«Les pièces ne tombent pas du ciel, il faut les gagner ici-bas.» Margaret Thatcher",
-  },
-  {
-    id: "kiyosaki",
-    en: "“It's not how much money you make, but how much money you keep, how hard it works for you, and how many generations you keep it for.” Robert Kiyosaki",
-    ru: "«Важны не столько заработанные деньги, сколько то, сколько ты сохраняешь, как они работают на тебя и на сколько поколений их хватит.» Роберт Киосаки",
-    es: "“No importa cuánto dinero ganes, sino cuánto conservas, qué tan duro trabaja para ti y por cuántas generaciones lo mantienes.” Robert Kiyosaki",
-    fr: "«Ce n'est pas ce que tu gagnes qui compte mais ce que tu conserves, la façon dont cet argent travaille pour toi et le nombre de générations qui en profitent.» Robert Kiyosaki",
-  },
-];
-const MAX_ACTIVE_CHALLENGES = 3;
-const MAX_ACTIVE_GOALS = 5;
 const FREE_GOAL_LIMIT = FREE_PLAN_LIMITS.activeGoals;
 const FREE_PENDING_LIMIT = FREE_PLAN_LIMITS.activePendingCards || 2;
 const FREE_HISTORY_WINDOW_MS = FREE_PLAN_LIMITS.historyDays * 1000 * 60 * 60 * 24;
@@ -616,9 +763,6 @@ const FREE_TEMPTATION_CARD_LIMIT = FREE_PLAN_LIMITS.customTemptationCards;
 const FREE_CHALLENGE_CLAIMS_LIMIT = FREE_PLAN_LIMITS.challengeClaims;
 const FREE_REPORTS_WEEK_COUNT = FREE_PLAN_LIMITS.reportsWeeks;
 const FREE_REPORTS_MONTH_COUNT = FREE_PLAN_LIMITS.reportsMonths;
-const HARD_PAYWALL_DELAY_MS = 700;
-const PREMIUM_PAYWALL_REOPEN_GUARD_MS = 1200;
-const MODAL_HANDOFF_GUARD_MS = 450;
 const ANDROID_API_LEVEL =
   Platform.OS === "android"
     ? typeof Platform.Version === "string"
@@ -627,46 +771,6 @@ const ANDROID_API_LEVEL =
     : 0;
 const SHOULD_USE_ANDROID_LEGACY_MEDIA_PICKER =
   Platform.OS === "android" && ANDROID_API_LEVEL > 0 && ANDROID_API_LEVEL < 33;
-const CLASSIC_TAMAGOTCHI_ANIMATIONS = {
-  idle: require("./assets/Cat_idle.gif"),
-  curious: require("./assets/Cat_curious.gif"),
-  follow: require("./assets/Cat_follows.gif"),
-  speak: require("./assets/Cat_speaks.gif"),
-  happy: require("./assets/Cat_happy.gif"),
-  happyHeadshake: require("./assets/Cat_happy_headshake.gif"),
-  sad: require("./assets/Cat_sad.gif"),
-  ohno: require("./assets/Cat_oh_oh.gif"),
-  cry: require("./assets/Cat_cry.gif"),
-  waving: require("./assets/Cat_waving.gif"),
-};
-const GREEN_TAMAGOTCHI_ANIMATIONS = {
-  idle: require("./assets/tamagotchi_skins/green/Cat_idle.gif"),
-  curious: require("./assets/tamagotchi_skins/green/Cat_curious.gif"),
-  follow: require("./assets/tamagotchi_skins/green/Cat_follows.gif"),
-  speak: require("./assets/tamagotchi_skins/green/Cat_speaks.gif"),
-  happy: require("./assets/tamagotchi_skins/green/Cat_happy.gif"),
-  happyHeadshake: require("./assets/tamagotchi_skins/green/Cat_happy_headshake.gif"),
-  sad: require("./assets/tamagotchi_skins/green/Cat_sad.gif"),
-  ohno: require("./assets/tamagotchi_skins/green/Cat_oh_oh.gif"),
-  cry: require("./assets/tamagotchi_skins/green/Cat_cry.gif"),
-  waving: require("./assets/tamagotchi_skins/green/Cat_waving.gif"),
-};
-const TEAL_TAMAGOTCHI_ANIMATIONS = {
-  idle: require("./assets/tamagotchi_skins/teal/Cat_idle.gif"),
-  curious: require("./assets/tamagotchi_skins/teal/Cat_curious.gif"),
-  follow: require("./assets/tamagotchi_skins/teal/Cat_follows.gif"),
-  speak: require("./assets/tamagotchi_skins/teal/Cat_speaks.gif"),
-  happy: require("./assets/tamagotchi_skins/teal/Cat_happy.gif"),
-  happyHeadshake: require("./assets/tamagotchi_skins/teal/Cat_happy_headshake.gif"),
-  sad: require("./assets/tamagotchi_skins/teal/Cat_sad.gif"),
-  ohno: require("./assets/tamagotchi_skins/teal/Cat_oh_oh.gif"),
-  cry: require("./assets/tamagotchi_skins/teal/Cat_cry.gif"),
-  waving: require("./assets/tamagotchi_skins/teal/Cat_waving.gif"),
-};
-const PENDING_COUNTDOWN_FAST_MS = 1000;
-const PENDING_BADGE_TICK_MS = 60000;
-const PERSIST_DEBOUNCE_MS = 400;
-const STORM_OVERLAY_DURATION_MS = 6000;
 
 const stripEmojis = (text = "") =>
   text
@@ -705,6 +809,42 @@ const normalizeMonetizationToken = (value = "", fallback = "unknown") => {
     .replace(/^_+|_+$/g, "");
   if (!normalized) return fallback;
   return normalized.slice(0, 40);
+};
+const PREMIUM_PRODUCT_NOT_FOUND_REASON_TOKENS = new Set([
+  "package_unavailable",
+  "package_plan_mismatch",
+  "product_not_found",
+  "product_unavailable",
+  "product_not_available",
+  "item_unavailable",
+  "store_product_not_available",
+]);
+const PREMIUM_PRODUCT_NOT_FOUND_ERROR_TOKENS = [
+  "product_not_available",
+  "product_unavailable",
+  "item_unavailable",
+  "item_not_found",
+  "product_not_found",
+  "store_product_not_available",
+  "sku_not_found",
+  "no_sku",
+];
+const isPremiumProductNotFoundFailure = ({ reason = "", errorCode = "", productId = "" } = {}) => {
+  const normalizedReason = normalizeMonetizationToken(reason, "");
+  const normalizedErrorCode = normalizeMonetizationToken(errorCode, "");
+  const normalizedProductId = normalizeMonetizationToken(productId, "");
+  if (PREMIUM_PRODUCT_NOT_FOUND_REASON_TOKENS.has(normalizedReason)) return true;
+  if (
+    PREMIUM_PRODUCT_NOT_FOUND_ERROR_TOKENS.some(
+      (token) => normalizedReason.includes(token) || normalizedErrorCode.includes(token)
+    )
+  ) {
+    return true;
+  }
+  if ((!normalizedProductId || normalizedProductId === "unknown" || normalizedProductId === "none") && normalizedReason) {
+    return normalizedReason !== "cancelled";
+  }
+  return false;
 };
 const hashAnalyticsText = (value = "") => {
   const normalized = String(value || "").trim().toLowerCase().slice(0, 160);
@@ -746,6 +886,118 @@ const parseMonetizationBoolean = (value) => {
     if (normalized === "false" || normalized === "0" || normalized === "no") return false;
   }
   return null;
+};
+const parseMonetizationDateMs = (value = "") => {
+  const normalized = resolveNonEmptyString(value);
+  if (!normalized) return 0;
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+const PREMIUM_CACHE_EXPIRATION_GRACE_MS = 6 * 60 * 60 * 1000;
+const isCachedPremiumLossConfirmed = ({ isPremium = false, entitlement = null, now = Date.now() } = {}) => {
+  if (!isPremium) return false;
+  if (!entitlement || typeof entitlement !== "object") return false;
+  const expirationDateMs = parseMonetizationDateMs(
+    entitlement?.expirationDate ||
+      entitlement?.expiration_date ||
+      entitlement?.expiresDate ||
+      entitlement?.expires_date ||
+      ""
+  );
+  if (!expirationDateMs) return false;
+  const willRenew = parseMonetizationBoolean(
+    entitlement?.willRenew ??
+      entitlement?.will_renew ??
+      entitlement?.isAutoRenewing ??
+      entitlement?.is_auto_renewing
+  );
+  // Confirm downgrade from cache only for explicitly non-renewing entitlements.
+  if (willRenew !== false) return false;
+  return now >= expirationDateMs + PREMIUM_CACHE_EXPIRATION_GRACE_MS;
+};
+const createCachedPremiumEntitlement = (entitlement = null) => {
+  if (!entitlement || typeof entitlement !== "object") return null;
+  const identifier = resolveNonEmptyString(entitlement?.identifier || "premium");
+  const productIdentifier = resolveNonEmptyString(
+    entitlement?.productIdentifier || entitlement?.productId || entitlement?.product_id || ""
+  );
+  const periodType = resolveNonEmptyString(
+    entitlement?.periodType ||
+      entitlement?.period_type ||
+      entitlement?.periodTypeIdentifier ||
+      entitlement?.period_type_identifier ||
+      ""
+  );
+  const expirationDate = resolveNonEmptyString(
+    entitlement?.expirationDate ||
+      entitlement?.expiration_date ||
+      entitlement?.expiresDate ||
+      entitlement?.expires_date ||
+      ""
+  );
+  const latestPurchaseDate = resolveNonEmptyString(
+    entitlement?.latestPurchaseDate || entitlement?.latest_purchase_date || ""
+  );
+  const willRenew = parseMonetizationBoolean(
+    entitlement?.willRenew ??
+      entitlement?.will_renew ??
+      entitlement?.isAutoRenewing ??
+      entitlement?.is_auto_renewing
+  );
+  const normalizedEntitlement = {
+    identifier: identifier || "premium",
+    isActive: true,
+    source: "cache",
+  };
+  if (productIdentifier) normalizedEntitlement.productIdentifier = productIdentifier;
+  if (periodType) normalizedEntitlement.periodType = periodType;
+  if (expirationDate) normalizedEntitlement.expirationDate = expirationDate;
+  if (latestPurchaseDate) normalizedEntitlement.latestPurchaseDate = latestPurchaseDate;
+  if (willRenew !== null) normalizedEntitlement.willRenew = willRenew;
+  return normalizedEntitlement;
+};
+const buildPremiumStateCachePayload = (premiumState = null) => {
+  const isPremium = !!premiumState?.isPremium;
+  const entitlement = createCachedPremiumEntitlement(premiumState?.entitlement || null);
+  return {
+    version: 1,
+    savedAt: Date.now(),
+    isPremium,
+    entitlement: isPremium
+      ? entitlement || { identifier: "premium", isActive: true, source: "cache" }
+      : null,
+  };
+};
+const parsePremiumStateCache = (rawValue = null) => {
+  if (typeof rawValue !== "string" || !rawValue.trim()) return null;
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (!parsed || typeof parsed !== "object") return null;
+    const isPremium = parseMonetizationBoolean(parsed?.isPremium) === true;
+    const entitlement = createCachedPremiumEntitlement(parsed?.entitlement || null);
+    const confirmedLoss = isCachedPremiumLossConfirmed({
+      isPremium,
+      entitlement,
+    });
+    if (confirmedLoss) {
+      return {
+        isPremium: false,
+        entitlement: null,
+        savedAt: Number(parsed?.savedAt) || 0,
+        confirmedLoss: true,
+      };
+    }
+    return {
+      isPremium,
+      entitlement: isPremium
+        ? entitlement || { identifier: "premium", isActive: true, source: "cache" }
+        : null,
+      savedAt: Number(parsed?.savedAt) || 0,
+      confirmedLoss: false,
+    };
+  } catch (error) {
+    return null;
+  }
 };
 const resolveSubscriptionEntryByProductIdentifier = (customerInfo = null, productIdentifier = "") => {
   if (!customerInfo || typeof customerInfo !== "object") return null;
@@ -930,44 +1182,6 @@ const resolveMonetizationLanguage = (language = "en") => {
   }
   return "en";
 };
-const PAYWALL_PLAN_LABEL_BY_LANGUAGE = {
-  yearly: {
-    ru: "Год",
-    en: "Yearly",
-    es: "Anual",
-    fr: "Annuel",
-    de: "Jährlich",
-    ar: "سنوي",
-    zh: "年付",
-  },
-  monthly: {
-    ru: "Месяц",
-    en: "Monthly",
-    es: "Mensual",
-    fr: "Mensuel",
-    de: "Monatlich",
-    ar: "شهري",
-    zh: "月付",
-  },
-  lifetime: {
-    ru: "Навсегда",
-    en: "Lifetime",
-    es: "De por vida",
-    fr: "À vie",
-    de: "Lebenslang",
-    ar: "مدى الحياة",
-    zh: "终身",
-  },
-  premium: {
-    ru: "Premium",
-    en: "Premium",
-    es: "Premium",
-    fr: "Premium",
-    de: "Premium",
-    ar: "Premium",
-    zh: "Premium",
-  },
-};
 const resolvePlanLabel = (planId, language = "en") => {
   const lang = resolveMonetizationLanguage(language);
   const normalizedPlanId = planId === "yearly" || planId === "monthly" || planId === "lifetime" ? planId : "premium";
@@ -977,123 +1191,6 @@ const resolvePlanLabel = (planId, language = "en") => {
       "Premium",
     lang
   );
-};
-const PAYWALL_SAVE_BADGE_TEMPLATE_BY_LANGUAGE = {
-  ru: "Экономия {{percent}}%",
-  en: "Save {{percent}}%",
-  es: "Ahorra {{percent}}%",
-  fr: "Économisez {{percent}}%",
-  de: "Spare {{percent}}%",
-  ar: "وفّر {{percent}}%",
-  zh: "省 {{percent}}%",
-};
-const PAYWALL_TRIAL_BADGE_BY_LANGUAGE = {
-  ru: "Пробный период",
-  en: "Free trial",
-  es: "Prueba gratis",
-  fr: "Essai gratuit",
-  de: "Kostenlos testen",
-  ar: "تجربة مجانية",
-  zh: "免费试用",
-};
-const PAYWALL_EQUIVALENT_SOURCE_IDS = [
-  "coffee_to_go",
-  "netflix_subscription",
-  "croissant_break",
-  "fancy_latte",
-  "pizza",
-  "late_night_takeout",
-  "movie_premiere_combo",
-  "cocktail_night",
-  "comfort_utilities",
-  "beauty_box",
-  "grooming_upgrade_set",
-  "studio_pass",
-  "rent_upgrade",
-];
-const PAYWALL_YEAR_SUFFIX_BY_LANGUAGE = {
-  ru: "/год",
-  en: "/yr",
-  es: "/año",
-  fr: "/an",
-  de: "/Jahr",
-  ar: "/سنة",
-  zh: "/年",
-};
-const PAYWALL_MONTH_SUFFIX_BY_LANGUAGE = {
-  ru: "/мес",
-  en: "/mo",
-  es: "/mes",
-  fr: "/mois",
-  de: "/Monat",
-  ar: "/شهر",
-  zh: "/月",
-};
-const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
-  yearly: {
-    ru: "Списание раз в год",
-    en: "Billed yearly",
-    es: "Facturado anualmente",
-    fr: "Facturé annuellement",
-    de: "Jährliche Abrechnung",
-    ar: "يتم الفوترة سنوياً",
-    zh: "按年计费",
-  },
-  monthly: {
-    ru: "Списание каждый месяц",
-    en: "Billed monthly",
-    es: "Facturado mensualmente",
-    fr: "Facturé mensuellement",
-    de: "Monatliche Abrechnung",
-    ar: "يتم الفوترة شهرياً",
-    zh: "按月计费",
-  },
-  lifetime: {
-    ru: "Разовый платеж",
-    en: "One-time purchase",
-    es: "Pago único",
-    fr: "Achat unique",
-    de: "Einmaliger Kauf",
-    ar: "شراء لمرة واحدة",
-    zh: "一次性购买",
-  },
-};
-const PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE = {
-  ru: {
-    monthly: "≈ {{emoji}} {{count}} × {{item}} в месяц",
-    yearly: "≈ {{emoji}} {{count}} × {{item}} в год",
-    lifetime: "≈ {{emoji}} {{count}} × {{item}} разово",
-  },
-  en: {
-    monthly: "≈ {{emoji}} {{count}}x {{item}} / month",
-    yearly: "≈ {{emoji}} {{count}}x {{item}} / year",
-    lifetime: "≈ {{emoji}} {{count}}x {{item}} one-time",
-  },
-  es: {
-    monthly: "≈ {{emoji}} {{count}}x {{item}} / mes",
-    yearly: "≈ {{emoji}} {{count}}x {{item}} / año",
-    lifetime: "≈ {{emoji}} {{count}}x {{item}} una vez",
-  },
-  fr: {
-    monthly: "≈ {{emoji}} {{count}}x {{item}} / mois",
-    yearly: "≈ {{emoji}} {{count}}x {{item}} / an",
-    lifetime: "≈ {{emoji}} {{count}}x {{item}} une fois",
-  },
-  de: {
-    monthly: "≈ {{emoji}} {{count}}x {{item}} / Monat",
-    yearly: "≈ {{emoji}} {{count}}x {{item}} / Jahr",
-    lifetime: "≈ {{emoji}} {{count}}x {{item}} einmalig",
-  },
-  ar: {
-    monthly: "≈ {{emoji}} {{count}}× {{item}} / شهر",
-    yearly: "≈ {{emoji}} {{count}}× {{item}} / سنة",
-    lifetime: "≈ {{emoji}} {{count}}× {{item}} لمرة واحدة",
-  },
-  zh: {
-    monthly: "≈ {{emoji}} {{count}}×{{item}} / 月",
-    yearly: "≈ {{emoji}} {{count}}×{{item}} / 年",
-    lifetime: "≈ {{emoji}} {{count}}×{{item}} 一次性",
-  },
 };
 const DEFAULT_TEMPTATION_BY_ID = new Map(DEFAULT_TEMPTATIONS.map((item) => [item.id, item]));
 const parseLocalizedPriceValue = (value) => {
@@ -1121,12 +1218,6 @@ const parseLocalizedPriceValue = (value) => {
   }
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
-};
-const PAYWALL_PERIOD_UNIT_TO_DAYS = {
-  DAY: 1,
-  WEEK: 7,
-  MONTH: 30,
-  YEAR: 365,
 };
 const normalizePaywallPeriodUnit = (value = "") => {
   const normalized = String(value || "").trim().toUpperCase();
@@ -1232,33 +1323,6 @@ const resolveFrenchFreeWord = (count = 0) => {
   const absolute = Math.abs(Math.round(Number(count) || 0));
   return absolute === 1 ? "gratuit" : "gratuits";
 };
-const PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE = {
-  ru: "попробовать бесплатно",
-  en: "Try for free",
-  es: "probar gratis",
-  fr: "essayer gratuitement",
-  de: "Kostenlos testen",
-  ar: "جرّب مجاناً",
-  zh: "免费试用",
-};
-const PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE = {
-  ru: "Потом",
-  en: "Then",
-  es: "Luego",
-  fr: "Puis",
-  de: "Dann",
-  ar: "ثم",
-  zh: "随后",
-};
-const PAYWALL_NOW_PREFIX_BY_LANGUAGE = {
-  ru: "Сейчас",
-  en: "Now",
-  es: "Ahora",
-  fr: "Maintenant",
-  de: "Jetzt",
-  ar: "الآن",
-  zh: "现在",
-};
 const buildPaywallTrialLabel = ({ days = 0, language = "en" } = {}) => {
   const normalizedDays = Math.max(0, Math.round(Number(days) || 0));
   if (!normalizedDays) return "";
@@ -1283,8 +1347,6 @@ const buildPaywallTrialLabel = ({ days = 0, language = "en" } = {}) => {
   }
   return localizeFallbackTextByLanguage(`${normalizedDays}-day free trial`, lang);
 };
-const PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS = null;
-const PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS = null;
 const buildPaywallTrialCtaLabel = ({ days = 0, language = "en" } = {}) => {
   const normalizedDays = Math.max(0, Math.round(Number(days) || 0));
   const lang = resolveMonetizationLanguage(language);
@@ -1373,9 +1435,6 @@ const buildPaywallTrialNotice = ({
     lang
   );
 };
-const PAYWALL_SAR_MARKERS_REGEX = /(﷼|sar|ر\.?\s*س\.?|ريال(?:ات)?)/gi;
-const PAYWALL_BIDI_MARKS_REGEX = /[\u200e\u200f\u061c]/g;
-const PAYWALL_DIGIT_FRAGMENT_REGEX = /[0-9\u0660-\u0669][0-9\u0660-\u0669\s.,]*/;
 const normalizePaywallPriceLabel = (value, currencyCode = DEFAULT_PROFILE.currency) => {
   if (value === undefined || value === null) return "";
   const raw = String(value).trim();
@@ -1487,44 +1546,6 @@ const buildPaywallSaveBadge = ({ percent = 0, language = "en" } = {}) => {
     lang
   );
 };
-const PAYWALL_ALERT_COPY = {
-  missingAndroidApiKey: {
-    ru: "Не найден EXPO_PUBLIC_RC_ANDROID_API_KEY. Добавьте переменную в Expo Environment Variables (preview/production), пересоберите приложение и повторите попытку.",
-    en: "Missing EXPO_PUBLIC_RC_ANDROID_API_KEY. Add it to Expo Environment Variables (preview/production), rebuild the app, and try again.",
-    es: "Falta EXPO_PUBLIC_RC_ANDROID_API_KEY. Añádela en Expo Environment Variables (preview/production), recompila la app e inténtalo de nuevo.",
-    fr: "EXPO_PUBLIC_RC_ANDROID_API_KEY est manquante. Ajoutez-la dans Expo Environment Variables (preview/production), reconstruisez l'app puis réessayez.",
-  },
-  packageUnavailable: {
-    ru: "Покупка пока недоступна: пакет не найден в сторе. Проверьте RevenueCat Offering.",
-    en: "Purchase is unavailable: package was not found in store offerings.",
-    es: "La compra no está disponible: no se encontró el paquete en las ofertas de la tienda.",
-    fr: "L'achat n'est pas disponible : le package est introuvable dans les offres du store.",
-  },
-  purchaseFailed: {
-    ru: "Не удалось завершить покупку. Попробуйте снова.",
-    en: "Could not finish the purchase. Please try again.",
-    es: "No se pudo completar la compra. Inténtalo de nuevo.",
-    fr: "Impossible de finaliser l'achat. Réessayez.",
-  },
-  restoreFailed: {
-    ru: "Не удалось восстановить покупки.",
-    en: "Could not restore purchases.",
-    es: "No se pudieron restaurar las compras.",
-    fr: "Impossible de restaurer les achats.",
-  },
-  noActiveSubscriptionIos: {
-    ru: "Активная подписка не найдена. Проверьте Apple ID в Sandbox и повторите попытку.",
-    en: "No active subscription was found. Verify your Sandbox Apple ID and try again.",
-    es: "No se encontró una suscripción activa. Verifica tu Apple ID de Sandbox e inténtalo de nuevo.",
-    fr: "Aucun abonnement actif n'a été trouvé. Vérifiez votre identifiant Apple Sandbox puis réessayez.",
-  },
-  noActiveSubscriptionAndroid: {
-    ru: "Активная подписка не найдена. Проверьте Google Play тестовый аккаунт и повторите попытку.",
-    en: "No active subscription was found. Verify your Google Play test account and try again.",
-    es: "No se encontró una suscripción activa. Verifica tu cuenta de pruebas de Google Play e inténtalo de nuevo.",
-    fr: "Aucun abonnement actif n'a été trouvé. Vérifiez votre compte test Google Play puis réessayez.",
-  },
-};
 const resolvePaywallAlertCopy = (key, language = "en") => {
   const lang = resolveMonetizationLanguage(language);
   return localizeFallbackTextByLanguage(
@@ -1532,248 +1553,6 @@ const resolvePaywallAlertCopy = (key, language = "en") => {
     lang
   );
 };
-const YELLOW_TAMAGOTCHI_ANIMATIONS = {
-  idle: require("./assets/tamagotchi_skins/yellow/Cat_idle.gif"),
-  curious: require("./assets/tamagotchi_skins/yellow/Cat_curious.gif"),
-  follow: require("./assets/tamagotchi_skins/yellow/Cat_follows.gif"),
-  speak: require("./assets/tamagotchi_skins/yellow/Cat_speaks.gif"),
-  happy: require("./assets/tamagotchi_skins/yellow/Cat_happy.gif"),
-  happyHeadshake: require("./assets/tamagotchi_skins/yellow/Cat_happy_headshake.gif"),
-  sad: require("./assets/tamagotchi_skins/yellow/Cat_sad.gif"),
-  ohno: require("./assets/tamagotchi_skins/yellow/Cat_oh_oh.gif"),
-  cry: require("./assets/tamagotchi_skins/yellow/Cat_cry.gif"),
-  waving: require("./assets/tamagotchi_skins/yellow/Cat_waving.gif"),
-};
-const PURPLE_TAMAGOTCHI_ANIMATIONS = {
-  idle: require("./assets/tamagotchi_skins/purple/Cat_idle.gif"),
-  curious: require("./assets/tamagotchi_skins/purple/Cat_curious.gif"),
-  follow: require("./assets/tamagotchi_skins/purple/Cat_follows.gif"),
-  speak: require("./assets/tamagotchi_skins/purple/Cat_speaks.gif"),
-  happy: require("./assets/tamagotchi_skins/purple/Cat_happy.gif"),
-  happyHeadshake: require("./assets/tamagotchi_skins/purple/Cat_happy_headshake.gif"),
-  sad: require("./assets/tamagotchi_skins/purple/Cat_sad.gif"),
-  ohno: require("./assets/tamagotchi_skins/purple/Cat_oh_oh.gif"),
-  cry: require("./assets/tamagotchi_skins/purple/Cat_cry.gif"),
-  waving: require("./assets/tamagotchi_skins/purple/Cat_waving.gif"),
-};
-const TAMAGOTCHI_SKIN_OPTIONS = [
-  {
-    id: "classic",
-    label: { ru: "Классический", en: "Classic", es: "Clásico", fr: "Classique" },
-    description: {
-      ru: "Знакомый образ Алми",
-      en: "The original Almi look",
-      es: "El estilo original de Almi",
-      fr: "Le look original d'Almi",
-    },
-    preview: require("./assets/Cat_mascot.png"),
-    avatar: require("./assets/Cat_mascot.png"),
-    animations: CLASSIC_TAMAGOTCHI_ANIMATIONS,
-  },
-  {
-    id: "green",
-    label: { ru: "Лесной", en: "Forest", es: "Verde bosque", fr: "Forêt" },
-    description: {
-      ru: "Мятный исследователь",
-      en: "Mint explorer",
-      es: "Explorador mentolado",
-      fr: "Exploratrice mentholée",
-    },
-    preview: require("./assets/tamagotchi_skins/green/Cat_idle.gif"),
-    avatar: require("./assets/tamagotchi_skins/green/Cat_idle.gif"),
-    animations: GREEN_TAMAGOTCHI_ANIMATIONS,
-  },
-  {
-    id: "teal",
-    label: { ru: "Лазурный", en: "Teal breeze", es: "Brisa turquesa", fr: "Brise turquoise" },
-    description: {
-      ru: "Свежий морской оттенок",
-      en: "Ocean breeze palette",
-      es: "Paleta brisa marina",
-      fr: "Palette brise océane",
-    },
-    preview: require("./assets/tamagotchi_skins/teal/Cat_idle.gif"),
-    avatar: require("./assets/tamagotchi_skins/teal/Cat_idle.gif"),
-    animations: TEAL_TAMAGOTCHI_ANIMATIONS,
-  },
-  {
-    id: "yellow",
-    label: { ru: "Солнечный", en: "Sunny", es: "Amarillo brillante", fr: "Ensoleillé" },
-    description: {
-      ru: "Тёплый и энергичный",
-      en: "Bright and energising",
-      es: "Cálido y lleno de energía",
-      fr: "Chaud et plein d'énergie",
-    },
-    preview: require("./assets/tamagotchi_skins/yellow/Cat_idle.gif"),
-    avatar: require("./assets/tamagotchi_skins/yellow/Cat_idle.gif"),
-    animations: YELLOW_TAMAGOTCHI_ANIMATIONS,
-  },
-  {
-    id: "purple",
-    label: { ru: "Сиреневый", en: "Lavender", es: "Lavanda", fr: "Lavande" },
-    description: {
-      ru: "Немного загадочный",
-      en: "A dreamy violet vibe",
-      es: "Un toque violeta soñador",
-      fr: "Une touche violette rêveuse",
-    },
-    preview: require("./assets/tamagotchi_skins/purple/Cat_idle.gif"),
-    avatar: require("./assets/tamagotchi_skins/purple/Cat_idle.gif"),
-    animations: PURPLE_TAMAGOTCHI_ANIMATIONS,
-  },
-];
-const TAMAGOTCHI_SKINS = TAMAGOTCHI_SKIN_OPTIONS.reduce((acc, skin) => {
-  acc[skin.id] = skin;
-  return acc;
-}, {});
-const DEFAULT_TAMAGOTCHI_SKIN = "classic";
-const SUPPORT_EMAIL = "almostappsup@gmail.com";
-const INSTAGRAM_URL =
-  "https://www.instagram.com/almostsavings?igsh=YzZ5aXB5YWd5ODZy&utm_source=qr";
-const FACEBOOK_APP_ID = "1653035139013896";
-const HEALTH_COIN_TIERS = [
-  { id: "green", value: 1, asset: require("./assets/coins/Coin_green.png") },
-  { id: "blue", value: 10, asset: require("./assets/coins/Coin_blue.png") },
-  { id: "orange", value: 100, asset: require("./assets/coins/Coin_orange.png") },
-  { id: "red", value: 1000, asset: require("./assets/coins/Coin_red.png") },
-  { id: "pink", value: 10000, asset: require("./assets/coins/Coin_pink.png") },
-];
-const BLUE_HEALTH_COIN_TIER =
-  HEALTH_COIN_TIERS.find((tier) => tier.id === "blue") || HEALTH_COIN_TIERS[1];
-const GREEN_HEALTH_COIN_TIER =
-  HEALTH_COIN_TIERS.find((tier) => tier.id === "green") || HEALTH_COIN_TIERS[0];
-const BLUE_HEALTH_COIN_ASSET = BLUE_HEALTH_COIN_TIER?.asset || null;
-const BLUE_HEALTH_COIN_VALUE = BLUE_HEALTH_COIN_TIER?.value || 10;
-const GREEN_HEALTH_COIN_ASSET = GREEN_HEALTH_COIN_TIER?.asset || null;
-const GOAL_COMPLETION_REWARD_COINS = 5;
-const GOAL_COMPLETION_REWARD_TIER = BLUE_HEALTH_COIN_TIER || HEALTH_COIN_TIERS[1];
-const GOAL_COMPLETION_REWARD_VALUE =
-  GOAL_COMPLETION_REWARD_COINS * (GOAL_COMPLETION_REWARD_TIER?.value || 1);
-const TEMPTATION_SOFT_LIMIT = 150;
-const TEMPTATION_HARD_LIMIT = 200;
-const SCREEN_WIDTH = Dimensions.get("window").width;
-const SCREEN_HEIGHT = Dimensions.get("window").height;
-const SAVE_PROGRESS_BAR_WIDTH = Math.min(SCREEN_WIDTH - 80, 340);
-const CTA_LETTER_SPACING = 0.4;
-const FONT_SCALE = typeof PixelRatio.getFontScale === "function" ? PixelRatio.getFontScale() : 1;
-const IS_EXTRA_COMPACT_DEVICE = SCREEN_WIDTH <= 375 || (SCREEN_WIDTH <= 390 && FONT_SCALE > 1.1);
-const TYPOGRAPHY_SCALE = IS_EXTRA_COMPACT_DEVICE ? 0.92 : 1;
-const scaleFontSize = (value) =>
-  typeof value === "number" ? Number((value * TYPOGRAPHY_SCALE).toFixed(2)) : value;
-const scaleLetterSpacing = (value) =>
-  typeof value === "number" ? Number((value * TYPOGRAPHY_SCALE).toFixed(3)) : value;
-const scaleTypographyOverrides = (overrides = {}) => {
-  if (!overrides || typeof overrides !== "object") return overrides;
-  let next = overrides;
-  const applyScaled = (key, scaleFn) => {
-    if (typeof overrides[key] === "number") {
-      if (next === overrides) next = { ...overrides };
-      next[key] = scaleFn(overrides[key]);
-    }
-  };
-  applyScaled("fontSize", scaleFontSize);
-  applyScaled("lineHeight", scaleFontSize);
-  applyScaled("letterSpacing", scaleLetterSpacing);
-  return next;
-};
-// Limit how far dialog-style cards can move when the keyboard is visible.
-const MAX_MODAL_KEYBOARD_OFFSET = Math.min(SCREEN_HEIGHT * 0.45, 360);
-const OVERLAY_CARD_MAX_WIDTH = Math.min(SCREEN_WIDTH - 40, 440);
-const IS_COMPACT_DEVICE = SCREEN_WIDTH <= 380;
-const IS_SHORT_DEVICE = SCREEN_HEIGHT <= 740;
-const TAMAGOTCHI_LAYOUT_SCALE = Math.max(0.68, Math.min(1, SCREEN_HEIGHT / 980));
-const scaleTamagotchiMetric = (value, min = 0) =>
-  Math.max(min, Math.round((Number(value) || 0) * TAMAGOTCHI_LAYOUT_SCALE));
-const IS_ANDROID_COMPACT = Platform.OS === "android" && (IS_COMPACT_DEVICE || IS_SHORT_DEVICE);
-const SAVE_COUNTER_DIGIT_HEIGHT = 64;
-const SAVE_COUNTER_SPIN_LOOPS = 2;
-const STREAK_COUNTER_DIGIT_HEIGHT = IS_SHORT_DEVICE ? 90 : 112;
-const STREAK_COUNTER_DIGIT_WIDTH = IS_SHORT_DEVICE ? 60 : 76;
-const STREAK_COUNTER_SPIN_LOOPS = 2;
-const SAVE_PROGRESS_DELAY_MS = 800;
-const SAVE_PROGRESS_PULSE_SCALE = 1.08;
-const SAVE_COUNTDOWN_ZOOM_DELAY_AFTER_SPIN = 1500;
-const SAVE_COUNTDOWN_FINAL_HOLD_DELAY = 2600;
-const PROFILE_SUBTITLE_FONT_SIZE = scaleFontSize(IS_COMPACT_DEVICE ? 12 : 13);
-const PROFILE_SUBTITLE_LINE_HEIGHT = scaleFontSize(IS_COMPACT_DEVICE ? 16 : 18);
-const PROFILE_STAT_LABEL_FONT_SIZE = scaleFontSize(IS_COMPACT_DEVICE ? 8.5 : 10);
-const PROFILE_STAT_LETTER_SPACING = scaleLetterSpacing(
-  IS_COMPACT_DEVICE ? CTA_LETTER_SPACING * 0.6 : CTA_LETTER_SPACING * 0.8
-);
-const CHALLENGE_TITLE_FONT_SIZE = scaleFontSize(IS_COMPACT_DEVICE ? 15 : 16);
-const CHALLENGE_DESC_FONT_SIZE = scaleFontSize(IS_COMPACT_DEVICE ? 13 : 14);
-const CHALLENGE_LINE_HEIGHT = scaleFontSize(IS_COMPACT_DEVICE ? 18 : 20);
-const CHALLENGE_META_FONT_SIZE = scaleFontSize(IS_COMPACT_DEVICE ? 11.5 : 12);
-
-const THEMES = {
-  light: {
-    background: "#F6F7FB",
-    card: "#FFFFFF",
-    text: "#1C1A2A",
-    muted: "#7A7F92",
-    border: "#E5E6ED",
-    primary: "#111",
-  },
-  dark: {
-    background: "#05070D",
-    card: "#161B2A",
-    text: "#F7F9FF",
-    muted: "#A5B1CC",
-    border: "#2E374F",
-    primary: "#FFC857",
-  },
-  pro: {
-    background: "#EEF1FF",
-    card: "#FFFFFF",
-    text: "#101B45",
-    muted: "#5F6B98",
-    border: "#C7D1FF",
-    primary: "#4353FF",
-  },
-};
-const DEFAULT_THEME = "light";
-const PRO_THEME_ID = "pro";
-const THEME_IDS = ["light", "dark", PRO_THEME_ID];
-const PRO_THEME_ACCENT_OPTIONS = [
-  {
-    id: "indigo",
-    accent: "#4353FF",
-    label: { ru: "Индиго", en: "Indigo", es: "Índigo", fr: "Indigo" },
-    emoji: "🫐",
-  },
-  {
-    id: "emerald",
-    accent: "#1FBF8F",
-    label: { ru: "Изумруд", en: "Emerald", es: "Esmeralda", fr: "Émeraude" },
-    emoji: "💚",
-  },
-  {
-    id: "sunset",
-    accent: "#FF7A59",
-    label: { ru: "Сансет", en: "Sunset", es: "Atardecer", fr: "Coucher" },
-    emoji: "🌇",
-  },
-  {
-    id: "gold",
-    accent: "#E3A62B",
-    label: { ru: "Золото", en: "Gold", es: "Oro", fr: "Or" },
-    emoji: "✨",
-  },
-  {
-    id: "violet",
-    accent: "#8B61FF",
-    label: { ru: "Фиолет", en: "Violet", es: "Violeta", fr: "Violet" },
-    emoji: "🪻",
-  },
-  {
-    id: "aqua",
-    accent: "#2FA8FF",
-    label: { ru: "Аква", en: "Aqua", es: "Aqua", fr: "Aqua" },
-    emoji: "🌊",
-  },
-];
-const DEFAULT_PRO_THEME_ACCENT_ID = "indigo";
 const normalizeProThemeAccentId = (value) => {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   return PRO_THEME_ACCENT_OPTIONS.some((option) => option.id === normalized)
@@ -1794,28 +1573,6 @@ const resolveProAccentLabel = (option, language = DEFAULT_LANGUAGE) => {
     option?.id ||
     "Accent";
   return localizeFallbackTextByLanguage(rawLabel, normalizedLanguage);
-};
-const PRO_THEME_ACCENT_COPY = {
-  ru: {
-    title: "Акцент PRO-темы",
-    subtitle: "Выбери цвет, который будет использоваться для кнопок и акцентов интерфейса.",
-    selected: "Выбрано",
-  },
-  en: {
-    title: "PRO theme accent",
-    subtitle: "Pick the color used for buttons and highlighted UI accents.",
-    selected: "Selected",
-  },
-  es: {
-    title: "Acento del tema PRO",
-    subtitle: "Elige el color para botones y acentos principales de la interfaz.",
-    selected: "Seleccionado",
-  },
-  fr: {
-    title: "Accent du thème PRO",
-    subtitle: "Choisis la couleur utilisée pour les boutons et accents d'interface.",
-    selected: "Sélectionné",
-  },
 };
 const normalizeThemeId = (value) => {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -1852,112 +1609,9 @@ const buildThemeSelectedEventPayload = (
   };
 };
 
-const INTER_FONTS = {
-  light: "Inter_300Light",
-  regular: "Inter_400Regular",
-  medium: "Inter_500Medium",
-  semiBold: "Inter_600SemiBold",
-  bold: "Inter_700Bold",
-  extraBold: "Inter_800ExtraBold",
-  black: "Inter_900Black",
-};
-
-const SMART_REMINDER_DELAY_MS = 23 * 60 * 60 * 1000;
-const SMART_REMINDER_MIN_INTERVAL_MS = 60 * 60 * 1000;
-const SMART_REMINDER_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
-const SMART_REMINDER_LIMIT = 40;
-const RECENT_EVENT_NOTIFICATION_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
-const DAILY_NUDGE_REMINDERS = [
-  { id: "morning", hour: 9, minute: 0, titleKey: "dailyNudgeMorningTitle", bodyKey: "dailyNudgeMorningBody" },
-  { id: "daytime", hour: 12, minute: 30, titleKey: "dailyNudgeDayTitle", bodyKey: "dailyNudgeDayBody" },
-  {
-    id: "afternoon",
-    hour: 15,
-    minute: 30,
-    titleKey: "dailyNudgeAfternoonTitle",
-    bodyKey: "dailyNudgeAfternoonBody",
-  },
-  { id: "evening", hour: 19, minute: 0, titleKey: "dailyNudgeEveningTitle", bodyKey: "dailyNudgeEveningBody" },
-  { id: "streak_20", hour: 20, minute: 0, titleKey: "dailyNudgeStreak20Title", bodyKey: "dailyNudgeStreak20Body" },
-  { id: "streak_21", hour: 21, minute: 0, titleKey: "dailyNudgeStreak21Title", bodyKey: "dailyNudgeStreak21Body" },
-  { id: "streak_22", hour: 22, minute: 0, titleKey: "dailyNudgeStreak22Title", bodyKey: "dailyNudgeStreak22Body" },
-  { id: "streak_23", hour: 23, minute: 0, titleKey: "dailyNudgeStreak23Title", bodyKey: "dailyNudgeStreak23Body" },
-  { id: "streak_2330", hour: 23, minute: 30, titleKey: "dailyNudgeStreak2330Title", bodyKey: "dailyNudgeStreak2330Body" },
-];
-const DAILY_NUDGE_TITLE_KEYS = [
-  "dailyNudgeMorningTitle",
-  "dailyNudgeDayTitle",
-  "dailyNudgeAfternoonTitle",
-  "dailyNudgeEveningTitle",
-  "dailyNudgeStreak20Title",
-  "dailyNudgeStreak21Title",
-  "dailyNudgeStreak22Title",
-  "dailyNudgeStreak23Title",
-  "dailyNudgeStreak2330Title",
-];
-const DAILY_NUDGE_BODY_KEYS = [
-  "dailyNudgeMorningBody",
-  "dailyNudgeDayBody",
-  "dailyNudgeAfternoonBody",
-  "dailyNudgeEveningBody",
-  "dailyNudgeStreak20Body",
-  "dailyNudgeStreak21Body",
-  "dailyNudgeStreak22Body",
-  "dailyNudgeStreak23Body",
-  "dailyNudgeStreak2330Body",
-];
 const DAILY_NUDGE_LANGUAGES = SUPPORTED_LANGUAGES;
-const DAILY_NUDGE_NOTIFICATION_TAG = "daily_nudge";
-const TAMAGOTCHI_MISS_YOU_NOTIFICATION_KIND = "tamagotchi_miss_you";
-const ANDROID_DAILY_NUDGE_CHANNEL_ID = "daily-nudges";
-const ANDROID_TAMAGOTCHI_CHANNEL_ID = "tamagotchi-hunger";
-const ANDROID_REPORTS_CHANNEL_ID = "weekly-reports";
-const DAILY_CHALLENGE_MIN_SPEND_EVENTS = 2;
-const DAILY_CHALLENGE_FIXED_REWARD = 2;
-const DAILY_CHALLENGE_REWARD_MULTIPLIER = 10;
-const DAILY_CHALLENGE_DRAW_COUNT = 3;
-const DAILY_CHALLENGE_DRAW_CARD_WIDTH = Math.min(
-  122,
-  Math.max(64, (SCREEN_WIDTH - 108) / DAILY_CHALLENGE_DRAW_COUNT)
-);
-const DAILY_CHALLENGE_DRAW_CARD_HEIGHT = Math.round(DAILY_CHALLENGE_DRAW_CARD_WIDTH * 1.38);
-const DAILY_CHALLENGE_DRAW_CARD_TILT = [-8, 0, 8];
-const DAILY_CHALLENGE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
-const DAILY_CHALLENGE_POSITIVE_COOLDOWN_MS = 2 * 24 * 60 * 60 * 1000;
-const DAILY_CHALLENGE_POPULAR_TEMPLATE_IDS = new Set(DAILY_CHALLENGE_POPULAR_IDS);
-const DAILY_CHALLENGE_POPULAR_CUSTOM_PRICE_CAP_USD = 120;
-const DAILY_CHALLENGE_STATUS = {
-  IDLE: "idle",
-  OFFER: "offer",
-  ACTIVE: "active",
-  COMPLETED: "completed",
-  FAILED: "failed",
-};
-const FOCUS_VICTORY_THRESHOLD = 3;
-const FOCUS_VICTORY_REWARD = 3;
-const FOCUS_LOSS_THRESHOLD = 3;
-const FOCUS_RECENT_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
-const FOCUS_RECENT_MIN_SPEND_COUNT = 2;
-const CHALLENGE_REWARD_SCALE = 0.5;
 const getScaledChallengeReward = (value = 0) =>
   Math.max(1, Math.round(Math.max(0, value) * CHALLENGE_REWARD_SCALE));
-const PUSH_NOTIFICATION_COOLDOWN_MS = 30 * 60 * 1000;
-const PUSH_DEDUPE_WINDOW_MS = 6 * 60 * 60 * 1000;
-const ACTIONABLE_NOTIFICATION_CATEGORY_ID = "impulse_action";
-const NOTIFICATION_ACTION_SAVE = "action_save";
-const NOTIFICATION_ACTION_SPEND = "action_spend";
-const WEEKLY_REPORT_WEEKDAY = 6;
-const WEEKLY_REPORT_HOUR = 18;
-const WEEKLY_REPORT_MINUTE = 0;
-const REPORTS_WEEKLY_NOTIFICATION_DEDUPE = "weekly_report_schedule";
-const DAILY_SUMMARY_RELEASE_HOUR = 21;
-const DAILY_SUMMARY_RELEASE_MINUTE = 0;
-const DAILY_SUMMARY_NOTIFICATION_DEDUPE = "daily_summary_daily";
-const FREE_DAY_EVENING_REMINDER_KIND = "free_day_evening_reminder";
-const FREE_DAY_EVENING_REMINDER_HOUR = 18;
-const FREE_DAY_EVENING_REMINDER_MINUTE = 0;
-const FREE_DAY_EVENING_REMINDER_DEDUPE_PREFIX = "free_day_evening";
-const DAILY_SUMMARY_DEEPLINK_ROUTE = "daily-summary";
 const resolveBundledAssetUri = (source) => {
   try {
     const resolved = Image.resolveAssetSource(source);
@@ -1994,8 +1648,18 @@ const buildTemptationPressureMap = (events = []) => {
 const resolveDailyChallengeTemplateId = (
   pressureMap = {},
   minSpendEvents = DAILY_CHALLENGE_MIN_SPEND_EVENTS,
-  isValidTemplate = null
+  isValidTemplate = null,
+  options = {}
 ) => {
+  const normalizedMinSpend = Math.max(1, Math.floor(Number(minSpendEvents) || 0));
+  const normalizedPreviousTemplateId =
+    typeof options?.previousTemplateId === "string"
+      ? options.previousTemplateId.trim()
+      : "";
+  const normalizedDrawCount = Math.max(
+    1,
+    Math.floor(Number(options?.drawCount) || DAILY_CHALLENGE_DRAW_COUNT || 1)
+  );
   const ranked = Object.entries(pressureMap || {})
     .map(([templateId, stats]) => ({
       templateId,
@@ -2004,19 +1668,51 @@ const resolveDailyChallengeTemplateId = (
       lastTimestamp: stats?.lastTimestamp || 0,
       score: (stats?.spend || 0) * 2 - (stats?.save || 0),
     }))
-    .filter((entry) => entry.spend >= minSpendEvents && entry.spend > entry.save)
+    .filter((entry) => entry.spend >= normalizedMinSpend && entry.spend > entry.save)
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       if (b.spend !== a.spend) return b.spend - a.spend;
       return b.lastTimestamp - a.lastTimestamp;
     });
-  for (const entry of ranked) {
-    if (typeof isValidTemplate === "function" && !isValidTemplate(entry.templateId)) {
-      continue;
+  const eligible = ranked.filter(
+    (entry) => typeof isValidTemplate !== "function" || isValidTemplate(entry.templateId)
+  );
+  if (!eligible.length) return null;
+  let drawPool = eligible;
+  if (normalizedPreviousTemplateId) {
+    const withoutPrevious = eligible.filter(
+      (entry) => entry.templateId !== normalizedPreviousTemplateId
+    );
+    if (withoutPrevious.length) {
+      drawPool = withoutPrevious;
     }
-    return entry.templateId;
   }
-  return null;
+  drawPool = drawPool.slice(0, Math.min(normalizedDrawCount, drawPool.length));
+  if (drawPool.length === 1) {
+    return drawPool[0].templateId;
+  }
+  const weightedPool = drawPool.map((entry, index) => {
+    const scoreWeight = Math.max(1, Number(entry.score) || 0);
+    const spendWeight = Math.max(1, Number(entry.spend) || 0);
+    const rankBoost = Math.max(1, normalizedDrawCount - index);
+    return {
+      ...entry,
+      weight: scoreWeight * 2 + spendWeight + rankBoost,
+    };
+  });
+  const totalWeight = weightedPool.reduce((sum, entry) => sum + entry.weight, 0);
+  if (!Number.isFinite(totalWeight) || totalWeight <= 0) {
+    const randomIndex = Math.floor(Math.random() * drawPool.length);
+    return drawPool[randomIndex]?.templateId || drawPool[0]?.templateId || null;
+  }
+  let randomPoint = Math.random() * totalWeight;
+  for (const entry of weightedPool) {
+    randomPoint -= entry.weight;
+    if (randomPoint <= 0) {
+      return entry.templateId;
+    }
+  }
+  return weightedPool[weightedPool.length - 1]?.templateId || drawPool[0]?.templateId || null;
 };
 
 const createInitialDailyChallengeState = () => ({
@@ -2163,21 +1859,24 @@ const resolveInterFontFamily = (fontWeight) => {
   return INTER_FONTS.regular;
 };
 
+const FormattingLanguageContext = React.createContext(DEFAULT_LANGUAGE);
+
 const AppText = React.memo(
   forwardRef(function AppText({ style, ...props }, ref) {
+    const formattingLanguage = useContext(FormattingLanguageContext);
     const {
       allowFontScaling = false,
       maxFontSizeMultiplier = 1,
       ...restProps
     } = props || {};
-    const localizedChildren = localizeTextTreeDigits(restProps.children, activeLanguageForFormatting);
+    const localizedChildren = localizeTextTreeDigits(restProps.children, formattingLanguage);
     const textProps =
       localizedChildren === restProps.children
         ? restProps
         : { ...restProps, children: localizedChildren };
     const baseStyles = Array.isArray(style) ? style.filter(Boolean) : style ? [style] : [];
     const flattened = baseStyles.length ? StyleSheet.flatten(baseStyles) || {} : {};
-    const isRtlLayout = isRtlLanguage(activeLanguageForFormatting);
+    const isRtlLayout = isRtlLanguage(formattingLanguage);
     const directionStyle = isRtlLayout ? { writingDirection: "rtl", textAlign: "right" } : null;
     const styleWithDirection = directionStyle ? [directionStyle, ...baseStyles] : baseStyles;
     if (flattened.fontFamily) {
@@ -2219,6 +1918,7 @@ const AppText = React.memo(
 
 const AppTextInput = React.memo(
   forwardRef(function AppTextInput({ style, ...props }, ref) {
+    const formattingLanguage = useContext(FormattingLanguageContext);
     const {
       allowFontScaling = false,
       maxFontSizeMultiplier = 1,
@@ -2227,7 +1927,7 @@ const AppTextInput = React.memo(
     const rawPlaceholder = restProps.placeholder;
     const localizedPlaceholder =
       typeof rawPlaceholder === "string"
-        ? localizeDigitsForLanguage(rawPlaceholder, activeLanguageForFormatting)
+        ? localizeDigitsForLanguage(rawPlaceholder, formattingLanguage)
         : rawPlaceholder;
     const inputProps =
       localizedPlaceholder === restProps.placeholder
@@ -2235,7 +1935,7 @@ const AppTextInput = React.memo(
         : { ...restProps, placeholder: localizedPlaceholder };
     const baseStyles = Array.isArray(style) ? style.filter(Boolean) : style ? [style] : [];
     const flattened = baseStyles.length ? StyleSheet.flatten(baseStyles) || {} : {};
-    const isRtlLayout = isRtlLanguage(activeLanguageForFormatting);
+    const isRtlLayout = isRtlLanguage(formattingLanguage);
     const directionStyle = isRtlLayout ? { writingDirection: "rtl", textAlign: "right" } : null;
     const styleWithDirection = directionStyle ? [directionStyle, ...baseStyles] : baseStyles;
     if (flattened.fontFamily) {
@@ -2279,197 +1979,6 @@ const Text = AppText;
 const TextInput = AppTextInput;
 const AnimatedText = Animated.createAnimatedComponent(AppText);
 
-const APP_TUTORIAL_BASE_STEPS = [
-  {
-    id: "feed",
-    icon: "⚡",
-    titleKey: "tutorialFeedTitle",
-    descriptionKey: "tutorialFeedDesc",
-    tabs: ["feed"],
-    featureKeys: ["feedTab", "coinEntrySaveLabel", "quickCustomTitle"],
-    visualBars: [0.92, 0.58, 0.8, 0.66, 0.84],
-    palette: {
-      primary: "#62AEFF",
-      secondary: "#7FE3C7",
-      glow: "#79A9FF",
-    },
-  },
-  {
-    id: "goals",
-    icon: "📊",
-    titleKey: "tutorialGoalsTitle",
-    descriptionKey: "tutorialGoalsDesc",
-    tabs: ["cart"],
-    featureKeys: ["wishlistTab", "budgetWidgetTitle", "challengeTabTitle"],
-    visualBars: [0.86, 0.48, 0.72, 0.94, 0.61],
-    palette: {
-      primary: "#FFB169",
-      secondary: "#FFD98E",
-      glow: "#FFB784",
-    },
-  },
-  {
-    id: "rewards",
-    icon: "🎁",
-    titleKey: "tutorialRewardsTitle",
-    descriptionKey: "tutorialRewardsDesc",
-    tabs: ["purchases"],
-    requiresRewards: true,
-    featureKeys: ["purchasesTitle", "dailyRewardButtonLabel", "challengeRewardsTabTitle"],
-    visualBars: [0.68, 0.92, 0.56, 0.79, 0.88],
-    palette: {
-      primary: "#9E8CFF",
-      secondary: "#FF9EC7",
-      glow: "#A498FF",
-    },
-  },
-  {
-    id: "profile",
-    icon: "🛠️",
-    titleKey: "tutorialProfileTitle",
-    descriptionKey: "tutorialProfileDesc",
-    tabs: ["profile"],
-    featureKeys: ["profileTab", "languageTitle", "themeLabel", "soundLabel"],
-    visualBars: [0.72, 0.54, 0.88, 0.64, 0.77],
-    palette: {
-      primary: "#7FD5FF",
-      secondary: "#A7F0BC",
-      glow: "#7FCBFF",
-    },
-  },
-];
-const TEMPTATION_TUTORIAL_STEPS = [
-  {
-    id: "actions",
-    icon: "✅",
-    titleKey: "temptationTutorialActionsTitle",
-    descriptionKey: "temptationTutorialActionsDesc",
-    featureKeys: ["coinEntrySaveLabel", "coinEntrySpendLabel", "newPendingTitle"],
-    visualBars: [0.62, 0.91, 0.73, 0.55, 0.84],
-    palette: {
-      primary: "#65C1FF",
-      secondary: "#8BE2C8",
-      glow: "#7DB8FF",
-    },
-  },
-  {
-    id: "swipe",
-    icon: "↔️",
-    titleKey: "temptationTutorialSwipeTitle",
-    descriptionKey: "temptationTutorialSwipeDesc",
-    featureKeys: ["temptationTutorialSwipeTitle", "tutorialFeedTitle"],
-    visualBars: [0.9, 0.52, 0.77, 0.68, 0.59],
-    palette: {
-      primary: "#FFB96E",
-      secondary: "#FFC9A0",
-      glow: "#FFBE7D",
-    },
-  },
-];
-const FAB_TUTORIAL_STATUS = {
-  DONE: "done",
-  PENDING: "pending",
-  SHOWING: "showing",
-};
-const FEED_FIRST_TUTORIAL_STAGE = {
-  IDLE: "idle",
-  WELCOME: "welcome",
-  SAVE: "save",
-  ADD_PENDING: "add_pending",
-  ADD: "add",
-  DONE: "done",
-};
-const QUEUED_MODAL_TYPES = {
-  FAB_TUTORIAL: "fab_tutorial",
-  DAILY_CHALLENGE: "daily_challenge",
-  DAILY_CHALLENGE_COMPLETE: "daily_challenge_complete",
-  FOCUS_DIGEST: "focus_digest",
-  DAILY_SUMMARY: "daily_summary",
-  INCOME_PROMPT: "income_prompt",
-};
-const CARD_TEXTURE_ACCENTS = ["#8AB9FF", "#FFA4C0", "#8CE7CF", "#FFD48A", "#BBA4FF", "#7FD8FF"];
-const TEMPTATION_CARD_RADIUS = 28;
-// Fine-tune Android highlight alignment when using measureInWindow (positive moves the cutout lower).
-const ANDROID_TUTORIAL_HIGHLIGHT_OFFSET = 6;
-const TAB_BAR_BASE_HEIGHT = 64;
-const TAB_BAR_BASE_HEIGHT_COMPACT = 56;
-const HERO_MASCOT_SIZE = 96;
-const ALMI_MASCOT_BORDER_RADIUS = 28;
-const ALMI_MASCOT_IMAGE_OFFSET_X = -4;
-const FAB_BUTTON_SIZE = 64;
-const FAB_CONTAINER_BOTTOM = 96;
-const FAB_CONTAINER_SIDE = 24;
-const FAB_HIDE_TRANSLATE = FAB_BUTTON_SIZE + FAB_CONTAINER_SIDE + 12;
-const FAB_TUTORIAL_MIN_SESSIONS = 2;
-const FAB_TUTORIAL_HALO_SIZE = 128;
-const FAB_TUTORIAL_CARD_SPACING = 140;
-const FAB_TUTORIAL_HALO_INSET = (FAB_TUTORIAL_HALO_SIZE - FAB_BUTTON_SIZE) / 2;
-const TUTORIAL_HIGHLIGHT_INSET = { top: 0, right: 0, bottom: 0, left: 0 };
-const BACK_GESTURE_EDGE_WIDTH = 32;
-const BACK_GESTURE_TRIGGER_DISTANCE = 60;
-const BACK_GESTURE_VERTICAL_SLOP = 60;
-const MAX_TAB_HISTORY = 12;
-
-const CELEBRATION_BASE_RU = [
-  "Хоп! Ещё одна осознанная экономия",
-  "Меньше лишних покупок, больше плана",
-  "Кошелёк вздохнул спокойно",
-];
-
-const CELEBRATION_MESSAGES = {
-  ru: {
-    female: [...CELEBRATION_BASE_RU, "Ты снова выбрала умный своп вместо растрат"],
-    male: [...CELEBRATION_BASE_RU, "Ты снова выбрал умный своп вместо растрат"],
-    none: [...CELEBRATION_BASE_RU, "Снова выбран умный своп вместо растрат"],
-    level: "Уровень {{level}}! Экономия становится привычкой 💎",
-  },
-  en: {
-    default: [
-      "Boom! Another mindful deal",
-      "Less impulse, more plan",
-      "Wallet just sighed with relief",
-      "Smart deal locked - savings are safe",
-    ],
-    level: "Level {{level}}! Savings armor upgraded ✨",
-  },
-  fr: {
-    default: [
-      "Boom ! Encore un choix conscient",
-      "Moins d'impulsions, plus de plan",
-      "Le portefeuille respire enfin",
-      "Accord malin verrouillé - l'épargne est en sécurité",
-    ],
-    level: "Niveau {{level}} ! Armure d'épargne améliorée ✨",
-  },
-  es: {
-    default: [
-      "¡Boom! Otro ahorro consciente",
-      "Menos impulso, más plan",
-      "La cartera respira aliviada",
-      "Intercambio inteligente: el ahorro está a salvo",
-    ],
-    female: [
-      "¡Boom! Otro ahorro consciente",
-      "Menos impulso, más plan",
-      "La cartera respira aliviada",
-      "Intercambio inteligente: el ahorro está a salvo",
-    ],
-    male: [
-      "¡Boom! Otro ahorro consciente",
-      "Menos impulso, más plan",
-      "La cartera respira aliviada",
-      "Intercambio inteligente: el ahorro está a salvo",
-    ],
-    none: [
-      "¡Boom! Otro ahorro consciente",
-      "Menos impulso, más plan",
-      "La cartera respira aliviada",
-      "Intercambio inteligente: el ahorro está a salvo",
-    ],
-    level: "¡Nivel {{level}}! Tu armadura de ahorro sube de rango ✨",
-  },
-};
-
 const getCelebrationMessages = (language, gender = "none") => {
   const normalized = normalizeLanguage(language);
   const entry = CELEBRATION_MESSAGES[normalized] || CELEBRATION_MESSAGES[FALLBACK_LANGUAGE];
@@ -2483,159 +1992,6 @@ const getCelebrationMessages = (language, gender = "none") => {
     Object.values(entry)[0];
   return Array.isArray(variant) ? variant : [];
 };
-
-const RAIN_DROPS = 20;
-const LTR_MARK = "\u200E"; // keeps currency labels left-to-right even with RTL symbols
-const RTL_CURRENCIES = new Set(["SAR"]);
-const CURRENCY_RATES = {
-  AED: 3.67,
-  AUD: 1.5,
-  BYN: 3.3,
-  CAD: 1.35,
-  EUR: 0.92,
-  GBP: 0.79,
-  JPY: 150,
-  KZT: 450,
-  KRW: 1350,
-  MXN: 17,
-  PLN: 4,
-  RUB: 92,
-  SAR: 3.75,
-  USD: 1,
-};
-const CURRENCY_REWARD_STEPS = {
-  AED: 20,
-  AUD: 5,
-  BYN: 5,
-  CAD: 5,
-  EUR: 5,
-  GBP: 5,
-  JPY: 750,
-  KZT: 2000,
-  KRW: 7000,
-  MXN: 100,
-  PLN: 20,
-  RUB: 500,
-  SAR: 20,
-  USD: 5,
-};
-const DEFAULT_COIN_SLIDER_MAX_USD = 50;
-const MAX_TRANSACTION_AMOUNT_USD = 10_000_000;
-const MAX_SAVED_BALANCE_USD = 10_000_000;
-const COIN_SLIDER_SIZE = IS_SHORT_DEVICE ? 190 : 220;
-const COIN_REVEAL_SIZE = FAB_BUTTON_SIZE;
-const COIN_FLIGHT_SIZE = IS_SHORT_DEVICE ? 56 : 64;
-const COIN_SLIDER_VALUE_DEADBAND = 0.01;
-const COIN_SLIDER_STATE_MIN_INTERVAL = 16;
-const COIN_SLIDER_HAPTIC_COOLDOWN_MS = 80;
-const COIN_ENTRY_MANUAL_DOUBLE_TAP_MS = 320;
-const COIN_SLIDER_STEP_STICKINESS = 0.95;
-const COIN_SLIDER_GESTURE_DEADBAND = 0.03;
-const COIN_FILL_MIN_HEIGHT = 12;
-const CURRENCY_SIGNS = {
-  AED: "AED ",
-  AUD: "A$",
-  BYN: "Br",
-  CAD: "C$",
-  EUR: "€",
-  GBP: "£",
-  JPY: "¥",
-  KZT: "₸",
-  KRW: "₩",
-  MXN: "MX$",
-  PLN: "zł",
-  RUB: "₽",
-  SAR: "﷼",
-  USD: "$",
-};
-const CURRENCY_FINE_STEPS = {
-  AED: 0.5,
-  AUD: 0.5,
-  BYN: 0.5,
-  CAD: 0.5,
-  EUR: 0.5,
-  GBP: 0.5,
-  JPY: 10,
-  KZT: 10,
-  KRW: 100,
-  MXN: 0.5,
-  PLN: 0.5,
-  RUB: 5,
-  SAR: 0.5,
-  USD: 0.5,
-};
-const CURRENCY_DISPLAY_PRECISION = {
-  AED: 0,
-  AUD: 0,
-  BYN: 0,
-  CAD: 0,
-  EUR: 0,
-  GBP: 0,
-  MXN: 0,
-  PLN: 0,
-  SAR: 0,
-  USD: 0,
-};
-const ECONOMY_RULES = {
-  saveRewardStepUSD: 5,
-  minSaveReward: 1,
-  maxSaveReward: 24,
-  baseAchievementReward: 60,
-  freeDayRescueCost: 60,
-  tamagotchiFeedCost: 2,
-  tamagotchiFeedBoost: 24,
-  tamagotchiPartyCost: 300,
-};
-const DEFAULT_REMOTE_IMAGE =
-  "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=600&q=80";
-const REMINDER_DAYS = 14;
-const DAY_MS = 1000 * 60 * 60 * 24;
-const CHALLENGE_REPEAT_COOLDOWN_MS = DAY_MS * 7;
-const CHALLENGE_FAIL_COOLDOWN_MS = DAY_MS * 14;
-const HOUR_MS = 1000 * 60 * 60;
-const MINUTE_MS = 1000 * 60;
-const REWARD_RESET_INTERVAL_MS = DAY_MS * 14;
-const REMINDER_MS = REMINDER_DAYS * DAY_MS;
-const PENDING_EXTENSION_DAYS = 7;
-const PENDING_EXTENSION_MS = PENDING_EXTENSION_DAYS * DAY_MS;
-const PENDING_REMINDER_LEAD_MS = HOUR_MS;
-const PENDING_REMINDER_GRACE_MS = 30 * MINUTE_MS;
-const SAVE_SPAM_WINDOW_MS = 1000 * 60 * 5;
-const SAVED_TOTAL_RESET_GRACE_MS = 1000 * 5;
-const SAVE_SPAM_ITEM_LIMIT = 3;
-const SAVE_SPAM_GLOBAL_LIMIT = 4;
-const DAILY_SAVE_HARD_LIMIT = 10;
-const NORTH_STAR_SAVE_THRESHOLD = 2;
-const NORTH_STAR_WINDOW_MS = DAY_MS;
-const SAVE_ACTION_COLOR = "#2EB873";
-const SPEND_ACTION_COLOR = "#D94862";
-// Android darkens translucent backgrounds when elevation is applied, so use opaque fallbacks there.
-const COIN_ENTRY_SAVE_BACKGROUND = SAVE_ACTION_COLOR;
-const COIN_ENTRY_SPEND_BACKGROUND = SPEND_ACTION_COLOR;
-const GOAL_HIGHLIGHT_COLOR = "#F6C16B";
-const GOAL_SWIPE_THRESHOLD = 80;
-const DELETE_SWIPE_THRESHOLD = 130;
-const CHALLENGE_SWIPE_ACTION_WIDTH = 120;
-const BASELINE_SAMPLE_USD = 120;
-const CUSTOM_SPEND_SAMPLE_USD = 7.5;
-const CUSTOM_SPEND_SAVINGS_RANGE = { low: 0.7, high: 1.3 };
-const CUSTOM_SPEND_MONTHLY_WEEKS = 4.33;
-const RATING_PROMPT_DELAY_DAYS = 2; // show on the third calendar day (after two full days)
-const RATING_PROMPT_FOLLOWUP_DELAY_DAYS = 4; // show again on the fifth calendar day if still not rated
-const RATING_PROMPT_ACTION_THRESHOLD = 3;
-const RATING_PROMPT_ACTION_TYPES = new Set(["save", "spend"]);
-const ANDROID_REVIEW_URL = "market://details?id=com.sasarei.almostclean";
-const ANDROID_REVIEW_WEB_URL = "https://play.google.com/store/apps/details?id=com.sasarei.almostclean";
-const IOS_REVIEW_URL = "itms-apps://itunes.apple.com/app/id6756276744?action=write-review";
-const IOS_REVIEW_WEB_URL = "https://apps.apple.com/app/id6756276744?action=write-review";
-const IOS_MANAGE_SUBSCRIPTIONS_URL = "https://apps.apple.com/account/subscriptions";
-const ANDROID_MANAGE_SUBSCRIPTIONS_URL =
-  "https://play.google.com/store/account/subscriptions?package=com.sasarei.almostclean";
-const LEVEL_SHARE_CAT = require("./assets/Cat_mascot.png");
-const LEVEL_SHARE_LOGO = require("./assets/Almost_icon.png");
-const LEVEL_SHARE_ACCENT = "#FFB347";
-const LEVEL_SHARE_BG = "#050C1A";
-const LEVEL_SHARE_MUTED = "rgba(255,255,255,0.65)";
 const createInitialRatingPromptState = () => ({
   firstOpenAt: new Date().toISOString(),
   completed: false,
@@ -2646,7 +2002,6 @@ const createInitialRatingPromptState = () => ({
   actionCountStart: null,
   actionPrompted: false,
 });
-const RETENTION_MILESTONE_DAYS = new Set([2, 3, 7, 14, 30, 60, 90, 180, 365]);
 
 const normalizeRetentionDayKeys = (value) => {
   if (!Array.isArray(value)) return [];
@@ -2776,15 +2131,6 @@ const isSameDay = (tsA, tsB = Date.now()) => {
   if (!tsA) return false;
   return getDayKey(tsA) === getDayKey(tsB);
 };
-const WEEKDAY_FULL_LABELS = {
-  ru: ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"],
-  en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
-  es: ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"],
-  fr: ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"],
-  de: ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"],
-  ar: ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"],
-  zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
-};
 const formatRelativeDayLabel = (timestamp, referenceTs, language = DEFAULT_LANGUAGE) => {
   if (!Number.isFinite(timestamp) || !Number.isFinite(referenceTs)) return null;
   const fromKey = getDayKey(timestamp);
@@ -2866,59 +2212,6 @@ const formatRelativeDayLabel = (timestamp, referenceTs, language = DEFAULT_LANGU
   }
   return formatDaysAgo(Math.abs(diff));
 };
-const DEFAULT_TEMPTATION_EMOJI = "✨";
-const DEFAULT_GOAL_EMOJI = "🎯";
-const MAX_HISTORY_EVENTS = 200;
-const HISTORY_RETENTION_MS = DAY_MS * 31;
-const HERO_RECENT_HISTORY_WINDOW_MS = DAY_MS * 7;
-const PROFILE_HISTORY_PAGE_WINDOW_MS = DAY_MS * 14;
-const SPEND_LOGGING_REMINDER_DELAY_MS = DAY_MS * 1.5;
-const SPEND_LOGGING_REMINDER_COOLDOWN_MS = DAY_MS * 2;
-const HISTORY_VIEWPORT_ROWS = 5;
-const HISTORY_ITEM_HEIGHT = 60;
-const HISTORY_VIEWPORT_HEIGHT = HISTORY_VIEWPORT_ROWS * HISTORY_ITEM_HEIGHT;
-const HISTORY_SAVED_GAIN_EVENTS = new Set(["refuse_spend", "pending_to_decline", "income_savings"]);
-const HISTORY_PROGRESS_GAIN_EVENTS = new Set(["refuse_spend", "pending_to_decline"]);
-const HISTORY_SAVED_LOSS_EVENTS = new Set(["spend"]);
-const DAILY_GOAL_COIN_EVENTS = new Set(HISTORY_SAVED_GAIN_EVENTS);
-const DAILY_GOAL_WEEKDAY_BOOST = [0.95, 1.02, 1.0, 1.05, 1.08, 0.94, 0.9];
-const DAILY_GOAL_SHAKE_THRESHOLD = 1.2;
-const DAILY_GOAL_SHAKE_COOLDOWN_MS = 700;
-const DAILY_GOAL_GYRO_THRESHOLD = 0.6;
-const DAILY_GOAL_GYRO_COOLDOWN_MS = 350;
-const DAILY_GOAL_GYRO_ACCEL = 260;
-const DAILY_GOAL_GYRO_CLAMP = 2.2;
-const DAILY_GOAL_TILT_ACCEL = 1200;
-const DAILY_GOAL_TILT_FRICTION = 0.7;
-const DAILY_GOAL_TILT_DRAG = 0.0006;
-const DAILY_GOAL_TILT_BOUNCE = 0.35;
-const DAILY_GOAL_COIN_COLLISION_BOUNCE = 0.32;
-const DAILY_GOAL_COIN_COLLISION_SLOP = 0.6;
-const DAILY_GOAL_COIN_COLLISION_PERCENT = 0.48;
-const DAILY_GOAL_COIN_COLLISION_VELOCITY_EPS = 12;
-const DAILY_GOAL_COIN_COLLISION_ITERATIONS = 2;
-const DAILY_GOAL_COIN_COLLISION_RESTITUTION_MIN_SPEED = 60;
-const DAILY_GOAL_COIN_COLLISION_RESTITUTION_RANGE = 200;
-const DAILY_GOAL_COIN_COLLISION_REST_SPEED = 28;
-const DAILY_GOAL_COIN_COLLISION_REST_DAMPING = 0.96;
-const DAILY_GOAL_TILT_MAX_SPEED = 2600;
-const DAILY_GOAL_TILT_DEADZONE = 0.025;
-const DAILY_GOAL_TILT_STOP_SPEED = 5;
-const DAILY_GOAL_TILT_STOP_TILT = 0.02;
-const DAILY_GOAL_TILT_STOP_GYRO = 0.04;
-const DAILY_GOAL_GRAVITY = 240;
-const PIGGY_COIN_PADDING_X = 18;
-const PIGGY_COIN_PADDING_Y = 12;
-const HERO_CAROUSEL_ITEM_GUTTER = 16;
-const HERO_CAROUSEL_PREMIUM_ATTEMPT_TRIGGER_PX = 10;
-const HERO_CAROUSEL_PREMIUM_DRAG_LIMIT_PX = 30;
-const HERO_CAROUSEL_WIDGET_ANALYTICS_KEYS = ["H", "B", "P"];
-const REPORTS_WEEK_COUNT = 8;
-const REPORTS_MONTH_COUNT = 6;
-const REPORTS_MAX_INSIGHTS = 3;
-const REPORTS_MAX_STEPS = 3;
-const REPORTS_MIN_ACTIONS_WEEK = 3;
-const REPORTS_MIN_ACTIONS_MONTH = 6;
 const getReportsMinActions = (type = "week") =>
   type === "month" ? REPORTS_MIN_ACTIONS_MONTH : REPORTS_MIN_ACTIONS_WEEK;
 const getReportsActiveDaysTarget = ({ type = "week", dayCount = 0 } = {}) => {
@@ -3078,8 +2371,49 @@ const buildHealthCoinEntries = (amount = 0) => {
   const breakdown = getHealthCoinBreakdown(amount);
   return HEALTH_COIN_TIERS.slice().reverse().map((tier) => ({
     ...tier,
+    asset: tier.asset,
     count: breakdown[tier.id] || 0,
   }));
+};
+const HEALTH_COIN_FALLBACK_COLOR_BY_ID = Object.freeze({
+  green: "#43D18B",
+  blue: "#2F9BEB",
+  orange: "#FFB257",
+  red: "#FF6A6A",
+  pink: "#FF7AC8",
+});
+const getHealthCoinFallbackColor = (tierId) =>
+  HEALTH_COIN_FALLBACK_COLOR_BY_ID[tierId] || HEALTH_COIN_FALLBACK_COLOR_BY_ID.blue;
+
+const HealthCoinFallbackIcon = ({ tierId = "blue", size = 18, style = null }) => {
+  const resolvedSize = Math.max(10, Math.round(Number(size) || 18));
+  const color = getHealthCoinFallbackColor(tierId);
+  const shineSize = Math.max(2, Math.round(resolvedSize * 0.32));
+  const baseStyle = {
+    width: resolvedSize,
+    height: resolvedSize,
+    borderRadius: resolvedSize / 2,
+    backgroundColor: color,
+    borderWidth: 1,
+    borderColor: colorWithAlpha("#000000", 0.12),
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  };
+  const shineStyle = {
+    position: "absolute",
+    top: Math.max(1, Math.round(resolvedSize * 0.2)),
+    left: Math.max(1, Math.round(resolvedSize * 0.2)),
+    width: shineSize,
+    height: shineSize,
+    borderRadius: shineSize / 2,
+    backgroundColor: "rgba(255,255,255,0.62)",
+  };
+  return (
+    <View style={style ? [baseStyle, style] : baseStyle}>
+      <View style={shineStyle} />
+    </View>
+  );
 };
 const getLocalRewardStep = (currencyCode = activeCurrency) => {
   const code = typeof currencyCode === "string" && currencyCode.trim() ? currencyCode : activeCurrency;
@@ -3168,159 +2502,6 @@ const getTemptationPriceLimitForLevel = (level = 1) => {
   return Infinity;
 };
 
-const FEATURE_UNLOCK_STEPS = [
-  { level: 2, messageKey: "level2UnlockMessage" },
-  { level: 3, messageKey: "level3UnlockMessage" },
-  { level: 4, messageKey: "level4UnlockMessage" },
-  { level: 5, messageKey: "level5UnlockMessage" },
-  { level: 6, messageKey: "level6UnlockMessage" },
-  { level: 7, messageKey: "level7UnlockMessage" },
-];
-const FEATURE_UNLOCK_VARIANT_MAP = {
-  level2UnlockMessage: "rewardsDaily",
-  level3UnlockMessage: "thinkingList",
-  level4UnlockMessage: "impulseMap",
-  level5UnlockMessage: "rewardsCustomization",
-  level6UnlockMessage: "reports",
-  level7UnlockMessage: "freeDay",
-};
-const FEATURE_UNLOCK_PREMIUM_MESSAGE_MAP = {
-  level2UnlockMessage: "level2UnlockMessagePremium",
-  level3UnlockMessage: "level3UnlockMessagePremium",
-  level4UnlockMessage: "level4UnlockMessagePremium",
-  level5UnlockMessage: "level5UnlockMessagePremium",
-  level6UnlockMessage: "level6UnlockMessagePremium",
-  level7UnlockMessage: "level7UnlockMessagePremium",
-};
-const FEATURE_UNLOCK_VARIANT_CONFIG = {
-  rewardsDaily: {
-    titleKey: "featureUnlockRewardsDailyTitle",
-    descriptionKey: "featureUnlockRewardsDailyDescription",
-    premiumDescriptionKey: "featureUnlockRewardsDailyPremiumDescription",
-    previewLabelKey: "featureUnlockRewardsDailyPreview",
-  },
-  feedFocus: {
-    titleKey: "featureUnlockFeedFocusTitle",
-    descriptionKey: "featureUnlockFeedFocusDescription",
-    premiumDescriptionKey: "featureUnlockFeedFocusPremiumDescription",
-    previewLabelKey: "featureUnlockFeedFocusPreview",
-  },
-  rewardsCustomization: {
-    titleKey: "featureUnlockRewardsCustomizationTitle",
-    descriptionKey: "featureUnlockRewardsCustomizationDescription",
-    premiumDescriptionKey: "featureUnlockRewardsCustomizationPremiumDescription",
-    previewLabelKey: "featureUnlockRewardsCustomizationPreview",
-  },
-  catCustomization: {
-    titleKey: "featureUnlockCatCustomizationTitle",
-    descriptionKey: "featureUnlockCatCustomizationDescription",
-    premiumDescriptionKey: "featureUnlockCatCustomizationPremiumDescription",
-    previewLabelKey: "featureUnlockCatCustomizationPreview",
-  },
-  reports: {
-    titleKey: "featureUnlockReportsTitle",
-    descriptionKey: "featureUnlockReportsDescription",
-    premiumDescriptionKey: "featureUnlockReportsPremiumDescription",
-    previewLabelKey: "featureUnlockReportsPreview",
-  },
-  rewardsChallenges: {
-    titleKey: "featureUnlockRewardsChallengesTitle",
-    descriptionKey: "featureUnlockRewardsChallengesDescription",
-    premiumDescriptionKey: "featureUnlockRewardsChallengesPremiumDescription",
-    previewLabelKey: "featureUnlockRewardsChallengesPreview",
-  },
-  impulseMap: {
-    titleKey: "featureUnlockImpulseMapTitle",
-    descriptionKey: "featureUnlockImpulseMapDescription",
-    premiumDescriptionKey: "featureUnlockImpulseMapPremiumDescription",
-    previewLabelKey: "featureUnlockImpulseMapPreview",
-  },
-  thinkingList: {
-    titleKey: "featureUnlockThinkingTitle",
-    descriptionKey: "featureUnlockThinkingDescription",
-    premiumDescriptionKey: "featureUnlockThinkingPremiumDescription",
-    previewLabelKey: "featureUnlockThinkingPreview",
-  },
-  freeDay: {
-    titleKey: "featureUnlockFreeDayTitle",
-    descriptionKey: "featureUnlockFreeDayDescription",
-    premiumDescriptionKey: "featureUnlockFreeDayPremiumDescription",
-    previewLabelKey: "featureUnlockFreeDayTitle",
-  },
-};
-const FEATURE_UNLOCK_LEVELS = {
-  rewardsDaily: 2,
-  feedFocus: 3,
-  rewardsCustomization: 5,
-  catCustomization: 6,
-  reports: 6,
-  rewardsChallenges: 1,
-  impulseMap: 4,
-  thinkingList: 3,
-  freeDay: 7,
-};
-const FEATURE_UNLOCK_PREMIUM_VARIANTS = new Set(["impulseMap", "reports", "catCustomization"]);
-
-const HEALTH_COIN_LABELS = {
-  ru: {
-    pink: "розовых монет",
-    red: "красных монет",
-    orange: "оранжевых монет",
-    blue: "синих монет",
-    green: "зелёных монет",
-  },
-  en: {
-    pink: "pink coins",
-    red: "red coins",
-    orange: "orange coins",
-    blue: "blue coins",
-    green: "green coins",
-  },
-  es: {
-    pink: "monedas rosas",
-    red: "monedas rojas",
-    orange: "monedas naranjas",
-    blue: "monedas azules",
-    green: "monedas verdes",
-  },
-  fr: {
-    pink: "pièces roses",
-    red: "pièces rouges",
-    orange: "pièces orange",
-    blue: "pièces bleues",
-    green: "pièces vertes",
-  },
-  de: {
-    pink: "rosa Münzen",
-    red: "rote Münzen",
-    orange: "orange Münzen",
-    blue: "blaue Münzen",
-    green: "grüne Münzen",
-  },
-  ar: {
-    pink: "عملات وردية",
-    red: "عملات حمراء",
-    orange: "عملات برتقالية",
-    blue: "عملات زرقاء",
-    green: "عملات خضراء",
-  },
-  zh: {
-    pink: "粉色币",
-    red: "红色币",
-    orange: "橙色币",
-    blue: "蓝色币",
-    green: "绿色币",
-  },
-};
-const ZERO_HEALTH_REWARD_LABELS = {
-  ru: "0 монет",
-  en: "0 coins",
-  es: "0 monedas",
-  fr: "0 pièce",
-  de: "0 Münzen",
-  ar: "0 عملات",
-  zh: "0 个币",
-};
 const formatHealthRewardLabel = (amount = 0, language = DEFAULT_LANGUAGE) => {
   const entries = buildHealthCoinEntries(amount);
   const normalizedLang = normalizeLanguage(language);
@@ -3373,10 +2554,18 @@ const HealthRewardTokens = ({
     <View style={rowStyles}>
       {visible.map((entry) => (
         <View key={`${entry.id}-${entry.count}`} style={styles.healthRewardToken}>
-          <Image
-            source={entry.asset}
-            style={[styles.healthRewardTokenIcon, { width: iconSize, height: iconSize }]}
-          />
+          {entry.asset ? (
+            <Image
+              source={entry.asset}
+              style={[styles.healthRewardTokenIcon, { width: iconSize, height: iconSize }]}
+            />
+          ) : (
+            <HealthCoinFallbackIcon
+              tierId={entry.id}
+              size={Math.max(12, iconSize - 2)}
+              style={styles.healthRewardTokenFallbackIcon}
+            />
+          )}
           <Text style={countStyles}>{`×${entry.count}`}</Text>
         </View>
       ))}
@@ -3853,9 +3042,13 @@ const MoodGradientBlock = ({ colors: palette, style, children }) => {
 };
 
 const CoinRainOverlay = React.memo(({ dropCount = 14, asset = null }) => {
-  const coinAsset = asset || HEALTH_COIN_TIERS[0].asset;
+  if (Platform.OS === "android") return null;
+  const coinAsset = asset || HEALTH_COIN_TIERS[0]?.asset || null;
+  if (!coinAsset) return null;
+  const normalizedDropCount = Math.max(0, Math.min(10, Math.floor(Number(dropCount) || 0)));
+  if (!normalizedDropCount) return null;
   const drops = useRef(
-    Array.from({ length: dropCount }).map((_, idx) => {
+    Array.from({ length: normalizedDropCount }).map((_, idx) => {
       const anim = new Animated.Value(Math.random());
       return {
         key: `coin_rain_${idx}`,
@@ -3869,28 +3062,21 @@ const CoinRainOverlay = React.memo(({ dropCount = 14, asset = null }) => {
   ).current;
 
   useEffect(() => {
-    const loops = drops.map(({ anim, duration, delay }) => {
-      const animation = Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(anim, {
-            toValue: 1,
-            duration,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-          Animated.timing(anim, {
-            toValue: 0,
-            duration: 0,
-            useNativeDriver: true,
-          }),
-        ])
-      );
+    const animations = drops.map(({ anim, duration, delay }) => {
+      const animation = Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(anim, {
+          toValue: 1,
+          duration,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]);
       animation.start();
       return animation;
     });
     return () => {
-      loops.forEach((animation) => animation?.stop?.());
+      animations.forEach((animation) => animation?.stop?.());
     };
   }, [drops]);
 
@@ -6215,24 +5401,6 @@ const mapHistoryEventsToMoodEvents = (history = [], now = Date.now()) =>
     .filter(Boolean)
     .slice(0, MOOD_MAX_EVENTS);
 
-const WEEKDAY_LABELS = {
-  ru: ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"],
-  en: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-  es: ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"],
-  fr: ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"],
-  de: ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"],
-  ar: ["أحد", "اثن", "ثلا", "أرب", "خمي", "جمع", "سبت"],
-  zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
-};
-const WEEKDAY_LABELS_MONDAY_FIRST = {
-  ru: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
-  en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-  es: ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
-  fr: ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"],
-  de: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
-  ar: ["اثن", "ثلا", "أرب", "خمي", "جمع", "سبت", "أحد"],
-  zh: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
-};
 const PENDING_DAY_SUFFIX = { ru: "д", en: "d", es: "d", fr: "j", de: "T", ar: "ي", zh: "天" };
 
 const buildSavingsBreakdown = (
@@ -7467,10 +6635,12 @@ const buildCustomTemptationDescription = (gender = "none") => {
     ru = "Это искушение ты добавила сама. Отслеживай его и побеждай чаще.";
   }
   const en = "You added this temptation yourself. Track it and beat it more often.";
-  const esBase = "Añadiste esta tentación tú misma. Regístrala y supérala más seguido.";
-  const es = isMale
-    ? "Añadiste esta tentación tú mismo. Regístrala y supérala más seguido."
-    : esBase;
+  let es = "Añadiste esta tentación por tu cuenta. Regístrala y supérala más seguido.";
+  if (isFemale) {
+    es = "Añadiste esta tentación tú misma. Regístrala y supérala más seguido.";
+  } else if (isMale) {
+    es = "Añadiste esta tentación tú mismo. Regístrala y supérala más seguido.";
+  }
   const fr = "Tu as ajouté cette tentation toi-même. Suis-la et bats-la plus souvent.";
   return {
     ru,
@@ -7834,22 +7004,12 @@ const DEFAULT_FREQUENCY_REMINDER_HOUR = 10;
 const DEFAULT_FREQUENCY_REMINDER_MINUTE = 0;
 const DEFAULT_FREQUENCY_WEEKLY_DAY = 1;
 const DEFAULT_FREQUENCY_MONTHLY_DAY = 1;
-const WEEKDAY_SELECTOR_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const TIME_WHEEL_ITEM_HEIGHT = 36;
 const TIME_WHEEL_VISIBLE_ITEMS = 5;
 const TIME_WHEEL_PADDING = ((TIME_WHEEL_VISIBLE_ITEMS - 1) / 2) * TIME_WHEEL_ITEM_HEIGHT;
 const HOUR_WHEEL_VALUES = Array.from({ length: 24 }, (_, idx) => idx);
 const MINUTE_WHEEL_VALUES = Array.from({ length: 60 }, (_, idx) => idx);
 const MONTHLY_DAY_OPTIONS = Array.from({ length: 31 }, (_, idx) => idx + 1);
-const WEEKDAY_LABEL_KEYS = {
-  0: "frequencyWeekdaySunday",
-  1: "frequencyWeekdayMonday",
-  2: "frequencyWeekdayTuesday",
-  3: "frequencyWeekdayWednesday",
-  4: "frequencyWeekdayThursday",
-  5: "frequencyWeekdayFriday",
-  6: "frequencyWeekdaySaturday",
-};
 const normalizeFrequencyId = (value) => {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (!normalized) return null;
@@ -8034,15 +7194,6 @@ const getDemotedFrequencyBucket = (bucketId, lastInteractionAt) => {
   const index = TEMPTATION_FREQUENCY_ORDER.indexOf(bucketId);
   if (index < 0 || index >= TEMPTATION_FREQUENCY_ORDER.length - 1) return bucketId;
   return TEMPTATION_FREQUENCY_ORDER[index + 1];
-};
-const FREQUENCY_COUNTDOWN_TOKENS = {
-  ru: { day: "д", hour: "ч", minute: "м" },
-  en: { day: "d", hour: "h", minute: "m" },
-  es: { day: "d", hour: "h", minute: "m" },
-  fr: { day: "j", hour: "h", minute: "m" },
-  de: { day: "T", hour: "Std", minute: "Min" },
-  ar: { day: "ي", hour: "س", minute: "د" },
-  zh: { day: "天", hour: "小时", minute: "分" },
 };
 const FREQUENCY_CRITICAL_WINDOW_MS = 2 * 60 * 60 * 1000;
 const FREQUENCY_REMINDER_INTERVAL_MS = 30 * 60 * 1000;
@@ -8340,6 +7491,9 @@ const LANGUAGE_OVERRIDES = {
       "Appuie sur + pour créer une tentation perso. Les cartes existantes se modifient avec un simple tap.",
     feedTutorialAddAction: "Créer une tentation",
     saveCelebrateTitlePrefix: "Économisé sur :",
+    goalCustomCreate: "Créer un objectif",
+    analyticsConsentAgree: "Aider Almost",
+    trackingConsentContinue: "Aider Almost",
   },
   de: {
     languageLabel: "Sprache",
@@ -8682,6 +7836,7 @@ const CURRENCY_LOCALES = {
   SAR: "ar-SA",
   USD: "en-US",
 };
+const NARROW_DOLLAR_SYMBOL_CURRENCIES = new Set(["USD", "CAD", "AUD"]);
 const resolveCurrencyLocale = (currency, language = activeLanguageForFormatting) => {
   const languageLocale = getFormatLocale(language);
   if (typeof languageLocale === "string" && languageLocale.trim().length > 0) {
@@ -9285,6 +8440,7 @@ const LANGUAGE_SELECTED_EVENTS = {
   de: "language_de_selected",
   "ar-sa": "language_ar_sa_selected",
   "ar-ae": "language_ar_ae_selected",
+  zh: "language_zh_selected",
 };
 
 const GENDER_SELECTED_EVENTS = {
@@ -9333,15 +8489,45 @@ const getCurrencySelectedEvent = (code) => {
 const DEFAULT_PERSONA_ID = "mindful_coffee";
 
 const GENDER_OPTIONS = [
-  { id: "female", label: { ru: "Женщина", en: "Female", es: "Mujer", fr: "Femme" }, emoji: "💁‍♀️" },
-  { id: "male", label: { ru: "Мужчина", en: "Male", es: "Hombre", fr: "Homme" }, emoji: "🧑‍🦱" },
+  {
+    id: "female",
+    label: {
+      ru: "Женщина",
+      en: "Female",
+      es: "Mujer",
+      fr: "Femme",
+      de: "Frau",
+      "ar-sa": "امرأة",
+      "ar-ae": "امرأة",
+      zh: "女性",
+    },
+    emoji: "💁‍♀️",
+  },
+  {
+    id: "male",
+    label: {
+      ru: "Мужчина",
+      en: "Male",
+      es: "Hombre",
+      fr: "Homme",
+      de: "Mann",
+      "ar-sa": "رجل",
+      "ar-ae": "رجل",
+      zh: "男性",
+    },
+    emoji: "🧑‍🦱",
+  },
   {
     id: "none",
     label: {
       ru: "Не указывать",
-      en: "Prefer not to say",
+      en: "Not specified",
       es: "Prefiero no decirlo",
-      fr: "Je préfère ne pas le dire",
+      fr: "Non indiqué",
+      de: "Keine Angabe",
+      "ar-sa": "أفضل عدم التحديد",
+      "ar-ae": "أفضل عدم التحديد",
+      zh: "不想透露",
     },
     emoji: "🤫",
   },
@@ -9831,6 +9017,7 @@ const formatCurrency = (value = 0, currency = activeCurrency, options = null) =>
     return new Intl.NumberFormat(locale, {
       style: "currency",
       currency,
+      currencyDisplay: NARROW_DOLLAR_SYMBOL_CURRENCIES.has(currency) ? "narrowSymbol" : "symbol",
       minimumFractionDigits: minFractionDigits,
       maximumFractionDigits: maxFractionDigits,
     }).format(normalized);
@@ -9879,6 +9066,7 @@ const formatCurrencyWhole = (value = 0, currency = activeCurrency, precisionOver
     return new Intl.NumberFormat(locale, {
       style: "currency",
       currency,
+      currencyDisplay: NARROW_DOLLAR_SYMBOL_CURRENCIES.has(currency) ? "narrowSymbol" : "symbol",
       minimumFractionDigits: normalizedPrecision,
       maximumFractionDigits: normalizedPrecision,
     }).format(rounded);
@@ -10038,6 +9226,18 @@ const buildTemptationDisplayTitle = (emojiValue, titleValue, fallbackTitle = "Go
   const emoji = (emojiValue || "").trim();
   const title = (titleValue || "").trim() || fallbackTitle || "";
   return emoji ? `${emoji} ${title}`.trim() : title;
+};
+
+const splitLeadingEmojiToken = (rawValue = "") => {
+  const value = typeof rawValue === "string" ? rawValue.trim() : "";
+  if (!value) return { emoji: "", title: "" };
+  const [firstToken, ...restTokens] = value.split(/\s+/);
+  const title = restTokens.join(" ").trim();
+  const hasEmoji = /\p{Extended_Pictographic}/u.test(firstToken || "");
+  if (!hasEmoji || !title) {
+    return { emoji: "", title: value };
+  }
+  return { emoji: firstToken, title };
 };
 
 const getTemptationPrice = (item) => {
@@ -12931,7 +12131,15 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
                           { borderColor: goldPalette.border, backgroundColor: goldPalette.background },
                         ]}
                       >
-                        <Image source={entry.asset} style={styles.freeDayCoinImage} />
+                        {entry.asset ? (
+                          <Image source={entry.asset} style={styles.freeDayCoinImage} />
+                        ) : (
+                          <HealthCoinFallbackIcon
+                            tierId={entry.id}
+                            size={18}
+                            style={styles.freeDayCoinFallbackIcon}
+                          />
+                        )}
                         <Text style={[styles.freeDayCoinCount, { color: goldPalette.text }]}>×{entry.count}</Text>
                       </View>
                     ) : null
@@ -14082,7 +13290,7 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
               ]}
             >
               {blurAvailable ? (
-                Platform.OS === "android" && AndroidBlurView && !ANDROID_DIMEZIS_DISABLED ? (
+                Platform.OS === "android" && shouldUseAndroidCommunityBlur() ? (
                   <AndroidBlurView
                     blurType={isDarkMode ? "dark" : "light"}
                     blurAmount={glassBlurAmount}
@@ -14098,9 +13306,7 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
                       Platform.OS === "android" ? ANDROID_EXPO_BLUR_REDUCTION_FACTOR : undefined
                     }
                     experimentalBlurMethod={
-                      Platform.OS === "android" && !ANDROID_DIMEZIS_DISABLED
-                        ? "dimezisBlurView"
-                        : undefined
+                      Platform.OS === "android" ? "dimezisBlurView" : undefined
                     }
                     style={[StyleSheet.absoluteFill, styles.piggyGlassBlur]}
                   />
@@ -14452,7 +13658,7 @@ const LockedFeatureOverlay = ({
         {...overlayTouchableProps}
       >
         {blurAvailable ? (
-          Platform.OS === "android" && AndroidBlurView && !ANDROID_DIMEZIS_DISABLED ? (
+          Platform.OS === "android" && shouldUseAndroidCommunityBlur() ? (
             <AndroidBlurView
               blurType={isDarkMode ? "dark" : "light"}
               blurAmount={androidBlurAmount}
@@ -14468,9 +13674,7 @@ const LockedFeatureOverlay = ({
                 Platform.OS === "android" ? ANDROID_EXPO_BLUR_REDUCTION_FACTOR : undefined
               }
               experimentalBlurMethod={
-                Platform.OS === "android" && !ANDROID_DIMEZIS_DISABLED
-                  ? "dimezisBlurView"
-                  : undefined
+                Platform.OS === "android" ? "dimezisBlurView" : undefined
               }
               style={[StyleSheet.absoluteFill, styles.lockedFeatureBlur, radiusStyle]}
             />
@@ -16305,7 +15509,9 @@ const FeedScreen = React.memo(
   const heroCarouselLoopIndexForReal = useCallback((realIndex) => realIndex + 1, []);
   const heroCarouselInitialContentOffsetRef = useRef(null);
   if (!heroCarouselInitialContentOffsetRef.current) {
-    const initialRealIndex = Math.min(Math.max(heroCarouselIndex, 0), heroCarouselRealCount - 1);
+    const initialRealIndex = heroCarouselPremiumLocked
+      ? 0
+      : Math.min(Math.max(heroCarouselIndex, 0), heroCarouselRealCount - 1);
     heroCarouselInitialContentOffsetRef.current = {
       x: PixelRatio.roundToNearestPixel(
         heroCarouselPageWidth * heroCarouselLoopIndexForReal(initialRealIndex)
@@ -19102,6 +18308,9 @@ const FeedScreen = React.memo(
                         compactHeroTagline && styles.heroTaglineCompact,
                         { color: colors.muted },
                       ]}
+                      numberOfLines={2}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.66}
                     >
                       {t("appTagline")}
                     </Text>
@@ -19311,10 +18520,11 @@ const FeedScreen = React.memo(
               >
                 {Array.from({ length: heroCarouselLoopCount }, (_, loopIndex) => {
                   const realIndex = resolveHeroCarouselRealIndex(loopIndex);
+                  const renderedRealIndex = heroCarouselPremiumLocked ? 0 : realIndex;
                   const isClone = loopIndex === 0 || loopIndex === heroCarouselRealCount + 1;
                   const baseItemHeight = heroCarouselHeight ? { minHeight: heroCarouselHeight } : null;
                   const itemHeight =
-                    heroExpanded && realIndex === 0 ? null : baseItemHeight;
+                    heroExpanded && renderedRealIndex === 0 ? null : baseItemHeight;
                   const itemCenter = heroCarouselPageWidth * loopIndex;
                   const inputRange = [
                     itemCenter - heroCarouselPageWidth,
@@ -19343,7 +18553,7 @@ const FeedScreen = React.memo(
                       { scale: wiggleScale },
                     ],
                   };
-                  if (realIndex === 0) {
+                  if (renderedRealIndex === 0) {
                     return (
                       <Animated.View
                         key={`hero-carousel-${loopIndex}`}
@@ -19396,7 +18606,7 @@ const FeedScreen = React.memo(
                       </Animated.View>
                     );
                   }
-                  if (realIndex === 1) {
+                  if (renderedRealIndex === 1) {
                     const isBudgetPressable = !isClone && typeof onBudgetHeroPress === "function";
                     return (
                       <Animated.View
@@ -22377,7 +21587,15 @@ const ProgressScreen = React.memo(function ProgressScreen({
       </View>
 
       <View style={styles.progressHeroGrid}>
-        <View style={[styles.progressGoalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <TouchableOpacity
+          style={[styles.progressGoalCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          activeOpacity={0.9}
+          disabled={!activeGoalWish || !onGoalEdit}
+          onPress={() => {
+            if (!activeGoalWish || !onGoalEdit) return;
+            onGoalEdit(activeGoalWish);
+          }}
+        >
           <View style={styles.progressGoalHeader}>
             <Text style={[styles.progressGoalTitle, { color: colors.text }]}>{t("progressGoalTitle")}</Text>
             <Text style={styles.progressGoalEmoji}>{goalEmoji}</Text>
@@ -22418,7 +21636,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
               </Text>
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
         <View style={[styles.progressCoinCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.progressCoinHeader}>
             <Text style={[styles.progressCoinTitle, { color: colors.text }]}>{t("freeDayHealthTitle")}</Text>
@@ -22439,7 +21657,15 @@ const ProgressScreen = React.memo(function ProgressScreen({
                       { borderColor: colors.border, backgroundColor: colors.background },
                     ]}
                   >
-                    <Image source={entry.asset} style={styles.progressCoinImage} />
+                    {entry.asset ? (
+                      <Image source={entry.asset} style={styles.progressCoinImage} />
+                    ) : (
+                      <HealthCoinFallbackIcon
+                        tierId={entry.id}
+                        size={14}
+                        style={styles.progressCoinFallbackIcon}
+                      />
+                    )}
                     <Text style={[styles.progressCoinCount, { color: colors.text }]}>×{entry.count}</Text>
                   </View>
                 ) : null
@@ -22459,28 +21685,35 @@ const ProgressScreen = React.memo(function ProgressScreen({
         <Text style={[styles.progressWeeklyTitle, { color: weeklyCardPalette.text }]}>
           {t("heroDailyTitle")}
         </Text>
-        {weeklyTrend && (
+        {(weeklyTrend || onWeeklySpendPress) && (
           <View style={styles.weeklyTrendRow}>
-            {weeklyTrend.savings && (
-              <View style={styles.weeklyTrendItem}>
-                <Text style={[styles.weeklyTrendLabel, { color: weeklyCardPalette.subtext }]}>
-                  {t("heroWeeklySavingsDelta")}
-                </Text>
-                <Text style={[styles.weeklyTrendValue, { color: weeklyTrend.savings.color }]}>
-                  {weeklyTrend.savings.symbol} {weeklyTrend.savings.label}
-                </Text>
-              </View>
-            )}
-            {weeklyTrend.spending && (
-              <View style={styles.weeklyTrendItem}>
-                <Text style={[styles.weeklyTrendLabel, { color: weeklyCardPalette.subtext }]}>
-                  {t("heroWeeklySpendingDelta")}
-                </Text>
-                <Text style={[styles.weeklyTrendValue, { color: weeklyTrend.spending.color }]}>
-                  {weeklyTrend.spending.symbol} {weeklyTrend.spending.label}
-                </Text>
-              </View>
-            )}
+            <View style={styles.weeklyTrendMetrics}>
+              {weeklyTrend?.savings && (
+                <View style={styles.weeklyTrendItem}>
+                  <Text style={[styles.weeklyTrendLabel, { color: weeklyCardPalette.subtext }]}>
+                    {t("heroWeeklySavingsDelta")}
+                  </Text>
+                  <Text style={[styles.weeklyTrendValue, { color: weeklyTrend.savings.color }]}>
+                    {weeklyTrend.savings.symbol} {weeklyTrend.savings.label}
+                  </Text>
+                </View>
+              )}
+              {weeklyTrend?.spending && (
+                <View style={styles.weeklyTrendItem}>
+                  <Text style={[styles.weeklyTrendLabel, { color: weeklyCardPalette.subtext }]}>
+                    {t("heroWeeklySpendingDelta")}
+                  </Text>
+                  <Text style={[styles.weeklyTrendValue, { color: weeklyTrend.spending.color }]}>
+                    {weeklyTrend.spending.symbol} {weeklyTrend.spending.label}
+                  </Text>
+                </View>
+              )}
+            </View>
+            {onWeeklySpendPress ? (
+              <Text style={[styles.weeklyTrendHint, { color: weeklyCardPalette.subtext }]}>
+                {t("heroWeeklyDetailsHint")}
+              </Text>
+            ) : null}
           </View>
         )}
         {weeklyHasData ? (
@@ -22993,7 +22226,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
       <Modal
         visible={categoryModalVisible}
         transparent
-        animationType="none"
+        animationType="fade"
         statusBarTranslucent
         onRequestClose={closeCategoryHistory}
       >
@@ -23626,7 +22859,9 @@ const PendingScreen = React.memo(function PendingScreen({
       : 32;
   const cabinetWidth = Math.max(0, SCREEN_WIDTH - BASE_HORIZONTAL_PADDING * 2);
   const doorWidth = Math.max(0, cabinetWidth - 20);
-  const doorOffset = Math.min(doorWidth * 0.98, SCREEN_WIDTH * 0.95);
+  const doorOffsetBase = Math.min(doorWidth * 0.98, SCREEN_WIDTH * 0.95);
+  const doorOpenShiftRight = Math.min(Math.max(doorWidth * 0.06, 14), 24);
+  const doorOffset = Math.max(0, doorOffsetBase - doorOpenShiftRight);
   const doorTranslateX = doorProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [0, -doorOffset],
@@ -24048,7 +23283,11 @@ const PendingScreen = React.memo(function PendingScreen({
           >
             {handleHint}
           </Animated.Text>
-          <Pressable style={styles.fridgeHandleWrap} onPress={handleToggleFridge} hitSlop={12}>
+          <Pressable
+            style={styles.fridgeHandleWrap}
+            onPress={handleToggleFridge}
+            hitSlop={{ top: 16, bottom: 16, left: 20, right: 44 }}
+          >
             <Animated.View style={[styles.fridgeHandle, { backgroundColor: handleColor, transform: [{ scale: handleScale }] }]}>
               <View style={[styles.fridgeHandleInner, { backgroundColor: handleInnerColor }]} />
               <Animated.View style={[styles.fridgeHandleGlow, { opacity: handleGlowOpacity }]} />
@@ -25375,11 +24614,19 @@ const buildAchievements = ({
       ...(def.copy?.[translationLanguage] || {}),
       ...(def.copy?.[normalizedLanguage] || {}),
     };
-    const applyAmount = (text) =>
-      typeof text === "string" && amountLabel ? text.replace("{{amount}}", amountLabel) : text || "";
+    const applyAchievementTemplate = (text) => {
+      if (typeof text !== "string") return "";
+      return text
+        .replace(/\{\{amount\}\}/g, amountLabel || "")
+        .replace(/\{\{count\}\}/g, `${def.targetValue || 0}`);
+    };
     const remainingLabel = getAchievementRemainingLabel(def.metricType, remaining, currency, t);
-    const localizedTitle = localizeFallbackTextByLanguage(applyAmount(copySource.title), normalizedLanguage);
-    const localizedDesc = localizeFallbackTextByLanguage(applyAmount(copySource.desc), normalizedLanguage);
+    const localizedTitle = applyAchievementTemplate(
+      localizeFallbackTextByLanguage(copySource.title || "", normalizedLanguage)
+    );
+    const localizedDesc = applyAchievementTemplate(
+      localizeFallbackTextByLanguage(copySource.desc || "", normalizedLanguage)
+    );
     return {
       id: def.id,
       emoji: def.emoji,
@@ -25419,6 +24666,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
   dailyChallengeLocked = false,
   scrollRef,
 }) {
+  const isRtlLayout = isRtlLanguage(language);
   const rewardList = Array.isArray(achievements) ? achievements.filter(Boolean) : [];
   const displayRewards = rewardsLocked ? rewardList.slice(0, 2) : rewardList;
   const challengeList = useMemo(() => {
@@ -25643,19 +24891,17 @@ const RewardsScreen = React.memo(function RewardsScreen({
             shadowOffset: { width: 0, height: reward.unlocked ? 6 : 0 },
             shadowRadius: reward.unlocked ? 12 : 0,
             elevation: reward.unlocked ? 4 : 0,
+            paddingTop: reward.unlocked ? 34 : 20,
           },
         ]}
       >
-        <View style={styles.rewardHeader}>
-          <View style={{ flexDirection: "row", gap: 12, alignItems: "center", flex: 1 }}>
-            <Text style={{ fontSize: 28 }}>{reward.emoji}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.goalTitle, { color: rewardPalette.text }]}>{reward.title}</Text>
-              <Text style={[styles.goalDesc, { color: colors.muted }]}>{reward.desc}</Text>
-            </View>
-          </View>
         {reward.unlocked && (
-          <View style={styles.rewardBadgeContainer}>
+          <View
+            style={[
+              styles.rewardBadgeContainer,
+              isRtlLayout ? { left: 12, right: undefined } : { right: 12, left: undefined },
+            ]}
+          >
             <View
               style={[
                 styles.rewardBadge,
@@ -25678,6 +24924,14 @@ const RewardsScreen = React.memo(function RewardsScreen({
             </View>
           </View>
         )}
+        <View style={styles.rewardHeader}>
+          <View style={{ flexDirection: "row", gap: 12, alignItems: "center", flex: 1 }}>
+            <Text style={{ fontSize: 28 }}>{reward.emoji}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.goalTitle, { color: rewardPalette.text }]}>{reward.title}</Text>
+              <Text style={[styles.goalDesc, { color: colors.muted }]}>{reward.desc}</Text>
+            </View>
+          </View>
         </View>
         <View style={[styles.goalProgressBar, { backgroundColor: colors.border }]}>
           <View
@@ -27384,6 +26638,7 @@ function AppContent() {
   const [premiumHardPaywallHydrated, setPremiumHardPaywallHydrated] = useState(false);
   const [premiumChallengeClaims, setPremiumChallengeClaims] = useState(0);
   const [premiumChallengeClaimsHydrated, setPremiumChallengeClaimsHydrated] = useState(false);
+  const [premiumStateCacheHydrated, setPremiumStateCacheHydrated] = useState(false);
   const [premiumState, setPremiumState] = useState({
     enabled: false,
     isPremium: false,
@@ -27394,6 +26649,11 @@ function AppContent() {
     trialEligibilityByProductId: {},
     lastSource: "boot",
     error: null,
+  });
+  const premiumStateSnapshotRef = useRef({
+    isPremium: false,
+    entitlement: null,
+    customerInfo: null,
   });
   const premiumPaywallTimerRef = useRef(null);
   const premiumSoftPaywallCheckTimerRef = useRef(null);
@@ -27411,6 +26671,7 @@ function AppContent() {
   const premiumPaywallVisibilityRef = useRef(false);
   const premiumPaywallViewIndexRef = useRef(0);
   const premiumPaywallActiveViewRef = useRef(null);
+  const premiumPaywallScrolledViewIndexRef = useRef(0);
   const [premiumPurchaseLoadingPlan, setPremiumPurchaseLoadingPlan] = useState(null);
   const [premiumRestoreLoading, setPremiumRestoreLoading] = useState(false);
   const showPremiumPaywallRef = useRef(() => false);
@@ -27419,6 +26680,13 @@ function AppContent() {
   const premiumUnlockIntentRef = useRef(null);
   const premiumTrialCancelledEventKeysRef = useRef(new Set());
   const premiumAndroidConfigAlertShownRef = useRef(false);
+  useEffect(() => {
+    premiumStateSnapshotRef.current = {
+      isPremium: !!premiumState.isPremium,
+      entitlement: premiumState.entitlement || null,
+      customerInfo: premiumState.customerInfo || null,
+    };
+  }, [premiumState.customerInfo, premiumState.entitlement, premiumState.isPremium]);
   useEffect(() => {
     wishesRef.current = wishes;
   }, [wishes]);
@@ -28863,7 +28131,7 @@ function AppContent() {
   const baseTabFontSize = Platform.OS === "ios" ? 11 : isCompactAndroid ? 10 : 12;
   const tabLabelFontSize = Math.max(
     9,
-    baseTabFontSize - (isRomanceLocale ? 1 : 0) - (isGermanLocale ? 2 : 0)
+    baseTabFontSize - (isRomanceLocale ? 1 : 0) - (isGermanLocale ? 1 : 0)
   );
   const tabLabelTextTransform = isGermanLocale ? "none" : "uppercase";
   const tabOrder = ["feed", "cart", "pending", "purchases", "profile"];
@@ -29313,6 +28581,8 @@ function AppContent() {
   const feedFirstTutorialWelcomeAnim = useRef(new Animated.Value(0)).current;
   const feedFirstTutorialAmbientAnim = useRef(new Animated.Value(0)).current;
   const feedFirstTutorialAddScrolledRef = useRef(false);
+  const feedFirstTutorialSaveAutoScrolledRef = useRef(false);
+  const feedFirstTutorialAddAutoScrolledRef = useRef(false);
   const [feedFirstTutorialSaveCoachVisible, setFeedFirstTutorialSaveCoachVisible] = useState(true);
   const [feedFirstTutorialNeedSoftPaywall, setFeedFirstTutorialNeedSoftPaywall] = useState(false);
   const tutorialCardTimerRef = useRef(null);
@@ -29676,13 +28946,10 @@ function AppContent() {
         if (source === "action_save" || source === "action_spend") {
           setTutorialCardVisible(false);
           setFeedFirstTutorialSaveCoachVisible(false);
-          setFeedFirstTutorialNeedSoftPaywall(
-            !premiumState.isPremium && !premiumSoftPaywallShown
-          );
-          setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING);
           logEvent("feed_first_tutorial_step", {
             step: source === "action_save" ? "save_done" : "spend_done",
           });
+          completeFeedFirstTutorial(source === "action_save" ? "save_done" : "spend_done");
           return;
         }
         setTutorialCardVisible(false);
@@ -29702,8 +28969,6 @@ function AppContent() {
       completeFeedFirstTutorial,
       feedFirstTutorialStage,
       logEvent,
-      premiumSoftPaywallShown,
-      premiumState.isPremium,
       tutorialCardShown,
     ]
   );
@@ -30644,7 +29909,7 @@ function AppContent() {
     closeTamagotchiOverlay();
     setTimeout(() => {
       savingsHeroRef.current?.openDailyRewardModal?.();
-    }, 220);
+    }, 80);
   }, [closeTamagotchiOverlay, dailyRewardReady, playSound, triggerHaptic]);
   const handleTamagotchiTabPress = useCallback(
     (nextTabId) => {
@@ -30653,26 +29918,16 @@ function AppContent() {
       tamagotchiTabSwitchingRef.current = true;
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
       playSound("tap");
+      tamagotchiTabContentAnim.stopAnimation();
+      setTamagotchiActiveTab(nextTabId);
+      tamagotchiTabContentAnim.setValue(0.86);
       Animated.timing(tamagotchiTabContentAnim, {
-        toValue: 0,
-        duration: 110,
-        easing: Easing.out(Easing.quad),
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (!finished) {
-          tamagotchiTabSwitchingRef.current = false;
-          return;
-        }
-        runLayoutAnimation();
-        setTamagotchiActiveTab(nextTabId);
-        Animated.spring(tamagotchiTabContentAnim, {
-          toValue: 1,
-          tension: 170,
-          friction: 18,
-          useNativeDriver: true,
-        }).start(() => {
-          tamagotchiTabSwitchingRef.current = false;
-        });
+      }).start(() => {
+        tamagotchiTabSwitchingRef.current = false;
       });
     },
     [playSound, tamagotchiActiveTab, tamagotchiTabContentAnim, triggerHaptic]
@@ -34023,6 +33278,57 @@ function AppContent() {
     },
     [logEvent]
   );
+  const handlePremiumPaywallScrolled = useCallback(
+    ({ offsetY = 0 } = {}) => {
+      const context = getPremiumPaywallContext();
+      const resolvedViewIndex = Math.max(0, Number(context.viewIndex) || 0);
+      if (resolvedViewIndex <= 0) return;
+      if (premiumPaywallScrolledViewIndexRef.current === resolvedViewIndex) return;
+      premiumPaywallScrolledViewIndexRef.current = resolvedViewIndex;
+      const normalizedScrollY = Math.max(0, Math.round(Number(offsetY) || 0));
+      logEvent("premium_paywall_scrolled", {
+        kind: context.kind,
+        feature: context.feature,
+        trigger: context.trigger,
+        view_index: resolvedViewIndex,
+        scroll_y: normalizedScrollY,
+      });
+    },
+    [getPremiumPaywallContext, logEvent]
+  );
+  const trackPremiumProductNotFound = useCallback(
+    ({ eventMeta = null, reason = "unknown", errorCode = "none" } = {}) => {
+      const normalizedReason = normalizeMonetizationToken(reason, "unknown");
+      const normalizedErrorCode = normalizeMonetizationToken(errorCode, "none");
+      const normalizedProductId = normalizeMonetizationToken(eventMeta?.product_id || "unknown", "unknown");
+      if (
+        !isPremiumProductNotFoundFailure({
+          reason: normalizedReason,
+          errorCode: normalizedErrorCode,
+          productId: normalizedProductId,
+        })
+      ) {
+        return false;
+      }
+      const payload = {
+        kind: normalizeMonetizationToken(eventMeta?.kind || "feature", "feature"),
+        feature: normalizeMonetizationToken(eventMeta?.feature || "none", "none"),
+        plan: normalizeMonetizationToken(eventMeta?.plan || "unknown", "unknown"),
+        view_index: Math.max(0, Number(eventMeta?.view_index) || 0),
+        product_id: normalizedProductId,
+        reason: normalizedReason,
+        error_code: normalizedErrorCode,
+        has_trial: !!eventMeta?.has_trial,
+      };
+      const trialDays = Number(eventMeta?.trial_days);
+      if (Number.isFinite(trialDays) && trialDays > 0) {
+        payload.trial_days = Math.max(1, Math.round(trialDays));
+      }
+      logEvent("premium_product_not_found", payload);
+      return true;
+    },
+    [logEvent]
+  );
   const handlePremiumFeatureInsightPress = useCallback(
     (featureKey, { rowId = "" } = {}) => {
       const context = getPremiumPaywallContext();
@@ -34222,17 +33528,25 @@ function AppContent() {
   const refreshPremiumState = useCallback(
     async (source = "manual") => {
       if (!isPurchasesAvailable()) {
+        const cachedPremiumState = premiumStateSnapshotRef.current || {};
         setPremiumState((prev) => ({
           ...prev,
           enabled: false,
-          isPremium: false,
-          entitlement: null,
-          customerInfo: null,
+          isPremium: !!cachedPremiumState.isPremium,
+          entitlement: cachedPremiumState.entitlement || null,
+          customerInfo: cachedPremiumState.customerInfo || null,
           offerings: null,
           offeringsByPlan: {},
           trialEligibilityByProductId: {},
+          lastSource: source,
+          error: "module_unavailable",
         }));
-        return { ok: false, reason: "module_unavailable" };
+        return {
+          ok: false,
+          reason: "module_unavailable",
+          isPremium: !!cachedPremiumState.isPremium,
+          entitlement: cachedPremiumState.entitlement || null,
+        };
       }
       const [customerInfo, offerings] = await Promise.all([
         getCustomerInfoSafe(),
@@ -34248,10 +33562,39 @@ function AppContent() {
           trialEligibilityByProductId = await getTrialEligibilityByProductIdsSafe(offeringProductIds);
         }
       }
+      if (!customerInfo || typeof customerInfo !== "object") {
+        const cachedPremiumState = premiumStateSnapshotRef.current || {};
+        setPremiumState((prev) => ({
+          ...prev,
+          enabled: true,
+          offerings: offerings || null,
+          offeringsByPlan,
+          trialEligibilityByProductId,
+          lastSource: source,
+          error: "customer_info_unavailable",
+        }));
+        return {
+          ok: false,
+          reason: "customer_info_unavailable",
+          isPremium: !!cachedPremiumState.isPremium,
+          entitlement: cachedPremiumState.entitlement || null,
+          offeringsByPlan,
+        };
+      }
       const entitlement = getActivePremiumEntitlement(customerInfo);
       const isPremium = isPremiumFromCustomerInfo(customerInfo);
       if (!isPremium) {
         trackPremiumTrialCancelled(customerInfo, source);
+        if (premiumStateCacheHydrated) {
+          const downgradedCachePayload = buildPremiumStateCachePayload({
+            isPremium: false,
+            entitlement: null,
+          });
+          queuePersist(
+            STORAGE_KEYS.PREMIUM_STATE_CACHE,
+            JSON.stringify(downgradedCachePayload)
+          );
+        }
       }
       setPremiumState((prev) => ({
         ...prev,
@@ -34277,7 +33620,13 @@ function AppContent() {
       }
       return { ok: true, isPremium, entitlement, offeringsByPlan };
     },
-    [premiumInstallId, premiumInstallIdHydrated, trackPremiumTrialCancelled]
+    [
+      premiumInstallId,
+      premiumInstallIdHydrated,
+      premiumStateCacheHydrated,
+      queuePersist,
+      trackPremiumTrialCancelled,
+    ]
   );
   const attemptBackendPremiumValidation = useCallback(
     async ({ source = "manual", productId = "", purchaseResult = null, customerInfoOverride = null } = {}) => {
@@ -34357,12 +33706,16 @@ function AppContent() {
     let unsubscribe = () => {};
     const bootstrapPurchases = async () => {
       if (!isPurchasesAvailable()) {
+        const cachedPremiumState = premiumStateSnapshotRef.current || {};
         setPremiumState((prev) => ({
           ...prev,
           enabled: false,
-          isPremium: false,
+          isPremium: !!cachedPremiumState.isPremium,
+          entitlement: cachedPremiumState.entitlement || null,
+          customerInfo: cachedPremiumState.customerInfo || null,
           offeringsByPlan: {},
           trialEligibilityByProductId: {},
+          lastSource: "bootstrap",
           error: "module_unavailable",
         }));
         return;
@@ -34370,12 +33723,16 @@ function AppContent() {
       const configured = await configurePurchases({ appUserId: premiumInstallId || null });
       if (!active) return;
       if (!configured?.ok) {
+        const cachedPremiumState = premiumStateSnapshotRef.current || {};
         setPremiumState((prev) => ({
           ...prev,
           enabled: false,
-          isPremium: false,
+          isPremium: !!cachedPremiumState.isPremium,
+          entitlement: cachedPremiumState.entitlement || null,
+          customerInfo: cachedPremiumState.customerInfo || null,
           offeringsByPlan: {},
           trialEligibilityByProductId: {},
+          lastSource: "bootstrap",
           error: configured?.reason || "configure_failed",
         }));
         return;
@@ -34387,10 +33744,21 @@ function AppContent() {
       await refreshPremiumState("bootstrap");
       unsubscribe = addCustomerInfoUpdateListener((customerInfo) => {
         if (!active) return;
+        if (!customerInfo || typeof customerInfo !== "object") return;
         const entitlement = getActivePremiumEntitlement(customerInfo);
         const isPremium = isPremiumFromCustomerInfo(customerInfo);
         if (!isPremium) {
           trackPremiumTrialCancelled(customerInfo, "listener");
+          if (premiumStateCacheHydrated) {
+            const downgradedCachePayload = buildPremiumStateCachePayload({
+              isPremium: false,
+              entitlement: null,
+            });
+            queuePersist(
+              STORAGE_KEYS.PREMIUM_STATE_CACHE,
+              JSON.stringify(downgradedCachePayload)
+            );
+          }
         }
         setPremiumState((prev) => ({
           ...prev,
@@ -34420,7 +33788,14 @@ function AppContent() {
       active = false;
       unsubscribe();
     };
-  }, [premiumInstallId, premiumInstallIdHydrated, refreshPremiumState, trackPremiumTrialCancelled]);
+  }, [
+    premiumInstallId,
+    premiumInstallIdHydrated,
+    premiumStateCacheHydrated,
+    queuePersist,
+    refreshPremiumState,
+    trackPremiumTrialCancelled,
+  ]);
   useEffect(() => {
     if (!premiumInstallIdHydrated) return;
     const subscription = AppState.addEventListener("change", (nextState) => {
@@ -34509,6 +33884,11 @@ function AppContent() {
           reason: "package_unavailable",
           error_code: "none",
         });
+        trackPremiumProductNotFound({
+          eventMeta,
+          reason: "package_unavailable",
+          errorCode: "none",
+        });
         Alert.alert(
           "Almost",
           resolvePaywallAlertCopy("packageUnavailable", language)
@@ -34521,6 +33901,11 @@ function AppContent() {
           result: "failed",
           reason: "package_plan_mismatch",
           error_code: "none",
+        });
+        trackPremiumProductNotFound({
+          eventMeta,
+          reason: "package_plan_mismatch",
+          errorCode: "none",
         });
         Alert.alert("Almost", resolvePaywallAlertCopy("packageUnavailable", language));
         return;
@@ -34547,6 +33932,11 @@ function AppContent() {
           result: result.cancelled ? "cancelled" : "failed",
           reason,
           error_code: errorCode,
+        });
+        trackPremiumProductNotFound({
+          eventMeta,
+          reason,
+          errorCode,
         });
         premiumUnlockIntentRef.current = null;
         if (!result.cancelled) {
@@ -34595,6 +33985,23 @@ function AppContent() {
         error_code: "none",
       });
       logEvent("premium_purchase_success", eventMeta);
+      const parsedRevenueFromLabel = parseLocalizedPriceValue(
+        selectedCard?.priceLabel || selectedCard?.ctaPriceLabel || ""
+      );
+      const revenueLocal = Number.isFinite(priceLocal)
+        ? Math.max(0, Number(priceLocal) || 0)
+        : Number.isFinite(parsedRevenueFromLabel)
+        ? Math.max(0, Number(parsedRevenueFromLabel) || 0)
+        : 0;
+      const revenueUSD = Math.max(
+        0,
+        Number(convertFromCurrency(revenueLocal, normalizedCurrencyCode)) || 0
+      );
+      logEvent("premium_purchase_revenue", {
+        ...eventMeta,
+        revenue_local: revenueLocal,
+        revenue_usd: revenueUSD,
+      });
     },
     [
       closePremiumPaywall,
@@ -34606,6 +34013,7 @@ function AppContent() {
       profile.currency,
       attemptBackendPremiumValidation,
       refreshPremiumState,
+      trackPremiumProductNotFound,
       t,
     ]
   );
@@ -36835,15 +36243,16 @@ function AppContent() {
       }
       runPendingLevelCelebration();
     };
-    if (saveCelebrationRef.current?.skipToCountdown?.()) {
+    const saveCelebrationController = saveCelebrationRef.current;
+    if (saveCelebrationController?.skipToCountdown?.()) {
       return;
     }
-    if (saveCelebrationRef.current?.skipCountdownAnimation?.()) {
+    if (saveCelebrationController?.skipCountdownAnimation?.()) {
       return;
     }
     if (
-      saveCelebrationRef.current?.isCountdownActive?.() &&
-      !saveCelebrationRef.current?.isCountdownReady?.()
+      saveCelebrationController?.isCountdownActive?.() &&
+      !saveCelebrationController?.isCountdownReady?.()
     ) {
       return;
     }
@@ -37898,9 +37307,13 @@ function AppContent() {
           ? template.title
           : resolveLanguageMapValue(template.title, language) ||
             template.title?.en ||
-            template.title?.ru ||
-            template.title);
+          template.title?.ru ||
+          template.title);
       return typeof rawTitle === "string" && rawTitle.trim().length > 0;
+    }, {
+      previousTemplateId:
+        dailyChallenge.dateKey === resolvedTodayKey ? null : dailyChallenge.templateId,
+      drawCount: DAILY_CHALLENGE_DRAW_COUNT,
     });
     if (!targetId) {
       setDailyChallenge((prev) => ({
@@ -38617,6 +38030,7 @@ function AppContent() {
         STORAGE_KEYS.PREMIUM_SOFT_PAYWALL_SHOWN,
         STORAGE_KEYS.PREMIUM_HARD_PAYWALL_SHOWN,
         STORAGE_KEYS.PREMIUM_CHALLENGE_CLAIMS,
+        STORAGE_KEYS.PREMIUM_STATE_CACHE,
       ];
       const storedPairs = await AsyncStorage.multiGet(hydrationKeys);
       const storedMap = Object.fromEntries(storedPairs || []);
@@ -38716,6 +38130,7 @@ function AppContent() {
       const premiumSoftPaywallRaw = storedMap[STORAGE_KEYS.PREMIUM_SOFT_PAYWALL_SHOWN] ?? null;
       const premiumHardPaywallRaw = storedMap[STORAGE_KEYS.PREMIUM_HARD_PAYWALL_SHOWN] ?? null;
       const premiumChallengeClaimsRaw = storedMap[STORAGE_KEYS.PREMIUM_CHALLENGE_CLAIMS] ?? null;
+      const premiumStateCacheRaw = storedMap[STORAGE_KEYS.PREMIUM_STATE_CACHE] ?? null;
       const deferWishesHydration = shouldDeferLargeParse(wishesRaw);
       const hydrateWishes = () => {
         try {
@@ -39199,6 +38614,33 @@ function AppContent() {
           : null
       );
       setReportsWeeklyNotificationHydrated(true);
+      const parsedPremiumStateCache = parsePremiumStateCache(premiumStateCacheRaw);
+      if (parsedPremiumStateCache) {
+        setPremiumState((prev) => ({
+          ...prev,
+          isPremium: parsedPremiumStateCache.isPremium,
+          entitlement: parsedPremiumStateCache.entitlement || null,
+          customerInfo: null,
+          lastSource: "cache_hydration",
+          error: parsedPremiumStateCache.isPremium ? "cached_state" : null,
+        }));
+        premiumStateSnapshotRef.current = {
+          isPremium: parsedPremiumStateCache.isPremium,
+          entitlement: parsedPremiumStateCache.entitlement || null,
+          customerInfo: null,
+        };
+        if (parsedPremiumStateCache.confirmedLoss) {
+          const downgradedCachePayload = buildPremiumStateCachePayload({
+            isPremium: false,
+            entitlement: null,
+          });
+          AsyncStorage.setItem(
+            STORAGE_KEYS.PREMIUM_STATE_CACHE,
+            JSON.stringify(downgradedCachePayload)
+          ).catch(() => {});
+        }
+      }
+      setPremiumStateCacheHydrated(true);
       const normalizedPremiumInstallId =
         typeof premiumInstallIdRaw === "string" && premiumInstallIdRaw.trim().length
           ? premiumInstallIdRaw.trim()
@@ -40047,6 +39489,15 @@ function AppContent() {
       setDeferredHydrationReady(true);
     } finally {
       setHistoryHydrated(true);
+      setPremiumInstallId((prev) => {
+        const normalized = resolveNonEmptyString(prev);
+        return normalized || createMonetizationInstallId();
+      });
+      setPremiumInstallIdHydrated(true);
+      setPremiumSoftPaywallHydrated(true);
+      setPremiumHardPaywallHydrated(true);
+      setPremiumChallengeClaimsHydrated(true);
+      setPremiumStateCacheHydrated(true);
       if (!Number.isFinite(resolvedInstallDateMs) || resolvedInstallDateMs <= 0) {
         resolvedInstallDateMs = Date.now();
         AsyncStorage.setItem(
@@ -40804,16 +40255,10 @@ function AppContent() {
     if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.IDLE) return;
     setTutorialCardVisible(false);
     setFeedFirstTutorialSaveCoachVisible(false);
-    setFeedFirstTutorialNeedSoftPaywall(
-      !premiumState.isPremium && !premiumSoftPaywallShown
-    );
-    setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING);
-    logEvent("feed_first_tutorial_step", { step: "add_resume" });
+    completeFeedFirstTutorial("add_resume");
   }, [
+    completeFeedFirstTutorial,
     feedFirstTutorialStage,
-    logEvent,
-    premiumSoftPaywallShown,
-    premiumState.isPremium,
     shouldResumePrimaryTemptationAddPending,
   ]);
   useEffect(() => {
@@ -40847,11 +40292,13 @@ function AppContent() {
     }
   }, [logEvent, tutorialCardEligible, tutorialCardVisible]);
   useEffect(() => {
-    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.SAVE) return;
-    if (activeTab !== "feed") {
-      goToTab("feed", { recordHistory: false });
+    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.SAVE) {
+      feedFirstTutorialSaveAutoScrolledRef.current = false;
       return;
     }
+    if (activeTab !== "feed") return;
+    if (feedFirstTutorialSaveAutoScrolledRef.current) return;
+    feedFirstTutorialSaveAutoScrolledRef.current = true;
     const timer = setTimeout(() => {
       const scroller = feedScreenRef.current;
       scroller?.scrollToTemptations?.({
@@ -40860,7 +40307,7 @@ function AppContent() {
       });
     }, 180);
     return () => clearTimeout(timer);
-  }, [activeTab, feedFirstTutorialStage, goToTab]);
+  }, [activeTab, feedFirstTutorialStage]);
   useEffect(() => {
     if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING) {
       feedFirstTutorialAddScrolledRef.current = false;
@@ -40868,7 +40315,6 @@ function AppContent() {
     }
     if (activeTab !== "feed") {
       feedFirstTutorialAddScrolledRef.current = false;
-      goToTab("feed", { recordHistory: false });
       return;
     }
     if (!interfaceReady) {
@@ -40997,7 +40443,6 @@ function AppContent() {
     frequencyReminderPrompt.visible,
     feedFirstTutorialNeedSoftPaywall,
     feedFirstTutorialStage,
-    goToTab,
     interfaceReady,
     logEvent,
     overlay,
@@ -41012,8 +40457,13 @@ function AppContent() {
     tutorialBlockingVisible,
   ]);
   useEffect(() => {
-    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.ADD) return;
+    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.ADD) {
+      feedFirstTutorialAddAutoScrolledRef.current = false;
+      return;
+    }
     if (activeTab !== "feed") return;
+    if (feedFirstTutorialAddAutoScrolledRef.current) return;
+    feedFirstTutorialAddAutoScrolledRef.current = true;
     const timer = setTimeout(() => {
       feedScreenRef.current?.scrollToTop?.({ animated: true });
     }, 80);
@@ -41482,6 +40932,19 @@ function AppContent() {
       String(Math.max(0, Number(premiumChallengeClaims) || 0))
     );
   }, [premiumChallengeClaims, premiumChallengeClaimsHydrated, queuePersist]);
+  useEffect(() => {
+    if (!premiumStateCacheHydrated) return;
+    if (!premiumState.enabled || premiumState.error) return;
+    const payload = buildPremiumStateCachePayload(premiumState);
+    queuePersist(STORAGE_KEYS.PREMIUM_STATE_CACHE, JSON.stringify(payload));
+  }, [
+    premiumState.enabled,
+    premiumState.entitlement,
+    premiumState.error,
+    premiumState.isPremium,
+    premiumStateCacheHydrated,
+    queuePersist,
+  ]);
 
   useEffect(() => {
     if (!healthHydrated) return;
@@ -46101,17 +45564,9 @@ useEffect(() => {
       );
     });
     return (
-      <ScrollView
-        style={styles.tamagotchiFoodScroll}
-        contentContainerStyle={styles.tamagotchiFoodList}
-        scrollEnabled
-        nestedScrollEnabled
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator
-        bounces
-      >
+      <View style={styles.tamagotchiFoodList}>
         {buttons}
-      </ScrollView>
+      </View>
     );
   };
   const renderTamagotchiToyList = () => {
@@ -46187,17 +45642,9 @@ useEffect(() => {
       );
     });
     return (
-      <ScrollView
-        style={styles.tamagotchiFoodScroll}
-        contentContainerStyle={styles.tamagotchiFoodList}
-        scrollEnabled
-        nestedScrollEnabled
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator
-        bounces
-      >
+      <View style={styles.tamagotchiFoodList}>
         {buttons}
-      </ScrollView>
+      </View>
     );
   };
   const tamagotchiSoapProgressPercent = Math.min(
@@ -46214,28 +45661,79 @@ useEffect(() => {
     : TAMAGOTCHI_CLEAN_TOOLS.find((tool) => tool.type === "soap")?.emoji || "🧼";
   const renderTamagotchiCleanPanel = () => {
     return (
-      <ScrollView
-        style={styles.tamagotchiFoodScroll}
-        contentContainerStyle={styles.tamagotchiFoodList}
-        scrollEnabled
-        nestedScrollEnabled
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator
-        bounces
-      >
+      <View style={styles.tamagotchiFoodList}>
         <View style={styles.tamagotchiCleanPanel}>
-          <Text style={[styles.tamagotchiCleanHint, { color: colors.muted }]}>
-            {tamagotchiCleaningNeedsBrush
-              ? t("tamagotchiCleanStageBrush")
-              : t("tamagotchiCleanStageSoap")}
-          </Text>
-          <Text style={[styles.tamagotchiCleanTapHint, { color: colors.text }]}>
-            {t("tamagotchiCleanSwipeHint")}
-          </Text>
+          <View
+            style={[
+              styles.tamagotchiCleanStepsCard,
+              {
+                borderColor: colors.border,
+                backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.08 : 0.18),
+              },
+            ]}
+          >
+            <View style={styles.tamagotchiCleanStepsRow}>
+              <View
+                style={[
+                  styles.tamagotchiCleanStepChip,
+                  {
+                    borderColor: colorWithAlpha("#7CC7FF", tamagotchiCleaningNeedsBrush ? 0.4 : 0.9),
+                    backgroundColor: colorWithAlpha(
+                      "#7CC7FF",
+                      tamagotchiCleaningNeedsBrush ? (isDarkTheme ? 0.1 : 0.12) : isDarkTheme ? 0.22 : 0.28
+                    ),
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.tamagotchiCleanStepChipText,
+                    { color: tamagotchiCleaningNeedsBrush ? colors.muted : colors.text },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {`🧼 ${t("tamagotchiCleanStageSoap")}`}
+                </Text>
+              </View>
+              <Text style={[styles.tamagotchiCleanStepArrow, { color: colors.muted }]}>→</Text>
+              <View
+                style={[
+                  styles.tamagotchiCleanStepChip,
+                  {
+                    borderColor: colorWithAlpha("#99E18E", tamagotchiCleaningNeedsBrush ? 0.9 : 0.4),
+                    backgroundColor: colorWithAlpha(
+                      "#99E18E",
+                      tamagotchiCleaningNeedsBrush ? (isDarkTheme ? 0.2 : 0.26) : isDarkTheme ? 0.1 : 0.12
+                    ),
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.tamagotchiCleanStepChipText,
+                    { color: tamagotchiCleaningNeedsBrush ? colors.text : colors.muted },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {`🪥 ${t("tamagotchiCleanStageBrush")}`}
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.tamagotchiCleanHint, { color: colors.text }]}>
+              {tamagotchiCleaningNeedsBrush ? t("tamagotchiCleanStageBrush") : t("tamagotchiCleanStageSoap")}
+            </Text>
+            <Text style={[styles.tamagotchiCleanTapHint, { color: colors.text }]}>
+              {t("tamagotchiCleanSwipeHint")}
+            </Text>
+          </View>
           <View style={styles.tamagotchiCleanToolsRow}>
             {TAMAGOTCHI_CLEAN_TOOLS.map((tool) => {
               const label = resolveLanguageMapValue(tool.label, language) || tool.label.en;
               const selected = tamagotchiSelectedCleanTool?.id === tool.id;
+              const isCurrentStepTool = tamagotchiCleaningNeedsBrush
+                ? tool.type === "brush"
+                : tool.type === "soap";
+              const stepAccent = tool.type === "brush" ? "#99E18E" : "#7CC7FF";
               const remaining = Math.max(0, Number(tamagotchiCleanToolSupplies?.[tool.id]) || 0);
               const maxUses = Math.max(1, Number(tool.maxUses) || 1);
               const remainingPercent = Math.min(100, Math.max(0, (remaining / maxUses) * 100));
@@ -46247,10 +45745,17 @@ useEffect(() => {
                   style={[
                     styles.tamagotchiCleanToolButton,
                     {
-                      borderColor: selected ? colors.text : colors.border,
+                      borderColor: selected
+                        ? colors.text
+                        : isCurrentStepTool
+                        ? colorWithAlpha(stepAccent, 0.9)
+                        : colors.border,
                       backgroundColor: selected
                         ? lightenColor(colors.card, isDarkTheme ? 0.1 : 0.2)
+                        : isCurrentStepTool
+                        ? lightenColor(colors.card, isDarkTheme ? 0.12 : 0.24)
                         : colors.card,
+                      opacity: isCurrentStepTool ? 1 : 0.9,
                     },
                   ]}
                 >
@@ -46271,15 +45776,17 @@ useEffect(() => {
                     activeOpacity={0.9}
                   >
                     <Text style={styles.tamagotchiCleanToolEmoji}>{tool.emoji}</Text>
-                    <Text
-                      style={[
-                        styles.tamagotchiCleanToolLabel,
-                        { color: colors.text, opacity: selected ? 1 : 0.8 },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {label}
-                    </Text>
+                    <View style={styles.tamagotchiCleanToolTitleWrap}>
+                      <Text
+                        style={[
+                          styles.tamagotchiCleanToolLabel,
+                          { color: colors.text, opacity: selected || isCurrentStepTool ? 1 : 0.82 },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {label}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
                   <View style={styles.tamagotchiCleanToolBarWrap}>
                     <View
@@ -46328,8 +45835,17 @@ useEffect(() => {
                     activeOpacity={0.9}
                   >
                     {hasSupply ? (
-                      <Text style={[styles.tamagotchiCleanToolActionText, { color: colors.text }]}>
-                        {selected ? t("tamagotchiToolSelectedLabel") : t("tamagotchiToolSelectLabel")}
+                      <Text
+                        style={[styles.tamagotchiCleanToolActionText, { color: colors.text }]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.82}
+                      >
+                        {isCurrentStepTool
+                          ? selected
+                            ? t("tamagotchiToolSelectedLabel")
+                            : t("tamagotchiToolSelectLabel")
+                          : t("tamagotchiToolSelectLabel")}
                       </Text>
                     ) : (
                       <View style={styles.tamagotchiCleanToolBuyWrap}>
@@ -46390,7 +45906,7 @@ useEffect(() => {
             </View>
           </View>
         </View>
-      </ScrollView>
+      </View>
     );
   };
   const tamagotchiTabItems = useMemo(
@@ -47307,13 +46823,13 @@ useEffect(() => {
     closeSpendPrompt();
     // Avoid modal stacking race on iOS by waiting for close animation.
     InteractionManager.runAfterInteractions(() => {
-      triggerStormEffect();
+      try {
+        triggerStormEffect();
+        executeSpend(item, amountUSD);
+      } finally {
+        spendExecutionLockRef.current = false;
+      }
     });
-    try {
-      executeSpend(item, amountUSD);
-    } finally {
-      spendExecutionLockRef.current = false;
-    }
   }, [closeSpendPrompt, executeSpend, spendPrompt.amountUSD, spendPrompt.item, triggerStormEffect]);
 
   const buildTemptationPayload = useCallback(
@@ -49924,6 +49440,8 @@ useEffect(() => {
       const decoratedTitle = buildTemptationDisplayTitle(emoji, normalizedLabel, fallbackTitle);
       const numericPrice = Number(priceUSD);
       const hasPrice = Number.isFinite(numericPrice) && numericPrice > 0;
+      const normalizedCategory =
+        typeof category === "string" && category && IMPULSE_CATEGORY_DEFS[category] ? category : null;
       const normalizedPrecision =
         typeof pricePrecision === "number" && Number.isFinite(pricePrecision) && pricePrecision >= 0
           ? pricePrecision
@@ -49985,8 +49503,8 @@ useEffect(() => {
           if (hasPrice && event.amountUSD !== numericPrice) {
             updates.amountUSD = numericPrice;
           }
-          if (category && event.category !== category) {
-            updates.category = category;
+          if (normalizedCategory && event.category !== normalizedCategory) {
+            updates.category = normalizedCategory;
           }
           if (!Object.keys(updates).length) return event;
           mutated = true;
@@ -49997,6 +49515,7 @@ useEffect(() => {
       });
       const historySnapshot = Array.isArray(resolvedHistoryEvents) ? resolvedHistoryEvents : [];
       let historyMutated = false;
+      let historyCategoryMutated = false;
       let savedDelta = 0;
       const goalDeltas = {};
       const nextHistory = historySnapshot.map((entry) => {
@@ -50013,6 +49532,29 @@ useEffect(() => {
         if (emoji && nextMeta.emoji !== emoji) {
           nextMeta.emoji = emoji;
           metaChanged = true;
+        }
+        if (normalizedCategory && nextMeta.category !== normalizedCategory) {
+          nextMeta.category = normalizedCategory;
+          metaChanged = true;
+          historyCategoryMutated = true;
+        }
+        if (
+          normalizedCategory &&
+          Object.prototype.hasOwnProperty.call(nextMeta, "impulseCategory") &&
+          nextMeta.impulseCategory !== normalizedCategory
+        ) {
+          nextMeta.impulseCategory = normalizedCategory;
+          metaChanged = true;
+          historyCategoryMutated = true;
+        }
+        if (
+          normalizedCategory &&
+          Object.prototype.hasOwnProperty.call(nextMeta, "impulseCategoryOverride") &&
+          nextMeta.impulseCategoryOverride !== normalizedCategory
+        ) {
+          nextMeta.impulseCategoryOverride = normalizedCategory;
+          metaChanged = true;
+          historyCategoryMutated = true;
         }
         if (hasPrice) {
           if (typeof nextMeta.amountUSD === "number" && nextMeta.amountUSD !== numericPrice) {
@@ -50058,7 +49600,7 @@ useEffect(() => {
         Object.entries(goalDeltas).forEach(([goalId, delta]) => {
           applyHistoryGoalDelta(goalId, delta);
         });
-        if (hasPrice) {
+        if (hasPrice || historyCategoryMutated) {
           setChallengesState((prev) => rebuildChallengeProgressFromHistory(nextHistory, prev));
         }
       }
@@ -50643,7 +50185,7 @@ useEffect(() => {
         return;
       }
       processOverlayQueue();
-    }, 250);
+    }, 80);
   }, [blockingModalVisible, overlayEnvironmentReady, processOverlayQueue]);
 
   const triggerOverlayState = useCallback(
@@ -51264,7 +50806,11 @@ useEffect(() => {
             ? FEATURE_UNLOCK_PREMIUM_MESSAGE_MAP[messageKey]
             : null;
           const effectiveMessageKey = premiumMessageKey || messageKey;
-          const body = t(effectiveMessageKey);
+          const rawBody = t(effectiveMessageKey);
+          const body =
+            typeof rawBody === "string" || typeof rawBody === "number"
+              ? String(rawBody)
+              : "";
           if (variantKey && FEATURE_UNLOCK_VARIANT_CONFIG[variantKey]) {
             return {
               featureUnlock: true,
@@ -51285,7 +50831,11 @@ useEffect(() => {
       };
       triggerOverlayState("level", level, { force: true });
       if (rewardCoins > 0) {
-        const rewardAmount = rewardCoins * HEALTH_COIN_TIERS[1].value;
+        const blueCoinValue = Math.max(
+          1,
+          Number(BLUE_HEALTH_COIN_VALUE) || Number(HEALTH_COIN_TIERS[1]?.value) || 1
+        );
+        const rewardAmount = rewardCoins * blueCoinValue;
         setHealthPoints((prev) => prev + rewardAmount);
         triggerOverlayState(
           "health",
@@ -52419,6 +51969,7 @@ useEffect(() => {
     logScreenView(screenName);
   }, [activeTab]);
   const languageDirection = getLanguageDirection(language);
+  const appLayoutDirection = Platform.OS === "ios" ? "ltr" : languageDirection;
   if (onboardingStep !== "done") {
     const onboardingBackHandler = canGoBackOnboarding ? handleOnboardingBack : undefined;
     const onboardingSkipHandler = canShowOnboardingSkip ? handleOnboardingSkip : null;
@@ -52518,9 +52069,10 @@ useEffect(() => {
     }
     const onboardingBackground = onboardingStep === "logo" ? "#fff" : colors.background;
     return (
-      <>
+      <FormattingLanguageContext.Provider value={normalizedLanguageValue}>
+        <>
         <View
-          style={[styles.appBackground, { backgroundColor: onboardingBackground, direction: languageDirection }]}
+          style={[styles.appBackground, { backgroundColor: onboardingBackground, direction: appLayoutDirection }]}
           onTouchStart={handleRootTouchStart}
         >
           <SafeAreaView
@@ -52529,7 +52081,7 @@ useEffect(() => {
               {
                 backgroundColor: onboardingBackground,
                 paddingTop: topSafeInset,
-                direction: languageDirection,
+                direction: appLayoutDirection,
               },
             ]}
           >
@@ -52590,7 +52142,8 @@ useEffect(() => {
           highLabel={customSpendSavingsModal.highLabel}
           onContinue={handleCustomSpendSavingsContinue}
         />
-      </>
+        </>
+      </FormattingLanguageContext.Provider>
     );
   }
 
@@ -52611,9 +52164,10 @@ useEffect(() => {
   const incomeEntrySkipKey = isExtraIncomeEntry ? "extraIncomeEntrySkip" : "incomeEntrySkip";
 
   return (
-    <SavingsProvider value={{ savedTotalUSD }}>
+    <FormattingLanguageContext.Provider value={normalizedLanguageValue}>
+      <SavingsProvider value={{ savedTotalUSD }}>
       <View
-        style={[styles.appBackground, { backgroundColor: colors.background, direction: languageDirection }]}
+        style={[styles.appBackground, { backgroundColor: colors.background, direction: appLayoutDirection }]}
         onTouchStart={handleRootTouchStart}
       >
           <SafeAreaView
@@ -52622,7 +52176,7 @@ useEffect(() => {
               {
                 backgroundColor: colors.background,
                 paddingTop: topSafeInset,
-                direction: languageDirection,
+                direction: appLayoutDirection,
               },
             ]}
             onLayout={handleHomeLayout}
@@ -52884,7 +52438,7 @@ useEffect(() => {
           </Modal>
         )}
         {dailyChallengeCompleteVisible && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
+          <Modal visible transparent animationType="none" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={handleDailyChallengeCompleteClose}>
               <View style={styles.dailyChallengeBackdrop}>
                 <TouchableWithoutFeedback onPress={() => {}}>
@@ -53333,7 +52887,7 @@ useEffect(() => {
           </Modal>
         )}
         {dailyGoalCollectModal.visible && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
+          <Modal visible transparent animationType="none" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={closeDailyGoalCollectModal}>
               <View style={styles.quickModalBackdrop}>
                 <TouchableWithoutFeedback onPress={() => {}}>
@@ -54747,15 +54301,15 @@ useEffect(() => {
 	                    contentContainerStyle={[
 	                      styles.tamagotchiCardContent,
 	                      {
-	                        paddingTop: Math.max(
-	                          scaleTamagotchiMetric(IS_SHORT_DEVICE ? 96 : 104, 78),
-	                          (safeAreaInsets.top || topSafeInset || 0) +
-	                            scaleTamagotchiMetric(66, 52)
-	                        ),
-	                        paddingBottom: Math.max(
-	                          scaleTamagotchiMetric(12, 10),
-	                          (safeAreaInsets.bottom || 0) + scaleTamagotchiMetric(10, 8)
-	                        ),
+                        paddingTop: Math.max(
+                          scaleTamagotchiMetric(IS_SHORT_DEVICE ? 86 : 94, 72),
+                          (safeAreaInsets.top || topSafeInset || 0) +
+                            scaleTamagotchiMetric(58, 46)
+                        ),
+                        paddingBottom: Math.max(
+                          scaleTamagotchiMetric(8, 6),
+                          (safeAreaInsets.bottom || 0) + scaleTamagotchiMetric(7, 6)
+                        ),
 	                      },
 	                    ]}
                     showsVerticalScrollIndicator={false}
@@ -54955,30 +54509,14 @@ useEffect(() => {
                         </Animated.View>
                       ))}
 	                      {tamagotchiActiveTab === "clean" && (
-                        <>
-                          <View pointerEvents="none" style={styles.tamagotchiCleanTapOverlay}>
-                            <Text style={styles.tamagotchiCleanTapOverlayText}>
-                              {tamagotchiCleanNeedEmoji}
-                            </Text>
-                          </View>
-                          <View
-                            pointerEvents="none"
-                            style={[
-                              styles.tamagotchiCleanSwipeBubble,
-                              {
-                                backgroundColor: colorWithAlpha(colors.card, isDarkTheme ? 0.95 : 0.97),
-                                borderColor: colorWithAlpha(colors.border, isDarkTheme ? 0.95 : 0.9),
-                              },
-                            ]}
-                          >
-                            <Text
-                              style={[styles.tamagotchiCleanSwipeBubbleText, { color: colors.text }]}
-                            >
-                              {t("tamagotchiCleanSwipeHint")}
-                            </Text>
-                          </View>
-                        </>
-                      )}
+	                        <>
+	                          <View pointerEvents="none" style={styles.tamagotchiCleanTapOverlay}>
+	                            <Text style={styles.tamagotchiCleanTapOverlayText}>
+	                              {tamagotchiCleanNeedEmoji}
+	                            </Text>
+	                          </View>
+	                        </>
+	                      )}
                       {tamagotchiHasHungerImmunity && (
                         <Pressable
                           style={styles.tamagotchiShieldOverlay}
@@ -55122,12 +54660,16 @@ useEffect(() => {
                     </View>
                   </View>
                   {tamagotchiState.lastFedAt ? (
-                    <Text style={[styles.tamagotchiSub, { color: colors.muted }]}>
+                    <Text
+                      style={[styles.tamagotchiSub, { color: colors.muted }]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
                       {t("tamagotchiFedAtLabel")}:{" "}
                       {new Date(tamagotchiState.lastFedAt).toLocaleString(getFormatLocale(language))}
                     </Text>
                   ) : (
-                    <Text style={[styles.tamagotchiSub, { color: colors.muted }]}>
+                    <Text style={[styles.tamagotchiSub, { color: colors.muted }]} numberOfLines={1}>
                       {t("tamagotchiAwaitingFirstCoin")}
                     </Text>
                   )}
@@ -55187,23 +54729,25 @@ useEffect(() => {
                   >
                     {renderTamagotchiTabContent()}
                   </Animated.View>
-                  <View style={[styles.tamagotchiActions, styles.tamagotchiActionsSingle]}>
-                    <TouchableOpacity
-                      style={[
-                        styles.tamagotchiButton,
-                        styles.tamagotchiPartyButton,
-                        { backgroundColor: colors.card, borderColor: colors.border },
-                      ]}
-                      onPress={startParty}
-                    >
-                      <View style={styles.tamagotchiButtonContent}>
-                        <Image source={HEALTH_COIN_TIERS[1].asset} style={styles.tamagotchiButtonIcon} />
-                        <Text style={[styles.tamagotchiButtonText, { color: colors.text }]}>
-                          {t("tamagotchiPartyButtonLabel", { cost: TAMAGOTCHI_PARTY_BLUE_COST })}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  </View>
+	                  {tamagotchiActiveTab !== "clean" && (
+	                    <View style={[styles.tamagotchiActions, styles.tamagotchiActionsSingle]}>
+	                      <TouchableOpacity
+	                        style={[
+	                          styles.tamagotchiButton,
+	                          styles.tamagotchiPartyButton,
+	                          { backgroundColor: colors.card, borderColor: colors.border },
+	                        ]}
+	                        onPress={startParty}
+	                      >
+	                        <View style={styles.tamagotchiButtonContent}>
+	                          <Image source={HEALTH_COIN_TIERS[1].asset} style={styles.tamagotchiButtonIcon} />
+	                          <Text style={[styles.tamagotchiButtonText, { color: colors.text }]}>
+	                            {t("tamagotchiPartyButtonLabel", { cost: TAMAGOTCHI_PARTY_BLUE_COST })}
+	                          </Text>
+	                        </View>
+	                      </TouchableOpacity>
+	                    </View>
+	                  )}
                   {tamagotchiIsFull && tamagotchiActiveTab === "food" && (
                     <Text style={[styles.tamagotchiHint, { color: colors.muted }]}>
                       {t("tamagotchiFullHint")}
@@ -56182,7 +55726,7 @@ useEffect(() => {
           </Modal>
         )}
         {overlay?.type === "reward" && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
+          <Modal visible transparent animationType="none" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
                 <RewardCelebration
@@ -56196,7 +55740,7 @@ useEffect(() => {
           </Modal>
         )}
         {overlay?.type === "daily_reward" && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
+          <Modal visible transparent animationType="none" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
                 <DailyRewardCelebration
@@ -56210,7 +55754,7 @@ useEffect(() => {
           </Modal>
         )}
         {overlay?.type === "usage_streak" && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
+          <Modal visible transparent animationType="none" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
                 <UsageStreakCelebration
@@ -56225,7 +55769,7 @@ useEffect(() => {
           </Modal>
         )}
         {overlay?.type === "usage_streak_weekly_reward" && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
+          <Modal visible transparent animationType="none" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
                 <UsageStreakWeeklyRewardCelebration
@@ -56241,7 +55785,7 @@ useEffect(() => {
           </Modal>
         )}
         {overlay?.type === "usage_streak_restore" && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
+          <Modal visible transparent animationType="none" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
                 <UsageStreakRestorePrompt
@@ -56257,7 +55801,7 @@ useEffect(() => {
           </Modal>
         )}
         {overlay?.type === "streak_pledge_reward" && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
+          <Modal visible transparent animationType="none" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
                 <StreakPledgeRewardCelebration
@@ -56272,7 +55816,7 @@ useEffect(() => {
           </Modal>
         )}
         {overlay?.type === "premium_unlock" && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
+          <Modal visible transparent animationType="none" statusBarTranslucent>
             <PremiumUnlockCelebration
               payload={overlay.message}
               playSound={playSound}
@@ -56301,7 +55845,7 @@ useEffect(() => {
           </Modal>
         )}
         {overlay?.type === "focus_reward" && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
+          <Modal visible transparent animationType="none" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
                 <TouchableWithoutFeedback onPress={() => {}}>
@@ -56338,7 +55882,7 @@ useEffect(() => {
           </Modal>
         )}
         {overlay?.type === "health" && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
+          <Modal visible transparent animationType="none" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={dismissOverlay}>
               <View style={styles.overlayFullScreen}>
                 <HealthCelebration colors={colors} payload={overlay.message} t={t} language={language} />
@@ -56347,7 +55891,7 @@ useEffect(() => {
           </Modal>
         )}
         {overlay?.type === "goal_complete" && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
+          <Modal visible transparent animationType="none" statusBarTranslucent>
             <View style={styles.overlayFullScreen}>
               <Pressable style={StyleSheet.absoluteFillObject} onPress={dismissOverlay} />
               <View style={styles.overlayFullScreen} pointerEvents="box-none">
@@ -56475,6 +56019,7 @@ useEffect(() => {
           onPlanSelect={handlePremiumPlanSelected}
           onPlanPress={handlePremiumPlanPress}
           onFeatureInsightPress={handlePremiumFeatureInsightPress}
+          onScrollPastThreshold={handlePremiumPaywallScrolled}
           onRestorePress={handlePremiumRestore}
           onManagePress={handleManageSubscriptionsOpen}
           onTermsPress={handleTermsLinkOpen}
@@ -57235,7 +56780,8 @@ useEffect(() => {
         />
       </SafeAreaView>
       </View>
-    </SavingsProvider>
+      </SavingsProvider>
+    </FormattingLanguageContext.Provider>
   );
 }
 
@@ -57289,7 +56835,7 @@ const StatusGlass = React.memo(({ height, colors, theme, blurAvailable = false, 
   if (blurAvailable) {
     return (
       <View pointerEvents="none" style={[styles.statusGlass, { height }]}>
-        {Platform.OS === "android" && AndroidBlurView && !ANDROID_DIMEZIS_DISABLED ? (
+        {Platform.OS === "android" && shouldUseAndroidCommunityBlur() ? (
           <AndroidBlurView
             blurType={theme === "dark" ? "dark" : "light"}
             blurAmount={1}
@@ -57305,9 +56851,7 @@ const StatusGlass = React.memo(({ height, colors, theme, blurAvailable = false, 
               Platform.OS === "android" ? ANDROID_EXPO_BLUR_REDUCTION_FACTOR : undefined
             }
             experimentalBlurMethod={
-              Platform.OS === "android" && !ANDROID_DIMEZIS_DISABLED
-                ? "dimezisBlurView"
-                : undefined
+              Platform.OS === "android" ? "dimezisBlurView" : undefined
             }
             style={StyleSheet.absoluteFill}
           />
@@ -58294,6 +57838,21 @@ const styles = StyleSheet.create({
     marginRight: 14,
     resizeMode: "contain",
   },
+  featureUnlockAndroidBadge: {
+    width: 78,
+    height: 78,
+    marginRight: 14,
+    borderRadius: 39,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(125,190,255,0.34)",
+  },
+  featureUnlockAndroidBadgeText: {
+    ...createCtaText({ fontSize: 14 }),
+    color: "#7CB6FF",
+    letterSpacing: 0.5,
+  },
   featureUnlockMessage: {
     ...createBodyText({ fontSize: 21, lineHeight: 27, fontWeight: "800" }),
   },
@@ -58319,6 +57878,12 @@ const styles = StyleSheet.create({
   featureUnlockSectionDescription: {
     ...createBodyText({ fontSize: 14, lineHeight: 20 }),
     marginTop: 6,
+  },
+  featureUnlockAndroidLitePreview: {
+    marginTop: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 12,
   },
   featureUnlockIllustration: {
     marginTop: 12,
@@ -58989,8 +58554,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tamagotchiCardContent: {
-    paddingHorizontal: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 16 : 18, 12),
-    gap: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 10 : 12, 6),
+    paddingHorizontal: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 14 : 16, 10),
+    gap: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 7 : 9, 4),
   },
   tamagotchiStickyRewardWrap: {
     position: "absolute",
@@ -59004,15 +58569,15 @@ const styles = StyleSheet.create({
   },
   tamagotchiStickyOverlayStack: {
     alignItems: "flex-end",
-    gap: 6,
+    gap: 4,
   },
   tamagotchiStickyRewardButton: {
-    minWidth: 112,
+    minWidth: 106,
     maxWidth: 176,
     borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    borderRadius: 12,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -59022,14 +58587,14 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   tamagotchiStickyRewardText: {
-    ...createCtaText({ fontSize: 11 }),
+    ...createCtaText({ fontSize: 10 }),
     flexShrink: 1,
   },
   tamagotchiStickyCoinsPill: {
     borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-start",
@@ -59046,14 +58611,14 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tamagotchiStickyCoinsIcon: {
-    width: 15,
-    height: 15,
+    width: 14,
+    height: 14,
   },
   tamagotchiStickyCoinsValue: {
-    ...createCtaText({ fontSize: 12 }),
+    ...createCtaText({ fontSize: 11 }),
   },
   tamagotchiHeader: {
-    minHeight: scaleTamagotchiMetric(44, 34),
+    minHeight: scaleTamagotchiMetric(38, 30),
   },
   tamagotchiBackButton: {
     minWidth: 66,
@@ -59072,51 +58637,51 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   tamagotchiBackButtonFloating: {
-    minWidth: 74,
-    height: 38,
-    borderRadius: 12,
-    paddingHorizontal: 10,
+    minWidth: 70,
+    height: 34,
+    borderRadius: 11,
+    paddingHorizontal: 8,
   },
   tamagotchiBackButtonArrow: {
-    ...createCtaText({ fontSize: 15 }),
-    lineHeight: 15,
+    ...createCtaText({ fontSize: 14 }),
+    lineHeight: 14,
   },
   tamagotchiBackButtonText: {
-    ...createCtaText({ fontSize: 12 }),
+    ...createCtaText({ fontSize: 11 }),
   },
   tamagotchiHeaderTextWrap: {
     flex: 1,
-    minHeight: scaleTamagotchiMetric(44, 34),
+    minHeight: scaleTamagotchiMetric(36, 28),
     justifyContent: "flex-start",
     alignSelf: "flex-start",
   },
   tamagotchiHeaderLine: {
     flexDirection: "row",
     alignItems: "center",
-    gap: scaleTamagotchiMetric(8, 4),
-    minHeight: scaleTamagotchiMetric(40, 30),
+    gap: scaleTamagotchiMetric(6, 3),
+    minHeight: scaleTamagotchiMetric(34, 26),
   },
   tamagotchiTitle: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 29 : 32, 24),
-    lineHeight: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 31 : 34, 26),
+    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 25 : 28, 21),
+    lineHeight: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 27 : 30, 22),
     textAlign: "left",
     flexShrink: 0,
   },
   tamagotchiMood: {
     ...createBodyText({
-      fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 14 : 15, 12),
-      lineHeight: scaleTamagotchiMetric(18, 14),
+      fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 13 : 14, 11),
+      lineHeight: scaleTamagotchiMetric(16, 12),
     }),
     textAlign: "left",
     flexShrink: 1,
   },
   tamagotchiStatsStack: {
-    gap: scaleTamagotchiMetric(8, 4),
+    gap: scaleTamagotchiMetric(5, 3),
     borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(24, 16),
-    paddingHorizontal: scaleTamagotchiMetric(14, 10),
-    paddingVertical: scaleTamagotchiMetric(14, 10),
+    borderRadius: scaleTamagotchiMetric(18, 12),
+    paddingHorizontal: scaleTamagotchiMetric(10, 8),
+    paddingVertical: scaleTamagotchiMetric(10, 8),
     shadowColor: "#0A1324",
     shadowOpacity: 0.08,
     shadowRadius: 10,
@@ -59129,13 +58694,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   tamagotchiStatLabel: {
-    ...createBodyText({ fontSize: scaleTamagotchiMetric(14, 12) }),
+    ...createBodyText({ fontSize: scaleTamagotchiMetric(12, 10) }),
   },
   tamagotchiStatValue: {
-    ...createBodyText({ fontSize: scaleTamagotchiMetric(16, 13), fontWeight: "700" }),
+    ...createBodyText({ fontSize: scaleTamagotchiMetric(14, 12), fontWeight: "700" }),
   },
   tamagotchiProgress: {
-    height: scaleTamagotchiMetric(13, 9),
+    height: scaleTamagotchiMetric(10, 7),
     borderRadius: 999,
     overflow: "hidden",
   },
@@ -59145,17 +58710,17 @@ const styles = StyleSheet.create({
   },
   tamagotchiActions: {
     flexDirection: "row",
-    gap: scaleTamagotchiMetric(10, 6),
-    marginTop: scaleTamagotchiMetric(8, 4),
-    marginBottom: scaleTamagotchiMetric(6, 2),
+    gap: scaleTamagotchiMetric(8, 5),
+    marginTop: scaleTamagotchiMetric(5, 3),
+    marginBottom: scaleTamagotchiMetric(4, 2),
   },
   tamagotchiActionsSingle: {
-    marginTop: scaleTamagotchiMetric(10, 6),
+    marginTop: scaleTamagotchiMetric(7, 4),
   },
   tamagotchiButton: {
     flex: 1,
-    paddingVertical: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 12 : 13, 8),
-    borderRadius: scaleTamagotchiMetric(16, 12),
+    paddingVertical: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 10 : 11, 7),
+    borderRadius: scaleTamagotchiMetric(14, 11),
     borderWidth: 1,
     alignItems: "center",
     shadowColor: "#0A1324",
@@ -59165,29 +58730,29 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   tamagotchiPartyButton: {
-    borderRadius: scaleTamagotchiMetric(18, 13),
+    borderRadius: scaleTamagotchiMetric(16, 12),
   },
   tamagotchiButtonContent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: scaleTamagotchiMetric(8, 4),
+    gap: scaleTamagotchiMetric(6, 4),
   },
   tamagotchiButtonIcon: {
-    width: scaleTamagotchiMetric(20, 15),
-    height: scaleTamagotchiMetric(20, 15),
+    width: scaleTamagotchiMetric(18, 13),
+    height: scaleTamagotchiMetric(18, 13),
   },
   tamagotchiRewardIcon: {
-    fontSize: scaleTamagotchiMetric(16, 12),
+    fontSize: scaleTamagotchiMetric(15, 11),
   },
   tamagotchiPreview: {
     width: "100%",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(30, 20),
-    paddingTop: scaleTamagotchiMetric(18, 12),
-    paddingBottom: scaleTamagotchiMetric(12, 8),
-    marginBottom: scaleTamagotchiMetric(4, 2),
+    borderRadius: scaleTamagotchiMetric(24, 16),
+    paddingTop: scaleTamagotchiMetric(12, 8),
+    paddingBottom: scaleTamagotchiMetric(8, 6),
+    marginBottom: scaleTamagotchiMetric(2, 1),
     overflow: "hidden",
     shadowColor: "#0A1324",
     shadowOpacity: 0.14,
@@ -59197,18 +58762,18 @@ const styles = StyleSheet.create({
   },
   tamagotchiPreviewAura: {
     position: "absolute",
-    top: -scaleTamagotchiMetric(34, 22),
-    width: scaleTamagotchiMetric(240, 168),
-    height: scaleTamagotchiMetric(180, 128),
-    borderRadius: scaleTamagotchiMetric(120, 84),
+    top: -scaleTamagotchiMetric(28, 18),
+    width: scaleTamagotchiMetric(208, 146),
+    height: scaleTamagotchiMetric(158, 112),
+    borderRadius: scaleTamagotchiMetric(104, 73),
   },
   tamagotchiPreviewAuraSecondary: {
     position: "absolute",
-    bottom: -scaleTamagotchiMetric(42, 26),
-    right: -scaleTamagotchiMetric(28, 18),
-    width: scaleTamagotchiMetric(160, 112),
-    height: scaleTamagotchiMetric(120, 84),
-    borderRadius: scaleTamagotchiMetric(100, 70),
+    bottom: -scaleTamagotchiMetric(34, 22),
+    right: -scaleTamagotchiMetric(24, 15),
+    width: scaleTamagotchiMetric(142, 100),
+    height: scaleTamagotchiMetric(108, 76),
+    borderRadius: scaleTamagotchiMetric(88, 62),
   },
   tamagotchiMascotWrap: {
     position: "relative",
@@ -59216,11 +58781,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: "84%",
     alignSelf: "center",
-    minHeight: scaleTamagotchiMetric(190, 130),
+    minHeight: scaleTamagotchiMetric(152, 108),
   },
   tamagotchiMascotLarge: {
-    width: scaleTamagotchiMetric(148, 106),
-    height: scaleTamagotchiMetric(148, 106),
+    width: scaleTamagotchiMetric(126, 94),
+    height: scaleTamagotchiMetric(126, 94),
   },
   tamagotchiToyOrbit: {
     position: "absolute",
@@ -59252,28 +58817,17 @@ const styles = StyleSheet.create({
   tamagotchiCleanTapOverlayText: {
     fontSize: 15,
   },
-  tamagotchiCleanSwipeBubble: {
-    position: "absolute",
-    top: -14,
-    alignSelf: "center",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    maxWidth: 180,
-    zIndex: 9,
-  },
-  tamagotchiCleanSwipeBubbleText: {
-    ...createCtaText({ fontSize: 10, textAlign: "center" }),
-  },
   tamagotchiReactionBubble: {
     borderWidth: 1,
     borderRadius: scaleTamagotchiMetric(14, 11),
     paddingHorizontal: scaleTamagotchiMetric(10, 8),
-    paddingVertical: scaleTamagotchiMetric(5, 3),
+    paddingVertical: scaleTamagotchiMetric(7, 5),
+    minHeight: scaleTamagotchiMetric(40, 32),
     maxWidth: "72%",
     flexShrink: 1,
     marginLeft: scaleTamagotchiMetric(2, 1),
+    alignItems: "center",
+    justifyContent: "center",
     shadowColor: "#0A1324",
     shadowOpacity: 0.08,
     shadowRadius: 6,
@@ -59281,9 +58835,11 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   tamagotchiReactionBubbleText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(11, 9), textAlign: "center" }),
-    lineHeight: scaleTamagotchiMetric(14, 11),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(12, 10), textAlign: "center" }),
+    lineHeight: scaleTamagotchiMetric(16, 13),
     flexShrink: 1,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   tamagotchiShieldOverlay: {
     position: "absolute",
@@ -59324,46 +58880,46 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   tamagotchiImmunityPill: {
-    marginTop: scaleTamagotchiMetric(2, 1),
-    marginBottom: scaleTamagotchiMetric(4, 2),
-    borderRadius: scaleTamagotchiMetric(12, 8),
+    marginTop: scaleTamagotchiMetric(1, 1),
+    marginBottom: scaleTamagotchiMetric(3, 1),
+    borderRadius: scaleTamagotchiMetric(10, 7),
     borderWidth: 1,
-    paddingHorizontal: scaleTamagotchiMetric(10, 7),
-    paddingVertical: scaleTamagotchiMetric(6, 4),
+    paddingHorizontal: scaleTamagotchiMetric(8, 6),
+    paddingVertical: scaleTamagotchiMetric(5, 3),
     flexDirection: "row",
     alignItems: "center",
-    gap: scaleTamagotchiMetric(6, 4),
+    gap: scaleTamagotchiMetric(5, 3),
     alignSelf: "flex-start",
   },
   tamagotchiImmunityPillIcon: {
-    fontSize: scaleTamagotchiMetric(14, 11),
+    fontSize: scaleTamagotchiMetric(13, 10),
   },
   tamagotchiImmunityPillText: {
-    ...createBodyText({ fontSize: scaleTamagotchiMetric(12, 10) }),
+    ...createBodyText({ fontSize: scaleTamagotchiMetric(11, 9) }),
     fontWeight: "700",
   },
   tamagotchiButtonText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(14, 11) }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(13, 10) }),
   },
   tamagotchiFoodTitle: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: scaleTamagotchiMetric(28, 21),
-    lineHeight: scaleTamagotchiMetric(32, 24),
-    marginTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 8 : 10, 4),
-    marginBottom: scaleTamagotchiMetric(6, 3),
+    fontSize: scaleTamagotchiMetric(22, 17),
+    lineHeight: scaleTamagotchiMetric(25, 19),
+    marginTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 5 : 6, 3),
+    marginBottom: scaleTamagotchiMetric(4, 2),
     position: "relative",
     zIndex: 4,
   },
   tamagotchiTabsRow: {
     flexDirection: "row",
-    gap: scaleTamagotchiMetric(10, 6),
-    marginTop: scaleTamagotchiMetric(6, 3),
+    gap: scaleTamagotchiMetric(8, 5),
+    marginTop: scaleTamagotchiMetric(4, 2),
   },
   tamagotchiTabButton: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(14, 10),
-    paddingVertical: scaleTamagotchiMetric(9, 6),
+    borderRadius: scaleTamagotchiMetric(12, 9),
+    paddingVertical: scaleTamagotchiMetric(7, 5),
     paddingHorizontal: scaleTamagotchiMetric(6, 4),
     alignItems: "center",
     justifyContent: "center",
@@ -59379,24 +58935,24 @@ const styles = StyleSheet.create({
     }),
   },
   tamagotchiTabButtonText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(12, 10) }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(11, 9) }),
   },
   tamagotchiTabContentWrap: {
-    minHeight: scaleTamagotchiMetric(180, 126),
-    marginTop: scaleTamagotchiMetric(2, 1),
+    minHeight: scaleTamagotchiMetric(146, 110),
+    marginTop: 0,
     overflow: "hidden",
   },
   tamagotchiFoodList: {
-    marginTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 1 : 2, 1),
-    paddingTop: scaleTamagotchiMetric(20, 10),
+    marginTop: 0,
+    paddingTop: scaleTamagotchiMetric(10, 6),
     paddingBottom: scaleTamagotchiMetric(2, 1),
   },
   tamagotchiFoodScroll: {
     height: Math.max(
-      scaleTamagotchiMetric(128, 120),
+      scaleTamagotchiMetric(166, 144),
       scaleTamagotchiMetric(
-        Math.min(IS_SHORT_DEVICE ? 210 : 230, SCREEN_HEIGHT * (IS_SHORT_DEVICE ? 0.28 : 0.31)),
-        124
+        Math.min(IS_SHORT_DEVICE ? 274 : 308, SCREEN_HEIGHT * (IS_SHORT_DEVICE ? 0.36 : 0.4)),
+        156
       )
     ),
     overflow: "hidden",
@@ -59405,13 +58961,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(20, 14),
-    paddingTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 12 : 14, 8),
-    paddingBottom: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 9 : 11, 6),
-    paddingHorizontal: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 12 : 14, 8),
-    gap: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 10 : 12, 6),
+    borderRadius: scaleTamagotchiMetric(16, 12),
+    paddingTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 10 : 11, 7),
+    paddingBottom: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 7 : 8, 5),
+    paddingHorizontal: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 10 : 11, 7),
+    gap: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 8 : 9, 5),
     position: "relative",
-    marginBottom: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 6 : 8, 4),
+    marginBottom: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 4 : 5, 3),
     ...Platform.select({
       android: {
         elevation: 0,
@@ -59434,7 +58990,7 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 8 },
       },
     }),
-    paddingTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 16 : 18, 12),
+    paddingTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 13 : 14, 10),
   },
   tamagotchiFoodButtonLast: {
     marginBottom: 0,
@@ -59443,18 +58999,18 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   tamagotchiFoodEmoji: {
-    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 24 : 28, 18),
+    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 21 : 24, 16),
   },
   tamagotchiFoodInfo: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
   tamagotchiFoodLabel: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 14 : 15, 11),
+    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 13 : 14, 10),
   },
   tamagotchiFoodBoost: {
-    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 11 : 12, 10) }),
+    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 10 : 11, 9) }),
   },
   tamagotchiFoodCost: {
     flexDirection: "row",
@@ -59468,11 +59024,11 @@ const styles = StyleSheet.create({
     gap: scaleTamagotchiMetric(1, 1),
   },
   tamagotchiFoodCostIcon: {
-    width: scaleTamagotchiMetric(18, 14),
-    height: scaleTamagotchiMetric(18, 14),
+    width: scaleTamagotchiMetric(16, 12),
+    height: scaleTamagotchiMetric(16, 12),
   },
   tamagotchiFoodCostText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(13, 10) }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(12, 9) }),
   },
   tamagotchiToyPenaltyWrap: {
     alignItems: "flex-end",
@@ -59514,18 +59070,43 @@ const styles = StyleSheet.create({
     lineHeight: 10,
   },
   tamagotchiSub: {
-    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(12, 10) }),
+    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(11, 9) }),
   },
   tamagotchiCleanPanel: {
-    marginTop: scaleTamagotchiMetric(4, 2),
+    marginTop: scaleTamagotchiMetric(2, 1),
     gap: scaleTamagotchiMetric(8, 4),
   },
+  tamagotchiCleanStepsCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    gap: 6,
+  },
+  tamagotchiCleanStepsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  tamagotchiCleanStepChip: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 5,
+    paddingHorizontal: 7,
+  },
+  tamagotchiCleanStepChipText: {
+    ...createCtaText({ fontSize: 10, textAlign: "center" }),
+  },
+  tamagotchiCleanStepArrow: {
+    ...createCtaText({ fontSize: 12 }),
+  },
   tamagotchiCleanHint: {
-    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(12, 10) }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(12, 10), textAlign: "center" }),
     textAlign: "center",
   },
   tamagotchiCleanTapHint: {
-    ...createBodyText({ fontSize: scaleTamagotchiMetric(13, 11), textAlign: "center" }),
+    ...createBodyText({ fontSize: scaleTamagotchiMetric(12, 10), textAlign: "center" }),
     fontWeight: "700",
   },
   tamagotchiCleanToolsRow: {
@@ -59536,28 +59117,33 @@ const styles = StyleSheet.create({
   tamagotchiCleanToolButton: {
     width: "48%",
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingVertical: 8,
-    paddingHorizontal: 8,
+    paddingHorizontal: 9,
     gap: 7,
+    minHeight: 128,
   },
   tamagotchiCleanToolTop: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+    alignItems: "flex-start",
+    gap: 7,
   },
   tamagotchiCleanToolEmoji: {
     fontSize: 18,
   },
+  tamagotchiCleanToolTitleWrap: {
+    flex: 1,
+    gap: 2,
+  },
   tamagotchiCleanToolLabel: {
-    ...createBodyText({ fontSize: 11 }),
+    ...createBodyText({ fontSize: 12 }),
     flex: 1,
   },
   tamagotchiCleanToolBarWrap: {
-    gap: 4,
+    gap: 5,
   },
   tamagotchiCleanToolBarTrack: {
-    height: 6,
+    height: 7,
     borderRadius: 999,
     overflow: "hidden",
   },
@@ -59571,8 +59157,8 @@ const styles = StyleSheet.create({
   tamagotchiCleanToolActionButton: {
     marginTop: 1,
     borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 6,
+    borderRadius: 11,
+    paddingVertical: 7,
     paddingHorizontal: 8,
     alignItems: "center",
     justifyContent: "center",
@@ -59618,7 +59204,7 @@ const styles = StyleSheet.create({
   },
   tamagotchiHint: {
     ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
-    marginTop: 4,
+    marginTop: 2,
   },
   tamagotchiClose: {
     alignSelf: "center",
@@ -61617,10 +61203,18 @@ const styles = StyleSheet.create({
   },
   weeklyTrendRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 10,
     marginTop: 6,
     marginBottom: 2,
+  },
+  weeklyTrendMetrics: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    flex: 1,
+    minWidth: 0,
+    gap: 12,
   },
   weeklyTrendItem: {
     flexDirection: "row",
@@ -61633,6 +61227,14 @@ const styles = StyleSheet.create({
   weeklyTrendValue: {
     ...createSecondaryText({ fontSize: 11 }),
     fontWeight: "700",
+  },
+  weeklyTrendHint: {
+    ...createSecondaryText({ fontSize: 10 }),
+    textAlign: "right",
+    lineHeight: 13,
+    fontWeight: "600",
+    maxWidth: 140,
+    flexShrink: 1,
   },
   progressHeroHeader: {
     flexDirection: "row",
@@ -62069,6 +61671,10 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     resizeMode: "contain",
+  },
+  freeDayCoinFallbackIcon: {
+    width: 18,
+    height: 18,
   },
   freeDayCoinCount: {
     fontSize: 12,
@@ -62657,6 +62263,10 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     resizeMode: "contain",
+  },
+  progressCoinFallbackIcon: {
+    width: 14,
+    height: 14,
   },
   progressCoinCount: {
     fontSize: 12,
@@ -64957,23 +64567,24 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   rewardBadgeFloating: {
-    position: "absolute",
+    position: "relative",
     top: 0,
-    right: -6,
+    right: 0,
+    alignSelf: "flex-start",
   },
   rewardBadgeText: {
     ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   rewardBadgeContainer: {
     position: "absolute",
-    top: -8,
-    right: -10,
+    top: 8,
+    right: 12,
     padding: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    width: "100%",
     pointerEvents: "none",
+    zIndex: 2,
   },
   healthRewardTokenRow: {
     flexDirection: "row",
@@ -64992,6 +64603,10 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     resizeMode: "contain",
+  },
+  healthRewardTokenFallbackIcon: {
+    width: 16,
+    height: 16,
   },
   healthRewardTokenCount: {
     ...createCtaText({ fontSize: 12 }),
@@ -65186,9 +64801,11 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   challengeRewardChipFloating: {
-    position: "absolute",
-    right: 10,
-    top: -6,
+    position: "relative",
+    right: 0,
+    top: 0,
+    alignSelf: "flex-end",
+    marginBottom: 2,
   },
   challengeSwipeWrapper: {
     position: "relative",
@@ -67469,6 +67086,10 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
   },
+  levelHeroCatFallback: {
+    fontSize: 54,
+    lineHeight: 62,
+  },
   levelTitle: {
     ...TYPOGRAPHY.blockTitle,
     fontSize: 29,
@@ -67589,6 +67210,10 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     resizeMode: "contain",
+  },
+  healthCoinFallbackIcon: {
+    width: 76,
+    height: 76,
   },
   healthCoinShine: {
     position: "absolute",
@@ -68659,7 +68284,7 @@ const styles = StyleSheet.create({
   },
   saveCelebrationHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 14,
   },
   saveCelebrationMascotWrap: {
@@ -68682,20 +68307,37 @@ const styles = StyleSheet.create({
   },
   saveCelebrationTitleBlock: {
     flex: 1,
-    gap: 6,
+    gap: 4,
+    justifyContent: "flex-start",
+    minHeight: 48,
+    marginTop: -3,
+  },
+  saveCelebrationTitleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  saveCelebrationTitleEmoji: {
+    fontSize: 22,
+    lineHeight: 24,
+    marginRight: 6,
+    includeFontPadding: false,
   },
   saveCelebrationTitle: {
+    flex: 1,
     fontSize: 20,
     fontWeight: "800",
     textAlign: "left",
     lineHeight: 24,
+    includeFontPadding: false,
   },
   saveCelebrationSubtitle: {
     fontSize: 11,
+    lineHeight: 14,
     fontWeight: "700",
     textAlign: "left",
     textTransform: "uppercase",
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
+    includeFontPadding: false,
   },
   saveCelebrationStatsRow: {
     flexDirection: "row",
@@ -69719,21 +69361,21 @@ const styles = StyleSheet.create({
   genderGrid: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 12,
+    gap: 10,
   },
   genderChip: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 20,
-    paddingVertical: 12,
+    borderRadius: 18,
+    paddingVertical: 9,
     alignItems: "center",
-    gap: 6,
+    gap: 4,
   },
   genderEmoji: {
-    fontSize: 20,
+    fontSize: 18,
   },
   genderLabel: {
-    ...createBodyText({ fontWeight: "600" }),
+    ...createBodyText({ fontWeight: "600", fontSize: 14, lineHeight: 18, textAlign: "center" }),
   },
   languageButton: {
     flexGrow: 1,
@@ -70405,7 +70047,12 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, 
                 onPress={() => onChange("gender", option.id)}
               >
                 <Text style={styles.genderEmoji}>{option.emoji}</Text>
-                <Text style={[styles.genderLabel, { color: colors.text }]}>
+                <Text
+                  style={[styles.genderLabel, { color: colors.text }]}
+                  numberOfLines={2}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.82}
+                >
                   {resolveLanguageMapValue(option.label, language) || option.label.en}
                 </Text>
               </TouchableOpacity>
@@ -71013,6 +70660,13 @@ function CoinEntryModal({
   const runSubmitAnimation = useCallback(
     (direction, payload) => {
       if (closingRef.current) return;
+      const isSaveAction = direction === "save";
+      const tintFadeDuration = isSaveAction ? 120 : 180;
+      const cardHideDuration = isSaveAction ? 120 : 180;
+      const flightFadeInDuration = isSaveAction ? 90 : 160;
+      const flightPeakScaleDuration = isSaveAction ? 120 : 160;
+      const flightSettleScaleDuration = isSaveAction ? 180 : 320;
+      const flightTravelDuration = isSaveAction ? 300 : 520;
       closingRef.current = true;
       setFlightDirection(direction);
       setCloseTintColor(
@@ -71036,44 +70690,44 @@ function CoinEntryModal({
         Animated.parallel([
           Animated.timing(closeTintOpacity, {
             toValue: 1,
-            duration: 180,
+            duration: tintFadeDuration,
             easing: Easing.out(Easing.quad),
             useNativeDriver: true,
           }),
           Animated.timing(cardAnim, {
             toValue: 0,
-            duration: 180,
+            duration: cardHideDuration,
             easing: Easing.in(Easing.quad),
             useNativeDriver: true,
           }),
           Animated.timing(flightOpacity, {
             toValue: 1,
-            duration: 160,
+            duration: flightFadeInDuration,
             useNativeDriver: true,
           }),
           Animated.sequence([
             Animated.timing(flightScale, {
               toValue: 1.05,
-              duration: 160,
+              duration: flightPeakScaleDuration,
               easing: Easing.out(Easing.back(1.1)),
               useNativeDriver: true,
             }),
             Animated.timing(flightScale, {
               toValue: 0.7,
-              duration: 320,
+              duration: flightSettleScaleDuration,
               easing: Easing.in(Easing.quad),
               useNativeDriver: true,
             }),
           ]),
           Animated.timing(flightSpin, {
             toValue: 1,
-            duration: 520,
+            duration: flightTravelDuration,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
           Animated.timing(flightPosition, {
             toValue: { x: target.x - COIN_FLIGHT_SIZE / 2, y: target.y - COIN_FLIGHT_SIZE / 2 },
-            duration: 520,
+            duration: flightTravelDuration,
             easing: Easing.inOut(Easing.cubic),
             useNativeDriver: true,
           }),
@@ -71355,7 +71009,7 @@ function CoinEntryModal({
       tossingRef.current = true;
       Animated.timing(directionAnim, {
         toValue: direction === "save" ? 3.2 : -3.2,
-        duration: 180,
+        duration: direction === "save" ? 120 : 180,
         easing: Easing.out(Easing.circle),
         useNativeDriver: false,
       }).start(() => {
@@ -71385,7 +71039,7 @@ function CoinEntryModal({
   const showActionButtons = true;
   const shouldHighlightCategoryError = categoryError && !selectedCategory;
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={handleDismiss} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleDismiss} statusBarTranslucent>
       <View style={styles.coinEntryOverlayRoot}>
         <Animated.View
           pointerEvents="none"
@@ -72907,7 +72561,10 @@ function addBottomOffsetStyle(baseStyle, inset) {
   const safeInset = Math.max(0, Number(inset) || 0);
   if (!safeInset) return null;
   const baseBottom = StyleSheet.flatten(baseStyle)?.bottom || 0;
-  return { bottom: baseBottom + safeInset };
+  return {
+    bottom: 0,
+    paddingBottom: safeInset + Math.max(0, baseBottom),
+  };
 }
 
 function OnboardingBackButton({ onPress, colors, t }) {
@@ -73298,6 +72955,7 @@ function LogoSplash({ onDone }) {
 const LevelUpCelebration = ({ colors, message, t, onSharePress }) => {
   const isDarkMode = colors.background === THEMES.dark.background;
   const levelNumber = Math.max(1, Number(message) || 1);
+  const levelCatAsset = Platform.OS === "android" ? null : LEVEL_SHARE_CAT;
   const entryAnim = useRef(new Animated.Value(0)).current;
   const auraAnim = useRef(new Animated.Value(0)).current;
   const badgeFloatAnim = useRef(new Animated.Value(0)).current;
@@ -73473,11 +73131,17 @@ const LevelUpCelebration = ({ colors, message, t, onSharePress }) => {
           >
             <Text style={[styles.levelBadgeText, { color: palette.badgeText }]}>LEVEL {levelNumber}</Text>
           </Animated.View>
-          <Animated.Image
-            source={LEVEL_SHARE_CAT}
-            style={[styles.levelHeroCat, { transform: [{ translateY: badgeFloatY }] }]}
-            resizeMode="contain"
-          />
+          {levelCatAsset ? (
+            <Animated.Image
+              source={levelCatAsset}
+              style={[styles.levelHeroCat, { transform: [{ translateY: badgeFloatY }] }]}
+              resizeMode="contain"
+            />
+          ) : (
+            <Animated.Text style={[styles.levelHeroCatFallback, { transform: [{ translateY: badgeFloatY }] }]}>
+              🐱
+            </Animated.Text>
+          )}
         </View>
         <Text style={[styles.levelTitle, { color: palette.title }]}>
           {t("progressHeroLevel", { level: levelNumber })}
@@ -73748,7 +73412,7 @@ const SaveCelebration = forwardRef(
     );
     const hearts = useMemo(
       () =>
-        Array.from({ length: 18 }).map((_, index) => ({
+        Array.from({ length: 12 }).map((_, index) => ({
           id: `reward_heart_${index}`,
           left: Math.random() * SCREEN_WIDTH,
           delay: Math.random() * 1200,
@@ -74123,6 +73787,12 @@ const SaveCelebration = forwardRef(
     const savedValue = savedAmountLabel || "0";
     const coinsValue = rewardLabel > 0 ? `+${rewardLabel}` : "0";
     const skipsValue = saveCount.toLocaleString(saveCountLocale);
+    const rawSaveTitle = typeof payload?.title === "string" ? payload.title.trim() : "";
+    const { emoji: saveTitleEmoji, title: saveTitleText } = useMemo(
+      () => splitLeadingEmojiToken(rawSaveTitle),
+      [rawSaveTitle]
+    );
+    const saveTitleDisplay = saveTitleText || rawSaveTitle;
     const statCards = useMemo(
       () => [
         { key: "saved", label: t("saveOverlayStatSaved"), value: savedValue, accent: SAVE_ACTION_COLOR },
@@ -74239,9 +73909,16 @@ const SaveCelebration = forwardRef(
                 <Text style={[styles.saveCelebrationSubtitle, { color: colors.muted }]}>
                   {t("saveCelebrateTitlePrefix")}
                 </Text>
-                <Text style={[styles.saveCelebrationTitle, { color: colors.text }]} numberOfLines={2}>
-                  {payload?.title || ""}
-                </Text>
+                <View style={styles.saveCelebrationTitleRow}>
+                  {saveTitleEmoji ? (
+                    <Text style={[styles.saveCelebrationTitleEmoji, { color: colors.text }]}>
+                      {saveTitleEmoji}
+                    </Text>
+                  ) : null}
+                  <Text style={[styles.saveCelebrationTitle, { color: colors.text }]} numberOfLines={2}>
+                    {saveTitleDisplay}
+                  </Text>
+                </View>
               </View>
             </View>
             <View style={styles.saveCelebrationStatsRow}>
@@ -74703,7 +74380,7 @@ const UsageStreakCounterDigit = ({
       Animated.delay(delay),
       Animated.timing(spinProgress, {
         toValue: spinSteps,
-        duration: 720 + spinSteps * 10,
+        duration: 560 + spinSteps * 8,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
@@ -75111,7 +74788,7 @@ const RewardCelebration = ({ colors, message, t, mascotHappySource }) => {
   const happySource = mascotHappySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
   const hearts = useMemo(
     () =>
-      Array.from({ length: 18 }).map((_, index) => ({
+      Array.from({ length: 10 }).map((_, index) => ({
         id: `reward_heart_${index}`,
         left: Math.random() * SCREEN_WIDTH,
         delay: Math.random() * 1200,
@@ -75155,7 +74832,9 @@ const HealthCelebration = ({ colors, payload, t, language }) => {
     typeof data.coinValue === "number" && Number.isFinite(data.coinValue) ? data.coinValue : amount;
   const baseSubtitle = t("healthCelebrateSubtitle");
   const reason = data.reason || baseSubtitle;
-  const rewardCoinTier = getHealthCoinTierForAmount(coinValue);
+  const fallbackCoinTier = HEALTH_COIN_TIERS[0] || null;
+  const rewardCoinTier = getHealthCoinTierForAmount(coinValue) || fallbackCoinTier;
+  const rewardCoinAsset = rewardCoinTier?.asset || fallbackCoinTier?.asset || null;
   const titleAmount = formatHealthRewardLabel(coinValue, language);
   const isDarkTheme = colors.background === THEMES.dark.background;
   const tierId = rewardCoinTier?.id || "blue";
@@ -75328,7 +75007,7 @@ const HealthCelebration = ({ colors, payload, t, language }) => {
   return (
     <View style={styles.healthOverlay}>
       <View style={[styles.healthBackdrop, { backgroundColor: backdropColor }]} />
-      <CoinRainOverlay dropCount={12} asset={rewardCoinTier?.asset || HEALTH_COIN_TIERS[0].asset} />
+      {rewardCoinAsset ? <CoinRainOverlay dropCount={12} asset={rewardCoinAsset} /> : null}
       <Animated.View
         style={[
           styles.healthCoinStage,
@@ -75366,7 +75045,15 @@ const HealthCelebration = ({ colors, payload, t, language }) => {
             { backgroundColor: accent, transform: [{ scale: coinScale }, { rotate: coinRotation }] },
           ]}
         >
-          <Image source={rewardCoinTier.asset} style={styles.healthCoinImage} />
+          {rewardCoinAsset ? (
+            <Image source={rewardCoinAsset} style={styles.healthCoinImage} />
+          ) : (
+            <HealthCoinFallbackIcon
+              tierId={rewardCoinTier?.id || "blue"}
+              size={76}
+              style={styles.healthCoinFallbackIcon}
+            />
+          )}
           <Animated.View
             pointerEvents="none"
             style={[
@@ -76675,7 +76362,7 @@ const UsageStreakCelebration = ({
   const [counterActive, setCounterActive] = useState(false);
   useEffect(() => {
     setCounterActive(false);
-    const timer = setTimeout(() => setCounterActive(true), 120);
+    const timer = setTimeout(() => setCounterActive(true), 32);
     return () => clearTimeout(timer);
   }, [displayCount]);
   const flameScale = useRef(new Animated.Value(0.7)).current;
@@ -76891,7 +76578,7 @@ const UsageStreakCelebration = ({
                     key={`${slot.key}-${counterActive}`}
                     index={index}
                     digit={slot.value}
-                    delay={index * 90}
+                    delay={index * 55}
                     active={counterActive}
                     color={counterTextColor}
                     backgroundColor={counterDigitBackground}
@@ -77091,18 +76778,23 @@ const FeatureUnlockCelebration = ({
   onDismiss,
   isPremiumUser = false,
 }) => {
+  const asText = (value) =>
+    typeof value === "string" || typeof value === "number" ? String(value) : "";
+  // Restored full unlock experience on Android (illustrations + animated mascot).
+  const isAndroidLiteMode = false;
   const happySource = tamagotchiAnimations?.happy || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
-  const messageText = typeof payload === "object" ? payload?.body || "" : payload || "";
+  const messageText =
+    typeof payload === "object" ? asText(payload?.body) : asText(payload);
   const variantKey = typeof payload === "object" ? payload?.variant || null : null;
   const variant = variantKey ? FEATURE_UNLOCK_VARIANT_CONFIG[variantKey] : null;
   const payloadPremiumReminder =
     typeof payload === "object" && payload !== null && payload.premiumReminder === true;
   const isPremiumReminder = payloadPremiumReminder || !!isPremiumUser;
-  const whereLabel = t("featureUnlockWhereLabel");
-  const previewSectionLabel = t("featureUnlockPreviewLabel");
-  const sectionTitle = variant ? t(variant.titleKey) : "";
+  const whereLabel = asText(t("featureUnlockWhereLabel"));
+  const previewSectionLabel = asText(t("featureUnlockPreviewLabel"));
+  const sectionTitle = variant ? asText(t(variant.titleKey)) : "";
   const sectionDescription = variant
-    ? t(isPremiumReminder && variant.premiumDescriptionKey ? variant.premiumDescriptionKey : variant.descriptionKey)
+    ? asText(t(isPremiumReminder && variant.premiumDescriptionKey ? variant.premiumDescriptionKey : variant.descriptionKey))
     : "";
   const denseUnlockCopy =
     stripUnlockLevelPrefix(messageText).length > 92 || sectionDescription.length > 96;
@@ -77122,12 +76814,19 @@ const FeatureUnlockCelebration = ({
       ? normalizedHeroCopy
       : "";
   const compactSectionDescription = compactUnlockCopy(sectionDescription, compactLayout ? 110 : 124);
-  const previewBadgeLabel = variant ? t(variant.previewLabelKey) : "";
-  const previewActionLabel = variantKey === "rewardsDaily" ? t("dailyRewardClaimHint") : null;
+  const previewBadgeLabel = variant ? asText(t(variant.previewLabelKey)) : "";
+  const previewActionLabel =
+    variantKey === "rewardsDaily" ? asText(t("dailyRewardClaimHint")) : null;
   const entryAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const catFloatAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    if (isAndroidLiteMode) {
+      entryAnim.setValue(1);
+      glowAnim.setValue(0.5);
+      catFloatAnim.setValue(0);
+      return undefined;
+    }
     entryAnim.setValue(0);
     glowAnim.setValue(0);
     catFloatAnim.setValue(0);
@@ -77178,7 +76877,7 @@ const FeatureUnlockCelebration = ({
       glow.stop();
       catFloat.stop();
     };
-  }, [catFloatAnim, entryAnim, glowAnim]);
+  }, [catFloatAnim, entryAnim, glowAnim, isAndroidLiteMode]);
   const isDarkTheme = colors.background === THEMES.dark.background;
   const cardBg = isDarkTheme ? "rgba(10,17,32,0.94)" : "rgba(255,255,255,0.98)";
   const cardBorder = isDarkTheme ? "rgba(124,188,255,0.32)" : "rgba(73,141,248,0.26)";
@@ -77186,12 +76885,12 @@ const FeatureUnlockCelebration = ({
   const isPremiumVariant = FEATURE_UNLOCK_PREMIUM_VARIANTS.has(variantKey);
   const unlockLevel = FEATURE_UNLOCK_LEVELS[variantKey] || null;
   const heroBadgeText = isPremiumReminder
-    ? t("featureUnlockDidYouKnowBadge")
+    ? asText(t("featureUnlockDidYouKnowBadge"))
     : isPremiumVariant
-    ? t("featureLockedPremiumLabel")
+    ? asText(t("featureLockedPremiumLabel"))
     : unlockLevel
-    ? t("featureLockedLevelLabel", { level: unlockLevel })
-    : t("profileOk");
+    ? asText(t("featureLockedLevelLabel", { level: unlockLevel }))
+    : asText(t("profileOk"));
   const cardTranslateY = entryAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [26, 0],
@@ -77227,11 +76926,22 @@ const FeatureUnlockCelebration = ({
           ]}
         />
         <View style={styles.featureUnlockHeroRow}>
-          <Animated.Image
-            source={happySource}
-            style={[styles.featureUnlockCat, { transform: [{ translateY: catTranslateY }] }]}
-            resizeMode="contain"
-          />
+          {isAndroidLiteMode ? (
+            <View
+              style={[
+                styles.featureUnlockAndroidBadge,
+                { backgroundColor: isDarkTheme ? "rgba(104,181,255,0.22)" : "rgba(122,193,255,0.24)" },
+              ]}
+            >
+              <Text style={styles.featureUnlockAndroidBadgeText}>NEW</Text>
+            </View>
+          ) : (
+            <Animated.Image
+              source={happySource}
+              style={[styles.featureUnlockCat, { transform: [{ translateY: catTranslateY }] }]}
+              resizeMode="contain"
+            />
+          )}
           <View style={styles.featureUnlockHeroCopy}>
             <View style={[styles.featureUnlockBadge, { borderColor: cardBorder }]}>
               <Text style={[styles.featureUnlockBadgeText, { color: colors.text }]}>{heroBadgeText}</Text>
@@ -77266,18 +76976,34 @@ const FeatureUnlockCelebration = ({
           <Text style={[styles.featureUnlockSectionLabel, { color: colors.muted, marginTop: 14 }]}>
             {previewSectionLabel}
           </Text>
-          <FeatureUnlockIllustration
-            variantKey={variantKey}
-            colors={colors}
-            label={previewBadgeLabel}
-            actionLabel={previewActionLabel}
-            t={t}
-          />
+          {isAndroidLiteMode ? (
+            <View
+              style={[
+                styles.featureUnlockAndroidLitePreview,
+                { borderColor: cardBorder, backgroundColor: isDarkTheme ? "rgba(255,255,255,0.03)" : "rgba(73,141,248,0.05)" },
+              ]}
+            >
+              <Text style={[styles.featureUnlockSectionTitle, { color: colors.text, marginTop: 0 }]}>
+                {previewBadgeLabel || sectionTitle}
+              </Text>
+              <Text style={[styles.featureUnlockSectionDescription, { color: colors.muted, marginTop: 4 }]}>
+                {compactSectionDescription || normalizedHeroCopy}
+              </Text>
+            </View>
+          ) : (
+            <FeatureUnlockIllustration
+              variantKey={variantKey}
+              colors={colors}
+              label={previewBadgeLabel}
+              actionLabel={previewActionLabel}
+              t={t}
+            />
+          )}
         </View>
       ) : null}
       <TouchableOpacity style={[styles.featureUnlockButton, { backgroundColor: colors.text }]} onPress={onDismiss}>
         <Text style={[styles.featureUnlockButtonText, { color: colors.background }]}>
-          {t("profileOk") || "Ок"}
+          {asText(t("profileOk")) || "Ок"}
         </Text>
       </TouchableOpacity>
     </>

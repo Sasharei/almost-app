@@ -1,5 +1,27 @@
 # Release Notes
 
+## 5.1.0 (from 5.0.10)
+
+### EN
+- Fixed many issues across the app.
+- Improved performance and startup speed in key flows.
+- Overall experience is now faster, smoother, and more stable.
+
+### RU
+- Устранили множество проблем по всему приложению.
+- Улучшили производительность и ускорили запуск в ключевых сценариях.
+- В целом приложение стало быстрее, плавнее и стабильнее.
+
+### ES
+- Corregimos muchos problemas en toda la app.
+- Mejoramos el rendimiento y la velocidad de inicio en los flujos clave.
+- En general, la app ahora es mas rapida, mas fluida y mas estable.
+
+### FR
+- Nous avons corrige de nombreux problemes dans toute l'app.
+- Nous avons ameliore les performances et la vitesse de demarrage sur les parcours principaux.
+- Globalement, l'app est maintenant plus rapide, plus fluide et plus stable.
+
 ## 5.0.9 (from 5.0.8)
 
 ### EN
