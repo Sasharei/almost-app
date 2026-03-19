@@ -28,8 +28,8 @@ export const PENDING_REMINDER_GRACE_MS = 30 * MINUTE_MS;
 
 export const SAVE_SPAM_WINDOW_MS = 1000 * 60 * 5;
 export const SAVED_TOTAL_RESET_GRACE_MS = 1000 * 5;
-export const SAVE_SPAM_ITEM_LIMIT = 3;
-export const SAVE_SPAM_GLOBAL_LIMIT = 4;
+export const SAVE_SPAM_ITEM_LIMIT = 5;
+export const SAVE_SPAM_GLOBAL_LIMIT = 5;
 export const DAILY_SAVE_HARD_LIMIT = 10;
 export const NORTH_STAR_SAVE_THRESHOLD = 2;
 export const NORTH_STAR_WINDOW_MS = DAY_MS;
@@ -50,7 +50,7 @@ export const CUSTOM_SPEND_MONTHLY_WEEKS = 4.33;
 
 export const RATING_PROMPT_DELAY_DAYS = 2;
 export const RATING_PROMPT_FOLLOWUP_DELAY_DAYS = 4;
-export const RATING_PROMPT_ACTION_THRESHOLD = 3;
+export const RATING_PROMPT_ACTION_THRESHOLD = 5;
 export const RATING_PROMPT_ACTION_TYPES = new Set(["save", "spend"]);
 
 export const ANDROID_REVIEW_URL = "market://details?id=com.sasarei.almostclean";

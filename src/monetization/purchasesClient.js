@@ -54,6 +54,7 @@ const findPlanByIdentifier = (productIdentifier = "") => {
 };
 
 const normalizeProductIdentifier = (value = "") => String(value || "").trim().toLowerCase();
+const normalizeOfferingIdentifier = (value = "") => String(value || "").trim().toLowerCase();
 const PREMIUM_PRODUCT_IDENTIFIER_SET = new Set(
   Object.values(PREMIUM_PRODUCT_IDS).map((value) => normalizeProductIdentifier(value))
 );
@@ -76,6 +77,51 @@ const parseDateMs = (value) => {
   if (!normalized) return null;
   const parsed = Date.parse(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const collectOfferings = (offerings = null) => {
+  const all = [];
+  const current = offerings?.current;
+  if (current && typeof current === "object") {
+    all.push(current);
+  }
+  const allOfferingsMap =
+    offerings?.all && typeof offerings.all === "object" ? offerings.all : null;
+  if (allOfferingsMap) {
+    Object.values(allOfferingsMap).forEach((entry) => {
+      if (!entry || typeof entry !== "object") return;
+      all.push(entry);
+    });
+  }
+  const seen = new Set();
+  const deduped = [];
+  all.forEach((entry) => {
+    if (!entry || typeof entry !== "object") return;
+    if (seen.has(entry)) return;
+    seen.add(entry);
+    deduped.push(entry);
+  });
+  return deduped;
+};
+
+export const resolveOfferingByIdentifiers = (offerings = null, preferredOfferingIdentifiers = []) => {
+  const preferredSet = new Set(
+    (Array.isArray(preferredOfferingIdentifiers) ? preferredOfferingIdentifiers : [])
+      .map((entry) => normalizeOfferingIdentifier(entry))
+      .filter(Boolean)
+  );
+  if (!preferredSet.size) return null;
+  const candidates = collectOfferings(offerings);
+  if (!candidates.length) return null;
+  return (
+    candidates.find((offering) => {
+      const offeringIdentifier = normalizeOfferingIdentifier(
+        offering?.identifier || offering?.offeringIdentifier || ""
+      );
+      if (!offeringIdentifier) return false;
+      return preferredSet.has(offeringIdentifier);
+    }) || null
+  );
 };
 
 const resolveSubscriptionByProductIdentifier = (customerInfo, productIdentifier = "") => {
@@ -334,18 +380,36 @@ export const getTrialEligibilityByProductIdsSafe = async (productIdentifiers = [
   }
 };
 
-export const mapOfferingPackagesByPlan = (offerings) => {
-  const current = offerings?.current;
-  const packages = Array.isArray(current?.availablePackages) ? current.availablePackages : [];
+export const mapOfferingPackagesByPlan = (offerings, { preferredOfferingIdentifiers = [] } = {}) => {
+  const preferredOffering = resolveOfferingByIdentifiers(offerings, preferredOfferingIdentifiers);
+  const currentOffering = offerings?.current && typeof offerings.current === "object"
+    ? offerings.current
+    : null;
+  const offeringsToInspect = [];
+  if (preferredOffering) {
+    offeringsToInspect.push(preferredOffering);
+  }
+  if (currentOffering && currentOffering !== preferredOffering) {
+    offeringsToInspect.push(currentOffering);
+  }
+  if (!offeringsToInspect.length) {
+    const fallbackOffering = collectOfferings(offerings)[0] || null;
+    if (fallbackOffering) {
+      offeringsToInspect.push(fallbackOffering);
+    }
+  }
   const byPlan = {};
-  packages.forEach((pkg) => {
-    const packageType = typeof pkg?.packageType === "string" ? pkg.packageType : "";
-    const byType = PACKAGE_TYPE_TO_PLAN[packageType] || null;
-    const byPackageIdentifier = findPlanByIdentifier(pkg?.identifier || "");
-    const byProductIdentifier = findPlanByIdentifier(pkg?.product?.identifier || "");
-    const planId = byType || byPackageIdentifier || byProductIdentifier;
-    if (!planId || byPlan[planId]) return;
-    byPlan[planId] = pkg;
+  offeringsToInspect.forEach((offering) => {
+    const packages = Array.isArray(offering?.availablePackages) ? offering.availablePackages : [];
+    packages.forEach((pkg) => {
+      const packageType = typeof pkg?.packageType === "string" ? pkg.packageType : "";
+      const byType = PACKAGE_TYPE_TO_PLAN[packageType] || null;
+      const byPackageIdentifier = findPlanByIdentifier(pkg?.identifier || "");
+      const byProductIdentifier = findPlanByIdentifier(pkg?.product?.identifier || "");
+      const planId = byType || byPackageIdentifier || byProductIdentifier;
+      if (!planId || byPlan[planId]) return;
+      byPlan[planId] = pkg;
+    });
   });
   return byPlan;
 };

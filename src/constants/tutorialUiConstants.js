@@ -104,6 +104,7 @@ export const FEED_FIRST_TUTORIAL_STAGE = {
 
 export const QUEUED_MODAL_TYPES = {
   FAB_TUTORIAL: "fab_tutorial",
+  DID_YOU_KNOW: "did_you_know",
   DAILY_CHALLENGE: "daily_challenge",
   DAILY_CHALLENGE_COMPLETE: "daily_challenge_complete",
   FOCUS_DIGEST: "focus_digest",

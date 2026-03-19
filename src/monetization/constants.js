@@ -757,6 +757,105 @@ const SAVE_LIMIT_REACHED_SUBTITLE_BY_LANGUAGE = {
   es: "En Free hay 10 guardados por día y se restablece a medianoche. Premium desbloquea registros ilimitados.",
   fr: "En Free, tu as 10 sauvegardes par jour avec remise à zéro à minuit. Premium débloque les entrées illimitées.",
 };
+const TRIAL_10_SAVES_TITLE_BY_LANGUAGE = {
+  ru: "Ты уже сохранил(а) {{saved}}.",
+  en: "You've already saved {{saved}}.",
+  es: "Ya has ahorrado {{saved}}.",
+  fr: "Tu as déjà économisé {{saved}}.",
+  de: "Du hast bereits {{saved}} gespart.",
+  ar: "لقد وفّرت بالفعل {{saved}}.",
+  zh: "你已经节省了 {{saved}}。",
+};
+const TRIAL_10_SAVES_SUBTITLE_BY_LANGUAGE = {
+  ru: "С Premium можно сохранить до {{amount}} за {{days}} дней.",
+  en: "With Premium, you can save up to {{amount}} over {{days}} days.",
+  es: "Con Premium, puedes ahorrar hasta {{amount}} en {{days}} días.",
+  fr: "Avec Premium, tu peux économiser jusqu'à {{amount}} sur {{days}} jours.",
+  de: "Mit Premium kannst du in {{days}} Tagen bis zu {{amount}} sparen.",
+  ar: "مع Premium يمكنك توفير ما يصل إلى {{amount}} خلال {{days}} يوماً.",
+  zh: "使用 Premium，你可在 {{days}} 天内最多再节省 {{amount}}。",
+};
+const ONBOARDING_HARD_GATE_TITLE_BY_LANGUAGE = {
+  ru: "Пользователи Almost Pro в среднем сохраняют около ≈ $350 в месяц.",
+  en: "Almost Pro users save around ≈ $350 per month on average.",
+  es: "Los usuarios de Almost Pro ahorran alrededor de ≈ $350 al mes en promedio.",
+  fr: "Les utilisateurs d'Almost Pro économisent en moyenne environ ≈ 350 $ par mois.",
+  de: "Almost Pro Nutzer sparen im Durchschnitt etwa ≈ $350 pro Monat.",
+  ar: "يحفظ مستخدمو Almost Pro في المتوسط حوالي ≈ 350$ شهرياً.",
+  zh: "Almost Pro 用户平均每月可节省约 ≈ $350。",
+};
+const ONBOARDING_HARD_GATE_SUBTITLE_BY_LANGUAGE = {
+  ru: "Премиум-лимиты, отчёты и контроль импульсов помогают стабильно сохранять больше каждый месяц.",
+  en: "Premium limits, reports, and impulse control tools help keep more money every month.",
+  es: "Los límites, informes y herramientas de control de impulsos de Premium te ayudan a guardar más cada mes.",
+  fr: "Les limites, rapports et outils de contrôle des impulsions de Premium aident à conserver plus d'argent chaque mois.",
+  de: "Premium-Limits, Berichte und Impulskontrolle helfen dir, jeden Monat mehr Geld zu behalten.",
+  ar: "حدود Premium والتقارير وأدوات التحكم بالاندفاع تساعدك على ادخار المزيد كل شهر.",
+  zh: "Premium 的限额、报告与冲动控制工具可帮助你每个月稳定留住更多钱。",
+};
+const TRANSACTION_ABANDONED_TITLE_BY_LANGUAGE = {
+  ru: "Спец-условия активированы.",
+  en: "Special offer unlocked.",
+  es: "Oferta especial activada.",
+  fr: "Offre spéciale activée.",
+  de: "Sonderangebot aktiviert.",
+  ar: "تم تفعيل العرض الخاص.",
+  zh: "专属优惠已开启。",
+};
+const TRANSACTION_ABANDONED_SUBTITLE_BY_LANGUAGE = {
+  ru: "Вы были в шаге от оформления. Держим для вас более выгодный вариант прямо сейчас.",
+  en: "You were one step away from checkout. Here is a better option right now.",
+  es: "Estabas a un paso de finalizar. Aquí tienes una mejor opción ahora mismo.",
+  fr: "Tu étais à un pas de l'achat. Voici une meilleure option dès maintenant.",
+  de: "Du warst nur einen Schritt vom Checkout entfernt. Hier ist jetzt ein besseres Angebot.",
+  ar: "كنت على بُعد خطوة واحدة من إتمام الشراء. إليك الآن عرضاً أفضل.",
+  zh: "你刚才距离完成购买只差一步。现在给你一个更划算的选择。",
+};
+const TRANSACTION_ABANDONED_POPUP_BADGE_BY_LANGUAGE = {
+  ru: "ОДНОРАЗОВОЕ ПРЕДЛОЖЕНИЕ",
+  en: "ONE-TIME OFFER",
+  es: "OFERTA POR TIEMPO LIMITADO",
+  fr: "OFFRE LIMITEE",
+  de: "EINMALIGES ANGEBOT",
+  ar: "عرض لمرة واحدة",
+  zh: "限时专享",
+};
+const TRANSACTION_ABANDONED_POPUP_TITLE_BY_LANGUAGE = {
+  ru: "Скидка 35%",
+  en: "35% OFF",
+  es: "35% DE DESCUENTO",
+  fr: "-35%",
+  de: "35% RABATT",
+  ar: "خصم 35٪",
+  zh: "立减 35%",
+};
+const TRANSACTION_ABANDONED_POPUP_SUBTITLE_BY_LANGUAGE = {
+  ru: "Вы почти оформили Premium. Заберите скидку прямо сейчас, пока она активна.",
+  en: "You almost subscribed to Premium. Claim your discount now while it is active.",
+  es: "Estuviste a punto de activar Premium. Aprovecha tu descuento ahora mientras está activo.",
+  fr: "Tu étais sur le point de passer à Premium. Profite de ta remise maintenant tant qu'elle est active.",
+  de: "Du warst kurz vor Premium. Hol dir den Rabatt jetzt, solange er aktiv ist.",
+  ar: "كنت على وشك الاشتراك في Premium. احصل على خصمك الآن طالما أنه متاح.",
+  zh: "你刚刚差一点开通 Premium。趁优惠还在，立即领取折扣。",
+};
+const TRANSACTION_ABANDONED_POPUP_PRIMARY_CTA_BY_LANGUAGE = {
+  ru: "Забрать скидку",
+  en: "Claim discount",
+  es: "Aprovechar descuento",
+  fr: "Profiter de la remise",
+  de: "Rabatt nutzen",
+  ar: "احصل على الخصم",
+  zh: "立即领取折扣",
+};
+const TRANSACTION_ABANDONED_POPUP_SECONDARY_CTA_BY_LANGUAGE = {
+  ru: "Позже",
+  en: "Maybe later",
+  es: "Tal vez después",
+  fr: "Plus tard",
+  de: "Vielleicht später",
+  ar: "لاحقاً",
+  zh: "稍后",
+};
 
 const FEATURE_MARKETING_LINE_BY_LANGUAGE = {
   ru: "Открой Premium, чтобы получить полный набор инструментов и сохранять больше каждый месяц.",
@@ -904,7 +1003,7 @@ const PAYWALL_LEGAL_NOTICE_BY_LANGUAGE = {
 };
 
 const CTA_PRIMARY_TRIAL_BY_LANGUAGE = {
-  ru: "Попробовать бесплатно",
+  ru: "Попробуй бесплатно",
   en: "Try for free",
   es: "Probar gratis",
   fr: "Essayer gratuitement",
@@ -1277,6 +1376,12 @@ export const buildPaywallCopy = ({
   const isSaveLimitHardTrigger =
     normalizedTrigger === "save_daily_limit_reached" ||
     normalizedTrigger === "save_daily_limit_blocked";
+  const isTrialSavesHardTrigger = normalizedTrigger === "trial_10_saves_reached";
+  const isOnboardingHardGateTrigger = normalizedTrigger === "onboarding_completed_hard_gate";
+  const isTransactionAbandonedTrigger = normalizedTrigger === "transaction_abandoned";
+  const comparisonRowsForPaywall = isOnboardingHardGateTrigger
+    ? comparisonRows.filter((row) => String(row?.id || "") !== "levelUnlocks")
+    : comparisonRows;
   const isFreshStartSoftPaywall =
     effectiveKind === "soft" &&
     (normalizedTrigger === "first_action_after_onboarding" ||
@@ -1311,7 +1416,22 @@ export const buildPaywallCopy = ({
     subtitle = resolveTemplateSource(SAVE_LIMIT_REACHED_SUBTITLE_BY_LANGUAGE, lang);
     psychologyLine = null;
   }
-  if (activeFeatureInsightRow?.lossTitle) {
+  if (isTrialSavesHardTrigger) {
+    title = template(resolveTemplateSource(TRIAL_10_SAVES_TITLE_BY_LANGUAGE, lang), copyTokens);
+    subtitle = template(resolveTemplateSource(TRIAL_10_SAVES_SUBTITLE_BY_LANGUAGE, lang), copyTokens);
+    psychologyLine = null;
+  }
+  if (isOnboardingHardGateTrigger) {
+    title = template(resolveTemplateSource(ONBOARDING_HARD_GATE_TITLE_BY_LANGUAGE, lang), copyTokens);
+    subtitle = template(resolveTemplateSource(ONBOARDING_HARD_GATE_SUBTITLE_BY_LANGUAGE, lang), copyTokens);
+    psychologyLine = null;
+  }
+  if (isTransactionAbandonedTrigger) {
+    title = resolveTemplateSource(TRANSACTION_ABANDONED_TITLE_BY_LANGUAGE, lang);
+    subtitle = resolveTemplateSource(TRANSACTION_ABANDONED_SUBTITLE_BY_LANGUAGE, lang);
+    psychologyLine = null;
+  }
+  if (activeFeatureInsightRow?.lossTitle && !isTransactionAbandonedTrigger) {
     title = activeFeatureInsightRow.lossTitle;
     subtitle = activeFeatureInsightRow?.lossSubtitle || subtitle;
     psychologyLine = null;
@@ -1322,16 +1442,34 @@ export const buildPaywallCopy = ({
 
   return localizeFallbackStructure({
     badgeLabel: PAYWALL_BADGE_BY_KIND[effectiveKind] || PAYWALL_BADGE_BY_KIND.soft,
+    trigger: normalizedTrigger,
     title,
     subtitle,
+    transactionAbandonedPopupBadge:
+      TRANSACTION_ABANDONED_POPUP_BADGE_BY_LANGUAGE[lang] ||
+      TRANSACTION_ABANDONED_POPUP_BADGE_BY_LANGUAGE.en,
+    transactionAbandonedPopupTitle:
+      TRANSACTION_ABANDONED_POPUP_TITLE_BY_LANGUAGE[lang] ||
+      TRANSACTION_ABANDONED_POPUP_TITLE_BY_LANGUAGE.en,
+    transactionAbandonedPopupSubtitle:
+      TRANSACTION_ABANDONED_POPUP_SUBTITLE_BY_LANGUAGE[lang] ||
+      TRANSACTION_ABANDONED_POPUP_SUBTITLE_BY_LANGUAGE.en,
+    transactionAbandonedPopupPrimaryCta:
+      TRANSACTION_ABANDONED_POPUP_PRIMARY_CTA_BY_LANGUAGE[lang] ||
+      TRANSACTION_ABANDONED_POPUP_PRIMARY_CTA_BY_LANGUAGE.en,
+    transactionAbandonedPopupSecondaryCta:
+      TRANSACTION_ABANDONED_POPUP_SECONDARY_CTA_BY_LANGUAGE[lang] ||
+      TRANSACTION_ABANDONED_POPUP_SECONDARY_CTA_BY_LANGUAGE.en,
     psychologyLine,
     activeFeatureKey: normalizedFeatureKey,
     lossAmountLabel: resolvedLossAmountLabel,
     lossAmountByFeature: normalizedLossAmountByFeature,
     lossWindowDays: resolvedLossWindowDays,
     features: BASE_FEATURES_BY_LANGUAGE[lang] || BASE_FEATURES_BY_LANGUAGE.en,
-    comparisonRows,
-    unlockLevelsLine: LEVEL_UNLOCK_LINE_BY_LANGUAGE[lang] || LEVEL_UNLOCK_LINE_BY_LANGUAGE.en,
+    comparisonRows: comparisonRowsForPaywall,
+    unlockLevelsLine: isOnboardingHardGateTrigger
+      ? null
+      : LEVEL_UNLOCK_LINE_BY_LANGUAGE[lang] || LEVEL_UNLOCK_LINE_BY_LANGUAGE.en,
     planSectionTitle: PLAN_SECTION_TITLE_BY_LANGUAGE[lang] || PLAN_SECTION_TITLE_BY_LANGUAGE.en,
     planHint: PLAN_HINT_BY_LANGUAGE[lang] || PLAN_HINT_BY_LANGUAGE.en,
     freeColumnLabel: FREE_LABEL_BY_LANGUAGE[lang] || FREE_LABEL_BY_LANGUAGE.en,
