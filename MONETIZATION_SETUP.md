@@ -40,9 +40,66 @@ Store-provided localized prices override these defaults when offerings are avail
 
 ## Paywalls
 
-- Soft paywall: first save after tutorial completion.
-- Hard paywall: first completed goal.
 - Feature paywall: shown when locked premium feature is accessed.
+- Control flow (group A): soft paywall on activity/day-2 logic + hard paywall on first completed goal.
+
+### Transaction abandoned offer (all paywalls, 24h cooldown)
+
+- When user taps purchase, opens store checkout, then cancels checkout (`PURCHASE_CANCELLED`), client switches current paywall to trigger `transaction_abandoned`.
+- This is rate-limited to once per 24 hours per user install.
+- Works for soft / hard / feature paywalls (including non-dismissible hard locks).
+- For `transaction_abandoned` trigger, client tries to load a dedicated RevenueCat Offering first, then falls back to `current` Offering.
+- Supported offering identifiers (case-insensitive):
+  - `transaction_abandoned`
+  - `transaction_abandoned_offer`
+  - `abandoned_transaction`
+  - `abandoned_offer`
+  - `winback`
+
+## Firebase Remote Config experiment (new installs only)
+
+Remote Config key:
+
+- `monetization_experiment_v1_config`
+
+Default payload used by client:
+
+```json
+{
+  "enabled": true,
+  "newInstallOnly": true,
+  "forceGroup": "",
+  "allocation": { "A": 34, "B": 33, "C": 33 },
+  "trialSaveLimit": 10
+}
+```
+
+Group behavior:
+
+- `A` (control): vanilla monetization behavior.
+- `B`: hard trial lock after `trialSaveLimit` saves (default 10). App is blocked by non-dismissible hard paywall on startup until premium is active.
+- `C`: hard paywall immediately after onboarding completion. App is blocked on startup until premium is active.
+
+Install eligibility:
+
+- Experiment assignment runs only for new installs.
+- Legacy installs are pinned to group `A`.
+- Client uses stored app signals + install markers to detect legacy installs.
+
+User properties (Firebase Analytics):
+
+- `monetization_exp_group` = `A` / `B` / `C`
+- `monetization_exp_group_a` = `1` / `0`
+- `monetization_exp_group_b` = `1` / `0`
+- `monetization_exp_group_c` = `1` / `0`
+- `monetization_exp_new` = `1` / `0`
+
+Experiment analytics events:
+
+- `monetization_experiment_remote_config_loaded`
+- `monetization_experiment_assigned`
+- `monetization_experiment_lock_activated`
+- `monetization_experiment_startup_blocked`
 
 ## Free plan limits implemented
 

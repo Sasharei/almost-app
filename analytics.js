@@ -293,11 +293,58 @@ const EVENT_DEFINITIONS = {
   income_savings_skipped: ["amount_usd", "percent", "reason"],
   level_share_opened: ["level"],
   level_share_sent: ["level"],
+  level_share_reward_granted: ["level", "blue_coins", "health_points"],
   level_reached: ["level"],
-  premium_paywall_shown: ["kind", "feature", "trigger", "view_index", "saved_total_usd"],
-  premium_paywall_closed: ["kind", "feature", "close_action", "view_index", "duration_ms"],
-  premium_paywall_scrolled: ["kind", "feature", "trigger", "view_index", "scroll_y"],
-  premium_paywall_plan_selected: ["kind", "feature", "plan", "view_index", "has_trial", "trial_days"],
+  premium_paywall_shown: [
+    "kind",
+    "feature",
+    "trigger",
+    "view_index",
+    "saved_total_usd",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
+  premium_paywall_closed: [
+    "kind",
+    "feature",
+    "close_action",
+    "view_index",
+    "duration_ms",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
+  premium_paywall_scrolled: [
+    "kind",
+    "feature",
+    "trigger",
+    "view_index",
+    "scroll_y",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
+  premium_paywall_feature_highlighted: [
+    "kind",
+    "feature",
+    "row_id",
+    "view_index",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
+  premium_paywall_plan_selected: [
+    "kind",
+    "feature",
+    "plan",
+    "view_index",
+    "has_trial",
+    "trial_days",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
   premium_paywall_primary_tapped: [
     "kind",
     "feature",
@@ -308,6 +355,22 @@ const EVENT_DEFINITIONS = {
     "product_id",
     "has_trial",
     "trial_days",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
+  premium_transaction_abandoned_offer_shown: [
+    "kind",
+    "feature",
+    "view_index",
+    "source",
+    "offer_available",
+    "offer_offering_id",
+    "hours_since_last_offer",
+    "cooldown_hours",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
   ],
   premium_purchase_started: [
     "kind",
@@ -319,6 +382,9 @@ const EVENT_DEFINITIONS = {
     "product_id",
     "has_trial",
     "trial_days",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
   ],
   premium_purchase_result: [
     "kind",
@@ -330,6 +396,9 @@ const EVENT_DEFINITIONS = {
     "error_code",
     "has_trial",
     "trial_days",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
   ],
   premium_purchase_success: [
     "plan",
@@ -341,6 +410,9 @@ const EVENT_DEFINITIONS = {
     "product_id",
     "has_trial",
     "trial_days",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
   ],
   premium_purchase_revenue: [
     "plan",
@@ -351,8 +423,12 @@ const EVENT_DEFINITIONS = {
     "product_id",
     "revenue_local",
     "revenue_usd",
+    "transaction_id",
     "has_trial",
     "trial_days",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
   ],
   premium_product_not_found: [
     "plan",
@@ -364,6 +440,9 @@ const EVENT_DEFINITIONS = {
     "error_code",
     "has_trial",
     "trial_days",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
   ],
   premium_trial_started: [
     "plan",
@@ -374,9 +453,42 @@ const EVENT_DEFINITIONS = {
     "view_index",
     "period_type",
     "trial_days",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
   ],
-  premium_restore_started: ["kind", "feature", "view_index"],
-  premium_restore_result: ["kind", "feature", "view_index", "result", "reason", "error_code"],
+  premium_trial_cancelled: [
+    "source",
+    "product_id",
+    "period_type",
+    "entitlement",
+    "will_renew",
+    "has_unsubscribe_detected_at",
+    "unsubscribe_detected_at",
+    "expiration_date",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
+  premium_restore_started: [
+    "kind",
+    "feature",
+    "view_index",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
+  premium_restore_result: [
+    "kind",
+    "feature",
+    "view_index",
+    "result",
+    "reason",
+    "error_code",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
   premium_conversion: [
     "plan",
     "product_id",
@@ -385,11 +497,79 @@ const EVENT_DEFINITIONS = {
     "feature",
     "view_index",
     "time_to_convert_sec",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
   ],
-  premium_unlock_shown: ["source", "entitlement", "plan", "product_id"],
-  premium_gate_blocked: ["feature", "kind"],
-  premium_soft_paywall_shown: ["trigger"],
-  premium_hard_paywall_shown: ["trigger", "saved_total_usd"],
+  premium_unlock_shown: [
+    "source",
+    "entitlement",
+    "plan",
+    "product_id",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
+  premium_gate_blocked: [
+    "feature",
+    "kind",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
+  premium_soft_paywall_shown: [
+    "trigger",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
+  premium_hard_paywall_shown: [
+    "trigger",
+    "saved_total_usd",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
+  monetization_experiment_assigned: [
+    "experiment_id",
+    "experiment_group",
+    "assignment_source",
+    "is_new_install",
+    "enabled",
+    "force_group",
+    "allocation_a",
+    "allocation_b",
+    "allocation_c",
+    "trial_save_limit",
+  ],
+  monetization_experiment_remote_config_loaded: [
+    "experiment_id",
+    "result",
+    "source",
+    "enabled",
+    "force_group",
+    "allocation_a",
+    "allocation_b",
+    "allocation_c",
+    "trial_save_limit",
+  ],
+  monetization_experiment_lock_activated: [
+    "experiment_id",
+    "experiment_group",
+    "lock_reason",
+    "trial_save_limit",
+    "save_count_total",
+    "onboarding_step",
+    "experiment_new_install",
+  ],
+  monetization_experiment_startup_blocked: [
+    "experiment_id",
+    "experiment_group",
+    "lock_reason",
+    "trial_save_limit",
+    "save_count_total",
+    "experiment_new_install",
+  ],
   impulse_map_opened: [],
 };
 
@@ -621,12 +801,52 @@ const syncAppsFlyerCollection = async () => {
   }
 };
 
-const logAppsFlyerEvent = async (eventName, params = {}) => {
-  if (!shouldUseAppsFlyer() || !isAnalyticsEnabled()) return;
-  if (!hasAppsFlyer() || typeof appsFlyer.logEvent !== "function") return;
-  const initialized = await initAppsFlyerSdk();
-  if (!initialized) return;
-  return new Promise((resolve) => {
+const parseAnalyticsBoolean = (value) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return null;
+    if (normalized === "true" || normalized === "1" || normalized === "yes") return true;
+    if (normalized === "false" || normalized === "0" || normalized === "no") return false;
+  }
+  return null;
+};
+
+const parsePositiveNumber = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return parsed > 0 ? parsed : 0;
+};
+
+const buildAppsFlyerRoasEvent = (eventName, params = {}) => {
+  if (eventName !== "premium_purchase_revenue") return null;
+  if (parseAnalyticsBoolean(params?.has_trial) === true) return null;
+  const revenueLocal = parsePositiveNumber(params?.revenue_local);
+  const revenueUSD = parsePositiveNumber(params?.revenue_usd);
+  const afRevenue = revenueLocal > 0 ? revenueLocal : revenueUSD;
+  if (!(afRevenue > 0)) return null;
+  const currencyCode = String(params?.currency || "").trim().toUpperCase() || "USD";
+  const productId = String(params?.product_id || "").trim();
+  const transactionId = String(params?.transaction_id || "").trim();
+  const afParams = {
+    af_revenue: afRevenue,
+    af_currency: currencyCode,
+  };
+  if (productId) {
+    afParams.af_content_id = productId;
+  }
+  if (transactionId) {
+    afParams.af_order_id = transactionId;
+  }
+  return {
+    eventName: "af_purchase",
+    params: afParams,
+  };
+};
+
+const logAppsFlyerEventRaw = (eventName, params = {}) =>
+  new Promise((resolve) => {
     try {
       appsFlyer.logEvent(
         eventName,
@@ -642,6 +862,17 @@ const logAppsFlyerEvent = async (eventName, params = {}) => {
       resolve(false);
     }
   });
+
+const logAppsFlyerEvent = async (eventName, params = {}) => {
+  if (!shouldUseAppsFlyer() || !isAnalyticsEnabled()) return;
+  if (!hasAppsFlyer() || typeof appsFlyer.logEvent !== "function") return;
+  const initialized = await initAppsFlyerSdk();
+  if (!initialized) return;
+  const primaryLogged = await logAppsFlyerEventRaw(eventName, params);
+  const roasEvent = buildAppsFlyerRoasEvent(eventName, params);
+  if (!roasEvent) return primaryLogged;
+  await logAppsFlyerEventRaw(roasEvent.eventName, roasEvent.params);
+  return primaryLogged;
 };
 
 const initTikTokSdk = async () => {

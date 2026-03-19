@@ -169,7 +169,7 @@ export const PAYWALL_PERIOD_UNIT_TO_DAYS = {
 };
 
 export const PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE = {
-  ru: "попробовать бесплатно",
+  ru: "Попробуй бесплатно",
   en: "Try for free",
   es: "probar gratis",
   fr: "essayer gratuitement",
