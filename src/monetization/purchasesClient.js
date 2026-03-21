@@ -401,12 +401,24 @@ export const mapOfferingPackagesByPlan = (offerings, { preferredOfferingIdentifi
   const byPlan = {};
   offeringsToInspect.forEach((offering) => {
     const packages = Array.isArray(offering?.availablePackages) ? offering.availablePackages : [];
+    // Pass 1: prefer canonical package types from RevenueCat (`MONTHLY`, `ANNUAL`, `LIFETIME`).
+    // This avoids accidentally selecting a custom package (e.g. trial/targeted offer)
+    // when multiple packages map to the same logical plan.
+    packages.forEach((pkg) => {
+      const packageType = typeof pkg?.packageType === "string" ? pkg.packageType : "";
+      const planId = PACKAGE_TYPE_TO_PLAN[packageType] || null;
+      if (!planId || byPlan[planId]) return;
+      byPlan[planId] = pkg;
+    });
+
+    // Pass 2: fallback heuristics only for missing plans.
     packages.forEach((pkg) => {
       const packageType = typeof pkg?.packageType === "string" ? pkg.packageType : "";
       const byType = PACKAGE_TYPE_TO_PLAN[packageType] || null;
+      if (byType) return;
       const byPackageIdentifier = findPlanByIdentifier(pkg?.identifier || "");
       const byProductIdentifier = findPlanByIdentifier(pkg?.product?.identifier || "");
-      const planId = byType || byPackageIdentifier || byProductIdentifier;
+      const planId = byPackageIdentifier || byProductIdentifier;
       if (!planId || byPlan[planId]) return;
       byPlan[planId] = pkg;
     });

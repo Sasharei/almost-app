@@ -1,5 +1,31 @@
 # Release Notes
 
+## 5.1.3 (from 5.1.2)
+
+### EN
+- Minor fixes and stability improvements.
+
+### RU
+- Незначительные исправления и улучшения стабильности.
+
+### ES
+- Correcciones menores y mejoras de estabilidad.
+
+### FR
+- Corrections mineures et ameliorations de stabilite.
+
+### DE
+- Kleinere Fehlerbehebungen und Stabilitätsverbesserungen.
+
+### AR (SA)
+- إصلاحات طفيفة وتحسينات في الاستقرار.
+
+### AR (AE)
+- إصلاحات طفيفة وتحسينات في الاستقرار.
+
+### ZH
+- 小幅修复与稳定性改进。
+
 ## 5.1.0 (from 5.0.10)
 
 ### EN

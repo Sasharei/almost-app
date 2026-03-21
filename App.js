@@ -1439,6 +1439,15 @@ const resolveFreeTrialDaysFromPackage = (pkg) => {
   const subscriptionOptions = Array.isArray(product?.subscriptionOptions)
     ? product.subscriptionOptions
     : [];
+  if (Platform.OS === "android") {
+    // purchasePackage() follows the product default option on Android.
+    // If multiple options exist (e.g. test + prod offers), inferring trial from "any option"
+    // can overpromise a free trial in UI while checkout opens a non-trial option.
+    if (subscriptionOptions.length === 1) {
+      return resolveTrialDaysFromSubscriptionOption(subscriptionOptions[0]);
+    }
+    return null;
+  }
   const fromOptions = subscriptionOptions
     .map((option) => resolveTrialDaysFromSubscriptionOption(option))
     .find((days) => Number.isFinite(days) && days > 0);
@@ -4387,6 +4396,36 @@ const INITIAL_IMPULSE_TRACKER = {
 };
 
 const DEFAULT_INCOME_PAYDAY = 1;
+const normalizeIncomePayday = (value, fallback = DEFAULT_INCOME_PAYDAY) => {
+  const parsed = Number(value);
+  if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 31) {
+    return Math.round(parsed);
+  }
+  const fallbackParsed = Number(fallback);
+  if (Number.isFinite(fallbackParsed) && fallbackParsed >= 1 && fallbackParsed <= 31) {
+    return Math.round(fallbackParsed);
+  }
+  return DEFAULT_INCOME_PAYDAY;
+};
+const createIncomeEntryInputState = (payday = DEFAULT_INCOME_PAYDAY) => ({
+  amount: "",
+  payday: normalizeIncomePayday(payday),
+});
+const resolveIncomeEntryReceivedAt = (payday = DEFAULT_INCOME_PAYDAY, baseTimestamp = Date.now()) => {
+  const baseDate = new Date(baseTimestamp);
+  if (Number.isNaN(baseDate.getTime())) return Date.now();
+  const daysInMonth = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0).getDate();
+  const resolvedDay = Math.min(normalizeIncomePayday(payday, baseDate.getDate()), daysInMonth);
+  return new Date(
+    baseDate.getFullYear(),
+    baseDate.getMonth(),
+    resolvedDay,
+    baseDate.getHours(),
+    baseDate.getMinutes(),
+    baseDate.getSeconds(),
+    baseDate.getMilliseconds()
+  ).getTime();
+};
 const INCOME_PROMPT_GRACE_DAYS = 4;
 const INCOME_SAVINGS_SHARE = 0.15;
 const BUDGET_WIDGET_CARD_GAP = 10;
@@ -10491,8 +10530,21 @@ function TemptationCardComponent({
       closeAmountSlider();
       return;
     }
+    // Keep tutorial cards in action mode only; opening the edit sheet here
+    // can leave an invisible interaction blocker on iOS after quick taps.
+    if (showSavedCoachMark) {
+      return;
+    }
     onToggleEdit?.(item);
-  }, [amountSliderVisible, cardLocked, closeAmountSlider, item, onLockedPress, onToggleEdit]);
+  }, [
+    amountSliderVisible,
+    cardLocked,
+    closeAmountSlider,
+    item,
+    onLockedPress,
+    onToggleEdit,
+    showSavedCoachMark,
+  ]);
 
   return (
     <View style={styles.temptationSwipeWrapper}>
@@ -10861,9 +10913,16 @@ function TemptationCardComponent({
               <Text style={[styles.temptationAmountCloseText, { color: colors.muted }]}>✕</Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={openAmountManual} activeOpacity={0.8}>
+          <TouchableOpacity
+            onPress={openAmountManual}
+            activeOpacity={0.8}
+            style={styles.temptationAmountValueTapZone}
+          >
             <Text style={[styles.temptationAmountValue, { color: cardTextColor }]}>
               {amountSliderLabel}
+            </Text>
+            <Text style={[styles.temptationAmountHint, { color: colors.muted }]}>
+              {t("amountSliderManualHint")}
             </Text>
           </TouchableOpacity>
           <View style={styles.temptationAmountTrackWrap} {...amountSliderPanResponder.panHandlers}>
@@ -15642,6 +15701,8 @@ const FeedScreen = React.memo(
   const feedScrollingRef = useRef(false);
   const addCoachEntrance = useRef(new Animated.Value(0)).current;
   const addCoachPulse = useRef(new Animated.Value(0)).current;
+  const heroMoodHaloPulse = useRef(new Animated.Value(0)).current;
+  const heroMoodHaloDrift = useRef(new Animated.Value(0)).current;
   const notifyFeedScrollState = useCallback(
     (next) => {
       if (feedScrollingRef.current === next) return;
@@ -16663,7 +16724,12 @@ const FeedScreen = React.memo(
     [historyInteractionMap]
   );
   const isDarkMode = colors === THEMES.dark;
-  const isProMode = colors === THEMES.pro || colors?.background === THEMES.pro.background;
+  const isProMode = useMemo(() => {
+    const normalizedPrimary = String(colors?.primary || "").trim().toLowerCase();
+    return PRO_THEME_ACCENT_OPTIONS.some(
+      (option) => String(option?.accent || "").trim().toLowerCase() === normalizedPrimary
+    );
+  }, [colors?.primary]);
   const heroProBadgePalette = useMemo(
     () => ({
       background: "#0C0C0C",
@@ -16673,13 +16739,76 @@ const FeedScreen = React.memo(
     []
   );
   const moodGradient = useMemo(
-    () =>
-      applyThemeToMoodGradient(
-        getMoodGradient(moodPreset?.id),
-        isDarkMode ? "dark" : isProMode ? PRO_THEME_ID : "light"
-      ),
-    [isDarkMode, isProMode, moodPreset?.id]
+    () => (isDarkMode ? applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), "dark") : getMoodGradient(moodPreset?.id)),
+    [isDarkMode, moodPreset?.id]
   );
+  const heroMoodShadowColor = useMemo(
+    () => (isDarkMode ? "rgba(154,104,255,0.98)" : "rgba(124,63,255,0.96)"),
+    [isDarkMode]
+  );
+  useEffect(() => {
+    heroMoodHaloPulse.stopAnimation();
+    heroMoodHaloDrift.stopAnimation();
+    if (!isProMode) {
+      heroMoodHaloPulse.setValue(0);
+      heroMoodHaloDrift.setValue(0);
+      return;
+    }
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(heroMoodHaloPulse, {
+          toValue: 1,
+          duration: 2300,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(heroMoodHaloPulse, {
+          toValue: 0,
+          duration: 2300,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const drift = Animated.loop(
+      Animated.sequence([
+        Animated.timing(heroMoodHaloDrift, {
+          toValue: 1,
+          duration: 7800,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(heroMoodHaloDrift, {
+          toValue: 0,
+          duration: 7800,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    drift.start();
+    return () => {
+      pulse.stop();
+      drift.stop();
+    };
+  }, [heroMoodHaloDrift, heroMoodHaloPulse, isProMode]);
+  const heroMoodShadowScale = heroMoodHaloPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.992, 1.02],
+  });
+  const heroMoodShadowOpacity = heroMoodHaloPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.48, 0.82],
+  });
+  const heroMoodShadowTranslateX = heroMoodHaloDrift.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-3, 3],
+  });
+  const heroMoodShadowTranslateY = heroMoodHaloDrift.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 3],
+  });
   const mainTemptationId = primaryTemptationId;
   const resolveInteractionEntry = useCallback(
     (item) => {
@@ -18549,11 +18678,31 @@ const FeedScreen = React.memo(
         ListHeaderComponent={
           <View style={styles.feedHero} onLayout={handleHeroLayout}>
             <View style={styles.feedHeroTop}>
-              <MoodGradientBlock colors={moodGradient} style={styles.heroMoodGradient}>
-                <View
-                  style={styles.heroMascotRow}
-                  onLayout={(event) => setHeroRowWidth(event.nativeEvent.layout.width)}
-                >
+              <View style={styles.heroMoodHaloWrap}>
+                {isProMode && (
+                  <View pointerEvents="none" style={styles.heroMoodHaloLayer}>
+                    <Animated.View
+                      style={[
+                        styles.heroMoodHaloShadow,
+                        {
+                          backgroundColor: colorWithAlpha(heroMoodShadowColor, isDarkMode ? 0.12 : 0.1),
+                          shadowColor: heroMoodShadowColor,
+                          opacity: heroMoodShadowOpacity,
+                          transform: [
+                            { translateX: heroMoodShadowTranslateX },
+                            { translateY: heroMoodShadowTranslateY },
+                            { scale: heroMoodShadowScale },
+                          ],
+                        },
+                      ]}
+                    />
+                  </View>
+                )}
+                <MoodGradientBlock colors={moodGradient} style={styles.heroMoodGradient}>
+                  <View
+                    style={styles.heroMascotRow}
+                    onLayout={(event) => setHeroRowWidth(event.nativeEvent.layout.width)}
+                  >
                   <View style={styles.heroTextWrap}>
                     <View style={styles.heroTitleRow}>
                       <Text
@@ -18658,8 +18807,8 @@ const FeedScreen = React.memo(
                       )}
                     </View>
                   </View>
-                  {!hideMascot && (
-                    <View style={styles.heroMascotContainer}>
+                    {!hideMascot && (
+                      <View style={styles.heroMascotContainer}>
                       {showTamagotchiBubble && (
                         <View
                           pointerEvents="none"
@@ -18721,10 +18870,10 @@ const FeedScreen = React.memo(
                           <Text style={styles.heroMascotBadgeText}>1</Text>
                         </View>
                       )}
-                    </View>
-                  )}
-              </View>
-              <Animated.View
+                      </View>
+                    )}
+                  </View>
+                  <Animated.View
                 pointerEvents={heroLevelExpanded ? "auto" : "none"}
                 style={[
                   styles.heroLevelExpandedCard,
@@ -18772,9 +18921,10 @@ const FeedScreen = React.memo(
                     />
                   </View>
                 </View>
-              </Animated.View>
-            </MoodGradientBlock>
-          </View>
+                  </Animated.View>
+                </MoodGradientBlock>
+              </View>
+            </View>
           <View style={styles.heroCarousel} onLayout={handleHeroCarouselLayout}>
             <Animated.View style={{ transform: [{ translateX: heroCarouselHintAnim }] }}>
               <ScrollView
@@ -27510,7 +27660,10 @@ function AppContent() {
   const [incomePromptHydrated, setIncomePromptHydrated] = useState(false);
   const [incomePromptPending, setIncomePromptPending] = useState(false);
   const [incomeEntryModalVisible, setIncomeEntryModalVisible] = useState(false);
-  const [incomeEntryInput, setIncomeEntryInput] = useState({ amount: "" });
+  const [incomeEntryInput, setIncomeEntryInput] = useState(() =>
+    createIncomeEntryInputState(DEFAULT_INCOME_PAYDAY)
+  );
+  const incomeEntryDayOptions = useMemo(() => Array.from({ length: 31 }, (_, index) => index + 1), []);
   const incomeEntrySourceRef = useRef("manual");
   const incomeEntryModeRef = useRef(INCOME_ENTRY_TYPES.MONTHLY);
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
@@ -28373,9 +28526,9 @@ function AppContent() {
     if (incomePromptPending || incomeEntryModalVisible) return;
     incomeEntrySourceRef.current = "monthly_prompt";
     incomeEntryModeRef.current = INCOME_ENTRY_TYPES.MONTHLY;
-    setIncomeEntryInput({ amount: "" });
+    setIncomeEntryInput(createIncomeEntryInputState(profile?.incomePayday));
     setIncomePromptPending(true);
-  }, [incomeEntryModalVisible, incomePromptPending, shouldPromptIncome]);
+  }, [incomeEntryModalVisible, incomePromptPending, profile?.incomePayday, shouldPromptIncome]);
   useEffect(() => {
     if (!budgetOverspendHydrated || !savedTotalHydrated) return;
     if (!incomeEntriesHydrated || !historyHydrated) return;
@@ -28709,11 +28862,9 @@ function AppContent() {
   const startupHardLockActiveFromVisiblePaywall =
     !premiumState.isPremium &&
     onboardingStep === "done" &&
-    monetizationExperimentEligibleNewInstall &&
-    (monetizationGroupForStartupModalGuard === MONETIZATION_EXPERIMENT_GROUPS.B ||
-      monetizationGroupForStartupModalGuard === MONETIZATION_EXPERIMENT_GROUPS.C) &&
     premiumPaywallState.visible &&
-    premiumPaywallState.kind === "hard";
+    premiumPaywallState.kind === "hard" &&
+    premiumPaywallState.dismissible === false;
   const startupHardLockPendingBeforePaywall =
     !premiumState.isPremium &&
     onboardingStep === "done" &&
@@ -33054,7 +33205,11 @@ function AppContent() {
       frequencyReminderPrompt.visible ||
       dailyGoalCollectModal.visible ||
       premiumPaywallState.visible ||
-      priceEditor.item,
+      priceEditor.item ||
+      categoryPrompt.visible ||
+      spendPrompt.visible ||
+      saveSpamPrompt.visible ||
+      stormActive,
     [
       addCategoryModalVisible,
       baselinePrompt.visible,
@@ -33093,6 +33248,10 @@ function AppContent() {
       skinPickerVisible,
       dailyGoalCollectModal.visible,
       tamagotchiVisible,
+      categoryPrompt.visible,
+      spendPrompt.visible,
+      saveSpamPrompt.visible,
+      stormActive,
     ]
   );
   useEffect(() => {
@@ -41897,6 +42056,7 @@ function AppContent() {
   const feedFirstTutorialCanStart =
     onboardingStep === "done" &&
     !startupHardLockPendingBeforePaywall &&
+    !premiumPaywallState.visible &&
     interfaceReady &&
     activeTab === "feed" &&
     tutorialCardHydrated &&
@@ -41928,12 +42088,27 @@ function AppContent() {
   useEffect(() => {
     if (!feedFirstTutorialCanStart) return;
     if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.IDLE) return;
+    const handoffRemaining = Math.max(
+      0,
+      (modalHandoffBlockUntilRef.current || 0) - Date.now()
+    );
+    if (handoffRemaining > 0) {
+      const timer = setTimeout(() => {
+        setFeedFirstTutorialStage((prev) => {
+          if (prev !== FEED_FIRST_TUTORIAL_STAGE.IDLE) return prev;
+          logEvent("feed_first_tutorial_step", { step: "welcome_shown" });
+          return FEED_FIRST_TUTORIAL_STAGE.WELCOME;
+        });
+      }, handoffRemaining + 24);
+      return () => clearTimeout(timer);
+    }
     setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.WELCOME);
     logEvent("feed_first_tutorial_step", { step: "welcome_shown" });
   }, [feedFirstTutorialCanStart, feedFirstTutorialStage, logEvent]);
   const tutorialCardEligible =
     onboardingStep === "done" &&
     !startupHardLockPendingBeforePaywall &&
+    !premiumPaywallState.visible &&
     interfaceReady &&
     activeTab === "feed" &&
     tutorialCardHydrated &&
@@ -42161,6 +42336,7 @@ function AppContent() {
   const shouldShowTemptationTutorial = false;
   const budgetWidgetTutorialEligible =
     !startupHardLockPendingBeforePaywall &&
+    !premiumPaywallState.visible &&
     interfaceReady &&
     activeTab === "cart" &&
     budgetAutoEnabled &&
@@ -43961,10 +44137,10 @@ useEffect(() => {
       }
       incomeEntrySourceRef.current = source;
       incomeEntryModeRef.current = INCOME_ENTRY_TYPES.MONTHLY;
-      setIncomeEntryInput({ amount: "" });
+      setIncomeEntryInput(createIncomeEntryInputState(profile?.incomePayday));
       setIncomeEntryModalVisible(true);
     },
-    [ensurePremiumFeatureAccess, premiumState.isPremium]
+    [ensurePremiumFeatureAccess, premiumState.isPremium, profile?.incomePayday]
   );
 
   const openExtraIncomeEntryModal = useCallback(
@@ -43975,10 +44151,10 @@ useEffect(() => {
       }
       incomeEntrySourceRef.current = source;
       incomeEntryModeRef.current = INCOME_ENTRY_TYPES.EXTRA;
-      setIncomeEntryInput({ amount: "" });
+      setIncomeEntryInput(createIncomeEntryInputState(profile?.incomePayday));
       setIncomeEntryModalVisible(true);
     },
-    [ensurePremiumFeatureAccess, premiumState.isPremium]
+    [ensurePremiumFeatureAccess, premiumState.isPremium, profile?.incomePayday]
   );
 
   const closeIncomeEntryModal = useCallback(() => {
@@ -46208,16 +46384,23 @@ useEffect(() => {
 
   const handleIncomeEntrySubmit = useCallback(() => {
     const entryType = incomeEntryModeRef.current || INCOME_ENTRY_TYPES.MONTHLY;
+    const selectedPayday = normalizeIncomePayday(
+      incomeEntryInput.payday,
+      profile?.incomePayday
+    );
+    const receivedAt = resolveIncomeEntryReceivedAt(selectedPayday, Date.now());
     const amountUSD = addIncomeEntry({
       amountText: incomeEntryInput.amount,
-      receivedAt: Date.now(),
+      receivedAt,
       entryType,
     });
     if (!Number.isFinite(amountUSD) || amountUSD <= 0) return;
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
-    const monthKey = getMonthKey(Date.now());
+    const monthKey = getMonthKey(receivedAt);
     setIncomeEntryModalVisible(false);
     if (entryType === INCOME_ENTRY_TYPES.MONTHLY) {
+      setProfile((prev) => ({ ...prev, incomePayday: selectedPayday }));
+      setProfileDraft((prev) => ({ ...prev, incomePayday: selectedPayday }));
       setIncomePromptState({ lastPromptMonthKey: monthKey, lastPromptAt: Date.now() });
       setIncomePromptPending(false);
       clearQueuedModal(QUEUED_MODAL_TYPES.INCOME_PROMPT);
@@ -46233,9 +46416,11 @@ useEffect(() => {
   }, [
     addIncomeEntry,
     incomeEntryInput.amount,
+    incomeEntryInput.payday,
     clearQueuedModal,
     logEvent,
     profile.currency,
+    profile?.incomePayday,
     promptIncomeSavingsTransfer,
   ]);
 
@@ -46660,6 +46845,10 @@ useEffect(() => {
   }, []);
 
   const closeSpendPrompt = useCallback(() => {
+    modalHandoffBlockUntilRef.current = Math.max(
+      modalHandoffBlockUntilRef.current || 0,
+      Date.now() + MODAL_HANDOFF_GUARD_MS + 180
+    );
     spendPromptLockRef.current = false;
     setSpendPrompt({
       visible: false,
@@ -50814,6 +51003,21 @@ useEffect(() => {
       setEditOverlayVisible(false);
     }
   }, [editOverlayAnim, editOverlayVisible, priceEditor.item]);
+  useEffect(() => {
+    if (
+      feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.SAVE &&
+      feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.WELCOME
+    ) {
+      return;
+    }
+    if (!priceEditor.item && !editOverlayVisible) return;
+    closePriceEditor();
+  }, [
+    closePriceEditor,
+    editOverlayVisible,
+    feedFirstTutorialStage,
+    priceEditor.item,
+  ]);
 
   useEffect(() => {
     priceEditorItemRef.current = priceEditor.item || null;
@@ -53147,7 +53351,7 @@ useEffect(() => {
             setIncomePromptState({ lastPromptMonthKey: null, lastPromptAt: 0 });
             setDayTwoIncomePromptDismissed(false);
             setIncomeEntryModalVisible(false);
-            setIncomeEntryInput({ amount: "", note: "" });
+            setIncomeEntryInput(createIncomeEntryInputState(DEFAULT_INCOME_PAYDAY));
             setRefuseStats({});
             setTemptationInteractions({});
             setSmartReminders([]);
@@ -54031,6 +54235,10 @@ useEffect(() => {
   }
 
   const isExtraIncomeEntry = incomeEntryModeRef.current === INCOME_ENTRY_TYPES.EXTRA;
+  const incomeEntrySelectedPayday = normalizeIncomePayday(
+    incomeEntryInput?.payday,
+    profile?.incomePayday
+  );
   const incomeEntryTitleKey = isExtraIncomeEntry ? "extraIncomeEntryTitle" : "incomeEntryTitle";
   const incomeEntrySubtitleKey = isExtraIncomeEntry
     ? "extraIncomeEntrySubtitle"
@@ -55300,21 +55508,25 @@ useEffect(() => {
                       <TouchableOpacity
                         style={[
                           styles.levelSharePrimary,
-                          { backgroundColor: colors.text, opacity: levelShareSharing ? 0.6 : 1 },
+                          {
+                            backgroundColor: isDarkTheme ? colorWithAlpha(SAVE_ACTION_COLOR, 0.4) : "#DDF3E7",
+                            borderColor: colorWithAlpha(SAVE_ACTION_COLOR, isDarkTheme ? 0.58 : 0.3),
+                            opacity: levelShareSharing ? 0.6 : 1,
+                          },
                         ]}
                         activeOpacity={0.92}
                         disabled={levelShareSharing}
                         onPress={handleLevelShareConfirm}
                       >
                         <View style={styles.levelSharePrimaryContent}>
-                          <Text style={[styles.levelSharePrimaryText, { color: colors.background }]}>
+                          <Text style={[styles.levelSharePrimaryText, { color: isDarkTheme ? "#D6FFE9" : "#145A3B" }]}>
                             {levelShareSharing ? "..." : t("levelShareModalShare")}
                           </Text>
                           {!levelShareSharing && (
                             <View
                               style={[
                                 styles.levelSharePrimaryReward,
-                                { backgroundColor: colorWithAlpha(colors.background, 0.16) },
+                                { backgroundColor: colorWithAlpha(SAVE_ACTION_COLOR, isDarkTheme ? 0.28 : 0.14) },
                               ]}
                             >
                               <Image
@@ -55323,8 +55535,13 @@ useEffect(() => {
                                 }
                                 style={styles.levelSharePrimaryRewardCoin}
                               />
-                              <Text style={[styles.levelSharePrimaryRewardText, { color: colors.background }]}>
-                                x{LEVEL_SHARE_REWARD_BLUE_COINS}
+                              <Text
+                                style={[
+                                  styles.levelSharePrimaryRewardText,
+                                  { color: isDarkTheme ? "#B2F6D2" : "#1C9A64" },
+                                ]}
+                              >
+                                +{LEVEL_SHARE_REWARD_BLUE_COINS}
                               </Text>
                             </View>
                           )}
@@ -55672,6 +55889,7 @@ useEffect(() => {
           </Modal>
         )}
         {!startupHardLockPendingBeforePaywall &&
+          !premiumPaywallState.visible &&
           feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.WELCOME &&
           activeTab === "feed" && (
           <Modal
@@ -55774,14 +55992,21 @@ useEffect(() => {
         )}
 
         <BudgetWidgetTutorialModal
-          visible={!startupHardLockPendingBeforePaywall && budgetWidgetTutorialVisible}
+          visible={
+            !startupHardLockPendingBeforePaywall &&
+            !premiumPaywallState.visible &&
+            budgetWidgetTutorialVisible
+          }
           colors={colors}
           t={t}
           theme={theme}
           onClose={dismissBudgetWidgetTutorial}
         />
 
-        {!startupHardLockPendingBeforePaywall && tutorialContext && activeTutorialStep && (
+        {!startupHardLockPendingBeforePaywall &&
+          !premiumPaywallState.visible &&
+          tutorialContext &&
+          activeTutorialStep && (
           <Modal
             visible
             transparent
@@ -56909,7 +57134,7 @@ useEffect(() => {
                     >
                       <Text style={styles.proAccentHeroBadgeText}>ALMOST PRO</Text>
                     </View>
-                    <Text style={styles.proAccentHeroText}>🪽💸</Text>
+                    <Text style={styles.proAccentHeroText}>✨💸</Text>
                   </View>
 
                   <View style={styles.proAccentGrid}>
@@ -58410,6 +58635,47 @@ useEffect(() => {
                     placeholderTextColor={colors.muted}
                     keyboardType="decimal-pad"
                   />
+                  <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
+                    {t("incomePaydayLabel")}
+                  </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.incomeEntryPaydayScroll}
+                    contentContainerStyle={styles.incomeEntryPaydayScrollContent}
+                  >
+                    {incomeEntryDayOptions.map((day) => {
+                      const active = incomeEntrySelectedPayday === day;
+                      return (
+                        <TouchableOpacity
+                          key={`income-entry-day-${day}`}
+                          style={[
+                            styles.incomeEntryPaydayChip,
+                            {
+                              backgroundColor: active ? colors.text : "transparent",
+                              borderColor: active ? colors.text : colors.border,
+                            },
+                          ]}
+                          activeOpacity={0.86}
+                          onPress={() =>
+                            setIncomeEntryInput((prev) => ({ ...prev, payday: day }))
+                          }
+                        >
+                          <Text
+                            style={[
+                              styles.incomeEntryPaydayChipText,
+                              { color: active ? colors.background : colors.muted },
+                            ]}
+                          >
+                            {day}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                  <Text style={[styles.incomeEntryPaydayHint, { color: colors.muted }]}>
+                    {t("incomePaydayHint")}
+                  </Text>
                   <View style={styles.priceModalButtons}>
                     <TouchableOpacity
                       style={[styles.priceModalPrimary, { backgroundColor: colors.text }]}
@@ -59175,6 +59441,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+    overflow: "visible",
+  },
+  heroMoodHaloWrap: {
+    flex: 1,
+    width: "100%",
+    position: "relative",
+    overflow: "visible",
+  },
+  heroMoodHaloLayer: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: "visible",
+  },
+  heroMoodHaloShadow: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    bottom: -2,
+    left: -2,
+    borderRadius: 30,
+    shadowOpacity: Platform.OS === "ios" ? 0.62 : 0.42,
+    shadowRadius: Platform.OS === "ios" ? 28 : 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 14,
   },
   heroCarousel: {
     marginTop: 12,
@@ -59207,6 +59496,7 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     position: "relative",
     overflow: "hidden",
+    zIndex: 1,
   },
   moodBadge: {
     alignSelf: "flex-start",
@@ -62462,6 +62752,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     paddingVertical: 12,
     alignItems: "center",
+    borderWidth: 1,
   },
   levelSharePrimaryContent: {
     flexDirection: "row",
@@ -62486,7 +62777,8 @@ const styles = StyleSheet.create({
     resizeMode: "contain",
   },
   levelSharePrimaryRewardText: {
-    ...createCtaText({ fontSize: 12 }),
+    ...createCtaText({ fontSize: 12, textTransform: "none" }),
+    fontWeight: "800",
   },
   levelShareGhost: {
     borderRadius: 18,
@@ -64957,6 +65249,13 @@ const styles = StyleSheet.create({
   temptationAmountValue: {
     fontSize: 22,
     fontWeight: "800",
+  },
+  temptationAmountValueTapZone: {
+    alignSelf: "flex-start",
+    gap: 2,
+  },
+  temptationAmountHint: {
+    ...createBodyText({ fontSize: 11, lineHeight: 14 }),
   },
   temptationAmountTrackWrap: {
     width: "100%",
@@ -68803,6 +69102,12 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginBottom: 4,
   },
+  languageSelectionMascot: {
+    width: 184,
+    height: 184,
+    marginTop: -14,
+    marginBottom: 0,
+  },
   confettiLayer: {
     flex: 1,
     justifyContent: "center",
@@ -69175,6 +69480,7 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     paddingHorizontal: 24,
     marginTop: 6,
+    borderWidth: 1,
   },
   levelShareButtonContent: {
     flexDirection: "row",
@@ -69203,7 +69509,8 @@ const styles = StyleSheet.create({
     height: 14,
   },
   levelShareButtonRewardText: {
-    ...createCtaText({ fontSize: 12 }),
+    ...createCtaText({ fontSize: 12, textTransform: "none" }),
+    fontWeight: "800",
   },
   rewardOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -70830,6 +71137,30 @@ const styles = StyleSheet.create({
   },
   incomeEntryExplanation: {
     ...createBodyText({ fontSize: 13, lineHeight: 18, textAlign: "center" }),
+  },
+  incomeEntryPaydayScroll: {
+    marginTop: 2,
+  },
+  incomeEntryPaydayScrollContent: {
+    alignItems: "center",
+    gap: 8,
+    paddingRight: 4,
+  },
+  incomeEntryPaydayChip: {
+    minWidth: 36,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  incomeEntryPaydayChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  incomeEntryPaydayHint: {
+    ...createBodyText({ fontSize: 12, lineHeight: 17 }),
   },
   goalPickerButton: {
     borderWidth: 1,
@@ -73116,7 +73447,19 @@ function CoinEntryModal({
   const showActionButtons = true;
   const shouldHighlightCategoryError = categoryError && !selectedCategory;
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleDismiss} statusBarTranslucent>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => {
+        if (manualVisible) {
+          closeManual();
+          return;
+        }
+        handleDismiss();
+      }}
+      statusBarTranslucent
+    >
       <View style={styles.coinEntryOverlayRoot}>
         <Animated.View
           pointerEvents="none"
@@ -73358,7 +73701,7 @@ function CoinEntryModal({
         </TouchableWithoutFeedback>
       </View>
       {manualVisible && (
-        <Modal visible transparent animationType="fade" onRequestClose={closeManual}>
+        <View style={StyleSheet.absoluteFillObject}>
           <TouchableWithoutFeedback onPress={closeManual}>
             <View style={styles.coinEntryManualBackdrop}>
               <TouchableWithoutFeedback onPress={() => {}}>
@@ -73404,7 +73747,7 @@ function CoinEntryModal({
               </TouchableWithoutFeedback>
             </View>
           </TouchableWithoutFeedback>
-        </Modal>
+        </View>
       )}
     </Modal>
   );
@@ -74875,7 +75218,7 @@ function LanguageScreen({
         showsVerticalScrollIndicator={false}
       >
         <OnboardingBackButton onPress={onBack} colors={colors} t={t} />
-        <Image source={wavingSource} style={styles.languageMascot} />
+        <Image source={wavingSource} style={[styles.languageMascot, styles.languageSelectionMascot]} />
         <Text style={[styles.onboardTitleCompact, { color: colors.text }]}>{t("languageTitle")}</Text>
         <Text style={[styles.onboardSubtitle, { color: colors.muted }]}>{t("languageSubtitle")}</Text>
         <View style={[styles.languageButtons, isDenseLanguageGrid && styles.languageButtonsDense]}>
@@ -75133,8 +75476,11 @@ const LevelUpCelebration = ({ colors, message, t, onSharePress }) => {
         auraSecondary: "rgba(136,255,218,0.36)",
         previewTrack: "rgba(255,255,255,0.1)",
         previewFill: "#7BC2FF",
-        shareBg: "#7BC2FF",
-        shareText: "#051325",
+        shareBg: "rgba(46,184,115,0.4)",
+        shareBorder: "rgba(129,248,190,0.52)",
+        shareText: "#D6FFE9",
+        shareRewardText: "#B2F6D2",
+        shareRewardBg: "rgba(8,48,30,0.35)",
       }
     : {
         backdrop: "rgba(241,247,255,0.92)",
@@ -75149,8 +75495,11 @@ const LevelUpCelebration = ({ colors, message, t, onSharePress }) => {
         auraSecondary: "rgba(102,225,195,0.36)",
         previewTrack: "rgba(18,33,56,0.12)",
         previewFill: "#4E8DFF",
-        shareBg: "#122138",
-        shareText: "#FFFFFF",
+        shareBg: "#DDF3E7",
+        shareBorder: "rgba(46,184,115,0.3)",
+        shareText: "#145A3B",
+        shareRewardText: "#1C9A64",
+        shareRewardBg: "rgba(46,184,115,0.14)",
       };
   const previewBars = [
     0.28 + ((levelNumber + 1) % 4) * 0.08,
@@ -75159,7 +75508,7 @@ const LevelUpCelebration = ({ colors, message, t, onSharePress }) => {
     0.76 + ((levelNumber + 4) % 4) * 0.06,
   ];
   const shareRewardCoinAsset = BLUE_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[1]?.asset || HEALTH_COIN_TIERS[0]?.asset;
-  const shareRewardPillBackground = colorWithAlpha(palette.shareText, isDarkMode ? 0.14 : 0.2);
+  const shareRewardPillBackground = palette.shareRewardBg;
   return (
     <View style={styles.levelOverlay} pointerEvents="box-none">
       <View style={[styles.levelBackdrop, { backgroundColor: palette.backdrop }]} />
@@ -75247,7 +75596,7 @@ const LevelUpCelebration = ({ colors, message, t, onSharePress }) => {
         </View>
         {onSharePress ? (
           <TouchableOpacity
-            style={[styles.levelShareButton, { backgroundColor: palette.shareBg }]}
+            style={[styles.levelShareButton, { backgroundColor: palette.shareBg, borderColor: palette.shareBorder }]}
             activeOpacity={0.92}
             onPress={() => onSharePress(levelNumber)}
           >
@@ -75261,8 +75610,8 @@ const LevelUpCelebration = ({ colors, message, t, onSharePress }) => {
                 ) : (
                   <HealthCoinFallbackIcon tierId="blue" size={14} style={styles.levelShareButtonRewardFallbackIcon} />
                 )}
-                <Text style={[styles.levelShareButtonRewardText, { color: palette.shareText }]}>
-                  x{LEVEL_SHARE_REWARD_BLUE_COINS}
+                <Text style={[styles.levelShareButtonRewardText, { color: palette.shareRewardText }]}>
+                  +{LEVEL_SHARE_REWARD_BLUE_COINS}
                 </Text>
               </View>
             </View>
@@ -76828,7 +77177,7 @@ const PremiumUnlockCelebration = ({ payload, onClose, playSound }) => {
             </View>
           </Animated.View>
           <Animated.View style={emojiAnimatedStyle}>
-            <Text style={premiumUnlockStyles.heroEmoji}>🪽💸</Text>
+            <Text style={premiumUnlockStyles.heroEmoji}>✨💸</Text>
           </Animated.View>
           <Text style={premiumUnlockStyles.title}>{title}</Text>
           <Text style={premiumUnlockStyles.subtitle}>{subtitle}</Text>

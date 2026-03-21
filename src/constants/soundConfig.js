@@ -8,7 +8,7 @@ export const SOUND_FILES = {
   reward: require("../../assets/sounds/reward.wav"),
   thunder: require("../../assets/sounds/thunder.wav"),
   daily_reward: require("../../assets/sounds/daily_reward.wav"),
-  level_up: require("../../assets/sounds/level_up.wav"),
+  level_up: require("../../assets/sounds/challenge_accept.wav"),
   party_beat: require("../../assets/sounds/counter.wav"),
   party_clap: require("../../assets/sounds/tap.wav"),
   party_cheer: require("../../assets/sounds/reward.wav"),
