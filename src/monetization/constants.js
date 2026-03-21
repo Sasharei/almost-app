@@ -333,7 +333,7 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       featureKeys: [PREMIUM_FEATURE_KEYS.homeWidget, PREMIUM_FEATURE_KEYS.widgetSlider],
       free: false,
       premium: true,
-      lossTitle: "Виджеты на экране помогают сохранить {{amount}} за {{days}} дней.",
+      lossTitle: "Пользователи с Home Screen виджетами в среднем сохраняют в 1.4x больше денег.",
       lossSubtitle: "Ты видишь лимит до покупки и реже тратишь на автомате.",
     },
     {
@@ -446,7 +446,7 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       featureKeys: [PREMIUM_FEATURE_KEYS.homeWidget, PREMIUM_FEATURE_KEYS.widgetSlider],
       free: false,
       premium: true,
-      lossTitle: "Home widgets can protect {{amount}} in {{days}} days.",
+      lossTitle: "Users with home widgets save about 1.4x more money.",
       lossSubtitle: "You see your limits before buying, so fewer purchases happen on autopilot.",
     },
     {
@@ -558,7 +558,7 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       featureKeys: [PREMIUM_FEATURE_KEYS.homeWidget, PREMIUM_FEATURE_KEYS.widgetSlider],
       free: false,
       premium: true,
-      lossTitle: "Los widgets en inicio pueden proteger {{amount}} en {{days}} días.",
+      lossTitle: "Los usuarios con widgets de inicio ahorran alrededor de 1.4x más dinero.",
       lossSubtitle: "Ves tus límites antes de comprar y haces menos compras en piloto automático.",
     },
     {
@@ -670,7 +670,7 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       featureKeys: [PREMIUM_FEATURE_KEYS.homeWidget, PREMIUM_FEATURE_KEYS.widgetSlider],
       free: false,
       premium: true,
-      lossTitle: "Les widgets d'accueil peuvent protéger {{amount}} en {{days}} jours.",
+      lossTitle: "Les utilisateurs avec des widgets d'accueil économisent environ 1.4x plus d'argent.",
       lossSubtitle: "Tu vois tes limites avant d'acheter, donc moins d'achats en pilote automatique.",
     },
     {

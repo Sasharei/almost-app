@@ -430,7 +430,10 @@ const PremiumPaywallModal = ({
     (typeof selectedPlanCtaPrice === "string" && (selectedPlanCtaPrice.match(/[A-Z]{3}/) || [])[0]) ||
     "USD";
   const selectedPlanHasTrial = !!selectedPlan?.hasTrial;
-  const shouldUseTrialCta = isNoFreeAccessTrigger || selectedPlanHasTrial || !!copy?.ctaPrimaryTrial;
+  const normalizedSelectedPlanId =
+    typeof selectedPlan?.id === "string" ? selectedPlan.id.trim().toLowerCase() : "";
+  const isLifetimeSelected = normalizedSelectedPlanId === "lifetime";
+  const shouldUseTrialCta = !isLifetimeSelected && selectedPlanHasTrial;
   const selectedPlanTrialCta = selectedPlan?.ctaTrialLabel || copy?.ctaPrimaryTrial || copy?.ctaPrimary || "";
   const selectedPlanRegularCta = copy?.ctaPrimaryRegular || copy?.ctaPrimary || "";
   const selectedPlanTrialPriceCandidate =
@@ -1067,6 +1070,7 @@ const PremiumPaywallModal = ({
     <Modal
       visible={visible}
       transparent
+      presentationStyle={Platform.OS === "ios" ? "overFullScreen" : undefined}
       animationType="none"
       statusBarTranslucent
       onRequestClose={() => {

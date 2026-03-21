@@ -34,7 +34,7 @@ export const PRO_THEME_ACCENT_OPTIONS = [
     id: "indigo",
     accent: "#4353FF",
     label: { ru: "Индиго", en: "Indigo", es: "Índigo", fr: "Indigo" },
-    emoji: "🫐",
+    emoji: "🔵",
   },
   {
     id: "emerald",
@@ -58,7 +58,7 @@ export const PRO_THEME_ACCENT_OPTIONS = [
     id: "violet",
     accent: "#8B61FF",
     label: { ru: "Фиолет", en: "Violet", es: "Violeta", fr: "Violet" },
-    emoji: "🪻",
+    emoji: "🍇",
   },
   {
     id: "aqua",
