@@ -78,7 +78,9 @@ Group behavior:
 
 - `A` (control): vanilla monetization behavior.
 - `B`: hard trial lock after `trialSaveLimit` saves (default 10). App is blocked by non-dismissible hard paywall on startup until premium is active.
-- `C`: hard paywall immediately after onboarding completion. App is blocked on startup until premium is active.
+- `C`: no hard lock. Free flow stays available; after 5 saves, app shows a 2-step soft paywall (`group_c_support_after_5_saves` trigger):
+  1) intro screen with personal developer message + support CTA,
+  2) classic Premium plans/features screen.
 
 Install eligibility:
 

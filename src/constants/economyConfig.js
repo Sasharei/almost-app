@@ -50,7 +50,7 @@ export const CUSTOM_SPEND_MONTHLY_WEEKS = 4.33;
 
 export const RATING_PROMPT_DELAY_DAYS = 2;
 export const RATING_PROMPT_FOLLOWUP_DELAY_DAYS = 4;
-export const RATING_PROMPT_ACTION_THRESHOLD = 5;
+export const RATING_PROMPT_ACTION_THRESHOLD = 7;
 export const RATING_PROMPT_ACTION_TYPES = new Set(["save", "spend"]);
 
 export const ANDROID_REVIEW_URL = "market://details?id=com.sasarei.almostclean";

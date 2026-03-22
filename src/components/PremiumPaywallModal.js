@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -148,6 +149,60 @@ const formatCountdownToMidnight = (timestamp = Date.now()) => {
   const minutes = totalMinutes % 60;
   return `${hours}h${String(minutes).padStart(2, "0")}m`;
 };
+const LIMITED_OFFER_FALLBACK_SECONDS = 15 * 60;
+const SOCIAL_PROOF_FALLBACK_BY_LANGUAGE = {
+  ru: "Присоединяйся к 5K+ людей, которые уже экономят.",
+  en: "Join 5K+ savers",
+  es: "Únete a más de 5K ahorradores",
+  fr: "Rejoins 5K+ personnes qui économisent",
+  de: "Schließe dich 5K+ Sparern an",
+  ar: "انضم إلى أكثر من 5 آلاف شخص يدّخرون",
+  zh: "加入 5K+ 省钱用户",
+};
+const LIMITED_OFFER_LABEL_FALLBACK_BY_LANGUAGE = {
+  ru: "Ограниченное предложение",
+  en: "Limited-time offer",
+  es: "Oferta por tiempo limitado",
+  fr: "Offre à durée limitée",
+  de: "Zeitlich begrenztes Angebot",
+  ar: "عرض لفترة محدودة",
+  zh: "限时优惠",
+};
+const LIMITED_OFFER_TIMER_PREFIX_FALLBACK_BY_LANGUAGE = {
+  ru: "Закончится через",
+  en: "Ends in",
+  es: "Termina en",
+  fr: "Se termine dans",
+  de: "Endet in",
+  ar: "ينتهي خلال",
+  zh: "结束于",
+};
+const BENEFITS_TITLE_FALLBACK_BY_LANGUAGE = {
+  ru: "Что входит в Premium",
+  en: "What you unlock with Premium",
+  es: "Lo que desbloqueas con Premium",
+  fr: "Ce que Premium débloque",
+  de: "Was Premium freischaltet",
+  ar: "ما الذي يفتحه Premium",
+  zh: "Premium 解锁内容",
+};
+const BENEFITS_FOOTNOTE_FALLBACK_BY_LANGUAGE = {
+  ru: "и многое другое",
+  en: "and much more",
+  es: "y mucho más",
+  fr: "et bien plus",
+  de: "und vieles mehr",
+  ar: "والمزيد",
+  zh: "以及更多",
+};
+const formatOfferCountdown = (remainingMs = 0) => {
+  const safeRemainingMs = Math.max(0, Number(remainingMs) || 0);
+  const totalSeconds = Math.floor(safeRemainingMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+};
+const DEVELOPER_AVATAR = require("../../assets/paywall/developer_alexandr.jpg");
 
 const PremiumPaywallModal = ({
   visible = false,
@@ -166,16 +221,22 @@ const PremiumPaywallModal = ({
   onScrollPastThreshold = () => {},
   onClose = () => {},
   language = "en",
+  safeAreaTopInset = 0,
+  safeAreaBottomInset = 0,
   colors,
 }) => {
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCards));
   const [selectedComparisonRowId, setSelectedComparisonRowId] = useState(null);
   const [showTransactionAbandonedPopup, setShowTransactionAbandonedPopup] = useState(false);
   const [saveLimitCountdownTick, setSaveLimitCountdownTick] = useState(() => Date.now());
+  const [limitedOfferTick, setLimitedOfferTick] = useState(() => Date.now());
+  const [supportIntroStage, setSupportIntroStage] = useState("plans");
   const hasTrackedScrollRef = useRef(false);
+  const limitedOfferEndsAtRef = useRef(0);
   const openProgress = useRef(new Animated.Value(0)).current;
   const ctaPulse = useRef(new Animated.Value(0)).current;
   const abandonedPopupProgress = useRef(new Animated.Value(0)).current;
+  const supportMessageProgress = useRef(new Animated.Value(0)).current;
 
   const cardBg = colors?.card || "#FFFFFF";
   const textColor = colors?.text || "#0F1635";
@@ -185,8 +246,22 @@ const PremiumPaywallModal = ({
   const isAndroid = Platform.OS === "android";
   const isNativeMobile = Platform.OS === "android" || Platform.OS === "ios";
   const { height: viewportHeight } = useWindowDimensions();
+  const resolvedSafeTopInset = Math.max(0, Number(safeAreaTopInset) || 0);
+  const resolvedSafeBottomInset = Math.max(0, Number(safeAreaBottomInset) || 0);
+  const headerSafeTopExtra = Math.min(24, Math.round(resolvedSafeTopInset));
+  const footerSafeBottomExtra = Math.min(22, Math.round(resolvedSafeBottomInset));
   const isCompactAndroid = isNativeMobile && viewportHeight <= 860;
   const isVeryCompactAndroid = isNativeMobile && viewportHeight <= 760;
+  const baseHeaderPaddingTop = isVeryCompactAndroid ? 10 : isCompactAndroid ? 12 : isNativeMobile ? 14 : 18;
+  const headerPaddingTop = baseHeaderPaddingTop + headerSafeTopExtra;
+  const baseFooterPaddingBottom = isVeryCompactAndroid ? (isAndroid ? 14 : 10) : isCompactAndroid ? (isAndroid ? 14 : 10) : isAndroid ? 20 : 12;
+  const footerPaddingBottom = baseFooterPaddingBottom + footerSafeBottomExtra;
+  const supportIntroCardMinHeight = isVeryCompactAndroid
+    ? 0
+    : Math.min(
+        500,
+        Math.round(viewportHeight * (isCompactAndroid ? 0.36 : 0.44))
+      );
   const showSecondaryLegalNotice = !isVeryCompactAndroid;
   const disableAndroidMotion = Platform.OS === "android";
   const normalizedLanguage = normalizePaywallLanguage(language);
@@ -200,9 +275,13 @@ const PremiumPaywallModal = ({
     normalizedTrigger === "save_daily_limit_reached" ||
     normalizedTrigger === "save_daily_limit_blocked";
   const isTransactionAbandonedTrigger = normalizedTrigger === "transaction_abandoned";
+  const isGroupCSupportTrigger = normalizedTrigger === "group_c_support_after_5_saves";
   const isNoFreeAccessTrigger =
     normalizedTrigger === "trial_10_saves_reached" ||
     normalizedTrigger === "onboarding_completed_hard_gate";
+  const isSupportIntroStageVisible = isGroupCSupportTrigger && supportIntroStage === "intro";
+  const isPaywallDismissible = dismissible && !isSupportIntroStageVisible;
+  const shouldShowHeaderMetaChips = !isGroupCSupportTrigger;
   const Text = useCallback(
     ({ style, children, ...props }) => {
       const localizedChildren = localizePaywallTextTree(children, normalizedLanguage);
@@ -226,6 +305,22 @@ const PremiumPaywallModal = ({
     };
   }, [isSaveLimitHardTrigger, visible]);
   useEffect(() => {
+    if (!visible) return undefined;
+    const durationSecondsRaw = Number(copy?.limitedOfferDurationSeconds);
+    const durationSeconds =
+      Number.isFinite(durationSecondsRaw) && durationSecondsRaw > 0
+        ? Math.max(30, Math.round(durationSecondsRaw))
+        : LIMITED_OFFER_FALLBACK_SECONDS;
+    limitedOfferEndsAtRef.current = Date.now() + durationSeconds * 1000;
+    setLimitedOfferTick(Date.now());
+    const intervalId = setInterval(() => {
+      setLimitedOfferTick(Date.now());
+    }, 1000);
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [copy?.limitedOfferDurationSeconds, visible]);
+  useEffect(() => {
     if (!visible) {
       setShowTransactionAbandonedPopup(false);
       return;
@@ -236,13 +331,56 @@ const PremiumPaywallModal = ({
     }
     setShowTransactionAbandonedPopup(false);
   }, [isTransactionAbandonedTrigger, visible]);
+  useEffect(() => {
+    if (!visible) {
+      setSupportIntroStage("plans");
+      return;
+    }
+    setSupportIntroStage(isGroupCSupportTrigger ? "intro" : "plans");
+  }, [isGroupCSupportTrigger, visible]);
+  useEffect(() => {
+    if (!visible || !isSupportIntroStageVisible) {
+      supportMessageProgress.setValue(0);
+      return;
+    }
+    supportMessageProgress.setValue(0);
+    const introAnimation = Animated.sequence([
+      Animated.delay(220),
+      Animated.timing(supportMessageProgress, {
+        toValue: 1,
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]);
+    introAnimation.start();
+    return () => {
+      introAnimation.stop();
+    };
+  }, [isSupportIntroStageVisible, supportMessageProgress, visible]);
 
   const comparisonRows = Array.isArray(copy?.comparisonRows) ? copy.comparisonRows : [];
-  const visibleComparisonRows = comparisonRows;
-  const noFreeComparisonRows = useMemo(() => {
-    const filtered = visibleComparisonRows.filter((row) => !row?.free);
-    return filtered.length ? filtered : visibleComparisonRows;
-  }, [visibleComparisonRows]);
+  const benefitBullets = useMemo(() => {
+    const source = Array.isArray(copy?.benefitBullets) ? copy.benefitBullets : [];
+    if (source.length) return source.slice(0, 4);
+    return comparisonRows
+      .filter(
+        (row) =>
+          row?.premium &&
+          !row?.free &&
+          !row?.isCosmetic &&
+          typeof row?.label === "string" &&
+          row.label.trim().length
+      )
+      .slice(0, 4)
+      .map((row, index) => ({
+        id: row?.id || `benefit_${index}`,
+        label: row.label,
+        featureKey: row?.featureKey || null,
+        featureKeys: Array.isArray(row?.featureKeys) ? row.featureKeys : [],
+        interactive: !!row?.interactive,
+      }));
+  }, [comparisonRows, copy?.benefitBullets]);
 
   const activeInsightRow = useMemo(() => {
     if (!selectedComparisonRowId) return null;
@@ -274,8 +412,6 @@ const PremiumPaywallModal = ({
     SAVE_LIMIT_HEADER_COPY_BY_LANGUAGE[copyLanguage] || SAVE_LIMIT_HEADER_COPY_BY_LANGUAGE.en;
   const saveLimitProNowCopy =
     SAVE_LIMIT_PRO_NOW_BY_LANGUAGE[copyLanguage] || SAVE_LIMIT_PRO_NOW_BY_LANGUAGE.en;
-  const noFreeAccessTitle = baseHeaderTitle;
-  const noFreeAccessSubtitle = baseHeaderSubtitle;
   const headerTitle = isSaveLimitHardTrigger
     ? localizePaywallDigits(saveLimitHeaderCopy.title, normalizedLanguage)
     : baseHeaderTitle;
@@ -290,8 +426,46 @@ const PremiumPaywallModal = ({
     activeInsightRow ? activeInsightRow?.lossAmountLabel || copy?.lossAmountLabel || "" : "",
     normalizedLanguage
   );
+  const limitedOfferRemainingMs = Math.max(
+    0,
+    (Number(limitedOfferEndsAtRef.current) || Date.now()) - limitedOfferTick
+  );
+  const limitedOfferCountdown = localizePaywallDigits(
+    formatOfferCountdown(limitedOfferRemainingMs),
+    normalizedLanguage
+  );
+  const limitedOfferLabel = localizePaywallDigits(
+    copy?.limitedOfferLabel ||
+      LIMITED_OFFER_LABEL_FALLBACK_BY_LANGUAGE[copyLanguage] ||
+      LIMITED_OFFER_LABEL_FALLBACK_BY_LANGUAGE.en,
+    normalizedLanguage
+  );
+  const limitedOfferTimerPrefix = localizePaywallDigits(
+    copy?.limitedOfferTimerPrefix ||
+      LIMITED_OFFER_TIMER_PREFIX_FALLBACK_BY_LANGUAGE[copyLanguage] ||
+      LIMITED_OFFER_TIMER_PREFIX_FALLBACK_BY_LANGUAGE.en,
+    normalizedLanguage
+  );
+  const socialProofLine = localizePaywallDigits(
+    copy?.socialProofLine ||
+      SOCIAL_PROOF_FALLBACK_BY_LANGUAGE[copyLanguage] ||
+      SOCIAL_PROOF_FALLBACK_BY_LANGUAGE.en,
+    normalizedLanguage
+  );
+  const benefitsTitle = localizePaywallDigits(
+    copy?.benefitsTitle ||
+      BENEFITS_TITLE_FALLBACK_BY_LANGUAGE[copyLanguage] ||
+      BENEFITS_TITLE_FALLBACK_BY_LANGUAGE.en,
+    normalizedLanguage
+  );
+  const benefitsFootnote = localizePaywallDigits(
+    copy?.benefitsFootnote ||
+      BENEFITS_FOOTNOTE_FALLBACK_BY_LANGUAGE[copyLanguage] ||
+      BENEFITS_FOOTNOTE_FALLBACK_BY_LANGUAGE.en,
+    normalizedLanguage
+  );
 
-  const renderBenefitHighlight = useCallback((value = "", benefitValue = "") => {
+  const renderBenefitHighlight = useCallback((value = "", benefitValue = "", highlightStyle = null) => {
     const text = String(value || "");
     const token = String(benefitValue || "");
     if (!token || !text.includes(token)) return text;
@@ -300,7 +474,7 @@ const PremiumPaywallModal = ({
       <React.Fragment key={`benefit_chunk_${index}`}>
         {chunk}
         {index < chunks.length - 1 ? (
-          <Text style={styles.headerBenefitHighlight}>{token}</Text>
+          <Text style={[styles.headerBenefitHighlight, highlightStyle]}>{token}</Text>
         ) : null}
       </React.Fragment>
     ));
@@ -436,6 +610,9 @@ const PremiumPaywallModal = ({
   const shouldUseTrialCta = !isLifetimeSelected && selectedPlanHasTrial;
   const selectedPlanTrialCta = selectedPlan?.ctaTrialLabel || copy?.ctaPrimaryTrial || copy?.ctaPrimary || "";
   const selectedPlanRegularCta = copy?.ctaPrimaryRegular || copy?.ctaPrimary || "";
+  const primaryButtonActiveColor = "#18B45B";
+  const primaryButtonDisabledColor = "rgba(24,180,91,0.45)";
+  const primaryButtonShadowColor = "#18B45B";
   const selectedPlanTrialPriceCandidate =
     typeof selectedPlan?.ctaTrialPriceLabel === "string" ? selectedPlan.ctaTrialPriceLabel.trim() : "";
   const selectedPlanTrialPriceHasZero =
@@ -529,6 +706,60 @@ const PremiumPaywallModal = ({
     copy?.transactionAbandonedPopupSecondaryCta || "Maybe later",
     normalizedLanguage
   );
+  const supportIntroBadge = localizePaywallDigits(
+    copy?.supportIntroBadge || "PERSONAL NOTE",
+    normalizedLanguage
+  );
+  const supportIntroTitle = localizePaywallDigits(
+    copy?.supportIntroTitle || copy?.title || "",
+    normalizedLanguage
+  );
+  const supportIntroSubtitle = localizePaywallDigits(
+    copy?.supportIntroSubtitle || "",
+    normalizedLanguage
+  );
+  const supportIntroAuthor = localizePaywallDigits(
+    copy?.supportIntroAuthor || "Alexander, creator of Almost",
+    normalizedLanguage
+  );
+  const supportIntroMessage = localizePaywallDigits(
+    copy?.supportIntroMessage || "",
+    normalizedLanguage
+  );
+  const supportIntroPrimaryCta = localizePaywallDigits(
+    copy?.supportIntroPrimaryCta || "Support Almost",
+    normalizedLanguage
+  );
+  const supportIntroHint = localizePaywallDigits(
+    copy?.supportIntroHint || "",
+    normalizedLanguage
+  );
+  const supportIntroStatus = localizePaywallDigits(
+    copy?.supportIntroStatus || "now",
+    normalizedLanguage
+  );
+  const supportIntroSavedHighlight = localizePaywallDigits(
+    copy?.supportIntroSavedHighlight || "",
+    normalizedLanguage
+  );
+  const supportIntroHeaderHighlightStyle = [
+    styles.supportIntroHeaderBenefitHighlight,
+    isNativeMobile ? styles.supportIntroHeaderBenefitHighlightAndroid : null,
+    isCompactAndroid ? styles.supportIntroHeaderBenefitHighlightCompactAndroid : null,
+    isVeryCompactAndroid ? styles.supportIntroHeaderBenefitHighlightVeryCompactAndroid : null,
+  ];
+  const supportMessageOpacity = supportMessageProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const supportMessageTranslateY = supportMessageProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [16, 0],
+  });
+  const supportMessageScale = supportMessageProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.98, 1],
+  });
 
   const getRowAnimatedStyle = (index, total) => {
     if (disableAndroidMotion) return null;
@@ -555,14 +786,17 @@ const PremiumPaywallModal = ({
 
   if (!copy) return null;
 
-  const footerContent = (
+  const regularFooterContent = (
     <>
       <Animated.View style={{ transform: [{ scale: ctaScale }] }}>
         <TouchableOpacity
           style={[
             styles.primaryButton,
             isCompactAndroid ? styles.primaryButtonCompactAndroid : null,
-            { backgroundColor: purchaseDisabled ? "rgba(67,83,255,0.45)" : accent },
+            {
+              backgroundColor: purchaseDisabled ? primaryButtonDisabledColor : primaryButtonActiveColor,
+              shadowColor: primaryButtonShadowColor,
+            },
           ]}
           onPress={handlePrimaryPress}
           disabled={purchaseDisabled}
@@ -674,58 +908,113 @@ const PremiumPaywallModal = ({
       </View>
     </>
   );
+  const supportIntroFooterContent = (
+    <View style={styles.supportIntroFooter}>
+      <Animated.View style={{ transform: [{ scale: ctaScale }] }}>
+        <TouchableOpacity
+          style={[
+            styles.primaryButton,
+            isCompactAndroid ? styles.primaryButtonCompactAndroid : null,
+            { backgroundColor: accent },
+          ]}
+          onPress={() => setSupportIntroStage("plans")}
+          activeOpacity={0.9}
+        >
+          <Text style={[styles.primaryButtonText, isCompactAndroid ? styles.primaryButtonTextCompactAndroid : null]}>
+            {supportIntroPrimaryCta}
+          </Text>
+        </TouchableOpacity>
+      </Animated.View>
+      {!!supportIntroHint && (
+        <Text style={[styles.supportIntroFooterHint, { color: mutedColor }]}>
+          {supportIntroHint}
+        </Text>
+      )}
+    </View>
+  );
+  const footerContent = isSupportIntroStageVisible ? supportIntroFooterContent : regularFooterContent;
 
-  const headerContent = (
+  const regularHeaderContent = (
     <Animated.View
       style={[
         styles.header,
+        !shouldShowHeaderMetaChips ? styles.headerWithoutMeta : null,
         isNativeMobile ? styles.headerCompactAndroid : null,
+        !shouldShowHeaderMetaChips && isNativeMobile ? styles.headerWithoutMetaAndroid : null,
         isCompactAndroid ? styles.headerCompactAndroidSmall : null,
+        !shouldShowHeaderMetaChips && isCompactAndroid ? styles.headerWithoutMetaCompactAndroid : null,
         isVeryCompactAndroid ? styles.headerCompactAndroidTiny : null,
+        !shouldShowHeaderMetaChips && isVeryCompactAndroid ? styles.headerWithoutMetaVeryCompactAndroid : null,
+        { paddingTop: headerPaddingTop },
         disableAndroidMotion ? null : { transform: [{ translateY: headerTranslateY }] },
       ]}
     >
-      {dismissible && (
-        <Pressable
+      <View
+        style={[
+          styles.headerTopRow,
+          isNativeMobile ? styles.headerTopRowAndroid : null,
+          isCompactAndroid ? styles.headerTopRowCompactAndroid : null,
+          isVeryCompactAndroid ? styles.headerTopRowVeryCompactAndroid : null,
+        ]}
+      >
+        {isPaywallDismissible ? (
+          <Pressable
+            style={[
+              styles.closeButton,
+              isNativeMobile ? styles.closeButtonAndroid : null,
+              isCompactAndroid ? styles.closeButtonCompactAndroid : null,
+              isVeryCompactAndroid ? styles.closeButtonVeryCompactAndroid : null,
+            ]}
+            onPress={() => onClose("header_close")}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text
+              style={[
+                styles.closeButtonText,
+                isCompactAndroid ? styles.closeButtonTextCompactAndroid : null,
+              ]}
+            >
+              ✕
+            </Text>
+          </Pressable>
+        ) : (
+          <View
+            style={[
+              styles.headerTopPlaceholder,
+              isNativeMobile ? styles.headerTopPlaceholderAndroid : null,
+              isCompactAndroid ? styles.headerTopPlaceholderCompactAndroid : null,
+              isVeryCompactAndroid ? styles.headerTopPlaceholderVeryCompactAndroid : null,
+            ]}
+          />
+        )}
+        <View
           style={[
-            styles.closeButton,
-            isNativeMobile ? styles.closeButtonAndroid : null,
-            isCompactAndroid ? styles.closeButtonCompactAndroid : null,
-            isVeryCompactAndroid ? styles.closeButtonVeryCompactAndroid : null,
+            styles.headerBadge,
+            isNativeMobile ? styles.headerBadgeAndroid : null,
+            isCompactAndroid ? styles.headerBadgeCompactAndroid : null,
+            isVeryCompactAndroid ? styles.headerBadgeVeryCompactAndroid : null,
           ]}
-          onPress={() => onClose("header_close")}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Text
             style={[
-              styles.closeButtonText,
-              isCompactAndroid ? styles.closeButtonTextCompactAndroid : null,
+              styles.headerBadgeText,
+              isCompactAndroid ? styles.headerBadgeTextCompactAndroid : null,
             ]}
           >
-            ✕
+            {copy.badgeLabel}
           </Text>
-        </Pressable>
-      )}
+        </View>
+      </View>
 
       <View
         style={[
-          styles.headerBadge,
-          isNativeMobile ? styles.headerBadgeAndroid : null,
-          isCompactAndroid ? styles.headerBadgeCompactAndroid : null,
-          isVeryCompactAndroid ? styles.headerBadgeVeryCompactAndroid : null,
+          styles.headerTextWrap,
+          !shouldShowHeaderMetaChips ? styles.headerTextWrapWithoutMeta : null,
+          isNativeMobile ? styles.headerTextWrapAndroid : null,
+          isCompactAndroid ? styles.headerTextWrapCompactAndroid : null,
+          isVeryCompactAndroid ? styles.headerTextWrapVeryCompactAndroid : null,
         ]}
       >
-        <Text
-          style={[
-            styles.headerBadgeText,
-            isCompactAndroid ? styles.headerBadgeTextCompactAndroid : null,
-          ]}
-        >
-          {copy.badgeLabel}
-        </Text>
-      </View>
-
-      <View style={styles.headerTextWrap}>
         <Text
           style={[
             styles.headerTitle,
@@ -736,6 +1025,57 @@ const PremiumPaywallModal = ({
         >
           {renderBenefitHighlight(headerTitle, headerBenefitValue)}
         </Text>
+        {shouldShowHeaderMetaChips && (
+          <View
+            style={[
+              styles.headerMetaRow,
+              isCompactAndroid ? styles.headerMetaRowCompactAndroid : null,
+              isVeryCompactAndroid ? styles.headerMetaRowVeryCompactAndroid : null,
+            ]}
+          >
+            <View
+              style={[
+                styles.headerMetaChip,
+                styles.socialProofChip,
+                isCompactAndroid ? styles.headerMetaChipCompactAndroid : null,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.socialProofText,
+                  isCompactAndroid ? styles.socialProofTextCompactAndroid : null,
+                ]}
+                numberOfLines={1}
+              >
+                {socialProofLine}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.headerMetaChip,
+                styles.offerTimerChip,
+                isCompactAndroid ? styles.headerMetaChipCompactAndroid : null,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.offerTimerLabel,
+                  isCompactAndroid ? styles.offerTimerLabelCompactAndroid : null,
+                ]}
+              >
+                {limitedOfferLabel}
+              </Text>
+              <Text
+                style={[
+                  styles.offerTimerValue,
+                  isCompactAndroid ? styles.offerTimerValueCompactAndroid : null,
+                ]}
+              >
+                {limitedOfferTimerPrefix} {limitedOfferCountdown}
+              </Text>
+            </View>
+          </View>
+        )}
         {!!headerSubtitle && !showPsychologyChip && (
           <Text
             style={[
@@ -783,155 +1123,260 @@ const PremiumPaywallModal = ({
 
     </Animated.View>
   );
-
-  const sheetContent = (
-    <>
-      <View style={[styles.comparisonCard, isCompactAndroid ? styles.comparisonCardCompactAndroid : null, { borderColor }]}>
-        {isNoFreeAccessTrigger ? (
-          <>
-            <View style={styles.comparisonHeaderNoFree}>
-              <View style={styles.comparisonHeaderNoFreeTextWrap}>
-                <Text style={[styles.comparisonNoFreeTitle, { color: textColor }]}>
-                  {noFreeAccessTitle}
-                </Text>
-                <Text style={[styles.comparisonNoFreeHint, { color: mutedColor }]}>
-                  {noFreeAccessSubtitle}
-                </Text>
-              </View>
-              <View style={styles.proHeaderPillNoFree}>
-                <Text style={styles.proHeaderPillText}>{copy.proColumnLabel || "PRO"}</Text>
-              </View>
-            </View>
-
-            {noFreeComparisonRows.map((row, index) => {
-              const rowId = String(row?.id || `${row?.label || "row"}_${index}`);
-              const rowStyles = [
-                styles.comparisonRow,
-                styles.comparisonRowNoFree,
-                isCompactAndroid ? styles.comparisonRowCompactAndroid : null,
-                index === noFreeComparisonRows.length - 1 && styles.comparisonRowLast,
-              ];
-
-              return (
-                <Animated.View
-                  key={rowId}
-                  style={getRowAnimatedStyle(index, noFreeComparisonRows.length)}
-                >
-                  <View style={rowStyles}>
-                    <Text
-                      style={[
-                        styles.comparisonFeatureText,
-                        styles.comparisonFeatureTextNoFree,
-                        isCompactAndroid ? styles.comparisonFeatureTextCompactAndroid : null,
-                        { color: textColor },
-                      ]}
-                    >
-                      {row.label}
-                    </Text>
-                    <View style={styles.proMarkWrapNoFree}>
-                      <Text style={styles.proMark}>✓</Text>
-                    </View>
-                  </View>
-                </Animated.View>
-              );
-            })}
-          </>
+  const supportIntroHeaderContent = (
+    <Animated.View
+      style={[
+        styles.header,
+        styles.supportIntroHeader,
+        !shouldShowHeaderMetaChips ? styles.headerWithoutMeta : null,
+        isNativeMobile ? styles.headerCompactAndroid : null,
+        !shouldShowHeaderMetaChips && isNativeMobile ? styles.headerWithoutMetaAndroid : null,
+        isCompactAndroid ? styles.headerCompactAndroidSmall : null,
+        !shouldShowHeaderMetaChips && isCompactAndroid ? styles.headerWithoutMetaCompactAndroid : null,
+        isVeryCompactAndroid ? styles.headerCompactAndroidTiny : null,
+        !shouldShowHeaderMetaChips && isVeryCompactAndroid ? styles.headerWithoutMetaVeryCompactAndroid : null,
+        { paddingTop: headerPaddingTop },
+        disableAndroidMotion ? null : { transform: [{ translateY: headerTranslateY }] },
+      ]}
+    >
+      <View
+        style={[
+          styles.headerTopRow,
+          isNativeMobile ? styles.headerTopRowAndroid : null,
+          isCompactAndroid ? styles.headerTopRowCompactAndroid : null,
+          isVeryCompactAndroid ? styles.headerTopRowVeryCompactAndroid : null,
+        ]}
+      >
+        {isPaywallDismissible ? (
+          <Pressable
+            style={[
+              styles.closeButton,
+              isNativeMobile ? styles.closeButtonAndroid : null,
+              isCompactAndroid ? styles.closeButtonCompactAndroid : null,
+              isVeryCompactAndroid ? styles.closeButtonVeryCompactAndroid : null,
+            ]}
+            onPress={() => onClose("header_close")}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text
+              style={[
+                styles.closeButtonText,
+                isCompactAndroid ? styles.closeButtonTextCompactAndroid : null,
+              ]}
+            >
+              ✕
+            </Text>
+          </Pressable>
         ) : (
-          <>
-            <View style={styles.comparisonHeader}>
-              <View style={styles.comparisonFeatureColumn} />
-              <Text style={[styles.comparisonHeaderText, { color: mutedColor }]}>
-                {copy.freeColumnLabel || "FREE"}
-              </Text>
-              <View style={styles.proHeaderPill}>
-                <Text style={styles.proHeaderPillText}>{copy.proColumnLabel || "PRO"}</Text>
-              </View>
-            </View>
-            {!!copy?.comparisonTapHint && (
+          <View
+            style={[
+              styles.headerTopPlaceholder,
+              isNativeMobile ? styles.headerTopPlaceholderAndroid : null,
+              isCompactAndroid ? styles.headerTopPlaceholderCompactAndroid : null,
+              isVeryCompactAndroid ? styles.headerTopPlaceholderVeryCompactAndroid : null,
+            ]}
+          />
+        )}
+        <View
+          style={[
+            styles.headerBadge,
+            styles.supportIntroBadge,
+            isNativeMobile ? styles.headerBadgeAndroid : null,
+            isCompactAndroid ? styles.headerBadgeCompactAndroid : null,
+            isVeryCompactAndroid ? styles.headerBadgeVeryCompactAndroid : null,
+          ]}
+        >
+          <Text
+            style={[
+              styles.headerBadgeText,
+              isCompactAndroid ? styles.headerBadgeTextCompactAndroid : null,
+            ]}
+          >
+            {supportIntroBadge}
+          </Text>
+        </View>
+      </View>
+      <View
+        style={[
+          styles.headerTextWrap,
+          !shouldShowHeaderMetaChips ? styles.headerTextWrapWithoutMeta : null,
+          isNativeMobile ? styles.headerTextWrapAndroid : null,
+          isCompactAndroid ? styles.headerTextWrapCompactAndroid : null,
+          isVeryCompactAndroid ? styles.headerTextWrapVeryCompactAndroid : null,
+        ]}
+      >
+        <Text
+          style={[
+            styles.headerTitle,
+            isNativeMobile ? styles.headerTitleAndroid : null,
+            isCompactAndroid ? styles.headerTitleCompactAndroid : null,
+            isVeryCompactAndroid ? styles.headerTitleVeryCompactAndroid : null,
+            styles.supportIntroHeaderTitle,
+            isNativeMobile ? styles.supportIntroHeaderTitleAndroid : null,
+            isCompactAndroid ? styles.supportIntroHeaderTitleCompactAndroid : null,
+            isVeryCompactAndroid ? styles.supportIntroHeaderTitleVeryCompactAndroid : null,
+          ]}
+        >
+          {renderBenefitHighlight(
+            supportIntroTitle,
+            supportIntroSavedHighlight || headerBenefitValue,
+            supportIntroHeaderHighlightStyle
+          )}
+        </Text>
+        {!!supportIntroSubtitle && (
+          <Text
+            style={[
+              styles.headerSubtitle,
+              styles.supportIntroHeaderSubtitle,
+              isCompactAndroid ? styles.headerSubtitleCompactAndroid : null,
+              isVeryCompactAndroid ? styles.headerSubtitleVeryCompactAndroid : null,
+            ]}
+          >
+            {supportIntroSubtitle}
+          </Text>
+        )}
+        {shouldShowHeaderMetaChips && (
+          <View
+            style={[
+              styles.headerMetaRow,
+              isCompactAndroid ? styles.headerMetaRowCompactAndroid : null,
+              isVeryCompactAndroid ? styles.headerMetaRowVeryCompactAndroid : null,
+            ]}
+          >
+            <View
+              style={[
+                styles.headerMetaChip,
+                styles.socialProofChip,
+                isCompactAndroid ? styles.headerMetaChipCompactAndroid : null,
+              ]}
+            >
               <Text
                 style={[
-                  styles.comparisonTapHint,
-                  isCompactAndroid ? styles.comparisonTapHintCompactAndroid : null,
-                  { color: mutedColor },
+                  styles.socialProofText,
+                  isCompactAndroid ? styles.socialProofTextCompactAndroid : null,
+                ]}
+                numberOfLines={1}
+              >
+                {socialProofLine}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.headerMetaChip,
+                styles.offerTimerChip,
+                isCompactAndroid ? styles.headerMetaChipCompactAndroid : null,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.offerTimerLabel,
+                  isCompactAndroid ? styles.offerTimerLabelCompactAndroid : null,
                 ]}
               >
-                {copy.comparisonTapHint}
+                {limitedOfferLabel}
               </Text>
-            )}
-
-            {visibleComparisonRows.map((row, index) => {
-              const rowId = String(row?.id || `${row?.label || "row"}_${index}`);
-              const isInteractive = !!row?.interactive && !row?.isCosmetic;
-              const isSelected = isInteractive && rowId === selectedComparisonRowId;
-              const rowContent = (
-                <>
-                  <Text
-                    style={[
-                      styles.comparisonFeatureText,
-                      isCompactAndroid ? styles.comparisonFeatureTextCompactAndroid : null,
-                      isSelected ? styles.comparisonFeatureTextActive : null,
-                      { color: isSelected ? "#2F3ADE" : textColor },
-                    ]}
-                  >
-                    {row.label}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.comparisonMark,
-                      isSelected
-                        ? styles.comparisonMarkActive
-                        : { color: row.free ? "#4D5A78" : "#B7BDCF" },
-                    ]}
-                  >
-                    {row.free ? "✓" : "—"}
-                  </Text>
-                  <View style={styles.proMarkWrap}>
-                    <Text style={[styles.proMark, isSelected ? styles.proMarkActive : null]}>✓</Text>
-                  </View>
-                </>
-              );
-              const rowStyles = [
-                styles.comparisonRow,
-                isCompactAndroid ? styles.comparisonRowCompactAndroid : null,
-                index === visibleComparisonRows.length - 1 && styles.comparisonRowLast,
-                isInteractive ? styles.comparisonRowInteractive : null,
-                isSelected ? styles.comparisonRowSelected : null,
-              ];
-
-              return (
-                <Animated.View
-                  key={rowId}
-                  style={getRowAnimatedStyle(index, visibleComparisonRows.length)}
-                >
-                  {isInteractive ? (
-                    <TouchableOpacity
-                      activeOpacity={0.85}
-                      style={rowStyles}
-                      onPress={() => {
-                        setSelectedComparisonRowId(rowId);
-                        onFeatureInsightPress(row?.featureKey || rowId, {
-                          source: "comparison_row",
-                          rowId,
-                        });
-                      }}
-                    >
-                      {rowContent}
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={rowStyles}>{rowContent}</View>
-                  )}
-                </Animated.View>
-              );
-            })}
-          </>
+              <Text
+                style={[
+                  styles.offerTimerValue,
+                  isCompactAndroid ? styles.offerTimerValueCompactAndroid : null,
+                ]}
+              >
+                {limitedOfferTimerPrefix} {limitedOfferCountdown}
+              </Text>
+            </View>
+          </View>
         )}
       </View>
+    </Animated.View>
+  );
+  const headerContent = isSupportIntroStageVisible ? supportIntroHeaderContent : regularHeaderContent;
 
-      {!!copy.unlockLevelsLine && !isVeryCompactAndroid && (
-        <View style={[styles.unlockLevelCard, isCompactAndroid ? styles.unlockLevelCardCompactAndroid : null]}>
-          <Text style={[styles.unlockLevelCardText, { color: textColor }]}>{copy.unlockLevelsLine}</Text>
+  const regularSheetContent = (
+    <>
+      <View style={[styles.benefitsCard, isCompactAndroid ? styles.benefitsCardCompactAndroid : null, { borderColor }]}>
+        <Text style={[styles.benefitsCardTitle, { color: textColor }]}>
+          {benefitsTitle}
+        </Text>
+        <View style={styles.benefitsList}>
+          {benefitBullets.map((row, index) => {
+            const rowId = String(row?.id || `${row?.label || "benefit"}_${index}`);
+            const isInteractive = !!row?.interactive;
+            const isSelected = rowId === selectedComparisonRowId;
+            const bulletRow = (
+              <>
+                <View
+                  style={[
+                    styles.benefitBulletIconWrap,
+                    isSelected ? styles.benefitBulletIconWrapSelected : null,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.benefitBulletIcon,
+                      isSelected ? styles.benefitBulletIconSelected : null,
+                    ]}
+                  >
+                    ✓
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.benefitBulletText,
+                    isCompactAndroid ? styles.benefitBulletTextCompactAndroid : null,
+                    { color: isSelected ? "#2F3ADE" : textColor },
+                  ]}
+                >
+                  {row.label}
+                </Text>
+              </>
+            );
+            return (
+              <Animated.View key={rowId} style={getRowAnimatedStyle(index, benefitBullets.length)}>
+                {isInteractive ? (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    style={[
+                      styles.benefitBulletRow,
+                      isCompactAndroid ? styles.benefitBulletRowCompactAndroid : null,
+                      index === benefitBullets.length - 1 ? styles.benefitBulletRowLast : null,
+                    ]}
+                    onPress={() => {
+                      setSelectedComparisonRowId(rowId);
+                      onFeatureInsightPress(row?.featureKey || rowId, {
+                        source: "benefit_bullet",
+                        rowId,
+                      });
+                    }}
+                  >
+                    {bulletRow}
+                  </TouchableOpacity>
+                ) : (
+                  <View
+                    style={[
+                      styles.benefitBulletRow,
+                      isCompactAndroid ? styles.benefitBulletRowCompactAndroid : null,
+                      index === benefitBullets.length - 1 ? styles.benefitBulletRowLast : null,
+                    ]}
+                  >
+                    {bulletRow}
+                  </View>
+                )}
+              </Animated.View>
+            );
+          })}
         </View>
-      )}
+        {!!benefitsFootnote && (
+          <Text
+            style={[
+              styles.benefitsFootnote,
+              isCompactAndroid ? styles.benefitsFootnoteCompactAndroid : null,
+              { color: mutedColor },
+            ]}
+          >
+            {benefitsFootnote}
+          </Text>
+        )}
+      </View>
 
       <View style={styles.planSection}>
         <Text style={[styles.planSectionTitle, isCompactAndroid ? styles.planSectionTitleCompactAndroid : null, { color: textColor }]}>
@@ -1002,10 +1447,19 @@ const PremiumPaywallModal = ({
                   ) : null}
                 </View>
                 <View style={styles.planBottomRow}>
-                  <Text style={[styles.planPrice, isCompactAndroid ? styles.planPriceCompactAndroid : null, { color: textColor }]}>
+                  <Text
+                    style={[
+                      styles.planPrice,
+                      isCompactAndroid ? styles.planPriceCompactAndroid : null,
+                      plan.displayAsEquivalent ? styles.planPriceEquivalent : null,
+                      isCompactAndroid && plan.displayAsEquivalent ? styles.planPriceEquivalentCompactAndroid : null,
+                      { color: textColor },
+                    ]}
+                    numberOfLines={plan.displayAsEquivalent ? 2 : 1}
+                  >
                     {plan.priceLabel}
                   </Text>
-                  <View style={styles.planPriceMeta}>
+                  <View style={[styles.planPriceMeta, plan.displayAsEquivalent ? styles.planPriceMetaEquivalent : null]}>
                     {!!plan.secondaryLabel && (
                       <Text
                         style={[
@@ -1023,7 +1477,7 @@ const PremiumPaywallModal = ({
                         style={[
                           styles.planSecondarySub,
                           isCompactAndroid ? styles.planSecondarySubCompactAndroid : null,
-                          { color: selected ? "#313EEA" : mutedColor },
+                          { color: mutedColor },
                         ]}
                       >
                         {plan.secondarySubLabel}
@@ -1042,7 +1496,7 @@ const PremiumPaywallModal = ({
                     )}
                   </View>
                 </View>
-                {!!plan.equivalentLabel && (
+                {!!plan.equivalentLabel && !plan.displayAsEquivalent && (
                   <Text
                     style={[
                       styles.planEquivalent,
@@ -1065,6 +1519,39 @@ const PremiumPaywallModal = ({
       </View>
     </>
   );
+  const supportIntroSheetContent = (
+    <View
+      style={[
+        styles.supportIntroCard,
+        { borderColor },
+        supportIntroCardMinHeight > 0 ? { minHeight: supportIntroCardMinHeight } : null,
+      ]}
+    >
+      <View style={styles.supportIntroMessageRow}>
+        <View style={styles.supportIntroAvatarWrap}>
+          <Image source={DEVELOPER_AVATAR} style={styles.supportIntroAvatar} resizeMode="cover" />
+        </View>
+        <View style={styles.supportIntroAuthorBlock}>
+          <Text style={[styles.supportIntroAuthorName, { color: textColor }]}>{supportIntroAuthor}</Text>
+          <Text style={[styles.supportIntroIncoming, { color: mutedColor }]}>{supportIntroStatus}</Text>
+        </View>
+      </View>
+      <Animated.View
+        style={[
+          styles.supportIntroBubbleWrap,
+          {
+            opacity: supportMessageOpacity,
+            transform: [{ translateY: supportMessageTranslateY }, { scale: supportMessageScale }],
+          },
+        ]}
+      >
+        <View style={styles.supportIntroBubble}>
+          <Text style={[styles.supportIntroBubbleText, { color: textColor }]}>{supportIntroMessage}</Text>
+        </View>
+      </Animated.View>
+    </View>
+  );
+  const sheetContent = isSupportIntroStageVisible ? supportIntroSheetContent : regularSheetContent;
 
   return (
     <Modal
@@ -1074,7 +1561,7 @@ const PremiumPaywallModal = ({
       animationType="none"
       statusBarTranslucent
       onRequestClose={() => {
-        if (dismissible) {
+        if (isPaywallDismissible) {
           onClose("system_back");
         }
       }}
@@ -1082,8 +1569,8 @@ const PremiumPaywallModal = ({
       <View style={styles.root}>
         <Pressable
           style={styles.backdropPressable}
-          onPress={dismissible ? () => onClose("backdrop") : undefined}
-          disabled={!dismissible}
+          onPress={isPaywallDismissible ? () => onClose("backdrop") : undefined}
+          disabled={!isPaywallDismissible}
         >
           <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]} />
         </Pressable>
@@ -1122,6 +1609,7 @@ const PremiumPaywallModal = ({
                 styles.sheetScrollContent,
                 isCompactAndroid ? styles.sheetScrollContentCompactAndroid : null,
                 isVeryCompactAndroid ? styles.sheetScrollContentVeryCompactAndroid : null,
+                isSupportIntroStageVisible ? styles.sheetScrollContentSupportIntro : null,
               ]}
             >
               {sheetContent}
@@ -1132,7 +1620,7 @@ const PremiumPaywallModal = ({
                 styles.footerSticky,
                 isCompactAndroid ? styles.footerCompactAndroid : null,
                 isVeryCompactAndroid ? styles.footerVeryCompactAndroid : null,
-                { borderTopColor: borderColor },
+                { borderTopColor: borderColor, paddingBottom: footerPaddingBottom },
               ]}
             >
               {footerContent}
@@ -1242,6 +1730,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     minHeight: 0,
     zIndex: 2,
+    backgroundColor: "#0A1E72",
   },
   abandonedPopupLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -1416,31 +1905,66 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: "#0A1E72",
-    paddingTop: 58,
+    paddingTop: 18,
     paddingHorizontal: 20,
     paddingBottom: 24,
-    minHeight: 298,
+    minHeight: 246,
     position: "relative",
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
+    overflow: "hidden",
   },
   headerCompactAndroid: {
-    paddingTop: 48,
-    paddingBottom: 16,
-    minHeight: 244,
+    paddingTop: 14,
+    paddingBottom: 14,
+    minHeight: 220,
   },
   headerCompactAndroidSmall: {
-    paddingTop: 42,
+    paddingTop: 12,
     paddingBottom: 12,
-    minHeight: 212,
+    minHeight: 198,
   },
   headerCompactAndroidTiny: {
-    paddingTop: 40,
+    paddingTop: 10,
     paddingBottom: 10,
-    minHeight: 188,
+    minHeight: 184,
+  },
+  headerWithoutMeta: {
+    minHeight: 214,
+    paddingBottom: 16,
+  },
+  headerWithoutMetaAndroid: {
+    minHeight: 196,
+    paddingBottom: 13,
+  },
+  headerWithoutMetaCompactAndroid: {
+    minHeight: 178,
+    paddingBottom: 11,
+  },
+  headerWithoutMetaVeryCompactAndroid: {
+    minHeight: 166,
+    paddingBottom: 9,
+  },
+  supportIntroHeader: {
+    backgroundColor: "#0E2F8F",
+  },
+  headerTopRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 40,
+  },
+  headerTopRowAndroid: {
+    minHeight: 38,
+  },
+  headerTopRowCompactAndroid: {
+    minHeight: 36,
+  },
+  headerTopRowVeryCompactAndroid: {
+    minHeight: 34,
   },
   closeButton: {
-    position: "absolute",
-    top: 48,
-    left: 18,
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -1449,21 +1973,14 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
-    zIndex: 6,
-    elevation: 6,
   },
-  closeButtonAndroid: {
-    top: 42,
-  },
+  closeButtonAndroid: {},
   closeButtonCompactAndroid: {
-    top: 34,
-    left: 14,
     width: 36,
     height: 36,
     borderRadius: 18,
   },
   closeButtonVeryCompactAndroid: {
-    top: 30,
     width: 34,
     height: 34,
     borderRadius: 17,
@@ -1478,26 +1995,39 @@ const styles = StyleSheet.create({
     fontSize: 19,
     lineHeight: 20,
   },
+  headerTopPlaceholder: {
+    width: 40,
+    height: 40,
+  },
+  headerTopPlaceholderAndroid: {
+    width: 40,
+    height: 40,
+  },
+  headerTopPlaceholderCompactAndroid: {
+    width: 36,
+    height: 36,
+  },
+  headerTopPlaceholderVeryCompactAndroid: {
+    width: 34,
+    height: 34,
+  },
   headerBadge: {
-    position: "absolute",
-    top: 52,
-    right: 18,
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     backgroundColor: "rgba(136,103,255,0.95)",
   },
   headerBadgeAndroid: {
-    top: 44,
+    paddingHorizontal: 13,
+    paddingVertical: 6,
   },
   headerBadgeCompactAndroid: {
-    top: 34,
-    right: 14,
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     paddingVertical: 5,
   },
-  headerBadgeVeryCompactAndroid: {
-    top: 30,
+  headerBadgeVeryCompactAndroid: {},
+  supportIntroBadge: {
+    backgroundColor: "rgba(57,232,172,0.95)",
   },
   headerBadgeText: {
     color: "#FFFFFF",
@@ -1512,34 +2042,151 @@ const styles = StyleSheet.create({
   headerTextWrap: {
     width: "100%",
     alignItems: "center",
+    marginTop: 18,
+    paddingHorizontal: 4,
+  },
+  headerTextWrapWithoutMeta: {
+    marginTop: 12,
+  },
+  headerTextWrapAndroid: {
+    marginTop: 16,
+  },
+  headerTextWrapCompactAndroid: {
+    marginTop: 13,
+  },
+  headerTextWrapVeryCompactAndroid: {
+    marginTop: 10,
+  },
+  headerMetaRow: {
+    marginTop: 10,
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 8,
+  },
+  headerMetaRowCompactAndroid: {
+    marginTop: 8,
+    gap: 6,
+  },
+  headerMetaRowVeryCompactAndroid: {
+    marginTop: 6,
+  },
+  headerMetaChip: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    justifyContent: "center",
+  },
+  headerMetaChipCompactAndroid: {
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  socialProofChip: {
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderColor: "rgba(255,255,255,0.22)",
+  },
+  socialProofText: {
+    color: "#F1F5FF",
+    textAlign: "center",
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "700",
+  },
+  socialProofTextCompactAndroid: {
+    fontSize: 10,
+    lineHeight: 13,
+  },
+  offerTimerChip: {
+    backgroundColor: "rgba(255,214,74,0.22)",
+    borderColor: "rgba(255,220,112,0.72)",
+  },
+  offerTimerLabel: {
+    color: "#FFF2BF",
+    textAlign: "center",
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: "800",
+    letterSpacing: 0.2,
+  },
+  offerTimerLabelCompactAndroid: {
+    fontSize: 9,
+    lineHeight: 11,
+  },
+  offerTimerValue: {
+    marginTop: 2,
+    color: "#FFFFFF",
+    textAlign: "center",
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "900",
+  },
+  offerTimerValueCompactAndroid: {
+    fontSize: 11,
+    lineHeight: 14,
   },
   headerTitle: {
-    marginTop: 48,
     width: "100%",
     color: "#FFFFFF",
     textAlign: "center",
-    fontSize: 34,
-    lineHeight: 39,
+    fontSize: 28,
+    lineHeight: 34,
     fontWeight: "800",
+    maxWidth: "95%",
   },
   headerTitleAndroid: {
-    marginTop: 40,
-    fontSize: 30,
-    lineHeight: 35,
+    fontSize: 25,
+    lineHeight: 31,
   },
   headerTitleCompactAndroid: {
-    marginTop: 32,
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: 22,
+    lineHeight: 28,
   },
   headerTitleVeryCompactAndroid: {
-    marginTop: 30,
+    fontSize: 20,
+    lineHeight: 25,
+  },
+  supportIntroHeaderTitle: {
+    color: "#E8F8FF",
+    fontWeight: "900",
+    fontSize: 31,
+    lineHeight: 37,
+    letterSpacing: 0.1,
+  },
+  supportIntroHeaderTitleAndroid: {
+    fontSize: 28,
+    lineHeight: 34,
+  },
+  supportIntroHeaderTitleCompactAndroid: {
     fontSize: 24,
-    lineHeight: 28,
+    lineHeight: 30,
+  },
+  supportIntroHeaderTitleVeryCompactAndroid: {
+    fontSize: 22,
+    lineHeight: 27,
   },
   headerBenefitHighlight: {
     color: "#8AF3BC",
     fontWeight: "900",
+  },
+  supportIntroHeaderBenefitHighlight: {
+    color: "#61F29C",
+    fontSize: 33,
+    lineHeight: 37,
+  },
+  supportIntroHeaderBenefitHighlightAndroid: {
+    fontSize: 30,
+    lineHeight: 34,
+  },
+  supportIntroHeaderBenefitHighlightCompactAndroid: {
+    fontSize: 27,
+    lineHeight: 32,
+  },
+  supportIntroHeaderBenefitHighlightVeryCompactAndroid: {
+    fontSize: 24,
+    lineHeight: 29,
   },
   headerSubtitle: {
     marginTop: 10,
@@ -1549,6 +2196,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "600",
+    maxWidth: "93%",
+  },
+  supportIntroHeaderSubtitle: {
+    marginTop: 10,
+    color: "rgba(236,248,255,0.97)",
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: "700",
+    maxWidth: "93%",
   },
   headerSubtitleCompactAndroid: {
     marginTop: 7,
@@ -1614,13 +2270,13 @@ const styles = StyleSheet.create({
   sheet: {
     flex: 1,
     minHeight: 0,
-    marginTop: -18,
+    marginTop: -2,
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     overflow: "hidden",
   },
   sheetCompactAndroid: {
-    marginTop: -12,
+    marginTop: -2,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
   },
@@ -1629,6 +2285,12 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 16,
     gap: 12,
+  },
+  sheetScrollContentSupportIntro: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingTop: 10,
+    paddingBottom: 10,
   },
   sheetScrollContentCompactAndroid: {
     paddingTop: 12,
@@ -1643,6 +2305,64 @@ const styles = StyleSheet.create({
   sheetScroll: {
     flex: 1,
     minHeight: 0,
+  },
+  supportIntroCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    gap: 16,
+    overflow: "hidden",
+  },
+  supportIntroMessageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  supportIntroAvatarWrap: {
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    overflow: "hidden",
+    backgroundColor: "#E7ECFF",
+    borderWidth: 1,
+    borderColor: "rgba(67,83,255,0.24)",
+  },
+  supportIntroAvatar: {
+    width: "100%",
+    height: "100%",
+  },
+  supportIntroAuthorBlock: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  supportIntroAuthorName: {
+    fontSize: 22,
+    lineHeight: 27,
+    fontWeight: "900",
+  },
+  supportIntroIncoming: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "600",
+  },
+  supportIntroBubbleWrap: {
+    width: "100%",
+  },
+  supportIntroBubble: {
+    borderRadius: 20,
+    backgroundColor: "#F4F7FF",
+    borderWidth: 1,
+    borderColor: "rgba(67,83,255,0.18)",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  supportIntroBubbleText: {
+    fontSize: 17,
+    lineHeight: 25,
+    fontWeight: "600",
   },
   comparisonCard: {
     borderRadius: 18,
@@ -1820,6 +2540,91 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: "700",
   },
+  benefitsCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 6,
+    gap: 8,
+  },
+  benefitsCardCompactAndroid: {
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: 5,
+    gap: 6,
+  },
+  benefitsCardTitle: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+  },
+  benefitsList: {
+    gap: 0,
+  },
+  benefitsFootnote: {
+    marginTop: 6,
+    textAlign: "left",
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "600",
+  },
+  benefitsFootnoteCompactAndroid: {
+    marginTop: 5,
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  benefitBulletRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(18,28,58,0.12)",
+    paddingVertical: 9,
+  },
+  benefitBulletRowCompactAndroid: {
+    paddingVertical: 8,
+  },
+  benefitBulletRowLast: {
+    paddingBottom: 10,
+  },
+  benefitBulletIconWrap: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    marginTop: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(67,83,255,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(67,83,255,0.26)",
+  },
+  benefitBulletIconWrapSelected: {
+    backgroundColor: "rgba(67,83,255,0.22)",
+    borderColor: "rgba(67,83,255,0.54)",
+  },
+  benefitBulletIcon: {
+    color: "#4353FF",
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: "900",
+  },
+  benefitBulletIconSelected: {
+    color: "#2D38CC",
+  },
+  benefitBulletText: {
+    flex: 1,
+    marginLeft: 9,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+  },
+  benefitBulletTextCompactAndroid: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginLeft: 8,
+  },
   planSection: {
     gap: 8,
   },
@@ -1876,6 +2681,9 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     gap: 2,
   },
+  planPriceMetaEquivalent: {
+    minWidth: 112,
+  },
   planTitle: {
     fontSize: 15,
     lineHeight: 18,
@@ -1908,9 +2716,20 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     fontWeight: "900",
   },
+  planPriceEquivalent: {
+    flex: 1,
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: "800",
+    paddingRight: 6,
+  },
   planPriceCompactAndroid: {
     fontSize: 21,
     lineHeight: 23,
+  },
+  planPriceEquivalentCompactAndroid: {
+    fontSize: 14,
+    lineHeight: 18,
   },
   planSecondary: {
     fontSize: 12,
@@ -1976,6 +2795,15 @@ const styles = StyleSheet.create({
   },
   footerSticky: {
     flexShrink: 0,
+  },
+  supportIntroFooter: {
+    gap: 8,
+  },
+  supportIntroFooterHint: {
+    textAlign: "center",
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "600",
   },
   primaryButton: {
     minHeight: 54,

@@ -775,6 +775,96 @@ const TRIAL_10_SAVES_SUBTITLE_BY_LANGUAGE = {
   ar: "مع Premium يمكنك توفير ما يصل إلى {{amount}} خلال {{days}} يوماً.",
   zh: "使用 Premium，你可在 {{days}} 天内最多再节省 {{amount}}。",
 };
+const GROUP_C_SUPPORT_INTRO_BADGE_BY_LANGUAGE = {
+  ru: "ЛИЧНОЕ СООБЩЕНИЕ",
+  en: "PERSONAL NOTE",
+  es: "MENSAJE PERSONAL",
+  fr: "MESSAGE PERSONNEL",
+  de: "PERSOENLICHE NACHRICHT",
+  ar: "رسالة شخصية",
+  zh: "开发者来信",
+};
+const GROUP_C_SUPPORT_5_SAVES_TITLE_BY_LANGUAGE = {
+  ru: "Ты уже сэкономил(а) {{saved}}! Это мощный старт.",
+  en: "You've already saved {{saved}}! That's an incredible start.",
+  es: "Ya has ahorrado {{saved}}. ¡Es un comienzo increíble!",
+  fr: "Tu as déjà économisé {{saved}}. C'est un départ incroyable !",
+  de: "Du hast schon {{saved}} gespart. Das ist ein starker Start!",
+  ar: "لقد وفّرت بالفعل {{saved}}! هذه بداية رائعة.",
+  zh: "你已经省下了 {{saved}}！这是非常棒的开始。",
+};
+const GROUP_C_SUPPORT_5_SAVES_SUBTITLE_BY_LANGUAGE = {
+  ru: "Ты большой молодец. Прочитай личное сообщение от создателя и продолжай в том же духе.",
+  en: "You're doing great. Read a personal note from the creator and keep going.",
+  es: "Lo estás haciendo muy bien. Lee un mensaje personal del creador y sigue así.",
+  fr: "Tu te débrouilles très bien. Lis un message personnel du créateur et continue comme ça.",
+  de: "Du machst das großartig. Lies die persönliche Nachricht vom Gründer und bleib dran.",
+  ar: "أنت تقوم بعمل رائع. اقرأ رسالة شخصية من المؤسس وواصل التقدم.",
+  zh: "你做得很棒。读一条创始人的个人消息，然后继续前进。",
+};
+const GROUP_C_SUPPORT_AUTHOR_BY_LANGUAGE = {
+  ru: "Александр, создатель Almost",
+  en: "Alexander, creator of Almost",
+  es: "Alexander, creador de Almost",
+  fr: "Alexandre, createur d'Almost",
+  de: "Alexander, Gruender von Almost",
+  ar: "ألكسندر، مؤسس Almost",
+  zh: "Alexander，Almost 创始人",
+};
+const GROUP_C_SUPPORT_STATUS_BY_LANGUAGE = {
+  ru: "только что",
+  en: "just now",
+  es: "ahora mismo",
+  fr: "a l'instant",
+  de: "gerade eben",
+  ar: "الآن",
+  zh: "刚刚",
+};
+const GROUP_C_SUPPORT_MESSAGE_BY_LANGUAGE = {
+  ru: "Привет! Это Александр, создатель Almost. Я вижу, что ты уже делаешь первые шаги на пути к своей финансовой цели, и поздравляю тебя с этим! Желаю тебе успехов в этом непростом пути, и уверен, что у тебя всё получится. Также надеюсь, что и у меня получится развивать Almost и выполнить миссию: создать лучший инструмент, который помогает людям. Буду очень признателен, если у тебя будет возможность поддержать Almost подпиской. Almost Premium даёт много полезных и классных инструментов для достижения финансовых целей, и я продолжу развивать проект. Все подписчики Premium автоматически будут получать новые фишки приложения. Заранее спасибо!",
+  en: "Hi! I'm Alexander, the creator of Almost. I can see you are already taking your first steps toward your financial goal, and I want to congratulate you. I wish you success on this difficult path, and I truly believe you can do it. I also hope I can keep growing Almost and fulfill the mission of building the best tool that helps people. I would be very grateful if you could support Almost with a subscription. Almost Premium includes many useful and powerful tools for reaching financial goals, and I will keep improving the project. All Premium subscribers automatically get every new feature in the app. Thank you in advance!",
+  es: "Hola, soy Alexander, el creador de Almost. Veo que ya estás dando tus primeros pasos hacia tu meta financiera y quiero felicitarte por ello. Te deseo mucho éxito en este camino, y de verdad creo que lo vas a lograr. También espero poder seguir desarrollando Almost y cumplir la misión de crear la mejor herramienta para ayudar a las personas. Te agradecería muchísimo si puedes apoyar Almost con una suscripción. Almost Premium incluye muchas funciones útiles y potentes para alcanzar metas financieras, y yo seguiré mejorando el proyecto. Todos los suscriptores Premium reciben automáticamente cada nueva función de la app. ¡Gracias de antemano!",
+  fr: "Salut, c'est Alexandre, le createur d'Almost. Je vois que tu fais deja tes premiers pas vers ton objectif financier, et je t'en felicite. Je te souhaite beaucoup de reussite dans ce chemin exigeant, et je suis sur que tu vas y arriver. J'espere aussi pouvoir continuer a developper Almost et accomplir la mission de creer le meilleur outil pour aider les gens. Je te serai tres reconnaissant si tu peux soutenir Almost avec un abonnement. Almost Premium donne acces a de nombreux outils utiles et performants pour atteindre tes objectifs financiers, et je continuerai a faire evoluer le projet. Tous les abonnes Premium recoivent automatiquement chaque nouvelle fonctionnalite de l'application. Merci d'avance !",
+  de: "Hi, ich bin Alexander, der Gruender von Almost. Ich sehe, dass du bereits die ersten Schritte zu deinem finanziellen Ziel machst, und dazu moechte ich dir gratulieren. Ich wuensche dir viel Erfolg auf diesem anspruchsvollen Weg, und ich bin sicher, dass du es schaffen wirst. Ich hoffe auch, Almost weiterentwickeln zu koennen und die Mission zu erfuellen, das beste Tool zu bauen, das Menschen hilft. Ich waere dir sehr dankbar, wenn du Almost mit einem Abo unterstuetzen kannst. Almost Premium bietet viele nuetzliche und starke Funktionen fuer finanzielle Ziele, und ich werde das Projekt weiter ausbauen. Alle Premium-Abonnenten erhalten automatisch alle neuen App-Features. Vielen Dank im Voraus!",
+  ar: "مرحباً! أنا ألكسندر، مؤسس Almost. أرى أنك بدأت بالفعل أولى خطواتك نحو هدفك المالي، وأهنئك على ذلك. أتمنى لك التوفيق في هذا الطريق الصعب، وأنا واثق أنك ستنجح. وآمل أيضاً أن أنجح أنا في تطوير Almost وتحقيق رسالته: بناء أفضل أداة تساعد الناس. سأكون ممتناً جداً إذا استطعت دعم Almost عبر الاشتراك. يمنحك Almost Premium الكثير من الأدوات المفيدة والقوية للوصول إلى أهدافك المالية، وسأواصل تطوير المشروع. جميع مشتركي Premium يحصلون تلقائياً على كل الميزات الجديدة في التطبيق. شكراً مقدماً!",
+  zh: "你好！我是 Almost 的创始人 Alexander。我看到你已经在为自己的财务目标迈出第一步，真心为你高兴。祝你在这条不容易的路上持续进步，我也相信你一定可以做到。同时，我也希望自己能继续把 Almost 做得更好，完成我们的使命：打造最能帮助用户的工具。如果你愿意通过订阅来支持 Almost，我会非常感激。Almost Premium 提供了很多实用又强大的功能，帮助你更快达成财务目标，我也会持续迭代项目。所有 Premium 订阅用户都会自动获得应用的全部新功能。提前谢谢你！",
+};
+const GROUP_C_SUPPORT_PRIMARY_CTA_BY_LANGUAGE = {
+  ru: "Поддержать Almost",
+  en: "Support Almost",
+  es: "Apoyar Almost",
+  fr: "Soutenir Almost",
+  de: "Almost unterstuetzen",
+  ar: "ادعم Almost",
+  zh: "支持 Almost",
+};
+const GROUP_C_SUPPORT_HINT_BY_LANGUAGE = {
+  ru: "На следующем экране выбери подходящий план Premium.",
+  en: "On the next screen, choose the Premium plan that fits you.",
+  es: "En la siguiente pantalla, elige el plan Premium que mejor te encaje.",
+  fr: "Sur l'ecran suivant, choisis l'abonnement Premium qui te convient.",
+  de: "Waehle im naechsten Schritt den Premium-Plan, der zu dir passt.",
+  ar: "في الشاشة التالية اختر خطة Premium المناسبة لك.",
+  zh: "下一步请选择最适合你的 Premium 方案。",
+};
+const GROUP_C_SUPPORT_PLAN_TITLE_BY_LANGUAGE = {
+  ru: "Поддержи Almost и усили свой прогресс.",
+  en: "Support Almost and boost your progress.",
+  es: "Apoya Almost y acelera tu progreso.",
+  fr: "Soutiens Almost et accélère tes progrès.",
+  de: "Unterstütze Almost und beschleunige deinen Fortschritt.",
+  ar: "ادعم Almost وعزّز تقدّمك.",
+  zh: "支持 Almost，让你的进步更快。",
+};
+const GROUP_C_SUPPORT_PLAN_SUBTITLE_BY_LANGUAGE = {
+  ru: "Premium открывает мощные инструменты для целей, аналитики и контроля импульсов.",
+  en: "Premium unlocks powerful tools for goals, analytics, and impulse control.",
+  es: "Premium desbloquea herramientas potentes para metas, analítica y control de impulsos.",
+  fr: "Premium débloque des outils puissants pour les objectifs, l'analyse et le contrôle des impulsions.",
+  de: "Premium schaltet starke Tools für Ziele, Analysen und Impulskontrolle frei.",
+  ar: "Premium يفتح أدوات قوية للأهداف والتحليلات والتحكم في الاندفاع.",
+  zh: "Premium 提供强大的目标、分析和冲动控制工具。",
+};
 const ONBOARDING_HARD_GATE_TITLE_BY_LANGUAGE = {
   ru: "Пользователи Almost Pro в среднем сохраняют около ≈ $350 в месяц.",
   en: "Almost Pro users save around ≈ $350 per month on average.",
@@ -1003,21 +1093,95 @@ const PAYWALL_LEGAL_NOTICE_BY_LANGUAGE = {
 };
 
 const CTA_PRIMARY_TRIAL_BY_LANGUAGE = {
-  ru: "Попробуй бесплатно",
-  en: "Try for free",
-  es: "Probar gratis",
-  fr: "Essayer gratuitement",
-  de: "Kostenlos testen",
-  ar: "جرّب مجاناً",
+  ru: "Продолжить бесплатно",
+  en: "Continue free",
+  es: "Continuar gratis",
+  fr: "Continuer gratuitement",
+  de: "Kostenlos fortfahren",
+  ar: "المتابعة مجاناً",
+  zh: "免费继续",
 };
 
 const CTA_PRIMARY_REGULAR_BY_LANGUAGE = {
-  ru: "Продолжить",
-  en: "Continue",
-  es: "Continuar",
-  fr: "Continuer",
-  de: "Weiter",
-  ar: "متابعة",
+  ru: "Разблокировать экономию",
+  en: "Unlock savings",
+  es: "Desbloquear ahorro",
+  fr: "Débloquer les économies",
+  de: "Sparpotenzial freischalten",
+  ar: "افتح التوفير",
+  zh: "解锁省钱能力",
+};
+const CTA_PRIMARY_UNLOCK_FEATURE_BY_LANGUAGE = {
+  ru: "Разблокировать: {{featureName}}",
+  en: "Unlock {{featureName}}",
+  es: "Desbloquear {{featureName}}",
+  fr: "Débloquer {{featureName}}",
+  de: "{{featureName}} freischalten",
+  ar: "فتح {{featureName}}",
+  zh: "解锁 {{featureName}}",
+};
+const CTA_PRIMARY_UNLOCK_SAVINGS_BY_LANGUAGE = {
+  ru: "Разблокировать экономию ≈ {{amount}} в год",
+  en: "Unlock ≈ {{amount}} Yearly Savings",
+  es: "Desbloquea ≈ {{amount}} de ahorro anual",
+  fr: "Débloquer ≈ {{amount}} d'économies annuelles",
+  de: "≈ {{amount}} jährliche Ersparnis freischalten",
+  ar: "افتح توفيراً سنوياً بقيمة ≈ {{amount}}",
+  zh: "解锁每年约 ≈ {{amount}} 节省",
+};
+const BENEFITS_TITLE_BY_LANGUAGE = {
+  ru: "Что входит в Premium",
+  en: "What you unlock with Premium",
+  es: "Lo que desbloqueas con Premium",
+  fr: "Ce que Premium débloque",
+  de: "Was Premium freischaltet",
+  ar: "ما الذي يفتحه Premium",
+  zh: "Premium 解锁内容",
+};
+const BENEFITS_FOOTNOTE_BY_LANGUAGE = {
+  ru: "и многое другое",
+  en: "and much more",
+  es: "y mucho más",
+  fr: "et bien plus",
+  de: "und vieles mehr",
+  ar: "والمزيد",
+  zh: "以及更多",
+};
+const UNLIMITAGE_USAGE_BULLET_BY_LANGUAGE = {
+  ru: "Неограниченное использование",
+  en: "Unlimitage usage",
+  es: "Uso ilimitado",
+  fr: "Utilisation illimitée",
+  de: "Unbegrenzte Nutzung",
+  ar: "استخدام غير محدود",
+  zh: "无限使用",
+};
+const SOCIAL_PROOF_LINE_BY_LANGUAGE = {
+  ru: "Присоединяйся к 5K+ людей, которые уже экономят.",
+  en: "Join 5K+ savers",
+  es: "Únete a más de 5K ahorradores",
+  fr: "Rejoins 5K+ personnes qui économisent",
+  de: "Schließe dich 5K+ Sparern an",
+  ar: "انضم إلى أكثر من 5 آلاف شخص يدّخرون",
+  zh: "加入 5K+ 省钱用户",
+};
+const LIMITED_OFFER_LABEL_BY_LANGUAGE = {
+  ru: "Ограниченное предложение",
+  en: "Limited-time offer",
+  es: "Oferta por tiempo limitado",
+  fr: "Offre à durée limitée",
+  de: "Zeitlich begrenztes Angebot",
+  ar: "عرض لفترة محدودة",
+  zh: "限时优惠",
+};
+const LIMITED_OFFER_TIMER_PREFIX_BY_LANGUAGE = {
+  ru: "Закончится через",
+  en: "Ends in",
+  es: "Termina en",
+  fr: "Se termine dans",
+  de: "Endet in",
+  ar: "ينتهي خلال",
+  zh: "结束于",
 };
 
 const CTA_RESTORE_BY_LANGUAGE = {
@@ -1063,6 +1227,7 @@ const LEGAL_PRIVACY_LABEL_BY_LANGUAGE = {
   fr: "Confidentialité",
   de: "Datenschutz",
   ar: "الخصوصية",
+  zh: "隐私",
 };
 
 const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
@@ -1311,6 +1476,64 @@ const resolveComparisonRows = ({
   });
 };
 
+const buildBenefitBullets = ({
+  rows = [],
+  activeFeatureKey = null,
+  language = "en",
+  maxItems = 4,
+} = {}) => {
+  const lang = resolveLanguage(language);
+  const normalizedActiveFeatureKey = normalizeFeatureToken(activeFeatureKey || "");
+  const normalizedMaxItems = Math.max(1, Math.round(Number(maxItems) || 4));
+  const premiumRows = (Array.isArray(rows) ? rows : []).filter(
+    (row) =>
+      row?.premium &&
+      !row?.free &&
+      !row?.isCosmetic &&
+      String(row?.id || "").trim() !== "multipleGoals" &&
+      typeof row?.label === "string" &&
+      row.label.trim().length > 0
+  );
+  const activeRowIndex = normalizedActiveFeatureKey
+    ? premiumRows.findIndex((row) =>
+        Array.isArray(row?.featureKeys) && row.featureKeys.includes(normalizedActiveFeatureKey)
+      )
+    : -1;
+  const orderedRows =
+    activeRowIndex > 0
+      ? [premiumRows[activeRowIndex], ...premiumRows.filter((_, index) => index !== activeRowIndex)]
+      : premiumRows;
+
+  const seen = new Set();
+  const bullets = [];
+  const unlimitedUsageLabel =
+    UNLIMITAGE_USAGE_BULLET_BY_LANGUAGE[lang] || UNLIMITAGE_USAGE_BULLET_BY_LANGUAGE.en;
+  if (unlimitedUsageLabel) {
+    seen.add("unlimitage_usage");
+    bullets.push({
+      id: "unlimitage_usage",
+      label: unlimitedUsageLabel,
+      featureKey: PREMIUM_FEATURE_KEYS.multipleGoals,
+      featureKeys: [PREMIUM_FEATURE_KEYS.multipleGoals],
+      interactive: false,
+    });
+  }
+  for (const row of orderedRows) {
+    if (bullets.length >= normalizedMaxItems) break;
+    const id = String(row?.id || row?.featureKey || row?.label || "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    bullets.push({
+      id,
+      label: row.label.trim(),
+      featureKey: row?.featureKey || null,
+      featureKeys: Array.isArray(row?.featureKeys) ? row.featureKeys : [],
+      interactive: !!row?.interactive,
+    });
+  }
+  return bullets.slice(0, normalizedMaxItems);
+};
+
 export const resolvePriceRegion = (currencyCode = "USD") => {
   const code = typeof currencyCode === "string" ? currencyCode.toUpperCase() : "USD";
   return REGION_BY_CURRENCY[code] || REGION_BY_CURRENCY.USD;
@@ -1327,6 +1550,7 @@ export const buildPaywallCopy = ({
   monthlyPriceLabel = "$5.99/mo",
   savedAmountLabel = "$0",
   lossAmountLabel = "",
+  ctaSavingsAmountLabel = "",
   lossAmountByFeature = {},
   lossWindowDays = DEFAULT_LOSS_WINDOW_DAYS,
   freshStartGainPercent = null,
@@ -1341,6 +1565,10 @@ export const buildPaywallCopy = ({
     typeof featureKey === "string" && featureKey.trim().length
       ? normalizeFeatureToken(featureKey)
       : null;
+  const normalizedCtaSavingsAmountLabel =
+    typeof ctaSavingsAmountLabel === "string" && ctaSavingsAmountLabel.trim().length
+      ? ctaSavingsAmountLabel.trim()
+      : "";
   const resolvedLossWindowDays = resolveLossWindowDays(lossWindowDays);
   const resolvedLossAmountLabel = resolveLossAmountLabel(lossAmountLabel, savedAmountLabel);
   const normalizedLossAmountByFeature = normalizeLossAmountByFeature(lossAmountByFeature);
@@ -1377,11 +1605,18 @@ export const buildPaywallCopy = ({
     normalizedTrigger === "save_daily_limit_reached" ||
     normalizedTrigger === "save_daily_limit_blocked";
   const isTrialSavesHardTrigger = normalizedTrigger === "trial_10_saves_reached";
+  const isGroupCSupportSoftTrigger = normalizedTrigger === "group_c_support_after_5_saves";
   const isOnboardingHardGateTrigger = normalizedTrigger === "onboarding_completed_hard_gate";
   const isTransactionAbandonedTrigger = normalizedTrigger === "transaction_abandoned";
   const comparisonRowsForPaywall = isOnboardingHardGateTrigger
     ? comparisonRows.filter((row) => String(row?.id || "") !== "levelUnlocks")
     : comparisonRows;
+  const benefitBullets = buildBenefitBullets({
+    rows: comparisonRowsForPaywall,
+    activeFeatureKey: normalizedFeatureKey,
+    language: lang,
+    maxItems: 4,
+  });
   const isFreshStartSoftPaywall =
     effectiveKind === "soft" &&
     (normalizedTrigger === "first_action_after_onboarding" ||
@@ -1431,6 +1666,11 @@ export const buildPaywallCopy = ({
     subtitle = resolveTemplateSource(TRANSACTION_ABANDONED_SUBTITLE_BY_LANGUAGE, lang);
     psychologyLine = null;
   }
+  if (isGroupCSupportSoftTrigger && effectiveKind === "soft") {
+    title = template(resolveTemplateSource(GROUP_C_SUPPORT_PLAN_TITLE_BY_LANGUAGE, lang), copyTokens);
+    subtitle = template(resolveTemplateSource(GROUP_C_SUPPORT_PLAN_SUBTITLE_BY_LANGUAGE, lang), copyTokens);
+    psychologyLine = null;
+  }
   if (activeFeatureInsightRow?.lossTitle && !isTransactionAbandonedTrigger) {
     title = activeFeatureInsightRow.lossTitle;
     subtitle = activeFeatureInsightRow?.lossSubtitle || subtitle;
@@ -1438,13 +1678,49 @@ export const buildPaywallCopy = ({
   }
 
   const ctaPrimaryTrial = CTA_PRIMARY_TRIAL_BY_LANGUAGE[lang] || CTA_PRIMARY_TRIAL_BY_LANGUAGE.en;
-  const ctaPrimaryRegular = CTA_PRIMARY_REGULAR_BY_LANGUAGE[lang] || CTA_PRIMARY_REGULAR_BY_LANGUAGE.en;
+  const ctaFeatureName =
+    (typeof activeFeatureInsightRow?.label === "string" && activeFeatureInsightRow.label.trim().length
+      ? activeFeatureInsightRow.label.trim()
+      : localizedFeatureName) || "";
+  const ctaPrimaryRegular =
+    ctaFeatureName && normalizedFeatureKey
+      ? template(
+          resolveTemplateSource(CTA_PRIMARY_UNLOCK_FEATURE_BY_LANGUAGE, lang),
+          { featureName: ctaFeatureName }
+        )
+      : template(
+          resolveTemplateSource(CTA_PRIMARY_UNLOCK_SAVINGS_BY_LANGUAGE, lang),
+          { amount: normalizedCtaSavingsAmountLabel || resolvedLossAmountLabel }
+        ) ||
+        CTA_PRIMARY_REGULAR_BY_LANGUAGE[lang] ||
+        CTA_PRIMARY_REGULAR_BY_LANGUAGE.en;
 
   return localizeFallbackStructure({
     badgeLabel: PAYWALL_BADGE_BY_KIND[effectiveKind] || PAYWALL_BADGE_BY_KIND.soft,
     trigger: normalizedTrigger,
     title,
     subtitle,
+    supportIntroEnabled: isGroupCSupportSoftTrigger && effectiveKind === "soft",
+    supportIntroBadge:
+      GROUP_C_SUPPORT_INTRO_BADGE_BY_LANGUAGE[lang] || GROUP_C_SUPPORT_INTRO_BADGE_BY_LANGUAGE.en,
+    supportIntroTitle: template(
+      resolveTemplateSource(GROUP_C_SUPPORT_5_SAVES_TITLE_BY_LANGUAGE, lang),
+      copyTokens
+    ),
+    supportIntroSavedHighlight: copyTokens.saved,
+    supportIntroSubtitle: template(
+      resolveTemplateSource(GROUP_C_SUPPORT_5_SAVES_SUBTITLE_BY_LANGUAGE, lang),
+      copyTokens
+    ),
+    supportIntroAuthor:
+      GROUP_C_SUPPORT_AUTHOR_BY_LANGUAGE[lang] || GROUP_C_SUPPORT_AUTHOR_BY_LANGUAGE.en,
+    supportIntroStatus:
+      GROUP_C_SUPPORT_STATUS_BY_LANGUAGE[lang] || GROUP_C_SUPPORT_STATUS_BY_LANGUAGE.en,
+    supportIntroMessage:
+      GROUP_C_SUPPORT_MESSAGE_BY_LANGUAGE[lang] || GROUP_C_SUPPORT_MESSAGE_BY_LANGUAGE.en,
+    supportIntroPrimaryCta:
+      GROUP_C_SUPPORT_PRIMARY_CTA_BY_LANGUAGE[lang] || GROUP_C_SUPPORT_PRIMARY_CTA_BY_LANGUAGE.en,
+    supportIntroHint: GROUP_C_SUPPORT_HINT_BY_LANGUAGE[lang] || GROUP_C_SUPPORT_HINT_BY_LANGUAGE.en,
     transactionAbandonedPopupBadge:
       TRANSACTION_ABANDONED_POPUP_BADGE_BY_LANGUAGE[lang] ||
       TRANSACTION_ABANDONED_POPUP_BADGE_BY_LANGUAGE.en,
@@ -1467,6 +1743,14 @@ export const buildPaywallCopy = ({
     lossWindowDays: resolvedLossWindowDays,
     features: BASE_FEATURES_BY_LANGUAGE[lang] || BASE_FEATURES_BY_LANGUAGE.en,
     comparisonRows: comparisonRowsForPaywall,
+    benefitsTitle: BENEFITS_TITLE_BY_LANGUAGE[lang] || BENEFITS_TITLE_BY_LANGUAGE.en,
+    benefitBullets,
+    benefitsFootnote: BENEFITS_FOOTNOTE_BY_LANGUAGE[lang] || BENEFITS_FOOTNOTE_BY_LANGUAGE.en,
+    socialProofLine: SOCIAL_PROOF_LINE_BY_LANGUAGE[lang] || SOCIAL_PROOF_LINE_BY_LANGUAGE.en,
+    limitedOfferLabel: LIMITED_OFFER_LABEL_BY_LANGUAGE[lang] || LIMITED_OFFER_LABEL_BY_LANGUAGE.en,
+    limitedOfferTimerPrefix:
+      LIMITED_OFFER_TIMER_PREFIX_BY_LANGUAGE[lang] || LIMITED_OFFER_TIMER_PREFIX_BY_LANGUAGE.en,
+    limitedOfferDurationSeconds: 15 * 60,
     unlockLevelsLine: isOnboardingHardGateTrigger
       ? null
       : LEVEL_UNLOCK_LINE_BY_LANGUAGE[lang] || LEVEL_UNLOCK_LINE_BY_LANGUAGE.en,
