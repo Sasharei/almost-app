@@ -198,6 +198,7 @@ export const STORAGE_KEYS = {
   PREMIUM_INSTALL_ID: "@almost_premium_install_id",
   INSTALL_DATE: "install_date",
   PREMIUM_SOFT_PAYWALL_SHOWN: "@almost_premium_soft_paywall_shown",
+  PREMIUM_GROUP_C_SOFT_PAYWALL_SHOWN_DAY_KEY: "@almost_premium_group_c_soft_paywall_shown_day_key",
   PREMIUM_HARD_PAYWALL_SHOWN: "@almost_premium_hard_paywall_shown",
   PREMIUM_TRANSACTION_ABANDONED_LAST_SHOWN_AT:
     "@almost_premium_transaction_abandoned_last_shown_at",

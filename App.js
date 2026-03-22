@@ -928,6 +928,8 @@ const MONETIZATION_EXPERIMENT_DEFAULT_CONFIG = Object.freeze({
   },
   trialSaveLimit: 10,
 });
+const MONETIZATION_GROUP_C_SOFT_PAYWALL_TRIGGER = "group_c_support_after_5_saves";
+const MONETIZATION_EXPERIMENT_GROUP_C_SOFT_PAYWALL_SAVE_LIMIT = 5;
 const MONETIZATION_HARD_LOCK_CLOSE_ACTIONS = new Set([
   "purchase_success",
   "restore_success",
@@ -1550,9 +1552,11 @@ const buildPaywallNowPriceLabel = ({
     PAYWALL_NOW_PREFIX_BY_LANGUAGE[lang] || PAYWALL_NOW_PREFIX_BY_LANGUAGE.en,
     lang
   );
+  const currencyPrecision = getCurrencyPrecision(currencyCode);
+  const zeroPrecision = Number.isFinite(currencyPrecision) && currencyPrecision > 0 ? 1 : 0;
   const zeroPriceLabel = normalizePaywallPriceLabel(
     formatCurrency(0, currencyCode, {
-      precisionOverride: 0,
+      precisionOverride: zeroPrecision,
     }),
     currencyCode
   );
@@ -1616,10 +1620,18 @@ const normalizePaywallPriceLabel = (value, currencyCode = DEFAULT_PROFILE.curren
   const suffix = tail ? (tail.startsWith("/") ? tail : ` ${tail}`) : "";
   return `SAR ${amount}${suffix}`.replace(/\s{2,}/g, " ").trim();
 };
+const normalizePaywallEquivalentLabel = (value = "") =>
+  String(value || "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+const PAYWALL_BLOCKED_EQUIVALENT_IDS = new Set(["cocktail_night"]);
 const formatEquivalentUnits = (value, language = "en") => {
   const lang = resolveMonetizationLanguage(language);
   const safeValue = Number.isFinite(value) ? Math.max(0.1, value) : 1;
-  const rounded = safeValue >= 10 ? Math.round(safeValue) : Math.round(safeValue * 10) / 10;
+  let rounded = safeValue >= 10 ? Math.round(safeValue) : Math.round(safeValue * 10) / 10;
+  if (safeValue >= 0.75 && safeValue <= 1.35) {
+    rounded = 1;
+  }
   const formatted = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
   return lang === "ru" || lang === "es" || lang === "fr" ? formatted.replace(".", ",") : formatted;
 };
@@ -1628,11 +1640,32 @@ const pickClosestTemptationEquivalent = ({
   currencyCode = DEFAULT_PROFILE.currency,
   preferCoffee = false,
   excludeCoffee = false,
+  preferredEquivalent = null,
 } = {}) => {
   if (!Number.isFinite(targetLocal) || targetLocal <= 0) return null;
+  const preferredEquivalentId =
+    typeof preferredEquivalent?.id === "string" ? preferredEquivalent.id.trim() : "";
+  const preferredLocalValue = Number(preferredEquivalent?.localValue);
+  if (
+    preferredEquivalentId &&
+    !PAYWALL_BLOCKED_EQUIVALENT_IDS.has(preferredEquivalentId) &&
+    Number.isFinite(preferredLocalValue) &&
+    preferredLocalValue > 0
+  ) {
+    const preferredUnits = targetLocal / preferredLocalValue;
+    if (Number.isFinite(preferredUnits) && preferredUnits >= 0.2 && preferredUnits <= 10) {
+      return {
+        id: preferredEquivalentId || "preferred",
+        title: preferredEquivalent?.title || { en: "popular temptation" },
+        emoji: preferredEquivalent?.emoji || "✨",
+        localValue: preferredLocalValue,
+        units: preferredUnits,
+      };
+    }
+  }
   const candidates = PAYWALL_EQUIVALENT_SOURCE_IDS.map((id) => DEFAULT_TEMPTATION_BY_ID.get(id))
     .filter(Boolean)
-    .filter((item) => !(excludeCoffee && item.id === "coffee_to_go"))
+    .filter((item) => !PAYWALL_BLOCKED_EQUIVALENT_IDS.has(String(item?.id || "").trim()))
     .map((item) => {
       const usdValue = Number(item.priceUSD || item.basePriceUSD || 0);
       const localValue = convertToCurrency(usdValue, currencyCode);
@@ -1641,16 +1674,14 @@ const pickClosestTemptationEquivalent = ({
     })
     .filter(Boolean);
   if (!candidates.length) return null;
-  if (preferCoffee) {
-    const coffeeCandidate = candidates.find((item) => item.id === "coffee_to_go");
-    if (coffeeCandidate) {
-      const coffeeUnits = targetLocal / coffeeCandidate.localValue;
-      if (coffeeUnits >= 0.4 && coffeeUnits <= 2.5) {
-        return {
-          ...coffeeCandidate,
-          units: coffeeUnits,
-        };
-      }
+  const coffeeCandidate = candidates.find((item) => item.id === "coffee_to_go");
+  if (coffeeCandidate) {
+    const coffeeUnits = targetLocal / coffeeCandidate.localValue;
+    if (Number.isFinite(coffeeUnits) && coffeeUnits > 0) {
+      return {
+        ...coffeeCandidate,
+        units: coffeeUnits,
+      };
     }
   }
   let bestCandidate = null;
@@ -1671,6 +1702,7 @@ const buildTemptationEquivalentLine = ({
   amountLocal = 0,
   currencyCode = DEFAULT_PROFILE.currency,
   language = "en",
+  preferredEquivalent = null,
 } = {}) => {
   if (!Number.isFinite(amountLocal) || amountLocal <= 0) return null;
   const lang = resolveMonetizationLanguage(language);
@@ -1681,6 +1713,7 @@ const buildTemptationEquivalentLine = ({
     currencyCode,
     preferCoffee: planKey === "monthly",
     excludeCoffee: planKey !== "monthly",
+    preferredEquivalent,
   });
   if (!matched) return null;
   const template =
@@ -10048,6 +10081,7 @@ function TemptationCardComponent({
   const burstKey = feedback?.burstKey;
   const translateX = useRef(new Animated.Value(0)).current;
   const swipeActionRef = useRef(false);
+  const suppressCardPressUntilRef = useRef(0);
   const [amountSliderVisible, setAmountSliderVisible] = useState(false);
   const [amountSliderAction, setAmountSliderAction] = useState(null);
   const [amountSliderValue, setAmountSliderValue] = useState(0.5);
@@ -10518,6 +10552,9 @@ function TemptationCardComponent({
   }, [burstKey]);
 
   const handleCardPress = useCallback(() => {
+    if (Date.now() < suppressCardPressUntilRef.current) {
+      return;
+    }
     if (swipeActionRef.current) {
       swipeActionRef.current = false;
       return;
@@ -11120,6 +11157,9 @@ function TemptationCardComponent({
           }
           const handleActionPress = () => {
             if (action.disabled) return;
+            // Prevent action taps from bubbling into card press and opening the
+            // edit sheet, which can leave an invisible blocker on iOS.
+            suppressCardPressUntilRef.current = Date.now() + 420;
             if (cardLocked) {
               onLockedPress?.(item);
               return;
@@ -18678,7 +18718,7 @@ const FeedScreen = React.memo(
         ListHeaderComponent={
           <View style={styles.feedHero} onLayout={handleHeroLayout}>
             <View style={styles.feedHeroTop}>
-              <View style={styles.heroMoodHaloWrap}>
+              <MoodGradientBlock colors={moodGradient} style={styles.heroMoodGradient}>
                 {isProMode && (
                   <View pointerEvents="none" style={styles.heroMoodHaloLayer}>
                     <Animated.View
@@ -18698,11 +18738,13 @@ const FeedScreen = React.memo(
                     />
                   </View>
                 )}
-                <MoodGradientBlock colors={moodGradient} style={styles.heroMoodGradient}>
-                  <View
-                    style={styles.heroMascotRow}
-                    onLayout={(event) => setHeroRowWidth(event.nativeEvent.layout.width)}
-                  >
+                <View
+                  style={[
+                    styles.heroMascotRow,
+                    Platform.OS === "android" && !hideMascot && styles.heroMascotRowAndroidFix,
+                  ]}
+                  onLayout={(event) => setHeroRowWidth(event.nativeEvent.layout.width)}
+                >
                   <View style={styles.heroTextWrap}>
                     <View style={styles.heroTitleRow}>
                       <Text
@@ -18807,8 +18849,8 @@ const FeedScreen = React.memo(
                       )}
                     </View>
                   </View>
-                    {!hideMascot && (
-                      <View style={styles.heroMascotContainer}>
+                  {!hideMascot && (
+                    <View style={styles.heroMascotContainer}>
                       {showTamagotchiBubble && (
                         <View
                           pointerEvents="none"
@@ -18870,10 +18912,10 @@ const FeedScreen = React.memo(
                           <Text style={styles.heroMascotBadgeText}>1</Text>
                         </View>
                       )}
-                      </View>
-                    )}
-                  </View>
-                  <Animated.View
+                    </View>
+                  )}
+                </View>
+                <Animated.View
                 pointerEvents={heroLevelExpanded ? "auto" : "none"}
                 style={[
                   styles.heroLevelExpandedCard,
@@ -18921,9 +18963,8 @@ const FeedScreen = React.memo(
                     />
                   </View>
                 </View>
-                  </Animated.View>
-                </MoodGradientBlock>
-              </View>
+                </Animated.View>
+              </MoodGradientBlock>
             </View>
           <View style={styles.heroCarousel} onLayout={handleHeroCarouselLayout}>
             <Animated.View style={{ transform: [{ translateX: heroCarouselHintAnim }] }}>
@@ -27119,6 +27160,9 @@ function AppContent() {
     onboarding_hard_gate: false,
   });
   const [premiumSoftPaywallShown, setPremiumSoftPaywallShown] = useState(false);
+  const [premiumGroupCSoftPaywallShownDayKey, setPremiumGroupCSoftPaywallShownDayKey] = useState("");
+  const [premiumGroupCSoftPaywallShownDayKeyHydrated, setPremiumGroupCSoftPaywallShownDayKeyHydrated] =
+    useState(false);
   const [premiumSoftPaywallPending, setPremiumSoftPaywallPending] = useState(false);
   const [premiumSoftPaywallHydrated, setPremiumSoftPaywallHydrated] = useState(false);
   const [premiumHardPaywallShown, setPremiumHardPaywallShown] = useState(false);
@@ -27728,7 +27772,16 @@ function AppContent() {
   const dailyChallengeUnlocked = premiumLevelGateBypassAllowed || (playerLevel >= 2 && hasSpendHistory);
   const dailyRewardUnlocked = premiumLevelGateBypassAllowed || playerLevel >= 2;
   const focusModeUnlocked = premiumLevelGateBypassAllowed || playerLevel >= 3;
-  const dailySummaryUnlocked = premiumLevelGateBypassAllowed || playerLevel >= 3;
+  const dailySummarySecondDayReached = useMemo(() => {
+    if (!installDateHydrated) return false;
+    if (!Number.isFinite(installDateMs) || installDateMs <= 0) return false;
+    const installDayKey = getDayKey(installDateMs);
+    const currentUsageDayKey = currentDayKey || getDayKey(Date.now());
+    const daysSinceInstall = getDayDiff(installDayKey, currentUsageDayKey);
+    return Number.isFinite(daysSinceInstall) && daysSinceInstall >= 1;
+  }, [currentDayKey, installDateHydrated, installDateMs]);
+  const dailySummaryUnlocked =
+    (premiumLevelGateBypassAllowed || playerLevel >= 3) && dailySummarySecondDayReached;
   const focusTargetsUnlocked = premiumLevelGateBypassAllowed || playerLevel >= 5;
   const catCustomizationUnlocked = premiumActive;
   const rewardsUnlocked = premiumLevelGateBypassAllowed || playerLevel >= 5;
@@ -28845,20 +28898,12 @@ function AppContent() {
     monetizationExperimentEligibleNewInstall &&
     monetizationGroupForStartupModalGuard === MONETIZATION_EXPERIMENT_GROUPS.B &&
     Math.max(0, Number(declineCount) || 0) >= monetizationTrialSaveLimitForStartupModalGuard;
-  const startupHardLockExpectedForGroupC =
-    monetizationExperimentEnabledForStartupModalGuard &&
-    monetizationExperimentHydrated &&
-    monetizationExperimentEligibleNewInstall &&
-    monetizationGroupForStartupModalGuard === MONETIZATION_EXPERIMENT_GROUPS.C &&
-    onboardingStep === "done";
   const startupHardLockDecisionPending =
     !premiumState.isPremium &&
     onboardingStep === "done" &&
     (!monetizationExperimentHydrated ||
       (monetizationGroupForStartupModalGuard === MONETIZATION_EXPERIMENT_GROUPS.B &&
-        (!declinesHydrated || !monetizationTrialLockedHydrated)) ||
-      (monetizationGroupForStartupModalGuard === MONETIZATION_EXPERIMENT_GROUPS.C &&
-        !monetizationOnboardingLockedHydrated));
+        (!declinesHydrated || !monetizationTrialLockedHydrated)));
   const startupHardLockActiveFromVisiblePaywall =
     !premiumState.isPremium &&
     onboardingStep === "done" &&
@@ -28869,11 +28914,8 @@ function AppContent() {
     !premiumState.isPremium &&
     onboardingStep === "done" &&
     (((monetizationGroupForStartupModalGuard === MONETIZATION_EXPERIMENT_GROUPS.B &&
-      monetizationTrialLocked) ||
-      (monetizationGroupForStartupModalGuard === MONETIZATION_EXPERIMENT_GROUPS.C &&
-        monetizationOnboardingLocked)) ||
+      monetizationTrialLocked)) ||
       startupHardLockExpectedForGroupB ||
-      startupHardLockExpectedForGroupC ||
       startupHardLockDecisionPending ||
       startupHardLockActiveFromVisiblePaywall);
   useEffect(() => {
@@ -33837,6 +33879,70 @@ function AppContent() {
     },
     [formatTranslationText, resolveTranslationValue]
   );
+  const paywallPopularTemptationEquivalent = useMemo(() => {
+    const sourceEvents = Array.isArray(impulseTracker?.events) ? impulseTracker.events : [];
+    if (!sourceEvents.length) return null;
+    const statsByTemplateId = new Map();
+    sourceEvents.forEach((event) => {
+      const templateId = typeof event?.templateId === "string" ? event.templateId.trim() : "";
+      if (!templateId) return;
+      const action = typeof event?.action === "string" ? event.action.trim().toLowerCase() : "";
+      if (action !== "spend" && action !== "save") return;
+      const current = statsByTemplateId.get(templateId) || {
+        templateId,
+        weightedCount: 0,
+        spendCount: 0,
+        lastTimestamp: 0,
+      };
+      current.weightedCount += action === "spend" ? 3 : 1;
+      if (action === "spend") current.spendCount += 1;
+      const eventTimestamp = Number(event?.timestamp) || 0;
+      if (eventTimestamp > current.lastTimestamp) {
+        current.lastTimestamp = eventTimestamp;
+      }
+      statsByTemplateId.set(templateId, current);
+    });
+    if (!statsByTemplateId.size) return null;
+    const rankedTemplateIds = Array.from(statsByTemplateId.values())
+      .sort((a, b) => {
+        if ((b.weightedCount || 0) !== (a.weightedCount || 0)) {
+          return (b.weightedCount || 0) - (a.weightedCount || 0);
+        }
+        if ((b.spendCount || 0) !== (a.spendCount || 0)) {
+          return (b.spendCount || 0) - (a.spendCount || 0);
+        }
+        return (b.lastTimestamp || 0) - (a.lastTimestamp || 0);
+      })
+      .map((entry) => entry.templateId)
+      .filter(Boolean);
+    if (!rankedTemplateIds.length) return null;
+    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+    const monetizationLanguage = resolveMonetizationLanguage(language);
+    for (const templateId of rankedTemplateIds) {
+      if (PAYWALL_BLOCKED_EQUIVALENT_IDS.has(templateId)) continue;
+      if (DEFAULT_TEMPTATION_BY_ID.has(templateId)) continue;
+      const template = resolveTemplateCard(templateId);
+      if (!template) continue;
+      const priceUSD = Number(getTemptationPrice(template));
+      if (!Number.isFinite(priceUSD) || priceUSD <= 0) continue;
+      const localValue = convertToCurrency(priceUSD, currencyCode);
+      if (!Number.isFinite(localValue) || localValue <= 0) continue;
+      const title =
+        resolveTemptationTitle(template, language, titleOverrides?.[template.id]) ||
+        t("defaultDealTitle");
+      if (!title) continue;
+      return {
+        id: template.id || templateId,
+        title: {
+          en: title,
+          [monetizationLanguage]: title,
+        },
+        emoji: template.emoji || "✨",
+        localValue,
+      };
+    }
+    return null;
+  }, [impulseTracker?.events, language, profile.currency, resolveTemplateCard, t, titleOverrides]);
   const premiumPlanCards = useMemo(() => {
     const fallbackCurrency = profile.currency || DEFAULT_PROFILE.currency;
     const monetizationLanguage = resolveMonetizationLanguage(language);
@@ -33855,10 +33961,15 @@ function AppContent() {
       formatCurrency(value, currencyCode, {
         precisionOverride: getCurrencyPrecision(currencyCode),
       });
+    const resolveTrialZeroPrecision = (currencyCode = fallbackCurrency) => {
+      const precision = getCurrencyPrecision(currencyCode);
+      if (!Number.isFinite(precision) || precision <= 0) return 0;
+      return 1;
+    };
     const formatTrialZeroPrice = (currencyCode = fallbackCurrency) =>
       normalizePaywallPriceLabel(
         formatCurrency(0, currencyCode, {
-          precisionOverride: 0,
+          precisionOverride: resolveTrialZeroPrecision(currencyCode),
         }),
         currencyCode
       );
@@ -34029,6 +34140,7 @@ function AppContent() {
           amountLocal,
           currencyCode,
           language: monetizationLanguage,
+          preferredEquivalent: paywallPopularTemptationEquivalent,
         });
         if (yearlySavePercent) {
           badge = buildPaywallSaveBadge({
@@ -34050,6 +34162,7 @@ function AppContent() {
             amountLocal,
             currencyCode,
             language: monetizationLanguage,
+            preferredEquivalent: paywallPopularTemptationEquivalent,
           });
         }
       } else if (isLifetime) {
@@ -34066,6 +34179,7 @@ function AppContent() {
             amountLocal,
             currencyCode,
             language: monetizationLanguage,
+            preferredEquivalent: paywallPopularTemptationEquivalent,
           });
         }
       }
@@ -34116,6 +34230,14 @@ function AppContent() {
           );
         }
       }
+      const displayAsEquivalent = !hasTrial && !!equivalentLabel;
+      if (displayAsEquivalent) {
+        priceLabel = normalizePaywallEquivalentLabel(equivalentLabel);
+        secondaryKind = "muted";
+        secondaryLabel = recurringChargePriceLabel || secondaryLabel || null;
+        secondarySubLabel = billingLabel || secondarySubLabel || null;
+        ctaPriceLabel = recurringChargePriceLabel || ctaPriceLabel;
+      }
 
       return {
         ...card,
@@ -34132,6 +34254,7 @@ function AppContent() {
         postTrialPriceLabel: hasTrial ? postTrialPriceLabel : null,
         trialDays: hasTrial ? resolvedTrialDays : null,
         hasTrial,
+        displayAsEquivalent,
         trialNoticeLabel: hasTrial
           ? buildPaywallTrialNotice({
               days: resolvedTrialDays,
@@ -34148,6 +34271,7 @@ function AppContent() {
     premiumPaywallState.trigger,
     premiumState.offerings,
     premiumState.trialEligibilityByProductId,
+    paywallPopularTemptationEquivalent,
     profile.currency,
   ]);
   const premiumMonthlyPriceLabel = useMemo(() => {
@@ -34365,6 +34489,19 @@ function AppContent() {
     );
     return `≈ ${formatted}`;
   }, [premiumInstallId, premiumLossPersonalization.lossAmountUSD, profile.currency, savedTotalUSD]);
+  const premiumYearlySavingsCtaAmountLabel = useMemo(() => {
+    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+    const monthlyLossUSD = Math.max(0, Number(premiumLossPersonalization.lossAmountUSD) || 0);
+    if (!Number.isFinite(monthlyLossUSD) || monthlyLossUSD <= 0) {
+      return premiumLossPersonalization.lossAmountLabel || "";
+    }
+    const yearlyLocal = convertToCurrency(monthlyLossUSD * 12, currencyCode);
+    return normalizePaywallPriceLabel(formatCurrency(yearlyLocal, currencyCode), currencyCode);
+  }, [
+    premiumLossPersonalization.lossAmountLabel,
+    premiumLossPersonalization.lossAmountUSD,
+    profile.currency,
+  ]);
   const premiumCopy = useMemo(
     () => {
       const normalizedPaywallTrigger = normalizeMonetizationToken(
@@ -34385,6 +34522,7 @@ function AppContent() {
         monthlyPriceLabel: premiumMonthlyPriceLabel,
         savedAmountLabel: premiumPaywallState.savedAmountLabel || "",
         lossAmountLabel: effectiveLossAmountLabel,
+        ctaSavingsAmountLabel: premiumYearlySavingsCtaAmountLabel,
         lossAmountByFeature: premiumLossPersonalization.lossAmountByFeature,
         lossWindowDays: premiumLossPersonalization.lossWindowDays,
         freshStartGainPercent: premiumFreshStartGainPercent,
@@ -34400,6 +34538,7 @@ function AppContent() {
       premiumFreshStartGainPercent,
       premiumGroupBPotentialLossAmountLabel,
       premiumMonthlyPriceLabel,
+      premiumYearlySavingsCtaAmountLabel,
       premiumLossPersonalization.lossAmountLabel,
       premiumLossPersonalization.lossAmountByFeature,
       premiumLossPersonalization.lossWindowDays,
@@ -34426,6 +34565,8 @@ function AppContent() {
     monetizationExperimentGroupNormalized === MONETIZATION_EXPERIMENT_GROUPS.B;
   const isMonetizationExperimentGroupC =
     monetizationExperimentGroupNormalized === MONETIZATION_EXPERIMENT_GROUPS.C;
+  const isMonetizationSoftPaywallExperimentGroup =
+    isMonetizationExperimentControlGroup || isMonetizationExperimentGroupC;
   const monetizationExperimentAnalyticsMeta = useMemo(
     () => ({
       experiment_id: MONETIZATION_EXPERIMENT_ID,
@@ -35866,7 +36007,42 @@ function AppContent() {
     shouldShowPaywall,
   ]);
   useEffect(() => {
-    if (!isMonetizationExperimentControlGroup) {
+    if (!isMonetizationExperimentGroupC) return;
+    if (
+      !premiumSoftPaywallHydrated ||
+      !dailySaveLimitHydrated ||
+      !premiumGroupCSoftPaywallShownDayKeyHydrated
+    ) {
+      return;
+    }
+    if (onboardingStep !== "done") return;
+    if (premiumState.isPremium) return;
+    const todayKey = currentDayKey || getDayKey(Date.now());
+    if (!todayKey) return;
+    if (premiumGroupCSoftPaywallShownDayKey === todayKey) return;
+    const normalizedDailySaveLimit = createDailySaveLimitState(
+      dailySaveLimitState?.dayKey,
+      dailySaveLimitState?.count
+    );
+    const todaySaveCount =
+      normalizedDailySaveLimit.dayKey === todayKey ? normalizedDailySaveLimit.count : 0;
+    if (todaySaveCount < MONETIZATION_EXPERIMENT_GROUP_C_SOFT_PAYWALL_SAVE_LIMIT) return;
+    premiumSoftPaywallTriggerRef.current = MONETIZATION_GROUP_C_SOFT_PAYWALL_TRIGGER;
+    setPremiumSoftPaywallPending(true);
+  }, [
+    currentDayKey,
+    dailySaveLimitHydrated,
+    dailySaveLimitState?.count,
+    dailySaveLimitState?.dayKey,
+    isMonetizationExperimentGroupC,
+    onboardingStep,
+    premiumGroupCSoftPaywallShownDayKey,
+    premiumGroupCSoftPaywallShownDayKeyHydrated,
+    premiumSoftPaywallHydrated,
+    premiumState.isPremium,
+  ]);
+  useEffect(() => {
+    if (!isMonetizationSoftPaywallExperimentGroup) {
       if (premiumSoftPaywallPending) {
         setPremiumSoftPaywallPending(false);
       }
@@ -35880,19 +36056,28 @@ function AppContent() {
       return undefined;
     }
     if (!premiumSoftPaywallHydrated) return undefined;
-    if (premiumState.isPremium || premiumSoftPaywallShown) {
+    const queuedSoftPaywallTrigger =
+      premiumSoftPaywallTriggerRef.current || "activity_day_two_after_3_actions";
+    const isQueuedGroupCSupportSoftPaywall =
+      queuedSoftPaywallTrigger === MONETIZATION_GROUP_C_SOFT_PAYWALL_TRIGGER;
+    const shouldBlockQueuedSoftPaywallByHistory =
+      !isQueuedGroupCSupportSoftPaywall && premiumSoftPaywallShown;
+    if (premiumState.isPremium || shouldBlockQueuedSoftPaywallByHistory) {
       setPremiumSoftPaywallPending(false);
       return undefined;
     }
     const checkAndShow = () => {
-      if (premiumState.isPremium || premiumSoftPaywallShown) {
+      const softPaywallTrigger =
+        premiumSoftPaywallTriggerRef.current || "activity_day_two_after_3_actions";
+      const isGroupCSupportSoftPaywall =
+        softPaywallTrigger === MONETIZATION_GROUP_C_SOFT_PAYWALL_TRIGGER;
+      const shouldBlockSoftPaywallByHistory = !isGroupCSupportSoftPaywall && premiumSoftPaywallShown;
+      if (premiumState.isPremium || shouldBlockSoftPaywallByHistory) {
         setPremiumSoftPaywallPending(false);
         premiumSoftPaywallCheckTimerRef.current = null;
         return;
       }
       if (canShowSoftPaywallNow()) {
-        const softPaywallTrigger =
-          premiumSoftPaywallTriggerRef.current || "activity_day_two_after_3_actions";
         const opened = openPremiumPaywall({
           kind: "soft",
           savedAmountUSD: savedTotalUSD,
@@ -35905,6 +36090,12 @@ function AppContent() {
           return;
         }
         setPremiumSoftPaywallShown(true);
+        if (isGroupCSupportSoftPaywall) {
+          const shownDayKey = currentDayKey || getDayKey(Date.now());
+          if (shownDayKey) {
+            setPremiumGroupCSoftPaywallShownDayKey(shownDayKey);
+          }
+        }
         setPremiumSoftPaywallPending(false);
         logMonetizationEvent("premium_soft_paywall_shown", {
           trigger: softPaywallTrigger,
@@ -35922,7 +36113,8 @@ function AppContent() {
     };
   }, [
     canShowSoftPaywallNow,
-    isMonetizationExperimentControlGroup,
+    currentDayKey,
+    isMonetizationSoftPaywallExperimentGroup,
     logMonetizationEvent,
     openPremiumPaywall,
     premiumSoftPaywallHydrated,
@@ -36004,51 +36196,22 @@ function AppContent() {
   useEffect(() => {
     if (!isMonetizationExperimentGroupC) return;
     if (!monetizationOnboardingLockedHydrated) return;
-    if (premiumState.isPremium || monetizationOnboardingLocked) return;
-    if (onboardingStep !== "done") return;
-    setMonetizationOnboardingLocked(true);
-    if (!monetizationLockActivationLoggedRef.current.onboarding_hard_gate) {
-      monetizationLockActivationLoggedRef.current.onboarding_hard_gate = true;
-      logEvent("monetization_experiment_lock_activated", {
-        experiment_id: MONETIZATION_EXPERIMENT_ID,
-        experiment_group: MONETIZATION_EXPERIMENT_GROUPS.C,
-        lock_reason: "onboarding_hard_gate",
-        trial_save_limit: monetizationTrialSaveLimit,
-        save_count_total: Math.max(0, Number(declineCount) || 0),
-        onboarding_step: "done",
-        experiment_new_install: monetizationExperimentEligibleNewInstall ? 1 : 0,
-      });
-    }
+    if (!monetizationOnboardingLocked) return;
+    setMonetizationOnboardingLocked(false);
   }, [
-    declineCount,
     isMonetizationExperimentGroupC,
-    logEvent,
-    monetizationExperimentEligibleNewInstall,
     monetizationOnboardingLocked,
     monetizationOnboardingLockedHydrated,
-    monetizationTrialSaveLimit,
-    onboardingStep,
-    premiumState.isPremium,
   ]);
   const monetizationStartupLockReason = useMemo(() => {
     if (premiumState.isPremium) return "";
     if (isMonetizationExperimentGroupB && monetizationTrialLocked) {
       return "trial_limit_reached";
     }
-    if (
-      isMonetizationExperimentGroupC &&
-      monetizationOnboardingLocked &&
-      onboardingStep === "done"
-    ) {
-      return "onboarding_hard_gate";
-    }
     return "";
   }, [
     isMonetizationExperimentGroupB,
-    isMonetizationExperimentGroupC,
-    monetizationOnboardingLocked,
     monetizationTrialLocked,
-    onboardingStep,
     premiumState.isPremium,
   ]);
   useEffect(() => {
@@ -36059,10 +36222,7 @@ function AppContent() {
     if (onboardingStep !== "done") return;
     if (!interfaceReady) return;
     if (premiumState.isPremium) return;
-    const lockTrigger =
-      monetizationStartupLockReason === "trial_limit_reached"
-        ? "trial_10_saves_reached"
-        : "onboarding_completed_hard_gate";
+    const lockTrigger = "trial_10_saves_reached";
     const isTransactionAbandonedHardPaywallActive =
       premiumPaywallState.visible &&
       premiumPaywallState.trigger === TRANSACTION_ABANDONED_TRIGGER;
@@ -38533,6 +38693,11 @@ function AppContent() {
     saveOverlayPayload?.remainingTemptations > 0
       ? t("saveGoalRemaining")
       : null;
+  const saveOverlayCounterVisible =
+    !!saveOverlayGoalText &&
+    (Number.isFinite(saveOverlayPayload?.remainingTemptations)
+      ? saveOverlayPayload.remainingTemptations > 0
+      : remainingGoalActions > 0);
   const achievements = useMemo(() => {
     const built = buildAchievements({
       savedTotalUSD: progressSavedTotalUSD,
@@ -39757,6 +39922,7 @@ function AppContent() {
         STORAGE_KEYS.PREMIUM_INSTALL_ID,
         STORAGE_KEYS.INSTALL_DATE,
         STORAGE_KEYS.PREMIUM_SOFT_PAYWALL_SHOWN,
+        STORAGE_KEYS.PREMIUM_GROUP_C_SOFT_PAYWALL_SHOWN_DAY_KEY,
         STORAGE_KEYS.PREMIUM_HARD_PAYWALL_SHOWN,
         STORAGE_KEYS.PREMIUM_TRANSACTION_ABANDONED_LAST_SHOWN_AT,
         STORAGE_KEYS.PREMIUM_CHALLENGE_CLAIMS,
@@ -39865,6 +40031,8 @@ function AppContent() {
       const premiumInstallIdRaw = storedMap[STORAGE_KEYS.PREMIUM_INSTALL_ID] ?? null;
       const installDateRaw = storedMap[STORAGE_KEYS.INSTALL_DATE] ?? null;
       const premiumSoftPaywallRaw = storedMap[STORAGE_KEYS.PREMIUM_SOFT_PAYWALL_SHOWN] ?? null;
+      const premiumGroupCSoftPaywallDayKeyRaw =
+        storedMap[STORAGE_KEYS.PREMIUM_GROUP_C_SOFT_PAYWALL_SHOWN_DAY_KEY] ?? null;
       const premiumHardPaywallRaw = storedMap[STORAGE_KEYS.PREMIUM_HARD_PAYWALL_SHOWN] ?? null;
       const premiumTransactionAbandonedOfferLastShownAtRaw =
         storedMap[STORAGE_KEYS.PREMIUM_TRANSACTION_ABANDONED_LAST_SHOWN_AT] ?? null;
@@ -40418,6 +40586,12 @@ function AppContent() {
       setInstallDateMs(resolvedInstallDateMs);
       setInstallDateHydrated(true);
       setPremiumSoftPaywallShown(premiumSoftPaywallRaw === "1");
+      setPremiumGroupCSoftPaywallShownDayKey(
+        typeof premiumGroupCSoftPaywallDayKeyRaw === "string"
+          ? premiumGroupCSoftPaywallDayKeyRaw.trim()
+          : ""
+      );
+      setPremiumGroupCSoftPaywallShownDayKeyHydrated(true);
       setPremiumSoftPaywallHydrated(true);
       setPremiumHardPaywallShown(premiumHardPaywallRaw === "1");
       setPremiumHardPaywallHydrated(true);
@@ -41300,6 +41474,7 @@ function AppContent() {
       setMonetizationExperimentEligibleNewInstall(false);
       setMonetizationTrialLocked(false);
       setMonetizationOnboardingLocked(false);
+      setPremiumGroupCSoftPaywallShownDayKey("");
       deferredHydrationPayloadRef.current = null;
       deferredHydrationReadyRef.current = true;
       setDeferredHydrationReady(true);
@@ -41310,6 +41485,7 @@ function AppContent() {
         return normalized || createMonetizationInstallId();
       });
       setPremiumInstallIdHydrated(true);
+      setPremiumGroupCSoftPaywallShownDayKeyHydrated(true);
       setPremiumSoftPaywallHydrated(true);
       setPremiumHardPaywallHydrated(true);
       setPremiumTransactionAbandonedOfferHydrated(true);
@@ -42776,6 +42952,17 @@ function AppContent() {
     if (!premiumSoftPaywallHydrated) return;
     queuePersist(STORAGE_KEYS.PREMIUM_SOFT_PAYWALL_SHOWN, premiumSoftPaywallShown ? "1" : "0");
   }, [premiumSoftPaywallHydrated, premiumSoftPaywallShown, queuePersist]);
+  useEffect(() => {
+    if (!premiumGroupCSoftPaywallShownDayKeyHydrated) return;
+    queuePersist(
+      STORAGE_KEYS.PREMIUM_GROUP_C_SOFT_PAYWALL_SHOWN_DAY_KEY,
+      premiumGroupCSoftPaywallShownDayKey || ""
+    );
+  }, [
+    premiumGroupCSoftPaywallShownDayKey,
+    premiumGroupCSoftPaywallShownDayKeyHydrated,
+    queuePersist,
+  ]);
   useEffect(() => {
     if (!premiumHardPaywallHydrated) return;
     queuePersist(STORAGE_KEYS.PREMIUM_HARD_PAYWALL_SHOWN, premiumHardPaywallShown ? "1" : "0");
@@ -52153,6 +52340,12 @@ useEffect(() => {
     if (overlayActiveRef.current) return;
     if (startupHardLockPendingBeforePaywall) return;
     if (frequencyReminderPriorityLockRef.current) return;
+    if (Date.now() < (modalHandoffBlockUntilRef.current || 0)) {
+      // iOS can leave an invisible touch blocker if a new overlay modal opens
+      // immediately after another modal dismiss animation.
+      scheduleOverlayQueueResumeAfterHandoff(24);
+      return;
+    }
     const next = overlayQueueRef.current[0];
     if (!next) return;
     if ((!overlayEnvironmentReady || blockingModalVisible) && !next.force) return;
@@ -52399,7 +52592,7 @@ useEffect(() => {
       Number(overlay.message.weeklyReward.rewardBlueCoins) > 0
         ? overlay.message.weeklyReward
         : null;
-    const hasGoalCounterInSaveOverlay = !!saveOverlayGoalText;
+    const hasGoalCounterInSaveOverlay = saveOverlayCounterVisible;
     const hasQueuedCelebrationFollowUp =
       overlay?.type === "save" &&
       overlayQueueRef.current.some((entry) => ["level", "health", "cart"].includes(entry?.type));
@@ -52477,7 +52670,7 @@ useEffect(() => {
     pendingFrequencyReminderPrompt,
     pendingGoalCelebration,
     scheduleOverlayQueueResumeAfterHandoff,
-    saveOverlayGoalText,
+    saveOverlayCounterVisible,
   ]);
 
   const resetFocusLossCounter = useCallback((templateId) => {
@@ -55694,11 +55887,19 @@ useEffect(() => {
                   <View
                     style={[
                       styles.tabBadge,
-                      styles.tabBadgeDot,
                       styles.tabBadgeFloating,
                       { backgroundColor: tabBadgeBackground },
                     ]}
-                  />
+                  >
+                    <Text
+                      style={[
+                        styles.tabBadgeText,
+                        { color: tabBadgeTextColor },
+                      ]}
+                    >
+                      1
+                    </Text>
+                  </View>
                 )}
               </TouchableOpacity>
             );
@@ -58234,6 +58435,8 @@ useEffect(() => {
           copy={premiumCopy}
           planCards={premiumPlanCards}
           language={language}
+          safeAreaTopInset={Math.max(0, safeAreaInsets.top || topSafeInset || 0)}
+          safeAreaBottomInset={Math.max(0, safeAreaInsets.bottom || 0)}
           purchaseLoadingPlan={premiumPurchaseLoadingPlan}
           restoring={premiumRestoreLoading}
           onPlanSelect={handlePremiumPlanSelected}
@@ -59494,6 +59697,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     padding: 18,
     paddingBottom: 20,
+    minHeight: Platform.OS === "android" ? 156 : undefined,
     position: "relative",
     overflow: "hidden",
     zIndex: 1,
@@ -59640,11 +59844,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
+  heroMascotRowAndroidFix: {
+    minHeight: HERO_MASCOT_SIZE + 62,
+  },
   heroMascotContainer: {
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
-    marginTop: 62,
+    marginTop: Platform.OS === "android" ? 52 : 62,
     width: HERO_MASCOT_SIZE,
     height: HERO_MASCOT_SIZE,
   },
@@ -67919,10 +68126,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  tabBadgeDot: {
-    width: 20,
-    paddingHorizontal: 0,
-  },
   tabBadgeFloating: {
     position: "absolute",
     top: -6,
@@ -72406,15 +72609,17 @@ function SpendingBaselineScreen({
 function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, onSkip, bottomInset = 0 }) {
   const fade = useFadeIn();
   const personaList = Object.values(PERSONA_PRESETS);
+  const safeAreaInsets = safeUseSafeAreaInsets();
+  const resolvedBottomInset = Math.max(Number(bottomInset) || 0, Number(safeAreaInsets.bottom) || 0);
   const bottomInsetStyle = addBottomInsetStyle(
     [styles.onboardContent, styles.onboardContentWithFooter],
-    bottomInset
+    resolvedBottomInset
   );
   const floatingInsetStyle = addBottomOffsetStyle(
     Platform.OS === "android"
       ? [styles.onboardFloatingActions, styles.onboardFloatingActionsTight]
       : styles.onboardFloatingActions,
-    bottomInset
+    resolvedBottomInset
   );
   const swapActions = IS_SHORT_DEVICE && typeof onSkip === "function";
   const headerAction = swapActions ? (
@@ -75834,7 +76039,6 @@ const SaveCelebration = forwardRef(
     ref
   ) => {
     const happySource = mascotHappySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
-    const countdownEnabled = !!goalCopy;
     const progressEnabled = !!goalCopy;
     const rawProgressStart = clampProgress(progressStartProp);
     const rawProgressEnd = clampProgress(
@@ -75846,6 +76050,7 @@ const SaveCelebration = forwardRef(
     const displayActions = Number.isFinite(Number(remainingActions))
       ? Math.max(0, Number(remainingActions))
       : 0;
+    const countdownEnabled = !!goalCopy && displayActions > 0;
     const countdownSlots = useMemo(
       () => buildSaveCountdownSlots(displayActions, language),
       [displayActions, language]

@@ -65,7 +65,6 @@ export const PAYWALL_EQUIVALENT_SOURCE_IDS = [
   "pizza",
   "late_night_takeout",
   "movie_premiere_combo",
-  "cocktail_night",
   "comfort_utilities",
   "beauty_box",
   "grooming_upgrade_set",
@@ -125,39 +124,39 @@ export const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
 
 export const PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE = {
   ru: {
-    monthly: "≈ {{emoji}} {{count}} × {{item}} в месяц",
-    yearly: "≈ {{emoji}} {{count}} × {{item}} в год",
-    lifetime: "≈ {{emoji}} {{count}} × {{item}} разово",
+    monthly: "≈ {{emoji}} {{count}} {{item}} в месяц",
+    yearly: "≈ {{emoji}} {{count}} {{item}} в год",
+    lifetime: "≈ {{emoji}} {{count}} {{item}} разово",
   },
   en: {
-    monthly: "≈ {{emoji}} {{count}}x {{item}} / month",
-    yearly: "≈ {{emoji}} {{count}}x {{item}} / year",
-    lifetime: "≈ {{emoji}} {{count}}x {{item}} one-time",
+    monthly: "≈ {{emoji}} {{count}} {{item}} / month",
+    yearly: "≈ {{emoji}} {{count}} {{item}} / year",
+    lifetime: "≈ {{emoji}} {{count}} {{item}} one-time",
   },
   es: {
-    monthly: "≈ {{emoji}} {{count}}x {{item}} / mes",
-    yearly: "≈ {{emoji}} {{count}}x {{item}} / año",
-    lifetime: "≈ {{emoji}} {{count}}x {{item}} una vez",
+    monthly: "≈ {{emoji}} {{count}} {{item}} / mes",
+    yearly: "≈ {{emoji}} {{count}} {{item}} / año",
+    lifetime: "≈ {{emoji}} {{count}} {{item}} una vez",
   },
   fr: {
-    monthly: "≈ {{emoji}} {{count}}x {{item}} / mois",
-    yearly: "≈ {{emoji}} {{count}}x {{item}} / an",
-    lifetime: "≈ {{emoji}} {{count}}x {{item}} une fois",
+    monthly: "≈ {{emoji}} {{count}} {{item}} / mois",
+    yearly: "≈ {{emoji}} {{count}} {{item}} / an",
+    lifetime: "≈ {{emoji}} {{count}} {{item}} une fois",
   },
   de: {
-    monthly: "≈ {{emoji}} {{count}}x {{item}} / Monat",
-    yearly: "≈ {{emoji}} {{count}}x {{item}} / Jahr",
-    lifetime: "≈ {{emoji}} {{count}}x {{item}} einmalig",
+    monthly: "≈ {{emoji}} {{count}} {{item}} / Monat",
+    yearly: "≈ {{emoji}} {{count}} {{item}} / Jahr",
+    lifetime: "≈ {{emoji}} {{count}} {{item}} einmalig",
   },
   ar: {
-    monthly: "≈ {{emoji}} {{count}}× {{item}} / شهر",
-    yearly: "≈ {{emoji}} {{count}}× {{item}} / سنة",
-    lifetime: "≈ {{emoji}} {{count}}× {{item}} لمرة واحدة",
+    monthly: "≈ {{emoji}} {{count}} {{item}} / شهر",
+    yearly: "≈ {{emoji}} {{count}} {{item}} / سنة",
+    lifetime: "≈ {{emoji}} {{count}} {{item}} لمرة واحدة",
   },
   zh: {
-    monthly: "≈ {{emoji}} {{count}}×{{item}} / 月",
-    yearly: "≈ {{emoji}} {{count}}×{{item}} / 年",
-    lifetime: "≈ {{emoji}} {{count}}×{{item}} 一次性",
+    monthly: "≈ {{emoji}} {{count}} {{item}} / 月",
+    yearly: "≈ {{emoji}} {{count}} {{item}} / 年",
+    lifetime: "≈ {{emoji}} {{count}} {{item}} 一次性",
   },
 };
 
@@ -169,13 +168,13 @@ export const PAYWALL_PERIOD_UNIT_TO_DAYS = {
 };
 
 export const PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE = {
-  ru: "Попробуй бесплатно",
-  en: "Try for free",
-  es: "probar gratis",
-  fr: "essayer gratuitement",
-  de: "Kostenlos testen",
-  ar: "جرّب مجاناً",
-  zh: "免费试用",
+  ru: "Продолжить бесплатно",
+  en: "Continue free",
+  es: "Continuar gratis",
+  fr: "Continuer gratuitement",
+  de: "Kostenlos fortfahren",
+  ar: "المتابعة مجاناً",
+  zh: "免费继续",
 };
 
 export const PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE = {

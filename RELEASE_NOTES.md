@@ -1,5 +1,39 @@
 # Release Notes
 
+## 5.1.4 (from 5.1.3)
+
+### EN
+- Fixed many issues across the app.
+- Improved overall stability and reliability.
+
+### RU
+- Исправили множество проблем по всему приложению.
+- Повысили общую стабильность и надежность.
+
+### ES
+- Corregimos muchos problemas en toda la app.
+- Mejoramos la estabilidad y la confiabilidad general.
+
+### FR
+- Nous avons corrige de nombreux problemes dans toute l'app.
+- Nous avons ameliore la stabilite et la fiabilite generale.
+
+### DE
+- Viele Probleme in der gesamten App wurden behoben.
+- Stabilitat und allgemeine Zuverlassigkeit wurden verbessert.
+
+### AR (SA)
+- تم إصلاح العديد من المشكلات في مختلف أجزاء التطبيق.
+- تم تحسين الاستقرار والاعتمادية العامة.
+
+### AR (AE)
+- تم إصلاح العديد من المشكلات في مختلف أجزاء التطبيق.
+- تم تحسين الاستقرار والاعتمادية العامة.
+
+### ZH
+- 修复了应用中的大量问题。
+- 提升了整体稳定性与可靠性。
+
 ## 5.1.3 (from 5.1.2)
 
 ### EN
