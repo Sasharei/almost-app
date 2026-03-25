@@ -168,13 +168,13 @@ export const PAYWALL_PERIOD_UNIT_TO_DAYS = {
 };
 
 export const PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE = {
-  ru: "Продолжить бесплатно",
-  en: "Continue free",
-  es: "Continuar gratis",
-  fr: "Continuer gratuitement",
-  de: "Kostenlos fortfahren",
-  ar: "المتابعة مجاناً",
-  zh: "免费继续",
+  ru: "Начать бесплатный 7-дневный пробный период",
+  en: "Start Free 7-Day Trial",
+  es: "Comenzar prueba gratis de 7 días",
+  fr: "Commencer l'essai gratuit de 7 jours",
+  de: "7-Tage-Testversion kostenlos starten",
+  ar: "ابدأ تجربة مجانية لمدة 7 أيام",
+  zh: "开始 7 天免费试用",
 };
 
 export const PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE = {

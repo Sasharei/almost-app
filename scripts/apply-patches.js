@@ -51,12 +51,24 @@ const patches = [
     dest: 'node_modules/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt',
   },
   {
+    src: 'patches/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTask.kt',
+    dest: 'node_modules/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTask.kt',
+  },
+  {
     src: 'patches/react-native-gesture-handler/android/build.gradle',
     dest: 'node_modules/react-native-gesture-handler/android/build.gradle',
   },
   {
     src: 'patches/react-native-svg/android/build.gradle',
     dest: 'node_modules/react-native-svg/android/build.gradle',
+  },
+  {
+    src: 'patches/react-native-reanimated/android/build.gradle',
+    dest: 'node_modules/react-native-reanimated/android/build.gradle',
+  },
+  {
+    src: 'patches/react-native-worklets/android/build.gradle',
+    dest: 'node_modules/react-native-worklets/android/build.gradle',
   },
   {
     src: 'patches/react-native-fbsdk-next/android/src/main/java/com/facebook/reactnative/androidsdk/FBAppEventsLoggerModule.java',
@@ -89,6 +101,10 @@ const patches = [
   {
     src: 'patches/react-native/ReactCommon/jsitooling/React-jsitooling.podspec',
     dest: 'node_modules/react-native/ReactCommon/jsitooling/React-jsitooling.podspec',
+  },
+  {
+    src: 'patches/react-native/ReactAndroid/cmake-utils/ReactNative-application.cmake',
+    dest: 'node_modules/react-native/ReactAndroid/cmake-utils/ReactNative-application.cmake',
   },
   {
     src: 'patches/react-native/ReactCommon/react/runtime/platform/ios/React-RuntimeApple.podspec',

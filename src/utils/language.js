@@ -184,23 +184,61 @@ export const localizeDigitsForLanguage = (value, language = DEFAULT_LANGUAGE) =>
     .replace(/%/g, "٪");
 };
 
-export const localizeTextTreeDigits = (value, language = DEFAULT_LANGUAGE) => {
+const LOCALIZE_TEXT_TREE_MAX_DEPTH = 80;
+
+const localizeTextTreeDigitsInternal = (
+  value,
+  language = DEFAULT_LANGUAGE,
+  visited = null,
+  depth = 0
+) => {
   if (typeof value === "string") {
     return localizeDigitsForLanguage(value, language);
   }
   if (typeof value === "number" || typeof value === "bigint") {
     return localizeDigitsForLanguage(String(value), language);
   }
+  if (depth >= LOCALIZE_TEXT_TREE_MAX_DEPTH) {
+    return value;
+  }
   if (Array.isArray(value)) {
-    return value.map((entry) => localizeTextTreeDigits(entry, language));
+    const seen = visited || new WeakSet();
+    if (seen.has(value)) {
+      return value;
+    }
+    seen.add(value);
+    let changed = false;
+    const localized = value.map((entry) => {
+      const next = localizeTextTreeDigitsInternal(entry, language, seen, depth + 1);
+      if (next !== entry) {
+        changed = true;
+      }
+      return next;
+    });
+    seen.delete(value);
+    return changed ? localized : value;
   }
   if (React.isValidElement(value) && value.props && "children" in value.props) {
-    const localizedChildren = localizeTextTreeDigits(value.props.children, language);
+    const seen = visited || new WeakSet();
+    if (seen.has(value)) {
+      return value;
+    }
+    seen.add(value);
+    const localizedChildren = localizeTextTreeDigitsInternal(
+      value.props.children,
+      language,
+      seen,
+      depth + 1
+    );
+    seen.delete(value);
     if (localizedChildren === value.props.children) return value;
     return React.cloneElement(value, { ...value.props, children: localizedChildren });
   }
   return value;
 };
+
+export const localizeTextTreeDigits = (value, language = DEFAULT_LANGUAGE) =>
+  localizeTextTreeDigitsInternal(value, language, new WeakSet(), 0);
 
 export const getDefaultCurrencyForLanguage = (language, fallbackCurrency = "USD") => {
   const normalizedLanguage = normalizeLanguage(language);

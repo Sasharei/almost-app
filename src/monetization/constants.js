@@ -8,7 +8,7 @@ export const PREMIUM_PRODUCT_IDS = {
   lifetime: "almost_premium_lifetime",
 };
 
-export const PREMIUM_PLAN_ORDER = ["yearly", "monthly", "lifetime"];
+export const PREMIUM_PLAN_ORDER = ["yearly", "monthly"];
 
 export const FREE_PLAN_LIMITS = {
   activeGoals: 1,
@@ -780,7 +780,7 @@ const GROUP_C_SUPPORT_INTRO_BADGE_BY_LANGUAGE = {
   en: "PERSONAL NOTE",
   es: "MENSAJE PERSONAL",
   fr: "MESSAGE PERSONNEL",
-  de: "PERSOENLICHE NACHRICHT",
+  de: "PERSÖNLICHE NACHRICHT",
   ar: "رسالة شخصية",
   zh: "开发者来信",
 };
@@ -806,8 +806,8 @@ const GROUP_C_SUPPORT_AUTHOR_BY_LANGUAGE = {
   ru: "Александр, создатель Almost",
   en: "Alexander, creator of Almost",
   es: "Alexander, creador de Almost",
-  fr: "Alexandre, createur d'Almost",
-  de: "Alexander, Gruender von Almost",
+  fr: "Alexandre, créateur d'Almost",
+  de: "Alexander, Gründer von Almost",
   ar: "ألكسندر، مؤسس Almost",
   zh: "Alexander，Almost 创始人",
 };
@@ -815,7 +815,7 @@ const GROUP_C_SUPPORT_STATUS_BY_LANGUAGE = {
   ru: "только что",
   en: "just now",
   es: "ahora mismo",
-  fr: "a l'instant",
+  fr: "à l'instant",
   de: "gerade eben",
   ar: "الآن",
   zh: "刚刚",
@@ -824,26 +824,26 @@ const GROUP_C_SUPPORT_MESSAGE_BY_LANGUAGE = {
   ru: "Привет! Это Александр, создатель Almost. Я вижу, что ты уже делаешь первые шаги на пути к своей финансовой цели, и поздравляю тебя с этим! Желаю тебе успехов в этом непростом пути, и уверен, что у тебя всё получится. Также надеюсь, что и у меня получится развивать Almost и выполнить миссию: создать лучший инструмент, который помогает людям. Буду очень признателен, если у тебя будет возможность поддержать Almost подпиской. Almost Premium даёт много полезных и классных инструментов для достижения финансовых целей, и я продолжу развивать проект. Все подписчики Premium автоматически будут получать новые фишки приложения. Заранее спасибо!",
   en: "Hi! I'm Alexander, the creator of Almost. I can see you are already taking your first steps toward your financial goal, and I want to congratulate you. I wish you success on this difficult path, and I truly believe you can do it. I also hope I can keep growing Almost and fulfill the mission of building the best tool that helps people. I would be very grateful if you could support Almost with a subscription. Almost Premium includes many useful and powerful tools for reaching financial goals, and I will keep improving the project. All Premium subscribers automatically get every new feature in the app. Thank you in advance!",
   es: "Hola, soy Alexander, el creador de Almost. Veo que ya estás dando tus primeros pasos hacia tu meta financiera y quiero felicitarte por ello. Te deseo mucho éxito en este camino, y de verdad creo que lo vas a lograr. También espero poder seguir desarrollando Almost y cumplir la misión de crear la mejor herramienta para ayudar a las personas. Te agradecería muchísimo si puedes apoyar Almost con una suscripción. Almost Premium incluye muchas funciones útiles y potentes para alcanzar metas financieras, y yo seguiré mejorando el proyecto. Todos los suscriptores Premium reciben automáticamente cada nueva función de la app. ¡Gracias de antemano!",
-  fr: "Salut, c'est Alexandre, le createur d'Almost. Je vois que tu fais deja tes premiers pas vers ton objectif financier, et je t'en felicite. Je te souhaite beaucoup de reussite dans ce chemin exigeant, et je suis sur que tu vas y arriver. J'espere aussi pouvoir continuer a developper Almost et accomplir la mission de creer le meilleur outil pour aider les gens. Je te serai tres reconnaissant si tu peux soutenir Almost avec un abonnement. Almost Premium donne acces a de nombreux outils utiles et performants pour atteindre tes objectifs financiers, et je continuerai a faire evoluer le projet. Tous les abonnes Premium recoivent automatiquement chaque nouvelle fonctionnalite de l'application. Merci d'avance !",
-  de: "Hi, ich bin Alexander, der Gruender von Almost. Ich sehe, dass du bereits die ersten Schritte zu deinem finanziellen Ziel machst, und dazu moechte ich dir gratulieren. Ich wuensche dir viel Erfolg auf diesem anspruchsvollen Weg, und ich bin sicher, dass du es schaffen wirst. Ich hoffe auch, Almost weiterentwickeln zu koennen und die Mission zu erfuellen, das beste Tool zu bauen, das Menschen hilft. Ich waere dir sehr dankbar, wenn du Almost mit einem Abo unterstuetzen kannst. Almost Premium bietet viele nuetzliche und starke Funktionen fuer finanzielle Ziele, und ich werde das Projekt weiter ausbauen. Alle Premium-Abonnenten erhalten automatisch alle neuen App-Features. Vielen Dank im Voraus!",
+  fr: "Salut ! Je suis Alexandre, le créateur d'Almost. Je vois que tu fais déjà tes premiers pas vers ton objectif financier, et je tiens à te féliciter. Je te souhaite beaucoup de réussite sur ce chemin exigeant, et je crois sincèrement que tu vas y arriver. J'espère aussi pouvoir continuer à faire grandir Almost et à accomplir notre mission : créer le meilleur outil pour aider les gens. Je te serais très reconnaissant si tu pouvais soutenir Almost avec un abonnement. Almost Premium donne accès à de nombreux outils utiles et puissants pour atteindre tes objectifs financiers, et je continuerai à faire évoluer le projet. Tous les abonnés Premium reçoivent automatiquement chaque nouvelle fonctionnalité de l'application. Merci d'avance !",
+  de: "Hi! Ich bin Alexander, der Gründer von Almost. Ich sehe, dass du bereits die ersten Schritte zu deinem finanziellen Ziel machst, und möchte dir dazu gratulieren. Ich wünsche dir viel Erfolg auf diesem anspruchsvollen Weg, und ich bin überzeugt, dass du es schaffen kannst. Ich hoffe auch, Almost weiter ausbauen zu können und unsere Mission zu erfüllen: das beste Tool zu entwickeln, das Menschen wirklich hilft. Ich wäre dir sehr dankbar, wenn du Almost mit einem Abo unterstützen würdest. Almost Premium bietet viele nützliche und starke Funktionen, um finanzielle Ziele zu erreichen, und ich werde das Projekt weiter verbessern. Alle Premium-Abonnenten erhalten automatisch jedes neue App-Feature. Vielen Dank im Voraus!",
   ar: "مرحباً! أنا ألكسندر، مؤسس Almost. أرى أنك بدأت بالفعل أولى خطواتك نحو هدفك المالي، وأهنئك على ذلك. أتمنى لك التوفيق في هذا الطريق الصعب، وأنا واثق أنك ستنجح. وآمل أيضاً أن أنجح أنا في تطوير Almost وتحقيق رسالته: بناء أفضل أداة تساعد الناس. سأكون ممتناً جداً إذا استطعت دعم Almost عبر الاشتراك. يمنحك Almost Premium الكثير من الأدوات المفيدة والقوية للوصول إلى أهدافك المالية، وسأواصل تطوير المشروع. جميع مشتركي Premium يحصلون تلقائياً على كل الميزات الجديدة في التطبيق. شكراً مقدماً!",
   zh: "你好！我是 Almost 的创始人 Alexander。我看到你已经在为自己的财务目标迈出第一步，真心为你高兴。祝你在这条不容易的路上持续进步，我也相信你一定可以做到。同时，我也希望自己能继续把 Almost 做得更好，完成我们的使命：打造最能帮助用户的工具。如果你愿意通过订阅来支持 Almost，我会非常感激。Almost Premium 提供了很多实用又强大的功能，帮助你更快达成财务目标，我也会持续迭代项目。所有 Premium 订阅用户都会自动获得应用的全部新功能。提前谢谢你！",
 };
 const GROUP_C_SUPPORT_PRIMARY_CTA_BY_LANGUAGE = {
-  ru: "Поддержать Almost",
-  en: "Support Almost",
-  es: "Apoyar Almost",
-  fr: "Soutenir Almost",
-  de: "Almost unterstuetzen",
-  ar: "ادعم Almost",
-  zh: "支持 Almost",
+  ru: "Продолжить",
+  en: "Continue",
+  es: "Continuar",
+  fr: "Continuer",
+  de: "Weiter",
+  ar: "متابعة",
+  zh: "继续",
 };
 const GROUP_C_SUPPORT_HINT_BY_LANGUAGE = {
   ru: "На следующем экране выбери подходящий план Premium.",
   en: "On the next screen, choose the Premium plan that fits you.",
   es: "En la siguiente pantalla, elige el plan Premium que mejor te encaje.",
-  fr: "Sur l'ecran suivant, choisis l'abonnement Premium qui te convient.",
-  de: "Waehle im naechsten Schritt den Premium-Plan, der zu dir passt.",
+  fr: "Sur l'écran suivant, choisis l'abonnement Premium qui te convient.",
+  de: "Wähle im nächsten Schritt den Premium-Plan, der zu dir passt.",
   ar: "في الشاشة التالية اختر خطة Premium المناسبة لك.",
   zh: "下一步请选择最适合你的 Premium 方案。",
 };
@@ -1016,46 +1016,46 @@ const PLAN_UNAVAILABLE_LABEL_BY_LANGUAGE = {
 
 const PAYWALL_BILLING_NOTICE_BY_LANGUAGE = {
   ru: {
-    ios: "Ежемесячный и годовой планы, автопродлеваемые подписки. Управлять и отменять можно в App Store. Lifetime, разовая покупка.",
+    ios: "Ежемесячный и годовой планы — автопродлеваемые подписки. Управлять и отменять можно в App Store.",
     android:
-      "Ежемесячный и годовой планы, автопродлеваемые подписки. Управлять и отменять можно в Google Play. Lifetime, разовая покупка.",
+      "Ежемесячный и годовой планы — автопродлеваемые подписки. Управлять и отменять можно в Google Play.",
     default:
-      "Ежемесячный и годовой планы, автопродлеваемые подписки. Управлять и отменять можно в App Store / Google Play. Lifetime, разовая покупка.",
+      "Ежемесячный и годовой планы — автопродлеваемые подписки. Управлять и отменять можно в App Store / Google Play.",
   },
   en: {
-    ios: "Monthly and yearly plans are auto-renewable subscriptions. Manage or cancel anytime in App Store. Lifetime is a one-time purchase.",
+    ios: "Monthly and yearly plans are auto-renewable subscriptions. Manage or cancel anytime in App Store.",
     android:
-      "Monthly and yearly plans are auto-renewable subscriptions. Manage or cancel anytime in Google Play. Lifetime is a one-time purchase.",
+      "Monthly and yearly plans are auto-renewable subscriptions. Manage or cancel anytime in Google Play.",
     default:
-      "Monthly and yearly plans are auto-renewable subscriptions. Manage or cancel anytime in App Store / Google Play. Lifetime is a one-time purchase.",
+      "Monthly and yearly plans are auto-renewable subscriptions. Manage or cancel anytime in App Store / Google Play.",
   },
   es: {
-    ios: "Los planes mensual y anual son suscripciones con renovación automática. Puedes gestionarlas o cancelarlas en App Store. El plan de por vida es un pago único.",
+    ios: "Los planes mensual y anual son suscripciones con renovación automática. Puedes gestionarlas o cancelarlas en App Store.",
     android:
-      "Los planes mensual y anual son suscripciones con renovación automática. Puedes gestionarlas o cancelarlas en Google Play. El plan de por vida es un pago único.",
+      "Los planes mensual y anual son suscripciones con renovación automática. Puedes gestionarlas o cancelarlas en Google Play.",
     default:
-      "Los planes mensual y anual son suscripciones con renovación automática. Puedes gestionarlas o cancelarlas en App Store / Google Play. El plan de por vida es un pago único.",
+      "Los planes mensual y anual son suscripciones con renovación automática. Puedes gestionarlas o cancelarlas en App Store / Google Play.",
   },
   fr: {
-    ios: "Les plans mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans l'App Store. Le plan à vie est un achat unique.",
+    ios: "Les plans mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans l'App Store.",
     android:
-      "Les plans mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans Google Play. Le plan à vie est un achat unique.",
+      "Les plans mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans Google Play.",
     default:
-      "Les plans mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans l'App Store / Google Play. Le plan à vie est un achat unique.",
+      "Les plans mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans l'App Store / Google Play.",
   },
   de: {
-    ios: "Monats- und Jahrespläne sind automatisch verlängerbare Abos. Verwalten oder kündigen kannst du jederzeit im App Store. Lifetime ist ein Einmalkauf.",
+    ios: "Monats- und Jahrespläne sind automatisch verlängerbare Abos. Verwalten oder kündigen kannst du jederzeit im App Store.",
     android:
-      "Monats- und Jahrespläne sind automatisch verlängerbare Abos. Verwalten oder kündigen kannst du jederzeit in Google Play. Lifetime ist ein Einmalkauf.",
+      "Monats- und Jahrespläne sind automatisch verlängerbare Abos. Verwalten oder kündigen kannst du jederzeit in Google Play.",
     default:
-      "Monats- und Jahrespläne sind automatisch verlängerbare Abos. Verwalten oder kündigen kannst du jederzeit im App Store / Google Play. Lifetime ist ein Einmalkauf.",
+      "Monats- und Jahrespläne sind automatisch verlängerbare Abos. Verwalten oder kündigen kannst du jederzeit im App Store / Google Play.",
   },
   ar: {
-    ios: "الخطتان الشهرية والسنوية اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من App Store. خطة مدى الحياة شراء لمرة واحدة.",
+    ios: "الخطتان الشهرية والسنوية اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من App Store.",
     android:
-      "الخطتان الشهرية والسنوية اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من Google Play. خطة مدى الحياة شراء لمرة واحدة.",
+      "الخطتان الشهرية والسنوية اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من Google Play.",
     default:
-      "الخطتان الشهرية والسنوية اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من App Store / Google Play. خطة مدى الحياة شراء لمرة واحدة.",
+      "الخطتان الشهرية والسنوية اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من App Store / Google Play.",
   },
 };
 
@@ -1103,13 +1103,13 @@ const CTA_PRIMARY_TRIAL_BY_LANGUAGE = {
 };
 
 const CTA_PRIMARY_REGULAR_BY_LANGUAGE = {
-  ru: "Разблокировать экономию",
-  en: "Unlock savings",
-  es: "Desbloquear ahorro",
-  fr: "Débloquer les économies",
-  de: "Sparpotenzial freischalten",
-  ar: "افتح التوفير",
-  zh: "解锁省钱能力",
+  ru: "Начать мой путь сейчас",
+  en: "Start my journey now",
+  es: "Comenzar mi camino ahora",
+  fr: "Commencer mon parcours maintenant",
+  de: "Meine Reise jetzt starten",
+  ar: "ابدأ رحلتي الآن",
+  zh: "立即开启我的旅程",
 };
 const CTA_PRIMARY_UNLOCK_FEATURE_BY_LANGUAGE = {
   ru: "Разблокировать: {{featureName}}",
@@ -1128,6 +1128,51 @@ const CTA_PRIMARY_UNLOCK_SAVINGS_BY_LANGUAGE = {
   de: "≈ {{amount}} jährliche Ersparnis freischalten",
   ar: "افتح توفيراً سنوياً بقيمة ≈ {{amount}}",
   zh: "解锁每年约 ≈ {{amount}} 节省",
+};
+const CTA_START_JOURNEY_BY_LANGUAGE = {
+  ru: "Начать бесплатный 7-дневный пробный период",
+  en: "Start Free 7-Day Trial",
+  es: "Comenzar prueba gratis de 7 días",
+  fr: "Commencer l'essai gratuit de 7 jours",
+  de: "7-Tage-Testversion kostenlos starten",
+  ar: "ابدأ تجربة مجانية لمدة 7 أيام",
+  zh: "开始 7 天免费试用",
+};
+const PAYWALL_TITLE_FREE_WORD_BY_LANGUAGE = {
+  ru: "бесплатно",
+  en: "free",
+  es: "gratis",
+  fr: "gratuitement",
+  de: "kostenlos",
+  ar: "مجاناً",
+  zh: "免费",
+};
+const PAYWALL_UNIFIED_TITLE_BY_LANGUAGE = {
+  ru: "Мы хотим, чтобы ты попробовал Almost {{freeWord}}!",
+  en: "We want you to try Almost for {{freeWord}}!",
+  es: "Queremos que pruebes Almost {{freeWord}}!",
+  fr: "Nous voulons que tu essaies Almost {{freeWord}} !",
+  de: "Wir möchten, dass du Almost {{freeWord}} ausprobierst!",
+  ar: "نريدك أن تجرّب Almost {{freeWord}}!",
+  zh: "我们希望你{{freeWord}}试用 Almost！",
+};
+const PAYWALL_UNIFIED_FEATURE_FALLBACK_BY_LANGUAGE = {
+  ru: "виджеты, аналитику и отчёты",
+  en: "widgets, analytics, and reports",
+  es: "widgets, analítica e informes",
+  fr: "les widgets, l'analyse et les rapports",
+  de: "Widgets, Analysen und Berichte",
+  ar: "الويدجت والتحليلات والتقارير",
+  zh: "小组件、分析和报告",
+};
+const PAYWALL_UNIFIED_SUBTITLE_BY_LANGUAGE = {
+  ru: "Разблокируй {{featureName}} и другие Premium-функции. Можно сохранить до {{amount}} за {{days}} дней (до {{percent}}% больше).",
+  en: "Unlock {{featureName}} and more Premium tools. You can save up to {{amount}} in {{days}} days (up to {{percent}}% more).",
+  es: "Desbloquea {{featureName}} y más herramientas Premium. Puedes ahorrar hasta {{amount}} en {{days}} días (hasta {{percent}}% más).",
+  fr: "Débloque {{featureName}} et d'autres outils Premium. Tu peux économiser jusqu'à {{amount}} sur {{days}} jours (jusqu'à {{percent}}% de plus).",
+  de: "Schalte {{featureName}} und weitere Premium-Tools frei. Du kannst in {{days}} Tagen bis zu {{amount}} sparen (bis zu {{percent}}% mehr).",
+  ar: "افتح {{featureName}} والمزيد من أدوات Premium. يمكنك توفير ما يصل إلى {{amount}} خلال {{days}} يوماً (حتى {{percent}}٪ أكثر).",
+  zh: "解锁 {{featureName}} 等 Premium 工具。你可在 {{days}} 天内最多节省 {{amount}}（最多多省 {{percent}}%）。",
 };
 const BENEFITS_TITLE_BY_LANGUAGE = {
   ru: "Что входит в Premium",
@@ -1209,6 +1254,16 @@ const CTA_MANAGE_BY_LANGUAGE = {
   fr: "Gérer l'abonnement",
   de: "Abo verwalten",
   ar: "إدارة الاشتراك",
+};
+
+const NO_COMMITMENT_LINE_BY_LANGUAGE = {
+  ru: "Без обязательств, отмена в любое время",
+  en: "No commitment cancel any time",
+  es: "Sin compromiso, cancela en cualquier momento",
+  fr: "Sans engagement, annule à tout moment",
+  de: "Keine Bindung, jederzeit kündbar",
+  ar: "بدون التزام، يمكنك الإلغاء في أي وقت",
+  zh: "无承诺，随时可取消",
 };
 
 const LEGAL_TERMS_LABEL_BY_LANGUAGE = {
@@ -1325,18 +1380,49 @@ const localizeFallbackString = (value, language = "en") => {
   return dictionary[value] || value;
 };
 
-const localizeFallbackStructure = (value, language = "en") => {
+const LOCALIZE_FALLBACK_MAX_DEPTH = 80;
+
+const localizeFallbackStructure = (value, language = "en", visited = null, depth = 0) => {
   if (typeof value === "string") {
     return localizeFallbackString(value, language);
   }
+  if (depth >= LOCALIZE_FALLBACK_MAX_DEPTH) {
+    return value;
+  }
   if (Array.isArray(value)) {
-    return value.map((entry) => localizeFallbackStructure(entry, language));
+    const seen = visited || new WeakSet();
+    if (seen.has(value)) {
+      return value;
+    }
+    seen.add(value);
+    let changed = false;
+    const localized = value.map((entry) => {
+      const next = localizeFallbackStructure(entry, language, seen, depth + 1);
+      if (next !== entry) {
+        changed = true;
+      }
+      return next;
+    });
+    seen.delete(value);
+    return changed ? localized : value;
   }
   if (value && typeof value === "object") {
-    return Object.entries(value).reduce((acc, [key, entry]) => {
-      acc[key] = localizeFallbackStructure(entry, language);
+    const seen = visited || new WeakSet();
+    if (seen.has(value)) {
+      return value;
+    }
+    seen.add(value);
+    let changed = false;
+    const localized = Object.entries(value).reduce((acc, [key, entry]) => {
+      const next = localizeFallbackStructure(entry, language, seen, depth + 1);
+      acc[key] = next;
+      if (next !== entry) {
+        changed = true;
+      }
       return acc;
     }, {});
+    seen.delete(value);
+    return changed ? localized : value;
   }
   return value;
 };
@@ -1565,10 +1651,6 @@ export const buildPaywallCopy = ({
     typeof featureKey === "string" && featureKey.trim().length
       ? normalizeFeatureToken(featureKey)
       : null;
-  const normalizedCtaSavingsAmountLabel =
-    typeof ctaSavingsAmountLabel === "string" && ctaSavingsAmountLabel.trim().length
-      ? ctaSavingsAmountLabel.trim()
-      : "";
   const resolvedLossWindowDays = resolveLossWindowDays(lossWindowDays);
   const resolvedLossAmountLabel = resolveLossAmountLabel(lossAmountLabel, savedAmountLabel);
   const normalizedLossAmountByFeature = normalizeLossAmountByFeature(lossAmountByFeature);
@@ -1677,41 +1759,48 @@ export const buildPaywallCopy = ({
     psychologyLine = null;
   }
 
-  const ctaPrimaryTrial = CTA_PRIMARY_TRIAL_BY_LANGUAGE[lang] || CTA_PRIMARY_TRIAL_BY_LANGUAGE.en;
   const ctaFeatureName =
     (typeof activeFeatureInsightRow?.label === "string" && activeFeatureInsightRow.label.trim().length
       ? activeFeatureInsightRow.label.trim()
       : localizedFeatureName) || "";
-  const ctaPrimaryRegular =
-    ctaFeatureName && normalizedFeatureKey
-      ? template(
-          resolveTemplateSource(CTA_PRIMARY_UNLOCK_FEATURE_BY_LANGUAGE, lang),
-          { featureName: ctaFeatureName }
-        )
-      : template(
-          resolveTemplateSource(CTA_PRIMARY_UNLOCK_SAVINGS_BY_LANGUAGE, lang),
-          { amount: normalizedCtaSavingsAmountLabel || resolvedLossAmountLabel }
-        ) ||
-        CTA_PRIMARY_REGULAR_BY_LANGUAGE[lang] ||
-        CTA_PRIMARY_REGULAR_BY_LANGUAGE.en;
+  const titleHighlightToken =
+    resolveTemplateSource(PAYWALL_TITLE_FREE_WORD_BY_LANGUAGE, lang) ||
+    PAYWALL_TITLE_FREE_WORD_BY_LANGUAGE.en;
+  const unifiedFeatureName =
+    ctaFeatureName ||
+    resolveTemplateSource(PAYWALL_UNIFIED_FEATURE_FALLBACK_BY_LANGUAGE, lang) ||
+    PAYWALL_UNIFIED_FEATURE_FALLBACK_BY_LANGUAGE.en;
+  const unifiedTitle = template(
+    resolveTemplateSource(PAYWALL_UNIFIED_TITLE_BY_LANGUAGE, lang),
+    { freeWord: titleHighlightToken }
+  );
+  const unifiedSubtitle = template(
+    resolveTemplateSource(PAYWALL_UNIFIED_SUBTITLE_BY_LANGUAGE, lang),
+    {
+      featureName: unifiedFeatureName,
+      amount: resolvedLossAmountLabel,
+      days: resolvedLossWindowDays,
+      percent: copyTokens.percent,
+    }
+  );
+  const ctaPrimaryUnified =
+    CTA_START_JOURNEY_BY_LANGUAGE[lang] || CTA_START_JOURNEY_BY_LANGUAGE.en;
+  const ctaPrimaryTrial = ctaPrimaryUnified;
+  const ctaPrimaryRegular = CTA_PRIMARY_REGULAR_BY_LANGUAGE[lang] || CTA_PRIMARY_REGULAR_BY_LANGUAGE.en;
+  const psychologyLineForPaywall = null;
 
   return localizeFallbackStructure({
     badgeLabel: PAYWALL_BADGE_BY_KIND[effectiveKind] || PAYWALL_BADGE_BY_KIND.soft,
     trigger: normalizedTrigger,
-    title,
-    subtitle,
+    title: unifiedTitle || title,
+    subtitle: unifiedSubtitle || subtitle,
+    titleHighlightToken,
     supportIntroEnabled: isGroupCSupportSoftTrigger && effectiveKind === "soft",
     supportIntroBadge:
       GROUP_C_SUPPORT_INTRO_BADGE_BY_LANGUAGE[lang] || GROUP_C_SUPPORT_INTRO_BADGE_BY_LANGUAGE.en,
-    supportIntroTitle: template(
-      resolveTemplateSource(GROUP_C_SUPPORT_5_SAVES_TITLE_BY_LANGUAGE, lang),
-      copyTokens
-    ),
-    supportIntroSavedHighlight: copyTokens.saved,
-    supportIntroSubtitle: template(
-      resolveTemplateSource(GROUP_C_SUPPORT_5_SAVES_SUBTITLE_BY_LANGUAGE, lang),
-      copyTokens
-    ),
+    supportIntroTitle: unifiedTitle || title,
+    supportIntroSavedHighlight: titleHighlightToken,
+    supportIntroSubtitle: unifiedSubtitle || subtitle,
     supportIntroAuthor:
       GROUP_C_SUPPORT_AUTHOR_BY_LANGUAGE[lang] || GROUP_C_SUPPORT_AUTHOR_BY_LANGUAGE.en,
     supportIntroStatus:
@@ -1736,8 +1825,9 @@ export const buildPaywallCopy = ({
     transactionAbandonedPopupSecondaryCta:
       TRANSACTION_ABANDONED_POPUP_SECONDARY_CTA_BY_LANGUAGE[lang] ||
       TRANSACTION_ABANDONED_POPUP_SECONDARY_CTA_BY_LANGUAGE.en,
-    psychologyLine,
+    psychologyLine: psychologyLineForPaywall,
     activeFeatureKey: normalizedFeatureKey,
+    savedAmountLabel: savedAmountLabel || "$0",
     lossAmountLabel: resolvedLossAmountLabel,
     lossAmountByFeature: normalizedLossAmountByFeature,
     lossWindowDays: resolvedLossWindowDays,
@@ -1766,6 +1856,7 @@ export const buildPaywallCopy = ({
     ctaRestore: CTA_RESTORE_BY_LANGUAGE[lang] || CTA_RESTORE_BY_LANGUAGE.en,
     ctaClose: CTA_CLOSE_BY_LANGUAGE[lang] || CTA_CLOSE_BY_LANGUAGE.en,
     ctaManage: CTA_MANAGE_BY_LANGUAGE[lang] || CTA_MANAGE_BY_LANGUAGE.en,
+    noCommitmentLine: NO_COMMITMENT_LINE_BY_LANGUAGE[lang] || NO_COMMITMENT_LINE_BY_LANGUAGE.en,
     legalNotice:
       PAYWALL_LEGAL_NOTICE_BY_LANGUAGE[lang]?.[normalizedPlatform] ||
       PAYWALL_LEGAL_NOTICE_BY_LANGUAGE[lang]?.default ||
@@ -1805,14 +1896,6 @@ export const buildDefaultPlanCards = (currencyCode = "USD", language = "en") => 
       priceLabel: pricing.monthly.label,
       secondaryLabel: pricing.monthly.perMonth,
       badge: localizeFallbackBadge(pricing.monthly.badge, lang),
-      recommended: false,
-    },
-    {
-      id: "lifetime",
-      label: resolvePlanLabel("lifetime"),
-      priceLabel: pricing.lifetime.label,
-      secondaryLabel: pricing.lifetime.perMonth,
-      badge: localizeFallbackBadge(pricing.lifetime.badge, lang),
       recommended: false,
     },
   ], lang);
