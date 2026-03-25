@@ -27,6 +27,10 @@ android/
 !patches/expo-notifications/android/**
 !patches/react-native-fbsdk-next/
 !patches/react-native-fbsdk-next/**
+!patches/react-native-reanimated/android/
+!patches/react-native-reanimated/android/**
+!patches/react-native-worklets/android/
+!patches/react-native-worklets/android/**
 build/
 *.apk
 *.aab

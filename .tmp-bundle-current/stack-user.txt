@@ -1,0 +1,5 @@
+RangeError: Maximum call stack size exceeded
+    at anonymous (index.android.bundle:1:1526833)
+    at anonymous (index.android.bundle:1:1527517)
+    at anonymous (index.android.bundle:1:1528530)
+    at AppContent (index.android.bundle:1:802426)

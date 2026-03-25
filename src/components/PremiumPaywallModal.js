@@ -72,18 +72,48 @@ const localizePaywallDigits = (value, language = "en") => {
     .replace(/\d/g, (digit) => ARABIC_INDIC_DIGITS[Number(digit)] || EASTERN_ARABIC_DIGITS[Number(digit)] || digit)
     .replace(/%/g, "٪");
 };
-const localizePaywallTextTree = (value, language = "en") => {
+const LOCALIZE_PAYWALL_TREE_MAX_DEPTH = 80;
+
+const localizePaywallTextTree = (value, language = "en", visited = null, depth = 0) => {
   if (typeof value === "string") {
     return localizePaywallDigits(value, language);
   }
   if (typeof value === "number" || typeof value === "bigint") {
     return localizePaywallDigits(String(value), language);
   }
+  if (depth >= LOCALIZE_PAYWALL_TREE_MAX_DEPTH) {
+    return value;
+  }
   if (Array.isArray(value)) {
-    return value.map((entry) => localizePaywallTextTree(entry, language));
+    const seen = visited || new WeakSet();
+    if (seen.has(value)) {
+      return value;
+    }
+    seen.add(value);
+    let changed = false;
+    const localized = value.map((entry) => {
+      const next = localizePaywallTextTree(entry, language, seen, depth + 1);
+      if (next !== entry) {
+        changed = true;
+      }
+      return next;
+    });
+    seen.delete(value);
+    return changed ? localized : value;
   }
   if (React.isValidElement(value) && value.props && "children" in value.props) {
-    const localizedChildren = localizePaywallTextTree(value.props.children, language);
+    const seen = visited || new WeakSet();
+    if (seen.has(value)) {
+      return value;
+    }
+    seen.add(value);
+    const localizedChildren = localizePaywallTextTree(
+      value.props.children,
+      language,
+      seen,
+      depth + 1
+    );
+    seen.delete(value);
     if (localizedChildren === value.props.children) return value;
     return React.cloneElement(value, { ...value.props, children: localizedChildren });
   }
@@ -149,7 +179,6 @@ const formatCountdownToMidnight = (timestamp = Date.now()) => {
   const minutes = totalMinutes % 60;
   return `${hours}h${String(minutes).padStart(2, "0")}m`;
 };
-const LIMITED_OFFER_FALLBACK_SECONDS = 15 * 60;
 const SOCIAL_PROOF_FALLBACK_BY_LANGUAGE = {
   ru: "Присоединяйся к 5K+ людей, которые уже экономят.",
   en: "Join 5K+ savers",
@@ -158,24 +187,6 @@ const SOCIAL_PROOF_FALLBACK_BY_LANGUAGE = {
   de: "Schließe dich 5K+ Sparern an",
   ar: "انضم إلى أكثر من 5 آلاف شخص يدّخرون",
   zh: "加入 5K+ 省钱用户",
-};
-const LIMITED_OFFER_LABEL_FALLBACK_BY_LANGUAGE = {
-  ru: "Ограниченное предложение",
-  en: "Limited-time offer",
-  es: "Oferta por tiempo limitado",
-  fr: "Offre à durée limitée",
-  de: "Zeitlich begrenztes Angebot",
-  ar: "عرض لفترة محدودة",
-  zh: "限时优惠",
-};
-const LIMITED_OFFER_TIMER_PREFIX_FALLBACK_BY_LANGUAGE = {
-  ru: "Закончится через",
-  en: "Ends in",
-  es: "Termina en",
-  fr: "Se termine dans",
-  de: "Endet in",
-  ar: "ينتهي خلال",
-  zh: "结束于",
 };
 const BENEFITS_TITLE_FALLBACK_BY_LANGUAGE = {
   ru: "Что входит в Premium",
@@ -195,12 +206,103 @@ const BENEFITS_FOOTNOTE_FALLBACK_BY_LANGUAGE = {
   ar: "والمزيد",
   zh: "以及更多",
 };
-const formatOfferCountdown = (remainingMs = 0) => {
-  const safeRemainingMs = Math.max(0, Number(remainingMs) || 0);
-  const totalSeconds = Math.floor(safeRemainingMs / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+const SAVINGS_FORECAST_TITLE_BY_LANGUAGE = {
+  ru: "Прогноз экономии",
+  en: "Savings forecast",
+  es: "Pronóstico de ahorro",
+  fr: "Prévision d'économies",
+  de: "Sparprognose",
+  ar: "توقع التوفير",
+  zh: "节省预测",
+};
+const SAVINGS_FORECAST_DAYS_TEMPLATE_BY_LANGUAGE = {
+  ru: "{{days}} дн.",
+  en: "{{days}}d",
+  es: "{{days}} d",
+  fr: "{{days}} j",
+  de: "{{days}} T",
+  ar: "{{days}} يوم",
+  zh: "{{days}}天",
+};
+const AMOUNT_TOKEN_REGEX = /-?[0-9٠-٩۰-۹][0-9٠-٩۰-۹\s.,]*/;
+const SAVINGS_FORECAST_MULTIPLIER = 0.85;
+const fillPaywallTemplate = (value = "", replacements = {}) =>
+  String(value || "").replace(/\{\{(\w+)\}\}/g, (match, key) =>
+    Object.prototype.hasOwnProperty.call(replacements, key) ? String(replacements[key]) : match
+  );
+const parseAmountTemplate = (amountLabel = "") => {
+  const rawLabel = typeof amountLabel === "string" ? amountLabel : "";
+  if (!rawLabel.trim().length) return null;
+  const match = rawLabel.match(AMOUNT_TOKEN_REGEX);
+  if (!match || typeof match.index !== "number") return null;
+  const rawToken = normalizeWesternDigits(match[0]).replace(/\s/g, "");
+  if (!rawToken.length) return null;
+  const lastDotIndex = rawToken.lastIndexOf(".");
+  const lastCommaIndex = rawToken.lastIndexOf(",");
+  const decimalIndex = Math.max(lastDotIndex, lastCommaIndex);
+  let normalizedNumberToken = rawToken.replace(/[.,]/g, "");
+  let decimals = 0;
+  if (decimalIndex >= 0) {
+    const integerPart = rawToken.slice(0, decimalIndex).replace(/[.,]/g, "");
+    const fractionalPart = rawToken.slice(decimalIndex + 1).replace(/[.,]/g, "");
+    normalizedNumberToken = `${integerPart || "0"}${fractionalPart ? `.${fractionalPart}` : ""}`;
+    decimals = Math.min(2, fractionalPart.length);
+  }
+  const parsedValue = Number(normalizedNumberToken);
+  if (!Number.isFinite(parsedValue)) return null;
+  const tokenStart = match.index;
+  const tokenEnd = tokenStart + match[0].length;
+  return {
+    value: Math.max(0, parsedValue),
+    decimals,
+    prefix: rawLabel.slice(0, tokenStart),
+    suffix: rawLabel.slice(tokenEnd),
+  };
+};
+const formatAmountFromTemplate = (template, value = 0) => {
+  if (!template || !Number.isFinite(value)) return "";
+  const normalizedValue = Math.max(0, Number(value) || 0);
+  const roundedValue = Math.max(0, Math.round(normalizedValue));
+  const formattedNumber = new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 0,
+  }).format(roundedValue);
+  return `${template.prefix}${formattedNumber}${template.suffix}`;
+};
+const buildSavingsForecastPoints = ({
+  savedAmountLabel = "",
+  amountLabel = "",
+  lossWindowDays = 30,
+  language = "en",
+  copyLanguage = "en",
+} = {}) => {
+  const normalizedDays = Math.min(180, Math.max(7, Math.round(Number(lossWindowDays) || 30)));
+  const savedTemplateCandidate = parseAmountTemplate(savedAmountLabel);
+  const fallbackTemplate = parseAmountTemplate(amountLabel);
+  const shouldUseSavedTemplate =
+    !!savedTemplateCandidate && Number(savedTemplateCandidate.value) > 0;
+  const amountTemplate = shouldUseSavedTemplate
+    ? savedTemplateCandidate
+    : fallbackTemplate || savedTemplateCandidate;
+  if (!amountTemplate) return [];
+  const dailyAmount = shouldUseSavedTemplate
+    ? savedTemplateCandidate.value
+    : amountTemplate.value / normalizedDays;
+  const checkpoints = Array.from(new Set([7, normalizedDays, Math.min(180, normalizedDays * 3)]));
+  const dayTemplate =
+    SAVINGS_FORECAST_DAYS_TEMPLATE_BY_LANGUAGE[copyLanguage] ||
+    SAVINGS_FORECAST_DAYS_TEMPLATE_BY_LANGUAGE.en;
+  return checkpoints.map((days, index) => {
+    const projectedAmount = dailyAmount * days * SAVINGS_FORECAST_MULTIPLIER;
+    return {
+      id: `forecast_${days}_${index}`,
+      days,
+      amountLabel: localizePaywallDigits(formatAmountFromTemplate(amountTemplate, projectedAmount), language),
+      daysLabel: localizePaywallDigits(
+        fillPaywallTemplate(dayTemplate, { days }),
+        language
+      ),
+    };
+  });
 };
 const DEVELOPER_AVATAR = require("../../assets/paywall/developer_alexandr.jpg");
 
@@ -228,11 +330,8 @@ const PremiumPaywallModal = ({
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCards));
   const [selectedComparisonRowId, setSelectedComparisonRowId] = useState(null);
   const [showTransactionAbandonedPopup, setShowTransactionAbandonedPopup] = useState(false);
-  const [saveLimitCountdownTick, setSaveLimitCountdownTick] = useState(() => Date.now());
-  const [limitedOfferTick, setLimitedOfferTick] = useState(() => Date.now());
   const [supportIntroStage, setSupportIntroStage] = useState("plans");
   const hasTrackedScrollRef = useRef(false);
-  const limitedOfferEndsAtRef = useRef(0);
   const openProgress = useRef(new Animated.Value(0)).current;
   const ctaPulse = useRef(new Animated.Value(0)).current;
   const abandonedPopupProgress = useRef(new Animated.Value(0)).current;
@@ -271,9 +370,6 @@ const PremiumPaywallModal = ({
     typeof copy?.trigger === "string" && copy.trigger.trim().length
       ? copy.trigger.trim().toLowerCase()
       : "";
-  const isSaveLimitHardTrigger =
-    normalizedTrigger === "save_daily_limit_reached" ||
-    normalizedTrigger === "save_daily_limit_blocked";
   const isTransactionAbandonedTrigger = normalizedTrigger === "transaction_abandoned";
   const isGroupCSupportTrigger = normalizedTrigger === "group_c_support_after_5_saves";
   const isNoFreeAccessTrigger =
@@ -295,31 +391,6 @@ const PremiumPaywallModal = ({
     },
     [isRtlLanguage, normalizedLanguage]
   );
-  useEffect(() => {
-    if (!visible || !isSaveLimitHardTrigger) return undefined;
-    const update = () => setSaveLimitCountdownTick(Date.now());
-    update();
-    const intervalId = setInterval(update, 30000);
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [isSaveLimitHardTrigger, visible]);
-  useEffect(() => {
-    if (!visible) return undefined;
-    const durationSecondsRaw = Number(copy?.limitedOfferDurationSeconds);
-    const durationSeconds =
-      Number.isFinite(durationSecondsRaw) && durationSecondsRaw > 0
-        ? Math.max(30, Math.round(durationSecondsRaw))
-        : LIMITED_OFFER_FALLBACK_SECONDS;
-    limitedOfferEndsAtRef.current = Date.now() + durationSeconds * 1000;
-    setLimitedOfferTick(Date.now());
-    const intervalId = setInterval(() => {
-      setLimitedOfferTick(Date.now());
-    }, 1000);
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [copy?.limitedOfferDurationSeconds, visible]);
   useEffect(() => {
     if (!visible) {
       setShowTransactionAbandonedPopup(false);
@@ -393,59 +464,12 @@ const PremiumPaywallModal = ({
     );
   }, [comparisonRows, selectedComparisonRowId]);
 
-  const baseHeaderTitle = localizePaywallDigits(
-    activeInsightRow?.lossTitle || copy?.title || "",
-    normalizedLanguage
-  );
-  const baseHeaderSubtitle = localizePaywallDigits(
-    activeInsightRow?.lossSubtitle || copy?.subtitle || "",
-    normalizedLanguage
-  );
-  const saveLimitCountdownLabel = useMemo(
-    () =>
-      isSaveLimitHardTrigger
-        ? localizePaywallDigits(formatCountdownToMidnight(saveLimitCountdownTick), normalizedLanguage)
-        : "",
-    [isSaveLimitHardTrigger, normalizedLanguage, saveLimitCountdownTick]
-  );
-  const saveLimitHeaderCopy =
-    SAVE_LIMIT_HEADER_COPY_BY_LANGUAGE[copyLanguage] || SAVE_LIMIT_HEADER_COPY_BY_LANGUAGE.en;
-  const saveLimitProNowCopy =
-    SAVE_LIMIT_PRO_NOW_BY_LANGUAGE[copyLanguage] || SAVE_LIMIT_PRO_NOW_BY_LANGUAGE.en;
-  const headerTitle = isSaveLimitHardTrigger
-    ? localizePaywallDigits(saveLimitHeaderCopy.title, normalizedLanguage)
-    : baseHeaderTitle;
-  const saveLimitSubtitle = isSaveLimitHardTrigger
-    ? saveLimitHeaderCopy.subtitle.replace("{{timeLeft}}", saveLimitCountdownLabel || "0h00m")
-    : "";
-  const headerSubtitle = isSaveLimitHardTrigger
-    ? localizePaywallDigits(saveLimitSubtitle, normalizedLanguage)
-    : baseHeaderSubtitle;
+  const baseHeaderTitle = localizePaywallDigits(copy?.title || "", normalizedLanguage);
+  const baseHeaderSubtitle = localizePaywallDigits(copy?.subtitle || "", normalizedLanguage);
+  const headerTitle = baseHeaderTitle;
+  const headerSubtitle = baseHeaderSubtitle;
   const showPsychologyChip = !!copy?.psychologyLine && !activeInsightRow;
-  const headerBenefitValue = localizePaywallDigits(
-    activeInsightRow ? activeInsightRow?.lossAmountLabel || copy?.lossAmountLabel || "" : "",
-    normalizedLanguage
-  );
-  const limitedOfferRemainingMs = Math.max(
-    0,
-    (Number(limitedOfferEndsAtRef.current) || Date.now()) - limitedOfferTick
-  );
-  const limitedOfferCountdown = localizePaywallDigits(
-    formatOfferCountdown(limitedOfferRemainingMs),
-    normalizedLanguage
-  );
-  const limitedOfferLabel = localizePaywallDigits(
-    copy?.limitedOfferLabel ||
-      LIMITED_OFFER_LABEL_FALLBACK_BY_LANGUAGE[copyLanguage] ||
-      LIMITED_OFFER_LABEL_FALLBACK_BY_LANGUAGE.en,
-    normalizedLanguage
-  );
-  const limitedOfferTimerPrefix = localizePaywallDigits(
-    copy?.limitedOfferTimerPrefix ||
-      LIMITED_OFFER_TIMER_PREFIX_FALLBACK_BY_LANGUAGE[copyLanguage] ||
-      LIMITED_OFFER_TIMER_PREFIX_FALLBACK_BY_LANGUAGE.en,
-    normalizedLanguage
-  );
+  const headerTitleHighlightToken = localizePaywallDigits(copy?.titleHighlightToken || "", normalizedLanguage);
   const socialProofLine = localizePaywallDigits(
     copy?.socialProofLine ||
       SOCIAL_PROOF_FALLBACK_BY_LANGUAGE[copyLanguage] ||
@@ -464,6 +488,50 @@ const PremiumPaywallModal = ({
       BENEFITS_FOOTNOTE_FALLBACK_BY_LANGUAGE.en,
     normalizedLanguage
   );
+  const headerTitleWithExclamation = useMemo(() => {
+    const title = String(headerTitle || "").trim();
+    if (!title.length) return title;
+    return /[!！؟]$/.test(title) ? title : `${title}!`;
+  }, [headerTitle]);
+  const headerForecastTitle = localizePaywallDigits(
+    SAVINGS_FORECAST_TITLE_BY_LANGUAGE[copyLanguage] ||
+      SAVINGS_FORECAST_TITLE_BY_LANGUAGE.en,
+    normalizedLanguage
+  );
+  const savingsForecastPoints = useMemo(
+    () =>
+      buildSavingsForecastPoints({
+        savedAmountLabel: copy?.savedAmountLabel || "",
+        amountLabel: copy?.lossAmountLabel || "",
+        lossWindowDays: copy?.lossWindowDays,
+        language: normalizedLanguage,
+        copyLanguage,
+      }),
+    [
+      copy?.savedAmountLabel,
+      copy?.lossAmountLabel,
+      copy?.lossWindowDays,
+      copyLanguage,
+      normalizedLanguage,
+    ]
+  );
+  const normalizedForecastWindowDays = Math.min(
+    180,
+    Math.max(7, Math.round(Number(copy?.lossWindowDays) || 30))
+  );
+  const baselineLossAmountToken = localizePaywallDigits(copy?.lossAmountLabel || "", normalizedLanguage);
+  const forecastWindowAmountLabel = useMemo(() => {
+    const matchedPoint = savingsForecastPoints.find((point) => point.days === normalizedForecastWindowDays);
+    return matchedPoint?.amountLabel || "";
+  }, [normalizedForecastWindowDays, savingsForecastPoints]);
+  const headerSubtitleWithForecast = useMemo(() => {
+    const sourceSubtitle = String(headerSubtitle || "");
+    const baselineToken = String(baselineLossAmountToken || "");
+    const replacementAmount = String(forecastWindowAmountLabel || "");
+    if (!sourceSubtitle || !baselineToken || !replacementAmount) return sourceSubtitle;
+    if (!sourceSubtitle.includes(baselineToken)) return sourceSubtitle;
+    return sourceSubtitle.replace(baselineToken, replacementAmount);
+  }, [baselineLossAmountToken, forecastWindowAmountLabel, headerSubtitle]);
 
   const renderBenefitHighlight = useCallback((value = "", benefitValue = "", highlightStyle = null) => {
     const text = String(value || "");
@@ -476,6 +544,23 @@ const PremiumPaywallModal = ({
         {index < chunks.length - 1 ? (
           <Text style={[styles.headerBenefitHighlight, highlightStyle]}>{token}</Text>
         ) : null}
+      </React.Fragment>
+    ));
+  }, []);
+  const renderNumericHighlights = useCallback((value = "", highlightStyle = null) => {
+    const text = String(value || "");
+    if (!text) return text;
+    const splitRegex = /([0-9٠-٩۰-۹]+(?:[.,][0-9٠-٩۰-۹]+)?(?:\s*[xX٪%])?)/g;
+    const matchRegex = /^[0-9٠-٩۰-۹]+(?:[.,][0-9٠-٩۰-۹]+)?(?:\s*[xX٪%])?$/;
+    const chunks = text.split(splitRegex);
+    if (chunks.length <= 1) return text;
+    return chunks.map((chunk, index) => (
+      <React.Fragment key={`numeric_chunk_${index}`}>
+        {matchRegex.test(chunk) ? (
+          <Text style={[styles.headerBenefitHighlight, highlightStyle]}>{chunk}</Text>
+        ) : (
+          chunk
+        )}
       </React.Fragment>
     ));
   }, []);
@@ -596,6 +681,10 @@ const PremiumPaywallModal = ({
     normalizedLanguage
   );
   const selectedPlanTrialNotice = localizePaywallDigits(selectedPlan?.trialNoticeLabel || "", normalizedLanguage);
+  const noCommitmentLine = localizePaywallDigits(
+    copy?.noCommitmentLine || "No commitment cancel any time",
+    normalizedLanguage
+  );
   const selectedPlanCurrencyCode =
     (typeof selectedPlan?.currencyCode === "string" && selectedPlan.currencyCode.trim().toUpperCase()) ||
     (planCards.find((entry) => typeof entry?.currencyCode === "string" && entry.currencyCode.trim())?.currencyCode
@@ -623,8 +712,8 @@ const PremiumPaywallModal = ({
     normalizedLanguage
   );
   const primaryButtonTitle = shouldUseTrialCta
-    ? [selectedPlanTrialCta, selectedPlanTrialPrice].filter(Boolean).join(" ")
-    : selectedPlanRegularCta || selectedPlanCtaPrice || copy?.ctaPrimary || "";
+    ? selectedPlanTrialCta || copy?.ctaPrimary || ""
+    : selectedPlanRegularCta || copy?.ctaPrimary || selectedPlanCtaPrice || "";
 
   const handlePrimaryPress = () => {
     if (purchaseDisabled || !selectedPlan?.id) return;
@@ -718,6 +807,14 @@ const PremiumPaywallModal = ({
     copy?.supportIntroSubtitle || "",
     normalizedLanguage
   );
+  const supportIntroSubtitleWithForecast = useMemo(() => {
+    const sourceSubtitle = String(supportIntroSubtitle || "");
+    const baselineToken = String(baselineLossAmountToken || "");
+    const replacementAmount = String(forecastWindowAmountLabel || "");
+    if (!sourceSubtitle || !baselineToken || !replacementAmount) return sourceSubtitle;
+    if (!sourceSubtitle.includes(baselineToken)) return sourceSubtitle;
+    return sourceSubtitle.replace(baselineToken, replacementAmount);
+  }, [baselineLossAmountToken, forecastWindowAmountLabel, supportIntroSubtitle]);
   const supportIntroAuthor = localizePaywallDigits(
     copy?.supportIntroAuthor || "Alexander, creator of Almost",
     normalizedLanguage
@@ -727,7 +824,7 @@ const PremiumPaywallModal = ({
     normalizedLanguage
   );
   const supportIntroPrimaryCta = localizePaywallDigits(
-    copy?.supportIntroPrimaryCta || "Support Almost",
+    copy?.supportIntroPrimaryCta || "Continue",
     normalizedLanguage
   );
   const supportIntroHint = localizePaywallDigits(
@@ -742,6 +839,11 @@ const PremiumPaywallModal = ({
     copy?.supportIntroSavedHighlight || "",
     normalizedLanguage
   );
+  const supportIntroTitleWithExclamation = useMemo(() => {
+    const title = String(supportIntroTitle || "").trim();
+    if (!title.length) return title;
+    return /[!！؟]$/.test(title) ? title : `${title}!`;
+  }, [supportIntroTitle]);
   const supportIntroHeaderHighlightStyle = [
     styles.supportIntroHeaderBenefitHighlight,
     isNativeMobile ? styles.supportIntroHeaderBenefitHighlightAndroid : null,
@@ -788,6 +890,26 @@ const PremiumPaywallModal = ({
 
   const regularFooterContent = (
     <>
+      {!!noCommitmentLine && (
+        <View style={[styles.commitmentRow, isCompactAndroid ? styles.commitmentRowCompactAndroid : null]}>
+          <View
+            style={[
+              styles.commitmentIconWrap,
+              isCompactAndroid ? styles.commitmentIconWrapCompactAndroid : null,
+            ]}
+          >
+            <Text style={[styles.commitmentIcon, isCompactAndroid ? styles.commitmentIconCompactAndroid : null]}>
+              ✓
+            </Text>
+          </View>
+          <Text
+            style={[styles.commitmentText, isCompactAndroid ? styles.commitmentTextCompactAndroid : null, { color: textColor }]}
+          >
+            {noCommitmentLine}
+          </Text>
+        </View>
+      )}
+
       <Animated.View style={{ transform: [{ scale: ctaScale }] }}>
         <TouchableOpacity
           style={[
@@ -1023,59 +1145,8 @@ const PremiumPaywallModal = ({
             isVeryCompactAndroid ? styles.headerTitleVeryCompactAndroid : null,
           ]}
         >
-          {renderBenefitHighlight(headerTitle, headerBenefitValue)}
+          {renderBenefitHighlight(headerTitleWithExclamation, headerTitleHighlightToken)}
         </Text>
-        {shouldShowHeaderMetaChips && (
-          <View
-            style={[
-              styles.headerMetaRow,
-              isCompactAndroid ? styles.headerMetaRowCompactAndroid : null,
-              isVeryCompactAndroid ? styles.headerMetaRowVeryCompactAndroid : null,
-            ]}
-          >
-            <View
-              style={[
-                styles.headerMetaChip,
-                styles.socialProofChip,
-                isCompactAndroid ? styles.headerMetaChipCompactAndroid : null,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.socialProofText,
-                  isCompactAndroid ? styles.socialProofTextCompactAndroid : null,
-                ]}
-                numberOfLines={1}
-              >
-                {socialProofLine}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.headerMetaChip,
-                styles.offerTimerChip,
-                isCompactAndroid ? styles.headerMetaChipCompactAndroid : null,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.offerTimerLabel,
-                  isCompactAndroid ? styles.offerTimerLabelCompactAndroid : null,
-                ]}
-              >
-                {limitedOfferLabel}
-              </Text>
-              <Text
-                style={[
-                  styles.offerTimerValue,
-                  isCompactAndroid ? styles.offerTimerValueCompactAndroid : null,
-                ]}
-              >
-                {limitedOfferTimerPrefix} {limitedOfferCountdown}
-              </Text>
-            </View>
-          </View>
-        )}
         {!!headerSubtitle && !showPsychologyChip && (
           <Text
             style={[
@@ -1084,23 +1155,62 @@ const PremiumPaywallModal = ({
               isVeryCompactAndroid ? styles.headerSubtitleVeryCompactAndroid : null,
             ]}
           >
-            {renderBenefitHighlight(headerSubtitle, headerBenefitValue)}
+            {renderNumericHighlights(headerSubtitleWithForecast)}
           </Text>
         )}
-        {isSaveLimitHardTrigger && (
-          <Text
+        {!!savingsForecastPoints.length && !showPsychologyChip && (
+          <View
             style={[
-              styles.headerSaveLimitNow,
-              isCompactAndroid ? styles.headerSaveLimitNowCompactAndroid : null,
-              isVeryCompactAndroid ? styles.headerSaveLimitNowVeryCompactAndroid : null,
+              styles.headerForecastCard,
+              isCompactAndroid ? styles.headerForecastCardCompactAndroid : null,
+              isVeryCompactAndroid ? styles.headerForecastCardVeryCompactAndroid : null,
             ]}
           >
-            {saveLimitProNowCopy.before}
-            <Text style={styles.headerSaveLimitNowAccent}>{saveLimitProNowCopy.accent}</Text>
-            {saveLimitProNowCopy.after}
-          </Text>
+            <Text
+              style={[
+                styles.headerForecastTitle,
+                isCompactAndroid ? styles.headerForecastTitleCompactAndroid : null,
+              ]}
+            >
+              {headerForecastTitle}
+            </Text>
+            <View
+              style={[
+                styles.headerForecastRow,
+                isCompactAndroid ? styles.headerForecastRowCompactAndroid : null,
+              ]}
+            >
+              {savingsForecastPoints.map((point) => (
+                <View
+                  key={point.id}
+                  style={[
+                    styles.headerForecastItem,
+                    isCompactAndroid ? styles.headerForecastItemCompactAndroid : null,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.headerForecastAmount,
+                      isCompactAndroid ? styles.headerForecastAmountCompactAndroid : null,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {point.amountLabel}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.headerForecastDays,
+                      isCompactAndroid ? styles.headerForecastDaysCompactAndroid : null,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {point.daysLabel}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
         )}
-
         {showPsychologyChip && (
           <View
             style={[
@@ -1218,8 +1328,8 @@ const PremiumPaywallModal = ({
           ]}
         >
           {renderBenefitHighlight(
-            supportIntroTitle,
-            supportIntroSavedHighlight || headerBenefitValue,
+            supportIntroTitleWithExclamation,
+            supportIntroSavedHighlight || headerTitleHighlightToken,
             supportIntroHeaderHighlightStyle
           )}
         </Text>
@@ -1232,59 +1342,8 @@ const PremiumPaywallModal = ({
               isVeryCompactAndroid ? styles.headerSubtitleVeryCompactAndroid : null,
             ]}
           >
-            {supportIntroSubtitle}
+            {renderNumericHighlights(supportIntroSubtitleWithForecast)}
           </Text>
-        )}
-        {shouldShowHeaderMetaChips && (
-          <View
-            style={[
-              styles.headerMetaRow,
-              isCompactAndroid ? styles.headerMetaRowCompactAndroid : null,
-              isVeryCompactAndroid ? styles.headerMetaRowVeryCompactAndroid : null,
-            ]}
-          >
-            <View
-              style={[
-                styles.headerMetaChip,
-                styles.socialProofChip,
-                isCompactAndroid ? styles.headerMetaChipCompactAndroid : null,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.socialProofText,
-                  isCompactAndroid ? styles.socialProofTextCompactAndroid : null,
-                ]}
-                numberOfLines={1}
-              >
-                {socialProofLine}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.headerMetaChip,
-                styles.offerTimerChip,
-                isCompactAndroid ? styles.headerMetaChipCompactAndroid : null,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.offerTimerLabel,
-                  isCompactAndroid ? styles.offerTimerLabelCompactAndroid : null,
-                ]}
-              >
-                {limitedOfferLabel}
-              </Text>
-              <Text
-                style={[
-                  styles.offerTimerValue,
-                  isCompactAndroid ? styles.offerTimerValueCompactAndroid : null,
-                ]}
-              >
-                {limitedOfferTimerPrefix} {limitedOfferCountdown}
-              </Text>
-            </View>
-          </View>
         )}
       </View>
     </Animated.View>
@@ -1379,9 +1438,52 @@ const PremiumPaywallModal = ({
       </View>
 
       <View style={styles.planSection}>
-        <Text style={[styles.planSectionTitle, isCompactAndroid ? styles.planSectionTitleCompactAndroid : null, { color: textColor }]}>
-          {copy.planSectionTitle || "Choose your Premium plan"}
-        </Text>
+        <View
+          style={[
+            styles.planSectionHeaderRow,
+            isCompactAndroid ? styles.planSectionHeaderRowCompactAndroid : null,
+          ]}
+        >
+          <Text
+            style={[
+              styles.planSectionTitle,
+              styles.planSectionTitleInRow,
+              isCompactAndroid ? styles.planSectionTitleCompactAndroid : null,
+              isCompactAndroid ? styles.planSectionTitleInRowCompactAndroid : null,
+              { color: textColor },
+            ]}
+          >
+            {copy.planSectionTitle || "Choose your Premium plan"}
+          </Text>
+          {!!socialProofLine && (
+            <View
+              style={[
+                styles.planSocialProofWrap,
+                styles.planSocialProofWrapInline,
+                isCompactAndroid ? styles.planSocialProofWrapCompactAndroid : null,
+              ]}
+            >
+              <View
+                style={[
+                  styles.planSocialProofChip,
+                  styles.planSocialProofChipInline,
+                  isCompactAndroid ? styles.planSocialProofChipCompactAndroid : null,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.planSocialProofText,
+                    styles.planSocialProofTextInline,
+                    isCompactAndroid ? styles.planSocialProofTextCompactAndroid : null,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {socialProofLine}
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
         {!isVeryCompactAndroid && (
           <Text style={[styles.planSectionHint, isCompactAndroid ? styles.planSectionHintCompactAndroid : null, { color: mutedColor }]}>
             {copy.planHint || "Select a plan and tap the button below"}
@@ -1393,13 +1495,103 @@ const PremiumPaywallModal = ({
             const selected = plan.id === selectedPlanId;
             const unavailable = plan.available === false;
             const loading = purchaseLoadingPlan === plan.id;
+            const isYearlyPlan = plan.id === "yearly";
+            const topBadgeLabel =
+              !unavailable && typeof plan.topBadge === "string" && plan.topBadge.trim().length
+                ? plan.topBadge.trim()
+                : "";
+            const topBadgeKind =
+              typeof plan.topBadgeKind === "string" && plan.topBadgeKind.trim().length
+                ? plan.topBadgeKind.trim().toLowerCase()
+                : "";
+            const showExternalYearlySaveBadge = isYearlyPlan && !unavailable && !!topBadgeLabel;
+            const inlineTopBadgeLabel = showExternalYearlySaveBadge ? "" : topBadgeLabel;
+            const inlineTopBadgeKind = showExternalYearlySaveBadge ? "" : topBadgeKind;
+            const primaryBadgeLabel = unavailable
+              ? copy.planUnavailableLabel || "Unavailable"
+              : typeof plan.badge === "string" && plan.badge.trim().length
+              ? plan.badge.trim()
+              : "";
+            const primaryBadgeKind = unavailable
+              ? "unavailable"
+              : typeof plan.badgeKind === "string" && plan.badgeKind.trim().length
+              ? plan.badgeKind.trim().toLowerCase()
+              : "";
+            const resolveBadgeTone = (kind = "", fallbackYearlyStyle = false) => {
+              if (kind === "save") {
+                return {
+                  backgroundColor: selected ? "#18B45B" : "rgba(24,180,91,0.18)",
+                  borderWidth: 1,
+                  borderColor: "rgba(24,180,91,0.4)",
+                  textColor: selected ? "#FFFFFF" : "#137A42",
+                };
+              }
+              if (kind === "trial" || kind === "unavailable") {
+                return {
+                  backgroundColor: "rgba(11,22,48,0.08)",
+                  borderWidth: 0,
+                  borderColor: "transparent",
+                  textColor: textColor,
+                };
+              }
+              return {
+                backgroundColor: fallbackYearlyStyle
+                  ? selected
+                    ? "#18B45B"
+                    : "rgba(24,180,91,0.18)"
+                  : selected
+                  ? accent
+                  : "rgba(11,22,48,0.08)",
+                borderWidth: fallbackYearlyStyle ? 1 : 0,
+                borderColor: fallbackYearlyStyle ? "rgba(24,180,91,0.4)" : "transparent",
+                textColor: fallbackYearlyStyle
+                  ? selected
+                    ? "#FFFFFF"
+                    : "#137A42"
+                  : selected
+                  ? "#FFFFFF"
+                  : textColor,
+              };
+            };
+            const topBadgeTone = resolveBadgeTone(inlineTopBadgeKind, isYearlyPlan);
+            const primaryBadgeTone = resolveBadgeTone(primaryBadgeKind, isYearlyPlan);
             const showBillingMeta =
               !!plan.billingLabel &&
               plan.billingLabel !== plan.secondaryLabel &&
               plan.billingLabel !== plan.secondarySubLabel;
             return (
-              <TouchableOpacity
+              <View
                 key={plan.id}
+                style={[
+                  styles.planCardItemWrap,
+                  showExternalYearlySaveBadge ? styles.planCardItemWrapWithTopBadge : null,
+                ]}
+              >
+                {showExternalYearlySaveBadge && (
+                  <View
+                    style={[
+                      styles.planExternalSaveBadgeWrap,
+                      isCompactAndroid ? styles.planExternalSaveBadgeWrapCompactAndroid : null,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.planExternalSaveBadge,
+                        isCompactAndroid ? styles.planExternalSaveBadgeCompactAndroid : null,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.planExternalSaveBadgeText,
+                          isCompactAndroid ? styles.planExternalSaveBadgeTextCompactAndroid : null,
+                        ]}
+                      >
+                        {topBadgeLabel}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={() => {
                   setSelectedPlanId(plan.id);
@@ -1410,8 +1602,13 @@ const PremiumPaywallModal = ({
                   styles.planCard,
                   isCompactAndroid ? styles.planCardCompactAndroid : null,
                   {
-                    borderColor: selected ? accent : borderColor,
-                    backgroundColor: selected ? "rgba(67,83,255,0.1)" : "#FFFFFF",
+                    borderColor: isYearlyPlan ? "#18B45B" : selected ? accent : borderColor,
+                    borderWidth: 1,
+                    backgroundColor: selected
+                      ? isYearlyPlan
+                        ? "rgba(24,180,91,0.1)"
+                        : "rgba(67,83,255,0.1)"
+                      : "#FFFFFF",
                     opacity: unavailable ? 0.52 : 1,
                   },
                 ]}
@@ -1420,31 +1617,63 @@ const PremiumPaywallModal = ({
                   <Text style={[styles.planTitle, isCompactAndroid ? styles.planTitleCompactAndroid : null, { color: textColor }]}>
                     {plan.label}
                   </Text>
-                  {plan.badge ? (
+                  {!!(inlineTopBadgeLabel || primaryBadgeLabel) && (
                     <View
                       style={[
-                        styles.planBadge,
-                        isCompactAndroid ? styles.planBadgeCompactAndroid : null,
-                        { backgroundColor: selected ? accent : "rgba(11,22,48,0.08)" },
+                        styles.planBadgeStack,
+                        isCompactAndroid ? styles.planBadgeStackCompactAndroid : null,
                       ]}
                     >
-                      <Text
-                        style={[
-                          styles.planBadgeText,
-                          isCompactAndroid ? styles.planBadgeTextCompactAndroid : null,
-                          { color: selected ? "#FFFFFF" : textColor },
-                        ]}
-                      >
-                        {unavailable ? copy.planUnavailableLabel || "Unavailable" : plan.badge}
-                      </Text>
+                      {!!inlineTopBadgeLabel && (
+                        <View
+                          style={[
+                            styles.planBadge,
+                            styles.planBadgeSecondary,
+                            isCompactAndroid ? styles.planBadgeCompactAndroid : null,
+                            isCompactAndroid ? styles.planBadgeSecondaryCompactAndroid : null,
+                            {
+                              backgroundColor: topBadgeTone.backgroundColor,
+                              borderWidth: topBadgeTone.borderWidth,
+                              borderColor: topBadgeTone.borderColor,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.planBadgeText,
+                              isCompactAndroid ? styles.planBadgeTextCompactAndroid : null,
+                              { color: topBadgeTone.textColor },
+                            ]}
+                          >
+                            {inlineTopBadgeLabel}
+                          </Text>
+                        </View>
+                      )}
+                      {!!primaryBadgeLabel && (
+                        <View
+                          style={[
+                            styles.planBadge,
+                            isCompactAndroid ? styles.planBadgeCompactAndroid : null,
+                            {
+                              backgroundColor: primaryBadgeTone.backgroundColor,
+                              borderWidth: primaryBadgeTone.borderWidth,
+                              borderColor: primaryBadgeTone.borderColor,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.planBadgeText,
+                              isCompactAndroid ? styles.planBadgeTextCompactAndroid : null,
+                              { color: primaryBadgeTone.textColor },
+                            ]}
+                          >
+                            {primaryBadgeLabel}
+                          </Text>
+                        </View>
+                      )}
                     </View>
-                  ) : unavailable ? (
-                    <View style={[styles.planBadge, { backgroundColor: "rgba(11,22,48,0.08)" }]}>
-                      <Text style={[styles.planBadgeText, { color: textColor }]}>
-                        {copy.planUnavailableLabel || "Unavailable"}
-                      </Text>
-                    </View>
-                  ) : null}
+                  )}
                 </View>
                 <View style={styles.planBottomRow}>
                   <Text
@@ -1513,6 +1742,7 @@ const PremiumPaywallModal = ({
                   </View>
                 )}
               </TouchableOpacity>
+              </View>
             );
           })}
         </View>
@@ -2088,6 +2318,18 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.14)",
     borderColor: "rgba(255,255,255,0.22)",
   },
+  socialProofChipNarrow: {
+    flex: 0,
+    alignSelf: "center",
+    minWidth: 168,
+    maxWidth: 232,
+    paddingHorizontal: 14,
+  },
+  socialProofChipNarrowCompactAndroid: {
+    minWidth: 152,
+    maxWidth: 210,
+    paddingHorizontal: 12,
+  },
   socialProofText: {
     color: "#F1F5FF",
     textAlign: "center",
@@ -2098,34 +2340,6 @@ const styles = StyleSheet.create({
   socialProofTextCompactAndroid: {
     fontSize: 10,
     lineHeight: 13,
-  },
-  offerTimerChip: {
-    backgroundColor: "rgba(255,214,74,0.22)",
-    borderColor: "rgba(255,220,112,0.72)",
-  },
-  offerTimerLabel: {
-    color: "#FFF2BF",
-    textAlign: "center",
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: "800",
-    letterSpacing: 0.2,
-  },
-  offerTimerLabelCompactAndroid: {
-    fontSize: 9,
-    lineHeight: 11,
-  },
-  offerTimerValue: {
-    marginTop: 2,
-    color: "#FFFFFF",
-    textAlign: "center",
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: "900",
-  },
-  offerTimerValueCompactAndroid: {
-    fontSize: 11,
-    lineHeight: 14,
   },
   headerTitle: {
     width: "100%",
@@ -2215,6 +2429,89 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 12,
     lineHeight: 16,
+  },
+  headerForecastCard: {
+    marginTop: 9,
+    width: "100%",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    gap: 6,
+  },
+  headerForecastCardCompactAndroid: {
+    marginTop: 7,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 5,
+  },
+  headerForecastCardVeryCompactAndroid: {
+    marginTop: 6,
+    paddingVertical: 5,
+    gap: 4,
+  },
+  headerForecastTitle: {
+    color: "rgba(239,244,255,0.92)",
+    textAlign: "center",
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  headerForecastTitleCompactAndroid: {
+    fontSize: 10,
+    lineHeight: 12,
+    letterSpacing: 0.1,
+  },
+  headerForecastRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 6,
+  },
+  headerForecastRowCompactAndroid: {
+    gap: 5,
+  },
+  headerForecastItem: {
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 5,
+    backgroundColor: "rgba(9,19,76,0.36)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerForecastItemCompactAndroid: {
+    borderRadius: 7,
+    paddingVertical: 5,
+    paddingHorizontal: 4,
+  },
+  headerForecastAmount: {
+    color: "#DFFFEF",
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  headerForecastAmountCompactAndroid: {
+    fontSize: 10,
+    lineHeight: 12,
+  },
+  headerForecastDays: {
+    marginTop: 2,
+    color: "rgba(239,244,255,0.9)",
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  headerForecastDaysCompactAndroid: {
+    marginTop: 1,
+    fontSize: 9,
+    lineHeight: 11,
   },
   headerSaveLimitNow: {
     marginTop: 6,
@@ -2628,14 +2925,77 @@ const styles = StyleSheet.create({
   planSection: {
     gap: 8,
   },
+  planSectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  planSectionHeaderRowCompactAndroid: {
+    gap: 6,
+  },
+  planSocialProofWrap: {
+    alignItems: "center",
+    marginTop: 2,
+    marginBottom: 1,
+  },
+  planSocialProofWrapInline: {
+    marginTop: 0,
+    marginBottom: 0,
+    alignItems: "flex-end",
+  },
+  planSocialProofWrapCompactAndroid: {
+    marginTop: 1,
+    marginBottom: 0,
+  },
+  planSocialProofChip: {
+    alignSelf: "center",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: "rgba(55,86,180,0.26)",
+    backgroundColor: "rgba(62,94,198,0.12)",
+    maxWidth: "100%",
+  },
+  planSocialProofChipInline: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  planSocialProofChipCompactAndroid: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  planSocialProofText: {
+    color: "#2E4FAF",
+    textAlign: "center",
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "800",
+  },
+  planSocialProofTextInline: {
+    fontSize: 11,
+    lineHeight: 13,
+  },
+  planSocialProofTextCompactAndroid: {
+    fontSize: 11,
+    lineHeight: 14,
+  },
   planSectionTitle: {
     fontSize: 17,
     lineHeight: 22,
     fontWeight: "800",
   },
+  planSectionTitleInRow: {
+    flex: 1,
+    marginRight: 8,
+  },
   planSectionTitleCompactAndroid: {
     fontSize: 16,
     lineHeight: 21,
+  },
+  planSectionTitleInRowCompactAndroid: {
+    marginRight: 6,
   },
   planSectionHint: {
     fontSize: 12,
@@ -2652,6 +3012,47 @@ const styles = StyleSheet.create({
   },
   planListCompactAndroid: {
     gap: 7,
+  },
+  planCardItemWrap: {
+    position: "relative",
+  },
+  planCardItemWrapWithTopBadge: {
+    marginTop: 18,
+  },
+  planExternalSaveBadgeWrap: {
+    position: "absolute",
+    top: -18,
+    right: 14,
+    zIndex: 3,
+    alignItems: "flex-end",
+  },
+  planExternalSaveBadgeWrapCompactAndroid: {
+    top: -15,
+    right: 12,
+  },
+  planExternalSaveBadge: {
+    borderRadius: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: "#DDF8E9",
+    borderWidth: 2,
+    borderColor: "#18B45B",
+  },
+  planExternalSaveBadgeCompactAndroid: {
+    borderRadius: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
+  planExternalSaveBadgeText: {
+    color: "#137A42",
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: "900",
+    letterSpacing: 0.2,
+  },
+  planExternalSaveBadgeTextCompactAndroid: {
+    fontSize: 9,
+    lineHeight: 11,
   },
   planCard: {
     borderRadius: 14,
@@ -2697,6 +3098,21 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 9,
     paddingVertical: 3,
+  },
+  planBadgeStack: {
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  planBadgeStackCompactAndroid: {
+    gap: 3,
+  },
+  planBadgeSecondary: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  planBadgeSecondaryCompactAndroid: {
+    paddingHorizontal: 7,
+    paddingVertical: 1,
   },
   planBadgeCompactAndroid: {
     paddingHorizontal: 8,
@@ -2804,6 +3220,52 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     fontWeight: "600",
+  },
+  commitmentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 2,
+  },
+  commitmentRowCompactAndroid: {
+    gap: 6,
+    marginBottom: 1,
+  },
+  commitmentIconWrap: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(24,180,91,0.42)",
+    backgroundColor: "rgba(24,180,91,0.16)",
+  },
+  commitmentIconWrapCompactAndroid: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  commitmentIcon: {
+    color: "#18B45B",
+    fontSize: 11,
+    lineHeight: 12,
+    fontWeight: "900",
+  },
+  commitmentIconCompactAndroid: {
+    fontSize: 10,
+    lineHeight: 11,
+  },
+  commitmentText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  commitmentTextCompactAndroid: {
+    fontSize: 11,
+    lineHeight: 14,
   },
   primaryButton: {
     minHeight: 54,
