@@ -76,11 +76,14 @@ Default payload used by client:
 
 Group behavior:
 
+- Common rule for `A/B/C`: free users get one daily soft paywall on the first temptation card action (`save` or `spend`) of that local day.
 - `A` (control): vanilla monetization behavior.
 - `B`: hard trial lock after `trialSaveLimit` saves (default 10). App is blocked by non-dismissible hard paywall on startup until premium is active.
-- `C`: no hard lock. Free flow stays available; after 5 saves, app shows a 2-step soft paywall (`group_c_support_after_5_saves` trigger):
-  1) intro screen with personal developer message + support CTA,
-  2) classic Premium plans/features screen.
+- `C`: no startup hard lock. Free flow stays available with staged prompts:
+  1) after the first temptation card action (`save` or `spend`) -> soft paywall,
+  2) after the 5th temptation card action -> 2-step soft paywall (`group_c_support_after_5_saves`):
+     intro with personal developer message + support CTA, then classic Premium plans/features,
+  3) after 10 `save` actions in a day -> further saves are blocked until local midnight by a dismissible soft paywall with countdown (`save_daily_limit_reached` trigger). Closing is allowed, but the paywall appears again on the next save attempt until midnight.
 
 Install eligibility:
 

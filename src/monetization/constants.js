@@ -103,12 +103,18 @@ const SOFT_TITLE_BY_LANGUAGE = {
   en: "In the last {{days}} days, you could have saved {{amount}} more.",
   es: "En los últimos {{days}} días, podrías haber ahorrado {{amount}} más.",
   fr: "Sur les {{days}} derniers jours, tu aurais pu économiser {{amount}} de plus.",
+  de: "In den letzten {{days}} Tagen hättest du weitere {{amount}} sparen können.",
+  ar: "خلال آخر {{days}} يوماً كان بإمكانك ادخار {{amount}} إضافية.",
+  zh: "在过去 {{days}} 天里，你本可以再省下 {{amount}}。",
 };
 const SOFT_FRESH_START_TITLE_BY_LANGUAGE = {
   ru: "Отличный старт. С Premium можно сохранить до {{percent}}% больше за следующие {{days}} дней.",
   en: "Great start. With Premium, you can save up to {{percent}}% more over the next {{days}} days.",
   es: "Buen comienzo. Con Premium puedes ahorrar hasta un {{percent}}% más en los próximos {{days}} días.",
   fr: "Très bon départ. Avec Premium, tu peux économiser jusqu'à {{percent}}% de plus sur les {{days}} prochains jours.",
+  de: "Starker Start. Mit Premium kannst du in den nächsten {{days}} Tagen bis zu {{percent}}% mehr sparen.",
+  ar: "بداية ممتازة. مع Premium يمكنك ادخار حتى {{percent}}٪ أكثر خلال {{days}} يوماً القادمة.",
+  zh: "开局很棒。使用 Premium，你在接下来的 {{days}} 天内最多可多省 {{percent}}%。",
 };
 
 const HARD_TITLE_BY_LANGUAGE = {
@@ -116,6 +122,9 @@ const HARD_TITLE_BY_LANGUAGE = {
   en: "You are already saving. But {{amount}} over {{days}} days could still be kept.",
   es: "Ya estás ahorrando. Pero aún podrías conservar {{amount}} en {{days}} días.",
   fr: "Tu économises déjà. Mais tu pourrais encore conserver {{amount}} sur {{days}} jours.",
+  de: "Du sparst bereits. Trotzdem könntest du in {{days}} Tagen noch {{amount}} zusätzlich behalten.",
+  ar: "أنت تدّخر بالفعل، لكن كان يمكن الاحتفاظ بـ {{amount}} إضافية خلال {{days}} يوماً.",
+  zh: "你已经在省钱了，但在 {{days}} 天内仍可再留住 {{amount}}。",
 };
 
 const FEATURE_TITLE_BY_LANGUAGE = {
@@ -123,6 +132,9 @@ const FEATURE_TITLE_BY_LANGUAGE = {
   en: "This feature helps recover money that usually slips away unnoticed",
   es: "Esta función te ayuda a recuperar dinero que suele escaparse sin darte cuenta",
   fr: "Cette fonctionnalité aide à récupérer l'argent qui s'échappe souvent sans s'en rendre compte",
+  de: "Diese Funktion hilft dir, Geld zurückzuholen, das sonst unbemerkt verloren geht",
+  ar: "تساعدك هذه الميزة على استرجاع الأموال التي تتسرب عادةً دون ملاحظة",
+  zh: "这个功能可帮助你找回那些常常悄悄流失的钱",
 };
 
 const BASE_FEATURES_BY_LANGUAGE = {
@@ -179,6 +191,10 @@ const BASE_FEATURES_BY_LANGUAGE = {
     "Personnalisation du chat + personnalisation complète du thème Pro",
   ],
 };
+
+BASE_FEATURES_BY_LANGUAGE.de = [...BASE_FEATURES_BY_LANGUAGE.en];
+BASE_FEATURES_BY_LANGUAGE.ar = [...BASE_FEATURES_BY_LANGUAGE.en];
+BASE_FEATURES_BY_LANGUAGE.zh = [...BASE_FEATURES_BY_LANGUAGE.en];
 
 const FEATURE_NAME_BY_KEY = {
   catCustomization: {
@@ -713,17 +729,33 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
   ],
 };
 
+const cloneComparisonRows = (rows = []) =>
+  (Array.isArray(rows) ? rows : []).map((row) => ({
+    ...row,
+    featureKeys: Array.isArray(row?.featureKeys) ? [...row.featureKeys] : row?.featureKeys,
+  }));
+
+COMPARISON_ROWS_BY_LANGUAGE.de = cloneComparisonRows(COMPARISON_ROWS_BY_LANGUAGE.en);
+COMPARISON_ROWS_BY_LANGUAGE.ar = cloneComparisonRows(COMPARISON_ROWS_BY_LANGUAGE.en);
+COMPARISON_ROWS_BY_LANGUAGE.zh = cloneComparisonRows(COMPARISON_ROWS_BY_LANGUAGE.en);
+
 const SOFT_PSYCHOLOGY_LINE_BY_LANGUAGE = {
   ru: "Цена Premium = стоимость одного отказа от импульсивной покупки.",
   en: "Premium costs the price of a single impulse you choose to skip.",
   es: "Premium cuesta lo mismo que un solo impulso que decides evitar.",
   fr: "Premium coûte le prix d'une seule impulsion que tu décides d'éviter.",
+  de: "Premium kostet ungefähr so viel wie ein einziger Impuls, den du bewusst auslässt.",
+  ar: "تكلفة Premium تساوي تقريباً تكلفة نزوة واحدة تتجاوزها.",
+  zh: "Premium 的价格大致等于你主动放弃的一次冲动消费。",
 };
 const SOFT_FRESH_START_PSYCHOLOGY_LINE_BY_LANGUAGE = {
   ru: "С Premium проще закрепить привычку контролировать траты с первого дня.",
   en: "Premium helps lock in your spending-control habit from day one.",
   es: "Premium te ayuda a fijar el hábito de controlar gastos desde el primer día.",
   fr: "Premium aide à ancrer l'habitude de contrôler les dépenses dès le premier jour.",
+  de: "Mit Premium verankerst du die Gewohnheit, Ausgaben zu steuern, von Tag eins an.",
+  ar: "يساعدك Premium على ترسيخ عادة التحكم بالمصروفات من اليوم الأول.",
+  zh: "Premium 可帮助你从第一天就建立并稳定控支习惯。",
 };
 
 const SOFT_MARKETING_LINE_BY_LANGUAGE = {
@@ -731,12 +763,18 @@ const SOFT_MARKETING_LINE_BY_LANGUAGE = {
   en: "Premium is {{monthly}}. With the full toolkit, you can recover up to {{amount}} over the next {{days}} days.",
   es: "Premium cuesta {{monthly}}. Con el kit completo, puedes recuperar hasta {{amount}} en los próximos {{days}} días.",
   fr: "Premium coûte {{monthly}}. Avec tous les outils, tu peux récupérer jusqu'à {{amount}} sur les {{days}} prochains jours.",
+  de: "Premium kostet {{monthly}}. Mit dem kompletten Toolkit kannst du in den nächsten {{days}} Tagen bis zu {{amount}} zurückholen.",
+  ar: "سعر Premium هو {{monthly}}. ومع الأدوات الكاملة يمكنك استعادة ما يصل إلى {{amount}} خلال {{days}} يوماً القادمة.",
+  zh: "Premium 价格为 {{monthly}}。使用完整工具，你在接下来的 {{days}} 天内最多可挽回 {{amount}}。",
 };
 const SOFT_FRESH_START_MARKETING_LINE_BY_LANGUAGE = {
   ru: "Сейчас лучший момент настроить систему трат: лимиты, отчёты и контроль с первого дня.",
   en: "Now is the best moment to set your spending system: limits, reports, and control from day one.",
   es: "Ahora es el mejor momento para ordenar tu sistema de gasto: límites, informes y control desde el primer día.",
   fr: "C'est le meilleur moment pour structurer ton système de dépenses : limites, rapports et contrôle dès le premier jour.",
+  de: "Jetzt ist der beste Moment, dein Ausgabensystem aufzubauen: Limits, Berichte und Kontrolle von Anfang an.",
+  ar: "الآن هو أفضل وقت لبناء نظام مصروفاتك: حدود وتقارير وتحكم من اليوم الأول.",
+  zh: "现在是建立消费系统的最佳时机：从第一天开始设置限额、报告与控制。",
 };
 
 const HARD_MARKETING_LINE_BY_LANGUAGE = {
@@ -744,36 +782,45 @@ const HARD_MARKETING_LINE_BY_LANGUAGE = {
   en: "Almost has already helped you save {{saved}}. Premium closes remaining leaks and keeps momentum going.",
   es: "Almost ya te ayudó a ahorrar {{saved}}. Premium cierra las fugas restantes y mantiene el impulso.",
   fr: "Almost t'a déjà aidé à économiser {{saved}}. Premium ferme les fuites restantes et maintient l'élan.",
+  de: "Almost hat dir bereits geholfen, {{saved}} zu sparen. Premium schließt verbleibende Lecks und hält den Fortschritt stabil.",
+  ar: "ساعدك Almost بالفعل على ادخار {{saved}}. يعمل Premium على إغلاق التسريبات المتبقية والحفاظ على الزخم.",
+  zh: "Almost 已帮助你省下 {{saved}}。Premium 可补上剩余漏损并保持你的进度势头。",
 };
 const SAVE_LIMIT_REACHED_TITLE_BY_LANGUAGE = {
-  ru: "Лимит записей достигнут.",
-  en: "Entry limit reached.",
-  es: "Se alcanzó el límite de registros.",
-  fr: "Limite d'entrées atteinte.",
+  ru: "Вау! Вы сохранили {{saved}}. Поздравляем!",
+  en: "Wow! You've saved {{saved}}. Congratulations!",
+  es: "¡Guau! Has ahorrado {{saved}}. ¡Felicidades!",
+  fr: "Waouh ! Tu as économisé {{saved}}. Félicitations !",
+  de: "Wow! Du hast {{saved}} gespart. Glückwunsch!",
+  ar: "رائع! لقد وفّرت {{saved}}. تهانينا!",
+  zh: "太棒了！你已经节省了 {{saved}}。恭喜！",
 };
 const SAVE_LIMIT_REACHED_SUBTITLE_BY_LANGUAGE = {
-  ru: "На Free доступно 10 сохранений в сутки, счётчик обнуляется в полночь. На Premium записи безлимитные.",
-  en: "Free includes 10 saves per day and resets at midnight. Premium unlocks unlimited entries.",
-  es: "En Free hay 10 guardados por día y se restablece a medianoche. Premium desbloquea registros ilimitados.",
-  fr: "En Free, tu as 10 sauvegardes par jour avec remise à zéro à minuit. Premium débloque les entrées illimitées.",
+  ru: "Вы достигли лимита бесплатных сохранений. Чтобы продолжить, перейдите на Premium.",
+  en: "You've reached the free save limit. To continue, join Premium.",
+  es: "Has alcanzado el límite de guardados gratuitos. Para continuar, únete a Premium.",
+  fr: "Tu as atteint la limite de sauvegardes gratuites. Pour continuer, passe à Premium.",
+  de: "Du hast das kostenlose Speicherlimit erreicht. Um fortzufahren, wechsle zu Premium.",
+  ar: "لقد وصلت إلى حد الحفظ المجاني. للمتابعة، انضم إلى Premium.",
+  zh: "你已达到免费保存上限。要继续，请加入 Premium。",
 };
 const TRIAL_10_SAVES_TITLE_BY_LANGUAGE = {
-  ru: "Ты уже сохранил(а) {{saved}}.",
-  en: "You've already saved {{saved}}.",
-  es: "Ya has ahorrado {{saved}}.",
-  fr: "Tu as déjà économisé {{saved}}.",
-  de: "Du hast bereits {{saved}} gespart.",
-  ar: "لقد وفّرت بالفعل {{saved}}.",
-  zh: "你已经节省了 {{saved}}。",
+  ru: "Вау! Вы сохранили {{saved}}. Поздравляем!",
+  en: "Wow! You've saved {{saved}}. Congratulations!",
+  es: "¡Guau! Has ahorrado {{saved}}. ¡Felicidades!",
+  fr: "Waouh ! Tu as économisé {{saved}}. Félicitations !",
+  de: "Wow! Du hast {{saved}} gespart. Glückwunsch!",
+  ar: "رائع! لقد وفّرت {{saved}}. تهانينا!",
+  zh: "太棒了！你已经节省了 {{saved}}。恭喜！",
 };
 const TRIAL_10_SAVES_SUBTITLE_BY_LANGUAGE = {
-  ru: "С Premium можно сохранить до {{amount}} за {{days}} дней.",
-  en: "With Premium, you can save up to {{amount}} over {{days}} days.",
-  es: "Con Premium, puedes ahorrar hasta {{amount}} en {{days}} días.",
-  fr: "Avec Premium, tu peux économiser jusqu'à {{amount}} sur {{days}} jours.",
-  de: "Mit Premium kannst du in {{days}} Tagen bis zu {{amount}} sparen.",
-  ar: "مع Premium يمكنك توفير ما يصل إلى {{amount}} خلال {{days}} يوماً.",
-  zh: "使用 Premium，你可在 {{days}} 天内最多再节省 {{amount}}。",
+  ru: "Вы достигли лимита бесплатных сохранений. Чтобы продолжить, перейдите на Premium.",
+  en: "You've reached the free save limit. To continue, join Premium.",
+  es: "Has alcanzado el límite de guardados gratuitos. Para continuar, únete a Premium.",
+  fr: "Tu as atteint la limite de sauvegardes gratuites. Pour continuer, passe à Premium.",
+  de: "Du hast das kostenlose Speicherlimit erreicht. Um fortzufahren, wechsle zu Premium.",
+  ar: "لقد وصلت إلى حد الحفظ المجاني. للمتابعة، انضم إلى Premium.",
+  zh: "你已达到免费保存上限。要继续，请加入 Premium。",
 };
 const GROUP_C_SUPPORT_INTRO_BADGE_BY_LANGUAGE = {
   ru: "ЛИЧНОЕ СООБЩЕНИЕ",
@@ -830,13 +877,13 @@ const GROUP_C_SUPPORT_MESSAGE_BY_LANGUAGE = {
   zh: "你好！我是 Almost 的创始人 Alexander。我看到你已经在为自己的财务目标迈出第一步，真心为你高兴。祝你在这条不容易的路上持续进步，我也相信你一定可以做到。同时，我也希望自己能继续把 Almost 做得更好，完成我们的使命：打造最能帮助用户的工具。如果你愿意通过订阅来支持 Almost，我会非常感激。Almost Premium 提供了很多实用又强大的功能，帮助你更快达成财务目标，我也会持续迭代项目。所有 Premium 订阅用户都会自动获得应用的全部新功能。提前谢谢你！",
 };
 const GROUP_C_SUPPORT_PRIMARY_CTA_BY_LANGUAGE = {
-  ru: "Продолжить",
-  en: "Continue",
-  es: "Continuar",
-  fr: "Continuer",
-  de: "Weiter",
-  ar: "متابعة",
-  zh: "继续",
+  ru: "Поддержать Almost",
+  en: "Support Almost",
+  es: "Apoyar Almost",
+  fr: "Soutenir Almost",
+  de: "Almost unterstützen",
+  ar: "ادعم Almost",
+  zh: "支持 Almost",
 };
 const GROUP_C_SUPPORT_HINT_BY_LANGUAGE = {
   ru: "На следующем экране выбери подходящий план Premium.",
@@ -952,6 +999,9 @@ const FEATURE_MARKETING_LINE_BY_LANGUAGE = {
   en: "Unlock Premium for the full toolkit and keep more money every month.",
   es: "Desbloquea Premium para tener el kit completo y conservar más dinero cada mes.",
   fr: "Débloque Premium pour obtenir la boîte à outils complète et garder plus d'argent chaque mois.",
+  de: "Schalte Premium frei, um das komplette Toolkit zu erhalten und jeden Monat mehr Geld zu behalten.",
+  ar: "افتح Premium لتحصل على المجموعة الكاملة من الأدوات وتحتفظ بمزيد من المال كل شهر.",
+  zh: "开通 Premium，获得完整工具集，每个月稳定留住更多钱。",
 };
 
 const FEATURE_SUBTITLE_BY_LANGUAGE = {
@@ -959,6 +1009,9 @@ const FEATURE_SUBTITLE_BY_LANGUAGE = {
   en: "Unlock Premium to access {{featureName}} and get the full toolkit.",
   es: "Desbloquea Premium para acceder a {{featureName}} y obtener el kit completo.",
   fr: "Débloque Premium pour accéder à {{featureName}} et obtenir tous les outils.",
+  de: "Schalte Premium frei, um {{featureName}} und das vollständige Toolkit zu nutzen.",
+  ar: "افتح Premium للوصول إلى {{featureName}} والحصول على المجموعة الكاملة من الأدوات.",
+  zh: "开通 Premium，解锁 {{featureName}} 并获取完整工具集。",
 };
 
 const LEVEL_UNLOCK_LINE_BY_LANGUAGE = {
@@ -966,6 +1019,9 @@ const LEVEL_UNLOCK_LINE_BY_LANGUAGE = {
   en: "Premium instantly unlocks all features gated by user levels.",
   es: "Premium desbloquea al instante todas las funciones bloqueadas por nivel.",
   fr: "Premium débloque instantanément toutes les fonctions bloquées par niveau.",
+  de: "Premium schaltet sofort alle Funktionen frei, die durch Level gesperrt sind.",
+  ar: "يفتح Premium فوراً جميع الميزات المقفلة بالمستويات.",
+  zh: "Premium 可立即解锁所有受等级限制的功能。",
 };
 
 const PLAN_SECTION_TITLE_BY_LANGUAGE = {
@@ -973,6 +1029,9 @@ const PLAN_SECTION_TITLE_BY_LANGUAGE = {
   en: "Choose your Premium plan",
   es: "Elige tu plan Premium",
   fr: "Choisis ton plan Premium",
+  de: "Wähle deinen Premium-Plan",
+  ar: "اختر خطة Premium الخاصة بك",
+  zh: "选择你的 Premium 方案",
 };
 
 const PLAN_HINT_BY_LANGUAGE = {
@@ -980,6 +1039,9 @@ const PLAN_HINT_BY_LANGUAGE = {
   en: "Select a plan and tap the button below",
   es: "Selecciona un plan y pulsa el botón de abajo",
   fr: "Choisis un plan puis appuie sur le bouton ci-dessous",
+  de: "Wähle einen Plan und tippe unten auf die Taste",
+  ar: "اختر خطة ثم اضغط الزر بالأسفل",
+  zh: "选择一个方案并点击下方按钮",
 };
 
 const FREE_LABEL_BY_LANGUAGE = {
@@ -987,6 +1049,9 @@ const FREE_LABEL_BY_LANGUAGE = {
   en: "FREE",
   es: "GRATIS",
   fr: "GRATUIT",
+  de: "KOSTENLOS",
+  ar: "مجاني",
+  zh: "免费",
 };
 
 const PRO_LABEL_BY_LANGUAGE = {
@@ -994,6 +1059,9 @@ const PRO_LABEL_BY_LANGUAGE = {
   en: "PRO",
   es: "PRO",
   fr: "PRO",
+  de: "PRO",
+  ar: "PRO",
+  zh: "PRO",
 };
 
 const COMPARISON_TAP_HINT_BY_LANGUAGE = {
@@ -1003,6 +1071,7 @@ const COMPARISON_TAP_HINT_BY_LANGUAGE = {
   fr: "Touche une fonction pour voir son impact sur tes économies.",
   de: "Tippe auf eine Funktion, um ihren Spareffekt zu sehen.",
   ar: "اضغط على الميزة لمعرفة تأثيرها على الادخار.",
+  zh: "点击某个功能即可查看它对节省的影响。",
 };
 
 const PLAN_UNAVAILABLE_LABEL_BY_LANGUAGE = {
@@ -1012,6 +1081,7 @@ const PLAN_UNAVAILABLE_LABEL_BY_LANGUAGE = {
   fr: "Indisponible",
   de: "Nicht verfügbar",
   ar: "غير متاح",
+  zh: "不可用",
 };
 
 const PAYWALL_BILLING_NOTICE_BY_LANGUAGE = {
@@ -1057,6 +1127,11 @@ const PAYWALL_BILLING_NOTICE_BY_LANGUAGE = {
     default:
       "الخطتان الشهرية والسنوية اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من App Store / Google Play.",
   },
+  zh: {
+    ios: "月度和年度方案均为自动续订订阅。你可随时在 App Store 管理或取消。",
+    android: "月度和年度方案均为自动续订订阅。你可随时在 Google Play 管理或取消。",
+    default: "月度和年度方案均为自动续订订阅。你可随时在 App Store / Google Play 管理或取消。",
+  },
 };
 
 const PAYWALL_LEGAL_NOTICE_BY_LANGUAGE = {
@@ -1089,6 +1164,11 @@ const PAYWALL_LEGAL_NOTICE_BY_LANGUAGE = {
     ios: "بالمتابعة فإنك توافق على شروط الاستخدام (EULA) وسياسة الخصوصية.",
     android: "بالمتابعة فإنك توافق على شروط الاستخدام وسياسة الخصوصية.",
     default: "بالمتابعة فإنك توافق على شروط الاستخدام وسياسة الخصوصية.",
+  },
+  zh: {
+    ios: "继续即表示你同意《使用条款》(EULA) 和《隐私政策》。",
+    android: "继续即表示你同意《使用条款》和《隐私政策》。",
+    default: "继续即表示你同意《使用条款》和《隐私政策》。",
   },
 };
 
@@ -1155,6 +1235,15 @@ const PAYWALL_UNIFIED_TITLE_BY_LANGUAGE = {
   de: "Wir möchten, dass du Almost {{freeWord}} ausprobierst!",
   ar: "نريدك أن تجرّب Almost {{freeWord}}!",
   zh: "我们希望你{{freeWord}}试用 Almost！",
+};
+const PAYWALL_UNIFIED_TITLE_NO_TRIAL_BY_LANGUAGE = {
+  ru: "Выбери подходящий Premium-план для Almost",
+  en: "Choose the Premium plan that fits you",
+  es: "Elige el plan Premium que mejor te encaje",
+  fr: "Choisis l'abonnement Premium qui te convient",
+  de: "Wähle den Premium-Plan, der zu dir passt",
+  ar: "اختر خطة Premium الأنسب لك",
+  zh: "选择最适合你的 Premium 方案",
 };
 const PAYWALL_UNIFIED_FEATURE_FALLBACK_BY_LANGUAGE = {
   ru: "виджеты, аналитику и отчёты",
@@ -1236,6 +1325,7 @@ const CTA_RESTORE_BY_LANGUAGE = {
   fr: "Restaurer les achats",
   de: "Käufe wiederherstellen",
   ar: "استعادة المشتريات",
+  zh: "恢复购买",
 };
 
 const CTA_CLOSE_BY_LANGUAGE = {
@@ -1245,6 +1335,7 @@ const CTA_CLOSE_BY_LANGUAGE = {
   fr: "Plus tard",
   de: "Vielleicht später",
   ar: "لاحقاً",
+  zh: "稍后",
 };
 
 const CTA_MANAGE_BY_LANGUAGE = {
@@ -1254,6 +1345,7 @@ const CTA_MANAGE_BY_LANGUAGE = {
   fr: "Gérer l'abonnement",
   de: "Abo verwalten",
   ar: "إدارة الاشتراك",
+  zh: "管理订阅",
 };
 
 const NO_COMMITMENT_LINE_BY_LANGUAGE = {
@@ -1273,6 +1365,7 @@ const LEGAL_TERMS_LABEL_BY_LANGUAGE = {
   fr: "Conditions",
   de: "AGB",
   ar: "الشروط",
+  zh: "条款",
 };
 
 const LEGAL_PRIVACY_LABEL_BY_LANGUAGE = {
@@ -1293,6 +1386,7 @@ const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
     fr: "Annuel",
     de: "Jährlich",
     ar: "سنوي",
+    zh: "年付",
   },
   monthly: {
     ru: "Месяц",
@@ -1301,6 +1395,7 @@ const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
     fr: "Mensuel",
     de: "Monatlich",
     ar: "شهري",
+    zh: "月付",
   },
   lifetime: {
     ru: "Навсегда",
@@ -1309,6 +1404,7 @@ const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
     fr: "À vie",
     de: "Lebenslang",
     ar: "مدى الحياة",
+    zh: "终身",
   },
 };
 
@@ -1319,6 +1415,7 @@ const SAVE_BADGE_TEMPLATE_BY_LANGUAGE = {
   fr: "Économisez {{percent}}%",
   de: "Spare {{percent}}%",
   ar: "وفّر {{percent}}%",
+  zh: "省 {{percent}}%",
 };
 
 const LIFETIME_BADGE_BY_LANGUAGE = {
@@ -1328,6 +1425,7 @@ const LIFETIME_BADGE_BY_LANGUAGE = {
   fr: "À vie",
   de: "Lebenslang",
   ar: "مدى الحياة",
+  zh: "终身",
 };
 
 const PAYWALL_BADGE_BY_KIND = {
@@ -1633,6 +1731,7 @@ export const resolveFallbackPlanPricing = (currencyCode = "USD") => {
 export const buildPaywallCopy = ({
   language = "en",
   kind = "soft",
+  hasTrialOffer = true,
   monthlyPriceLabel = "$5.99/mo",
   savedAmountLabel = "$0",
   lossAmountLabel = "",
@@ -1645,6 +1744,7 @@ export const buildPaywallCopy = ({
   platform = "unknown",
 } = {}) => {
   const lang = resolveLanguage(language);
+  const normalizedHasTrialOffer = hasTrialOffer !== false;
   const normalizedKind = kind === "hard" ? "hard" : kind === "feature" ? "feature" : "soft";
   const normalizedPlatform = platform === "ios" ? "ios" : platform === "android" ? "android" : "default";
   const normalizedFeatureKey =
@@ -1729,8 +1829,8 @@ export const buildPaywallCopy = ({
     psychologyLine = null;
   }
   if (isSaveLimitHardTrigger) {
-    title = resolveTemplateSource(SAVE_LIMIT_REACHED_TITLE_BY_LANGUAGE, lang);
-    subtitle = resolveTemplateSource(SAVE_LIMIT_REACHED_SUBTITLE_BY_LANGUAGE, lang);
+    title = template(resolveTemplateSource(SAVE_LIMIT_REACHED_TITLE_BY_LANGUAGE, lang), copyTokens);
+    subtitle = template(resolveTemplateSource(SAVE_LIMIT_REACHED_SUBTITLE_BY_LANGUAGE, lang), copyTokens);
     psychologyLine = null;
   }
   if (isTrialSavesHardTrigger) {
@@ -1770,10 +1870,11 @@ export const buildPaywallCopy = ({
     ctaFeatureName ||
     resolveTemplateSource(PAYWALL_UNIFIED_FEATURE_FALLBACK_BY_LANGUAGE, lang) ||
     PAYWALL_UNIFIED_FEATURE_FALLBACK_BY_LANGUAGE.en;
-  const unifiedTitle = template(
-    resolveTemplateSource(PAYWALL_UNIFIED_TITLE_BY_LANGUAGE, lang),
-    { freeWord: titleHighlightToken }
-  );
+  const unifiedTitle = normalizedHasTrialOffer
+    ? template(resolveTemplateSource(PAYWALL_UNIFIED_TITLE_BY_LANGUAGE, lang), {
+        freeWord: titleHighlightToken,
+      })
+    : resolveTemplateSource(PAYWALL_UNIFIED_TITLE_NO_TRIAL_BY_LANGUAGE, lang);
   const unifiedSubtitle = template(
     resolveTemplateSource(PAYWALL_UNIFIED_SUBTITLE_BY_LANGUAGE, lang),
     {
@@ -1783,24 +1884,35 @@ export const buildPaywallCopy = ({
       percent: copyTokens.percent,
     }
   );
-  const ctaPrimaryUnified =
-    CTA_START_JOURNEY_BY_LANGUAGE[lang] || CTA_START_JOURNEY_BY_LANGUAGE.en;
+  const ctaPrimaryUnified = normalizedHasTrialOffer
+    ? CTA_START_JOURNEY_BY_LANGUAGE[lang] || CTA_START_JOURNEY_BY_LANGUAGE.en
+    : CTA_PRIMARY_REGULAR_BY_LANGUAGE[lang] || CTA_PRIMARY_REGULAR_BY_LANGUAGE.en;
   const ctaPrimaryTrial = ctaPrimaryUnified;
   const ctaPrimaryRegular = CTA_PRIMARY_REGULAR_BY_LANGUAGE[lang] || CTA_PRIMARY_REGULAR_BY_LANGUAGE.en;
   const psychologyLineForPaywall = null;
+  const isLimitReachedHardTrigger = isSaveLimitHardTrigger || isTrialSavesHardTrigger;
+  const shouldUseUnifiedHeroCopy = !isLimitReachedHardTrigger;
+  const resolvedHeaderTitle = shouldUseUnifiedHeroCopy ? unifiedTitle || title : title;
+  const resolvedHeaderSubtitle = shouldUseUnifiedHeroCopy ? unifiedSubtitle || subtitle : subtitle;
+  const savedAmountHighlightToken = String(copyTokens.saved || "").trim();
+  const resolvedTitleHighlightToken = shouldUseUnifiedHeroCopy
+    ? normalizedHasTrialOffer
+      ? titleHighlightToken
+      : ""
+    : savedAmountHighlightToken;
 
   return localizeFallbackStructure({
     badgeLabel: PAYWALL_BADGE_BY_KIND[effectiveKind] || PAYWALL_BADGE_BY_KIND.soft,
     trigger: normalizedTrigger,
-    title: unifiedTitle || title,
-    subtitle: unifiedSubtitle || subtitle,
-    titleHighlightToken,
+    title: resolvedHeaderTitle,
+    subtitle: resolvedHeaderSubtitle,
+    titleHighlightToken: resolvedTitleHighlightToken,
     supportIntroEnabled: isGroupCSupportSoftTrigger && effectiveKind === "soft",
     supportIntroBadge:
       GROUP_C_SUPPORT_INTRO_BADGE_BY_LANGUAGE[lang] || GROUP_C_SUPPORT_INTRO_BADGE_BY_LANGUAGE.en,
-    supportIntroTitle: unifiedTitle || title,
-    supportIntroSavedHighlight: titleHighlightToken,
-    supportIntroSubtitle: unifiedSubtitle || subtitle,
+    supportIntroTitle: resolvedHeaderTitle,
+    supportIntroSavedHighlight: resolvedTitleHighlightToken,
+    supportIntroSubtitle: resolvedHeaderSubtitle,
     supportIntroAuthor:
       GROUP_C_SUPPORT_AUTHOR_BY_LANGUAGE[lang] || GROUP_C_SUPPORT_AUTHOR_BY_LANGUAGE.en,
     supportIntroStatus:

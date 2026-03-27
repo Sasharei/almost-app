@@ -92,6 +92,16 @@ export const PAYWALL_MONTH_SUFFIX_BY_LANGUAGE = {
   zh: "/月",
 };
 
+export const PAYWALL_WEEK_SUFFIX_BY_LANGUAGE = {
+  ru: "/нед",
+  en: "/wk",
+  es: "/sem",
+  fr: "/sem",
+  de: "/Woche",
+  ar: "/أسبوع",
+  zh: "/周",
+};
+
 export const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
   yearly: {
     ru: "Списание раз в год",
