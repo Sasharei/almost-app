@@ -58,6 +58,7 @@ const normalizePaywallLanguage = (value = "en") =>
     .replace(/_/g, "-");
 const isArabicLanguage = (language = "en") => normalizePaywallLanguage(language).startsWith("ar");
 const PAYWALL_SCROLL_TRACK_THRESHOLD = 48;
+const PAYWALL_CLOSE_COOLDOWN_MS = 5000;
 const normalizeWesternDigits = (value) => {
   if (typeof value !== "string" || !value.length) return value;
   return value
@@ -117,6 +118,84 @@ const localizePaywallTextTree = (value, language = "en", visited = null, depth =
     if (localizedChildren === value.props.children) return value;
     return React.cloneElement(value, { ...value.props, children: localizedChildren });
   }
+  if (value && Object.prototype.toString.call(value) === "[object Object]") {
+    const seen = visited || new WeakSet();
+    if (seen.has(value)) {
+      return value;
+    }
+    seen.add(value);
+    let changed = false;
+    const localized = {};
+    Object.keys(value).forEach((key) => {
+      const next = localizePaywallTextTree(value[key], language, seen, depth + 1);
+      if (next !== value[key]) {
+        changed = true;
+      }
+      localized[key] = next;
+    });
+    seen.delete(value);
+    return changed ? localized : value;
+  }
+  return value;
+};
+const localizePaywallStringTree = (value, language = "en", visited = null, depth = 0) => {
+  if (typeof value === "string") {
+    return localizePaywallDigits(value, language);
+  }
+  if (depth >= LOCALIZE_PAYWALL_TREE_MAX_DEPTH) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    const seen = visited || new WeakSet();
+    if (seen.has(value)) {
+      return value;
+    }
+    seen.add(value);
+    let changed = false;
+    const localized = value.map((entry) => {
+      const next = localizePaywallStringTree(entry, language, seen, depth + 1);
+      if (next !== entry) {
+        changed = true;
+      }
+      return next;
+    });
+    seen.delete(value);
+    return changed ? localized : value;
+  }
+  if (React.isValidElement(value) && value.props && "children" in value.props) {
+    const seen = visited || new WeakSet();
+    if (seen.has(value)) {
+      return value;
+    }
+    seen.add(value);
+    const localizedChildren = localizePaywallStringTree(
+      value.props.children,
+      language,
+      seen,
+      depth + 1
+    );
+    seen.delete(value);
+    if (localizedChildren === value.props.children) return value;
+    return React.cloneElement(value, { ...value.props, children: localizedChildren });
+  }
+  if (value && Object.prototype.toString.call(value) === "[object Object]") {
+    const seen = visited || new WeakSet();
+    if (seen.has(value)) {
+      return value;
+    }
+    seen.add(value);
+    let changed = false;
+    const localized = {};
+    Object.keys(value).forEach((key) => {
+      const next = localizePaywallStringTree(value[key], language, seen, depth + 1);
+      if (next !== value[key]) {
+        changed = true;
+      }
+      localized[key] = next;
+    });
+    seen.delete(value);
+    return changed ? localized : value;
+  }
   return value;
 };
 const resolvePaywallCopyLanguage = (language = "en") => {
@@ -132,42 +211,42 @@ const resolvePaywallCopyLanguage = (language = "en") => {
 };
 const SAVE_LIMIT_HEADER_COPY_BY_LANGUAGE = {
   ru: {
-    title: "Лимит сохранений исчерпан только на сегодня.",
-    subtitle: "Лимит на действия сохранения: {{timeLeft}} до полуночи.",
+    title: "Лимит сохранений обновится через {{timeLeft}}.",
+    subtitle: "На сегодня лимит действий сохранения исчерпан.",
   },
   en: {
-    title: "Today's save-action limit is reached.",
-    subtitle: "Save-action limit: {{timeLeft}} until midnight.",
+    title: "Save-action limit resets in {{timeLeft}}.",
+    subtitle: "Today's save-action limit is reached.",
   },
   es: {
-    title: "El límite de guardados de hoy ya se agotó.",
-    subtitle: "Límite de acciones de guardado: {{timeLeft}} hasta medianoche.",
+    title: "El límite se restablece en {{timeLeft}}.",
+    subtitle: "El límite de guardados de hoy ya se agotó.",
   },
   fr: {
-    title: "La limite de sauvegardes d'aujourd'hui est atteinte.",
-    subtitle: "Limite d'actions de sauvegarde : {{timeLeft}} jusqu'à minuit.",
+    title: "La limite se réinitialise dans {{timeLeft}}.",
+    subtitle: "La limite de sauvegardes d'aujourd'hui est atteinte.",
   },
   de: {
-    title: "Das heutige Speicherlimit ist erreicht.",
-    subtitle: "Speicheraktions-Limit: {{timeLeft}} bis Mitternacht.",
+    title: "Limit wird in {{timeLeft}} zurückgesetzt.",
+    subtitle: "Das heutige Speicherlimit ist erreicht.",
   },
   ar: {
-    title: "تم الوصول إلى حد الحفظ لليوم فقط.",
-    subtitle: "حد إجراءات الحفظ: {{timeLeft}} حتى منتصف الليل.",
+    title: "سيُعاد ضبط حد الحفظ بعد {{timeLeft}}.",
+    subtitle: "تم الوصول إلى حد الحفظ لليوم فقط.",
   },
   zh: {
-    title: "今日保存操作额度已用完。",
-    subtitle: "保存操作额度：{{timeLeft}} 后至午夜重置。",
+    title: "保存额度将在 {{timeLeft}} 后重置。",
+    subtitle: "今日保存操作额度已用完。",
   },
 };
 const SAVE_LIMIT_PRO_NOW_BY_LANGUAGE = {
-  ru: { before: "С Pro доступно ", accent: "СЕЙЧАС", after: "" },
-  en: { before: "With Pro available ", accent: "NOW", after: "" },
-  es: { before: "Con Pro disponible ", accent: "AHORA", after: "" },
-  fr: { before: "Avec Pro disponible ", accent: "MAINTENANT", after: "" },
-  de: { before: "Mit Pro verfügbar ", accent: "JETZT", after: "" },
-  ar: { before: "مع Pro متاح ", accent: "الآن", after: "" },
-  zh: { before: "使用 Pro 立即可用 ", accent: "现在", after: "" },
+  ru: { before: "С Premium можно разблокировать прямо ", accent: "СЕЙЧАС", after: "!" },
+  en: { before: "With Premium, unlock right ", accent: "NOW", after: "!" },
+  es: { before: "Con Premium, desbloquea ahora mismo ", accent: "AHORA", after: "!" },
+  fr: { before: "Avec Premium, débloque tout de suite ", accent: "MAINTENANT", after: " !" },
+  de: { before: "Mit Premium jetzt sofort entsperren: ", accent: "JETZT", after: "!" },
+  ar: { before: "مع Premium يمكنك الفتح مباشرة ", accent: "الآن", after: "!" },
+  zh: { before: "使用 Premium 可立即解锁 ", accent: "现在", after: "！" },
 };
 const formatCountdownToMidnight = (timestamp = Date.now()) => {
   const now = new Date(Number(timestamp) || Date.now());
@@ -309,8 +388,8 @@ const DEVELOPER_AVATAR = require("../../assets/paywall/developer_alexandr.jpg");
 const PremiumPaywallModal = ({
   visible = false,
   dismissible = true,
-  copy = null,
-  planCards = [],
+  copy: copyProp = null,
+  planCards: planCardsProp = [],
   purchaseLoadingPlan = null,
   restoring = false,
   onPlanSelect = () => {},
@@ -327,11 +406,13 @@ const PremiumPaywallModal = ({
   safeAreaBottomInset = 0,
   colors,
 }) => {
-  const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCards));
+  const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCardsProp));
   const [selectedComparisonRowId, setSelectedComparisonRowId] = useState(null);
   const [showTransactionAbandonedPopup, setShowTransactionAbandonedPopup] = useState(false);
   const [supportIntroStage, setSupportIntroStage] = useState("plans");
+  const [isCloseCooldownComplete, setIsCloseCooldownComplete] = useState(false);
   const hasTrackedScrollRef = useRef(false);
+  const closeCooldownTimerRef = useRef(null);
   const openProgress = useRef(new Animated.Value(0)).current;
   const ctaPulse = useRef(new Animated.Value(0)).current;
   const abandonedPopupProgress = useRef(new Animated.Value(0)).current;
@@ -364,6 +445,16 @@ const PremiumPaywallModal = ({
   const showSecondaryLegalNotice = !isVeryCompactAndroid;
   const disableAndroidMotion = Platform.OS === "android";
   const normalizedLanguage = normalizePaywallLanguage(language);
+  const copy = useMemo(() => {
+    const localized = localizePaywallStringTree(copyProp, normalizedLanguage);
+    if (localized && typeof localized === "object") return localized;
+    return copyProp || null;
+  }, [copyProp, normalizedLanguage]);
+  const planCards = useMemo(() => {
+    const localized = localizePaywallStringTree(planCardsProp, normalizedLanguage);
+    if (Array.isArray(localized)) return localized;
+    return Array.isArray(planCardsProp) ? planCardsProp : [];
+  }, [normalizedLanguage, planCardsProp]);
   const copyLanguage = resolvePaywallCopyLanguage(normalizedLanguage);
   const isRtlLanguage = isArabicLanguage(normalizedLanguage);
   const normalizedTrigger =
@@ -372,11 +463,17 @@ const PremiumPaywallModal = ({
       : "";
   const isTransactionAbandonedTrigger = normalizedTrigger === "transaction_abandoned";
   const isGroupCSupportTrigger = normalizedTrigger === "group_c_support_after_5_saves";
+  const isDailySaveLimitTrigger =
+    normalizedTrigger === "save_daily_limit_reached" ||
+    normalizedTrigger === "save_daily_limit_blocked";
+  const isSaveLimitReachedTrigger =
+    isDailySaveLimitTrigger ||
+    normalizedTrigger === "trial_10_saves_reached";
   const isNoFreeAccessTrigger =
     normalizedTrigger === "trial_10_saves_reached" ||
     normalizedTrigger === "onboarding_completed_hard_gate";
   const isSupportIntroStageVisible = isGroupCSupportTrigger && supportIntroStage === "intro";
-  const isPaywallDismissible = dismissible && !isSupportIntroStageVisible;
+  const isPaywallDismissible = dismissible && !isSupportIntroStageVisible && isCloseCooldownComplete;
   const shouldShowHeaderMetaChips = !isGroupCSupportTrigger;
   const Text = useCallback(
     ({ style, children, ...props }) => {
@@ -409,6 +506,27 @@ const PremiumPaywallModal = ({
     }
     setSupportIntroStage(isGroupCSupportTrigger ? "intro" : "plans");
   }, [isGroupCSupportTrigger, visible]);
+  useEffect(() => {
+    if (closeCooldownTimerRef.current) {
+      clearTimeout(closeCooldownTimerRef.current);
+      closeCooldownTimerRef.current = null;
+    }
+    if (!visible) {
+      setIsCloseCooldownComplete(false);
+      return;
+    }
+    setIsCloseCooldownComplete(false);
+    closeCooldownTimerRef.current = setTimeout(() => {
+      closeCooldownTimerRef.current = null;
+      setIsCloseCooldownComplete(true);
+    }, PAYWALL_CLOSE_COOLDOWN_MS);
+    return () => {
+      if (closeCooldownTimerRef.current) {
+        clearTimeout(closeCooldownTimerRef.current);
+        closeCooldownTimerRef.current = null;
+      }
+    };
+  }, [visible]);
   useEffect(() => {
     if (!visible || !isSupportIntroStageVisible) {
       supportMessageProgress.setValue(0);
@@ -464,10 +582,50 @@ const PremiumPaywallModal = ({
     );
   }, [comparisonRows, selectedComparisonRowId]);
 
+  const [saveLimitCountdownNow, setSaveLimitCountdownNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!visible || !isDailySaveLimitTrigger) return undefined;
+    setSaveLimitCountdownNow(Date.now());
+    const timer = setInterval(() => {
+      setSaveLimitCountdownNow(Date.now());
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [isDailySaveLimitTrigger, visible]);
+  const saveLimitCountdownLabel = useMemo(
+    () => localizePaywallDigits(formatCountdownToMidnight(saveLimitCountdownNow), normalizedLanguage),
+    [normalizedLanguage, saveLimitCountdownNow]
+  );
+  const saveLimitHeaderCopy = useMemo(() => {
+    if (!isDailySaveLimitTrigger) return null;
+    const fallback = SAVE_LIMIT_HEADER_COPY_BY_LANGUAGE.en;
+    const localizedCopy = SAVE_LIMIT_HEADER_COPY_BY_LANGUAGE[copyLanguage] || fallback;
+    return {
+      title: fillPaywallTemplate(localizedCopy.title, { timeLeft: saveLimitCountdownLabel }),
+      subtitle: fillPaywallTemplate(localizedCopy.subtitle, { timeLeft: saveLimitCountdownLabel }),
+    };
+  }, [copyLanguage, isDailySaveLimitTrigger, saveLimitCountdownLabel]);
+  const saveLimitProNowCopy = useMemo(() => {
+    if (!isDailySaveLimitTrigger) return null;
+    const fallback = SAVE_LIMIT_PRO_NOW_BY_LANGUAGE.en;
+    const localizedCopy = SAVE_LIMIT_PRO_NOW_BY_LANGUAGE[copyLanguage] || fallback;
+    return {
+      before: localizePaywallDigits(localizedCopy.before || fallback.before, normalizedLanguage),
+      accent: localizePaywallDigits(localizedCopy.accent || fallback.accent, normalizedLanguage),
+      after: localizePaywallDigits(localizedCopy.after || fallback.after, normalizedLanguage),
+    };
+  }, [copyLanguage, isDailySaveLimitTrigger, normalizedLanguage]);
   const baseHeaderTitle = localizePaywallDigits(copy?.title || "", normalizedLanguage);
   const baseHeaderSubtitle = localizePaywallDigits(copy?.subtitle || "", normalizedLanguage);
-  const headerTitle = baseHeaderTitle;
-  const headerSubtitle = baseHeaderSubtitle;
+  const resolvedBaseHeaderTitle = localizePaywallDigits(
+    isDailySaveLimitTrigger ? saveLimitHeaderCopy?.title || baseHeaderTitle : baseHeaderTitle,
+    normalizedLanguage
+  );
+  const resolvedBaseHeaderSubtitle = localizePaywallDigits(
+    isDailySaveLimitTrigger ? saveLimitHeaderCopy?.subtitle || baseHeaderSubtitle : baseHeaderSubtitle,
+    normalizedLanguage
+  );
+  const headerTitle = resolvedBaseHeaderTitle;
+  const headerSubtitle = resolvedBaseHeaderSubtitle;
   const showPsychologyChip = !!copy?.psychologyLine && !activeInsightRow;
   const headerTitleHighlightToken = localizePaywallDigits(copy?.titleHighlightToken || "", normalizedLanguage);
   const socialProofLine = localizePaywallDigits(
@@ -491,8 +649,30 @@ const PremiumPaywallModal = ({
   const headerTitleWithExclamation = useMemo(() => {
     const title = String(headerTitle || "").trim();
     if (!title.length) return title;
-    return /[!！؟]$/.test(title) ? title : `${title}!`;
+    return /[.!?…！？؟。]$/.test(title) ? title : `${title}!`;
   }, [headerTitle]);
+  const saveLimitHeaderHighlightStyle = isSaveLimitReachedTrigger
+    ? [
+        styles.headerSavedAmountHighlight,
+        isNativeMobile ? styles.headerSavedAmountHighlightAndroid : null,
+        isCompactAndroid ? styles.headerSavedAmountHighlightCompactAndroid : null,
+        isVeryCompactAndroid ? styles.headerSavedAmountHighlightVeryCompactAndroid : null,
+      ]
+    : null;
+  const saveLimitTimerHighlightStyle = isDailySaveLimitTrigger
+    ? [
+        styles.saveLimitTimerHighlight,
+        isNativeMobile ? styles.saveLimitTimerHighlightAndroid : null,
+        isCompactAndroid ? styles.saveLimitTimerHighlightCompactAndroid : null,
+        isVeryCompactAndroid ? styles.saveLimitTimerHighlightVeryCompactAndroid : null,
+      ]
+    : null;
+  const headerPrimaryHighlightToken = isDailySaveLimitTrigger
+    ? saveLimitCountdownLabel
+    : headerTitleHighlightToken;
+  const headerPrimaryHighlightStyle = isDailySaveLimitTrigger
+    ? saveLimitTimerHighlightStyle
+    : saveLimitHeaderHighlightStyle;
   const headerForecastTitle = localizePaywallDigits(
     SAVINGS_FORECAST_TITLE_BY_LANGUAGE[copyLanguage] ||
       SAVINGS_FORECAST_TITLE_BY_LANGUAGE.en,
@@ -669,6 +849,13 @@ const PremiumPaywallModal = ({
     () => planCards.find((plan) => plan.id === selectedPlanId) || null,
     [planCards, selectedPlanId]
   );
+  const paywallHasAnyTrialPlan = useMemo(
+    () =>
+      planCards.some(
+        (plan) => plan?.available !== false && plan?.hasTrial === true
+      ),
+    [planCards]
+  );
 
   const purchaseDisabled =
     restoring ||
@@ -680,7 +867,10 @@ const PremiumPaywallModal = ({
     selectedPlan?.ctaPriceLabel || selectedPlan?.priceLabel || "",
     normalizedLanguage
   );
-  const selectedPlanTrialNotice = localizePaywallDigits(selectedPlan?.trialNoticeLabel || "", normalizedLanguage);
+  const selectedPlanTrialNotice = localizePaywallDigits(
+    paywallHasAnyTrialPlan ? selectedPlan?.trialNoticeLabel || "" : "",
+    normalizedLanguage
+  );
   const noCommitmentLine = localizePaywallDigits(
     copy?.noCommitmentLine || "No commitment cancel any time",
     normalizedLanguage
@@ -692,7 +882,7 @@ const PremiumPaywallModal = ({
       .toUpperCase()) ||
     (typeof selectedPlanCtaPrice === "string" && (selectedPlanCtaPrice.match(/[A-Z]{3}/) || [])[0]) ||
     "USD";
-  const selectedPlanHasTrial = !!selectedPlan?.hasTrial;
+  const selectedPlanHasTrial = paywallHasAnyTrialPlan && !!selectedPlan?.hasTrial;
   const normalizedSelectedPlanId =
     typeof selectedPlan?.id === "string" ? selectedPlan.id.trim().toLowerCase() : "";
   const isLifetimeSelected = normalizedSelectedPlanId === "lifetime";
@@ -824,7 +1014,7 @@ const PremiumPaywallModal = ({
     normalizedLanguage
   );
   const supportIntroPrimaryCta = localizePaywallDigits(
-    copy?.supportIntroPrimaryCta || "Continue",
+    copy?.supportIntroPrimaryCta || "Support Almost",
     normalizedLanguage
   );
   const supportIntroHint = localizePaywallDigits(
@@ -842,7 +1032,7 @@ const PremiumPaywallModal = ({
   const supportIntroTitleWithExclamation = useMemo(() => {
     const title = String(supportIntroTitle || "").trim();
     if (!title.length) return title;
-    return /[!！؟]$/.test(title) ? title : `${title}!`;
+    return /[.!?…！？؟。]$/.test(title) ? title : `${title}!`;
   }, [supportIntroTitle]);
   const supportIntroHeaderHighlightStyle = [
     styles.supportIntroHeaderBenefitHighlight,
@@ -1145,7 +1335,11 @@ const PremiumPaywallModal = ({
             isVeryCompactAndroid ? styles.headerTitleVeryCompactAndroid : null,
           ]}
         >
-          {renderBenefitHighlight(headerTitleWithExclamation, headerTitleHighlightToken)}
+          {renderBenefitHighlight(
+            headerTitleWithExclamation,
+            headerPrimaryHighlightToken,
+            headerPrimaryHighlightStyle
+          )}
         </Text>
         {!!headerSubtitle && !showPsychologyChip && (
           <Text
@@ -1156,6 +1350,27 @@ const PremiumPaywallModal = ({
             ]}
           >
             {renderNumericHighlights(headerSubtitleWithForecast)}
+          </Text>
+        )}
+        {isDailySaveLimitTrigger && saveLimitProNowCopy && (
+          <Text
+            style={[
+              styles.saveLimitUnlockLine,
+              isCompactAndroid ? styles.saveLimitUnlockLineCompactAndroid : null,
+              isVeryCompactAndroid ? styles.saveLimitUnlockLineVeryCompactAndroid : null,
+            ]}
+          >
+            {saveLimitProNowCopy.before}
+            <Text
+              style={[
+                styles.saveLimitUnlockNow,
+                isCompactAndroid ? styles.saveLimitUnlockNowCompactAndroid : null,
+                isVeryCompactAndroid ? styles.saveLimitUnlockNowVeryCompactAndroid : null,
+              ]}
+            >
+              {saveLimitProNowCopy.accent}
+            </Text>
+            {saveLimitProNowCopy.after}
           </Text>
         )}
         {!!savingsForecastPoints.length && !showPsychologyChip && (
@@ -1504,19 +1719,26 @@ const PremiumPaywallModal = ({
               typeof plan.topBadgeKind === "string" && plan.topBadgeKind.trim().length
                 ? plan.topBadgeKind.trim().toLowerCase()
                 : "";
-            const showExternalYearlySaveBadge = isYearlyPlan && !unavailable && !!topBadgeLabel;
+            const normalizedTopBadgeKind =
+              !paywallHasAnyTrialPlan && topBadgeKind === "trial" ? "" : topBadgeKind;
+            const showExternalYearlySaveBadge =
+              isYearlyPlan && !unavailable && !!topBadgeLabel && normalizedTopBadgeKind !== "trial";
             const inlineTopBadgeLabel = showExternalYearlySaveBadge ? "" : topBadgeLabel;
-            const inlineTopBadgeKind = showExternalYearlySaveBadge ? "" : topBadgeKind;
-            const primaryBadgeLabel = unavailable
+            const inlineTopBadgeKind = showExternalYearlySaveBadge ? "" : normalizedTopBadgeKind;
+            let primaryBadgeLabel = unavailable
               ? copy.planUnavailableLabel || "Unavailable"
               : typeof plan.badge === "string" && plan.badge.trim().length
               ? plan.badge.trim()
               : "";
-            const primaryBadgeKind = unavailable
+            let primaryBadgeKind = unavailable
               ? "unavailable"
               : typeof plan.badgeKind === "string" && plan.badgeKind.trim().length
               ? plan.badgeKind.trim().toLowerCase()
               : "";
+            if (!paywallHasAnyTrialPlan && primaryBadgeKind === "trial") {
+              primaryBadgeKind = "";
+              primaryBadgeLabel = "";
+            }
             const resolveBadgeTone = (kind = "", fallbackYearlyStyle = false) => {
               if (kind === "save") {
                 return {
@@ -1526,7 +1748,15 @@ const PremiumPaywallModal = ({
                   textColor: selected ? "#FFFFFF" : "#137A42",
                 };
               }
-              if (kind === "trial" || kind === "unavailable") {
+              if (kind === "trial") {
+                return {
+                  backgroundColor: selected ? "#18B45B" : "rgba(24,180,91,0.18)",
+                  borderWidth: 1,
+                  borderColor: "rgba(24,180,91,0.4)",
+                  textColor: selected ? "#FFFFFF" : "#137A42",
+                };
+              }
+              if (kind === "unavailable") {
                 return {
                   backgroundColor: "rgba(11,22,48,0.08)",
                   borderWidth: 0,
@@ -2184,20 +2414,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     minHeight: 40,
+    marginTop: 6,
   },
   headerTopRowAndroid: {
     minHeight: 38,
+    marginTop: 5,
   },
   headerTopRowCompactAndroid: {
     minHeight: 36,
+    marginTop: 4,
   },
   headerTopRowVeryCompactAndroid: {
     minHeight: 34,
+    marginTop: 3,
   },
   closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.12)",
@@ -2206,40 +2440,40 @@ const styles = StyleSheet.create({
   },
   closeButtonAndroid: {},
   closeButtonCompactAndroid: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
   },
   closeButtonVeryCompactAndroid: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
   },
   closeButtonText: {
     color: "#FFFFFF",
-    fontSize: 22,
+    fontSize: 9,
     fontWeight: "500",
-    lineHeight: 23,
+    lineHeight: 10,
   },
   closeButtonTextCompactAndroid: {
-    fontSize: 19,
-    lineHeight: 20,
+    fontSize: 8,
+    lineHeight: 9,
   },
   headerTopPlaceholder: {
-    width: 40,
-    height: 40,
+    width: 20,
+    height: 20,
   },
   headerTopPlaceholderAndroid: {
-    width: 40,
-    height: 40,
+    width: 20,
+    height: 20,
   },
   headerTopPlaceholderCompactAndroid: {
-    width: 36,
-    height: 36,
+    width: 18,
+    height: 18,
   },
   headerTopPlaceholderVeryCompactAndroid: {
-    width: 34,
-    height: 34,
+    width: 16,
+    height: 16,
   },
   headerBadge: {
     borderRadius: 999,
@@ -2385,6 +2619,42 @@ const styles = StyleSheet.create({
     color: "#8AF3BC",
     fontWeight: "900",
   },
+  headerSavedAmountHighlight: {
+    color: "#59E58A",
+    fontSize: 35,
+    lineHeight: 40,
+    fontWeight: "900",
+  },
+  headerSavedAmountHighlightAndroid: {
+    fontSize: 32,
+    lineHeight: 36,
+  },
+  headerSavedAmountHighlightCompactAndroid: {
+    fontSize: 29,
+    lineHeight: 33,
+  },
+  headerSavedAmountHighlightVeryCompactAndroid: {
+    fontSize: 26,
+    lineHeight: 30,
+  },
+  saveLimitTimerHighlight: {
+    color: "#FF5E69",
+    fontSize: 35,
+    lineHeight: 40,
+    fontWeight: "900",
+  },
+  saveLimitTimerHighlightAndroid: {
+    fontSize: 32,
+    lineHeight: 36,
+  },
+  saveLimitTimerHighlightCompactAndroid: {
+    fontSize: 29,
+    lineHeight: 33,
+  },
+  saveLimitTimerHighlightVeryCompactAndroid: {
+    fontSize: 26,
+    lineHeight: 30,
+  },
   supportIntroHeaderBenefitHighlight: {
     color: "#61F29C",
     fontSize: 33,
@@ -2429,6 +2699,40 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 12,
     lineHeight: 16,
+  },
+  saveLimitUnlockLine: {
+    marginTop: 8,
+    width: "100%",
+    textAlign: "center",
+    color: "rgba(236,245,255,0.92)",
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "700",
+    maxWidth: "95%",
+  },
+  saveLimitUnlockLineCompactAndroid: {
+    marginTop: 7,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  saveLimitUnlockLineVeryCompactAndroid: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  saveLimitUnlockNow: {
+    color: "#59E58A",
+    fontSize: 22,
+    lineHeight: 26,
+    fontWeight: "900",
+  },
+  saveLimitUnlockNowCompactAndroid: {
+    fontSize: 20,
+    lineHeight: 24,
+  },
+  saveLimitUnlockNowVeryCompactAndroid: {
+    fontSize: 18,
+    lineHeight: 22,
   },
   headerForecastCard: {
     marginTop: 9,

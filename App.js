@@ -208,6 +208,7 @@ import {
   PAYWALL_EQUIVALENT_SOURCE_IDS,
   PAYWALL_YEAR_SUFFIX_BY_LANGUAGE,
   PAYWALL_MONTH_SUFFIX_BY_LANGUAGE,
+  PAYWALL_WEEK_SUFFIX_BY_LANGUAGE,
   PAYWALL_BILLING_LABEL_BY_LANGUAGE,
   PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE,
   PAYWALL_PERIOD_UNIT_TO_DAYS,
@@ -930,7 +931,13 @@ const MONETIZATION_EXPERIMENT_DEFAULT_CONFIG = Object.freeze({
   trialSaveLimit: 10,
 });
 const MONETIZATION_GROUP_C_SOFT_PAYWALL_TRIGGER = "group_c_support_after_5_saves";
-const MONETIZATION_EXPERIMENT_GROUP_C_SOFT_PAYWALL_SAVE_LIMIT = 5;
+const MONETIZATION_EXPERIMENT_GROUP_C_FIRST_ACTION_PAYWALL_ACTION_LIMIT = 1;
+const MONETIZATION_EXPERIMENT_GROUP_C_SUPPORT_PAYWALL_ACTION_LIMIT = 5;
+const MONETIZATION_DAILY_SOFT_PAYWALL_TRIGGER = "daily_first_save_or_spend_after_modals";
+const MONETIZATION_RECURRING_SOFT_PAYWALL_TRIGGERS = new Set([
+  MONETIZATION_GROUP_C_SOFT_PAYWALL_TRIGGER,
+  MONETIZATION_DAILY_SOFT_PAYWALL_TRIGGER,
+]);
 const MONETIZATION_HARD_LOCK_CLOSE_ACTIONS = new Set([
   "purchase_success",
   "restore_success",
@@ -1232,6 +1239,164 @@ const resolveTrialCancellationMetaFromCustomerInfo = (customerInfo = null) => {
     };
   }
   return null;
+};
+const formatMonetizationDateIso = (timestampMs = 0) => {
+  const normalizedMs = Number(timestampMs) || 0;
+  if (!Number.isFinite(normalizedMs) || normalizedMs <= 0) return "";
+  try {
+    return new Date(normalizedMs).toISOString();
+  } catch (error) {
+    return "";
+  }
+};
+const resolveSubscriptionLifecycleEntry = (productIdentifier = "", entry = null, requestDateMs = Date.now()) => {
+  if (!entry || typeof entry !== "object") return null;
+  const productId = resolveNonEmptyString(
+    productIdentifier ||
+      entry?.productIdentifier ||
+      entry?.productId ||
+      entry?.product_id ||
+      ""
+  );
+  if (!productId) return null;
+  const periodType = resolveEntitlementPeriodType(entry);
+  const latestPurchaseDateMs = parseMonetizationDateMs(
+    entry?.purchaseDate ||
+      entry?.purchase_date ||
+      entry?.latestPurchaseDate ||
+      entry?.latest_purchase_date ||
+      ""
+  );
+  const expirationDateMs = parseMonetizationDateMs(
+    entry?.expirationDate ||
+      entry?.expiration_date ||
+      entry?.expiresDate ||
+      entry?.expires_date ||
+      ""
+  );
+  const unsubscribeDetectedAtMs = parseMonetizationDateMs(
+    entry?.unsubscribeDetectedAt || entry?.unsubscribe_detected_at || ""
+  );
+  const billingIssueDetectedAtMs = parseMonetizationDateMs(
+    entry?.billingIssuesDetectedAt ||
+      entry?.billing_issues_detected_at ||
+      entry?.billingIssueDetectedAt ||
+      entry?.billing_issue_detected_at ||
+      ""
+  );
+  const explicitIsActive = parseMonetizationBoolean(
+    entry?.isActive ?? entry?.is_active ?? entry?.active
+  );
+  const willRenew = parseMonetizationBoolean(
+    entry?.willRenew ??
+      entry?.will_renew ??
+      entry?.isAutoRenewing ??
+      entry?.is_auto_renewing
+  );
+  const plan = resolvePlanIdFromProductIdentifier(productId) || "unknown";
+  const isLifetime = plan === "lifetime";
+  const isTrial = isTrialPeriodType(periodType);
+  const isSubscription = !isLifetime;
+  let isActive = explicitIsActive;
+  if (isActive === null) {
+    if (isLifetime) {
+      isActive = true;
+    } else if (expirationDateMs > 0) {
+      isActive = requestDateMs < expirationDateMs;
+    } else {
+      isActive = true;
+    }
+  }
+  return {
+    productId,
+    plan,
+    periodType: periodType || "unknown",
+    isTrial,
+    isSubscription,
+    isActive: !!isActive,
+    willRenew,
+    latestPurchaseDateMs,
+    latestPurchaseDate: formatMonetizationDateIso(latestPurchaseDateMs),
+    expirationDateMs,
+    expirationDate: formatMonetizationDateIso(expirationDateMs),
+    unsubscribeDetectedAtMs,
+    unsubscribeDetectedAt: formatMonetizationDateIso(unsubscribeDetectedAtMs),
+    billingIssueDetectedAtMs,
+    billingIssueDetectedAt: formatMonetizationDateIso(billingIssueDetectedAtMs),
+  };
+};
+const resolveNonSubscriptionTransactionEntry = (transaction = null) => {
+  if (!transaction || typeof transaction !== "object") return null;
+  const productId = resolveNonEmptyString(
+    transaction?.productIdentifier || transaction?.productId || transaction?.product_id || ""
+  );
+  const transactionId = resolveNonEmptyString(
+    transaction?.transactionIdentifier ||
+      transaction?.transactionId ||
+      transaction?.id ||
+      transaction?.identifier ||
+      ""
+  );
+  const purchaseDateMs = parseMonetizationDateMs(
+    transaction?.purchaseDate ||
+      transaction?.purchase_date ||
+      transaction?.transactionDate ||
+      transaction?.transaction_date ||
+      ""
+  );
+  const fallbackKey = `${normalizeProductIdentifier(productId || "unknown")}|${purchaseDateMs || 0}`;
+  const key = transactionId || fallbackKey;
+  if (!key) return null;
+  return {
+    key,
+    productId: productId || "unknown",
+    plan: resolvePlanIdFromProductIdentifier(productId) || "unknown",
+    transactionId: transactionId || "",
+    purchaseDateMs,
+    purchaseDate: formatMonetizationDateIso(purchaseDateMs),
+  };
+};
+const buildPremiumLifecycleSnapshot = (customerInfo = null) => {
+  if (!customerInfo || typeof customerInfo !== "object") return null;
+  const requestDateMs =
+    parseMonetizationDateMs(customerInfo?.requestDate || customerInfo?.request_date || "") ||
+    Date.now();
+  const subscriptionsByProductIdentifier =
+    customerInfo?.subscriptionsByProductIdentifier &&
+    typeof customerInfo.subscriptionsByProductIdentifier === "object"
+      ? customerInfo.subscriptionsByProductIdentifier
+      : null;
+  const subscriptions = {};
+  if (subscriptionsByProductIdentifier) {
+    Object.entries(subscriptionsByProductIdentifier).forEach(([productIdentifier, entry]) => {
+      const normalizedEntry = resolveSubscriptionLifecycleEntry(
+        productIdentifier,
+        entry,
+        requestDateMs
+      );
+      if (!normalizedEntry) return;
+      subscriptions[normalizedEntry.productId] = normalizedEntry;
+    });
+  }
+  const nonSubscriptionTransactions = {};
+  const rawNonSubscriptionTransactions = Array.isArray(customerInfo?.nonSubscriptionTransactions)
+    ? customerInfo.nonSubscriptionTransactions
+    : [];
+  rawNonSubscriptionTransactions.forEach((transaction) => {
+    const normalizedEntry = resolveNonSubscriptionTransactionEntry(transaction);
+    if (!normalizedEntry) return;
+    nonSubscriptionTransactions[normalizedEntry.key] = normalizedEntry;
+  });
+  return {
+    requestDateMs,
+    requestDate: formatMonetizationDateIso(requestDateMs),
+    isPremium: isPremiumFromCustomerInfo(customerInfo),
+    activePremiumProductId: resolveNonEmptyString(
+      resolvePremiumProductIdentifier({ customerInfo })
+    ),
+    subscriptions,
+    nonSubscriptionTransactions,
+  };
 };
 const resolvePlanIdFromPackage = (pkg) => {
   const packageType = typeof pkg?.packageType === "string" ? pkg.packageType : "";
@@ -1698,37 +1863,7 @@ const pickClosestTemptationEquivalent = ({
   });
   return bestCandidate;
 };
-const buildTemptationEquivalentLine = ({
-  planId = "monthly",
-  amountLocal = 0,
-  currencyCode = DEFAULT_PROFILE.currency,
-  language = "en",
-  preferredEquivalent = null,
-} = {}) => {
-  if (!Number.isFinite(amountLocal) || amountLocal <= 0) return null;
-  const lang = resolveMonetizationLanguage(language);
-  const planKey =
-    planId === "yearly" || planId === "lifetime" || planId === "monthly" ? planId : "monthly";
-  const matched = pickClosestTemptationEquivalent({
-    targetLocal: amountLocal,
-    currencyCode,
-    preferCoffee: planKey === "monthly",
-    excludeCoffee: planKey !== "monthly",
-    preferredEquivalent,
-  });
-  if (!matched) return null;
-  const template =
-    PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE[lang]?.[planKey] ||
-    PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE.en.monthly;
-  const title = resolveLanguageMapValue(matched.title, lang) || matched.title?.en || "temptation";
-  return localizeFallbackTextByLanguage(
-    template
-    .replace("{{emoji}}", matched.emoji || "💸")
-    .replace("{{count}}", formatEquivalentUnits(matched.units, lang))
-    .replace("{{item}}", title),
-    lang
-  );
-};
+const buildTemptationEquivalentLine = () => null;
 const buildPaywallSaveBadge = ({ percent = 0, language = "en" } = {}) => {
   const normalizedPercent = Math.max(1, Math.round(Number(percent) || 0));
   const lang = resolveMonetizationLanguage(language);
@@ -2890,6 +3025,21 @@ const HealthRewardTokens = ({
 const INITIAL_DECISION_STATS = {
   resolvedToWishes: 0,
   resolvedToDeclines: 0,
+};
+const FIRST_SESSION_DURATION_THRESHOLD_MS = 15000;
+const FIRST_SESSION_DURATION_BUCKETS = {
+  LT_15_SEC: "lt_15_sec",
+  GT_15_SEC: "gt_15_sec",
+};
+const normalizeFirstSessionDurationBucket = (value) => {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (
+    normalized === FIRST_SESSION_DURATION_BUCKETS.LT_15_SEC ||
+    normalized === FIRST_SESSION_DURATION_BUCKETS.GT_15_SEC
+  ) {
+    return normalized;
+  }
+  return "";
 };
 
 const MOOD_IDS = {
@@ -7079,6 +7229,20 @@ const createCustomHabitTemptation = (customSpend, fallbackCurrency = DEFAULT_PRO
     frequencyCustom = { ...DEFAULT_CUSTOM_FREQUENCY };
   }
   const frequencyIntervalMs = frequency === "custom" ? getCustomFrequencyIntervalMs(frequencyCustom) : null;
+  const reminderTime =
+    normalizeFrequencyReminderTime({
+      hour: customSpend?.frequencyReminderHour,
+      minute: customSpend?.frequencyReminderMinute,
+    }) || {
+      hour: DEFAULT_FREQUENCY_REMINDER_HOUR,
+      minute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
+    };
+  const weeklyDays = normalizeFrequencyWeeklyDays(
+    customSpend?.frequencyWeeklyDays ?? customSpend?.frequencyWeeklyDay
+  ) || [...DEFAULT_FREQUENCY_WEEKLY_DAYS];
+  const monthlyDays = normalizeFrequencyMonthlyDays(
+    customSpend?.frequencyMonthlyDays ?? customSpend?.frequencyMonthlyDay
+  ) || [...DEFAULT_FREQUENCY_MONTHLY_DAYS];
   const resolvedTitle = customSpend?.title;
   const title =
     resolvedTitle && resolvedTitle.trim().length
@@ -7105,6 +7269,13 @@ const createCustomHabitTemptation = (customSpend, fallbackCurrency = DEFAULT_PRO
     frequency: frequency || null,
     frequencyCustom: frequency === "custom" ? frequencyCustom || null : null,
     frequencyIntervalMs: frequency === "custom" ? frequencyIntervalMs || null : null,
+    frequencyReminderHour: reminderTime.hour,
+    frequencyReminderMinute: reminderTime.minute,
+    frequencyWeeklyDay: weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY,
+    frequencyMonthlyDay: monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY,
+    frequencyWeeklyDays: weeklyDays,
+    frequencyMonthlyDays: monthlyDays,
+    frequencyReminderManualConfigured: customSpend?.frequencyReminderManualConfigured === true,
     title: {
       ru: resolvedTitle || CUSTOM_HABIT_FALLBACK_TITLES.ru,
       en: title || CUSTOM_HABIT_FALLBACK_TITLES.en,
@@ -7233,8 +7404,6 @@ const mergeInteractionStatMaps = (base = {}, incoming = {}) => {
     const merged = { ...current };
     const statsReminderHour = Number(stats.frequencyReminderHour);
     const statsReminderMinute = Number(stats.frequencyReminderMinute);
-    const statsWeeklyDay = Number(stats.frequencyWeeklyDay);
-    const statsMonthlyDay = Number(stats.frequencyMonthlyDay);
     const normalizedReminderHour =
       Number.isFinite(statsReminderHour) && statsReminderHour >= 0 && statsReminderHour <= 23
         ? Math.round(statsReminderHour)
@@ -7243,8 +7412,14 @@ const mergeInteractionStatMaps = (base = {}, incoming = {}) => {
       Number.isFinite(statsReminderMinute) && statsReminderMinute >= 0 && statsReminderMinute <= 59
         ? Math.round(statsReminderMinute)
         : null;
-    const normalizedWeeklyDay = normalizeFrequencyWeeklyDay(statsWeeklyDay);
-    const normalizedMonthlyDay = normalizeFrequencyMonthlyDay(statsMonthlyDay);
+    const normalizedWeeklyDays = normalizeFrequencyWeeklyDays(
+      stats.frequencyWeeklyDays ?? stats.frequencyWeeklyDay
+    );
+    const normalizedMonthlyDays = normalizeFrequencyMonthlyDays(
+      stats.frequencyMonthlyDays ?? stats.frequencyMonthlyDay
+    );
+    const normalizedWeeklyDay = normalizedWeeklyDays?.[0] ?? null;
+    const normalizedMonthlyDay = normalizedMonthlyDays?.[0] ?? null;
     merged.saveCount = (current.saveCount || 0) + (stats.saveCount || 0);
     merged.spendCount = (current.spendCount || 0) + (stats.spendCount || 0);
     merged.lastInteractionAt = Math.max(current.lastInteractionAt || 0, stats.lastInteractionAt || 0);
@@ -7277,6 +7452,14 @@ const mergeInteractionStatMaps = (base = {}, incoming = {}) => {
         normalizedReminderMinute ?? merged.frequencyReminderMinute ?? null;
       merged.frequencyWeeklyDay = normalizedWeeklyDay ?? merged.frequencyWeeklyDay ?? null;
       merged.frequencyMonthlyDay = normalizedMonthlyDay ?? merged.frequencyMonthlyDay ?? null;
+      merged.frequencyWeeklyDays =
+        normalizedWeeklyDays ??
+        normalizeFrequencyWeeklyDays(merged.frequencyWeeklyDays ?? merged.frequencyWeeklyDay) ??
+        [];
+      merged.frequencyMonthlyDays =
+        normalizedMonthlyDays ??
+        normalizeFrequencyMonthlyDays(merged.frequencyMonthlyDays ?? merged.frequencyMonthlyDay) ??
+        [];
       merged.frequencyReminderPromptShown =
         stats.frequencyReminderPromptShown === true ||
         merged.frequencyReminderPromptShown === true;
@@ -7319,6 +7502,32 @@ const mergeInteractionStatMaps = (base = {}, incoming = {}) => {
     }
     if (merged.frequencyMonthlyDay == null && Number.isFinite(normalizedMonthlyDay)) {
       merged.frequencyMonthlyDay = normalizedMonthlyDay;
+    }
+    if (!Array.isArray(merged.frequencyWeeklyDays) || !merged.frequencyWeeklyDays.length) {
+      merged.frequencyWeeklyDays =
+        normalizedWeeklyDays ??
+        normalizeFrequencyWeeklyDays(merged.frequencyWeeklyDays ?? merged.frequencyWeeklyDay) ??
+        [];
+    }
+    if (!Array.isArray(merged.frequencyMonthlyDays) || !merged.frequencyMonthlyDays.length) {
+      merged.frequencyMonthlyDays =
+        normalizedMonthlyDays ??
+        normalizeFrequencyMonthlyDays(merged.frequencyMonthlyDays ?? merged.frequencyMonthlyDay) ??
+        [];
+    }
+    if (
+      merged.frequencyWeeklyDay == null &&
+      Array.isArray(merged.frequencyWeeklyDays) &&
+      merged.frequencyWeeklyDays.length
+    ) {
+      merged.frequencyWeeklyDay = merged.frequencyWeeklyDays[0];
+    }
+    if (
+      merged.frequencyMonthlyDay == null &&
+      Array.isArray(merged.frequencyMonthlyDays) &&
+      merged.frequencyMonthlyDays.length
+    ) {
+      merged.frequencyMonthlyDay = merged.frequencyMonthlyDays[0];
     }
     if (stats.frequencyReminderPromptShown === true) {
       merged.frequencyReminderPromptShown = true;
@@ -7436,9 +7645,12 @@ const DEFAULT_FREQUENCY_REMINDER_HOUR = 10;
 const DEFAULT_FREQUENCY_REMINDER_MINUTE = 0;
 const DEFAULT_FREQUENCY_WEEKLY_DAY = 1;
 const DEFAULT_FREQUENCY_MONTHLY_DAY = 1;
+const DEFAULT_FREQUENCY_WEEKLY_DAYS = [DEFAULT_FREQUENCY_WEEKLY_DAY];
+const DEFAULT_FREQUENCY_MONTHLY_DAYS = [DEFAULT_FREQUENCY_MONTHLY_DAY];
 const TIME_WHEEL_ITEM_HEIGHT = 36;
 const TIME_WHEEL_VISIBLE_ITEMS = 5;
 const TIME_WHEEL_PADDING = ((TIME_WHEEL_VISIBLE_ITEMS - 1) / 2) * TIME_WHEEL_ITEM_HEIGHT;
+const TIME_WHEEL_LOOP_COPIES = 9;
 const HOUR_WHEEL_VALUES = Array.from({ length: 24 }, (_, idx) => idx);
 const MINUTE_WHEEL_VALUES = Array.from({ length: 60 }, (_, idx) => idx);
 const MONTHLY_DAY_OPTIONS = Array.from({ length: 31 }, (_, idx) => idx + 1);
@@ -7487,6 +7699,59 @@ const normalizeFrequencyMonthlyDay = (value) => {
   if (rounded < 1 || rounded > 31) return null;
   return rounded;
 };
+const normalizeDayValueArray = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized.length) return [];
+    if (normalized.includes(",")) {
+      return normalized
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    }
+  }
+  return [value];
+};
+const normalizeFrequencyWeeklyDays = (value) => {
+  const list = normalizeDayValueArray(value);
+  const unique = new Set();
+  list.forEach((entry) => {
+    const normalized = normalizeFrequencyWeeklyDay(entry);
+    if (normalized != null) {
+      unique.add(normalized);
+    }
+  });
+  if (!unique.size) return null;
+  const orderMap = WEEKDAY_SELECTOR_ORDER.reduce((acc, day, index) => {
+    acc[day] = index;
+    return acc;
+  }, {});
+  return Array.from(unique).sort((a, b) => (orderMap[a] ?? a) - (orderMap[b] ?? b));
+};
+const normalizeFrequencyMonthlyDays = (value) => {
+  const list = normalizeDayValueArray(value);
+  const unique = new Set();
+  list.forEach((entry) => {
+    const normalized = normalizeFrequencyMonthlyDay(entry);
+    if (normalized != null) {
+      unique.add(normalized);
+    }
+  });
+  if (!unique.size) return null;
+  return Array.from(unique).sort((a, b) => a - b);
+};
+const areNumberArraysEqual = (left = [], right = []) => {
+  if (left === right) return true;
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (Number(left[index]) !== Number(right[index])) {
+      return false;
+    }
+  }
+  return true;
+};
 const resolveEntryReminderTime = (entry = null) =>
   normalizeFrequencyReminderTime({
     hour: entry?.frequencyReminderHour,
@@ -7495,10 +7760,14 @@ const resolveEntryReminderTime = (entry = null) =>
     hour: DEFAULT_FREQUENCY_REMINDER_HOUR,
     minute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
   };
-const resolveEntryWeeklyDay = (entry = null) =>
-  normalizeFrequencyWeeklyDay(entry?.frequencyWeeklyDay) ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
-const resolveEntryMonthlyDay = (entry = null) =>
-  normalizeFrequencyMonthlyDay(entry?.frequencyMonthlyDay) ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
+const resolveEntryWeeklyDays = (entry = null) =>
+  normalizeFrequencyWeeklyDays(entry?.frequencyWeeklyDays ?? entry?.frequencyWeeklyDay) || [
+    ...DEFAULT_FREQUENCY_WEEKLY_DAYS,
+  ];
+const resolveEntryMonthlyDays = (entry = null) =>
+  normalizeFrequencyMonthlyDays(entry?.frequencyMonthlyDays ?? entry?.frequencyMonthlyDay) || [
+    ...DEFAULT_FREQUENCY_MONTHLY_DAYS,
+  ];
 const formatReminderTimeLabel = (hour = 0, minute = 0) =>
   `${String(Math.max(0, Math.min(23, Number(hour) || 0))).padStart(2, "0")}:${String(
     Math.max(0, Math.min(59, Number(minute) || 0))
@@ -7539,6 +7808,8 @@ const buildNextCheckAtForFrequency = ({
   reminderMinute = DEFAULT_FREQUENCY_REMINDER_MINUTE,
   weeklyDay = DEFAULT_FREQUENCY_WEEKLY_DAY,
   monthlyDay = DEFAULT_FREQUENCY_MONTHLY_DAY,
+  weeklyDays = null,
+  monthlyDays = null,
 } = {}) => {
   if (!Number.isFinite(fromTimestamp) || fromTimestamp <= 0) return null;
   const reminderTime =
@@ -7550,32 +7821,59 @@ const buildNextCheckAtForFrequency = ({
   const startDate = new Date(fromTimestamp);
   if (Number.isNaN(startDate.getTime())) return null;
   if (normalizedFrequency === "weekly") {
-    const targetDay = normalizeFrequencyWeeklyDay(weeklyDay) ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
+    const targetDays =
+      normalizeFrequencyWeeklyDays(weeklyDays ?? weeklyDay) || [...DEFAULT_FREQUENCY_WEEKLY_DAYS];
     const candidate = new Date(startDate);
     candidate.setHours(reminderTime.hour, reminderTime.minute, 0, 0);
     const currentDay = candidate.getDay();
-    let deltaDays = (targetDay - currentDay + 7) % 7;
-    if (deltaDays === 0 && candidate.getTime() <= fromTimestamp) {
-      deltaDays = 7;
-    }
-    candidate.setDate(candidate.getDate() + deltaDays);
-    const candidateTs = candidate.getTime();
-    return Number.isFinite(candidateTs) && candidateTs > fromTimestamp ? candidateTs : null;
+    let bestTimestamp = null;
+    targetDays.forEach((targetDay) => {
+      let deltaDays = (targetDay - currentDay + 7) % 7;
+      if (deltaDays === 0 && candidate.getTime() <= fromTimestamp) {
+        deltaDays = 7;
+      }
+      const dayCandidate = new Date(candidate);
+      dayCandidate.setDate(dayCandidate.getDate() + deltaDays);
+      const candidateTs = dayCandidate.getTime();
+      if (!Number.isFinite(candidateTs) || candidateTs <= fromTimestamp) return;
+      if (!Number.isFinite(bestTimestamp) || candidateTs < bestTimestamp) {
+        bestTimestamp = candidateTs;
+      }
+    });
+    return Number.isFinite(bestTimestamp) ? bestTimestamp : null;
   }
   if (normalizedFrequency === "monthly") {
-    const targetDay =
-      normalizeFrequencyMonthlyDay(monthlyDay) ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
+    const targetDays =
+      normalizeFrequencyMonthlyDays(monthlyDays ?? monthlyDay) || [...DEFAULT_FREQUENCY_MONTHLY_DAYS];
     const candidate = new Date(startDate);
     let guard = 0;
     while (guard < 24) {
       const year = candidate.getFullYear();
       const month = candidate.getMonth();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
-      const clampedDay = Math.min(targetDay, daysInMonth);
-      const monthCandidate = new Date(year, month, clampedDay, reminderTime.hour, reminderTime.minute, 0, 0);
-      const monthTs = monthCandidate.getTime();
-      if (Number.isFinite(monthTs) && monthTs > fromTimestamp) {
-        return monthTs;
+      let monthBestTimestamp = null;
+      const monthDaySet = new Set();
+      targetDays.forEach((targetDay) => {
+        const clampedDay = Math.min(targetDay, daysInMonth);
+        if (monthDaySet.has(clampedDay)) return;
+        monthDaySet.add(clampedDay);
+        const monthCandidate = new Date(
+          year,
+          month,
+          clampedDay,
+          reminderTime.hour,
+          reminderTime.minute,
+          0,
+          0
+        );
+        const monthTs = monthCandidate.getTime();
+        if (!Number.isFinite(monthTs) || monthTs <= fromTimestamp) return;
+        if (!Number.isFinite(monthBestTimestamp) || monthTs < monthBestTimestamp) {
+          monthBestTimestamp = monthTs;
+        }
+      });
+      if (Number.isFinite(monthBestTimestamp)) {
+        return monthBestTimestamp;
       }
       candidate.setMonth(candidate.getMonth() + 1, 1);
       guard += 1;
@@ -9774,6 +10072,8 @@ function TemptationCardComponent({
   budgetAlertText = null,
   showSavedCoachMark = false,
   onSavedCoachMarkAction = null,
+  showAmountSliderConfirmCoach = false,
+  onAmountSliderConfirmCoachComplete = null,
   isDailyChallengeTarget = false,
   locked = false,
   lockedLabel = "",
@@ -10244,6 +10544,8 @@ function TemptationCardComponent({
     : 0;
   const amountSliderAccent =
     amountSliderAction === "spend" ? SPEND_ACTION_COLOR : SAVE_ACTION_COLOR;
+  const amountSliderConfirmActionLabel =
+    amountSliderAction === "spend" ? t("spendAction") : t("saveAction");
   const amountSliderAccentSoft = colorWithAlpha(
     amountSliderAccent,
     isDarkTheme ? 0.28 : 0.22
@@ -10551,6 +10853,7 @@ function TemptationCardComponent({
         return;
       }
       triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+      onAmountSliderConfirmCoachComplete?.();
       // Keep card-press suppressed longer so iOS doesn't reopen the edit sheet
       // on delayed responder/bubble events after save/spend confirmation.
       suppressCardPressUntilRef.current = Date.now() + 1200;
@@ -10564,6 +10867,7 @@ function TemptationCardComponent({
       amountSliderMinUSD,
       item,
       onAction,
+      onAmountSliderConfirmCoachComplete,
       playSound,
     ]
   );
@@ -10658,11 +10962,6 @@ function TemptationCardComponent({
       closeAmountSlider();
       return;
     }
-    // Keep tutorial cards in action mode only; opening the edit sheet here
-    // can leave an invisible interaction blocker on iOS after quick taps.
-    if (showSavedCoachMark) {
-      return;
-    }
     onToggleEdit?.(item);
   }, [
     amountSliderVisible,
@@ -10671,7 +10970,6 @@ function TemptationCardComponent({
     item,
     onLockedPress,
     onToggleEdit,
-    showSavedCoachMark,
   ]);
 
   return (
@@ -11102,6 +11400,21 @@ function TemptationCardComponent({
               {amountSliderMaxLabel}
             </Text>
           </View>
+          {showAmountSliderConfirmCoach && (
+            <View
+              style={[
+                styles.temptationAmountConfirmHint,
+                {
+                  backgroundColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.2 : 0.1),
+                  borderColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.55 : 0.3),
+                },
+              ]}
+            >
+              <Text style={[styles.temptationAmountConfirmHintText, { color: amountSliderAccent }]}>
+                {t("amountSliderConfirmHint", { action: amountSliderConfirmActionLabel })}
+              </Text>
+            </View>
+          )}
         </View>
       )}
       {amountManualVisible && (
@@ -11445,6 +11758,8 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
   editReminderMinute,
   editWeeklyDay,
   editMonthlyDay,
+  editWeeklyDays,
+  editMonthlyDays,
   showScheduleConfig,
   onEditTitleChange,
   onEditPriceChange,
@@ -11481,7 +11796,9 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
       <ScrollView
         style={styles.temptationEditScroll}
         contentContainerStyle={styles.temptationEditContent}
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        nestedScrollEnabled
         showsVerticalScrollIndicator={false}
       >
         <Text style={[styles.temptationEditSubtitle, { color: colors.muted }]}>
@@ -11505,6 +11822,8 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
               reminderMinute={editReminderMinute}
               weeklyDay={editWeeklyDay}
               monthlyDay={editMonthlyDay}
+              weeklyDays={editWeeklyDays}
+              monthlyDays={editMonthlyDays}
               onReminderTimeChange={onEditReminderTimeChange}
               onWeeklyDayChange={onEditWeeklyDayChange}
               onMonthlyDayChange={onEditMonthlyDayChange}
@@ -15767,6 +16086,8 @@ const FeedScreen = React.memo(
   tutorialTemptationStepId = null,
   tutorialHighlightMeasureTick = 0,
   onTutorialHighlightLayoutChange = null,
+  showAmountSliderConfirmCoach = false,
+  onAmountSliderConfirmCoachComplete = () => {},
   showTemptationCoachMark = false,
   onTemptationCoachMarkAction = () => {},
   showTemptationAddCoachMark = false,
@@ -16996,6 +17317,20 @@ const FeedScreen = React.memo(
           fallback.frequencyWeeklyDay ?? base.frequencyWeeklyDay ?? null,
         frequencyMonthlyDay:
           fallback.frequencyMonthlyDay ?? base.frequencyMonthlyDay ?? null,
+        frequencyWeeklyDays:
+          normalizeFrequencyWeeklyDays(
+            fallback.frequencyWeeklyDays ??
+              fallback.frequencyWeeklyDay ??
+              base.frequencyWeeklyDays ??
+              base.frequencyWeeklyDay
+          ) || [],
+        frequencyMonthlyDays:
+          normalizeFrequencyMonthlyDays(
+            fallback.frequencyMonthlyDays ??
+              fallback.frequencyMonthlyDay ??
+              base.frequencyMonthlyDays ??
+              base.frequencyMonthlyDay
+          ) || [],
         frequencyReminderManualConfigured:
           fallback.frequencyReminderManualConfigured ??
           base.frequencyReminderManualConfigured ??
@@ -18659,6 +18994,8 @@ const FeedScreen = React.memo(
             onFocusBadgePress={onFocusCancel}
             showSavedCoachMark={isCoachMarkTarget}
             onSavedCoachMarkAction={onTemptationCoachMarkAction}
+            showAmountSliderConfirmCoach={showAmountSliderConfirmCoach}
+            onAmountSliderConfirmCoachComplete={onAmountSliderConfirmCoachComplete}
             tutorialHighlightMode={isTutorialHighlightTarget ? tutorialTemptationStepId : null}
             tutorialHighlightMeasureTick={
               isTutorialHighlightTarget ? tutorialHighlightMeasureTick : 0
@@ -18710,6 +19047,8 @@ const FeedScreen = React.memo(
       onTemptationSwipeDelete,
       onFocusCancel,
       firstVisibleTemptationId,
+      showAmountSliderConfirmCoach,
+      onAmountSliderConfirmCoachComplete,
       showTemptationCoachMark,
       onTemptationCoachMarkAction,
       playSound,
@@ -27231,6 +27570,8 @@ function AppContent() {
   const [premiumInstallIdHydrated, setPremiumInstallIdHydrated] = useState(false);
   const [installDateMs, setInstallDateMs] = useState(null);
   const [installDateHydrated, setInstallDateHydrated] = useState(false);
+  const [firstSessionDurationBucket, setFirstSessionDurationBucket] = useState("");
+  const [firstSessionDurationBucketHydrated, setFirstSessionDurationBucketHydrated] = useState(false);
   const [monetizationExperimentGroup, setMonetizationExperimentGroup] = useState(
     MONETIZATION_EXPERIMENT_GROUPS.A
   );
@@ -27254,6 +27595,9 @@ function AppContent() {
     onboarding_hard_gate: false,
   });
   const [premiumSoftPaywallShown, setPremiumSoftPaywallShown] = useState(false);
+  const [premiumDailySoftPaywallShownDayKey, setPremiumDailySoftPaywallShownDayKey] = useState("");
+  const [premiumDailySoftPaywallShownDayKeyHydrated, setPremiumDailySoftPaywallShownDayKeyHydrated] =
+    useState(false);
   const [premiumGroupCSoftPaywallShownDayKey, setPremiumGroupCSoftPaywallShownDayKey] = useState("");
   const [premiumGroupCSoftPaywallShownDayKeyHydrated, setPremiumGroupCSoftPaywallShownDayKeyHydrated] =
     useState(false);
@@ -27288,9 +27632,12 @@ function AppContent() {
   });
   const premiumPaywallTimerRef = useRef(null);
   const premiumSoftPaywallCheckTimerRef = useRef(null);
-  const premiumSoftPaywallTriggerRef = useRef("activity_day_two_after_3_actions");
+  const premiumSoftPaywallTriggerRef = useRef("first_action_after_onboarding");
   const pendingOnboardingSoftPaywallRef = useRef(false);
   const onboardingSoftPaywallActionBaselineRef = useRef(0);
+  const premiumPaywallShownThisSessionRef = useRef(false);
+  const premiumSoftPaywallSessionActionBaselineRef = useRef(0);
+  const premiumSoftPaywallSessionActionBaselineReadyRef = useRef(false);
   const [premiumPaywallState, setPremiumPaywallState] = useState({
     visible: false,
     kind: "soft",
@@ -27299,6 +27646,7 @@ function AppContent() {
     trigger: "manual",
     dismissible: true,
   });
+  const [startupHardPaywallDismissed, setStartupHardPaywallDismissed] = useState(false);
   const premiumPaywallDismissedAtRef = useRef(0);
   const premiumPaywallVisibilityRef = useRef(false);
   const premiumPaywallViewIndexRef = useRef(0);
@@ -27312,7 +27660,13 @@ function AppContent() {
   const premiumUnlockTransitionRef = useRef(null);
   const premiumUnlockIntentRef = useRef(null);
   const premiumTrialCancelledEventKeysRef = useRef(new Set());
+  const premiumLifecycleSnapshotRef = useRef(null);
+  const premiumLifecycleEventKeysRef = useRef(new Set());
   const premiumAndroidConfigAlertShownRef = useRef(false);
+  useEffect(() => {
+    premiumLifecycleSnapshotRef.current = null;
+    premiumLifecycleEventKeysRef.current = new Set();
+  }, [premiumInstallId]);
   useEffect(() => {
     premiumStateSnapshotRef.current = {
       isPremium: !!premiumState.isPremium,
@@ -27555,6 +27909,8 @@ function AppContent() {
     frequencyReminderMinute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
     frequencyWeeklyDay: DEFAULT_FREQUENCY_WEEKLY_DAY,
     frequencyMonthlyDay: DEFAULT_FREQUENCY_MONTHLY_DAY,
+    frequencyWeeklyDays: [...DEFAULT_FREQUENCY_WEEKLY_DAYS],
+    frequencyMonthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
     initialFrequency: null,
     scheduleConfigVisible: false,
   });
@@ -27818,6 +28174,14 @@ function AppContent() {
       }, 0),
     [resolvedHistoryEvents]
   );
+  const temptationActionCountRef = useRef(0);
+  const historyHydratedRef = useRef(false);
+  useEffect(() => {
+    temptationActionCountRef.current = Math.max(0, Number(temptationActionCount) || 0);
+  }, [temptationActionCount]);
+  useEffect(() => {
+    historyHydratedRef.current = !!historyHydrated;
+  }, [historyHydrated]);
   const visibleHistoryEvents = useMemo(() => {
     if (premiumState.isPremium) return resolvedHistoryEvents;
     const cutoffTimestamp = Date.now() - FREE_HISTORY_WINDOW_MS;
@@ -27888,6 +28252,15 @@ function AppContent() {
   const freeDayUnlocked = premiumLevelGateBypassAllowed || playerLevel >= 7;
   const thinkingUnlocked = premiumLevelGateBypassAllowed || playerLevel >= 3;
   const todayKey = currentDayKey;
+  const todayTemptationActionCount = useMemo(() => {
+    if (!todayKey) return 0;
+    return resolvedHistoryEvents.reduce((count, entry) => {
+      if (entry?.kind !== "refuse_spend" && entry?.kind !== "spend") return count;
+      const timestamp = normalizeTemporalMs(entry?.timestamp, 0);
+      if (!timestamp) return count;
+      return getDayKey(timestamp) === todayKey ? count + 1 : count;
+    }, 0);
+  }, [resolvedHistoryEvents, todayKey]);
   const hasSpendLoggedToday = useMemo(() => {
     if (!todayKey) return false;
     return resolvedHistoryEvents.some((entry) => {
@@ -29058,6 +29431,8 @@ function AppContent() {
   const [focusVictoryCount, setFocusVictoryCount] = useState(0);
   const [focusVictoryHydrated, setFocusVictoryHydrated] = useState(false);
   const appStateRef = useRef(AppState.currentState || "active");
+  const firstSessionStartedAtRef = useRef(Date.now());
+  const firstSessionBucketRecordedRef = useRef(false);
   const suppressResumeOnceRef = useRef(false);
   const appResumeAtRef = useRef(null);
   const focusLossCountersRef = useRef({});
@@ -29066,7 +29441,11 @@ function AppContent() {
     dateKey: getDayKey(Date.now()),
     sessionCount: 0,
     pendingIndex: null,
+    actionBaseline: 0,
+    actionBaselineNeedsHydration: false,
   });
+  const [homeSessionCount, setHomeSessionCount] = useState(0);
+  const [homeSessionActionBaseline, setHomeSessionActionBaseline] = useState(0);
   const markDidYouKnowFeatureUsed = useCallback((featureKey) => {
     const normalizedKey = typeof featureKey === "string" ? featureKey.trim() : "";
     if (!normalizedKey) return;
@@ -29308,6 +29687,9 @@ function AppContent() {
   const [tutorialCardShown, setTutorialCardShown] = useState(false);
   const [tutorialCardHydrated, setTutorialCardHydrated] = useState(false);
   const [tutorialCardVisible, setTutorialCardVisible] = useState(false);
+  const [feedAddTutorialShown, setFeedAddTutorialShown] = useState(false);
+  const [feedAddTutorialHydrated, setFeedAddTutorialHydrated] = useState(false);
+  const [amountSliderConfirmCoachSeen, setAmountSliderConfirmCoachSeen] = useState(false);
   const [feedFirstTutorialStage, setFeedFirstTutorialStage] = useState(FEED_FIRST_TUTORIAL_STAGE.IDLE);
   const feedFirstTutorialWelcomeAnim = useRef(new Animated.Value(0)).current;
   const feedFirstTutorialAmbientAnim = useRef(new Animated.Value(0)).current;
@@ -29474,6 +29856,20 @@ function AppContent() {
     },
     [budgetWidgetTutorialSeen, logEvent]
   );
+  const markFeedAddTutorialShown = useCallback(() => {
+    setFeedAddTutorialShown((prev) => {
+      if (prev) return prev;
+      AsyncStorage.setItem(STORAGE_KEYS.FEED_ADD_TUTORIAL_SHOWN, "done").catch(() => {});
+      return true;
+    });
+  }, []);
+  const markAmountSliderConfirmCoachSeen = useCallback(() => {
+    setAmountSliderConfirmCoachSeen((prev) => {
+      if (prev) return prev;
+      AsyncStorage.setItem(STORAGE_KEYS.AMOUNT_SLIDER_CONFIRM_COACH, "done").catch(() => {});
+      return true;
+    });
+  }, []);
   useEffect(() => {
     if (!tutorialSeen) return;
     AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
@@ -29645,6 +30041,11 @@ function AppContent() {
   );
   const completeFeedFirstTutorial = useCallback(
     (source = "completed") => {
+      const completedAddCoachFlow =
+        feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD ||
+        feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING ||
+        source === "add_skip" ||
+        source === "add_create";
       setTutorialCardVisible(false);
       setFeedFirstTutorialSaveCoachVisible(false);
       setFeedFirstTutorialNeedSoftPaywall(false);
@@ -29653,12 +30054,15 @@ function AppContent() {
         setTutorialCardShown(true);
         AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL_CARD_SHOWN, "true").catch(() => {});
       }
+      if (completedAddCoachFlow) {
+        markFeedAddTutorialShown();
+      }
       if (!tutorialCardCompletedLoggedRef.current) {
         tutorialCardCompletedLoggedRef.current = true;
       }
       logEvent("feed_first_tutorial_completed", { source });
     },
-    [logEvent, tutorialCardShown]
+    [feedFirstTutorialStage, logEvent, markFeedAddTutorialShown, tutorialCardShown]
   );
   const handleFeedFirstTutorialWelcomeContinue = useCallback(() => {
     setFeedFirstTutorialSaveCoachVisible(true);
@@ -30571,6 +30975,8 @@ function AppContent() {
     frequencyReminderMinute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
     frequencyWeeklyDay: DEFAULT_FREQUENCY_WEEKLY_DAY,
     frequencyMonthlyDay: DEFAULT_FREQUENCY_MONTHLY_DAY,
+    frequencyWeeklyDays: [...DEFAULT_FREQUENCY_WEEKLY_DAYS],
+    frequencyMonthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
     initialFrequency: null,
     scheduleConfigVisible: false,
   });
@@ -30688,11 +31094,54 @@ function AppContent() {
     logEvent,
     queuedModalType,
   ]);
+  const persistFirstSessionDurationBucket = useCallback((bucket) => {
+    const normalizedBucket = normalizeFirstSessionDurationBucket(bucket);
+    if (!normalizedBucket) return false;
+    if (firstSessionBucketRecordedRef.current) return false;
+    firstSessionBucketRecordedRef.current = true;
+    setFirstSessionDurationBucket((prev) => (prev === normalizedBucket ? prev : normalizedBucket));
+    AsyncStorage.setItem(STORAGE_KEYS.FIRST_SESSION_DURATION_BUCKET, normalizedBucket).catch(() => {});
+    return true;
+  }, []);
+  useEffect(() => {
+    if (!firstSessionDurationBucketHydrated) return;
+    if (!monetizationExperimentHydrated || !monetizationExperimentEligibleNewInstall) return;
+    if (firstSessionBucketRecordedRef.current) return;
+    const elapsedMs = Math.max(0, Date.now() - firstSessionStartedAtRef.current);
+    if (elapsedMs >= FIRST_SESSION_DURATION_THRESHOLD_MS) {
+      persistFirstSessionDurationBucket(FIRST_SESSION_DURATION_BUCKETS.GT_15_SEC);
+      return;
+    }
+    const remainingMs = Math.max(1, FIRST_SESSION_DURATION_THRESHOLD_MS - elapsedMs);
+    const timer = setTimeout(() => {
+      persistFirstSessionDurationBucket(FIRST_SESSION_DURATION_BUCKETS.GT_15_SEC);
+    }, remainingMs);
+    return () => clearTimeout(timer);
+  }, [
+    firstSessionDurationBucketHydrated,
+    monetizationExperimentEligibleNewInstall,
+    monetizationExperimentHydrated,
+    persistFirstSessionDurationBucket,
+  ]);
   useEffect(() => {
     const handleAppStateChange = (nextState) => {
       const previousState = appStateRef.current;
       const wasBackground = previousState === "background";
       appStateRef.current = nextState;
+      if (
+        nextState === "background" &&
+        firstSessionDurationBucketHydrated &&
+        monetizationExperimentHydrated &&
+        monetizationExperimentEligibleNewInstall &&
+        !firstSessionBucketRecordedRef.current
+      ) {
+        const elapsedMs = Math.max(0, Date.now() - firstSessionStartedAtRef.current);
+        const resolvedBucket =
+          elapsedMs < FIRST_SESSION_DURATION_THRESHOLD_MS
+            ? FIRST_SESSION_DURATION_BUCKETS.LT_15_SEC
+            : FIRST_SESSION_DURATION_BUCKETS.GT_15_SEC;
+        persistFirstSessionDurationBucket(resolvedBucket);
+      }
       if (nextState !== "active") {
         flushPersistQueue(true);
         Keyboard.dismiss();
@@ -30748,10 +31197,14 @@ function AppContent() {
     overlay,
     processOverlayQueue,
     refreshQueuedModalsOnResume,
+    firstSessionDurationBucketHydrated,
     flushPersistQueue,
+    monetizationExperimentEligibleNewInstall,
+    monetizationExperimentHydrated,
     storePotentialSnapshot,
     setDailyChallengePromptGate,
     pendingFocusDigest,
+    persistFirstSessionDurationBucket,
     processTamagotchiDecay,
     setCurrentDayKey,
     triggerHomeSpeech,
@@ -31011,12 +31464,32 @@ function AppContent() {
     }
     homeSessionRef.current.sessionCount += 1;
     const sessionCount = homeSessionRef.current.sessionCount;
+    const actionBaseline = Math.max(0, Number(temptationActionCountRef.current) || 0);
+    const needsHydration = !historyHydratedRef.current;
+    homeSessionRef.current.actionBaseline = actionBaseline;
+    homeSessionRef.current.actionBaselineNeedsHydration = needsHydration;
+    setHomeSessionCount(sessionCount);
+    setHomeSessionActionBaseline(actionBaseline);
     setFabTutorialEligible((prev) => {
       if (prev) return prev;
       return sessionCount >= FAB_TUTORIAL_MIN_SESSIONS;
     });
     homeSessionRef.current.pendingIndex = homeSessionRef.current.sessionCount;
+    premiumPaywallShownThisSessionRef.current = !!premiumPaywallVisibilityRef.current;
+    premiumSoftPaywallSessionActionBaselineRef.current = Math.max(
+      0,
+      Number(temptationActionCountRef.current) || 0
+    );
+    premiumSoftPaywallSessionActionBaselineReadyRef.current = historyHydratedRef.current;
   }, []);
+  useEffect(() => {
+    if (!historyHydrated) return;
+    if (!homeSessionRef.current.actionBaselineNeedsHydration) return;
+    const actionBaseline = Math.max(0, Number(temptationActionCount) || 0);
+    homeSessionRef.current.actionBaseline = actionBaseline;
+    homeSessionRef.current.actionBaselineNeedsHydration = false;
+    setHomeSessionActionBaseline(actionBaseline);
+  }, [historyHydrated, temptationActionCount]);
   const tryLogHomeOpened = useCallback(() => {
     if (activeTab !== "feed") return;
     const pendingIndex = homeSessionRef.current.pendingIndex;
@@ -31024,6 +31497,15 @@ function AppContent() {
     logEvent("home_opened", { session_index: pendingIndex });
     homeSessionRef.current.pendingIndex = null;
   }, [activeTab, logEvent]);
+  useEffect(() => {
+    if (!historyHydrated) return;
+    if (premiumSoftPaywallSessionActionBaselineReadyRef.current) return;
+    premiumSoftPaywallSessionActionBaselineRef.current = Math.max(
+      0,
+      Number(temptationActionCount) || 0
+    );
+    premiumSoftPaywallSessionActionBaselineReadyRef.current = true;
+  }, [historyHydrated, temptationActionCount]);
   const isFabTutorialEnvironmentReady = useMemo(
     () =>
       onboardingStep === "done" &&
@@ -31819,11 +32301,14 @@ function AppContent() {
     reminderMinute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
     weeklyDay: DEFAULT_FREQUENCY_WEEKLY_DAY,
     monthlyDay: DEFAULT_FREQUENCY_MONTHLY_DAY,
+    weeklyDays: [...DEFAULT_FREQUENCY_WEEKLY_DAYS],
+    monthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
   });
   const [pendingFrequencyReminderPrompt, setPendingFrequencyReminderPrompt] = useState(null);
   const frequencyReminderPriorityLockRef = useRef(false);
   const modalHandoffBlockUntilRef = useRef(0);
   const blockingModalVisiblePrevRef = useRef(false);
+  const tutorialBlockingVisiblePrevRef = useRef(false);
   const legacyFrequencyResetDoneRef = useRef(false);
   const [addCategoryModalVisible, setAddCategoryModalVisible] = useState(false);
   const [manageCategoriesVisible, setManageCategoriesVisible] = useState(false);
@@ -31899,15 +32384,43 @@ function AppContent() {
         recentCount: 0,
       });
     }
+    if (categoryPrompt.visible) {
+      setCategoryPrompt({ visible: false, item: null, action: null, options: null });
+    }
+    if (frequencyReminderPrompt.visible) {
+      setFrequencyReminderPrompt({
+        visible: false,
+        templateId: null,
+        title: "",
+        emoji: "🐱",
+        frequency: "daily",
+        frequencyCustom: { ...DEFAULT_CUSTOM_FREQUENCY },
+        reminderHour: DEFAULT_FREQUENCY_REMINDER_HOUR,
+        reminderMinute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
+        weeklyDay: DEFAULT_FREQUENCY_WEEKLY_DAY,
+        monthlyDay: DEFAULT_FREQUENCY_MONTHLY_DAY,
+        weeklyDays: [...DEFAULT_FREQUENCY_WEEKLY_DAYS],
+        monthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
+      });
+    }
+    if (pendingFrequencyReminderPrompt) {
+      setPendingFrequencyReminderPrompt(null);
+    }
+    if (frequencyReminderPriorityLockRef.current) {
+      frequencyReminderPriorityLockRef.current = false;
+    }
   }, [
+    categoryPrompt.visible,
     clearQueuedModal,
     coinEntryVisible,
     coinValueModalVisible,
     didYouKnowTipId,
     fabMenuVisible,
     fabTutorialVisible,
+    frequencyReminderPrompt.visible,
     newGoalModal.visible,
     newPendingModal.visible,
+    pendingFrequencyReminderPrompt,
     queuedModalType,
     requestQueuedModalProcess,
     saveSpamPrompt.visible,
@@ -31989,6 +32502,7 @@ function AppContent() {
   );
   const handleRootTouchStart = useCallback(
     (event) => {
+      if (editOverlayVisible) return;
       if (!keyboardVisible) return;
       const target = event?.target;
       const targetTag =
@@ -32010,7 +32524,7 @@ function AppContent() {
       }
       Keyboard.dismiss();
     },
-    [keyboardVisible]
+    [editOverlayVisible, keyboardVisible]
   );
 
   const fabTutorialCutout = useMemo(() => {
@@ -33520,6 +34034,18 @@ function AppContent() {
     }
     blockingModalVisiblePrevRef.current = blockingModalVisible;
   }, [blockingModalVisible]);
+  useEffect(() => {
+    const wasVisible = tutorialBlockingVisiblePrevRef.current;
+    if (wasVisible && !tutorialBlockingVisible) {
+      // Tutorial overlays are rendered via Modal and need the same handoff guard
+      // as other blocking modals to avoid iOS invisible touch blockers.
+      modalHandoffBlockUntilRef.current = Math.max(
+        modalHandoffBlockUntilRef.current || 0,
+        Date.now() + MODAL_HANDOFF_GUARD_MS + 48
+      );
+    }
+    tutorialBlockingVisiblePrevRef.current = tutorialBlockingVisible;
+  }, [tutorialBlockingVisible]);
   canShowRatingPromptNowRef.current = () => {
     if (onboardingStep !== "done") return false;
     if (!interfaceReady) return false;
@@ -34314,6 +34840,10 @@ function AppContent() {
         PAYWALL_MONTH_SUFFIX_BY_LANGUAGE[monetizationLanguage] || PAYWALL_MONTH_SUFFIX_BY_LANGUAGE.en,
         monetizationLanguage
       );
+      const weekSuffix = localizeFallbackTextByLanguage(
+        PAYWALL_WEEK_SUFFIX_BY_LANGUAGE[monetizationLanguage] || PAYWALL_WEEK_SUFFIX_BY_LANGUAGE.en,
+        monetizationLanguage
+      );
       const amountLocal = Number.isFinite(card.rawPriceLocal) ? Math.max(0, card.rawPriceLocal) : null;
       const currencyPrecision = getCurrencyPrecision(currencyCode);
 
@@ -34404,13 +34934,6 @@ function AppContent() {
             currencyCode
           );
         }
-        equivalentLabel = buildTemptationEquivalentLine({
-          planId: "yearly",
-          amountLocal,
-          currencyCode,
-          language: monetizationLanguage,
-          preferredEquivalent: paywallPopularTemptationEquivalent,
-        });
         if (yearlySavePercent) {
           const yearlySaveBadge = buildPaywallSaveBadge({
             percent: yearlySavePercent,
@@ -34425,6 +34948,22 @@ function AppContent() {
           }
         }
       } else if (isMonthly) {
+        if (Number.isFinite(amountLocal) && amountLocal > 0) {
+          const averageWeeksPerMonth = 52 / 12;
+          const weeklyEquivalentLocal = amountLocal / averageWeeksPerMonth;
+          const weeklyPrecision = Math.max(0, Math.min(2, getCurrencyPrecision(currencyCode)));
+          const weeklyEquivalentLabel = normalizePaywallPriceLabel(
+            `${formatCurrency(weeklyEquivalentLocal, currencyCode, {
+              precisionOverride: weeklyPrecision,
+            })}${weekSuffix}`,
+            currencyCode
+          );
+          priceLabel = weeklyEquivalentLabel;
+          ctaPriceLabel = weeklyEquivalentLabel;
+        } else {
+          priceLabel = recurringChargePriceLabel || card.chargePriceLabel;
+          ctaPriceLabel = recurringChargePriceLabel || card.chargePriceLabel;
+        }
         billingLabel =
           localizeFallbackTextByLanguage(
             PAYWALL_BILLING_LABEL_BY_LANGUAGE.monthly[monetizationLanguage] ||
@@ -34432,15 +34971,6 @@ function AppContent() {
             monetizationLanguage
           );
         secondaryLabel = billingLabel;
-        if (Number.isFinite(amountLocal) && amountLocal > 0) {
-          equivalentLabel = buildTemptationEquivalentLine({
-            planId: "monthly",
-            amountLocal,
-            currencyCode,
-            language: monetizationLanguage,
-            preferredEquivalent: paywallPopularTemptationEquivalent,
-          });
-        }
       } else if (isLifetime) {
         billingLabel =
           localizeFallbackTextByLanguage(
@@ -34449,15 +34979,6 @@ function AppContent() {
             monetizationLanguage
           );
         secondaryLabel = billingLabel;
-        if (Number.isFinite(amountLocal) && amountLocal > 0) {
-          equivalentLabel = buildTemptationEquivalentLine({
-            planId: "lifetime",
-            amountLocal,
-            currencyCode,
-            language: monetizationLanguage,
-            preferredEquivalent: paywallPopularTemptationEquivalent,
-          });
-        }
       }
       const trialLabel = hasFreeTrial
         ? buildPaywallTrialLabel({
@@ -34476,28 +34997,21 @@ function AppContent() {
       const trialZeroPriceLabel = hasTrial ? formatTrialZeroPrice(currencyCode) : null;
       const trialNowPriceLabel = hasTrial ? formatTrialNowPrice(currencyCode) : null;
       const trialCtaPriceLabel = hasTrial
-        ? trialZeroPriceLabel
+        ? trialNowPriceLabel || trialZeroPriceLabel
         : null;
       if (hasTrial) {
-        if (trialNowPriceLabel) {
-          priceLabel = trialNowPriceLabel;
-        } else if (trialZeroPriceLabel) {
-          priceLabel = trialZeroPriceLabel;
-        }
-        if (trialZeroPriceLabel) {
-          ctaPriceLabel = trialZeroPriceLabel;
-        }
         equivalentLabel = null;
         postTrialPriceLabel = recurringChargePriceLabel || null;
         secondaryKind = "muted";
-        if (postTrialPriceLabel) {
+        if (postTrialPriceLabel && postTrialPriceLabel !== priceLabel) {
           secondaryLabel = buildPaywallPostTrialLabel({
             priceLabel: postTrialPriceLabel,
             language: monetizationLanguage,
           });
           secondarySubLabel = billingLabel || null;
-        } else if (!secondaryLabel && billingLabel) {
+        } else if (billingLabel) {
           secondaryLabel = billingLabel;
+          secondarySubLabel = null;
         }
         badge = localizeFallbackTextByLanguage(
           PAYWALL_TRIAL_BADGE_BY_LANGUAGE[monetizationLanguage] || PAYWALL_TRIAL_BADGE_BY_LANGUAGE.en,
@@ -34780,6 +35294,13 @@ function AppContent() {
     premiumLossPersonalization.lossAmountUSD,
     profile.currency,
   ]);
+  const premiumHasTrialOffer = useMemo(
+    () =>
+      premiumPlanCards.some(
+        (card) => card?.available !== false && card?.hasTrial === true
+      ),
+    [premiumPlanCards]
+  );
   const premiumCopy = useMemo(
     () => {
       const normalizedPaywallTrigger = normalizeMonetizationToken(
@@ -34797,6 +35318,7 @@ function AppContent() {
       return buildPaywallCopy({
         language,
         kind: premiumPaywallState.kind,
+        hasTrialOffer: premiumHasTrialOffer,
         monthlyPriceLabel: premiumMonthlyPriceLabel,
         savedAmountLabel: premiumPaywallState.savedAmountLabel || "",
         lossAmountLabel: effectiveLossAmountLabel,
@@ -34815,6 +35337,7 @@ function AppContent() {
       monetizationExperimentGroup,
       premiumFreshStartGainPercent,
       premiumGroupBPotentialLossAmountLabel,
+      premiumHasTrialOffer,
       premiumMonthlyPriceLabel,
       premiumYearlySavingsCtaAmountLabel,
       premiumLossPersonalization.lossAmountLabel,
@@ -34844,7 +35367,9 @@ function AppContent() {
   const isMonetizationExperimentGroupC =
     monetizationExperimentGroupNormalized === MONETIZATION_EXPERIMENT_GROUPS.C;
   const isMonetizationSoftPaywallExperimentGroup =
-    isMonetizationExperimentControlGroup || isMonetizationExperimentGroupC;
+    isMonetizationExperimentControlGroup ||
+    isMonetizationExperimentGroupB ||
+    isMonetizationExperimentGroupC;
   const monetizationExperimentAnalyticsMeta = useMemo(
     () => ({
       experiment_id: MONETIZATION_EXPERIMENT_ID,
@@ -35080,6 +35605,238 @@ function AppContent() {
     },
     [logMonetizationEvent]
   );
+  const trackPremiumLifecycleEvents = useCallback(
+    (customerInfo, source = "unknown") => {
+      const snapshot = buildPremiumLifecycleSnapshot(customerInfo);
+      if (!snapshot) return false;
+      const previousSnapshot = premiumLifecycleSnapshotRef.current;
+      premiumLifecycleSnapshotRef.current = snapshot;
+      if (!previousSnapshot) return false;
+
+      const trackedEventKeys = premiumLifecycleEventKeysRef.current;
+      const normalizedSource = normalizeMonetizationToken(source || "unknown", "unknown");
+      const toRenewToken = (value) => {
+        if (value === true) return "true";
+        if (value === false) return "false";
+        return "unknown";
+      };
+      let tracked = false;
+
+      const trackOnce = (eventName, eventKey, payload = {}) => {
+        if (!eventKey) return false;
+        if (trackedEventKeys.has(eventKey)) return false;
+        trackedEventKeys.add(eventKey);
+        logMonetizationEvent(eventName, {
+          source: normalizedSource,
+          ...(payload || {}),
+        });
+        tracked = true;
+        return true;
+      };
+
+      Object.values(snapshot.subscriptions).forEach((currentEntry) => {
+        const previousEntry = previousSnapshot.subscriptions?.[currentEntry.productId] || null;
+        if (!previousEntry) return;
+
+        const currentBillingIssueDetectedAtMs = Math.max(
+          0,
+          Number(currentEntry.billingIssueDetectedAtMs) || 0
+        );
+        const previousBillingIssueDetectedAtMs = Math.max(
+          0,
+          Number(previousEntry.billingIssueDetectedAtMs) || 0
+        );
+        if (
+          currentBillingIssueDetectedAtMs > 0 &&
+          currentBillingIssueDetectedAtMs > previousBillingIssueDetectedAtMs
+        ) {
+          trackOnce(
+            "premium_billing_issue",
+            `billing_issue|${currentEntry.productId}|${currentBillingIssueDetectedAtMs}`,
+            {
+              product_id: resolveNonEmptyString(currentEntry.productId || "") || "unknown",
+              plan: resolveNonEmptyString(currentEntry.plan || "") || "unknown",
+              billing_issue_detected_at:
+                currentEntry.billingIssueDetectedAt ||
+                formatMonetizationDateIso(currentBillingIssueDetectedAtMs),
+              expiration_date: currentEntry.expirationDate || undefined,
+              will_renew: toRenewToken(currentEntry.willRenew),
+            }
+          );
+        }
+      });
+
+      Object.values(snapshot.subscriptions).forEach((currentEntry) => {
+        const previousEntry = previousSnapshot.subscriptions?.[currentEntry.productId] || null;
+        if (!previousEntry) return;
+
+        const currentPurchaseDateMs = Math.max(0, Number(currentEntry.latestPurchaseDateMs) || 0);
+        const previousPurchaseDateMs = Math.max(0, Number(previousEntry.latestPurchaseDateMs) || 0);
+        if (
+          previousEntry.isTrial &&
+          !currentEntry.isTrial &&
+          currentEntry.isSubscription &&
+          currentPurchaseDateMs > previousPurchaseDateMs
+        ) {
+          trackOnce(
+            "premium_trial_converted",
+            `trial_converted|${currentEntry.productId}|${currentPurchaseDateMs}`,
+            {
+              product_id: resolveNonEmptyString(currentEntry.productId || "") || "unknown",
+              plan: resolveNonEmptyString(currentEntry.plan || "") || "unknown",
+              previous_period_type: normalizeMonetizationToken(
+                previousEntry.periodType || "unknown",
+                "unknown"
+              ),
+              current_period_type: normalizeMonetizationToken(
+                currentEntry.periodType || "unknown",
+                "unknown"
+              ),
+              latest_purchase_date:
+                currentEntry.latestPurchaseDate || formatMonetizationDateIso(currentPurchaseDateMs),
+              expiration_date: currentEntry.expirationDate || undefined,
+            }
+          );
+        }
+
+        if (
+          !previousEntry.isTrial &&
+          !currentEntry.isTrial &&
+          currentEntry.isSubscription &&
+          currentPurchaseDateMs > previousPurchaseDateMs
+        ) {
+          trackOnce("premium_renewal", `renewal|${currentEntry.productId}|${currentPurchaseDateMs}`, {
+            product_id: resolveNonEmptyString(currentEntry.productId || "") || "unknown",
+            plan: resolveNonEmptyString(currentEntry.plan || "") || "unknown",
+            previous_purchase_date: previousEntry.latestPurchaseDate || undefined,
+            latest_purchase_date:
+              currentEntry.latestPurchaseDate || formatMonetizationDateIso(currentPurchaseDateMs),
+            expiration_date: currentEntry.expirationDate || undefined,
+            will_renew: toRenewToken(currentEntry.willRenew),
+          });
+        }
+
+        const currentUnsubscribeDetectedAtMs = Math.max(
+          0,
+          Number(currentEntry.unsubscribeDetectedAtMs) || 0
+        );
+        const previousUnsubscribeDetectedAtMs = Math.max(
+          0,
+          Number(previousEntry.unsubscribeDetectedAtMs) || 0
+        );
+        const cancellationDetected =
+          currentEntry.isSubscription &&
+          !currentEntry.isTrial &&
+          ((previousEntry.willRenew !== false && currentEntry.willRenew === false) ||
+            currentUnsubscribeDetectedAtMs > previousUnsubscribeDetectedAtMs);
+        if (cancellationDetected) {
+          const cancellationEventMarkMs =
+            currentUnsubscribeDetectedAtMs ||
+            Math.max(0, Number(currentEntry.expirationDateMs) || 0) ||
+            Math.max(0, Number(snapshot.requestDateMs) || 0);
+          trackOnce(
+            "premium_cancellation",
+            `cancellation|${currentEntry.productId}|${cancellationEventMarkMs}`,
+            {
+              product_id: resolveNonEmptyString(currentEntry.productId || "") || "unknown",
+              plan: resolveNonEmptyString(currentEntry.plan || "") || "unknown",
+              period_type: normalizeMonetizationToken(
+                currentEntry.periodType || "unknown",
+                "unknown"
+              ),
+              will_renew: toRenewToken(currentEntry.willRenew),
+              unsubscribe_detected_at:
+                currentEntry.unsubscribeDetectedAt ||
+                (currentUnsubscribeDetectedAtMs
+                  ? formatMonetizationDateIso(currentUnsubscribeDetectedAtMs)
+                  : undefined),
+              expiration_date: currentEntry.expirationDate || undefined,
+            }
+          );
+        }
+      });
+
+      Object.values(snapshot.nonSubscriptionTransactions).forEach((transactionEntry) => {
+        const previousEntry =
+          previousSnapshot.nonSubscriptionTransactions?.[transactionEntry.key] || null;
+        if (previousEntry) return;
+        trackOnce(
+          "premium_non_subscription_purchase",
+          `non_subscription_purchase|${transactionEntry.key}`,
+          {
+            product_id: resolveNonEmptyString(transactionEntry.productId || "") || "unknown",
+            plan: resolveNonEmptyString(transactionEntry.plan || "") || "unknown",
+            transaction_id: resolveNonEmptyString(transactionEntry.transactionId || "") || "none",
+            purchase_date: transactionEntry.purchaseDate || undefined,
+          }
+        );
+      });
+
+      Object.values(previousSnapshot.subscriptions).forEach((previousEntry) => {
+        if (!previousEntry?.isSubscription) return;
+        const expirationDateMs = Math.max(0, Number(previousEntry.expirationDateMs) || 0);
+        if (!expirationDateMs) return;
+        const wasExpiredBefore = Number(previousSnapshot.requestDateMs) >= expirationDateMs;
+        const isExpiredNow = Number(snapshot.requestDateMs) >= expirationDateMs;
+        if (wasExpiredBefore || !isExpiredNow) return;
+
+        const currentEntry = snapshot.subscriptions?.[previousEntry.productId] || null;
+        const currentExpirationDateMs = Math.max(0, Number(currentEntry?.expirationDateMs) || 0);
+        const renewed = currentExpirationDateMs > expirationDateMs;
+        if (renewed) return;
+
+        const stillPremiumOnSameProduct =
+          snapshot.isPremium &&
+          normalizeProductIdentifier(snapshot.activePremiumProductId || "") ===
+            normalizeProductIdentifier(previousEntry.productId || "");
+        if (stillPremiumOnSameProduct) return;
+
+        trackOnce(
+          "premium_expiration",
+          `expiration|${previousEntry.productId}|${expirationDateMs}`,
+          {
+            product_id: resolveNonEmptyString(previousEntry.productId || "") || "unknown",
+            plan: resolveNonEmptyString(previousEntry.plan || "") || "unknown",
+            period_type: normalizeMonetizationToken(previousEntry.periodType || "unknown", "unknown"),
+            expiration_date:
+              previousEntry.expirationDate || formatMonetizationDateIso(expirationDateMs),
+            is_premium_after: snapshot.isPremium ? 1 : 0,
+          }
+        );
+      });
+
+      if (previousSnapshot.isPremium && snapshot.isPremium) {
+        const previousProductId = resolveNonEmptyString(previousSnapshot.activePremiumProductId || "");
+        const currentProductId = resolveNonEmptyString(snapshot.activePremiumProductId || "");
+        if (
+          previousProductId &&
+          currentProductId &&
+          normalizeProductIdentifier(previousProductId) !==
+            normalizeProductIdentifier(currentProductId)
+        ) {
+          trackOnce(
+            "premium_product_change",
+            `product_change|${previousProductId}|${currentProductId}|${snapshot.requestDateMs}`,
+            {
+              from_product_id: resolveNonEmptyString(previousProductId) || "unknown",
+              to_product_id: resolveNonEmptyString(currentProductId) || "unknown",
+              from_plan: normalizeMonetizationToken(
+                resolvePlanIdFromProductIdentifier(previousProductId) || "unknown",
+                "unknown"
+              ),
+              to_plan: normalizeMonetizationToken(
+                resolvePlanIdFromProductIdentifier(currentProductId) || "unknown",
+                "unknown"
+              ),
+            }
+          );
+        }
+      }
+
+      return tracked;
+    },
+    [logMonetizationEvent]
+  );
   const handlePremiumPaywallScrolled = useCallback(
     ({ offsetY = 0 } = {}) => {
       const context = getPremiumPaywallContext();
@@ -35274,9 +36031,29 @@ function AppContent() {
     if (context.kind === "soft") {
       setPremiumSoftPaywallShown((prev) => (prev ? prev : true));
     }
+    const isManualHardCloseAction =
+      normalizedCloseAction === "header_close" ||
+      normalizedCloseAction === "backdrop" ||
+      normalizedCloseAction === "system_back";
+    const normalizedContextTrigger = normalizeMonetizationToken(
+      context.trigger || "manual",
+      "manual"
+    );
+    if (
+      isManualHardCloseAction &&
+      context.kind === "hard" &&
+      normalizedContextTrigger === "trial_10_saves_reached"
+    ) {
+      setStartupHardPaywallDismissed(true);
+    }
     setPremiumSoftPaywallPending(false);
     setPremiumPaywallState((prev) => ({ ...prev, visible: false, dismissible: true }));
-  }, [getPremiumPaywallContext, logMonetizationEvent, premiumPaywallState.dismissible]);
+  }, [
+    getPremiumPaywallContext,
+    logMonetizationEvent,
+    premiumPaywallState.dismissible,
+    setStartupHardPaywallDismissed,
+  ]);
   const openPremiumPaywall = useCallback(
     ({
       kind = "feature",
@@ -35326,6 +36103,9 @@ function AppContent() {
         ? "hard"
         : "soft";
       const effectiveTrigger = forceSoftFeaturePaywallOnAndroid ? "feature_gate" : normalizedTrigger;
+      const isSaveLimitPaywallTrigger =
+        effectiveTrigger === "save_daily_limit_reached" ||
+        effectiveTrigger === "save_daily_limit_blocked";
       if (premiumPaywallState.visible) {
         if (!forceSoftFeaturePaywallOnAndroid) return false;
         setPremiumPaywallState((prev) => ({
@@ -35339,7 +36119,8 @@ function AppContent() {
         }));
         return true;
       }
-      const bypassReopenGuard = forceSoftFeaturePaywallOnAndroid || requestedKind === "hard";
+      const bypassReopenGuard =
+        forceSoftFeaturePaywallOnAndroid || requestedKind === "hard" || isSaveLimitPaywallTrigger;
       const now = Date.now();
       if (
         !bypassReopenGuard &&
@@ -35421,6 +36202,7 @@ function AppContent() {
         featureKey: normalizeMonetizationToken(premiumPaywallState.featureKey || "none", "none"),
         trigger: normalizeMonetizationToken(premiumPaywallState.trigger || "manual", "manual"),
       };
+      premiumPaywallShownThisSessionRef.current = true;
       premiumPaywallActiveViewRef.current = context;
       logMonetizationEvent("premium_paywall_shown", {
         kind: context.kind,
@@ -35498,6 +36280,7 @@ function AppContent() {
           offeringsByPlan,
         };
       }
+      trackPremiumLifecycleEvents(customerInfo, source);
       const entitlement = getActivePremiumEntitlement(customerInfo);
       const isPremium = isPremiumFromCustomerInfo(customerInfo);
       if (!isPremium) {
@@ -35542,6 +36325,7 @@ function AppContent() {
       premiumInstallIdHydrated,
       premiumStateCacheHydrated,
       queuePersist,
+      trackPremiumLifecycleEvents,
       trackPremiumTrialCancelled,
     ]
   );
@@ -35662,6 +36446,7 @@ function AppContent() {
       unsubscribe = addCustomerInfoUpdateListener((customerInfo) => {
         if (!active) return;
         if (!customerInfo || typeof customerInfo !== "object") return;
+        trackPremiumLifecycleEvents(customerInfo, "listener");
         const entitlement = getActivePremiumEntitlement(customerInfo);
         const isPremium = isPremiumFromCustomerInfo(customerInfo);
         if (!isPremium) {
@@ -35711,6 +36496,7 @@ function AppContent() {
     premiumStateCacheHydrated,
     queuePersist,
     refreshPremiumState,
+    trackPremiumLifecycleEvents,
     trackPremiumTrialCancelled,
   ]);
   useEffect(() => {
@@ -35931,9 +36717,11 @@ function AppContent() {
         );
         const revenueEventMeta = {
           ...eventMeta,
+          has_trial: false,
           revenue_local: revenueLocal,
           revenue_usd: revenueUSD,
         };
+        delete revenueEventMeta.trial_days;
         if (resolvedTransactionId) {
           revenueEventMeta.transaction_id = resolvedTransactionId;
         }
@@ -36242,6 +37030,30 @@ function AppContent() {
     return Date.now() - installDateMs >= DAY_MS * 2;
   }, [installDateMs, isMonetizationExperimentControlGroup, temptationActionCount]);
   useEffect(() => {
+    if (!isMonetizationSoftPaywallExperimentGroup) return;
+    if (!premiumSoftPaywallHydrated) return;
+    if (!historyHydrated) return;
+    if (onboardingStep !== "done") return;
+    if (premiumState.isPremium || premiumSoftPaywallShown) return;
+    if (premiumPaywallState.visible) return;
+    if (premiumPaywallShownThisSessionRef.current) return;
+    if (premiumSoftPaywallPending) return;
+    const totalActionCount = Math.max(0, Number(temptationActionCount) || 0);
+    if (totalActionCount < MONETIZATION_EXPERIMENT_GROUP_C_FIRST_ACTION_PAYWALL_ACTION_LIMIT) return;
+    premiumSoftPaywallTriggerRef.current = "first_action_after_onboarding";
+    setPremiumSoftPaywallPending(true);
+  }, [
+    historyHydrated,
+    isMonetizationSoftPaywallExperimentGroup,
+    onboardingStep,
+    premiumPaywallState.visible,
+    premiumSoftPaywallHydrated,
+    premiumSoftPaywallPending,
+    premiumSoftPaywallShown,
+    premiumState.isPremium,
+    temptationActionCount,
+  ]);
+  useEffect(() => {
     if (!isMonetizationExperimentControlGroup) {
       pendingOnboardingSoftPaywallRef.current = false;
       return;
@@ -36249,12 +37061,17 @@ function AppContent() {
     if (!pendingOnboardingSoftPaywallRef.current) return;
     if (onboardingStep !== "done") return;
     if (!premiumSoftPaywallHydrated || !historyHydrated) return;
+    if (premiumPaywallShownThisSessionRef.current) {
+      pendingOnboardingSoftPaywallRef.current = false;
+      return;
+    }
     if (premiumState.isPremium || premiumSoftPaywallShown) {
       pendingOnboardingSoftPaywallRef.current = false;
       return;
     }
     const baselineActions = Math.max(0, Number(onboardingSoftPaywallActionBaselineRef.current) || 0);
-    if (temptationActionCount <= baselineActions) return;
+    const totalActionCount = Math.max(0, Number(temptationActionCount) || 0);
+    if (totalActionCount <= baselineActions) return;
     premiumSoftPaywallTriggerRef.current = "first_action_after_onboarding";
     setPremiumSoftPaywallPending(true);
     pendingOnboardingSoftPaywallRef.current = false;
@@ -36268,43 +37085,32 @@ function AppContent() {
     temptationActionCount,
   ]);
   useEffect(() => {
-    if (!isMonetizationExperimentControlGroup) return;
-    if (!premiumSoftPaywallHydrated || !installDateHydrated || !historyHydrated) return;
-    if (premiumState.isPremium || premiumSoftPaywallShown) return;
-    if (!shouldShowPaywall()) return;
-    premiumSoftPaywallTriggerRef.current = "activity_day_two_after_3_actions";
-    setPremiumSoftPaywallPending(true);
-  }, [
-    currentDayKey,
-    historyHydrated,
-    installDateHydrated,
-    isMonetizationExperimentControlGroup,
-    premiumSoftPaywallHydrated,
-    premiumSoftPaywallShown,
-    premiumState.isPremium,
-    shouldShowPaywall,
-  ]);
-  useEffect(() => {
     if (!isMonetizationExperimentGroupC) return;
     if (
       !premiumSoftPaywallHydrated ||
       !dailySaveLimitHydrated ||
-      !premiumGroupCSoftPaywallShownDayKeyHydrated
+      !premiumGroupCSoftPaywallShownDayKeyHydrated ||
+      !historyHydrated
     ) {
       return;
     }
     if (onboardingStep !== "done") return;
     if (premiumState.isPremium) return;
+    if (!premiumSoftPaywallShown) return;
+    if (todayTemptationActionCount < 1) return;
     const todayKey = currentDayKey || getDayKey(Date.now());
     if (!todayKey) return;
+    if (premiumDailySoftPaywallShownDayKey === todayKey) return;
     if (premiumGroupCSoftPaywallShownDayKey === todayKey) return;
+    const totalActionCount = Math.max(0, Number(temptationActionCount) || 0);
+    if (totalActionCount < MONETIZATION_EXPERIMENT_GROUP_C_SUPPORT_PAYWALL_ACTION_LIMIT) return;
     const normalizedDailySaveLimit = createDailySaveLimitState(
       dailySaveLimitState?.dayKey,
       dailySaveLimitState?.count
     );
     const todaySaveCount =
       normalizedDailySaveLimit.dayKey === todayKey ? normalizedDailySaveLimit.count : 0;
-    if (todaySaveCount < MONETIZATION_EXPERIMENT_GROUP_C_SOFT_PAYWALL_SAVE_LIMIT) return;
+    if (todaySaveCount >= DAILY_SAVE_HARD_LIMIT) return;
     premiumSoftPaywallTriggerRef.current = MONETIZATION_GROUP_C_SOFT_PAYWALL_TRIGGER;
     setPremiumSoftPaywallPending(true);
   }, [
@@ -36312,12 +37118,72 @@ function AppContent() {
     dailySaveLimitHydrated,
     dailySaveLimitState?.count,
     dailySaveLimitState?.dayKey,
+    historyHydrated,
     isMonetizationExperimentGroupC,
     onboardingStep,
     premiumGroupCSoftPaywallShownDayKey,
+    premiumDailySoftPaywallShownDayKey,
     premiumGroupCSoftPaywallShownDayKeyHydrated,
     premiumSoftPaywallHydrated,
+    premiumSoftPaywallShown,
     premiumState.isPremium,
+    todayTemptationActionCount,
+    temptationActionCount,
+  ]);
+  useEffect(() => {
+    if (!isMonetizationSoftPaywallExperimentGroup) return;
+    if (
+      !premiumSoftPaywallHydrated ||
+      !premiumDailySoftPaywallShownDayKeyHydrated ||
+      !dailySaveLimitHydrated ||
+      !historyHydrated
+    ) {
+      return;
+    }
+    if (onboardingStep !== "done") return;
+    if (premiumState.isPremium) return;
+    if (!premiumSoftPaywallShown) return;
+    if (premiumPaywallState.visible) return;
+    if (premiumSoftPaywallPending) return;
+    const todayKey = currentDayKey || getDayKey(Date.now());
+    if (!todayKey) return;
+    if (todayTemptationActionCount < 1) return;
+    if (premiumDailySoftPaywallShownDayKey === todayKey) return;
+    if (isMonetizationExperimentGroupC) {
+      const totalActionCount = Math.max(0, Number(temptationActionCount) || 0);
+      const normalizedDailySaveLimit = createDailySaveLimitState(
+        dailySaveLimitState?.dayKey,
+        dailySaveLimitState?.count
+      );
+      const todaySaveCount =
+        normalizedDailySaveLimit.dayKey === todayKey ? normalizedDailySaveLimit.count : 0;
+      const groupCSupportDueToday =
+        premiumGroupCSoftPaywallShownDayKey !== todayKey &&
+        totalActionCount >= MONETIZATION_EXPERIMENT_GROUP_C_SUPPORT_PAYWALL_ACTION_LIMIT &&
+        todaySaveCount < DAILY_SAVE_HARD_LIMIT;
+      if (groupCSupportDueToday) return;
+    }
+    premiumSoftPaywallTriggerRef.current = MONETIZATION_DAILY_SOFT_PAYWALL_TRIGGER;
+    setPremiumSoftPaywallPending(true);
+  }, [
+    currentDayKey,
+    dailySaveLimitHydrated,
+    dailySaveLimitState?.count,
+    dailySaveLimitState?.dayKey,
+    historyHydrated,
+    isMonetizationExperimentGroupC,
+    isMonetizationSoftPaywallExperimentGroup,
+    onboardingStep,
+    premiumGroupCSoftPaywallShownDayKey,
+    premiumDailySoftPaywallShownDayKey,
+    premiumDailySoftPaywallShownDayKeyHydrated,
+    premiumSoftPaywallHydrated,
+    premiumSoftPaywallPending,
+    premiumSoftPaywallShown,
+    premiumPaywallState.visible,
+    premiumState.isPremium,
+    temptationActionCount,
+    todayTemptationActionCount,
   ]);
   useEffect(() => {
     if (!isMonetizationSoftPaywallExperimentGroup) {
@@ -36333,23 +37199,28 @@ function AppContent() {
       }
       return undefined;
     }
-    if (!premiumSoftPaywallHydrated) return undefined;
     const queuedSoftPaywallTrigger =
-      premiumSoftPaywallTriggerRef.current || "activity_day_two_after_3_actions";
-    const isQueuedGroupCSupportSoftPaywall =
-      queuedSoftPaywallTrigger === MONETIZATION_GROUP_C_SOFT_PAYWALL_TRIGGER;
+      premiumSoftPaywallTriggerRef.current || "first_action_after_onboarding";
+    const isQueuedRecurringSoftPaywall =
+      MONETIZATION_RECURRING_SOFT_PAYWALL_TRIGGERS.has(queuedSoftPaywallTrigger);
+    if (!premiumSoftPaywallHydrated) return undefined;
+    if (premiumPaywallShownThisSessionRef.current && !isQueuedRecurringSoftPaywall) {
+      setPremiumSoftPaywallPending(false);
+      return undefined;
+    }
     const shouldBlockQueuedSoftPaywallByHistory =
-      !isQueuedGroupCSupportSoftPaywall && premiumSoftPaywallShown;
+      !isQueuedRecurringSoftPaywall && premiumSoftPaywallShown;
     if (premiumState.isPremium || shouldBlockQueuedSoftPaywallByHistory) {
       setPremiumSoftPaywallPending(false);
       return undefined;
     }
     const checkAndShow = () => {
       const softPaywallTrigger =
-        premiumSoftPaywallTriggerRef.current || "activity_day_two_after_3_actions";
-      const isGroupCSupportSoftPaywall =
-        softPaywallTrigger === MONETIZATION_GROUP_C_SOFT_PAYWALL_TRIGGER;
-      const shouldBlockSoftPaywallByHistory = !isGroupCSupportSoftPaywall && premiumSoftPaywallShown;
+        premiumSoftPaywallTriggerRef.current || "first_action_after_onboarding";
+      const isRecurringSoftPaywall = MONETIZATION_RECURRING_SOFT_PAYWALL_TRIGGERS.has(
+        softPaywallTrigger
+      );
+      const shouldBlockSoftPaywallByHistory = !isRecurringSoftPaywall && premiumSoftPaywallShown;
       if (premiumState.isPremium || shouldBlockSoftPaywallByHistory) {
         setPremiumSoftPaywallPending(false);
         premiumSoftPaywallCheckTimerRef.current = null;
@@ -36368,9 +37239,10 @@ function AppContent() {
           return;
         }
         setPremiumSoftPaywallShown(true);
-        if (isGroupCSupportSoftPaywall) {
-          const shownDayKey = currentDayKey || getDayKey(Date.now());
-          if (shownDayKey) {
+        const shownDayKey = currentDayKey || getDayKey(Date.now());
+        if (shownDayKey) {
+          setPremiumDailySoftPaywallShownDayKey(shownDayKey);
+          if (softPaywallTrigger === MONETIZATION_GROUP_C_SOFT_PAYWALL_TRIGGER) {
             setPremiumGroupCSoftPaywallShownDayKey(shownDayKey);
           }
         }
@@ -36495,11 +37367,13 @@ function AppContent() {
   useEffect(() => {
     if (!monetizationStartupLockReason) {
       monetizationStartupBlockedLoggedRef.current = false;
+      setStartupHardPaywallDismissed(false);
       return;
     }
     if (onboardingStep !== "done") return;
     if (!interfaceReady) return;
     if (premiumState.isPremium) return;
+    if (startupHardPaywallDismissed && !premiumPaywallState.visible) return;
     const lockTrigger = "trial_10_saves_reached";
     const isTransactionAbandonedHardPaywallActive =
       premiumPaywallState.visible &&
@@ -36508,18 +37382,18 @@ function AppContent() {
       // Keep hard-lock enforced, but do not overwrite abandoned trigger after checkout cancellation.
       if (isTransactionAbandonedHardPaywallActive) {
         if (
-          premiumPaywallState.dismissible !== false ||
+          premiumPaywallState.dismissible === false ||
           premiumPaywallState.kind !== "hard"
         ) {
           setPremiumPaywallState((prev) => ({
             ...prev,
             visible: true,
             kind: "hard",
-            dismissible: false,
+            dismissible: true,
           }));
         }
       } else if (
-        premiumPaywallState.dismissible !== false ||
+        premiumPaywallState.dismissible === false ||
         premiumPaywallState.kind !== "hard" ||
         premiumPaywallState.trigger !== lockTrigger
       ) {
@@ -36529,7 +37403,7 @@ function AppContent() {
           kind: "hard",
           featureKey: null,
           trigger: lockTrigger,
-          dismissible: false,
+          dismissible: true,
         }));
       }
     } else {
@@ -36537,7 +37411,7 @@ function AppContent() {
         kind: "hard",
         savedAmountUSD: savedTotalUSD,
         trigger: lockTrigger,
-        dismissible: false,
+        dismissible: true,
       });
     }
     if (!monetizationStartupBlockedLoggedRef.current) {
@@ -36561,6 +37435,7 @@ function AppContent() {
     monetizationTrialSaveLimit,
     onboardingStep,
     openPremiumPaywall,
+    startupHardPaywallDismissed,
     premiumPaywallState.dismissible,
     premiumPaywallState.kind,
     premiumPaywallState.trigger,
@@ -39122,13 +39997,14 @@ function AppContent() {
       currencyCode
     );
     const spendCount = purchases.length;
+    const bestUsageStreak = Math.max(0, Number(usageStreak?.best) || 0);
     return [
       { label: t("statsSaved"), value: totalSavedConverted },
       { label: t("statsDeclines"), value: `${declineCount}` },
       { label: t("statsSpends"), value: `${spendCount}` },
-      { label: t("statsFreeDays"), value: `${freeDayStats.current}`, suffix: "🔥" },
+      { label: t("statsFreeDays"), value: `${bestUsageStreak}`, suffix: "🔥" },
     ];
-  }, [savedTotalUSD, declineCount, freeDayStats.current, purchases.length, t, profile.currency]);
+  }, [savedTotalUSD, declineCount, purchases.length, t, profile.currency, usageStreak?.best]);
 
   const analyticsStats = useMemo(
     () => [
@@ -40192,6 +41068,8 @@ function AppContent() {
         STORAGE_KEYS.FAB_TUTORIAL,
         STORAGE_KEYS.BUDGET_WIDGET_TUTORIAL,
         STORAGE_KEYS.TUTORIAL_CARD_SHOWN,
+        STORAGE_KEYS.FEED_ADD_TUTORIAL_SHOWN,
+        STORAGE_KEYS.AMOUNT_SLIDER_CONFIRM_COACH,
         STORAGE_KEYS.NORTH_STAR_METRIC,
         STORAGE_KEYS.PRIMARY_TEMPTATION_PROMPT,
         STORAGE_KEYS.COIN_VALUE_MODAL,
@@ -40201,7 +41079,9 @@ function AppContent() {
         STORAGE_KEYS.REPORTS_WEEKLY_NOTIFICATION,
         STORAGE_KEYS.PREMIUM_INSTALL_ID,
         STORAGE_KEYS.INSTALL_DATE,
+        STORAGE_KEYS.FIRST_SESSION_DURATION_BUCKET,
         STORAGE_KEYS.PREMIUM_SOFT_PAYWALL_SHOWN,
+        STORAGE_KEYS.PREMIUM_DAILY_SOFT_PAYWALL_SHOWN_DAY_KEY,
         STORAGE_KEYS.PREMIUM_GROUP_C_SOFT_PAYWALL_SHOWN_DAY_KEY,
         STORAGE_KEYS.PREMIUM_HARD_PAYWALL_SHOWN,
         STORAGE_KEYS.PREMIUM_TRANSACTION_ABANDONED_LAST_SHOWN_AT,
@@ -40298,6 +41178,9 @@ function AppContent() {
       const fabTutorialRaw = storedMap[STORAGE_KEYS.FAB_TUTORIAL] ?? null;
       const budgetWidgetTutorialRaw = storedMap[STORAGE_KEYS.BUDGET_WIDGET_TUTORIAL] ?? null;
       const tutorialCardShownRaw = storedMap[STORAGE_KEYS.TUTORIAL_CARD_SHOWN] ?? null;
+      const feedAddTutorialShownRaw = storedMap[STORAGE_KEYS.FEED_ADD_TUTORIAL_SHOWN] ?? null;
+      const amountSliderConfirmCoachRaw =
+        storedMap[STORAGE_KEYS.AMOUNT_SLIDER_CONFIRM_COACH] ?? null;
       const northStarMetricRaw = storedMap[STORAGE_KEYS.NORTH_STAR_METRIC] ?? null;
       const primaryTemptationPromptRaw = storedMap[STORAGE_KEYS.PRIMARY_TEMPTATION_PROMPT] ?? null;
       const coinValueModalRaw = storedMap[STORAGE_KEYS.COIN_VALUE_MODAL] ?? null;
@@ -40310,7 +41193,11 @@ function AppContent() {
         storedMap[STORAGE_KEYS.REPORTS_WEEKLY_NOTIFICATION] ?? null;
       const premiumInstallIdRaw = storedMap[STORAGE_KEYS.PREMIUM_INSTALL_ID] ?? null;
       const installDateRaw = storedMap[STORAGE_KEYS.INSTALL_DATE] ?? null;
+      const firstSessionDurationBucketRaw =
+        storedMap[STORAGE_KEYS.FIRST_SESSION_DURATION_BUCKET] ?? null;
       const premiumSoftPaywallRaw = storedMap[STORAGE_KEYS.PREMIUM_SOFT_PAYWALL_SHOWN] ?? null;
+      const premiumDailySoftPaywallDayKeyRaw =
+        storedMap[STORAGE_KEYS.PREMIUM_DAILY_SOFT_PAYWALL_SHOWN_DAY_KEY] ?? null;
       const premiumGroupCSoftPaywallDayKeyRaw =
         storedMap[STORAGE_KEYS.PREMIUM_GROUP_C_SOFT_PAYWALL_SHOWN_DAY_KEY] ?? null;
       const premiumHardPaywallRaw = storedMap[STORAGE_KEYS.PREMIUM_HARD_PAYWALL_SHOWN] ?? null;
@@ -40865,7 +41752,19 @@ function AppContent() {
       }
       setInstallDateMs(resolvedInstallDateMs);
       setInstallDateHydrated(true);
+      const normalizedFirstSessionDurationBucket = normalizeFirstSessionDurationBucket(
+        typeof firstSessionDurationBucketRaw === "string" ? firstSessionDurationBucketRaw : ""
+      );
+      firstSessionBucketRecordedRef.current = !!normalizedFirstSessionDurationBucket;
+      setFirstSessionDurationBucket(normalizedFirstSessionDurationBucket);
+      setFirstSessionDurationBucketHydrated(true);
       setPremiumSoftPaywallShown(premiumSoftPaywallRaw === "1");
+      setPremiumDailySoftPaywallShownDayKey(
+        typeof premiumDailySoftPaywallDayKeyRaw === "string"
+          ? premiumDailySoftPaywallDayKeyRaw.trim()
+          : ""
+      );
+      setPremiumDailySoftPaywallShownDayKeyHydrated(true);
       setPremiumGroupCSoftPaywallShownDayKey(
         typeof premiumGroupCSoftPaywallDayKeyRaw === "string"
           ? premiumGroupCSoftPaywallDayKeyRaw.trim()
@@ -40999,6 +41898,17 @@ function AppContent() {
         tutorialCardShownRaw === "1" || tutorialCardShownRaw === "true";
       setTutorialCardShown(hasShownTutorialCard);
       setTutorialCardHydrated(true);
+      const hasShownFeedAddTutorial =
+        feedAddTutorialShownRaw === "1" ||
+        feedAddTutorialShownRaw === "true" ||
+        feedAddTutorialShownRaw === "done";
+      setFeedAddTutorialShown(hasShownFeedAddTutorial);
+      setFeedAddTutorialHydrated(true);
+      const hasSeenAmountSliderConfirmCoach =
+        amountSliderConfirmCoachRaw === "1" ||
+        amountSliderConfirmCoachRaw === "true" ||
+        amountSliderConfirmCoachRaw === "done";
+      setAmountSliderConfirmCoachSeen(hasSeenAmountSliderConfirmCoach);
       if (hasShownTutorialCard) {
         tutorialCardCompletedLoggedRef.current = true;
       }
@@ -41755,6 +42665,8 @@ function AppContent() {
       setMonetizationExperimentEligibleNewInstall(false);
       setMonetizationTrialLocked(false);
       setMonetizationOnboardingLocked(false);
+      firstSessionBucketRecordedRef.current = false;
+      setFirstSessionDurationBucket("");
       setPremiumGroupCSoftPaywallShownDayKey("");
       deferredHydrationPayloadRef.current = null;
       deferredHydrationReadyRef.current = true;
@@ -41786,6 +42698,7 @@ function AppContent() {
         Number.isFinite(prev) && prev > 0 ? prev : resolvedInstallDateMs
       );
       setInstallDateHydrated(true);
+      setFirstSessionDurationBucketHydrated(true);
       setAndroidAppsFlyerPrefHydrated(true);
       const safeHealthPoints =
         typeof resolvedHealthPoints === "number" && !Number.isNaN(resolvedHealthPoints)
@@ -41823,6 +42736,7 @@ function AppContent() {
       setPrimaryTemptationPromptHydrated(true);
       setRatingPromptHydrated(true);
       setTutorialCardHydrated(true);
+      setFeedAddTutorialHydrated(true);
       setClaimedRewardsHydrated(true);
       setChallengesHydrated(true);
       setRefuseStatsHydrated(true);
@@ -42531,6 +43445,39 @@ function AppContent() {
     overlayQueueRef.current.length === 0 &&
     celebrationQueueRef.current.length === 0 &&
     !celebrationGapTimerRef.current;
+  const feedAddTutorialSessionReady =
+    feedAddTutorialHydrated &&
+    !feedAddTutorialShown &&
+    homeSessionCount > 0 &&
+    homeSessionActionBaseline >= 2;
+  const feedAddTutorialStageReady =
+    feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.IDLE ||
+    feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.DONE;
+  const feedAddTutorialCanStart =
+    feedAddTutorialSessionReady &&
+    feedAddTutorialStageReady &&
+    onboardingStep === "done" &&
+    !startupHardLockPendingBeforePaywall &&
+    !premiumPaywallState.visible &&
+    interfaceReady &&
+    activeTab === "feed" &&
+    !tutorialOverlayVisible &&
+    !tutorialBlockingVisible &&
+    !overlay &&
+    !overlayActiveRef.current &&
+    !blockingModalVisible &&
+    !queuedModalType &&
+    overlayQueueRef.current.length === 0 &&
+    celebrationQueueRef.current.length === 0 &&
+    !celebrationGapTimerRef.current;
+  useEffect(() => {
+    if (!feedAddTutorialCanStart) return;
+    setTutorialCardVisible(false);
+    setFeedFirstTutorialSaveCoachVisible(false);
+    setFeedFirstTutorialNeedSoftPaywall(false);
+    setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING);
+    logEvent("feed_first_tutorial_step", { step: "add_pending_after_two_actions" });
+  }, [feedAddTutorialCanStart, logEvent]);
   useEffect(() => {
     if (!shouldResumePrimaryTemptationAddPending) return;
     if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.IDLE) return;
@@ -43236,6 +44183,17 @@ function AppContent() {
     queuePersist(STORAGE_KEYS.PREMIUM_SOFT_PAYWALL_SHOWN, premiumSoftPaywallShown ? "1" : "0");
   }, [premiumSoftPaywallHydrated, premiumSoftPaywallShown, queuePersist]);
   useEffect(() => {
+    if (!premiumDailySoftPaywallShownDayKeyHydrated) return;
+    queuePersist(
+      STORAGE_KEYS.PREMIUM_DAILY_SOFT_PAYWALL_SHOWN_DAY_KEY,
+      premiumDailySoftPaywallShownDayKey || ""
+    );
+  }, [
+    premiumDailySoftPaywallShownDayKey,
+    premiumDailySoftPaywallShownDayKeyHydrated,
+    queuePersist,
+  ]);
+  useEffect(() => {
     if (!premiumGroupCSoftPaywallShownDayKeyHydrated) return;
     queuePersist(
       STORAGE_KEYS.PREMIUM_GROUP_C_SOFT_PAYWALL_SHOWN_DAY_KEY,
@@ -43689,8 +44647,10 @@ useEffect(() => {
           minute: entry?.frequencyReminderMinute,
         }) !== null;
       const reminderTime = resolveEntryReminderTime(entry);
-      const weeklyDay = resolveEntryWeeklyDay(entry);
-      const monthlyDay = resolveEntryMonthlyDay(entry);
+      const weeklyDays = resolveEntryWeeklyDays(entry);
+      const monthlyDays = resolveEntryMonthlyDays(entry);
+      const weeklyDay = weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
+      const monthlyDay = monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
       const desiredIntervalMs =
         frequency === "custom"
           ? getCustomFrequencyIntervalMs(frequencyCustom)
@@ -43717,6 +44677,8 @@ useEffect(() => {
                 reminderMinute: reminderTime.minute,
                 weeklyDay,
                 monthlyDay,
+                weeklyDays,
+                monthlyDays,
               })
             : intervalMs
             ? lastInteractionAt + intervalMs
@@ -43752,6 +44714,8 @@ useEffect(() => {
             reminderMinute: reminderTime.minute,
             weeklyDay,
             monthlyDay,
+            weeklyDays,
+            monthlyDays,
           });
           if (!Number.isFinite(advancedCheckAt) || advancedCheckAt <= nextCheckAt) {
             break;
@@ -44022,6 +44986,7 @@ useEffect(() => {
   useEffect(() => {
     if (analyticsOptOut !== false) return;
     if (!profileHydrated) return;
+    if (!firstSessionDurationBucketHydrated) return;
     if (notificationPermissionGranted === null) return;
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
     const hasGoalProperty =
@@ -44042,6 +45007,8 @@ useEffect(() => {
     const genderValue = profile.gender || "none";
     const notificationsAllowed = notificationPermissionGranted === true;
     const monetizationGroup = normalizeMonetizationExperimentGroup(monetizationExperimentGroup);
+    const firstSessionLt15 = firstSessionDurationBucket === FIRST_SESSION_DURATION_BUCKETS.LT_15_SEC;
+    const firstSessionGt15 = firstSessionDurationBucket === FIRST_SESSION_DURATION_BUCKETS.GT_15_SEC;
     setUserProperties({
       has_goal: !!hasGoalProperty,
       preferred_currency: currencyCode,
@@ -44062,11 +45029,20 @@ useEffect(() => {
         monetizationGroup === MONETIZATION_EXPERIMENT_GROUPS.B ? "1" : "0",
       monetization_exp_group_c:
         monetizationGroup === MONETIZATION_EXPERIMENT_GROUPS.C ? "1" : "0",
+      ...(firstSessionDurationBucket
+        ? {
+            first_session_duration_bucket: firstSessionDurationBucket,
+            first_session_lt_15_sec: firstSessionLt15 ? "1" : "0",
+            first_session_gt_15_sec: firstSessionGt15 ? "1" : "0",
+          }
+        : {}),
     });
   }, [
     analyticsOptOut,
     decisionStats?.resolvedToDeclines,
     decisionStats?.resolvedToWishes,
+    firstSessionDurationBucket,
+    firstSessionDurationBucketHydrated,
     language,
     monetizationExperimentEligibleNewInstall,
     monetizationExperimentGroup,
@@ -45036,18 +46012,24 @@ useEffect(() => {
           frequencyReminderMinute: normalized.minute,
         };
       }
-      if (field === "frequencyWeeklyDay") {
+      if (field === "frequencyWeeklyDay" || field === "frequencyWeeklyDays") {
+        const normalizedDays = normalizeFrequencyWeeklyDays(value) || [
+          ...DEFAULT_FREQUENCY_WEEKLY_DAYS,
+        ];
         return {
           ...prev,
-          frequencyWeeklyDay:
-            normalizeFrequencyWeeklyDay(value) ?? DEFAULT_FREQUENCY_WEEKLY_DAY,
+          frequencyWeeklyDay: normalizedDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY,
+          frequencyWeeklyDays: normalizedDays,
         };
       }
-      if (field === "frequencyMonthlyDay") {
+      if (field === "frequencyMonthlyDay" || field === "frequencyMonthlyDays") {
+        const normalizedDays = normalizeFrequencyMonthlyDays(value) || [
+          ...DEFAULT_FREQUENCY_MONTHLY_DAYS,
+        ];
         return {
           ...prev,
-          frequencyMonthlyDay:
-            normalizeFrequencyMonthlyDay(value) ?? DEFAULT_FREQUENCY_MONTHLY_DAY,
+          frequencyMonthlyDay: normalizedDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY,
+          frequencyMonthlyDays: normalizedDays,
         };
       }
       return {
@@ -45214,12 +46196,14 @@ useEffect(() => {
         hour: DEFAULT_FREQUENCY_REMINDER_HOUR,
         minute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
       };
-    const weeklyDay =
-      normalizeFrequencyWeeklyDay(customData.frequencyWeeklyDay) ??
-      DEFAULT_FREQUENCY_WEEKLY_DAY;
-    const monthlyDay =
-      normalizeFrequencyMonthlyDay(customData.frequencyMonthlyDay) ??
-      DEFAULT_FREQUENCY_MONTHLY_DAY;
+    const weeklyDays = normalizeFrequencyWeeklyDays(
+      customData.frequencyWeeklyDays ?? customData.frequencyWeeklyDay
+    ) || [...DEFAULT_FREQUENCY_WEEKLY_DAYS];
+    const monthlyDays = normalizeFrequencyMonthlyDays(
+      customData.frequencyMonthlyDays ?? customData.frequencyMonthlyDay
+    ) || [...DEFAULT_FREQUENCY_MONTHLY_DAYS];
+    const weeklyDay = weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
+    const monthlyDay = monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
     const frequencyIntervalMs = resolveFrequencyIntervalMs(frequency, frequencyCustom);
     const createdAt = Date.now();
     const newCustom = {
@@ -45239,6 +46223,8 @@ useEffect(() => {
       frequencyReminderMinute: reminderTime.minute,
       frequencyWeeklyDay: weeklyDay,
       frequencyMonthlyDay: monthlyDay,
+      frequencyWeeklyDays: weeklyDays,
+      frequencyMonthlyDays: monthlyDays,
       frequencyReminderManualConfigured: true,
     };
     const card = createCustomHabitTemptation(newCustom, currencyCode, ownerGender);
@@ -45252,6 +46238,8 @@ useEffect(() => {
       card.frequencyReminderMinute = reminderTime.minute;
       card.frequencyWeeklyDay = weeklyDay;
       card.frequencyMonthlyDay = monthlyDay;
+      card.frequencyWeeklyDays = [...weeklyDays];
+      card.frequencyMonthlyDays = [...monthlyDays];
       card.frequencyReminderManualConfigured = true;
       setQuickTemptations((prev) => {
         if (prev.length >= TEMPTATION_HARD_LIMIT) return prev;
@@ -45263,6 +46251,8 @@ useEffect(() => {
       reminderTime,
       weeklyDay,
       monthlyDay,
+      weeklyDays,
+      monthlyDays,
       markManualConfigured: true,
     });
     setCategoryOverrides((prev) => ({ ...prev, [newCustom.id]: category }));
@@ -45284,6 +46274,8 @@ useEffect(() => {
       frequencyReminderMinute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
       frequencyWeeklyDay: DEFAULT_FREQUENCY_WEEKLY_DAY,
       frequencyMonthlyDay: DEFAULT_FREQUENCY_MONTHLY_DAY,
+      frequencyWeeklyDays: [...DEFAULT_FREQUENCY_WEEKLY_DAYS],
+      frequencyMonthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
       initialFrequency: null,
       scheduleConfigVisible: false,
     });
@@ -45303,6 +46295,8 @@ useEffect(() => {
       frequencyReminderMinute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
       frequencyWeeklyDay: DEFAULT_FREQUENCY_WEEKLY_DAY,
       frequencyMonthlyDay: DEFAULT_FREQUENCY_MONTHLY_DAY,
+      frequencyWeeklyDays: [...DEFAULT_FREQUENCY_WEEKLY_DAYS],
+      frequencyMonthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
       initialFrequency: null,
       scheduleConfigVisible: false,
     });
@@ -45418,6 +46412,8 @@ useEffect(() => {
       frequencyReminderMinute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
       frequencyWeeklyDay: DEFAULT_FREQUENCY_WEEKLY_DAY,
       frequencyMonthlyDay: DEFAULT_FREQUENCY_MONTHLY_DAY,
+      frequencyWeeklyDays: [...DEFAULT_FREQUENCY_WEEKLY_DAYS],
+      frequencyMonthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
       initialFrequency: null,
       scheduleConfigVisible: false,
     });
@@ -46218,11 +47214,6 @@ useEffect(() => {
     const displayName = `${firstNameValue} ${lastNameValue}`.trim() || firstNameValue || "";
     const personaId = registrationData.persona || DEFAULT_PERSONA_ID;
     const gender = registrationData.gender || "none";
-    logEvent("onboarding_profile_fields", {
-      first_name_entered: firstNameValue.length > 0,
-      last_name_entered: lastNameValue.length > 0,
-      motto_entered: mottoValue.length > 0,
-    });
     let customSpend = null;
     const customName = registrationData.customSpendTitle?.trim();
     const customAmount = parseNumberInputValue(registrationData.customSpendAmount || "");
@@ -46342,6 +47333,8 @@ useEffect(() => {
     await AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
     await AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "done").catch(() => {});
     await AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL_CARD_SHOWN, "false").catch(() => {});
+    await AsyncStorage.setItem(STORAGE_KEYS.FEED_ADD_TUTORIAL_SHOWN, "false").catch(() => {});
+    await AsyncStorage.setItem(STORAGE_KEYS.AMOUNT_SLIDER_CONFIRM_COACH, "false").catch(() => {});
     setTutorialSeen(true);
     setTemptationTutorialSeen(true);
     setTemptationTutorialStatus("done");
@@ -46352,6 +47345,9 @@ useEffect(() => {
     setTutorialCardShown(false);
     setTutorialCardHydrated(true);
     setTutorialCardVisible(false);
+    setFeedAddTutorialShown(false);
+    setFeedAddTutorialHydrated(true);
+    setAmountSliderConfirmCoachSeen(false);
     setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.IDLE);
     setFeedFirstTutorialSaveCoachVisible(true);
     setFeedFirstTutorialNeedSoftPaywall(false);
@@ -46363,6 +47359,10 @@ useEffect(() => {
     homeSessionRef.current.sessionCount = 0;
     homeSessionRef.current.pendingIndex = null;
     homeSessionRef.current.dateKey = getDayKey(Date.now());
+    homeSessionRef.current.actionBaseline = 0;
+    homeSessionRef.current.actionBaselineNeedsHydration = false;
+    setHomeSessionCount(0);
+    setHomeSessionActionBaseline(0);
     setActiveCurrency(updatedProfile.currency);
     try {
       ensurePrimaryGoalWish(primaryGoals, language, updatedProfile.goal);
@@ -46424,7 +47424,7 @@ useEffect(() => {
     if (isMonetizationExperimentControlGroup) {
       onboardingSoftPaywallActionBaselineRef.current = Math.max(
         0,
-        Number(temptationActionCount) || 0
+        Number(temptationActionCountRef.current) || 0
       );
       pendingOnboardingSoftPaywallRef.current = true;
     } else {
@@ -48451,26 +49451,20 @@ useEffect(() => {
         snapshotFrequency === "custom"
           ? normalizeCustomFrequency(snapshotEntry.frequencyCustom) || { ...DEFAULT_CUSTOM_FREQUENCY }
           : null;
-      const snapshotReminderTime =
-        normalizeFrequencyReminderTime({
-          hour: snapshotEntry.frequencyReminderHour,
-          minute: snapshotEntry.frequencyReminderMinute,
-        }) ||
-        normalizeFrequencyReminderTime({
-          hour: item?.frequencyReminderHour,
-          minute: item?.frequencyReminderMinute,
-        }) || {
-          hour: DEFAULT_FREQUENCY_REMINDER_HOUR,
-          minute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
-        };
-      const snapshotWeeklyDay =
-        normalizeFrequencyWeeklyDay(snapshotEntry.frequencyWeeklyDay) ??
-        normalizeFrequencyWeeklyDay(item?.frequencyWeeklyDay) ??
-        DEFAULT_FREQUENCY_WEEKLY_DAY;
-      const snapshotMonthlyDay =
-        normalizeFrequencyMonthlyDay(snapshotEntry.frequencyMonthlyDay) ??
-        normalizeFrequencyMonthlyDay(item?.frequencyMonthlyDay) ??
-        DEFAULT_FREQUENCY_MONTHLY_DAY;
+      const snapshotWeeklyDays = normalizeFrequencyWeeklyDays(
+        snapshotEntry.frequencyWeeklyDays ??
+          snapshotEntry.frequencyWeeklyDay ??
+          item?.frequencyWeeklyDays ??
+          item?.frequencyWeeklyDay
+      ) || [...DEFAULT_FREQUENCY_WEEKLY_DAYS];
+      const snapshotMonthlyDays = normalizeFrequencyMonthlyDays(
+        snapshotEntry.frequencyMonthlyDays ??
+          snapshotEntry.frequencyMonthlyDay ??
+          item?.frequencyMonthlyDays ??
+          item?.frequencyMonthlyDay
+      ) || [...DEFAULT_FREQUENCY_MONTHLY_DAYS];
+      const snapshotWeeklyDay = snapshotWeeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
+      const snapshotMonthlyDay = snapshotMonthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
       const isUserCreatedItem =
         item?.quickTemptation === true ||
         item?.origin === "quick_custom" ||
@@ -48499,10 +49493,12 @@ useEffect(() => {
             emoji: "🐱",
             frequency: snapshotFrequency,
             frequencyCustom: snapshotFrequencyCustom,
-            reminderHour: snapshotReminderTime.hour,
-            reminderMinute: snapshotReminderTime.minute,
+            reminderHour: DEFAULT_FREQUENCY_REMINDER_HOUR,
+            reminderMinute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
             weeklyDay: snapshotWeeklyDay,
             monthlyDay: snapshotMonthlyDay,
+            weeklyDays: snapshotWeeklyDays,
+            monthlyDays: snapshotMonthlyDays,
           }
         : null;
       setTemptationInteractions((prev) => {
@@ -48527,20 +49523,26 @@ useEffect(() => {
         const itemCustomFrequency = normalizeCustomFrequency(
           item?.frequencyCustom || item?.customFrequency
         ) || null;
-        const itemWeeklyDay = normalizeFrequencyWeeklyDay(item?.frequencyWeeklyDay);
-        const itemMonthlyDay = normalizeFrequencyMonthlyDay(item?.frequencyMonthlyDay);
+        const itemWeeklyDays = normalizeFrequencyWeeklyDays(
+          item?.frequencyWeeklyDays ?? item?.frequencyWeeklyDay
+        );
+        const itemMonthlyDays = normalizeFrequencyMonthlyDays(
+          item?.frequencyMonthlyDays ?? item?.frequencyMonthlyDay
+        );
         const reminderTimeFromItem = normalizeFrequencyReminderTime({
           hour: item?.frequencyReminderHour,
           minute: item?.frequencyReminderMinute,
         });
-        const weeklyDay =
-          normalizeFrequencyWeeklyDay(prevEntry.frequencyWeeklyDay) ??
-          itemWeeklyDay ??
-          DEFAULT_FREQUENCY_WEEKLY_DAY;
-        const monthlyDay =
-          normalizeFrequencyMonthlyDay(prevEntry.frequencyMonthlyDay) ??
-          itemMonthlyDay ??
-          DEFAULT_FREQUENCY_MONTHLY_DAY;
+        const weeklyDays =
+          normalizeFrequencyWeeklyDays(prevEntry.frequencyWeeklyDays ?? prevEntry.frequencyWeeklyDay) ||
+          itemWeeklyDays ||
+          [...DEFAULT_FREQUENCY_WEEKLY_DAYS];
+        const monthlyDays =
+          normalizeFrequencyMonthlyDays(prevEntry.frequencyMonthlyDays ?? prevEntry.frequencyMonthlyDay) ||
+          itemMonthlyDays ||
+          [...DEFAULT_FREQUENCY_MONTHLY_DAYS];
+        const weeklyDay = weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
+        const monthlyDay = monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
         const reminderTime =
           normalizeFrequencyReminderTime({
             hour: prevEntry.frequencyReminderHour,
@@ -48574,6 +49576,8 @@ useEffect(() => {
               reminderMinute: reminderTime.minute,
               weeklyDay,
               monthlyDay,
+              weeklyDays,
+              monthlyDays,
             })
           : null;
         const normalizedAmount = Number(amountUSD);
@@ -48603,6 +49607,8 @@ useEffect(() => {
           frequencyReminderMinute: frequency ? reminderTime.minute : null,
           frequencyWeeklyDay: frequency ? weeklyDay : null,
           frequencyMonthlyDay: frequency ? monthlyDay : null,
+          frequencyWeeklyDays: frequency ? weeklyDays : [],
+          frequencyMonthlyDays: frequency ? monthlyDays : [],
           frequencyReminderPromptShown: prevEntry.frequencyReminderPromptShown === true,
           frequencyReminderManualConfigured:
             prevEntry.frequencyReminderManualConfigured === true || manualConfiguredFromItem,
@@ -48694,7 +49700,9 @@ useEffect(() => {
         entry.frequencyReminderHour != null ||
         entry.frequencyReminderMinute != null ||
         entry.frequencyWeeklyDay != null ||
+        (Array.isArray(entry.frequencyWeeklyDays) && entry.frequencyWeeklyDays.length > 0) ||
         entry.frequencyMonthlyDay != null ||
+        (Array.isArray(entry.frequencyMonthlyDays) && entry.frequencyMonthlyDays.length > 0) ||
         entry.frequencyReminderPromptShown === true ||
         entry.frequencyReminderId != null ||
         (Array.isArray(entry.frequencyReminderIds) && entry.frequencyReminderIds.length > 0) ||
@@ -48729,6 +49737,8 @@ useEffect(() => {
           frequencyReminderMinute: null,
           frequencyWeeklyDay: null,
           frequencyMonthlyDay: null,
+          frequencyWeeklyDays: [],
+          frequencyMonthlyDays: [],
           frequencyReminderPromptShown: false,
           frequencyReminderId: null,
           frequencyReminderIds: [],
@@ -48769,6 +49779,8 @@ useEffect(() => {
       reminderMinute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
       weeklyDay: DEFAULT_FREQUENCY_WEEKLY_DAY,
       monthlyDay: DEFAULT_FREQUENCY_MONTHLY_DAY,
+      weeklyDays: [...DEFAULT_FREQUENCY_WEEKLY_DAYS],
+      monthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
     });
     if (pendingSaveStreakAfterReminderRef.current) {
       pendingSaveStreakAfterReminderRef.current = false;
@@ -48809,17 +49821,19 @@ useEffect(() => {
     });
   }, []);
   const handleFrequencyReminderPromptWeeklyDayChange = useCallback((value) => {
-    const normalized = normalizeFrequencyWeeklyDay(value) ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
+    const normalized = normalizeFrequencyWeeklyDays(value) || [...DEFAULT_FREQUENCY_WEEKLY_DAYS];
     setFrequencyReminderPrompt((prev) => ({
       ...prev,
-      weeklyDay: normalized,
+      weeklyDay: normalized[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY,
+      weeklyDays: normalized,
     }));
   }, []);
   const handleFrequencyReminderPromptMonthlyDayChange = useCallback((value) => {
-    const normalized = normalizeFrequencyMonthlyDay(value) ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
+    const normalized = normalizeFrequencyMonthlyDays(value) || [...DEFAULT_FREQUENCY_MONTHLY_DAYS];
     setFrequencyReminderPrompt((prev) => ({
       ...prev,
-      monthlyDay: normalized,
+      monthlyDay: normalized[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY,
+      monthlyDays: normalized,
     }));
   }, []);
   const handleFrequencyReminderPromptSave = useCallback(() => {
@@ -48848,12 +49862,14 @@ useEffect(() => {
         hour: DEFAULT_FREQUENCY_REMINDER_HOUR,
         minute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
       };
-    const weeklyDay =
-      normalizeFrequencyWeeklyDay(frequencyReminderPrompt.weeklyDay) ??
-      DEFAULT_FREQUENCY_WEEKLY_DAY;
-    const monthlyDay =
-      normalizeFrequencyMonthlyDay(frequencyReminderPrompt.monthlyDay) ??
-      DEFAULT_FREQUENCY_MONTHLY_DAY;
+    const weeklyDays = normalizeFrequencyWeeklyDays(
+      frequencyReminderPrompt.weeklyDays ?? frequencyReminderPrompt.weeklyDay
+    ) || [...DEFAULT_FREQUENCY_WEEKLY_DAYS];
+    const monthlyDays = normalizeFrequencyMonthlyDays(
+      frequencyReminderPrompt.monthlyDays ?? frequencyReminderPrompt.monthlyDay
+    ) || [...DEFAULT_FREQUENCY_MONTHLY_DAYS];
+    const weeklyDay = weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
+    const monthlyDay = monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
     applyFrequencySelectionToTemplate(
       templateId,
       frequency,
@@ -48863,6 +49879,8 @@ useEffect(() => {
         reminderTime,
         weeklyDay,
         monthlyDay,
+        weeklyDays,
+        monthlyDays,
         markPromptShown: true,
         markManualConfigured: true,
       }
@@ -48877,6 +49895,8 @@ useEffect(() => {
     frequencyReminderPrompt.reminderMinute,
     frequencyReminderPrompt.weeklyDay,
     frequencyReminderPrompt.monthlyDay,
+    frequencyReminderPrompt.weeklyDays,
+    frequencyReminderPrompt.monthlyDays,
     frequencyReminderPrompt.templateId,
     frequencyReminderPrompt.title,
   ]);
@@ -48897,12 +49917,14 @@ useEffect(() => {
         hour: DEFAULT_FREQUENCY_REMINDER_HOUR,
         minute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
       };
-    const weeklyDay =
-      normalizeFrequencyWeeklyDay(pendingPayload.weeklyDay) ??
-      DEFAULT_FREQUENCY_WEEKLY_DAY;
-    const monthlyDay =
-      normalizeFrequencyMonthlyDay(pendingPayload.monthlyDay) ??
-      DEFAULT_FREQUENCY_MONTHLY_DAY;
+    const weeklyDays = normalizeFrequencyWeeklyDays(
+      pendingPayload.weeklyDays ?? pendingPayload.weeklyDay
+    ) || [...DEFAULT_FREQUENCY_WEEKLY_DAYS];
+    const monthlyDays = normalizeFrequencyMonthlyDays(
+      pendingPayload.monthlyDays ?? pendingPayload.monthlyDay
+    ) || [...DEFAULT_FREQUENCY_MONTHLY_DAYS];
+    const weeklyDay = weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
+    const monthlyDay = monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
     setFrequencyReminderPrompt({
       visible: true,
       templateId: pendingPayload.templateId || null,
@@ -48914,11 +49936,14 @@ useEffect(() => {
       reminderMinute: reminderTime.minute,
       weeklyDay,
       monthlyDay,
+      weeklyDays,
+      monthlyDays,
     });
     return true;
   }, []);
   const openPendingFrequencyReminderPromptWithPriority = useCallback(
     ({ lockQueue = false } = {}) => {
+      if (startupHardLockPendingBeforePaywall) return false;
       if (onboardingStep !== "done") return false;
       if (Date.now() < (modalHandoffBlockUntilRef.current || 0)) return false;
       if (frequencyReminderPrompt.visible) return false;
@@ -48936,10 +49961,12 @@ useEffect(() => {
       onboardingStep,
       openFrequencyReminderPromptFromPending,
       pendingFrequencyReminderPrompt,
+      startupHardLockPendingBeforePaywall,
     ]
   );
   useEffect(() => {
     if (!pendingFrequencyReminderPrompt) return;
+    if (startupHardLockPendingBeforePaywall) return;
     if (overlay) return;
     if (blockingModalVisible) return;
     if (stormActive) return;
@@ -48962,6 +49989,7 @@ useEffect(() => {
     openPendingFrequencyReminderPromptWithPriority,
     pendingFrequencyReminderPrompt,
     spendPrompt.visible,
+    startupHardLockPendingBeforePaywall,
     stormActive,
   ]);
   useEffect(() => {
@@ -49957,6 +50985,47 @@ useEffect(() => {
         const nextRefuseCount = (refuseStatsEntry.count || 0) + 1;
         const saveTimestamp = Date.now();
         const todaySaveDayKey = getDayKey(saveTimestamp);
+        const saveCountBeforeAction = Math.max(0, Number(declineCount) || 0);
+        const saveCountAfterAction = saveCountBeforeAction + 1;
+        const shouldActivateGroupBTrialLockNow =
+          isMonetizationExperimentGroupB &&
+          !premiumState.isPremium &&
+          !monetizationTrialLocked &&
+          saveCountAfterAction >= monetizationTrialSaveLimit;
+        if (shouldActivateGroupBTrialLockNow) {
+          setMonetizationTrialLocked(true);
+          if (!monetizationLockActivationLoggedRef.current.trial_limit_reached) {
+            monetizationLockActivationLoggedRef.current.trial_limit_reached = true;
+            logEvent("monetization_experiment_lock_activated", {
+              experiment_id: MONETIZATION_EXPERIMENT_ID,
+              experiment_group: MONETIZATION_EXPERIMENT_GROUPS.B,
+              lock_reason: "trial_limit_reached",
+              trial_save_limit: monetizationTrialSaveLimit,
+              save_count_total: saveCountAfterAction,
+            });
+          }
+        }
+        if (
+          isMonetizationExperimentGroupB &&
+          !premiumState.isPremium &&
+          (monetizationTrialLocked || shouldActivateGroupBTrialLockNow)
+        ) {
+          const paywallOptions = {
+            kind: "hard",
+            savedAmountUSD: safeSavedTotalUSD,
+            trigger: "trial_10_saves_reached",
+            dismissible: true,
+          };
+          const opened = showPremiumPaywallRef.current(paywallOptions);
+          if (!opened) {
+            requestAnimationFrame(() => {
+              showPremiumPaywallRef.current(paywallOptions);
+            });
+          }
+          triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+          playSound("tap", { skipCooldown: true });
+          return;
+        }
         const normalizedDailySaveLimit = createDailySaveLimitState(
           dailySaveLimitState?.dayKey,
           dailySaveLimitState?.count
@@ -49964,20 +51033,23 @@ useEffect(() => {
         const currentDaySaveCount =
           normalizedDailySaveLimit.dayKey === todaySaveDayKey ? normalizedDailySaveLimit.count : 0;
         if (
-          isMonetizationExperimentControlGroup &&
+          (isMonetizationExperimentControlGroup || isMonetizationExperimentGroupC) &&
           !premiumState.isPremium &&
           currentDaySaveCount >= DAILY_SAVE_HARD_LIMIT
         ) {
+          const saveLimitPaywallKind = isMonetizationExperimentGroupC ? "soft" : "hard";
           const opened = showPremiumPaywallRef.current({
-            kind: "hard",
+            kind: saveLimitPaywallKind,
             savedAmountUSD: safeSavedTotalUSD,
             trigger: "save_daily_limit_reached",
+            dismissible: true,
           });
           logEvent("save_daily_limit_blocked", {
             temptation_id: templateId || item?.id || null,
             day_key: todaySaveDayKey,
             save_count_day: currentDaySaveCount,
             save_limit_day: DAILY_SAVE_HARD_LIMIT,
+            paywall_kind: saveLimitPaywallKind,
             paywall_opened: opened ? 1 : 0,
           });
           triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
@@ -50613,6 +51685,10 @@ useEffect(() => {
       logTemptationAction,
       dailySaveLimitState,
       isMonetizationExperimentControlGroup,
+      isMonetizationExperimentGroupB,
+      isMonetizationExperimentGroupC,
+      monetizationTrialLocked,
+      monetizationTrialSaveLimit,
       resolveTemptationGoalId,
       assignableGoals.length,
       assignTemptationGoal,
@@ -51337,6 +52413,8 @@ useEffect(() => {
           reminderMinute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
           weeklyDay: DEFAULT_FREQUENCY_WEEKLY_DAY,
           monthlyDay: DEFAULT_FREQUENCY_MONTHLY_DAY,
+          weeklyDays: [...DEFAULT_FREQUENCY_WEEKLY_DAYS],
+          monthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
         };
       }
       const templateId = resolveTemptationTemplateId(item);
@@ -51348,17 +52426,27 @@ useEffect(() => {
         hour: DEFAULT_FREQUENCY_REMINDER_HOUR,
         minute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
       };
-      const weeklyDay =
-        normalizeFrequencyWeeklyDay(entry?.frequencyWeeklyDay ?? item?.frequencyWeeklyDay) ??
-        DEFAULT_FREQUENCY_WEEKLY_DAY;
-      const monthlyDay =
-        normalizeFrequencyMonthlyDay(entry?.frequencyMonthlyDay ?? item?.frequencyMonthlyDay) ??
-        DEFAULT_FREQUENCY_MONTHLY_DAY;
+      const weeklyDays = normalizeFrequencyWeeklyDays(
+        entry?.frequencyWeeklyDays ??
+          entry?.frequencyWeeklyDay ??
+          item?.frequencyWeeklyDays ??
+          item?.frequencyWeeklyDay
+      ) || [...DEFAULT_FREQUENCY_WEEKLY_DAYS];
+      const monthlyDays = normalizeFrequencyMonthlyDays(
+        entry?.frequencyMonthlyDays ??
+          entry?.frequencyMonthlyDay ??
+          item?.frequencyMonthlyDays ??
+          item?.frequencyMonthlyDay
+      ) || [...DEFAULT_FREQUENCY_MONTHLY_DAYS];
+      const weeklyDay = weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
+      const monthlyDay = monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
       return {
         reminderHour: normalizedTime.hour,
         reminderMinute: normalizedTime.minute,
         weeklyDay,
         monthlyDay,
+        weeklyDays,
+        monthlyDays,
       };
     },
     [resolveTemptationTemplateId, temptationInteractions]
@@ -51454,7 +52542,12 @@ useEffect(() => {
   const toggleTemptationEditor = useCallback(
     (item) => {
       if (!item) return;
-      runLayoutAnimation();
+      if (
+        feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE ||
+        feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.WELCOME
+      ) {
+        completeFeedFirstTutorial("edit_open");
+      }
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
       setPriceEditor((prev) => {
         if (prev.item?.id === item.id) {
@@ -51471,6 +52564,8 @@ useEffect(() => {
             frequencyReminderMinute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
             frequencyWeeklyDay: DEFAULT_FREQUENCY_WEEKLY_DAY,
             frequencyMonthlyDay: DEFAULT_FREQUENCY_MONTHLY_DAY,
+            frequencyWeeklyDays: [...DEFAULT_FREQUENCY_WEEKLY_DAYS],
+            frequencyMonthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
             initialFrequency: null,
             scheduleConfigVisible: false,
           };
@@ -51504,7 +52599,7 @@ useEffect(() => {
         const resolvedDescription =
           (overrideDescription && overrideDescription.length ? overrideDescription : computedDescription);
         const { frequency, frequencyCustom } = resolveFrequencySelectionForItem(item);
-        const { reminderHour, reminderMinute, weeklyDay, monthlyDay } =
+        const { reminderHour, reminderMinute, weeklyDay, monthlyDay, weeklyDays, monthlyDays } =
           resolveFrequencyScheduleSelectionForItem(item);
         logEvent("temptation_viewed", {
           temptation_id: item.id,
@@ -51524,6 +52619,8 @@ useEffect(() => {
           frequencyReminderMinute: reminderMinute,
           frequencyWeeklyDay: weeklyDay,
           frequencyMonthlyDay: monthlyDay,
+          frequencyWeeklyDays: weeklyDays,
+          frequencyMonthlyDays: monthlyDays,
           initialFrequency: frequency,
           scheduleConfigVisible: false,
         };
@@ -51532,6 +52629,8 @@ useEffect(() => {
     [
       language,
       profile.currency,
+      feedFirstTutorialStage,
+      completeFeedFirstTutorial,
       titleOverrides,
       descriptionOverrides,
       resolveTemptationCategory,
@@ -51542,7 +52641,6 @@ useEffect(() => {
 
   const closePriceEditor = useCallback(() => {
     if (!priceEditor.item && !editOverlayVisible) return;
-    runLayoutAnimation();
     setPriceEditor({
       item: null,
       value: "",
@@ -51556,6 +52654,8 @@ useEffect(() => {
       frequencyReminderMinute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
       frequencyWeeklyDay: DEFAULT_FREQUENCY_WEEKLY_DAY,
       frequencyMonthlyDay: DEFAULT_FREQUENCY_MONTHLY_DAY,
+      frequencyWeeklyDays: [...DEFAULT_FREQUENCY_WEEKLY_DAYS],
+      frequencyMonthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
       initialFrequency: null,
       scheduleConfigVisible: false,
     });
@@ -51595,11 +52695,14 @@ useEffect(() => {
         setEditOverlayVisible(true);
         editOverlayAnim.setValue(0);
       }
+      editOverlayAnim.stopAnimation();
       Animated.spring(editOverlayAnim, {
         toValue: 1,
-        damping: 22,
-        stiffness: 180,
-        mass: 0.9,
+        damping: 24,
+        stiffness: 260,
+        mass: 0.76,
+        restDisplacementThreshold: 0.001,
+        restSpeedThreshold: 0.001,
         useNativeDriver: true,
       }).start();
       return;
@@ -51607,10 +52710,11 @@ useEffect(() => {
     if (editOverlayVisible) {
       const closeToken = editOverlayCloseTokenRef.current + 1;
       editOverlayCloseTokenRef.current = closeToken;
+      editOverlayAnim.stopAnimation();
       Animated.timing(editOverlayAnim, {
         toValue: 0,
-        duration: 200,
-        easing: Easing.inOut(Easing.cubic),
+        duration: 180,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }).start(() => {
         if (editOverlayCloseTokenRef.current !== closeToken) return;
@@ -51628,7 +52732,7 @@ useEffect(() => {
         editOverlayAnim.setValue(0);
         setEditOverlayVisible(false);
         editOverlayCloseFallbackTimerRef.current = null;
-      }, 280);
+      }, 260);
     }
   }, [priceEditor.item, editOverlayAnim, editOverlayVisible]);
   useEffect(
@@ -51692,17 +52796,19 @@ useEffect(() => {
     });
   }, []);
   const handlePriceWeeklyDayChange = useCallback((value) => {
-    const normalized = normalizeFrequencyWeeklyDay(value) ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
+    const normalized = normalizeFrequencyWeeklyDays(value) || [...DEFAULT_FREQUENCY_WEEKLY_DAYS];
     setPriceEditor((prev) => ({
       ...prev,
-      frequencyWeeklyDay: normalized,
+      frequencyWeeklyDay: normalized[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY,
+      frequencyWeeklyDays: normalized,
     }));
   }, []);
   const handlePriceMonthlyDayChange = useCallback((value) => {
-    const normalized = normalizeFrequencyMonthlyDay(value) ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
+    const normalized = normalizeFrequencyMonthlyDays(value) || [...DEFAULT_FREQUENCY_MONTHLY_DAYS];
     setPriceEditor((prev) => ({
       ...prev,
-      frequencyMonthlyDay: normalized,
+      frequencyMonthlyDay: normalized[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY,
+      frequencyMonthlyDays: normalized,
     }));
   }, []);
 
@@ -51939,8 +53045,12 @@ useEffect(() => {
       let frequency = normalizeFrequencyId(frequencyValue) || "daily";
       let frequencyCustom = normalizeCustomFrequency(customFrequencyValue) || null;
       const reminderOverride = normalizeFrequencyReminderTime(options?.reminderTime || null);
-      const weeklyDayOverride = normalizeFrequencyWeeklyDay(options?.weeklyDay);
-      const monthlyDayOverride = normalizeFrequencyMonthlyDay(options?.monthlyDay);
+      const weeklyDaysOverride = normalizeFrequencyWeeklyDays(
+        options?.weeklyDays ?? options?.weeklyDay
+      );
+      const monthlyDaysOverride = normalizeFrequencyMonthlyDays(
+        options?.monthlyDays ?? options?.monthlyDay
+      );
       const markPromptShown = options?.markPromptShown === true;
       const markManualConfigured = options?.markManualConfigured === true;
       if (frequency === "biweekly") {
@@ -51955,14 +53065,10 @@ useEffect(() => {
         const prevEntry = prev?.[templateId] || {};
         const lastInteractionAt = Number(prevEntry.lastInteractionAt) || 0;
         const reminderTime = reminderOverride || resolveEntryReminderTime(prevEntry);
-        const weeklyDay =
-          weeklyDayOverride ??
-          normalizeFrequencyWeeklyDay(prevEntry.frequencyWeeklyDay) ??
-          DEFAULT_FREQUENCY_WEEKLY_DAY;
-        const monthlyDay =
-          monthlyDayOverride ??
-          normalizeFrequencyMonthlyDay(prevEntry.frequencyMonthlyDay) ??
-          DEFAULT_FREQUENCY_MONTHLY_DAY;
+        const weeklyDays = weeklyDaysOverride || resolveEntryWeeklyDays(prevEntry);
+        const monthlyDays = monthlyDaysOverride || resolveEntryMonthlyDays(prevEntry);
+        const weeklyDay = weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
+        const monthlyDay = monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
         const intervalMs = frequency === "custom" ? customIntervalMs || null : null;
         const nextCheckAt =
           lastInteractionAt > 0
@@ -51974,6 +53080,8 @@ useEffect(() => {
                 reminderMinute: reminderTime.minute,
                 weeklyDay,
                 monthlyDay,
+                weeklyDays,
+                monthlyDays,
               })
             : null;
         return {
@@ -51989,6 +53097,8 @@ useEffect(() => {
             frequencyReminderMinute: reminderTime.minute,
             frequencyWeeklyDay: weeklyDay,
             frequencyMonthlyDay: monthlyDay,
+            frequencyWeeklyDays: weeklyDays,
+            frequencyMonthlyDays: monthlyDays,
             frequencyReminderPromptShown:
               markPromptShown || prevEntry.frequencyReminderPromptShown === true,
             frequencyReminderManualConfigured:
@@ -52244,11 +53354,14 @@ useEffect(() => {
         hour: DEFAULT_FREQUENCY_REMINDER_HOUR,
         minute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
       };
-    const nextWeeklyDay =
-      normalizeFrequencyWeeklyDay(priceEditor.frequencyWeeklyDay) ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
-    const nextMonthlyDay =
-      normalizeFrequencyMonthlyDay(priceEditor.frequencyMonthlyDay) ??
-      DEFAULT_FREQUENCY_MONTHLY_DAY;
+    const nextWeeklyDays = normalizeFrequencyWeeklyDays(
+      priceEditor.frequencyWeeklyDays ?? priceEditor.frequencyWeeklyDay
+    ) || [...DEFAULT_FREQUENCY_WEEKLY_DAYS];
+    const nextMonthlyDays = normalizeFrequencyMonthlyDays(
+      priceEditor.frequencyMonthlyDays ?? priceEditor.frequencyMonthlyDay
+    ) || [...DEFAULT_FREQUENCY_MONTHLY_DAYS];
+    const nextWeeklyDay = nextWeeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
+    const nextMonthlyDay = nextMonthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
     if (nextFrequency === "biweekly") {
       nextFrequency = "custom";
       nextFrequencyCustom = { ...DEFAULT_CUSTOM_FREQUENCY };
@@ -52268,13 +53381,15 @@ useEffect(() => {
       : false;
     const changedFrequency = previousFrequencyState.frequency !== nextFrequency || customChanged;
     const changedReminderTime =
-      nextFrequency === "daily" &&
+      isGuidedFrequency(nextFrequency) &&
       (previousScheduleState.reminderHour !== nextReminderTime.hour ||
         previousScheduleState.reminderMinute !== nextReminderTime.minute);
     const changedWeeklyDay =
-      nextFrequency === "weekly" && previousScheduleState.weeklyDay !== nextWeeklyDay;
+      nextFrequency === "weekly" &&
+      !areNumberArraysEqual(previousScheduleState.weeklyDays || [], nextWeeklyDays);
     const changedMonthlyDay =
-      nextFrequency === "monthly" && previousScheduleState.monthlyDay !== nextMonthlyDay;
+      nextFrequency === "monthly" &&
+      !areNumberArraysEqual(previousScheduleState.monthlyDays || [], nextMonthlyDays);
     const changedScheduleConfig = changedReminderTime || changedWeeklyDay || changedMonthlyDay;
     const templateId = priceEditor.item.id;
     const storedFrequency = normalizeFrequencyId(temptationInteractions?.[templateId]?.frequency) || null;
@@ -52282,19 +53397,21 @@ useEffect(() => {
       hour: temptationInteractions?.[templateId]?.frequencyReminderHour,
       minute: temptationInteractions?.[templateId]?.frequencyReminderMinute,
     });
-    const storedWeeklyDay = normalizeFrequencyWeeklyDay(
-      temptationInteractions?.[templateId]?.frequencyWeeklyDay
+    const storedWeeklyDays = normalizeFrequencyWeeklyDays(
+      temptationInteractions?.[templateId]?.frequencyWeeklyDays ??
+        temptationInteractions?.[templateId]?.frequencyWeeklyDay
     );
-    const storedMonthlyDay = normalizeFrequencyMonthlyDay(
-      temptationInteractions?.[templateId]?.frequencyMonthlyDay
+    const storedMonthlyDays = normalizeFrequencyMonthlyDays(
+      temptationInteractions?.[templateId]?.frequencyMonthlyDays ??
+        temptationInteractions?.[templateId]?.frequencyMonthlyDay
     );
     const shouldApplyFrequency =
       changedFrequency ||
       changedScheduleConfig ||
       !storedFrequency ||
       !storedReminderTime ||
-      (nextFrequency === "weekly" && storedWeeklyDay == null) ||
-      (nextFrequency === "monthly" && storedMonthlyDay == null);
+      (nextFrequency === "weekly" && (!storedWeeklyDays || !storedWeeklyDays.length)) ||
+      (nextFrequency === "monthly" && (!storedMonthlyDays || !storedMonthlyDays.length));
     const markManualConfigured =
       (priceEditor.scheduleConfigVisible && isGuidedFrequency(nextFrequency)) ||
       changedScheduleConfig;
@@ -52313,6 +53430,8 @@ useEffect(() => {
       frequencyReminderMinute: nextReminderTime.minute,
       frequencyWeeklyDay: nextWeeklyDay,
       frequencyMonthlyDay: nextMonthlyDay,
+      frequencyWeeklyDays: nextWeeklyDays,
+      frequencyMonthlyDays: nextMonthlyDays,
       frequencyReminderManualConfigured:
         markManualConfigured || priceEditor.item?.frequencyReminderManualConfigured === true,
     });
@@ -52330,6 +53449,8 @@ useEffect(() => {
           reminderTime: nextReminderTime,
           weeklyDay: nextWeeklyDay,
           monthlyDay: nextMonthlyDay,
+          weeklyDays: nextWeeklyDays,
+          monthlyDays: nextMonthlyDays,
           markManualConfigured,
         }
       );
@@ -52926,6 +54047,7 @@ useEffect(() => {
   ]);
   useEffect(() => {
     if (!startupHardLockPendingBeforePaywall) return;
+    const dismissedAt = Date.now();
     if (overlayRetryTimerRef.current) {
       clearTimeout(overlayRetryTimerRef.current);
       overlayRetryTimerRef.current = null;
@@ -52938,7 +54060,23 @@ useEffect(() => {
       clearTimeout(celebrationGapTimerRef.current);
       celebrationGapTimerRef.current = null;
     }
-  }, [startupHardLockPendingBeforePaywall]);
+    if (celebrationQueueRef.current.length) {
+      celebrationQueueRef.current = [];
+    }
+    if (overlay || overlayActiveRef.current || overlayQueueRef.current.length) {
+      setOverlay(null);
+      overlayQueueRef.current = [];
+      overlayActiveRef.current = false;
+      lastOverlayDismissedAtRef.current = dismissedAt;
+      lastSaveOverlayDismissedAtRef.current = dismissedAt;
+      if (Platform.OS === "ios") {
+        modalHandoffBlockUntilRef.current = Math.max(
+          modalHandoffBlockUntilRef.current || 0,
+          dismissedAt + MODAL_HANDOFF_GUARD_MS + 48
+        );
+      }
+    }
+  }, [overlay, startupHardLockPendingBeforePaywall]);
 
   useEffect(() => {
     if (overlay?.type === "level") {
@@ -53549,21 +54687,6 @@ useEffect(() => {
     const lastRunPendingAt = Number(levelFlowThrottleRef.current?.runPendingAt) || 0;
     if (now - lastRunPendingAt < 250) return;
     levelFlowThrottleRef.current.runPendingAt = now;
-    if (Platform.OS === "android") {
-      const pending = pendingLevelCelebrationRef.current;
-      if (!pending) return;
-      const pendingLevel = Math.max(1, Number(pending.level) || 1);
-      pendingLevelCelebrationRef.current = null;
-      levelCelebrationQueuedRef.current = Math.max(
-        levelCelebrationQueuedRef.current || 0,
-        pendingLevel
-      );
-      lastLevelCelebrationRunRef.current = Math.max(
-        lastLevelCelebrationRunRef.current || 0,
-        pendingLevel
-      );
-      return;
-    }
     if (levelFlowDeferredForReminder) return;
     if (levelCelebrationRunGuardRef.current) return;
     if (levelReachedLoggingGuardRef.current) return;
@@ -53609,7 +54732,6 @@ useEffect(() => {
   }, [runPendingLevelCelebration]);
 
   useEffect(() => {
-    if (Platform.OS === "android") return;
     if (levelCelebrationDrainGuardRef.current) return;
     levelCelebrationDrainGuardRef.current = true;
     try {
@@ -53713,7 +54835,6 @@ useEffect(() => {
     if (levelCelebrationEffectGuardRef.current) return;
     levelCelebrationEffectGuardRef.current = true;
     try {
-      if (Platform.OS === "android") return;
       if (levelFlowDeferredForReminder) return;
       if (!lastCelebratedLevelHydrated) return;
       if (resetInProgressRef.current) {
@@ -54040,6 +55161,8 @@ useEffect(() => {
             AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
             AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "done").catch(() => {});
             AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL_CARD_SHOWN, "false").catch(() => {});
+            AsyncStorage.setItem(STORAGE_KEYS.FEED_ADD_TUTORIAL_SHOWN, "false").catch(() => {});
+            AsyncStorage.setItem(STORAGE_KEYS.AMOUNT_SLIDER_CONFIRM_COACH, "false").catch(() => {});
             safeNotifications.cancelAllScheduledNotificationsAsync();
             try {
               await Promise.all(
@@ -54203,9 +55326,19 @@ useEffect(() => {
             setTutorialCardShown(false);
             setTutorialCardHydrated(true);
             setTutorialCardVisible(false);
+            setFeedAddTutorialShown(false);
+            setFeedAddTutorialHydrated(true);
+            setAmountSliderConfirmCoachSeen(false);
             setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.IDLE);
             setFeedFirstTutorialSaveCoachVisible(true);
             setFeedFirstTutorialNeedSoftPaywall(false);
+            homeSessionRef.current.sessionCount = 0;
+            homeSessionRef.current.pendingIndex = null;
+            homeSessionRef.current.dateKey = getDayKey(Date.now());
+            homeSessionRef.current.actionBaseline = 0;
+            homeSessionRef.current.actionBaselineNeedsHydration = false;
+            setHomeSessionCount(0);
+            setHomeSessionActionBaseline(0);
             tutorialCardCompletedLoggedRef.current = false;
             tutorialCardShownLoggedRef.current = false;
             setLastCelebratedLevel(1);
@@ -54776,6 +55909,8 @@ useEffect(() => {
             tutorialTemptationStepId={tutorialTemptationStepId}
             tutorialHighlightMeasureTick={tutorialHighlightMeasureTick}
             onTutorialHighlightLayoutChange={handleTutorialHighlightLayoutChange}
+            showAmountSliderConfirmCoach={!amountSliderConfirmCoachSeen}
+            onAmountSliderConfirmCoachComplete={markAmountSliderConfirmCoachSeen}
             showTemptationCoachMark={
               feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE &&
               feedFirstTutorialSaveCoachVisible &&
@@ -58094,6 +59229,8 @@ useEffect(() => {
                         reminderMinute={frequencyReminderPrompt.reminderMinute}
                         weeklyDay={frequencyReminderPrompt.weeklyDay}
                         monthlyDay={frequencyReminderPrompt.monthlyDay}
+                        weeklyDays={frequencyReminderPrompt.weeklyDays}
+                        monthlyDays={frequencyReminderPrompt.monthlyDays}
                         onReminderTimeChange={handleFrequencyReminderPromptTimeChange}
                         onWeeklyDayChange={handleFrequencyReminderPromptWeeklyDayChange}
                         onMonthlyDayChange={handleFrequencyReminderPromptMonthlyDayChange}
@@ -58132,10 +59269,12 @@ useEffect(() => {
         )}
 
         {!startupHardLockPendingBeforePaywall && editOverlayVisible && (
-          <TouchableWithoutFeedback onPress={closePriceEditor}>
-            <View
-              style={[styles.temptationEditOverlay, modalKeyboardPaddingStyle]}
-              pointerEvents="box-none"
+          <View style={[styles.temptationEditOverlay, modalKeyboardPaddingStyle]}>
+            <Pressable
+              style={styles.temptationEditBackdropPressable}
+              onPress={closePriceEditor}
+              accessibilityRole="button"
+              accessibilityLabel={t("priceEditCancel")}
             >
               <Animated.View
                 style={[
@@ -58143,82 +59282,82 @@ useEffect(() => {
                   {
                     opacity: editOverlayAnim.interpolate({
                       inputRange: [0, 1],
-                      outputRange: [0, 0.6],
+                      outputRange: [0, 0.62],
                     }),
                   },
                 ]}
               />
-              {priceEditor.item && (
-                <TouchableWithoutFeedback onPress={() => {}}>
-                  <Animated.View
-                    style={[
-                      styles.temptationEditSheetContainer,
+            </Pressable>
+            {priceEditor.item && (
+              <Animated.View
+                style={[
+                  styles.temptationEditSheetContainer,
+                  {
+                    opacity: editOverlayAnim,
+                    transform: [
                       {
-                        opacity: editOverlayAnim,
-                        transform: [
-                          {
-                            translateY: editOverlayAnim.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [30, 0],
-                            }),
-                          },
-                          {
-                            scale: editOverlayAnim.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [0.96, 1],
-                            }),
-                          },
-                        ],
+                        translateY: editOverlayAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [46, 0],
+                        }),
                       },
-                    ]}
-                  >
-                    <TemptationEditSheet
-                      item={priceEditor.item}
-                      language={language}
-                      colors={colors}
-                      t={t}
-                      currency={profile.currency || DEFAULT_PROFILE.currency}
-                      titleOverride={titleOverrides[priceEditor.item.id]}
-                      editTitleValue={priceEditor.title}
-                      editPriceValue={priceEditor.value}
-                      editGoalLabel={priceEditorAssignedGoalTitle || ""}
-                      editEmojiValue={priceEditor.emoji}
-                      editDescriptionValue={priceEditor.description || ""}
-                      editCategoryValue={priceEditor.category}
-                      editFrequencyValue={priceEditor.frequency}
-                      editFrequencyCustomValue={priceEditor.frequencyCustom}
-                      editReminderHour={priceEditor.frequencyReminderHour}
-                      editReminderMinute={priceEditor.frequencyReminderMinute}
-                      editWeeklyDay={priceEditor.frequencyWeeklyDay}
-                      editMonthlyDay={priceEditor.frequencyMonthlyDay}
-                      showScheduleConfig={priceEditor.scheduleConfigVisible}
-                      onEditTitleChange={handlePriceTitleChange}
-                      onEditPriceChange={handlePriceInputChange}
-                      onEditEmojiChange={handlePriceEmojiChange}
-                      onEditDescriptionChange={handlePriceDescriptionChange}
-                      onEditCategoryChange={handlePriceCategoryChange}
-                      onEditFrequencyChange={handlePriceFrequencyChange}
-                      onEditFrequencyCustomChange={handlePriceCustomFrequencyChange}
-                      onEditReminderTimeChange={handlePriceReminderTimeChange}
-                      onEditWeeklyDayChange={handlePriceWeeklyDayChange}
-                      onEditMonthlyDayChange={handlePriceMonthlyDayChange}
-                      onEditSave={savePriceEdit}
-                      onEditCancel={closePriceEditor}
-                      onEditDelete={() => promptTemptationDelete(priceEditor.item)}
-                      onEditGoalSelect={() => {
-                        setGoalLinkPrompt({
-                          visible: true,
-                          item: priceEditor.item,
-                          intent: "edit",
-                          amountUSD: null,
-                        });
-                      }}
-                    />
-                  </Animated.View>
-                </TouchableWithoutFeedback>
-              )}
-            </View>
-          </TouchableWithoutFeedback>
+                      {
+                        scale: editOverlayAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.985, 1],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <TemptationEditSheet
+                  item={priceEditor.item}
+                  language={language}
+                  colors={colors}
+                  t={t}
+                  currency={profile.currency || DEFAULT_PROFILE.currency}
+                  titleOverride={titleOverrides[priceEditor.item.id]}
+                  editTitleValue={priceEditor.title}
+                  editPriceValue={priceEditor.value}
+                  editGoalLabel={priceEditorAssignedGoalTitle || ""}
+                  editEmojiValue={priceEditor.emoji}
+                  editDescriptionValue={priceEditor.description || ""}
+                  editCategoryValue={priceEditor.category}
+                  editFrequencyValue={priceEditor.frequency}
+                  editFrequencyCustomValue={priceEditor.frequencyCustom}
+                  editReminderHour={priceEditor.frequencyReminderHour}
+                  editReminderMinute={priceEditor.frequencyReminderMinute}
+                  editWeeklyDay={priceEditor.frequencyWeeklyDay}
+                  editMonthlyDay={priceEditor.frequencyMonthlyDay}
+                  editWeeklyDays={priceEditor.frequencyWeeklyDays}
+                  editMonthlyDays={priceEditor.frequencyMonthlyDays}
+                  showScheduleConfig={priceEditor.scheduleConfigVisible}
+                  onEditTitleChange={handlePriceTitleChange}
+                  onEditPriceChange={handlePriceInputChange}
+                  onEditEmojiChange={handlePriceEmojiChange}
+                  onEditDescriptionChange={handlePriceDescriptionChange}
+                  onEditCategoryChange={handlePriceCategoryChange}
+                  onEditFrequencyChange={handlePriceFrequencyChange}
+                  onEditFrequencyCustomChange={handlePriceCustomFrequencyChange}
+                  onEditReminderTimeChange={handlePriceReminderTimeChange}
+                  onEditWeeklyDayChange={handlePriceWeeklyDayChange}
+                  onEditMonthlyDayChange={handlePriceMonthlyDayChange}
+                  onEditSave={savePriceEdit}
+                  onEditCancel={closePriceEditor}
+                  onEditDelete={() => promptTemptationDelete(priceEditor.item)}
+                  onEditGoalSelect={() => {
+                    setGoalLinkPrompt({
+                      visible: true,
+                      item: priceEditor.item,
+                      intent: "edit",
+                      amountUSD: null,
+                    });
+                  }}
+                />
+              </Animated.View>
+            )}
+          </View>
         )}
 
         {!startupHardLockPendingBeforePaywall && moodDetailsVisible && moodPreset && (
@@ -58749,6 +59888,8 @@ useEffect(() => {
                         overlay?.type === "primary_temptation"
                       }
                       onSavedCoachMarkAction={handleTutorialCardCoachAction}
+                      showAmountSliderConfirmCoach={!amountSliderConfirmCoachSeen}
+                      onAmountSliderConfirmCoachComplete={markAmountSliderConfirmCoachSeen}
                       playSound={playSound}
                       onToggleEdit={null}
                       cardStyle={styles.primaryTemptationCard}
@@ -66088,6 +67229,16 @@ const styles = StyleSheet.create({
   temptationAmountHint: {
     ...createBodyText({ fontSize: 11, lineHeight: 14 }),
   },
+  temptationAmountConfirmHint: {
+    marginTop: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  temptationAmountConfirmHintText: {
+    ...createBodyText({ fontSize: 12, lineHeight: 16, fontWeight: "700" }),
+  },
   temptationAmountTrackWrap: {
     width: "100%",
     height: 36,
@@ -69420,6 +70571,10 @@ const styles = StyleSheet.create({
     width: "100%",
     gap: 8,
   },
+  frequencyScheduleWrap: {
+    width: "100%",
+    gap: 10,
+  },
   frequencyPickerLabel: {
     fontSize: 12,
     fontWeight: "600",
@@ -69475,6 +70630,24 @@ const styles = StyleSheet.create({
   },
   frequencyCustomEditText: {
     fontSize: 12,
+    fontWeight: "700",
+  },
+  frequencyTimeToggleButton: {
+    borderRadius: 12,
+    borderWidth: 1,
+    minHeight: 42,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  frequencyTimeToggleButtonText: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  frequencyTimeToggleChevron: {
+    fontSize: 13,
     fontWeight: "700",
   },
   timeWheelRow: {
@@ -72027,37 +73200,42 @@ const styles = StyleSheet.create({
     zIndex: 400,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingHorizontal: IS_SHORT_DEVICE ? 10 : 14,
+    paddingVertical: IS_SHORT_DEVICE ? 10 : 18,
+  },
+  temptationEditBackdropPressable: {
+    ...StyleSheet.absoluteFillObject,
   },
   temptationEditBackdrop: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: "#05060F",
   },
   temptationEditSheetContainer: {
-    width: "88%",
-    maxWidth: 420,
+    width: "100%",
+    maxWidth: 560,
     alignSelf: "center",
+    shadowColor: "#000",
+    shadowOpacity: Platform.OS === "ios" ? 0.2 : 0.28,
+    shadowOffset: { width: 0, height: 12 },
+    shadowRadius: 24,
+    elevation: 12,
   },
   temptationEditSheet: {
     width: "100%",
-    borderRadius: 24,
+    borderRadius: 28,
     borderWidth: 1,
     overflow: "hidden",
-    maxHeight: SCREEN_HEIGHT * 0.7,
+    maxHeight: SCREEN_HEIGHT * 0.84,
+    minHeight: Math.min(SCREEN_HEIGHT * (IS_SHORT_DEVICE ? 0.56 : 0.62), 560),
   },
   temptationEditScroll: {
-    maxHeight: SCREEN_HEIGHT * (IS_SHORT_DEVICE ? 0.4 : 0.52),
+    maxHeight: SCREEN_HEIGHT * (IS_SHORT_DEVICE ? 0.56 : 0.66),
   },
   temptationEditContent: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 10,
-    gap: 10,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 14,
+    gap: 12,
   },
   temptationEditFieldRow: {
     flexDirection: "row",
@@ -72133,9 +73311,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   temptationEditFooter: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 12,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
     gap: 8,
   },
@@ -73428,11 +74606,18 @@ const styles = StyleSheet.create({
   },
   customHabitManualWrap: {
     overflow: "hidden",
+    marginTop: 12,
+    marginHorizontal: 24,
+  },
+  customHabitManualCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     gap: 8,
   },
   customHabitManualTitle: {
     ...createBodyText({ fontSize: 16, fontWeight: "700" }),
-    marginTop: 6,
   },
   customHabitManualHint: {
     ...createSecondaryText({ fontSize: 12, marginBottom: 2 }),
@@ -73874,7 +75059,10 @@ function OnboardingNotificationsScreen({
     Number.isFinite(parsedGoalAmount) && parsedGoalAmount > 0
       ? Math.ceil(parsedGoalAmount / estimatedDailySavings)
       : 14;
-  const estimatedDays = Math.max(7, Math.min(18, rawEstimatedDays));
+  const estimatedDays = Math.max(
+    ONBOARDING_GOAL_ESTIMATE_MIN_DAYS,
+    Math.min(ONBOARDING_GOAL_ESTIMATE_MAX_DAYS, rawEstimatedDays)
+  );
   const resolvedGoalAmount = Number.isFinite(parsedGoalAmount) && parsedGoalAmount > 0
     ? formatCurrency(parsedGoalAmount, goalCurrency || DEFAULT_PROFILE.currency)
     : "—";
@@ -73892,6 +75080,17 @@ function OnboardingNotificationsScreen({
       ONBOARDING_NOTIFICATIONS_COPY.notifyBody,
       "Gentle reminders keep you focused right when an impulse appears."
     );
+  const timelineDays = useMemo(() => buildOnboardingGoalTimelineDays(estimatedDays), [estimatedDays]);
+  const [startMilestoneDay, habitMilestoneDay, progressMilestoneDay, disciplineMilestoneDay, finalMilestoneDay] =
+    timelineDays;
+  const dayTitleTemplate = resolveNotificationsCopy(
+    ONBOARDING_NOTIFICATIONS_COPY.milestones.dayTitleTemplate,
+    "Day {{day}}"
+  );
+  const formatMilestoneDayTitle = useCallback(
+    (day) => interpolateOnboardingCopy(dayTitleTemplate, { day }),
+    [dayTitleTemplate]
+  );
   const [stageLayoutWidth, setStageLayoutWidth] = useState(0);
   const stageMeasuredWidth = Number.isFinite(Number(stageLayoutWidth)) ? Number(stageLayoutWidth) : 0;
   const stageOuterWidth = Math.max(260, stageMeasuredWidth || SCREEN_WIDTH - BASE_HORIZONTAL_PADDING * 2);
@@ -73934,29 +75133,29 @@ function OnboardingNotificationsScreen({
   const progressPath = `M ${step1CenterX} ${step1CenterY} L ${day3CenterX} ${day3CenterY} L ${day7CenterX} ${day7CenterY} L ${day10CenterX} ${day10CenterY} L ${day14CenterX} ${day14CenterY} L ${stagePathCenterX} 98`;
   const milestones = [
     {
-      id: "start",
+      id: `d_${startMilestoneDay}`,
       kind: "start",
       width: milestoneWidth,
       top: 304,
       left: startUnderDaySevenLeft,
-      title: resolveNotificationsCopy(ONBOARDING_NOTIFICATIONS_COPY.milestones.startTitle, "Step 1"),
+      title: formatMilestoneDayTitle(startMilestoneDay),
       desc: resolveNotificationsCopy(ONBOARDING_NOTIFICATIONS_COPY.milestones.startDesc, "You're here"),
     },
     {
-      id: "d3",
+      id: `d_${habitMilestoneDay}`,
       top: 258,
       left: leftColumnMilestoneLeft,
-      title: resolveNotificationsCopy(ONBOARDING_NOTIFICATIONS_COPY.milestones.day3Title, "Day 3"),
+      title: formatMilestoneDayTitle(habitMilestoneDay),
       desc: resolveNotificationsCopy(
         ONBOARDING_NOTIFICATIONS_COPY.milestones.day3Desc,
         "Habit starts forming"
       ),
     },
     {
-      id: "d7",
+      id: `d_${progressMilestoneDay}`,
       top: 214,
       left: rightColumnMilestoneLeft,
-      title: resolveNotificationsCopy(ONBOARDING_NOTIFICATIONS_COPY.milestones.day7Title, "Day 7"),
+      title: formatMilestoneDayTitle(progressMilestoneDay),
       desc: halfGoalAmount
         ? interpolateOnboardingCopy(
             resolveNotificationsCopy(
@@ -73971,17 +75170,17 @@ function OnboardingNotificationsScreen({
           ),
     },
     {
-      id: "d10",
+      id: `d_${disciplineMilestoneDay}`,
       top: 170,
       left: leftColumnMilestoneLeft,
-      title: resolveNotificationsCopy(ONBOARDING_NOTIFICATIONS_COPY.milestones.day10Title, "Day 10"),
+      title: formatMilestoneDayTitle(disciplineMilestoneDay),
       desc: resolveNotificationsCopy(ONBOARDING_NOTIFICATIONS_COPY.milestones.day10Desc, "Impulse drops"),
     },
     {
-      id: "d14",
+      id: `d_${finalMilestoneDay}`,
       top: 124,
       left: rightColumnMilestoneLeft,
-      title: resolveNotificationsCopy(ONBOARDING_NOTIFICATIONS_COPY.milestones.day14Title, "Day 14"),
+      title: formatMilestoneDayTitle(finalMilestoneDay),
       desc: resolveNotificationsCopy(
         ONBOARDING_NOTIFICATIONS_COPY.milestones.day14Desc,
         "Strong momentum"
@@ -74016,7 +75215,9 @@ function OnboardingNotificationsScreen({
   const [showCalculationConfetti, setShowCalculationConfetti] = useState(false);
   const [calculationReadyForTap, setCalculationReadyForTap] = useState(false);
   const [calcCenterLayout, setCalcCenterLayout] = useState(null);
-  const [animatedEstimatedDays, setAnimatedEstimatedDays] = useState(0);
+  const [animatedEstimatedDays, setAnimatedEstimatedDays] = useState(
+    ONBOARDING_GOAL_ESTIMATE_MIN_DAYS
+  );
   const calculationProgress = useRef(new Animated.Value(0)).current;
   const calculationSpin = useRef(new Animated.Value(0)).current;
   const calculationReveal = useRef(new Animated.Value(0)).current;
@@ -74064,8 +75265,8 @@ function OnboardingNotificationsScreen({
     calculationSpin.setValue(0);
     calculationReveal.setValue(0);
     calculationResultFade.setValue(0);
-    calculationDaysCounter.setValue(0);
-    setAnimatedEstimatedDays(0);
+    calculationDaysCounter.setValue(ONBOARDING_GOAL_ESTIMATE_MIN_DAYS);
+    setAnimatedEstimatedDays(ONBOARDING_GOAL_ESTIMATE_MIN_DAYS);
     calcCoinProgress.forEach((value) => value.setValue(0));
     const coreAnimation = Animated.parallel([
       Animated.timing(calculationProgress, {
@@ -74110,7 +75311,7 @@ function OnboardingNotificationsScreen({
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
       }).start();
-      calculationDaysCounter.setValue(0);
+      calculationDaysCounter.setValue(ONBOARDING_GOAL_ESTIMATE_MIN_DAYS);
       Animated.timing(calculationDaysCounter, {
         toValue: estimatedDays,
         duration: 760,
@@ -74160,7 +75361,9 @@ function OnboardingNotificationsScreen({
   }, [calculationAmbient, showCalculationIntro]);
   useEffect(() => {
     const listenerId = calculationDaysCounter.addListener(({ value }) => {
-      setAnimatedEstimatedDays(Math.max(0, Math.round(value)));
+      setAnimatedEstimatedDays(
+        Math.max(ONBOARDING_GOAL_ESTIMATE_MIN_DAYS, Math.round(value))
+      );
     });
     return () => {
       calculationDaysCounter.removeListener(listenerId);
@@ -74382,8 +75585,10 @@ function OnboardingNotificationsScreen({
     { amount: resolvedGoalAmount }
   );
   const displayedDaysValue = Math.max(
-    1,
-    showCalculationResult ? animatedEstimatedDays || 0 : estimatedDays
+    ONBOARDING_GOAL_ESTIMATE_MIN_DAYS,
+    showCalculationResult
+      ? animatedEstimatedDays || ONBOARDING_GOAL_ESTIMATE_MIN_DAYS
+      : estimatedDays
   );
   const calcCompletedPalette = showCalculationResult
     ? {
@@ -75315,6 +76520,11 @@ function CustomHabitScreen({
     (data.customSpendFrequency || "").trim().length > 0;
   const [manualMode, setManualMode] = useState(manualModeInitial);
   const manualReveal = useRef(new Animated.Value(manualModeInitial ? 1 : 0)).current;
+  const onboardingScrollRef = useRef(null);
+  const onboardingScrollViewportHeightRef = useRef(Number.NaN);
+  const onboardingScrollContentHeightRef = useRef(Number.NaN);
+  const manualSectionLayoutYRef = useRef(Number.NaN);
+  const pendingManualScrollRef = useRef(false);
   const presetScrollRef = useRef(null);
   const presetSubmitTimerRef = useRef(null);
   const introWheelNudgePlayedRef = useRef(false);
@@ -75325,8 +76535,9 @@ function CustomHabitScreen({
   const wheelViewportHeight = wheelItemHeight * 2 + wheelGap * 2 + 18;
   const wheelInset = Math.max(0, (wheelViewportHeight - wheelItemHeight) / 2);
   const wheelLoopCopies = 7;
+  const amountInputPrecision = Math.max(0, Math.min(2, getCurrencyPrecision(resolvedCurrency)));
+  const [presetOverrides, setPresetOverrides] = useState({});
   const presets = useMemo(() => {
-    const precision = Math.max(0, Math.min(2, getCurrencyPrecision(resolvedCurrency)));
     return ONBOARDING_POPULAR_DAILY_HABITS.map((preset) => {
       const localizedTitle = resolveOnboardingLanguageMapValue(
         preset.title,
@@ -75338,26 +76549,53 @@ function CustomHabitScreen({
         ...preset,
         localizedTitle,
         amountLabel: formatCurrency(localAmount, resolvedCurrency),
-        amountInput: formatNumberInputValue(localAmount, precision),
+        amountInput: formatNumberInputValue(localAmount, amountInputPrecision),
       };
     });
-  }, [language, resolvedCurrency]);
-  const wheelPresets = useMemo(() => {
+  }, [amountInputPrecision, language, resolvedCurrency]);
+  const presetsWithOverrides = useMemo(() => {
     if (!presets.length) return [];
+    return presets.map((preset) => {
+      const override = presetOverrides[preset.id] || null;
+      const overrideAmount = parseNumberInputValue(override?.amountInput || "");
+      const fallbackAmount = parseNumberInputValue(preset.amountInput || "");
+      const resolvedAmount =
+        Number.isFinite(overrideAmount) && overrideAmount > 0 ? overrideAmount : fallbackAmount;
+      const normalizedAmountInput =
+        Number.isFinite(resolvedAmount) && resolvedAmount > 0
+          ? formatNumberInputValue(resolvedAmount, amountInputPrecision)
+          : preset.amountInput || "";
+      const overrideFrequency = Number(override?.frequencyPerWeek);
+      const normalizedFrequency = Number.isFinite(overrideFrequency)
+        ? Math.max(1, Math.min(28, Math.round(overrideFrequency)))
+        : Math.max(1, Number(preset.frequencyPerWeek) || 7);
+      return {
+        ...preset,
+        amountInput: normalizedAmountInput,
+        frequencyPerWeek: normalizedFrequency,
+      };
+    });
+  }, [amountInputPrecision, presetOverrides, presets]);
+  const wheelPresets = useMemo(() => {
+    if (!presetsWithOverrides.length) return [];
     return Array.from({ length: wheelLoopCopies }).flatMap((_, cycleIndex) =>
-      presets.map((preset, baseIndex) => ({
+      presetsWithOverrides.map((preset, baseIndex) => ({
         ...preset,
         baseIndex,
         loopKey: `${preset.id}_${cycleIndex}_${baseIndex}`,
       }))
     );
-  }, [presets]);
-  const centeredLoopIndex = presets.length ? Math.floor(wheelLoopCopies / 2) * presets.length : 0;
+  }, [presetsWithOverrides]);
+  const centeredLoopIndex = presetsWithOverrides.length
+    ? Math.floor(wheelLoopCopies / 2) * presetsWithOverrides.length
+    : 0;
   const [selectedWheelIndex, setSelectedWheelIndex] = useState(centeredLoopIndex);
   const selectedPresetIndex =
-    presets.length > 0 ? ((selectedWheelIndex % presets.length) + presets.length) % presets.length : 0;
-  const selectedPreset = presets[selectedPresetIndex] || presets[0] || null;
-  const amountInputPrecision = Math.max(0, Math.min(2, getCurrencyPrecision(resolvedCurrency)));
+    presetsWithOverrides.length > 0
+      ? ((selectedWheelIndex % presetsWithOverrides.length) + presetsWithOverrides.length) %
+        presetsWithOverrides.length
+      : 0;
+  const selectedPreset = presetsWithOverrides[selectedPresetIndex] || presetsWithOverrides[0] || null;
   const amountInputRef = useRef(null);
   const frequencyInputRef = useRef(null);
   const [editingPresetField, setEditingPresetField] = useState(null);
@@ -75384,6 +76622,16 @@ function CustomHabitScreen({
       const normalizedFrequency = Number.isFinite(parsedFrequency)
         ? Math.max(1, Math.min(28, Math.round(parsedFrequency)))
         : Math.max(1, Number(preset.frequencyPerWeek) || 7);
+      if (preset.id) {
+        setPresetOverrides((prev) => ({
+          ...prev,
+          [preset.id]: {
+            ...(prev[preset.id] || {}),
+            amountInput: normalizedAmountInput || fallbackAmountInput,
+            frequencyPerWeek: normalizedFrequency,
+          },
+        }));
+      }
       onChange("customSpendTitle", preset.localizedTitle || "");
       onChange("customSpendAmount", normalizedAmountInput || "");
       onChange("customSpendFrequency", String(normalizedFrequency));
@@ -75392,10 +76640,49 @@ function CustomHabitScreen({
     },
     [amountInputPrecision, onChange]
   );
+  const commitSelectedPresetAmountInput = useCallback(
+    (rawValue) => {
+      if (!selectedPreset?.id) return;
+      const fallbackAmountInput = selectedPreset.amountInput || "";
+      const parsedAmount = parseNumberInputValue(rawValue);
+      const normalizedAmountInput =
+        Number.isFinite(parsedAmount) && parsedAmount > 0
+          ? formatNumberInputValue(parsedAmount, amountInputPrecision)
+          : fallbackAmountInput;
+      setEditableAmountInput(normalizedAmountInput);
+      setPresetOverrides((prev) => ({
+        ...prev,
+        [selectedPreset.id]: {
+          ...(prev[selectedPreset.id] || {}),
+          amountInput: normalizedAmountInput || fallbackAmountInput,
+        },
+      }));
+    },
+    [amountInputPrecision, selectedPreset]
+  );
+  const commitSelectedPresetFrequencyInput = useCallback(
+    (rawValue) => {
+      if (!selectedPreset?.id) return;
+      const parsedFrequency = parseFloat((rawValue || "").replace(",", "."));
+      const fallbackFrequency = Math.max(1, Number(selectedPreset.frequencyPerWeek) || 7);
+      const normalizedFrequency = Number.isFinite(parsedFrequency)
+        ? Math.max(1, Math.min(28, Math.round(parsedFrequency)))
+        : fallbackFrequency;
+      setEditableFrequencyInput(String(normalizedFrequency));
+      setPresetOverrides((prev) => ({
+        ...prev,
+        [selectedPreset.id]: {
+          ...(prev[selectedPreset.id] || {}),
+          frequencyPerWeek: normalizedFrequency,
+        },
+      }));
+    },
+    [selectedPreset]
+  );
   const normalizeWheelIndex = useCallback(
     (rawIndex, { forceRecenter = false } = {}) => {
-      if (!presets.length) return 0;
-      const itemCount = presets.length;
+      if (!presetsWithOverrides.length) return 0;
+      const itemCount = presetsWithOverrides.length;
       const totalCount = Math.max(itemCount, wheelPresets.length);
       const roundedIndex = Math.round(Number(rawIndex) || 0);
       const boundedIndex = Math.max(0, Math.min(totalCount - 1, roundedIndex));
@@ -75410,7 +76697,7 @@ function CustomHabitScreen({
       }
       return resolvedIndex;
     },
-    [presets.length, wheelPresets.length, wheelLoopCopies, wheelSnapInterval]
+    [presetsWithOverrides.length, wheelPresets.length, wheelLoopCopies, wheelSnapInterval]
   );
   const buildPresetPayload = useCallback(() => {
     if (!selectedPreset) return null;
@@ -75449,9 +76736,77 @@ function CustomHabitScreen({
       presetSubmitTimerRef.current = null;
     }, 40);
   }, [applyPreset, buildPresetPayload, onSubmit, selectedPreset]);
+  const scrollToManualSection = useCallback((animated = true) => {
+    const scrollView = onboardingScrollRef.current;
+    const sectionY = manualSectionLayoutYRef.current;
+    if (!scrollView || typeof scrollView.scrollTo !== "function" || !Number.isFinite(sectionY)) {
+      return false;
+    }
+    const viewportHeight = onboardingScrollViewportHeightRef.current;
+    const contentHeight = onboardingScrollContentHeightRef.current;
+    const targetY = Math.max(0, sectionY - 18);
+    if (Number.isFinite(viewportHeight) && viewportHeight > 0 && Number.isFinite(contentHeight)) {
+      const maxScrollY = Math.max(0, contentHeight - viewportHeight);
+      if (targetY > maxScrollY + 1) {
+        scrollView.scrollTo({ y: maxScrollY, animated });
+        return false;
+      }
+      scrollView.scrollTo({ y: Math.min(targetY, maxScrollY), animated });
+      return true;
+    }
+    scrollView.scrollTo({ y: targetY, animated });
+    return true;
+  }, []);
+  const flushPendingManualScroll = useCallback(
+    (animated = true) => {
+      if (!pendingManualScrollRef.current) return;
+      if (!scrollToManualSection(animated)) return;
+      pendingManualScrollRef.current = false;
+    },
+    [scrollToManualSection]
+  );
+  const handleOnboardingScrollLayout = useCallback(
+    (event) => {
+      const nextHeight = Number(event?.nativeEvent?.layout?.height);
+      if (!Number.isFinite(nextHeight) || nextHeight <= 0) return;
+      onboardingScrollViewportHeightRef.current = nextHeight;
+      requestAnimationFrame(() => {
+        flushPendingManualScroll(true);
+      });
+    },
+    [flushPendingManualScroll]
+  );
+  const handleOnboardingScrollContentSizeChange = useCallback(
+    (_contentWidth, contentHeight) => {
+      const nextHeight = Number(contentHeight);
+      if (!Number.isFinite(nextHeight) || nextHeight <= 0) return;
+      onboardingScrollContentHeightRef.current = nextHeight;
+      requestAnimationFrame(() => {
+        flushPendingManualScroll(true);
+      });
+    },
+    [flushPendingManualScroll]
+  );
+  const handleManualSectionLayout = useCallback(
+    (event) => {
+      const nextY = Number(event?.nativeEvent?.layout?.y);
+      if (!Number.isFinite(nextY)) return;
+      const previousY = manualSectionLayoutYRef.current;
+      manualSectionLayoutYRef.current = nextY;
+      if (Number.isFinite(previousY) && Math.abs(previousY - nextY) <= 2 && !pendingManualScrollRef.current) return;
+      requestAnimationFrame(() => {
+        flushPendingManualScroll(true);
+      });
+    },
+    [flushPendingManualScroll]
+  );
   const handleManualToggle = useCallback(() => {
     triggerSelectionHaptic();
-    setManualMode((prev) => !prev);
+    setManualMode((prev) => {
+      const next = !prev;
+      pendingManualScrollRef.current = next;
+      return next;
+    });
   }, []);
   const handlePresetScrollEnd = useCallback(
     (event) => {
@@ -75470,8 +76825,8 @@ function CustomHabitScreen({
   );
   const handlePresetPress = useCallback(
     (baseIndex) => {
-      if (!presets.length) return;
-      const itemCount = presets.length;
+      if (!presetsWithOverrides.length) return;
+      const itemCount = presetsWithOverrides.length;
       const clampedBaseIndex = Math.max(0, Math.min(itemCount - 1, baseIndex));
       const currentCycle = Math.floor(selectedWheelIndex / itemCount);
       const candidateIndices = [currentCycle - 1, currentCycle, currentCycle + 1, currentCycle + 2]
@@ -75492,7 +76847,7 @@ function CustomHabitScreen({
     },
     [
       normalizeWheelIndex,
-      presets.length,
+      presetsWithOverrides.length,
       selectedWheelIndex,
       wheelPresets.length,
       wheelLoopCopies,
@@ -75500,12 +76855,12 @@ function CustomHabitScreen({
     ]
   );
   useEffect(() => {
-    if (!presets.length) {
+    if (!presetsWithOverrides.length) {
       setSelectedWheelIndex(0);
       return;
     }
     setSelectedWheelIndex((prev) => normalizeWheelIndex(prev, { forceRecenter: true }));
-  }, [normalizeWheelIndex, presets.length]);
+  }, [normalizeWheelIndex, presetsWithOverrides.length]);
   useEffect(() => {
     if (!selectedPreset) return;
     setEditableAmountInput(selectedPreset.amountInput || "");
@@ -75532,15 +76887,46 @@ function CustomHabitScreen({
     []
   );
   useEffect(() => {
+    if (manualMode) {
+      Animated.spring(manualReveal, {
+        toValue: 1,
+        tension: 62,
+        friction: 9,
+        useNativeDriver: false,
+      }).start();
+      return;
+    }
     Animated.timing(manualReveal, {
-      toValue: manualMode ? 1 : 0,
-      duration: 260,
-      easing: Easing.out(Easing.cubic),
+      toValue: 0,
+      duration: 210,
+      easing: Easing.out(Easing.quad),
       useNativeDriver: false,
     }).start();
   }, [manualMode, manualReveal]);
   useEffect(() => {
-    if (manualMode || presets.length <= 1) return undefined;
+    if (!manualMode) {
+      pendingManualScrollRef.current = false;
+      return undefined;
+    }
+    pendingManualScrollRef.current = true;
+    flushPendingManualScroll(true);
+    const retryTimer = setTimeout(() => {
+      flushPendingManualScroll(true);
+    }, Platform.OS === "ios" ? 280 : 220);
+    const fallbackTimer = setTimeout(() => {
+      flushPendingManualScroll(true);
+    }, Platform.OS === "ios" ? 520 : 420);
+    const interactionTask = InteractionManager.runAfterInteractions(() => {
+      flushPendingManualScroll(true);
+    });
+    return () => {
+      clearTimeout(retryTimer);
+      clearTimeout(fallbackTimer);
+      interactionTask?.cancel?.();
+    };
+  }, [flushPendingManualScroll, manualMode]);
+  useEffect(() => {
+    if (manualMode || presetsWithOverrides.length <= 1) return undefined;
     if (introWheelNudgePlayedRef.current) return undefined;
     introWheelNudgePlayedRef.current = true;
     const forwardIndex = normalizeWheelIndex(selectedWheelIndex + 1);
@@ -75558,7 +76944,7 @@ function CustomHabitScreen({
       clearTimeout(downTimer);
       clearTimeout(backTimer);
     };
-  }, [manualMode, normalizeWheelIndex, presets.length, selectedWheelIndex, wheelSnapInterval]);
+  }, [manualMode, normalizeWheelIndex, presetsWithOverrides.length, selectedWheelIndex, wheelSnapInterval]);
   useEffect(() => {
     if (!presetScrollRef.current || !wheelPresets.length) return;
     const initialIndex = normalizeWheelIndex(selectedWheelIndex, { forceRecenter: true });
@@ -75568,11 +76954,19 @@ function CustomHabitScreen({
   }, [normalizeWheelIndex, wheelPresets.length, wheelSnapInterval]);
   const manualHeight = manualReveal.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 640],
+    outputRange: [0, 760],
+  });
+  const manualOpacity = manualReveal.interpolate({
+    inputRange: [0, 0.4, 1],
+    outputRange: [0, 0.72, 1],
   });
   const manualTranslate = manualReveal.interpolate({
     inputRange: [0, 1],
     outputRange: [12, 0],
+  });
+  const manualScale = manualReveal.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.97, 1],
   });
   const headerAction = swapActions ? (
     <OnboardingHeaderAction
@@ -75614,6 +77008,9 @@ function CustomHabitScreen({
         />
       </OnboardingFixedHeader>
       <OnboardingScrollView
+        ref={onboardingScrollRef}
+        onLayout={handleOnboardingScrollLayout}
+        onContentSizeChange={handleOnboardingScrollContentSizeChange}
         contentContainerStyle={[
           styles.onboardContentCompact,
           styles.onboardContentWithFixedHeaderLifted,
@@ -75674,7 +77071,11 @@ function CustomHabitScreen({
           >
             {wheelPresets.map((preset, index) => {
               const active = index === selectedWheelIndex;
-              const amountPreviewLabel = preset.amountLabel;
+              const parsedPresetAmount = parseNumberInputValue(preset.amountInput || "");
+              const amountPreviewLabel =
+                Number.isFinite(parsedPresetAmount) && parsedPresetAmount > 0
+                  ? formatCurrency(parsedPresetAmount, resolvedCurrency)
+                  : preset.amountLabel;
               const frequencyPreviewValue = Math.max(1, Number(preset.frequencyPerWeek) || 7);
               return (
                 <View
@@ -75724,8 +77125,14 @@ function CustomHabitScreen({
                             onChangeText={setEditableAmountInput}
                             keyboardType="decimal-pad"
                             returnKeyType="done"
-                            onSubmitEditing={() => setEditingPresetField(null)}
-                            onBlur={() => setEditingPresetField(null)}
+                            onSubmitEditing={() => {
+                              commitSelectedPresetAmountInput(editableAmountInput);
+                              setEditingPresetField(null);
+                            }}
+                            onBlur={() => {
+                              commitSelectedPresetAmountInput(editableAmountInput);
+                              setEditingPresetField(null);
+                            }}
                             placeholder="0"
                             placeholderTextColor="#8D87A7"
                           />
@@ -75765,8 +77172,14 @@ function CustomHabitScreen({
                             onChangeText={setEditableFrequencyInput}
                             keyboardType="number-pad"
                             returnKeyType="done"
-                            onSubmitEditing={() => setEditingPresetField(null)}
-                            onBlur={() => setEditingPresetField(null)}
+                            onSubmitEditing={() => {
+                              commitSelectedPresetFrequencyInput(editableFrequencyInput);
+                              setEditingPresetField(null);
+                            }}
+                            onBlur={() => {
+                              commitSelectedPresetFrequencyInput(editableFrequencyInput);
+                              setEditingPresetField(null);
+                            }}
                             placeholder="7"
                             placeholderTextColor="#8D87A7"
                           />
@@ -75830,82 +77243,93 @@ function CustomHabitScreen({
             styles.customHabitManualWrap,
             {
               maxHeight: manualHeight,
-              opacity: manualReveal,
-              transform: [{ translateY: manualTranslate }],
+              opacity: manualOpacity,
+              transform: [{ translateY: manualTranslate }, { scale: manualScale }],
             },
           ]}
+          onLayout={handleManualSectionLayout}
           pointerEvents={manualMode ? "auto" : "none"}
         >
-          <Text style={[styles.customHabitManualTitle, { color: "#241C38" }]}>{localCopy.manualTitle}</Text>
-          <Text style={[styles.customHabitManualHint, { color: "#6F6A88" }]}>{localCopy.manualHint}</Text>
-          <TextInput
+          <View
             style={[
-              styles.primaryInput,
-              { borderColor: "rgba(36,24,60,0.14)", color: "#241C38", backgroundColor: "rgba(255,255,255,0.94)" },
+              styles.customHabitManualCard,
+              {
+                borderColor: "rgba(36,24,60,0.14)",
+                backgroundColor: "rgba(248,246,255,0.96)",
+              },
             ]}
-            placeholder={t("customSpendNamePlaceholder")}
-            placeholderTextColor="#8F8AA7"
-            value={data.customSpendTitle}
-            onChangeText={(text) => onChange("customSpendTitle", text)}
-            returnKeyType="done"
-            blurOnSubmit
-            onSubmitEditing={Keyboard.dismiss}
-          />
-          <View style={{ gap: 6 }}>
-            <Text style={[styles.currencyLabel, { color: "#6F6A88" }]}>{t("customSpendAmountLabel")}</Text>
+          >
+            <Text style={[styles.customHabitManualTitle, { color: "#241C38" }]}>{localCopy.manualTitle}</Text>
+            <Text style={[styles.customHabitManualHint, { color: "#6F6A88" }]}>{localCopy.manualHint}</Text>
             <TextInput
               style={[
                 styles.primaryInput,
                 { borderColor: "rgba(36,24,60,0.14)", color: "#241C38", backgroundColor: "rgba(255,255,255,0.94)" },
               ]}
-              placeholder={t("customSpendAmountPlaceholder", { amount: customSpendSampleLabel })}
+              placeholder={t("customSpendNamePlaceholder")}
               placeholderTextColor="#8F8AA7"
-              keyboardType="decimal-pad"
-              value={data.customSpendAmount}
-              onChangeText={(text) => onChange("customSpendAmount", text)}
+              value={data.customSpendTitle}
+              onChangeText={(text) => onChange("customSpendTitle", text)}
               returnKeyType="done"
               blurOnSubmit
               onSubmitEditing={Keyboard.dismiss}
             />
+            <View style={{ gap: 6 }}>
+              <Text style={[styles.currencyLabel, { color: "#6F6A88" }]}>{t("customSpendAmountLabel")}</Text>
+              <TextInput
+                style={[
+                  styles.primaryInput,
+                  { borderColor: "rgba(36,24,60,0.14)", color: "#241C38", backgroundColor: "rgba(255,255,255,0.94)" },
+                ]}
+                placeholder={t("customSpendAmountPlaceholder", { amount: customSpendSampleLabel })}
+                placeholderTextColor="#8F8AA7"
+                keyboardType="decimal-pad"
+                value={data.customSpendAmount}
+                onChangeText={(text) => onChange("customSpendAmount", text)}
+                returnKeyType="done"
+                blurOnSubmit
+                onSubmitEditing={Keyboard.dismiss}
+              />
+            </View>
+            <View style={{ gap: 6 }}>
+              <Text style={[styles.currencyLabel, { color: "#6F6A88" }]}>{t("customSpendFrequencyLabel")}</Text>
+              <TextInput
+                style={[
+                  styles.primaryInput,
+                  { borderColor: "rgba(36,24,60,0.14)", color: "#241C38", backgroundColor: "rgba(255,255,255,0.94)" },
+                ]}
+                placeholder={t("customSpendFrequencyPlaceholder")}
+                placeholderTextColor="#8F8AA7"
+                keyboardType="number-pad"
+                value={data.customSpendFrequency}
+                onChangeText={(text) => onChange("customSpendFrequency", text)}
+                returnKeyType="done"
+                blurOnSubmit
+                onSubmitEditing={Keyboard.dismiss}
+              />
+            </View>
+            <View style={{ gap: 6 }}>
+              <Text style={[styles.currencyLabel, { color: "#6F6A88" }]}>{t("impulseCategoryLabel")}</Text>
+              <ImpulseCategorySelector
+                value={data.customSpendCategory || DEFAULT_IMPULSE_CATEGORY}
+                onChange={(cat) => onChange("customSpendCategory", cat)}
+                colors={colors}
+                language={language}
+                compact
+                horizontal
+                visibleCount={4}
+              />
+            </View>
+            <Text style={{ color: "#6F6A88" }}>{t("customSpendHint")}</Text>
+            {!swapActions && (
+              <OnboardingScaleButton
+                style={[styles.primaryButton, { backgroundColor: "#251A3F", marginTop: 12 }]}
+                onPress={() => onSubmit(false)}
+              >
+                <Text style={[styles.primaryButtonText, { color: "#FFFFFF" }]}>{t("personaConfirm")}</Text>
+              </OnboardingScaleButton>
+            )}
           </View>
-          <View style={{ gap: 6 }}>
-            <Text style={[styles.currencyLabel, { color: "#6F6A88" }]}>{t("customSpendFrequencyLabel")}</Text>
-            <TextInput
-              style={[
-                styles.primaryInput,
-                { borderColor: "rgba(36,24,60,0.14)", color: "#241C38", backgroundColor: "rgba(255,255,255,0.94)" },
-              ]}
-              placeholder={t("customSpendFrequencyPlaceholder")}
-              placeholderTextColor="#8F8AA7"
-              keyboardType="number-pad"
-              value={data.customSpendFrequency}
-              onChangeText={(text) => onChange("customSpendFrequency", text)}
-              returnKeyType="done"
-              blurOnSubmit
-              onSubmitEditing={Keyboard.dismiss}
-            />
-          </View>
-          <View style={{ gap: 6 }}>
-            <Text style={[styles.currencyLabel, { color: "#6F6A88" }]}>{t("impulseCategoryLabel")}</Text>
-            <ImpulseCategorySelector
-              value={data.customSpendCategory || DEFAULT_IMPULSE_CATEGORY}
-              onChange={(cat) => onChange("customSpendCategory", cat)}
-              colors={colors}
-              language={language}
-              compact
-              horizontal
-              visibleCount={4}
-            />
-          </View>
-          <Text style={{ color: "#6F6A88" }}>{t("customSpendHint")}</Text>
-          {!swapActions && (
-            <OnboardingScaleButton
-              style={[styles.primaryButton, { backgroundColor: "#251A3F", marginTop: 12 }]}
-              onPress={() => onSubmit(false)}
-            >
-              <Text style={[styles.primaryButtonText, { color: "#FFFFFF" }]}>{t("personaConfirm")}</Text>
-            </OnboardingScaleButton>
-          )}
         </Animated.View>
         {swapActions ? (
           <>
@@ -77360,42 +78784,109 @@ const NumberWheelColumn = React.memo(function NumberWheelColumn({
 }) {
   const wheelRef = useRef(null);
   const resolvedValues = Array.isArray(values) && values.length ? values : [0];
-  const selectedIndex = Math.max(0, resolvedValues.indexOf(selectedValue));
-  const lastCommittedIndexRef = useRef(selectedIndex);
+  const selectedBaseIndex = Math.max(0, resolvedValues.indexOf(selectedValue));
+  const shouldLoop = resolvedValues.length > 1;
+  const wheelValues = useMemo(() => {
+    if (!shouldLoop) return resolvedValues;
+    return Array.from(
+      { length: resolvedValues.length * TIME_WHEEL_LOOP_COPIES },
+      (_, index) => resolvedValues[index % resolvedValues.length]
+    );
+  }, [resolvedValues, shouldLoop]);
+  const centerCycleOffset = shouldLoop
+    ? Math.floor(TIME_WHEEL_LOOP_COPIES / 2) * resolvedValues.length
+    : 0;
+  const normalizeBaseIndex = useCallback(
+    (index) => {
+      if (!shouldLoop) {
+        return Math.max(0, Math.min(resolvedValues.length - 1, index));
+      }
+      const total = resolvedValues.length;
+      return ((index % total) + total) % total;
+    },
+    [resolvedValues.length, shouldLoop]
+  );
+  const resolveCenteredIndex = useCallback(
+    (index) => {
+      const normalized = normalizeBaseIndex(index);
+      return shouldLoop ? centerCycleOffset + normalized : normalized;
+    },
+    [centerCycleOffset, normalizeBaseIndex, shouldLoop]
+  );
+  const lastCommittedBaseIndexRef = useRef(selectedBaseIndex);
+  const lastHapticStepRef = useRef(resolveCenteredIndex(selectedBaseIndex));
+  const suppressHapticTickRef = useRef(false);
   const displayHeight = TIME_WHEEL_VISIBLE_ITEMS * TIME_WHEEL_ITEM_HEIGHT;
   useEffect(() => {
-    lastCommittedIndexRef.current = selectedIndex;
-  }, [selectedIndex]);
-  const scrollToIndex = useCallback(
-    (index, animated = true) => {
-      const clampedIndex = Math.max(0, Math.min(resolvedValues.length - 1, index));
+    lastCommittedBaseIndexRef.current = selectedBaseIndex;
+  }, [selectedBaseIndex]);
+  const scrollToRawIndex = useCallback(
+    (index, animated = true, { suppressTick = true } = {}) => {
+      const clampedIndex = Math.max(0, Math.min(wheelValues.length - 1, index));
+      if (suppressTick && clampedIndex !== lastHapticStepRef.current) {
+        suppressHapticTickRef.current = true;
+      }
       const offsetY = clampedIndex * TIME_WHEEL_ITEM_HEIGHT;
       if (wheelRef.current?.scrollTo) {
         wheelRef.current.scrollTo({ y: offsetY, animated });
       }
       return clampedIndex;
     },
-    [resolvedValues.length]
+    [wheelValues.length]
+  );
+  const alignToBaseIndex = useCallback(
+    (baseIndex, animated = false) => {
+      const targetIndex = resolveCenteredIndex(baseIndex);
+      scrollToRawIndex(targetIndex, animated, { suppressTick: true });
+      lastHapticStepRef.current = targetIndex;
+      suppressHapticTickRef.current = false;
+      return targetIndex;
+    },
+    [resolveCenteredIndex, scrollToRawIndex]
   );
   useEffect(() => {
-    scrollToIndex(selectedIndex, false);
-  }, [scrollToIndex, selectedIndex]);
+    lastCommittedBaseIndexRef.current = selectedBaseIndex;
+    const frameId = requestAnimationFrame(() => {
+      alignToBaseIndex(selectedBaseIndex, false);
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [alignToBaseIndex, selectedBaseIndex]);
+  const handleContentSizeChange = useCallback(() => {
+    alignToBaseIndex(lastCommittedBaseIndexRef.current, false);
+  }, [alignToBaseIndex]);
+  const handleScroll = useCallback(
+    (event) => {
+      const offsetY = Number(event?.nativeEvent?.contentOffset?.y) || 0;
+      const rawIndex = Math.round(offsetY / TIME_WHEEL_ITEM_HEIGHT);
+      const snappedIndex = Math.max(0, Math.min(wheelValues.length - 1, rawIndex));
+      if (snappedIndex === lastHapticStepRef.current) return;
+      if (!suppressHapticTickRef.current) {
+        triggerSelectionHaptic();
+      }
+      lastHapticStepRef.current = snappedIndex;
+    },
+    [wheelValues.length]
+  );
   const commitSettledValue = useCallback(
     (event) => {
       const offsetY = Number(event?.nativeEvent?.contentOffset?.y) || 0;
       const rawIndex = Math.round(offsetY / TIME_WHEEL_ITEM_HEIGHT);
-      const snappedIndex = Math.max(0, Math.min(resolvedValues.length - 1, rawIndex));
-      const snappedOffsetY = snappedIndex * TIME_WHEEL_ITEM_HEIGHT;
+      const clampedRawIndex = Math.max(0, Math.min(wheelValues.length - 1, rawIndex));
+      const snappedBaseIndex = normalizeBaseIndex(clampedRawIndex);
+      const centeredIndex = resolveCenteredIndex(snappedBaseIndex);
+      const snappedOffsetY = centeredIndex * TIME_WHEEL_ITEM_HEIGHT;
       if (Math.abs(offsetY - snappedOffsetY) > 0.5) {
         // Finalize to exact row without starting a new momentum cycle.
-        scrollToIndex(snappedIndex, false);
+        scrollToRawIndex(centeredIndex, false, { suppressTick: true });
       }
-      if (lastCommittedIndexRef.current !== snappedIndex) {
-        lastCommittedIndexRef.current = snappedIndex;
-        onChange?.(resolvedValues[snappedIndex]);
+      lastHapticStepRef.current = centeredIndex;
+      suppressHapticTickRef.current = false;
+      if (lastCommittedBaseIndexRef.current !== snappedBaseIndex) {
+        lastCommittedBaseIndexRef.current = snappedBaseIndex;
+        onChange?.(resolvedValues[snappedBaseIndex]);
       }
     },
-    [onChange, resolvedValues, scrollToIndex]
+    [normalizeBaseIndex, onChange, resolveCenteredIndex, resolvedValues, scrollToRawIndex, wheelValues.length]
   );
   const handleScrollEndDrag = useCallback(
     (event) => {
@@ -77430,11 +78921,13 @@ const NumberWheelColumn = React.memo(function NumberWheelColumn({
           nestedScrollEnabled
           keyboardShouldPersistTaps="handled"
           scrollEventThrottle={16}
+          onScroll={handleScroll}
           onMomentumScrollEnd={commitSettledValue}
           onScrollEndDrag={handleScrollEndDrag}
+          onContentSizeChange={handleContentSizeChange}
         >
           <View style={{ height: TIME_WHEEL_PADDING }} />
-          {resolvedValues.map((entryValue, index) => {
+          {wheelValues.map((entryValue, index) => {
             const isActive = entryValue === selectedValue;
             const label =
               typeof formatValue === "function"
@@ -77442,12 +78935,15 @@ const NumberWheelColumn = React.memo(function NumberWheelColumn({
                 : String(entryValue).padStart(2, "0");
             return (
               <TouchableOpacity
-                key={entryValue}
+                key={`${entryValue}_${index}`}
                 style={styles.timeWheelItem}
                 activeOpacity={0.82}
                 onPress={() => {
-                  scrollToIndex(index, true);
+                  const snappedBaseIndex = normalizeBaseIndex(index);
+                  const centeredIndex = resolveCenteredIndex(snappedBaseIndex);
+                  scrollToRawIndex(centeredIndex, true, { suppressTick: true });
                   if (entryValue !== selectedValue) {
+                    lastCommittedBaseIndexRef.current = snappedBaseIndex;
                     onChange?.(entryValue);
                   }
                 }}
@@ -77539,11 +79035,36 @@ function TimeWheelPicker({
 
 function WeeklyDayPicker({
   value = DEFAULT_FREQUENCY_WEEKLY_DAY,
+  values = null,
   onChange,
   colors,
   t,
 }) {
-  const selectedDay = normalizeFrequencyWeeklyDay(value) ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
+  const selectedDays = normalizeFrequencyWeeklyDays(values ?? value) || [
+    ...DEFAULT_FREQUENCY_WEEKLY_DAYS,
+  ];
+  const selectedSet = useMemo(() => new Set(selectedDays), [selectedDays]);
+  const selectedLabels = selectedDays.map((day) =>
+    t(WEEKDAY_LABEL_KEYS[day] || WEEKDAY_LABEL_KEYS[DEFAULT_FREQUENCY_WEEKLY_DAY])
+  );
+  const selectedSummary =
+    selectedDays.length <= 1
+      ? t("frequencyWeeklyDaySelected", { day: selectedLabels[0] || "" })
+      : `${t("frequencyWeeklyDayLabel")}: ${selectedLabels.join(", ")}`;
+  const toggleDay = useCallback(
+    (day) => {
+      const currentlySelected = selectedSet.has(day);
+      if (currentlySelected && selectedDays.length <= 1) {
+        return;
+      }
+      const nextDays = currentlySelected
+        ? selectedDays.filter((entry) => entry !== day)
+        : normalizeFrequencyWeeklyDays([...selectedDays, day]) || selectedDays;
+      triggerSelectionHaptic();
+      onChange?.(nextDays);
+    },
+    [onChange, selectedDays, selectedSet]
+  );
   return (
     <View style={styles.frequencyPickerWrap}>
       <Text style={[styles.frequencyPickerLabel, { color: colors.muted }]}>
@@ -77551,7 +79072,7 @@ function WeeklyDayPicker({
       </Text>
       <View style={styles.frequencyDayGrid}>
         {WEEKDAY_SELECTOR_ORDER.map((day) => {
-          const isActive = day === selectedDay;
+          const isActive = selectedSet.has(day);
           const dayLabelKey = WEEKDAY_LABEL_KEYS[day] || WEEKDAY_LABEL_KEYS[1];
           return (
             <TouchableOpacity
@@ -77565,7 +79086,7 @@ function WeeklyDayPicker({
                     : colorWithAlpha(colors.text, 0.04),
                 },
               ]}
-              onPress={() => onChange?.(day)}
+              onPress={() => toggleDay(day)}
               activeOpacity={0.85}
             >
               <Text
@@ -77581,9 +79102,7 @@ function WeeklyDayPicker({
         })}
       </View>
       <Text style={[styles.reminderTimeSelectedText, { color: colors.muted }]}>
-        {t("frequencyWeeklyDaySelected", {
-          day: t(WEEKDAY_LABEL_KEYS[selectedDay] || WEEKDAY_LABEL_KEYS[1]),
-        })}
+        {selectedSummary}
       </Text>
     </View>
   );
@@ -77591,11 +79110,35 @@ function WeeklyDayPicker({
 
 function MonthlyDayPicker({
   value = DEFAULT_FREQUENCY_MONTHLY_DAY,
+  values = null,
   onChange,
   colors,
   t,
 }) {
-  const selectedDay = normalizeFrequencyMonthlyDay(value) ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
+  const selectedDays = normalizeFrequencyMonthlyDays(values ?? value) || [
+    ...DEFAULT_FREQUENCY_MONTHLY_DAYS,
+  ];
+  const selectedSet = useMemo(() => new Set(selectedDays), [selectedDays]);
+  const selectedSummary =
+    selectedDays.length <= 1
+      ? t("frequencyMonthlyDaySelected", {
+          day: String(selectedDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY),
+        })
+      : `${t("frequencyMonthlyDayLabel")}: ${selectedDays.join(", ")}`;
+  const toggleDay = useCallback(
+    (dayValue) => {
+      const currentlySelected = selectedSet.has(dayValue);
+      if (currentlySelected && selectedDays.length <= 1) {
+        return;
+      }
+      const nextDays = currentlySelected
+        ? selectedDays.filter((entry) => entry !== dayValue)
+        : normalizeFrequencyMonthlyDays([...selectedDays, dayValue]) || selectedDays;
+      triggerSelectionHaptic();
+      onChange?.(nextDays);
+    },
+    [onChange, selectedDays, selectedSet]
+  );
   return (
     <View style={styles.frequencyPickerWrap}>
       <Text style={[styles.frequencyPickerLabel, { color: colors.muted }]}>
@@ -77607,7 +79150,7 @@ function MonthlyDayPicker({
         contentContainerStyle={styles.frequencyMonthDayRow}
       >
         {MONTHLY_DAY_OPTIONS.map((dayValue) => {
-          const isActive = dayValue === selectedDay;
+          const isActive = selectedSet.has(dayValue);
           return (
             <TouchableOpacity
               key={dayValue}
@@ -77620,7 +79163,7 @@ function MonthlyDayPicker({
                     : colorWithAlpha(colors.text, 0.04),
                 },
               ]}
-              onPress={() => onChange?.(dayValue)}
+              onPress={() => toggleDay(dayValue)}
               activeOpacity={0.85}
             >
               <Text
@@ -77636,9 +79179,32 @@ function MonthlyDayPicker({
         })}
       </ScrollView>
       <Text style={[styles.reminderTimeSelectedText, { color: colors.muted }]}>
-        {t("frequencyMonthlyDaySelected", { day: String(selectedDay) })}
+        {selectedSummary}
       </Text>
     </View>
+  );
+}
+
+function FrequencyTimeToggle({ expanded = false, onPress, colors, t }) {
+  return (
+    <Pressable
+      style={[
+        styles.frequencyTimeToggleButton,
+        {
+          borderColor: colors.border,
+          backgroundColor: colorWithAlpha(colors.text, 0.03),
+        },
+      ]}
+      onPress={onPress}
+      accessibilityRole="button"
+    >
+      <Text style={[styles.frequencyTimeToggleButtonText, { color: colors.text }]}>
+        {t("frequencyReminderTimeLabel")}
+      </Text>
+      <Text style={[styles.frequencyTimeToggleChevron, { color: colors.muted }]}>
+        {expanded ? "▴" : "▾"}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -77648,6 +79214,8 @@ function FrequencySchedulePicker({
   reminderMinute = DEFAULT_FREQUENCY_REMINDER_MINUTE,
   weeklyDay = DEFAULT_FREQUENCY_WEEKLY_DAY,
   monthlyDay = DEFAULT_FREQUENCY_MONTHLY_DAY,
+  weeklyDays = DEFAULT_FREQUENCY_WEEKLY_DAYS,
+  monthlyDays = DEFAULT_FREQUENCY_MONTHLY_DAYS,
   onReminderTimeChange,
   onWeeklyDayChange,
   onMonthlyDayChange,
@@ -77655,6 +79223,22 @@ function FrequencySchedulePicker({
   t,
 }) {
   const normalizedFrequency = normalizeFrequencyId(frequency) || "daily";
+  const [weeklyTimeExpanded, setWeeklyTimeExpanded] = useState(false);
+  const [monthlyTimeExpanded, setMonthlyTimeExpanded] = useState(false);
+  useEffect(() => {
+    if (normalizedFrequency === "daily") {
+      setWeeklyTimeExpanded(false);
+      setMonthlyTimeExpanded(false);
+      return;
+    }
+    if (normalizedFrequency === "weekly") {
+      setMonthlyTimeExpanded(false);
+      return;
+    }
+    if (normalizedFrequency === "monthly") {
+      setWeeklyTimeExpanded(false);
+    }
+  }, [normalizedFrequency]);
   if (normalizedFrequency === "daily") {
     return (
       <TimeWheelPicker
@@ -77668,22 +79252,58 @@ function FrequencySchedulePicker({
   }
   if (normalizedFrequency === "weekly") {
     return (
-      <WeeklyDayPicker
-        value={weeklyDay}
-        onChange={onWeeklyDayChange}
-        colors={colors}
-        t={t}
-      />
+      <View style={styles.frequencyScheduleWrap}>
+        <WeeklyDayPicker
+          value={weeklyDay}
+          values={weeklyDays}
+          onChange={onWeeklyDayChange}
+          colors={colors}
+          t={t}
+        />
+        <FrequencyTimeToggle
+          expanded={weeklyTimeExpanded}
+          onPress={() => setWeeklyTimeExpanded((prev) => !prev)}
+          colors={colors}
+          t={t}
+        />
+        {weeklyTimeExpanded ? (
+          <TimeWheelPicker
+            hour={reminderHour}
+            minute={reminderMinute}
+            onChange={onReminderTimeChange}
+            colors={colors}
+            t={t}
+          />
+        ) : null}
+      </View>
     );
   }
   if (normalizedFrequency === "monthly") {
     return (
-      <MonthlyDayPicker
-        value={monthlyDay}
-        onChange={onMonthlyDayChange}
-        colors={colors}
-        t={t}
-      />
+      <View style={styles.frequencyScheduleWrap}>
+        <MonthlyDayPicker
+          value={monthlyDay}
+          values={monthlyDays}
+          onChange={onMonthlyDayChange}
+          colors={colors}
+          t={t}
+        />
+        <FrequencyTimeToggle
+          expanded={monthlyTimeExpanded}
+          onPress={() => setMonthlyTimeExpanded((prev) => !prev)}
+          colors={colors}
+          t={t}
+        />
+        {monthlyTimeExpanded ? (
+          <TimeWheelPicker
+            hour={reminderHour}
+            minute={reminderMinute}
+            onChange={onReminderTimeChange}
+            colors={colors}
+            t={t}
+          />
+        ) : null}
+      </View>
     );
   }
   return null;
@@ -77740,9 +79360,11 @@ function QuickCustomModal({
                       reminderMinute={data.frequencyReminderMinute}
                       weeklyDay={data.frequencyWeeklyDay}
                       monthlyDay={data.frequencyMonthlyDay}
+                      weeklyDays={data.frequencyWeeklyDays}
+                      monthlyDays={data.frequencyMonthlyDays}
                       onReminderTimeChange={(next) => onChange("reminderTime", next)}
-                      onWeeklyDayChange={(next) => onChange("frequencyWeeklyDay", next)}
-                      onMonthlyDayChange={(next) => onChange("frequencyMonthlyDay", next)}
+                      onWeeklyDayChange={(next) => onChange("frequencyWeeklyDays", next)}
+                      onMonthlyDayChange={(next) => onChange("frequencyMonthlyDays", next)}
                       colors={colors}
                       t={t}
                     />
@@ -78269,6 +79891,10 @@ function addBottomOffsetStyle(baseStyle, inset) {
   };
 }
 
+const ONBOARDING_GOAL_ESTIMATE_MIN_DAYS = 7;
+const ONBOARDING_GOAL_ESTIMATE_MAX_DAYS = 18;
+const ONBOARDING_GOAL_TIMELINE_MILESTONES_COUNT = 5;
+
 const ONBOARDING_POPULAR_DAILY_HABITS = [
   {
     id: "coffee_to_go",
@@ -78757,6 +80383,15 @@ const ONBOARDING_NOTIFICATIONS_COPY = {
     zh: "点击继续",
   },
   milestones: {
+    dayTitleTemplate: {
+      en: "Day {{day}}",
+      ru: "День {{day}}",
+      es: "Día {{day}}",
+      fr: "Jour {{day}}",
+      de: "Tag {{day}}",
+      ar: "اليوم {{day}}",
+      zh: "第{{day}}天",
+    },
     startTitle: {
       en: "Step 1",
       ru: "Шаг 1",
@@ -78864,6 +80499,34 @@ const interpolateOnboardingCopy = (template = "", params = {}) =>
     const value = params?.[token];
     return value === undefined || value === null ? "" : String(value);
   });
+
+const buildOnboardingGoalTimelineDays = (totalDays = ONBOARDING_GOAL_ESTIMATE_MIN_DAYS) => {
+  const normalizedTotal = Math.max(
+    ONBOARDING_GOAL_ESTIMATE_MIN_DAYS,
+    Math.min(
+      ONBOARDING_GOAL_ESTIMATE_MAX_DAYS,
+      Math.round(Number(totalDays) || ONBOARDING_GOAL_ESTIMATE_MIN_DAYS)
+    )
+  );
+  const rawCheckpoints = [
+    1,
+    Math.round(normalizedTotal * 0.3),
+    Math.round(normalizedTotal * 0.5),
+    Math.round(normalizedTotal * 0.75),
+    normalizedTotal,
+  ];
+  const checkpoints = [];
+  rawCheckpoints.forEach((candidate, index) => {
+    const remainingSlots = ONBOARDING_GOAL_TIMELINE_MILESTONES_COUNT - 1 - index;
+    const minAllowed = index === 0 ? 1 : checkpoints[index - 1] + 1;
+    const maxAllowed = normalizedTotal - remainingSlots;
+    const normalizedCandidate = Math.round(Number(candidate) || minAllowed);
+    const nextValue = Math.max(minAllowed, Math.min(maxAllowed, normalizedCandidate));
+    checkpoints.push(nextValue);
+  });
+  checkpoints[checkpoints.length - 1] = normalizedTotal;
+  return checkpoints;
+};
 
 function OnboardingScreenShell({
   colors,
