@@ -293,6 +293,7 @@ import {
   ANDROID_TAMAGOTCHI_CHANNEL_ID,
   ANDROID_REPORTS_CHANNEL_ID,
   DAILY_CHALLENGE_MIN_SPEND_EVENTS,
+  DAILY_CHALLENGE_MIN_UNIQUE_TEMPLATES,
   DAILY_CHALLENGE_FIXED_REWARD,
   DAILY_CHALLENGE_REWARD_MULTIPLIER,
   DAILY_CHALLENGE_DRAW_COUNT,
@@ -309,6 +310,7 @@ import {
   FOCUS_LOSS_THRESHOLD,
   FOCUS_RECENT_WINDOW_MS,
   FOCUS_RECENT_MIN_SPEND_COUNT,
+  FOCUS_MIN_UNIQUE_SPEND_TEMPLATES,
   CHALLENGE_REWARD_SCALE,
   PUSH_NOTIFICATION_COOLDOWN_MS,
   PUSH_DEDUPE_WINDOW_MS,
@@ -812,8 +814,37 @@ const keepEmojiWithText = (value = "") => {
   }
   return trimmed;
 };
-const createMonetizationInstallId = () =>
-  `m_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+const createMonetizationInstallId = () => {
+  const cryptoApi = globalThis?.crypto;
+  if (cryptoApi && typeof cryptoApi.randomUUID === "function") {
+    return `m_${cryptoApi.randomUUID()}`;
+  }
+  if (cryptoApi && typeof cryptoApi.getRandomValues === "function") {
+    try {
+      const bytes = new Uint8Array(16);
+      cryptoApi.getRandomValues(bytes);
+      const randomHex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+      return `m_${randomHex}`;
+    } catch (error) {}
+  }
+  return `m_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 14)}`;
+};
+const createMonetizationInstallSecret = () => {
+  const cryptoApi = globalThis?.crypto;
+  if (cryptoApi && typeof cryptoApi.randomUUID === "function") {
+    return `${cryptoApi.randomUUID()}_${cryptoApi.randomUUID()}`;
+  }
+  if (cryptoApi && typeof cryptoApi.getRandomValues === "function") {
+    try {
+      const bytes = new Uint8Array(32);
+      cryptoApi.getRandomValues(bytes);
+      return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+    } catch (error) {}
+  }
+  return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 14)}_${Math.random()
+    .toString(36)
+    .slice(2, 14)}`;
+};
 const resolveNonEmptyString = (value = "") => {
   const normalized = String(value || "").trim();
   return normalized || "";
@@ -946,6 +977,7 @@ const MONETIZATION_HARD_LOCK_CLOSE_ACTIONS = new Set([
 ]);
 const TRANSACTION_ABANDONED_TRIGGER = "transaction_abandoned";
 const PREMIUM_TRANSACTION_ABANDONED_OFFER_COOLDOWN_MS = DAY_MS;
+const NO_GOAL_SAVE_PROMPT_COOLDOWN_MS = DAY_MS;
 const PREMIUM_TRANSACTION_ABANDONED_OFFER_COOLDOWN_HOURS = Math.max(
   1,
   Math.round(PREMIUM_TRANSACTION_ABANDONED_OFFER_COOLDOWN_MS / HOUR_MS)
@@ -1673,34 +1705,12 @@ const buildPaywallTrialLabel = ({ days = 0, language = "en" } = {}) => {
   }
   return localizeFallbackTextByLanguage(`${normalizedDays}-day free trial`, lang);
 };
-const buildPaywallTrialCtaLabel = ({ days = 0, language = "en" } = {}) => {
-  const normalizedDays = Math.max(0, Math.round(Number(days) || 0));
+const buildPaywallTrialCtaLabel = ({ language = "en" } = {}) => {
   const lang = resolveMonetizationLanguage(language);
-  if (!normalizedDays) {
-    return localizeFallbackTextByLanguage(
-      PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE[lang] || PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE.en,
-      lang
-    );
-  }
-  if (lang === "ru") {
-    return `попробовать ${normalizedDays} ${resolveRussianDaysWord(normalizedDays)} бесплатно`;
-  }
-  if (lang === "es") {
-    return `probar ${normalizedDays} ${resolveSpanishDaysWord(normalizedDays)} gratis`;
-  }
-  if (lang === "fr") {
-    return `essayer ${normalizedDays} ${resolveFrenchDaysWord(normalizedDays)} gratuitement`;
-  }
-  if (lang === "de") {
-    return `${normalizedDays} Tage kostenlos testen`;
-  }
-  if (lang === "ar") {
-    return `جرّب مجاناً لمدة ${normalizedDays} أيام`;
-  }
-  if (lang === "zh") {
-    return `免费试用 ${normalizedDays} 天`;
-  }
-  return localizeFallbackTextByLanguage(`Try ${normalizedDays}-day free`, lang);
+  return localizeFallbackTextByLanguage(
+    PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE[lang] || PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE.en,
+    lang
+  );
 };
 const buildPaywallPostTrialLabel = ({ priceLabel = "", language = "en" } = {}) => {
   const normalizedPriceLabel = String(priceLabel || "").trim();
@@ -1979,6 +1989,10 @@ const resolveDailyChallengeTemplateId = (
   options = {}
 ) => {
   const normalizedMinSpend = Math.max(1, Math.floor(Number(minSpendEvents) || 0));
+  const normalizedMinUniqueTemplates = Math.max(
+    1,
+    Math.floor(Number(options?.minUniqueTemplates) || 0)
+  );
   const normalizedPreviousTemplateId =
     typeof options?.previousTemplateId === "string"
       ? options.previousTemplateId.trim()
@@ -2005,6 +2019,7 @@ const resolveDailyChallengeTemplateId = (
     (entry) => typeof isValidTemplate !== "function" || isValidTemplate(entry.templateId)
   );
   if (!eligible.length) return null;
+  if (eligible.length < normalizedMinUniqueTemplates) return null;
   let drawPool = eligible;
   if (normalizedPreviousTemplateId) {
     const withoutPrevious = eligible.filter(
@@ -27568,6 +27583,8 @@ function AppContent() {
   const onboardingCompletedRef = useRef(false);
   const [premiumInstallId, setPremiumInstallId] = useState("");
   const [premiumInstallIdHydrated, setPremiumInstallIdHydrated] = useState(false);
+  const [premiumInstallSecret, setPremiumInstallSecret] = useState("");
+  const [premiumInstallSecretHydrated, setPremiumInstallSecretHydrated] = useState(false);
   const [installDateMs, setInstallDateMs] = useState(null);
   const [installDateHydrated, setInstallDateHydrated] = useState(false);
   const [firstSessionDurationBucket, setFirstSessionDurationBucket] = useState("");
@@ -29344,7 +29361,10 @@ function AppContent() {
   const [dailySummaryHydrated, setDailySummaryHydrated] = useState(false);
   const [didYouKnowState, setDidYouKnowState] = useState(() => createInitialDidYouKnowState());
   const [didYouKnowHydrated, setDidYouKnowHydrated] = useState(false);
+  const [didYouKnowStartupReady, setDidYouKnowStartupReady] = useState(false);
   const [didYouKnowTipId, setDidYouKnowTipId] = useState(null);
+  const [noGoalSavePromptDeferredDayKey, setNoGoalSavePromptDeferredDayKey] = useState(null);
+  const [noGoalSavePromptHydrated, setNoGoalSavePromptHydrated] = useState(false);
   const [dailySummaryClockTick, setDailySummaryClockTick] = useState(0);
   const [dailySummaryCountdownMs, setDailySummaryCountdownMs] = useState(0);
   const dailySummaryLiveActivityRef = useRef({
@@ -30979,6 +30999,10 @@ function AppContent() {
     frequencyMonthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
     initialFrequency: null,
     scheduleConfigVisible: false,
+  });
+  const [quickCustomErrors, setQuickCustomErrors] = useState({
+    category: false,
+    frequency: false,
   });
   useEffect(() => {
     onboardingStepRef.current = onboardingStep;
@@ -32646,6 +32670,27 @@ function AppContent() {
       !startupLogoVisible,
     [fontsReady, homeLayoutReady, onboardingStep, startupHydrated, startupLogoVisible]
   );
+  useEffect(() => {
+    if (!interfaceReady) {
+      setDidYouKnowStartupReady(false);
+      return;
+    }
+    let cancelled = false;
+    let readyTimer = null;
+    const interactionTask = InteractionManager.runAfterInteractions(() => {
+      readyTimer = setTimeout(() => {
+        if (cancelled) return;
+        setDidYouKnowStartupReady(true);
+      }, APP_RESUME_MODAL_GUARD_MS);
+    });
+    return () => {
+      cancelled = true;
+      interactionTask?.cancel?.();
+      if (readyTimer) {
+        clearTimeout(readyTimer);
+      }
+    };
+  }, [interfaceReady]);
   const premiumAccessResolved = premiumState.enabled || !!premiumState.error;
   useEffect(() => {
     const action = pendingWidgetActionRef.current;
@@ -33108,6 +33153,42 @@ function AppContent() {
     [didYouKnowFeatureUsage]
   );
   const didYouKnowCurrentDayKey = currentDayKey || getDayKey(Date.now());
+  const hasProfilePrimaryGoalForPrompt = useMemo(() => {
+    const profileGoalId = typeof profile.goal === "string" ? profile.goal.trim() : "";
+    if (profileGoalId) return true;
+    const primaryGoals = Array.isArray(profile.primaryGoals) ? profile.primaryGoals : [];
+    return primaryGoals.some((goal) => {
+      const goalId = typeof goal?.id === "string" ? goal.id.trim() : "";
+      return !!goalId;
+    });
+  }, [profile.goal, profile.primaryGoals]);
+  const noGoalSavePromptCurrentDayKey = currentDayKey || getDayKey(Date.now());
+  const noGoalSavePromptTodaySaveCount = useMemo(() => {
+    const normalizedDailyState = createDailySaveLimitState(
+      dailySaveLimitState?.dayKey,
+      dailySaveLimitState?.count
+    );
+    if (normalizedDailyState.dayKey !== noGoalSavePromptCurrentDayKey) return 0;
+    return Math.max(0, Number(normalizedDailyState.count) || 0);
+  }, [dailySaveLimitState?.count, dailySaveLimitState?.dayKey, noGoalSavePromptCurrentDayKey]);
+  const noGoalSavePromptDeferredUntilMs = useMemo(() => {
+    const rawValue =
+      typeof noGoalSavePromptDeferredDayKey === "string"
+        ? noGoalSavePromptDeferredDayKey.trim()
+        : "";
+    if (!rawValue) return 0;
+    const parsedMs = Number(rawValue);
+    if (Number.isFinite(parsedMs) && parsedMs > 0) {
+      return Math.round(parsedMs);
+    }
+    const legacyDeferredDay = parseDayKey(rawValue);
+    if (legacyDeferredDay) {
+      return legacyDeferredDay.getTime() + DAY_MS;
+    }
+    return 0;
+  }, [noGoalSavePromptDeferredDayKey]);
+  const noGoalSavePromptSuppressedNow =
+    noGoalSavePromptDeferredUntilMs > Date.now();
   const didYouKnowSecondDayReached = useMemo(() => {
     if (!installDateHydrated) return false;
     if (!Number.isFinite(installDateMs) || installDateMs <= 0) return false;
@@ -33117,6 +33198,7 @@ function AppContent() {
   }, [didYouKnowCurrentDayKey, installDateHydrated, installDateMs]);
   const didYouKnowPromptPending =
     didYouKnowHydrated &&
+    didYouKnowStartupReady &&
     tutorialSeen &&
     onboardingStep === "done" &&
     !startupHardLockPendingBeforePaywall &&
@@ -33124,6 +33206,15 @@ function AppContent() {
     !didYouKnowState.muted &&
     didYouKnowState.lastShownDayKey !== didYouKnowCurrentDayKey &&
     didYouKnowUnusedTips.length > 0;
+  const noGoalSavePromptPending =
+    noGoalSavePromptHydrated &&
+    dailySaveLimitHydrated &&
+    profileHydrated &&
+    onboardingStep === "done" &&
+    !startupHardLockPendingBeforePaywall &&
+    !hasProfilePrimaryGoalForPrompt &&
+    noGoalSavePromptTodaySaveCount >= 3 &&
+    !noGoalSavePromptSuppressedNow;
   const didYouKnowActiveTip = useMemo(
     () => DID_YOU_KNOW_TIPS.find((tip) => tip.id === didYouKnowTipId) || null,
     [didYouKnowTipId]
@@ -33171,6 +33262,25 @@ function AppContent() {
       ]
     );
   }, [completeDidYouKnowPrompt, t]);
+  const completeNoGoalSavePrompt = useCallback(
+    ({ openGoal = false, deferForToday = false } = {}) => {
+      if (deferForToday) {
+        const deferUntilMs = Date.now() + NO_GOAL_SAVE_PROMPT_COOLDOWN_MS;
+        setNoGoalSavePromptDeferredDayKey(String(Math.round(deferUntilMs)));
+      }
+      clearQueuedModal(QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT);
+      if (openGoal) {
+        openNewGoalModal(true, "no_goal_save_prompt");
+      }
+    },
+    [clearQueuedModal, openNewGoalModal]
+  );
+  const handleNoGoalSavePromptLater = useCallback(() => {
+    completeNoGoalSavePrompt({ openGoal: false, deferForToday: true });
+  }, [completeNoGoalSavePrompt]);
+  const handleNoGoalSavePromptCreateGoal = useCallback(() => {
+    completeNoGoalSavePrompt({ openGoal: true, deferForToday: false });
+  }, [completeNoGoalSavePrompt]);
   useEffect(() => {
     if (!didYouKnowPromptPending) return;
     enqueueQueuedModal(QUEUED_MODAL_TYPES.DID_YOU_KNOW);
@@ -33226,6 +33336,29 @@ function AppContent() {
     queuedModalType,
     setDidYouKnowState,
   ]);
+  useEffect(() => {
+    if (!noGoalSavePromptPending) return;
+    enqueueQueuedModal(QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT);
+  }, [enqueueQueuedModal, noGoalSavePromptPending]);
+  useEffect(() => {
+    if (noGoalSavePromptPending) return;
+    const queue = queuedModalQueueRef.current || [];
+    const filteredQueue = queue.filter(
+      (type) => type !== QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT
+    );
+    if (filteredQueue.length !== queue.length) {
+      queuedModalQueueRef.current = filteredQueue;
+      requestQueuedModalProcess();
+    }
+    if (queuedModalType === QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT) {
+      clearQueuedModal(QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT);
+    }
+  }, [
+    clearQueuedModal,
+    noGoalSavePromptPending,
+    queuedModalType,
+    requestQueuedModalProcess,
+  ]);
   const dailyChallengePromptAllowed = useMemo(
     () =>
       interfaceReady &&
@@ -33271,12 +33404,18 @@ function AppContent() {
     !levelShareFlowLocked &&
     queuedModalType === QUEUED_MODAL_TYPES.DID_YOU_KNOW &&
     !!didYouKnowActiveTip;
+  const noGoalSavePromptVisible =
+    !levelShareFlowLocked &&
+    queuedModalType === QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT &&
+    noGoalSavePromptPending;
   const queuedModalRendered = useMemo(() => {
     switch (queuedModalType) {
       case QUEUED_MODAL_TYPES.DAILY_SUMMARY:
         return dailySummaryVisible;
       case QUEUED_MODAL_TYPES.DID_YOU_KNOW:
         return didYouKnowVisible;
+      case QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT:
+        return noGoalSavePromptVisible;
       case QUEUED_MODAL_TYPES.DAILY_CHALLENGE:
         return dailyChallengePromptVisible;
       case QUEUED_MODAL_TYPES.DAILY_CHALLENGE_COMPLETE:
@@ -33297,9 +33436,101 @@ function AppContent() {
     didYouKnowVisible,
     fabTutorialVisible,
     incomeEntryModalVisible,
+    noGoalSavePromptVisible,
     overlay?.type,
     queuedModalType,
   ]);
+  const noGoalSavePromptReveal = useRef(new Animated.Value(0)).current;
+  const noGoalSavePromptPulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!noGoalSavePromptVisible) {
+      noGoalSavePromptReveal.stopAnimation?.();
+      noGoalSavePromptPulse.stopAnimation?.();
+      noGoalSavePromptReveal.setValue(0);
+      noGoalSavePromptPulse.setValue(0);
+      return undefined;
+    }
+    noGoalSavePromptReveal.setValue(0);
+    noGoalSavePromptPulse.setValue(0);
+    Animated.spring(noGoalSavePromptReveal, {
+      toValue: 1,
+      friction: 8,
+      tension: 84,
+      useNativeDriver: true,
+    }).start();
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(noGoalSavePromptPulse, {
+          toValue: 1,
+          duration: 1200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(noGoalSavePromptPulse, {
+          toValue: 0,
+          duration: 1200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulseLoop.start();
+    return () => {
+      pulseLoop.stop();
+    };
+  }, [noGoalSavePromptPulse, noGoalSavePromptReveal, noGoalSavePromptVisible]);
+  const noGoalSavePromptTranslateY = noGoalSavePromptReveal.interpolate({
+    inputRange: [0, 1],
+    outputRange: [22, 0],
+  });
+  const noGoalSavePromptScale = noGoalSavePromptReveal.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.96, 1],
+  });
+  const noGoalSavePromptGlowOpacity = noGoalSavePromptPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.22, 0.42],
+  });
+  const noGoalSavePromptGlowScale = noGoalSavePromptPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.96, 1.08],
+  });
+  const resolveNoGoalSavePromptCopy = useCallback(
+    (value, fallback = "") => resolveOnboardingLanguageMapValue(value, language, fallback),
+    [language]
+  );
+  const noGoalSavePromptSavedCount = noGoalSavePromptTodaySaveCount;
+  const noGoalSavePromptSavedCountLabel = useMemo(() => {
+    const locale = getFormatLocale(language) || "en-US";
+    return noGoalSavePromptSavedCount.toLocaleString(locale);
+  }, [language, noGoalSavePromptSavedCount]);
+  const noGoalSavePromptBadgeText = resolveNoGoalSavePromptCopy(
+    NO_GOAL_SAVE_PROMPT_COPY.badge,
+    "NEXT STEP"
+  );
+  const noGoalSavePromptTitleText = resolveNoGoalSavePromptCopy(
+    NO_GOAL_SAVE_PROMPT_COPY.title,
+    "Create your first goal and save more"
+  );
+  const noGoalSavePromptSubtitleText = resolveNoGoalSavePromptCopy(
+    NO_GOAL_SAVE_PROMPT_COPY.subtitle,
+    "You already resist purchases. A clear goal will keep momentum and grow savings faster."
+  );
+  const noGoalSavePromptProgressText = interpolateOnboardingCopy(
+    resolveNoGoalSavePromptCopy(
+      NO_GOAL_SAVE_PROMPT_COPY.progressTemplate,
+      "{{count}} saved decisions already"
+    ),
+    { count: noGoalSavePromptSavedCountLabel }
+  );
+  const noGoalSavePromptPrimaryCtaText = resolveNoGoalSavePromptCopy(
+    NO_GOAL_SAVE_PROMPT_COPY.primaryCta,
+    "Create goal"
+  );
+  const noGoalSavePromptSecondaryCtaText = resolveNoGoalSavePromptCopy(
+    NO_GOAL_SAVE_PROMPT_COPY.secondaryCta,
+    "Later"
+  );
   const [dailyChallengeDrawnIndex, setDailyChallengeDrawnIndex] = useState(null);
   const dailyChallengeRevealAnim = useRef(new Animated.Value(0)).current;
   const dailyChallengeSelectAnim = useRef(new Animated.Value(0)).current;
@@ -33638,6 +33869,7 @@ function AppContent() {
       potentialDetailsVisible ||
       budgetWidgetTutorialVisible ||
       didYouKnowVisible ||
+      noGoalSavePromptVisible ||
       fabMenuVisible ||
       (activeTab === "feed" &&
         (feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.WELCOME ||
@@ -33655,6 +33887,7 @@ function AppContent() {
       levelShareFlowLocked,
       moodDetailsVisible,
       newPendingModal.visible,
+      noGoalSavePromptVisible,
       overlay,
       potentialDetailsVisible,
       budgetWidgetTutorialVisible,
@@ -33948,6 +34181,7 @@ function AppContent() {
       dailyChallengePromptVisible ||
       dailyChallengeCompleteVisible ||
       didYouKnowVisible ||
+      noGoalSavePromptVisible ||
       coinEntryVisible ||
       showCustomSpend ||
       termsModalVisible ||
@@ -34002,6 +34236,7 @@ function AppContent() {
       manageCategoriesVisible,
       moodDetailsVisible,
       newPendingModal.visible,
+      noGoalSavePromptVisible,
       newGoalModal.visible,
       onboardingGoalModal.visible,
       potentialDetailsVisible,
@@ -34106,6 +34341,15 @@ function AppContent() {
           );
         case QUEUED_MODAL_TYPES.INCOME_PROMPT:
           return incomePromptPending && shouldPromptIncome;
+        case QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT: {
+          if (!noGoalSavePromptPending) return false;
+          const queue = queuedModalQueueRef.current || [];
+          const hasOtherReadyModal = queue.some((candidate) => {
+            if (!candidate || candidate === QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT) return false;
+            return canShowQueuedModalRef.current(candidate);
+          });
+          return !hasOtherReadyModal;
+        }
         default:
           return false;
       }
@@ -34129,6 +34373,7 @@ function AppContent() {
       isDailyChallengePromptPending,
       onboardingStep,
       overlay,
+      noGoalSavePromptPending,
       pendingDailySummaryData,
       pendingFocusDigest,
       shouldPromptIncome,
@@ -34826,6 +35071,7 @@ function AppContent() {
       yearlyFullPrice > yearlyRawPrice
         ? Math.max(1, Math.round((1 - yearlyRawPrice / yearlyFullPrice) * 100))
         : null;
+    const fallbackYearlySavePercent = 37;
 
     return preliminaryCards.map((card) => {
       const isYearly = card.id === "yearly";
@@ -34846,6 +35092,30 @@ function AppContent() {
       );
       const amountLocal = Number.isFinite(card.rawPriceLocal) ? Math.max(0, card.rawPriceLocal) : null;
       const currencyPrecision = getCurrencyPrecision(currencyCode);
+      const equivalentPrecision = Math.max(0, Math.min(2, getCurrencyPrecision(currencyCode)));
+      const monthlyEquivalentLabel =
+        Number.isFinite(amountLocal) && amountLocal > 0
+          ? normalizePaywallEquivalentLabel(
+              `≈ ${normalizePaywallPriceLabel(
+                `${formatCurrency(amountLocal / 12, currencyCode, {
+                  precisionOverride: equivalentPrecision,
+                })}${monthSuffix}`,
+                currencyCode
+              )}`
+            )
+          : null;
+      const weeklyEquivalentLabel =
+        Number.isFinite(amountLocal) && amountLocal > 0
+          ? normalizePaywallEquivalentLabel(
+              `≈ ${normalizePaywallPriceLabel(
+                `${formatCurrency(amountLocal / (52 / 12), currencyCode, {
+                  precisionOverride: equivalentPrecision,
+                })}${weekSuffix}`,
+                currencyCode
+              )}`
+            )
+          : null;
+      const periodEquivalentLabel = isYearly ? monthlyEquivalentLabel : isMonthly ? weeklyEquivalentLabel : null;
 
       let priceLabel = card.chargePriceLabel;
       let secondaryLabel = null;
@@ -34859,6 +35129,8 @@ function AppContent() {
       let topBadgeKind = null;
       let billingLabel = null;
       let postTrialPriceLabel = null;
+      let trialOriginalPriceLabel = null;
+      let trialDiscountLabel = null;
       const freeTrialDays =
         Number.isFinite(card.freeTrialDays) && card.freeTrialDays > 0
           ? Math.max(1, Math.round(card.freeTrialDays))
@@ -34902,43 +35174,34 @@ function AppContent() {
               PAYWALL_BILLING_LABEL_BY_LANGUAGE.yearly.en,
             monetizationLanguage
           );
-        const discountedMonthlyLocal = amountLocal / 12;
-        const monthlyPrecision = Math.max(0, Math.min(2, getCurrencyPrecision(currencyCode)));
-        const discountedMonthlyLabel = normalizePaywallPriceLabel(
-          `${formatCurrency(discountedMonthlyLocal, currencyCode, {
-            precisionOverride: monthlyPrecision,
-          })}${monthSuffix}`,
-          currencyCode
-        );
-        priceLabel = discountedMonthlyLabel;
-        ctaPriceLabel = discountedMonthlyLabel;
-        if (Number.isFinite(yearlyFullPrice) && yearlyFullPrice > amountLocal) {
-          secondaryLabel = normalizePaywallPriceLabel(
-            `${formatCurrency(yearlyFullPrice, currencyCode, {
+        // Apple 3.1.2(c): keep the billed amount as the most prominent price element.
+        priceLabel = recurringChargePriceLabel || card.chargePriceLabel;
+        ctaPriceLabel = recurringChargePriceLabel || card.chargePriceLabel;
+        const effectiveYearlySavePercent =
+          Number.isFinite(yearlySavePercent) && yearlySavePercent > 0
+            ? yearlySavePercent
+            : fallbackYearlySavePercent;
+        const shouldShowYearlyDiscount =
+          Number.isFinite(effectiveYearlySavePercent) &&
+          effectiveYearlySavePercent > 0 &&
+          effectiveYearlySavePercent < 100;
+        if (shouldShowYearlyDiscount) {
+          const yearlyReferencePrice = amountLocal / (1 - effectiveYearlySavePercent / 100);
+          const yearlyFullPriceLabel = normalizePaywallPriceLabel(
+            `${formatCurrency(yearlyReferencePrice, currencyCode, {
               precisionOverride: currencyPrecision,
             })}${yearSuffix}`,
             currencyCode
           );
+          secondaryLabel = yearlyFullPriceLabel;
+          trialOriginalPriceLabel = yearlyFullPriceLabel;
           secondaryKind = "strike";
-          secondarySubLabel = normalizePaywallPriceLabel(
-            `${formatCurrency(amountLocal, currencyCode, {
-              precisionOverride: currencyPrecision,
-            })}${yearSuffix}`,
-            currencyCode
-          );
-        } else {
-          secondaryLabel = normalizePaywallPriceLabel(
-            `${formatCurrency(amountLocal, currencyCode, {
-              precisionOverride: currencyPrecision,
-            })}${yearSuffix}`,
-            currencyCode
-          );
-        }
-        if (yearlySavePercent) {
+          secondarySubLabel = periodEquivalentLabel || billingLabel;
           const yearlySaveBadge = buildPaywallSaveBadge({
-            percent: yearlySavePercent,
+            percent: effectiveYearlySavePercent,
             language: monetizationLanguage,
           });
+          trialDiscountLabel = yearlySaveBadge;
           if (hasFreeTrial) {
             topBadge = yearlySaveBadge;
             topBadgeKind = yearlySaveBadge ? "save" : null;
@@ -34946,31 +35209,22 @@ function AppContent() {
             badge = yearlySaveBadge;
             badgeKind = yearlySaveBadge ? "save" : null;
           }
+        } else {
+          secondaryLabel = periodEquivalentLabel || billingLabel;
+          secondarySubLabel = periodEquivalentLabel ? billingLabel : null;
         }
       } else if (isMonthly) {
-        if (Number.isFinite(amountLocal) && amountLocal > 0) {
-          const averageWeeksPerMonth = 52 / 12;
-          const weeklyEquivalentLocal = amountLocal / averageWeeksPerMonth;
-          const weeklyPrecision = Math.max(0, Math.min(2, getCurrencyPrecision(currencyCode)));
-          const weeklyEquivalentLabel = normalizePaywallPriceLabel(
-            `${formatCurrency(weeklyEquivalentLocal, currencyCode, {
-              precisionOverride: weeklyPrecision,
-            })}${weekSuffix}`,
-            currencyCode
-          );
-          priceLabel = weeklyEquivalentLabel;
-          ctaPriceLabel = weeklyEquivalentLabel;
-        } else {
-          priceLabel = recurringChargePriceLabel || card.chargePriceLabel;
-          ctaPriceLabel = recurringChargePriceLabel || card.chargePriceLabel;
-        }
+        // Apple 3.1.2(c): keep the billed amount as the most prominent price element.
+        priceLabel = recurringChargePriceLabel || card.chargePriceLabel;
+        ctaPriceLabel = recurringChargePriceLabel || card.chargePriceLabel;
         billingLabel =
           localizeFallbackTextByLanguage(
             PAYWALL_BILLING_LABEL_BY_LANGUAGE.monthly[monetizationLanguage] ||
               PAYWALL_BILLING_LABEL_BY_LANGUAGE.monthly.en,
             monetizationLanguage
           );
-        secondaryLabel = billingLabel;
+        secondaryLabel = periodEquivalentLabel || billingLabel;
+        secondarySubLabel = periodEquivalentLabel ? billingLabel : null;
       } else if (isLifetime) {
         billingLabel =
           localizeFallbackTextByLanguage(
@@ -34988,11 +35242,9 @@ function AppContent() {
         : "";
       const hasTrial = !!trialLabel;
       const trialCtaLabel = hasTrial
-        ? localizeFallbackTextByLanguage(
-            PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE[monetizationLanguage] ||
-              PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE.en,
-            monetizationLanguage
-          )
+        ? buildPaywallTrialCtaLabel({
+            language: monetizationLanguage,
+          })
         : "";
       const trialZeroPriceLabel = hasTrial ? formatTrialZeroPrice(currencyCode) : null;
       const trialNowPriceLabel = hasTrial ? formatTrialNowPrice(currencyCode) : null;
@@ -35003,15 +35255,15 @@ function AppContent() {
         equivalentLabel = null;
         postTrialPriceLabel = recurringChargePriceLabel || null;
         secondaryKind = "muted";
-        if (postTrialPriceLabel && postTrialPriceLabel !== priceLabel) {
+        if (postTrialPriceLabel) {
           secondaryLabel = buildPaywallPostTrialLabel({
             priceLabel: postTrialPriceLabel,
             language: monetizationLanguage,
           });
-          secondarySubLabel = billingLabel || null;
+          secondarySubLabel = periodEquivalentLabel || billingLabel || null;
         } else if (billingLabel) {
-          secondaryLabel = billingLabel;
-          secondarySubLabel = null;
+          secondaryLabel = periodEquivalentLabel || billingLabel;
+          secondarySubLabel = periodEquivalentLabel ? billingLabel : null;
         }
         badge = localizeFallbackTextByLanguage(
           PAYWALL_TRIAL_BADGE_BY_LANGUAGE[monetizationLanguage] || PAYWALL_TRIAL_BADGE_BY_LANGUAGE.en,
@@ -35038,12 +35290,15 @@ function AppContent() {
         secondaryLabel: secondaryLabel || null,
         secondaryKind,
         secondarySubLabel: secondarySubLabel || null,
+        periodEquivalentLabel: periodEquivalentLabel || null,
         billingLabel: billingLabel || null,
         equivalentLabel,
         ctaPriceLabel,
         ctaTrialLabel: trialCtaLabel,
         ctaTrialPriceLabel: trialCtaPriceLabel,
         postTrialPriceLabel: hasTrial ? postTrialPriceLabel : null,
+        trialOriginalPriceLabel: hasTrial ? trialOriginalPriceLabel : null,
+        trialDiscountLabel: hasTrial ? trialDiscountLabel : null,
         trialDays: hasTrial ? resolvedTrialDays : null,
         hasTrial,
         displayAsEquivalent,
@@ -36308,10 +36563,16 @@ function AppContent() {
         lastSource: source,
         error: null,
       }));
-      if (premiumInstallIdHydrated && premiumInstallId) {
+      if (
+        premiumInstallIdHydrated &&
+        premiumInstallId &&
+        premiumInstallSecretHydrated &&
+        premiumInstallSecret
+      ) {
         syncEntitlementSnapshot({
           appUserId: premiumInstallId || null,
           installId: premiumInstallId || null,
+          installSecret: premiumInstallSecret || null,
           platform: Platform.OS,
           source,
           entitlement,
@@ -36323,6 +36584,8 @@ function AppContent() {
     [
       premiumInstallId,
       premiumInstallIdHydrated,
+      premiumInstallSecret,
+      premiumInstallSecretHydrated,
       premiumStateCacheHydrated,
       queuePersist,
       trackPremiumLifecycleEvents,
@@ -36345,15 +36608,30 @@ function AppContent() {
       const sourceToken = normalizeMonetizationToken(source, "manual");
       const productToken = normalizeMonetizationToken(resolvedProductId || "none", "none");
 
-      if (!premiumInstallIdHydrated || !premiumInstallId) {
+      if (
+        !premiumInstallIdHydrated ||
+        !premiumInstallId ||
+        !premiumInstallSecretHydrated ||
+        !premiumInstallSecret
+      ) {
         logEvent("premium_backend_validation_result", {
           source: sourceToken,
           product_id: productToken,
           result: "skipped",
-          reason: "missing_install_id",
+          reason:
+            !premiumInstallIdHydrated || !premiumInstallId
+              ? "missing_install_id"
+              : "missing_install_secret",
           status: 0,
         });
-        return { ok: false, skipped: true, reason: "missing_install_id" };
+        return {
+          ok: false,
+          skipped: true,
+          reason:
+            !premiumInstallIdHydrated || !premiumInstallId
+              ? "missing_install_id"
+              : "missing_install_secret",
+        };
       }
 
       const transactionToken = resolveNonEmptyString(resolvedTransactionIdentifier || "");
@@ -36361,6 +36639,7 @@ function AppContent() {
       const validationPayload = {
         appUserId: premiumInstallId,
         installId: premiumInstallId,
+        installSecret: premiumInstallSecret,
         platform,
         productId: resolveNonEmptyString(resolvedProductId || "") || null,
         transactionId: platform === "ios" ? transactionToken || null : null,
@@ -36399,10 +36678,17 @@ function AppContent() {
       });
       return validation;
     },
-    [logEvent, premiumInstallId, premiumInstallIdHydrated, premiumState.customerInfo]
+    [
+      logEvent,
+      premiumInstallId,
+      premiumInstallIdHydrated,
+      premiumInstallSecret,
+      premiumInstallSecretHydrated,
+      premiumState.customerInfo,
+    ]
   );
   useEffect(() => {
-    if (!premiumInstallIdHydrated) return;
+    if (!premiumInstallIdHydrated || !premiumInstallSecretHydrated) return;
     let active = true;
     let unsubscribe = () => {};
     const bootstrapPurchases = async () => {
@@ -36471,10 +36757,16 @@ function AppContent() {
           lastSource: "listener",
           error: null,
         }));
-        if (premiumInstallIdHydrated && premiumInstallId) {
+        if (
+          premiumInstallIdHydrated &&
+          premiumInstallId &&
+          premiumInstallSecretHydrated &&
+          premiumInstallSecret
+        ) {
           syncEntitlementSnapshot({
             appUserId: premiumInstallId || null,
             installId: premiumInstallId || null,
+            installSecret: premiumInstallSecret || null,
             platform: Platform.OS,
             source: "listener",
             entitlement,
@@ -36493,6 +36785,8 @@ function AppContent() {
   }, [
     premiumInstallId,
     premiumInstallIdHydrated,
+    premiumInstallSecret,
+    premiumInstallSecretHydrated,
     premiumStateCacheHydrated,
     queuePersist,
     refreshPremiumState,
@@ -36500,13 +36794,13 @@ function AppContent() {
     trackPremiumTrialCancelled,
   ]);
   useEffect(() => {
-    if (!premiumInstallIdHydrated) return;
+    if (!premiumInstallIdHydrated || !premiumInstallSecretHydrated) return;
     const subscription = AppState.addEventListener("change", (nextState) => {
       if (nextState !== "active") return;
       refreshPremiumState("app_resume").catch(() => {});
     });
     return () => subscription.remove();
-  }, [premiumInstallIdHydrated, refreshPremiumState]);
+  }, [premiumInstallIdHydrated, premiumInstallSecretHydrated, refreshPremiumState]);
   useEffect(() => {
     if (Platform.OS !== "android") return;
     if (premiumState.error !== "missing_api_key") return;
@@ -40102,6 +40396,21 @@ function AppContent() {
       },
     };
   }, [impulseEventsForInsights, language, resolveTemplateCard, titleOverrides]);
+  const focusRecentSpendTemplateCount = useMemo(() => {
+    const now = Date.now();
+    const cutoff = now - FOCUS_RECENT_WINDOW_MS;
+    const templateIds = new Set();
+    impulseEventsForInsights.forEach((event) => {
+      if (!event || event.action !== "spend" || !event.templateId) return;
+      const templateId =
+        typeof event.templateId === "string" ? event.templateId.trim() : event.templateId;
+      if (!templateId || !isFocusCandidateInFeed(templateId)) return;
+      const timestamp = Number(event.timestamp);
+      if (!Number.isFinite(timestamp) || timestamp < cutoff) return;
+      templateIds.add(templateId);
+    });
+    return templateIds.size;
+  }, [impulseEventsForInsights, isFocusCandidateInFeed]);
   const focusRecentSpends = useMemo(() => {
     const now = Date.now();
     const cutoff = now - FOCUS_RECENT_WINDOW_MS;
@@ -40198,6 +40507,7 @@ function AppContent() {
     if (pendingFocusDigest?.dateKey === todayKey) return;
     if (!impulseInsights || (impulseInsights.eventCount || 0) < 1) return;
     if (!purchases.length) return;
+    if (focusRecentSpendTemplateCount < FOCUS_MIN_UNIQUE_SPEND_TEMPLATES) return;
     if (!focusRecentSpends.length) return;
     const strong = impulseInsights.hotWin || null;
     const eligibleStrong =
@@ -40227,6 +40537,7 @@ function AppContent() {
     focusDigestHydrated,
     focusDigestSeenKey,
     focusModeUnlocked,
+    focusRecentSpendTemplateCount,
     focusRecentSpends,
     isFocusCandidateInFeed,
     impulseInsights,
@@ -40359,6 +40670,7 @@ function AppContent() {
       previousTemplateId:
         dailyChallenge.dateKey === resolvedTodayKey ? null : dailyChallenge.templateId,
       drawCount: DAILY_CHALLENGE_DRAW_COUNT,
+      minUniqueTemplates: DAILY_CHALLENGE_MIN_UNIQUE_TEMPLATES,
     });
     if (!targetId) {
       setDailyChallenge((prev) => ({
@@ -41053,6 +41365,7 @@ function AppContent() {
         STORAGE_KEYS.DAILY_GOAL_COLLECTED,
         STORAGE_KEYS.DAILY_SUMMARY,
         STORAGE_KEYS.DID_YOU_KNOW,
+        STORAGE_KEYS.NO_GOAL_SAVE_PROMPT_SHOWN,
         STORAGE_KEYS.DAILY_SAVE_LIMIT,
         STORAGE_KEYS.TERMS_ACCEPTED,
         STORAGE_KEYS.FOCUS_TARGET,
@@ -41078,6 +41391,7 @@ function AppContent() {
         STORAGE_KEYS.REPORTS_LAST_AUTO_WEEK,
         STORAGE_KEYS.REPORTS_WEEKLY_NOTIFICATION,
         STORAGE_KEYS.PREMIUM_INSTALL_ID,
+        STORAGE_KEYS.PREMIUM_INSTALL_SECRET,
         STORAGE_KEYS.INSTALL_DATE,
         STORAGE_KEYS.FIRST_SESSION_DURATION_BUCKET,
         STORAGE_KEYS.PREMIUM_SOFT_PAYWALL_SHOWN,
@@ -41163,6 +41477,8 @@ function AppContent() {
       const dailyGoalCollectedRaw = storedMap[STORAGE_KEYS.DAILY_GOAL_COLLECTED] ?? null;
       const dailySummaryRaw = storedMap[STORAGE_KEYS.DAILY_SUMMARY] ?? null;
       const didYouKnowRaw = storedMap[STORAGE_KEYS.DID_YOU_KNOW] ?? null;
+      const noGoalSavePromptDeferredDayKeyRaw =
+        storedMap[STORAGE_KEYS.NO_GOAL_SAVE_PROMPT_SHOWN] ?? null;
       const dailySaveLimitRaw = storedMap[STORAGE_KEYS.DAILY_SAVE_LIMIT] ?? null;
       const termsAcceptedRaw = storedMap[STORAGE_KEYS.TERMS_ACCEPTED] ?? null;
       const focusTargetRaw = storedMap[STORAGE_KEYS.FOCUS_TARGET] ?? null;
@@ -41192,6 +41508,7 @@ function AppContent() {
       const reportsWeeklyNotificationRaw =
         storedMap[STORAGE_KEYS.REPORTS_WEEKLY_NOTIFICATION] ?? null;
       const premiumInstallIdRaw = storedMap[STORAGE_KEYS.PREMIUM_INSTALL_ID] ?? null;
+      const premiumInstallSecretRaw = storedMap[STORAGE_KEYS.PREMIUM_INSTALL_SECRET] ?? null;
       const installDateRaw = storedMap[STORAGE_KEYS.INSTALL_DATE] ?? null;
       const firstSessionDurationBucketRaw =
         storedMap[STORAGE_KEYS.FIRST_SESSION_DURATION_BUCKET] ?? null;
@@ -41733,6 +42050,12 @@ function AppContent() {
           : createMonetizationInstallId();
       setPremiumInstallId(normalizedPremiumInstallId);
       setPremiumInstallIdHydrated(true);
+      const normalizedPremiumInstallSecret =
+        typeof premiumInstallSecretRaw === "string" && premiumInstallSecretRaw.trim().length >= 32
+          ? premiumInstallSecretRaw.trim()
+          : createMonetizationInstallSecret();
+      setPremiumInstallSecret(normalizedPremiumInstallSecret);
+      setPremiumInstallSecretHydrated(true);
       const normalizedInstallDateRaw =
         typeof installDateRaw === "string" ? installDateRaw.trim() : "";
       const parsedInstallDateFromNumber = Number(normalizedInstallDateRaw);
@@ -41953,6 +42276,21 @@ function AppContent() {
         setDidYouKnowState(createInitialDidYouKnowState());
       }
       setDidYouKnowHydrated(true);
+      const parsedNoGoalSavePromptDeferredUntilMs = Number(noGoalSavePromptDeferredDayKeyRaw);
+      const normalizedNoGoalSavePromptDeferredDayKey =
+        Number.isFinite(parsedNoGoalSavePromptDeferredUntilMs) &&
+        parsedNoGoalSavePromptDeferredUntilMs > 0
+          ? String(Math.round(parsedNoGoalSavePromptDeferredUntilMs))
+          : typeof noGoalSavePromptDeferredDayKeyRaw === "string" &&
+            parseDayKey(noGoalSavePromptDeferredDayKeyRaw)
+          ? noGoalSavePromptDeferredDayKeyRaw
+          : noGoalSavePromptDeferredDayKeyRaw === "1" ||
+            noGoalSavePromptDeferredDayKeyRaw === "true" ||
+            noGoalSavePromptDeferredDayKeyRaw === "done"
+          ? getDayKey(Date.now())
+          : null;
+      setNoGoalSavePromptDeferredDayKey(normalizedNoGoalSavePromptDeferredDayKey);
+      setNoGoalSavePromptHydrated(true);
       if (termsAcceptedRaw === "1") {
         setTermsAccepted(true);
       }
@@ -42678,6 +43016,11 @@ function AppContent() {
         return normalized || createMonetizationInstallId();
       });
       setPremiumInstallIdHydrated(true);
+      setPremiumInstallSecret((prev) => {
+        const normalized = resolveNonEmptyString(prev);
+        return normalized.length >= 32 ? normalized : createMonetizationInstallSecret();
+      });
+      setPremiumInstallSecretHydrated(true);
       setPremiumGroupCSoftPaywallShownDayKeyHydrated(true);
       setPremiumSoftPaywallHydrated(true);
       setPremiumHardPaywallHydrated(true);
@@ -42742,6 +43085,8 @@ function AppContent() {
       setRefuseStatsHydrated(true);
       setQuickTemptationsHydrated(true);
       setDidYouKnowHydrated(true);
+      setNoGoalSavePromptDeferredDayKey(null);
+      setNoGoalSavePromptHydrated(true);
       setStartupHydrated(true);
     }
   };
@@ -44179,6 +44524,18 @@ function AppContent() {
     queuePersist(STORAGE_KEYS.PREMIUM_INSTALL_ID, normalized);
   }, [premiumInstallId, premiumInstallIdHydrated, queuePersist]);
   useEffect(() => {
+    if (!premiumInstallSecretHydrated) return;
+    const normalized =
+      resolveNonEmptyString(premiumInstallSecret).length >= 32
+        ? resolveNonEmptyString(premiumInstallSecret)
+        : createMonetizationInstallSecret();
+    if (normalized !== premiumInstallSecret) {
+      setPremiumInstallSecret(normalized);
+      return;
+    }
+    queuePersist(STORAGE_KEYS.PREMIUM_INSTALL_SECRET, normalized);
+  }, [premiumInstallSecret, premiumInstallSecretHydrated, queuePersist]);
+  useEffect(() => {
     if (!premiumSoftPaywallHydrated) return;
     queuePersist(STORAGE_KEYS.PREMIUM_SOFT_PAYWALL_SHOWN, premiumSoftPaywallShown ? "1" : "0");
   }, [premiumSoftPaywallHydrated, premiumSoftPaywallShown, queuePersist]);
@@ -44576,6 +44933,13 @@ useEffect(() => {
       JSON.stringify(normalizeDidYouKnowState(didYouKnowState))
     );
   }, [didYouKnowHydrated, didYouKnowState, queuePersist]);
+  useEffect(() => {
+    if (!noGoalSavePromptHydrated) return;
+    queuePersist(
+      STORAGE_KEYS.NO_GOAL_SAVE_PROMPT_SHOWN,
+      noGoalSavePromptDeferredDayKey || ""
+    );
+  }, [noGoalSavePromptDeferredDayKey, noGoalSavePromptHydrated, queuePersist]);
 
   useEffect(() => {
     if (!smartRemindersHydrated) return;
@@ -44862,9 +45226,17 @@ useEffect(() => {
         });
         const lastInteractionAt = Number(entry.lastInteractionAt) || 0;
         const hadActionToday = lastInteractionAt > 0 && isSameDay(lastInteractionAt, nowTs);
-        const effectiveScheduleTriggers = hadActionToday
-          ? scheduleTriggers.filter((triggerTime) => !isSameDay(triggerTime, nowTs))
-          : scheduleTriggers;
+        const contextualCooldownUntil =
+          lastInteractionAt > 0 ? lastInteractionAt + FREQUENCY_REMINDER_GRACE_MS : 0;
+        const effectiveScheduleTriggers = scheduleTriggers.filter((triggerTime) => {
+          if (hadActionToday && isSameDay(triggerTime, nowTs)) {
+            return false;
+          }
+          if (contextualCooldownUntil && triggerTime <= contextualCooldownUntil) {
+            return false;
+          }
+          return true;
+        });
         if (!effectiveScheduleTriggers.length) {
           if (existingReminderIds.length) {
             await cancelAndClearReminders(templateId, existingReminderIds);
@@ -45983,6 +46355,18 @@ useEffect(() => {
   }, [logEvent]);
 
   const handleQuickCustomChange = (field, value) => {
+    if (field === "category" && value && IMPULSE_CATEGORY_DEFS[value]) {
+      setQuickCustomErrors((prev) => (prev.category ? { ...prev, category: false } : prev));
+    } else if (field === "frequency") {
+      const normalizedFrequency = value === null ? null : normalizeFrequencyId(value);
+      if (normalizedFrequency) {
+        setQuickCustomErrors((prev) => (prev.frequency ? { ...prev, frequency: false } : prev));
+      }
+    } else if (field === "customFrequency") {
+      if (normalizeCustomFrequency(value)) {
+        setQuickCustomErrors((prev) => (prev.frequency ? { ...prev, frequency: false } : prev));
+      }
+    }
     setQuickSpendDraft((prev) => {
       if (field === "frequency") {
         const normalized = value === null ? null : normalizeFrequencyId(value) || prev.frequency;
@@ -46148,22 +46532,26 @@ useEffect(() => {
       Alert.alert("Almost", t("quickCustomErrorAmount"));
       return;
     }
-    if (!customData.category || !IMPULSE_CATEGORY_DEFS[customData.category]) {
-      Alert.alert("Almost", t("quickCustomErrorCategory"));
-      return;
-    }
     const resolvedFrequency = normalizeFrequencyId(customData.frequency);
-    if (!resolvedFrequency) {
-      Alert.alert("Almost", t("quickCustomErrorFrequency"));
+    const missingCategory = !customData.category || !IMPULSE_CATEGORY_DEFS[customData.category];
+    const missingFrequency = !resolvedFrequency;
+    if (missingCategory || missingFrequency) {
+      setQuickCustomErrors({
+        category: missingCategory,
+        frequency: missingFrequency,
+      });
+      Alert.alert("Almost", t(missingCategory ? "quickCustomErrorCategory" : "quickCustomErrorFrequency"));
       return;
     }
     if (
       resolvedFrequency === "custom" &&
       !normalizeCustomFrequency(customData.customFrequency)
     ) {
+      setQuickCustomErrors({ category: false, frequency: true });
       Alert.alert("Almost", t("quickCustomErrorCustomFrequency"));
       return;
     }
+    setQuickCustomErrors({ category: false, frequency: false });
     const amountUSD = clampTransactionAmountUSD(convertFromCurrency(parsedAmount, currencyCode));
     if (!amountUSD) {
       Alert.alert("Almost", t("quickCustomErrorAmount"));
@@ -46176,7 +46564,7 @@ useEffect(() => {
       customData.category && IMPULSE_CATEGORY_DEFS[customData.category]
         ? customData.category
         : DEFAULT_IMPULSE_CATEGORY;
-    let frequency = normalizeFrequencyId(customData.frequency) || "daily";
+    let frequency = resolvedFrequency || "daily";
     let frequencyCustom = normalizeCustomFrequency(customData.customFrequency) || null;
     if (frequency === "biweekly") {
       frequency = "custom";
@@ -46279,6 +46667,7 @@ useEffect(() => {
       initialFrequency: null,
       scheduleConfigVisible: false,
     });
+    setQuickCustomErrors({ category: false, frequency: false });
     setShowCustomSpend(false);
     triggerOverlayState("custom_temptation", newCustom.title);
   };
@@ -46300,6 +46689,7 @@ useEffect(() => {
       initialFrequency: null,
       scheduleConfigVisible: false,
     });
+    setQuickCustomErrors({ category: false, frequency: false });
     setShowCustomSpend(false);
   };
   const [pendingWidgetAction, setPendingWidgetAction] = useState(null);
@@ -46417,6 +46807,7 @@ useEffect(() => {
       initialFrequency: null,
       scheduleConfigVisible: false,
     });
+    setQuickCustomErrors({ category: false, frequency: false });
     setShowCustomSpend(true);
   }, [
     closeFabMenu,
@@ -49155,9 +49546,11 @@ useEffect(() => {
     );
   };
   const tamagotchiCleaningNeedsBrush = tamagotchiCleaningProgress?.stage === "brush";
-  const tamagotchiCleanNeedEmoji = tamagotchiCleaningNeedsBrush
-    ? TAMAGOTCHI_CLEAN_TOOLS.find((tool) => tool.type === "brush")?.emoji || "🪥"
-    : TAMAGOTCHI_CLEAN_TOOLS.find((tool) => tool.type === "soap")?.emoji || "🧼";
+  const tamagotchiCleanTargetAccent = tamagotchiCleaningNeedsBrush ? "#99E18E" : "#7CC7FF";
+  const tamagotchiCleanTargetHighlightVisible =
+    tamagotchiActiveTab === "clean" &&
+    isTamagotchiCleanToolSelected &&
+    !tamagotchiCleanTouchActive;
   const renderTamagotchiCleanPanel = () => {
     return (
       <View style={styles.tamagotchiFoodList}>
@@ -49425,10 +49818,13 @@ useEffect(() => {
       const resolvedTitle = item
         ? resolveTemptationTitle(item, language)
         : null;
+      const legacyKeys = buildLegacyTemplateKeys(templateId, item);
       const baseKey = normalizeTemplateKey(templateId);
       const itemIdKey = normalizeTemplateKey(item?.id);
       const itemTemplateKey = normalizeTemplateKey(item?.templateId);
-      const candidateKeys = [baseKey, itemIdKey, itemTemplateKey].filter(Boolean);
+      const candidateKeys = Array.from(
+        new Set([...(Array.isArray(legacyKeys) ? legacyKeys : []), baseKey, itemIdKey, itemTemplateKey].filter(Boolean))
+      );
       if (!candidateKeys.length) return;
       const primaryKey = candidateKeys[0];
       const snapshotEntries = candidateKeys
@@ -49644,7 +50040,7 @@ useEffect(() => {
       if (templateKeysToCancel.length) {
         Promise.all(
           templateKeysToCancel.map((key) =>
-            cancelScheduledDecisionNotificationsForTemplate(key, { todayOnly: true })
+            cancelScheduledDecisionNotificationsForTemplate(key, { todayOnly: false })
           )
         ).catch(() => {});
       }
@@ -49655,7 +50051,13 @@ useEffect(() => {
         });
       }
     },
-    [cancelScheduledDecisionNotificationsForTemplate, dismissPotentialGrowth, language, temptationInteractions]
+    [
+      buildLegacyTemplateKeys,
+      cancelScheduledDecisionNotificationsForTemplate,
+      dismissPotentialGrowth,
+      language,
+      temptationInteractions,
+    ]
   );
   useEffect(() => {
     if (!temptationInteractionsHydrated) return;
@@ -54215,6 +54617,7 @@ useEffect(() => {
   const promptFocusForTemptation = useCallback(
     (template) => {
       if (!focusTargetsUnlocked) return;
+      if (focusRecentSpendTemplateCount < FOCUS_MIN_UNIQUE_SPEND_TEMPLATES) return;
       if (!template?.id) return;
       if (!isFocusCandidateInFeed(template.id)) return;
       if (typeof resolveTemptationCategory === "function") {
@@ -54236,6 +54639,7 @@ useEffect(() => {
       }, null);
     },
     [
+      focusRecentSpendTemplateCount,
       focusTargetsUnlocked,
       isFocusCandidateInFeed,
       language,
@@ -55268,6 +55672,8 @@ useEffect(() => {
             setDidYouKnowState(createInitialDidYouKnowState());
             setDidYouKnowHydrated(true);
             setDidYouKnowTipId(null);
+            setNoGoalSavePromptDeferredDayKey(null);
+            setNoGoalSavePromptHydrated(true);
             setDailyNudgeNotificationIds({});
             dailyNudgeIdsRef.current = {};
             setDailyNudgesHydrated(true);
@@ -55988,6 +56394,7 @@ useEffect(() => {
       registrationData.customSpendEmoji,
       DEFAULT_TEMPTATION_EMOJI
     );
+    const shouldSkipGoalCalculationIntro = onboardingSkippedRef.current || !onboardingGoalId;
     let onboardContent = null;
     if (onboardingStep === "logo") {
       onboardContent = startupLogoReady ? <LogoSplash onDone={handleOnboardingLogoComplete} /> : null;
@@ -56087,7 +56494,7 @@ useEffect(() => {
           onContinue={handleOnboardingNotificationsContinue}
           onBack={onboardingBackHandler}
           onSkip={onboardingSkipHandler}
-          skipGoalCalculationIntro={onboardingSkippedRef.current}
+          skipGoalCalculationIntro={shouldSkipGoalCalculationIntro}
           goalLabel={onboardingGoalLabel}
           goalEmoji={onboardingGoalEmoji}
           goalAmount={onboardingGoalTargetRaw}
@@ -56974,6 +57381,113 @@ useEffect(() => {
             </TouchableWithoutFeedback>
           </Modal>
         )}
+        {!startupHardLockPendingBeforePaywall && noGoalSavePromptVisible && (
+          <Modal
+            visible
+            transparent
+            animationType="fade"
+            statusBarTranslucent
+            onRequestClose={handleNoGoalSavePromptLater}
+          >
+            <TouchableWithoutFeedback onPress={handleNoGoalSavePromptLater}>
+              <View style={styles.quickModalBackdrop}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <Animated.View
+                    style={[
+                      styles.noGoalSavePromptCard,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                        opacity: noGoalSavePromptReveal,
+                        transform: [
+                          { translateY: noGoalSavePromptTranslateY },
+                          { scale: noGoalSavePromptScale },
+                        ],
+                      },
+                    ]}
+                  >
+                    <Animated.View
+                      pointerEvents="none"
+                      style={[
+                        styles.noGoalSavePromptGlow,
+                        {
+                          opacity: noGoalSavePromptGlowOpacity,
+                          transform: [{ scale: noGoalSavePromptGlowScale }],
+                        },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.noGoalSavePromptBadge,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: isDarkTheme
+                            ? "rgba(255,255,255,0.08)"
+                            : "rgba(17,17,17,0.05)",
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.noGoalSavePromptBadgeText, { color: colors.text }]}>
+                        {noGoalSavePromptBadgeText}
+                      </Text>
+                    </View>
+                    <View style={styles.noGoalSavePromptHero}>
+                      <Image
+                        source={tamagotchiAnimations.happy || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy}
+                        style={styles.noGoalSavePromptMascot}
+                        resizeMode="contain"
+                      />
+                      <View style={styles.noGoalSavePromptHeroCopy}>
+                        <Text style={[styles.noGoalSavePromptTitle, { color: colors.text }]}>
+                          {noGoalSavePromptTitleText}
+                        </Text>
+                        <Text style={[styles.noGoalSavePromptSubtitle, { color: colors.muted }]}>
+                          {noGoalSavePromptSubtitleText}
+                        </Text>
+                      </View>
+                    </View>
+                    <View
+                      style={[
+                        styles.noGoalSavePromptProgress,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: isDarkTheme
+                            ? "rgba(255,255,255,0.06)"
+                            : "rgba(17,17,17,0.03)",
+                        },
+                      ]}
+                    >
+                      <Text style={styles.noGoalSavePromptProgressEmoji}>💰</Text>
+                      <Text style={[styles.noGoalSavePromptProgressText, { color: colors.text }]}>
+                        {noGoalSavePromptProgressText}
+                      </Text>
+                    </View>
+                    <View style={styles.quickModalActions}>
+                      <TouchableOpacity
+                        style={[styles.quickModalSecondary, { borderColor: colors.border }]}
+                        activeOpacity={0.85}
+                        onPress={handleNoGoalSavePromptLater}
+                      >
+                        <Text style={[styles.quickModalSecondaryText, { color: colors.muted }]}>
+                          {noGoalSavePromptSecondaryCtaText}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.quickModalPrimary, { backgroundColor: colors.text }]}
+                        activeOpacity={0.9}
+                        onPress={handleNoGoalSavePromptCreateGoal}
+                      >
+                        <Text style={[styles.quickModalPrimaryText, { color: colors.background }]}>
+                          {noGoalSavePromptPrimaryCtaText}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </Animated.View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
         {!startupHardLockPendingBeforePaywall && coinValueModalVisible && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <View style={styles.quickModalBackdrop}>
@@ -57754,6 +58268,7 @@ useEffect(() => {
           t={t}
           currency={profile.currency || DEFAULT_PROFILE.currency}
           data={quickSpendDraft}
+          validationErrors={quickCustomErrors}
           onChange={handleQuickCustomChange}
           onSubmit={handleQuickCustomSubmit}
           onCancel={handleQuickCustomCancel}
@@ -58583,7 +59098,25 @@ useEffect(() => {
                       </TouchableOpacity>
                     </View>
 	                    <View
-	                      style={styles.tamagotchiMascotWrap}
+	                      style={[
+	                        styles.tamagotchiMascotWrap,
+	                        tamagotchiCleanTargetHighlightVisible &&
+	                          styles.tamagotchiMascotWrapCleanHighlight,
+	                        tamagotchiCleanTargetHighlightVisible && {
+	                          borderColor: colorWithAlpha(
+	                            tamagotchiCleanTargetAccent,
+	                            isDarkTheme ? 0.9 : 0.86
+	                          ),
+	                          backgroundColor: colorWithAlpha(
+	                            tamagotchiCleanTargetAccent,
+	                            isDarkTheme ? 0.16 : 0.22
+	                          ),
+	                          shadowColor: colorWithAlpha(
+	                            tamagotchiCleanTargetAccent,
+	                            isDarkTheme ? 0.72 : 0.5
+	                          ),
+	                        },
+	                      ]}
 	                      {...(tamagotchiActiveTab === "clean"
 	                        ? tamagotchiCleanPanResponder.panHandlers
 	                        : {})}
@@ -58683,16 +59216,7 @@ useEffect(() => {
                           <Text style={styles.tamagotchiHeartBurstText}>💖</Text>
                         </Animated.View>
                       ))}
-	                      {tamagotchiActiveTab === "clean" && (
-	                        <>
-	                          <View pointerEvents="none" style={styles.tamagotchiCleanTapOverlay}>
-	                            <Text style={styles.tamagotchiCleanTapOverlayText}>
-	                              {tamagotchiCleanNeedEmoji}
-	                            </Text>
-	                          </View>
-	                        </>
-	                      )}
-                      {tamagotchiHasHungerImmunity && (
+	                      {tamagotchiHasHungerImmunity && (
                         <Pressable
                           style={styles.tamagotchiShieldOverlay}
                           onPress={showTamagotchiImmunityHint}
@@ -63040,6 +63564,14 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     minHeight: scaleTamagotchiMetric(152, 108),
   },
+  tamagotchiMascotWrapCleanHighlight: {
+    borderWidth: 2,
+    borderRadius: scaleTamagotchiMetric(20, 14),
+    shadowOpacity: 0.24,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 7,
+  },
   tamagotchiMascotLarge: {
     width: scaleTamagotchiMetric(126, 94),
     height: scaleTamagotchiMetric(126, 94),
@@ -63060,19 +63592,6 @@ const styles = StyleSheet.create({
   },
   tamagotchiHeartBurstText: {
     fontSize: scaleTamagotchiMetric(20, 14),
-  },
-  tamagotchiCleanTapOverlay: {
-    position: "absolute",
-    bottom: -4,
-    right: 2,
-    zIndex: 8,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    backgroundColor: "rgba(255,255,255,0.82)",
-  },
-  tamagotchiCleanTapOverlayText: {
-    fontSize: 15,
   },
   tamagotchiReactionBubble: {
     borderWidth: 1,
@@ -70501,6 +71020,78 @@ const styles = StyleSheet.create({
   quickModalPrimaryText: {
     ...createCtaText(),
   },
+  noGoalSavePromptCard: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 28,
+    borderWidth: 1,
+    padding: 20,
+    gap: 14,
+    overflow: "hidden",
+  },
+  noGoalSavePromptGlow: {
+    position: "absolute",
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    top: -72,
+    right: -62,
+    backgroundColor: "rgba(111,176,255,0.32)",
+  },
+  noGoalSavePromptBadge: {
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  noGoalSavePromptBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  noGoalSavePromptHero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  noGoalSavePromptMascot: {
+    width: 84,
+    height: 84,
+  },
+  noGoalSavePromptHeroCopy: {
+    flex: 1,
+    gap: 6,
+  },
+  noGoalSavePromptTitle: {
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: "700",
+  },
+  noGoalSavePromptSubtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  noGoalSavePromptProgress: {
+    width: "100%",
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  noGoalSavePromptProgressEmoji: {
+    fontSize: 16,
+  },
+  noGoalSavePromptProgressText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+  },
   didYouKnowBadge: {
     alignSelf: "flex-start",
     borderWidth: 1,
@@ -70570,6 +71161,15 @@ const styles = StyleSheet.create({
   frequencyPickerWrap: {
     width: "100%",
     gap: 8,
+  },
+  quickCustomValidationWrap: {
+    width: "100%",
+  },
+  quickCustomValidationWrapError: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
   },
   frequencyScheduleWrap: {
     width: "100%",
@@ -79315,6 +79915,7 @@ function QuickCustomModal({
   t,
   currency,
   data,
+  validationErrors,
   onChange,
   onSubmit,
   onCancel,
@@ -79322,6 +79923,12 @@ function QuickCustomModal({
   keyboardOffset = 0,
 }) {
   const keyboardPaddingStyle = keyboardOffset ? { paddingBottom: keyboardOffset } : null;
+  const shouldHighlightFrequencyError = validationErrors?.frequency === true;
+  const shouldHighlightCategoryError = validationErrors?.category === true;
+  const errorFieldStyle = {
+    borderColor: SPEND_ACTION_COLOR,
+    backgroundColor: colorWithAlpha(SPEND_ACTION_COLOR, 0.08),
+  };
   return (
     <Modal
       visible={visible}
@@ -79344,15 +79951,22 @@ function QuickCustomModal({
                 <Text style={[styles.quickModalTitle, { color: colors.text }]}>{t("quickCustomTitle")}</Text>
                 <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>{t("quickCustomSubtitle")}</Text>
                 <View style={{ gap: 12, width: "100%" }}>
-                  <FrequencyPicker
-                    value={data.frequency}
-                    customValue={data.customFrequency}
-                    onValueChange={(next) => onChange("frequency", next)}
-                    onCustomChange={(next) => onChange("customFrequency", next)}
-                    colors={colors}
-                    t={t}
-                    keyboardOffset={keyboardOffset}
-                  />
+                  <View
+                    style={[
+                      styles.quickCustomValidationWrap,
+                      shouldHighlightFrequencyError ? [styles.quickCustomValidationWrapError, errorFieldStyle] : null,
+                    ]}
+                  >
+                    <FrequencyPicker
+                      value={data.frequency}
+                      customValue={data.customFrequency}
+                      onValueChange={(next) => onChange("frequency", next)}
+                      onCustomChange={(next) => onChange("customFrequency", next)}
+                      colors={colors}
+                      t={t}
+                      keyboardOffset={keyboardOffset}
+                    />
+                  </View>
                   {data.scheduleConfigVisible && isGuidedFrequency(data.frequency) && (
                     <FrequencySchedulePicker
                       frequency={data.frequency}
@@ -79402,8 +80016,18 @@ function QuickCustomModal({
                     selectTextOnFocus
                     maxLength={2}
                   />
-                  <View style={{ gap: 6 }}>
-                    <Text style={[styles.currencyLabel, { color: colors.muted }]}>
+                  <View
+                    style={[
+                      styles.quickCustomValidationWrap,
+                      shouldHighlightCategoryError ? [styles.quickCustomValidationWrapError, errorFieldStyle] : null,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.currencyLabel,
+                        { color: shouldHighlightCategoryError ? SPEND_ACTION_COLOR : colors.muted },
+                      ]}
+                    >
                       {t("impulseCategoryLabel")}
                     </Text>
                     <ImpulseCategorySelector
@@ -80491,6 +81115,63 @@ const ONBOARDING_NOTIFICATIONS_COPY = {
       ar: "تقدم قوي",
       zh: "进展强劲",
     },
+  },
+};
+
+const NO_GOAL_SAVE_PROMPT_COPY = {
+  badge: {
+    en: "NEXT STEP",
+    ru: "СЛЕДУЮЩИЙ ШАГ",
+    es: "SIGUIENTE PASO",
+    fr: "ÉTAPE SUIVANTE",
+    de: "NÄCHSTER SCHRITT",
+    ar: "الخطوة التالية",
+    zh: "下一步",
+  },
+  title: {
+    en: "Create your first goal and save more",
+    ru: "Создай первую цель и сохраняй больше",
+    es: "Crea tu primera meta y ahorra más",
+    fr: "Crée ton premier objectif et épargne plus",
+    de: "Erstelle dein erstes Ziel und spare mehr",
+    ar: "أنشئ هدفك الأول وادّخر أكثر",
+    zh: "创建你的第一个目标，存下更多钱",
+  },
+  subtitle: {
+    en: "You already resist purchases. A clear goal will keep momentum and grow savings faster.",
+    ru: "Ты уже умеешь отказываться от покупок. Чёткая цель закрепит ритм и ускорит накопления.",
+    es: "Ya estás evitando compras. Una meta clara mantiene el ritmo y acelera tus ahorros.",
+    fr: "Tu résistes déjà aux achats. Un objectif clair garde l'élan et accélère l'épargne.",
+    de: "Du widerstehst bereits Käufen. Ein klares Ziel hält den Schwung und steigert das Sparen.",
+    ar: "أنت تتجنب الشراء بالفعل. الهدف الواضح يحافظ على الزخم ويزيد الادخار بسرعة.",
+    zh: "你已经在克制消费。明确目标能保持节奏，让储蓄增长更快。",
+  },
+  progressTemplate: {
+    en: "{{count}} saved decisions already",
+    ru: "Уже {{count}} сохранённых решений",
+    es: "Ya van {{count}} decisiones ahorradas",
+    fr: "{{count}} décisions économisées déjà",
+    de: "Schon {{count}} Entscheidungen gespart",
+    ar: "لديك {{count}} قرارات ادخار بالفعل",
+    zh: "你已完成 {{count}} 次省钱决定",
+  },
+  primaryCta: {
+    en: "Create goal",
+    ru: "Создать цель",
+    es: "Crear meta",
+    fr: "Créer un objectif",
+    de: "Ziel erstellen",
+    ar: "إنشاء هدف",
+    zh: "创建目标",
+  },
+  secondaryCta: {
+    en: "Later",
+    ru: "Позже",
+    es: "Luego",
+    fr: "Plus tard",
+    de: "Später",
+    ar: "لاحقًا",
+    zh: "稍后",
   },
 };
 

@@ -1,7 +1,7 @@
 export const PAYWALL_PLAN_LABEL_BY_LANGUAGE = {
   yearly: {
     ru: "Год",
-    en: "Yearly",
+    en: "Annual",
     es: "Anual",
     fr: "Annuel",
     de: "Jährlich",
@@ -178,23 +178,23 @@ export const PAYWALL_PERIOD_UNIT_TO_DAYS = {
 };
 
 export const PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE = {
-  ru: "Начать бесплатный 7-дневный пробный период",
-  en: "Start Free 7-Day Trial",
-  es: "Comenzar prueba gratis de 7 días",
-  fr: "Commencer l'essai gratuit de 7 jours",
-  de: "7-Tage-Testversion kostenlos starten",
-  ar: "ابدأ تجربة مجانية لمدة 7 أيام",
-  zh: "开始 7 天免费试用",
+  ru: "Начать бесплатный пробный период",
+  en: "Start Free Trial",
+  es: "Comenzar prueba gratis",
+  fr: "Commencer l'essai gratuit",
+  de: "Kostenlose Testversion starten",
+  ar: "ابدأ التجربة المجانية",
+  zh: "开始免费试用",
 };
 
 export const PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE = {
-  ru: "Потом",
-  en: "Then",
-  es: "Luego",
-  fr: "Puis",
-  de: "Dann",
-  ar: "ثم",
-  zh: "随后",
+  ru: "Попробуй бесплатно потом",
+  en: "Free trial then",
+  es: "Prueba gratis, luego",
+  fr: "Essaye gratuitement puis",
+  de: "Kostenlos testen, danach",
+  ar: "جرّب مجاناً ثم",
+  zh: "先免费试用，之后",
 };
 
 export const PAYWALL_NOW_PREFIX_BY_LANGUAGE = {

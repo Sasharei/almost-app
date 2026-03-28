@@ -1,17 +1,35 @@
 import { getSeenTransaction } from "./store/entitlementsStore.js";
+import { LRUCache } from "lru-cache";
+import { config } from "./config.js";
 
 const MAX_EVENTS_PER_INSTALL = 30;
 const INSTALL_WINDOW_MS = 60 * 60 * 1000;
 
-const installEventWindow = new Map();
+const installEventWindow = new LRUCache({
+  max: Math.max(1000, Number(config.security?.risk?.installWindowMaxEntries) || 20000),
+  ttl: INSTALL_WINDOW_MS,
+  allowStale: false,
+});
 
 const bumpInstallWindow = (installId) => {
   if (!installId) return 0;
   const now = Date.now();
-  const prev = installEventWindow.get(installId) || [];
-  const next = [...prev.filter((ts) => now - ts <= INSTALL_WINDOW_MS), now];
-  installEventWindow.set(installId, next);
-  return next.length;
+  const previous = installEventWindow.get(installId);
+  if (!previous || now - Number(previous.startedAt || 0) > INSTALL_WINDOW_MS) {
+    installEventWindow.set(installId, {
+      startedAt: now,
+      lastSeenAt: now,
+      count: 1,
+    });
+    return 1;
+  }
+  const nextCount = Math.max(1, Number(previous.count || 0) + 1);
+  installEventWindow.set(installId, {
+    startedAt: Number(previous.startedAt || now),
+    lastSeenAt: now,
+    count: nextCount,
+  });
+  return nextCount;
 };
 
 export const scoreFraudRisk = ({ payload, trustedValidation }) => {

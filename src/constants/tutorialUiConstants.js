@@ -110,6 +110,7 @@ export const QUEUED_MODAL_TYPES = {
   FOCUS_DIGEST: "focus_digest",
   DAILY_SUMMARY: "daily_summary",
   INCOME_PROMPT: "income_prompt",
+  NO_GOAL_SAVE_PROMPT: "no_goal_save_prompt",
 };
 
 export const CARD_TEXTURE_ACCENTS = ["#8AB9FF", "#FFA4C0", "#8CE7CF", "#FFD48A", "#BBA4FF", "#7FD8FF"];

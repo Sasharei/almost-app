@@ -42,13 +42,18 @@ Prerequisite: push current `main` branch to GitHub (`git push origin main`).
    - `APPLE_VALIDATION_ENABLED=1` only after Apple credentials are filled (otherwise keep `0`)
    - `GOOGLE_VALIDATION_ENABLED=1` only after Google credentials are filled (otherwise keep `0`)
    - `APP_SESSION_SECRET` is set (required for app session auth)
+   - During old-client grace period: `REQUIRE_INSTALL_SECRET_PROOF=0` and `ALLOW_LEGACY_INSTALL_SECRET_GRACE=1`
+   - After rollout: switch to `REQUIRE_INSTALL_SECRET_PROOF=1` and `ALLOW_LEGACY_INSTALL_SECRET_GRACE=0`
+   - `ENFORCE_INSTALL_ID_BINDING=1` is set
+   - `STRICT_STARTUP_VALIDATION=1` is set
 7. Deploy.
 8. Copy backend URL from Render, for example:
    - `https://almost-monetization-backend.onrender.com`
 9. Verify readiness:
    - Open `https://<backend-domain>/health`
    - Ensure `readiness.validation.apple.ready` and `readiness.validation.google.ready` are `true`
-   - If `false`, check `readiness.validation.<provider>.missing` for exact missing env vars
+   - If `HEALTH_EXPOSE_DETAILS=1`, check `readiness.validation.<provider>.missing` for exact missing env vars
+   - If `HEALTH_EXPOSE_DETAILS=0`, use deploy logs (`backend_readiness`) for missing config details
 
 ## EAS env vars to set
 

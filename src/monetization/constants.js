@@ -41,6 +41,7 @@ export const FALLBACK_PRICES_BY_CURRENCY = {
     monthly: {
       label: "CAD $6.99",
       perMonth: "CAD $6.99/mo",
+      perWeek: "≈ CAD $1.61/wk",
       badge: null,
     },
     yearly: {
@@ -58,6 +59,7 @@ export const FALLBACK_PRICES_BY_CURRENCY = {
     monthly: {
       label: "USD $5.99",
       perMonth: "USD $5.99/mo",
+      perWeek: "≈ USD $1.38/wk",
       badge: null,
     },
     yearly: {
@@ -75,6 +77,7 @@ export const FALLBACK_PRICES_BY_CURRENCY = {
     monthly: {
       label: "GBP £4.99",
       perMonth: "GBP £4.99/mo",
+      perWeek: "≈ GBP £1.15/wk",
       badge: null,
     },
     yearly: {
@@ -1210,13 +1213,13 @@ const CTA_PRIMARY_UNLOCK_SAVINGS_BY_LANGUAGE = {
   zh: "解锁每年约 ≈ {{amount}} 节省",
 };
 const CTA_START_JOURNEY_BY_LANGUAGE = {
-  ru: "Начать бесплатный 7-дневный пробный период",
-  en: "Start Free 7-Day Trial",
-  es: "Comenzar prueba gratis de 7 días",
-  fr: "Commencer l'essai gratuit de 7 jours",
-  de: "7-Tage-Testversion kostenlos starten",
-  ar: "ابدأ تجربة مجانية لمدة 7 أيام",
-  zh: "开始 7 天免费试用",
+  ru: "Начать бесплатный пробный период",
+  en: "Start Free Trial",
+  es: "Comenzar prueba gratis",
+  fr: "Commencer l'essai gratuit",
+  de: "Kostenlose Testversion starten",
+  ar: "ابدأ التجربة المجانية",
+  zh: "开始免费试用",
 };
 const PAYWALL_TITLE_FREE_WORD_BY_LANGUAGE = {
   ru: "бесплатно",
@@ -2006,7 +2009,7 @@ export const buildDefaultPlanCards = (currencyCode = "USD", language = "en") => 
       id: "monthly",
       label: resolvePlanLabel("monthly"),
       priceLabel: pricing.monthly.label,
-      secondaryLabel: pricing.monthly.perMonth,
+      secondaryLabel: pricing.monthly.perWeek || pricing.monthly.perMonth,
       badge: localizeFallbackBadge(pricing.monthly.badge, lang),
       recommended: false,
     },

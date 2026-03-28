@@ -1,9 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { LRUCache } from "lru-cache";
 import { config } from "../config.js";
 
 const entitlementByUser = new Map();
+const installSecretBindings = new LRUCache({
+  max: 50000,
+  allowStale: false,
+});
 const seenTransactions = new LRUCache({
   max: 20000,
   ttl: config.replayWindowMs,
@@ -26,16 +31,32 @@ const ensureStoreDirectory = async () => {
   await fs.promises.mkdir(path.dirname(storeFilePath), { recursive: true });
 };
 
+const timingSafeEquals = (left = "", right = "") => {
+  const leftBuffer = Buffer.from(String(left || ""), "utf8");
+  const rightBuffer = Buffer.from(String(right || ""), "utf8");
+  if (leftBuffer.length !== rightBuffer.length) return false;
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+};
+
+const normalizeInstallSecret = (value = "") => String(value || "").trim().slice(0, 2048);
+const hashInstallSecret = (value = "") =>
+  crypto.createHash("sha256").update(String(value || ""), "utf8").digest("base64url");
+
 const serializeState = () => {
   const transactions = [];
   seenTransactions.forEach((value, key) => {
     transactions.push([key, value]);
+  });
+  const secretBindings = [];
+  installSecretBindings.forEach((value, key) => {
+    secretBindings.push([key, value]);
   });
   return {
     version: STORE_VERSION,
     savedAt: new Date().toISOString(),
     entitlementByUser: Object.fromEntries(entitlementByUser.entries()),
     seenTransactions: transactions,
+    installSecretBindings: secretBindings,
   };
 };
 
@@ -53,6 +74,19 @@ const applyState = (payload = {}) => {
     const [transactionId, value] = entry;
     if (!transactionId) return;
     seenTransactions.set(transactionId, value);
+  });
+  const secretBindings = Array.isArray(payload?.installSecretBindings) ? payload.installSecretBindings : [];
+  secretBindings.forEach((entry) => {
+    if (!Array.isArray(entry) || entry.length < 2) return;
+    const [installId, value] = entry;
+    if (!installId || !value || typeof value !== "object") return;
+    const normalizedHash = String(value.secretHash || "").trim();
+    if (!normalizedHash) return;
+    installSecretBindings.set(installId, {
+      secretHash: normalizedHash,
+      createdAt: value.createdAt || null,
+      lastSeenAt: value.lastSeenAt || null,
+    });
   });
 };
 
@@ -145,4 +179,32 @@ export const getCachedIdempotentResponse = (idempotencyKey) => {
 export const cacheIdempotentResponse = (idempotencyKey, responseBody) => {
   if (!idempotencyKey || !responseBody) return;
   idempotencyCache.set(idempotencyKey, responseBody);
+};
+
+export const verifyOrRegisterInstallSecret = (installId, installSecret) => {
+  const normalizedInstallId = String(installId || "").trim();
+  const normalizedSecret = normalizeInstallSecret(installSecret);
+  if (!normalizedInstallId || !normalizedSecret) {
+    return { ok: false, reason: "missing_install_secret" };
+  }
+  const nextHash = hashInstallSecret(normalizedSecret);
+  const existing = installSecretBindings.get(normalizedInstallId);
+  if (!existing?.secretHash) {
+    const nowIso = new Date().toISOString();
+    installSecretBindings.set(normalizedInstallId, {
+      secretHash: nextHash,
+      createdAt: nowIso,
+      lastSeenAt: nowIso,
+    });
+    scheduleFlush();
+    return { ok: true, registered: true };
+  }
+  if (!timingSafeEquals(existing.secretHash, nextHash)) {
+    return { ok: false, reason: "install_secret_mismatch" };
+  }
+  installSecretBindings.set(normalizedInstallId, {
+    ...existing,
+    lastSeenAt: new Date().toISOString(),
+  });
+  return { ok: true, registered: false };
 };

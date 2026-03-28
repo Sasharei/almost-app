@@ -66,13 +66,23 @@ const clearSessionTokenCache = () => {
   cachedSessionExpiresAt = 0;
 };
 
-const requestSessionToken = async ({ appUserId = null, installId = null, platform = null } = {}) => {
+const requestSessionToken = async ({
+  appUserId = null,
+  installId = null,
+  installSecret = null,
+  platform = null,
+} = {}) => {
   const baseUrl = getBackendBaseUrl();
   if (!baseUrl) {
     return { ok: false, skipped: true, reason: "backend_url_missing" };
   }
   if (!installId) {
     return { ok: false, skipped: true, reason: "install_id_missing" };
+  }
+  const normalizedInstallSecret =
+    typeof installSecret === "string" ? installSecret.trim() : "";
+  if (!normalizedInstallSecret) {
+    return { ok: false, skipped: true, reason: "install_secret_missing" };
   }
   try {
     const response = await fetchWithTimeout(
@@ -85,6 +95,7 @@ const requestSessionToken = async ({ appUserId = null, installId = null, platfor
         body: JSON.stringify({
           appUserId: appUserId || null,
           installId: installId || null,
+          installSecret: normalizedInstallSecret || null,
           platform: platform || null,
         }),
       },
@@ -157,6 +168,7 @@ const postJSON = async (path, payload) => {
   const authContext = {
     appUserId: payload?.appUserId || null,
     installId: payload?.installId || null,
+    installSecret: payload?.installSecret || null,
     platform: payload?.platform || null,
   };
   const session = await resolveSessionToken(authContext);
@@ -212,6 +224,7 @@ const postJSON = async (path, payload) => {
 export const syncEntitlementSnapshot = async ({
   appUserId,
   installId,
+  installSecret,
   platform,
   source,
   entitlement,
@@ -220,6 +233,7 @@ export const syncEntitlementSnapshot = async ({
   const snapshot = {
     appUserId: appUserId || null,
     installId: installId || null,
+    installSecret: installSecret || null,
     platform: platform || null,
     source: source || "client",
     entitlement: entitlement
@@ -260,6 +274,7 @@ export const syncEntitlementSnapshot = async ({
 export const validateStorePurchase = async ({
   appUserId,
   installId,
+  installSecret,
   platform,
   productId,
   transactionId,
@@ -271,6 +286,7 @@ export const validateStorePurchase = async ({
   const payload = {
     appUserId: appUserId || null,
     installId: installId || null,
+    installSecret: installSecret || null,
     platform: platform || null,
     productId: productId || null,
     transactionId: transactionId || null,

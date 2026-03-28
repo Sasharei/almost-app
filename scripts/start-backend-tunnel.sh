@@ -34,6 +34,12 @@ if [[ ! -f "${BACKEND_DIR}/.env" ]]; then
   cat > "${BACKEND_DIR}/.env" <<EOF
 PORT=${PORT}
 NODE_ENV=production
+STRICT_STARTUP_VALIDATION=1
+HEALTH_EXPOSE_DETAILS=1
+ENFORCE_INSTALL_ID_BINDING=1
+REQUIRE_INSTALL_SECRET_PROOF=0
+ALLOW_LEGACY_INSTALL_SECRET_GRACE=1
+INSTALL_SECRET_MIN_LENGTH=32
 APP_SHARED_SECRET=
 APP_SESSION_SECRET=${APP_SESSION_SECRET}
 APP_SESSION_TTL_MS=300000
@@ -73,6 +79,21 @@ if [[ -z "${APP_SESSION_SECRET}" ]]; then
     echo "APP_SESSION_TTL_MS=300000"
   } >> "${BACKEND_DIR}/.env"
 fi
+
+ensure_env_var() {
+  local key="$1"
+  local value="$2"
+  if ! grep -q "^${key}=" "${BACKEND_DIR}/.env"; then
+    echo "${key}=${value}" >> "${BACKEND_DIR}/.env"
+  fi
+}
+
+ensure_env_var "STRICT_STARTUP_VALIDATION" "1"
+ensure_env_var "HEALTH_EXPOSE_DETAILS" "1"
+ensure_env_var "ENFORCE_INSTALL_ID_BINDING" "1"
+ensure_env_var "REQUIRE_INSTALL_SECRET_PROOF" "0"
+ensure_env_var "ALLOW_LEGACY_INSTALL_SECRET_GRACE" "1"
+ensure_env_var "INSTALL_SECRET_MIN_LENGTH" "32"
 
 if [[ -z "${APPLE_WEBHOOK_SECRET}" ]]; then
   echo "APPLE_WEBHOOK_SECRET is missing in ${BACKEND_DIR}/.env" >&2
