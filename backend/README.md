@@ -36,9 +36,15 @@ Server default URL: `http://localhost:8787`
 
 - Set `APP_SESSION_SECRET` to enable short-lived bearer auth for app endpoints.
 - `APP_SHARED_SECRET` is legacy fallback and should be removed after session auth rollout.
+- `/v1/auth/session` enforces install-bound tokens (`appUserId === installId` when `ENFORCE_INSTALL_ID_BINDING=1`).
+- `/v1/auth/session` can require a per-install secret proof (`REQUIRE_INSTALL_SECRET_PROOF=1`).
+- Temporary rollout mode for old clients: set `REQUIRE_INSTALL_SECRET_PROOF=0` and `ALLOW_LEGACY_INSTALL_SECRET_GRACE=1`, then turn proof back on after client update adoption.
+- Built-in rate limits protect auth and app endpoints (`RATE_LIMIT_AUTH_SESSION_PER_MINUTE`, `RATE_LIMIT_APP_PER_MINUTE`).
 - Set webhook secret (`WEBHOOK_SHARED_SECRET`, or provider-specific secrets) for S2S endpoints.
 - For Apple notifications in production, keep signature verification enabled and configure `APPLE_ROOT_CA_PATHS`.
 - Pass webhook secret only via headers (`x-webhook-secret` / provider-specific header), not query params.
+- Keep `STRICT_STARTUP_VALIDATION=1` in production so backend fails closed on insecure config.
+- Keep `HEALTH_EXPOSE_DETAILS=0` in production to avoid leaking detailed readiness diagnostics.
 - Put backend behind HTTPS + API gateway.
 - Set `STORE_PATH` to persist entitlement/replay state to disk across restarts (single-instance durability).
 - For HA/multi-instance, move store to Postgres/Redis.

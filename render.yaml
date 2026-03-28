@@ -34,6 +34,10 @@ services:
         generateValue: true
       - key: APP_SESSION_TTL_MS
         value: "300000"
+      - key: REQUIRE_INSTALL_SECRET_PROOF
+        value: "0"
+      - key: ALLOW_LEGACY_INSTALL_SECRET_GRACE
+        value: "1"
       - key: APPLE_WEBHOOK_SECRET
         generateValue: true
       - key: WEBHOOK_SHARED_SECRET

@@ -285,6 +285,33 @@ const BENEFITS_FOOTNOTE_FALLBACK_BY_LANGUAGE = {
   ar: "والمزيد",
   zh: "以及更多",
 };
+const TRIAL_PLAN_TOP_BANNER_BY_LANGUAGE = {
+  ru: "ПРОБНЫЙ ПЕРИОД",
+  en: "FREE TRIAL",
+  es: "PRUEBA GRATIS",
+  fr: "ESSAI GRATUIT",
+  de: "KOSTENLOS TESTEN",
+  ar: "تجربة مجانية",
+  zh: "免费试用",
+};
+const TRIAL_PLAN_TITLE_BY_LANGUAGE = {
+  ru: "Попробуй бесплатно",
+  en: "Try It Free",
+  es: "Pruébalo gratis",
+  fr: "Essaye gratuitement",
+  de: "Kostenlos testen",
+  ar: "جرّبه مجاناً",
+  zh: "免费体验",
+};
+const TRIAL_ONLY_EQUIVALENT_TEMPLATE_BY_LANGUAGE = {
+  ru: "Только {{price}}",
+  en: "Only {{price}}",
+  es: "Solo {{price}}",
+  fr: "Seulement {{price}}",
+  de: "Nur {{price}}",
+  ar: "فقط {{price}}",
+  zh: "仅 {{price}}",
+};
 const SAVINGS_FORECAST_TITLE_BY_LANGUAGE = {
   ru: "Прогноз экономии",
   en: "Savings forecast",
@@ -1711,6 +1738,8 @@ const PremiumPaywallModal = ({
             const unavailable = plan.available === false;
             const loading = purchaseLoadingPlan === plan.id;
             const isYearlyPlan = plan.id === "yearly";
+            const isMonthlyPlan = plan.id === "monthly";
+            const isUnifiedPlanCard = isYearlyPlan || isMonthlyPlan;
             const topBadgeLabel =
               !unavailable && typeof plan.topBadge === "string" && plan.topBadge.trim().length
                 ? plan.topBadge.trim()
@@ -1722,7 +1751,12 @@ const PremiumPaywallModal = ({
             const normalizedTopBadgeKind =
               !paywallHasAnyTrialPlan && topBadgeKind === "trial" ? "" : topBadgeKind;
             const showExternalYearlySaveBadge =
-              isYearlyPlan && !unavailable && !!topBadgeLabel && normalizedTopBadgeKind !== "trial";
+              isYearlyPlan &&
+              !isUnifiedPlanCard &&
+              !unavailable &&
+              !!topBadgeLabel &&
+              normalizedTopBadgeKind !== "trial" &&
+              !plan?.hasTrial;
             const inlineTopBadgeLabel = showExternalYearlySaveBadge ? "" : topBadgeLabel;
             const inlineTopBadgeKind = showExternalYearlySaveBadge ? "" : normalizedTopBadgeKind;
             let primaryBadgeLabel = unavailable
@@ -1789,6 +1823,67 @@ const PremiumPaywallModal = ({
               !!plan.billingLabel &&
               plan.billingLabel !== plan.secondaryLabel &&
               plan.billingLabel !== plan.secondarySubLabel;
+            const isTrialPlanCard = !!plan?.hasTrial;
+            const showTrialTopBanner = isTrialPlanCard && isYearlyPlan;
+            const trialTopBannerLabel = localizePaywallDigits(
+              TRIAL_PLAN_TOP_BANNER_BY_LANGUAGE[copyLanguage] ||
+                TRIAL_PLAN_TOP_BANNER_BY_LANGUAGE.en,
+              normalizedLanguage
+            );
+            const trialCardTitle = localizePaywallDigits(
+              TRIAL_PLAN_TITLE_BY_LANGUAGE[copyLanguage] ||
+                TRIAL_PLAN_TITLE_BY_LANGUAGE.en,
+              normalizedLanguage
+            );
+            const trialCardPrimaryLine = isTrialPlanCard
+              ? trialCardTitle
+              : localizePaywallDigits(plan.label || "", normalizedLanguage);
+            const trialEquivalentPriceRaw = String(plan.periodEquivalentLabel || "")
+              .replace(/^≈\s*/, "")
+              .trim();
+            const trialEquivalentPrice = localizePaywallDigits(trialEquivalentPriceRaw, normalizedLanguage);
+            const trialOnlyEquivalentTemplate =
+              TRIAL_ONLY_EQUIVALENT_TEMPLATE_BY_LANGUAGE[copyLanguage] ||
+              TRIAL_ONLY_EQUIVALENT_TEMPLATE_BY_LANGUAGE.en;
+            const trialCardEquivalentLine = trialEquivalentPrice
+              ? localizePaywallDigits(
+                  fillPaywallTemplate(trialOnlyEquivalentTemplate, { price: trialEquivalentPrice }),
+                  normalizedLanguage
+                )
+              : "";
+            const trialCardNewPriceRaw = isTrialPlanCard
+              ? plan.postTrialPriceLabel || plan.priceLabel || ""
+              : plan.priceLabel || "";
+            const trialCardOldPriceRaw = isYearlyPlan
+              ? isTrialPlanCard
+                ? plan.trialOriginalPriceLabel || ""
+                : plan.secondaryKind === "strike"
+                ? plan.secondaryLabel || ""
+                : ""
+              : "";
+            const trialCardNewPrice = localizePaywallDigits(trialCardNewPriceRaw, normalizedLanguage);
+            const trialCardOldPrice = localizePaywallDigits(trialCardOldPriceRaw, normalizedLanguage);
+            const trialCardHasOldPrice =
+              isYearlyPlan &&
+              !!trialCardOldPriceRaw &&
+              trialCardOldPriceRaw.trim().length > 0 &&
+              trialCardOldPriceRaw.trim() !== trialCardNewPriceRaw.trim();
+            const trialCardDiscountRaw = String(
+              isYearlyPlan
+                ? plan.trialDiscountLabel || (plan.badgeKind === "save" ? plan.badge : "")
+                : ""
+            ).trim();
+            const trialCardDiscountLabel = trialCardDiscountRaw
+              ? localizePaywallDigits(trialCardDiscountRaw, normalizedLanguage)
+              : "";
+            const showYearlyBanner = isUnifiedPlanCard && isYearlyPlan;
+            const trialTopBannerContent = showYearlyBanner
+              ? showTrialTopBanner
+                ? trialCardDiscountLabel
+                  ? `${trialTopBannerLabel} • ${trialCardDiscountLabel}`
+                  : trialTopBannerLabel
+                : trialCardDiscountLabel
+              : "";
             return (
               <View
                 key={plan.id}
@@ -1831,6 +1926,8 @@ const PremiumPaywallModal = ({
                 style={[
                   styles.planCard,
                   isCompactAndroid ? styles.planCardCompactAndroid : null,
+                  isUnifiedPlanCard ? styles.planCardTrial : null,
+                  isUnifiedPlanCard && isCompactAndroid ? styles.planCardTrialCompactAndroid : null,
                   {
                     borderColor: isYearlyPlan ? "#18B45B" : selected ? accent : borderColor,
                     borderWidth: 1,
@@ -1843,118 +1940,193 @@ const PremiumPaywallModal = ({
                   },
                 ]}
               >
-                <View style={styles.planTopRow}>
-                  <Text style={[styles.planTitle, isCompactAndroid ? styles.planTitleCompactAndroid : null, { color: textColor }]}>
-                    {plan.label}
-                  </Text>
-                  {!!(inlineTopBadgeLabel || primaryBadgeLabel) && (
-                    <View
-                      style={[
-                        styles.planBadgeStack,
-                        isCompactAndroid ? styles.planBadgeStackCompactAndroid : null,
-                      ]}
-                    >
-                      {!!inlineTopBadgeLabel && (
-                        <View
-                          style={[
-                            styles.planBadge,
-                            styles.planBadgeSecondary,
-                            isCompactAndroid ? styles.planBadgeCompactAndroid : null,
-                            isCompactAndroid ? styles.planBadgeSecondaryCompactAndroid : null,
-                            {
-                              backgroundColor: topBadgeTone.backgroundColor,
-                              borderWidth: topBadgeTone.borderWidth,
-                              borderColor: topBadgeTone.borderColor,
-                            },
-                          ]}
-                        >
-                          <Text
+                {isUnifiedPlanCard ? (
+                  <>
+                    {!!trialTopBannerContent && (
+                      <View style={styles.planTrialBanner}>
+                        <Text style={[styles.planTrialBannerText, isCompactAndroid ? styles.planTrialBannerTextCompactAndroid : null]}>
+                          {trialTopBannerContent}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={[styles.planTrialRow, isCompactAndroid ? styles.planTrialRowCompactAndroid : null]}>
+                      <View style={styles.planTrialLeft}>
+                        <View style={styles.planTrialTitleRow}>
+                          <View
                             style={[
-                              styles.planBadgeText,
-                              isCompactAndroid ? styles.planBadgeTextCompactAndroid : null,
-                              { color: topBadgeTone.textColor },
+                              styles.planTrialRadio,
+                              selected ? styles.planTrialRadioSelected : null,
+                              { borderColor: selected ? accent : "rgba(67,83,255,0.45)" },
                             ]}
                           >
-                            {inlineTopBadgeLabel}
+                            {selected ? <View style={[styles.planTrialRadioDot, { backgroundColor: accent }]} /> : null}
+                          </View>
+                          <Text
+                            style={[
+                              styles.planTrialTitle,
+                              isCompactAndroid ? styles.planTrialTitleCompactAndroid : null,
+                              { color: textColor },
+                            ]}
+                          >
+                            {trialCardPrimaryLine}
                           </Text>
                         </View>
-                      )}
-                      {!!primaryBadgeLabel && (
-                        <View
-                          style={[
-                            styles.planBadge,
-                            isCompactAndroid ? styles.planBadgeCompactAndroid : null,
-                            {
-                              backgroundColor: primaryBadgeTone.backgroundColor,
-                              borderWidth: primaryBadgeTone.borderWidth,
-                              borderColor: primaryBadgeTone.borderColor,
-                            },
-                          ]}
-                        >
+                        {!!trialCardEquivalentLine && (
                           <Text
                             style={[
-                              styles.planBadgeText,
-                              isCompactAndroid ? styles.planBadgeTextCompactAndroid : null,
-                              { color: primaryBadgeTone.textColor },
+                              styles.planTrialSubtitle,
+                              isCompactAndroid ? styles.planTrialSubtitleCompactAndroid : null,
+                              { color: mutedColor },
                             ]}
                           >
-                            {primaryBadgeLabel}
+                            {trialCardEquivalentLine}
+                          </Text>
+                        )}
+                      </View>
+                      {!!trialCardNewPrice && (
+                        <View style={styles.planTrialRight}>
+                          {trialCardHasOldPrice && (
+                            <Text
+                              style={[
+                                styles.planTrialOldPrice,
+                                isCompactAndroid ? styles.planTrialOldPriceCompactAndroid : null,
+                                { color: mutedColor },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {trialCardOldPrice}
+                            </Text>
+                          )}
+                          <Text
+                            style={[
+                              styles.planTrialPrice,
+                              isCompactAndroid ? styles.planTrialPriceCompactAndroid : null,
+                              { color: textColor },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {trialCardNewPrice}
                           </Text>
                         </View>
                       )}
                     </View>
-                  )}
-                </View>
-                <View style={styles.planBottomRow}>
-                  <Text
-                    style={[
-                      styles.planPrice,
-                      isCompactAndroid ? styles.planPriceCompactAndroid : null,
-                      plan.displayAsEquivalent ? styles.planPriceEquivalent : null,
-                      isCompactAndroid && plan.displayAsEquivalent ? styles.planPriceEquivalentCompactAndroid : null,
-                      { color: textColor },
-                    ]}
-                    numberOfLines={plan.displayAsEquivalent ? 2 : 1}
-                  >
-                    {plan.priceLabel}
-                  </Text>
-                  <View style={[styles.planPriceMeta, plan.displayAsEquivalent ? styles.planPriceMetaEquivalent : null]}>
-                    {!!plan.secondaryLabel && (
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.planTopRow}>
+                      <Text style={[styles.planTitle, isCompactAndroid ? styles.planTitleCompactAndroid : null, { color: textColor }]}>
+                        {plan.label}
+                      </Text>
+                      {!!(inlineTopBadgeLabel || primaryBadgeLabel) && (
+                        <View
+                          style={[
+                            styles.planBadgeStack,
+                            isCompactAndroid ? styles.planBadgeStackCompactAndroid : null,
+                          ]}
+                        >
+                          {!!inlineTopBadgeLabel && (
+                            <View
+                              style={[
+                                styles.planBadge,
+                                styles.planBadgeSecondary,
+                                isCompactAndroid ? styles.planBadgeCompactAndroid : null,
+                                isCompactAndroid ? styles.planBadgeSecondaryCompactAndroid : null,
+                                {
+                                  backgroundColor: topBadgeTone.backgroundColor,
+                                  borderWidth: topBadgeTone.borderWidth,
+                                  borderColor: topBadgeTone.borderColor,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.planBadgeText,
+                                  isCompactAndroid ? styles.planBadgeTextCompactAndroid : null,
+                                  { color: topBadgeTone.textColor },
+                                ]}
+                              >
+                                {inlineTopBadgeLabel}
+                              </Text>
+                            </View>
+                          )}
+                          {!!primaryBadgeLabel && (
+                            <View
+                              style={[
+                                styles.planBadge,
+                                isCompactAndroid ? styles.planBadgeCompactAndroid : null,
+                                {
+                                  backgroundColor: primaryBadgeTone.backgroundColor,
+                                  borderWidth: primaryBadgeTone.borderWidth,
+                                  borderColor: primaryBadgeTone.borderColor,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.planBadgeText,
+                                  isCompactAndroid ? styles.planBadgeTextCompactAndroid : null,
+                                  { color: primaryBadgeTone.textColor },
+                                ]}
+                              >
+                                {primaryBadgeLabel}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.planBottomRow}>
                       <Text
                         style={[
-                          styles.planSecondary,
-                          isCompactAndroid ? styles.planSecondaryCompactAndroid : null,
-                          { color: mutedColor },
-                          plan.secondaryKind === "strike" && styles.planSecondaryStrike,
+                          styles.planPrice,
+                          isCompactAndroid ? styles.planPriceCompactAndroid : null,
+                          plan.displayAsEquivalent ? styles.planPriceEquivalent : null,
+                          isCompactAndroid && plan.displayAsEquivalent ? styles.planPriceEquivalentCompactAndroid : null,
+                          { color: textColor },
                         ]}
+                        numberOfLines={plan.displayAsEquivalent ? 2 : 1}
                       >
-                        {plan.secondaryLabel}
+                        {plan.priceLabel}
                       </Text>
-                    )}
-                    {!!plan.secondarySubLabel && (
-                      <Text
-                        style={[
-                          styles.planSecondarySub,
-                          isCompactAndroid ? styles.planSecondarySubCompactAndroid : null,
-                          { color: mutedColor },
-                        ]}
-                      >
-                        {plan.secondarySubLabel}
-                      </Text>
-                    )}
-                    {showBillingMeta && (
-                      <Text
-                        style={[
-                          styles.planBillingMeta,
-                          isCompactAndroid ? styles.planBillingMetaCompactAndroid : null,
-                          { color: mutedColor },
-                        ]}
-                      >
-                        {plan.billingLabel}
-                      </Text>
-                    )}
-                  </View>
-                </View>
+                      <View style={[styles.planPriceMeta, plan.displayAsEquivalent ? styles.planPriceMetaEquivalent : null]}>
+                        {!!plan.secondaryLabel && (
+                          <Text
+                            style={[
+                              styles.planSecondary,
+                              isCompactAndroid ? styles.planSecondaryCompactAndroid : null,
+                              { color: mutedColor },
+                              plan.secondaryKind === "strike" && styles.planSecondaryStrike,
+                            ]}
+                          >
+                            {plan.secondaryLabel}
+                          </Text>
+                        )}
+                        {!!plan.secondarySubLabel && (
+                          <Text
+                            style={[
+                              styles.planSecondarySub,
+                              isCompactAndroid ? styles.planSecondarySubCompactAndroid : null,
+                              { color: mutedColor },
+                            ]}
+                          >
+                            {plan.secondarySubLabel}
+                          </Text>
+                        )}
+                        {showBillingMeta && (
+                          <Text
+                            style={[
+                              styles.planBillingMeta,
+                              isCompactAndroid ? styles.planBillingMetaCompactAndroid : null,
+                              { color: mutedColor },
+                            ]}
+                          >
+                            {plan.billingLabel}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  </>
+                )}
                 {!!plan.equivalentLabel && !plan.displayAsEquivalent && (
                   <Text
                     style={[
@@ -3370,6 +3542,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 6,
   },
+  planCardTrial: {
+    paddingVertical: 8,
+    gap: 5,
+  },
+  planCardTrialCompactAndroid: {
+    paddingVertical: 7,
+    gap: 4,
+  },
   planTopRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -3385,6 +3565,119 @@ const styles = StyleSheet.create({
   planPriceMeta: {
     alignItems: "flex-end",
     gap: 2,
+  },
+  planTrialBanner: {
+    marginHorizontal: -12,
+    marginTop: -10,
+    marginBottom: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderTopLeftRadius: 13,
+    borderTopRightRadius: 13,
+    backgroundColor: "#18B45B",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(17,122,66,0.5)",
+  },
+  planTrialBannerText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    lineHeight: 15,
+    fontWeight: "900",
+    letterSpacing: 0.28,
+    textAlign: "center",
+  },
+  planTrialBannerTextCompactAndroid: {
+    fontSize: 12,
+    lineHeight: 14,
+    letterSpacing: 0.18,
+  },
+  planTrialRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  planTrialRowCompactAndroid: {
+    gap: 8,
+  },
+  planTrialLeft: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  planTrialTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  planTrialRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  planTrialRadioSelected: {
+    borderWidth: 2,
+  },
+  planTrialRadioDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  planTrialTitle: {
+    flex: 1,
+    fontSize: 18,
+    lineHeight: 21,
+    fontWeight: "900",
+  },
+  planTrialTitleCompactAndroid: {
+    fontSize: 16,
+    lineHeight: 19,
+  },
+  planTrialSubtitle: {
+    marginLeft: 28,
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "700",
+  },
+  planTrialSubtitleCompactAndroid: {
+    marginLeft: 26,
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  planTrialRight: {
+    alignItems: "flex-end",
+    gap: 2,
+    minWidth: 100,
+  },
+  planTrialPrice: {
+    fontSize: 21,
+    lineHeight: 24,
+    fontWeight: "900",
+    textAlign: "right",
+    minWidth: 100,
+  },
+  planTrialPriceCompactAndroid: {
+    fontSize: 18,
+    lineHeight: 21,
+    minWidth: 86,
+  },
+  planTrialOldPrice: {
+    fontSize: 14,
+    lineHeight: 16,
+    fontWeight: "800",
+    textAlign: "right",
+    textDecorationLine: "line-through",
+    textDecorationStyle: "solid",
+  },
+  planTrialOldPriceCompactAndroid: {
+    fontSize: 12,
+    lineHeight: 14,
   },
   planPriceMetaEquivalent: {
     minWidth: 112,

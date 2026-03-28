@@ -39,6 +39,12 @@ const isProductionEnv = nodeEnv === "production";
 const forceAppleWebhookVerificationInProd =
   isProductionEnv && process.env.ALLOW_INSECURE_APPLE_WEBHOOKS !== "1";
 const sessionSecret = process.env.APP_SESSION_SECRET || "";
+const strictStartupValidationDefault = isProductionEnv;
+const healthExposeDetailsDefault = !isProductionEnv;
+const authSessionRateLimitPerMinuteDefault = isProductionEnv ? 30 : 120;
+const appEndpointRateLimitPerMinuteDefault = isProductionEnv ? 180 : 600;
+const requireInstallSecretDefault = isProductionEnv;
+const allowLegacyInstallSecretGraceDefault = false;
 
 export const config = {
   nodeEnv,
@@ -55,6 +61,45 @@ export const config = {
   replayWindowMs: parseIntOrDefault(process.env.REPLAY_WINDOW_MS, 24 * 60 * 60 * 1000),
   storePath: process.env.STORE_PATH || "",
   storeFlushMs: parseIntOrDefault(process.env.STORE_FLUSH_MS, 2000),
+  security: {
+    strictStartupValidation: parseBooleanEnv(
+      process.env.STRICT_STARTUP_VALIDATION || "",
+      strictStartupValidationDefault
+    ),
+    healthExposeDetails: parseBooleanEnv(
+      process.env.HEALTH_EXPOSE_DETAILS || "",
+      healthExposeDetailsDefault
+    ),
+    enforceInstallIdBinding: parseBooleanEnv(process.env.ENFORCE_INSTALL_ID_BINDING || "", true),
+    requireInstallSecret: parseBooleanEnv(
+      process.env.REQUIRE_INSTALL_SECRET_PROOF || "",
+      requireInstallSecretDefault
+    ),
+    allowLegacyInstallSecretGrace: parseBooleanEnv(
+      process.env.ALLOW_LEGACY_INSTALL_SECRET_GRACE || "",
+      allowLegacyInstallSecretGraceDefault
+    ),
+    installSecretMinLength: Math.max(
+      16,
+      parseIntOrDefault(process.env.INSTALL_SECRET_MIN_LENGTH, 32)
+    ),
+    rateLimit: {
+      authSessionPerMinute: Math.max(
+        10,
+        parseIntOrDefault(process.env.RATE_LIMIT_AUTH_SESSION_PER_MINUTE, authSessionRateLimitPerMinuteDefault)
+      ),
+      appPerMinute: Math.max(
+        30,
+        parseIntOrDefault(process.env.RATE_LIMIT_APP_PER_MINUTE, appEndpointRateLimitPerMinuteDefault)
+      ),
+    },
+    risk: {
+      installWindowMaxEntries: Math.max(
+        1000,
+        parseIntOrDefault(process.env.RISK_INSTALL_WINDOW_MAX_ENTRIES, 20000)
+      ),
+    },
+  },
   apple: {
     enabled: process.env.APPLE_VALIDATION_ENABLED === "1",
     bundleId: process.env.APPLE_BUNDLE_ID || "",
@@ -132,6 +177,16 @@ export const getBackendReadiness = () => {
       mode: appAuthMode,
       sessionEnabled: sessionAuthEnabled,
       sharedSecretConfigured,
+    },
+    security: {
+      strictStartupValidation: !!config.security.strictStartupValidation,
+      healthExposeDetails: !!config.security.healthExposeDetails,
+      enforceInstallIdBinding: !!config.security.enforceInstallIdBinding,
+      requireInstallSecret: !!config.security.requireInstallSecret,
+      allowLegacyInstallSecretGrace: !!config.security.allowLegacyInstallSecretGrace,
+      installSecretMinLength: config.security.installSecretMinLength,
+      rateLimitAuthSessionPerMinute: config.security.rateLimit.authSessionPerMinute,
+      rateLimitAppPerMinute: config.security.rateLimit.appPerMinute,
     },
     cors: {
       restricted: Array.isArray(config.corsOrigins) && config.corsOrigins.length > 0,

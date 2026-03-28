@@ -4,8 +4,9 @@ import helmet from "helmet";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { LRUCache } from "lru-cache";
 import { z } from "zod";
-import { config, getBackendReadiness } from "./config.js";
+import { config, getBackendReadiness, isProduction } from "./config.js";
 import {
   getBearerTokenFromHeader,
   isSessionAuthEnabled,
@@ -23,6 +24,7 @@ import {
   getSeenTransaction,
   markTransactionSeen,
   upsertEntitlement,
+  verifyOrRegisterInstallSecret,
 } from "./store/entitlementsStore.js";
 import { validateApplePurchase } from "./validators/apple.js";
 import { validateGooglePurchase } from "./validators/google.js";
@@ -48,11 +50,113 @@ if (Array.isArray(config.corsOrigins) && config.corsOrigins.length) {
 }
 app.use(express.json({ limit: "1mb" }));
 
+const INSTALL_ID_REGEX = /^[a-zA-Z0-9._:-]{16,200}$/;
+
 const timingSafeEquals = (left = "", right = "") => {
   const leftBuffer = Buffer.from(String(left || ""), "utf8");
   const rightBuffer = Buffer.from(String(right || ""), "utf8");
   if (leftBuffer.length !== rightBuffer.length) return false;
   return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+};
+
+const getClientIp = (req) => {
+  const forwardedFor = String(req.header("x-forwarded-for") || "")
+    .split(",")[0]
+    ?.trim();
+  return forwardedFor || req.ip || req.socket?.remoteAddress || "unknown";
+};
+
+const createRateLimiter = ({ maxRequests, windowMs, buildKey, errorCode }) => {
+  const hits = new LRUCache({
+    max: 100_000,
+    ttl: windowMs,
+    allowStale: false,
+  });
+  const max = Math.max(1, Number(maxRequests) || 1);
+  const windowDuration = Math.max(1_000, Number(windowMs) || 60_000);
+  return (req, res, next) => {
+    const key = typeof buildKey === "function" ? String(buildKey(req) || "") : "";
+    if (!key) {
+      next();
+      return;
+    }
+    const now = Date.now();
+    const current = hits.get(key);
+    const startedAt = Number(current?.startedAt || 0);
+    const stillInWindow = startedAt > 0 && now - startedAt < windowDuration;
+    const baseCount = stillInWindow ? Number(current?.count || 0) : 0;
+    const nextHits = baseCount + 1;
+    const effectiveStartedAt = stillInWindow ? startedAt : now;
+    const elapsedMs = Math.max(0, now - effectiveStartedAt);
+    const ttlMs = Math.max(1, windowDuration - elapsedMs);
+    hits.set(
+      key,
+      {
+        count: nextHits,
+        startedAt: effectiveStartedAt,
+      },
+      {
+        ttl: ttlMs,
+      }
+    );
+    if (nextHits > max) {
+      const retryAfterMs = Math.max(1, windowDuration - elapsedMs);
+      res.status(429).json({
+        error: errorCode || "rate_limited",
+        retryAfterMs,
+      });
+      return;
+    }
+    next();
+  };
+};
+
+const authSessionRateLimiter = createRateLimiter({
+  maxRequests: config.security.rateLimit.authSessionPerMinute,
+  windowMs: 60 * 1000,
+  buildKey: (req) => {
+    const installId = String(req.body?.installId || "").trim().slice(0, 200) || "none";
+    return `auth_session:${getClientIp(req)}:${installId}`;
+  },
+  errorCode: "auth_rate_limited",
+});
+
+const appEndpointRateLimiter = createRateLimiter({
+  maxRequests: config.security.rateLimit.appPerMinute,
+  windowMs: 60 * 1000,
+  buildKey: (req) => `app_endpoint:${getClientIp(req)}`,
+  errorCode: "app_rate_limited",
+});
+
+const assertSecureStartupConfig = () => {
+  if (!config.security.strictStartupValidation) return;
+  const issues = [];
+  if (isProduction && !isSessionAuthEnabled() && !String(config.appSharedSecret || "").trim()) {
+    issues.push("missing APP_SESSION_SECRET or APP_SHARED_SECRET");
+  }
+  if (
+    isProduction &&
+    isSessionAuthEnabled() &&
+    !config.security.requireInstallSecret &&
+    !config.security.allowLegacyInstallSecretGrace
+  ) {
+    issues.push(
+      "REQUIRE_INSTALL_SECRET_PROOF must be enabled when APP_SESSION_SECRET is active (or set ALLOW_LEGACY_INSTALL_SECRET_GRACE=1 temporarily)"
+    );
+  }
+  if (isProduction && config.webhookAllowQuerySecret) {
+    issues.push("WEBHOOK_QUERY_SECRET_ENABLED must be disabled in production");
+  }
+  if (
+    isProduction &&
+    config.apple.webhook.verifySignature &&
+    !String(config.apple.webhook.secret || "").trim()
+  ) {
+    issues.push("missing APPLE_WEBHOOK_SECRET while signature verification is enabled");
+  }
+  if (issues.length) {
+    throw new Error(`insecure_startup_config: ${issues.join("; ")}`);
+  }
 };
 
 const requireSharedSecret = (req, res, next) => {
@@ -164,7 +268,8 @@ const googleWebhookSchema = z
 
 const authSessionSchema = z.object({
   appUserId: z.string().min(1).max(200).optional().nullable(),
-  installId: z.string().min(1).max(200),
+  installId: z.string().min(16).max(200).regex(/^[a-zA-Z0-9._:-]+$/, "invalid_install_id_format"),
+  installSecret: z.string().min(1).max(2048).optional().nullable(),
   platform: z.enum(["ios", "android"]).optional().nullable(),
 });
 
@@ -210,6 +315,40 @@ const buildHealthPayload = () => {
   const appleRootCa = resolveAppleRootCaDiagnostics();
   const appleWebhookReady =
     readiness.webhooks.apple.ready && (!appleRootCa.configured || !appleRootCa.missingFiles.length);
+  if (!config.security.healthExposeDetails) {
+    return {
+      ok: true,
+      service: "almost-monetization",
+      now: new Date().toISOString(),
+      readiness: {
+        appAuth: readiness.appAuth,
+        security: readiness.security,
+        cors: {
+          restricted: readiness.cors.restricted,
+        },
+        validation: {
+          apple: {
+            enabled: readiness.validation.apple.enabled,
+            ready: readiness.validation.apple.ready,
+          },
+          google: {
+            enabled: readiness.validation.google.enabled,
+            ready: readiness.validation.google.ready,
+          },
+        },
+        webhooks: {
+          apple: {
+            verifySignature: readiness.webhooks.apple.verifySignature,
+            requireVerified: readiness.webhooks.apple.requireVerified,
+            acceptQuerySecret: readiness.webhooks.apple.acceptQuerySecret,
+            ready: appleWebhookReady,
+            rootCaConfigured: appleRootCa.configured,
+            missingRootCaFiles: appleRootCa.missingFiles.length,
+          },
+        },
+      },
+    };
+  }
   return {
     ok: true,
     service: "almost-monetization",
@@ -233,7 +372,7 @@ app.get("/health", (_, res) => {
   res.json(buildHealthPayload());
 });
 
-app.post("/v1/auth/session", (req, res) => {
+app.post("/v1/auth/session", authSessionRateLimiter, (req, res) => {
   if (!isSessionAuthEnabled()) {
     res.status(503).json({ ok: false, error: "session_auth_disabled" });
     return;
@@ -243,7 +382,36 @@ app.post("/v1/auth/session", (req, res) => {
     res.status(400).json({ error: "invalid_payload", details: parsed.errors });
     return;
   }
-  const issued = issueSessionToken(parsed.data);
+  const installId = String(parsed.data.installId || "").trim();
+  if (!INSTALL_ID_REGEX.test(installId)) {
+    res.status(400).json({ error: "invalid_install_id_format" });
+    return;
+  }
+  const installSecret = String(parsed.data.installSecret || "").trim();
+  if (config.security.requireInstallSecret) {
+    if (!installSecret || installSecret.length < config.security.installSecretMinLength) {
+      res.status(400).json({ error: "missing_install_secret" });
+      return;
+    }
+    const installSecretCheck = verifyOrRegisterInstallSecret(installId, installSecret);
+    if (!installSecretCheck.ok) {
+      res.status(401).json({ error: "invalid_install_secret" });
+      return;
+    }
+  }
+  const appUserId = String(parsed.data.appUserId || "").trim();
+  if (config.security.enforceInstallIdBinding && appUserId && appUserId !== installId) {
+    res.status(400).json({ error: "app_user_install_mismatch" });
+    return;
+  }
+  const tokenClaims = config.security.enforceInstallIdBinding
+    ? {
+        appUserId: installId,
+        installId,
+        platform: parsed.data.platform || null,
+      }
+    : parsed.data;
+  const issued = issueSessionToken(tokenClaims);
   if (!issued.ok) {
     res.status(503).json({ ok: false, error: issued.reason || "session_issue_failed" });
     return;
@@ -256,7 +424,7 @@ app.post("/v1/auth/session", (req, res) => {
   });
 });
 
-app.get("/v1/entitlements/:appUserId", requireAppAuth, (req, res) => {
+app.get("/v1/entitlements/:appUserId", appEndpointRateLimiter, requireAppAuth, (req, res) => {
   const appUserId = String(req.params.appUserId || "").trim();
   if (!appUserId) {
     res.status(400).json({ error: "missing_app_user_id" });
@@ -269,7 +437,7 @@ app.get("/v1/entitlements/:appUserId", requireAppAuth, (req, res) => {
   });
 });
 
-app.post("/v1/entitlements/sync", requireAppAuth, (req, res) => {
+app.post("/v1/entitlements/sync", appEndpointRateLimiter, requireAppAuth, (req, res) => {
   const parsed = parseBody(syncSchema, req.body || {});
   if (!parsed.ok) {
     res.status(400).json({ error: "invalid_payload", details: parsed.errors });
@@ -289,7 +457,7 @@ app.post("/v1/entitlements/sync", requireAppAuth, (req, res) => {
   });
 });
 
-app.post("/v1/iap/validate", requireAppAuth, async (req, res) => {
+app.post("/v1/iap/validate", appEndpointRateLimiter, requireAppAuth, async (req, res) => {
   const idempotencyKey = req.header("idempotency-key") || "";
   if (idempotencyKey) {
     const cached = getCachedIdempotentResponse(idempotencyKey);
@@ -567,18 +735,25 @@ app.post(
 );
 
 const start = async () => {
+  assertSecureStartupConfig();
   await bootstrapStore();
   const readiness = buildHealthPayload().readiness;
+  const securityWarnings = [];
+  if (isProduction && isSessionAuthEnabled() && !config.security.requireInstallSecret) {
+    securityWarnings.push("legacy_install_secret_grace_mode_enabled");
+  }
   // eslint-disable-next-line no-console
   console.log(
     JSON.stringify(
       {
         msg: "backend_readiness",
         appAuth: readiness.appAuth,
+        security: readiness.security,
         cors: readiness.cors,
         appleValidation: readiness.validation.apple,
         googleValidation: readiness.validation.google,
         appleWebhook: readiness.webhooks.apple,
+        securityWarnings,
       },
       null,
       2
