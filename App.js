@@ -101,7 +101,7 @@ import {
 } from "./analytics";
 import { SavingsProvider, useRealSavedAmount } from "./src/hooks/useRealSavedAmount";
 import { useSavingsSimulation } from "./src/hooks/useSavingsSimulation";
-import { calcPotentialSaved } from "./src/utils/savingsSimulation";
+import { calcPotentialSaved, calcSpentLossInCurrentMonth } from "./src/utils/savingsSimulation";
 import { TRANSLATIONS } from "./src/constants/translations";
 import { DEFAULT_TEMPTATIONS } from "./src/constants/temptations";
 import { PRIVACY_LINKS, TERMS_LINKS, TERMS_POINTS } from "./src/constants/legal";
@@ -467,6 +467,7 @@ import {
 import PremiumPaywallModal from "./src/components/PremiumPaywallModal";
 import { PartyFireworksLayer, PartySparklesLayer } from "./src/components/PartyEffects";
 import LiquidGlassTabBar from "./src/components/LiquidGlassTabBar";
+import LiquidGlassFabOrb from "./src/components/LiquidGlassFabOrb";
 import {
   buildDefaultPlanCards,
   buildPaywallCopy,
@@ -2973,6 +2974,16 @@ const getTemptationPriceLimitForLevel = (level = 1) => {
   if (level < 4) return 50;
   if (level < 6) return 150;
   return Infinity;
+};
+
+const DEFAULT_FEED_TEMPTATION_COUNT_LEVEL_ONE = 4;
+const DEFAULT_FEED_TEMPTATION_COUNT_STEP = 1;
+const getDefaultFeedTemptationCountForLevel = (level = 1) => {
+  const normalizedLevel = Math.max(1, Math.floor(Number(level) || 1));
+  return Math.max(
+    1,
+    DEFAULT_FEED_TEMPTATION_COUNT_LEVEL_ONE + (normalizedLevel - 1) * DEFAULT_FEED_TEMPTATION_COUNT_STEP
+  );
 };
 
 const formatHealthRewardLabel = (amount = 0, language = DEFAULT_LANGUAGE) => {
@@ -6718,6 +6729,27 @@ const DEFAULT_POTENTIAL_PUSH_STATE = {
   stepMultiplier: 1,
   lastNotifiedAt: 0,
 };
+const POTENTIAL_LOSS_THRESHOLDS = [15, 25, 50, 75, 100];
+const DEFAULT_POTENTIAL_LOSS_STATE = {
+  baselineKey: null,
+  highestThreshold: 0,
+};
+const INITIAL_POTENTIAL_LOSS_MODAL_STATE = {
+  visible: false,
+  threshold: 0,
+  lossPercent: 0,
+  previousUSD: 0,
+  nextUSD: 0,
+  lostUSD: 0,
+};
+
+const resolvePotentialLossThreshold = (percent = 0) => {
+  const normalized = Math.max(0, Math.min(100, Number(percent) || 0));
+  return POTENTIAL_LOSS_THRESHOLDS.reduce((hit, threshold) => {
+    if (normalized >= threshold) return threshold;
+    return hit;
+  }, 0);
+};
 
 const getCurrencyPrecision = (currency = activeCurrency) => {
   if (
@@ -6734,6 +6766,42 @@ const getCurrencyPrecision = (currency = activeCurrency) => {
   )
     return 2;
   return 0;
+};
+
+const splitCurrencyAmountParts = (amountLabel = "") => {
+  const rawLabel = String(amountLabel ?? "");
+  if (!rawLabel) {
+    return {
+      major: "",
+      minor: "",
+      suffix: "",
+    };
+  }
+  const suffixMatch = rawLabel.match(/(\s*[^\d.,-]+)$/u);
+  const suffix = suffixMatch ? suffixMatch[1] : "";
+  const numberLikePart = suffix ? rawLabel.slice(0, -suffix.length) : rawLabel;
+  const decimalMatch = numberLikePart.match(/([.,]\d+)$/);
+  if (!decimalMatch) {
+    return {
+      major: rawLabel,
+      minor: "",
+      suffix: "",
+    };
+  }
+  const minor = decimalMatch[1];
+  const major = numberLikePart.slice(0, -minor.length);
+  if (!major) {
+    return {
+      major: rawLabel,
+      minor: "",
+      suffix: "",
+    };
+  }
+  return {
+    major,
+    minor,
+    suffix,
+  };
 };
 
 const getCurrencyDisplayPrecision = (currency = activeCurrency) => {
@@ -11999,9 +12067,11 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   analyticsPreview = [],
   baselineMonthlyWasteUSD = 0,
   baselineStartAt = null,
+  baselineSpentLossUSD = 0,
   actualSavedUSD = 0,
   potentialGrowthUSD = 0,
   showPotentialGrowth = false,
+  potentialLiveVisible = false,
   currency,
   hasBaseline = false,
   hasActiveGoal = true,
@@ -12071,9 +12141,15 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const handleHeroLayout = useCallback(() => {
     measureHeroAnchor();
   }, [measureHeroAnchor]);
+  const potentialSimulationEnabled = !!potentialLiveVisible && !expanded && hasBaseline;
   const potentialSavedUSD = useSavingsSimulation(
     baselineMonthlyWasteUSD,
-    baselineStartAt
+    baselineStartAt,
+    baselineSpentLossUSD,
+    {
+      enabled: potentialSimulationEnabled,
+      updateIntervalMs: 16,
+    }
   );
   const setDailyRewardModalState = useCallback(
     (visible) => {
@@ -12087,12 +12163,14 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const [potentialLayoutReady, setPotentialLayoutReady] = useState(false);
   const potentialGrowthAnim = useRef(new Animated.Value(0)).current;
   const potentialGrowthPlayedRef = useRef(false);
+  const potentialPrecision = Math.max(3, getCurrencyPrecision(currency));
   const potentialLocal = formatCurrency(convertToCurrency(potentialSavedUSD || 0, currency), currency, {
-    precisionOverride: getCurrencyPrecision(currency),
+    precisionOverride: potentialPrecision,
   });
-  const actualLocal = formatCurrency(convertToCurrency(actualSavedUSD || 0, currency), currency, {
-    precisionOverride: getCurrencyPrecision(currency),
-  });
+  const potentialValueParts = useMemo(
+    () => splitCurrencyAmountParts(potentialLocal),
+    [potentialLocal]
+  );
   const heroAmountBaseFontSize = IS_SHORT_DEVICE ? 36 : Platform.OS === "ios" ? 44 : 46;
   const heroAmountBaseLineHeight = IS_SHORT_DEVICE ? 40 : Platform.OS === "ios" ? 48 : 50;
   const heroAmountMinScale = 0.6;
@@ -12119,6 +12197,9 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const hasCoinInventory = coinEntries.some((entry) => entry.count > 0);
   const potentialRatio = potentialSavedUSD > 0 ? Math.min(actualSavedUSD / potentialSavedUSD, 1) : 0;
   const missedUSD = Math.max(0, potentialSavedUSD - actualSavedUSD);
+  const missedLocal = formatCurrency(convertToCurrency(missedUSD || 0, currency), currency, {
+    precisionOverride: getCurrencyPrecision(currency),
+  });
   const statusKey =
     actualSavedUSD > potentialSavedUSD
       ? "potentialBlockStatusAhead"
@@ -12558,6 +12639,91 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
           </Text>
         </View>
         <View style={[styles.savedHeroDivider, { backgroundColor: goldPalette.border }]} />
+        {!expanded && (
+          <TouchableOpacity
+            style={styles.savedHeroPotentialCompact}
+            activeOpacity={0.9}
+            onPress={hasBaseline ? handlePotentialDetailsOpen : onBaselineSetup}
+            onLayout={() => {
+              if (!potentialLayoutReady) setPotentialLayoutReady(true);
+            }}
+          >
+            {hasBaseline ? (
+              <>
+                <View style={styles.savedHeroPotentialCompactHeader}>
+                  <Text style={[styles.savedHeroPotentialCompactLabel, { color: goldPalette.subtext }]}>
+                    {t("potentialBlockTitle")}
+                  </Text>
+                  <Text style={styles.savedHeroPotentialCompactValue}>
+                    <Text
+                      style={[
+                        styles.savedHeroPotentialCompactValueMajor,
+                        { color: goldPalette.text },
+                      ]}
+                    >
+                      {potentialValueParts.major}
+                    </Text>
+                    {potentialValueParts.minor ? (
+                      <Text
+                        style={[
+                          styles.savedHeroPotentialCompactValueMinor,
+                          { color: goldPalette.subtext },
+                        ]}
+                      >
+                        {potentialValueParts.minor}
+                      </Text>
+                    ) : null}
+                    {potentialValueParts.suffix ? (
+                      <Text
+                        style={[
+                          styles.savedHeroPotentialCompactValueSuffix,
+                          { color: goldPalette.text },
+                        ]}
+                      >
+                        {potentialValueParts.suffix}
+                      </Text>
+                    ) : null}
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.savedHeroPotentialCompactStatus,
+                    { color: missedUSD > 0.01 ? goldPalette.danger : goldPalette.subtext },
+                  ]}
+                  numberOfLines={2}
+                >
+                  {missedUSD > 0.01 ? t("potentialBlockHint", { amount: missedLocal }) : t(statusKey)}
+                </Text>
+                {showPotentialGrowth && potentialGrowthLabel ? (
+                  <AnimatedText
+                    style={[
+                      styles.savedHeroPotentialCompactDelta,
+                      {
+                        color: SAVE_ACTION_COLOR,
+                        transform: [{ scale: potentialGrowthScale }],
+                        opacity: potentialGrowthOpacity,
+                      },
+                    ]}
+                  >
+                    {`+${potentialGrowthLabel}`}
+                  </AnimatedText>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <Text
+                  style={[styles.savedHeroPotentialCompactStatus, { color: goldPalette.subtext }]}
+                  numberOfLines={2}
+                >
+                  {t("potentialBlockCta")}
+                </Text>
+                <Text style={[styles.savedHeroPotentialCompactAction, { color: goldPalette.text }]}>
+                  {t("baselineCTA")}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
         {resolvedHeroRecentEvents.length > 0 ? (
           <RecentEventsWrap
             style={styles.savedHeroRecentList}
@@ -12585,7 +12751,6 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
             {heroSpendCopy || heroEncouragementLine}
           </Text>
         )}
-
         {hasActiveGoal ? (
           <>
             <View style={styles.savedHeroGoalRow}>
@@ -12700,33 +12865,41 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
             {hasBaseline ? (
               <>
                 <View style={styles.heroPotentialHeader}>
-                  <View style={styles.heroPotentialRow}>
-                    <Text style={[styles.heroPotentialLabel, { color: goldPalette.text }]}>
-                      {t("potentialBlockTitle")}
+                  <Text style={[styles.heroPotentialLabel, { color: goldPalette.text }]}>
+                    {t("potentialBlockTitle")}
+                  </Text>
+                  <Text style={styles.heroPotentialValue}>
+                    <Text style={[styles.heroPotentialValueMajor, { color: goldPalette.text }]}>
+                      {potentialValueParts.major}
                     </Text>
-                    <Text style={[styles.heroPotentialValue, { color: goldPalette.text }]}>
-                      {potentialLocal}
-                    </Text>
-                  </View>
-                  <View style={styles.heroPotentialRow}>
-                    <Text style={[styles.heroPotentialStatus, { color: goldPalette.subtext }]}>
-                      {t(statusKey)}
-                    </Text>
-                    {showPotentialGrowth && potentialGrowthLabel ? (
-                      <AnimatedText
-                        style={[
-                          styles.heroPotentialDelta,
-                          {
-                            color: SAVE_ACTION_COLOR,
-                            transform: [{ scale: potentialGrowthScale }],
-                            opacity: potentialGrowthOpacity,
-                          },
-                        ]}
-                      >
-                        {`+${potentialGrowthLabel}`}
-                      </AnimatedText>
+                    {potentialValueParts.minor ? (
+                      <Text style={[styles.heroPotentialValueMinor, { color: goldPalette.subtext }]}>
+                        {potentialValueParts.minor}
+                      </Text>
                     ) : null}
-                  </View>
+                    {potentialValueParts.suffix ? (
+                      <Text style={[styles.heroPotentialValueSuffix, { color: goldPalette.text }]}>
+                        {potentialValueParts.suffix}
+                      </Text>
+                    ) : null}
+                  </Text>
+                  <Text style={[styles.heroPotentialStatus, { color: goldPalette.subtext }]}>
+                    {t(statusKey)}
+                  </Text>
+                  {showPotentialGrowth && potentialGrowthLabel ? (
+                    <AnimatedText
+                      style={[
+                        styles.heroPotentialDelta,
+                        {
+                          color: SAVE_ACTION_COLOR,
+                          transform: [{ scale: potentialGrowthScale }],
+                          opacity: potentialGrowthOpacity,
+                        },
+                      ]}
+                    >
+                      {`+${potentialGrowthLabel}`}
+                    </AnimatedText>
+                  ) : null}
                 </View>
               </>
             ) : (
@@ -15855,6 +16028,7 @@ const FeedScreen = React.memo(
   moodPreset = null,
   onMoodDetailsOpen = () => {},
   onPotentialDetailsOpen = null,
+  baselineSpentLossUSD = 0,
   heroGoalTargetUSD = 0,
   heroGoalSavedUSD = 0,
   potentialGrowthUSD = 0,
@@ -16003,6 +16177,9 @@ const FeedScreen = React.memo(
   const heroCarouselIdleTimerRef = useRef(null);
   const heroCarouselRealignTimerRef = useRef(null);
   const feedScrollTimerRef = useRef(null);
+  const feedScrollOffsetRef = useRef(0);
+  const [heroPotentialVisible, setHeroPotentialVisible] = useState(true);
+  const heroPotentialVisibleRef = useRef(true);
   const feedScrollMomentumRef = useRef(false);
   const feedScrollingRef = useRef(false);
   const addCoachEntrance = useRef(new Animated.Value(0)).current;
@@ -16052,6 +16229,23 @@ const FeedScreen = React.memo(
     }
     notifyFeedScrollState(false);
   }, [notifyFeedScrollState]);
+  const updateHeroPotentialVisibility = useCallback((offsetY = 0) => {
+    const resolvedOffset = Math.max(0, Number(offsetY) || 0);
+    const heroHeight = Math.max(0, Number(heroSectionHeightRef.current) || 0);
+    const visibilityThreshold = heroHeight > 0 ? Math.max(120, heroHeight - 120) : 120;
+    const nextVisible = resolvedOffset <= visibilityThreshold;
+    if (heroPotentialVisibleRef.current === nextVisible) return;
+    heroPotentialVisibleRef.current = nextVisible;
+    setHeroPotentialVisible(nextVisible);
+  }, []);
+  const handleFeedScroll = useCallback(
+    (event) => {
+      const offsetY = Number(event?.nativeEvent?.contentOffset?.y) || 0;
+      feedScrollOffsetRef.current = offsetY;
+      updateHeroPotentialVisibility(offsetY);
+    },
+    [updateHeroPotentialVisibility]
+  );
   useEffect(() => {
     if (!showTemptationAddCoachMark) {
       addCoachEntrance.stopAnimation();
@@ -16779,7 +16973,8 @@ const FeedScreen = React.memo(
     const height = event?.nativeEvent?.layout?.height || 0;
     if (!height) return;
     heroSectionHeightRef.current = height;
-  }, []);
+    updateHeroPotentialVisibility(feedScrollOffsetRef.current);
+  }, [updateHeroPotentialVisibility]);
   useImperativeHandle(
     ref,
     () => ({
@@ -18256,7 +18451,12 @@ const FeedScreen = React.memo(
         formatCurrency(convertToCurrency(Math.max(valueUSD, 0), currencyCode), currencyCode, {
           precisionOverride: getCurrencyPrecision(currencyCode),
         });
-      const potentialSavedUSD = calcPotentialSaved(baselineMonthlyWasteUSD, baselineStartAt);
+      const potentialSavedUSD = calcPotentialSaved(
+        baselineMonthlyWasteUSD,
+        baselineStartAt,
+        new Date(),
+        baselineSpentLossUSD
+      );
       const potentialLocal = formatLocal(potentialSavedUSD);
       const actualLocal = formatLocal(realSavedUSD);
       const deltaLocal = formatLocal(Math.max(potentialSavedUSD - realSavedUSD, 0));
@@ -18268,7 +18468,15 @@ const FeedScreen = React.memo(
         })
       );
     }
-  }, [baselineMonthlyWasteUSD, baselineStartAt, onPotentialDetailsOpen, profile?.currency, realSavedUSD, t]);
+  }, [
+    baselineMonthlyWasteUSD,
+    baselineSpentLossUSD,
+    baselineStartAt,
+    onPotentialDetailsOpen,
+    profile?.currency,
+    realSavedUSD,
+    t,
+  ]);
 
   const formatLocalAmount = useCallback(
     (valueUSD = 0) => formatCurrency(convertToCurrency(valueUSD || 0, currency), currency),
@@ -18998,6 +19206,7 @@ const FeedScreen = React.memo(
         updateCellsBatchingPeriod={50}
         removeClippedSubviews={false}
         scrollEventThrottle={16}
+        onScroll={handleFeedScroll}
         onScrollBeginDrag={handleFeedScrollBegin}
         onScrollEndDrag={handleFeedScrollEnd}
         onMomentumScrollBegin={handleFeedMomentumBegin}
@@ -19309,6 +19518,8 @@ const FeedScreen = React.memo(
                     ],
                   };
                   if (renderedRealIndex === 0) {
+                    const isPotentialLiveVisible =
+                      !isClone && heroCarouselIndex === 0 && heroPotentialVisible && !heroExpanded;
                     return (
                       <Animated.View
                         key={`hero-carousel-${loopIndex}`}
@@ -19334,9 +19545,11 @@ const FeedScreen = React.memo(
                           analyticsPreview={analyticsPreview}
                           baselineMonthlyWasteUSD={baselineMonthlyWasteUSD}
                           baselineStartAt={baselineStartAt}
+                          baselineSpentLossUSD={baselineSpentLossUSD}
                           actualSavedUSD={realSavedUSD}
                           potentialGrowthUSD={potentialGrowthUSD}
                           showPotentialGrowth={showPotentialGrowth}
+                          potentialLiveVisible={isPotentialLiveVisible}
                           currency={currency}
                           hasBaseline={hasBaseline}
                           hasActiveGoal={heroHasActiveGoal}
@@ -27754,6 +27967,9 @@ function AppContent() {
   const [hiddenTemptationsHydrated, setHiddenTemptationsHydrated] = useState(false);
   const [archivedTemptations, setArchivedTemptations] = useState([]);
   const [archivedTemptationsHydrated, setArchivedTemptationsHydrated] = useState(false);
+  const [defaultTemptationGrowthLockLevel, setDefaultTemptationGrowthLockLevel] = useState(null);
+  const [defaultTemptationGrowthLockLevelHydrated, setDefaultTemptationGrowthLockLevelHydrated] =
+    useState(false);
   const customTemptationCount = quickTemptations.length;
   const temptationLimitWarningShownRef = useRef(false);
   const [priceEditor, setPriceEditor] = useState({
@@ -27786,6 +28002,13 @@ function AppContent() {
     ...DEFAULT_POTENTIAL_PUSH_STATE,
   });
   const [potentialPushHydrated, setPotentialPushHydrated] = useState(false);
+  const [potentialLossProgress, setPotentialLossProgress] = useState({
+    ...DEFAULT_POTENTIAL_LOSS_STATE,
+  });
+  const [potentialLossHydrated, setPotentialLossHydrated] = useState(false);
+  const [potentialLossModal, setPotentialLossModal] = useState({
+    ...INITIAL_POTENTIAL_LOSS_MODAL_STATE,
+  });
   const [dailyNudgeNotificationIds, setDailyNudgeNotificationIds] = useState({});
   const [dailyNudgesHydrated, setDailyNudgesHydrated] = useState(false);
   const [dailyChallenge, setDailyChallenge] = useState(() => createInitialDailyChallengeState());
@@ -28533,6 +28756,19 @@ function AppContent() {
     [rewardsUnlocked]
   );
   const priceLimitUSD = getTemptationPriceLimitForLevel(playerLevel);
+  const normalizedPlayerLevel = Math.max(1, Math.floor(Number(playerLevel) || 1));
+  const normalizedDefaultTemptationGrowthLockLevel =
+    Number.isFinite(Number(defaultTemptationGrowthLockLevel)) &&
+    Number(defaultTemptationGrowthLockLevel) >= 1
+      ? Math.floor(Number(defaultTemptationGrowthLockLevel))
+      : null;
+  const effectiveDefaultTemptationLevel = Math.min(
+    normalizedPlayerLevel,
+    normalizedDefaultTemptationGrowthLockLevel ?? normalizedPlayerLevel
+  );
+  const defaultTemptationFeedLimit = getDefaultFeedTemptationCountForLevel(
+    effectiveDefaultTemptationLevel
+  );
   const previousPlayerLevelRef = useRef(playerLevel);
   const resetInProgressRef = useRef(false);
   const levelReachedLoggedRef = useRef(0);
@@ -28551,10 +28787,16 @@ function AppContent() {
   const [saveBreakdownOffset, setSaveBreakdownOffset] = useState(0);
   const [reportsModalVisible, setReportsModalVisible] = useState(false);
   const [reportsTab, setReportsTab] = useState("weekly");
-  const visibleTemptations = useMemo(
-    () => filterTemptationsByPrice(temptations, priceLimitUSD),
-    [temptations, priceLimitUSD]
-  );
+  const visibleTemptations = useMemo(() => {
+    const pricedTemptations = filterTemptationsByPrice(temptations, priceLimitUSD);
+    let shownDefaultCount = 0;
+    return pricedTemptations.filter((item) => {
+      if (!item) return false;
+      if (item.quickTemptation || isCustomTemptation(item)) return true;
+      shownDefaultCount += 1;
+      return shownDefaultCount <= defaultTemptationFeedLimit;
+    });
+  }, [temptations, priceLimitUSD, defaultTemptationFeedLimit]);
   const archivedTemptationSet = useMemo(
     () => new Set(archivedTemptations),
     [archivedTemptations]
@@ -28563,6 +28805,21 @@ function AppContent() {
     () => new Set(hiddenTemptations),
     [hiddenTemptations]
   );
+  useEffect(() => {
+    if (!hiddenTemptationsHydrated || !defaultTemptationGrowthLockLevelHydrated) return;
+    if (!declinesHydrated || !levelProgressOffsetHydrated) return;
+    if (normalizedDefaultTemptationGrowthLockLevel !== null) return;
+    if (!Array.isArray(hiddenTemptations) || hiddenTemptations.length === 0) return;
+    setDefaultTemptationGrowthLockLevel(normalizedPlayerLevel);
+  }, [
+    declinesHydrated,
+    defaultTemptationGrowthLockLevelHydrated,
+    hiddenTemptations,
+    hiddenTemptationsHydrated,
+    levelProgressOffsetHydrated,
+    normalizedDefaultTemptationGrowthLockLevel,
+    normalizedPlayerLevel,
+  ]);
   const products = useMemo(
     () =>
       visibleTemptations.filter((item) => {
@@ -28686,9 +28943,19 @@ function AppContent() {
     Number(profile?.spendingProfile?.baselineMonthlyWasteUSD) || 0
   );
   const baselineStartAt = profile?.spendingProfile?.baselineStartAt || null;
+  const baselineSpentLossUSD = useMemo(
+    () => calcSpentLossInCurrentMonth(resolvedHistoryEvents, baselineStartAt, new Date()),
+    [baselineStartAt, currentMonthKey, resolvedHistoryEvents]
+  );
   const getPotentialSavedNow = useCallback(
-    () => calcPotentialSaved(baselineMonthlyWasteUSD, baselineStartAt),
-    [baselineMonthlyWasteUSD, baselineStartAt]
+    () =>
+      calcPotentialSaved(
+        baselineMonthlyWasteUSD,
+        baselineStartAt,
+        new Date(),
+        baselineSpentLossUSD
+      ),
+    [baselineMonthlyWasteUSD, baselineSpentLossUSD, baselineStartAt]
   );
   const profileJoinedAt = profile?.joinedAt || null;
   const dayMilestonesLoggedRef = useRef({ day2: false, day3: false });
@@ -28817,12 +29084,25 @@ function AppContent() {
     AsyncStorage.setItem(STORAGE_KEYS.DAY_TWO_INCOME_PROMPT_DISMISSED, "1").catch(() => {});
   }, []);
   const potentialBaselineKey =
-    baselineMonthlyWasteUSD > 0 && baselineStartAt
-      ? `${baselineStartAt}:${baselineMonthlyWasteUSD}`
+    baselineMonthlyWasteUSD > 0 && baselineStartAt && currentMonthKey
+      ? `${baselineStartAt}:${baselineMonthlyWasteUSD}:${currentMonthKey}`
       : null;
   const dismissPotentialGrowth = useCallback(() => {
     setPotentialGrowthVisible(false);
   }, []);
+  const closePotentialLossModal = useCallback(() => {
+    setPotentialLossModal((prev) => ({ ...prev, visible: false }));
+  }, []);
+  const potentialLossCurrencyCode = profile?.currency || DEFAULT_PROFILE.currency;
+  const formatPotentialLossLocal = useCallback(
+    (valueUSD = 0) =>
+      formatCurrency(
+        convertToCurrency(Math.max(0, Number(valueUSD) || 0), potentialLossCurrencyCode),
+        potentialLossCurrencyCode,
+        { precisionOverride: getCurrencyPrecision(potentialLossCurrencyCode) }
+      ),
+    [potentialLossCurrencyCode]
+  );
   const storePotentialSnapshot = useCallback((valueUSD) => {
     const normalized = Number(valueUSD);
     if (!Number.isFinite(normalized)) return;
@@ -28846,6 +29126,76 @@ function AppContent() {
       setPotentialGrowthVisible(true);
     },
     [potentialBaselineKey, storePotentialSnapshot]
+  );
+  const maybeShowPotentialLossFromSpend = useCallback(
+    ({ spendUSD = 0, potentialBeforeUSD = null } = {}) => {
+      const spendAmountUSD = Math.max(0, Number(spendUSD) || 0);
+      if (spendAmountUSD <= 0.01) return;
+      if (!potentialLossHydrated) return;
+      if (!potentialBaselineKey) return;
+      if (!baselineMonthlyWasteUSD || !baselineStartAt) return;
+
+      const monthlyMaxPotentialUSD = Math.max(0, Number(baselineMonthlyWasteUSD) || 0);
+      if (monthlyMaxPotentialUSD <= 0.01) return;
+
+      const spentBeforeUSD = Math.max(0, Number(baselineSpentLossUSD) || 0);
+      const spentAfterUSD = spentBeforeUSD + spendAmountUSD;
+      if (spentAfterUSD <= spentBeforeUSD + 0.001) return;
+
+      const fallbackBeforeUSD = Math.max(0, monthlyMaxPotentialUSD - spentBeforeUSD);
+      const normalizedBeforeUSD = Number.isFinite(Number(potentialBeforeUSD))
+        ? Math.max(0, Number(potentialBeforeUSD))
+        : fallbackBeforeUSD;
+      const normalizedAfterUSD = Math.max(0, monthlyMaxPotentialUSD - spentAfterUSD);
+      const normalizedLossUSD = Math.max(0, normalizedBeforeUSD - normalizedAfterUSD);
+      if (normalizedLossUSD <= 0.01) {
+        storePotentialSnapshot(normalizedAfterUSD);
+        return;
+      }
+      const lossPercent =
+        monthlyMaxPotentialUSD > 0 ? Math.min(100, (spentAfterUSD / monthlyMaxPotentialUSD) * 100) : 0;
+      const reachedThreshold = resolvePotentialLossThreshold(lossPercent);
+      const previousThreshold =
+        potentialLossProgress.baselineKey === potentialBaselineKey
+          ? Math.max(0, Number(potentialLossProgress.highestThreshold) || 0)
+          : 0;
+
+      storePotentialSnapshot(normalizedAfterUSD);
+      if (!reachedThreshold || reachedThreshold <= previousThreshold) return;
+
+      setPotentialLossProgress({
+        baselineKey: potentialBaselineKey,
+        highestThreshold: reachedThreshold,
+      });
+      setPotentialLossModal({
+        visible: true,
+        threshold: reachedThreshold,
+        lossPercent: Math.max(0, Math.min(100, lossPercent)),
+        previousUSD: normalizedBeforeUSD,
+        nextUSD: normalizedAfterUSD,
+        lostUSD: normalizedLossUSD,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      logEvent("potential_loss_threshold_reached", {
+        baseline_key: potentialBaselineKey,
+        threshold_percent: reachedThreshold,
+        loss_percent: roundCurrencyValue(lossPercent, "USD", 1),
+        potential_before_usd: roundCurrencyValue(normalizedBeforeUSD, "USD", 2),
+        potential_after_usd: roundCurrencyValue(normalizedAfterUSD, "USD", 2),
+        spend_usd: roundCurrencyValue(spendAmountUSD, "USD", 2),
+      });
+    },
+    [
+      baselineMonthlyWasteUSD,
+      baselineSpentLossUSD,
+      baselineStartAt,
+      logEvent,
+      potentialBaselineKey,
+      potentialLossHydrated,
+      potentialLossProgress.baselineKey,
+      potentialLossProgress.highestThreshold,
+      storePotentialSnapshot,
+    ]
   );
   const prevActiveTabRef = useRef(activeTab);
   useEffect(() => {
@@ -32618,6 +32968,7 @@ function AppContent() {
       !goalRenewalPromptVisible &&
       !moodDetailsVisible &&
       !potentialDetailsVisible &&
+      !potentialLossModal.visible &&
       !addCategoryModalVisible &&
       !pushDayThreePromptVisible &&
       !potentialGrowthVisible &&
@@ -32649,6 +33000,7 @@ function AppContent() {
       newPendingModal.visible,
       overlay,
       potentialDetailsVisible,
+      potentialLossModal.visible,
       potentialGrowthVisible,
       priceEditor.item,
       pushDayThreePromptVisible,
@@ -33710,6 +34062,7 @@ function AppContent() {
       stormActive ||
       moodDetailsVisible ||
       potentialDetailsVisible ||
+      potentialLossModal.visible ||
       budgetWidgetTutorialVisible ||
       didYouKnowVisible ||
       noGoalSavePromptVisible ||
@@ -33733,6 +34086,7 @@ function AppContent() {
       noGoalSavePromptVisible,
       overlay,
       potentialDetailsVisible,
+      potentialLossModal.visible,
       budgetWidgetTutorialVisible,
       didYouKnowVisible,
       pushDayThreePromptVisible,
@@ -34048,6 +34402,7 @@ function AppContent() {
       proThemeAccentPickerVisible ||
       moodDetailsVisible ||
       potentialDetailsVisible ||
+      potentialLossModal.visible ||
       fabTutorialVisible ||
       frequencyReminderPrompt.visible ||
       dailyGoalCollectModal.visible ||
@@ -34083,6 +34438,7 @@ function AppContent() {
       newGoalModal.visible,
       onboardingGoalModal.visible,
       potentialDetailsVisible,
+      potentialLossModal.visible,
       priceEditor.item,
       premiumPaywallState.visible,
       proThemeAccentPickerVisible,
@@ -35182,7 +35538,17 @@ function AppContent() {
     const lossWindowDays = Math.min(180, Math.max(7, elapsedDays || 30));
     const potentialSavedUSD =
       baselineMonthlyWasteUSD > 0 && baselineStartAt
-        ? Math.max(0, Number(calcPotentialSaved(baselineMonthlyWasteUSD, baselineStartAt)) || 0)
+        ? Math.max(
+            0,
+            Number(
+              calcPotentialSaved(
+                baselineMonthlyWasteUSD,
+                baselineStartAt,
+                new Date(),
+                baselineSpentLossUSD
+              )
+            ) || 0
+          )
         : 0;
     const actualSavedUSD = Math.max(0, Number(savedTotalUSD) || 0);
     const missedSavingsUSD = Math.max(0, potentialSavedUSD - actualSavedUSD);
@@ -35330,7 +35696,14 @@ function AppContent() {
       lossAmountByFeature,
       lossWindowDays,
     };
-  }, [baselineMonthlyWasteUSD, baselineStartAt, language, profile.currency, savedTotalUSD]);
+  }, [
+    baselineMonthlyWasteUSD,
+    baselineSpentLossUSD,
+    baselineStartAt,
+    language,
+    profile.currency,
+    savedTotalUSD,
+  ]);
   const premiumFreshStartGainPercent = useMemo(() => {
     const lossAmountUSD = Math.max(0, Number(premiumLossPersonalization.lossAmountUSD) || 0);
     const baselineSignalUSD = Math.max(
@@ -38855,6 +39228,27 @@ function AppContent() {
   }, [smartReminders]);
 
   useEffect(() => {
+    if (!potentialLossHydrated) return;
+    if (!potentialBaselineKey) {
+      if (potentialLossProgress.baselineKey || potentialLossProgress.highestThreshold) {
+        setPotentialLossProgress({ ...DEFAULT_POTENTIAL_LOSS_STATE });
+      }
+      return;
+    }
+    if (potentialLossProgress.baselineKey !== potentialBaselineKey) {
+      setPotentialLossProgress({
+        baselineKey: potentialBaselineKey,
+        highestThreshold: 0,
+      });
+    }
+  }, [
+    potentialBaselineKey,
+    potentialLossHydrated,
+    potentialLossProgress.baselineKey,
+    potentialLossProgress.highestThreshold,
+  ]);
+
+  useEffect(() => {
     if (!potentialPushHydrated) return;
     const currencyForStep = profile?.currency || DEFAULT_PROFILE.currency;
     const stepUSD = resolvePotentialPushStepUSD(currencyForStep);
@@ -41234,6 +41628,7 @@ function AppContent() {
         STORAGE_KEYS.CUSTOM_TEMPTATIONS_CREATED,
         STORAGE_KEYS.HIDDEN_TEMPTATIONS,
         STORAGE_KEYS.ARCHIVED_TEMPTATIONS,
+        STORAGE_KEYS.DEFAULT_TEMPTATION_GROWTH_LOCK_LEVEL,
         STORAGE_KEYS.HEALTH,
         STORAGE_KEYS.CLAIMED_REWARDS,
         STORAGE_KEYS.REWARD_TOTAL,
@@ -41249,6 +41644,7 @@ function AppContent() {
         STORAGE_KEYS.DAILY_NUDGES,
         STORAGE_KEYS.SMART_REMINDERS,
         STORAGE_KEYS.POTENTIAL_PUSH_PROGRESS,
+        STORAGE_KEYS.POTENTIAL_LOSS_PROGRESS,
         STORAGE_KEYS.TAMAGOTCHI,
         STORAGE_KEYS.TAMAGOTCHI_GREETING_DAY,
         STORAGE_KEYS.TAMAGOTCHI_HUNGER_NOTIFICATIONS,
@@ -41345,6 +41741,8 @@ function AppContent() {
         storedMap[STORAGE_KEYS.CUSTOM_TEMPTATIONS_CREATED] ?? null;
       const hiddenTemptationsRaw = storedMap[STORAGE_KEYS.HIDDEN_TEMPTATIONS] ?? null;
       const archivedTemptationsRaw = storedMap[STORAGE_KEYS.ARCHIVED_TEMPTATIONS] ?? null;
+      const defaultTemptationGrowthLockLevelRaw =
+        storedMap[STORAGE_KEYS.DEFAULT_TEMPTATION_GROWTH_LOCK_LEVEL] ?? null;
       const healthRaw = storedMap[STORAGE_KEYS.HEALTH] ?? null;
       const claimedRewardsRaw = storedMap[STORAGE_KEYS.CLAIMED_REWARDS] ?? null;
       const rewardTotalRaw = storedMap[STORAGE_KEYS.REWARD_TOTAL] ?? null;
@@ -41360,6 +41758,7 @@ function AppContent() {
       const dailyNudgesRaw = storedMap[STORAGE_KEYS.DAILY_NUDGES] ?? null;
       const smartRemindersRaw = storedMap[STORAGE_KEYS.SMART_REMINDERS] ?? null;
       const potentialPushProgressRaw = storedMap[STORAGE_KEYS.POTENTIAL_PUSH_PROGRESS] ?? null;
+      const potentialLossProgressRaw = storedMap[STORAGE_KEYS.POTENTIAL_LOSS_PROGRESS] ?? null;
       const tamagotchiRaw = storedMap[STORAGE_KEYS.TAMAGOTCHI] ?? null;
       const tamagotchiGreetingDayRaw = storedMap[STORAGE_KEYS.TAMAGOTCHI_GREETING_DAY] ?? null;
       const tamagotchiHungerNotificationsRaw = storedMap[STORAGE_KEYS.TAMAGOTCHI_HUNGER_NOTIFICATIONS] ?? null;
@@ -41698,6 +42097,24 @@ function AppContent() {
         setPotentialPushProgress({ ...DEFAULT_POTENTIAL_PUSH_STATE });
       }
       setPotentialPushHydrated(true);
+      if (potentialLossProgressRaw) {
+        try {
+          const parsed = JSON.parse(potentialLossProgressRaw);
+          setPotentialLossProgress({
+            baselineKey:
+              typeof parsed?.baselineKey === "string" && parsed.baselineKey.trim()
+                ? parsed.baselineKey
+                : null,
+            highestThreshold: resolvePotentialLossThreshold(parsed?.highestThreshold),
+          });
+        } catch (err) {
+          console.warn("potential loss progress parse", err);
+          setPotentialLossProgress({ ...DEFAULT_POTENTIAL_LOSS_STATE });
+        }
+      } else {
+        setPotentialLossProgress({ ...DEFAULT_POTENTIAL_LOSS_STATE });
+      }
+      setPotentialLossHydrated(true);
       if (tamagotchiRaw) {
         try {
           const parsed = JSON.parse(tamagotchiRaw);
@@ -42667,6 +43084,18 @@ function AppContent() {
       } else {
         hydrateArchivedTemptations();
       }
+      const parsedDefaultTemptationGrowthLockLevel = Number(defaultTemptationGrowthLockLevelRaw);
+      if (
+        Number.isFinite(parsedDefaultTemptationGrowthLockLevel) &&
+        parsedDefaultTemptationGrowthLockLevel >= 1
+      ) {
+        setDefaultTemptationGrowthLockLevel(
+          Math.floor(parsedDefaultTemptationGrowthLockLevel)
+        );
+      } else {
+        setDefaultTemptationGrowthLockLevel(null);
+      }
+      setDefaultTemptationGrowthLockLevelHydrated(true);
       if (healthRaw) {
         const parsedHealth = Number(healthRaw) || 0;
         resolvedHealthPoints = Math.max(0, parsedHealth);
@@ -42956,6 +43385,7 @@ function AppContent() {
       setFreeDayHydrated(true);
       setCustomReminderHydrated(true);
       setPotentialPushHydrated(true);
+      setPotentialLossHydrated(true);
       setSmartRemindersHydrated(true);
       setDailyNudgesHydrated(true);
       setIncomeEntriesHydrated(true);
@@ -42980,6 +43410,7 @@ function AppContent() {
       setChallengesHydrated(true);
       setRefuseStatsHydrated(true);
       setQuickTemptationsHydrated(true);
+      setDefaultTemptationGrowthLockLevelHydrated(true);
       setDidYouKnowHydrated(true);
       setNoGoalSavePromptDeferredDayKey(null);
       setNoGoalSavePromptHydrated(true);
@@ -44779,6 +45210,7 @@ useEffect(() => {
     setLevelProgressOffsetUSD(0);
     tutorialLevelOffsetAppliedRef.current = false;
     setLastCelebratedLevel(1);
+    setDefaultTemptationGrowthLockLevel(null);
     previousPlayerLevelRef.current = 1;
     lastLevelCelebrationRunRef.current = 1;
     levelCelebrationQueuedRef.current = 0;
@@ -44797,6 +45229,7 @@ useEffect(() => {
       [STORAGE_KEYS.LEVEL_PROGRESS_OFFSET, "0"],
       [STORAGE_KEYS.LAST_CELEBRATED_LEVEL, "1"],
       [STORAGE_KEYS.LEVEL_SHARE_REWARDED_LEVELS, "{}"],
+      [STORAGE_KEYS.DEFAULT_TEMPTATION_GROWTH_LOCK_LEVEL, ""],
     ]).catch(() => {});
   }, [
     declineCount,
@@ -44864,6 +45297,16 @@ useEffect(() => {
       })
     );
   }, [queuePersist, potentialPushHydrated, potentialPushProgress]);
+  useEffect(() => {
+    if (!potentialLossHydrated) return;
+    queuePersist(
+      STORAGE_KEYS.POTENTIAL_LOSS_PROGRESS,
+      JSON.stringify({
+        baselineKey: potentialLossProgress.baselineKey || null,
+        highestThreshold: resolvePotentialLossThreshold(potentialLossProgress.highestThreshold),
+      })
+    );
+  }, [queuePersist, potentialLossHydrated, potentialLossProgress]);
 
   useEffect(() => {
     if (!pendingHydrated) return;
@@ -45573,6 +46016,20 @@ useEffect(() => {
     if (!archivedTemptationsHydrated) return;
     queuePersist(STORAGE_KEYS.ARCHIVED_TEMPTATIONS, JSON.stringify(archivedTemptations));
   }, [queuePersist, archivedTemptations, archivedTemptationsHydrated]);
+
+  useEffect(() => {
+    if (!defaultTemptationGrowthLockLevelHydrated) return;
+    const normalized =
+      Number.isFinite(Number(defaultTemptationGrowthLockLevel)) &&
+      Number(defaultTemptationGrowthLockLevel) >= 1
+        ? String(Math.floor(Number(defaultTemptationGrowthLockLevel)))
+        : "";
+    queuePersist(STORAGE_KEYS.DEFAULT_TEMPTATION_GROWTH_LOCK_LEVEL, normalized);
+  }, [
+    defaultTemptationGrowthLockLevel,
+    defaultTemptationGrowthLockLevelHydrated,
+    queuePersist,
+  ]);
 
   useEffect(() => {
     if (!impulseTrackerHydrated) return;
@@ -47601,6 +48058,7 @@ useEffect(() => {
     setLevelProgressOffsetUSD(0);
     tutorialLevelOffsetAppliedRef.current = false;
     setLastCelebratedLevel(1);
+    setDefaultTemptationGrowthLockLevel(null);
     previousPlayerLevelRef.current = 1;
     lastLevelCelebrationRunRef.current = 1;
     levelCelebrationQueuedRef.current = 0;
@@ -47622,6 +48080,7 @@ useEffect(() => {
       [STORAGE_KEYS.LEVEL_PROGRESS_OFFSET, "0"],
       [STORAGE_KEYS.LAST_CELEBRATED_LEVEL, "1"],
       [STORAGE_KEYS.LEVEL_SHARE_REWARDED_LEVELS, "{}"],
+      [STORAGE_KEYS.DEFAULT_TEMPTATION_GROWTH_LOCK_LEVEL, ""],
       [STORAGE_KEYS.HISTORY, "[]"],
       [STORAGE_KEYS.DECLINES, "0"],
       [STORAGE_KEYS.DECISION_STATS, JSON.stringify({ ...INITIAL_DECISION_STATS })],
@@ -50551,6 +51010,11 @@ useEffect(() => {
         registerFocusLoss(item);
       }
       handleFocusSpend(item);
+      const potentialBeforeUSD = Math.max(0, Number(getPotentialSavedNow()) || 0);
+      maybeShowPotentialLossFromSpend({
+        spendUSD: priceUSD,
+        potentialBeforeUSD,
+      });
       logHistoryEvent("spend", {
         title,
         amountUSD: priceUSD,
@@ -50607,8 +51071,10 @@ useEffect(() => {
       language,
       queueHomeSpeech,
       resolveTemptationTemplateId,
+      getPotentialSavedNow,
       logHistoryEvent,
       logImpulseEvent,
+      maybeShowPotentialLossFromSpend,
       recordTemptationInteraction,
       registerFocusLoss,
       registerUsageStreakAction,
@@ -53178,6 +53644,13 @@ useEffect(() => {
   const removeTemptationTemplate = useCallback(
     (templateId) => {
       if (!templateId) return;
+      setDefaultTemptationGrowthLockLevel((prev) => {
+        const normalizedPrev = Number(prev);
+        if (Number.isFinite(normalizedPrev) && normalizedPrev >= 1) {
+          return Math.floor(normalizedPrev);
+        }
+        return Math.max(1, Math.floor(Number(playerLevel) || 1));
+      });
       cancelScheduledNotificationsForTemplate(templateId);
       clearFrequencyReminderStateForTemplate(templateId);
       setSmartReminders((prev) =>
@@ -53243,15 +53716,18 @@ useEffect(() => {
     [
       cancelScheduledNotificationsForTemplate,
       clearFrequencyReminderStateForTemplate,
+      playerLevel,
       quickTemptations,
       setQuickTemptations,
       setHiddenTemptations,
       setArchivedTemptations,
+      setDefaultTemptationGrowthLockLevel,
       setTemptationGoalMap,
       setCatalogOverrides,
       setPricePrecisionOverrides,
       setTitleOverrides,
       setEmojiOverrides,
+      setCategoryOverrides,
       setDescriptionOverrides,
       setRefuseStats,
       setPendingList,
@@ -55550,6 +56026,9 @@ useEffect(() => {
             setSmartRemindersHydrated(true);
             setPotentialPushProgress({ ...DEFAULT_POTENTIAL_PUSH_STATE });
             setPotentialPushHydrated(true);
+            setPotentialLossProgress({ ...DEFAULT_POTENTIAL_LOSS_STATE });
+            setPotentialLossHydrated(true);
+            setPotentialLossModal({ ...INITIAL_POTENTIAL_LOSS_MODAL_STATE });
             const resetProfile = {
               ...DEFAULT_PROFILE,
               joinedAt: new Date().toISOString(),
@@ -55644,6 +56123,7 @@ useEffect(() => {
             setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.IDLE);
             setFeedFirstTutorialSaveCoachVisible(true);
             setFeedFirstTutorialNeedSoftPaywall(false);
+            setDefaultTemptationGrowthLockLevel(null);
             homeSessionRef.current.sessionCount = 0;
             homeSessionRef.current.pendingIndex = null;
             homeSessionRef.current.dateKey = getDayKey(Date.now());
@@ -55689,6 +56169,7 @@ useEffect(() => {
                 [STORAGE_KEYS.TAMAGOTCHI, JSON.stringify(resetTamagotchiState)],
                 [STORAGE_KEYS.COIN_SLIDER_MAX, String(DEFAULT_COIN_SLIDER_MAX_USD)],
                 [STORAGE_KEYS.LEVEL_SHARE_REWARDED_LEVELS, "{}"],
+                [STORAGE_KEYS.DEFAULT_TEMPTATION_GROWTH_LOCK_LEVEL, ""],
               ]);
             } catch (error) {
               console.warn("reset storage", error);
@@ -56145,6 +56626,7 @@ useEffect(() => {
             moodPreset={moodPreset}
             onMoodDetailsOpen={openMoodDetails}
             onPotentialDetailsOpen={openPotentialDetails}
+            baselineSpentLossUSD={baselineSpentLossUSD}
             heroGoalTargetUSD={heroGoalTargetUSD}
             heroGoalSavedUSD={heroGoalSavedUSD}
             potentialGrowthUSD={potentialGrowthUSD}
@@ -57971,9 +58453,7 @@ useEffect(() => {
             style={[
               styles.fabCenterContainer,
               fabSlideStyle,
-              Platform.OS === "android"
-                ? { bottom: FAB_CONTAINER_BOTTOM + tabBarBottomInset }
-                : null,
+              { bottom: FAB_CONTAINER_BOTTOM + tabBarBottomInset },
             ]}
           >
             <View
@@ -58003,11 +58483,7 @@ useEffect(() => {
               <AnimatedTouchableOpacity
                 style={[
                   styles.cartBadge,
-                  {
-                    backgroundColor: isProTheme ? proThemeAccentColor : colors.text,
-                    borderColor: isProTheme ? colorWithAlpha(proThemeAccentColor, 0.78) : colors.border,
-                    transform: [{ scale: cartBadgeScale }],
-                  },
+                  { transform: [{ scale: cartBadgeScale }] },
                   fabTutorialVisible && styles.cartBadgeHighlight,
                 ]}
                 onPress={handleFabPress}
@@ -58015,12 +58491,15 @@ useEffect(() => {
                 delayLongPress={420}
                 activeOpacity={Platform.OS === "android" ? 1 : 0.85}
               >
-                <Text
-                  style={[styles.cartBadgeIcon, { color: isProTheme ? "#FFFFFF" : colors.background }]}
-                  numberOfLines={1}
-                >
-                  {fabMainIcon}
-                </Text>
+                <LiquidGlassFabOrb
+                  size={FAB_BUTTON_SIZE}
+                  icon={fabMainIcon}
+                  iconColor={isDarkTheme ? "#FFFFFF" : isProTheme ? "#F8FBFF" : "#0B1630"}
+                  isDarkTheme={isDarkTheme}
+                  isProTheme={isProTheme}
+                  proThemeAccentColor={proThemeAccentColor}
+                  highlighted={fabTutorialVisible}
+                />
               </AnimatedTouchableOpacity>
             </View>
           </Animated.View>
@@ -59829,6 +60308,20 @@ useEffect(() => {
               </View>
             </TouchableWithoutFeedback>
           </Modal>
+        )}
+
+        {!startupHardLockPendingBeforePaywall && potentialLossModal.visible && (
+          <PotentialLossModal
+            visible={potentialLossModal.visible}
+            colors={colors}
+            t={t}
+            threshold={potentialLossModal.threshold}
+            lossPercent={potentialLossModal.lossPercent}
+            previousLabel={formatPotentialLossLocal(potentialLossModal.previousUSD)}
+            nextLabel={formatPotentialLossLocal(potentialLossModal.nextUSD)}
+            lostLabel={formatPotentialLossLocal(potentialLossModal.lostUSD)}
+            onClose={closePotentialLossModal}
+          />
         )}
 
         {!startupHardLockPendingBeforePaywall && activeTab !== "profile" && fabMenuVisible && (
@@ -61926,6 +62419,123 @@ const styles = StyleSheet.create({
   },
   baselinePromptDismissText: {
     ...createCtaText({ fontSize: 13 }),
+  },
+  potentialLossModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(9,6,3,0.58)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 22,
+    paddingVertical: 24,
+  },
+  potentialLossModalCard: {
+    width: "100%",
+    maxWidth: 470,
+    borderRadius: 30,
+    borderWidth: 1,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 20,
+    shadowColor: "#111827",
+    shadowOpacity: 0.26,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 16,
+  },
+  potentialLossModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  potentialLossModalBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  potentialLossModalBadgeText: {
+    ...createCtaText({ fontSize: 12 }),
+  },
+  potentialLossModalEmoji: {
+    fontSize: 26,
+  },
+  potentialLossModalTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 24,
+    marginTop: 10,
+  },
+  potentialLossModalBody: {
+    ...createBodyText({ fontSize: 15, lineHeight: 22 }),
+    marginTop: 8,
+  },
+  potentialLossModalVisual: {
+    marginTop: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  potentialLossModalRingWrap: {
+    width: 136,
+    height: 136,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  potentialLossModalPulse: {
+    position: "absolute",
+    width: 116,
+    height: 116,
+    borderRadius: 58,
+  },
+  potentialLossModalRingCenter: {
+    position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 88,
+  },
+  potentialLossModalPercent: {
+    ...createBodyText({ fontSize: 26, lineHeight: 32, fontWeight: "900", textAlign: "center" }),
+    color: "#EA580C",
+  },
+  potentialLossModalPercentHint: {
+    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+    marginTop: 2,
+  },
+  potentialLossModalStats: {
+    flex: 1,
+    gap: 8,
+  },
+  potentialLossModalStatCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    minHeight: 58,
+    justifyContent: "center",
+  },
+  potentialLossModalStatLabel: {
+    ...createSecondaryText({ fontSize: 11 }),
+    textTransform: "uppercase",
+    letterSpacing: 0.45,
+  },
+  potentialLossModalStatValue: {
+    ...createBodyText({ fontSize: 16, fontWeight: "800" }),
+    marginTop: 2,
+  },
+  potentialLossModalHint: {
+    ...createBodyText({ fontSize: 14, lineHeight: 20 }),
+    marginTop: 14,
+  },
+  potentialLossModalCta: {
+    marginTop: 16,
+    borderRadius: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  potentialLossModalCtaText: {
+    ...createCtaText({ fontSize: 15 }),
   },
   heroMascotRow: {
     flexDirection: "row",
@@ -64267,6 +64877,54 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 12,
   },
+  savedHeroPotentialCompact: {
+    marginTop: 2,
+    marginBottom: 8,
+    paddingHorizontal: 2,
+    gap: 3,
+    alignItems: "center",
+  },
+  savedHeroPotentialCompactHeader: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 1,
+  },
+  savedHeroPotentialCompactLabel: {
+    ...createCtaText({ fontSize: 9, textTransform: "uppercase" }),
+    lineHeight: 12,
+    textAlign: "center",
+  },
+  savedHeroPotentialCompactValue: {
+    textAlign: "center",
+    includeFontPadding: false,
+  },
+  savedHeroPotentialCompactValueMajor: {
+    ...createBodyText({ fontSize: 16, fontWeight: "800" }),
+    lineHeight: 20,
+  },
+  savedHeroPotentialCompactValueMinor: {
+    ...createBodyText({ fontSize: 11, fontWeight: "500" }),
+    lineHeight: 14,
+  },
+  savedHeroPotentialCompactValueSuffix: {
+    ...createBodyText({ fontSize: 14, fontWeight: "700" }),
+    lineHeight: 18,
+  },
+  savedHeroPotentialCompactStatus: {
+    ...createSecondaryText({ fontSize: 11 }),
+    lineHeight: 14,
+    textAlign: "center",
+  },
+  savedHeroPotentialCompactDelta: {
+    ...createCtaText({ fontSize: 11 }),
+    textAlign: "center",
+    marginTop: 1,
+  },
+  savedHeroPotentialCompactAction: {
+    ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
+    textAlign: "center",
+    marginTop: 1,
+  },
   dailyRewardButton: {
     borderRadius: 16,
     borderWidth: 1,
@@ -64534,9 +65192,12 @@ const styles = StyleSheet.create({
   },
   heroPotentialBody: {
     ...createBodyText({ fontSize: 14 }),
+    textAlign: "center",
   },
   heroPotentialHeader: {
-    gap: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
   },
   heroPotentialRow: {
     flexDirection: "row",
@@ -64548,12 +65209,23 @@ const styles = StyleSheet.create({
   heroPotentialLabel: {
     ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
     lineHeight: 16,
-    flex: 1,
+    textAlign: "center",
   },
   heroPotentialValue: {
+    textAlign: "center",
+    includeFontPadding: false,
+  },
+  heroPotentialValueMajor: {
     ...createBodyText({ fontSize: 16, fontWeight: "700" }),
     lineHeight: 20,
-    textAlign: "right",
+  },
+  heroPotentialValueMinor: {
+    ...createBodyText({ fontSize: 11, fontWeight: "500" }),
+    lineHeight: 14,
+  },
+  heroPotentialValueSuffix: {
+    ...createBodyText({ fontSize: 14, fontWeight: "700" }),
+    lineHeight: 18,
   },
   heroPotentialHint: {
     ...createSecondaryText({ fontSize: 12 }),
@@ -64561,12 +65233,12 @@ const styles = StyleSheet.create({
   heroPotentialStatus: {
     ...createSecondaryText({ fontSize: 12 }),
     lineHeight: 16,
-    flex: 1,
+    textAlign: "center",
   },
   heroPotentialDelta: {
     ...createCtaText({ fontSize: 13 }),
     marginTop: 0,
-    textAlign: "right",
+    textAlign: "center",
   },
   heroPotentialButton: {
     borderWidth: 1,
@@ -70374,21 +71046,14 @@ const styles = StyleSheet.create({
     borderRadius: FAB_BUTTON_SIZE / 2,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    elevation: 4,
-    borderWidth: 1,
+    backgroundColor: "transparent",
+    overflow: "visible",
   },
   cartBadgeHighlight: {
-    borderColor: "#F5C869",
     shadowColor: "#F5C869",
-    shadowOpacity: 0.85,
-    shadowRadius: 16,
-    elevation: 8,
-    borderWidth: 2,
-    borderRadius: FAB_BUTTON_SIZE / 2,
+    shadowOpacity: 0.58,
+    shadowRadius: 20,
+    elevation: 10,
   },
   cartBadgeIcon: {
     fontSize: 20,
@@ -80245,6 +80910,260 @@ function CustomSpendSavingsModal({
           </ScrollView>
         </View>
       </View>
+    </Modal>
+  );
+}
+
+function PotentialLossModal({
+  visible,
+  colors,
+  t,
+  threshold = 0,
+  lossPercent = 0,
+  previousLabel = "",
+  nextLabel = "",
+  lostLabel = "",
+  onClose = () => {},
+}) {
+  const reveal = useRef(new Animated.Value(0)).current;
+  const ringReveal = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
+  const ringSize = 136;
+  const ringCenter = ringSize / 2;
+  const ringRadius = 52;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  const clampedLossPercent = Math.max(0, Math.min(100, Number(lossPercent) || 0));
+  const ringLossRatio = clampedLossPercent / 100;
+  const resolvedThreshold = Math.max(0, Number(threshold) || 0);
+
+  useEffect(() => {
+    if (!visible) {
+      reveal.setValue(0);
+      ringReveal.setValue(0);
+      pulse.setValue(0);
+      return;
+    }
+    reveal.setValue(0);
+    ringReveal.setValue(0);
+    pulse.setValue(0);
+    Animated.parallel([
+      Animated.timing(reveal, {
+        toValue: 1,
+        duration: 280,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(ringReveal, {
+        toValue: 1,
+        duration: 560,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+    ]).start();
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 980,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 980,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulseLoop.start();
+    return () => {
+      pulseLoop.stop();
+    };
+  }, [pulse, reveal, ringReveal, visible]);
+
+  const cardOpacity = reveal;
+  const cardTranslateY = reveal.interpolate({
+    inputRange: [0, 1],
+    outputRange: [36, 0],
+  });
+  const cardScale = reveal.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.93, 1],
+  });
+  const ringDashOffset = ringReveal.interpolate({
+    inputRange: [0, 1],
+    outputRange: [ringCircumference, ringCircumference * (1 - ringLossRatio)],
+  });
+  const pulseScale = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.9, 1.18],
+  });
+  const pulseOpacity = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.34, 0.08],
+  });
+  const thresholdLabel =
+    resolvedThreshold > 0
+      ? t("potentialLossModalThreshold", { percent: resolvedThreshold })
+      : t("potentialLossModalThreshold", { percent: Math.round(clampedLossPercent) });
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.potentialLossModalBackdrop}>
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <Animated.View
+              style={[
+                styles.potentialLossModalCard,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colorWithAlpha("#F97316", 0.42),
+                  opacity: cardOpacity,
+                  transform: [{ translateY: cardTranslateY }, { scale: cardScale }],
+                },
+              ]}
+            >
+              <View style={styles.potentialLossModalHeader}>
+                <View
+                  style={[
+                    styles.potentialLossModalBadge,
+                    {
+                      borderColor: colorWithAlpha("#F97316", 0.35),
+                      backgroundColor: colorWithAlpha("#F97316", 0.14),
+                    },
+                  ]}
+                >
+                  <Text style={[styles.potentialLossModalBadgeText, { color: "#D9480F" }]}>
+                    {thresholdLabel}
+                  </Text>
+                </View>
+                <Text style={styles.potentialLossModalEmoji}>⚠️</Text>
+              </View>
+              <Text style={[styles.potentialLossModalTitle, { color: colors.text }]}>
+                {t("potentialLossModalTitle")}
+              </Text>
+              <Text style={[styles.potentialLossModalBody, { color: colors.muted }]}>
+                {t("potentialLossModalBody", {
+                  from: previousLabel,
+                  to: nextLabel,
+                })}
+              </Text>
+              <View style={styles.potentialLossModalVisual}>
+                <View style={styles.potentialLossModalRingWrap}>
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.potentialLossModalPulse,
+                      {
+                        backgroundColor: colorWithAlpha("#F97316", 0.2),
+                        opacity: pulseOpacity,
+                        transform: [{ scale: pulseScale }],
+                      },
+                    ]}
+                  />
+                  <Svg width={ringSize} height={ringSize}>
+                    <SvgCircle
+                      cx={ringCenter}
+                      cy={ringCenter}
+                      r={ringRadius}
+                      stroke={colorWithAlpha("#F97316", 0.18)}
+                      strokeWidth="10"
+                      fill="none"
+                    />
+                    <AnimatedSvgCircle
+                      cx={ringCenter}
+                      cy={ringCenter}
+                      r={ringRadius}
+                      stroke="#F97316"
+                      strokeWidth="10"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeDasharray={`${ringCircumference}, ${ringCircumference}`}
+                      strokeDashoffset={ringDashOffset}
+                      transform={`rotate(-90 ${ringCenter} ${ringCenter})`}
+                    />
+                  </Svg>
+                  <View style={styles.potentialLossModalRingCenter}>
+                    <Text style={styles.potentialLossModalPercent}>{`${Math.round(clampedLossPercent)}%`}</Text>
+                    <Text style={[styles.potentialLossModalPercentHint, { color: colors.muted }]}>
+                      {t("potentialLossModalLostLabel")}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.potentialLossModalStats}>
+                  <View
+                    style={[
+                      styles.potentialLossModalStatCard,
+                      {
+                        borderColor: colorWithAlpha(colors.border, 0.8),
+                        backgroundColor: colorWithAlpha(colors.background, 0.65),
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.potentialLossModalStatLabel, { color: colors.muted }]}>
+                      {t("potentialLossModalBeforeLabel")}
+                    </Text>
+                    <Text style={[styles.potentialLossModalStatValue, { color: colors.text }]}>
+                      {previousLabel}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.potentialLossModalStatCard,
+                      {
+                        borderColor: colorWithAlpha("#F97316", 0.35),
+                        backgroundColor: colorWithAlpha("#F97316", 0.12),
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.potentialLossModalStatLabel, { color: "#B45309" }]}>
+                      {t("potentialLossModalAfterLabel")}
+                    </Text>
+                    <Text style={[styles.potentialLossModalStatValue, { color: "#C2410C" }]}>
+                      {nextLabel}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.potentialLossModalStatCard,
+                      {
+                        borderColor: colorWithAlpha("#DC2626", 0.35),
+                        backgroundColor: colorWithAlpha("#DC2626", 0.1),
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.potentialLossModalStatLabel, { color: "#B91C1C" }]}>
+                      {t("potentialLossModalLostLabel")}
+                    </Text>
+                    <Text style={[styles.potentialLossModalStatValue, { color: "#B91C1C" }]}>
+                      {lostLabel}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              <Text style={[styles.potentialLossModalHint, { color: colors.muted }]}>
+                {t("potentialLossModalHint")}
+              </Text>
+              <TouchableOpacity
+                style={[styles.potentialLossModalCta, { backgroundColor: colors.text }]}
+                activeOpacity={0.85}
+                onPress={onClose}
+              >
+                <Text style={[styles.potentialLossModalCtaText, { color: colors.background }]}>
+                  {t("potentialLossModalCta")}
+                </Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
     </Modal>
   );
 }

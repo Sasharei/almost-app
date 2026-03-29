@@ -12,16 +12,6 @@ import Svg, {
 } from "react-native-svg";
 import LiquidGlassNativeView, { canUseNativeLiquidGlassView } from "./LiquidGlassNativeView";
 import NativeLiquidTabBar, { canUseNativeLiquidTabBar } from "./NativeLiquidTabBar";
-
-const parsePlatformMajorVersion = () => {
-  const raw = Platform.Version;
-  if (typeof raw === "number") return raw;
-  const parsed = parseInt(String(raw || "0").split(".")[0], 10);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const IOS_MAJOR_VERSION = Platform.OS === "ios" ? parsePlatformMajorVersion() : 0;
-const IOS_26_OR_NEWER = Platform.OS === "ios" && IOS_MAJOR_VERSION >= 26;
 const TAB_ROW_HORIZONTAL_PADDING = 8;
 const TAB_ROW_VERTICAL_PADDING = 6;
 
@@ -136,7 +126,11 @@ const LiquidGlassTabBar = ({
   reportsBadgeVisible = false,
   reportsUnlocked = true,
 }) => {
+  const isIos = Platform.OS === "ios";
   const isAndroid = Platform.OS === "android";
+  const nativeLiquidAvailable = isIos && canUseNativeLiquidGlassView();
+  const nativeTabBarAvailable = isIos && canUseNativeLiquidTabBar();
+  const isLiquidGlassStyle = isIos && (nativeLiquidAvailable || nativeTabBarAvailable);
   const bubbleTranslate = useRef(new Animated.Value(0)).current;
   const bubbleScale = useRef(new Animated.Value(1)).current;
   const [trackLayout, setTrackLayout] = useState({ width: 0, height: 0 });
@@ -158,11 +152,11 @@ const LiquidGlassTabBar = ({
   const hasMeasuredActiveTab = Number.isFinite(Number(activeTabLayout?.x)) && Number(activeTabLayout?.width) > 0;
   const rawBubbleWidth =
     activeSlotWidth > 0
-      ? Math.max(isAndroid ? 82 : 88, activeSlotWidth - (IOS_26_OR_NEWER ? 8 : isAndroid ? 10 : 14))
+      ? Math.max(isAndroid ? 82 : 88, activeSlotWidth - (isLiquidGlassStyle ? 8 : isAndroid ? 10 : 14))
       : 96;
   const rawBubbleHeight =
     activeSlotHeight > 0
-      ? Math.max(isAndroid ? 50 : 54, activeSlotHeight - (IOS_26_OR_NEWER ? 2 : isAndroid ? 4 : 2))
+      ? Math.max(isAndroid ? 50 : 54, activeSlotHeight - (isLiquidGlassStyle ? 2 : isAndroid ? 4 : 2))
       : 62;
   const bubbleWidth = isAndroid ? Math.round(rawBubbleWidth) : rawBubbleWidth;
   const bubbleHeight = isAndroid ? Math.round(rawBubbleHeight) : rawBubbleHeight;
@@ -260,7 +254,7 @@ const LiquidGlassTabBar = ({
   const badgeBackground = isDarkTheme ? "#FEE5A8" : isProTheme ? proThemeAccentColor : "#0E1728";
   const badgeText = isDarkTheme ? "#05070D" : "#FFFFFF";
   const resolvedTabLabelTextTransform =
-    Platform.OS === "android" ? "none" : IOS_26_OR_NEWER ? "none" : tabLabelTextTransform;
+    Platform.OS === "android" ? "none" : isLiquidGlassStyle ? "none" : tabLabelTextTransform;
   const resolvedTabLabelFontSize = Platform.OS === "android" ? Math.max(9, tabLabelFontSize - 1) : tabLabelFontSize;
   const resolvedTabLabelTopMargin = Platform.OS === "android" ? Math.max(2, tabLabelTopMargin - 1) : tabLabelTopMargin;
 
@@ -315,25 +309,23 @@ const LiquidGlassTabBar = ({
 
   const trackBaseColor = isDarkTheme
     ? "rgba(33,36,44,0.72)"
-    : IOS_26_OR_NEWER
+    : isLiquidGlassStyle
     ? "rgba(244,247,252,0.84)"
     : isProTheme
     ? colorWithAlpha(proThemeAccentColor, 0.16)
     : "rgba(225,231,241,0.72)";
   const trackBorderColor = isDarkTheme
     ? "rgba(255,255,255,0.24)"
-    : IOS_26_OR_NEWER
+    : isLiquidGlassStyle
     ? "rgba(255,255,255,0.78)"
     : isProTheme
     ? colorWithAlpha(proThemeAccentColor, 0.34)
     : "rgba(14,23,40,0.14)";
   const bubbleBorderColor = isDarkTheme
     ? "rgba(255,255,255,0.55)"
-    : IOS_26_OR_NEWER
+    : isLiquidGlassStyle
     ? "rgba(255,255,255,0.92)"
     : "rgba(255,255,255,0.86)";
-  const nativeLiquidAvailable = IOS_26_OR_NEWER && canUseNativeLiquidGlassView();
-  const nativeTabBarAvailable = IOS_26_OR_NEWER && canUseNativeLiquidTabBar();
   const shouldUseNativeOnly = nativeTabBarAvailable;
   const shouldRenderInnerBubble = availableTabs.length > 0;
 
@@ -381,7 +373,7 @@ const LiquidGlassTabBar = ({
             {
               backgroundColor: isDarkTheme
                 ? "rgba(0,0,0,0.12)"
-                : IOS_26_OR_NEWER
+                : isLiquidGlassStyle
                 ? "rgba(255,255,255,0.08)"
                 : Platform.OS === "android"
                 ? "rgba(255,255,255,0.05)"
@@ -428,7 +420,7 @@ const LiquidGlassTabBar = ({
                 {
                   backgroundColor: isDarkTheme
                     ? "rgba(255,255,255,0.08)"
-                    : IOS_26_OR_NEWER
+                    : isLiquidGlassStyle
                     ? "rgba(255,255,255,0.18)"
                     : Platform.OS === "android"
                     ? "rgba(255,255,255,0.2)"
