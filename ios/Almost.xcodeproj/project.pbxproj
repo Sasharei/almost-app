@@ -19,6 +19,10 @@
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		C0A1B2C3D4E5F67890123458 /* WidgetStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A1B2C3D4E5F67890123456 /* WidgetStorage.swift */; };
 		C0A1B2C3D4E5F67890123459 /* WidgetStorageBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = C0A1B2C3D4E5F67890123457 /* WidgetStorageBridge.m */; };
+		D1A2B3C4D5E6F70123456789 /* LiquidGlassNativeViewManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A2B3C4D5E6F7012345678B /* LiquidGlassNativeViewManager.swift */; };
+		D1A2B3C4D5E6F7012345678A /* LiquidGlassNativeViewBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = D1A2B3C4D5E6F7012345678C /* LiquidGlassNativeViewBridge.m */; };
+		D2B3C4D5E6F70123456789AA /* NativeLiquidTabBarManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2B3C4D5E6F70123456789AC /* NativeLiquidTabBarManager.swift */; };
+		D2B3C4D5E6F70123456789AB /* NativeLiquidTabBarBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = D2B3C4D5E6F70123456789AD /* NativeLiquidTabBarBridge.m */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
 
@@ -61,6 +65,10 @@
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
 		C0A1B2C3D4E5F67890123456 /* WidgetStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WidgetStorage.swift; path = Almost/WidgetStorage.swift; sourceTree = "<group>"; };
 		C0A1B2C3D4E5F67890123457 /* WidgetStorageBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = WidgetStorageBridge.m; path = Almost/WidgetStorageBridge.m; sourceTree = "<group>"; };
+		D1A2B3C4D5E6F7012345678B /* LiquidGlassNativeViewManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiquidGlassNativeViewManager.swift; path = Almost/LiquidGlassNativeViewManager.swift; sourceTree = "<group>"; };
+		D1A2B3C4D5E6F7012345678C /* LiquidGlassNativeViewBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = LiquidGlassNativeViewBridge.m; path = Almost/LiquidGlassNativeViewBridge.m; sourceTree = "<group>"; };
+		D2B3C4D5E6F70123456789AC /* NativeLiquidTabBarManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NativeLiquidTabBarManager.swift; path = Almost/NativeLiquidTabBarManager.swift; sourceTree = "<group>"; };
+		D2B3C4D5E6F70123456789AD /* NativeLiquidTabBarBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = NativeLiquidTabBarBridge.m; path = Almost/NativeLiquidTabBarBridge.m; sourceTree = "<group>"; };
 		E184C9BDEF3BBB6B48471387 /* Pods-Almost.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Almost.debug.xcconfig"; path = "Target Support Files/Pods-Almost/Pods-Almost.debug.xcconfig"; sourceTree = "<group>"; };
 		E1A5AC99A45D86014A21E9B4 /* libPods-Almost.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Almost.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
@@ -113,13 +121,17 @@
 		};
 		13B07FAE1A68108700A75B9A /* Almost */ = {
 			isa = PBXGroup;
-			children = (
-				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
-				C0A1B2C3D4E5F67890123456 /* WidgetStorage.swift */,
-				C0A1B2C3D4E5F67890123457 /* WidgetStorageBridge.m */,
-				F11748442D0722820044C1D9 /* Almost-Bridging-Header.h */,
-				BB2F792B24A3F905000567C9 /* Supporting */,
-				13B07FB51A68108700A75B9A /* Images.xcassets */,
+				children = (
+					F11748412D0307B40044C1D9 /* AppDelegate.swift */,
+					C0A1B2C3D4E5F67890123456 /* WidgetStorage.swift */,
+					C0A1B2C3D4E5F67890123457 /* WidgetStorageBridge.m */,
+					D1A2B3C4D5E6F7012345678B /* LiquidGlassNativeViewManager.swift */,
+					D1A2B3C4D5E6F7012345678C /* LiquidGlassNativeViewBridge.m */,
+					D2B3C4D5E6F70123456789AC /* NativeLiquidTabBarManager.swift */,
+					D2B3C4D5E6F70123456789AD /* NativeLiquidTabBarBridge.m */,
+					F11748442D0722820044C1D9 /* Almost-Bridging-Header.h */,
+					BB2F792B24A3F905000567C9 /* Supporting */,
+					13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
 				46AFD3CF6A027E5B2C13D5DB /* PrivacyInfo.xcprivacy */,
@@ -510,15 +522,19 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		13B07F871A680F5B00A75B9A /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				C0A1B2C3D4E5F67890123458 /* WidgetStorage.swift in Sources */,
-				C0A1B2C3D4E5F67890123459 /* WidgetStorageBridge.m in Sources */,
-				4C844D10E6B33036DD700665 /* ExpoModulesProvider.swift in Sources */,
-			);
+			13B07F871A680F5B00A75B9A /* Sources */ = {
+				isa = PBXSourcesBuildPhase;
+				buildActionMask = 2147483647;
+				files = (
+					F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
+					C0A1B2C3D4E5F67890123458 /* WidgetStorage.swift in Sources */,
+					C0A1B2C3D4E5F67890123459 /* WidgetStorageBridge.m in Sources */,
+					D1A2B3C4D5E6F70123456789 /* LiquidGlassNativeViewManager.swift in Sources */,
+					D1A2B3C4D5E6F7012345678A /* LiquidGlassNativeViewBridge.m in Sources */,
+					D2B3C4D5E6F70123456789AA /* NativeLiquidTabBarManager.swift in Sources */,
+					D2B3C4D5E6F70123456789AB /* NativeLiquidTabBarBridge.m in Sources */,
+					4C844D10E6B33036DD700665 /* ExpoModulesProvider.swift in Sources */,
+				);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		415746982F48796A00EA9099 /* Sources */ = {

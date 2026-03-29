@@ -10,6 +10,7 @@
     "backend:dev": "cd backend && npm run dev",
     "backend:start": "cd backend && npm run start",
     "backend:tunnel": "bash scripts/start-backend-tunnel.sh",
+    "check:release": "bash scripts/verify-runtime-parity.sh",
     "postinstall": "node scripts/apply-patches.js",
     "version:bump": "node scripts/bump-version.js"
   },

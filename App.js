@@ -465,6 +465,8 @@ import {
   ANDROID_SOUND_KEY_GUARD_MS,
 } from "./src/constants/soundConfig";
 import PremiumPaywallModal from "./src/components/PremiumPaywallModal";
+import { PartyFireworksLayer, PartySparklesLayer } from "./src/components/PartyEffects";
+import LiquidGlassTabBar from "./src/components/LiquidGlassTabBar";
 import {
   buildDefaultPlanCards,
   buildPaywallCopy,
@@ -945,6 +947,12 @@ const parseMonetizationDateMs = (value = "") => {
 };
 const MONETIZATION_EXPERIMENT_ID = "monetization_paywall_v1";
 const MONETIZATION_EXPERIMENT_RC_KEY = "monetization_experiment_v1_config";
+const UI_REFRESH_ROLLOUT_RC_KEY = "ui_refresh_v1_enabled";
+const UI_REFRESH_ROLLOUT_DEFAULT_ENABLED = false;
+const normalizeUiRefreshRolloutFlag = (value = "") => {
+  const parsed = parseMonetizationBoolean(value);
+  return parsed === null ? UI_REFRESH_ROLLOUT_DEFAULT_ENABLED : parsed;
+};
 const MONETIZATION_EXPERIMENT_GROUPS = Object.freeze({
   A: "A",
   B: "B",
@@ -3603,167 +3611,6 @@ const CoinRainOverlay = React.memo(({ dropCount = 14, asset = null }) => {
   );
 });
 
-const PartyFirework = ({ color, size = 160, delay = 0, style }) => {
-  const scale = useRef(new Animated.Value(0.2)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    scale.setValue(0.2);
-    opacity.setValue(0);
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.delay(delay),
-        Animated.parallel([
-          Animated.timing(scale, {
-            toValue: 1,
-            duration: 1100,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-          Animated.sequence([
-            Animated.timing(opacity, {
-              toValue: 0.85,
-              duration: 220,
-              useNativeDriver: true,
-            }),
-            Animated.timing(opacity, {
-              toValue: 0,
-              duration: 880,
-              useNativeDriver: true,
-            }),
-          ]),
-        ]),
-        Animated.timing(scale, {
-          toValue: 0.2,
-          duration: 0,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [delay, opacity, scale]);
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        styles.partyFireworkRing,
-        style,
-        {
-          borderColor: color,
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          transform: [{ scale }],
-          opacity,
-        },
-      ]}
-    />
-  );
-};
-
-const PartyFireworksLayer = ({ isDarkMode = false }) => {
-  const palette = useMemo(
-    () => (isDarkMode ? PARTY_FIREWORK_COLORS.dark : PARTY_FIREWORK_COLORS.light),
-    [isDarkMode]
-  );
-  return (
-    <View pointerEvents="none" style={styles.partyFireworksOverlay}>
-      {PARTY_FIREWORK_CONFIGS.map((config, index) => (
-        <PartyFirework
-          key={`firework_${index}`}
-          color={palette[index % palette.length]}
-          size={config.size}
-          delay={config.delay}
-          style={{
-            top: config.top,
-            bottom: config.bottom,
-            left: config.left,
-            right: config.right,
-          }}
-        />
-      ))}
-    </View>
-  );
-};
-
-const PartySparklesLayer = React.memo(({ isDarkMode = false, count = 18 }) => {
-  const palette = useMemo(
-    () => (isDarkMode ? PARTY_FIREWORK_COLORS.dark : PARTY_FIREWORK_COLORS.light),
-    [isDarkMode]
-  );
-  const sparkles = useRef(
-    Array.from({ length: count }).map((_, idx) => ({
-      key: `party_sparkle_${idx}`,
-      anim: new Animated.Value(Math.random()),
-      size: 6 + Math.random() * 10,
-      top: `${6 + Math.random() * 54}%`,
-      left: `${8 + Math.random() * 84}%`,
-      duration: 900 + Math.random() * 900,
-      delay: Math.random() * 700,
-      colorIndex: idx,
-    }))
-  ).current;
-
-  useEffect(() => {
-    const loops = sparkles.map(({ anim, duration, delay }) => {
-      const animation = Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(anim, {
-            toValue: 1,
-            duration,
-            easing: Easing.out(Easing.quad),
-            useNativeDriver: true,
-          }),
-          Animated.timing(anim, {
-            toValue: 0,
-            duration: 0,
-            useNativeDriver: true,
-          }),
-        ])
-      );
-      animation.start();
-      return animation;
-    });
-    return () => loops.forEach((animation) => animation?.stop?.());
-  }, [sparkles]);
-
-  return (
-    <View pointerEvents="none" style={styles.partySparklesOverlay}>
-      {sparkles.map((sparkle) => {
-        const scale = sparkle.anim.interpolate({
-          inputRange: [0, 0.55, 1],
-          outputRange: [0.2, 1, 0.2],
-        });
-        const opacity = sparkle.anim.interpolate({
-          inputRange: [0, 0.2, 0.85, 1],
-          outputRange: [0, 0.9, 0.9, 0],
-        });
-        const color = palette[sparkle.colorIndex % palette.length];
-        return (
-          <Animated.View
-            key={sparkle.key}
-            pointerEvents="none"
-            style={[
-              styles.partySparkle,
-              {
-                top: sparkle.top,
-                left: sparkle.left,
-                width: sparkle.size,
-                height: sparkle.size,
-                borderRadius: sparkle.size / 2,
-                backgroundColor: color,
-                opacity,
-                transform: [{ scale }],
-              },
-            ]}
-          />
-        );
-      })}
-    </View>
-  );
-});
-
 const TAMAGOTCHI_IDLE_VARIANTS = ["idle", "idle", "curious", "follow", "speak"];
 const TAMAGOTCHI_STARVING_VARIANTS = ["cry", "cry", "sad", "ohno", "idle"];
 const TAMAGOTCHI_PLAY_DEPRIVED_VARIANTS = ["cry", "sad", "cry", "ohno", "sad"];
@@ -3851,6 +3698,8 @@ const PARTY_FIREWORK_COLORS = {
   light: ["#FFB457", "#FF6FD8", "#7CDAFF", "#FFD36E"],
   dark: ["#FFD685", "#FF8FF3", "#7DC6FF", "#9BFFDA"],
 };
+const PARTY_FIREWORK_RING_LOOP_ITERATIONS = 6;
+const PARTY_SPARKLE_LOOP_ITERATIONS = 10;
 const PARTY_SOUND_LOOP_MS = 1400;
 const PARTY_SOUND_SEQUENCE = [
   { at: 0, key: "party_beat" },
@@ -12102,19 +11951,14 @@ const DailyRewardButton = React.memo(
             </Text>
           </>
         ) : (
-          <>
-            <Text style={[styles.dailyRewardLockedIcon, { color: lockedText }]}>
-              🔒
-            </Text>
-            <Text
-              style={[styles.dailyRewardLockedLabel, { color: lockedText }]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.7}
-            >
-              {label}
-            </Text>
-          </>
+          <Text
+            style={[styles.dailyRewardLockedLabel, { color: lockedText }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+          >
+            {label}
+          </Text>
         )}
       </TouchableOpacity>
     );
@@ -13631,12 +13475,12 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
     }
   }, [isActive, runNextDrop]);
   const isAppActive = appState !== "background" && appState !== "inactive";
-  const sensorActive = isAppActive;
   const effectiveTiltSource = Accelerometer || tiltSource || DeviceMotion;
   const effectiveGyroSource = Gyroscope || gyroSource || DeviceMotion;
   const gyroEnabled = Boolean(effectiveGyroSource);
   const physicsEnabled = isActive && isAppActive;
   const shakeActive = isActive && shakeEnabled && isAppActive;
+  const sensorActive = physicsEnabled || shakeActive;
   useEffect(() => {
     if (!Accelerometer || !shakeActive) return;
     try {
@@ -13661,7 +13505,7 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
     return () => subscription?.remove?.();
   }, [shakeActive, triggerJiggle]);
   useEffect(() => {
-    if (!isAppActive) return;
+    if (!physicsEnabled) return;
     const activeTiltSource = effectiveTiltSource;
     if (!activeTiltSource) return;
     const requestPermissions = async () => {
@@ -13739,9 +13583,9 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
     return () => {
       subscription?.remove?.();
     };
-  }, [appState, effectiveTiltSource, isAppActive]);
+  }, [effectiveTiltSource, physicsEnabled]);
   useEffect(() => {
-    if (!gyroEnabled) return;
+    if (!physicsEnabled || !gyroEnabled) return;
     const activeGyroSource = effectiveGyroSource;
     if (!activeGyroSource) return;
     try {
@@ -13769,7 +13613,7 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
       gyroRef.current.z = next.z;
     });
     return () => subscription?.remove?.();
-  }, [effectiveGyroSource, gyroEnabled]);
+  }, [effectiveGyroSource, gyroEnabled, physicsEnabled]);
   useEffect(() => {
     if (!physicsEnabled) return;
     if (!coinsClipLayout.width || !coinsClipLayout.height) return;
@@ -14417,11 +14261,10 @@ const LockedFeatureOverlay = ({
     : Platform.OS === "android"
     ? "rgba(255,255,255,0.16)"
     : "rgba(255,255,255,0.7)";
-  const lockIconColor = premiumStyle ? premiumAccent : textColor;
   const badgeTextColor = premiumStyle ? premiumAccent : textColor;
   const premiumPillBackground = colorWithAlpha(premiumAccent, isDarkMode ? 0.24 : 0.14);
   const premiumPillBorder = colorWithAlpha(premiumAccent, isDarkMode ? 0.52 : 0.3);
-  const premiumBadgeText = unlockBadgeText ? `🔒 ${unlockBadgeText}` : "";
+  const premiumBadgeText = unlockBadgeText ? `${unlockBadgeText}` : "";
   const radiusStyle = Number.isFinite(borderRadius) ? { borderRadius } : null;
   const compactOverlayStyle = compact ? styles.lockedFeatureOverlayCompact : null;
   const compactContentStyle = compact ? styles.lockedFeatureOverlayContentCompact : null;
@@ -14429,14 +14272,12 @@ const LockedFeatureOverlay = ({
   const compactDescriptionStyle = compact ? styles.lockedFeatureDescriptionCompact : null;
   const compactBadgeStyle = compact ? styles.lockedFeatureLevelBadgeCompact : null;
   const compactBadgeTextStyle = compact ? styles.lockedFeatureLevelTextCompact : null;
-  const compactLockStyle = compact ? styles.lockedFeatureLockIconCompact : null;
   const centeredOverlayStyle = centered ? styles.lockedFeatureOverlayCentered : null;
   const centeredContentStyle = centered ? styles.lockedFeatureOverlayContentCentered : null;
   const centeredTitleStyle = centered ? styles.lockedFeatureTitleCentered : null;
   const centeredDescriptionStyle = centered ? styles.lockedFeatureDescriptionCentered : null;
   const centeredLockRowStyle = centered ? styles.lockedFeatureLockRowCentered : null;
   const centeredBadgeStyle = centered ? styles.lockedFeatureLevelBadgeCentered : null;
-  const centeredLockStyle = centered ? styles.lockedFeatureLockIconCentered : null;
   const androidBlurAmount = Math.max(8, Math.round((Number(blurIntensity) || 0) * 0.9));
   const blurIntensityValue = Platform.OS === "android" ? androidBlurAmount : blurIntensity;
   const androidBlurFallback = isDarkMode ? "#0B0B0B" : "#F2F2F2";
@@ -14484,9 +14325,7 @@ const LockedFeatureOverlay = ({
           style={[styles.lockedFeatureScrim, styles.lockedFeatureBlur, radiusStyle, { backgroundColor: overlayScrim }]}
         />
         <View style={[styles.lockedFeatureOverlayContent, compactContentStyle, centeredContentStyle]}>
-          <View style={[styles.lockedFeatureLockRow, centeredLockRowStyle]}>
-            <Text style={[styles.lockedFeatureLockIcon, compactLockStyle, centeredLockStyle, { color: lockIconColor }]}>🔒</Text>
-          </View>
+          <View style={[styles.lockedFeatureLockRow, centeredLockRowStyle]} />
           {premiumStyle ? (
             <View
               style={[
@@ -22318,7 +22157,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
               ]}
             >
               <Text style={[styles.budgetWidgetLockedBadgeText, { color: budgetPremiumAccent }]}>
-                {`🔒 ${t("featureLockedPremiumLabel")}`}
+                {t("featureLockedPremiumLabel")}
               </Text>
             </View>
           </TouchableOpacity>
@@ -26981,7 +26820,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
                     </View>
                     {reportsLockedState ? (
                       <Text style={[styles.profileActionLockedLabel, { color: reportsPremiumAccent }]}>
-                        {`🔒 ${reportsLockLabel}`}
+                        {reportsLockLabel}
                       </Text>
                     ) : reportsPreparingState ? (
                       <Text style={[styles.profileActionPreparingLabel, { color: colors.muted }]}>
@@ -27044,7 +26883,6 @@ const ProfileScreen = React.memo(function ProfileScreen({
                         }}
                       >
                         {option.label}
-                        {option.locked ? " 🔒" : ""}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -27606,6 +27444,11 @@ function AppContent() {
     useState(false);
   const monetizationExperimentAssigningRef = useRef(false);
   const monetizationExperimentBootstrappedRef = useRef(false);
+  const [uiRefreshRolloutEnabled, setUiRefreshRolloutEnabled] = useState(
+    UI_REFRESH_ROLLOUT_DEFAULT_ENABLED
+  );
+  const [uiRefreshRolloutHydrated, setUiRefreshRolloutHydrated] = useState(false);
+  const uiRefreshRolloutBootstrappedRef = useRef(false);
   const monetizationStartupBlockedLoggedRef = useRef(false);
   const monetizationLockActivationLoggedRef = useRef({
     trial_limit_reached: false,
@@ -29169,9 +29012,9 @@ function AppContent() {
   const isRomanceLocale = normalizedLanguageValue === "es" || normalizedLanguageValue === "fr";
   const isGermanLocale = normalizedLanguageValue === "de";
   const isCompactAndroid = IS_ANDROID_COMPACT;
-  const baseTabFontSize = Platform.OS === "ios" ? 11 : isCompactAndroid ? 10 : 12;
+  const baseTabFontSize = Platform.OS === "ios" ? 11 : isCompactAndroid ? 11 : 12;
   const tabLabelFontSize = Math.max(
-    9,
+    Platform.OS === "android" ? 10 : 9,
     baseTabFontSize - (isRomanceLocale ? 1 : 0) - (isGermanLocale ? 1 : 0)
   );
   const tabLabelTextTransform = isGermanLocale ? "none" : "uppercase";
@@ -35682,6 +35525,59 @@ function AppContent() {
       };
     }
   }, []);
+  const fetchUiRefreshRolloutFlag = useCallback(async () => {
+    const fallbackEnabled = UI_REFRESH_ROLLOUT_DEFAULT_ENABLED;
+    const client = getRemoteConfigClient();
+    if (!client) {
+      return {
+        enabled: fallbackEnabled,
+        result: "module_unavailable",
+        source: "default",
+      };
+    }
+    try {
+      await client.setDefaults({
+        [UI_REFRESH_ROLLOUT_RC_KEY]: String(fallbackEnabled),
+      });
+      await client.setConfigSettings({
+        minimumFetchIntervalMillis: __DEV__ ? 0 : 60 * 60 * 1000,
+        fetchTimeMillis: 10000,
+      });
+      const activated = await client.fetchAndActivate();
+      const rawValue = resolveNonEmptyString(client.getValue(UI_REFRESH_ROLLOUT_RC_KEY)?.asString?.() || "");
+      return {
+        enabled: normalizeUiRefreshRolloutFlag(rawValue),
+        result: activated ? "activated" : "cached",
+        source: "remote_config",
+      };
+    } catch (error) {
+      return {
+        enabled: fallbackEnabled,
+        result: "failed",
+        source: "default",
+      };
+    }
+  }, []);
+  useEffect(() => {
+    if (uiRefreshRolloutBootstrappedRef.current) return;
+    uiRefreshRolloutBootstrappedRef.current = true;
+    let cancelled = false;
+    const bootstrapUiRefreshRollout = async () => {
+      const remote = await fetchUiRefreshRolloutFlag();
+      if (cancelled) return;
+      setUiRefreshRolloutEnabled(remote.enabled);
+      setUiRefreshRolloutHydrated(true);
+    };
+    bootstrapUiRefreshRollout()
+      .catch(() => {
+        if (cancelled) return;
+        setUiRefreshRolloutEnabled(UI_REFRESH_ROLLOUT_DEFAULT_ENABLED);
+        setUiRefreshRolloutHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchUiRefreshRolloutFlag]);
   useEffect(() => {
     if (!premiumInstallIdHydrated) return;
     if (!monetizationExperimentHydrated) return;
@@ -45775,6 +45671,16 @@ useEffect(() => {
     }
     goToTab(tabKey);
   };
+  const resolveMainTabLabel = useCallback(
+    (tabKey) => {
+      if (tabKey === "feed") return t("feedTab");
+      if (tabKey === "cart") return t("wishlistTab");
+      if (tabKey === "pending") return t("pendingTab");
+      if (tabKey === "purchases") return t("purchasesTitle");
+      return t("profileTab");
+    },
+    [t]
+  );
 
   const handleTabHistoryBack = useCallback(() => {
     const history = tabHistoryRef.current;
@@ -58028,155 +57934,32 @@ useEffect(() => {
             </TouchableWithoutFeedback>
           </Modal>
         )}
-        <View
-          style={[
-            styles.tabBar,
-            tutorialIsTemptation && styles.tabBarDimmed,
-            {
-              backgroundColor: isProTheme ? "#F3F5FF" : colors.card,
-              borderTopColor: isProTheme ? colorWithAlpha(proThemeAccentColor, 0.32) : colors.border,
-              paddingBottom: tabBarBottomInset + (Platform.OS === "android" ? androidTabBarExtra : 0),
-              marginBottom: Platform.OS === "ios" ? -(safeAreaInsets.bottom || 0) : 0,
-              paddingTop: tabBarTopPadding,
-            },
-          ]}
+        <LiquidGlassTabBar
+          availableTabs={availableTabs}
+          activeTab={activeTab}
+          onTabPress={handleTabChange}
           onLayout={handleTabBarLayout}
-        >
-          {availableTabs.map((tab) => {
-            const isHighlighted =
-              !tutorialIsTemptation && !!tutorialHighlightTabs?.has(tab);
-            const isActiveTab = activeTab === tab;
-            const isTabLocked =
-              (tab === "pending" && !thinkingUnlocked) ||
-              (tab === "purchases" && !rewardsUnlocked);
-            const highlightBackground = isDarkTheme
-              ? "rgba(255,255,255,0.2)"
-              : isProTheme
-              ? colorWithAlpha(proThemeAccentColor, 0.16)
-              : "#FFFFFF";
-            const highlightTextColor = isDarkTheme ? "#05070D" : isProTheme ? "#1C2F86" : colors.text;
-            const defaultTextColor = isActiveTab ? (isProTheme ? proThemeAccentColor : colors.text) : colors.muted;
-            const textColor = isHighlighted ? highlightTextColor : defaultTextColor;
-            const highlightBorderColor = isDarkTheme
-              ? "rgba(255,255,255,0.4)"
-              : isProTheme
-              ? colorWithAlpha(proThemeAccentColor, 0.44)
-              : "rgba(0,0,0,0.08)";
-            const tabBadgeBackground = isDarkTheme ? "#FEE5A8" : isProTheme ? proThemeAccentColor : colors.text;
-            const tabBadgeTextColor = isDarkTheme ? "#05070D" : isProTheme ? "#FFFFFF" : colors.background;
-            return (
-              <TouchableOpacity
-                key={tab}
-                style={[
-                  styles.tabButton,
-                  isHighlighted && styles.tabButtonHighlight,
-                  isHighlighted && {
-                    borderColor: highlightBorderColor,
-                    backgroundColor: highlightBackground,
-                  },
-                  isCompactAndroid && { paddingVertical: tabButtonVerticalPadding },
-                ]}
-                onPress={() => handleTabChange(tab)}
-              >
-                <Text
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.72}
-                  ellipsizeMode="clip"
-                  style={[
-                    styles.tabButtonText,
-                    {
-                      color: textColor,
-                      fontWeight: isActiveTab || isHighlighted ? "700" : "500",
-                      fontSize: tabLabelFontSize,
-                      marginTop: tabLabelTopMargin,
-                      textTransform: tabLabelTextTransform,
-                    },
-                  ]}
-                >
-                  {tab === "feed"
-                    ? t("feedTab")
-                    : tab === "cart"
-                    ? t("wishlistTab")
-                    : tab === "pending"
-                    ? t("pendingTab")
-                    : tab === "purchases"
-                    ? t("purchasesTitle")
-                    : t("profileTab")}
-                </Text>
-                {isTabLocked && (
-                  <Text
-                    style={[
-                      styles.tabLockIconOverlay,
-                      isCompactAndroid && styles.tabLockIconOverlayCompact,
-                      { color: textColor },
-                    ]}
-                  >
-                    🔒
-                  </Text>
-                )}
-                {tab === "cart" && challengeRewardsBadgeCount > 0 && challengesUnlocked && (
-                  <View
-                    style={[
-                      styles.tabBadge,
-                      styles.tabBadgeFloating,
-                      {
-                        backgroundColor: tabBadgeBackground,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.tabBadgeText,
-                        { color: tabBadgeTextColor },
-                      ]}
-                    >
-                      {challengeRewardsBadgeCount > 99 ? "99+" : `${challengeRewardsBadgeCount}`}
-                    </Text>
-                  </View>
-                )}
-                {tab === "purchases" && rewardsBadgeCount > 0 && rewardsUnlocked && (
-                  <View
-                    style={[
-                      styles.tabBadge,
-                      styles.tabBadgeFloating,
-                      {
-                        backgroundColor: tabBadgeBackground,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.tabBadgeText,
-                        { color: tabBadgeTextColor },
-                      ]}
-                    >
-                      {rewardsBadgeCount > 99 ? "99+" : `${rewardsBadgeCount}`}
-                    </Text>
-                  </View>
-                )}
-                {tab === "profile" && reportsBadgeVisible && reportsUnlocked && (
-                  <View
-                    style={[
-                      styles.tabBadge,
-                      styles.tabBadgeFloating,
-                      { backgroundColor: tabBadgeBackground },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.tabBadgeText,
-                        { color: tabBadgeTextColor },
-                      ]}
-                    >
-                      1
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+          getLabel={resolveMainTabLabel}
+          isDarkTheme={isDarkTheme}
+          isProTheme={isProTheme}
+          proThemeAccentColor={proThemeAccentColor}
+          tutorialIsTemptation={tutorialIsTemptation}
+          tutorialHighlightTabs={tutorialHighlightTabs}
+          isCompactAndroid={isCompactAndroid}
+          tabLabelFontSize={tabLabelFontSize}
+          tabLabelTopMargin={tabLabelTopMargin}
+          tabLabelTextTransform={tabLabelTextTransform}
+          tabBarBottomInset={tabBarBottomInset}
+          tabBarTopPadding={tabBarTopPadding}
+          androidTabBarExtra={androidTabBarExtra}
+          safeAreaBottom={safeAreaInsets.bottom || 0}
+          rewardsUnlocked={rewardsUnlocked}
+          challengesUnlocked={challengesUnlocked}
+          challengeRewardsBadgeCount={challengeRewardsBadgeCount}
+          rewardsBadgeCount={rewardsBadgeCount}
+          reportsBadgeVisible={reportsBadgeVisible}
+          reportsUnlocked={reportsUnlocked}
+        />
 
         {!startupHardLockPendingBeforePaywall &&
           !premiumPaywallState.visible &&
@@ -58877,10 +58660,26 @@ useEffect(() => {
                 },
               ]}
             />
-            {partyActive && (
+            {partyActive &&
+              (uiRefreshRolloutHydrated
+                ? uiRefreshRolloutEnabled
+                : UI_REFRESH_ROLLOUT_DEFAULT_ENABLED) && (
               <>
-                <PartyFireworksLayer isDarkMode={isDarkTheme} />
-                <PartySparklesLayer isDarkMode={isDarkTheme} />
+                <PartyFireworksLayer
+                  isDarkMode={isDarkTheme}
+                  paletteByTheme={PARTY_FIREWORK_COLORS}
+                  configs={PARTY_FIREWORK_CONFIGS}
+                  overlayStyle={styles.partyFireworksOverlay}
+                  ringStyle={styles.partyFireworkRing}
+                  ringLoopIterations={PARTY_FIREWORK_RING_LOOP_ITERATIONS}
+                />
+                <PartySparklesLayer
+                  isDarkMode={isDarkTheme}
+                  paletteByTheme={PARTY_FIREWORK_COLORS}
+                  overlayStyle={styles.partySparklesOverlay}
+                  sparkleStyle={styles.partySparkle}
+                  loopIterations={PARTY_SPARKLE_LOOP_ITERATIONS}
+                />
                 <CoinRainOverlay dropCount={12} />
               </>
             )}
@@ -59092,7 +58891,7 @@ useEffect(() => {
                               { backgroundColor: colors.card, borderColor: colors.border },
                             ]}
                           >
-                            <Text style={styles.skinPickerLockText}>🔒</Text>
+                            <Text style={styles.skinPickerLockText}>PRO</Text>
                           </View>
                         )}
                       </TouchableOpacity>
@@ -84550,6 +84349,8 @@ const UsageStreakWeeklyRewardCelebration = ({
   const catFloat = useRef(new Animated.Value(0)).current;
   const shineSweep = useRef(new Animated.Value(-1)).current;
   const didHapticRef = useRef(false);
+  const loopIterations = 8;
+  const spinIterations = 3;
 
   useEffect(() => {
     Animated.parallel([
@@ -84587,7 +84388,8 @@ const UsageStreakWeeklyRewardCelebration = ({
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
-      ])
+      ]),
+      { iterations: loopIterations }
     );
     const tilt = Animated.loop(
       Animated.sequence([
@@ -84603,7 +84405,8 @@ const UsageStreakWeeklyRewardCelebration = ({
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
-      ])
+      ]),
+      { iterations: loopIterations }
     );
     const spin = Animated.loop(
       Animated.timing(haloSpin, {
@@ -84611,7 +84414,8 @@ const UsageStreakWeeklyRewardCelebration = ({
         duration: 7200,
         easing: Easing.linear,
         useNativeDriver: true,
-      })
+      }),
+      { iterations: spinIterations }
     );
     const glow = Animated.loop(
       Animated.sequence([
@@ -84627,7 +84431,8 @@ const UsageStreakWeeklyRewardCelebration = ({
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
-      ])
+      ]),
+      { iterations: loopIterations }
     );
     const float = Animated.loop(
       Animated.sequence([
@@ -84643,7 +84448,8 @@ const UsageStreakWeeklyRewardCelebration = ({
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
-      ])
+      ]),
+      { iterations: loopIterations }
     );
     const shine = Animated.loop(
       Animated.sequence([
@@ -84659,7 +84465,8 @@ const UsageStreakWeeklyRewardCelebration = ({
           duration: 0,
           useNativeDriver: true,
         }),
-      ])
+      ]),
+      { iterations: loopIterations }
     );
 
     coinPulse.start();
@@ -84686,7 +84493,9 @@ const UsageStreakWeeklyRewardCelebration = ({
     entryTranslate,
     glowPulse,
     haloSpin,
+    loopIterations,
     shineSweep,
+    spinIterations,
   ]);
 
   useEffect(() => {
@@ -85739,6 +85548,7 @@ const UsageStreakRestorePrompt = ({
   const bubbleBg = isDarkTheme ? "rgba(9,10,14,0.92)" : "#FFFFFF";
   const bubbleBorder = isDarkTheme ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.08)";
   const restorePulse = useRef(new Animated.Value(1)).current;
+  const restorePulseIterations = 10;
   useEffect(() => {
     if (!shouldOfferRestore) return undefined;
     const pulse = Animated.loop(
@@ -85753,11 +85563,12 @@ const UsageStreakRestorePrompt = ({
           duration: 420,
           useNativeDriver: true,
         }),
-      ])
+      ]),
+      { iterations: restorePulseIterations }
     );
     pulse.start();
     return () => pulse.stop();
-  }, [restorePulse, shouldOfferRestore]);
+  }, [restorePulse, restorePulseIterations, shouldOfferRestore]);
   const handleRestorePress = useCallback(() => {
     if (!shouldOfferRestore) return;
     if (!canRestore || typeof onRestore !== "function") return;
