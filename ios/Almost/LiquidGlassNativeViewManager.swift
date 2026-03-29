@@ -133,40 +133,11 @@ class LiquidGlassNativeView: UIView {
   }
 
   private func makeNativeLiquidGlassEffectIfAvailable() -> UIVisualEffect? {
-    guard ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 else {
-      return nil
+    if #available(iOS 26.0, *) {
+      let effect = UIGlassEffect(style: .regular)
+      effect.isInteractive = true
+      return effect
     }
-
-    guard let glassClass = NSClassFromString("UIGlassEffect") as? NSObject.Type else {
-      return nil
-    }
-
-    let classObject: AnyObject = glassClass
-    let directSelectors = [
-      NSSelectorFromString("effect"),
-      NSSelectorFromString("defaultEffect"),
-      NSSelectorFromString("glassEffect"),
-    ]
-
-    for selector in directSelectors {
-      guard classObject.responds(to: selector) else { continue }
-      if let unmanaged = classObject.perform(selector),
-         let effect = unmanaged.takeUnretainedValue() as? UIVisualEffect {
-        return effect
-      }
-    }
-
-    let styleSelector = NSSelectorFromString("effectWithStyle:")
-    if classObject.responds(to: styleSelector) {
-      let styleCandidates: [AnyObject] = [NSNumber(value: 0), NSString(string: "regular")]
-      for style in styleCandidates {
-        if let unmanaged = classObject.perform(styleSelector, with: style),
-           let effect = unmanaged.takeUnretainedValue() as? UIVisualEffect {
-          return effect
-        }
-      }
-    }
-
     return nil
   }
 }

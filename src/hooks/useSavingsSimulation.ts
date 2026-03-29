@@ -1,39 +1,43 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { calcPotentialSaved } from "../utils/savingsSimulation";
 
-const UPDATE_INTERVAL_MS = 1000; // Tick every second so cents keep moving.
-const MIN_VALUE_DELTA = 0.01;
-const roundToCents = (value: number) => Math.round(value * 100) / 100;
+const roundPotentialValue = (value: number) => Math.round(value * 1_000_000) / 1_000_000;
+
+type SavingsSimulationOptions = {
+  enabled?: boolean;
+  updateIntervalMs?: number;
+};
 
 export function useSavingsSimulation(
   baselineMonthlyWaste: number | null,
-  baselineStartAt: string | null
+  baselineStartAt: string | null,
+  spentLossUSD: number | null = 0,
+  options: SavingsSimulationOptions = {}
 ) {
-  const [potentialSaved, setPotentialSaved] = useState(0);
-  const latestValueRef = useRef(0);
+  const enabled = options.enabled !== false;
+  const updateIntervalMs = Math.max(16, Number(options.updateIntervalMs) || 40);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
+    if (!enabled || !baselineMonthlyWaste || !baselineStartAt) return undefined;
+    setNowMs(Date.now());
+    const intervalId = setInterval(() => {
+      setNowMs(Date.now());
+    }, updateIntervalMs);
+    return () => clearInterval(intervalId);
+  }, [baselineMonthlyWaste, baselineStartAt, enabled, updateIntervalMs]);
+
+  return useMemo(() => {
     if (!baselineMonthlyWaste || !baselineStartAt) {
-      if (latestValueRef.current !== 0) {
-        latestValueRef.current = 0;
-        setPotentialSaved(0);
-      }
-      return;
+      return 0;
     }
-
-    const update = () => {
-      const nextValue = roundToCents(calcPotentialSaved(baselineMonthlyWaste, baselineStartAt));
-      if (Math.abs(nextValue - latestValueRef.current) < MIN_VALUE_DELTA) {
-        return;
-      }
-      latestValueRef.current = nextValue;
-      setPotentialSaved(nextValue);
-    };
-
-    update();
-    const id = setInterval(update, UPDATE_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [baselineMonthlyWaste, baselineStartAt]);
-
-  return potentialSaved;
+    return roundPotentialValue(
+      calcPotentialSaved(
+        baselineMonthlyWaste,
+        baselineStartAt,
+        new Date(nowMs),
+        Math.max(0, Number(spentLossUSD) || 0)
+      )
+    );
+  }, [baselineMonthlyWaste, baselineStartAt, nowMs, spentLossUSD]);
 }
