@@ -104,6 +104,7 @@ import { useSavingsSimulation } from "./src/hooks/useSavingsSimulation";
 import { calcPotentialSaved, calcSpentLossInCurrentMonth } from "./src/utils/savingsSimulation";
 import { TRANSLATIONS } from "./src/constants/translations";
 import { DEFAULT_TEMPTATIONS } from "./src/constants/temptations";
+import { TAMAGOTCHI_CRY_ASSET } from "./src/constants/tamagotchiCryAsset";
 import { PRIVACY_LINKS, TERMS_LINKS, TERMS_POINTS } from "./src/constants/legal";
 import {
   COIN_VALUE_MODAL_STATUS,
@@ -1967,7 +1968,7 @@ const resolveBundledAssetUri = (source) => {
     return null;
   }
 };
-const TAMAGOTCHI_CRY_GIF_URI = resolveBundledAssetUri(require("./assets/Cat_cry.gif"));
+const TAMAGOTCHI_CRY_GIF_URI = resolveBundledAssetUri(TAMAGOTCHI_CRY_ASSET);
 
 const buildTemptationPressureMap = (events = []) => {
   const map = {};
@@ -7473,8 +7474,13 @@ const mergeInteractionStatMaps = (base = {}, incoming = {}) => {
 };
 
 const useFadeIn = () => {
-  const fade = useRef(new Animated.Value(0)).current;
+  const fade = useRef(new Animated.Value(Platform.OS === "android" ? 1 : 0)).current;
   useEffect(() => {
+    if (Platform.OS === "android") {
+      fade.stopAnimation?.();
+      fade.setValue(1);
+      return;
+    }
     fade.setValue(0);
     Animated.spring(fade, {
       toValue: 1,
@@ -33176,6 +33182,7 @@ function AppContent() {
   ]);
 
   const animateOnboardingStepChange = useCallback(() => {
+    if (Platform.OS === "android") return;
     LayoutAnimation.configureNext({
       duration: 320,
       create: {
@@ -75430,6 +75437,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     zIndex: 5,
   },
+  onboardGoalCalcProgressSlot: {
+    width: Math.min(SCREEN_WIDTH - BASE_HORIZONTAL_PADDING * 2, 286),
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 8,
+  },
   onboardGoalCalcProgressFill: {
     height: "100%",
     borderRadius: 999,
@@ -75511,9 +75525,12 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   onboardGoalCalcTargetBadgeProgressSlot: {
-    alignSelf: "center",
-    marginTop: -4,
-    marginBottom: 2,
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    marginTop: 0,
+    marginBottom: 0,
     zIndex: 8,
   },
   onboardGoalCalcTargetBadgeText: {
@@ -76088,6 +76105,7 @@ function OnboardingNotificationsScreen({
   mascotHappySource,
   bottomInset = 0,
 }) {
+  const isAndroid = Platform.OS === "android";
   const onboardingPlaySound = useContext(OnboardingSoundContext);
   const fade = useFadeIn();
   const happySource = mascotHappySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
@@ -76340,8 +76358,8 @@ function OnboardingNotificationsScreen({
         useNativeDriver: false,
       }),
       Animated.timing(calculationSpin, {
-        toValue: 1,
-        duration: 2700,
+        toValue: isAndroid ? 0 : 1,
+        duration: isAndroid ? 0 : 2700,
         easing: Easing.in(Easing.cubic),
         useNativeDriver: true,
       }),
@@ -76363,12 +76381,16 @@ function OnboardingNotificationsScreen({
       setShowCalculationResult(true);
       setShowCalculationConfetti(true);
       setCalculationReadyForTap(true);
-      Animated.timing(calculationReveal, {
-        toValue: 1,
-        duration: 420,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }).start();
+      if (isAndroid) {
+        calculationReveal.setValue(1);
+      } else {
+        Animated.timing(calculationReveal, {
+          toValue: 1,
+          duration: 420,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }).start();
+      }
       Animated.timing(calculationResultFade, {
         toValue: 1,
         duration: 360,
@@ -76397,6 +76419,7 @@ function OnboardingNotificationsScreen({
     calculationReveal,
     calculationSpin,
     estimatedDays,
+    isAndroid,
     showCalculationIntro,
   ]);
   useEffect(() => {
@@ -76550,6 +76573,7 @@ function OnboardingNotificationsScreen({
     inputRange: [0, 1],
     outputRange: ["0deg", "1080deg"],
   });
+  const calcEmojiRotate = isAndroid ? "0deg" : calcEmojiSpin;
   const calcGlowScale = calculationProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [0.92, 1.2],
@@ -76617,6 +76641,11 @@ function OnboardingNotificationsScreen({
     inputRange: [0, 1],
     outputRange: [14, 0],
   });
+  const introPhaseOpacity = calculationResultFade.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0],
+  });
+  const resultPhaseOpacity = calculationResultFade;
   const fallbackCalcCenterX = SCREEN_WIDTH / 2;
   const fallbackCalcCenterY = SCREEN_HEIGHT * 0.33;
   const calcCenterX = Number.isFinite(Number(calcCenterLayout?.x))
@@ -76654,6 +76683,9 @@ function OnboardingNotificationsScreen({
       ? animatedEstimatedDays || ONBOARDING_GOAL_ESTIMATE_MIN_DAYS
       : estimatedDays
   );
+  const canShowTargetBadge = resolvedGoalAmount !== "—";
+  const progressTrackOpacity = canShowTargetBadge ? introPhaseOpacity : 1;
+  const targetBadgeOpacity = canShowTargetBadge ? resultPhaseOpacity : 0;
   const calcCompletedPalette = showCalculationResult
     ? {
         ringTrack: "rgba(212,170,82,0.26)",
@@ -76770,18 +76802,30 @@ function OnboardingNotificationsScreen({
                   strokeWidth="11"
                   fill="none"
                 />
-                <AnimatedSvgCircle
-                  cx="106"
-                  cy="106"
-                  r={ringRadius}
-                  stroke={calcCompletedPalette.ringProgress}
-                  strokeWidth="11"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeDasharray={`${ringCircumference}, ${ringCircumference}`}
-                  strokeDashoffset={calcProgressStrokeDashoffset}
-                  transform="rotate(-90 106 106)"
-                />
+                {isAndroid ? (
+                  <SvgCircle
+                    cx="106"
+                    cy="106"
+                    r={ringRadius}
+                    stroke={calcCompletedPalette.ringProgress}
+                    strokeWidth="11"
+                    fill="none"
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  <AnimatedSvgCircle
+                    cx="106"
+                    cy="106"
+                    r={ringRadius}
+                    stroke={calcCompletedPalette.ringProgress}
+                    strokeWidth="11"
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeDasharray={`${ringCircumference}, ${ringCircumference}`}
+                    strokeDashoffset={calcProgressStrokeDashoffset}
+                    transform="rotate(-90 106 106)"
+                  />
+                )}
               </Svg>
             </Animated.View>
             <Animated.View
@@ -76790,39 +76834,39 @@ function OnboardingNotificationsScreen({
                 {
                   borderColor: calcCompletedPalette.centerBorder,
                   backgroundColor: calcCompletedPalette.centerBackground,
-                  transform: [{ scale: calcEmojiScale }, { rotate: calcEmojiSpin }],
+                  transform: [{ scale: calcEmojiScale }, { rotate: calcEmojiRotate }],
                 },
               ]}
             >
-              <AnimatedText
-                style={[
-                  styles.onboardGoalCalcEmoji,
-                  styles.onboardGoalCalcEmojiSilhouette,
-                  { opacity: calculationReveal.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) },
-                ]}
-              >
-                {resolvedGoalEmoji}
-              </AnimatedText>
-              <AnimatedText style={[styles.onboardGoalCalcEmoji, { opacity: calculationReveal }]}>
-                {resolvedGoalEmoji}
-              </AnimatedText>
+              {isAndroid ? (
+                <Text style={styles.onboardGoalCalcEmoji}>{resolvedGoalEmoji}</Text>
+              ) : (
+                <>
+                  <AnimatedText
+                    style={[
+                      styles.onboardGoalCalcEmoji,
+                      styles.onboardGoalCalcEmojiSilhouette,
+                      { opacity: calculationReveal.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) },
+                    ]}
+                  >
+                    {resolvedGoalEmoji}
+                  </AnimatedText>
+                  <AnimatedText style={[styles.onboardGoalCalcEmoji, { opacity: calculationReveal }]}>
+                    {resolvedGoalEmoji}
+                  </AnimatedText>
+                </>
+              )}
             </Animated.View>
           </View>
-          {showCalculationResult && resolvedGoalAmount !== "—" ? (
+          <View style={styles.onboardGoalCalcProgressSlot} pointerEvents="none">
             <Animated.View
               style={[
-                styles.onboardGoalCalcTargetBadge,
-                styles.onboardGoalCalcTargetBadgeProgressSlot,
-                { opacity: calculationResultFade },
+                styles.onboardGoalCalcProgressTrack,
+                {
+                  backgroundColor: calcCompletedPalette.progressTrack,
+                  opacity: progressTrackOpacity,
+                },
               ]}
-              pointerEvents="none"
-            >
-              <Text style={styles.onboardGoalCalcTargetBadgeText}>{calculationTargetLabel}</Text>
-            </Animated.View>
-          ) : (
-            <View
-              style={[styles.onboardGoalCalcProgressTrack, { backgroundColor: calcCompletedPalette.progressTrack }]}
-              pointerEvents="none"
             >
               <Animated.View
                 style={[
@@ -76830,8 +76874,17 @@ function OnboardingNotificationsScreen({
                   { width: calcProgressFillWidth, backgroundColor: calcCompletedPalette.progressFill },
                 ]}
               />
-            </View>
-          )}
+            </Animated.View>
+            <Animated.View
+              style={[
+                styles.onboardGoalCalcTargetBadge,
+                styles.onboardGoalCalcTargetBadgeProgressSlot,
+                { opacity: targetBadgeOpacity },
+              ]}
+            >
+              <Text style={styles.onboardGoalCalcTargetBadgeText}>{calculationTargetLabel}</Text>
+            </Animated.View>
+          </View>
           <View style={styles.onboardGoalCalcChipRow} pointerEvents="none">
             {calcChipCopy.map((chip) => (
               <View key={chip} style={styles.onboardGoalCalcChip}>
@@ -76895,29 +76948,26 @@ function OnboardingNotificationsScreen({
               );
             })}
           </View>
-          {showCalculationResult ? (
-            <Animated.View style={[styles.onboardGoalCalcResultWrap, { opacity: calculationResultFade }]}>
-              <Text style={styles.onboardGoalCalcResultPrefix}>{calculationResultPrefix}</Text>
-              <AnimatedText
-                style={[
-                  styles.onboardGoalCalcResultValue,
-                  { transform: [{ translateY: calcDaysTranslateY }, { scale: calcDaysScale }] },
-                ]}
-              >
-                {`${displayedDaysValue} ${calculationResultDaysWord}`}
-              </AnimatedText>
-              <Text style={styles.onboardGoalCalcResultSuffix}>{calculationResultSuffix}</Text>
-            </Animated.View>
-          ) : (
-            <Text style={styles.onboardGoalCalcTitle}>{calculationTitle}</Text>
-          )}
+          <Animated.View style={[styles.onboardGoalCalcResultWrap, { opacity: resultPhaseOpacity }]}>
+            <Text style={styles.onboardGoalCalcResultPrefix}>{calculationResultPrefix}</Text>
+            <AnimatedText
+              style={[
+                styles.onboardGoalCalcResultValue,
+                { transform: [{ translateY: calcDaysTranslateY }, { scale: calcDaysScale }] },
+              ]}
+            >
+              {`${displayedDaysValue} ${calculationResultDaysWord}`}
+            </AnimatedText>
+            <Text style={styles.onboardGoalCalcResultSuffix}>{calculationResultSuffix}</Text>
+          </Animated.View>
+          {!showCalculationResult && <Text style={styles.onboardGoalCalcTitle}>{calculationTitle}</Text>}
           <AnimatedText
-            style={[styles.onboardGoalCalcHint, { opacity: showCalculationResult ? calculationResultFade : 1 }]}
+            style={[styles.onboardGoalCalcHint, { opacity: showCalculationResult ? resultPhaseOpacity : 1 }]}
           >
             {showCalculationResult ? calculationHint : notifyBody}
           </AnimatedText>
           {showCalculationResult && (
-            <AnimatedText style={[styles.onboardGoalCalcTapHint, { opacity: calculationResultFade }]}>
+            <AnimatedText style={[styles.onboardGoalCalcTapHint, { opacity: resultPhaseOpacity }]}>
               {calculationTapHint}
             </AnimatedText>
           )}
@@ -77990,6 +78040,7 @@ function CustomHabitScreen({
     };
   }, [flushPendingManualScroll, manualMode]);
   useEffect(() => {
+    if (Platform.OS === "android") return undefined;
     if (manualMode || presetsWithOverrides.length <= 1) return undefined;
     if (introWheelNudgePlayedRef.current) return undefined;
     introWheelNudgePlayedRef.current = true;

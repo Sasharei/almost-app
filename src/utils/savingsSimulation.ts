@@ -6,6 +6,8 @@ type HistorySpendEvent = {
   };
 };
 
+const POTENTIAL_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
 const resolveEventTimestamp = (value: number | string | undefined): number => {
   const numeric = Number(value);
   if (Number.isFinite(numeric) && numeric > 0) return numeric;
@@ -16,6 +18,13 @@ const resolveEventTimestamp = (value: number | string | undefined): number => {
   return 0;
 };
 
+const resolveBaselineTimestamp = (baselineStartAt: string | null | undefined): number => {
+  if (!baselineStartAt) return 0;
+  const baselineStart = new Date(baselineStartAt).getTime();
+  if (!Number.isFinite(baselineStart) || baselineStart <= 0) return 0;
+  return baselineStart;
+};
+
 export function calcSpentLossInCurrentMonth(
   historyEvents: HistorySpendEvent[] | null | undefined,
   baselineStartAt: string | null | undefined,
@@ -24,20 +33,18 @@ export function calcSpentLossInCurrentMonth(
   if (!Array.isArray(historyEvents) || historyEvents.length === 0) {
     return 0;
   }
+  const baselineTimestamp = resolveBaselineTimestamp(baselineStartAt);
+  if (!baselineTimestamp) return 0;
   const nowTimestamp = now.getTime();
-  if (!Number.isFinite(nowTimestamp) || nowTimestamp <= 0) return 0;
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
-  const baselineTimestamp = baselineStartAt ? new Date(baselineStartAt).getTime() : 0;
-  const hasBaselineFilter = Number.isFinite(baselineTimestamp) && baselineTimestamp > 0;
+  if (!Number.isFinite(nowTimestamp) || nowTimestamp <= 0 || nowTimestamp < baselineTimestamp) {
+    return 0;
+  }
 
   return historyEvents.reduce((sum, event) => {
     if (!event || event.kind !== "spend") return sum;
     const timestamp = resolveEventTimestamp(event.timestamp);
     if (!Number.isFinite(timestamp) || timestamp <= 0 || timestamp > nowTimestamp) return sum;
-    if (hasBaselineFilter && timestamp < baselineTimestamp) return sum;
-    const eventDate = new Date(timestamp);
-    if (eventDate.getFullYear() !== currentYear || eventDate.getMonth() !== currentMonth) return sum;
+    if (timestamp < baselineTimestamp) return sum;
     const amount = Math.max(0, Number(event.meta?.amountUSD) || 0);
     if (!amount) return sum;
     return sum + amount;
@@ -54,38 +61,18 @@ export function calcPotentialSaved(
 ): number {
   if (!baselineMonthlyWaste || !baselineStartAt) return 0;
 
-  const baselineStart = new Date(baselineStartAt).getTime();
-  const current = now.getTime();
-  if (Number.isNaN(baselineStart) || current < baselineStart) return 0;
+  const baselineStart = resolveBaselineTimestamp(baselineStartAt);
+  if (!baselineStart) return 0;
+  const nowTimestamp = now.getTime();
+  if (!Number.isFinite(nowTimestamp) || nowTimestamp <= 0 || nowTimestamp < baselineStart) {
+    return 0;
+  }
 
   const monthlyPotential = Math.max(0, Number(baselineMonthlyWaste) || 0);
   const normalizedSpentLoss = Math.max(0, Number(spentLossUSD) || 0);
   if (monthlyPotential <= 0) return 0;
 
-  const nowDate = new Date(current);
-  const monthStart = new Date(
-    nowDate.getFullYear(),
-    nowDate.getMonth(),
-    1,
-    0,
-    0,
-    0,
-    0
-  ).getTime();
-  const nextMonthStart = new Date(
-    nowDate.getFullYear(),
-    nowDate.getMonth() + 1,
-    1,
-    0,
-    0,
-    0,
-    0
-  ).getTime();
-
-  const effectiveStart = Math.max(monthStart, baselineStart);
-  const monthWindowMs = Math.max(1, nextMonthStart - effectiveStart);
-  const elapsedMs = Math.max(0, Math.min(current - effectiveStart, monthWindowMs));
-  const generatedPotential = monthlyPotential * (elapsedMs / monthWindowMs);
-
+  const elapsedMs = Math.max(0, nowTimestamp - baselineStart);
+  const generatedPotential = monthlyPotential * (elapsedMs / POTENTIAL_WINDOW_MS);
   return Math.max(0, generatedPotential - normalizedSpentLoss);
 }

@@ -138,6 +138,7 @@ export const STORAGE_KEYS = {
   DAILY_SAVE_LIMIT: "@almost_daily_save_limit",
   POTENTIAL_PUSH_PROGRESS: "@almost_potential_push_progress",
   POTENTIAL_LOSS_PROGRESS: "@almost_potential_loss_progress",
+  POTENTIAL_HINT_SHOWN_DAY_KEY: "@almost_potential_hint_shown_day_key",
   PUSH_NOTIFICATIONS_ENABLED_LOGGED: "@almost_push_notifications_enabled_logged",
   HOME_WIDGET_INSTALLED_LOGGED: "@almost_home_widget_installed_logged",
   PUSH_DAY_THREE_PROMPT: "@almost_push_day_three_prompt",

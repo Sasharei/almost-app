@@ -915,6 +915,10 @@ const GROUP_C_SUPPORT_PLAN_SUBTITLE_BY_LANGUAGE = {
   ar: "Premium يفتح أدوات قوية للأهداف والتحليلات والتحكم في الاندفاع.",
   zh: "Premium 提供强大的目标、分析和冲动控制工具。",
 };
+const GROUP_C_SUPPORT_SOFT_PAYWALL_TRIGGERS = new Set([
+  "group_c_support_after_5_saves",
+  "group_c_daily_first_save_or_spend_after_modals",
+]);
 const ONBOARDING_HARD_GATE_TITLE_BY_LANGUAGE = {
   ru: "Пользователи Almost Pro в среднем сохраняют около ≈ $350 в месяц.",
   en: "Almost Pro users save around ≈ $350 per month on average.",
@@ -1790,7 +1794,7 @@ export const buildPaywallCopy = ({
     normalizedTrigger === "save_daily_limit_reached" ||
     normalizedTrigger === "save_daily_limit_blocked";
   const isTrialSavesHardTrigger = normalizedTrigger === "trial_10_saves_reached";
-  const isGroupCSupportSoftTrigger = normalizedTrigger === "group_c_support_after_5_saves";
+  const isGroupCSupportSoftTrigger = GROUP_C_SUPPORT_SOFT_PAYWALL_TRIGGERS.has(normalizedTrigger);
   const isOnboardingHardGateTrigger = normalizedTrigger === "onboarding_completed_hard_gate";
   const isTransactionAbandonedTrigger = normalizedTrigger === "transaction_abandoned";
   const comparisonRowsForPaywall = isOnboardingHardGateTrigger
