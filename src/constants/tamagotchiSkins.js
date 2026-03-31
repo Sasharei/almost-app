@@ -1,3 +1,48 @@
+const TAMAGOTCHI_ANIMATION_FILE_NAMES = {
+  idle: "Cat_idle",
+  curious: "Cat_curious",
+  follow: "Cat_follows",
+  speak: "Cat_speaks",
+  happy: "Cat_happy",
+  happyHeadshake: "Cat_happy_headshake",
+  sad: "Cat_sad",
+  ohno: "Cat_oh_oh",
+  cry: "Cat_cry",
+  waving: "Cat_waving",
+};
+
+const buildAnimationPaths = (skinId, extension = "gif") => {
+  const result = {};
+  Object.entries(TAMAGOTCHI_ANIMATION_FILE_NAMES).forEach(([key, fileName]) => {
+    result[key] = `tamagotchi_skins/${skinId}/${fileName}.${extension}`;
+  });
+  return result;
+};
+
+const createRemoteSkinConfig = ({
+  id,
+  label,
+  description,
+  preview,
+  avatar,
+  progressColor,
+  extension = "gif",
+}) => {
+  const animationPaths = buildAnimationPaths(id, extension);
+  return {
+    id,
+    label,
+    description,
+    preview: preview || null,
+    avatar: avatar || preview || null,
+    progressColor: progressColor || "#9AB4F8",
+    isRemote: true,
+    previewPath: animationPaths.idle,
+    avatarPath: animationPaths.idle,
+    animationPaths,
+  };
+};
+
 export const CLASSIC_TAMAGOTCHI_ANIMATIONS = {
   idle: require("../../assets/Cat_idle.gif"),
   curious: require("../../assets/Cat_curious.gif"),
@@ -11,57 +56,7 @@ export const CLASSIC_TAMAGOTCHI_ANIMATIONS = {
   waving: require("../../assets/Cat_waving.gif"),
 };
 
-export const GREEN_TAMAGOTCHI_ANIMATIONS = {
-  idle: require("../../assets/tamagotchi_skins/green/Cat_idle.gif"),
-  curious: require("../../assets/tamagotchi_skins/green/Cat_curious.gif"),
-  follow: require("../../assets/tamagotchi_skins/green/Cat_follows.gif"),
-  speak: require("../../assets/tamagotchi_skins/green/Cat_speaks.gif"),
-  happy: require("../../assets/tamagotchi_skins/green/Cat_happy.gif"),
-  happyHeadshake: require("../../assets/tamagotchi_skins/green/Cat_happy_headshake.gif"),
-  sad: require("../../assets/tamagotchi_skins/green/Cat_sad.gif"),
-  ohno: require("../../assets/tamagotchi_skins/green/Cat_oh_oh.gif"),
-  cry: require("../../assets/tamagotchi_skins/green/Cat_cry.gif"),
-  waving: require("../../assets/tamagotchi_skins/green/Cat_waving.gif"),
-};
-
-export const TEAL_TAMAGOTCHI_ANIMATIONS = {
-  idle: require("../../assets/tamagotchi_skins/teal/Cat_idle.gif"),
-  curious: require("../../assets/tamagotchi_skins/teal/Cat_curious.gif"),
-  follow: require("../../assets/tamagotchi_skins/teal/Cat_follows.gif"),
-  speak: require("../../assets/tamagotchi_skins/teal/Cat_speaks.gif"),
-  happy: require("../../assets/tamagotchi_skins/teal/Cat_happy.gif"),
-  happyHeadshake: require("../../assets/tamagotchi_skins/teal/Cat_happy_headshake.gif"),
-  sad: require("../../assets/tamagotchi_skins/teal/Cat_sad.gif"),
-  ohno: require("../../assets/tamagotchi_skins/teal/Cat_oh_oh.gif"),
-  cry: require("../../assets/tamagotchi_skins/teal/Cat_cry.gif"),
-  waving: require("../../assets/tamagotchi_skins/teal/Cat_waving.gif"),
-};
-
-export const YELLOW_TAMAGOTCHI_ANIMATIONS = {
-  idle: require("../../assets/tamagotchi_skins/yellow/Cat_idle.gif"),
-  curious: require("../../assets/tamagotchi_skins/yellow/Cat_curious.gif"),
-  follow: require("../../assets/tamagotchi_skins/yellow/Cat_follows.gif"),
-  speak: require("../../assets/tamagotchi_skins/yellow/Cat_speaks.gif"),
-  happy: require("../../assets/tamagotchi_skins/yellow/Cat_happy.gif"),
-  happyHeadshake: require("../../assets/tamagotchi_skins/yellow/Cat_happy_headshake.gif"),
-  sad: require("../../assets/tamagotchi_skins/yellow/Cat_sad.gif"),
-  ohno: require("../../assets/tamagotchi_skins/yellow/Cat_oh_oh.gif"),
-  cry: require("../../assets/tamagotchi_skins/yellow/Cat_cry.gif"),
-  waving: require("../../assets/tamagotchi_skins/yellow/Cat_waving.gif"),
-};
-
-export const PURPLE_TAMAGOTCHI_ANIMATIONS = {
-  idle: require("../../assets/tamagotchi_skins/purple/Cat_idle.gif"),
-  curious: require("../../assets/tamagotchi_skins/purple/Cat_curious.gif"),
-  follow: require("../../assets/tamagotchi_skins/purple/Cat_follows.gif"),
-  speak: require("../../assets/tamagotchi_skins/purple/Cat_speaks.gif"),
-  happy: require("../../assets/tamagotchi_skins/purple/Cat_happy.gif"),
-  happyHeadshake: require("../../assets/tamagotchi_skins/purple/Cat_happy_headshake.gif"),
-  sad: require("../../assets/tamagotchi_skins/purple/Cat_sad.gif"),
-  ohno: require("../../assets/tamagotchi_skins/purple/Cat_oh_oh.gif"),
-  cry: require("../../assets/tamagotchi_skins/purple/Cat_cry.gif"),
-  waving: require("../../assets/tamagotchi_skins/purple/Cat_waving.gif"),
-};
+export const TAMAGOTCHI_ANIMATION_KEYS = Object.keys(TAMAGOTCHI_ANIMATION_FILE_NAMES);
 
 export const TAMAGOTCHI_SKIN_OPTIONS = [
   {
@@ -76,8 +71,9 @@ export const TAMAGOTCHI_SKIN_OPTIONS = [
     preview: require("../../assets/Cat_mascot.png"),
     avatar: require("../../assets/Cat_mascot.png"),
     animations: CLASSIC_TAMAGOTCHI_ANIMATIONS,
+    isRemote: false,
   },
-  {
+  createRemoteSkinConfig({
     id: "green",
     label: { ru: "Лесной", en: "Forest", es: "Verde bosque", fr: "Forêt" },
     description: {
@@ -86,11 +82,10 @@ export const TAMAGOTCHI_SKIN_OPTIONS = [
       es: "Explorador mentolado",
       fr: "Exploratrice mentholée",
     },
-    preview: require("../../assets/tamagotchi_skins/green/Cat_idle.gif"),
-    avatar: require("../../assets/tamagotchi_skins/green/Cat_idle.gif"),
-    animations: GREEN_TAMAGOTCHI_ANIMATIONS,
-  },
-  {
+    preview: require("../../assets/tamagotchi_skins/previews/green.png"),
+    progressColor: "#63CBA1",
+  }),
+  createRemoteSkinConfig({
     id: "teal",
     label: { ru: "Лазурный", en: "Teal breeze", es: "Brisa turquesa", fr: "Brise turquoise" },
     description: {
@@ -99,11 +94,10 @@ export const TAMAGOTCHI_SKIN_OPTIONS = [
       es: "Paleta brisa marina",
       fr: "Palette brise océane",
     },
-    preview: require("../../assets/tamagotchi_skins/teal/Cat_idle.gif"),
-    avatar: require("../../assets/tamagotchi_skins/teal/Cat_idle.gif"),
-    animations: TEAL_TAMAGOTCHI_ANIMATIONS,
-  },
-  {
+    preview: require("../../assets/tamagotchi_skins/previews/teal.png"),
+    progressColor: "#58BEDA",
+  }),
+  createRemoteSkinConfig({
     id: "yellow",
     label: { ru: "Солнечный", en: "Sunny", es: "Amarillo brillante", fr: "Ensoleillé" },
     description: {
@@ -112,11 +106,10 @@ export const TAMAGOTCHI_SKIN_OPTIONS = [
       es: "Cálido y lleno de energía",
       fr: "Chaud et plein d'énergie",
     },
-    preview: require("../../assets/tamagotchi_skins/yellow/Cat_idle.gif"),
-    avatar: require("../../assets/tamagotchi_skins/yellow/Cat_idle.gif"),
-    animations: YELLOW_TAMAGOTCHI_ANIMATIONS,
-  },
-  {
+    preview: require("../../assets/tamagotchi_skins/previews/yellow.png"),
+    progressColor: "#E5C45C",
+  }),
+  createRemoteSkinConfig({
     id: "purple",
     label: { ru: "Сиреневый", en: "Lavender", es: "Lavanda", fr: "Lavande" },
     description: {
@@ -125,10 +118,9 @@ export const TAMAGOTCHI_SKIN_OPTIONS = [
       es: "Un toque violeta soñador",
       fr: "Une touche violette rêveuse",
     },
-    preview: require("../../assets/tamagotchi_skins/purple/Cat_idle.gif"),
-    avatar: require("../../assets/tamagotchi_skins/purple/Cat_idle.gif"),
-    animations: PURPLE_TAMAGOTCHI_ANIMATIONS,
-  },
+    preview: require("../../assets/tamagotchi_skins/previews/purple.png"),
+    progressColor: "#A785E3",
+  }),
 ];
 
 export const TAMAGOTCHI_SKINS = TAMAGOTCHI_SKIN_OPTIONS.reduce((acc, skin) => {

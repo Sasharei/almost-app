@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { calcPotentialSaved } from "../utils/savingsSimulation";
 
-const roundPotentialValue = (value: number) => Math.round(value * 1_000_000) / 1_000_000;
+const DEFAULT_UPDATE_INTERVAL_MS = 1000;
+const MIN_UPDATE_INTERVAL_MS = 250;
+const MIN_VALUE_DELTA = 0.0001;
+const roundPotentialValue = (value: number) => Math.round(value * 10_000) / 10_000;
 
 type SavingsSimulationOptions = {
   enabled?: boolean;
@@ -14,30 +17,49 @@ export function useSavingsSimulation(
   spentLossUSD: number | null = 0,
   options: SavingsSimulationOptions = {}
 ) {
+  const latestValueRef = useRef(0);
+  const [potentialSaved, setPotentialSaved] = useState(0);
   const enabled = options.enabled !== false;
-  const updateIntervalMs = Math.max(16, Number(options.updateIntervalMs) || 40);
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  const updateIntervalMs = Math.max(
+    MIN_UPDATE_INTERVAL_MS,
+    Number(options.updateIntervalMs) || DEFAULT_UPDATE_INTERVAL_MS
+  );
 
   useEffect(() => {
-    if (!enabled || !baselineMonthlyWaste || !baselineStartAt) return undefined;
-    setNowMs(Date.now());
-    const intervalId = setInterval(() => {
-      setNowMs(Date.now());
-    }, updateIntervalMs);
-    return () => clearInterval(intervalId);
-  }, [baselineMonthlyWaste, baselineStartAt, enabled, updateIntervalMs]);
-
-  return useMemo(() => {
     if (!baselineMonthlyWaste || !baselineStartAt) {
-      return 0;
+      if (latestValueRef.current !== 0) {
+        latestValueRef.current = 0;
+        setPotentialSaved(0);
+      }
+      return undefined;
     }
-    return roundPotentialValue(
-      calcPotentialSaved(
-        baselineMonthlyWaste,
-        baselineStartAt,
-        new Date(nowMs),
-        Math.max(0, Number(spentLossUSD) || 0)
-      )
-    );
-  }, [baselineMonthlyWaste, baselineStartAt, nowMs, spentLossUSD]);
+
+    const update = () => {
+      const nextValue = roundPotentialValue(
+        calcPotentialSaved(
+          baselineMonthlyWaste,
+          baselineStartAt,
+          new Date(),
+          Math.max(0, Number(spentLossUSD) || 0)
+        )
+      );
+      if (Math.abs(nextValue - latestValueRef.current) < MIN_VALUE_DELTA) return;
+      latestValueRef.current = nextValue;
+      setPotentialSaved(nextValue);
+    };
+
+    if (!enabled) {
+      update();
+      return undefined;
+    }
+
+    update();
+    const intervalId = setInterval(() => {
+      update();
+    }, updateIntervalMs);
+
+    return () => clearInterval(intervalId);
+  }, [baselineMonthlyWaste, baselineStartAt, enabled, spentLossUSD, updateIntervalMs]);
+
+  return potentialSaved;
 }
