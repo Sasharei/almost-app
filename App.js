@@ -39,6 +39,7 @@ import {
   ActivityIndicator,
   Pressable,
   useWindowDimensions,
+  BackHandler,
 } from "react-native";
 import Svg, {
   Circle as SvgCircle,
@@ -571,11 +572,87 @@ try {
 }
 
 const IOS_DEFAULT_MODAL_PRESENTATION = "overFullScreen";
-const Modal = ({ presentationStyle, ...rest }) => {
+const AndroidTransparentModal = ({
+  visible,
+  animationType = "none",
+  onRequestClose,
+  onDismiss,
+  children,
+}) => {
+  const opacity = useRef(new Animated.Value(animationType === "fade" ? 0 : 1)).current;
+
+  useEffect(() => {
+    if (!visible) return undefined;
+    opacity.setValue(animationType === "fade" ? 0 : 1);
+    let animation = null;
+    if (animationType === "fade") {
+      animation = Animated.timing(opacity, {
+        toValue: 1,
+        duration: 180,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      });
+      animation.start();
+    }
+    return () => {
+      animation?.stop?.();
+      onDismiss?.();
+    };
+  }, [animationType, onDismiss, opacity, visible]);
+
+  useEffect(() => {
+    if (!visible) return undefined;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (typeof onRequestClose === "function") {
+        onRequestClose();
+      }
+      // Prevent Android from popping the activity behind an open in-tree modal.
+      return true;
+    });
+    return () => subscription.remove();
+  }, [onRequestClose, visible]);
+
+  if (!visible) return null;
+
+  return (
+    <Animated.View
+      pointerEvents="box-none"
+      style={[
+        styles.androidModalHost,
+        animationType === "fade" ? { opacity } : null,
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
+};
+
+const Modal = ({
+  presentationStyle,
+  transparent,
+  visible,
+  animationType = "none",
+  onRequestClose,
+  onDismiss,
+  children,
+  ...rest
+}) => {
   const resolvedPresentationStyle =
     Platform.OS === "ios"
       ? presentationStyle || IOS_DEFAULT_MODAL_PRESENTATION
       : presentationStyle;
+  if (Platform.OS === "android" && transparent === true) {
+    return (
+      <AndroidTransparentModal
+        visible={visible}
+        animationType={animationType}
+        onRequestClose={onRequestClose}
+        onDismiss={onDismiss}
+      >
+        {children}
+      </AndroidTransparentModal>
+    );
+  }
   return <RNModal {...rest} presentationStyle={resolvedPresentationStyle} />;
 };
 
@@ -32854,12 +32931,16 @@ function AppContent() {
       console.warn("facebook sdk init", error);
     }
   }, [analyticsOptOut, iosTrackingBlocked, iosTrackingResolved]);
-  const [startupLogoVisible, setStartupLogoVisible] = useState(false);
-  const startupLogoDismissedRef = useRef(false);
+  const [startupLogoDismissed, setStartupLogoDismissed] = useState(false);
   const markStartupLogoDismissed = useCallback(() => {
-    startupLogoDismissedRef.current = true;
-    setStartupLogoVisible(false);
+    setStartupLogoDismissed(true);
   }, []);
+  const startupLogoVisible =
+    onboardingStep === "done" &&
+    startupLogoReady &&
+    !startupLogoDismissed &&
+    !onboardingSkippedRef.current &&
+    !startupHardLockPendingBeforePaywall;
   const interfaceReady = useMemo(
     () =>
       onboardingStep === "done" &&
@@ -34376,6 +34457,7 @@ function AppContent() {
   );
   const blockingModalVisible = useMemo(
     () =>
+      overlay ||
       breakdownVisible ||
       reportsModalVisible ||
       dailySummaryVisible ||
@@ -34452,6 +34534,7 @@ function AppContent() {
       pushDayThreePromptVisible,
       ratingPromptVisible,
       breakdownVisible,
+      overlay,
       reportsModalVisible,
       showCustomSpend,
       termsModalVisible,
@@ -39620,37 +39703,63 @@ function AppContent() {
   }, [overlay]);
   const isFeatureUnlockOverlay =
     overlay?.type === "cart" && overlay?.message && typeof overlay.message === "object" && overlay.message.featureUnlock;
-  const systemOverlayActive = Boolean(overlay || fabMenuVisible);
+  const saveOverlayVisible = overlay?.type === "save";
+  const systemBarsDimActive = Boolean(
+    fabMenuVisible || (!saveOverlayVisible && (blockingModalVisible || overlay))
+  );
+  const systemBarsStateRef = useRef({
+    navColor: null,
+    buttonStyle: null,
+    statusColor: null,
+  });
+  useEffect(() => {
+    if (!isAndroid || !canToggleNavVisibility) return;
+    // Keep a stable navigation-bar visibility on Android to avoid inset jumps at modal/overlay open.
+    NavigationBar.setVisibilityAsync("visible").catch((err) => {
+      console.warn("navigation bar visibility", err);
+    });
+  }, [canToggleNavVisibility, isAndroid]);
 
   useEffect(() => {
     if (!isAndroid || !canSetSystemBarColors) return;
-    const targetNavColor = systemOverlayActive ? overlaySystemColor : colors.card;
-    const targetButtonStyle = systemOverlayActive ? "light" : isDarkTheme ? "light" : "dark";
-    const targetStatusColor = systemOverlayActive ? overlaySystemColor : colors.background;
-    const targetNavVisibility = systemOverlayActive ? "hidden" : "visible";
+    const targetNavColor = systemBarsDimActive ? overlaySystemColor : colors.card;
+    const targetButtonStyle = systemBarsDimActive ? "light" : isDarkTheme ? "light" : "dark";
+    const targetStatusColor = systemBarsDimActive ? overlaySystemColor : colors.background;
+    const previousState = systemBarsStateRef.current || {};
+    const shouldUpdateNavColor = previousState.navColor !== targetNavColor;
+    const shouldUpdateButtonStyle = previousState.buttonStyle !== targetButtonStyle;
+    const shouldUpdateStatusColor = previousState.statusColor !== targetStatusColor;
     const applyNav = async () => {
       try {
-        await NavigationBar.setBackgroundColorAsync(targetNavColor);
-        await NavigationBar.setButtonStyleAsync(targetButtonStyle);
-        if (canToggleNavVisibility) {
-          await NavigationBar.setVisibilityAsync(targetNavVisibility);
+        if (shouldUpdateNavColor) {
+          await NavigationBar.setBackgroundColorAsync(targetNavColor);
+        }
+        if (shouldUpdateButtonStyle) {
+          await NavigationBar.setButtonStyleAsync(targetButtonStyle);
         }
       } catch (err) {
         console.warn("navigation bar color", err);
       }
     };
-    applyNav();
-    RNStatusBar.setBackgroundColor(targetStatusColor, true);
+    if (shouldUpdateNavColor || shouldUpdateButtonStyle) {
+      applyNav();
+    }
+    if (shouldUpdateStatusColor) {
+      RNStatusBar.setBackgroundColor(targetStatusColor, false);
+    }
+    systemBarsStateRef.current = {
+      navColor: targetNavColor,
+      buttonStyle: targetButtonStyle,
+      statusColor: targetStatusColor,
+    };
   }, [
     canSetSystemBarColors,
-    canToggleNavVisibility,
+    overlaySystemColor,
+    systemBarsDimActive,
     colors.card,
     colors.background,
     isAndroid,
     isDarkTheme,
-    overlayDimColor,
-    overlaySystemColor,
-    systemOverlayActive,
   ]);
   const saveOverlayPayload =
     overlay?.type === "save"
@@ -39658,6 +39767,48 @@ function AppContent() {
         ? overlay.message
         : { title: overlay.message }
       : null;
+  const saveOverlayGoalTitle = useMemo(() => {
+    if (typeof saveOverlayPayload?.goalTitle !== "string") return "";
+    return saveOverlayPayload.goalTitle.trim();
+  }, [saveOverlayPayload?.goalTitle]);
+  const saveOverlayGoalText = useMemo(() => {
+    if (typeof saveOverlayPayload?.goalCopy === "string" && saveOverlayPayload.goalCopy.trim()) {
+      return saveOverlayPayload.goalCopy.trim();
+    }
+    if (!saveOverlayGoalTitle) return null;
+    return saveOverlayPayload?.goalComplete
+      ? t("saveGoalComplete", { goal: saveOverlayGoalTitle })
+      : saveOverlayGoalTitle;
+  }, [saveOverlayGoalTitle, saveOverlayPayload?.goalComplete, saveOverlayPayload?.goalCopy, t]);
+  const saveOverlayGoalPrefix = useMemo(() => {
+    if (typeof saveOverlayPayload?.goalPrefix === "string") {
+      return saveOverlayPayload.goalPrefix.trim() || null;
+    }
+    if (
+      saveOverlayGoalTitle &&
+      !saveOverlayPayload?.goalComplete &&
+      Number.isFinite(saveOverlayPayload?.remainingTemptations) &&
+      saveOverlayPayload.remainingTemptations > 0
+    ) {
+      return t("saveGoalRemaining");
+    }
+    return null;
+  }, [
+    saveOverlayGoalTitle,
+    saveOverlayPayload?.goalComplete,
+    saveOverlayPayload?.goalPrefix,
+    saveOverlayPayload?.remainingTemptations,
+    t,
+  ]);
+  const saveOverlayRemainingActions = Number.isFinite(saveOverlayPayload?.remainingTemptations)
+    ? Math.max(0, Number(saveOverlayPayload.remainingTemptations) || 0)
+    : 0;
+  const saveOverlayProgressStart = Number.isFinite(saveOverlayPayload?.progressStart)
+    ? clampProgress(saveOverlayPayload.progressStart)
+    : 0;
+  const saveOverlayProgressEnd = Number.isFinite(saveOverlayPayload?.progressEnd)
+    ? clampProgress(saveOverlayPayload.progressEnd)
+    : saveOverlayProgressStart;
   const genericOverlayMessage = useMemo(() => {
     const message = overlay?.message;
     if (typeof message === "string" || typeof message === "number") {
@@ -40415,30 +40566,6 @@ function AppContent() {
     () => (assignableGoals.length > 0 ? assignableGoals : wishes),
     [assignableGoals, wishes]
   );
-  const currentGoalTitle = useMemo(() => {
-    if (saveOverlayPayload?.goalTitle) {
-      return saveOverlayPayload.goalTitle;
-    }
-    if (assignableGoals.length > 0) {
-      const primaryGoal = assignableGoals[0];
-      const baseTitle =
-        (primaryGoal && getWishTitleWithoutEmoji(primaryGoal)) ||
-        getWishTitleById(assignableGoals[0].id);
-      return (baseTitle || "").trim();
-    }
-    return null;
-  }, [assignableGoals, getWishTitleById, saveOverlayPayload]);
-  const saveOverlayGoalText =
-    currentGoalTitle && saveOverlayPayload?.goalComplete
-      ? t("saveGoalComplete", { goal: currentGoalTitle })
-      : currentGoalTitle;
-  const saveOverlayGoalPrefix =
-    currentGoalTitle &&
-    !saveOverlayPayload?.goalComplete &&
-    Number.isFinite(saveOverlayPayload?.remainingTemptations) &&
-    saveOverlayPayload?.remainingTemptations > 0
-      ? t("saveGoalRemaining")
-      : null;
   const saveOverlayCounterVisible =
     !!saveOverlayGoalText &&
     (Number.isFinite(saveOverlayPayload?.remainingTemptations)
@@ -43470,18 +43597,6 @@ function AppContent() {
       setFeedFirstTutorialNeedSoftPaywall(false);
     }
   }, [onboardingStep]);
-
-  useEffect(() => {
-    if (
-      onboardingStep === "done" &&
-      startupLogoReady &&
-      !startupLogoDismissedRef.current &&
-      !onboardingSkippedRef.current &&
-      !startupHardLockPendingBeforePaywall
-    ) {
-      setStartupLogoVisible(true);
-    }
-  }, [onboardingStep, startupHardLockPendingBeforePaywall, startupLogoReady]);
 
   const handleStartupLogoComplete = useCallback(() => {
     markStartupLogoDismissed();
@@ -48184,6 +48299,7 @@ useEffect(() => {
       });
       onboardingCompletionEventLoggedRef.current = true;
     }
+    await ensureNotificationPermission({ request: true });
     if (isMonetizationExperimentControlGroup) {
       onboardingSoftPaywallActionBaselineRef.current = Math.max(
         0,
@@ -48199,7 +48315,7 @@ useEffect(() => {
     goalSelectionTouchedRef.current = false;
     onboardingSkippedRef.current = false;
     InteractionManager.runAfterInteractions(() => {
-      ensureNotificationPermission().catch(() => {});
+      ensureNotificationPermission({ request: false }).catch(() => {});
     });
   };
 
@@ -54608,13 +54724,20 @@ useEffect(() => {
       overlayActiveRef.current = false;
       return;
     }
-    if (Platform.OS !== "ios") {
+    const normalizedExtraDelay = Math.max(0, Number(extraDelayMs) || 0);
+    const baseDelayMs =
+      Platform.OS === "ios"
+        ? MODAL_HANDOFF_GUARD_MS
+        : Platform.OS === "android"
+        ? 96
+        : 0;
+    const resumeDelayMs = baseDelayMs + normalizedExtraDelay;
+    if (resumeDelayMs <= 0) {
       overlayActiveRef.current = false;
       processOverlayQueueRef.current?.();
       return;
     }
-    const normalizedExtraDelay = Math.max(0, Number(extraDelayMs) || 0);
-    const resumeAt = Date.now() + MODAL_HANDOFF_GUARD_MS + normalizedExtraDelay;
+    const resumeAt = Date.now() + resumeDelayMs;
     modalHandoffBlockUntilRef.current = Math.max(
       modalHandoffBlockUntilRef.current || 0,
       resumeAt
@@ -57040,7 +57163,7 @@ useEffect(() => {
               <StatusBar
                 style={theme === "dark" ? "light" : "dark"}
                 backgroundColor={
-                  canSetSystemBarColors ? (systemOverlayActive ? overlaySystemColor : colors.background) : undefined
+                  canSetSystemBarColors ? (systemBarsDimActive ? overlaySystemColor : colors.background) : undefined
                 }
               />
               {backGestureResponder && (
@@ -60599,7 +60722,7 @@ useEffect(() => {
           </Modal>
             )}
             {overlay?.type === "save" && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
+          <Modal visible transparent animationType="none" statusBarTranslucent>
             <TouchableWithoutFeedback onPress={handleSaveOverlayPress}>
               <View style={styles.saveOverlay}>
                 <View
@@ -60623,21 +60746,9 @@ useEffect(() => {
                   playSound={playSound}
                   mascotHappySource={tamagotchiAnimations.happy}
                   autoCountdown={false}
-                  progressStart={
-                    Number.isFinite(saveOverlayPayload?.progressStart)
-                      ? saveOverlayPayload.progressStart
-                      : heroGoalProgressRatio
-                  }
-                  progressEnd={
-                    Number.isFinite(saveOverlayPayload?.progressEnd)
-                      ? saveOverlayPayload.progressEnd
-                      : heroGoalProgressRatio
-                  }
-                  remainingActions={
-                    Number.isFinite(saveOverlayPayload?.remainingTemptations)
-                      ? saveOverlayPayload.remainingTemptations
-                      : remainingGoalActions
-                  }
+                  progressStart={saveOverlayProgressStart}
+                  progressEnd={saveOverlayProgressEnd}
+                  remainingActions={saveOverlayRemainingActions}
                 />
               </View>
             </TouchableWithoutFeedback>
@@ -61983,6 +62094,11 @@ const styles = StyleSheet.create({
   },
   screenWrapper: {
     flex: 1,
+  },
+  androidModalHost: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1000,
+    elevation: 1000,
   },
   backGestureWrapper: {
     ...StyleSheet.absoluteFillObject,
