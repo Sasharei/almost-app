@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+  android:minWidth="280dp"
+  android:minHeight="280dp"
+  android:minResizeWidth="280dp"
+  android:minResizeHeight="280dp"
+  android:resizeMode="none"
+  android:updatePeriodMillis="0"
+  android:previewImage="@drawable/widget_preview_large"
+  android:previewLayout="@layout/almost_widget_large"
+  android:initialLayout="@layout/almost_widget_large"
+  android:widgetCategory="home_screen" />

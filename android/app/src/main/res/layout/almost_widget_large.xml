@@ -1,0 +1,496 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/widget_root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:orientation="vertical"
+  android:background="@drawable/widget_bg"
+  android:padding="8dp"
+  android:paddingBottom="8dp">
+
+  <LinearLayout
+    android:id="@+id/widget_content"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <LinearLayout
+      android:id="@+id/widget_header"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:orientation="horizontal"
+      android:gravity="center_vertical"
+      android:layout_marginBottom="4dp">
+
+      <ImageView
+        android:id="@+id/widget_cat"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:padding="3dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/almi_widget"
+        android:background="@drawable/widget_cat_bg" />
+
+      <TextView
+        android:id="@+id/widget_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="8dp"
+        android:ellipsize="end"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:text="Almost"
+        android:textColor="#111111"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
+      android:id="@+id/widget_large_section"
+      android:layout_width="match_parent"
+      android:layout_height="0dp"
+      android:layout_weight="1"
+      android:orientation="vertical">
+
+      <LinearLayout
+        android:id="@+id/widget_balance_row"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <LinearLayout
+          android:id="@+id/widget_left_column"
+          android:layout_width="0dp"
+          android:layout_height="wrap_content"
+          android:layout_weight="1.1"
+          android:orientation="vertical">
+
+          <TextView
+            android:id="@+id/widget_saved_total_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:autoSizeTextType="uniform"
+            android:autoSizeMinTextSize="7sp"
+            android:autoSizeMaxTextSize="10sp"
+            android:ellipsize="end"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:text="Сегодня"
+            android:textColor="#4B4B4B"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
+          <TextView
+            android:id="@+id/widget_saved_total_value"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:autoSizeTextType="uniform"
+            android:autoSizeMinTextSize="18sp"
+            android:autoSizeMaxTextSize="24sp"
+            android:ellipsize="end"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:text="--"
+            android:textColor="#111111"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+          <LinearLayout
+            android:id="@+id/widget_metrics_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:orientation="horizontal">
+
+            <LinearLayout
+              android:layout_width="0dp"
+              android:layout_height="wrap_content"
+              android:layout_weight="1"
+              android:orientation="vertical">
+
+              <TextView
+                android:id="@+id/widget_saved_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:autoSizeTextType="uniform"
+                android:autoSizeMinTextSize="7sp"
+                android:autoSizeMaxTextSize="9sp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="Всего"
+                android:textColor="#4B4B4B"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+              <TextView
+                android:id="@+id/widget_saved_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:autoSizeTextType="uniform"
+                android:autoSizeMinTextSize="12sp"
+                android:autoSizeMaxTextSize="16sp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="--"
+                android:textColor="#2EB873"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+              android:layout_width="12dp"
+              android:layout_height="1dp"
+              android:text="" />
+
+            <LinearLayout
+              android:layout_width="0dp"
+              android:layout_height="wrap_content"
+              android:layout_weight="1"
+              android:orientation="vertical">
+
+              <TextView
+                android:id="@+id/widget_streak_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:autoSizeTextType="uniform"
+                android:autoSizeMinTextSize="7sp"
+                android:autoSizeMaxTextSize="9sp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="Остаток бюджета"
+                android:textColor="#4B4B4B"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+              <TextView
+                android:id="@+id/widget_streak_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:autoSizeTextType="uniform"
+                android:autoSizeMinTextSize="12sp"
+                android:autoSizeMaxTextSize="16sp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="--"
+                android:textColor="#111111"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+            </LinearLayout>
+          </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+          android:layout_width="12dp"
+          android:layout_height="1dp"
+          android:text="" />
+
+        <LinearLayout
+          android:id="@+id/widget_progress_column"
+          android:layout_width="0dp"
+          android:layout_height="wrap_content"
+          android:layout_weight="0.9"
+          android:orientation="vertical">
+
+          <LinearLayout
+            android:id="@+id/widget_progress_month_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:orientation="horizontal">
+
+              <TextView
+                android:id="@+id/widget_progress_month_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:autoSizeTextType="uniform"
+                android:autoSizeMinTextSize="7sp"
+                android:autoSizeMaxTextSize="9sp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="Цель месяца"
+                android:textColor="#4B4B4B"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+              <TextView
+                android:id="@+id/widget_progress_month_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="0%"
+                android:textColor="#555555"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+            </LinearLayout>
+
+            <ProgressBar
+              android:id="@+id/widget_progress_month_bar"
+              style="?android:attr/progressBarStyleHorizontal"
+              android:layout_width="match_parent"
+              android:layout_height="5dp"
+              android:layout_marginTop="3dp"
+              android:indeterminate="false"
+              android:max="100"
+              android:progress="0"
+              android:progressBackgroundTint="#1A000000"
+              android:progressTint="#2EB873"
+              android:minHeight="5dp"
+              android:maxHeight="5dp" />
+          </LinearLayout>
+
+          <LinearLayout
+            android:id="@+id/widget_progress_today_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:orientation="vertical">
+
+            <LinearLayout
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:orientation="horizontal">
+
+              <TextView
+                android:id="@+id/widget_progress_today_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:autoSizeTextType="uniform"
+                android:autoSizeMinTextSize="7sp"
+                android:autoSizeMaxTextSize="9sp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="Сегодня"
+                android:textColor="#4B4B4B"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+              <TextView
+                android:id="@+id/widget_progress_today_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="0%"
+                android:textColor="#555555"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+            </LinearLayout>
+
+            <ProgressBar
+              android:id="@+id/widget_progress_today_bar"
+              style="?android:attr/progressBarStyleHorizontal"
+              android:layout_width="match_parent"
+              android:layout_height="5dp"
+              android:layout_marginTop="3dp"
+              android:indeterminate="false"
+              android:max="100"
+              android:progress="0"
+              android:progressBackgroundTint="#1A000000"
+              android:progressTint="#3F7BE0"
+              android:minHeight="5dp"
+              android:maxHeight="5dp" />
+          </LinearLayout>
+
+          <LinearLayout
+            android:id="@+id/widget_progress_streak_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:orientation="vertical">
+
+            <LinearLayout
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:orientation="horizontal">
+
+              <TextView
+                android:id="@+id/widget_progress_streak_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:autoSizeTextType="uniform"
+                android:autoSizeMinTextSize="7sp"
+                android:autoSizeMaxTextSize="9sp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="Остаток бюджета"
+                android:textColor="#4B4B4B"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+              <TextView
+                android:id="@+id/widget_progress_streak_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="--"
+                android:textColor="#555555"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+            </LinearLayout>
+
+            <ProgressBar
+              android:id="@+id/widget_progress_streak_bar"
+              style="?android:attr/progressBarStyleHorizontal"
+              android:layout_width="match_parent"
+              android:layout_height="5dp"
+              android:layout_marginTop="3dp"
+              android:indeterminate="false"
+              android:max="100"
+              android:progress="0"
+              android:progressBackgroundTint="#1A000000"
+              android:progressTint="#5A5A5A"
+              android:minHeight="5dp"
+              android:maxHeight="5dp" />
+          </LinearLayout>
+        </LinearLayout>
+      </LinearLayout>
+
+      <LinearLayout
+        android:id="@+id/widget_recent_group"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="6dp"
+        android:gravity="center_vertical"
+        android:orientation="vertical"
+        android:visibility="visible">
+
+        <TextView
+          android:id="@+id/widget_recent_label"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:text="Последние события"
+          android:textColor="#4B4B4B"
+          android:textSize="9sp"
+          android:textStyle="bold"
+          android:ellipsize="end"
+          android:includeFontPadding="false"
+          android:maxLines="1" />
+
+        <TextView
+          android:id="@+id/widget_recent_event_1"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="4dp"
+          android:text="--"
+          android:textColor="#2B2B2B"
+          android:textSize="10sp"
+          android:ellipsize="end"
+          android:includeFontPadding="false"
+          android:maxLines="1"
+          android:visibility="visible" />
+
+        <TextView
+          android:id="@+id/widget_recent_event_2"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="3dp"
+          android:text="--"
+          android:textColor="#2B2B2B"
+          android:textSize="10sp"
+          android:ellipsize="end"
+          android:includeFontPadding="false"
+          android:maxLines="1"
+          android:visibility="visible" />
+
+        <TextView
+          android:id="@+id/widget_recent_event_3"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="3dp"
+          android:text="--"
+          android:textColor="#2B2B2B"
+          android:textSize="10sp"
+          android:ellipsize="end"
+          android:includeFontPadding="false"
+          android:maxLines="1"
+          android:visibility="visible" />
+      </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+      android:id="@+id/widget_actions_row"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:orientation="horizontal"
+      android:layout_marginTop="6dp"
+      android:layout_marginBottom="0dp">
+
+      <TextView
+        android:id="@+id/widget_save_button"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:text="Копить"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:background="@drawable/widget_button_save_bg"
+        android:minHeight="32dp"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp" />
+
+      <TextView
+        android:layout_width="8dp"
+        android:layout_height="1dp"
+        android:text="" />
+
+      <TextView
+        android:id="@+id/widget_spend_button"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:text="Тратить"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:background="@drawable/widget_button_spend_bg"
+        android:minHeight="32dp"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp" />
+    </LinearLayout>
+  </LinearLayout>
+
+  <TextView
+    android:id="@+id/widget_empty_state"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:layout_gravity="center"
+    android:gravity="center"
+    android:text="Start saving today"
+    android:textColor="#1C1C1C"
+    android:textSize="14sp"
+    android:textStyle="bold"
+    android:visibility="gone" />
+</LinearLayout>

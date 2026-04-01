@@ -450,6 +450,31 @@ const PremiumPaywallModal = ({
   const mutedColor = colors?.muted || "#6C7289";
   const borderColor = colors?.border || "rgba(11,22,48,0.12)";
   const accent = "#4353FF";
+  const isDarkMode = String(colors?.background || "")
+    .trim()
+    .toLowerCase() === "#05070d";
+  const accentTextColor = isDarkMode ? "#9DBDFF" : accent;
+  const accentTextStrongColor = isDarkMode ? "#DCE7FF" : "#313EEA";
+  const contentCardBg = isDarkMode ? "#1D2435" : "#FFFFFF";
+  const contentCardBgElevated = isDarkMode ? "#212A3F" : "#F4F7FF";
+  const footerBg = isDarkMode ? "#121927" : "#FFFFFF";
+  const secondaryButtonBg = isDarkMode ? "#1B2335" : "#FFFFFF";
+  const dividerColor = isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(18,28,58,0.12)";
+  const accentSurface = isDarkMode ? "rgba(140,184,255,0.16)" : "rgba(67,83,255,0.1)";
+  const accentSurfaceStrong = isDarkMode ? "rgba(140,184,255,0.22)" : "rgba(67,83,255,0.12)";
+  const accentBorderColor = isDarkMode ? "rgba(140,184,255,0.42)" : accent;
+  const accentBorderSoftColor = isDarkMode ? "rgba(140,184,255,0.3)" : "rgba(67,83,255,0.26)";
+  const successSurface = isDarkMode ? "rgba(24,180,91,0.18)" : "rgba(24,180,91,0.1)";
+  const successChipSurface = isDarkMode ? "rgba(24,180,91,0.22)" : "rgba(24,180,91,0.18)";
+  const successBorderColor = isDarkMode ? "rgba(92,225,148,0.48)" : "rgba(24,180,91,0.4)";
+  const successTextColor = isDarkMode ? "#8AF3BC" : "#137A42";
+  const inactiveChipBg = isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(11,22,48,0.08)";
+  const inactiveChipBorderColor = isDarkMode ? "rgba(255,255,255,0.12)" : "transparent";
+  const socialProofBg = isDarkMode ? "rgba(140,184,255,0.16)" : "rgba(62,94,198,0.12)";
+  const socialProofBorderColor = isDarkMode
+    ? "rgba(140,184,255,0.34)"
+    : "rgba(55,86,180,0.26)";
+  const socialProofTextColor = isDarkMode ? "#DCE7FF" : "#2E4FAF";
   const isAndroid = Platform.OS === "android";
   const isNativeMobile = Platform.OS === "android" || Platform.OS === "ios";
   const { height: viewportHeight } = useWindowDimensions();
@@ -489,7 +514,10 @@ const PremiumPaywallModal = ({
       ? copy.trigger.trim().toLowerCase()
       : "";
   const isTransactionAbandonedTrigger = normalizedTrigger === "transaction_abandoned";
-  const isGroupCSupportTrigger = normalizedTrigger === "group_c_support_after_5_saves";
+  const isGroupCSupportTrigger =
+    copy?.supportIntroEnabled === true ||
+    normalizedTrigger === "group_c_support_after_5_saves" ||
+    normalizedTrigger === "group_c_daily_first_save_or_spend_after_modals";
   const isDailySaveLimitTrigger =
     normalizedTrigger === "save_daily_limit_reached" ||
     normalizedTrigger === "save_daily_limit_blocked";
@@ -700,6 +728,12 @@ const PremiumPaywallModal = ({
   const headerPrimaryHighlightStyle = isDailySaveLimitTrigger
     ? saveLimitTimerHighlightStyle
     : saveLimitHeaderHighlightStyle;
+  const subtitleNumericHighlightStyle = [
+    styles.headerSubtitleNumericHighlight,
+    isNativeMobile ? styles.headerSubtitleNumericHighlightAndroid : null,
+    isCompactAndroid ? styles.headerSubtitleNumericHighlightCompactAndroid : null,
+    isVeryCompactAndroid ? styles.headerSubtitleNumericHighlightVeryCompactAndroid : null,
+  ];
   const headerForecastTitle = localizePaywallDigits(
     SAVINGS_FORECAST_TITLE_BY_LANGUAGE[copyLanguage] ||
       SAVINGS_FORECAST_TITLE_BY_LANGUAGE.en,
@@ -1156,7 +1190,7 @@ const PremiumPaywallModal = ({
           style={[
             styles.footerSecondaryButton,
             isCompactAndroid ? styles.footerSecondaryButtonCompactAndroid : null,
-            { borderColor },
+            { borderColor, backgroundColor: secondaryButtonBg },
           ]}
           onPress={() => onRestorePress({ source: "restore_button" })}
           disabled={!!purchaseLoadingPlan || restoring}
@@ -1178,7 +1212,11 @@ const PremiumPaywallModal = ({
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.footerGhostButton, isCompactAndroid ? styles.footerGhostButtonCompactAndroid : null, { borderColor }]}
+          style={[
+            styles.footerGhostButton,
+            isCompactAndroid ? styles.footerGhostButtonCompactAndroid : null,
+            { borderColor, backgroundColor: secondaryButtonBg },
+          ]}
           onPress={() => onManagePress({ source: "manage_button" })}
           disabled={!!purchaseLoadingPlan || restoring}
           activeOpacity={0.85}
@@ -1376,7 +1414,7 @@ const PremiumPaywallModal = ({
               isVeryCompactAndroid ? styles.headerSubtitleVeryCompactAndroid : null,
             ]}
           >
-            {renderNumericHighlights(headerSubtitleWithForecast)}
+            {renderNumericHighlights(headerSubtitleWithForecast, subtitleNumericHighlightStyle)}
           </Text>
         )}
         {isDailySaveLimitTrigger && saveLimitProNowCopy && (
@@ -1434,8 +1472,11 @@ const PremiumPaywallModal = ({
                     style={[
                       styles.headerForecastAmount,
                       isCompactAndroid ? styles.headerForecastAmountCompactAndroid : null,
+                      isVeryCompactAndroid ? styles.headerForecastAmountVeryCompactAndroid : null,
                     ]}
                     numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
                   >
                     {point.amountLabel}
                   </Text>
@@ -1443,6 +1484,7 @@ const PremiumPaywallModal = ({
                     style={[
                       styles.headerForecastDays,
                       isCompactAndroid ? styles.headerForecastDaysCompactAndroid : null,
+                      isVeryCompactAndroid ? styles.headerForecastDaysVeryCompactAndroid : null,
                     ]}
                     numberOfLines={1}
                   >
@@ -1584,7 +1626,7 @@ const PremiumPaywallModal = ({
               isVeryCompactAndroid ? styles.headerSubtitleVeryCompactAndroid : null,
             ]}
           >
-            {renderNumericHighlights(supportIntroSubtitleWithForecast)}
+            {renderNumericHighlights(supportIntroSubtitleWithForecast, subtitleNumericHighlightStyle)}
           </Text>
         )}
       </View>
@@ -1594,7 +1636,13 @@ const PremiumPaywallModal = ({
 
   const regularSheetContent = (
     <>
-      <View style={[styles.benefitsCard, isCompactAndroid ? styles.benefitsCardCompactAndroid : null, { borderColor }]}>
+      <View
+        style={[
+          styles.benefitsCard,
+          isCompactAndroid ? styles.benefitsCardCompactAndroid : null,
+          { borderColor, backgroundColor: contentCardBg },
+        ]}
+      >
         <Text style={[styles.benefitsCardTitle, { color: textColor }]}>
           {benefitsTitle}
         </Text>
@@ -1609,12 +1657,17 @@ const PremiumPaywallModal = ({
                   style={[
                     styles.benefitBulletIconWrap,
                     isSelected ? styles.benefitBulletIconWrapSelected : null,
+                    {
+                      backgroundColor: isSelected ? accentSurfaceStrong : accentSurface,
+                      borderColor: isSelected ? accentBorderColor : accentBorderSoftColor,
+                    },
                   ]}
                 >
                   <Text
                     style={[
                       styles.benefitBulletIcon,
                       isSelected ? styles.benefitBulletIconSelected : null,
+                      { color: isSelected ? accentTextStrongColor : accentTextColor },
                     ]}
                   >
                     ✓
@@ -1624,7 +1677,7 @@ const PremiumPaywallModal = ({
                   style={[
                     styles.benefitBulletText,
                     isCompactAndroid ? styles.benefitBulletTextCompactAndroid : null,
-                    { color: isSelected ? "#2F3ADE" : textColor },
+                    { color: isSelected ? accentTextStrongColor : textColor },
                   ]}
                 >
                   {row.label}
@@ -1640,6 +1693,7 @@ const PremiumPaywallModal = ({
                       styles.benefitBulletRow,
                       isCompactAndroid ? styles.benefitBulletRowCompactAndroid : null,
                       index === benefitBullets.length - 1 ? styles.benefitBulletRowLast : null,
+                      { borderTopColor: dividerColor },
                     ]}
                     onPress={() => {
                       setSelectedComparisonRowId(rowId);
@@ -1657,6 +1711,7 @@ const PremiumPaywallModal = ({
                       styles.benefitBulletRow,
                       isCompactAndroid ? styles.benefitBulletRowCompactAndroid : null,
                       index === benefitBullets.length - 1 ? styles.benefitBulletRowLast : null,
+                      { borderTopColor: dividerColor },
                     ]}
                   >
                     {bulletRow}
@@ -1710,6 +1765,10 @@ const PremiumPaywallModal = ({
                   styles.planSocialProofChip,
                   styles.planSocialProofChipInline,
                   isCompactAndroid ? styles.planSocialProofChipCompactAndroid : null,
+                  {
+                    backgroundColor: socialProofBg,
+                    borderColor: socialProofBorderColor,
+                  },
                 ]}
               >
                 <Text
@@ -1717,6 +1776,7 @@ const PremiumPaywallModal = ({
                     styles.planSocialProofText,
                     styles.planSocialProofTextInline,
                     isCompactAndroid ? styles.planSocialProofTextCompactAndroid : null,
+                    { color: socialProofTextColor },
                   ]}
                   numberOfLines={1}
                 >
@@ -1776,25 +1836,25 @@ const PremiumPaywallModal = ({
             const resolveBadgeTone = (kind = "", fallbackYearlyStyle = false) => {
               if (kind === "save") {
                 return {
-                  backgroundColor: selected ? "#18B45B" : "rgba(24,180,91,0.18)",
+                  backgroundColor: selected ? "#18B45B" : successChipSurface,
                   borderWidth: 1,
-                  borderColor: "rgba(24,180,91,0.4)",
-                  textColor: selected ? "#FFFFFF" : "#137A42",
+                  borderColor: successBorderColor,
+                  textColor: selected ? "#FFFFFF" : successTextColor,
                 };
               }
               if (kind === "trial") {
                 return {
-                  backgroundColor: selected ? "#18B45B" : "rgba(24,180,91,0.18)",
+                  backgroundColor: selected ? "#18B45B" : successChipSurface,
                   borderWidth: 1,
-                  borderColor: "rgba(24,180,91,0.4)",
-                  textColor: selected ? "#FFFFFF" : "#137A42",
+                  borderColor: successBorderColor,
+                  textColor: selected ? "#FFFFFF" : successTextColor,
                 };
               }
               if (kind === "unavailable") {
                 return {
-                  backgroundColor: "rgba(11,22,48,0.08)",
-                  borderWidth: 0,
-                  borderColor: "transparent",
+                  backgroundColor: inactiveChipBg,
+                  borderWidth: isDarkMode ? 1 : 0,
+                  borderColor: inactiveChipBorderColor,
                   textColor: textColor,
                 };
               }
@@ -1802,16 +1862,16 @@ const PremiumPaywallModal = ({
                 backgroundColor: fallbackYearlyStyle
                   ? selected
                     ? "#18B45B"
-                    : "rgba(24,180,91,0.18)"
+                    : successChipSurface
                   : selected
                   ? accent
-                  : "rgba(11,22,48,0.08)",
-                borderWidth: fallbackYearlyStyle ? 1 : 0,
-                borderColor: fallbackYearlyStyle ? "rgba(24,180,91,0.4)" : "transparent",
+                  : inactiveChipBg,
+                borderWidth: fallbackYearlyStyle || isDarkMode ? 1 : 0,
+                borderColor: fallbackYearlyStyle ? successBorderColor : inactiveChipBorderColor,
                 textColor: fallbackYearlyStyle
                   ? selected
                     ? "#FFFFFF"
-                    : "#137A42"
+                    : successTextColor
                   : selected
                   ? "#FFFFFF"
                   : textColor,
@@ -1903,12 +1963,17 @@ const PremiumPaywallModal = ({
                       style={[
                         styles.planExternalSaveBadge,
                         isCompactAndroid ? styles.planExternalSaveBadgeCompactAndroid : null,
+                        {
+                          backgroundColor: isDarkMode ? "#163224" : "#DDF8E9",
+                          borderColor: isDarkMode ? successBorderColor : "#18B45B",
+                        },
                       ]}
                     >
                       <Text
                         style={[
                           styles.planExternalSaveBadgeText,
                           isCompactAndroid ? styles.planExternalSaveBadgeTextCompactAndroid : null,
+                          { color: successTextColor },
                         ]}
                       >
                         {topBadgeLabel}
@@ -1929,13 +1994,19 @@ const PremiumPaywallModal = ({
                   isUnifiedPlanCard ? styles.planCardTrial : null,
                   isUnifiedPlanCard && isCompactAndroid ? styles.planCardTrialCompactAndroid : null,
                   {
-                    borderColor: isYearlyPlan ? "#18B45B" : selected ? accent : borderColor,
+                    borderColor: isYearlyPlan
+                      ? selected
+                        ? "#18B45B"
+                        : successBorderColor
+                      : selected
+                      ? accentBorderColor
+                      : borderColor,
                     borderWidth: 1,
                     backgroundColor: selected
                       ? isYearlyPlan
-                        ? "rgba(24,180,91,0.1)"
-                        : "rgba(67,83,255,0.1)"
-                      : "#FFFFFF",
+                        ? successSurface
+                        : accentSurface
+                      : contentCardBg,
                     opacity: unavailable ? 0.52 : 1,
                   },
                 ]}
@@ -1956,7 +2027,10 @@ const PremiumPaywallModal = ({
                             style={[
                               styles.planTrialRadio,
                               selected ? styles.planTrialRadioSelected : null,
-                              { borderColor: selected ? accent : "rgba(67,83,255,0.45)" },
+                              {
+                                borderColor: selected ? accentBorderColor : accentBorderSoftColor,
+                                backgroundColor: isDarkMode ? "#152034" : "#FFFFFF",
+                              },
                             ]}
                           >
                             {selected ? <View style={[styles.planTrialRadioDot, { backgroundColor: accent }]} /> : null}
@@ -2132,7 +2206,7 @@ const PremiumPaywallModal = ({
                     style={[
                       styles.planEquivalent,
                       isCompactAndroid ? styles.planEquivalentCompactAndroid : null,
-                      { color: selected ? "#313EEA" : mutedColor },
+                      { color: selected ? accentTextStrongColor : mutedColor },
                     ]}
                   >
                     {plan.equivalentLabel}
@@ -2155,12 +2229,20 @@ const PremiumPaywallModal = ({
     <View
       style={[
         styles.supportIntroCard,
-        { borderColor },
+        { borderColor, backgroundColor: contentCardBg },
         supportIntroCardMinHeight > 0 ? { minHeight: supportIntroCardMinHeight } : null,
       ]}
     >
       <View style={styles.supportIntroMessageRow}>
-        <View style={styles.supportIntroAvatarWrap}>
+        <View
+          style={[
+            styles.supportIntroAvatarWrap,
+            {
+              backgroundColor: isDarkMode ? "#24314B" : "#E7ECFF",
+              borderColor: isDarkMode ? accentBorderSoftColor : "rgba(67,83,255,0.24)",
+            },
+          ]}
+        >
           <Image source={DEVELOPER_AVATAR} style={styles.supportIntroAvatar} resizeMode="cover" />
         </View>
         <View style={styles.supportIntroAuthorBlock}>
@@ -2177,7 +2259,15 @@ const PremiumPaywallModal = ({
           },
         ]}
       >
-        <View style={styles.supportIntroBubble}>
+        <View
+          style={[
+            styles.supportIntroBubble,
+            {
+              backgroundColor: contentCardBgElevated,
+              borderColor: isDarkMode ? accentBorderSoftColor : "rgba(67,83,255,0.18)",
+            },
+          ]}
+        >
           <Text style={[styles.supportIntroBubbleText, { color: textColor }]}>{supportIntroMessage}</Text>
         </View>
       </Animated.View>
@@ -2200,6 +2290,23 @@ const PremiumPaywallModal = ({
       }}
     >
       <View style={styles.root}>
+        {__DEV__ && visible ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              top: Math.max(14, safeAreaTopInset + 6),
+              right: 14,
+              zIndex: 999999,
+              backgroundColor: "#1D4ED8",
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+            }}
+          >
+            <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "700" }}>PAYWALL</Text>
+          </View>
+        ) : null}
         <Pressable
           style={styles.backdropPressable}
           onPress={isPaywallDismissible ? () => onClose("backdrop") : undefined}
@@ -2253,7 +2360,11 @@ const PremiumPaywallModal = ({
                 styles.footerSticky,
                 isCompactAndroid ? styles.footerCompactAndroid : null,
                 isVeryCompactAndroid ? styles.footerVeryCompactAndroid : null,
-                { borderTopColor: borderColor, paddingBottom: footerPaddingBottom },
+                {
+                  borderTopColor: borderColor,
+                  paddingBottom: footerPaddingBottom,
+                  backgroundColor: footerBg,
+                },
               ]}
             >
               {footerContent}
@@ -2789,7 +2900,10 @@ const styles = StyleSheet.create({
     lineHeight: 27,
   },
   headerBenefitHighlight: {
-    color: "#8AF3BC",
+    color: "#74FFAB",
+    textShadowColor: "rgba(68,255,170,0.34)",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
     fontWeight: "900",
   },
   headerSavedAmountHighlight: {
@@ -2873,6 +2987,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
   },
+  headerSubtitleNumericHighlight: {
+    color: "#72FFAA",
+    fontSize: 16,
+    lineHeight: 22,
+    textShadowColor: "rgba(74,255,174,0.38)",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 5,
+    fontWeight: "900",
+  },
+  headerSubtitleNumericHighlightAndroid: {
+    fontSize: 15,
+    lineHeight: 21,
+  },
+  headerSubtitleNumericHighlightCompactAndroid: {
+    fontSize: 14,
+    lineHeight: 19,
+  },
+  headerSubtitleNumericHighlightVeryCompactAndroid: {
+    fontSize: 13,
+    lineHeight: 17,
+  },
   saveLimitUnlockLine: {
     marginTop: 8,
     width: "100%",
@@ -2912,17 +3047,17 @@ const styles = StyleSheet.create({
     width: "100%",
     borderRadius: 12,
     paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    paddingVertical: 9,
+    backgroundColor: "rgba(255,255,255,0.14)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    gap: 6,
+    borderColor: "rgba(195,255,224,0.3)",
+    gap: 7,
   },
   headerForecastCardCompactAndroid: {
     marginTop: 7,
     borderRadius: 10,
     paddingHorizontal: 8,
-    paddingVertical: 6,
+    paddingVertical: 7,
     gap: 5,
   },
   headerForecastCardVeryCompactAndroid: {
@@ -2954,38 +3089,53 @@ const styles = StyleSheet.create({
   },
   headerForecastItem: {
     flex: 1,
-    borderRadius: 8,
-    paddingVertical: 6,
+    borderRadius: 9,
+    paddingVertical: 7,
     paddingHorizontal: 5,
-    backgroundColor: "rgba(9,19,76,0.36)",
+    backgroundColor: "rgba(9,19,76,0.44)",
+    borderWidth: 1,
+    borderColor: "rgba(181,245,214,0.2)",
     alignItems: "center",
     justifyContent: "center",
   },
   headerForecastItemCompactAndroid: {
-    borderRadius: 7,
-    paddingVertical: 5,
+    borderRadius: 8,
+    paddingVertical: 6,
     paddingHorizontal: 4,
   },
   headerForecastAmount: {
-    color: "#DFFFEF",
-    fontSize: 11,
-    lineHeight: 13,
+    color: "#75FFAE",
+    fontSize: 14,
+    lineHeight: 17,
     fontWeight: "900",
+    letterSpacing: 0.15,
+    textShadowColor: "rgba(76,255,175,0.46)",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 5,
     textAlign: "center",
   },
   headerForecastAmountCompactAndroid: {
-    fontSize: 10,
-    lineHeight: 12,
+    fontSize: 12,
+    lineHeight: 15,
+  },
+  headerForecastAmountVeryCompactAndroid: {
+    fontSize: 11,
+    lineHeight: 14,
   },
   headerForecastDays: {
-    marginTop: 2,
-    color: "rgba(239,244,255,0.9)",
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: "700",
+    marginTop: 3,
+    color: "rgba(165,255,208,0.98)",
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: "800",
     textAlign: "center",
   },
   headerForecastDaysCompactAndroid: {
+    marginTop: 2,
+    fontSize: 10,
+    lineHeight: 12,
+  },
+  headerForecastDaysVeryCompactAndroid: {
     marginTop: 1,
     fontSize: 9,
     lineHeight: 11,
