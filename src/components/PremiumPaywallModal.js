@@ -2192,6 +2192,7 @@ const PremiumPaywallModal = ({
       presentationStyle={Platform.OS === "ios" ? "overFullScreen" : undefined}
       animationType="none"
       statusBarTranslucent
+      navigationBarTranslucent
       onRequestClose={() => {
         if (isPaywallDismissible) {
           onClose("system_back");
