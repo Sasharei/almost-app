@@ -1,5 +1,39 @@
 # Release Notes
 
+## 5.2.0 (from 5.1.9)
+
+### EN
+- Savings Potential: added a clearer savings potential block with faster input and more transparent calculations.
+- Updated app design: refreshed Home, Progress, and key flows for a cleaner and more consistent UI.
+
+### RU
+- Потенциал экономии: добавили более наглядный блок потенциала экономии с быстрым вводом и прозрачной логикой расчёта.
+- Обновлённый дизайн приложения: освежили Home, Progress и ключевые сценарии, интерфейс стал чище и единообразнее.
+
+### ES
+- Potencial de ahorro: añadimos un bloque más claro de potencial de ahorro con entrada más rápida y cálculos más transparentes.
+- Diseño renovado de la app: actualizamos Inicio, Progreso y los flujos clave para una interfaz más limpia y consistente.
+
+### FR
+- Potentiel d'economie : ajout d'un bloc plus clair du potentiel d'economie, avec saisie plus rapide et calculs plus transparents.
+- Design de l'app mis a jour : Home, Progress et les parcours principaux ont ete rafraichis pour une interface plus propre et coherente.
+
+### DE
+- Sparpotenzial: Ein klarerer Bereich fur das Sparpotenzial wurde hinzugefugt, mit schnellerer Eingabe und transparenteren Berechnungen.
+- Aktualisiertes App-Design: Home, Fortschritt und zentrale Flows wurden visuell erneuert fur eine sauberere und einheitlichere UI.
+
+### AR (SA)
+- إمكانات الادخار: أضفنا قسماً أوضح لإمكانات الادخار مع إدخال أسرع وحسابات أكثر شفافية.
+- تصميم التطبيق المحدث: قمنا بتحديث الصفحة الرئيسية والتقدم والتدفقات الأساسية لواجهة أنظف وأكثر اتساقاً.
+
+### AR (AE)
+- إمكانات الادخار: أضفنا قسماً أوضح لإمكانات الادخار مع إدخال أسرع وحسابات أكثر شفافية.
+- تصميم التطبيق المحدث: قمنا بتحديث الصفحة الرئيسية والتقدم والتدفقات الأساسية لواجهة أنظف وأكثر اتساقاً.
+
+### ZH
+- 储蓄潜力：新增更清晰的储蓄潜力模块，录入更快，计算逻辑更透明。
+- 更新后的应用设计：焕新了首页、进度页和关键流程，界面更整洁一致。
+
 ## 5.1.4 (from 5.1.3)
 
 ### EN

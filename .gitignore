@@ -15,7 +15,6 @@ package-lock.json
 .expo-shared/
 dist/
 web-build/
-android/
 !patches/expo-modules-core/android/
 !patches/expo-modules-core/android/**
 !patches/expo-modules-core/android/src/main/java/expo/modules/kotlin/jni/JavaScriptValue.kt
