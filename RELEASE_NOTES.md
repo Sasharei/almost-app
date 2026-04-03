@@ -11,8 +11,7 @@
 - Обновлённый дизайн приложения: освежили Home, Progress и ключевые сценарии, интерфейс стал чище и единообразнее.
 
 ### ES
-- Potencial de ahorro: añadimos un bloque más claro de potencial de ahorro con entrada más rápida y cálculos más transparentes.
-- Diseño renovado de la app: actualizamos Inicio, Progreso y los flujos clave para una interfaz más limpia y consistente.
+ 
 
 ### FR
 - Potentiel d'economie : ajout d'un bloc plus clair du potentiel d'economie, avec saisie plus rapide et calculs plus transparents.

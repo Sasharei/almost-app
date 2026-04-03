@@ -16,7 +16,6 @@ import {
   TouchableOpacity,
   Modal as RNModal,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   TextInput as RNTextInput,
   Alert,
@@ -470,6 +469,7 @@ import PremiumPaywallModal from "./src/components/PremiumPaywallModal";
 import { PartyFireworksLayer, PartySparklesLayer } from "./src/components/PartyEffects";
 import LiquidGlassTabBar from "./src/components/LiquidGlassTabBar";
 import LiquidGlassFabOrb from "./src/components/LiquidGlassFabOrb";
+import LiquidGlassPillButton from "./src/components/LiquidGlassPillButton";
 import {
   buildDefaultPlanCards,
   buildPaywallCopy,
@@ -4727,6 +4727,14 @@ const normalizeTemporalMs = (value, fallback = 0) => {
   }
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return parsed;
+};
+
+const normalizeBaselineStartAt = (value) => {
+  const timestamp = normalizeTemporalMs(value, 0);
+  if (!timestamp) return null;
+  const iso = new Date(timestamp).toISOString();
+  if (!iso || Number.isNaN(new Date(iso).getTime())) return null;
+  return iso;
 };
 
 const normalizeIncomeEntryType = (value) =>
@@ -12286,14 +12294,13 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const handleHeroLayout = useCallback(() => {
     measureHeroAnchor();
   }, [measureHeroAnchor]);
-  const potentialSimulationEnabled = !!potentialLiveVisible && !expanded && hasBaseline;
+  const potentialSimulationEnabled = !!potentialLiveVisible && hasBaseline;
   const potentialSavedUSD = useSavingsSimulation(
     baselineMonthlyWasteUSD,
     baselineStartAt,
     baselineSpentLossUSD,
     {
       enabled: potentialSimulationEnabled,
-      updateIntervalMs: 16,
     }
   );
   const setDailyRewardModalState = useCallback(
@@ -12930,7 +12937,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
             </Text>
           </View>
         )}
-        {hasActiveGoal && (
+        {hasActiveGoal && (isGoalComplete || !expanded) && (
           <View style={styles.savedHeroGoalMetaRow}>
             <View style={styles.savedHeroGoalMetaActions}>
               {isGoalComplete && (
@@ -12946,14 +12953,16 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
                 </View>
               )}
             </View>
-            <TouchableOpacity
-              style={styles.savedHeroToggleButton}
-              onPress={handleToggleExpanded}
-            >
-              <Text style={[styles.savedHeroToggleText, { color: goldPalette.subtext }]}>
-                {expanded ? t("heroCollapse") : t("heroExpand")}
-              </Text>
-            </TouchableOpacity>
+            {!expanded ? (
+              <TouchableOpacity
+                style={styles.savedHeroToggleButton}
+                onPress={handleToggleExpanded}
+              >
+                <Text style={[styles.savedHeroToggleText, { color: goldPalette.subtext }]}>
+                  {t("heroExpand")}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         )}
       {expanded && (
@@ -13141,7 +13150,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
           </View>
         </View>
       )}
-      {!hasActiveGoal && (
+      {(expanded || !hasActiveGoal) && (
         <View style={styles.savedHeroToggleRow}>
           <TouchableOpacity
             style={styles.savedHeroToggleButton}
@@ -16125,6 +16134,8 @@ const ReportsModal = React.memo(function ReportsModal({
   );
 });
 
+const MENU_TOP_CONTENT_OFFSET = 24;
+
 const FeedScreen = React.memo(
   forwardRef(function FeedScreen(
     {
@@ -16270,6 +16281,7 @@ const FeedScreen = React.memo(
   isPremiumUser = false,
   budgetSpeechDataRef = null,
   onScrollActivityChange = null,
+  topInset = 0,
   },
     ref
   ) {
@@ -18585,7 +18597,7 @@ const FeedScreen = React.memo(
     0,
     Number(profile?.spendingProfile?.baselineMonthlyWasteUSD) || 0
   );
-  const baselineStartAt = profile?.spendingProfile?.baselineStartAt || null;
+  const baselineStartAt = normalizeBaselineStartAt(profile?.spendingProfile?.baselineStartAt);
   const hasBaseline = !!(
     baselineMonthlyWasteUSD && baselineStartAt
   );
@@ -19334,10 +19346,20 @@ const FeedScreen = React.memo(
   }, [wishes]);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }] }>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.background,
+          paddingTop: Math.max(0, Number(topInset) || 0) + MENU_TOP_CONTENT_OFFSET,
+        },
+      ]}
+    >
       <FlatList
         ref={listRef}
         style={styles.feedList}
+        contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false}
         data={feedData}
         keyExtractor={feedKeyExtractor}
         showsVerticalScrollIndicator={false}
@@ -19663,8 +19685,10 @@ const FeedScreen = React.memo(
                     ],
                   };
                   if (renderedRealIndex === 0) {
-                    const isPotentialLiveVisible =
-                      !isClone && heroCarouselIndex === 0 && heroPotentialVisible && !heroExpanded;
+                    const isPrimarySavingsLoop = heroCarouselPremiumLocked
+                      ? loopIndex === heroCarouselLoopIndexForReal(0)
+                      : !isClone && heroCarouselIndex === 0;
+                    const isPotentialLiveVisible = isPrimarySavingsLoop && heroPotentialVisible;
                     return (
                       <Animated.View
                         key={`hero-carousel-${loopIndex}`}
@@ -19933,7 +19957,7 @@ const FeedScreen = React.memo(
         currency={currency}
         language={language}
       />
-    </SafeAreaView>
+    </View>
   );
 })
 );
@@ -20607,6 +20631,8 @@ const ProgressScreen = React.memo(function ProgressScreen({
   onBudgetWidgetLayout = null,
   onFreeDayCardLayout = null,
   onImpulseMapLockedPress = null,
+  contentBottomPadding = 0,
+  topInset = 0,
 }) {
   const isDarkTheme = colors.background === THEMES.dark.background;
   const budgetLimitWarningColor = isDarkTheme ? "#FFD59A" : "#F6C16B";
@@ -22451,8 +22477,19 @@ const ProgressScreen = React.memo(function ProgressScreen({
     <>
       <ScrollView
         ref={scrollRef}
-        style={[styles.container, { backgroundColor: colors.background }]}
-        contentContainerStyle={{ paddingBottom: 200, gap: 16 }}
+        style={[
+          styles.container,
+          {
+            backgroundColor: colors.background,
+            paddingTop: Math.max(0, Number(topInset) || 0) + MENU_TOP_CONTENT_OFFSET,
+          },
+        ]}
+        contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false}
+        contentContainerStyle={{
+          paddingBottom: Math.max(0, Number(contentBottomPadding) || 0),
+          gap: 16,
+        }}
         showsVerticalScrollIndicator={false}
         onScrollBeginDrag={closeChallengeSwipe}
       >
@@ -23866,6 +23903,8 @@ const PendingScreen = React.memo(function PendingScreen({
   onItemLayout,
   scrollRef,
   playSound,
+  contentBottomPadding = 0,
+  topInset = 0,
 }) {
   const isDarkMode = colors.background === THEMES.dark.background;
   const curiousImage = catCuriousSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.curious;
@@ -24329,7 +24368,10 @@ const PendingScreen = React.memo(function PendingScreen({
               ref={scrollRef}
               scrollEnabled={fridgeOpen}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.fridgeShelfContent}
+              contentContainerStyle={[
+                styles.fridgeShelfContent,
+                { paddingBottom: Math.max(140, Number(contentBottomPadding) || 0) },
+              ]}
               style={styles.fridgeShelfScroll}
             >
               <View style={styles.fridgeInteriorHeader}>
@@ -24448,11 +24490,31 @@ const PendingScreen = React.memo(function PendingScreen({
   );
 
   if (!locked) {
-    return <View style={[styles.pendingFridgeScreen, { backgroundColor: colors.background }]}>{fridgeBody}</View>;
+    return (
+      <View
+        style={[
+          styles.pendingFridgeScreen,
+          {
+            backgroundColor: colors.background,
+            paddingTop: Math.max(0, Number(topInset) || 0) + MENU_TOP_CONTENT_OFFSET,
+          },
+        ]}
+      >
+        {fridgeBody}
+      </View>
+    );
   }
 
   return (
-    <View style={[styles.pendingFridgeScreen, { backgroundColor: colors.background }]}>
+    <View
+      style={[
+        styles.pendingFridgeScreen,
+        {
+          backgroundColor: colors.background,
+          paddingTop: Math.max(0, Number(topInset) || 0) + MENU_TOP_CONTENT_OFFSET,
+        },
+      ]}
+    >
       <LockedFeatureOverlay
         locked
         variantKey="thinkingList"
@@ -25810,6 +25872,8 @@ const RewardsScreen = React.memo(function RewardsScreen({
   challengesLocked = false,
   dailyChallengeLocked = false,
   scrollRef,
+  contentBottomPadding = 0,
+  topInset = 0,
 }) {
   const isRtlLayout = isRtlLanguage(language);
   const rewardList = Array.isArray(achievements) ? achievements.filter(Boolean) : [];
@@ -26226,8 +26290,19 @@ const RewardsScreen = React.memo(function RewardsScreen({
   return (
     <ScrollView
       ref={scrollRef}
-      style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={{ paddingBottom: 200, gap: 16 }}
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.background,
+          paddingTop: Math.max(0, Number(topInset) || 0) + MENU_TOP_CONTENT_OFFSET,
+        },
+      ]}
+      contentInsetAdjustmentBehavior="never"
+      automaticallyAdjustContentInsets={false}
+      contentContainerStyle={{
+        paddingBottom: Math.max(0, Number(contentBottomPadding) || 0),
+        gap: 16,
+      }}
       showsVerticalScrollIndicator={false}
     >
       <View>
@@ -26337,7 +26412,6 @@ const ProfileScreen = React.memo(function ProfileScreen({
   editMode = "none",
   onFieldChange,
   onEditPress,
-  onSpendEditPress,
   onReportsPress,
   reportsBadgeVisible = false,
   reportsLocked = false,
@@ -26375,15 +26449,22 @@ const ProfileScreen = React.memo(function ProfileScreen({
   openAddCategoryModal,
   openManageCategoriesModal,
   scrollRef,
+  contentBottomPadding = 0,
+  topInset = 0,
 }) {
   const fallbackAvatar = mascotImageSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.idle;
   const resolvedAvatarUri = useMemo(() => resolveAvatarUri(profile?.avatar), [profile?.avatar]);
   const currentCurrency = currencyValue || profile.currency || DEFAULT_PROFILE.currency;
-  const isEditingIdentity = editMode === "identity";
-  const isEditingSpend = editMode === "spend";
-  const isEditing = isEditingIdentity || isEditingSpend;
-  const canStartSpendEdit = editMode === "none";
+  const isEditing = editMode !== "none";
+  const isEditingIdentity = isEditing;
+  const isEditingSpend = isEditing;
   const isDarkTheme = theme === "dark";
+  const isProTheme = theme === PRO_THEME_ID;
+  const safeAreaInsets = safeUseSafeAreaInsets();
+  const profileActionTopInset = useMemo(() => {
+    const safeTop = Math.max(Number(topInset) || 0, Number(safeAreaInsets.top) || 0);
+    return Math.max(8, safeTop + 8);
+  }, [safeAreaInsets.top, topInset]);
   const normalizedLanguageValue = normalizeLanguage(language || DEFAULT_LANGUAGE);
   const isRomanceLocale = normalizedLanguageValue === "es" || normalizedLanguageValue === "fr";
   const reportsDisabled = !onReportsPress;
@@ -26622,7 +26703,8 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const describeHistory = (entry) => describeHistoryEntry(entry, { t, formatLocalAmount });
   const formatHistoryMeta = (entry) => formatHistoryEntryMeta(entry, { t, locale });
   const joinDateLabel = useMemo(() => {
-    const stamp = profile.joinedAt || profile.spendingProfile?.baselineStartAt;
+    const stamp =
+      profile.joinedAt || normalizeBaselineStartAt(profile.spendingProfile?.baselineStartAt);
     if (!stamp) return null;
     try {
       const joinedDate = new Date(stamp);
@@ -26688,10 +26770,6 @@ const ProfileScreen = React.memo(function ProfileScreen({
     logEvent("profile_instagram_clicked");
     Linking.openURL(INSTAGRAM_URL).catch((error) => console.warn("instagram link", error));
   }, []);
-  const handleSpendEditPress = useCallback(() => {
-    if (!canStartSpendEdit) return;
-    onSpendEditPress?.();
-  }, [canStartSpendEdit, onSpendEditPress]);
   const customSpendSection = (
     <View style={styles.profileSection}>
       <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("customSpendTitle")}</Text>
@@ -26756,21 +26834,6 @@ const ProfileScreen = React.memo(function ProfileScreen({
       <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("baselineTitle")}</Text>
       <View style={{ gap: 12 }}>
         {isEditingSpend ? (
-          <View style={{ gap: 4 }}>
-            <Text style={[styles.profileHintText, { color: colors.muted }]}>
-              {t("incomeEntryAmountLabel")}
-            </Text>
-            {monthlyIncomeDisplay ? (
-              <Text style={[styles.profileSettingValue, { color: colors.text }]}>
-                {monthlyIncomeDisplay}
-              </Text>
-            ) : (
-              <Text style={[styles.profileHintText, { color: colors.muted }]}>
-                {t("baselineIncomeHint")}
-              </Text>
-            )}
-          </View>
-        ) : canStartSpendEdit ? (
           <Pressable onPress={() => onIncomeEntryOpen?.("profile")}>
             <View style={{ gap: 4 }}>
               <Text style={[styles.profileHintText, { color: colors.muted }]}>
@@ -26820,23 +26883,6 @@ const ProfileScreen = React.memo(function ProfileScreen({
               placeholderTextColor={colors.muted}
             />
           </View>
-        ) : canStartSpendEdit ? (
-          <Pressable onPress={handleSpendEditPress}>
-            <View style={{ gap: 4 }}>
-              <Text style={[styles.profileHintText, { color: colors.muted }]}>
-                {t("baselineSpendLabel")}
-              </Text>
-              {baselineLocalDisplay ? (
-                <Text style={[styles.profileSettingValue, { color: colors.text }]}>
-                  {baselineLocalDisplay}
-                </Text>
-              ) : (
-                <Text style={[styles.profileHintText, { color: colors.muted }]}>
-                  {t("baselineHint")}
-                </Text>
-              )}
-            </View>
-          </Pressable>
         ) : (
           <View style={{ gap: 4 }}>
             <Text style={[styles.profileHintText, { color: colors.muted }]}>
@@ -26951,12 +26997,29 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const handleHistoryLoadMore = useCallback(() => {
     setHistoryVisibleWindowMs((prev) => prev + PROFILE_HISTORY_PAGE_WINDOW_MS);
   }, []);
+  const showProfileActions = isEditing || !!onReportsPress;
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }] }>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.background,
+          paddingTop: 0,
+        },
+      ]}
+    >
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1 }}
-        contentContainerStyle={styles.profileScrollContent}
+        contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false}
+        contentContainerStyle={[
+          styles.profileScrollContent,
+          {
+            paddingTop: Math.max(0, Number(topInset) || 0) + MENU_TOP_CONTENT_OFFSET,
+            paddingBottom: Math.max(0, Number(contentBottomPadding) || 0),
+          },
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -27094,17 +27157,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
             ))}
           </View>
 
-          <View style={styles.profileActions}>
-            {isEditing ? (
-              <>
-                <TouchableOpacity
-                  style={[styles.profileActionPrimary, { backgroundColor: colors.text }]}
-                  onPress={onSaveEdit}
-                >
-                  <Text style={[styles.profileActionPrimaryText, { color: colors.background }]}>
-                    {t("profileSave")}
-                  </Text>
-                </TouchableOpacity>
+          {showProfileActions ? (
+            <View style={styles.profileActions}>
+              {isEditing ? (
                 <TouchableOpacity
                   style={[styles.profileActionSecondary, { borderColor: colors.border }]}
                   onPress={onCancelEdit}
@@ -27113,97 +27168,77 @@ const ProfileScreen = React.memo(function ProfileScreen({
                     {t("profileCancel")}
                   </Text>
                 </TouchableOpacity>
-              </>
-            ) : (
-              <>
+              ) : onReportsPress ? (
                 <TouchableOpacity
-                  style={[styles.profileActionPrimary, { backgroundColor: colors.text }]}
-                  onPress={onEditPress}
+                  style={[
+                    styles.profileActionSecondary,
+                    reportsLockedState ? styles.profileActionPremiumLocked : null,
+                    {
+                      borderColor: reportsLockedState ? reportsPremiumBorder : colors.border,
+                      backgroundColor: reportsLockedState ? reportsPremiumBackground : "transparent",
+                    },
+                    reportsDisabled ? { opacity: 0.7 } : null,
+                  ]}
+                  onPress={onReportsPress}
+                  disabled={reportsDisabled}
+                  activeOpacity={reportsDisabled ? 1 : 0.85}
                 >
-                  <Text style={[styles.profileActionPrimaryText, { color: colors.background }]}>
-                    {t("profileEdit")}
-                  </Text>
-                </TouchableOpacity>
-                {onReportsPress ? (
-                  <TouchableOpacity
-                    style={[
-                      styles.profileActionSecondary,
-                      reportsLockedState ? styles.profileActionPremiumLocked : null,
-                      {
-                        borderColor: reportsLockedState ? reportsPremiumBorder : colors.border,
-                        backgroundColor: reportsLockedState ? reportsPremiumBackground : "transparent",
-                      },
-                      reportsDisabled ? { opacity: 0.7 } : null,
-                    ]}
-                    onPress={onReportsPress}
-                    disabled={reportsDisabled}
-                    activeOpacity={reportsDisabled ? 1 : 0.85}
-                  >
-                    <View style={styles.profileActionRow}>
-                      <Text
+                  <View style={styles.profileActionRow}>
+                    <Text
+                      style={[
+                        styles.profileActionSecondaryText,
+                        { color: reportsLockedState ? reportsPremiumAccent : colors.muted },
+                      ]}
+                    >
+                      {t("reportsButton")}
+                    </Text>
+                    {reportsLockedState && (
+                      <View
                         style={[
-                          styles.profileActionSecondaryText,
-                          { color: reportsLockedState ? reportsPremiumAccent : colors.muted },
+                          styles.profileActionPremiumPill,
+                          {
+                            backgroundColor: reportsPremiumPillBackground,
+                            borderColor: reportsPremiumBorder,
+                          },
                         ]}
                       >
-                        {t("reportsButton")}
-                      </Text>
-                      {reportsLockedState && (
-                        <View
+                        <Text
                           style={[
-                            styles.profileActionPremiumPill,
-                            {
-                              backgroundColor: reportsPremiumPillBackground,
-                              borderColor: reportsPremiumBorder,
-                            },
+                            styles.profileActionPremiumPillText,
+                            { color: reportsPremiumAccent },
                           ]}
                         >
-                          <Text
-                            style={[
-                              styles.profileActionPremiumPillText,
-                              { color: reportsPremiumAccent },
-                            ]}
-                          >
-                            PREMIUM
-                          </Text>
-                        </View>
-                      )}
-                      {!reportsLockedState && !reportsDisabled && reportsBadgeVisible && (
-                        <View style={[styles.reportsBadgeChip, { backgroundColor: colors.text }]}>
-                          <Text style={[styles.reportsBadgeText, { color: colors.background }]}>
-                            {t("reportsBadgeNew")}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    {reportsLockedState ? (
-                      <Text style={[styles.profileActionLockedLabel, { color: reportsPremiumAccent }]}>
-                        {reportsLockLabel}
-                      </Text>
-                    ) : reportsPreparingState ? (
-                      <Text style={[styles.profileActionPreparingLabel, { color: colors.muted }]}>
-                        {t("reportsGenerating")}
-                      </Text>
-                    ) : null}
-                  </TouchableOpacity>
-                ) : null}
-              </>
-            )}
-          </View>
+                          PREMIUM
+                        </Text>
+                      </View>
+                    )}
+                    {!reportsLockedState && !reportsDisabled && reportsBadgeVisible && (
+                      <View style={[styles.reportsBadgeChip, { backgroundColor: colors.text }]}>
+                        <Text style={[styles.reportsBadgeText, { color: colors.background }]}>
+                          {t("reportsBadgeNew")}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  {reportsLockedState ? (
+                    <Text style={[styles.profileActionLockedLabel, { color: reportsPremiumAccent }]}>
+                      {reportsLockLabel}
+                    </Text>
+                  ) : reportsPreparingState ? (
+                    <Text style={[styles.profileActionPreparingLabel, { color: colors.muted }]}>
+                      {t("reportsGenerating")}
+                    </Text>
+                  ) : null}
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
         <View style={[styles.settingsCard, { backgroundColor: colors.card }] }>
-          {canStartSpendEdit ? (
-            <Pressable onPress={handleSpendEditPress}>{customSpendSection}</Pressable>
-          ) : (
-            customSpendSection
-          )}
+          {customSpendSection}
           {baselineSection}
-          {canStartSpendEdit ? (
-            <Pressable onPress={handleSpendEditPress}>{incomePaydaySection}</Pressable>
-          ) : (
-            incomePaydaySection
-          )}
+          {incomePaydaySection}
 
           <View style={[styles.settingsDivider, { backgroundColor: colors.border }]} />
 
@@ -27521,6 +27556,19 @@ const ProfileScreen = React.memo(function ProfileScreen({
           <Text style={[styles.profileLinkHint, { color: colors.muted }]}>{t("supportHint")}</Text>
         </TouchableOpacity>
       </ScrollView>
+      <View pointerEvents="box-none" style={styles.profilePinnedActionLayer}>
+        {(isEditing ? !!onSaveEdit : !!onEditPress) ? (
+          <LiquidGlassPillButton
+            style={[styles.profileEditPinnedButton, { top: profileActionTopInset }]}
+            label={isEditing ? t("profileSave") : t("profileEdit")}
+            onPress={isEditing ? onSaveEdit : onEditPress}
+            disabled={isEditing ? !onSaveEdit : !onEditPress}
+            isDarkTheme={isDarkTheme}
+            isProTheme={isProTheme}
+            proThemeAccentColor={colors.primary || "#4E6BFF"}
+          />
+        ) : null}
+      </View>
     </View>
   );
 });
@@ -29087,7 +29135,7 @@ function AppContent() {
     0,
     Number(profile?.spendingProfile?.baselineMonthlyWasteUSD) || 0
   );
-  const baselineStartAt = profile?.spendingProfile?.baselineStartAt || null;
+  const baselineStartAt = normalizeBaselineStartAt(profile?.spendingProfile?.baselineStartAt);
   const baselineSpentLossUSD = useMemo(
     () => calcSpentLossInCurrentMonth(resolvedHistoryEvents, baselineStartAt, new Date()),
     [baselineStartAt, currentMonthKey, resolvedHistoryEvents]
@@ -32796,14 +32844,17 @@ function AppContent() {
   const tabBarBottomInset = Platform.OS === "ios" ? iosTabInset : androidNavInset;
   const tabBarBaseHeight = isCompactAndroid ? TAB_BAR_BASE_HEIGHT_COMPACT : TAB_BAR_BASE_HEIGHT;
   const resolvedTabBarHeight = tabBarHeight || tabBarBottomInset + tabBarBaseHeight;
+  const screenContentBottomPadding = Math.max(200, resolvedTabBarHeight + 24);
   const androidTabBarExtra = isCompactAndroid ? 4 : 12;
   const tabBarTopPadding = isCompactAndroid ? 10 : 18;
   const tabButtonVerticalPadding = isCompactAndroid ? 10 : 14;
   const tabLabelTopMargin = isCompactAndroid ? 4 : 6;
   const tutorialOverlayInset = resolvedTabBarHeight;
   const tutorialCardOffset = resolvedTabBarHeight + (Platform.OS === "ios" ? 64 : 72);
-  const topSafeInset =
+  const rawTopSafeInset =
     Platform.OS === "android" ? RNStatusBar.currentHeight || 24 : safeAreaInsets.top || 0;
+  const topSafeInset =
+    Platform.OS === "ios" && rawTopSafeInset <= 0 ? 44 : rawTopSafeInset;
   const [keyboardInset, setKeyboardInset] = useState(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
@@ -32829,10 +32880,10 @@ function AppContent() {
     };
   }, [tabBarBottomInset]);
   const shouldRenderStatusGlass = topSafeInset > 0;
-  const statusBlurAvailable = useMemo(() => {
-    if (!shouldRenderStatusGlass) return false;
-    return isBlurViewAvailable();
-  }, [shouldRenderStatusGlass]);
+  const shouldRenderMainStatusGlass = shouldRenderStatusGlass;
+  const statusGlassFadeHeight = shouldRenderStatusGlass ? MENU_TOP_CONTENT_OFFSET : 0;
+  const statusGlassHeight = topSafeInset + statusGlassFadeHeight;
+  const statusBlurAvailable = false;
   const screenKeyboardAdjustmentStyle = useMemo(() => {
     if (Platform.OS === "ios") return null;
     return keyboardInset ? { paddingBottom: keyboardInset } : null;
@@ -35366,13 +35417,69 @@ function AppContent() {
       premiumPaywallState.trigger || "manual",
       "manual"
     );
+    const isTransactionAbandonedPaywall =
+      normalizedPaywallTrigger === TRANSACTION_ABANDONED_TRIGGER;
     const preferredOfferingIdentifiers =
-      normalizedPaywallTrigger === TRANSACTION_ABANDONED_TRIGGER
+      isTransactionAbandonedPaywall
         ? PREMIUM_TRANSACTION_ABANDONED_OFFERING_IDENTIFIERS
         : [];
     const offeringsByPlan = mapOfferingPackagesByPlan(premiumState.offerings || null, {
       preferredOfferingIdentifiers,
     });
+    const baselineOfferingsByPlan = mapOfferingPackagesByPlan(premiumState.offerings || null, {
+      preferredOfferingIdentifiers: [],
+    });
+    const abandonedOfferingsByPlan = mapOfferingPackagesByPlan(premiumState.offerings || null, {
+      preferredOfferingIdentifiers: PREMIUM_TRANSACTION_ABANDONED_OFFERING_IDENTIFIERS,
+    });
+    const normalizePlanDiscountPercent = (value = 0) => {
+      const parsed = Math.round(Number(value) || 0);
+      if (!Number.isFinite(parsed) || parsed <= 0) return null;
+      return Math.min(99, parsed);
+    };
+    const resolvePackageRawPrice = (pkg = null) => {
+      const product = pkg?.product || null;
+      return (
+        parseLocalizedPriceValue(product?.price) ??
+        parseLocalizedPriceValue(product?.priceString) ??
+        null
+      );
+    };
+    const resolveRelativeDiscountPercent = (fullPrice = 0, discountedPrice = 0) => {
+      const normalizedFullPrice = Number(fullPrice);
+      const normalizedDiscountedPrice = Number(discountedPrice);
+      if (!Number.isFinite(normalizedFullPrice) || normalizedFullPrice <= 0) return null;
+      if (!Number.isFinite(normalizedDiscountedPrice) || normalizedDiscountedPrice <= 0) return null;
+      if (normalizedDiscountedPrice >= normalizedFullPrice) return null;
+      return normalizePlanDiscountPercent(
+        (1 - normalizedDiscountedPrice / normalizedFullPrice) * 100
+      );
+    };
+    const baselineMonthlyRawPrice = resolvePackageRawPrice(baselineOfferingsByPlan?.monthly);
+    const baselineYearlyRawPrice = resolvePackageRawPrice(baselineOfferingsByPlan?.yearly);
+    const abandonedMonthlyRawPrice = resolvePackageRawPrice(abandonedOfferingsByPlan?.monthly);
+    const abandonedYearlyRawPrice = resolvePackageRawPrice(abandonedOfferingsByPlan?.yearly);
+    const baselineYearlySavePercentFromOfferings = resolveRelativeDiscountPercent(
+      Number.isFinite(baselineMonthlyRawPrice) && baselineMonthlyRawPrice > 0
+        ? baselineMonthlyRawPrice * 12
+        : 0,
+      baselineYearlyRawPrice
+    );
+    const abandonedMonthlyOfferPercent = resolveRelativeDiscountPercent(
+      baselineMonthlyRawPrice,
+      abandonedMonthlyRawPrice
+    );
+    const abandonedYearlyOfferPercent = resolveRelativeDiscountPercent(
+      baselineYearlyRawPrice,
+      abandonedYearlyRawPrice
+    );
+    const abandonedOfferDiscountPercent =
+      (Number.isFinite(abandonedMonthlyOfferPercent) && abandonedMonthlyOfferPercent > 0
+        ? abandonedMonthlyOfferPercent
+        : null) ||
+      (Number.isFinite(abandonedYearlyOfferPercent) && abandonedYearlyOfferPercent > 0
+        ? abandonedYearlyOfferPercent
+        : null);
     const formatPaywallPrice = (value = 0, currencyCode = fallbackCurrency) =>
       formatCurrency(value, currencyCode, {
         precisionOverride: getCurrencyPrecision(currencyCode),
@@ -35443,7 +35550,7 @@ function AppContent() {
     const yearlyRawPrice = preliminaryCards.find((card) => card.id === "yearly")?.rawPriceLocal;
     const yearlyFullPrice =
       Number.isFinite(monthlyRawPrice) && monthlyRawPrice > 0 ? monthlyRawPrice * 12 : null;
-    const yearlySavePercent =
+    const activeYearlySavePercent =
       Number.isFinite(yearlyRawPrice) &&
       yearlyRawPrice > 0 &&
       Number.isFinite(yearlyFullPrice) &&
@@ -35451,6 +35558,15 @@ function AppContent() {
         ? Math.max(1, Math.round((1 - yearlyRawPrice / yearlyFullPrice) * 100))
         : null;
     const fallbackYearlySavePercent = 37;
+    const baseYearlySavePercent =
+      (Number.isFinite(baselineYearlySavePercentFromOfferings) &&
+      baselineYearlySavePercentFromOfferings > 0
+        ? baselineYearlySavePercentFromOfferings
+        : null) ||
+      (Number.isFinite(activeYearlySavePercent) && activeYearlySavePercent > 0
+        ? activeYearlySavePercent
+        : null) ||
+      fallbackYearlySavePercent;
 
     return preliminaryCards.map((card) => {
       const isYearly = card.id === "yearly";
@@ -35510,6 +35626,9 @@ function AppContent() {
       let postTrialPriceLabel = null;
       let trialOriginalPriceLabel = null;
       let trialDiscountLabel = null;
+      let defaultDiscountPercent = null;
+      let abandonedDiscountPercent = null;
+      let overallDiscountPercent = null;
       const freeTrialDays =
         Number.isFinite(card.freeTrialDays) && card.freeTrialDays > 0
           ? Math.max(1, Math.round(card.freeTrialDays))
@@ -35556,10 +35675,19 @@ function AppContent() {
         // Apple 3.1.2(c): keep the billed amount as the most prominent price element.
         priceLabel = recurringChargePriceLabel || card.chargePriceLabel;
         ctaPriceLabel = recurringChargePriceLabel || card.chargePriceLabel;
+        defaultDiscountPercent = baseYearlySavePercent;
+        const abandonedYearlyPercent =
+          isTransactionAbandonedPaywall &&
+          Number.isFinite(abandonedOfferDiscountPercent) &&
+          abandonedOfferDiscountPercent > 0
+            ? abandonedOfferDiscountPercent
+            : 0;
+        abandonedDiscountPercent = abandonedYearlyPercent > 0 ? abandonedYearlyPercent : null;
         const effectiveYearlySavePercent =
-          Number.isFinite(yearlySavePercent) && yearlySavePercent > 0
-            ? yearlySavePercent
-            : fallbackYearlySavePercent;
+          normalizePlanDiscountPercent(
+            baseYearlySavePercent + abandonedYearlyPercent
+          ) || fallbackYearlySavePercent;
+        overallDiscountPercent = effectiveYearlySavePercent;
         const shouldShowYearlyDiscount =
           Number.isFinite(effectiveYearlySavePercent) &&
           effectiveYearlySavePercent > 0 &&
@@ -35604,6 +35732,22 @@ function AppContent() {
           );
         secondaryLabel = periodEquivalentLabel || billingLabel;
         secondarySubLabel = periodEquivalentLabel ? billingLabel : null;
+        const monthlyAbandonedPercent =
+          isTransactionAbandonedPaywall &&
+          Number.isFinite(abandonedOfferDiscountPercent) &&
+          abandonedOfferDiscountPercent > 0
+            ? abandonedOfferDiscountPercent
+            : null;
+        if (monthlyAbandonedPercent) {
+          const monthlySaveBadge = buildPaywallSaveBadge({
+            percent: monthlyAbandonedPercent,
+            language: monetizationLanguage,
+          });
+          badge = monthlySaveBadge || badge;
+          badgeKind = monthlySaveBadge ? "save" : badgeKind;
+          abandonedDiscountPercent = monthlyAbandonedPercent;
+          overallDiscountPercent = monthlyAbandonedPercent;
+        }
       } else if (isLifetime) {
         billingLabel =
           localizeFallbackTextByLanguage(
@@ -35678,6 +35822,22 @@ function AppContent() {
         postTrialPriceLabel: hasTrial ? postTrialPriceLabel : null,
         trialOriginalPriceLabel: hasTrial ? trialOriginalPriceLabel : null,
         trialDiscountLabel: hasTrial ? trialDiscountLabel : null,
+        defaultDiscountPercent:
+          Number.isFinite(defaultDiscountPercent) && defaultDiscountPercent > 0
+            ? defaultDiscountPercent
+            : null,
+        abandonedDiscountPercent:
+          Number.isFinite(abandonedDiscountPercent) && abandonedDiscountPercent > 0
+            ? abandonedDiscountPercent
+            : null,
+        overallDiscountPercent:
+          Number.isFinite(overallDiscountPercent) && overallDiscountPercent > 0
+            ? overallDiscountPercent
+            : null,
+        discountPercent:
+          Number.isFinite(overallDiscountPercent) && overallDiscountPercent > 0
+            ? overallDiscountPercent
+            : null,
         trialDays: hasTrial ? resolvedTrialDays : null,
         hasTrial,
         displayAsEquivalent,
@@ -36932,6 +37092,16 @@ function AppContent() {
       };
       premiumPaywallShownThisSessionRef.current = true;
       premiumPaywallActiveViewRef.current = context;
+      if (__DEV__) {
+        console.log("[paywall-debug:shown]", {
+          experiment_group: monetizationExperimentGroupNormalized,
+          trigger_state: context.trigger,
+          trigger_copy: normalizeMonetizationToken(premiumCopy?.trigger || "unknown", "unknown"),
+          kind_state: context.kind,
+          support_intro_enabled: premiumCopy?.supportIntroEnabled === true ? 1 : 0,
+          view_index: viewIndex,
+        });
+      }
       logMonetizationEvent("premium_paywall_shown", {
         kind: context.kind,
         feature: context.featureKey,
@@ -36946,6 +37116,9 @@ function AppContent() {
     premiumPaywallVisibilityRef.current = isVisible;
   }, [
     logMonetizationEvent,
+    monetizationExperimentGroupNormalized,
+    premiumCopy?.supportIntroEnabled,
+    premiumCopy?.trigger,
     premiumPaywallState.featureKey,
     premiumPaywallState.kind,
     premiumPaywallState.trigger,
@@ -37739,6 +37912,7 @@ function AppContent() {
   const canShowSoftPaywallNow = useCallback(() => {
     if (premiumState.isPremium || premiumPaywallState.visible) return false;
     if (onboardingStep !== "done" || !interfaceReady) return false;
+    if (blockingModalVisible) return false;
     const hasPendingReminderPrompt = !!pendingFrequencyReminderPrompt;
     if (
       frequencyReminderPriorityLockRef.current &&
@@ -37778,6 +37952,7 @@ function AppContent() {
     if (saveOverlayDismissedAt > 0 && Date.now() - saveOverlayDismissedAt < 900) return false;
     return true;
   }, [
+    blockingModalVisible,
     coinValueModalVisible,
     interfaceReady,
     onboardingStep,
@@ -37799,7 +37974,10 @@ function AppContent() {
   useEffect(() => {
     if (!isMonetizationSoftPaywallExperimentGroup) return;
     if (!monetizationExperimentHydrated) return;
-    if (monetizationExperimentAssigningRef.current) return;
+    const hasExperimentAssignment =
+      Number.isFinite(Number(monetizationExperimentAssignedAt)) &&
+      Number(monetizationExperimentAssignedAt) > 0;
+    if (!hasExperimentAssignment) return;
     if (!premiumSoftPaywallHydrated) return;
     if (!historyHydrated) return;
     if (onboardingStep !== "done") return;
@@ -37816,6 +37994,7 @@ function AppContent() {
   }, [
     historyHydrated,
     isMonetizationSoftPaywallExperimentGroup,
+    monetizationExperimentAssignedAt,
     monetizationExperimentHydrated,
     onboardingStep,
     premiumPaywallState.visible,
@@ -42265,7 +42444,9 @@ function AppContent() {
             0,
             Number(parsedProfile.spendingProfile?.baselineMonthlyWasteUSD) || 0
           ),
-          baselineStartAt: parsedProfile.spendingProfile?.baselineStartAt || null,
+          baselineStartAt: normalizeBaselineStartAt(
+            parsedProfile.spendingProfile?.baselineStartAt
+          ),
         };
         if (!parsedProfile.joinedAt) {
           parsedProfile.joinedAt =
@@ -48274,7 +48455,8 @@ useEffect(() => {
       spendingProfile = {
         ...spendingProfile,
         baselineMonthlyWasteUSD: convertFromCurrency(baselineLocal, currencyCode),
-        baselineStartAt: registrationData.baselineCapturedAt || new Date().toISOString(),
+        baselineStartAt:
+          normalizeBaselineStartAt(registrationData.baselineCapturedAt) || new Date().toISOString(),
       };
     }
     const updatedProfile = {
@@ -56760,32 +56942,30 @@ useEffect(() => {
     );
   };
 
-  const startProfileEdit = (mode = "identity") => {
+  const startProfileEdit = () => {
     if (profileEditMode !== "none") return;
     triggerHaptic();
     const nextDraft = { ...profile };
-    if (mode === "identity") {
-      const hasFirstName =
-        typeof nextDraft.firstName === "string" && nextDraft.firstName.trim().length > 0;
-      const hasLastName =
-        typeof nextDraft.lastName === "string" && nextDraft.lastName.trim().length > 0;
-      if (!hasFirstName && !hasLastName) {
-        const nameParts = (nextDraft.name || "").trim().split(/\s+/).filter(Boolean);
-        if (nameParts.length) {
-          nextDraft.firstName = nameParts[0];
-          nextDraft.lastName = nameParts.slice(1).join(" ");
-        }
+    const hasFirstName =
+      typeof nextDraft.firstName === "string" && nextDraft.firstName.trim().length > 0;
+    const hasLastName =
+      typeof nextDraft.lastName === "string" && nextDraft.lastName.trim().length > 0;
+    if (!hasFirstName && !hasLastName) {
+      const nameParts = (nextDraft.name || "").trim().split(/\s+/).filter(Boolean);
+      if (nameParts.length) {
+        nextDraft.firstName = nameParts[0];
+        nextDraft.lastName = nameParts.slice(1).join(" ");
       }
     }
     setProfileDraft(nextDraft);
-    setProfileEditMode(mode);
+    setProfileEditMode("profile");
   };
   const handleDayTwoIncomePromptPress = useCallback(() => {
     triggerHaptic();
     dismissDayTwoIncomePrompt();
     goToTab("profile");
     InteractionManager.runAfterInteractions(() => {
-      startProfileEdit("spend");
+      startProfileEdit();
     });
   }, [dismissDayTwoIncomePrompt, goToTab, startProfileEdit, triggerHaptic]);
 
@@ -56865,8 +57045,7 @@ useEffect(() => {
     const trimmedFirstName = (profileDraft.firstName || "").trim();
     const trimmedLastName = (profileDraft.lastName || "").trim();
     const combinedName = `${trimmedFirstName} ${trimmedLastName}`.trim();
-    const displayName =
-      combinedName || (profileEditMode === "identity" ? "" : (profileDraft.name || "").trim());
+    const displayName = combinedName || "";
     const nextProfile = {
       ...profileDraft,
       name: displayName,
@@ -56932,11 +57111,7 @@ useEffect(() => {
     (field, value) => setProfileDraft((prev) => ({ ...prev, [field]: value })),
     []
   );
-  const handleProfileEditPress = useCallback(() => startProfileEdit("identity"), [startProfileEdit]);
-  const handleProfileSpendEditPress = useCallback(
-    () => startProfileEdit("spend"),
-    [startProfileEdit]
-  );
+  const handleProfileEditPress = useCallback(() => startProfileEdit(), [startProfileEdit]);
   const handleProgressCreateGoal = useCallback(
     () => openNewGoalModal(false, "progress_goal_add"),
     [openNewGoalModal]
@@ -57150,6 +57325,8 @@ useEffect(() => {
             onBudgetWidgetLayout={handleProgressBudgetWidgetLayout}
             onFreeDayCardLayout={handleProgressFreeDayCardLayout}
             onImpulseMapLockedPress={handleImpulseMapLockedPress}
+            contentBottomPadding={screenContentBottomPadding}
+            topInset={topSafeInset}
           />
         );
       case "pending":
@@ -57170,6 +57347,8 @@ useEffect(() => {
             onItemLayout={registerPendingCardLayout}
             scrollRef={pendingScrollRef}
             playSound={playSound}
+            contentBottomPadding={screenContentBottomPadding}
+            topInset={topSafeInset}
           />
         );
       case "purchases":
@@ -57196,6 +57375,8 @@ useEffect(() => {
             challengesLocked={!challengesUnlocked}
             dailyChallengeLocked={playerLevel < 2}
             scrollRef={rewardsScrollRef}
+            contentBottomPadding={screenContentBottomPadding}
+            topInset={topSafeInset}
           />
         );
       case "profile":
@@ -57206,7 +57387,6 @@ useEffect(() => {
             editMode={profileEditMode}
             onFieldChange={handleProfileFieldChange}
             onEditPress={handleProfileEditPress}
-            onSpendEditPress={handleProfileSpendEditPress}
             onReportsPress={handleReportsPress}
             reportsBadgeVisible={reportsBadgeVisible}
             reportsLocked={!reportsUnlocked}
@@ -57244,6 +57424,8 @@ useEffect(() => {
             openAddCategoryModal={openAddCategoryModal}
             openManageCategoriesModal={openManageCategoriesModal}
             scrollRef={profileScrollRef}
+            contentBottomPadding={screenContentBottomPadding}
+            topInset={topSafeInset}
           />
       );
       default:
@@ -57400,6 +57582,7 @@ useEffect(() => {
             showDayTwoIncomePrompt={showDayTwoIncomePrompt}
             onDayTwoIncomePromptPress={handleDayTwoIncomePromptPress}
             onDayTwoIncomePromptDismiss={dismissDayTwoIncomePrompt}
+            topInset={topSafeInset}
           />
         );
     }
@@ -57563,7 +57746,7 @@ useEffect(() => {
       );
     }
     const onboardingBackground = "#FFFFFF";
-    const renderOnboardingStatusGlass = shouldRenderStatusGlass && onboardingStep === "logo";
+    const renderOnboardingStatusGlass = shouldRenderStatusGlass;
     return (
       <FormattingLanguageContext.Provider value={normalizedLanguageValue}>
         <OnboardingSoundContext.Provider value={playSound}>
@@ -57584,11 +57767,12 @@ useEffect(() => {
             >
               {renderOnboardingStatusGlass && (
                 <StatusGlass
-                  height={topSafeInset}
+                  height={statusGlassHeight}
+                  safeHeight={topSafeInset}
+                  offsetY={0}
                   colors={{ ...colors, background: onboardingBackground }}
                   theme={theme}
                   blurAvailable={statusBlurAvailable}
-                  solid={Platform.OS === "android"}
                 />
               )}
               <StatusBar
@@ -57668,13 +57852,23 @@ useEffect(() => {
   return (
     <FormattingLanguageContext.Provider value={normalizedLanguageValue}>
       <SavingsProvider value={{ savedTotalUSD }}>
-      <View
-        style={[styles.appBackground, { backgroundColor: colors.background, direction: appLayoutDirection }]}
-        onTouchStart={handleRootTouchStart}
-      >
-          {__DEV__ && (
-            <View
-              pointerEvents="none"
+	      <View
+	        style={[styles.appBackground, { backgroundColor: colors.background, direction: appLayoutDirection }]}
+	        onTouchStart={handleRootTouchStart}
+	      >
+	          {shouldRenderMainStatusGlass && (
+	            <StatusGlass
+	              height={statusGlassHeight}
+	              safeHeight={topSafeInset}
+	              offsetY={0}
+	              colors={colors}
+	              theme={theme}
+	              blurAvailable={statusBlurAvailable}
+	            />
+	          )}
+	          {__DEV__ && (
+	            <View
+	              pointerEvents="none"
               style={{
                 position: "absolute",
                 top: Math.max(12, topSafeInset + 4),
@@ -57689,29 +57883,20 @@ useEffect(() => {
               <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "700" }}>ROOT</Text>
             </View>
           )}
-          <SafeAreaView
-            style={[
-              styles.appShell,
-              {
-                backgroundColor: colors.background,
-                paddingTop: topSafeInset,
-                direction: appLayoutDirection,
-              },
-            ]}
-            onLayout={handleHomeLayout}
-          >
-              {shouldRenderStatusGlass && (
-                <StatusGlass
-                  height={topSafeInset}
-                  colors={colors}
-                  theme={theme}
-                  blurAvailable={statusBlurAvailable}
-                  solid={Platform.OS === "android"}
-                />
-              )}
-              {startupLogoVisible && (
-                <View style={[styles.logoSplashOverlay, { backgroundColor: colors.background }]}>
-                  <LogoSplash onDone={handleStartupLogoComplete} />
+		          <View
+		            style={[
+		              styles.appShell,
+	              {
+	                backgroundColor: colors.background,
+	                paddingTop: 0,
+	                direction: appLayoutDirection,
+	              },
+		            ]}
+		            onLayout={handleHomeLayout}
+	          >
+	              {startupLogoVisible && (
+	                <View style={[styles.logoSplashOverlay, { backgroundColor: colors.background }]}>
+	                  <LogoSplash onDone={handleStartupLogoComplete} />
                 </View>
               )}
               <StatusBar
@@ -59805,6 +59990,19 @@ useEffect(() => {
               { backgroundColor: isDarkTheme ? "#0D111A" : colors.background },
             ]}
           >
+            {shouldRenderStatusGlass && (
+              <StatusGlass
+                height={statusGlassHeight}
+                safeHeight={topSafeInset}
+                offsetY={0}
+                colors={{
+                  ...colors,
+                  background: isDarkTheme ? "#0D111A" : colors.background,
+                }}
+                theme={theme}
+                blurAvailable={statusBlurAvailable}
+              />
+            )}
             <View
               pointerEvents="none"
               style={[
@@ -60672,6 +60870,7 @@ useEffect(() => {
                   <View
                     style={[
                       styles.quickModalCard,
+                      styles.frequencyReminderPromptCard,
                       {
                         backgroundColor: colors.card,
                         borderWidth: 1,
@@ -60680,88 +60879,93 @@ useEffect(() => {
                       },
                     ]}
                   >
-                    <ScrollView
-                      style={styles.quickModalBodyScroll}
-                      contentContainerStyle={styles.quickModalBodyScrollContent}
-                      keyboardShouldPersistTaps="handled"
-                      showsVerticalScrollIndicator={false}
-                      nestedScrollEnabled
-                    >
-                      <Text style={[styles.quickModalTitle, { color: colors.text }]}>
-                        {t("frequencyReminderPromptTitle")}
-                      </Text>
-                      <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>
-                        {t("frequencyReminderPromptSubtitle", {
-                          temptation:
-                            frequencyReminderPrompt.title || t("defaultDealTitle"),
-                        })}
-                      </Text>
-                      <View
-                        style={[
-                          styles.frequencyReminderForecastCard,
-                          {
-                            backgroundColor: colorWithAlpha("#2FCB71", isDarkTheme ? 0.18 : 0.1),
-                            borderColor: colorWithAlpha("#1CA24E", isDarkTheme ? 0.55 : 0.34),
-                          },
+                    <View style={styles.frequencyReminderPromptContent}>
+                      <ScrollView
+                        style={[styles.quickModalBodyScroll, styles.frequencyReminderPromptScroll]}
+                        contentContainerStyle={[
+                          styles.quickModalBodyScrollContent,
+                          styles.frequencyReminderPromptScrollContent,
                         ]}
+                        keyboardShouldPersistTaps="handled"
+                        showsVerticalScrollIndicator={false}
+                        nestedScrollEnabled
                       >
+                        <Text style={[styles.quickModalTitle, { color: colors.text }]}>
+                          {t("frequencyReminderPromptTitle")}
+                        </Text>
+                        <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>
+                          {t("frequencyReminderPromptSubtitle", {
+                            temptation:
+                              frequencyReminderPrompt.title || t("defaultDealTitle"),
+                          })}
+                        </Text>
                         <View
-                          pointerEvents="none"
                           style={[
-                            styles.frequencyReminderForecastGlow,
-                            { backgroundColor: colorWithAlpha("#66E19A", isDarkTheme ? 0.34 : 0.28) },
+                            styles.frequencyReminderForecastCard,
+                            {
+                              backgroundColor: colorWithAlpha("#2FCB71", isDarkTheme ? 0.18 : 0.1),
+                              borderColor: colorWithAlpha("#1CA24E", isDarkTheme ? 0.55 : 0.34),
+                            },
                           ]}
+                        >
+                          <View
+                            pointerEvents="none"
+                            style={[
+                              styles.frequencyReminderForecastGlow,
+                              { backgroundColor: colorWithAlpha("#66E19A", isDarkTheme ? 0.34 : 0.28) },
+                            ]}
+                          />
+                          <Text style={[styles.frequencyReminderForecastTitle, { color: colors.text }]}>
+                            {frequencyReminderForecastCopy.title}
+                          </Text>
+                          <AnimatedText
+                            style={[
+                              styles.frequencyReminderForecastValue,
+                              { transform: [{ scale: frequencyReminderForecastValueScale }] },
+                            ]}
+                          >
+                            {frequencyReminderForecastValueLabel}
+                          </AnimatedText>
+                          <Text style={[styles.frequencyReminderForecastMeta, { color: colors.muted }]}>
+                            {frequencyReminderForecastBasisLabel}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.frequencyReminderForecastMeta,
+                              styles.frequencyReminderForecastChecks,
+                              { color: colors.muted },
+                            ]}
+                          >
+                            {frequencyReminderForecastChecksLabel}
+                          </Text>
+                          <Text style={styles.frequencyReminderForecastFomo}>
+                            {frequencyReminderForecastCopy.fomo}
+                          </Text>
+                        </View>
+                        <FrequencyPicker
+                          value={frequencyReminderPrompt.frequency}
+                          customValue={frequencyReminderPrompt.frequencyCustom}
+                          onValueChange={handleFrequencyReminderPromptFrequencyChange}
+                          onCustomChange={handleFrequencyReminderPromptCustomFrequencyChange}
+                          colors={colors}
+                          t={t}
                         />
-                        <Text style={[styles.frequencyReminderForecastTitle, { color: colors.text }]}>
-                          {frequencyReminderForecastCopy.title}
-                        </Text>
-                        <AnimatedText
-                          style={[
-                            styles.frequencyReminderForecastValue,
-                            { transform: [{ scale: frequencyReminderForecastValueScale }] },
-                          ]}
-                        >
-                          {frequencyReminderForecastValueLabel}
-                        </AnimatedText>
-                        <Text style={[styles.frequencyReminderForecastMeta, { color: colors.muted }]}>
-                          {frequencyReminderForecastBasisLabel}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.frequencyReminderForecastMeta,
-                            styles.frequencyReminderForecastChecks,
-                            { color: colors.muted },
-                          ]}
-                        >
-                          {frequencyReminderForecastChecksLabel}
-                        </Text>
-                        <Text style={styles.frequencyReminderForecastFomo}>
-                          {frequencyReminderForecastCopy.fomo}
-                        </Text>
-                      </View>
-                      <FrequencyPicker
-                        value={frequencyReminderPrompt.frequency}
-                        customValue={frequencyReminderPrompt.frequencyCustom}
-                        onValueChange={handleFrequencyReminderPromptFrequencyChange}
-                        onCustomChange={handleFrequencyReminderPromptCustomFrequencyChange}
-                        colors={colors}
-                        t={t}
-                      />
-                      <FrequencySchedulePicker
-                        frequency={frequencyReminderPrompt.frequency}
-                        reminderHour={frequencyReminderPrompt.reminderHour}
-                        reminderMinute={frequencyReminderPrompt.reminderMinute}
-                        weeklyDay={frequencyReminderPrompt.weeklyDay}
-                        monthlyDay={frequencyReminderPrompt.monthlyDay}
-                        weeklyDays={frequencyReminderPrompt.weeklyDays}
-                        monthlyDays={frequencyReminderPrompt.monthlyDays}
-                        onReminderTimeChange={handleFrequencyReminderPromptTimeChange}
-                        onWeeklyDayChange={handleFrequencyReminderPromptWeeklyDayChange}
-                        onMonthlyDayChange={handleFrequencyReminderPromptMonthlyDayChange}
-                        colors={colors}
-                        t={t}
-                      />
-                      <View style={styles.quickModalActions}>
+                        <FrequencySchedulePicker
+                          frequency={frequencyReminderPrompt.frequency}
+                          reminderHour={frequencyReminderPrompt.reminderHour}
+                          reminderMinute={frequencyReminderPrompt.reminderMinute}
+                          weeklyDay={frequencyReminderPrompt.weeklyDay}
+                          monthlyDay={frequencyReminderPrompt.monthlyDay}
+                          weeklyDays={frequencyReminderPrompt.weeklyDays}
+                          monthlyDays={frequencyReminderPrompt.monthlyDays}
+                          onReminderTimeChange={handleFrequencyReminderPromptTimeChange}
+                          onWeeklyDayChange={handleFrequencyReminderPromptWeeklyDayChange}
+                          onMonthlyDayChange={handleFrequencyReminderPromptMonthlyDayChange}
+                          colors={colors}
+                          t={t}
+                        />
+                      </ScrollView>
+                      <View style={[styles.quickModalActions, styles.frequencyReminderPromptActions]}>
                         <TouchableOpacity
                           style={[styles.quickModalSecondary, { borderColor: colors.border }]}
                           onPress={closeFrequencyReminderPrompt}
@@ -60784,7 +60988,7 @@ useEffect(() => {
                           </Text>
                         </TouchableOpacity>
                       </View>
-                    </ScrollView>
+                    </View>
                   </View>
                 </TouchableWithoutFeedback>
               </View>
@@ -62533,7 +62737,7 @@ useEffect(() => {
           colors={colors}
           onDismiss={dismissStormEffect}
         />
-      </SafeAreaView>
+      </View>
       </View>
       </SavingsProvider>
     </FormattingLanguageContext.Provider>
@@ -62550,78 +62754,159 @@ function App() {
 
 export default Sentry.wrap(App);
 
-const StatusGlass = React.memo(({ height, colors, theme, blurAvailable = false, solid = false }) => {
-  const gradientId = useMemo(() => `status-glass-${Math.random().toString(36).slice(2, 10)}`, []);
-  const baseColor = colors?.background || "#fff";
-  const isDarkTheme = theme === "dark";
-  const tintedBase = isDarkTheme
-    ? blendColors(baseColor, "#000000", 0.35)
-    : blendColors(baseColor, "#ffffff", 0.45);
-  const highlightBase = isDarkTheme ? "#000000" : "#ffffff";
-  const highlight = colorWithAlpha(highlightBase, isDarkTheme ? 0.3 : 0.32);
-  const softCore = colorWithAlpha(tintedBase, isDarkTheme ? 0.45 : 0.38);
-  const fadeOut = colorWithAlpha(baseColor, 0);
-  const borderColor = colorWithAlpha(colors?.border || tintedBase, isDarkTheme ? 0.35 : 0.18);
-  const borderOffset = solid ? StyleSheet.hairlineWidth : 26;
-  const borderPosition = Math.max(0, height - borderOffset);
-  if (solid) {
-    return (
-      <View
-        pointerEvents="none"
-        style={[styles.statusGlass, { height, backgroundColor: baseColor }]}
-      >
-        <View style={[styles.statusGlassBorder, { borderColor, top: borderPosition }]} />
-      </View>
-    );
-  }
-  const overlay = (
-    <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Defs>
-        <SvgLinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-          <SvgStop offset="0%" stopColor={highlight} />
-          <SvgStop offset="55%" stopColor={softCore} />
-          <SvgStop offset="100%" stopColor={fadeOut} />
-        </SvgLinearGradient>
-      </Defs>
-      <SvgRect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
-    </Svg>
-  );
-  const border = <View style={[styles.statusGlassBorder, { borderColor, top: borderPosition }]} />;
-  if (blurAvailable) {
-    return (
-      <View pointerEvents="none" style={[styles.statusGlass, { height }]}>
-        {Platform.OS === "android" && shouldUseAndroidCommunityBlur() ? (
+const StatusGlass = React.memo(
+  ({ height, safeHeight = height, offsetY = 0, colors, theme, blurAvailable = false, solid = false }) => {
+    const gradientId = useMemo(() => `status-glass-${Math.random().toString(36).slice(2, 10)}`, []);
+    const isDarkTheme = theme === "dark";
+    const safeHeightValue = Math.max(0, Math.min(height, Number(safeHeight) || 0));
+    const fadeHeight = Math.max(0, height - safeHeightValue);
+    const blurBands = Platform.OS === "ios"
+      ? [
+          {
+            height: Math.min(height, safeHeightValue + Math.round(fadeHeight * 0.16)),
+            intensity: 58,
+            opacity: 1,
+          },
+          {
+            height: Math.min(height, safeHeightValue + Math.round(fadeHeight * 0.34)),
+            intensity: 44,
+            opacity: 0.72,
+          },
+          {
+            height: Math.min(height, safeHeightValue + Math.round(fadeHeight * 0.54)),
+            intensity: 30,
+            opacity: 0.48,
+          },
+          {
+            height: Math.min(height, safeHeightValue + Math.round(fadeHeight * 0.72)),
+            intensity: 20,
+            opacity: 0.3,
+          },
+          {
+            height: Math.min(height, safeHeightValue + Math.round(fadeHeight * 0.86)),
+            intensity: 12,
+            opacity: 0.16,
+          },
+        ]
+      : [
+          {
+            height: Math.min(height, safeHeightValue + Math.round(fadeHeight * 0.2)),
+            intensity: 24,
+            opacity: 1,
+          },
+          {
+            height: Math.min(height, safeHeightValue + Math.round(fadeHeight * 0.42)),
+            intensity: 16,
+            opacity: 0.62,
+          },
+          {
+            height: Math.min(height, safeHeightValue + Math.round(fadeHeight * 0.66)),
+            intensity: 10,
+            opacity: 0.32,
+          },
+          {
+            height: Math.min(height, safeHeightValue + Math.round(fadeHeight * 0.84)),
+            intensity: 6,
+            opacity: 0.14,
+          },
+        ];
+    const backgroundProbe =
+      typeof colors?.background === "string"
+        ? colors.background
+        : isDarkTheme
+        ? "#0D1320"
+        : "#FFFFFF";
+    const { r: bgR, g: bgG, b: bgB } = parseColor(backgroundProbe);
+    const backgroundLuma = (bgR * 299 + bgG * 587 + bgB * 114) / 1000;
+    const useDarkOverlay = backgroundLuma < 120;
+    const overlayColor = useDarkOverlay ? "#000000" : "#FFFFFF";
+    const safeHeightRatioPercent = Math.round((safeHeightValue / Math.max(1, height)) * 100);
+    const safeStopPercent = Math.max(0, Math.min(100, safeHeightRatioPercent));
+    const fadeRangePercent = Math.max(1, 100 - safeStopPercent);
+    const midStopPercent = Math.min(100, safeStopPercent + Math.round(fadeRangePercent * 0.44));
+    const lowStopPercent = Math.min(100, safeStopPercent + Math.round(fadeRangePercent * 0.78));
+    const clearStopPercent = 100;
+    const overlayTopOpacity = 1;
+    const overlaySafeOpacity = 1;
+    const overlayMidOpacity = solid ? 0.5 : 0.46;
+    const overlayLowOpacity = solid ? 0.18 : 0.14;
+    const topOffset = -Math.max(0, Number(offsetY) || 0);
+
+    const renderBlurBand = (bandHeight, bandOpacity, bandIntensity, key) => {
+      const style = [
+        styles.statusGlassBlurBand,
+        {
+          height: bandHeight,
+          opacity: bandOpacity,
+        },
+      ];
+      if (Platform.OS === "android" && shouldUseAndroidCommunityBlur()) {
+        return (
           <AndroidBlurView
-            blurType={theme === "dark" ? "dark" : "light"}
-            blurAmount={1}
+            key={key}
+            blurType={isDarkTheme ? "dark" : "light"}
+            blurAmount={bandIntensity}
             autoUpdate={ANDROID_BLUR_AUTO_UPDATE}
-            reducedTransparencyFallbackColor={isDarkTheme ? "#0B0B0B" : "#F2F2F2"}
-            style={StyleSheet.absoluteFill}
+            reducedTransparencyFallbackColor="transparent"
+            style={style}
           />
-        ) : (
-          <ExpoBlurView
-            tint={theme === "dark" ? "dark" : "extraLight"}
-            intensity={Platform.OS === "android" ? 6 : 18}
-            blurReductionFactor={
-              Platform.OS === "android" ? ANDROID_EXPO_BLUR_REDUCTION_FACTOR : undefined
-            }
-            experimentalBlurMethod={
-              Platform.OS === "android" ? "dimezisBlurView" : undefined
-            }
-            style={StyleSheet.absoluteFill}
-          />
-        )}
-        {overlay}
-        {border}
+        );
+      }
+      return (
+        <ExpoBlurView
+          key={key}
+          tint={Platform.OS === "ios" ? "default" : isDarkTheme ? "dark" : "light"}
+          intensity={bandIntensity}
+          blurReductionFactor={
+            Platform.OS === "android" ? ANDROID_EXPO_BLUR_REDUCTION_FACTOR : undefined
+          }
+          experimentalBlurMethod={
+            Platform.OS === "android" ? "dimezisBlurView" : undefined
+          }
+          style={style}
+        />
+      );
+    };
+
+    return (
+      <View pointerEvents="none" style={[styles.statusGlass, { height, top: topOffset }]}>
+        {blurAvailable
+          ? blurBands.map((band, index) =>
+              renderBlurBand(
+                band.height,
+                band.opacity,
+                band.intensity,
+                `status-blur-band-${index}`
+              )
+            )
+          : null}
+        <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Defs>
+            <SvgLinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <SvgStop offset="0%" stopColor={overlayColor} stopOpacity={overlayTopOpacity} />
+              <SvgStop
+                offset={`${safeStopPercent}%`}
+                stopColor={overlayColor}
+                stopOpacity={overlaySafeOpacity}
+              />
+              <SvgStop
+                offset={`${midStopPercent}%`}
+                stopColor={overlayColor}
+                stopOpacity={overlayMidOpacity}
+              />
+              <SvgStop
+                offset={`${lowStopPercent}%`}
+                stopColor={overlayColor}
+                stopOpacity={overlayLowOpacity}
+              />
+              <SvgStop offset={`${clearStopPercent}%`} stopColor={overlayColor} stopOpacity={0} />
+              <SvgStop offset="100%" stopColor={overlayColor} stopOpacity={0} />
+            </SvgLinearGradient>
+          </Defs>
+          <SvgRect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
+        </Svg>
       </View>
     );
-  }
-  return (
-    <View pointerEvents="none" style={[styles.statusGlass, { height }]}>
-      {overlay}
-      {border}
-    </View>
-  );
 });
 
 const TYPOGRAPHY = {
@@ -62706,7 +62991,20 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     overflow: "hidden",
-    zIndex: 10,
+    zIndex: 12,
+    elevation: 12,
+  },
+  statusGlassBlurBand: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  statusGlassTopTint: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
   },
   statusGlassBorder: {
     position: "absolute",
@@ -70067,7 +70365,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: BASE_HORIZONTAL_PADDING,
     paddingTop: 14,
-    paddingBottom: 14,
+    paddingBottom: 0,
   },
   fridgeStage: {
     flex: 1,
@@ -70850,6 +71148,18 @@ const styles = StyleSheet.create({
     padding: 24,
     alignItems: "center",
     marginBottom: 20,
+    position: "relative",
+  },
+  profilePinnedActionLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 120,
+    elevation: 120,
+  },
+  profileEditPinnedButton: {
+    position: "absolute",
+    right: 12,
+    zIndex: 121,
+    elevation: 0,
   },
   profileMoodAura: {
     alignItems: "center",
@@ -72489,6 +72799,25 @@ const styles = StyleSheet.create({
   frequencyDayChipText: {
     fontSize: 12,
     fontWeight: "700",
+  },
+  frequencyReminderPromptCard: {
+    minHeight: 0,
+  },
+  frequencyReminderPromptContent: {
+    width: "100%",
+    flexShrink: 1,
+    minHeight: 0,
+    gap: 14,
+  },
+  frequencyReminderPromptScroll: {
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  frequencyReminderPromptScrollContent: {
+    paddingBottom: 6,
+  },
+  frequencyReminderPromptActions: {
+    paddingTop: 2,
   },
   frequencyMonthDayRow: {
     gap: 8,

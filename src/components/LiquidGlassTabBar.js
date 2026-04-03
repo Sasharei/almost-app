@@ -259,18 +259,20 @@ const LiquidGlassTabBar = ({
   const resolvedTabLabelTopMargin = Platform.OS === "android" ? Math.max(2, tabLabelTopMargin - 1) : tabLabelTopMargin;
 
   const barBottomInset =
-    Math.max(0, Number(tabBarBottomInset) || 0) + (Platform.OS === "android" ? androidTabBarExtra : 0);
+    Platform.OS === "ios"
+      ? Math.max(0, Number(tabBarBottomInset) || 0)
+      : Math.max(0, Number(tabBarBottomInset) || 0) + (Platform.OS === "android" ? androidTabBarExtra : 0);
 
   const rootStyle = {
     paddingBottom: barBottomInset,
-    marginBottom: Platform.OS === "ios" ? -(Number(safeAreaBottom) || 0) : 0,
+    marginBottom: 0,
     paddingTop: tabBarTopPadding,
     paddingHorizontal: 14,
     opacity: tutorialIsTemptation ? 0.35 : 1,
   };
   const nativeOnlyRootStyle = {
     paddingBottom: barBottomInset,
-    marginBottom: Platform.OS === "ios" ? -(Number(safeAreaBottom) || 0) : 0,
+    marginBottom: 0,
     paddingTop: tabBarTopPadding,
     paddingHorizontal: 8,
     opacity: tutorialIsTemptation ? 0.35 : 1,
