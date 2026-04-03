@@ -13,6 +13,105 @@ class LiquidGlassNativeViewManager: RCTViewManager {
   }
 }
 
+@objc(NativeLiquidGlassButtonManager)
+class NativeLiquidGlassButtonManager: RCTViewManager {
+  override static func requiresMainQueueSetup() -> Bool {
+    true
+  }
+
+  override func view() -> UIView! {
+    NativeLiquidGlassButton()
+  }
+}
+
+@objc(NativeLiquidGlassButton)
+class NativeLiquidGlassButton: UIView {
+  private let button = UIButton(type: .system)
+
+  @objc var title: NSString = "Edit" {
+    didSet {
+      applyButtonConfiguration()
+    }
+  }
+
+  @objc var enabled: NSNumber = 1 {
+    didSet {
+      button.isEnabled = enabled.boolValue
+      button.alpha = enabled.boolValue ? 1.0 : 0.72
+    }
+  }
+
+  @objc var onPress: RCTBubblingEventBlock?
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    setupView()
+  }
+
+  required init?(coder: NSCoder) {
+    super.init(coder: coder)
+    setupView()
+  }
+
+  override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+    super.traitCollectionDidChange(previousTraitCollection)
+    applyButtonConfiguration()
+  }
+
+  private func setupView() {
+    backgroundColor = .clear
+    isOpaque = false
+    clipsToBounds = false
+
+    button.translatesAutoresizingMaskIntoConstraints = false
+    button.clipsToBounds = true
+    button.layer.cornerCurve = .continuous
+    button.contentHorizontalAlignment = .center
+    button.contentVerticalAlignment = .center
+    button.addTarget(self, action: #selector(handlePress), for: .touchUpInside)
+
+    addSubview(button)
+
+    NSLayoutConstraint.activate([
+      button.leadingAnchor.constraint(equalTo: leadingAnchor),
+      button.trailingAnchor.constraint(equalTo: trailingAnchor),
+      button.topAnchor.constraint(equalTo: topAnchor),
+      button.bottomAnchor.constraint(equalTo: bottomAnchor),
+    ])
+
+    applyButtonConfiguration()
+    button.isEnabled = enabled.boolValue
+  }
+
+  @objc private func handlePress() {
+    onPress?([:])
+  }
+
+  private func applyButtonConfiguration() {
+    let titleText = String(title).trimmingCharacters(in: .whitespacesAndNewlines)
+    let resolvedTitle = titleText.isEmpty ? "Edit" : titleText
+    if #available(iOS 26.0, *) {
+      var config = UIButton.Configuration.glass()
+      config.title = resolvedTitle
+      config.cornerStyle = .capsule
+      config.buttonSize = .small
+      config.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)
+      config.baseForegroundColor = UIColor.label
+      button.configuration = config
+    } else {
+      var config = UIButton.Configuration.bordered()
+      config.title = resolvedTitle
+      config.cornerStyle = .capsule
+      config.buttonSize = .small
+      config.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)
+      config.baseForegroundColor = UIColor.label
+      config.baseBackgroundColor = UIColor(white: 1.0, alpha: 0.22)
+      button.configuration = config
+    }
+    button.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+  }
+}
+
 @objc(LiquidGlassNativeView)
 class LiquidGlassNativeView: UIView {
   private let effectView = UIVisualEffectView(effect: nil)
@@ -133,6 +232,18 @@ class LiquidGlassNativeView: UIView {
   }
 
   private func makeNativeLiquidGlassEffectIfAvailable() -> UIVisualEffect? {
+    let effectFactorySelector = NSSelectorFromString("effectWithStyle:")
+    if let effectClass: AnyObject = NSClassFromString("UIGlassEffect"),
+       effectClass.responds(to: effectFactorySelector),
+       let unmanagedEffect = effectClass.perform(effectFactorySelector, with: NSNumber(value: 0)),
+       let effect = unmanagedEffect.takeUnretainedValue() as? UIVisualEffect {
+      let setInteractiveSelector = NSSelectorFromString("setInteractive:")
+      if let effectObject = effect as? NSObject, effectObject.responds(to: setInteractiveSelector) {
+        _ = effectObject.perform(setInteractiveSelector, with: NSNumber(value: true))
+      }
+      return effect
+    }
+
     if #available(iOS 26.0, *) {
       let effect = UIGlassEffect(style: .regular)
       effect.isInteractive = true

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AppState } from "react-native";
 import { calcPotentialSaved } from "../utils/savingsSimulation";
 
 const DEFAULT_UPDATE_INTERVAL_MS = 1000;
@@ -53,12 +54,44 @@ export function useSavingsSimulation(
       return undefined;
     }
 
-    update();
-    const intervalId = setInterval(() => {
-      update();
-    }, updateIntervalMs);
+    const isActiveState = (state: string | null | undefined) =>
+      state === "active" || !state;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
 
-    return () => clearInterval(intervalId);
+    const start = () => {
+      if (intervalId) return;
+      intervalId = setInterval(() => {
+        update();
+      }, updateIntervalMs);
+    };
+    const stop = () => {
+      if (!intervalId) return;
+      clearInterval(intervalId);
+      intervalId = null;
+    };
+    const refresh = () => {
+      update();
+      if (isActiveState(AppState.currentState)) {
+        start();
+        return;
+      }
+      stop();
+    };
+
+    refresh();
+    const subscription = AppState?.addEventListener?.("change", (nextState) => {
+      if (isActiveState(nextState)) {
+        update();
+        start();
+        return;
+      }
+      stop();
+    });
+
+    return () => {
+      stop();
+      subscription?.remove?.();
+    };
   }, [baselineMonthlyWaste, baselineStartAt, enabled, spentLossUSD, updateIntervalMs]);
 
   return potentialSaved;

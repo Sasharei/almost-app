@@ -312,6 +312,15 @@ const TRIAL_ONLY_EQUIVALENT_TEMPLATE_BY_LANGUAGE = {
   ar: "فقط {{price}}",
   zh: "仅 {{price}}",
 };
+const ABANDONED_YEARLY_NOW_BANNER_TEMPLATE_BY_LANGUAGE = {
+  ru: "Только сейчас {{discount}}!",
+  en: "Only now {{discount}}!",
+  es: "Solo ahora {{discount}}!",
+  fr: "Seulement maintenant {{discount}} !",
+  de: "Nur jetzt {{discount}}!",
+  ar: "فقط الآن {{discount}}!",
+  zh: "仅限现在 {{discount}}！",
+};
 const SAVINGS_FORECAST_TITLE_BY_LANGUAGE = {
   ru: "Прогноз экономии",
   en: "Savings forecast",
@@ -373,6 +382,121 @@ const formatAmountFromTemplate = (template, value = 0) => {
     maximumFractionDigits: 0,
   }).format(roundedValue);
   return `${template.prefix}${formattedNumber}${template.suffix}`;
+};
+const DISCOUNT_PERCENT_TOKEN_REGEX = /([0-9٠-٩۰-۹]+(?:[.,][0-9٠-٩۰-۹]+)?)/;
+const normalizeDiscountPercent = (value) => {
+  const parsed = Math.round(Number(value) || 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.min(99, parsed);
+};
+const parseDiscountPercentLabel = (value = "") => {
+  const normalized = normalizeWesternDigits(String(value || "").trim());
+  if (!normalized.length) return null;
+  const match = normalized.match(DISCOUNT_PERCENT_TOKEN_REGEX);
+  if (!match) return null;
+  const parsed = Number(String(match[1] || "").replace(",", "."));
+  return normalizeDiscountPercent(parsed);
+};
+const pickFirstPositiveFiniteNumber = (values = []) => {
+  const list = Array.isArray(values) ? values : [];
+  for (const value of list) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
+};
+const computeYearlyOverallDiscountPercent = (planCards = []) => {
+  const cards = Array.isArray(planCards) ? planCards : [];
+  const yearlyPlan =
+    cards.find((plan) => plan?.id === "yearly" && plan?.available !== false) || null;
+  if (!yearlyPlan) return null;
+
+  const directCandidate = normalizeDiscountPercent(
+    yearlyPlan?.overallDiscountPercent ??
+      yearlyPlan?.totalDiscountPercent ??
+      yearlyPlan?.discountPercent
+  );
+  if (directCandidate) return directCandidate;
+
+  const discountLabelCandidates = [
+    yearlyPlan?.trialDiscountLabel,
+    yearlyPlan?.badgeKind === "save" ? yearlyPlan?.badge : null,
+    yearlyPlan?.topBadgeKind === "save" ? yearlyPlan?.topBadge : null,
+  ];
+  for (const label of discountLabelCandidates) {
+    const parsed = parseDiscountPercentLabel(label);
+    if (parsed) return parsed;
+  }
+
+  const yearlyPrice = pickFirstPositiveFiniteNumber([
+    yearlyPlan?.rawPriceLocal,
+    parseAmountTemplate(yearlyPlan?.chargePriceLabel || "")?.value,
+    parseAmountTemplate(yearlyPlan?.postTrialPriceLabel || "")?.value,
+    parseAmountTemplate(yearlyPlan?.priceLabel || "")?.value,
+  ]);
+  if (!yearlyPrice) return null;
+
+  const monthlyPlan =
+    cards.find((plan) => plan?.id === "monthly" && plan?.available !== false) || null;
+  const monthlyPrice = pickFirstPositiveFiniteNumber([
+    monthlyPlan?.rawPriceLocal,
+    parseAmountTemplate(monthlyPlan?.chargePriceLabel || "")?.value,
+    parseAmountTemplate(monthlyPlan?.postTrialPriceLabel || "")?.value,
+    parseAmountTemplate(monthlyPlan?.priceLabel || "")?.value,
+  ]);
+  if (monthlyPrice) {
+    const yearlyFullPrice = monthlyPrice * 12;
+    if (yearlyFullPrice > yearlyPrice) {
+      const computed = normalizeDiscountPercent((1 - yearlyPrice / yearlyFullPrice) * 100);
+      if (computed) return computed;
+    }
+  }
+
+  const yearlyReferencePrice = pickFirstPositiveFiniteNumber([
+    parseAmountTemplate(yearlyPlan?.trialOriginalPriceLabel || "")?.value,
+    parseAmountTemplate(yearlyPlan?.secondaryLabel || "")?.value,
+  ]);
+  if (yearlyReferencePrice && yearlyReferencePrice > yearlyPrice) {
+    return normalizeDiscountPercent((1 - yearlyPrice / yearlyReferencePrice) * 100);
+  }
+  return null;
+};
+const computePlanOverallDiscountPercent = (plan = null, planCards = []) => {
+  if (!plan || typeof plan !== "object") {
+    return computeYearlyOverallDiscountPercent(planCards);
+  }
+  const directCandidate = normalizeDiscountPercent(
+    plan?.overallDiscountPercent ??
+      plan?.totalDiscountPercent ??
+      plan?.discountPercent ??
+      plan?.abandonedDiscountPercent
+  );
+  if (directCandidate) return directCandidate;
+  const discountLabelCandidates = [
+    plan?.trialDiscountLabel,
+    plan?.badgeKind === "save" ? plan?.badge : null,
+    plan?.topBadgeKind === "save" ? plan?.topBadge : null,
+  ];
+  for (const label of discountLabelCandidates) {
+    const parsed = parseDiscountPercentLabel(label);
+    if (parsed) return parsed;
+  }
+  if (String(plan?.id || "").toLowerCase() === "yearly") {
+    return computeYearlyOverallDiscountPercent(planCards);
+  }
+  return null;
+};
+const replaceDiscountPercentInTitle = (title = "", percent = null, language = "en") => {
+  const normalizedTitle = String(title || "").trim();
+  if (!normalizedTitle.length) return normalizedTitle;
+  const normalizedPercent = normalizeDiscountPercent(percent);
+  if (!normalizedPercent) return normalizedTitle;
+  const localizedPercent = localizePaywallDigits(String(normalizedPercent), language);
+  if (DISCOUNT_PERCENT_TOKEN_REGEX.test(normalizedTitle)) {
+    return normalizedTitle.replace(DISCOUNT_PERCENT_TOKEN_REGEX, localizedPercent);
+  }
+  const fallbackPercentToken = localizePaywallDigits(`${normalizedPercent}%`, language);
+  return `${fallbackPercentToken} ${normalizedTitle}`.trim();
 };
 const buildSavingsForecastPoints = ({
   savedAmountLabel = "",
@@ -439,6 +563,8 @@ const PremiumPaywallModal = ({
   const [supportIntroStage, setSupportIntroStage] = useState("plans");
   const [isCloseCooldownComplete, setIsCloseCooldownComplete] = useState(false);
   const hasTrackedScrollRef = useRef(false);
+  const sheetScrollRef = useRef(null);
+  const planSectionOffsetYRef = useRef(0);
   const closeCooldownTimerRef = useRef(null);
   const openProgress = useRef(new Animated.Value(0)).current;
   const ctaPulse = useRef(new Animated.Value(0)).current;
@@ -983,6 +1109,23 @@ const PremiumPaywallModal = ({
   const dismissTransactionAbandonedPopup = useCallback(() => {
     setShowTransactionAbandonedPopup(false);
   }, []);
+  const handlePlanSectionLayout = useCallback((event) => {
+    const layoutY = Number(event?.nativeEvent?.layout?.y);
+    if (!Number.isFinite(layoutY)) return;
+    planSectionOffsetYRef.current = Math.max(0, layoutY);
+  }, []);
+  const scrollToPlanSection = useCallback((animated = true) => {
+    const scrollView = sheetScrollRef.current;
+    if (!scrollView || typeof scrollView.scrollTo !== "function") return;
+    const targetY = Math.max(0, Math.round((planSectionOffsetYRef.current || 0) - 8));
+    scrollView.scrollTo({ x: 0, y: targetY, animated });
+  }, []);
+  const handleTransactionAbandonedOfferAccept = useCallback(() => {
+    dismissTransactionAbandonedPopup();
+    setTimeout(() => {
+      scrollToPlanSection(true);
+    }, 80);
+  }, [dismissTransactionAbandonedPopup, scrollToPlanSection]);
 
   const backdropOpacity = openProgress.interpolate({
     inputRange: [0, 1],
@@ -1025,12 +1168,39 @@ const PremiumPaywallModal = ({
     inputRange: [0, 1],
     outputRange: [24, 0],
   });
+  const transactionAbandonedPopupPlan = useMemo(() => {
+    const availableCards = planCards.filter((plan) => plan?.available !== false);
+    if (!availableCards.length) return null;
+    const selectedCard =
+      availableCards.find(
+        (plan) =>
+          typeof plan?.id === "string" &&
+          plan.id.trim().toLowerCase() === String(selectedPlanId || "").trim().toLowerCase()
+      ) || null;
+    if (selectedCard) return selectedCard;
+    const yearlyCard =
+      availableCards.find(
+        (plan) => typeof plan?.id === "string" && plan.id.trim().toLowerCase() === "yearly"
+      ) || null;
+    return yearlyCard || availableCards[0] || null;
+  }, [planCards, selectedPlanId]);
+  const transactionAbandonedPopupDiscountPercent = useMemo(
+    () => computePlanOverallDiscountPercent(transactionAbandonedPopupPlan, planCards),
+    [planCards, transactionAbandonedPopupPlan]
+  );
   const transactionAbandonedPopupBadge = localizePaywallDigits(
     copy?.transactionAbandonedPopupBadge || "ONE-TIME OFFER",
     normalizedLanguage
   );
+  const transactionAbandonedPopupTitleTemplate = String(
+    copy?.transactionAbandonedPopupTitle || "35% OFF"
+  );
   const transactionAbandonedPopupTitle = localizePaywallDigits(
-    copy?.transactionAbandonedPopupTitle || "35% OFF",
+    replaceDiscountPercentInTitle(
+      transactionAbandonedPopupTitleTemplate,
+      transactionAbandonedPopupDiscountPercent,
+      normalizedLanguage
+    ),
     normalizedLanguage
   );
   const transactionAbandonedPopupSubtitle = localizePaywallDigits(
@@ -1040,10 +1210,6 @@ const PremiumPaywallModal = ({
   );
   const transactionAbandonedPopupPrimaryCta = localizePaywallDigits(
     copy?.transactionAbandonedPopupPrimaryCta || "Claim discount",
-    normalizedLanguage
-  );
-  const transactionAbandonedPopupSecondaryCta = localizePaywallDigits(
-    copy?.transactionAbandonedPopupSecondaryCta || "Maybe later",
     normalizedLanguage
   );
   const supportIntroBadge = localizePaywallDigits(
@@ -1734,7 +1900,7 @@ const PremiumPaywallModal = ({
         )}
       </View>
 
-      <View style={styles.planSection}>
+      <View style={styles.planSection} onLayout={handlePlanSectionLayout}>
         <View
           style={[
             styles.planSectionHeaderRow,
@@ -1937,8 +2103,28 @@ const PremiumPaywallModal = ({
               ? localizePaywallDigits(trialCardDiscountRaw, normalizedLanguage)
               : "";
             const showYearlyBanner = isUnifiedPlanCard && isYearlyPlan;
+            const planOverallDiscountPercent = computePlanOverallDiscountPercent(plan, planCards);
+            const planOverallDiscountToken =
+              Number.isFinite(planOverallDiscountPercent) && planOverallDiscountPercent > 0
+                ? localizePaywallDigits(`${Math.round(planOverallDiscountPercent)}%`, normalizedLanguage)
+                : "";
+            const abandonedYearlyBannerTemplate =
+              ABANDONED_YEARLY_NOW_BANNER_TEMPLATE_BY_LANGUAGE[copyLanguage] ||
+              ABANDONED_YEARLY_NOW_BANNER_TEMPLATE_BY_LANGUAGE.en;
+            const abandonedYearlyBannerLabel = planOverallDiscountToken
+              ? localizePaywallDigits(
+                  fillPaywallTemplate(abandonedYearlyBannerTemplate, {
+                    discount: planOverallDiscountToken,
+                  }),
+                  normalizedLanguage
+                )
+              : "";
+            const showAbandonedYearlyBanner =
+              showYearlyBanner && isTransactionAbandonedTrigger && !!abandonedYearlyBannerLabel;
             const trialTopBannerContent = showYearlyBanner
-              ? showTrialTopBanner
+              ? showAbandonedYearlyBanner
+                ? abandonedYearlyBannerLabel
+                : showTrialTopBanner
                 ? trialCardDiscountLabel
                   ? `${trialTopBannerLabel} • ${trialCardDiscountLabel}`
                   : trialTopBannerLabel
@@ -2014,7 +2200,12 @@ const PremiumPaywallModal = ({
                 {isUnifiedPlanCard ? (
                   <>
                     {!!trialTopBannerContent && (
-                      <View style={styles.planTrialBanner}>
+                      <View
+                        style={[
+                          styles.planTrialBanner,
+                          showAbandonedYearlyBanner ? styles.planTrialBannerAbandonedOffer : null,
+                        ]}
+                      >
                         <Text style={[styles.planTrialBannerText, isCompactAndroid ? styles.planTrialBannerTextCompactAndroid : null]}>
                           {trialTopBannerContent}
                         </Text>
@@ -2284,6 +2475,9 @@ const PremiumPaywallModal = ({
       statusBarTranslucent
       navigationBarTranslucent
       onRequestClose={() => {
+        if (showTransactionAbandonedPopup) {
+          return;
+        }
         if (isPaywallDismissible) {
           onClose("system_back");
         }
@@ -2338,6 +2532,7 @@ const PremiumPaywallModal = ({
             ]}
           >
             <ScrollView
+              ref={sheetScrollRef}
               style={styles.sheetScroll}
               showsVerticalScrollIndicator={false}
               scrollEnabled
@@ -2374,10 +2569,7 @@ const PremiumPaywallModal = ({
 
         {showTransactionAbandonedPopup && (
           <View style={styles.abandonedPopupLayer}>
-            <Pressable
-              style={styles.abandonedPopupLayerBackdrop}
-              onPress={dismissTransactionAbandonedPopup}
-            />
+            <View style={styles.abandonedPopupLayerBackdrop} />
             <Animated.View
               style={[
                 styles.abandonedPopupCard,
@@ -2391,14 +2583,6 @@ const PremiumPaywallModal = ({
             >
               <View style={styles.abandonedPopupGlowLarge} />
               <View style={styles.abandonedPopupGlowSmall} />
-
-              <Pressable
-                style={styles.abandonedPopupCloseButton}
-                onPress={dismissTransactionAbandonedPopup}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text style={styles.abandonedPopupCloseButtonText}>✕</Text>
-              </Pressable>
 
               <View style={styles.abandonedPopupBadge}>
                 <Text style={styles.abandonedPopupBadgeText}>{transactionAbandonedPopupBadge}</Text>
@@ -2427,7 +2611,7 @@ const PremiumPaywallModal = ({
                   styles.abandonedPopupPrimaryButton,
                   isCompactAndroid ? styles.abandonedPopupPrimaryButtonCompactAndroid : null,
                 ]}
-                onPress={dismissTransactionAbandonedPopup}
+                onPress={handleTransactionAbandonedOfferAccept}
                 activeOpacity={0.9}
               >
                 <Text
@@ -2437,15 +2621,6 @@ const PremiumPaywallModal = ({
                   ]}
                 >
                   {transactionAbandonedPopupPrimaryCta}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.abandonedPopupSecondaryButton}
-                onPress={dismissTransactionAbandonedPopup}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.abandonedPopupSecondaryButtonText}>
-                  {transactionAbandonedPopupSecondaryCta}
                 </Text>
               </TouchableOpacity>
             </Animated.View>
@@ -2537,26 +2712,6 @@ const styles = StyleSheet.create({
     left: -24,
     backgroundColor: "rgba(255,188,127,0.44)",
   },
-  abandonedPopupCloseButton: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.28)",
-    zIndex: 4,
-  },
-  abandonedPopupCloseButtonText: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    lineHeight: 18,
-    fontWeight: "800",
-  },
   abandonedPopupBadge: {
     alignSelf: "center",
     borderRadius: 999,
@@ -2609,7 +2764,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   abandonedPopupPrimaryButton: {
-    width: "100%",
+    width: "86%",
+    alignSelf: "center",
     minHeight: 50,
     marginTop: 14,
     borderRadius: 14,
@@ -2619,6 +2775,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   abandonedPopupPrimaryButtonCompactAndroid: {
+    width: "90%",
     minHeight: 46,
     marginTop: 12,
     borderRadius: 13,
@@ -2633,19 +2790,6 @@ const styles = StyleSheet.create({
   abandonedPopupPrimaryButtonTextCompactAndroid: {
     fontSize: 15,
     lineHeight: 18,
-  },
-  abandonedPopupSecondaryButton: {
-    marginTop: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  abandonedPopupSecondaryButtonText: {
-    color: "rgba(255,255,255,0.92)",
-    fontSize: 13,
-    lineHeight: 16,
-    fontWeight: "700",
-    textAlign: "center",
-    textDecorationLine: "underline",
   },
   header: {
     backgroundColor: "#0A1E72",
@@ -3730,6 +3874,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#18B45B",
     borderBottomWidth: 1,
     borderBottomColor: "rgba(17,122,66,0.5)",
+  },
+  planTrialBannerAbandonedOffer: {
+    backgroundColor: "#FF3B30",
+    borderBottomColor: "rgba(195,35,28,0.52)",
   },
   planTrialBannerText: {
     color: "#FFFFFF",

@@ -1,6 +1,6 @@
 type HistorySpendEvent = {
   kind?: string;
-  timestamp?: number | string;
+  timestamp?: number | string | Date;
   meta?: {
     amountUSD?: number | string;
   };
@@ -8,26 +8,67 @@ type HistorySpendEvent = {
 
 const POTENTIAL_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
-const resolveEventTimestamp = (value: number | string | undefined): number => {
-  const numeric = Number(value);
-  if (Number.isFinite(numeric) && numeric > 0) return numeric;
-  if (typeof value === "string") {
-    const parsed = new Date(value).getTime();
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+const normalizeTimestampMs = (value: unknown): number => {
+  if (value === null || value === undefined) return 0;
+  let parsed = 0;
+  if (typeof value === "number") {
+    parsed = value;
+  } else if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return 0;
+    const numericValue = Number(trimmed);
+    if (Number.isFinite(numericValue)) {
+      parsed = numericValue;
+    } else {
+      const dateValue = Date.parse(trimmed);
+      parsed = Number.isFinite(dateValue) ? dateValue : 0;
+    }
+  } else if (value instanceof Date) {
+    parsed = value.getTime();
+  } else if (typeof value === "object") {
+    const objectValue = value as {
+      seconds?: unknown;
+      nanoseconds?: unknown;
+      _seconds?: unknown;
+      _nanoseconds?: unknown;
+      timestamp?: unknown;
+    };
+    const secondsCandidate = Number(
+      objectValue.seconds ?? objectValue._seconds ?? 0
+    );
+    const nanosCandidate = Number(
+      objectValue.nanoseconds ?? objectValue._nanoseconds ?? 0
+    );
+    if (Number.isFinite(secondsCandidate) && secondsCandidate > 0) {
+      parsed = secondsCandidate * 1000 + (Number.isFinite(nanosCandidate) ? nanosCandidate / 1e6 : 0);
+    } else if (objectValue.timestamp !== undefined) {
+      parsed = normalizeTimestampMs(objectValue.timestamp);
+    }
   }
-  return 0;
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  // Handle legacy timestamps that may be in seconds/microseconds/nanoseconds.
+  if (parsed > 1e18) {
+    parsed = Math.round(parsed / 1e6);
+  } else if (parsed > 1e15) {
+    parsed = Math.round(parsed / 1e3);
+  } else if (parsed < 1e11) {
+    parsed = Math.round(parsed * 1e3);
+  }
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return parsed;
 };
 
-const resolveBaselineTimestamp = (baselineStartAt: string | null | undefined): number => {
-  if (!baselineStartAt) return 0;
-  const baselineStart = new Date(baselineStartAt).getTime();
-  if (!Number.isFinite(baselineStart) || baselineStart <= 0) return 0;
-  return baselineStart;
+const resolveEventTimestamp = (value: number | string | Date | undefined): number => {
+  return normalizeTimestampMs(value);
+};
+
+const resolveBaselineTimestamp = (baselineStartAt: string | number | Date | null | undefined): number => {
+  return normalizeTimestampMs(baselineStartAt);
 };
 
 export function calcSpentLossInCurrentMonth(
   historyEvents: HistorySpendEvent[] | null | undefined,
-  baselineStartAt: string | null | undefined,
+  baselineStartAt: string | number | Date | null | undefined,
   now: Date = new Date()
 ): number {
   if (!Array.isArray(historyEvents) || historyEvents.length === 0) {
@@ -55,7 +96,7 @@ export const calcSpentLossSinceBaseline = calcSpentLossInCurrentMonth;
 
 export function calcPotentialSaved(
   baselineMonthlyWaste: number,
-  baselineStartAt: string,
+  baselineStartAt: string | number | Date,
   now: Date = new Date(),
   spentLossUSD: number = 0
 ): number {
