@@ -655,6 +655,9 @@ const FACEBOOK_EVENT_WHITELIST = new Set([
   "north_star_two_saves",
   "north_star2",
   "temptation_action",
+  "premium_paywall_shown",
+  "premium_purchase_started",
+  "premium_trial_started",
 ]);
 const TIKTOK_EVENT_WHITELIST = new Set([
   "onboarding_completed",

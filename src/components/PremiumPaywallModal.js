@@ -15,16 +15,19 @@ import {
   View,
 } from "react-native";
 
+const PRIMARY_PLAN_IDS = ["monthly", "weekly"];
+const SECONDARY_PLAN_IDS = ["yearly", "lifetime"];
+
 const pickDefaultPlanId = (planCards = []) => {
   const availableCards = planCards.filter((card) => card?.available !== false);
-  const yearly = availableCards.find((card) => card?.id === "yearly");
-  if (yearly?.id) return yearly.id;
-  const preferred = availableCards.find((card) => card?.recommended);
-  if (preferred?.id) return preferred.id;
   const monthly = availableCards.find((card) => card?.id === "monthly");
   if (monthly?.id) return monthly.id;
+  const preferred = availableCards.find((card) => card?.recommended);
+  if (preferred?.id) return preferred.id;
+  const yearly = availableCards.find((card) => card?.id === "yearly");
+  if (yearly?.id) return yearly.id;
   if (availableCards[0]?.id) return availableCards[0].id;
-  return planCards[0]?.id || "yearly";
+  return planCards[0]?.id || "monthly";
 };
 
 const ARABIC_INDIC_DIGITS = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
@@ -312,7 +315,7 @@ const TRIAL_ONLY_EQUIVALENT_TEMPLATE_BY_LANGUAGE = {
   ar: "فقط {{price}}",
   zh: "仅 {{price}}",
 };
-const ABANDONED_YEARLY_NOW_BANNER_TEMPLATE_BY_LANGUAGE = {
+const ABANDONED_OFFER_NOW_BANNER_TEMPLATE_BY_LANGUAGE = {
   ru: "Только сейчас {{discount}}!",
   en: "Only now {{discount}}!",
   es: "Solo ahora {{discount}}!",
@@ -320,6 +323,15 @@ const ABANDONED_YEARLY_NOW_BANNER_TEMPLATE_BY_LANGUAGE = {
   de: "Nur jetzt {{discount}}!",
   ar: "فقط الآن {{discount}}!",
   zh: "仅限现在 {{discount}}！",
+};
+const OTHER_PLANS_BUTTON_BY_LANGUAGE = {
+  ru: "Показать все планы",
+  en: "Show all plans",
+  es: "Mostrar todos los planes",
+  fr: "Afficher toutes les offres",
+  de: "Alle Pläne anzeigen",
+  ar: "إظهار جميع الخطط",
+  zh: "显示全部方案",
 };
 const SAVINGS_FORECAST_TITLE_BY_LANGUAGE = {
   ru: "Прогноз экономии",
@@ -558,6 +570,7 @@ const PremiumPaywallModal = ({
   colors,
 }) => {
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCardsProp));
+  const [showOtherPlans, setShowOtherPlans] = useState(false);
   const [selectedComparisonRowId, setSelectedComparisonRowId] = useState(null);
   const [showTransactionAbandonedPopup, setShowTransactionAbandonedPopup] = useState(false);
   const [supportIntroStage, setSupportIntroStage] = useState("plans");
@@ -633,7 +646,42 @@ const PremiumPaywallModal = ({
     if (Array.isArray(localized)) return localized;
     return Array.isArray(planCardsProp) ? planCardsProp : [];
   }, [normalizedLanguage, planCardsProp]);
+  const primaryPlanCards = useMemo(() => {
+    const byId = new Map(
+      planCards
+        .filter((card) => card && typeof card === "object" && typeof card?.id === "string")
+        .map((card) => [card.id, card])
+    );
+    return PRIMARY_PLAN_IDS.map((planId) => byId.get(planId)).filter(Boolean);
+  }, [planCards]);
+  const secondaryPlanCards = useMemo(() => {
+    const byId = new Map(
+      planCards
+        .filter((card) => card && typeof card === "object" && typeof card?.id === "string")
+        .map((card) => [card.id, card])
+    );
+    return SECONDARY_PLAN_IDS.map((planId) => byId.get(planId)).filter(Boolean);
+  }, [planCards]);
+  const allPlanCards = useMemo(() => {
+    const ordered = [...primaryPlanCards, ...secondaryPlanCards];
+    const seen = new Set();
+    return ordered.filter((card) => {
+      const planId = typeof card?.id === "string" ? card.id : "";
+      if (!planId || seen.has(planId)) return false;
+      seen.add(planId);
+      return true;
+    });
+  }, [primaryPlanCards, secondaryPlanCards]);
+  const visiblePlanCards = useMemo(() => {
+    if (!primaryPlanCards.length) return planCards;
+    if (showOtherPlans) return allPlanCards.length ? allPlanCards : planCards;
+    return primaryPlanCards;
+  }, [allPlanCards, planCards, primaryPlanCards, showOtherPlans]);
   const copyLanguage = resolvePaywallCopyLanguage(normalizedLanguage);
+  const otherPlansToggleLabel = localizePaywallDigits(
+    OTHER_PLANS_BUTTON_BY_LANGUAGE[copyLanguage] || OTHER_PLANS_BUTTON_BY_LANGUAGE.en,
+    normalizedLanguage
+  );
   const isRtlLanguage = isArabicLanguage(normalizedLanguage);
   const normalizedTrigger =
     typeof copy?.trigger === "string" && copy.trigger.trim().length
@@ -680,6 +728,19 @@ const PremiumPaywallModal = ({
     }
     setShowTransactionAbandonedPopup(false);
   }, [isTransactionAbandonedTrigger, visible]);
+  useEffect(() => {
+    if (!visible) {
+      setShowOtherPlans(false);
+      return;
+    }
+    const normalizedSelectedPlanId =
+      typeof selectedPlanId === "string" ? selectedPlanId.trim().toLowerCase() : "";
+    if (SECONDARY_PLAN_IDS.includes(normalizedSelectedPlanId)) {
+      setShowOtherPlans(true);
+      return;
+    }
+    setShowOtherPlans(false);
+  }, [selectedPlanId, visible]);
   useEffect(() => {
     if (!visible) {
       setSupportIntroStage("plans");
@@ -1121,11 +1182,27 @@ const PremiumPaywallModal = ({
     scrollView.scrollTo({ x: 0, y: targetY, animated });
   }, []);
   const handleTransactionAbandonedOfferAccept = useCallback(() => {
+    const preferredPlanId =
+      typeof transactionAbandonedPopupPlan?.id === "string"
+        ? transactionAbandonedPopupPlan.id.trim().toLowerCase()
+        : "";
+    if (preferredPlanId) {
+      setSelectedPlanId(transactionAbandonedPopupPlan.id);
+      if (SECONDARY_PLAN_IDS.includes(preferredPlanId)) {
+        setShowOtherPlans(true);
+      }
+    }
     dismissTransactionAbandonedPopup();
     setTimeout(() => {
       scrollToPlanSection(true);
+      requestAnimationFrame(() => {
+        scrollToPlanSection(true);
+      });
+      setTimeout(() => {
+        scrollToPlanSection(true);
+      }, 180);
     }, 80);
-  }, [dismissTransactionAbandonedPopup, scrollToPlanSection]);
+  }, [dismissTransactionAbandonedPopup, scrollToPlanSection, transactionAbandonedPopupPlan]);
 
   const backdropOpacity = openProgress.interpolate({
     inputRange: [0, 1],
@@ -1959,13 +2036,18 @@ const PremiumPaywallModal = ({
         )}
 
         <View style={[styles.planList, isCompactAndroid ? styles.planListCompactAndroid : null]}>
-          {planCards.map((plan) => {
+          {visiblePlanCards.map((plan) => {
             const selected = plan.id === selectedPlanId;
             const unavailable = plan.available === false;
             const loading = purchaseLoadingPlan === plan.id;
             const isYearlyPlan = plan.id === "yearly";
             const isMonthlyPlan = plan.id === "monthly";
-            const isUnifiedPlanCard = isYearlyPlan || isMonthlyPlan;
+            const isWeeklyPlan = plan.id === "weekly";
+            const isPrimaryPlanCard = isMonthlyPlan || isWeeklyPlan;
+            const isSecondaryPlanCard = SECONDARY_PLAN_IDS.includes(plan.id);
+            const isLargePlanCard = isPrimaryPlanCard || (showOtherPlans && isSecondaryPlanCard);
+            const isBannerPlan = isMonthlyPlan || isYearlyPlan;
+            const shouldShowPlanTopBanner = isBannerPlan && (isLargePlanCard || !primaryPlanCards.length);
             const topBadgeLabel =
               !unavailable && typeof plan.topBadge === "string" && plan.topBadge.trim().length
                 ? plan.topBadge.trim()
@@ -1978,7 +2060,7 @@ const PremiumPaywallModal = ({
               !paywallHasAnyTrialPlan && topBadgeKind === "trial" ? "" : topBadgeKind;
             const showExternalYearlySaveBadge =
               isYearlyPlan &&
-              !isUnifiedPlanCard &&
+              !shouldShowPlanTopBanner &&
               !unavailable &&
               !!topBadgeLabel &&
               normalizedTopBadgeKind !== "trial" &&
@@ -2050,7 +2132,7 @@ const PremiumPaywallModal = ({
               plan.billingLabel !== plan.secondaryLabel &&
               plan.billingLabel !== plan.secondarySubLabel;
             const isTrialPlanCard = !!plan?.hasTrial;
-            const showTrialTopBanner = isTrialPlanCard && isYearlyPlan;
+            const showTrialTopBanner = isTrialPlanCard && isBannerPlan;
             const trialTopBannerLabel = localizePaywallDigits(
               TRIAL_PLAN_TOP_BANNER_BY_LANGUAGE[copyLanguage] ||
                 TRIAL_PLAN_TOP_BANNER_BY_LANGUAGE.en,
@@ -2080,7 +2162,7 @@ const PremiumPaywallModal = ({
             const trialCardNewPriceRaw = isTrialPlanCard
               ? plan.postTrialPriceLabel || plan.priceLabel || ""
               : plan.priceLabel || "";
-            const trialCardOldPriceRaw = isYearlyPlan
+            const trialCardOldPriceRaw = isBannerPlan
               ? isTrialPlanCard
                 ? plan.trialOriginalPriceLabel || ""
                 : plan.secondaryKind === "strike"
@@ -2090,40 +2172,42 @@ const PremiumPaywallModal = ({
             const trialCardNewPrice = localizePaywallDigits(trialCardNewPriceRaw, normalizedLanguage);
             const trialCardOldPrice = localizePaywallDigits(trialCardOldPriceRaw, normalizedLanguage);
             const trialCardHasOldPrice =
-              isYearlyPlan &&
+              isBannerPlan &&
               !!trialCardOldPriceRaw &&
               trialCardOldPriceRaw.trim().length > 0 &&
               trialCardOldPriceRaw.trim() !== trialCardNewPriceRaw.trim();
             const trialCardDiscountRaw = String(
-              isYearlyPlan
+              isBannerPlan
                 ? plan.trialDiscountLabel || (plan.badgeKind === "save" ? plan.badge : "")
                 : ""
             ).trim();
             const trialCardDiscountLabel = trialCardDiscountRaw
               ? localizePaywallDigits(trialCardDiscountRaw, normalizedLanguage)
               : "";
-            const showYearlyBanner = isUnifiedPlanCard && isYearlyPlan;
             const planOverallDiscountPercent = computePlanOverallDiscountPercent(plan, planCards);
             const planOverallDiscountToken =
               Number.isFinite(planOverallDiscountPercent) && planOverallDiscountPercent > 0
                 ? localizePaywallDigits(`${Math.round(planOverallDiscountPercent)}%`, normalizedLanguage)
                 : "";
-            const abandonedYearlyBannerTemplate =
-              ABANDONED_YEARLY_NOW_BANNER_TEMPLATE_BY_LANGUAGE[copyLanguage] ||
-              ABANDONED_YEARLY_NOW_BANNER_TEMPLATE_BY_LANGUAGE.en;
-            const abandonedYearlyBannerLabel = planOverallDiscountToken
+            const abandonedOfferBannerTemplate =
+              ABANDONED_OFFER_NOW_BANNER_TEMPLATE_BY_LANGUAGE[copyLanguage] ||
+              ABANDONED_OFFER_NOW_BANNER_TEMPLATE_BY_LANGUAGE.en;
+            const abandonedOfferBannerLabel = planOverallDiscountToken
               ? localizePaywallDigits(
-                  fillPaywallTemplate(abandonedYearlyBannerTemplate, {
+                  fillPaywallTemplate(abandonedOfferBannerTemplate, {
                     discount: planOverallDiscountToken,
                   }),
                   normalizedLanguage
                 )
               : "";
-            const showAbandonedYearlyBanner =
-              showYearlyBanner && isTransactionAbandonedTrigger && !!abandonedYearlyBannerLabel;
-            const trialTopBannerContent = showYearlyBanner
-              ? showAbandonedYearlyBanner
-                ? abandonedYearlyBannerLabel
+            const showAbandonedOfferBanner =
+              shouldShowPlanTopBanner &&
+              (isYearlyPlan || isMonthlyPlan) &&
+              isTransactionAbandonedTrigger &&
+              !!abandonedOfferBannerLabel;
+            const trialTopBannerContent = shouldShowPlanTopBanner
+              ? showAbandonedOfferBanner
+                ? abandonedOfferBannerLabel
                 : showTrialTopBanner
                 ? trialCardDiscountLabel
                   ? `${trialTopBannerLabel} • ${trialCardDiscountLabel}`
@@ -2177,8 +2261,8 @@ const PremiumPaywallModal = ({
                 style={[
                   styles.planCard,
                   isCompactAndroid ? styles.planCardCompactAndroid : null,
-                  isUnifiedPlanCard ? styles.planCardTrial : null,
-                  isUnifiedPlanCard && isCompactAndroid ? styles.planCardTrialCompactAndroid : null,
+                  isLargePlanCard ? styles.planCardTrial : null,
+                  isLargePlanCard && isCompactAndroid ? styles.planCardTrialCompactAndroid : null,
                   {
                     borderColor: isYearlyPlan
                       ? selected
@@ -2197,13 +2281,13 @@ const PremiumPaywallModal = ({
                   },
                 ]}
               >
-                {isUnifiedPlanCard ? (
+                {isLargePlanCard ? (
                   <>
                     {!!trialTopBannerContent && (
                       <View
                         style={[
                           styles.planTrialBanner,
-                          showAbandonedYearlyBanner ? styles.planTrialBannerAbandonedOffer : null,
+                          showAbandonedOfferBanner ? styles.planTrialBannerAbandonedOffer : null,
                         ]}
                       >
                         <Text style={[styles.planTrialBannerText, isCompactAndroid ? styles.planTrialBannerTextCompactAndroid : null]}>
@@ -2413,6 +2497,39 @@ const PremiumPaywallModal = ({
             );
           })}
         </View>
+        {!!secondaryPlanCards.length && !showOtherPlans && (
+          <View
+            style={[
+              styles.planSecondaryOptionsRow,
+              isCompactAndroid ? styles.planSecondaryOptionsRowCompactAndroid : null,
+            ]}
+          >
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => setShowOtherPlans(true)}
+              disabled={!!purchaseLoadingPlan || restoring}
+              style={[
+                styles.planSecondaryOptionButton,
+                isCompactAndroid ? styles.planSecondaryOptionButtonCompactAndroid : null,
+                {
+                  borderColor,
+                  backgroundColor: contentCardBg,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.planSecondaryOptionText,
+                  isCompactAndroid ? styles.planSecondaryOptionTextCompactAndroid : null,
+                  { color: mutedColor },
+                ]}
+                numberOfLines={1}
+              >
+                {otherPlansToggleLabel}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </>
   );
@@ -3784,6 +3901,36 @@ const styles = StyleSheet.create({
   planListCompactAndroid: {
     gap: 7,
   },
+  planSecondaryOptionsRow: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  planSecondaryOptionsRowCompactAndroid: {
+    marginTop: 7,
+    gap: 6,
+  },
+  planSecondaryOptionButton: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  planSecondaryOptionButtonCompactAndroid: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  planSecondaryOptionText: {
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: "700",
+  },
+  planSecondaryOptionTextCompactAndroid: {
+    fontSize: 10,
+    lineHeight: 12,
+  },
   planCardItemWrap: {
     position: "relative",
   },
@@ -3952,19 +4099,19 @@ const styles = StyleSheet.create({
   planTrialRight: {
     alignItems: "flex-end",
     gap: 2,
-    minWidth: 100,
+    minWidth: 92,
   },
   planTrialPrice: {
-    fontSize: 21,
-    lineHeight: 24,
-    fontWeight: "900",
+    fontSize: 15,
+    lineHeight: 18,
+    fontWeight: "500",
     textAlign: "right",
-    minWidth: 100,
+    minWidth: 92,
   },
   planTrialPriceCompactAndroid: {
-    fontSize: 18,
-    lineHeight: 21,
-    minWidth: 86,
+    fontSize: 14,
+    lineHeight: 17,
+    minWidth: 80,
   },
   planTrialOldPrice: {
     fontSize: 14,
@@ -4024,24 +4171,24 @@ const styles = StyleSheet.create({
     lineHeight: 11,
   },
   planPrice: {
-    fontSize: 24,
-    lineHeight: 26,
-    fontWeight: "900",
+    fontSize: 15,
+    lineHeight: 18,
+    fontWeight: "500",
   },
   planPriceEquivalent: {
     flex: 1,
-    fontSize: 16,
-    lineHeight: 20,
-    fontWeight: "800",
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "500",
     paddingRight: 6,
   },
   planPriceCompactAndroid: {
-    fontSize: 21,
-    lineHeight: 23,
+    fontSize: 14,
+    lineHeight: 17,
   },
   planPriceEquivalentCompactAndroid: {
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 16,
   },
   planSecondary: {
     fontSize: 12,

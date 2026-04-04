@@ -1,4 +1,13 @@
 export const PAYWALL_PLAN_LABEL_BY_LANGUAGE = {
+  weekly: {
+    ru: "Неделя",
+    en: "Weekly",
+    es: "Semanal",
+    fr: "Hebdomadaire",
+    de: "Wöchentlich",
+    ar: "أسبوعي",
+    zh: "周付",
+  },
   yearly: {
     ru: "Год",
     en: "Annual",
@@ -103,6 +112,15 @@ export const PAYWALL_WEEK_SUFFIX_BY_LANGUAGE = {
 };
 
 export const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
+  weekly: {
+    ru: "Списание каждую неделю",
+    en: "Billed weekly",
+    es: "Facturado semanalmente",
+    fr: "Facturé chaque semaine",
+    de: "Wöchentliche Abrechnung",
+    ar: "يتم الفوترة أسبوعياً",
+    zh: "按周计费",
+  },
   yearly: {
     ru: "Списание раз в год",
     en: "Billed yearly",
@@ -134,36 +152,43 @@ export const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
 
 export const PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE = {
   ru: {
+    weekly: "≈ {{emoji}} {{count}} {{item}} в неделю",
     monthly: "≈ {{emoji}} {{count}} {{item}} в месяц",
     yearly: "≈ {{emoji}} {{count}} {{item}} в год",
     lifetime: "≈ {{emoji}} {{count}} {{item}} разово",
   },
   en: {
+    weekly: "≈ {{emoji}} {{count}} {{item}} / week",
     monthly: "≈ {{emoji}} {{count}} {{item}} / month",
     yearly: "≈ {{emoji}} {{count}} {{item}} / year",
     lifetime: "≈ {{emoji}} {{count}} {{item}} one-time",
   },
   es: {
+    weekly: "≈ {{emoji}} {{count}} {{item}} / semana",
     monthly: "≈ {{emoji}} {{count}} {{item}} / mes",
     yearly: "≈ {{emoji}} {{count}} {{item}} / año",
     lifetime: "≈ {{emoji}} {{count}} {{item}} una vez",
   },
   fr: {
+    weekly: "≈ {{emoji}} {{count}} {{item}} / semaine",
     monthly: "≈ {{emoji}} {{count}} {{item}} / mois",
     yearly: "≈ {{emoji}} {{count}} {{item}} / an",
     lifetime: "≈ {{emoji}} {{count}} {{item}} une fois",
   },
   de: {
+    weekly: "≈ {{emoji}} {{count}} {{item}} / Woche",
     monthly: "≈ {{emoji}} {{count}} {{item}} / Monat",
     yearly: "≈ {{emoji}} {{count}} {{item}} / Jahr",
     lifetime: "≈ {{emoji}} {{count}} {{item}} einmalig",
   },
   ar: {
+    weekly: "≈ {{emoji}} {{count}} {{item}} / أسبوع",
     monthly: "≈ {{emoji}} {{count}} {{item}} / شهر",
     yearly: "≈ {{emoji}} {{count}} {{item}} / سنة",
     lifetime: "≈ {{emoji}} {{count}} {{item}} لمرة واحدة",
   },
   zh: {
+    weekly: "≈ {{emoji}} {{count}} {{item}} / 周",
     monthly: "≈ {{emoji}} {{count}} {{item}} / 月",
     yearly: "≈ {{emoji}} {{count}} {{item}} / 年",
     lifetime: "≈ {{emoji}} {{count}} {{item}} 一次性",

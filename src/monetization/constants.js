@@ -3,12 +3,13 @@ import { LANGUAGE_MAP_FALLBACK_TRANSLATIONS } from "../constants/languageMapFall
 export const PREMIUM_ENTITLEMENT_ID = "premium";
 
 export const PREMIUM_PRODUCT_IDS = {
+  weekly: "almost_premium_weekly",
   monthly: "almost_premium_monthly",
   yearly: "almost_premium_yearly",
   lifetime: "almost_premium_lifetime",
 };
 
-export const PREMIUM_PLAN_ORDER = ["yearly", "monthly"];
+export const PREMIUM_PLAN_ORDER = ["monthly", "weekly", "yearly", "lifetime"];
 
 export const FREE_PLAN_LIMITS = {
   activeGoals: 1,
@@ -38,6 +39,12 @@ export const PREMIUM_FEATURE_KEYS = {
 
 export const FALLBACK_PRICES_BY_CURRENCY = {
   CAD: {
+    weekly: {
+      label: "CAD $2.49",
+      perWeek: "CAD $2.49/wk",
+      perMonth: "≈ CAD $10.79/mo",
+      badge: null,
+    },
     monthly: {
       label: "CAD $6.99",
       perMonth: "CAD $6.99/mo",
@@ -56,6 +63,12 @@ export const FALLBACK_PRICES_BY_CURRENCY = {
     },
   },
   USD: {
+    weekly: {
+      label: "USD $1.99",
+      perWeek: "USD $1.99/wk",
+      perMonth: "≈ USD $8.62/mo",
+      badge: null,
+    },
     monthly: {
       label: "USD $5.99",
       perMonth: "USD $5.99/mo",
@@ -74,6 +87,12 @@ export const FALLBACK_PRICES_BY_CURRENCY = {
     },
   },
   GBP: {
+    weekly: {
+      label: "GBP £1.79",
+      perWeek: "GBP £1.79/wk",
+      perMonth: "≈ GBP £7.75/mo",
+      badge: null,
+    },
     monthly: {
       label: "GBP £4.99",
       perMonth: "GBP £4.99/mo",
@@ -1093,51 +1112,51 @@ const PLAN_UNAVAILABLE_LABEL_BY_LANGUAGE = {
 
 const PAYWALL_BILLING_NOTICE_BY_LANGUAGE = {
   ru: {
-    ios: "Ежемесячный и годовой планы — автопродлеваемые подписки. Управлять и отменять можно в App Store.",
+    ios: "Недельный, ежемесячный и годовой планы — автопродлеваемые подписки. Управлять и отменять можно в App Store.",
     android:
-      "Ежемесячный и годовой планы — автопродлеваемые подписки. Управлять и отменять можно в Google Play.",
+      "Недельный, ежемесячный и годовой планы — автопродлеваемые подписки. Управлять и отменять можно в Google Play.",
     default:
-      "Ежемесячный и годовой планы — автопродлеваемые подписки. Управлять и отменять можно в App Store / Google Play.",
+      "Недельный, ежемесячный и годовой планы — автопродлеваемые подписки. Управлять и отменять можно в App Store / Google Play.",
   },
   en: {
-    ios: "Monthly and yearly plans are auto-renewable subscriptions. Manage or cancel anytime in App Store.",
+    ios: "Weekly, monthly, and yearly plans are auto-renewable subscriptions. Manage or cancel anytime in App Store.",
     android:
-      "Monthly and yearly plans are auto-renewable subscriptions. Manage or cancel anytime in Google Play.",
+      "Weekly, monthly, and yearly plans are auto-renewable subscriptions. Manage or cancel anytime in Google Play.",
     default:
-      "Monthly and yearly plans are auto-renewable subscriptions. Manage or cancel anytime in App Store / Google Play.",
+      "Weekly, monthly, and yearly plans are auto-renewable subscriptions. Manage or cancel anytime in App Store / Google Play.",
   },
   es: {
-    ios: "Los planes mensual y anual son suscripciones con renovación automática. Puedes gestionarlas o cancelarlas en App Store.",
+    ios: "Los planes semanal, mensual y anual son suscripciones con renovación automática. Puedes gestionarlas o cancelarlas en App Store.",
     android:
-      "Los planes mensual y anual son suscripciones con renovación automática. Puedes gestionarlas o cancelarlas en Google Play.",
+      "Los planes semanal, mensual y anual son suscripciones con renovación automática. Puedes gestionarlas o cancelarlas en Google Play.",
     default:
-      "Los planes mensual y anual son suscripciones con renovación automática. Puedes gestionarlas o cancelarlas en App Store / Google Play.",
+      "Los planes semanal, mensual y anual son suscripciones con renovación automática. Puedes gestionarlas o cancelarlas en App Store / Google Play.",
   },
   fr: {
-    ios: "Les plans mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans l'App Store.",
+    ios: "Les plans hebdomadaire, mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans l'App Store.",
     android:
-      "Les plans mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans Google Play.",
+      "Les plans hebdomadaire, mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans Google Play.",
     default:
-      "Les plans mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans l'App Store / Google Play.",
+      "Les plans hebdomadaire, mensuel et annuel sont des abonnements à renouvellement automatique. Gérez-les ou annulez-les à tout moment dans l'App Store / Google Play.",
   },
   de: {
-    ios: "Monats- und Jahrespläne sind automatisch verlängerbare Abos. Verwalten oder kündigen kannst du jederzeit im App Store.",
+    ios: "Wochen-, Monats- und Jahrespläne sind automatisch verlängerbare Abos. Verwalten oder kündigen kannst du jederzeit im App Store.",
     android:
-      "Monats- und Jahrespläne sind automatisch verlängerbare Abos. Verwalten oder kündigen kannst du jederzeit in Google Play.",
+      "Wochen-, Monats- und Jahrespläne sind automatisch verlängerbare Abos. Verwalten oder kündigen kannst du jederzeit in Google Play.",
     default:
-      "Monats- und Jahrespläne sind automatisch verlängerbare Abos. Verwalten oder kündigen kannst du jederzeit im App Store / Google Play.",
+      "Wochen-, Monats- und Jahrespläne sind automatisch verlängerbare Abos. Verwalten oder kündigen kannst du jederzeit im App Store / Google Play.",
   },
   ar: {
-    ios: "الخطتان الشهرية والسنوية اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من App Store.",
+    ios: "الخطط الأسبوعية والشهرية والسنوية هي اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من App Store.",
     android:
-      "الخطتان الشهرية والسنوية اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من Google Play.",
+      "الخطط الأسبوعية والشهرية والسنوية هي اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من Google Play.",
     default:
-      "الخطتان الشهرية والسنوية اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من App Store / Google Play.",
+      "الخطط الأسبوعية والشهرية والسنوية هي اشتراكات تتجدد تلقائياً. يمكنك الإدارة أو الإلغاء في أي وقت من App Store / Google Play.",
   },
   zh: {
-    ios: "月度和年度方案均为自动续订订阅。你可随时在 App Store 管理或取消。",
-    android: "月度和年度方案均为自动续订订阅。你可随时在 Google Play 管理或取消。",
-    default: "月度和年度方案均为自动续订订阅。你可随时在 App Store / Google Play 管理或取消。",
+    ios: "周度、月度和年度方案均为自动续订订阅。你可随时在 App Store 管理或取消。",
+    android: "周度、月度和年度方案均为自动续订订阅。你可随时在 Google Play 管理或取消。",
+    default: "周度、月度和年度方案均为自动续订订阅。你可随时在 App Store / Google Play 管理或取消。",
   },
 };
 
@@ -1386,6 +1405,15 @@ const LEGAL_PRIVACY_LABEL_BY_LANGUAGE = {
 };
 
 const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
+  weekly: {
+    ru: "Неделя",
+    en: "Weekly",
+    es: "Semanal",
+    fr: "Hebdomadaire",
+    de: "Wöchentlich",
+    ar: "أسبوعي",
+    zh: "周付",
+  },
   yearly: {
     ru: "Год",
     en: "Yearly",
@@ -2002,19 +2030,35 @@ export const buildDefaultPlanCards = (currencyCode = "USD", language = "en") => 
     "Premium";
   return localizeFallbackStructure([
     {
-      id: "yearly",
-      label: resolvePlanLabel("yearly"),
-      priceLabel: pricing.yearly.label,
-      secondaryLabel: pricing.yearly.perMonth,
-      badge: localizeFallbackBadge(pricing.yearly.badge, lang),
-      recommended: true,
-    },
-    {
       id: "monthly",
       label: resolvePlanLabel("monthly"),
       priceLabel: pricing.monthly.label,
       secondaryLabel: pricing.monthly.perWeek || pricing.monthly.perMonth,
       badge: localizeFallbackBadge(pricing.monthly.badge, lang),
+      recommended: true,
+    },
+    {
+      id: "weekly",
+      label: resolvePlanLabel("weekly"),
+      priceLabel: pricing.weekly.label,
+      secondaryLabel: pricing.weekly.perMonth || pricing.weekly.perWeek,
+      badge: localizeFallbackBadge(pricing.weekly.badge, lang),
+      recommended: false,
+    },
+    {
+      id: "yearly",
+      label: resolvePlanLabel("yearly"),
+      priceLabel: pricing.yearly.label,
+      secondaryLabel: pricing.yearly.perMonth,
+      badge: localizeFallbackBadge(pricing.yearly.badge, lang),
+      recommended: false,
+    },
+    {
+      id: "lifetime",
+      label: resolvePlanLabel("lifetime"),
+      priceLabel: pricing.lifetime.label,
+      secondaryLabel: pricing.lifetime.perMonth,
+      badge: localizeFallbackBadge(pricing.lifetime.badge, lang),
       recommended: false,
     },
   ], lang);

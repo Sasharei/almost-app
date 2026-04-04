@@ -119,6 +119,10 @@ const patches = [
     dest: 'node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/ReactViewGroup.kt',
   },
   {
+    src: 'patches/@sentry/react-native/android/build.gradle',
+    dest: 'node_modules/@sentry/react-native/android/build.gradle',
+  },
+  {
     src: 'patches/@sentry/react-native/ios/RNSentry.mm',
     dest: 'node_modules/@sentry/react-native/ios/RNSentry.mm',
   },

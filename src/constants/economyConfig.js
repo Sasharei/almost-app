@@ -123,7 +123,7 @@ export const CURRENCY_SIGNS = {
   KZT: "₸",
   KRW: "₩",
   MXN: "MX$",
-  PLN: "zł",
+  PLN: "zt",
   RUB: "₽",
   SAR: "﷼",
   USD: "$",
