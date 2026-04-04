@@ -265,14 +265,14 @@ const LiquidGlassTabBar = ({
 
   const rootStyle = {
     paddingBottom: barBottomInset,
-    marginBottom: 0,
+    marginBottom: Platform.OS === "ios" ? -(Number(safeAreaBottom) || 0) : 0,
     paddingTop: tabBarTopPadding,
     paddingHorizontal: 14,
     opacity: tutorialIsTemptation ? 0.35 : 1,
   };
   const nativeOnlyRootStyle = {
     paddingBottom: barBottomInset,
-    marginBottom: 0,
+    marginBottom: Platform.OS === "ios" ? -(Number(safeAreaBottom) || 0) : 0,
     paddingTop: tabBarTopPadding,
     paddingHorizontal: 8,
     opacity: tutorialIsTemptation ? 0.35 : 1,

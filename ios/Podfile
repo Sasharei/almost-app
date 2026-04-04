@@ -111,8 +111,9 @@ $AppsFlyerPurchaseConnector=false
       next unless target.name.include?('Sentry')
 
       target.build_configurations.each do |config|
-        # Sentry's profiling code fails to compile under C++20 with some toolchains.
-        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+        # React Native 0.81 headers use C++20 constraints (`requires`).
+        # Keep Sentry aligned with RN C++ standard so bridging headers compile.
+        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'gnu++20'
         config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
         # Force-disable profiling in native Sentry SDK (prevents allocator errors).
         config.build_settings['OTHER_CPLUSPLUSFLAGS'] = [

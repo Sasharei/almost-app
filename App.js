@@ -834,6 +834,10 @@ const shouldUseAndroidCommunityBlur = () => {
   return !isAndroidExpoBlurAvailable();
 };
 const isBlurViewAvailable = () => {
+  if (Platform.OS === "ios") {
+    // iOS blur is available in our builds; UIManager manager probing can be flaky.
+    return true;
+  }
   if (Platform.OS === "android") {
     if (shouldUseAndroidCommunityBlur()) return true;
     // On Android we keep Expo blur enabled even when manager detection is flaky.
@@ -16135,6 +16139,7 @@ const ReportsModal = React.memo(function ReportsModal({
 });
 
 const MENU_TOP_CONTENT_OFFSET = 24;
+const MAIN_SCREEN_CONTENT_BOTTOM_PADDING = 160;
 
 const FeedScreen = React.memo(
   forwardRef(function FeedScreen(
@@ -16281,6 +16286,7 @@ const FeedScreen = React.memo(
   isPremiumUser = false,
   budgetSpeechDataRef = null,
   onScrollActivityChange = null,
+  contentBottomPadding = MAIN_SCREEN_CONTENT_BOTTOM_PADDING,
   topInset = 0,
   },
     ref
@@ -19364,7 +19370,10 @@ const FeedScreen = React.memo(
         keyExtractor={feedKeyExtractor}
         showsVerticalScrollIndicator={false}
         scrollEnabled={!feedScrollLocked}
-        contentContainerStyle={styles.feedListContent}
+        contentContainerStyle={[
+          styles.feedListContent,
+          { paddingBottom: Math.max(0, Number(contentBottomPadding) || 0) },
+        ]}
         renderItem={renderFeedItem}
         onScrollToIndexFailed={handleFeedScrollToIndexFailed}
         initialNumToRender={6}
@@ -32844,7 +32853,7 @@ function AppContent() {
   const tabBarBottomInset = Platform.OS === "ios" ? iosTabInset : androidNavInset;
   const tabBarBaseHeight = isCompactAndroid ? TAB_BAR_BASE_HEIGHT_COMPACT : TAB_BAR_BASE_HEIGHT;
   const resolvedTabBarHeight = tabBarHeight || tabBarBottomInset + tabBarBaseHeight;
-  const screenContentBottomPadding = Math.max(200, resolvedTabBarHeight + 24);
+  const screenContentBottomPadding = MAIN_SCREEN_CONTENT_BOTTOM_PADDING;
   const androidTabBarExtra = isCompactAndroid ? 4 : 12;
   const tabBarTopPadding = isCompactAndroid ? 10 : 18;
   const tabButtonVerticalPadding = isCompactAndroid ? 10 : 14;
@@ -32883,7 +32892,7 @@ function AppContent() {
   const shouldRenderMainStatusGlass = shouldRenderStatusGlass;
   const statusGlassFadeHeight = shouldRenderStatusGlass ? MENU_TOP_CONTENT_OFFSET : 0;
   const statusGlassHeight = topSafeInset + statusGlassFadeHeight;
-  const statusBlurAvailable = false;
+  const statusBlurAvailable = useMemo(() => isBlurViewAvailable(), []);
   const screenKeyboardAdjustmentStyle = useMemo(() => {
     if (Platform.OS === "ios") return null;
     return keyboardInset ? { paddingBottom: keyboardInset } : null;
@@ -57582,6 +57591,7 @@ useEffect(() => {
             showDayTwoIncomePrompt={showDayTwoIncomePrompt}
             onDayTwoIncomePromptPress={handleDayTwoIncomePromptPress}
             onDayTwoIncomePromptDismiss={dismissDayTwoIncomePrompt}
+            contentBottomPadding={screenContentBottomPadding}
             topInset={topSafeInset}
           />
         );
@@ -57746,7 +57756,7 @@ useEffect(() => {
       );
     }
     const onboardingBackground = "#FFFFFF";
-    const renderOnboardingStatusGlass = shouldRenderStatusGlass;
+    const renderOnboardingStatusGlass = shouldRenderStatusGlass && !systemBarsDimActive;
     return (
       <FormattingLanguageContext.Provider value={normalizedLanguageValue}>
         <OnboardingSoundContext.Provider value={playSound}>
@@ -57856,7 +57866,7 @@ useEffect(() => {
 	        style={[styles.appBackground, { backgroundColor: colors.background, direction: appLayoutDirection }]}
 	        onTouchStart={handleRootTouchStart}
 	      >
-	          {shouldRenderMainStatusGlass && (
+	          {shouldRenderMainStatusGlass && !systemBarsDimActive && (
 	            <StatusGlass
 	              height={statusGlassHeight}
 	              safeHeight={topSafeInset}
@@ -59285,32 +59295,34 @@ useEffect(() => {
             </TouchableWithoutFeedback>
           </Modal>
         )}
-        <LiquidGlassTabBar
-          availableTabs={availableTabs}
-          activeTab={activeTab}
-          onTabPress={handleTabChange}
-          onLayout={handleTabBarLayout}
-          getLabel={resolveMainTabLabel}
-          isDarkTheme={isDarkTheme}
-          isProTheme={isProTheme}
-          proThemeAccentColor={proThemeAccentColor}
-          tutorialIsTemptation={tutorialIsTemptation}
-          tutorialHighlightTabs={tutorialHighlightTabs}
-          isCompactAndroid={isCompactAndroid}
-          tabLabelFontSize={tabLabelFontSize}
-          tabLabelTopMargin={tabLabelTopMargin}
-          tabLabelTextTransform={tabLabelTextTransform}
-          tabBarBottomInset={tabBarBottomInset}
-          tabBarTopPadding={tabBarTopPadding}
-          androidTabBarExtra={androidTabBarExtra}
-          safeAreaBottom={safeAreaInsets.bottom || 0}
-          rewardsUnlocked={rewardsUnlocked}
-          challengesUnlocked={challengesUnlocked}
-          challengeRewardsBadgeCount={challengeRewardsBadgeCount}
-          rewardsBadgeCount={rewardsBadgeCount}
-          reportsBadgeVisible={reportsBadgeVisible}
-          reportsUnlocked={reportsUnlocked}
-        />
+        <View pointerEvents="box-none" style={styles.mainTabBarOverlay}>
+          <LiquidGlassTabBar
+            availableTabs={availableTabs}
+            activeTab={activeTab}
+            onTabPress={handleTabChange}
+            onLayout={handleTabBarLayout}
+            getLabel={resolveMainTabLabel}
+            isDarkTheme={isDarkTheme}
+            isProTheme={isProTheme}
+            proThemeAccentColor={proThemeAccentColor}
+            tutorialIsTemptation={tutorialIsTemptation}
+            tutorialHighlightTabs={tutorialHighlightTabs}
+            isCompactAndroid={isCompactAndroid}
+            tabLabelFontSize={tabLabelFontSize}
+            tabLabelTopMargin={tabLabelTopMargin}
+            tabLabelTextTransform={tabLabelTextTransform}
+            tabBarBottomInset={tabBarBottomInset}
+            tabBarTopPadding={tabBarTopPadding}
+            androidTabBarExtra={androidTabBarExtra}
+            safeAreaBottom={safeAreaInsets.bottom || 0}
+            rewardsUnlocked={rewardsUnlocked}
+            challengesUnlocked={challengesUnlocked}
+            challengeRewardsBadgeCount={challengeRewardsBadgeCount}
+            rewardsBadgeCount={rewardsBadgeCount}
+            reportsBadgeVisible={reportsBadgeVisible}
+            reportsUnlocked={reportsUnlocked}
+          />
+        </View>
 
         {!startupHardLockPendingBeforePaywall &&
           !premiumPaywallState.visible &&
@@ -62971,6 +62983,12 @@ const styles = StyleSheet.create({
   },
   screenWrapper: {
     flex: 1,
+  },
+  mainTabBarOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   androidModalHost: {
     ...StyleSheet.absoluteFillObject,
