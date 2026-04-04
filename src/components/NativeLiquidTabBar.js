@@ -2,9 +2,11 @@ import React from "react";
 import { Platform, UIManager, View, requireNativeComponent } from "react-native";
 
 const COMPONENT_CANDIDATES = ["NativeLiquidTabBar", "NativeLiquidTabBarManager"];
+const isFabricRendererActive = () => !!global?.nativeFabricUIManager;
 
 const findRegisteredComponentName = () => {
   if (Platform.OS !== "ios") return null;
+  if (isFabricRendererActive()) return null;
   if (!UIManager) return null;
   if (typeof UIManager.getViewManagerConfig === "function") {
     const match = COMPONENT_CANDIDATES.find((name) => !!UIManager.getViewManagerConfig(name));

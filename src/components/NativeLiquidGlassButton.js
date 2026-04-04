@@ -2,9 +2,11 @@ import React from "react";
 import { Platform, UIManager, View, requireNativeComponent } from "react-native";
 
 const COMPONENT_CANDIDATES = ["NativeLiquidGlassButton", "NativeLiquidGlassButtonManager"];
+const isFabricRendererActive = () => !!global?.nativeFabricUIManager;
 
 const findRegisteredComponentName = () => {
   if (Platform.OS !== "ios") return false;
+  if (isFabricRendererActive()) return false;
   if (!UIManager) return false;
   if (typeof UIManager.getViewManagerConfig === "function") {
     const match = COMPONENT_CANDIDATES.find((name) => !!UIManager.getViewManagerConfig(name));

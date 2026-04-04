@@ -17,6 +17,7 @@ try {
 }
 
 const PACKAGE_TYPE_TO_PLAN = {
+  WEEKLY: "weekly",
   MONTHLY: "monthly",
   ANNUAL: "yearly",
   LIFETIME: "lifetime",
@@ -46,7 +47,9 @@ const findPlanByIdentifier = (productIdentifier = "") => {
   if (!normalized) return null;
   if (normalized.includes("lifetime") || normalized.includes("life_time")) return "lifetime";
   if (normalized.includes("year") || normalized.includes("annual")) return "yearly";
+  if (normalized.includes("week")) return "weekly";
   if (normalized.includes("month")) return "monthly";
+  if (normalized === PREMIUM_PRODUCT_IDS.weekly) return "weekly";
   if (normalized === PREMIUM_PRODUCT_IDS.monthly) return "monthly";
   if (normalized === PREMIUM_PRODUCT_IDS.yearly) return "yearly";
   if (normalized === PREMIUM_PRODUCT_IDS.lifetime) return "lifetime";
@@ -58,7 +61,7 @@ const normalizeOfferingIdentifier = (value = "") => String(value || "").trim().t
 const PREMIUM_PRODUCT_IDENTIFIER_SET = new Set(
   Object.values(PREMIUM_PRODUCT_IDS).map((value) => normalizeProductIdentifier(value))
 );
-const PREMIUM_PRODUCT_IDENTIFIER_ALIASES = new Set(["monthly", "yearly", "lifetime"]);
+const PREMIUM_PRODUCT_IDENTIFIER_ALIASES = new Set(["weekly", "monthly", "yearly", "lifetime"]);
 
 const parseBooleanValue = (value) => {
   if (typeof value === "boolean") return value;
@@ -401,7 +404,7 @@ export const mapOfferingPackagesByPlan = (offerings, { preferredOfferingIdentifi
   const byPlan = {};
   offeringsToInspect.forEach((offering) => {
     const packages = Array.isArray(offering?.availablePackages) ? offering.availablePackages : [];
-    // Pass 1: prefer canonical package types from RevenueCat (`MONTHLY`, `ANNUAL`, `LIFETIME`).
+    // Pass 1: prefer canonical package types from RevenueCat (`WEEKLY`, `MONTHLY`, `ANNUAL`, `LIFETIME`).
     // This avoids accidentally selecting a custom package (e.g. trial/targeted offer)
     // when multiple packages map to the same logical plan.
     packages.forEach((pkg) => {

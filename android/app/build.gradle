@@ -11,9 +11,24 @@ def facebookPropertiesFile = new File(projectRoot, "facebook.properties")
 if (facebookPropertiesFile.exists()) {
     facebookProperties.load(new FileInputStream(facebookPropertiesFile))
 }
-def facebookAppId = facebookProperties.getProperty("facebookAppId", "")
-def facebookClientToken = facebookProperties.getProperty("facebookClientToken", "")
-def facebookDisplayName = facebookProperties.getProperty("facebookDisplayName", "Almost")
+def firstNonEmpty = { List<String> values ->
+    values.find { it != null && it.toString().trim() }?.toString()?.trim()
+}
+def facebookAppId = firstNonEmpty([
+    facebookProperties.getProperty("facebookAppId"),
+    System.getenv("FACEBOOK_APP_ID"),
+    "1653035139013896",
+]) ?: ""
+def facebookClientToken = firstNonEmpty([
+    facebookProperties.getProperty("facebookClientToken"),
+    System.getenv("FACEBOOK_CLIENT_TOKEN"),
+    "c17d5adb7d4e8b7a284ea24dc4d4542f",
+]) ?: ""
+def facebookDisplayName = firstNonEmpty([
+    facebookProperties.getProperty("facebookDisplayName"),
+    System.getenv("FACEBOOK_DISPLAY_NAME"),
+    "Almost",
+]) ?: "Almost"
 def nodeBinary = System.getenv("NODE_BINARY")
 if (nodeBinary == null || nodeBinary.trim().isEmpty()) {
     nodeBinary = new File("/usr/local/bin/node").exists() ? "/usr/local/bin/node" : "node"
@@ -118,8 +133,8 @@ android {
         applicationId "com.sasarei.almostclean"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 84
-        versionName "5.2.0"
+        versionCode 85
+        versionName "5.2.1"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
         resValue "string", "facebook_app_id", facebookAppId

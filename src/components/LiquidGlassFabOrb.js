@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, Platform, StyleSheet, Text, View } from "react-native";
 import { BlurView as ExpoBlurView } from "expo-blur";
 import Svg, {
@@ -37,14 +37,29 @@ const LiquidGlassFabOrb = ({
   isProTheme = false,
   proThemeAccentColor = "#4E6BFF",
   highlighted = false,
+  disableArtificialHighlights = false,
 }) => {
   const resolvedSize = Math.max(44, Number(size) || 64);
   const radius = resolvedSize / 2;
   const isAndroid = Platform.OS === "android";
+  const suppressArtificialHighlights = disableArtificialHighlights && Platform.OS === "ios";
+  const useMutedIosLightStyle = suppressArtificialHighlights && !isDarkTheme;
+  const [nativeProbeTick, setNativeProbeTick] = useState(0);
   const nativeLiquidGlassAvailable = Platform.OS === "ios" && canUseNativeLiquidGlassView();
+  const shouldUseNativeLiquidGlass = nativeLiquidGlassAvailable;
+  const useTransparentIosNativeStyle = useMutedIosLightStyle && shouldUseNativeLiquidGlass;
   const shimmer = useRef(new Animated.Value(0)).current;
   const breathe = useRef(new Animated.Value(0)).current;
   const prismId = useMemo(() => `fab-prism-${Math.random().toString(36).slice(2, 10)}`, []);
+
+  useEffect(() => {
+    if (Platform.OS !== "ios") return undefined;
+    if (nativeLiquidGlassAvailable || nativeProbeTick >= 4) return undefined;
+    const timerId = setTimeout(() => {
+      setNativeProbeTick((prev) => prev + 1);
+    }, 160 + nativeProbeTick * 140);
+    return () => clearTimeout(timerId);
+  }, [nativeLiquidGlassAvailable, nativeProbeTick]);
 
   useEffect(() => {
     const shimmerLoop = Animated.loop(
@@ -107,8 +122,10 @@ const LiquidGlassFabOrb = ({
     inputRange: [0, 1],
     outputRange: [1, 0.987],
   });
-  const renderSyntheticPrism = !nativeLiquidGlassAvailable && !isAndroid;
-  const showSpecularArtifacts = !isAndroid;
+  const showOuterAura = !suppressArtificialHighlights;
+  const showPrismOrRim = !suppressArtificialHighlights;
+  const renderSyntheticPrism = !shouldUseNativeLiquidGlass && !isAndroid && !suppressArtificialHighlights;
+  const showSpecularArtifacts = !isAndroid && !suppressArtificialHighlights;
   const ringOpacity = breathe.interpolate({
     inputRange: [0, 1],
     outputRange: isAndroid ? [0.2, 0.34] : renderSyntheticPrism ? [0.62, 0.98] : [0.3, 0.54],
@@ -141,6 +158,14 @@ const LiquidGlassFabOrb = ({
     ? isDarkTheme
       ? "rgba(9,13,22,0.14)"
       : "rgba(255,255,255,0.08)"
+    : useTransparentIosNativeStyle
+    ? isProTheme
+      ? colorWithAlpha(accent, 0.08)
+      : "rgba(255,255,255,0.06)"
+    : useMutedIosLightStyle
+    ? isProTheme
+      ? colorWithAlpha(accent, 0.12)
+      : "rgba(244,247,252,0.46)"
     : isDarkTheme
     ? "rgba(7,11,22,0.3)"
     : nativeLiquidGlassAvailable
@@ -172,20 +197,22 @@ const LiquidGlassFabOrb = ({
       pointerEvents="none"
       style={[styles.root, { width: resolvedSize, height: resolvedSize, borderRadius: radius }]}
     >
-      <Animated.View
-        style={[
-          styles.aura,
-          {
-            width: resolvedSize * 1.22,
-            height: resolvedSize * 1.22,
-            borderRadius: resolvedSize * 0.61,
-            top: (resolvedSize - resolvedSize * 1.22) / 2,
-            left: (resolvedSize - resolvedSize * 1.22) / 2,
-            backgroundColor: auraColor,
-            opacity: auraOpacity,
-          },
-        ]}
-      />
+      {showOuterAura && (
+        <Animated.View
+          style={[
+            styles.aura,
+            {
+              width: resolvedSize * 1.22,
+              height: resolvedSize * 1.22,
+              borderRadius: resolvedSize * 0.61,
+              top: (resolvedSize - resolvedSize * 1.22) / 2,
+              left: (resolvedSize - resolvedSize * 1.22) / 2,
+              backgroundColor: auraColor,
+              opacity: auraOpacity,
+            },
+          ]}
+        />
+      )}
 
       <Animated.View
         style={[
@@ -194,24 +221,79 @@ const LiquidGlassFabOrb = ({
             borderRadius: radius,
             borderColor: shellBorderColor,
             transform: [{ scaleX: dropletScaleX }, { scaleY: dropletScaleY }],
-            shadowColor: isDarkTheme ? "#050A16" : isAndroid ? "#8A98AE" : isProTheme ? proThemeAccentColor : "#8EAEE0",
-            shadowOpacity: isAndroid ? (highlighted ? 0.2 : 0.14) : highlighted ? 0.48 : isDarkTheme ? 0.34 : 0.26,
-            shadowRadius: isAndroid ? (highlighted ? 8 : 6) : highlighted ? 16 : 10,
+            shadowColor: suppressArtificialHighlights
+              ? "#0A1324"
+              : isDarkTheme
+              ? "#050A16"
+              : isAndroid
+              ? "#8A98AE"
+              : isProTheme
+              ? proThemeAccentColor
+              : "#8EAEE0",
+            shadowOpacity: suppressArtificialHighlights
+              ? isDarkTheme
+                ? 0.16
+                : 0.11
+              : isAndroid
+              ? highlighted
+                ? 0.2
+                : 0.14
+              : highlighted
+              ? 0.48
+              : isDarkTheme
+              ? 0.34
+              : 0.26,
+            shadowRadius: suppressArtificialHighlights
+              ? isDarkTheme
+                ? 8
+                : 10
+              : isAndroid
+              ? highlighted
+                ? 8
+                : 6
+              : highlighted
+              ? 16
+              : 10,
+            shadowOffset: suppressArtificialHighlights
+              ? { width: 0, height: 4 }
+              : undefined,
             elevation: isAndroid ? (highlighted ? 6 : 4) : highlighted ? 12 : 8,
           },
         ]}
       >
-        {nativeLiquidGlassAvailable ? (
+        {shouldUseNativeLiquidGlass ? (
           <LiquidGlassNativeView
             style={StyleSheet.absoluteFill}
             cornerRadius={radius}
-            tintAlpha={isDarkTheme ? 0.26 : isProTheme ? 0.22 : 0.18}
-            strokeOpacity={highlighted ? 0.76 : isDarkTheme ? 0.58 : 0.46}
+            tintAlpha={
+              suppressArtificialHighlights
+                ? isDarkTheme
+                  ? 0.2
+                  : isProTheme
+                  ? 0.1
+                  : 0.08
+                : isDarkTheme
+                ? 0.26
+                : isProTheme
+                ? 0.22
+                : 0.18
+            }
+            strokeOpacity={
+              suppressArtificialHighlights
+                ? isDarkTheme
+                  ? 0.34
+                  : 0.18
+                : highlighted
+                ? 0.76
+                : isDarkTheme
+                ? 0.58
+                : 0.46
+            }
           />
         ) : (
           <ExpoBlurView
-            tint={isDarkTheme ? "dark" : "light"}
-            intensity={isAndroid ? 32 : 62}
+            tint={isDarkTheme ? "dark" : useMutedIosLightStyle ? "extraLight" : "light"}
+            intensity={isAndroid ? 32 : useMutedIosLightStyle ? 44 : 62}
             blurReductionFactor={isAndroid ? 1 : undefined}
             experimentalBlurMethod={isAndroid ? "dimezisBlurView" : undefined}
             style={StyleSheet.absoluteFill}
@@ -220,43 +302,58 @@ const LiquidGlassFabOrb = ({
 
         <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: tintOverlayColor }]} />
 
-        {renderSyntheticPrism ? (
-          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { opacity: ringOpacity }]}>
-            <Svg width="100%" height="100%" viewBox="0 0 100 100">
-              <Defs>
-                <SvgLinearGradient id={`${prismId}_fill`} x1="0" y1="0" x2="1" y2="1">
-                  <SvgStop offset="0%" stopColor="rgba(255,255,255,0.56)" />
-                  <SvgStop offset="42%" stopColor="rgba(193,226,255,0.22)" />
-                  <SvgStop offset="78%" stopColor="rgba(136,194,255,0.2)" />
-                  <SvgStop offset="100%" stopColor="rgba(255,255,255,0.06)" />
-                </SvgLinearGradient>
-                <SvgLinearGradient id={`${prismId}_rim`} x1="0" y1="0" x2="1" y2="1">
-                  <SvgStop offset="0%" stopColor="rgba(112,220,255,0.9)" />
-                  <SvgStop offset="34%" stopColor="rgba(155,255,213,0.84)" />
-                  <SvgStop offset="68%" stopColor="rgba(255,197,144,0.82)" />
-                  <SvgStop offset="100%" stopColor="rgba(205,170,255,0.84)" />
-                </SvgLinearGradient>
-              </Defs>
+        {showPrismOrRim &&
+          (renderSyntheticPrism ? (
+            <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { opacity: ringOpacity }]}>
+              <Svg width="100%" height="100%" viewBox="0 0 100 100">
+                <Defs>
+                  <SvgLinearGradient id={`${prismId}_fill`} x1="0" y1="0" x2="1" y2="1">
+                    <SvgStop offset="0%" stopColor="rgba(255,255,255,0.56)" />
+                    <SvgStop offset="42%" stopColor="rgba(193,226,255,0.22)" />
+                    <SvgStop offset="78%" stopColor="rgba(136,194,255,0.2)" />
+                    <SvgStop offset="100%" stopColor="rgba(255,255,255,0.06)" />
+                  </SvgLinearGradient>
+                  <SvgLinearGradient id={`${prismId}_rim`} x1="0" y1="0" x2="1" y2="1">
+                    <SvgStop offset="0%" stopColor="rgba(112,220,255,0.9)" />
+                    <SvgStop offset="34%" stopColor="rgba(155,255,213,0.84)" />
+                    <SvgStop offset="68%" stopColor="rgba(255,197,144,0.82)" />
+                    <SvgStop offset="100%" stopColor="rgba(205,170,255,0.84)" />
+                  </SvgLinearGradient>
+                </Defs>
 
-              <SvgRect x="0" y="0" width="100" height="100" rx="50" fill={`url(#${prismId}_fill)`} opacity="0.34" />
-              <SvgCircle cx="50" cy="50" r="46.8" fill="none" stroke={`url(#${prismId}_rim)`} strokeWidth="2" />
-              <SvgCircle cx="51.2" cy="49.4" r="45.8" fill="none" stroke="rgba(95,213,255,0.38)" strokeWidth="1.2" />
-              <SvgCircle cx="48.8" cy="50.7" r="45.8" fill="none" stroke="rgba(255,173,125,0.34)" strokeWidth="1.2" />
-            </Svg>
-          </Animated.View>
-        ) : (
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.nativeRim,
-              {
-                borderRadius: radius,
-                borderColor: nativeRimColor,
-                opacity: ringOpacity,
-              },
-            ]}
-          />
-        )}
+                <SvgRect x="0" y="0" width="100" height="100" rx="50" fill={`url(#${prismId}_fill)`} opacity="0.34" />
+                <SvgCircle cx="50" cy="50" r="46.8" fill="none" stroke={`url(#${prismId}_rim)`} strokeWidth="2" />
+                <SvgCircle
+                  cx="51.2"
+                  cy="49.4"
+                  r="45.8"
+                  fill="none"
+                  stroke="rgba(95,213,255,0.38)"
+                  strokeWidth="1.2"
+                />
+                <SvgCircle
+                  cx="48.8"
+                  cy="50.7"
+                  r="45.8"
+                  fill="none"
+                  stroke="rgba(255,173,125,0.34)"
+                  strokeWidth="1.2"
+                />
+              </Svg>
+            </Animated.View>
+          ) : (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.nativeRim,
+                {
+                  borderRadius: radius,
+                  borderColor: nativeRimColor,
+                  opacity: ringOpacity,
+                },
+              ]}
+            />
+          ))}
 
         {showSpecularArtifacts && (
           <>
@@ -345,7 +442,12 @@ const LiquidGlassFabOrb = ({
             fontSize: iconSize,
             lineHeight: iconSize,
             fontWeight: icon === "+" ? "700" : "800",
-            textShadowColor: isAndroid ? "transparent" : isDarkTheme ? "rgba(0,0,0,0.42)" : "rgba(255,255,255,0.42)",
+            textShadowColor:
+              isAndroid || suppressArtificialHighlights
+                ? "transparent"
+                : isDarkTheme
+                ? "rgba(0,0,0,0.42)"
+                : "rgba(255,255,255,0.42)",
             textShadowOffset: { width: 0, height: 1 },
             textShadowRadius: 2,
           },

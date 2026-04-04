@@ -4,6 +4,9 @@ import React
 
 @objc(WidgetStorage)
 class WidgetStorage: NSObject {
+  private static let timelineReloadQueue = DispatchQueue(label: "com.sasarei.almost.widget.reload")
+  private static var lastTimelineReloadAt: TimeInterval = 0
+  private static let minTimelineReloadInterval: TimeInterval = 0.35
   private let appGroupId = "group.com.sasarei.almostclean"
   private let keyWidgetInstalledMarker = "widget_home_installed_marker"
   private let keySavedMonthLabel = "widget_saved_month_label"
@@ -163,8 +166,18 @@ class WidgetStorage: NSObject {
     defaults.synchronize()
 
     if #available(iOS 14.0, *) {
-      WidgetCenter.shared.reloadTimelines(ofKind: "Almost_Widget")
-      WidgetCenter.shared.reloadTimelines(ofKind: "AlmostWidget")
+      let now = Date().timeIntervalSince1970
+      WidgetStorage.timelineReloadQueue.async {
+        let elapsed = now - WidgetStorage.lastTimelineReloadAt
+        if elapsed < WidgetStorage.minTimelineReloadInterval {
+          return
+        }
+        WidgetStorage.lastTimelineReloadAt = now
+        DispatchQueue.main.async {
+          WidgetCenter.shared.reloadTimelines(ofKind: "Almost_Widget")
+          WidgetCenter.shared.reloadTimelines(ofKind: "AlmostWidget")
+        }
+      }
     }
 
     resolve(true)

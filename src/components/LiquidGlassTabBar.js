@@ -128,6 +128,7 @@ const LiquidGlassTabBar = ({
 }) => {
   const isIos = Platform.OS === "ios";
   const isAndroid = Platform.OS === "android";
+  const [nativeProbeTick, setNativeProbeTick] = useState(0);
   const nativeLiquidAvailable = isIos && canUseNativeLiquidGlassView();
   const nativeTabBarAvailable = isIos && canUseNativeLiquidTabBar();
   const isLiquidGlassStyle = isIos && (nativeLiquidAvailable || nativeTabBarAvailable);
@@ -138,6 +139,17 @@ const LiquidGlassTabBar = ({
   const prismRingId = useMemo(() => `liquid-tab-prism-${Math.random().toString(36).slice(2, 10)}`, []);
   const bubbleHorizontalInset = TAB_ROW_HORIZONTAL_PADDING;
   const bubbleVerticalInset = TAB_ROW_VERTICAL_PADDING + (isAndroid ? 4 : 0);
+
+  useEffect(() => {
+    if (!isIos) return undefined;
+    if ((nativeLiquidAvailable || nativeTabBarAvailable) || nativeProbeTick >= 4) {
+      return undefined;
+    }
+    const timerId = setTimeout(() => {
+      setNativeProbeTick((prev) => prev + 1);
+    }, 160 + nativeProbeTick * 140);
+    return () => clearTimeout(timerId);
+  }, [isIos, nativeLiquidAvailable, nativeTabBarAvailable, nativeProbeTick]);
 
   const activeIndex = Math.max(0, availableTabs.indexOf(activeTab));
   const activeTabLayout = tabLayouts[activeTab] || null;

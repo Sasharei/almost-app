@@ -17,6 +17,8 @@ import expo.modules.kotlin.views.ExpoView
 class ExpoBlurView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   companion object {
     private const val TAG = "ExpoBlurView"
+    private const val MAX_RENDERSCRIPT_BLUR_RADIUS = 25f
+    private const val MIN_POSITIVE_BLUR_RADIUS = 0.01f
   }
 
   private var blurMethod: BlurMethod = BlurMethod.NONE
@@ -43,9 +45,18 @@ class ExpoBlurView(context: Context, appContext: AppContext) : ExpoView(context,
       BlurMethod.DIMEZIS_BLUR_VIEW -> {
         // When setting a blur directly to 0 a "nativePtr is null" exception is thrown
         // https://issuetracker.google.com/issues/241546169
-        blurView.setBlurEnabled(radius != 0f)
-        if (radius > 0f) {
-          blurView.setBlurRadius(radius / blurReduction)
+        val shouldEnableBlur = radius > 0f
+        blurView.setBlurEnabled(shouldEnableBlur)
+        if (shouldEnableBlur) {
+          val safeReduction = if (blurReduction > 0f) blurReduction else 1f
+          val scaledRadius = (radius / safeReduction).coerceAtLeast(MIN_POSITIVE_BLUR_RADIUS)
+          val appliedRadius =
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+              scaledRadius.coerceAtMost(MAX_RENDERSCRIPT_BLUR_RADIUS)
+            } else {
+              scaledRadius
+            }
+          blurView.setBlurRadius(appliedRadius)
           blurView.invalidate()
         }
       }
