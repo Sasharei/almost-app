@@ -6,7 +6,7 @@ import React
 class WidgetStorage: NSObject {
   private static let timelineReloadQueue = DispatchQueue(label: "com.sasarei.almost.widget.reload")
   private static var lastTimelineReloadAt: TimeInterval = 0
-  private static let minTimelineReloadInterval: TimeInterval = 0.35
+  private static let minTimelineReloadInterval: TimeInterval = 3.0
   private let appGroupId = "group.com.sasarei.almostclean"
   private let keyWidgetInstalledMarker = "widget_home_installed_marker"
   private let keySavedMonthLabel = "widget_saved_month_label"

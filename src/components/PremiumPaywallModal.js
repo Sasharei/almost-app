@@ -262,13 +262,13 @@ const formatCountdownToMidnight = (timestamp = Date.now()) => {
   return `${hours}h${String(minutes).padStart(2, "0")}m`;
 };
 const SOCIAL_PROOF_FALLBACK_BY_LANGUAGE = {
-  ru: "Присоединяйся к 5K+ людей, которые уже экономят.",
-  en: "Join 5K+ savers",
-  es: "Únete a más de 5K ahorradores",
-  fr: "Rejoins 5K+ personnes qui économisent",
-  de: "Schließe dich 5K+ Sparern an",
-  ar: "انضم إلى أكثر من 5 آلاف شخص يدّخرون",
-  zh: "加入 5K+ 省钱用户",
+  ru: "5K+ уже экономят",
+  en: "5K+ already saving",
+  es: "5K+ ya ahorran",
+  fr: "5K+ économisent déjà",
+  de: "5K+ sparen schon",
+  ar: "أكثر من 5 آلاف يدّخرون",
+  zh: "5K+ 用户在省钱",
 };
 const BENEFITS_TITLE_FALLBACK_BY_LANGUAGE = {
   ru: "Что входит в Premium",
@@ -1992,6 +1992,9 @@ const PremiumPaywallModal = ({
               isCompactAndroid ? styles.planSectionTitleInRowCompactAndroid : null,
               { color: textColor },
             ]}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.72}
           >
             {copy.planSectionTitle || "Choose your Premium plan"}
           </Text>
@@ -2022,6 +2025,8 @@ const PremiumPaywallModal = ({
                     { color: socialProofTextColor },
                   ]}
                   numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
                 >
                   {socialProofLine}
                 </Text>
@@ -3815,7 +3820,7 @@ const styles = StyleSheet.create({
   },
   planSectionHeaderRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 8,
   },
@@ -3831,6 +3836,8 @@ const styles = StyleSheet.create({
     marginTop: 0,
     marginBottom: 0,
     alignItems: "flex-end",
+    flexShrink: 1,
+    maxWidth: "62%",
   },
   planSocialProofWrapCompactAndroid: {
     marginTop: 1,
@@ -3876,6 +3883,8 @@ const styles = StyleSheet.create({
   },
   planSectionTitleInRow: {
     flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
     marginRight: 8,
   },
   planSectionTitleCompactAndroid: {

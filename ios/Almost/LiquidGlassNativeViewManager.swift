@@ -69,6 +69,11 @@ class NativeLiquidGlassButton: UIView {
     button.contentHorizontalAlignment = .center
     button.contentVerticalAlignment = .center
     button.addTarget(self, action: #selector(handlePress), for: .touchUpInside)
+    button.titleLabel?.numberOfLines = 1
+    button.titleLabel?.lineBreakMode = .byTruncatingTail
+    button.titleLabel?.adjustsFontSizeToFitWidth = true
+    button.titleLabel?.minimumScaleFactor = 0.5
+    button.titleLabel?.allowsDefaultTighteningForTruncation = true
 
     addSubview(button)
 
@@ -95,7 +100,7 @@ class NativeLiquidGlassButton: UIView {
       config.title = resolvedTitle
       config.cornerStyle = .capsule
       config.buttonSize = .small
-      config.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)
+      config.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)
       config.baseForegroundColor = UIColor.label
       button.configuration = config
     } else {
@@ -103,12 +108,15 @@ class NativeLiquidGlassButton: UIView {
       config.title = resolvedTitle
       config.cornerStyle = .capsule
       config.buttonSize = .small
-      config.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)
+      config.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)
       config.baseForegroundColor = UIColor.label
       config.baseBackgroundColor = UIColor(white: 1.0, alpha: 0.22)
       button.configuration = config
     }
-    button.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+    button.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+    button.titleLabel?.adjustsFontSizeToFitWidth = true
+    button.titleLabel?.minimumScaleFactor = 0.5
+    button.titleLabel?.numberOfLines = 1
   }
 }
 

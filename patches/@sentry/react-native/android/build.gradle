@@ -3,9 +3,7 @@ def safeExtGet(prop, fallback) {
 }
 
 def isNewArchitectureEnabled() {
-    // Keep Sentry on the legacy bridge path to avoid IDE sync model crashes
-    // with AGP 8.11 + RN 0.81 in Android Studio 2025.2.x.
-    return false
+    return project.hasProperty("newArchEnabled") && project.newArchEnabled == "true"
 }
 
 apply plugin: 'com.android.library'

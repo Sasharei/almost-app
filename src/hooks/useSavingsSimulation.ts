@@ -5,6 +5,7 @@ import { calcPotentialSaved } from "../utils/savingsSimulation";
 const DEFAULT_UPDATE_INTERVAL_MS = 1000;
 const MIN_UPDATE_INTERVAL_MS = 250;
 const MIN_VALUE_DELTA = 0.0001;
+const POTENTIAL_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const roundPotentialValue = (value: number) => Math.round(value * 10_000) / 10_000;
 
 type SavingsSimulationOptions = {
@@ -19,6 +20,8 @@ export function useSavingsSimulation(
   options: SavingsSimulationOptions = {}
 ) {
   const latestValueRef = useRef(0);
+  const lastUpdateAtRef = useRef<number | null>(null);
+  const baselineKeyRef = useRef<string | null>(null);
   const [potentialSaved, setPotentialSaved] = useState(0);
   const enabled = options.enabled !== false;
   const updateIntervalMs = Math.max(
@@ -28,6 +31,8 @@ export function useSavingsSimulation(
 
   useEffect(() => {
     if (!baselineMonthlyWaste || !baselineStartAt) {
+      baselineKeyRef.current = null;
+      lastUpdateAtRef.current = null;
       if (latestValueRef.current !== 0) {
         latestValueRef.current = 0;
         setPotentialSaved(0);
@@ -35,16 +40,44 @@ export function useSavingsSimulation(
       return undefined;
     }
 
+    const baselineKey = `${baselineStartAt}:${Number(baselineMonthlyWaste) || 0}`;
+    if (baselineKeyRef.current !== baselineKey) {
+      baselineKeyRef.current = baselineKey;
+      lastUpdateAtRef.current = null;
+      latestValueRef.current = 0;
+    }
+
     const update = () => {
-      const nextValue = roundPotentialValue(
+      const now = new Date();
+      const nowTimestamp = now.getTime();
+      const absolutePotential = roundPotentialValue(
         calcPotentialSaved(
           baselineMonthlyWaste,
           baselineStartAt,
-          new Date(),
+          now,
           Math.max(0, Number(spentLossUSD) || 0)
         )
       );
-      if (Math.abs(nextValue - latestValueRef.current) < MIN_VALUE_DELTA) return;
+      const previousValue = latestValueRef.current;
+      const previousUpdateAt = lastUpdateAtRef.current;
+      let nextValue = absolutePotential;
+
+      if (
+        previousUpdateAt !== null &&
+        Number.isFinite(previousUpdateAt) &&
+        absolutePotential + MIN_VALUE_DELTA < previousValue
+      ) {
+        const deltaMs = Math.max(0, nowTimestamp - previousUpdateAt);
+        const remainingMonthlyPotential = Math.max(
+          0,
+          Number(baselineMonthlyWaste) - Math.max(0, Number(spentLossUSD) || 0)
+        );
+        const growth = remainingMonthlyPotential * (deltaMs / POTENTIAL_WINDOW_MS);
+        nextValue = roundPotentialValue(previousValue + growth);
+      }
+
+      lastUpdateAtRef.current = nowTimestamp;
+      if (Math.abs(nextValue - previousValue) < MIN_VALUE_DELTA) return;
       latestValueRef.current = nextValue;
       setPotentialSaved(nextValue);
     };

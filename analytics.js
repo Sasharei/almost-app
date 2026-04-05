@@ -648,6 +648,9 @@ const EVENT_DEFINITIONS = {
     "experiment_new_install",
   ],
   impulse_map_opened: [],
+  app_screen_viewed: ["screen_id", "source"],
+  modal_screen_shown: ["modal_id", "source", "context"],
+  modal_action_tapped: ["modal_id", "action", "value", "source"],
 };
 
 const FACEBOOK_EVENT_WHITELIST = new Set([

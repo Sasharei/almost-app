@@ -74,13 +74,27 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
     : "rgba(139,189,255,0.2)";
   const shadowColor = isDarkTheme ? "#050A16" : isAndroid ? "#8A98AE" : isProTheme ? proThemeAccentColor : "#8EAEE0";
   const labelColor = isDarkTheme ? "#FFFFFF" : isProTheme ? "#F8FBFF" : "#0B1630";
+  const resolvedLabel = typeof label === "string" ? label.trim() : String(label || "").trim();
+  const renderedLabel = resolvedLabel || "Edit";
+  const labelLength = Array.from(renderedLabel).length;
+  const longestWordLength = renderedLabel
+    .split(/\s+/)
+    .filter(Boolean)
+    .reduce((max, word) => Math.max(max, Array.from(word).length), 0);
+  const effectiveWordLength = Math.max(labelLength, longestWordLength);
+  // Grow width conservatively, then prefer text shrinking instead of oversized buttons.
+  const adaptiveButtonMinWidth = Math.max(106, Math.min(128, 106 + Math.max(0, effectiveWordLength - 6) * 2));
+  const adaptiveHorizontalPadding =
+    effectiveWordLength >= 12 ? 11 : effectiveWordLength >= 10 ? 13 : effectiveWordLength >= 8 ? 15 : 18;
+  const adaptiveLabelFontSize = Math.max(11.5, Math.min(16, 16 - Math.max(0, effectiveWordLength - 8) * 0.6));
+  const adaptiveLabelLineHeight = Math.max(14, Math.round(adaptiveLabelFontSize + 3));
 
   if (nativeLiquidButtonAvailable) {
     return (
-      <View pointerEvents="box-none" style={[styles.wrapper, style]}>
+      <View pointerEvents="box-none" style={[styles.wrapper, style, { minWidth: adaptiveButtonMinWidth }]}>
         <NativeLiquidGlassButton
           style={styles.nativeLiquidButton}
-          title={label}
+          title={renderedLabel}
           enabled={!disabled}
           onPress={onPress}
         />
@@ -89,7 +103,7 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
   }
 
   return (
-    <View pointerEvents="box-none" style={[styles.wrapper, style]}>
+    <View pointerEvents="box-none" style={[styles.wrapper, style, { minWidth: adaptiveButtonMinWidth }]}>
       {!isAndroid && (
         <View
           pointerEvents="none"
@@ -110,6 +124,7 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
         style={[
           styles.root,
           {
+            paddingHorizontal: adaptiveHorizontalPadding,
             borderColor: shellBorderColor,
             shadowColor,
             shadowOpacity: isAndroid ? 0 : isDarkTheme ? 0.34 : 0.28,
@@ -182,8 +197,18 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
         {!isAndroid && <View style={styles.specularTop} />}
         {!isAndroid && <View style={styles.specularBottom} />}
 
-        <Text style={[styles.label, { color: labelColor }, textStyle]} numberOfLines={1}>
-          {label}
+        <Text
+          style={[
+            styles.label,
+            { color: labelColor, fontSize: adaptiveLabelFontSize, lineHeight: adaptiveLabelLineHeight },
+            textStyle,
+          ]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.5}
+          ellipsizeMode="tail"
+        >
+          {renderedLabel}
         </Text>
       </TouchableOpacity>
     </View>
@@ -192,7 +217,7 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
 
 const styles = StyleSheet.create({
   wrapper: {
-    minWidth: 78,
+    minWidth: 106,
     height: 42,
     overflow: "visible",
   },
@@ -207,7 +232,7 @@ const styles = StyleSheet.create({
   root: {
     width: "100%",
     height: "100%",
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     borderRadius: 999,
     borderWidth: 1,
     justifyContent: "center",
@@ -243,7 +268,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.14)",
   },
   label: {
-    fontSize: 17,
+    fontSize: 16,
     lineHeight: 20,
     fontWeight: "700",
     letterSpacing: 0.2,

@@ -213,7 +213,7 @@ export const PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE = {
 };
 
 export const PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE = {
-  ru: "Попробуй бесплатно потом",
+  ru: "Бесплатный пробный период, затем",
   en: "Free trial then",
   es: "Prueba gratis, luego",
   fr: "Essaye gratuitement puis",

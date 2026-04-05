@@ -721,6 +721,9 @@ const safeNotifications = (() => {
   const api = Notifications || {};
   const isFn = (value) => typeof value === "function";
   let asyncQueue = Promise.resolve();
+  const SCHEDULED_LIST_CACHE_TTL_MS = 1200;
+  let scheduledListCache = { value: [], fetchedAt: 0 };
+  let scheduledListInFlight = null;
   const safeCall = (label, fn, ...args) => {
     if (!isFn(fn)) return null;
     try {
@@ -752,6 +755,10 @@ const safeNotifications = (() => {
       value.catch(() => {});
     }
   };
+  const clearScheduledListCache = () => {
+    scheduledListCache = { value: [], fetchedAt: 0 };
+    scheduledListInFlight = null;
+  };
   return {
     setNotificationHandler: (handler) =>
       safeCall("notification handler", api.setNotificationHandler, handler),
@@ -759,19 +766,44 @@ const safeNotifications = (() => {
       safeAsyncQueued("notifications permissions", api.getPermissionsAsync),
     requestPermissionsAsync: async () =>
       safeAsyncQueued("notifications permissions", api.requestPermissionsAsync),
-    getAllScheduledNotificationsAsync: async () => {
-      const result = await safeAsyncQueued(
+    getAllScheduledNotificationsAsync: async ({ force = false } = {}) => {
+      const now = Date.now();
+      if (!force) {
+        const age = now - scheduledListCache.fetchedAt;
+        if (age >= 0 && age <= SCHEDULED_LIST_CACHE_TTL_MS) {
+          return scheduledListCache.value;
+        }
+        if (scheduledListInFlight) {
+          return scheduledListInFlight;
+        }
+      }
+      const request = safeAsyncQueued(
         "notifications scheduled list",
         api.getAllScheduledNotificationsAsync
-      );
-      return Array.isArray(result) ? result : [];
+      ).then((result) => {
+        const list = Array.isArray(result) ? result : [];
+        scheduledListCache = { value: list, fetchedAt: Date.now() };
+        scheduledListInFlight = null;
+        return list;
+      });
+      scheduledListInFlight = request;
+      return request;
     },
-    scheduleNotificationAsync: async (payload) =>
-      safeAsyncQueued("notifications schedule", api.scheduleNotificationAsync, payload),
-    cancelScheduledNotificationAsync: async (id) =>
-      safeAsyncQueued("notifications cancel", api.cancelScheduledNotificationAsync, id),
-    cancelAllScheduledNotificationsAsync: async () =>
-      safeAsyncQueued("notifications cancel all", api.cancelAllScheduledNotificationsAsync),
+    scheduleNotificationAsync: async (payload) => {
+      const result = await safeAsyncQueued("notifications schedule", api.scheduleNotificationAsync, payload);
+      clearScheduledListCache();
+      return result;
+    },
+    cancelScheduledNotificationAsync: async (id) => {
+      const result = await safeAsyncQueued("notifications cancel", api.cancelScheduledNotificationAsync, id);
+      clearScheduledListCache();
+      return result;
+    },
+    cancelAllScheduledNotificationsAsync: async () => {
+      const result = await safeAsyncQueued("notifications cancel all", api.cancelAllScheduledNotificationsAsync);
+      clearScheduledListCache();
+      return result;
+    },
     setNotificationChannelAsync: (id, config) =>
       swallow(safeAsyncQueued("notifications channel", api.setNotificationChannelAsync, id, config)),
     setNotificationCategoryAsync: (id, actions) =>
@@ -816,6 +848,8 @@ const canUpdateWidgetStorage = () => {
 let pendingWidgetDataPayload = null;
 let widgetDataFlushTimer = null;
 let widgetDataFlushInFlight = false;
+const WIDGET_DATA_FLUSH_DEBOUNCE_MS = 900;
+const WIDGET_DATA_FLUSH_RETRY_MS = 1200;
 const flushWidgetDataSafely = () => {
   if (widgetDataFlushTimer) {
     clearTimeout(widgetDataFlushTimer);
@@ -839,7 +873,7 @@ const flushWidgetDataSafely = () => {
       if (pendingWidgetDataPayload && !widgetDataFlushTimer) {
         widgetDataFlushTimer = setTimeout(() => {
           flushWidgetDataSafely();
-        }, 140);
+        }, WIDGET_DATA_FLUSH_RETRY_MS);
       }
     });
 };
@@ -855,7 +889,7 @@ const setWidgetDataSafely = (payload) => {
   if (!widgetDataFlushTimer) {
     widgetDataFlushTimer = setTimeout(() => {
       flushWidgetDataSafely();
-    }, 120);
+    }, WIDGET_DATA_FLUSH_DEBOUNCE_MS);
   }
   return true;
 };
@@ -1899,19 +1933,50 @@ const PAYWALL_DAY_SUFFIX_BY_LANGUAGE = {
   ar: "/يوم",
   zh: "/天",
 };
-const CURRENCY_DISPLAY_CODE_OVERRIDES = {
-  PLN: "zt",
+const CURRENCY_DISPLAY_SYMBOLS = {
+  AUD: "$",
+  CAD: "$",
+  EUR: "€",
+  GBP: "£",
+  JPY: "¥",
+  KZT: "₸",
+  KRW: "₩",
+  MXN: "$",
+  PLN: "zł",
+  RUB: "₽",
+  SAR: "﷼",
+  USD: "$",
+};
+const CURRENCY_DISPLAY_ALIASES = {
+  PLN: [/\bz[łl]\b/gi, /\bzt\b/gi],
 };
 const CURRENCY_SIMPLE_DOLLAR_PATTERNS = {
   USD: [/\b(?:USD|US)[\s\u00A0\u202F]*\$/gi, /\$[\s\u00A0\u202F]*(?:USD|US)(?=$|[^A-Za-z])/gi],
   CAD: [/\b(?:CAD|CA|C)[\s\u00A0\u202F]*\$/gi, /\$[\s\u00A0\u202F]*(?:CAD|CA|C)(?=$|[^A-Za-z])/gi],
   AUD: [/\b(?:AUD|AU|A)[\s\u00A0\u202F]*\$/gi, /\$[\s\u00A0\u202F]*(?:AUD|AU|A)(?=$|[^A-Za-z])/gi],
+  MXN: [/\b(?:MXN|MX|MEX)[\s\u00A0\u202F]*\$/gi, /\$[\s\u00A0\u202F]*(?:MXN|MX|MEX)(?=$|[^A-Za-z])/gi],
+};
+const escapeRegExp = (value = "") =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const getCurrencyDisplaySymbol = (currencyCode = DEFAULT_PROFILE.currency) => {
+  const normalized =
+    typeof currencyCode === "string" ? currencyCode.trim().toUpperCase() : "";
+  if (!normalized) return "";
+  const configuredSymbol = CURRENCY_DISPLAY_SYMBOLS[normalized];
+  if (typeof configuredSymbol === "string" && configuredSymbol.trim().length > 0) {
+    return configuredSymbol.trim();
+  }
+  const fallbackSymbol = CURRENCY_SIGNS[normalized];
+  if (typeof fallbackSymbol === "string" && fallbackSymbol.trim().length > 0) {
+    return fallbackSymbol.trim();
+  }
+  return "";
 };
 const getCurrencyDisplayCode = (currencyCode = DEFAULT_PROFILE.currency) => {
   const normalized =
     typeof currencyCode === "string" ? currencyCode.trim().toUpperCase() : "";
   if (!normalized) return DEFAULT_PROFILE.currency;
-  return CURRENCY_DISPLAY_CODE_OVERRIDES[normalized] || normalized;
+  return getCurrencyDisplaySymbol(normalized) || normalized;
 };
 const normalizeCurrencyDisplayLabel = (label, currencyCode = DEFAULT_PROFILE.currency) => {
   if (label === undefined || label === null) return "";
@@ -1919,20 +1984,32 @@ const normalizeCurrencyDisplayLabel = (label, currencyCode = DEFAULT_PROFILE.cur
   if (!raw) return raw;
   const normalizedCurrency =
     typeof currencyCode === "string" ? currencyCode.trim().toUpperCase() : "";
-  const override = CURRENCY_DISPLAY_CODE_OVERRIDES[normalizedCurrency];
-  if (!override) return raw;
-  let normalized = raw.replace(/\bPLN\b/gi, override);
-  if (normalizedCurrency === "PLN") {
-    normalized = normalized.replace(/zł/gi, override);
+  if (!normalizedCurrency) return raw;
+  const symbol = getCurrencyDisplaySymbol(normalizedCurrency);
+  let normalized = raw;
+  if (symbol) {
+    const escapedCurrency = escapeRegExp(normalizedCurrency);
+    normalized = normalized.replace(new RegExp(`\\b${escapedCurrency}\\b`, "gi"), symbol);
+    const aliases = CURRENCY_DISPLAY_ALIASES[normalizedCurrency];
+    if (Array.isArray(aliases) && aliases.length > 0) {
+      aliases.forEach((pattern) => {
+        normalized = normalized.replace(pattern, symbol);
+      });
+    }
   }
   const dollarPatterns = CURRENCY_SIMPLE_DOLLAR_PATTERNS[normalizedCurrency];
   if (Array.isArray(dollarPatterns) && dollarPatterns.length > 0) {
     dollarPatterns.forEach((pattern) => {
       normalized = normalized.replace(pattern, "$");
     });
-    normalized = normalized.replace(/\$\s+(?=[-0-9٠-٩۰-۹])/g, "$");
   }
-  return normalized;
+  const shouldCollapseSymbolSpacing = symbol && !/[A-Za-z]/.test(symbol);
+  if (shouldCollapseSymbolSpacing) {
+    const escapedSymbol = escapeRegExp(symbol);
+    normalized = normalized.replace(new RegExp(`${escapedSymbol}\\s+(?=[-0-9٠-٩۰-۹])`, "g"), `${symbol}`);
+  }
+  normalized = normalized.replace(/\$\s+(?=[-0-9٠-٩۰-۹])/g, "$");
+  return normalized.replace(/\s{2,}/g, " ").trim();
 };
 const resolveRussianDaysWord = (count = 0) => {
   const absolute = Math.abs(Math.round(Number(count) || 0));
@@ -2055,21 +2132,24 @@ const normalizePaywallPriceLabel = (value, currencyCode = DEFAULT_PROFILE.curren
   if (normalizedCurrency !== "SAR") {
     return normalizeCurrencyDisplayLabel(raw, normalizedCurrency);
   }
+  const sarDisplaySymbol = getCurrencyDisplayCode("SAR");
   let normalized = raw.replace(PAYWALL_BIDI_MARKS_REGEX, "").trim();
-  normalized = normalized.replace(PAYWALL_SAR_MARKERS_REGEX, "SAR").replace(/\s{2,}/g, " ").trim();
-  if (!normalized) return "SAR";
+  normalized = normalized.replace(PAYWALL_SAR_MARKERS_REGEX, sarDisplaySymbol).replace(/\s{2,}/g, " ").trim();
+  if (!normalized) return sarDisplaySymbol;
   const amountMatch = normalized.match(PAYWALL_DIGIT_FRAGMENT_REGEX);
   if (!amountMatch) {
-    return normalized.startsWith("SAR") ? normalized : `SAR ${normalized}`.trim();
+    return normalized.startsWith(sarDisplaySymbol)
+      ? normalized
+      : `${sarDisplaySymbol} ${normalized}`.trim();
   }
   const amount = amountMatch[0].trim();
   const tail = normalized
     .replace(amountMatch[0], "")
-    .replace(/\bSAR\b/gi, "")
+    .replace(PAYWALL_SAR_MARKERS_REGEX, "")
     .replace(/\s{2,}/g, " ")
     .trim();
   const suffix = tail ? (tail.startsWith("/") ? tail : ` ${tail}`) : "";
-  return `SAR ${amount}${suffix}`.replace(/\s{2,}/g, " ").trim();
+  return `${LTR_MARK}${sarDisplaySymbol}${amount}${suffix}`.replace(/\s{2,}/g, " ").trim();
 };
 const normalizePaywallEquivalentLabel = (value = "") =>
   String(value || "")
@@ -3898,6 +3978,19 @@ const ALMI_DIRT_SPOTS = [
   { top: "56%", left: "66%", width: 26, height: 20, rotate: -16, opacity: 0.56, color: "#5F492F" },
   { top: "73%", left: "34%", width: 22, height: 16, rotate: 14, opacity: 0.52, color: "#684F34" },
 ];
+const TAMAGOTCHI_IDLE_ANIMATION_DURATION_MS = {
+  idle: 3000,
+  curious: 3200,
+  follow: 3200,
+  speak: 2800,
+  happy: 3200,
+  happyHeadshake: 3200,
+  sad: 3400,
+  ohno: 3400,
+  cry: 3600,
+};
+const TAMAGOTCHI_IDLE_ANIMATION_FALLBACK_MS = 3000;
+const TAMAGOTCHI_IDLE_RESTART_GAP_MS = 60;
 const TAMAGOTCHI_REACTION_DURATION = {
   happy: 3600,
   happyHeadshake: 3600,
@@ -4535,6 +4628,7 @@ function AlmiTamagotchi({
   const [currentKey, setCurrentKey] = useState("idle");
   const idleTimerRef = useRef(null);
   const overrideTimerRef = useRef(null);
+  const currentKeyRef = useRef("idle");
   const normalizedDesaturation = Math.max(0, Math.min(1, Number(desaturation) || 0));
   const dirtyOverlayStrength = normalizedDesaturation > 0 ? normalizedDesaturation : 0;
   const showDirtyOverlay = dirtyOverlayStrength >= 0.12;
@@ -4547,43 +4641,95 @@ function AlmiTamagotchi({
         : TAMAGOTCHI_IDLE_VARIANTS,
     [isPlayDeprived, isStarving]
   );
-  const resolveNextIdleKey = useCallback(() => {
+  const resolveAnimationDuration = useCallback(
+    (key = "idle") =>
+      TAMAGOTCHI_IDLE_ANIMATION_DURATION_MS[key] ||
+      TAMAGOTCHI_REACTION_DURATION[key] ||
+      TAMAGOTCHI_IDLE_ANIMATION_FALLBACK_MS,
+    []
+  );
+  const resolveNextIdleKey = useCallback((previousKey = "") => {
     const pool = idleVariants.length ? idleVariants : TAMAGOTCHI_IDLE_VARIANTS;
-    const index = Math.floor(Math.random() * pool.length);
-    return pool[index] || "idle";
+    if (!pool.length) return "idle";
+    const uniquePool = Array.from(new Set(pool));
+    if (uniquePool.length === 1) {
+      return uniquePool[0] || "idle";
+    }
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const index = Math.floor(Math.random() * pool.length);
+      const candidate = pool[index] || "idle";
+      if (candidate !== previousKey) {
+        return candidate;
+      }
+    }
+    const fallbackPool = uniquePool.filter((key) => key !== previousKey);
+    if (!fallbackPool.length) return uniquePool[0] || "idle";
+    const fallbackIndex = Math.floor(Math.random() * fallbackPool.length);
+    return fallbackPool[fallbackIndex] || uniquePool[0] || "idle";
   }, [idleVariants]);
 
   const scheduleIdleCycle = useCallback(
-    (delay = 4500) => {
+    (delay = TAMAGOTCHI_IDLE_ANIMATION_FALLBACK_MS, previousKey = currentKeyRef.current || "idle") => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       idleTimerRef.current = setTimeout(() => {
-        const next = resolveNextIdleKey();
+        const next = resolveNextIdleKey(previousKey);
+        currentKeyRef.current = next;
         setCurrentKey(next);
-        scheduleIdleCycle(5000 + Math.random() * 3000);
-      }, delay);
+        const nextDelay = Math.max(
+          220,
+          resolveAnimationDuration(next) - TAMAGOTCHI_IDLE_RESTART_GAP_MS
+        );
+        scheduleIdleCycle(nextDelay, next);
+      }, Math.max(0, Number(delay) || 0));
     },
-    [resolveNextIdleKey]
+    [resolveAnimationDuration, resolveNextIdleKey]
   );
 
   useEffect(() => {
-    scheduleIdleCycle(2200);
+    currentKeyRef.current = currentKey;
+  }, [currentKey]);
+
+  useEffect(() => {
+    const initialKey = currentKeyRef.current || "idle";
+    const firstDelay = Math.max(
+      220,
+      resolveAnimationDuration(initialKey) - TAMAGOTCHI_IDLE_RESTART_GAP_MS
+    );
+    scheduleIdleCycle(firstDelay, initialKey);
     return () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       if (overrideTimerRef.current) clearTimeout(overrideTimerRef.current);
     };
-  }, [scheduleIdleCycle]);
+  }, [resolveAnimationDuration, scheduleIdleCycle]);
 
   useEffect(() => {
     if (!override) return;
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     if (overrideTimerRef.current) clearTimeout(overrideTimerRef.current);
     const key = animations[override.type] ? override.type : "happy";
+    currentKeyRef.current = key;
     setCurrentKey(key);
+    const overrideDuration = Math.max(
+      600,
+      Number(override.duration) || TAMAGOTCHI_REACTION_DURATION[key] || 3200
+    );
     overrideTimerRef.current = setTimeout(() => {
       onOverrideComplete?.();
-      scheduleIdleCycle(2500);
-    }, override.duration || 3200);
-  }, [animations, override?.key, override?.type, override?.duration, onOverrideComplete, scheduleIdleCycle]);
+      const resumeDelay = Math.max(
+        220,
+        resolveAnimationDuration(key) - TAMAGOTCHI_IDLE_RESTART_GAP_MS
+      );
+      scheduleIdleCycle(resumeDelay, key);
+    }, overrideDuration);
+  }, [
+    animations,
+    override?.key,
+    override?.type,
+    override?.duration,
+    onOverrideComplete,
+    resolveAnimationDuration,
+    scheduleIdleCycle,
+  ]);
 
   const source = animations[currentKey] || animations.idle;
   const flattenedWrapStyle = StyleSheet.flatten([styles.almiMascotWrap, style]) || {};
@@ -4597,6 +4743,7 @@ function AlmiTamagotchi({
     <View style={[styles.almiMascotWrap, style]}>
       <View style={[styles.almiMascotClip, { borderRadius: resolvedClipRadius }]}>
         <Image
+          key={`almi_${currentKey}`}
           source={source}
           defaultSource={animations.idle}
           style={[
@@ -10402,6 +10549,39 @@ const warnIntlFallback = (currency, locale, error) => {
     error?.message || error
   );
 };
+const INTL_NUMBER_FORMAT_CACHE_LIMIT = 96;
+const intlNumberFormatCache = new Map();
+const getCachedIntlNumberFormat = (locale, options) => {
+  const normalizedLocale =
+    typeof locale === "string" && locale.trim().length ? locale : "en-US";
+  const normalizedOptions =
+    options && typeof options === "object" ? options : {};
+  const key = [
+    normalizedLocale,
+    normalizedOptions.style || "",
+    normalizedOptions.currency || "",
+    normalizedOptions.currencyDisplay || "",
+    Number.isFinite(normalizedOptions.minimumFractionDigits)
+      ? normalizedOptions.minimumFractionDigits
+      : "",
+    Number.isFinite(normalizedOptions.maximumFractionDigits)
+      ? normalizedOptions.maximumFractionDigits
+      : "",
+    normalizedOptions.notation || "",
+    normalizedOptions.signDisplay || "",
+  ].join("|");
+  const cached = intlNumberFormatCache.get(key);
+  if (cached) return cached;
+  const formatter = new Intl.NumberFormat(normalizedLocale, normalizedOptions);
+  intlNumberFormatCache.set(key, formatter);
+  if (intlNumberFormatCache.size > INTL_NUMBER_FORMAT_CACHE_LIMIT) {
+    const oldestKey = intlNumberFormatCache.keys().next().value;
+    if (oldestKey) {
+      intlNumberFormatCache.delete(oldestKey);
+    }
+  }
+  return formatter;
+};
 
 const formatNumberWithGrouping = (value, fractionDigits = 0) => {
   const safePrecision =
@@ -10446,7 +10626,7 @@ const formatCurrency = (value = 0, currency = activeCurrency, options = null) =>
   const forceLtrRtlCurrency = shouldForceLtrCurrencyLayout(currency);
   try {
     if (forceLtrRtlCurrency) {
-      const digits = new Intl.NumberFormat("en-US", {
+      const digits = getCachedIntlNumberFormat("en-US", {
         minimumFractionDigits: minFractionDigits,
         maximumFractionDigits: maxFractionDigits,
       }).format(normalized);
@@ -10454,7 +10634,7 @@ const formatCurrency = (value = 0, currency = activeCurrency, options = null) =>
       return normalizeCurrencyDisplayLabel(`${LTR_MARK}${symbol}${digits}`, currency);
     }
     return normalizeCurrencyDisplayLabel(
-      new Intl.NumberFormat(locale, {
+      getCachedIntlNumberFormat(locale, {
         style: "currency",
         currency,
         currencyDisplay: NARROW_DOLLAR_SYMBOL_CURRENCIES.has(currency) ? "narrowSymbol" : "symbol",
@@ -10498,7 +10678,7 @@ const formatCurrencyWhole = (value = 0, currency = activeCurrency, precisionOver
   const forceLtrRtlCurrency = shouldForceLtrCurrencyLayout(currency);
   try {
     if (forceLtrRtlCurrency) {
-      const digits = new Intl.NumberFormat("en-US", {
+      const digits = getCachedIntlNumberFormat("en-US", {
         minimumFractionDigits: normalizedPrecision,
         maximumFractionDigits: normalizedPrecision,
       }).format(rounded);
@@ -10506,7 +10686,7 @@ const formatCurrencyWhole = (value = 0, currency = activeCurrency, precisionOver
       return normalizeCurrencyDisplayLabel(`${LTR_MARK}${symbol}${digits}`, currency);
     }
     return normalizeCurrencyDisplayLabel(
-      new Intl.NumberFormat(locale, {
+      getCachedIntlNumberFormat(locale, {
         style: "currency",
         currency,
         currencyDisplay: NARROW_DOLLAR_SYMBOL_CURRENCIES.has(currency) ? "narrowSymbol" : "symbol",
@@ -10546,7 +10726,7 @@ const splitCurrencyLabel = (label = "", currency = activeCurrency) => {
     .replace(/[\u200E\u200F]/g, "")
     .trim();
   if (!normalized) return { value: "", symbol: "" };
-  const preferredSymbol = CURRENCY_SIGNS[currency] || "";
+  const preferredSymbol = getCurrencyDisplaySymbol(currency) || "";
   const hasPreferredSymbol = preferredSymbol && normalized.includes(preferredSymbol);
   const fallbackSymbol = normalized.replace(/[-0-9٠-٩۰-۹\s.,٬٫]/g, "").trim();
   const symbol = hasPreferredSymbol ? preferredSymbol : fallbackSymbol;
@@ -10683,6 +10863,34 @@ const splitLeadingEmojiToken = (rawValue = "") => {
     return { emoji: "", title: value };
   }
   return { emoji: firstToken, title };
+};
+
+const resolvePendingEntryDisplay = (entry, fallbackTitle = "Goal") => {
+  const rawTitle = typeof entry?.title === "string" ? entry.title.trim() : "";
+  const { emoji: leadingEmoji, title: titleWithoutEmoji } = splitLeadingEmojiToken(rawTitle);
+  const title = (titleWithoutEmoji || rawTitle || fallbackTitle || "Goal").trim();
+  const rawEmoji = typeof entry?.emoji === "string" ? entry.emoji.trim() : "";
+  const resolvedEmojiSource =
+    leadingEmoji && (!rawEmoji || rawEmoji === DEFAULT_TEMPTATION_EMOJI)
+      ? leadingEmoji
+      : rawEmoji || leadingEmoji;
+  const emoji = normalizeEmojiValue(resolvedEmojiSource, DEFAULT_TEMPTATION_EMOJI);
+  return { title, emoji };
+};
+
+const normalizePendingListEntries = (entries) => {
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry) => {
+      const fallbackTitle = typeof entry?.title === "string" && entry.title.trim() ? entry.title : "Goal";
+      const { title, emoji } = resolvePendingEntryDisplay(entry, fallbackTitle);
+      return {
+        ...entry,
+        title,
+        emoji,
+      };
+    });
 };
 
 const getTemptationPrice = (item) => {
@@ -12880,6 +13088,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   dailyRewardDay = 1,
   onDailyRewardClaim = () => {},
   onDailyRewardModalVisibilityChange = null,
+  openDailyRewardRequestTick = 0,
   activeChallenge = null,
   onActiveChallengePress = () => {},
   onExpandedChange = null,
@@ -12889,7 +13098,9 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const heroRecentNowTick = useMinuteTicker(true);
   const heroCardRef = useRef(null);
   const heroAnchorRef = useRef(null);
+  const dailyRewardOpenRequestSeenRef = useRef(0);
   const dailyRewardClaimPendingRef = useRef(false);
+  const dailyRewardClaimRunningRef = useRef(false);
   const dailyRewardClosePendingRef = useRef(false);
   const [isDailyRewardModalVisible, setDailyRewardModalVisible] = useState(false);
   const dailyRewardModalReveal = useRef(new Animated.Value(0)).current;
@@ -13161,6 +13372,20 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
     triggerHaptic,
   ]);
   useEffect(() => {
+    if (!openDailyRewardRequestTick) return;
+    if (openDailyRewardRequestTick === dailyRewardOpenRequestSeenRef.current) return;
+    dailyRewardOpenRequestSeenRef.current = openDailyRewardRequestTick;
+    if (!dailyRewardReady) return;
+    if (isDailyRewardModalVisible) return;
+    if (dailyRewardClosePendingRef.current) return;
+    handleDailyRewardPress();
+  }, [
+    dailyRewardReady,
+    handleDailyRewardPress,
+    isDailyRewardModalVisible,
+    openDailyRewardRequestTick,
+  ]);
+  useEffect(() => {
     if (!isDailyRewardModalVisible) {
       stopDailyRewardModalLoops();
       clearDailyRewardSfxTimers();
@@ -13248,14 +13473,18 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
     stopDailyRewardModalLoops,
   ]);
   const runDailyRewardClaim = useCallback(() => {
+    if (dailyRewardClaimRunningRef.current) return;
+    dailyRewardClaimRunningRef.current = true;
     try {
       const result = onDailyRewardClaim?.();
       Promise.resolve(result)
         .catch(() => {})
         .finally(() => {
+          dailyRewardClaimRunningRef.current = false;
           dailyRewardClaimPendingRef.current = false;
         });
     } catch (error) {
+      dailyRewardClaimRunningRef.current = false;
       dailyRewardClaimPendingRef.current = false;
     }
   }, [onDailyRewardClaim]);
@@ -13299,9 +13528,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
       }),
     ]).start();
     closeDailyRewardModalAnimated();
-    if (Platform.OS !== "ios") {
-      runDailyRewardClaim();
-    }
+    runDailyRewardClaim();
   }, [
     clearDailyRewardSfxTimers,
     closeDailyRewardModalAnimated,
@@ -13801,11 +14028,12 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
           </TouchableOpacity>
         </View>
       )}
-      <Modal
+      <RNModal
         visible={isDailyRewardModalVisible}
         transparent
         animationType="none"
         statusBarTranslucent
+        presentationStyle={Platform.OS === "ios" ? IOS_DEFAULT_MODAL_PRESENTATION : undefined}
         onRequestClose={handleDailyRewardClosePress}
         onDismiss={handleDailyRewardModalDismiss}
       >
@@ -14002,7 +14230,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
             </Animated.View>
           </View>
         </View>
-      </Modal>
+      </RNModal>
       </View>
     </View>
   );
@@ -14178,6 +14406,7 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
   todaySavedUSD = 0,
   savedCardCount = 0,
   coinDropTick = 0,
+  isPremiumUser = false,
   isActive = false,
   playSound = null,
   shakeEnabled = true,
@@ -14278,9 +14507,18 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
   const gyroRef = useRef({ x: 0, y: 0, z: 0 });
   const gyroSmoothRef = useRef({ x: 0, y: 0, z: 0 });
   const physicsLoopRef = useRef(null);
+  const physicsSleepTimerRef = useRef(null);
   const [appState, setAppState] = useState(() => AppState?.currentState || "active");
   const [tiltSource, setTiltSource] = useState(null);
   const [gyroSource, setGyroSource] = useState(null);
+  const motionEnabled = Boolean(isPremiumUser && isActive);
+  const safeSavedCardCount = Math.max(0, Math.floor(Number(savedCardCount) || 0));
+  const coinsToShow = Math.min(coinSlots.length, safeSavedCardCount * 2 + extraCoinCount);
+  const visibleCoinCount = Math.max(0, Math.floor(coinsToShow));
+  const DAILY_GOAL_PHYSICS_IDLE_STEP_MS = 84;
+  const DAILY_GOAL_PHYSICS_POSITION_EPSILON = 0.06;
+  const DAILY_GOAL_TILT_SENSOR_INTERVAL_MS = 80;
+  const DAILY_GOAL_GYRO_SENSOR_INTERVAL_MS = 80;
   const jiggleFactors = useMemo(
     () =>
       coinSlots.map(() => ({
@@ -14322,6 +14560,11 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
     return () => subscription?.remove?.();
   }, []);
   useEffect(() => {
+    if (!motionEnabled) {
+      setTiltSource(null);
+      setGyroSource(null);
+      return undefined;
+    }
     let active = true;
     const isAvailable = async (sensor) => {
       if (!sensor) return false;
@@ -14352,12 +14595,20 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
     return () => {
       active = false;
     };
-  }, []);
+  }, [motionEnabled]);
   useEffect(() => {
     return () => {
       if (dropTimerRef.current) {
         clearTimeout(dropTimerRef.current);
         dropTimerRef.current = null;
+      }
+      if (physicsSleepTimerRef.current) {
+        clearTimeout(physicsSleepTimerRef.current);
+        physicsSleepTimerRef.current = null;
+      }
+      if (physicsLoopRef.current) {
+        cancelAnimationFrame(physicsLoopRef.current);
+        physicsLoopRef.current = null;
       }
       dropRunningRef.current = false;
       dropQueueRef.current = 0;
@@ -14390,6 +14641,8 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
         size,
         animX: new Animated.Value(x),
         animY: new Animated.Value(y),
+        renderX: x,
+        renderY: y,
         rotate: slot.rotate,
       };
     });
@@ -14398,7 +14651,7 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
   }, [coinSlots, coinsClipLayout.height, coinsClipLayout.width]);
   const runNextDrop = useCallback(() => {
     if (dropRunningRef.current) return;
-    if (!isActive) return;
+    if (!motionEnabled) return;
     if (dropQueueRef.current <= 0) return;
     dropRunningRef.current = true;
     dropQueueRef.current -= 1;
@@ -14421,7 +14674,7 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
       }
     });
     triggerJiggle();
-  }, [dropAnim, isActive, triggerJiggle]);
+  }, [dropAnim, motionEnabled, triggerJiggle]);
   useEffect(() => {
     if (!GREEN_HEALTH_COIN_ASSET) return;
     if (coinDropTick === lastDropTickRef.current) return;
@@ -14430,22 +14683,32 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
     if (delta <= 0) return;
     dropQueueRef.current += delta * 2;
     setExtraCoinCount((prev) => Math.min(coinSlots.length, prev + delta * 2));
-    if (isActive) {
+    if (motionEnabled) {
       runNextDrop();
     }
-  }, [coinDropTick, coinSlots.length, isActive, runNextDrop]);
+  }, [coinDropTick, coinSlots.length, motionEnabled, runNextDrop]);
   useEffect(() => {
-    if (!isActive) return;
+    if (!motionEnabled) {
+      if (dropTimerRef.current) {
+        clearTimeout(dropTimerRef.current);
+        dropTimerRef.current = null;
+      }
+      dropRunningRef.current = false;
+      dropQueueRef.current = 0;
+      dropAnim.stopAnimation();
+      dropAnim.setValue(0);
+      return;
+    }
     if (dropQueueRef.current > 0) {
       runNextDrop();
     }
-  }, [isActive, runNextDrop]);
+  }, [dropAnim, motionEnabled, runNextDrop]);
   const isAppActive = appState !== "background" && appState !== "inactive";
-  const effectiveTiltSource = Accelerometer || tiltSource || DeviceMotion;
-  const effectiveGyroSource = Gyroscope || gyroSource || DeviceMotion;
+  const effectiveTiltSource = tiltSource || Accelerometer || DeviceMotion;
+  const effectiveGyroSource = gyroSource || Gyroscope || DeviceMotion;
   const gyroEnabled = Boolean(effectiveGyroSource);
-  const physicsEnabled = isActive && isAppActive;
-  const shakeActive = isActive && shakeEnabled && isAppActive;
+  const physicsEnabled = motionEnabled && isAppActive && visibleCoinCount > 0;
+  const shakeActive = motionEnabled && shakeEnabled && isAppActive;
   const sensorActive = physicsEnabled || shakeActive;
   useEffect(() => {
     if (!Accelerometer || !shakeActive) return;
@@ -14490,7 +14753,7 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
     };
     requestPermissions();
     try {
-      activeTiltSource.setUpdateInterval?.(60);
+      activeTiltSource.setUpdateInterval?.(DAILY_GOAL_TILT_SENSOR_INTERVAL_MS);
     } catch (error) {
       console.warn("tilt interval", error);
     }
@@ -14544,18 +14807,35 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
         gyroRef.current.x = next.x;
         gyroRef.current.y = next.y;
         gyroRef.current.z = next.z;
+        if (shakeActive) {
+          const spin = Math.sqrt(next.x * next.x + next.y * next.y + next.z * next.z);
+          const now = Date.now();
+          if (
+            spin > DAILY_GOAL_GYRO_THRESHOLD &&
+            now - gyroStateRef.current.lastSpinAt > DAILY_GOAL_GYRO_COOLDOWN_MS
+          ) {
+            gyroStateRef.current.lastSpinAt = now;
+            triggerJiggle();
+          }
+        }
       }
     });
     return () => {
       subscription?.remove?.();
     };
-  }, [effectiveTiltSource, physicsEnabled]);
+  }, [
+    DAILY_GOAL_TILT_SENSOR_INTERVAL_MS,
+    effectiveTiltSource,
+    physicsEnabled,
+    shakeActive,
+    triggerJiggle,
+  ]);
   useEffect(() => {
     if (!physicsEnabled || !gyroEnabled) return;
     const activeGyroSource = effectiveGyroSource;
     if (!activeGyroSource) return;
     try {
-      activeGyroSource.setUpdateInterval?.(60);
+      activeGyroSource.setUpdateInterval?.(DAILY_GOAL_GYRO_SENSOR_INTERVAL_MS);
     } catch (error) {
       console.warn("gyro interval", error);
     }
@@ -14577,19 +14857,119 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
       gyroRef.current.x = next.x;
       gyroRef.current.y = next.y;
       gyroRef.current.z = next.z;
+      if (shakeActive) {
+        const spin = Math.sqrt(next.x * next.x + next.y * next.y + next.z * next.z);
+        const now = Date.now();
+        if (
+          spin > DAILY_GOAL_GYRO_THRESHOLD &&
+          now - gyroStateRef.current.lastSpinAt > DAILY_GOAL_GYRO_COOLDOWN_MS
+        ) {
+          gyroStateRef.current.lastSpinAt = now;
+          triggerJiggle();
+        }
+      }
     });
     return () => subscription?.remove?.();
-  }, [effectiveGyroSource, gyroEnabled, physicsEnabled]);
+  }, [
+    DAILY_GOAL_GYRO_SENSOR_INTERVAL_MS,
+    effectiveGyroSource,
+    gyroEnabled,
+    physicsEnabled,
+    shakeActive,
+    triggerJiggle,
+  ]);
   useEffect(() => {
     if (!physicsEnabled) return;
     if (!coinsClipLayout.width || !coinsClipLayout.height) return;
     if (!coinPhysics.length) return;
+    if (!visibleCoinCount) return;
     let cancelled = false;
     let lastTime = Date.now();
+    const width = coinsClipLayout.width;
+    const height = coinsClipLayout.height;
+    const minX = PIGGY_COIN_PADDING_X;
+    const minY = PIGGY_COIN_PADDING_Y;
+    const maxX = width - PIGGY_COIN_PADDING_X;
+    const maxY = height - PIGGY_COIN_PADDING_Y;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const baseRadiusX = Math.max(1, (width - PIGGY_COIN_PADDING_X * 2) / 2);
+    const baseRadiusY = Math.max(1, (height - PIGGY_COIN_PADDING_Y * 2) / 2);
+    const collisionBounce = DAILY_GOAL_COIN_COLLISION_BOUNCE;
+    const bounce = DAILY_GOAL_TILT_BOUNCE;
+    const maxSpeed = DAILY_GOAL_TILT_MAX_SPEED;
+    const minMotionSpeed = DAILY_GOAL_TILT_STOP_SPEED * 0.6;
+    const minVisualDelta = DAILY_GOAL_PHYSICS_POSITION_EPSILON;
+
+    const clearSleepTimer = () => {
+      if (!physicsSleepTimerRef.current) return;
+      clearTimeout(physicsSleepTimerRef.current);
+      physicsSleepTimerRef.current = null;
+    };
+
+    const clampCoinToBounds = (coin) => {
+      const limitX = Math.max(minX, maxX - coin.size);
+      const limitY = Math.max(minY, maxY - coin.size);
+      if (coin.x < minX) {
+        coin.x = minX;
+        coin.vx *= -bounce;
+      } else if (coin.x > limitX) {
+        coin.x = limitX;
+        coin.vx *= -bounce;
+      }
+      if (coin.y < minY) {
+        coin.y = minY;
+        coin.vy *= -bounce;
+      } else if (coin.y > limitY) {
+        coin.y = limitY;
+        coin.vy *= -bounce;
+      }
+      const radiusX = Math.max(1, baseRadiusX - coin.size / 2);
+      const radiusY = Math.max(1, baseRadiusY - coin.size / 2);
+      const coinCenterX = coin.x + coin.size / 2;
+      const coinCenterY = coin.y + coin.size / 2;
+      const normX = (coinCenterX - centerX) / radiusX;
+      const normY = (coinCenterY - centerY) / radiusY;
+      const distSq = normX * normX + normY * normY;
+      if (distSq > 1) {
+        const dist = Math.sqrt(distSq) || 1;
+        const scale = 1 / dist;
+        const clampedCenterX = centerX + (coinCenterX - centerX) * scale;
+        const clampedCenterY = centerY + (coinCenterY - centerY) * scale;
+        coin.x = clampedCenterX - coin.size / 2;
+        coin.y = clampedCenterY - coin.size / 2;
+        const normalXRaw = (clampedCenterX - centerX) / (radiusX * radiusX);
+        const normalYRaw = (clampedCenterY - centerY) / (radiusY * radiusY);
+        const normalLength = Math.hypot(normalXRaw, normalYRaw) || 1;
+        const normalX = normalXRaw / normalLength;
+        const normalY = normalYRaw / normalLength;
+        const velocityDot = coin.vx * normalX + coin.vy * normalY;
+        if (velocityDot > 0) {
+          coin.vx -= (1 + bounce) * velocityDot * normalX;
+          coin.vy -= (1 + bounce) * velocityDot * normalY;
+        }
+      }
+    };
+
+    const scheduleNext = (idle = false) => {
+      if (cancelled) return;
+      if (idle) {
+        physicsLoopRef.current = null;
+        clearSleepTimer();
+        physicsSleepTimerRef.current = setTimeout(() => {
+          physicsSleepTimerRef.current = null;
+          step();
+        }, DAILY_GOAL_PHYSICS_IDLE_STEP_MS);
+        return;
+      }
+      clearSleepTimer();
+      physicsLoopRef.current = requestAnimationFrame(step);
+    };
+
     const step = () => {
       if (cancelled) return;
       const now = Date.now();
-      const dt = Math.min(32, now - lastTime) / 1000;
+      const dt = Math.min(48, Math.max(8, now - lastTime)) / 1000;
       lastTime = now;
       const tiltX = Math.abs(tiltRef.current.x) < DAILY_GOAL_TILT_DEADZONE ? 0 : tiltRef.current.x;
       const tiltY = Math.abs(tiltRef.current.y) < DAILY_GOAL_TILT_DEADZONE ? 0 : tiltRef.current.y;
@@ -14610,65 +14990,20 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
       const gyroMagnitude = Math.hypot(gyroX, gyroY);
       const allowSleep =
         tiltMagnitude < DAILY_GOAL_TILT_STOP_TILT && gyroMagnitude < DAILY_GOAL_TILT_STOP_GYRO;
-      const maxSpeed = DAILY_GOAL_TILT_MAX_SPEED;
-      const bounce = DAILY_GOAL_TILT_BOUNCE;
-      const width = coinsClipLayout.width;
-      const height = coinsClipLayout.height;
-      const minX = PIGGY_COIN_PADDING_X;
-      const minY = PIGGY_COIN_PADDING_Y;
-      const maxX = width - PIGGY_COIN_PADDING_X;
-      const maxY = height - PIGGY_COIN_PADDING_Y;
-      const centerX = width / 2;
-      const centerY = height / 2;
-      const baseRadiusX = Math.max(1, (width - PIGGY_COIN_PADDING_X * 2) / 2);
-      const baseRadiusY = Math.max(1, (height - PIGGY_COIN_PADDING_Y * 2) / 2);
       const coins = coinPhysicsRef.current;
-      const collisionBounce = DAILY_GOAL_COIN_COLLISION_BOUNCE;
-      const clampCoinToBounds = (coin) => {
-        const limitX = Math.max(minX, maxX - coin.size);
-        const limitY = Math.max(minY, maxY - coin.size);
-        if (coin.x < minX) {
-          coin.x = minX;
-          coin.vx *= -bounce;
-        } else if (coin.x > limitX) {
-          coin.x = limitX;
-          coin.vx *= -bounce;
-        }
-        if (coin.y < minY) {
-          coin.y = minY;
-          coin.vy *= -bounce;
-        } else if (coin.y > limitY) {
-          coin.y = limitY;
-          coin.vy *= -bounce;
-        }
-        const radiusX = Math.max(1, baseRadiusX - coin.size / 2);
-        const radiusY = Math.max(1, baseRadiusY - coin.size / 2);
-        const coinCenterX = coin.x + coin.size / 2;
-        const coinCenterY = coin.y + coin.size / 2;
-        const normX = (coinCenterX - centerX) / radiusX;
-        const normY = (coinCenterY - centerY) / radiusY;
-        const distSq = normX * normX + normY * normY;
-        if (distSq > 1) {
-          const dist = Math.sqrt(distSq) || 1;
-          const scale = 1 / dist;
-          const clampedCenterX = centerX + (coinCenterX - centerX) * scale;
-          const clampedCenterY = centerY + (coinCenterY - centerY) * scale;
-          coin.x = clampedCenterX - coin.size / 2;
-          coin.y = clampedCenterY - coin.size / 2;
-          const normalXRaw = (clampedCenterX - centerX) / (radiusX * radiusX);
-          const normalYRaw = (clampedCenterY - centerY) / (radiusY * radiusY);
-          const normalLength = Math.hypot(normalXRaw, normalYRaw) || 1;
-          const normalX = normalXRaw / normalLength;
-          const normalY = normalYRaw / normalLength;
-          const velocityDot = coin.vx * normalX + coin.vy * normalY;
-          if (velocityDot > 0) {
-            coin.vx -= (1 + bounce) * velocityDot * normalX;
-            coin.vy -= (1 + bounce) * velocityDot * normalY;
-          }
-        }
-      };
-      coins.forEach((coin) => {
-        if (!coin) return;
+      const coinCount = Math.min(visibleCoinCount, coins.length);
+      if (!coinCount) {
+        scheduleNext(true);
+        return;
+      }
+
+      let movingCoins = 0;
+      let positionChanged = false;
+      for (let i = 0; i < coinCount; i += 1) {
+        const coin = coins[i];
+        if (!coin) continue;
+        const previousX = coin.x;
+        const previousY = coin.y;
         coin.vx += accelX * dt;
         coin.vy += accelY * dt;
         const speed = Math.hypot(coin.vx, coin.vy);
@@ -14687,13 +15022,25 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
         coin.x += coin.vx * dt;
         coin.y += coin.vy * dt;
         clampCoinToBounds(coin);
-      });
+        if (Math.abs(coin.vx) > minMotionSpeed || Math.abs(coin.vy) > minMotionSpeed) {
+          movingCoins += 1;
+        }
+        if (Math.abs(coin.x - previousX) > minVisualDelta || Math.abs(coin.y - previousY) > minVisualDelta) {
+          positionChanged = true;
+        }
+      }
+
+      if (allowSleep && movingCoins === 0 && !positionChanged) {
+        scheduleNext(true);
+        return;
+      }
+
       for (let iter = 0; iter < DAILY_GOAL_COIN_COLLISION_ITERATIONS; iter += 1) {
         const applyImpulse = iter === 0;
-        for (let i = 0; i < coins.length; i += 1) {
+        for (let i = 0; i < coinCount; i += 1) {
           const coinA = coins[i];
           if (!coinA) continue;
-          for (let j = i + 1; j < coins.length; j += 1) {
+          for (let j = i + 1; j < coinCount; j += 1) {
             const coinB = coins[j];
             if (!coinB) continue;
             const radiusA = coinA.size * 0.5;
@@ -14706,80 +15053,99 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
             const dy = centerBy - centerAy;
             const minDist = radiusA + radiusB;
             const distSq = dx * dx + dy * dy;
-            if (distSq < minDist * minDist) {
-              const dist = Math.sqrt(distSq) || 0.0001;
-              const hasNormal = distSq > 0.000001;
-              const normalX = hasNormal ? dx / dist : 1;
-              const normalY = hasNormal ? dy / dist : 0;
-              const overlap = minDist - dist;
-              if (overlap > 0) {
-                const correction =
-                  Math.max(0, overlap - DAILY_GOAL_COIN_COLLISION_SLOP) *
-                  DAILY_GOAL_COIN_COLLISION_PERCENT;
-                if (correction > 0) {
-                  const separation = correction / 2;
-                  coinA.x -= normalX * separation;
-                  coinA.y -= normalY * separation;
-                  coinB.x += normalX * separation;
-                  coinB.y += normalY * separation;
-                }
+            if (distSq >= minDist * minDist) continue;
+            const dist = Math.sqrt(distSq) || 0.0001;
+            const hasNormal = distSq > 0.000001;
+            const normalX = hasNormal ? dx / dist : 1;
+            const normalY = hasNormal ? dy / dist : 0;
+            const overlap = minDist - dist;
+            if (overlap > 0) {
+              const correction =
+                Math.max(0, overlap - DAILY_GOAL_COIN_COLLISION_SLOP) *
+                DAILY_GOAL_COIN_COLLISION_PERCENT;
+              if (correction > 0) {
+                const separation = correction / 2;
+                coinA.x -= normalX * separation;
+                coinA.y -= normalY * separation;
+                coinB.x += normalX * separation;
+                coinB.y += normalY * separation;
+                positionChanged = true;
               }
-              const relVelX = coinA.vx - coinB.vx;
-              const relVelY = coinA.vy - coinB.vy;
-              const relVel = relVelX * normalX + relVelY * normalY;
-              const relSpeed = Math.abs(relVel);
-              if (applyImpulse && relVel < -DAILY_GOAL_COIN_COLLISION_VELOCITY_EPS) {
-                const restitutionScale = Math.min(
-                  1,
-                  Math.max(
-                    0,
-                    (relSpeed - DAILY_GOAL_COIN_COLLISION_RESTITUTION_MIN_SPEED) /
-                      DAILY_GOAL_COIN_COLLISION_RESTITUTION_RANGE
-                  )
-                );
-                const restitution = collisionBounce * restitutionScale;
-                const impulse = (-(1 + restitution) * relVel) / 2;
-                const impulseX = impulse * normalX;
-                const impulseY = impulse * normalY;
-                coinA.vx += impulseX;
-                coinA.vy += impulseY;
-                coinB.vx -= impulseX;
-                coinB.vy -= impulseY;
-              }
-              if (overlap > DAILY_GOAL_COIN_COLLISION_SLOP && relSpeed < DAILY_GOAL_COIN_COLLISION_REST_SPEED) {
-                const cancel = relVel * 0.5;
-                coinA.vx -= cancel * normalX;
-                coinA.vy -= cancel * normalY;
-                coinB.vx += cancel * normalX;
-                coinB.vy += cancel * normalY;
-                coinA.vx *= DAILY_GOAL_COIN_COLLISION_REST_DAMPING;
-                coinA.vy *= DAILY_GOAL_COIN_COLLISION_REST_DAMPING;
-                coinB.vx *= DAILY_GOAL_COIN_COLLISION_REST_DAMPING;
-                coinB.vy *= DAILY_GOAL_COIN_COLLISION_REST_DAMPING;
-              }
+            }
+            const relVelX = coinA.vx - coinB.vx;
+            const relVelY = coinA.vy - coinB.vy;
+            const relVel = relVelX * normalX + relVelY * normalY;
+            const relSpeed = Math.abs(relVel);
+            if (applyImpulse && relVel < -DAILY_GOAL_COIN_COLLISION_VELOCITY_EPS) {
+              const restitutionScale = Math.min(
+                1,
+                Math.max(
+                  0,
+                  (relSpeed - DAILY_GOAL_COIN_COLLISION_RESTITUTION_MIN_SPEED) /
+                    DAILY_GOAL_COIN_COLLISION_RESTITUTION_RANGE
+                )
+              );
+              const restitution = collisionBounce * restitutionScale;
+              const impulse = (-(1 + restitution) * relVel) / 2;
+              const impulseX = impulse * normalX;
+              const impulseY = impulse * normalY;
+              coinA.vx += impulseX;
+              coinA.vy += impulseY;
+              coinB.vx -= impulseX;
+              coinB.vy -= impulseY;
+            }
+            if (overlap > DAILY_GOAL_COIN_COLLISION_SLOP && relSpeed < DAILY_GOAL_COIN_COLLISION_REST_SPEED) {
+              const cancel = relVel * 0.5;
+              coinA.vx -= cancel * normalX;
+              coinA.vy -= cancel * normalY;
+              coinB.vx += cancel * normalX;
+              coinB.vy += cancel * normalY;
+              coinA.vx *= DAILY_GOAL_COIN_COLLISION_REST_DAMPING;
+              coinA.vy *= DAILY_GOAL_COIN_COLLISION_REST_DAMPING;
+              coinB.vx *= DAILY_GOAL_COIN_COLLISION_REST_DAMPING;
+              coinB.vy *= DAILY_GOAL_COIN_COLLISION_REST_DAMPING;
             }
           }
         }
       }
-      coins.forEach((coin) => {
-        if (!coin) return;
+
+      let hasVisualMotion = false;
+      for (let i = 0; i < coinCount; i += 1) {
+        const coin = coins[i];
+        if (!coin) continue;
         clampCoinToBounds(coin);
-        coin.animX.setValue(coin.x);
-        coin.animY.setValue(coin.y);
-      });
-      physicsLoopRef.current = requestAnimationFrame(step);
+        const renderX = Number.isFinite(coin.renderX) ? coin.renderX : coin.x;
+        const renderY = Number.isFinite(coin.renderY) ? coin.renderY : coin.y;
+        if (Math.abs(coin.x - renderX) > minVisualDelta || Math.abs(coin.y - renderY) > minVisualDelta) {
+          coin.renderX = coin.x;
+          coin.renderY = coin.y;
+          coin.animX.setValue(coin.x);
+          coin.animY.setValue(coin.y);
+          hasVisualMotion = true;
+        }
+      }
+
+      const shouldStayActive =
+        !allowSleep ||
+        movingCoins > 0 ||
+        hasVisualMotion ||
+        tiltMagnitude >= DAILY_GOAL_TILT_STOP_TILT ||
+        gyroMagnitude >= DAILY_GOAL_TILT_STOP_GYRO;
+      scheduleNext(!shouldStayActive);
     };
-    physicsLoopRef.current = requestAnimationFrame(step);
+
+    scheduleNext(false);
     return () => {
       cancelled = true;
       if (physicsLoopRef.current) {
         cancelAnimationFrame(physicsLoopRef.current);
         physicsLoopRef.current = null;
       }
+      clearSleepTimer();
     };
-  }, [coinPhysics.length, coinsClipLayout.height, coinsClipLayout.width, physicsEnabled]);
+  }, [coinPhysics.length, coinsClipLayout.height, coinsClipLayout.width, physicsEnabled, visibleCoinCount]);
   useEffect(() => {
-    if (!shakeActive) return;
+    if (!shakeActive || physicsEnabled) return;
     const activeGyroSource = effectiveGyroSource;
     if (!activeGyroSource) return;
     try {
@@ -14796,14 +15162,16 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
       const z = Number(rotation.z ?? rotation.gamma ?? 0);
       const spin = Math.sqrt(x * x + y * y + z * z);
       const now = Date.now();
-    if (spin > DAILY_GOAL_GYRO_THRESHOLD && now - gyroStateRef.current.lastSpinAt > DAILY_GOAL_GYRO_COOLDOWN_MS) {
-      gyroStateRef.current.lastSpinAt = now;
-      triggerJiggle();
-    }
-  });
+      if (
+        spin > DAILY_GOAL_GYRO_THRESHOLD &&
+        now - gyroStateRef.current.lastSpinAt > DAILY_GOAL_GYRO_COOLDOWN_MS
+      ) {
+        gyroStateRef.current.lastSpinAt = now;
+        triggerJiggle();
+      }
+    });
     return () => subscription?.remove?.();
-  }, [effectiveGyroSource, sensorActive, shakeActive, triggerJiggle]);
-  const safeSavedCardCount = Math.max(0, Math.floor(Number(savedCardCount) || 0));
+  }, [effectiveGyroSource, physicsEnabled, sensorActive, shakeActive, triggerJiggle]);
   useEffect(() => {
     const prev = lastSavedCountRef.current;
     if (safeSavedCardCount === prev) return;
@@ -14815,9 +15183,8 @@ const DailyGoalCard = React.memo(function DailyGoalCard({
       return next;
     });
   }, [safeSavedCardCount]);
-  const coinsToShow = Math.min(coinSlots.length, safeSavedCardCount * 2 + extraCoinCount);
   const displayGoalLabel = dailyGoalLabel || "0";
-  const collectableCoins = Math.max(0, Math.floor(coinsToShow));
+  const collectableCoins = visibleCoinCount;
   const canCollect = isGoalComplete && collectableCoins > 0 && !isCollected;
   const collectHintLabel = useMemo(() => t("dailyGoalCollectHint"), [t]);
   const handleCollectPress = useCallback(() => {
@@ -16836,6 +17203,7 @@ const FeedScreen = React.memo(
   dailyRewardDay = 1,
   onDailyRewardClaim = () => {},
   onDailyRewardModalVisibilityChange = null,
+  dailyRewardOpenRequestTick = 0,
   dailyGoalCoinDropTick = 0,
   onDailyGoalCollect = () => {},
   dailyGoalCollectedToday = false,
@@ -18332,6 +18700,15 @@ const FeedScreen = React.memo(
   const [tamagotchiSpeech, setTamagotchiSpeech] = useState(() =>
     pickVariantText("tamagotchiSpeechGeneral")
   );
+  const tamagotchiSpeechDisplayText = useMemo(() => {
+    const raw = String(tamagotchiSpeech || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!raw) return "";
+    const maxLength = 92;
+    if (raw.length <= maxLength) return raw;
+    return `${raw.slice(0, Math.max(1, maxLength - 1)).trim()}…`;
+  }, [tamagotchiSpeech]);
   const [tamagotchiSpeechVisible, setTamagotchiSpeechVisible] = useState(false);
   const tamagotchiSpeechTimerRef = useRef(null);
   const tamagotchiSpeechLastAtRef = useRef(0);
@@ -18354,11 +18731,11 @@ const FeedScreen = React.memo(
   }, [heroRowWidth, heroLogoRight]);
   const heroBubbleTextMaxWidth = Math.max(0, heroBubbleMaxWidth - 18);
   const heroBubbleBottomOffset = useMemo(() => {
-    const speechLength = String(tamagotchiSpeech || "").trim().length;
-    if (speechLength >= 110) return HERO_MASCOT_SIZE + 2;
-    if (speechLength >= 80) return HERO_MASCOT_SIZE + 4;
+    const speechLength = tamagotchiSpeechDisplayText.length;
+    if (speechLength >= 78) return HERO_MASCOT_SIZE + 3;
+    if (speechLength >= 54) return HERO_MASCOT_SIZE + 5;
     return HERO_MASCOT_SIZE + 8;
-  }, [tamagotchiSpeech]);
+  }, [tamagotchiSpeechDisplayText]);
   const compactHeroTagline = language === "es" || language === "fr";
   const toggleHeroLevelExpanded = useCallback(() => {
     runLayoutAnimation();
@@ -20179,12 +20556,10 @@ const FeedScreen = React.memo(
                                 styles.mascotBubbleText,
                                 { color: tamagotchiBubbleTheme.textColor, maxWidth: heroBubbleTextMaxWidth },
                               ]}
-                              numberOfLines={5}
-                              adjustsFontSizeToFit
-                              minimumFontScale={0.74}
+                              numberOfLines={4}
                               ellipsizeMode="tail"
                             >
-                              {tamagotchiSpeech}
+                              {tamagotchiSpeechDisplayText}
                             </Text>
                             <View
                               style={[
@@ -20376,6 +20751,9 @@ const FeedScreen = React.memo(
                           dailyRewardAmount={dailyRewardAmount}
                           dailyRewardBaseAmount={dailyRewardBaseAmount}
                           dailyRewardDay={dailyRewardDay}
+                          openDailyRewardRequestTick={
+                            isPrimarySavingsLoop ? dailyRewardOpenRequestTick : 0
+                          }
                             onDailyRewardClaim={onDailyRewardClaim}
                             onDailyRewardModalVisibilityChange={onDailyRewardModalVisibilityChange}
                             activeChallenge={activeChallenge}
@@ -20431,6 +20809,7 @@ const FeedScreen = React.memo(
                         todaySavedUSD={todaySavedUSD}
                         savedCardCount={todaySavedCardCount}
                         coinDropTick={dailyGoalCoinDropTick}
+                        isPremiumUser={isPremiumUser}
                         isActive={!isClone && heroCarouselIndex === 2}
                         playSound={playSound}
                         shakeEnabled
@@ -23434,7 +23813,12 @@ const ProgressScreen = React.memo(function ProgressScreen({
           <Text style={[styles.progressGoalName, { color: colors.text }]} numberOfLines={2}>
             {goalTitle}
           </Text>
-          <Text style={[styles.progressGoalMeta, { color: colors.muted }]}>
+          <Text
+            style={[styles.progressGoalMeta, { color: colors.muted }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+          >
             {t("progressGoalRemaining", { amount: goalRemainingLabel })}
           </Text>
           <View style={styles.progressGoalRingRow}>
@@ -23450,19 +23834,14 @@ const ProgressScreen = React.memo(function ProgressScreen({
                   style={[styles.progressGoalTarget, { color: colors.text }]}
                   numberOfLines={1}
                   adjustsFontSizeToFit
-                  minimumFontScale={0.6}
+                  minimumFontScale={0.45}
                 >
                   {goalTargetLabel}
                 </Text>
               </View>
             </View>
             <View style={styles.progressGoalRingText}>
-              <Text
-                style={[styles.progressGoalPercent, { color: colors.text }]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.7}
-              >
+              <Text style={[styles.progressGoalPercent, { color: colors.text }]} numberOfLines={1}>
                 {`${Math.round(goalProgress * 100)}%`}
               </Text>
             </View>
@@ -24535,6 +24914,12 @@ const FRIDGE_DOOR_COUNTER_LABELS = {
   ar: { items: "الإغراءات", overdue: "متأخر", total: "الإجمالي" },
   zh: { items: "诱惑", overdue: "逾期", total: "总计" },
 };
+const PENDING_COUNTDOWN_NEAR_WINDOW_MS = 5 * MINUTE_MS;
+const PENDING_COUNTDOWN_URGENT_WINDOW_MS = MINUTE_MS;
+const PENDING_COUNTDOWN_TICK_NEAR_MS = 3000;
+const PENDING_COUNTDOWN_TICK_HOUR_MS = 5000;
+const PENDING_COUNTDOWN_TICK_DAY_MS = 15000;
+const PENDING_COUNTDOWN_TICK_IDLE_MS = PENDING_BADGE_TICK_MS;
 
 const PendingScreen = React.memo(function PendingScreen({
   items,
@@ -24543,6 +24928,7 @@ const PendingScreen = React.memo(function PendingScreen({
   colors,
   onResolve,
   onDelete,
+  onEdit,
   onExtend,
   language,
   catCuriousSource,
@@ -24567,13 +24953,37 @@ const PendingScreen = React.memo(function PendingScreen({
     () => [...items].sort((a, b) => (a.decisionDue || 0) - (b.decisionDue || 0)),
     [items]
   );
+  const countdownTickMs = useMemo(() => {
+    if (!sorted.length) return PENDING_COUNTDOWN_TICK_IDLE_MS;
+    if (!fridgeOpen) return PENDING_COUNTDOWN_TICK_IDLE_MS;
+    let nearestDueMs = Number.POSITIVE_INFINITY;
+    sorted.forEach((entry) => {
+      const dueAt = Number(entry?.decisionDue) || 0;
+      if (!dueAt) return;
+      const diff = dueAt - nowTick;
+      if (diff > 0 && diff < nearestDueMs) {
+        nearestDueMs = diff;
+      }
+    });
+    if (!Number.isFinite(nearestDueMs)) return PENDING_COUNTDOWN_TICK_IDLE_MS;
+    if (nearestDueMs <= PENDING_COUNTDOWN_URGENT_WINDOW_MS) return PENDING_COUNTDOWN_FAST_MS;
+    if (nearestDueMs <= PENDING_COUNTDOWN_NEAR_WINDOW_MS) return PENDING_COUNTDOWN_TICK_NEAR_MS;
+    if (nearestDueMs <= HOUR_MS) return PENDING_COUNTDOWN_TICK_HOUR_MS;
+    if (nearestDueMs <= DAY_MS) return PENDING_COUNTDOWN_TICK_DAY_MS;
+    return PENDING_COUNTDOWN_TICK_IDLE_MS;
+  }, [fridgeOpen, nowTick, sorted]);
   useEffect(() => {
     if (!sorted.length) return undefined;
-    const intervalId = setInterval(() => {
+    const delayMs = Math.max(1000, Number(countdownTickMs) || PENDING_COUNTDOWN_TICK_IDLE_MS);
+    const timerId = setTimeout(() => {
       setNowTick(Date.now());
-    }, PENDING_COUNTDOWN_FAST_MS);
-    return () => clearInterval(intervalId);
-  }, [sorted.length]);
+    }, delayMs);
+    return () => clearTimeout(timerId);
+  }, [countdownTickMs, sorted.length]);
+  useEffect(() => {
+    if (!fridgeOpen) return;
+    setNowTick(Date.now());
+  }, [fridgeOpen]);
   useEffect(() => {
     Animated.timing(doorProgress, {
       toValue: fridgeOpen ? 1 : 0,
@@ -24645,7 +25055,9 @@ const PendingScreen = React.memo(function PendingScreen({
       const mm = String(minutes).padStart(2, "0");
       const ss = String(seconds).padStart(2, "0");
       const daySuffix = resolveLanguageMapValue(PENDING_DAY_SUFFIX, language) || "d";
-      return days > 0 ? `${days}${daySuffix} ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+      if (days > 0) return `${days}${daySuffix} ${hh}:${mm}`;
+      if (hours > 0) return `${hh}:${mm}`;
+      return `${mm}:${ss}`;
     },
     [language, t]
   );
@@ -24813,6 +25225,9 @@ const PendingScreen = React.memo(function PendingScreen({
     const diff = (item.decisionDue || 0) - nowTick;
     const countdownLabel = formatCountdown(diff);
     const overdue = diff <= 0;
+    const pendingDisplay = resolvePendingEntryDisplay(item, t("defaultDealTitle"));
+    const cardEmoji = pendingDisplay.emoji;
+    const cardTitle = pendingDisplay.title;
     const priceLabel = formatTemptationPriceLabel(item, currency);
     const itemCardBg = isDarkMode ? "#111A26" : "#FFFFFF";
     const itemCardBorder = isDarkMode ? "rgba(120,160,220,0.25)" : "rgba(140,180,235,0.6)";
@@ -24863,36 +25278,46 @@ const PendingScreen = React.memo(function PendingScreen({
               },
             ]}
           >
-            <View style={styles.fridgeItemHeader}>
-              <View style={styles.fridgeItemTitleRow}>
-                <Text style={[styles.fridgeItemEmoji, { color: colors.text }]}>
-                  {item.emoji || "✨"}
-                </Text>
-                <Text style={[styles.fridgeItemTitle, { color: colors.text }]} numberOfLines={1}>
-                  {item.title}
-                </Text>
+            <TouchableOpacity
+              style={styles.fridgeItemTapArea}
+              onPress={onEdit ? () => onEdit(item) : undefined}
+              activeOpacity={onEdit ? 0.85 : 1}
+              disabled={!onEdit}
+            >
+              <View style={styles.fridgeItemHeader}>
+                <View style={styles.fridgeItemTitleRow}>
+                  <Text style={[styles.fridgeItemEmoji, { color: colors.text }]}>{cardEmoji}</Text>
+                  <Text style={[styles.fridgeItemTitle, { color: colors.text }]} numberOfLines={1}>
+                    {cardTitle}
+                  </Text>
+                </View>
+                <View style={[styles.fridgeCountdownPill, { backgroundColor: pillBg, borderColor: pillBorder }]}>
+                  <Text style={[styles.fridgeCountdownText, { color: pillText }]}>{countdownLabel}</Text>
+                </View>
               </View>
-              <View style={[styles.fridgeCountdownPill, { backgroundColor: pillBg, borderColor: pillBorder }]}>
-                <Text style={[styles.fridgeCountdownText, { color: pillText }]}>{countdownLabel}</Text>
+              <View style={styles.fridgeItemMetaRow}>
+                <Text style={[styles.fridgeItemPrice, { color: colors.text }]}>{priceLabel}</Text>
               </View>
-            </View>
-            <View style={styles.fridgeItemMetaRow}>
-              <Text style={[styles.fridgeItemPrice, { color: colors.text }]}>{priceLabel}</Text>
-            </View>
+            </TouchableOpacity>
             <View style={styles.fridgeActionRow}>
               <TouchableOpacity
-                style={[styles.fridgeActionPrimary, { backgroundColor: colors.text }]}
+                style={[styles.fridgeActionPrimary, { backgroundColor: SPEND_ACTION_COLOR }]}
                 onPress={() => onResolve(item, "spend")}
               >
-                <Text style={[styles.fridgeActionPrimaryText, { color: colors.background }]}>
+                <Text style={[styles.fridgeActionPrimaryText, { color: "#FFFFFF" }]}>
                   {t("pendingActionWant")}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.fridgeActionSecondary, { borderColor: colors.border }]}
+                style={[
+                  styles.fridgeActionPrimary,
+                  { backgroundColor: SAVE_ACTION_COLOR },
+                ]}
                 onPress={() => onResolve(item, "decline")}
               >
-                <Text style={{ color: colors.muted }}>{t("pendingActionDecline")}</Text>
+                <Text style={[styles.fridgeActionPrimaryText, { color: "#FFFFFF" }]}>
+                  {t("pendingActionDecline")}
+                </Text>
               </TouchableOpacity>
               {overdue && onExtend ? (
                 <TouchableOpacity
@@ -28001,7 +28426,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
                       fontWeight: "600",
                     }}
                   >
-                    {getCurrencyDisplayCode(code)}
+                    {String(code || "").trim().toUpperCase()}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -28919,6 +29344,7 @@ function AppContent() {
   const [dailyRewardState, setDailyRewardState] = useState({ ...DEFAULT_DAILY_REWARD_STATE });
   const [dailyRewardHydrated, setDailyRewardHydrated] = useState(false);
   const [dailyRewardModalVisible, setDailyRewardModalVisible] = useState(false);
+  const [dailyRewardOpenRequestTick, setDailyRewardOpenRequestTick] = useState(0);
   const [currentDayKey, setCurrentDayKey] = useState(() => getDayKey(Date.now()));
   const [dailySaveLimitState, setDailySaveLimitState] = useState(() =>
     createDailySaveLimitState(getDayKey(Date.now()), 0)
@@ -29143,6 +29569,8 @@ function AppContent() {
   );
   const fabMainIcon = useMemo(() => {
     if (activeTab === "feed") {
+      const directSymbol = getCurrencyDisplaySymbol(fabCurrencyCode);
+      if (directSymbol) return directSymbol;
       const label = formatCurrency(0, fabCurrencyCode);
       const parts = splitCurrencyLabel(label, fabCurrencyCode);
       return parts.symbol || "$";
@@ -29737,9 +30165,7 @@ function AppContent() {
     ...DEFAULT_PROFILE_PLACEHOLDER,
     joinedAt: new Date().toISOString(),
   }));
-  const [fabCurrencyCode, setFabCurrencyCode] = useState(
-    () => profile?.currency || DEFAULT_PROFILE.currency
-  );
+  const fabCurrencyCode = profile?.currency || DEFAULT_PROFILE.currency;
   const reportsSnapshot = useMemo(
     () => normalizeProfileReports(profile?.reports),
     [profile?.reports]
@@ -29991,14 +30417,14 @@ function AppContent() {
       const spentAfterUSD = spentBeforeUSD + spendAmountUSD;
       if (spentAfterUSD <= spentBeforeUSD + 0.001) return;
 
-      const fallbackBeforeUSD = Math.max(0, monthlyMaxPotentialUSD - spentBeforeUSD);
-      const normalizedBeforeUSD = Number.isFinite(Number(potentialBeforeUSD))
+      const maxPotentialBeforeUSD = Math.max(0, monthlyMaxPotentialUSD - spentBeforeUSD);
+      const maxPotentialAfterUSD = Math.max(0, monthlyMaxPotentialUSD - spentAfterUSD);
+      const maxPotentialLossUSD = Math.max(0, maxPotentialBeforeUSD - maxPotentialAfterUSD);
+      const potentialSnapshotAfterSpendUSD = Number.isFinite(Number(potentialBeforeUSD))
         ? Math.max(0, Number(potentialBeforeUSD))
-        : fallbackBeforeUSD;
-      const normalizedAfterUSD = Math.max(0, monthlyMaxPotentialUSD - spentAfterUSD);
-      const normalizedLossUSD = Math.max(0, normalizedBeforeUSD - normalizedAfterUSD);
-      if (normalizedLossUSD <= 0.01) {
-        storePotentialSnapshot(normalizedAfterUSD);
+        : maxPotentialAfterUSD;
+      storePotentialSnapshot(potentialSnapshotAfterSpendUSD);
+      if (maxPotentialLossUSD <= 0.01) {
         return;
       }
       const lossPercent =
@@ -30009,7 +30435,6 @@ function AppContent() {
           ? Math.max(0, Number(potentialLossProgress.highestThreshold) || 0)
           : 0;
 
-      storePotentialSnapshot(normalizedAfterUSD);
       if (!reachedThreshold || reachedThreshold <= previousThreshold) return;
 
       setPotentialLossProgress({
@@ -30020,17 +30445,17 @@ function AppContent() {
         visible: true,
         threshold: reachedThreshold,
         lossPercent: Math.max(0, Math.min(100, lossPercent)),
-        previousUSD: normalizedBeforeUSD,
-        nextUSD: normalizedAfterUSD,
-        lostUSD: normalizedLossUSD,
+        previousUSD: maxPotentialBeforeUSD,
+        nextUSD: maxPotentialAfterUSD,
+        lostUSD: maxPotentialLossUSD,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       logEvent("potential_loss_threshold_reached", {
         baseline_key: potentialBaselineKey,
         threshold_percent: reachedThreshold,
         loss_percent: roundCurrencyValue(lossPercent, "USD", 1),
-        potential_before_usd: roundCurrencyValue(normalizedBeforeUSD, "USD", 2),
-        potential_after_usd: roundCurrencyValue(normalizedAfterUSD, "USD", 2),
+        potential_before_usd: roundCurrencyValue(maxPotentialBeforeUSD, "USD", 2),
+        potential_after_usd: roundCurrencyValue(maxPotentialAfterUSD, "USD", 2),
         spend_usd: roundCurrencyValue(spendAmountUSD, "USD", 2),
       });
     },
@@ -30351,6 +30776,62 @@ function AppContent() {
   const [pendingGoalCelebration, setPendingGoalCelebration] = useState(null);
   const pendingUsageStreakRef = useRef(null);
   const pendingSaveStreakAfterReminderRef = useRef(false);
+  const trackModalShown = useCallback(
+    (modalId, source = "unknown", context = null) => {
+      if (!modalId) return;
+      logEvent("modal_screen_shown", {
+        modal_id: modalId,
+        source: source || "unknown",
+        context: context || null,
+      });
+    },
+    [logEvent]
+  );
+  const trackModalAction = useCallback(
+    (modalId, action, source = "unknown", value = null) => {
+      if (!modalId || !action) return;
+      logEvent("modal_action_tapped", {
+        modal_id: modalId,
+        action,
+        value: value || null,
+        source: source || "unknown",
+      });
+    },
+    [logEvent]
+  );
+  const resolveOverlayModalContext = useCallback((overlayType) => {
+    switch (overlayType) {
+      case "save":
+        return "goal_countdown";
+      case "reward":
+        return "rewards";
+      case "daily_reward":
+        return "daily_reward";
+      case "streak_pledge":
+        return "usage_streak_bet";
+      case "streak_pledge_reward":
+        return "usage_streak_reward";
+      case "usage_streak":
+        return "usage_streak";
+      case "usage_streak_weekly_reward":
+        return "usage_streak_weekly_reward";
+      case "usage_streak_restore":
+        return "usage_streak_restore";
+      case "focus_digest":
+        return "focus_prompt";
+      default:
+        return "general";
+    }
+  }, []);
+  useEffect(() => {
+    const overlayType = overlay?.type;
+    if (!overlayType) return;
+    trackModalShown(
+      `overlay_${overlayType}`,
+      "overlay_queue",
+      resolveOverlayModalContext(overlayType)
+    );
+  }, [overlay?.type, resolveOverlayModalContext, trackModalShown]);
   useEffect(() => {
     if (overlay?.type !== "streak_pledge_reward") return;
     if (!streakPledge.rewardPending) return;
@@ -31910,6 +32391,8 @@ function AppContent() {
   const [tamagotchiGreetingDayKey, setTamagotchiGreetingDayKey] = useState(null);
   const [tamagotchiGreetingDayHydrated, setTamagotchiGreetingDayHydrated] = useState(false);
   const [tamagotchiVisible, setTamagotchiVisible] = useState(false);
+  const [tamagotchiModalMounted, setTamagotchiModalMounted] = useState(false);
+  const [tamagotchiClosing, setTamagotchiClosing] = useState(false);
   const [tamagotchiActiveTab, setTamagotchiActiveTab] = useState("food");
   const [tamagotchiSkinId, setTamagotchiSkinId] = useState(DEFAULT_TAMAGOTCHI_SKIN);
   const [tamagotchiSkinHydrated, setTamagotchiSkinHydrated] = useState(false);
@@ -31961,9 +32444,12 @@ function AppContent() {
   });
   const tamagotchiHungerLastAtRef = useRef(0);
   const tamagotchiModalAnim = useRef(new Animated.Value(0)).current;
+  const tamagotchiModalAnimRunRef = useRef(0);
   const tamagotchiTabContentAnim = useRef(new Animated.Value(1)).current;
   const tamagotchiTabSwitchingRef = useRef(false);
   const tamagotchiRewardPulseAnim = useRef(new Animated.Value(1)).current;
+  const pendingDailyRewardModalOpenRef = useRef(false);
+  const pendingDailyRewardModalTimerRef = useRef(null);
   const partyGlow = useRef(new Animated.Value(0)).current;
   const [partyActive, setPartyActive] = useState(false);
   const [partyBurstKey, setPartyBurstKey] = useState(0);
@@ -32010,6 +32496,7 @@ function AppContent() {
     if (!catCustomizationUnlocked) {
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
       playSound("tap");
+      setTamagotchiClosing(true);
       setTamagotchiVisible(false);
       setTimeout(() => {
         const opened = showPremiumPaywallRef.current({
@@ -32030,6 +32517,7 @@ function AppContent() {
       return;
     }
     triggerHaptic();
+    setTamagotchiClosing(true);
     setTamagotchiVisible(false);
     if (tamagotchiToyFlightTimerRef.current) {
       clearTimeout(tamagotchiToyFlightTimerRef.current);
@@ -32044,6 +32532,7 @@ function AppContent() {
   }, [
     catCustomizationUnlocked,
     playSound,
+    setTamagotchiClosing,
     setPremiumPaywallState,
     tamagotchiHeartBurstAnim,
     tamagotchiToyFlightAnim,
@@ -32171,6 +32660,14 @@ function AppContent() {
   useEffect(() => {
     tryLogHomeOpened();
   }, [tryLogHomeOpened]);
+  useEffect(() => {
+    if (onboardingStep !== "done") return;
+    if (!activeTab) return;
+    logEvent("app_screen_viewed", {
+      screen_id: activeTab,
+      source: "tab_change",
+    });
+  }, [activeTab, logEvent, onboardingStep]);
   useEffect(() => {
     if (!fabTutorialVisible) return;
     const timer = setTimeout(updateFabAnchor, 100);
@@ -32456,10 +32953,12 @@ function AppContent() {
   const openTamagotchiOverlay = useCallback(() => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
     playSound("tap");
+    setTamagotchiClosing(false);
     setTamagotchiActiveTab("food");
     setTamagotchiCleanToolArmed(false);
     tamagotchiTabContentAnim.setValue(1);
     tamagotchiTabSwitchingRef.current = false;
+    setTamagotchiModalMounted(true);
     setTamagotchiVisible((prev) => {
       if (!prev) {
         logEvent("tamagotchi_pressed");
@@ -32467,9 +32966,17 @@ function AppContent() {
       }
       return true;
     });
-  }, [logEvent, playSound, tamagotchiTabContentAnim, triggerHaptic]);
+  }, [
+    logEvent,
+    playSound,
+    setTamagotchiClosing,
+    setTamagotchiModalMounted,
+    tamagotchiTabContentAnim,
+    triggerHaptic,
+  ]);
   const closeTamagotchiOverlay = useCallback(() => {
     playSound("tap");
+    setTamagotchiClosing(true);
     setTamagotchiVisible(false);
     setTamagotchiCleanToolArmed(false);
     tamagotchiCleanTouchActiveRef.current = false;
@@ -32487,11 +32994,17 @@ function AppContent() {
     tamagotchiTabSwitchingRef.current = false;
   }, [
     playSound,
+    setTamagotchiClosing,
     setTamagotchiCleanToolArmed,
     tamagotchiHeartBurstAnim,
     tamagotchiTabContentAnim,
     tamagotchiToyFlightAnim,
   ]);
+  const clearPendingDailyRewardModalTimer = useCallback(() => {
+    if (!pendingDailyRewardModalTimerRef.current) return;
+    clearTimeout(pendingDailyRewardModalTimerRef.current);
+    pendingDailyRewardModalTimerRef.current = null;
+  }, []);
   const handleTamagotchiDailyRewardPress = useCallback(() => {
     if (!dailyRewardReady) {
       playSound("tap");
@@ -32499,11 +33012,36 @@ function AppContent() {
     }
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     playSound("daily_reward");
+    pendingDailyRewardModalOpenRef.current = true;
+    clearPendingDailyRewardModalTimer();
     closeTamagotchiOverlay();
-    setTimeout(() => {
-      savingsHeroRef.current?.openDailyRewardModal?.();
-    }, 80);
-  }, [closeTamagotchiOverlay, dailyRewardReady, playSound, triggerHaptic]);
+  }, [
+    clearPendingDailyRewardModalTimer,
+    closeTamagotchiOverlay,
+    dailyRewardReady,
+    playSound,
+    triggerHaptic,
+  ]);
+  useEffect(() => {
+    if (tamagotchiVisible) return;
+    if (!pendingDailyRewardModalOpenRef.current) return;
+    clearPendingDailyRewardModalTimer();
+    pendingDailyRewardModalTimerRef.current = setTimeout(() => {
+      pendingDailyRewardModalOpenRef.current = false;
+      setDailyRewardOpenRequestTick((prev) => prev + 1);
+    }, Platform.OS === "android" ? 260 : 120);
+    return clearPendingDailyRewardModalTimer;
+  }, [
+    clearPendingDailyRewardModalTimer,
+    setDailyRewardOpenRequestTick,
+    tamagotchiVisible,
+  ]);
+  useEffect(
+    () => () => {
+      clearPendingDailyRewardModalTimer();
+    },
+    [clearPendingDailyRewardModalTimer]
+  );
   const handleTamagotchiTabPress = useCallback(
     (nextTabId) => {
       if (!nextTabId || nextTabId === tamagotchiActiveTab) return;
@@ -32818,6 +33356,7 @@ function AppContent() {
   );
   const [newPendingModal, setNewPendingModal] = useState({
     visible: false,
+    pendingId: null,
     title: "",
     amount: "",
     emoji: DEFAULT_TEMPTATION_EMOJI,
@@ -32870,6 +33409,7 @@ function AppContent() {
       }
       return setNewPendingModal({
         visible: true,
+        pendingId: null,
         title: "",
         amount: "",
         emoji: DEFAULT_TEMPTATION_EMOJI,
@@ -32925,8 +33465,34 @@ function AppContent() {
     }));
   }, []);
   const handleNewPendingCancel = useCallback(() => {
-    setNewPendingModal({ visible: false, title: "", amount: "", emoji: DEFAULT_TEMPTATION_EMOJI });
+    setNewPendingModal({
+      visible: false,
+      pendingId: null,
+      title: "",
+      amount: "",
+      emoji: DEFAULT_TEMPTATION_EMOJI,
+    });
   }, []);
+  const openPendingEditModal = useCallback(
+    (pendingItem) => {
+      if (!pendingItem?.id) return;
+      const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+      const priceUSD = Number(pendingItem.priceUSD) || Number(pendingItem.basePriceUSD) || 0;
+      const precisionOverride = getTemptationPricePrecision(pendingItem);
+      const inputPrecision =
+        precisionOverride !== null ? precisionOverride : getCurrencyDisplayPrecision(currencyCode);
+      const { title, emoji } = resolvePendingEntryDisplay(pendingItem, t("defaultDealTitle"));
+      setNewPendingModal({
+        visible: true,
+        pendingId: pendingItem.id,
+        title: title || "",
+        amount: formatNumberInputValue(convertToCurrency(priceUSD, currencyCode), inputPrecision),
+        emoji,
+      });
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    },
+    [profile.currency, t, triggerHaptic]
+  );
   const [onboardingGoalModal, setOnboardingGoalModal] = useState({
     visible: false,
     name: "",
@@ -33422,6 +33988,7 @@ function AppContent() {
     templateId: null,
     title: "",
     emoji: "🐱",
+    source: null,
     frequency: "daily",
     frequencyCustom: { ...DEFAULT_CUSTOM_FREQUENCY },
     reminderHour: DEFAULT_FREQUENCY_REMINDER_HOUR,
@@ -33432,6 +33999,7 @@ function AppContent() {
     monthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
   });
   const [pendingFrequencyReminderPrompt, setPendingFrequencyReminderPrompt] = useState(null);
+  const frequencyReminderPromptTrackedRef = useRef(false);
   const frequencyReminderPriorityLockRef = useRef(false);
   const modalHandoffBlockUntilRef = useRef(0);
   const blockingModalVisiblePrevRef = useRef(false);
@@ -33487,6 +34055,7 @@ function AppContent() {
     if (newPendingModal.visible) {
       setNewPendingModal({
         visible: false,
+        pendingId: null,
         title: "",
         amount: "",
         emoji: DEFAULT_TEMPTATION_EMOJI,
@@ -33520,6 +34089,7 @@ function AppContent() {
         templateId: null,
         title: "",
         emoji: "🐱",
+        source: null,
         frequency: "daily",
         frequencyCustom: { ...DEFAULT_CUSTOM_FREQUENCY },
         reminderHour: DEFAULT_FREQUENCY_REMINDER_HOUR,
@@ -40300,12 +40870,12 @@ function AppContent() {
           return false;
         }
       }
+      const allowed = await ensureNotificationPermission({ request: false });
+      if (!allowed) return false;
       const blocked = await isNotificationOnCooldown(now);
       if (blocked) {
         return false;
       }
-      const allowed = await ensureNotificationPermission({ request: false });
-      if (!allowed) return false;
       try {
         await safeNotifications.scheduleNotificationAsync({
           content,
@@ -41093,97 +41663,143 @@ function AppContent() {
     queueUsageStreakOverlay,
     usageStreak?.lastDate,
   ]);
-  const handleSaveOverlayPress = useCallback(() => {
-    if (overlay?.type === "save" && Date.now() - saveOverlayShownAtRef.current < 350) {
-      return;
-    }
-    const triggerPendingLevelCelebrate = () => {
-      const queuedLevel = levelCelebrationQueuedRef.current || 0;
-      const celebratedLevel = Math.max(1, Number(lastCelebratedLevel) || 1);
+  const handleSaveOverlayPress = useCallback(
+    (actionSource = "backdrop") => {
+      const normalizedActionSource =
+        typeof actionSource === "string" && actionSource.trim().length
+          ? actionSource.trim()
+          : "backdrop";
+      const resolveSaveDismissAction = () => {
+        if (normalizedActionSource === "primary") return "primary_continue";
+        if (normalizedActionSource === "countdown") return "countdown_continue";
+        return "dismiss";
+      };
+      if (overlay?.type === "save" && Date.now() - saveOverlayShownAtRef.current < 350) {
+        return;
+      }
+      const triggerPendingLevelCelebrate = () => {
+        const queuedLevel = levelCelebrationQueuedRef.current || 0;
+        const celebratedLevel = Math.max(1, Number(lastCelebratedLevel) || 1);
+        if (
+          !pendingLevelCelebrationRef.current &&
+          playerLevel <= Math.max(queuedLevel, celebratedLevel)
+        ) {
+          return;
+        }
+        if (!pendingLevelCelebrationRef.current) {
+          const baseLevel = Math.max(
+            1,
+            Number(lastCelebratedLevel) || 1,
+            levelCelebrationQueuedRef.current || 0
+          );
+          if (playerLevel > baseLevel) {
+            pendingLevelCelebrationRef.current = {
+              level: playerLevel,
+              levelsEarned: playerLevel - baseLevel,
+            };
+            levelCelebrationQueuedRef.current = Math.max(
+              levelCelebrationQueuedRef.current || 0,
+              playerLevel
+            );
+          }
+        }
+        const pending = pendingLevelCelebrationRef.current;
+        if (pending && pending.level > Math.max(1, Number(lastCelebratedLevel) || 1)) {
+          persistLastCelebratedLevel(pending.level);
+          previousPlayerLevelRef.current = Math.max(
+            previousPlayerLevelRef.current || 1,
+            pending.level
+          );
+        }
+        setTimeout(() => {
+          runPendingLevelCelebration();
+        }, 0);
+      };
+      const saveCelebrationController = saveCelebrationRef.current;
+      if (saveCelebrationController?.skipToCountdown?.()) {
+        trackModalAction(
+          "overlay_save",
+          "countdown_revealed",
+          "save_overlay",
+          normalizedActionSource
+        );
+        return;
+      }
+      if (saveCelebrationController?.skipCountdownAnimation?.()) {
+        trackModalAction(
+          "overlay_save",
+          "countdown_fast_forward",
+          "save_overlay",
+          normalizedActionSource
+        );
+        return;
+      }
       if (
-        !pendingLevelCelebrationRef.current &&
-        playerLevel <= Math.max(queuedLevel, celebratedLevel)
+        saveCelebrationController?.isCountdownActive?.() &&
+        !saveCelebrationController?.isCountdownReady?.()
       ) {
         return;
       }
-      if (!pendingLevelCelebrationRef.current) {
-        const baseLevel = Math.max(
-          1,
-          Number(lastCelebratedLevel) || 1,
-          levelCelebrationQueuedRef.current || 0
-        );
-        if (playerLevel > baseLevel) {
-          pendingLevelCelebrationRef.current = {
-            level: playerLevel,
-            levelsEarned: playerLevel - baseLevel,
-          };
-          levelCelebrationQueuedRef.current = Math.max(
-            levelCelebrationQueuedRef.current || 0,
-            playerLevel
-          );
+      const hasPendingLevel = !!pendingLevelCelebrationRef.current;
+      const tutorialFlowActive =
+        feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE ||
+        feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING;
+      const shouldDelayStreakForReminder =
+        tutorialFlowActive &&
+        (frequencyReminderPrompt.visible ||
+          frequencyReminderPriorityLockRef.current);
+      if (tutorialFlowActive) {
+        pendingSaveStreakAfterReminderRef.current = shouldDelayStreakForReminder;
+        triggerPendingLevelCelebrate();
+        dismissOverlay({
+          clearQueue: false,
+          analyticsAction: resolveSaveDismissAction(),
+          analyticsSource: "save_overlay",
+          analyticsValue: normalizedActionSource,
+        });
+        if (
+          frequencyReminderPriorityLockRef.current &&
+          !frequencyReminderPrompt.visible &&
+          !pendingFrequencyReminderPrompt
+        ) {
+          frequencyReminderPriorityLockRef.current = false;
         }
+        if (!shouldDelayStreakForReminder) {
+          queueUsageStreakOverlay("save");
+        }
+        return;
       }
-      const pending = pendingLevelCelebrationRef.current;
-      if (pending && pending.level > Math.max(1, Number(lastCelebratedLevel) || 1)) {
-        persistLastCelebratedLevel(pending.level);
-        previousPlayerLevelRef.current = Math.max(
-          previousPlayerLevelRef.current || 1,
-          pending.level
-        );
+      pendingSaveStreakAfterReminderRef.current = false;
+      dismissOverlay({
+        clearQueue: hasPendingLevel ? false : true,
+        analyticsAction: resolveSaveDismissAction(),
+        analyticsSource: "save_overlay",
+        analyticsValue: normalizedActionSource,
+      });
+      if (
+        frequencyReminderPriorityLockRef.current &&
+        !frequencyReminderPrompt.visible &&
+        !pendingFrequencyReminderPrompt
+      ) {
+        frequencyReminderPriorityLockRef.current = false;
       }
-      setTimeout(() => {
-        runPendingLevelCelebration();
-      }, 0);
-    };
-    const saveCelebrationController = saveCelebrationRef.current;
-    if (saveCelebrationController?.skipToCountdown?.()) {
-      return;
-    }
-    if (saveCelebrationController?.skipCountdownAnimation?.()) {
-      return;
-    }
-    if (
-      saveCelebrationController?.isCountdownActive?.() &&
-      !saveCelebrationController?.isCountdownReady?.()
-    ) {
-      return;
-    }
-    const hasPendingLevel = !!pendingLevelCelebrationRef.current;
-    const tutorialFlowActive =
-      feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE ||
-      feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING;
-    const shouldDelayStreakForReminder =
-      tutorialFlowActive &&
-      (frequencyReminderPrompt.visible ||
-        frequencyReminderPriorityLockRef.current ||
-        !!pendingFrequencyReminderPrompt);
-    if (tutorialFlowActive) {
-      pendingSaveStreakAfterReminderRef.current = shouldDelayStreakForReminder;
+      queueUsageStreakOverlay("save");
       triggerPendingLevelCelebrate();
-      dismissOverlay({ clearQueue: false });
-      if (!shouldDelayStreakForReminder) {
-        queueUsageStreakOverlay("save");
-      }
-      return;
-    }
-    pendingSaveStreakAfterReminderRef.current = false;
-    dismissOverlay({
-      clearQueue: hasPendingLevel ? false : true,
-    });
-    queueUsageStreakOverlay("save");
-    triggerPendingLevelCelebrate();
-  }, [
-    dismissOverlay,
-    feedFirstTutorialStage,
-    frequencyReminderPrompt.visible,
-    lastCelebratedLevel,
-    overlay,
-    pendingFrequencyReminderPrompt,
-    persistLastCelebratedLevel,
-    playerLevel,
-    queueUsageStreakOverlay,
-    runPendingLevelCelebration,
-  ]);
+    },
+    [
+      dismissOverlay,
+      feedFirstTutorialStage,
+      frequencyReminderPrompt.visible,
+      lastCelebratedLevel,
+      overlay,
+      pendingFrequencyReminderPrompt,
+      persistLastCelebratedLevel,
+      playerLevel,
+      queueUsageStreakOverlay,
+      runPendingLevelCelebration,
+      trackModalAction,
+    ]
+  );
   const assignableGoals = useMemo(
     () => (wishes || []).filter((wish) => wish.status !== "done"),
     [wishes]
@@ -43101,7 +43717,7 @@ function AppContent() {
       const hydratePending = () => {
         try {
           if (pendingRaw) {
-            setPendingList(JSON.parse(pendingRaw));
+            setPendingList(normalizePendingListEntries(JSON.parse(pendingRaw)));
           } else {
             setPendingList([]);
           }
@@ -45891,22 +46507,37 @@ function AppContent() {
   }, [healthPoints]);
 
   useEffect(() => {
+    tamagotchiModalAnim.stopAnimation();
+    const runId = tamagotchiModalAnimRunRef.current + 1;
+    tamagotchiModalAnimRunRef.current = runId;
     if (tamagotchiVisible) {
-      Animated.timing(tamagotchiModalAnim, {
+      if (tamagotchiClosing) {
+        setTamagotchiClosing(false);
+      }
+      if (!tamagotchiModalMounted) {
+        setTamagotchiModalMounted(true);
+      }
+      Animated.spring(tamagotchiModalAnim, {
         toValue: 1,
-        duration: 220,
-        easing: Easing.out(Easing.quad),
+        speed: 18,
+        bounciness: 3,
         useNativeDriver: true,
       }).start();
-    } else {
-      Animated.timing(tamagotchiModalAnim, {
-        toValue: 0,
-        duration: 160,
-        easing: Easing.in(Easing.quad),
-        useNativeDriver: true,
-      }).start();
+      return;
     }
-  }, [tamagotchiVisible, tamagotchiModalAnim]);
+    if (!tamagotchiModalMounted) return;
+    Animated.timing(tamagotchiModalAnim, {
+      toValue: 0,
+      duration: 240,
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (!finished) return;
+      if (tamagotchiModalAnimRunRef.current !== runId) return;
+      setTamagotchiModalMounted(false);
+      setTamagotchiClosing(false);
+    });
+  }, [tamagotchiClosing, tamagotchiModalAnim, tamagotchiModalMounted, tamagotchiVisible]);
   useEffect(() => {
     if (!tamagotchiVisible || !dailyRewardReady) {
       tamagotchiRewardPulseAnim.setValue(1);
@@ -46056,11 +46687,6 @@ function AppContent() {
   useEffect(() => {
     setActiveCurrency(profile.currency || DEFAULT_PROFILE.currency);
   }, [profile.currency]);
-  useEffect(() => {
-    const nextCurrency = profile?.currency || DEFAULT_PROFILE.currency;
-    setFabCurrencyCode((prev) => (prev === nextCurrency ? prev : nextCurrency));
-  }, [profile?.currency]);
-
   useEffect(() => {
     if (!themeHydrated) return;
     queuePersist(STORAGE_KEYS.THEME, theme);
@@ -47579,7 +48205,6 @@ useEffect(() => {
     setProfileDraft((prev) => ({ ...prev, currency: code }));
     setRegistrationData((prev) => ({ ...prev, currency: code }));
     setActiveCurrency(code);
-    setFabCurrencyCode(code);
     triggerWidgetRefresh();
     const currencyEvent = getCurrencySelectedEvent(code);
     if (currencyEvent) {
@@ -49427,6 +50052,7 @@ useEffect(() => {
 
   const handleOnboardingNotificationsContinue = async () => {
     triggerHaptic();
+    const wasOnboardingSkipped = onboardingSkippedRef.current;
     if (!onboardingCompletionEventLoggedRef.current) {
       const primaryGoals = Array.isArray(profile.primaryGoals) ? profile.primaryGoals : [];
       const hasPrimaryGoal = primaryGoals.length > 0;
@@ -49439,10 +50065,14 @@ useEffect(() => {
         goal_id: primaryGoals[0]?.id || "none",
         has_goal: hasPrimaryGoal,
         start_balance: startBalanceLocal,
-        skipped: onboardingSkippedRef.current ? 1 : 0,
+        skipped: wasOnboardingSkipped ? 1 : 0,
       });
       onboardingCompletionEventLoggedRef.current = true;
     }
+    setUserProperties({
+      onboarding_complete: wasOnboardingSkipped ? "0" : "1",
+      onboarding_skipped: wasOnboardingSkipped ? "1" : "0",
+    });
     await ensureNotificationPermission({ request: true });
     if (isMonetizationExperimentControlGroup) {
       onboardingSoftPaywallActionBaselineRef.current = Math.max(
@@ -49482,6 +50112,10 @@ useEffect(() => {
           onPress: async () => {
             playSound("tap", { skipCooldown: true });
             onboardingSkippedRef.current = true;
+            setUserProperties({
+              onboarding_complete: "0",
+              onboarding_skipped: "1",
+            });
             logEvent("onboarding_skipped", { from_step: onboardingStep });
             await handleGoalComplete(null);
           },
@@ -51027,153 +51661,152 @@ useEffect(() => {
   ]);
 
   const renderTamagotchiFoodList = () => {
-    const buttons = TAMAGOTCHI_FOOD_OPTIONS.map((food, index) => {
-      const label = resolveLanguageMapValue(food.label, language) || food.label.en;
-      const coinTier = getHealthCoinTierForAmount(food.cost);
-      const displayCost = getHealthCoinDisplayCount(food.cost);
-      const affordable = tamagotchiCoins >= food.cost;
-      const isDesired = tamagotchiDesiredFood?.id === food.id;
-      const isLast = index === TAMAGOTCHI_FOOD_OPTIONS.length - 1;
-      return (
-        <TouchableOpacity
-          key={food.id}
-          style={[
-            styles.tamagotchiFoodButton,
-            { borderColor: colors.border, backgroundColor: colors.card },
-            isDesired && [
-              styles.tamagotchiFoodButtonWanted,
-              {
-                borderColor: "#F6A553",
-                backgroundColor:
-                  Platform.OS === "android"
-                    ? blendColors(
-                        colors.card || "#FFFFFF",
-                        isDarkTheme ? "#F6A553" : "#FFCF95",
-                        isDarkTheme ? 0.34 : 0.4
-                      )
-                    : colorWithAlpha(isDarkTheme ? "#F6A553" : "#FFCF95", isDarkTheme ? 0.2 : 0.28),
-                shadowColor: "#F6A553",
-              },
-            ],
-            tamagotchiIsFull && styles.tamagotchiFoodButtonDisabled,
-            isLast && styles.tamagotchiFoodButtonLast,
-          ]}
-          activeOpacity={0.9}
-          onPress={() => {
-            playSound("tap");
-            feedTamagotchi(food.id);
-          }}
-          disabled={tamagotchiIsFull}
-        >
-          <Text style={styles.tamagotchiFoodEmoji}>{food.emoji}</Text>
-          <View style={styles.tamagotchiFoodInfo}>
-            <Text style={[styles.tamagotchiFoodLabel, { color: colors.text }]}>{label}</Text>
-            <Text style={[styles.tamagotchiFoodBoost, { color: colors.muted }]}>
-              {t("tamagotchiFoodBoostLabel", { percent: food.hungerBoost })}
-            </Text>
-          </View>
-          <View style={styles.tamagotchiFoodCost}>
-            <Image source={coinTier.asset} style={styles.tamagotchiFoodCostIcon} />
-            <Text
-              style={[
-                styles.tamagotchiFoodCostText,
-                { color: colors.text, opacity: affordable ? 1 : 0.5 },
-              ]}
-            >
-              ×{displayCost}
-            </Text>
-          </View>
-          {isDesired && (
-            <View style={[styles.tamagotchiFoodBadge, { backgroundColor: colors.text }]}>
-              <Text style={[styles.tamagotchiFoodBadgeText, { color: colors.background }]} numberOfLines={2}>
-                {t("tamagotchiFoodWantLabel")}
-              </Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      );
-    });
     return (
-      <View style={styles.tamagotchiFoodList}>
-        {buttons}
+      <View style={styles.tamagotchiOptionGrid}>
+        {TAMAGOTCHI_FOOD_OPTIONS.map((food) => {
+          const label = resolveLanguageMapValue(food.label, language) || food.label.en;
+          const coinTier = getHealthCoinTierForAmount(food.cost);
+          const displayCost = getHealthCoinDisplayCount(food.cost);
+          const affordable = tamagotchiCoins >= food.cost;
+          const isDesired = tamagotchiDesiredFood?.id === food.id;
+          return (
+            <TouchableOpacity
+              key={food.id}
+              style={[
+                styles.tamagotchiOptionCard,
+                {
+                  borderColor: isDesired ? "#F6A553" : colors.border,
+                  backgroundColor: isDesired
+                    ? Platform.OS === "android"
+                      ? blendColors(
+                          colors.card || "#FFFFFF",
+                          isDarkTheme ? "#F6A553" : "#FFD49F",
+                          isDarkTheme ? 0.34 : 0.4
+                        )
+                      : colorWithAlpha(isDarkTheme ? "#F6A553" : "#FFD49F", isDarkTheme ? 0.22 : 0.3)
+                    : colors.card,
+                  opacity: tamagotchiIsFull ? 0.55 : 1,
+                  shadowColor: isDesired ? "#F6A553" : "#0A1324",
+                },
+              ]}
+              activeOpacity={0.9}
+              onPress={() => {
+                playSound("tap");
+                feedTamagotchi(food.id);
+              }}
+              disabled={tamagotchiIsFull}
+            >
+              <View style={styles.tamagotchiOptionCardTop}>
+                <Text style={styles.tamagotchiOptionEmoji}>{food.emoji}</Text>
+                {isDesired && (
+                  <View
+                    style={[
+                      styles.tamagotchiOptionBadge,
+                      { backgroundColor: colorWithAlpha("#F6A553", isDarkTheme ? 0.32 : 0.24) },
+                    ]}
+                  >
+                    <Text style={[styles.tamagotchiOptionBadgeText, { color: colors.text }]} numberOfLines={1}>
+                      {t("tamagotchiFoodWantLabel")}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.tamagotchiOptionLabel, { color: colors.text }]} numberOfLines={1}>
+                {label}
+              </Text>
+              <Text style={[styles.tamagotchiOptionSub, { color: colors.muted }]} numberOfLines={1}>
+                {t("tamagotchiFoodBoostLabel", { percent: food.hungerBoost })}
+              </Text>
+              <View style={styles.tamagotchiOptionMetaRow}>
+                <Image source={coinTier.asset} style={styles.tamagotchiFoodCostIcon} />
+                <Text
+                  style={[
+                    styles.tamagotchiFoodCostText,
+                    { color: colors.text, opacity: affordable ? 1 : 0.5 },
+                  ]}
+                >
+                  ×{displayCost}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     );
   };
   const renderTamagotchiToyList = () => {
-    const buttons = TAMAGOTCHI_TOY_OPTIONS.map((toy, index) => {
-      const label = resolveLanguageMapValue(toy.label, language) || toy.label.en;
-      const isDesired = tamagotchiDesiredToy?.id === toy.id;
-      const affordable = tamagotchiCoins >= toy.cost;
-      const coinTier = getHealthCoinTierForAmount(toy.cost);
-      const isLast = index === TAMAGOTCHI_TOY_OPTIONS.length - 1;
-      return (
-        <TouchableOpacity
-          key={toy.id}
-          style={[
-            styles.tamagotchiFoodButton,
-            { borderColor: colors.border, backgroundColor: colors.card },
-            isDesired && [
-              styles.tamagotchiFoodButtonWanted,
-              {
-                borderColor: "#F472B6",
-                backgroundColor:
-                  Platform.OS === "android"
-                    ? blendColors(
-                        colors.card || "#FFFFFF",
-                        isDarkTheme ? "#F472B6" : "#FFC6E0",
-                        isDarkTheme ? 0.34 : 0.4
-                      )
-                    : colorWithAlpha(isDarkTheme ? "#F472B6" : "#FFC6E0", isDarkTheme ? 0.2 : 0.28),
-                shadowColor: "#F472B6",
-              },
-            ],
-            isLast && styles.tamagotchiFoodButtonLast,
-          ]}
-          activeOpacity={0.9}
-          onPress={() => {
-            playSound("tap");
-            playWithTamagotchiToy(toy.id);
-          }}
-        >
-          <Text style={styles.tamagotchiFoodEmoji}>{toy.emoji}</Text>
-          <View style={styles.tamagotchiFoodInfo}>
-            <Text style={[styles.tamagotchiFoodLabel, { color: colors.text }]}>{label}</Text>
-            <Text style={[styles.tamagotchiFoodBoost, { color: colors.muted }]}>
-              {t("tamagotchiPlayBoostLabel", { percent: toy.moodBoost })}
-            </Text>
-          </View>
-          <View style={styles.tamagotchiToyMetaWrap}>
-            <View style={styles.tamagotchiFoodCost}>
-              <Image source={coinTier.asset} style={styles.tamagotchiFoodCostIcon} />
-              <Text
-                style={[
-                  styles.tamagotchiFoodCostText,
-                  { color: colors.text, opacity: affordable ? 1 : 0.5 },
-                ]}
-              >
-                ×{toy.cost}
-              </Text>
-            </View>
-            <Text style={[styles.tamagotchiToyPenaltyText, { color: colors.muted }]}>
-              -{toy.cleanPenalty}%
-            </Text>
-            <Text style={[styles.tamagotchiToyPenaltySub, { color: colors.muted }]}>
-              {t("tamagotchiCleanlinessLabel")}
-            </Text>
-          </View>
-          {isDesired && (
-            <View style={[styles.tamagotchiFoodBadge, { backgroundColor: colors.text }]}>
-              <Text style={[styles.tamagotchiFoodBadgeText, { color: colors.background }]} numberOfLines={2}>
-                {t("tamagotchiPlayWantLabel")}
-              </Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      );
-    });
     return (
-      <View style={styles.tamagotchiFoodList}>
-        {buttons}
+      <View style={styles.tamagotchiOptionGrid}>
+        {TAMAGOTCHI_TOY_OPTIONS.map((toy) => {
+          const label = resolveLanguageMapValue(toy.label, language) || toy.label.en;
+          const isDesired = tamagotchiDesiredToy?.id === toy.id;
+          const affordable = tamagotchiCoins >= toy.cost;
+          const coinTier = getHealthCoinTierForAmount(toy.cost);
+          return (
+            <TouchableOpacity
+              key={toy.id}
+              style={[
+                styles.tamagotchiOptionCard,
+                {
+                  borderColor: isDesired ? "#F472B6" : colors.border,
+                  backgroundColor: isDesired
+                    ? Platform.OS === "android"
+                      ? blendColors(
+                          colors.card || "#FFFFFF",
+                          isDarkTheme ? "#F472B6" : "#FFCBE1",
+                          isDarkTheme ? 0.34 : 0.4
+                        )
+                      : colorWithAlpha(isDarkTheme ? "#F472B6" : "#FFCBE1", isDarkTheme ? 0.22 : 0.28)
+                    : colors.card,
+                  shadowColor: isDesired ? "#F472B6" : "#0A1324",
+                },
+              ]}
+              activeOpacity={0.9}
+              onPress={() => {
+                playSound("tap");
+                playWithTamagotchiToy(toy.id);
+              }}
+            >
+              <View style={styles.tamagotchiOptionCardTop}>
+                <Text style={styles.tamagotchiOptionEmoji}>{toy.emoji}</Text>
+                {isDesired && (
+                  <View
+                    style={[
+                      styles.tamagotchiOptionBadge,
+                      { backgroundColor: colorWithAlpha("#F472B6", isDarkTheme ? 0.32 : 0.24) },
+                    ]}
+                  >
+                    <Text style={[styles.tamagotchiOptionBadgeText, { color: colors.text }]} numberOfLines={1}>
+                      {t("tamagotchiPlayWantLabel")}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.tamagotchiOptionLabel, { color: colors.text }]} numberOfLines={1}>
+                {label}
+              </Text>
+              <Text style={[styles.tamagotchiOptionSub, { color: colors.muted }]} numberOfLines={1}>
+                {t("tamagotchiPlayBoostLabel", { percent: toy.moodBoost })}
+              </Text>
+              <View style={styles.tamagotchiOptionMetaRow}>
+                <View style={styles.tamagotchiFoodCost}>
+                  <Image source={coinTier.asset} style={styles.tamagotchiFoodCostIcon} />
+                  <Text
+                    style={[
+                      styles.tamagotchiFoodCostText,
+                      { color: colors.text, opacity: affordable ? 1 : 0.5 },
+                    ]}
+                  >
+                    ×{toy.cost}
+                  </Text>
+                </View>
+                <Text style={[styles.tamagotchiToyPenaltyText, { color: colors.muted }]}>
+                  -{toy.cleanPenalty}%
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     );
   };
@@ -51185,17 +51818,16 @@ useEffect(() => {
     !tamagotchiCleanTouchActive;
   const renderTamagotchiCleanPanel = () => {
     return (
-      <View style={styles.tamagotchiFoodList}>
-        <View style={styles.tamagotchiCleanPanel}>
-          <View
-            style={[
-              styles.tamagotchiCleanStepsCard,
-              {
-                borderColor: colors.border,
-                backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.08 : 0.18),
-              },
-            ]}
-          >
+      <View style={styles.tamagotchiCleanPanel}>
+        <View
+          style={[
+            styles.tamagotchiCleanStepsCard,
+            {
+              borderColor: colors.border,
+              backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.08 : 0.18),
+            },
+          ]}
+        >
             <View style={styles.tamagotchiCleanStepsRow}>
               <View
                 style={[
@@ -51246,12 +51878,12 @@ useEffect(() => {
             <Text style={[styles.tamagotchiCleanHint, { color: colors.text }]}>
               {tamagotchiCleaningNeedsBrush ? t("tamagotchiCleanStageBrush") : t("tamagotchiCleanStageSoap")}
             </Text>
-            <Text style={[styles.tamagotchiCleanTapHint, { color: colors.text }]}>
-              {t("tamagotchiCleanSwipeHint")}
-            </Text>
-          </View>
-          <View style={styles.tamagotchiCleanToolsRow}>
-            {TAMAGOTCHI_CLEAN_TOOLS.map((tool) => {
+          <Text style={[styles.tamagotchiCleanTapHint, { color: colors.text }]}>
+            {t("tamagotchiCleanSwipeHint")}
+          </Text>
+        </View>
+        <View style={styles.tamagotchiCleanToolsRow}>
+          {TAMAGOTCHI_CLEAN_TOOLS.map((tool) => {
               const label = resolveLanguageMapValue(tool.label, language) || tool.label.en;
               const selected = tamagotchiSelectedCleanTool?.id === tool.id;
               const isCurrentStepTool = tamagotchiCleaningNeedsBrush
@@ -51263,138 +51895,137 @@ useEffect(() => {
               const remainingPercent = Math.min(100, Math.max(0, (remaining / maxUses) * 100));
               const hasSupply = remaining > 0;
               const coinTier = getHealthCoinTierForAmount(tool.cost);
-              return (
-                <View
-                  key={tool.id}
-                  style={[
-                    styles.tamagotchiCleanToolButton,
-                    {
-                      borderColor: selected
-                        ? colors.text
-                        : isCurrentStepTool
-                        ? colorWithAlpha(stepAccent, 0.9)
-                        : colors.border,
-                      backgroundColor: selected
-                        ? lightenColor(colors.card, isDarkTheme ? 0.1 : 0.2)
-                        : isCurrentStepTool
-                        ? lightenColor(colors.card, isDarkTheme ? 0.12 : 0.24)
-                        : colors.card,
-                      opacity: isCurrentStepTool ? 1 : 0.9,
-                    },
-                  ]}
+            return (
+              <View
+                key={tool.id}
+                style={[
+                  styles.tamagotchiCleanToolButton,
+                  {
+                    borderColor: selected
+                      ? colors.text
+                      : isCurrentStepTool
+                      ? colorWithAlpha(stepAccent, 0.9)
+                      : colors.border,
+                    backgroundColor: selected
+                      ? lightenColor(colors.card, isDarkTheme ? 0.1 : 0.2)
+                      : isCurrentStepTool
+                      ? lightenColor(colors.card, isDarkTheme ? 0.12 : 0.24)
+                      : colors.card,
+                    opacity: isCurrentStepTool ? 1 : 0.9,
+                  },
+                ]}
+              >
+                <TouchableOpacity
+                  style={styles.tamagotchiCleanToolTop}
+                  onPress={() => {
+                    playSound("tap");
+                    if (hasSupply) {
+                      setTamagotchiSelectedCleanToolId(tool.id);
+                      setTamagotchiCleanToolArmed(true);
+                      return;
+                    }
+                    const bought = buyTamagotchiCleanTool(tool.id);
+                    if (bought) {
+                      setTamagotchiCleanToolArmed(true);
+                    }
+                  }}
+                  activeOpacity={0.9}
                 >
-                  <TouchableOpacity
-                    style={styles.tamagotchiCleanToolTop}
-                    onPress={() => {
-                      playSound("tap");
-                      if (hasSupply) {
-                        setTamagotchiSelectedCleanToolId(tool.id);
-                        setTamagotchiCleanToolArmed(true);
-                        return;
-                      }
-                      const bought = buyTamagotchiCleanTool(tool.id);
-                      if (bought) {
-                        setTamagotchiCleanToolArmed(true);
-                      }
-                    }}
-                    activeOpacity={0.9}
-                  >
-                    <Text style={styles.tamagotchiCleanToolEmoji}>{tool.emoji}</Text>
-                    <View style={styles.tamagotchiCleanToolTitleWrap}>
-                      <Text
-                        style={[
-                          styles.tamagotchiCleanToolLabel,
-                          { color: colors.text, opacity: selected || isCurrentStepTool ? 1 : 0.82 },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {label}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                  <View style={styles.tamagotchiCleanToolBarWrap}>
-                    <View
+                  <Text style={styles.tamagotchiCleanToolEmoji}>{tool.emoji}</Text>
+                  <View style={styles.tamagotchiCleanToolTitleWrap}>
+                    <Text
                       style={[
-                        styles.tamagotchiCleanToolBarTrack,
-                        { backgroundColor: colorWithAlpha(colors.border, 0.9) },
+                        styles.tamagotchiCleanToolLabel,
+                        { color: colors.text, opacity: selected || isCurrentStepTool ? 1 : 0.82 },
                       ]}
+                      numberOfLines={1}
                     >
-                      <View
-                        style={[
-                          styles.tamagotchiCleanToolBarFill,
-                          {
-                            width: `${Math.max(hasSupply ? 8 : 0, remainingPercent)}%`,
-                            backgroundColor: hasSupply ? "#6DC9FF" : colorWithAlpha(colors.muted, 0.4),
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text style={[styles.tamagotchiCleanToolAmountText, { color: colors.muted }]}>
-                      {t("tamagotchiToolUsesLeftLabel", { current: remaining, total: maxUses })}
+                      {label}
                     </Text>
                   </View>
-                  <TouchableOpacity
+                </TouchableOpacity>
+                <View style={styles.tamagotchiCleanToolBarWrap}>
+                  <View
                     style={[
-                      styles.tamagotchiCleanToolActionButton,
-                      {
-                        borderColor: colors.border,
-                        backgroundColor: hasSupply
-                          ? lightenColor(colors.card, isDarkTheme ? 0.08 : 0.18)
-                          : colors.card,
-                        opacity: hasSupply ? 0.96 : 1,
-                      },
+                      styles.tamagotchiCleanToolBarTrack,
+                      { backgroundColor: colorWithAlpha(colors.border, 0.9) },
                     ]}
-                    onPress={() => {
-                      playSound("tap");
-                      if (hasSupply) {
-                        setTamagotchiSelectedCleanToolId(tool.id);
-                        setTamagotchiCleanToolArmed(true);
-                        return;
-                      }
-                      const bought = buyTamagotchiCleanTool(tool.id);
-                      if (bought) {
-                        setTamagotchiCleanToolArmed(true);
-                      }
-                    }}
-                    activeOpacity={0.9}
                   >
-                    {hasSupply ? (
+                    <View
+                      style={[
+                        styles.tamagotchiCleanToolBarFill,
+                        {
+                          width: `${Math.max(hasSupply ? 8 : 0, remainingPercent)}%`,
+                          backgroundColor: hasSupply ? "#6DC9FF" : colorWithAlpha(colors.muted, 0.4),
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={[styles.tamagotchiCleanToolAmountText, { color: colors.muted }]}>
+                    {t("tamagotchiToolUsesLeftLabel", { current: remaining, total: maxUses })}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.tamagotchiCleanToolActionButton,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: hasSupply
+                        ? lightenColor(colors.card, isDarkTheme ? 0.08 : 0.18)
+                        : colors.card,
+                      opacity: hasSupply ? 0.96 : 1,
+                    },
+                  ]}
+                  onPress={() => {
+                    playSound("tap");
+                    if (hasSupply) {
+                      setTamagotchiSelectedCleanToolId(tool.id);
+                      setTamagotchiCleanToolArmed(true);
+                      return;
+                    }
+                    const bought = buyTamagotchiCleanTool(tool.id);
+                    if (bought) {
+                      setTamagotchiCleanToolArmed(true);
+                    }
+                  }}
+                  activeOpacity={0.9}
+                >
+                  {hasSupply ? (
+                    <Text
+                      style={[styles.tamagotchiCleanToolActionText, { color: colors.text }]}
+                      numberOfLines={2}
+                      lineBreakStrategyIOS="standard"
+                      android_hyphenationFrequency="none"
+                    >
+                      {isCurrentStepTool
+                        ? selected
+                          ? t("tamagotchiToolSelectedLabel")
+                          : t("tamagotchiToolSelectLabel")
+                        : t("tamagotchiToolSelectLabel")}
+                    </Text>
+                  ) : (
+                    <View style={styles.tamagotchiCleanToolBuyWrap}>
+                      <Image source={coinTier.asset} style={styles.tamagotchiFoodCostIcon} />
                       <Text
                         style={[styles.tamagotchiCleanToolActionText, { color: colors.text }]}
                         numberOfLines={2}
                         lineBreakStrategyIOS="standard"
                         android_hyphenationFrequency="none"
                       >
-                        {isCurrentStepTool
-                          ? selected
-                            ? t("tamagotchiToolSelectedLabel")
-                            : t("tamagotchiToolSelectLabel")
-                          : t("tamagotchiToolSelectLabel")}
+                        {t("tamagotchiToolBuyLabel", { cost: tool.cost })}
                       </Text>
-                    ) : (
-                      <View style={styles.tamagotchiCleanToolBuyWrap}>
-                        <Image source={coinTier.asset} style={styles.tamagotchiFoodCostIcon} />
-                        <Text
-                          style={[styles.tamagotchiCleanToolActionText, { color: colors.text }]}
-                          numberOfLines={2}
-                          lineBreakStrategyIOS="standard"
-                          android_hyphenationFrequency="none"
-                        >
-                          {t("tamagotchiToolBuyLabel", { cost: tool.cost })}
-                        </Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              );
-            })}
-          </View>
-          {!tamagotchiSelectedCleanToolRemaining && (
-            <Text style={[styles.tamagotchiCleanSupplyHint, { color: colors.muted }]}>
-              {t("tamagotchiToolNeedRefillHint")}
-            </Text>
-          )}
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+            );
+          })}
         </View>
+        {!tamagotchiSelectedCleanToolRemaining && (
+          <Text style={[styles.tamagotchiCleanSupplyHint, { color: colors.muted }]}>
+            {t("tamagotchiToolNeedRefillHint")}
+          </Text>
+        )}
       </View>
     );
   };
@@ -51524,6 +52155,7 @@ useEffect(() => {
               item?.title ||
               "Goal",
             emoji: "🐱",
+            source: `first_${actionType}`,
             frequency: snapshotFrequency,
             frequencyCustom: snapshotFrequencyCustom,
             reminderHour: DEFAULT_FREQUENCY_REMINDER_HOUR,
@@ -51801,29 +52433,65 @@ useEffect(() => {
     setTemptationInteractions,
     temptationInteractionsHydrated,
   ]);
-  const closeFrequencyReminderPrompt = useCallback(() => {
-    // Keep a slightly longer handoff after reminder modal close to avoid iOS/Android modal overlap races.
-    modalHandoffBlockUntilRef.current = Date.now() + MODAL_HANDOFF_GUARD_MS + 220;
-    frequencyReminderPriorityLockRef.current = false;
-    setFrequencyReminderPrompt({
-      visible: false,
-      templateId: null,
-      title: "",
-      emoji: "🐱",
-      frequency: "daily",
-      frequencyCustom: { ...DEFAULT_CUSTOM_FREQUENCY },
-      reminderHour: DEFAULT_FREQUENCY_REMINDER_HOUR,
-      reminderMinute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
-      weeklyDay: DEFAULT_FREQUENCY_WEEKLY_DAY,
-      monthlyDay: DEFAULT_FREQUENCY_MONTHLY_DAY,
-      weeklyDays: [...DEFAULT_FREQUENCY_WEEKLY_DAYS],
-      monthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
-    });
-    if (pendingSaveStreakAfterReminderRef.current) {
-      pendingSaveStreakAfterReminderRef.current = false;
-      queueUsageStreakOverlay("save");
-    }
-  }, [queueUsageStreakOverlay]);
+  const buildFrequencyAnalyticsValue = useCallback((frequencyId, customFrequencyValue) => {
+    const normalizedFrequency = normalizeFrequencyId(frequencyId) || "daily";
+    if (normalizedFrequency !== "custom") return normalizedFrequency;
+    const normalizedCustom =
+      normalizeCustomFrequency(customFrequencyValue) || { ...DEFAULT_CUSTOM_FREQUENCY };
+    const count = Math.max(1, Number(normalizedCustom.count) || 1);
+    const unit = normalizedCustom.unit || DEFAULT_CUSTOM_FREQUENCY.unit;
+    return `custom_${count}_${unit}`;
+  }, []);
+  const closeFrequencyReminderPrompt = useCallback(
+    (reason = "dismiss") => {
+      const action =
+        typeof reason === "string" && reason.trim().length ? reason.trim() : "dismiss";
+      const promptSource = frequencyReminderPrompt.source || "pending";
+      const frequencyValue = buildFrequencyAnalyticsValue(
+        frequencyReminderPrompt.frequency,
+        frequencyReminderPrompt.frequencyCustom
+      );
+      if (frequencyReminderPrompt.visible && action !== "save") {
+        trackModalAction(
+          "frequency_reminder_prompt",
+          action,
+          promptSource,
+          frequencyValue
+        );
+      }
+      // Keep a slightly longer handoff after reminder modal close to avoid iOS/Android modal overlap races.
+      modalHandoffBlockUntilRef.current = Date.now() + MODAL_HANDOFF_GUARD_MS + 220;
+      frequencyReminderPriorityLockRef.current = false;
+      setFrequencyReminderPrompt({
+        visible: false,
+        templateId: null,
+        title: "",
+        emoji: "🐱",
+        source: null,
+        frequency: "daily",
+        frequencyCustom: { ...DEFAULT_CUSTOM_FREQUENCY },
+        reminderHour: DEFAULT_FREQUENCY_REMINDER_HOUR,
+        reminderMinute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
+        weeklyDay: DEFAULT_FREQUENCY_WEEKLY_DAY,
+        monthlyDay: DEFAULT_FREQUENCY_MONTHLY_DAY,
+        weeklyDays: [...DEFAULT_FREQUENCY_WEEKLY_DAYS],
+        monthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
+      });
+      if (pendingSaveStreakAfterReminderRef.current) {
+        pendingSaveStreakAfterReminderRef.current = false;
+        queueUsageStreakOverlay("save");
+      }
+    },
+    [
+      buildFrequencyAnalyticsValue,
+      frequencyReminderPrompt.frequency,
+      frequencyReminderPrompt.frequencyCustom,
+      frequencyReminderPrompt.source,
+      frequencyReminderPrompt.visible,
+      queueUsageStreakOverlay,
+      trackModalAction,
+    ]
+  );
   const handleFrequencyReminderPromptFrequencyChange = useCallback((value) => {
     const normalized = normalizeFrequencyId(value) || "daily";
     setFrequencyReminderPrompt((prev) => ({
@@ -52189,10 +52857,31 @@ useEffect(() => {
     inputRange: [0, 1],
     outputRange: [1, 1.08],
   });
+  useEffect(() => {
+    if (!frequencyReminderPrompt.visible) {
+      frequencyReminderPromptTrackedRef.current = false;
+      return;
+    }
+    if (frequencyReminderPromptTrackedRef.current) return;
+    frequencyReminderPromptTrackedRef.current = true;
+    const promptSource = frequencyReminderPrompt.source || "pending";
+    const frequencyValue = buildFrequencyAnalyticsValue(
+      frequencyReminderPrompt.frequency,
+      frequencyReminderPrompt.frequencyCustom
+    );
+    trackModalShown("frequency_reminder_prompt", promptSource, frequencyValue);
+  }, [
+    buildFrequencyAnalyticsValue,
+    frequencyReminderPrompt.frequency,
+    frequencyReminderPrompt.frequencyCustom,
+    frequencyReminderPrompt.source,
+    frequencyReminderPrompt.visible,
+    trackModalShown,
+  ]);
   const handleFrequencyReminderPromptSave = useCallback(() => {
     const templateId = frequencyReminderPrompt.templateId;
     if (!templateId) {
-      closeFrequencyReminderPrompt();
+      closeFrequencyReminderPrompt("save_without_template");
       return;
     }
     let frequency = normalizeFrequencyId(frequencyReminderPrompt.frequency) || "daily";
@@ -52207,6 +52896,10 @@ useEffect(() => {
     if (frequency !== "custom") {
       frequencyCustom = null;
     }
+    const selectedFrequencyValue = buildFrequencyAnalyticsValue(
+      frequency,
+      frequencyCustom
+    );
     const reminderTime =
       normalizeFrequencyReminderTime({
         hour: frequencyReminderPrompt.reminderHour,
@@ -52238,9 +52931,16 @@ useEffect(() => {
         markManualConfigured: true,
       }
     );
-    closeFrequencyReminderPrompt();
+    trackModalAction(
+      "frequency_reminder_prompt",
+      "save",
+      frequencyReminderPrompt.source || "pending",
+      selectedFrequencyValue
+    );
+    closeFrequencyReminderPrompt("save");
   }, [
     applyFrequencySelectionToTemplate,
+    buildFrequencyAnalyticsValue,
     closeFrequencyReminderPrompt,
     frequencyReminderPrompt.frequency,
     frequencyReminderPrompt.frequencyCustom,
@@ -52250,8 +52950,10 @@ useEffect(() => {
     frequencyReminderPrompt.monthlyDay,
     frequencyReminderPrompt.weeklyDays,
     frequencyReminderPrompt.monthlyDays,
+    frequencyReminderPrompt.source,
     frequencyReminderPrompt.templateId,
     frequencyReminderPrompt.title,
+    trackModalAction,
   ]);
   const openFrequencyReminderPromptFromPending = useCallback((pendingPayload) => {
     if (!pendingPayload) return false;
@@ -52283,6 +52985,10 @@ useEffect(() => {
       templateId: pendingPayload.templateId || null,
       title: pendingPayload.title || "",
       emoji: pendingPayload.emoji || "🐱",
+      source:
+        typeof pendingPayload.source === "string" && pendingPayload.source.trim().length
+          ? pendingPayload.source.trim()
+          : "pending",
       frequency: normalizedFrequency,
       frequencyCustom: normalizedCustom,
       reminderHour: reminderTime.hour,
@@ -52301,7 +53007,9 @@ useEffect(() => {
     if (frequencyReminderPrompt.visible) return false;
     if (!pendingFrequencyReminderPrompt) return false;
     if (tutorialOverlayVisible || tutorialBlockingVisible) return false;
-    if (overlay || overlayActiveRef.current) return false;
+    const priorityReminderLocked = frequencyReminderPriorityLockRef.current;
+    if (overlayActiveRef.current) return false;
+    if (!priorityReminderLocked && overlay) return false;
     if (blockingModalVisible) return false;
     if (stormActive) return false;
     if (spendPrompt.visible) return false;
@@ -52310,9 +53018,9 @@ useEffect(() => {
       canShowQueuedModalRef.current(candidate)
     );
     if (hasQueuedModalReady) return false;
-    if (overlayQueueRef.current.length > 0) return false;
-    if (celebrationQueueRef.current.length > 0) return false;
-    if (celebrationGapTimerRef.current) return false;
+    if (!priorityReminderLocked && overlayQueueRef.current.length > 0) return false;
+    if (!priorityReminderLocked && celebrationQueueRef.current.length > 0) return false;
+    if (!priorityReminderLocked && celebrationGapTimerRef.current) return false;
     return true;
   }, [
     blockingModalVisible,
@@ -53984,7 +54692,7 @@ useEffect(() => {
           setDailyGoalCoinDropTick((prev) => prev + 1);
         }
         handleFocusSaveProgress(item);
-        if (!suppressSaveOverlay && !isTutorialSaveAction) {
+        if (!suppressSaveOverlay) {
           ensureOverlayEnvironmentReady();
           triggerOverlayState("save", saveOverlayPayloadWithReward);
         }
@@ -54022,10 +54730,17 @@ useEffect(() => {
         );
         logTemptationAction("pending", item);
         const now = Date.now();
+        const pendingDisplay = resolvePendingEntryDisplay(
+          { title: resolveTemptationTitle(item, language), emoji: item?.emoji },
+          "goal"
+        );
+        const pendingTitle = pendingDisplay.title || "goal";
+        const pendingEmoji = pendingDisplay.emoji;
         const pendingEntry = {
           id: `pending-${item.id}-${now}`,
           templateId: templateId || item.id,
-          title,
+          title: pendingTitle,
+          emoji: pendingEmoji,
           priceUSD,
           pricePrecision: getTemptationPricePrecision(item),
           createdAt: now,
@@ -54038,18 +54753,30 @@ useEffect(() => {
             remind_at: pendingEntry.decisionDue,
           })
         );
-        const reminderId = await schedulePendingReminder(title, pendingEntry.decisionDue, {
-          pendingId: pendingEntry.id,
-          templateId: pendingEntry.templateId,
-          title,
-          emoji: item?.emoji || "✨",
-          amountUSD: priceUSD,
-        });
-        if (reminderId) pendingEntry.notificationId = reminderId;
         setPendingList((prev) => [pendingEntry, ...prev]);
-        logHistoryEvent("pending_added", { title, amountUSD: priceUSD, pendingId: pendingEntry.id });
+        logHistoryEvent("pending_added", { title: pendingTitle, amountUSD: priceUSD, pendingId: pendingEntry.id });
         triggerOverlayState("cart", t("pendingAdded"));
         triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+        void (async () => {
+          const reminderId = await schedulePendingReminder(pendingTitle, pendingEntry.decisionDue, {
+            pendingId: pendingEntry.id,
+            templateId: pendingEntry.templateId,
+            title: pendingTitle,
+            emoji: pendingEmoji,
+            amountUSD: priceUSD,
+          });
+          if (!reminderId) return;
+          setPendingList((prev) =>
+            (Array.isArray(prev) ? prev : []).map((entry) =>
+              entry.id === pendingEntry.id
+                ? {
+                    ...entry,
+                    notificationId: reminderId,
+                  }
+                : entry
+            )
+          );
+        })();
         return;
       }
       Alert.alert("Almost", t("actionSoon"));
@@ -54589,7 +55316,7 @@ useEffect(() => {
     [assignTemptationGoal, closeGoalTemptationPrompt, goalTemptationPrompt]
   );
 
-  const handleNewPendingSubmit = useCallback(async () => {
+  const handleNewPendingSubmit = useCallback(() => {
     const trimmedTitle = (newPendingModal.title || "").trim();
     if (!trimmedTitle) {
       Alert.alert("Almost", t("pendingCustomError"));
@@ -54604,6 +55331,34 @@ useEffect(() => {
     const amountUSD = convertFromCurrency(parsedLocal, currencyCode);
     const emoji = normalizeEmojiValue(newPendingModal.emoji, DEFAULT_TEMPTATION_EMOJI);
     const manualPrecision = getManualInputPrecision(newPendingModal.amount || "");
+    const editingPendingId =
+      typeof newPendingModal.pendingId === "string" && newPendingModal.pendingId.trim().length
+        ? newPendingModal.pendingId.trim()
+        : null;
+    if (editingPendingId) {
+      setPendingList((prev) =>
+        (Array.isArray(prev) ? prev : []).map((entry) =>
+          entry.id === editingPendingId
+            ? {
+                ...entry,
+                title: trimmedTitle,
+                emoji,
+                priceUSD: amountUSD,
+                pricePrecision: manualPrecision,
+              }
+            : entry
+        )
+      );
+      setNewPendingModal({
+        visible: false,
+        pendingId: null,
+        title: "",
+        amount: "",
+        emoji: DEFAULT_TEMPTATION_EMOJI,
+      });
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+      return;
+    }
     const manualItem = {
       id: `manual_pending_${Date.now()}`,
       title: trimmedTitle,
@@ -54613,9 +55368,15 @@ useEffect(() => {
       pricePrecision: manualPrecision,
       categories: [],
     };
-    await handleTemptationAction("maybe", manualItem);
-    setNewPendingModal({ visible: false, title: "", amount: "", emoji: DEFAULT_TEMPTATION_EMOJI });
-  }, [handleTemptationAction, newPendingModal, profile.currency, t]);
+    setNewPendingModal({
+      visible: false,
+      pendingId: null,
+      title: "",
+      amount: "",
+      emoji: DEFAULT_TEMPTATION_EMOJI,
+    });
+    void handleTemptationAction("maybe", manualItem);
+  }, [handleTemptationAction, newPendingModal, profile.currency, setPendingList, t, triggerHaptic]);
 
   const openGoalEditorPrompt = useCallback(
     (wish) => {
@@ -55946,19 +56707,23 @@ useEffect(() => {
   );
 
   const handlePendingDecision = useCallback(
-    async (pendingItem, decision) => {
+    (pendingItem, decision) => {
       if (!pendingItem) return;
       if (pendingItem.notificationId) {
-        try {
-          await safeNotifications.cancelScheduledNotificationAsync(pendingItem.notificationId);
-        } catch (error) {
-          console.warn("cancel reminder", error);
-        }
+        safeNotifications
+          .cancelScheduledNotificationAsync(pendingItem.notificationId)
+          .catch((error) => console.warn("cancel reminder", error));
       }
       setPendingList((prev) => prev.filter((entry) => entry.id !== pendingItem.id));
       const template = findTemplateById(pendingItem.templateId);
-      const title =
-        pendingItem.title || resolveLanguageMapValue(template?.title, language) || template?.title?.en || "Goal";
+      const templateFallbackTitle =
+        resolveLanguageMapValue(template?.title, language) || template?.title?.en || "Goal";
+      const pendingDisplay = resolvePendingEntryDisplay(pendingItem, templateFallbackTitle);
+      const title = pendingDisplay.title || templateFallbackTitle;
+      const pendingEmoji = normalizeEmojiValue(
+        pendingDisplay.emoji || template?.emoji,
+        DEFAULT_TEMPTATION_EMOJI
+      );
       const priceUSD = pendingItem.priceUSD || template?.basePriceUSD || 0;
       const decisionTimestamp = Date.now();
       const daysWaited = Math.max(
@@ -55970,8 +56735,8 @@ useEffect(() => {
         ...(template || {}),
         id: actionTemplateId,
         templateId: actionTemplateId,
-        title: template?.title || pendingItem.title || "Goal",
-        emoji: pendingItem.emoji || template?.emoji || DEFAULT_TEMPTATION_EMOJI,
+        title: template?.title || title || "Goal",
+        emoji: pendingEmoji,
         priceUSD,
         basePriceUSD: template?.basePriceUSD || priceUSD,
         categories: template?.categories || pendingItem.categories || [],
@@ -55987,7 +56752,7 @@ useEffect(() => {
           status: "active",
           createdAt: Date.now(),
           autoManaged: false,
-          emoji: template?.emoji || DEFAULT_GOAL_EMOJI,
+          emoji: pendingEmoji || DEFAULT_GOAL_EMOJI,
         };
         setWishes((prev) => insertWishAfterPrimary(prev, newWish));
         ensureActiveGoalForNewWish(newWish);
@@ -56010,11 +56775,11 @@ useEffect(() => {
         return;
       }
       if (decision === "spend") {
-        await handleTemptationAction("spend", actionItem, {
+        void handleTemptationAction("spend", actionItem, {
           skipPrompt: true,
           shouldAssign: false,
           skipFrequencyReminderPrompt: true,
-        });
+        }).catch((error) => console.warn("pending spend decision", error));
         return;
       }
       if (decision === "decline") {
@@ -56034,11 +56799,11 @@ useEffect(() => {
           )
         );
         logHistoryEvent("pending_to_decline", { title, amountUSD: price, category: resolvedCategory });
-        await handleTemptationAction("save", actionItem, {
+        void handleTemptationAction("save", actionItem, {
           skipPrompt: true,
           shouldAssign: false,
           skipFrequencyReminderPrompt: true,
-        });
+        }).catch((error) => console.warn("pending decline decision", error));
         return;
       }
     },
@@ -56106,15 +56871,15 @@ useEffect(() => {
     (pendingItem) => {
       if (!pendingItem) return;
       const template = findTemplateById(pendingItem.templateId);
-      const title =
-        pendingItem.title || resolveLanguageMapValue(template?.title, language) || template?.title?.en || "Goal";
-      const performDelete = async () => {
+      const templateFallbackTitle =
+        resolveLanguageMapValue(template?.title, language) || template?.title?.en || "Goal";
+      const pendingDisplay = resolvePendingEntryDisplay(pendingItem, templateFallbackTitle);
+      const title = pendingDisplay.title || templateFallbackTitle;
+      const performDelete = () => {
         if (pendingItem.notificationId) {
-          try {
-            await safeNotifications.cancelScheduledNotificationAsync(pendingItem.notificationId);
-          } catch (error) {
-            console.warn("cancel reminder", error);
-          }
+          safeNotifications
+            .cancelScheduledNotificationAsync(pendingItem.notificationId)
+            .catch((error) => console.warn("cancel reminder", error));
         }
         setPendingList((prev) => prev.filter((entry) => entry.id !== pendingItem.id));
         logHistoryEvent("pending_removed", { title, pendingId: pendingItem.id });
@@ -56138,8 +56903,14 @@ useEffect(() => {
     async (pendingItem) => {
       if (!pendingItem) return;
       const template = findTemplateById(pendingItem.templateId);
-      const title =
-        pendingItem.title || resolveLanguageMapValue(template?.title, language) || template?.title?.en || "Goal";
+      const templateFallbackTitle =
+        resolveLanguageMapValue(template?.title, language) || template?.title?.en || "Goal";
+      const pendingDisplay = resolvePendingEntryDisplay(pendingItem, templateFallbackTitle);
+      const title = pendingDisplay.title || templateFallbackTitle;
+      const pendingEmoji = normalizeEmojiValue(
+        pendingDisplay.emoji || template?.emoji,
+        DEFAULT_TEMPTATION_EMOJI
+      );
       const nextDue = Date.now() + PENDING_EXTENSION_MS;
       if (pendingItem.notificationId) {
         safeNotifications.cancelScheduledNotificationAsync(pendingItem.notificationId);
@@ -56148,7 +56919,7 @@ useEffect(() => {
         pendingId: pendingItem.id,
         templateId: pendingItem.templateId,
         title,
-        emoji: pendingItem.emoji || template?.emoji || DEFAULT_TEMPTATION_EMOJI,
+        emoji: pendingEmoji,
         amountUSD: pendingItem.priceUSD || template?.basePriceUSD || 0,
       });
       setPendingList((prev) =>
@@ -56247,7 +57018,13 @@ useEffect(() => {
   const processOverlayQueue = useCallback(() => {
     if (overlayActiveRef.current) return;
     if (startupHardLockPendingBeforePaywall) return;
-    if (frequencyReminderPriorityLockRef.current) return;
+    if (frequencyReminderPriorityLockRef.current) {
+      const reminderFlowBlocking =
+        frequencyReminderPrompt.visible ||
+        !!pendingFrequencyReminderPrompt;
+      if (reminderFlowBlocking) return;
+      frequencyReminderPriorityLockRef.current = false;
+    }
     if (Platform.OS === "ios" && Date.now() < (modalHandoffBlockUntilRef.current || 0)) {
       // iOS can leave an invisible touch blocker if a new overlay modal opens
       // immediately after another modal dismiss animation.
@@ -56313,7 +57090,9 @@ useEffect(() => {
     }
   }, [
     blockingModalVisible,
+    frequencyReminderPrompt.visible,
     overlayEnvironmentReady,
+    pendingFrequencyReminderPrompt,
     scheduleOverlayQueueResumeAfterHandoff,
     startupHardLockPendingBeforePaywall,
   ]);
@@ -56489,8 +57268,24 @@ useEffect(() => {
   }, [overlay]);
 
   const dismissOverlay = useCallback((maybeOptions = {}) => {
-    const options =
+    const rawOptions =
       maybeOptions && typeof maybeOptions === "object" && "nativeEvent" in maybeOptions ? {} : maybeOptions;
+    const options = rawOptions && typeof rawOptions === "object" ? rawOptions : {};
+    const analyticsAction =
+      typeof options.analyticsAction === "string" && options.analyticsAction.trim().length
+        ? options.analyticsAction.trim()
+        : "dismiss";
+    const analyticsSource =
+      typeof options.analyticsSource === "string" && options.analyticsSource.trim().length
+        ? options.analyticsSource.trim()
+        : "overlay";
+    const analyticsValueRaw = options.analyticsValue;
+    const analyticsValue =
+      typeof analyticsValueRaw === "string" && analyticsValueRaw.trim().length
+        ? analyticsValueRaw.trim()
+        : typeof analyticsValueRaw === "number" && Number.isFinite(analyticsValueRaw)
+        ? String(analyticsValueRaw)
+        : null;
     const shouldPromptGoalRenewal =
       overlay?.type === "goal_complete" && goalRenewalPromptAfterGoalRef.current;
     if (overlay?.type === "focus_digest" && overlay?.message?.prompt) {
@@ -56534,8 +57329,19 @@ useEffect(() => {
       : requestedClearQueue !== null
       ? requestedClearQueue
       : !!overlay?.clearQueueOnDismiss;
+    if (overlay?.type) {
+      trackModalAction(
+        `overlay_${overlay.type}`,
+        analyticsAction,
+        analyticsSource,
+        analyticsValue
+      );
+    }
     if (shouldClearQueue) {
       overlayQueueRef.current = [];
+    }
+    if (shouldPrioritizeFrequencyReminderPrompt) {
+      frequencyReminderPriorityLockRef.current = true;
     }
     setOverlay(null);
     if (weeklyRewardPayload) {
@@ -56568,7 +57374,6 @@ useEffect(() => {
     }
     if (Platform.OS === "ios") {
       if (shouldPrioritizeFrequencyReminderPrompt) {
-        frequencyReminderPriorityLockRef.current = true;
         modalHandoffBlockUntilRef.current = Math.max(
           modalHandoffBlockUntilRef.current || 0,
           Date.now() + OVERLAY_HANDOFF_GUARD_IOS_MS
@@ -56609,6 +57414,7 @@ useEffect(() => {
     pendingGoalCelebration,
     scheduleOverlayQueueResumeAfterHandoff,
     saveOverlayCounterVisible,
+    trackModalAction,
   ]);
 
   const resetFocusLossCounter = useCallback((templateId) => {
@@ -56798,7 +57604,10 @@ useEffect(() => {
         applyFocusTarget(templateId, source);
       }
       resolveFocusDigest("focus");
-      dismissOverlay();
+      dismissOverlay({
+        analyticsAction: templateId ? "focus" : "dismiss",
+        analyticsSource: "focus_digest",
+      });
       if (isPrompt) {
         focusPromptActiveRef.current = false;
       }
@@ -56809,7 +57618,10 @@ useEffect(() => {
   const handleFocusOverlayLater = useCallback(() => {
     const isPrompt = overlay?.message?.prompt;
     resolveFocusDigest("later");
-    dismissOverlay();
+    dismissOverlay({
+      analyticsAction: "later",
+      analyticsSource: "focus_digest",
+    });
     if (isPrompt) {
       focusPromptActiveRef.current = false;
     }
@@ -56941,7 +57753,11 @@ useEffect(() => {
         reward_value: rewardValue,
       });
       triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-      dismissOverlay();
+      dismissOverlay({
+        analyticsAction: "select_period",
+        analyticsSource: "streak_pledge",
+        analyticsValue: String(targetDays),
+      });
     },
     [dismissOverlay, logEvent, overlay?.message, setStreakPledge]
   );
@@ -56954,7 +57770,10 @@ useEffect(() => {
       lastPromptDayKey: todayKey,
     }));
     logEvent("streak_goal_prompt_dismissed", { day_key: todayKey });
-    dismissOverlay();
+    dismissOverlay({
+      analyticsAction: "skip",
+      analyticsSource: "streak_pledge",
+    });
   }, [dismissOverlay, logEvent, setStreakPledge]);
 
   const handleUsageStreakPress = useCallback(
@@ -56996,7 +57815,11 @@ useEffect(() => {
       }));
       triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
       playSound?.("coin");
-      dismissOverlay();
+      dismissOverlay({
+        analyticsAction: "restore_confirm",
+        analyticsSource: "usage_streak_restore",
+        analyticsValue: String(missedDays),
+      });
       logEvent("usage_streak_restored", {
         missed_days: missedDays,
         cost_blue: costBlueCount,
@@ -57086,7 +57909,6 @@ useEffect(() => {
     (feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE ||
       feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING) &&
     (frequencyReminderPrompt.visible ||
-      !!pendingFrequencyReminderPrompt ||
       frequencyReminderPriorityLockRef.current);
   const runPendingLevelCelebration = useCallback(() => {
     const now = Date.now();
@@ -58197,6 +59019,7 @@ useEffect(() => {
             colors={colors}
             onResolve={handlePendingDecision}
             onDelete={handlePendingDelete}
+            onEdit={openPendingEditModal}
             onExtend={handlePendingExtend}
             language={language}
             catCuriousSource={tamagotchiAnimations.curious}
@@ -58346,6 +59169,7 @@ useEffect(() => {
             dailyRewardDay={dailyRewardDay}
             onDailyRewardClaim={handleDailyRewardClaim}
             onDailyRewardModalVisibilityChange={setDailyRewardModalVisible}
+            dailyRewardOpenRequestTick={dailyRewardOpenRequestTick}
             dailyGoalCoinDropTick={dailyGoalCoinDropTick}
             onDailyGoalCollect={handleDailyGoalCollect}
             dailyGoalCollectedToday={dailyGoalCollectedToday}
@@ -60285,6 +61109,9 @@ useEffect(() => {
           onChange={handleNewPendingChange}
           onSubmit={handleNewPendingSubmit}
           onCancel={handleNewPendingCancel}
+          titleText={newPendingModal.pendingId ? t("priceEditTitle") : null}
+          subtitleText={newPendingModal.pendingId ? "" : null}
+          submitText={newPendingModal.pendingId ? t("priceEditSave") : null}
           keyboardOffset={keyboardModalOffset}
         />
 
@@ -60848,16 +61675,23 @@ useEffect(() => {
           </Modal>
         )}
         <Modal
-          visible={!startupHardLockPendingBeforePaywall && tamagotchiVisible}
+          visible={!startupHardLockPendingBeforePaywall && tamagotchiModalMounted}
           transparent
-          animationType="fade"
+          animationType="none"
           onRequestClose={closeTamagotchiOverlay}
           statusBarTranslucent
         >
-          <View
+          <Animated.View
+            pointerEvents={tamagotchiVisible ? "auto" : "none"}
             style={[
               styles.tamagotchiBackdrop,
               { backgroundColor: isDarkTheme ? "#0D111A" : colors.background },
+              {
+                opacity: tamagotchiModalAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.4, 1],
+                }),
+              },
             ]}
           >
             {shouldRenderStatusGlass && (
@@ -60921,8 +61755,8 @@ useEffect(() => {
                   backgroundColor: colors.card,
                   borderColor: colors.border,
                   marginTop: Math.max(
-                    scaleTamagotchiMetric(IS_SHORT_DEVICE ? 8 : 10, 6),
-                    Math.round((safeAreaInsets.top || topSafeInset || 0) * 0.2)
+                    scaleTamagotchiMetric(IS_SHORT_DEVICE ? 6 : 8, 6),
+                    (safeAreaInsets.top || topSafeInset || 0) + scaleTamagotchiMetric(2, 2)
                   ),
                 },
                 {
@@ -60930,120 +61764,103 @@ useEffect(() => {
                     {
                       translateY: tamagotchiModalAnim.interpolate({
                         inputRange: [0, 1],
-                        outputRange: [20, 0],
+                        outputRange: [34, 0],
                       }),
                     },
                     {
                       scale: tamagotchiModalAnim.interpolate({
                         inputRange: [0, 1],
-                        outputRange: [0.95, 1],
+                        outputRange: [0.92, 1],
                       }),
                     },
                   ],
                   opacity: tamagotchiModalAnim,
 	                },
+                  tamagotchiClosing && styles.tamagotchiNoShadow,
 	              ]}
 	            >
-	                  <View
-	                    pointerEvents="box-none"
-	                    style={[
-	                      styles.tamagotchiStickyBackWrap,
-	                      { top: Math.max(2, (safeAreaInsets.top || topSafeInset || 0) - 6) },
-	                    ]}
-	                  >
-	                    <TouchableOpacity
-	                      style={[
-	                        styles.tamagotchiBackButton,
-	                        styles.tamagotchiBackButtonFloating,
-	                        {
-	                          borderColor: colorWithAlpha(colors.border, 0.95),
-	                          backgroundColor: colorWithAlpha(lightenColor(colors.card, isDarkTheme ? 0.08 : 0.18), 0.95),
-	                          shadowColor: colorWithAlpha("#0A1324", isDarkTheme ? 0.5 : 0.28),
-	                        },
-	                      ]}
-	                      onPress={closeTamagotchiOverlay}
-	                      activeOpacity={0.9}
-	                    >
-	                      <Text style={[styles.tamagotchiBackButtonArrow, { color: colors.text }]}>←</Text>
-	                      <Text style={[styles.tamagotchiBackButtonText, { color: colors.text }]}>
-	                        {t("onboardingBack")}
-	                      </Text>
-	                    </TouchableOpacity>
-	                  </View>
-	                  <View
-	                    pointerEvents="box-none"
-	                    style={[
-	                      styles.tamagotchiStickyRewardWrap,
-	                      { top: Math.max(2, (safeAreaInsets.top || topSafeInset || 0) - 6) },
-	                    ]}
-	                  >
-                    <View style={styles.tamagotchiStickyOverlayStack}>
-                      <Animated.View style={{ transform: [{ scale: tamagotchiRewardPulseAnim }] }}>
-                        <TouchableOpacity
-                          style={[
-                            styles.tamagotchiStickyRewardButton,
-                            {
-                              borderColor: dailyRewardReady ? SAVE_ACTION_COLOR : colors.border,
-                              backgroundColor: colorWithAlpha(colors.card, isDarkTheme ? 0.95 : 0.98),
-                              opacity: dailyRewardReady ? 1 : 0.72,
-                            },
-                          ]}
-                          onPress={handleTamagotchiDailyRewardPress}
-                          activeOpacity={dailyRewardReady ? 0.86 : 0.94}
-                        >
-                          <Text style={styles.tamagotchiRewardIcon}>🎁</Text>
-                          <Text
-                            style={[styles.tamagotchiStickyRewardText, { color: colors.text }]}
-                            numberOfLines={2}
-                            lineBreakStrategyIOS="standard"
-                            android_hyphenationFrequency="none"
-                          >
-                            {dailyRewardButtonLabel}
-                          </Text>
-                        </TouchableOpacity>
-                      </Animated.View>
-	                      <View
-	                        style={[
-	                          styles.tamagotchiStickyCoinsPill,
-	                          {
-	                            borderColor: colorWithAlpha(colors.border, 0.94),
-	                            backgroundColor: colorWithAlpha(colors.card, isDarkTheme ? 0.94 : 0.98),
-	                          },
-	                        ]}
-	                      >
-	                        {tamagotchiStickyCoinTokens.map((token) => (
-	                          <View key={token.id} style={styles.tamagotchiStickyCoinToken}>
-	                            <Image source={token.asset} style={styles.tamagotchiStickyCoinsIcon} />
-	                            <Text style={[styles.tamagotchiStickyCoinsValue, { color: colors.text }]}>
-	                              ×{token.count}
-	                            </Text>
-	                          </View>
-	                        ))}
-	                      </View>
-                    </View>
-                  </View>
-	                  <ScrollView
-	                    style={styles.tamagotchiCardScroll}
-	                    scrollEnabled={!tamagotchiCleanTouchActive}
-	                    contentContainerStyle={[
-	                      styles.tamagotchiCardContent,
-	                      {
-                        paddingTop: Math.max(
-                          scaleTamagotchiMetric(IS_SHORT_DEVICE ? 86 : 94, 72),
-                          (safeAreaInsets.top || topSafeInset || 0) +
-                            scaleTamagotchiMetric(58, 46)
-                        ),
+                  <View
+                    style={[
+                      styles.tamagotchiCardContent,
+                      {
+                        paddingTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 10 : 12, 8),
                         paddingBottom: Math.max(
                           scaleTamagotchiMetric(8, 6),
-                          (safeAreaInsets.bottom || 0) + scaleTamagotchiMetric(7, 6)
+                          (safeAreaInsets.bottom || 0) + scaleTamagotchiMetric(6, 4)
                         ),
-	                      },
-	                    ]}
-                    showsVerticalScrollIndicator={false}
-                    bounces={false}
-                    delaysContentTouches={false}
-                    keyboardShouldPersistTaps="handled"
-	                  >
+                      },
+                    ]}
+                  >
+                    <View style={styles.tamagotchiTopBar}>
+                      <TouchableOpacity
+                        style={[
+                          styles.tamagotchiBackButton,
+                          tamagotchiClosing && styles.tamagotchiNoShadow,
+                          {
+                            borderColor: colorWithAlpha(colors.border, 0.95),
+                            backgroundColor: colorWithAlpha(
+                              lightenColor(colors.card, isDarkTheme ? 0.08 : 0.18),
+                              0.95
+                            ),
+                            shadowColor: colorWithAlpha("#0A1324", isDarkTheme ? 0.5 : 0.28),
+                          },
+                        ]}
+                        onPress={closeTamagotchiOverlay}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        activeOpacity={0.9}
+                      >
+                        <Text style={[styles.tamagotchiBackButtonArrow, { color: colors.text }]}>←</Text>
+                        <Text style={[styles.tamagotchiBackButtonText, { color: colors.text }]}>
+                          {t("onboardingBack")}
+                        </Text>
+                      </TouchableOpacity>
+                      <View style={styles.tamagotchiTopBarRight}>
+                        <Animated.View style={{ transform: [{ scale: tamagotchiRewardPulseAnim }] }}>
+                          <TouchableOpacity
+                            style={[
+                              styles.tamagotchiStickyRewardButton,
+                              tamagotchiClosing && styles.tamagotchiNoShadow,
+                              {
+                                borderColor: dailyRewardReady ? SAVE_ACTION_COLOR : colors.border,
+                                backgroundColor: colorWithAlpha(colors.card, isDarkTheme ? 0.95 : 0.98),
+                                opacity: dailyRewardReady ? 1 : 0.72,
+                              },
+                            ]}
+                            onPress={handleTamagotchiDailyRewardPress}
+                            activeOpacity={dailyRewardReady ? 0.86 : 0.94}
+                          >
+                            <Text style={styles.tamagotchiRewardIcon}>🎁</Text>
+                            <Text
+                              style={[styles.tamagotchiStickyRewardText, { color: colors.text }]}
+                              numberOfLines={2}
+                              lineBreakStrategyIOS="standard"
+                              android_hyphenationFrequency="none"
+                            >
+                              {dailyRewardButtonLabel}
+                            </Text>
+                          </TouchableOpacity>
+                        </Animated.View>
+                        <View
+                          style={[
+                            styles.tamagotchiStickyCoinsPill,
+                            tamagotchiClosing && styles.tamagotchiNoShadow,
+                            {
+                              borderColor: colorWithAlpha(colors.border, 0.94),
+                              backgroundColor: colorWithAlpha(colors.card, isDarkTheme ? 0.94 : 0.98),
+                            },
+                          ]}
+                        >
+                          {tamagotchiStickyCoinTokens.map((token) => (
+                            <View key={token.id} style={styles.tamagotchiStickyCoinToken}>
+                              <Image source={token.asset} style={styles.tamagotchiStickyCoinsIcon} />
+                              <Text style={[styles.tamagotchiStickyCoinsValue, { color: colors.text }]}>
+                                ×{token.count}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    </View>
 	                  <View style={styles.tamagotchiHeader}>
 	                    <View style={styles.tamagotchiHeaderTextWrap}>
 	                      <View style={styles.tamagotchiHeaderLine}>
@@ -61053,6 +61870,7 @@ useEffect(() => {
 	                        <View
 	                          style={[
 	                            styles.tamagotchiReactionBubble,
+                              tamagotchiClosing && styles.tamagotchiNoShadow,
 	                            {
 	                              backgroundColor: colorWithAlpha(
 	                                lightenColor(colors.card, isDarkTheme ? 0.1 : 0.22),
@@ -61083,6 +61901,7 @@ useEffect(() => {
                   <View
                     style={[
                       styles.tamagotchiPreview,
+                      tamagotchiClosing && styles.tamagotchiNoShadow,
                       {
                         borderColor: colors.border,
                         backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.08 : 0.16),
@@ -61306,6 +62125,7 @@ useEffect(() => {
                           pointerEvents="none"
                           style={[
                             styles.tamagotchiImmunityHintBubble,
+                            tamagotchiClosing && styles.tamagotchiNoShadow,
                             {
                               backgroundColor: tamagotchiImmunityHintPalette.backgroundColor,
                               borderColor: tamagotchiImmunityHintPalette.borderColor,
@@ -61368,6 +62188,7 @@ useEffect(() => {
                   <View
                     style={[
                       styles.tamagotchiStatsStack,
+                      tamagotchiClosing && styles.tamagotchiNoShadow,
                       {
                         borderColor: colors.border,
                         backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.05 : 0.1),
@@ -61508,6 +62329,7 @@ useEffect(() => {
 	                        style={[
 	                          styles.tamagotchiButton,
 	                          styles.tamagotchiPartyButton,
+                            tamagotchiClosing && styles.tamagotchiNoShadow,
 	                          { backgroundColor: colors.card, borderColor: colors.border },
 	                        ]}
 	                        onPress={startParty}
@@ -61526,7 +62348,7 @@ useEffect(() => {
                       {t("tamagotchiFullHint")}
                     </Text>
                   )}
-                  </ScrollView>
+                  </View>
               {partyActive && (
                 <>
                   <ConfettiCannon
@@ -61557,12 +62379,18 @@ useEffect(() => {
 	              <View
 	                style={[
 	                  styles.tamagotchiGestureEdge,
-	                  { top: Math.max(84, (safeAreaInsets.top || topSafeInset || 0) + 34) },
+	                  {
+	                    top: Math.max(
+	                      scaleTamagotchiMetric(IS_SHORT_DEVICE ? 156 : 172, 128),
+	                      (safeAreaInsets.top || topSafeInset || 0) + scaleTamagotchiMetric(108, 88)
+	                    ),
+	                    width: scaleTamagotchiMetric(44, 38),
+	                  },
 	                ]}
 	                {...tamagotchiCloseSwipeResponder.panHandlers}
 	              />
 	            </View>
-          </View>
+          </Animated.View>
         </Modal>
         <Modal
           visible={!startupHardLockPendingBeforePaywall && skinPickerVisible}
@@ -61775,10 +62603,10 @@ useEffect(() => {
             visible
             transparent
             animationType="fade"
-            onRequestClose={closeFrequencyReminderPrompt}
+            onRequestClose={() => closeFrequencyReminderPrompt("request_close")}
             statusBarTranslucent
           >
-            <TouchableWithoutFeedback onPress={closeFrequencyReminderPrompt}>
+            <TouchableWithoutFeedback onPress={() => closeFrequencyReminderPrompt("backdrop")}>
               <View style={[styles.quickModalBackdrop, modalKeyboardPaddingStyle]}>
                 <TouchableWithoutFeedback onPress={() => {}}>
                   <View
@@ -61882,7 +62710,7 @@ useEffect(() => {
                       <View style={[styles.quickModalActions, styles.frequencyReminderPromptActions]}>
                         <TouchableOpacity
                           style={[styles.quickModalSecondary, { borderColor: colors.border }]}
-                          onPress={closeFrequencyReminderPrompt}
+                          onPress={() => closeFrequencyReminderPrompt("skip")}
                         >
                           <Text style={[styles.quickModalSecondaryText, { color: colors.muted }]}>
                             {t("frequencyReminderPromptSkip")}
@@ -62433,7 +63261,7 @@ useEffect(() => {
             )}
             {overlay?.type === "save" && (
           <Modal visible transparent animationType="none" statusBarTranslucent>
-            <TouchableWithoutFeedback onPress={handleSaveOverlayPress}>
+            <TouchableWithoutFeedback onPress={() => handleSaveOverlayPress("backdrop")}>
               <View style={styles.saveOverlay}>
                 <View
                   style={[
@@ -62451,8 +63279,8 @@ useEffect(() => {
                   goalCopy={saveOverlayGoalText}
                   goalPrefix={saveOverlayGoalPrefix}
                   coinReward={saveOverlayPayload?.coinReward}
-                  onPrimaryAction={handleSaveOverlayPress}
-                  onCountdownAction={handleSaveOverlayPress}
+                  onPrimaryAction={() => handleSaveOverlayPress("primary")}
+                  onCountdownAction={() => handleSaveOverlayPress("countdown")}
                   playSound={playSound}
                   mascotHappySource={tamagotchiAnimations.happy}
                   autoCountdown={false}
@@ -64649,7 +65477,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   mascotBubbleText: {
-    ...createBodyText({ fontSize: 9, textAlign: "center", lineHeight: 13 }),
+    ...createBodyText({ fontSize: 11, textAlign: "center", lineHeight: 15 }),
     fontWeight: "600",
     flexShrink: 1,
     paddingTop: 0,
@@ -65676,14 +66504,20 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "100%",
     maxWidth: "100%",
-    borderRadius: 30,
+    borderRadius: 28,
     borderWidth: 1,
     overflow: "hidden",
     shadowColor: "#0A1324",
-    shadowOpacity: 0.18,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 14,
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 12,
+  },
+  tamagotchiNoShadow: {
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
   },
   tamagotchiGestureWrapper: {
     ...StyleSheet.absoluteFillObject,
@@ -65697,12 +66531,21 @@ const styles = StyleSheet.create({
     width: TAMAGOTCHI_CLOSE_EDGE_WIDTH,
     bottom: 0,
   },
-  tamagotchiCardScroll: {
-    flex: 1,
-  },
   tamagotchiCardContent: {
+    flex: 1,
     paddingHorizontal: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 14 : 16, 10),
-    gap: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 7 : 9, 4),
+    gap: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 5 : 7, 4),
+  },
+  tamagotchiTopBar: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: scaleTamagotchiMetric(8, 6),
+    minHeight: scaleTamagotchiMetric(44, 34),
+  },
+  tamagotchiTopBarRight: {
+    alignItems: "flex-end",
+    gap: scaleTamagotchiMetric(4, 3),
   },
   tamagotchiStickyRewardWrap: {
     position: "absolute",
@@ -65719,24 +66562,24 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tamagotchiStickyRewardButton: {
-    minWidth: 106,
-    maxWidth: 176,
-    height: 36,
+    minWidth: scaleTamagotchiMetric(102, 88),
+    maxWidth: scaleTamagotchiMetric(158, 132),
+    minHeight: scaleTamagotchiMetric(34, 30),
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    borderRadius: scaleTamagotchiMetric(12, 10),
+    paddingHorizontal: scaleTamagotchiMetric(8, 7),
+    paddingVertical: scaleTamagotchiMetric(4, 3),
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: scaleTamagotchiMetric(5, 4),
     shadowOpacity: 0.2,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    elevation: 6,
   },
   tamagotchiStickyRewardText: {
-    ...createCtaText({ fontSize: 10 }),
-    lineHeight: 12,
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(9.5, 8.5) }),
+    lineHeight: scaleTamagotchiMetric(12, 10),
     flex: 1,
     minWidth: 0,
     flexShrink: 1,
@@ -65744,17 +66587,17 @@ const styles = StyleSheet.create({
   tamagotchiStickyCoinsPill: {
     borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: scaleTamagotchiMetric(8, 6),
+    paddingVertical: scaleTamagotchiMetric(3, 2),
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-start",
-    gap: 8,
+    gap: scaleTamagotchiMetric(6, 4),
     shadowColor: "#0A1324",
     shadowOpacity: 0.16,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
+    elevation: 4,
   },
   tamagotchiStickyCoinToken: {
     flexDirection: "row",
@@ -65762,25 +66605,25 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tamagotchiStickyCoinsIcon: {
-    width: 14,
-    height: 14,
+    width: scaleTamagotchiMetric(14, 12),
+    height: scaleTamagotchiMetric(14, 12),
   },
   tamagotchiStickyCoinsValue: {
-    ...createCtaText({ fontSize: 11 }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(10.5, 9) }),
   },
   tamagotchiHeader: {
-    minHeight: scaleTamagotchiMetric(38, 30),
+    minHeight: scaleTamagotchiMetric(34, 28),
   },
   tamagotchiBackButton: {
-    minWidth: 66,
-    height: 34,
-    borderRadius: 10,
+    minWidth: scaleTamagotchiMetric(68, 58),
+    height: scaleTamagotchiMetric(34, 30),
+    borderRadius: scaleTamagotchiMetric(11, 9),
     borderWidth: 1,
-    paddingHorizontal: 8,
+    paddingHorizontal: scaleTamagotchiMetric(8, 6),
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
+    gap: scaleTamagotchiMetric(4, 3),
     marginTop: 0,
     shadowOpacity: 0.16,
     shadowRadius: 8,
@@ -65794,11 +66637,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   tamagotchiBackButtonArrow: {
-    ...createCtaText({ fontSize: 14 }),
-    lineHeight: 14,
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(14, 12) }),
+    lineHeight: scaleTamagotchiMetric(14, 12),
   },
   tamagotchiBackButtonText: {
-    ...createCtaText({ fontSize: 11 }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(10.5, 9.5) }),
   },
   tamagotchiHeaderTextWrap: {
     flex: 1,
@@ -65809,13 +66652,13 @@ const styles = StyleSheet.create({
   tamagotchiHeaderLine: {
     flexDirection: "row",
     alignItems: "center",
-    gap: scaleTamagotchiMetric(6, 3),
+    gap: scaleTamagotchiMetric(5, 3),
     minHeight: scaleTamagotchiMetric(34, 26),
   },
   tamagotchiTitle: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 25 : 28, 21),
-    lineHeight: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 27 : 30, 22),
+    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 23 : 26, 19),
+    lineHeight: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 25 : 28, 20),
     textAlign: "left",
     flexShrink: 0,
   },
@@ -65828,11 +66671,11 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   tamagotchiStatsStack: {
-    gap: scaleTamagotchiMetric(5, 3),
+    gap: scaleTamagotchiMetric(4, 2),
     borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(18, 12),
-    paddingHorizontal: scaleTamagotchiMetric(10, 8),
-    paddingVertical: scaleTamagotchiMetric(10, 8),
+    borderRadius: scaleTamagotchiMetric(16, 12),
+    paddingHorizontal: scaleTamagotchiMetric(9, 7),
+    paddingVertical: scaleTamagotchiMetric(8, 6),
     shadowColor: "#0A1324",
     shadowOpacity: 0.08,
     shadowRadius: 10,
@@ -65845,13 +66688,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   tamagotchiStatLabel: {
-    ...createBodyText({ fontSize: scaleTamagotchiMetric(12, 10) }),
+    ...createBodyText({ fontSize: scaleTamagotchiMetric(11, 9.5) }),
   },
   tamagotchiStatValue: {
-    ...createBodyText({ fontSize: scaleTamagotchiMetric(14, 12), fontWeight: "700" }),
+    ...createBodyText({ fontSize: scaleTamagotchiMetric(13, 11), fontWeight: "700" }),
   },
   tamagotchiProgress: {
-    height: scaleTamagotchiMetric(10, 7),
+    height: scaleTamagotchiMetric(9, 7),
     borderRadius: 999,
     overflow: "hidden",
   },
@@ -65862,16 +66705,16 @@ const styles = StyleSheet.create({
   tamagotchiActions: {
     flexDirection: "row",
     gap: scaleTamagotchiMetric(8, 5),
-    marginTop: scaleTamagotchiMetric(5, 3),
-    marginBottom: scaleTamagotchiMetric(4, 2),
+    marginTop: scaleTamagotchiMetric(3, 2),
+    marginBottom: scaleTamagotchiMetric(2, 1),
   },
   tamagotchiActionsSingle: {
-    marginTop: scaleTamagotchiMetric(7, 4),
+    marginTop: scaleTamagotchiMetric(4, 3),
   },
   tamagotchiButton: {
     flex: 1,
-    paddingVertical: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 10 : 11, 7),
-    borderRadius: scaleTamagotchiMetric(14, 11),
+    paddingVertical: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 9 : 10, 7),
+    borderRadius: scaleTamagotchiMetric(13, 10),
     borderWidth: 1,
     alignItems: "center",
     shadowColor: "#0A1324",
@@ -65889,8 +66732,8 @@ const styles = StyleSheet.create({
     gap: scaleTamagotchiMetric(6, 4),
   },
   tamagotchiButtonIcon: {
-    width: scaleTamagotchiMetric(18, 13),
-    height: scaleTamagotchiMetric(18, 13),
+    width: scaleTamagotchiMetric(16, 12),
+    height: scaleTamagotchiMetric(16, 12),
   },
   tamagotchiRewardIcon: {
     fontSize: scaleTamagotchiMetric(15, 11),
@@ -65900,10 +66743,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(24, 16),
-    paddingTop: scaleTamagotchiMetric(12, 8),
-    paddingBottom: scaleTamagotchiMetric(8, 6),
-    marginBottom: scaleTamagotchiMetric(2, 1),
+    borderRadius: scaleTamagotchiMetric(20, 15),
+    paddingTop: scaleTamagotchiMetric(8, 6),
+    paddingBottom: scaleTamagotchiMetric(6, 4),
+    marginBottom: scaleTamagotchiMetric(1, 1),
     overflow: "hidden",
     shadowColor: "#0A1324",
     shadowOpacity: 0.14,
@@ -65913,18 +66756,18 @@ const styles = StyleSheet.create({
   },
   tamagotchiPreviewAura: {
     position: "absolute",
-    top: -scaleTamagotchiMetric(28, 18),
-    width: scaleTamagotchiMetric(208, 146),
-    height: scaleTamagotchiMetric(158, 112),
-    borderRadius: scaleTamagotchiMetric(104, 73),
+    top: -scaleTamagotchiMetric(30, 18),
+    width: scaleTamagotchiMetric(186, 136),
+    height: scaleTamagotchiMetric(138, 102),
+    borderRadius: scaleTamagotchiMetric(96, 68),
   },
   tamagotchiPreviewAuraSecondary: {
     position: "absolute",
-    bottom: -scaleTamagotchiMetric(34, 22),
-    right: -scaleTamagotchiMetric(24, 15),
-    width: scaleTamagotchiMetric(142, 100),
-    height: scaleTamagotchiMetric(108, 76),
-    borderRadius: scaleTamagotchiMetric(88, 62),
+    bottom: -scaleTamagotchiMetric(28, 18),
+    right: -scaleTamagotchiMetric(22, 14),
+    width: scaleTamagotchiMetric(128, 92),
+    height: scaleTamagotchiMetric(96, 70),
+    borderRadius: scaleTamagotchiMetric(80, 56),
   },
   tamagotchiMascotWrap: {
     position: "relative",
@@ -65932,7 +66775,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: "84%",
     alignSelf: "center",
-    minHeight: scaleTamagotchiMetric(152, 108),
+    minHeight: scaleTamagotchiMetric(128, 96),
   },
   tamagotchiMascotWrapCleanHighlight: {
     borderWidth: 2,
@@ -65943,8 +66786,8 @@ const styles = StyleSheet.create({
     elevation: 7,
   },
   tamagotchiMascotLarge: {
-    width: scaleTamagotchiMetric(126, 94),
-    height: scaleTamagotchiMetric(126, 94),
+    width: scaleTamagotchiMetric(110, 86),
+    height: scaleTamagotchiMetric(110, 86),
   },
   tamagotchiToyOrbit: {
     position: "absolute",
@@ -65965,11 +66808,11 @@ const styles = StyleSheet.create({
   },
   tamagotchiReactionBubble: {
     borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(14, 11),
-    paddingHorizontal: scaleTamagotchiMetric(10, 8),
-    paddingVertical: scaleTamagotchiMetric(7, 5),
-    minHeight: scaleTamagotchiMetric(40, 32),
-    maxWidth: "72%",
+    borderRadius: scaleTamagotchiMetric(13, 10),
+    paddingHorizontal: scaleTamagotchiMetric(8, 7),
+    paddingVertical: scaleTamagotchiMetric(6, 4),
+    minHeight: scaleTamagotchiMetric(34, 28),
+    maxWidth: "74%",
     flexShrink: 1,
     marginLeft: scaleTamagotchiMetric(2, 1),
     alignItems: "center",
@@ -65981,8 +66824,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   tamagotchiReactionBubbleText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(12, 10), textAlign: "center" }),
-    lineHeight: scaleTamagotchiMetric(16, 13),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(11, 9.5), textAlign: "center" }),
+    lineHeight: scaleTamagotchiMetric(14, 12),
     flexShrink: 1,
     includeFontPadding: false,
     textAlignVertical: "center",
@@ -66049,24 +66892,24 @@ const styles = StyleSheet.create({
   },
   tamagotchiFoodTitle: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: scaleTamagotchiMetric(22, 17),
-    lineHeight: scaleTamagotchiMetric(25, 19),
-    marginTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 5 : 6, 3),
-    marginBottom: scaleTamagotchiMetric(4, 2),
+    fontSize: scaleTamagotchiMetric(18, 15),
+    lineHeight: scaleTamagotchiMetric(21, 17),
+    marginTop: scaleTamagotchiMetric(3, 2),
+    marginBottom: scaleTamagotchiMetric(3, 2),
     position: "relative",
     zIndex: 4,
   },
   tamagotchiTabsRow: {
     flexDirection: "row",
-    gap: scaleTamagotchiMetric(8, 5),
-    marginTop: scaleTamagotchiMetric(4, 2),
+    gap: scaleTamagotchiMetric(6, 4),
+    marginTop: scaleTamagotchiMetric(2, 1),
   },
   tamagotchiTabButton: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(12, 9),
-    paddingVertical: scaleTamagotchiMetric(7, 5),
-    paddingHorizontal: scaleTamagotchiMetric(6, 4),
+    borderRadius: scaleTamagotchiMetric(11, 9),
+    paddingVertical: scaleTamagotchiMetric(6, 5),
+    paddingHorizontal: scaleTamagotchiMetric(5, 4),
     alignItems: "center",
     justifyContent: "center",
     ...Platform.select({
@@ -66081,215 +66924,165 @@ const styles = StyleSheet.create({
     }),
   },
   tamagotchiTabButtonText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(11, 9) }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(10.5, 9) }),
   },
   tamagotchiTabContentWrap: {
-    minHeight: scaleTamagotchiMetric(146, 110),
+    flex: 1,
     marginTop: 0,
     overflow: "hidden",
   },
-  tamagotchiFoodList: {
-    marginTop: 0,
-    paddingTop: scaleTamagotchiMetric(10, 6),
-    paddingBottom: scaleTamagotchiMetric(2, 1),
-  },
-  tamagotchiFoodScroll: {
-    height: Math.max(
-      scaleTamagotchiMetric(166, 144),
-      scaleTamagotchiMetric(
-        Math.min(IS_SHORT_DEVICE ? 274 : 308, SCREEN_HEIGHT * (IS_SHORT_DEVICE ? 0.36 : 0.4)),
-        156
-      )
-    ),
-    overflow: "hidden",
-  },
-  tamagotchiFoodButton: {
+  tamagotchiOptionGrid: {
     flexDirection: "row",
-    alignItems: "center",
+    flexWrap: "wrap",
+    gap: scaleTamagotchiMetric(7, 5),
+    alignContent: "flex-start",
+  },
+  tamagotchiOptionCard: {
+    width: "48.5%",
     borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(16, 12),
-    paddingTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 10 : 11, 7),
-    paddingBottom: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 7 : 8, 5),
-    paddingHorizontal: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 10 : 11, 7),
-    gap: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 8 : 9, 5),
-    position: "relative",
-    marginBottom: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 4 : 5, 3),
+    borderRadius: scaleTamagotchiMetric(14, 11),
+    paddingHorizontal: scaleTamagotchiMetric(8, 6),
+    paddingVertical: scaleTamagotchiMetric(7, 6),
+    minHeight: scaleTamagotchiMetric(94, 82),
+    gap: scaleTamagotchiMetric(3, 2),
     ...Platform.select({
       android: {
         elevation: 0,
       },
       default: {
-        shadowOpacity: 0.1,
+        shadowOpacity: 0.12,
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 4 },
       },
     }),
   },
-  tamagotchiFoodButtonWanted: {
-    ...Platform.select({
-      android: {
-        elevation: 0,
-      },
-      default: {
-        shadowOpacity: 0.2,
-        shadowRadius: 14,
-        shadowOffset: { width: 0, height: 8 },
-      },
-    }),
-    paddingTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 13 : 14, 10),
+  tamagotchiOptionCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: scaleTamagotchiMetric(22, 18),
   },
-  tamagotchiFoodButtonLast: {
-    marginBottom: 0,
+  tamagotchiOptionEmoji: {
+    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 20 : 22, 16),
   },
-  tamagotchiFoodButtonDisabled: {
-    opacity: 0.5,
-  },
-  tamagotchiFoodEmoji: {
-    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 21 : 24, 16),
-  },
-  tamagotchiFoodInfo: {
-    flex: 1,
-    gap: 1,
-  },
-  tamagotchiFoodLabel: {
+  tamagotchiOptionLabel: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 13 : 14, 10),
+    fontSize: scaleTamagotchiMetric(13, 10),
   },
-  tamagotchiFoodBoost: {
-    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 10 : 11, 9) }),
+  tamagotchiOptionSub: {
+    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(10, 8.5) }),
+  },
+  tamagotchiOptionMetaRow: {
+    marginTop: "auto",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: scaleTamagotchiMetric(6, 4),
+    minHeight: scaleTamagotchiMetric(18, 16),
+  },
+  tamagotchiOptionBadge: {
+    borderRadius: 999,
+    paddingHorizontal: scaleTamagotchiMetric(7, 6),
+    paddingVertical: scaleTamagotchiMetric(2.5, 2),
+    maxWidth: "68%",
+  },
+  tamagotchiOptionBadgeText: {
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(8.5, 7.8), textTransform: "uppercase" }),
+    letterSpacing: 0.35,
+    lineHeight: scaleTamagotchiMetric(10, 9),
   },
   tamagotchiFoodCost: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
   },
-  tamagotchiToyMetaWrap: {
-    alignItems: "flex-end",
-    justifyContent: "center",
-    minWidth: scaleTamagotchiMetric(62, 46),
-    gap: scaleTamagotchiMetric(1, 1),
-  },
   tamagotchiFoodCostIcon: {
-    width: scaleTamagotchiMetric(16, 12),
-    height: scaleTamagotchiMetric(16, 12),
+    width: scaleTamagotchiMetric(14, 12),
+    height: scaleTamagotchiMetric(14, 12),
   },
   tamagotchiFoodCostText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(12, 9) }),
-  },
-  tamagotchiToyPenaltyWrap: {
-    alignItems: "flex-end",
-    justifyContent: "center",
-    minWidth: 44,
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(11, 9.5) }),
   },
   tamagotchiToyPenaltyText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(12, 10) }),
-    lineHeight: scaleTamagotchiMetric(14, 11),
-  },
-  tamagotchiToyPenaltySub: {
-    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(10, 9) }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(10.5, 9.2) }),
     lineHeight: scaleTamagotchiMetric(12, 10),
   },
-  tamagotchiFoodBadge: {
-    position: "absolute",
-    top: -8,
-    right: 8,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.28)",
-    alignItems: "center",
-    justifyContent: "center",
-    maxWidth: SCREEN_WIDTH * 0.55,
-    shadowColor: "#0A1324",
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-    zIndex: 10,
-  },
-  tamagotchiFoodBadgeText: {
-    ...createCtaText({ fontSize: 9, textTransform: "uppercase" }),
-    letterSpacing: 0.45,
-    flexShrink: 1,
-    textAlign: "center",
-    lineHeight: 10,
-  },
   tamagotchiSub: {
-    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(11, 9) }),
+    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(10, 8.5) }),
   },
   tamagotchiCleanPanel: {
-    marginTop: scaleTamagotchiMetric(2, 1),
-    gap: scaleTamagotchiMetric(6, 3),
+    flex: 1,
+    marginTop: scaleTamagotchiMetric(1, 1),
+    gap: scaleTamagotchiMetric(5, 3),
   },
   tamagotchiCleanStepsCard: {
     borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    gap: 4,
+    borderRadius: scaleTamagotchiMetric(12, 10),
+    paddingVertical: scaleTamagotchiMetric(5, 4),
+    paddingHorizontal: scaleTamagotchiMetric(7, 6),
+    gap: scaleTamagotchiMetric(3, 2),
   },
   tamagotchiCleanStepsRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: scaleTamagotchiMetric(5, 4),
   },
   tamagotchiCleanStepChip: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 4,
-    paddingHorizontal: 6,
+    borderRadius: scaleTamagotchiMetric(9, 8),
+    paddingVertical: scaleTamagotchiMetric(3, 2),
+    paddingHorizontal: scaleTamagotchiMetric(5, 4),
   },
   tamagotchiCleanStepChipText: {
-    ...createCtaText({ fontSize: 10, textAlign: "center" }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(9.5, 8.5), textAlign: "center" }),
   },
   tamagotchiCleanStepArrow: {
-    ...createCtaText({ fontSize: 12 }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(11, 10) }),
   },
   tamagotchiCleanHint: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(12, 10), textAlign: "center" }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(11, 9.5), textAlign: "center" }),
     textAlign: "center",
   },
   tamagotchiCleanTapHint: {
-    ...createBodyText({ fontSize: scaleTamagotchiMetric(11, 9), textAlign: "center" }),
+    ...createBodyText({ fontSize: scaleTamagotchiMetric(10, 8.5), textAlign: "center" }),
     fontWeight: "700",
   },
   tamagotchiCleanToolsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 6,
+    gap: scaleTamagotchiMetric(6, 4),
   },
   tamagotchiCleanToolButton: {
-    width: "48%",
+    width: "48.5%",
     borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    gap: 5,
-    minHeight: 112,
+    borderRadius: scaleTamagotchiMetric(12, 10),
+    paddingVertical: scaleTamagotchiMetric(5, 4),
+    paddingHorizontal: scaleTamagotchiMetric(7, 6),
+    gap: scaleTamagotchiMetric(4, 3),
+    minHeight: scaleTamagotchiMetric(96, 82),
   },
   tamagotchiCleanToolTop: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 6,
+    gap: scaleTamagotchiMetric(5, 4),
   },
   tamagotchiCleanToolEmoji: {
-    fontSize: 16,
+    fontSize: scaleTamagotchiMetric(15, 13),
   },
   tamagotchiCleanToolTitleWrap: {
     flex: 1,
-    gap: 2,
+    gap: scaleTamagotchiMetric(2, 1),
   },
   tamagotchiCleanToolLabel: {
-    ...createBodyText({ fontSize: 11 }),
+    ...createBodyText({ fontSize: scaleTamagotchiMetric(10, 9) }),
     flex: 1,
   },
   tamagotchiCleanToolBarWrap: {
-    gap: 4,
+    gap: scaleTamagotchiMetric(3, 2),
   },
   tamagotchiCleanToolBarTrack: {
-    height: 6,
+    height: scaleTamagotchiMetric(6, 5),
     borderRadius: 999,
     overflow: "hidden",
   },
@@ -66298,21 +67091,21 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   tamagotchiCleanToolAmountText: {
-    ...createSecondaryText({ fontSize: 9 }),
+    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(8.8, 8) }),
   },
   tamagotchiCleanToolActionButton: {
     marginTop: 1,
-    height: 36,
+    height: scaleTamagotchiMetric(32, 28),
     borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+    borderRadius: scaleTamagotchiMetric(9, 8),
+    paddingVertical: scaleTamagotchiMetric(4, 3),
+    paddingHorizontal: scaleTamagotchiMetric(7, 6),
     alignItems: "center",
     justifyContent: "center",
   },
   tamagotchiCleanToolActionText: {
-    ...createCtaText({ fontSize: 10 }),
-    lineHeight: 12,
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(9.5, 8.5) }),
+    lineHeight: scaleTamagotchiMetric(11, 10),
     width: "100%",
     textAlign: "center",
   },
@@ -66324,8 +67117,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tamagotchiCleanSupplyHint: {
-    ...createSecondaryText({ fontSize: 11, textAlign: "center" }),
-    marginTop: 2,
+    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(10, 8.8), textAlign: "center" }),
+    marginTop: scaleTamagotchiMetric(1, 1),
   },
   tamagotchiCleanTapButton: {
     marginTop: 2,
@@ -66339,8 +67132,8 @@ const styles = StyleSheet.create({
     ...createCtaText({ fontSize: 13 }),
   },
   tamagotchiHint: {
-    ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
-    marginTop: 2,
+    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(10.5, 9), textAlign: "center" }),
+    marginTop: scaleTamagotchiMetric(1, 1),
   },
   tamagotchiClose: {
     alignSelf: "center",
@@ -67015,11 +67808,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 12,
-    elevation: 3,
+    shadowColor: "transparent",
+    shadowOpacity: 0,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 0,
+    elevation: 0,
   },
   dailyRewardModalCoinIcon: {
     width: IS_SHORT_DEVICE ? 44 : 52,
@@ -69397,22 +70190,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   progressGoalTitle: {
-    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+    fontFamily: INTER_FONTS.semiBold,
+    fontSize: 12,
+    letterSpacing: CTA_LETTER_SPACING,
+    textTransform: "uppercase",
   },
   progressGoalEmoji: {
     fontSize: 20,
   },
   progressGoalName: {
-    ...createBodyText({ fontSize: 16, fontWeight: "700" }),
+    fontFamily: INTER_FONTS.bold,
+    fontSize: 18,
+    lineHeight: 22,
   },
   progressGoalMeta: {
-    ...createSecondaryText({ fontSize: 12 }),
+    fontFamily: INTER_FONTS.light,
+    fontSize: 13,
+    lineHeight: 17,
   },
   progressGoalRingRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    marginTop: 4,
+    alignSelf: "flex-start",
+    gap: 14,
+    marginTop: 6,
   },
   progressGoalRingWrap: {
     width: 76,
@@ -69429,18 +70230,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   progressGoalRingText: {
-    gap: 2,
-    flex: 1,
-    minWidth: 0,
     minHeight: 76,
     justifyContent: "center",
+    alignItems: "flex-start",
   },
   progressGoalPercent: {
-    fontSize: 18,
+    fontSize: 24,
+    lineHeight: 28,
     fontWeight: "800",
   },
   progressGoalTarget: {
-    ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
+    fontFamily: INTER_FONTS.medium,
+    fontSize: 14,
+    lineHeight: 18,
+    textAlign: "center",
   },
   progressCoinCard: {
     flex: 1,
@@ -71476,6 +72279,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
+  },
+  fridgeItemTapArea: {
+    gap: 10,
   },
   fridgeItemTitleRow: {
     flexDirection: "row",
@@ -77043,6 +77849,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "visible",
   },
   personaCard: {
     width: "48%",
@@ -77053,6 +77860,8 @@ const styles = StyleSheet.create({
   },
   personaEmoji: {
     fontSize: 26,
+    lineHeight: 30,
+    textAlign: "center",
   },
   personaTitle: {
     ...createBodyText({ fontWeight: "700", fontSize: 14, lineHeight: 18 }),
@@ -77129,17 +77938,23 @@ const styles = StyleSheet.create({
     flex: 1,
     borderWidth: 1,
     borderRadius: 20,
-    paddingVertical: 11,
-    minHeight: 58,
+    paddingVertical: 10,
+    minHeight: 64,
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
-    overflow: "hidden",
+    gap: 4,
+    overflow: "visible",
   },
   genderChipModernAndroid: {
-    minHeight: 76,
-    paddingVertical: 12,
+    minHeight: 80,
+    paddingVertical: 10,
     gap: 4,
+  },
+  genderEmojiWrap: {
+    minHeight: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "visible",
   },
   genderChip: {
     flex: 1,
@@ -77150,18 +77965,19 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   genderEmoji: {
-    fontSize: 18,
-    lineHeight: 20,
-    includeFontPadding: false,
+    fontSize: 20,
+    lineHeight: 24,
+    textAlign: "center",
   },
   genderLabel: {
     ...createBodyText({ fontWeight: "600", fontSize: 14, lineHeight: 18, textAlign: "center" }),
+    width: "100%",
   },
   genderLabelAndroid: {
-    fontSize: 12,
-    lineHeight: 16,
-    includeFontPadding: false,
+    fontSize: 13,
+    lineHeight: 17,
     textAlign: "center",
+    width: "100%",
   },
   languageButton: {
     flexGrow: 1,
@@ -79547,12 +80363,13 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, 
                     ]}
                     onPress={() => onChange("gender", option.id)}
                   >
-                    <Text style={styles.genderEmoji}>{option.emoji}</Text>
+                    <View style={styles.genderEmojiWrap}>
+                      <Text style={styles.genderEmoji}>{option.emoji}</Text>
+                    </View>
                     <Text
                       style={[styles.genderLabel, isAndroid ? styles.genderLabelAndroid : null, { color: "#241C38" }]}
-                      numberOfLines={isAndroid ? 1 : 2}
-                      adjustsFontSizeToFit={!isAndroid}
-                      minimumFontScale={isAndroid ? undefined : 0.82}
+                      numberOfLines={2}
+                      ellipsizeMode="tail"
                     >
                       {genderLabel}
                     </Text>
@@ -82720,9 +83537,16 @@ function NewPendingModal({
   onChange,
   onSubmit,
   onCancel,
+  titleText = null,
+  subtitleText = null,
+  submitText = null,
   keyboardOffset = 0,
 }) {
   const keyboardPaddingStyle = keyboardOffset ? { paddingBottom: keyboardOffset } : null;
+  const resolvedTitle = typeof titleText === "string" && titleText.length ? titleText : t("newPendingTitle");
+  const resolvedSubtitle =
+    typeof subtitleText === "string" ? subtitleText : t("newPendingSubtitle");
+  const resolvedSubmit = typeof submitText === "string" && submitText.length ? submitText : t("newPendingCreate");
   return (
     <Modal
       visible={visible}
@@ -82742,8 +83566,10 @@ function NewPendingModal({
                 showsVerticalScrollIndicator={false}
                 nestedScrollEnabled
               >
-                <Text style={[styles.quickModalTitle, { color: colors.text }]}>{t("newPendingTitle")}</Text>
-                <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>{t("newPendingSubtitle")}</Text>
+                <Text style={[styles.quickModalTitle, { color: colors.text }]}>{resolvedTitle}</Text>
+                {resolvedSubtitle ? (
+                  <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>{resolvedSubtitle}</Text>
+                ) : null}
                 <View style={{ gap: 8, width: "100%" }}>
                   <TextInput
                     style={[
@@ -82802,7 +83628,7 @@ function NewPendingModal({
                     onPress={onSubmit}
                   >
                     <Text style={[styles.quickModalPrimaryText, { color: colors.background }]}>
-                      {t("newPendingCreate")}
+                      {resolvedSubmit}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -84658,7 +85484,7 @@ function LanguageScreen({
                           fontWeight: "600",
                         }}
                       >
-                        {getCurrencyDisplayCode(currency)}
+                        {String(currency || "").trim().toUpperCase()}
                       </Text>
                     </OnboardingScaleButton>
                   );
