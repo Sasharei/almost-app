@@ -121,7 +121,7 @@ const REGION_BY_CURRENCY = {
 const DEFAULT_LOSS_WINDOW_DAYS = 30;
 
 const SOFT_TITLE_BY_LANGUAGE = {
-  ru: "За последние {{days}} дней ты мог(ла) сохранить ещё {{amount}}.",
+  ru: "За последние {{days}} дней вы могли сохранить ещё {{amount}}.",
   en: "In the last {{days}} days, you could have saved {{amount}} more.",
   es: "En los últimos {{days}} días, podrías haber ahorrado {{amount}} más.",
   fr: "Sur les {{days}} derniers jours, tu aurais pu économiser {{amount}} de plus.",
@@ -140,7 +140,7 @@ const SOFT_FRESH_START_TITLE_BY_LANGUAGE = {
 };
 
 const HARD_TITLE_BY_LANGUAGE = {
-  ru: "Ты уже экономишь. Но ещё {{amount}} за {{days}} дней можно было не потерять.",
+  ru: "Вы уже экономите. Но ещё {{amount}} за {{days}} дней можно было не потерять.",
   en: "You are already saving. But {{amount}} over {{days}} days could still be kept.",
   es: "Ya estás ahorrando. Pero aún podrías conservar {{amount}} en {{days}} días.",
   fr: "Tu économises déjà. Mais tu pourrais encore conserver {{amount}} sur {{days}} jours.",
@@ -326,7 +326,7 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       lossTitle:
         "Люди, которые видят персональные отчёты и советы по оптимизации расходов, экономят в среднем на 30% больше.",
       lossSubtitle:
-        "Отчёты показывают конкретные шаги по твоим категориям, а не общие советы.",
+        "Отчёты показывают конкретные шаги по вашим категориям, а не общие советы.",
     },
     {
       id: "multipleGoals",
@@ -345,7 +345,7 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       premium: true,
       lossTitle: "Impulse-карта может вернуть {{amount}} за {{days}} дней.",
       lossSubtitle:
-        "Карта показывает, где и в какие моменты ты чаще срываешься, чтобы перехватить трату до оплаты.",
+        "Карта показывает, где и в какие моменты вы чаще срываетесь, чтобы перехватить трату до оплаты.",
     },
     {
       id: "unlimitedChallenges",
@@ -354,7 +354,7 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       free: false,
       premium: true,
       lossTitle: "Челленджи усиливают дисциплину: регулярные участники сохраняют заметно больше уже в первые недели.",
-      lossSubtitle: "Больше челленджей = больше точек контроля, где ты не даёшь деньгам утечь.",
+      lossSubtitle: "Больше челленджей = больше точек контроля, где вы не даёте деньгам утечь.",
     },
     {
       id: "customTemptationCards",
@@ -372,7 +372,7 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       free: false,
       premium: true,
       lossTitle: "Пользователи с Home Screen виджетами в среднем сохраняют в 1.4x больше денег.",
-      lossSubtitle: "Ты видишь лимит до покупки и реже тратишь на автомате.",
+      lossSubtitle: "Вы видите лимит до покупки и реже тратите на автомате.",
     },
     {
       id: "levelUnlocks",
@@ -380,7 +380,7 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       free: false,
       premium: true,
       lossTitle:
-        "Пока функции закрыты уровнями, ты теряешь инструменты, которые могли вернуть ещё {{amount}} за {{days}} дней.",
+        "Пока функции закрыты уровнями, вы теряете инструменты, которые могли вернуть ещё {{amount}} за {{days}} дней.",
       lossSubtitle: "Premium снимает все ограничения сразу, без ожидания.",
     },
     {
@@ -781,7 +781,7 @@ const SOFT_FRESH_START_PSYCHOLOGY_LINE_BY_LANGUAGE = {
 };
 
 const SOFT_MARKETING_LINE_BY_LANGUAGE = {
-  ru: "Premium стоит {{monthly}}. С инструментами контроля ты можешь вернуть до {{amount}} за следующие {{days}} дней.",
+  ru: "Premium стоит {{monthly}}. С инструментами контроля вы можете вернуть до {{amount}} за следующие {{days}} дней.",
   en: "Premium is {{monthly}}. With the full toolkit, you can recover up to {{amount}} over the next {{days}} days.",
   es: "Premium cuesta {{monthly}}. Con el kit completo, puedes recuperar hasta {{amount}} en los próximos {{days}} días.",
   fr: "Premium coûte {{monthly}}. Avec tous les outils, tu peux récupérer jusqu'à {{amount}} sur les {{days}} prochains jours.",
@@ -854,7 +854,7 @@ const GROUP_C_SUPPORT_INTRO_BADGE_BY_LANGUAGE = {
   zh: "开发者来信",
 };
 const GROUP_C_SUPPORT_5_SAVES_TITLE_BY_LANGUAGE = {
-  ru: "Ты уже сэкономил(а) {{saved}}! Это мощный старт.",
+  ru: "Вы уже сэкономили {{saved}}! Это мощный старт.",
   en: "You've already saved {{saved}}! That's an incredible start.",
   es: "Ya has ahorrado {{saved}}. ¡Es un comienzo increíble!",
   fr: "Tu as déjà économisé {{saved}}. C'est un départ incroyable !",
@@ -863,7 +863,7 @@ const GROUP_C_SUPPORT_5_SAVES_TITLE_BY_LANGUAGE = {
   zh: "你已经省下了 {{saved}}！这是非常棒的开始。",
 };
 const GROUP_C_SUPPORT_5_SAVES_SUBTITLE_BY_LANGUAGE = {
-  ru: "Ты большой молодец. Прочитай личное сообщение от создателя и продолжай в том же духе.",
+  ru: "Вы большой молодец. Прочитайте личное сообщение от создателя и продолжайте в том же духе.",
   en: "You're doing great. Read a personal note from the creator and keep going.",
   es: "Lo estás haciendo muy bien. Lee un mensaje personal del creador y sigue así.",
   fr: "Tu te débrouilles très bien. Lis un message personnel du créateur et continue comme ça.",
@@ -890,7 +890,7 @@ const GROUP_C_SUPPORT_STATUS_BY_LANGUAGE = {
   zh: "刚刚",
 };
 const GROUP_C_SUPPORT_MESSAGE_BY_LANGUAGE = {
-  ru: "Привет! Это Александр, создатель Almost. Я вижу, что ты уже делаешь первые шаги на пути к своей финансовой цели, и поздравляю тебя с этим! Желаю тебе успехов в этом непростом пути, и уверен, что у тебя всё получится. Также надеюсь, что и у меня получится развивать Almost и выполнить миссию: создать лучший инструмент, который помогает людям. Буду очень признателен, если у тебя будет возможность поддержать Almost подпиской. Almost Premium даёт много полезных и классных инструментов для достижения финансовых целей, и я продолжу развивать проект. Все подписчики Premium автоматически будут получать новые фишки приложения. Заранее спасибо!",
+  ru: "Привет! Это Александр, создатель Almost. Я вижу, что вы уже делаете первые шаги на пути к своей финансовой цели, и поздравляю вас с этим! Желаю вам успехов в этом непростом пути и уверен, что у вас всё получится. Также надеюсь, что и у меня получится развивать Almost и выполнить миссию: создать лучший инструмент, который помогает людям. Буду очень признателен, если у вас будет возможность поддержать Almost подпиской. Almost Premium даёт много полезных и классных инструментов для достижения финансовых целей, и я продолжу развивать проект. Все подписчики Premium автоматически будут получать новые фишки приложения. Заранее спасибо!",
   en: "Hi! I'm Alexander, the creator of Almost. I can see you are already taking your first steps toward your financial goal, and I want to congratulate you. I wish you success on this difficult path, and I truly believe you can do it. I also hope I can keep growing Almost and fulfill the mission of building the best tool that helps people. I would be very grateful if you could support Almost with a subscription. Almost Premium includes many useful and powerful tools for reaching financial goals, and I will keep improving the project. All Premium subscribers automatically get every new feature in the app. Thank you in advance!",
   es: "Hola, soy Alexander, el creador de Almost. Veo que ya estás dando tus primeros pasos hacia tu meta financiera y quiero felicitarte por ello. Te deseo mucho éxito en este camino, y de verdad creo que lo vas a lograr. También espero poder seguir desarrollando Almost y cumplir la misión de crear la mejor herramienta para ayudar a las personas. Te agradecería muchísimo si puedes apoyar Almost con una suscripción. Almost Premium incluye muchas funciones útiles y potentes para alcanzar metas financieras, y yo seguiré mejorando el proyecto. Todos los suscriptores Premium reciben automáticamente cada nueva función de la app. ¡Gracias de antemano!",
   fr: "Salut ! Je suis Alexandre, le créateur d'Almost. Je vois que tu fais déjà tes premiers pas vers ton objectif financier, et je tiens à te féliciter. Je te souhaite beaucoup de réussite sur ce chemin exigeant, et je crois sincèrement que tu vas y arriver. J'espère aussi pouvoir continuer à faire grandir Almost et à accomplir notre mission : créer le meilleur outil pour aider les gens. Je te serais très reconnaissant si tu pouvais soutenir Almost avec un abonnement. Almost Premium donne accès à de nombreux outils utiles et puissants pour atteindre tes objectifs financiers, et je continuerai à faire évoluer le projet. Tous les abonnés Premium reçoivent automatiquement chaque nouvelle fonctionnalité de l'application. Merci d'avance !",
@@ -908,7 +908,7 @@ const GROUP_C_SUPPORT_PRIMARY_CTA_BY_LANGUAGE = {
   zh: "支持 Almost",
 };
 const GROUP_C_SUPPORT_HINT_BY_LANGUAGE = {
-  ru: "На следующем экране выбери подходящий план Premium.",
+  ru: "На следующем экране выберите подходящий план Premium.",
   en: "On the next screen, choose the Premium plan that fits you.",
   es: "En la siguiente pantalla, elige el plan Premium que mejor te encaje.",
   fr: "Sur l'écran suivant, choisis l'abonnement Premium qui te convient.",
@@ -917,7 +917,7 @@ const GROUP_C_SUPPORT_HINT_BY_LANGUAGE = {
   zh: "下一步请选择最适合你的 Premium 方案。",
 };
 const GROUP_C_SUPPORT_PLAN_TITLE_BY_LANGUAGE = {
-  ru: "Поддержи Almost и усили свой прогресс.",
+  ru: "Поддержите Almost и усилите свой прогресс.",
   en: "Support Almost and boost your progress.",
   es: "Apoya Almost y acelera tu progreso.",
   fr: "Soutiens Almost et accélère tes progrès.",
@@ -1254,7 +1254,7 @@ const PAYWALL_TITLE_FREE_WORD_BY_LANGUAGE = {
   zh: "免费",
 };
 const PAYWALL_UNIFIED_TITLE_BY_LANGUAGE = {
-  ru: "Мы хотим, чтобы ты попробовал Almost {{freeWord}}!",
+  ru: "Мы хотим, чтобы вы попробовали Almost {{freeWord}}!",
   en: "We want you to try Almost for {{freeWord}}!",
   es: "Queremos que pruebes Almost {{freeWord}}!",
   fr: "Nous voulons que tu essaies Almost {{freeWord}} !",
@@ -1263,7 +1263,7 @@ const PAYWALL_UNIFIED_TITLE_BY_LANGUAGE = {
   zh: "我们希望你{{freeWord}}试用 Almost！",
 };
 const PAYWALL_UNIFIED_TITLE_NO_TRIAL_BY_LANGUAGE = {
-  ru: "Выбери подходящий Premium-план для Almost",
+  ru: "Выберите подходящий Premium-план для Almost",
   en: "Choose the Premium plan that fits you",
   es: "Elige el plan Premium que mejor te encaje",
   fr: "Choisis l'abonnement Premium qui te convient",
@@ -1317,13 +1317,13 @@ const UNLIMITAGE_USAGE_BULLET_BY_LANGUAGE = {
   zh: "无限使用",
 };
 const SOCIAL_PROOF_LINE_BY_LANGUAGE = {
-  ru: "Присоединяйся к 5K+ людей, которые уже экономят.",
-  en: "Join 5K+ savers",
-  es: "Únete a más de 5K ahorradores",
-  fr: "Rejoins 5K+ personnes qui économisent",
-  de: "Schließe dich 5K+ Sparern an",
-  ar: "انضم إلى أكثر من 5 آلاف شخص يدّخرون",
-  zh: "加入 5K+ 省钱用户",
+  ru: "5K+ уже экономят",
+  en: "5K+ already saving",
+  es: "5K+ ya ahorran",
+  fr: "5K+ économisent déjà",
+  de: "5K+ sparen schon",
+  ar: "أكثر من 5 آلاف يدّخرون",
+  zh: "5K+ 用户在省钱",
 };
 const LIMITED_OFFER_LABEL_BY_LANGUAGE = {
   ru: "Ограниченное предложение",

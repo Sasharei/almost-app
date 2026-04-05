@@ -66,6 +66,17 @@ const resolveBaselineTimestamp = (baselineStartAt: string | number | Date | null
   return normalizeTimestampMs(baselineStartAt);
 };
 
+const resolveMonthStartTimestamp = (now: Date): number => {
+  const timestamp = now.getTime();
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return 0;
+  const monthStart = new Date(timestamp);
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const monthStartTimestamp = monthStart.getTime();
+  if (!Number.isFinite(monthStartTimestamp) || monthStartTimestamp <= 0) return 0;
+  return monthStartTimestamp;
+};
+
 export function calcSpentLossInCurrentMonth(
   historyEvents: HistorySpendEvent[] | null | undefined,
   baselineStartAt: string | number | Date | null | undefined,
@@ -80,12 +91,16 @@ export function calcSpentLossInCurrentMonth(
   if (!Number.isFinite(nowTimestamp) || nowTimestamp <= 0 || nowTimestamp < baselineTimestamp) {
     return 0;
   }
+  const monthStartTimestamp = resolveMonthStartTimestamp(now);
+  const effectiveStartTimestamp = monthStartTimestamp
+    ? Math.max(baselineTimestamp, monthStartTimestamp)
+    : baselineTimestamp;
 
   return historyEvents.reduce((sum, event) => {
     if (!event || event.kind !== "spend") return sum;
     const timestamp = resolveEventTimestamp(event.timestamp);
     if (!Number.isFinite(timestamp) || timestamp <= 0 || timestamp > nowTimestamp) return sum;
-    if (timestamp < baselineTimestamp) return sum;
+    if (timestamp < effectiveStartTimestamp) return sum;
     const amount = Math.max(0, Number(event.meta?.amountUSD) || 0);
     if (!amount) return sum;
     return sum + amount;

@@ -25,8 +25,13 @@ const colorWithAlpha = (hex, alpha = 1) => {
 };
 
 const resolveIconSize = (icon, size) => {
-  if (icon === "+") return Math.round(size * 0.44);
-  return Math.round(size * 0.48);
+  const normalizedIcon = typeof icon === "string" ? icon.trim() : String(icon || "").trim();
+  if (normalizedIcon === "+") return Math.round(size * 0.44);
+  const glyphCount = Math.max(1, Array.from(normalizedIcon || "$").length);
+  if (glyphCount <= 1) return Math.round(size * 0.48);
+  if (glyphCount === 2) return Math.round(size * 0.4);
+  if (glyphCount === 3) return Math.round(size * 0.34);
+  return Math.round(size * 0.3);
 };
 
 const LiquidGlassFabOrb = ({
@@ -190,7 +195,14 @@ const LiquidGlassFabOrb = ({
   const bottomSpecularColor = isDarkTheme ? "rgba(173,229,255,0.24)" : "rgba(138,204,255,0.36)";
   const sparkleColor = isDarkTheme ? "rgba(255,255,255,0.52)" : "rgba(255,255,255,0.88)";
   const nativeRimColor = isDarkTheme ? "rgba(255,255,255,0.44)" : isAndroid ? "rgba(255,255,255,0.58)" : "rgba(255,255,255,0.76)";
-  const iconSize = resolveIconSize(icon, resolvedSize);
+  const iconLabel = useMemo(() => {
+    const normalized = typeof icon === "string" ? icon.trim() : String(icon || "").trim();
+    return normalized || "$";
+  }, [icon]);
+  const iconGlyphCount = Math.max(1, Array.from(iconLabel).length);
+  const iconHasLatinLetters = /[A-Za-z]/.test(iconLabel);
+  const iconSize = resolveIconSize(iconLabel, resolvedSize);
+  const iconMinimumScale = iconLabel === "+" ? 1 : iconGlyphCount <= 2 ? 0.78 : 0.6;
 
   return (
     <View
@@ -441,7 +453,10 @@ const LiquidGlassFabOrb = ({
             color: iconColor,
             fontSize: iconSize,
             lineHeight: iconSize,
-            fontWeight: icon === "+" ? "700" : "800",
+            fontWeight: iconLabel === "+" ? "700" : "800",
+            letterSpacing: iconHasLatinLetters ? 0.12 : 0.3,
+            maxWidth: resolvedSize * 0.76,
+            paddingHorizontal: resolvedSize * 0.04,
             textShadowColor:
               isAndroid || suppressArtificialHighlights
                 ? "transparent"
@@ -452,9 +467,13 @@ const LiquidGlassFabOrb = ({
             textShadowRadius: 2,
           },
         ]}
+        adjustsFontSizeToFit
+        minimumFontScale={iconMinimumScale}
+        allowFontScaling={false}
+        ellipsizeMode="clip"
         numberOfLines={1}
       >
-        {icon}
+        {iconLabel}
       </Text>
     </View>
   );

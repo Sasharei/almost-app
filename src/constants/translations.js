@@ -805,7 +805,7 @@ export const TRANSLATIONS = {
     progressGoal: "{{current}} / {{goal}}",
     progressHint: "Осталось {{amount}} до титула ‘герой финансового дзена’",
     emptyPurchases: "Пока чисто. Значит, ты в плюсе",
-    profileEdit: "Редактировать",
+    profileEdit: "изменить",
     profileSave: "Сохранить",
     profileCancel: "Отмена",
     profileNamePlaceholder: "Добавь имя",
