@@ -524,9 +524,9 @@ const LiquidGlassTabBar = ({
                 <TabGlyph tab={tab} color={tabTextColor} />
                 <Text
                   numberOfLines={1}
-                  adjustsFontSizeToFit={Platform.OS !== "android"}
-                  minimumFontScale={Platform.OS === "android" ? 0.9 : 0.72}
-                  ellipsizeMode={Platform.OS === "android" ? "tail" : "clip"}
+                  allowFontScaling={false}
+                  maxFontSizeMultiplier={1}
+                  ellipsizeMode="tail"
                   style={[
                     styles.tabLabel,
                     {
@@ -544,7 +544,7 @@ const LiquidGlassTabBar = ({
 
                 {badgeValue > 0 && (
                   <View style={[styles.badge, { backgroundColor: badgeBackground }]}>
-                    <Text style={[styles.badgeText, { color: badgeText }]}>
+                    <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={[styles.badgeText, { color: badgeText }]}>
                       {badgeValue > 99 ? "99+" : `${badgeValue}`}
                     </Text>
                   </View>

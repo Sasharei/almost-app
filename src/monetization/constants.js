@@ -1011,13 +1011,13 @@ const TRANSACTION_ABANDONED_POPUP_PRIMARY_CTA_BY_LANGUAGE = {
   zh: "立即领取折扣",
 };
 const TRANSACTION_ABANDONED_POPUP_SECONDARY_CTA_BY_LANGUAGE = {
-  ru: "Позже",
-  en: "Maybe later",
-  es: "Tal vez después",
-  fr: "Plus tard",
-  de: "Vielleicht später",
-  ar: "لاحقاً",
-  zh: "稍后",
+  ru: "Не сейчас",
+  en: "Not now",
+  es: "Ahora no",
+  fr: "Pas maintenant",
+  de: "Nicht jetzt",
+  ar: "ليس الآن",
+  zh: "暂不",
 };
 
 const FEATURE_MARKETING_LINE_BY_LANGUAGE = {

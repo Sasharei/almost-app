@@ -498,6 +498,26 @@ const computePlanOverallDiscountPercent = (plan = null, planCards = []) => {
   }
   return null;
 };
+const computePlanAbandonedDiscountPercent = (plan = null) => {
+  if (!plan || typeof plan !== "object") return null;
+  const directCandidate = normalizeDiscountPercent(plan?.abandonedDiscountPercent);
+  if (directCandidate) return directCandidate;
+
+  const currentPrice = pickFirstPositiveFiniteNumber([
+    plan?.rawPriceLocal,
+    parseAmountTemplate(plan?.chargePriceLabel || "")?.value,
+    parseAmountTemplate(plan?.postTrialPriceLabel || "")?.value,
+    parseAmountTemplate(plan?.priceLabel || "")?.value,
+  ]);
+  const referencePrice = pickFirstPositiveFiniteNumber([
+    parseAmountTemplate(plan?.trialOriginalPriceLabel || "")?.value,
+    parseAmountTemplate(plan?.secondaryLabel || "")?.value,
+  ]);
+  if (currentPrice && referencePrice && referencePrice > currentPrice) {
+    return normalizeDiscountPercent((1 - currentPrice / referencePrice) * 100);
+  }
+  return null;
+};
 const replaceDiscountPercentInTitle = (title = "", percent = null, language = "en") => {
   const normalizedTitle = String(title || "").trim();
   if (!normalizedTitle.length) return normalizedTitle;
@@ -705,12 +725,31 @@ const PremiumPaywallModal = ({
   const isPaywallDismissible = dismissible && !isSupportIntroStageVisible && isCloseCooldownComplete;
   const shouldShowHeaderMetaChips = !isGroupCSupportTrigger;
   const Text = useCallback(
-    ({ style, children, ...props }) => {
+    ({
+      style,
+      children,
+      allowFontScaling = false,
+      maxFontSizeMultiplier = 1,
+      adjustsFontSizeToFit = false,
+      minimumFontScale,
+      ...props
+    }) => {
       const localizedChildren = localizePaywallTextTree(children, normalizedLanguage);
       const rtlStyle = isRtlLanguage ? { writingDirection: "rtl", textAlign: "right" } : null;
       const resolvedStyle = rtlStyle ? [rtlStyle, style] : style;
+      const shouldAutoFit = Platform.OS === "android" ? false : !!adjustsFontSizeToFit;
+      const resolvedMinimumFontScale = shouldAutoFit
+        ? Math.max(0.85, Math.min(1, Number(minimumFontScale) || 1))
+        : minimumFontScale;
       return (
-        <RNText {...props} style={resolvedStyle}>
+        <RNText
+          {...props}
+          style={resolvedStyle}
+          allowFontScaling={allowFontScaling}
+          maxFontSizeMultiplier={maxFontSizeMultiplier}
+          adjustsFontSizeToFit={shouldAutoFit}
+          minimumFontScale={resolvedMinimumFontScale}
+        >
           {localizedChildren}
         </RNText>
       );
@@ -1262,7 +1301,9 @@ const PremiumPaywallModal = ({
     return yearlyCard || availableCards[0] || null;
   }, [planCards, selectedPlanId]);
   const transactionAbandonedPopupDiscountPercent = useMemo(
-    () => computePlanOverallDiscountPercent(transactionAbandonedPopupPlan, planCards),
+    () =>
+      computePlanAbandonedDiscountPercent(transactionAbandonedPopupPlan) ??
+      computePlanOverallDiscountPercent(transactionAbandonedPopupPlan, planCards),
     [planCards, transactionAbandonedPopupPlan]
   );
   const transactionAbandonedPopupBadge = localizePaywallDigits(
@@ -1287,6 +1328,10 @@ const PremiumPaywallModal = ({
   );
   const transactionAbandonedPopupPrimaryCta = localizePaywallDigits(
     copy?.transactionAbandonedPopupPrimaryCta || "Claim discount",
+    normalizedLanguage
+  );
+  const transactionAbandonedPopupSecondaryCta = localizePaywallDigits(
+    copy?.transactionAbandonedPopupSecondaryCta || "Not now",
     normalizedLanguage
   );
   const supportIntroBadge = localizePaywallDigits(
@@ -2189,18 +2234,21 @@ const PremiumPaywallModal = ({
             const trialCardDiscountLabel = trialCardDiscountRaw
               ? localizePaywallDigits(trialCardDiscountRaw, normalizedLanguage)
               : "";
-            const planOverallDiscountPercent = computePlanOverallDiscountPercent(plan, planCards);
-            const planOverallDiscountToken =
-              Number.isFinite(planOverallDiscountPercent) && planOverallDiscountPercent > 0
-                ? localizePaywallDigits(`${Math.round(planOverallDiscountPercent)}%`, normalizedLanguage)
+            const planOfferDiscountPercent = isTransactionAbandonedTrigger
+              ? computePlanAbandonedDiscountPercent(plan) ??
+                computePlanOverallDiscountPercent(plan, planCards)
+              : computePlanOverallDiscountPercent(plan, planCards);
+            const planOfferDiscountToken =
+              Number.isFinite(planOfferDiscountPercent) && planOfferDiscountPercent > 0
+                ? localizePaywallDigits(`${Math.round(planOfferDiscountPercent)}%`, normalizedLanguage)
                 : "";
             const abandonedOfferBannerTemplate =
               ABANDONED_OFFER_NOW_BANNER_TEMPLATE_BY_LANGUAGE[copyLanguage] ||
               ABANDONED_OFFER_NOW_BANNER_TEMPLATE_BY_LANGUAGE.en;
-            const abandonedOfferBannerLabel = planOverallDiscountToken
+            const abandonedOfferBannerLabel = planOfferDiscountToken
               ? localizePaywallDigits(
                   fillPaywallTemplate(abandonedOfferBannerTemplate, {
-                    discount: planOverallDiscountToken,
+                    discount: planOfferDiscountToken,
                   }),
                   normalizedLanguage
                 )
@@ -2745,6 +2793,21 @@ const PremiumPaywallModal = ({
                   {transactionAbandonedPopupPrimaryCta}
                 </Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.abandonedPopupSecondaryButton}
+                onPress={dismissTransactionAbandonedPopup}
+                activeOpacity={0.75}
+                hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
+              >
+                <Text
+                  style={[
+                    styles.abandonedPopupSecondaryButtonText,
+                    isCompactAndroid ? styles.abandonedPopupSecondaryButtonTextCompactAndroid : null,
+                  ]}
+                >
+                  {transactionAbandonedPopupSecondaryCta}
+                </Text>
+              </TouchableOpacity>
             </Animated.View>
           </View>
         )}
@@ -2912,6 +2975,23 @@ const styles = StyleSheet.create({
   abandonedPopupPrimaryButtonTextCompactAndroid: {
     fontSize: 15,
     lineHeight: 18,
+  },
+  abandonedPopupSecondaryButton: {
+    marginTop: 9,
+    alignSelf: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  abandonedPopupSecondaryButtonText: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  abandonedPopupSecondaryButtonTextCompactAndroid: {
+    fontSize: 11,
+    lineHeight: 13,
   },
   header: {
     backgroundColor: "#0A1E72",

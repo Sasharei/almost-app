@@ -3,7 +3,7 @@
 ## Runtime Parity
 
 - Run `npm run check:release` and confirm all checks pass.
-- Confirm `newArchEnabled` is `false` in Expo config, Android, and iOS runtime config files.
+- Confirm `newArchEnabled` is `true` in Expo config, Android, and iOS runtime config files.
 - Confirm `ui_refresh_v1_enabled` rollout key is wired (Remote Config module available path and fallback path).
 
 ## Launch and Navigation

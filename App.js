@@ -495,6 +495,26 @@ import {
 } from "./src/monetization/purchasesClient";
 import { syncEntitlementSnapshot, validateStorePurchase } from "./src/monetization/backendSync";
 
+const applyTextScalingDefaults = (Component, componentLabel) => {
+  if (!Component) return;
+  try {
+    if (!Component.defaultProps) Component.defaultProps = {};
+    if (Component.defaultProps.allowFontScaling == null) {
+      Component.defaultProps.allowFontScaling = false;
+    }
+    if (Component.defaultProps.maxFontSizeMultiplier == null) {
+      Component.defaultProps.maxFontSizeMultiplier = 1;
+    }
+  } catch (error) {
+    if (__DEV__) {
+      console.warn(`failed to apply text scaling defaults for ${componentLabel}`, error);
+    }
+  }
+};
+
+applyTextScalingDefaults(RNText, "RNText");
+applyTextScalingDefaults(RNTextInput, "RNTextInput");
+
 const safeUseFonts =
   typeof useFonts === "function"
     ? useFonts
@@ -2564,13 +2584,28 @@ const AppText = React.memo(
     const {
       allowFontScaling = false,
       maxFontSizeMultiplier = 1,
+      adjustsFontSizeToFit = false,
+      minimumFontScale,
       ...restProps
     } = props || {};
     const localizedChildren = localizeTextTreeDigits(restProps.children, formattingLanguage);
+    const shouldAutoFit = Platform.OS === "android" ? false : !!adjustsFontSizeToFit;
+    const resolvedMinimumFontScale = shouldAutoFit
+      ? Math.max(0.8, Math.min(1, Number(minimumFontScale) || 1))
+      : minimumFontScale;
     const textProps =
       localizedChildren === restProps.children
-        ? restProps
-        : { ...restProps, children: localizedChildren };
+        ? {
+            ...restProps,
+            adjustsFontSizeToFit: shouldAutoFit,
+            minimumFontScale: resolvedMinimumFontScale,
+          }
+        : {
+            ...restProps,
+            children: localizedChildren,
+            adjustsFontSizeToFit: shouldAutoFit,
+            minimumFontScale: resolvedMinimumFontScale,
+          };
     const baseStyles = Array.isArray(style) ? style.filter(Boolean) : style ? [style] : [];
     const flattened = baseStyles.length ? StyleSheet.flatten(baseStyles) || {} : {};
     const isRtlLayout = isRtlLanguage(formattingLanguage);
@@ -5035,6 +5070,28 @@ const normalizeTemporalMs = (value, fallback = 0) => {
     }
   } else if (value instanceof Date) {
     parsed = value.getTime();
+  } else if (typeof value === "object") {
+    const objectValue = value;
+    const secondsCandidate = Number(
+      objectValue.seconds ?? objectValue._seconds ?? objectValue.sec ?? 0
+    );
+    const nanosCandidate = Number(
+      objectValue.nanoseconds ?? objectValue._nanoseconds ?? objectValue.nanos ?? 0
+    );
+    if (Number.isFinite(secondsCandidate) && secondsCandidate > 0) {
+      parsed = secondsCandidate * 1000 + (Number.isFinite(nanosCandidate) ? nanosCandidate / 1e6 : 0);
+    } else if (typeof objectValue.toMillis === "function") {
+      const millisValue = Number(objectValue.toMillis());
+      parsed = Number.isFinite(millisValue) ? millisValue : 0;
+    } else if (typeof objectValue.toDate === "function") {
+      const dateValue = objectValue.toDate();
+      parsed = dateValue instanceof Date ? dateValue.getTime() : 0;
+    } else if (Object.prototype.hasOwnProperty.call(objectValue, "timestamp")) {
+      const nestedTimestamp = objectValue.timestamp;
+      if (nestedTimestamp !== value) {
+        parsed = normalizeTemporalMs(nestedTimestamp, 0);
+      }
+    }
   }
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   // Handle legacy timestamps that may be in seconds/microseconds/nanoseconds.
@@ -5055,6 +5112,34 @@ const normalizeBaselineStartAt = (value) => {
   const iso = new Date(timestamp).toISOString();
   if (!iso || Number.isNaN(new Date(iso).getTime())) return null;
   return iso;
+};
+
+const normalizeBaselineMonthlyWasteUSD = (value) => {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? Math.max(0, value) : 0;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return 0;
+    const direct = Number(trimmed);
+    if (Number.isFinite(direct)) return Math.max(0, direct);
+    const normalized = Number(trimmed.replace(/\s+/g, "").replace(",", "."));
+    return Number.isFinite(normalized) ? Math.max(0, normalized) : 0;
+  }
+  if (typeof value === "object") {
+    const objectValue = value;
+    if (Object.prototype.hasOwnProperty.call(objectValue, "amountUSD")) {
+      return normalizeBaselineMonthlyWasteUSD(objectValue.amountUSD);
+    }
+    if (Object.prototype.hasOwnProperty.call(objectValue, "baselineMonthlyWasteUSD")) {
+      return normalizeBaselineMonthlyWasteUSD(objectValue.baselineMonthlyWasteUSD);
+    }
+    if (Object.prototype.hasOwnProperty.call(objectValue, "value")) {
+      return normalizeBaselineMonthlyWasteUSD(objectValue.value);
+    }
+  }
+  return 0;
 };
 
 const normalizeIncomeEntryType = (value) =>
@@ -8682,6 +8767,10 @@ const LANGUAGE_OVERRIDES = {
     feedTutorialAddDesc:
       "Tap + to add a custom temptation. Existing cards can be edited with a regular tap.",
     feedTutorialAddAction: "Create temptation",
+    feedTailLevelBadge: "Coming more...",
+    feedTailMoreOffersTitle: "More suggested temptations at level {{level}}",
+    feedTailMoreOffersSubtitle:
+      "These are suggested example cards. Keep logging decisions to unlock more at the next level.",
     saveCelebrateTitlePrefix: "Saved on:",
   },
   ru: {
@@ -8700,6 +8789,10 @@ const LANGUAGE_OVERRIDES = {
     feedTutorialAddDesc:
       "Нажми «+», чтобы добавить своё искушение. Существующие карточки можно редактировать обычным тапом.",
     feedTutorialAddAction: "Создать искушение",
+    feedTailLevelBadge: "Скоро больше...",
+    feedTailMoreOffersTitle: "Больше предложенных искушений на уровне {{level}}",
+    feedTailMoreOffersSubtitle:
+      "Это рекомендованные примеры карточек. Отмечай решения и на следующем уровне откроется больше.",
     saveCelebrateTitlePrefix: "Сэкономлено на:",
   },
   es: {
@@ -8725,6 +8818,10 @@ const LANGUAGE_OVERRIDES = {
     feedTutorialAddDesc:
       "Pulsa + para crear una tentación personalizada. Las tarjetas existentes se editan con un toque.",
     feedTutorialAddAction: "Crear tentación",
+    feedTailLevelBadge: "Muy pronto...",
+    feedTailMoreOffersTitle: "Más tentaciones sugeridas en el nivel {{level}}",
+    feedTailMoreOffersSubtitle:
+      "Son tarjetas de ejemplo sugeridas. Sigue registrando decisiones para desbloquear más en el siguiente nivel.",
     saveCelebrateTitlePrefix: "Ahorrado en:",
   },
   fr: {
@@ -8750,6 +8847,10 @@ const LANGUAGE_OVERRIDES = {
     feedTutorialAddDesc:
       "Appuie sur + pour créer une tentation perso. Les cartes existantes se modifient avec un simple tap.",
     feedTutorialAddAction: "Créer une tentation",
+    feedTailLevelBadge: "Encore plus bientôt...",
+    feedTailMoreOffersTitle: "Plus de tentations suggérées au niveau {{level}}",
+    feedTailMoreOffersSubtitle:
+      "Ce sont des cartes d'exemple suggérées. Continue de noter tes décisions pour en débloquer plus au niveau suivant.",
     saveCelebrateTitlePrefix: "Économisé sur :",
     goalCustomCreate: "Créer un objectif",
     analyticsConsentAgree: "Aider Almost",
@@ -8799,6 +8900,10 @@ const LANGUAGE_OVERRIDES = {
     feedTutorialAddDesc:
       "Tippe auf +, um eine eigene Versuchung anzulegen. Vorhandene Karten kannst du mit einem Tap bearbeiten.",
     feedTutorialAddAction: "Versuchung erstellen",
+    feedTailLevelBadge: "Bald mehr...",
+    feedTailMoreOffersTitle: "Mehr vorgeschlagene Versuchungen auf Level {{level}}",
+    feedTailMoreOffersSubtitle:
+      "Das sind vorgeschlagene Beispielkarten. Erfasse weiter Entscheidungen, um im nächsten Level mehr freizuschalten.",
     saveCelebrateTitlePrefix: "Gespart bei:",
     dailyGoalCollectTitle: "Tagesziel erreicht!",
     dailyGoalCollectSubtitle: "Du hast {{count}} grüne Münzen gesammelt.",
@@ -8854,6 +8959,10 @@ const LANGUAGE_OVERRIDES = {
     feedTutorialAddDesc:
       "اضغط + لإنشاء إغراء مخصص. ويمكنك تعديل البطاقات الحالية بلمسة عادية.",
     feedTutorialAddAction: "إنشاء إغراء",
+    feedTailLevelBadge: "المزيد قريباً...",
+    feedTailMoreOffersTitle: "مزيد من الإغراءات المقترحة عند المستوى {{level}}",
+    feedTailMoreOffersSubtitle:
+      "هذه بطاقات أمثلة مقترحة. واصل تسجيل قراراتك لفتح المزيد في المستوى التالي.",
     saveCelebrateTitlePrefix: "تم التوفير على:",
     dailyGoalCollectTitle: "اكتمل هدف اليوم!",
     dailyGoalCollectSubtitle: "جمعت {{count}} من العملات الخضراء.",
@@ -8909,6 +9018,10 @@ const LANGUAGE_OVERRIDES = {
     feedTutorialAddDesc:
       "اضغط + لإنشاء إغراء مخصص. ويمكنك تعديل البطاقات الحالية بلمسة عادية.",
     feedTutorialAddAction: "إنشاء إغراء",
+    feedTailLevelBadge: "المزيد قريباً...",
+    feedTailMoreOffersTitle: "مزيد من الإغراءات المقترحة عند المستوى {{level}}",
+    feedTailMoreOffersSubtitle:
+      "هذه بطاقات أمثلة مقترحة. واصل تسجيل قراراتك لفتح المزيد في المستوى التالي.",
     saveCelebrateTitlePrefix: "تم التوفير على:",
     dailyGoalCollectTitle: "اكتمل هدف اليوم!",
     dailyGoalCollectSubtitle: "جمعت {{count}} من العملات الخضراء.",
@@ -8963,6 +9076,9 @@ const LANGUAGE_OVERRIDES = {
     feedTutorialAddTitle: "创建你的专属诱惑",
     feedTutorialAddDesc: "点击 + 创建自定义诱惑。已有卡片可通过点击进行编辑。",
     feedTutorialAddAction: "创建诱惑",
+    feedTailLevelBadge: "更多即将到来...",
+    feedTailMoreOffersTitle: "在等级 {{level}} 获得更多推荐诱惑卡",
+    feedTailMoreOffersSubtitle: "这些是推荐的示例卡片。继续记录你的选择，在下一等级会解锁更多。",
     saveCelebrateTitlePrefix: "省下于：",
     dailyGoalCollectTitle: "今日目标完成！",
     dailyGoalCollectSubtitle: "你收集了 {{count}} 枚绿色硬币。",
@@ -17236,6 +17352,7 @@ const FeedScreen = React.memo(
   onHeroCarouselLocked = null,
   onHeroCarouselPremiumAttempt = null,
   heroCarouselHintAllowed = false,
+  premiumPaywallVisible = false,
   mascotOverride = null,
   onMascotAnimationComplete = () => {},
   hideMascot = false,
@@ -17761,6 +17878,31 @@ const FeedScreen = React.memo(
       onHeroCarouselPremiumAttempt();
     }
   }, [heroCarouselPremiumLocked, onHeroCarouselPremiumAttempt]);
+  const resetHeroCarouselToPrimary = useCallback(
+    ({ ensureLayoutSync = false } = {}) => {
+      heroCarouselDraggingRef.current = false;
+      heroCarouselAutoScrollingRef.current = false;
+      heroCarouselSnappingRef.current = false;
+      heroCarouselUserSwipedRef.current = false;
+      heroCarouselPremiumAttemptedRef.current = false;
+      stopHeroCarouselIdleWiggle();
+      setHeroCarouselIndexSafe(0);
+      if (!heroCarouselPageWidth) return;
+      const lockedLoopIndex = heroCarouselLoopIndexForReal(0);
+      scrollHeroCarouselToLoopIndex(lockedLoopIndex, false);
+      if (!ensureLayoutSync) return;
+      requestAnimationFrame(() => {
+        scrollHeroCarouselToLoopIndex(lockedLoopIndex, false);
+      });
+    },
+    [
+      heroCarouselLoopIndexForReal,
+      heroCarouselPageWidth,
+      scrollHeroCarouselToLoopIndex,
+      setHeroCarouselIndexSafe,
+      stopHeroCarouselIdleWiggle,
+    ]
+  );
   const handleHeroCarouselScroll = useCallback(
     (event) => {
       if (!heroCarouselPremiumLocked) return;
@@ -17895,22 +18037,12 @@ const FeedScreen = React.memo(
   }, [heroCarouselLoopIndexForReal, heroCarouselPageWidth, scrollHeroCarouselToLoopIndex]);
   useEffect(() => {
     if (!heroCarouselPremiumLocked) return;
-    heroCarouselDraggingRef.current = false;
-    heroCarouselAutoScrollingRef.current = false;
-    heroCarouselSnappingRef.current = false;
-    heroCarouselUserSwipedRef.current = false;
-    heroCarouselPremiumAttemptedRef.current = false;
-    setHeroCarouselIndexSafe(0);
-    if (!heroCarouselPageWidth) return;
-    const lockedLoopIndex = heroCarouselLoopIndexForReal(0);
-    scrollHeroCarouselToLoopIndex(lockedLoopIndex, false);
-  }, [
-    heroCarouselLoopIndexForReal,
-    heroCarouselPageWidth,
-    heroCarouselPremiumLocked,
-    scrollHeroCarouselToLoopIndex,
-    setHeroCarouselIndexSafe,
-  ]);
+    resetHeroCarouselToPrimary();
+  }, [heroCarouselPremiumLocked, resetHeroCarouselToPrimary]);
+  useEffect(() => {
+    if (!heroCarouselPremiumLocked) return;
+    resetHeroCarouselToPrimary({ ensureLayoutSync: true });
+  }, [heroCarouselPremiumLocked, premiumPaywallVisible, resetHeroCarouselToPrimary]);
   useEffect(() => {
     if (!heroCarouselPageWidth) return;
     if (!heroCarouselIntervalMs) return;
@@ -18397,6 +18529,24 @@ const FeedScreen = React.memo(
       (option) => String(option?.accent || "").trim().toLowerCase() === normalizedPrimary
     );
   }, [colors?.primary]);
+  const nextFeedOfferLevel = useMemo(() => {
+    const currentLevel = Math.max(1, Math.floor(Number(playerLevel) || 1));
+    return currentLevel + 1;
+  }, [playerLevel]);
+  const feedTailPalette = useMemo(() => {
+    const accent = isProMode ? colors.primary : isDarkMode ? "#7CA7FF" : "#4D77FF";
+    return {
+      cardBackground: colorWithAlpha(accent, isDarkMode ? 0.2 : 0.08),
+      cardBorder: colorWithAlpha(accent, isDarkMode ? 0.48 : 0.24),
+      glowPrimary: colorWithAlpha(accent, isDarkMode ? 0.32 : 0.16),
+      glowSecondary: colorWithAlpha(colors.text, isDarkMode ? 0.08 : 0.06),
+      badgeBackground: colorWithAlpha(accent, isDarkMode ? 0.26 : 0.14),
+      badgeBorder: colorWithAlpha(accent, isDarkMode ? 0.58 : 0.3),
+      badgeText: isDarkMode ? "#DEE8FF" : "#2A3E8E",
+      levelBackground: isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.72)",
+      levelBorder: colorWithAlpha(colors.text, isDarkMode ? 0.22 : 0.14),
+    };
+  }, [colors.primary, colors.text, isDarkMode, isProMode]);
   const heroProBadgePalette = useMemo(
     () => ({
       background: "#0C0C0C",
@@ -20051,6 +20201,7 @@ const FeedScreen = React.memo(
     setArchiveExpanded((prev) => !prev);
   }, []);
   const feedEmptyEntry = useMemo(() => ({ type: "feed_empty", id: "feed-empty" }), []);
+  const feedTailEntry = useMemo(() => ({ type: "feed_tail", id: "feed-tail" }), []);
   const archiveHeaderEntry = useMemo(
     () => ({ type: "archive_header", id: "archive-header" }),
     []
@@ -20062,6 +20213,7 @@ const FeedScreen = React.memo(
     } else {
       data.push(feedEmptyEntry);
     }
+    data.push(feedTailEntry);
     data.push(archiveHeaderEntry);
     if (archiveExpanded && archiveCount > 0) {
       data.push(...archiveEntries);
@@ -20073,8 +20225,9 @@ const FeedScreen = React.memo(
     archiveExpanded,
     archiveHeaderEntry,
     feedEmptyEntry,
-      feedEntries,
-    ]);
+    feedTailEntry,
+    feedEntries,
+  ]);
   useEffect(() => {
     const map = new Map();
     feedData.forEach((entry, index) => {
@@ -20305,6 +20458,71 @@ const FeedScreen = React.memo(
       registerTemptationCardLayout,
     ]
   );
+  const feedTailPlaceholder = useMemo(
+    () => (
+      <View style={styles.feedTailPlaceholderWrap}>
+        <View
+          style={[
+            styles.feedTailPlaceholderCard,
+            {
+              borderColor: feedTailPalette.cardBorder,
+              backgroundColor: feedTailPalette.cardBackground,
+            },
+          ]}
+        >
+          <View
+            pointerEvents="none"
+            style={[
+              styles.feedTailPlaceholderGlowPrimary,
+              { backgroundColor: feedTailPalette.glowPrimary },
+            ]}
+          />
+          <View
+            pointerEvents="none"
+            style={[
+              styles.feedTailPlaceholderGlowSecondary,
+              { backgroundColor: feedTailPalette.glowSecondary },
+            ]}
+          />
+          <View style={styles.feedTailPlaceholderHeader}>
+            <View
+              style={[
+                styles.feedTailPlaceholderBadge,
+                {
+                  backgroundColor: feedTailPalette.badgeBackground,
+                  borderColor: feedTailPalette.badgeBorder,
+                },
+              ]}
+            >
+              <Text style={[styles.feedTailPlaceholderBadgeText, { color: feedTailPalette.badgeText }]}>
+                {t("feedTailLevelBadge")}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.feedTailPlaceholderLevelChip,
+                {
+                  backgroundColor: feedTailPalette.levelBackground,
+                  borderColor: feedTailPalette.levelBorder,
+                },
+              ]}
+            >
+              <Text style={[styles.feedTailPlaceholderLevelChipText, { color: colors.text }]}>
+                {t("progressHeroLevel", { level: nextFeedOfferLevel })}
+              </Text>
+            </View>
+          </View>
+          <Text style={[styles.feedTailPlaceholderTitle, { color: colors.text }]}>
+            {t("feedTailMoreOffersTitle", { level: nextFeedOfferLevel })}
+          </Text>
+          <Text style={[styles.feedTailPlaceholderSubtitle, { color: colors.muted }]}>
+            {t("feedTailMoreOffersSubtitle")}
+          </Text>
+        </View>
+      </View>
+    ),
+    [colors.muted, colors.text, feedTailPalette, nextFeedOfferLevel, t]
+  );
   const renderFeedItem = useCallback(
     ({ item: entry }) => {
       if (entry.type === "card") {
@@ -20312,6 +20530,9 @@ const FeedScreen = React.memo(
       }
       if (entry.type === "archive") {
         return renderTemptationCard(entry, { archived: true });
+      }
+      if (entry.type === "feed_tail") {
+        return feedTailPlaceholder;
       }
       if (entry.type === "archive_header") {
         return (
@@ -20346,7 +20567,15 @@ const FeedScreen = React.memo(
       }
       return null;
     },
-    [archiveCount, archiveExpanded, colors, renderTemptationCard, t, toggleArchiveExpanded]
+    [
+      archiveCount,
+      archiveExpanded,
+      colors,
+      feedTailPlaceholder,
+      renderTemptationCard,
+      t,
+      toggleArchiveExpanded,
+    ]
   );
   const analyticsPreview = analyticsStats.slice(0, 3);
   const { wishesById, swipePinnedByTemplate } = useMemo(() => {
@@ -21755,6 +21984,14 @@ const ProgressScreen = React.memo(function ProgressScreen({
     convertToCurrency(Math.max(goalTargetUSD - goalSavedUSD, 0), currency),
     currency
   );
+  const goalTargetRingTypography = useMemo(() => {
+    const compact = String(goalTargetLabel || "").replace(/\s+/g, "");
+    const glyphCount = Array.from(compact).length;
+    if (glyphCount <= 5) return { fontSize: 14, lineHeight: 18 };
+    if (glyphCount <= 7) return { fontSize: 12, lineHeight: 16 };
+    if (glyphCount <= 9) return { fontSize: 11, lineHeight: 14 };
+    return { fontSize: 10, lineHeight: 13 };
+  }, [goalTargetLabel]);
   const coinEntries = useMemo(() => buildHealthCoinEntries(healthPoints), [healthPoints]);
   const hasCoinInventory = coinEntries.some((entry) => entry.count > 0);
   const activeChallenges = challenges.filter(
@@ -22431,8 +22668,8 @@ const ProgressScreen = React.memo(function ProgressScreen({
               <Text
                 style={[styles.challengeTitle, { color: colors.text }]}
                 numberOfLines={2}
-                adjustsFontSizeToFit
-                minimumFontScale={0.9}
+                adjustsFontSizeToFit={Platform.OS !== "android"}
+                minimumFontScale={Platform.OS === "android" ? undefined : 0.9}
               >
                 {challenge.title}
               </Text>
@@ -23620,8 +23857,9 @@ const ProgressScreen = React.memo(function ProgressScreen({
                     <Text
                       style={[styles.budgetWidgetStatValue, { color: colors.text }]}
                       numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.85}
+                      adjustsFontSizeToFit={Platform.OS !== "android"}
+                      minimumFontScale={Platform.OS === "android" ? undefined : 0.85}
+                      ellipsizeMode="tail"
                     >
                       {budgetIncomeLabel}
                     </Text>
@@ -23633,8 +23871,9 @@ const ProgressScreen = React.memo(function ProgressScreen({
                     <Text
                       style={[styles.budgetWidgetStatValue, { color: SAVE_ACTION_COLOR }]}
                       numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.85}
+                      adjustsFontSizeToFit={Platform.OS !== "android"}
+                      minimumFontScale={Platform.OS === "android" ? undefined : 0.85}
+                      ellipsizeMode="tail"
                     >
                       {budgetSavingsLabel}
                     </Text>
@@ -23655,8 +23894,9 @@ const ProgressScreen = React.memo(function ProgressScreen({
                         },
                       ]}
                       numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.85}
+                      adjustsFontSizeToFit={Platform.OS !== "android"}
+                      minimumFontScale={Platform.OS === "android" ? undefined : 0.85}
+                      ellipsizeMode="tail"
                     >
                       {budgetPlannedIsZero
                         ? "✓"
@@ -23675,8 +23915,9 @@ const ProgressScreen = React.memo(function ProgressScreen({
                         { color: budgetRemainingNegative ? "#E15555" : colors.text },
                       ]}
                       numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.85}
+                      adjustsFontSizeToFit={Platform.OS !== "android"}
+                      minimumFontScale={Platform.OS === "android" ? undefined : 0.85}
+                      ellipsizeMode="tail"
                     >
                       {budgetRemainingNegative ? `-${budgetRemainingLabel}` : budgetRemainingLabel}
                     </Text>
@@ -23816,8 +24057,9 @@ const ProgressScreen = React.memo(function ProgressScreen({
           <Text
             style={[styles.progressGoalMeta, { color: colors.muted }]}
             numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.75}
+            adjustsFontSizeToFit={Platform.OS !== "android"}
+            minimumFontScale={Platform.OS === "android" ? undefined : 0.85}
+            ellipsizeMode="tail"
           >
             {t("progressGoalRemaining", { amount: goalRemainingLabel })}
           </Text>
@@ -23831,10 +24073,13 @@ const ProgressScreen = React.memo(function ProgressScreen({
               />
               <View style={styles.progressGoalRingInner} pointerEvents="none">
                 <Text
-                  style={[styles.progressGoalTarget, { color: colors.text }]}
+                  style={[
+                    styles.progressGoalTarget,
+                    goalTargetRingTypography,
+                    { color: colors.text },
+                  ]}
                   numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.45}
+                  ellipsizeMode="clip"
                 >
                   {goalTargetLabel}
                 </Text>
@@ -29569,14 +29814,14 @@ function AppContent() {
   );
   const fabMainIcon = useMemo(() => {
     if (activeTab === "feed") {
-      const directSymbol = getCurrencyDisplaySymbol(fabCurrencyCode);
+      const directSymbol = getCurrencyDisplaySymbol(widgetCurrencyCode);
       if (directSymbol) return directSymbol;
-      const label = formatCurrency(0, fabCurrencyCode);
-      const parts = splitCurrencyLabel(label, fabCurrencyCode);
+      const label = formatCurrency(0, widgetCurrencyCode);
+      const parts = splitCurrencyLabel(label, widgetCurrencyCode);
       return parts.symbol || "$";
     }
     return "+";
-  }, [activeTab, fabCurrencyCode]);
+  }, [activeTab, widgetCurrencyCode]);
   const playerTierInfo = useMemo(
     () => getTierProgress(levelProgressSaveCount),
     [levelProgressSaveCount]
@@ -30165,7 +30410,6 @@ function AppContent() {
     ...DEFAULT_PROFILE_PLACEHOLDER,
     joinedAt: new Date().toISOString(),
   }));
-  const fabCurrencyCode = profile?.currency || DEFAULT_PROFILE.currency;
   const reportsSnapshot = useMemo(
     () => normalizeProfileReports(profile?.reports),
     [profile?.reports]
@@ -34342,10 +34586,10 @@ function AppContent() {
   }, []);
   const startupLogoVisible =
     onboardingStep === "done" &&
-    startupLogoReady &&
     !startupLogoDismissed &&
     !onboardingSkippedRef.current &&
     !startupHardLockPendingBeforePaywall;
+  const startupLogoAnimationVisible = startupLogoVisible && startupLogoReady;
   const interfaceReady = useMemo(
     () =>
       onboardingStep === "done" &&
@@ -34364,6 +34608,7 @@ function AppContent() {
       homeLayoutReady,
       startupLogoReady,
       startupLogoVisible,
+      startupLogoAnimationVisible,
       interfaceReady,
       activeTab,
       profileHydrated,
@@ -34381,6 +34626,7 @@ function AppContent() {
     startupHydrated,
     startupLogoReady,
     startupLogoVisible,
+    startupLogoAnimationVisible,
     theme,
   ]);
   useEffect(() => {
@@ -36749,6 +36995,17 @@ function AppContent() {
         (1 - normalizedDiscountedPrice / normalizedFullPrice) * 100
       );
     };
+    const combineDiscountPercents = (...values) => {
+      const discounts = values
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value > 0 && value < 100);
+      if (!discounts.length) return null;
+      const combinedRatio = discounts.reduce(
+        (ratio, percent) => ratio * (1 - percent / 100),
+        1
+      );
+      return normalizePlanDiscountPercent((1 - combinedRatio) * 100);
+    };
     const baselineMonthlyRawPrice = resolvePackageRawPrice(baselineOfferingsByPlan?.monthly);
     const baselineYearlyRawPrice = resolvePackageRawPrice(baselineOfferingsByPlan?.yearly);
     const abandonedMonthlyRawPrice = resolvePackageRawPrice(abandonedOfferingsByPlan?.monthly);
@@ -36767,13 +37024,6 @@ function AppContent() {
       baselineYearlyRawPrice,
       abandonedYearlyRawPrice
     );
-    const abandonedOfferDiscountPercent =
-      (Number.isFinite(abandonedMonthlyOfferPercent) && abandonedMonthlyOfferPercent > 0
-        ? abandonedMonthlyOfferPercent
-        : null) ||
-      (Number.isFinite(abandonedYearlyOfferPercent) && abandonedYearlyOfferPercent > 0
-        ? abandonedYearlyOfferPercent
-        : null);
     const formatPaywallPrice = (value = 0, currencyCode = fallbackCurrency) =>
       formatCurrency(value, currencyCode, {
         precisionOverride: getCurrencyPrecision(currencyCode),
@@ -37010,15 +37260,14 @@ function AppContent() {
         defaultDiscountPercent = baseYearlySavePercent;
         const abandonedYearlyPercent =
           isTransactionAbandonedPaywall &&
-          Number.isFinite(abandonedOfferDiscountPercent) &&
-          abandonedOfferDiscountPercent > 0
-            ? abandonedOfferDiscountPercent
+          Number.isFinite(abandonedYearlyOfferPercent) &&
+          abandonedYearlyOfferPercent > 0
+            ? abandonedYearlyOfferPercent
             : 0;
         abandonedDiscountPercent = abandonedYearlyPercent > 0 ? abandonedYearlyPercent : null;
         const effectiveYearlySavePercent =
-          normalizePlanDiscountPercent(
-            baseYearlySavePercent + abandonedYearlyPercent
-          ) || fallbackYearlySavePercent;
+          combineDiscountPercents(baseYearlySavePercent, abandonedYearlyPercent) ||
+          fallbackYearlySavePercent;
         overallDiscountPercent = effectiveYearlySavePercent;
         const shouldShowYearlyDiscount =
           Number.isFinite(effectiveYearlySavePercent) &&
@@ -37079,12 +37328,13 @@ function AppContent() {
             : null;
         const monthlyAbandonedPercent =
           isTransactionAbandonedPaywall &&
-          Number.isFinite(abandonedOfferDiscountPercent) &&
-          abandonedOfferDiscountPercent > 0
-            ? abandonedOfferDiscountPercent
+          Number.isFinite(abandonedMonthlyOfferPercent) &&
+          abandonedMonthlyOfferPercent > 0
+            ? abandonedMonthlyOfferPercent
             : null;
-        const effectiveMonthlySavePercent = normalizePlanDiscountPercent(
-          (defaultDiscountPercent || 0) + (monthlyAbandonedPercent || 0)
+        const effectiveMonthlySavePercent = combineDiscountPercents(
+          defaultDiscountPercent,
+          monthlyAbandonedPercent
         );
         abandonedDiscountPercent = monthlyAbandonedPercent || null;
         overallDiscountPercent = effectiveMonthlySavePercent || monthlyAbandonedPercent || null;
@@ -41716,29 +41966,43 @@ function AppContent() {
         }, 0);
       };
       const saveCelebrationController = saveCelebrationRef.current;
-      if (saveCelebrationController?.skipToCountdown?.()) {
+      const hasPendingQueuedModal =
+        queuedModalType !== null ||
+        !!queuedModalActiveRef.current ||
+        (queuedModalQueueRef.current || []).length > 0;
+      const countdownRevealed = saveCelebrationController?.skipToCountdown?.();
+      if (countdownRevealed) {
         trackModalAction(
           "overlay_save",
           "countdown_revealed",
           "save_overlay",
           normalizedActionSource
         );
-        return;
+        if (!hasPendingQueuedModal) {
+          return;
+        }
       }
-      if (saveCelebrationController?.skipCountdownAnimation?.()) {
+      const countdownFastForwarded =
+        !countdownRevealed && saveCelebrationController?.skipCountdownAnimation?.();
+      if (countdownFastForwarded) {
         trackModalAction(
           "overlay_save",
           "countdown_fast_forward",
           "save_overlay",
           normalizedActionSource
         );
-        return;
+        if (!hasPendingQueuedModal) {
+          return;
+        }
       }
       if (
         saveCelebrationController?.isCountdownActive?.() &&
         !saveCelebrationController?.isCountdownReady?.()
       ) {
-        return;
+        if (!hasPendingQueuedModal) return;
+        if (!countdownFastForwarded) {
+          saveCelebrationController?.skipCountdownAnimation?.();
+        }
       }
       const hasPendingLevel = !!pendingLevelCelebrationRef.current;
       const tutorialFlowActive =
@@ -41792,6 +42056,7 @@ function AppContent() {
       frequencyReminderPrompt.visible,
       lastCelebratedLevel,
       overlay,
+      queuedModalType,
       pendingFrequencyReminderPrompt,
       persistLastCelebratedLevel,
       playerLevel,
@@ -43752,8 +44017,19 @@ function AppContent() {
       let parsedProfile = null;
       const storedActiveGoalId = activeGoalRaw || null;
       let hydratedGoalId = storedActiveGoalId;
+      let rawProfile = null;
       if (profileRaw) {
-        const rawProfile = JSON.parse(profileRaw);
+        try {
+          const parsedRawProfile = JSON.parse(profileRaw);
+          rawProfile =
+            parsedRawProfile && typeof parsedRawProfile === "object"
+              ? parsedRawProfile
+              : null;
+        } catch (error) {
+          console.warn("profile parse", error);
+        }
+      }
+      if (rawProfile) {
         parsedProfile = { ...DEFAULT_PROFILE, ...rawProfile };
         if (!Object.prototype.hasOwnProperty.call(rawProfile, "goal")) {
           parsedProfile.goal = null;
@@ -43860,14 +44136,20 @@ function AppContent() {
           rawSpendReduction === "1" ||
           (typeof rawSpendReduction === "string" &&
             rawSpendReduction.toLowerCase() === "true");
+        const normalizedBaselineMonthlyWasteUSD = normalizeBaselineMonthlyWasteUSD(
+          parsedProfile.spendingProfile?.baselineMonthlyWasteUSD ??
+            parsedProfile.spendingProfile?.baselineMonthlyWaste ??
+            parsedProfile.baselineMonthlyWasteUSD
+        );
+        const normalizedBaselineStartAt = normalizeBaselineStartAt(
+          parsedProfile.spendingProfile?.baselineStartAt ??
+            parsedProfile.spendingProfile?.baselineCapturedAt ??
+            parsedProfile.baselineCapturedAt ??
+            parsedProfile.joinedAt
+        );
         parsedProfile.spendingProfile = {
-          baselineMonthlyWasteUSD: Math.max(
-            0,
-            Number(parsedProfile.spendingProfile?.baselineMonthlyWasteUSD) || 0
-          ),
-          baselineStartAt: normalizeBaselineStartAt(
-            parsedProfile.spendingProfile?.baselineStartAt
-          ),
+          baselineMonthlyWasteUSD: normalizedBaselineMonthlyWasteUSD,
+          baselineStartAt: normalizedBaselineStartAt,
         };
         if (!parsedProfile.joinedAt) {
           parsedProfile.joinedAt =
@@ -44711,7 +44993,14 @@ function AppContent() {
       }
       setFocusVictoryHydrated(true);
       if (freeDayRaw) {
-        setFreeDayStats({ ...INITIAL_FREE_DAY_STATS, ...JSON.parse(freeDayRaw) });
+        try {
+          setFreeDayStats({ ...INITIAL_FREE_DAY_STATS, ...JSON.parse(freeDayRaw) });
+        } catch (error) {
+          console.warn("free day parse", error);
+          setFreeDayStats({ ...INITIAL_FREE_DAY_STATS });
+        }
+      } else {
+        setFreeDayStats({ ...INITIAL_FREE_DAY_STATS });
       }
       if (usageStreakRaw) {
         try {
@@ -44806,7 +45095,17 @@ function AppContent() {
         hydrateHistory();
       }
       if (refuseStatsRaw) {
-        setRefuseStats(JSON.parse(refuseStatsRaw));
+        try {
+          const parsedRefuseStats = JSON.parse(refuseStatsRaw);
+          setRefuseStats(
+            parsedRefuseStats && typeof parsedRefuseStats === "object"
+              ? parsedRefuseStats
+              : {}
+          );
+        } catch (error) {
+          console.warn("refuse stats parse", error);
+          setRefuseStats({});
+        }
       } else {
         setRefuseStats({});
       }
@@ -48775,7 +49074,7 @@ useEffect(() => {
       return;
     }
     if (!ensureTemptationCapacity({ showSoft: false })) return;
-    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+    const currencyCode = widgetCurrencyCode;
     if (!customData.title?.trim()) {
       Alert.alert("Almost", t("quickCustomErrorName"));
       return;
@@ -52078,14 +52377,39 @@ useEffect(() => {
     }, STORM_OVERLAY_DURATION_MS);
   }, [playSound]);
   const stormActivePrevRef = useRef(false);
+  const resolveTemptationLabel = useCallback(
+    (item, fallback = null) => {
+      if (!item) return fallback;
+      const normalizedTemplateId =
+        resolveTemptationTemplateId(item) ||
+        (typeof item.id === "string" ? item.id.trim() : item.id) ||
+        (typeof item.templateId === "string" ? item.templateId.trim() : item.templateId) ||
+        null;
+      const titleOverride =
+        normalizedTemplateId &&
+        typeof titleOverrides?.[normalizedTemplateId] === "string" &&
+        titleOverrides[normalizedTemplateId].trim()
+          ? titleOverrides[normalizedTemplateId].trim()
+          : null;
+      const resolved = resolveTemptationTitle(item, language, titleOverride);
+      return (typeof resolved === "string" && resolved.trim()) || fallback;
+    },
+    [language, resolveTemptationTemplateId, titleOverrides]
+  );
+  const buildTemptationActionTitle = useCallback(
+    (item, fallback = "Goal") => {
+      const resolvedTitle = resolveTemptationLabel(item, fallback) || fallback;
+      const resolvedEmoji = normalizeEmojiValue(item?.emoji, DEFAULT_TEMPTATION_EMOJI);
+      return buildTemptationDisplayTitle(resolvedEmoji, resolvedTitle, fallback);
+    },
+    [resolveTemptationLabel]
+  );
   const recordTemptationInteraction = useCallback(
     (templateId, actionType, item = null, amountUSD = null) => {
       if (!templateId && !item?.id && !item?.templateId) return;
       if (actionType !== "save" && actionType !== "spend") return;
       dismissPotentialGrowth();
-      const resolvedTitle = item
-        ? resolveTemptationTitle(item, language)
-        : null;
+      const resolvedTitle = item ? resolveTemptationLabel(item, "Goal") : null;
       const legacyKeys = buildLegacyTemplateKeys(templateId, item);
       const baseKey = normalizeTemplateKey(templateId);
       const itemIdKey = normalizeTemplateKey(item?.id);
@@ -52151,8 +52475,6 @@ useEffect(() => {
             title:
               snapshotEntry.templateTitle ||
               resolvedTitle ||
-              item?.title?.en ||
-              item?.title ||
               "Goal",
             emoji: "🐱",
             source: `first_${actionType}`,
@@ -52322,7 +52644,7 @@ useEffect(() => {
       buildLegacyTemplateKeys,
       cancelScheduledDecisionNotificationsForTemplates,
       dismissPotentialGrowth,
-      language,
+      resolveTemptationLabel,
       temptationInteractions,
     ]
   );
@@ -53317,9 +53639,7 @@ useEffect(() => {
       }
       priceUSD = clampTransactionAmountUSD(priceUSD);
       if (priceUSD <= 0) return;
-      const title = `${item.emoji || "✨"} ${
-        resolveLanguageMapValue(item.title, language) || item.title?.en || item.title || "goal"
-      }`;
+      const title = buildTemptationActionTitle(item, t("defaultDealTitle"));
       const spendCategory = resolveTemptationCategory(item);
       const isEssentialSpendCategory = isEssentialImpulseCategory(spendCategory);
       if (!isEssentialSpendCategory) {
@@ -53383,8 +53703,8 @@ useEffect(() => {
       }
     },
     [
+      buildTemptationActionTitle,
       handleFocusSpend,
-      language,
       queueHomeSpeech,
       resolveTemptationTemplateId,
       getPotentialSavedNow,
@@ -53400,6 +53720,7 @@ useEffect(() => {
       setProgressSavedTotalUSD,
       resolveTemptationCategory,
       spendReducesSavings,
+      t,
     ]
   );
 
@@ -53551,9 +53872,7 @@ useEffect(() => {
       const timestamp = Date.now();
       const entryTitle =
         overrideTitle ||
-        `${item.emoji || "✨"} ${
-          resolveLanguageMapValue(item.title, language) || item.title?.en || item.title || t("defaultDealTitle")
-        }`;
+        buildTemptationActionTitle(item, t("defaultDealTitle"));
       const eventTemplateId = resolveTemptationTemplateId(item) || item.id;
       const event = {
         id: `impulse-${timestamp}-${Math.random().toString(16).slice(2, 6)}`,
@@ -53575,7 +53894,7 @@ useEffect(() => {
       });
       scheduleImpulseReminder(event);
     },
-    [language, resolveTemptationTemplateId, scheduleImpulseReminder, t]
+    [buildTemptationActionTitle, resolveTemptationTemplateId, scheduleImpulseReminder, t]
   );
 
   const resyncPushNotificationsForLanguage = useCallback(
@@ -53975,9 +54294,7 @@ useEffect(() => {
           );
         }
       }
-      const title = `${item.emoji || "✨"} ${
-        resolveLanguageMapValue(item.title, language) || item.title?.en || item.title || "goal"
-      }`;
+      const title = buildTemptationActionTitle(item, t("defaultDealTitle"));
       const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
       let priceLocal = convertToCurrency(priceUSD, currencyCode);
       const safeSavedTotalUSD = clampSavedBalanceUSD(savedTotalUSD);
@@ -54731,10 +55048,10 @@ useEffect(() => {
         logTemptationAction("pending", item);
         const now = Date.now();
         const pendingDisplay = resolvePendingEntryDisplay(
-          { title: resolveTemptationTitle(item, language), emoji: item?.emoji },
-          "goal"
+          { title: resolveTemptationLabel(item, t("defaultDealTitle")), emoji: item?.emoji },
+          t("defaultDealTitle")
         );
-        const pendingTitle = pendingDisplay.title || "goal";
+        const pendingTitle = pendingDisplay.title || t("defaultDealTitle");
         const pendingEmoji = pendingDisplay.emoji;
         const pendingEntry = {
           id: `pending-${item.id}-${now}`,
@@ -54783,6 +55100,7 @@ useEffect(() => {
     },
     [
       language,
+      buildTemptationActionTitle,
       t,
       thinkingUnlocked,
       schedulePendingReminder,
@@ -54842,6 +55160,7 @@ useEffect(() => {
       setHealthPoints,
       setProgressSavedTotalUSD,
       resolveTemptationCategory,
+      resolveTemptationLabel,
       resolveTemptationTemplateId,
       dismissStormEffect,
       activeGoalId,
@@ -56447,18 +56766,54 @@ useEffect(() => {
           setChallengesState((prev) => rebuildChallengeProgressFromHistory(nextHistory, prev));
         }
       }
+      setTemptationInteractions((prev) => {
+        const currentEntry = prev?.[templateId];
+        if (!currentEntry) return prev;
+        if (currentEntry.templateTitle === normalizedLabel) return prev;
+        return {
+          ...(prev || {}),
+          [templateId]: {
+            ...currentEntry,
+            templateTitle: normalizedLabel,
+          },
+        };
+      });
+      setDailyChallenge((prev) => {
+        if (!prev || prev.templateId !== templateId) return prev;
+        let mutated = false;
+        const next = { ...prev };
+        if (normalizedLabel && prev.templateTitle !== normalizedLabel) {
+          next.templateTitle = normalizedLabel;
+          mutated = true;
+        }
+        if (normalizedLabel && prev.templateLabel !== normalizedLabel) {
+          next.templateLabel = normalizedLabel;
+          mutated = true;
+        }
+        if (emoji && prev.emoji !== emoji) {
+          next.emoji = emoji;
+          mutated = true;
+        }
+        if (hasPrice && prev.priceUSD !== numericPrice) {
+          next.priceUSD = numericPrice;
+          mutated = true;
+        }
+        return mutated ? next : prev;
+      });
     },
     [
       applyHistoryGoalDelta,
       language,
       rebuildChallengeProgressFromHistory,
       resolvedHistoryEvents,
+      setDailyChallenge,
       setChallengesState,
       setHistoryEvents,
       setImpulseTracker,
       setPendingList,
       setProgressSavedTotalUSD,
       setSavedTotalUSD,
+      setTemptationInteractions,
       setWishes,
       spendReducesSavings,
     ]
@@ -56500,6 +56855,18 @@ useEffect(() => {
         : "";
     const changedDescription = descriptionValue !== previousDescriptionOverride;
     persistDescriptionOverride(descriptionValue || null);
+    const baseTitle =
+      resolveTemptationTitle(
+        {
+          ...priceEditor.item,
+          titleOverride: null,
+        },
+        language,
+        null
+      ) ||
+      resolveTranslationValueForLanguage(language, "defaultWishTitle") ||
+      "Goal";
+    const normalizedLabel = titleValue || baseTitle;
     const changedPrice = Math.abs(previousPriceUSD - usdValue) > 0.0001;
     const changedCategory = nextCategory !== previousCategory;
     const previousFrequencyState = resolveFrequencySelectionForItem(priceEditor.item);
@@ -56600,11 +56967,7 @@ useEffect(() => {
         templateId,
         nextFrequency,
         nextFrequencyCustom,
-        resolveTemptationTitle(
-          priceEditor.item,
-          language,
-          titleOverrides[priceEditor.item.id] || priceEditor.item.titleOverride || null
-        ),
+        normalizedLabel,
         {
           reminderTime: nextReminderTime,
           weeklyDay: nextWeeklyDay,
@@ -56615,13 +56978,6 @@ useEffect(() => {
         }
       );
     }
-    const fallbackTitle =
-      resolveTemptationTitle(
-        priceEditor.item,
-        language,
-        titleOverrides[priceEditor.item.id] || priceEditor.item.titleOverride || null
-      ) || resolveTranslationValueForLanguage(language, "defaultWishTitle") || "Goal";
-    const normalizedLabel = titleValue || fallbackTitle;
     propagateTemptationEdit(priceEditor.item.id, {
       label: normalizedLabel,
       emoji: resolvedEmoji,
@@ -57911,17 +58267,17 @@ useEffect(() => {
     (frequencyReminderPrompt.visible ||
       frequencyReminderPriorityLockRef.current);
   const runPendingLevelCelebration = useCallback(() => {
+    if (levelFlowDeferredForReminder) return;
+    const pending = pendingLevelCelebrationRef.current;
+    if (!pending) return;
     const now = Date.now();
     const lastRunPendingAt = Number(levelFlowThrottleRef.current?.runPendingAt) || 0;
     if (now - lastRunPendingAt < 250) return;
     levelFlowThrottleRef.current.runPendingAt = now;
-    if (levelFlowDeferredForReminder) return;
     if (levelCelebrationRunGuardRef.current) return;
     if (levelReachedLoggingGuardRef.current) return;
     levelCelebrationRunGuardRef.current = true;
     try {
-      const pending = pendingLevelCelebrationRef.current;
-      if (!pending) return;
       const pendingLevel = Math.max(1, Number(pending.level) || 1);
       if (pendingLevel <= (lastLevelCelebrationRunRef.current || 0)) {
         pendingLevelCelebrationRef.current = null;
@@ -57958,6 +58314,12 @@ useEffect(() => {
   useEffect(() => {
     runPendingLevelCelebrationRef.current = runPendingLevelCelebration;
   }, [runPendingLevelCelebration]);
+  useEffect(() => {
+    if (levelFlowDeferredForReminder) return;
+    if (!pendingLevelCelebrationRef.current) return;
+    if (typeof runPendingLevelCelebrationRef.current !== "function") return;
+    runPendingLevelCelebrationRef.current();
+  }, [levelFlowDeferredForReminder]);
 
   useEffect(() => {
     if (levelCelebrationDrainGuardRef.current) return;
@@ -59205,6 +59567,7 @@ useEffect(() => {
             onHeroCarouselLocked={handleHeroCarouselLockChange}
             onHeroCarouselPremiumAttempt={handleHeroCarouselPremiumAttempt}
             heroCarouselHintAllowed={heroCarouselHintAllowed}
+            premiumPaywallVisible={premiumPaywallState.visible}
             resolveTemplateTitle={resolveTemplateTitle}
             resolveTemplateCard={resolveTemplateCard}
             resolveTemptationCategory={resolveTemptationCategory}
@@ -59580,9 +59943,9 @@ useEffect(() => {
 	          >
 	              {startupLogoVisible && (
 	                <View style={[styles.logoSplashOverlay, { backgroundColor: colors.background }]}>
-	                  <LogoSplash onDone={handleStartupLogoComplete} />
-                </View>
-              )}
+	                  {startupLogoAnimationVisible ? <LogoSplash onDone={handleStartupLogoComplete} /> : null}
+	                </View>
+	              )}
               <StatusBar
                 style={theme === "dark" ? "light" : "dark"}
                 backgroundColor={
@@ -61073,7 +61436,7 @@ useEffect(() => {
           presetAction={coinEntryPresetAction}
           colors={colors}
           t={t}
-          currency={profile.currency || DEFAULT_PROFILE.currency}
+          currency={widgetCurrencyCode}
           language={language}
           maxAmountUSD={coinSliderMaxUSD}
           categoryStats={impulseInsights?.categories}
@@ -61091,7 +61454,7 @@ useEffect(() => {
           visible={!startupHardLockPendingBeforePaywall && showCustomSpend}
           colors={colors}
           t={t}
-          currency={profile.currency || DEFAULT_PROFILE.currency}
+          currency={widgetCurrencyCode}
           data={quickSpendDraft}
           validationErrors={quickCustomErrors}
           onChange={handleQuickCustomChange}
@@ -64903,7 +65266,13 @@ const styles = StyleSheet.create({
   feedTemptationAddIcon: {
     fontSize: 18,
     fontWeight: "700",
-    lineHeight: 20,
+    width: 30,
+    height: 30,
+    lineHeight: 30,
+    textAlign: "center",
+    textAlignVertical: "center",
+    includeFontPadding: false,
+    letterSpacing: 0,
   },
   feedTemptationAddWrap: {
     position: "relative",
@@ -64990,6 +65359,67 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderRightWidth: 1,
     borderBottomWidth: 1,
+  },
+  feedTailPlaceholderWrap: {
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  feedTailPlaceholderCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    overflow: "hidden",
+  },
+  feedTailPlaceholderGlowPrimary: {
+    position: "absolute",
+    width: 170,
+    height: 170,
+    borderRadius: 999,
+    top: -88,
+    right: -62,
+  },
+  feedTailPlaceholderGlowSecondary: {
+    position: "absolute",
+    width: 116,
+    height: 116,
+    borderRadius: 999,
+    bottom: -70,
+    left: -36,
+  },
+  feedTailPlaceholderHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  feedTailPlaceholderBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  feedTailPlaceholderBadgeText: {
+    ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
+    lineHeight: 12,
+  },
+  feedTailPlaceholderLevelChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  feedTailPlaceholderLevelChipText: {
+    ...createBodyText({ fontSize: 11, fontWeight: "700" }),
+    lineHeight: 14,
+  },
+  feedTailPlaceholderTitle: {
+    ...createBodyText({ fontSize: 16, lineHeight: 21, fontWeight: "700" }),
+    marginTop: 10,
+  },
+  feedTailPlaceholderSubtitle: {
+    ...createSecondaryText({ fontSize: 13, lineHeight: 18, fontWeight: "500" }),
+    marginTop: 6,
   },
   feedHeroTop: {
     flexDirection: "row",
@@ -77819,7 +78249,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    marginTop: 2,
+    marginTop: 0,
   },
   personaGridModernAndroid: {
     marginTop: 0,
@@ -77922,28 +78352,27 @@ const styles = StyleSheet.create({
   },
   genderSection: {
     width: "100%",
-    marginBottom: 0,
+    marginBottom: 16,
   },
   genderSectionAndroid: {
     minHeight: 84,
-    marginBottom: 6,
+    marginBottom: 16,
+  },
+  personaSelectionSection: {
+    width: "100%",
   },
   genderGridModernAndroid: {
     marginBottom: 0,
   },
-  personaSectionSpacer: {
-    height: 14,
-  },
   genderChipModern: {
-    flex: 1,
     borderWidth: 1,
     borderRadius: 20,
     paddingVertical: 10,
-    minHeight: 64,
+    minHeight: 80,
     alignItems: "center",
     justifyContent: "center",
     gap: 4,
-    overflow: "visible",
+    overflow: "hidden",
   },
   genderChipModernAndroid: {
     minHeight: 80,
@@ -80334,109 +80763,109 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, 
             </Text>
           </View>
         </View>
-        <View style={[styles.genderSection, isAndroid ? styles.genderSectionAndroid : null]}>
-          <View style={[styles.genderGridModern, isAndroid ? styles.genderGridModernAndroid : null]}>
-            {GENDER_OPTIONS.map((option, index) => {
-              const active = option.id === data.gender;
-              const reveal = genderReveal[index] || fade;
-              const genderLabel =
-                resolveLanguageMapValue(option.label, language) ||
-                option.label.en ||
-                (option.id === "female" ? "Female" : option.id === "male" ? "Male" : "Not specified");
+        <View style={styles.personaSelectionSection}>
+          <View style={[styles.genderSection, isAndroid ? styles.genderSectionAndroid : null]}>
+            <View style={[styles.genderGridModern, isAndroid ? styles.genderGridModernAndroid : null]}>
+              {GENDER_OPTIONS.map((option, index) => {
+                const active = option.id === data.gender;
+                const reveal = genderReveal[index] || fade;
+                const genderLabel =
+                  resolveLanguageMapValue(option.label, language) ||
+                  option.label.en ||
+                  (option.id === "female" ? "Female" : option.id === "male" ? "Male" : "Not specified");
+                return (
+                  <Animated.View
+                    key={option.id}
+                    style={[styles.genderItemWrap, { opacity: isAndroid ? 1 : reveal }]}
+                  >
+                    <OnboardingScaleButton
+                      style={[
+                        styles.genderChipModern,
+                        isAndroid ? styles.genderChipModernAndroid : null,
+                        {
+                          borderColor: active ? colorWithAlpha(selectedMood.button, 0.54) : "rgba(36,24,60,0.16)",
+                          backgroundColor: active
+                            ? isAndroid
+                              ? blendHexColors(selectedMood.button, "#FFFFFF", 0.84)
+                              : colorWithAlpha(selectedMood.button, 0.14)
+                            : "rgba(255,255,255,0.88)",
+                        },
+                      ]}
+                      onPress={() => onChange("gender", option.id)}
+                    >
+                      <View style={styles.genderEmojiWrap}>
+                        <Text style={styles.genderEmoji}>{option.emoji}</Text>
+                      </View>
+                      <Text
+                        style={[styles.genderLabel, isAndroid ? styles.genderLabelAndroid : null, { color: "#241C38" }]}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                      >
+                        {genderLabel}
+                      </Text>
+                    </OnboardingScaleButton>
+                  </Animated.View>
+                );
+              })}
+            </View>
+          </View>
+          <View style={[styles.personaGridModern, isAndroid ? styles.personaGridModernAndroid : null]}>
+            {personaList.map((persona, index) => {
+              const active = data.persona === persona.id;
+              const reveal = personaReveal[index] || fade;
               return (
                 <Animated.View
-                  key={option.id}
-                  style={[styles.genderItemWrap, { opacity: isAndroid ? 1 : reveal }]}
+                  key={persona.id}
+                  style={[styles.personaCardModernWrap, { opacity: isAndroid ? 1 : reveal }]}
                 >
                   <OnboardingScaleButton
                     style={[
-                      styles.genderChipModern,
-                      isAndroid ? styles.genderChipModernAndroid : null,
+                      styles.personaCardModern,
+                      isAndroid ? styles.personaCardModernAndroid : null,
                       {
-                        borderColor: active ? colorWithAlpha(selectedMood.button, 0.54) : "rgba(36,24,60,0.16)",
+                        width: "100%",
+                        borderColor: active ? colorWithAlpha(selectedMood.button, 0.48) : "rgba(36,24,60,0.14)",
                         backgroundColor: active
                           ? isAndroid
-                            ? blendHexColors(selectedMood.button, "#FFFFFF", 0.84)
-                            : colorWithAlpha(selectedMood.button, 0.14)
-                          : "rgba(255,255,255,0.88)",
+                            ? blendHexColors(selectedMood.button, "#FFFFFF", 0.9)
+                            : colorWithAlpha(selectedMood.button, 0.08)
+                          : "rgba(255,255,255,0.9)",
+                        shadowColor: active ? selectedMood.buttonShadow : "#1F1632",
+                        shadowOpacity: isAndroid ? 0 : active ? 0.26 : 0.09,
+                        shadowRadius: isAndroid ? 0 : active ? 18 : 10,
+                        shadowOffset: isAndroid ? { width: 0, height: 0 } : { width: 0, height: active ? 10 : 5 },
+                        elevation: isAndroid ? 0 : active ? 10 : 3,
                       },
                     ]}
-                    onPress={() => onChange("gender", option.id)}
+                    onPress={() => onChange("persona", persona.id)}
                   >
-                    <View style={styles.genderEmojiWrap}>
-                      <Text style={styles.genderEmoji}>{option.emoji}</Text>
+                    <View
+                      style={[
+                        styles.personaEmojiWrap,
+                        {
+                          backgroundColor: active
+                            ? colorWithAlpha(selectedMood.buttonShadow, 0.2)
+                            : "rgba(36,24,60,0.08)",
+                        },
+                      ]}
+                    >
+                      <Text style={styles.personaEmoji}>{persona.emoji}</Text>
                     </View>
+                    <Text style={[styles.personaTitle, { color: "#1F1632" }]}>
+                      {resolveLanguageMapValue(persona.title, language) || persona.title.en}
+                    </Text>
                     <Text
-                      style={[styles.genderLabel, isAndroid ? styles.genderLabelAndroid : null, { color: "#241C38" }]}
-                      numberOfLines={2}
+                      style={[styles.personaSubtitleCard, { color: "#66637D" }]}
+                      numberOfLines={4}
                       ellipsizeMode="tail"
                     >
-                      {genderLabel}
+                      {resolveLanguageMapValue(persona.description, language) || persona.description.en}
                     </Text>
                   </OnboardingScaleButton>
                 </Animated.View>
               );
             })}
           </View>
-        </View>
-        <View style={styles.personaSectionSpacer} />
-
-        <View style={[styles.personaGridModern, isAndroid ? styles.personaGridModernAndroid : null]}>
-          {personaList.map((persona, index) => {
-            const active = data.persona === persona.id;
-            const reveal = personaReveal[index] || fade;
-            return (
-              <Animated.View
-                key={persona.id}
-                style={[styles.personaCardModernWrap, { opacity: isAndroid ? 1 : reveal }]}
-              >
-                <OnboardingScaleButton
-                  style={[
-                    styles.personaCardModern,
-                    isAndroid ? styles.personaCardModernAndroid : null,
-                    {
-                      width: "100%",
-                      borderColor: active ? colorWithAlpha(selectedMood.button, 0.48) : "rgba(36,24,60,0.14)",
-                      backgroundColor: active
-                        ? isAndroid
-                          ? blendHexColors(selectedMood.button, "#FFFFFF", 0.9)
-                          : colorWithAlpha(selectedMood.button, 0.08)
-                        : "rgba(255,255,255,0.9)",
-                      shadowColor: active ? selectedMood.buttonShadow : "#1F1632",
-                      shadowOpacity: isAndroid ? 0 : active ? 0.26 : 0.09,
-                      shadowRadius: isAndroid ? 0 : active ? 18 : 10,
-                      shadowOffset: isAndroid ? { width: 0, height: 0 } : { width: 0, height: active ? 10 : 5 },
-                      elevation: isAndroid ? 0 : active ? 10 : 3,
-                    },
-                  ]}
-                  onPress={() => onChange("persona", persona.id)}
-                >
-                  <View
-                    style={[
-                      styles.personaEmojiWrap,
-                      {
-                        backgroundColor: active
-                          ? colorWithAlpha(selectedMood.buttonShadow, 0.2)
-                          : "rgba(36,24,60,0.08)",
-                      },
-                    ]}
-                  >
-                    <Text style={styles.personaEmoji}>{persona.emoji}</Text>
-                  </View>
-                  <Text style={[styles.personaTitle, { color: "#1F1632" }]}>
-                    {resolveLanguageMapValue(persona.title, language) || persona.title.en}
-                  </Text>
-                  <Text
-                    style={[styles.personaSubtitleCard, { color: "#66637D" }]}
-                    numberOfLines={4}
-                    ellipsizeMode="tail"
-                  >
-                    {resolveLanguageMapValue(persona.description, language) || persona.description.en}
-                  </Text>
-                </OnboardingScaleButton>
-              </Animated.View>
-            );
-          })}
         </View>
       </OnboardingScrollView>
       <View

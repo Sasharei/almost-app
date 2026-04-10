@@ -71,8 +71,9 @@ class NativeLiquidGlassButton: UIView {
     button.addTarget(self, action: #selector(handlePress), for: .touchUpInside)
     button.titleLabel?.numberOfLines = 1
     button.titleLabel?.lineBreakMode = .byTruncatingTail
-    button.titleLabel?.adjustsFontSizeToFitWidth = true
-    button.titleLabel?.minimumScaleFactor = 0.5
+    button.titleLabel?.adjustsFontSizeToFitWidth = false
+    button.titleLabel?.minimumScaleFactor = 1
+    button.titleLabel?.adjustsFontForContentSizeCategory = false
     button.titleLabel?.allowsDefaultTighteningForTruncation = true
 
     addSubview(button)
@@ -114,9 +115,11 @@ class NativeLiquidGlassButton: UIView {
       button.configuration = config
     }
     button.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
-    button.titleLabel?.adjustsFontSizeToFitWidth = true
-    button.titleLabel?.minimumScaleFactor = 0.5
+    button.titleLabel?.adjustsFontSizeToFitWidth = false
+    button.titleLabel?.minimumScaleFactor = 1
+    button.titleLabel?.adjustsFontForContentSizeCategory = false
     button.titleLabel?.numberOfLines = 1
+    button.titleLabel?.lineBreakMode = .byTruncatingTail
   }
 }
 

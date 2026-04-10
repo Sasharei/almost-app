@@ -26,6 +26,8 @@ const colorWithAlpha = (hex, alpha = 1) => {
   return `rgba(${r},${g},${b},${clamped})`;
 };
 
+const INVISIBLE_TEXT_MARKS_REGEX = /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
+
 const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
   label = "Edit",
   onPress,
@@ -74,7 +76,10 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
     : "rgba(139,189,255,0.2)";
   const shadowColor = isDarkTheme ? "#050A16" : isAndroid ? "#8A98AE" : isProTheme ? proThemeAccentColor : "#8EAEE0";
   const labelColor = isDarkTheme ? "#FFFFFF" : isProTheme ? "#F8FBFF" : "#0B1630";
-  const resolvedLabel = typeof label === "string" ? label.trim() : String(label || "").trim();
+  const resolvedLabel = (typeof label === "string" ? label : String(label || ""))
+    .replace(INVISIBLE_TEXT_MARKS_REGEX, "")
+    .replace(/\s+/g, " ")
+    .trim();
   const renderedLabel = resolvedLabel || "Edit";
   const labelLength = Array.from(renderedLabel).length;
   const longestWordLength = renderedLabel
@@ -82,12 +87,14 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
     .filter(Boolean)
     .reduce((max, word) => Math.max(max, Array.from(word).length), 0);
   const effectiveWordLength = Math.max(labelLength, longestWordLength);
-  // Grow width conservatively, then prefer text shrinking instead of oversized buttons.
-  const adaptiveButtonMinWidth = Math.max(106, Math.min(128, 106 + Math.max(0, effectiveWordLength - 6) * 2));
+  // On Android, avoid shrinking typography aggressively; prefer wider pills.
+  const adaptiveButtonMinWidth = Math.max(106, Math.min(160, 106 + Math.max(0, effectiveWordLength - 6) * 4));
   const adaptiveHorizontalPadding =
     effectiveWordLength >= 12 ? 11 : effectiveWordLength >= 10 ? 13 : effectiveWordLength >= 8 ? 15 : 18;
-  const adaptiveLabelFontSize = Math.max(11.5, Math.min(16, 16 - Math.max(0, effectiveWordLength - 8) * 0.6));
-  const adaptiveLabelLineHeight = Math.max(14, Math.round(adaptiveLabelFontSize + 3));
+  const adaptiveLabelFontSize = isAndroid
+    ? 16
+    : Math.max(14, Math.min(16, 16 - Math.max(0, effectiveWordLength - 12) * 0.35));
+  const adaptiveLabelLineHeight = isAndroid ? 20 : Math.max(16, Math.round(adaptiveLabelFontSize + 3));
 
   if (nativeLiquidButtonAvailable) {
     return (
@@ -204,8 +211,8 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
             textStyle,
           ]}
           numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.5}
+          allowFontScaling={false}
+          maxFontSizeMultiplier={1}
           ellipsizeMode="tail"
         >
           {renderedLabel}
