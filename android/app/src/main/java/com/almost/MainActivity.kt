@@ -31,13 +31,15 @@ class MainActivity : ReactActivity() {
    * which allows you to enable New Architecture with a single boolean flags [fabricEnabled]
    */
   override fun createReactActivityDelegate(): ReactActivityDelegate {
+    val newArchEnabled = MainApplication.isRuntimeNewArchEnabled
+    val fabricForRuntime = newArchEnabled && fabricEnabled
     return ReactActivityDelegateWrapper(
           this,
-          BuildConfig.IS_NEW_ARCHITECTURE_ENABLED,
+          newArchEnabled,
           object : DefaultReactActivityDelegate(
               this,
               mainComponentName,
-              fabricEnabled
+              fabricForRuntime
           ){})
   }
 

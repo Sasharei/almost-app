@@ -24,14 +24,60 @@ const colorWithAlpha = (hex, alpha = 1) => {
   return `rgba(${r},${g},${b},${clamped})`;
 };
 
+const INVISIBLE_ICON_MARKS_REGEX = /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
+const CURRENCY_SYMBOL_HINT_REGEX = /[€£¥₽₸₩₺₫฿₦₹₱₪₭₲₡₵₼₾₥₳₣₤₰¢$﷼]/;
+const CURRENCY_CODE_ABBREVIATION_REGEX = /^[A-Za-z]{2,5}$/;
+
+const normalizeIconLabel = (icon) => {
+  const normalized =
+    (typeof icon === "string" ? icon : String(icon || ""))
+      .replace(INVISIBLE_ICON_MARKS_REGEX, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  return normalized || "$";
+};
+
+const getVisibleGlyphCount = (label = "") =>
+  Math.max(1, Array.from(String(label).replace(/\s+/g, "")).length);
+
+const getIconKind = (label = "") => {
+  if (label === "+") return "plus";
+  const compact = String(label).replace(/\s+/g, "");
+  if (!compact) return "symbol";
+  if (CURRENCY_CODE_ABBREVIATION_REGEX.test(compact)) return "abbreviation";
+  const hasLatinLetters = /[A-Za-z]/.test(compact);
+  const hasDigits = /\d/.test(compact);
+  if (CURRENCY_SYMBOL_HINT_REGEX.test(compact)) return "symbol";
+  if (!hasLatinLetters && !hasDigits) return "symbol";
+  return "mixed";
+};
+
 const resolveIconSize = (icon, size) => {
-  const normalizedIcon = typeof icon === "string" ? icon.trim() : String(icon || "").trim();
-  if (normalizedIcon === "+") return Math.round(size * 0.44);
-  const glyphCount = Math.max(1, Array.from(normalizedIcon || "$").length);
-  if (glyphCount <= 1) return Math.round(size * 0.48);
+  const iconLabel = normalizeIconLabel(icon);
+  const iconKind = getIconKind(iconLabel);
+  const glyphCount = getVisibleGlyphCount(iconLabel);
+
+  if (iconKind === "plus") return Math.round(size * 0.44);
+  if (iconKind === "symbol") {
+    if (glyphCount <= 1) return Math.round(size * 0.48);
+    if (glyphCount === 2) return Math.round(size * 0.43);
+    return Math.round(size * 0.4);
+  }
+  if (iconKind === "abbreviation") {
+    if (glyphCount <= 2) return Math.round(size * 0.41);
+    if (glyphCount === 3) return Math.round(size * 0.37);
+    if (glyphCount === 4) return Math.round(size * 0.34);
+    return Math.round(size * 0.31);
+  }
+  if (glyphCount <= 1) return Math.round(size * 0.46);
   if (glyphCount === 2) return Math.round(size * 0.4);
-  if (glyphCount === 3) return Math.round(size * 0.34);
-  return Math.round(size * 0.3);
+  if (glyphCount === 3) return Math.round(size * 0.36);
+  return Math.round(size * 0.33);
+};
+
+const snapEvenSize = (value = 0) => {
+  const rounded = Math.max(0, Math.round(Number(value) || 0));
+  return rounded % 2 === 0 ? rounded : rounded + 1;
 };
 
 const LiquidGlassFabOrb = ({
@@ -195,14 +241,25 @@ const LiquidGlassFabOrb = ({
   const bottomSpecularColor = isDarkTheme ? "rgba(173,229,255,0.24)" : "rgba(138,204,255,0.36)";
   const sparkleColor = isDarkTheme ? "rgba(255,255,255,0.52)" : "rgba(255,255,255,0.88)";
   const nativeRimColor = isDarkTheme ? "rgba(255,255,255,0.44)" : isAndroid ? "rgba(255,255,255,0.58)" : "rgba(255,255,255,0.76)";
-  const iconLabel = useMemo(() => {
-    const normalized = typeof icon === "string" ? icon.trim() : String(icon || "").trim();
-    return normalized || "$";
-  }, [icon]);
-  const iconGlyphCount = Math.max(1, Array.from(iconLabel).length);
+  const iconLabel = useMemo(() => normalizeIconLabel(icon), [icon]);
+  const iconKind = useMemo(() => getIconKind(iconLabel), [iconLabel]);
+  const iconGlyphCount = getVisibleGlyphCount(iconLabel);
   const iconHasLatinLetters = /[A-Za-z]/.test(iconLabel);
-  const iconSize = resolveIconSize(iconLabel, resolvedSize);
-  const iconMinimumScale = iconLabel === "+" ? 1 : iconGlyphCount <= 2 ? 0.78 : 0.6;
+  const iconSize = snapEvenSize(resolveIconSize(iconLabel, resolvedSize));
+  const iconMinimumScale = useMemo(() => {
+    if (iconKind === "plus") return 1;
+    if (iconKind === "symbol") return 0.94;
+    if (iconKind === "abbreviation") return iconGlyphCount <= 3 ? 0.88 : 0.84;
+    return iconGlyphCount <= 2 ? 0.88 : 0.82;
+  }, [iconGlyphCount, iconKind]);
+  const shouldAutoFitIcon = iconKind === "abbreviation" || iconKind === "mixed";
+  const iconLayerSize = snapEvenSize(resolvedSize * 0.76);
+  const iconLetterSpacing =
+    iconGlyphCount <= 1
+      ? 0
+      : iconHasLatinLetters
+      ? 0.12
+      : 0.22;
 
   return (
     <View
@@ -446,35 +503,37 @@ const LiquidGlassFabOrb = ({
         />
       )}
 
-      <Text
-        style={[
-          styles.icon,
-          {
-            color: iconColor,
-            fontSize: iconSize,
-            lineHeight: iconSize,
-            fontWeight: iconLabel === "+" ? "700" : "800",
-            letterSpacing: iconHasLatinLetters ? 0.12 : 0.3,
-            maxWidth: resolvedSize * 0.76,
-            paddingHorizontal: resolvedSize * 0.04,
-            textShadowColor:
-              isAndroid || suppressArtificialHighlights
-                ? "transparent"
-                : isDarkTheme
-                ? "rgba(0,0,0,0.42)"
-                : "rgba(255,255,255,0.42)",
-            textShadowOffset: { width: 0, height: 1 },
-            textShadowRadius: 2,
-          },
-        ]}
-        adjustsFontSizeToFit
-        minimumFontScale={iconMinimumScale}
-        allowFontScaling={false}
-        ellipsizeMode="clip"
-        numberOfLines={1}
-      >
-        {iconLabel}
-      </Text>
+      <View pointerEvents="none" style={styles.iconLayer}>
+        <Text
+          style={[
+            styles.icon,
+            {
+              color: iconColor,
+              fontSize: iconSize,
+              lineHeight: iconLayerSize,
+              fontWeight: iconLabel === "+" ? "700" : "800",
+              letterSpacing: iconLetterSpacing,
+              width: iconLayerSize,
+              height: iconLayerSize,
+              textShadowColor:
+                isAndroid || suppressArtificialHighlights
+                  ? "transparent"
+                  : isDarkTheme
+                  ? "rgba(0,0,0,0.42)"
+                  : "rgba(255,255,255,0.42)",
+              textShadowOffset: { width: 0, height: 0 },
+              textShadowRadius: 2,
+            },
+          ]}
+          adjustsFontSizeToFit={Platform.OS !== "android" && shouldAutoFitIcon}
+          minimumFontScale={Platform.OS === "android" ? undefined : iconMinimumScale}
+          allowFontScaling={false}
+          ellipsizeMode="clip"
+          numberOfLines={1}
+        >
+          {iconLabel}
+        </Text>
+      </View>
     </View>
   );
 };
@@ -507,10 +566,16 @@ const styles = StyleSheet.create({
     position: "absolute",
     borderWidth: 1.6,
   },
+  iconLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   icon: {
     textAlign: "center",
+    textAlignVertical: "center",
     includeFontPadding: false,
-    letterSpacing: 0.3,
+    letterSpacing: 0,
   },
 });
 

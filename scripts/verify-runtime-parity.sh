@@ -16,9 +16,9 @@ assert_contains() {
   echo "[OK] $label"
 }
 
-assert_contains "$ROOT_DIR/app.json" '"newArchEnabled": false' "Expo config uses legacy architecture"
-assert_contains "$ROOT_DIR/android/gradle.properties" "newArchEnabled=false" "Android uses legacy architecture"
-assert_contains "$ROOT_DIR/ios/Podfile.properties.json" '"newArchEnabled": "false"' "iOS uses legacy architecture"
+assert_contains "$ROOT_DIR/app.json" '"newArchEnabled": true' "Expo config uses new architecture"
+assert_contains "$ROOT_DIR/android/gradle.properties" "newArchEnabled=true" "Android uses new architecture"
+assert_contains "$ROOT_DIR/ios/Podfile.properties.json" '"newArchEnabled": "true"' "iOS uses new architecture"
 assert_contains "$ROOT_DIR/App.js" 'UI_REFRESH_ROLLOUT_RC_KEY = "ui_refresh_v1_enabled"' "UI refresh rollout flag is defined"
 assert_contains "$ROOT_DIR/App.js" "setUiRefreshRolloutEnabled" "UI refresh rollout flag is wired"
 

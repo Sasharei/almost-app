@@ -2,6 +2,7 @@ package com.sasarei.almostclean
 
 import android.app.Application
 import android.content.res.Configuration
+import android.util.Log
 
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
@@ -14,6 +15,7 @@ import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.react.views.view.setEdgeToEdgeFeatureFlagOn
 import com.facebook.soloader.SoLoader
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
@@ -21,6 +23,14 @@ import com.sasarei.almostclean.widget.WidgetStoragePackage
 import java.io.IOException
 
 class MainApplication : Application(), ReactApplication {
+  companion object {
+    @Volatile
+    private var runtimeNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+
+    @JvmStatic
+    val isRuntimeNewArchEnabled: Boolean
+      get() = runtimeNewArchEnabled
+  }
 
   override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
       this,
@@ -36,15 +46,33 @@ class MainApplication : Application(), ReactApplication {
 
           override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
 
-          override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+          override val isNewArchEnabled: Boolean
+            get() = runtimeNewArchEnabled
       }
   )
 
   override val reactHost: ReactHost
     get() = ReactNativeHostWrapper.createReactHost(applicationContext, reactNativeHost)
 
+  private fun setCrashlyticsBooleanKey(key: String, value: Boolean) {
+    runCatching {
+      FirebaseCrashlytics.getInstance().setCustomKey(key, value)
+    }
+  }
+
+  private fun recordFallbackException(error: Throwable) {
+    runCatching {
+      FirebaseCrashlytics.getInstance().recordException(
+          RuntimeException("RN new architecture init failed; switched to legacy runtime", error)
+      )
+    }
+  }
+
   override fun onCreate() {
     super.onCreate()
+    setCrashlyticsBooleanKey("rn_new_arch_build_flag", BuildConfig.IS_NEW_ARCHITECTURE_ENABLED)
+    setCrashlyticsBooleanKey("rn_new_arch_runtime_before_init", runtimeNewArchEnabled)
+    setCrashlyticsBooleanKey("rn_new_arch_fallback_triggered", false)
     DefaultNewArchitectureEntryPoint.releaseLevel = try {
       ReleaseLevel.valueOf(BuildConfig.REACT_NATIVE_RELEASE_LEVEL.uppercase())
     } catch (e: IllegalArgumentException) {
@@ -55,13 +83,27 @@ class MainApplication : Application(), ReactApplication {
     } catch (e: IOException) {
       throw RuntimeException(e)
     }
-    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+    if (runtimeNewArchEnabled) {
       // Keep TurboModules/Fabric, but force bridge mode to avoid null root view crashes on startup.
-      DefaultNewArchitectureEntryPoint.load(
-          turboModulesEnabled = true,
-          fabricEnabled = true,
-          bridgelessEnabled = false
-      )
+      try {
+        DefaultNewArchitectureEntryPoint.load(
+            turboModulesEnabled = true,
+            fabricEnabled = true,
+            bridgelessEnabled = false
+        )
+      } catch (t: Throwable) {
+        runtimeNewArchEnabled = false
+        setCrashlyticsBooleanKey("rn_new_arch_fallback_triggered", true)
+        setCrashlyticsBooleanKey("rn_new_arch_runtime_after_init", runtimeNewArchEnabled)
+        recordFallbackException(t)
+        Log.e(
+            "MainApplication",
+            "Failed to initialize React Native New Architecture, falling back to legacy runtime.",
+            t
+        )
+      }
+    } else {
+      setCrashlyticsBooleanKey("rn_new_arch_runtime_after_init", runtimeNewArchEnabled)
     }
     if (BuildConfig.IS_EDGE_TO_EDGE_ENABLED) {
       setEdgeToEdgeFeatureFlagOn()
