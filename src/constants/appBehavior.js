@@ -17,7 +17,9 @@ export const MAX_ACTIVE_GOALS = 5;
 export const ANDROID_DIMEZIS_DISABLED = true;
 export const ANDROID_BLUR_AUTO_UPDATE = false;
 export const ANDROID_EXPO_BLUR_ENABLED = true;
-export const ANDROID_EXPO_BLUR_REDUCTION_FACTOR = 1;
+// RenderScript blur on Android requires 0 < radius <= 25.
+// Keep reduction >= 2 so the native default blurRadius (50) stays in range during mount.
+export const ANDROID_EXPO_BLUR_REDUCTION_FACTOR = 2;
 export const BLUR_VIEW_MANAGER_NAMES = ["ViewManagerAdapter_ExpoBlurView", "ExpoBlurView"];
 
 export const IOS_TRACKING_BLOCKED_STATUSES = new Set(["denied", "restricted"]);
@@ -131,6 +133,7 @@ export const STORAGE_KEYS = {
   DAILY_NUDGES: "@almost_daily_nudges",
   DAILY_NUDGE_SCHEDULE_SIGNATURE: "@almost_daily_nudge_schedule_signature",
   LANGUAGE_CURRENCY_NUDGE: "@almost_language_currency_nudge",
+  CURRENCY_RATES_CACHE: "@almost_currency_rates_cache",
   TAMAGOTCHI: "@almost_tamagotchi_state",
   TAMAGOTCHI_GREETING_DAY: "@almost_tamagotchi_greeting_day",
   DAILY_SUMMARY: "@almost_daily_summary",
@@ -146,6 +149,7 @@ export const STORAGE_KEYS = {
   TUTORIAL: "@almost_tutorial_state",
   TUTORIAL_CARD_SHOWN: "tutorial_card_shown",
   FEED_ADD_TUTORIAL_SHOWN: "@almost_feed_add_tutorial_shown",
+  FRIDGE_INTRO_SHOWN: "@almost_fridge_intro_shown",
   AMOUNT_SLIDER_CONFIRM_COACH: "@almost_amount_slider_confirm_coach",
   BUDGET_WIDGET_TUTORIAL: "@almost_budget_widget_tutorial",
   HERO_CAROUSEL_WIGGLE_SWIPE_AT: "@almost_hero_carousel_wiggle_swipe_at",
@@ -191,6 +195,7 @@ export const STORAGE_KEYS = {
   DAY_TWO_INCOME_PROMPT_DISMISSED: "@almost_day_two_income_prompt_dismissed",
   RETENTION_ACTIVE_DAYS: "@almost_retention_active_days",
   RETENTION_MILESTONES: "@almost_retention_milestones",
+  THREE_SESSIONS_7_DAYS_LOGGED: "@almost_three_sessions_7_days_logged",
   PRIMARY_TEMPTATION_PROMPT: "@almost_primary_temptation_prompt",
   LAST_NOTIFICATION_AT: "@almost_last_notification_at",
   SOUND_ENABLED: "@almost_sound_enabled",
@@ -213,10 +218,14 @@ export const STORAGE_KEYS = {
     "@almost_premium_transaction_abandoned_last_shown_at",
   PREMIUM_CHALLENGE_CLAIMS: "@almost_premium_challenge_claims",
   PREMIUM_STATE_CACHE: "@almost_premium_state_cache",
+  PREMIUM_TRIAL_STARTED_AT: "@almost_premium_trial_started_at",
+  PREMIUM_TRIAL_QUALIFIER_3_LOGGED: "@almost_premium_trial_qualifier_3_logged",
   MONETIZATION_EXPERIMENT_GROUP: "@almost_monetization_experiment_group",
   MONETIZATION_EXPERIMENT_ASSIGNED_AT: "@almost_monetization_experiment_assigned_at",
   MONETIZATION_EXPERIMENT_NEW_INSTALL: "@almost_monetization_experiment_new_install",
   MONETIZATION_EXPERIMENT_INSTALL_LEGACY: "@almost_monetization_experiment_install_legacy",
+  PAYWALL_DESIGN_EXPERIMENT_VARIANT: "@almost_paywall_design_experiment_variant",
+  PAYWALL_DESIGN_EXPERIMENT_ASSIGNED_AT: "@almost_paywall_design_experiment_assigned_at",
   MONETIZATION_TRIAL_LOCKED: "@almost_monetization_trial_locked",
   MONETIZATION_ONBOARDING_LOCKED: "@almost_monetization_onboarding_locked",
 };

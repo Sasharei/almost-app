@@ -7,6 +7,7 @@
 
 import WidgetKit
 import SwiftUI
+import UIKit
 
 private let appGroupId = "group.com.sasarei.almostclean"
 private let keySavedMonthLabel = "widget_saved_month_label"
@@ -37,12 +38,36 @@ private let keyWidgetLabelRecentEmpty = "widget_label_recent_empty"
 private let keyWidgetLabelEmptyState = "widget_label_empty_state"
 private let keyWidgetActionSave = "widget_action_save"
 private let keyWidgetActionSpend = "widget_action_spend"
+private let keyWidgetThemeId = "widget_theme_id"
+private let keyWidgetProThemeAccentId = "widget_pro_theme_accent_id"
+private let keyWidgetThemePrimaryColor = "widget_theme_primary_color"
+private let keyWidgetThemeBackgroundColor = "widget_theme_background_color"
 private let keyWidgetInstalledMarker = "widget_home_installed_marker"
 private let keyWidgetDailySummaryAvailable = "widget_daily_summary_available"
 private let keyWidgetDailySummaryExpiresAt = "widget_daily_summary_expires_at"
 private let keyWidgetDailySummaryLabel = "widget_daily_summary_label"
 
-private let saveGreen = Color(red: 0.18, green: 0.72, blue: 0.45)
+private struct WidgetThemePalette {
+    let background: Color
+    let title: Color
+    let label: Color
+    let primary: Color
+    let secondaryValue: Color
+    let detail: Color
+    let progressTrack: Color
+    let catBackground: Color
+    let badgeBackground: Color
+    let badgeBorder: Color
+    let saveButtonBackground: Color
+    let spendButtonBackground: Color
+    let buttonText: Color
+    let budgetDefault: Color
+    let budgetSecondary: Color
+    let budgetNegative: Color
+    let recentEvent: Color
+    let recentSpend: Color
+    let emptyState: Color
+}
 
 struct AlmostWidgetEntry: TimelineEntry {
     let date: Date
@@ -74,6 +99,10 @@ struct AlmostWidgetEntry: TimelineEntry {
     let labelEmptyState: String
     let actionSaveLabel: String
     let actionSpendLabel: String
+    let widgetThemeId: String
+    let widgetProThemeAccentId: String
+    let widgetThemePrimaryColor: String
+    let widgetThemeBackgroundColor: String
     let dailySummaryAvailable: Bool
     let dailySummaryExpiresAt: Double
     let dailySummaryLabel: String
@@ -111,6 +140,10 @@ struct AlmostWidgetProvider: TimelineProvider {
             labelEmptyState: "Start saving today",
             actionSaveLabel: "Копить",
             actionSpendLabel: "Тратить",
+            widgetThemeId: "light",
+            widgetProThemeAccentId: "none",
+            widgetThemePrimaryColor: "#111111",
+            widgetThemeBackgroundColor: "#F6F7FB",
             dailySummaryAvailable: false,
             dailySummaryExpiresAt: 0,
             dailySummaryLabel: "Отчёт"
@@ -159,6 +192,10 @@ struct AlmostWidgetProvider: TimelineProvider {
         let labelEmptyState = defaults?.string(forKey: keyWidgetLabelEmptyState) ?? "Start saving today"
         let actionSaveLabel = defaults?.string(forKey: keyWidgetActionSave) ?? "Копить"
         let actionSpendLabel = defaults?.string(forKey: keyWidgetActionSpend) ?? "Тратить"
+        let widgetThemeId = defaults?.string(forKey: keyWidgetThemeId) ?? "light"
+        let widgetProThemeAccentId = defaults?.string(forKey: keyWidgetProThemeAccentId) ?? "none"
+        let widgetThemePrimaryColor = defaults?.string(forKey: keyWidgetThemePrimaryColor) ?? "#111111"
+        let widgetThemeBackgroundColor = defaults?.string(forKey: keyWidgetThemeBackgroundColor) ?? "#F6F7FB"
         let dailySummaryAvailable = defaults?.bool(forKey: keyWidgetDailySummaryAvailable) ?? false
         let dailySummaryExpiresAt = defaults?.double(forKey: keyWidgetDailySummaryExpiresAt) ?? 0
         let dailySummaryLabel = defaults?.string(forKey: keyWidgetDailySummaryLabel) ?? "Отчёт"
@@ -192,6 +229,10 @@ struct AlmostWidgetProvider: TimelineProvider {
             labelEmptyState: labelEmptyState,
             actionSaveLabel: actionSaveLabel,
             actionSpendLabel: actionSpendLabel,
+            widgetThemeId: widgetThemeId,
+            widgetProThemeAccentId: widgetProThemeAccentId,
+            widgetThemePrimaryColor: widgetThemePrimaryColor,
+            widgetThemeBackgroundColor: widgetThemeBackgroundColor,
             dailySummaryAvailable: dailySummaryAvailable,
             dailySummaryExpiresAt: dailySummaryExpiresAt,
             dailySummaryLabel: dailySummaryLabel
@@ -203,8 +244,17 @@ struct Almost_WidgetEntryView: View {
     var entry: AlmostWidgetEntry
     @Environment(\.widgetFamily) private var family
 
+    private var palette: WidgetThemePalette {
+        resolveWidgetPalette(
+            themeId: entry.widgetThemeId,
+            proAccentId: entry.widgetProThemeAccentId,
+            primaryHex: entry.widgetThemePrimaryColor,
+            backgroundHex: entry.widgetThemeBackgroundColor
+        )
+    }
+
     var body: some View {
-        let background = Color(red: 0.97, green: 0.95, blue: 0.92)
+        let background = palette.background
         let edgePadding: CGFloat = 8
         let content = ZStack(alignment: .topTrailing) {
             contentView
@@ -245,12 +295,8 @@ struct Almost_WidgetEntryView: View {
             ? min(max(budgetRemainingValue / budgetTotalValue, 0), 1)
             : 0
         let budgetIsNegative = budgetRemainingValue < -0.01
-        let budgetColor = budgetIsNegative
-            ? Color(red: 0.85, green: 0.32, blue: 0.38)
-            : Color.black.opacity(0.65)
-        let budgetMetricColor = budgetIsNegative
-            ? Color(red: 0.85, green: 0.32, blue: 0.38)
-            : Color.black
+        let budgetColor = budgetIsNegative ? palette.budgetNegative : palette.budgetSecondary
+        let budgetMetricColor = budgetIsNegative ? palette.budgetNegative : palette.budgetDefault
         let recentEvents = entry.recentEvents
 
         if !entry.hasData {
@@ -258,10 +304,10 @@ struct Almost_WidgetEntryView: View {
                 Spacer(minLength: 0)
                 Text("Almost")
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.black)
+                    .foregroundColor(palette.title)
                 Text(entry.labelEmptyState)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Color.black.opacity(0.7))
+                    .foregroundColor(palette.emptyState)
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -271,12 +317,12 @@ struct Almost_WidgetEntryView: View {
             case .systemSmall:
                 VStack(alignment: .leading, spacing: 6) {
                     headerRow
-                    metricBlock(title: entry.labelTotal, value: entry.savedTotalLabel, valueSize: 22, valueColor: saveGreen)
+                    metricBlock(title: entry.labelTotal, value: entry.savedTotalLabel, valueSize: 22, valueColor: palette.primary)
                     progressBlock(
                         title: primaryTitle,
                         progress: primaryProgress,
                         detail: primaryDetail,
-                        color: saveGreen,
+                        color: palette.primary,
                         barHeight: 6
                     )
                     Spacer(minLength: 2)
@@ -286,13 +332,13 @@ struct Almost_WidgetEntryView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     headerRow
                     HStack(alignment: .top, spacing: 10) {
-                        metricBlock(title: entry.labelTotal, value: entry.savedTotalLabel, valueSize: 26, valueColor: saveGreen)
+                        metricBlock(title: entry.labelTotal, value: entry.savedTotalLabel, valueSize: 26, valueColor: palette.primary)
                         VStack(alignment: .leading, spacing: 6) {
                             progressBlock(
                                 title: primaryTitle,
                                 progress: primaryProgress,
                                 detail: primaryDetail,
-                                color: saveGreen,
+                                color: palette.primary,
                                 barHeight: 6
                             )
                             progressBlock(
@@ -316,17 +362,17 @@ struct Almost_WidgetEntryView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(entry.labelToday)
                                     .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(Color.black.opacity(0.6))
+                                    .foregroundColor(palette.label)
                                 Text(entry.savedTodayLabel)
                                     .font(.system(size: 28, weight: .bold))
-                                    .foregroundColor(.black)
+                                    .foregroundColor(palette.secondaryValue)
                             }
                             HStack(alignment: .top, spacing: 12) {
                                 metricBlock(
                                     title: entry.labelTotal,
                                     value: entry.savedTotalLabel,
                                     valueSize: 18,
-                                    valueColor: saveGreen
+                                    valueColor: palette.primary
                                 )
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 metricBlock(
@@ -344,14 +390,14 @@ struct Almost_WidgetEntryView: View {
                                 title: primaryTitle,
                                 progress: primaryProgress,
                                 detail: primaryDetail,
-                                color: saveGreen,
+                                color: palette.primary,
                                 barHeight: 7
                             )
                             progressBlock(
                                 title: entry.labelToday,
                                 progress: todayProgress,
                                 detail: todayDetail,
-                                color: Color(red: 0.25, green: 0.55, blue: 0.95),
+                                color: palette.detail,
                                 barHeight: 7
                             )
                             progressBlock(
@@ -375,11 +421,11 @@ struct Almost_WidgetEntryView: View {
     }
 
     private var headerRow: some View {
-        return HStack(spacing: 8) {
+        HStack(spacing: 8) {
             catImage
             Text("Almost")
                 .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.black)
+                .foregroundColor(palette.title)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             Spacer()
@@ -398,10 +444,10 @@ struct Almost_WidgetEntryView: View {
             Text("📊")
                 .font(.system(size: summaryEmojiSize))
                 .frame(width: summaryBadgeSize, height: summaryBadgeSize)
-                .background(Color.black.opacity(0.08))
+                .background(palette.badgeBackground)
                 .overlay(
                     Circle()
-                        .stroke(Color.black.opacity(0.12), lineWidth: 1)
+                        .stroke(palette.badgeBorder, lineWidth: 1)
                 )
                 .clipShape(Circle())
         }
@@ -416,7 +462,7 @@ struct Almost_WidgetEntryView: View {
             .scaledToFit()
             .frame(width: 30, height: 30)
             .padding(4)
-            .background(Color.black.opacity(0.08))
+            .background(palette.catBackground)
             .clipShape(Circle())
     }
 
@@ -424,7 +470,7 @@ struct Almost_WidgetEntryView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color.black.opacity(0.6))
+                .foregroundColor(palette.label)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             Text(value)
@@ -446,11 +492,11 @@ struct Almost_WidgetEntryView: View {
             HStack(spacing: 6) {
                 Text(title)
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(Color.black.opacity(0.6))
+                    .foregroundColor(palette.label)
                 Spacer(minLength: 4)
                 Text(detail)
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(Color.black.opacity(0.75))
+                    .foregroundColor(palette.detail)
             }
             progressBar(progress: progress, color: color, height: barHeight)
         }
@@ -462,7 +508,7 @@ struct Almost_WidgetEntryView: View {
             let fillWidth = clamped <= 0 ? 0 : max(height, proxy.size.width * clamped)
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.black.opacity(0.08))
+                    .fill(palette.progressTrack)
                 Capsule()
                     .fill(color)
                     .frame(width: fillWidth)
@@ -475,7 +521,7 @@ struct Almost_WidgetEntryView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(Color.black.opacity(0.6))
+                .foregroundColor(palette.label)
             ForEach(Array(events.prefix(3).enumerated()), id: \.offset) { _, label in
                 recentEventRow(label)
             }
@@ -487,11 +533,7 @@ struct Almost_WidgetEntryView: View {
         let isSpend = trimmed.hasPrefix("-")
         return Text(label)
             .font(.system(size: 10, weight: .semibold))
-            .foregroundColor(
-                isSpend
-                    ? Color(red: 0.85, green: 0.32, blue: 0.38)
-                    : Color.black.opacity(0.75)
-            )
+            .foregroundColor(isSpend ? palette.recentSpend : palette.recentEvent)
             .lineLimit(1)
             .truncationMode(.tail)
     }
@@ -514,8 +556,8 @@ struct Almost_WidgetEntryView: View {
                     .font(.system(size: buttonFontSize, weight: .bold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, verticalPadding)
-                    .background(Color(red: 0.20, green: 0.70, blue: 0.45))
-                    .foregroundColor(.white)
+                    .background(palette.saveButtonBackground)
+                    .foregroundColor(palette.buttonText)
                     .cornerRadius(10)
             }
             Link(destination: URL(string: "com.sasarei.almostclean://quick-entry?type=spend")!) {
@@ -523,11 +565,171 @@ struct Almost_WidgetEntryView: View {
                     .font(.system(size: buttonFontSize, weight: .bold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, verticalPadding)
-                    .background(Color(red: 0.85, green: 0.32, blue: 0.38))
-                    .foregroundColor(.white)
+                    .background(palette.spendButtonBackground)
+                    .foregroundColor(palette.buttonText)
                     .cornerRadius(10)
             }
         }
+    }
+
+    private func resolveWidgetPalette(
+        themeId: String,
+        proAccentId: String,
+        primaryHex: String,
+        backgroundHex: String
+    ) -> WidgetThemePalette {
+        let normalizedTheme = normalizeThemeId(themeId)
+        switch normalizedTheme {
+        case "dark":
+            return WidgetThemePalette(
+                background: Color(uiColor: colorFromHex(backgroundHex, fallback: UIColor(red: 0.04, green: 0.08, blue: 0.16, alpha: 1))),
+                title: Color(uiColor: UIColor(red: 0.97, green: 0.98, blue: 1.0, alpha: 1)),
+                label: Color(uiColor: UIColor(red: 0.65, green: 0.69, blue: 0.8, alpha: 1)),
+                primary: Color(uiColor: UIColor(red: 0.39, green: 0.95, blue: 0.71, alpha: 1)),
+                secondaryValue: Color(uiColor: UIColor(red: 0.97, green: 0.98, blue: 1.0, alpha: 1)),
+                detail: Color(uiColor: UIColor(red: 0.84, green: 0.89, blue: 1.0, alpha: 1)),
+                progressTrack: Color(uiColor: UIColor(red: 0.18, green: 0.24, blue: 0.37, alpha: 1)),
+                catBackground: Color(uiColor: UIColor(red: 0.13, green: 0.19, blue: 0.31, alpha: 1)),
+                badgeBackground: Color(uiColor: UIColor(red: 0.16, green: 0.22, blue: 0.36, alpha: 1)),
+                badgeBorder: Color(uiColor: UIColor(red: 0.28, green: 0.37, blue: 0.57, alpha: 1)),
+                saveButtonBackground: Color(uiColor: UIColor(red: 0.2, green: 0.7, blue: 0.45, alpha: 1)),
+                spendButtonBackground: Color(uiColor: UIColor(red: 0.85, green: 0.32, blue: 0.38, alpha: 1)),
+                buttonText: .white,
+                budgetDefault: Color(uiColor: UIColor(red: 0.97, green: 0.98, blue: 1.0, alpha: 1)),
+                budgetSecondary: Color(uiColor: UIColor(red: 0.77, green: 0.81, blue: 0.91, alpha: 1)),
+                budgetNegative: Color(uiColor: UIColor(red: 1.0, green: 0.56, blue: 0.62, alpha: 1)),
+                recentEvent: Color(uiColor: UIColor(red: 0.88, green: 0.91, blue: 1.0, alpha: 1)),
+                recentSpend: Color(uiColor: UIColor(red: 1.0, green: 0.56, blue: 0.62, alpha: 1)),
+                emptyState: Color(uiColor: UIColor(red: 0.91, green: 0.94, blue: 1.0, alpha: 1))
+            )
+        case "pro":
+            let normalizedAccentId = normalizeAccentId(proAccentId)
+            let accent = colorFromHex(primaryHex, fallback: proAccentColor(for: normalizedAccentId))
+            let backgroundFallback = blend(
+                UIColor(red: 0.93, green: 0.95, blue: 1.0, alpha: 1),
+                accent,
+                ratio: 0.14
+            )
+            let background = colorFromHex(backgroundHex, fallback: backgroundFallback)
+            let titleBase = UIColor(red: 0.06, green: 0.11, blue: 0.27, alpha: 1)
+            let labelBase = UIColor(red: 0.37, green: 0.42, blue: 0.6, alpha: 1)
+            return WidgetThemePalette(
+                background: Color(uiColor: background),
+                title: Color(uiColor: blend(titleBase, accent, ratio: 0.12)),
+                label: Color(uiColor: blend(labelBase, accent, ratio: 0.2)),
+                primary: Color(uiColor: accent),
+                secondaryValue: Color(uiColor: blend(titleBase, accent, ratio: 0.08)),
+                detail: Color(uiColor: blend(labelBase, accent, ratio: 0.28)),
+                progressTrack: Color(uiColor: UIColor(red: 0.74, green: 0.79, blue: 0.93, alpha: 1)),
+                catBackground: Color(uiColor: blend(UIColor(red: 0.88, green: 0.91, blue: 1.0, alpha: 1), accent, ratio: 0.2)),
+                badgeBackground: Color(uiColor: blend(UIColor(red: 0.88, green: 0.91, blue: 1.0, alpha: 1), accent, ratio: 0.24)),
+                badgeBorder: Color(uiColor: blend(UIColor(red: 0.78, green: 0.83, blue: 0.97, alpha: 1), accent, ratio: 0.32)),
+                saveButtonBackground: Color(uiColor: accent),
+                spendButtonBackground: Color(uiColor: UIColor(red: 0.85, green: 0.32, blue: 0.38, alpha: 1)),
+                buttonText: .white,
+                budgetDefault: Color(uiColor: blend(titleBase, accent, ratio: 0.1)),
+                budgetSecondary: Color(uiColor: blend(labelBase, accent, ratio: 0.2)),
+                budgetNegative: Color(uiColor: UIColor(red: 0.85, green: 0.32, blue: 0.38, alpha: 1)),
+                recentEvent: Color(uiColor: blend(titleBase, accent, ratio: 0.14)),
+                recentSpend: Color(uiColor: UIColor(red: 0.85, green: 0.32, blue: 0.38, alpha: 1)),
+                emptyState: Color(uiColor: blend(titleBase, accent, ratio: 0.1))
+            )
+        default:
+            return WidgetThemePalette(
+                background: Color(uiColor: UIColor(red: 0.97, green: 0.95, blue: 0.92, alpha: 1)),
+                title: .black,
+                label: Color.black.opacity(0.6),
+                primary: Color(uiColor: UIColor(red: 0.18, green: 0.72, blue: 0.45, alpha: 1)),
+                secondaryValue: .black,
+                detail: Color.black.opacity(0.75),
+                progressTrack: Color.black.opacity(0.08),
+                catBackground: Color.black.opacity(0.08),
+                badgeBackground: Color.black.opacity(0.08),
+                badgeBorder: Color.black.opacity(0.12),
+                saveButtonBackground: Color(uiColor: UIColor(red: 0.2, green: 0.7, blue: 0.45, alpha: 1)),
+                spendButtonBackground: Color(uiColor: UIColor(red: 0.85, green: 0.32, blue: 0.38, alpha: 1)),
+                buttonText: .white,
+                budgetDefault: .black,
+                budgetSecondary: Color.black.opacity(0.65),
+                budgetNegative: Color(uiColor: UIColor(red: 0.85, green: 0.32, blue: 0.38, alpha: 1)),
+                recentEvent: Color.black.opacity(0.75),
+                recentSpend: Color(uiColor: UIColor(red: 0.85, green: 0.32, blue: 0.38, alpha: 1)),
+                emptyState: Color.black.opacity(0.7)
+            )
+        }
+    }
+
+    private func normalizeThemeId(_ raw: String) -> String {
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch normalized {
+        case "dark", "pro":
+            return normalized
+        default:
+            return "light"
+        }
+    }
+
+    private func normalizeAccentId(_ raw: String) -> String {
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch normalized {
+        case "emerald", "sunset", "gold", "violet", "aqua", "indigo":
+            return normalized
+        default:
+            return "indigo"
+        }
+    }
+
+    private func proAccentColor(for accentId: String) -> UIColor {
+        switch accentId {
+        case "emerald":
+            return UIColor(red: 0.12, green: 0.75, blue: 0.56, alpha: 1)
+        case "sunset":
+            return UIColor(red: 1.0, green: 0.48, blue: 0.35, alpha: 1)
+        case "gold":
+            return UIColor(red: 0.89, green: 0.65, blue: 0.17, alpha: 1)
+        case "violet":
+            return UIColor(red: 0.55, green: 0.38, blue: 1.0, alpha: 1)
+        case "aqua":
+            return UIColor(red: 0.18, green: 0.66, blue: 1.0, alpha: 1)
+        default:
+            return UIColor(red: 0.26, green: 0.33, blue: 1.0, alpha: 1)
+        }
+    }
+
+    private func colorFromHex(_ raw: String, fallback: UIColor) -> UIColor {
+        let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return fallback }
+        let hex = cleaned.hasPrefix("#") ? String(cleaned.dropFirst()) : cleaned
+        guard hex.count == 6 else { return fallback }
+        var value: UInt64 = 0
+        guard Scanner(string: hex).scanHexInt64(&value) else { return fallback }
+        let red = CGFloat((value & 0xFF0000) >> 16) / 255.0
+        let green = CGFloat((value & 0x00FF00) >> 8) / 255.0
+        let blue = CGFloat(value & 0x0000FF) / 255.0
+        return UIColor(red: red, green: green, blue: blue, alpha: 1)
+    }
+
+    private func blend(_ base: UIColor, _ tint: UIColor, ratio: CGFloat) -> UIColor {
+        let clamped = max(0, min(1, ratio))
+        var br: CGFloat = 0
+        var bg: CGFloat = 0
+        var bb: CGFloat = 0
+        var ba: CGFloat = 0
+        var tr: CGFloat = 0
+        var tg: CGFloat = 0
+        var tb: CGFloat = 0
+        var ta: CGFloat = 0
+        guard base.getRed(&br, green: &bg, blue: &bb, alpha: &ba),
+              tint.getRed(&tr, green: &tg, blue: &tb, alpha: &ta) else {
+            return base
+        }
+        let inverse = 1 - clamped
+        return UIColor(
+            red: br * inverse + tr * clamped,
+            green: bg * inverse + tg * clamped,
+            blue: bb * inverse + tb * clamped,
+            alpha: ba * inverse + ta * clamped
+        )
     }
 }
 
@@ -577,6 +779,10 @@ struct Almost_Widget: Widget {
         labelEmptyState: "Start saving today",
         actionSaveLabel: "Копить",
         actionSpendLabel: "Тратить",
+        widgetThemeId: "pro",
+        widgetProThemeAccentId: "indigo",
+        widgetThemePrimaryColor: "#4353FF",
+        widgetThemeBackgroundColor: "#EEF1FF",
         dailySummaryAvailable: true,
         dailySummaryExpiresAt: Date().addingTimeInterval(60 * 60 * 2).timeIntervalSince1970 * 1000,
         dailySummaryLabel: "Отчёт"
@@ -611,6 +817,10 @@ struct Almost_Widget: Widget {
         labelEmptyState: "Start saving today",
         actionSaveLabel: "Копить",
         actionSpendLabel: "Тратить",
+        widgetThemeId: "dark",
+        widgetProThemeAccentId: "none",
+        widgetThemePrimaryColor: "#FFC857",
+        widgetThemeBackgroundColor: "#05070D",
         dailySummaryAvailable: false,
         dailySummaryExpiresAt: 0,
         dailySummaryLabel: "Отчёт"

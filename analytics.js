@@ -253,6 +253,7 @@ const EVENT_DEFINITIONS = {
   day_3: [],
   retention_day_active: ["lifetime_day", "active_days_total", "active_streak", "missed_days"],
   retention_day_milestone: ["day", "active_days_total", "active_streak"],
+  retention_3_sessions_7_days: ["sessions_in_7_days", "lifetime_day", "active_days_total"],
   north_star_two_saves: ["saves_in_window", "hours_since_join"],
   north_star2: ["decision_days", "decisions_total"],
   free_day_rescue: ["current_streak", "health_remaining"],
@@ -456,6 +457,17 @@ const EVENT_DEFINITIONS = {
     "experiment_group",
     "experiment_new_install",
   ],
+  trial_qualifier_3: [
+    "source",
+    "product_id",
+    "plan",
+    "period_type",
+    "trial_start_at",
+    "hours_since_trial_start",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
   premium_trial_cancelled: [
     "source",
     "product_id",
@@ -653,14 +665,47 @@ const EVENT_DEFINITIONS = {
   modal_action_tapped: ["modal_id", "action", "value", "source"],
 };
 
+const FACEBOOK_MONETIZATION_EVENT_WHITELIST = new Set([
+  "premium_paywall_shown",
+  "premium_paywall_closed",
+  "premium_paywall_scrolled",
+  "premium_paywall_feature_highlighted",
+  "premium_paywall_plan_selected",
+  "premium_paywall_primary_tapped",
+  "premium_transaction_abandoned_offer_shown",
+  "premium_purchase_started",
+  "premium_purchase_result",
+  "premium_purchase_success",
+  "premium_purchase_revenue",
+  "premium_product_not_found",
+  "premium_trial_started",
+  "trial_qualifier_3",
+  "premium_trial_cancelled",
+  "premium_trial_converted",
+  "premium_renewal",
+  "premium_cancellation",
+  "premium_non_subscription_purchase",
+  "premium_expiration",
+  "premium_billing_issue",
+  "premium_product_change",
+  "premium_restore_started",
+  "premium_restore_result",
+  "premium_conversion",
+  "premium_unlock_shown",
+  "premium_gate_blocked",
+  "premium_soft_paywall_shown",
+  "premium_hard_paywall_shown",
+]);
+const FACEBOOK_EVENT_NAME_ALIASES = {
+  premium_transaction_abandoned_offer_shown: "premium_abandoned_offer_shown",
+};
 const FACEBOOK_EVENT_WHITELIST = new Set([
   "onboarding_completed",
   "north_star_two_saves",
   "north_star2",
   "temptation_action",
-  "premium_paywall_shown",
-  "premium_purchase_started",
-  "premium_trial_started",
+  "retention_3_sessions_7_days",
+  ...FACEBOOK_MONETIZATION_EVENT_WHITELIST,
 ]);
 const TIKTOK_EVENT_WHITELIST = new Set([
   "onboarding_completed",
@@ -689,7 +734,7 @@ let performanceUnavailableLogged = false;
 let appsFlyerInitialized = false;
 let appsFlyerInitPromise = null;
 let appsFlyerEnabled = true;
-let facebookSdkReady = false;
+let facebookSdkReady = Platform.OS === "android";
 let tiktokInitialized = false;
 let tiktokInitPromise = null;
 let amplitudeInitialized = false;
@@ -1066,6 +1111,132 @@ const enqueueFacebookEvent = (eventName, params) => {
   }
 };
 
+const resolveFacebookEventName = (eventName) => FACEBOOK_EVENT_NAME_ALIASES[eventName] || eventName;
+
+const resolveFacebookAppEventConstant = (constantName, fallback = "") => {
+  const constants =
+    FacebookAppEvents &&
+    FacebookAppEvents.AppEvents &&
+    typeof FacebookAppEvents.AppEvents === "object"
+      ? FacebookAppEvents.AppEvents
+      : null;
+  if (!constants) return fallback;
+  const resolved = constants[constantName];
+  if (typeof resolved !== "string") return fallback;
+  const normalized = resolved.trim();
+  return normalized || fallback;
+};
+
+const buildFacebookStandardMonetizationLogs = (eventName, params = {}) => {
+  if (Platform.OS !== "android") return [];
+  if (!FACEBOOK_MONETIZATION_EVENT_WHITELIST.has(eventName)) return [];
+  if (eventName === "premium_trial_started") {
+    const productId = String(params?.product_id || "").trim();
+    const plan = String(params?.plan || "").trim();
+    const trialDays = parsePositiveNumber(params?.trial_days);
+    const payload = {};
+    if (productId) payload.fb_content_id = productId;
+    if (plan) payload.fb_description = plan;
+    if (trialDays > 0) payload.trial_days = trialDays;
+    return [
+      {
+        kind: "event",
+        eventName: resolveFacebookAppEventConstant("StartTrial", "fb_mobile_start_trial"),
+        params: payload,
+      },
+    ];
+  }
+
+  if (eventName !== "premium_purchase_revenue") return [];
+
+  const revenueLocal = parsePositiveNumber(params?.revenue_local);
+  const revenueUSD = parsePositiveNumber(params?.revenue_usd);
+  const purchaseAmount = revenueLocal > 0 ? revenueLocal : revenueUSD;
+  if (!(purchaseAmount > 0)) return [];
+  const currency = String(params?.currency || "").trim().toUpperCase() || "USD";
+  const productId = String(params?.product_id || "").trim();
+  const plan = String(params?.plan || "").trim();
+  const transactionId = String(params?.transaction_id || "").trim();
+  const purchaseParams = {};
+  if (productId) purchaseParams.fb_content_id = productId;
+  if (plan) purchaseParams.fb_description = plan;
+  if (transactionId) purchaseParams.fb_order_id = transactionId;
+
+  const subscribeParams = {};
+  if (productId) subscribeParams.fb_content_id = productId;
+  if (plan) subscribeParams.fb_description = plan;
+  subscribeParams.fb_currency = currency;
+
+  return [
+    {
+      kind: "purchase",
+      purchaseAmount,
+      currency,
+      params: purchaseParams,
+    },
+    {
+      kind: "event",
+      eventName: resolveFacebookAppEventConstant("Subscribe", "Subscribe"),
+      valueToSum: purchaseAmount,
+      params: subscribeParams,
+    },
+  ];
+};
+
+const logFacebookStandardMonetizationEvents = (eventName, params = {}) => {
+  const standardLogs = buildFacebookStandardMonetizationLogs(eventName, params);
+  if (!standardLogs.length) return;
+  standardLogs.forEach((entry) => {
+    if (!entry || typeof entry !== "object") return;
+    try {
+      if (entry.kind === "purchase") {
+        if (typeof FacebookAppEvents?.logPurchase === "function") {
+          FacebookAppEvents.logPurchase(entry.purchaseAmount, entry.currency, entry.params || {});
+          return;
+        }
+        const purchasedEventName = resolveFacebookAppEventConstant("Purchased", "fb_mobile_purchase");
+        FacebookAppEvents.logEvent(purchasedEventName, entry.purchaseAmount, {
+          ...(entry.params || {}),
+          fb_currency: entry.currency,
+        });
+        return;
+      }
+
+      if (entry.kind !== "event") return;
+      const resolvedEventName = String(entry.eventName || "").trim();
+      if (!resolvedEventName) return;
+      if (Number.isFinite(entry.valueToSum) && entry.valueToSum > 0) {
+        FacebookAppEvents.logEvent(resolvedEventName, entry.valueToSum, entry.params || {});
+        return;
+      }
+      FacebookAppEvents.logEvent(resolvedEventName, entry.params || {});
+    } catch (error) {
+      console.warn(
+        "Failed to log Facebook standard monetization event:",
+        entry?.eventName || entry?.kind || "unknown",
+        error?.message || error
+      );
+    }
+  });
+};
+
+const dispatchFacebookEvent = (eventName, params = {}) => {
+  const facebookEventName = resolveFacebookEventName(eventName);
+  FacebookAppEvents.logEvent(facebookEventName, params);
+  logFacebookStandardMonetizationEvents(eventName, params);
+  flushFacebookMonetizationEvent(eventName);
+};
+
+const flushFacebookMonetizationEvent = (eventName) => {
+  if (!FACEBOOK_MONETIZATION_EVENT_WHITELIST.has(eventName)) return;
+  if (!FacebookAppEvents || typeof FacebookAppEvents.flush !== "function") return;
+  try {
+    FacebookAppEvents.flush();
+  } catch (error) {
+    console.warn("Failed to flush Facebook events:", error?.message || error);
+  }
+};
+
 const flushFacebookEventQueue = () => {
   if (!facebookSdkReady) return;
   if (!FacebookAppEvents || typeof FacebookAppEvents.logEvent !== "function") return;
@@ -1073,9 +1244,10 @@ const flushFacebookEventQueue = () => {
   while (pendingFacebookEvents.length) {
     const { eventName, params } = pendingFacebookEvents.shift();
     try {
-      FacebookAppEvents.logEvent(eventName, undefined, params);
+      dispatchFacebookEvent(eventName, params);
     } catch (error) {
-      console.warn("Failed to log Facebook event:", eventName, error?.message || error);
+      const facebookEventName = resolveFacebookEventName(eventName);
+      console.warn("Failed to log Facebook event:", facebookEventName, error?.message || error);
     }
   }
 };
@@ -1172,6 +1344,7 @@ export const logScreenView = async (screenName) => {
 
 const logFacebookEvent = (eventName, params = {}) => {
   if (!FACEBOOK_EVENT_WHITELIST.has(eventName)) return;
+  const facebookEventName = resolveFacebookEventName(eventName);
   if (!analyticsConsentKnown) {
     enqueueFacebookEvent(eventName, params);
     return;
@@ -1183,9 +1356,9 @@ const logFacebookEvent = (eventName, params = {}) => {
     return;
   }
   try {
-    FacebookAppEvents.logEvent(eventName, undefined, params);
+    dispatchFacebookEvent(eventName, params);
   } catch (error) {
-    console.warn("Failed to log Facebook event:", eventName, error?.message || error);
+    console.warn("Failed to log Facebook event:", facebookEventName, error?.message || error);
   }
 };
 

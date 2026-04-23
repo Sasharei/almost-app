@@ -43,6 +43,10 @@ const patches = [
     dest: 'node_modules/expo-blur/android/src/main/java/expo/modules/blur/ExpoBlurView.kt',
   },
   {
+    src: 'patches/@react-native-community/blur/android/src/main/java/com/reactnativecommunity/blurview/BlurViewManagerImpl.java',
+    dest: 'node_modules/@react-native-community/blur/android/src/main/java/com/reactnativecommunity/blurview/BlurViewManagerImpl.java',
+  },
+  {
     src: 'patches/expo-notifications/android/src/main/java/expo/modules/notifications/service/NotificationForwarderActivity.kt',
     dest: 'node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/NotificationForwarderActivity.kt',
   },

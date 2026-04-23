@@ -11,6 +11,7 @@ import Svg, {
 } from "react-native-svg";
 import LiquidGlassNativeView, { canUseNativeLiquidGlassView } from "./LiquidGlassNativeView";
 import NativeLiquidGlassButton, { canUseNativeLiquidGlassButton } from "./NativeLiquidGlassButton";
+const IOS_NATIVE_LIQUID_MIN_VERSION = 26;
 
 const colorWithAlpha = (hex, alpha = 1) => {
   const clamped = Math.max(0, Math.min(1, Number(alpha) || 0));
@@ -24,6 +25,19 @@ const colorWithAlpha = (hex, alpha = 1) => {
     return `rgba(0,0,0,${clamped})`;
   }
   return `rgba(${r},${g},${b},${clamped})`;
+};
+
+const getIosMajorVersion = () => {
+  if (Platform.OS !== "ios") return 0;
+  const rawVersion = Platform.Version;
+  if (typeof rawVersion === "string") {
+    const major = Number.parseInt(rawVersion.split(".")[0], 10);
+    return Number.isFinite(major) ? major : 0;
+  }
+  if (typeof rawVersion === "number") {
+    return Number.isFinite(rawVersion) ? Math.floor(rawVersion) : 0;
+  }
+  return 0;
 };
 
 const INVISIBLE_TEXT_MARKS_REGEX = /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
@@ -40,18 +54,20 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
   activeOpacity = 0.85,
 }) {
   const isIos = Platform.OS === "ios";
-  const isAndroid = Platform.OS === "android";
+  const iosMajorVersion = getIosMajorVersion();
+  const isLegacyIos = isIos && iosMajorVersion > 0 && iosMajorVersion < IOS_NATIVE_LIQUID_MIN_VERSION;
+  const useAndroidLikeVisualStyle = Platform.OS === "android" || isLegacyIos;
   const nativeLiquidButtonAvailable = isIos && canUseNativeLiquidGlassButton();
   // Don't memoize this: native manager can become available after initial render.
   const nativeLiquidGlassAvailable =
-    !nativeLiquidButtonAvailable && isIos && canUseNativeLiquidGlassView();
-  const isLiquidGlassStyle = Platform.OS === "ios" && nativeLiquidGlassAvailable;
+    !useAndroidLikeVisualStyle && !nativeLiquidButtonAvailable && isIos && canUseNativeLiquidGlassView();
+  const isLiquidGlassStyle = Platform.OS === "ios" && !useAndroidLikeVisualStyle && nativeLiquidGlassAvailable;
   const prismRingId = useMemo(
     () => `liquid-pill-prism-${Math.random().toString(36).slice(2, 10)}`,
     []
   );
   const accent = isProTheme ? proThemeAccentColor : "#8EC5FF";
-  const shellBorderColor = isAndroid
+  const shellBorderColor = useAndroidLikeVisualStyle
     ? "rgba(14,23,40,0.16)"
     : isDarkTheme
     ? "rgba(255,255,255,0.55)"
@@ -62,10 +78,10 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
     ? "rgba(255,255,255,0.08)"
     : isLiquidGlassStyle
     ? "rgba(255,255,255,0.18)"
-    : isAndroid
+    : useAndroidLikeVisualStyle
     ? "rgba(255,255,255,0.2)"
     : "rgba(255,255,255,0.28)";
-  const auraColor = isAndroid
+  const auraColor = useAndroidLikeVisualStyle
     ? isDarkTheme
       ? "rgba(100,150,230,0.14)"
       : "rgba(150,190,255,0.12)"
@@ -74,8 +90,19 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
     : isProTheme
     ? colorWithAlpha(accent, 0.2)
     : "rgba(139,189,255,0.2)";
-  const shadowColor = isDarkTheme ? "#050A16" : isAndroid ? "#8A98AE" : isProTheme ? proThemeAccentColor : "#8EAEE0";
+  const shadowColor = isDarkTheme
+    ? "#050A16"
+    : useAndroidLikeVisualStyle
+    ? "#8A98AE"
+    : isProTheme
+    ? proThemeAccentColor
+    : "#8EAEE0";
   const labelColor = isDarkTheme ? "#FFFFFF" : isProTheme ? "#F8FBFF" : "#0B1630";
+  const androidLikeShellFillColor = isDarkTheme
+    ? "rgba(24,37,58,0.82)"
+    : isProTheme
+    ? colorWithAlpha(accent, 0.24)
+    : "rgba(236,243,253,0.9)";
   const resolvedLabel = (typeof label === "string" ? label : String(label || ""))
     .replace(INVISIBLE_TEXT_MARKS_REGEX, "")
     .replace(/\s+/g, " ")
@@ -91,10 +118,10 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
   const adaptiveButtonMinWidth = Math.max(106, Math.min(160, 106 + Math.max(0, effectiveWordLength - 6) * 4));
   const adaptiveHorizontalPadding =
     effectiveWordLength >= 12 ? 11 : effectiveWordLength >= 10 ? 13 : effectiveWordLength >= 8 ? 15 : 18;
-  const adaptiveLabelFontSize = isAndroid
+  const adaptiveLabelFontSize = useAndroidLikeVisualStyle
     ? 16
     : Math.max(14, Math.min(16, 16 - Math.max(0, effectiveWordLength - 12) * 0.35));
-  const adaptiveLabelLineHeight = isAndroid ? 20 : Math.max(16, Math.round(adaptiveLabelFontSize + 3));
+  const adaptiveLabelLineHeight = useAndroidLikeVisualStyle ? 20 : Math.max(16, Math.round(adaptiveLabelFontSize + 3));
 
   if (nativeLiquidButtonAvailable) {
     return (
@@ -111,7 +138,7 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
 
   return (
     <View pointerEvents="box-none" style={[styles.wrapper, style, { minWidth: adaptiveButtonMinWidth }]}>
-      {!isAndroid && (
+      {!useAndroidLikeVisualStyle && (
         <View
           pointerEvents="none"
           style={[
@@ -134,10 +161,10 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
             paddingHorizontal: adaptiveHorizontalPadding,
             borderColor: shellBorderColor,
             shadowColor,
-            shadowOpacity: isAndroid ? 0 : isDarkTheme ? 0.34 : 0.28,
-            shadowRadius: isAndroid ? 0 : 14,
-            shadowOffset: { width: 0, height: isAndroid ? 0 : 7 },
-            elevation: isAndroid ? 0 : 9,
+            shadowOpacity: useAndroidLikeVisualStyle ? 0 : isDarkTheme ? 0.34 : 0.28,
+            shadowRadius: useAndroidLikeVisualStyle ? 0 : 14,
+            shadowOffset: { width: 0, height: useAndroidLikeVisualStyle ? 0 : 7 },
+            elevation: useAndroidLikeVisualStyle ? 0 : 9,
           },
           disabled ? styles.disabled : null,
         ]}
@@ -152,12 +179,20 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
             tintAlpha={isDarkTheme ? 0.32 : 0.2}
             strokeOpacity={isDarkTheme ? 0.65 : 0.46}
           />
+        ) : useAndroidLikeVisualStyle ? (
+          <View
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFillObject,
+              {
+                backgroundColor: androidLikeShellFillColor,
+              },
+            ]}
+          />
         ) : (
           <ExpoBlurView
             tint={isDarkTheme ? "dark" : "light"}
-            intensity={isAndroid ? 18 : 56}
-            blurReductionFactor={isAndroid ? 1 : undefined}
-            experimentalBlurMethod={isAndroid ? "dimezisBlurView" : undefined}
+            intensity={56}
             style={StyleSheet.absoluteFill}
           />
         )}
@@ -172,7 +207,7 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
           ]}
         />
 
-        {!isAndroid && (
+        {!useAndroidLikeVisualStyle && (
           <Svg pointerEvents="none" width="100%" height="100%" viewBox="0 0 100 100" style={StyleSheet.absoluteFill}>
             <Defs>
               <SvgRadialGradient id={prismRingId} cx="50%" cy="50%" r="50%">
@@ -201,8 +236,8 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
             />
           </Svg>
         )}
-        {!isAndroid && <View style={styles.specularTop} />}
-        {!isAndroid && <View style={styles.specularBottom} />}
+        {!useAndroidLikeVisualStyle && <View style={styles.specularTop} />}
+        {!useAndroidLikeVisualStyle && <View style={styles.specularBottom} />}
 
         <Text
           style={[

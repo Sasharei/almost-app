@@ -14,6 +14,7 @@ import LiquidGlassNativeView, { canUseNativeLiquidGlassView } from "./LiquidGlas
 import NativeLiquidTabBar, { canUseNativeLiquidTabBar } from "./NativeLiquidTabBar";
 const TAB_ROW_HORIZONTAL_PADDING = 8;
 const TAB_ROW_VERTICAL_PADDING = 6;
+const IOS_NATIVE_LIQUID_MIN_VERSION = 26;
 
 const TAB_ICON_PATHS = {
   feed: ["M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-4.8v-5.2H9.8V21H5a1 1 0 0 1-1-1v-9.5z"],
@@ -59,6 +60,19 @@ const colorWithAlpha = (hex, alpha = 1) => {
     return `rgba(0,0,0,${clamped})`;
   }
   return `rgba(${r},${g},${b},${clamped})`;
+};
+
+const getIosMajorVersion = () => {
+  if (Platform.OS !== "ios") return 0;
+  const rawVersion = Platform.Version;
+  if (typeof rawVersion === "string") {
+    const major = Number.parseInt(rawVersion.split(".")[0], 10);
+    return Number.isFinite(major) ? major : 0;
+  }
+  if (typeof rawVersion === "number") {
+    return Number.isFinite(rawVersion) ? Math.floor(rawVersion) : 0;
+  }
+  return 0;
 };
 
 const TabGlyph = React.memo(function TabGlyph({ tab, color }) {
@@ -128,28 +142,32 @@ const LiquidGlassTabBar = ({
 }) => {
   const isIos = Platform.OS === "ios";
   const isAndroid = Platform.OS === "android";
+  const iosMajorVersion = getIosMajorVersion();
+  const isLegacyIos = isIos && iosMajorVersion > 0 && iosMajorVersion < IOS_NATIVE_LIQUID_MIN_VERSION;
+  const useAndroidLikeVisualStyle = isAndroid || isLegacyIos;
   const [nativeProbeTick, setNativeProbeTick] = useState(0);
   const nativeLiquidAvailable = isIos && canUseNativeLiquidGlassView();
-  const nativeTabBarAvailable = isIos && canUseNativeLiquidTabBar();
-  const isLiquidGlassStyle = isIos && (nativeLiquidAvailable || nativeTabBarAvailable);
+  const useNativeLiquidBackground = nativeLiquidAvailable && !isLegacyIos;
+  const nativeTabBarAvailable = isIos && !isLegacyIos && canUseNativeLiquidTabBar();
+  const isLiquidGlassStyle = isIos && (useNativeLiquidBackground || nativeTabBarAvailable);
   const bubbleTranslate = useRef(new Animated.Value(0)).current;
   const bubbleScale = useRef(new Animated.Value(1)).current;
   const [trackLayout, setTrackLayout] = useState({ width: 0, height: 0 });
   const [tabLayouts, setTabLayouts] = useState({});
   const prismRingId = useMemo(() => `liquid-tab-prism-${Math.random().toString(36).slice(2, 10)}`, []);
   const bubbleHorizontalInset = TAB_ROW_HORIZONTAL_PADDING;
-  const bubbleVerticalInset = TAB_ROW_VERTICAL_PADDING + (isAndroid ? 4 : 0);
+  const bubbleVerticalInset = TAB_ROW_VERTICAL_PADDING + (useAndroidLikeVisualStyle ? 4 : 0);
 
   useEffect(() => {
-    if (!isIos) return undefined;
-    if ((nativeLiquidAvailable || nativeTabBarAvailable) || nativeProbeTick >= 4) {
+    if (!isIos || isLegacyIos) return undefined;
+    if ((useNativeLiquidBackground || nativeTabBarAvailable) || nativeProbeTick >= 4) {
       return undefined;
     }
     const timerId = setTimeout(() => {
       setNativeProbeTick((prev) => prev + 1);
     }, 160 + nativeProbeTick * 140);
     return () => clearTimeout(timerId);
-  }, [isIos, nativeLiquidAvailable, nativeTabBarAvailable, nativeProbeTick]);
+  }, [isIos, isLegacyIos, useNativeLiquidBackground, nativeTabBarAvailable, nativeProbeTick]);
 
   const activeIndex = Math.max(0, availableTabs.indexOf(activeTab));
   const activeTabLayout = tabLayouts[activeTab] || null;
@@ -164,14 +182,20 @@ const LiquidGlassTabBar = ({
   const hasMeasuredActiveTab = Number.isFinite(Number(activeTabLayout?.x)) && Number(activeTabLayout?.width) > 0;
   const rawBubbleWidth =
     activeSlotWidth > 0
-      ? Math.max(isAndroid ? 82 : 88, activeSlotWidth - (isLiquidGlassStyle ? 8 : isAndroid ? 10 : 14))
+      ? Math.max(
+          useAndroidLikeVisualStyle ? 82 : 88,
+          activeSlotWidth - (isLiquidGlassStyle ? 8 : useAndroidLikeVisualStyle ? 10 : 14)
+        )
       : 96;
   const rawBubbleHeight =
     activeSlotHeight > 0
-      ? Math.max(isAndroid ? 50 : 54, activeSlotHeight - (isLiquidGlassStyle ? 2 : isAndroid ? 4 : 2))
+      ? Math.max(
+          useAndroidLikeVisualStyle ? 50 : 54,
+          activeSlotHeight - (isLiquidGlassStyle ? 2 : useAndroidLikeVisualStyle ? 4 : 2)
+        )
       : 62;
-  const bubbleWidth = isAndroid ? Math.round(rawBubbleWidth) : rawBubbleWidth;
-  const bubbleHeight = isAndroid ? Math.round(rawBubbleHeight) : rawBubbleHeight;
+  const bubbleWidth = useAndroidLikeVisualStyle ? Math.round(rawBubbleWidth) : rawBubbleWidth;
+  const bubbleHeight = useAndroidLikeVisualStyle ? Math.round(rawBubbleHeight) : rawBubbleHeight;
   const activeCenterX = hasMeasuredActiveTab
     ? Number(activeTabLayout.x) + Number(activeTabLayout.width) / 2
     : segmentWidth > 0
@@ -194,24 +218,24 @@ const LiquidGlassTabBar = ({
     if (!Number.isFinite(bubbleTargetX)) return;
     Animated.spring(bubbleTranslate, {
       toValue: bubbleTargetX,
-      damping: isAndroid ? 24 : 17,
-      stiffness: isAndroid ? 260 : 220,
-      mass: isAndroid ? 0.9 : 0.92,
+      damping: useAndroidLikeVisualStyle ? 24 : 17,
+      stiffness: useAndroidLikeVisualStyle ? 260 : 220,
+      mass: useAndroidLikeVisualStyle ? 0.9 : 0.92,
       useNativeDriver: true,
     }).start();
     Animated.sequence([
       Animated.timing(bubbleScale, {
-        toValue: isAndroid ? 1.015 : 1.04,
-        duration: isAndroid ? 100 : 140,
+        toValue: useAndroidLikeVisualStyle ? 1.015 : 1.04,
+        duration: useAndroidLikeVisualStyle ? 100 : 140,
         useNativeDriver: true,
       }),
       Animated.timing(bubbleScale, {
         toValue: 1,
-        duration: isAndroid ? 180 : 220,
+        duration: useAndroidLikeVisualStyle ? 180 : 220,
         useNativeDriver: true,
       }),
     ]).start();
-  }, [activeIndex, bubbleScale, bubbleTargetX, bubbleTranslate, isAndroid]);
+  }, [activeIndex, bubbleScale, bubbleTargetX, bubbleTranslate, useAndroidLikeVisualStyle]);
 
   const handleTrackLayout = useCallback((event) => {
     const nextWidth = Number(event?.nativeEvent?.layout?.width) || 0;
@@ -266,25 +290,28 @@ const LiquidGlassTabBar = ({
   const badgeBackground = isDarkTheme ? "#FEE5A8" : isProTheme ? proThemeAccentColor : "#0E1728";
   const badgeText = isDarkTheme ? "#05070D" : "#FFFFFF";
   const resolvedTabLabelTextTransform =
-    Platform.OS === "android" ? "none" : isLiquidGlassStyle ? "none" : tabLabelTextTransform;
-  const resolvedTabLabelFontSize = Platform.OS === "android" ? Math.max(9, tabLabelFontSize - 1) : tabLabelFontSize;
-  const resolvedTabLabelTopMargin = Platform.OS === "android" ? Math.max(2, tabLabelTopMargin - 1) : tabLabelTopMargin;
+    useAndroidLikeVisualStyle ? "none" : isLiquidGlassStyle ? "none" : tabLabelTextTransform;
+  const resolvedTabLabelFontSize = useAndroidLikeVisualStyle
+    ? Math.max(9, tabLabelFontSize - 1)
+    : tabLabelFontSize;
+  const resolvedTabLabelTopMargin = useAndroidLikeVisualStyle
+    ? Math.max(2, tabLabelTopMargin - 1)
+    : tabLabelTopMargin;
 
-  const barBottomInset =
-    Platform.OS === "ios"
-      ? Math.max(0, Number(tabBarBottomInset) || 0)
-      : Math.max(0, Number(tabBarBottomInset) || 0) + (Platform.OS === "android" ? androidTabBarExtra : 0);
+  const barBottomInset = isAndroid
+    ? Math.max(0, Number(tabBarBottomInset) || 0) + Math.max(0, Number(androidTabBarExtra) || 0)
+    : Math.max(0, Number(tabBarBottomInset) || 0);
 
   const rootStyle = {
     paddingBottom: barBottomInset,
-    marginBottom: Platform.OS === "ios" ? -(Number(safeAreaBottom) || 0) : 0,
+    marginBottom: isIos && !useAndroidLikeVisualStyle ? -(Number(safeAreaBottom) || 0) : 0,
     paddingTop: tabBarTopPadding,
     paddingHorizontal: 14,
     opacity: tutorialIsTemptation ? 0.35 : 1,
   };
   const nativeOnlyRootStyle = {
     paddingBottom: barBottomInset,
-    marginBottom: Platform.OS === "ios" ? -(Number(safeAreaBottom) || 0) : 0,
+    marginBottom: isIos && !useAndroidLikeVisualStyle ? -(Number(safeAreaBottom) || 0) : 0,
     paddingTop: tabBarTopPadding,
     paddingHorizontal: 8,
     opacity: tutorialIsTemptation ? 0.35 : 1,
@@ -340,6 +367,9 @@ const LiquidGlassTabBar = ({
     : isLiquidGlassStyle
     ? "rgba(255,255,255,0.92)"
     : "rgba(255,255,255,0.86)";
+  const androidTrackBlurIntensity = isCompactAndroid ? 14 : 16;
+  const androidBubbleTintBase = isDarkTheme ? "rgba(32,38,52,0.55)" : "rgba(255,255,255,0.74)";
+  const shouldUseAndroidBubbleTintFallback = useAndroidLikeVisualStyle && !useNativeLiquidBackground;
   const shouldUseNativeOnly = nativeTabBarAvailable;
   const shouldRenderInnerBubble = availableTabs.length > 0;
 
@@ -364,7 +394,7 @@ const LiquidGlassTabBar = ({
         style={[styles.track, { backgroundColor: trackBaseColor, borderColor: trackBorderColor }]}
         onLayout={handleTrackLayout}
       >
-        {nativeLiquidAvailable ? (
+        {useNativeLiquidBackground ? (
           <LiquidGlassNativeView
             style={StyleSheet.absoluteFill}
             cornerRadius={999}
@@ -374,9 +404,9 @@ const LiquidGlassTabBar = ({
         ) : (
           <ExpoBlurView
             tint={isDarkTheme ? "dark" : "extraLight"}
-            intensity={Platform.OS === "android" ? 18 : 34}
-            blurReductionFactor={Platform.OS === "android" ? 1 : undefined}
-            experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
+            intensity={useAndroidLikeVisualStyle ? androidTrackBlurIntensity : 34}
+            blurReductionFactor={useAndroidLikeVisualStyle ? 2 : undefined}
+            experimentalBlurMethod={useAndroidLikeVisualStyle ? "dimezisBlurView" : undefined}
             style={StyleSheet.absoluteFill}
           />
         )}
@@ -389,7 +419,7 @@ const LiquidGlassTabBar = ({
                 ? "rgba(0,0,0,0.12)"
                 : isLiquidGlassStyle
                 ? "rgba(255,255,255,0.08)"
-                : Platform.OS === "android"
+                : useAndroidLikeVisualStyle
                 ? "rgba(255,255,255,0.05)"
                 : "rgba(255,255,255,0.12)",
             },
@@ -411,19 +441,29 @@ const LiquidGlassTabBar = ({
               },
             ]}
           >
-            {nativeLiquidAvailable ? (
+            {useNativeLiquidBackground ? (
               <LiquidGlassNativeView
                 style={StyleSheet.absoluteFill}
                 cornerRadius={bubbleHeight / 2}
                 tintAlpha={isDarkTheme ? 0.32 : 0.2}
                 strokeOpacity={isDarkTheme ? 0.65 : 0.46}
               />
+            ) : shouldUseAndroidBubbleTintFallback ? (
+              <View
+                pointerEvents="none"
+                style={[
+                  StyleSheet.absoluteFillObject,
+                  {
+                    backgroundColor: androidBubbleTintBase,
+                  },
+                ]}
+              />
             ) : (
               <ExpoBlurView
                 tint={isDarkTheme ? "dark" : "light"}
-                intensity={Platform.OS === "android" ? 34 : 56}
-                blurReductionFactor={Platform.OS === "android" ? 1 : undefined}
-                experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
+                intensity={useAndroidLikeVisualStyle ? 34 : 56}
+                blurReductionFactor={useAndroidLikeVisualStyle ? 2 : undefined}
+                experimentalBlurMethod={useAndroidLikeVisualStyle ? "dimezisBlurView" : undefined}
                 style={StyleSheet.absoluteFill}
               />
             )}
@@ -436,13 +476,13 @@ const LiquidGlassTabBar = ({
                     ? "rgba(255,255,255,0.08)"
                     : isLiquidGlassStyle
                     ? "rgba(255,255,255,0.18)"
-                    : Platform.OS === "android"
-                    ? "rgba(255,255,255,0.2)"
+                    : useAndroidLikeVisualStyle
+                    ? "rgba(255,255,255,0.16)"
                     : "rgba(255,255,255,0.28)",
                 },
               ]}
             />
-            {!isAndroid && (
+            {!useAndroidLikeVisualStyle && (
               <Svg pointerEvents="none" width="100%" height="100%" viewBox="0 0 100 100" style={StyleSheet.absoluteFill}>
                 <Defs>
                   <SvgRadialGradient id={prismRingId} cx="50%" cy="50%" r="50%">
@@ -471,8 +511,8 @@ const LiquidGlassTabBar = ({
                 />
               </Svg>
             )}
-            {!isAndroid && <View style={styles.bubbleSpecularTop} />}
-            {!isAndroid && <View style={styles.bubbleSpecularBottom} />}
+            {!useAndroidLikeVisualStyle && <View style={styles.bubbleSpecularTop} />}
+            {!useAndroidLikeVisualStyle && <View style={styles.bubbleSpecularBottom} />}
           </Animated.View>
         )}
 
@@ -481,7 +521,7 @@ const LiquidGlassTabBar = ({
             const isActive = tab === activeTab;
             const isHighlighted = !tutorialIsTemptation && !!tutorialHighlightTabs?.has(tab);
             const rawTabLabel = typeof getLabel === "function" ? getLabel(tab) : tab;
-            const tabLabel = Platform.OS === "android" ? toTitleCaseLabel(rawTabLabel) : rawTabLabel;
+            const tabLabel = useAndroidLikeVisualStyle ? toTitleCaseLabel(rawTabLabel) : rawTabLabel;
             const badgeValue = resolveTabBadge({
               tab,
               challengeRewardsBadgeCount,
@@ -532,7 +572,7 @@ const LiquidGlassTabBar = ({
                     {
                       color: tabTextColor,
                       fontSize: resolvedTabLabelFontSize,
-                      letterSpacing: Platform.OS === "android" ? 0.02 : 0.2,
+                      letterSpacing: useAndroidLikeVisualStyle ? 0.02 : 0.2,
                       marginTop: resolvedTabLabelTopMargin,
                       textTransform: resolvedTabLabelTextTransform,
                       fontWeight: isActive || isHighlighted ? "700" : "500",

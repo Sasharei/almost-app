@@ -34,6 +34,7 @@ const resolveAbsolutePotentialSaved = (
 type SavingsSimulationOptions = {
   enabled?: boolean;
   updateIntervalMs?: number;
+  persist?: boolean;
 };
 
 export function useSavingsSimulation(
@@ -57,6 +58,7 @@ export function useSavingsSimulation(
   const lastPersistedAtRef = useRef(0);
   const [potentialSaved, setPotentialSaved] = useState(initialPotential);
   const enabled = options.enabled !== false;
+  const shouldPersist = options.persist !== false;
   const updateIntervalMs = Math.max(
     MIN_UPDATE_INTERVAL_MS,
     Number(options.updateIntervalMs) || DEFAULT_UPDATE_INTERVAL_MS
@@ -77,6 +79,7 @@ export function useSavingsSimulation(
     let cancelled = false;
 
     const persistPotentialValue = (value: number, force = false) => {
+      if (!shouldPersist) return;
       const storageKey = storageKeyRef.current;
       if (!storageKey) return;
       const normalized = roundPotentialValue(Math.max(0, Number(value) || 0));
@@ -96,7 +99,9 @@ export function useSavingsSimulation(
     if (baselineKeyRef.current !== baselineKey) {
       baselineKeyRef.current = baselineKey;
       lastUpdateAtRef.current = null;
-      storageKeyRef.current = `${POTENTIAL_PERSIST_STORAGE_PREFIX}:${baselineKey}`;
+      storageKeyRef.current = shouldPersist
+        ? `${POTENTIAL_PERSIST_STORAGE_PREFIX}:${baselineKey}`
+        : null;
       lastPersistedValueRef.current = null;
       lastPersistedAtRef.current = 0;
       // Bootstrap from the real current value instead of forcing a temporary zero state.
@@ -112,7 +117,7 @@ export function useSavingsSimulation(
         setPotentialSaved(bootstrapped);
       }
       const expectedStorageKey = storageKeyRef.current;
-      if (expectedStorageKey) {
+      if (shouldPersist && expectedStorageKey) {
         AsyncStorage.getItem(expectedStorageKey)
           .then((value) => {
             if (cancelled) return;
@@ -218,7 +223,7 @@ export function useSavingsSimulation(
       stop();
       subscription?.remove?.();
     };
-  }, [baselineMonthlyWaste, baselineStartAt, enabled, spentLossUSD, updateIntervalMs]);
+  }, [baselineMonthlyWaste, baselineStartAt, enabled, shouldPersist, spentLossUSD, updateIntervalMs]);
 
   return potentialSaved;
 }

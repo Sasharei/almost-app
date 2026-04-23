@@ -40,6 +40,10 @@ class WidgetStorage: NSObject {
   private let keyWidgetLabelEmptyState = "widget_label_empty_state"
   private let keyWidgetActionSave = "widget_action_save"
   private let keyWidgetActionSpend = "widget_action_spend"
+  private let keyWidgetThemeId = "widget_theme_id"
+  private let keyWidgetProThemeAccentId = "widget_pro_theme_accent_id"
+  private let keyWidgetThemePrimaryColor = "widget_theme_primary_color"
+  private let keyWidgetThemeBackgroundColor = "widget_theme_background_color"
   private let keyWidgetLabelStreak = "widget_label_streak"
   private let keyWidgetDailySummaryAvailable = "widget_daily_summary_available"
   private let keyWidgetDailySummaryExpiresAt = "widget_daily_summary_expires_at"
@@ -145,6 +149,18 @@ class WidgetStorage: NSObject {
     }
     if let widgetActionSpend = data["widgetActionSpend"] as? String {
       defaults.set(widgetActionSpend, forKey: keyWidgetActionSpend)
+    }
+    if let widgetThemeId = data["widgetThemeId"] as? String {
+      defaults.set(widgetThemeId, forKey: keyWidgetThemeId)
+    }
+    if let widgetProThemeAccentId = data["widgetProThemeAccentId"] as? String {
+      defaults.set(widgetProThemeAccentId, forKey: keyWidgetProThemeAccentId)
+    }
+    if let widgetThemePrimaryColor = data["widgetThemePrimaryColor"] as? String {
+      defaults.set(widgetThemePrimaryColor, forKey: keyWidgetThemePrimaryColor)
+    }
+    if let widgetThemeBackgroundColor = data["widgetThemeBackgroundColor"] as? String {
+      defaults.set(widgetThemeBackgroundColor, forKey: keyWidgetThemeBackgroundColor)
     }
     if let widgetLabelStreak = data["widgetLabelStreak"] as? String {
       defaults.set(widgetLabelStreak, forKey: keyWidgetLabelStreak)

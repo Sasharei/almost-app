@@ -809,13 +809,13 @@ const HARD_MARKETING_LINE_BY_LANGUAGE = {
   zh: "Almost 已帮助你省下 {{saved}}。Premium 可补上剩余漏损并保持你的进度势头。",
 };
 const SAVE_LIMIT_REACHED_TITLE_BY_LANGUAGE = {
-  ru: "Вау! Вы сохранили {{saved}}. Поздравляем!",
-  en: "Wow! You've saved {{saved}}. Congratulations!",
-  es: "¡Guau! Has ahorrado {{saved}}. ¡Felicidades!",
-  fr: "Waouh ! Tu as économisé {{saved}}. Félicitations !",
-  de: "Wow! Du hast {{saved}} gespart. Glückwunsch!",
-  ar: "رائع! لقد وفّرت {{saved}}. تهانينا!",
-  zh: "太棒了！你已经节省了 {{saved}}。恭喜！",
+  ru: "Достигнут максимум бесплатных действий.",
+  en: "Maximum free actions reached.",
+  es: "Se alcanzó el máximo de acciones gratuitas.",
+  fr: "Le maximum d'actions gratuites est atteint.",
+  de: "Maximale Anzahl kostenloser Aktionen erreicht.",
+  ar: "تم بلوغ الحد الأقصى للإجراءات المجانية.",
+  zh: "已达到免费操作上限。",
 };
 const SAVE_LIMIT_REACHED_SUBTITLE_BY_LANGUAGE = {
   ru: "Вы достигли лимита бесплатных сохранений. Чтобы продолжить, перейдите на Premium.",
@@ -827,13 +827,13 @@ const SAVE_LIMIT_REACHED_SUBTITLE_BY_LANGUAGE = {
   zh: "你已达到免费保存上限。要继续，请加入 Premium。",
 };
 const TRIAL_10_SAVES_TITLE_BY_LANGUAGE = {
-  ru: "Вау! Вы сохранили {{saved}}. Поздравляем!",
-  en: "Wow! You've saved {{saved}}. Congratulations!",
-  es: "¡Guau! Has ahorrado {{saved}}. ¡Felicidades!",
-  fr: "Waouh ! Tu as économisé {{saved}}. Félicitations !",
-  de: "Wow! Du hast {{saved}} gespart. Glückwunsch!",
-  ar: "رائع! لقد وفّرت {{saved}}. تهانينا!",
-  zh: "太棒了！你已经节省了 {{saved}}。恭喜！",
+  ru: "Достигнут максимум бесплатных действий.",
+  en: "Maximum free actions reached.",
+  es: "Se alcanzó el máximo de acciones gratuitas.",
+  fr: "Le maximum d'actions gratuites est atteint.",
+  de: "Maximale Anzahl kostenloser Aktionen erreicht.",
+  ar: "تم بلوغ الحد الأقصى للإجراءات المجانية.",
+  zh: "已达到免费操作上限。",
 };
 const TRIAL_10_SAVES_SUBTITLE_BY_LANGUAGE = {
   ru: "Вы достигли лимита бесплатных сохранений. Чтобы продолжить, перейдите на Premium.",
@@ -978,7 +978,7 @@ const TRANSACTION_ABANDONED_POPUP_BADGE_BY_LANGUAGE = {
   ru: "ОДНОРАЗОВОЕ ПРЕДЛОЖЕНИЕ",
   en: "ONE-TIME OFFER",
   es: "OFERTA POR TIEMPO LIMITADO",
-  fr: "OFFRE LIMITEE",
+  fr: "OFFRE LIMITÉE",
   de: "EINMALIGES ANGEBOT",
   ar: "عرض لمرة واحدة",
   zh: "限时专享",
@@ -1068,6 +1068,116 @@ const PLAN_HINT_BY_LANGUAGE = {
   de: "Wähle einen Plan und tippe unten auf die Taste",
   ar: "اختر خطة ثم اضغط الزر بالأسفل",
   zh: "选择一个方案并点击下方按钮",
+};
+
+const PAYWALL_V2_BRAND_BADGE_BY_LANGUAGE = {
+  ru: "Almost Premium",
+  en: "Almost Premium",
+  es: "Almost Premium",
+  fr: "Almost Premium",
+  de: "Almost Premium",
+  ar: "Almost Premium",
+  zh: "Almost Premium",
+};
+
+const PAYWALL_V2_BEST_VALUE_BADGE_BY_LANGUAGE = {
+  ru: "ЛУЧШАЯ ЦЕНА",
+  en: "BEST VALUE",
+  es: "MEJOR VALOR",
+  fr: "MEILLEURE OFFRE",
+  de: "BESTER PREIS",
+  ar: "أفضل قيمة",
+  zh: "超值推荐",
+};
+
+const PAYWALL_V2_TRY_FOR_FREE_BY_LANGUAGE = {
+  ru: "Попробовать бесплатно",
+  en: "Try for free",
+  es: "Probar gratis",
+  fr: "Essayer gratuitement",
+  de: "Kostenlos testen",
+  ar: "جرّب مجاناً",
+  zh: "免费试用",
+};
+
+const PAYWALL_V2_THEN_PRICE_BY_LANGUAGE = {
+  ru: "Затем {{price}}",
+  en: "Then {{price}}",
+  es: "Después {{price}}",
+  fr: "Puis {{price}}",
+  de: "Dann {{price}}",
+  ar: "ثم {{price}}",
+  zh: "然后 {{price}}",
+};
+
+const PAYWALL_V2_YEARLY_PER_MONTH_BY_LANGUAGE = {
+  ru: "Всего {{price}}",
+  en: "Just {{price}}",
+  es: "Solo {{price}}",
+  fr: "Seulement {{price}}",
+  de: "Nur {{price}}",
+  ar: "فقط {{price}}",
+  zh: "仅 {{price}}",
+};
+
+const PAYWALL_V2_CONTINUE_LIMITED_BY_LANGUAGE = {
+  ru: "Продолжить с ограниченной версией",
+  en: "Continue with limited version",
+  es: "Continuar con versión limitada",
+  fr: "Continuer avec la version limitée",
+  de: "Mit eingeschränkter Version fortfahren",
+  ar: "المتابعة بالإصدار المحدود",
+  zh: "继续使用受限版本",
+};
+
+const PAYWALL_V2_SHOW_ALL_PLANS_BY_LANGUAGE = {
+  ru: "Показать все планы",
+  en: "Show all plans",
+  es: "Mostrar todos los planes",
+  fr: "Afficher toutes les offres",
+  de: "Alle Pläne anzeigen",
+  ar: "إظهار جميع الخطط",
+  zh: "显示全部方案",
+};
+
+const PAYWALL_V2_HIDE_EXTRA_PLANS_BY_LANGUAGE = {
+  ru: "Скрыть дополнительные планы",
+  en: "Hide extra plans",
+  es: "Ocultar planes adicionales",
+  fr: "Masquer les offres supplémentaires",
+  de: "Zusätzliche Pläne ausblenden",
+  ar: "إخفاء الخطط الإضافية",
+  zh: "隐藏更多方案",
+};
+
+const PAYWALL_V2_SOCIAL_PROOF_LINE_BY_LANGUAGE = {
+  ru: "Более 5000 человек уже экономят с Almost",
+  en: "More than 5000 people are already saving with Almost",
+  es: "Más de 5000 personas ya ahorran con Almost",
+  fr: "Plus de 5000 personnes économisent déjà avec Almost",
+  de: "Mehr als 5000 Menschen sparen bereits mit Almost",
+  ar: "أكثر من 5000 شخص يدّخرون بالفعل مع Almost",
+  zh: "已有超过 5000 人在 Almost 上省钱",
+};
+
+const PAYWALL_V2_TRIAL_HEADLINE_BY_LANGUAGE = {
+  ru: "Мы хотим, чтобы вы попробовали Almost бесплатно",
+  en: "We want you to try almost for free",
+  es: "Queremos que pruebes Almost gratis",
+  fr: "Nous voulons que vous essayiez Almost gratuitement",
+  de: "Wir möchten, dass du Almost kostenlos ausprobierst",
+  ar: "نريدك أن تجرّب Almost مجاناً",
+  zh: "我们希望你免费试用 Almost",
+};
+
+const PAYWALL_V2_FREE_TRIAL_BADGE_BY_LANGUAGE = {
+  ru: "Бесплатный пробный",
+  en: "Free trial",
+  es: "Prueba gratis",
+  fr: "Essai gratuit",
+  de: "Kostenlos testen",
+  ar: "تجربة مجانية",
+  zh: "免费试用",
 };
 
 const FREE_LABEL_BY_LANGUAGE = {
@@ -1199,23 +1309,23 @@ const PAYWALL_LEGAL_NOTICE_BY_LANGUAGE = {
 };
 
 const CTA_PRIMARY_TRIAL_BY_LANGUAGE = {
-  ru: "Продолжить бесплатно",
-  en: "Continue free",
-  es: "Continuar gratis",
-  fr: "Continuer gratuitement",
-  de: "Kostenlos fortfahren",
-  ar: "المتابعة مجاناً",
-  zh: "免费继续",
+  ru: "Разблокировать Premium",
+  en: "Unlock Premium",
+  es: "Desbloquear Premium",
+  fr: "Débloquer Premium",
+  de: "Premium freischalten",
+  ar: "افتح Premium",
+  zh: "解锁 Premium",
 };
 
 const CTA_PRIMARY_REGULAR_BY_LANGUAGE = {
-  ru: "Начать мой путь сейчас",
-  en: "Start my journey now",
-  es: "Comenzar mi camino ahora",
-  fr: "Commencer mon parcours maintenant",
-  de: "Meine Reise jetzt starten",
-  ar: "ابدأ رحلتي الآن",
-  zh: "立即开启我的旅程",
+  ru: "Разблокировать Premium",
+  en: "Unlock Premium",
+  es: "Desbloquear Premium",
+  fr: "Débloquer Premium",
+  de: "Premium freischalten",
+  ar: "افتح Premium",
+  zh: "解锁 Premium",
 };
 const CTA_PRIMARY_UNLOCK_FEATURE_BY_LANGUAGE = {
   ru: "Разблокировать: {{featureName}}",
@@ -1236,13 +1346,13 @@ const CTA_PRIMARY_UNLOCK_SAVINGS_BY_LANGUAGE = {
   zh: "解锁每年约 ≈ {{amount}} 节省",
 };
 const CTA_START_JOURNEY_BY_LANGUAGE = {
-  ru: "Начать бесплатный пробный период",
-  en: "Start Free Trial",
-  es: "Comenzar prueba gratis",
-  fr: "Commencer l'essai gratuit",
-  de: "Kostenlose Testversion starten",
-  ar: "ابدأ التجربة المجانية",
-  zh: "开始免费试用",
+  ru: "Разблокировать Premium",
+  en: "Unlock Premium",
+  es: "Desbloquear Premium",
+  fr: "Débloquer Premium",
+  de: "Premium freischalten",
+  ar: "افتح Premium",
+  zh: "解锁 Premium",
 };
 const PAYWALL_TITLE_FREE_WORD_BY_LANGUAGE = {
   ru: "бесплатно",
@@ -1307,9 +1417,9 @@ const BENEFITS_FOOTNOTE_BY_LANGUAGE = {
   ar: "والمزيد",
   zh: "以及更多",
 };
-const UNLIMITAGE_USAGE_BULLET_BY_LANGUAGE = {
+const UNLIMITED_USAGE_BULLET_BY_LANGUAGE = {
   ru: "Неограниченное использование",
-  en: "Unlimitage usage",
+  en: "Unlimited usage",
   es: "Uso ilimitado",
   fr: "Utilisation illimitée",
   de: "Unbegrenzte Nutzung",
@@ -1376,7 +1486,7 @@ const CTA_MANAGE_BY_LANGUAGE = {
 
 const NO_COMMITMENT_LINE_BY_LANGUAGE = {
   ru: "Без обязательств, отмена в любое время",
-  en: "No commitment cancel any time",
+  en: "No commitment, cancel anytime",
   es: "Sin compromiso, cancela en cualquier momento",
   fr: "Sans engagement, annule à tout moment",
   de: "Keine Bindung, jederzeit kündbar",
@@ -1726,11 +1836,11 @@ const buildBenefitBullets = ({
   const seen = new Set();
   const bullets = [];
   const unlimitedUsageLabel =
-    UNLIMITAGE_USAGE_BULLET_BY_LANGUAGE[lang] || UNLIMITAGE_USAGE_BULLET_BY_LANGUAGE.en;
+    UNLIMITED_USAGE_BULLET_BY_LANGUAGE[lang] || UNLIMITED_USAGE_BULLET_BY_LANGUAGE.en;
   if (unlimitedUsageLabel) {
-    seen.add("unlimitage_usage");
+    seen.add("unlimited_usage");
     bullets.push({
-      id: "unlimitage_usage",
+      id: "unlimited_usage",
       label: unlimitedUsageLabel,
       featureKey: PREMIUM_FEATURE_KEYS.multipleGoals,
       featureKeys: [PREMIUM_FEATURE_KEYS.multipleGoals],
@@ -1993,6 +2103,27 @@ export const buildPaywallCopy = ({
       : LEVEL_UNLOCK_LINE_BY_LANGUAGE[lang] || LEVEL_UNLOCK_LINE_BY_LANGUAGE.en,
     planSectionTitle: PLAN_SECTION_TITLE_BY_LANGUAGE[lang] || PLAN_SECTION_TITLE_BY_LANGUAGE.en,
     planHint: PLAN_HINT_BY_LANGUAGE[lang] || PLAN_HINT_BY_LANGUAGE.en,
+    v2BrandBadge: PAYWALL_V2_BRAND_BADGE_BY_LANGUAGE[lang] || PAYWALL_V2_BRAND_BADGE_BY_LANGUAGE.en,
+    v2BestValueBadge:
+      PAYWALL_V2_BEST_VALUE_BADGE_BY_LANGUAGE[lang] || PAYWALL_V2_BEST_VALUE_BADGE_BY_LANGUAGE.en,
+    v2TryForFreeLabel:
+      PAYWALL_V2_TRY_FOR_FREE_BY_LANGUAGE[lang] || PAYWALL_V2_TRY_FOR_FREE_BY_LANGUAGE.en,
+    v2ThenPriceTemplate:
+      PAYWALL_V2_THEN_PRICE_BY_LANGUAGE[lang] || PAYWALL_V2_THEN_PRICE_BY_LANGUAGE.en,
+    v2YearlyPerMonthTemplate:
+      PAYWALL_V2_YEARLY_PER_MONTH_BY_LANGUAGE[lang] || PAYWALL_V2_YEARLY_PER_MONTH_BY_LANGUAGE.en,
+    v2ContinueLimitedLabel:
+      PAYWALL_V2_CONTINUE_LIMITED_BY_LANGUAGE[lang] || PAYWALL_V2_CONTINUE_LIMITED_BY_LANGUAGE.en,
+    v2ShowAllPlansLabel:
+      PAYWALL_V2_SHOW_ALL_PLANS_BY_LANGUAGE[lang] || PAYWALL_V2_SHOW_ALL_PLANS_BY_LANGUAGE.en,
+    v2HideExtraPlansLabel:
+      PAYWALL_V2_HIDE_EXTRA_PLANS_BY_LANGUAGE[lang] || PAYWALL_V2_HIDE_EXTRA_PLANS_BY_LANGUAGE.en,
+    v2SocialProofLine:
+      PAYWALL_V2_SOCIAL_PROOF_LINE_BY_LANGUAGE[lang] || PAYWALL_V2_SOCIAL_PROOF_LINE_BY_LANGUAGE.en,
+    v2TrialHeadline:
+      PAYWALL_V2_TRIAL_HEADLINE_BY_LANGUAGE[lang] || PAYWALL_V2_TRIAL_HEADLINE_BY_LANGUAGE.en,
+    v2FreeTrialLabel:
+      PAYWALL_V2_FREE_TRIAL_BADGE_BY_LANGUAGE[lang] || PAYWALL_V2_FREE_TRIAL_BADGE_BY_LANGUAGE.en,
     freeColumnLabel: FREE_LABEL_BY_LANGUAGE[lang] || FREE_LABEL_BY_LANGUAGE.en,
     proColumnLabel: PRO_LABEL_BY_LANGUAGE[lang] || PRO_LABEL_BY_LANGUAGE.en,
     comparisonTapHint: COMPARISON_TAP_HINT_BY_LANGUAGE[lang] || COMPARISON_TAP_HINT_BY_LANGUAGE.en,

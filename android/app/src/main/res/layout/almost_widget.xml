@@ -39,7 +39,7 @@
         android:ellipsize="end"
         android:includeFontPadding="false"
         android:maxLines="1"
-        android:text="Almost"
+        android:text="@string/widget_title_default"
         android:textColor="#111111"
         android:textSize="10sp"
         android:textStyle="bold" />
@@ -58,7 +58,7 @@
         android:layout_weight="1.2"
         android:orientation="vertical">
 
-        <TextView
+      <TextView
         android:id="@+id/widget_saved_total_label"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -68,7 +68,7 @@
           android:ellipsize="end"
           android:includeFontPadding="false"
           android:maxLines="1"
-          android:text="Сегодня"
+          android:text="@string/widget_label_today_default"
           android:textColor="#4B4B4B"
           android:textSize="9sp"
           android:textStyle="bold" />
@@ -99,7 +99,7 @@
           android:ellipsize="end"
           android:includeFontPadding="false"
           android:maxLines="1"
-          android:text="Всего"
+          android:text="@string/widget_label_total_default"
           android:textColor="#4B4B4B"
           android:textSize="9sp"
           android:textStyle="bold" />
@@ -154,7 +154,7 @@
               android:ellipsize="end"
               android:includeFontPadding="false"
               android:maxLines="1"
-              android:text="Цель месяца"
+              android:text="@string/widget_label_month_goal_default"
               android:textColor="#4B4B4B"
               android:textSize="9sp"
               android:textStyle="bold" />
@@ -210,7 +210,7 @@
               android:ellipsize="end"
               android:includeFontPadding="false"
               android:maxLines="1"
-              android:text="Остаток бюджета"
+              android:text="@string/widget_label_budget_remaining_default"
               android:textColor="#4B4B4B"
               android:textSize="9sp"
               android:textStyle="bold" />
@@ -267,7 +267,7 @@
         android:ellipsize="end"
         android:includeFontPadding="false"
         android:maxLines="1"
-        android:text="Копить"
+        android:text="@string/widget_action_save_default"
         android:textColor="#FFFFFF"
         android:textSize="11sp"
         android:textStyle="bold"
@@ -292,7 +292,7 @@
         android:ellipsize="end"
         android:includeFontPadding="false"
         android:maxLines="1"
-        android:text="Тратить"
+        android:text="@string/widget_action_spend_default"
         android:textColor="#FFFFFF"
         android:textSize="11sp"
         android:textStyle="bold"
@@ -312,7 +312,7 @@
     android:layout_height="match_parent"
     android:layout_gravity="center"
     android:gravity="center"
-    android:text="Start saving today"
+    android:text="@string/widget_empty_state_default"
     android:textColor="#1C1C1C"
     android:textSize="14sp"
     android:textStyle="bold"
