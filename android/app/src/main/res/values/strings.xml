@@ -1,3 +1,12 @@
 <resources>
     <string name="app_name">Almost</string>
+    <string name="widget_title_default">Almost</string>
+    <string name="widget_label_today_default">Today</string>
+    <string name="widget_label_total_default">Total</string>
+    <string name="widget_label_month_goal_default">Monthly goal</string>
+    <string name="widget_label_budget_remaining_default">Budget remaining</string>
+    <string name="widget_label_recent_default">Recent events</string>
+    <string name="widget_action_save_default">Save</string>
+    <string name="widget_action_spend_default">Spend</string>
+    <string name="widget_empty_state_default">Start saving today</string>
 </resources>

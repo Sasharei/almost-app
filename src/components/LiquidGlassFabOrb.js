@@ -113,22 +113,32 @@ const LiquidGlassFabOrb = ({
   }, [nativeLiquidGlassAvailable, nativeProbeTick]);
 
   useEffect(() => {
-    const shimmerLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmer, {
-          toValue: 1,
-          duration: 2700,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmer, {
-          toValue: 0,
-          duration: 3200,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
+    const shouldAnimateShimmer = !isAndroid;
+    let shimmerLoop = null;
+    if (shouldAnimateShimmer) {
+      shimmerLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(shimmer, {
+            toValue: 1,
+            duration: 2700,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+            isInteraction: false,
+          }),
+          Animated.timing(shimmer, {
+            toValue: 0,
+            duration: 3200,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+            isInteraction: false,
+          }),
+        ])
+      );
+      shimmerLoop.start();
+    } else {
+      // Keep static specular alignment on Android while avoiding an extra perpetual loop.
+      shimmer.setValue(0.5);
+    }
     const breatheLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(breathe, {
@@ -136,22 +146,23 @@ const LiquidGlassFabOrb = ({
           duration: 2300,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(breathe, {
           toValue: 0,
           duration: 2500,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ])
     );
-    shimmerLoop.start();
     breatheLoop.start();
     return () => {
-      shimmerLoop.stop();
+      shimmerLoop?.stop?.();
       breatheLoop.stop();
     };
-  }, [breathe, shimmer]);
+  }, [breathe, isAndroid, shimmer]);
 
   const shimmerX = shimmer.interpolate({
     inputRange: [0, 1],
@@ -224,6 +235,15 @@ const LiquidGlassFabOrb = ({
     : isProTheme
     ? colorWithAlpha(accent, 0.18)
     : "rgba(255,255,255,0.24)";
+  const androidShellFillColor = isDarkTheme
+    ? highlighted
+      ? "rgba(31,45,70,0.9)"
+      : "rgba(24,37,58,0.82)"
+    : isProTheme
+    ? colorWithAlpha(accent, highlighted ? 0.34 : 0.24)
+    : highlighted
+    ? "rgba(243,248,255,0.96)"
+    : "rgba(236,243,253,0.9)";
   const auraColor = highlighted
     ? isAndroid
       ? "rgba(255,255,255,0.22)"
@@ -359,11 +379,16 @@ const LiquidGlassFabOrb = ({
                 : 0.46
             }
           />
+        ) : isAndroid ? (
+          <View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFillObject, { backgroundColor: androidShellFillColor }]}
+          />
         ) : (
           <ExpoBlurView
             tint={isDarkTheme ? "dark" : useMutedIosLightStyle ? "extraLight" : "light"}
             intensity={isAndroid ? 32 : useMutedIosLightStyle ? 44 : 62}
-            blurReductionFactor={isAndroid ? 1 : undefined}
+            blurReductionFactor={isAndroid ? 2 : undefined}
             experimentalBlurMethod={isAndroid ? "dimezisBlurView" : undefined}
             style={StyleSheet.absoluteFill}
           />

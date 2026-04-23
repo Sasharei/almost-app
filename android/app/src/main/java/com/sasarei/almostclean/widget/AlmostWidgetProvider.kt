@@ -10,12 +10,32 @@ import android.graphics.Color
 import android.net.Uri
 import android.widget.RemoteViews
 import com.sasarei.almostclean.R
+import java.util.Locale
+import kotlin.math.roundToInt
 
 enum class WidgetSize {
   SMALL,
   MEDIUM,
   LARGE
 }
+
+private data class WidgetPalette(
+  val backgroundRes: Int,
+  val catBackgroundRes: Int,
+  val saveButtonRes: Int,
+  val spendButtonRes: Int,
+  val titleColor: Int,
+  val labelColor: Int,
+  val valueColor: Int,
+  val secondaryValueColor: Int,
+  val detailColor: Int,
+  val emptyStateColor: Int,
+  val recentEventColor: Int,
+  val spendEventColor: Int,
+  val budgetDefaultColor: Int,
+  val budgetSecondaryColor: Int,
+  val budgetNegativeColor: Int
+)
 
 class AlmostWidgetProvider : AppWidgetProvider() {
   override fun onReceive(context: Context, intent: Intent) {
@@ -67,7 +87,6 @@ class AlmostWidgetProvider : AppWidgetProvider() {
       size: WidgetSize
     ) {
       val widgetData = WidgetDataStore.read(context)
-      val isSmall = size == WidgetSize.SMALL
       val isMedium = size == WidgetSize.MEDIUM
       val isLarge = size == WidgetSize.LARGE
       val layoutId = when (size) {
@@ -76,6 +95,8 @@ class AlmostWidgetProvider : AppWidgetProvider() {
         WidgetSize.LARGE -> R.layout.almost_widget_large
       }
       val views = RemoteViews(context.packageName, layoutId)
+      val palette = resolveWidgetPalette(widgetData)
+      applyWidgetPalette(views, palette, size)
 
       if (widgetData.hasData) {
         val hasGoal = widgetData.goalTargetValue > 0
@@ -100,9 +121,6 @@ class AlmostWidgetProvider : AppWidgetProvider() {
         }
         val budgetProgress = budgetProgressValue(widgetData.budgetRemainingValue, widgetData.budgetTotalValue)
         val budgetIsNegative = widgetData.budgetRemainingValue < -0.01
-        val budgetNegativeColor = Color.parseColor("#D84F61")
-        val budgetDefaultColor = Color.parseColor("#111111")
-        val budgetSecondaryColor = Color.parseColor("#555555")
 
         views.setViewVisibility(R.id.widget_content, android.view.View.VISIBLE)
         views.setViewVisibility(R.id.widget_empty_state, android.view.View.GONE)
@@ -141,7 +159,7 @@ class AlmostWidgetProvider : AppWidgetProvider() {
           )
           views.setTextColor(
             R.id.widget_progress_streak_value,
-            if (budgetIsNegative) budgetNegativeColor else budgetSecondaryColor
+            if (budgetIsNegative) palette.budgetNegativeColor else palette.budgetSecondaryColor
           )
         }
 
@@ -151,7 +169,7 @@ class AlmostWidgetProvider : AppWidgetProvider() {
           views.setTextViewText(R.id.widget_streak_value, budgetRemainingText)
           views.setTextColor(
             R.id.widget_streak_value,
-            if (budgetIsNegative) budgetNegativeColor else budgetDefaultColor
+            if (budgetIsNegative) palette.budgetNegativeColor else palette.budgetDefaultColor
           )
           views.setViewVisibility(R.id.widget_progress_today_group, android.view.View.VISIBLE)
           views.setTextViewText(R.id.widget_progress_today_label, widgetData.labelToday)
@@ -179,6 +197,10 @@ class AlmostWidgetProvider : AppWidgetProvider() {
               val label = recentEvents.getOrNull(index)
               if (!label.isNullOrBlank()) {
                 views.setTextViewText(viewId, label)
+                views.setTextColor(
+                  viewId,
+                  if (label.trimStart().startsWith("-")) palette.spendEventColor else palette.recentEventColor
+                )
                 views.setViewVisibility(viewId, android.view.View.VISIBLE)
               } else {
                 views.setViewVisibility(viewId, android.view.View.GONE)
@@ -186,6 +208,7 @@ class AlmostWidgetProvider : AppWidgetProvider() {
             }
           } else {
             views.setTextViewText(R.id.widget_recent_event_1, widgetData.labelRecentEmpty)
+            views.setTextColor(R.id.widget_recent_event_1, palette.labelColor)
             views.setViewVisibility(R.id.widget_recent_event_1, android.view.View.VISIBLE)
             views.setViewVisibility(R.id.widget_recent_event_2, android.view.View.GONE)
             views.setViewVisibility(R.id.widget_recent_event_3, android.view.View.GONE)
@@ -238,6 +261,165 @@ class AlmostWidgetProvider : AppWidgetProvider() {
       views.setOnClickPendingIntent(R.id.widget_spend_button, spendPendingIntent)
 
       appWidgetManager.updateAppWidget(appWidgetId, views)
+    }
+
+    private fun applyWidgetPalette(views: RemoteViews, palette: WidgetPalette, size: WidgetSize) {
+      val isMedium = size == WidgetSize.MEDIUM
+      val isLarge = size == WidgetSize.LARGE
+
+      views.setInt(R.id.widget_root, "setBackgroundResource", palette.backgroundRes)
+      views.setInt(R.id.widget_cat, "setBackgroundResource", palette.catBackgroundRes)
+      views.setInt(R.id.widget_save_button, "setBackgroundResource", palette.saveButtonRes)
+      views.setInt(R.id.widget_spend_button, "setBackgroundResource", palette.spendButtonRes)
+
+      views.setTextColor(R.id.widget_title, palette.titleColor)
+      views.setTextColor(R.id.widget_saved_label, palette.labelColor)
+      views.setTextColor(R.id.widget_saved_value, palette.valueColor)
+      views.setTextColor(R.id.widget_progress_month_label, palette.labelColor)
+      views.setTextColor(R.id.widget_progress_month_value, palette.detailColor)
+      views.setTextColor(R.id.widget_empty_state, palette.emptyStateColor)
+
+      if (isMedium || isLarge) {
+        views.setTextColor(R.id.widget_saved_total_label, palette.labelColor)
+        views.setTextColor(R.id.widget_saved_total_value, palette.secondaryValueColor)
+        views.setTextColor(R.id.widget_progress_streak_label, palette.labelColor)
+        views.setTextColor(R.id.widget_progress_streak_value, palette.budgetSecondaryColor)
+      }
+
+      if (isLarge) {
+        views.setTextColor(R.id.widget_streak_label, palette.labelColor)
+        views.setTextColor(R.id.widget_streak_value, palette.budgetDefaultColor)
+        views.setTextColor(R.id.widget_progress_today_label, palette.labelColor)
+        views.setTextColor(R.id.widget_progress_today_value, palette.detailColor)
+        views.setTextColor(R.id.widget_recent_label, palette.labelColor)
+        views.setTextColor(R.id.widget_recent_event_1, palette.recentEventColor)
+        views.setTextColor(R.id.widget_recent_event_2, palette.recentEventColor)
+        views.setTextColor(R.id.widget_recent_event_3, palette.recentEventColor)
+      }
+    }
+
+    private fun resolveWidgetPalette(widgetData: WidgetData): WidgetPalette {
+      return when (normalizeThemeId(widgetData.themeId)) {
+        "dark" -> WidgetPalette(
+          backgroundRes = R.drawable.widget_bg_dark,
+          catBackgroundRes = R.drawable.widget_cat_bg_dark,
+          saveButtonRes = R.drawable.widget_button_save_bg,
+          spendButtonRes = R.drawable.widget_button_spend_bg,
+          titleColor = Color.parseColor("#F7F9FF"),
+          labelColor = Color.parseColor("#A5B1CC"),
+          valueColor = Color.parseColor("#64F2B5"),
+          secondaryValueColor = Color.parseColor("#F7F9FF"),
+          detailColor = Color.parseColor("#D8E1FF"),
+          emptyStateColor = Color.parseColor("#E8EEFF"),
+          recentEventColor = Color.parseColor("#DDE5FF"),
+          spendEventColor = Color.parseColor("#FF8D9A"),
+          budgetDefaultColor = Color.parseColor("#F7F9FF"),
+          budgetSecondaryColor = Color.parseColor("#C4CEE7"),
+          budgetNegativeColor = Color.parseColor("#FF8D9A")
+        )
+
+        "pro" -> {
+          val accentId = normalizeAccentId(widgetData.proThemeAccentId)
+          val accentFallback = proAccentColorForId(accentId)
+          val accentColor = parseColorOrDefault(widgetData.themePrimaryColor, accentFallback)
+          val titleBase = Color.parseColor("#101B45")
+          val labelBase = Color.parseColor("#5F6B98")
+          WidgetPalette(
+            backgroundRes = proBackgroundResForAccent(accentId),
+            catBackgroundRes = R.drawable.widget_cat_bg_pro,
+            saveButtonRes = proSaveButtonResForAccent(accentId),
+            spendButtonRes = R.drawable.widget_button_spend_bg,
+            titleColor = blendColors(titleBase, accentColor, 0.12f),
+            labelColor = blendColors(labelBase, accentColor, 0.18f),
+            valueColor = accentColor,
+            secondaryValueColor = blendColors(titleBase, accentColor, 0.08f),
+            detailColor = blendColors(labelBase, accentColor, 0.28f),
+            emptyStateColor = blendColors(titleBase, accentColor, 0.12f),
+            recentEventColor = blendColors(titleBase, accentColor, 0.14f),
+            spendEventColor = Color.parseColor("#D84F61"),
+            budgetDefaultColor = blendColors(titleBase, accentColor, 0.08f),
+            budgetSecondaryColor = blendColors(labelBase, accentColor, 0.2f),
+            budgetNegativeColor = Color.parseColor("#D84F61")
+          )
+        }
+
+        else -> WidgetPalette(
+          backgroundRes = R.drawable.widget_bg,
+          catBackgroundRes = R.drawable.widget_cat_bg,
+          saveButtonRes = R.drawable.widget_button_save_bg,
+          spendButtonRes = R.drawable.widget_button_spend_bg,
+          titleColor = Color.parseColor("#111111"),
+          labelColor = Color.parseColor("#4B4B4B"),
+          valueColor = Color.parseColor("#2EB873"),
+          secondaryValueColor = Color.parseColor("#111111"),
+          detailColor = Color.parseColor("#555555"),
+          emptyStateColor = Color.parseColor("#1C1C1C"),
+          recentEventColor = Color.parseColor("#2B2B2B"),
+          spendEventColor = Color.parseColor("#D84F61"),
+          budgetDefaultColor = Color.parseColor("#111111"),
+          budgetSecondaryColor = Color.parseColor("#555555"),
+          budgetNegativeColor = Color.parseColor("#D84F61")
+        )
+      }
+    }
+
+    private fun normalizeThemeId(themeId: String?): String {
+      return (themeId ?: "light").trim().lowercase(Locale.US)
+    }
+
+    private fun normalizeAccentId(accentId: String?): String {
+      return (accentId ?: "indigo").trim().lowercase(Locale.US)
+    }
+
+    private fun proAccentColorForId(accentId: String): Int {
+      return when (accentId) {
+        "emerald" -> Color.parseColor("#1FBF8F")
+        "sunset" -> Color.parseColor("#FF7A59")
+        "gold" -> Color.parseColor("#E3A62B")
+        "violet" -> Color.parseColor("#8B61FF")
+        "aqua" -> Color.parseColor("#2FA8FF")
+        else -> Color.parseColor("#4353FF")
+      }
+    }
+
+    private fun proBackgroundResForAccent(accentId: String): Int {
+      return when (accentId) {
+        "emerald" -> R.drawable.widget_bg_pro_emerald
+        "sunset" -> R.drawable.widget_bg_pro_sunset
+        "gold" -> R.drawable.widget_bg_pro_gold
+        "violet" -> R.drawable.widget_bg_pro_violet
+        "aqua" -> R.drawable.widget_bg_pro_aqua
+        else -> R.drawable.widget_bg_pro_indigo
+      }
+    }
+
+    private fun proSaveButtonResForAccent(accentId: String): Int {
+      return when (accentId) {
+        "emerald" -> R.drawable.widget_button_save_bg_pro_emerald
+        "sunset" -> R.drawable.widget_button_save_bg_pro_sunset
+        "gold" -> R.drawable.widget_button_save_bg_pro_gold
+        "violet" -> R.drawable.widget_button_save_bg_pro_violet
+        "aqua" -> R.drawable.widget_button_save_bg_pro_aqua
+        else -> R.drawable.widget_button_save_bg_pro_indigo
+      }
+    }
+
+    private fun parseColorOrDefault(raw: String?, fallbackColor: Int): Int {
+      if (raw.isNullOrBlank()) return fallbackColor
+      return try {
+        Color.parseColor(raw.trim())
+      } catch (_: IllegalArgumentException) {
+        fallbackColor
+      }
+    }
+
+    private fun blendColors(baseColor: Int, tintColor: Int, ratio: Float): Int {
+      val clamped = ratio.coerceIn(0f, 1f)
+      val inverse = 1f - clamped
+      val red = (Color.red(baseColor) * inverse + Color.red(tintColor) * clamped).roundToInt()
+      val green = (Color.green(baseColor) * inverse + Color.green(tintColor) * clamped).roundToInt()
+      val blue = (Color.blue(baseColor) * inverse + Color.blue(tintColor) * clamped).roundToInt()
+      return Color.argb(255, red, green, blue)
     }
 
     private fun progressValue(current: Double, target: Double): Int {

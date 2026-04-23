@@ -32,20 +32,22 @@ export const SOUND_COOLDOWNS = {
   party_cheer: 600,
 };
 
+const SOUND_VOLUME_FACTOR = 0.7;
+
 export const SOUND_VOLUMES = {
-  coin: 0.85,
-  tap: 0.75,
-  counter: 1.0,
-  cat: 0.8,
-  challenge_accept: 0.85,
-  focus_accept: 0.85,
-  reward: 0.9,
-  thunder: 0.85,
-  daily_reward: 0.9,
-  level_up: 0.9,
-  party_beat: 0.95,
-  party_clap: 0.8,
-  party_cheer: 0.85,
+  coin: 0.85 * SOUND_VOLUME_FACTOR,
+  tap: 0.75 * SOUND_VOLUME_FACTOR,
+  counter: 1.0 * SOUND_VOLUME_FACTOR,
+  cat: 0.8 * SOUND_VOLUME_FACTOR,
+  challenge_accept: 0.85 * SOUND_VOLUME_FACTOR,
+  focus_accept: 0.85 * SOUND_VOLUME_FACTOR,
+  reward: 0.9 * SOUND_VOLUME_FACTOR,
+  thunder: 0.85 * SOUND_VOLUME_FACTOR,
+  daily_reward: 0.9 * SOUND_VOLUME_FACTOR,
+  level_up: 0.9 * SOUND_VOLUME_FACTOR,
+  party_beat: 0.95 * SOUND_VOLUME_FACTOR,
+  party_clap: 0.8 * SOUND_VOLUME_FACTOR,
+  party_cheer: 0.85 * SOUND_VOLUME_FACTOR,
 };
 
 export const ANDROID_SOUND_MIN_GAP_MS = 120;

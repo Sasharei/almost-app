@@ -30,7 +30,11 @@ internal data class WidgetData(
   val labelRecentEmpty: String,
   val labelEmptyState: String,
   val labelActionSave: String,
-  val labelActionSpend: String
+  val labelActionSpend: String,
+  val themeId: String,
+  val proThemeAccentId: String,
+  val themePrimaryColor: String,
+  val themeBackgroundColor: String
 )
 
 internal object WidgetDataStore {
@@ -66,6 +70,10 @@ internal object WidgetDataStore {
   const val KEY_WIDGET_LABEL_EMPTY_STATE = "widget_label_empty_state"
   const val KEY_WIDGET_ACTION_SAVE = "widget_action_save"
   const val KEY_WIDGET_ACTION_SPEND = "widget_action_spend"
+  const val KEY_WIDGET_THEME_ID = "widget_theme_id"
+  const val KEY_WIDGET_PRO_THEME_ACCENT_ID = "widget_pro_theme_accent_id"
+  const val KEY_WIDGET_THEME_PRIMARY_COLOR = "widget_theme_primary_color"
+  const val KEY_WIDGET_THEME_BACKGROUND_COLOR = "widget_theme_background_color"
 
   fun read(context: Context): WidgetData {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -102,6 +110,11 @@ internal object WidgetDataStore {
       prefs.getString(KEY_WIDGET_LABEL_EMPTY_STATE, "Start saving today") ?: "Start saving today"
     val labelActionSave = prefs.getString(KEY_WIDGET_ACTION_SAVE, "Save") ?: "Save"
     val labelActionSpend = prefs.getString(KEY_WIDGET_ACTION_SPEND, "Spend") ?: "Spend"
+    val themeId = prefs.getString(KEY_WIDGET_THEME_ID, "light") ?: "light"
+    val proThemeAccentId = prefs.getString(KEY_WIDGET_PRO_THEME_ACCENT_ID, "none") ?: "none"
+    val themePrimaryColor = prefs.getString(KEY_WIDGET_THEME_PRIMARY_COLOR, "#111111") ?: "#111111"
+    val themeBackgroundColor =
+      prefs.getString(KEY_WIDGET_THEME_BACKGROUND_COLOR, "#F6F7FB") ?: "#F6F7FB"
     return WidgetData(
       savedMonthLabel,
       savedTotalLabel,
@@ -130,7 +143,11 @@ internal object WidgetDataStore {
       labelRecentEmpty,
       labelEmptyState,
       labelActionSave,
-      labelActionSpend
+      labelActionSpend,
+      themeId,
+      proThemeAccentId,
+      themePrimaryColor,
+      themeBackgroundColor
     )
   }
 
@@ -165,7 +182,11 @@ internal object WidgetDataStore {
     widgetLabelRecentEmpty: String?,
     widgetLabelEmptyState: String?,
     widgetActionSave: String?,
-    widgetActionSpend: String?
+    widgetActionSpend: String?,
+    widgetThemeId: String?,
+    widgetProThemeAccentId: String?,
+    widgetThemePrimaryColor: String?,
+    widgetThemeBackgroundColor: String?
   ) {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     val editor = prefs.edit()
@@ -258,6 +279,18 @@ internal object WidgetDataStore {
     }
     if (widgetActionSpend != null) {
       editor.putString(KEY_WIDGET_ACTION_SPEND, widgetActionSpend)
+    }
+    if (widgetThemeId != null) {
+      editor.putString(KEY_WIDGET_THEME_ID, widgetThemeId)
+    }
+    if (widgetProThemeAccentId != null) {
+      editor.putString(KEY_WIDGET_PRO_THEME_ACCENT_ID, widgetProThemeAccentId)
+    }
+    if (widgetThemePrimaryColor != null) {
+      editor.putString(KEY_WIDGET_THEME_PRIMARY_COLOR, widgetThemePrimaryColor)
+    }
+    if (widgetThemeBackgroundColor != null) {
+      editor.putString(KEY_WIDGET_THEME_BACKGROUND_COLOR, widgetThemeBackgroundColor)
     }
     editor.putLong(KEY_UPDATED_AT, System.currentTimeMillis())
     editor.apply()

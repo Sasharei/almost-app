@@ -2,6 +2,7 @@ package com.sasarei.almostclean.widget
 
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
+import android.os.Build
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -50,6 +51,13 @@ class WidgetStorageModule(private val reactContext: ReactApplicationContext) : R
         if (data.hasKey("widgetLabelEmptyState")) data.getString("widgetLabelEmptyState") else null
       val widgetActionSave = if (data.hasKey("widgetActionSave")) data.getString("widgetActionSave") else null
       val widgetActionSpend = if (data.hasKey("widgetActionSpend")) data.getString("widgetActionSpend") else null
+      val widgetThemeId = if (data.hasKey("widgetThemeId")) data.getString("widgetThemeId") else null
+      val widgetProThemeAccentId =
+        if (data.hasKey("widgetProThemeAccentId")) data.getString("widgetProThemeAccentId") else null
+      val widgetThemePrimaryColor =
+        if (data.hasKey("widgetThemePrimaryColor")) data.getString("widgetThemePrimaryColor") else null
+      val widgetThemeBackgroundColor =
+        if (data.hasKey("widgetThemeBackgroundColor")) data.getString("widgetThemeBackgroundColor") else null
       val recentEventsValue = recentEvents?.let { array ->
         val values = ArrayList<String>(array.size())
         for (index in 0 until array.size()) {
@@ -92,7 +100,11 @@ class WidgetStorageModule(private val reactContext: ReactApplicationContext) : R
         widgetLabelRecentEmpty,
         widgetLabelEmptyState,
         widgetActionSave,
-        widgetActionSpend
+        widgetActionSpend,
+        widgetThemeId,
+        widgetProThemeAccentId,
+        widgetThemePrimaryColor,
+        widgetThemeBackgroundColor
       )
       AlmostWidgetProvider.requestUpdate(reactContext)
       promise.resolve(true)
@@ -116,6 +128,32 @@ class WidgetStorageModule(private val reactContext: ReactApplicationContext) : R
       promise.resolve(installed)
     } catch (error: Exception) {
       promise.reject("widget_install_check_error", error)
+    }
+  }
+
+  @ReactMethod
+  fun requestPinHomeWidget(size: String?, promise: Promise) {
+    try {
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+        promise.resolve(false)
+        return
+      }
+      val manager = AppWidgetManager.getInstance(reactContext)
+      if (!manager.isRequestPinAppWidgetSupported) {
+        promise.resolve(false)
+        return
+      }
+      val normalized = size?.trim()?.lowercase() ?: "medium"
+      val providerClass = when (normalized) {
+        "small" -> AlmostWidgetSmallProvider::class.java
+        "large" -> AlmostWidgetLargeProvider::class.java
+        else -> AlmostWidgetProvider::class.java
+      }
+      val provider = ComponentName(reactContext, providerClass)
+      val requested = manager.requestPinAppWidget(provider, null, null)
+      promise.resolve(requested)
+    } catch (error: Exception) {
+      promise.reject("widget_pin_request_error", error)
     }
   }
 }

@@ -56,7 +56,7 @@ Store-provided localized prices override these defaults when offerings are avail
   - `abandoned_offer`
   - `winback`
 
-## Firebase Remote Config experiment (new installs only)
+## Monetization rollout (Variant B only)
 
 Remote Config key:
 
@@ -67,35 +67,23 @@ Default payload used by client:
 ```json
 {
   "enabled": true,
-  "newInstallOnly": true,
-  "forceGroup": "",
-  "allocation": { "A": 34, "B": 33, "C": 33 },
+  "newInstallOnly": false,
+  "forceGroup": "B",
+  "allocation": { "A": 0, "B": 100, "C": 0 },
   "trialSaveLimit": 10
 }
 ```
 
-Group behavior:
+Behavior:
 
-- Common rule for `A/B/C`: free users get one daily soft paywall on the first temptation card action (`save` or `spend`) of that local day.
-- `A` (control): vanilla monetization behavior.
-- `B`: hard trial lock after `trialSaveLimit` saves (default 10). App is blocked by non-dismissible hard paywall on startup until premium is active.
-- `C`: no startup hard lock. Free flow stays available with staged prompts:
-  1) after the first temptation card action (`save` or `spend`) -> soft paywall,
-  2) daily first-action paywall is also 2-step (`group_c_daily_first_save_or_spend_after_modals`):
-     intro with personal developer message + support CTA, then classic Premium plans/features,
-  3) after each 5 `save` actions -> 2-step soft paywall (`group_c_support_after_5_saves`):
-     intro with personal developer message + support CTA, then classic Premium plans/features,
-  4) after 10 `save` actions in a day -> further saves are blocked until local midnight by a dismissible soft paywall with countdown (`save_daily_limit_reached` trigger). Closing is allowed, but the paywall appears again on the next save attempt until midnight.
-
-Install eligibility:
-
-- Experiment assignment runs only for new installs.
-- Legacy installs are pinned to group `A`.
-- Client uses stored app signals + install markers to detect legacy installs.
+- A/B/C split is finished: app always uses variant `B` on iOS and Android.
+- Free users can log up to 10 `save` actions.
+- Starting from the next `save` attempt after those 10, save logging is fully blocked until Premium is active (hard lock path).
+- Stored users from old groups are migrated to `B` on startup.
 
 User properties (Firebase Analytics):
 
-- `monetization_exp_group` = `A` / `B` / `C`
+- `monetization_exp_group` = `B`
 - `monetization_exp_group_a` = `1` / `0`
 - `monetization_exp_group_b` = `1` / `0`
 - `monetization_exp_group_c` = `1` / `0`
@@ -107,6 +95,46 @@ Experiment analytics events:
 - `monetization_experiment_assigned`
 - `monetization_experiment_lock_activated`
 - `monetization_experiment_startup_blocked`
+
+## Paywall design experiment (A/B UI)
+
+Remote Config key:
+
+- `paywall_design_v1_config`
+
+Default payload used by client:
+
+```json
+{
+  "enabled": false,
+  "forceVariant": "",
+  "allocation": { "A": 100, "B": 0 }
+}
+```
+
+50/50 rollout payload:
+
+```json
+{
+  "enabled": true,
+  "forceVariant": "",
+  "allocation": { "A": 50, "B": 50 }
+}
+```
+
+Behavior:
+
+- `A` = current paywall UI.
+- `B` = new paywall UI (Almi hero + refreshed plan cards).
+- Assignment is sticky per install (`premiumInstallId`) and stored locally.
+- If `forceVariant` is set to `A` or `B`, it overrides the split.
+
+User properties (Firebase Analytics):
+
+- `paywall_design_exp_id` = `paywall_design_v1`
+- `paywall_design_variant` = `A` / `B`
+- `paywall_design_variant_a` = `1` / `0`
+- `paywall_design_variant_b` = `1` / `0`
 
 ## Free plan limits implemented
 

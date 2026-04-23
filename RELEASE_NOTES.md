@@ -1,5 +1,165 @@
 # Release Notes
 
+## 5.4.2 (from 5.4.1)
+
+### EN
+- Fixed many issues across the app.
+- Improved stability, performance, and overall reliability.
+- The app now works better and feels smoother in everyday use.
+
+### RU
+- Исправили множество проблем по всему приложению.
+- Улучшили стабильность, производительность и общую надежность.
+- Теперь приложение работает лучше и ощущается заметно плавнее в повседневном использовании.
+
+### ES
+- Corregimos muchos problemas en toda la app.
+- Mejoramos la estabilidad, el rendimiento y la confiabilidad general.
+- Ahora la app funciona mejor y se siente mas fluida en el uso diario.
+
+### FR
+- Nous avons corrige de nombreux problemes dans toute l'app.
+- Nous avons ameliore la stabilite, les performances et la fiabilite generale.
+- L'app fonctionne maintenant mieux et parait plus fluide au quotidien.
+
+### DE
+- Viele Probleme in der gesamten App wurden behoben.
+- Stabilitat, Performance und allgemeine Zuverlassigkeit wurden verbessert.
+- Die App funktioniert jetzt besser und fuehlt sich im Alltag deutlich fluessiger an.
+
+### AR (SA)
+- تم إصلاح العديد من المشكلات في مختلف أجزاء التطبيق.
+- تم تحسين الاستقرار والأداء والاعتمادية العامة.
+- التطبيق الآن يعمل بشكل أفضل وأكثر سلاسة في الاستخدام اليومي.
+
+### AR (AE)
+- تم إصلاح العديد من المشكلات في مختلف أجزاء التطبيق.
+- تم تحسين الاستقرار والأداء والاعتمادية العامة.
+- التطبيق الآن يعمل بشكل أفضل وأكثر سلاسة في الاستخدام اليومي.
+
+### ZH
+- 修复了应用中的大量问题。
+- 提升了稳定性、性能与整体可靠性。
+- 现在应用运行更好，日常使用也更流畅。
+
+## 5.4.1 (from 5.4.0)
+
+### EN
+- Introducing Fridge: keep your goals and savings progress in one place.
+- New Freeze button: pause impulse actions with one tap.
+- Added Savings Potential accumulation charts to track projected growth over time.
+- Available in all supported app languages, plus general stability and UI improvements.
+
+### RU
+- Представляем «Холодильник»: теперь цели и прогресс накоплений собраны в одном месте.
+- Новая кнопка «Заморозка»: можно в один тап остановить импульсивные действия.
+- Добавили графики накопления потенциала, чтобы отслеживать прогноз роста во времени.
+- Функции доступны на всех поддерживаемых языках, также улучшили стабильность и интерфейс.
+
+### ES
+- Presentamos el «Refrigerador»: ahora tus metas y el progreso de ahorro estan en un solo lugar.
+- Nuevo boton «Congelar»: pausa acciones impulsivas con un toque.
+- Agregamos graficos de acumulacion del potencial de ahorro para seguir el crecimiento proyectado en el tiempo.
+- Disponible en todos los idiomas compatibles, junto con mejoras generales de estabilidad e interfaz.
+
+### FR
+- Nous presentons le «Refrigerateur» : vos objectifs et votre progression d'epargne sont reunis au meme endroit.
+- Nouveau bouton «Gel» : mettez en pause les actions impulsives en un seul geste.
+- Ajout de graphiques d'accumulation du potentiel d'epargne pour suivre la croissance projetee dans le temps.
+- Disponible dans toutes les langues prises en charge, avec des ameliorations generales de stabilite et d'interface.
+
+### DE
+- Wir stellen den «Kuehlschrank» vor: Ziele und Sparfortschritt sind jetzt an einem Ort.
+- Neuer «Einfrieren»-Button: impulsive Aktionen lassen sich mit einem Tipp pausieren.
+- Neue Diagramme zur Ansammlung des Sparpotenzials zeigen das prognostizierte Wachstum ueber die Zeit.
+- In allen unterstuetzten App-Sprachen verfuegbar, plus allgemeine Stabilitaets- und UI-Verbesserungen.
+
+### AR (SA)
+- نقدم ميزة «الثلاجة»: أصبح بإمكانك جمع الأهداف وتقدم الادخار في مكان واحد.
+- زر جديد «التجميد»: يوقف الإجراءات الاندفاعية بضغطة واحدة.
+- أضفنا رسوماً بيانية لتراكم إمكانات الادخار لمتابعة النمو المتوقع مع الوقت.
+- الميزة متاحة بجميع لغات التطبيق المدعومة، مع تحسينات عامة على الاستقرار والواجهة.
+
+### AR (AE)
+- نقدم ميزة «الثلاجة»: أصبح بإمكانك جمع الأهداف وتقدم الادخار في مكان واحد.
+- زر جديد «التجميد»: يوقف الإجراءات الاندفاعية بضغطة واحدة.
+- أضفنا رسوماً بيانية لتراكم إمكانات الادخار لمتابعة النمو المتوقع مع الوقت.
+- الميزة متاحة بجميع لغات التطبيق المدعومة، مع تحسينات عامة على الاستقرار والواجهة.
+
+### ZH
+- 推出“冰箱”功能：目标与储蓄进度集中在一个页面管理。
+- 新增“冻结”按钮：一键暂停冲动操作。
+- 新增储蓄潜力累计图表，可持续查看随时间变化的增长预测。
+- 以上功能已覆盖全部支持语言，并包含整体稳定性与界面优化。
+
+## 5.4.0 (from 5.3.0)
+
+### EN
+- New feature: Savings Potential. Get a clearer forecast of how much you can save per month and per year.
+- Improved budgeting and progress screens: faster input and more readable calculations.
+- Fixed stability issues in reminders, onboarding transitions, and background sync.
+
+### RU
+- Новая функция: Потенциал накоплений. Теперь можно наглядно оценить, сколько получится откладывать в месяц и в год.
+- Улучшили экраны бюджета и прогресса: ввод данных стал быстрее, расчёты отображаются понятнее.
+- Исправили проблемы стабильности в напоминаниях, переходах онбординга и фоновом синке.
+
+### ES
+- Nueva función: Potencial de ahorros. Ahora puedes ver un pronóstico más claro de cuánto ahorrarás al mes y al año.
+- Mejoramos las pantallas de presupuesto y progreso: entrada de datos más rápida y cálculos más legibles.
+- Corregimos problemas de estabilidad en recordatorios, transiciones de onboarding y sincronización en segundo plano.
+
+### FR
+- Nouvelle fonctionnalite : Potentiel d'epargne. Vous pouvez maintenant estimer plus clairement vos economies mensuelles et annuelles.
+- Amelioration des ecrans Budget et Progression : saisie plus rapide et calculs plus lisibles.
+- Correction de problemes de stabilite dans les rappels, les transitions d'onboarding et la synchronisation en arriere-plan.
+
+### DE
+- Neue Funktion: Sparpotenzial. Jetzt siehst du klarer, wie viel du pro Monat und Jahr sparen kannst.
+- Verbesserte Budget- und Fortschrittsansichten: schnellere Eingabe und besser lesbare Berechnungen.
+- Stabilitatsprobleme bei Erinnerungen, Onboarding-Ubergangen und Hintergrund-Sync wurden behoben.
+
+### AR (SA)
+- ميزة جديدة: إمكانات الادخار. يمكنك الآن رؤية توقع أوضح لما يمكنك ادخاره شهرياً وسنوياً.
+- تحسين شاشات الميزانية والتقدم: إدخال أسرع ونتائج حسابات أوضح.
+- إصلاح مشكلات الاستقرار في التذكيرات، انتقالات الإعداد الأولي، والمزامنة في الخلفية.
+
+### AR (AE)
+- ميزة جديدة: إمكانات الادخار. يمكنك الآن رؤية توقع أوضح لما يمكنك ادخاره شهرياً وسنوياً.
+- تحسين شاشات الميزانية والتقدم: إدخال أسرع ونتائج حسابات أوضح.
+- إصلاح مشكلات الاستقرار في التذكيرات، انتقالات الإعداد الأولي، والمزامنة في الخلفية.
+
+### ZH
+- 新功能：储蓄潜力。现在可更清晰地预估每月和每年的可储蓄金额。
+- 优化了预算与进度页面：录入更快，计算结果更易读。
+- 修复了提醒、引导流程切换和后台同步的稳定性问题。
+
+## 5.3.0 (from 5.2.4)
+
+### EN
+- Many improvements and new features.
+
+### RU
+- Множество улучшений и новые функции.
+
+### ES
+- Muchas mejoras y nuevas funciones.
+
+### FR
+- De nombreuses ameliorations et de nouvelles fonctionnalites.
+
+### DE
+- Zahlreiche Verbesserungen und neue Funktionen.
+
+### AR (SA)
+- العديد من التحسينات والميزات الجديدة.
+
+### AR (AE)
+- العديد من التحسينات والميزات الجديدة.
+
+### ZH
+- 大量改进与新功能。
+
 ## 5.2.0 (from 5.1.9)
 
 ### EN

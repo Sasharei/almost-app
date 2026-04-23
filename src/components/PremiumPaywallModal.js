@@ -14,20 +14,21 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { initialWindowMetrics } from "react-native-safe-area-context";
 
-const PRIMARY_PLAN_IDS = ["monthly", "weekly"];
-const SECONDARY_PLAN_IDS = ["yearly", "lifetime"];
+const PRIMARY_PLAN_IDS = ["yearly", "monthly"];
+const SECONDARY_PLAN_IDS = ["weekly", "lifetime"];
 
 const pickDefaultPlanId = (planCards = []) => {
   const availableCards = planCards.filter((card) => card?.available !== false);
+  const yearly = availableCards.find((card) => card?.id === "yearly");
+  if (yearly?.id) return yearly.id;
   const monthly = availableCards.find((card) => card?.id === "monthly");
   if (monthly?.id) return monthly.id;
   const preferred = availableCards.find((card) => card?.recommended);
   if (preferred?.id) return preferred.id;
-  const yearly = availableCards.find((card) => card?.id === "yearly");
-  if (yearly?.id) return yearly.id;
   if (availableCards[0]?.id) return availableCards[0].id;
-  return planCards[0]?.id || "monthly";
+  return planCards[0]?.id || "yearly";
 };
 
 const ARABIC_INDIC_DIGITS = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
@@ -214,32 +215,32 @@ const resolvePaywallCopyLanguage = (language = "en") => {
 };
 const SAVE_LIMIT_HEADER_COPY_BY_LANGUAGE = {
   ru: {
-    title: "Лимит сохранений обновится через {{timeLeft}}.",
-    subtitle: "На сегодня лимит действий сохранения исчерпан.",
+    title: "Достигнут максимум бесплатных действий.",
+    subtitle: "Лимит бесплатных действий обновится через {{timeLeft}}.",
   },
   en: {
-    title: "Save-action limit resets in {{timeLeft}}.",
-    subtitle: "Today's save-action limit is reached.",
+    title: "Maximum free actions reached.",
+    subtitle: "Free-action limit resets in {{timeLeft}}.",
   },
   es: {
-    title: "El límite se restablece en {{timeLeft}}.",
-    subtitle: "El límite de guardados de hoy ya se agotó.",
+    title: "Se alcanzó el máximo de acciones gratuitas.",
+    subtitle: "El límite de acciones gratuitas se restablece en {{timeLeft}}.",
   },
   fr: {
-    title: "La limite se réinitialise dans {{timeLeft}}.",
-    subtitle: "La limite de sauvegardes d'aujourd'hui est atteinte.",
+    title: "Le maximum d'actions gratuites est atteint.",
+    subtitle: "La limite d'actions gratuites se réinitialise dans {{timeLeft}}.",
   },
   de: {
-    title: "Limit wird in {{timeLeft}} zurückgesetzt.",
-    subtitle: "Das heutige Speicherlimit ist erreicht.",
+    title: "Maximale Anzahl kostenloser Aktionen erreicht.",
+    subtitle: "Das Limit kostenloser Aktionen wird in {{timeLeft}} zurückgesetzt.",
   },
   ar: {
-    title: "سيُعاد ضبط حد الحفظ بعد {{timeLeft}}.",
-    subtitle: "تم الوصول إلى حد الحفظ لليوم فقط.",
+    title: "تم بلوغ الحد الأقصى للإجراءات المجانية.",
+    subtitle: "سيُعاد ضبط حد الإجراءات المجانية بعد {{timeLeft}}.",
   },
   zh: {
-    title: "保存额度将在 {{timeLeft}} 后重置。",
-    subtitle: "今日保存操作额度已用完。",
+    title: "已达到免费操作上限。",
+    subtitle: "免费操作限额将在 {{timeLeft}} 后重置。",
   },
 };
 const SAVE_LIMIT_PRO_NOW_BY_LANGUAGE = {
@@ -250,6 +251,227 @@ const SAVE_LIMIT_PRO_NOW_BY_LANGUAGE = {
   de: { before: "Mit Premium jetzt sofort entsperren: ", accent: "JETZT", after: "!" },
   ar: { before: "مع Premium يمكنك الفتح مباشرة ", accent: "الآن", after: "!" },
   zh: { before: "使用 Premium 可立即解锁 ", accent: "现在", after: "！" },
+};
+const FEATURE_LIMIT_FRIDGE_TRIGGERS = new Set([
+  "pending_create_limit_block",
+  "pending_add_limit_block",
+  "pending_manual_create_limit_block",
+]);
+const FEATURE_LIMIT_GOALS_TRIGGERS = new Set([
+  "goal_create_second_block",
+  "goal_create_limit_block",
+  "goal_switch_blocked",
+  "goal_submit_blocked",
+]);
+const FEATURE_LIMIT_HEADER_COPY_BY_FAMILY = {
+  fridge: {
+    ru: {
+      title: "Безлимитное место в холодильнике с Premium",
+      featureName: "ХОЛОДИЛЬНИК",
+    },
+    en: {
+      title: "Unlimited fridge space with Premium",
+      featureName: "FRIDGE",
+    },
+    es: {
+      title: "Espacio ilimitado en la nevera con Premium",
+      featureName: "NEVERA",
+    },
+    fr: {
+      title: "Espace illimité dans le frigo avec Premium",
+      featureName: "FRIGO",
+    },
+    de: {
+      title: "Unbegrenzter Platz im Kühlschrank mit Premium",
+      featureName: "KÜHLSCHRANK",
+    },
+    ar: {
+      title: "مساحة غير محدودة في الثلاجة مع Premium",
+      featureName: "الثلاجة",
+    },
+    zh: {
+      title: "使用 Premium 解锁冰箱无限空间",
+      featureName: "冰箱",
+    },
+  },
+  goals: {
+    ru: {
+      title: "Безлимитные цели с Premium",
+      featureName: "ЦЕЛИ",
+    },
+    en: {
+      title: "Unlimited goals with Premium",
+      featureName: "GOALS",
+    },
+    es: {
+      title: "Metas ilimitadas con Premium",
+      featureName: "METAS",
+    },
+    fr: {
+      title: "Objectifs illimités avec Premium",
+      featureName: "OBJECTIFS",
+    },
+    de: {
+      title: "Unbegrenzte Ziele mit Premium",
+      featureName: "ZIELE",
+    },
+    ar: {
+      title: "أهداف غير محدودة مع Premium",
+      featureName: "الأهداف",
+    },
+    zh: {
+      title: "使用 Premium 解锁无限目标",
+      featureName: "目标",
+    },
+  },
+};
+const FEATURE_LIMIT_GENERIC_TITLE_BY_LANGUAGE = {
+  ru: "Открой с Premium",
+  en: "Unlock with Premium",
+  es: "Desbloquea con Premium",
+  fr: "Débloque avec Premium",
+  de: "Mit Premium freischalten",
+  ar: "افتح مع Premium",
+  zh: "使用 Premium 解锁",
+};
+const FEATURE_DISPLAY_NAME_BY_KEY_BY_LANGUAGE = {
+  catcustomization: {
+    ru: "кастомизацию кота",
+    en: "cat customization",
+    es: "personalización del gato",
+    fr: "la personnalisation du chat",
+    de: "Katzen‑Anpassung",
+    ar: "تخصيص القط",
+    zh: "猫咪个性化",
+  },
+  impulsemap: {
+    ru: "Impulse‑карту",
+    en: "Impulse map",
+    es: "mapa de impulsos",
+    fr: "la carte des impulsions",
+    de: "Impuls‑Karte",
+    ar: "خريطة الاندفاع",
+    zh: "冲动地图",
+  },
+  reports: {
+    ru: "персональные отчёты",
+    en: "personal reports",
+    es: "informes personales",
+    fr: "les rapports personnels",
+    de: "persönliche Berichte",
+    ar: "التقارير الشخصية",
+    zh: "个人报告",
+  },
+  customcategories: {
+    ru: "кастомные категории",
+    en: "custom categories",
+    es: "categorías personalizadas",
+    fr: "les catégories personnalisées",
+    de: "benutzerdefinierte Kategorien",
+    ar: "الفئات المخصصة",
+    zh: "自定义分类",
+  },
+  thinkingqueue: {
+    ru: "очередь «Думаю»",
+    en: "Think queue",
+    es: "cola de Pensar",
+    fr: "la file «Je réfléchis»",
+    de: "Think‑Warteschlange",
+    ar: "قائمة «التفكير»",
+    zh: "思考队列",
+  },
+  homewidget: {
+    ru: "домашний виджет",
+    en: "home widget",
+    es: "widget de inicio",
+    fr: "le widget d'accueil",
+    de: "Startbildschirm‑Widget",
+    ar: "ويدجت الشاشة الرئيسية",
+    zh: "主屏小组件",
+  },
+  widgetslider: {
+    ru: "слайдер виджета",
+    en: "widget slider",
+    es: "deslizador del widget",
+    fr: "le curseur du widget",
+    de: "Widget‑Slider",
+    ar: "شريط تمرير الويدجت",
+    zh: "小组件滑杆",
+  },
+  budgetauto: {
+    ru: "умный бюджет",
+    en: "smart budget",
+    es: "presupuesto inteligente",
+    fr: "le budget intelligent",
+    de: "intelligentes Budget",
+    ar: "الميزانية الذكية",
+    zh: "智能预算",
+  },
+  multiplegoals: {
+    ru: "несколько целей",
+    en: "multiple goals",
+    es: "múltiples metas",
+    fr: "plusieurs objectifs",
+    de: "mehrere Ziele",
+    ar: "أهداف متعددة",
+    zh: "多个目标",
+  },
+  fullhistory: {
+    ru: "полную историю",
+    en: "full history",
+    es: "historial completo",
+    fr: "l'historique complet",
+    de: "vollständige Historie",
+    ar: "السجل الكامل",
+    zh: "完整历史",
+  },
+  customtemptationcards: {
+    ru: "карточки искушений",
+    en: "temptation cards",
+    es: "tarjetas de tentación",
+    fr: "les cartes de tentation",
+    de: "Versuchungskarten",
+    ar: "بطاقات الإغراء",
+    zh: "诱惑卡片",
+  },
+  unlimitedchallenges: {
+    ru: "челленджи",
+    en: "challenges",
+    es: "desafíos",
+    fr: "les défis",
+    de: "Challenges",
+    ar: "التحديات",
+    zh: "挑战",
+  },
+  protheme: {
+    ru: "Pro‑тему",
+    en: "Pro theme",
+    es: "tema Pro",
+    fr: "thème Pro",
+    de: "Pro‑Design",
+    ar: "سمة Pro",
+    zh: "Pro 主题",
+  },
+};
+const resolveFeatureKeyReadableFallback = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+const resolveLocalizedFeatureDisplayName = (normalizedKey = "", language = "en") => {
+  const key = String(normalizedKey || "").trim().toLowerCase();
+  if (!key) return "";
+  const entry = FEATURE_DISPLAY_NAME_BY_KEY_BY_LANGUAGE[key] || null;
+  if (!entry) return "";
+  return String(entry?.[language] || entry?.en || "").trim();
+};
+const resolveFeatureLimitHeaderFamily = (trigger = "") => {
+  const normalizedTrigger = String(trigger || "").trim().toLowerCase();
+  if (!normalizedTrigger) return null;
+  if (FEATURE_LIMIT_FRIDGE_TRIGGERS.has(normalizedTrigger)) return "fridge";
+  if (FEATURE_LIMIT_GOALS_TRIGGERS.has(normalizedTrigger)) return "goals";
+  return null;
 };
 const formatCountdownToMidnight = (timestamp = Date.now()) => {
   const now = new Date(Number(timestamp) || Date.now());
@@ -297,14 +519,32 @@ const TRIAL_PLAN_TOP_BANNER_BY_LANGUAGE = {
   ar: "تجربة مجانية",
   zh: "免费试用",
 };
-const TRIAL_PLAN_TITLE_BY_LANGUAGE = {
-  ru: "Попробуй бесплатно",
-  en: "Try It Free",
-  es: "Pruébalo gratis",
-  fr: "Essaye gratuitement",
-  de: "Kostenlos testen",
-  ar: "جرّبه مجاناً",
-  zh: "免费体验",
+const TRY_FOR_FREE_WITH_PREMIUM_TITLE_BY_LANGUAGE = {
+  ru: "Разблокируй БЕСПЛАТНО с Premium",
+  en: "Unlock FOR FREE with Premium",
+  es: "Desbloquea GRATIS con Premium",
+  fr: "Débloque GRATUITEMENT avec Premium",
+  de: "Mit Premium KOSTENLOS freischalten",
+  ar: "افتح مجاناً مع Premium",
+  zh: "使用 Premium 免费解锁",
+};
+const UNLOCK_WITH_PREMIUM_TITLE_BY_LANGUAGE = {
+  ru: "Разблокируй с Premium",
+  en: "Unlock with Premium",
+  es: "Desbloquea con Premium",
+  fr: "Débloque avec Premium",
+  de: "Mit Premium freischalten",
+  ar: "افتح مع Premium",
+  zh: "使用 Premium 解锁",
+};
+const MONTHLY_PLAN_TITLE_BY_LANGUAGE = {
+  ru: "Месяц",
+  en: "Monthly",
+  es: "Mensual",
+  fr: "Mensuel",
+  de: "Monatlich",
+  ar: "شهري",
+  zh: "月付",
 };
 const TRIAL_ONLY_EQUIVALENT_TEMPLATE_BY_LANGUAGE = {
   ru: "Только {{price}}",
@@ -333,15 +573,6 @@ const OTHER_PLANS_BUTTON_BY_LANGUAGE = {
   ar: "إظهار جميع الخطط",
   zh: "显示全部方案",
 };
-const SAVINGS_FORECAST_TITLE_BY_LANGUAGE = {
-  ru: "Прогноз экономии",
-  en: "Savings forecast",
-  es: "Pronóstico de ahorro",
-  fr: "Prévision d'économies",
-  de: "Sparprognose",
-  ar: "توقع التوفير",
-  zh: "节省预测",
-};
 const SAVINGS_FORECAST_DAYS_TEMPLATE_BY_LANGUAGE = {
   ru: "{{days}} дн.",
   en: "{{days}}d",
@@ -351,37 +582,117 @@ const SAVINGS_FORECAST_DAYS_TEMPLATE_BY_LANGUAGE = {
   ar: "{{days}} يوم",
   zh: "{{days}}天",
 };
-const AMOUNT_TOKEN_REGEX = /-?[0-9٠-٩۰-۹][0-9٠-٩۰-۹\s.,]*/;
+const PROJECTION_TARGET_WINDOW_DAYS = 30;
+const SAVINGS_PROJECTION_HEADER_TITLE_BY_LANGUAGE = {
+  ru: "Вот сколько вы можете сохранить с Premium",
+  en: "Here's how much you can save with Premium",
+  es: "Esto es lo que puedes ahorrar con Premium",
+  fr: "Voici combien vous pouvez économiser avec Premium",
+  de: "So viel können Sie mit Premium sparen",
+  ar: "هذا ما يمكنك توفيره مع Premium",
+  zh: "这就是你使用 Premium 可省下的金额",
+};
+const SAVINGS_PROJECTION_WINDOW_TEMPLATE_BY_LANGUAGE = {
+  ru: "",
+  en: "",
+  es: "",
+  fr: "",
+  de: "",
+  ar: "",
+  zh: "",
+};
+const SAVINGS_PROJECTION_CTA_TEMPLATE_BY_LANGUAGE = {
+  ru: "Приблизительный прогноз за {{days}} дней на основе вашей активности",
+  en: "Approximate {{days}}-day forecast based on your activity",
+  es: "Pronóstico aproximado de {{days}} días basado en tu actividad",
+  fr: "Prévision approximative sur {{days}} jours basée sur votre activité",
+  de: "Ungefähre {{days}}-Tage-Prognose basierend auf Ihrer Aktivität",
+  ar: "توقع تقريبي لمدة {{days}} يوماً بناءً على نشاطك",
+  zh: "基于你的活动的约 {{days}} 天预测",
+};
+const AMOUNT_TOKEN_REGEX = /-?[0-9٠-٩۰-۹][0-9٠-٩۰-۹\s.,'’`٫٬\u00A0\u202F]*/;
 const SAVINGS_FORECAST_MULTIPLIER = 0.85;
+const THREE_DECIMAL_CURRENCY_CODES = new Set(["BHD", "JOD", "KWD", "LYD", "OMR", "TND"]);
 const fillPaywallTemplate = (value = "", replacements = {}) =>
   String(value || "").replace(/\{\{(\w+)\}\}/g, (match, key) =>
     Object.prototype.hasOwnProperty.call(replacements, key) ? String(replacements[key]) : match
   );
+const detectAmountDecimalSeparator = (rawToken = "", currencyCode = "") => {
+  const token = String(rawToken || "");
+  const candidateSeparators = [".", ",", "٫"];
+  let lastSeparator = null;
+  let lastIndex = -1;
+  candidateSeparators.forEach((separator) => {
+    const index = token.lastIndexOf(separator);
+    if (index > lastIndex) {
+      lastIndex = index;
+      lastSeparator = separator;
+    }
+  });
+  if (!lastSeparator || lastIndex <= 0 || lastIndex >= token.length - 1) return null;
+  const tail = token.slice(lastIndex + 1).replace(/[^0-9]/g, "");
+  if (!tail.length || tail.length > 3) return null;
+  const hasDot = token.includes(".");
+  const hasComma = token.includes(",");
+  if ((lastSeparator === "." || lastSeparator === ",") && !hasDot !== !hasComma) {
+    if (tail.length === 3) {
+      const separatorCount = (token.match(new RegExp(`\\${lastSeparator}`, "g")) || []).length;
+      if (separatorCount === 1 && !THREE_DECIMAL_CURRENCY_CODES.has(String(currencyCode || "").toUpperCase())) {
+        return null;
+      }
+    }
+  }
+  return lastSeparator;
+};
+const resolveAmountGroupingSeparator = (rawToken = "", decimalSeparator = null) => {
+  const token = String(rawToken || "");
+  if (token.includes("٬")) return "٬";
+  if (token.includes("’")) return "’";
+  if (token.includes("'")) return "'";
+  if (/\d[\u00A0\u202F ]+\d/.test(token)) return " ";
+  if (token.includes(".") && decimalSeparator !== ".") return ".";
+  if (token.includes(",") && decimalSeparator !== ",") return ",";
+  return ",";
+};
 const parseAmountTemplate = (amountLabel = "") => {
   const rawLabel = typeof amountLabel === "string" ? amountLabel : "";
   if (!rawLabel.trim().length) return null;
   const match = rawLabel.match(AMOUNT_TOKEN_REGEX);
   if (!match || typeof match.index !== "number") return null;
-  const rawToken = normalizeWesternDigits(match[0]).replace(/\s/g, "");
+  const matchedRawToken = normalizeWesternDigits(match[0]).replace(/[\u00A0\u202F]/g, " ");
+  if (!matchedRawToken.length) return null;
+  const trailingWhitespaceMatch = matchedRawToken.match(/\s+$/);
+  const trailingWhitespaceLength = trailingWhitespaceMatch ? trailingWhitespaceMatch[0].length : 0;
+  const rawToken =
+    trailingWhitespaceLength > 0
+      ? matchedRawToken.slice(0, matchedRawToken.length - trailingWhitespaceLength)
+      : matchedRawToken;
   if (!rawToken.length) return null;
-  const lastDotIndex = rawToken.lastIndexOf(".");
-  const lastCommaIndex = rawToken.lastIndexOf(",");
-  const decimalIndex = Math.max(lastDotIndex, lastCommaIndex);
-  let normalizedNumberToken = rawToken.replace(/[.,]/g, "");
-  let decimals = 0;
-  if (decimalIndex >= 0) {
-    const integerPart = rawToken.slice(0, decimalIndex).replace(/[.,]/g, "");
-    const fractionalPart = rawToken.slice(decimalIndex + 1).replace(/[.,]/g, "");
-    normalizedNumberToken = `${integerPart || "0"}${fractionalPart ? `.${fractionalPart}` : ""}`;
-    decimals = Math.min(2, fractionalPart.length);
-  }
+  const currencyCodeMatch = rawLabel.match(/\b([A-Za-z]{3})\b/);
+  const currencyCode = currencyCodeMatch?.[1] ? String(currencyCodeMatch[1]).toUpperCase() : "";
+  const decimalSeparator = detectAmountDecimalSeparator(rawToken, currencyCode);
+  const groupingSeparator = resolveAmountGroupingSeparator(rawToken, decimalSeparator);
+  const lastDecimalIndex =
+    decimalSeparator && rawToken.lastIndexOf(decimalSeparator) >= 0
+      ? rawToken.lastIndexOf(decimalSeparator)
+      : -1;
+  const integerToken =
+    lastDecimalIndex >= 0 ? rawToken.slice(0, lastDecimalIndex) : rawToken;
+  const fractionalToken = lastDecimalIndex >= 0 ? rawToken.slice(lastDecimalIndex + 1) : "";
+  const integerPart = integerToken.replace(/[^0-9]/g, "");
+  const fractionalPart = fractionalToken.replace(/[^0-9]/g, "");
+  const decimals =
+    lastDecimalIndex >= 0 && fractionalPart.length ? Math.min(3, fractionalPart.length) : 0;
+  const normalizedNumberToken =
+    decimals > 0 ? `${integerPart || "0"}.${fractionalPart}` : integerPart || "0";
   const parsedValue = Number(normalizedNumberToken);
   if (!Number.isFinite(parsedValue)) return null;
   const tokenStart = match.index;
-  const tokenEnd = tokenStart + match[0].length;
+  const tokenEnd = tokenStart + match[0].length - trailingWhitespaceLength;
   return {
     value: Math.max(0, parsedValue),
     decimals,
+    groupingSeparator,
     prefix: rawLabel.slice(0, tokenStart),
     suffix: rawLabel.slice(tokenEnd),
   };
@@ -390,9 +701,24 @@ const formatAmountFromTemplate = (template, value = 0) => {
   if (!template || !Number.isFinite(value)) return "";
   const normalizedValue = Math.max(0, Number(value) || 0);
   const roundedValue = Math.max(0, Math.round(normalizedValue));
-  const formattedNumber = new Intl.NumberFormat("en-US", {
+  const formattedEnUS = new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 0,
   }).format(roundedValue);
+  const groupingSeparator = String(template?.groupingSeparator || ",");
+  const formattedNumber =
+    groupingSeparator === ","
+      ? formattedEnUS
+      : groupingSeparator === "."
+      ? formattedEnUS.replace(/,/g, ".")
+      : groupingSeparator === " "
+      ? formattedEnUS.replace(/,/g, " ")
+      : groupingSeparator === "’"
+      ? formattedEnUS.replace(/,/g, "’")
+      : groupingSeparator === "'"
+      ? formattedEnUS.replace(/,/g, "'")
+      : groupingSeparator === "٬"
+      ? formattedEnUS.replace(/,/g, "٬")
+      : formattedEnUS;
   return `${template.prefix}${formattedNumber}${template.suffix}`;
 };
 const DISCOUNT_PERCENT_TOKEN_REGEX = /([0-9٠-٩۰-۹]+(?:[.,][0-9٠-٩۰-۹]+)?)/;
@@ -595,11 +921,13 @@ const PremiumPaywallModal = ({
   const [showTransactionAbandonedPopup, setShowTransactionAbandonedPopup] = useState(false);
   const [supportIntroStage, setSupportIntroStage] = useState("plans");
   const [isCloseCooldownComplete, setIsCloseCooldownComplete] = useState(false);
+  const [animatedProjectionAmountValue, setAnimatedProjectionAmountValue] = useState(0);
   const hasTrackedScrollRef = useRef(false);
   const sheetScrollRef = useRef(null);
   const planSectionOffsetYRef = useRef(0);
   const closeCooldownTimerRef = useRef(null);
   const openProgress = useRef(new Animated.Value(0)).current;
+  const projectionAmountProgress = useRef(new Animated.Value(0)).current;
   const ctaPulse = useRef(new Animated.Value(0)).current;
   const abandonedPopupProgress = useRef(new Animated.Value(0)).current;
   const supportMessageProgress = useRef(new Animated.Value(0)).current;
@@ -637,12 +965,15 @@ const PremiumPaywallModal = ({
   const isAndroid = Platform.OS === "android";
   const isNativeMobile = Platform.OS === "android" || Platform.OS === "ios";
   const { height: viewportHeight } = useWindowDimensions();
+  const initialFrameHeight = Math.max(0, Number(initialWindowMetrics?.frame?.height) || 0);
+  const effectiveViewportHeight =
+    isAndroid && initialFrameHeight > 0 ? initialFrameHeight : viewportHeight;
   const resolvedSafeTopInset = Math.max(0, Number(safeAreaTopInset) || 0);
   const resolvedSafeBottomInset = Math.max(0, Number(safeAreaBottomInset) || 0);
   const headerSafeTopExtra = Math.min(24, Math.round(resolvedSafeTopInset));
   const footerSafeBottomExtra = Math.min(22, Math.round(resolvedSafeBottomInset));
-  const isCompactAndroid = isNativeMobile && viewportHeight <= 860;
-  const isVeryCompactAndroid = isNativeMobile && viewportHeight <= 760;
+  const isCompactAndroid = isNativeMobile && effectiveViewportHeight <= 860;
+  const isVeryCompactAndroid = isNativeMobile && effectiveViewportHeight <= 760;
   const baseHeaderPaddingTop = isVeryCompactAndroid ? 10 : isCompactAndroid ? 12 : isNativeMobile ? 14 : 18;
   const headerPaddingTop = baseHeaderPaddingTop + headerSafeTopExtra;
   const baseFooterPaddingBottom = isVeryCompactAndroid ? (isAndroid ? 14 : 10) : isCompactAndroid ? (isAndroid ? 14 : 10) : isAndroid ? 20 : 12;
@@ -651,7 +982,7 @@ const PremiumPaywallModal = ({
     ? 0
     : Math.min(
         500,
-        Math.round(viewportHeight * (isCompactAndroid ? 0.36 : 0.44))
+        Math.round(effectiveViewportHeight * (isCompactAndroid ? 0.36 : 0.44))
       );
   const showSecondaryLegalNotice = !isVeryCompactAndroid;
   const disableAndroidMotion = Platform.OS === "android";
@@ -683,7 +1014,7 @@ const PremiumPaywallModal = ({
     return SECONDARY_PLAN_IDS.map((planId) => byId.get(planId)).filter(Boolean);
   }, [planCards]);
   const allPlanCards = useMemo(() => {
-    const ordered = [...primaryPlanCards, ...secondaryPlanCards];
+    const ordered = [...primaryPlanCards, ...secondaryPlanCards, ...planCards];
     const seen = new Set();
     return ordered.filter((card) => {
       const planId = typeof card?.id === "string" ? card.id : "";
@@ -691,12 +1022,19 @@ const PremiumPaywallModal = ({
       seen.add(planId);
       return true;
     });
-  }, [primaryPlanCards, secondaryPlanCards]);
+  }, [planCards, primaryPlanCards, secondaryPlanCards]);
   const visiblePlanCards = useMemo(() => {
     if (!primaryPlanCards.length) return planCards;
     if (showOtherPlans) return allPlanCards.length ? allPlanCards : planCards;
     return primaryPlanCards;
   }, [allPlanCards, planCards, primaryPlanCards, showOtherPlans]);
+  const paywallHasAnyTrialPlan = useMemo(
+    () =>
+      planCards.some(
+        (plan) => plan?.available !== false && plan?.hasTrial === true
+      ),
+    [planCards]
+  );
   const copyLanguage = resolvePaywallCopyLanguage(normalizedLanguage);
   const otherPlansToggleLabel = localizePaywallDigits(
     OTHER_PLANS_BUTTON_BY_LANGUAGE[copyLanguage] || OTHER_PLANS_BUTTON_BY_LANGUAGE.en,
@@ -718,9 +1056,29 @@ const PremiumPaywallModal = ({
   const isSaveLimitReachedTrigger =
     isDailySaveLimitTrigger ||
     normalizedTrigger === "trial_10_saves_reached";
-  const isNoFreeAccessTrigger =
-    normalizedTrigger === "trial_10_saves_reached" ||
-    normalizedTrigger === "onboarding_completed_hard_gate";
+  const normalizedActiveFeatureKeyForHeader =
+    typeof copy?.activeFeatureKey === "string" && copy.activeFeatureKey.trim().length
+      ? copy.activeFeatureKey
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "")
+      : "";
+  const featureLimitHeaderFamilyByFeature =
+    normalizedActiveFeatureKeyForHeader === "thinkingqueue"
+      ? "fridge"
+      : normalizedActiveFeatureKeyForHeader === "multiplegoals"
+      ? "goals"
+      : null;
+  const hasActiveFeatureForHeader =
+    typeof copy?.activeFeatureKey === "string" && copy.activeFeatureKey.trim().length > 0;
+  const isFeatureSpecificHeaderTrigger = !isSaveLimitReachedTrigger && hasActiveFeatureForHeader;
+  const featureLimitHeaderFamily = isFeatureSpecificHeaderTrigger
+    ? resolveFeatureLimitHeaderFamily(normalizedTrigger) || featureLimitHeaderFamilyByFeature
+    : null;
+  const isGenericFeatureLimitHeaderTrigger =
+    isFeatureSpecificHeaderTrigger &&
+    !featureLimitHeaderFamily;
+  const isFeatureLimitHeaderTrigger = isFeatureSpecificHeaderTrigger;
   const isSupportIntroStageVisible = isGroupCSupportTrigger && supportIntroStage === "intro";
   const isPaywallDismissible = dismissible && !isSupportIntroStageVisible && isCloseCooldownComplete;
   const shouldShowHeaderMetaChips = !isGroupCSupportTrigger;
@@ -732,14 +1090,18 @@ const PremiumPaywallModal = ({
       maxFontSizeMultiplier = 1,
       adjustsFontSizeToFit = false,
       minimumFontScale,
+      allowAndroidAutoFit = false,
       ...props
     }) => {
       const localizedChildren = localizePaywallTextTree(children, normalizedLanguage);
       const rtlStyle = isRtlLanguage ? { writingDirection: "rtl", textAlign: "right" } : null;
       const resolvedStyle = rtlStyle ? [rtlStyle, style] : style;
-      const shouldAutoFit = Platform.OS === "android" ? false : !!adjustsFontSizeToFit;
+      const shouldAutoFit =
+        Platform.OS === "android"
+          ? !!allowAndroidAutoFit && !!adjustsFontSizeToFit
+          : !!adjustsFontSizeToFit;
       const resolvedMinimumFontScale = shouldAutoFit
-        ? Math.max(0.85, Math.min(1, Number(minimumFontScale) || 1))
+        ? Math.max(0.5, Math.min(1, Number(minimumFontScale) || 1))
         : minimumFontScale;
       return (
         <RNText
@@ -862,6 +1224,63 @@ const PremiumPaywallModal = ({
       ) || null
     );
   }, [comparisonRows, selectedComparisonRowId]);
+  const activeFeatureDisplayLabel = useMemo(() => {
+    const rawActiveFeatureKey =
+      typeof copy?.activeFeatureKey === "string" && copy.activeFeatureKey.trim().length
+        ? copy.activeFeatureKey.trim()
+        : "";
+    if (!rawActiveFeatureKey) return "";
+    const normalizedActiveFeatureKey = rawActiveFeatureKey.toLowerCase();
+    const normalizedLookupKey = normalizedActiveFeatureKey.replace(/[^a-z0-9]+/g, "");
+    const mappedFeatureName = resolveLocalizedFeatureDisplayName(normalizedLookupKey, copyLanguage);
+    if (mappedFeatureName) return mappedFeatureName;
+    const matchingRow = comparisonRows.find(
+      (row) =>
+        Array.isArray(row?.featureKeys) &&
+        row.featureKeys.some((key) => String(key || "").trim().toLowerCase() === normalizedActiveFeatureKey)
+    );
+    if (typeof matchingRow?.label === "string" && matchingRow.label.trim().length) {
+      return matchingRow.label.trim();
+    }
+    return resolveFeatureKeyReadableFallback(rawActiveFeatureKey || normalizedActiveFeatureKey).trim();
+  }, [comparisonRows, copy?.activeFeatureKey, copyLanguage]);
+  const featureLimitHeaderCopy = useMemo(() => {
+    if (!isFeatureLimitHeaderTrigger) return null;
+    const resolvedFeatureName =
+      typeof activeFeatureDisplayLabel === "string" && activeFeatureDisplayLabel.trim().length
+        ? activeFeatureDisplayLabel.trim()
+        : resolveFeatureKeyReadableFallback(copy?.activeFeatureKey || "").trim();
+    const genericTitleTemplate =
+      FEATURE_LIMIT_GENERIC_TITLE_BY_LANGUAGE[copyLanguage] ||
+      FEATURE_LIMIT_GENERIC_TITLE_BY_LANGUAGE.en;
+    if (featureLimitHeaderFamily) {
+      const familyCopy = FEATURE_LIMIT_HEADER_COPY_BY_FAMILY[featureLimitHeaderFamily] || null;
+      const fallback = familyCopy?.en || null;
+      const localized = familyCopy?.[copyLanguage] || fallback;
+      return {
+        title: localizePaywallDigits(genericTitleTemplate, normalizedLanguage),
+        featureName: localizePaywallDigits(
+          localized?.featureName || resolvedFeatureName || fallback?.featureName || "",
+          normalizedLanguage
+        ),
+      };
+    }
+    if (isGenericFeatureLimitHeaderTrigger) {
+      return {
+        title: localizePaywallDigits(genericTitleTemplate, normalizedLanguage),
+        featureName: localizePaywallDigits(resolvedFeatureName, normalizedLanguage),
+      };
+    }
+    return null;
+  }, [
+    activeFeatureDisplayLabel,
+    copy?.activeFeatureKey,
+    copyLanguage,
+    featureLimitHeaderFamily,
+    isGenericFeatureLimitHeaderTrigger,
+    isFeatureLimitHeaderTrigger,
+    normalizedLanguage,
+  ]);
 
   const [saveLimitCountdownNow, setSaveLimitCountdownNow] = useState(() => Date.now());
   useEffect(() => {
@@ -896,17 +1315,42 @@ const PremiumPaywallModal = ({
     };
   }, [copyLanguage, isDailySaveLimitTrigger, normalizedLanguage]);
   const baseHeaderTitle = localizePaywallDigits(copy?.title || "", normalizedLanguage);
-  const baseHeaderSubtitle = localizePaywallDigits(copy?.subtitle || "", normalizedLanguage);
   const resolvedBaseHeaderTitle = localizePaywallDigits(
     isDailySaveLimitTrigger ? saveLimitHeaderCopy?.title || baseHeaderTitle : baseHeaderTitle,
     normalizedLanguage
   );
-  const resolvedBaseHeaderSubtitle = localizePaywallDigits(
-    isDailySaveLimitTrigger ? saveLimitHeaderCopy?.subtitle || baseHeaderSubtitle : baseHeaderSubtitle,
+  const projectionHeaderTitle = localizePaywallDigits(
+    SAVINGS_PROJECTION_HEADER_TITLE_BY_LANGUAGE[copyLanguage] ||
+      SAVINGS_PROJECTION_HEADER_TITLE_BY_LANGUAGE.en,
     normalizedLanguage
   );
-  const headerTitle = resolvedBaseHeaderTitle;
-  const headerSubtitle = resolvedBaseHeaderSubtitle;
+  const featureLimitHeaderTitle = localizePaywallDigits(
+    featureLimitHeaderCopy?.title || "",
+    normalizedLanguage
+  );
+  const featureLimitHeaderName = localizePaywallDigits(
+    featureLimitHeaderCopy?.featureName || "",
+    normalizedLanguage
+  );
+  const trialHeaderTitle = localizePaywallDigits(
+    TRY_FOR_FREE_WITH_PREMIUM_TITLE_BY_LANGUAGE[copyLanguage] ||
+      TRY_FOR_FREE_WITH_PREMIUM_TITLE_BY_LANGUAGE.en,
+    normalizedLanguage
+  );
+  const unlockWithPremiumHeaderTitle = localizePaywallDigits(
+    UNLOCK_WITH_PREMIUM_TITLE_BY_LANGUAGE[copyLanguage] ||
+      UNLOCK_WITH_PREMIUM_TITLE_BY_LANGUAGE.en,
+    normalizedLanguage
+  );
+  const headerTitle = isSaveLimitReachedTrigger
+    ? paywallHasAnyTrialPlan
+      ? trialHeaderTitle
+      : unlockWithPremiumHeaderTitle
+    : paywallHasAnyTrialPlan
+    ? trialHeaderTitle
+    : isFeatureLimitHeaderTrigger
+    ? featureLimitHeaderTitle || resolvedBaseHeaderTitle || projectionHeaderTitle
+    : projectionHeaderTitle;
   const showPsychologyChip = !!copy?.psychologyLine && !activeInsightRow;
   const headerTitleHighlightToken = localizePaywallDigits(copy?.titleHighlightToken || "", normalizedLanguage);
   const socialProofLine = localizePaywallDigits(
@@ -932,6 +1376,8 @@ const PremiumPaywallModal = ({
     if (!title.length) return title;
     return /[.!?…！？؟。]$/.test(title) ? title : `${title}!`;
   }, [headerTitle]);
+  const showFeatureLimitHeroName =
+    isFeatureLimitHeaderTrigger && typeof featureLimitHeaderName === "string" && featureLimitHeaderName.trim().length > 0;
   const saveLimitHeaderHighlightStyle = isSaveLimitReachedTrigger
     ? [
         styles.headerSavedAmountHighlight,
@@ -950,9 +1396,13 @@ const PremiumPaywallModal = ({
     : null;
   const headerPrimaryHighlightToken = isDailySaveLimitTrigger
     ? saveLimitCountdownLabel
+    : isFeatureLimitHeaderTrigger
+    ? ""
     : headerTitleHighlightToken;
   const headerPrimaryHighlightStyle = isDailySaveLimitTrigger
     ? saveLimitTimerHighlightStyle
+    : isFeatureLimitHeaderTrigger
+    ? null
     : saveLimitHeaderHighlightStyle;
   const subtitleNumericHighlightStyle = [
     styles.headerSubtitleNumericHighlight,
@@ -960,11 +1410,6 @@ const PremiumPaywallModal = ({
     isCompactAndroid ? styles.headerSubtitleNumericHighlightCompactAndroid : null,
     isVeryCompactAndroid ? styles.headerSubtitleNumericHighlightVeryCompactAndroid : null,
   ];
-  const headerForecastTitle = localizePaywallDigits(
-    SAVINGS_FORECAST_TITLE_BY_LANGUAGE[copyLanguage] ||
-      SAVINGS_FORECAST_TITLE_BY_LANGUAGE.en,
-    normalizedLanguage
-  );
   const savingsForecastPoints = useMemo(
     () =>
       buildSavingsForecastPoints({
@@ -991,14 +1436,130 @@ const PremiumPaywallModal = ({
     const matchedPoint = savingsForecastPoints.find((point) => point.days === normalizedForecastWindowDays);
     return matchedPoint?.amountLabel || "";
   }, [normalizedForecastWindowDays, savingsForecastPoints]);
-  const headerSubtitleWithForecast = useMemo(() => {
-    const sourceSubtitle = String(headerSubtitle || "");
-    const baselineToken = String(baselineLossAmountToken || "");
-    const replacementAmount = String(forecastWindowAmountLabel || "");
-    if (!sourceSubtitle || !baselineToken || !replacementAmount) return sourceSubtitle;
-    if (!sourceSubtitle.includes(baselineToken)) return sourceSubtitle;
-    return sourceSubtitle.replace(baselineToken, replacementAmount);
-  }, [baselineLossAmountToken, forecastWindowAmountLabel, headerSubtitle]);
+  const projectionSourceWindowDays = Math.max(
+    7,
+    Math.round(Number(copy?.lossWindowDays) || normalizedForecastWindowDays || PROJECTION_TARGET_WINDOW_DAYS)
+  );
+  const savedDailyTemplate = useMemo(
+    () => parseAmountTemplate(copy?.savedAmountLabel || ""),
+    [copy?.savedAmountLabel]
+  );
+  const projectionBaseTemplate = useMemo(() => {
+    if (savedDailyTemplate?.value > 0) return savedDailyTemplate;
+    const lossTemplate = parseAmountTemplate(copy?.lossAmountLabel || "");
+    if (lossTemplate?.value > 0) return lossTemplate;
+    const projectionTemplate = parseAmountTemplate(forecastWindowAmountLabel || "");
+    if (projectionTemplate?.value > 0) return projectionTemplate;
+    return null;
+  }, [copy?.lossAmountLabel, forecastWindowAmountLabel, savedDailyTemplate]);
+  const hasSavedDailySignal = (savedDailyTemplate?.value || 0) > 0;
+  const projectionTargetAmountValue = useMemo(
+    () => {
+      if (hasSavedDailySignal) {
+        return Math.max(
+          0,
+          Math.round((Number(savedDailyTemplate?.value) || 0) * PROJECTION_TARGET_WINDOW_DAYS)
+        );
+      }
+      return Math.max(
+        0,
+        Math.round(
+          ((Number(projectionBaseTemplate?.value) || 0) / projectionSourceWindowDays) *
+            PROJECTION_TARGET_WINDOW_DAYS
+        )
+      );
+    },
+    [hasSavedDailySignal, projectionBaseTemplate?.value, projectionSourceWindowDays, savedDailyTemplate?.value]
+  );
+  const projectionTargetAmountLabel = useMemo(() => {
+    if (projectionBaseTemplate && projectionTargetAmountValue > 0) {
+      return localizePaywallDigits(
+        formatAmountFromTemplate(projectionBaseTemplate, projectionTargetAmountValue),
+        normalizedLanguage
+      );
+    }
+    if (forecastWindowAmountLabel) return localizePaywallDigits(forecastWindowAmountLabel, normalizedLanguage);
+    if (baselineLossAmountToken) return localizePaywallDigits(baselineLossAmountToken, normalizedLanguage);
+    return "";
+  }, [
+    baselineLossAmountToken,
+    forecastWindowAmountLabel,
+    normalizedLanguage,
+    projectionBaseTemplate,
+    projectionTargetAmountValue,
+  ]);
+  const projectionAnimatedAmountLabel = useMemo(() => {
+    if (projectionBaseTemplate && projectionTargetAmountValue > 0) {
+      return localizePaywallDigits(
+        formatAmountFromTemplate(projectionBaseTemplate, animatedProjectionAmountValue),
+        normalizedLanguage
+      );
+    }
+    return projectionTargetAmountLabel;
+  }, [
+    animatedProjectionAmountValue,
+    normalizedLanguage,
+    projectionBaseTemplate,
+    projectionTargetAmountLabel,
+    projectionTargetAmountValue,
+  ]);
+  const projectionWindowLine = useMemo(() => {
+    const template =
+      SAVINGS_PROJECTION_WINDOW_TEMPLATE_BY_LANGUAGE[copyLanguage] ||
+      SAVINGS_PROJECTION_WINDOW_TEMPLATE_BY_LANGUAGE.en;
+    return localizePaywallDigits(
+      fillPaywallTemplate(template, { days: PROJECTION_TARGET_WINDOW_DAYS }),
+      normalizedLanguage
+    );
+  }, [copyLanguage, normalizedLanguage]);
+  const projectionCtaLine = useMemo(() => {
+    const template =
+      SAVINGS_PROJECTION_CTA_TEMPLATE_BY_LANGUAGE[copyLanguage] ||
+      SAVINGS_PROJECTION_CTA_TEMPLATE_BY_LANGUAGE.en;
+    return localizePaywallDigits(
+      fillPaywallTemplate(template, { days: PROJECTION_TARGET_WINDOW_DAYS }),
+      normalizedLanguage
+    );
+  }, [copyLanguage, normalizedLanguage]);
+  useEffect(() => {
+    const listenerId = projectionAmountProgress.addListener(({ value }) => {
+      const roundedValue = Math.max(0, Math.round(Number(value) || 0));
+      setAnimatedProjectionAmountValue((previousValue) =>
+        previousValue === roundedValue ? previousValue : roundedValue
+      );
+    });
+    return () => {
+      projectionAmountProgress.removeListener(listenerId);
+    };
+  }, [projectionAmountProgress]);
+  useEffect(() => {
+    const shouldAnimateProjection = visible && !isSupportIntroStageVisible;
+    projectionAmountProgress.stopAnimation();
+    projectionAmountProgress.setValue(0);
+    setAnimatedProjectionAmountValue(0);
+    if (!shouldAnimateProjection) return;
+    const targetValue = Math.max(0, Number(projectionTargetAmountValue) || 0);
+    if (!targetValue) return;
+    const projectionAnimation = Animated.timing(projectionAmountProgress, {
+      toValue: targetValue,
+      duration: 1180,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    });
+    projectionAnimation.start(({ finished }) => {
+      if (finished) {
+        setAnimatedProjectionAmountValue(Math.round(targetValue));
+      }
+    });
+    return () => {
+      projectionAnimation.stop();
+    };
+  }, [
+    isSupportIntroStageVisible,
+    projectionAmountProgress,
+    projectionTargetAmountValue,
+    visible,
+  ]);
 
   const renderBenefitHighlight = useCallback((value = "", benefitValue = "", highlightStyle = null) => {
     const text = String(value || "");
@@ -1034,16 +1595,8 @@ const PremiumPaywallModal = ({
 
   useEffect(() => {
     if (!visible) return;
-    const availableCards = planCards.filter((card) => card?.available !== false);
-    if (isNoFreeAccessTrigger) {
-      const trialCard = availableCards.find((card) => card?.hasTrial);
-      if (trialCard?.id) {
-        setSelectedPlanId(trialCard.id);
-        return;
-      }
-    }
     setSelectedPlanId(pickDefaultPlanId(planCards));
-  }, [isNoFreeAccessTrigger, planCards, visible]);
+  }, [planCards, visible]);
   useEffect(() => {
     hasTrackedScrollRef.current = false;
   }, [visible]);
@@ -1136,13 +1689,6 @@ const PremiumPaywallModal = ({
     () => planCards.find((plan) => plan.id === selectedPlanId) || null,
     [planCards, selectedPlanId]
   );
-  const paywallHasAnyTrialPlan = useMemo(
-    () =>
-      planCards.some(
-        (plan) => plan?.available !== false && plan?.hasTrial === true
-      ),
-    [planCards]
-  );
 
   const purchaseDisabled =
     restoring ||
@@ -1159,7 +1705,7 @@ const PremiumPaywallModal = ({
     normalizedLanguage
   );
   const noCommitmentLine = localizePaywallDigits(
-    copy?.noCommitmentLine || "No commitment cancel any time",
+    copy?.noCommitmentLine || "No commitment, cancel anytime",
     normalizedLanguage
   );
   const selectedPlanCurrencyCode =
@@ -1174,7 +1720,7 @@ const PremiumPaywallModal = ({
     typeof selectedPlan?.id === "string" ? selectedPlan.id.trim().toLowerCase() : "";
   const isLifetimeSelected = normalizedSelectedPlanId === "lifetime";
   const shouldUseTrialCta = !isLifetimeSelected && selectedPlanHasTrial;
-  const selectedPlanTrialCta = selectedPlan?.ctaTrialLabel || copy?.ctaPrimaryTrial || copy?.ctaPrimary || "";
+  const selectedPlanTrialCta = copy?.ctaPrimaryTrial || copy?.ctaPrimary || selectedPlan?.ctaTrialLabel || "";
   const selectedPlanRegularCta = copy?.ctaPrimaryRegular || copy?.ctaPrimary || "";
   const primaryButtonActiveColor = "#18B45B";
   const primaryButtonDisabledColor = "rgba(24,180,91,0.45)";
@@ -1674,6 +2220,7 @@ const PremiumPaywallModal = ({
       <View
         style={[
           styles.headerTextWrap,
+          isFeatureLimitHeaderTrigger ? styles.headerTextWrapFeatureMode : null,
           !shouldShowHeaderMetaChips ? styles.headerTextWrapWithoutMeta : null,
           isNativeMobile ? styles.headerTextWrapAndroid : null,
           isCompactAndroid ? styles.headerTextWrapCompactAndroid : null,
@@ -1683,10 +2230,15 @@ const PremiumPaywallModal = ({
         <Text
           style={[
             styles.headerTitle,
+            isFeatureLimitHeaderTrigger ? styles.headerTitleFeatureMode : null,
             isNativeMobile ? styles.headerTitleAndroid : null,
             isCompactAndroid ? styles.headerTitleCompactAndroid : null,
             isVeryCompactAndroid ? styles.headerTitleVeryCompactAndroid : null,
           ]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.5}
+          allowAndroidAutoFit
         >
           {renderBenefitHighlight(
             headerTitleWithExclamation,
@@ -1694,16 +2246,76 @@ const PremiumPaywallModal = ({
             headerPrimaryHighlightStyle
           )}
         </Text>
-        {!!headerSubtitle && !showPsychologyChip && (
+        {showFeatureLimitHeroName && (
           <Text
             style={[
-              styles.headerSubtitle,
-              isCompactAndroid ? styles.headerSubtitleCompactAndroid : null,
-              isVeryCompactAndroid ? styles.headerSubtitleVeryCompactAndroid : null,
+              styles.headerFeatureLimitName,
+              isNativeMobile ? styles.headerFeatureLimitNameAndroid : null,
+              isCompactAndroid ? styles.headerFeatureLimitNameCompactAndroid : null,
+              isVeryCompactAndroid ? styles.headerFeatureLimitNameVeryCompactAndroid : null,
+            ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.5}
+            allowAndroidAutoFit
+          >
+            {featureLimitHeaderName}
+          </Text>
+        )}
+        {!!projectionAnimatedAmountLabel && !isFeatureLimitHeaderTrigger && (
+          <View
+            style={[
+              styles.headerProjectionWrap,
+              isCompactAndroid ? styles.headerProjectionWrapCompactAndroid : null,
+              isVeryCompactAndroid ? styles.headerProjectionWrapVeryCompactAndroid : null,
             ]}
           >
-            {renderNumericHighlights(headerSubtitleWithForecast, subtitleNumericHighlightStyle)}
-          </Text>
+            <Text
+              style={[
+                styles.headerProjectionAmount,
+                isNativeMobile ? styles.headerProjectionAmountAndroid : null,
+                isCompactAndroid ? styles.headerProjectionAmountCompactAndroid : null,
+                isVeryCompactAndroid ? styles.headerProjectionAmountVeryCompactAndroid : null,
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.62}
+            >
+              <Text
+                style={[
+                  styles.headerProjectionPlus,
+                  isNativeMobile ? styles.headerProjectionPlusAndroid : null,
+                  isCompactAndroid ? styles.headerProjectionPlusCompactAndroid : null,
+                  isVeryCompactAndroid ? styles.headerProjectionPlusVeryCompactAndroid : null,
+                ]}
+              >
+                +
+              </Text>
+              {projectionAnimatedAmountLabel}
+            </Text>
+            {!!projectionWindowLine && (
+              <Text
+                style={[
+                  styles.headerProjectionWindowLine,
+                  isCompactAndroid ? styles.headerProjectionWindowLineCompactAndroid : null,
+                  isVeryCompactAndroid ? styles.headerProjectionWindowLineVeryCompactAndroid : null,
+                ]}
+              >
+                {projectionWindowLine}
+              </Text>
+            )}
+            {!!projectionCtaLine && (
+              <Text
+                style={[
+                  styles.headerProjectionCtaLine,
+                  isCompactAndroid ? styles.headerProjectionCtaLineCompactAndroid : null,
+                  isVeryCompactAndroid ? styles.headerProjectionCtaLineVeryCompactAndroid : null,
+                ]}
+              >
+                {projectionCtaLine}
+              </Text>
+            )}
+          </View>
         )}
         {isDailySaveLimitTrigger && saveLimitProNowCopy && (
           <Text
@@ -1725,63 +2337,6 @@ const PremiumPaywallModal = ({
             </Text>
             {saveLimitProNowCopy.after}
           </Text>
-        )}
-        {!!savingsForecastPoints.length && !showPsychologyChip && (
-          <View
-            style={[
-              styles.headerForecastCard,
-              isCompactAndroid ? styles.headerForecastCardCompactAndroid : null,
-              isVeryCompactAndroid ? styles.headerForecastCardVeryCompactAndroid : null,
-            ]}
-          >
-            <Text
-              style={[
-                styles.headerForecastTitle,
-                isCompactAndroid ? styles.headerForecastTitleCompactAndroid : null,
-              ]}
-            >
-              {headerForecastTitle}
-            </Text>
-            <View
-              style={[
-                styles.headerForecastRow,
-                isCompactAndroid ? styles.headerForecastRowCompactAndroid : null,
-              ]}
-            >
-              {savingsForecastPoints.map((point) => (
-                <View
-                  key={point.id}
-                  style={[
-                    styles.headerForecastItem,
-                    isCompactAndroid ? styles.headerForecastItemCompactAndroid : null,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.headerForecastAmount,
-                      isCompactAndroid ? styles.headerForecastAmountCompactAndroid : null,
-                      isVeryCompactAndroid ? styles.headerForecastAmountVeryCompactAndroid : null,
-                    ]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.8}
-                  >
-                    {point.amountLabel}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.headerForecastDays,
-                      isCompactAndroid ? styles.headerForecastDaysCompactAndroid : null,
-                      isVeryCompactAndroid ? styles.headerForecastDaysVeryCompactAndroid : null,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {point.daysLabel}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
         )}
         {showPsychologyChip && (
           <View
@@ -1898,6 +2453,10 @@ const PremiumPaywallModal = ({
             isCompactAndroid ? styles.supportIntroHeaderTitleCompactAndroid : null,
             isVeryCompactAndroid ? styles.supportIntroHeaderTitleVeryCompactAndroid : null,
           ]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.5}
+          allowAndroidAutoFit
         >
           {renderBenefitHighlight(
             supportIntroTitleWithExclamation,
@@ -2092,8 +2651,7 @@ const PremiumPaywallModal = ({
             const loading = purchaseLoadingPlan === plan.id;
             const isYearlyPlan = plan.id === "yearly";
             const isMonthlyPlan = plan.id === "monthly";
-            const isWeeklyPlan = plan.id === "weekly";
-            const isPrimaryPlanCard = isMonthlyPlan || isWeeklyPlan;
+            const isPrimaryPlanCard = PRIMARY_PLAN_IDS.includes(plan.id);
             const isSecondaryPlanCard = SECONDARY_PLAN_IDS.includes(plan.id);
             const isLargePlanCard = isPrimaryPlanCard || (showOtherPlans && isSecondaryPlanCard);
             const isBannerPlan = isMonthlyPlan || isYearlyPlan;
@@ -2182,20 +2740,23 @@ const PremiumPaywallModal = ({
               plan.billingLabel !== plan.secondaryLabel &&
               plan.billingLabel !== plan.secondarySubLabel;
             const isTrialPlanCard = !!plan?.hasTrial;
-            const showTrialTopBanner = isTrialPlanCard && isBannerPlan;
+            const shouldShowYearlyTopBanner = isBannerPlan && isYearlyPlan;
+            const showTrialTopBanner =
+              shouldShowYearlyTopBanner && (isTrialPlanCard || paywallHasAnyTrialPlan);
             const trialTopBannerLabel = localizePaywallDigits(
               TRIAL_PLAN_TOP_BANNER_BY_LANGUAGE[copyLanguage] ||
                 TRIAL_PLAN_TOP_BANNER_BY_LANGUAGE.en,
               normalizedLanguage
             );
-            const trialCardTitle = localizePaywallDigits(
-              TRIAL_PLAN_TITLE_BY_LANGUAGE[copyLanguage] ||
-                TRIAL_PLAN_TITLE_BY_LANGUAGE.en,
+            const monthlyPlanTitle = localizePaywallDigits(
+              MONTHLY_PLAN_TITLE_BY_LANGUAGE[copyLanguage] ||
+                MONTHLY_PLAN_TITLE_BY_LANGUAGE.en,
               normalizedLanguage
             );
-            const trialCardPrimaryLine = isTrialPlanCard
-              ? trialCardTitle
-              : localizePaywallDigits(plan.label || "", normalizedLanguage);
+            const trialCardPrimaryLine = localizePaywallDigits(
+              isMonthlyPlan ? monthlyPlanTitle : plan.label || "",
+              normalizedLanguage
+            );
             const trialEquivalentPriceRaw = String(plan.periodEquivalentLabel || "")
               .replace(/^≈\s*/, "")
               .trim();
@@ -2254,11 +2815,10 @@ const PremiumPaywallModal = ({
                 )
               : "";
             const showAbandonedOfferBanner =
-              shouldShowPlanTopBanner &&
-              (isYearlyPlan || isMonthlyPlan) &&
+              shouldShowYearlyTopBanner &&
               isTransactionAbandonedTrigger &&
               !!abandonedOfferBannerLabel;
-            const trialTopBannerContent = shouldShowPlanTopBanner
+            const trialTopBannerContent = shouldShowYearlyTopBanner
               ? showAbandonedOfferBanner
                 ? abandonedOfferBannerLabel
                 : showTrialTopBanner
@@ -2708,7 +3268,7 @@ const PremiumPaywallModal = ({
               scrollEnabled
               nestedScrollEnabled={isAndroid}
               onScroll={handleSheetScroll}
-              scrollEventThrottle={16}
+              scrollEventThrottle={isAndroid ? 48 : 16}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={[
                 styles.sheetScrollContent,
@@ -3139,6 +3699,9 @@ const styles = StyleSheet.create({
     marginTop: 18,
     paddingHorizontal: 4,
   },
+  headerTextWrapFeatureMode: {
+    paddingHorizontal: 0,
+  },
   headerTextWrapWithoutMeta: {
     marginTop: 12,
   },
@@ -3214,6 +3777,9 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     maxWidth: "95%",
   },
+  headerTitleFeatureMode: {
+    maxWidth: "100%",
+  },
   headerTitleAndroid: {
     fontSize: 25,
     lineHeight: 31,
@@ -3225,6 +3791,34 @@ const styles = StyleSheet.create({
   headerTitleVeryCompactAndroid: {
     fontSize: 20,
     lineHeight: 25,
+  },
+  headerFeatureLimitName: {
+    marginTop: 7,
+    width: "100%",
+    maxWidth: "94%",
+    color: "#76FFAE",
+    textAlign: "center",
+    fontSize: 46,
+    lineHeight: 50,
+    fontWeight: "900",
+    letterSpacing: 0.3,
+    textShadowColor: "rgba(76,255,175,0.44)",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
+  headerFeatureLimitNameAndroid: {
+    fontSize: 42,
+    lineHeight: 46,
+  },
+  headerFeatureLimitNameCompactAndroid: {
+    marginTop: 6,
+    fontSize: 36,
+    lineHeight: 40,
+  },
+  headerFeatureLimitNameVeryCompactAndroid: {
+    marginTop: 5,
+    fontSize: 31,
+    lineHeight: 35,
   },
   supportIntroHeaderTitle: {
     color: "#E8F8FF",
@@ -3354,6 +3948,97 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 17,
   },
+  headerProjectionWrap: {
+    marginTop: 9,
+    width: "100%",
+    alignItems: "center",
+    gap: 1,
+  },
+  headerProjectionWrapCompactAndroid: {
+    marginTop: 7,
+  },
+  headerProjectionWrapVeryCompactAndroid: {
+    marginTop: 6,
+  },
+  headerProjectionAmount: {
+    width: "100%",
+    color: "#76FFAE",
+    textAlign: "center",
+    fontSize: 68,
+    lineHeight: 72,
+    fontWeight: "900",
+    letterSpacing: 0.25,
+    textShadowColor: "rgba(76,255,175,0.42)",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
+  headerProjectionAmountAndroid: {
+    fontSize: 62,
+    lineHeight: 66,
+  },
+  headerProjectionAmountCompactAndroid: {
+    fontSize: 56,
+    lineHeight: 60,
+  },
+  headerProjectionAmountVeryCompactAndroid: {
+    fontSize: 48,
+    lineHeight: 52,
+  },
+  headerProjectionPlus: {
+    color: "#85FFB8",
+    fontSize: 66,
+    lineHeight: 70,
+    fontWeight: "900",
+  },
+  headerProjectionPlusAndroid: {
+    fontSize: 60,
+    lineHeight: 64,
+  },
+  headerProjectionPlusCompactAndroid: {
+    fontSize: 54,
+    lineHeight: 58,
+  },
+  headerProjectionPlusVeryCompactAndroid: {
+    fontSize: 46,
+    lineHeight: 50,
+  },
+  headerProjectionWindowLine: {
+    marginTop: 2,
+    width: "100%",
+    textAlign: "center",
+    color: "rgba(222,243,255,0.94)",
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: "700",
+  },
+  headerProjectionWindowLineCompactAndroid: {
+    marginTop: 1,
+    fontSize: 12,
+    lineHeight: 15,
+  },
+  headerProjectionWindowLineVeryCompactAndroid: {
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  headerProjectionCtaLine: {
+    marginTop: 3,
+    width: "100%",
+    textAlign: "center",
+    color: "rgba(230,245,255,0.96)",
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "800",
+    maxWidth: "94%",
+  },
+  headerProjectionCtaLineCompactAndroid: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  headerProjectionCtaLineVeryCompactAndroid: {
+    fontSize: 11,
+    lineHeight: 15,
+  },
   saveLimitUnlockLine: {
     marginTop: 8,
     width: "100%",
@@ -3387,104 +4072,6 @@ const styles = StyleSheet.create({
   saveLimitUnlockNowVeryCompactAndroid: {
     fontSize: 18,
     lineHeight: 22,
-  },
-  headerForecastCard: {
-    marginTop: 9,
-    width: "100%",
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    backgroundColor: "rgba(255,255,255,0.14)",
-    borderWidth: 1,
-    borderColor: "rgba(195,255,224,0.3)",
-    gap: 7,
-  },
-  headerForecastCardCompactAndroid: {
-    marginTop: 7,
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 7,
-    gap: 5,
-  },
-  headerForecastCardVeryCompactAndroid: {
-    marginTop: 6,
-    paddingVertical: 5,
-    gap: 4,
-  },
-  headerForecastTitle: {
-    color: "rgba(239,244,255,0.92)",
-    textAlign: "center",
-    fontSize: 11,
-    lineHeight: 13,
-    fontWeight: "700",
-    letterSpacing: 0.2,
-  },
-  headerForecastTitleCompactAndroid: {
-    fontSize: 10,
-    lineHeight: 12,
-    letterSpacing: 0.1,
-  },
-  headerForecastRow: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "stretch",
-    gap: 6,
-  },
-  headerForecastRowCompactAndroid: {
-    gap: 5,
-  },
-  headerForecastItem: {
-    flex: 1,
-    borderRadius: 9,
-    paddingVertical: 7,
-    paddingHorizontal: 5,
-    backgroundColor: "rgba(9,19,76,0.44)",
-    borderWidth: 1,
-    borderColor: "rgba(181,245,214,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerForecastItemCompactAndroid: {
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-  },
-  headerForecastAmount: {
-    color: "#75FFAE",
-    fontSize: 14,
-    lineHeight: 17,
-    fontWeight: "900",
-    letterSpacing: 0.15,
-    textShadowColor: "rgba(76,255,175,0.46)",
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 5,
-    textAlign: "center",
-  },
-  headerForecastAmountCompactAndroid: {
-    fontSize: 12,
-    lineHeight: 15,
-  },
-  headerForecastAmountVeryCompactAndroid: {
-    fontSize: 11,
-    lineHeight: 14,
-  },
-  headerForecastDays: {
-    marginTop: 3,
-    color: "rgba(165,255,208,0.98)",
-    fontSize: 11,
-    lineHeight: 13,
-    fontWeight: "800",
-    textAlign: "center",
-  },
-  headerForecastDaysCompactAndroid: {
-    marginTop: 2,
-    fontSize: 10,
-    lineHeight: 12,
-  },
-  headerForecastDaysVeryCompactAndroid: {
-    marginTop: 1,
-    fontSize: 9,
-    lineHeight: 11,
   },
   headerSaveLimitNow: {
     marginTop: 6,

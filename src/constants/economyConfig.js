@@ -50,7 +50,7 @@ export const CUSTOM_SPEND_MONTHLY_WEEKS = 4.33;
 
 export const RATING_PROMPT_DELAY_DAYS = 2;
 export const RATING_PROMPT_FOLLOWUP_DELAY_DAYS = 4;
-export const RATING_PROMPT_ACTION_THRESHOLD = 7;
+export const RATING_PROMPT_ACTION_THRESHOLD = 5;
 export const RATING_PROMPT_ACTION_TYPES = new Set(["save", "spend"]);
 
 export const ANDROID_REVIEW_URL = "market://details?id=com.sasarei.almostclean";
@@ -68,18 +68,18 @@ export const LTR_MARK = "\u200E";
 export const RTL_CURRENCIES = new Set(["SAR"]);
 
 export const CURRENCY_RATES = {
-  AED: 3.67,
-  AUD: 1.5,
-  BYN: 3.3,
-  CAD: 1.35,
-  EUR: 0.92,
-  GBP: 0.79,
-  JPY: 150,
-  KZT: 450,
-  KRW: 1350,
-  MXN: 17,
-  PLN: 4,
-  RUB: 92,
+  AED: 3.6725,
+  AUD: 1.414986,
+  BYN: 2.91473,
+  CAD: 1.383101,
+  EUR: 0.853304,
+  GBP: 0.743471,
+  JPY: 159.248687,
+  KZT: 478.496748,
+  KRW: 1482.800503,
+  MXN: 17.326169,
+  PLN: 3.626431,
+  RUB: 77.383563,
   SAR: 3.75,
   USD: 1,
 };
