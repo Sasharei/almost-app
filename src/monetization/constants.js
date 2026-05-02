@@ -761,25 +761,6 @@ COMPARISON_ROWS_BY_LANGUAGE.de = cloneComparisonRows(COMPARISON_ROWS_BY_LANGUAGE
 COMPARISON_ROWS_BY_LANGUAGE.ar = cloneComparisonRows(COMPARISON_ROWS_BY_LANGUAGE.en);
 COMPARISON_ROWS_BY_LANGUAGE.zh = cloneComparisonRows(COMPARISON_ROWS_BY_LANGUAGE.en);
 
-const SOFT_PSYCHOLOGY_LINE_BY_LANGUAGE = {
-  ru: "Цена Premium = стоимость одного отказа от импульсивной покупки.",
-  en: "Premium costs the price of a single impulse you choose to skip.",
-  es: "Premium cuesta lo mismo que un solo impulso que decides evitar.",
-  fr: "Premium coûte le prix d'une seule impulsion que tu décides d'éviter.",
-  de: "Premium kostet ungefähr so viel wie ein einziger Impuls, den du bewusst auslässt.",
-  ar: "تكلفة Premium تساوي تقريباً تكلفة نزوة واحدة تتجاوزها.",
-  zh: "Premium 的价格大致等于你主动放弃的一次冲动消费。",
-};
-const SOFT_FRESH_START_PSYCHOLOGY_LINE_BY_LANGUAGE = {
-  ru: "С Premium проще закрепить привычку контролировать траты с первого дня.",
-  en: "Premium helps lock in your spending-control habit from day one.",
-  es: "Premium te ayuda a fijar el hábito de controlar gastos desde el primer día.",
-  fr: "Premium aide à ancrer l'habitude de contrôler les dépenses dès le premier jour.",
-  de: "Mit Premium verankerst du die Gewohnheit, Ausgaben zu steuern, von Tag eins an.",
-  ar: "يساعدك Premium على ترسيخ عادة التحكم بالمصروفات من اليوم الأول.",
-  zh: "Premium 可帮助你从第一天就建立并稳定控支习惯。",
-};
-
 const SOFT_MARKETING_LINE_BY_LANGUAGE = {
   ru: "Premium стоит {{monthly}}. С инструментами контроля вы можете вернуть до {{amount}} за следующие {{days}} дней.",
   en: "Premium is {{monthly}}. With the full toolkit, you can recover up to {{amount}} over the next {{days}} days.",
@@ -852,24 +833,6 @@ const GROUP_C_SUPPORT_INTRO_BADGE_BY_LANGUAGE = {
   de: "PERSÖNLICHE NACHRICHT",
   ar: "رسالة شخصية",
   zh: "开发者来信",
-};
-const GROUP_C_SUPPORT_5_SAVES_TITLE_BY_LANGUAGE = {
-  ru: "Вы уже сэкономили {{saved}}! Это мощный старт.",
-  en: "You've already saved {{saved}}! That's an incredible start.",
-  es: "Ya has ahorrado {{saved}}. ¡Es un comienzo increíble!",
-  fr: "Tu as déjà économisé {{saved}}. C'est un départ incroyable !",
-  de: "Du hast schon {{saved}} gespart. Das ist ein starker Start!",
-  ar: "لقد وفّرت بالفعل {{saved}}! هذه بداية رائعة.",
-  zh: "你已经省下了 {{saved}}！这是非常棒的开始。",
-};
-const GROUP_C_SUPPORT_5_SAVES_SUBTITLE_BY_LANGUAGE = {
-  ru: "Вы большой молодец. Прочитайте личное сообщение от создателя и продолжайте в том же духе.",
-  en: "You're doing great. Read a personal note from the creator and keep going.",
-  es: "Lo estás haciendo muy bien. Lee un mensaje personal del creador y sigue así.",
-  fr: "Tu te débrouilles très bien. Lis un message personnel du créateur et continue comme ça.",
-  de: "Du machst das großartig. Lies die persönliche Nachricht vom Gründer und bleib dran.",
-  ar: "أنت تقوم بعمل رائع. اقرأ رسالة شخصية من المؤسس وواصل التقدم.",
-  zh: "你做得很棒。读一条创始人的个人消息，然后继续前进。",
 };
 const GROUP_C_SUPPORT_AUTHOR_BY_LANGUAGE = {
   ru: "Александр, создатель Almost",
@@ -1308,16 +1271,6 @@ const PAYWALL_LEGAL_NOTICE_BY_LANGUAGE = {
   },
 };
 
-const CTA_PRIMARY_TRIAL_BY_LANGUAGE = {
-  ru: "Разблокировать Premium",
-  en: "Unlock Premium",
-  es: "Desbloquear Premium",
-  fr: "Débloquer Premium",
-  de: "Premium freischalten",
-  ar: "افتح Premium",
-  zh: "解锁 Premium",
-};
-
 const CTA_PRIMARY_REGULAR_BY_LANGUAGE = {
   ru: "Разблокировать Premium",
   en: "Unlock Premium",
@@ -1326,24 +1279,6 @@ const CTA_PRIMARY_REGULAR_BY_LANGUAGE = {
   de: "Premium freischalten",
   ar: "افتح Premium",
   zh: "解锁 Premium",
-};
-const CTA_PRIMARY_UNLOCK_FEATURE_BY_LANGUAGE = {
-  ru: "Разблокировать: {{featureName}}",
-  en: "Unlock {{featureName}}",
-  es: "Desbloquear {{featureName}}",
-  fr: "Débloquer {{featureName}}",
-  de: "{{featureName}} freischalten",
-  ar: "فتح {{featureName}}",
-  zh: "解锁 {{featureName}}",
-};
-const CTA_PRIMARY_UNLOCK_SAVINGS_BY_LANGUAGE = {
-  ru: "Разблокировать экономию ≈ {{amount}} в год",
-  en: "Unlock ≈ {{amount}} Yearly Savings",
-  es: "Desbloquea ≈ {{amount}} de ahorro anual",
-  fr: "Débloquer ≈ {{amount}} d'économies annuelles",
-  de: "≈ {{amount}} jährliche Ersparnis freischalten",
-  ar: "افتح توفيراً سنوياً بقيمة ≈ {{amount}}",
-  zh: "解锁每年约 ≈ {{amount}} 节省",
 };
 const CTA_START_JOURNEY_BY_LANGUAGE = {
   ru: "Разблокировать Premium",
@@ -1952,56 +1887,46 @@ export const buildPaywallCopy = ({
 
   let title = template(resolveTemplateSource(SOFT_TITLE_BY_LANGUAGE, lang), copyTokens);
   let subtitle = template(resolveTemplateSource(SOFT_MARKETING_LINE_BY_LANGUAGE, lang), copyTokens);
-  let psychologyLine = resolveTemplateSource(SOFT_PSYCHOLOGY_LINE_BY_LANGUAGE, lang);
   if (isFreshStartSoftPaywall) {
     title = template(resolveTemplateSource(SOFT_FRESH_START_TITLE_BY_LANGUAGE, lang), copyTokens);
     subtitle = template(
       resolveTemplateSource(SOFT_FRESH_START_MARKETING_LINE_BY_LANGUAGE, lang),
       copyTokens
     );
-    psychologyLine = resolveTemplateSource(SOFT_FRESH_START_PSYCHOLOGY_LINE_BY_LANGUAGE, lang);
   }
 
   if (effectiveKind === "hard") {
     title = template(resolveTemplateSource(HARD_TITLE_BY_LANGUAGE, lang), copyTokens);
     subtitle = template(resolveTemplateSource(HARD_MARKETING_LINE_BY_LANGUAGE, lang), copyTokens);
-    psychologyLine = null;
   } else if (effectiveKind === "feature") {
     title = resolveTemplateSource(FEATURE_TITLE_BY_LANGUAGE, lang);
     subtitle = localizedFeatureName
       ? template(resolveTemplateSource(FEATURE_SUBTITLE_BY_LANGUAGE, lang), { featureName: localizedFeatureName })
       : resolveTemplateSource(FEATURE_MARKETING_LINE_BY_LANGUAGE, lang);
-    psychologyLine = null;
   }
   if (isSaveLimitHardTrigger) {
     title = template(resolveTemplateSource(SAVE_LIMIT_REACHED_TITLE_BY_LANGUAGE, lang), copyTokens);
     subtitle = template(resolveTemplateSource(SAVE_LIMIT_REACHED_SUBTITLE_BY_LANGUAGE, lang), copyTokens);
-    psychologyLine = null;
   }
   if (isTrialSavesHardTrigger) {
     title = template(resolveTemplateSource(TRIAL_10_SAVES_TITLE_BY_LANGUAGE, lang), copyTokens);
     subtitle = template(resolveTemplateSource(TRIAL_10_SAVES_SUBTITLE_BY_LANGUAGE, lang), copyTokens);
-    psychologyLine = null;
   }
   if (isOnboardingHardGateTrigger) {
     title = template(resolveTemplateSource(ONBOARDING_HARD_GATE_TITLE_BY_LANGUAGE, lang), copyTokens);
     subtitle = template(resolveTemplateSource(ONBOARDING_HARD_GATE_SUBTITLE_BY_LANGUAGE, lang), copyTokens);
-    psychologyLine = null;
   }
   if (isTransactionAbandonedTrigger) {
     title = resolveTemplateSource(TRANSACTION_ABANDONED_TITLE_BY_LANGUAGE, lang);
     subtitle = resolveTemplateSource(TRANSACTION_ABANDONED_SUBTITLE_BY_LANGUAGE, lang);
-    psychologyLine = null;
   }
   if (isGroupCSupportSoftTrigger && effectiveKind === "soft") {
     title = template(resolveTemplateSource(GROUP_C_SUPPORT_PLAN_TITLE_BY_LANGUAGE, lang), copyTokens);
     subtitle = template(resolveTemplateSource(GROUP_C_SUPPORT_PLAN_SUBTITLE_BY_LANGUAGE, lang), copyTokens);
-    psychologyLine = null;
   }
   if (activeFeatureInsightRow?.lossTitle && !isTransactionAbandonedTrigger) {
     title = activeFeatureInsightRow.lossTitle;
     subtitle = activeFeatureInsightRow?.lossSubtitle || subtitle;
-    psychologyLine = null;
   }
 
   const ctaFeatureName =

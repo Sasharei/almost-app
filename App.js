@@ -2434,6 +2434,24 @@ const resolveThemeColors = (themeId = DEFAULT_THEME, proAccentId = DEFAULT_PRO_T
     primary: accent,
   };
 };
+const resolveThemePreviewPalette = (
+  themeId = DEFAULT_THEME,
+  proAccentId = DEFAULT_PRO_THEME_ACCENT_ID
+) => {
+  const normalizedThemeId = normalizeThemeId(themeId);
+  const palette = resolveThemeColors(normalizedThemeId, proAccentId);
+  const primary = palette?.background || THEMES.light.background;
+  const secondary =
+    normalizedThemeId === "light"
+      ? palette?.text || THEMES.light.text
+      : palette?.primary || palette?.text || THEMES.light.text;
+  return {
+    primary,
+    secondary,
+    surface: palette?.card || primary,
+    border: palette?.border || colorWithAlpha(secondary, 0.28),
+  };
+};
 const buildThemeSelectedEventPayload = (
   themeId = DEFAULT_THEME,
   proAccentId = DEFAULT_PRO_THEME_ACCENT_ID,
@@ -2465,6 +2483,65 @@ const resolveBundledAssetUri = (source) => {
   }
 };
 const TAMAGOTCHI_CRY_GIF_URI = resolveBundledAssetUri(TAMAGOTCHI_CRY_ASSET);
+const TAMAGOTCHI_SKIN_ASSET_BASE_URL_RC_KEY = "tamagotchi_skin_asset_base_url";
+const TAMAGOTCHI_SKIN_ASSET_BASE_URL_ENV = resolveNonEmptyString(
+  process.env.EXPO_PUBLIC_TAMAGOTCHI_SKIN_ASSET_BASE_URL ||
+    process.env.EXPO_PUBLIC_ASSET_BASE_URL ||
+    ""
+);
+const normalizeTamagotchiSkinAssetBaseUrl = (value = "") =>
+  resolveNonEmptyString(value).replace(/\/+$/g, "");
+const resolveTamagotchiSkinAssetUrl = (baseUrl = "", assetPath = "") => {
+  const normalizedPath = resolveNonEmptyString(assetPath);
+  if (!normalizedPath) return "";
+  if (/^https?:\/\//i.test(normalizedPath)) return normalizedPath;
+  const normalizedBaseUrl = normalizeTamagotchiSkinAssetBaseUrl(baseUrl);
+  if (!normalizedBaseUrl) return "";
+  return `${normalizedBaseUrl}/${normalizedPath.replace(/^\/+/g, "")}`;
+};
+const resolveTamagotchiSkinCacheUri = (skinId = "", assetPath = "") => {
+  const cacheRoot = FileSystem.cacheDirectory || FileSystem.documentDirectory || "";
+  const normalizedSkinId = normalizeMonetizationToken(skinId, "skin");
+  const normalizedFileName = resolveNonEmptyString(assetPath)
+    .replace(/^\/+/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_");
+  if (!cacheRoot || !normalizedFileName) return "";
+  return `${cacheRoot}tamagotchi_skins/${normalizedSkinId}/${normalizedFileName}`;
+};
+const ensureCachedTamagotchiSkinAsset = async ({ skinId, assetPath, baseUrl }) => {
+  const sourceUrl = resolveTamagotchiSkinAssetUrl(baseUrl, assetPath);
+  const targetUri = resolveTamagotchiSkinCacheUri(skinId, assetPath);
+  if (!sourceUrl || !targetUri) return null;
+  const cachedInfo = await FileSystem.getInfoAsync(targetUri).catch(() => null);
+  if (cachedInfo?.exists) return { uri: targetUri };
+  const targetDir = targetUri.slice(0, targetUri.lastIndexOf("/") + 1);
+  await FileSystem.makeDirectoryAsync(targetDir, { intermediates: true }).catch(() => {});
+  const result = await FileSystem.downloadAsync(sourceUrl, targetUri);
+  if (!result?.uri) return null;
+  const downloadedInfo = await FileSystem.getInfoAsync(result.uri).catch(() => null);
+  return downloadedInfo?.exists ? { uri: result.uri } : null;
+};
+const loadRemoteTamagotchiSkinAnimations = async ({ skin, baseUrl }) => {
+  if (!skin?.id || !skin?.isRemote || !skin?.animationPaths) return null;
+  const entries = await Promise.all(
+    TAMAGOTCHI_ANIMATION_KEYS.map(async (key) => {
+      const assetPath = skin.animationPaths?.[key];
+      const source = await ensureCachedTamagotchiSkinAsset({
+        skinId: skin.id,
+        assetPath,
+        baseUrl,
+      });
+      if (!source) {
+        throw new Error(`missing_tamagotchi_skin_asset_${skin.id}_${key}`);
+      }
+      return [key, source];
+    })
+  );
+  return entries.reduce((acc, [key, source]) => {
+    acc[key] = source;
+    return acc;
+  }, {});
+};
 
 const buildTemptationPressureMap = (events = []) => {
   const map = {};
@@ -5048,7 +5125,6 @@ const IMPULSE_SEQUENCE_MIN_HITS = 2;
 const IMPULSE_SEQUENCE_MIN_WEIGHT = 2;
 const IMPULSE_SEQUENCE_TOP_INSIGHTS = 2;
 const IMPULSE_SEQUENCE_RECENCY_DAYS = 21;
-const IMPULSE_ALERT_COOLDOWN_MS = 1000 * 60 * 45;
 const BASE_IMPULSE_CATEGORY_DEFS = {
   food: { id: "food", ru: "Еда", en: "Food", es: "Comida", fr: "Nourriture", emoji: "🍜" },
   rent: { id: "rent", ru: "Аренда жилья", en: "Rent", es: "Alquiler", fr: "Loyer", emoji: "🏡" },
@@ -5118,6 +5194,40 @@ const DEFAULT_IMPULSE_CATEGORY = "vices";
 const INITIAL_IMPULSE_TRACKER = {
   events: [],
   lastAlerts: {},
+};
+
+const normalizeImpulseAlertRecord = (value) => {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const shownAt = Number(value.shownAt ?? value.lastShownAt ?? value.timestamp ?? 0) || 0;
+    const rawDayKey = typeof value.dayKey === "string" ? value.dayKey.trim() : "";
+    const dayKey = parseDayKey(rawDayKey) ? rawDayKey : shownAt > 0 ? getDayKey(shownAt) : "";
+    return dayKey ? { dayKey, shownAt } : null;
+  }
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return { dayKey: getDayKey(value), shownAt: value };
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (parseDayKey(trimmed)) {
+      return { dayKey: trimmed, shownAt: 0 };
+    }
+    const parsed = Date.parse(trimmed);
+    if (Number.isFinite(parsed)) {
+      return { dayKey: getDayKey(parsed), shownAt: parsed };
+    }
+  }
+  return null;
+};
+
+const normalizeImpulseAlertMap = (value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.entries(value).reduce((acc, [templateId, record]) => {
+    if (typeof templateId !== "string" || !templateId.trim()) return acc;
+    const normalized = normalizeImpulseAlertRecord(record);
+    if (!normalized) return acc;
+    acc[templateId.trim()] = normalized;
+    return acc;
+  }, {});
 };
 
 const DEFAULT_INCOME_PAYDAY = 1;
@@ -8858,11 +8968,6 @@ const buildResetNextCheckAtForFrequency = ({
   const intervalMs = resolveFrequencyIntervalMs(normalizedFrequency, customFrequency);
   const intervalNextCheckAt =
     Number.isFinite(intervalMs) && intervalMs > 0 ? fromTimestamp + intervalMs : null;
-  const reliesOnCalendarSlots =
-    normalizedFrequency === "weekly" || normalizedFrequency === "monthly";
-  if (reliesOnCalendarSlots && Number.isFinite(calendarNextCheckAt)) {
-    return calendarNextCheckAt;
-  }
   if (Number.isFinite(intervalNextCheckAt) && Number.isFinite(calendarNextCheckAt)) {
     return Math.max(intervalNextCheckAt, calendarNextCheckAt);
   }
@@ -19536,6 +19641,1278 @@ const ReportsModal = React.memo(function ReportsModal({
   );
 });
 
+const BUG_REPORT_COPY = {
+  en: {
+    buttonLabel: "Report a bug",
+    title: "Report a bug",
+    subtitle: "Tell us what broke. The report will open as an email to support.",
+    descriptionLabel: "What happened?",
+    descriptionPlaceholder: "Describe the bug",
+    stepsLabel: "Steps to reproduce",
+    stepsPlaceholder: "What did you tap before it happened?",
+    cancel: "Cancel",
+    send: "Send",
+    sending: "Opening...",
+    validationTitle: "Add a short description",
+    validationMessage: "Please describe the bug before sending the report.",
+    subject: "Bug report for Almost",
+    bodyIntro: "Hi Almost support, I found a bug:",
+    bodySteps: "Steps to reproduce:",
+    bodyContext: "Context:",
+    mailErrorTitle: "Could not open email",
+    mailErrorMessage: "Please email {{email}} with a short description of the bug.",
+  },
+  ru: {
+    buttonLabel: "Сообщить о баге",
+    title: "Сообщить о баге",
+    subtitle: "Опиши, что сломалось. Отчёт откроется письмом в поддержку.",
+    descriptionLabel: "Что произошло?",
+    descriptionPlaceholder: "Коротко опиши баг",
+    stepsLabel: "Как повторить",
+    stepsPlaceholder: "Что ты нажимал(а) перед ошибкой?",
+    cancel: "Отмена",
+    send: "Отправить",
+    sending: "Открываем...",
+    validationTitle: "Добавь описание",
+    validationMessage: "Опиши баг перед отправкой отчёта.",
+    subject: "Баг-репорт Almost",
+    bodyIntro: "Здравствуйте, поддержка Almost. Я нашёл(ла) баг:",
+    bodySteps: "Как повторить:",
+    bodyContext: "Контекст:",
+    mailErrorTitle: "Не удалось открыть почту",
+    mailErrorMessage: "Напиши на {{email}} и коротко опиши баг.",
+  },
+  es: {
+    buttonLabel: "Reportar bug",
+    title: "Reportar bug",
+    subtitle: "Cuéntanos qué falló. El reporte se abrirá como email al soporte.",
+    descriptionLabel: "¿Qué pasó?",
+    descriptionPlaceholder: "Describe el bug",
+    stepsLabel: "Pasos para reproducirlo",
+    stepsPlaceholder: "¿Qué tocaste antes de que pasara?",
+    cancel: "Cancelar",
+    send: "Enviar",
+    sending: "Abriendo...",
+    validationTitle: "Añade una descripción",
+    validationMessage: "Describe el bug antes de enviar el reporte.",
+    subject: "Reporte de bug de Almost",
+    bodyIntro: "Hola soporte de Almost, encontré un bug:",
+    bodySteps: "Pasos para reproducirlo:",
+    bodyContext: "Contexto:",
+    mailErrorTitle: "No se pudo abrir el email",
+    mailErrorMessage: "Escribe a {{email}} con una descripción breve del bug.",
+  },
+  fr: {
+    buttonLabel: "Signaler un bug",
+    title: "Signaler un bug",
+    subtitle: "Dis-nous ce qui ne va pas. Le signalement s'ouvrira dans un email au support.",
+    descriptionLabel: "Que s'est-il passé ?",
+    descriptionPlaceholder: "Décris le bug",
+    stepsLabel: "Étapes pour reproduire",
+    stepsPlaceholder: "Qu'as-tu touché avant le problème ?",
+    cancel: "Annuler",
+    send: "Envoyer",
+    sending: "Ouverture...",
+    validationTitle: "Ajoute une description",
+    validationMessage: "Décris le bug avant d'envoyer le signalement.",
+    subject: "Signalement de bug Almost",
+    bodyIntro: "Bonjour le support Almost, j'ai trouvé un bug :",
+    bodySteps: "Étapes pour reproduire :",
+    bodyContext: "Contexte :",
+    mailErrorTitle: "Impossible d'ouvrir l'email",
+    mailErrorMessage: "Écris à {{email}} avec une courte description du bug.",
+  },
+  de: {
+    buttonLabel: "Bug melden",
+    title: "Bug melden",
+    subtitle: "Beschreibe kurz, was kaputt ist. Der Bericht wird als E-Mail an den Support geöffnet.",
+    descriptionLabel: "Was ist passiert?",
+    descriptionPlaceholder: "Beschreibe den Bug",
+    stepsLabel: "Schritte zum Reproduzieren",
+    stepsPlaceholder: "Was hast du davor angetippt?",
+    cancel: "Abbrechen",
+    send: "Senden",
+    sending: "Öffnen...",
+    validationTitle: "Beschreibung ergänzen",
+    validationMessage: "Bitte beschreibe den Bug, bevor du den Bericht sendest.",
+    subject: "Bug-Report für Almost",
+    bodyIntro: "Hallo Almost Support, ich habe einen Bug gefunden:",
+    bodySteps: "Schritte zum Reproduzieren:",
+    bodyContext: "Kontext:",
+    mailErrorTitle: "E-Mail konnte nicht geöffnet werden",
+    mailErrorMessage: "Schreibe bitte an {{email}} mit einer kurzen Beschreibung des Bugs.",
+  },
+  ar: {
+    buttonLabel: "الإبلاغ عن خلل",
+    title: "الإبلاغ عن خلل",
+    subtitle: "اكتب ما حدث. سيتم فتح البلاغ كبريد إلكتروني للدعم.",
+    descriptionLabel: "ماذا حدث؟",
+    descriptionPlaceholder: "صف الخلل",
+    stepsLabel: "خطوات إعادة المشكلة",
+    stepsPlaceholder: "ماذا ضغطت قبل حدوثها؟",
+    cancel: "إلغاء",
+    send: "إرسال",
+    sending: "جار الفتح...",
+    validationTitle: "أضف وصفاً قصيراً",
+    validationMessage: "يرجى وصف الخلل قبل إرسال البلاغ.",
+    subject: "بلاغ خلل في Almost",
+    bodyIntro: "مرحباً دعم Almost، وجدت خللاً:",
+    bodySteps: "خطوات إعادة المشكلة:",
+    bodyContext: "السياق:",
+    mailErrorTitle: "تعذر فتح البريد",
+    mailErrorMessage: "يرجى مراسلة {{email}} مع وصف قصير للخلل.",
+  },
+  zh: {
+    buttonLabel: "报告问题",
+    title: "报告问题",
+    subtitle: "告诉我们哪里坏了。报告会以邮件形式发送给支持团队。",
+    descriptionLabel: "发生了什么？",
+    descriptionPlaceholder: "描述这个问题",
+    stepsLabel: "复现步骤",
+    stepsPlaceholder: "问题出现前你点了什么？",
+    cancel: "取消",
+    send: "发送",
+    sending: "正在打开...",
+    validationTitle: "添加简短描述",
+    validationMessage: "请先描述问题，再发送报告。",
+    subject: "Almost 问题报告",
+    bodyIntro: "Almost 支持团队你好，我发现了一个问题：",
+    bodySteps: "复现步骤：",
+    bodyContext: "上下文：",
+    mailErrorTitle: "无法打开邮件",
+    mailErrorMessage: "请发邮件到 {{email}}，并简短描述这个问题。",
+  },
+};
+
+const resolveBugReportCopy = (language = DEFAULT_LANGUAGE) => {
+  const normalizedLanguage = normalizeLanguage(language);
+  const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
+  return (
+    BUG_REPORT_COPY[normalizedLanguage] ||
+    BUG_REPORT_COPY[translationLanguage] ||
+    BUG_REPORT_COPY.en
+  );
+};
+
+const BugReportIcon = React.memo(function BugReportIcon({ color = "#111827", size = 18 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <SvgPath
+        d="M9 8.5h6c1.7 0 3 1.3 3 3v3.2c0 3-2.2 5.3-5.1 5.3h-1.8C8.2 20 6 17.7 6 14.7v-3.2c0-1.7 1.3-3 3-3Z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <SvgPath
+        d="M8.5 4.5 10.2 7M15.5 4.5 13.8 7M6 12H3.8M20.2 12H18M6.2 16H4.4M19.6 16h-1.8M12 8.5V20"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <SvgCircle cx={9.5} cy={12} r={0.85} fill={color} />
+      <SvgCircle cx={14.5} cy={12} r={0.85} fill={color} />
+    </Svg>
+  );
+});
+
+const BugReportFab = React.memo(function BugReportFab({
+  visible = false,
+  topInset = 0,
+  colors,
+  language,
+  onPress,
+}) {
+  const copy = resolveBugReportCopy(language);
+  if (!visible) return null;
+  const iconColor = colors?.text || "#111827";
+  const backgroundRgb = parseColor(colors?.background || "#FFFFFF");
+  const backgroundYiq = (backgroundRgb.r * 299 + backgroundRgb.g * 587 + backgroundRgb.b * 114) / 1000;
+  const isDark = backgroundYiq < 145;
+  const fallbackBackground = colorWithAlpha(colors?.card || "#FFFFFF", isDark ? 0.2 : 0.28);
+  const overlayColor = colorWithAlpha(colors?.card || "#FFFFFF", isDark ? 0.1 : 0.16);
+  return (
+    <TouchableOpacity
+      style={[
+        styles.bugReportFab,
+        {
+          top: Math.max(0, (Number(topInset) || 0) - 4),
+          backgroundColor: fallbackBackground,
+          borderColor: colorWithAlpha(iconColor, 0.1),
+          shadowColor: iconColor,
+        },
+      ]}
+      activeOpacity={0.86}
+      accessibilityRole="button"
+      accessibilityLabel={copy.buttonLabel}
+      onPress={onPress}
+    >
+      {isBlurViewAvailable() ? (
+        <ExpoBlurView
+          tint={isDark ? "dark" : "light"}
+          intensity={Platform.OS === "android" ? 18 : 22}
+          blurReductionFactor={
+            Platform.OS === "android" ? ANDROID_EXPO_BLUR_REDUCTION_FACTOR : undefined
+          }
+          experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
+          style={styles.bugReportFabBlur}
+        />
+      ) : null}
+      <View style={[styles.bugReportFabTint, { backgroundColor: overlayColor }]} />
+      <View style={styles.bugReportFabIcon}>
+        <BugReportIcon color={iconColor} />
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+const BugReportModal = React.memo(function BugReportModal({
+  visible = false,
+  colors,
+  language,
+  onClose,
+  onFilled,
+  onSubmit,
+}) {
+  const copy = resolveBugReportCopy(language);
+  const [description, setDescription] = useState("");
+  const [steps, setSteps] = useState("");
+  const [sending, setSending] = useState(false);
+  const filledLoggedRef = useRef(false);
+  const descriptionReady = description.trim().length > 0;
+  const submitDisabled = sending || !descriptionReady;
+  useEffect(() => {
+    if (visible) {
+      filledLoggedRef.current = false;
+    }
+  }, [visible]);
+  const markFilled = useCallback(
+    (value) => {
+      if (filledLoggedRef.current) return;
+      if (!String(value || "").trim()) return;
+      filledLoggedRef.current = true;
+      onFilled?.();
+    },
+    [onFilled]
+  );
+  const handleDescriptionChange = useCallback(
+    (value) => {
+      setDescription(value);
+      markFilled(value);
+    },
+    [markFilled]
+  );
+  const handleStepsChange = useCallback(
+    (value) => {
+      setSteps(value);
+      markFilled(value);
+    },
+    [markFilled]
+  );
+  const handleSubmit = useCallback(async () => {
+    if (!descriptionReady) {
+      Alert.alert(copy.validationTitle, copy.validationMessage);
+      return;
+    }
+    setSending(true);
+    const didSubmit = await onSubmit?.({
+      description: description.trim(),
+      steps: steps.trim(),
+    });
+    setSending(false);
+    if (didSubmit === false) return;
+    setDescription("");
+    setSteps("");
+    onClose?.();
+  }, [copy, description, descriptionReady, onClose, onSubmit, steps]);
+  const handleClose = useCallback(() => {
+    if (sending) return;
+    onClose?.();
+  }, [onClose, sending]);
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={handleClose}
+    >
+      <View style={styles.bugReportModalRoot}>
+        <TouchableWithoutFeedback onPress={handleClose}>
+          <View style={styles.bugReportBackdrop} />
+        </TouchableWithoutFeedback>
+        <View style={styles.bugReportModalWrap} pointerEvents="box-none">
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View
+              style={[
+                styles.bugReportModalCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <View style={styles.bugReportHeaderRow}>
+                <View style={styles.bugReportTitleBlock}>
+                  <Text style={[styles.bugReportTitle, { color: colors.text }]}>
+                    {copy.title}
+                  </Text>
+                  <Text style={[styles.bugReportSubtitle, { color: colors.muted }]}>
+                    {copy.subtitle}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={handleClose}
+                  style={styles.bugReportClose}
+                  disabled={sending}
+                  accessibilityRole="button"
+                  accessibilityLabel={copy.cancel}
+                >
+                  <Text style={[styles.bugReportCloseText, { color: colors.muted }]}>×</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.bugReportField}>
+                <Text style={[styles.bugReportLabel, { color: colors.muted }]}>
+                  {copy.descriptionLabel}
+                </Text>
+                <TextInput
+                  value={description}
+                  onChangeText={handleDescriptionChange}
+                  placeholder={copy.descriptionPlaceholder}
+                  placeholderTextColor={colorWithAlpha(colors.muted, 0.72)}
+                  multiline
+                  textAlignVertical="top"
+                  style={[
+                    styles.bugReportInput,
+                    styles.bugReportDescriptionInput,
+                    {
+                      color: colors.text,
+                      borderColor: colors.border,
+                      backgroundColor: colors.background,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={styles.bugReportField}>
+                <Text style={[styles.bugReportLabel, { color: colors.muted }]}>
+                  {copy.stepsLabel}
+                </Text>
+                <TextInput
+                  value={steps}
+                  onChangeText={handleStepsChange}
+                  placeholder={copy.stepsPlaceholder}
+                  placeholderTextColor={colorWithAlpha(colors.muted, 0.72)}
+                  multiline
+                  textAlignVertical="top"
+                  style={[
+                    styles.bugReportInput,
+                    styles.bugReportStepsInput,
+                    {
+                      color: colors.text,
+                      borderColor: colors.border,
+                      backgroundColor: colors.background,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={styles.bugReportActions}>
+                <TouchableOpacity
+                  style={[styles.bugReportSecondaryButton, { borderColor: colors.border }]}
+                  activeOpacity={0.84}
+                  onPress={handleClose}
+                  disabled={sending}
+                >
+                  <Text style={[styles.bugReportSecondaryText, { color: colors.muted }]}>
+                    {copy.cancel}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.bugReportPrimaryButton,
+                    {
+                      backgroundColor: colors.text,
+                      opacity: submitDisabled ? 0.46 : 1,
+                    },
+                  ]}
+                  activeOpacity={submitDisabled ? 1 : 0.86}
+                  onPress={handleSubmit}
+                  disabled={submitDisabled}
+                >
+                  <Text style={[styles.bugReportPrimaryText, { color: colors.background }]}>
+                    {sending ? copy.sending : copy.send}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </View>
+    </Modal>
+  );
+});
+
+const HELP_GUIDE_COPY = {
+  en: {
+    buttonLabel: "Page guide",
+    close: "Close",
+    screens: {
+      feed: {
+        title: "Feed guide",
+        subtitle: "This page is for logging real decisions quickly.",
+        visual: ["Temptation cards", "Save", "Spend"],
+        sections: [
+          { title: "Cards", body: "Each card is a recurring temptation. Use it when the moment appears, not as a to-do list." },
+          { title: "Save and Spend", body: "Save means you resisted and kept money for your goal. Spend records the opposite so the app can learn your real pattern." },
+          { title: "Editing", body: "Tap a card to adjust title, amount, category, description, or goal link. The plus button adds your own temptation." },
+          { title: "Top widgets", body: "The hero card shows your level, streak heat, Almi's current mood, logged savings, forecast, recent activity, and goal progress." },
+          { title: "Quick spend button", body: "The floating dollar button is for a fast spend entry when you bought something and do not want to open a full card." },
+          { title: "Almi", body: "Tap the tamagotchi cat to open care, food, play, cleaning, and customization. Almi reacts to your saving rhythm." },
+        ],
+      },
+      cart: {
+        title: "Progress guide",
+        subtitle: "This page shows goals, tracked savings, budgets, and long-term patterns.",
+        visual: ["Goal", "Saved", "Insights"],
+        sections: [
+          { title: "Goals", body: "Goal cards show how much is left and where recent savings are moving you." },
+          { title: "Budget and free days", body: "Budget blocks compare planned and actual behavior. Free days track days without impulse spending." },
+          { title: "Impulse map", body: "When unlocked, the impulse map highlights categories and times that need more attention." },
+          { title: "Logged and potential savings", body: "Logged savings is the money you already marked as saved. Potential savings estimates what the same rhythm can create over week, month, and year." },
+          { title: "Recent activity", body: "The activity list shows the latest saves and spends so you can spot what moved the totals." },
+          { title: "Budget tools", body: "Budget cards compare income, recurring costs, and impulse categories. Tap details to inspect the breakdown." },
+          { title: "Focus and challenges", body: "When available, focus targets and challenges turn one risky habit into a short, measurable task." },
+        ],
+      },
+      pending: {
+        title: "Thinking list guide",
+        subtitle: "This page keeps purchases you decided to delay.",
+        visual: ["Wait", "Review", "Decide"],
+        sections: [
+          { title: "Delayed decisions", body: "Add an item when you are not ready to say yes or no. The timer creates space before buying." },
+          { title: "Resolve", body: "When the timer is ready, mark the item as saved or spent. Both choices improve your data." },
+          { title: "Extend", body: "Extend the timer if the purchase still feels unclear. Delete items that no longer matter." },
+        ],
+      },
+      purchases: {
+        title: "Rewards guide",
+        subtitle: "This page shows achievements and rewards earned from consistent saving behavior.",
+        visual: ["Milestones", "Claimed", "Progress"],
+        sections: [
+          { title: "Achievement cards", body: "Each card is a savings milestone with an emoji, title, and short reason. Unlocked cards stand out; locked ones show what is still missing." },
+          { title: "Claiming rewards", body: "When a reward is ready, claim it from the card. Claimed rewards keep their badge so you can quickly see what is already collected." },
+          { title: "Progress bars", body: "The bar under each reward shows how close you are to the next milestone, based on saves, free days, or saved amount." },
+          { title: "Reward tokens", body: "Reward tokens are feedback inside Almost. They make steady financial behavior visible and keep this page focused on earned milestones." },
+        ],
+      },
+      profile: {
+        title: "Profile guide",
+        subtitle: "This page stores setup, settings, reports, and personal preferences.",
+        visual: ["Settings", "Reports", "Support"],
+        sections: [
+          { title: "Personal setup", body: "Edit profile details, currency, goals, baseline spending, and personal temptation settings here." },
+          { title: "Settings", body: "Language, theme, sound, analytics controls, categories, and subscriptions live in this menu." },
+          { title: "Reports and support", body: "Open reports from the profile card, contact support, or review privacy links at the bottom." },
+        ],
+      },
+    },
+  },
+  ru: {
+    buttonLabel: "Подсказки страницы",
+    close: "Закрыть",
+    screens: {
+      feed: {
+        title: "Подсказки ленты",
+        subtitle: "Эта страница нужна, чтобы быстро отмечать реальные решения.",
+        visual: ["Карточки искушений", "Копить", "Потратить"],
+        sections: [
+          { title: "Карточки", body: "Каждая карточка — повторяющееся искушение. Используй её в момент выбора, а не как список задач." },
+          { title: "Копить и Потратить", body: "Копить значит, что ты удержался(ась) и оставил(а) деньги цели. Потратить фиксирует обратное, чтобы приложение видело реальный паттерн." },
+          { title: "Редактирование", body: "Нажми на карточку, чтобы изменить название, сумму, категорию, описание или связь с целью. Плюс добавляет своё искушение." },
+          { title: "Главные виджеты", body: "Верхние блоки показывают уровень, серию, настроение Алми, сохранённую сумму, прогноз, последнюю активность и прогресс к цели." },
+          { title: "Быстрая трата", body: "Плавающая кнопка с долларом нужна для быстрого ввода траты, когда покупка уже случилась и не хочется открывать полную карточку." },
+          { title: "Алми", body: "Нажми на кота тамагочи, чтобы открыть уход, еду, игру, чистку и кастомизацию. Алми реагирует на твой ритм экономии." },
+        ],
+      },
+      cart: {
+        title: "Подсказки прогресса",
+        subtitle: "Здесь видны цели, накопления, бюджеты и долгосрочные паттерны.",
+        visual: ["Цель", "Сохранено", "Инсайты"],
+        sections: [
+          { title: "Цели", body: "Карточки целей показывают, сколько осталось и как последние сохранения двигают тебя вперёд." },
+          { title: "Бюджет и свободные дни", body: "Бюджетные блоки сравнивают план и факт. Свободные дни отслеживают дни без импульсивных трат." },
+          { title: "Карта импульсов", body: "После разблокировки карта подсвечивает категории и периоды, которым нужно больше внимания." },
+          { title: "Сохранено и прогноз", body: "Сохранено — это деньги, которые ты уже отметил(а) как сбережённые. Потенциал показывает, что даст такой же ритм за неделю, месяц и год." },
+          { title: "Последняя активность", body: "Список активности показывает последние сохранения и траты, чтобы было понятно, что сдвинуло итог." },
+          { title: "Бюджетные инструменты", body: "Бюджетные карточки сравнивают доход, регулярные расходы и импульсивные категории. Нажми детали, чтобы увидеть разбивку." },
+          { title: "Фокус и челленджи", body: "Когда функции доступны, фокус-цели и челленджи превращают рискованную привычку в короткую измеримую задачу." },
+        ],
+      },
+      pending: {
+        title: "Подсказки списка ожидания",
+        subtitle: "Здесь лежат покупки, которые ты решил(а) отложить.",
+        visual: ["Ждать", "Проверить", "Решить"],
+        sections: [
+          { title: "Отложенные решения", body: "Добавляй покупку, когда пока не готов(а) сказать да или нет. Таймер создаёт паузу перед покупкой." },
+          { title: "Решение", body: "Когда таймер готов, отметь сохранение или трату. Оба варианта улучшают данные." },
+          { title: "Продление", body: "Продлевай таймер, если покупка всё ещё не ясна. Удаляй то, что больше не важно." },
+        ],
+      },
+      purchases: {
+        title: "Подсказки наград",
+        subtitle: "Здесь показаны достижения и награды, которые открываются за устойчивое поведение экономии.",
+        visual: ["Вехи", "Получено", "Прогресс"],
+        sections: [
+          { title: "Карточки достижений", body: "Каждая карточка — это веха экономии с иконкой, названием и коротким объяснением. Открытые награды подсвечиваются, закрытые показывают, чего ещё не хватает." },
+          { title: "Получение наград", body: "Когда награда готова, её можно забрать прямо с карточки. Уже полученные награды остаются с бейджем, чтобы было видно, что собрано." },
+          { title: "Прогресс", body: "Полоса под наградой показывает, насколько близко следующая веха: по сохранениям, свободным дням или накопленной сумме." },
+          { title: "Наградные токены", body: "Токены — это обратная связь внутри Almost. Они делают полезное финансовое поведение заметным и оставляют этот экран сфокусированным на полученных вехах." },
+        ],
+      },
+      profile: {
+        title: "Подсказки профиля",
+        subtitle: "Здесь находятся настройка, отчёты и личные параметры.",
+        visual: ["Настройки", "Отчёты", "Поддержка"],
+        sections: [
+          { title: "Личная настройка", body: "Здесь можно изменить профиль, валюту, цели, базовые траты и персональное искушение." },
+          { title: "Настройки", body: "Язык, тема, звук, аналитика, категории и подписки находятся в этом меню." },
+          { title: "Отчёты и поддержка", body: "Отчёты открываются из карточки профиля, а внизу есть поддержка и ссылки на приватность." },
+        ],
+      },
+    },
+  },
+  es: {
+    buttonLabel: "Guía de página",
+    close: "Cerrar",
+    screens: {
+      feed: {
+        title: "Guía del feed",
+        subtitle: "Esta página sirve para registrar decisiones reales rápidamente.",
+        visual: ["Tarjetas", "Ahorrar", "Gastar"],
+        sections: [
+          { title: "Tarjetas", body: "Cada tarjeta es una tentación recurrente. Úsala cuando aparece el momento, no como lista de tareas." },
+          { title: "Ahorrar y Gastar", body: "Ahorrar significa que resististe y guardaste dinero para tu meta. Gastar registra lo contrario para aprender tu patrón real." },
+          { title: "Edición", body: "Toca una tarjeta para ajustar título, importe, categoría, descripción o meta vinculada. El botón más añade una tentación propia." },
+          { title: "Widgets principales", body: "Los bloques superiores muestran nivel, racha, ánimo de Almi, ahorro registrado, previsión, actividad reciente y avance hacia la meta." },
+          { title: "Gasto rápido", body: "El botón flotante con dólar sirve para registrar un gasto rápido cuando ya compraste algo y no quieres abrir una tarjeta completa." },
+          { title: "Almi", body: "Toca el gato tamagotchi para abrir cuidado, comida, juego, limpieza y personalización. Almi reacciona a tu ritmo de ahorro." },
+        ],
+      },
+      cart: {
+        title: "Guía de progreso",
+        subtitle: "Aquí ves metas, ahorros registrados, presupuestos y patrones largos.",
+        visual: ["Meta", "Ahorrado", "Ideas"],
+        sections: [
+          { title: "Metas", body: "Las tarjetas de meta muestran cuánto falta y cómo los últimos ahorros te acercan." },
+          { title: "Presupuesto y días libres", body: "Los bloques de presupuesto comparan plan y realidad. Los días libres registran días sin gasto impulsivo." },
+          { title: "Mapa de impulsos", body: "Al desbloquearse, el mapa resalta categorías y momentos que necesitan más atención." },
+          { title: "Ahorro registrado y potencial", body: "El ahorro registrado es lo que ya marcaste como ahorrado. El potencial estima lo que ese ritmo puede generar por semana, mes y año." },
+          { title: "Actividad reciente", body: "La lista muestra los últimos ahorros y gastos para entender qué movió los totales." },
+          { title: "Herramientas de presupuesto", body: "Las tarjetas de presupuesto comparan ingresos, costes recurrentes y categorías impulsivas. Toca detalles para ver el desglose." },
+          { title: "Foco y retos", body: "Cuando están disponibles, los focos y retos convierten un hábito de riesgo en una tarea breve y medible." },
+        ],
+      },
+      pending: {
+        title: "Guía de lista de espera",
+        subtitle: "Aquí quedan compras que decidiste aplazar.",
+        visual: ["Esperar", "Revisar", "Decidir"],
+        sections: [
+          { title: "Decisiones aplazadas", body: "Añade un artículo cuando aún no quieres decir sí o no. El temporizador crea espacio antes de comprar." },
+          { title: "Resolver", body: "Cuando el temporizador termina, marca si ahorraste o gastaste. Ambas opciones mejoran tus datos." },
+          { title: "Extender", body: "Extiende el temporizador si la compra aún no está clara. Elimina lo que ya no importa." },
+        ],
+      },
+      purchases: {
+        title: "Guía de recompensas",
+        subtitle: "Esta página muestra logros y recompensas ganados por mantener buenos hábitos de ahorro.",
+        visual: ["Hitos", "Reclamado", "Avance"],
+        sections: [
+          { title: "Tarjetas de logro", body: "Cada tarjeta es un hito de ahorro con icono, título y explicación breve. Las desbloqueadas destacan; las bloqueadas muestran lo que falta." },
+          { title: "Reclamar recompensas", body: "Cuando una recompensa está lista, reclámala desde la tarjeta. Las ya reclamadas conservan su etiqueta para ver lo acumulado." },
+          { title: "Barras de avance", body: "La barra bajo cada recompensa muestra qué tan cerca estás del siguiente hito por ahorros, días libres o importe guardado." },
+          { title: "Tokens de recompensa", body: "Los tokens son feedback dentro de Almost. Hacen visible el hábito financiero sano y mantienen esta pantalla centrada en hitos ganados." },
+        ],
+      },
+      profile: {
+        title: "Guía del perfil",
+        subtitle: "Aquí viven configuración, ajustes, reportes y preferencias.",
+        visual: ["Ajustes", "Reportes", "Soporte"],
+        sections: [
+          { title: "Configuración personal", body: "Edita datos del perfil, moneda, metas, gasto base y tentación personal aquí." },
+          { title: "Ajustes", body: "Idioma, tema, sonido, controles de analítica, categorías y suscripciones están en este menú." },
+          { title: "Reportes y soporte", body: "Abre reportes desde la tarjeta de perfil, contacta soporte o revisa enlaces de privacidad abajo." },
+        ],
+      },
+    },
+  },
+  fr: {
+    buttonLabel: "Guide de page",
+    close: "Fermer",
+    screens: {
+      feed: {
+        title: "Guide du fil",
+        subtitle: "Cette page sert à noter rapidement tes vraies décisions.",
+        visual: ["Cartes", "Épargner", "Dépenser"],
+        sections: [
+          { title: "Cartes", body: "Chaque carte est une tentation récurrente. Utilise-la au moment du choix, pas comme une liste de tâches." },
+          { title: "Épargner et Dépenser", body: "Épargner signifie que tu as résisté et gardé l'argent pour ton objectif. Dépenser note l'inverse pour apprendre ton vrai rythme." },
+          { title: "Modification", body: "Touche une carte pour ajuster titre, montant, catégorie, description ou objectif lié. Le bouton plus ajoute ta propre tentation." },
+          { title: "Widgets principaux", body: "Les blocs du haut montrent niveau, série, humeur d'Almi, épargne notée, prévision, activité récente et progression vers l'objectif." },
+          { title: "Dépense rapide", body: "Le bouton flottant avec le dollar sert à noter vite une dépense déjà faite sans ouvrir une carte complète." },
+          { title: "Almi", body: "Touche le chat tamagotchi pour ouvrir soin, nourriture, jeu, nettoyage et personnalisation. Almi réagit à ton rythme d'épargne." },
+        ],
+      },
+      cart: {
+        title: "Guide de progression",
+        subtitle: "Cette page montre objectifs, épargne suivie, budgets et tendances.",
+        visual: ["Objectif", "Épargné", "Insights"],
+        sections: [
+          { title: "Objectifs", body: "Les cartes d'objectif montrent ce qu'il reste et comment les dernières économies te rapprochent." },
+          { title: "Budget et jours libres", body: "Les blocs budget comparent le plan et le réel. Les jours libres suivent les jours sans dépense impulsive." },
+          { title: "Carte des impulsions", body: "Une fois débloquée, la carte met en avant les catégories et moments qui demandent plus d'attention." },
+          { title: "Épargne notée et potentiel", body: "L'épargne notée correspond à l'argent déjà marqué comme économisé. Le potentiel estime ce que le même rythme peut donner par semaine, mois et année." },
+          { title: "Activité récente", body: "La liste affiche les derniers épargnes et dépenses pour voir ce qui a fait bouger les totaux." },
+          { title: "Outils budget", body: "Les cartes budget comparent revenus, coûts récurrents et catégories impulsives. Touche les détails pour voir la répartition." },
+          { title: "Focus et défis", body: "Quand ils sont disponibles, les focus et défis transforment une habitude risquée en tâche courte et mesurable." },
+        ],
+      },
+      pending: {
+        title: "Guide de la liste d'attente",
+        subtitle: "Cette page garde les achats que tu as décidé de repousser.",
+        visual: ["Attendre", "Revoir", "Décider"],
+        sections: [
+          { title: "Décisions repoussées", body: "Ajoute un achat quand tu n'es pas prêt à dire oui ou non. Le minuteur crée une pause avant d'acheter." },
+          { title: "Résoudre", body: "Quand le minuteur est prêt, marque l'achat comme épargné ou dépensé. Les deux choix améliorent tes données." },
+          { title: "Prolonger", body: "Prolonge le minuteur si l'achat reste flou. Supprime ce qui n'a plus d'importance." },
+        ],
+      },
+      purchases: {
+        title: "Guide des récompenses",
+        subtitle: "Cette page affiche les réussites et récompenses gagnées grâce à ton rythme d'épargne.",
+        visual: ["Étapes", "Récupéré", "Progrès"],
+        sections: [
+          { title: "Cartes de réussite", body: "Chaque carte est une étape d'épargne avec icône, titre et courte explication. Les cartes débloquées ressortent; les autres montrent ce qui manque." },
+          { title: "Récupérer", body: "Quand une récompense est prête, récupère-la depuis la carte. Les récompenses déjà prises gardent leur badge pour voir ce qui est acquis." },
+          { title: "Barres de progrès", body: "La barre sous chaque récompense montre la distance jusqu'à la prochaine étape, selon tes économies, jours libres ou montants gardés." },
+          { title: "Jetons de récompense", body: "Les jetons sont un retour dans Almost. Ils rendent le bon comportement financier visible et gardent cette page centrée sur les étapes gagnées." },
+        ],
+      },
+      profile: {
+        title: "Guide du profil",
+        subtitle: "Cette page regroupe configuration, réglages, rapports et préférences.",
+        visual: ["Réglages", "Rapports", "Support"],
+        sections: [
+          { title: "Configuration personnelle", body: "Modifie ici profil, devise, objectifs, dépenses de référence et tentation personnelle." },
+          { title: "Réglages", body: "Langue, thème, son, analytique, catégories et abonnements se trouvent dans ce menu." },
+          { title: "Rapports et support", body: "Ouvre les rapports depuis la carte profil, contacte le support ou consulte les liens de confidentialité en bas." },
+        ],
+      },
+    },
+  },
+  de: {
+    buttonLabel: "Seitenguide",
+    close: "Schließen",
+    screens: {
+      feed: {
+        title: "Feed-Guide",
+        subtitle: "Diese Seite ist für schnelle echte Entscheidungen.",
+        visual: ["Karten", "Sparen", "Ausgeben"],
+        sections: [
+          { title: "Karten", body: "Jede Karte ist eine wiederkehrende Versuchung. Nutze sie im Moment der Entscheidung, nicht als Aufgabenliste." },
+          { title: "Sparen und Ausgeben", body: "Sparen bedeutet, dass du widerstanden und Geld für dein Ziel behalten hast. Ausgeben erfasst das Gegenteil und zeigt dein echtes Muster." },
+          { title: "Bearbeiten", body: "Tippe eine Karte an, um Titel, Betrag, Kategorie, Beschreibung oder Zielverknüpfung zu ändern. Plus fügt eine eigene Versuchung hinzu." },
+          { title: "Haupt-Widgets", body: "Die oberen Blöcke zeigen Level, Serie, Almis Stimmung, erfasste Ersparnis, Prognose, letzte Aktivität und Ziel-Fortschritt." },
+          { title: "Schnellausgabe", body: "Der schwebende Dollar-Button erfasst schnell eine Ausgabe, wenn du etwas gekauft hast und keine ganze Karte öffnen willst." },
+          { title: "Almi", body: "Tippe die Tamagotchi-Katze an, um Pflege, Futter, Spiel, Reinigung und Anpassung zu öffnen. Almi reagiert auf deinen Sparrhythmus." },
+        ],
+      },
+      cart: {
+        title: "Fortschritts-Guide",
+        subtitle: "Hier siehst du Ziele, erfasste Ersparnisse, Budgets und Muster.",
+        visual: ["Ziel", "Gespart", "Einblicke"],
+        sections: [
+          { title: "Ziele", body: "Zielkarten zeigen, wie viel fehlt und wie dich die letzten Ersparnisse voranbringen." },
+          { title: "Budget und freie Tage", body: "Budgetblöcke vergleichen Plan und Realität. Freie Tage zählen Tage ohne Impulsausgaben." },
+          { title: "Impulskarte", body: "Nach dem Freischalten hebt die Karte Kategorien und Zeiten hervor, die mehr Aufmerksamkeit brauchen." },
+          { title: "Erfasst und Potenzial", body: "Erfasste Ersparnis ist Geld, das du bereits als gespart markiert hast. Potenzial schätzt, was derselbe Rhythmus pro Woche, Monat und Jahr bringen kann." },
+          { title: "Letzte Aktivität", body: "Die Liste zeigt neue Spar- und Ausgabenaktionen, damit du siehst, was die Summen bewegt hat." },
+          { title: "Budget-Werkzeuge", body: "Budgetkarten vergleichen Einkommen, wiederkehrende Kosten und Impulskategorien. Tippe Details an, um die Aufschlüsselung zu sehen." },
+          { title: "Fokus und Challenges", body: "Wenn verfügbar, verwandeln Fokusziele und Challenges eine riskante Gewohnheit in eine kurze messbare Aufgabe." },
+        ],
+      },
+      pending: {
+        title: "Wartelisten-Guide",
+        subtitle: "Diese Seite hält Käufe fest, die du verschoben hast.",
+        visual: ["Warten", "Prüfen", "Entscheiden"],
+        sections: [
+          { title: "Verschobene Entscheidungen", body: "Füge etwas hinzu, wenn du noch nicht Ja oder Nein sagen willst. Der Timer schafft Abstand vor dem Kauf." },
+          { title: "Entscheiden", body: "Wenn der Timer bereit ist, markiere gespart oder ausgegeben. Beides verbessert deine Daten." },
+          { title: "Verlängern", body: "Verlängere den Timer, wenn der Kauf noch unklar ist. Lösche Dinge, die nicht mehr wichtig sind." },
+        ],
+      },
+      purchases: {
+        title: "Belohnungs-Guide",
+        subtitle: "Diese Seite zeigt Erfolge und Belohnungen, die durch stetiges Sparverhalten entstehen.",
+        visual: ["Meilensteine", "Abgeholt", "Fortschritt"],
+        sections: [
+          { title: "Erfolgskarten", body: "Jede Karte ist ein Spar-Meilenstein mit Icon, Titel und kurzer Erklärung. Freigeschaltete Karten fallen auf; gesperrte zeigen, was noch fehlt." },
+          { title: "Belohnungen abholen", body: "Wenn eine Belohnung bereit ist, holst du sie direkt auf der Karte ab. Abgeholte Belohnungen behalten ihren Badge." },
+          { title: "Fortschrittsbalken", body: "Der Balken unter jeder Belohnung zeigt, wie nah du am nächsten Meilenstein bist: durch Sparschritte, freie Tage oder gesparte Summe." },
+          { title: "Belohnungstoken", body: "Token sind Feedback in Almost. Sie machen gutes Finanzverhalten sichtbar und halten diese Seite auf erreichte Meilensteine fokussiert." },
+        ],
+      },
+      profile: {
+        title: "Profil-Guide",
+        subtitle: "Hier liegen Einrichtung, Einstellungen, Berichte und persönliche Optionen.",
+        visual: ["Einstellungen", "Berichte", "Support"],
+        sections: [
+          { title: "Persönliche Einrichtung", body: "Bearbeite hier Profil, Währung, Ziele, Basis-Ausgaben und persönliche Versuchung." },
+          { title: "Einstellungen", body: "Sprache, Theme, Ton, Analytics, Kategorien und Abos befinden sich in diesem Menü." },
+          { title: "Berichte und Support", body: "Öffne Berichte über die Profilkarte, kontaktiere den Support oder prüfe Datenschutzlinks unten." },
+        ],
+      },
+    },
+  },
+  ar: {
+    buttonLabel: "دليل الصفحة",
+    close: "إغلاق",
+    screens: {
+      feed: {
+        title: "دليل الخلاصة",
+        subtitle: "هذه الصفحة لتسجيل قراراتك الحقيقية بسرعة.",
+        visual: ["بطاقات الإغراء", "ادخار", "إنفاق"],
+        sections: [
+          { title: "البطاقات", body: "كل بطاقة تمثل إغراءً متكرراً. استخدمها عند لحظة القرار، وليس كقائمة مهام." },
+          { title: "ادخار وإنفاق", body: "ادخار يعني أنك قاومت واحتفظت بالمال لهدفك. إنفاق يسجل العكس حتى يتعلم التطبيق نمطك الحقيقي." },
+          { title: "التعديل", body: "اضغط البطاقة لتعديل الاسم أو المبلغ أو الفئة أو الوصف أو ربط الهدف. زر الإضافة ينشئ إغراءك الخاص." },
+          { title: "الودجات الرئيسية", body: "تعرض الكتل العلوية المستوى والسلسلة ومزاج Almi والمدخرات المسجلة والتوقع والنشاط الأخير والتقدم نحو الهدف." },
+          { title: "إنفاق سريع", body: "زر الدولار العائم لتسجيل إنفاق سريع عندما تكون قد اشتريت شيئاً ولا تريد فتح بطاقة كاملة." },
+          { title: "Almi", body: "اضغط قطة التاماغوتشي لفتح العناية والطعام واللعب والتنظيف والتخصيص. يتفاعل Almi مع إيقاع ادخارك." },
+        ],
+      },
+      cart: {
+        title: "دليل التقدم",
+        subtitle: "تعرض هذه الصفحة الأهداف والمدخرات والميزانيات والأنماط.",
+        visual: ["هدف", "مدخر", "رؤى"],
+        sections: [
+          { title: "الأهداف", body: "بطاقات الأهداف تعرض المبلغ المتبقي وكيف تحركك المدخرات الأخيرة إلى الأمام." },
+          { title: "الميزانية والأيام الحرة", body: "تقارن كتل الميزانية بين الخطة والواقع. الأيام الحرة تتبع الأيام دون إنفاق اندفاعي." },
+          { title: "خريطة الاندفاع", body: "بعد فتحها، تبرز الخريطة الفئات والأوقات التي تحتاج إلى انتباه أكبر." },
+          { title: "المدخرات والتوقع", body: "المدخرات المسجلة هي ما وضعته كمال تم توفيره. التوقع يقدّر ما يمكن أن يصنعه نفس الإيقاع خلال أسبوع وشهر وسنة." },
+          { title: "النشاط الأخير", body: "تعرض القائمة آخر عمليات الادخار والإنفاق حتى تعرف ما الذي حرّك الأرقام." },
+          { title: "أدوات الميزانية", body: "تقارن بطاقات الميزانية الدخل والتكاليف المتكررة وفئات الاندفاع. اضغط التفاصيل لرؤية التقسيم." },
+          { title: "التركيز والتحديات", body: "عند توفرها، تحول أهداف التركيز والتحديات عادة خطرة إلى مهمة قصيرة قابلة للقياس." },
+        ],
+      },
+      pending: {
+        title: "دليل قائمة الانتظار",
+        subtitle: "هذه الصفحة تحفظ المشتريات التي قررت تأجيلها.",
+        visual: ["انتظار", "مراجعة", "قرار"],
+        sections: [
+          { title: "قرارات مؤجلة", body: "أضف عنصراً عندما لا تكون مستعداً للموافقة أو الرفض. المؤقت يصنع مساحة قبل الشراء." },
+          { title: "الحسم", body: "عندما ينتهي المؤقت، سجل النتيجة كادخار أو إنفاق. كلا الخيارين يحسن البيانات." },
+          { title: "التمديد", body: "مدد المؤقت إذا كان الشراء ما زال غير واضح. احذف العناصر التي لم تعد مهمة." },
+        ],
+      },
+      purchases: {
+        title: "دليل المكافآت",
+        subtitle: "تعرض هذه الصفحة الإنجازات والمكافآت التي تكسبها من سلوك ادخار ثابت.",
+        visual: ["مراحل", "تم جمعها", "تقدم"],
+        sections: [
+          { title: "بطاقات الإنجاز", body: "كل بطاقة تمثل مرحلة ادخار مع أيقونة واسم وشرح قصير. البطاقات المفتوحة تظهر بوضوح، والمغلقة توضح ما ينقصك." },
+          { title: "جمع المكافآت", body: "عندما تصبح المكافأة جاهزة، اجمعها من البطاقة. المكافآت التي جمعتها تبقى بعلامة واضحة حتى ترى ما حصلت عليه." },
+          { title: "أشرطة التقدم", body: "الشريط أسفل كل مكافأة يوضح قربك من المرحلة التالية حسب عمليات الادخار أو الأيام الحرة أو المبلغ المدخر." },
+          { title: "رموز المكافأة", body: "الرموز هي إشارة تقدم داخل Almost. تجعل السلوك المالي الصحي مرئياً وتحافظ على تركيز هذه الصفحة على المراحل المكتسبة." },
+        ],
+      },
+      profile: {
+        title: "دليل الملف الشخصي",
+        subtitle: "هذه الصفحة تحتوي الإعدادات والتقارير والتفضيلات الشخصية.",
+        visual: ["إعدادات", "تقارير", "دعم"],
+        sections: [
+          { title: "الإعداد الشخصي", body: "عدّل هنا بيانات الملف والعملة والأهداف والإنفاق الأساسي والإغراء الشخصي." },
+          { title: "الإعدادات", body: "اللغة والسمة والصوت والتحليلات والفئات والاشتراكات موجودة في هذه القائمة." },
+          { title: "التقارير والدعم", body: "افتح التقارير من بطاقة الملف، أو تواصل مع الدعم، أو راجع روابط الخصوصية في الأسفل." },
+        ],
+      },
+    },
+  },
+  zh: {
+    buttonLabel: "页面指南",
+    close: "关闭",
+    screens: {
+      feed: {
+        title: "动态页指南",
+        subtitle: "这个页面用来快速记录真实决策。",
+        visual: ["诱惑卡片", "存下", "花掉"],
+        sections: [
+          { title: "卡片", body: "每张卡片代表一个反复出现的诱惑。它适合在决策发生时使用，而不是当作待办清单。" },
+          { title: "存下和花掉", body: "存下表示你抵抗了诱惑，并把钱留给目标。花掉会记录相反结果，让应用学习你的真实模式。" },
+          { title: "编辑", body: "点击卡片可以调整标题、金额、分类、描述或关联目标。加号可以添加你自己的诱惑。" },
+          { title: "主小组件", body: "顶部模块显示等级、连续记录、Almi 状态、已记录储蓄、预测、最近活动和目标进度。" },
+          { title: "快速花费", body: "带美元符号的浮动按钮用于快速记录已经发生的花费，不需要打开完整卡片。" },
+          { title: "Almi", body: "点击电子宠物猫可以打开照顾、喂食、玩耍、清洁和自定义。Almi 会根据你的储蓄节奏做出反应。" },
+        ],
+      },
+      cart: {
+        title: "进度页指南",
+        subtitle: "这里展示目标、已记录储蓄、预算和长期模式。",
+        visual: ["目标", "已存", "洞察"],
+        sections: [
+          { title: "目标", body: "目标卡片会显示还差多少，以及最近的储蓄如何推动你前进。" },
+          { title: "预算和无消费日", body: "预算模块对比计划和实际行为。无消费日记录没有冲动消费的日子。" },
+          { title: "冲动地图", body: "解锁后，冲动地图会突出需要更多注意的分类和时间段。" },
+          { title: "已记录和潜在储蓄", body: "已记录储蓄是你已经标记为存下的钱。潜在储蓄会估算同样节奏在每周、每月和每年能带来的结果。" },
+          { title: "最近活动", body: "活动列表显示最新的存下和花掉记录，帮助你看清是什么改变了总数。" },
+          { title: "预算工具", body: "预算卡片会对比收入、固定成本和冲动分类。点击详情可以查看拆分。" },
+          { title: "专注和挑战", body: "可用时，专注目标和挑战会把一个高风险习惯变成短期、可衡量的任务。" },
+        ],
+      },
+      pending: {
+        title: "等待列表指南",
+        subtitle: "这里保存你决定延后购买的东西。",
+        visual: ["等待", "复查", "决定"],
+        sections: [
+          { title: "延后决策", body: "当你还不想说买或不买时，把物品加入这里。计时器会在购买前创造缓冲。" },
+          { title: "处理", body: "计时器结束后，标记为存下或花掉。两种选择都会改善你的数据。" },
+          { title: "延长", body: "如果这次购买仍不清楚，可以延长计时器。不再重要的项目可以删除。" },
+        ],
+      },
+      purchases: {
+        title: "奖励页指南",
+        subtitle: "这个页面展示由稳定储蓄行为解锁的成就和奖励。",
+        visual: ["里程碑", "已领取", "进度"],
+        sections: [
+          { title: "成就卡片", body: "每张卡片都是一个储蓄里程碑，包含图标、标题和简短说明。已解锁卡片会突出显示，未解锁卡片会显示还差什么。" },
+          { title: "领取奖励", body: "当奖励可领取时，可以直接在卡片上领取。已领取奖励会保留标记，方便查看已经收集的内容。" },
+          { title: "进度条", body: "每个奖励下方的进度条显示你离下一里程碑有多近，依据存下次数、无消费日或已存金额计算。" },
+          { title: "奖励代币", body: "代币是 Almost 内的反馈，让健康财务行为更可见，并让这个页面专注于已经赢得的里程碑。" },
+        ],
+      },
+      profile: {
+        title: "个人资料指南",
+        subtitle: "这里包含设置、报告和个人偏好。",
+        visual: ["设置", "报告", "支持"],
+        sections: [
+          { title: "个人设置", body: "你可以在这里编辑资料、货币、目标、基础支出和个人诱惑。" },
+          { title: "设置", body: "语言、主题、声音、分析控制、分类和订阅都在这个菜单里。" },
+          { title: "报告和支持", body: "从资料卡片打开报告，也可以在底部联系支持或查看隐私链接。" },
+        ],
+      },
+    },
+  },
+};
+
+const resolveHelpGuideCopy = (language = DEFAULT_LANGUAGE, tab = "feed") => {
+  const normalizedLanguage = normalizeLanguage(language);
+  const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
+  const source =
+    HELP_GUIDE_COPY[normalizedLanguage] ||
+    HELP_GUIDE_COPY[translationLanguage] ||
+    HELP_GUIDE_COPY.en;
+  const fallbackSource = HELP_GUIDE_COPY.en;
+  const screenKey = source.screens?.[tab] ? tab : "feed";
+  return {
+    buttonLabel: source.buttonLabel || fallbackSource.buttonLabel,
+    close: source.close || fallbackSource.close,
+    screen: source.screens?.[screenKey] || fallbackSource.screens.feed,
+  };
+};
+
+const HelpGuideIcon = React.memo(function HelpGuideIcon({ color = "#111827", size = 18 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <SvgPath
+        d="M9.3 18.2h5.4M10 21h4M8.5 14.7c-1.4-1.1-2.3-2.8-2.3-4.7A5.8 5.8 0 0 1 12 4.2a5.8 5.8 0 0 1 5.8 5.8c0 1.9-.9 3.6-2.3 4.7-.7.6-1.1 1.2-1.1 2.1H9.6c0-.9-.4-1.5-1.1-2.1Z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <SvgPath
+        d="M12 1.8v.9M4.2 4.8l.7.7M19.8 4.8l-.7.7M2 11h1M21 11h1"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+});
+
+const HelpGuideFab = React.memo(function HelpGuideFab({
+  visible = false,
+  topInset = 0,
+  colors,
+  language,
+  activeTab = "feed",
+  onPress,
+}) {
+  const copy = resolveHelpGuideCopy(language, activeTab);
+  if (!visible) return null;
+  const iconColor = colors?.text || "#111827";
+  const backgroundRgb = parseColor(colors?.background || "#FFFFFF");
+  const backgroundYiq = (backgroundRgb.r * 299 + backgroundRgb.g * 587 + backgroundRgb.b * 114) / 1000;
+  const isDark = backgroundYiq < 145;
+  const fallbackBackground = colorWithAlpha(colors?.card || "#FFFFFF", isDark ? 0.2 : 0.28);
+  const overlayColor = colorWithAlpha(colors?.card || "#FFFFFF", isDark ? 0.1 : 0.16);
+  return (
+    <TouchableOpacity
+      style={[
+        styles.helpGuideFab,
+        {
+          top: Math.max(0, (Number(topInset) || 0) - 4),
+          backgroundColor: fallbackBackground,
+          borderColor: colorWithAlpha(iconColor, 0.1),
+          shadowColor: iconColor,
+        },
+      ]}
+      activeOpacity={0.86}
+      accessibilityRole="button"
+      accessibilityLabel={copy.buttonLabel}
+      onPress={onPress}
+    >
+      {isBlurViewAvailable() ? (
+        <ExpoBlurView
+          tint={isDark ? "dark" : "light"}
+          intensity={Platform.OS === "android" ? 18 : 22}
+          blurReductionFactor={
+            Platform.OS === "android" ? ANDROID_EXPO_BLUR_REDUCTION_FACTOR : undefined
+          }
+          experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
+          style={styles.bugReportFabBlur}
+        />
+      ) : null}
+      <View style={[styles.bugReportFabTint, { backgroundColor: overlayColor }]} />
+      <View style={styles.bugReportFabIcon}>
+        <HelpGuideIcon color={iconColor} />
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+const HelpGuideVisual = React.memo(function HelpGuideVisual({ labels = [], colors, activeTab = "feed" }) {
+  const accent = colors?.primary || colors?.text || "#111827";
+  const muted = colors?.muted || "#6B7280";
+  const borderColor = colors?.border || colorWithAlpha(accent, 0.16);
+  const surface = colors?.background || "#F8FAFC";
+  const textColor = colors?.text || "#111827";
+  const softAccent = colorWithAlpha(accent, 0.12);
+  const softerMuted = colorWithAlpha(muted, 0.1);
+  const renderHeader = () => (
+    <View style={styles.helpGuideVisualHeader}>
+      {labels.slice(0, 3).map((label, index) => (
+        <View
+          key={`${activeTab}-visual-chip-${index}`}
+          style={[
+            styles.helpGuideVisualChip,
+            {
+              borderColor,
+              backgroundColor: index === 0 ? softAccent : softerMuted,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.helpGuideVisualChipText,
+              { color: index === 0 ? accent : muted },
+            ]}
+            numberOfLines={1}
+          >
+            {label}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+  const renderProgressRows = (widths = ["62%", "82%", "48%"]) => (
+    <View style={styles.helpGuideVisualBody}>
+      {widths.map((width, index) => (
+        <View key={`${activeTab}-visual-row-${index}`} style={styles.helpGuideVisualRow}>
+          <View style={[styles.helpGuideVisualDot, { backgroundColor: index === 1 ? accent : colorWithAlpha(accent, 0.36) }]} />
+          <View style={[styles.helpGuideVisualTrack, { backgroundColor: colorWithAlpha(muted, 0.12) }]}>
+            <View
+              style={[
+                styles.helpGuideVisualFill,
+                {
+                  width,
+                  backgroundColor: index === 1 ? accent : colorWithAlpha(accent, 0.54),
+                },
+              ]}
+            />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+  const renderFeedVisual = () => (
+    <>
+      {renderHeader()}
+      <View style={styles.helpGuideFeedHero}>
+        <View style={styles.helpGuideFeedHeroText}>
+          <View style={[styles.helpGuideVisualLine, { width: "58%", backgroundColor: colorWithAlpha(textColor, 0.22) }]} />
+          <View style={[styles.helpGuideVisualLine, { width: "82%", backgroundColor: colorWithAlpha(muted, 0.18) }]} />
+          <View style={styles.helpGuideFeedPills}>
+            <View style={[styles.helpGuideFeedPill, { backgroundColor: softAccent }]} />
+            <View style={[styles.helpGuideFeedPill, { backgroundColor: colorWithAlpha(accent, 0.18) }]} />
+          </View>
+        </View>
+        <View style={[styles.helpGuideMascotBubble, { backgroundColor: softAccent, borderColor }]}>
+          <Text style={styles.helpGuideMascotText}>🐱</Text>
+        </View>
+      </View>
+      <View style={styles.helpGuideFeedBottomRow}>
+        <View style={[styles.helpGuideQuickSpend, { backgroundColor: colorWithAlpha(accent, 0.16), borderColor }]}>
+          <Text style={[styles.helpGuideQuickSpendText, { color: textColor }]}>$</Text>
+        </View>
+        <View style={[styles.helpGuideMiniCard, { borderColor, backgroundColor: colorWithAlpha(colors?.card || "#FFFFFF", 0.6) }]}>
+          {renderProgressRows(["72%", "46%"])}
+        </View>
+      </View>
+    </>
+  );
+  const renderCartVisual = () => (
+    <>
+      {renderHeader()}
+      <View style={styles.helpGuideGoalRingRow}>
+        <View style={[styles.helpGuideGoalRing, { borderColor: accent }]}>
+          <Text style={[styles.helpGuideGoalRingText, { color: textColor }]}>38%</Text>
+        </View>
+        <View style={styles.helpGuideGoalBars}>
+          {renderProgressRows(["86%", "58%", "34%"])}
+        </View>
+      </View>
+      <View style={styles.helpGuideImpulseDots}>
+        {[0, 1, 2, 3, 4, 5].map((item) => (
+          <View
+            key={`impulse-dot-${item}`}
+            style={[
+              styles.helpGuideImpulseDot,
+              {
+                backgroundColor: item % 2 ? colorWithAlpha(accent, 0.75) : colorWithAlpha(muted, 0.24),
+                transform: [{ scale: item === 2 ? 1.35 : 1 }],
+              },
+            ]}
+          />
+        ))}
+      </View>
+    </>
+  );
+  const renderPendingVisual = () => (
+    <>
+      {renderHeader()}
+      <View style={styles.helpGuidePendingTimeline}>
+        {[0, 1, 2].map((item) => (
+          <View key={`pending-step-${item}`} style={styles.helpGuidePendingStep}>
+            <View style={[styles.helpGuidePendingNode, { backgroundColor: item === 1 ? accent : colorWithAlpha(accent, 0.26) }]} />
+            {item < 2 ? <View style={[styles.helpGuidePendingLine, { backgroundColor: colorWithAlpha(muted, 0.18) }]} /> : null}
+          </View>
+        ))}
+      </View>
+      <View style={[styles.helpGuidePendingCard, { borderColor, backgroundColor: colorWithAlpha(colors?.card || "#FFFFFF", 0.62) }]}>
+        <View style={[styles.helpGuideVisualLine, { width: "64%", backgroundColor: colorWithAlpha(textColor, 0.2) }]} />
+        <View style={[styles.helpGuideTimerBar, { backgroundColor: colorWithAlpha(muted, 0.12) }]}>
+          <View style={[styles.helpGuideVisualFill, { width: "42%", backgroundColor: accent }]} />
+        </View>
+      </View>
+    </>
+  );
+  const renderRewardsVisual = () => (
+    <>
+      {renderHeader()}
+      <View style={styles.helpGuideRewardGrid}>
+        {[
+          { icon: "🎁", fill: "100%", badge: labels[1] || "Claimed", active: true },
+          { icon: "💎", fill: "68%", badge: labels[2] || "Progress", active: false },
+        ].map((item, index) => (
+          <View
+            key={`reward-card-${index}`}
+            style={[
+              styles.helpGuideRewardCard,
+              {
+                borderColor,
+                backgroundColor: item.active ? colorWithAlpha(accent, 0.1) : colorWithAlpha(colors?.card || "#FFFFFF", 0.62),
+              },
+            ]}
+          >
+            <View style={styles.helpGuideRewardTopRow}>
+              <Text style={styles.helpGuideRewardIcon}>{item.icon}</Text>
+              <View
+                style={[
+                  styles.helpGuideRewardBadge,
+                  { backgroundColor: item.active ? colorWithAlpha(accent, 0.18) : colorWithAlpha(muted, 0.12) },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.helpGuideRewardBadgeText,
+                    { color: item.active ? accent : muted },
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                >
+                  {item.badge}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.helpGuideVisualLine, { width: "72%", backgroundColor: colorWithAlpha(textColor, 0.2) }]} />
+            <View style={[styles.helpGuideTimerBar, { backgroundColor: colorWithAlpha(muted, 0.12) }]}>
+              <View style={[styles.helpGuideVisualFill, { width: item.fill, backgroundColor: accent }]} />
+            </View>
+          </View>
+        ))}
+      </View>
+    </>
+  );
+  const renderProfileVisual = () => (
+    <>
+      {renderHeader()}
+      <View style={styles.helpGuideProfileRow}>
+        <View style={[styles.helpGuideProfileAvatar, { backgroundColor: softAccent, borderColor }]}>
+          <Text style={styles.helpGuideProfileAvatarText}>◎</Text>
+        </View>
+        <View style={styles.helpGuideProfileSettings}>
+          {[0, 1, 2].map((item) => (
+            <View key={`profile-toggle-${item}`} style={styles.helpGuideProfileSettingRow}>
+              <View style={[styles.helpGuideVisualLine, { flex: 1, backgroundColor: colorWithAlpha(muted, 0.16) }]} />
+              <View style={[styles.helpGuideProfileToggle, { backgroundColor: item === 0 ? accent : colorWithAlpha(muted, 0.18) }]} />
+            </View>
+          ))}
+        </View>
+      </View>
+      <View style={[styles.helpGuideReportStrip, { backgroundColor: colorWithAlpha(accent, 0.1), borderColor }]}>
+        {renderProgressRows(["48%", "74%"])}
+      </View>
+    </>
+  );
+  const visualByTab = {
+    feed: renderFeedVisual,
+    cart: renderCartVisual,
+    pending: renderPendingVisual,
+    purchases: renderRewardsVisual,
+    profile: renderProfileVisual,
+  };
+  const renderVisual = visualByTab[activeTab] || renderFeedVisual;
+  return (
+    <View style={[styles.helpGuideVisual, { borderColor, backgroundColor: surface }]}>
+      {renderVisual()}
+    </View>
+  );
+});
+
+const HelpGuideModal = React.memo(function HelpGuideModal({
+  visible = false,
+  colors,
+  language,
+  activeTab = "feed",
+  onClose,
+  onScrolled,
+}) {
+  const copy = resolveHelpGuideCopy(language, activeTab);
+  const screenCopy = copy.screen || {};
+  const sections = Array.isArray(screenCopy.sections) ? screenCopy.sections : [];
+  const scrollLoggedRef = useRef(false);
+  useEffect(() => {
+    if (visible) {
+      scrollLoggedRef.current = false;
+    }
+  }, [visible]);
+  const handleScroll = useCallback(
+    (event) => {
+      if (scrollLoggedRef.current) return;
+      const offsetY = Number(event?.nativeEvent?.contentOffset?.y) || 0;
+      if (Math.abs(offsetY) < 8) return;
+      scrollLoggedRef.current = true;
+      onScrolled?.({ offsetY });
+    },
+    [onScrolled]
+  );
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={styles.bugReportModalRoot}>
+        <Pressable style={styles.bugReportBackdrop} onPress={onClose} />
+        <View style={styles.bugReportModalWrap} pointerEvents="box-none">
+          <View
+            style={[
+              styles.helpGuideModalCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.bugReportHeaderRow}>
+              <View style={styles.bugReportTitleBlock}>
+                <Text style={[styles.bugReportTitle, { color: colors.text }]}>
+                  {screenCopy.title}
+                </Text>
+                <Text style={[styles.bugReportSubtitle, { color: colors.muted }]}>
+                  {screenCopy.subtitle}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={onClose}
+                style={styles.bugReportClose}
+                accessibilityRole="button"
+                accessibilityLabel={copy.close}
+              >
+                <Text style={[styles.bugReportCloseText, { color: colors.muted }]}>×</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.helpGuideScroll}
+              contentContainerStyle={styles.helpGuideScrollContent}
+              showsVerticalScrollIndicator
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+              scrollEventThrottle={16}
+              onScroll={handleScroll}
+            >
+              <HelpGuideVisual
+                labels={screenCopy.visual}
+                colors={colors}
+                activeTab={activeTab}
+              />
+              {sections.map((section, index) => (
+                <View
+                  key={`${activeTab}-help-section-${index}`}
+                  style={[
+                    styles.helpGuideSection,
+                    { borderColor: colors.border, backgroundColor: colors.background },
+                  ]}
+                >
+                  <View style={[styles.helpGuideSectionIndex, { backgroundColor: colors.text }]}>
+                    <Text style={[styles.helpGuideSectionIndexText, { color: colors.background }]}>
+                      {index + 1}
+                    </Text>
+                  </View>
+                  <View style={styles.helpGuideSectionTextBlock}>
+                    <Text style={[styles.helpGuideSectionTitle, { color: colors.text }]}>
+                      {section.title}
+                    </Text>
+                    <Text style={[styles.helpGuideSectionBody, { color: colors.muted }]}>
+                      {section.body}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.helpGuideCloseButton, { backgroundColor: colors.text }]}
+              activeOpacity={0.86}
+              onPress={onClose}
+            >
+              <Text style={[styles.helpGuideCloseButtonText, { color: colors.background }]}>
+                {copy.close}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+});
+
 const MENU_TOP_CONTENT_OFFSET = 24;
 const MAIN_SCREEN_CONTENT_BOTTOM_PADDING = 160;
 
@@ -28683,8 +30060,11 @@ function SwipeablePendingCard({ children, colors, t, onDelete, itemId, onLayout 
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (_, gestureState) =>
-          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 6,
+        onMoveShouldSetPanResponder: (_, gestureState) => {
+          const absDx = Math.abs(gestureState.dx);
+          const absDy = Math.abs(gestureState.dy);
+          return absDx > 14 && absDx > absDy * 1.2;
+        },
         onPanResponderGrant: () => {
           translateX.stopAnimation();
         },
@@ -29554,15 +30934,22 @@ const PendingScreen = React.memo(function PendingScreen({
       PENDING_EXTENSION_MS
     );
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const maybePromise = onExtend(pendingItem, {
+        durationMs,
+        freezeOptionId: selectedOption?.id || null,
+        source: "countdown_modal",
+      });
+      if (maybePromise && typeof maybePromise.catch === "function") {
+        maybePromise.catch((error) => {
+          console.warn("fridge extend confirm", error);
+        });
+      }
+    } catch (error) {
+      console.warn("fridge extend confirm", error);
+    }
     closeFridgeExtendModal({
       source: "confirm",
-      onClosed: () => {
-        onExtend(pendingItem, {
-          durationMs,
-          freezeOptionId: selectedOption?.id || null,
-          source: "countdown_modal",
-        });
-      },
     });
   }, [
     closeFridgeExtendModal,
@@ -29690,6 +31077,9 @@ const PendingScreen = React.memo(function PendingScreen({
                 <TouchableOpacity
                   style={[styles.fridgeActionSecondary, { borderColor: colors.border }]}
                   onPress={() => onExtend(item)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  pressRetentionOffset={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  activeOpacity={0.82}
                 >
                   <Text style={{ color: colors.muted }}>{t("pendingActionExtend")}</Text>
                 </TouchableOpacity>
@@ -32131,6 +33521,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
   onPickImage,
   onHistoryDelete = () => {},
   theme,
+  proThemeAccentId = DEFAULT_PRO_THEME_ACCENT_ID,
   isPremiumUser = false,
   language,
   currencyValue,
@@ -32161,7 +33552,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const safeAreaInsets = safeUseSafeAreaInsets();
   const profileActionTopInset = useMemo(() => {
     const safeTop = Math.max(Number(topInset) || 0, Number(safeAreaInsets.top) || 0);
-    return Math.max(8, safeTop + 8);
+    return Math.max(0, safeTop - 4);
   }, [safeAreaInsets.top, topInset]);
   const normalizedLanguageValue = normalizeLanguage(language || DEFAULT_LANGUAGE);
   const isRomanceLocale = normalizedLanguageValue === "es" || normalizedLanguageValue === "fr";
@@ -32316,6 +33707,27 @@ const ProfileScreen = React.memo(function ProfileScreen({
       };
     },
     [theme, colors.card, colors.text]
+  );
+  const themeOptions = useMemo(
+    () => {
+      const baseOptions = [
+        { id: "light", key: "light", label: t("themeLight"), locked: false },
+        { id: "dark", key: "dark", label: t("themeDark"), locked: false },
+      ].map((option) => ({
+        ...option,
+        preview: resolveThemePreviewPalette(option.id, proThemeAccentId),
+      }));
+      const proOptions = PRO_THEME_ACCENT_OPTIONS.map((option) => ({
+        id: PRO_THEME_ID,
+        key: `${PRO_THEME_ID}_${option.id}`,
+        proAccentId: option.id,
+        label: isPremiumUser ? resolveProAccentLabel(option, language) : t("themePro"),
+        locked: !isPremiumUser,
+        preview: resolveThemePreviewPalette(PRO_THEME_ID, option.id),
+      }));
+      return [...baseOptions, ...proOptions];
+    },
+    [isPremiumUser, language, proThemeAccentId, t]
   );
   const handleBaselineInputChange = useCallback(
     (text) => {
@@ -32994,37 +34406,58 @@ const ProfileScreen = React.memo(function ProfileScreen({
           <>
             <View style={styles.settingRow}>
               <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("themeLabel")}</Text>
-              <View style={styles.settingChoices}>
-                {[
-                  { id: "light", label: t("themeLight"), locked: false },
-                  { id: "dark", label: t("themeDark"), locked: false },
-                  { id: PRO_THEME_ID, label: t("themePro"), locked: !isPremiumUser },
-                ].map((option) => {
-                  const active = theme === option.id;
+              <View style={[styles.settingChoices, styles.themeSettingChoices]}>
+                {themeOptions.map((option) => {
+                  const active =
+                    theme === option.id &&
+                    (option.id !== PRO_THEME_ID ||
+                      normalizeProThemeAccentId(proThemeAccentId) === option.proAccentId);
                   const activeProChip = active && option.id === PRO_THEME_ID;
+                  const previewBorder = active
+                    ? colorWithAlpha(activeProChip ? colors.primary : colors.text, 0.42)
+                    : option.preview.border;
+                  const labelColor = active
+                    ? getReadableTextColor(activeProChip ? colors.primary : colors.text)
+                    : colors.text;
                   return (
                     <TouchableOpacity
-                      key={option.id}
+                      key={option.key}
                       style={[
                         styles.settingChip,
+                        styles.themeSettingChip,
                         {
                           backgroundColor: active ? (activeProChip ? colors.primary : colors.text) : "transparent",
                           borderColor: colors.border,
                           opacity: option.locked && !active ? 0.7 : 1,
                         },
                       ]}
-                      onPress={() => onThemeToggle(option.id)}
+                      onPress={() =>
+                        onThemeToggle(option.id, {
+                          proAccentId: option.proAccentId,
+                          openAccentPicker: false,
+                        })
+                      }
+                      activeOpacity={0.84}
                     >
-                      <Text
-                        style={{
-                          color: active
-                            ? getReadableTextColor(activeProChip ? colors.primary : colors.text)
-                            : colors.muted,
-                          fontWeight: "600",
-                        }}
-                      >
-                        {option.label}
-                      </Text>
+                      <View style={[styles.themePreviewPair, { borderColor: previewBorder }]}>
+                        <View
+                          style={[
+                            styles.themePreviewColor,
+                            { backgroundColor: option.preview.primary },
+                          ]}
+                        />
+                        <View
+                          style={[
+                            styles.themePreviewColor,
+                            { backgroundColor: option.preview.secondary },
+                          ]}
+                        />
+                      </View>
+                      <View style={styles.themeSettingTextBlock}>
+                        <Text style={[styles.themeSettingText, { color: labelColor }]} numberOfLines={1}>
+                          {option.label}
+                        </Text>
+                      </View>
                     </TouchableOpacity>
                   );
                 })}
@@ -33516,6 +34949,8 @@ function AppContent() {
   const deferredHydrationInFlightRef = useRef(false);
   const [deferredHydrationReady, setDeferredHydrationReady] = useState(false);
   const [activeTab, setActiveTabState] = useState("feed");
+  const [bugReportVisible, setBugReportVisible] = useState(false);
+  const [helpGuideVisible, setHelpGuideVisible] = useState(false);
   const [heroCarouselIndex, setHeroCarouselIndex] = useState(0);
   const [heroCarouselLocked, setHeroCarouselLocked] = useState(false);
   const [dailyGoalCoinDropTick, setDailyGoalCoinDropTick] = useState(0);
@@ -37311,6 +38746,13 @@ function AppContent() {
   const [tamagotchiSkinId, setTamagotchiSkinId] = useState(DEFAULT_TAMAGOTCHI_SKIN);
   const [tamagotchiSkinHydrated, setTamagotchiSkinHydrated] = useState(false);
   const [skinPickerVisible, setSkinPickerVisible] = useState(false);
+  const [tamagotchiSkinAssetBaseUrl, setTamagotchiSkinAssetBaseUrl] = useState(
+    normalizeTamagotchiSkinAssetBaseUrl(TAMAGOTCHI_SKIN_ASSET_BASE_URL_ENV)
+  );
+  const [remoteTamagotchiAnimationsBySkinId, setRemoteTamagotchiAnimationsBySkinId] = useState(
+    {}
+  );
+  const tamagotchiSkinDownloadRunsRef = useRef({});
   const [tamagotchiSelectedCleanToolId, setTamagotchiSelectedCleanToolId] = useState(
     TAMAGOTCHI_DEFAULT_CLEAN_TOOL_ID
   );
@@ -37339,7 +38781,10 @@ function AppContent() {
       : DEFAULT_TAMAGOTCHI_SKIN;
   const tamagotchiSkin =
     TAMAGOTCHI_SKINS[resolvedTamagotchiSkinId] || TAMAGOTCHI_SKINS[DEFAULT_TAMAGOTCHI_SKIN];
-  const tamagotchiAnimations = tamagotchiSkin.animations;
+  const tamagotchiAnimations =
+    tamagotchiSkin.animations ||
+    remoteTamagotchiAnimationsBySkinId[resolvedTamagotchiSkinId] ||
+    CLASSIC_TAMAGOTCHI_ANIMATIONS;
   const tamagotchiAvatarSource = tamagotchiSkin.avatar;
   const tamagotchiHydratedRef = useRef(false);
   const tamagotchiHungerPrevRef = useRef(
@@ -37406,6 +38851,85 @@ function AppContent() {
     pulse.start();
     return () => pulse.stop();
   }, [cartBadgeScale]);
+  useEffect(() => {
+    let cancelled = false;
+    const loadBaseUrl = async () => {
+      const fallbackUrl = normalizeTamagotchiSkinAssetBaseUrl(TAMAGOTCHI_SKIN_ASSET_BASE_URL_ENV);
+      const client = getRemoteConfigClient();
+      if (!client) {
+        if (!cancelled && fallbackUrl) {
+          setTamagotchiSkinAssetBaseUrl(fallbackUrl);
+        }
+        return;
+      }
+      try {
+        await client.setDefaults({
+          [TAMAGOTCHI_SKIN_ASSET_BASE_URL_RC_KEY]: fallbackUrl,
+        });
+        await client.setConfigSettings({
+          minimumFetchIntervalMillis: __DEV__ ? 0 : 60 * 60 * 1000,
+          fetchTimeMillis: 10000,
+        });
+        await client.fetchAndActivate();
+        const remoteUrl = normalizeTamagotchiSkinAssetBaseUrl(
+          client.getValue(TAMAGOTCHI_SKIN_ASSET_BASE_URL_RC_KEY)?.asString?.() || ""
+        );
+        const nextUrl = remoteUrl || fallbackUrl;
+        if (!cancelled && nextUrl) {
+          setTamagotchiSkinAssetBaseUrl(nextUrl);
+        }
+      } catch (error) {
+        if (!cancelled && fallbackUrl) {
+          setTamagotchiSkinAssetBaseUrl(fallbackUrl);
+        }
+      }
+    };
+    loadBaseUrl();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    const skinId = resolvedTamagotchiSkinId;
+    const skin = tamagotchiSkin;
+    if (!catCustomizationUnlocked || !skin?.isRemote || !skin?.animationPaths) return;
+    if (remoteTamagotchiAnimationsBySkinId[skinId]) return;
+    const baseUrl = normalizeTamagotchiSkinAssetBaseUrl(tamagotchiSkinAssetBaseUrl);
+    if (!baseUrl) return;
+    if (tamagotchiSkinDownloadRunsRef.current[skinId]) return;
+    let cancelled = false;
+    const runId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    tamagotchiSkinDownloadRunsRef.current[skinId] = runId;
+    loadRemoteTamagotchiSkinAnimations({ skin, baseUrl })
+      .then((animations) => {
+        if (cancelled || !animations) return;
+        setRemoteTamagotchiAnimationsBySkinId((prev) => ({
+          ...prev,
+          [skinId]: animations,
+        }));
+      })
+      .catch((error) => {
+        logEvent("tamagotchi_skin_assets_download_failed", {
+          skin_id: skinId,
+          reason: normalizeMonetizationToken(error?.message || "download_failed", "download_failed"),
+        });
+      })
+      .finally(() => {
+        if (tamagotchiSkinDownloadRunsRef.current[skinId] === runId) {
+          delete tamagotchiSkinDownloadRunsRef.current[skinId];
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    catCustomizationUnlocked,
+    logEvent,
+    remoteTamagotchiAnimationsBySkinId,
+    resolvedTamagotchiSkinId,
+    tamagotchiSkin,
+    tamagotchiSkinAssetBaseUrl,
+  ]);
   const openSkinPicker = useCallback(() => {
     if (!catCustomizationUnlocked) {
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
@@ -46901,9 +48425,8 @@ function AppContent() {
   ]);
 
   useEffect(() => {
-    impulseAlertCooldownRef.current = impulseTracker.lastAlerts || {};
+    impulseAlertCooldownRef.current = normalizeImpulseAlertMap(impulseTracker.lastAlerts);
   }, [impulseTracker.lastAlerts]);
-
 
   useEffect(() => {
     return () => {
@@ -48283,7 +49806,7 @@ function AppContent() {
         rebound: resolveSequence(raw.sequenceHotspots?.rebound),
       },
     };
-  }, [impulseEventsForInsights, language, resolveTemplateCard, titleOverrides]);
+  }, [currentDayKey, impulseEventsForInsights, language, resolveTemplateCard, titleOverrides]);
   const focusRecentSpendTemplateCount = useMemo(() => {
     const now = Date.now();
     const cutoff = now - FOCUS_RECENT_WINDOW_MS;
@@ -50820,7 +52343,7 @@ function AppContent() {
               ...INITIAL_IMPULSE_TRACKER,
               ...parsed,
               events: normalizedEvents,
-              lastAlerts: parsed?.lastAlerts || {},
+              lastAlerts: normalizeImpulseAlertMap(parsed?.lastAlerts),
             });
           } catch (err) {
             console.warn("impulse tracker parse", err);
@@ -53904,23 +55427,30 @@ useEffect(() => {
     });
   }, [canUseBackGesture, handleAppBack]);
 
-  const handleThemeToggle = (mode) => {
+  const handleThemeToggle = (mode, options = {}) => {
     const nextTheme = normalizeThemeId(mode);
     if (nextTheme === PRO_THEME_ID && !premiumState.isPremium) {
       ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.proTheme, { kind: "feature" });
       return;
     }
     triggerHaptic();
+    const nextProThemeAccentId =
+      nextTheme === PRO_THEME_ID && options?.proAccentId
+        ? normalizeProThemeAccentId(options.proAccentId)
+        : proThemeAccentId;
     if (nextTheme === PRO_THEME_ID) {
-      setProThemeAccentPickerVisible(true);
+      if (nextProThemeAccentId !== proThemeAccentId) {
+        setProThemeAccentId(nextProThemeAccentId);
+      }
+      setProThemeAccentPickerVisible(options?.openAccentPicker !== false);
     } else {
       setProThemeAccentPickerVisible(false);
     }
     setTheme(nextTheme);
-    if (nextTheme !== theme) {
+    if (nextTheme !== theme || (nextTheme === PRO_THEME_ID && nextProThemeAccentId !== proThemeAccentId)) {
       logEvent(
         "theme_selected",
-        buildThemeSelectedEventPayload(nextTheme, proThemeAccentId, "theme_toggle")
+        buildThemeSelectedEventPayload(nextTheme, nextProThemeAccentId, "theme_toggle")
       );
     }
   };
@@ -61303,6 +62833,17 @@ useEffect(() => {
         ? newPendingModal.freezeOptionId.trim()
         : DEFAULT_TEMPTATION_PAUSE_OPTION_ID;
     if (editingPendingId) {
+      const existingPendingItem = (Array.isArray(pendingListRef.current) ? pendingListRef.current : []).find(
+        (entry) => entry?.id === editingPendingId
+      );
+      const nextDue = Date.now() + freezeDurationMs;
+      const previousNotificationId =
+        typeof existingPendingItem?.notificationId === "string" &&
+        existingPendingItem.notificationId.trim().length
+          ? existingPendingItem.notificationId
+          : null;
+      const templateId =
+        existingPendingItem?.templateId != null ? String(existingPendingItem.templateId) : null;
       setPendingList((prev) =>
         (Array.isArray(prev) ? prev : []).map((entry) =>
           entry.id === editingPendingId
@@ -61312,14 +62853,10 @@ useEffect(() => {
                 emoji,
                 priceUSD: amountUSD,
                 pricePrecision: manualPrecision,
-                freezeDurationMs:
-                  Number.isFinite(Number(entry?.freezeDurationMs)) && Number(entry.freezeDurationMs) > 0
-                    ? Number(entry.freezeDurationMs)
-                    : freezeDurationMs,
-                freezeOptionId:
-                  typeof entry?.freezeOptionId === "string" && entry.freezeOptionId.trim().length
-                    ? entry.freezeOptionId
-                    : freezeOptionId,
+                freezeDurationMs,
+                freezeOptionId,
+                decisionDue: nextDue,
+                notificationId: null,
               }
             : entry
         )
@@ -61334,6 +62871,33 @@ useEffect(() => {
         freezeOptionId: DEFAULT_TEMPTATION_PAUSE_OPTION_ID,
       });
       triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+      void (async () => {
+        if (previousNotificationId) {
+          await safeNotifications
+            .cancelScheduledNotificationAsync(previousNotificationId)
+            .catch((error) => {
+              console.warn("pending reminder cancel", error);
+            });
+        }
+        const reminderId = await schedulePendingReminder(trimmedTitle, nextDue, {
+          pendingId: editingPendingId,
+          templateId,
+          title: trimmedTitle,
+          emoji,
+          amountUSD,
+          freezeDurationMs,
+        });
+        setPendingList((prev) =>
+          (Array.isArray(prev) ? prev : []).map((entry) =>
+            entry.id === editingPendingId && entry.decisionDue === nextDue
+              ? {
+                  ...entry,
+                  notificationId: reminderId || null,
+                }
+              : entry
+          )
+        );
+      })();
       return;
     }
     const activePendingCount = Array.isArray(pendingListRef.current)
@@ -61380,6 +62944,8 @@ useEffect(() => {
     newPendingModal,
     premiumState.isPremium,
     profile.currency,
+    safeNotifications,
+    schedulePendingReminder,
     setPendingList,
     t,
     triggerHaptic,
@@ -62222,6 +63788,10 @@ useEffect(() => {
       setTemptationInteractions((prev) => {
         const prevEntry = prev?.[templateId] || {};
         const lastInteractionAt = Number(prevEntry.lastInteractionAt) || 0;
+        const resetTimestampRaw = Number(options?.resetFromTimestamp);
+        const resetTimestamp =
+          Number.isFinite(resetTimestampRaw) && resetTimestampRaw > 0 ? resetTimestampRaw : 0;
+        const fromTimestamp = resetTimestamp || lastInteractionAt;
         const reminderTime = reminderOverride || resolveEntryReminderTime(prevEntry);
         const weeklyDays = weeklyDaysOverride || resolveEntryWeeklyDays(prevEntry);
         const monthlyDays = monthlyDaysOverride || resolveEntryMonthlyDays(prevEntry);
@@ -62229,9 +63799,9 @@ useEffect(() => {
         const monthlyDay = monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
         const intervalMs = frequency === "custom" ? customIntervalMs || null : null;
         const nextCheckAt =
-          lastInteractionAt > 0
+          fromTimestamp > 0
             ? buildResetNextCheckAtForFrequency({
-                fromTimestamp: lastInteractionAt,
+                fromTimestamp,
                 frequencyId: frequency,
                 customFrequency: frequencyCustom,
                 reminderHour: reminderTime.hour,
@@ -62261,6 +63831,8 @@ useEffect(() => {
               markPromptShown || prevEntry.frequencyReminderPromptShown === true,
             frequencyReminderManualConfigured:
               markManualConfigured || prevEntry.frequencyReminderManualConfigured === true,
+            lastTimerResetAt: resetTimestamp || prevEntry.lastTimerResetAt || null,
+            missedCycles: resetTimestamp ? 0 : prevEntry.missedCycles || 0,
             frequencyReminderId: null,
             frequencyReminderIds: [],
             frequencyReminderScheduledAt: null,
@@ -62654,6 +64226,7 @@ useEffect(() => {
           weeklyDays: nextWeeklyDays,
           monthlyDays: nextMonthlyDays,
           markManualConfigured,
+          resetFromTimestamp: Date.now(),
         }
       );
     }
@@ -62935,7 +64508,7 @@ useEffect(() => {
   );
 
   const handlePendingExtend = useCallback(
-    async (pendingItem, options = {}) => {
+    (pendingItem, options = {}) => {
       if (!pendingItem) return;
       const template = findTemplateById(pendingItem.templateId);
       const templateFallbackTitle =
@@ -62959,26 +64532,15 @@ useEffect(() => {
           ? options.source.trim()
           : "manual";
       const nextDue = Date.now() + selectedDurationMs;
-      if (pendingItem.notificationId) {
-        safeNotifications.cancelScheduledNotificationAsync(pendingItem.notificationId);
-      }
-      const reminderId = await schedulePendingReminder(title, nextDue, {
-        pendingId: pendingItem.id,
-        templateId: pendingItem.templateId,
-        title,
-        emoji: pendingEmoji,
-        amountUSD: pendingItem.priceUSD || template?.basePriceUSD || 0,
-        freezeDurationMs: selectedDurationMs,
-      });
       setPendingList((prev) =>
-        prev.map((entry) =>
+        (Array.isArray(prev) ? prev : []).map((entry) =>
           entry.id === pendingItem.id
             ? {
                 ...entry,
                 decisionDue: nextDue,
                 freezeDurationMs: selectedDurationMs,
                 freezeOptionId: selectedOptionId || entry.freezeOptionId || null,
-                notificationId: reminderId || null,
+                notificationId: null,
               }
             : entry
         )
@@ -62989,6 +64551,33 @@ useEffect(() => {
         reminder_option: selectedOptionId,
         source,
       });
+      void (async () => {
+        if (pendingItem.notificationId) {
+          await safeNotifications
+            .cancelScheduledNotificationAsync(pendingItem.notificationId)
+            .catch((error) => {
+              console.warn("pending reminder cancel", error);
+            });
+        }
+        const reminderId = await schedulePendingReminder(title, nextDue, {
+          pendingId: pendingItem.id,
+          templateId: pendingItem.templateId,
+          title,
+          emoji: pendingEmoji,
+          amountUSD: pendingItem.priceUSD || template?.basePriceUSD || 0,
+          freezeDurationMs: selectedDurationMs,
+        });
+        setPendingList((prev) =>
+          (Array.isArray(prev) ? prev : []).map((entry) =>
+            entry.id === pendingItem.id && entry.decisionDue === nextDue
+              ? {
+                  ...entry,
+                  notificationId: reminderId || null,
+                }
+              : entry
+          )
+        );
+      })();
     },
     [findTemplateById, language, logEvent, schedulePendingReminder, setPendingList]
   );
@@ -63679,18 +65268,22 @@ useEffect(() => {
       }
       if (impulseAlertInFlightRef.current.has(templateId)) return;
       const now = Date.now();
-      const lastShown = impulseAlertCooldownRef.current?.[templateId] || 0;
-      if (now - lastShown < IMPULSE_ALERT_COOLDOWN_MS) return;
+      const todayKey = currentDayKey || getDayKey(now);
+      const lastAlert = normalizeImpulseAlertRecord(
+        impulseAlertCooldownRef.current?.[templateId]
+      );
+      if (lastAlert?.dayKey === todayKey) return;
       impulseAlertInFlightRef.current.add(templateId);
+      const alertRecord = { dayKey: todayKey, shownAt: now };
       impulseAlertCooldownRef.current = {
-        ...(impulseAlertCooldownRef.current || {}),
-        [templateId]: now,
+        ...normalizeImpulseAlertMap(impulseAlertCooldownRef.current),
+        [templateId]: alertRecord,
       };
       setImpulseTracker((prev) => ({
         ...(prev || INITIAL_IMPULSE_TRACKER),
         lastAlerts: {
-          ...(prev?.lastAlerts || {}),
-          [templateId]: now,
+          ...normalizeImpulseAlertMap(prev?.lastAlerts),
+          [templateId]: alertRecord,
         },
         events: prev?.events || [],
       }));
@@ -63743,6 +65336,7 @@ useEffect(() => {
       }
     },
     [
+      currentDayKey,
       impulseFeaturesUnlocked,
       moodPreset,
       profile.currency,
@@ -65015,6 +66609,90 @@ useEffect(() => {
     tutorialCardVisible,
     tutorialVisible,
   ]);
+  const openBugReport = useCallback(() => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    logEvent("bug_report_fab_clicked", { screen: activeTab });
+    setBugReportVisible(true);
+  }, [activeTab]);
+  const closeBugReport = useCallback(() => {
+    setBugReportVisible(false);
+  }, []);
+  const openHelpGuide = useCallback(() => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    logEvent("help_guide_fab_clicked", { screen: activeTab });
+    setHelpGuideVisible(true);
+  }, [activeTab]);
+  const closeHelpGuide = useCallback(() => {
+    setHelpGuideVisible(false);
+  }, []);
+  const handleHelpGuideScrolled = useCallback(
+    ({ offsetY = 0 } = {}) => {
+      logEvent("help_guide_scrolled", {
+        screen: activeTab,
+        offset_y: Math.round(Number(offsetY) || 0),
+      });
+    },
+    [activeTab]
+  );
+  const handleBugReportFilled = useCallback(() => {
+    logEvent("bug_report_form_filled", { screen: activeTab });
+  }, [activeTab]);
+  const handleBugReportSubmit = useCallback(
+    async ({ description, steps } = {}) => {
+      const copy = resolveBugReportCopy(language);
+      const trimmedDescription = String(description || "").trim();
+      const trimmedSteps = String(steps || "").trim();
+      logEvent("bug_report_form_submitted", {
+        screen: activeTab,
+        has_steps: trimmedSteps.length > 0,
+        description_length: trimmedDescription.length,
+      });
+      const platformVersion = Platform.Version ? ` ${Platform.Version}` : "";
+      const body = [
+        copy.bodyIntro,
+        "",
+        trimmedDescription,
+        "",
+        copy.bodySteps,
+        trimmedSteps || "-",
+        "",
+        copy.bodyContext,
+        `Screen: ${activeTab}`,
+        `Platform: ${Platform.OS}${platformVersion}`,
+        `Language: ${language}`,
+        `Time: ${new Date().toISOString()}`,
+      ].join("\n");
+      const url = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(copy.subject)}&body=${encodeURIComponent(body)}`;
+      try {
+        await Linking.openURL(url);
+        logEvent("bug_report_mail_opened", { screen: activeTab });
+        return true;
+      } catch (error) {
+        console.warn("bug report mail", error);
+        Alert.alert(
+          copy.mailErrorTitle,
+          copy.mailErrorMessage.replace("{{email}}", SUPPORT_EMAIL)
+        );
+        return false;
+      }
+    },
+    [activeTab, language]
+  );
+  const bugReportFabVisible =
+    activeTab !== "profile" &&
+    !startupLogoVisible &&
+    !startupHardLockPendingBeforePaywall &&
+    onboardingStep === "done" &&
+    !blockingModalVisible &&
+    !bugReportVisible &&
+    !helpGuideVisible;
+  const helpGuideFabVisible =
+    !startupLogoVisible &&
+    !startupHardLockPendingBeforePaywall &&
+    onboardingStep === "done" &&
+    !blockingModalVisible &&
+    !bugReportVisible &&
+    !helpGuideVisible;
   const renderActiveScreen = () => {
     if (activeTab === "purchases" && !deferredHydrationReady) {
       return (
@@ -65159,6 +66837,7 @@ useEffect(() => {
             onResetData={handleResetData}
             onPickImage={handlePickImage}
             theme={theme}
+            proThemeAccentId={proThemeAccentId}
             isPremiumUser={premiumState.isPremium}
             language={language}
             currencyValue={profile.currency || DEFAULT_PROFILE.currency}
@@ -65716,6 +67395,21 @@ useEffect(() => {
                 </View>
               )}
               <View style={[styles.screenWrapper, screenKeyboardAdjustmentStyle]}>{renderActiveScreen()}</View>
+              <HelpGuideFab
+                visible={helpGuideFabVisible}
+                topInset={topSafeInset}
+                colors={colors}
+                language={language}
+                activeTab={activeTab}
+                onPress={openHelpGuide}
+              />
+              <BugReportFab
+                visible={bugReportFabVisible}
+                topInset={topSafeInset}
+                colors={colors}
+                language={language}
+                onPress={openBugReport}
+              />
           <ReportsModal
             visible={!startupHardLockPendingBeforePaywall && reportsModalVisible}
             reports={reportsSnapshot}
@@ -65727,6 +67421,22 @@ useEffect(() => {
             currency={profile.currency || DEFAULT_PROFILE.currency}
             language={language}
             isPremiumUser={premiumState.isPremium}
+          />
+          <BugReportModal
+            visible={!startupHardLockPendingBeforePaywall && bugReportVisible}
+            colors={colors}
+            language={language}
+            onClose={closeBugReport}
+            onFilled={handleBugReportFilled}
+            onSubmit={handleBugReportSubmit}
+          />
+          <HelpGuideModal
+            visible={!startupHardLockPendingBeforePaywall && helpGuideVisible}
+            colors={colors}
+            language={language}
+            activeTab={activeTab}
+            onClose={closeHelpGuide}
+            onScrolled={handleHelpGuideScrolled}
           />
           {!startupHardLockPendingBeforePaywall && breakdownVisible && (
             <Modal visible transparent animationType="fade" statusBarTranslucent>
@@ -68716,6 +70426,7 @@ useEffect(() => {
                     {PRO_THEME_ACCENT_OPTIONS.map((option) => {
                       const active = proThemeAccentId === option.id;
                       const optionLabel = resolveProAccentLabel(option, language);
+                      const optionPreview = resolveThemePreviewPalette(PRO_THEME_ID, option.id);
                       return (
                         <TouchableOpacity
                           key={option.id}
@@ -68732,14 +70443,47 @@ useEffect(() => {
                           onPress={() => handleProThemeAccentSelect(option.id, { close: false })}
                         >
                           <View style={styles.proAccentOptionTopRow}>
-                            <View
-                              style={[styles.proAccentSwatch, { backgroundColor: option.accent }]}
-                            />
+                            <View style={styles.proAccentSwatchPair}>
+                              <View
+                                style={[
+                                  styles.proAccentSwatch,
+                                  { backgroundColor: optionPreview.primary },
+                                ]}
+                              />
+                              <View
+                                style={[
+                                  styles.proAccentSwatch,
+                                  { backgroundColor: optionPreview.secondary },
+                                ]}
+                              />
+                            </View>
                             <Text style={[styles.proAccentOptionLabel, { color: colors.text }]}>
                               {`${option.emoji} ${optionLabel}`}
                             </Text>
                           </View>
-                          <View style={[styles.proAccentMiniPreview, { borderColor: colorWithAlpha(option.accent, 0.35) }]}>
+                          <View
+                            style={[
+                              styles.proAccentMiniPreview,
+                              {
+                                borderColor: colorWithAlpha(option.accent, 0.35),
+                                backgroundColor: optionPreview.surface,
+                              },
+                            ]}
+                          >
+                            <View style={styles.proAccentMiniPreviewPalette}>
+                              <View
+                                style={[
+                                  styles.proAccentMiniPreviewColor,
+                                  { backgroundColor: optionPreview.primary },
+                                ]}
+                              />
+                              <View
+                                style={[
+                                  styles.proAccentMiniPreviewColor,
+                                  { backgroundColor: optionPreview.secondary },
+                                ]}
+                              />
+                            </View>
                             <View
                               style={[
                                 styles.proAccentMiniPreviewPill,
@@ -71940,6 +73684,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 7,
   },
+  proAccentSwatchPair: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    flexShrink: 0,
+  },
   proAccentSwatch: {
     width: 14,
     height: 14,
@@ -71956,6 +73706,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 6,
     gap: 5,
+  },
+  proAccentMiniPreviewPalette: {
+    height: 14,
+    borderRadius: 999,
+    overflow: "hidden",
+    flexDirection: "row",
+  },
+  proAccentMiniPreviewColor: {
+    flex: 1,
   },
   proAccentMiniPreviewPill: {
     alignSelf: "flex-start",
@@ -80322,6 +82081,48 @@ const styles = StyleSheet.create({
   reportsBadgeText: {
     ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
   },
+  bugReportFab: {
+    position: "absolute",
+    right: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 240,
+    elevation: 8,
+    overflow: "hidden",
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  bugReportFabBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bugReportFabTint: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bugReportFabIcon: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  helpGuideFab: {
+    position: "absolute",
+    left: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 240,
+    elevation: 8,
+    overflow: "hidden",
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
   profileInput: {
     width: "100%",
     borderWidth: 1,
@@ -80426,6 +82227,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     flexWrap: "wrap",
+  },
+  themeSettingChoices: {
+    gap: 10,
   },
   settingCurrencyScrollWrapper: {
     position: "relative",
@@ -80599,6 +82403,36 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 18,
     borderWidth: 1,
+  },
+  themeSettingChip: {
+    minHeight: 48,
+    minWidth: 132,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  themePreviewPair: {
+    width: 42,
+    height: 24,
+    borderRadius: 999,
+    borderWidth: 1,
+    overflow: "hidden",
+    flexDirection: "row",
+    flexShrink: 0,
+  },
+  themePreviewColor: {
+    flex: 1,
+  },
+  themeSettingTextBlock: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  themeSettingText: {
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: "700",
   },
   resetButton: {
     marginTop: Platform.OS === "ios" ? 16 : 8,
@@ -80840,6 +82674,416 @@ const styles = StyleSheet.create({
   },
   reportLine: {
     ...createSecondaryText({ fontSize: 12, lineHeight: 18 }),
+  },
+  bugReportModalRoot: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  bugReportBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.42)",
+  },
+  bugReportModalWrap: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  bugReportModalCard: {
+    width: "100%",
+    maxWidth: 420,
+    alignSelf: "center",
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+  },
+  bugReportHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 14,
+  },
+  bugReportTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  bugReportTitle: {
+    fontSize: 19,
+    lineHeight: 24,
+    fontWeight: "800",
+  },
+  bugReportSubtitle: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 17, marginTop: 5 }),
+  },
+  bugReportClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bugReportCloseText: {
+    fontSize: 22,
+    lineHeight: 24,
+    fontWeight: "700",
+  },
+  bugReportField: {
+    gap: 7,
+    marginBottom: 12,
+  },
+  bugReportLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  bugReportInput: {
+    width: "100%",
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 14,
+    lineHeight: 19,
+  },
+  bugReportDescriptionInput: {
+    minHeight: 94,
+  },
+  bugReportStepsInput: {
+    minHeight: 74,
+  },
+  bugReportActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 2,
+  },
+  bugReportSecondaryButton: {
+    flex: 1,
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  bugReportPrimaryButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  bugReportSecondaryText: {
+    ...createCtaText({ fontSize: 14, textAlign: "center" }),
+  },
+  bugReportPrimaryText: {
+    ...createCtaText({ fontSize: 14, textAlign: "center" }),
+  },
+  helpGuideModalCard: {
+    width: "100%",
+    maxWidth: 420,
+    alignSelf: "center",
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+    maxHeight: IS_SHORT_DEVICE ? "76%" : "84%",
+  },
+  helpGuideScroll: {
+    flexGrow: 0,
+  },
+  helpGuideScrollContent: {
+    paddingBottom: 12,
+    gap: 12,
+  },
+  helpGuideVisual: {
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 14,
+    gap: 14,
+  },
+  helpGuideVisualHeader: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  helpGuideVisualChip: {
+    flex: 1,
+    minHeight: 34,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  helpGuideVisualChipText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  helpGuideVisualBody: {
+    gap: 10,
+  },
+  helpGuideVisualRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  helpGuideVisualDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  helpGuideVisualTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  helpGuideVisualFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  helpGuideVisualLine: {
+    height: 8,
+    borderRadius: 999,
+  },
+  helpGuideFeedHero: {
+    minHeight: 88,
+    borderRadius: 18,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    gap: 14,
+  },
+  helpGuideFeedHeroText: {
+    flex: 1,
+    gap: 10,
+  },
+  helpGuideFeedPills: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 2,
+  },
+  helpGuideFeedPill: {
+    width: 54,
+    height: 22,
+    borderRadius: 999,
+  },
+  helpGuideMascotBubble: {
+    width: 58,
+    height: 58,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  helpGuideMascotText: {
+    fontSize: 30,
+  },
+  helpGuideFeedBottomRow: {
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "stretch",
+  },
+  helpGuideQuickSpend: {
+    width: 54,
+    borderRadius: 27,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  helpGuideQuickSpendText: {
+    fontSize: 27,
+    lineHeight: 32,
+    fontWeight: "900",
+  },
+  helpGuideMiniCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+    justifyContent: "center",
+  },
+  helpGuideGoalRingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  helpGuideGoalRing: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  helpGuideGoalRingText: {
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  helpGuideGoalBars: {
+    flex: 1,
+  },
+  helpGuideImpulseDots: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 8,
+    marginTop: 2,
+  },
+  helpGuideImpulseDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  helpGuidePendingTimeline: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+  },
+  helpGuidePendingStep: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  helpGuidePendingNode: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+  },
+  helpGuidePendingLine: {
+    flex: 1,
+    height: 3,
+    borderRadius: 999,
+  },
+  helpGuidePendingCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    gap: 12,
+  },
+  helpGuideTimerBar: {
+    height: 8,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  helpGuideRewardGrid: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  helpGuideRewardCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+    gap: 10,
+  },
+  helpGuideRewardTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  helpGuideRewardIcon: {
+    fontSize: 26,
+  },
+  helpGuideRewardBadge: {
+    minWidth: 54,
+    maxWidth: 88,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignItems: "center",
+  },
+  helpGuideRewardBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  helpGuideProfileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  helpGuideProfileAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  helpGuideProfileAvatarText: {
+    fontSize: 30,
+    lineHeight: 34,
+    fontWeight: "900",
+  },
+  helpGuideProfileSettings: {
+    flex: 1,
+    gap: 10,
+  },
+  helpGuideProfileSettingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  helpGuideProfileToggle: {
+    width: 34,
+    height: 18,
+    borderRadius: 999,
+  },
+  helpGuideReportStrip: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+  },
+  helpGuideSection: {
+    flexDirection: "row",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 13,
+  },
+  helpGuideSectionIndex: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  helpGuideSectionIndexText: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "800",
+  },
+  helpGuideSectionTextBlock: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  helpGuideSectionTitle: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+  },
+  helpGuideSectionBody: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "500",
+  },
+  helpGuideCloseButton: {
+    minHeight: 44,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    marginTop: 4,
+  },
+  helpGuideCloseButtonText: {
+    ...createCtaText({ fontSize: 14, textAlign: "center" }),
   },
   profileLinkButton: {
     borderWidth: 1,
@@ -81845,22 +84089,27 @@ const styles = StyleSheet.create({
   frequencyReminderPromptActions: {
     paddingTop: 2,
   },
-  frequencyMonthDayRow: {
-    gap: 8,
-    paddingVertical: 2,
-    paddingRight: 4,
+  frequencyMonthCalendarGrid: {
+    width: "100%",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginHorizontal: -3,
+    marginVertical: -3,
+  },
+  frequencyMonthCalendarCell: {
+    width: `${100 / 7}%`,
+    padding: 3,
   },
   frequencyMonthDayChip: {
-    borderRadius: 12,
+    width: "100%",
+    aspectRatio: 1,
+    borderRadius: 10,
     borderWidth: 1,
-    minWidth: 42,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 8,
   },
   frequencyMonthDayChipText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
   },
   reminderTimeSelectedText: {
@@ -90809,9 +93058,12 @@ function FrequencyCustomModal({
     <Modal
       visible={visible}
       transparent
+      forceNativeHost
       animationType="fade"
       onRequestClose={onCancel}
       statusBarTranslucent
+      navigationBarTranslucent
+      hardwareAccelerated
     >
       <TouchableWithoutFeedback onPress={() => dismissKeyboardOrRun(onCancel)}>
         <View style={[styles.quickModalBackdrop, keyboardPaddingStyle]}>
@@ -91373,40 +93625,39 @@ function MonthlyDayPicker({
       <Text style={[styles.frequencyPickerLabel, { color: colors.muted }]}>
         {t("frequencyMonthlyDayLabel")}
       </Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.frequencyMonthDayRow}
-      >
+      <View style={styles.frequencyMonthCalendarGrid}>
         {MONTHLY_DAY_OPTIONS.map((dayValue) => {
           const isActive = selectedSet.has(dayValue);
           return (
-            <TouchableOpacity
-              key={dayValue}
-              style={[
-                styles.frequencyMonthDayChip,
-                {
-                  borderColor: isActive ? colors.text : colors.border,
-                  backgroundColor: isActive
-                    ? colorWithAlpha(colors.text, 0.12)
-                    : colorWithAlpha(colors.text, 0.04),
-                },
-              ]}
-              onPress={() => toggleDay(dayValue)}
-              activeOpacity={0.85}
-            >
-              <Text
+            <View key={dayValue} style={styles.frequencyMonthCalendarCell}>
+              <TouchableOpacity
                 style={[
-                  styles.frequencyMonthDayChipText,
-                  { color: isActive ? colors.text : colors.muted },
+                  styles.frequencyMonthDayChip,
+                  {
+                    borderColor: isActive ? colors.text : colors.border,
+                    backgroundColor: isActive
+                      ? colorWithAlpha(colors.text, 0.12)
+                      : colorWithAlpha(colors.text, 0.04),
+                  },
                 ]}
+                onPress={() => toggleDay(dayValue)}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
               >
-                {String(dayValue)}
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.frequencyMonthDayChipText,
+                    { color: isActive ? colors.text : colors.muted },
+                  ]}
+                >
+                  {String(dayValue)}
+                </Text>
+              </TouchableOpacity>
+            </View>
           );
         })}
-      </ScrollView>
+      </View>
       <Text style={[styles.reminderTimeSelectedText, { color: colors.muted }]}>
         {selectedSummary}
       </Text>

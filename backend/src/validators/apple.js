@@ -21,7 +21,7 @@ const decodeJwsPayload = (jws = "") => {
     const padded = normalized + "=".repeat((4 - (normalized.length % 4 || 4)) % 4);
     const decoded = Buffer.from(padded, "base64").toString("utf8");
     return JSON.parse(decoded);
-  } catch (error) {
+  } catch (_error) {
     return null;
   }
 };

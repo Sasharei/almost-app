@@ -143,7 +143,7 @@ export const verifySessionToken = (token = "") => {
         platform: normalizePlatform(decodedPayload?.platform) || null,
       },
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       ok: false,
       reason: "invalid_token_payload",

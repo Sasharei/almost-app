@@ -1191,7 +1191,10 @@ const PremiumPaywallModal = ({
     };
   }, [isSupportIntroStageVisible, supportMessageProgress, visible]);
 
-  const comparisonRows = Array.isArray(copy?.comparisonRows) ? copy.comparisonRows : [];
+  const comparisonRows = useMemo(
+    () => (Array.isArray(copy?.comparisonRows) ? copy.comparisonRows : []),
+    [copy?.comparisonRows]
+  );
   const benefitBullets = useMemo(() => {
     const source = Array.isArray(copy?.benefitBullets) ? copy.benefitBullets : [];
     if (source.length) return source.slice(0, 4);
@@ -1708,13 +1711,6 @@ const PremiumPaywallModal = ({
     copy?.noCommitmentLine || "No commitment, cancel anytime",
     normalizedLanguage
   );
-  const selectedPlanCurrencyCode =
-    (typeof selectedPlan?.currencyCode === "string" && selectedPlan.currencyCode.trim().toUpperCase()) ||
-    (planCards.find((entry) => typeof entry?.currencyCode === "string" && entry.currencyCode.trim())?.currencyCode
-      ?.trim()
-      .toUpperCase()) ||
-    (typeof selectedPlanCtaPrice === "string" && (selectedPlanCtaPrice.match(/[A-Z]{3}/) || [])[0]) ||
-    "USD";
   const selectedPlanHasTrial = paywallHasAnyTrialPlan && !!selectedPlan?.hasTrial;
   const normalizedSelectedPlanId =
     typeof selectedPlan?.id === "string" ? selectedPlan.id.trim().toLowerCase() : "";
@@ -1725,15 +1721,6 @@ const PremiumPaywallModal = ({
   const primaryButtonActiveColor = "#18B45B";
   const primaryButtonDisabledColor = "rgba(24,180,91,0.45)";
   const primaryButtonShadowColor = "#18B45B";
-  const selectedPlanTrialPriceCandidate =
-    typeof selectedPlan?.ctaTrialPriceLabel === "string" ? selectedPlan.ctaTrialPriceLabel.trim() : "";
-  const selectedPlanTrialPriceHasZero =
-    !!selectedPlanTrialPriceCandidate &&
-    /\b0(?:[.,]0+)?\b/.test(normalizeWesternDigits(selectedPlanTrialPriceCandidate));
-  const selectedPlanTrialPrice = localizePaywallDigits(
-    selectedPlanTrialPriceHasZero ? selectedPlanTrialPriceCandidate : `${selectedPlanCurrencyCode} 0`,
-    normalizedLanguage
-  );
   const primaryButtonTitle = shouldUseTrialCta
     ? selectedPlanTrialCta || copy?.ctaPrimary || ""
     : selectedPlanRegularCta || copy?.ctaPrimary || selectedPlanCtaPrice || "";

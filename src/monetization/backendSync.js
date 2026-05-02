@@ -39,7 +39,7 @@ const getBackendBaseUrl = () => {
 const parseResponseJson = (responseBody = "") => {
   try {
     return responseBody ? JSON.parse(responseBody) : null;
-  } catch (error) {
+  } catch (_error) {
     return null;
   }
 };

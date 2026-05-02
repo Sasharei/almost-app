@@ -22,7 +22,7 @@ const parseJsonEnv = (value = "") => {
   if (!value) return null;
   try {
     return JSON.parse(value);
-  } catch (error) {
+  } catch (_error) {
     return null;
   }
 };

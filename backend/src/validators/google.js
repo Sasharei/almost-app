@@ -122,7 +122,7 @@ export const validateGooglePurchase = async ({ purchaseToken, productId }) => {
       if (data) {
         return parseSubscriptionResult(data, purchaseToken);
       }
-    } catch (subscriptionError) {
+    } catch (_subscriptionError) {
       // Fallback to one-time product flow.
     }
 

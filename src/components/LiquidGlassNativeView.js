@@ -29,7 +29,7 @@ const resolveNativeComponent = () => {
     try {
       resolvedNativeComponent = requireNativeComponent(candidate);
       return resolvedNativeComponent;
-    } catch (error) {
+    } catch (_error) {
       // no-op: keep trying candidate names
     }
   }
