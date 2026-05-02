@@ -430,6 +430,70 @@ const resolvePlanTextScale = (language = "en") => {
   return 1;
 };
 
+const collectTextContent = (value) => {
+  if (value === null || value === undefined || typeof value === "boolean") return "";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (Array.isArray(value)) return value.map(collectTextContent).join("");
+  if (React.isValidElement(value)) return collectTextContent(value.props?.children);
+  return "";
+};
+
+const getTextLengthUnits = (value = "") =>
+  Array.from(String(value || "")).reduce((total, char) => {
+    if (/\s/u.test(char)) return total + 0.35;
+    if (/[\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/u.test(char)) return total + 1.4;
+    if (/[\u0600-\u06FF]/u.test(char)) return total + 1.05;
+    if (/[A-ZА-ЯЁÄÖÜÀ-Þ]/u.test(char)) return total + 1.08;
+    return total + 1;
+  }, 0);
+
+const clampNumber = (value, min, max) => Math.max(min, Math.min(max, value));
+
+const getAdaptiveTextMetrics = ({
+  children,
+  style,
+  numberOfLines = 1,
+  minFontSize = 12,
+  maxUnitsPerLine = 18,
+}) => {
+  const flattened = StyleSheet.flatten(style) || {};
+  const baseFontSize = Number(flattened.fontSize) || 14;
+  const baseLineHeight = Number(flattened.lineHeight) || Math.round(baseFontSize * 1.2);
+  const safeLineCount = Math.max(1, Number(numberOfLines) || 1);
+  const textUnitsPerLine = getTextLengthUnits(collectTextContent(children)) / safeLineCount;
+  const safeMaxUnits = Math.max(1, Number(maxUnitsPerLine) || 1);
+  const minScale = clampNumber(minFontSize / baseFontSize, 0.01, 1);
+  const scale =
+    textUnitsPerLine <= safeMaxUnits
+      ? 1
+      : clampNumber(safeMaxUnits / textUnitsPerLine, minScale, 1);
+  const fontSize = Math.max(minFontSize, Math.round(baseFontSize * scale));
+  const lineHeightScale = fontSize / baseFontSize;
+  const lineHeight = Math.max(fontSize + 2, Math.round(baseLineHeight * lineHeightScale));
+
+  return { fontSize, lineHeight };
+};
+
+const AdaptivePaywallText = ({
+  children,
+  style,
+  numberOfLines = 1,
+  minFontSize = 12,
+  maxUnitsPerLine = 18,
+  ...props
+}) => (
+  <Text
+    {...props}
+    style={[
+      style,
+      getAdaptiveTextMetrics({ children, style, numberOfLines, minFontSize, maxUnitsPerLine }),
+    ]}
+    numberOfLines={numberOfLines}
+  >
+    {children}
+  </Text>
+);
+
 const PremiumPaywallModalV2 = ({
   visible = false,
   dismissible = true,
@@ -720,14 +784,14 @@ const PremiumPaywallModalV2 = ({
                 activeOpacity={0.72}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Text
+                <AdaptivePaywallText
                   style={[styles.headerDismissButtonText, { color: palette.text }, textAlignStyle]}
                   numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.62}
+                  minFontSize={10}
+                  maxUnitsPerLine={28}
                 >
                   {continueLimitedLabel}
-                </Text>
+                </AdaptivePaywallText>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -752,14 +816,14 @@ const PremiumPaywallModalV2 = ({
             </View>
 
             <View style={styles.copyBlock}>
-              <Text
+              <AdaptivePaywallText
                 style={[styles.title, { color: palette.text }, textAlignStyle]}
                 numberOfLines={titleNumberOfLines}
-                adjustsFontSizeToFit
-                minimumFontScale={0.74}
+                minFontSize={14}
+                maxUnitsPerLine={22}
               >
                 {title}
-              </Text>
+              </AdaptivePaywallText>
               {!!socialProof ? (
                 <View
                   style={[
@@ -767,14 +831,14 @@ const PremiumPaywallModalV2 = ({
                     { backgroundColor: palette.chipBg, borderColor: palette.accent },
                   ]}
                 >
-                  <Text
+                  <AdaptivePaywallText
                     style={[styles.socialProofText, { color: palette.accentText }, textAlignStyle]}
                     numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.8}
+                    minFontSize={10}
+                    maxUnitsPerLine={38}
                   >
                     {socialProof}
-                  </Text>
+                  </AdaptivePaywallText>
                 </View>
               ) : null}
             </View>
@@ -921,14 +985,14 @@ const PremiumPaywallModalV2 = ({
                                 { backgroundColor: palette.accent },
                               ]}
                             >
-                              <Text
+                              <AdaptivePaywallText
                                 style={styles.trialBadgeText}
                                 numberOfLines={1}
-                                adjustsFontSizeToFit
-                                minimumFontScale={0.72}
+                                minFontSize={10}
+                                maxUnitsPerLine={18}
                               >
                                 {freeTrialLabel}
-                              </Text>
+                              </AdaptivePaywallText>
                             </View>
                           ) : null}
                         </View>
@@ -947,7 +1011,7 @@ const PremiumPaywallModalV2 = ({
                       {isYearly ? (
                         <>
                           {!!yearlyPrimaryLine ? (
-                            <Text
+                            <AdaptivePaywallText
                               style={[
                                 styles.planYearlyPrimaryLine,
                                 planTypography.yearlyPrimary,
@@ -955,14 +1019,14 @@ const PremiumPaywallModalV2 = ({
                                 textAlignStyle,
                               ]}
                               numberOfLines={1}
-                              adjustsFontSizeToFit
-                              minimumFontScale={0.66}
+                              minFontSize={16}
+                              maxUnitsPerLine={18}
                             >
                               {yearlyPrimaryLine}
-                            </Text>
+                            </AdaptivePaywallText>
                           ) : null}
                           {!!yearlyThenLine ? (
-                            <Text
+                            <AdaptivePaywallText
                               style={[
                                 styles.planYearlyThenLine,
                                 planTypography.yearlyThen,
@@ -970,14 +1034,14 @@ const PremiumPaywallModalV2 = ({
                                 textAlignStyle,
                               ]}
                               numberOfLines={1}
-                              adjustsFontSizeToFit
-                              minimumFontScale={0.68}
+                              minFontSize={12}
+                              maxUnitsPerLine={24}
                             >
                               {yearlyThenLine}
-                            </Text>
+                            </AdaptivePaywallText>
                           ) : null}
                           {!!yearlyPerMonthLine ? (
-                            <Text
+                            <AdaptivePaywallText
                               style={[
                                 styles.planYearlyPerMonthLine,
                                 planTypography.yearlyPerMonth,
@@ -985,17 +1049,17 @@ const PremiumPaywallModalV2 = ({
                                 textAlignStyle,
                               ]}
                               numberOfLines={1}
-                              adjustsFontSizeToFit
-                              minimumFontScale={0.68}
+                              minFontSize={12}
+                              maxUnitsPerLine={24}
                             >
                               {yearlyPerMonthLine}
-                            </Text>
+                            </AdaptivePaywallText>
                           ) : null}
                         </>
                       ) : null}
 
                       {isMonthly ? (
-                        <Text
+                        <AdaptivePaywallText
                           style={[
                             styles.planMonthlySingleLine,
                             planTypography.monthlySingle,
@@ -1003,16 +1067,16 @@ const PremiumPaywallModalV2 = ({
                             textAlignStyle,
                           ]}
                           numberOfLines={1}
-                          adjustsFontSizeToFit
-                          minimumFontScale={0.58}
+                          minFontSize={14}
+                          maxUnitsPerLine={26}
                         >
                           {monthlyLine}
-                        </Text>
+                        </AdaptivePaywallText>
                       ) : null}
 
                       {showLegacyLayout ? (
                         <>
-                          <Text
+                          <AdaptivePaywallText
                             style={[
                               styles.planTitle,
                               planTypography.planTitle,
@@ -1020,13 +1084,13 @@ const PremiumPaywallModalV2 = ({
                               textAlignStyle,
                             ]}
                             numberOfLines={1}
-                            adjustsFontSizeToFit
-                            minimumFontScale={0.75}
+                            minFontSize={12}
+                            maxUnitsPerLine={18}
                           >
                             {titleLabel}
-                          </Text>
+                          </AdaptivePaywallText>
                           {!!display.oldPrice ? (
-                            <Text
+                            <AdaptivePaywallText
                               style={[
                                 styles.planOldPrice,
                                 planTypography.planOldPrice,
@@ -1034,14 +1098,14 @@ const PremiumPaywallModalV2 = ({
                                 textAlignStyle,
                               ]}
                               numberOfLines={1}
-                              adjustsFontSizeToFit
-                              minimumFontScale={0.75}
+                              minFontSize={10}
+                              maxUnitsPerLine={18}
                             >
                               {display.oldPrice}
-                            </Text>
+                            </AdaptivePaywallText>
                           ) : null}
                           {!!display.currentPrice ? (
-                            <Text
+                            <AdaptivePaywallText
                               style={[
                                 styles.planCurrentPrice,
                                 planTypography.planCurrentPrice,
@@ -1051,11 +1115,11 @@ const PremiumPaywallModalV2 = ({
                                 textAlignStyle,
                               ]}
                               numberOfLines={1}
-                              adjustsFontSizeToFit
-                              minimumFontScale={0.7}
+                              minFontSize={12}
+                              maxUnitsPerLine={18}
                             >
                               {display.currentPrice}
-                            </Text>
+                            </AdaptivePaywallText>
                           ) : null}
                         </>
                       ) : null}

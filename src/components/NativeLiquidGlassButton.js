@@ -45,7 +45,7 @@ const resolveNativeComponent = () => {
     try {
       resolvedNativeComponent = requireNativeComponent(candidate);
       return resolvedNativeComponent;
-    } catch (error) {
+    } catch (_error) {
       // keep trying candidates
     }
   }

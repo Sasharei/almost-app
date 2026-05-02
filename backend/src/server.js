@@ -4,6 +4,7 @@ import helmet from "helmet";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { LRUCache } from "lru-cache";
 import { z } from "zod";
 import { config, getBackendReadiness, isProduction } from "./config.js";
@@ -780,10 +781,19 @@ const start = async () => {
   process.on("SIGTERM", () => {
     void shutdown("SIGTERM");
   });
+
+  return server;
 };
 
-start().catch((error) => {
-  // eslint-disable-next-line no-console
-  console.error("server failed to start", error);
-  process.exit(1);
-});
+const isDirectRun =
+  !!process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+
+if (isDirectRun && config.nodeEnv !== "test") {
+  start().catch((error) => {
+    // eslint-disable-next-line no-console
+    console.error("server failed to start", error);
+    process.exit(1);
+  });
+}
+
+export { app, assertSecureStartupConfig, buildHealthPayload, start };

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "test": "NODE_ENV=test node --test"
   },
   "dependencies": {
     "@apple/app-store-server-library": "^1.5.1",

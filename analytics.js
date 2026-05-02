@@ -9,7 +9,7 @@ try {
   // Optional dependency – only available in native builds.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   analytics = require("@react-native-firebase/analytics")?.default || null;
-} catch (error) {
+} catch (_error) {
   analytics = null;
 }
 
@@ -18,7 +18,7 @@ try {
   // Optional dependency – only available in native builds.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   perf = require("@react-native-firebase/perf")?.default || null;
-} catch (error) {
+} catch (_error) {
   perf = null;
 }
 
@@ -27,7 +27,7 @@ try {
   // Optional dependency – only available in native builds.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   appsFlyer = require("react-native-appsflyer")?.default || null;
-} catch (error) {
+} catch (_error) {
   appsFlyer = null;
 }
 
@@ -36,7 +36,7 @@ try {
   // Optional dependency – only available on native builds.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   FacebookAppEvents = require("react-native-fbsdk-next").AppEventsLogger;
-} catch (error) {
+} catch (_error) {
   FacebookAppEvents = null;
 }
 
@@ -46,7 +46,7 @@ try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const TikTokModule = require("react-native-tiktok-business-sdk");
   TikTokBusiness = TikTokModule?.TikTokBusiness || TikTokModule?.default || null;
-} catch (error) {
+} catch (_error) {
   TikTokBusiness = null;
 }
 
@@ -55,7 +55,7 @@ try {
   // Optional dependency – only available on native builds.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   amplitudeAnalytics = require("@amplitude/analytics-react-native");
-} catch (error) {
+} catch (_error) {
   amplitudeAnalytics = null;
 }
 
@@ -65,7 +65,7 @@ try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   AmplitudeSessionReplayPlugin =
     require("@amplitude/plugin-session-replay-react-native")?.SessionReplayPlugin || null;
-} catch (error) {
+} catch (_error) {
   AmplitudeSessionReplayPlugin = null;
 }
 
