@@ -34,7 +34,20 @@ import { parseGoogleRtdnMessage } from "./webhooks/google.js";
 
 const app = express();
 
-app.use(helmet());
+const serverDir = path.dirname(fileURLToPath(import.meta.url));
+const resolveTamagotchiSkinAssetDir = () =>
+  [
+    path.resolve(process.cwd(), "assets", "tamagotchi_skins"),
+    path.resolve(process.cwd(), "..", "assets", "tamagotchi_skins"),
+    path.resolve(serverDir, "..", "public", "tamagotchi_skins"),
+  ].find((candidate) => fs.existsSync(candidate));
+const tamagotchiSkinAssetDir = resolveTamagotchiSkinAssetDir();
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
 if (Array.isArray(config.corsOrigins) && config.corsOrigins.length) {
   const allowedOrigins = new Set(config.corsOrigins);
   app.use(
@@ -50,6 +63,16 @@ if (Array.isArray(config.corsOrigins) && config.corsOrigins.length) {
   );
 }
 app.use(express.json({ limit: "1mb" }));
+if (tamagotchiSkinAssetDir) {
+  app.use(
+    "/assets/tamagotchi_skins",
+    express.static(tamagotchiSkinAssetDir, {
+      immutable: true,
+      maxAge: "30d",
+      fallthrough: false,
+    })
+  );
+}
 
 const INSTALL_ID_REGEX = /^[a-zA-Z0-9._:-]{16,200}$/;
 
@@ -796,4 +819,4 @@ if (isDirectRun && config.nodeEnv !== "test") {
   });
 }
 
-export { app, assertSecureStartupConfig, buildHealthPayload, start };
+export { app, assertSecureStartupConfig, buildHealthPayload, resolveTamagotchiSkinAssetDir, start };

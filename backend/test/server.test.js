@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 
-const { app, buildHealthPayload } = await import("../src/server.js");
+const { app, buildHealthPayload, resolveTamagotchiSkinAssetDir } = await import("../src/server.js");
 
 const getRegisteredRoutes = () =>
   app._router.stack
@@ -28,4 +30,15 @@ test("app registers core monetization routes", () => {
   assert.ok(routes.includes("GET /v1/entitlements/:appUserId"));
   assert.ok(routes.includes("POST /v1/entitlements/sync"));
   assert.ok(routes.includes("POST /v1/iap/validate"));
+});
+
+test("app exposes tamagotchi skin static assets", () => {
+  const assetDir = resolveTamagotchiSkinAssetDir();
+  const staticMiddleware = app._router.stack.find(
+    (layer) => layer.name === "serveStatic" && String(layer.regexp).includes("assets")
+  );
+
+  assert.ok(staticMiddleware);
+  assert.equal(typeof assetDir, "string");
+  assert.ok(fs.existsSync(path.join(assetDir, "green", "Cat_idle.webp")));
 });

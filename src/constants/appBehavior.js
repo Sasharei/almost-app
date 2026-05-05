@@ -206,6 +206,7 @@ export const STORAGE_KEYS = {
   BUDGET_LIMITS: "@almost_budget_limits",
   INCOME_PROMPT: "@almost_income_prompt",
   BUDGET_OVERSPEND: "@almost_budget_overspend",
+  BUDGET_LEDGER: "@almost_budget_ledger",
   DAILY_GOAL_COLLECTED: "@almost_daily_goal_collected",
   PREMIUM_INSTALL_ID: "@almost_premium_install_id",
   PREMIUM_INSTALL_SECRET: "@almost_premium_install_secret",

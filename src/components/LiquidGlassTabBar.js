@@ -21,8 +21,8 @@ const TAB_ICON_PATHS = {
   cart: ["M4 6.8h16M4 11.8h12.8M4 16.8h9.6", "M17.5 14.5l2.5 2.5-2.5 2.5"],
   pending: ["M12 5v7l4.2 2.4", "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"],
   purchases: [
-    "M4 9.5h16V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9.5z",
-    "M12 9.5V21M4 13.4h16M7.4 9.5c-1.3 0-2.4-1-2.4-2.3S6.1 5 7.4 5c2.2 0 3.3 2.2 4.6 4.5M16.6 9.5c1.3 0 2.4-1 2.4-2.3S17.9 5 16.6 5c-2.2 0-3.3 2.2-4.6 4.5",
+    "M4 7.5h16a1.5 1.5 0 0 1 1.5 1.5v9.2a1.8 1.8 0 0 1-1.8 1.8H5.8A1.8 1.8 0 0 1 4 18.2V7.5z",
+    "M4 7.5V6.8A2.8 2.8 0 0 1 6.8 4h11.4M16.5 13.7h5M17.8 13.7a1 1 0 1 0 0 .1",
   ],
   profile: [
     "M12 12.5a4.1 4.1 0 1 0 0-8.2 4.1 4.1 0 0 0 0 8.2z",
@@ -34,7 +34,7 @@ const TAB_SYMBOL_NAMES = {
   feed: "house",
   cart: "chart.line.uptrend.xyaxis",
   pending: "line.3.horizontal",
-  purchases: "gift",
+  purchases: "wallet.pass",
   profile: "person",
 };
 
@@ -102,11 +102,10 @@ const resolveTabBadge = ({
   reportsBadgeVisible,
   reportsUnlocked,
 }) => {
-  if (tab === "cart" && challengesUnlocked && challengeRewardsBadgeCount > 0) {
-    return challengeRewardsBadgeCount;
-  }
-  if (tab === "purchases" && rewardsUnlocked && rewardsBadgeCount > 0) {
-    return rewardsBadgeCount;
+  if (tab === "cart") {
+    const challengeCount = challengesUnlocked ? Math.max(0, Number(challengeRewardsBadgeCount) || 0) : 0;
+    const rewardCount = rewardsUnlocked ? Math.max(0, Number(rewardsBadgeCount) || 0) : 0;
+    return challengeCount + rewardCount;
   }
   if (tab === "profile" && reportsUnlocked && reportsBadgeVisible) {
     return 1;
