@@ -914,6 +914,7 @@ const PremiumPaywallModal = ({
   safeAreaTopInset = 0,
   safeAreaBottomInset = 0,
   colors,
+  statusBarOverlay = null,
 }) => {
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCardsProp));
   const [showOtherPlans, setShowOtherPlans] = useState(false);
@@ -3200,6 +3201,7 @@ const PremiumPaywallModal = ({
         }
       }}
     >
+      {statusBarOverlay}
       <View style={styles.root}>
         {__DEV__ && visible ? (
           <View

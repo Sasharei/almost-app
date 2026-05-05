@@ -513,6 +513,7 @@ const PremiumPaywallModalV2 = ({
   safeAreaTopInset = 0,
   safeAreaBottomInset = 0,
   colors,
+  statusBarOverlay = null,
 }) => {
   const { height: viewportHeight } = useWindowDimensions();
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCardsProp));
@@ -763,6 +764,7 @@ const PremiumPaywallModalV2 = ({
         onClose("system_back");
       }}
     >
+      {statusBarOverlay}
       <View style={[styles.backdrop, { backgroundColor: palette.backdrop }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleBackdropPress} />
 

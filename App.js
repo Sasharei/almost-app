@@ -20,6 +20,7 @@ import {
   TextInput as RNTextInput,
   Alert,
   Keyboard,
+  KeyboardAvoidingView,
   TouchableWithoutFeedback,
   Platform,
   Dimensions,
@@ -75,6 +76,14 @@ try {
   FirebaseRemoteConfigModule = require("@react-native-firebase/remote-config")?.default || null;
 } catch (error) {
   FirebaseRemoteConfigModule = null;
+}
+let BudgetTextRecognitionModule = null;
+try {
+  // Optional native module. Requires a rebuilt app, but runs OCR fully on-device once linked.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  BudgetTextRecognitionModule = require("@react-native-ml-kit/text-recognition")?.default || null;
+} catch (error) {
+  BudgetTextRecognitionModule = null;
 }
 import {
   useFonts,
@@ -529,6 +538,8 @@ const safeUseSafeAreaInsets =
         return { top: 0, bottom: 0, left: 0, right: 0 };
       };
 
+const StatusGlassContext = React.createContext(null);
+
 let StoreReview = null;
 try {
   // Optional native module - older builds might not include it.
@@ -698,6 +709,8 @@ const Modal = ({
   children,
   ...rest
 }) => {
+  const statusGlassConfig = useContext(StatusGlassContext);
+  const statusGlassOverlay = statusGlassConfig ? <StatusGlass {...statusGlassConfig} /> : null;
   const iosFabricRendererActive = Platform.OS === "ios" && !!global?.nativeFabricUIManager;
   const isAndroidTransparentModal = Platform.OS === "android" && transparent === true;
   const resolvedStatusBarTranslucent = isAndroidTransparentModal
@@ -722,6 +735,7 @@ const Modal = ({
         onRequestClose={onRequestClose}
         onDismiss={onDismiss}
       >
+        {statusGlassOverlay}
         {children}
       </InTreeTransparentModal>
     );
@@ -737,6 +751,7 @@ const Modal = ({
         onRequestClose={onRequestClose}
         onDismiss={onDismiss}
       >
+        {statusGlassOverlay}
         {children}
       </InTreeTransparentModal>
     );
@@ -754,6 +769,7 @@ const Modal = ({
       onRequestClose={onRequestClose}
       onDismiss={onDismiss}
     >
+      {statusGlassOverlay}
       {children}
     </RNModal>
   );
@@ -2484,10 +2500,15 @@ const resolveBundledAssetUri = (source) => {
 };
 const TAMAGOTCHI_CRY_GIF_URI = resolveBundledAssetUri(TAMAGOTCHI_CRY_ASSET);
 const TAMAGOTCHI_SKIN_ASSET_BASE_URL_RC_KEY = "tamagotchi_skin_asset_base_url";
+const MONETIZATION_BACKEND_ASSET_BASE_URL_ENV = resolveNonEmptyString(
+  process.env.EXPO_PUBLIC_MONETIZATION_BACKEND_URL || ""
+).replace(/\/+$/g, "");
 const TAMAGOTCHI_SKIN_ASSET_BASE_URL_ENV = resolveNonEmptyString(
   process.env.EXPO_PUBLIC_TAMAGOTCHI_SKIN_ASSET_BASE_URL ||
     process.env.EXPO_PUBLIC_ASSET_BASE_URL ||
-    ""
+    (MONETIZATION_BACKEND_ASSET_BASE_URL_ENV
+      ? `${MONETIZATION_BACKEND_ASSET_BASE_URL_ENV}/assets`
+      : "")
 );
 const normalizeTamagotchiSkinAssetBaseUrl = (value = "") =>
   resolveNonEmptyString(value).replace(/\/+$/g, "");
@@ -3294,6 +3315,10 @@ const describeHistoryEntry = (entry, { t, formatLocalAmount }) => {
       return t("historyRewardClaimed", { title: title || meta.rewardId || t("historyUnknown") });
     case "income_savings":
       return t("historyIncomeSavings", { amount: formatLocalAmount(meta.amountUSD) });
+    case "budget_savings_deposit":
+      return t("historyBudgetSavingsDeposit", { amount: formatLocalAmount(meta.amountUSD) });
+    case "budget_debt_payment":
+      return t("historyBudgetDebtPayment", { amount: formatLocalAmount(meta.amountUSD) });
     default:
       return t("historyUnknown");
   }
@@ -4953,6 +4978,7 @@ function AlmiTamagotchi({
   isPlayDeprived = false,
   desaturation = 0,
   animations = CLASSIC_TAMAGOTCHI_ANIMATIONS,
+  animationSetKey = DEFAULT_TAMAGOTCHI_SKIN,
   imageOffsetX = ALMI_MASCOT_IMAGE_OFFSET_X,
 }) {
   const [currentKey, setCurrentKey] = useState("idle");
@@ -5062,6 +5088,7 @@ function AlmiTamagotchi({
   ]);
 
   const source = animations[currentKey] || animations.idle;
+  const sourceKey = normalizeMonetizationToken(animationSetKey, DEFAULT_TAMAGOTCHI_SKIN);
   const flattenedWrapStyle = StyleSheet.flatten([styles.almiMascotWrap, style]) || {};
   const resolvedClipRadius = Number.isFinite(flattenedWrapStyle?.borderRadius)
     ? Math.max(0, flattenedWrapStyle.borderRadius)
@@ -5073,7 +5100,7 @@ function AlmiTamagotchi({
     <View style={[styles.almiMascotWrap, style]}>
       <View style={[styles.almiMascotClip, { borderRadius: resolvedClipRadius }]}>
         <Image
-          key={`almi_${currentKey}`}
+          key={`almi_${sourceKey}_${currentKey}`}
           source={source}
           defaultSource={animations.idle}
           style={[
@@ -9458,7 +9485,7 @@ const LANGUAGE_OVERRIDES = {
     feedTab: "Feed",
     wishlistTab: "Fortschritt",
     pendingTab: "Merkliste",
-    purchasesTitle: "Belohnungen",
+    purchasesTitle: "Budget",
     profileTab: "Profil",
     progressHeroTitle: "Erfasste Ersparnisse",
     heroSpendRecentTitle: "Letzte Aktivitäten:",
@@ -9517,7 +9544,7 @@ const LANGUAGE_OVERRIDES = {
     feedTab: "الخلاصة",
     wishlistTab: "التقدم",
     pendingTab: "التفكير",
-    purchasesTitle: "المكافآت",
+    purchasesTitle: "الميزانية",
     profileTab: "الملف الشخصي",
     progressHeroTitle: "المدخرات المسجلة",
     heroSpendRecentTitle: "النشاط الأخير:",
@@ -9576,7 +9603,7 @@ const LANGUAGE_OVERRIDES = {
     feedTab: "الخلاصة",
     wishlistTab: "التقدم",
     pendingTab: "التفكير",
-    purchasesTitle: "المكافآت",
+    purchasesTitle: "الميزانية",
     profileTab: "الملف الشخصي",
     progressHeroTitle: "المدخرات المسجلة",
     heroSpendRecentTitle: "النشاط الأخير:",
@@ -9635,7 +9662,7 @@ const LANGUAGE_OVERRIDES = {
     feedTab: "动态",
     wishlistTab: "进度",
     pendingTab: "思考",
-    purchasesTitle: "奖励",
+    purchasesTitle: "预算",
     profileTab: "个人资料",
     progressHeroTitle: "已记录储蓄",
     heroSpendRecentTitle: "最近活动：",
@@ -10933,6 +10960,187 @@ const normalizeProfileReports = (reports) => {
 };
 
 const AVATAR_STORAGE_DIR = "profile-avatars/";
+const BUDGET_PROOF_STORAGE_DIR = "budget-proofs/";
+
+const INITIAL_BUDGET_LEDGER = {
+  savingsDeposits: [],
+  debtPayments: [],
+  debt: {
+    initialDebtUSD: 0,
+    aprPercent: 0,
+    minMonthlyPaymentUSD: 0,
+    createdAt: null,
+    updatedAt: null,
+  },
+};
+
+const normalizeBudgetProofStorageValue = (value) => {
+  if (!value || typeof value !== "string") return "";
+  const documentDir = FileSystem.documentDirectory;
+  if (documentDir && value.startsWith(documentDir)) {
+    return value.slice(documentDir.length);
+  }
+  if (value.startsWith("file://")) {
+    const marker = "/Documents/";
+    const index = value.indexOf(marker);
+    if (index !== -1) {
+      const candidate = value.slice(index + marker.length);
+      if (candidate.startsWith(BUDGET_PROOF_STORAGE_DIR)) {
+        return candidate;
+      }
+    }
+  }
+  if (value.startsWith("/")) {
+    return value.replace(/^\/+/, "");
+  }
+  return value;
+};
+
+const resolveBudgetProofUri = (value) => {
+  if (!value || typeof value !== "string") return "";
+  if (
+    value.startsWith("file://") ||
+    value.startsWith("content://") ||
+    value.startsWith("http://") ||
+    value.startsWith("https://") ||
+    value.startsWith("data:")
+  ) {
+    return value;
+  }
+  const documentDir = FileSystem.documentDirectory;
+  if (!documentDir) return value;
+  const cleaned = value.replace(/^\/+/, "");
+  return `${documentDir}${cleaned}`;
+};
+
+const normalizeBudgetProofText = (value = "") =>
+  normalizeLocaleDigits(String(value || ""))
+    .replace(/[OoОо]/g, "0")
+    .replace(/[Il|]/g, "1");
+
+const parseBudgetProofNumberCandidate = (value = "") => {
+  const raw = normalizeBudgetProofText(value).replace(/[^\d,.\s]/g, "").trim();
+  if (!raw) return NaN;
+  const compact = raw.replace(/\s+/g, "");
+  if (!compact || !/\d/.test(compact)) return NaN;
+  const separatorMatches = compact.match(/[,.]/g) || [];
+  if (separatorMatches.length === 1) {
+    const separatorIndex = Math.max(compact.lastIndexOf(","), compact.lastIndexOf("."));
+    const before = compact.slice(0, separatorIndex);
+    const after = compact.slice(separatorIndex + 1);
+    if (after.length === 3 && before.length >= 1 && before.length <= 3) {
+      const parsedThousands = Number.parseFloat(`${before}${after}`);
+      return Number.isFinite(parsedThousands) ? parsedThousands : NaN;
+    }
+  }
+  const parsed = parseNumberInputValue(compact);
+  return Number.isFinite(parsed) ? parsed : NaN;
+};
+
+const extractBudgetProofAmountCandidates = (text = "") => {
+  const normalizedText = normalizeBudgetProofText(text);
+  const matches = normalizedText.match(/\d[\d\s.,]{0,20}\d|\d/g) || [];
+  const seen = new Set();
+  return matches
+    .map((match) => parseBudgetProofNumberCandidate(match))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .filter((value) => {
+      const key = value.toFixed(4);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+const verifyBudgetProofAmountInText = ({ text = "", expectedLocalAmount = 0, currency = DEFAULT_PROFILE.currency } = {}) => {
+  const expected = Number(expectedLocalAmount) || 0;
+  if (!Number.isFinite(expected) || expected <= 0) {
+    return { matched: false, candidates: [] };
+  }
+  const candidates = extractBudgetProofAmountCandidates(text);
+  const precision = getCurrencyPrecision(currency);
+  const tolerance = Math.max(getCurrencyFineStep(currency) || 0.01, precision > 0 ? 0.01 : 1);
+  const roundedExpected = roundCurrencyValue(expected, currency);
+  const matchedAmount = candidates.find((candidate) => {
+    const roundedCandidate = roundCurrencyValue(candidate, currency);
+    return Math.abs(roundedCandidate - roundedExpected) <= tolerance;
+  });
+  return {
+    matched: Number.isFinite(matchedAmount),
+    matchedAmount: Number.isFinite(matchedAmount) ? matchedAmount : null,
+    candidates,
+  };
+};
+
+const recognizeBudgetProofTextOffline = async (uri = "") => {
+  if (!BudgetTextRecognitionModule || typeof BudgetTextRecognitionModule.recognize !== "function") {
+    return { ok: false, reason: "ocr_unavailable", text: "" };
+  }
+  try {
+    const result = await BudgetTextRecognitionModule.recognize(uri);
+    const text = typeof result?.text === "string" ? result.text : "";
+    return { ok: true, text };
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (
+      message.includes("doesn't seem to be linked") ||
+      message.includes("not linked") ||
+      message.includes("NativeModule") ||
+      message.includes("null")
+    ) {
+      return { ok: false, reason: "ocr_unavailable", text: "", error };
+    }
+    return { ok: false, reason: "ocr_failed", text: "", error };
+  }
+};
+
+const normalizeBudgetTransferEntry = (entry, type = "savings") => {
+  if (!entry || typeof entry !== "object") return null;
+  const amountUSD = clampTransactionAmountUSD(entry.amountUSD);
+  if (!Number.isFinite(amountUSD) || amountUSD <= 0) return null;
+  const createdAt = normalizeTimestampMs(entry.createdAt) || Date.now();
+  const status =
+    entry.status === "rejected" || entry.status === "pending" || entry.status === "accepted"
+      ? entry.status
+      : "accepted";
+  return {
+    id:
+      typeof entry.id === "string" && entry.id.trim()
+        ? entry.id.trim()
+        : `budget-${type}-${createdAt}-${Math.random().toString(16).slice(2, 8)}`,
+    amountUSD,
+    proofImageUri: normalizeBudgetProofStorageValue(entry.proofImageUri || entry.proofUri || ""),
+    status,
+    createdAt,
+    note: typeof entry.note === "string" ? entry.note.slice(0, 240) : "",
+  };
+};
+
+const normalizeBudgetLedger = (ledger) => {
+  const source = ledger && typeof ledger === "object" ? ledger : {};
+  const debtSource = source.debt && typeof source.debt === "object" ? source.debt : {};
+  return {
+    savingsDeposits: (Array.isArray(source.savingsDeposits) ? source.savingsDeposits : [])
+      .map((entry) => normalizeBudgetTransferEntry(entry, "savings"))
+      .filter(Boolean),
+    debtPayments: (Array.isArray(source.debtPayments) ? source.debtPayments : [])
+      .map((entry) => normalizeBudgetTransferEntry(entry, "debt"))
+      .filter(Boolean),
+    debt: {
+      initialDebtUSD: clampTransactionAmountUSD(debtSource.initialDebtUSD),
+      aprPercent: Math.max(0, Math.min(99, Number(debtSource.aprPercent) || 0)),
+      minMonthlyPaymentUSD: clampTransactionAmountUSD(debtSource.minMonthlyPaymentUSD),
+      createdAt: normalizeTimestampMs(debtSource.createdAt) || null,
+      updatedAt: normalizeTimestampMs(debtSource.updatedAt) || null,
+    },
+  };
+};
+
+const sumAcceptedBudgetTransfers = (entries = []) =>
+  (Array.isArray(entries) ? entries : []).reduce((sum, entry) => {
+    if (entry?.status === "rejected") return sum;
+    return sum + Math.max(0, Number(entry?.amountUSD) || 0);
+  }, 0);
 
 const normalizeAvatarStorageValue = (value) => {
   if (!value || typeof value !== "string") return "";
@@ -12081,6 +12289,12 @@ function TemptationCardComponent({
   const messageActive = feedback?.message;
   const burstKey = feedback?.burstKey;
   const translateX = useRef(new Animated.Value(0)).current;
+  const swipeGestureStartOffsetRef = useRef(0);
+  const swipeGestureActivationDxRef = useRef(null);
+  const swipeLastTranslateRef = useRef(0);
+  const swipeGestureActiveRef = useRef(false);
+  const swipeFrameRef = useRef(null);
+  const swipePendingTranslateRef = useRef(null);
   const swipeActionRef = useRef(false);
   const suppressCardPressUntilRef = useRef(0);
   const [amountSliderVisible, setAmountSliderVisible] = useState(false);
@@ -12161,9 +12375,68 @@ function TemptationCardComponent({
     clampTransactionAmountUSD(amountSliderBaseOverrideUSD) > 0
       ? clampTransactionAmountUSD(amountSliderBaseOverrideUSD)
       : defaultBaseAmountUSD;
+  const setSwipeTranslate = useCallback(
+    (nextValue) => {
+      const raw = Number.isFinite(nextValue) ? nextValue : 0;
+      const limit = raw < 0 ? 180 : 150;
+      const absValue = Math.abs(raw);
+      const resisted =
+        absValue <= limit
+          ? raw
+          : Math.sign(raw || 1) * (limit + Math.min(28, (absValue - limit) * 0.22));
+      swipeLastTranslateRef.current = resisted;
+      translateX.setValue(resisted);
+      return resisted;
+    },
+    [translateX]
+  );
+  const flushSwipeTranslate = useCallback(() => {
+    const pending = swipePendingTranslateRef.current;
+    if (swipeFrameRef.current) {
+      cancelAnimationFrame(swipeFrameRef.current);
+      swipeFrameRef.current = null;
+    }
+    swipePendingTranslateRef.current = null;
+    if (pending === null || pending === undefined) {
+      return swipeLastTranslateRef.current;
+    }
+    return setSwipeTranslate(pending);
+  }, [setSwipeTranslate]);
+  const scheduleSwipeTranslate = useCallback(
+    (nextValue) => {
+      swipePendingTranslateRef.current = nextValue;
+      if (swipeFrameRef.current) return;
+      swipeFrameRef.current = requestAnimationFrame(() => {
+        swipeFrameRef.current = null;
+        const pending = swipePendingTranslateRef.current;
+        swipePendingTranslateRef.current = null;
+        if (pending === null || pending === undefined) return;
+        setSwipeTranslate(pending);
+      });
+    },
+    [setSwipeTranslate]
+  );
   useEffect(() => {
-    translateX.setValue(0);
-  }, [item.id, translateX]);
+    translateX.stopAnimation();
+    if (swipeFrameRef.current) {
+      cancelAnimationFrame(swipeFrameRef.current);
+      swipeFrameRef.current = null;
+    }
+    swipePendingTranslateRef.current = null;
+    setSwipeTranslate(0);
+    swipeGestureStartOffsetRef.current = 0;
+    swipeGestureActivationDxRef.current = null;
+    swipeGestureActiveRef.current = false;
+  }, [item.id, setSwipeTranslate, translateX]);
+  useEffect(() => {
+    return () => {
+      if (swipeFrameRef.current) {
+        cancelAnimationFrame(swipeFrameRef.current);
+        swipeFrameRef.current = null;
+      }
+      swipePendingTranslateRef.current = null;
+    };
+  }, []);
   useEffect(() => {
     if (!pauseFreezeVisible) return;
     pauseFreezeAnim.stopAnimation();
@@ -12697,50 +12970,90 @@ function TemptationCardComponent({
   );
 
   const handleSwipeRelease = useCallback(
-    (dx = 0) => {
-      if (canSwipeCard) {
-        if (dx > GOAL_SWIPE_THRESHOLD && onSwipeArchive) {
+    (dx = 0, { commit = true } = {}) => {
+      suppressCardPressUntilRef.current = Date.now() + 260;
+      flushSwipeTranslate();
+      translateX.stopAnimation((value) => {
+        const currentOffset = Number.isFinite(value) ? value : swipeLastTranslateRef.current;
+        swipeLastTranslateRef.current = currentOffset;
+        const shouldArchive =
+          commit &&
+          canSwipeCard &&
+          currentOffset > GOAL_SWIPE_THRESHOLD &&
+          typeof onSwipeArchive === "function";
+        const shouldDelete =
+          commit &&
+          canSwipeCard &&
+          currentOffset < -DELETE_SWIPE_THRESHOLD &&
+          typeof onSwipeDelete === "function";
+        if (shouldArchive || shouldDelete || Math.abs(dx) > 6 || Math.abs(currentOffset) > 6) {
           swipeActionRef.current = true;
-          onSwipeArchive(item);
-        } else if (dx < -DELETE_SWIPE_THRESHOLD && onSwipeDelete) {
-          swipeActionRef.current = true;
-          onSwipeDelete(item);
         }
-      }
-      Animated.timing(translateX, {
-        toValue: 0,
-        duration: 160,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }).start();
+        Animated.timing(translateX, {
+          toValue: 0,
+          duration: 170,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }).start(() => {
+          swipeLastTranslateRef.current = 0;
+          swipeGestureStartOffsetRef.current = 0;
+          swipeGestureActivationDxRef.current = null;
+          swipeGestureActiveRef.current = false;
+          if (shouldArchive) {
+            onSwipeArchive(item);
+          } else if (shouldDelete) {
+            onSwipeDelete(item);
+          }
+        });
+      });
     },
-    [canSwipeCard, item, onSwipeArchive, onSwipeDelete, translateX]
+    [canSwipeCard, flushSwipeTranslate, item, onSwipeArchive, onSwipeDelete, translateX]
   );
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (_, gestureState) =>
-          canSwipeCard &&
-          !amountSliderVisible &&
-          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) &&
-          Math.abs(gestureState.dx) > 6,
-        onPanResponderGrant: () => {
+        onMoveShouldSetPanResponder: (_, gestureState) => {
+          if (!canSwipeCard || amountSliderVisible) return false;
+          const absDx = Math.abs(gestureState.dx);
+          const absDy = Math.abs(gestureState.dy);
+          return absDx > 10 && absDx > absDy * 1.15;
+        },
+        onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+          if (!canSwipeCard || amountSliderVisible) return false;
+          const absDx = Math.abs(gestureState.dx);
+          const absDy = Math.abs(gestureState.dy);
+          return absDx > 10 && absDx > absDy * 1.15;
+        },
+        onPanResponderGrant: (_, gestureState) => {
+          suppressCardPressUntilRef.current = Date.now() + 260;
+          swipeGestureActivationDxRef.current = Number.isFinite(gestureState.dx)
+            ? gestureState.dx
+            : null;
+          swipeGestureActiveRef.current = true;
           translateX.stopAnimation();
+          swipeGestureStartOffsetRef.current = swipeLastTranslateRef.current;
         },
         onPanResponderMove: (_, gestureState) => {
           if (!canSwipeCard) return;
-          const dx = Math.max(Math.min(gestureState.dx, 150), -180);
-          translateX.setValue(dx);
+          if (swipeGestureActivationDxRef.current === null) {
+            swipeGestureActivationDxRef.current = Number.isFinite(gestureState.dx)
+              ? gestureState.dx
+              : 0;
+          }
+          const gestureDx = gestureState.dx - swipeGestureActivationDxRef.current;
+          const nextOffset = swipeGestureStartOffsetRef.current + gestureDx;
+          scheduleSwipeTranslate(nextOffset);
         },
         onPanResponderRelease: (_, gestureState) => {
           handleSwipeRelease(gestureState.dx);
         },
         onPanResponderTerminationRequest: () => false,
-        onPanResponderTerminate: () => handleSwipeRelease(0),
+        onPanResponderTerminate: () => handleSwipeRelease(0, { commit: false }),
+        onShouldBlockNativeResponder: () => true,
       }),
-    [amountSliderVisible, canSwipeCard, handleSwipeRelease, translateX]
+    [amountSliderVisible, canSwipeCard, handleSwipeRelease, scheduleSwipeTranslate, translateX]
   );
 
   useEffect(() => {
@@ -12861,6 +13174,9 @@ function TemptationCardComponent({
       ref={tutorialHighlightCardRef}
       onLayout={handleTutorialCardLayout}
       {...(canSwipeCard ? panResponder.panHandlers : null)}
+      style={[styles.temptationSwipeContent, { transform: [{ translateX }] }]}
+    >
+      <View
       style={[
         styles.temptationCard,
         cardShadowStyle,
@@ -12869,7 +13185,6 @@ function TemptationCardComponent({
           backgroundColor: budgetSurfaceTint,
           borderWidth: showBudgetAlert ? 1.2 : 0,
           borderColor: showBudgetAlert ? budgetAccentColor : "transparent",
-          transform: [{ translateX }],
         },
         ]}
       >
@@ -13799,6 +14114,7 @@ function TemptationCardComponent({
           </View>
         </View>
       )}
+      </View>
       </Animated.View>
     </View>
   );
@@ -14196,6 +14512,8 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   totalSavedLabel,
   totalSavedUSD = 0,
   savingsTrendWeek = [],
+  budgetSavingsTransferredUSD = 0,
+  budgetDebtTransferredUSD = 0,
   savedCounterReplayToken = 0,
   counterAnimationEnabled = true,
   progressPercent,
@@ -14577,6 +14895,29 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const savingsTrendAverageDeltaLabel = useMemo(
     () => formatSignedTrendAmount(savingsTrendAverageDailyDeltaUSD),
     [formatSignedTrendAmount, savingsTrendAverageDailyDeltaUSD]
+  );
+  const budgetTransferSummaryRows = useMemo(() => {
+    const savingsValue = Math.max(0, Number(budgetSavingsTransferredUSD) || 0);
+    const debtValue = Math.max(0, Number(budgetDebtTransferredUSD) || 0);
+    return [
+      {
+        id: "savings",
+        label: t("heroBudgetSavingsTransferred"),
+        valueUSD: savingsValue,
+      },
+      {
+        id: "debt",
+        label: t("heroBudgetDebtTransferred"),
+        valueUSD: debtValue,
+      },
+    ].filter((row) => row.valueUSD > 0.01);
+  }, [budgetDebtTransferredUSD, budgetSavingsTransferredUSD, t]);
+  const formatBudgetTransferAmount = useCallback(
+    (amountUSD) =>
+      formatCurrency(convertToCurrency(Math.max(0, Number(amountUSD) || 0), currency), currency, {
+        precisionOverride: getCurrencyPrecision(currency),
+      }),
+    [currency]
   );
   const savingsTrendChart = useMemo(() => {
     const width = 324;
@@ -15752,6 +16093,40 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
                   </Text>
                 </View>
               </View>
+              {budgetTransferSummaryRows.length ? (
+                <View
+                  style={[
+                    styles.savingsTrendBudgetSummary,
+                    {
+                      borderColor: savingsTrendModalPalette.chipBorder,
+                      backgroundColor: savingsTrendModalPalette.chipBackground,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.savingsTrendBudgetTitle, { color: savingsTrendModalPalette.subtext }]}>
+                    {t("heroBudgetTransferredTitle")}
+                  </Text>
+                  <View style={styles.savingsTrendBudgetRows}>
+                    {budgetTransferSummaryRows.map((row) => (
+                      <View key={row.id} style={styles.savingsTrendBudgetItem}>
+                        <Text
+                          style={[styles.savingsTrendBudgetLabel, { color: savingsTrendModalPalette.subtext }]}
+                          numberOfLines={1}
+                        >
+                          {row.label}
+                        </Text>
+                        <Text
+                          style={[styles.savingsTrendBudgetValue, { color: savingsTrendModalPalette.title }]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                        >
+                          {formatBudgetTransferAmount(row.valueUSD)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
               <View
                 style={styles.savingsTrendChartWrap}
                 onLayout={(event) => {
@@ -20092,14 +20467,14 @@ const HELP_GUIDE_COPY = {
         ],
       },
       purchases: {
-        title: "Rewards guide",
-        subtitle: "This page shows achievements and rewards earned from consistent saving behavior.",
-        visual: ["Milestones", "Claimed", "Progress"],
+        title: "Budget guide",
+        subtitle: "This page moves logged savings into real savings or debt payoff.",
+        visual: ["Savings", "Debt", "Proof"],
         sections: [
-          { title: "Achievement cards", body: "Each card is a savings milestone with an emoji, title, and short reason. Unlocked cards stand out; locked ones show what is still missing." },
-          { title: "Claiming rewards", body: "When a reward is ready, claim it from the card. Claimed rewards keep their badge so you can quickly see what is already collected." },
-          { title: "Progress bars", body: "The bar under each reward shows how close you are to the next milestone, based on saves, free days, or saved amount." },
-          { title: "Reward tokens", body: "Reward tokens are feedback inside Almost. They make steady financial behavior visible and keep this page focused on earned milestones." },
+          { title: "Savings", body: "Move available logged savings into your real savings pile after adding a bank transfer photo." },
+          { title: "Debt", body: "Set your debt amount, then use saved money from resisted temptations to track payoff progress." },
+          { title: "Proof photos", body: "Transfer photos are stored as user proof. They are not bank-side verification yet." },
+          { title: "Available balance", body: "Almost subtracts previous savings deposits and debt payments so the same logged money cannot be allocated twice." },
         ],
       },
       profile: {
@@ -20156,14 +20531,14 @@ const HELP_GUIDE_COPY = {
         ],
       },
       purchases: {
-        title: "Подсказки наград",
-        subtitle: "Здесь показаны достижения и награды, которые открываются за устойчивое поведение экономии.",
-        visual: ["Вехи", "Получено", "Прогресс"],
+        title: "Подсказки бюджета",
+        subtitle: "Здесь записанная экономия переводится в реальные накопления или погашение долга.",
+        visual: ["Накопления", "Долги", "Подтверждение"],
         sections: [
-          { title: "Карточки достижений", body: "Каждая карточка — это веха экономии с иконкой, названием и коротким объяснением. Открытые награды подсвечиваются, закрытые показывают, чего ещё не хватает." },
-          { title: "Получение наград", body: "Когда награда готова, её можно забрать прямо с карточки. Уже полученные награды остаются с бейджем, чтобы было видно, что собрано." },
-          { title: "Прогресс", body: "Полоса под наградой показывает, насколько близко следующая веха: по сохранениям, свободным дням или накопленной сумме." },
-          { title: "Наградные токены", body: "Токены — это обратная связь внутри Almost. Они делают полезное финансовое поведение заметным и оставляют этот экран сфокусированным на полученных вехах." },
+          { title: "Накопления", body: "Переводи доступную записанную экономию в копилку после загрузки фото банковского перевода." },
+          { title: "Долги", body: "Укажи сумму долга, а затем направляй деньги от отказов на погашение и отслеживай остаток." },
+          { title: "Фото-подтверждения", body: "Фото перевода хранится как пользовательское подтверждение. Это пока не банковская проверка." },
+          { title: "Доступный баланс", body: "Almost вычитает прошлые пополнения и погашения, чтобы одну и ту же экономию нельзя было распределить дважды." },
         ],
       },
       profile: {
@@ -20220,14 +20595,14 @@ const HELP_GUIDE_COPY = {
         ],
       },
       purchases: {
-        title: "Guía de recompensas",
-        subtitle: "Esta página muestra logros y recompensas ganados por mantener buenos hábitos de ahorro.",
-        visual: ["Hitos", "Reclamado", "Avance"],
+        title: "Guía de presupuesto",
+        subtitle: "Esta página mueve el ahorro registrado a ahorros reales o pago de deuda.",
+        visual: ["Ahorros", "Deuda", "Prueba"],
         sections: [
-          { title: "Tarjetas de logro", body: "Cada tarjeta es un hito de ahorro con icono, título y explicación breve. Las desbloqueadas destacan; las bloqueadas muestran lo que falta." },
-          { title: "Reclamar recompensas", body: "Cuando una recompensa está lista, reclámala desde la tarjeta. Las ya reclamadas conservan su etiqueta para ver lo acumulado." },
-          { title: "Barras de avance", body: "La barra bajo cada recompensa muestra qué tan cerca estás del siguiente hito por ahorros, días libres o importe guardado." },
-          { title: "Tokens de recompensa", body: "Los tokens son feedback dentro de Almost. Hacen visible el hábito financiero sano y mantienen esta pantalla centrada en hitos ganados." },
+          { title: "Ahorros", body: "Mueve el ahorro disponible a tu pila real después de añadir una foto de transferencia bancaria." },
+          { title: "Deuda", body: "Define tu deuda y usa el dinero de tentaciones resistidas para seguir el pago." },
+          { title: "Fotos de prueba", body: "Las fotos son prueba del usuario. Aún no son verificación bancaria." },
+          { title: "Saldo disponible", body: "Almost resta depósitos y pagos anteriores para evitar asignar dos veces el mismo ahorro." },
         ],
       },
       profile: {
@@ -20284,14 +20659,14 @@ const HELP_GUIDE_COPY = {
         ],
       },
       purchases: {
-        title: "Guide des récompenses",
-        subtitle: "Cette page affiche les réussites et récompenses gagnées grâce à ton rythme d'épargne.",
-        visual: ["Étapes", "Récupéré", "Progrès"],
+        title: "Guide budget",
+        subtitle: "Cette page transforme l'épargne notée en épargne réelle ou remboursement de dette.",
+        visual: ["Épargne", "Dette", "Preuve"],
         sections: [
-          { title: "Cartes de réussite", body: "Chaque carte est une étape d'épargne avec icône, titre et courte explication. Les cartes débloquées ressortent; les autres montrent ce qui manque." },
-          { title: "Récupérer", body: "Quand une récompense est prête, récupère-la depuis la carte. Les récompenses déjà prises gardent leur badge pour voir ce qui est acquis." },
-          { title: "Barres de progrès", body: "La barre sous chaque récompense montre la distance jusqu'à la prochaine étape, selon tes économies, jours libres ou montants gardés." },
-          { title: "Jetons de récompense", body: "Les jetons sont un retour dans Almost. Ils rendent le bon comportement financier visible et gardent cette page centrée sur les étapes gagnées." },
+          { title: "Épargne", body: "Déplace l'épargne disponible vers ta pile réelle après avoir ajouté une photo de virement bancaire." },
+          { title: "Dette", body: "Définis ta dette, puis utilise l'argent des tentations évitées pour suivre le remboursement." },
+          { title: "Photos de preuve", body: "Les photos sont une preuve utilisateur. Ce n'est pas encore une vérification bancaire." },
+          { title: "Solde disponible", body: "Almost soustrait les dépôts et paiements précédents pour éviter de répartir deux fois la même épargne." },
         ],
       },
       profile: {
@@ -20348,14 +20723,14 @@ const HELP_GUIDE_COPY = {
         ],
       },
       purchases: {
-        title: "Belohnungs-Guide",
-        subtitle: "Diese Seite zeigt Erfolge und Belohnungen, die durch stetiges Sparverhalten entstehen.",
-        visual: ["Meilensteine", "Abgeholt", "Fortschritt"],
+        title: "Budget-Guide",
+        subtitle: "Diese Seite verschiebt erfasste Ersparnisse in echte Ersparnis oder Schuldentilgung.",
+        visual: ["Sparen", "Schulden", "Nachweis"],
         sections: [
-          { title: "Erfolgskarten", body: "Jede Karte ist ein Spar-Meilenstein mit Icon, Titel und kurzer Erklärung. Freigeschaltete Karten fallen auf; gesperrte zeigen, was noch fehlt." },
-          { title: "Belohnungen abholen", body: "Wenn eine Belohnung bereit ist, holst du sie direkt auf der Karte ab. Abgeholte Belohnungen behalten ihren Badge." },
-          { title: "Fortschrittsbalken", body: "Der Balken unter jeder Belohnung zeigt, wie nah du am nächsten Meilenstein bist: durch Sparschritte, freie Tage oder gesparte Summe." },
-          { title: "Belohnungstoken", body: "Token sind Feedback in Almost. Sie machen gutes Finanzverhalten sichtbar und halten diese Seite auf erreichte Meilensteine fokussiert." },
+          { title: "Sparen", body: "Verschiebe verfügbares erfasstes Geld in deine echte Sparsumme, nachdem du ein Transferfoto hinzugefügt hast." },
+          { title: "Schulden", body: "Lege deine Schuld fest und nutze Geld aus widerstandenen Versuchungen für die Tilgung." },
+          { title: "Nachweisfotos", body: "Fotos sind ein Nutzernachweis. Eine Bankverifizierung ist noch nicht aktiv." },
+          { title: "Verfügbarer Betrag", body: "Almost zieht frühere Einzahlungen und Tilgungen ab, damit dasselbe Geld nicht doppelt verteilt wird." },
         ],
       },
       profile: {
@@ -20412,14 +20787,14 @@ const HELP_GUIDE_COPY = {
         ],
       },
       purchases: {
-        title: "دليل المكافآت",
-        subtitle: "تعرض هذه الصفحة الإنجازات والمكافآت التي تكسبها من سلوك ادخار ثابت.",
-        visual: ["مراحل", "تم جمعها", "تقدم"],
+        title: "دليل الميزانية",
+        subtitle: "هذه الصفحة تنقل المدخرات المسجلة إلى ادخار حقيقي أو سداد دين.",
+        visual: ["ادخار", "دين", "إثبات"],
         sections: [
-          { title: "بطاقات الإنجاز", body: "كل بطاقة تمثل مرحلة ادخار مع أيقونة واسم وشرح قصير. البطاقات المفتوحة تظهر بوضوح، والمغلقة توضح ما ينقصك." },
-          { title: "جمع المكافآت", body: "عندما تصبح المكافأة جاهزة، اجمعها من البطاقة. المكافآت التي جمعتها تبقى بعلامة واضحة حتى ترى ما حصلت عليه." },
-          { title: "أشرطة التقدم", body: "الشريط أسفل كل مكافأة يوضح قربك من المرحلة التالية حسب عمليات الادخار أو الأيام الحرة أو المبلغ المدخر." },
-          { title: "رموز المكافأة", body: "الرموز هي إشارة تقدم داخل Almost. تجعل السلوك المالي الصحي مرئياً وتحافظ على تركيز هذه الصفحة على المراحل المكتسبة." },
+          { title: "الادخار", body: "انقل المدخرات المتاحة إلى كومة الادخار بعد إضافة صورة تحويل بنكي." },
+          { title: "الدين", body: "حدد مبلغ الدين واستخدم المال الناتج عن مقاومة الإغراءات لتتبع السداد." },
+          { title: "صور الإثبات", body: "صور التحويل هي إثبات من المستخدم وليست تحققاً بنكياً بعد." },
+          { title: "الرصيد المتاح", body: "يطرح Almost الإيداعات والمدفوعات السابقة حتى لا يتم توزيع نفس المال مرتين." },
         ],
       },
       profile: {
@@ -20476,14 +20851,14 @@ const HELP_GUIDE_COPY = {
         ],
       },
       purchases: {
-        title: "奖励页指南",
-        subtitle: "这个页面展示由稳定储蓄行为解锁的成就和奖励。",
-        visual: ["里程碑", "已领取", "进度"],
+        title: "预算指南",
+        subtitle: "这个页面把已记录储蓄分配到真实储蓄或还债。",
+        visual: ["储蓄", "债务", "凭证"],
         sections: [
-          { title: "成就卡片", body: "每张卡片都是一个储蓄里程碑，包含图标、标题和简短说明。已解锁卡片会突出显示，未解锁卡片会显示还差什么。" },
-          { title: "领取奖励", body: "当奖励可领取时，可以直接在卡片上领取。已领取奖励会保留标记，方便查看已经收集的内容。" },
-          { title: "进度条", body: "每个奖励下方的进度条显示你离下一里程碑有多近，依据存下次数、无消费日或已存金额计算。" },
-          { title: "奖励代币", body: "代币是 Almost 内的反馈，让健康财务行为更可见，并让这个页面专注于已经赢得的里程碑。" },
+          { title: "储蓄", body: "上传银行转账照片后，把可分配的已记录储蓄移入真实储蓄堆。" },
+          { title: "债务", body: "设置债务金额，并用抵抗诱惑省下的钱跟踪还款进度。" },
+          { title: "凭证照片", body: "转账照片目前是用户凭证，还不是银行侧验证。" },
+          { title: "可用余额", body: "Almost 会扣除之前的储蓄转入和还债，避免同一笔钱被分配两次。" },
         ],
       },
       profile: {
@@ -20761,6 +21136,27 @@ const HelpGuideVisual = React.memo(function HelpGuideVisual({ labels = [], color
       </View>
     </>
   );
+  const renderBudgetVisual = () => (
+    <>
+      {renderHeader()}
+      <View style={styles.helpGuideGoalRingRow}>
+        <View style={[styles.helpGuideGoalRing, { borderColor: accent, backgroundColor: softAccent }]}>
+          <Text style={[styles.helpGuideGoalRingText, { color: textColor }]}>$</Text>
+        </View>
+        <View style={styles.helpGuideGoalBars}>
+          {renderProgressRows(["92%", "64%", "38%"])}
+        </View>
+      </View>
+      <View style={styles.helpGuideFeedBottomRow}>
+        <View style={[styles.helpGuideMiniCard, { flex: 1, borderColor, backgroundColor: colorWithAlpha(accent, 0.1) }]}>
+          {renderProgressRows(["72%", "44%"])}
+        </View>
+        <View style={[styles.helpGuideMiniCard, { flex: 1, borderColor, backgroundColor: colorWithAlpha("#D73343", 0.1) }]}>
+          {renderProgressRows(["58%", "30%"])}
+        </View>
+      </View>
+    </>
+  );
   const renderProfileVisual = () => (
     <>
       {renderHeader()}
@@ -20786,7 +21182,7 @@ const HelpGuideVisual = React.memo(function HelpGuideVisual({ labels = [], color
     feed: renderFeedVisual,
     cart: renderCartVisual,
     pending: renderPendingVisual,
-    purchases: renderRewardsVisual,
+    purchases: renderBudgetVisual,
     profile: renderProfileVisual,
   };
   const renderVisual = visualByTab[activeTab] || renderFeedVisual;
@@ -21003,6 +21399,8 @@ const FeedScreen = React.memo(
   onSavingsBreakdownPress = () => {},
   onBudgetHeroPress = null,
   budgetAutoEnabled = true,
+  budgetSavingsTransferredUSD = 0,
+  budgetDebtTransferredUSD = 0,
   savingsHeroRef = null,
   heroCarouselIndex = 0,
   heroCarouselLocked = false,
@@ -21032,6 +21430,7 @@ const FeedScreen = React.memo(
   dailyChallengeTemplateId = null,
   onFocusCancel = null,
   tamagotchiAnimations = CLASSIC_TAMAGOTCHI_ANIMATIONS,
+  tamagotchiAnimationSetKey = DEFAULT_TAMAGOTCHI_SKIN,
   lifetimeSavedUSD = 0,
   progressLifetimeSavedUSD,
   levelProgressSaveCount = 0,
@@ -21267,17 +21666,22 @@ const FeedScreen = React.memo(
     inputRange: [0, 1],
     outputRange: [0.62, 1],
   });
+  const syncFeedScrollLock = useCallback(() => {
+    const shouldLock = Boolean(activeAmountSliderCardIdRef.current);
+    setFeedScrollLocked((prev) => (prev === shouldLock ? prev : shouldLock));
+    listRef.current?.setNativeProps?.({ scrollEnabled: !shouldLock });
+  }, []);
   const handleAmountSliderToggle = useCallback((isTouching, cardId) => {
     if (isTouching) {
       activeAmountSliderCardIdRef.current = cardId || null;
-      setFeedScrollLocked(true);
+      syncFeedScrollLock();
       return;
     }
     if (!cardId || activeAmountSliderCardIdRef.current === cardId) {
       activeAmountSliderCardIdRef.current = null;
-      setFeedScrollLocked(false);
+      syncFeedScrollLock();
     }
-  }, []);
+  }, [syncFeedScrollLock]);
   useEffect(() => {
     return () => {
       if (feedScrollTimerRef.current) {
@@ -21987,16 +22391,21 @@ const FeedScreen = React.memo(
   const handleDayTwoIncomePromptPress = onDayTwoIncomePromptPress || (() => {});
   const handleDayTwoIncomePromptDismiss = onDayTwoIncomePromptDismiss || (() => {});
   const realSavedUSD = useRealSavedAmount();
-  const rawHeroSpendReductionSetting = profile?.spendReducesSavings;
-  const heroSpendReducesSavings =
-    rawHeroSpendReductionSetting === true ||
-    rawHeroSpendReductionSetting === 1 ||
-    rawHeroSpendReductionSetting === "1" ||
-    (typeof rawHeroSpendReductionSetting === "string" &&
-      rawHeroSpendReductionSetting.toLowerCase() === "true");
+  const displaySavedUSD = useMemo(
+    () =>
+      clampSavedBalanceUSD(
+        Math.max(
+          0,
+          (Number(realSavedUSD) || 0) -
+            Math.max(0, Number(budgetSavingsTransferredUSD) || 0) -
+            Math.max(0, Number(budgetDebtTransferredUSD) || 0)
+        )
+      ),
+    [budgetDebtTransferredUSD, budgetSavingsTransferredUSD, realSavedUSD]
+  );
   const totalSavedLabel = useMemo(
-    () => formatCurrency(convertToCurrency(realSavedUSD || 0, currency), currency),
-    [realSavedUSD, currency]
+    () => formatCurrency(convertToCurrency(displaySavedUSD || 0, currency), currency),
+    [currency, displaySavedUSD]
   );
   const heroGoalSavedLabel = useMemo(
     () => formatCurrency(convertToCurrency(heroGoalSavedUSD || 0, currency), currency),
@@ -22093,9 +22502,8 @@ const FeedScreen = React.memo(
     () =>
       buildHeroSavingsTrendSevenDays(resolvedHistoryEvents, realSavedUSD, {
         nowTimestamp: Math.max(Number(heroNowTick) || 0, Date.now()),
-        spendReducesSavings: heroSpendReducesSavings,
       }),
-    [heroNowTick, heroSpendReducesSavings, realSavedUSD, resolvedHistoryEvents]
+    [heroNowTick, realSavedUSD, resolvedHistoryEvents]
   );
   const resolveEventTitle = useCallback(
     (entry) =>
@@ -24596,6 +25004,8 @@ const FeedScreen = React.memo(
         keyExtractor={feedKeyExtractor}
         showsVerticalScrollIndicator={false}
         scrollEnabled={!feedScrollLocked}
+        directionalLockEnabled
+        nestedScrollEnabled
         contentContainerStyle={[
           styles.feedListContent,
           { paddingBottom: Math.max(0, Number(contentBottomPadding) || 0) },
@@ -24765,6 +25175,7 @@ const FeedScreen = React.memo(
                           isPlayDeprived={tamagotchiNeedsPlay}
                           desaturation={tamagotchiDirtyLevel}
                           animations={tamagotchiAnimations}
+                          animationSetKey={tamagotchiAnimationSetKey}
                         />
                       </TouchableOpacity>
                       {hasTamagotchiHungerImmunity && (
@@ -24947,8 +25358,10 @@ const FeedScreen = React.memo(
                           onRecentEventsPress={openHistoryModal}
                           playerLevel={playerLevel}
                           totalSavedLabel={totalSavedLabel}
-                          totalSavedUSD={realSavedUSD}
+                          totalSavedUSD={displaySavedUSD}
                           savingsTrendWeek={heroSavingsTrendWeek}
+                          budgetSavingsTransferredUSD={budgetSavingsTransferredUSD}
+                          budgetDebtTransferredUSD={budgetDebtTransferredUSD}
                           savedCounterReplayToken={savedCounterReplayToken}
                           counterAnimationEnabled={isPrimarySavingsLoop}
                           progressPercent={progressPercent}
@@ -24958,7 +25371,7 @@ const FeedScreen = React.memo(
                           t={t}
                           language={language}
                           analyticsPreview={analyticsPreview}
-                          actualSavedUSD={realSavedUSD}
+                          actualSavedUSD={displaySavedUSD}
                           potentialForecastUSD={heroPotentialForecast.potentialUSD}
                           potentialForecastPeriod={heroPotentialForecast.period}
                           onPotentialForecastPeriodChange={handleHeroPotentialPeriodChange}
@@ -25881,6 +26294,8 @@ const ProgressScreen = React.memo(function ProgressScreen({
   onImpulseMapLockedPress = null,
   contentBottomPadding = 0,
   topInset = 0,
+  progressHubPane = "progress",
+  onProgressHubPaneChange = null,
 }) {
   const isDarkTheme = colors.background === THEMES.dark.background;
   const budgetLimitWarningColor = isDarkTheme ? "#FFD59A" : "#F6C16B";
@@ -28503,6 +28918,41 @@ const ProgressScreen = React.memo(function ProgressScreen({
         <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
           {t("progressTabSubtitle")}
         </Text>
+      </View>
+      <View style={styles.rewardsTabs}>
+        {[
+          { id: "progress", label: t("progressHubProgressTab") },
+          { id: "rewards", label: t("progressHubRewardsTab") },
+        ].map((tab) => {
+          const isActive = progressHubPane === tab.id;
+          return (
+            <TouchableOpacity
+              key={tab.id}
+              style={[
+                styles.rewardsTabButton,
+                {
+                  backgroundColor: isActive ? colors.text : "transparent",
+                  borderColor: isActive ? colors.text : colors.border,
+                },
+              ]}
+              activeOpacity={0.85}
+              onPress={() => {
+                if (!isActive) {
+                  onProgressHubPaneChange?.(tab.id);
+                }
+              }}
+            >
+              <Text
+                style={[
+                  styles.rewardsTabText,
+                  { color: isActive ? colors.background : colors.text },
+                ]}
+              >
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <View
@@ -32381,7 +32831,7 @@ const buildGoalCelebrationSummary = (history = [], goalId) => {
 const buildHeroSavingsTrendSevenDays = (
   history = [],
   currentTotalUSD = 0,
-  { nowTimestamp = Date.now(), spendReducesSavings = true } = {}
+  { nowTimestamp = Date.now() } = {}
 ) => {
   const normalizedNow = Math.max(0, Number(nowTimestamp) || Date.now());
   const normalizedCurrentTotal = clampSavedBalanceUSD(Math.max(0, Number(currentTotalUSD) || 0));
@@ -32404,7 +32854,7 @@ const buildHeroSavingsTrendSevenDays = (
     if (!amountUSD) return;
     if (HISTORY_SAVED_GAIN_EVENTS.has(entry.kind)) {
       deltaByDay[dayKey] += amountUSD;
-    } else if (spendReducesSavings && HISTORY_SAVED_LOSS_EVENTS.has(entry.kind)) {
+    } else if (HISTORY_SAVED_LOSS_EVENTS.has(entry.kind)) {
       deltaByDay[dayKey] -= amountUSD;
     }
   });
@@ -32962,6 +33412,10 @@ const RewardsScreen = React.memo(function RewardsScreen({
   scrollRef,
   contentBottomPadding = 0,
   topInset = 0,
+  titleKey = "purchasesTitle",
+  subtitleKey = "purchasesSubtitle",
+  progressHubPane = null,
+  onProgressHubPaneChange = null,
 }) {
   const isRtlLayout = isRtlLanguage(language);
   const rewardList = Array.isArray(achievements) ? achievements.filter(Boolean) : [];
@@ -33394,11 +33848,48 @@ const RewardsScreen = React.memo(function RewardsScreen({
       showsVerticalScrollIndicator={false}
     >
       <View>
-        <Text style={[styles.header, { color: colors.text }]}>{t("purchasesTitle")}</Text>
+        <Text style={[styles.header, { color: colors.text }]}>{t(titleKey)}</Text>
         <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
-          {t("purchasesSubtitle")}
+          {t(subtitleKey)}
         </Text>
       </View>
+      {progressHubPane ? (
+        <View style={styles.rewardsTabs}>
+          {[
+            { id: "progress", label: t("progressHubProgressTab") },
+            { id: "rewards", label: t("progressHubRewardsTab") },
+          ].map((tab) => {
+            const isActive = progressHubPane === tab.id;
+            return (
+              <TouchableOpacity
+                key={tab.id}
+                style={[
+                  styles.rewardsTabButton,
+                  {
+                    backgroundColor: isActive ? colors.text : "transparent",
+                    borderColor: isActive ? colors.text : colors.border,
+                  },
+                ]}
+                activeOpacity={0.85}
+                onPress={() => {
+                  if (!isActive) {
+                    onProgressHubPaneChange?.(tab.id);
+                  }
+                }}
+              >
+                <Text
+                  style={[
+                    styles.rewardsTabText,
+                    { color: isActive ? colors.background : colors.text },
+                  ]}
+                >
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : null}
       {tabItems.length > 1 && (
         <View style={styles.rewardsTabs}>
           {tabItems.map((tab) => {
@@ -33491,6 +33982,959 @@ const RewardsScreen = React.memo(function RewardsScreen({
         </View>
       )}
     </ScrollView>
+  );
+});
+
+const BudgetMoneyPile = React.memo(function BudgetMoneyPile({
+  amountUSD = 0,
+  baselineAmountUSD = 0,
+  variant = "savings",
+  eventKey = "",
+}) {
+  const isDebt = variant === "debt";
+  const pulse = useRef(new Animated.Value(0)).current;
+  const fallAnim = useRef(new Animated.Value(1)).current;
+  const removeAnim = useRef(new Animated.Value(1)).current;
+  const normalizedAmount = Math.max(0, Number(amountUSD) || 0);
+  const normalizedBaseline = Math.max(0, Number(baselineAmountUSD) || 0);
+  const previousAmountRef = useRef(normalizedAmount);
+  const previousEventKeyRef = useRef(String(eventKey || ""));
+  const [visualAmount, setVisualAmount] = useState(normalizedAmount);
+  const [pileMotion, setPileMotion] = useState(null);
+  const resolvePileCount = useCallback(
+    (valueUSD) => {
+      const value = Math.max(0, Number(valueUSD) || 0);
+      if (value <= 0.01) return 0;
+      if (isDebt) {
+        const baseline = Math.max(normalizedBaseline, value);
+        if (baseline <= 0.01) return 0;
+        const baselineIntensity = Math.min(1, Math.log10(baseline + 1) / 5);
+        const maxDebtBills = Math.round(18 + baselineIntensity * 30);
+        const debtRatio = Math.max(0, Math.min(1, value / baseline));
+        return Math.max(5, Math.min(maxDebtBills, Math.round(maxDebtBills * Math.max(0.1, debtRatio))));
+      }
+      const intensity = Math.min(1, Math.log10(value + 1) / 5);
+      return Math.max(6, Math.min(44, Math.round(6 + intensity * 38)));
+    },
+    [isDebt, normalizedBaseline]
+  );
+  const pileCount = resolvePileCount(visualAmount);
+  const targetPileCount = resolvePileCount(normalizedAmount);
+  const billSpecs = useMemo(
+    () =>
+      Array.from({ length: pileCount }).map((_, index) => {
+        const row = Math.floor(index / 7);
+        const col = index % 7;
+        const centerBias = Math.abs(col - 3);
+        const width = 54 + ((index * 11) % 22);
+        const height = 24 + ((index * 7) % 10);
+        return {
+          id: `budget_bill_${variant}_${index}`,
+          left: `${Math.max(2, Math.min(78, col * 13 + ((index * 17) % 9) - centerBias * 1.8))}%`,
+          bottom: 14 + row * 14 + Math.max(0, 4 - centerBias) * 3 + ((index * 5) % 8),
+          width,
+          height,
+          rotate: `${((index * 37) % 42) - 21}deg`,
+          opacity: 0.72 + ((index * 13) % 24) / 100,
+          zIndex: row * 2 + col,
+        };
+      }),
+    [pileCount, variant]
+  );
+  const targetBillSpecs = useMemo(
+    () =>
+      Array.from({ length: targetPileCount }).map((_, index) => {
+        const row = Math.floor(index / 7);
+        const col = index % 7;
+        const centerBias = Math.abs(col - 3);
+        const width = 54 + ((index * 11) % 22);
+        const height = 24 + ((index * 7) % 10);
+        return {
+          id: `budget_target_bill_${variant}_${index}`,
+          left: `${Math.max(2, Math.min(78, col * 13 + ((index * 17) % 9) - centerBias * 1.8))}%`,
+          bottom: 14 + row * 14 + Math.max(0, 4 - centerBias) * 3 + ((index * 5) % 8),
+          width,
+          height,
+          rotate: `${((index * 37) % 42) - 21}deg`,
+          opacity: 0.72 + ((index * 13) % 24) / 100,
+          zIndex: row * 2 + col + 70,
+        };
+      }),
+    [targetPileCount, variant]
+  );
+
+  useEffect(() => {
+    const previousAmount = previousAmountRef.current;
+    const nextEventKey = String(eventKey || "");
+    const eventChanged = previousEventKeyRef.current !== nextEventKey;
+    const amountDelta = normalizedAmount - previousAmount;
+    previousAmountRef.current = normalizedAmount;
+    previousEventKeyRef.current = nextEventKey;
+    let active = true;
+    pulse.setValue(0);
+    const pulseAnimation = Animated.spring(pulse, {
+      toValue: 1,
+      friction: 5,
+      tension: 72,
+      useNativeDriver: true,
+    });
+    pulseAnimation.start();
+    if (!isDebt && amountDelta > 0.01) {
+      setVisualAmount(previousAmount);
+      setPileMotion({ type: "fall", token: nextEventKey || `${Date.now()}` });
+      fallAnim.setValue(0);
+      Animated.timing(fallAnim, {
+        toValue: 1,
+        duration: 760,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (!finished || !active) return;
+        setVisualAmount(normalizedAmount);
+        setPileMotion(null);
+      });
+      return () => {
+        active = false;
+        fallAnim.stopAnimation();
+      };
+    }
+    if (isDebt && amountDelta < -0.01) {
+      setVisualAmount(previousAmount);
+      setPileMotion({ type: "remove", token: nextEventKey || `${Date.now()}` });
+      removeAnim.setValue(0);
+      Animated.timing(removeAnim, {
+        toValue: 1,
+        duration: 620,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (!finished || !active) return;
+        setVisualAmount(normalizedAmount);
+        setPileMotion(null);
+      });
+      return () => {
+        active = false;
+        removeAnim.stopAnimation();
+      };
+    }
+    if (!eventChanged || Math.abs(amountDelta) <= 0.01) {
+      setPileMotion(null);
+    }
+    setVisualAmount(normalizedAmount);
+    return () => {
+      active = false;
+    };
+  }, [eventKey, fallAnim, isDebt, normalizedAmount, pulse, removeAnim]);
+
+  const pileScale = pulse.interpolate({
+    inputRange: [0, 0.7, 1],
+    outputRange: [0.96, 1.035, 1],
+  });
+  const fallingBillCount = Math.max(6, Math.min(16, Math.max(targetPileCount - pileCount, Math.ceil(targetPileCount * 0.36))));
+  const removingBillCount = Math.max(4, Math.min(14, Math.max(pileCount - targetPileCount, Math.ceil(pileCount * 0.3))));
+  const fallingBills = targetBillSpecs.slice(-fallingBillCount);
+  const removingBills = billSpecs.slice(-removingBillCount);
+  const fallOpacity = fallAnim.interpolate({
+    inputRange: [0, 0.12, 0.9, 1],
+    outputRange: [0, 1, 1, 0],
+  });
+  const removeOpacity = removeAnim.interpolate({
+    inputRange: [0, 0.36, 1],
+    outputRange: [0.92, 0.78, 0],
+  });
+  const accent = isDebt ? "#D73343" : SAVE_ACTION_COLOR;
+  const softAccent = isDebt ? "#FF7A86" : "#62DFA5";
+  const billFill = isDebt ? "#FFE3E6" : "#DFF9E9";
+  const billStroke = isDebt ? "#C72737" : "#1B8E5D";
+  const shadowColor = isDebt ? "rgba(150,0,20,0.32)" : "rgba(14,104,60,0.28)";
+
+  return (
+    <View style={styles.budgetPileFrame}>
+      <View
+        style={[
+          styles.budgetPileHalo,
+          {
+            backgroundColor: colorWithAlpha(accent, isDebt ? 0.14 : 0.12),
+            borderColor: colorWithAlpha(softAccent, 0.22),
+          },
+        ]}
+      />
+      <Animated.View style={[styles.budgetPileStage, { transform: [{ scale: pileScale }] }]}>
+        <View style={[styles.budgetPileGround, { backgroundColor: shadowColor }]} />
+        {billSpecs.map((bill) => (
+          <View
+            key={bill.id}
+            style={[
+              styles.budgetBill,
+              {
+                left: bill.left,
+                bottom: bill.bottom,
+                width: bill.width,
+                height: bill.height,
+                opacity: bill.opacity,
+                zIndex: bill.zIndex,
+                backgroundColor: billFill,
+                borderColor: colorWithAlpha(billStroke, 0.42),
+                transform: [{ rotate: bill.rotate }],
+              },
+            ]}
+          >
+            <View style={[styles.budgetBillStripe, { backgroundColor: colorWithAlpha(billStroke, 0.16) }]} />
+            <View style={[styles.budgetBillSeal, { borderColor: colorWithAlpha(billStroke, 0.36) }]} />
+          </View>
+        ))}
+        {pileMotion?.type === "fall"
+          ? fallingBills.map((bill, index) => (
+              <Animated.View
+                key={`${pileMotion.token}_${bill.id}_fall_${index}`}
+                pointerEvents="none"
+                style={[
+                  styles.budgetBill,
+                  {
+                    left: bill.left,
+                    bottom: bill.bottom,
+                    width: bill.width,
+                    height: bill.height,
+                    opacity: fallOpacity,
+                    zIndex: bill.zIndex + 90,
+                    backgroundColor: billFill,
+                    borderColor: colorWithAlpha(billStroke, 0.42),
+                    transform: [
+                      {
+                        translateY: fallAnim.interpolate({
+                          inputRange: [0, 0.78, 1],
+                          outputRange: [-190 - (index % 3 === 0 ? 24 : 0), -12, 0],
+                        }),
+                      },
+                      { rotate: bill.rotate },
+                    ],
+                  },
+                ]}
+              >
+                <View style={[styles.budgetBillStripe, { backgroundColor: colorWithAlpha(billStroke, 0.16) }]} />
+                <View style={[styles.budgetBillSeal, { borderColor: colorWithAlpha(billStroke, 0.36) }]} />
+              </Animated.View>
+            ))
+          : null}
+        {pileMotion?.type === "remove"
+          ? removingBills.map((bill, index) => (
+              <Animated.View
+                key={`${pileMotion.token}_${bill.id}_remove_${index}`}
+                pointerEvents="none"
+                style={[
+                  styles.budgetBill,
+                  {
+                    left: bill.left,
+                    bottom: bill.bottom,
+                    width: bill.width,
+                    height: bill.height,
+                    opacity: removeOpacity,
+                    zIndex: bill.zIndex + 110,
+                    backgroundColor: billFill,
+                    borderColor: colorWithAlpha(billStroke, 0.42),
+                    transform: [
+                      {
+                        translateY: removeAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [index % 2 === 0 ? -8 : -22, -92],
+                        }),
+                      },
+                      { rotate: bill.rotate },
+                      { scale: removeAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.82] }) },
+                    ],
+                  },
+                ]}
+              >
+                <View style={[styles.budgetBillStripe, { backgroundColor: colorWithAlpha(billStroke, 0.16) }]} />
+                <View style={[styles.budgetBillSeal, { borderColor: colorWithAlpha(billStroke, 0.36) }]} />
+              </Animated.View>
+            ))
+          : null}
+        <View
+          style={[
+            styles.budgetPileFrontGlow,
+            { backgroundColor: colorWithAlpha(softAccent, isDebt ? 0.18 : 0.16) },
+          ]}
+        />
+      </Animated.View>
+    </View>
+  );
+});
+
+const BudgetScreen = React.memo(function BudgetScreen({
+  ledger = INITIAL_BUDGET_LEDGER,
+  availableToAllocateUSD = 0,
+  savedTotalUSD = 0,
+  historyEvents = [],
+  currency = DEFAULT_PROFILE.currency,
+  t,
+  colors,
+  onTransfer = () => {},
+  onDebtSettingsSave = () => {},
+  onPickProof = async () => ({ uri: "" }),
+  scrollRef,
+  contentBottomPadding = 0,
+  topInset = 0,
+}) {
+  const normalizedLedger = useMemo(() => normalizeBudgetLedger(ledger), [ledger]);
+  const [pane, setPane] = useState("savings");
+  const [transferDraft, setTransferDraft] = useState({
+    visible: false,
+    type: "savings",
+    amount: "",
+    proofImageUri: "",
+    proofMatchedAmount: null,
+    source: "library",
+    verifyingProof: false,
+  });
+  const [debtDraft, setDebtDraft] = useState({
+    visible: false,
+    amount: "",
+    apr: "",
+    minPayment: "",
+  });
+  const savingsTotalUSD = useMemo(
+    () => sumAcceptedBudgetTransfers(normalizedLedger.savingsDeposits),
+    [normalizedLedger.savingsDeposits]
+  );
+  const debtPaidUSD = useMemo(
+    () => sumAcceptedBudgetTransfers(normalizedLedger.debtPayments),
+    [normalizedLedger.debtPayments]
+  );
+  const initialDebtUSD = Math.max(0, Number(normalizedLedger.debt.initialDebtUSD) || 0);
+  const debtRemainingUSD = Math.max(0, initialDebtUSD - debtPaidUSD);
+  const availableUSD = Math.max(0, Number(availableToAllocateUSD) || 0);
+  const formatLocalAmount = useCallback(
+    (valueUSD = 0) => formatCurrency(convertToCurrency(valueUSD || 0, currency), currency),
+    [currency]
+  );
+  const interpolateFallback = useCallback((fallback, replacements = {}) => {
+    let text = String(fallback || "");
+    Object.entries(replacements).forEach(([key, value]) => {
+      text = text.replace(`{{${key}}}`, value);
+    });
+    return text;
+  }, []);
+  const copy = useCallback(
+    (key, fallback, replacements = {}) => {
+      const resolved = typeof t === "function" ? t(key, replacements) : "";
+      if (resolved && resolved !== key) return resolved;
+      return interpolateFallback(fallback, replacements);
+    },
+    [interpolateFallback, t]
+  );
+  const monthlySavedFromRefusalsUSD = useMemo(() => {
+    const now = Date.now();
+    const cutoff = now - DAY_MS * 30;
+    const entries = Array.isArray(historyEvents) ? historyEvents : [];
+    const total = entries.reduce((sum, entry) => {
+      if (!entry || entry.timestamp < cutoff) return sum;
+      if (
+        entry.kind !== "refuse_spend" &&
+        entry.kind !== "pending_to_decline" &&
+        entry.kind !== "income_savings"
+      ) {
+        return sum;
+      }
+      return sum + Math.max(0, Number(entry?.meta?.amountUSD) || 0);
+    }, 0);
+    return total;
+  }, [historyEvents]);
+  const recommendedMonthlyUSD = useMemo(() => {
+    if (!debtRemainingUSD) return 0;
+    const fromRefusals = Math.max(0, monthlySavedFromRefusalsUSD);
+    const minPayment = Math.max(0, Number(normalizedLedger.debt.minMonthlyPaymentUSD) || 0);
+    const floor = Math.min(debtRemainingUSD, Math.max(10, debtRemainingUSD * 0.05));
+    return Math.min(debtRemainingUSD, Math.max(fromRefusals, minPayment, floor));
+  }, [debtRemainingUSD, monthlySavedFromRefusalsUSD, normalizedLedger.debt.minMonthlyPaymentUSD]);
+  const payoffProjection = useMemo(() => {
+    if (!debtRemainingUSD || !recommendedMonthlyUSD) return { months: 0, totalInterestUSD: 0 };
+    const monthlyRate = Math.max(0, Number(normalizedLedger.debt.aprPercent) || 0) / 100 / 12;
+    if (!monthlyRate) {
+      return {
+        months: Math.ceil(debtRemainingUSD / recommendedMonthlyUSD),
+        totalInterestUSD: 0,
+      };
+    }
+    let balance = debtRemainingUSD;
+    let months = 0;
+    let totalInterestUSD = 0;
+    while (balance > 0.01 && months < 600) {
+      const interest = balance * monthlyRate;
+      totalInterestUSD += interest;
+      balance = Math.max(0, balance + interest - recommendedMonthlyUSD);
+      months += 1;
+      if (recommendedMonthlyUSD <= interest && months > 2) {
+        return { months: Infinity, totalInterestUSD };
+      }
+    }
+    return { months, totalInterestUSD };
+  }, [debtRemainingUSD, normalizedLedger.debt.aprPercent, recommendedMonthlyUSD]);
+  const latestTransfer = useMemo(() => {
+    const list = pane === "debt" ? normalizedLedger.debtPayments : normalizedLedger.savingsDeposits;
+    return [...list].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0] || null;
+  }, [normalizedLedger.debtPayments, normalizedLedger.savingsDeposits, pane]);
+
+  const openTransfer = useCallback(
+    (type) => {
+      setTransferDraft({
+        visible: true,
+        type,
+        amount: "",
+        proofImageUri: "",
+        proofMatchedAmount: null,
+        source: "library",
+        verifyingProof: false,
+      });
+    },
+    []
+  );
+  const closeTransfer = useCallback(() => {
+    setTransferDraft((prev) => ({ ...prev, visible: false }));
+  }, []);
+  const handlePickTransferProof = useCallback(
+    async (source) => {
+      const parsedLocal = parseNumberInputValue(transferDraft.amount);
+      if (!Number.isFinite(parsedLocal) || parsedLocal <= 0) {
+        Alert.alert("Almost", copy("budgetAmountError", "Enter an amount."));
+        return;
+      }
+      setTransferDraft((prev) => ({
+        ...prev,
+        proofImageUri: "",
+        proofMatchedAmount: null,
+        source,
+        verifyingProof: true,
+      }));
+      const result = await onPickProof(source, {
+        expectedLocalAmount: parsedLocal,
+        currency,
+      });
+      if (result?.uri) {
+        setTransferDraft((prev) => ({
+          ...prev,
+          proofImageUri: result.uri,
+          proofMatchedAmount: Number.isFinite(result?.matchedAmount) ? result.matchedAmount : parsedLocal,
+          source,
+          verifyingProof: false,
+        }));
+        return;
+      }
+      setTransferDraft((prev) => ({ ...prev, source, verifyingProof: false }));
+    },
+    [copy, currency, onPickProof, transferDraft.amount]
+  );
+  const submitTransfer = useCallback(() => {
+    const parsedLocal = parseNumberInputValue(transferDraft.amount);
+    const amountUSD = convertFromCurrency(parsedLocal, currency || DEFAULT_PROFILE.currency);
+    if (!Number.isFinite(amountUSD) || amountUSD <= 0) {
+      Alert.alert("Almost", copy("budgetAmountError", "Enter an amount."));
+      return;
+    }
+    if (amountUSD > availableUSD + 0.01) {
+      Alert.alert(
+        "Almost",
+        copy("budgetAvailableError", "You only have {{amount}} available to allocate.", {
+          amount: formatLocalAmount(availableUSD),
+        })
+      );
+      return;
+    }
+    if (transferDraft.type === "debt" && debtRemainingUSD > 0 && amountUSD > debtRemainingUSD + 0.01) {
+      Alert.alert(
+        "Almost",
+        copy("budgetDebtOverpayError", "Debt remaining is {{amount}}.", {
+          amount: formatLocalAmount(debtRemainingUSD),
+        })
+      );
+      return;
+    }
+    if (!transferDraft.proofImageUri) {
+      Alert.alert("Almost", copy("budgetProofError", "Add a bank transfer photo first."));
+      return;
+    }
+    if (transferDraft.verifyingProof) {
+      Alert.alert("Almost", copy("budgetProofChecking", "Checking the transfer confirmation..."));
+      return;
+    }
+    const proofTolerance = Math.max(
+      getCurrencyFineStep(currency) || 0.01,
+      getCurrencyPrecision(currency) > 0 ? 0.01 : 1
+    );
+    const proofAmountMismatch =
+      Number.isFinite(transferDraft.proofMatchedAmount) &&
+      Math.abs(
+        roundCurrencyValue(transferDraft.proofMatchedAmount, currency) -
+          roundCurrencyValue(parsedLocal, currency)
+      ) > proofTolerance;
+    if (proofAmountMismatch) {
+      Alert.alert(
+        "Almost",
+        copy(
+          "budgetProofAmountMismatch",
+          "Could not verify the entered amount. Upload a bank confirmation with visible transfer details.",
+          { amount: formatLocalAmount(amountUSD) }
+        )
+      );
+      return;
+    }
+    onTransfer?.({
+      type: transferDraft.type === "debt" ? "debt" : "savings",
+      amountUSD,
+      proofImageUri: transferDraft.proofImageUri,
+    });
+    closeTransfer();
+  }, [
+    availableUSD,
+    closeTransfer,
+    copy,
+    currency,
+    debtRemainingUSD,
+    formatLocalAmount,
+    onTransfer,
+    transferDraft.amount,
+    transferDraft.proofMatchedAmount,
+    transferDraft.proofImageUri,
+    transferDraft.type,
+    transferDraft.verifyingProof,
+  ]);
+  const openDebtSettings = useCallback(() => {
+    setDebtDraft({
+      visible: true,
+      amount: initialDebtUSD > 0 ? formatNumberInputValue(convertToCurrency(initialDebtUSD, currency)) : "",
+      apr:
+        normalizedLedger.debt.aprPercent > 0
+          ? formatNumberInputValue(normalizedLedger.debt.aprPercent)
+          : "",
+      minPayment:
+        normalizedLedger.debt.minMonthlyPaymentUSD > 0
+          ? formatNumberInputValue(convertToCurrency(normalizedLedger.debt.minMonthlyPaymentUSD, currency))
+          : "",
+    });
+  }, [
+    currency,
+    initialDebtUSD,
+    normalizedLedger.debt.aprPercent,
+    normalizedLedger.debt.minMonthlyPaymentUSD,
+  ]);
+  const closeDebtSettings = useCallback(() => {
+    setDebtDraft((prev) => ({ ...prev, visible: false }));
+  }, []);
+  const submitDebtSettings = useCallback(() => {
+    const amountLocal = parseNumberInputValue(debtDraft.amount);
+    const amountUSD = convertFromCurrency(amountLocal, currency || DEFAULT_PROFILE.currency);
+    if (!Number.isFinite(amountUSD) || amountUSD <= 0) {
+      Alert.alert("Almost", copy("budgetDebtAmountError", "Enter your total debt first."));
+      return;
+    }
+    const aprPercent = Math.max(0, Math.min(99, parseNumberInputValue(debtDraft.apr) || 0));
+    const minPaymentLocal = parseNumberInputValue(debtDraft.minPayment);
+    const minMonthlyPaymentUSD =
+      Number.isFinite(minPaymentLocal) && minPaymentLocal > 0
+        ? convertFromCurrency(minPaymentLocal, currency || DEFAULT_PROFILE.currency)
+        : 0;
+    onDebtSettingsSave?.({ initialDebtUSD: amountUSD, aprPercent, minMonthlyPaymentUSD });
+    closeDebtSettings();
+  }, [closeDebtSettings, copy, currency, debtDraft.amount, debtDraft.apr, debtDraft.minPayment, onDebtSettingsSave]);
+  const paneItems = [
+    { id: "savings", label: copy("budgetSavingsTab", "Savings") },
+    { id: "debt", label: copy("budgetDebtTab", "Debt") },
+  ];
+  const currentTotalUSD = pane === "debt" ? debtRemainingUSD : savingsTotalUSD;
+  const statusRows =
+    pane === "debt"
+      ? [
+          {
+            label: copy("budgetDebtPaidLabel", "Paid"),
+            value: formatLocalAmount(debtPaidUSD),
+          },
+          {
+            label: copy("budgetDebtMonthlyLabel", "Monthly from refusals"),
+            value: recommendedMonthlyUSD ? formatLocalAmount(recommendedMonthlyUSD) : "—",
+          },
+          {
+            label: copy("budgetDebtPayoffLabel", "Payoff"),
+            value:
+              payoffProjection.months === Infinity
+                ? copy("budgetDebtPayoffBlocked", "increase payment")
+                : payoffProjection.months > 0
+                ? copy("budgetDebtPayoffMonths", "{{count}} mo", { count: String(payoffProjection.months) })
+                : "—",
+          },
+        ]
+      : [
+          {
+            label: copy("budgetSavedLoggedLabel", "Logged in feed"),
+            value: formatLocalAmount(savedTotalUSD),
+          },
+          {
+            label: copy("budgetAvailableLabel", "Available"),
+            value: formatLocalAmount(availableUSD),
+          },
+          {
+            label: copy("budgetLastTransferLabel", "Last transfer"),
+            value: latestTransfer ? formatLocalAmount(latestTransfer.amountUSD) : "—",
+          },
+        ];
+
+  return (
+    <>
+      <ScrollView
+        ref={scrollRef}
+        style={[
+          styles.container,
+          {
+            backgroundColor: colors.background,
+            paddingTop: Math.max(0, Number(topInset) || 0) + MENU_TOP_CONTENT_OFFSET,
+          },
+        ]}
+        contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false}
+        contentContainerStyle={{
+          paddingBottom: Math.max(0, Number(contentBottomPadding) || 0),
+          gap: 16,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View>
+          <Text style={[styles.header, { color: colors.text }]}>{t("purchasesTitle")}</Text>
+          <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
+            {t("purchasesSubtitle")}
+          </Text>
+        </View>
+        <View style={styles.rewardsTabs}>
+          {paneItems.map((item) => {
+            const active = pane === item.id;
+            return (
+              <TouchableOpacity
+                key={item.id}
+                activeOpacity={0.86}
+                onPress={() => setPane(item.id)}
+                style={[
+                  styles.rewardsTabButton,
+                  {
+                    backgroundColor: active ? colors.text : "transparent",
+                    borderColor: active ? colors.text : colors.border,
+                  },
+                ]}
+              >
+                <Text style={[styles.rewardsTabText, { color: active ? colors.background : colors.text }]}>
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <View
+          style={[
+            styles.budgetVaultCard,
+            {
+              backgroundColor:
+                pane === "debt"
+                  ? colorWithAlpha("#D73343", colors.background === THEMES.dark.background ? 0.18 : 0.08)
+                  : colors.card,
+              borderColor:
+                pane === "debt"
+                  ? colorWithAlpha("#D73343", colors.background === THEMES.dark.background ? 0.36 : 0.18)
+                  : colors.border,
+            },
+          ]}
+        >
+          <Text style={[styles.budgetVaultKicker, { color: pane === "debt" ? "#D73343" : colors.muted }]}>
+            {pane === "debt"
+              ? copy("budgetDebtKicker", "Debt pressure")
+              : copy("budgetSavingsKicker", "Real savings pile")}
+          </Text>
+          <Text
+            style={[
+              styles.budgetVaultAmount,
+              { color: pane === "debt" ? "#D73343" : colors.text },
+            ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.45}
+          >
+            {formatLocalAmount(currentTotalUSD)}
+          </Text>
+          <BudgetMoneyPile
+            key={`budget-pile-${pane}`}
+            amountUSD={currentTotalUSD}
+            baselineAmountUSD={pane === "debt" ? initialDebtUSD : savingsTotalUSD}
+            variant={pane}
+            eventKey={`${pane}_${latestTransfer?.id || ""}_${latestTransfer?.createdAt || 0}_${currentTotalUSD}`}
+          />
+          <Text style={[styles.budgetVaultCaption, { color: colors.muted }]}>
+            {pane === "debt"
+              ? copy(
+                  "budgetDebtCaption",
+                  "Each confirmed payment shrinks the red pile. The recommendation uses your last 30 days of resisted temptations."
+                )
+              : copy(
+                  "budgetSavingsCaption",
+                  "Confirmed transfers turn logged savings into money parked on your real savings account."
+                )}
+          </Text>
+        </View>
+        <View style={styles.budgetStatGrid}>
+          {statusRows.map((row) => (
+            <View
+              key={row.label}
+              style={[styles.budgetStatCell, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <Text style={[styles.budgetStatLabel, { color: colors.muted }]}>{row.label}</Text>
+              <Text style={[styles.budgetStatValue, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit>
+                {row.value}
+              </Text>
+            </View>
+          ))}
+        </View>
+        {pane === "debt" && initialDebtUSD <= 0 ? (
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={openDebtSettings}
+            style={[styles.budgetSetupCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <Text style={[styles.budgetSetupTitle, { color: colors.text }]}>
+              {copy("budgetDebtSetupTitle", "Set your debt amount")}
+            </Text>
+            <Text style={[styles.budgetSetupText, { color: colors.muted }]}>
+              {copy(
+                "budgetDebtSetupBody",
+                "Add the current balance and optional APR. Almost will estimate a monthly payoff target from your resisted temptations."
+              )}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => {
+            if (pane === "debt" && initialDebtUSD <= 0) {
+              openDebtSettings();
+              return;
+            }
+            openTransfer(pane === "debt" ? "debt" : "savings");
+          }}
+          style={[
+            styles.budgetPrimaryButton,
+            { backgroundColor: pane === "debt" ? "#D73343" : SAVE_ACTION_COLOR },
+          ]}
+        >
+          <Text style={styles.budgetPrimaryButtonText}>
+            {pane === "debt"
+              ? copy("budgetDebtPayButton", "Pay down")
+              : copy("budgetSavingsTopUpButton", "Top up")}
+          </Text>
+        </TouchableOpacity>
+        {pane === "debt" && initialDebtUSD > 0 ? (
+          <TouchableOpacity
+            activeOpacity={0.84}
+            onPress={openDebtSettings}
+            style={[styles.budgetSecondaryButton, { borderColor: colors.border }]}
+          >
+            <Text style={[styles.budgetSecondaryButtonText, { color: colors.text }]}>
+              {copy("budgetDebtEditButton", "Edit debt plan")}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+      </ScrollView>
+
+      <Modal visible={transferDraft.visible} transparent animationType="fade" onRequestClose={closeTransfer}>
+        <View style={styles.budgetProofModalRoot}>
+          <TouchableWithoutFeedback onPress={closeTransfer}>
+            <View style={styles.budgetProofModalDim} />
+          </TouchableWithoutFeedback>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+            pointerEvents="box-none"
+            style={styles.budgetProofKeyboardAvoider}
+          >
+            <View pointerEvents="box-none" style={styles.budgetProofModalDock}>
+              <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+                <View style={[styles.budgetProofModalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.budgetProofModalTitle, { color: colors.text }]}>
+                    {transferDraft.type === "debt"
+                      ? copy("budgetDebtTransferTitle", "Confirm debt payment")
+                      : copy("budgetSavingsTransferTitle", "Confirm savings transfer")}
+                  </Text>
+                  <Text style={[styles.budgetModalText, { color: colors.muted }]}>
+                    {copy(
+                      "budgetTransferProofNote",
+                      "Upload a bank transfer confirmation photo. You can hide sensitive details as long as the transfer details remain visible."
+                    )}
+                  </Text>
+                  <RNTextInput
+                    value={transferDraft.amount}
+                    onChangeText={(amount) =>
+                      setTransferDraft((prev) => ({
+                        ...prev,
+                        amount,
+                        proofImageUri: "",
+                        proofMatchedAmount: null,
+                      }))
+                    }
+                    placeholder={formatLocalAmount(Math.min(availableUSD, 100))}
+                    placeholderTextColor={colors.muted}
+                    keyboardType="decimal-pad"
+                    style={[
+                      styles.budgetAmountInput,
+                      { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
+                    ]}
+                  />
+                  <View style={styles.budgetProofButtons}>
+                    <TouchableOpacity
+                      activeOpacity={0.86}
+                      disabled={transferDraft.verifyingProof}
+                      onPress={() => handlePickTransferProof("camera")}
+                      style={[
+                        styles.budgetProofButton,
+                        { borderColor: colors.border, opacity: transferDraft.verifyingProof ? 0.55 : 1 },
+                      ]}
+                    >
+                      <Text style={[styles.budgetProofButtonText, { color: colors.text }]}>
+                        {copy("budgetProofCamera", "Camera")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      activeOpacity={0.86}
+                      disabled={transferDraft.verifyingProof}
+                      onPress={() => handlePickTransferProof("library")}
+                      style={[
+                        styles.budgetProofButton,
+                        { borderColor: colors.border, opacity: transferDraft.verifyingProof ? 0.55 : 1 },
+                      ]}
+                    >
+                      <Text style={[styles.budgetProofButtonText, { color: colors.text }]}>
+                        {copy("budgetProofLibrary", "Gallery")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  {transferDraft.verifyingProof ? (
+                    <View style={styles.budgetProofStatusRow}>
+                      <ActivityIndicator size="small" color={colors.text} />
+                      <Text style={[styles.budgetProofStatusText, { color: colors.muted }]}>
+                        {copy("budgetProofChecking", "Checking the transfer confirmation...")}
+                      </Text>
+                    </View>
+                  ) : transferDraft.proofImageUri ? (
+                    <Text style={[styles.budgetProofStatusText, { color: SAVE_ACTION_COLOR }]}>
+                      {copy("budgetProofMatched", "Confirmation accepted.")}
+                    </Text>
+                  ) : null}
+                  {transferDraft.proofImageUri ? (
+                    <Image
+                      source={{ uri: resolveBudgetProofUri(transferDraft.proofImageUri) }}
+                      style={styles.budgetProofPreview}
+                      resizeMode="cover"
+                    />
+                  ) : null}
+                  <View style={styles.budgetProofModalActions}>
+                    <TouchableOpacity
+                      activeOpacity={0.84}
+                      onPress={closeTransfer}
+                      style={[styles.budgetModalGhost, { borderColor: colors.border }]}
+                    >
+                      <Text style={[styles.budgetModalGhostText, { color: colors.text }]}>
+                        {t("profileCancel")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      activeOpacity={0.9}
+                      onPress={submitTransfer}
+                      style={[
+                        styles.budgetModalSubmit,
+                        { backgroundColor: transferDraft.type === "debt" ? "#D73343" : SAVE_ACTION_COLOR },
+                      ]}
+                    >
+                      <Text style={styles.budgetModalSubmitText}>
+                        {copy("budgetConfirmButton", "Confirm")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      <Modal visible={debtDraft.visible} transparent animationType="fade" onRequestClose={closeDebtSettings}>
+        <View style={styles.budgetProofModalRoot}>
+          <TouchableWithoutFeedback onPress={closeDebtSettings}>
+            <View style={styles.budgetProofModalDim} />
+          </TouchableWithoutFeedback>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+            pointerEvents="box-none"
+            style={styles.budgetProofKeyboardAvoider}
+          >
+            <View pointerEvents="box-none" style={styles.budgetProofModalDock}>
+              <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+                <View style={[styles.budgetProofModalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.budgetProofModalTitle, { color: colors.text }]}>
+                    {copy("budgetDebtSettingsTitle", "Debt plan")}
+                  </Text>
+                  <RNTextInput
+                    value={debtDraft.amount}
+                    onChangeText={(amount) => setDebtDraft((prev) => ({ ...prev, amount }))}
+                    placeholder={copy("budgetDebtAmountPlaceholder", "Debt amount")}
+                    placeholderTextColor={colors.muted}
+                    keyboardType="decimal-pad"
+                    style={[
+                      styles.budgetAmountInput,
+                      { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
+                    ]}
+                  />
+                  <RNTextInput
+                    value={debtDraft.apr}
+                    onChangeText={(apr) => setDebtDraft((prev) => ({ ...prev, apr }))}
+                    placeholder={copy("budgetDebtAprPlaceholder", "APR %, optional")}
+                    placeholderTextColor={colors.muted}
+                    keyboardType="decimal-pad"
+                    style={[
+                      styles.budgetAmountInput,
+                      { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
+                    ]}
+                  />
+                  <RNTextInput
+                    value={debtDraft.minPayment}
+                    onChangeText={(minPayment) => setDebtDraft((prev) => ({ ...prev, minPayment }))}
+                    placeholder={copy("budgetDebtMinPlaceholder", "Minimum monthly payment")}
+                    placeholderTextColor={colors.muted}
+                    keyboardType="decimal-pad"
+                    style={[
+                      styles.budgetAmountInput,
+                      { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
+                    ]}
+                  />
+                  <View style={styles.budgetProofModalActions}>
+                    <TouchableOpacity
+                      activeOpacity={0.84}
+                      onPress={closeDebtSettings}
+                      style={[styles.budgetModalGhost, { borderColor: colors.border }]}
+                    >
+                      <Text style={[styles.budgetModalGhostText, { color: colors.text }]}>
+                        {t("profileCancel")}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      activeOpacity={0.9}
+                      onPress={submitDebtSettings}
+                      style={[styles.budgetModalSubmit, { backgroundColor: "#D73343" }]}
+                    >
+                      <Text style={styles.budgetModalSubmitText}>
+                        {copy("budgetSavePlanButton", "Save plan")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+    </>
   );
 });
 
@@ -34965,7 +36409,7 @@ function AppContent() {
   const tabHistoryRef = useRef(tabHistory);
   const pendingScrollRef = useRef(null);
   const progressScrollRef = useRef(null);
-  const rewardsScrollRef = useRef(null);
+  const budgetScrollRef = useRef(null);
   const profileScrollRef = useRef(null);
   const budgetWidgetLayoutRef = useRef(null);
   const freeDayCardLayoutRef = useRef(null);
@@ -35260,10 +36704,12 @@ function AppContent() {
     setFreeDayCardLayoutTick((tick) => tick + 1);
   }, []);
   const requestProgressBudgetFocus = useCallback(() => {
+    setProgressHubPane("progress");
     setPendingProgressScrollTarget("budget");
     goToTab("cart");
   }, [goToTab]);
   const requestProgressFreeDayFocus = useCallback(() => {
+    setProgressHubPane("progress");
     setPendingProgressScrollTarget("free_day");
     goToTab("cart", { recordHistory: false });
   }, [goToTab]);
@@ -35276,6 +36722,7 @@ function AppContent() {
       if (challengeId) {
         setProgressFocusChallengeId(challengeId);
       }
+      setProgressHubPane("progress");
       goToTab("cart");
     },
     [goToTab]
@@ -35640,6 +37087,7 @@ function AppContent() {
   const [challengesHydrated, setChallengesHydrated] = useState(false);
   const [challengeBadgeStore, setChallengeBadgeStore] = useState([]);
   const [challengeBadgeStoreHydrated, setChallengeBadgeStoreHydrated] = useState(false);
+  const [progressHubPane, setProgressHubPane] = useState("progress");
   const [rewardsPane, setRewardsPane] = useState("rewards");
   useEffect(() => {
     if (challengesUnlocked) return;
@@ -35657,6 +37105,8 @@ function AppContent() {
   const [budgetOverridesHydrated, setBudgetOverridesHydrated] = useState(false);
   const [budgetOverspendMap, setBudgetOverspendMap] = useState({});
   const [budgetOverspendHydrated, setBudgetOverspendHydrated] = useState(false);
+  const [budgetLedger, setBudgetLedger] = useState({ ...INITIAL_BUDGET_LEDGER });
+  const [budgetLedgerHydrated, setBudgetLedgerHydrated] = useState(false);
   const [incomePromptState, setIncomePromptState] = useState({
     lastPromptMonthKey: null,
     lastPromptAt: 0,
@@ -35671,6 +37121,20 @@ function AppContent() {
   const incomeEntrySourceRef = useRef("manual");
   const incomeEntryModeRef = useRef(INCOME_ENTRY_TYPES.MONTHLY);
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
+  const budgetLedgerTotals = useMemo(() => {
+    const normalized = normalizeBudgetLedger(budgetLedger);
+    const savingsDepositedUSD = sumAcceptedBudgetTransfers(normalized.savingsDeposits);
+    const debtPaidUSD = sumAcceptedBudgetTransfers(normalized.debtPayments);
+    return {
+      savingsDepositedUSD,
+      debtPaidUSD,
+      allocatedUSD: savingsDepositedUSD + debtPaidUSD,
+      availableToAllocateUSD: Math.max(
+        0,
+        (Number(savedTotalUSD) || 0) - savingsDepositedUSD - debtPaidUSD
+      ),
+    };
+  }, [budgetLedger, savedTotalUSD]);
   const monetizationTrialActionCount =
     Math.max(0, Number(declineCount) || 0) +
     Math.max(0, Array.isArray(purchases) ? purchases.length : 0);
@@ -37077,7 +38541,7 @@ function AppContent() {
         return true;
       }
       if (tabKey === "purchases") {
-        rewardsScrollRef.current?.scrollTo?.({ y: 0, animated });
+        budgetScrollRef.current?.scrollTo?.({ y: 0, animated });
         return true;
       }
       if (tabKey === "profile") {
@@ -37552,10 +39016,9 @@ function AppContent() {
     if (!tutorialVisible) return tabOrder;
     return tabOrder.filter((tab) => {
       if (tab === "pending" && !thinkingUnlocked) return false;
-      if (tab === "purchases" && !rewardsUnlocked) return false;
       return true;
     });
-  }, [rewardsUnlocked, tabOrder, thinkingUnlocked, tutorialVisible]);
+  }, [tabOrder, thinkingUnlocked, tutorialVisible]);
   useEffect(() => {
     if (availableTabs.includes(activeTab)) return;
     if (availableTabs.length) {
@@ -38781,10 +40244,15 @@ function AppContent() {
       : DEFAULT_TAMAGOTCHI_SKIN;
   const tamagotchiSkin =
     TAMAGOTCHI_SKINS[resolvedTamagotchiSkinId] || TAMAGOTCHI_SKINS[DEFAULT_TAMAGOTCHI_SKIN];
+  const remoteTamagotchiAnimations = remoteTamagotchiAnimationsBySkinId[resolvedTamagotchiSkinId];
   const tamagotchiAnimations =
+    remoteTamagotchiAnimations ||
     tamagotchiSkin.animations ||
-    remoteTamagotchiAnimationsBySkinId[resolvedTamagotchiSkinId] ||
+    tamagotchiSkin.bundledFallbackAnimations ||
     CLASSIC_TAMAGOTCHI_ANIMATIONS;
+  const tamagotchiAnimationSetKey = remoteTamagotchiAnimations
+    ? `${resolvedTamagotchiSkinId}_remote`
+    : `${resolvedTamagotchiSkinId}_fallback`;
   const tamagotchiAvatarSource = tamagotchiSkin.avatar;
   const tamagotchiHydratedRef = useRef(false);
   const tamagotchiHungerPrevRef = useRef(
@@ -48598,6 +50066,42 @@ function AppContent() {
   const systemBarsDimActive = Boolean(
     fabMenuVisible || (!saveOverlayVisible && (blockingModalVisible || overlay))
   );
+  const shouldShowStatusGlass = shouldRenderStatusGlass && !startupLogoVisible;
+  const statusGlassOverlayConfig = useMemo(
+    () =>
+      shouldShowStatusGlass
+        ? {
+            height: statusGlassHeight,
+            safeHeight: topSafeInset,
+            offsetY: 0,
+            colors,
+            theme,
+            blurAvailable: statusBlurAvailable,
+          }
+        : null,
+    [
+      shouldShowStatusGlass,
+      statusGlassHeight,
+      topSafeInset,
+      colors,
+      theme,
+      statusBlurAvailable,
+    ]
+  );
+  const statusGlassModalOverlayConfig = useMemo(
+    () =>
+      statusGlassOverlayConfig
+        ? {
+            ...statusGlassOverlayConfig,
+            layerStyle: styles.statusGlassModalLayer,
+          }
+        : null,
+    [statusGlassOverlayConfig]
+  );
+  const statusGlassModalOverlayElement = useMemo(
+    () => (statusGlassModalOverlayConfig ? <StatusGlass {...statusGlassModalOverlayConfig} /> : null),
+    [statusGlassModalOverlayConfig]
+  );
   const systemBarsStateRef = useRef({
     navColor: null,
     buttonStyle: null,
@@ -50735,6 +52239,7 @@ function AppContent() {
         STORAGE_KEYS.INCOME_ENTRIES,
         STORAGE_KEYS.BUDGET_LIMITS,
         STORAGE_KEYS.BUDGET_OVERSPEND,
+        STORAGE_KEYS.BUDGET_LEDGER,
         STORAGE_KEYS.INCOME_PROMPT,
         STORAGE_KEYS.IMPULSE_TRACKER,
         STORAGE_KEYS.MOOD_STATE,
@@ -50852,6 +52357,7 @@ function AppContent() {
       const budgetLimitsRaw = storedMap[STORAGE_KEYS.BUDGET_LIMITS] ?? null;
       const incomePromptRaw = storedMap[STORAGE_KEYS.INCOME_PROMPT] ?? null;
       const budgetOverspendRaw = storedMap[STORAGE_KEYS.BUDGET_OVERSPEND] ?? null;
+      const budgetLedgerRaw = storedMap[STORAGE_KEYS.BUDGET_LEDGER] ?? null;
       const impulseTrackerRaw = storedMap[STORAGE_KEYS.IMPULSE_TRACKER] ?? null;
       const moodRaw = storedMap[STORAGE_KEYS.MOOD_STATE] ?? null;
       const challengesRaw = storedMap[STORAGE_KEYS.CHALLENGES] ?? null;
@@ -52326,6 +53832,17 @@ function AppContent() {
         setBudgetOverspendMap({});
       }
       setBudgetOverspendHydrated(true);
+      if (budgetLedgerRaw) {
+        try {
+          setBudgetLedger(normalizeBudgetLedger(JSON.parse(budgetLedgerRaw)));
+        } catch (err) {
+          console.warn("budget ledger parse", err);
+          setBudgetLedger({ ...INITIAL_BUDGET_LEDGER });
+        }
+      } else {
+        setBudgetLedger({ ...INITIAL_BUDGET_LEDGER });
+      }
+      setBudgetLedgerHydrated(true);
       const hydrateImpulseTracker = () => {
         if (impulseTrackerRaw) {
           try {
@@ -52541,6 +54058,7 @@ function AppContent() {
       setBudgetOverridesHydrated(true);
       setIncomePromptHydrated(true);
       setBudgetOverspendHydrated(true);
+      setBudgetLedgerHydrated(true);
       setCatalogHydrated(true);
       setTitleOverridesHydrated(true);
       setEmojiOverridesHydrated(true);
@@ -54315,6 +55833,11 @@ useEffect(() => {
   }, [queuePersist, budgetOverspendHydrated, budgetOverspendMap]);
 
   useEffect(() => {
+    if (!budgetLedgerHydrated) return;
+    queuePersist(STORAGE_KEYS.BUDGET_LEDGER, JSON.stringify(normalizeBudgetLedger(budgetLedger)));
+  }, [budgetLedger, budgetLedgerHydrated, queuePersist]);
+
+  useEffect(() => {
     if (!incomePromptHydrated) return;
     queuePersist(STORAGE_KEYS.INCOME_PROMPT, JSON.stringify(incomePromptState));
   }, [queuePersist, incomePromptHydrated, incomePromptState]);
@@ -54430,6 +55953,7 @@ useEffect(() => {
       [STORAGE_KEYS.LAST_CELEBRATED_LEVEL, "1"],
       [STORAGE_KEYS.LEVEL_SHARE_REWARDED_LEVELS, "{}"],
       [STORAGE_KEYS.DEFAULT_TEMPTATION_GROWTH_LOCK_LEVEL, ""],
+      [STORAGE_KEYS.BUDGET_LEDGER, JSON.stringify(INITIAL_BUDGET_LEDGER)],
     ]).catch(() => {});
   }, [
     declineCount,
@@ -55362,9 +56886,20 @@ useEffect(() => {
     }
     if (tabKey === "cart") {
       logEvent("menu_progress_opened");
+    } else if (tabKey === "purchases") {
+      logEvent("menu_budget_opened");
     }
     goToTab(tabKey);
   };
+  const handleProgressHubPaneChange = useCallback((nextPane) => {
+    const normalizedPane = nextPane === "rewards" ? "rewards" : "progress";
+    setProgressHubPane(normalizedPane);
+    logEvent(
+      normalizedPane === "rewards"
+        ? "menu_progress_rewards_opened"
+        : "menu_progress_overview_opened"
+    );
+  }, []);
   const resolveMainTabLabel = useCallback(
     (tabKey) => {
       if (tabKey === "feed") return t("feedTab");
@@ -57408,6 +58943,7 @@ useEffect(() => {
     setDeclineCount(0);
     setDecisionStats({ ...INITIAL_DECISION_STATS });
     setRefuseStats({});
+    setBudgetLedger({ ...INITIAL_BUDGET_LEDGER });
     AsyncStorage.multiSet([
       [STORAGE_KEYS.SAVED_TOTAL, "0"],
       [STORAGE_KEYS.SAVED_TOTAL_PEAK, "0"],
@@ -57421,6 +58957,7 @@ useEffect(() => {
       [STORAGE_KEYS.DECLINES, "0"],
       [STORAGE_KEYS.DECISION_STATS, JSON.stringify({ ...INITIAL_DECISION_STATS })],
       [STORAGE_KEYS.REFUSE_STATS, "{}"],
+      [STORAGE_KEYS.BUDGET_LEDGER, JSON.stringify(INITIAL_BUDGET_LEDGER)],
     ]).catch(() => {});
     await AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
     await AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "done").catch(() => {});
@@ -57615,6 +59152,48 @@ useEffect(() => {
     }
   }, []);
 
+  const persistBudgetProofUri = useCallback(async (uri, fileName) => {
+    if (!uri || typeof uri !== "string") return "";
+    const documentDir = FileSystem.documentDirectory;
+    if (!documentDir) return uri;
+    if (uri.startsWith(documentDir)) return normalizeBudgetProofStorageValue(uri);
+    const isFileUri = uri.startsWith("file://");
+    const isContentUri = uri.startsWith("content://");
+    if (!isFileUri && !isContentUri) return uri;
+    if (isFileUri) {
+      const fileInfo = await FileSystem.getInfoAsync(uri).catch(() => null);
+      if (!fileInfo?.exists) return uri;
+    }
+    const targetDir = `${documentDir}${BUDGET_PROOF_STORAGE_DIR}`;
+    await FileSystem.makeDirectoryAsync(targetDir, { intermediates: true }).catch(() => {});
+    const cleanedUri = uri.split("?")[0];
+    const cleanedName = typeof fileName === "string" ? fileName.split("?")[0] : "";
+    const fileNameMatch = cleanedName.match(/\.([a-zA-Z0-9]+)$/);
+    const extensionMatch = cleanedUri.match(/\.([a-zA-Z0-9]+)$/);
+    const extension = (fileNameMatch?.[1] || extensionMatch?.[1] || "jpg").toLowerCase();
+    const generatedName = `proof-${Date.now()}-${Math.random().toString(16).slice(2)}.${extension}`;
+    const targetUri = `${targetDir}${generatedName}`;
+    const storedValue = `${BUDGET_PROOF_STORAGE_DIR}${generatedName}`;
+    try {
+      await FileSystem.copyAsync({ from: uri, to: targetUri });
+      return storedValue;
+    } catch (error) {
+      try {
+        const base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        await FileSystem.writeAsStringAsync(targetUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        return storedValue;
+      } catch (fallbackError) {
+        console.warn("budget proof persist", error);
+        console.warn("budget proof persist fallback", fallbackError);
+        return uri;
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!profileHydrated) return;
     let cancelled = false;
@@ -57687,6 +59266,93 @@ useEffect(() => {
       console.warn("image picker", error);
     }
   };
+
+  const pickBudgetProofImage = useCallback(
+    async (source = "library", verification = {}) => {
+      try {
+        triggerHaptic();
+        const expectedLocalAmount = Number(verification?.expectedLocalAmount) || 0;
+        const verificationCurrency = verification?.currency || profile.currency || DEFAULT_PROFILE.currency;
+        if (!Number.isFinite(expectedLocalAmount) || expectedLocalAmount <= 0) {
+          Alert.alert("Almost", t("budgetAmountError"));
+          return { uri: "" };
+        }
+        const type = source === "camera" ? "camera" : "library";
+        const permitted = await ensureMediaPermission(type);
+        if (!permitted) return { uri: "" };
+        const pickerOptions = {
+          mediaTypes: ["images"],
+          quality: 0.82,
+          ...(SHOULD_USE_ANDROID_LEGACY_MEDIA_PICKER ? { legacy: true } : {}),
+        };
+        const result =
+          source === "camera"
+            ? await ImagePicker.launchCameraAsync(pickerOptions)
+            : await ImagePicker.launchImageLibraryAsync(pickerOptions);
+        if (result.canceled || !result.assets?.length) return { uri: "" };
+        const asset = result.assets[0];
+        const persistedValue = await persistBudgetProofUri(asset.uri, asset.fileName);
+        const proofUri = resolveBudgetProofUri(persistedValue);
+        const recognition = await recognizeBudgetProofTextOffline(proofUri);
+        if (!recognition.ok) {
+          if (persistedValue && persistedValue !== asset.uri) {
+            FileSystem.deleteAsync(proofUri, { idempotent: true }).catch(() => {});
+          }
+          const key =
+            recognition.reason === "ocr_unavailable"
+              ? "budgetProofOcrUnavailable"
+              : "budgetProofOcrFailed";
+          Alert.alert("Almost", t(key));
+          logEvent("budget_proof_ocr_failed", {
+            reason: recognition.reason || "unknown",
+          });
+          return { uri: "" };
+        }
+        const verificationResult = verifyBudgetProofAmountInText({
+          text: recognition.text,
+          expectedLocalAmount,
+          currency: verificationCurrency,
+        });
+        if (!verificationResult.matched) {
+          if (persistedValue && persistedValue !== asset.uri) {
+            FileSystem.deleteAsync(proofUri, { idempotent: true }).catch(() => {});
+          }
+          Alert.alert(
+            "Almost",
+            t("budgetProofAmountMismatch", {
+              amount: formatCurrency(expectedLocalAmount, verificationCurrency),
+            })
+          );
+          logEvent("budget_proof_amount_mismatch", {
+            candidate_count: verificationResult.candidates.length,
+            expected_local_amount: expectedLocalAmount,
+            currency: verificationCurrency,
+          });
+          return { uri: "" };
+        }
+        logEvent("budget_proof_amount_matched", {
+          expected_local_amount: expectedLocalAmount,
+          matched_local_amount: verificationResult.matchedAmount,
+          currency: verificationCurrency,
+        });
+        return {
+          uri: persistedValue,
+          matchedAmount: verificationResult.matchedAmount,
+        };
+      } catch (error) {
+        const errorMessage =
+          error?.message && error.message.includes("canceled")
+            ? null
+            : `${t("photoPickerError")}\n${error?.message || ""}`.trim();
+        if (errorMessage) {
+          Alert.alert("Almost", errorMessage);
+        }
+        console.warn("budget proof picker", error);
+        return { uri: "" };
+      }
+    },
+    [persistBudgetProofUri, profile.currency, t]
+  );
 
   const registerSmartReminder = useCallback(
     async (entry) => {
@@ -57859,6 +59525,106 @@ useEffect(() => {
     },
     [cancelSameDaySmartReminders, registerSmartReminder, setChallengesState]
   );
+
+  const handleBudgetTransfer = useCallback(
+    ({ type = "savings", amountUSD = 0, proofImageUri = "" } = {}) => {
+      const normalizedType = type === "debt" ? "debt" : "savings";
+      const normalizedAmountUSD = clampTransactionAmountUSD(amountUSD);
+      if (!Number.isFinite(normalizedAmountUSD) || normalizedAmountUSD <= 0) return;
+      const availableUSD = Math.max(0, Number(budgetLedgerTotals.availableToAllocateUSD) || 0);
+      if (normalizedAmountUSD > availableUSD + 0.01) {
+        Alert.alert(
+          "Almost",
+          t("budgetAvailableError", {
+            amount: formatCurrency(
+              convertToCurrency(availableUSD, profile.currency || DEFAULT_PROFILE.currency),
+              profile.currency || DEFAULT_PROFILE.currency
+            ),
+          })
+        );
+        return;
+      }
+      if (normalizedType === "debt") {
+        const normalizedLedger = normalizeBudgetLedger(budgetLedger);
+        const debtRemainingUSD = Math.max(
+          0,
+          (Number(normalizedLedger.debt.initialDebtUSD) || 0) -
+            sumAcceptedBudgetTransfers(normalizedLedger.debtPayments)
+        );
+        if (debtRemainingUSD > 0 && normalizedAmountUSD > debtRemainingUSD + 0.01) {
+          Alert.alert(
+            "Almost",
+            t("budgetDebtOverpayError", {
+              amount: formatCurrency(
+                convertToCurrency(debtRemainingUSD, profile.currency || DEFAULT_PROFILE.currency),
+                profile.currency || DEFAULT_PROFILE.currency
+              ),
+            })
+          );
+          return;
+        }
+      }
+      const createdAt = Date.now();
+      const entry = {
+        id: `budget-${normalizedType}-${createdAt}-${Math.random().toString(16).slice(2, 8)}`,
+        amountUSD: normalizedAmountUSD,
+        proofImageUri: normalizeBudgetProofStorageValue(proofImageUri),
+        status: "accepted",
+        createdAt,
+        note: "",
+      };
+      setBudgetLedger((prev) => {
+        const normalized = normalizeBudgetLedger(prev);
+        if (normalizedType === "debt") {
+          return {
+            ...normalized,
+            debtPayments: [entry, ...normalized.debtPayments],
+          };
+        }
+        return {
+          ...normalized,
+          savingsDeposits: [entry, ...normalized.savingsDeposits],
+        };
+      });
+      logHistoryEvent(
+        normalizedType === "debt" ? "budget_debt_payment" : "budget_savings_deposit",
+        {
+          amountUSD: normalizedAmountUSD,
+          proofImageUri: entry.proofImageUri,
+        }
+      );
+      logEvent("budget_transfer_confirmed", {
+        type: normalizedType,
+        amount_usd: normalizedAmountUSD,
+        has_proof: entry.proofImageUri ? 1 : 0,
+      });
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    },
+    [budgetLedger, budgetLedgerTotals.availableToAllocateUSD, logHistoryEvent, profile.currency, t]
+  );
+
+  const handleBudgetDebtSettingsSave = useCallback(({ initialDebtUSD, aprPercent, minMonthlyPaymentUSD }) => {
+    const timestamp = Date.now();
+    setBudgetLedger((prev) => {
+      const normalized = normalizeBudgetLedger(prev);
+      return {
+        ...normalized,
+        debt: {
+          initialDebtUSD: clampTransactionAmountUSD(initialDebtUSD),
+          aprPercent: Math.max(0, Math.min(99, Number(aprPercent) || 0)),
+          minMonthlyPaymentUSD: clampTransactionAmountUSD(minMonthlyPaymentUSD),
+          createdAt: normalized.debt.createdAt || timestamp,
+          updatedAt: timestamp,
+        },
+      };
+    });
+    logEvent("budget_debt_plan_saved", {
+      debt_usd: clampTransactionAmountUSD(initialDebtUSD),
+      apr_percent: Math.max(0, Math.min(99, Number(aprPercent) || 0)),
+      min_payment_usd: clampTransactionAmountUSD(minMonthlyPaymentUSD),
+    });
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+  }, []);
 
   const registerUsageStreakAction = useCallback((actionType = "save", timestamp = Date.now()) => {
     const dayKey = getDayKey(timestamp);
@@ -66118,6 +67884,7 @@ useEffect(() => {
             setLevelProgressOffsetUSD(0);
             tutorialLevelOffsetAppliedRef.current = false;
             setDeclineCount(0);
+            setBudgetLedger({ ...INITIAL_BUDGET_LEDGER });
             setCatalogOverrides({});
             setTitleOverrides({});
             setEmojiOverrides({});
@@ -66694,7 +68461,7 @@ useEffect(() => {
     !bugReportVisible &&
     !helpGuideVisible;
   const renderActiveScreen = () => {
-    if (activeTab === "purchases" && !deferredHydrationReady) {
+    if (activeTab === "cart" && progressHubPane === "rewards" && !deferredHydrationReady) {
       return (
         <View style={[styles.screenLoading, { backgroundColor: colors.background }]}>
           <ActivityIndicator color={colors.text} />
@@ -66703,6 +68470,39 @@ useEffect(() => {
     }
     switch (activeTab) {
       case "cart":
+        if (progressHubPane === "rewards") {
+          return (
+            <RewardsScreen
+              achievements={achievements}
+              challenges={challengeList}
+              activePane="rewards"
+              onPaneChange={setRewardsPane}
+              onChallengeAccept={handleChallengeAccept}
+              onChallengeClaim={handleChallengeClaim}
+              onChallengeCancel={handleChallengeCancel}
+              t={t}
+              colors={colors}
+              savedTotalUSD={savedTotalUSD}
+              currency={profile.currency || DEFAULT_PROFILE.currency}
+              onRewardClaim={handleRewardClaim}
+              healthRewardAmount={HEALTH_PER_REWARD}
+              language={language}
+              dailyChallenge={resolvedDailyChallenge}
+              showChallenges={false}
+              showDailyChallengeWidget={false}
+              rewardsLocked={!rewardsUnlocked}
+              challengesLocked={!challengesUnlocked}
+              dailyChallengeLocked={!dailyChallengeUnlocked}
+              scrollRef={progressScrollRef}
+              contentBottomPadding={screenContentBottomPadding}
+              topInset={topSafeInset}
+              titleKey="wishlistTitle"
+              subtitleKey="progressTabSubtitle"
+              progressHubPane={progressHubPane}
+              onProgressHubPaneChange={handleProgressHubPaneChange}
+            />
+          );
+        }
         return (
           <ProgressScreen
             wishes={wishes}
@@ -66763,6 +68563,8 @@ useEffect(() => {
             onImpulseMapLockedPress={handleImpulseMapLockedPress}
             contentBottomPadding={screenContentBottomPadding}
             topInset={topSafeInset}
+            progressHubPane={progressHubPane}
+            onProgressHubPaneChange={handleProgressHubPaneChange}
           />
         );
       case "pending":
@@ -66790,28 +68592,18 @@ useEffect(() => {
         );
       case "purchases":
         return (
-          <RewardsScreen
-            achievements={achievements}
-            challenges={challengeList}
-            activePane={rewardsPane}
-            onPaneChange={setRewardsPane}
-            onChallengeAccept={handleChallengeAccept}
-            onChallengeClaim={handleChallengeClaim}
-            onChallengeCancel={handleChallengeCancel}
+          <BudgetScreen
+            ledger={budgetLedger}
+            availableToAllocateUSD={budgetLedgerTotals.availableToAllocateUSD}
+            savedTotalUSD={savedTotalUSD}
+            historyEvents={visibleHistoryEvents}
             t={t}
             colors={colors}
-            savedTotalUSD={savedTotalUSD}
             currency={profile.currency || DEFAULT_PROFILE.currency}
-            onRewardClaim={handleRewardClaim}
-            healthRewardAmount={HEALTH_PER_REWARD}
-            language={language}
-            dailyChallenge={resolvedDailyChallenge}
-            showChallenges={false}
-            showDailyChallengeWidget={false}
-            rewardsLocked={!rewardsUnlocked}
-            challengesLocked={!challengesUnlocked}
-            dailyChallengeLocked={!dailyChallengeUnlocked}
-            scrollRef={rewardsScrollRef}
+            onTransfer={handleBudgetTransfer}
+            onDebtSettingsSave={handleBudgetDebtSettingsSave}
+            onPickProof={pickBudgetProofImage}
+            scrollRef={budgetScrollRef}
             contentBottomPadding={screenContentBottomPadding}
             topInset={topSafeInset}
           />
@@ -66901,6 +68693,8 @@ useEffect(() => {
             incomeEntries={incomeEntries}
             budgetOverrides={budgetOverrides}
             budgetAutoEnabled={budgetAutoEnabled}
+            budgetSavingsTransferredUSD={budgetLedgerTotals.savingsDepositedUSD}
+            budgetDebtTransferredUSD={budgetLedgerTotals.debtPaidUSD}
             decisionStats={decisionStats}
             customCategories={customCategories}
             titleOverrides={titleOverrides}
@@ -66984,6 +68778,7 @@ useEffect(() => {
             }
             onFocusCancel={requestFocusCancel}
             tamagotchiAnimations={tamagotchiAnimations}
+            tamagotchiAnimationSetKey={tamagotchiAnimationSetKey}
             lifetimeSavedUSD={lifetimeSavedUSD}
             progressLifetimeSavedUSD={progressLifetimeSavedUSD}
             levelProgressSaveCount={levelProgressSaveCount}
@@ -67029,14 +68824,14 @@ useEffect(() => {
   useEffect(() => {
     const tabScreens = {
       feed: "feed",
-      cart: "wishlist",
+      cart: progressHubPane === "rewards" ? "rewards" : "progress",
       pending: "pending",
-      purchases: "rewards",
+      purchases: "budget",
       profile: "profile",
     };
     const screenName = tabScreens[activeTab] || "feed";
     logScreenView(screenName);
-  }, [activeTab]);
+  }, [activeTab, progressHubPane]);
   const languageDirection = getLanguageDirection(language);
   const appLayoutDirection = Platform.OS === "ios" ? "ltr" : languageDirection;
   if (onboardingStep !== "done") {
@@ -67230,11 +69025,24 @@ useEffect(() => {
       );
     }
     const onboardingBackground = ONBOARDING_GLASS_THEME.backgroundBlue;
-    const renderOnboardingStatusGlass = shouldRenderStatusGlass && !systemBarsDimActive;
+    const shouldShowOnboardingStatusGlass = shouldRenderStatusGlass && Boolean(onboardContent);
+    const onboardingStatusGlassColors = { ...colors, background: onboardingBackground };
+    const onboardingStatusGlassConfig = shouldShowOnboardingStatusGlass
+      ? {
+          height: statusGlassHeight,
+          safeHeight: topSafeInset,
+          offsetY: 0,
+          colors: onboardingStatusGlassColors,
+          theme,
+          blurAvailable: statusBlurAvailable,
+          layerStyle: styles.statusGlassModalLayer,
+        }
+      : null;
     return (
-      <FormattingLanguageContext.Provider value={normalizedLanguageValue}>
-        <OnboardingSoundContext.Provider value={playSound}>
-          <>
+      <StatusGlassContext.Provider value={onboardingStatusGlassConfig}>
+        <FormattingLanguageContext.Provider value={normalizedLanguageValue}>
+          <OnboardingSoundContext.Provider value={playSound}>
+            <>
           <View
             style={[styles.appBackground, { backgroundColor: onboardingBackground, direction: appLayoutDirection }]}
             onTouchStart={handleRootTouchStart}
@@ -67249,12 +69057,12 @@ useEffect(() => {
                 },
               ]}
             >
-              {renderOnboardingStatusGlass && (
+              {shouldShowOnboardingStatusGlass && (
                 <StatusGlass
                   height={statusGlassHeight}
                   safeHeight={topSafeInset}
                   offsetY={0}
-                  colors={{ ...colors, background: onboardingBackground }}
+                  colors={onboardingStatusGlassColors}
                   theme={theme}
                   blurAvailable={statusBlurAvailable}
                 />
@@ -67307,9 +69115,10 @@ useEffect(() => {
             highLabel={customSpendSavingsModal.highLabel}
             onContinue={handleCustomSpendSavingsContinue}
           />
-          </>
-        </OnboardingSoundContext.Provider>
-      </FormattingLanguageContext.Provider>
+            </>
+          </OnboardingSoundContext.Provider>
+        </FormattingLanguageContext.Provider>
+      </StatusGlassContext.Provider>
     );
   }
 
@@ -67334,22 +69143,13 @@ useEffect(() => {
   const incomeEntrySkipKey = isExtraIncomeEntry ? "extraIncomeEntrySkip" : "incomeEntrySkip";
 
   return (
-    <FormattingLanguageContext.Provider value={normalizedLanguageValue}>
-      <SavingsProvider value={{ savedTotalUSD }}>
+    <StatusGlassContext.Provider value={statusGlassModalOverlayConfig}>
+      <FormattingLanguageContext.Provider value={normalizedLanguageValue}>
+        <SavingsProvider value={{ savedTotalUSD }}>
 	      <View
 	        style={[styles.appBackground, { backgroundColor: colors.background, direction: appLayoutDirection }]}
 	        onTouchStart={handleRootTouchStart}
 	      >
-	          {shouldRenderMainStatusGlass && !systemBarsDimActive && (
-	            <StatusGlass
-	              height={statusGlassHeight}
-	              safeHeight={topSafeInset}
-	              offsetY={0}
-	              colors={colors}
-	              theme={theme}
-	              blurAvailable={statusBlurAvailable}
-	            />
-	          )}
 	          {__DEV__ && (
 	            <View
 	              pointerEvents="none"
@@ -67378,6 +69178,16 @@ useEffect(() => {
 		            ]}
 		            onLayout={handleHomeLayout}
 	          >
+	              {shouldShowStatusGlass && (
+	                <StatusGlass
+	                  height={statusGlassHeight}
+	                  safeHeight={topSafeInset}
+	                  offsetY={0}
+	                  colors={colors}
+	                  theme={theme}
+	                  blurAvailable={statusBlurAvailable}
+	                />
+	              )}
 	              {startupLogoVisible && (
 	                <View style={[styles.logoSplashOverlay, { backgroundColor: colors.background }]}>
 	                  {startupLogoAnimationVisible ? <LogoSplash onDone={handleStartupLogoComplete} /> : null}
@@ -68886,6 +70696,7 @@ useEffect(() => {
           !premiumPaywallState.visible &&
           activeTab !== "profile" &&
           activeTab !== "purchases" &&
+          !(activeTab === "cart" && progressHubPane === "rewards") &&
           !(activeTab === "pending" && !thinkingUnlocked) && (
           <Animated.View
             pointerEvents="box-none"
@@ -69904,6 +71715,7 @@ useEffect(() => {
                         isPlayDeprived={tamagotchiNeedsPlay}
                         desaturation={tamagotchiDirtyLevel}
                         animations={tamagotchiAnimations}
+                        animationSetKey={tamagotchiAnimationSetKey}
                         imageOffsetX={0}
                         style={styles.tamagotchiMascotLarge}
                       />
@@ -71631,6 +73443,7 @@ useEffect(() => {
           onPrivacyPress={handlePrivacyPolicyOpen}
           onClose={closePremiumPaywall}
           colors={colors}
+          statusBarOverlay={statusGlassModalOverlayElement}
         />
 
         <Modal
@@ -72434,8 +74247,9 @@ useEffect(() => {
         />
       </View>
       </View>
-      </SavingsProvider>
-    </FormattingLanguageContext.Provider>
+        </SavingsProvider>
+      </FormattingLanguageContext.Provider>
+    </StatusGlassContext.Provider>
   );
 }
 
@@ -72450,7 +74264,16 @@ function App() {
 export default Sentry.wrap(App);
 
 const StatusGlass = React.memo(
-  ({ height, safeHeight = height, offsetY = 0, colors, theme, blurAvailable = false, solid = false }) => {
+  ({
+    height,
+    safeHeight = height,
+    offsetY = 0,
+    colors,
+    theme,
+    blurAvailable = false,
+    solid = false,
+    layerStyle = null,
+  }) => {
     const gradientId = useMemo(() => `status-glass-${Math.random().toString(36).slice(2, 10)}`, []);
     const isDarkTheme = theme === "dark";
     const safeHeightValue = Math.max(0, Math.min(height, Number(safeHeight) || 0));
@@ -72543,7 +74366,7 @@ const StatusGlass = React.memo(
     };
 
     return (
-      <View pointerEvents="none" style={[styles.statusGlass, { height, top: topOffset }]}>
+      <View pointerEvents="none" style={[styles.statusGlass, { height, top: topOffset }, layerStyle]}>
         {blurAvailable
           ? blurBands.map((band, index) =>
               renderBlurBand(
@@ -72728,6 +74551,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     zIndex: 12,
     elevation: 12,
+  },
+  statusGlassModalLayer: {
+    zIndex: 0,
+    elevation: 0,
   },
   statusGlassBlurBand: {
     position: "absolute",
@@ -74629,8 +76456,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tamagotchiStickyRewardButton: {
-    minWidth: scaleTamagotchiMetric(102, 88),
-    maxWidth: scaleTamagotchiMetric(158, 132),
+    minWidth: scaleTamagotchiMetric(126, 108),
+    maxWidth: scaleTamagotchiMetric(188, 156),
     minHeight: scaleTamagotchiMetric(34, 30),
     borderWidth: 1,
     borderRadius: scaleTamagotchiMetric(12, 10),
@@ -76113,6 +77940,31 @@ const styles = StyleSheet.create({
   },
   savingsTrendMetricValue: {
     ...createBodyText({ fontSize: IS_SHORT_DEVICE ? 13 : 14, fontWeight: "800" }),
+  },
+  savingsTrendBudgetSummary: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    gap: 7,
+  },
+  savingsTrendBudgetTitle: {
+    ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
+    letterSpacing: 0.4,
+  },
+  savingsTrendBudgetRows: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  savingsTrendBudgetItem: {
+    flex: 1,
+    gap: 2,
+  },
+  savingsTrendBudgetLabel: {
+    ...createSecondaryText({ fontSize: 10, fontWeight: "700" }),
+  },
+  savingsTrendBudgetValue: {
+    ...createBodyText({ fontSize: IS_SHORT_DEVICE ? 13 : 14, fontWeight: "900" }),
   },
   savingsTrendChartWrap: {
     width: "100%",
@@ -79286,6 +81138,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     position: "relative",
   },
+  temptationSwipeContent: {
+    width: "100%",
+  },
   temptationSwipeBackground: {
     position: "absolute",
     top: 0,
@@ -82080,6 +83935,261 @@ const styles = StyleSheet.create({
   },
   reportsBadgeText: {
     ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+  },
+  budgetVaultCard: {
+    borderWidth: 1,
+    borderRadius: 26,
+    padding: 18,
+    overflow: "hidden",
+    gap: 10,
+  },
+  budgetVaultKicker: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0,
+    textTransform: "uppercase",
+  },
+  budgetVaultAmount: {
+    fontSize: IS_COMPACT_DEVICE ? 40 : 50,
+    lineHeight: IS_COMPACT_DEVICE ? 46 : 56,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  budgetVaultCaption: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "600",
+  },
+  budgetPileFrame: {
+    height: 230,
+    marginVertical: 4,
+    justifyContent: "flex-end",
+    overflow: "hidden",
+  },
+  budgetPileHalo: {
+    position: "absolute",
+    left: "7%",
+    right: "7%",
+    bottom: 16,
+    height: 160,
+    borderRadius: 80,
+    borderWidth: 1,
+  },
+  budgetPileStage: {
+    height: 210,
+    justifyContent: "flex-end",
+  },
+  budgetPileGround: {
+    position: "absolute",
+    left: "8%",
+    right: "8%",
+    bottom: 8,
+    height: 38,
+    borderRadius: 999,
+    transform: [{ scaleX: 1.08 }],
+  },
+  budgetBill: {
+    position: "absolute",
+    borderWidth: 1,
+    borderRadius: 6,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  budgetBillStripe: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: "42%",
+    height: 5,
+  },
+  budgetBillSeal: {
+    position: "absolute",
+    right: 8,
+    top: 5,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+  },
+  budgetPileFrontGlow: {
+    position: "absolute",
+    left: "18%",
+    right: "18%",
+    bottom: 26,
+    height: 42,
+    borderRadius: 999,
+  },
+  budgetStatGrid: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  budgetStatCell: {
+    flex: 1,
+    minHeight: 82,
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 12,
+    justifyContent: "space-between",
+  },
+  budgetStatLabel: {
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "700",
+  },
+  budgetStatValue: {
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  budgetSetupCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 16,
+    gap: 8,
+  },
+  budgetSetupTitle: {
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: "900",
+  },
+  budgetSetupText: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "600",
+  },
+  budgetPrimaryButton: {
+    minHeight: 58,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+  },
+  budgetPrimaryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "900",
+  },
+  budgetSecondaryButton: {
+    minHeight: 50,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  budgetSecondaryButtonText: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+  },
+  budgetProofModalRoot: {
+    flex: 1,
+  },
+  budgetProofModalDim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.46)",
+  },
+  budgetProofKeyboardAvoider: {
+    flex: 1,
+  },
+  budgetProofModalDock: {
+    flex: 1,
+    justifyContent: "flex-end",
+    padding: 16,
+  },
+  budgetProofModalCard: {
+    borderWidth: 1,
+    borderRadius: 24,
+    padding: 18,
+    gap: 12,
+    maxHeight: "92%",
+  },
+  budgetProofModalTitle: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: "900",
+  },
+  budgetModalText: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "600",
+  },
+  budgetAmountInput: {
+    borderWidth: 1,
+    borderRadius: 16,
+    minHeight: 52,
+    paddingHorizontal: 14,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  budgetProofButtons: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  budgetProofButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 14,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  budgetProofButtonText: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: "800",
+  },
+  budgetProofStatusRow: {
+    minHeight: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  budgetProofStatusText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "800",
+  },
+  budgetProofPreview: {
+    width: "100%",
+    height: 150,
+    borderRadius: 16,
+  },
+  budgetProofModalActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  budgetModalGhost: {
+    flex: 1,
+    minHeight: 50,
+    borderWidth: 1,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  budgetModalGhostText: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+  },
+  budgetModalSubmit: {
+    flex: 1,
+    minHeight: 50,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  budgetModalSubmitText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "900",
   },
   bugReportFab: {
     position: "absolute",
@@ -101129,10 +103239,10 @@ const FeatureUnlockIllustration = ({ variantKey, colors, label, actionLabel, t }
   const variantPalette = {
     rewardsDaily: { accent: "#57B8FF", accentSoft: "#8EEBD2", emoji: "🎁", tabId: "feed" },
     feedFocus: { accent: "#7489FF", accentSoft: "#8EEBD2", emoji: "⚡", tabId: "feed" },
-    rewardsCustomization: { accent: "#F5A34C", accentSoft: "#FFD693", emoji: "🏆", tabId: "purchases" },
+    rewardsCustomization: { accent: "#F5A34C", accentSoft: "#FFD693", emoji: "🏆", tabId: "cart" },
     catCustomization: { accent: "#7AA7FF", accentSoft: "#A6F0D5", emoji: "🐾", tabId: "feed" },
     reports: { accent: "#6F9BFF", accentSoft: "#9FD3FF", emoji: "📈", tabId: "profile" },
-    rewardsChallenges: { accent: "#F39A4E", accentSoft: "#FFD89B", emoji: "🎯", tabId: "purchases" },
+    rewardsChallenges: { accent: "#F39A4E", accentSoft: "#FFD89B", emoji: "🎯", tabId: "cart" },
     impulseMap: { accent: "#6E83FF", accentSoft: "#80E0FF", emoji: "🗺️", tabId: "cart" },
     thinkingList: { accent: "#72AFFF", accentSoft: "#A4F1D2", emoji: "🧊", tabId: "pending" },
     freeDay: { accent: "#5DB8FF", accentSoft: "#7DE8C2", emoji: "🔥", tabId: "cart" },
@@ -101151,7 +103261,7 @@ const FeatureUnlockIllustration = ({ variantKey, colors, label, actionLabel, t }
     { id: "feed", label: resolveTabLabel("feedTab", "Feed") },
     { id: "cart", label: resolveTabLabel("wishlistTab", "Progress") },
     { id: "pending", label: resolveTabLabel("pendingTab", "Fridge") },
-    { id: "purchases", label: resolveTabLabel("purchasesTitle", "Rewards") },
+    { id: "purchases", label: resolveTabLabel("purchasesTitle", "Budget") },
     { id: "profile", label: resolveTabLabel("profileTab", "Profile") },
   ];
   const glowScale = pulseAnim.interpolate({
@@ -101302,8 +103412,8 @@ const FeatureUnlockIllustration = ({ variantKey, colors, label, actionLabel, t }
             </View>
             {renderInfoRows(2)}
           </>,
-          "purchases",
-          resolveTabLabel("purchasesTitle", "Rewards")
+          "cart",
+          resolveTabLabel("wishlistTitle", "Progress")
         );
       case "thinkingList":
         return renderMiniScreen(
@@ -101442,8 +103552,8 @@ const FeatureUnlockIllustration = ({ variantKey, colors, label, actionLabel, t }
             </View>
             {renderInfoRows(2)}
           </>,
-          "purchases",
-          resolveTabLabel("purchasesTitle", "Rewards")
+          "cart",
+          resolveTabLabel("wishlistTitle", "Progress")
         );
       default:
         return renderMiniScreen(
