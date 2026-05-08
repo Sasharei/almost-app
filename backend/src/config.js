@@ -45,12 +45,17 @@ const authSessionRateLimitPerMinuteDefault = isProductionEnv ? 30 : 120;
 const appEndpointRateLimitPerMinuteDefault = isProductionEnv ? 180 : 600;
 const requireInstallSecretDefault = isProductionEnv;
 const allowLegacyInstallSecretGraceDefault = false;
+const querySecretEnabledRequested = parseBooleanEnv(
+  process.env.WEBHOOK_QUERY_SECRET_ENABLED || "",
+  false
+);
 
 export const config = {
   nodeEnv,
   port: parseIntOrDefault(process.env.PORT, 8787),
   corsOrigins: parseCsvEnv(process.env.CORS_ORIGINS || ""),
-  webhookAllowQuerySecret: parseBooleanEnv(process.env.WEBHOOK_QUERY_SECRET_ENABLED || "", false),
+  // Query-param webhook secrets are tolerated in non-production for manual testing only.
+  webhookAllowQuerySecret: !isProductionEnv && querySecretEnabledRequested,
   appSharedSecret: process.env.APP_SHARED_SECRET || "",
   session: {
     enabled: isNonEmptyString(sessionSecret),
