@@ -33,6 +33,9 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
   private static let transparentTitleAttrs: [NSAttributedString.Key: Any] = [
     .foregroundColor: UIColor.clear
   ]
+  private static let tabIconCanvasSize = CGSize(width: 26, height: 26)
+  private static let tabIconMaxSide: CGFloat = 21.5
+  private static let tabIconSymbolConfig = UIImage.SymbolConfiguration(pointSize: 21, weight: .regular)
 
   private var tabModels: [NativeTabItemModel] = []
 
@@ -124,11 +127,11 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
         item.badgeValue = nil
         item.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 2000)
       } else {
-        let symbolConfig = UIImage.SymbolConfiguration(pointSize: 19, weight: .regular)
+        let tabIcon = Self.normalizedTabIcon(named: model.symbolName)
         item = UITabBarItem(
           title: model.title,
-          image: UIImage(systemName: model.symbolName, withConfiguration: symbolConfig),
-          selectedImage: UIImage(systemName: model.symbolName, withConfiguration: symbolConfig)
+          image: tabIcon,
+          selectedImage: tabIcon
         )
         item.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 5)
         item.imageInsets = UIEdgeInsets(top: -4, left: 0, bottom: 4, right: 0)
@@ -287,5 +290,42 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
     default:
       return "circle"
     }
+  }
+
+  private static func normalizedTabIcon(named symbolName: String) -> UIImage? {
+    let resolvedSymbolName: String
+    if UIImage(systemName: symbolName, withConfiguration: tabIconSymbolConfig) == nil {
+      resolvedSymbolName = "circle"
+    } else {
+      resolvedSymbolName = symbolName
+    }
+    guard let sourceImage = UIImage(systemName: resolvedSymbolName, withConfiguration: tabIconSymbolConfig) else {
+      return nil
+    }
+
+    let sourceSize = sourceImage.size
+    let sourceMaxSide = max(sourceSize.width, sourceSize.height)
+    guard sourceSize.width > 0, sourceSize.height > 0, sourceMaxSide > 0 else {
+      return sourceImage.withRenderingMode(.alwaysTemplate)
+    }
+
+    let iconScale = min(
+      tabIconMaxSide / sourceMaxSide,
+      tabIconCanvasSize.width / sourceSize.width,
+      tabIconCanvasSize.height / sourceSize.height
+    )
+    let drawSize = CGSize(width: sourceSize.width * iconScale, height: sourceSize.height * iconScale)
+    let drawRect = CGRect(
+      x: (tabIconCanvasSize.width - drawSize.width) / 2,
+      y: (tabIconCanvasSize.height - drawSize.height) / 2,
+      width: drawSize.width,
+      height: drawSize.height
+    )
+
+    let renderer = UIGraphicsImageRenderer(size: tabIconCanvasSize)
+    let renderedImage = renderer.image { _ in
+      sourceImage.withTintColor(.black, renderingMode: .alwaysOriginal).draw(in: drawRect)
+    }
+    return renderedImage.withRenderingMode(.alwaysTemplate)
   }
 }
