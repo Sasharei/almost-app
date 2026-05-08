@@ -2,10 +2,10 @@ services:
   - type: web
     name: almost-monetization-backend
     runtime: node
-    rootDir: .
+    rootDir: backend
     plan: starter
-    buildCommand: npm --prefix backend ci
-    startCommand: npm --prefix backend run start
+    buildCommand: npm ci
+    startCommand: npm run start
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
