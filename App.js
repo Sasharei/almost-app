@@ -3502,6 +3502,14 @@ const DAILY_REWARD_STREAK_LENGTH = 7;
 
 const DID_YOU_KNOW_TIPS = Object.freeze([
   {
+    id: "subscription_watch",
+    usageKey: "subscription_watch",
+    titleKey: "dailyDidYouKnowTipSubscriptionsTitle",
+    bodyKey: "dailyDidYouKnowTipSubscriptionsBody",
+    whereKey: "dailyDidYouKnowTipSubscriptionsWhere",
+    emoji: "📺",
+  },
+  {
     id: "fab_long_press_menu",
     usageKey: "fab_long_press_menu",
     titleKey: "dailyDidYouKnowTipFabLongPressTitle",
@@ -5301,6 +5309,12 @@ const BUDGET_CARD_LOW_THRESHOLD = BUDGET_SPEECH_LOW_THRESHOLD;
 const BUDGET_SPEECH_ESSENTIAL_IDS = new Set(["rent", "utilities", "mandatory", "car"]);
 const isEssentialImpulseCategory = (id) =>
   typeof id === "string" && BUDGET_SPEECH_ESSENTIAL_IDS.has(id);
+const SUBSCRIPTION_CATEGORY_ID = "subscriptions";
+const SUBSCRIPTION_REMINDER_OFFSETS_DAYS = [5, 2, 1];
+const SUBSCRIPTION_REMINDER_KIND = "subscription_reminder";
+const SUBSCRIPTION_EMPTY_EMOJIS = ["📺", "🎧", "🧾"];
+const SUBSCRIPTION_DEFAULT_REMINDER_HOUR = 10;
+const SUBSCRIPTION_DEFAULT_REMINDER_MINUTE = 0;
 
 const DEFAULT_SAVINGS_CATEGORY_DEF = {
   id: "savings",
@@ -5366,6 +5380,99 @@ const getBudgetCategoryLabel = (id, language = DEFAULT_LANGUAGE) => {
 const getBudgetCategoryEmoji = (id) => {
   if (id === "savings") return BUDGET_SPECIAL_CATEGORY_DEFS.savings?.emoji || "💎";
   return IMPULSE_CATEGORY_DEFS[id]?.emoji || "✨";
+};
+
+const isUserSubscriptionTemptation = (item = null, categoryId = null) => {
+  if (!item || typeof item !== "object") return false;
+  const isUserCreated =
+    item.quickTemptation === true ||
+    isCustomTemptation(item) ||
+    (typeof item.id === "string" && item.id.startsWith("custom_habit_"));
+  if (!isUserCreated) return false;
+  const categories = Array.isArray(item.categories) ? item.categories : [];
+  return (
+    categoryId === SUBSCRIPTION_CATEGORY_ID ||
+    item.impulseCategoryOverride === SUBSCRIPTION_CATEGORY_ID ||
+    item.impulseCategory === SUBSCRIPTION_CATEGORY_ID ||
+    categories.includes(SUBSCRIPTION_CATEGORY_ID)
+  );
+};
+
+const resolveSubscriptionNextCheckAt = (item = null, interactionEntry = null, nowTs = Date.now()) => {
+  const entry = interactionEntry && typeof interactionEntry === "object" ? interactionEntry : {};
+  const frequency = normalizeFrequencyId(entry.frequency || item?.frequency) || "monthly";
+  const frequencyCustom =
+    frequency === "custom"
+      ? normalizeCustomFrequency(entry.frequencyCustom || item?.frequencyCustom) || {
+          ...DEFAULT_CUSTOM_FREQUENCY,
+        }
+      : null;
+  const reminderTime =
+    normalizeFrequencyReminderTime({
+      hour: entry.frequencyReminderHour ?? item?.frequencyReminderHour,
+      minute: entry.frequencyReminderMinute ?? item?.frequencyReminderMinute,
+    }) || {
+      hour: SUBSCRIPTION_DEFAULT_REMINDER_HOUR,
+      minute: SUBSCRIPTION_DEFAULT_REMINDER_MINUTE,
+    };
+  const weeklyDays =
+    normalizeFrequencyWeeklyDays(
+      entry.frequencyWeeklyDays ?? entry.frequencyWeeklyDay ?? item?.frequencyWeeklyDays ?? item?.frequencyWeeklyDay
+    ) || [...DEFAULT_FREQUENCY_WEEKLY_DAYS];
+  const monthlyDays =
+    normalizeFrequencyMonthlyDays(
+      entry.frequencyMonthlyDays ??
+        entry.frequencyMonthlyDay ??
+        item?.frequencyMonthlyDays ??
+        item?.frequencyMonthlyDay
+    ) || [...DEFAULT_FREQUENCY_MONTHLY_DAYS];
+  const storedNextCheckAt = Number(entry.nextCheckAt);
+  if (Number.isFinite(storedNextCheckAt) && storedNextCheckAt > nowTs - DAY_MS) {
+    if (storedNextCheckAt > nowTs) return storedNextCheckAt;
+    const advanced = buildResetNextCheckAtForFrequency({
+      fromTimestamp: storedNextCheckAt,
+      frequencyId: frequency,
+      customFrequency: frequencyCustom,
+      reminderHour: reminderTime.hour,
+      reminderMinute: reminderTime.minute,
+      weeklyDay: weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY,
+      monthlyDay: monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY,
+      weeklyDays,
+      monthlyDays,
+    });
+    if (Number.isFinite(advanced) && advanced > nowTs) return advanced;
+  }
+  const baseTimestamp =
+    Number(entry.lastTimerResetAt) ||
+    Number(entry.lastInteractionAt) ||
+    Number(item?.createdAt) ||
+    nowTs;
+  return buildResetNextCheckAtForFrequency({
+    fromTimestamp: baseTimestamp,
+    frequencyId: frequency,
+    customFrequency: frequencyCustom,
+    reminderHour: reminderTime.hour,
+    reminderMinute: reminderTime.minute,
+    weeklyDay: weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY,
+    monthlyDay: monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY,
+    weeklyDays,
+    monthlyDays,
+  });
+};
+
+const resolveSubscriptionChecksPerMonth = (item = null, interactionEntry = null) => {
+  const entry = interactionEntry && typeof interactionEntry === "object" ? interactionEntry : {};
+  const frequency = normalizeFrequencyId(entry.frequency || item?.frequency) || "monthly";
+  return resolveFrequencyChecksPerMonth({
+    frequencyId: frequency,
+    customFrequency: entry.frequencyCustom || item?.frequencyCustom || null,
+    weeklyDays: entry.frequencyWeeklyDays ?? entry.frequencyWeeklyDay ?? item?.frequencyWeeklyDays ?? item?.frequencyWeeklyDay,
+    monthlyDays:
+      entry.frequencyMonthlyDays ??
+      entry.frequencyMonthlyDay ??
+      item?.frequencyMonthlyDays ??
+      item?.frequencyMonthlyDay,
+  });
 };
 
 const getMonthKey = (value = Date.now()) => {
@@ -7683,6 +7790,21 @@ const DEFAULT_POTENTIAL_PUSH_STATE = {
   baselineKey: null,
   stepMultiplier: 1,
   lastNotifiedAt: 0,
+};
+const BUDGET_ALLOCATION_REMINDER_KIND = "budget_allocation_reminder";
+const BUDGET_ALLOCATION_REMINDER_THRESHOLD_USD = 100;
+const BUDGET_ALLOCATION_REMINDER_INITIAL_DELAY_MS = 2 * 60 * 60 * 1000;
+const BUDGET_ALLOCATION_REMINDER_SCHEDULE_COUNT = 14;
+const DEFAULT_BUDGET_ALLOCATION_REMINDER_STATE = {
+  lastHandledBucket: 0,
+  activeBucket: 0,
+  notificationIds: [],
+  scheduledAt: 0,
+  allocatedUSDAtSchedule: 0,
+  clearedAvailableUSD: 0,
+  language: null,
+  currency: null,
+  hasDebt: false,
 };
 const POTENTIAL_LOSS_THRESHOLDS = [15, 25, 50, 75, 100];
 const DEFAULT_POTENTIAL_LOSS_STATE = {
@@ -11239,6 +11361,38 @@ const resolvePotentialPushStepUSD = (currencyCode = DEFAULT_PROFILE.currency) =>
   return POTENTIAL_PUSH_STEP_USD;
 };
 
+const resolveBudgetAllocationReminderBucket = (availableUSD = 0) => {
+  const normalized = Math.max(0, Number(availableUSD) || 0);
+  return Math.floor(normalized / BUDGET_ALLOCATION_REMINDER_THRESHOLD_USD);
+};
+
+const normalizeBudgetAllocationReminderState = (state) => {
+  const source = state && typeof state === "object" ? state : {};
+  const notificationIds = Array.isArray(source.notificationIds)
+    ? source.notificationIds.filter((id) => typeof id === "string" && id.trim())
+    : [];
+  return {
+    lastHandledBucket: Math.max(0, Math.floor(Number(source.lastHandledBucket) || 0)),
+    activeBucket: Math.max(0, Math.floor(Number(source.activeBucket) || 0)),
+    notificationIds,
+    scheduledAt:
+      Number.isFinite(Number(source.scheduledAt)) && Number(source.scheduledAt) > 0
+        ? Number(source.scheduledAt)
+        : 0,
+    allocatedUSDAtSchedule: Math.max(0, Number(source.allocatedUSDAtSchedule) || 0),
+    clearedAvailableUSD: Math.max(0, Number(source.clearedAvailableUSD) || 0),
+    language:
+      typeof source.language === "string" && source.language.trim()
+        ? normalizeLanguage(source.language)
+        : null,
+    currency:
+      typeof source.currency === "string" && source.currency.trim()
+        ? source.currency.trim().toUpperCase()
+        : null,
+    hasDebt: source.hasDebt === true || source.hasDebt === "1",
+  };
+};
+
 const INITIAL_REGISTRATION = {
   firstName: "",
   lastName: "",
@@ -11901,6 +12055,7 @@ function TemptationCardComponent({
   const title = resolveTemptationTitle(item, language, titleOverride);
   const isCustomCard =
     Array.isArray(item?.categories) && item.categories.some((category) => category === "custom");
+  const isSubscriptionCard = isUserSubscriptionTemptation(item, item?.impulseCategoryOverride || null);
   const descriptionString = typeof item.description === "string" ? item.description : null;
   const descriptionMap =
     item.description && typeof item.description === "object" && !Array.isArray(item.description)
@@ -13329,6 +13484,21 @@ function TemptationCardComponent({
           </Text>
         </TouchableOpacity>
       )}
+      {!showEditorInline && isSubscriptionCard && (
+        <View
+          style={[
+            styles.temptationSubscriptionBadge,
+            {
+              backgroundColor: isDarkTheme ? "rgba(255,92,110,0.16)" : "rgba(255,92,110,0.12)",
+              borderColor: isDarkTheme ? "rgba(255,92,110,0.46)" : "rgba(194,21,59,0.24)",
+            },
+          ]}
+        >
+          <Text style={[styles.temptationSubscriptionBadgeText, { color: isDarkTheme ? "#FFC0C8" : "#A51C32" }]}>
+            {t("subscriptionCardBadge")}
+          </Text>
+        </View>
+      )}
   {timerLabel && (
         <View
           style={[
@@ -13374,7 +13544,11 @@ function TemptationCardComponent({
           </Text>
           <Text
             style={[styles.temptationBudgetAlertText, { color: budgetAlertTextColor }]}
-            numberOfLines={2}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            allowAndroidAutoFit
+            minimumFontScale={0.88}
+            ellipsizeMode="tail"
           >
             {budgetAlertText}
           </Text>
@@ -18407,6 +18581,7 @@ function SpendConfirmSheet({
   visible,
   item,
   amountUSD = null,
+  budgetPreview = null,
   currency = DEFAULT_PROFILE.currency,
   language = DEFAULT_LANGUAGE,
   onCancel,
@@ -18424,6 +18599,161 @@ function SpendConfirmSheet({
   const displayTitle =
     resolveLanguageMapValue(item?.title, language) || item?.title?.en || item?.title || t("defaultDealTitle");
   const cancelColor = theme === "dark" ? "#64F2B5" : theme === PRO_THEME_ID ? colors.primary : "#1BA868";
+  const previewProgress = useRef(new Animated.Value(0)).current;
+  const previewPulse = useRef(new Animated.Value(0)).current;
+  const [previewSparkWidth, setPreviewSparkWidth] = useState(0);
+  const previewStatus = budgetPreview?.status || "unknown";
+  const previewAccent =
+    previewStatus === "safe"
+      ? "#20A36B"
+      : previewStatus === "tight"
+      ? "#F5A524"
+      : previewStatus === "over"
+      ? "#E15555"
+      : colors.text;
+  const previewCardBackground =
+    previewStatus === "safe"
+      ? "#F1FBF5"
+      : previewStatus === "tight"
+      ? "#FFF8E8"
+      : previewStatus === "over"
+      ? "#FFF1F1"
+      : colors.card;
+  const previewPanelBackground =
+    previewStatus === "safe"
+      ? "#E1F4E7"
+      : previewStatus === "tight"
+      ? "#FFF0C7"
+      : previewStatus === "over"
+      ? "#FFDCDC"
+      : colors.background;
+  const previewTitleKey =
+    previewStatus === "safe"
+      ? "spendPreviewTitleSafe"
+      : previewStatus === "tight"
+      ? "spendPreviewTitleTight"
+      : previewStatus === "over"
+      ? "spendPreviewTitleOver"
+      : "spendPreviewTitleUnknown";
+  const previewSignalKey =
+    previewStatus === "safe"
+      ? "spendPreviewSignalSafe"
+      : previewStatus === "tight"
+      ? "spendPreviewSignalTight"
+      : previewStatus === "over"
+      ? "spendPreviewSignalOver"
+      : "spendPreviewSignalUnknown";
+  const formatPreviewAmount = useCallback(
+    (valueUSD = 0, options = null) => {
+      const numeric = Number(valueUSD) || 0;
+      const allowNegative = options?.allowNegative === true;
+      const absoluteLabel = formatCurrency(
+        convertToCurrency(Math.abs(numeric), currency),
+        currency
+      );
+      return allowNegative && numeric < -0.01 ? `-${absoluteLabel}` : absoluteLabel;
+    },
+    [currency]
+  );
+  const formatPreviewCount = useCallback(
+    (value = 0) => {
+      const numeric = Math.max(0, Number(value) || 0);
+      const rounded = numeric >= 10 ? Math.round(numeric) : Math.round(numeric * 10) / 10;
+      const normalizedLanguage = normalizeLanguage(language);
+      const decimalSeparator = ["ru", "es", "fr", "de"].includes(normalizedLanguage) ? "," : ".";
+      const text = Number.isInteger(rounded)
+        ? String(rounded)
+        : rounded.toFixed(1).replace(".", decimalSeparator);
+      return localizeDigitsForLanguage(text, language);
+    },
+    [language]
+  );
+  const categoryLabel = budgetPreview?.categoryLabel || t("defaultSpendLabel");
+  const categoryLimitLabel = formatPreviewAmount(budgetPreview?.categoryLimitUSD);
+  const categorySpentAfterLabel = formatPreviewAmount(budgetPreview?.categorySpentAfterUSD);
+  const categoryRemainingBeforeLabel = formatPreviewAmount(budgetPreview?.categoryRemainingBeforeUSD, {
+    allowNegative: true,
+  });
+  const categoryRemainingAfterLabel = formatPreviewAmount(budgetPreview?.categoryRemainingAfterUSD, {
+    allowNegative: true,
+  });
+  const categoryImpactLabel = formatPreviewAmount(budgetPreview?.categoryImpactUSD);
+  const monthlyPotentialLossLabel = formatPreviewAmount(budgetPreview?.monthlyPotentialLossUSD);
+  const checksPerMonthLabel = formatPreviewCount(budgetPreview?.checksPerMonth || 1);
+  const categoryAfterPercentLabel = localizeDigitsForLanguage(
+    `${Math.round(Math.max(0, Number(budgetPreview?.categoryAfterRatio) || 0) * 100)}%`,
+    language
+  );
+  const previewSubtitle = `${displayTitle} · ${priceLabel}`;
+  const previewStatusDetail = budgetPreview?.hasCategoryLimit ? categoryLabel : t("spendPreviewNoLimitHint");
+  const previewSparklinePath =
+    previewStatus === "over"
+      ? "M 8 14 C 24 14, 42 26, 60 44 C 78 60, 98 62, 124 62"
+      : previewStatus === "tight"
+      ? "M 8 18 C 26 16, 44 22, 62 36 C 80 52, 98 58, 124 60"
+      : previewStatus === "unknown"
+      ? "M 8 36 C 28 34, 52 34, 74 36 C 94 38, 108 39, 124 40"
+      : "M 8 24 C 28 18, 46 18, 64 28 C 82 38, 100 46, 124 50";
+  const previewSparklineAreaPath = `${previewSparklinePath} L 124 70 L 8 70 Z`;
+  const showPreview = visible && !!budgetPreview;
+  useEffect(() => {
+    if (!showPreview) {
+      previewProgress.setValue(0);
+      previewPulse.setValue(0);
+      return undefined;
+    }
+    Animated.spring(previewProgress, {
+      toValue: 1,
+      damping: 13,
+      stiffness: 130,
+      mass: 0.8,
+      useNativeDriver: true,
+    }).start();
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(previewPulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(previewPulse, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulseLoop.start();
+    return () => {
+      pulseLoop.stop();
+    };
+  }, [previewProgress, previewPulse, showPreview]);
+  const previewOpacity = previewProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const previewTranslateY = previewProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [28, 0],
+  });
+  const previewScale = previewProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.92, 1],
+  });
+  const previewGlowScale = previewPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.96, 1.08],
+  });
+  const previewGlowOpacity = previewPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.18, 0.34],
+  });
+  const previewSparkRevealTranslateX = previewProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, Math.max(previewSparkWidth + 18, 18)],
+  });
   return (
     <Modal
       visible={visible}
@@ -18436,6 +18766,188 @@ function SpendConfirmSheet({
         <TouchableWithoutFeedback onPress={onCancel}>
           <View style={styles.payBackdropHit} />
         </TouchableWithoutFeedback>
+        {showPreview ? (
+          <View style={styles.spendPreviewLayer} pointerEvents="none">
+            <Animated.View
+              style={[
+                styles.spendPreviewGlow,
+                {
+                  backgroundColor: previewAccent,
+                  opacity: previewGlowOpacity,
+                  transform: [{ scale: previewGlowScale }],
+                },
+              ]}
+            />
+            <Animated.View
+              style={[
+                styles.spendPreviewCard,
+                {
+                  backgroundColor: previewCardBackground,
+                  borderColor: colorWithAlpha(previewAccent, 0.36),
+                  opacity: previewOpacity,
+                  transform: [{ translateY: previewTranslateY }, { scale: previewScale }],
+                },
+              ]}
+            >
+              <View style={styles.spendPreviewHeader}>
+                <Text style={[styles.spendPreviewKicker, { color: colors.muted }]}>
+                  {t("spendPreviewKicker")}
+                </Text>
+                <View style={[styles.spendPreviewSignalPill, { backgroundColor: colorWithAlpha(previewAccent, 0.14) }]}>
+                  <Text style={[styles.spendPreviewSignalText, { color: previewAccent }]}>
+                    {t(previewSignalKey)}
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.spendPreviewTitle, { color: colors.text }]}>
+                {t(previewTitleKey)}
+              </Text>
+              <Text
+                style={[styles.spendPreviewSubtitle, { color: colors.muted }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.82}
+              >
+                {previewSubtitle}
+              </Text>
+              <View style={styles.spendPreviewHeroRow}>
+                <View style={styles.spendPreviewHeroMain}>
+                  <Text style={[styles.spendPreviewHeroLabel, { color: colors.muted }]}>
+                    {budgetPreview?.hasCategoryLimit
+                      ? t("spendPreviewCategoryRemainingLabel")
+                      : t("spendPreviewPotentialLabel")}
+                  </Text>
+                  <Text
+                    style={[styles.spendPreviewHeroValue, { color: colors.text }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.54}
+                  >
+                    {budgetPreview?.hasCategoryLimit
+                      ? categoryRemainingAfterLabel
+                      : `-${monthlyPotentialLossLabel}`}
+                  </Text>
+                  <Text style={[styles.spendPreviewHeroHint, { color: previewAccent }]} numberOfLines={2}>
+                    {previewStatusDetail}
+                  </Text>
+                </View>
+                <View style={[styles.spendPreviewHeroSide, { backgroundColor: previewPanelBackground }]}>
+                  <Text style={[styles.spendPreviewHeroSideLabel, { color: colors.muted }]}>
+                    {budgetPreview?.hasCategoryLimit
+                      ? t("spendPreviewLimitAfterSpendLabel")
+                      : t("spendPreviewChecksPerMonthLabel")}
+                  </Text>
+                  <Text
+                    style={[styles.spendPreviewHeroSideValue, { color: colors.text }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.65}
+                  >
+                    {budgetPreview?.hasCategoryLimit
+                      ? categoryAfterPercentLabel
+                      : `${checksPerMonthLabel}×`}
+                  </Text>
+                  <Text style={[styles.spendPreviewHeroSideHint, { color: colors.muted }]} numberOfLines={1}>
+                    {budgetPreview?.hasCategoryLimit
+                      ? `${categorySpentAfterLabel} / ${categoryLimitLabel}`
+                      : t("spendPreviewChecksPerMonthCompact", { count: checksPerMonthLabel })}
+                  </Text>
+                  <View
+                    style={[styles.spendPreviewSparklineWrap, { backgroundColor: colorWithAlpha(previewAccent, 0.08) }]}
+                    onLayout={(event) => {
+                      const width = Math.max(0, Number(event?.nativeEvent?.layout?.width) || 0);
+                      if (!width) return;
+                      setPreviewSparkWidth((prevValue) =>
+                        Math.abs(prevValue - width) < 0.5 ? prevValue : width
+                      );
+                    }}
+                  >
+                    <Svg width="100%" height="100%" viewBox="0 0 132 72">
+                      <Defs>
+                        <SvgLinearGradient id="spendPreviewSparkFill" x1="0" y1="0" x2="0" y2="1">
+                          <SvgStop offset="0%" stopColor={colorWithAlpha(previewAccent, 0.28)} />
+                          <SvgStop offset="100%" stopColor={colorWithAlpha(previewAccent, 0.02)} />
+                        </SvgLinearGradient>
+                        <SvgLinearGradient id="spendPreviewSparkLine" x1="0" y1="0" x2="1" y2="1">
+                          <SvgStop offset="0%" stopColor={colorWithAlpha(previewAccent, 0.54)} />
+                          <SvgStop offset="100%" stopColor={previewAccent} />
+                        </SvgLinearGradient>
+                      </Defs>
+                      <SvgPath
+                        d="M 8 58 L 124 58"
+                        stroke={colorWithAlpha(previewAccent, 0.15)}
+                        strokeWidth={1.2}
+                        strokeDasharray="4 4"
+                      />
+                      <SvgPath d={previewSparklineAreaPath} fill="url(#spendPreviewSparkFill)" />
+                      <SvgPath
+                        d={previewSparklinePath}
+                        fill="none"
+                        stroke="url(#spendPreviewSparkLine)"
+                        strokeWidth={4}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <SvgCircle
+                        cx="124"
+                        cy={previewStatus === "over" ? 62 : previewStatus === "tight" ? 60 : previewStatus === "unknown" ? 40 : 50}
+                        r="4.2"
+                        fill={previewAccent}
+                      />
+                    </Svg>
+                    <Animated.View
+                      style={[
+                        styles.spendPreviewSparklineReveal,
+                        {
+                          backgroundColor: previewPanelBackground,
+                          transform: [{ translateX: previewSparkRevealTranslateX }],
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              </View>
+              <View style={styles.spendPreviewRows}>
+                <View style={[styles.spendPreviewMetricCard, { backgroundColor: previewPanelBackground }]}>
+                  <Text style={[styles.spendPreviewLabel, { color: colors.muted }]}>
+                    {budgetPreview?.hasCategoryLimit
+                      ? t("spendPreviewLimitDropLabel")
+                      : t("spendPreviewSpendNowLabel")}
+                  </Text>
+                  <Text
+                    style={[styles.spendPreviewValue, { color: colors.text }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.62}
+                  >
+                    -{categoryImpactLabel}
+                  </Text>
+                  <Text style={[styles.spendPreviewMetricHint, { color: colors.muted }]} numberOfLines={1}>
+                    {budgetPreview?.hasCategoryLimit
+                      ? `${categoryRemainingBeforeLabel} → ${categoryRemainingAfterLabel}`
+                      : categoryLabel}
+                  </Text>
+                </View>
+                <View style={[styles.spendPreviewMetricCard, { backgroundColor: previewPanelBackground }]}>
+                  <Text style={[styles.spendPreviewLabel, { color: colors.muted }]}>
+                    {t("spendPreviewPotentialLabel")}
+                  </Text>
+                  <Text
+                    style={[styles.spendPreviewValue, { color: colors.text }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.62}
+                  >
+                    -{monthlyPotentialLossLabel}
+                  </Text>
+                  <Text style={[styles.spendPreviewMetricHint, { color: colors.muted }]} numberOfLines={1}>
+                    {t("spendPreviewChecksPerMonthCompact", { count: checksPerMonthLabel })}
+                  </Text>
+                </View>
+              </View>
+            </Animated.View>
+          </View>
+        ) : null}
         <View style={[styles.paySheet, { backgroundColor: colors.card }] }>
           <View style={styles.paySheetHandle} />
           <Text style={[styles.payBrand, { color: colors.text }]}>{t("spendSheetTitle")}</Text>
@@ -20447,6 +20959,7 @@ const HELP_GUIDE_COPY = {
         subtitle: "This page shows goals, tracked savings, budgets, and long-term patterns.",
         visual: ["Goal", "Saved", "Insights"],
         sections: [
+          { title: "Subscriptions", body: "The subscription widget watches custom temptation cards in Subscriptions, shows the next renewal timer, monthly total, and sends early reminders before payment." },
           { title: "Goals", body: "Goal cards show how much is left and where recent savings are moving you." },
           { title: "Budget and free days", body: "Budget blocks compare planned and actual behavior. Free days track days without impulse spending." },
           { title: "Impulse map", body: "When unlocked, the impulse map highlights categories and times that need more attention." },
@@ -20511,6 +21024,7 @@ const HELP_GUIDE_COPY = {
         subtitle: "Здесь видны цели, накопления, бюджеты и долгосрочные паттерны.",
         visual: ["Цель", "Сохранено", "Инсайты"],
         sections: [
+          { title: "Подписки", body: "Виджет подписок следит за твоими карточками искушений из категории «Подписки», показывает таймер до следующей оплаты, сумму в месяц и заранее напоминает об оплате." },
           { title: "Цели", body: "Карточки целей показывают, сколько осталось и как последние сохранения двигают тебя вперёд." },
           { title: "Бюджет и свободные дни", body: "Бюджетные блоки сравнивают план и факт. Свободные дни отслеживают дни без импульсивных трат." },
           { title: "Карта импульсов", body: "После разблокировки карта подсвечивает категории и периоды, которым нужно больше внимания." },
@@ -20575,6 +21089,7 @@ const HELP_GUIDE_COPY = {
         subtitle: "Aquí ves metas, ahorros registrados, presupuestos y patrones largos.",
         visual: ["Meta", "Ahorrado", "Ideas"],
         sections: [
+          { title: "Suscripciones", body: "El widget de suscripciones sigue tus tarjetas de tentación en Suscripciones, muestra el temporizador del próximo pago, el total mensual y envía recordatorios anticipados." },
           { title: "Metas", body: "Las tarjetas de meta muestran cuánto falta y cómo los últimos ahorros te acercan." },
           { title: "Presupuesto y días libres", body: "Los bloques de presupuesto comparan plan y realidad. Los días libres registran días sin gasto impulsivo." },
           { title: "Mapa de impulsos", body: "Al desbloquearse, el mapa resalta categorías y momentos que necesitan más atención." },
@@ -20639,6 +21154,7 @@ const HELP_GUIDE_COPY = {
         subtitle: "Cette page montre objectifs, épargne suivie, budgets et tendances.",
         visual: ["Objectif", "Épargné", "Insights"],
         sections: [
+          { title: "Abonnements", body: "Le widget Abonnements suit tes cartes de tentation dans Abonnements, affiche le minuteur du prochain paiement, le total mensuel et envoie des rappels en avance." },
           { title: "Objectifs", body: "Les cartes d'objectif montrent ce qu'il reste et comment les dernières économies te rapprochent." },
           { title: "Budget et jours libres", body: "Les blocs budget comparent le plan et le réel. Les jours libres suivent les jours sans dépense impulsive." },
           { title: "Carte des impulsions", body: "Une fois débloquée, la carte met en avant les catégories et moments qui demandent plus d'attention." },
@@ -20703,6 +21219,7 @@ const HELP_GUIDE_COPY = {
         subtitle: "Hier siehst du Ziele, erfasste Ersparnisse, Budgets und Muster.",
         visual: ["Ziel", "Gespart", "Einblicke"],
         sections: [
+          { title: "Abos", body: "Das Abo-Widget überwacht eigene Versuchungskarten in Abos, zeigt den Timer bis zur nächsten Zahlung, die Monatssumme und sendet frühe Erinnerungen." },
           { title: "Ziele", body: "Zielkarten zeigen, wie viel fehlt und wie dich die letzten Ersparnisse voranbringen." },
           { title: "Budget und freie Tage", body: "Budgetblöcke vergleichen Plan und Realität. Freie Tage zählen Tage ohne Impulsausgaben." },
           { title: "Impulskarte", body: "Nach dem Freischalten hebt die Karte Kategorien und Zeiten hervor, die mehr Aufmerksamkeit brauchen." },
@@ -20767,6 +21284,7 @@ const HELP_GUIDE_COPY = {
         subtitle: "تعرض هذه الصفحة الأهداف والمدخرات والميزانيات والأنماط.",
         visual: ["هدف", "مدخر", "رؤى"],
         sections: [
+          { title: "الاشتراكات", body: "يتابع ودجت الاشتراكات بطاقات الإغراء الخاصة بك في فئة الاشتراكات، ويعرض مؤقت الدفع القادم والمجموع الشهري ويرسل تذكيرات مبكرة." },
           { title: "الأهداف", body: "بطاقات الأهداف تعرض المبلغ المتبقي وكيف تحركك المدخرات الأخيرة إلى الأمام." },
           { title: "الميزانية والأيام الحرة", body: "تقارن كتل الميزانية بين الخطة والواقع. الأيام الحرة تتبع الأيام دون إنفاق اندفاعي." },
           { title: "خريطة الاندفاع", body: "بعد فتحها، تبرز الخريطة الفئات والأوقات التي تحتاج إلى انتباه أكبر." },
@@ -20831,6 +21349,7 @@ const HELP_GUIDE_COPY = {
         subtitle: "这里展示目标、已记录储蓄、预算和长期模式。",
         visual: ["目标", "已存", "洞察"],
         sections: [
+          { title: "订阅", body: "订阅小组件会跟踪订阅分类中的自定义诱惑卡，显示下次付款倒计时、每月总额，并提前发送提醒。" },
           { title: "目标", body: "目标卡片会显示还差多少，以及最近的储蓄如何推动你前进。" },
           { title: "预算和无消费日", body: "预算模块对比计划和实际行为。无消费日记录没有冲动消费的日子。" },
           { title: "冲动地图", body: "解锁后，冲动地图会突出需要更多注意的分类和时间段。" },
@@ -26290,6 +26809,8 @@ const ProgressScreen = React.memo(function ProgressScreen({
   budgetSpeechDataRef = null,
   scrollRef: externalScrollRef,
   onBudgetWidgetLayout = null,
+  onSubscriptionWidgetLayout = null,
+  onSubscriptionWidgetOpen = null,
   onFreeDayCardLayout = null,
   onImpulseMapLockedPress = null,
   contentBottomPadding = 0,
@@ -26894,6 +27415,180 @@ const ProgressScreen = React.memo(function ProgressScreen({
   const progressPotentialLabel = useMemo(
     () => formatLocalAmount(progressPotentialUSD),
     [formatLocalAmount, progressPotentialUSD]
+  );
+  const subscriptionNowTick = useMinuteTicker(true);
+  const subscriptionReferenceTs = Number.isFinite(subscriptionNowTick)
+    ? subscriptionNowTick
+    : todayTimestamp;
+  const subscriptionHistoryStats = useMemo(() => {
+    const map = new Map();
+    resolvedHistoryEvents.forEach((entry) => {
+      if (!entry || entry.kind !== "spend") return;
+      const meta = entry.meta || {};
+      const key =
+        getProgressInteractionKey(meta.templateId) ||
+        getProgressInteractionKey(meta.template_id) ||
+        getProgressInteractionKey(meta.id) ||
+        getProgressInteractionKey(meta.template);
+      if (!key) return;
+      const amountUSD = Math.max(0, Number(meta.amountUSD) || 0);
+      const current = map.get(key) || { spentUSD: 0, spendCount: 0 };
+      current.spentUSD += amountUSD;
+      current.spendCount += 1;
+      map.set(key, current);
+    });
+    return map;
+  }, [getProgressInteractionKey, resolvedHistoryEvents]);
+  const subscriptionEntries = useMemo(() => {
+    const nowTs = Number(subscriptionReferenceTs) || Date.now();
+    return progressCards
+      .map((item) => {
+        if (!item) return null;
+        const categoryId =
+          typeof resolveTemptationCategory === "function"
+            ? resolveTemptationCategory(item)
+            : item.impulseCategoryOverride || null;
+        if (!isUserSubscriptionTemptation(item, categoryId)) return null;
+        const templateId = getProgressInteractionKey(item.id || item.templateId);
+        if (!templateId) return null;
+        const interactionEntry = resolveProgressInteractionEntry(item) || {};
+        const nextCheckAt = resolveSubscriptionNextCheckAt(item, interactionEntry, nowTs);
+        const amountUSD = Math.max(0, Number(getTemptationPrice(item)) || 0);
+        const checksPerMonth = Math.max(0, Number(resolveSubscriptionChecksPerMonth(item, interactionEntry)) || 1);
+        const historyStats = subscriptionHistoryStats.get(templateId) || { spentUSD: 0, spendCount: 0 };
+        const interactionCount =
+          (Number(interactionEntry.saveCount) || 0) +
+          (Number(interactionEntry.spendCount) || 0) +
+          (Number(interactionEntry.missedCycles) || 0);
+        const repeatCount = Math.max(Number(historyStats.spendCount) || 0, interactionCount, 0);
+        const daysUntil = Number.isFinite(nextCheckAt)
+          ? Math.max(0, Math.ceil((nextCheckAt - nowTs) / DAY_MS))
+          : null;
+        return {
+          id: templateId,
+          title: resolveTemptationTitle(item, language, item.titleOverride) || t("defaultDealTitle"),
+          emoji: item.emoji || DEFAULT_TEMPTATION_EMOJI,
+          amountUSD,
+          amountLabel: formatLocalAmount(amountUSD),
+          monthlyAmountUSD: amountUSD * checksPerMonth,
+          monthlyAmountLabel: formatLocalAmount(amountUSD * checksPerMonth),
+          repeatCount,
+          spentUSD: Math.max(0, Number(historyStats.spentUSD) || 0),
+          spentLabel: formatLocalAmount(Math.max(0, Number(historyStats.spentUSD) || 0)),
+          nextCheckAt: Number.isFinite(nextCheckAt) ? nextCheckAt : null,
+          daysUntil,
+          createdAt: Number(item.createdAt) || Number(interactionEntry.lastTimerResetAt) || 0,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const aNext = Number.isFinite(a.nextCheckAt) ? a.nextCheckAt : Number.MAX_SAFE_INTEGER;
+        const bNext = Number.isFinite(b.nextCheckAt) ? b.nextCheckAt : Number.MAX_SAFE_INTEGER;
+        if (aNext !== bNext) return aNext - bNext;
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      });
+  }, [
+    formatLocalAmount,
+    getProgressInteractionKey,
+    language,
+    progressCards,
+    resolveProgressInteractionEntry,
+    resolveTemptationCategory,
+    subscriptionHistoryStats,
+    subscriptionReferenceTs,
+    t,
+  ]);
+  const subscriptionTotalMonthlyUSD = useMemo(
+    () => subscriptionEntries.reduce((sum, entry) => sum + (entry.monthlyAmountUSD || 0), 0),
+    [subscriptionEntries]
+  );
+  const subscriptionTotalMonthlyLabel = useMemo(
+    () => formatLocalAmount(subscriptionTotalMonthlyUSD),
+    [formatLocalAmount, subscriptionTotalMonthlyUSD]
+  );
+  const recentSubscriptionEmojis = useMemo(() => {
+    const latest = [...subscriptionEntries].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const emojis = latest.slice(0, 3).map((entry) => entry.emoji || DEFAULT_TEMPTATION_EMOJI);
+    return emojis.length ? emojis : SUBSCRIPTION_EMPTY_EMOJIS;
+  }, [subscriptionEntries]);
+  const nextSubscription = subscriptionEntries.find((entry) => Number.isFinite(entry.nextCheckAt)) || null;
+  const nextSubscriptionDays = nextSubscription?.daysUntil ?? null;
+  const subscriptionUrgencyColor =
+    nextSubscriptionDays == null
+      ? colors.muted
+      : nextSubscriptionDays <= 1
+      ? "#C2153B"
+      : nextSubscriptionDays <= 2
+      ? "#E9475E"
+      : nextSubscriptionDays <= 5
+      ? "#F06A4D"
+      : "#A14242";
+  const subscriptionTimerText =
+    nextSubscriptionDays == null
+      ? t("subscriptionWidgetNoDate")
+      : nextSubscriptionDays <= 0
+      ? t("subscriptionWidgetDueToday")
+      : t("subscriptionWidgetDaysLeft", { days: nextSubscriptionDays });
+  const subscriptionNextTitle = nextSubscription?.title || t("subscriptionWidgetNoSubscriptions");
+  const formatSubscriptionDate = useCallback(
+    (timestamp) => {
+      if (!Number.isFinite(Number(timestamp))) return t("subscriptionModalNoDate");
+      try {
+        return new Date(timestamp).toLocaleDateString(getFormatLocale(language), {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        });
+      } catch {
+        return t("subscriptionModalNoDate");
+      }
+    },
+    [language, t]
+  );
+  const [subscriptionModalVisible, setSubscriptionModalVisible] = useState(false);
+  const subscriptionModalAnim = useRef(new Animated.Value(0)).current;
+  const openSubscriptionModal = useCallback(() => {
+    onSubscriptionWidgetOpen?.();
+    setSubscriptionModalVisible(true);
+  }, [onSubscriptionWidgetOpen]);
+  const closeSubscriptionModal = useCallback(() => {
+    setSubscriptionModalVisible(false);
+  }, []);
+  useEffect(() => {
+    subscriptionModalAnim.stopAnimation();
+    if (!subscriptionModalVisible) {
+      Animated.timing(subscriptionModalAnim, {
+        toValue: 0,
+        duration: 170,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+      return;
+    }
+    subscriptionModalAnim.setValue(0);
+    Animated.spring(subscriptionModalAnim, {
+      toValue: 1,
+      damping: 20,
+      stiffness: 240,
+      mass: 0.78,
+      useNativeDriver: true,
+    }).start();
+  }, [subscriptionModalAnim, subscriptionModalVisible]);
+  const subscriptionModalBackdropOpacity = useMemo(
+    () =>
+      subscriptionModalAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 0.46],
+      }),
+    [subscriptionModalAnim]
+  );
+  const subscriptionModalCardScale = useMemo(
+    () => subscriptionModalAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }),
+    [subscriptionModalAnim]
+  );
+  const subscriptionModalCardTranslateY = useMemo(
+    () => subscriptionModalAnim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }),
+    [subscriptionModalAnim]
   );
   const computeProgressBalanceSnapshot = useCallback((referenceDate = new Date(todayTimestamp)) => {
     const referenceTimestampRaw =
@@ -28955,6 +29650,205 @@ const ProgressScreen = React.memo(function ProgressScreen({
         })}
       </View>
 
+      <TouchableOpacity
+        style={[
+          styles.subscriptionWidgetCard,
+          {
+            backgroundColor: isDarkTheme ? "rgba(42,18,24,0.92)" : "#FFF6F7",
+            borderColor: colorWithAlpha(subscriptionUrgencyColor, isDarkTheme ? 0.58 : 0.28),
+            shadowColor: subscriptionUrgencyColor,
+          },
+        ]}
+        activeOpacity={0.9}
+        onPress={openSubscriptionModal}
+        onLayout={onSubscriptionWidgetLayout}
+      >
+        <View pointerEvents="none" style={styles.subscriptionWidgetGlowLayer}>
+          <View
+            style={[
+              styles.subscriptionWidgetGlow,
+              { backgroundColor: colorWithAlpha(subscriptionUrgencyColor, isDarkTheme ? 0.2 : 0.16) },
+            ]}
+          />
+        </View>
+        <View style={styles.subscriptionWidgetHeader}>
+          <View style={styles.subscriptionWidgetTitleBlock}>
+            <Text style={[styles.subscriptionWidgetEyebrow, { color: subscriptionUrgencyColor }]}>
+              {t("subscriptionWidgetEyebrow")}
+            </Text>
+            <Text style={[styles.subscriptionWidgetTitle, { color: isDarkTheme ? "#FFF1F3" : "#401018" }]}>
+              {t("subscriptionWidgetTitle")}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.subscriptionWidgetTotalPill,
+              { backgroundColor: colorWithAlpha(subscriptionUrgencyColor, isDarkTheme ? 0.2 : 0.1) },
+            ]}
+          >
+            <Text style={[styles.subscriptionWidgetTotalLabel, { color: subscriptionUrgencyColor }]}>
+              {t("subscriptionWidgetTotal")}
+            </Text>
+            <Text style={[styles.subscriptionWidgetTotalValue, { color: subscriptionUrgencyColor }]}>
+              {subscriptionTotalMonthlyLabel}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.subscriptionWidgetBody}>
+          <View style={styles.subscriptionEmojiStack}>
+            {recentSubscriptionEmojis.map((emoji, index) => (
+              <View
+                key={`${emoji}-${index}`}
+                style={[
+                  styles.subscriptionEmojiBubble,
+                  {
+                    marginLeft: index === 0 ? 0 : -10,
+                    borderColor: isDarkTheme ? "rgba(255,255,255,0.16)" : "#FFFFFF",
+                    backgroundColor: isDarkTheme ? "rgba(255,255,255,0.08)" : "#FFFFFF",
+                    opacity: subscriptionEntries.length ? 1 : 0.62,
+                  },
+                ]}
+              >
+                <Text style={styles.subscriptionEmojiText}>{emoji}</Text>
+              </View>
+            ))}
+          </View>
+          <View style={styles.subscriptionTimerPanel}>
+            <Text style={[styles.subscriptionTimerLabel, { color: isDarkTheme ? "#FFD6DC" : "#8A2A38" }]}>
+              {t("subscriptionWidgetNext")}
+            </Text>
+            <Text
+              style={[styles.subscriptionTimerValue, { color: subscriptionUrgencyColor }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.74}
+            >
+              {subscriptionTimerText}
+            </Text>
+            <Text style={[styles.subscriptionTimerHint, { color: isDarkTheme ? "#FFC5CE" : "#8A4A54" }]} numberOfLines={1}>
+              {subscriptionEntries.length
+                ? nextSubscription?.emoji
+                  ? `${nextSubscription.emoji} ${subscriptionNextTitle}`
+                  : subscriptionNextTitle
+                : t("subscriptionWidgetEmpty")}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.subscriptionWidgetFooter}>
+          <View style={[styles.subscriptionUrgencyTrack, { backgroundColor: colorWithAlpha(subscriptionUrgencyColor, 0.16) }]}>
+            <View
+              style={[
+                styles.subscriptionUrgencyFill,
+                {
+                  width: `${
+                    nextSubscriptionDays == null
+                      ? 0
+                      : Math.max(10, Math.min(100, ((6 - Math.min(nextSubscriptionDays, 6)) / 5) * 100))
+                  }%`,
+                  backgroundColor: subscriptionUrgencyColor,
+                },
+              ]}
+            />
+          </View>
+          <Text style={[styles.subscriptionWidgetTapHint, { color: isDarkTheme ? "#FFC5CE" : "#8A4A54" }]}>
+            {t("subscriptionWidgetTapHint")}
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      <View style={styles.progressHeroGrid}>
+        <TouchableOpacity
+          style={[styles.progressGoalCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          activeOpacity={0.9}
+          disabled={!activeGoalWish || !onGoalEdit}
+          onPress={() => {
+            if (!activeGoalWish || !onGoalEdit) return;
+            onGoalEdit(activeGoalWish);
+          }}
+        >
+          <View style={styles.progressGoalHeader}>
+            <Text style={[styles.progressGoalTitle, { color: colors.text }]}>{t("progressGoalTitle")}</Text>
+            <Text style={styles.progressGoalEmoji}>{goalEmoji}</Text>
+          </View>
+          <Text style={[styles.progressGoalName, { color: colors.text }]} numberOfLines={2}>
+            {goalTitle}
+          </Text>
+          <Text
+            style={[styles.progressGoalMeta, { color: colors.muted }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit={Platform.OS !== "android"}
+            minimumFontScale={Platform.OS === "android" ? undefined : 0.85}
+            ellipsizeMode="tail"
+          >
+            {t("progressGoalRemaining", { amount: goalRemainingLabel })}
+          </Text>
+          <View style={styles.progressGoalRingRow}>
+            <View style={styles.progressGoalRingWrap}>
+              <ProgressRing
+                size={76}
+                progress={goalProgress}
+                trackColor={isDarkTheme ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)"}
+                progressColor={colors.text}
+              />
+              <View style={styles.progressGoalRingInner} pointerEvents="none">
+                <Text
+                  style={[
+                    styles.progressGoalTarget,
+                    goalTargetRingTypography,
+                    { color: colors.text },
+                  ]}
+                  numberOfLines={1}
+                  ellipsizeMode="clip"
+                >
+                  {goalTargetLabel}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.progressGoalRingText}>
+              <Text style={[styles.progressGoalPercent, { color: colors.text }]} numberOfLines={1}>
+                {`${Math.round(goalProgress * 100)}%`}
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+        <View style={[styles.progressCoinCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.progressCoinHeader}>
+            <Text style={[styles.progressCoinTitle, { color: colors.text }]}>{t("freeDayHealthTitle")}</Text>
+            <Text style={styles.progressCoinEmoji}>🪙</Text>
+          </View>
+          <Text style={[styles.progressCoinValue, { color: colors.text }]}>{healthPoints}</Text>
+          <Text style={[styles.progressCoinSubtitle, { color: colors.muted }]}>
+            {t("freeDayHealthSubtitle")}
+          </Text>
+          {hasCoinInventory ? (
+            <View style={styles.progressCoinRow}>
+              {coinEntries.map((entry) =>
+                entry.count ? (
+                  <View
+                    key={entry.id}
+                    style={[
+                      styles.progressCoinBadge,
+                      { borderColor: colors.border, backgroundColor: colors.background },
+                    ]}
+                  >
+                    {entry.asset ? (
+                      <Image source={entry.asset} style={styles.progressCoinImage} />
+                    ) : (
+                      <HealthCoinFallbackIcon
+                        tierId={entry.id}
+                        size={14}
+                        style={styles.progressCoinFallbackIcon}
+                      />
+                    )}
+                    <Text style={[styles.progressCoinCount, { color: colors.text }]}>×{entry.count}</Text>
+                  </View>
+                ) : null
+              )}
+            </View>
+          ) : null}
+        </View>
+      </View>
+
       <View
         style={[styles.budgetWidgetCard, { backgroundColor: colors.card, borderColor: colors.border }]}
         onLayout={onBudgetWidgetLayout || undefined}
@@ -29226,99 +30120,6 @@ const ProgressScreen = React.memo(function ProgressScreen({
             )}
           </>
         )}
-      </View>
-
-      <View style={styles.progressHeroGrid}>
-        <TouchableOpacity
-          style={[styles.progressGoalCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-          activeOpacity={0.9}
-          disabled={!activeGoalWish || !onGoalEdit}
-          onPress={() => {
-            if (!activeGoalWish || !onGoalEdit) return;
-            onGoalEdit(activeGoalWish);
-          }}
-        >
-          <View style={styles.progressGoalHeader}>
-            <Text style={[styles.progressGoalTitle, { color: colors.text }]}>{t("progressGoalTitle")}</Text>
-            <Text style={styles.progressGoalEmoji}>{goalEmoji}</Text>
-          </View>
-          <Text style={[styles.progressGoalName, { color: colors.text }]} numberOfLines={2}>
-            {goalTitle}
-          </Text>
-          <Text
-            style={[styles.progressGoalMeta, { color: colors.muted }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit={Platform.OS !== "android"}
-            minimumFontScale={Platform.OS === "android" ? undefined : 0.85}
-            ellipsizeMode="tail"
-          >
-            {t("progressGoalRemaining", { amount: goalRemainingLabel })}
-          </Text>
-          <View style={styles.progressGoalRingRow}>
-            <View style={styles.progressGoalRingWrap}>
-              <ProgressRing
-                size={76}
-                progress={goalProgress}
-                trackColor={isDarkTheme ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)"}
-                progressColor={colors.text}
-              />
-              <View style={styles.progressGoalRingInner} pointerEvents="none">
-                <Text
-                  style={[
-                    styles.progressGoalTarget,
-                    goalTargetRingTypography,
-                    { color: colors.text },
-                  ]}
-                  numberOfLines={1}
-                  ellipsizeMode="clip"
-                >
-                  {goalTargetLabel}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.progressGoalRingText}>
-              <Text style={[styles.progressGoalPercent, { color: colors.text }]} numberOfLines={1}>
-                {`${Math.round(goalProgress * 100)}%`}
-              </Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-        <View style={[styles.progressCoinCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.progressCoinHeader}>
-            <Text style={[styles.progressCoinTitle, { color: colors.text }]}>{t("freeDayHealthTitle")}</Text>
-            <Text style={styles.progressCoinEmoji}>🪙</Text>
-          </View>
-          <Text style={[styles.progressCoinValue, { color: colors.text }]}>{healthPoints}</Text>
-          <Text style={[styles.progressCoinSubtitle, { color: colors.muted }]}>
-            {t("freeDayHealthSubtitle")}
-          </Text>
-          {hasCoinInventory ? (
-            <View style={styles.progressCoinRow}>
-              {coinEntries.map((entry) =>
-                entry.count ? (
-                  <View
-                    key={entry.id}
-                    style={[
-                      styles.progressCoinBadge,
-                      { borderColor: colors.border, backgroundColor: colors.background },
-                    ]}
-                  >
-                    {entry.asset ? (
-                      <Image source={entry.asset} style={styles.progressCoinImage} />
-                    ) : (
-                      <HealthCoinFallbackIcon
-                        tierId={entry.id}
-                        size={14}
-                        style={styles.progressCoinFallbackIcon}
-                      />
-                    )}
-                    <Text style={[styles.progressCoinCount, { color: colors.text }]}>×{entry.count}</Text>
-                  </View>
-                ) : null
-              )}
-            </View>
-          ) : null}
-        </View>
       </View>
 
       <WeeklyCardWrap
@@ -29928,6 +30729,174 @@ const ProgressScreen = React.memo(function ProgressScreen({
         )}
       </View>
       </ScrollView>
+      <Modal
+        visible={subscriptionModalVisible}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={closeSubscriptionModal}
+      >
+        <View style={styles.subscriptionModalRoot}>
+          <TouchableWithoutFeedback onPress={closeSubscriptionModal}>
+            <Animated.View
+              style={[
+                styles.subscriptionModalBackdrop,
+                { backgroundColor: "#000", opacity: subscriptionModalBackdropOpacity },
+              ]}
+            />
+          </TouchableWithoutFeedback>
+          <View style={styles.subscriptionModalWrap} pointerEvents="box-none">
+            <Animated.View
+              style={[
+                styles.subscriptionModalCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+                {
+                  opacity: subscriptionModalAnim,
+                  transform: [
+                    { translateY: subscriptionModalCardTranslateY },
+                    { scale: subscriptionModalCardScale },
+                  ],
+                },
+              ]}
+            >
+              <View style={styles.subscriptionModalHeader}>
+                <View style={styles.subscriptionModalTitleBlock}>
+                  <Text style={[styles.subscriptionModalTitle, { color: colors.text }]}>
+                    {t("subscriptionModalTitle")}
+                  </Text>
+                  <Text style={[styles.subscriptionModalSubtitle, { color: colors.muted }]}>
+                    {t("subscriptionModalSubtitle")}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={closeSubscriptionModal} style={styles.subscriptionModalClose}>
+                  <Text style={[styles.subscriptionModalCloseText, { color: colors.muted }]}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.subscriptionModalStatsRow}>
+                <View
+                  style={[
+                    styles.subscriptionModalStat,
+                    {
+                      borderColor: colorWithAlpha(SPEND_ACTION_COLOR, 0.28),
+                      backgroundColor: colorWithAlpha(SPEND_ACTION_COLOR, 0.08),
+                    },
+                  ]}
+                >
+                  <Text style={[styles.subscriptionModalStatLabel, { color: colors.muted }]}>
+                    {t("subscriptionModalMonthly")}
+                  </Text>
+                  <Text style={[styles.subscriptionModalStatValue, { color: SPEND_ACTION_COLOR }]}>
+                    {subscriptionTotalMonthlyLabel}
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.subscriptionModalStat,
+                    {
+                      borderColor: colorWithAlpha(subscriptionUrgencyColor, 0.28),
+                      backgroundColor: colorWithAlpha(subscriptionUrgencyColor, 0.08),
+                    },
+                  ]}
+                >
+                  <Text style={[styles.subscriptionModalStatLabel, { color: colors.muted }]}>
+                    {t("subscriptionModalNext")}
+                  </Text>
+                  <Text style={[styles.subscriptionModalStatValue, { color: subscriptionUrgencyColor }]}>
+                    {subscriptionTimerText}
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.subscriptionModalDescription, { color: colors.muted }]}>
+                {t("subscriptionModalDescription")}
+              </Text>
+              {subscriptionEntries.length ? (
+                <ScrollView
+                  style={styles.subscriptionModalList}
+                  contentContainerStyle={styles.subscriptionModalListContent}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {subscriptionEntries.map((entry) => (
+                    <View
+                      key={entry.id}
+                      style={[
+                        styles.subscriptionModalRow,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: colorWithAlpha(colors.text, isDarkTheme ? 0.05 : 0.03),
+                        },
+                      ]}
+                    >
+                      <View style={styles.subscriptionModalRowTop}>
+                        <View style={styles.subscriptionModalRowTitle}>
+                          <Text style={styles.subscriptionModalRowEmoji}>{entry.emoji}</Text>
+                          <View style={styles.subscriptionModalRowNameBlock}>
+                            <Text style={[styles.subscriptionModalRowName, { color: colors.text }]} numberOfLines={1}>
+                              {entry.title}
+                            </Text>
+                            <Text style={[styles.subscriptionModalRowMeta, { color: colors.muted }]} numberOfLines={1}>
+                              {t("subscriptionModalNextCheck", {
+                                date: formatSubscriptionDate(entry.nextCheckAt),
+                              })}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={[styles.subscriptionModalRowAmount, { color: SPEND_ACTION_COLOR }]}>
+                          {entry.amountLabel}
+                        </Text>
+                      </View>
+                      <View style={styles.subscriptionModalMetricGrid}>
+                        <View style={styles.subscriptionModalMetric}>
+                          <Text style={[styles.subscriptionModalMetricLabel, { color: colors.muted }]}>
+                            {t("subscriptionModalRepeats")}
+                          </Text>
+                          <Text style={[styles.subscriptionModalMetricValue, { color: colors.text }]}>
+                            {entry.repeatCount}
+                          </Text>
+                        </View>
+                        <View style={styles.subscriptionModalMetric}>
+                          <Text style={[styles.subscriptionModalMetricLabel, { color: colors.muted }]}>
+                            {t("subscriptionModalSpent")}
+                          </Text>
+                          <Text style={[styles.subscriptionModalMetricValue, { color: colors.text }]}>
+                            {entry.spentLabel}
+                          </Text>
+                        </View>
+                        <View style={styles.subscriptionModalMetric}>
+                          <Text style={[styles.subscriptionModalMetricLabel, { color: colors.muted }]}>
+                            {t("subscriptionModalMonthly")}
+                          </Text>
+                          <Text style={[styles.subscriptionModalMetricValue, { color: colors.text }]}>
+                            {entry.monthlyAmountLabel}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              ) : (
+                <View style={styles.subscriptionModalEmpty}>
+                  <Text style={styles.subscriptionModalEmptyEmoji}>📺</Text>
+                  <Text style={[styles.subscriptionModalEmptyTitle, { color: colors.text }]}>
+                    {t("subscriptionModalEmptyTitle")}
+                  </Text>
+                  <Text style={[styles.subscriptionModalEmptySubtitle, { color: colors.muted }]}>
+                    {t("subscriptionModalEmptySubtitle")}
+                  </Text>
+                </View>
+              )}
+              <TouchableOpacity
+                style={[styles.subscriptionModalPrimary, { backgroundColor: colors.text }]}
+                onPress={closeSubscriptionModal}
+                activeOpacity={0.9}
+              >
+                <Text style={[styles.subscriptionModalPrimaryText, { color: colors.background }]}>
+                  {t("subscriptionModalClose")}
+                </Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+        </View>
+      </Modal>
       <Modal
         visible={potentialTrendModalVisible}
         transparent
@@ -30707,6 +31676,218 @@ const FRIDGE_EXTEND_MODAL_COPY = {
     confirm: "延长",
   },
 };
+const SCREEN_INTRO_STORAGE_BY_TAB = {
+  cart: STORAGE_KEYS.PROGRESS_INTRO_SHOWN,
+  purchases: STORAGE_KEYS.BUDGET_INTRO_SHOWN,
+};
+const FIRST_VISIT_SCREEN_INTRO_COPY = {
+  ru: {
+    cart: {
+      badge: "Прогресс",
+      emoji: "📈",
+      title: "Зачем нужен прогресс",
+      subtitle:
+        "Здесь видно, как отказ от импульсивных покупок двигает цели, бюджет и привычки.",
+      howTitle: "Как это работает",
+      steps: [
+        "Следи за целями, сохраненной суммой, свободными днями и челленджами в одном месте.",
+        "Открывай инсайты и бюджетные блоки, чтобы понять, какие привычки сильнее всего влияют на деньги.",
+      ],
+      cta: "Понятно",
+    },
+    purchases: {
+      badge: "Бюджет",
+      emoji: "💼",
+      title: "Зачем нужен бюджет",
+      subtitle:
+        "Он превращает отмеченную экономию в реальные переводы в накопления или погашение долга.",
+      howTitle: "Как это работает",
+      steps: [
+        "Добавь доход или доступную сумму, а затем распределяй сохраненные деньги.",
+        "Прикрепляй фото перевода, чтобы видеть, что экономия действительно дошла до цели.",
+      ],
+      cta: "Понятно",
+    },
+  },
+  en: {
+    cart: {
+      badge: "Progress",
+      emoji: "📈",
+      title: "Why Progress works",
+      subtitle:
+        "It shows how resisted impulse buys move your goals, budget, and habits forward.",
+      howTitle: "How it works",
+      steps: [
+        "Track goals, saved money, free days, and challenges in one place.",
+        "Open insights and budget blocks to see which habits affect your money the most.",
+      ],
+      cta: "Got it",
+    },
+    purchases: {
+      badge: "Budget",
+      emoji: "💼",
+      title: "Why Budget works",
+      subtitle:
+        "It turns logged savings into real transfers toward savings or debt payoff.",
+      howTitle: "How it works",
+      steps: [
+        "Add income or available money, then allocate the savings you logged.",
+        "Attach a transfer photo so you can see that saved money actually reached the goal.",
+      ],
+      cta: "Got it",
+    },
+  },
+  es: {
+    cart: {
+      badge: "Progreso",
+      emoji: "📈",
+      title: "Para que sirve Progreso",
+      subtitle:
+        "Muestra como las compras impulsivas que resististe hacen avanzar tus metas, presupuesto y habitos.",
+      howTitle: "Como funciona",
+      steps: [
+        "Sigue metas, dinero ahorrado, dias libres y retos en un solo lugar.",
+        "Abre insights y bloques de presupuesto para ver que habitos afectan mas tu dinero.",
+      ],
+      cta: "Entendido",
+    },
+    purchases: {
+      badge: "Presupuesto",
+      emoji: "💼",
+      title: "Para que sirve Presupuesto",
+      subtitle:
+        "Convierte el ahorro registrado en transferencias reales hacia ahorros o pago de deuda.",
+      howTitle: "Como funciona",
+      steps: [
+        "Anade ingresos o dinero disponible y luego asigna el ahorro registrado.",
+        "Adjunta una foto de transferencia para ver que el dinero ahorrado llego a la meta.",
+      ],
+      cta: "Entendido",
+    },
+  },
+  fr: {
+    cart: {
+      badge: "Progression",
+      emoji: "📈",
+      title: "Pourquoi Progression aide",
+      subtitle:
+        "Elle montre comment les achats impulsifs evites font avancer tes objectifs, ton budget et tes habitudes.",
+      howTitle: "Comment ca marche",
+      steps: [
+        "Suis objectifs, argent economise, jours libres et defis au meme endroit.",
+        "Ouvre les insights et blocs budget pour voir quelles habitudes pesent le plus sur ton argent.",
+      ],
+      cta: "Compris",
+    },
+    purchases: {
+      badge: "Budget",
+      emoji: "💼",
+      title: "Pourquoi Budget aide",
+      subtitle:
+        "Il transforme l'epargne notee en vrais virements vers l'epargne ou le remboursement de dette.",
+      howTitle: "Comment ca marche",
+      steps: [
+        "Ajoute un revenu ou un montant disponible, puis affecte l'epargne notee.",
+        "Ajoute une photo de virement pour voir que l'argent economise est vraiment arrive a l'objectif.",
+      ],
+      cta: "Compris",
+    },
+  },
+  de: {
+    cart: {
+      badge: "Fortschritt",
+      emoji: "📈",
+      title: "Warum Fortschritt hilft",
+      subtitle:
+        "Hier siehst du, wie vermiedene Impulskaufe deine Ziele, dein Budget und deine Gewohnheiten voranbringen.",
+      howTitle: "So funktioniert es",
+      steps: [
+        "Verfolge Ziele, gespartes Geld, freie Tage und Challenges an einem Ort.",
+        "Offne Insights und Budget-Blocke, um zu sehen, welche Gewohnheiten dein Geld am starksten beeinflussen.",
+      ],
+      cta: "Verstanden",
+    },
+    purchases: {
+      badge: "Budget",
+      emoji: "💼",
+      title: "Warum Budget hilft",
+      subtitle:
+        "Es macht aus erfassten Ersparnissen echte Umbuchungen in Sparen oder Schuldentilgung.",
+      howTitle: "So funktioniert es",
+      steps: [
+        "Fuge Einkommen oder verfugbares Geld hinzu und verteile dann die erfassten Ersparnisse.",
+        "Hange ein Uberweisungsfoto an, damit sichtbar bleibt, dass das Geld wirklich am Ziel angekommen ist.",
+      ],
+      cta: "Verstanden",
+    },
+  },
+  ar: {
+    cart: {
+      badge: "التقدم",
+      emoji: "📈",
+      title: "لماذا يفيدك التقدم",
+      subtitle:
+        "يعرض كيف تدفع مقاومة الشراء الاندفاعي اهدافك وميزانيتك وعاداتك الى الامام.",
+      howTitle: "كيف يعمل",
+      steps: [
+        "تابع الاهداف والمال المدخر والايام الحرة والتحديات في مكان واحد.",
+        "افتح الرؤى وبطاقات الميزانية لمعرفة العادات الاكثر تاثيرا على مالك.",
+      ],
+      cta: "فهمت",
+    },
+    purchases: {
+      badge: "الميزانية",
+      emoji: "💼",
+      title: "لماذا تفيدك الميزانية",
+      subtitle:
+        "تحول الادخار المسجل الى تحويلات حقيقية نحو المدخرات او سداد الدين.",
+      howTitle: "كيف يعمل",
+      steps: [
+        "اضف الدخل او المال المتاح ثم وزع الادخار الذي سجلته.",
+        "ارفق صورة التحويل حتى ترى ان المال المدخر وصل فعلا الى الهدف.",
+      ],
+      cta: "فهمت",
+    },
+  },
+  zh: {
+    cart: {
+      badge: "进度",
+      emoji: "📈",
+      title: "为什么需要进度",
+      subtitle:
+        "它会显示你抵抗冲动购买后，目标、预算和习惯如何继续前进。",
+      howTitle: "如何使用",
+      steps: [
+        "在一个地方跟踪目标、已存金额、无消费日和挑战。",
+        "打开洞察和预算模块，查看哪些习惯最影响你的钱。",
+      ],
+      cta: "明白了",
+    },
+    purchases: {
+      badge: "预算",
+      emoji: "💼",
+      title: "为什么需要预算",
+      subtitle:
+        "它把已记录的储蓄变成真实转账，用于存钱或还债。",
+      howTitle: "如何使用",
+      steps: [
+        "添加收入或可用金额，然后分配你记录下来的储蓄。",
+        "附上转账照片，确认省下的钱真的到达目标。",
+      ],
+      cta: "明白了",
+    },
+  },
+};
+const resolveFirstVisitScreenIntroCopy = (language = DEFAULT_LANGUAGE, tab = "cart") => {
+  const normalizedLanguage = normalizeLanguage(language);
+  const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
+  const source =
+    FIRST_VISIT_SCREEN_INTRO_COPY[normalizedLanguage] ||
+    FIRST_VISIT_SCREEN_INTRO_COPY[translationLanguage] ||
+    FIRST_VISIT_SCREEN_INTRO_COPY.en;
+  const fallbackSource = FIRST_VISIT_SCREEN_INTRO_COPY.en;
+  return source?.[tab] || fallbackSource?.[tab] || fallbackSource.cart;
+};
 const interpolateFridgeTemplate = (template = "", params = {}) =>
   String(template || "").replace(/{{\s*([^{}]+?)\s*}}/g, (_, token) => {
     const key = String(token || "").trim();
@@ -30714,6 +31895,208 @@ const interpolateFridgeTemplate = (template = "", params = {}) =>
     const value = params?.[key];
     return value == null ? "" : String(value);
   });
+
+const FirstVisitScreenIntroModal = React.memo(function FirstVisitScreenIntroModal({
+  visible = false,
+  colors,
+  copy,
+  isDarkMode = false,
+  onClose,
+}) {
+  const introProgress = useRef(new Animated.Value(0)).current;
+  const introGlow = useRef(new Animated.Value(0)).current;
+  const closingRef = useRef(false);
+  const steps = Array.isArray(copy?.steps) && copy.steps.length
+    ? copy.steps
+    : FIRST_VISIT_SCREEN_INTRO_COPY.en.cart.steps;
+  const cardBg = isDarkMode ? "#0E1828" : "#F8FCFF";
+  const cardBorder = isDarkMode ? "rgba(139,194,255,0.32)" : "rgba(96,151,225,0.34)";
+  const badgeBg = isDarkMode ? "rgba(94,150,235,0.2)" : "rgba(69,129,215,0.16)";
+  const badgeBorder = isDarkMode ? "rgba(165,210,255,0.3)" : "rgba(69,129,215,0.24)";
+  const badgeTextColor = isDarkMode ? "#D7ECFF" : "#1F4B82";
+  const glowColor = isDarkMode ? "rgba(102,174,255,0.24)" : "rgba(128,192,255,0.28)";
+  const dividerColor = isDarkMode ? "rgba(255,255,255,0.12)" : "rgba(21,66,121,0.12)";
+  const bulletColor = isDarkMode ? "#8FC7FF" : "#3978C7";
+  const buttonBg = isDarkMode ? "#7BB8FF" : "#2D6CC5";
+  const buttonTextColor = isDarkMode ? "#0B1220" : "#FFFFFF";
+  useEffect(() => {
+    if (!visible) {
+      closingRef.current = false;
+      introGlow.stopAnimation();
+      introGlow.setValue(0);
+      introProgress.stopAnimation();
+      introProgress.setValue(0);
+      return undefined;
+    }
+    introProgress.setValue(0);
+    const entrance = Animated.spring(introProgress, {
+      toValue: 1,
+      damping: 18,
+      stiffness: 170,
+      mass: 0.92,
+      useNativeDriver: true,
+    });
+    const glowLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(introGlow, {
+          toValue: 1,
+          duration: 1800,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(introGlow, {
+          toValue: 0,
+          duration: 1600,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    glowLoop.start();
+    entrance.start();
+    return () => {
+      entrance.stop();
+      glowLoop.stop();
+    };
+  }, [introGlow, introProgress, visible]);
+  const backdropOpacity = introProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const cardOpacity = introProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const cardTranslateY = introProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [26, 0],
+  });
+  const cardScale = introProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.96, 1],
+  });
+  const glowOpacity = introGlow.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.48, 0.86],
+  });
+  const glowScale = introGlow.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.92, 1.08],
+  });
+  const badgeLift = introProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [6, 0],
+  });
+  const badgeRotate = introProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["-6deg", "0deg"],
+  });
+  const handleClose = (source) => {
+    if (!visible || closingRef.current) return;
+    closingRef.current = true;
+    Animated.timing(introProgress, {
+      toValue: 0,
+      duration: 240,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      closingRef.current = false;
+      if (!finished) return;
+      if (typeof onClose === "function") onClose(source);
+    });
+  };
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={() => handleClose("system_back")}
+    >
+      <View style={styles.fridgeIntroRoot}>
+        <TouchableWithoutFeedback onPress={() => handleClose("backdrop")}>
+          <Animated.View
+            style={[styles.fridgeIntroBackdrop, { opacity: backdropOpacity }]}
+          />
+        </TouchableWithoutFeedback>
+        <View style={styles.fridgeIntroWrap} pointerEvents="box-none">
+          <Animated.View
+            style={[
+              styles.fridgeIntroCard,
+              {
+                backgroundColor: cardBg,
+                borderColor: cardBorder,
+                opacity: cardOpacity,
+                transform: [
+                  { translateY: cardTranslateY },
+                  { scale: cardScale },
+                ],
+              },
+            ]}
+          >
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.fridgeIntroGlow,
+                {
+                  backgroundColor: glowColor,
+                  opacity: glowOpacity,
+                  transform: [{ scale: glowScale }],
+                },
+              ]}
+            />
+            <View
+              style={[
+                styles.fridgeIntroBadge,
+                {
+                  backgroundColor: badgeBg,
+                  borderColor: badgeBorder,
+                },
+              ]}
+            >
+              <Animated.Text
+                style={[
+                  styles.fridgeIntroBadgeEmoji,
+                  { transform: [{ translateY: badgeLift }, { rotate: badgeRotate }] },
+                ]}
+              >
+                {copy?.emoji || "💡"}
+              </Animated.Text>
+              <Text style={[styles.fridgeIntroBadgeText, { color: badgeTextColor }]}>
+                {copy?.badge || FIRST_VISIT_SCREEN_INTRO_COPY.en.cart.badge}
+              </Text>
+            </View>
+            <Text style={[styles.fridgeIntroTitle, { color: colors.text }]}>
+              {copy?.title || FIRST_VISIT_SCREEN_INTRO_COPY.en.cart.title}
+            </Text>
+            <Text style={[styles.fridgeIntroSubtitle, { color: colors.muted }]}>
+              {copy?.subtitle || FIRST_VISIT_SCREEN_INTRO_COPY.en.cart.subtitle}
+            </Text>
+            <View style={[styles.fridgeIntroDivider, { backgroundColor: dividerColor }]} />
+            <Text style={[styles.fridgeIntroHowTitle, { color: colors.text }]}>
+              {copy?.howTitle || FIRST_VISIT_SCREEN_INTRO_COPY.en.cart.howTitle}
+            </Text>
+            {steps.map((step, index) => (
+              <View key={`screen_intro_step_${index}`} style={styles.fridgeIntroStepRow}>
+                <Text style={[styles.fridgeIntroStepDot, { color: bulletColor }]}>•</Text>
+                <Text style={[styles.fridgeIntroStepText, { color: colors.muted }]}>{step}</Text>
+              </View>
+            ))}
+            <TouchableOpacity
+              activeOpacity={0.88}
+              style={[styles.fridgeIntroButton, { backgroundColor: buttonBg }]}
+              onPress={() => handleClose("cta")}
+            >
+              <Text style={[styles.fridgeIntroButtonText, { color: buttonTextColor }]}>
+                {copy?.cta || FIRST_VISIT_SCREEN_INTRO_COPY.en.cart.cta}
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      </View>
+    </Modal>
+  );
+});
 const PENDING_COUNTDOWN_NEAR_WINDOW_MS = 5 * MINUTE_MS;
 const PENDING_COUNTDOWN_URGENT_WINDOW_MS = MINUTE_MS;
 const PENDING_COUNTDOWN_TICK_NEAR_MS = 3000;
@@ -34592,7 +35975,7 @@ const BudgetScreen = React.memo(function BudgetScreen({
         automaticallyAdjustContentInsets={false}
         contentContainerStyle={{
           paddingBottom: Math.max(0, Number(contentBottomPadding) || 0),
-          gap: 16,
+          gap: IS_SHORT_DEVICE ? 10 : 12,
         }}
         showsVerticalScrollIndicator={false}
       >
@@ -36395,6 +37778,8 @@ function AppContent() {
   const [activeTab, setActiveTabState] = useState("feed");
   const [bugReportVisible, setBugReportVisible] = useState(false);
   const [helpGuideVisible, setHelpGuideVisible] = useState(false);
+  const [screenIntroState, setScreenIntroState] = useState({ visible: false, tab: null });
+  const screenIntroStatusRef = useRef({});
   const [heroCarouselIndex, setHeroCarouselIndex] = useState(0);
   const [heroCarouselLocked, setHeroCarouselLocked] = useState(false);
   const [dailyGoalCoinDropTick, setDailyGoalCoinDropTick] = useState(0);
@@ -36412,8 +37797,10 @@ function AppContent() {
   const budgetScrollRef = useRef(null);
   const profileScrollRef = useRef(null);
   const budgetWidgetLayoutRef = useRef(null);
+  const subscriptionWidgetLayoutRef = useRef(null);
   const freeDayCardLayoutRef = useRef(null);
   const [budgetWidgetLayoutTick, setBudgetWidgetLayoutTick] = useState(0);
+  const [subscriptionWidgetLayoutTick, setSubscriptionWidgetLayoutTick] = useState(0);
   const [freeDayCardLayoutTick, setFreeDayCardLayoutTick] = useState(0);
   const [pendingProgressScrollTarget, setPendingProgressScrollTarget] = useState(null);
   const pendingCardLayoutsRef = useRef(new Map());
@@ -36688,6 +38075,21 @@ function AppContent() {
     budgetWidgetLayoutRef.current = layout;
     setBudgetWidgetLayoutTick((tick) => tick + 1);
   }, []);
+  const handleProgressSubscriptionWidgetLayout = useCallback((event) => {
+    const layout = event?.nativeEvent?.layout;
+    if (!layout) return;
+    const previous = subscriptionWidgetLayoutRef.current;
+    if (
+      previous &&
+      previous.y === layout.y &&
+      previous.height === layout.height &&
+      previous.width === layout.width
+    ) {
+      return;
+    }
+    subscriptionWidgetLayoutRef.current = layout;
+    setSubscriptionWidgetLayoutTick((tick) => tick + 1);
+  }, []);
   const handleProgressFreeDayCardLayout = useCallback((event) => {
     const layout = event?.nativeEvent?.layout;
     if (!layout) return;
@@ -36707,6 +38109,11 @@ function AppContent() {
     setProgressHubPane("progress");
     setPendingProgressScrollTarget("budget");
     goToTab("cart");
+  }, [goToTab]);
+  const requestProgressSubscriptionFocus = useCallback(() => {
+    setProgressHubPane("progress");
+    setPendingProgressScrollTarget("subscription");
+    goToTab("cart", { recordHistory: false });
   }, [goToTab]);
   const requestProgressFreeDayFocus = useCallback(() => {
     setProgressHubPane("progress");
@@ -36739,6 +38146,18 @@ function AppContent() {
     scrollView.scrollTo({ y: targetY, animated: true });
     setPendingProgressScrollTarget(null);
   }, [activeTab, budgetWidgetLayoutTick, pendingProgressScrollTarget]);
+  useEffect(() => {
+    if (activeTab !== "cart") return;
+    if (pendingProgressScrollTarget !== "subscription") return;
+    const scrollView = progressScrollRef.current;
+    const layout = subscriptionWidgetLayoutRef.current;
+    if (!scrollView || typeof scrollView.scrollTo !== "function" || !layout || !Number.isFinite(layout.y)) {
+      return;
+    }
+    const targetY = Math.max(layout.y - 12, 0);
+    scrollView.scrollTo({ y: targetY, animated: true });
+    setPendingProgressScrollTarget(null);
+  }, [activeTab, pendingProgressScrollTarget, subscriptionWidgetLayoutTick]);
   useEffect(() => {
     if (activeTab !== "cart") return;
     if (pendingProgressScrollTarget !== "free_day") return;
@@ -37107,6 +38526,10 @@ function AppContent() {
   const [budgetOverspendHydrated, setBudgetOverspendHydrated] = useState(false);
   const [budgetLedger, setBudgetLedger] = useState({ ...INITIAL_BUDGET_LEDGER });
   const [budgetLedgerHydrated, setBudgetLedgerHydrated] = useState(false);
+  const [budgetAllocationReminderState, setBudgetAllocationReminderState] = useState({
+    ...DEFAULT_BUDGET_ALLOCATION_REMINDER_STATE,
+  });
+  const [budgetAllocationReminderHydrated, setBudgetAllocationReminderHydrated] = useState(false);
   const [incomePromptState, setIncomePromptState] = useState({
     lastPromptMonthKey: null,
     lastPromptAt: 0,
@@ -37135,6 +38558,15 @@ function AppContent() {
       ),
     };
   }, [budgetLedger, savedTotalUSD]);
+  const budgetAllocationHasDebt = useMemo(() => {
+    const normalized = normalizeBudgetLedger(budgetLedger);
+    const debtRemainingUSD = Math.max(
+      0,
+      (Number(normalized.debt.initialDebtUSD) || 0) -
+        sumAcceptedBudgetTransfers(normalized.debtPayments)
+    );
+    return debtRemainingUSD > 0.01;
+  }, [budgetLedger]);
   const monetizationTrialActionCount =
     Math.max(0, Number(declineCount) || 0) +
     Math.max(0, Array.isArray(purchases) ? purchases.length : 0);
@@ -42976,6 +44408,7 @@ function AppContent() {
         usageFromState.daily_reward_modal === true || (Number(dailyRewardState?.lastClaimAt) || 0) > 0,
       reports_profile: usageFromState.reports_profile === true,
       budget_manual_limit: usageFromState.budget_manual_limit === true || hasBudgetOverrides,
+      subscription_watch: usageFromState.subscription_watch === true,
       custom_temptation_quick_add:
         usageFromState.custom_temptation_quick_add === true || customTemptationsCreatedCount > 0,
       profile_custom_spend:
@@ -43170,8 +44603,9 @@ function AppContent() {
         lastShownDayKey: didYouKnowCurrentDayKey,
       };
     });
+    const priorityTip = didYouKnowUnusedTips.find((tip) => tip.id === "subscription_watch") || null;
     const randomIndex = Math.floor(Math.random() * didYouKnowUnusedTips.length);
-    const selectedTip = didYouKnowUnusedTips[randomIndex] || didYouKnowUnusedTips[0] || null;
+    const selectedTip = priorityTip || didYouKnowUnusedTips[randomIndex] || didYouKnowUnusedTips[0] || null;
     setDidYouKnowTipId(selectedTip?.id || null);
   }, [
     clearQueuedModal,
@@ -44112,6 +45546,7 @@ function AppContent() {
       categoryPrompt.visible ||
       spendPrompt.visible ||
       saveSpamPrompt.visible ||
+      screenIntroState.visible ||
       stormActive,
     [
       addCategoryModalVisible,
@@ -44157,6 +45592,7 @@ function AppContent() {
       categoryPrompt.visible,
       spendPrompt.visible,
       saveSpamPrompt.visible,
+      screenIntroState.visible,
       stormActive,
     ]
   );
@@ -48482,6 +49918,8 @@ function AppContent() {
       ? t("dailyRewardClaimHint")
       : t("dailyRewardCollectedLabel")
     : t("progressHeroLevel", { level: dailyRewardUnlockLevel });
+  const dailyRewardButtonTitle = t("dailyRewardButtonLabel");
+  const dailyRewardButtonAccent = SAVE_ACTION_COLOR;
   useEffect(() => {
     if (!canUpdateWidgetStorage()) return;
     if (!profileHydrated || !historyHydrated || !incomeEntriesHydrated || !wishesHydrated) {
@@ -49271,6 +50709,18 @@ function AppContent() {
         ) {
           setPendingFocusId(pendingId);
           goToTab("pending");
+        } else if (
+          normalizedTargetScreen === "budget" ||
+          normalizedTargetScreen === "purchases" ||
+          notificationKind === BUDGET_ALLOCATION_REMINDER_KIND
+        ) {
+          goToTab("purchases", { recordHistory: false });
+        } else if (
+          notificationKind === SUBSCRIPTION_REMINDER_KIND ||
+          normalizedTargetScreen === "subscriptions" ||
+          normalizedTargetScreen === "subscription"
+        ) {
+          requestProgressSubscriptionFocus();
         } else if (templateId) {
           queueFeedNotificationFocus(templateId);
         } else if (normalizedTargetScreen === "feed" || normalizedTargetScreen === "home") {
@@ -49289,6 +50739,7 @@ function AppContent() {
       openReportsFromNotification,
       queueFeedNotificationFocus,
       requestProgressFreeDayFocus,
+      requestProgressSubscriptionFocus,
     ]
   );
   useEffect(() => {
@@ -49561,27 +51012,27 @@ function AppContent() {
       Notifications?.AndroidNotificationVisibility?.PUBLIC ??
       Notifications?.AndroidNotificationVisibility?.PRIVATE;
     safeNotifications.setNotificationChannelAsync(ANDROID_DAILY_NUDGE_CHANNEL_ID, {
-      name: "Daily nudges",
+      name: t("notificationChannelDailyNudges"),
       importance,
       sound: true,
       vibrationPattern: [250, 250, 250],
       lockscreenVisibility: visibility,
     });
     safeNotifications.setNotificationChannelAsync(ANDROID_TAMAGOTCHI_CHANNEL_ID, {
-      name: "Tamagotchi hunger",
+      name: t("notificationChannelTamagotchiHunger"),
       importance,
       sound: true,
       vibrationPattern: [250, 250, 250],
       lockscreenVisibility: visibility,
     });
     safeNotifications.setNotificationChannelAsync(ANDROID_REPORTS_CHANNEL_ID, {
-      name: "Weekly reports",
+      name: t("notificationChannelWeeklyReports"),
       importance,
       sound: true,
       vibrationPattern: [250, 250, 250],
       lockscreenVisibility: visibility,
     });
-  }, []);
+  }, [t]);
   useEffect(() => {
     const actions = [
       {
@@ -52137,6 +53588,192 @@ function AppContent() {
     setReportsWeeklyNotificationId(null);
   }, [notificationPermissionGranted, reportsWeeklyNotificationHydrated, reportsWeeklyNotificationId]);
 
+  const cancelBudgetAllocationReminderNotifications = useCallback(async (notificationIds = []) => {
+    const explicitIds = new Set(
+      (Array.isArray(notificationIds) ? notificationIds : [])
+        .filter((id) => typeof id === "string" && id.trim())
+        .map((id) => id.trim())
+    );
+    try {
+      const scheduled = await safeNotifications.getAllScheduledNotificationsAsync();
+      const idsToCancel = (Array.isArray(scheduled) ? scheduled : []).reduce((acc, entry) => {
+        const id = entry?.identifier || entry?.id || null;
+        if (!id) return acc;
+        const kind = entry?.content?.data?.kind;
+        if (explicitIds.has(id) || kind === BUDGET_ALLOCATION_REMINDER_KIND) {
+          acc.push(id);
+        }
+        return acc;
+      }, []);
+      if (!idsToCancel.length) return;
+      await Promise.all(idsToCancel.map((id) => safeNotifications.cancelScheduledNotificationAsync(id)));
+    } catch (error) {
+      console.warn("budget allocation reminder cancel", error);
+    }
+  }, []);
+
+  const scheduleBudgetAllocationReminderNotifications = useCallback(
+    async ({ bucket = 0, availableUSD = 0, hasDebt = false, currency = DEFAULT_PROFILE.currency } = {}) => {
+      if (startupHardLockPendingBeforePaywall) return [];
+      const normalizedBucket = Math.max(0, Math.floor(Number(bucket) || 0));
+      if (!normalizedBucket) return [];
+      const permitted = await ensureNotificationPermission({ request: false });
+      if (!permitted) return [];
+      const normalizedCurrency =
+        typeof currency === "string" && currency.trim()
+          ? currency.trim().toUpperCase()
+          : DEFAULT_PROFILE.currency;
+      const amountLabel = formatCurrency(
+        convertToCurrency(BUDGET_ALLOCATION_REMINDER_THRESHOLD_USD, normalizedCurrency),
+        normalizedCurrency
+      );
+      const title = t("budgetAllocationNotificationTitle", { amount: amountLabel });
+      const body = t(
+        hasDebt
+          ? "budgetAllocationNotificationBodyWithDebt"
+          : "budgetAllocationNotificationBodySavingsOnly",
+        { amount: amountLabel }
+      );
+      const now = Date.now();
+      const ids = [];
+      for (let index = 0; index < BUDGET_ALLOCATION_REMINDER_SCHEDULE_COUNT; index += 1) {
+        const triggerAt =
+          now + BUDGET_ALLOCATION_REMINDER_INITIAL_DELAY_MS + index * DAY_MS;
+        const dayKey = getDayKey(triggerAt);
+        try {
+          const scheduled = await scheduleNotificationWithCooldown({
+            content: {
+              title,
+              body,
+              data: {
+                kind: BUDGET_ALLOCATION_REMINDER_KIND,
+                targetScreen: "purchases",
+                bucket: normalizedBucket,
+                amountUSD: BUDGET_ALLOCATION_REMINDER_THRESHOLD_USD,
+                availableUSD: Math.max(0, Number(availableUSD) || 0),
+                dayKey,
+                dedupeKey: `${BUDGET_ALLOCATION_REMINDER_KIND}:${normalizedBucket}:${dayKey}:${
+                  hasDebt ? "debt" : "savings"
+                }`,
+              },
+              ...(Platform.OS === "android" ? { channelId: ANDROID_DAILY_NUDGE_CHANNEL_ID } : null),
+            },
+            trigger: new Date(triggerAt),
+          });
+          if (scheduled?.id) ids.push(scheduled.id);
+        } catch (error) {
+          console.warn("budget allocation reminder schedule", error);
+        }
+      }
+      return ids;
+    },
+    [
+      ensureNotificationPermission,
+      scheduleNotificationWithCooldown,
+      startupHardLockPendingBeforePaywall,
+      t,
+    ]
+  );
+
+  useEffect(() => {
+    if (!budgetAllocationReminderHydrated) return;
+    if (!budgetLedgerHydrated || !savedTotalHydrated || !profileHydrated) return;
+    if (onboardingStep !== "done") return;
+    let cancelled = false;
+    const run = async () => {
+      const currentState = normalizeBudgetAllocationReminderState(budgetAllocationReminderState);
+      const availableUSD = Math.max(0, Number(budgetLedgerTotals.availableToAllocateUSD) || 0);
+      const clearedAvailableUSD = Math.max(0, Number(currentState.clearedAvailableUSD) || 0);
+      const availableGainUSD = Math.max(0, availableUSD - clearedAvailableUSD);
+      const availableBucket = resolveBudgetAllocationReminderBucket(availableGainUSD);
+      const notificationIds = currentState.notificationIds || [];
+      if (availableUSD <= 0.01) {
+        await cancelBudgetAllocationReminderNotifications(notificationIds);
+        if (
+          notificationIds.length ||
+          currentState.activeBucket > 0 ||
+          currentState.lastHandledBucket > 0 ||
+          currentState.clearedAvailableUSD > 0
+        ) {
+          if (!cancelled) {
+            setBudgetAllocationReminderState({ ...DEFAULT_BUDGET_ALLOCATION_REMINDER_STATE });
+          }
+        }
+        return;
+      }
+      const normalizedCurrency =
+        typeof profile?.currency === "string" && profile.currency.trim()
+          ? profile.currency.trim().toUpperCase()
+          : DEFAULT_PROFILE.currency;
+      const normalizedLanguage = normalizeLanguage(language);
+      const shouldClearActive =
+        currentState.activeBucket > 0 &&
+        budgetLedgerTotals.allocatedUSD > currentState.allocatedUSDAtSchedule + 0.01;
+      if (shouldClearActive) {
+        await cancelBudgetAllocationReminderNotifications(notificationIds);
+        if (!cancelled) {
+          setBudgetAllocationReminderState({
+            ...DEFAULT_BUDGET_ALLOCATION_REMINDER_STATE,
+            lastHandledBucket: availableBucket,
+            clearedAvailableUSD: availableUSD,
+          });
+        }
+        return;
+      }
+      const shouldRefreshActive =
+        currentState.activeBucket > 0 &&
+        availableBucket === currentState.activeBucket &&
+        (currentState.language !== normalizedLanguage ||
+          currentState.currency !== normalizedCurrency ||
+          currentState.hasDebt !== !!budgetAllocationHasDebt);
+      if (currentState.activeBucket > 0 && !shouldRefreshActive) {
+        return;
+      }
+      if (availableBucket <= 0 && !shouldRefreshActive) {
+        return;
+      }
+      const scheduleBucket = shouldRefreshActive ? currentState.activeBucket : availableBucket;
+      await cancelBudgetAllocationReminderNotifications(notificationIds);
+      const ids = await scheduleBudgetAllocationReminderNotifications({
+        bucket: scheduleBucket,
+        availableUSD,
+        hasDebt: budgetAllocationHasDebt,
+        currency: normalizedCurrency,
+      });
+      if (cancelled || !ids.length) return;
+      setBudgetAllocationReminderState({
+        lastHandledBucket: scheduleBucket,
+        activeBucket: scheduleBucket,
+        notificationIds: ids,
+        scheduledAt: Date.now(),
+        allocatedUSDAtSchedule: Math.max(0, Number(budgetLedgerTotals.allocatedUSD) || 0),
+        clearedAvailableUSD,
+        language: normalizedLanguage,
+        currency: normalizedCurrency,
+        hasDebt: !!budgetAllocationHasDebt,
+      });
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    budgetAllocationHasDebt,
+    budgetAllocationReminderHydrated,
+    budgetAllocationReminderState,
+    budgetLedgerHydrated,
+    budgetLedgerTotals.allocatedUSD,
+    budgetLedgerTotals.availableToAllocateUSD,
+    cancelBudgetAllocationReminderNotifications,
+    language,
+    notificationPermissionGranted,
+    onboardingStep,
+    profile?.currency,
+    profileHydrated,
+    savedTotalHydrated,
+    scheduleBudgetAllocationReminderNotifications,
+  ]);
+
   const runDeferredHydration = useCallback(() => {
       if (deferredHydrationReadyRef.current || deferredHydrationInFlightRef.current) return;
       const payload = deferredHydrationPayloadRef.current;
@@ -52240,6 +53877,7 @@ function AppContent() {
         STORAGE_KEYS.BUDGET_LIMITS,
         STORAGE_KEYS.BUDGET_OVERSPEND,
         STORAGE_KEYS.BUDGET_LEDGER,
+        STORAGE_KEYS.BUDGET_ALLOCATION_REMINDER,
         STORAGE_KEYS.INCOME_PROMPT,
         STORAGE_KEYS.IMPULSE_TRACKER,
         STORAGE_KEYS.MOOD_STATE,
@@ -52358,6 +53996,8 @@ function AppContent() {
       const incomePromptRaw = storedMap[STORAGE_KEYS.INCOME_PROMPT] ?? null;
       const budgetOverspendRaw = storedMap[STORAGE_KEYS.BUDGET_OVERSPEND] ?? null;
       const budgetLedgerRaw = storedMap[STORAGE_KEYS.BUDGET_LEDGER] ?? null;
+      const budgetAllocationReminderRaw =
+        storedMap[STORAGE_KEYS.BUDGET_ALLOCATION_REMINDER] ?? null;
       const impulseTrackerRaw = storedMap[STORAGE_KEYS.IMPULSE_TRACKER] ?? null;
       const moodRaw = storedMap[STORAGE_KEYS.MOOD_STATE] ?? null;
       const challengesRaw = storedMap[STORAGE_KEYS.CHALLENGES] ?? null;
@@ -53843,6 +55483,19 @@ function AppContent() {
         setBudgetLedger({ ...INITIAL_BUDGET_LEDGER });
       }
       setBudgetLedgerHydrated(true);
+      if (budgetAllocationReminderRaw) {
+        try {
+          setBudgetAllocationReminderState(
+            normalizeBudgetAllocationReminderState(JSON.parse(budgetAllocationReminderRaw))
+          );
+        } catch (err) {
+          console.warn("budget allocation reminder parse", err);
+          setBudgetAllocationReminderState({ ...DEFAULT_BUDGET_ALLOCATION_REMINDER_STATE });
+        }
+      } else {
+        setBudgetAllocationReminderState({ ...DEFAULT_BUDGET_ALLOCATION_REMINDER_STATE });
+      }
+      setBudgetAllocationReminderHydrated(true);
       const hydrateImpulseTracker = () => {
         if (impulseTrackerRaw) {
           try {
@@ -55838,6 +57491,12 @@ useEffect(() => {
   }, [budgetLedger, budgetLedgerHydrated, queuePersist]);
 
   useEffect(() => {
+    if (!budgetAllocationReminderHydrated) return;
+    const normalized = normalizeBudgetAllocationReminderState(budgetAllocationReminderState);
+    queuePersist(STORAGE_KEYS.BUDGET_ALLOCATION_REMINDER, JSON.stringify(normalized));
+  }, [budgetAllocationReminderHydrated, budgetAllocationReminderState, queuePersist]);
+
+  useEffect(() => {
     if (!incomePromptHydrated) return;
     queuePersist(STORAGE_KEYS.INCOME_PROMPT, JSON.stringify(incomePromptState));
   }, [queuePersist, incomePromptHydrated, incomePromptState]);
@@ -55954,6 +57613,10 @@ useEffect(() => {
       [STORAGE_KEYS.LEVEL_SHARE_REWARDED_LEVELS, "{}"],
       [STORAGE_KEYS.DEFAULT_TEMPTATION_GROWTH_LOCK_LEVEL, ""],
       [STORAGE_KEYS.BUDGET_LEDGER, JSON.stringify(INITIAL_BUDGET_LEDGER)],
+      [
+        STORAGE_KEYS.BUDGET_ALLOCATION_REMINDER,
+        JSON.stringify(DEFAULT_BUDGET_ALLOCATION_REMINDER_STATE),
+      ],
     ]).catch(() => {});
   }, [
     declineCount,
@@ -56387,6 +58050,137 @@ useEffect(() => {
     notificationPermissionGranted,
     scheduleNotificationWithCooldown,
     setTemptationInteractions,
+    t,
+    temptationInteractions,
+    temptationInteractionsHydrated,
+  ]);
+  useEffect(() => {
+    if (!temptationInteractionsHydrated) return;
+    if (!quickTemptationsHydrated) return;
+    if (notificationPermissionGranted !== true) return;
+    let cancelled = false;
+    const rescheduleSubscriptionReminders = async () => {
+      const nowTs = Date.now();
+      try {
+        const scheduled = await safeNotifications.getAllScheduledNotificationsAsync();
+        const existingIds = (Array.isArray(scheduled) ? scheduled : []).reduce((acc, entry) => {
+          if (entry?.content?.data?.kind !== SUBSCRIPTION_REMINDER_KIND) return acc;
+          const id = entry?.identifier || entry?.id || null;
+          if (id) acc.push(id);
+          return acc;
+        }, []);
+        if (existingIds.length) {
+          await Promise.all(
+            existingIds.map((id) => safeNotifications.cancelScheduledNotificationAsync(id))
+          );
+        }
+      } catch (error) {
+        console.warn("subscription reminder cleanup", error);
+      }
+      if (cancelled) return;
+      const dayGroups = new Map();
+      (Array.isArray(products) ? products : []).forEach((item) => {
+        if (!item) return;
+        const categoryId =
+          typeof resolveTemptationCategory === "function"
+            ? resolveTemptationCategory(item)
+            : item.impulseCategoryOverride || null;
+        if (!isUserSubscriptionTemptation(item, categoryId)) return;
+        const templateId =
+          typeof item.id === "string" && item.id.trim()
+            ? item.id.trim()
+            : typeof item.templateId === "string"
+            ? item.templateId.trim()
+            : "";
+        if (!templateId) return;
+        if (!isTemplateReminderEligible(templateId)) return;
+        const entry = temptationInteractions?.[templateId] || {};
+        const nextCheckAt = resolveSubscriptionNextCheckAt(item, entry, nowTs);
+        if (!Number.isFinite(nextCheckAt) || nextCheckAt <= nowTs) return;
+        const title = resolveTemptationTitle(item, language, item.titleOverride) || t("defaultDealTitle");
+        const amountLabel = formatCurrency(
+          convertToCurrency(Math.max(0, Number(getTemptationPrice(item)) || 0), profile.currency || DEFAULT_PROFILE.currency),
+          profile.currency || DEFAULT_PROFILE.currency
+        );
+        SUBSCRIPTION_REMINDER_OFFSETS_DAYS.forEach((daysBefore) => {
+          const triggerTime = nextCheckAt - daysBefore * DAY_MS;
+          if (!Number.isFinite(triggerTime) || triggerTime <= nowTs + 5 * 60 * 1000) return;
+          const dayKey = getDayKey(triggerTime);
+          if (!dayKey) return;
+          const current = dayGroups.get(dayKey) || {
+            triggerTime,
+            daysBefore,
+            subscriptions: [],
+          };
+          current.triggerTime = Math.min(current.triggerTime, triggerTime);
+          current.daysBefore = Math.min(current.daysBefore, daysBefore);
+          current.subscriptions.push({
+            templateId,
+            title,
+            amountLabel,
+            daysBefore,
+            nextCheckAt,
+          });
+          dayGroups.set(dayKey, current);
+        });
+      });
+      const groups = Array.from(dayGroups.entries())
+        .map(([dayKey, group]) => ({ dayKey, ...group }))
+        .sort((a, b) => a.triggerTime - b.triggerTime)
+        .slice(0, 16);
+      for (let index = 0; index < groups.length; index += 1) {
+        if (cancelled) return;
+        const group = groups[index];
+        const subscriptions = group.subscriptions || [];
+        if (!subscriptions.length) continue;
+        const primary = subscriptions[0];
+        const count = subscriptions.length;
+        const dedupeKey = `${SUBSCRIPTION_REMINDER_KIND}:${group.dayKey}`;
+        try {
+          await scheduleNotificationWithCooldown({
+            content: {
+              title:
+                count === 1
+                  ? t("subscriptionNotificationTitleSingle")
+                  : t("subscriptionNotificationTitleMultiple", { count }),
+              body:
+                count === 1
+                  ? t("subscriptionNotificationBodySingle", {
+                      title: primary.title,
+                      amount: primary.amountLabel,
+                      days: primary.daysBefore,
+                    })
+                  : t("subscriptionNotificationBodyMultiple", { count }),
+              data: {
+                kind: SUBSCRIPTION_REMINDER_KIND,
+                targetScreen: "subscriptions",
+                dedupeKey,
+                dayKey: group.dayKey,
+                templateId: primary.templateId,
+              },
+              ...(Platform.OS === "android" ? { channelId: ANDROID_DAILY_NUDGE_CHANNEL_ID } : null),
+            },
+            trigger: new Date(group.triggerTime),
+          });
+        } catch (error) {
+          console.warn("subscription reminder schedule", error);
+        }
+      }
+    };
+    rescheduleSubscriptionReminders();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isTemplateReminderEligible,
+    language,
+    notificationPermissionGranted,
+    products,
+    profile.currency,
+    quickTemptationsHydrated,
+    resolveTemptationCategory,
+    safeNotifications,
+    scheduleNotificationWithCooldown,
     t,
     temptationInteractions,
     temptationInteractionsHydrated,
@@ -57267,17 +59061,17 @@ useEffect(() => {
     triggerHaptic();
     ensureTermsAccepted();
     await requestTrackingTransparencyIfNeeded();
-    goToOnboardingStep("save_demo");
-  };
-
-  const handleSaveDemoContinue = () => {
-    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
     goToOnboardingStep("guide");
   };
 
   const handleGuideContinue = () => {
     triggerHaptic();
     goToOnboardingStep("persona");
+  };
+
+  const handleSaveDemoContinue = () => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    goToOnboardingStep("goal");
   };
 
   const updateRegistrationData = (field, value) => {
@@ -58405,7 +60199,7 @@ useEffect(() => {
   const handleCustomSpendSavingsContinue = useCallback(() => {
     playSound("tap", { skipCooldown: true });
     setCustomSpendSavingsModal((prev) => ({ ...prev, visible: false }));
-    goToOnboardingStep("goal");
+    goToOnboardingStep("save_demo");
   }, [goToOnboardingStep, playSound]);
 
   const handleHabitSubmit = (skip = false, presetOverride = null) => {
@@ -58500,7 +60294,7 @@ useEffect(() => {
         return;
       }
     }
-    goToOnboardingStep("goal");
+    goToOnboardingStep("save_demo");
   };
 
   const handleBaselineSubmit = () => {
@@ -58944,6 +60738,7 @@ useEffect(() => {
     setDecisionStats({ ...INITIAL_DECISION_STATS });
     setRefuseStats({});
     setBudgetLedger({ ...INITIAL_BUDGET_LEDGER });
+    setBudgetAllocationReminderState({ ...DEFAULT_BUDGET_ALLOCATION_REMINDER_STATE });
     AsyncStorage.multiSet([
       [STORAGE_KEYS.SAVED_TOTAL, "0"],
       [STORAGE_KEYS.SAVED_TOTAL_PEAK, "0"],
@@ -58958,6 +60753,10 @@ useEffect(() => {
       [STORAGE_KEYS.DECISION_STATS, JSON.stringify({ ...INITIAL_DECISION_STATS })],
       [STORAGE_KEYS.REFUSE_STATS, "{}"],
       [STORAGE_KEYS.BUDGET_LEDGER, JSON.stringify(INITIAL_BUDGET_LEDGER)],
+      [
+        STORAGE_KEYS.BUDGET_ALLOCATION_REMINDER,
+        JSON.stringify(DEFAULT_BUDGET_ALLOCATION_REMINDER_STATE),
+      ],
     ]).catch(() => {});
     await AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
     await AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "done").catch(() => {});
@@ -60243,6 +62042,169 @@ useEffect(() => {
       skipFrequencyReminderPrompt: false,
     });
   }, [queueModalCloseSettle]);
+  const spendBudgetPreview = useMemo(() => {
+    if (!spendPrompt.visible || !spendPrompt.item) return null;
+    const amountUSD = clampTransactionAmountUSD(spendPrompt.amountUSD);
+    if (amountUSD <= 0) return null;
+    const categoryId = resolveTemptationCategory(spendPrompt.item);
+    const categoryLabel = getImpulseCategoryLabel(categoryId, language);
+    const resolvePreviewTemplateKey = (value) => {
+      if (typeof value === "number" && Number.isFinite(value)) return String(value);
+      if (typeof value !== "string") return null;
+      const trimmed = value.trim();
+      return trimmed.length ? trimmed : null;
+    };
+    const resolvePreviewHistoryCategoryId = (entry) => {
+      const metaCategory =
+        entry?.meta?.category || entry?.meta?.impulseCategory || entry?.meta?.impulseCategoryOverride;
+      if (metaCategory && IMPULSE_CATEGORY_DEFS[metaCategory]) return metaCategory;
+      const templateId =
+        resolvePreviewTemplateKey(entry?.meta?.templateId) ||
+        resolvePreviewTemplateKey(entry?.meta?.id);
+      const template = templateId ? resolveTemplateCard(templateId) : null;
+      return template ? resolveTemptationCategory(template) : DEFAULT_IMPULSE_CATEGORY;
+    };
+    const budgetSpendDistribution = {};
+    const distributionCutoff = Date.now() - DAY_MS * 30;
+    resolvedHistoryEvents.forEach((entry) => {
+      if (!entry || entry.kind !== "spend") return;
+      const timestamp = normalizeTemporalMs(entry?.timestamp, 0);
+      if (!timestamp || timestamp < distributionCutoff) return;
+      const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
+      if (!amount) return;
+      const entryCategoryId = resolvePreviewHistoryCategoryId(entry);
+      budgetSpendDistribution[entryCategoryId] = (budgetSpendDistribution[entryCategoryId] || 0) + amount;
+    });
+    const budgetMonthlyStats = buildBudgetMonthlyStats({
+      incomeEntries,
+      historyEvents: resolvedHistoryEvents,
+      currentMonthKey,
+      resolveHistoryCategoryId: resolvePreviewHistoryCategoryId,
+    });
+    const budgetCarryover = buildBudgetCarryoverMap(budgetMonthlyStats);
+    const monthStats = budgetMonthlyStats[currentMonthKey] || {
+      incomeUSD: currentMonthIncomeUSD,
+      spendTotalUSD: currentMonthSpendUSD,
+      spendByCategory: {},
+    };
+    const previewPlan = buildBudgetPlan({
+      incomeUSD: currentMonthIncomeUSD,
+      carryoverUSD: budgetCarryover[currentMonthKey] || 0,
+      budgetOverrides,
+      spendDistribution: budgetSpendDistribution,
+      spendToDateByCategory: monthStats.spendByCategory || {},
+      spendToDateTotalUSD: monthStats.spendTotalUSD || currentMonthSpendUSD,
+      decisionStats,
+      baselineMonthlyWasteUSD,
+      language,
+      monthKey: currentMonthKey,
+      autoAllocationEnabled: budgetAutoEnabled,
+    });
+    const categoryEntry =
+      (previewPlan?.categories || []).find((entry) => entry?.id === categoryId) || null;
+    const categoryLimitUSD = Math.max(0, Number(categoryEntry?.limitUSD) || 0);
+    const categorySpentBeforeUSD = Math.max(
+      0,
+      Number(categoryEntry?.spentUSD) ||
+        Number(monthStats?.spendByCategory?.[categoryId]) ||
+        0
+    );
+    const categorySpentAfterUSD = categorySpentBeforeUSD + amountUSD;
+    const categoryRemainingBeforeUSD = categoryLimitUSD - categorySpentBeforeUSD;
+    const categoryRemainingAfterUSD = categoryLimitUSD - categorySpentAfterUSD;
+    const categoryOverUSD = Math.max(0, -categoryRemainingAfterUSD);
+    const hasCategoryLimit = categoryLimitUSD > 0.01;
+    const categoryBeforeRatio = hasCategoryLimit ? categorySpentBeforeUSD / categoryLimitUSD : 0;
+    const categoryAfterRatio = hasCategoryLimit ? categorySpentAfterUSD / categoryLimitUSD : 0;
+    const categoryImpactRatio = hasCategoryLimit ? amountUSD / categoryLimitUSD : 0.35;
+    const itemKey = resolvePreviewTemplateKey(spendPrompt.item?.id);
+    const templateKey = resolvePreviewTemplateKey(spendPrompt.item?.templateId);
+    const interactionEntry =
+      (templateKey && temptationInteractions?.[templateKey]) ||
+      (itemKey && temptationInteractions?.[itemKey]) ||
+      null;
+    const frequency = normalizeFrequencyId(interactionEntry?.frequency || spendPrompt.item?.frequency) || null;
+    const intervalMs =
+      Math.max(
+        0,
+        Number(interactionEntry?.intervalMs) ||
+          Number(interactionEntry?.detectedIntervalMs) ||
+          Number(spendPrompt.item?.intervalMs) ||
+          0
+      ) || 0;
+    const checksPerMonthFromFrequency = frequency
+      ? resolveFrequencyChecksPerMonth({
+          frequencyId: frequency,
+          customFrequency:
+            interactionEntry?.frequencyCustom ||
+            spendPrompt.item?.frequencyCustom ||
+            spendPrompt.item?.customFrequency ||
+            null,
+          weeklyDays:
+            interactionEntry?.frequencyWeeklyDays ??
+            interactionEntry?.frequencyWeeklyDay ??
+            spendPrompt.item?.frequencyWeeklyDays ??
+            spendPrompt.item?.frequencyWeeklyDay,
+          monthlyDays:
+            interactionEntry?.frequencyMonthlyDays ??
+            interactionEntry?.frequencyMonthlyDay ??
+            spendPrompt.item?.frequencyMonthlyDays ??
+            spendPrompt.item?.frequencyMonthlyDay,
+        })
+      : 0;
+    const checksPerMonthFromInterval =
+      intervalMs > 0 ? FORECAST_MONTH_DAYS / Math.max(intervalMs / DAY_MS, 0.1) : 0;
+    const checksPerMonth = Math.max(
+      1,
+      Math.min(FORECAST_MONTH_DAYS, checksPerMonthFromFrequency || checksPerMonthFromInterval || 1)
+    );
+    const monthlyPotentialLossUSD = amountUSD * checksPerMonth;
+    let status = "unknown";
+    if (hasCategoryLimit) {
+      if (categoryRemainingAfterUSD < -0.01) {
+        status = "over";
+      } else if (categoryAfterRatio >= 0.9 || categoryRemainingAfterUSD < amountUSD) {
+        status = "tight";
+      } else {
+        status = "safe";
+      }
+    }
+    return {
+      status,
+      categoryId,
+      categoryLabel,
+      hasCategoryLimit,
+      categoryLimitUSD,
+      categorySpentBeforeUSD,
+      categorySpentAfterUSD,
+      categoryRemainingBeforeUSD,
+      categoryRemainingAfterUSD,
+      categoryImpactUSD: amountUSD,
+      categoryOverUSD,
+      categoryBeforeRatio,
+      categoryAfterRatio,
+      categoryImpactRatio,
+      checksPerMonth,
+      monthlyPotentialLossUSD,
+    };
+  }, [
+    baselineMonthlyWasteUSD,
+    budgetAutoEnabled,
+    budgetOverrides,
+    currentMonthIncomeUSD,
+    currentMonthKey,
+    currentMonthSpendUSD,
+    decisionStats,
+    incomeEntries,
+    language,
+    resolvedHistoryEvents,
+    resolveTemplateCard,
+    resolveTemptationCategory,
+    spendPrompt.amountUSD,
+    spendPrompt.item,
+    spendPrompt.visible,
+    temptationInteractions,
+  ]);
   const closeSaveSpamPrompt = useCallback(() => {
     setSaveSpamPrompt({ visible: false, item: null, options: null, recentCount: 0 });
   }, []);
@@ -67885,6 +69847,7 @@ useEffect(() => {
             tutorialLevelOffsetAppliedRef.current = false;
             setDeclineCount(0);
             setBudgetLedger({ ...INITIAL_BUDGET_LEDGER });
+            setBudgetAllocationReminderState({ ...DEFAULT_BUDGET_ALLOCATION_REMINDER_STATE });
             setCatalogOverrides({});
             setTitleOverrides({});
             setEmojiOverrides({});
@@ -68392,6 +70355,68 @@ useEffect(() => {
   const closeHelpGuide = useCallback(() => {
     setHelpGuideVisible(false);
   }, []);
+  const closeScreenIntro = useCallback(
+    (source = "cta") => {
+      const tab = screenIntroState.tab;
+      setScreenIntroState({ visible: false, tab: null });
+      if (!tab) return;
+      screenIntroStatusRef.current[tab] = "done";
+      logEvent("screen_intro_closed", { screen: tab, source });
+    },
+    [screenIntroState.tab]
+  );
+  useEffect(() => {
+    const tab = SCREEN_INTRO_STORAGE_BY_TAB[activeTab] ? activeTab : null;
+    if (!tab) return undefined;
+    if (screenIntroStatusRef.current[tab]) return undefined;
+    if (!interfaceReady) return undefined;
+    if (startupLogoVisible || startupHardLockPendingBeforePaywall) return undefined;
+    if (onboardingStep !== "done") return undefined;
+    if (blockingModalVisible || tutorialBlockingVisible) return undefined;
+    if (bugReportVisible || helpGuideVisible || screenIntroState.visible) return undefined;
+    let cancelled = false;
+    const storageKey = SCREEN_INTRO_STORAGE_BY_TAB[tab];
+    const introStatus = screenIntroStatusRef.current;
+    introStatus[tab] = "checking";
+    const openIntro = () => {
+      if (cancelled) return;
+      introStatus[tab] = "shown";
+      setScreenIntroState({ visible: true, tab });
+      AsyncStorage.setItem(storageKey, "1").catch(() => {});
+      logEvent("screen_intro_shown", { screen: tab });
+    };
+    AsyncStorage.getItem(storageKey)
+      .then((rawValue) => {
+        if (cancelled) return;
+        const normalized = resolveNonEmptyString(rawValue).toLowerCase();
+        const isSeen = normalized === "1" || normalized === "true" || normalized === "done";
+        if (isSeen) {
+          introStatus[tab] = "done";
+          return;
+        }
+        openIntro();
+      })
+      .catch(() => {
+        openIntro();
+      });
+    return () => {
+      cancelled = true;
+      if (introStatus[tab] === "checking") {
+        delete introStatus[tab];
+      }
+    };
+  }, [
+    activeTab,
+    blockingModalVisible,
+    bugReportVisible,
+    helpGuideVisible,
+    interfaceReady,
+    onboardingStep,
+    screenIntroState.visible,
+    startupHardLockPendingBeforePaywall,
+    startupLogoVisible,
+    tutorialBlockingVisible,
+  ]);
   const handleHelpGuideScrolled = useCallback(
     ({ offsetY = 0 } = {}) => {
       logEvent("help_guide_scrolled", {
@@ -68559,6 +70584,8 @@ useEffect(() => {
             budgetSpeechDataRef={resolvedBudgetSpeechDataRef}
             scrollRef={progressScrollRef}
             onBudgetWidgetLayout={handleProgressBudgetWidgetLayout}
+            onSubscriptionWidgetLayout={handleProgressSubscriptionWidgetLayout}
+            onSubscriptionWidgetOpen={() => markDidYouKnowFeatureUsed("subscription_watch")}
             onFreeDayCardLayout={handleProgressFreeDayCardLayout}
             onImpulseMapLockedPress={handleImpulseMapLockedPress}
             contentBottomPadding={screenContentBottomPadding}
@@ -68898,6 +70925,10 @@ useEffect(() => {
       registrationData.customSpendEmoji,
       DEFAULT_TEMPTATION_EMOJI
     );
+    const onboardingDailyTemptation = buildOnboardingSaveDemoTemptation(
+      registrationData,
+      registrationData.currency || profile.currency || DEFAULT_PROFILE.currency
+    );
     const shouldSkipGoalCalculationIntro = onboardingGoalIds.length === 0;
     let onboardContent = null;
     if (onboardingStep === "logo") {
@@ -68925,6 +70956,7 @@ useEffect(() => {
           t={t}
           language={language}
           currency={registrationData.currency || DEFAULT_PROFILE.currency}
+          temptation={onboardingDailyTemptation}
           onContinue={handleSaveDemoContinue}
           onBack={onboardingBackHandler}
           bottomInset={androidNavInset}
@@ -68977,7 +71009,7 @@ useEffect(() => {
         onboardingBackHandler ||
         (() => {
           triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-          goToOnboardingStep("habit", { recordHistory: false });
+          goToOnboardingStep("save_demo", { recordHistory: false });
         });
       onboardContent = (
         <GoalScreen
@@ -69247,6 +71279,13 @@ useEffect(() => {
             activeTab={activeTab}
             onClose={closeHelpGuide}
             onScrolled={handleHelpGuideScrolled}
+          />
+          <FirstVisitScreenIntroModal
+            visible={!startupHardLockPendingBeforePaywall && screenIntroState.visible}
+            colors={colors}
+            copy={resolveFirstVisitScreenIntroCopy(language, screenIntroState.tab || activeTab)}
+            isDarkMode={isDarkTheme}
+            onClose={closeScreenIntro}
           />
           {!startupHardLockPendingBeforePaywall && breakdownVisible && (
             <Modal visible transparent animationType="fade" statusBarTranslucent>
@@ -71506,29 +73545,124 @@ useEffect(() => {
                           <TouchableOpacity
                             style={[
                               styles.tamagotchiStickyRewardButton,
+                              dailyRewardReady
+                                ? styles.tamagotchiStickyRewardButtonReady
+                                : styles.tamagotchiStickyRewardButtonResting,
                               tamagotchiClosing && styles.tamagotchiNoShadow,
                               {
-                                borderColor: dailyRewardReady ? SAVE_ACTION_COLOR : colors.border,
-                                backgroundColor: colorWithAlpha(colors.card, isDarkTheme ? 0.95 : 0.98),
-                                opacity: dailyRewardReady ? 1 : 0.72,
+                                borderColor: dailyRewardReady
+                                  ? colorWithAlpha(dailyRewardButtonAccent, isDarkTheme ? 0.82 : 0.62)
+                                  : colorWithAlpha(colors.border, isDarkTheme ? 0.86 : 0.78),
+                                backgroundColor: dailyRewardReady
+                                  ? Platform.OS === "android"
+                                    ? isDarkTheme
+                                      ? "#173326"
+                                      : "#EAF8F1"
+                                    : colorWithAlpha(dailyRewardButtonAccent, isDarkTheme ? 0.24 : 0.13)
+                                  : colorWithAlpha(colors.card, isDarkTheme ? 0.9 : 0.95),
+                                opacity: dailyRewardReady ? 1 : 0.78,
                               },
                             ]}
                             onPress={handleTamagotchiDailyRewardPress}
                             activeOpacity={dailyRewardReady ? 0.86 : 0.94}
                           >
-                            <Text style={styles.tamagotchiRewardIcon}>🎁</Text>
-                            <Text
-                              style={[styles.tamagotchiStickyRewardText, { color: colors.text }]}
-                              numberOfLines={1}
-                              adjustsFontSizeToFit
-                              allowAndroidAutoFit
-                              minimumFontScale={0.7}
-                              ellipsizeMode="clip"
-                              lineBreakStrategyIOS="standard"
-                              android_hyphenationFrequency="none"
+                            {dailyRewardReady && Platform.OS !== "android" && (
+                              <View
+                                pointerEvents="none"
+                                style={[
+                                  styles.tamagotchiStickyRewardGlow,
+                                  { backgroundColor: colorWithAlpha(dailyRewardButtonAccent, isDarkTheme ? 0.28 : 0.18) },
+                                ]}
+                              />
+                            )}
+                            <View
+                              style={[
+                                styles.tamagotchiStickyRewardIconWrap,
+                                {
+                                  backgroundColor: dailyRewardReady
+                                    ? Platform.OS === "android"
+                                      ? isDarkTheme
+                                        ? "#24533A"
+                                        : "#DDF4E8"
+                                      : colorWithAlpha(dailyRewardButtonAccent, isDarkTheme ? 0.32 : 0.18)
+                                    : colorWithAlpha(colors.text, isDarkTheme ? 0.12 : 0.08),
+                                  borderColor: dailyRewardReady
+                                    ? colorWithAlpha(dailyRewardButtonAccent, isDarkTheme ? 0.46 : 0.28)
+                                    : colorWithAlpha(colors.border, 0.82),
+                                },
+                              ]}
                             >
-                              {dailyRewardButtonLabel}
-                            </Text>
+                              <Text style={styles.tamagotchiRewardIcon}>🎁</Text>
+                            </View>
+                            <View style={styles.tamagotchiStickyRewardCopy}>
+                              <Text
+                                style={[
+                                  styles.tamagotchiStickyRewardTitle,
+                                  { color: dailyRewardReady ? colors.text : colors.muted },
+                                ]}
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.9}
+                                ellipsizeMode="tail"
+                                lineBreakStrategyIOS="standard"
+                                android_hyphenationFrequency="none"
+                              >
+                                {dailyRewardButtonTitle}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.tamagotchiStickyRewardText,
+                                  {
+                                    color: dailyRewardReady
+                                      ? isDarkTheme
+                                        ? "#BFFFE0"
+                                        : dailyRewardButtonAccent
+                                      : colors.muted,
+                                  },
+                                ]}
+                                numberOfLines={2}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.9}
+                                ellipsizeMode="tail"
+                                lineBreakStrategyIOS="standard"
+                                android_hyphenationFrequency="none"
+                              >
+                                {dailyRewardButtonLabel}
+                              </Text>
+                            </View>
+                            {dailyRewardUnlocked && dailyRewardDisplayAmount > 0 && (
+                              <View
+                                style={[
+                                  styles.tamagotchiStickyRewardAmountPill,
+                                  {
+                                    borderColor: dailyRewardReady
+                                      ? colorWithAlpha(dailyRewardButtonAccent, isDarkTheme ? 0.54 : 0.3)
+                                      : colorWithAlpha(colors.border, 0.72),
+                                    backgroundColor: dailyRewardReady
+                                      ? Platform.OS === "android"
+                                        ? isDarkTheme
+                                          ? "#214731"
+                                          : "#FFFFFF"
+                                        : colorWithAlpha(dailyRewardButtonAccent, isDarkTheme ? 0.26 : 0.16)
+                                      : colorWithAlpha(colors.text, isDarkTheme ? 0.1 : 0.06),
+                                  },
+                                ]}
+                              >
+                                <Image
+                                  source={(getHealthCoinTierForAmount(dailyRewardDisplayAmount) || HEALTH_COIN_TIERS[0]).asset}
+                                  style={styles.tamagotchiStickyRewardCoin}
+                                />
+                                <Text
+                                  style={[
+                                    styles.tamagotchiStickyRewardAmount,
+                                    { color: dailyRewardReady ? colors.text : colors.muted },
+                                  ]}
+                                  numberOfLines={1}
+                                >
+                                  +{dailyRewardDisplayAmount}
+                                </Text>
+                              </View>
+                            )}
                           </TouchableOpacity>
                         </Animated.View>
                         <View
@@ -74214,6 +76348,7 @@ useEffect(() => {
           visible={!startupHardLockPendingBeforePaywall && spendPrompt.visible}
           item={spendPrompt.item}
           amountUSD={spendPrompt.amountUSD}
+          budgetPreview={spendBudgetPreview}
           currency={profile.currency || DEFAULT_PROFILE.currency}
           language={language}
           onCancel={closeSpendPrompt}
@@ -76435,11 +78570,12 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: scaleTamagotchiMetric(8, 6),
-    minHeight: scaleTamagotchiMetric(44, 34),
+    minHeight: scaleTamagotchiMetric(66, 54),
   },
   tamagotchiTopBarRight: {
     alignItems: "flex-end",
     gap: scaleTamagotchiMetric(4, 3),
+    maxWidth: "78%",
   },
   tamagotchiStickyRewardWrap: {
     position: "absolute",
@@ -76456,27 +78592,84 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tamagotchiStickyRewardButton: {
-    minWidth: scaleTamagotchiMetric(126, 108),
-    maxWidth: scaleTamagotchiMetric(188, 156),
-    minHeight: scaleTamagotchiMetric(34, 30),
+    minWidth: scaleTamagotchiMetric(238, 196),
+    maxWidth: scaleTamagotchiMetric(300, 246),
+    minHeight: scaleTamagotchiMetric(66, 54),
     borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(12, 10),
-    paddingHorizontal: scaleTamagotchiMetric(8, 7),
-    paddingVertical: scaleTamagotchiMetric(4, 3),
+    borderRadius: scaleTamagotchiMetric(20, 16),
+    paddingHorizontal: scaleTamagotchiMetric(11, 9),
+    paddingVertical: scaleTamagotchiMetric(8, 7),
     flexDirection: "row",
     alignItems: "center",
-    gap: scaleTamagotchiMetric(5, 4),
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    gap: scaleTamagotchiMetric(9, 7),
+    overflow: "hidden",
+    shadowColor: "#0A1324",
   },
-  tamagotchiStickyRewardText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(9.5, 8.5) }),
-    lineHeight: scaleTamagotchiMetric(12, 10),
+  tamagotchiStickyRewardButtonReady: {
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 7,
+  },
+  tamagotchiStickyRewardButtonResting: {
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  tamagotchiStickyRewardGlow: {
+    position: "absolute",
+    top: -scaleTamagotchiMetric(20, 16),
+    right: -scaleTamagotchiMetric(18, 14),
+    width: scaleTamagotchiMetric(90, 68),
+    height: scaleTamagotchiMetric(90, 68),
+    borderRadius: scaleTamagotchiMetric(45, 34),
+  },
+  tamagotchiStickyRewardIconWrap: {
+    width: scaleTamagotchiMetric(40, 33),
+    height: scaleTamagotchiMetric(40, 33),
+    borderRadius: scaleTamagotchiMetric(14, 12),
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  tamagotchiStickyRewardCopy: {
     flex: 1,
     minWidth: 0,
-    flexShrink: 1,
+    justifyContent: "center",
+    gap: scaleTamagotchiMetric(2, 1),
+  },
+  tamagotchiStickyRewardTitle: {
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(12.8, 11.2) }),
+    lineHeight: scaleTamagotchiMetric(16, 13.5),
+    letterSpacing: 0,
+  },
+  tamagotchiStickyRewardText: {
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(14.5, 12.4) }),
+    lineHeight: scaleTamagotchiMetric(17, 14.6),
+    letterSpacing: 0,
+  },
+  tamagotchiStickyRewardAmountPill: {
+    minWidth: scaleTamagotchiMetric(58, 48),
+    height: scaleTamagotchiMetric(31, 26),
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: scaleTamagotchiMetric(7, 6),
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: scaleTamagotchiMetric(4, 3),
+    flexShrink: 0,
+  },
+  tamagotchiStickyRewardCoin: {
+    width: scaleTamagotchiMetric(17, 14),
+    height: scaleTamagotchiMetric(17, 14),
+    resizeMode: "contain",
+  },
+  tamagotchiStickyRewardAmount: {
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(12.8, 10.8) }),
+    lineHeight: scaleTamagotchiMetric(15, 12.8),
   },
   tamagotchiStickyCoinsPill: {
     borderWidth: 1,
@@ -76630,7 +78823,7 @@ const styles = StyleSheet.create({
     height: scaleTamagotchiMetric(16, 12),
   },
   tamagotchiRewardIcon: {
-    fontSize: scaleTamagotchiMetric(15, 11),
+    fontSize: scaleTamagotchiMetric(21, 17),
   },
   tamagotchiPreview: {
     width: "100%",
@@ -79564,6 +81757,168 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
+  spendPreviewLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingHorizontal: 22,
+    paddingBottom: Math.min(470, SCREEN_HEIGHT * (IS_SHORT_DEVICE ? 0.36 : 0.42)),
+  },
+  spendPreviewGlow: {
+    position: "absolute",
+    width: Math.min(SCREEN_WIDTH - 30, 388),
+    height: 320,
+    borderRadius: 40,
+  },
+  spendPreviewCard: {
+    width: "100%",
+    maxWidth: 388,
+    borderRadius: 30,
+    borderWidth: 1,
+    padding: 20,
+    gap: 14,
+    shadowColor: "#000",
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 20,
+  },
+  spendPreviewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  spendPreviewKicker: {
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
+  },
+  spendPreviewSignalPill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    flexShrink: 0,
+  },
+  spendPreviewSignalText: {
+    fontSize: 11,
+    lineHeight: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  spendPreviewTitle: {
+    fontSize: 28,
+    lineHeight: 31,
+    fontWeight: "900",
+  },
+  spendPreviewSubtitle: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: "600",
+  },
+  spendPreviewHeroRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 12,
+  },
+  spendPreviewHeroMain: {
+    flex: 1.2,
+    justifyContent: "space-between",
+    paddingTop: 2,
+    paddingBottom: 4,
+    minWidth: 0,
+  },
+  spendPreviewHeroLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  spendPreviewHeroValue: {
+    fontSize: IS_SHORT_DEVICE ? 38 : 44,
+    lineHeight: IS_SHORT_DEVICE ? 42 : 48,
+    fontWeight: "900",
+    letterSpacing: -1.6,
+  },
+  spendPreviewHeroHint: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: "700",
+  },
+  spendPreviewHeroSide: {
+    flex: 0.9,
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    justifyContent: "space-between",
+    minHeight: 164,
+  },
+  spendPreviewHeroSideLabel: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  spendPreviewHeroSideValue: {
+    fontSize: 28,
+    lineHeight: 31,
+    fontWeight: "900",
+    letterSpacing: -1,
+  },
+  spendPreviewHeroSideHint: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "700",
+  },
+  spendPreviewSparklineWrap: {
+    height: 62,
+    borderRadius: 16,
+    overflow: "hidden",
+    marginTop: 8,
+    position: "relative",
+  },
+  spendPreviewSparklineReveal: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  spendPreviewRows: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  spendPreviewMetricCard: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 20,
+    paddingVertical: 13,
+    paddingHorizontal: 13,
+    gap: 6,
+  },
+  spendPreviewLabel: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.45,
+  },
+  spendPreviewValue: {
+    fontSize: 26,
+    lineHeight: 29,
+    fontWeight: "900",
+    letterSpacing: -0.8,
+  },
+  spendPreviewDelta: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "900",
+  },
+  spendPreviewMetricHint: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "700",
+  },
   freeDayCard: {
     marginTop: 12,
     padding: IS_SHORT_DEVICE ? 14 : 18,
@@ -79924,6 +82279,115 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 14,
     gap: 10,
+  },
+  subscriptionWidgetCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 16,
+    gap: 14,
+    overflow: "hidden",
+    position: "relative",
+    shadowOpacity: 0.16,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 8,
+  },
+  subscriptionWidgetGlowLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  subscriptionWidgetGlow: {
+    position: "absolute",
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    right: -80,
+    top: -92,
+  },
+  subscriptionWidgetHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  subscriptionWidgetTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  subscriptionWidgetEyebrow: {
+    ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
+  },
+  subscriptionWidgetTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 19,
+    marginTop: 2,
+  },
+  subscriptionWidgetTotalPill: {
+    borderRadius: 16,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    alignItems: "flex-end",
+    maxWidth: "45%",
+  },
+  subscriptionWidgetTotalLabel: {
+    ...createSecondaryText({ fontSize: 10 }),
+  },
+  subscriptionWidgetTotalValue: {
+    ...createBodyText({ fontSize: 15, fontWeight: "800" }),
+  },
+  subscriptionWidgetBody: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  subscriptionEmojiStack: {
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 92,
+  },
+  subscriptionEmojiBubble: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  subscriptionEmojiText: {
+    fontSize: 22,
+  },
+  subscriptionTimerPanel: {
+    flex: 1,
+    minWidth: 0,
+  },
+  subscriptionTimerLabel: {
+    ...createSecondaryText({ fontSize: 11 }),
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  subscriptionTimerValue: {
+    ...TYPOGRAPHY.display,
+    fontSize: 32,
+    lineHeight: 36,
+    marginTop: 1,
+  },
+  subscriptionTimerHint: {
+    ...createSecondaryText({ fontSize: 12 }),
+    marginTop: 2,
+  },
+  subscriptionWidgetFooter: {
+    gap: 7,
+  },
+  subscriptionUrgencyTrack: {
+    height: 9,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  subscriptionUrgencyFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  subscriptionWidgetTapHint: {
+    ...createSecondaryText({ fontSize: 11 }),
   },
   budgetWidgetCard: {
     borderRadius: 22,
@@ -80666,6 +83130,153 @@ const styles = StyleSheet.create({
   progressAnalyticsSpend: {
     height: "100%",
   },
+  subscriptionModalRoot: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  subscriptionModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  subscriptionModalWrap: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  subscriptionModalCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 16,
+    gap: 12,
+    maxHeight: IS_SHORT_DEVICE ? "84%" : "88%",
+  },
+  subscriptionModalHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  subscriptionModalTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  subscriptionModalTitle: {
+    ...createBodyText({ fontSize: 18, fontWeight: "800" }),
+  },
+  subscriptionModalSubtitle: {
+    ...createSecondaryText({ fontSize: 12 }),
+    marginTop: 2,
+  },
+  subscriptionModalClose: {
+    padding: 4,
+  },
+  subscriptionModalCloseText: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  subscriptionModalStatsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  subscriptionModalStat: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 2,
+  },
+  subscriptionModalStatLabel: {
+    ...createSecondaryText({ fontSize: 10 }),
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  subscriptionModalStatValue: {
+    ...createBodyText({ fontSize: 15, fontWeight: "800" }),
+  },
+  subscriptionModalDescription: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 17 }),
+  },
+  subscriptionModalList: {
+    maxHeight: IS_SHORT_DEVICE ? 360 : 430,
+  },
+  subscriptionModalListContent: {
+    gap: 10,
+    paddingBottom: 4,
+  },
+  subscriptionModalRow: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 12,
+    gap: 10,
+  },
+  subscriptionModalRowTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  subscriptionModalRowTitle: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  subscriptionModalRowEmoji: {
+    fontSize: 24,
+  },
+  subscriptionModalRowNameBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  subscriptionModalRowName: {
+    ...createBodyText({ fontSize: 14, fontWeight: "800" }),
+  },
+  subscriptionModalRowMeta: {
+    ...createSecondaryText({ fontSize: 11 }),
+    marginTop: 1,
+  },
+  subscriptionModalRowAmount: {
+    ...createBodyText({ fontSize: 14, fontWeight: "800" }),
+    flexShrink: 0,
+  },
+  subscriptionModalMetricGrid: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  subscriptionModalMetric: {
+    flex: 1,
+    minWidth: 0,
+  },
+  subscriptionModalMetricLabel: {
+    ...createSecondaryText({ fontSize: 10 }),
+  },
+  subscriptionModalMetricValue: {
+    ...createBodyText({ fontSize: 12, fontWeight: "700" }),
+    marginTop: 1,
+  },
+  subscriptionModalEmpty: {
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 28,
+  },
+  subscriptionModalEmptyEmoji: {
+    fontSize: 34,
+  },
+  subscriptionModalEmptyTitle: {
+    ...createBodyText({ fontSize: 15, fontWeight: "800", textAlign: "center" }),
+  },
+  subscriptionModalEmptySubtitle: {
+    ...createSecondaryText({ fontSize: 12, textAlign: "center", lineHeight: 18 }),
+  },
+  subscriptionModalPrimary: {
+    borderRadius: 14,
+    paddingVertical: 11,
+    alignItems: "center",
+  },
+  subscriptionModalPrimaryText: {
+    ...createCtaText({ fontSize: 13 }),
+  },
   progressPotentialModalRoot: {
     flex: 1,
     justifyContent: "center",
@@ -81244,12 +83855,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 6,
+    minWidth: 0,
   },
   temptationBudgetAlertIcon: {
     fontSize: 12,
   },
   temptationBudgetAlertText: {
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     fontSize: 12,
     fontWeight: "600",
     lineHeight: 16,
@@ -81484,6 +84098,18 @@ const styles = StyleSheet.create({
   },
   temptationFocusBadgeText: {
     ...createCtaText({ fontSize: 11 }),
+  },
+  temptationSubscriptionBadge: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 8,
+    marginBottom: 2,
+  },
+  temptationSubscriptionBadgeText: {
+    ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
   },
   editPriceText: {
     fontSize: 13,
@@ -83938,31 +86564,31 @@ const styles = StyleSheet.create({
   },
   budgetVaultCard: {
     borderWidth: 1,
-    borderRadius: 26,
-    padding: 18,
+    borderRadius: 22,
+    padding: IS_SHORT_DEVICE ? 12 : 14,
     overflow: "hidden",
-    gap: 10,
+    gap: IS_SHORT_DEVICE ? 6 : 8,
   },
   budgetVaultKicker: {
-    fontSize: 12,
+    fontSize: IS_SHORT_DEVICE ? 10.5 : 11,
     fontWeight: "800",
     letterSpacing: 0,
     textTransform: "uppercase",
   },
   budgetVaultAmount: {
-    fontSize: IS_COMPACT_DEVICE ? 40 : 50,
-    lineHeight: IS_COMPACT_DEVICE ? 46 : 56,
+    fontSize: IS_COMPACT_DEVICE || IS_SHORT_DEVICE ? 36 : 44,
+    lineHeight: IS_COMPACT_DEVICE || IS_SHORT_DEVICE ? 40 : 48,
     fontWeight: "900",
     letterSpacing: 0,
   },
   budgetVaultCaption: {
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: IS_SHORT_DEVICE ? 11.5 : 12,
+    lineHeight: IS_SHORT_DEVICE ? 16 : 17,
     fontWeight: "600",
   },
   budgetPileFrame: {
-    height: 230,
-    marginVertical: 4,
+    height: IS_SHORT_DEVICE ? 154 : 178,
+    marginVertical: IS_SHORT_DEVICE ? 0 : 2,
     justifyContent: "flex-end",
     overflow: "hidden",
   },
@@ -83970,21 +86596,21 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: "7%",
     right: "7%",
-    bottom: 16,
-    height: 160,
-    borderRadius: 80,
+    bottom: IS_SHORT_DEVICE ? 10 : 12,
+    height: IS_SHORT_DEVICE ? 112 : 132,
+    borderRadius: IS_SHORT_DEVICE ? 56 : 66,
     borderWidth: 1,
   },
   budgetPileStage: {
-    height: 210,
+    height: IS_SHORT_DEVICE ? 146 : 168,
     justifyContent: "flex-end",
   },
   budgetPileGround: {
     position: "absolute",
     left: "8%",
     right: "8%",
-    bottom: 8,
-    height: 38,
+    bottom: 6,
+    height: IS_SHORT_DEVICE ? 28 : 32,
     borderRadius: 999,
     transform: [{ scaleX: 1.08 }],
   },
@@ -84019,73 +86645,73 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: "18%",
     right: "18%",
-    bottom: 26,
-    height: 42,
+    bottom: IS_SHORT_DEVICE ? 18 : 22,
+    height: IS_SHORT_DEVICE ? 30 : 34,
     borderRadius: 999,
   },
   budgetStatGrid: {
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
   },
   budgetStatCell: {
     flex: 1,
-    minHeight: 82,
+    minHeight: IS_SHORT_DEVICE ? 70 : 76,
     borderWidth: 1,
-    borderRadius: 18,
-    padding: 12,
+    borderRadius: 16,
+    padding: IS_SHORT_DEVICE ? 9 : 10,
     justifyContent: "space-between",
   },
   budgetStatLabel: {
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: IS_SHORT_DEVICE ? 10 : 10.5,
+    lineHeight: IS_SHORT_DEVICE ? 13 : 14,
     fontWeight: "700",
   },
   budgetStatValue: {
-    fontSize: 18,
-    lineHeight: 23,
+    fontSize: IS_SHORT_DEVICE ? 15 : 16,
+    lineHeight: IS_SHORT_DEVICE ? 19 : 20,
     fontWeight: "900",
     letterSpacing: 0,
   },
   budgetSetupCard: {
     borderWidth: 1,
-    borderRadius: 20,
-    padding: 16,
-    gap: 8,
+    borderRadius: 18,
+    padding: IS_SHORT_DEVICE ? 12 : 14,
+    gap: 6,
   },
   budgetSetupTitle: {
-    fontSize: 18,
-    lineHeight: 23,
+    fontSize: IS_SHORT_DEVICE ? 16 : 17,
+    lineHeight: IS_SHORT_DEVICE ? 20 : 22,
     fontWeight: "900",
   },
   budgetSetupText: {
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: IS_SHORT_DEVICE ? 12 : 12.5,
+    lineHeight: IS_SHORT_DEVICE ? 17 : 18,
     fontWeight: "600",
   },
   budgetPrimaryButton: {
-    minHeight: 58,
-    borderRadius: 18,
+    minHeight: IS_SHORT_DEVICE ? 48 : 52,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
   },
   budgetPrimaryButtonText: {
     color: "#FFFFFF",
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: IS_SHORT_DEVICE ? 15 : 16,
+    lineHeight: IS_SHORT_DEVICE ? 19 : 20,
     fontWeight: "900",
   },
   budgetSecondaryButton: {
-    minHeight: 50,
-    borderRadius: 16,
+    minHeight: IS_SHORT_DEVICE ? 42 : 46,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 16,
   },
   budgetSecondaryButtonText: {
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: IS_SHORT_DEVICE ? 13 : 13.5,
+    lineHeight: IS_SHORT_DEVICE ? 16 : 17,
     fontWeight: "800",
   },
   budgetProofModalRoot: {
@@ -97684,13 +100310,13 @@ const ONBOARDING_SAVE_DEMO_COPY = {
     zh: "看看保存诱惑是如何工作的",
   },
   subtitle: {
-    en: "Add temptations you decided not to buy. Every refusal becomes saved money and visible progress.",
-    ru: "Вносите искушения, от которых вы отказались. Каждый отказ превращается в сохранённые деньги и видимый прогресс.",
-    es: "Añade tentaciones que decidiste no comprar. Cada rechazo se convierte en dinero ahorrado y progreso visible.",
-    fr: "Ajoutez les tentations auxquelles vous avez renoncé. Chaque refus devient de l'argent économisé et un progrès visible.",
-    de: "Erfassen Sie Versuchungen, auf die Sie verzichtet haben. Jeder Verzicht wird zu gespartem Geld und sichtbarem Fortschritt.",
-    ar: "أضف الإغراءات التي قررت عدم شرائها. كل رفض يتحول إلى مال مُدَّخر وتقدم واضح.",
-    zh: "记录您决定不买的诱惑。每一次拒绝都会变成省下的钱和可见的进展。",
+    en: "Add your daily temptations, the things that quietly take money from your budget.",
+    ru: "Добавь свои ежедневные искушения, на которые незаметно уходят деньги.",
+    es: "Añade tus tentaciones diarias, esas cosas que se llevan dinero de tu presupuesto.",
+    fr: "Ajoute tes tentations quotidiennes, celles qui prennent discrètement de l'argent dans ton budget.",
+    de: "Füge deine täglichen Versuchungen hinzu, die unbemerkt Geld aus deinem Budget ziehen.",
+    ar: "أضف إغراءاتك اليومية، الأشياء التي تسحب المال بهدوء من ميزانيتك.",
+    zh: "添加你的每日诱惑，也就是那些悄悄消耗预算的东西。",
   },
   savedCounterTemplate: {
     en: "Saved {{amount}}",
@@ -97800,6 +100426,96 @@ const ONBOARDING_SAVE_DEMO_COPY = {
     ar: "متابعة",
     zh: "继续",
   },
+};
+
+const ONBOARDING_SAVE_DEMO_TEMPTATION = {
+  emoji: "✨",
+  title: {
+    en: "Daily temptation",
+    ru: "Ежедневное искушение",
+    es: "Tentación diaria",
+    fr: "Tentation quotidienne",
+    de: "Tägliche Versuchung",
+    ar: "إغراء يومي",
+    zh: "每日诱惑",
+  },
+  description: {
+    en: "A small everyday impulse you can skip and turn into savings.",
+    ru: "Небольшой ежедневный импульс, который можно пропустить и превратить в накопления.",
+    es: "Un pequeño impulso diario que puedes saltarte y convertir en ahorro.",
+    fr: "Une petite envie quotidienne que tu peux éviter et transformer en épargne.",
+    de: "Ein kleiner täglicher Impuls, den du auslassen und in Ersparnisse verwandeln kannst.",
+    ar: "اندفاع يومي بسيط يمكنك تخطيه وتحويله إلى ادخار.",
+    zh: "一个可以跳过并转化为储蓄的小日常冲动。",
+  },
+};
+
+const buildOnboardingSaveDemoFallbackTemptation = () => {
+  const baseTemptation = DEFAULT_TEMPTATION_BY_ID.get("coffee_to_go") || DEFAULT_TEMPTATIONS[0] || null;
+  if (!baseTemptation) return null;
+  return {
+    ...baseTemptation,
+    id: "onboarding_daily_temptation_demo",
+    templateId: baseTemptation.id,
+    emoji: ONBOARDING_SAVE_DEMO_TEMPTATION.emoji,
+    title: ONBOARDING_SAVE_DEMO_TEMPTATION.title,
+    description: ONBOARDING_SAVE_DEMO_TEMPTATION.description,
+  };
+};
+
+const buildOnboardingSaveDemoTemptation = (
+  registration = {},
+  currencyCode = DEFAULT_PROFILE.currency
+) => {
+  const fallbackTemptation = buildOnboardingSaveDemoFallbackTemptation();
+  const title = typeof registration?.customSpendTitle === "string"
+    ? registration.customSpendTitle.trim()
+    : "";
+  const parsedLocalAmount = parseNumberInputValue(registration?.customSpendAmount || "");
+  const amountUSD =
+    Number.isFinite(parsedLocalAmount) && parsedLocalAmount > 0
+      ? clampTransactionAmountUSD(convertFromCurrency(parsedLocalAmount, currencyCode || DEFAULT_PROFILE.currency))
+      : 0;
+  if (!title || !amountUSD) return fallbackTemptation;
+
+  const templateId =
+    typeof registration?.customSpendTemplateId === "string"
+      ? registration.customSpendTemplateId.trim()
+      : "";
+  const presetTemptation = templateId
+    ? ONBOARDING_POPULAR_DAILY_HABITS.find((item) => item?.id === templateId) || null
+    : null;
+  const baseTemptation =
+    (templateId && DEFAULT_TEMPTATION_BY_ID.get(templateId)) ||
+    presetTemptation ||
+    fallbackTemptation ||
+    {};
+  const category =
+    registration?.customSpendCategory && IMPULSE_CATEGORY_DEFS[registration.customSpendCategory]
+      ? registration.customSpendCategory
+      : DEFAULT_IMPULSE_CATEGORY;
+  const categories = new Set(
+    Array.isArray(baseTemptation.categories) ? baseTemptation.categories : ["habit"]
+  );
+  categories.add("habit");
+  if (category) categories.add(category);
+
+  return {
+    ...baseTemptation,
+    id: "onboarding_daily_temptation_demo",
+    templateId: templateId || baseTemptation.templateId || baseTemptation.id || null,
+    emoji: normalizeEmojiValue(
+      registration?.customSpendEmoji || baseTemptation.emoji,
+      DEFAULT_TEMPTATION_EMOJI
+    ),
+    title,
+    description: baseTemptation.description || ONBOARDING_SAVE_DEMO_TEMPTATION.description,
+    categories: Array.from(categories),
+    basePriceUSD: amountUSD,
+    priceUSD: amountUSD,
+    impulseCategoryOverride: category,
+    quickTemptation: true,
+  };
 };
 
 const NO_GOAL_SAVE_PROMPT_COPY = {
@@ -98197,6 +100913,7 @@ function OnboardingSaveDemoScreen({
   t,
   language,
   currency,
+  temptation,
   onContinue,
   onBack,
   bottomInset = 0,
@@ -98213,7 +100930,13 @@ function OnboardingSaveDemoScreen({
     [normalizedLanguage]
   );
   const resolvedCurrency = currency || DEFAULT_PROFILE.currency;
-  const demoTemptation = DEFAULT_TEMPTATION_BY_ID.get("coffee_to_go") || DEFAULT_TEMPTATIONS[0] || null;
+  const demoTemptation = useMemo(() => {
+    const selectedTemptation = temptation && typeof temptation === "object" ? temptation : null;
+    if (selectedTemptation && getTemptationPrice(selectedTemptation) > 0) {
+      return selectedTemptation;
+    }
+    return buildOnboardingSaveDemoFallbackTemptation();
+  }, [temptation]);
   const [saveCompleted, setSaveCompleted] = useState(false);
   const [savedAmountUSD, setSavedAmountUSD] = useState(0);
   const [demoFeedback, setDemoFeedback] = useState({ message: "", burstKey: 0 });
