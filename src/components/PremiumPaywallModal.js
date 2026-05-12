@@ -899,6 +899,8 @@ const PremiumPaywallModal = ({
   dismissible = true,
   copy: copyProp = null,
   planCards: planCardsProp = [],
+  statusMessage = "",
+  statusKind = null,
   purchaseLoadingPlan = null,
   restoring = false,
   onPlanSelect = () => {},
@@ -938,6 +940,11 @@ const PremiumPaywallModal = ({
   const mutedColor = colors?.muted || "#6C7289";
   const borderColor = colors?.border || "rgba(11,22,48,0.12)";
   const accent = "#4353FF";
+  const normalizedStatusMessage = typeof statusMessage === "string" ? statusMessage.trim() : "";
+  const statusBannerBackground =
+    statusKind === "warning" ? "rgba(255,180,80,0.14)" : "rgba(255,120,120,0.12)";
+  const statusBannerBorder =
+    statusKind === "warning" ? "rgba(255,180,80,0.34)" : "rgba(255,120,120,0.28)";
   const isDarkMode = String(colors?.background || "")
     .trim()
     .toLowerCase() === "#05070d";
@@ -2630,6 +2637,21 @@ const PremiumPaywallModal = ({
           <Text style={[styles.planSectionHint, isCompactAndroid ? styles.planSectionHintCompactAndroid : null, { color: mutedColor }]}>
             {copy.planHint || "Select a plan and tap the button below"}
           </Text>
+        )}
+        {!!normalizedStatusMessage && (
+          <View
+            style={[
+              styles.statusBanner,
+              {
+                backgroundColor: statusBannerBackground,
+                borderColor: statusBannerBorder,
+              },
+            ]}
+          >
+            <Text style={[styles.statusBannerText, { color: textColor }]}>
+              {normalizedStatusMessage}
+            </Text>
+          </View>
         )}
 
         <View style={[styles.planList, isCompactAndroid ? styles.planListCompactAndroid : null]}>
@@ -4558,6 +4580,20 @@ const styles = StyleSheet.create({
   planSectionHintCompactAndroid: {
     fontSize: 11,
     lineHeight: 14,
+  },
+  statusBanner: {
+    marginTop: 10,
+    marginBottom: 4,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  statusBannerText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700",
+    textAlign: "center",
   },
   planList: {
     marginTop: 2,

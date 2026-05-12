@@ -508,6 +508,9 @@ export const TRANSLATIONS = {
     budgetLimitPromptSubtitle: "Введи сумму для категории «{{category}}»",
     budgetLimitPromptPlaceholder: "Сумма лимита",
     budgetLimitPromptConfirm: "Применить",
+    budgetRemainingPromptTitle: "Текущий остаток",
+    budgetRemainingPromptSubtitle: "Введи, сколько денег у пользователя осталось сейчас",
+    budgetRemainingPromptPlaceholder: "Сумма остатка",
     budgetCardLimitLow: "Лимит «{{category}}» на исходе, осталось {{amount}}.",
     budgetCardLimitOver: "Лимит бюджета на «{{category}}» исчерпан.",
     budgetLegendLimit: "Лимит",
@@ -932,6 +935,7 @@ export const TRANSLATIONS = {
     addCategoryLabel: "Категории",
     addCategoryHint: "Добавляй свои категории для аналитики и быстрых действий.",
     addCategoryButton: "Добавить категорию",
+    feedFilterAllCards: "Все",
     manageCategoriesButton: "Редактировать",
     manageCategoriesTitle: "Категории",
     manageCategoriesDefaultTag: "По умолчанию",
@@ -1794,9 +1798,9 @@ export const TRANSLATIONS = {
     dailyDidYouKnowTipReportsBody:
       "В отчётах можно посмотреть недельные и месячные тренды по решениям.",
     dailyDidYouKnowTipReportsWhere: "Профиль -> Отчёты",
-    dailyDidYouKnowTipBudgetLimitsTitle: "Лимиты месяца можно настроить вручную",
+    dailyDidYouKnowTipBudgetLimitsTitle: "Лимиты месяца подстраиваются автоматически",
     dailyDidYouKnowTipBudgetLimitsBody:
-      "Открой виджет лимитов месяца и задай лимиты под себя, если хочешь больше контроля.",
+      "Открой лимиты месяца, чтобы увидеть адаптивный бюджет по категориям, остаток на месяц и прогноз перерасхода.",
     dailyDidYouKnowTipBudgetLimitsWhere: "Прогресс -> Лимиты месяца",
     dailyDidYouKnowTipSubscriptionsTitle: "Подписки можно контролировать автоматически",
     dailyDidYouKnowTipSubscriptionsBody:
@@ -1814,6 +1818,18 @@ export const TRANSLATIONS = {
     dailyDidYouKnowTipIncomePaydayBody:
       "Когда день выплаты заполнен, прогнозы и рекомендации лимитов становятся точнее.",
     dailyDidYouKnowTipIncomePaydayWhere: "Профиль -> День дохода",
+    dailyDidYouKnowTipBudgetRoutingTitle: "Сохранённые деньги можно переводить в накопления или на долги",
+    dailyDidYouKnowTipBudgetRoutingBody:
+      "Во вкладке «Бюджет» Almost показывает, сколько денег уже можно распределить, и даёт подтвердить перевод в накопления или на погашение долга.",
+    dailyDidYouKnowTipBudgetRoutingWhere: "Вкладка «Бюджет»",
+    dailyDidYouKnowTipSpendForecastTitle: "Перед тратой Almost показывает риск на месяц",
+    dailyDidYouKnowTipSpendForecastBody:
+      "Когда подтверждаешь расход, смотри карточку прогноза: она показывает, влезает ли покупка в лимит и сколько потенциала может съесть за месяц.",
+    dailyDidYouKnowTipSpendForecastWhere: "Лента -> кнопка траты",
+    dailyDidYouKnowTipPotentialDetailsTitle: "Потенциал накоплений можно открыть подробнее",
+    dailyDidYouKnowTipPotentialDetailsBody:
+      "Нажми на блок потенциала, чтобы открыть пояснение, период и более подробный взгляд на прогноз накоплений.",
+    dailyDidYouKnowTipPotentialDetailsWhere: "Главная -> Потенциал накоплений",
   },
   en: {
     appTagline: "An offline temptation board that keeps savings safe",
@@ -2283,6 +2299,9 @@ export const TRANSLATIONS = {
     budgetLimitPromptSubtitle: "Enter an amount for “{{category}}”",
     budgetLimitPromptPlaceholder: "Limit amount",
     budgetLimitPromptConfirm: "Apply",
+    budgetRemainingPromptTitle: "Current balance",
+    budgetRemainingPromptSubtitle: "Enter how much money the user has right now",
+    budgetRemainingPromptPlaceholder: "Remaining amount",
     budgetCardLimitLow: "“{{category}}” limit is low - {{amount}} left.",
     budgetCardLimitOver: "Budget limit for “{{category}}” is spent.",
     budgetLegendLimit: "Limit",
@@ -2692,6 +2711,7 @@ export const TRANSLATIONS = {
     addCategoryLabel: "Categories",
     addCategoryHint: "Add your own categories for analytics and quick actions.",
     addCategoryButton: "Add category",
+    feedFilterAllCards: "All",
     manageCategoriesButton: "Edit",
     manageCategoriesTitle: "Categories",
     manageCategoriesDefaultTag: "Default",
@@ -3532,9 +3552,9 @@ export const TRANSLATIONS = {
     dailyDidYouKnowTipReportsBody:
       "Open Reports to review weekly and monthly decision trends.",
     dailyDidYouKnowTipReportsWhere: "Profile -> Reports",
-    dailyDidYouKnowTipBudgetLimitsTitle: "Monthly limits can be set manually",
+    dailyDidYouKnowTipBudgetLimitsTitle: "Monthly limits adapt automatically",
     dailyDidYouKnowTipBudgetLimitsBody:
-      "Open the monthly limits widget and adjust limits if you want tighter control.",
+      "Open Monthly limits to review adaptive category budgets, remaining balance for the month, and overspend forecast.",
     dailyDidYouKnowTipBudgetLimitsWhere: "Progress -> Monthly limits",
     dailyDidYouKnowTipSubscriptionsTitle: "Subscriptions can run on autopilot",
     dailyDidYouKnowTipSubscriptionsBody:
@@ -3552,6 +3572,18 @@ export const TRANSLATIONS = {
     dailyDidYouKnowTipIncomePaydayBody:
       "Adding payday improves timing and limit recommendations.",
     dailyDidYouKnowTipIncomePaydayWhere: "Profile -> Income payday",
+    dailyDidYouKnowTipBudgetRoutingTitle: "Saved money can be routed to savings or debt",
+    dailyDidYouKnowTipBudgetRoutingBody:
+      "Open Budget to see how much logged savings is ready to allocate, then confirm a move to savings or debt payoff.",
+    dailyDidYouKnowTipBudgetRoutingWhere: "Budget tab",
+    dailyDidYouKnowTipSpendForecastTitle: "Almost shows the monthly risk before you spend",
+    dailyDidYouKnowTipSpendForecastBody:
+      "When you confirm a spend, check the forecast card: it shows whether the purchase fits the limit and how much monthly potential it can burn.",
+    dailyDidYouKnowTipSpendForecastWhere: "Feed -> spend button",
+    dailyDidYouKnowTipPotentialDetailsTitle: "Savings potential opens into a deeper view",
+    dailyDidYouKnowTipPotentialDetailsBody:
+      "Tap the potential block to open the explanation, period view, and a more detailed savings forecast.",
+    dailyDidYouKnowTipPotentialDetailsWhere: "Home -> Savings potential",
   },  fr: {
     appTagline: "Un tableau hors ligne des tentations qui protège tes économies",
     frequencySectionDaily: "Tentations quotidiennes",
@@ -4022,6 +4054,9 @@ export const TRANSLATIONS = {
     budgetLimitPromptSubtitle: "Saisis un montant pour « {{category}} »",
     budgetLimitPromptPlaceholder: "Montant de la limite",
     budgetLimitPromptConfirm: "Appliquer",
+    budgetRemainingPromptTitle: "Solde actuel",
+    budgetRemainingPromptSubtitle: "Saisis combien d’argent il reste actuellement",
+    budgetRemainingPromptPlaceholder: "Montant restant",
     budgetCardLimitLow: "La limite « {{category}} » touche à la fin - il reste {{amount}}.",
     budgetCardLimitOver: "La limite du budget pour « {{category}} » est épuisée.",
     budgetLegendLimit: "Limite",
@@ -4433,6 +4468,7 @@ export const TRANSLATIONS = {
     addCategoryLabel: "Catégories",
     addCategoryHint: "Ajoute tes propres catégories pour les stats et les actions rapides.",
     addCategoryButton: "Ajouter une catégorie",
+    feedFilterAllCards: "Toutes",
     manageCategoriesButton: "Modifier",
     manageCategoriesTitle: "Catégories",
     manageCategoriesDefaultTag: "Par défaut",
@@ -5651,6 +5687,9 @@ export const TRANSLATIONS = {
     budgetLimitPromptSubtitle: "Ingresa un monto para «{{category}}»",
     budgetLimitPromptPlaceholder: "Monto del límite",
     budgetLimitPromptConfirm: "Aplicar",
+    budgetRemainingPromptTitle: "Saldo actual",
+    budgetRemainingPromptSubtitle: "Ingresa cuánto dinero le queda al usuario ahora mismo",
+    budgetRemainingPromptPlaceholder: "Monto restante",
     budgetCardLimitLow: "El límite de «{{category}}» está casi agotado - quedan {{amount}}.",
     budgetCardLimitOver: "Se agotó el límite de presupuesto para «{{category}}».",
     budgetLegendLimit: "Límite",
@@ -6062,6 +6101,7 @@ export const TRANSLATIONS = {
     addCategoryLabel: "Categorías",
     addCategoryHint: "Añade tus propias categorías para analíticas y acciones rápidas.",
     addCategoryButton: "Añadir categoría",
+    feedFilterAllCards: "Todas",
     manageCategoriesButton: "Editar",
     manageCategoriesTitle: "Categorías",
     manageCategoriesDefaultTag: "Predeterminada",
@@ -6834,9 +6874,9 @@ export const TRANSLATIONS = {
     dailyDidYouKnowTipReportsBody:
       "Abre Informes para revisar tendencias semanales y mensuales.",
     dailyDidYouKnowTipReportsWhere: "Perfil -> Informes",
-    dailyDidYouKnowTipBudgetLimitsTitle: "Puedes fijar límites del mes manualmente",
+    dailyDidYouKnowTipBudgetLimitsTitle: "Los límites del mes se adaptan automáticamente",
     dailyDidYouKnowTipBudgetLimitsBody:
-      "Abre el widget de límites del mes y ajusta límites para más control.",
+      "Abre los límites del mes para revisar presupuestos adaptativos por categoría, el saldo restante y el pronóstico de sobre gasto.",
     dailyDidYouKnowTipBudgetLimitsWhere: "Progreso -> Límites del mes",
     dailyDidYouKnowTipSubscriptionsTitle: "Las suscripciones pueden ir en automático",
     dailyDidYouKnowTipSubscriptionsBody:

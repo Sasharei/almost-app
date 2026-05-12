@@ -22,6 +22,69 @@ export const GOAL_COMPLETION_REWARD_COINS = 5;
 export const GOAL_COMPLETION_REWARD_TIER = BLUE_HEALTH_COIN_TIER || HEALTH_COIN_TIERS[1];
 export const GOAL_COMPLETION_REWARD_VALUE =
   GOAL_COMPLETION_REWARD_COINS * (GOAL_COMPLETION_REWARD_TIER?.value || 1);
+export const CHEST_REWARD_TIERS = [
+  {
+    id: "brown",
+    minAmount: 0,
+    tapsRequired: 3,
+    accent: "#C87A27",
+    glow: "#FFBC70",
+    assets: {
+      closed: require("../../assets/chests/brown/closed.png"),
+      glow: require("../../assets/chests/brown/glow.png"),
+      open: require("../../assets/chests/brown/open.png"),
+    },
+  },
+  {
+    id: "green",
+    minAmount: 15,
+    tapsRequired: 4,
+    accent: "#28B061",
+    glow: "#6FF3A8",
+    assets: {
+      closed: require("../../assets/chests/green/closed.png"),
+      glow: require("../../assets/chests/green/glow.png"),
+      open: require("../../assets/chests/green/open.png"),
+    },
+  },
+  {
+    id: "blue",
+    minAmount: 40,
+    tapsRequired: 5,
+    accent: "#2E8CFF",
+    glow: "#7ED5FF",
+    assets: {
+      closed: require("../../assets/chests/blue/closed.png"),
+      glow: require("../../assets/chests/blue/glow.png"),
+      open: require("../../assets/chests/blue/open.png"),
+    },
+  },
+  {
+    id: "purple",
+    minAmount: 90,
+    tapsRequired: 6,
+    accent: "#8A57FF",
+    glow: "#D2B0FF",
+    assets: {
+      closed: require("../../assets/chests/purple/closed.png"),
+      glow: require("../../assets/chests/purple/glow.png"),
+      open: require("../../assets/chests/purple/open.png"),
+    },
+  },
+  {
+    id: "gold",
+    minAmount: 160,
+    tapsRequired: 7,
+    accent: "#E2A72A",
+    glow: "#FFE58A",
+    assets: {
+      closed: require("../../assets/chests/gold/closed.png"),
+      glow: require("../../assets/chests/gold/glow.png"),
+      open: require("../../assets/chests/gold/open.png"),
+    },
+  },
+];
+export const DEFAULT_CHEST_REWARD_TIER = CHEST_REWARD_TIERS[0];
 
 export const LEVEL_SHARE_CAT = require("../../assets/Cat_mascot.png");
 export const LEVEL_SHARE_LOGO = require("../../assets/Almost_icon.png");

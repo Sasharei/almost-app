@@ -19,6 +19,7 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics
 
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
+import com.sasarei.almostclean.share.LevelSharePackage
 import com.sasarei.almostclean.widget.WidgetStoragePackage
 import java.io.IOException
 
@@ -39,6 +40,7 @@ class MainApplication : Application(), ReactApplication {
             PackageList(this).packages.apply {
               // Packages that cannot be autolinked yet can be added manually here, for example:
               // add(MyReactNativePackage())
+              add(LevelSharePackage())
               add(WidgetStoragePackage())
             }
 

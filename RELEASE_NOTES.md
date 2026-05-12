@@ -1,5 +1,63 @@
 # Release Notes
 
+## 6.0.0 (from 5.4.2)
+
+### EN
+- New Subscription Watch: track recurring subscriptions, upcoming charges, repeats, and cancellation timing in one place.
+- Spend forecast before you log an expense: Almost now shows whether a purchase fits your budget and how much monthly risk it creates.
+- Added money routing into savings or debt payoff, with debt plan calculations and clearer progress tracking.
+- Major expansion of control tools: adaptive budget suggestions, weekly and monthly reports, home screen widgets, and deeper Premium features.
+- Fixed bugs, improved performance, and made the app faster and more stable overall.
+
+### RU
+- Новый контроль подписок: отслеживайте регулярные подписки, ближайшие списания, повторы и сроки отмены в одном месте.
+- Прогноз траты до внесения расхода: Almost теперь показывает, вписывается ли покупка в бюджет и какой риск она создаёт на месяц.
+- Добавили перевод денег в накопления или на погашение долгов, а также расчёт плана долга и более наглядный прогресс.
+- Сильно расширили инструменты контроля: адаптивные подсказки по бюджету, недельные и месячные отчёты, виджеты на главный экран и более глубокие Premium-функции.
+- Исправили баги, ускорили работу приложения и улучшили стабильность в целом.
+
+### ES
+- Nuevo control de suscripciones: sigue suscripciones recurrentes, proximos cobros, repeticiones y fechas de cancelacion en un solo lugar.
+- Pronostico antes de registrar un gasto: Almost ahora muestra si una compra entra en tu presupuesto y cuanto riesgo mensual crea.
+- Agregamos el movimiento de dinero a ahorros o pago de deudas, con calculo del plan de deuda y seguimiento mas claro del progreso.
+- Gran ampliacion de herramientas de control: sugerencias adaptativas de presupuesto, reportes semanales y mensuales, widgets en la pantalla de inicio y funciones Premium mas profundas.
+- Corregimos errores, mejoramos el rendimiento y la app ahora es mas rapida y estable.
+
+### FR
+- Nouveau suivi des abonnements : surveillez les abonnements recurrents, les prochains prelevements, les repetitions et les dates d'annulation au meme endroit.
+- Prevision avant d'ajouter une depense : Almost indique maintenant si l'achat respecte votre budget et quel risque mensuel il cree.
+- Ajout du transfert d'argent vers l'epargne ou le remboursement des dettes, avec calcul du plan de dette et suivi plus clair de la progression.
+- Forte extension des outils de controle : suggestions budgetaires adaptatives, rapports hebdomadaires et mensuels, widgets d'ecran d'accueil et fonctions Premium plus riches.
+- Correction de bugs, meilleures performances et application globalement plus rapide et plus stable.
+
+### DE
+- Neue Abo-Uebersicht: Verfolge wiederkehrende Abos, anstehende Abbuchungen, Wiederholungen und Kuendigungszeitpunkte an einem Ort.
+- Ausgabenprognose vor dem Eintragen: Almost zeigt jetzt, ob ein Kauf in dein Budget passt und welches Monatsrisiko er erzeugt.
+- Geld kann jetzt in Ersparnisse oder zur Schuldentilgung verschoben werden, inklusive Schuldenplan und klarerem Fortschritt.
+- Deutlich mehr Kontrollwerkzeuge: adaptive Budget-Hinweise, Wochen- und Monatsberichte, Home-Screen-Widgets und umfangreichere Premium-Funktionen.
+- Bugs wurden behoben, die Performance verbessert und die App laeuft insgesamt schneller und stabiler.
+
+### AR (SA)
+- ميزة جديدة لمتابعة الاشتراكات: راقب الاشتراكات المتكررة، وعمليات السحب القادمة، وتكرار الدفع، ووقت الإلغاء في مكان واحد.
+- توقع قبل تسجيل المصروف: يعرض Almost الآن ما إذا كانت العملية تناسب ميزانيتك وما مقدار الخطر الذي تضيفه على الشهر.
+- أضفنا تحويل الأموال إلى الادخار أو سداد الديون، مع حساب خطة الدين وتتبع أوضح للتقدم.
+- توسعة كبيرة لأدوات التحكم: اقتراحات ميزانية تكيفية، تقارير أسبوعية وشهرية، عناصر واجهة على الشاشة الرئيسية، ومزايا Premium أعمق.
+- أصلحنا الأخطاء، وحسّنا الأداء، وأصبح التطبيق أسرع وأكثر استقراراً بشكل عام.
+
+### AR (AE)
+- ميزة جديدة لمتابعة الاشتراكات: راقب الاشتراكات المتكررة، وعمليات السحب القادمة، وتكرار الدفع، ووقت الإلغاء في مكان واحد.
+- توقع قبل تسجيل المصروف: يعرض Almost الآن ما إذا كانت العملية تناسب ميزانيتك وما مقدار الخطر الذي تضيفه على الشهر.
+- أضفنا تحويل الأموال إلى الادخار أو سداد الديون، مع حساب خطة الدين وتتبع أوضح للتقدم.
+- توسعة كبيرة لأدوات التحكم: اقتراحات ميزانية تكيفية، تقارير أسبوعية وشهرية، عناصر واجهة على الشاشة الرئيسية، ومزايا Premium أعمق.
+- أصلحنا الأخطاء، وحسّنا الأداء، وأصبح التطبيق أسرع وأكثر استقراراً بشكل عام.
+
+### ZH
+- 全新订阅追踪：可在一个地方查看周期订阅、即将扣费、重复周期和取消时机。
+- 记账前先看支出预测：Almost 现在会告诉你这笔消费是否适合当前预算，以及它会带来多大的月度风险。
+- 新增将资金转入储蓄或偿还债务，并支持债务计划计算与更清晰的进度跟踪。
+- 控制工具大幅升级：自适应预算建议、周报和月报、主屏幕小组件，以及更完整的 Premium 功能。
+- 修复了大量问题，提升了性能，应用整体更快也更稳定。
+
 ## 5.4.2 (from 5.4.1)
 
 ### EN

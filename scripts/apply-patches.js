@@ -119,6 +119,14 @@ const patches = [
     dest: 'node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt',
   },
   {
+    src: 'patches/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/share/ShareModule.kt',
+    dest: 'node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/share/ShareModule.kt',
+  },
+  {
+    src: 'patches/react-native/Libraries/Share/Share.js',
+    dest: 'node_modules/react-native/Libraries/Share/Share.js',
+  },
+  {
     src: 'patches/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/ReactViewGroup.kt',
     dest: 'node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/ReactViewGroup.kt',
   },
