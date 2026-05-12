@@ -38,6 +38,28 @@ const TAB_SYMBOL_NAMES = {
   profile: "person",
 };
 
+const areTabArraysEqual = (left = [], right = []) => {
+  if (left === right) return true;
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+};
+
+const areHighlightSetsEqual = (left, right) => {
+  if (left === right) return true;
+  if (!left && !right) return true;
+  if (!left || !right) return false;
+  if (!(left instanceof Set) || !(right instanceof Set)) return false;
+  if (left.size !== right.size) return false;
+  for (const value of left) {
+    if (!right.has(value)) return false;
+  }
+  return true;
+};
+
 const toTitleCaseLabel = (value) => {
   const source = typeof value === "string" ? value.trim() : "";
   if (!source) return source;
@@ -366,7 +388,8 @@ const LiquidGlassTabBar = ({
     : isLiquidGlassStyle
     ? "rgba(255,255,255,0.92)"
     : "rgba(255,255,255,0.86)";
-  const androidTrackBlurIntensity = isCompactAndroid ? 14 : 16;
+  const androidTrackBlurIntensity = isCompactAndroid ? 10 : 12;
+  const androidTrackBlurReductionFactor = isCompactAndroid ? 4 : 3;
   const androidBubbleTintBase = isDarkTheme ? "rgba(32,38,52,0.55)" : "rgba(255,255,255,0.74)";
   const shouldUseAndroidBubbleTintFallback = useAndroidLikeVisualStyle && !useNativeLiquidBackground;
   const shouldUseNativeOnly = nativeTabBarAvailable;
@@ -404,7 +427,7 @@ const LiquidGlassTabBar = ({
           <ExpoBlurView
             tint={isDarkTheme ? "dark" : "extraLight"}
             intensity={useAndroidLikeVisualStyle ? androidTrackBlurIntensity : 34}
-            blurReductionFactor={useAndroidLikeVisualStyle ? 2 : undefined}
+            blurReductionFactor={useAndroidLikeVisualStyle ? androidTrackBlurReductionFactor : undefined}
             experimentalBlurMethod={useAndroidLikeVisualStyle ? "dimezisBlurView" : undefined}
             style={StyleSheet.absoluteFill}
           />
@@ -687,4 +710,31 @@ const styles = StyleSheet.create({
   },
 });
 
-export default React.memo(LiquidGlassTabBar);
+export default React.memo(
+  LiquidGlassTabBar,
+  (prevProps, nextProps) =>
+    areTabArraysEqual(prevProps.availableTabs, nextProps.availableTabs) &&
+    prevProps.activeTab === nextProps.activeTab &&
+    prevProps.onTabPress === nextProps.onTabPress &&
+    prevProps.onLayout === nextProps.onLayout &&
+    prevProps.getLabel === nextProps.getLabel &&
+    prevProps.isDarkTheme === nextProps.isDarkTheme &&
+    prevProps.isProTheme === nextProps.isProTheme &&
+    prevProps.proThemeAccentColor === nextProps.proThemeAccentColor &&
+    prevProps.tutorialIsTemptation === nextProps.tutorialIsTemptation &&
+    areHighlightSetsEqual(prevProps.tutorialHighlightTabs, nextProps.tutorialHighlightTabs) &&
+    prevProps.isCompactAndroid === nextProps.isCompactAndroid &&
+    prevProps.tabLabelFontSize === nextProps.tabLabelFontSize &&
+    prevProps.tabLabelTopMargin === nextProps.tabLabelTopMargin &&
+    prevProps.tabLabelTextTransform === nextProps.tabLabelTextTransform &&
+    prevProps.tabBarBottomInset === nextProps.tabBarBottomInset &&
+    prevProps.tabBarTopPadding === nextProps.tabBarTopPadding &&
+    prevProps.androidTabBarExtra === nextProps.androidTabBarExtra &&
+    prevProps.safeAreaBottom === nextProps.safeAreaBottom &&
+    prevProps.rewardsUnlocked === nextProps.rewardsUnlocked &&
+    prevProps.challengesUnlocked === nextProps.challengesUnlocked &&
+    prevProps.challengeRewardsBadgeCount === nextProps.challengeRewardsBadgeCount &&
+    prevProps.rewardsBadgeCount === nextProps.rewardsBadgeCount &&
+    prevProps.reportsBadgeVisible === nextProps.reportsBadgeVisible &&
+    prevProps.reportsUnlocked === nextProps.reportsUnlocked
+);

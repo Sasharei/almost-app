@@ -604,4 +604,15 @@ const styles = StyleSheet.create({
   },
 });
 
-export default React.memo(LiquidGlassFabOrb);
+export default React.memo(
+  LiquidGlassFabOrb,
+  (prevProps, nextProps) =>
+    prevProps.size === nextProps.size &&
+    prevProps.icon === nextProps.icon &&
+    prevProps.iconColor === nextProps.iconColor &&
+    prevProps.isDarkTheme === nextProps.isDarkTheme &&
+    prevProps.isProTheme === nextProps.isProTheme &&
+    prevProps.proThemeAccentColor === nextProps.proThemeAccentColor &&
+    prevProps.highlighted === nextProps.highlighted &&
+    prevProps.disableArtificialHighlights === nextProps.disableArtificialHighlights
+);

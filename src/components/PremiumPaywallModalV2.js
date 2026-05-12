@@ -499,6 +499,8 @@ const PremiumPaywallModalV2 = ({
   dismissible = true,
   copy: copyProp = null,
   planCards: planCardsProp = [],
+  statusMessage = "",
+  statusKind = null,
   purchaseLoadingPlan = null,
   restoring = false,
   onPlanSelect = () => {},
@@ -527,6 +529,7 @@ const PremiumPaywallModalV2 = ({
   const rtl = isRtlLanguage(language);
   const resolvedSafeTopInset = Math.max(0, Number(safeAreaTopInset) || 0);
   const resolvedSafeBottomInset = Math.max(0, Number(safeAreaBottomInset) || 0);
+  const normalizedStatusMessage = sanitizeLabel(statusMessage);
 
   const compactTier = useMemo(() => {
     if (viewportHeight <= 730) {
@@ -840,6 +843,28 @@ const PremiumPaywallModalV2 = ({
                     maxUnitsPerLine={38}
                   >
                     {socialProof}
+                  </AdaptivePaywallText>
+                </View>
+              ) : null}
+              {!!normalizedStatusMessage ? (
+                <View
+                  style={[
+                    styles.statusBanner,
+                    {
+                      backgroundColor:
+                        statusKind === "warning" ? "rgba(248,185,83,0.18)" : "rgba(255,122,94,0.16)",
+                      borderColor:
+                        statusKind === "warning" ? "rgba(248,185,83,0.32)" : "rgba(255,122,94,0.28)",
+                    },
+                  ]}
+                >
+                  <AdaptivePaywallText
+                    style={[styles.statusBannerText, { color: palette.text }, textAlignStyle]}
+                    numberOfLines={2}
+                    minFontSize={10}
+                    maxUnitsPerLine={38}
+                  >
+                    {normalizedStatusMessage}
                   </AdaptivePaywallText>
                 </View>
               ) : null}
@@ -1315,6 +1340,18 @@ const styles = StyleSheet.create({
   socialProofText: {
     fontSize: 12,
     lineHeight: 14,
+    fontWeight: "700",
+  },
+  statusBanner: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  statusBannerText: {
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: "700",
   },
   featuresWrap: {

@@ -24,17 +24,20 @@ const PartyFirework = ({
             duration: 1100,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
+            isInteraction: false,
           }),
           Animated.sequence([
             Animated.timing(opacity, {
               toValue: 0.85,
               duration: 220,
               useNativeDriver: true,
+              isInteraction: false,
             }),
             Animated.timing(opacity, {
               toValue: 0,
               duration: 880,
               useNativeDriver: true,
+              isInteraction: false,
             }),
           ]),
         ]),
@@ -42,6 +45,7 @@ const PartyFirework = ({
           toValue: 0.2,
           duration: 0,
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
       { iterations: Math.max(1, Number(iterations) || 1) }
@@ -141,11 +145,13 @@ export const PartySparklesLayer = React.memo(function PartySparklesLayer({
             duration,
             easing: Easing.out(Easing.quad),
             useNativeDriver: true,
+            isInteraction: false,
           }),
           Animated.timing(anim, {
             toValue: 0,
             duration: 0,
             useNativeDriver: true,
+            isInteraction: false,
           }),
         ]),
         { iterations: Math.max(1, Number(loopIterations) || 1) }

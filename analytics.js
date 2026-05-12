@@ -59,16 +59,6 @@ try {
   amplitudeAnalytics = null;
 }
 
-let AmplitudeSessionReplayPlugin = null;
-try {
-  // Optional dependency – only available on native builds.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  AmplitudeSessionReplayPlugin =
-    require("@amplitude/plugin-session-replay-react-native")?.SessionReplayPlugin || null;
-} catch (_error) {
-  AmplitudeSessionReplayPlugin = null;
-}
-
 const EVENT_DEFINITIONS = {
   temptation_want: ["item_id", "price_usd", "categories", "persona", "currency"],
   temptation_save: [
@@ -177,6 +167,10 @@ const EVENT_DEFINITIONS = {
   theme_selected: ["theme", "is_pro", "pro_color_id", "pro_color_hex", "source"],
   home_opened: ["session_index"],
   fridge_door_opened: ["pending_count", "overdue_count"],
+  fridge_intro_shown: [],
+  fridge_intro_closed: ["source"],
+  fridge_extend_modal_opened: ["pending_id"],
+  fridge_extend_modal_closed: ["source"],
   rating_prompt_shown: [],
   rating_prompt_action: ["action"],
   store_review_prompt_requested: ["source", "platform"],
@@ -220,6 +214,7 @@ const EVENT_DEFINITIONS = {
   daily_challenge_failed: ["template_id"],
   stats_screen_viewed: ["tab"],
   menu_progress_opened: [],
+  menu_budget_opened: [],
   profile_terms_clicked: [],
   profile_instagram_clicked: [],
   profile_support_clicked: [],
@@ -243,12 +238,59 @@ const EVENT_DEFINITIONS = {
   hero_level_unlocked: ["level", "saved_usd_total"],
   hero_show_more_toggled: ["expanded"],
   hero_widget_stopped: ["widget"],
+  hero_savings_trend_opened: ["net_delta_usd", "avg_daily_delta_usd"],
   home_widget_installed: ["platform"],
   custom_category_created: ["count", "category_id"],
+  saving_rating_chip_tapped: ["score", "peer_rank_percent"],
+  saving_rating_modal_scrolled: ["score", "peer_rank_percent", "offset_y"],
   budget_category_limit_updated: ["category_id", "limit_usd", "previous_limit_usd", "source"],
   budget_category_history_opened: ["category_id"],
+  budget_remaining_balance_updated: ["month_key", "amount_usd"],
+  budget_transfer_confirmed: ["type", "amount_usd", "has_proof"],
+  budget_debt_plan_saved: ["debt_usd", "apr_percent", "min_payment_usd"],
+  budget_proof_ocr_failed: ["reason"],
+  budget_proof_amount_mismatch: ["candidate_count", "expected_local_amount", "currency"],
+  budget_proof_amount_matched: ["expected_local_amount", "matched_local_amount", "currency"],
   budget_widget_tutorial_shown: ["source"],
   budget_widget_tutorial_dismissed: ["source"],
+  subscription_watch_opened: ["source", "entry_count", "monthly_total_usd", "has_next_payment"],
+  subscription_watch_add_tapped: ["entry_count", "monthly_total_usd"],
+  reports_opened: ["source", "tab", "has_data"],
+  reports_tab_selected: ["tab", "has_data"],
+  reports_closed: ["tab", "has_data"],
+  daily_summary_open_requested: ["source"],
+  did_you_know_seen: ["tip_id", "muted"],
+  feed_first_tutorial_step: ["step"],
+  feed_first_tutorial_completed: ["source"],
+  pending_extended: ["pending_id", "reminder_ms", "reminder_option", "source"],
+  potential_loss_threshold_reached: [
+    "baseline_key",
+    "threshold_percent",
+    "loss_percent",
+    "potential_before_usd",
+    "potential_after_usd",
+    "spend_usd",
+  ],
+  paywall_design_experiment_remote_config_loaded: [
+    "experiment_id",
+    "result",
+    "source",
+    "enabled",
+    "force_variant",
+    "allocation_a",
+    "allocation_b",
+    "assigned_variant",
+    "assignment_source",
+  ],
+  premium_backend_validation_result: ["source", "product_id", "result", "reason", "status"],
+  screen_intro_shown: ["screen"],
+  screen_intro_closed: ["screen", "source"],
+  help_guide_fab_clicked: ["screen"],
+  help_guide_scrolled: ["screen", "offset_y"],
+  bug_report_fab_clicked: ["screen"],
+  bug_report_form_filled: ["screen"],
+  bug_report_form_submitted: ["screen", "has_steps", "description_length"],
+  bug_report_mail_opened: ["screen"],
   day_2: [],
   day_3: [],
   retention_day_active: ["lifetime_day", "active_days_total", "active_streak", "missed_days"],
@@ -278,8 +320,10 @@ const EVENT_DEFINITIONS = {
     "mood_boost",
     "cleanliness_drop",
   ],
+  tamagotchi_clean_tool_bought: ["tool_id", "tool_cost", "coins_before", "coins_after"],
   tamagotchi_clean: ["tool_id", "soap_hits", "brush_hits"],
   tamagotchi_party_started: ["party_cost", "coins_before", "coins_after"],
+  tamagotchi_skin_assets_download_failed: ["skin_id", "reason", "source"],
   tamagotchi_opened: [],
   tamagotchi_pressed: [],
   goal_creator_opened: ["source", "make_primary"],
@@ -739,7 +783,6 @@ let tiktokInitialized = false;
 let tiktokInitPromise = null;
 let amplitudeInitialized = false;
 let amplitudeInitPromise = null;
-let amplitudeSessionReplayAttached = false;
 const MAX_FACEBOOK_EVENT_QUEUE = 25;
 const pendingFacebookEvents = [];
 
@@ -825,16 +868,6 @@ const initAmplitudeSdk = async () => {
     amplitudeInitPromise = (async () => {
       try {
         await waitForAmplitudeResult(amplitudeAnalytics.init(AMPLITUDE_API_KEY));
-        if (
-          !amplitudeSessionReplayAttached &&
-          AmplitudeSessionReplayPlugin &&
-          typeof amplitudeAnalytics.add === "function"
-        ) {
-          await waitForAmplitudeResult(
-            amplitudeAnalytics.add(new AmplitudeSessionReplayPlugin())
-          );
-          amplitudeSessionReplayAttached = true;
-        }
         if (typeof amplitudeAnalytics.setOptOut === "function") {
           amplitudeAnalytics.setOptOut(false);
         }

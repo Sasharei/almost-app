@@ -247,10 +247,34 @@ export const PAYWALL_ALERT_COPY = {
     fr: "EXPO_PUBLIC_RC_ANDROID_API_KEY est manquante. Ajoutez-la dans Expo Environment Variables (preview/production), reconstruisez l'app puis réessayez.",
   },
   packageUnavailable: {
-    ru: "Покупка пока недоступна: пакет не найден в сторе. Проверьте RevenueCat Offering.",
-    en: "Purchase is unavailable: package was not found in store offerings.",
-    es: "La compra no está disponible: no se encontró el paquete en las ofertas de la tienda.",
-    fr: "L'achat n'est pas disponible : le package est introuvable dans les offres du store.",
+    ru: "Этот вариант подписки сейчас недоступен. Попробуйте ещё раз чуть позже.",
+    en: "This subscription option is unavailable right now. Please try again in a moment.",
+    es: "Esta opción de suscripción no está disponible ahora mismo. Inténtalo de nuevo en breve.",
+    fr: "Cette option d'abonnement est indisponible pour le moment. Réessayez dans un instant.",
+  },
+  offline: {
+    ru: "Нет интернета. Подключитесь к сети и попробуйте снова.",
+    en: "No internet connection. Connect to the internet and try again.",
+    es: "No hay conexión a internet. Conéctate e inténtalo de nuevo.",
+    fr: "Pas de connexion internet. Connectez-vous puis réessayez.",
+  },
+  offeringsUnavailable: {
+    ru: "Не удалось загрузить варианты подписки. Проверьте интернет и попробуйте снова.",
+    en: "Could not load subscription options. Check your connection and try again.",
+    es: "No se pudieron cargar las opciones de suscripción. Verifica tu conexión e inténtalo de nuevo.",
+    fr: "Impossible de charger les options d'abonnement. Vérifiez votre connexion puis réessayez.",
+  },
+  purchaseOffline: {
+    ru: "Вы офлайн. Подключитесь к интернету, чтобы завершить покупку.",
+    en: "You're offline. Connect to the internet to complete the purchase.",
+    es: "Estás sin conexión. Conéctate a internet para completar la compra.",
+    fr: "Vous êtes hors ligne. Connectez-vous à internet pour finaliser l'achat.",
+  },
+  restoreOffline: {
+    ru: "Вы офлайн. Подключитесь к интернету, чтобы восстановить покупки.",
+    en: "You're offline. Connect to the internet to restore purchases.",
+    es: "Estás sin conexión. Conéctate a internet para restaurar las compras.",
+    fr: "Vous êtes hors ligne. Connectez-vous à internet pour restaurer les achats.",
   },
   purchaseFailed: {
     ru: "Не удалось завершить покупку. Попробуйте снова.",

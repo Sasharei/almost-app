@@ -58,10 +58,37 @@ const findPlanByIdentifier = (productIdentifier = "") => {
 
 const normalizeProductIdentifier = (value = "") => String(value || "").trim().toLowerCase();
 const normalizeOfferingIdentifier = (value = "") => String(value || "").trim().toLowerCase();
+const normalizeErrorToken = (value = "") =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 const PREMIUM_PRODUCT_IDENTIFIER_SET = new Set(
   Object.values(PREMIUM_PRODUCT_IDS).map((value) => normalizeProductIdentifier(value))
 );
 const PREMIUM_PRODUCT_IDENTIFIER_ALIASES = new Set(["weekly", "monthly", "yearly", "lifetime"]);
+const OFFLINE_ERROR_CODE_TOKENS = [
+  "network_error",
+  "network_request_failed",
+  "offline",
+  "not_connected",
+  "timed_out",
+  "timeout",
+  "store_problem_error",
+];
+const OFFLINE_ERROR_MESSAGE_TOKENS = [
+  "network request failed",
+  "offline",
+  "not connected",
+  "internet",
+  "timed out",
+  "timeout",
+  "dns",
+  "could not connect",
+  "socket",
+  "network",
+];
 
 const parseBooleanValue = (value) => {
   if (typeof value === "boolean") return value;
@@ -105,6 +132,30 @@ const collectOfferings = (offerings = null) => {
     deduped.push(entry);
   });
   return deduped;
+};
+
+export const classifyPurchasesError = (error) => {
+  const normalizedCode = normalizeErrorToken(error?.code || error?.userInfo?.readable_error_code || "");
+  const message = String(
+    error?.message ||
+      error?.userInfo?.message ||
+      error?.userInfo?.readableErrorCode ||
+      error?.underlyingErrorMessage ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
+  if (
+    OFFLINE_ERROR_CODE_TOKENS.some(
+      (token) => normalizedCode === token || normalizedCode.includes(token)
+    )
+  ) {
+    return "offline";
+  }
+  if (OFFLINE_ERROR_MESSAGE_TOKENS.some((token) => message.includes(token))) {
+    return "offline";
+  }
+  return "unknown";
 };
 
 export const resolveOfferingByIdentifiers = (offerings = null, preferredOfferingIdentifiers = []) => {
@@ -324,22 +375,44 @@ export const configurePurchases = async ({ appUserId = null } = {}) => {
   }
 };
 
-export const getCustomerInfoSafe = async () => {
+export const getCustomerInfoSafe = async ({ includeErrorDetails = false } = {}) => {
   if (!isPurchasesAvailable()) return null;
   try {
-    return await Purchases.getCustomerInfo();
+    const customerInfo = await Purchases.getCustomerInfo();
+    return includeErrorDetails
+      ? { ok: true, customerInfo, reason: null, error: null }
+      : customerInfo;
   } catch (error) {
     console.warn("purchases customer info", error);
+    if (includeErrorDetails) {
+      return {
+        ok: false,
+        customerInfo: null,
+        reason: classifyPurchasesError(error),
+        error,
+      };
+    }
     return null;
   }
 };
 
-export const getOfferingsSafe = async () => {
+export const getOfferingsSafe = async ({ includeErrorDetails = false } = {}) => {
   if (!isPurchasesAvailable()) return null;
   try {
-    return await Purchases.getOfferings();
+    const offerings = await Purchases.getOfferings();
+    return includeErrorDetails
+      ? { ok: true, offerings, reason: null, error: null }
+      : offerings;
   } catch (error) {
     console.warn("purchases offerings", error);
+    if (includeErrorDetails) {
+      return {
+        ok: false,
+        offerings: null,
+        reason: classifyPurchasesError(error),
+        error,
+      };
+    }
     return null;
   }
 };
@@ -469,7 +542,11 @@ export const purchasePlanPackage = async (pkg) => {
     return {
       ok: false,
       cancelled,
-      reason: cancelled ? "cancelled" : "purchase_failed",
+      reason: cancelled
+        ? "cancelled"
+        : classifyPurchasesError(error) === "offline"
+        ? "offline"
+        : "purchase_failed",
       error,
     };
   }
@@ -484,7 +561,11 @@ export const restorePurchasesSafe = async () => {
     return { ok: true, customerInfo };
   } catch (error) {
     console.warn("purchases restore", error);
-    return { ok: false, reason: "restore_failed", error };
+    return {
+      ok: false,
+      reason: classifyPurchasesError(error) === "offline" ? "offline" : "restore_failed",
+      error,
+    };
   }
 };
 
