@@ -149,35 +149,6 @@ import {
   HISTORY_SAVED_GAIN_EVENTS,
   HISTORY_PROGRESS_GAIN_EVENTS,
   HISTORY_SAVED_LOSS_EVENTS,
-  DAILY_GOAL_COIN_EVENTS,
-  DAILY_GOAL_WEEKDAY_BOOST,
-  DAILY_GOAL_SHAKE_THRESHOLD,
-  DAILY_GOAL_SHAKE_COOLDOWN_MS,
-  DAILY_GOAL_GYRO_THRESHOLD,
-  DAILY_GOAL_GYRO_COOLDOWN_MS,
-  DAILY_GOAL_GYRO_ACCEL,
-  DAILY_GOAL_GYRO_CLAMP,
-  DAILY_GOAL_TILT_ACCEL,
-  DAILY_GOAL_TILT_FRICTION,
-  DAILY_GOAL_TILT_DRAG,
-  DAILY_GOAL_TILT_BOUNCE,
-  DAILY_GOAL_COIN_COLLISION_BOUNCE,
-  DAILY_GOAL_COIN_COLLISION_SLOP,
-  DAILY_GOAL_COIN_COLLISION_PERCENT,
-  DAILY_GOAL_COIN_COLLISION_VELOCITY_EPS,
-  DAILY_GOAL_COIN_COLLISION_ITERATIONS,
-  DAILY_GOAL_COIN_COLLISION_RESTITUTION_MIN_SPEED,
-  DAILY_GOAL_COIN_COLLISION_RESTITUTION_RANGE,
-  DAILY_GOAL_COIN_COLLISION_REST_SPEED,
-  DAILY_GOAL_COIN_COLLISION_REST_DAMPING,
-  DAILY_GOAL_TILT_MAX_SPEED,
-  DAILY_GOAL_TILT_DEADZONE,
-  DAILY_GOAL_TILT_STOP_SPEED,
-  DAILY_GOAL_TILT_STOP_TILT,
-  DAILY_GOAL_TILT_STOP_GYRO,
-  DAILY_GOAL_GRAVITY,
-  PIGGY_COIN_PADDING_X,
-  PIGGY_COIN_PADDING_Y,
   HERO_CAROUSEL_ITEM_GUTTER,
   HERO_CAROUSEL_PREMIUM_ATTEMPT_TRIGGER_PX,
   HERO_CAROUSEL_PREMIUM_DRAG_LIMIT_PX,
@@ -199,7 +170,6 @@ import {
   GREEN_HEALTH_COIN_TIER,
   BLUE_HEALTH_COIN_ASSET,
   BLUE_HEALTH_COIN_VALUE,
-  GREEN_HEALTH_COIN_ASSET,
   GOAL_COMPLETION_REWARD_COINS,
   GOAL_COMPLETION_REWARD_TIER,
   GOAL_COMPLETION_REWARD_VALUE,
@@ -400,6 +370,14 @@ import {
   CURRENCY_DISPLAY_PRECISION,
 } from "./src/constants/economyConfig";
 import {
+  TYCOON_MODE_DEFAULT_ENABLED,
+  TYCOON_MAX_AUTOSAVE_EVENTS_PER_CARD,
+  TYCOON_MAX_AUTOSAVE_EVENTS_TOTAL,
+  TYCOON_CONFIRM_ALL_REVIEW_STREAK,
+  resolveTycoonLevelRule,
+  getTycoonCooldownMsForIncrease,
+} from "./src/constants/tycoonConfig";
+import {
   TEMPTATION_SOFT_LIMIT,
   TEMPTATION_HARD_LIMIT,
   SCREEN_WIDTH,
@@ -575,31 +553,6 @@ try {
 } catch (error) {
   console.warn("Tracking transparency unavailable", error);
 }
-let Accelerometer = null;
-try {
-  // Optional: module might be missing in some builds (e.g. Expo Go).
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  Accelerometer = require("expo-sensors")?.Accelerometer || null;
-} catch (error) {
-  console.warn("expo-sensors unavailable", error);
-}
-let Gyroscope = null;
-try {
-  // Optional: module might be missing in some builds (e.g. Expo Go).
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  Gyroscope = require("expo-sensors")?.Gyroscope || null;
-} catch (error) {
-  console.warn("expo-sensors gyro unavailable", error);
-}
-let DeviceMotion = null;
-try {
-  // Optional: module might be missing in some builds (e.g. Expo Go).
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  DeviceMotion = require("expo-sensors")?.DeviceMotion || null;
-} catch (error) {
-  console.warn("expo-sensors device motion unavailable", error);
-}
-
 const IOS_DEFAULT_MODAL_PRESENTATION = "overFullScreen";
 const MODAL_CLOSE_SETTLE_MS = 120;
 const MODAL_CLOSE_SETTLE_TUTORIAL_MS = 140;
@@ -5590,6 +5543,7 @@ const IMPULSE_CATEGORY_ORDER = [
   "vices",
 ];
 const DEFAULT_IMPULSE_CATEGORY = "vices";
+const FEED_CATEGORY_FILTER_USAGE_STORAGE_KEY = "@almost_feed_category_filter_usage";
 const INITIAL_IMPULSE_TRACKER = {
   events: [],
   lastAlerts: {},
@@ -9336,6 +9290,35 @@ const mergeInteractionStatMaps = (base = {}, incoming = {}) => {
   return result;
 };
 
+const normalizeFeedCategoryFilterUsage = (value = {}) => {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return Object.entries(source).reduce((acc, [categoryId, stats]) => {
+    const id = typeof categoryId === "string" ? categoryId.trim() : "";
+    if (!id || id === "all") return acc;
+    const rawStats = stats && typeof stats === "object" ? stats : { count: stats };
+    const count = Math.max(0, Math.floor(Number(rawStats.count) || 0));
+    const lastUsedAt = Math.max(
+      0,
+      Math.floor(Number(rawStats.lastUsedAt ?? rawStats.lastSelectedAt ?? rawStats.updatedAt) || 0)
+    );
+    if (count <= 0 && lastUsedAt <= 0) return acc;
+    acc[id] = { count, lastUsedAt };
+    return acc;
+  }, {});
+};
+
+const mergeFeedCategoryFilterUsage = (base = {}, incoming = {}) => {
+  const result = { ...normalizeFeedCategoryFilterUsage(base) };
+  Object.entries(normalizeFeedCategoryFilterUsage(incoming)).forEach(([categoryId, stats]) => {
+    const current = result[categoryId] || { count: 0, lastUsedAt: 0 };
+    result[categoryId] = {
+      count: (Number(current.count) || 0) + (Number(stats.count) || 0),
+      lastUsedAt: Math.max(Number(current.lastUsedAt) || 0, Number(stats.lastUsedAt) || 0),
+    };
+  });
+  return result;
+};
+
 const useFadeIn = () => {
   const fade = useRef(new Animated.Value(Platform.OS === "android" ? 1 : 0)).current;
   useEffect(() => {
@@ -9748,6 +9731,11 @@ const buildResetNextCheckAtForFrequency = ({
   const intervalMs = resolveFrequencyIntervalMs(normalizedFrequency, customFrequency);
   const intervalNextCheckAt =
     Number.isFinite(intervalMs) && intervalMs > 0 ? fromTimestamp + intervalMs : null;
+  if (normalizedFrequency === "weekly" || normalizedFrequency === "monthly") {
+    if (Number.isFinite(calendarNextCheckAt)) return calendarNextCheckAt;
+    if (Number.isFinite(intervalNextCheckAt)) return intervalNextCheckAt;
+    return null;
+  }
   if (Number.isFinite(intervalNextCheckAt) && Number.isFinite(calendarNextCheckAt)) {
     return Math.max(intervalNextCheckAt, calendarNextCheckAt);
   }
@@ -10263,9 +10251,6 @@ const LANGUAGE_OVERRIDES = {
     feedTailMoreOffersSubtitle:
       "Das sind vorgeschlagene Beispielkarten. Erfasse weiter Entscheidungen, um im nächsten Level mehr freizuschalten.",
     saveCelebrateTitlePrefix: "Gespart bei:",
-    dailyGoalCollectTitle: "Tagesziel erreicht!",
-    dailyGoalCollectSubtitle: "Du hast {{count}} grüne Münzen gesammelt.",
-    dailyGoalCollectCta: "Einsammeln",
     dailyRewardReason:
       "Tägliche Almi-Belohnung · +{{amount}}. Komm morgen für die nächste Belohnung zurück!",
     freeDayCoinReward: "Freier Tag eingetragen: +{{coins}} blaue Münzen.",
@@ -10322,9 +10307,6 @@ const LANGUAGE_OVERRIDES = {
     feedTailMoreOffersSubtitle:
       "هذه بطاقات أمثلة مقترحة. واصل تسجيل قراراتك لفتح المزيد في المستوى التالي.",
     saveCelebrateTitlePrefix: "تم التوفير على:",
-    dailyGoalCollectTitle: "اكتمل هدف اليوم!",
-    dailyGoalCollectSubtitle: "جمعت {{count}} من العملات الخضراء.",
-    dailyGoalCollectCta: "تحصيل",
     dailyRewardReason:
       "مكافأة Almi اليومية · +{{amount}}. ارجع غدًا لتحصل على مكافأة جديدة!",
     freeDayCoinReward: "تم تسجيل يوم بدون إنفاق: +{{coins}} عملات زرقاء.",
@@ -10381,9 +10363,6 @@ const LANGUAGE_OVERRIDES = {
     feedTailMoreOffersSubtitle:
       "هذه بطاقات أمثلة مقترحة. واصل تسجيل قراراتك لفتح المزيد في المستوى التالي.",
     saveCelebrateTitlePrefix: "تم التوفير على:",
-    dailyGoalCollectTitle: "اكتمل هدف اليوم!",
-    dailyGoalCollectSubtitle: "جمعت {{count}} من العملات الخضراء.",
-    dailyGoalCollectCta: "تحصيل",
     dailyRewardReason:
       "مكافأة Almi اليومية · +{{amount}}. ارجع غدًا لتحصل على مكافأة جديدة!",
     freeDayCoinReward: "تم تسجيل يوم بدون إنفاق: +{{coins}} عملات زرقاء.",
@@ -10438,9 +10417,6 @@ const LANGUAGE_OVERRIDES = {
     feedTailMoreOffersTitle: "在等级 {{level}} 获得更多推荐诱惑卡",
     feedTailMoreOffersSubtitle: "这些是推荐的示例卡片。继续记录你的选择，在下一等级会解锁更多。",
     saveCelebrateTitlePrefix: "省下于：",
-    dailyGoalCollectTitle: "今日目标完成！",
-    dailyGoalCollectSubtitle: "你收集了 {{count}} 枚绿色硬币。",
-    dailyGoalCollectCta: "领取",
     dailyRewardReason: "每日 Almi 奖励 · +{{amount}}。明天再来领取下一次奖励！",
     freeDayCoinReward: "已记录无消费日：+{{coins}} 枚蓝色硬币。",
     freeDayCoinRewardStreak: "🔥 连续 {{days}} 天：+{{coins}} 枚蓝色硬币。",
@@ -12482,21 +12458,38 @@ const getCopyForPurchase = (item, language, t) => {
 };
 
 const parseColor = (value) => {
-  if (typeof value !== "string") return { r: 0, g: 0, b: 0 };
+  if (typeof value !== "string") return { r: 0, g: 0, b: 0, a: 1 };
   if (value.startsWith("#")) {
     const full =
       value.length === 4
         ? `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`
         : value;
     const num = parseInt(full.slice(1), 16);
-    if (Number.isNaN(num)) return { r: 0, g: 0, b: 0 };
-    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+    if (Number.isNaN(num)) return { r: 0, g: 0, b: 0, a: 1 };
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255, a: 1 };
   }
-  const rgbMatch = value.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)$/i);
+  const rgbMatch = value.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/i);
   if (rgbMatch) {
-    return { r: Number(rgbMatch[1]), g: Number(rgbMatch[2]), b: Number(rgbMatch[3]) };
+    const alphaValue = rgbMatch[4] == null ? 1 : Number(rgbMatch[4]);
+    return {
+      r: Number(rgbMatch[1]),
+      g: Number(rgbMatch[2]),
+      b: Number(rgbMatch[3]),
+      a: Number.isFinite(alphaValue) ? Math.max(0, Math.min(1, alphaValue)) : 1,
+    };
   }
-  return { r: 0, g: 0, b: 0 };
+  return { r: 0, g: 0, b: 0, a: 1 };
+};
+
+const compositeColorOverBackground = (foregroundColor, backgroundColor) => {
+  const clamp = (num) => Math.max(0, Math.min(255, Math.round(num)));
+  const fg = parseColor(foregroundColor);
+  const bg = parseColor(backgroundColor);
+  const alpha = Number.isFinite(fg.a) ? Math.max(0, Math.min(1, fg.a)) : 1;
+  const r = clamp(fg.r * alpha + bg.r * (1 - alpha));
+  const g = clamp(fg.g * alpha + bg.g * (1 - alpha));
+  const b = clamp(fg.b * alpha + bg.b * (1 - alpha));
+  return `rgb(${r}, ${g}, ${b})`;
 };
 
 const blendColors = (colorA, colorB, ratio = 0.5) => {
@@ -14432,38 +14425,43 @@ function TemptationCardComponent({
         >
           <TouchableWithoutFeedback onPress={() => dismissKeyboardOrRun(closeAmountManual)}>
             <View style={styles.coinEntryManualBackdrop}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View
-                  style={[
-                    styles.coinEntryManualCard,
-                    { backgroundColor: colors.card, borderColor: colors.border },
-                  ]}
-                >
-                  <Text style={[styles.coinEntryManualTitle, { color: colors.text }]}>
-                    {t("coinEntryManualAmountTitle")}
-                  </Text>
-                  <TextInput
+              <KeyboardAvoidingView
+                style={styles.coinEntryManualKeyboardAvoider}
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+                keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+              >
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
                     style={[
-                      styles.coinEntryManualInput,
-                      { color: colors.text, borderColor: colors.border },
+                      styles.coinEntryManualCard,
+                      { backgroundColor: colors.card, borderColor: colors.border },
                     ]}
-                    placeholder={t("coinEntryManualAmountPlaceholder")}
-                    placeholderTextColor={colors.muted}
-                    keyboardType="decimal-pad"
-                    value={amountManualValue}
-                    onChangeText={(value) => {
-                      setAmountManualValue(value);
-                      if (amountManualError) setAmountManualError("");
-                    }}
-                    returnKeyType="done"
-                    onSubmitEditing={handleAmountManualSave}
-                    autoFocus
-                  />
-                  {!!amountManualError && (
-                    <Text style={[styles.coinEntryManualError, { color: SPEND_ACTION_COLOR }]}>
-                      {amountManualError}
+                  >
+                    <Text style={[styles.coinEntryManualTitle, { color: colors.text }]}>
+                      {t("coinEntryManualAmountTitle")}
                     </Text>
-                  )}
+                    <TextInput
+                      style={[
+                        styles.coinEntryManualInput,
+                        { color: colors.text, borderColor: colors.border },
+                      ]}
+                      placeholder={t("coinEntryManualAmountPlaceholder")}
+                      placeholderTextColor={colors.muted}
+                      keyboardType="decimal-pad"
+                      value={amountManualValue}
+                      onChangeText={(value) => {
+                        setAmountManualValue(value);
+                        if (amountManualError) setAmountManualError("");
+                      }}
+                      returnKeyType="done"
+                      onSubmitEditing={handleAmountManualSave}
+                      autoFocus
+                    />
+                    {!!amountManualError && (
+                      <Text style={[styles.coinEntryManualError, { color: SPEND_ACTION_COLOR }]}>
+                        {amountManualError}
+                      </Text>
+                    )}
                   <View style={styles.coinEntryManualActions}>
                     <TouchableOpacity
                       style={[styles.coinEntryManualButtonGhost, { borderColor: colors.border }]}
@@ -14489,6 +14487,7 @@ function TemptationCardComponent({
                   </View>
                 </View>
               </TouchableWithoutFeedback>
+              </KeyboardAvoidingView>
             </View>
           </TouchableWithoutFeedback>
         </Modal>
@@ -14964,6 +14963,8 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
   colors,
   t,
   currency,
+  keyboardInset = 0,
+  topSafeInset = 0,
   titleOverride,
   editTitleValue,
   editPriceValue,
@@ -14995,6 +14996,75 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
   onEditCancel,
   onEditDelete,
 }) {
+  const scrollRef = useRef(null);
+  const scrollHeightRef = useRef(0);
+  const fieldLayoutsRef = useRef({});
+  const activeFieldRef = useRef(null);
+  const normalizedKeyboardInset = Math.max(0, Number(keyboardInset) || 0);
+  const normalizedTopSafeInset = Math.max(0, Number(topSafeInset) || 0);
+  const keyboardAwareSheetHeight = useMemo(() => {
+    if (!normalizedKeyboardInset) return null;
+    const verticalMargin = IS_SHORT_DEVICE ? 20 : 36;
+    const availableHeight =
+      SCREEN_HEIGHT - normalizedKeyboardInset - normalizedTopSafeInset - verticalMargin;
+    const maxHeight = Math.max(
+      220,
+      Math.min(SCREEN_HEIGHT * 0.84, availableHeight)
+    );
+    return Math.round(maxHeight);
+  }, [normalizedKeyboardInset, normalizedTopSafeInset]);
+  const keyboardAwareSheetStyle = useMemo(() => {
+    if (!keyboardAwareSheetHeight) return null;
+    return {
+      maxHeight: keyboardAwareSheetHeight,
+      minHeight: Math.min(
+        keyboardAwareSheetHeight,
+        Math.round(SCREEN_HEIGHT * (IS_SHORT_DEVICE ? 0.5 : 0.56))
+      ),
+    };
+  }, [keyboardAwareSheetHeight]);
+  const keyboardAwareScrollStyle = useMemo(() => {
+    if (!keyboardAwareSheetHeight) return null;
+    return {
+      maxHeight: Math.max(140, keyboardAwareSheetHeight - 116),
+    };
+  }, [keyboardAwareSheetHeight]);
+  const registerFieldLayout = useCallback((fieldKey, event) => {
+    const layoutY = event?.nativeEvent?.layout?.y;
+    if (!Number.isFinite(layoutY)) return;
+    fieldLayoutsRef.current[fieldKey] = layoutY;
+  }, []);
+  const scrollFocusedFieldIntoView = useCallback((fieldKey) => {
+    if (!fieldKey) return;
+    requestAnimationFrame(() => {
+      const layoutY = fieldLayoutsRef.current[fieldKey];
+      if (!Number.isFinite(layoutY)) return;
+      const visibleHeight = Math.max(1, scrollHeightRef.current || 0);
+      const centerRatio = fieldKey === "description" ? 0.34 : 0.42;
+      const targetY = Math.max(0, layoutY - visibleHeight * centerRatio);
+      scrollRef.current?.scrollTo?.({ y: targetY, animated: true });
+    });
+  }, []);
+  const handleFieldFocus = useCallback(
+    (fieldKey) => {
+      activeFieldRef.current = fieldKey;
+      scrollFocusedFieldIntoView(fieldKey);
+    },
+    [scrollFocusedFieldIntoView]
+  );
+  const handleFieldBlur = useCallback((fieldKey) => {
+    if (activeFieldRef.current === fieldKey) {
+      activeFieldRef.current = null;
+    }
+  }, []);
+  useEffect(() => {
+    if (!normalizedKeyboardInset || !activeFieldRef.current) return undefined;
+    const timeout = setTimeout(
+      () => scrollFocusedFieldIntoView(activeFieldRef.current),
+      Platform.OS === "ios" ? 80 : 120
+    );
+    return () => clearTimeout(timeout);
+  }, [normalizedKeyboardInset, scrollFocusedFieldIntoView]);
   if (!item) return null;
   const fallbackTitle = resolveTemptationTitle(item, language, titleOverride);
   const previewTitle = buildTemptationDisplayTitle(editEmojiValue, editTitleValue, fallbackTitle);
@@ -15009,16 +15079,21 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
     <View
       style={[
         styles.temptationEditSheet,
+        keyboardAwareSheetStyle,
         { backgroundColor: colors.card, borderColor: colors.border },
       ]}
     >
       <ScrollView
-        style={styles.temptationEditScroll}
+        ref={scrollRef}
+        style={[styles.temptationEditScroll, keyboardAwareScrollStyle]}
         contentContainerStyle={styles.temptationEditContent}
         keyboardShouldPersistTaps="always"
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
         nestedScrollEnabled
         showsVerticalScrollIndicator={false}
+        onLayout={(event) => {
+          scrollHeightRef.current = event?.nativeEvent?.layout?.height || 0;
+        }}
       >
         <Text style={[styles.temptationEditSubtitle, { color: colors.muted }]}>
           {t("priceEditSubtitle")}
@@ -15051,7 +15126,10 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
             />
           </View>
         )}
-        <View style={styles.temptationEditFieldRow}>
+        <View
+          style={styles.temptationEditFieldRow}
+          onLayout={(event) => registerFieldLayout("identity", event)}
+        >
           <View style={styles.temptationEditField}>
             <Text style={[styles.temptationEditLabel, { color: colors.muted }]}>
               {t("quickCustomEmojiLabel")}
@@ -15071,6 +15149,8 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
                 placeholderTextColor={colorWithAlpha(colors.muted, 0.7)}
                 selectTextOnFocus
                 maxLength={2}
+                onFocus={() => handleFieldFocus("identity")}
+                onBlur={() => handleFieldBlur("identity")}
               />
             </View>
           </View>
@@ -15090,11 +15170,16 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
                 onChangeText={onEditTitleChange}
                 placeholder={previewTitle}
                 placeholderTextColor={colorWithAlpha(colors.muted, 0.7)}
+                onFocus={() => handleFieldFocus("identity")}
+                onBlur={() => handleFieldBlur("identity")}
               />
             </View>
           </View>
         </View>
-        <View style={styles.temptationEditField}>
+        <View
+          style={styles.temptationEditField}
+          onLayout={(event) => registerFieldLayout("amount", event)}
+        >
           <Text style={[styles.temptationEditLabel, { color: colors.muted }]}>
             {t("priceEditAmountLabel", { currency: getCurrencyDisplayCode(currency) })}
           </Text>
@@ -15112,6 +15197,8 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
               keyboardType="decimal-pad"
               placeholder={t("priceEditPlaceholder")}
               placeholderTextColor={colorWithAlpha(colors.muted, 0.7)}
+              onFocus={() => handleFieldFocus("amount")}
+              onBlur={() => handleFieldBlur("amount")}
             />
           </View>
         </View>
@@ -15136,7 +15223,10 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
             <Text style={[styles.temptationEditGoalChevron, { color: colors.muted }]}>›</Text>
           </TouchableOpacity>
         </View>
-        <View style={styles.temptationEditField}>
+        <View
+          style={styles.temptationEditField}
+          onLayout={(event) => registerFieldLayout("description", event)}
+        >
           <Text style={[styles.temptationEditLabel, { color: colors.muted }]}>
             {t("priceEditDescriptionLabel")}
           </Text>
@@ -15154,6 +15244,8 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
               placeholderTextColor={colorWithAlpha(colors.muted, 0.7)}
               multiline
               textAlignVertical="top"
+              onFocus={() => handleFieldFocus("description")}
+              onBlur={() => handleFieldBlur("description")}
             />
           </View>
         </View>
@@ -18116,1112 +18208,152 @@ const BudgetHeroCard = React.memo(function BudgetHeroCard({
   );
 });
 
-const parsePercentValue = (value) => {
-  if (typeof value === "string" && value.includes("%")) {
-    return Number.parseFloat(value) / 100;
-  }
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : 0;
-};
-
-const DailyGoalCard = React.memo(function DailyGoalCard({
+const HomeSubscriptionWidgetCard = React.memo(function HomeSubscriptionWidgetCard({
   colors,
   isDarkMode = false,
   t,
-  monthLabel,
-  dailyGoalLabel = "",
-  dailyGoalUSD = 0,
-  todaySavedUSD = 0,
-  savedCardCount = 0,
-  coinDropTick = 0,
-  isActive = false,
-  playSound = null,
-  shakeEnabled = true,
-  onCollectCoins = null,
-  isCollected = false,
+  entries = [],
+  totalMonthlyLabel = "",
+  timerText = "",
+  palette,
+  onPress = null,
   style = null,
 }) {
-  const isAndroid = Platform.OS === "android";
-  const palette = useMemo(
-    () => ({
-      background: colors.card,
-      border: colors.border,
-      text: colors.text,
-      subtext: colors.muted,
-    }),
-    [colors]
-  );
-  const glowColor = colorWithAlpha(SAVE_ACTION_COLOR, isDarkMode ? 0.25 : 0.2);
-  const blurAvailable = useMemo(() => isBlurViewAvailable(), []);
-  const glassGradientId = useMemo(
-    () => `piggy-glass-${Math.round(Math.random() * 1e9)}`,
-    []
-  );
-  const glassShadeId = useMemo(
-    () => `piggy-glass-shade-${Math.round(Math.random() * 1e9)}`,
-    []
-  );
-  const hasGoal = Number.isFinite(dailyGoalUSD) && dailyGoalUSD > 0;
-  const safeGoalUSD = hasGoal ? dailyGoalUSD : 0;
-  const safeSavedUSD = Math.max(0, Number(todaySavedUSD) || 0);
-  const progress = hasGoal ? Math.min(safeSavedUSD / safeGoalUSD, 1) : 0;
-  const isGoalComplete = hasGoal && safeSavedUSD >= safeGoalUSD;
-  const piggyPalette = useMemo(
-    () => {
-      if (isGoalComplete) {
-        return {
-          fill: isDarkMode ? "rgba(28,80,55,0.7)" : "rgba(190,245,216,0.86)",
-          border: isDarkMode ? "rgba(120,230,175,0.8)" : "rgba(62,175,120,0.7)",
-          highlight: isDarkMode ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.78)",
-          shadow: isDarkMode ? "rgba(0,0,0,0.6)" : "rgba(14,70,40,0.2)",
-          value: isDarkMode ? "#D6FFE8" : "#0E5A36",
-          rim: isDarkMode ? "rgba(170,255,215,0.35)" : "rgba(255,255,255,0.82)",
-          innerShadow: isDarkMode ? "rgba(0,0,0,0.45)" : "rgba(46,184,115,0.28)",
-          tint: isDarkMode ? "rgba(70,135,95,0.35)" : "rgba(120,210,160,0.3)",
-        };
-      }
-      return {
-        fill: isDarkMode ? "rgba(20,24,36,0.58)" : "rgba(235,244,255,0.46)",
-        border: isDarkMode ? "rgba(255,255,255,0.28)" : "rgba(126,146,170,0.34)",
-        highlight: isDarkMode ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.72)",
-        shadow: isDarkMode ? "rgba(0,0,0,0.55)" : "rgba(22,32,54,0.18)",
-        value: isDarkMode ? "#7FE4AC" : "#1B1C2A",
-        rim: isDarkMode ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.78)",
-        innerShadow: isDarkMode ? "rgba(0,0,0,0.4)" : "rgba(120,140,160,0.25)",
-        tint: isDarkMode ? "rgba(60,80,110,0.24)" : "rgba(180,210,235,0.22)",
-      };
-    },
-    [isDarkMode, isGoalComplete]
-  );
-  const glassBlurIntensity = Platform.OS === "android" ? 4.5 : 18;
-  const glassBlurAmount = Math.max(3, Math.round(glassBlurIntensity * 0.4));
-  const baseCoinSize = IS_SHORT_DEVICE ? 18 : 22;
-  const coinSlots = useMemo(
-    () => [
-      { left: "18%", bottom: "18%", size: baseCoinSize, rotate: "-14deg" },
-      { left: "32%", bottom: "26%", size: baseCoinSize * 0.92, rotate: "9deg" },
-      { left: "48%", bottom: "16%", size: baseCoinSize * 0.96, rotate: "-6deg" },
-      { left: "62%", bottom: "26%", size: baseCoinSize, rotate: "12deg" },
-      { left: "72%", bottom: "18%", size: baseCoinSize * 0.86, rotate: "-8deg" },
-      { left: "24%", bottom: "40%", size: baseCoinSize * 0.9, rotate: "6deg" },
-      { left: "42%", bottom: "36%", size: baseCoinSize, rotate: "-10deg" },
-      { left: "58%", bottom: "44%", size: baseCoinSize * 0.86, rotate: "8deg" },
-      { left: "36%", bottom: "54%", size: baseCoinSize * 0.82, rotate: "-6deg" },
-      { left: "54%", bottom: "56%", size: baseCoinSize * 0.76, rotate: "10deg" },
-      { left: "16%", bottom: "58%", size: baseCoinSize * 0.7, rotate: "-4deg" },
-      { left: "26%", bottom: "68%", size: baseCoinSize * 0.62, rotate: "8deg" },
-      { left: "40%", bottom: "66%", size: baseCoinSize * 0.66, rotate: "-12deg" },
-      { left: "52%", bottom: "70%", size: baseCoinSize * 0.6, rotate: "6deg" },
-      { left: "68%", bottom: "62%", size: baseCoinSize * 0.64, rotate: "-8deg" },
-      { left: "62%", bottom: "76%", size: baseCoinSize * 0.58, rotate: "12deg" },
-    ],
-    [baseCoinSize]
-  );
-  const jiggleAnim = useRef(new Animated.Value(0)).current;
-  const dropAnim = useRef(new Animated.Value(0)).current;
-  const lastDropTickRef = useRef(coinDropTick);
-  const dropQueueRef = useRef(0);
-  const dropRunningRef = useRef(false);
-  const dropTimerRef = useRef(null);
-  const [extraCoinCount, setExtraCoinCount] = useState(0);
-  const lastSavedCountRef = useRef(0);
-  const shakeStateRef = useRef({ lastMagnitude: 0, lastShakeAt: 0 });
-  const gyroStateRef = useRef({ lastSpinAt: 0 });
-  const [coinsClipLayout, setCoinsClipLayout] = useState({ width: 0, height: 0 });
-  const [coinPhysics, setCoinPhysics] = useState([]);
-  const coinPhysicsRef = useRef([]);
-  const tiltRef = useRef({ x: 0, y: 0 });
-  const tiltSmoothRef = useRef({ x: 0, y: 0 });
-  const gyroRef = useRef({ x: 0, y: 0, z: 0 });
-  const gyroSmoothRef = useRef({ x: 0, y: 0, z: 0 });
-  const physicsLoopRef = useRef(null);
-  const physicsSleepTimerRef = useRef(null);
-  const [appState, setAppState] = useState(() => AppState?.currentState || "active");
-  const [tiltSource, setTiltSource] = useState(null);
-  const [gyroSource, setGyroSource] = useState(null);
-  const motionEnabled = Boolean(isActive);
-  const safeSavedCardCount = Math.max(0, Math.floor(Number(savedCardCount) || 0));
-  const coinsToShow = Math.min(coinSlots.length, safeSavedCardCount * 2 + extraCoinCount);
-  const visibleCoinCount = Math.max(0, Math.floor(coinsToShow));
-  const DAILY_GOAL_PHYSICS_IDLE_STEP_MS = isAndroid ? 120 : 84;
-  const DAILY_GOAL_PHYSICS_POSITION_EPSILON = 0.06;
-  const DAILY_GOAL_TILT_SENSOR_INTERVAL_MS = isAndroid ? 120 : 80;
-  const DAILY_GOAL_GYRO_SENSOR_INTERVAL_MS = isAndroid ? 120 : 80;
-  const dailyGoalCollisionIterations = isAndroid
-    ? Math.max(1, DAILY_GOAL_COIN_COLLISION_ITERATIONS - 1)
-    : DAILY_GOAL_COIN_COLLISION_ITERATIONS;
-  const jiggleFactors = useMemo(
-    () =>
-      coinSlots.map(() => ({
-        x: (Math.random() * 2 - 1) * 2.4,
-        y: (Math.random() * 2 - 1) * 2.1,
-        r: (Math.random() * 2 - 1) * 10,
-      })),
-    [coinSlots.length]
-  );
-  const handleCoinsClipLayout = useCallback((event) => {
-    const { width, height } = event?.nativeEvent?.layout || {};
-    if (!width || !height) return;
-    setCoinsClipLayout((prev) =>
-      prev.width === width && prev.height === height ? prev : { width, height }
-    );
-  }, []);
-  const triggerJiggle = useCallback(() => {
-    jiggleAnim.stopAnimation();
-    jiggleAnim.setValue(0);
-    Animated.sequence([
-      Animated.timing(jiggleAnim, {
-        toValue: 1,
-        duration: 170,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(jiggleAnim, {
-        toValue: 0,
-        duration: 230,
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [jiggleAnim]);
-  useEffect(() => {
-    const subscription = AppState?.addEventListener?.("change", (nextState) => {
-      setAppState(nextState || "active");
-    });
-    return () => subscription?.remove?.();
-  }, []);
-  useEffect(() => {
-    if (!motionEnabled) {
-      setTiltSource(null);
-      setGyroSource(null);
-      return undefined;
-    }
-    let active = true;
-    const isAvailable = async (sensor) => {
-      if (!sensor) return false;
-      if (typeof sensor.isAvailableAsync === "function") {
-        try {
-          return await sensor.isAvailableAsync();
-        } catch (error) {
-          console.warn("sensor availability", error);
-          return false;
-        }
-      }
-      return true;
-    };
-    const resolveSource = async (primary, fallback) => {
-      if (await isAvailable(primary)) return primary;
-      if (await isAvailable(fallback)) return fallback;
-      return null;
-    };
-    (async () => {
-      const tiltPrimary = Platform.OS === "android" ? Accelerometer : DeviceMotion;
-      const tiltFallback = Platform.OS === "android" ? DeviceMotion : Accelerometer;
-      const tilt = await resolveSource(tiltPrimary, tiltFallback);
-      const gyro = await resolveSource(Gyroscope, DeviceMotion);
-      if (!active) return;
-      setTiltSource(tilt);
-      setGyroSource(gyro);
-    })();
-    return () => {
-      active = false;
-    };
-  }, [motionEnabled]);
-  useEffect(() => {
-    return () => {
-      if (dropTimerRef.current) {
-        clearTimeout(dropTimerRef.current);
-        dropTimerRef.current = null;
-      }
-      if (physicsSleepTimerRef.current) {
-        clearTimeout(physicsSleepTimerRef.current);
-        physicsSleepTimerRef.current = null;
-      }
-      if (physicsLoopRef.current) {
-        cancelAnimationFrame(physicsLoopRef.current);
-        physicsLoopRef.current = null;
-      }
-      dropRunningRef.current = false;
-      dropQueueRef.current = 0;
-      dropAnim.stopAnimation();
-      jiggleAnim.stopAnimation();
-    };
-  }, [dropAnim, jiggleAnim]);
-  useEffect(() => {
-    if (!coinsClipLayout.width || !coinsClipLayout.height) return;
-    const width = coinsClipLayout.width;
-    const height = coinsClipLayout.height;
-    const innerWidth = Math.max(0, width - PIGGY_COIN_PADDING_X * 2);
-    const innerHeight = Math.max(0, height - PIGGY_COIN_PADDING_Y * 2);
-    const nextPhysics = coinSlots.map((slot, index) => {
-      const leftPercent = parsePercentValue(slot.left);
-      const bottomPercent = parsePercentValue(slot.bottom);
-      const size = slot.size;
-      const leftPx = PIGGY_COIN_PADDING_X + leftPercent * innerWidth;
-      const bottomPx = PIGGY_COIN_PADDING_Y + bottomPercent * innerHeight;
-      const maxX = Math.max(PIGGY_COIN_PADDING_X, width - PIGGY_COIN_PADDING_X - size);
-      const maxY = Math.max(PIGGY_COIN_PADDING_Y, height - PIGGY_COIN_PADDING_Y - size);
-      const x = Math.max(PIGGY_COIN_PADDING_X, Math.min(leftPx, maxX));
-      const y = Math.max(PIGGY_COIN_PADDING_Y, Math.min(height - bottomPx - size, maxY));
-      return {
-        id: `piggy-coin-${index}`,
-        x,
-        y,
-        vx: 0,
-        vy: 0,
-        size,
-        animX: new Animated.Value(x),
-        animY: new Animated.Value(y),
-        renderX: x,
-        renderY: y,
-        rotate: slot.rotate,
-      };
-    });
-    coinPhysicsRef.current = nextPhysics;
-    setCoinPhysics(nextPhysics);
-  }, [coinSlots, coinsClipLayout.height, coinsClipLayout.width]);
-  const runNextDrop = useCallback(() => {
-    if (dropRunningRef.current) return;
-    if (!motionEnabled) return;
-    if (dropQueueRef.current <= 0) return;
-    dropRunningRef.current = true;
-    dropQueueRef.current -= 1;
-    dropAnim.stopAnimation();
-    dropAnim.setValue(0);
-    Animated.timing(dropAnim, {
-      toValue: 1,
-      duration: 720,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: true,
-    }).start(({ finished }) => {
-      if (!finished) {
-        dropRunningRef.current = false;
-        return;
-      }
-      dropAnim.setValue(0);
-      dropRunningRef.current = false;
-      if (dropQueueRef.current > 0) {
-        dropTimerRef.current = setTimeout(runNextDrop, 140);
-      }
-    });
-    triggerJiggle();
-  }, [dropAnim, motionEnabled, triggerJiggle]);
-  useEffect(() => {
-    if (!GREEN_HEALTH_COIN_ASSET) return;
-    if (coinDropTick === lastDropTickRef.current) return;
-    const delta = coinDropTick - lastDropTickRef.current;
-    lastDropTickRef.current = coinDropTick;
-    if (delta <= 0) return;
-    dropQueueRef.current += delta * 2;
-    setExtraCoinCount((prev) => Math.min(coinSlots.length, prev + delta * 2));
-    if (motionEnabled) {
-      runNextDrop();
-    }
-  }, [coinDropTick, coinSlots.length, motionEnabled, runNextDrop]);
-  useEffect(() => {
-    if (!motionEnabled) {
-      if (dropTimerRef.current) {
-        clearTimeout(dropTimerRef.current);
-        dropTimerRef.current = null;
-      }
-      dropRunningRef.current = false;
-      dropQueueRef.current = 0;
-      dropAnim.stopAnimation();
-      dropAnim.setValue(0);
-      return;
-    }
-    if (dropQueueRef.current > 0) {
-      runNextDrop();
-    }
-  }, [dropAnim, motionEnabled, runNextDrop]);
-  const isAppActive = appState !== "background" && appState !== "inactive";
-  const effectiveTiltSource = tiltSource || Accelerometer || DeviceMotion;
-  const effectiveGyroSource = gyroSource || Gyroscope || DeviceMotion;
-  const sharesDeviceMotionListener =
-    !!DeviceMotion &&
-    effectiveTiltSource === DeviceMotion &&
-    effectiveGyroSource === effectiveTiltSource;
-  const gyroEnabled = Boolean(effectiveGyroSource);
-  const physicsEnabled = motionEnabled && isAppActive && visibleCoinCount > 0;
-  const shakeActive = motionEnabled && shakeEnabled && isAppActive;
-  const sensorActive = physicsEnabled || shakeActive;
-  useEffect(() => {
-    if (!Accelerometer || !shakeActive) return;
-    try {
-      Accelerometer.setUpdateInterval(120);
-    } catch (error) {
-      console.warn("accelerometer interval", error);
-    }
-    const subscription = Accelerometer.addListener(({ x, y, z }) => {
-      const magnitude = Math.sqrt(x * x + y * y + z * z);
-      const previous = shakeStateRef.current.lastMagnitude || magnitude;
-      shakeStateRef.current.lastMagnitude = magnitude;
-      const delta = Math.abs(magnitude - previous);
-      const now = Date.now();
-      if (
-        delta > DAILY_GOAL_SHAKE_THRESHOLD &&
-        now - shakeStateRef.current.lastShakeAt > DAILY_GOAL_SHAKE_COOLDOWN_MS
-      ) {
-        shakeStateRef.current.lastShakeAt = now;
-        triggerJiggle();
-      }
-    });
-    return () => subscription?.remove?.();
-  }, [shakeActive, triggerJiggle]);
-  useEffect(() => {
-    if (!physicsEnabled) return;
-    const activeTiltSource = effectiveTiltSource;
-    if (!activeTiltSource) return;
-    const requestPermissions = async () => {
-      try {
-        if (typeof activeTiltSource.getPermissionsAsync === "function") {
-          await activeTiltSource.getPermissionsAsync();
-          if (typeof activeTiltSource.requestPermissionsAsync === "function") {
-            await activeTiltSource.requestPermissionsAsync();
-          }
-        } else if (typeof activeTiltSource.requestPermissionsAsync === "function") {
-          await activeTiltSource.requestPermissionsAsync();
-        }
-      } catch (error) {
-        // Swallow permission errors to avoid interrupting tilt updates.
-      }
-    };
-    requestPermissions();
-    try {
-      activeTiltSource.setUpdateInterval?.(DAILY_GOAL_TILT_SENSOR_INTERVAL_MS);
-    } catch (error) {
-      console.warn("tilt interval", error);
-    }
-    const subscription = activeTiltSource.addListener((payload) => {
-      let x = 0;
-      let y = 0;
-      if (payload?.gravity) {
-        x = Number(payload.gravity.x ?? 0);
-        y = Number(payload.gravity.y ?? 0);
-      } else if (payload?.accelerationIncludingGravity) {
-        x = Number(payload.accelerationIncludingGravity.x ?? 0);
-        y = Number(payload.accelerationIncludingGravity.y ?? 0);
-      } else if (typeof payload?.x === "number") {
-        x = Number(payload.x);
-        y = Number(payload.y);
-      }
-      if (Math.abs(x) > 2 || Math.abs(y) > 2) {
-        x /= 9.81;
-        y /= 9.81;
-      }
-      if (Platform.OS === "android") {
-        // Android sensor Y axis is inverted relative to our screen physics.
-        y = -y;
-      }
-      const clampedX = Math.max(-1, Math.min(1, x));
-      const clampedY = Math.max(-1, Math.min(1, y));
-      const prev = tiltSmoothRef.current;
-      const smoothing = 0.35;
-      const nextX = prev.x + (clampedX - prev.x) * smoothing;
-      const nextY = prev.y + (clampedY - prev.y) * smoothing;
-      tiltSmoothRef.current.x = nextX;
-      tiltSmoothRef.current.y = nextY;
-      tiltRef.current.x = nextX;
-      tiltRef.current.y = nextY;
-
-      const rotation = payload?.rotationRate || payload?.rotation || null;
-      if (rotation) {
-        const rawX = Number(rotation.x ?? rotation.alpha ?? 0);
-        const rawY = Number(rotation.y ?? rotation.beta ?? 0);
-        const rawZ = Number(rotation.z ?? rotation.gamma ?? 0);
-        const clamp = (value) =>
-          Math.max(-DAILY_GOAL_GYRO_CLAMP, Math.min(DAILY_GOAL_GYRO_CLAMP, value));
-        const next = gyroSmoothRef.current;
-        const gyroSmoothing = 0.18;
-        const targetX = clamp(rawX);
-        const targetY = clamp(rawY);
-        const targetZ = clamp(rawZ);
-        next.x = next.x + (targetX - next.x) * gyroSmoothing;
-        next.y = next.y + (targetY - next.y) * gyroSmoothing;
-        next.z = next.z + (targetZ - next.z) * gyroSmoothing;
-        gyroRef.current.x = next.x;
-        gyroRef.current.y = next.y;
-        gyroRef.current.z = next.z;
-        if (shakeActive) {
-          const spin = Math.sqrt(next.x * next.x + next.y * next.y + next.z * next.z);
-          const now = Date.now();
-          if (
-            spin > DAILY_GOAL_GYRO_THRESHOLD &&
-            now - gyroStateRef.current.lastSpinAt > DAILY_GOAL_GYRO_COOLDOWN_MS
-          ) {
-            gyroStateRef.current.lastSpinAt = now;
-            triggerJiggle();
-          }
-        }
-      }
-    });
-    return () => {
-      subscription?.remove?.();
-    };
-  }, [
-    DAILY_GOAL_TILT_SENSOR_INTERVAL_MS,
-    effectiveTiltSource,
-    physicsEnabled,
-    shakeActive,
-    triggerJiggle,
-  ]);
-  useEffect(() => {
-    if (!physicsEnabled || !gyroEnabled) return;
-    if (sharesDeviceMotionListener) return;
-    const activeGyroSource = effectiveGyroSource;
-    if (!activeGyroSource) return;
-    try {
-      activeGyroSource.setUpdateInterval?.(DAILY_GOAL_GYRO_SENSOR_INTERVAL_MS);
-    } catch (error) {
-      console.warn("gyro interval", error);
-    }
-    const subscription = activeGyroSource.addListener((payload) => {
-      const rotation = payload?.rotationRate || payload?.rotation || payload || {};
-      const rawX = Number(rotation?.x ?? rotation?.alpha ?? 0);
-      const rawY = Number(rotation?.y ?? rotation?.beta ?? 0);
-      const rawZ = Number(rotation?.z ?? rotation?.gamma ?? 0);
-      const clamp = (value) =>
-        Math.max(-DAILY_GOAL_GYRO_CLAMP, Math.min(DAILY_GOAL_GYRO_CLAMP, value));
-      const next = gyroSmoothRef.current;
-      const gyroSmoothing = 0.18;
-      const targetX = clamp(rawX);
-      const targetY = clamp(rawY);
-      const targetZ = clamp(rawZ);
-      next.x = next.x + (targetX - next.x) * gyroSmoothing;
-      next.y = next.y + (targetY - next.y) * gyroSmoothing;
-      next.z = next.z + (targetZ - next.z) * gyroSmoothing;
-      gyroRef.current.x = next.x;
-      gyroRef.current.y = next.y;
-      gyroRef.current.z = next.z;
-      if (shakeActive) {
-        const spin = Math.sqrt(next.x * next.x + next.y * next.y + next.z * next.z);
-        const now = Date.now();
-        if (
-          spin > DAILY_GOAL_GYRO_THRESHOLD &&
-          now - gyroStateRef.current.lastSpinAt > DAILY_GOAL_GYRO_COOLDOWN_MS
-        ) {
-          gyroStateRef.current.lastSpinAt = now;
-          triggerJiggle();
-        }
-      }
-    });
-    return () => subscription?.remove?.();
-  }, [
-    DAILY_GOAL_GYRO_SENSOR_INTERVAL_MS,
-    effectiveGyroSource,
-    gyroEnabled,
-    physicsEnabled,
-    sharesDeviceMotionListener,
-    shakeActive,
-    triggerJiggle,
-  ]);
-  useEffect(() => {
-    if (!physicsEnabled) return;
-    if (!coinsClipLayout.width || !coinsClipLayout.height) return;
-    if (!coinPhysics.length) return;
-    if (!visibleCoinCount) return;
-    let cancelled = false;
-    let lastTime = Date.now();
-    const width = coinsClipLayout.width;
-    const height = coinsClipLayout.height;
-    const minX = PIGGY_COIN_PADDING_X;
-    const minY = PIGGY_COIN_PADDING_Y;
-    const maxX = width - PIGGY_COIN_PADDING_X;
-    const maxY = height - PIGGY_COIN_PADDING_Y;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const baseRadiusX = Math.max(1, (width - PIGGY_COIN_PADDING_X * 2) / 2);
-    const baseRadiusY = Math.max(1, (height - PIGGY_COIN_PADDING_Y * 2) / 2);
-    const collisionBounce = DAILY_GOAL_COIN_COLLISION_BOUNCE;
-    const bounce = DAILY_GOAL_TILT_BOUNCE;
-    const maxSpeed = DAILY_GOAL_TILT_MAX_SPEED;
-    const minMotionSpeed = DAILY_GOAL_TILT_STOP_SPEED * 0.6;
-    const minVisualDelta = DAILY_GOAL_PHYSICS_POSITION_EPSILON;
-
-    const clearSleepTimer = () => {
-      if (!physicsSleepTimerRef.current) return;
-      clearTimeout(physicsSleepTimerRef.current);
-      physicsSleepTimerRef.current = null;
-    };
-
-    const clampCoinToBounds = (coin) => {
-      const limitX = Math.max(minX, maxX - coin.size);
-      const limitY = Math.max(minY, maxY - coin.size);
-      if (coin.x < minX) {
-        coin.x = minX;
-        coin.vx *= -bounce;
-      } else if (coin.x > limitX) {
-        coin.x = limitX;
-        coin.vx *= -bounce;
-      }
-      if (coin.y < minY) {
-        coin.y = minY;
-        coin.vy *= -bounce;
-      } else if (coin.y > limitY) {
-        coin.y = limitY;
-        coin.vy *= -bounce;
-      }
-      const radiusX = Math.max(1, baseRadiusX - coin.size / 2);
-      const radiusY = Math.max(1, baseRadiusY - coin.size / 2);
-      const coinCenterX = coin.x + coin.size / 2;
-      const coinCenterY = coin.y + coin.size / 2;
-      const normX = (coinCenterX - centerX) / radiusX;
-      const normY = (coinCenterY - centerY) / radiusY;
-      const distSq = normX * normX + normY * normY;
-      if (distSq > 1) {
-        const dist = Math.sqrt(distSq) || 1;
-        const scale = 1 / dist;
-        const clampedCenterX = centerX + (coinCenterX - centerX) * scale;
-        const clampedCenterY = centerY + (coinCenterY - centerY) * scale;
-        coin.x = clampedCenterX - coin.size / 2;
-        coin.y = clampedCenterY - coin.size / 2;
-        const normalXRaw = (clampedCenterX - centerX) / (radiusX * radiusX);
-        const normalYRaw = (clampedCenterY - centerY) / (radiusY * radiusY);
-        const normalLength = Math.hypot(normalXRaw, normalYRaw) || 1;
-        const normalX = normalXRaw / normalLength;
-        const normalY = normalYRaw / normalLength;
-        const velocityDot = coin.vx * normalX + coin.vy * normalY;
-        if (velocityDot > 0) {
-          coin.vx -= (1 + bounce) * velocityDot * normalX;
-          coin.vy -= (1 + bounce) * velocityDot * normalY;
-        }
-      }
-    };
-
-    const scheduleNext = (idle = false) => {
-      if (cancelled) return;
-      if (idle) {
-        physicsLoopRef.current = null;
-        clearSleepTimer();
-        physicsSleepTimerRef.current = setTimeout(() => {
-          physicsSleepTimerRef.current = null;
-          step();
-        }, DAILY_GOAL_PHYSICS_IDLE_STEP_MS);
-        return;
-      }
-      clearSleepTimer();
-      physicsLoopRef.current = requestAnimationFrame(step);
-    };
-
-    const step = () => {
-      if (cancelled) return;
-      const now = Date.now();
-      const dt = Math.min(48, Math.max(8, now - lastTime)) / 1000;
-      lastTime = now;
-      const tiltX = Math.abs(tiltRef.current.x) < DAILY_GOAL_TILT_DEADZONE ? 0 : tiltRef.current.x;
-      const tiltY = Math.abs(tiltRef.current.y) < DAILY_GOAL_TILT_DEADZONE ? 0 : tiltRef.current.y;
-      const gyro = gyroRef.current;
-      const gyroX = gyro?.y ?? 0;
-      const gyroY = gyro?.x ?? 0;
-      const gyroAccelX = gyroX * DAILY_GOAL_GYRO_ACCEL;
-      const gyroAccelY = -gyroY * DAILY_GOAL_GYRO_ACCEL;
-      const tiltMagnitude = Math.hypot(tiltX, tiltY);
-      const tiltStrength = Math.min(1, tiltMagnitude);
-      const gravityDir =
-        tiltMagnitude > DAILY_GOAL_TILT_DEADZONE
-          ? { x: tiltX / tiltMagnitude, y: -tiltY / tiltMagnitude }
-          : { x: 0, y: 1 };
-      const gravityStrength = DAILY_GOAL_GRAVITY + tiltStrength * DAILY_GOAL_TILT_ACCEL;
-      const accelX = gravityDir.x * gravityStrength + gyroAccelX;
-      const accelY = gravityDir.y * gravityStrength + gyroAccelY;
-      const gyroMagnitude = Math.hypot(gyroX, gyroY);
-      const allowSleep =
-        tiltMagnitude < DAILY_GOAL_TILT_STOP_TILT && gyroMagnitude < DAILY_GOAL_TILT_STOP_GYRO;
-      const coins = coinPhysicsRef.current;
-      const coinCount = Math.min(visibleCoinCount, coins.length);
-      if (!coinCount) {
-        scheduleNext(true);
-        return;
-      }
-
-      let movingCoins = 0;
-      let positionChanged = false;
-      for (let i = 0; i < coinCount; i += 1) {
-        const coin = coins[i];
-        if (!coin) continue;
-        const previousX = coin.x;
-        const previousY = coin.y;
-        coin.vx += accelX * dt;
-        coin.vy += accelY * dt;
-        const speed = Math.hypot(coin.vx, coin.vy);
-        const drag = Math.exp(-(DAILY_GOAL_TILT_FRICTION + speed * DAILY_GOAL_TILT_DRAG) * dt);
-        coin.vx *= drag;
-        coin.vy *= drag;
-        if (allowSleep && speed < DAILY_GOAL_TILT_STOP_SPEED) {
-          coin.vx = 0;
-          coin.vy = 0;
-        }
-        if (speed > maxSpeed && speed > 0) {
-          const scale = maxSpeed / speed;
-          coin.vx *= scale;
-          coin.vy *= scale;
-        }
-        coin.x += coin.vx * dt;
-        coin.y += coin.vy * dt;
-        clampCoinToBounds(coin);
-        if (Math.abs(coin.vx) > minMotionSpeed || Math.abs(coin.vy) > minMotionSpeed) {
-          movingCoins += 1;
-        }
-        if (Math.abs(coin.x - previousX) > minVisualDelta || Math.abs(coin.y - previousY) > minVisualDelta) {
-          positionChanged = true;
-        }
-      }
-
-      if (allowSleep && movingCoins === 0 && !positionChanged) {
-        scheduleNext(true);
-        return;
-      }
-
-      for (let iter = 0; iter < dailyGoalCollisionIterations; iter += 1) {
-        const applyImpulse = iter === 0;
-        for (let i = 0; i < coinCount; i += 1) {
-          const coinA = coins[i];
-          if (!coinA) continue;
-          for (let j = i + 1; j < coinCount; j += 1) {
-            const coinB = coins[j];
-            if (!coinB) continue;
-            const radiusA = coinA.size * 0.5;
-            const radiusB = coinB.size * 0.5;
-            const centerAx = coinA.x + radiusA;
-            const centerAy = coinA.y + radiusA;
-            const centerBx = coinB.x + radiusB;
-            const centerBy = coinB.y + radiusB;
-            const dx = centerBx - centerAx;
-            const dy = centerBy - centerAy;
-            const minDist = radiusA + radiusB;
-            const distSq = dx * dx + dy * dy;
-            if (distSq >= minDist * minDist) continue;
-            const dist = Math.sqrt(distSq) || 0.0001;
-            const hasNormal = distSq > 0.000001;
-            const normalX = hasNormal ? dx / dist : 1;
-            const normalY = hasNormal ? dy / dist : 0;
-            const overlap = minDist - dist;
-            if (overlap > 0) {
-              const correction =
-                Math.max(0, overlap - DAILY_GOAL_COIN_COLLISION_SLOP) *
-                DAILY_GOAL_COIN_COLLISION_PERCENT;
-              if (correction > 0) {
-                const separation = correction / 2;
-                coinA.x -= normalX * separation;
-                coinA.y -= normalY * separation;
-                coinB.x += normalX * separation;
-                coinB.y += normalY * separation;
-                positionChanged = true;
-              }
-            }
-            const relVelX = coinA.vx - coinB.vx;
-            const relVelY = coinA.vy - coinB.vy;
-            const relVel = relVelX * normalX + relVelY * normalY;
-            const relSpeed = Math.abs(relVel);
-            if (applyImpulse && relVel < -DAILY_GOAL_COIN_COLLISION_VELOCITY_EPS) {
-              const restitutionScale = Math.min(
-                1,
-                Math.max(
-                  0,
-                  (relSpeed - DAILY_GOAL_COIN_COLLISION_RESTITUTION_MIN_SPEED) /
-                    DAILY_GOAL_COIN_COLLISION_RESTITUTION_RANGE
-                )
-              );
-              const restitution = collisionBounce * restitutionScale;
-              const impulse = (-(1 + restitution) * relVel) / 2;
-              const impulseX = impulse * normalX;
-              const impulseY = impulse * normalY;
-              coinA.vx += impulseX;
-              coinA.vy += impulseY;
-              coinB.vx -= impulseX;
-              coinB.vy -= impulseY;
-            }
-            if (overlap > DAILY_GOAL_COIN_COLLISION_SLOP && relSpeed < DAILY_GOAL_COIN_COLLISION_REST_SPEED) {
-              const cancel = relVel * 0.5;
-              coinA.vx -= cancel * normalX;
-              coinA.vy -= cancel * normalY;
-              coinB.vx += cancel * normalX;
-              coinB.vy += cancel * normalY;
-              coinA.vx *= DAILY_GOAL_COIN_COLLISION_REST_DAMPING;
-              coinA.vy *= DAILY_GOAL_COIN_COLLISION_REST_DAMPING;
-              coinB.vx *= DAILY_GOAL_COIN_COLLISION_REST_DAMPING;
-              coinB.vy *= DAILY_GOAL_COIN_COLLISION_REST_DAMPING;
-            }
-          }
-        }
-      }
-
-      let hasVisualMotion = false;
-      for (let i = 0; i < coinCount; i += 1) {
-        const coin = coins[i];
-        if (!coin) continue;
-        clampCoinToBounds(coin);
-        const renderX = Number.isFinite(coin.renderX) ? coin.renderX : coin.x;
-        const renderY = Number.isFinite(coin.renderY) ? coin.renderY : coin.y;
-        if (Math.abs(coin.x - renderX) > minVisualDelta || Math.abs(coin.y - renderY) > minVisualDelta) {
-          coin.renderX = coin.x;
-          coin.renderY = coin.y;
-          coin.animX.setValue(coin.x);
-          coin.animY.setValue(coin.y);
-          hasVisualMotion = true;
-        }
-      }
-
-      const shouldStayActive =
-        !allowSleep ||
-        movingCoins > 0 ||
-        hasVisualMotion ||
-        tiltMagnitude >= DAILY_GOAL_TILT_STOP_TILT ||
-        gyroMagnitude >= DAILY_GOAL_TILT_STOP_GYRO;
-      scheduleNext(!shouldStayActive);
-    };
-
-    scheduleNext(false);
-    return () => {
-      cancelled = true;
-      if (physicsLoopRef.current) {
-        cancelAnimationFrame(physicsLoopRef.current);
-        physicsLoopRef.current = null;
-      }
-      clearSleepTimer();
-    };
-  }, [
-    coinPhysics.length,
-    coinsClipLayout.height,
-    coinsClipLayout.width,
-    dailyGoalCollisionIterations,
-    physicsEnabled,
-    visibleCoinCount,
-  ]);
-  useEffect(() => {
-    if (!shakeActive || physicsEnabled) return;
-    const activeGyroSource = effectiveGyroSource;
-    if (!activeGyroSource) return;
-    try {
-      if (activeGyroSource !== DeviceMotion || !sensorActive) {
-        activeGyroSource.setUpdateInterval?.(120);
-      }
-    } catch (error) {
-      console.warn("gyro interval", error);
-    }
-    const subscription = activeGyroSource.addListener((payload) => {
-      const rotation = payload?.rotationRate || payload?.rotation || payload || {};
-      const x = Number(rotation.x ?? rotation.alpha ?? 0);
-      const y = Number(rotation.y ?? rotation.beta ?? 0);
-      const z = Number(rotation.z ?? rotation.gamma ?? 0);
-      const spin = Math.sqrt(x * x + y * y + z * z);
-      const now = Date.now();
-      if (
-        spin > DAILY_GOAL_GYRO_THRESHOLD &&
-        now - gyroStateRef.current.lastSpinAt > DAILY_GOAL_GYRO_COOLDOWN_MS
-      ) {
-        gyroStateRef.current.lastSpinAt = now;
-        triggerJiggle();
-      }
-    });
-    return () => subscription?.remove?.();
-  }, [effectiveGyroSource, physicsEnabled, sensorActive, shakeActive, triggerJiggle]);
-  useEffect(() => {
-    const prev = lastSavedCountRef.current;
-    if (safeSavedCardCount === prev) return;
-    lastSavedCountRef.current = safeSavedCardCount;
-    const delta = safeSavedCardCount - prev;
-    setExtraCoinCount((current) => {
-      if (delta <= 0) return 0;
-      const next = Math.max(0, current - delta * 2);
-      return next;
-    });
-  }, [safeSavedCardCount]);
-  const displayGoalLabel = dailyGoalLabel || "0";
-  const collectableCoins = visibleCoinCount;
-  const canCollect = isGoalComplete && collectableCoins > 0 && !isCollected;
-  const collectHintLabel = useMemo(() => t("dailyGoalCollectHint"), [t]);
-  const handleCollectPress = useCallback(() => {
-    if (!canCollect) return;
-    if (typeof onCollectCoins !== "function") return;
-    onCollectCoins(collectableCoins);
-  }, [canCollect, collectableCoins, onCollectCoins]);
-  const checkmarkColor = isDarkMode ? "#7FE4AC" : SAVE_ACTION_COLOR;
-  const lidPalette = useMemo(
-    () =>
-      isGoalComplete
-        ? {
-            base: isDarkMode ? "#E2B35C" : "#F5C978",
-            border: isDarkMode ? "#B6842E" : "#D6A24C",
-            shine: isDarkMode ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.7)",
-            knob: isDarkMode ? "#F6D28A" : "#FFE2A6",
-            shadow: isDarkMode ? "rgba(0,0,0,0.5)" : "rgba(140,98,20,0.3)",
-          }
-        : null,
-    [isDarkMode, isGoalComplete]
-  );
-  const dropTranslateY = dropAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-60, 24],
-  });
-  const dropOpacity = dropAnim.interpolate({
-    inputRange: [0, 0.12, 1],
-    outputRange: [0, 1, 0.9],
-  });
-  const dropScale = dropAnim.interpolate({
-    inputRange: [0, 0.45, 1],
-    outputRange: [0.9, 1.05, 0.98],
-  });
+  const accent = palette?.accent || SAVE_ACTION_COLOR;
+  const visibleEntries = Array.isArray(entries) ? entries.slice(0, 3) : [];
+  const entryCount = Array.isArray(entries) ? entries.length : 0;
+  const hasEntries = visibleEntries.length > 0;
+  const backgroundColor = palette?.background || colors.card;
+  const titleColor = palette?.title || colors.text;
+  const labelColor = palette?.label || colors.muted;
+  const hintColor = palette?.hint || colors.muted;
+  const borderColor = colorWithAlpha(accent, isDarkMode ? 0.58 : 0.28);
   return (
-    <View
+    <Pressable
+      onPress={onPress || undefined}
+      disabled={typeof onPress !== "function"}
       style={[
         styles.progressHeroCard,
         styles.savedHeroCard,
-        styles.heroDailyCard,
+        styles.homeSubscriptionCard,
         {
-          backgroundColor: palette.background,
-          borderColor: palette.border,
-          shadowColor: isDarkMode ? "#000" : "rgba(0,0,0,0.2)",
+          backgroundColor,
+          borderColor,
+          shadowColor: accent,
         },
         style,
       ]}
     >
-      <View pointerEvents="none" style={styles.savedHeroGlowWrap}>
-        <View style={[styles.savedHeroGlow, { backgroundColor: glowColor }]} />
-        <View style={[styles.savedHeroGlow, styles.savedHeroGlowBottom, { backgroundColor: glowColor }]} />
+      <View pointerEvents="none" style={styles.subscriptionWidgetGlowLayer}>
+        <View
+          style={[
+            styles.subscriptionWidgetGlow,
+            { backgroundColor: colorWithAlpha(accent, isDarkMode ? 0.22 : 0.16) },
+          ]}
+        />
       </View>
-      <View style={styles.heroDailyHeader}>
-        <Text style={[styles.heroDailyTitle, { color: palette.subtext }]}>
-          {t("dailyGoalTitle")}
-        </Text>
-        {monthLabel ? (
-          <View style={[styles.heroDailyChip, { borderColor: palette.border }]}>
-            <Text style={[styles.heroDailyChipText, { color: palette.subtext }]} numberOfLines={1}>
-              {monthLabel}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-      <View style={styles.heroDailyGoalBody}>
-        <View style={styles.piggyWrap}>
-          <Pressable
-            style={styles.piggyBodyWrap}
-            onPress={handleCollectPress}
-            disabled={!canCollect}
+      <View style={styles.homeSubscriptionHeader}>
+        <View style={styles.subscriptionWidgetTitleBlock}>
+          <Text style={[styles.subscriptionWidgetEyebrow, { color: accent }]}>
+            {t("subscriptionWidgetEyebrow")}
+          </Text>
+          <Text style={[styles.subscriptionWidgetTitle, { color: titleColor }]}>
+            {t("subscriptionWidgetTitle")}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.subscriptionWidgetTotalPill,
+            { backgroundColor: colorWithAlpha(accent, isDarkMode ? 0.22 : 0.1) },
+          ]}
+        >
+          <Text style={[styles.subscriptionWidgetTotalLabel, { color: accent }]}>
+            {t("subscriptionWidgetTotal")}
+          </Text>
+          <Text
+            style={[styles.subscriptionWidgetTotalValue, { color: accent }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.72}
           >
-            <View style={[styles.piggyShadow, { shadowColor: piggyPalette.shadow }]} />
-            <View
-              style={[
-                styles.piggyBody,
-                {
-                  backgroundColor: piggyPalette.fill,
-                  borderColor: piggyPalette.border,
-                  shadowColor: piggyPalette.shadow,
-                },
-              ]}
-            >
-              {blurAvailable ? (
-                Platform.OS === "android" && shouldUseAndroidCommunityBlur() ? (
-                  <AndroidBlurView
-                    blurType={isDarkMode ? "dark" : "light"}
-                    blurAmount={glassBlurAmount}
-                    autoUpdate={ANDROID_BLUR_AUTO_UPDATE}
-                    reducedTransparencyFallbackColor={piggyPalette.tint}
-                    style={[StyleSheet.absoluteFill, styles.piggyGlassBlur]}
-                  />
-                ) : (
-                  <ExpoBlurView
-                    tint={isDarkMode ? "dark" : "light"}
-                    intensity={glassBlurIntensity}
-                    blurReductionFactor={
-                      Platform.OS === "android" ? ANDROID_EXPO_BLUR_REDUCTION_FACTOR : undefined
-                    }
-                    experimentalBlurMethod={
-                      Platform.OS === "android" ? "dimezisBlurView" : undefined
-                    }
-                    style={[StyleSheet.absoluteFill, styles.piggyGlassBlur]}
-                  />
-                )
-              ) : (
-                <View
-                  style={[
-                    StyleSheet.absoluteFill,
-                    styles.piggyGlassBlurFallback,
-                    { backgroundColor: piggyPalette.tint },
-                  ]}
-                />
-              )}
-              <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
-                <Defs>
-                  <SvgLinearGradient id={glassGradientId} x1="0" y1="0" x2="1" y2="1">
-                    <SvgStop offset="0" stopColor={colorWithAlpha("#FFFFFF", isDarkMode ? 0.16 : 0.5)} />
-                    <SvgStop
-                      offset="0.52"
-                      stopColor={colorWithAlpha("#FFFFFF", isDarkMode ? 0.06 : 0.2)}
-                    />
-                    <SvgStop
-                      offset="1"
-                      stopColor={colorWithAlpha("#9FB3CF", isDarkMode ? 0.18 : 0.26)}
-                    />
-                  </SvgLinearGradient>
-                  <SvgLinearGradient id={glassShadeId} x1="0.1" y1="0" x2="0.9" y2="1">
-                    <SvgStop
-                      offset="0"
-                      stopColor={colorWithAlpha("#FFFFFF", isDarkMode ? 0.12 : 0.3)}
-                    />
-                    <SvgStop
-                      offset="0.65"
-                      stopColor={colorWithAlpha("#FFFFFF", isDarkMode ? 0.04 : 0.1)}
-                    />
-                    <SvgStop
-                      offset="1"
-                      stopColor={colorWithAlpha("#5D6C8A", isDarkMode ? 0.35 : 0.22)}
-                    />
-                  </SvgLinearGradient>
-                </Defs>
-                <SvgRect x="0" y="0" width="100%" height="100%" fill={`url(#${glassGradientId})`} />
-                <SvgRect x="0" y="0" width="100%" height="100%" fill={`url(#${glassShadeId})`} />
-              </Svg>
-              <View style={[styles.piggyGlassInner, { borderColor: piggyPalette.innerShadow }]} />
-              <View style={[styles.piggyGlassHighlight, { backgroundColor: piggyPalette.highlight }]} />
+            {totalMonthlyLabel}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.homeSubscriptionSummaryRow}>
+        <View style={styles.homeSubscriptionNextBlock}>
+          <Text style={[styles.subscriptionTimerLabel, { color: labelColor }]}>
+            {t("subscriptionWidgetNext")}
+          </Text>
+          <Text
+            style={[styles.homeSubscriptionTimerValue, { color: accent }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.78}
+          >
+            {timerText}
+          </Text>
+        </View>
+        <Text style={[styles.homeSubscriptionCount, { color: hintColor }]} numberOfLines={1}>
+          {hasEntries ? `${visibleEntries.length}/${entryCount}` : t("subscriptionWidgetNoSubscriptions")}
+        </Text>
+      </View>
+      <View style={styles.homeSubscriptionList}>
+        {hasEntries ? (
+          visibleEntries.map((entry) => {
+            const entryTimer =
+              entry.daysUntil == null
+                ? t("subscriptionWidgetNoDate")
+                : entry.daysUntil <= 0
+                ? t("subscriptionWidgetDueToday")
+                : t("subscriptionWidgetDaysLeft", { days: entry.daysUntil });
+            return (
               <View
+                key={entry.id}
                 style={[
-                  styles.piggyGlassHighlight,
-                  styles.piggyGlassHighlightSecondary,
-                  { backgroundColor: piggyPalette.highlight },
-                ]}
-              />
-              <View style={[styles.piggyGlassRim, { backgroundColor: piggyPalette.rim }]} />
-              {isGoalComplete && lidPalette ? (
-                <>
-                  <View
-                    style={[
-                      styles.piggyLid,
-                      {
-                        backgroundColor: lidPalette.base,
-                        borderColor: lidPalette.border,
-                        shadowColor: lidPalette.shadow,
-                      },
-                    ]}
-                  />
-                  <View style={[styles.piggyLidHighlight, { backgroundColor: lidPalette.shine }]} />
-                  <View
-                    style={[
-                      styles.piggyLidKnob,
-                      { backgroundColor: lidPalette.knob, borderColor: lidPalette.border },
-                    ]}
-                  />
-                </>
-              ) : null}
-              <View style={styles.piggyCoinsClip} onLayout={handleCoinsClipLayout} pointerEvents="none">
-                {GREEN_HEALTH_COIN_ASSET
-                  ? coinSlots.slice(0, coinsToShow).map((slot, index) => {
-                      const jiggle = jiggleFactors[index] || { x: 0, y: 0, r: 0 };
-                      const jiggleX = Animated.multiply(jiggleAnim, jiggle.x);
-                      const jiggleY = Animated.multiply(jiggleAnim, jiggle.y);
-                      const rotate = jiggleAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: ["0deg", `${jiggle.r}deg`],
-                      });
-                      const opacity = Math.max(0.3, 0.95 - index * 0.05);
-                      const physicsCoin = coinPhysics[index];
-                      const translateX = physicsCoin ? Animated.add(physicsCoin.animX, jiggleX) : jiggleX;
-                      const translateY = physicsCoin ? Animated.add(physicsCoin.animY, jiggleY) : jiggleY;
-                      const size = physicsCoin?.size ?? slot.size;
-                      const baseStyle = physicsCoin
-                        ? { left: 0, top: 0, width: size, height: size }
-                        : { left: slot.left, bottom: slot.bottom, width: size, height: size };
-                      return (
-                        <Animated.Image
-                          key={`piggy-coin-${index}`}
-                          source={GREEN_HEALTH_COIN_ASSET}
-                          style={[
-                            styles.piggyCoin,
-                            baseStyle,
-                            {
-                              opacity,
-                              transform: [
-                                { translateX },
-                                { translateY },
-                                { rotate: slot.rotate },
-                                { rotate: rotate },
-                              ],
-                            },
-                          ]}
-                          pointerEvents="none"
-                        />
-                      );
-                    })
-                  : null}
-              </View>
-              <View style={styles.piggyGoalValueWrap}>
-                {isGoalComplete ? (
-                  <>
-                    {canCollect ? (
-                      <Text style={[styles.piggyCollectLabel, { color: checkmarkColor }]}>
-                        {collectHintLabel}
-                      </Text>
-                    ) : null}
-                    <Text style={[styles.piggyGoalCheck, { color: checkmarkColor }]}>✓</Text>
-                  </>
-                ) : (
-                  <Text
-                    style={[styles.piggyGoalValue, { color: piggyPalette.value }]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.7}
-                  >
-                    {displayGoalLabel}
-                  </Text>
-                )}
-              </View>
-            </View>
-            <View
-              style={[
-                styles.piggyEarLeft,
-                { backgroundColor: piggyPalette.fill, borderColor: piggyPalette.border },
-              ]}
-            />
-            <View
-              style={[
-                styles.piggyEarRight,
-                { backgroundColor: piggyPalette.fill, borderColor: piggyPalette.border },
-              ]}
-            />
-            <View
-              style={[
-                styles.piggySnout,
-                { backgroundColor: piggyPalette.fill, borderColor: piggyPalette.border },
-              ]}
-            >
-              <View style={styles.piggyNostrilRow}>
-                <View style={[styles.piggyNostril, { backgroundColor: piggyPalette.border }]} />
-                <View style={[styles.piggyNostril, { backgroundColor: piggyPalette.border }]} />
-              </View>
-            </View>
-            <View
-              style={[
-                styles.piggyLegLeft,
-                { backgroundColor: piggyPalette.fill, borderColor: piggyPalette.border },
-              ]}
-            />
-            <View
-              style={[
-                styles.piggyLegRight,
-                { backgroundColor: piggyPalette.fill, borderColor: piggyPalette.border },
-              ]}
-            />
-            <View style={[styles.piggyTail, { backgroundColor: piggyPalette.border }]} />
-            {GREEN_HEALTH_COIN_ASSET ? (
-              <Animated.Image
-                source={GREEN_HEALTH_COIN_ASSET}
-                style={[
-                  styles.piggyDropCoin,
+                  styles.homeSubscriptionRow,
                   {
-                    opacity: dropOpacity,
-                    transform: [{ translateY: dropTranslateY }, { scale: dropScale }],
+                    backgroundColor: colorWithAlpha(accent, isDarkMode ? 0.14 : 0.08),
+                    borderColor: colorWithAlpha(accent, isDarkMode ? 0.2 : 0.14),
                   },
                 ]}
-                pointerEvents="none"
-              />
-            ) : null}
-          </Pressable>
-        </View>
-        <Text style={[styles.heroDailySubtitle, { color: palette.subtext }]}>
-          {t("dailyGoalSubtitle")}
-        </Text>
+              >
+                <Text style={styles.homeSubscriptionEmoji}>{entry.emoji}</Text>
+                <View style={styles.homeSubscriptionNameBlock}>
+                  <Text style={[styles.homeSubscriptionName, { color: titleColor }]} numberOfLines={1}>
+                    {entry.title}
+                  </Text>
+                  <Text style={[styles.homeSubscriptionMeta, { color: hintColor }]} numberOfLines={1}>
+                    {entryTimer}
+                  </Text>
+                </View>
+                <Text style={[styles.homeSubscriptionAmount, { color: accent }]} numberOfLines={1}>
+                  {entry.monthlyAmountLabel || entry.amountLabel}
+                </Text>
+              </View>
+            );
+          })
+        ) : (
+          <View
+            style={[
+              styles.homeSubscriptionEmpty,
+              {
+                backgroundColor: colorWithAlpha(accent, isDarkMode ? 0.14 : 0.08),
+                borderColor: colorWithAlpha(accent, isDarkMode ? 0.2 : 0.14),
+              },
+            ]}
+          >
+            <Text style={[styles.homeSubscriptionEmptyEmoji, { color: accent }]}>+</Text>
+            <Text style={[styles.homeSubscriptionEmptyText, { color: hintColor }]} numberOfLines={2}>
+              {t("subscriptionWidgetEmpty")}
+            </Text>
+          </View>
+        )}
       </View>
-    </View>
+      <Text style={[styles.subscriptionWidgetTapHint, { color: hintColor }]} numberOfLines={1}>
+        {t("subscriptionWidgetTapHint")}
+      </Text>
+    </Pressable>
   );
 });
 
@@ -21926,6 +21058,8 @@ const BugReportModal = React.memo(function BugReportModal({
   visible = false,
   colors,
   language,
+  keyboardInset = 0,
+  topSafeInset = 0,
   onClose,
   onFilled,
   onSubmit,
@@ -21935,8 +21069,53 @@ const BugReportModal = React.memo(function BugReportModal({
   const [steps, setSteps] = useState("");
   const [sending, setSending] = useState(false);
   const filledLoggedRef = useRef(false);
+  const fieldsScrollRef = useRef(null);
+  const fieldsScrollHeightRef = useRef(0);
+  const fieldLayoutsRef = useRef({});
+  const activeFieldRef = useRef(null);
   const descriptionReady = description.trim().length > 0;
   const submitDisabled = sending || !descriptionReady;
+  const normalizedKeyboardInset = Math.max(0, Number(keyboardInset) || 0);
+  const normalizedTopSafeInset = Math.max(0, Number(topSafeInset) || 0);
+  const keyboardAwareCardStyle = useMemo(() => {
+    if (!normalizedKeyboardInset) return null;
+    const availableHeight =
+      SCREEN_HEIGHT - normalizedKeyboardInset - normalizedTopSafeInset - (IS_SHORT_DEVICE ? 20 : 36);
+    return { maxHeight: Math.max(260, Math.round(Math.min(SCREEN_HEIGHT * 0.86, availableHeight))) };
+  }, [normalizedKeyboardInset, normalizedTopSafeInset]);
+  const registerFieldLayout = useCallback((fieldKey, event) => {
+    const layoutY = event?.nativeEvent?.layout?.y;
+    if (!Number.isFinite(layoutY)) return;
+    fieldLayoutsRef.current[fieldKey] = layoutY;
+  }, []);
+  const scrollFocusedFieldIntoView = useCallback((fieldKey) => {
+    if (!fieldKey) return;
+    requestAnimationFrame(() => {
+      const layoutY = fieldLayoutsRef.current[fieldKey];
+      if (!Number.isFinite(layoutY)) return;
+      const visibleHeight = Math.max(1, fieldsScrollHeightRef.current || 0);
+      const targetY = Math.max(0, layoutY - visibleHeight * 0.36);
+      fieldsScrollRef.current?.scrollTo?.({ y: targetY, animated: true });
+    });
+  }, []);
+  const handleFieldFocus = useCallback(
+    (fieldKey) => {
+      activeFieldRef.current = fieldKey;
+      scrollFocusedFieldIntoView(fieldKey);
+    },
+    [scrollFocusedFieldIntoView]
+  );
+  const handleFieldBlur = useCallback((fieldKey) => {
+    if (activeFieldRef.current === fieldKey) activeFieldRef.current = null;
+  }, []);
+  useEffect(() => {
+    if (!normalizedKeyboardInset || !activeFieldRef.current) return undefined;
+    const timeout = setTimeout(
+      () => scrollFocusedFieldIntoView(activeFieldRef.current),
+      Platform.OS === "ios" ? 80 : 120
+    );
+    return () => clearTimeout(timeout);
+  }, [normalizedKeyboardInset, scrollFocusedFieldIntoView]);
   useEffect(() => {
     if (visible) {
       filledLoggedRef.current = false;
@@ -22002,6 +21181,7 @@ const BugReportModal = React.memo(function BugReportModal({
             <View
               style={[
                 styles.bugReportModalCard,
+                keyboardAwareCardStyle,
                 { backgroundColor: colors.card, borderColor: colors.border },
               ]}
             >
@@ -22024,50 +21204,73 @@ const BugReportModal = React.memo(function BugReportModal({
                   <Text style={[styles.bugReportCloseText, { color: colors.muted }]}>×</Text>
                 </TouchableOpacity>
               </View>
-              <View style={styles.bugReportField}>
-                <Text style={[styles.bugReportLabel, { color: colors.muted }]}>
-                  {copy.descriptionLabel}
-                </Text>
-                <TextInput
-                  value={description}
-                  onChangeText={handleDescriptionChange}
-                  placeholder={copy.descriptionPlaceholder}
-                  placeholderTextColor={colorWithAlpha(colors.muted, 0.72)}
-                  multiline
-                  textAlignVertical="top"
-                  style={[
-                    styles.bugReportInput,
-                    styles.bugReportDescriptionInput,
-                    {
-                      color: colors.text,
-                      borderColor: colors.border,
-                      backgroundColor: colors.background,
-                    },
-                  ]}
-                />
-              </View>
-              <View style={styles.bugReportField}>
-                <Text style={[styles.bugReportLabel, { color: colors.muted }]}>
-                  {copy.stepsLabel}
-                </Text>
-                <TextInput
-                  value={steps}
-                  onChangeText={handleStepsChange}
-                  placeholder={copy.stepsPlaceholder}
-                  placeholderTextColor={colorWithAlpha(colors.muted, 0.72)}
-                  multiline
-                  textAlignVertical="top"
-                  style={[
-                    styles.bugReportInput,
-                    styles.bugReportStepsInput,
-                    {
-                      color: colors.text,
-                      borderColor: colors.border,
-                      backgroundColor: colors.background,
-                    },
-                  ]}
-                />
-              </View>
+              <ScrollView
+                ref={fieldsScrollRef}
+                style={styles.bugReportFieldsScroll}
+                contentContainerStyle={styles.bugReportFieldsScrollContent}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+                onLayout={(event) => {
+                  fieldsScrollHeightRef.current = event?.nativeEvent?.layout?.height || 0;
+                }}
+              >
+                <View
+                  style={styles.bugReportField}
+                  onLayout={(event) => registerFieldLayout("description", event)}
+                >
+                  <Text style={[styles.bugReportLabel, { color: colors.muted }]}>
+                    {copy.descriptionLabel}
+                  </Text>
+                  <TextInput
+                    value={description}
+                    onChangeText={handleDescriptionChange}
+                    placeholder={copy.descriptionPlaceholder}
+                    placeholderTextColor={colorWithAlpha(colors.muted, 0.72)}
+                    multiline
+                    textAlignVertical="top"
+                    onFocus={() => handleFieldFocus("description")}
+                    onBlur={() => handleFieldBlur("description")}
+                    style={[
+                      styles.bugReportInput,
+                      styles.bugReportDescriptionInput,
+                      {
+                        color: colors.text,
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                  />
+                </View>
+                <View
+                  style={styles.bugReportField}
+                  onLayout={(event) => registerFieldLayout("steps", event)}
+                >
+                  <Text style={[styles.bugReportLabel, { color: colors.muted }]}>
+                    {copy.stepsLabel}
+                  </Text>
+                  <TextInput
+                    value={steps}
+                    onChangeText={handleStepsChange}
+                    placeholder={copy.stepsPlaceholder}
+                    placeholderTextColor={colorWithAlpha(colors.muted, 0.72)}
+                    multiline
+                    textAlignVertical="top"
+                    onFocus={() => handleFieldFocus("steps")}
+                    onBlur={() => handleFieldBlur("steps")}
+                    style={[
+                      styles.bugReportInput,
+                      styles.bugReportStepsInput,
+                      {
+                        color: colors.text,
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                  />
+                </View>
+              </ScrollView>
               <View style={styles.bugReportActions}>
                 <TouchableOpacity
                   style={[styles.bugReportSecondaryButton, { borderColor: colors.border }]}
@@ -22999,6 +22202,265 @@ const HelpGuideModal = React.memo(function HelpGuideModal({
 const MENU_TOP_CONTENT_OFFSET = 24;
 const MAIN_SCREEN_CONTENT_BOTTOM_PADDING = 160;
 
+function TycoonAutosaveModal({
+  visible,
+  events = [],
+  selectedSpentIds = {},
+  onToggleSpent,
+  onConfirm,
+  onClose,
+  colors,
+  t,
+  currency,
+  showReviewWarning = false,
+}) {
+  const entrance = useRef(new Animated.Value(0)).current;
+  const isDarkTheme = colors?.background === THEMES.dark.background;
+  useEffect(() => {
+    if (!visible) {
+      entrance.setValue(0);
+      return;
+    }
+    entrance.setValue(0);
+    Animated.spring(entrance, {
+      toValue: 1,
+      friction: 8,
+      tension: 110,
+      useNativeDriver: true,
+    }).start();
+  }, [entrance, visible]);
+  const totals = useMemo(() => {
+    return (Array.isArray(events) ? events : []).reduce(
+      (acc, entry) => {
+        const amount = Math.max(0, Number(entry?.amountUSD) || 0);
+        if (selectedSpentIds?.[entry.id]) {
+          acc.spent += amount;
+          acc.spentCount += 1;
+        } else {
+          acc.saved += amount;
+          acc.savedCount += 1;
+        }
+        return acc;
+      },
+      { saved: 0, spent: 0, savedCount: 0, spentCount: 0 }
+    );
+  }, [events, selectedSpentIds]);
+  const cardOpacity = entrance.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
+  const cardTranslateY = entrance.interpolate({ inputRange: [0, 1], outputRange: [28, 0] });
+  const savedLabel = formatCurrency(convertToCurrency(totals.saved, currency), currency);
+  const spentLabel = formatCurrency(convertToCurrency(totals.spent, currency), currency);
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={styles.tycoonAutosaveBackdrop}>
+        <Animated.View
+          style={[
+            styles.tycoonAutosaveCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              opacity: cardOpacity,
+              transform: [{ translateY: cardTranslateY }],
+            },
+          ]}
+        >
+          <View style={styles.tycoonAutosaveHeader}>
+            <View style={styles.tycoonAutosaveHeaderText}>
+              <Text style={[styles.tycoonAutosaveTitle, { color: colors.text }]}>
+                {t("tycoonAutosaveTitle")}
+              </Text>
+              <Text style={[styles.tycoonAutosaveSubtitle, { color: colors.muted }]}>
+                {t("tycoonAutosaveSubtitle")}
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.tycoonAutosaveClose} onPress={onClose}>
+              <Text style={[styles.tycoonAutosaveCloseText, { color: colors.muted }]}>×</Text>
+            </TouchableOpacity>
+          </View>
+          {showReviewWarning ? (
+            <View
+              style={[
+                styles.tycoonAutosaveReview,
+                {
+                  borderColor: colorWithAlpha("#F59E0B", isDarkTheme ? 0.5 : 0.34),
+                  backgroundColor: colorWithAlpha("#F59E0B", isDarkTheme ? 0.18 : 0.12),
+                },
+              ]}
+            >
+              <Text style={[styles.tycoonAutosaveReviewTitle, { color: colors.text }]}>
+                {t("tycoonAutosaveReviewTitle")}
+              </Text>
+              <Text style={[styles.tycoonAutosaveReviewBody, { color: colors.muted }]}>
+                {t("tycoonAutosaveReviewBody")}
+              </Text>
+            </View>
+          ) : null}
+          <View style={styles.tycoonAutosaveTotals}>
+            <View style={[styles.tycoonAutosaveTotalPill, { backgroundColor: colorWithAlpha(SAVE_ACTION_COLOR, 0.14) }]}>
+              <Text style={[styles.tycoonAutosaveTotalText, { color: SAVE_ACTION_COLOR }]}>
+                {t("tycoonAutosaveSavedTotal", { amount: savedLabel })}
+              </Text>
+            </View>
+            <View style={[styles.tycoonAutosaveTotalPill, { backgroundColor: colorWithAlpha(SPEND_ACTION_COLOR, 0.12) }]}>
+              <Text style={[styles.tycoonAutosaveTotalText, { color: SPEND_ACTION_COLOR }]}>
+                {t("tycoonAutosaveSpentTotal", { amount: spentLabel })}
+              </Text>
+            </View>
+          </View>
+          <ScrollView style={styles.tycoonAutosaveList} contentContainerStyle={styles.tycoonAutosaveListContent}>
+            {events.map((entry) => {
+              const spent = !!selectedSpentIds?.[entry.id];
+              const amountLabel = formatCurrency(convertToCurrency(entry.amountUSD, currency), currency);
+              return (
+                <TouchableOpacity
+                  key={entry.id}
+                  activeOpacity={0.88}
+                  onPress={() => onToggleSpent(entry.id)}
+                  style={[
+                    styles.tycoonAutosaveItem,
+                    {
+                      borderColor: spent ? colorWithAlpha(SPEND_ACTION_COLOR, 0.5) : colorWithAlpha(SAVE_ACTION_COLOR, 0.46),
+                      backgroundColor: spent
+                        ? colorWithAlpha(SPEND_ACTION_COLOR, isDarkTheme ? 0.22 : 0.11)
+                        : colorWithAlpha(SAVE_ACTION_COLOR, isDarkTheme ? 0.22 : 0.11),
+                    },
+                  ]}
+                >
+                  <View style={[styles.tycoonAutosaveItemIcon, { backgroundColor: colorWithAlpha(SAVE_ACTION_COLOR, 0.16) }]}>
+                    <Text style={styles.tycoonAutosaveItemEmoji}>{entry.emoji || DEFAULT_TEMPTATION_EMOJI}</Text>
+                  </View>
+                  <View style={styles.tycoonAutosaveItemBody}>
+                    <Text style={[styles.tycoonAutosaveItemTitle, { color: colors.text }]} numberOfLines={1}>
+                      {entry.title}
+                    </Text>
+                    <Text style={[styles.tycoonAutosaveItemMeta, { color: colors.muted }]} numberOfLines={1}>
+                      {amountLabel}
+                    </Text>
+                  </View>
+                  <Animated.View
+                    style={[
+                      styles.tycoonAutosaveState,
+                      { backgroundColor: spent ? SPEND_ACTION_COLOR : SAVE_ACTION_COLOR },
+                    ]}
+                  >
+                    <Text style={styles.tycoonAutosaveStateText}>
+                      {spent ? t("spendAction") : t("saveAction")}
+                    </Text>
+                  </Animated.View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          <TouchableOpacity style={[styles.tycoonAutosaveConfirm, { backgroundColor: colors.text }]} onPress={onConfirm}>
+            <Text style={[styles.tycoonAutosaveConfirmText, { color: colors.background }]}>
+              {t("tycoonAutosaveConfirm")}
+            </Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
+
+function TycoonRewardModal({
+  visible,
+  rewards = [],
+  count = 0,
+  reward = 0,
+  colors,
+  t,
+  onCollectAll,
+  onOpenChests,
+}) {
+  const burst = useRef(new Animated.Value(0)).current;
+  const rewardList = Array.isArray(rewards) ? rewards.filter((entry) => Math.max(0, Number(entry?.amount) || 0) > 0) : [];
+  const resolvedCount = Math.max(0, Number(count) || rewardList.length);
+  const resolvedReward =
+    Math.max(0, Number(reward) || 0) ||
+    rewardList.reduce((sum, entry) => sum + Math.max(0, Number(entry?.amount) || 0), 0);
+  const previewRewards = rewardList.length
+    ? rewardList.slice(0, 8)
+    : Array.from({ length: Math.max(1, Math.min(5, resolvedCount || 1)) }).map((_, index) => ({
+        id: `preview-${index}`,
+        amount: resolvedReward,
+      }));
+  useEffect(() => {
+    if (!visible) {
+      burst.setValue(0);
+      return;
+    }
+    burst.setValue(0);
+    Animated.timing(burst, {
+      toValue: 1,
+      duration: 650,
+      easing: Easing.out(Easing.back(1.4)),
+      useNativeDriver: true,
+    }).start();
+  }, [burst, visible]);
+  const handleRequestClose = onCollectAll || onOpenChests || (() => {});
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={handleRequestClose}>
+      <View style={styles.tycoonRewardBackdrop}>
+        <View style={[styles.tycoonRewardCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.tycoonRewardChestRow}>
+            {previewRewards.map((entry, index) => {
+              const tier = getChestRewardTierForAmount(entry.amount || resolvedReward);
+              return (
+              <Animated.Image
+                key={entry.id || index}
+                source={tier?.assets?.closed || DEFAULT_CHEST_REWARD_TIER.assets.closed}
+                style={[
+                  styles.tycoonRewardChest,
+                  {
+                    opacity: burst,
+                    transform: [
+                      {
+                        translateY: burst.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [30 + index * 6, 0],
+                        }),
+                      },
+                      {
+                        scale: burst.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.55, 1],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              />
+              );
+            })}
+          </View>
+          <Text style={[styles.tycoonRewardTitle, { color: colors.text }]}>{t("tycoonAutosaveRewardTitle")}</Text>
+          <Text style={[styles.tycoonRewardBody, { color: colors.muted }]}>
+            {t("tycoonAutosaveRewardBody", { count: resolvedCount, reward: resolvedReward })}
+          </Text>
+          <TouchableOpacity style={[styles.tycoonRewardButton, { backgroundColor: colors.text }]} onPress={onOpenChests}>
+            <Text style={[styles.tycoonRewardButtonText, { color: colors.background }]}>
+              {t("tycoonAutosaveRewardOpen")}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tycoonRewardSecondaryButton, { borderColor: colors.border }]}
+            onPress={onCollectAll}
+          >
+            <Text style={[styles.tycoonRewardButtonText, { color: colors.text }]}>
+              {t("tycoonAutosaveRewardCollect")}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 const FeedScreen = React.memo(
   forwardRef(function FeedScreen(
     {
@@ -23060,11 +22522,6 @@ const FeedScreen = React.memo(
   onDailyRewardClaim = () => {},
   onDailyRewardModalVisibilityChange = null,
   dailyRewardOpenRequestTick = 0,
-  dailyGoalCoinDropTick = 0,
-  onDailyGoalCollect = () => {},
-  dailyGoalCollectedToday = false,
-  dailyGoalCollectedHydrated = false,
-  dailyGoalDayLabel = "",
   editingTemptationId = null,
   editingTitleValue = "",
   editingPriceValue = "",
@@ -23084,6 +22541,7 @@ const FeedScreen = React.memo(
   onTemptationSwipeDelete,
   onSavingsBreakdownPress = () => {},
   onBudgetHeroPress = null,
+  onSubscriptionWidgetPress = null,
   budgetAutoEnabled = true,
   budgetSavingsTransferredUSD = 0,
   budgetDebtTransferredUSD = 0,
@@ -25867,102 +25325,163 @@ const FeedScreen = React.memo(
     [budgetPlan?.remainingUSD, formatLocalAmount]
   );
   const budgetRemainingNegative = (budgetPlan?.remainingUSD || 0) < -0.01;
-  const daysInMonth = useMemo(() => {
-    const date = new Date(todayTimestamp);
-    if (Number.isNaN(date.getTime())) return 30;
-    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  }, [todayTimestamp]);
-  const dayOfMonth = useMemo(() => {
-    const date = new Date(todayTimestamp);
-    if (Number.isNaN(date.getTime())) return 1;
-    return Math.max(1, date.getDate());
-  }, [todayTimestamp]);
-  const daysRemaining = useMemo(
-    () => Math.max(1, Math.max(daysInMonth, 1) - dayOfMonth + 1),
-    [dayOfMonth, daysInMonth]
-  );
-  const dailyGoalStats = useMemo(() => {
-    const monthKey = budgetMonthKey;
-    const todayKey = getDayKey(todayTimestamp);
-    const cutoff30 = todayTimestamp - DAY_MS * 30;
-    const cutoff7 = todayTimestamp - DAY_MS * 7;
-    let savedMonth = 0;
-    let saved30 = 0;
-    let saved7 = 0;
-    let savedToday = 0;
-    let savedCardCountToday = 0;
-    let savedCardCountTotal = 0;
+  const homeSubscriptionReferenceTs = Number.isFinite(heroNowTick) ? heroNowTick : todayTimestamp;
+  const homeSubscriptionHistoryStats = useMemo(() => {
+    const map = new Map();
     resolvedHistoryEvents.forEach((entry) => {
-      if (!entry || !HISTORY_SAVED_GAIN_EVENTS.has(entry.kind)) return;
-      const timestamp = Number(entry.timestamp) || 0;
-      if (!timestamp) return;
-      if (getDayKey(timestamp) === todayKey) {
-        if (DAILY_GOAL_COIN_EVENTS.has(entry.kind)) {
-          savedCardCountToday += 1;
-        }
-      }
-      if (DAILY_GOAL_COIN_EVENTS.has(entry.kind)) {
-        savedCardCountTotal += 1;
-      }
-      const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
-      if (!amount) return;
-      if (getMonthKey(timestamp) === monthKey) savedMonth += amount;
-      if (timestamp >= cutoff30) saved30 += amount;
-      if (timestamp >= cutoff7) saved7 += amount;
-      if (getDayKey(timestamp) === todayKey) {
-        savedToday += amount;
-      }
+      if (!entry || entry.kind !== "spend") return;
+      const meta = entry.meta || {};
+      const key =
+        getInteractionKey(meta.templateId) ||
+        getInteractionKey(meta.template_id) ||
+        getInteractionKey(meta.id) ||
+        getInteractionKey(meta.template);
+      if (!key) return;
+      const amountUSD = Math.max(0, Number(meta.amountUSD) || 0);
+      const current = map.get(key) || { spentUSD: 0, spendCount: 0 };
+      current.spentUSD += amountUSD;
+      current.spendCount += 1;
+      map.set(key, current);
     });
-    return {
-      savedMonth,
-      saved30,
-      saved7,
-      savedToday,
-      savedCardCountToday,
-      savedCardCountTotal,
-    };
-  }, [budgetMonthKey, resolvedHistoryEvents, todayTimestamp]);
-  const baselineDailyPotentialUSD = baselineMonthlyWasteUSD > 0 ? baselineMonthlyWasteUSD / 30 : 0;
-  const recentDailyAvgUSD = dailyGoalStats.saved7 / 7;
-  const budgetMonthlyGoalUSD =
-    Number.isFinite(budgetPlan?.incomeUSD) && Number.isFinite(budgetPlan?.savingsRate)
-      ? Math.max(0, budgetPlan.incomeUSD * budgetPlan.savingsRate)
-      : 0;
-  const monthlyTargetUSD = Math.max(
-    budgetMonthlyGoalUSD,
-    baselineMonthlyWasteUSD > 0 ? baselineMonthlyWasteUSD * 0.6 : 0,
-    dailyGoalStats.saved30 > 0 ? dailyGoalStats.saved30 * 1.15 : 0,
-    baselineDailyPotentialUSD * Math.max(daysInMonth, 1) * 0.35
+    return map;
+  }, [getInteractionKey, resolvedHistoryEvents]);
+  const homeSubscriptionEntries = useMemo(() => {
+    const nowTs = Number(homeSubscriptionReferenceTs) || Date.now();
+    return (Array.isArray(products) ? products : [])
+      .map((item) => {
+        if (!item) return null;
+        const categoryId =
+          typeof resolveTemptationCategory === "function"
+            ? resolveTemptationCategory(item)
+            : item.impulseCategoryOverride || null;
+        if (!isUserSubscriptionTemptation(item, categoryId)) return null;
+        const templateId = getInteractionKey(item.id || item.templateId);
+        if (!templateId) return null;
+        const interactionEntry = getInteractionEntry(item) || {};
+        const nextCheckAt = resolveSubscriptionNextCheckAt(item, interactionEntry, nowTs);
+        const amountUSD = Math.max(0, Number(getTemptationPrice(item)) || 0);
+        const checksPerMonth = Math.max(0, Number(resolveSubscriptionChecksPerMonth(item, interactionEntry)) || 1);
+        const historyStats = homeSubscriptionHistoryStats.get(templateId) || { spentUSD: 0, spendCount: 0 };
+        const interactionCount =
+          (Number(interactionEntry.saveCount) || 0) +
+          (Number(interactionEntry.spendCount) || 0) +
+          (Number(interactionEntry.missedCycles) || 0);
+        const repeatCount = Math.max(Number(historyStats.spendCount) || 0, interactionCount, 0);
+        const daysUntil = Number.isFinite(nextCheckAt)
+          ? Math.max(0, Math.ceil((nextCheckAt - nowTs) / DAY_MS))
+          : null;
+        return {
+          id: templateId,
+          title: resolveTemptationTitle(item, language, item.titleOverride) || t("defaultDealTitle"),
+          emoji: item.emoji || DEFAULT_TEMPTATION_EMOJI,
+          amountLabel: formatLocalAmount(amountUSD),
+          monthlyAmountUSD: amountUSD * checksPerMonth,
+          monthlyAmountLabel: formatLocalAmount(amountUSD * checksPerMonth),
+          repeatCount,
+          nextCheckAt: Number.isFinite(nextCheckAt) ? nextCheckAt : null,
+          daysUntil,
+          createdAt: Number(item.createdAt) || Number(interactionEntry.lastTimerResetAt) || 0,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const aNext = Number.isFinite(a.nextCheckAt) ? a.nextCheckAt : Number.MAX_SAFE_INTEGER;
+        const bNext = Number.isFinite(b.nextCheckAt) ? b.nextCheckAt : Number.MAX_SAFE_INTEGER;
+        if (aNext !== bNext) return aNext - bNext;
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      });
+  }, [
+    formatLocalAmount,
+    getInteractionEntry,
+    getInteractionKey,
+    homeSubscriptionHistoryStats,
+    homeSubscriptionReferenceTs,
+    language,
+    products,
+    resolveTemptationCategory,
+    t,
+  ]);
+  const homeSubscriptionTotalMonthlyUSD = useMemo(
+    () => homeSubscriptionEntries.reduce((sum, entry) => sum + (entry.monthlyAmountUSD || 0), 0),
+    [homeSubscriptionEntries]
   );
-  const remainingTargetUSD = Math.max(monthlyTargetUSD - dailyGoalStats.savedMonth, 0);
-  const rawDailyGoalUSD = remainingTargetUSD / daysRemaining;
-  const weekdayBoost = DAILY_GOAL_WEEKDAY_BOOST[new Date(todayTimestamp).getDay() || 0] || 1;
-  const momentumBoost =
-    rawDailyGoalUSD > 0 && recentDailyAvgUSD > 0
-      ? clampNumber(0.9 + (recentDailyAvgUSD / rawDailyGoalUSD - 1) * 0.15, 0.85, 1.15)
-      : 1;
-  const joinedAtTimestamp = profile?.joinedAt ? new Date(profile.joinedAt).getTime() : NaN;
-  const lifetimeDays = Number.isFinite(joinedAtTimestamp)
-    ? Math.max(1, Math.floor((todayTimestamp - joinedAtTimestamp) / DAY_MS) + 1)
-    : 1;
-  const lifetimeDailyAvgUSD =
-    Number.isFinite(savedTotalUSD) && lifetimeDays > 0 ? savedTotalUSD / lifetimeDays : 0;
-  const dailyGoalUSD = Math.max(
-    0,
-    Math.max(
-      rawDailyGoalUSD * weekdayBoost * momentumBoost,
-      baselineDailyPotentialUSD * 0.35,
-      recentDailyAvgUSD * 0.4,
-      lifetimeDailyAvgUSD * 0.5
-    ) * 0.4
+  const homeSubscriptionTotalMonthlyLabel = useMemo(
+    () => formatLocalAmount(homeSubscriptionTotalMonthlyUSD),
+    [formatLocalAmount, homeSubscriptionTotalMonthlyUSD]
   );
-  const todaySavedUSD = dailyGoalStats.savedToday;
-  const todaySavedCardCount = dailyGoalStats.savedCardCountToday;
-  const dailyGoalRemainingUSD = Math.max(dailyGoalUSD - todaySavedUSD, 0);
-  const dailyGoalLabel = useMemo(
-    () => formatLocalAmount(Math.max(dailyGoalRemainingUSD, 0)),
-    [dailyGoalRemainingUSD, formatLocalAmount]
-  );
+  const homeNextSubscription = homeSubscriptionEntries.find((entry) => Number.isFinite(entry.nextCheckAt)) || null;
+  const homeNextSubscriptionDays = homeNextSubscription?.daysUntil ?? null;
+  const homeSubscriptionWidgetPalette = useMemo(() => {
+    if (homeNextSubscriptionDays != null && homeNextSubscriptionDays < 3) {
+      return isDarkMode
+        ? {
+            accent: "#E15555",
+            background: "rgba(58,18,22,0.92)",
+            title: "#FFF1F1",
+            label: "#FFC9C9",
+            hint: "#FFB3B3",
+          }
+        : {
+            accent: "#D64545",
+            background: "#FFF1F1",
+            title: "#4A1616",
+            label: "#A33434",
+            hint: "#8C4A4A",
+          };
+    }
+    if (homeNextSubscriptionDays != null && homeNextSubscriptionDays < 5) {
+      return isDarkMode
+        ? {
+            accent: "#E3B341",
+            background: "rgba(59,45,12,0.92)",
+            title: "#FFF7D6",
+            label: "#FFE7A3",
+            hint: "#F6D98B",
+          }
+        : {
+            accent: "#D4A017",
+            background: "#FFF8E3",
+            title: "#4E3A09",
+            label: "#8D6900",
+            hint: "#7B6230",
+          };
+    }
+    return isDarkMode
+      ? {
+          accent: "#2EB873",
+          background: "rgba(15,48,33,0.92)",
+          title: "#EEFFF5",
+          label: "#BFF3D4",
+          hint: "#A6E8C1",
+        }
+      : {
+          accent: "#2EB873",
+          background: "#F1FBF5",
+          title: "#103B25",
+          label: "#1B7A4A",
+          hint: "#4E7A61",
+        };
+  }, [homeNextSubscriptionDays, isDarkMode]);
+  const homeSubscriptionTimerText =
+    homeNextSubscriptionDays == null
+      ? t("subscriptionWidgetNoDate")
+      : homeNextSubscriptionDays <= 0
+      ? t("subscriptionWidgetDueToday")
+      : t("subscriptionWidgetDaysLeft", { days: homeNextSubscriptionDays });
+  const handleHomeSubscriptionPress = useCallback(() => {
+    logEvent("subscription_watch_opened", {
+      source: "home_carousel",
+      entry_count: homeSubscriptionEntries.length,
+      monthly_total_usd: Math.round(homeSubscriptionTotalMonthlyUSD * 100) / 100,
+      has_next_payment: homeNextSubscription ? 1 : 0,
+    });
+    onSubscriptionWidgetPress?.();
+  }, [
+    homeNextSubscription,
+    homeSubscriptionEntries.length,
+    homeSubscriptionTotalMonthlyUSD,
+    onSubscriptionWidgetPress,
+  ]);
   useEffect(() => {
     if (!resolvedBudgetSpeechDataRef) {
       return;
@@ -26083,6 +25602,49 @@ const FeedScreen = React.memo(
 
   const filteredProducts = orderedProducts;
   const [selectedFeedCategoryId, setSelectedFeedCategoryId] = useState("all");
+  const [feedCategoryFilterUsage, setFeedCategoryFilterUsage] = useState({});
+  const [feedCategoryFilterUsageHydrated, setFeedCategoryFilterUsageHydrated] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(FEED_CATEGORY_FILTER_USAGE_STORAGE_KEY)
+      .then((raw) => {
+        if (cancelled) return;
+        if (!raw) {
+          setFeedCategoryFilterUsage({});
+          return;
+        }
+        try {
+          const storedUsage = normalizeFeedCategoryFilterUsage(JSON.parse(raw));
+          setFeedCategoryFilterUsage((prev) =>
+            mergeFeedCategoryFilterUsage(storedUsage, prev)
+          );
+        } catch (error) {
+          console.warn("feed category filter usage parse", error);
+          setFeedCategoryFilterUsage({});
+        }
+      })
+      .catch((error) => {
+        console.warn("feed category filter usage hydrate", error);
+        if (!cancelled) {
+          setFeedCategoryFilterUsage({});
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setFeedCategoryFilterUsageHydrated(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (!feedCategoryFilterUsageHydrated) return;
+    AsyncStorage.setItem(
+      FEED_CATEGORY_FILTER_USAGE_STORAGE_KEY,
+      JSON.stringify(feedCategoryFilterUsage)
+    ).catch((error) => console.warn("feed category filter usage persist", error));
+  }, [feedCategoryFilterUsage, feedCategoryFilterUsageHydrated]);
   const feedCategoryOptions = useMemo(() => {
     const categoryIds = new Set();
     const sourceItems = [
@@ -26102,7 +25664,23 @@ const FeedScreen = React.memo(
         categoryIds.add(categoryId);
       }
     });
-    const orderedCategoryIds = IMPULSE_CATEGORY_ORDER.filter((id) => categoryIds.has(id));
+    const categoryOrderIndex = new Map(
+      IMPULSE_CATEGORY_ORDER.map((categoryId, index) => [categoryId, index])
+    );
+    const orderedCategoryIds = Array.from(categoryIds).sort((a, b) => {
+      const usageA = feedCategoryFilterUsage?.[a] || {};
+      const usageB = feedCategoryFilterUsage?.[b] || {};
+      const countDiff = (Number(usageB.count) || 0) - (Number(usageA.count) || 0);
+      if (countDiff !== 0) return countDiff;
+      const lastUsedDiff = (Number(usageB.lastUsedAt) || 0) - (Number(usageA.lastUsedAt) || 0);
+      if (lastUsedDiff !== 0) return lastUsedDiff;
+      const orderA = categoryOrderIndex.has(a) ? categoryOrderIndex.get(a) : Number.MAX_SAFE_INTEGER;
+      const orderB = categoryOrderIndex.has(b) ? categoryOrderIndex.get(b) : Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) return orderA - orderB;
+      return getImpulseCategoryName(a, language).localeCompare(
+        getImpulseCategoryName(b, language)
+      );
+    });
     return [
       {
         id: "all",
@@ -26114,11 +25692,36 @@ const FeedScreen = React.memo(
         emoji: IMPULSE_CATEGORY_DEFS[id]?.emoji || "✨",
       })),
     ];
-  }, [archivedItems, customCategories, filteredProducts, language, resolveTemptationCategory, t]);
+  }, [
+    archivedItems,
+    customCategories,
+    feedCategoryFilterUsage,
+    filteredProducts,
+    language,
+    resolveTemptationCategory,
+    t,
+  ]);
   useEffect(() => {
     if (feedCategoryOptions.some((option) => option.id === selectedFeedCategoryId)) return;
     setSelectedFeedCategoryId("all");
   }, [feedCategoryOptions, selectedFeedCategoryId]);
+  const handleFeedCategoryFilterPress = useCallback((categoryId) => {
+    const nextCategoryId = categoryId && IMPULSE_CATEGORY_DEFS[categoryId] ? categoryId : "all";
+    setSelectedFeedCategoryId(nextCategoryId);
+    if (nextCategoryId === "all") return;
+    const now = Date.now();
+    setFeedCategoryFilterUsage((prev) => {
+      const normalizedPrev = normalizeFeedCategoryFilterUsage(prev);
+      const current = normalizedPrev[nextCategoryId] || { count: 0, lastUsedAt: 0 };
+      return {
+        ...normalizedPrev,
+        [nextCategoryId]: {
+          count: Math.max(0, Math.floor(Number(current.count) || 0)) + 1,
+          lastUsedAt: now,
+        },
+      };
+    });
+  }, []);
   const activeFeedProducts = useMemo(() => {
     if (selectedFeedCategoryId === "all" || typeof resolveTemptationCategory !== "function") {
       return filteredProducts;
@@ -26726,6 +26329,8 @@ const FeedScreen = React.memo(
       archiveExpanded,
       colors,
       feedTailPlaceholder,
+      language,
+      currency,
       renderTemptationCard,
       t,
       toggleArchiveExpanded,
@@ -27235,22 +26840,17 @@ const FeedScreen = React.memo(
                     <Animated.View
                       key={`hero-carousel-${loopIndex}`}
                       style={[styles.heroCarouselItem, { width: heroCarouselWidth }, itemHeight, wiggleStyle]}
+                      pointerEvents={isClone ? "none" : "auto"}
                     >
-                      <DailyGoalCard
+                      <HomeSubscriptionWidgetCard
                         colors={colors}
                         isDarkMode={isDarkMode}
                         t={t}
-                        monthLabel={dailyGoalDayLabel}
-                        dailyGoalLabel={dailyGoalLabel}
-                        dailyGoalUSD={dailyGoalUSD}
-                        todaySavedUSD={todaySavedUSD}
-                        savedCardCount={todaySavedCardCount}
-                        coinDropTick={dailyGoalCoinDropTick}
-                        isActive={!isClone && heroCarouselIndex === 2 && heroPotentialVisible && !feedScrolling}
-                        playSound={playSound}
-                        shakeEnabled
-                        onCollectCoins={onDailyGoalCollect}
-                        isCollected={dailyGoalCollectedToday}
+                        entries={homeSubscriptionEntries}
+                        totalMonthlyLabel={homeSubscriptionTotalMonthlyLabel}
+                        timerText={homeSubscriptionTimerText}
+                        palette={homeSubscriptionWidgetPalette}
+                        onPress={isClone ? null : handleHomeSubscriptionPress}
                         style={[itemHeight, styles.heroCarouselSizedCard]}
                       />
                     </Animated.View>
@@ -27430,7 +27030,7 @@ const FeedScreen = React.memo(
                           : "rgba(18,32,71,0.12)",
                       },
                     ]}
-                    onPress={() => setSelectedFeedCategoryId(option.id)}
+                    onPress={() => handleFeedCategoryFilterPress(option.id)}
                     activeOpacity={0.85}
                   >
                     {!!option.emoji && (
@@ -33023,7 +32623,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
                     styles.baselinePromptBackdrop,
                     {
                       paddingTop: budgetModalTopInset + 12,
-                      paddingBottom: budgetModalBottomInset + 12,
+                      paddingBottom: budgetModalBottomInset + 12 + keyboardModalOffset,
                     },
                   ]}
                 >
@@ -37987,6 +37587,8 @@ const ProfileScreen = React.memo(function ProfileScreen({
   onAndroidAppsFlyerToggle,
   spendReducesSavings = false,
   onSpendReductionToggle,
+  tycoonModeEnabled = TYCOON_MODE_DEFAULT_ENABLED,
+  onTycoonModeToggle,
   onResetData,
   onPickImage,
   onHistoryDelete = () => {},
@@ -39066,6 +38668,36 @@ const ProfileScreen = React.memo(function ProfileScreen({
         <View style={styles.settingRow}>
           <View style={styles.settingRowContent}>
             <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("tycoonModeLabel")}</Text>
+              <Text style={[styles.profileHintText, { color: colors.muted }]}>{t("tycoonModeHint")}</Text>
+            </View>
+            <Pressable
+              onPress={() => onTycoonModeToggle?.(!tycoonModeEnabled)}
+              style={[
+                styles.settingToggle,
+                {
+                  backgroundColor: tycoonModeEnabled
+                    ? colors.text
+                    : colorWithAlpha(colors.text, 0.15),
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.settingToggleHandle,
+                  {
+                    backgroundColor: tycoonModeEnabled ? colors.background : colors.card,
+                    transform: [{ translateX: tycoonModeEnabled ? 20 : 0 }],
+                  },
+                ]}
+              />
+            </Pressable>
+          </View>
+        </View>
+        <View style={styles.settingRow}>
+          <View style={styles.settingRowContent}>
+            <View style={{ flex: 1 }}>
               <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("soundLabel")}</Text>
               <Text style={[styles.profileHintText, { color: colors.muted }]}>{t("soundHint")}</Text>
             </View>
@@ -39425,14 +39057,6 @@ function AppContent() {
   const screenIntroStatusRef = useRef({});
   const [heroCarouselIndex, setHeroCarouselIndex] = useState(0);
   const [heroCarouselLocked, setHeroCarouselLocked] = useState(false);
-  const [dailyGoalCoinDropTick, setDailyGoalCoinDropTick] = useState(0);
-  const [dailyGoalCollectedKey, setDailyGoalCollectedKey] = useState(null);
-  const [dailyGoalCollectedHydrated, setDailyGoalCollectedHydrated] = useState(false);
-  const [dailyGoalCollectModal, setDailyGoalCollectModal] = useState({
-    visible: false,
-    coins: 0,
-  });
-  const dailyGoalCollectInFlightRef = useRef(false);
   const [tabHistory, setTabHistoryState] = useState([]);
   const tabHistoryRef = useRef(tabHistory);
   const pendingScrollRef = useRef(null);
@@ -39896,6 +39520,26 @@ function AppContent() {
   const [quickTemptationsHydrated, setQuickTemptationsHydrated] = useState(false);
   const [customTemptationsCreatedCount, setCustomTemptationsCreatedCount] = useState(0);
   const [customTemptationsCreatedHydrated, setCustomTemptationsCreatedHydrated] = useState(false);
+  const [tycoonSettings, setTycoonSettings] = useState({
+    enabled: TYCOON_MODE_DEFAULT_ENABLED,
+  });
+  const [tycoonSettingsHydrated, setTycoonSettingsHydrated] = useState(false);
+  const [tycoonLedger, setTycoonLedger] = useState([]);
+  const [tycoonLedgerHydrated, setTycoonLedgerHydrated] = useState(false);
+  const [tycoonConfirmStats, setTycoonConfirmStats] = useState({ confirmAllStreak: 0 });
+  const [tycoonConfirmStatsHydrated, setTycoonConfirmStatsHydrated] = useState(false);
+  const [tycoonReviewAcknowledged, setTycoonReviewAcknowledged] = useState(false);
+  const [tycoonSpentSelection, setTycoonSpentSelection] = useState({});
+  const [tycoonAutosaveDismissed, setTycoonAutosaveDismissed] = useState(false);
+  const [tycoonRewardModal, setTycoonRewardModal] = useState({
+    visible: false,
+    count: 0,
+    reward: 0,
+    rewards: [],
+  });
+  const [tycoonRewardFlowActive, setTycoonRewardFlowActive] = useState(false);
+  const [tycoonAutosaveSweepVersion, setTycoonAutosaveSweepVersion] = useState(0);
+  const tycoonAutosaveMinuteTick = useMinuteTicker(tycoonSettings?.enabled !== false);
   const [hiddenTemptations, setHiddenTemptations] = useState([]);
   const [hiddenTemptationsHydrated, setHiddenTemptationsHydrated] = useState(false);
   const [archivedTemptations, setArchivedTemptations] = useState([]);
@@ -39946,8 +39590,11 @@ function AppContent() {
   const [dailyNudgesHydrated, setDailyNudgesHydrated] = useState(false);
   const [dailyChallenge, setDailyChallenge] = useState(() => createInitialDailyChallengeState());
   const [dailyChallengeHydrated, setDailyChallengeHydrated] = useState(false);
+  const [dailyChallengeAcceptedCount, setDailyChallengeAcceptedCount] = useState(0);
+  const [dailyChallengeAcceptedHydrated, setDailyChallengeAcceptedHydrated] = useState(false);
   const [dailyChallengeCompletedCount, setDailyChallengeCompletedCount] = useState(0);
   const [dailyChallengeCompletedHydrated, setDailyChallengeCompletedHydrated] = useState(false);
+  const featureMetricsSnapshotKeyRef = useRef(null);
   const [savedTotalUSD, setSavedTotalUSD] = useState(0);
   const [savedTotalHydrated, setSavedTotalHydrated] = useState(false);
   const [progressSavedTotalUSD, setProgressSavedTotalUSD] = useState(0);
@@ -40597,11 +40244,6 @@ function AppContent() {
   const dailyRewardUnlockLevel = FEATURE_UNLOCK_LEVELS.rewardsDaily || 2;
   const dailyRewardDisplayAmount =
     dailyRewardReady ? dailyRewardAmount : dailyRewardState.lastAmount || dailyRewardAmount || 0;
-  const dailyGoalDayLabel = useMemo(() => {
-    const locale = getFormatLocale(language);
-    const dayDate = parseDayKey(todayKey) || new Date();
-    return dayDate.toLocaleDateString(locale, { weekday: "short", day: "numeric" });
-  }, [language, todayKey]);
   useEffect(() => {
     if (!dailyRewardHydrated || !dailyRewardLastKey) return;
     const dayDiff = getDayDiff(dailyRewardLastKey, todayKey);
@@ -40707,75 +40349,6 @@ function AppContent() {
     setHealthPoints,
     triggerOverlayState,
   ]);
-  const dailyGoalCollectedToday = dailyGoalCollectedKey === todayKey;
-  const closeDailyGoalCollectModal = useCallback(() => {
-    setDailyGoalCollectModal((prev) =>
-      prev?.visible ? { visible: false, coins: 0 } : prev
-    );
-  }, []);
-  const handleDailyGoalCollect = useCallback(
-    async (coinCount = 0) => {
-      const normalizedCount = Math.max(0, Math.floor(Number(coinCount) || 0));
-      if (!normalizedCount) return;
-      const claimKey = todayKey || getDayKey(Date.now());
-      if (dailyGoalCollectedKey === claimKey) return;
-      if (dailyGoalCollectInFlightRef.current) return;
-      dailyGoalCollectInFlightRef.current = true;
-      try {
-        const storedKey = await AsyncStorage.getItem(STORAGE_KEYS.DAILY_GOAL_COLLECTED).catch(
-          () => null
-        );
-        if (storedKey && storedKey === claimKey) {
-          setDailyGoalCollectedKey(claimKey);
-          setDailyGoalCollectedHydrated(true);
-          setHeroCarouselIndex(0);
-          return;
-        }
-        setDailyGoalCollectedKey(claimKey);
-        setDailyGoalCollectedHydrated(true);
-        try {
-          await AsyncStorage.setItem(STORAGE_KEYS.DAILY_GOAL_COLLECTED, claimKey);
-        } catch (error) {
-          console.warn("daily goal collect persist", error);
-        }
-        ensureOverlayEnvironmentReady();
-        triggerOverlayState("health", {
-          amount: normalizedCount,
-          title: language === "ru" ? "Сундук за дневную цель" : "Daily goal chest",
-          closedSubtitle:
-            language === "ru"
-              ? "Дневная цель выполнена. Открой сундук, чтобы узнать награду."
-              : "Daily goal completed. Open the chest to reveal your reward.",
-          openedSubtitle:
-            language === "ru"
-              ? "Награда за дневную цель получена."
-              : "Your daily goal reward has been revealed.",
-          onRevealReward: () => {
-            setHealthPoints((prev) => prev + normalizedCount);
-          },
-        });
-        setDailyGoalCollectModal({ visible: false, coins: 0 });
-        setHeroCarouselIndex(0);
-        logEvent("daily_goal_piggy_collected", {
-          coins: normalizedCount,
-          day: claimKey,
-        });
-      } finally {
-        dailyGoalCollectInFlightRef.current = false;
-      }
-    },
-    [
-      dailyGoalCollectedKey,
-      ensureOverlayEnvironmentReady,
-      language,
-      logEvent,
-      setDailyGoalCollectedHydrated,
-      setHeroCarouselIndex,
-      setHealthPoints,
-      todayKey,
-      triggerOverlayState,
-    ]
-  );
   const appTutorialSteps = useMemo(
     () =>
       APP_TUTORIAL_BASE_STEPS.filter((step) => {
@@ -40826,7 +40399,12 @@ function AppContent() {
       shownDefaultCount += 1;
       return shownDefaultCount <= defaultTemptationFeedLimit;
     });
-  }, [temptations, priceLimitUSD, defaultTemptationFeedLimit, archivedTemptationSet]);
+  }, [
+    archivedTemptationSet,
+    defaultTemptationFeedLimit,
+    priceLimitUSD,
+    temptations,
+  ]);
   const hiddenTemptationSet = useMemo(
     () => new Set(hiddenTemptations),
     [hiddenTemptations]
@@ -41483,6 +41061,194 @@ function AppContent() {
     },
     [quickTemptations, temptations]
   );
+  const tycoonPendingEvents = useMemo(
+    () => (Array.isArray(tycoonLedger) ? tycoonLedger.filter((entry) => entry?.status === "pending") : []),
+    [tycoonLedger]
+  );
+  const tycoonPendingRewardEvents = useMemo(
+    () =>
+      (Array.isArray(tycoonLedger) ? tycoonLedger : []).filter(
+        (entry) =>
+          entry?.status === "saved" &&
+          entry.rewardClaimed !== true &&
+          Math.max(0, Number(entry?.rewardAmount) || 0) > 0
+      ),
+    [tycoonLedger]
+  );
+  useEffect(() => {
+    setTycoonSpentSelection((prev) => {
+      const pendingIds = new Set(tycoonPendingEvents.map((entry) => entry.id));
+      const next = {};
+      Object.keys(prev || {}).forEach((id) => {
+        if (pendingIds.has(id)) next[id] = true;
+      });
+      return next;
+    });
+  }, [tycoonPendingEvents]);
+  useEffect(() => {
+    if (tycoonPendingEvents.length > 0) {
+      setTycoonAutosaveDismissed(false);
+    }
+  }, [tycoonPendingEvents.length]);
+  useEffect(() => {
+    if (!tycoonPendingRewardEvents.length) return;
+    if (tycoonRewardModal.visible) return;
+    if (tycoonRewardFlowActive) return;
+    const rewards = tycoonPendingRewardEvents
+      .map((entry) => {
+        const amount = Math.max(0, Number(entry?.rewardAmount) || 0);
+        const tier = getChestRewardTierForAmount(amount);
+        return amount > 0
+          ? {
+              id: entry.id,
+              eventId: entry.id,
+              amount,
+              tierId: tier?.id || null,
+              title: entry.title || null,
+            }
+          : null;
+      })
+      .filter(Boolean);
+    if (!rewards.length) return;
+    setTycoonRewardModal({
+      visible: true,
+      count: rewards.length,
+      reward: rewards.reduce((sum, entry) => sum + entry.amount, 0),
+      rewards,
+    });
+  }, [tycoonPendingRewardEvents, tycoonRewardFlowActive, tycoonRewardModal.visible]);
+  useEffect(() => {
+    if (tycoonRewardFlowActive && tycoonPendingRewardEvents.length === 0) {
+      setTycoonRewardFlowActive(false);
+    }
+  }, [tycoonPendingRewardEvents.length, tycoonRewardFlowActive]);
+  useEffect(() => {
+    if (!tycoonSettingsHydrated || !tycoonLedgerHydrated || !temptationInteractionsHydrated) return;
+    if (tycoonSettings?.enabled === false) return;
+    const now = Date.now();
+    const rule = resolveTycoonLevelRule(playerLevel);
+    const confirmAllStreak = Math.max(0, Number(tycoonConfirmStats?.confirmAllStreak) || 0);
+    const confirmAllPenalty =
+      confirmAllStreak >= TYCOON_CONFIRM_ALL_REVIEW_STREAK
+        ? Math.min(0.5, (confirmAllStreak - TYCOON_CONFIRM_ALL_REVIEW_STREAK + 1) * 0.1)
+        : 0;
+    const monthlyCapUSD =
+      currentMonthRecurringIncomeUSD > 0
+        ? currentMonthRecurringIncomeUSD * rule.capPercent * (1 - confirmAllPenalty)
+        : rule.defaultMonthlyCapUSD * (1 - confirmAllPenalty);
+    const monthKey = currentMonthKey || getMonthKey(now);
+    const usedThisMonth = (Array.isArray(tycoonLedger) ? tycoonLedger : []).reduce((sum, entry) => {
+      if (!entry || entry.status !== "saved") return sum;
+      if (getMonthKey(entry.confirmedAt || entry.createdAt || 0) !== monthKey) return sum;
+      return sum + Math.max(0, Number(entry.amountUSD) || 0);
+    }, 0);
+    let remainingCapUSD = Math.max(0, monthlyCapUSD - usedThisMonth);
+    if (remainingCapUSD <= 0.01) return;
+    const existingIds = new Set((Array.isArray(tycoonLedger) ? tycoonLedger : []).map((entry) => entry?.id).filter(Boolean));
+    const nextEvents = [];
+    const candidateCards = (Array.isArray(products) ? products : []).filter((card) => card?.id);
+    for (const card of candidateCards) {
+      if (nextEvents.length >= TYCOON_MAX_AUTOSAVE_EVENTS_TOTAL) break;
+      const templateId = card.id;
+      const interaction = temptationInteractions?.[templateId];
+      if (!interaction || typeof interaction !== "object") continue;
+      const cooldownUntil = Math.max(
+        Number(card.tycoonCooldownUntil) || 0,
+        Number(interaction.tycoonCooldownUntil) || 0
+      );
+      if (cooldownUntil > now) continue;
+      const frequency = normalizeFrequencyId(interaction.frequency || card.frequency);
+      if (!frequency) continue;
+      const intervalMs =
+        Number(interaction.intervalMs) ||
+        (frequency === "custom"
+          ? getCustomFrequencyIntervalMs(interaction.frequencyCustom || card.frequencyCustom)
+          : getFrequencyIntervalMs(frequency));
+      if (!intervalMs || intervalMs <= 0) continue;
+      const nextCheckAt = Number(interaction.nextCheckAt) || 0;
+      const lastInteractionAt = Number(interaction.lastInteractionAt) || 0;
+      const derivedDueAt = lastInteractionAt > 0 ? lastInteractionAt + intervalMs : 0;
+      const missedCycles = Math.max(0, Math.floor(Number(interaction.missedCycles) || 0));
+      let firstDueAt = 0;
+      if (nextCheckAt > 0 && nextCheckAt <= now) {
+        firstDueAt = nextCheckAt;
+      } else if (nextCheckAt > now && missedCycles > 0) {
+        firstDueAt = nextCheckAt - missedCycles * intervalMs;
+      } else if (!nextCheckAt && derivedDueAt > 0 && derivedDueAt <= now) {
+        firstDueAt = derivedDueAt;
+      }
+      if (!firstDueAt || firstDueAt > now) continue;
+      const maxLookbackStart =
+        now - intervalMs * Math.max(0, TYCOON_MAX_AUTOSAVE_EVENTS_PER_CARD - 1);
+      if (firstDueAt < maxLookbackStart) {
+        const skippedWindows = Math.floor((maxLookbackStart - firstDueAt) / intervalMs);
+        firstDueAt += skippedWindows * intervalMs;
+        if (firstDueAt < maxLookbackStart) {
+          firstDueAt += intervalMs;
+        }
+      }
+      const amountBase = Math.max(0, Number(interaction.lastAmountUSD) || getTemptationPrice(card));
+      let producedForCard = 0;
+      for (
+        let windowEnd = firstDueAt;
+        windowEnd <= now && producedForCard < TYCOON_MAX_AUTOSAVE_EVENTS_PER_CARD;
+        windowEnd += intervalMs
+      ) {
+        if (nextEvents.length >= TYCOON_MAX_AUTOSAVE_EVENTS_TOTAL) break;
+        const id = `auto:${templateId}:${windowEnd}`;
+        if (existingIds.has(id)) continue;
+        const amountUSD = Math.min(amountBase, remainingCapUSD);
+        if (amountUSD <= 0.01) break;
+        const titleOverride =
+          typeof titleOverrides?.[templateId] === "string" && titleOverrides[templateId].trim()
+            ? titleOverrides[templateId].trim()
+            : null;
+        const title = resolveTemptationTitle(card, language, titleOverride);
+        nextEvents.push({
+          id,
+          cardId: templateId,
+          timerWindowId: `${templateId}:${windowEnd}`,
+          timerWindowStart: windowEnd - intervalMs,
+          timerWindowEnd: windowEnd,
+          amountUSD,
+          currency: profile.currency || DEFAULT_PROFILE.currency,
+          status: "pending",
+          source: "autosave",
+          rewardClaimed: false,
+          createdAt: now,
+          title,
+          emoji: card.emoji || DEFAULT_TEMPTATION_EMOJI,
+        });
+        remainingCapUSD -= amountUSD;
+        producedForCard += 1;
+        if (remainingCapUSD <= 0.01) break;
+      }
+    }
+    if (!nextEvents.length) return;
+    setTycoonLedger((prev) => [...(Array.isArray(prev) ? prev : []), ...nextEvents]);
+    logEvent("tycoon_autosave_pending_created", {
+      count: nextEvents.length,
+      amount_usd: nextEvents.reduce((sum, entry) => sum + entry.amountUSD, 0),
+    });
+  }, [
+    currentMonthKey,
+    currentMonthRecurringIncomeUSD,
+    language,
+    logEvent,
+    playerLevel,
+    products,
+    profile.currency,
+    temptationInteractions,
+    temptationInteractionsHydrated,
+    titleOverrides,
+    tycoonAutosaveMinuteTick,
+    tycoonAutosaveSweepVersion,
+    tycoonConfirmStats?.confirmAllStreak,
+    tycoonLedger,
+    tycoonLedgerHydrated,
+    tycoonSettings,
+    tycoonSettingsHydrated,
+  ]);
   const isTemplateReminderEligible = useCallback(
     (templateId) => {
       if (!templateId) return false;
@@ -41773,6 +41539,7 @@ function AppContent() {
   const [focusVictoryCount, setFocusVictoryCount] = useState(0);
   const [focusVictoryHydrated, setFocusVictoryHydrated] = useState(false);
   const appStateRef = useRef(AppState.currentState || "active");
+  const overlayInstanceCounterRef = useRef(0);
   const firstSessionStartedAtRef = useRef(Date.now());
   const firstSessionBucketRecordedRef = useRef(false);
   const suppressResumeOnceRef = useRef(false);
@@ -44208,6 +43975,7 @@ function AppContent() {
           if (!overlayActiveRef.current && !overlay && overlayQueueRef.current.length) {
             processOverlayQueue();
           }
+          setTycoonAutosaveSweepVersion((prev) => prev + 1);
           triggerWidgetRefresh();
           refreshCurrencyRates({ force: false }).catch(() => {});
         }
@@ -44951,7 +44719,9 @@ function AppContent() {
       duration: 160,
       easing: Easing.out(Easing.quad),
       useNativeDriver: true,
-    }).start(() => setFabMenuVisible(false));
+    }).start(() => {
+      setFabMenuVisible(false);
+    });
   }, [fabMenuAnim]);
   const handleFabPress = useCallback(() => {
     Keyboard.dismiss();
@@ -45280,6 +45050,29 @@ function AppContent() {
       console.warn("duplicate scheduled notifications cleanup", error);
     }
   }, [resolveNotificationTriggerTime]);
+  const cleanupLegacyTycoonCardNotifications = useCallback(async () => {
+    try {
+      const scheduled = await safeNotifications.getAllScheduledNotificationsAsync();
+      const idsToCancel = (Array.isArray(scheduled) ? scheduled : []).reduce((acc, entry) => {
+        const data = entry?.content?.data || {};
+        const kind = typeof data.kind === "string" ? data.kind : "";
+        const dedupeKey = typeof data.dedupeKey === "string" ? data.dedupeKey : "";
+        const legacyCardShopNotification =
+          /^(tycoon_feed|tycoon_card|tycoon_offer|tycoon_supply|tycoon_market)/.test(kind) ||
+          /^(tycoon_feed|tycoon_card|tycoon_offer|tycoon_supply|tycoon_market)/.test(dedupeKey);
+        if (!legacyCardShopNotification) return acc;
+        const id = entry?.identifier || entry?.id || null;
+        if (id) acc.push(id);
+        return acc;
+      }, []);
+      if (!idsToCancel.length) return;
+      await Promise.all(
+        idsToCancel.map((id) => safeNotifications.cancelScheduledNotificationAsync(id))
+      );
+    } catch (error) {
+      console.warn("legacy card notification cleanup", error);
+    }
+  }, []);
   const cancelScheduledNotificationsForTemplate = useCallback(async (templateId) => {
     if (!templateId) return;
     try {
@@ -45636,6 +45429,7 @@ function AppContent() {
       setFabTutorialVisible(false);
     }
     if (fabMenuVisible) {
+      fabMenuAnim.setValue(0);
       setFabMenuVisible(false);
     }
     if (coinEntryVisible) {
@@ -45717,6 +45511,7 @@ function AppContent() {
     coinEntryVisible,
     coinValueModalVisible,
     didYouKnowTipId,
+    fabMenuAnim,
     fabMenuVisible,
     fabTutorialVisible,
     frequencyReminderPrompt.visible,
@@ -45804,14 +45599,16 @@ function AppContent() {
 
   const keyboardModalOffset = useMemo(() => {
     if (!keyboardInset) return 0;
-    const effectiveInset =
-      Platform.OS === "ios" ? keyboardInset * 0.6 : keyboardInset;
-    return Math.min(effectiveInset, MAX_MODAL_KEYBOARD_OFFSET);
+    return Math.min(keyboardInset, MAX_MODAL_KEYBOARD_OFFSET);
   }, [keyboardInset]);
 
   const modalKeyboardPaddingStyle = useMemo(
     () => (keyboardModalOffset ? { paddingBottom: keyboardModalOffset } : null),
     [keyboardModalOffset]
+  );
+  const temptationEditOverlayKeyboardStyle = useMemo(
+    () => (keyboardInset ? { paddingBottom: keyboardInset } : null),
+    [keyboardInset]
   );
   const handleRootTouchStart = useCallback(
     (event) => {
@@ -47660,7 +47457,6 @@ function AppContent() {
       potentialLossModal.visible ||
       fabTutorialVisible ||
       frequencyReminderPrompt.visible ||
-      dailyGoalCollectModal.visible ||
       premiumPaywallState.visible ||
       priceEditor.item ||
       categoryPrompt.visible ||
@@ -47707,7 +47503,6 @@ function AppContent() {
       termsModalVisible,
       incomeEntryModalVisible,
       skinPickerVisible,
-      dailyGoalCollectModal.visible,
       tamagotchiVisible,
       categoryPrompt.visible,
       spendPrompt.visible,
@@ -47763,7 +47558,6 @@ function AppContent() {
       if (overlay) return false;
       if (blockingModalVisible) return false;
       if (coinValueModalVisible) return false;
-      if (dailyGoalCollectModal.visible) return false;
       if (tutorialBlockingVisible) return false;
       switch (type) {
         case QUEUED_MODAL_TYPES.DAILY_SUMMARY:
@@ -49006,6 +48800,7 @@ function AppContent() {
             ? overallDiscountPercent
             : null,
         trialDays: hasTrial ? resolvedTrialDays : null,
+        trialDurationLabel: hasTrial ? trialLabel : null,
         hasTrial,
         displayAsEquivalent,
         trialNoticeLabel: hasTrial
@@ -52431,6 +52226,50 @@ function AppContent() {
       task?.cancel?.();
     };
   }, [ensureNotificationPermission, onboardingStep]);
+  const tycoonFirstPendingId = tycoonPendingEvents[0]?.id || "ready";
+  useEffect(() => {
+    if (startupHardLockPendingBeforePaywall) return;
+    if (onboardingStep !== "done") return;
+    if (tycoonSettings?.enabled === false) return;
+    if (!tycoonPendingEvents.length) return;
+    let cancelled = false;
+    const task = InteractionManager.runAfterInteractions(() => {
+      void (async () => {
+        const allowed = await ensureNotificationPermission({ request: false });
+        if (!allowed || cancelled) return;
+        const now = Date.now();
+        const triggerAt = now + 2 * MINUTE_MS;
+        await scheduleNotificationWithCooldown({
+          content: {
+            title: t("tycoonPushReadyTitle"),
+            body: t("tycoonPushReadyBody"),
+            data: {
+              kind: "tycoon_autosave_ready",
+              targetScreen: "feed",
+              pendingCount: tycoonPendingEvents.length,
+              dedupeKey: `tycoon_autosave_ready:${getDayKey(now)}:${tycoonFirstPendingId}`,
+            },
+          },
+          trigger: new Date(triggerAt),
+        });
+      })().catch((error) => {
+        console.warn("tycoon autosave notification", error);
+      });
+    });
+    return () => {
+      cancelled = true;
+      task?.cancel?.();
+    };
+  }, [
+    ensureNotificationPermission,
+    onboardingStep,
+    scheduleNotificationWithCooldown,
+    startupHardLockPendingBeforePaywall,
+    t,
+    tycoonFirstPendingId,
+    tycoonPendingEvents.length,
+    tycoonSettings?.enabled,
+  ]);
   useEffect(() => {
     if (!startupHardLockPendingBeforePaywall) return;
     let cancelled = false;
@@ -53188,8 +53027,10 @@ function AppContent() {
     if (notificationPermissionGranted === null) return;
     cleanupStaleEventNotifications();
     cleanupDuplicateScheduledNotifications();
+    cleanupLegacyTycoonCardNotifications();
   }, [
     cleanupDuplicateScheduledNotifications,
+    cleanupLegacyTycoonCardNotifications,
     cleanupStaleEventNotifications,
     notificationPermissionGranted,
   ]);
@@ -53768,10 +53609,9 @@ function AppContent() {
   }, [registrationData.customGoals]);
 
   const overlayDimColor = isDarkTheme ? "rgba(0,0,0,0.65)" : "rgba(5,6,15,0.2)";
-  const overlaySystemColor = useMemo(
-    () => blendHexColors(colors.background, isDarkTheme ? "#000000" : "#05060F", isDarkTheme ? 0.5 : 0.15),
-    [colors.background, isDarkTheme]
-  );
+  const modalSystemDimColor = isDarkTheme ? "rgba(0,0,0,0.65)" : "rgba(0,0,0,0.35)";
+  const fabSystemDimColor = "rgba(0,0,0,0.15)";
+  const statusGlassBackgroundColor = colors.background;
   const overlayCardBackground = isDarkTheme ? lightenColor(colors.card, 0.18) : colors.card;
   const overlayBorderColor = isDarkTheme ? lightenColor(colors.border, 0.25) : colors.border;
   const impulseAlertPayload = useMemo(() => {
@@ -53784,10 +53624,20 @@ function AppContent() {
   }, [overlay]);
   const isFeatureUnlockOverlay =
     overlay?.type === "cart" && overlay?.message && typeof overlay.message === "object" && overlay.message.featureUnlock;
-  const saveOverlayVisible = overlay?.type === "save";
-  const systemBarsDimActive = Boolean(
-    fabMenuVisible || (!saveOverlayVisible && (blockingModalVisible || overlay))
+  const systemBarsDimActive = Boolean(fabMenuVisible || blockingModalVisible || overlay);
+  const activeSystemDimColor =
+    overlay
+      ? overlayDimColor
+      : fabMenuVisible
+      ? fabSystemDimColor
+      : blockingModalVisible
+      ? modalSystemDimColor
+      : overlayDimColor;
+  const overlaySystemColor = useMemo(
+    () => compositeColorOverBackground(activeSystemDimColor, colors.background),
+    [activeSystemDimColor, colors.background]
   );
+  const systemBarIconStyle = isDarkTheme ? "light" : "dark";
   const shouldShowStatusGlass = shouldRenderStatusGlass && !startupLogoVisible;
   const statusGlassOverlayConfig = useMemo(
     () =>
@@ -53796,7 +53646,7 @@ function AppContent() {
             height: statusGlassHeight,
             safeHeight: topSafeInset,
             offsetY: 0,
-            backgroundColor: colors.background,
+            backgroundColor: statusGlassBackgroundColor,
             theme,
             blurAvailable: statusBlurAvailable,
           }
@@ -53805,7 +53655,7 @@ function AppContent() {
       shouldShowStatusGlass,
       statusGlassHeight,
       topSafeInset,
-      colors.background,
+      statusGlassBackgroundColor,
       theme,
       statusBlurAvailable,
     ]
@@ -53840,8 +53690,8 @@ function AppContent() {
   useEffect(() => {
     if (!isAndroid || !canSetSystemBarColors) return;
     const targetNavColor = systemBarsDimActive ? overlaySystemColor : colors.card;
-    const targetButtonStyle = systemBarsDimActive ? "light" : isDarkTheme ? "light" : "dark";
-    const targetStatusColor = systemBarsDimActive ? overlaySystemColor : colors.background;
+    const targetButtonStyle = systemBarsDimActive ? systemBarIconStyle : isDarkTheme ? "light" : "dark";
+    const targetStatusColor = "transparent";
     const previousState = systemBarsStateRef.current || {};
     const shouldUpdateNavColor = previousState.navColor !== targetNavColor;
     const shouldUpdateButtonStyle = previousState.buttonStyle !== targetButtonStyle;
@@ -53864,6 +53714,7 @@ function AppContent() {
     if (shouldUpdateStatusColor) {
       RNStatusBar.setBackgroundColor(targetStatusColor, false);
     }
+    RNStatusBar.setTranslucent(true);
     systemBarsStateRef.current = {
       navColor: targetNavColor,
       buttonStyle: targetButtonStyle,
@@ -53873,6 +53724,7 @@ function AppContent() {
     canSetSystemBarColors,
     overlaySystemColor,
     systemBarsDimActive,
+    systemBarIconStyle,
     colors.card,
     colors.background,
     isAndroid,
@@ -54886,6 +54738,33 @@ function AppContent() {
       }),
     [challengesState, profile.currency, language, t, averageSaveActionUSD, playerLevel]
   );
+  const savingRating = useMemo(
+    () =>
+      buildSavingRatingSummary({
+        language,
+        historyEvents: visibleHistoryEvents.filter((entry) => {
+          const categoryId =
+            entry?.meta?.category || entry?.meta?.impulseCategory || entry?.meta?.impulseCategoryOverride;
+          return !isEssentialImpulseCategory(categoryId);
+        }),
+        decisionStats,
+        usageStreak,
+        savedTotalUSD: progressSavedTotalUSD,
+        goalProgress: heroGoalProgressRatio,
+        hasActiveGoal: heroGoalTargetUSD > 0,
+        joinedAt: profile?.joinedAt,
+      }),
+    [
+      decisionStats,
+      heroGoalProgressRatio,
+      heroGoalTargetUSD,
+      language,
+      profile?.joinedAt,
+      progressSavedTotalUSD,
+      usageStreak,
+      visibleHistoryEvents,
+    ]
+  );
   const currentChallengeBadges = useMemo(
     () =>
       challengeList
@@ -54990,6 +54869,116 @@ function AppContent() {
     ],
     [wishes.length, declineCount, purchases.length, t]
   );
+  useEffect(() => {
+    if (analyticsOptOut !== false) return;
+    if (!profileHydrated || !historyHydrated) return;
+    if (!dailyChallengeAcceptedHydrated || !dailyChallengeCompletedHydrated) return;
+    if (!claimedRewardsHydrated || !rewardTotalHydrated) return;
+    if (!challengesHydrated || !pendingHydrated || !purchasesHydrated) return;
+    if (!freeDayHydrated || !usageStreakHydrated) return;
+    if (!progressSavedTotalHydrated || !lifetimeSavedHydrated) return;
+    if (!customTemptationsCreatedHydrated || !tycoonSettingsHydrated || !tycoonLedgerHydrated) return;
+
+    const rewardsUnlockedCount = achievements.filter((reward) => reward.unlocked).length;
+    const rewardsClaimableCount = achievements.filter(
+      (reward) => reward.unlocked && !reward.claimed
+    ).length;
+    const activeChallengesCount = challengeList.filter(
+      (challenge) => challenge.status === CHALLENGE_STATUS.ACTIVE
+    ).length;
+    const completedChallengesCount = challengeList.filter(
+      (challenge) => challenge.status === CHALLENGE_STATUS.COMPLETED
+    ).length;
+    const claimedChallengesCount = challengeList.filter(
+      (challenge) => challenge.status === CHALLENGE_STATUS.CLAIMED
+    ).length;
+    const primaryGoals = Array.isArray(profile.primaryGoals) ? profile.primaryGoals : [];
+    const payload = {
+      source: "feature_metrics",
+      saving_score: Math.max(0, Math.round(Number(savingRating?.score) || 0)),
+      saving_rank_percent: Math.max(
+        1,
+        Math.min(99, Math.round(Number(savingRating?.peerRankPercent) || 99))
+      ),
+      rewards_unlocked_count: rewardsUnlockedCount,
+      rewards_claimed_count: Math.max(0, Number(rewardClaimTotal) || 0),
+      rewards_claimable_count: rewardsClaimableCount,
+      daily_challenge_status: dailyChallenge.status || "idle",
+      daily_challenge_active: dailyChallenge.status === DAILY_CHALLENGE_STATUS.ACTIVE ? 1 : 0,
+      daily_challenge_accepted_total: Math.max(0, Number(dailyChallengeAcceptedCount) || 0),
+      daily_challenge_completed_total: Math.max(0, Number(dailyChallengeCompletedCount) || 0),
+      active_challenges_count: activeChallengesCount,
+      completed_challenges_count: completedChallengesCount,
+      claimed_challenges_count: claimedChallengesCount,
+      saved_total_usd: Math.round((Number(progressSavedTotalUSD) || 0) * 100) / 100,
+      lifetime_saved_usd: Math.round((Number(lifetimeSavedUSD) || 0) * 100) / 100,
+      free_day_current_streak: Math.max(0, Number(freeDayStats?.current) || 0),
+      usage_streak_current: Math.max(0, Number(usageStreak?.current) || 0),
+      goals_count: primaryGoals.length,
+      pending_count: pendingList.length,
+      spend_count: purchases.length,
+      temptation_cards_count: temptations.length + quickTemptations.length,
+      custom_temptation_count: Math.max(0, Number(customTemptationsCreatedCount) || 0),
+      tycoon_enabled: tycoonSettings?.enabled === false ? 0 : 1,
+      tycoon_pending_count: tycoonPendingEvents.length,
+      level: Math.max(1, Number(playerLevel) || 1),
+    };
+    const snapshotKey = `${currentDayKey || "unknown"}:${JSON.stringify(payload)}`;
+    if (featureMetricsSnapshotKeyRef.current === snapshotKey) return;
+    featureMetricsSnapshotKeyRef.current = snapshotKey;
+    logEvent("feature_metrics_snapshot", payload);
+    setUserProperties({
+      saving_score: String(payload.saving_score),
+      saving_rank_pct: String(payload.saving_rank_percent),
+      rewards_claimed_total: String(payload.rewards_claimed_count),
+      daily_chal_accepted: String(payload.daily_challenge_accepted_total),
+      daily_chal_completed: String(payload.daily_challenge_completed_total),
+      daily_chal_status: String(payload.daily_challenge_status),
+      feature_snapshot_day: currentDayKey || "unknown",
+    });
+  }, [
+    achievements,
+    analyticsOptOut,
+    challengeList,
+    challengesHydrated,
+    claimedRewardsHydrated,
+    currentDayKey,
+    customTemptationsCreatedCount,
+    customTemptationsCreatedHydrated,
+    dailyChallenge.status,
+    dailyChallengeAcceptedCount,
+    dailyChallengeAcceptedHydrated,
+    dailyChallengeCompletedCount,
+    dailyChallengeCompletedHydrated,
+    freeDayHydrated,
+    freeDayStats?.current,
+    historyHydrated,
+    lifetimeSavedHydrated,
+    lifetimeSavedUSD,
+    logEvent,
+    pendingHydrated,
+    pendingList.length,
+    playerLevel,
+    profile.primaryGoals,
+    profileHydrated,
+    progressSavedTotalHydrated,
+    progressSavedTotalUSD,
+    purchases.length,
+    purchasesHydrated,
+    quickTemptations.length,
+    rewardClaimTotal,
+    rewardTotalHydrated,
+    savingRating?.peerRankPercent,
+    savingRating?.score,
+    setUserProperties,
+    temptations.length,
+    tycoonLedgerHydrated,
+    tycoonPendingEvents.length,
+    tycoonSettings?.enabled,
+    tycoonSettingsHydrated,
+    usageStreak?.current,
+    usageStreakHydrated,
+  ]);
   const impulseEventsForInsights = useMemo(
     () =>
       (impulseTracker.events || []).filter(
@@ -55414,6 +55403,7 @@ function AppContent() {
       };
     });
     clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
+    setDailyChallengeAcceptedCount((prev) => Math.max(0, Number(prev) || 0) + 1);
     logEvent("daily_challenge_accepted", { template_id: dailyChallenge.templateId });
   }, [clearQueuedModal, dailyChallenge.templateId, dailyChallengeUnlocked, logEvent]);
   const handleDailyChallengeDismiss = useCallback(() => {
@@ -55421,7 +55411,17 @@ function AppContent() {
     dailyChallengeOfferDeferredRef.current = true;
     setDailyChallengePromptGate(false);
     clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
-  }, [clearQueuedModal, dailyChallengeUnlocked, setDailyChallengePromptGate]);
+    logEvent("daily_challenge_dismissed", {
+      template_id: dailyChallenge.templateId || "none",
+      source: "prompt_close",
+    });
+  }, [
+    clearQueuedModal,
+    dailyChallenge.templateId,
+    dailyChallengeUnlocked,
+    logEvent,
+    setDailyChallengePromptGate,
+  ]);
   const deferDailyChallenge = useCallback(
     (days) => {
       if (!dailyChallengeUnlocked) return;
@@ -55437,8 +55437,13 @@ function AppContent() {
         };
       });
       clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
+      logEvent("daily_challenge_deferred", {
+        template_id: dailyChallenge.templateId || "none",
+        defer_days: normalizedDays,
+        source: "later_alert",
+      });
     },
-    [clearQueuedModal, dailyChallengeUnlocked]
+    [clearQueuedModal, dailyChallenge.templateId, dailyChallengeUnlocked, logEvent]
   );
   const handleDailyChallengeLater = useCallback(() => {
     if (!dailyChallengeUnlocked) return;
@@ -56223,10 +56228,10 @@ function AppContent() {
         STORAGE_KEYS.TAMAGOTCHI_HUNGER_DAILY_COUNT,
         STORAGE_KEYS.TAMAGOTCHI_HUNGER_LAST_AT,
         STORAGE_KEYS.DAILY_CHALLENGE,
+        STORAGE_KEYS.DAILY_CHALLENGE_ACCEPTED_TOTAL,
         STORAGE_KEYS.DAILY_CHALLENGE_COMPLETED_TOTAL,
         STORAGE_KEYS.DAILY_REWARD,
         STORAGE_KEYS.DAILY_REWARD_DAY_KEY,
-        STORAGE_KEYS.DAILY_GOAL_COLLECTED,
         STORAGE_KEYS.DAILY_SUMMARY,
         STORAGE_KEYS.DID_YOU_KNOW,
         STORAGE_KEYS.NO_GOAL_SAVE_PROMPT_SHOWN,
@@ -56273,6 +56278,9 @@ function AppContent() {
         STORAGE_KEYS.PAYWALL_DESIGN_EXPERIMENT_ASSIGNED_AT,
         STORAGE_KEYS.MONETIZATION_TRIAL_LOCKED,
         STORAGE_KEYS.MONETIZATION_ONBOARDING_LOCKED,
+        STORAGE_KEYS.TYCOON_SETTINGS,
+        STORAGE_KEYS.TYCOON_LEDGER,
+        STORAGE_KEYS.TYCOON_CONFIRM_STATS,
       ];
       const storedPairs = await AsyncStorage.multiGet(hydrationKeys);
       const storedMap = Object.fromEntries(storedPairs || []);
@@ -56313,6 +56321,9 @@ function AppContent() {
       const customTemptationsRaw = storedMap[STORAGE_KEYS.CUSTOM_TEMPTATIONS] ?? null;
       const customTemptationsCreatedRaw =
         storedMap[STORAGE_KEYS.CUSTOM_TEMPTATIONS_CREATED] ?? null;
+      const tycoonSettingsRaw = storedMap[STORAGE_KEYS.TYCOON_SETTINGS] ?? null;
+      const tycoonLedgerRaw = storedMap[STORAGE_KEYS.TYCOON_LEDGER] ?? null;
+      const tycoonConfirmStatsRaw = storedMap[STORAGE_KEYS.TYCOON_CONFIRM_STATS] ?? null;
       const hiddenTemptationsRaw = storedMap[STORAGE_KEYS.HIDDEN_TEMPTATIONS] ?? null;
       const archivedTemptationsRaw = storedMap[STORAGE_KEYS.ARCHIVED_TEMPTATIONS] ?? null;
       const defaultTemptationGrowthLockLevelRaw =
@@ -56342,11 +56353,12 @@ function AppContent() {
       const tamagotchiHungerDailyCountRaw = storedMap[STORAGE_KEYS.TAMAGOTCHI_HUNGER_DAILY_COUNT] ?? null;
       const tamagotchiHungerLastAtRaw = storedMap[STORAGE_KEYS.TAMAGOTCHI_HUNGER_LAST_AT] ?? null;
       const dailyChallengeRaw = storedMap[STORAGE_KEYS.DAILY_CHALLENGE] ?? null;
+      const dailyChallengeAcceptedRaw =
+        storedMap[STORAGE_KEYS.DAILY_CHALLENGE_ACCEPTED_TOTAL] ?? null;
       const dailyChallengeCompletedRaw =
         storedMap[STORAGE_KEYS.DAILY_CHALLENGE_COMPLETED_TOTAL] ?? null;
       const dailyRewardRaw = storedMap[STORAGE_KEYS.DAILY_REWARD] ?? null;
       const dailyRewardDayKeyRaw = storedMap[STORAGE_KEYS.DAILY_REWARD_DAY_KEY] ?? null;
-      const dailyGoalCollectedRaw = storedMap[STORAGE_KEYS.DAILY_GOAL_COLLECTED] ?? null;
       const dailySummaryRaw = storedMap[STORAGE_KEYS.DAILY_SUMMARY] ?? null;
       const didYouKnowRaw = storedMap[STORAGE_KEYS.DID_YOU_KNOW] ?? null;
       const noGoalSavePromptDeferredDayKeyRaw =
@@ -56865,12 +56877,6 @@ function AppContent() {
         setDailyRewardState({ ...DEFAULT_DAILY_REWARD_STATE });
       }
       setDailyRewardHydrated(true);
-      if (typeof dailyGoalCollectedRaw === "string" && dailyGoalCollectedRaw.trim()) {
-        setDailyGoalCollectedKey(dailyGoalCollectedRaw.trim());
-      } else {
-        setDailyGoalCollectedKey(null);
-      }
-      setDailyGoalCollectedHydrated(true);
       applyThemeBootstrap(themeRaw, proThemeAccentRaw);
       if (languageRaw) {
         setLanguage(normalizeLanguage(languageRaw));
@@ -57447,6 +57453,13 @@ function AppContent() {
       setLastCelebratedLevelHydrated(true);
       setDeclineCount(resolvedDeclineCount);
       setDeclinesHydrated(true);
+      const parsedDailyChallengeAccepted = Number(dailyChallengeAcceptedRaw);
+      if (Number.isFinite(parsedDailyChallengeAccepted)) {
+        setDailyChallengeAcceptedCount(Math.max(0, parsedDailyChallengeAccepted));
+      } else {
+        setDailyChallengeAcceptedCount(0);
+      }
+      setDailyChallengeAcceptedHydrated(true);
       const parsedDailyChallengeCompleted = Number(dailyChallengeCompletedRaw);
       if (Number.isFinite(parsedDailyChallengeCompleted)) {
         setDailyChallengeCompletedCount(Math.max(0, parsedDailyChallengeCompleted));
@@ -57666,6 +57679,49 @@ function AppContent() {
         setCustomTemptationsCreatedCount(storedCustomTemptationsCreated ?? 0);
       }
       setCustomTemptationsCreatedHydrated(true);
+      if (tycoonSettingsRaw) {
+        try {
+          const parsedTycoonSettings = JSON.parse(tycoonSettingsRaw);
+          setTycoonSettings({
+            enabled:
+              parsedTycoonSettings?.enabled === false
+                ? false
+                : TYCOON_MODE_DEFAULT_ENABLED,
+          });
+        } catch (err) {
+          console.warn("tycoon settings parse", err);
+          setTycoonSettings({ enabled: TYCOON_MODE_DEFAULT_ENABLED });
+        }
+      } else {
+        setTycoonSettings({ enabled: TYCOON_MODE_DEFAULT_ENABLED });
+      }
+      setTycoonSettingsHydrated(true);
+      if (tycoonLedgerRaw) {
+        try {
+          const parsedTycoonLedger = JSON.parse(tycoonLedgerRaw);
+          setTycoonLedger(Array.isArray(parsedTycoonLedger) ? parsedTycoonLedger : []);
+        } catch (err) {
+          console.warn("tycoon ledger parse", err);
+          setTycoonLedger([]);
+        }
+      } else {
+        setTycoonLedger([]);
+      }
+      setTycoonLedgerHydrated(true);
+      if (tycoonConfirmStatsRaw) {
+        try {
+          const parsedTycoonConfirm = JSON.parse(tycoonConfirmStatsRaw);
+          setTycoonConfirmStats({
+            confirmAllStreak: Math.max(0, Number(parsedTycoonConfirm?.confirmAllStreak) || 0),
+          });
+        } catch (err) {
+          console.warn("tycoon confirm stats parse", err);
+          setTycoonConfirmStats({ confirmAllStreak: 0 });
+        }
+      } else {
+        setTycoonConfirmStats({ confirmAllStreak: 0 });
+      }
+      setTycoonConfirmStatsHydrated(true);
       const deferHiddenHydration = shouldDeferLargeParse(hiddenTemptationsRaw);
       const hydrateHiddenTemptations = () => {
         if (hiddenTemptationsRaw) {
@@ -57956,6 +58012,8 @@ function AppContent() {
       setChallengesHydrated(true);
       setChallengeBadgeStore([]);
       setChallengeBadgeStoreHydrated(true);
+      setDailyChallengeAcceptedCount(0);
+      setDailyChallengeAcceptedHydrated(true);
       setDailyChallengeCompletedCount(0);
       setDailyChallengeCompletedHydrated(true);
       setFocusVictoryCount(0);
@@ -59732,6 +59790,13 @@ function AppContent() {
     AsyncStorage.setItem(STORAGE_KEYS.DAILY_CHALLENGE, JSON.stringify(dailyChallenge)).catch(() => {});
   }, [dailyChallenge, dailyChallengeHydrated]);
   useEffect(() => {
+    if (!dailyChallengeAcceptedHydrated) return;
+    queuePersist(
+      STORAGE_KEYS.DAILY_CHALLENGE_ACCEPTED_TOTAL,
+      String(Math.max(0, Number(dailyChallengeAcceptedCount) || 0))
+    );
+  }, [queuePersist, dailyChallengeAcceptedCount, dailyChallengeAcceptedHydrated]);
+  useEffect(() => {
     if (!dailyChallengeCompletedHydrated) return;
     queuePersist(
       STORAGE_KEYS.DAILY_CHALLENGE_COMPLETED_TOTAL,
@@ -60916,6 +60981,18 @@ useEffect(() => {
       String(Math.max(0, Number(customTemptationsCreatedCount) || 0))
     );
   }, [queuePersist, customTemptationsCreatedCount, customTemptationsCreatedHydrated]);
+  useEffect(() => {
+    if (!tycoonSettingsHydrated) return;
+    queuePersist(STORAGE_KEYS.TYCOON_SETTINGS, JSON.stringify(tycoonSettings));
+  }, [queuePersist, tycoonSettings, tycoonSettingsHydrated]);
+  useEffect(() => {
+    if (!tycoonLedgerHydrated) return;
+    queuePersist(STORAGE_KEYS.TYCOON_LEDGER, JSON.stringify(tycoonLedger));
+  }, [queuePersist, tycoonLedger, tycoonLedgerHydrated]);
+  useEffect(() => {
+    if (!tycoonConfirmStatsHydrated) return;
+    queuePersist(STORAGE_KEYS.TYCOON_CONFIRM_STATS, JSON.stringify(tycoonConfirmStats));
+  }, [queuePersist, tycoonConfirmStats, tycoonConfirmStatsHydrated]);
 
   useEffect(() => {
     if (!hiddenTemptationsHydrated) return;
@@ -62145,11 +62222,14 @@ useEffect(() => {
     ]
   );
 
-  const openQuickCustomModal = useCallback((lockedCategoryId = null) => {
+  const openQuickCustomModal = useCallback((lockedCategoryId = null, presetDraft = null) => {
     const resolvedLockedCategoryId =
       lockedCategoryId && IMPULSE_CATEGORY_DEFS[lockedCategoryId] ? lockedCategoryId : null;
     setQuickCustomLockedCategoryId(resolvedLockedCategoryId);
-    setQuickSpendDraft(createQuickSpendDraft(resolvedLockedCategoryId));
+    setQuickSpendDraft({
+      ...createQuickSpendDraft(resolvedLockedCategoryId),
+      ...(presetDraft && typeof presetDraft === "object" ? presetDraft : null),
+    });
     setQuickCustomErrors({ category: false, frequency: false });
     setShowCustomSpend(true);
   }, []);
@@ -62182,7 +62262,12 @@ useEffect(() => {
     if (!ensureTemptationCapacity({ showSoft: true })) return;
     markDidYouKnowFeatureUsed("subscription_watch");
     triggerHaptic();
-    openQuickCustomModal(SUBSCRIPTION_CATEGORY_ID);
+    openQuickCustomModal(SUBSCRIPTION_CATEGORY_ID, {
+      frequency: "monthly",
+      frequencyReminderHour: SUBSCRIPTION_DEFAULT_REMINDER_HOUR,
+      frequencyReminderMinute: SUBSCRIPTION_DEFAULT_REMINDER_MINUTE,
+      scheduleConfigVisible: true,
+    });
   }, [
     ensureTemptationCapacity,
     markDidYouKnowFeatureUsed,
@@ -64149,6 +64234,18 @@ useEffect(() => {
       logEvent("spend_impact_toggle", { enabled: nextValue ? 1 : 0 });
     },
     [logEvent, rebuildSavingsFromHistory, rebalanceWishesFromSavedTotal, resolvedHistoryEvents, triggerHaptic]
+  );
+  const handleTycoonModeToggle = useCallback(
+    (enabled) => {
+      const nextValue = !!enabled;
+      triggerHaptic();
+      setTycoonSettings((prev) => ({
+        ...(prev || {}),
+        enabled: nextValue,
+      }));
+      logEvent("tycoon_mode_toggle", { enabled: nextValue ? 1 : 0 });
+    },
+    [logEvent, triggerHaptic]
   );
   const handleSoundToggle = useCallback(
     (enabled) => {
@@ -66171,32 +66268,12 @@ useEffect(() => {
     if (unitPriceUSD <= 0 || checksPerMonth <= 0) return 0;
     return unitPriceUSD * checksPerMonth;
   }, [frequencyReminderForecastChecksPerMonth, frequencyReminderForecastPriceStats.unitPriceUSD]);
-  const frequencyReminderForecastAnimatedValueRef = useRef(
-    new Animated.Value(Math.max(0, Number(frequencyReminderForecastTargetUSD) || 0))
-  );
-  const frequencyReminderForecastDisplayRef = useRef(
-    Math.max(0, Number(frequencyReminderForecastTargetUSD) || 0)
-  );
   const [frequencyReminderForecastDisplayUSD, setFrequencyReminderForecastDisplayUSD] = useState(
     Math.max(0, Number(frequencyReminderForecastTargetUSD) || 0)
   );
   const frequencyReminderForecastPulse = useRef(new Animated.Value(0)).current;
   const frequencyReminderForecastPrevTargetRef = useRef(null);
   const frequencyReminderForecastHapticTimeoutRef = useRef(null);
-  useEffect(() => {
-    const animatedValue = frequencyReminderForecastAnimatedValueRef.current;
-    const listenerId = animatedValue.addListener(({ value }) => {
-      const safeValue = Math.max(0, Number(value) || 0);
-      const roundedValue = Math.round(safeValue * 100) / 100;
-      frequencyReminderForecastDisplayRef.current = roundedValue;
-      setFrequencyReminderForecastDisplayUSD((prev) =>
-        Math.abs(prev - roundedValue) < 0.005 ? prev : roundedValue
-      );
-    });
-    return () => {
-      animatedValue.removeListener(listenerId);
-    };
-  }, []);
   useEffect(
     () => () => {
       if (frequencyReminderForecastHapticTimeoutRef.current) {
@@ -66207,15 +66284,13 @@ useEffect(() => {
     []
   );
   useEffect(() => {
-    const animatedValue = frequencyReminderForecastAnimatedValueRef.current;
     const targetValue = Math.max(0, Number(frequencyReminderForecastTargetUSD) || 0);
     if (!frequencyReminderPrompt.visible) {
-      animatedValue.stopAnimation();
       frequencyReminderForecastPulse.stopAnimation();
-      animatedValue.setValue(targetValue);
       frequencyReminderForecastPulse.setValue(0);
-      frequencyReminderForecastDisplayRef.current = targetValue;
-      setFrequencyReminderForecastDisplayUSD(targetValue);
+      setFrequencyReminderForecastDisplayUSD((prev) =>
+        Math.abs(prev - targetValue) < 0.005 ? prev : targetValue
+      );
       frequencyReminderForecastPrevTargetRef.current = null;
       if (frequencyReminderForecastHapticTimeoutRef.current) {
         clearTimeout(frequencyReminderForecastHapticTimeoutRef.current);
@@ -66223,15 +66298,9 @@ useEffect(() => {
       }
       return;
     }
-    const fromValue = Math.max(0, Number(frequencyReminderForecastDisplayRef.current) || 0);
-    animatedValue.stopAnimation();
-    animatedValue.setValue(fromValue);
-    Animated.timing(animatedValue, {
-      toValue: targetValue,
-      duration: 460,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
+    setFrequencyReminderForecastDisplayUSD((prev) =>
+      Math.abs(prev - targetValue) < 0.005 ? prev : targetValue
+    );
     frequencyReminderForecastPulse.stopAnimation();
     frequencyReminderForecastPulse.setValue(0);
     Animated.sequence([
@@ -66809,6 +66878,7 @@ useEffect(() => {
     (item, overrideAmountUSD = null, options = null) => {
       if (!item) return;
       const skipFrequencyReminderPrompt = options?.skipFrequencyReminderPrompt === true;
+      const skipMonetizationTrialLimit = options?.skipMonetizationTrialLimit === true;
       const templateId = resolveTemptationTemplateId(item);
       const overrideAmount = parseAmountValue(overrideAmountUSD);
       const rawPriceUSD =
@@ -66838,14 +66908,19 @@ useEffect(() => {
       if (priceUSD <= 0) return;
       const safeSavedTotalUSD = clampSavedBalanceUSD(savedTotalUSD);
       if (
+        !skipMonetizationTrialLimit &&
         enforceMonetizationTrialActionLimit({
           savedAmountUSD: safeSavedTotalUSD,
         })
       ) {
         return;
       }
-      monetizationTrialActionCountRef.current =
-        Math.max(0, Number(monetizationTrialActionCountRef.current) || 0) + 1;
+      if (!skipMonetizationTrialLimit) {
+        if (!skipMonetizationTrialLimit) {
+          monetizationTrialActionCountRef.current =
+            Math.max(0, Number(monetizationTrialActionCountRef.current) || 0) + 1;
+        }
+      }
       const title = buildTemptationActionTitle(item, t("defaultDealTitle"));
       const spendCategory = resolveTemptationCategory(item);
       const isEssentialSpendCategory = isEssentialImpulseCategory(spendCategory);
@@ -67453,6 +67528,8 @@ useEffect(() => {
         freezeDurationMs: overrideFreezeDurationMs = null,
         freezeOptionId: overrideFreezeOptionId = null,
         skipSaveSpamCheck = false,
+        skipDailySaveLimit = false,
+        skipMonetizationTrialLimit = false,
         skipFrequencyReminderPrompt = false,
         skipPendingDuplicateConfirm = false,
       } = options || {};
@@ -67533,6 +67610,7 @@ useEffect(() => {
       }
       if (
         (type === "save" || type === "spend") &&
+        !skipMonetizationTrialLimit &&
         enforceMonetizationTrialActionLimit({
           savedAmountUSD: safeSavedTotalUSD,
         })
@@ -67569,7 +67647,7 @@ useEffect(() => {
             if (!suppressStormOverlay) {
               triggerStormEffect();
             }
-            executeSpend(item, priceUSD, { skipFrequencyReminderPrompt });
+            executeSpend(item, priceUSD, { skipFrequencyReminderPrompt, skipMonetizationTrialLimit });
           } else {
             setSpendPrompt({
               visible: true,
@@ -67634,6 +67712,7 @@ useEffect(() => {
         const currentDaySaveCount =
           normalizedDailySaveLimit.dayKey === todaySaveDayKey ? normalizedDailySaveLimit.count : 0;
         if (
+          !skipDailySaveLimit &&
           (isMonetizationExperimentControlGroup || isMonetizationExperimentGroupC) &&
           !premiumState.isPremium &&
           currentDaySaveCount >= DAILY_SAVE_HARD_LIMIT
@@ -68209,9 +68288,6 @@ useEffect(() => {
         }
         triggerCardFeedback(templateId || item.id);
         triggerCoinHaptics();
-        if (priceUSD > 0) {
-          setDailyGoalCoinDropTick((prev) => prev + 1);
-        }
         handleFocusSaveProgress(item);
         if (!suppressSaveOverlay) {
           ensureOverlayEnvironmentReady();
@@ -68432,7 +68508,6 @@ useEffect(() => {
       requestMascotAnimation,
       handleFocusSaveProgress,
       dismissTutorialCardCoachDeferred,
-      setDailyGoalCoinDropTick,
       ensureOverlayEnvironmentReady,
       logEvent,
       primaryTemptationId,
@@ -68473,6 +68548,262 @@ useEffect(() => {
       resolvedTabBarHeight,
     ]
   );
+
+  const handleTycoonToggleSpent = useCallback((eventId) => {
+    if (!eventId) return;
+    setTycoonSpentSelection((prev) => {
+      const next = { ...(prev || {}) };
+      if (next[eventId]) {
+        delete next[eventId];
+      } else {
+        next[eventId] = true;
+      }
+      return next;
+    });
+    setTycoonReviewAcknowledged(false);
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
+  const handleTycoonAutosaveClose = useCallback(() => {
+    setTycoonAutosaveDismissed(true);
+    setTycoonReviewAcknowledged(false);
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    logEvent("tycoon_autosave_dismissed", { pending_count: tycoonPendingEvents.length });
+  }, [logEvent, tycoonPendingEvents.length]);
+
+  const buildTycoonRewardQueue = useCallback((events = tycoonPendingRewardEvents) => {
+    return (Array.isArray(events) ? events : [])
+      .map((entry) => {
+        const amount = Math.max(0, Math.floor(Number(entry?.rewardAmount ?? entry?.amount) || 0));
+        if (amount <= 0) return null;
+        const tier = getChestRewardTierForAmount(amount);
+        return {
+          id: entry.id,
+          eventId: entry.eventId || entry.id,
+          amount,
+          tierId: tier?.id || null,
+          title: entry.title || null,
+        };
+      })
+      .filter(Boolean);
+  }, [tycoonPendingRewardEvents]);
+
+  const markTycoonRewardsClaimed = useCallback((eventIds = []) => {
+    const idSet = new Set((Array.isArray(eventIds) ? eventIds : []).filter(Boolean));
+    if (!idSet.size) return;
+    setTycoonLedger((prev) =>
+      (Array.isArray(prev) ? prev : []).map((entry) =>
+        idSet.has(entry?.id)
+          ? {
+              ...entry,
+              rewardClaimed: true,
+              rewardClaimedAt: Date.now(),
+            }
+          : entry
+      )
+    );
+  }, []);
+
+  const handleTycoonRewardCollectAll = useCallback(() => {
+    const rewards = buildTycoonRewardQueue(
+      tycoonRewardModal.rewards?.length ? tycoonRewardModal.rewards : tycoonPendingRewardEvents
+    );
+    const rewardTotal = rewards.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0);
+    if (rewardTotal > 0) {
+      setHealthPoints((prev) => prev + rewardTotal);
+      markTycoonRewardsClaimed(rewards.map((entry) => entry.eventId));
+    }
+    setTycoonRewardFlowActive(false);
+    setTycoonRewardModal((prev) => ({ ...prev, visible: false, rewards: [] }));
+    triggerCoinHaptics();
+    logEvent("tycoon_rewards_collect_all", {
+      count: rewards.length,
+      reward: rewardTotal,
+    });
+  }, [
+    buildTycoonRewardQueue,
+    logEvent,
+    markTycoonRewardsClaimed,
+    setHealthPoints,
+    triggerCoinHaptics,
+    tycoonPendingRewardEvents,
+    tycoonRewardModal.rewards,
+  ]);
+
+  const handleTycoonRewardOpenChests = useCallback(() => {
+    const rewards = buildTycoonRewardQueue(
+      tycoonRewardModal.rewards?.length ? tycoonRewardModal.rewards : tycoonPendingRewardEvents
+    );
+    if (!rewards.length) {
+      setTycoonRewardModal((prev) => ({ ...prev, visible: false, rewards: [] }));
+      return;
+    }
+    setTycoonRewardFlowActive(true);
+    setTycoonRewardModal((prev) => ({ ...prev, visible: false, rewards: [] }));
+    rewards.forEach((rewardEntry) => {
+      triggerOverlayState("health", {
+        amount: rewardEntry.amount,
+        tierId: rewardEntry.tierId,
+        chestCount: 1,
+        title: t("tycoonAutosaveRewardTitle"),
+        closedSubtitle: t("tycoonAutosaveChestClosed"),
+        openedSubtitle: t("tycoonAutosaveChestOpened"),
+        onRevealReward: () => {
+          setHealthPoints((prev) => prev + rewardEntry.amount);
+          markTycoonRewardsClaimed([rewardEntry.eventId]);
+        },
+      }, { force: true });
+    });
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    logEvent("tycoon_rewards_open_chests", {
+      count: rewards.length,
+      reward: rewards.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0),
+    });
+  }, [
+    buildTycoonRewardQueue,
+    logEvent,
+    markTycoonRewardsClaimed,
+    setHealthPoints,
+    t,
+    triggerOverlayState,
+    tycoonPendingRewardEvents,
+    tycoonRewardModal.rewards,
+  ]);
+
+  const handleTycoonAutosaveConfirm = useCallback(async () => {
+    const pending = (Array.isArray(tycoonPendingEvents) ? tycoonPendingEvents : []).filter(
+      (entry) => entry?.id
+    );
+    if (!pending.length) return;
+    const spentIds = tycoonSpentSelection || {};
+    const spentCount = pending.reduce((count, entry) => count + (spentIds[entry.id] ? 1 : 0), 0);
+    const confirmAllStreak = Math.max(0, Number(tycoonConfirmStats?.confirmAllStreak) || 0);
+    if (
+      spentCount === 0 &&
+      confirmAllStreak + 1 >= TYCOON_CONFIRM_ALL_REVIEW_STREAK &&
+      !tycoonReviewAcknowledged
+    ) {
+      setTycoonReviewAcknowledged(true);
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
+      logEvent("tycoon_autosave_review_prompted", {
+        pending_count: pending.length,
+        confirm_all_streak: confirmAllStreak + 1,
+      });
+      return;
+    }
+
+    const now = Date.now();
+    let savedCount = 0;
+    let spentResolvedCount = 0;
+    let savedAmountUSD = 0;
+    let spentAmountUSD = 0;
+    let rewardTotal = 0;
+    const resolvedStatuses = {};
+    const rewardByEventId = {};
+    for (const entry of pending) {
+      const card = resolveTemplateCard(entry.cardId);
+      if (!card) continue;
+      const amountUSD = clampTransactionAmountUSD(entry.amountUSD);
+      if (amountUSD <= 0) continue;
+      const markedSpent = !!spentIds[entry.id];
+      if (markedSpent) {
+        await handleTemptationAction("spend", card, {
+          amountUSD,
+          bypassSpendPrompt: true,
+          suppressStormOverlay: true,
+          skipMonetizationTrialLimit: true,
+          skipCategoryPrompt: true,
+          skipFrequencyReminderPrompt: true,
+        });
+        spentResolvedCount += 1;
+        spentAmountUSD += amountUSD;
+      } else {
+        await handleTemptationAction("save", card, {
+          amountUSD,
+          skipPrompt: true,
+          suppressSaveOverlay: true,
+          skipSaveSpamCheck: true,
+          skipDailySaveLimit: true,
+          skipMonetizationTrialLimit: true,
+          skipCategoryPrompt: true,
+          skipFrequencyReminderPrompt: true,
+        });
+        savedCount += 1;
+        savedAmountUSD += amountUSD;
+        const entryReward = computeRefuseCoinReward(amountUSD, profile.currency || DEFAULT_PROFILE.currency);
+        rewardByEventId[entry.id] = entryReward;
+        rewardTotal += entryReward;
+      }
+      resolvedStatuses[entry.id] = markedSpent ? "spent" : "saved";
+    }
+
+    if (!Object.keys(resolvedStatuses).length) {
+      setTycoonAutosaveDismissed(true);
+      return;
+    }
+    setTycoonLedger((prev) =>
+      (Array.isArray(prev) ? prev : []).map((entry) => {
+        const status = resolvedStatuses[entry?.id];
+        const rewardAmount = Math.max(0, Number(rewardByEventId[entry?.id]) || 0);
+        if (!status) return entry;
+        return {
+          ...entry,
+          status,
+          confirmedAt: now,
+          rewardAmount: status === "saved" ? rewardAmount : 0,
+          rewardClaimed: status !== "saved" || rewardAmount <= 0,
+        };
+      })
+    );
+    setTycoonConfirmStats((prev) => ({
+      ...(prev || {}),
+      confirmAllStreak: spentResolvedCount === 0 ? confirmAllStreak + 1 : 0,
+      lastConfirmedAt: now,
+    }));
+    setTycoonSpentSelection({});
+    setTycoonReviewAcknowledged(false);
+    setTycoonAutosaveDismissed(true);
+    if (savedCount > 0 && rewardTotal > 0) {
+      const rewardQueue = pending
+        .filter((entry) => resolvedStatuses[entry.id] === "saved")
+        .map((entry) => {
+          const amount = Math.max(0, Number(rewardByEventId[entry.id]) || 0);
+          const tier = getChestRewardTierForAmount(amount);
+          return amount > 0
+            ? {
+                id: entry.id,
+                eventId: entry.id,
+                amount,
+                tierId: tier?.id || null,
+                title: entry.title || null,
+              }
+            : null;
+        })
+        .filter(Boolean);
+      setTycoonRewardModal({
+        visible: true,
+        count: rewardQueue.length,
+        reward: rewardTotal,
+        rewards: rewardQueue,
+      });
+    }
+    logEvent("tycoon_autosave_confirmed", {
+      saved_count: savedCount,
+      spent_count: spentResolvedCount,
+      saved_amount_usd: savedAmountUSD,
+      spent_amount_usd: spentAmountUSD,
+      reward: rewardTotal,
+    });
+  }, [
+    handleTemptationAction,
+    logEvent,
+    profile.currency,
+    resolveTemplateCard,
+    tycoonConfirmStats,
+    tycoonPendingEvents,
+    tycoonReviewAcknowledged,
+    tycoonSpentSelection,
+  ]);
 
   const handleSaveSpamPromptConfirm = useCallback(() => {
     const item = saveSpamPrompt.item;
@@ -69476,6 +69807,8 @@ useEffect(() => {
         const { frequency, frequencyCustom } = resolveFrequencySelectionForItem(item);
         const { reminderHour, reminderMinute, weeklyDay, monthlyDay, weeklyDays, monthlyDays } =
           resolveFrequencyScheduleSelectionForItem(item);
+        const showScheduleConfigByDefault =
+          isUserSubscriptionTemptation(item, categorySlug) && isGuidedFrequency(frequency);
         logEvent("temptation_viewed", {
           temptation_id: item.id,
           category: categorySlug,
@@ -69497,7 +69830,7 @@ useEffect(() => {
           frequencyWeeklyDays: weeklyDays,
           frequencyMonthlyDays: monthlyDays,
           initialFrequency: frequency,
-          scheduleConfigVisible: false,
+          scheduleConfigVisible: showScheduleConfigByDefault,
         };
       });
     },
@@ -69513,7 +69846,6 @@ useEffect(() => {
       resolveFrequencyScheduleSelectionForItem,
     ]
   );
-
   const closePriceEditor = useCallback(() => {
     if (!priceEditor.item && !editOverlayVisible) return;
     setPriceEditor({
@@ -70346,6 +70678,16 @@ useEffect(() => {
       (priceEditor.scheduleConfigVisible && isGuidedFrequency(nextFrequency)) ||
       changedScheduleConfig;
     const nextFrequencyIntervalMs = resolveFrequencyIntervalMs(nextFrequency, nextFrequencyCustom);
+    const editTimestamp = Date.now();
+    const tycoonCooldownMs =
+      changedPrice && usdValue > previousPriceUSD
+        ? getTycoonCooldownMsForIncrease(previousPriceUSD, usdValue, nextFrequencyIntervalMs)
+        : 0;
+    const existingTycoonCooldownUntil = Math.max(0, Number(priceEditor.item?.tycoonCooldownUntil) || 0);
+    const tycoonCooldownUntil =
+      tycoonCooldownMs > 0
+        ? Math.max(existingTycoonCooldownUntil, editTimestamp + tycoonCooldownMs)
+        : existingTycoonCooldownUntil || null;
     patchTemptationDisplay(priceEditor.item.id, {
       priceUSD: usdValue,
       pricePrecision: manualPrecision,
@@ -70364,6 +70706,8 @@ useEffect(() => {
       frequencyMonthlyDays: nextMonthlyDays,
       frequencyReminderManualConfigured:
         markManualConfigured || priceEditor.item?.frequencyReminderManualConfigured === true,
+      tycoonCooldownUntil: tycoonCooldownUntil || priceEditor.item?.tycoonCooldownUntil || null,
+      tycoonCooldownStartedAt: tycoonCooldownUntil ? editTimestamp : priceEditor.item?.tycoonCooldownStartedAt || null,
     });
     if (shouldApplyFrequency) {
       applyFrequencySelectionToTemplate(
@@ -70382,6 +70726,24 @@ useEffect(() => {
         }
       );
     }
+    if (tycoonCooldownUntil) {
+      setTemptationInteractions((prev) => {
+        const prevEntry = prev?.[templateId] || {};
+        return {
+          ...(prev || {}),
+          [templateId]: {
+            ...prevEntry,
+            frequency: nextFrequency || prevEntry.frequency || null,
+            frequencyCustom: nextFrequency === "custom" ? nextFrequencyCustom || null : null,
+            intervalMs: nextFrequencyIntervalMs || prevEntry.intervalMs || null,
+            nextCheckAt: tycoonCooldownUntil,
+            templateTitle: normalizedLabel || prevEntry.templateTitle || null,
+            lastTimerResetAt: editTimestamp,
+            tycoonCooldownUntil,
+          },
+        };
+      });
+    }
     propagateTemptationEdit(priceEditor.item.id, {
       label: normalizedLabel,
       emoji: resolvedEmoji,
@@ -70399,6 +70761,15 @@ useEffect(() => {
       frequency: nextFrequency,
     });
     closePriceEditor();
+    if (tycoonCooldownMs > 0) {
+      const cooldownMessageMs = Math.max(tycoonCooldownMs, tycoonCooldownUntil - editTimestamp);
+      Alert.alert(
+        t("tycoonModeLabel"),
+        t("tycoonCooldownNotice", {
+          time: formatTemptationPauseFreezeLabel(cooldownMessageMs, language),
+        })
+      );
+    }
   };
 
   const promptTemptationDelete = useCallback(
@@ -70841,7 +71212,16 @@ useEffect(() => {
     if (next.type === "purchase") {
       setConfettiKey((prev) => prev + 1);
     }
-    setOverlay({ type: next.type, message: next.message, clearQueueOnDismiss: !!next.clearQueueOnDismiss });
+    const instanceId =
+      next.instanceId ||
+      `${next.type || "overlay"}:${Date.now()}:${overlayInstanceCounterRef.current + 1}`;
+    overlayInstanceCounterRef.current += 1;
+    setOverlay({
+      type: next.type,
+      message: next.message,
+      clearQueueOnDismiss: !!next.clearQueueOnDismiss,
+      instanceId,
+    });
     const defaultDuration =
       next.type === "cart"
         ? 1800
@@ -70938,7 +71318,15 @@ useEffect(() => {
       if (PERSISTENT_CHEST_OVERLAY_TYPES.has(type)) {
         duration = null;
       }
-      overlayQueueRef.current.push({ type, message, duration, clearQueueOnDismiss, force });
+      overlayInstanceCounterRef.current += 1;
+      overlayQueueRef.current.push({
+        type,
+        message,
+        duration,
+        clearQueueOnDismiss,
+        force,
+        instanceId: `${type || "overlay"}:${Date.now()}:${overlayInstanceCounterRef.current}`,
+      });
       processOverlayQueue();
       if (!overlayEnvironmentReady || blockingModalVisible) {
         scheduleOverlayRetry();
@@ -72386,8 +72774,6 @@ useEffect(() => {
             setRegistrationData(INITIAL_REGISTRATION);
             setDailyRewardState({ ...DEFAULT_DAILY_REWARD_STATE });
             setDailyRewardHydrated(true);
-            setDailyGoalCollectedKey(null);
-            setDailyGoalCollectedHydrated(true);
             setDailySaveLimitState(createDailySaveLimitState(getDayKey(Date.now()), 0));
             setDailySaveLimitHydrated(true);
             setDailyChallenge(createInitialDailyChallengeState());
@@ -72740,12 +73126,6 @@ useEffect(() => {
     []
   );
   useEffect(() => {
-    if (!dailyGoalCollectedHydrated) return;
-    if (!dailyGoalCollectedToday) return;
-    if (heroCarouselIndex === 0) return;
-    setHeroCarouselIndex(0);
-  }, [dailyGoalCollectedHydrated, dailyGoalCollectedToday, heroCarouselIndex]);
-  useEffect(() => {
     if (!__DEV__ || !interfaceReady) return;
     console.log("[modal-debug]", {
       premiumPaywallVisible: premiumPaywallState.visible,
@@ -72787,7 +73167,6 @@ useEffect(() => {
       levelShareModalVisible: levelShareModal.visible,
       potentialLossModalVisible: potentialLossModal.visible,
       frequencyReminderPromptVisible: frequencyReminderPrompt.visible,
-      dailyGoalCollectModalVisible: dailyGoalCollectModal.visible,
     });
   }, [
     addCategoryModalVisible,
@@ -72796,7 +73175,6 @@ useEffect(() => {
     budgetWidgetTutorialVisible,
     categoryPrompt.visible,
     customSpendSavingsModal.visible,
-    dailyGoalCollectModal.visible,
     dailyRewardModalVisible,
     dailySummaryVisible,
     fabTutorialVisible,
@@ -73165,6 +73543,8 @@ useEffect(() => {
             onAndroidAppsFlyerToggle={handleAndroidAppsFlyerToggle}
             spendReducesSavings={spendReducesSavings}
             onSpendReductionToggle={handleSpendImpactToggle}
+            tycoonModeEnabled={tycoonSettings?.enabled !== false}
+            onTycoonModeToggle={handleTycoonModeToggle}
             history={visibleHistoryEvents}
             onHistoryDelete={handleHistoryDelete}
             freeDayStats={freeDayStats}
@@ -73246,11 +73626,6 @@ useEffect(() => {
             onDailyRewardClaim={handleDailyRewardClaim}
             onDailyRewardModalVisibilityChange={setDailyRewardModalVisible}
             dailyRewardOpenRequestTick={dailyRewardOpenRequestTick}
-            dailyGoalCoinDropTick={dailyGoalCoinDropTick}
-            onDailyGoalCollect={handleDailyGoalCollect}
-            dailyGoalCollectedToday={dailyGoalCollectedToday}
-            dailyGoalCollectedHydrated={dailyGoalCollectedHydrated}
-            dailyGoalDayLabel={dailyGoalDayLabel}
             mascotOverride={mascotOverride}
             onMascotAnimationComplete={handleMascotAnimationComplete}
             onMascotPress={openTamagotchiOverlay}
@@ -73273,6 +73648,7 @@ useEffect(() => {
             onTemptationSwipeDelete={handleTemptationDelete}
             onSavingsBreakdownPress={openSavingsBreakdown}
             onBudgetHeroPress={handleBudgetHeroPress}
+            onSubscriptionWidgetPress={requestProgressSubscriptionFocus}
             savingsHeroRef={savingsHeroRef}
             heroCarouselIndex={heroCarouselIndex}
             heroCarouselLocked={heroCarouselLocked}
@@ -73553,7 +73929,7 @@ useEffect(() => {
         />
       );
     }
-    const onboardingBackground = ONBOARDING_GLASS_THEME.backgroundBlue;
+    const onboardingBackground = resolveOnboardingStatusBackground(onboardingStep, registrationData);
     const shouldShowOnboardingStatusGlass = shouldRenderStatusGlass && Boolean(onboardContent);
     const onboardingStatusGlassConfig = shouldShowOnboardingStatusGlass
       ? {
@@ -73585,20 +73961,21 @@ useEffect(() => {
                 },
               ]}
             >
-              {shouldShowOnboardingStatusGlass && (
-                <StatusGlass
-                  height={statusGlassHeight}
-                  safeHeight={topSafeInset}
-                  offsetY={0}
-                  backgroundColor={onboardingBackground}
-                  theme={theme}
-                  blurAvailable={statusBlurAvailable}
-                />
-              )}
-              <StatusBar
-                style="dark"
-                backgroundColor={canSetSystemBarColors ? onboardingBackground : undefined}
-              />
+	              {shouldShowOnboardingStatusGlass && (
+	                <StatusGlass
+	                  height={statusGlassHeight}
+	                  safeHeight={topSafeInset}
+	                  offsetY={0}
+	                  backgroundColor={onboardingBackground}
+	                  theme={theme}
+	                  blurAvailable={statusBlurAvailable}
+	                />
+	              )}
+	              <StatusBar
+	                style="dark"
+	                translucent
+	                backgroundColor={canSetSystemBarColors ? "transparent" : undefined}
+	              />
               {onboardContent || <LogoSplash onDone={handleOnboardingLogoComplete} />}
               {backGestureResponder && (
                 <View pointerEvents="box-none" style={styles.backGestureWrapper}>
@@ -73711,7 +74088,7 @@ useEffect(() => {
 	                  height={statusGlassHeight}
 	                  safeHeight={topSafeInset}
 	                  offsetY={0}
-	                  backgroundColor={colors.background}
+	                  backgroundColor={statusGlassBackgroundColor}
 	                  theme={theme}
 	                  blurAvailable={statusBlurAvailable}
 	                />
@@ -73722,10 +74099,9 @@ useEffect(() => {
 	                </View>
 	              )}
               <StatusBar
-                style={theme === "dark" ? "light" : "dark"}
-                backgroundColor={
-                  canSetSystemBarColors ? (systemBarsDimActive ? overlaySystemColor : colors.background) : undefined
-                }
+                style={systemBarIconStyle}
+                translucent
+                backgroundColor={canSetSystemBarColors ? "transparent" : undefined}
               />
               {backGestureResponder && (
                 <View pointerEvents="box-none" style={styles.backGestureWrapper}>
@@ -73764,6 +74140,8 @@ useEffect(() => {
             visible={!startupHardLockPendingBeforePaywall && bugReportVisible}
             colors={colors}
             language={language}
+            keyboardInset={keyboardInset}
+            topSafeInset={topSafeInset}
             onClose={closeBugReport}
             onFilled={handleBugReportFilled}
             onSubmit={handleBugReportSubmit}
@@ -74663,70 +75041,6 @@ useEffect(() => {
             </View>
           </Modal>
         )}
-        {!startupHardLockPendingBeforePaywall && dailyGoalCollectModal.visible && (
-          <Modal visible transparent animationType="none" statusBarTranslucent>
-            <TouchableWithoutFeedback onPress={closeDailyGoalCollectModal}>
-              <View style={styles.quickModalBackdrop}>
-                <TouchableWithoutFeedback onPress={() => {}}>
-                  <View style={[styles.quickModalCard, { backgroundColor: colors.card }]}>
-                    <View
-                      style={[
-                        styles.dailyGoalCollectHero,
-                        {
-                          backgroundColor: isDarkTheme
-                            ? "rgba(46,184,115,0.2)"
-                            : "rgba(46,184,115,0.12)",
-                          borderColor: isDarkTheme
-                            ? "rgba(120,230,175,0.6)"
-                            : "rgba(46,184,115,0.4)",
-                        },
-                      ]}
-                    >
-                      {getChestRewardTierForAmount(dailyGoalCollectModal.coins)?.assets?.closed ? (
-                        <Image
-                          source={getChestRewardTierForAmount(dailyGoalCollectModal.coins).assets.closed}
-                          style={styles.dailyGoalCollectCoin}
-                        />
-                      ) : null}
-                      <Text
-                        style={[
-                          styles.dailyGoalCollectAmount,
-                          { color: isDarkTheme ? "#D6FFE8" : SAVE_ACTION_COLOR },
-                        ]}
-                      >
-                        {getChestRewardDisplayCount(dailyGoalCollectModal.coins)}
-                      </Text>
-                    </View>
-                    <Text style={[styles.quickModalTitle, { color: colors.text }]}>
-                      {t("dailyGoalCollectTitle")}
-                    </Text>
-                    <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>
-                      {language === "ru"
-                        ? "Награда за дневную цель теперь приходит сундуком. Монеты спрятаны внутри."
-                        : "Your daily goal reward now comes as a chest. The coins are hidden inside."}
-                    </Text>
-                    <View style={styles.quickModalActions}>
-                      <TouchableOpacity
-                        style={[styles.quickModalPrimary, { backgroundColor: colors.text }]}
-                        onPress={closeDailyGoalCollectModal}
-                        activeOpacity={0.9}
-                      >
-                        <Text
-                          style={[styles.quickModalPrimaryText, { color: colors.background }]}
-                          numberOfLines={1}
-                          adjustsFontSizeToFit
-                          minimumFontScale={0.82}
-                        >
-                          {t("dailyGoalCollectCta")}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </TouchableWithoutFeedback>
-              </View>
-            </TouchableWithoutFeedback>
-          </Modal>
-        )}
         {!startupHardLockPendingBeforePaywall && dailySummaryVisible && dailySummaryData && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <View style={styles.dailySummaryBackdrop}>
@@ -75351,6 +75665,34 @@ useEffect(() => {
           onCancel={handleQuickCustomCancel}
           language={language}
           keyboardOffset={keyboardModalOffset}
+        />
+        <TycoonAutosaveModal
+          visible={
+            !startupHardLockPendingBeforePaywall &&
+            !premiumPaywallState.visible &&
+            onboardingStep === "done" &&
+            tycoonPendingEvents.length > 0 &&
+            !tycoonAutosaveDismissed
+          }
+          events={tycoonPendingEvents}
+          selectedSpentIds={tycoonSpentSelection}
+          onToggleSpent={handleTycoonToggleSpent}
+          onConfirm={handleTycoonAutosaveConfirm}
+          onClose={handleTycoonAutosaveClose}
+          colors={colors}
+          t={t}
+          currency={profile.currency || DEFAULT_PROFILE.currency}
+          showReviewWarning={tycoonReviewAcknowledged}
+        />
+        <TycoonRewardModal
+          visible={!startupHardLockPendingBeforePaywall && tycoonRewardModal.visible}
+          count={tycoonRewardModal.count}
+          reward={tycoonRewardModal.reward}
+          rewards={tycoonRewardModal.rewards}
+          colors={colors}
+          t={t}
+          onCollectAll={handleTycoonRewardCollectAll}
+          onOpenChests={handleTycoonRewardOpenChests}
         />
         <NewPendingModal
           visible={!startupHardLockPendingBeforePaywall && newPendingModal.visible}
@@ -77238,7 +77580,7 @@ useEffect(() => {
         )}
 
         {!startupHardLockPendingBeforePaywall && editOverlayVisible && (
-          <View style={[styles.temptationEditOverlay, modalKeyboardPaddingStyle]}>
+          <View style={[styles.temptationEditOverlay, temptationEditOverlayKeyboardStyle]}>
             <Pressable
               style={styles.temptationEditBackdropPressable}
               onPress={() => dismissKeyboardOrRun(closePriceEditor)}
@@ -77286,6 +77628,8 @@ useEffect(() => {
                   colors={colors}
                   t={t}
                   currency={profile.currency || DEFAULT_PROFILE.currency}
+                  keyboardInset={keyboardInset}
+                  topSafeInset={topSafeInset}
                   titleOverride={titleOverrides[priceEditor.item.id]}
                   editTitleValue={priceEditor.title}
                   editPriceValue={priceEditor.value}
@@ -77373,7 +77717,7 @@ useEffect(() => {
             statusBarTranslucent
           >
             <TouchableWithoutFeedback onPress={() => dismissKeyboardOrRun(closeBaselinePrompt)}>
-              <View style={styles.baselinePromptBackdrop}>
+              <View style={[styles.baselinePromptBackdrop, modalKeyboardPaddingStyle]}>
                 <TouchableWithoutFeedback onPress={() => {}}>
                   <View
                     style={[
@@ -77506,7 +77850,7 @@ useEffect(() => {
         {!startupHardLockPendingBeforePaywall && activeTab !== "profile" && fabMenuVisible && (
           <View pointerEvents="box-none" style={styles.fabMenuOverlay}>
             <TouchableWithoutFeedback onPress={closeFabMenu}>
-              <View style={styles.fabMenuBackdrop} />
+              <Animated.View style={[styles.fabMenuBackdrop, { opacity: fabMenuAnim }]} />
             </TouchableWithoutFeedback>
             <Animated.View
               style={[
@@ -77904,6 +78248,7 @@ useEffect(() => {
           <Modal visible transparent animationType="none" statusBarTranslucent>
             <View style={styles.overlayFullScreen}>
               <HealthCelebration
+                key={overlay.instanceId}
                 colors={colors}
                 payload={{
                   amount:
@@ -77950,6 +78295,7 @@ useEffect(() => {
           <Modal visible transparent animationType="none" statusBarTranslucent>
             <View style={styles.overlayFullScreen}>
               <HealthCelebration
+                key={overlay.instanceId}
                 colors={colors}
                 payload={{
                   amount:
@@ -77994,6 +78340,7 @@ useEffect(() => {
           <Modal visible transparent animationType="none" statusBarTranslucent>
             <View style={styles.overlayFullScreen}>
               <HealthCelebration
+                key={overlay.instanceId}
                 colors={colors}
                 payload={{
                   amount:
@@ -78052,6 +78399,7 @@ useEffect(() => {
           <Modal visible transparent animationType="none" statusBarTranslucent>
             <View style={styles.overlayFullScreen}>
               <HealthCelebration
+                key={overlay.instanceId}
                 colors={colors}
                 payload={{
                   amount: overlay.message?.amount || FOCUS_VICTORY_REWARD,
@@ -78074,6 +78422,7 @@ useEffect(() => {
           <Modal visible transparent animationType="none" statusBarTranslucent>
             <View style={styles.overlayFullScreen}>
               <HealthCelebration
+                key={overlay.instanceId}
                 colors={colors}
                 payload={overlay.message}
                 t={t}
@@ -78804,7 +79153,10 @@ useEffect(() => {
                 ]}
               />
             </TouchableWithoutFeedback>
-            <View style={styles.progressCategoryModalWrap} pointerEvents="box-none">
+            <View
+              style={[styles.progressCategoryModalWrap, modalKeyboardPaddingStyle]}
+              pointerEvents="box-none"
+            >
               <View style={[styles.priceModalCard, { backgroundColor: colors.card }]}>
                 <Text style={[styles.priceModalTitle, { color: colors.text }]}>
                   {t("manageCategoriesTitle")}
@@ -79362,6 +79714,41 @@ const ONBOARDING_GLASS_THEME = Object.freeze({
   buttonPrimary: "#111111",
 });
 
+const ONBOARDING_PERSONA_BACKGROUNDS = Object.freeze({
+  mindful_coffee: "#F4F6FF",
+  habit_smoking: "#F5FBF7",
+  glam_beauty: "#FFF2F8",
+  gamer_loot: "#EEF6FF",
+  foodie_delivery: "#FFF6EB",
+  online_impulse: "#EFF4FF",
+  home_picks: "#F2FAF2",
+  anime_fan: "#F5F0FF",
+  sub_lover: "#F0FFF8",
+  fashion_fan: "#FFF1EC",
+});
+
+const resolveOnboardingStatusBackground = (step, registrationData = {}) => {
+  switch (step) {
+    case "language":
+    case "push_optin":
+      return ONBOARDING_GLASS_THEME.backgroundLavender;
+    case "guide":
+      return ONBOARDING_GLASS_THEME.backgroundRose;
+    case "persona":
+      return (
+        ONBOARDING_PERSONA_BACKGROUNDS[registrationData?.persona] ||
+        ONBOARDING_PERSONA_BACKGROUNDS.mindful_coffee
+      );
+    case "habit":
+      return ONBOARDING_GLASS_THEME.backgroundMint;
+    case "logo":
+    case "save_demo":
+    case "goal":
+    default:
+      return ONBOARDING_GLASS_THEME.backgroundBlue;
+  }
+};
+
 const styles = StyleSheet.create({
   appBackground: {
     flex: 1,
@@ -79481,6 +79868,188 @@ const styles = StyleSheet.create({
   },
   archiveSection: {
     marginTop: 8,
+  },
+  tycoonAutosaveBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(3,8,20,0.62)",
+    paddingHorizontal: 16,
+    paddingTop: 72,
+    paddingBottom: 28,
+    justifyContent: "center",
+  },
+  tycoonAutosaveCard: {
+    maxHeight: "92%",
+    borderRadius: 26,
+    borderWidth: 1,
+    padding: 16,
+  },
+  tycoonAutosaveHeader: {
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "flex-start",
+  },
+  tycoonAutosaveHeaderText: {
+    flex: 1,
+  },
+  tycoonAutosaveTitle: {
+    ...createBodyText({ fontSize: 22, lineHeight: 27, fontWeight: "900" }),
+  },
+  tycoonAutosaveSubtitle: {
+    ...createSecondaryText({ fontSize: 13, lineHeight: 18, fontWeight: "600" }),
+    marginTop: 5,
+  },
+  tycoonAutosaveClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tycoonAutosaveCloseText: {
+    fontSize: 26,
+    lineHeight: 28,
+    fontWeight: "500",
+  },
+  tycoonAutosaveReview: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 12,
+    marginTop: 12,
+  },
+  tycoonAutosaveReviewTitle: {
+    ...createBodyText({ fontSize: 13, lineHeight: 17, fontWeight: "800" }),
+  },
+  tycoonAutosaveReviewBody: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "600" }),
+    marginTop: 3,
+  },
+  tycoonAutosaveTotals: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 14,
+  },
+  tycoonAutosaveTotalPill: {
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+  },
+  tycoonAutosaveTotalText: {
+    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+  },
+  tycoonAutosaveList: {
+    marginTop: 12,
+    maxHeight: 420,
+  },
+  tycoonAutosaveListContent: {
+    gap: 9,
+    paddingBottom: 4,
+  },
+  tycoonAutosaveItem: {
+    minHeight: 66,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  tycoonAutosaveItemIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tycoonAutosaveItemEmoji: {
+    fontSize: 22,
+  },
+  tycoonAutosaveItemBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tycoonAutosaveItemTitle: {
+    ...createBodyText({ fontSize: 14, lineHeight: 18, fontWeight: "800" }),
+  },
+  tycoonAutosaveItemMeta: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "600" }),
+    marginTop: 2,
+  },
+  tycoonAutosaveState: {
+    minWidth: 58,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    alignItems: "center",
+  },
+  tycoonAutosaveStateText: {
+    ...createCtaText({ fontSize: 9, textTransform: "uppercase" }),
+    color: "#FFFFFF",
+  },
+  tycoonAutosaveConfirm: {
+    borderRadius: 18,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 14,
+  },
+  tycoonAutosaveConfirmText: {
+    ...createCtaText({ fontSize: 13, textTransform: "uppercase" }),
+  },
+  tycoonRewardBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(3,8,20,0.64)",
+    paddingHorizontal: 20,
+    justifyContent: "center",
+  },
+  tycoonRewardCard: {
+    borderRadius: 26,
+    borderWidth: 1,
+    padding: 20,
+    alignItems: "center",
+  },
+  tycoonRewardChestRow: {
+    height: 86,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: -8,
+    marginBottom: 8,
+  },
+  tycoonRewardChest: {
+    width: 58,
+    height: 58,
+    resizeMode: "contain",
+    marginHorizontal: -5,
+  },
+  tycoonRewardTitle: {
+    ...createBodyText({ fontSize: 22, lineHeight: 27, fontWeight: "900" }),
+    textAlign: "center",
+  },
+  tycoonRewardBody: {
+    ...createSecondaryText({ fontSize: 14, lineHeight: 20, fontWeight: "600" }),
+    textAlign: "center",
+    marginTop: 6,
+  },
+  tycoonRewardButton: {
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    marginTop: 16,
+    minWidth: 190,
+    alignItems: "center",
+  },
+  tycoonRewardSecondaryButton: {
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    marginTop: 10,
+    minWidth: 190,
+    alignItems: "center",
+  },
+  tycoonRewardButtonText: {
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   archiveList: {
     marginTop: 8,
@@ -82212,286 +82781,6 @@ const styles = StyleSheet.create({
   heroBudgetEmptySubtitle: {
     ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
   },
-  heroDailyCard: {
-    gap: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroDailyHeader: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  heroDailyTitle: {
-    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
-  },
-  heroDailyChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  heroDailyChipText: {
-    ...createSecondaryText({ fontSize: 10 }),
-  },
-  heroDailyAmount: {
-    ...TYPOGRAPHY.display,
-    fontSize: 34,
-    textAlign: "center",
-  },
-  heroDailySubtitle: {
-    ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
-  },
-  heroDailyEmpty: {
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 6,
-  },
-  heroDailyEmptyTitle: {
-    ...createBodyText({ fontSize: 14, fontWeight: "700", textAlign: "center" }),
-  },
-  heroDailyEmptySubtitle: {
-    ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
-  },
-  heroDailyGoalBody: {
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-    flex: 1,
-  },
-  piggyWrap: {
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 2,
-    position: "relative",
-  },
-  piggyBodyWrap: {
-    width: IS_SHORT_DEVICE ? 160 : 176,
-    height: IS_SHORT_DEVICE ? 160 : 176,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-  },
-  piggyShadow: {
-    position: "absolute",
-    bottom: -8,
-    width: "78%",
-    height: 14,
-    borderRadius: 999,
-    backgroundColor: "rgba(0,0,0,0.08)",
-    opacity: 0.45,
-  },
-  piggyBody: {
-    width: IS_SHORT_DEVICE ? 150 : 170,
-    height: IS_SHORT_DEVICE ? 134 : 152,
-    borderRadius: 999,
-    borderWidth: 1,
-    overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowOpacity: 0.2,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-  },
-  piggyCoinsClip: {
-    ...StyleSheet.absoluteFillObject,
-    paddingHorizontal: PIGGY_COIN_PADDING_X,
-    paddingVertical: PIGGY_COIN_PADDING_Y,
-    zIndex: 3,
-  },
-  piggyCoin: {
-    position: "absolute",
-    resizeMode: "contain",
-  },
-  piggyGlassBlur: {
-    opacity: 0.45,
-  },
-  piggyGlassBlurFallback: {
-    opacity: 0.35,
-  },
-  piggyGlassInner: {
-    position: "absolute",
-    top: 6,
-    left: 6,
-    right: 6,
-    bottom: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    opacity: 0.55,
-  },
-  piggyGlassHighlight: {
-    position: "absolute",
-    top: 8,
-    left: 18,
-    width: "34%",
-    height: "72%",
-    borderRadius: 80,
-    transform: [{ rotate: "-14deg" }],
-  },
-  piggyGlassHighlightSecondary: {
-    top: 16,
-    left: "52%",
-    width: "18%",
-    height: "46%",
-    opacity: 0.35,
-    transform: [{ rotate: "10deg" }],
-  },
-  piggyGlassRim: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 7,
-    opacity: 0.7,
-  },
-  piggyLid: {
-    position: "absolute",
-    top: 4,
-    left: "12%",
-    right: "12%",
-    height: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    zIndex: 6,
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  piggyLidHighlight: {
-    position: "absolute",
-    top: 6,
-    left: "18%",
-    right: "18%",
-    height: 5,
-    borderRadius: 6,
-    opacity: 0.65,
-    zIndex: 7,
-  },
-  piggyLidKnob: {
-    position: "absolute",
-    top: 3,
-    left: "50%",
-    width: 18,
-    height: 8,
-    marginLeft: -9,
-    borderRadius: 6,
-    borderWidth: 1,
-    zIndex: 7,
-  },
-  piggyCollectLabel: {
-    ...createSecondaryText({ fontSize: 11, textAlign: "center" }),
-    marginBottom: 4,
-    textTransform: "lowercase",
-  },
-  piggyGoalValueWrap: {
-    position: "absolute",
-    left: 10,
-    right: 10,
-    top: "30%",
-    alignItems: "center",
-    zIndex: 4,
-  },
-  piggyGoalValue: {
-    ...TYPOGRAPHY.display,
-    fontSize: IS_SHORT_DEVICE ? 24 : 28,
-    textAlign: "center",
-    letterSpacing: -0.4,
-  },
-  piggyGoalCheck: {
-    ...TYPOGRAPHY.display,
-    fontSize: IS_SHORT_DEVICE ? 34 : 38,
-    lineHeight: IS_SHORT_DEVICE ? 38 : 42,
-    textAlign: "center",
-    letterSpacing: -0.3,
-  },
-  piggyEarLeft: {
-    position: "absolute",
-    top: -16,
-    left: "32%",
-    width: 24,
-    height: 24,
-    borderRadius: 999,
-    borderWidth: 1,
-    zIndex: 3,
-  },
-  piggyEarRight: {
-    position: "absolute",
-    top: -16,
-    left: "58%",
-    width: 24,
-    height: 24,
-    borderRadius: 999,
-    borderWidth: 1,
-    zIndex: 3,
-  },
-  piggySnout: {
-    position: "absolute",
-    left: "50%",
-    top: "54%",
-    width: 46,
-    height: 28,
-    marginLeft: -23,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 3,
-  },
-  piggyNostrilRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  piggyNostril: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    opacity: 0.7,
-  },
-  piggyLegLeft: {
-    position: "absolute",
-    left: "34%",
-    bottom: -8,
-    width: 22,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 1,
-    zIndex: 2,
-  },
-  piggyLegRight: {
-    position: "absolute",
-    left: "54%",
-    bottom: -8,
-    width: 22,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 1,
-    zIndex: 2,
-  },
-  piggyTail: {
-    position: "absolute",
-    left: -6,
-    top: "60%",
-    width: 20,
-    height: 4,
-    borderRadius: 999,
-    opacity: 0.6,
-  },
-  piggyDropCoin: {
-    position: "absolute",
-    top: -12,
-    left: "50%",
-    width: IS_SHORT_DEVICE ? 24 : 28,
-    height: IS_SHORT_DEVICE ? 24 : 28,
-    marginLeft: IS_SHORT_DEVICE ? -12 : -14,
-    zIndex: 5,
-    resizeMode: "contain",
-  },
   savedHeroHeader: {
     marginBottom: 4,
     alignItems: "center",
@@ -83429,7 +83718,7 @@ const styles = StyleSheet.create({
   },
   savedHeroAmountWrap: {
     marginTop: 2,
-    marginBottom: 10,
+    marginBottom: 8,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
@@ -85629,6 +85918,94 @@ const styles = StyleSheet.create({
   },
   subscriptionWidgetTapHint: {
     ...createSecondaryText({ fontSize: 11 }),
+  },
+  homeSubscriptionCard: {
+    gap: 12,
+    padding: 16,
+    overflow: "hidden",
+    position: "relative",
+    shadowOpacity: 0.16,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 8,
+  },
+  homeSubscriptionHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  homeSubscriptionSummaryRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  homeSubscriptionNextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  homeSubscriptionTimerValue: {
+    ...TYPOGRAPHY.display,
+    fontSize: 28,
+    lineHeight: 32,
+    marginTop: 1,
+  },
+  homeSubscriptionCount: {
+    ...createSecondaryText({ fontSize: 12, textAlign: "right" }),
+    flexShrink: 0,
+  },
+  homeSubscriptionList: {
+    gap: 7,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 112,
+  },
+  homeSubscriptionRow: {
+    minHeight: 34,
+    borderRadius: 13,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  homeSubscriptionEmoji: {
+    fontSize: 17,
+    width: 22,
+    textAlign: "center",
+  },
+  homeSubscriptionNameBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  homeSubscriptionName: {
+    ...createBodyText({ fontSize: 12, fontWeight: "700" }),
+  },
+  homeSubscriptionMeta: {
+    ...createSecondaryText({ fontSize: 10 }),
+    marginTop: 1,
+  },
+  homeSubscriptionAmount: {
+    ...createBodyText({ fontSize: 12, fontWeight: "800", textAlign: "right" }),
+    maxWidth: 92,
+  },
+  homeSubscriptionEmpty: {
+    minHeight: 84,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    gap: 6,
+  },
+  homeSubscriptionEmptyEmoji: {
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  homeSubscriptionEmptyText: {
+    ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
   },
   budgetWidgetCard: {
     borderRadius: 22,
@@ -90755,6 +91132,13 @@ const styles = StyleSheet.create({
     gap: 7,
     marginBottom: 12,
   },
+  bugReportFieldsScroll: {
+    flexShrink: 1,
+    maxHeight: SCREEN_HEIGHT * 0.58,
+  },
+  bugReportFieldsScrollContent: {
+    paddingBottom: 2,
+  },
   bugReportLabel: {
     fontSize: 12,
     lineHeight: 16,
@@ -91346,6 +91730,8 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     paddingBottom: 180,
     paddingHorizontal: 24,
+    zIndex: 40,
+    elevation: 40,
   },
   fabMenuBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -91655,25 +92041,6 @@ const styles = StyleSheet.create({
     width: "100%",
     gap: 14,
     paddingBottom: 2,
-  },
-  dailyGoalCollectHero: {
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  dailyGoalCollectCoin: {
-    width: 26,
-    height: 26,
-    resizeMode: "contain",
-  },
-  dailyGoalCollectAmount: {
-    fontSize: 20,
-    fontWeight: "700",
   },
   coinValueHero: {
     height: 140,
@@ -92491,6 +92858,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
+  },
+  coinEntryManualKeyboardAvoider: {
+    width: "100%",
+    alignItems: "center",
   },
   coinEntryManualCard: {
     width: "100%",
@@ -94845,6 +95216,7 @@ const styles = StyleSheet.create({
     minHeight: Math.min(SCREEN_HEIGHT * (IS_SHORT_DEVICE ? 0.56 : 0.62), 560),
   },
   temptationEditScroll: {
+    flexShrink: 1,
     maxHeight: SCREEN_HEIGHT * (IS_SHORT_DEVICE ? 0.56 : 0.66),
   },
   temptationEditContent: {
@@ -101060,47 +101432,53 @@ function CoinEntryModal({
         <View style={StyleSheet.absoluteFillObject}>
           <TouchableWithoutFeedback onPress={() => dismissKeyboardOrRun(closeManual)}>
             <View style={styles.coinEntryManualBackdrop}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View
-                  style={[
-                    styles.coinEntryManualCard,
-                    { backgroundColor: colors.card, borderColor: colors.border },
-                  ]}
-                >
-                  <Text style={[styles.coinEntryManualTitle, { color: colors.text }]}>
-                    {manualTitle}
-                  </Text>
-                  <TextInput
-                    style={[styles.coinEntryManualInput, { color: colors.text, borderColor: colors.border }]}
-                    placeholder={manualPlaceholder}
-                    placeholderTextColor={colors.muted}
-                    keyboardType="numeric"
-                    value={manualValue}
-                    onChangeText={setManualValue}
-                  />
-                  {!!manualError && (
-                    <Text style={[styles.coinEntryManualError, { color: SPEND_ACTION_COLOR }]}>{manualError}</Text>
-                  )}
-                  <View style={styles.coinEntryManualActions}>
-                    <TouchableOpacity
-                      style={[styles.coinEntryManualButtonGhost, { borderColor: colors.border }]}
-                      onPress={closeManual}
-                    >
-                      <Text style={[styles.coinEntryManualButtonGhostText, { color: colors.muted }]}>
-                        {t("coinEntryManualCancel")}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.coinEntryManualButtonPrimary, { backgroundColor: colors.text }]}
-                      onPress={handleManualSave}
-                    >
-                      <Text style={[styles.coinEntryManualButtonPrimaryText, { color: colors.background }]}>
-                        {t("coinEntryManualSave")}
-                      </Text>
-                    </TouchableOpacity>
+              <KeyboardAvoidingView
+                style={styles.coinEntryManualKeyboardAvoider}
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+                keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+              >
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
+                    style={[
+                      styles.coinEntryManualCard,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.coinEntryManualTitle, { color: colors.text }]}>
+                      {manualTitle}
+                    </Text>
+                    <TextInput
+                      style={[styles.coinEntryManualInput, { color: colors.text, borderColor: colors.border }]}
+                      placeholder={manualPlaceholder}
+                      placeholderTextColor={colors.muted}
+                      keyboardType="numeric"
+                      value={manualValue}
+                      onChangeText={setManualValue}
+                    />
+                    {!!manualError && (
+                      <Text style={[styles.coinEntryManualError, { color: SPEND_ACTION_COLOR }]}>{manualError}</Text>
+                    )}
+                    <View style={styles.coinEntryManualActions}>
+                      <TouchableOpacity
+                        style={[styles.coinEntryManualButtonGhost, { borderColor: colors.border }]}
+                        onPress={closeManual}
+                      >
+                        <Text style={[styles.coinEntryManualButtonGhostText, { color: colors.muted }]}>
+                          {t("coinEntryManualCancel")}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.coinEntryManualButtonPrimary, { backgroundColor: colors.text }]}
+                        onPress={handleManualSave}
+                      >
+                        <Text style={[styles.coinEntryManualButtonPrimaryText, { color: colors.background }]}>
+                          {t("coinEntryManualSave")}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
-              </TouchableWithoutFeedback>
+                </TouchableWithoutFeedback>
+              </KeyboardAvoidingView>
             </View>
           </TouchableWithoutFeedback>
         </View>
