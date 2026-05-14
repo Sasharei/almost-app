@@ -683,6 +683,11 @@ const PremiumPaywallModalV2 = ({
       }),
     [sortedPlans]
   );
+  const selectedPlanTrialNotice = sanitizeLabel(
+    hasAnyTrialOffer && selectedPlan?.hasTrial === true ? selectedPlan?.trialNoticeLabel : ""
+  );
+  const billingNotice = sanitizeLabel(copy?.billingNotice || "");
+  const legalNotice = sanitizeLabel(copy?.legalNotice || "");
   const defaultTitle = sanitizeLabel(copy?.title || copy?.planSectionTitle || localizedUi.title);
   const trialHeadline = sanitizeLabel(copy?.v2TrialHeadline || localizedUi.trialHeadline);
   const title = hasAnyTrialOffer && trialHeadline ? trialHeadline : defaultTitle;
@@ -932,7 +937,8 @@ const PremiumPaywallModalV2 = ({
               const display = resolvePlanDisplay(plan, thenPriceTemplate);
               const titleLabel = resolvePlanTitle(plan, language);
               const freeTrialLabel = sanitizeLabel(
-                copy?.v2FreeTrialLabel ||
+                plan?.trialDurationLabel ||
+                  copy?.v2FreeTrialLabel ||
                   localizedUi.freeTrialLabel ||
                   copy?.v2TryForFreeLabel ||
                   localizedUi.tryForFree
@@ -1206,6 +1212,33 @@ const PremiumPaywallModalV2 = ({
                 <Text style={styles.primaryButtonText}>{primaryButtonLabel}</Text>
               )}
             </TouchableOpacity>
+
+            <View style={styles.offerDisclosureBlock}>
+              {!!billingNotice ? (
+                <Text
+                  style={[styles.offerDisclosureText, { color: palette.muted }, textAlignStyle]}
+                  numberOfLines={2}
+                >
+                  {billingNotice}
+                </Text>
+              ) : null}
+              {!!selectedPlanTrialNotice ? (
+                <Text
+                  style={[styles.offerDisclosureText, { color: palette.muted }, textAlignStyle]}
+                  numberOfLines={3}
+                >
+                  {selectedPlanTrialNotice}
+                </Text>
+              ) : null}
+              {!!legalNotice ? (
+                <Text
+                  style={[styles.offerDisclosureText, { color: palette.muted }, textAlignStyle]}
+                  numberOfLines={2}
+                >
+                  {legalNotice}
+                </Text>
+              ) : null}
+            </View>
 
             <View style={styles.secondaryButtonsRow}>
               <TouchableOpacity
@@ -1589,6 +1622,16 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: -0.2,
     textAlign: "center",
+  },
+  offerDisclosureBlock: {
+    marginTop: 5,
+    rowGap: 2,
+  },
+  offerDisclosureText: {
+    textAlign: "center",
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: "600",
   },
   secondaryButtonsRow: {
     marginTop: 2,

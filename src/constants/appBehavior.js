@@ -47,39 +47,10 @@ export const HISTORY_VIEWPORT_HEIGHT = HISTORY_VIEWPORT_ROWS * HISTORY_ITEM_HEIG
 export const HISTORY_SAVED_GAIN_EVENTS = new Set(["refuse_spend", "pending_to_decline", "income_savings"]);
 export const HISTORY_PROGRESS_GAIN_EVENTS = new Set(["refuse_spend", "pending_to_decline"]);
 export const HISTORY_SAVED_LOSS_EVENTS = new Set(["spend"]);
-export const DAILY_GOAL_COIN_EVENTS = new Set(HISTORY_SAVED_GAIN_EVENTS);
-export const DAILY_GOAL_WEEKDAY_BOOST = [0.95, 1.02, 1.0, 1.05, 1.08, 0.94, 0.9];
-export const DAILY_GOAL_SHAKE_THRESHOLD = 1.2;
-export const DAILY_GOAL_SHAKE_COOLDOWN_MS = 700;
-export const DAILY_GOAL_GYRO_THRESHOLD = 0.6;
-export const DAILY_GOAL_GYRO_COOLDOWN_MS = 350;
-export const DAILY_GOAL_GYRO_ACCEL = 260;
-export const DAILY_GOAL_GYRO_CLAMP = 2.2;
-export const DAILY_GOAL_TILT_ACCEL = 1200;
-export const DAILY_GOAL_TILT_FRICTION = 0.7;
-export const DAILY_GOAL_TILT_DRAG = 0.0006;
-export const DAILY_GOAL_TILT_BOUNCE = 0.35;
-export const DAILY_GOAL_COIN_COLLISION_BOUNCE = 0.32;
-export const DAILY_GOAL_COIN_COLLISION_SLOP = 0.6;
-export const DAILY_GOAL_COIN_COLLISION_PERCENT = 0.48;
-export const DAILY_GOAL_COIN_COLLISION_VELOCITY_EPS = 12;
-export const DAILY_GOAL_COIN_COLLISION_ITERATIONS = 2;
-export const DAILY_GOAL_COIN_COLLISION_RESTITUTION_MIN_SPEED = 60;
-export const DAILY_GOAL_COIN_COLLISION_RESTITUTION_RANGE = 200;
-export const DAILY_GOAL_COIN_COLLISION_REST_SPEED = 28;
-export const DAILY_GOAL_COIN_COLLISION_REST_DAMPING = 0.96;
-export const DAILY_GOAL_TILT_MAX_SPEED = 2600;
-export const DAILY_GOAL_TILT_DEADZONE = 0.025;
-export const DAILY_GOAL_TILT_STOP_SPEED = 5;
-export const DAILY_GOAL_TILT_STOP_TILT = 0.02;
-export const DAILY_GOAL_TILT_STOP_GYRO = 0.04;
-export const DAILY_GOAL_GRAVITY = 240;
-export const PIGGY_COIN_PADDING_X = 18;
-export const PIGGY_COIN_PADDING_Y = 12;
 export const HERO_CAROUSEL_ITEM_GUTTER = 16;
 export const HERO_CAROUSEL_PREMIUM_ATTEMPT_TRIGGER_PX = 10;
 export const HERO_CAROUSEL_PREMIUM_DRAG_LIMIT_PX = 30;
-export const HERO_CAROUSEL_WIDGET_ANALYTICS_KEYS = ["H", "B", "P"];
+export const HERO_CAROUSEL_WIDGET_ANALYTICS_KEYS = ["H", "B", "S"];
 export const REPORTS_WEEK_COUNT = 8;
 export const REPORTS_MONTH_COUNT = 6;
 export const REPORTS_MAX_INSIGHTS = 3;
@@ -159,6 +130,7 @@ export const STORAGE_KEYS = {
   TEMPTATION_TUTORIAL: "@almost_temptation_cards_tutorial",
   COIN_VALUE_MODAL: "@almost_coin_value_modal",
   DAILY_CHALLENGE: "@almost_daily_challenge_state",
+  DAILY_CHALLENGE_ACCEPTED_TOTAL: "@almost_daily_challenge_accepted_total",
   DAILY_CHALLENGE_COMPLETED_TOTAL: "@almost_daily_challenge_completed_total",
   DAILY_REWARD: "@almost_daily_reward",
   DAILY_REWARD_DAY_KEY: "@almost_daily_reward_day",
@@ -232,4 +204,7 @@ export const STORAGE_KEYS = {
   PAYWALL_DESIGN_EXPERIMENT_ASSIGNED_AT: "@almost_paywall_design_experiment_assigned_at",
   MONETIZATION_TRIAL_LOCKED: "@almost_monetization_trial_locked",
   MONETIZATION_ONBOARDING_LOCKED: "@almost_monetization_onboarding_locked",
+  TYCOON_SETTINGS: "@almost_tycoon_settings",
+  TYCOON_LEDGER: "@almost_tycoon_ledger",
+  TYCOON_CONFIRM_STATS: "@almost_tycoon_confirm_stats",
 };

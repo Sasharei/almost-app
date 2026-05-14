@@ -210,6 +210,8 @@ const EVENT_DEFINITIONS = {
   challenge_claimed: ["challenge_id"],
   challenge_cancelled: ["challenge_id"],
   daily_challenge_accepted: ["template_id"],
+  daily_challenge_deferred: ["template_id", "defer_days", "source"],
+  daily_challenge_dismissed: ["template_id", "source"],
   daily_challenge_completed: ["template_id", "reward_bonus"],
   daily_challenge_failed: ["template_id"],
   stats_screen_viewed: ["tab"],
@@ -223,7 +225,6 @@ const EVENT_DEFINITIONS = {
   reminder_clicked: ["reminder_type", "target_screen"],
   daily_reward_opened: ["coins", "day", "level"],
   daily_reward_claimed: ["coins", "level", "day"],
-  daily_goal_piggy_collected: ["coins", "day"],
   daily_reward_collected_day_1: ["coins", "level"],
   daily_reward_collected_day_2: ["coins", "level"],
   daily_reward_collected_day_3: ["coins", "level"],
@@ -243,6 +244,33 @@ const EVENT_DEFINITIONS = {
   custom_category_created: ["count", "category_id"],
   saving_rating_chip_tapped: ["score", "peer_rank_percent"],
   saving_rating_modal_scrolled: ["score", "peer_rank_percent", "offset_y"],
+  feature_metrics_snapshot: [
+    "source",
+    "saving_score",
+    "saving_rank_percent",
+    "rewards_unlocked_count",
+    "rewards_claimed_count",
+    "rewards_claimable_count",
+    "daily_challenge_status",
+    "daily_challenge_active",
+    "daily_challenge_accepted_total",
+    "daily_challenge_completed_total",
+    "active_challenges_count",
+    "completed_challenges_count",
+    "claimed_challenges_count",
+    "saved_total_usd",
+    "lifetime_saved_usd",
+    "free_day_current_streak",
+    "usage_streak_current",
+    "goals_count",
+    "pending_count",
+    "spend_count",
+    "temptation_cards_count",
+    "custom_temptation_count",
+    "tycoon_enabled",
+    "tycoon_pending_count",
+    "level",
+  ],
   budget_category_limit_updated: ["category_id", "limit_usd", "previous_limit_usd", "source"],
   budget_category_history_opened: ["category_id"],
   budget_remaining_balance_updated: ["month_key", "amount_usd"],
@@ -302,6 +330,19 @@ const EVENT_DEFINITIONS = {
   profile_baseline_updated: ["previous_usd", "baseline_usd", "currency"],
   profile_custom_spend_updated: ["title_hash", "amount_usd", "frequency_per_week", "removed"],
   spend_impact_toggle: ["enabled"],
+  tycoon_mode_toggle: ["enabled"],
+  tycoon_autosave_pending_created: ["count", "amount_usd"],
+  tycoon_autosave_dismissed: ["pending_count"],
+  tycoon_autosave_review_prompted: ["pending_count", "confirm_all_streak"],
+  tycoon_autosave_confirmed: [
+    "saved_count",
+    "spent_count",
+    "saved_amount_usd",
+    "spent_amount_usd",
+    "reward",
+  ],
+  tycoon_rewards_collect_all: ["count", "reward"],
+  tycoon_rewards_open_chests: ["count", "reward"],
   sound_setting_enabled: [],
   sound_setting_disabled: [],
   focus_target_set: ["template_id", "source"],
@@ -708,6 +749,13 @@ const EVENT_DEFINITIONS = {
   modal_screen_shown: ["modal_id", "source", "context"],
   modal_action_tapped: ["modal_id", "action", "value", "source"],
 };
+
+for (let day = 2; day <= 30; day += 1) {
+  const eventName = `day_${day}`;
+  if (!EVENT_DEFINITIONS[eventName]) {
+    EVENT_DEFINITIONS[eventName] = [];
+  }
+}
 
 const FACEBOOK_MONETIZATION_EVENT_WHITELIST = new Set([
   "premium_paywall_shown",

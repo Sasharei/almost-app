@@ -1,6 +1,6 @@
 {
   "name": "almost_clean",
-  "version": "6.0.0",
+  "version": "6.0.1",
   "main": "index.js",
   "scripts": {
     "start": "EXPO_NO_TYPESCRIPT_SETUP=1 expo start --dev-client",
@@ -43,7 +43,6 @@
     "expo-image-picker": "~17.0.8",
     "expo-navigation-bar": "^5.0.9",
     "expo-notifications": "^0.28.19",
-    "expo-sensors": "~15.0.6",
     "expo-sharing": "~14.0.7",
     "expo-splash-screen": "~0.28.2",
     "expo-status-bar": "~3.0.8",
