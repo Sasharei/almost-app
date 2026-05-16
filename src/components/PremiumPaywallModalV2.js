@@ -20,7 +20,7 @@ const BULLET_ICON_IMAGES = [
   require("../../assets/paywall/v2/bullet_icon_4.jpg"),
 ];
 
-const PRIMARY_PLAN_IDS = ["yearly", "monthly"];
+const PRIMARY_PLAN_IDS = ["weekly"];
 const FALLBACK_FEATURES_BY_LANGUAGE = {
   ru: [
     "Неограниченное использование",
@@ -120,6 +120,8 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     trialHeadline: "Мы хотим, чтобы вы попробовали Almost бесплатно",
     socialProof: "Более 5000 человек уже экономят с Almost",
     ctaPrimary: "Разблокировать Premium",
+    freeTrialToggleTitle: "Free Trial",
+    freeTrialToggleSubtitle: "Включите, чтобы выбрать месячный план с пробным периодом.",
     showAllPlans: "Показать все планы",
     hideExtraPlans: "Скрыть дополнительные планы",
     brandBadge: "Almost Premium",
@@ -139,6 +141,8 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     trialHeadline: "We want you to try almost for free",
     socialProof: "More than 5000 people are already saving with Almost",
     ctaPrimary: "Unlock Premium",
+    freeTrialToggleTitle: "Free Trial",
+    freeTrialToggleSubtitle: "Turn on to select the monthly plan with a trial.",
     showAllPlans: "Show all plans",
     hideExtraPlans: "Hide extra plans",
     brandBadge: "Almost Premium",
@@ -158,6 +162,8 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     trialHeadline: "Queremos que pruebes Almost gratis",
     socialProof: "Más de 5000 personas ya ahorran con Almost",
     ctaPrimary: "Desbloquear Premium",
+    freeTrialToggleTitle: "Free Trial",
+    freeTrialToggleSubtitle: "Actívalo para elegir el plan mensual con prueba.",
     showAllPlans: "Mostrar todos los planes",
     hideExtraPlans: "Ocultar planes adicionales",
     brandBadge: "Almost Premium",
@@ -177,6 +183,8 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     trialHeadline: "Nous voulons que vous essayiez Almost gratuitement",
     socialProof: "Plus de 5000 personnes économisent déjà avec Almost",
     ctaPrimary: "Débloquer Premium",
+    freeTrialToggleTitle: "Free Trial",
+    freeTrialToggleSubtitle: "Active-le pour choisir l'offre mensuelle avec essai.",
     showAllPlans: "Afficher toutes les offres",
     hideExtraPlans: "Masquer les offres supplémentaires",
     brandBadge: "Almost Premium",
@@ -196,6 +204,8 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     trialHeadline: "Wir möchten, dass du Almost kostenlos ausprobierst",
     socialProof: "Mehr als 5000 Menschen sparen bereits mit Almost",
     ctaPrimary: "Premium freischalten",
+    freeTrialToggleTitle: "Free Trial",
+    freeTrialToggleSubtitle: "Aktivieren, um den Monatsplan mit Testphase zu wählen.",
     showAllPlans: "Alle Pläne anzeigen",
     hideExtraPlans: "Zusätzliche Pläne ausblenden",
     brandBadge: "Almost Premium",
@@ -215,6 +225,8 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     trialHeadline: "نريدك أن تجرّب Almost مجاناً",
     socialProof: "أكثر من 5000 شخص يدّخرون بالفعل مع Almost",
     ctaPrimary: "افتح Premium",
+    freeTrialToggleTitle: "Free Trial",
+    freeTrialToggleSubtitle: "فعّله لاختيار الخطة الشهرية مع الفترة التجريبية.",
     showAllPlans: "إظهار جميع الخطط",
     hideExtraPlans: "إخفاء الخطط الإضافية",
     brandBadge: "Almost Premium",
@@ -234,6 +246,8 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     trialHeadline: "我们希望你免费试用 Almost",
     socialProof: "已有超过 5000 人在 Almost 上省钱",
     ctaPrimary: "解锁 Premium",
+    freeTrialToggleTitle: "Free Trial",
+    freeTrialToggleSubtitle: "开启后选择带试用的月付方案。",
     showAllPlans: "显示全部方案",
     hideExtraPlans: "隐藏更多方案",
     brandBadge: "Almost Premium",
@@ -286,9 +300,9 @@ const pickFirstLabel = (values = []) => {
 
 const sortPlanCards = (planCards = []) => {
   const priority = {
-    yearly: 0,
+    weekly: 0,
     monthly: 1,
-    weekly: 2,
+    yearly: 2,
     lifetime: 3,
   };
 
@@ -312,12 +326,10 @@ const pickDefaultPlanId = (planCards = []) => {
   const available = (Array.isArray(planCards) ? planCards : []).filter(
     (card) => card?.available !== false
   );
-  const yearly = available.find((card) => String(card?.id || "").toLowerCase() === "yearly");
-  if (yearly?.id) return yearly.id;
-  const monthly = available.find((card) => String(card?.id || "").toLowerCase() === "monthly");
-  if (monthly?.id) return monthly.id;
+  const weekly = available.find((card) => String(card?.id || "").toLowerCase() === "weekly");
+  if (weekly?.id) return weekly.id;
   if (available[0]?.id) return available[0].id;
-  return planCards[0]?.id || "yearly";
+  return planCards[0]?.id || "weekly";
 };
 
 const applyTemplate = (template = "", replacements = {}) => {
@@ -520,6 +532,7 @@ const PremiumPaywallModalV2 = ({
   const { height: viewportHeight } = useWindowDimensions();
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCardsProp));
   const [showAllPlans, setShowAllPlans] = useState(false);
+  const [freeTrialEnabled, setFreeTrialEnabled] = useState(false);
 
   const copy = useMemo(() => {
     if (copyProp && typeof copyProp === "object") return copyProp;
@@ -605,24 +618,42 @@ const PremiumPaywallModalV2 = ({
   const primaryPlans = useMemo(() => {
     const byId = new Map(sortedPlans.map((plan) => [String(plan?.id || "").toLowerCase(), plan]));
     const primary = PRIMARY_PLAN_IDS.map((id) => byId.get(id)).filter(Boolean);
-    if (primary.length >= 2) return primary;
-    return sortedPlans.slice(0, 2);
+    if (primary.length > 0) return primary;
+    return sortedPlans.slice(0, 1);
   }, [sortedPlans]);
 
   const additionalPlans = useMemo(() => {
     const primaryIds = new Set(primaryPlans.map((plan) => String(plan?.id || "").toLowerCase()));
     return sortedPlans.filter((plan) => !primaryIds.has(String(plan?.id || "").toLowerCase()));
   }, [primaryPlans, sortedPlans]);
+  const monthlyTrialPlan = useMemo(
+    () =>
+      sortedPlans.find(
+        (plan) => String(plan?.id || "").toLowerCase() === "monthly"
+      ) || null,
+    [sortedPlans]
+  );
 
   const displayedPlans = useMemo(() => {
-    if (!showAllPlans) return primaryPlans;
-    return [...primaryPlans, ...additionalPlans];
-  }, [additionalPlans, primaryPlans, showAllPlans]);
+    if (showAllPlans) return [...primaryPlans, ...additionalPlans];
+    if (freeTrialEnabled && monthlyTrialPlan?.id) {
+      const ordered = [...primaryPlans, monthlyTrialPlan];
+      const seen = new Set();
+      return ordered.filter((plan) => {
+        const planId = String(plan?.id || "").toLowerCase();
+        if (!planId || seen.has(planId)) return false;
+        seen.add(planId);
+        return true;
+      });
+    }
+    return primaryPlans;
+  }, [additionalPlans, freeTrialEnabled, monthlyTrialPlan, primaryPlans, showAllPlans]);
 
   useEffect(() => {
     if (!visible) {
       setSelectedPlanId(pickDefaultPlanId(sortedPlans));
       setShowAllPlans(false);
+      setFreeTrialEnabled(false);
       return;
     }
     const exists = sortedPlans.some((plan) => String(plan?.id || "") === String(selectedPlanId));
@@ -630,6 +661,24 @@ const PremiumPaywallModalV2 = ({
       setSelectedPlanId(pickDefaultPlanId(sortedPlans));
     }
   }, [selectedPlanId, sortedPlans, visible]);
+  useEffect(() => {
+    if (!visible) return;
+    const additionalIds = new Set(
+      additionalPlans.map((plan) => String(plan?.id || "").toLowerCase())
+    );
+    const normalizedSelectedPlanId = String(selectedPlanId || "").toLowerCase();
+    if (
+      additionalIds.has(normalizedSelectedPlanId) &&
+      !(freeTrialEnabled && normalizedSelectedPlanId === "monthly")
+    ) {
+      setShowAllPlans(true);
+    }
+  }, [additionalPlans, freeTrialEnabled, selectedPlanId, visible]);
+  useEffect(() => {
+    if (!visible || !freeTrialEnabled || monthlyTrialPlan?.id) return;
+    setFreeTrialEnabled(false);
+    setSelectedPlanId(pickDefaultPlanId(sortedPlans));
+  }, [freeTrialEnabled, monthlyTrialPlan, sortedPlans, visible]);
 
   const selectedPlan = useMemo(() => {
     const fromState =
@@ -700,6 +749,13 @@ const PremiumPaywallModalV2 = ({
   );
   const showAllPlansLabel = sanitizeLabel(copy?.v2ShowAllPlansLabel || localizedUi.showAllPlans);
   const hidePlansLabel = sanitizeLabel(copy?.v2HideExtraPlansLabel || localizedUi.hideExtraPlans);
+  const freeTrialToggleTitle = sanitizeLabel(
+    copy?.v2FreeTrialToggleTitle || localizedUi.freeTrialToggleTitle
+  );
+  const freeTrialToggleSubtitle = sanitizeLabel(
+    copy?.v2FreeTrialToggleSubtitle || localizedUi.freeTrialToggleSubtitle
+  );
+  const shouldShowFreeTrialToggle = !!monthlyTrialPlan?.id;
 
   const primaryButtonLabel = useMemo(() => {
     if (!selectedPlan) return sanitizeLabel(copy?.ctaPrimary || localizedUi.ctaPrimary);
@@ -728,6 +784,9 @@ const PremiumPaywallModalV2 = ({
     (plan) => {
       if (!plan?.id || plan?.available === false) return;
       setSelectedPlanId(plan.id);
+      setFreeTrialEnabled(
+        String(plan?.id || "").toLowerCase() === "monthly"
+      );
       onPlanSelect(plan.id, { source: "plan_card" });
     },
     [onPlanSelect]
@@ -745,7 +804,10 @@ const PremiumPaywallModalV2 = ({
         const additionalIds = new Set(
           additionalPlans.map((plan) => String(plan?.id || "").toLowerCase())
         );
-        if (additionalIds.has(String(selectedPlanId || "").toLowerCase())) {
+        const normalizedSelectedPlanId = String(selectedPlanId || "").toLowerCase();
+        const keepFreeTrialMonthlySelected =
+          freeTrialEnabled && normalizedSelectedPlanId === "monthly";
+        if (additionalIds.has(normalizedSelectedPlanId) && !keepFreeTrialMonthlySelected) {
           const fallbackPlan = pickDefaultPlanId(primaryPlans);
           setSelectedPlanId(fallbackPlan);
           if (fallbackPlan) {
@@ -755,7 +817,22 @@ const PremiumPaywallModalV2 = ({
       }
       return next;
     });
-  }, [additionalPlans, onPlanSelect, primaryPlans, selectedPlanId]);
+  }, [additionalPlans, freeTrialEnabled, onPlanSelect, primaryPlans, selectedPlanId]);
+  const handleFreeTrialToggle = useCallback(() => {
+    if (!monthlyTrialPlan?.id) return;
+    setFreeTrialEnabled((prev) => {
+      const next = !prev;
+      const nextPlanId = next ? monthlyTrialPlan.id : pickDefaultPlanId(primaryPlans.length ? primaryPlans : sortedPlans);
+      if (nextPlanId) {
+        setSelectedPlanId(nextPlanId);
+        onPlanSelect(nextPlanId, { source: "free_trial_toggle" });
+      }
+      if (!next) {
+        setShowAllPlans(false);
+      }
+      return next;
+    });
+  }, [monthlyTrialPlan, onPlanSelect, primaryPlans, sortedPlans]);
 
   const textAlignStyle = rtl ? styles.textRtl : null;
 
@@ -922,6 +999,52 @@ const PremiumPaywallModalV2 = ({
               })}
             </View>
 
+            {shouldShowFreeTrialToggle ? (
+              <TouchableOpacity
+                style={[
+                  styles.freeTrialToggleCard,
+                  {
+                    backgroundColor: freeTrialEnabled ? palette.cardSelectedBg : palette.cardBg,
+                    borderColor: freeTrialEnabled ? palette.cardSelectedBorder : palette.cardBorder,
+                  },
+                ]}
+                onPress={handleFreeTrialToggle}
+                disabled={restoring || !!purchaseLoadingPlan}
+                activeOpacity={0.88}
+              >
+                <View style={[styles.freeTrialToggleTextBlock, rtl ? styles.freeTrialToggleTextBlockRtl : null]}>
+                  <Text
+                    style={[styles.freeTrialToggleTitle, { color: palette.text }, textAlignStyle]}
+                    numberOfLines={1}
+                  >
+                    {freeTrialToggleTitle}
+                  </Text>
+                  <Text
+                    style={[styles.freeTrialToggleSubtitle, { color: palette.muted }, textAlignStyle]}
+                    numberOfLines={2}
+                  >
+                    {freeTrialToggleSubtitle}
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.freeTrialSwitchTrack,
+                    {
+                      backgroundColor: freeTrialEnabled ? palette.ctaBg : palette.chipBg,
+                      borderColor: freeTrialEnabled ? palette.cardSelectedBorder : palette.cardBorder,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.freeTrialSwitchThumb,
+                      freeTrialEnabled ? styles.freeTrialSwitchThumbOn : null,
+                    ]}
+                  />
+                </View>
+              </TouchableOpacity>
+            ) : null}
+
             <View style={styles.planList}>
               {displayedPlans.map((plan) => {
               const planId = String(plan?.id || "").toLowerCase();
@@ -943,18 +1066,20 @@ const PremiumPaywallModalV2 = ({
                   copy?.v2TryForFreeLabel ||
                   localizedUi.tryForFree
               );
+              const showMonthlyFreeTrialBadge = freeTrialEnabled && isMonthly && !!freeTrialLabel;
               const showTrialBadge =
-                (isYearly || isMonthly) && hasAnyTrialOffer && !!freeTrialLabel;
+                showMonthlyFreeTrialBadge ||
+                (isYearly && plan?.hasTrial === true && !!freeTrialLabel);
               const yearlyPrice = pickFirstLabel([
                 plan?.postTrialPriceLabel,
                 plan?.ctaPriceLabel,
                 plan?.priceLabel,
               ]);
-              const yearlyPrimaryLine = hasAnyTrialOffer
+              const yearlyPrimaryLine = plan?.hasTrial === true
                 ? freeTrialLabel
                 : titleLabel;
               const yearlyThenLine = yearlyPrice
-                ? hasAnyTrialOffer
+                ? plan?.hasTrial === true
                   ? applyTemplate(thenPriceTemplate, { price: yearlyPrice })
                   : yearlyPrice
                 : "";
@@ -1015,7 +1140,11 @@ const PremiumPaywallModalV2 = ({
                               style={[
                                 styles.trialBadge,
                                 isYearly ? styles.trialBadgeWithBestValue : null,
-                                { backgroundColor: palette.accent },
+                                {
+                                  backgroundColor: showMonthlyFreeTrialBadge
+                                    ? palette.success
+                                    : palette.accent,
+                                },
                               ]}
                             >
                               <AdaptivePaywallText
@@ -1417,6 +1546,56 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     fontWeight: "700",
+  },
+  freeTrialToggleCard: {
+    borderWidth: 2,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  freeTrialToggleTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  freeTrialToggleTextBlockRtl: {
+    alignItems: "flex-end",
+  },
+  freeTrialToggleTitle: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: "900",
+  },
+  freeTrialToggleSubtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "700",
+  },
+  freeTrialSwitchTrack: {
+    width: 58,
+    height: 34,
+    borderRadius: 999,
+    borderWidth: 1,
+    padding: 3,
+    justifyContent: "center",
+  },
+  freeTrialSwitchThumb: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOpacity: 0.16,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  freeTrialSwitchThumbOn: {
+    alignSelf: "flex-end",
   },
   planList: {
     marginBottom: 6,

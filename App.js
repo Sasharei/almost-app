@@ -197,7 +197,6 @@ import {
   PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE,
   PAYWALL_NOW_PREFIX_BY_LANGUAGE,
   PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS,
-  PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS,
   PAYWALL_SAR_MARKERS_REGEX,
   PAYWALL_BIDI_MARKS_REGEX,
   PAYWALL_DIGIT_FRAGMENT_REGEX,
@@ -375,7 +374,6 @@ import {
   TYCOON_MAX_AUTOSAVE_EVENTS_TOTAL,
   TYCOON_CONFIRM_ALL_REVIEW_STREAK,
   resolveTycoonLevelRule,
-  getTycoonCooldownMsForIncrease,
 } from "./src/constants/tycoonConfig";
 import {
   TEMPTATION_SOFT_LIMIT,
@@ -2685,7 +2683,7 @@ const buildTemptationPressureMap = (events = []) => {
   return map;
 };
 
-const resolveDailyChallengeTemplateId = (
+const resolveDailyChallengeDrawTemplateIds = (
   pressureMap = {},
   minSpendEvents = DAILY_CHALLENGE_MIN_SPEND_EVENTS,
   isValidTemplate = null,
@@ -2721,49 +2719,33 @@ const resolveDailyChallengeTemplateId = (
   const eligible = ranked.filter(
     (entry) => typeof isValidTemplate !== "function" || isValidTemplate(entry.templateId)
   );
-  if (!eligible.length) return null;
-  if (eligible.length < normalizedMinUniqueTemplates) return null;
+  if (eligible.length < normalizedMinUniqueTemplates) return [];
   let drawPool = eligible;
   if (normalizedPreviousTemplateId) {
     const withoutPrevious = eligible.filter(
       (entry) => entry.templateId !== normalizedPreviousTemplateId
     );
-    if (withoutPrevious.length) {
+    if (withoutPrevious.length >= normalizedMinUniqueTemplates) {
       drawPool = withoutPrevious;
     }
   }
-  drawPool = drawPool.slice(0, Math.min(normalizedDrawCount, drawPool.length));
-  if (drawPool.length === 1) {
-    return drawPool[0].templateId;
+  const drawIds = drawPool
+    .slice(0, Math.min(normalizedDrawCount, drawPool.length))
+    .map((entry) => entry.templateId)
+    .filter(Boolean);
+  for (let index = drawIds.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [drawIds[index], drawIds[swapIndex]] = [drawIds[swapIndex], drawIds[index]];
   }
-  const weightedPool = drawPool.map((entry, index) => {
-    const scoreWeight = Math.max(1, Number(entry.score) || 0);
-    const spendWeight = Math.max(1, Number(entry.spend) || 0);
-    const rankBoost = Math.max(1, normalizedDrawCount - index);
-    return {
-      ...entry,
-      weight: scoreWeight * 2 + spendWeight + rankBoost,
-    };
-  });
-  const totalWeight = weightedPool.reduce((sum, entry) => sum + entry.weight, 0);
-  if (!Number.isFinite(totalWeight) || totalWeight <= 0) {
-    const randomIndex = Math.floor(Math.random() * drawPool.length);
-    return drawPool[randomIndex]?.templateId || drawPool[0]?.templateId || null;
-  }
-  let randomPoint = Math.random() * totalWeight;
-  for (const entry of weightedPool) {
-    randomPoint -= entry.weight;
-    if (randomPoint <= 0) {
-      return entry.templateId;
-    }
-  }
-  return weightedPool[weightedPool.length - 1]?.templateId || drawPool[0]?.templateId || null;
+  return drawIds;
 };
 
 const createInitialDailyChallengeState = () => ({
   id: null,
   dateKey: null,
   templateId: null,
+  drawOptions: [],
+  selectedDrawIndex: null,
   templateTitle: "",
   emoji: "✨",
   priceUSD: 0,
@@ -5766,6 +5748,7 @@ const resolveSubscriptionNextCheckAt = (item = null, interactionEntry = null, no
   }
   const baseTimestamp =
     Number(entry.lastTimerResetAt) ||
+    Number(entry.firstTimerConfiguredAt) ||
     Number(entry.lastInteractionAt) ||
     Number(item?.createdAt) ||
     nowTs;
@@ -9184,6 +9167,8 @@ const mergeInteractionStatMaps = (base = {}, incoming = {}) => {
       merged.intervalMs = stats.intervalMs ?? merged.intervalMs ?? null;
       merged.nextCheckAt = stats.nextCheckAt ?? merged.nextCheckAt ?? null;
       merged.lastTimerResetAt = stats.lastTimerResetAt ?? merged.lastTimerResetAt ?? null;
+      merged.firstTimerConfiguredAt =
+        stats.firstTimerConfiguredAt ?? merged.firstTimerConfiguredAt ?? null;
       merged.frequencyReminderId = stats.frequencyReminderId ?? merged.frequencyReminderId ?? null;
       merged.frequencyReminderIds = Array.isArray(stats.frequencyReminderIds)
         ? [...stats.frequencyReminderIds]
@@ -13047,6 +13032,8 @@ function TemptationCardComponent({
   const frequencyId = interactionEntry.frequency || null;
   const lastInteractionAt = Number(interactionEntry.lastInteractionAt) || 0;
   const lastTimerResetAt = Number(interactionEntry.lastTimerResetAt) || 0;
+  const firstTimerConfiguredAt = Number(interactionEntry.firstTimerConfiguredAt) || 0;
+  const timerStartedAt = lastInteractionAt || firstTimerConfiguredAt || lastTimerResetAt;
   const effectiveIntervalMs =
     Number(interactionEntry.intervalMs) ||
     (frequencyId ? getFrequencyIntervalMs(frequencyId) : null) ||
@@ -13058,7 +13045,7 @@ function TemptationCardComponent({
     Number.isFinite(Number(interactionEntry.frequencyReminderHour)) &&
     Number.isFinite(Number(interactionEntry.frequencyReminderMinute));
   const derivedDueAt =
-    effectiveIntervalMs && lastInteractionAt ? lastInteractionAt + effectiveIntervalMs : null;
+    effectiveIntervalMs && timerStartedAt ? timerStartedAt + effectiveIntervalMs : null;
   const rawDueAt =
     hasCustomReminderTime && Number.isFinite(nextCheckAt)
       ? nextCheckAt
@@ -13067,10 +13054,10 @@ function TemptationCardComponent({
       : Number.isFinite(derivedDueAt)
       ? derivedDueAt
       : nextCheckAt;
-  const hasTimerSource = Number.isFinite(rawDueAt) && Boolean(lastInteractionAt);
+  const hasTimerSource = Number.isFinite(rawDueAt) && Boolean(timerStartedAt);
   const minuteTick = useMinuteTicker(hasTimerSource);
   const timerReference = Number.isFinite(minuteTick)
-    ? Math.max(minuteTick, lastInteractionAt, lastTimerResetAt)
+    ? Math.max(minuteTick, timerStartedAt, lastTimerResetAt)
     : Date.now();
   const timerExpired = hasTimerSource && rawDueAt <= timerReference;
   const timeRemaining = hasTimerSource ? rawDueAt - timerReference : null;
@@ -39144,6 +39131,12 @@ function AppContent() {
   );
   const [monetizationTrialLocked, setMonetizationTrialLocked] = useState(false);
   const [monetizationTrialLockedHydrated, setMonetizationTrialLockedHydrated] = useState(false);
+  const [monetizationFirstSessionActionBaseline, setMonetizationFirstSessionActionBaseline] =
+    useState(null);
+  const [
+    monetizationFirstSessionActionBaselineHydrated,
+    setMonetizationFirstSessionActionBaselineHydrated,
+  ] = useState(false);
   const [monetizationOnboardingLocked, setMonetizationOnboardingLocked] = useState(false);
   const [monetizationOnboardingLockedHydrated, setMonetizationOnboardingLockedHydrated] =
     useState(false);
@@ -39151,6 +39144,9 @@ function AppContent() {
   const monetizationExperimentBootstrappedRef = useRef(false);
   const paywallDesignExperimentBootstrappedRef = useRef(false);
   const monetizationTrialActionCountRef = useRef(0);
+  const monetizationTrialLimitedActionCountRef = useRef(0);
+  const monetizationFirstSessionActionBaselineRef = useRef(null);
+  const monetizationFirstSessionCompletedRef = useRef(false);
   const [uiRefreshRolloutEnabled, setUiRefreshRolloutEnabled] = useState(
     UI_REFRESH_ROLLOUT_DEFAULT_ENABLED
   );
@@ -39859,6 +39855,22 @@ function AppContent() {
   const monetizationTrialActionCount =
     Math.max(0, Number(declineCount) || 0) +
     Math.max(0, Array.isArray(purchases) ? purchases.length : 0);
+  const normalizedMonetizationFirstSessionActionBaseline = useMemo(() => {
+    const parsed = Number(monetizationFirstSessionActionBaseline);
+    if (!Number.isFinite(parsed) || parsed < 0) return null;
+    return Math.max(0, Math.floor(parsed));
+  }, [monetizationFirstSessionActionBaseline]);
+  const monetizationFirstSessionCompleted =
+    normalizedMonetizationFirstSessionActionBaseline !== null;
+  const monetizationTrialLimitedActionCount = monetizationFirstSessionCompleted
+    ? Math.max(
+        0,
+        Math.floor(
+          Math.max(0, Number(monetizationTrialActionCount) || 0) -
+            normalizedMonetizationFirstSessionActionBaseline
+        )
+      )
+    : 0;
   const temptationActionCount = useMemo(
     () =>
       resolvedHistoryEvents.reduce((count, entry) => {
@@ -39887,11 +39899,19 @@ function AppContent() {
     temptationSaveActionCountRef.current = Math.max(0, Number(temptationSaveActionCount) || 0);
   }, [temptationSaveActionCount]);
   useEffect(() => {
-    monetizationTrialActionCountRef.current = Math.max(
-      0,
-      Number(monetizationTrialActionCount) || 0
-    );
-  }, [monetizationTrialActionCount]);
+    const totalActionCount = Math.max(0, Number(monetizationTrialActionCount) || 0);
+    monetizationTrialActionCountRef.current = totalActionCount;
+    monetizationFirstSessionActionBaselineRef.current =
+      normalizedMonetizationFirstSessionActionBaseline;
+    monetizationFirstSessionCompletedRef.current = monetizationFirstSessionCompleted;
+    monetizationTrialLimitedActionCountRef.current = monetizationFirstSessionCompleted
+      ? Math.max(0, totalActionCount - normalizedMonetizationFirstSessionActionBaseline)
+      : 0;
+  }, [
+    monetizationFirstSessionCompleted,
+    monetizationTrialActionCount,
+    normalizedMonetizationFirstSessionActionBaseline,
+  ]);
   useEffect(() => {
     historyHydratedRef.current = !!historyHydrated;
   }, [historyHydrated]);
@@ -41152,11 +41172,6 @@ function AppContent() {
       const templateId = card.id;
       const interaction = temptationInteractions?.[templateId];
       if (!interaction || typeof interaction !== "object") continue;
-      const cooldownUntil = Math.max(
-        Number(card.tycoonCooldownUntil) || 0,
-        Number(interaction.tycoonCooldownUntil) || 0
-      );
-      if (cooldownUntil > now) continue;
       const frequency = normalizeFrequencyId(interaction.frequency || card.frequency);
       if (!frequency) continue;
       const intervalMs =
@@ -41365,11 +41380,6 @@ function AppContent() {
   useEffect(() => {
     if (overlay?.type !== "streak_pledge_reward") return;
     if (!streakPledge.rewardPending) return;
-    setStreakPledge((prev) => ({
-      ...prev,
-      rewardPending: false,
-      rewardDeliveredAt: Date.now(),
-    }));
     logEvent("streak_goal_reward_shown", {
       target_days: Math.max(0, Number(streakPledge.targetDays) || 0),
       reward_blue: Math.max(0, Number(streakPledge.rewardBlueCoins) || 0),
@@ -41378,7 +41388,6 @@ function AppContent() {
   }, [
     logEvent,
     overlay?.type,
-    setStreakPledge,
     streakPledge.rewardBlueCoins,
     streakPledge.rewardPending,
     streakPledge.rewardValue,
@@ -41487,14 +41496,19 @@ function AppContent() {
   const startupHardLockExpectedForGroupB =
     monetizationExperimentEnabledForStartupModalGuard &&
     monetizationExperimentHydrated &&
+    monetizationFirstSessionActionBaselineHydrated &&
+    monetizationFirstSessionCompleted &&
     monetizationGroupForStartupModalGuard === MONETIZATION_EXPERIMENT_GROUPS.B &&
-    monetizationTrialActionCount >= monetizationTrialSaveLimitForStartupModalGuard;
+    monetizationTrialLimitedActionCount >= monetizationTrialSaveLimitForStartupModalGuard;
   const startupHardLockDecisionPending =
     !premiumState.isPremium &&
     onboardingStep === "done" &&
     (!monetizationExperimentHydrated ||
       (monetizationGroupForStartupModalGuard === MONETIZATION_EXPERIMENT_GROUPS.B &&
-        (!declinesHydrated || !purchasesHydrated || !monetizationTrialLockedHydrated)));
+        (!declinesHydrated ||
+          !purchasesHydrated ||
+          !monetizationTrialLockedHydrated ||
+          !monetizationFirstSessionActionBaselineHydrated)));
   const startupHardLockActiveFromVisiblePaywall =
     !premiumState.isPremium &&
     onboardingStep === "done" &&
@@ -41506,6 +41520,7 @@ function AppContent() {
     onboardingStep === "done" &&
     !startupHardPaywallDismissed &&
     (((monetizationGroupForStartupModalGuard === MONETIZATION_EXPERIMENT_GROUPS.B &&
+      monetizationFirstSessionCompleted &&
       monetizationTrialLocked)) ||
       startupHardLockExpectedForGroupB ||
       startupHardLockDecisionPending ||
@@ -43934,6 +43949,24 @@ function AppContent() {
             : FIRST_SESSION_DURATION_BUCKETS.GT_15_SEC;
         persistFirstSessionDurationBucket(resolvedBucket);
       }
+      if (
+        nextState === "background" &&
+        monetizationFirstSessionActionBaselineHydrated &&
+        monetizationFirstSessionActionBaselineRef.current === null &&
+        Math.max(0, Number(monetizationTrialActionCountRef.current) || 0) > 0
+      ) {
+        const baseline = Math.max(
+          0,
+          Math.floor(Number(monetizationTrialActionCountRef.current) || 0)
+        );
+        monetizationFirstSessionActionBaselineRef.current = baseline;
+        monetizationFirstSessionCompletedRef.current = true;
+        setMonetizationFirstSessionActionBaseline(baseline);
+        AsyncStorage.setItem(
+          STORAGE_KEYS.MONETIZATION_FIRST_SESSION_ACTION_BASELINE,
+          String(baseline)
+        ).catch(() => {});
+      }
       if (nextState !== "active") {
         flushPersistQueue(true);
         Keyboard.dismiss();
@@ -43994,6 +44027,7 @@ function AppContent() {
     refreshQueuedModalsOnResume,
     firstSessionDurationBucketHydrated,
     flushPersistQueue,
+    monetizationFirstSessionActionBaselineHydrated,
     monetizationExperimentEligibleNewInstall,
     monetizationExperimentHydrated,
     storePotentialSnapshot,
@@ -48522,13 +48556,9 @@ function AppContent() {
         Number.isFinite(card.freeTrialDays) && card.freeTrialDays > 0
           ? Math.max(1, Math.round(card.freeTrialDays))
           : null;
-      const fallbackTrialDays = isMonthly
-        ? PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS
-        : isYearly
-        ? PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS
-        : null;
+      const fallbackTrialDays = isMonthly ? PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS : null;
       const resolvedTrialDays = freeTrialDays || fallbackTrialDays;
-      const hasFreeTrial = !!resolvedTrialDays && (isMonthly || isYearly);
+      const hasFreeTrial = !!resolvedTrialDays && isMonthly;
       const recurringChargePriceLabel =
         Number.isFinite(amountLocal) && amountLocal > 0
           ? normalizePaywallPriceLabel(
@@ -49202,13 +49232,30 @@ function AppContent() {
     isMonetizationExperimentControlGroup ||
     isMonetizationExperimentGroupB ||
     isMonetizationExperimentGroupC;
+  const incrementMonetizationTrialActionCountRef = useCallback(() => {
+    const nextTotal =
+      Math.max(0, Number(monetizationTrialActionCountRef.current) || 0) + 1;
+    monetizationTrialActionCountRef.current = nextTotal;
+    const firstSessionBaseline = monetizationFirstSessionActionBaselineRef.current;
+    if (firstSessionBaseline !== null && Number.isFinite(Number(firstSessionBaseline))) {
+      monetizationTrialLimitedActionCountRef.current = Math.max(
+        0,
+        nextTotal - Math.max(0, Math.floor(Number(firstSessionBaseline) || 0))
+      );
+    } else {
+      monetizationTrialLimitedActionCountRef.current = 0;
+    }
+    return nextTotal;
+  }, []);
   const enforceMonetizationTrialActionLimit = useCallback(
     ({ savedAmountUSD = 0, actionCountOverride = null } = {}) => {
       if (!isMonetizationExperimentGroupB || premiumState.isPremium) return false;
+      if (!monetizationFirstSessionActionBaselineHydrated) return false;
+      if (!monetizationFirstSessionCompletedRef.current) return false;
       const parsedActionCountOverride = Number(actionCountOverride);
       const actionCountTotal = Number.isFinite(parsedActionCountOverride)
         ? Math.max(0, Math.floor(parsedActionCountOverride))
-        : Math.max(0, Number(monetizationTrialActionCountRef.current) || 0);
+        : Math.max(0, Number(monetizationTrialLimitedActionCountRef.current) || 0);
       const shouldActivateTrialLockNow =
         !monetizationTrialLocked && actionCountTotal >= monetizationTrialSaveLimit;
       if (!shouldActivateTrialLockNow && !monetizationTrialLocked) return false;
@@ -49223,6 +49270,10 @@ function AppContent() {
             trial_save_limit: monetizationTrialSaveLimit,
             save_count_total: actionCountTotal,
             action_count_total: actionCountTotal,
+            first_session_action_baseline:
+              Math.max(0, Number(monetizationFirstSessionActionBaselineRef.current) || 0),
+            lifetime_action_count_total:
+              Math.max(0, Number(monetizationTrialActionCountRef.current) || 0),
           });
         }
       }
@@ -49245,6 +49296,7 @@ function AppContent() {
     [
       isMonetizationExperimentGroupB,
       logEvent,
+      monetizationFirstSessionActionBaselineHydrated,
       monetizationTrialLocked,
       monetizationTrialSaveLimit,
       playSound,
@@ -50818,7 +50870,7 @@ function AppContent() {
   }, [language, premiumState.error]);
   const handlePremiumPlanSelected = useCallback(
     (planId) => {
-      const targetPlanId = PREMIUM_PLAN_ORDER.includes(planId) ? planId : "monthly";
+      const targetPlanId = PREMIUM_PLAN_ORDER.includes(planId) ? planId : "weekly";
       const selectedCard = premiumPlanCards.find((entry) => entry.id === targetPlanId) || null;
       const trialDays =
         Number.isFinite(selectedCard?.trialDays) && selectedCard.trialDays > 0
@@ -50842,7 +50894,7 @@ function AppContent() {
   const handlePremiumPlanPress = useCallback(
     async (planId) => {
       if (premiumPurchaseLoadingPlan || premiumRestoreLoading) return;
-      const targetPlanId = PREMIUM_PLAN_ORDER.includes(planId) ? planId : "monthly";
+      const targetPlanId = PREMIUM_PLAN_ORDER.includes(planId) ? planId : "weekly";
       const selectedCard = premiumPlanCards.find((entry) => entry.id === targetPlanId) || null;
       const currencyCode = String(
         selectedCard?.currencyCode || profile.currency || DEFAULT_PROFILE.currency || ""
@@ -51722,9 +51774,16 @@ function AppContent() {
   ]);
   useEffect(() => {
     if (!isMonetizationExperimentGroupB) return;
+    if (!monetizationFirstSessionActionBaselineHydrated) return;
     if (!monetizationTrialLockedHydrated) return;
+    if (!monetizationFirstSessionCompleted) {
+      if (monetizationTrialLocked) {
+        setMonetizationTrialLocked(false);
+      }
+      return;
+    }
     if (premiumState.isPremium || monetizationTrialLocked) return;
-    const actionCountTotal = Math.max(0, Number(monetizationTrialActionCount) || 0);
+    const actionCountTotal = Math.max(0, Number(monetizationTrialLimitedActionCount) || 0);
     if (actionCountTotal < monetizationTrialSaveLimit) return;
     setMonetizationTrialLocked(true);
     if (!monetizationLockActivationLoggedRef.current.trial_limit_reached) {
@@ -51736,6 +51795,9 @@ function AppContent() {
         trial_save_limit: monetizationTrialSaveLimit,
         save_count_total: actionCountTotal,
         action_count_total: actionCountTotal,
+        first_session_action_baseline:
+          Math.max(0, Number(normalizedMonetizationFirstSessionActionBaseline) || 0),
+        lifetime_action_count_total: Math.max(0, Number(monetizationTrialActionCount) || 0),
         onboarding_step: normalizeMonetizationToken(onboardingStep || "unknown", "unknown"),
         experiment_new_install: monetizationExperimentEligibleNewInstall ? 1 : 0,
       });
@@ -51744,10 +51806,14 @@ function AppContent() {
     isMonetizationExperimentGroupB,
     logEvent,
     monetizationExperimentEligibleNewInstall,
+    monetizationFirstSessionActionBaselineHydrated,
+    monetizationFirstSessionCompleted,
     monetizationTrialActionCount,
+    monetizationTrialLimitedActionCount,
     monetizationTrialLocked,
     monetizationTrialLockedHydrated,
     monetizationTrialSaveLimit,
+    normalizedMonetizationFirstSessionActionBaseline,
     onboardingStep,
     premiumState.isPremium,
   ]);
@@ -51763,12 +51829,17 @@ function AppContent() {
   ]);
   const monetizationStartupLockReason = useMemo(() => {
     if (premiumState.isPremium) return "";
-    if (isMonetizationExperimentGroupB && monetizationTrialLocked) {
+    if (
+      isMonetizationExperimentGroupB &&
+      monetizationFirstSessionCompleted &&
+      monetizationTrialLocked
+    ) {
       return "trial_limit_reached";
     }
     return "";
   }, [
     isMonetizationExperimentGroupB,
+    monetizationFirstSessionCompleted,
     monetizationTrialLocked,
     premiumState.isPremium,
   ]);
@@ -51829,8 +51900,11 @@ function AppContent() {
         experiment_group: monetizationExperimentGroupNormalized,
         lock_reason: monetizationStartupLockReason,
         trial_save_limit: monetizationTrialSaveLimit,
-        save_count_total: Math.max(0, Number(monetizationTrialActionCount) || 0),
-        action_count_total: Math.max(0, Number(monetizationTrialActionCount) || 0),
+        save_count_total: Math.max(0, Number(monetizationTrialLimitedActionCount) || 0),
+        action_count_total: Math.max(0, Number(monetizationTrialLimitedActionCount) || 0),
+        first_session_action_baseline:
+          Math.max(0, Number(normalizedMonetizationFirstSessionActionBaseline) || 0),
+        lifetime_action_count_total: Math.max(0, Number(monetizationTrialActionCount) || 0),
         experiment_new_install: monetizationExperimentEligibleNewInstall ? 1 : 0,
       });
     }
@@ -51841,7 +51915,9 @@ function AppContent() {
     monetizationExperimentGroupNormalized,
     monetizationStartupLockReason,
     monetizationTrialActionCount,
+    monetizationTrialLimitedActionCount,
     monetizationTrialSaveLimit,
+    normalizedMonetizationFirstSessionActionBaseline,
     onboardingStep,
     openPremiumPaywall,
     startupHardPaywallDismissed,
@@ -52036,9 +52112,41 @@ function AppContent() {
     (amount) => formatHealthRewardLabel(amount, language),
     [language]
   );
+  const dailyChallengeDrawOptions = useMemo(() => {
+    const seen = new Set();
+    const options = [];
+    const rawOptions = Array.isArray(dailyChallenge.drawOptions)
+      ? dailyChallenge.drawOptions
+      : [];
+    rawOptions.forEach((templateId) => {
+      const normalizedId = typeof templateId === "string" ? templateId.trim() : "";
+      if (!normalizedId || seen.has(normalizedId)) return;
+      if (!resolveTemplateCard(normalizedId)) return;
+      seen.add(normalizedId);
+      options.push(normalizedId);
+    });
+    const fallbackId =
+      typeof dailyChallenge.templateId === "string" ? dailyChallenge.templateId.trim() : "";
+    if (fallbackId && !seen.has(fallbackId) && resolveTemplateCard(fallbackId)) {
+      options.unshift(fallbackId);
+    }
+    return options.slice(0, DAILY_CHALLENGE_DRAW_COUNT);
+  }, [dailyChallenge.drawOptions, dailyChallenge.templateId, resolveTemplateCard]);
+  const dailyChallengeSelectedTemplateId = useMemo(() => {
+    if (
+      dailyChallengeDrawnIndex !== null &&
+      dailyChallengeDrawOptions[dailyChallengeDrawnIndex]
+    ) {
+      return dailyChallengeDrawOptions[dailyChallengeDrawnIndex];
+    }
+    return dailyChallenge.templateId || dailyChallengeDrawOptions[0] || null;
+  }, [dailyChallenge.templateId, dailyChallengeDrawOptions, dailyChallengeDrawnIndex]);
   const dailyChallengeTemplate = useMemo(
-    () => (dailyChallenge.templateId ? resolveTemplateCard(dailyChallenge.templateId) : null),
-    [dailyChallenge.templateId, resolveTemplateCard]
+    () =>
+      dailyChallengeSelectedTemplateId
+        ? resolveTemplateCard(dailyChallengeSelectedTemplateId)
+        : null,
+    [dailyChallengeSelectedTemplateId, resolveTemplateCard]
   );
   const dailyChallengeDisplayTitle = useMemo(() => {
     if (dailyChallengeTemplate) {
@@ -53882,6 +53990,11 @@ function AppContent() {
           chestCount: chestReward.chestCount,
           onRevealReward: () => {
             setHealthPoints((prev) => prev + rewardValue);
+            setStreakPledge((prev) => ({
+              ...prev,
+              rewardPending: false,
+              rewardDeliveredAt: Date.now(),
+            }));
           },
         });
         return true;
@@ -55291,9 +55404,9 @@ function AppContent() {
     if (dailyChallenge.dateKey === resolvedTodayKey && dailyChallenge.templateId) {
       return;
     }
-    const targetId = resolveDailyChallengeTemplateId(
+    const drawOptions = resolveDailyChallengeDrawTemplateIds(
       dailyChallengePreviousDayPressure,
-      1,
+      DAILY_CHALLENGE_MIN_SPEND_EVENTS,
       (templateId) => {
         const normalizedTemplateId =
           typeof templateId === "string" ? templateId.trim() : templateId;
@@ -55321,6 +55434,7 @@ function AppContent() {
         minUniqueTemplates: DAILY_CHALLENGE_MIN_UNIQUE_TEMPLATES,
       }
     );
+    const targetId = drawOptions[0] || null;
     if (!targetId) {
       setDailyChallenge((prev) => ({
         ...createInitialDailyChallengeState(),
@@ -55353,6 +55467,8 @@ function AppContent() {
       priceUSD,
       baseReward,
       rewardBonus,
+      drawOptions,
+      selectedDrawIndex: null,
       status: DAILY_CHALLENGE_STATUS.OFFER,
       offerDismissed: false,
       deferUntilKey: preservedDeferUntilKey,
@@ -55391,11 +55507,36 @@ function AppContent() {
   ]);
   const handleDailyChallengeAccept = useCallback(() => {
     if (!dailyChallengeUnlocked) return;
-    if (!dailyChallenge.templateId) return;
+    const selectedTemplateId =
+      typeof dailyChallengeSelectedTemplateId === "string"
+        ? dailyChallengeSelectedTemplateId.trim()
+        : "";
+    if (!selectedTemplateId) return;
+    const selectedTemplate = resolveTemplateCard(selectedTemplateId);
+    if (!selectedTemplate) return;
+    const priceUSD = selectedTemplate?.priceUSD || selectedTemplate?.basePriceUSD || 0;
+    const templateLabel =
+      (typeof selectedTemplate?.title === "string"
+        ? selectedTemplate.title
+        : resolveLanguageMapValue(selectedTemplate?.title, language) ||
+          selectedTemplate?.title?.en ||
+          selectedTemplate?.title?.ru ||
+          "") || "";
+    const templateTitle = resolveTemplateTitle(selectedTemplateId, templateLabel) || templateLabel;
+    const baseReward = computeRefuseCoinReward(priceUSD, profile.currency || DEFAULT_PROFILE.currency);
+    const rewardBonus = computeDailyChallengeBonus(priceUSD, profile.currency || DEFAULT_PROFILE.currency);
     setDailyChallenge((prev) => {
       if (!prev || prev.status !== DAILY_CHALLENGE_STATUS.OFFER) return prev;
       return {
         ...prev,
+        templateId: selectedTemplateId,
+        templateTitle,
+        templateLabel,
+        emoji: selectedTemplate?.emoji || prev.emoji || "✨",
+        priceUSD,
+        baseReward,
+        rewardBonus,
+        selectedDrawIndex: dailyChallengeDrawnIndex,
         status: DAILY_CHALLENGE_STATUS.ACTIVE,
         acceptedAt: Date.now(),
         offerDismissed: true,
@@ -55404,8 +55545,18 @@ function AppContent() {
     });
     clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
     setDailyChallengeAcceptedCount((prev) => Math.max(0, Number(prev) || 0) + 1);
-    logEvent("daily_challenge_accepted", { template_id: dailyChallenge.templateId });
-  }, [clearQueuedModal, dailyChallenge.templateId, dailyChallengeUnlocked, logEvent]);
+    logEvent("daily_challenge_accepted", { template_id: selectedTemplateId });
+  }, [
+    clearQueuedModal,
+    dailyChallengeDrawnIndex,
+    dailyChallengeSelectedTemplateId,
+    dailyChallengeUnlocked,
+    language,
+    logEvent,
+    profile.currency,
+    resolveTemplateCard,
+    resolveTemplateTitle,
+  ]);
   const handleDailyChallengeDismiss = useCallback(() => {
     if (!dailyChallengeUnlocked) return;
     dailyChallengeOfferDeferredRef.current = true;
@@ -56277,6 +56428,7 @@ function AppContent() {
         STORAGE_KEYS.PAYWALL_DESIGN_EXPERIMENT_VARIANT,
         STORAGE_KEYS.PAYWALL_DESIGN_EXPERIMENT_ASSIGNED_AT,
         STORAGE_KEYS.MONETIZATION_TRIAL_LOCKED,
+        STORAGE_KEYS.MONETIZATION_FIRST_SESSION_ACTION_BASELINE,
         STORAGE_KEYS.MONETIZATION_ONBOARDING_LOCKED,
         STORAGE_KEYS.TYCOON_SETTINGS,
         STORAGE_KEYS.TYCOON_LEDGER,
@@ -56420,6 +56572,8 @@ function AppContent() {
         storedMap[STORAGE_KEYS.PAYWALL_DESIGN_EXPERIMENT_ASSIGNED_AT] ?? null;
       const monetizationTrialLockedRaw =
         storedMap[STORAGE_KEYS.MONETIZATION_TRIAL_LOCKED] ?? null;
+      const monetizationFirstSessionActionBaselineRaw =
+        storedMap[STORAGE_KEYS.MONETIZATION_FIRST_SESSION_ACTION_BASELINE] ?? null;
       const monetizationOnboardingLockedRaw =
         storedMap[STORAGE_KEYS.MONETIZATION_ONBOARDING_LOCKED] ?? null;
       const deferWishesHydration = shouldDeferLargeParse(wishesRaw);
@@ -56832,10 +56986,31 @@ function AppContent() {
       if (dailyChallengeRaw) {
         try {
           const parsed = JSON.parse(dailyChallengeRaw);
-          setDailyChallenge({
+          const hydratedDailyChallenge = {
             ...createInitialDailyChallengeState(),
             ...(parsed && typeof parsed === "object" ? parsed : {}),
-          });
+          };
+          const hydratedStatus = hydratedDailyChallenge.status;
+          const needsAcceptedAt =
+            hydratedStatus === DAILY_CHALLENGE_STATUS.ACTIVE ||
+            hydratedStatus === DAILY_CHALLENGE_STATUS.COMPLETED ||
+            hydratedStatus === DAILY_CHALLENGE_STATUS.FAILED;
+          const acceptedAt = Number(hydratedDailyChallenge.acceptedAt) || 0;
+          const hasValidAcceptedState =
+            !needsAcceptedAt ||
+            (acceptedAt > 0 &&
+              !!hydratedDailyChallenge.templateId &&
+              !!hydratedDailyChallenge.dateKey);
+          setDailyChallenge(
+            hasValidAcceptedState
+              ? hydratedDailyChallenge
+              : {
+                  ...createInitialDailyChallengeState(),
+                  dateKey: todayKey,
+                  status: DAILY_CHALLENGE_STATUS.IDLE,
+                  deferUntilKey: hydratedDailyChallenge.deferUntilKey || null,
+                }
+          );
         } catch (err) {
           console.warn("daily challenge parse", err);
           setDailyChallenge(createInitialDailyChallengeState());
@@ -57062,6 +57237,21 @@ function AppContent() {
           : 0
       );
       setPaywallDesignExperimentHydrated(true);
+      const normalizedFirstSessionBaselineRaw = resolveNonEmptyString(
+        monetizationFirstSessionActionBaselineRaw
+      );
+      const parsedFirstSessionActionBaseline = Number(normalizedFirstSessionBaselineRaw);
+      const normalizedFirstSessionActionBaseline =
+        normalizedFirstSessionBaselineRaw &&
+        Number.isFinite(parsedFirstSessionActionBaseline) && parsedFirstSessionActionBaseline >= 0
+          ? Math.floor(parsedFirstSessionActionBaseline)
+          : null;
+      monetizationFirstSessionActionBaselineRef.current =
+        normalizedFirstSessionActionBaseline;
+      monetizationFirstSessionCompletedRef.current =
+        normalizedFirstSessionActionBaseline !== null;
+      setMonetizationFirstSessionActionBaseline(normalizedFirstSessionActionBaseline);
+      setMonetizationFirstSessionActionBaselineHydrated(true);
       setMonetizationTrialLocked(isTruthyStorageValue(monetizationTrialLockedRaw));
       setMonetizationTrialLockedHydrated(true);
       setMonetizationOnboardingLocked(isTruthyStorageValue(monetizationOnboardingLockedRaw));
@@ -58034,6 +58224,9 @@ function AppContent() {
       setPaywallDesignExperimentVariant("");
       setPaywallDesignExperimentAssignedAt(0);
       setMonetizationTrialLocked(false);
+      setMonetizationFirstSessionActionBaseline(null);
+      monetizationFirstSessionActionBaselineRef.current = null;
+      monetizationFirstSessionCompletedRef.current = false;
       setMonetizationOnboardingLocked(false);
       firstSessionBucketRecordedRef.current = false;
       setFirstSessionDurationBucket("");
@@ -58062,6 +58255,7 @@ function AppContent() {
       setMonetizationExperimentHydrated(true);
       setPaywallDesignExperimentHydrated(true);
       setMonetizationTrialLockedHydrated(true);
+      setMonetizationFirstSessionActionBaselineHydrated(true);
       setMonetizationOnboardingLockedHydrated(true);
       if (!Number.isFinite(resolvedInstallDateMs) || resolvedInstallDateMs <= 0) {
         resolvedInstallDateMs = Date.now();
@@ -59730,6 +59924,19 @@ function AppContent() {
     if (!monetizationTrialLockedHydrated) return;
     queuePersist(STORAGE_KEYS.MONETIZATION_TRIAL_LOCKED, monetizationTrialLocked ? "1" : "0");
   }, [monetizationTrialLocked, monetizationTrialLockedHydrated, queuePersist]);
+  useEffect(() => {
+    if (!monetizationFirstSessionActionBaselineHydrated) return;
+    const normalizedBaseline = normalizedMonetizationFirstSessionActionBaseline;
+    if (normalizedBaseline === null) return;
+    queuePersist(
+      STORAGE_KEYS.MONETIZATION_FIRST_SESSION_ACTION_BASELINE,
+      String(normalizedBaseline)
+    );
+  }, [
+    monetizationFirstSessionActionBaselineHydrated,
+    normalizedMonetizationFirstSessionActionBaseline,
+    queuePersist,
+  ]);
   useEffect(() => {
     if (!monetizationOnboardingLockedHydrated) return;
     queuePersist(
@@ -66916,10 +67123,7 @@ useEffect(() => {
         return;
       }
       if (!skipMonetizationTrialLimit) {
-        if (!skipMonetizationTrialLimit) {
-          monetizationTrialActionCountRef.current =
-            Math.max(0, Number(monetizationTrialActionCountRef.current) || 0) + 1;
-        }
+        incrementMonetizationTrialActionCountRef();
       }
       const title = buildTemptationActionTitle(item, t("defaultDealTitle"));
       const spendCategory = resolveTemptationCategory(item);
@@ -66990,6 +67194,7 @@ useEffect(() => {
       buildTemptationActionTitle,
       enforceMonetizationTrialActionLimit,
       handleFocusSpend,
+      incrementMonetizationTrialActionCountRef,
       queueHomeSpeech,
       resolveTemptationTemplateId,
       getPotentialSavedNow,
@@ -67951,8 +68156,7 @@ useEffect(() => {
           ? wishes.find((wish) => wish.id === normalizedTargetGoalId)
           : null;
         const targetWishSnapshot = targetWish || buildPrimaryGoalWishSnapshot(normalizedTargetGoalId);
-        monetizationTrialActionCountRef.current =
-          Math.max(0, Number(monetizationTrialActionCountRef.current) || 0) + 1;
+        incrementMonetizationTrialActionCountRef();
         logEvent("temptation_decision", {
           temptation_id: templateId || item.id,
           decision: "save",
@@ -68491,6 +68695,7 @@ useEffect(() => {
       logTemptationAction,
       dailySaveLimitState,
       enforceMonetizationTrialActionLimit,
+      incrementMonetizationTrialActionCountRef,
       isMonetizationExperimentControlGroup,
       isMonetizationExperimentGroupC,
       resolveTemptationGoalId,
@@ -70275,7 +70480,8 @@ useEffect(() => {
         const resetTimestampRaw = Number(options?.resetFromTimestamp);
         const resetTimestamp =
           Number.isFinite(resetTimestampRaw) && resetTimestampRaw > 0 ? resetTimestampRaw : 0;
-        const fromTimestamp = resetTimestamp || lastInteractionAt;
+        const firstConfiguredAt = Number(prevEntry.firstTimerConfiguredAt) || Date.now();
+        const fromTimestamp = resetTimestamp || lastInteractionAt || firstConfiguredAt;
         const reminderTime = reminderOverride || resolveEntryReminderTime(prevEntry);
         const weeklyDays = weeklyDaysOverride || resolveEntryWeeklyDays(prevEntry);
         const monthlyDays = monthlyDaysOverride || resolveEntryMonthlyDays(prevEntry);
@@ -70305,6 +70511,7 @@ useEffect(() => {
             intervalMs,
             nextCheckAt: nextCheckAt ?? prevEntry.nextCheckAt ?? null,
             templateTitle: templateTitle || prevEntry.templateTitle || null,
+            firstTimerConfiguredAt: prevEntry.firstTimerConfiguredAt || firstConfiguredAt,
             frequencyReminderHour: reminderTime.hour,
             frequencyReminderMinute: reminderTime.minute,
             frequencyWeeklyDay: weeklyDay,
@@ -70315,8 +70522,8 @@ useEffect(() => {
               markPromptShown || prevEntry.frequencyReminderPromptShown === true,
             frequencyReminderManualConfigured:
               markManualConfigured || prevEntry.frequencyReminderManualConfigured === true,
-            lastTimerResetAt: resetTimestamp || prevEntry.lastTimerResetAt || null,
-            missedCycles: resetTimestamp ? 0 : prevEntry.missedCycles || 0,
+            lastTimerResetAt: resetTimestamp || prevEntry.lastTimerResetAt || firstConfiguredAt,
+            missedCycles: resetTimestamp || !prevEntry.nextCheckAt ? 0 : prevEntry.missedCycles || 0,
             frequencyReminderId: null,
             frequencyReminderIds: [],
             frequencyReminderScheduledAt: null,
@@ -70678,16 +70885,6 @@ useEffect(() => {
       (priceEditor.scheduleConfigVisible && isGuidedFrequency(nextFrequency)) ||
       changedScheduleConfig;
     const nextFrequencyIntervalMs = resolveFrequencyIntervalMs(nextFrequency, nextFrequencyCustom);
-    const editTimestamp = Date.now();
-    const tycoonCooldownMs =
-      changedPrice && usdValue > previousPriceUSD
-        ? getTycoonCooldownMsForIncrease(previousPriceUSD, usdValue, nextFrequencyIntervalMs)
-        : 0;
-    const existingTycoonCooldownUntil = Math.max(0, Number(priceEditor.item?.tycoonCooldownUntil) || 0);
-    const tycoonCooldownUntil =
-      tycoonCooldownMs > 0
-        ? Math.max(existingTycoonCooldownUntil, editTimestamp + tycoonCooldownMs)
-        : existingTycoonCooldownUntil || null;
     patchTemptationDisplay(priceEditor.item.id, {
       priceUSD: usdValue,
       pricePrecision: manualPrecision,
@@ -70706,8 +70903,6 @@ useEffect(() => {
       frequencyMonthlyDays: nextMonthlyDays,
       frequencyReminderManualConfigured:
         markManualConfigured || priceEditor.item?.frequencyReminderManualConfigured === true,
-      tycoonCooldownUntil: tycoonCooldownUntil || priceEditor.item?.tycoonCooldownUntil || null,
-      tycoonCooldownStartedAt: tycoonCooldownUntil ? editTimestamp : priceEditor.item?.tycoonCooldownStartedAt || null,
     });
     if (shouldApplyFrequency) {
       applyFrequencySelectionToTemplate(
@@ -70726,24 +70921,6 @@ useEffect(() => {
         }
       );
     }
-    if (tycoonCooldownUntil) {
-      setTemptationInteractions((prev) => {
-        const prevEntry = prev?.[templateId] || {};
-        return {
-          ...(prev || {}),
-          [templateId]: {
-            ...prevEntry,
-            frequency: nextFrequency || prevEntry.frequency || null,
-            frequencyCustom: nextFrequency === "custom" ? nextFrequencyCustom || null : null,
-            intervalMs: nextFrequencyIntervalMs || prevEntry.intervalMs || null,
-            nextCheckAt: tycoonCooldownUntil,
-            templateTitle: normalizedLabel || prevEntry.templateTitle || null,
-            lastTimerResetAt: editTimestamp,
-            tycoonCooldownUntil,
-          },
-        };
-      });
-    }
     propagateTemptationEdit(priceEditor.item.id, {
       label: normalizedLabel,
       emoji: resolvedEmoji,
@@ -70761,15 +70938,6 @@ useEffect(() => {
       frequency: nextFrequency,
     });
     closePriceEditor();
-    if (tycoonCooldownMs > 0) {
-      const cooldownMessageMs = Math.max(tycoonCooldownMs, tycoonCooldownUntil - editTimestamp);
-      Alert.alert(
-        t("tycoonModeLabel"),
-        t("tycoonCooldownNotice", {
-          time: formatTemptationPauseFreezeLabel(cooldownMessageMs, language),
-        })
-      );
-    }
   };
 
   const promptTemptationDelete = useCallback(
@@ -72852,6 +73020,12 @@ useEffect(() => {
             setFeedFirstTutorialSaveCoachVisible(false);
             setFeedFirstTutorialNeedSoftPaywall(false);
             setDefaultTemptationGrowthLockLevel(null);
+            setMonetizationTrialLocked(false);
+            setMonetizationFirstSessionActionBaseline(null);
+            monetizationTrialActionCountRef.current = 0;
+            monetizationTrialLimitedActionCountRef.current = 0;
+            monetizationFirstSessionActionBaselineRef.current = null;
+            monetizationFirstSessionCompletedRef.current = false;
             homeSessionRef.current.sessionCount = 0;
             homeSessionRef.current.pendingIndex = null;
             homeSessionRef.current.dateKey = getDayKey(Date.now());
@@ -74524,8 +74698,22 @@ useEffect(() => {
                           : t("dailyChallengeDrawSubtitle")}
                       </Text>
                     </View>
-                    <View style={styles.dailyChallengeDrawRow}>
-                      {Array.from({ length: DAILY_CHALLENGE_DRAW_COUNT }).map((_, index) => {
+                    <View
+                      style={[
+                        styles.dailyChallengeDrawRow,
+                        dailyChallengeDrawOptions.length < DAILY_CHALLENGE_DRAW_COUNT &&
+                          styles.dailyChallengeDrawRowCentered,
+                      ]}
+                    >
+                      {dailyChallengeDrawOptions.map((optionTemplateId, index) => {
+                        const optionTemplate = resolveTemplateCard(optionTemplateId);
+                        const optionTitle = optionTemplate
+                          ? resolveTemptationTitle(
+                              optionTemplate,
+                              language,
+                              titleOverrides[optionTemplate.id]
+                            ) || dailyChallengeDisplayTitle
+                          : dailyChallengeDisplayTitle;
                         const accent =
                           dailyChallengeCardAccents[index] || CARD_TEXTURE_ACCENTS[0] || "#8AB9FF";
                         const intro = dailyChallengeCardIntroAnims[index];
@@ -74589,7 +74777,11 @@ useEffect(() => {
                         return (
                           <Pressable
                             key={`daily-challenge-card-${index}`}
-                            style={styles.dailyChallengeDrawCardWrap}
+                            style={[
+                              styles.dailyChallengeDrawCardWrap,
+                              dailyChallengeDrawOptions.length < DAILY_CHALLENGE_DRAW_COUNT &&
+                                styles.dailyChallengeDrawCardWrapCompact,
+                            ]}
                             disabled={dailyChallengeDrawn}
                             onPress={() => handleDailyChallengeDrawSelect(index)}
                           >
@@ -74663,14 +74855,14 @@ useEffect(() => {
                                   ]}
                                 >
                                   <Text style={styles.dailyChallengeDrawCardFrontEmojiText}>
-                                    {dailyChallengeTemplate?.emoji || dailyChallenge.emoji || "✨"}
+                                    {optionTemplate?.emoji || dailyChallenge.emoji || "✨"}
                                   </Text>
                                 </View>
                                 <Text
                                   style={[styles.dailyChallengeDrawCardFrontTitle, { color: colors.text }]}
                                   numberOfLines={2}
                                 >
-                                  {dailyChallengeDisplayTitle}
+                                  {optionTitle}
                                 </Text>
                               </Animated.View>
                             </Animated.View>
@@ -78267,6 +78459,7 @@ useEffect(() => {
                     language === "ru"
                       ? "Ежедневная награда открыта."
                       : "Your daily reward is now revealed.",
+                  onRevealReward: overlay.message?.onRevealReward,
                 }}
                 t={t}
                 language={language}
@@ -78311,6 +78504,7 @@ useEffect(() => {
                     week: overlay.message?.weekIndex || 1,
                     days: overlay.message?.days || USAGE_STREAK_WEEKLY_BONUS_DAYS,
                   }),
+                  onRevealReward: overlay.message?.onRevealReward,
                 }}
                 t={t}
                 language={language}
@@ -78357,6 +78551,7 @@ useEffect(() => {
                   }),
                   tierId: overlay.message?.tierId || null,
                   chestCount: overlay.message?.chestCount || null,
+                  onRevealReward: overlay.message?.onRevealReward,
                 }}
                 t={t}
                 language={language}
@@ -78409,6 +78604,7 @@ useEffect(() => {
                     (language === "ru"
                       ? "Фокус-цель принесла сундук. Открой его, чтобы увидеть награду."
                       : "Your focus target earned a chest. Open it to see the reward."),
+                  onRevealReward: overlay.message?.onRevealReward,
                 }}
                 t={t}
                 language={language}
@@ -84533,11 +84729,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 10,
-    alignItems: "flex-end",
+    alignItems: "center",
+  },
+  dailyChallengeDrawRowCentered: {
+    justifyContent: "center",
   },
   dailyChallengeDrawCardWrap: {
     flex: 1,
     alignItems: "center",
+  },
+  dailyChallengeDrawCardWrapCompact: {
+    flex: 0,
+    width: DAILY_CHALLENGE_DRAW_CARD_WIDTH,
   },
   dailyChallengeDrawCard: {
     position: "relative",
@@ -84635,7 +84838,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   dailyChallengeDrawHidden: {
-    display: "none",
+    opacity: 0,
   },
   dailyChallengeRevealPanel: {
     borderRadius: 20,

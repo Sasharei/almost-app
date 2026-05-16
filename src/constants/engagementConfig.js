@@ -55,8 +55,8 @@ export const ANDROID_DAILY_NUDGE_CHANNEL_ID = "daily-nudges";
 export const ANDROID_TAMAGOTCHI_CHANNEL_ID = "tamagotchi-hunger";
 export const ANDROID_REPORTS_CHANNEL_ID = "weekly-reports";
 
-export const DAILY_CHALLENGE_MIN_SPEND_EVENTS = 2;
-export const DAILY_CHALLENGE_MIN_UNIQUE_TEMPLATES = 3;
+export const DAILY_CHALLENGE_MIN_SPEND_EVENTS = 1;
+export const DAILY_CHALLENGE_MIN_UNIQUE_TEMPLATES = 2;
 export const DAILY_CHALLENGE_FIXED_REWARD = 2;
 export const DAILY_CHALLENGE_REWARD_MULTIPLIER = 10;
 export const DAILY_CHALLENGE_DRAW_COUNT = 3;

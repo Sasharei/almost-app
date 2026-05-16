@@ -133,8 +133,8 @@ android {
         applicationId "com.sasarei.almostclean"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 99
-        versionName "6.0.1"
+        versionCode 100
+        versionName "6.0.2"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
         resValue "string", "facebook_app_id", facebookAppId
