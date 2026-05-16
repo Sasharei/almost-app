@@ -23,16 +23,3 @@ export const resolveTycoonLevelRule = (level = 1) => {
     return match;
   }, TYCOON_LEVEL_RULES[0]);
 };
-
-export const getTycoonCooldownMsForIncrease = (previousUSD = 0, nextUSD = 0, cycleMs = 0) => {
-  const previous = Math.max(0, Number(previousUSD) || 0);
-  const next = Math.max(0, Number(nextUSD) || 0);
-  const normalizedCycle = Math.max(0, Number(cycleMs) || 0);
-  if (next <= previous) return 0;
-  const growth = previous > 0 ? (next - previous) / previous : 1;
-  if (growth <= 0.1) return Math.max(normalizedCycle, 1);
-  if (growth <= 0.25) return Math.max(normalizedCycle + 24 * 60 * 60 * 1000, normalizedCycle);
-  if (growth <= 0.5) return Math.max(normalizedCycle * 2, normalizedCycle);
-  if (growth <= 1) return Math.max(normalizedCycle * 3, normalizedCycle);
-  return Math.max(7 * 24 * 60 * 60 * 1000, normalizedCycle * 4, normalizedCycle);
-};

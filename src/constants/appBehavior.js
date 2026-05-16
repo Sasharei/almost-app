@@ -203,6 +203,8 @@ export const STORAGE_KEYS = {
   PAYWALL_DESIGN_EXPERIMENT_VARIANT: "@almost_paywall_design_experiment_variant",
   PAYWALL_DESIGN_EXPERIMENT_ASSIGNED_AT: "@almost_paywall_design_experiment_assigned_at",
   MONETIZATION_TRIAL_LOCKED: "@almost_monetization_trial_locked",
+  MONETIZATION_FIRST_SESSION_ACTION_BASELINE:
+    "@almost_monetization_first_session_action_baseline",
   MONETIZATION_ONBOARDING_LOCKED: "@almost_monetization_onboarding_locked",
   TYCOON_SETTINGS: "@almost_tycoon_settings",
   TYCOON_LEDGER: "@almost_tycoon_ledger",

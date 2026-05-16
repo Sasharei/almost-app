@@ -16,19 +16,17 @@ import {
 } from "react-native";
 import { initialWindowMetrics } from "react-native-safe-area-context";
 
-const PRIMARY_PLAN_IDS = ["yearly", "monthly"];
-const SECONDARY_PLAN_IDS = ["weekly", "lifetime"];
+const PRIMARY_PLAN_IDS = ["weekly"];
+const SECONDARY_PLAN_IDS = ["monthly", "yearly", "lifetime"];
 
 const pickDefaultPlanId = (planCards = []) => {
   const availableCards = planCards.filter((card) => card?.available !== false);
-  const yearly = availableCards.find((card) => card?.id === "yearly");
-  if (yearly?.id) return yearly.id;
-  const monthly = availableCards.find((card) => card?.id === "monthly");
-  if (monthly?.id) return monthly.id;
+  const weekly = availableCards.find((card) => card?.id === "weekly");
+  if (weekly?.id) return weekly.id;
   const preferred = availableCards.find((card) => card?.recommended);
   if (preferred?.id) return preferred.id;
   if (availableCards[0]?.id) return availableCards[0].id;
-  return planCards[0]?.id || "yearly";
+  return planCards[0]?.id || "weekly";
 };
 
 const ARABIC_INDIC_DIGITS = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
@@ -573,6 +571,36 @@ const OTHER_PLANS_BUTTON_BY_LANGUAGE = {
   ar: "إظهار جميع الخطط",
   zh: "显示全部方案",
 };
+const FREE_TRIAL_TOGGLE_COPY_BY_LANGUAGE = {
+  ru: {
+    title: "Free Trial",
+    subtitle: "Включите, чтобы выбрать месячный план с пробным периодом.",
+  },
+  en: {
+    title: "Free Trial",
+    subtitle: "Turn on to select the monthly plan with a trial.",
+  },
+  es: {
+    title: "Free Trial",
+    subtitle: "Actívalo para elegir el plan mensual con prueba.",
+  },
+  fr: {
+    title: "Free Trial",
+    subtitle: "Active-le pour choisir l'offre mensuelle avec essai.",
+  },
+  de: {
+    title: "Free Trial",
+    subtitle: "Aktivieren, um den Monatsplan mit Testphase zu wählen.",
+  },
+  ar: {
+    title: "Free Trial",
+    subtitle: "فعّله لاختيار الخطة الشهرية مع الفترة التجريبية.",
+  },
+  zh: {
+    title: "Free Trial",
+    subtitle: "开启后选择带试用的月付方案。",
+  },
+};
 const SAVINGS_FORECAST_DAYS_TEMPLATE_BY_LANGUAGE = {
   ru: "{{days}} дн.",
   en: "{{days}}d",
@@ -920,6 +948,7 @@ const PremiumPaywallModal = ({
 }) => {
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCardsProp));
   const [showOtherPlans, setShowOtherPlans] = useState(false);
+  const [freeTrialEnabled, setFreeTrialEnabled] = useState(false);
   const [selectedComparisonRowId, setSelectedComparisonRowId] = useState(null);
   const [showTransactionAbandonedPopup, setShowTransactionAbandonedPopup] = useState(false);
   const [supportIntroStage, setSupportIntroStage] = useState("plans");
@@ -1021,6 +1050,13 @@ const PremiumPaywallModal = ({
     );
     return SECONDARY_PLAN_IDS.map((planId) => byId.get(planId)).filter(Boolean);
   }, [planCards]);
+  const monthlyTrialPlan = useMemo(
+    () =>
+      planCards.find(
+        (card) => String(card?.id || "").toLowerCase() === "monthly"
+      ) || null,
+    [planCards]
+  );
   const allPlanCards = useMemo(() => {
     const ordered = [...primaryPlanCards, ...secondaryPlanCards, ...planCards];
     const seen = new Set();
@@ -1034,8 +1070,18 @@ const PremiumPaywallModal = ({
   const visiblePlanCards = useMemo(() => {
     if (!primaryPlanCards.length) return planCards;
     if (showOtherPlans) return allPlanCards.length ? allPlanCards : planCards;
+    if (freeTrialEnabled && monthlyTrialPlan?.id) {
+      const ordered = [...primaryPlanCards, monthlyTrialPlan];
+      const seen = new Set();
+      return ordered.filter((card) => {
+        const planId = typeof card?.id === "string" ? card.id : "";
+        if (!planId || seen.has(planId)) return false;
+        seen.add(planId);
+        return true;
+      });
+    }
     return primaryPlanCards;
-  }, [allPlanCards, planCards, primaryPlanCards, showOtherPlans]);
+  }, [allPlanCards, freeTrialEnabled, monthlyTrialPlan, planCards, primaryPlanCards, showOtherPlans]);
   const paywallHasAnyTrialPlan = useMemo(
     () =>
       planCards.some(
@@ -1048,6 +1094,10 @@ const PremiumPaywallModal = ({
     OTHER_PLANS_BUTTON_BY_LANGUAGE[copyLanguage] || OTHER_PLANS_BUTTON_BY_LANGUAGE.en,
     normalizedLanguage
   );
+  const freeTrialToggleCopy =
+    FREE_TRIAL_TOGGLE_COPY_BY_LANGUAGE[copyLanguage] ||
+    FREE_TRIAL_TOGGLE_COPY_BY_LANGUAGE.en;
+  const shouldShowFreeTrialToggle = !!monthlyTrialPlan?.id;
   const isRtlLanguage = isArabicLanguage(normalizedLanguage);
   const normalizedTrigger =
     typeof copy?.trigger === "string" && copy.trigger.trim().length
@@ -1140,16 +1190,25 @@ const PremiumPaywallModal = ({
   useEffect(() => {
     if (!visible) {
       setShowOtherPlans(false);
+      setFreeTrialEnabled(false);
       return;
     }
     const normalizedSelectedPlanId =
       typeof selectedPlanId === "string" ? selectedPlanId.trim().toLowerCase() : "";
     if (SECONDARY_PLAN_IDS.includes(normalizedSelectedPlanId)) {
+      if (freeTrialEnabled && normalizedSelectedPlanId === "monthly") {
+        return;
+      }
       setShowOtherPlans(true);
       return;
     }
     setShowOtherPlans(false);
-  }, [selectedPlanId, visible]);
+  }, [freeTrialEnabled, selectedPlanId, visible]);
+  useEffect(() => {
+    if (!visible || !freeTrialEnabled || monthlyTrialPlan?.id) return;
+    setFreeTrialEnabled(false);
+    setSelectedPlanId(pickDefaultPlanId(planCards));
+  }, [freeTrialEnabled, monthlyTrialPlan, planCards, visible]);
   useEffect(() => {
     if (!visible) {
       setSupportIntroStage("plans");
@@ -1783,6 +1842,21 @@ const PremiumPaywallModal = ({
       }, 180);
     }, 80);
   }, [dismissTransactionAbandonedPopup, scrollToPlanSection, transactionAbandonedPopupPlan]);
+  const handleFreeTrialToggle = useCallback(() => {
+    if (!monthlyTrialPlan?.id) return;
+    setFreeTrialEnabled((prev) => {
+      const next = !prev;
+      const nextPlanId = next ? monthlyTrialPlan.id : pickDefaultPlanId(primaryPlanCards.length ? primaryPlanCards : planCards);
+      if (nextPlanId) {
+        setSelectedPlanId(nextPlanId);
+        onPlanSelect(nextPlanId, { source: "free_trial_toggle" });
+      }
+      if (!next) {
+        setShowOtherPlans(false);
+      }
+      return next;
+    });
+  }, [monthlyTrialPlan, onPlanSelect, planCards, primaryPlanCards]);
 
   const backdropOpacity = openProgress.interpolate({
     inputRange: [0, 1],
@@ -2653,6 +2727,62 @@ const PremiumPaywallModal = ({
             </Text>
           </View>
         )}
+        {shouldShowFreeTrialToggle && (
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={handleFreeTrialToggle}
+            disabled={!!purchaseLoadingPlan || restoring}
+            style={[
+              styles.freeTrialToggleCard,
+              isCompactAndroid ? styles.freeTrialToggleCardCompactAndroid : null,
+              {
+                backgroundColor: freeTrialEnabled ? accentSurfaceStrong : contentCardBgElevated,
+                borderColor: freeTrialEnabled ? accentBorderColor : accentBorderSoftColor,
+              },
+            ]}
+          >
+            <View style={styles.freeTrialToggleTextBlock}>
+              <Text
+                style={[
+                  styles.freeTrialToggleTitle,
+                  isCompactAndroid ? styles.freeTrialToggleTitleCompactAndroid : null,
+                  { color: textColor },
+                ]}
+                numberOfLines={1}
+              >
+                {freeTrialToggleCopy.title}
+              </Text>
+              <Text
+                style={[
+                  styles.freeTrialToggleSubtitle,
+                  isCompactAndroid ? styles.freeTrialToggleSubtitleCompactAndroid : null,
+                  { color: mutedColor },
+                ]}
+                numberOfLines={2}
+              >
+                {freeTrialToggleCopy.subtitle}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.freeTrialSwitchTrack,
+                isCompactAndroid ? styles.freeTrialSwitchTrackCompactAndroid : null,
+                {
+                  backgroundColor: freeTrialEnabled ? accent : inactiveChipBg,
+                  borderColor: freeTrialEnabled ? accentBorderColor : borderColor,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.freeTrialSwitchThumb,
+                  isCompactAndroid ? styles.freeTrialSwitchThumbCompactAndroid : null,
+                  freeTrialEnabled ? styles.freeTrialSwitchThumbOn : null,
+                ]}
+              />
+            </View>
+          </TouchableOpacity>
+        )}
 
         <View style={[styles.planList, isCompactAndroid ? styles.planListCompactAndroid : null]}>
           {visiblePlanCards.map((plan) => {
@@ -2663,7 +2793,10 @@ const PremiumPaywallModal = ({
             const isMonthlyPlan = plan.id === "monthly";
             const isPrimaryPlanCard = PRIMARY_PLAN_IDS.includes(plan.id);
             const isSecondaryPlanCard = SECONDARY_PLAN_IDS.includes(plan.id);
-            const isLargePlanCard = isPrimaryPlanCard || (showOtherPlans && isSecondaryPlanCard);
+            const isFreeTrialMonthlyCard = freeTrialEnabled && isMonthlyPlan;
+            const isLargePlanCard =
+              isPrimaryPlanCard ||
+              ((showOtherPlans || isFreeTrialMonthlyCard) && isSecondaryPlanCard);
             const isBannerPlan = isMonthlyPlan || isYearlyPlan;
             const shouldShowPlanTopBanner = isBannerPlan && (isLargePlanCard || !primaryPlanCards.length);
             const topBadgeLabel =
@@ -2751,8 +2884,10 @@ const PremiumPaywallModal = ({
               plan.billingLabel !== plan.secondarySubLabel;
             const isTrialPlanCard = !!plan?.hasTrial;
             const shouldShowYearlyTopBanner = isBannerPlan && isYearlyPlan;
+            const showMonthlyFreeTrialTopBanner = freeTrialEnabled && isMonthlyPlan;
             const showTrialTopBanner =
-              shouldShowYearlyTopBanner && (isTrialPlanCard || paywallHasAnyTrialPlan);
+              (shouldShowYearlyTopBanner && isTrialPlanCard) ||
+              showMonthlyFreeTrialTopBanner;
             const trialTopBannerLabel = localizePaywallDigits(
               TRIAL_PLAN_TOP_BANNER_BY_LANGUAGE[copyLanguage] ||
                 TRIAL_PLAN_TOP_BANNER_BY_LANGUAGE.en,
@@ -2828,7 +2963,9 @@ const PremiumPaywallModal = ({
               shouldShowYearlyTopBanner &&
               isTransactionAbandonedTrigger &&
               !!abandonedOfferBannerLabel;
-            const trialTopBannerContent = shouldShowYearlyTopBanner
+            const trialTopBannerContent = showMonthlyFreeTrialTopBanner
+              ? trialTopBannerLabel
+              : shouldShowYearlyTopBanner
               ? showAbandonedOfferBanner
                 ? abandonedOfferBannerLabel
                 : showTrialTopBanner
@@ -2878,6 +3015,9 @@ const PremiumPaywallModal = ({
                 activeOpacity={0.9}
                 onPress={() => {
                   setSelectedPlanId(plan.id);
+                  setFreeTrialEnabled(
+                    String(plan?.id || "").toLowerCase() === "monthly"
+                  );
                   onPlanSelect(plan.id, { source: "plan_card" });
                 }}
                 disabled={!!purchaseLoadingPlan || restoring}
@@ -4594,6 +4734,77 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: "700",
     textAlign: "center",
+  },
+  freeTrialToggleCard: {
+    marginTop: 2,
+    marginBottom: 2,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  freeTrialToggleCardCompactAndroid: {
+    borderRadius: 16,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    gap: 10,
+  },
+  freeTrialToggleTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  freeTrialToggleTitle: {
+    fontSize: 15,
+    lineHeight: 18,
+    fontWeight: "900",
+  },
+  freeTrialToggleTitleCompactAndroid: {
+    fontSize: 14,
+    lineHeight: 17,
+  },
+  freeTrialToggleSubtitle: {
+    marginTop: 3,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "700",
+  },
+  freeTrialToggleSubtitleCompactAndroid: {
+    fontSize: 10,
+    lineHeight: 13,
+  },
+  freeTrialSwitchTrack: {
+    width: 56,
+    height: 32,
+    borderRadius: 999,
+    borderWidth: 1,
+    padding: 3,
+    justifyContent: "center",
+  },
+  freeTrialSwitchTrackCompactAndroid: {
+    width: 50,
+    height: 29,
+  },
+  freeTrialSwitchThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOpacity: 0.14,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  freeTrialSwitchThumbCompactAndroid: {
+    width: 21,
+    height: 21,
+    borderRadius: 11,
+  },
+  freeTrialSwitchThumbOn: {
+    alignSelf: "flex-end",
   },
   planList: {
     marginTop: 2,

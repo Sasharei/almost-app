@@ -9,7 +9,7 @@ export const PREMIUM_PRODUCT_IDS = {
   lifetime: "almost_premium_lifetime",
 };
 
-export const PREMIUM_PLAN_ORDER = ["monthly", "weekly", "yearly", "lifetime"];
+export const PREMIUM_PLAN_ORDER = ["weekly", "monthly", "yearly", "lifetime"];
 
 export const FREE_PLAN_LIMITS = {
   activeGoals: 1,
@@ -2086,19 +2086,19 @@ export const buildDefaultPlanCards = (currencyCode = "USD", language = "en") => 
     "Premium";
   return localizeFallbackStructure([
     {
-      id: "monthly",
-      label: resolvePlanLabel("monthly"),
-      priceLabel: pricing.monthly.label,
-      secondaryLabel: pricing.monthly.perWeek || pricing.monthly.perMonth,
-      badge: localizeFallbackBadge(pricing.monthly.badge, lang),
-      recommended: true,
-    },
-    {
       id: "weekly",
       label: resolvePlanLabel("weekly"),
       priceLabel: pricing.weekly.label,
       secondaryLabel: pricing.weekly.perMonth || pricing.weekly.perWeek,
       badge: localizeFallbackBadge(pricing.weekly.badge, lang),
+      recommended: true,
+    },
+    {
+      id: "monthly",
+      label: resolvePlanLabel("monthly"),
+      priceLabel: pricing.monthly.label,
+      secondaryLabel: pricing.monthly.perWeek || pricing.monthly.perMonth,
+      badge: localizeFallbackBadge(pricing.monthly.badge, lang),
       recommended: false,
     },
     {
