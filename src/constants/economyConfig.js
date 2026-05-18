@@ -55,7 +55,7 @@ export const RATING_PROMPT_ACTION_TYPES = new Set(["save", "spend"]);
 
 export const ANDROID_REVIEW_URL = "market://details?id=com.sasarei.almostclean";
 export const ANDROID_REVIEW_WEB_URL = "https://play.google.com/store/apps/details?id=com.sasarei.almostclean";
-export const IOS_REVIEW_URL = "itms-apps://itunes.apple.com/app/id6756276744?action=write-review";
+export const IOS_REVIEW_URL = "https://apps.apple.com/app/id6756276744?action=write-review";
 export const IOS_REVIEW_WEB_URL = "https://apps.apple.com/app/id6756276744?action=write-review";
 export const IOS_MANAGE_SUBSCRIPTIONS_URL = "https://apps.apple.com/account/subscriptions";
 export const ANDROID_MANAGE_SUBSCRIPTIONS_URL =

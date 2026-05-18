@@ -119,6 +119,7 @@ export const STORAGE_KEYS = {
   SPEND_LOGGING_REMINDER: "@almost_spend_logging_reminder",
   TUTORIAL: "@almost_tutorial_state",
   TUTORIAL_CARD_SHOWN: "tutorial_card_shown",
+  FEED_INTRO_SHOWN: "@almost_feed_intro_shown",
   FEED_ADD_TUTORIAL_SHOWN: "@almost_feed_add_tutorial_shown",
   FRIDGE_INTRO_SHOWN: "@almost_fridge_intro_shown",
   PROGRESS_INTRO_SHOWN: "@almost_progress_intro_shown",
@@ -209,4 +210,5 @@ export const STORAGE_KEYS = {
   TYCOON_SETTINGS: "@almost_tycoon_settings",
   TYCOON_LEDGER: "@almost_tycoon_ledger",
   TYCOON_CONFIRM_STATS: "@almost_tycoon_confirm_stats",
+  TYCOON_AUTOSAVE_SNOOZED_UNTIL: "@almost_tycoon_autosave_snoozed_until",
 };

@@ -33,37 +33,53 @@ export const PRO_THEME_ACCENT_OPTIONS = [
   {
     id: "indigo",
     accent: "#4353FF",
-    label: { ru: "Индиго", en: "Indigo", es: "Índigo", fr: "Indigo" },
+    label: { ru: "Индиго", en: "Indigo", es: "Índigo", fr: "Indigo", de: "Indigo", ar: "نيلي", zh: "靛蓝" },
     emoji: "🔵",
   },
   {
     id: "emerald",
     accent: "#1FBF8F",
-    label: { ru: "Изумруд", en: "Emerald", es: "Esmeralda", fr: "Émeraude" },
+    label: {
+      ru: "Изумруд",
+      en: "Emerald",
+      es: "Esmeralda",
+      fr: "Émeraude",
+      de: "Smaragd",
+      ar: "زمردي",
+      zh: "祖母绿",
+    },
     emoji: "💚",
   },
   {
     id: "sunset",
     accent: "#FF7A59",
-    label: { ru: "Сансет", en: "Sunset", es: "Atardecer", fr: "Coucher" },
+    label: {
+      ru: "Сансет",
+      en: "Sunset",
+      es: "Atardecer",
+      fr: "Coucher",
+      de: "Sonnenuntergang",
+      ar: "غروب",
+      zh: "日落",
+    },
     emoji: "🌇",
   },
   {
     id: "gold",
     accent: "#E3A62B",
-    label: { ru: "Золото", en: "Gold", es: "Oro", fr: "Or" },
+    label: { ru: "Золото", en: "Gold", es: "Oro", fr: "Or", de: "Gold", ar: "ذهبي", zh: "金色" },
     emoji: "✨",
   },
   {
     id: "violet",
     accent: "#8B61FF",
-    label: { ru: "Фиолет", en: "Violet", es: "Violeta", fr: "Violet" },
+    label: { ru: "Фиолет", en: "Violet", es: "Violeta", fr: "Violet", de: "Violett", ar: "بنفسجي", zh: "紫色" },
     emoji: "🍇",
   },
   {
     id: "aqua",
     accent: "#2FA8FF",
-    label: { ru: "Аква", en: "Aqua", es: "Aqua", fr: "Aqua" },
+    label: { ru: "Аква", en: "Aqua", es: "Aqua", fr: "Aqua", de: "Aqua", ar: "أكوا", zh: "水蓝" },
     emoji: "🌊",
   },
 ];
@@ -90,6 +106,21 @@ export const PRO_THEME_ACCENT_COPY = {
     title: "Accent du thème PRO",
     subtitle: "Choisis la couleur utilisée pour les boutons et accents d'interface.",
     selected: "Sélectionné",
+  },
+  de: {
+    title: "PRO-Theme-Akzent",
+    subtitle: "Wähle die Farbe für Buttons und hervorgehobene UI-Akzente.",
+    selected: "Ausgewählt",
+  },
+  ar: {
+    title: "تمييز سمة PRO",
+    subtitle: "اختر اللون المستخدم للأزرار وإبرازات الواجهة.",
+    selected: "محدد",
+  },
+  zh: {
+    title: "PRO 主题强调色",
+    subtitle: "选择用于按钮和界面高亮的颜色。",
+    selected: "已选择",
   },
 };
 

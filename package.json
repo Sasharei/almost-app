@@ -1,6 +1,6 @@
 {
   "name": "almost_clean",
-  "version": "6.0.2",
+  "version": "6.1.0",
   "main": "index.js",
   "scripts": {
     "start": "EXPO_NO_TYPESCRIPT_SETUP=1 expo start --dev-client",
@@ -13,11 +13,13 @@
     "backend:test": "npm --prefix backend test",
     "backend:tunnel": "bash scripts/start-backend-tunnel.sh",
     "check:release": "bash scripts/verify-runtime-parity.sh && npm run size:check",
+    "check:localization": "node scripts/check-localization.js",
+    "check:themes": "node scripts/check-themes.js",
     "lint": "eslint .",
     "postinstall": "node scripts/apply-patches.js",
     "size:check": "node scripts/check-app-size.js",
     "typecheck": "tsc --noEmit --pretty false",
-    "verify": "npm run typecheck && npm run lint && npm run backend:test && npm run check:release",
+    "verify": "npm run typecheck && npm run lint && npm run check:localization && npm run check:themes && npm run backend:test && npm run check:release",
     "version:bump": "node scripts/bump-version.js"
   },
   "dependencies": {
@@ -43,6 +45,7 @@
     "expo-image-picker": "~17.0.8",
     "expo-navigation-bar": "^5.0.9",
     "expo-notifications": "^0.28.19",
+    "expo-sensors": "~15.0.8",
     "expo-sharing": "~14.0.7",
     "expo-splash-screen": "~0.28.2",
     "expo-status-bar": "~3.0.8",

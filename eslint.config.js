@@ -5,14 +5,12 @@ const { defineConfig } = require("eslint/config");
 module.exports = defineConfig([
   {
     ignores: [
-      "App.js",
       "backend/node_modules/**",
       "ios/**",
       "android/**",
       "patches/**",
       "src/constants/languageMapFallback.generated.js",
       "src/constants/translations.generated.js",
-      "src/constants/translations.js",
     ],
   },
   ...expoConfig,
