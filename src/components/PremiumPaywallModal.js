@@ -3529,8 +3529,11 @@ const PremiumPaywallModal = ({
 
 const styles = StyleSheet.create({
   root: {
+    position: "relative",
     flex: 1,
     justifyContent: "flex-end",
+    zIndex: 1,
+    elevation: 1,
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,

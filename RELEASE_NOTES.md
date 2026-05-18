@@ -1,5 +1,63 @@
 # Release Notes
 
+## 6.1.0 (from 6.0.0)
+
+### EN
+- Added Goal Jar: saved money now fills the active jar, shows waiting jars, and opens a detailed progress view for each goal.
+- Added Auto-save and Auto-collect: due green cards are prepared automatically, then you confirm what was saved, spent, adjusted, snoozed, or excluded.
+- Added reward chests for saved spends and auto-save streaks, plus clearer daily and weekly reward collection.
+- Added a Feed guide that explains how Save, goal jars, coins, and real budget transfers work together.
+- Fixed issues found after 6.0.0, including auto-save controls, keyboard behavior, gradients, review links, stability, and performance.
+
+### RU
+- Добавили банку накоплений: сохранённые деньги наполняют активную банку, показывают следующие банки и открывают подробный прогресс по каждой цели.
+- Добавили автосейв и автосбор: зелёные карточки готовятся автоматически, а затем вы подтверждаете, что было сохранено, потрачено, изменено, отложено или исключено.
+- Добавили сундуки-награды за сохранённые траты и серии автосейва, а также более понятный сбор ежедневных и недельных наград.
+- Добавили гид по Feed: он объясняет, как вместе работают «Копить», банки целей, монеты и реальные переводы в бюджете.
+- Исправили проблемы после 6.0.0: элементы автосейва, поведение клавиатуры, градиенты, ссылки на отзывы, стабильность и производительность.
+
+### ES
+- Agregamos el Tarro de objetivos: el dinero ahorrado llena el tarro activo, muestra los siguientes tarros y abre un detalle de progreso para cada meta.
+- Agregamos auto-ahorro y auto-recolección: las tarjetas verdes pendientes se preparan automáticamente y luego confirmas qué se ahorró, gastó, ajustó, pospuso o excluyó.
+- Agregamos cofres de recompensa por gastos ahorrados y rachas de auto-ahorro, con una recolección diaria y semanal más clara.
+- Agregamos una guía del Feed que explica cómo funcionan juntos Ahorrar, los tarros de meta, las monedas y las transferencias reales del presupuesto.
+- Corregimos problemas encontrados después de 6.0.0, incluidos controles de auto-ahorro, teclado, degradados, enlaces de reseña, estabilidad y rendimiento.
+
+### FR
+- Ajout du Bocal d'objectif : l'argent économisé remplit le bocal actif, affiche les bocaux suivants et ouvre une vue détaillée de progression pour chaque objectif.
+- Ajout de l'épargne auto et de la collecte auto : les cartes vertes dues sont préparées automatiquement, puis vous confirmez ce qui a été économisé, dépensé, ajusté, reporté ou exclu.
+- Ajout de coffres de récompense pour les dépenses économisées et les séries d'épargne auto, avec une collecte quotidienne et hebdomadaire plus claire.
+- Ajout d'un guide du Feed qui explique comment Enregistrer, les bocaux d'objectifs, les pièces et les vrais transferts de budget fonctionnent ensemble.
+- Correction de problèmes repérés après 6.0.0, dont les contrôles d'épargne auto, le clavier, les dégradés, les liens d'avis, la stabilité et les performances.
+
+### DE
+- Neu: Zielglas. Gespartes Geld fuellt jetzt das aktive Glas, zeigt wartende Glaeser und oeffnet eine Detailansicht fuer den Fortschritt jedes Ziels.
+- Neu: Auto-Sparen und Auto-Sammeln. Faellige gruene Karten werden automatisch vorbereitet; danach bestaetigst du, was gespart, ausgegeben, angepasst, verschoben oder ausgeschlossen wurde.
+- Neue Belohnungstruhen fuer gesparte Ausgaben und Auto-Spar-Serien, plus klareres Sammeln taeglicher und woechentlicher Belohnungen.
+- Neuer Feed-Guide: Er erklaert, wie Sparen, Zielglaeser, Muenzen und echte Budget-Ueberweisungen zusammenarbeiten.
+- Probleme nach 6.0.0 wurden behoben, darunter Auto-Spar-Steuerung, Tastaturverhalten, Verlaeufe, Bewertungslinks, Stabilitaet und Performance.
+
+### AR (SA)
+- أضفنا جرة الأهداف: الأموال التي تحفظها تملأ الجرة النشطة، وتعرض الجرار التالية، وتفتح عرض تقدم مفصل لكل هدف.
+- أضفنا الحفظ التلقائي والجمع التلقائي: يتم تجهيز البطاقات الخضراء المستحقة تلقائياً، ثم تؤكد ما تم حفظه أو إنفاقه أو تعديله أو تأجيله أو استبعاده.
+- أضفنا صناديق مكافآت للمصروفات التي تم حفظها وسلاسل الحفظ التلقائي، مع جمع أوضح للمكافآت اليومية والأسبوعية.
+- أضفنا دليلاً في Feed يشرح كيف تعمل أزرار الحفظ وجرار الأهداف والعملات والتحويلات الفعلية في الميزانية معاً.
+- أصلحنا مشكلات ظهرت بعد 6.0.0، بما في ذلك عناصر الحفظ التلقائي، وسلوك لوحة المفاتيح، والتدرجات، وروابط التقييم، والاستقرار والأداء.
+
+### AR (AE)
+- أضفنا جرة الأهداف: الأموال التي تحفظها تملأ الجرة النشطة، وتعرض الجرار التالية، وتفتح عرض تقدم مفصل لكل هدف.
+- أضفنا الحفظ التلقائي والجمع التلقائي: يتم تجهيز البطاقات الخضراء المستحقة تلقائياً، ثم تؤكد ما تم حفظه أو إنفاقه أو تعديله أو تأجيله أو استبعاده.
+- أضفنا صناديق مكافآت للمصروفات التي تم حفظها وسلاسل الحفظ التلقائي، مع جمع أوضح للمكافآت اليومية والأسبوعية.
+- أضفنا دليلاً في Feed يشرح كيف تعمل أزرار الحفظ وجرار الأهداف والعملات والتحويلات الفعلية في الميزانية معاً.
+- أصلحنا مشكلات ظهرت بعد 6.0.0، بما في ذلك عناصر الحفظ التلقائي، وسلوك لوحة المفاتيح، والتدرجات، وروابط التقييم، والاستقرار والأداء.
+
+### ZH
+- 新增目标储蓄罐：省下的钱会进入当前储蓄罐，同时显示等待中的储蓄罐，并可查看每个目标的详细进度。
+- 新增自动保存和自动收集：到期的绿色卡片会自动准备好，你再确认哪些已保存、已花费、已调整、稍后处理或排除。
+- 新增保存消费和自动保存连续记录的奖励宝箱，并让每日和每周奖励领取更清晰。
+- 新增 Feed 指引，说明“保存”、目标储蓄罐、金币和真实预算转账如何一起运作。
+- 修复了 6.0.0 之后发现的问题，包括自动保存控件、键盘行为、渐变、评价链接、稳定性和性能。
+
 ## 6.0.0 (from 5.4.2)
 
 ### EN

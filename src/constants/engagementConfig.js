@@ -96,7 +96,7 @@ export const WEEKLY_REPORT_WEEKDAY = 6;
 export const WEEKLY_REPORT_HOUR = 18;
 export const WEEKLY_REPORT_MINUTE = 0;
 export const REPORTS_WEEKLY_NOTIFICATION_DEDUPE = "weekly_report_schedule";
-export const DAILY_SUMMARY_RELEASE_HOUR = 21;
+export const DAILY_SUMMARY_RELEASE_HOUR = 20;
 export const DAILY_SUMMARY_RELEASE_MINUTE = 0;
 export const DAILY_SUMMARY_NOTIFICATION_DEDUPE = "daily_summary_daily";
 

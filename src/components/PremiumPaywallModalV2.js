@@ -1433,8 +1433,11 @@ const PremiumPaywallModalV2 = ({
 
 const styles = StyleSheet.create({
   backdrop: {
+    position: "relative",
     flex: 1,
     justifyContent: "flex-end",
+    zIndex: 1,
+    elevation: 1,
   },
   sheet: {
     borderTopLeftRadius: 32,
