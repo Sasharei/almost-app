@@ -16,17 +16,24 @@ import {
 } from "react-native";
 import { initialWindowMetrics } from "react-native-safe-area-context";
 
-const PRIMARY_PLAN_IDS = ["weekly"];
-const SECONDARY_PLAN_IDS = ["monthly", "yearly", "lifetime"];
+const PRIMARY_PLAN_IDS = ["monthly"];
+const SECONDARY_PLAN_IDS = ["yearly", "weekly", "lifetime"];
+const FREE_TRIAL_PLAN_ID = "yearly";
+
+const normalizePlanId = (value = "") => String(value || "").trim().toLowerCase();
+const isFreeTrialPlan = (plan = null) =>
+  normalizePlanId(plan?.id) === FREE_TRIAL_PLAN_ID &&
+  plan?.available !== false &&
+  plan?.hasTrial === true;
 
 const pickDefaultPlanId = (planCards = []) => {
   const availableCards = planCards.filter((card) => card?.available !== false);
-  const weekly = availableCards.find((card) => card?.id === "weekly");
-  if (weekly?.id) return weekly.id;
+  const monthly = availableCards.find((card) => normalizePlanId(card?.id) === "monthly");
+  if (monthly?.id) return monthly.id;
   const preferred = availableCards.find((card) => card?.recommended);
   if (preferred?.id) return preferred.id;
   if (availableCards[0]?.id) return availableCards[0].id;
-  return planCards[0]?.id || "weekly";
+  return planCards[0]?.id || "monthly";
 };
 
 const ARABIC_INDIC_DIGITS = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
@@ -574,31 +581,31 @@ const OTHER_PLANS_BUTTON_BY_LANGUAGE = {
 const FREE_TRIAL_TOGGLE_COPY_BY_LANGUAGE = {
   ru: {
     title: "Free Trial",
-    subtitle: "Включите, чтобы выбрать месячный план с пробным периодом.",
+    subtitle: "Включите, чтобы выбрать годовой план с пробным периодом.",
   },
   en: {
     title: "Free Trial",
-    subtitle: "Turn on to select the monthly plan with a trial.",
+    subtitle: "Turn on to select the yearly plan with a trial.",
   },
   es: {
     title: "Free Trial",
-    subtitle: "Actívalo para elegir el plan mensual con prueba.",
+    subtitle: "Actívalo para elegir el plan anual con prueba.",
   },
   fr: {
     title: "Free Trial",
-    subtitle: "Active-le pour choisir l'offre mensuelle avec essai.",
+    subtitle: "Active-le pour choisir l'offre annuelle avec essai.",
   },
   de: {
     title: "Free Trial",
-    subtitle: "Aktivieren, um den Monatsplan mit Testphase zu wählen.",
+    subtitle: "Aktivieren, um den Jahresplan mit Testphase zu wählen.",
   },
   ar: {
     title: "Free Trial",
-    subtitle: "فعّله لاختيار الخطة الشهرية مع الفترة التجريبية.",
+    subtitle: "فعّله لاختيار الخطة السنوية مع الفترة التجريبية.",
   },
   zh: {
     title: "Free Trial",
-    subtitle: "开启后选择带试用的月付方案。",
+    subtitle: "开启后选择带试用的年付方案。",
   },
 };
 const SAVINGS_FORECAST_DAYS_TEMPLATE_BY_LANGUAGE = {
@@ -1050,10 +1057,10 @@ const PremiumPaywallModal = ({
     );
     return SECONDARY_PLAN_IDS.map((planId) => byId.get(planId)).filter(Boolean);
   }, [planCards]);
-  const monthlyTrialPlan = useMemo(
+  const freeTrialPlan = useMemo(
     () =>
       planCards.find(
-        (card) => String(card?.id || "").toLowerCase() === "monthly"
+        (card) => isFreeTrialPlan(card)
       ) || null,
     [planCards]
   );
@@ -1070,8 +1077,8 @@ const PremiumPaywallModal = ({
   const visiblePlanCards = useMemo(() => {
     if (!primaryPlanCards.length) return planCards;
     if (showOtherPlans) return allPlanCards.length ? allPlanCards : planCards;
-    if (freeTrialEnabled && monthlyTrialPlan?.id) {
-      const ordered = [...primaryPlanCards, monthlyTrialPlan];
+    if (freeTrialEnabled && freeTrialPlan?.id) {
+      const ordered = [...primaryPlanCards, freeTrialPlan];
       const seen = new Set();
       return ordered.filter((card) => {
         const planId = typeof card?.id === "string" ? card.id : "";
@@ -1081,11 +1088,11 @@ const PremiumPaywallModal = ({
       });
     }
     return primaryPlanCards;
-  }, [allPlanCards, freeTrialEnabled, monthlyTrialPlan, planCards, primaryPlanCards, showOtherPlans]);
+  }, [allPlanCards, freeTrialEnabled, freeTrialPlan, planCards, primaryPlanCards, showOtherPlans]);
   const paywallHasAnyTrialPlan = useMemo(
     () =>
       planCards.some(
-        (plan) => plan?.available !== false && plan?.hasTrial === true
+        (plan) => isFreeTrialPlan(plan)
       ),
     [planCards]
   );
@@ -1097,7 +1104,7 @@ const PremiumPaywallModal = ({
   const freeTrialToggleCopy =
     FREE_TRIAL_TOGGLE_COPY_BY_LANGUAGE[copyLanguage] ||
     FREE_TRIAL_TOGGLE_COPY_BY_LANGUAGE.en;
-  const shouldShowFreeTrialToggle = !!monthlyTrialPlan?.id;
+  const shouldShowFreeTrialToggle = !!freeTrialPlan?.id;
   const isRtlLanguage = isArabicLanguage(normalizedLanguage);
   const normalizedTrigger =
     typeof copy?.trigger === "string" && copy.trigger.trim().length
@@ -1196,7 +1203,7 @@ const PremiumPaywallModal = ({
     const normalizedSelectedPlanId =
       typeof selectedPlanId === "string" ? selectedPlanId.trim().toLowerCase() : "";
     if (SECONDARY_PLAN_IDS.includes(normalizedSelectedPlanId)) {
-      if (freeTrialEnabled && normalizedSelectedPlanId === "monthly") {
+      if (freeTrialEnabled && normalizedSelectedPlanId === FREE_TRIAL_PLAN_ID) {
         return;
       }
       setShowOtherPlans(true);
@@ -1205,10 +1212,10 @@ const PremiumPaywallModal = ({
     setShowOtherPlans(false);
   }, [freeTrialEnabled, selectedPlanId, visible]);
   useEffect(() => {
-    if (!visible || !freeTrialEnabled || monthlyTrialPlan?.id) return;
+    if (!visible || !freeTrialEnabled || freeTrialPlan?.id) return;
     setFreeTrialEnabled(false);
     setSelectedPlanId(pickDefaultPlanId(planCards));
-  }, [freeTrialEnabled, monthlyTrialPlan, planCards, visible]);
+  }, [freeTrialEnabled, freeTrialPlan, planCards, visible]);
   useEffect(() => {
     if (!visible) {
       setSupportIntroStage("plans");
@@ -1771,14 +1778,14 @@ const PremiumPaywallModal = ({
     normalizedLanguage
   );
   const selectedPlanTrialNotice = localizePaywallDigits(
-    paywallHasAnyTrialPlan ? selectedPlan?.trialNoticeLabel || "" : "",
+    isFreeTrialPlan(selectedPlan) ? selectedPlan?.trialNoticeLabel || "" : "",
     normalizedLanguage
   );
   const noCommitmentLine = localizePaywallDigits(
     copy?.noCommitmentLine || "No commitment, cancel anytime",
     normalizedLanguage
   );
-  const selectedPlanHasTrial = paywallHasAnyTrialPlan && !!selectedPlan?.hasTrial;
+  const selectedPlanHasTrial = paywallHasAnyTrialPlan && isFreeTrialPlan(selectedPlan);
   const normalizedSelectedPlanId =
     typeof selectedPlan?.id === "string" ? selectedPlan.id.trim().toLowerCase() : "";
   const isLifetimeSelected = normalizedSelectedPlanId === "lifetime";
@@ -1843,10 +1850,10 @@ const PremiumPaywallModal = ({
     }, 80);
   }, [dismissTransactionAbandonedPopup, scrollToPlanSection, transactionAbandonedPopupPlan]);
   const handleFreeTrialToggle = useCallback(() => {
-    if (!monthlyTrialPlan?.id) return;
+    if (!freeTrialPlan?.id) return;
     setFreeTrialEnabled((prev) => {
       const next = !prev;
-      const nextPlanId = next ? monthlyTrialPlan.id : pickDefaultPlanId(primaryPlanCards.length ? primaryPlanCards : planCards);
+      const nextPlanId = next ? freeTrialPlan.id : pickDefaultPlanId(primaryPlanCards.length ? primaryPlanCards : planCards);
       if (nextPlanId) {
         setSelectedPlanId(nextPlanId);
         onPlanSelect(nextPlanId, { source: "free_trial_toggle" });
@@ -1856,7 +1863,7 @@ const PremiumPaywallModal = ({
       }
       return next;
     });
-  }, [monthlyTrialPlan, onPlanSelect, planCards, primaryPlanCards]);
+  }, [freeTrialPlan, onPlanSelect, planCards, primaryPlanCards]);
 
   const backdropOpacity = openProgress.interpolate({
     inputRange: [0, 1],
@@ -2793,10 +2800,10 @@ const PremiumPaywallModal = ({
             const isMonthlyPlan = plan.id === "monthly";
             const isPrimaryPlanCard = PRIMARY_PLAN_IDS.includes(plan.id);
             const isSecondaryPlanCard = SECONDARY_PLAN_IDS.includes(plan.id);
-            const isFreeTrialMonthlyCard = freeTrialEnabled && isMonthlyPlan;
+            const isFreeTrialPlanCard = freeTrialEnabled && isYearlyPlan;
             const isLargePlanCard =
               isPrimaryPlanCard ||
-              ((showOtherPlans || isFreeTrialMonthlyCard) && isSecondaryPlanCard);
+              ((showOtherPlans || isFreeTrialPlanCard) && isSecondaryPlanCard);
             const isBannerPlan = isMonthlyPlan || isYearlyPlan;
             const shouldShowPlanTopBanner = isBannerPlan && (isLargePlanCard || !primaryPlanCards.length);
             const topBadgeLabel =
@@ -2815,7 +2822,7 @@ const PremiumPaywallModal = ({
               !unavailable &&
               !!topBadgeLabel &&
               normalizedTopBadgeKind !== "trial" &&
-              !plan?.hasTrial;
+              !isFreeTrialPlan(plan);
             const inlineTopBadgeLabel = showExternalYearlySaveBadge ? "" : topBadgeLabel;
             const inlineTopBadgeKind = showExternalYearlySaveBadge ? "" : normalizedTopBadgeKind;
             let primaryBadgeLabel = unavailable
@@ -2882,12 +2889,12 @@ const PremiumPaywallModal = ({
               !!plan.billingLabel &&
               plan.billingLabel !== plan.secondaryLabel &&
               plan.billingLabel !== plan.secondarySubLabel;
-            const isTrialPlanCard = !!plan?.hasTrial;
+            const isTrialPlanCard = isFreeTrialPlan(plan);
             const shouldShowYearlyTopBanner = isBannerPlan && isYearlyPlan;
-            const showMonthlyFreeTrialTopBanner = freeTrialEnabled && isMonthlyPlan;
+            const showFreeTrialTopBanner = freeTrialEnabled && isYearlyPlan;
             const showTrialTopBanner =
               (shouldShowYearlyTopBanner && isTrialPlanCard) ||
-              showMonthlyFreeTrialTopBanner;
+              showFreeTrialTopBanner;
             const trialTopBannerLabel = localizePaywallDigits(
               TRIAL_PLAN_TOP_BANNER_BY_LANGUAGE[copyLanguage] ||
                 TRIAL_PLAN_TOP_BANNER_BY_LANGUAGE.en,
@@ -2963,7 +2970,7 @@ const PremiumPaywallModal = ({
               shouldShowYearlyTopBanner &&
               isTransactionAbandonedTrigger &&
               !!abandonedOfferBannerLabel;
-            const trialTopBannerContent = showMonthlyFreeTrialTopBanner
+            const trialTopBannerContent = showFreeTrialTopBanner
               ? trialTopBannerLabel
               : shouldShowYearlyTopBanner
               ? showAbandonedOfferBanner
@@ -3016,7 +3023,7 @@ const PremiumPaywallModal = ({
                 onPress={() => {
                   setSelectedPlanId(plan.id);
                   setFreeTrialEnabled(
-                    String(plan?.id || "").toLowerCase() === "monthly"
+                    normalizePlanId(plan?.id) === FREE_TRIAL_PLAN_ID
                   );
                   onPlanSelect(plan.id, { source: "plan_card" });
                 }}

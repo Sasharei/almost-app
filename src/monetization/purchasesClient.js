@@ -4,6 +4,9 @@ import { PREMIUM_ENTITLEMENT_ID, PREMIUM_PRODUCT_IDS } from "./constants";
 let Purchases = null;
 let PurchasesLogLevel = null;
 let PurchasesIntroEligibilityStatus = null;
+let FacebookAppEventsLogger = null;
+let revenueCatDeviceIdentifiersCollected = false;
+let revenueCatFacebookAnonymousIdSet = false;
 
 try {
   // Optional in old builds; keep app alive if native module is not linked yet.
@@ -14,6 +17,14 @@ try {
   PurchasesIntroEligibilityStatus = purchasesModule?.INTRO_ELIGIBILITY_STATUS || null;
 } catch (error) {
   console.warn("react-native-purchases unavailable", error);
+}
+
+try {
+  // Optional in old builds; RevenueCat can still use GPS Ad ID without this identifier.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  FacebookAppEventsLogger = require("react-native-fbsdk-next")?.AppEventsLogger || null;
+} catch (_error) {
+  FacebookAppEventsLogger = null;
 }
 
 const PACKAGE_TYPE_TO_PLAN = {
@@ -368,7 +379,59 @@ export const configurePurchases = async ({ appUserId = null } = {}) => {
   try {
     const payload = appUserId ? { apiKey, appUserID: appUserId } : { apiKey };
     await Purchases.configure(payload);
-    return { ok: true };
+    if (__DEV__ && Platform.OS === "android") {
+      console.info("[attribution-debug] RevenueCat configured", {
+        platform: Platform.OS,
+        hasAppUserId: !!appUserId,
+      });
+    }
+    if (Platform.OS === "android" && typeof Purchases.collectDeviceIdentifiers === "function") {
+      try {
+        await Purchases.collectDeviceIdentifiers();
+        revenueCatDeviceIdentifiersCollected = true;
+        if (__DEV__) {
+          console.info("[attribution-debug] RevenueCat collectDeviceIdentifiers called", {
+            platform: Platform.OS,
+          });
+        }
+      } catch (identifierError) {
+        console.warn("purchases collect device identifiers", identifierError);
+      }
+    } else if (__DEV__ && Platform.OS === "android") {
+      console.info("[attribution-debug] RevenueCat collectDeviceIdentifiers unavailable", {
+        platform: Platform.OS,
+      });
+    }
+    if (
+      Platform.OS === "android" &&
+      typeof Purchases.setFBAnonymousID === "function" &&
+      typeof FacebookAppEventsLogger?.getAnonymousID === "function"
+    ) {
+      try {
+        const fbAnonymousId = await FacebookAppEventsLogger.getAnonymousID();
+        const hasFbAnonymousId =
+          typeof fbAnonymousId === "string" && fbAnonymousId.trim().length > 0;
+        if (hasFbAnonymousId) {
+          await Purchases.setFBAnonymousID(fbAnonymousId);
+          revenueCatFacebookAnonymousIdSet = true;
+        }
+        if (__DEV__) {
+          console.info("[attribution-debug] RevenueCat Facebook anonymous ID sync", {
+            platform: Platform.OS,
+            hasFbAnonymousId,
+          });
+        }
+      } catch (fbAnonymousIdError) {
+        console.warn("purchases set Facebook anonymous ID", fbAnonymousIdError);
+      }
+    }
+    return {
+      ok: true,
+      deviceIdentifiersCollected:
+        Platform.OS === "android" ? revenueCatDeviceIdentifiersCollected : null,
+      facebookAnonymousIdSet:
+        Platform.OS === "android" ? revenueCatFacebookAnonymousIdSet : null,
+    };
   } catch (error) {
     console.warn("purchases configure", error);
     return { ok: false, reason: "configure_failed", error };

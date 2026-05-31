@@ -95,6 +95,13 @@ try {
 } catch (error) {
   BudgetTextRecognitionModule = null;
 }
+let emojiRegexFactory = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  emojiRegexFactory = require("emoji-regex");
+} catch (_error) {
+  emojiRegexFactory = null;
+}
 import {
   useFonts,
   Inter_300Light,
@@ -206,7 +213,7 @@ import {
   PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE,
   PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE,
   PAYWALL_NOW_PREFIX_BY_LANGUAGE,
-  PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS,
+  PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS,
   PAYWALL_SAR_MARKERS_REGEX,
   PAYWALL_BIDI_MARKS_REGEX,
   PAYWALL_DIGIT_FRAGMENT_REGEX,
@@ -324,7 +331,6 @@ import {
   CHALLENGE_FAIL_COOLDOWN_MS,
   HOUR_MS,
   MINUTE_MS,
-  REWARD_RESET_INTERVAL_MS,
   REMINDER_MS,
   PENDING_EXTENSION_DAYS,
   PENDING_EXTENSION_MS,
@@ -1125,12 +1131,13 @@ const ANDROID_API_LEVEL =
 const SHOULD_USE_ANDROID_LEGACY_MEDIA_PICKER =
   Platform.OS === "android" && ANDROID_API_LEVEL > 0 && ANDROID_API_LEVEL < 33;
 
+const createEmojiStripRegex = () =>
+  typeof emojiRegexFactory === "function"
+    ? emojiRegexFactory()
+    : /(?:\uD83C[\uDF00-\uDFFF]|\uD83D[\uDC00-\uDE4F]|\uD83D[\uDE80-\uDEFF]|[\u2600-\u27BF])/g;
 const stripEmojis = (text = "") =>
-  text
-    .replace(
-      /(?:\uD83C[\uDF00-\uDFFF]|\uD83D[\uDC00-\uDE4F]|\uD83D[\uDE80-\uDEFF]|[\u2600-\u27BF])/g,
-      ""
-    )
+  String(text || "")
+    .replace(createEmojiStripRegex(), "")
     .replace(/\s{2,}/g, " ")
     .trim();
 const keepEmojiWithText = (value = "") => {
@@ -2464,6 +2471,8 @@ const buildThemeSelectedEventPayload = (
 const DAILY_NUDGE_LANGUAGES = SUPPORTED_LANGUAGES;
 const getScaledChallengeReward = (value = 0) =>
   Math.max(1, Math.round(Math.max(0, value) * CHALLENGE_REWARD_SCALE));
+const getScaledAchievementReward = (value = HEALTH_PER_REWARD) =>
+  Math.max(1, Math.round(Math.max(0, Number(value) || HEALTH_PER_REWARD) * ACHIEVEMENT_REWARD_SCALE));
 const resolveBundledAssetUri = (source) => {
   try {
     const resolved = Image.resolveAssetSource(source);
@@ -3476,15 +3485,13 @@ const normalizeClaimedRewardEntry = (value) => {
   if (value.manual !== true) return null;
   return { claimedAt, manual: true };
 };
-const normalizeClaimedRewardsMap = (map, now = Date.now()) => {
+const normalizeClaimedRewardsMap = (map) => {
   if (!map || typeof map !== "object") return {};
   const normalized = {};
   Object.entries(map).forEach(([key, entry]) => {
     const normalizedEntry = normalizeClaimedRewardEntry(entry);
     if (!normalizedEntry) return;
-    if (now - normalizedEntry.claimedAt < REWARD_RESET_INTERVAL_MS) {
-      normalized[key] = normalizedEntry;
-    }
+    normalized[key] = normalizedEntry;
   });
   return normalized;
 };
@@ -3573,16 +3580,11 @@ const getChestRewardDisplayCount = (amount = 0, explicitCount = null) => {
   }
   return normalizedAmount > 0 ? 1 : 0;
 };
-const getChestRewardTapHint = (language = DEFAULT_LANGUAGE, tapsLeft = 3) => {
-  const normalizedLanguage = resolveTranslationLanguage(normalizeLanguage(language));
-  if (normalizedLanguage === "ru") {
-    return tapsLeft > 1
-      ? `Тапни ещё ${tapsLeft} раза, чтобы открыть`
-      : "Ещё один тап, и сундук откроется";
-  }
+const getChestRewardTapHint = (translate, tapsLeft = 3) => {
+  const tFn = typeof translate === "function" ? translate : () => "";
   return tapsLeft > 1
-    ? `Tap ${tapsLeft} more times to open`
-    : "One more tap to crack it open";
+    ? tFn("chestRewardTapHintMany", { count: tapsLeft })
+    : tFn("chestRewardTapHintOne");
 };
 const getChestCountNoun = (count = 0, language = DEFAULT_LANGUAGE, { capitalized = false } = {}) => {
   const normalizedLanguage = resolveTranslationLanguage(normalizeLanguage(language));
@@ -3863,20 +3865,20 @@ const normalizeDidYouKnowState = (value) => {
 const computeDailyAlmiReward = (savedUSD = 0) => {
   const normalized = Math.max(0, Number(savedUSD) || 0);
   if (normalized <= 0) return ECONOMY_RULES.minSaveReward;
-  if (normalized < 50) return 2;
-  if (normalized < 200) return 3;
-  if (normalized < 500) return 4;
-  if (normalized < 1000) return 6;
-  return Math.min(12, Math.round(normalized / 200));
+  if (normalized < 50) return 1;
+  if (normalized < 200) return 2;
+  if (normalized < 500) return 3;
+  if (normalized < 1000) return 4;
+  return Math.min(6, Math.round(normalized / 250));
 };
 const DAILY_REWARD_CHEST_BLUEPRINT = Object.freeze([
-  { tierId: "brown", chestCount: 1, minAmount: 4, multiplier: 1.6 },
-  { tierId: "brown", chestCount: 1, minAmount: 7, multiplier: 2.4 },
-  { tierId: "green", chestCount: 1, minAmount: 15, multiplier: 3.8 },
-  { tierId: "green", chestCount: 1, minAmount: 24, multiplier: 5.4 },
-  { tierId: "blue", chestCount: 1, minAmount: 40, multiplier: 7.5 },
-  { tierId: "purple", chestCount: 1, minAmount: 90, multiplier: 11.5 },
-  { tierId: "gold", chestCount: 2, minAmount: 180, multiplier: 18, isSuper: true },
+  { tierId: "brown", chestCount: 1, minAmount: 1, multiplier: 1 },
+  { tierId: "brown", chestCount: 1, minAmount: 1, multiplier: 1 },
+  { tierId: "brown", chestCount: 1, minAmount: 2, multiplier: 1.25 },
+  { tierId: "brown", chestCount: 1, minAmount: 2, multiplier: 1.5 },
+  { tierId: "brown", chestCount: 1, minAmount: 3, multiplier: 1.75 },
+  { tierId: "brown", chestCount: 1, minAmount: 4, multiplier: 2 },
+  { tierId: "green", chestCount: 1, minAmount: 6, multiplier: 2.5, isSuper: true },
 ]);
 const buildDailyRewardChestSchedule = (baseAmount = 0) => {
   const base = Math.max(1, Math.round(baseAmount || 0));
@@ -4044,6 +4046,7 @@ const ChestRewardBadge = ({
   iconSize = 24,
   textColor = "#fff",
   compact = false,
+  mystery = false,
   style = null,
   labelStyle = null,
 }) => {
@@ -4063,9 +4066,20 @@ const ChestRewardBadge = ({
           labelStyle,
         ]}
       >
-        {chestCount}
+        {mystery ? "?" : chestCount}
       </Text>
     </View>
+  );
+};
+const ChestRewardPreviewIcon = ({ amount = 0, tierId = null, size = 24, style = null }) => {
+  const chestTier = tierId ? getChestRewardTierById(tierId) : getChestRewardTierForAmount(amount);
+  if (!chestTier?.assets?.closed) return null;
+  const iconSize = Math.max(12, Math.round(Number(size) || 24));
+  return (
+    <Image
+      source={chestTier.assets.closed}
+      style={[{ width: iconSize, height: iconSize, resizeMode: "contain" }, style]}
+    />
   );
 };
 const INITIAL_DECISION_STATS = {
@@ -4752,6 +4766,8 @@ const TAMAGOTCHI_HUNGER_NOTIFICATION_WINDOW_MS = 1000 * 60 * 60 * 6;
 const TAMAGOTCHI_FEED_COST = ECONOMY_RULES.tamagotchiFeedCost;
 const TAMAGOTCHI_PARTY_COST = ECONOMY_RULES.tamagotchiPartyCost;
 const TAMAGOTCHI_PARTY_IMMUNITY_MS = DAY_MS * 2;
+const TYCOON_AUTOSAVE_HUNGER_PAUSE_THRESHOLD = 20;
+const TYCOON_AUTOSAVE_HUNGRY_NOTIFICATION_KIND = "tycoon_autosave_hungry";
 const PARTY_FIREWORK_CONFIGS = [
   { top: "12%", left: "18%", size: 150, delay: 0 },
   { top: "18%", right: "16%", size: 120, delay: 180 },
@@ -5669,8 +5685,15 @@ const BUDGET_SPEECH_ESSENTIAL_IDS = new Set(["rent", "utilities", "mandatory", "
 const isEssentialImpulseCategory = (id) =>
   typeof id === "string" && BUDGET_SPEECH_ESSENTIAL_IDS.has(id);
 const SUBSCRIPTION_CATEGORY_ID = "subscriptions";
-const SUBSCRIPTION_REMINDER_OFFSETS_DAYS = [5, 2, 1];
+const DAILY_CHALLENGE_EXCLUDED_CATEGORY_IDS = new Set([
+  ...BUDGET_SPEECH_ESSENTIAL_IDS,
+  SUBSCRIPTION_CATEGORY_ID,
+]);
+const isDailyChallengeExcludedCategory = (id) =>
+  typeof id === "string" && DAILY_CHALLENGE_EXCLUDED_CATEGORY_IDS.has(id);
+const SUBSCRIPTION_REMINDER_OFFSETS_DAYS = [5, 3, 1];
 const SUBSCRIPTION_REMINDER_KIND = "subscription_reminder";
+const SUBSCRIPTION_DUE_KIND = "subscription_due";
 const SUBSCRIPTION_EMPTY_EMOJIS = ["📺", "🎧", "🧾"];
 const SUBSCRIPTION_DEFAULT_REMINDER_HOUR = 10;
 const SUBSCRIPTION_DEFAULT_REMINDER_MINUTE = 0;
@@ -5791,19 +5814,7 @@ const resolveSubscriptionNextCheckAt = (item = null, interactionEntry = null, no
     ) || [...DEFAULT_FREQUENCY_MONTHLY_DAYS];
   const storedNextCheckAt = Number(entry.nextCheckAt);
   if (Number.isFinite(storedNextCheckAt) && storedNextCheckAt > nowTs - DAY_MS) {
-    if (storedNextCheckAt > nowTs) return storedNextCheckAt;
-    const advanced = buildResetNextCheckAtForFrequency({
-      fromTimestamp: storedNextCheckAt,
-      frequencyId: frequency,
-      customFrequency: frequencyCustom,
-      reminderHour: reminderTime.hour,
-      reminderMinute: reminderTime.minute,
-      weeklyDay: weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY,
-      monthlyDay: monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY,
-      weeklyDays,
-      monthlyDays,
-    });
-    if (Number.isFinite(advanced) && advanced > nowTs) return advanced;
+    return storedNextCheckAt;
   }
   const baseTimestamp =
     Number(entry.lastTimerResetAt) ||
@@ -5845,6 +5856,93 @@ const getMonthKey = (value = Date.now()) => {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   return `${year}-${month}`;
+};
+
+const resolveBudgetPeriodStartDate = (
+  value = Date.now(),
+  payday = DEFAULT_INCOME_PAYDAY
+) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const normalizedPayday = normalizeIncomePayday(payday);
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+  start.setDate(Math.min(normalizedPayday, daysInMonth));
+  start.setHours(0, 0, 0, 0);
+  if (date.getTime() >= start.getTime()) return start;
+  const previous = new Date(date.getFullYear(), date.getMonth() - 1, 1);
+  const previousDaysInMonth = new Date(
+    previous.getFullYear(),
+    previous.getMonth() + 1,
+    0
+  ).getDate();
+  previous.setDate(Math.min(normalizedPayday, previousDaysInMonth));
+  previous.setHours(0, 0, 0, 0);
+  return previous;
+};
+
+const resolveBudgetPeriodStartDateForKey = (
+  periodKey,
+  payday = DEFAULT_INCOME_PAYDAY
+) => {
+  const parsed = parseMonthKey(periodKey);
+  if (!parsed) return null;
+  const daysInMonth = new Date(parsed.getFullYear(), parsed.getMonth() + 1, 0).getDate();
+  parsed.setDate(Math.min(normalizeIncomePayday(payday), daysInMonth));
+  parsed.setHours(0, 0, 0, 0);
+  return parsed;
+};
+
+const resolveBudgetPeriodEndDateForStart = (
+  startDate,
+  payday = DEFAULT_INCOME_PAYDAY
+) => {
+  if (!(startDate instanceof Date) || Number.isNaN(startDate.getTime())) return null;
+  const end = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1);
+  const daysInMonth = new Date(end.getFullYear(), end.getMonth() + 1, 0).getDate();
+  end.setDate(Math.min(normalizeIncomePayday(payday), daysInMonth));
+  end.setHours(0, 0, 0, 0);
+  return end;
+};
+
+const getBudgetPeriodKey = (value = Date.now(), payday = DEFAULT_INCOME_PAYDAY) => {
+  const start = resolveBudgetPeriodStartDate(value, payday);
+  return start ? getMonthKey(start.getTime()) : "";
+};
+
+const resolveBudgetPeriodInfo = ({
+  periodKey = "",
+  payday = DEFAULT_INCOME_PAYDAY,
+  now = Date.now(),
+} = {}) => {
+  const start = resolveBudgetPeriodStartDateForKey(periodKey, payday);
+  const end = resolveBudgetPeriodEndDateForStart(start, payday);
+  if (!start || !end) {
+    return {
+      startAt: 0,
+      endAt: 0,
+      durationMs: 0,
+      elapsedRatio: 0,
+      remainingRatio: 1,
+      isCurrentPeriod: false,
+      isPastPeriod: false,
+    };
+  }
+  const startAt = start.getTime();
+  const endAt = end.getTime();
+  const durationMs = Math.max(DAY_MS, endAt - startAt);
+  const normalizedNow = normalizeTemporalMs(now, Date.now());
+  const currentPeriodKey = getBudgetPeriodKey(normalizedNow, payday);
+  const elapsedMs = clampNumber((normalizedNow - startAt) / durationMs, 0, 1) * durationMs;
+  return {
+    startAt,
+    endAt,
+    durationMs,
+    elapsedRatio: clampNumber(elapsedMs / durationMs, 0, 1),
+    remainingRatio: clampNumber((endAt - normalizedNow) / durationMs, 0, 1),
+    isCurrentPeriod: currentPeriodKey === periodKey,
+    isPastPeriod: periodKey < currentPeriodKey,
+  };
 };
 
 const parseMonthKey = (key) => {
@@ -5983,11 +6081,17 @@ const normalizeIncomeEntry = (entry) => {
       : `income_${receivedAt}_${Math.random().toString(16).slice(2, 8)}`;
   const entryType = normalizeIncomeEntryType(entry.entryType);
   const createdAt = normalizeTemporalMs(entry.createdAt, receivedAt);
+  const rawPayday = entry.payday ?? entry.incomePayday;
+  const payday =
+    rawPayday === null || rawPayday === undefined
+      ? null
+      : normalizeIncomePayday(rawPayday);
   return {
     id,
     amountUSD,
     receivedAt,
     createdAt,
+    ...(payday ? { payday } : {}),
     note: typeof entry.note === "string" ? entry.note : "",
     entryType,
   };
@@ -6000,13 +6104,19 @@ const normalizeIncomeEntries = (list) => {
   return normalized;
 };
 
+const resolveIncomeEntryBudgetPeriodKey = (entry, fallbackPayday = DEFAULT_INCOME_PAYDAY) => {
+  const receivedAt = normalizeTemporalMs(entry?.receivedAt, 0);
+  if (!receivedAt) return "";
+  const payday = normalizeIncomePayday(entry?.payday, fallbackPayday);
+  return getBudgetPeriodKey(receivedAt, payday);
+};
+
 const getIncomeForMonth = (entries, monthKey, options = {}) => {
   if (!monthKey) return 0;
   const entryTypeFilter = options?.entryType;
+  const incomePayday = normalizeIncomePayday(options?.payday);
   return (Array.isArray(entries) ? entries : []).reduce((sum, entry) => {
-    const receivedAt = normalizeTemporalMs(entry?.receivedAt, 0);
-    if (!receivedAt) return sum;
-    if (getMonthKey(receivedAt) !== monthKey) return sum;
+    if (resolveIncomeEntryBudgetPeriodKey(entry, incomePayday) !== monthKey) return sum;
     if (
       entryTypeFilter &&
       normalizeIncomeEntryType(entry?.entryType) !== entryTypeFilter
@@ -6017,29 +6127,80 @@ const getIncomeForMonth = (entries, monthKey, options = {}) => {
   }, 0);
 };
 
-const getRecurringIncomeForMonth = (entries, monthKey) => {
+const getRecurringIncomeEntryForMonth = (entries, monthKey, options = {}) => {
   if (!monthKey) return 0;
+  const incomePayday = normalizeIncomePayday(options?.payday);
   let latestMonthlyEntry = null;
   (Array.isArray(entries) ? entries : []).forEach((entry) => {
     const entryType = normalizeIncomeEntryType(entry?.entryType);
     if (entryType !== INCOME_ENTRY_TYPES.MONTHLY) return;
     const receivedAt = normalizeTemporalMs(entry?.receivedAt, 0);
     if (!receivedAt) return;
-    const entryMonthKey = getMonthKey(receivedAt);
+    const entryMonthKey = resolveIncomeEntryBudgetPeriodKey(entry, incomePayday);
     if (!entryMonthKey || entryMonthKey > monthKey) return;
     const latestReceivedAt = normalizeTemporalMs(latestMonthlyEntry?.receivedAt, 0);
     if (!latestMonthlyEntry || receivedAt >= latestReceivedAt) {
       latestMonthlyEntry = entry;
     }
   });
+  return latestMonthlyEntry;
+};
+
+const getRecurringIncomeForMonth = (entries, monthKey, options = {}) => {
+  const latestMonthlyEntry = getRecurringIncomeEntryForMonth(entries, monthKey, options);
   return Math.max(0, Number(latestMonthlyEntry?.amountUSD) || 0);
 };
 
-const getExtraIncomeForMonth = (entries, monthKey) =>
-  getIncomeForMonth(entries, monthKey, { entryType: INCOME_ENTRY_TYPES.EXTRA });
+const getExtraIncomeForMonth = (entries, monthKey, options = {}) =>
+  getIncomeForMonth(entries, monthKey, {
+    ...options,
+    entryType: INCOME_ENTRY_TYPES.EXTRA,
+  });
 
-const getBudgetIncomeForMonth = (entries, monthKey) =>
-  getRecurringIncomeForMonth(entries, monthKey) + getExtraIncomeForMonth(entries, monthKey);
+const getBudgetIncomeForMonth = (entries, monthKey, options = {}) =>
+  getRecurringIncomeForMonth(entries, monthKey, options) +
+  getExtraIncomeForMonth(entries, monthKey, options);
+
+const resolveBudgetTimeAdjustment = ({
+  incomeEntries = [],
+  periodKey = "",
+  payday = DEFAULT_INCOME_PAYDAY,
+  now = Date.now(),
+} = {}) => {
+  const incomePayday = normalizeIncomePayday(payday);
+  const periodInfo = resolveBudgetPeriodInfo({ periodKey, payday: incomePayday, now });
+  if (!periodInfo.startAt || !periodInfo.endAt) {
+    return { elapsedRatio: 0, remainingRatio: 1, elapsedIncomeUSD: 0 };
+  }
+  const recurringEntry = getRecurringIncomeEntryForMonth(incomeEntries, periodKey, {
+    payday: incomePayday,
+  });
+  if (!recurringEntry) {
+    return { elapsedRatio: 0, remainingRatio: 1, elapsedIncomeUSD: 0 };
+  }
+  const receivedAt = normalizeTemporalMs(recurringEntry.receivedAt, 0);
+  const createdAt = normalizeTemporalMs(recurringEntry.createdAt, receivedAt);
+  if (!receivedAt || !createdAt || createdAt <= periodInfo.startAt + DAY_MS * 0.5) {
+    return { elapsedRatio: 0, remainingRatio: 1, elapsedIncomeUSD: 0 };
+  }
+  if (createdAt < periodInfo.startAt || createdAt >= periodInfo.endAt) {
+    return { elapsedRatio: 0, remainingRatio: 1, elapsedIncomeUSD: 0 };
+  }
+  const elapsedCutoff = periodInfo.isCurrentPeriod
+    ? Math.min(createdAt, normalizeTemporalMs(now, Date.now()))
+    : createdAt;
+  const elapsedRatio = clampNumber(
+    (elapsedCutoff - periodInfo.startAt) / periodInfo.durationMs,
+    0,
+    1
+  );
+  const amountUSD = Math.max(0, Number(recurringEntry.amountUSD) || 0);
+  return {
+    elapsedRatio,
+    remainingRatio: clampNumber(1 - elapsedRatio, 0, 1),
+    elapsedIncomeUSD: amountUSD * elapsedRatio,
+  };
+};
 
 const getNextMonthKey = (monthKey) => {
   const parsed = parseMonthKey(monthKey);
@@ -6048,16 +6209,20 @@ const getNextMonthKey = (monthKey) => {
   return getMonthKey(parsed.getTime());
 };
 
-const collectBudgetMonthKeys = (incomeEntries = [], historyEvents = [], currentMonthKey = "") => {
+const collectBudgetMonthKeys = (
+  incomeEntries = [],
+  historyEvents = [],
+  currentMonthKey = "",
+  payday = DEFAULT_INCOME_PAYDAY
+) => {
+  const incomePayday = normalizeIncomePayday(payday);
   const keys = new Set();
   if (currentMonthKey) {
     keys.add(currentMonthKey);
   }
   let earliestRecurringMonthKey = "";
   (Array.isArray(incomeEntries) ? incomeEntries : []).forEach((entry) => {
-    const receivedAt = normalizeTemporalMs(entry?.receivedAt, 0);
-    if (!receivedAt) return;
-    const monthKey = getMonthKey(receivedAt);
+    const monthKey = resolveIncomeEntryBudgetPeriodKey(entry, incomePayday);
     if (!monthKey) return;
     keys.add(monthKey);
     const entryType = normalizeIncomeEntryType(entry?.entryType);
@@ -6070,7 +6235,7 @@ const collectBudgetMonthKeys = (incomeEntries = [], historyEvents = [], currentM
   (Array.isArray(historyEvents) ? historyEvents : []).forEach((entry) => {
     const timestamp = normalizeTemporalMs(entry?.timestamp, 0);
     if (!timestamp) return;
-    const monthKey = getMonthKey(timestamp);
+    const monthKey = getBudgetPeriodKey(timestamp, incomePayday);
     if (monthKey) {
       keys.add(monthKey);
     }
@@ -6104,7 +6269,9 @@ const buildBudgetMonthlyStats = ({
   historyEvents = [],
   currentMonthKey = "",
   resolveHistoryCategoryId = null,
+  incomePayday = DEFAULT_INCOME_PAYDAY,
 } = {}) => {
+  const payday = normalizeIncomePayday(incomePayday);
   const stats = {};
   const ensure = (key) => {
     if (!key) return null;
@@ -6113,17 +6280,22 @@ const buildBudgetMonthlyStats = ({
     }
     return stats[key];
   };
-  const monthKeys = collectBudgetMonthKeys(incomeEntries, historyEvents, currentMonthKey);
+  const monthKeys = collectBudgetMonthKeys(incomeEntries, historyEvents, currentMonthKey, payday);
   monthKeys.forEach((key) => {
     const target = ensure(key);
     if (!target) return;
-    target.incomeUSD = getBudgetIncomeForMonth(incomeEntries, key);
+    target.incomeUSD = getBudgetIncomeForMonth(incomeEntries, key, { payday });
+    target.timeAdjustmentUSD = resolveBudgetTimeAdjustment({
+      incomeEntries,
+      periodKey: key,
+      payday,
+    }).elapsedIncomeUSD;
   });
   (Array.isArray(historyEvents) ? historyEvents : []).forEach((entry) => {
     if (!entry || entry.kind !== "spend") return;
     const timestamp = normalizeTemporalMs(entry?.timestamp, 0);
     if (!timestamp) return;
-    const monthKey = getMonthKey(timestamp);
+    const monthKey = getBudgetPeriodKey(timestamp, payday);
     if (!monthKey) return;
     const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
     if (!amount) return;
@@ -6150,6 +6322,7 @@ const buildBudgetCarryoverMap = (stats = {}) => {
     const monthStats = stats?.[key] || {};
     running +=
       Math.max(0, Number(monthStats?.incomeUSD) || 0) -
+      Math.max(0, Number(monthStats?.timeAdjustmentUSD) || 0) -
       Math.max(0, Number(monthStats?.spendTotalUSD) || 0);
     return acc;
   }, {});
@@ -6439,8 +6612,19 @@ const buildSavingRatingSummary = ({
 
 const normalizeBudgetOverrides = (value) => {
   if (!value || typeof value !== "object") return {};
+  if (value.__periodOverrides === true && value.periods && typeof value.periods === "object") {
+    const periods = {};
+    Object.entries(value.periods).forEach(([periodKey, periodValue]) => {
+      if (typeof periodKey !== "string" || !periodKey.trim()) return;
+      const normalizedPeriod = normalizeBudgetOverrides(periodValue);
+      if (!Object.keys(normalizedPeriod).length) return;
+      periods[periodKey.trim()] = normalizedPeriod;
+    });
+    return { __periodOverrides: true, periods };
+  }
   const next = {};
   Object.entries(value).forEach(([key, raw]) => {
+    if (key === "__periodOverrides" || key === "periods") return;
     const normalized = Number(raw);
     if (!Number.isFinite(normalized) || normalized < 0) return;
     next[key] = normalized;
@@ -6448,11 +6632,59 @@ const normalizeBudgetOverrides = (value) => {
   return next;
 };
 
+const getBudgetOverridesForPeriod = (value, periodKey = "") => {
+  const normalized = normalizeBudgetOverrides(value);
+  if (normalized.__periodOverrides === true) {
+    const key = typeof periodKey === "string" ? periodKey.trim() : "";
+    return key ? normalizeBudgetOverrides(normalized.periods?.[key]) : {};
+  }
+  return normalized;
+};
+
+const setBudgetOverrideForPeriod = (value, periodKey = "", categoryId = "", amountUSD = 0) => {
+  const key = typeof periodKey === "string" ? periodKey.trim() : "";
+  if (!key || !categoryId) return normalizeBudgetOverrides(value);
+  const normalized = normalizeBudgetOverrides(value);
+  const periods =
+    normalized.__periodOverrides === true
+      ? { ...(normalized.periods || {}) }
+      : {};
+  const periodOverrides =
+    normalized.__periodOverrides === true
+      ? { ...(periods[key] || {}) }
+      : getBudgetOverridesForPeriod(normalized, key);
+  periodOverrides[categoryId] = Math.max(0, Number(amountUSD) || 0);
+  periods[key] = normalizeBudgetOverrides(periodOverrides);
+  return { __periodOverrides: true, periods };
+};
+
+const removeBudgetOverrideForPeriod = (value, periodKey = "", categoryId = "") => {
+  const key = typeof periodKey === "string" ? periodKey.trim() : "";
+  if (!key || !categoryId) return normalizeBudgetOverrides(value);
+  const normalized = normalizeBudgetOverrides(value);
+  if (normalized.__periodOverrides !== true) {
+    const next = normalizeBudgetOverrides(normalized);
+    delete next[categoryId];
+    return next;
+  }
+  const periods = { ...(normalized.periods || {}) };
+  const periodOverrides = normalizeBudgetOverrides(periods[key]);
+  delete periodOverrides[categoryId];
+  if (Object.keys(periodOverrides).length) {
+    periods[key] = periodOverrides;
+  } else {
+    delete periods[key];
+  }
+  return { __periodOverrides: true, periods };
+};
+
 const buildBudgetPlan = ({
   incomeUSD = 0,
   carryoverUSD = 0,
   budgetOverrides = {},
   remainingOverrideUSD = null,
+  timeAdjustmentUSD = 0,
+  autoAllocationScale = 1,
   spendDistribution = {},
   spendToDateByCategory = {},
   spendToDateTotalUSD = 0,
@@ -6464,6 +6696,8 @@ const buildBudgetPlan = ({
 }) => {
   const normalizedIncome = Math.max(0, Number(incomeUSD) || 0);
   const normalizedCarryover = Number.isFinite(carryoverUSD) ? carryoverUSD : 0;
+  const normalizedTimeAdjustment = Math.max(0, Number(timeAdjustmentUSD) || 0);
+  const normalizedAllocationScale = clampNumber(Number(autoAllocationScale) || 0, 0, 1);
   const locale = getFormatLocale(language);
   const resolvedMonthLabel = monthKey ? getMonthLabelForKey(monthKey, locale) : "";
   const monthLabel = resolvedMonthLabel || getMonthLabel(Date.now(), locale);
@@ -6518,7 +6752,10 @@ const buildBudgetPlan = ({
         rate = remainingRate * (flexWeights[id] || 0);
       }
     }
-    let limitUSD = autoAllocationEnabled && normalizedIncome > 0 ? normalizedIncome * rate : 0;
+    let limitUSD =
+      autoAllocationEnabled && normalizedIncome > 0
+        ? normalizedIncome * rate * normalizedAllocationScale
+        : 0;
     let isOverride = false;
     if (Number.isFinite(safeOverrides[id])) {
       limitUSD = Math.max(0, safeOverrides[id]);
@@ -6539,14 +6776,18 @@ const buildBudgetPlan = ({
   const totalSpentUSD = Number.isFinite(spendToDateTotalUSD)
     ? Math.max(0, spendToDateTotalUSD)
     : categories.reduce((sum, entry) => sum + (entry.spentUSD || 0), 0);
-  const computedRemainingUSD = normalizedIncome + normalizedCarryover - totalSpentUSD;
+  const computedRemainingUSD =
+    normalizedIncome + normalizedCarryover - totalSpentUSD - normalizedTimeAdjustment;
   const remainingUSD = Number.isFinite(remainingOverrideUSD)
     ? Math.max(0, Number(remainingOverrideUSD) || 0)
     : computedRemainingUSD;
   return {
     monthLabel,
     incomeUSD: normalizedIncome,
+    allocatableIncomeUSD: Math.max(0, normalizedIncome - normalizedTimeAdjustment),
     carryoverUSD: normalizedCarryover,
+    timeAdjustmentUSD: normalizedTimeAdjustment,
+    autoAllocationScale: normalizedAllocationScale,
     savingsRate,
     autoAllocationEnabled: !!autoAllocationEnabled,
     allocatedTotalUSD,
@@ -8654,10 +8895,14 @@ const formatLatestSavingTimestamp = (timestamp, language = DEFAULT_LANGUAGE) => 
 
 const SYMBOLS_NEED_EMOJI_VARIATION_REGEX =
   /[\u2194-\u2199\u21A9-\u21AA\u231A-\u231B\u2328\u23CF\u23E9-\u23F3\u23F8-\u23FA\u24C2\u25AA-\u25AB\u25B6\u25C0\u25FB-\u25FE\u2600-\u27BF]/u;
+const EMOJI_INPUT_MAX_LENGTH = 32;
 const EMOJI_VARIATION_SELECTOR = "\uFE0F";
 const TEXT_VARIATION_SELECTOR = "\uFE0E";
 const ZERO_WIDTH_JOINER = "\u200D";
 const isEmojiModifier = (char = "") => /[\u{1F3FB}-\u{1F3FF}]/u.test(char);
+const isRegionalIndicator = (char = "") => /[\u{1F1E6}-\u{1F1FF}]/u.test(char);
+const isTagCharacter = (char = "") => /[\u{E0020}-\u{E007F}]/u.test(char);
+const isCombiningMark = (char = "") => /\p{Mark}/u.test(char);
 const extractFirstGrapheme = (value = "") => {
   const trimmed = String(value || "").trim();
   if (!trimmed) return "";
@@ -8671,13 +8916,18 @@ const extractFirstGrapheme = (value = "") => {
   if (!chunks.length) return "";
   let result = chunks[0];
   let index = 1;
+  if (isRegionalIndicator(result) && isRegionalIndicator(chunks[index])) {
+    return result + chunks[index];
+  }
   while (index < chunks.length) {
     const token = chunks[index];
     if (
       token === EMOJI_VARIATION_SELECTOR ||
       token === TEXT_VARIATION_SELECTOR ||
       token === "\u20E3" ||
-      isEmojiModifier(token)
+      isEmojiModifier(token) ||
+      isTagCharacter(token) ||
+      isCombiningMark(token)
     ) {
       result += token;
       index += 1;
@@ -9418,19 +9668,6 @@ const useOnboardingStaggerValues = (count, { delay = 90 } = {}) => {
   return valuesRef.current;
 };
 
-const getSessionShuffleValue = (seed, value) => {
-  const normalizedSeed = Number.isFinite(seed) ? seed : 0;
-  const seedInt = Math.floor(normalizedSeed * 0x7fffffff) | 0;
-  const text = String(value ?? "");
-  let hash = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    hash = (hash * 31 + text.charCodeAt(i)) | 0;
-  }
-  const combined = (hash ^ seedInt) >>> 0;
-  return combined / 0xffffffff;
-};
-
-const FEED_FREQUENT_PIN_LIMIT = 5;
 const DAILY_FREQUENCY_INTERVAL_MS = 26 * 60 * 60 * 1000;
 const DAILY_SECOND_ACTION_THRESHOLD_MS = DAILY_FREQUENCY_INTERVAL_MS;
 const DAILY_COOLDOWN_TO_WEEKLY_MS = 36 * 60 * 60 * 1000;
@@ -11860,6 +12097,57 @@ const getGoalDefaultTargetUSD = (goalId) => {
   return preset?.targetUSD || 500;
 };
 
+const normalizePrimaryGoalSelectionId = (value) => {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return trimmed.startsWith("wish_primary_goal_")
+    ? trimmed.replace("wish_primary_goal_", "")
+    : trimmed;
+};
+
+const normalizeGoalCelebratedById = (value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.entries(value).reduce((acc, [goalId, celebrated]) => {
+    const normalizedGoalId = normalizePrimaryGoalSelectionId(goalId);
+    if (normalizedGoalId && celebrated === true) {
+      acc[normalizedGoalId] = true;
+    }
+    return acc;
+  }, {});
+};
+
+const isGoalCelebratedInProfile = (profileState = {}, goalId = null) => {
+  const normalizedGoalId = normalizePrimaryGoalSelectionId(goalId);
+  if (!normalizedGoalId) return !!profileState.goalCelebrated;
+  const celebratedById = normalizeGoalCelebratedById(profileState.goalCelebratedById);
+  if (celebratedById[normalizedGoalId] === true) return true;
+  const legacyGoalId = normalizePrimaryGoalSelectionId(profileState.goal);
+  return legacyGoalId === normalizedGoalId && profileState.goalCelebrated === true;
+};
+
+const updateGoalCelebrationInProfile = (profileState = {}, goalId = null, celebrated = true) => {
+  const normalizedGoalId = normalizePrimaryGoalSelectionId(goalId);
+  if (!normalizedGoalId) {
+    return {
+      ...profileState,
+      goalCelebrated: !!celebrated,
+    };
+  }
+  const celebratedById = normalizeGoalCelebratedById(profileState.goalCelebratedById);
+  if (celebrated) {
+    celebratedById[normalizedGoalId] = true;
+  } else {
+    delete celebratedById[normalizedGoalId];
+  }
+  const activeGoalId = normalizePrimaryGoalSelectionId(profileState.goal);
+  return {
+    ...profileState,
+    goalCelebratedById: celebratedById,
+    goalCelebrated: activeGoalId === normalizedGoalId ? !!celebrated : !!profileState.goalCelebrated,
+  };
+};
+
 const resolveProfileGoalId = (profile) => {
   if (!profile || typeof profile !== "object") return null;
   if (profile.goal) return profile.goal;
@@ -11886,20 +12174,30 @@ const insertWishAfterPrimary = (list = [], newWish) => {
 
 const removePrimaryGoalFromProfile = (profileState = {}, goalId) => {
   if (!goalId) return profileState;
+  const normalizedRemovedGoalId = normalizePrimaryGoalSelectionId(goalId);
   const currentGoals = Array.isArray(profileState.primaryGoals) ? profileState.primaryGoals : [];
-  const filtered = currentGoals.filter((goal) => goal.id !== goalId);
-  const nextGoalId = filtered[0]?.id || profileState.goal || DEFAULT_PROFILE.goal;
-  const nextGoalTarget = filtered[0]
-    ? (Number.isFinite(filtered[0].targetUSD) && filtered[0].targetUSD > 0
-        ? filtered[0].targetUSD
-        : getGoalDefaultTargetUSD(filtered[0].id))
-    : getGoalDefaultTargetUSD(nextGoalId);
+  const filtered = currentGoals.filter((goal) => goal.id !== normalizedRemovedGoalId);
+  const previousActiveGoalId = normalizePrimaryGoalSelectionId(profileState.goal);
+  const nextActiveEntry =
+    previousActiveGoalId && previousActiveGoalId !== normalizedRemovedGoalId
+      ? filtered.find((goal) => goal?.id === previousActiveGoalId)
+      : null;
+  const nextGoalEntry = nextActiveEntry || filtered.find((goal) => goal?.status !== "done") || filtered[0] || null;
+  const nextGoalId = nextGoalEntry?.id || null;
+  const nextGoalTarget = nextGoalEntry
+    ? (Number.isFinite(nextGoalEntry.targetUSD) && nextGoalEntry.targetUSD > 0
+        ? nextGoalEntry.targetUSD
+        : getGoalDefaultTargetUSD(nextGoalEntry.id))
+    : 0;
+  const cleanedProfile = updateGoalCelebrationInProfile(profileState, normalizedRemovedGoalId, false);
+  const nextCelebrated = nextGoalId ? isGoalCelebratedInProfile(cleanedProfile, nextGoalId) : false;
   return {
-    ...profileState,
+    ...cleanedProfile,
     primaryGoals: filtered,
     goal: nextGoalId,
     goalTargetUSD: nextGoalTarget,
-    goalCelebrated: filtered.length ? profileState.goalCelebrated : false,
+    goalCelebrated: nextCelebrated,
+    goalRenewalPending: nextCelebrated ? profileState.goalRenewalPending : false,
   };
 };
 
@@ -12199,6 +12497,7 @@ const DEFAULT_PROFILE = {
   goalTargetUSD: getGoalDefaultTargetUSD("save"),
   primaryGoals: [{ id: "save", targetUSD: getGoalDefaultTargetUSD("save") }],
   goalCelebrated: false,
+  goalCelebratedById: {},
   goalRenewalPending: false,
   persona: "mindful_coffee",
   gender: "none",
@@ -12322,16 +12621,33 @@ const INITIAL_USAGE_STREAK = {
 
 const FREE_DAY_MILESTONES = [3, 7, 30];
 const HEALTH_PER_REWARD = ECONOMY_RULES.baseAchievementReward;
+const ACHIEVEMENT_REWARD_SCALE = Math.max(
+  0,
+  Number(ECONOMY_RULES.achievementRewardScale) || 0
+);
 const FREE_DAY_RESCUE_COST = ECONOMY_RULES.freeDayRescueCost;
-const FREE_DAY_LOGIN_BLUE_COINS = 2;
+const FREE_DAY_LOGIN_BLUE_COINS = Math.max(
+  0,
+  Number(ECONOMY_RULES.freeDayLoginBaseBlueCoins) || 0
+);
+const FREE_DAY_LOGIN_MAX_BLUE_COINS = Math.max(
+  0,
+  Number(ECONOMY_RULES.freeDayLoginMaxBlueCoins) || FREE_DAY_LOGIN_BLUE_COINS
+);
 const LEVEL_SHARE_INSTAGRAM_HANDLE = "@almostsavings";
-const LEVEL_SHARE_REWARD_BLUE_COINS = 10;
+const LEVEL_SHARE_REWARD_BLUE_COINS = Math.max(
+  0,
+  Math.round(Number(ECONOMY_RULES.levelShareRewardBlueCoins) || 0)
+);
 const LEVEL_SHARE_REWARD_HEALTH_POINTS = LEVEL_SHARE_REWARD_BLUE_COINS * BLUE_HEALTH_COIN_VALUE;
 const FREE_DAY_RESCUE_BLUE_COINS = Math.max(
   1,
   Math.ceil(FREE_DAY_RESCUE_COST / Math.max(1, Number(BLUE_HEALTH_COIN_VALUE) || 1))
 );
-const STREAK_RESTORE_BLUE_COINS_PER_DAY = 10;
+const STREAK_RESTORE_BLUE_COINS_PER_DAY = Math.max(
+  1,
+  Math.round(Number(ECONOMY_RULES.streakRestoreBlueCoinsPerDay) || 1)
+);
 const STREAK_RESTORE_COST_PER_DAY = STREAK_RESTORE_BLUE_COINS_PER_DAY * BLUE_HEALTH_COIN_VALUE;
 const STREAK_PLEDGE_STATUS = {
   IDLE: "idle",
@@ -12351,15 +12667,19 @@ const INITIAL_STREAK_PLEDGE = {
   lastPromptDayKey: null,
   introSeen: false,
 };
-const STREAK_PLEDGE_BLUE_COINS_PER_DAY = 1;
+const STREAK_PLEDGE_BLUE_COINS_PER_DAY = Math.max(
+  0,
+  Number(ECONOMY_RULES.streakPledgeBlueCoinsPerDay) || 0
+);
 const USAGE_STREAK_WEEKLY_BONUS_DAYS = 7;
 const USAGE_STREAK_WEEKLY_BONUS_MULTIPLIER = 1;
 const USAGE_STREAK_WEEKLY_BONUS_BLUE_COINS = Math.max(
   0,
   Math.round(
-    USAGE_STREAK_WEEKLY_BONUS_DAYS *
-      STREAK_PLEDGE_BLUE_COINS_PER_DAY *
-      USAGE_STREAK_WEEKLY_BONUS_MULTIPLIER
+    Number(ECONOMY_RULES.usageStreakWeeklyBonusBlueCoins) ||
+      USAGE_STREAK_WEEKLY_BONUS_DAYS *
+        STREAK_PLEDGE_BLUE_COINS_PER_DAY *
+        USAGE_STREAK_WEEKLY_BONUS_MULTIPLIER
   )
 );
 const LEVEL_SHARE_REWARD_CHEST_TIER_ID = "purple";
@@ -14313,7 +14633,7 @@ function TemptationCardComponent({
                 placeholder={item.emoji || DEFAULT_TEMPTATION_EMOJI}
                 placeholderTextColor={colors.muted}
                 selectTextOnFocus
-                maxLength={2}
+                maxLength={EMOJI_INPUT_MAX_LENGTH}
               />
             </View>
             <View style={styles.titleEditInputContainer}>
@@ -15416,7 +15736,7 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
                 placeholder={item.emoji || DEFAULT_TEMPTATION_EMOJI}
                 placeholderTextColor={colorWithAlpha(colors.muted, 0.7)}
                 selectTextOnFocus
-                maxLength={2}
+                maxLength={EMOJI_INPUT_MAX_LENGTH}
                 onFocus={() => handleFieldFocus("identity")}
                 onBlur={() => handleFieldBlur("identity")}
               />
@@ -15715,10 +16035,6 @@ const GoalJarGraphic = React.memo(function GoalJarGraphic({
   style = null,
 }) {
   const safeProgress = clampGoalJarProgress(progress);
-  const fallbackBallCount = Math.max(
-    safeProgress > 0 ? 3 : 0,
-    Math.min(GOAL_JAR_BALL_LAYOUT.length, Math.round(GOAL_JAR_BALL_LAYOUT.length * safeProgress))
-  );
   const resolvedCoinColors = useMemo(
     () =>
       Array.isArray(coinColors)
@@ -15726,11 +16042,6 @@ const GoalJarGraphic = React.memo(function GoalJarGraphic({
         : [],
     [coinColors]
   );
-  const ballCount = forceCoinColors
-    ? resolvedCoinColors.length
-    : resolvedCoinColors.length > 0
-    ? resolvedCoinColors.length
-    : fallbackBallCount;
   const jarId = useMemo(() => Math.random().toString(36).slice(2, 9), []);
   const ballColors = useMemo(
     () =>
@@ -15759,6 +16070,11 @@ const GoalJarGraphic = React.memo(function GoalJarGraphic({
   const progressFillBottomY = jarY + jarH * 0.93;
   const progressLineY = progressFillBottomY - jarH * safeProgress * 0.64;
   const progressFillHeight = Math.max(4, progressFillBottomY - progressLineY);
+  const syncedBallCount = Math.max(
+    safeProgress > 0 ? 3 : 0,
+    Math.min(GOAL_JAR_BALL_LAYOUT.length, Math.round(GOAL_JAR_BALL_LAYOUT.length * safeProgress))
+  );
+  const ballCount = forceCoinColors ? resolvedCoinColors.length : syncedBallCount;
   const dynamicLabelY = Math.max(
     jarY + jarH * 0.27,
     Math.min(jarY + jarH * 0.69, progressLineY - height * 0.045)
@@ -15871,7 +16187,7 @@ const GoalJarGraphic = React.memo(function GoalJarGraphic({
           const cx = jarX + jarW * entry.x;
           const cy = jarY + jarH * entry.y;
           const r = width * entry.r;
-          const gradientIndex = resolvedCoinColors.length > 0 ? index : entry.c;
+          const gradientIndex = resolvedCoinColors.length > 0 ? index % ballColors.length : entry.c;
           return (
             <React.Fragment key={`goal-jar-ball-${index}`}>
               <SvgCircle
@@ -16730,6 +17046,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const safeAreaInsets = safeUseSafeAreaInsets();
   const [expanded, setExpanded] = useState(false);
   const [isSavingRatingModalVisible, setSavingRatingModalVisible] = useState(false);
+  const [goalTitleTextBlockWidth, setGoalTitleTextBlockWidth] = useState(0);
   const heroRecentNowTick = useMinuteTicker(true);
   const heroCardRef = useRef(null);
   const heroAnchorRef = useRef(null);
@@ -16796,6 +17113,11 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const handleHeroLayout = useCallback(() => {
     measureHeroAnchor();
   }, [measureHeroAnchor]);
+  const handleGoalTitleTextBlockLayout = useCallback((event) => {
+    const width = Math.round(Number(event?.nativeEvent?.layout?.width) || 0);
+    if (!width) return;
+    setGoalTitleTextBlockWidth((prevWidth) => (Math.abs(prevWidth - width) > 1 ? width : prevWidth));
+  }, []);
   const setDailyRewardModalState = useCallback(
     (visible) => {
       setDailyRewardModalVisible(visible);
@@ -17592,24 +17914,48 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
     }),
     [expandedPotentialValueScale]
   );
-  const goalTitleScale = useMemo(() => {
-    const visibleLength = Array.from(String(goalTitleText || "").trim()).length;
-    if (visibleLength <= 12) return 1;
-    if (visibleLength <= 20) return 0.9;
-    if (visibleLength <= 32) return 0.82;
-    return 0.76;
-  }, [goalTitleText]);
-  const goalTitleLineCount = useMemo(() => {
-    const visibleLength = Array.from(String(goalTitleText || "").trim()).length;
-    return visibleLength > 24 ? 2 : 1;
-  }, [goalTitleText]);
-  const goalTitleAdaptiveStyle = useMemo(
-    () => ({
-      fontSize: Math.round((IS_SHORT_DEVICE ? 16 : 18) * goalTitleScale),
-      lineHeight: Math.round((IS_SHORT_DEVICE ? 20 : 22) * goalTitleScale),
-    }),
-    [goalTitleScale]
-  );
+  const goalTitleFitConfig = useMemo(() => {
+    const baseFontSize = IS_SHORT_DEVICE ? 16 : 18;
+    const baseLineHeight = IS_SHORT_DEVICE ? 20 : 22;
+    const minFontSize = IS_SHORT_DEVICE ? 13 : 14;
+    const rawTitle = String(goalTitleText || "").trim();
+    const titleWithoutEmoji = stripEmojis(rawTitle) || rawTitle;
+    const visibleLength = Array.from(titleWithoutEmoji).length;
+    const availableWidth = Math.max(
+      88,
+      goalTitleTextBlockWidth || (IS_SHORT_DEVICE ? 116 : 136)
+    );
+    if (!visibleLength) {
+      return {
+        numberOfLines: 1,
+        minimumFontScale: minFontSize / baseFontSize,
+        style: { fontSize: baseFontSize, lineHeight: baseLineHeight },
+      };
+    }
+    const hasWideGlyphs = /[\u3400-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/.test(titleWithoutEmoji);
+    const averageGlyphWidth = baseFontSize * (hasWideGlyphs ? 0.94 : 0.57);
+    const charsPerLine = Math.max(1, Math.floor(availableWidth / Math.max(1, averageGlyphWidth)));
+    const numberOfLines =
+      visibleLength > charsPerLine * 2.15 ? 3 : visibleLength > charsPerLine * 0.94 ? 2 : 1;
+    const tokens = titleWithoutEmoji.split(/\s+/).filter(Boolean);
+    const longestTokenLength = hasWideGlyphs
+      ? 1
+      : tokens.reduce((maxLength, token) => Math.max(maxLength, Array.from(token).length), 0);
+    const fullTextScale =
+      availableWidth * numberOfLines / Math.max(1, visibleLength * averageGlyphWidth);
+    const longestTokenScale = longestTokenLength
+      ? availableWidth / Math.max(1, longestTokenLength * averageGlyphWidth)
+      : 1;
+    const minScale = minFontSize / baseFontSize;
+    const resolvedScale = Math.max(minScale, Math.min(1, fullTextScale, longestTokenScale));
+    const fontSize = Math.max(minFontSize, Math.round(baseFontSize * resolvedScale));
+    const lineHeight = Math.max(fontSize + 4, Math.round(baseLineHeight * resolvedScale));
+    return {
+      numberOfLines,
+      minimumFontScale: Math.max(minScale, minFontSize / fontSize),
+      style: { fontSize, lineHeight },
+    };
+  }, [goalTitleText, goalTitleTextBlockWidth]);
   const coinEntries = useMemo(() => buildHealthCoinEntries(healthPoints), [healthPoints]);
   const hasCoinInventory = coinEntries.some((entry) => entry.count > 0);
   const aheadUSD = Math.max(0, actualSavedUSD - resolvedPotentialForecastUSD);
@@ -18136,17 +18482,17 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
               >
                 <Text style={styles.goalJarHeroGoalEmoji}>{goalEmoji}</Text>
               </View>
-              <View style={styles.goalJarHeroGoalTextBlock}>
+              <View style={styles.goalJarHeroGoalTextBlock} onLayout={handleGoalTitleTextBlockLayout}>
                 <Text
                   style={[
                     styles.goalJarHeroGoalTitle,
-                    goalTitleAdaptiveStyle,
+                    goalTitleFitConfig.style,
                     isHeroRtlText && styles.goalJarHeroTextRtl,
                     { color: goldPalette.text },
                   ]}
-                  numberOfLines={goalTitleLineCount}
+                  numberOfLines={goalTitleFitConfig.numberOfLines}
                   adjustsFontSizeToFit
-                  minimumFontScale={0.78}
+                  minimumFontScale={goalTitleFitConfig.minimumFontScale}
                   maxFontSizeMultiplier={1}
                 >
                   {goalTitleText}
@@ -19136,13 +19482,12 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
                       iconSize={18}
                       compact
                       textColor={dailyRewardModalPalette.text}
+                      mystery
                     />
                   </View>
                 ) : null}
                 <Text style={[styles.dailyRewardModalSubtitle, { color: dailyRewardModalPalette.subtext }]}>
-                  {language === "ru"
-                    ? "Сначала видна только редкость. Монеты выпадут после открытия сундука."
-                    : "You only see the rarity first. The coin amount is revealed after the chest opens."}
+                  {t("dailyRewardChestHint")}
                 </Text>
               </View>
               <View style={styles.dailyRewardCalendar}>
@@ -19197,6 +19542,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
                           language={language}
                           iconSize={18}
                           compact
+                          mystery
                           textColor={isActive ? dailyRewardActiveAccent : dailyRewardModalPalette.text}
                           style={styles.dailyRewardCalendarChestBadge}
                         />
@@ -23796,7 +24142,9 @@ function TycoonAutosaveModal({
                       activeOpacity={0.85}
                       accessibilityRole="switch"
                       accessibilityState={{ checked: spent }}
-                      accessibilityLabel={spent ? t("spendAction") : t("saveAction")}
+                      accessibilityLabel={
+                        spent ? t("tycoonAutosaveSwitchSpent") : t("tycoonAutosaveSwitchSaved")
+                      }
                       onPress={(event) => {
                         event?.stopPropagation?.();
                         onToggleSpent?.(entry.id);
@@ -23813,8 +24161,12 @@ function TycoonAutosaveModal({
                           styles.tycoonAutosaveSwitchText,
                           spent ? styles.tycoonAutosaveSwitchTextSaveSide : styles.tycoonAutosaveSwitchTextSpendSide,
                         ]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.72}
+                        allowFontScaling={false}
                       >
-                        {spent ? t("spendAction") : t("saveAction")}
+                        {spent ? t("tycoonAutosaveSwitchSpent") : t("tycoonAutosaveSwitchSaved")}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -23912,6 +24264,134 @@ function TycoonAutosaveModal({
   );
 }
 
+function TycoonAutosaveHungryModal({
+  visible,
+  colors,
+  t,
+  onClose,
+  onFeed,
+  catCrySource,
+}) {
+  const entrance = useRef(new Animated.Value(0)).current;
+  const catPulse = useRef(new Animated.Value(0)).current;
+  const isDarkTheme = colors?.background === THEMES.dark.background;
+  useEffect(() => {
+    if (!visible) {
+      entrance.setValue(0);
+      catPulse.setValue(0);
+      return undefined;
+    }
+    entrance.setValue(0);
+    catPulse.setValue(0);
+    Animated.spring(entrance, {
+      toValue: 1,
+      friction: 8,
+      tension: 100,
+      useNativeDriver: true,
+    }).start();
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(catPulse, {
+          toValue: 1,
+          duration: 1200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(catPulse, {
+          toValue: 0,
+          duration: 1200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+    };
+  }, [catPulse, entrance, visible]);
+
+  const cardOpacity = entrance.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
+  const cardTranslateY = entrance.interpolate({ inputRange: [0, 1], outputRange: [24, 0] });
+  const catScale = catPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.035] });
+  const catSource = catCrySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.cry;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={styles.tycoonAutosaveHungryBackdrop}>
+        <Animated.View
+          style={[
+            styles.tycoonAutosaveHungryCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              opacity: cardOpacity,
+              transform: [{ translateY: cardTranslateY }],
+            },
+          ]}
+        >
+          <Animated.View
+            style={[
+              styles.tycoonAutosaveHungryCatWrap,
+              {
+                backgroundColor: colorWithAlpha(SPEND_ACTION_COLOR, isDarkTheme ? 0.2 : 0.1),
+                transform: [{ scale: catScale }],
+              },
+            ]}
+          >
+            <Image source={catSource} style={styles.tycoonAutosaveHungryCat} resizeMode="contain" />
+          </Animated.View>
+          <Text style={[styles.tycoonAutosaveHungryTitle, { color: colors.text }]}>
+            {t("tycoonAutosaveHungryTitle")}
+          </Text>
+          <Text style={[styles.tycoonAutosaveHungryBody, { color: colors.muted }]}>
+            {t("tycoonAutosaveHungryBody")}
+          </Text>
+          <View style={styles.tycoonAutosaveHungryActions}>
+            <TouchableOpacity
+              style={[
+                styles.tycoonAutosaveHungrySecondary,
+                { borderColor: colors.border, backgroundColor: colorWithAlpha(colors.text, isDarkTheme ? 0.08 : 0.04) },
+              ]}
+              activeOpacity={0.86}
+              onPress={onClose}
+            >
+              <Text
+                style={[styles.tycoonAutosaveHungrySecondaryText, { color: colors.muted }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.82}
+              >
+                {t("tycoonAutosaveHungryLater")}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tycoonAutosaveHungryPrimary, { backgroundColor: colors.text }]}
+              activeOpacity={0.9}
+              onPress={onFeed}
+            >
+              <Text
+                style={[styles.tycoonAutosaveHungryPrimaryText, { color: colors.background }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.82}
+              >
+                {t("tycoonAutosaveHungryFeed")}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
+
 function TycoonRewardModal({
   visible,
   rewards = [],
@@ -23985,7 +24465,7 @@ function TycoonRewardModal({
           </View>
           <Text style={[styles.tycoonRewardTitle, { color: colors.text }]}>{t("tycoonAutosaveRewardTitle")}</Text>
           <Text style={[styles.tycoonRewardBody, { color: colors.muted }]}>
-            {t("tycoonAutosaveRewardBody", { count: resolvedCount, reward: resolvedReward })}
+            {t("tycoonAutosaveRewardBody", { count: resolvedCount })}
           </Text>
           <TouchableOpacity style={[styles.tycoonRewardButton, { backgroundColor: colors.text }]} onPress={onOpenChests}>
             <Text style={[styles.tycoonRewardButtonText, { color: colors.background }]}>
@@ -25101,7 +25581,6 @@ const FeedScreen = React.memo(
   const closeHistoryModal = useCallback(() => setHistoryModalVisible(false), []);
   const openGoalJarDetail = useCallback(() => setGoalJarDetailVisible(true), []);
   const closeGoalJarDetail = useCallback(() => setGoalJarDetailVisible(false), []);
-  const feedShuffleSeedRef = useRef(Math.random());
   const heroNowTick = useMinuteTicker(true);
   const handleDayTwoIncomePromptPress = onDayTwoIncomePromptPress || (() => {});
   const handleDayTwoIncomePromptDismiss = onDayTwoIncomePromptDismiss || (() => {});
@@ -26774,10 +27253,11 @@ const FeedScreen = React.memo(
     () => formatLocalAmount(progressPotentialUSD),
     [formatLocalAmount, progressPotentialUSD]
   );
-  const budgetMonthKey = getMonthKey(todayTimestamp);
+  const budgetIncomePayday = normalizeIncomePayday(profile?.incomePayday);
+  const budgetMonthKey = getBudgetPeriodKey(todayTimestamp, budgetIncomePayday);
   const monthlyIncomeUSD = useMemo(
-    () => getBudgetIncomeForMonth(incomeEntries, budgetMonthKey),
-    [incomeEntries, budgetMonthKey]
+    () => getBudgetIncomeForMonth(incomeEntries, budgetMonthKey, { payday: budgetIncomePayday }),
+    [budgetIncomePayday, incomeEntries, budgetMonthKey]
   );
   const budgetSpendDistribution = useMemo(() => {
     const cutoff = Date.now() - DAY_MS * 30;
@@ -26800,8 +27280,9 @@ const FeedScreen = React.memo(
         historyEvents: resolvedHistoryEvents,
         currentMonthKey: budgetMonthKey,
         resolveHistoryCategoryId,
+        incomePayday: budgetIncomePayday,
       }),
-    [budgetMonthKey, incomeEntries, resolvedHistoryEvents, resolveHistoryCategoryId]
+    [budgetIncomePayday, budgetMonthKey, incomeEntries, resolvedHistoryEvents, resolveHistoryCategoryId]
   );
   const budgetMonthStats = budgetMonthlyStats[budgetMonthKey] || null;
   const budgetMonthSpend = useMemo(
@@ -26819,12 +27300,28 @@ const FeedScreen = React.memo(
     if (!budgetMonthKey) return 0;
     return Number(budgetMonthlyCarryover[budgetMonthKey]) || 0;
   }, [budgetMonthKey, budgetMonthlyCarryover]);
+  const budgetTimeAdjustment = useMemo(
+    () =>
+      resolveBudgetTimeAdjustment({
+        incomeEntries,
+        periodKey: budgetMonthKey,
+        payday: budgetIncomePayday,
+        now: todayTimestamp,
+      }),
+    [budgetIncomePayday, budgetMonthKey, incomeEntries, todayTimestamp]
+  );
+  const budgetPeriodOverrides = useMemo(
+    () => getBudgetOverridesForPeriod(budgetOverrides, budgetMonthKey),
+    [budgetMonthKey, budgetOverrides]
+  );
   const budgetPlan = useMemo(
     () =>
       buildBudgetPlan({
         incomeUSD: monthlyIncomeUSD,
         carryoverUSD: budgetCarryoverUSD,
-        budgetOverrides,
+        budgetOverrides: budgetPeriodOverrides,
+        timeAdjustmentUSD: budgetTimeAdjustment.elapsedIncomeUSD,
+        autoAllocationScale: budgetTimeAdjustment.remainingRatio,
         spendDistribution: budgetSpendDistribution,
         spendToDateByCategory: budgetMonthSpend.map,
         spendToDateTotalUSD: budgetMonthSpend.total,
@@ -26837,9 +27334,12 @@ const FeedScreen = React.memo(
     [
       baselineMonthlyWasteUSD,
       budgetCarryoverUSD,
-      budgetOverrides,
+      budgetPeriodOverrides,
       budgetSpendDistribution,
       budgetMonthSpend,
+      budgetMonthKey,
+      budgetTimeAdjustment.elapsedIncomeUSD,
+      budgetTimeAdjustment.remainingRatio,
       customCategories,
       decisionStats,
       language,
@@ -26934,8 +27434,15 @@ const FeedScreen = React.memo(
           (Number(interactionEntry.spendCount) || 0) +
           (Number(interactionEntry.missedCycles) || 0);
         const repeatCount = Math.max(Number(historyStats.spendCount) || 0, interactionCount, 0);
-        const daysUntil = Number.isFinite(nextCheckAt)
-          ? Math.max(0, Math.ceil((nextCheckAt - nowTs) / DAY_MS))
+        const lastTimerResetAt = Math.max(0, Number(interactionEntry.lastTimerResetAt) || 0);
+        const lastInteractionAt = Math.max(0, Number(interactionEntry.lastInteractionAt) || 0);
+        const dueForConfirmation =
+          (Number(interactionEntry.missedCycles) || 0) > 0 &&
+          lastTimerResetAt > nowTs - DAY_MS &&
+          lastInteractionAt < lastTimerResetAt;
+        const displayNextCheckAt = dueForConfirmation ? lastTimerResetAt : nextCheckAt;
+        const daysUntil = Number.isFinite(displayNextCheckAt)
+          ? Math.max(0, Math.ceil((displayNextCheckAt - nowTs) / DAY_MS))
           : null;
         return {
           id: templateId,
@@ -26945,7 +27452,9 @@ const FeedScreen = React.memo(
           monthlyAmountUSD: amountUSD * checksPerMonth,
           monthlyAmountLabel: formatLocalAmount(amountUSD * checksPerMonth),
           repeatCount,
-          nextCheckAt: Number.isFinite(nextCheckAt) ? nextCheckAt : null,
+          nextCheckAt: Number.isFinite(displayNextCheckAt) ? displayNextCheckAt : null,
+          scheduledNextCheckAt: Number.isFinite(nextCheckAt) ? nextCheckAt : null,
+          dueForConfirmation,
           daysUntil,
           createdAt: Number(item.createdAt) || Number(interactionEntry.lastTimerResetAt) || 0,
         };
@@ -27096,75 +27605,32 @@ const FeedScreen = React.memo(
   const orderedProducts = useMemo(() => {
     const entries = Array.isArray(products) ? [...products] : [];
     if (!entries.length) return entries;
-    const shuffleSeed = feedShuffleSeedRef.current;
     const enrichedEntries = entries.map((item, index) => {
       const stats = getInteractionEntry(item);
-      const key = item?.id || item?.templateId || `item-${index}`;
-      const total = (stats?.saveCount || 0) + (stats?.spendCount || 0);
-      const lastInteractionAt = Number(stats?.lastInteractionAt) || 0;
-      const price = getTemptationPrice(item);
+      const saveCount = Math.max(0, Number(stats?.saveCount) || 0);
+      const spendCount = Math.max(0, Number(stats?.spendCount) || 0);
+      const lastInteractionAt = Math.max(0, Number(stats?.lastInteractionAt) || 0);
+      const createdAt = Math.max(0, Number(item?.createdAt) || 0);
+      const total = saveCount + spendCount;
       return {
         item,
-        key,
         total,
-        lastInteractionAt,
-        price,
-        shuffle: getSessionShuffleValue(shuffleSeed, key),
+        freshCreated: createdAt > 0 && total <= 0 && lastInteractionAt <= 0 &&
+          (item?.quickTemptation || isCustomTemptation(item)),
+        createdAt,
+        index,
       };
     });
-    const freshEntries = enrichedEntries
-      .filter((entry) => {
-        if (!entry?.item) return false;
-        if (!entry.item.quickTemptation && !isCustomTemptation(entry.item)) return false;
-        const createdAt = Number(entry.item?.createdAt);
-        if (!Number.isFinite(createdAt) || createdAt <= 0) return false;
-        return entry.total <= 0 && entry.lastInteractionAt <= 0;
-      })
-      .sort((a, b) => Number(b.item?.createdAt || 0) - Number(a.item?.createdAt || 0));
-    const freshKeys = new Set(freshEntries.map((entry) => entry.key));
-    const recentEntries = enrichedEntries
-      .filter((entry) => entry.lastInteractionAt > 0)
-      .sort((a, b) => b.lastInteractionAt - a.lastInteractionAt)
-      .slice(0, 3);
-    const recentKeys = new Set(recentEntries.map((entry) => entry.key));
-    const popularEntries = enrichedEntries
-      .filter((entry) => entry.total > 0)
+    return enrichedEntries
       .sort((a, b) => {
-        if (b.total !== a.total) return b.total - a.total;
-        if (b.lastInteractionAt !== a.lastInteractionAt) {
-          return b.lastInteractionAt - a.lastInteractionAt;
+        if (a.freshCreated !== b.freshCreated) return a.freshCreated ? -1 : 1;
+        if (a.freshCreated && b.freshCreated && b.createdAt !== a.createdAt) {
+          return b.createdAt - a.createdAt;
         }
-        return a.price - b.price;
+        if (b.total !== a.total) return b.total - a.total;
+        return a.index - b.index;
       })
-      .slice(0, FEED_FREQUENT_PIN_LIMIT);
-    const averagePopularPrice = popularEntries.length
-      ? popularEntries.reduce((sum, entry) => sum + entry.price, 0) / popularEntries.length
-      : null;
-    const popularPriceCap = Number.isFinite(averagePopularPrice)
-      ? averagePopularPrice * 1.3
-      : Number.POSITIVE_INFINITY;
-    const affordableEntries = [];
-    const premiumEntries = [];
-    enrichedEntries.forEach((entry) => {
-      if (freshKeys.has(entry.key)) return;
-      if (recentKeys.has(entry.key)) return;
-      if (entry.price <= popularPriceCap) {
-        affordableEntries.push(entry);
-      } else {
-        premiumEntries.push(entry);
-      }
-    });
-    const priceSort = (a, b) => {
-      const priceDiff = a.price - b.price;
-      if (priceDiff !== 0) return priceDiff;
-      if (a.shuffle !== b.shuffle) return a.shuffle - b.shuffle;
-      return a.key.localeCompare(b.key);
-    };
-    affordableEntries.sort(priceSort);
-    premiumEntries.sort(priceSort);
-    return [...freshEntries, ...recentEntries, ...affordableEntries, ...premiumEntries].map(
-      (entry) => entry.item
-    );
+      .map((entry) => entry.item);
   }, [products, getInteractionEntry]);
 
   const filteredProducts = orderedProducts;
@@ -29104,6 +29570,7 @@ const BudgetLimitSliderRow = React.memo(function BudgetLimitSliderRow({
   colors,
   t,
   onManualEdit = null,
+  onResetLimit = null,
   onValueChange = null,
   onValueChangeEnd = null,
   onInteractionChange = null,
@@ -29113,6 +29580,7 @@ const BudgetLimitSliderRow = React.memo(function BudgetLimitSliderRow({
   const safeSpentUSD = Math.max(0, Number(spentUSD) || 0);
   const safeRecommendedUSD = Math.max(0, Number(recommendedUSD) || 0);
   const safeProjectedSpentUSD = Math.max(0, Number(projectedSpentUSD) || 0);
+  const hasManualOverride = entry?.isOverride === true;
   const safeMaxValueUSD = Math.max(
     1,
     Number(maxValueUSD) || 0,
@@ -29248,24 +29716,48 @@ const BudgetLimitSliderRow = React.memo(function BudgetLimitSliderRow({
             {t("budgetSpentLabel", { amount: formatAmount(safeSpentUSD) })}
           </Text>
         </View>
-        <TouchableOpacity
-          disabled={!editable}
-          activeOpacity={0.85}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={[
-            styles.budgetSliderAmountChip,
-            {
-              borderColor: colorWithAlpha(SAVE_ACTION_COLOR, 0.38),
-              backgroundColor: colorWithAlpha(SAVE_ACTION_COLOR, 0.1),
-              opacity: editable ? 1 : 0.75,
-            },
-          ]}
-          onPress={() => onManualEdit?.(entry.id, safeLimitUSD)}
-        >
-          <Text style={[styles.budgetSliderAmountText, { color: SAVE_ACTION_COLOR }]}>
-            {formatAmount(safeLimitUSD)}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.budgetSliderHeaderActions}>
+          <TouchableOpacity
+            disabled={!editable}
+            activeOpacity={0.85}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={[
+              styles.budgetSliderAmountChip,
+              {
+                borderColor: colorWithAlpha(SAVE_ACTION_COLOR, 0.38),
+                backgroundColor: colorWithAlpha(SAVE_ACTION_COLOR, 0.1),
+                opacity: editable ? 1 : 0.75,
+              },
+            ]}
+            onPress={() => onManualEdit?.(entry.id, safeLimitUSD)}
+          >
+            <Text style={[styles.budgetSliderAmountText, { color: SAVE_ACTION_COLOR }]}>
+              {formatAmount(safeLimitUSD)}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            disabled={!editable || !hasManualOverride}
+            accessibilityRole="button"
+            accessibilityLabel={t("priceEditReset")}
+            activeOpacity={0.82}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={[
+              styles.budgetSliderResetButton,
+              {
+                borderColor: hasManualOverride
+                  ? colorWithAlpha(colors.text, 0.22)
+                  : colorWithAlpha(colors.border, 0.72),
+                backgroundColor: hasManualOverride
+                  ? colorWithAlpha(colors.text, 0.06)
+                  : colorWithAlpha(colors.text, 0.025),
+                opacity: editable && hasManualOverride ? 1 : 0.45,
+              },
+            ]}
+            onPress={() => onResetLimit?.(entry.id)}
+          >
+            <Text style={[styles.budgetSliderResetText, { color: colors.text }]}>↺</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       <View
         style={styles.budgetSliderTrackTouchArea}
@@ -29349,6 +29841,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
   freeDayRescueCost = FREE_DAY_RESCUE_COST,
   historyEvents = [],
   incomeEntries = [],
+  incomePayday = DEFAULT_INCOME_PAYDAY,
   budgetOverrides = {},
   budgetAutoEnabled = true,
   isPremiumUser = false,
@@ -29358,6 +29851,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
   baselineMonthlyWasteUSD = 0,
   baselineStartAt = null,
   onBudgetOverrideChange = () => {},
+  onBudgetOverrideReset = () => {},
   budgetRemainingOverrides = {},
   onBudgetRemainingOverrideChange = () => {},
   onIncomeEntryOpen = () => {},
@@ -29390,6 +29884,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
   onSubscriptionWidgetLayout = null,
   onSubscriptionWidgetOpen = null,
   onSubscriptionCreateTemptation = null,
+  onSubscriptionPaymentAction = null,
   onFreeDayCardLayout = null,
   onImpulseMapLockedPress = null,
   contentBottomPadding = 0,
@@ -29546,7 +30041,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
     const bonus = Number(dailyChallenge?.rewardBonus) || 0;
     const base = Number(dailyChallenge?.baseReward) || 0;
     const total = Number(dailyChallenge?.rewardTotal) || base + bonus;
-    return String(getChestRewardDisplayCount(total));
+    return formatHealthRewardLabel(total, language);
   }, [dailyChallenge?.baseReward, dailyChallenge?.rewardBonus, dailyChallenge?.rewardTotal, language]);
   const progressChallengeList = useMemo(() => {
     const list = Array.isArray(challenges) ? challenges.filter(Boolean) : [];
@@ -30012,7 +30507,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
   const subscriptionHistoryStats = useMemo(() => {
     const map = new Map();
     resolvedHistoryEvents.forEach((entry) => {
-      if (!entry || entry.kind !== "spend") return;
+      if (!entry || (entry.kind !== "spend" && entry.kind !== "refuse_spend" && entry.kind !== "pending_to_decline")) return;
       const meta = entry.meta || {};
       const key =
         getProgressInteractionKey(meta.templateId) ||
@@ -30021,9 +30516,28 @@ const ProgressScreen = React.memo(function ProgressScreen({
         getProgressInteractionKey(meta.template);
       if (!key) return;
       const amountUSD = Math.max(0, Number(meta.amountUSD) || 0);
-      const current = map.get(key) || { spentUSD: 0, spendCount: 0 };
-      current.spentUSD += amountUSD;
-      current.spendCount += 1;
+      const timestamp = normalizeTemporalMs(entry?.timestamp, 0);
+      const current = map.get(key) || {
+        spentUSD: 0,
+        spendCount: 0,
+        skippedUSD: 0,
+        skippedCount: 0,
+        firstRecordedAt: 0,
+        lastPaidAt: 0,
+      };
+      if (timestamp > 0) {
+        current.firstRecordedAt = current.firstRecordedAt
+          ? Math.min(current.firstRecordedAt, timestamp)
+          : timestamp;
+      }
+      if (entry.kind === "spend") {
+        current.spentUSD += amountUSD;
+        current.spendCount += 1;
+        current.lastPaidAt = timestamp > 0 ? Math.max(current.lastPaidAt || 0, timestamp) : current.lastPaidAt;
+      } else {
+        current.skippedUSD += amountUSD;
+        current.skippedCount += 1;
+      }
       map.set(key, current);
     });
     return map;
@@ -30044,29 +30558,66 @@ const ProgressScreen = React.memo(function ProgressScreen({
         const nextCheckAt = resolveSubscriptionNextCheckAt(item, interactionEntry, nowTs);
         const amountUSD = Math.max(0, Number(getTemptationPrice(item)) || 0);
         const checksPerMonth = Math.max(0, Number(resolveSubscriptionChecksPerMonth(item, interactionEntry)) || 1);
-        const historyStats = subscriptionHistoryStats.get(templateId) || { spentUSD: 0, spendCount: 0 };
+        const historyStats = subscriptionHistoryStats.get(templateId) || {
+          spentUSD: 0,
+          spendCount: 0,
+          skippedUSD: 0,
+          skippedCount: 0,
+          firstRecordedAt: 0,
+          lastPaidAt: 0,
+        };
         const interactionCount =
           (Number(interactionEntry.saveCount) || 0) +
           (Number(interactionEntry.spendCount) || 0) +
           (Number(interactionEntry.missedCycles) || 0);
         const repeatCount = Math.max(Number(historyStats.spendCount) || 0, interactionCount, 0);
-        const daysUntil = Number.isFinite(nextCheckAt)
-          ? Math.max(0, Math.ceil((nextCheckAt - nowTs) / DAY_MS))
+        const lastTimerResetAt = Math.max(0, Number(interactionEntry.lastTimerResetAt) || 0);
+        const lastInteractionAt = Math.max(0, Number(interactionEntry.lastInteractionAt) || 0);
+        const dueForConfirmation =
+          (Number(interactionEntry.missedCycles) || 0) > 0 &&
+          lastTimerResetAt > nowTs - DAY_MS &&
+          lastInteractionAt < lastTimerResetAt;
+        const displayNextCheckAt = dueForConfirmation ? lastTimerResetAt : nextCheckAt;
+        const daysUntil = Number.isFinite(displayNextCheckAt)
+          ? Math.max(0, Math.ceil((displayNextCheckAt - nowTs) / DAY_MS))
           : null;
+        const monthlyAmountUSD = amountUSD * checksPerMonth;
+        const annualForecastUSD = monthlyAmountUSD * 12;
+        const createdAt = Math.max(0, Number(item.createdAt) || 0);
+        const firstTimerConfiguredAt = Math.max(0, Number(interactionEntry.firstTimerConfiguredAt) || 0);
+        const firstRecordedCandidates = [
+          createdAt,
+          firstTimerConfiguredAt,
+          Math.max(0, Number(historyStats.firstRecordedAt) || 0),
+        ].filter((value) => Number.isFinite(value) && value > 0);
+        const firstRecordedAt = firstRecordedCandidates.length
+          ? Math.min(...firstRecordedCandidates)
+          : createdAt || firstTimerConfiguredAt || 0;
+        const spentUSD = Math.max(0, Number(historyStats.spentUSD) || 0);
+        const skippedUSD = Math.max(0, Number(historyStats.skippedUSD) || 0);
         return {
           id: templateId,
+          item,
           title: resolveTemptationTitle(item, language, item.titleOverride) || t("defaultDealTitle"),
           emoji: item.emoji || DEFAULT_TEMPTATION_EMOJI,
           amountUSD,
           amountLabel: formatLocalAmount(amountUSD),
-          monthlyAmountUSD: amountUSD * checksPerMonth,
-          monthlyAmountLabel: formatLocalAmount(amountUSD * checksPerMonth),
+          monthlyAmountUSD,
+          monthlyAmountLabel: formatLocalAmount(monthlyAmountUSD),
+          annualForecastUSD,
+          annualForecastLabel: formatLocalAmount(annualForecastUSD),
           repeatCount,
-          spentUSD: Math.max(0, Number(historyStats.spentUSD) || 0),
-          spentLabel: formatLocalAmount(Math.max(0, Number(historyStats.spentUSD) || 0)),
-          nextCheckAt: Number.isFinite(nextCheckAt) ? nextCheckAt : null,
+          spentUSD,
+          spentLabel: formatLocalAmount(spentUSD),
+          skippedUSD,
+          skippedLabel: formatLocalAmount(skippedUSD),
+          nextCheckAt: Number.isFinite(displayNextCheckAt) ? displayNextCheckAt : null,
+          scheduledNextCheckAt: Number.isFinite(nextCheckAt) ? nextCheckAt : null,
+          dueForConfirmation,
           daysUntil,
-          createdAt: Number(item.createdAt) || Number(interactionEntry.lastTimerResetAt) || 0,
+          createdAt,
+          firstRecordedAt,
+          lastPaidAt: Math.max(0, Number(historyStats.lastPaidAt) || 0),
         };
       })
       .filter(Boolean)
@@ -30192,6 +30743,10 @@ const ProgressScreen = React.memo(function ProgressScreen({
   );
   const [subscriptionModalVisible, setSubscriptionModalVisible] = useState(false);
   const subscriptionModalAnim = useRef(new Animated.Value(0)).current;
+  const [subscriptionDuePromptEntryId, setSubscriptionDuePromptEntryId] = useState(null);
+  const dismissedSubscriptionDueRef = useRef(new Set());
+  const subscriptionDuePromptAnim = useRef(new Animated.Value(0)).current;
+  const subscriptionDueChartAnim = useRef(new Animated.Value(0)).current;
   const openSubscriptionModal = useCallback(() => {
     onSubscriptionWidgetOpen?.();
     logEvent("subscription_watch_opened", {
@@ -30249,6 +30804,111 @@ const ProgressScreen = React.memo(function ProgressScreen({
     () => subscriptionModalAnim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }),
     [subscriptionModalAnim]
   );
+  const subscriptionDuePromptEntry = useMemo(() => {
+    if (!subscriptionDuePromptEntryId) return null;
+    return subscriptionEntries.find((entry) => entry.id === subscriptionDuePromptEntryId) || null;
+  }, [subscriptionDuePromptEntryId, subscriptionEntries]);
+  const closeSubscriptionDuePrompt = useCallback(() => {
+    if (subscriptionDuePromptEntry) {
+      const dueKey = getDayKey(subscriptionDuePromptEntry.nextCheckAt || Date.now()) || "today";
+      dismissedSubscriptionDueRef.current.add(`${subscriptionDuePromptEntry.id}:${dueKey}`);
+    }
+    setSubscriptionDuePromptEntryId(null);
+  }, [subscriptionDuePromptEntry]);
+  const handleSubscriptionDueDecision = useCallback(
+    (decision) => {
+      const entry = subscriptionDuePromptEntry;
+      if (!entry) return;
+      const action = decision === "paid" ? "paid" : "skipped";
+      const dueKey = getDayKey(entry.nextCheckAt || Date.now()) || "today";
+      dismissedSubscriptionDueRef.current.add(`${entry.id}:${dueKey}`);
+      setSubscriptionDuePromptEntryId(null);
+      onSubscriptionPaymentAction?.(entry.item, action, {
+        subscriptionId: entry.id,
+        title: entry.title,
+        amountUSD: entry.amountUSD,
+        nextCheckAt: entry.nextCheckAt,
+      });
+    },
+    [onSubscriptionPaymentAction, subscriptionDuePromptEntry]
+  );
+  useEffect(() => {
+    if (subscriptionDuePromptEntryId) return;
+    if (!subscriptionEntries.length) return;
+    const nowTs = Number(subscriptionReferenceTs) || Date.now();
+    const dueEntry = subscriptionEntries.find((entry) => {
+      if (!Number.isFinite(Number(entry.nextCheckAt))) return false;
+      if (Number(entry.nextCheckAt) > nowTs) return false;
+      const dueKey = getDayKey(entry.nextCheckAt || nowTs) || "today";
+      return !dismissedSubscriptionDueRef.current.has(`${entry.id}:${dueKey}`);
+    });
+    if (dueEntry) {
+      setSubscriptionDuePromptEntryId(dueEntry.id);
+    }
+  }, [subscriptionDuePromptEntryId, subscriptionEntries, subscriptionReferenceTs]);
+  useEffect(() => {
+    subscriptionDuePromptAnim.stopAnimation();
+    subscriptionDueChartAnim.stopAnimation();
+    if (!subscriptionDuePromptEntry) {
+      Animated.timing(subscriptionDuePromptAnim, {
+        toValue: 0,
+        duration: 160,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+      subscriptionDueChartAnim.setValue(0);
+      return;
+    }
+    subscriptionDuePromptAnim.setValue(0);
+    subscriptionDueChartAnim.setValue(0);
+    Animated.spring(subscriptionDuePromptAnim, {
+      toValue: 1,
+      damping: 19,
+      stiffness: 230,
+      mass: 0.78,
+      useNativeDriver: true,
+    }).start();
+    Animated.timing(subscriptionDueChartAnim, {
+      toValue: 1,
+      duration: 720,
+      delay: 120,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [subscriptionDueChartAnim, subscriptionDuePromptAnim, subscriptionDuePromptEntry]);
+  const subscriptionDueBackdropOpacity = useMemo(
+    () =>
+      subscriptionDuePromptAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 0.5],
+      }),
+    [subscriptionDuePromptAnim]
+  );
+  const subscriptionDueCardScale = useMemo(
+    () => subscriptionDuePromptAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }),
+    [subscriptionDuePromptAnim]
+  );
+  const subscriptionDueCardTranslateY = useMemo(
+    () => subscriptionDuePromptAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }),
+    [subscriptionDuePromptAnim]
+  );
+  const subscriptionDueChartRows = useMemo(() => {
+    if (!subscriptionDuePromptEntry) return [];
+    const entry = subscriptionDuePromptEntry;
+    const maxValue = Math.max(entry.annualForecastUSD || 0, entry.spentUSD || 0, entry.amountUSD || 0, 1);
+    const buildRow = (key, label, value, valueLabel, color) => ({
+      key,
+      label,
+      valueLabel,
+      color,
+      targetWidth: Math.max(28, Math.round(((Math.max(0, Number(value) || 0) / maxValue) * Math.min(SCREEN_WIDTH - 72, 360)))),
+    });
+    return [
+      buildRow("charge", t("subscriptionDueChartCharge"), entry.amountUSD, entry.amountLabel, subscriptionUrgencyColor),
+      buildRow("spent", t("subscriptionDueChartPaid"), entry.spentUSD, entry.spentLabel, SPEND_ACTION_COLOR),
+      buildRow("forecast", t("subscriptionDueChartForecast"), entry.annualForecastUSD, entry.annualForecastLabel, "#7C5CFF"),
+    ];
+  }, [subscriptionDuePromptEntry, subscriptionUrgencyColor, t]);
   const computeProgressBalanceSnapshot = useCallback((referenceDate = new Date(todayTimestamp)) => {
     const referenceTimestampRaw =
       referenceDate instanceof Date ? referenceDate.getTime() : Number(referenceDate) || 0;
@@ -30981,14 +31641,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
               { backgroundColor: colors.text },
             ]}
           >
-            <HealthRewardTokens
-              amount={challenge.rewardHealth}
-              color={colors.background}
-              iconSize={12}
-              maxItems={2}
-              textSize={10}
-              rowStyle={styles.healthRewardTokenRowCompact}
-            />
+            <ChestRewardPreviewIcon amount={challenge.rewardHealth} size={24} />
           </View>
           <View style={styles.challengeHeader}>
             <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
@@ -31087,7 +31740,6 @@ const ProgressScreen = React.memo(function ProgressScreen({
       Number(dailyChallenge.target) || 1
     );
     const target = Math.max(Number(dailyChallenge.target) || 1, 1);
-    const rewardLabel = dailyChallengeRewardLabel;
     const rewardAmount = Math.max(
       0,
       Number(dailyChallenge.rewardTotal ?? dailyChallenge.rewardBonus) || 0
@@ -31109,14 +31761,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
             { backgroundColor: colors.text },
           ]}
         >
-          <HealthRewardTokens
-            amount={rewardAmount}
-            color={colors.background}
-            iconSize={12}
-            maxItems={2}
-            textSize={10}
-            rowStyle={styles.healthRewardTokenRowCompact}
-          />
+          <ChestRewardPreviewIcon amount={rewardAmount} size={24} />
         </View>
         <View style={styles.dailyChallengeWidgetHeader}>
           <View style={[styles.dailyChallengeBadge, { borderColor: widgetBorder }]}>
@@ -31154,13 +31799,13 @@ const ProgressScreen = React.memo(function ProgressScreen({
               {t("dailyChallengeWidgetProgress", { current: `${progress}`, target: `${target}` })}
             </Text>
             <Text style={[styles.dailyChallengeRewardLabel, { color: colors.text }]}>
-              {t("dailyChallengeWidgetReward", { amount: rewardLabel })}
+              {t("dailyChallengeWidgetReward")}
             </Text>
           </View>
         </View>
       </View>
     );
-  }, [colors, dailyChallenge, dailyChallengeRewardLabel, isDarkTheme, t]);
+  }, [colors, dailyChallenge, isDarkTheme, t]);
 
   const [activeCategoryId, setActiveCategoryId] = useState(null);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
@@ -31171,7 +31816,8 @@ const ProgressScreen = React.memo(function ProgressScreen({
     if (!activeCategoryId) return "";
     return getImpulseCategoryLabel(activeCategoryId, language);
   }, [activeCategoryId, language]);
-  const budgetMonthKey = getMonthKey(todayTimestamp);
+  const budgetIncomePayday = normalizeIncomePayday(incomePayday);
+  const budgetMonthKey = getBudgetPeriodKey(todayTimestamp, budgetIncomePayday);
   const resolvedBudgetRemainingOverrides = useMemo(
     () =>
       budgetRemainingOverrides && typeof budgetRemainingOverrides === "object"
@@ -31189,8 +31835,13 @@ const ProgressScreen = React.memo(function ProgressScreen({
   );
   const [budgetWidgetMonthKey, setBudgetWidgetMonthKey] = useState(() => budgetMonthKey);
   const availableBudgetMonths = useMemo(() => {
-    return collectBudgetMonthKeys(incomeEntries, resolvedHistoryEvents, budgetMonthKey);
-  }, [budgetMonthKey, incomeEntries, resolvedHistoryEvents]);
+    return collectBudgetMonthKeys(
+      incomeEntries,
+      resolvedHistoryEvents,
+      budgetMonthKey,
+      budgetIncomePayday
+    );
+  }, [budgetIncomePayday, budgetMonthKey, incomeEntries, resolvedHistoryEvents]);
   const budgetMonthLabels = useMemo(() => {
     const locale = getFormatLocale(language);
     return availableBudgetMonths.reduce((acc, key) => {
@@ -31218,16 +31869,17 @@ const ProgressScreen = React.memo(function ProgressScreen({
         historyEvents: resolvedHistoryEvents,
         currentMonthKey: budgetMonthKey,
         resolveHistoryCategoryId,
+        incomePayday: budgetIncomePayday,
       }),
-    [budgetMonthKey, incomeEntries, resolvedHistoryEvents, resolveHistoryCategoryId]
+    [budgetIncomePayday, budgetMonthKey, incomeEntries, resolvedHistoryEvents, resolveHistoryCategoryId]
   );
   const budgetMonthlyCarryover = useMemo(
     () => buildBudgetCarryoverMap(budgetMonthlyStats),
     [budgetMonthlyStats]
   );
   const monthlyIncomeUSD = useMemo(
-    () => getBudgetIncomeForMonth(incomeEntries, budgetMonthKey),
-    [incomeEntries, budgetMonthKey]
+    () => getBudgetIncomeForMonth(incomeEntries, budgetMonthKey, { payday: budgetIncomePayday }),
+    [budgetIncomePayday, incomeEntries, budgetMonthKey]
   );
   const budgetSpendDistribution = useMemo(() => {
     const cutoff = Date.now() - DAY_MS * 30;
@@ -31255,13 +31907,29 @@ const ProgressScreen = React.memo(function ProgressScreen({
     if (!budgetMonthKey) return 0;
     return budgetMonthlyCarryover[budgetMonthKey] || 0;
   }, [budgetMonthKey, budgetMonthlyCarryover]);
+  const budgetTimeAdjustment = useMemo(
+    () =>
+      resolveBudgetTimeAdjustment({
+        incomeEntries,
+        periodKey: budgetMonthKey,
+        payday: budgetIncomePayday,
+        now: todayTimestamp,
+      }),
+    [budgetIncomePayday, budgetMonthKey, incomeEntries, todayTimestamp]
+  );
+  const budgetPeriodOverrides = useMemo(
+    () => getBudgetOverridesForPeriod(budgetOverrides, budgetMonthKey),
+    [budgetMonthKey, budgetOverrides]
+  );
   const budgetPlan = useMemo(
     () =>
       buildBudgetPlan({
         incomeUSD: monthlyIncomeUSD,
         carryoverUSD: budgetCarryoverUSD,
-        budgetOverrides,
+        budgetOverrides: budgetPeriodOverrides,
         remainingOverrideUSD: resolveBudgetRemainingOverrideUSD(budgetMonthKey),
+        timeAdjustmentUSD: budgetTimeAdjustment.elapsedIncomeUSD,
+        autoAllocationScale: budgetTimeAdjustment.remainingRatio,
         spendDistribution: budgetSpendDistribution,
         spendToDateByCategory: budgetMonthSpend.map,
         spendToDateTotalUSD: budgetMonthSpend.total,
@@ -31274,9 +31942,12 @@ const ProgressScreen = React.memo(function ProgressScreen({
     [
       baselineMonthlyWasteUSD,
       budgetCarryoverUSD,
-      budgetOverrides,
+      budgetPeriodOverrides,
       budgetSpendDistribution,
       budgetMonthSpend,
+      budgetMonthKey,
+      budgetTimeAdjustment.elapsedIncomeUSD,
+      budgetTimeAdjustment.remainingRatio,
       customCategories,
       decisionStats,
       language,
@@ -31304,13 +31975,29 @@ const ProgressScreen = React.memo(function ProgressScreen({
     if (budgetWidgetActiveMonthKey === budgetMonthKey) return budgetSpendDistribution;
     return budgetWidgetStats?.spendByCategory || {};
   }, [budgetMonthKey, budgetSpendDistribution, budgetWidgetActiveMonthKey, budgetWidgetStats]);
+  const budgetWidgetTimeAdjustment = useMemo(
+    () =>
+      resolveBudgetTimeAdjustment({
+        incomeEntries,
+        periodKey: budgetWidgetActiveMonthKey,
+        payday: budgetIncomePayday,
+        now: todayTimestamp,
+      }),
+    [budgetIncomePayday, budgetWidgetActiveMonthKey, incomeEntries, todayTimestamp]
+  );
+  const budgetWidgetPeriodOverrides = useMemo(
+    () => getBudgetOverridesForPeriod(budgetOverrides, budgetWidgetActiveMonthKey),
+    [budgetOverrides, budgetWidgetActiveMonthKey]
+  );
   const budgetWidgetPlan = useMemo(
     () =>
       buildBudgetPlan({
         incomeUSD: budgetWidgetIncomeUSD,
         carryoverUSD: budgetWidgetCarryoverUSD,
-        budgetOverrides,
+        budgetOverrides: budgetWidgetPeriodOverrides,
         remainingOverrideUSD: resolveBudgetRemainingOverrideUSD(budgetWidgetActiveMonthKey),
+        timeAdjustmentUSD: budgetWidgetTimeAdjustment.elapsedIncomeUSD,
+        autoAllocationScale: budgetWidgetTimeAdjustment.remainingRatio,
         spendDistribution: budgetWidgetSpendDistribution,
         spendToDateByCategory: budgetWidgetMonthSpend.map,
         spendToDateTotalUSD: budgetWidgetMonthSpend.total,
@@ -31322,12 +32009,14 @@ const ProgressScreen = React.memo(function ProgressScreen({
       }),
     [
       baselineMonthlyWasteUSD,
-      budgetOverrides,
+      budgetWidgetPeriodOverrides,
       budgetWidgetActiveMonthKey,
       budgetWidgetCarryoverUSD,
       budgetWidgetIncomeUSD,
       budgetWidgetMonthSpend,
       budgetWidgetSpendDistribution,
+      budgetWidgetTimeAdjustment.elapsedIncomeUSD,
+      budgetWidgetTimeAdjustment.remainingRatio,
       decisionStats,
       language,
       resolveBudgetRemainingOverrideUSD,
@@ -31442,11 +32131,14 @@ const ProgressScreen = React.memo(function ProgressScreen({
   );
   const budgetRemainingNegative = (budgetWidgetPlan?.remainingUSD || 0) < -0.01;
   const budgetPlannedUSD = useMemo(() => {
-    const rawPlannedUSD = (budgetWidgetPlan?.incomeUSD || 0) - (budgetWidgetPlan?.allocatedTotalUSD || 0);
+    const rawPlannedUSD =
+      (budgetWidgetPlan?.allocatableIncomeUSD ?? budgetWidgetPlan?.incomeUSD ?? 0) -
+      (budgetWidgetPlan?.allocatedTotalUSD || 0);
     const remainingUSD = Number(budgetWidgetPlan?.remainingUSD) || 0;
     if (remainingUSD <= 0) return 0;
     return rawPlannedUSD;
   }, [
+    budgetWidgetPlan?.allocatableIncomeUSD,
     budgetWidgetPlan?.incomeUSD,
     budgetWidgetPlan?.allocatedTotalUSD,
     budgetWidgetPlan?.remainingUSD,
@@ -31484,7 +32176,10 @@ const ProgressScreen = React.memo(function ProgressScreen({
       if (!entry || (entry.kind !== "refuse_spend" && entry.kind !== "spend")) return false;
       const timestamp = normalizeTemporalMs(entry?.timestamp, 0);
       if (!timestamp) return false;
-      if (budgetWidgetActiveMonthKey && getMonthKey(timestamp) !== budgetWidgetActiveMonthKey) {
+      if (
+        budgetWidgetActiveMonthKey &&
+        getBudgetPeriodKey(timestamp, budgetIncomePayday) !== budgetWidgetActiveMonthKey
+      ) {
         return false;
       }
       return resolveHistoryCategoryId(entry) === activeCategoryId;
@@ -31493,7 +32188,13 @@ const ProgressScreen = React.memo(function ProgressScreen({
       (a, b) =>
         normalizeTemporalMs(b?.timestamp, 0) - normalizeTemporalMs(a?.timestamp, 0)
     );
-  }, [activeCategoryId, budgetWidgetActiveMonthKey, resolvedHistoryEvents, resolveHistoryCategoryId]);
+  }, [
+    activeCategoryId,
+    budgetIncomePayday,
+    budgetWidgetActiveMonthKey,
+    resolvedHistoryEvents,
+    resolveHistoryCategoryId,
+  ]);
   const locale = useMemo(() => getFormatLocale(language), [language]);
   const describeCategoryHistory = useCallback(
     (entry) => {
@@ -31857,6 +32558,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
     error: false,
   });
   const budgetDraftRef = useRef(budgetDraft);
+  const budgetResetDraftRef = useRef(new Set());
   const budgetModalTopInset = useMemo(
     () => Math.max(8, Math.max(Number(topInset) || 0, Number(safeAreaInsets.top) || 0)),
     [safeAreaInsets.top, topInset]
@@ -31903,13 +32605,29 @@ const ProgressScreen = React.memo(function ProgressScreen({
     const stats = budgetMonthlyStats[budgetModalActiveMonthKey];
     return stats?.spendByCategory || {};
   }, [budgetModalActiveMonthKey, budgetMonthKey, budgetMonthlyStats, budgetSpendDistribution]);
+  const budgetModalTimeAdjustment = useMemo(
+    () =>
+      resolveBudgetTimeAdjustment({
+        incomeEntries,
+        periodKey: budgetModalActiveMonthKey,
+        payday: budgetIncomePayday,
+        now: todayTimestamp,
+      }),
+    [budgetIncomePayday, budgetModalActiveMonthKey, incomeEntries, todayTimestamp]
+  );
+  const budgetModalPeriodOverrides = useMemo(
+    () => getBudgetOverridesForPeriod(budgetOverrides, budgetModalActiveMonthKey),
+    [budgetModalActiveMonthKey, budgetOverrides]
+  );
   const budgetModalPlan = useMemo(
     () =>
       buildBudgetPlan({
         incomeUSD: budgetModalIncomeUSD,
         carryoverUSD: budgetModalCarryoverUSD,
-        budgetOverrides,
+        budgetOverrides: budgetModalPeriodOverrides,
         remainingOverrideUSD: resolveBudgetRemainingOverrideUSD(budgetModalActiveMonthKey),
+        timeAdjustmentUSD: budgetModalTimeAdjustment.elapsedIncomeUSD,
+        autoAllocationScale: budgetModalTimeAdjustment.remainingRatio,
         spendDistribution: budgetModalSpendDistribution,
         spendToDateByCategory: budgetModalMonthSpend.map,
         spendToDateTotalUSD: budgetModalMonthSpend.total,
@@ -31926,7 +32644,9 @@ const ProgressScreen = React.memo(function ProgressScreen({
       budgetModalIncomeUSD,
       budgetModalMonthSpend,
       budgetModalSpendDistribution,
-      budgetOverrides,
+      budgetModalPeriodOverrides,
+      budgetModalTimeAdjustment.elapsedIncomeUSD,
+      budgetModalTimeAdjustment.remainingRatio,
       decisionStats,
       language,
       resolveBudgetRemainingOverrideUSD,
@@ -31951,6 +32671,8 @@ const ProgressScreen = React.memo(function ProgressScreen({
         carryoverUSD: budgetModalCarryoverUSD,
         budgetOverrides: {},
         remainingOverrideUSD: resolveBudgetRemainingOverrideUSD(budgetModalActiveMonthKey),
+        timeAdjustmentUSD: budgetModalTimeAdjustment.elapsedIncomeUSD,
+        autoAllocationScale: budgetModalTimeAdjustment.remainingRatio,
         spendDistribution: budgetModalSpendDistribution,
         spendToDateByCategory: budgetModalMonthSpend.map,
         spendToDateTotalUSD: budgetModalMonthSpend.total,
@@ -31967,6 +32689,8 @@ const ProgressScreen = React.memo(function ProgressScreen({
       budgetModalIncomeUSD,
       budgetModalMonthSpend,
       budgetModalSpendDistribution,
+      budgetModalTimeAdjustment.elapsedIncomeUSD,
+      budgetModalTimeAdjustment.remainingRatio,
       decisionStats,
       language,
       resolveBudgetRemainingOverrideUSD,
@@ -31981,10 +32705,13 @@ const ProgressScreen = React.memo(function ProgressScreen({
     return map;
   }, [budgetModalAdaptivePlan?.categories]);
   const budgetModalTimeline = useMemo(() => {
-    const parsedMonth = parseMonthKey(budgetModalActiveMonthKey);
-    const now = new Date();
-    const currentMonthKey = getMonthKey(now.getTime());
-    if (!parsedMonth) {
+    const now = Date.now();
+    const periodInfo = resolveBudgetPeriodInfo({
+      periodKey: budgetModalActiveMonthKey,
+      payday: budgetIncomePayday,
+      now,
+    });
+    if (!periodInfo.startAt || !periodInfo.endAt) {
       return {
         isCurrentMonth: false,
         isPastMonth: false,
@@ -31993,15 +32720,11 @@ const ProgressScreen = React.memo(function ProgressScreen({
         daysRemaining: 0,
       };
     }
-    const daysInMonth = new Date(
-      parsedMonth.getFullYear(),
-      parsedMonth.getMonth() + 1,
-      0
-    ).getDate();
-    const isCurrentMonth = budgetModalActiveMonthKey === currentMonthKey;
-    const isPastMonth = budgetModalActiveMonthKey < currentMonthKey;
+    const daysInMonth = Math.max(1, Math.round(periodInfo.durationMs / DAY_MS));
+    const isCurrentMonth = periodInfo.isCurrentPeriod;
+    const isPastMonth = periodInfo.isPastPeriod;
     const daysElapsed = isCurrentMonth
-      ? Math.max(1, Math.min(now.getDate(), daysInMonth))
+      ? Math.max(1, Math.min(Math.ceil((now - periodInfo.startAt) / DAY_MS), daysInMonth))
       : isPastMonth
       ? daysInMonth
       : 1;
@@ -32013,7 +32736,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
       daysElapsed,
       daysRemaining,
     };
-  }, [budgetModalActiveMonthKey]);
+  }, [budgetIncomePayday, budgetModalActiveMonthKey]);
   const budgetModalRecommendationMap = useMemo(() => {
     if (!budgetModalDisplayCategories.length) return {};
     const targetPoolUSD = budgetModalDisplayCategories.reduce(
@@ -32083,12 +32806,15 @@ const ProgressScreen = React.memo(function ProgressScreen({
     return savingsLimitUSD + nonSavingsTotalUSD;
   }, [budgetDraft, budgetModalDisplayCategories, budgetModalPlanMap]);
   const budgetModalPlannedUSD = useMemo(() => {
-    const rawPlannedUSD = (budgetModalPlan?.incomeUSD || 0) - budgetModalDraftAllocatedUSD;
+    const rawPlannedUSD =
+      (budgetModalPlan?.allocatableIncomeUSD ?? budgetModalPlan?.incomeUSD ?? 0) -
+      budgetModalDraftAllocatedUSD;
     const remainingUSD = Number(budgetModalPlan?.remainingUSD) || 0;
     if (remainingUSD <= 0) return 0;
     return rawPlannedUSD;
   }, [
     budgetModalDraftAllocatedUSD,
+    budgetModalPlan?.allocatableIncomeUSD,
     budgetModalPlan?.incomeUSD,
     budgetModalPlan?.remainingUSD,
   ]);
@@ -32185,6 +32911,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
   const handleBudgetDraftChange = useCallback((categoryId, valueUSD) => {
     if (!categoryId) return;
     const normalized = Math.max(0, Number(valueUSD) || 0);
+    budgetResetDraftRef.current.delete(categoryId);
     setBudgetDraft((prev) => {
       const next = { ...(prev || {}), [categoryId]: normalized };
       budgetDraftRef.current = next;
@@ -32202,19 +32929,49 @@ const ProgressScreen = React.memo(function ProgressScreen({
     const nextEnabled = !isInteracting;
     setBudgetModalSliderScrollEnabled((prev) => (prev === nextEnabled ? prev : nextEnabled));
   }, []);
+  const handleBudgetCategoryReset = useCallback(
+    (categoryId) => {
+      if (!categoryId || budgetModalStatsOnly) return;
+      const autoLimitUSD = Math.max(
+        0,
+        Number(budgetModalAdaptivePlanMap?.[categoryId]?.limitUSD) || 0
+      );
+      budgetResetDraftRef.current.add(categoryId);
+      setBudgetDraft((prev) => {
+        const next = { ...(prev || {}), [categoryId]: autoLimitUSD };
+        budgetDraftRef.current = next;
+        return next;
+      });
+      onBudgetOverrideReset?.(categoryId, budgetModalActiveMonthKey);
+      logEvent("budget_category_limit_reset", {
+        category_id: categoryId,
+        month_key: budgetModalActiveMonthKey,
+        limit_usd: autoLimitUSD,
+      });
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    },
+    [
+      budgetModalActiveMonthKey,
+      budgetModalAdaptivePlanMap,
+      budgetModalStatsOnly,
+      logEvent,
+      onBudgetOverrideReset,
+    ]
+  );
   const applyBudgetDraftChanges = useCallback(
     (source = "budget_modal_done") => {
       if (budgetModalStatsOnly) return;
       const draft = budgetDraftRef.current || {};
       let changedCount = 0;
       budgetModalDisplayCategories.forEach((entry) => {
+        if (budgetResetDraftRef.current.has(entry.id)) return;
         const currentValueUSD = Math.max(
           0,
           Number(budgetModalPlanMap?.[entry.id]?.limitUSD ?? entry.limitUSD) || 0
         );
         const nextValueUSD = Math.max(0, Number(draft?.[entry.id] ?? currentValueUSD) || 0);
         if (Math.abs(nextValueUSD - currentValueUSD) < 0.01) return;
-        onBudgetOverrideChange(entry.id, nextValueUSD);
+        onBudgetOverrideChange(entry.id, nextValueUSD, budgetModalActiveMonthKey);
         logEvent("budget_category_limit_updated", {
           category_id: entry.id,
           limit_usd: nextValueUSD,
@@ -32227,7 +32984,14 @@ const ProgressScreen = React.memo(function ProgressScreen({
         triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
       }
     },
-    [budgetModalDisplayCategories, budgetModalPlanMap, budgetModalStatsOnly, logEvent, onBudgetOverrideChange]
+    [
+      budgetModalActiveMonthKey,
+      budgetModalDisplayCategories,
+      budgetModalPlanMap,
+      budgetModalStatsOnly,
+      logEvent,
+      onBudgetOverrideChange,
+    ]
   );
   const confirmBudgetModal = useCallback(() => {
     if (!budgetModalStatsOnly) {
@@ -32354,9 +33118,11 @@ const ProgressScreen = React.memo(function ProgressScreen({
   useEffect(() => {
     if (!budgetModalVisible) {
       setBudgetModalSliderScrollEnabled(true);
+      budgetResetDraftRef.current.clear();
       budgetModalAnim.setValue(0);
       return;
     }
+    budgetResetDraftRef.current.clear();
     setBudgetModalSliderScrollEnabled(true);
     budgetModalAnim.setValue(0);
     Animated.timing(budgetModalAnim, {
@@ -33792,6 +34558,38 @@ const ProgressScreen = React.memo(function ProgressScreen({
                             {entry.monthlyAmountLabel}
                           </Text>
                         </View>
+                        <View style={styles.subscriptionModalMetric}>
+                          <Text style={[styles.subscriptionModalMetricLabel, { color: colors.muted }]}>
+                            {t("subscriptionModalFirstRecorded")}
+                          </Text>
+                          <Text style={[styles.subscriptionModalMetricValue, { color: colors.text }]} numberOfLines={1}>
+                            {formatSubscriptionDate(entry.firstRecordedAt)}
+                          </Text>
+                        </View>
+                        <View style={styles.subscriptionModalMetric}>
+                          <Text style={[styles.subscriptionModalMetricLabel, { color: colors.muted }]}>
+                            {t("subscriptionModalYearForecast")}
+                          </Text>
+                          <Text style={[styles.subscriptionModalMetricValue, { color: colors.text }]}>
+                            {entry.annualForecastLabel}
+                          </Text>
+                        </View>
+                      </View>
+                      <View
+                        style={[
+                          styles.subscriptionModalMiniTrack,
+                          { backgroundColor: colorWithAlpha(colors.text, isDarkTheme ? 0.08 : 0.06) },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.subscriptionModalMiniFill,
+                            {
+                              width: `${Math.min(100, Math.max(6, ((entry.spentUSD || 0) / Math.max(entry.annualForecastUSD || 0, entry.spentUSD || 0, 1)) * 100))}%`,
+                              backgroundColor: SPEND_ACTION_COLOR,
+                            },
+                          ]}
+                        />
                       </View>
                     </View>
                   ))}
@@ -33816,6 +34614,186 @@ const ProgressScreen = React.memo(function ProgressScreen({
                   {t("subscriptionModalClose")}
                 </Text>
               </TouchableOpacity>
+            </Animated.View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={!!subscriptionDuePromptEntry}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={closeSubscriptionDuePrompt}
+      >
+        <View style={styles.subscriptionModalRoot}>
+          <TouchableWithoutFeedback onPress={closeSubscriptionDuePrompt}>
+            <Animated.View
+              style={[
+                styles.subscriptionModalBackdrop,
+                { backgroundColor: "#000", opacity: subscriptionDueBackdropOpacity },
+              ]}
+            />
+          </TouchableWithoutFeedback>
+          <View style={styles.subscriptionModalWrap} pointerEvents="box-none">
+            <Animated.View
+              style={[
+                styles.subscriptionDueCard,
+                { backgroundColor: colors.card, borderColor: colorWithAlpha(subscriptionUrgencyColor, 0.32) },
+                {
+                  opacity: subscriptionDuePromptAnim,
+                  transform: [
+                    { translateY: subscriptionDueCardTranslateY },
+                    { scale: subscriptionDueCardScale },
+                  ],
+                },
+              ]}
+            >
+              {subscriptionDuePromptEntry ? (
+                <>
+                  <View style={styles.subscriptionDueHero}>
+                    <View
+                      style={[
+                        styles.subscriptionDueEmojiBubble,
+                        { backgroundColor: colorWithAlpha(subscriptionUrgencyColor, isDarkTheme ? 0.2 : 0.12) },
+                      ]}
+                    >
+                      <Text style={styles.subscriptionDueEmoji}>{subscriptionDuePromptEntry.emoji}</Text>
+                    </View>
+                    <View style={styles.subscriptionDueHeroText}>
+                      <Text style={[styles.subscriptionDueTitle, { color: colors.text }]}>
+                        {t("subscriptionDueModalTitle")}
+                      </Text>
+                      <Text style={[styles.subscriptionDueSubtitle, { color: colors.muted }]}>
+                        {t("subscriptionDueModalSubtitle", { title: subscriptionDuePromptEntry.title })}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.subscriptionDueStatsGrid}>
+                    <View
+                      style={[
+                        styles.subscriptionDueStat,
+                        {
+                          borderColor: colorWithAlpha(SPEND_ACTION_COLOR, 0.28),
+                          backgroundColor: colorWithAlpha(SPEND_ACTION_COLOR, 0.08),
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.subscriptionDueStatLabel, { color: colors.muted }]}>
+                        {t("subscriptionDueAmount")}
+                      </Text>
+                      <Text style={[styles.subscriptionDueStatValue, { color: SPEND_ACTION_COLOR }]}>
+                        {subscriptionDuePromptEntry.amountLabel}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.subscriptionDueStat,
+                        {
+                          borderColor: colorWithAlpha(subscriptionUrgencyColor, 0.28),
+                          backgroundColor: colorWithAlpha(subscriptionUrgencyColor, 0.08),
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.subscriptionDueStatLabel, { color: colors.muted }]}>
+                        {t("subscriptionDueFirstRecorded")}
+                      </Text>
+                      <Text style={[styles.subscriptionDueStatValue, { color: colors.text }]} numberOfLines={1}>
+                        {formatSubscriptionDate(subscriptionDuePromptEntry.firstRecordedAt)}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.subscriptionDueStat,
+                        { borderColor: colors.border, backgroundColor: colorWithAlpha(colors.text, isDarkTheme ? 0.05 : 0.03) },
+                      ]}
+                    >
+                      <Text style={[styles.subscriptionDueStatLabel, { color: colors.muted }]}>
+                        {t("subscriptionDueTotalSpent")}
+                      </Text>
+                      <Text style={[styles.subscriptionDueStatValue, { color: colors.text }]}>
+                        {subscriptionDuePromptEntry.spentLabel}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.subscriptionDueStat,
+                        { borderColor: colors.border, backgroundColor: colorWithAlpha("#7C5CFF", isDarkTheme ? 0.16 : 0.09) },
+                      ]}
+                    >
+                      <Text style={[styles.subscriptionDueStatLabel, { color: colors.muted }]}>
+                        {t("subscriptionDueYearForecast")}
+                      </Text>
+                      <Text style={[styles.subscriptionDueStatValue, { color: colors.text }]}>
+                        {subscriptionDuePromptEntry.annualForecastLabel}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.subscriptionDueChart}>
+                    <Text style={[styles.subscriptionDueChartTitle, { color: colors.text }]}>
+                      {t("subscriptionDueHistoryTitle")}
+                    </Text>
+                    {subscriptionDueChartRows.map((row) => (
+                      <View key={row.key} style={styles.subscriptionDueChartRow}>
+                        <View style={styles.subscriptionDueChartMeta}>
+                          <Text style={[styles.subscriptionDueChartLabel, { color: colors.muted }]} numberOfLines={1}>
+                            {row.label}
+                          </Text>
+                          <Text style={[styles.subscriptionDueChartValue, { color: colors.text }]} numberOfLines={1}>
+                            {row.valueLabel}
+                          </Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.subscriptionDueChartTrack,
+                            { backgroundColor: colorWithAlpha(colors.text, isDarkTheme ? 0.08 : 0.06) },
+                          ]}
+                        >
+                          <Animated.View
+                            style={[
+                              styles.subscriptionDueChartFill,
+                              {
+                                backgroundColor: row.color,
+                                width: subscriptionDueChartAnim.interpolate({
+                                  inputRange: [0, 1],
+                                  outputRange: [0, row.targetWidth],
+                                }),
+                              },
+                            ]}
+                          />
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                  <Text style={[styles.subscriptionDueQuestion, { color: colors.text }]}>
+                    {t("subscriptionDuePaidQuestion")}
+                  </Text>
+                  <View style={styles.subscriptionDueActions}>
+                    <TouchableOpacity
+                      style={[styles.subscriptionDueActionButton, { backgroundColor: SAVE_ACTION_COLOR }]}
+                      onPress={() => handleSubscriptionDueDecision("skipped")}
+                      activeOpacity={0.88}
+                    >
+                      <Text style={styles.subscriptionDueActionText}>{t("subscriptionDueNotPaidButton")}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.subscriptionDueActionButton, { backgroundColor: SPEND_ACTION_COLOR }]}
+                      onPress={() => handleSubscriptionDueDecision("paid")}
+                      activeOpacity={0.88}
+                    >
+                      <Text style={styles.subscriptionDueActionText}>{t("subscriptionDuePaidButton")}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.subscriptionDueLater}
+                    onPress={closeSubscriptionDuePrompt}
+                    activeOpacity={0.86}
+                  >
+                    <Text style={[styles.subscriptionDueLaterText, { color: colors.muted }]}>
+                      {t("subscriptionDueLater")}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : null}
             </Animated.View>
           </View>
         </View>
@@ -34331,6 +35309,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
                     colors={colors}
                     t={t}
                     onManualEdit={openBudgetManualPrompt}
+                    onResetLimit={handleBudgetCategoryReset}
                     onValueChange={handleBudgetSliderDraftChange}
                     onValueChangeEnd={handleBudgetSliderDraftChange}
                     onInteractionChange={handleBudgetSliderInteractionChange}
@@ -37961,9 +38940,12 @@ const buildAchievements = ({
   const metricValues = {
     [ACHIEVEMENT_METRIC_TYPES.SAVED_AMOUNT]: savedTotalUSD,
     [ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_TOTAL]: freeDayStats?.total || 0,
-    [ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_STREAK]: freeDayStats?.current || 0,
+    [ACHIEVEMENT_METRIC_TYPES.FREE_DAYS_STREAK]: Math.max(
+      freeDayStats?.current || 0,
+      freeDayStats?.best || 0
+    ),
     [ACHIEVEMENT_METRIC_TYPES.REFUSE_COUNT]: declineCount || 0,
-    [ACHIEVEMENT_METRIC_TYPES.FRIDGE_ITEMS_COUNT]: pendingCount,
+    [ACHIEVEMENT_METRIC_TYPES.FRIDGE_ITEMS_COUNT]: pendingCount + fridgeDecisionsResolved,
     [ACHIEVEMENT_METRIC_TYPES.FRIDGE_DECISIONS]: fridgeDecisionsResolved,
     [ACHIEVEMENT_METRIC_TYPES.DAILY_CHALLENGE_COMPLETED]: dailyChallengeCompletedCount,
     [ACHIEVEMENT_METRIC_TYPES.FOCUS_VICTORY_COUNT]: focusVictoryCount,
@@ -38011,7 +38993,7 @@ const buildAchievements = ({
       targetValue: target,
       metricType: def.metricType,
       remainingLabel,
-      rewardHealth: def.rewardHealth || HEALTH_PER_REWARD,
+      rewardHealth: getScaledAchievementReward(def.rewardHealth || HEALTH_PER_REWARD),
     };
   });
 };
@@ -38089,7 +39071,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
     const bonus = Number(dailyChallenge?.rewardBonus) || 0;
     const base = Number(dailyChallenge?.baseReward) || 0;
     const total = Number(dailyChallenge?.rewardTotal) || base + bonus;
-    return String(getChestRewardDisplayCount(total));
+    return formatHealthRewardLabel(total, language);
   }, [dailyChallenge?.baseReward, dailyChallenge?.rewardBonus, dailyChallenge?.rewardTotal, language]);
 
   const renderChallengeCard = (challenge) => {
@@ -38151,14 +39133,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
             { backgroundColor: colors.text },
           ]}
         >
-          <HealthRewardTokens
-            amount={challenge.rewardHealth}
-            color={colors.background}
-            iconSize={12}
-            maxItems={2}
-            textSize={10}
-            rowStyle={styles.healthRewardTokenRowCompact}
-          />
+          <ChestRewardPreviewIcon amount={challenge.rewardHealth} size={24} />
         </View>
         <View style={styles.challengeHeader}>
           <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
@@ -38241,7 +39216,6 @@ const RewardsScreen = React.memo(function RewardsScreen({
 
   const renderRewardCard = (reward) => {
     const rewardPayout = reward.rewardHealth || healthRewardAmount;
-    const rewardLabel = formatRewardLabel(rewardPayout);
     const rewardPalette = reward.unlocked
       ? isDarkTheme
         ? {
@@ -38301,12 +39275,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
                   {t("rewardBadgeClaimed")}
                 </Text>
               ) : (
-                <HealthRewardTokens
-                  amount={rewardPayout}
-                  color={rewardPalette.badgeText}
-                  iconSize={18}
-                  maxItems={3}
-                />
+                <ChestRewardPreviewIcon amount={rewardPayout} size={26} />
               )}
             </View>
           </View>
@@ -38335,7 +39304,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
           {reward.unlocked
             ? reward.claimed
               ? t("rewardClaimedStatus")
-              : t("rewardClaimHint", { amount: rewardLabel })
+              : t("rewardClaimHint")
             : reward.remainingLabel || t("rewardLockedGeneric", { count: 1 })}
         </Text>
         {reward.unlocked && !reward.claimed && (
@@ -38382,7 +39351,6 @@ const RewardsScreen = React.memo(function RewardsScreen({
       Number(dailyChallenge.target) || 1
     );
     const target = Math.max(Number(dailyChallenge.target) || 1, 1);
-    const rewardLabel = dailyChallengeRewardLabel;
     const rewardAmount = Math.max(
       0,
       Number(dailyChallenge.rewardTotal ?? dailyChallenge.rewardBonus) || 0
@@ -38404,14 +39372,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
             { backgroundColor: colors.text },
           ]}
         >
-          <HealthRewardTokens
-            amount={rewardAmount}
-            color={colors.background}
-            iconSize={12}
-            maxItems={2}
-            textSize={10}
-            rowStyle={styles.healthRewardTokenRowCompact}
-          />
+          <ChestRewardPreviewIcon amount={rewardAmount} size={24} />
         </View>
         <View style={styles.dailyChallengeWidgetHeader}>
           <View style={[styles.dailyChallengeBadge, { borderColor: widgetBorder }]}>
@@ -38449,7 +39410,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
               {t("dailyChallengeWidgetProgress", { current: `${progress}`, target: `${target}` })}
             </Text>
             <Text style={[styles.dailyChallengeRewardLabel, { color: colors.text }]}>
-              {t("dailyChallengeWidgetReward", { amount: rewardLabel })}
+              {t("dailyChallengeWidgetReward")}
             </Text>
           </View>
         </View>
@@ -41562,6 +42523,14 @@ function AppContent() {
   const [tycoonAutosaveDismissed, setTycoonAutosaveDismissed] = useState(false);
   const [tycoonAutosaveSnoozedUntil, setTycoonAutosaveSnoozedUntil] = useState(0);
   const [tycoonAutosaveOpenRequestedAt, setTycoonAutosaveOpenRequestedAt] = useState(0);
+  const [tycoonAutosaveHungryBlock, setTycoonAutosaveHungryBlock] = useState({
+    active: false,
+    dayKey: null,
+    count: 0,
+    amountUSD: 0,
+    blockedAt: 0,
+  });
+  const tycoonAutosaveHungryNotifiedRef = useRef({ dayKey: null, count: 0 });
   const [tycoonRewardModal, setTycoonRewardModal] = useState({
     visible: false,
     count: 0,
@@ -41571,6 +42540,17 @@ function AppContent() {
   const [tycoonRewardFlowActive, setTycoonRewardFlowActive] = useState(false);
   const [tycoonAutosaveSweepVersion, setTycoonAutosaveSweepVersion] = useState(0);
   const tycoonAutosaveMinuteTick = useMinuteTicker(tycoonSettings?.enabled !== false);
+  const [tamagotchiState, setTamagotchiState] = useState({ ...TAMAGOTCHI_START_STATE });
+  useEffect(() => {
+    const currentFullness = Math.min(
+      TAMAGOTCHI_MAX_HUNGER,
+      Math.max(0, Number(tamagotchiState.hunger) || 0)
+    );
+    if (currentFullness < TYCOON_AUTOSAVE_HUNGER_PAUSE_THRESHOLD) return;
+    setTycoonAutosaveHungryBlock((prev) =>
+      prev?.active ? { ...prev, active: false, count: 0, amountUSD: 0 } : prev
+    );
+  }, [tamagotchiState.hunger]);
   const [hiddenTemptations, setHiddenTemptations] = useState([]);
   const [hiddenTemptationsHydrated, setHiddenTemptationsHydrated] = useState(false);
   const [archivedTemptations, setArchivedTemptations] = useState([]);
@@ -41710,8 +42690,6 @@ function AppContent() {
   }, []);
   useEffect(() => {
     pruneClaimedRewards();
-    const interval = setInterval(pruneClaimedRewards, DAY_MS);
-    return () => clearInterval(interval);
   }, [pruneClaimedRewards]);
   const dayRolloverTimerRef = useRef(null);
   useEffect(() => {
@@ -42065,6 +43043,23 @@ function AppContent() {
     !freeDayLoggedToday &&
     !hasSpendLoggedToday;
   const currentMonthKey = useMemo(() => getMonthKey(Date.now()), [currentDayKey]);
+  const currentBudgetPayday = normalizeIncomePayday(profile?.incomePayday);
+  const currentBudgetPeriodKey = useMemo(
+    () => getBudgetPeriodKey(Date.now(), currentBudgetPayday),
+    [currentBudgetPayday, currentDayKey]
+  );
+  useEffect(() => {
+    if (!budgetOverridesHydrated || !profileHydrated || !currentBudgetPeriodKey) return;
+    const normalized = normalizeBudgetOverrides(budgetOverrides);
+    if (normalized.__periodOverrides === true) return;
+    if (!Object.keys(normalized).length) return;
+    setBudgetOverrides({
+      __periodOverrides: true,
+      periods: {
+        [currentBudgetPeriodKey]: normalized,
+      },
+    });
+  }, [budgetOverrides, budgetOverridesHydrated, currentBudgetPeriodKey, profileHydrated]);
   const widgetSavedMonthUSD = useMemo(() => {
     let total = 0;
     resolvedHistoryEvents.forEach((entry) => {
@@ -42119,23 +43114,35 @@ function AppContent() {
       buildBudgetMonthlyStats({
         incomeEntries,
         historyEvents: resolvedHistoryEvents,
-        currentMonthKey,
+        currentMonthKey: currentBudgetPeriodKey,
+        incomePayday: currentBudgetPayday,
       }),
-    [currentMonthKey, incomeEntries, resolvedHistoryEvents]
+    [currentBudgetPayday, currentBudgetPeriodKey, incomeEntries, resolvedHistoryEvents]
   );
   const widgetBudgetCarryover = useMemo(
     () => buildBudgetCarryoverMap(widgetBudgetStats),
     [widgetBudgetStats]
   );
-  const widgetBudgetMonthStats = widgetBudgetStats[currentMonthKey] || {
+  const widgetBudgetMonthStats = widgetBudgetStats[currentBudgetPeriodKey] || {
     incomeUSD: 0,
     spendTotalUSD: 0,
   };
   const widgetBudgetTotalValue =
     (Number(widgetBudgetMonthStats.incomeUSD) || 0) +
-    (Number(widgetBudgetCarryover[currentMonthKey]) || 0);
+    (Number(widgetBudgetCarryover[currentBudgetPeriodKey]) || 0);
+  const widgetBudgetTimeAdjustment = useMemo(
+    () =>
+      resolveBudgetTimeAdjustment({
+        incomeEntries,
+        periodKey: currentBudgetPeriodKey,
+        payday: currentBudgetPayday,
+      }),
+    [currentBudgetPayday, currentBudgetPeriodKey, incomeEntries]
+  );
   const widgetBudgetRemainingValue =
-    widgetBudgetTotalValue - (Number(widgetBudgetMonthStats.spendTotalUSD) || 0);
+    widgetBudgetTotalValue -
+    (Number(widgetBudgetMonthStats.spendTotalUSD) || 0) -
+    (Number(widgetBudgetTimeAdjustment.elapsedIncomeUSD) || 0);
   const widgetBudgetRemainingLabel = formatWidgetAmount(Math.abs(widgetBudgetRemainingValue));
   useEffect(() => {
     if (!canUpdateWidgetStorage()) return;
@@ -42217,12 +43224,18 @@ function AppContent() {
     widgetRefreshTick,
   ]);
   const currentMonthIncomeUSD = useMemo(
-    () => getBudgetIncomeForMonth(incomeEntries, currentMonthKey),
-    [incomeEntries, currentMonthKey]
+    () =>
+      getBudgetIncomeForMonth(incomeEntries, currentBudgetPeriodKey, {
+        payday: currentBudgetPayday,
+      }),
+    [currentBudgetPayday, currentBudgetPeriodKey, incomeEntries]
   );
   const currentMonthRecurringIncomeUSD = useMemo(
-    () => getRecurringIncomeForMonth(incomeEntries, currentMonthKey),
-    [incomeEntries, currentMonthKey]
+    () =>
+      getRecurringIncomeForMonth(incomeEntries, currentBudgetPeriodKey, {
+        payday: currentBudgetPayday,
+      }),
+    [currentBudgetPayday, currentBudgetPeriodKey, incomeEntries]
   );
   const hasMonthlyIncomeEntries = useMemo(
     () =>
@@ -42237,13 +43250,13 @@ function AppContent() {
       if (!entry || entry.kind !== "spend") return;
       const timestamp = normalizeTemporalMs(entry?.timestamp, 0);
       if (!timestamp) return;
-      if (getMonthKey(timestamp) !== currentMonthKey) return;
+      if (getBudgetPeriodKey(timestamp, currentBudgetPayday) !== currentBudgetPeriodKey) return;
       const amount = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
       if (!amount) return;
       total += amount;
     });
     return total;
-  }, [resolvedHistoryEvents, currentMonthKey]);
+  }, [currentBudgetPayday, currentBudgetPeriodKey, resolvedHistoryEvents]);
   const currentMonthOverspendUSD = useMemo(() => {
     if (!currentMonthIncomeUSD) return 0;
     return Math.max(0, currentMonthSpendUSD - currentMonthIncomeUSD);
@@ -42884,7 +43897,7 @@ function AppContent() {
     if (onboardingStep !== "done") return false;
     if (!budgetAutoEnabled) return false;
     if (fabTutorialState !== FAB_TUTORIAL_STATUS.DONE) return false;
-    const monthKey = currentMonthKey || getMonthKey(Date.now());
+    const monthKey = currentBudgetPeriodKey || getBudgetPeriodKey(Date.now(), currentBudgetPayday);
     if (!monthKey) return false;
     if (incomePromptState?.lastPromptMonthKey === monthKey) return false;
     if (currentMonthRecurringIncomeUSD > 0) return false;
@@ -42904,8 +43917,9 @@ function AppContent() {
     );
   }, [
     budgetAutoEnabled,
+    currentBudgetPayday,
+    currentBudgetPeriodKey,
     currentMonthRecurringIncomeUSD,
-    currentMonthKey,
     hasMonthlyIncomeEntries,
     incomeEntriesHydrated,
     incomePromptHydrated,
@@ -42931,7 +43945,7 @@ function AppContent() {
   useEffect(() => {
     if (!budgetOverspendHydrated || !savedTotalHydrated) return;
     if (!incomeEntriesHydrated || !historyHydrated) return;
-    if (!currentMonthKey) return;
+    if (!currentBudgetPeriodKey) return;
     const overspendMap = budgetOverspendMap && typeof budgetOverspendMap === "object"
       ? budgetOverspendMap
       : {};
@@ -42969,20 +43983,20 @@ function AppContent() {
       return;
     }
     const nextApplied = Math.max(0, currentMonthOverspendUSD || 0);
-    const prevApplied = Math.max(0, Number(overspendMap?.[currentMonthKey]) || 0);
+    const prevApplied = Math.max(0, Number(overspendMap?.[currentBudgetPeriodKey]) || 0);
     const delta = nextApplied - prevApplied;
     if (Math.abs(delta) < 0.01) return;
     setSavedTotalUSD((prev) => clampSavedBalanceUSD(prev - delta));
     setProgressSavedTotalUSD((prev) => clampSavedBalanceUSD(prev - delta));
     setBudgetOverspendMap((prev) => ({
       ...(prev || {}),
-      [currentMonthKey]: nextApplied,
+      [currentBudgetPeriodKey]: nextApplied,
     }));
   }, [
     budgetAutoEnabled,
     budgetOverspendHydrated,
     budgetOverspendMap,
-    currentMonthKey,
+    currentBudgetPeriodKey,
     currentMonthOverspendUSD,
     historyHydrated,
     incomeEntriesHydrated,
@@ -43213,7 +44227,12 @@ function AppContent() {
   }, [tycoonPendingRewardEvents.length, tycoonRewardFlowActive]);
   useEffect(() => {
     if (!tycoonSettingsHydrated || !tycoonLedgerHydrated || !temptationInteractionsHydrated) return;
-    if (tycoonSettings?.enabled === false) return;
+    if (tycoonSettings?.enabled === false) {
+      setTycoonAutosaveHungryBlock((prev) =>
+        prev?.active ? { ...prev, active: false, count: 0, amountUSD: 0 } : prev
+      );
+      return;
+    }
     const now = Date.now();
     const rule = resolveTycoonLevelRule(playerLevel);
     const confirmAllStreak = Math.max(0, Number(tycoonConfirmStats?.confirmAllStreak) || 0);
@@ -43232,7 +44251,18 @@ function AppContent() {
       return sum + Math.max(0, Number(entry.amountUSD) || 0);
     }, 0);
     let remainingCapUSD = Math.max(0, monthlyCapUSD - usedThisMonth);
-    if (remainingCapUSD <= 0.01) return;
+    if (remainingCapUSD <= 0.01) {
+      setTycoonAutosaveHungryBlock((prev) =>
+        prev?.active ? { ...prev, active: false, count: 0, amountUSD: 0 } : prev
+      );
+      return;
+    }
+    const tamagotchiFullnessForAutosave = Math.min(
+      TAMAGOTCHI_MAX_HUNGER,
+      Math.max(0, Number(tamagotchiState.hunger) || 0)
+    );
+    const autosavePausedByHungryAlmi =
+      tamagotchiFullnessForAutosave < TYCOON_AUTOSAVE_HUNGER_PAUSE_THRESHOLD;
     const ledgerEntries = Array.isArray(tycoonLedger) ? tycoonLedger : [];
     const existingIds = new Set(ledgerEntries.map((entry) => entry?.id).filter(Boolean));
     const pendingCardIds = new Set(
@@ -43241,9 +44271,11 @@ function AppContent() {
         .map((entry) => entry.cardId)
     );
     const nextEvents = [];
+    let blockedEventCount = 0;
+    let blockedAmountUSD = 0;
     const candidateCards = (Array.isArray(products) ? products : []).filter((card) => card?.id);
     for (const card of candidateCards) {
-      if (nextEvents.length >= TYCOON_MAX_AUTOSAVE_EVENTS_TOTAL) break;
+      if ((autosavePausedByHungryAlmi ? blockedEventCount : nextEvents.length) >= TYCOON_MAX_AUTOSAVE_EVENTS_TOTAL) break;
       const templateId = card.id;
       if (pendingCardIds.has(templateId)) continue;
       const interaction = temptationInteractions?.[templateId];
@@ -43285,11 +44317,19 @@ function AppContent() {
         windowEnd <= now && producedForCard < TYCOON_MAX_AUTOSAVE_EVENTS_PER_CARD;
         windowEnd += intervalMs
       ) {
-        if (nextEvents.length >= TYCOON_MAX_AUTOSAVE_EVENTS_TOTAL) break;
+        if ((autosavePausedByHungryAlmi ? blockedEventCount : nextEvents.length) >= TYCOON_MAX_AUTOSAVE_EVENTS_TOTAL) break;
         const id = `auto:${templateId}:${windowEnd}`;
         if (existingIds.has(id)) continue;
         const amountUSD = Math.min(amountBase, remainingCapUSD);
         if (amountUSD <= 0.01) break;
+        if (autosavePausedByHungryAlmi) {
+          blockedEventCount += 1;
+          blockedAmountUSD += amountUSD;
+          remainingCapUSD -= amountUSD;
+          producedForCard += 1;
+          if (remainingCapUSD <= 0.01) break;
+          continue;
+        }
         const titleOverride =
           typeof titleOverrides?.[templateId] === "string" && titleOverrides[templateId].trim()
             ? titleOverrides[templateId].trim()
@@ -43315,6 +44355,37 @@ function AppContent() {
         if (remainingCapUSD <= 0.01) break;
       }
     }
+    if (autosavePausedByHungryAlmi) {
+      if (blockedEventCount > 0) {
+        setTycoonAutosaveHungryBlock((prev) => {
+          const dayKey = getDayKey(now);
+          const amountUSD = clampTransactionAmountUSD(blockedAmountUSD);
+          if (
+            prev?.active &&
+            prev.dayKey === dayKey &&
+            prev.count === blockedEventCount &&
+            Math.abs((Number(prev.amountUSD) || 0) - amountUSD) < 0.01
+          ) {
+            return prev;
+          }
+          return {
+            active: true,
+            dayKey,
+            count: blockedEventCount,
+            amountUSD,
+            blockedAt: now,
+          };
+        });
+      } else {
+        setTycoonAutosaveHungryBlock((prev) =>
+          prev?.active ? { ...prev, active: false, count: 0, amountUSD: 0 } : prev
+        );
+      }
+      return;
+    }
+    setTycoonAutosaveHungryBlock((prev) =>
+      prev?.active ? { ...prev, active: false, count: 0, amountUSD: 0 } : prev
+    );
     if (!nextEvents.length) return;
     setTycoonLedger((prev) => [...(Array.isArray(prev) ? prev : []), ...nextEvents]);
     logEvent("tycoon_autosave_pending_created", {
@@ -43329,6 +44400,7 @@ function AppContent() {
     playerLevel,
     products,
     profile.currency,
+    tamagotchiState.hunger,
     temptationInteractions,
     temptationInteractionsHydrated,
     titleOverrides,
@@ -43394,6 +44466,7 @@ function AppContent() {
   );
   const [overlay, setOverlay] = useState(null);
   const [pendingGoalCelebration, setPendingGoalCelebration] = useState(null);
+  const goalCompletionQueuedGoalRef = useRef(null);
   const pendingUsageStreakRef = useRef(null);
   const pendingSaveStreakAfterReminderRef = useRef(false);
   const pendingSpendStreakAfterReminderRef = useRef(false);
@@ -43866,20 +44939,27 @@ function AppContent() {
       console.warn("tycoon autosave notifications cancel", error);
     }
   }, []);
-	  const enqueueQueuedModal = useCallback(
-    (type) => {
+  const enqueueQueuedModal = useCallback(
+    (type, options = {}) => {
       if (!type) return;
       if (startupHardLockPendingBeforePaywall) return;
       if (queuedModalActiveRef.current === type) return;
       const queue = queuedModalQueueRef.current;
       if (queue.includes(type)) return;
-      queue.push(type);
+      if (options?.priority) {
+        queue.unshift(type);
+      } else {
+        queue.push(type);
+      }
       requestQueuedModalProcess();
     },
     [requestQueuedModalProcess, startupHardLockPendingBeforePaywall]
   );
   const refreshQueuedModalsOnResume = useCallback(() => {
     const isFirstSessionToday = (homeSessionRef.current?.sessionCount || 0) <= 1;
+    if (tycoonAutosaveHungryBlock.active) {
+      enqueueQueuedModal(QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY, { priority: true });
+    }
     if (dailySummaryUnlocked && pendingDailySummaryData) {
       enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_SUMMARY);
     }
@@ -43927,6 +45007,7 @@ function AppContent() {
     pendingFocusDigest,
     requestQueuedModalProcess,
     startupLogoVisible,
+    tycoonAutosaveHungryBlock.active,
     tutorialSeen,
   ]);
   const clearQueuedModal = useCallback(
@@ -43947,6 +45028,34 @@ function AppContent() {
     if (!incomePromptPending) return;
     enqueueQueuedModal(QUEUED_MODAL_TYPES.INCOME_PROMPT);
   }, [enqueueQueuedModal, incomePromptPending]);
+  useEffect(() => {
+    if (onboardingStep !== "done") return;
+    if (premiumPaywallState.visible) return;
+    if (!tycoonAutosaveHungryBlock.active) return;
+    enqueueQueuedModal(QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY, { priority: true });
+  }, [
+    enqueueQueuedModal,
+    onboardingStep,
+    premiumPaywallState.visible,
+    tycoonAutosaveHungryBlock.active,
+  ]);
+  useEffect(() => {
+    if (queuedModalType !== QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY) return;
+    if (
+      onboardingStep === "done" &&
+      !premiumPaywallState.visible &&
+      tycoonAutosaveHungryBlock.active
+    ) {
+      return;
+    }
+    clearQueuedModal(QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY);
+  }, [
+    clearQueuedModal,
+    onboardingStep,
+    premiumPaywallState.visible,
+    queuedModalType,
+    tycoonAutosaveHungryBlock.active,
+  ]);
 	  useEffect(() => {
 	    if (onboardingStep !== "done") return;
 	    if (premiumPaywallState.visible) return;
@@ -45337,10 +46446,7 @@ function AppContent() {
           tierId: LEVEL_SHARE_REWARD_CHEST_TIER_ID,
           chestCount: 1,
           title: t("levelShareRewardGrantedTitle"),
-          closedSubtitle:
-            language === "ru"
-              ? "Поделился уровнем. Открой сундук и забери награду."
-              : "Level shared. Open the chest to claim your reward.",
+          closedSubtitle: t("levelShareRewardChestClosed"),
           openedSubtitle: t("levelShareRewardGrantedBody", { coins: LEVEL_SHARE_REWARD_BLUE_COINS }),
           onRevealReward: () => {
             setHealthPoints((prev) => prev + LEVEL_SHARE_REWARD_HEALTH_POINTS);
@@ -45483,7 +46589,6 @@ function AppContent() {
   const [mascotOverride, setMascotOverride] = useState(null);
   const mascotQueueRef = useRef([]);
   const mascotBusyRef = useRef(false);
-  const [tamagotchiState, setTamagotchiState] = useState({ ...TAMAGOTCHI_START_STATE });
   const [tamagotchiGreetingDayKey, setTamagotchiGreetingDayKey] = useState(null);
   const [tamagotchiGreetingDayHydrated, setTamagotchiGreetingDayHydrated] = useState(false);
   const [tamagotchiVisible, setTamagotchiVisible] = useState(false);
@@ -46376,6 +47481,14 @@ function AppContent() {
     tamagotchiTabContentAnim,
     triggerHaptic,
   ]);
+  const handleTycoonAutosaveHungryClose = useCallback(() => {
+    clearQueuedModal(QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY);
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+  }, [clearQueuedModal, triggerHaptic]);
+  const handleTycoonAutosaveHungryFeed = useCallback(() => {
+    clearQueuedModal(QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY);
+    openTamagotchiOverlay();
+  }, [clearQueuedModal, openTamagotchiOverlay]);
   const closeTamagotchiOverlay = useCallback(() => {
     playSound("tap");
     setTamagotchiClosing(true);
@@ -47997,6 +49110,18 @@ function AppContent() {
       if (typeof FacebookSettings.setAppID === "function") {
         FacebookSettings.setAppID(FACEBOOK_APP_ID);
       }
+      if (
+        Platform.OS === "android" &&
+        typeof FacebookSettings.setAutoLogAppEventsEnabled === "function"
+      ) {
+        FacebookSettings.setAutoLogAppEventsEnabled(false);
+      }
+      if (
+        Platform.OS === "android" &&
+        typeof FacebookSettings.setAdvertiserIDCollectionEnabled === "function"
+      ) {
+        FacebookSettings.setAdvertiserIDCollectionEnabled(true);
+      }
       FacebookSettings.initializeSDK();
       setFacebookSdkReady(true);
       if (typeof FacebookSettings.setAdvertiserTrackingEnabled === "function") {
@@ -48802,6 +49927,12 @@ function AppContent() {
     !levelShareFlowLocked &&
     queuedModalType === QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT &&
     noGoalSavePromptPending;
+  const tycoonAutosaveHungryModalVisible =
+    !levelShareFlowLocked &&
+    queuedModalType === QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY &&
+    onboardingStep === "done" &&
+    !premiumPaywallState.visible &&
+    tycoonAutosaveHungryBlock.active;
   const tycoonAutosaveModalVisible =
     !levelShareFlowLocked &&
     queuedModalType === QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE &&
@@ -48822,6 +49953,8 @@ function AppContent() {
         return didYouKnowVisible;
       case QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT:
         return noGoalSavePromptVisible;
+      case QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY:
+        return tycoonAutosaveHungryModalVisible;
       case QUEUED_MODAL_TYPES.DAILY_CHALLENGE:
         return dailyChallengePromptVisible;
       case QUEUED_MODAL_TYPES.DAILY_CHALLENGE_COMPLETE:
@@ -48849,6 +49982,7 @@ function AppContent() {
     noGoalSavePromptVisible,
     overlay?.type,
     queuedModalType,
+    tycoonAutosaveHungryModalVisible,
     tycoonAutosaveModalVisible,
     tycoonRewardModalVisible,
   ]);
@@ -49279,6 +50413,7 @@ function AppContent() {
       termsModalVisible ||
       spendPrompt.visible ||
       stormActive ||
+      tycoonAutosaveHungryModalVisible ||
       tycoonAutosaveModalVisible ||
       tycoonRewardModalVisible ||
       moodDetailsVisible ||
@@ -49317,6 +50452,7 @@ function AppContent() {
       spendPrompt.visible,
       stormActive,
       termsModalVisible,
+      tycoonAutosaveHungryModalVisible,
       tycoonAutosaveModalVisible,
       tycoonRewardModalVisible,
     ]
@@ -49686,6 +50822,7 @@ function AppContent() {
       levelShareModal.visible ||
       levelShareFlowLocked ||
       incomeEntryModalVisible ||
+      tycoonAutosaveHungryModalVisible ||
       tycoonAutosaveModalVisible ||
       tycoonRewardModalVisible ||
       dailyRewardModalVisible ||
@@ -49752,6 +50889,7 @@ function AppContent() {
       showCustomSpend,
       termsModalVisible,
       incomeEntryModalVisible,
+      tycoonAutosaveHungryModalVisible,
       tycoonAutosaveModalVisible,
       tycoonRewardModalVisible,
       skinPickerVisible,
@@ -49845,6 +50983,12 @@ function AppContent() {
           );
         case QUEUED_MODAL_TYPES.INCOME_PROMPT:
           return incomePromptPending && shouldPromptIncome;
+        case QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY:
+          return (
+            onboardingStep === "done" &&
+            !premiumPaywallState.visible &&
+            tycoonAutosaveHungryBlock.active
+          );
         case QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE:
           return (
             onboardingStep === "done" &&
@@ -49896,6 +51040,7 @@ function AppContent() {
       shouldPromptIncome,
       startupHardLockPendingBeforePaywall,
       startupLogoVisible,
+      tycoonAutosaveHungryBlock.active,
       tycoonAutosaveDismissed,
       tycoonAutosaveSnoozedActive,
       tycoonPendingEvents.length,
@@ -50659,7 +51804,10 @@ function AppContent() {
         Platform.OS !== "ios" ||
         !productIdentifier ||
         premiumState.trialEligibilityByProductId?.[productIdentifier] === true;
-      const freeTrialDaysRaw = trialEligibleForProduct ? resolveFreeTrialDaysFromPackage(pkg) : null;
+      const freeTrialDaysRaw =
+        card.id === "yearly" && trialEligibleForProduct
+          ? resolveFreeTrialDaysFromPackage(pkg)
+          : null;
       const freeTrialDays =
         Number.isFinite(freeTrialDaysRaw) && freeTrialDaysRaw > 0
           ? Math.max(1, Math.round(freeTrialDaysRaw))
@@ -50812,9 +51960,9 @@ function AppContent() {
         Number.isFinite(card.freeTrialDays) && card.freeTrialDays > 0
           ? Math.max(1, Math.round(card.freeTrialDays))
           : null;
-      const fallbackTrialDays = isMonthly ? PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS : null;
+      const fallbackTrialDays = isYearly ? PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS : null;
       const resolvedTrialDays = freeTrialDays || fallbackTrialDays;
-      const hasFreeTrial = !!resolvedTrialDays && isMonthly;
+      const hasFreeTrial = !!resolvedTrialDays && isYearly;
       const recurringChargePriceLabel =
         Number.isFinite(amountLocal) && amountLocal > 0
           ? normalizePaywallPriceLabel(
@@ -53123,7 +54271,7 @@ function AppContent() {
   }, [language, premiumState.error]);
   const handlePremiumPlanSelected = useCallback(
     (planId) => {
-      const targetPlanId = PREMIUM_PLAN_ORDER.includes(planId) ? planId : "weekly";
+      const targetPlanId = PREMIUM_PLAN_ORDER.includes(planId) ? planId : "monthly";
       const selectedCard = premiumPlanCards.find((entry) => entry.id === targetPlanId) || null;
       const trialDays =
         Number.isFinite(selectedCard?.trialDays) && selectedCard.trialDays > 0
@@ -53147,7 +54295,7 @@ function AppContent() {
   const handlePremiumPlanPress = useCallback(
     async (planId) => {
       if (premiumPurchaseLoadingPlan || premiumRestoreLoading) return;
-      const targetPlanId = PREMIUM_PLAN_ORDER.includes(planId) ? planId : "weekly";
+      const targetPlanId = PREMIUM_PLAN_ORDER.includes(planId) ? planId : "monthly";
       const selectedCard = premiumPlanCards.find((entry) => entry.id === targetPlanId) || null;
       const currencyCode = String(
         selectedCard?.currencyCode || profile.currency || DEFAULT_PROFILE.currency || ""
@@ -54372,7 +55520,7 @@ function AppContent() {
       if (!template) return false;
       if (typeof resolveTemptationCategory === "function") {
         const categoryId = resolveTemptationCategory(template);
-        if (isEssentialImpulseCategory(categoryId)) return false;
+        if (isDailyChallengeExcludedCategory(categoryId)) return false;
       }
       const rawTitle =
         template.titleOverride ||
@@ -54509,17 +55657,8 @@ function AppContent() {
     [dailyChallengePriceUSD, profile.currency]
   );
   const dailyChallengeRewardLabel = useMemo(
-    () => String(getChestRewardDisplayCount(dailyChallengeRewardBonus || 0)),
+    () => formatHealthRewardLabel(dailyChallengeRewardBonus || 0, language),
     [dailyChallengeRewardBonus, language]
-  );
-  const dailyChallengeTotalReward = useMemo(() => {
-    const base = Number(dailyChallenge.baseReward) || 0;
-    const bonus = Number(dailyChallengeRewardBonus) || 0;
-    return base + bonus;
-  }, [dailyChallenge.baseReward, dailyChallengeRewardBonus]);
-  const dailyChallengeTotalRewardLabel = useMemo(
-    () => String(getChestRewardDisplayCount(dailyChallengeTotalReward || 0)),
-    [dailyChallengeTotalReward, language]
   );
   const currentMood = useMemo(
     () => deriveMoodFromState(moodState, pendingList.length),
@@ -55249,6 +56388,11 @@ function AppContent() {
           notificationKind === "tycoon-autosave-ready" ||
           notificationKind === "tycoonautosaveready" ||
           dedupeKey.startsWith("tycoon_autosave_ready:");
+        const isTycoonAutosaveHungryPush =
+          notificationKind === TYCOON_AUTOSAVE_HUNGRY_NOTIFICATION_KIND ||
+          notificationKind === "tycoon-autosave-hungry" ||
+          notificationKind === "tycoonautosavehungry" ||
+          dedupeKey.startsWith(`${TYCOON_AUTOSAVE_HUNGRY_NOTIFICATION_KIND}:`);
 	        const pendingId = typeof data.pendingId === "string" ? data.pendingId : null;
         const templateId = resolveNonEmptyString(
           data.templateId || data.template_id || data.templateID || data.template || ""
@@ -55278,6 +56422,9 @@ function AppContent() {
             enqueueQueuedModal(QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE);
           }
           goToTab("feed", { recordHistory: false });
+        } else if (isTycoonAutosaveHungryPush) {
+          enqueueQueuedModal(QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY, { priority: true });
+          goToTab("feed", { recordHistory: false });
         } else if (
 	          normalizedTargetScreen === "budget" ||
           normalizedTargetScreen === "purchases" ||
@@ -55286,6 +56433,7 @@ function AppContent() {
           goToTab("purchases", { recordHistory: false });
         } else if (
           notificationKind === SUBSCRIPTION_REMINDER_KIND ||
+          notificationKind === SUBSCRIPTION_DUE_KIND ||
           normalizedTargetScreen === "subscriptions" ||
           normalizedTargetScreen === "subscription"
         ) {
@@ -55576,6 +56724,54 @@ function AppContent() {
     },
     [ensureNotificationPermission, isNotificationOnCooldown, startupHardLockPendingBeforePaywall]
   );
+
+  useEffect(() => {
+    if (startupHardLockPendingBeforePaywall) return;
+    if (onboardingStep !== "done") return;
+    if (!tycoonAutosaveHungryBlock.active) return;
+    const dayKey = tycoonAutosaveHungryBlock.dayKey || getDayKey(Date.now());
+    const count = Math.max(0, Number(tycoonAutosaveHungryBlock.count) || 0);
+    if (count <= 0) return;
+    const previous = tycoonAutosaveHungryNotifiedRef.current || {};
+    if (previous.dayKey === dayKey && previous.count === count) return;
+    tycoonAutosaveHungryNotifiedRef.current = { dayKey, count };
+    const dedupeKey = `${TYCOON_AUTOSAVE_HUNGRY_NOTIFICATION_KIND}:${dayKey}:${count}`;
+    sendImmediateNotification(
+      {
+        title: t("tycoonAutosaveHungryPushTitle"),
+        body: t("tycoonAutosaveHungryPushBody"),
+        data: {
+          kind: TYCOON_AUTOSAVE_HUNGRY_NOTIFICATION_KIND,
+          targetScreen: "feed",
+          pendingCount: count,
+          dedupeKey,
+        },
+        ...(Platform.OS === "android" ? { channelId: ANDROID_TAMAGOTCHI_CHANNEL_ID } : null),
+        ...(Platform.OS === "ios" && TAMAGOTCHI_CRY_GIF_URI
+          ? {
+              attachments: [
+                {
+                  identifier: "almi-autosave-hungry",
+                  url: TAMAGOTCHI_CRY_GIF_URI,
+                  typeHint: "com.compuserve.gif",
+                },
+              ],
+            }
+          : null),
+      },
+      { dedupeKey, dedupeWindowMs: DAY_MS }
+    ).catch((error) => {
+      console.warn("tycoon autosave hungry notification", error);
+    });
+  }, [
+    onboardingStep,
+    sendImmediateNotification,
+    startupHardLockPendingBeforePaywall,
+    t,
+    tycoonAutosaveHungryBlock.active,
+    tycoonAutosaveHungryBlock.count,
+    tycoonAutosaveHungryBlock.dayKey,
+  ]);
 
   useEffect(() => {
     if (Platform.OS !== "android") return;
@@ -57149,7 +58345,7 @@ function AppContent() {
       : remainingGoalActions > 0);
   const achievements = useMemo(() => {
     const built = buildAchievements({
-      savedTotalUSD: progressSavedTotalUSD,
+      savedTotalUSD: progressLifetimeSavedUSD,
       declineCount,
       freeDayStats,
       pendingCount: pendingList.length,
@@ -57162,11 +58358,18 @@ function AppContent() {
       language,
     });
     const normalizedList = Array.isArray(built) ? built.filter(Boolean) : [];
-    const withClaim = normalizedList.map((reward, index) => ({
-      ...reward,
-      claimed: !!safeClaimedRewards[reward.id],
-      _order: index,
-    }));
+    const withClaim = normalizedList.map((reward, index) => {
+      const persistedUnlocked =
+        reward.unlocked || !!rewardCelebratedMap[reward.id] || !!safeClaimedRewards[reward.id];
+      return {
+        ...reward,
+        unlocked: persistedUnlocked,
+        progress: persistedUnlocked ? 1 : reward.progress,
+        remainingLabel: persistedUnlocked ? "" : reward.remainingLabel,
+        claimed: !!safeClaimedRewards[reward.id],
+        _order: index,
+      };
+    });
     return withClaim
       .sort((a, b) => {
         const aTier = a.unlocked ? (a.claimed ? 1 : 0) : 2;
@@ -57176,7 +58379,7 @@ function AppContent() {
       })
       .map(({ _order, ...reward }) => reward);
   }, [
-    progressSavedTotalUSD,
+    progressLifetimeSavedUSD,
     declineCount,
     freeDayStats,
     pendingList.length,
@@ -57187,6 +58390,7 @@ function AppContent() {
     profile.currency,
     t,
     language,
+    rewardCelebratedMap,
     safeClaimedRewards,
   ]);
 
@@ -57624,7 +58828,7 @@ function AppContent() {
       if (!template) return;
       if (typeof resolveTemptationCategory === "function") {
         const categoryId = resolveTemptationCategory(template);
-        if (isEssentialImpulseCategory(categoryId)) return;
+        if (isDailyChallengeExcludedCategory(categoryId)) return;
       }
       previousDayEvents.push({
         templateId,
@@ -57745,7 +58949,7 @@ function AppContent() {
       existingTemplate && typeof resolveTemptationCategory === "function"
         ? resolveTemptationCategory(existingTemplate)
         : null;
-    if (isEssentialImpulseCategory(existingCategory)) {
+    if (isDailyChallengeExcludedCategory(existingCategory)) {
       setDailyChallenge({
         ...createInitialDailyChallengeState(),
         dateKey: resolvedTodayKey,
@@ -57971,15 +59175,9 @@ function AppContent() {
       ensureOverlayEnvironmentReady();
       triggerOverlayState("health", {
         amount: rewardAmount,
-        title: language === "ru" ? "Сундук за челлендж" : "Challenge reward chest",
-        closedSubtitle:
-          language === "ru"
-            ? "Челлендж завершён. Открой сундук, чтобы получить награду."
-            : "Challenge completed. Open the chest to collect your reward.",
-        openedSubtitle:
-          language === "ru"
-            ? "Награда за челлендж получена."
-            : "Your challenge reward has been revealed.",
+        title: t("dailyChallengeRewardChestTitle"),
+        closedSubtitle: t("dailyChallengeRewardChestClosed"),
+        openedSubtitle: t("dailyChallengeRewardChestOpened"),
         onRevealReward: () => {
           setHealthPoints((coins) => coins + rewardAmount);
         },
@@ -58971,7 +60169,7 @@ function AppContent() {
       setPurchases([]);
       deferNonFeedHydration(hydratePurchases);
       let parsedProfile = null;
-      const storedActiveGoalId = activeGoalRaw || null;
+      const storedActiveGoalId = normalizePrimaryGoalSelectionId(activeGoalRaw) || null;
       let hydratedGoalId = storedActiveGoalId;
       let rawProfile = null;
       if (profileRaw) {
@@ -59026,11 +60224,16 @@ function AppContent() {
                   Number.isFinite(entry?.targetUSD) && entry.targetUSD > 0
                     ? entry.targetUSD
                     : getGoalDefaultTargetUSD(goalId);
+                const savedUSD = Number.isFinite(entry?.savedUSD) ? Math.max(entry.savedUSD, 0) : 0;
+                const normalizedStatus =
+                  entry?.status === "done" || (targetUSD > 0 && savedUSD >= targetUSD)
+                    ? "done"
+                    : entry?.status || "active";
                 const normalized = {
                   id: goalId,
                   targetUSD,
-                  savedUSD: Number.isFinite(entry?.savedUSD) ? entry.savedUSD : 0,
-                  status: entry?.status && entry.status !== "done" ? entry.status : "active",
+                  savedUSD,
+                  status: normalizedStatus,
                   createdAt: entry?.createdAt || null,
                 };
                 const customTitle =
@@ -59052,10 +60255,17 @@ function AppContent() {
           : [];
         const hasPrimaryGoals = normalizedPrimaryGoals.length > 0;
         const storedGoalId = hasPrimaryGoals ? activeGoalRaw || parsedProfile.goal || null : null;
-        const activeGoalEntry =
+        const storedActiveGoalEntry =
           hasPrimaryGoals && storedGoalId
             ? normalizedPrimaryGoals.find((goal) => goal.id === storedGoalId)
             : null;
+        const firstIncompleteGoal = hasPrimaryGoals
+          ? normalizedPrimaryGoals.find((goal) => goal.status !== "done")
+          : null;
+        const activeGoalEntry =
+          storedActiveGoalEntry && (storedActiveGoalEntry.status !== "done" || !firstIncompleteGoal)
+            ? storedActiveGoalEntry
+            : firstIncompleteGoal || storedActiveGoalEntry;
         const orderedPrimaryGoals = hasPrimaryGoals
           ? activeGoalEntry
             ? [activeGoalEntry, ...normalizedPrimaryGoals.filter((goal) => goal.id !== activeGoalEntry.id)]
@@ -59084,7 +60294,16 @@ function AppContent() {
               ? parsedProfile.goalTargetUSD
               : 0;
         }
-        parsedProfile.goalCelebrated = !!parsedProfile.goalCelebrated;
+        const normalizedCelebratedById = normalizeGoalCelebratedById(parsedProfile.goalCelebratedById);
+        const legacyCelebratedGoalId =
+          parsedProfile.goalCelebrated === true
+            ? normalizePrimaryGoalSelectionId(parsedProfile.goal)
+            : "";
+        if (legacyCelebratedGoalId) {
+          normalizedCelebratedById[legacyCelebratedGoalId] = true;
+        }
+        parsedProfile.goalCelebratedById = normalizedCelebratedById;
+        parsedProfile.goalCelebrated = isGoalCelebratedInProfile(parsedProfile, parsedProfile.goal);
         const rawSpendReduction = parsedProfile.spendReducesSavings;
         parsedProfile.spendReducesSavings =
           rawSpendReduction === true ||
@@ -61977,41 +63196,48 @@ function AppContent() {
   }, [ensurePrimaryGoalWish, onboardingStep, profile.primaryGoals, activeGoalId, profile.goal, language]);
 
   useEffect(() => {
+    const goalId = normalizePrimaryGoalSelectionId(resolvedHeroGoalId);
+    if (!goalId) return;
     const targetUSD = heroGoalTargetUSD > 0 ? heroGoalTargetUSD : 0;
     const hasMetGoal = targetUSD > 0 && heroGoalSavedUSD >= targetUSD;
-    if (hasMetGoal && !profile.goalCelebrated) {
+    const hasCelebratedGoal = isGoalCelebratedInProfile(profile, goalId);
+    if (hasMetGoal && !hasCelebratedGoal) {
+      if (goalCompletionQueuedGoalRef.current === goalId) return;
+      goalCompletionQueuedGoalRef.current = goalId;
       const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
       const targetLabel = formatCurrency(convertToCurrency(targetUSD, currencyCode), currencyCode);
       const rewardCoins = GOAL_COMPLETION_REWARD_COINS;
       const rewardAmount = GOAL_COMPLETION_REWARD_VALUE;
+      const payload = {
+        title: t("goalCelebrationTitle"),
+        subtitle: t("goalCelebrationSubtitle"),
+        targetLabel: t("goalCelebrationTarget", { amount: targetLabel }),
+        summary: goalCelebrationSummary,
+        fallbackTotalUSD: heroGoalSavedUSD,
+        currency: profile.currency || DEFAULT_PROFILE.currency,
+        language,
+        rewardCoins,
+        rewardAmount,
+        rewardAsset: GOAL_COMPLETION_REWARD_TIER?.asset || null,
+        rewardTierId:
+          getChestRewardTierForAmount(rewardAmount)?.id || GOAL_COMPLETION_REWARD_TIER?.id || null,
+      };
+      const config = { duration: 0 };
       setProfile((prev) => ({
-        ...prev,
-        goalCelebrated: true,
+        ...updateGoalCelebrationInProfile(prev, goalId, true),
         goalRenewalPending: true,
       }));
       setProfileDraft((prev) => ({
-        ...prev,
-        goalCelebrated: true,
+        ...updateGoalCelebrationInProfile(prev, goalId, true),
         goalRenewalPending: true,
       }));
       if (Platform.OS !== "android") {
-        setPendingGoalCelebration({
-          payload: {
-            title: t("goalCelebrationTitle"),
-            subtitle: t("goalCelebrationSubtitle"),
-            targetLabel: t("goalCelebrationTarget", { amount: targetLabel }),
-            summary: goalCelebrationSummary,
-            fallbackTotalUSD: heroGoalSavedUSD,
-            currency: profile.currency || DEFAULT_PROFILE.currency,
-            language,
-            rewardCoins,
-            rewardAmount,
-            rewardAsset: GOAL_COMPLETION_REWARD_TIER?.asset || null,
-            rewardTierId:
-              getChestRewardTierForAmount(rewardAmount)?.id || GOAL_COMPLETION_REWARD_TIER?.id || null,
-          },
-          config: { duration: 0 },
-        });
+        const enqueueGoalCelebration = triggerOverlayStateRef.current;
+        if (typeof enqueueGoalCelebration === "function") {
+          enqueueGoalCelebration("goal_complete", payload, config);
+        } else {
+          setPendingGoalCelebration({ payload, config });
+        }
       }
       if (!hasPendingGoals) {
         goalRenewalPromptPendingRef.current = true;
@@ -62020,7 +63246,10 @@ function AppContent() {
     }
   }, [
     heroGoalTargetUSD,
+    resolvedHeroGoalId,
     profile.goalCelebrated,
+    profile.goalCelebratedById,
+    profile.goal,
     profile.currency,
     heroGoalSavedUSD,
     hasPendingGoals,
@@ -62030,14 +63259,32 @@ function AppContent() {
   ]);
 
   useEffect(() => {
+    const goalId = normalizePrimaryGoalSelectionId(resolvedHeroGoalId);
+    if (!goalId) return;
     const targetUSD = heroGoalTargetUSD > 0 ? heroGoalTargetUSD : 0;
     const hasMetGoal = targetUSD > 0 && heroGoalSavedUSD >= targetUSD;
-    if (profile.goalCelebrated && !hasMetGoal) {
-      setProfile((prev) => ({ ...prev, goalCelebrated: false, goalRenewalPending: false }));
-      setProfileDraft((prev) => ({ ...prev, goalCelebrated: false, goalRenewalPending: false }));
+    const hasCelebratedGoal = isGoalCelebratedInProfile(profile, goalId);
+    if (!hasMetGoal && goalCompletionQueuedGoalRef.current === goalId) {
+      goalCompletionQueuedGoalRef.current = null;
+    }
+    if (hasCelebratedGoal && !hasMetGoal) {
+      setProfile((prev) => ({
+        ...updateGoalCelebrationInProfile(prev, goalId, false),
+        goalRenewalPending: false,
+      }));
+      setProfileDraft((prev) => ({
+        ...updateGoalCelebrationInProfile(prev, goalId, false),
+        goalRenewalPending: false,
+      }));
       goalRenewalPromptPendingRef.current = false;
     }
-  }, [heroGoalTargetUSD, profile.goalCelebrated, heroGoalSavedUSD, setProfile]);
+  }, [
+    heroGoalTargetUSD,
+    resolvedHeroGoalId,
+    profile,
+    heroGoalSavedUSD,
+    setProfile,
+  ]);
 
   useEffect(() => {
     if (!wishesHydrated) return;
@@ -62069,10 +63316,17 @@ function AppContent() {
   useEffect(() => {
     if (!activeGoalHydrated) return;
     if (activeGoalId) return;
-    if (profile.goal) {
-      setActiveGoalId(profile.goal);
-    } else if (Array.isArray(profile.primaryGoals) && profile.primaryGoals[0]?.id) {
-      setActiveGoalId(profile.primaryGoals[0].id);
+    const primaryGoals = Array.isArray(profile.primaryGoals) ? profile.primaryGoals : [];
+    const profileGoalId = normalizePrimaryGoalSelectionId(profile.goal);
+    const profileGoalEntry = profileGoalId
+      ? primaryGoals.find((entry) => entry?.id === profileGoalId)
+      : null;
+    const firstIncompleteGoal = primaryGoals.find((entry) => entry?.status !== "done");
+    const fallbackGoal = profileGoalEntry && (profileGoalEntry.status !== "done" || !firstIncompleteGoal)
+      ? profileGoalEntry
+      : firstIncompleteGoal || primaryGoals[0] || null;
+    if (fallbackGoal?.id) {
+      setActiveGoalId(fallbackGoal.id);
     }
   }, [activeGoalHydrated, activeGoalId, profile.goal, profile.primaryGoals]);
 
@@ -63025,7 +64279,8 @@ useEffect(() => {
       try {
         const scheduled = await safeNotifications.getAllScheduledNotificationsAsync();
         const existingIds = (Array.isArray(scheduled) ? scheduled : []).reduce((acc, entry) => {
-          if (entry?.content?.data?.kind !== SUBSCRIPTION_REMINDER_KIND) return acc;
+          const kind = entry?.content?.data?.kind;
+          if (kind !== SUBSCRIPTION_REMINDER_KIND && kind !== SUBSCRIPTION_DUE_KIND) return acc;
           const id = entry?.identifier || entry?.id || null;
           if (id) acc.push(id);
           return acc;
@@ -63039,7 +64294,25 @@ useEffect(() => {
         console.warn("subscription reminder cleanup", error);
       }
       if (cancelled) return;
-      const dayGroups = new Map();
+      const notificationGroups = new Map();
+      const pushSubscriptionGroup = (groupKey, payload) => {
+        if (!groupKey || !payload) return;
+        const current = notificationGroups.get(groupKey) || {
+          triggerTime: payload.triggerTime,
+          daysBefore: payload.daysBefore,
+          kind: payload.kind,
+          dayKey: payload.dayKey,
+          subscriptions: [],
+        };
+        current.triggerTime = Math.min(current.triggerTime, payload.triggerTime);
+        if (Number.isFinite(Number(payload.daysBefore))) {
+          current.daysBefore = Math.min(current.daysBefore, payload.daysBefore);
+        }
+        current.kind = payload.kind || current.kind;
+        current.dayKey = payload.dayKey || current.dayKey;
+        current.subscriptions.push(payload.subscription);
+        notificationGroups.set(groupKey, current);
+      };
       subscriptionCards.forEach((item) => {
         if (!item) return;
         const categoryId =
@@ -63068,27 +64341,42 @@ useEffect(() => {
           if (!Number.isFinite(triggerTime) || triggerTime <= nowTs + 5 * 60 * 1000) return;
           const dayKey = getDayKey(triggerTime);
           if (!dayKey) return;
-          const current = dayGroups.get(dayKey) || {
+          pushSubscriptionGroup(`${SUBSCRIPTION_REMINDER_KIND}:${dayKey}`, {
             triggerTime,
             daysBefore,
-            subscriptions: [],
-          };
-          current.triggerTime = Math.min(current.triggerTime, triggerTime);
-          current.daysBefore = Math.min(current.daysBefore, daysBefore);
-          current.subscriptions.push({
-            templateId,
-            title,
-            amountLabel,
-            daysBefore,
-            nextCheckAt,
+            kind: SUBSCRIPTION_REMINDER_KIND,
+            dayKey,
+            subscription: {
+              templateId,
+              title,
+              amountLabel,
+              daysBefore,
+              nextCheckAt,
+            },
           });
-          dayGroups.set(dayKey, current);
         });
+        if (nextCheckAt > nowTs + 60 * 1000) {
+          const dayKey = getDayKey(nextCheckAt);
+          if (!dayKey) return;
+          pushSubscriptionGroup(`${SUBSCRIPTION_DUE_KIND}:${dayKey}`, {
+            triggerTime: nextCheckAt,
+            daysBefore: 0,
+            kind: SUBSCRIPTION_DUE_KIND,
+            dayKey,
+            subscription: {
+              templateId,
+              title,
+              amountLabel,
+              daysBefore: 0,
+              nextCheckAt,
+            },
+          });
+        }
       });
-      const groups = Array.from(dayGroups.entries())
-        .map(([dayKey, group]) => ({ dayKey, ...group }))
+      const groups = Array.from(notificationGroups.entries())
+        .map(([groupKey, group]) => ({ groupKey, ...group }))
         .sort((a, b) => a.triggerTime - b.triggerTime)
-        .slice(0, 16);
+        .slice(0, 24);
       for (let index = 0; index < groups.length; index += 1) {
         if (cancelled) return;
         const group = groups[index];
@@ -63096,16 +64384,28 @@ useEffect(() => {
         if (!subscriptions.length) continue;
         const primary = subscriptions[0];
         const count = subscriptions.length;
-        const dedupeKey = `${SUBSCRIPTION_REMINDER_KIND}:${group.dayKey}`;
+        const isDueGroup = group.kind === SUBSCRIPTION_DUE_KIND;
+        const dedupeKey = `${group.kind || SUBSCRIPTION_REMINDER_KIND}:${group.dayKey}`;
         try {
           await scheduleNotificationWithCooldown({
             content: {
               title:
-                count === 1
+                isDueGroup && count === 1
+                  ? t("subscriptionDueNotificationTitleSingle")
+                  : isDueGroup
+                  ? t("subscriptionDueNotificationTitleMultiple", { count })
+                  : count === 1
                   ? t("subscriptionNotificationTitleSingle")
                   : t("subscriptionNotificationTitleMultiple", { count }),
               body:
-                count === 1
+                isDueGroup && count === 1
+                  ? t("subscriptionDueNotificationBodySingle", {
+                      title: primary.title,
+                      amount: primary.amountLabel,
+                    })
+                  : isDueGroup
+                  ? t("subscriptionDueNotificationBodyMultiple", { count })
+                  : count === 1
                   ? t("subscriptionNotificationBodySingle", {
                       title: primary.title,
                       amount: primary.amountLabel,
@@ -63113,7 +64413,7 @@ useEffect(() => {
                     })
                   : t("subscriptionNotificationBodyMultiple", { count }),
               data: {
-                kind: SUBSCRIPTION_REMINDER_KIND,
+                kind: group.kind || SUBSCRIPTION_REMINDER_KIND,
                 targetScreen: "subscriptions",
                 dedupeKey,
                 dayKey: group.dayKey,
@@ -63922,6 +65222,7 @@ useEffect(() => {
       receivedAt = Date.now(),
       currencyCode,
       entryType = INCOME_ENTRY_TYPES.MONTHLY,
+      payday = DEFAULT_INCOME_PAYDAY,
     } = {}) => {
       const parsed = parseNumberInputValue(amountText);
       if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -63930,7 +65231,7 @@ useEffect(() => {
       }
       const resolvedCurrency = currencyCode || profile.currency || DEFAULT_PROFILE.currency;
       const amountUSD = convertFromCurrency(parsed, resolvedCurrency);
-      const entry = normalizeIncomeEntry({ amountUSD, receivedAt, note, entryType });
+      const entry = normalizeIncomeEntry({ amountUSD, receivedAt, note, entryType, payday });
       if (!entry) {
         Alert.alert("Almost", t("incomeEntryInvalid"));
         return null;
@@ -63944,15 +65245,31 @@ useEffect(() => {
     [profile.currency, t]
   );
 
-  const handleBudgetOverrideChange = useCallback((categoryId, valueUSD) => {
+  const handleBudgetOverrideChange = useCallback((categoryId, valueUSD, periodKey = "") => {
     if (!categoryId) return;
     const normalized = Number(valueUSD);
     if (!Number.isFinite(normalized) || normalized < 0) return;
-    setBudgetOverrides((prev) => ({
-      ...(prev || {}),
-      [categoryId]: normalized,
-    }));
-  }, []);
+    const fallbackPeriodKey = getBudgetPeriodKey(Date.now(), profile?.incomePayday);
+    const targetPeriodKey =
+      typeof periodKey === "string" && periodKey.trim()
+        ? periodKey.trim()
+        : fallbackPeriodKey;
+    setBudgetOverrides((prev) =>
+      setBudgetOverrideForPeriod(prev, targetPeriodKey, categoryId, normalized)
+    );
+  }, [profile?.incomePayday]);
+
+  const handleBudgetOverrideReset = useCallback((categoryId, periodKey = "") => {
+    if (!categoryId) return;
+    const fallbackPeriodKey = getBudgetPeriodKey(Date.now(), profile?.incomePayday);
+    const targetPeriodKey =
+      typeof periodKey === "string" && periodKey.trim()
+        ? periodKey.trim()
+        : fallbackPeriodKey;
+    setBudgetOverrides((prev) =>
+      removeBudgetOverrideForPeriod(prev, targetPeriodKey, categoryId)
+    );
+  }, [profile?.incomePayday]);
 
   const handleBudgetRemainingOverrideChange = useCallback((monthKey, valueUSD) => {
     if (typeof monthKey !== "string" || !monthKey.trim()) return;
@@ -63983,7 +65300,7 @@ useEffect(() => {
   );
 
   const handleIncomeEntrySkip = useCallback(() => {
-    const monthKey = getMonthKey(Date.now());
+    const monthKey = getBudgetPeriodKey(Date.now(), profile?.incomePayday);
     const entryType = incomeEntryModeRef.current || INCOME_ENTRY_TYPES.MONTHLY;
     if (entryType !== INCOME_ENTRY_TYPES.MONTHLY) {
       setIncomeEntryModalVisible(false);
@@ -64003,7 +65320,7 @@ useEffect(() => {
       month_key: monthKey,
       entry_type: entryType,
     });
-  }, [clearQueuedModal, logEvent]);
+  }, [clearQueuedModal, logEvent, profile?.incomePayday]);
   const handleIncomeEntryDismiss = useCallback(() => {
     if (incomeEntrySourceRef.current === "monthly_prompt") {
       handleIncomeEntrySkip();
@@ -64014,20 +65331,11 @@ useEffect(() => {
 
   const handleActiveGoalSelect = useCallback(
     (goalId) => {
-      if (!goalId) return;
-      const normalizeGoalSelectionId = (value) => {
-        if (typeof value !== "string") return "";
-        const trimmed = value.trim();
-        if (!trimmed) return "";
-        if (trimmed.startsWith("wish_primary_goal_")) {
-          return trimmed.replace("wish_primary_goal_", "");
-        }
-        return trimmed;
-      };
+      const normalizedNextGoalId = normalizePrimaryGoalSelectionId(goalId);
+      if (!normalizedNextGoalId) return;
       triggerHaptic();
       const previousGoalId = activeGoalId || profile.goal;
-      const normalizedPreviousGoalId = normalizeGoalSelectionId(previousGoalId);
-      const normalizedNextGoalId = normalizeGoalSelectionId(goalId);
+      const normalizedPreviousGoalId = normalizePrimaryGoalSelectionId(previousGoalId);
       const isSwitchingGoal =
         !!normalizedPreviousGoalId &&
         !!normalizedNextGoalId &&
@@ -64041,19 +65349,29 @@ useEffect(() => {
         return;
       }
       clearCompletedPrimaryGoal(previousGoalId);
-      setActiveGoalId(goalId);
-      setProfile((prev) => ({
-        ...prev,
-        goal: goalId,
-        goalCelebrated: false,
-        goalRenewalPending: false,
-      }));
-      setProfileDraft((prev) => ({
-        ...prev,
-        goal: goalId,
-        goalCelebrated: false,
-        goalRenewalPending: false,
-      }));
+      setActiveGoalId(normalizedNextGoalId);
+      AsyncStorage.setItem(STORAGE_KEYS.ACTIVE_GOAL, normalizedNextGoalId).catch(() => {});
+      const activateGoalInProfile = (profileState = {}) => {
+        const goals = Array.isArray(profileState.primaryGoals) ? profileState.primaryGoals : [];
+        const selectedGoal = goals.find((entry) => entry?.id === normalizedNextGoalId) || null;
+        const reorderedGoals = selectedGoal
+          ? [selectedGoal, ...goals.filter((entry) => entry?.id !== normalizedNextGoalId)]
+          : goals;
+        const targetUSD =
+          Number.isFinite(selectedGoal?.targetUSD) && selectedGoal.targetUSD > 0
+            ? selectedGoal.targetUSD
+            : getGoalDefaultTargetUSD(normalizedNextGoalId);
+        return {
+          ...profileState,
+          primaryGoals: reorderedGoals,
+          goal: normalizedNextGoalId,
+          goalTargetUSD: targetUSD,
+          goalCelebrated: isGoalCelebratedInProfile(profileState, normalizedNextGoalId),
+          goalRenewalPending: false,
+        };
+      };
+      setProfile((prev) => activateGoalInProfile(prev));
+      setProfileDraft((prev) => activateGoalInProfile(prev));
       dismissGoalRenewalPrompt();
     },
     [
@@ -65360,13 +66678,14 @@ useEffect(() => {
           ? formatNumberInputValue(parsedIncome)
           : "",
     }));
-    const monthKey = getMonthKey(Date.now());
+    const monthKey = getBudgetPeriodKey(Date.now(), profile?.incomePayday);
     setIncomePromptState({ lastPromptMonthKey: monthKey, lastPromptAt: Date.now() });
     if (Number.isFinite(parsedIncome) && parsedIncome > 0) {
       const amountUSD = addIncomeEntry({
         amountText: formatNumberInputValue(parsedIncome),
         receivedAt: Date.now(),
         currencyCode,
+        payday: profile?.incomePayday,
       });
       if (Number.isFinite(amountUSD) && amountUSD > 0) {
         logEvent("income_entry_added", {
@@ -65384,7 +66703,7 @@ useEffect(() => {
 
   const handleBaselineSkip = () => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-    const monthKey = getMonthKey(Date.now());
+    const monthKey = getBudgetPeriodKey(Date.now(), profile?.incomePayday);
     setIncomePromptState({ lastPromptMonthKey: monthKey, lastPromptAt: Date.now() });
     logEvent("income_entry_skipped", { source: "onboarding", month_key: monthKey });
     setRegistrationData((prev) => ({
@@ -66620,15 +67939,19 @@ useEffect(() => {
       incomeEntryInput.payday,
       profile?.incomePayday
     );
-    const receivedAt = resolveIncomeEntryReceivedAt(selectedPayday, Date.now());
+    const receivedAt =
+      entryType === INCOME_ENTRY_TYPES.MONTHLY
+        ? resolveIncomeEntryReceivedAt(selectedPayday, Date.now())
+        : Date.now();
     const amountUSD = addIncomeEntry({
       amountText: incomeEntryInput.amount,
       receivedAt,
       entryType,
+      payday: selectedPayday,
     });
     if (!Number.isFinite(amountUSD) || amountUSD <= 0) return;
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
-    const monthKey = getMonthKey(receivedAt);
+    const monthKey = getBudgetPeriodKey(receivedAt, selectedPayday);
     setIncomeEntryModalVisible(false);
     if (entryType === INCOME_ENTRY_TYPES.MONTHLY) {
       setProfile((prev) => ({ ...prev, incomePayday: selectedPayday }));
@@ -67135,26 +68458,34 @@ useEffect(() => {
     const budgetMonthlyStats = buildBudgetMonthlyStats({
       incomeEntries,
       historyEvents: resolvedHistoryEvents,
-      currentMonthKey,
+      currentMonthKey: currentBudgetPeriodKey,
       resolveHistoryCategoryId: resolvePreviewHistoryCategoryId,
+      incomePayday: currentBudgetPayday,
     });
     const budgetCarryover = buildBudgetCarryoverMap(budgetMonthlyStats);
-    const monthStats = budgetMonthlyStats[currentMonthKey] || {
+    const monthStats = budgetMonthlyStats[currentBudgetPeriodKey] || {
       incomeUSD: currentMonthIncomeUSD,
       spendTotalUSD: currentMonthSpendUSD,
       spendByCategory: {},
     };
+    const previewTimeAdjustment = resolveBudgetTimeAdjustment({
+      incomeEntries,
+      periodKey: currentBudgetPeriodKey,
+      payday: currentBudgetPayday,
+    });
     const previewPlan = buildBudgetPlan({
       incomeUSD: currentMonthIncomeUSD,
-      carryoverUSD: budgetCarryover[currentMonthKey] || 0,
-      budgetOverrides,
+      carryoverUSD: budgetCarryover[currentBudgetPeriodKey] || 0,
+      budgetOverrides: getBudgetOverridesForPeriod(budgetOverrides, currentBudgetPeriodKey),
+      timeAdjustmentUSD: previewTimeAdjustment.elapsedIncomeUSD,
+      autoAllocationScale: previewTimeAdjustment.remainingRatio,
       spendDistribution: budgetSpendDistribution,
       spendToDateByCategory: monthStats.spendByCategory || {},
       spendToDateTotalUSD: monthStats.spendTotalUSD || currentMonthSpendUSD,
       decisionStats,
       baselineMonthlyWasteUSD,
       language,
-      monthKey: currentMonthKey,
+      monthKey: currentBudgetPeriodKey,
       autoAllocationEnabled: budgetAutoEnabled,
     });
     const categoryEntry =
@@ -67248,8 +68579,9 @@ useEffect(() => {
     baselineMonthlyWasteUSD,
     budgetAutoEnabled,
     budgetOverrides,
+    currentBudgetPayday,
+    currentBudgetPeriodKey,
     currentMonthIncomeUSD,
-    currentMonthKey,
     currentMonthSpendUSD,
     decisionStats,
     incomeEntries,
@@ -68367,7 +69699,7 @@ useEffect(() => {
         }
         const customIntervalMs = frequency === "custom" ? getCustomFrequencyIntervalMs(frequencyCustom) : null;
         const intervalMs = frequency === "custom" ? customIntervalMs || null : null;
-        const nextCheckAt = frequency
+        const resetNextCheckAt = frequency
           ? buildResetNextCheckAtForFrequency({
               fromTimestamp: now,
               frequencyId: frequency,
@@ -68380,6 +69712,27 @@ useEffect(() => {
               monthlyDays,
             })
           : null;
+        const scheduledNextCheckAt = Number(prevEntry.nextCheckAt) || 0;
+        const skippedCycleNextCheckAt =
+          !preserveFrequencyTimer && frequency && scheduledNextCheckAt > now
+            ? buildResetNextCheckAtForFrequency({
+                fromTimestamp: scheduledNextCheckAt,
+                frequencyId: frequency,
+                customFrequency: frequencyCustom,
+                reminderHour: reminderTime.hour,
+                reminderMinute: reminderTime.minute,
+                weeklyDay,
+                monthlyDay,
+                weeklyDays,
+                monthlyDays,
+              })
+            : null;
+        const nextCheckAt =
+          Number.isFinite(skippedCycleNextCheckAt) && Number.isFinite(resetNextCheckAt)
+            ? Math.max(skippedCycleNextCheckAt, resetNextCheckAt)
+            : Number.isFinite(skippedCycleNextCheckAt)
+            ? skippedCycleNextCheckAt
+            : resetNextCheckAt;
         const normalizedAmount = Number(amountUSD);
         const resolvedAmount =
           Number.isFinite(normalizedAmount) && normalizedAmount > 0
@@ -68480,6 +69833,34 @@ useEffect(() => {
         });
         return nextMap;
       });
+      if (!preserveFrequencyTimer) {
+        const candidateKeySet = new Set(candidateKeys);
+        setTycoonLedger((prev) => {
+          const list = Array.isArray(prev) ? prev : [];
+          let changed = false;
+          const skippedAt = Date.now();
+          const next = list.map((entry) => {
+            const cardKey = normalizeTemplateKey(entry?.cardId);
+            if (
+              entry?.status !== "pending" ||
+              entry?.source !== "autosave" ||
+              !cardKey ||
+              !candidateKeySet.has(cardKey)
+            ) {
+              return entry;
+            }
+            changed = true;
+            return {
+              ...entry,
+              status: "skipped",
+              skippedAt,
+              skipReason: "manual_interaction",
+              rewardClaimed: true,
+            };
+          });
+          return changed ? next : prev;
+        });
+      }
       if (!preserveFrequencyTimer && existingReminderIds.length) {
         Promise.all(
           existingReminderIds.map((reminderId) =>
@@ -70562,31 +71943,6 @@ useEffect(() => {
         if (normalizedTargetGoalId) {
           appliedAmount = applySavingsToWish(normalizedTargetGoalId, priceUSD);
         }
-        if (appliedAmount > 0 && normalizedTargetGoalId) {
-          setWishes((prev) => {
-            let changed = false;
-            let found = false;
-            const next = prev.map((wish) => {
-              if (!wish) return wish;
-              if (wish.id !== normalizedTargetGoalId) return wish;
-              found = true;
-              const targetUSD =
-                Number.isFinite(wish.targetUSD) && wish.targetUSD > 0
-                  ? wish.targetUSD
-                  : getGoalDefaultTargetUSD(wish.goalId || wish.id);
-              const previousSaved = Number.isFinite(wish.savedUSD) ? wish.savedUSD : 0;
-              const nextSaved = Math.min(previousSaved + appliedAmount, targetUSD || Number.POSITIVE_INFINITY);
-              const nextStatus = targetUSD > 0 && nextSaved >= targetUSD ? "done" : "active";
-              if (nextSaved !== previousSaved || nextStatus !== wish.status) {
-                changed = true;
-                return { ...wish, savedUSD: nextSaved, status: nextStatus };
-              }
-              return wish;
-            });
-            if (!found) return prev;
-            return changed ? next : prev;
-          });
-        }
         if (
           appliedAmount > 0 &&
           typeof normalizedTargetGoalId === "string" &&
@@ -71175,6 +72531,46 @@ useEffect(() => {
       tabBarBottomInset,
       resolvedTabBarHeight,
       resolvedHistoryEvents,
+    ]
+  );
+
+  const handleSubscriptionPaymentAction = useCallback(
+    async (item, action, context = {}) => {
+      if (!item) return;
+      const amountUSD = clampTransactionAmountUSD(
+        context?.amountUSD ?? getTemptationPrice(item) ?? item.priceUSD ?? item.basePriceUSD ?? 0
+      );
+      if (action === "paid") {
+        await handleTemptationAction("spend", item, {
+          amountUSD,
+          bypassSpendPrompt: true,
+          skipCategoryPrompt: true,
+          skipFrequencyReminderPrompt: true,
+        });
+        return;
+      }
+      const fallbackGoal =
+        activeGoalId ||
+        profile.goal ||
+        mainGoalWish?.id ||
+        (Array.isArray(profile.primaryGoals) ? profile.primaryGoals[0]?.id : null) ||
+        getFallbackGoalId();
+      await handleTemptationAction("save", item, {
+        amountUSD,
+        goalId: fallbackGoal,
+        forcePrimaryGoal: true,
+        skipPrompt: true,
+        skipCategoryPrompt: true,
+        skipFrequencyReminderPrompt: true,
+      });
+    },
+    [
+      activeGoalId,
+      getFallbackGoalId,
+      handleTemptationAction,
+      mainGoalWish?.id,
+      profile.goal,
+      profile.primaryGoals,
     ]
   );
 
@@ -72467,7 +73863,10 @@ useEffect(() => {
               : t("freeDayCongrats", { days: current });
           triggerOverlayState("purchase", message);
           triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-          const rewardBlueCoins = FREE_DAY_LOGIN_BLUE_COINS * current;
+          const rewardBlueCoins = Math.min(
+            FREE_DAY_LOGIN_MAX_BLUE_COINS,
+            FREE_DAY_LOGIN_BLUE_COINS * current
+          );
           const rewardHealthPoints = rewardBlueCoins * BLUE_HEALTH_COIN_VALUE;
           const rewardReason =
             current > 1
@@ -73100,10 +74499,12 @@ useEffect(() => {
       const hasPrice = Number.isFinite(numericPrice) && numericPrice > 0;
       const normalizedCategory =
         typeof category === "string" && category && IMPULSE_CATEGORY_DEFS[category] ? category : null;
+      const normalizedEmoji = emoji ? normalizeEmojiValue(emoji, DEFAULT_TEMPTATION_EMOJI) : null;
       const normalizedPrecision =
         typeof pricePrecision === "number" && Number.isFinite(pricePrecision) && pricePrecision >= 0
           ? pricePrecision
           : null;
+      const normalizedTemplateId = String(templateId);
       setPendingList((prev) => {
         let mutated = false;
         const next = prev.map((entry) => {
@@ -73111,6 +74512,9 @@ useEffect(() => {
           const updates = {};
           if (decoratedTitle && entry.title !== decoratedTitle) {
             updates.title = decoratedTitle;
+          }
+          if (normalizedEmoji && entry.emoji !== normalizedEmoji) {
+            updates.emoji = normalizedEmoji;
           }
           if (hasPrice && entry.priceUSD !== numericPrice) {
             updates.priceUSD = numericPrice;
@@ -73125,6 +74529,24 @@ useEffect(() => {
           return { ...entry, ...updates };
         });
         return mutated ? next : prev || [];
+      });
+      setTycoonLedger((prev) => {
+        const source = Array.isArray(prev) ? prev : [];
+        let mutated = false;
+        const next = source.map((entry) => {
+          if (!entry || String(entry.cardId || "") !== normalizedTemplateId) return entry;
+          const updates = {};
+          if (normalizedLabel && entry.title !== normalizedLabel) {
+            updates.title = normalizedLabel;
+          }
+          if (normalizedEmoji && entry.emoji !== normalizedEmoji) {
+            updates.emoji = normalizedEmoji;
+          }
+          if (!Object.keys(updates).length) return entry;
+          mutated = true;
+          return { ...entry, ...updates };
+        });
+        return mutated ? next : prev;
       });
       setWishes((prev) => {
         let mutated = false;
@@ -73309,6 +74731,7 @@ useEffect(() => {
       setPendingList,
       setProgressSavedTotalUSD,
       setSavedTotalUSD,
+      setTycoonLedger,
       setTemptationInteractions,
       setWishes,
       spendReducesSavings,
@@ -75287,7 +76710,7 @@ useEffect(() => {
         };
       });
       const rewardAmount = getScaledChallengeReward(def.rewardHealth);
-      const rewardLabel = String(getChestRewardDisplayCount(rewardAmount));
+      const rewardLabel = formatHealthRewardText(rewardAmount);
       const copy = getChallengeCopy(def, language);
       const title = copy.title || challengeId;
       triggerOverlayState(
@@ -75705,8 +77128,8 @@ useEffect(() => {
           })
           .filter(Boolean)
       : [];
-    const fallbackGoalId = profileDraft.goal || profile.goal || null;
-    const primaryGoalEntries =
+    const fallbackGoalId = profileDraft.goal || activeGoalId || profile.goal || null;
+    const basePrimaryGoalEntries =
       normalizedGoals.length > 0
         ? normalizedGoals
         : fallbackGoalId
@@ -75720,7 +77143,18 @@ useEffect(() => {
             },
           ]
         : [];
-    const activeEntry = primaryGoalEntries[0];
+    const preferredGoalId = normalizePrimaryGoalSelectionId(profileDraft.goal || activeGoalId || profile.goal);
+    const preferredEntry = preferredGoalId
+      ? basePrimaryGoalEntries.find((entry) => entry?.id === preferredGoalId)
+      : null;
+    const activeEntry =
+      preferredEntry ||
+      basePrimaryGoalEntries.find((entry) => entry?.status !== "done") ||
+      basePrimaryGoalEntries[0] ||
+      null;
+    const primaryGoalEntries = activeEntry
+      ? [activeEntry, ...basePrimaryGoalEntries.filter((entry) => entry?.id !== activeEntry.id)]
+      : basePrimaryGoalEntries;
     const activeTarget =
       Number.isFinite(activeEntry?.targetUSD) && activeEntry.targetUSD > 0
         ? activeEntry.targetUSD
@@ -75742,16 +77176,25 @@ useEffect(() => {
     const trimmedLastName = (profileDraft.lastName || "").trim();
     const combinedName = `${trimmedFirstName} ${trimmedLastName}`.trim();
     const displayName = combinedName || "";
+    const nextCelebratedProfile = hasMetTarget
+      ? updateGoalCelebrationInProfile(
+          profileDraft,
+          activeEntry?.id,
+          isGoalCelebratedInProfile(profileDraft, activeEntry?.id)
+        )
+      : updateGoalCelebrationInProfile(profileDraft, activeEntry?.id, false);
     const nextProfile = {
-      ...profileDraft,
+      ...nextCelebratedProfile,
       name: displayName,
       firstName: trimmedFirstName,
       lastName: trimmedLastName,
       incomePayday: normalizedIncomePayday,
       primaryGoals: primaryGoalEntries,
-      goal: primaryGoalEntries[0]?.id || null,
+      goal: activeEntry?.id || null,
       goalTargetUSD: activeTarget,
-      goalCelebrated: hasMetTarget ? profileDraft.goalCelebrated : false,
+      goalCelebrated: hasMetTarget
+        ? isGoalCelebratedInProfile(nextCelebratedProfile, activeEntry?.id)
+        : false,
     };
     if (nextCustomId && prevCustomTitle !== nextCustomTitle) {
       setTitleOverrides((prev) => {
@@ -75798,6 +77241,11 @@ useEffect(() => {
       });
     }
     setProfile(nextProfile);
+    setProfileDraft(nextProfile);
+    setActiveGoalId(nextProfile.goal);
+    if (nextProfile.goal) {
+      AsyncStorage.setItem(STORAGE_KEYS.ACTIVE_GOAL, nextProfile.goal).catch(() => {});
+    }
     setProfileEditMode("none");
     Keyboard.dismiss();
   };
@@ -76220,6 +77668,7 @@ useEffect(() => {
             freeDayRescueCost={FREE_DAY_RESCUE_COST}
             historyEvents={visibleHistoryEvents}
             incomeEntries={incomeEntries}
+            incomePayday={profile?.incomePayday}
             budgetOverrides={budgetOverrides}
             budgetAutoEnabled={budgetAutoEnabled}
             isPremiumUser={premiumState.isPremium}
@@ -76229,6 +77678,7 @@ useEffect(() => {
             baselineMonthlyWasteUSD={baselineMonthlyWasteUSD}
             baselineStartAt={baselineStartAt}
             onBudgetOverrideChange={handleBudgetOverrideChange}
+            onBudgetOverrideReset={handleBudgetOverrideReset}
             budgetRemainingOverrides={budgetLedger.remainingOverrides}
             onBudgetRemainingOverrideChange={handleBudgetRemainingOverrideChange}
             onIncomeEntryOpen={openIncomeEntryModal}
@@ -76261,6 +77711,7 @@ useEffect(() => {
             onSubscriptionWidgetLayout={handleProgressSubscriptionWidgetLayout}
             onSubscriptionWidgetOpen={() => markDidYouKnowFeatureUsed("subscription_watch")}
             onSubscriptionCreateTemptation={handleSubscriptionQuickCustomCreate}
+            onSubscriptionPaymentAction={handleSubscriptionPaymentAction}
             onFreeDayCardLayout={handleProgressFreeDayCardLayout}
             onImpulseMapLockedPress={handleImpulseMapLockedPress}
             contentBottomPadding={screenContentBottomPadding}
@@ -77269,9 +78720,9 @@ useEffect(() => {
                         },
                       ]}
                     >
-                      <HealthRewardTokens amount={dailyChallengeTotalReward} color={colors.text} iconSize={20} />
+                      <ChestRewardPreviewIcon amount={dailyChallengeRewardBonus} size={34} />
                       <Text style={[styles.dailyChallengeCompleteRewardText, { color: colors.text }]}>
-                        {dailyChallengeTotalRewardLabel}
+                        {t("dailyChallengeCompleteRewardChest")}
                       </Text>
                     </View>
                     <Text style={[styles.dailyChallengeCompleteHint, { color: colors.muted }]}>
@@ -77591,9 +79042,9 @@ useEffect(() => {
                         </View>
                       </View>
                       <View style={styles.dailyChallengeRewardStack}>
-                        <HealthRewardTokens amount={dailyChallengeRewardBonus} color={colors.text} iconSize={18} />
+                        <ChestRewardPreviewIcon amount={dailyChallengeRewardBonus} size={30} />
                         <Text style={[styles.dailyChallengeRewardHint, { color: colors.text }]}>
-                          {t("dailyChallengeOfferReward", { amount: dailyChallengeRewardLabel })}
+                          {t("dailyChallengeOfferReward")}
                         </Text>
                       </View>
                     </Animated.View>
@@ -78507,6 +79958,14 @@ useEffect(() => {
           language={language}
           keyboardOffset={keyboardModalOffset}
         />
+        <TycoonAutosaveHungryModal
+          visible={!startupHardLockPendingBeforePaywall && tycoonAutosaveHungryModalVisible}
+          colors={colors}
+          t={t}
+          onClose={handleTycoonAutosaveHungryClose}
+          onFeed={handleTycoonAutosaveHungryFeed}
+          catCrySource={tamagotchiAnimations?.cry}
+        />
         <TycoonAutosaveModal
           visible={!startupHardLockPendingBeforePaywall && tycoonAutosaveModalVisible}
           events={tycoonPendingEvents}
@@ -79361,6 +80820,7 @@ useEffect(() => {
                                   language={language}
                                   iconSize={18}
                                   compact
+                                  mystery
                                   textColor={dailyRewardReady ? colors.text : colors.muted}
                                   labelStyle={styles.tamagotchiStickyRewardAmount}
                                 />
@@ -81111,14 +82571,8 @@ useEffect(() => {
                   tierId: overlay.message?.tierId || null,
                   chestCount: overlay.message?.chestCount || null,
                   title: t("dailyRewardButtonLabel"),
-                  closedSubtitle:
-                    language === "ru"
-                      ? "Три тапа по сундуку, чтобы узнать, сколько монет внутри."
-                      : "Tap the chest three times to reveal today's coins.",
-                  openedSubtitle:
-                    language === "ru"
-                      ? "Ежедневная награда открыта."
-                      : "Your daily reward is now revealed.",
+                  closedSubtitle: t("dailyRewardChestClosedSubtitle"),
+                  openedSubtitle: t("dailyRewardChestOpenedSubtitle"),
                   onRevealReward: overlay.message?.onRevealReward,
                 }}
                 t={t}
@@ -81156,10 +82610,7 @@ useEffect(() => {
                     Number(overlay.message?.rewardBlueCoins) * BLUE_HEALTH_COIN_VALUE ||
                     0,
                   title: t("usageStreakWeeklyRewardLabel"),
-                  closedSubtitle:
-                    language === "ru"
-                      ? "Недельная награда теперь приходит сундуком. Открой его тремя тапами."
-                      : "Your weekly streak reward now arrives as a chest. Crack it open in three taps.",
+                  closedSubtitle: t("usageStreakWeeklyChestClosed"),
                   openedSubtitle: t("usageStreakWeeklyTitle", {
                     week: overlay.message?.weekIndex || 1,
                     days: overlay.message?.days || USAGE_STREAK_WEEKLY_BONUS_DAYS,
@@ -81202,10 +82653,7 @@ useEffect(() => {
                     Number(overlay.message?.rewardBlueCoins) * BLUE_HEALTH_COIN_VALUE ||
                     0,
                   title: t("streakPledgeRewardTitle"),
-                  closedSubtitle:
-                    language === "ru"
-                      ? "Серия выдержана. Открой сундук и только потом узнаешь сумму."
-                      : "Goal reached. Open the chest to reveal the exact coin reward.",
+                  closedSubtitle: t("streakPledgeRewardChestClosed"),
                   openedSubtitle: t("streakPledgeRewardSubtitle", {
                     days: overlay.message?.targetDays || overlay.message?.days || 0,
                   }),
@@ -81256,16 +82704,13 @@ useEffect(() => {
               <HealthCelebration
                 key={overlay.instanceId}
                 colors={colors}
-                payload={{
-                  amount: overlay.message?.amount || FOCUS_VICTORY_REWARD,
-                  title: overlay.message?.title || t("focusRewardTitle"),
-                  closedSubtitle:
-                    overlay.message?.body ||
-                    (language === "ru"
-                      ? "Фокус-цель принесла сундук. Открой его, чтобы увидеть награду."
-                      : "Your focus target earned a chest. Open it to see the reward."),
-                  onRevealReward: overlay.message?.onRevealReward,
-                }}
+	                payload={{
+	                  amount: overlay.message?.amount || FOCUS_VICTORY_REWARD,
+	                  title: overlay.message?.title || t("focusRewardTitle"),
+	                  closedSubtitle: t("focusRewardChestClosed"),
+	                  openedSubtitle: overlay.message?.body || t("focusRewardTitle"),
+	                  onRevealReward: overlay.message?.onRevealReward,
+	                }}
                 t={t}
                 language={language}
                 onClose={dismissOverlay}
@@ -81298,19 +82743,13 @@ useEffect(() => {
                   const rewardAmount = Math.max(0, Number(overlay.message?.rewardAmount) || 0);
                   dismissOverlay();
                   if (rewardAmount > 0) {
-                    triggerOverlayState("health", {
-                      amount: rewardAmount,
-                      tierId: overlay.message?.rewardTierId || null,
-                      chestCount: 1,
-                      title: language === "ru" ? "Сундук за достижение цели" : "Goal reward chest",
-                      closedSubtitle:
-                        language === "ru"
-                          ? "Цель достигнута. Открой сундук, чтобы забрать награду."
-                          : "Goal reached. Open the chest to collect your reward.",
-                      openedSubtitle:
-                        language === "ru"
-                          ? "Награда за цель получена."
-                          : "Your goal reward has been revealed.",
+	                    triggerOverlayState("health", {
+	                      amount: rewardAmount,
+	                      tierId: overlay.message?.rewardTierId || null,
+	                      chestCount: 1,
+	                      title: t("goalRewardChestTitle"),
+	                      closedSubtitle: t("goalRewardChestClosed"),
+	                      openedSubtitle: t("goalRewardChestOpened"),
                       onRevealReward: () => {
                         setHealthPoints((prev) => prev + rewardAmount);
                       },
@@ -81328,19 +82767,13 @@ useEffect(() => {
                     const rewardAmount = Math.max(0, Number(overlay.message?.rewardAmount) || 0);
                     dismissOverlay();
                     if (rewardAmount > 0) {
-                      triggerOverlayState("health", {
-                        amount: rewardAmount,
-                        tierId: overlay.message?.rewardTierId || null,
-                        chestCount: 1,
-                        title: language === "ru" ? "Сундук за достижение цели" : "Goal reward chest",
-                        closedSubtitle:
-                          language === "ru"
-                            ? "Цель достигнута. Открой сундук, чтобы забрать награду."
-                            : "Goal reached. Open the chest to collect your reward.",
-                        openedSubtitle:
-                          language === "ru"
-                            ? "Награда за цель получена."
-                            : "Your goal reward has been revealed.",
+	                      triggerOverlayState("health", {
+	                        amount: rewardAmount,
+	                        tierId: overlay.message?.rewardTierId || null,
+	                        chestCount: 1,
+	                        title: t("goalRewardChestTitle"),
+	                        closedSubtitle: t("goalRewardChestClosed"),
+	                        openedSubtitle: t("goalRewardChestOpened"),
                         onRevealReward: () => {
                           setHealthPoints((prev) => prev + rewardAmount);
                         },
@@ -81715,7 +83148,7 @@ useEffect(() => {
                   placeholder={t("goalEditEmojiLabel")}
                   placeholderTextColor={colors.muted}
                   selectTextOnFocus
-                  maxLength={2}
+                  maxLength={EMOJI_INPUT_MAX_LENGTH}
                 />
                   <View style={styles.priceModalButtons}>
                     <TouchableOpacity
@@ -82067,7 +83500,7 @@ useEffect(() => {
                         placeholder={t("addCategoryEmojiLabel")}
                         placeholderTextColor={colors.muted}
                         selectTextOnFocus
-                        maxLength={2}
+                        maxLength={EMOJI_INPUT_MAX_LENGTH}
                       />
                     </View>
                   </View>
@@ -82224,7 +83657,7 @@ useEffect(() => {
                     placeholder={t("addCategoryEmojiLabel")}
                     placeholderTextColor={colors.muted}
                     selectTextOnFocus
-                    maxLength={2}
+                    maxLength={EMOJI_INPUT_MAX_LENGTH}
                   />
                   {addCategoryError && (
                     <Text style={[styles.priceModalDeleteText, { color: "#E15555" }]}>
@@ -82973,6 +84406,71 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   tycoonAutosaveLaterText: {
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
+  },
+  tycoonAutosaveHungryBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(3,8,20,0.64)",
+    paddingHorizontal: 20,
+    justifyContent: "center",
+  },
+  tycoonAutosaveHungryCard: {
+    borderRadius: 26,
+    borderWidth: 1,
+    paddingHorizontal: 20,
+    paddingTop: 22,
+    paddingBottom: 18,
+    alignItems: "center",
+  },
+  tycoonAutosaveHungryCatWrap: {
+    width: 128,
+    height: 128,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+    overflow: "hidden",
+  },
+  tycoonAutosaveHungryCat: {
+    width: 132,
+    height: 132,
+  },
+  tycoonAutosaveHungryTitle: {
+    ...createBodyText({ fontSize: 22, lineHeight: 27, fontWeight: "900" }),
+    textAlign: "center",
+  },
+  tycoonAutosaveHungryBody: {
+    ...createSecondaryText({ fontSize: 14, lineHeight: 20, fontWeight: "600" }),
+    textAlign: "center",
+    marginTop: 8,
+  },
+  tycoonAutosaveHungryActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 18,
+    alignSelf: "stretch",
+  },
+  tycoonAutosaveHungrySecondary: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  tycoonAutosaveHungrySecondaryText: {
+    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
+  },
+  tycoonAutosaveHungryPrimary: {
+    flex: 1.1,
+    minHeight: 48,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  tycoonAutosaveHungryPrimaryText: {
     ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   tycoonRewardBackdrop: {
@@ -85596,7 +87094,7 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
     minHeight: IS_SHORT_DEVICE ? 48 : 58,
     marginTop: 4,
-    transform: [{ translateY: IS_SHORT_DEVICE ? 18 : 22 }],
+    transform: [{ translateY: IS_SHORT_DEVICE ? 22 : 28 }],
   },
   goalJarHeroAmount: {
     ...TYPOGRAPHY.display,
@@ -89550,6 +91048,12 @@ const styles = StyleSheet.create({
     ...createSecondaryText({ fontSize: 10 }),
     marginTop: 1,
   },
+  budgetSliderHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 0,
+  },
   budgetSliderAmountChip: {
     borderRadius: 999,
     borderWidth: 1,
@@ -89560,6 +91064,18 @@ const styles = StyleSheet.create({
   },
   budgetSliderAmountText: {
     ...createCtaText({ fontSize: 10 }),
+  },
+  budgetSliderResetButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  budgetSliderResetText: {
+    ...createCtaText({ fontSize: 14, fontWeight: "800" }),
+    lineHeight: 16,
   },
   budgetSliderTrackTouchArea: {
     paddingVertical: 6,
@@ -90101,10 +91617,12 @@ const styles = StyleSheet.create({
   },
   subscriptionModalMetricGrid: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
   subscriptionModalMetric: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: "30%",
     minWidth: 0,
   },
   subscriptionModalMetricLabel: {
@@ -90113,6 +91631,15 @@ const styles = StyleSheet.create({
   subscriptionModalMetricValue: {
     ...createBodyText({ fontSize: 12, fontWeight: "700" }),
     marginTop: 1,
+  },
+  subscriptionModalMiniTrack: {
+    height: 7,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  subscriptionModalMiniFill: {
+    height: "100%",
+    borderRadius: 999,
   },
   subscriptionModalEmpty: {
     alignItems: "center",
@@ -90135,6 +91662,120 @@ const styles = StyleSheet.create({
   },
   subscriptionModalPrimaryText: {
     ...createCtaText({ fontSize: 13 }),
+  },
+  subscriptionDueCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 16,
+    gap: 12,
+    maxHeight: IS_SHORT_DEVICE ? "86%" : "90%",
+  },
+  subscriptionDueHero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  subscriptionDueEmojiBubble: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  subscriptionDueEmoji: {
+    fontSize: 25,
+  },
+  subscriptionDueHeroText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  subscriptionDueTitle: {
+    ...createBodyText({ fontSize: 18, fontWeight: "800" }),
+  },
+  subscriptionDueSubtitle: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 17 }),
+    marginTop: 2,
+  },
+  subscriptionDueStatsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  subscriptionDueStat: {
+    flexGrow: 1,
+    flexBasis: "46%",
+    minWidth: 0,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    gap: 2,
+  },
+  subscriptionDueStatLabel: {
+    ...createSecondaryText({ fontSize: 10 }),
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  subscriptionDueStatValue: {
+    ...createBodyText({ fontSize: 14, fontWeight: "800" }),
+  },
+  subscriptionDueChart: {
+    gap: 9,
+  },
+  subscriptionDueChartTitle: {
+    ...createBodyText({ fontSize: 13, fontWeight: "800" }),
+  },
+  subscriptionDueChartRow: {
+    gap: 5,
+  },
+  subscriptionDueChartMeta: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  subscriptionDueChartLabel: {
+    ...createSecondaryText({ fontSize: 11 }),
+    flex: 1,
+    minWidth: 0,
+  },
+  subscriptionDueChartValue: {
+    ...createBodyText({ fontSize: 11, fontWeight: "700" }),
+    flexShrink: 0,
+  },
+  subscriptionDueChartTrack: {
+    height: 10,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  subscriptionDueChartFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  subscriptionDueQuestion: {
+    ...createBodyText({ fontSize: 14, fontWeight: "800", textAlign: "center" }),
+  },
+  subscriptionDueActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  subscriptionDueActionButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  subscriptionDueActionText: {
+    ...createCtaText({ fontSize: 13 }),
+    color: "#FFFFFF",
+  },
+  subscriptionDueLater: {
+    alignItems: "center",
+    paddingVertical: 2,
+  },
+  subscriptionDueLaterText: {
+    ...createSecondaryText({ fontSize: 12, fontWeight: "700" }),
   },
   progressPotentialModalRoot: {
     flex: 1,
@@ -101218,8 +102859,10 @@ function OnboardingGoalJarOption({
   onPress,
   onFocusAmount,
   onAmountChange,
+  registerOptionRef,
   registerInputRef,
   onBlurAmount,
+  onAmountInputFocus,
   t,
 }) {
   const resolvedCurrency = getCurrencyDisplayCode(currency);
@@ -101228,7 +102871,12 @@ function OnboardingGoalJarOption({
   const jarVisual = buildOnboardingGoalJarVisual({ goalId, active, hasTarget });
 
   return (
-    <View style={styles.goalOptionWrap}>
+    <View
+      ref={(node) => {
+        registerOptionRef?.(goalId, node);
+      }}
+      style={styles.goalOptionWrap}
+    >
       <OnboardingScaleButton
         style={[
           styles.goalOptionModern,
@@ -101303,6 +102951,7 @@ function OnboardingGoalJarOption({
               keyboardType="decimal-pad"
               value={targetValue || ""}
               onChangeText={(text) => onAmountChange?.(goalId, text)}
+              onFocus={() => onAmountInputFocus?.(goalId)}
               returnKeyType="done"
               blurOnSubmit
               onSubmitEditing={onBlurAmount}
@@ -101364,10 +103013,24 @@ function GoalScreen({
   );
   const safeAreaInsets = safeUseSafeAreaInsets();
   const resolvedBottomInset = Math.max(Number(bottomInset) || 0, Number(safeAreaInsets.bottom) || 0);
-  const scrollRef = useRef(null);
+  const optionRefs = useRef({});
   const inputRefs = useRef({});
+  const scrollRef = useRef(null);
+  const scrollYRef = useRef(0);
+  const activeGoalInputIdRef = useRef(null);
+  const keyboardMetricsRef = useRef({ height: 0, screenY: Number.POSITIVE_INFINITY });
+  const [keyboardMetrics, setKeyboardMetrics] = useState(keyboardMetricsRef.current);
   const [activeGoalInputId, setActiveGoalInputId] = useState(null);
-  const bottomInsetStyle = addBottomInsetStyle(styles.onboardContent, resolvedBottomInset);
+  const keyboardBottomInset = keyboardMetrics.height
+    ? Math.min(
+        keyboardMetrics.height + (IS_SHORT_DEVICE ? 160 : 196),
+        Math.round(SCREEN_HEIGHT * 0.74)
+      )
+    : 0;
+  const bottomInsetStyle = addBottomInsetStyle(
+    styles.onboardContent,
+    resolvedBottomInset + keyboardBottomInset
+  );
   const swapActions = false;
   const handleSubmit = useCallback(() => {
     onSubmit?.();
@@ -101375,13 +103038,87 @@ function GoalScreen({
   const headerAction = swapActions ? (
     <OnboardingHeaderAction label={t("nextButton")} onPress={handleSubmit} colors={colors} />
   ) : null;
+  const scrollGoalInputIntoView = useCallback((goalId, metrics = keyboardMetricsRef.current) => {
+    if (!goalId) return;
+    const input = inputRefs.current?.[goalId];
+    const option = optionRefs.current?.[goalId];
+    const targetNode = option || input;
+    const scrollView = scrollRef.current;
+    if (
+      !targetNode ||
+      !scrollView ||
+      typeof targetNode.measureInWindow !== "function" ||
+      typeof scrollView.measureInWindow !== "function" ||
+      typeof scrollView.scrollTo !== "function"
+    ) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      scrollView.measureInWindow((...scrollLayout) => {
+        const [, scrollY, , scrollHeight] = scrollLayout;
+        targetNode.measureInWindow((...targetLayout) => {
+          const [, targetY, , targetHeight] = targetLayout;
+          const values = [scrollY, scrollHeight, targetY, targetHeight];
+          if (!values.every(Number.isFinite)) return;
+          const scrollBottom = scrollY + scrollHeight;
+          const fallbackKeyboardTop =
+            metrics?.height > 0 ? Math.max(0, SCREEN_HEIGHT - metrics.height) : Number.POSITIVE_INFINITY;
+          const reportedKeyboardTop =
+            Number.isFinite(metrics?.screenY) && metrics.screenY > 0
+              ? metrics.screenY
+              : Number.POSITIVE_INFINITY;
+          const keyboardTop =
+            Math.min(reportedKeyboardTop, fallbackKeyboardTop) > scrollY
+              ? Math.min(reportedKeyboardTop, fallbackKeyboardTop)
+              : scrollBottom;
+          const keyboardClearance = metrics?.height > 0 ? (IS_SHORT_DEVICE ? 104 : 132) : 32;
+          const visibleBottom = Math.min(scrollBottom, keyboardTop) - keyboardClearance;
+          const visibleTop = scrollY + 14;
+          const targetBottom = targetY + targetHeight;
+          if (targetBottom > visibleBottom) {
+            const delta = targetBottom - visibleBottom;
+            scrollView.scrollTo({ y: Math.max(0, scrollYRef.current + delta), animated: true });
+            return;
+          }
+          if (targetY < visibleTop) {
+            const delta = visibleTop - targetY;
+            scrollView.scrollTo({ y: Math.max(0, scrollYRef.current - delta), animated: true });
+          }
+        });
+      });
+    });
+  }, []);
+  const scheduleGoalInputScroll = useCallback(
+    (goalId, metrics = keyboardMetricsRef.current) => {
+      if (!goalId) return;
+      [60, 180, 340].forEach((delay) => {
+        setTimeout(() => scrollGoalInputIntoView(goalId, metrics), delay);
+      });
+    },
+    [scrollGoalInputIntoView]
+  );
+  const handleGoalInputFocus = useCallback(
+    (goalId) => {
+      if (!goalId) return;
+      activeGoalInputIdRef.current = goalId;
+      setActiveGoalInputId(goalId);
+      scheduleGoalInputScroll(goalId);
+    },
+    [scheduleGoalInputScroll]
+  );
+  const handleGoalInputBlur = useCallback(() => {
+    activeGoalInputIdRef.current = null;
+    setActiveGoalInputId(null);
+  }, []);
   const focusGoalTarget = useCallback((goalId) => {
     if (!goalId) return;
+    activeGoalInputIdRef.current = goalId;
     setActiveGoalInputId(goalId);
     setTimeout(() => {
       inputRefs.current?.[goalId]?.focus?.();
     }, 120);
-  }, []);
+    scheduleGoalInputScroll(goalId);
+  }, [scheduleGoalInputScroll]);
   const handleGoalPress = useCallback(
     (goalId) => {
       const wasActive = selection.includes(goalId);
@@ -101408,6 +103145,42 @@ function GoalScreen({
       onRegisterGoalTargetFocus?.(null);
     };
   }, [focusGoalTarget, onRegisterGoalTargetFocus]);
+  useEffect(() => {
+    activeGoalInputIdRef.current = activeGoalInputId;
+  }, [activeGoalInputId]);
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const handleKeyboardShow = (event = {}) => {
+      const endCoordinates = event.endCoordinates || {};
+      const keyboardHeight = Math.max(0, Number(endCoordinates.height) || 0);
+      const nextMetrics = {
+        height: keyboardHeight,
+        screenY: Number.isFinite(endCoordinates.screenY)
+          ? endCoordinates.screenY
+          : keyboardHeight
+          ? Math.max(0, SCREEN_HEIGHT - keyboardHeight)
+          : Number.POSITIVE_INFINITY,
+      };
+      keyboardMetricsRef.current = nextMetrics;
+      setKeyboardMetrics(nextMetrics);
+      const focusedGoalId = activeGoalInputIdRef.current;
+      if (focusedGoalId) {
+        scheduleGoalInputScroll(focusedGoalId, nextMetrics);
+      }
+    };
+    const handleKeyboardHide = () => {
+      const nextMetrics = { height: 0, screenY: Number.POSITIVE_INFINITY };
+      keyboardMetricsRef.current = nextMetrics;
+      setKeyboardMetrics(nextMetrics);
+    };
+    const showSub = Keyboard.addListener(showEvent, handleKeyboardShow);
+    const hideSub = Keyboard.addListener(hideEvent, handleKeyboardHide);
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [scheduleGoalInputScroll]);
   return (
     <OnboardingScreenShell
       colors={colors}
@@ -101430,6 +103203,10 @@ function GoalScreen({
       <OnboardingScrollView
         contentContainerStyle={[styles.onboardContent, styles.onboardContentWithFixedHeaderLifted, bottomInsetStyle]}
         ref={scrollRef}
+        onScroll={(event) => {
+          scrollYRef.current = event.nativeEvent.contentOffset?.y || 0;
+        }}
+        scrollEventThrottle={16}
       >
         <View
           style={[
@@ -101465,12 +103242,22 @@ function GoalScreen({
               onPress={() => handleGoalPress(goal.id)}
               onFocusAmount={focusGoalTarget}
               onAmountChange={onGoalTargetChange}
+              registerOptionRef={(id, node) => {
+                if (node) {
+                  optionRefs.current[id] = node;
+                } else {
+                  delete optionRefs.current[id];
+                }
+              }}
               registerInputRef={(id, node) => {
                 if (node) {
                   inputRefs.current[id] = node;
+                } else {
+                  delete inputRefs.current[id];
                 }
               }}
-              onBlurAmount={() => setActiveGoalInputId(null)}
+              onAmountInputFocus={handleGoalInputFocus}
+              onBlurAmount={handleGoalInputBlur}
               t={t}
             />
           ))}
@@ -101495,12 +103282,22 @@ function GoalScreen({
                   onPress={() => handleGoalPress(goal.id)}
                   onFocusAmount={focusGoalTarget}
                   onAmountChange={onGoalTargetChange}
+                  registerOptionRef={(id, node) => {
+                    if (node) {
+                      optionRefs.current[id] = node;
+                    } else {
+                      delete optionRefs.current[id];
+                    }
+                  }}
                   registerInputRef={(id, node) => {
                     if (node) {
                       inputRefs.current[id] = node;
+                    } else {
+                      delete inputRefs.current[id];
                     }
                   }}
-                  onBlurAmount={() => setActiveGoalInputId(null)}
+                  onAmountInputFocus={handleGoalInputFocus}
+                  onBlurAmount={handleGoalInputBlur}
                   t={t}
                 />
               ))}
@@ -106538,7 +108335,7 @@ function QuickCustomModal({
                     value={data.emoji || ""}
                     onChangeText={(text) => onChange("emoji", text)}
                     selectTextOnFocus
-                    maxLength={2}
+                    maxLength={EMOJI_INPUT_MAX_LENGTH}
                   />
                   <View
                     style={[
@@ -106683,7 +108480,7 @@ function NewGoalModal({
                     value={data.emoji || ""}
                     onChangeText={(text) => onChange("emoji", text)}
                     selectTextOnFocus
-                    maxLength={2}
+                    maxLength={EMOJI_INPUT_MAX_LENGTH}
                   />
                 </View>
                 <View style={styles.quickModalActions}>
@@ -106823,7 +108620,7 @@ function NewPendingModal({
                     value={data.emoji || ""}
                     onChangeText={(text) => onChange("emoji", text)}
                     selectTextOnFocus
-                    maxLength={2}
+                    maxLength={EMOJI_INPUT_MAX_LENGTH}
                     returnKeyType="done"
                     blurOnSubmit
                     onSubmitEditing={Keyboard.dismiss}
@@ -106989,7 +108786,7 @@ function OnboardingGoalModal({
                     value={data.emoji || ""}
                     onChangeText={(text) => onChange("emoji", text)}
                     selectTextOnFocus
-                    maxLength={2}
+                    maxLength={EMOJI_INPUT_MAX_LENGTH}
                     returnKeyType="done"
                     blurOnSubmit
                     onSubmitEditing={Keyboard.dismiss}
@@ -108889,10 +110686,17 @@ function OnboardingSaveDemoScreen({
   const [resultTargetLocal, setResultTargetLocal] = useState(0);
   const [resultAnimatedLocal, setResultAnimatedLocal] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [amountSliderActive, setAmountSliderActive] = useState(false);
+  const scrollRef = useRef(null);
   const resultCounterAnim = useRef(new Animated.Value(0)).current;
   const resultRevealAnim = useRef(new Animated.Value(0)).current;
   const resultPulseAnim = useRef(new Animated.Value(0)).current;
   const confettiTimerRef = useRef(null);
+  const handleAmountSliderToggle = useCallback((isTouching) => {
+    const shouldLock = Boolean(isTouching);
+    setAmountSliderActive((prev) => (prev === shouldLock ? prev : shouldLock));
+    scrollRef.current?.setNativeProps?.({ scrollEnabled: !shouldLock });
+  }, []);
   useEffect(() => {
     const listenerId = resultCounterAnim.addListener(({ value }) => {
       setResultAnimatedLocal(Math.max(0, Number(value) || 0));
@@ -109040,6 +110844,8 @@ function OnboardingSaveDemoScreen({
         <OnboardingHeader onBack={onBack} onSkip={null} colors={colors} t={t} />
       </OnboardingFixedHeader>
       <OnboardingScrollView
+        ref={scrollRef}
+        scrollEnabled={!amountSliderActive}
         contentContainerStyle={[
           styles.onboardSaveDemoLayout,
           layoutBottomInset,
@@ -109087,7 +110893,7 @@ function OnboardingSaveDemoScreen({
                   feedback={demoFeedback}
                   allowThinkAction={false}
                   onToggleEdit={null}
-                  onAmountSliderToggle={null}
+                  onAmountSliderToggle={handleAmountSliderToggle}
                   onSwipeDelete={null}
                   onSwipeArchive={null}
                   allowSwipeGestures={false}
@@ -109964,7 +111770,7 @@ const LevelUpCelebration = ({ colors, message, t, onSharePress }) => {
                   <HealthCoinFallbackIcon tierId="blue" size={14} style={styles.levelShareButtonRewardFallbackIcon} />
                 )}
                 <Text style={[styles.levelShareButtonRewardText, { color: palette.shareRewardText }]}>
-                  {getChestRewardDisplayCount(LEVEL_SHARE_REWARD_HEALTH_POINTS)}
+                  ?
                 </Text>
               </View>
             </View>
@@ -111655,12 +113461,8 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
   const backdropColor = isDarkTheme ? "rgba(8,12,20,0.78)" : "rgba(12,18,30,0.52)";
   const primaryTextColor = isDarkTheme ? "#FFF4E6" : colors.text;
   const secondaryTextColor = isDarkTheme ? "rgba(255,236,214,0.82)" : colors.muted;
-  const title = data.title || (language === "ru" ? "Награда внутри" : "Reward inside");
-  const closedSubtitle =
-    data.closedSubtitle ||
-    (language === "ru"
-      ? "Редкость известна заранее, монеты узнаешь только после открытия."
-      : "You know the rarity first. The coins are revealed only after opening.");
+  const title = data.title || t("chestRewardDefaultTitle");
+  const closedSubtitle = data.closedSubtitle || t("chestRewardClosedSubtitle");
   const openedSubtitle =
     data.openedSubtitle ||
     data.reason ||
@@ -111886,11 +113688,7 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
       ? rewardChestTier?.assets?.open
       : rewardChestTier?.assets?.closed;
   const tapsLeft = Math.max(0, tapsRequired - tapCount);
-  const statusHint = opened
-    ? language === "ru"
-      ? "Сундук открыт"
-      : "Chest opened"
-    : getChestRewardTapHint(language, tapsLeft);
+  const statusHint = opened ? t("chestRewardOpenedStatus") : getChestRewardTapHint(t, tapsLeft);
 
   return (
     <View style={styles.chestRewardOverlay}>
@@ -111938,6 +113736,7 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
               styles.chestRewardBadgePill,
               { backgroundColor: colorWithAlpha(accent, isDarkTheme ? 0.22 : 0.12), borderColor: cardBorder },
             ]}
+            mystery={!opened}
           />
           <Text style={[styles.chestRewardTitle, { color: primaryTextColor }]}>{title}</Text>
           <Text style={[styles.chestRewardSubtitle, { color: secondaryTextColor }]}>
@@ -112080,9 +113879,7 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
                 countStyle={styles.chestRewardCoinBreakdownCountLarge}
               />
               <Text style={[styles.chestRewardRevealCaption, { color: secondaryTextColor }]}>
-                {language === "ru"
-                  ? "Монеты, которые выпали из сундука"
-                  : "The coins that dropped from the chest"}
+                {t("chestRewardRevealCaption")}
               </Text>
             </View>
           ) : null}
@@ -112103,11 +113900,7 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
                 { color: opened ? colors.background : primaryTextColor },
               ]}
             >
-              {opened
-                ? t("profileOk") || "OK"
-                : language === "ru"
-                ? "Открыть сундук"
-                : "Open chest"}
+              {opened ? t("profileOk") || "OK" : t("chestRewardOpenAction")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -113245,6 +115038,7 @@ const StreakPledgePrompt = ({
                     language={language}
                     iconSize={18}
                     compact
+                    mystery
                     textColor={rewardTextColor}
                     labelStyle={styles.streakPledgeOptionReward}
                   />
@@ -114254,7 +116048,7 @@ const FeatureUnlockIllustration = ({ variantKey, colors, label, actionLabel, t }
                   style={styles.featureUnlockRewardCoin}
                 />
                 <Text style={[styles.featureUnlockRewardAmount, { color: textPrimary }]}>
-                  {getChestRewardDisplayCount(1)}
+                  ?
                 </Text>
                 <View style={[styles.featureUnlockMiniActionButton, { backgroundColor: accent }]}>
                   <Text style={styles.featureUnlockMiniActionText} numberOfLines={1}>
