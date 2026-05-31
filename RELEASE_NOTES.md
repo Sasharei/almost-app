@@ -1,5 +1,47 @@
 # Release Notes
 
+## 6.1.2 (from 6.1.1)
+
+### EN
+- Fixed many issues across the app and improved overall reliability.
+- Improved performance, smoother navigation, and day-to-day stability.
+- Polished key flows, visuals, and small details so Almost feels cleaner and more consistent.
+
+### RU
+- Исправили множество проблем по всему приложению и повысили общую надёжность.
+- Улучшили производительность, плавность навигации и стабильность в повседневном использовании.
+- Доработали ключевые сценарии, визуальные детали и мелочи, чтобы Almost ощущался чище и стабильнее.
+
+### ES
+- Corregimos muchos problemas en toda la app y mejoramos la confiabilidad general.
+- Mejoramos el rendimiento, la navegación más fluida y la estabilidad en el uso diario.
+- Pulimos flujos clave, detalles visuales y pequeños ajustes para que Almost se sienta más claro y consistente.
+
+### FR
+- Nous avons corrigé de nombreux problèmes dans toute l'app et amélioré la fiabilité générale.
+- Nous avons amélioré les performances, la fluidité de navigation et la stabilité au quotidien.
+- Nous avons peaufiné les parcours clés, les détails visuels et les petits ajustements pour rendre Almost plus clair et cohérent.
+
+### DE
+- Viele Probleme in der gesamten App wurden behoben und die allgemeine Zuverlaessigkeit wurde verbessert.
+- Performance, fluessigere Navigation und Stabilitaet im Alltag wurden verbessert.
+- Wichtige Ablaufe, visuelle Details und kleine Feinheiten wurden ueberarbeitet, damit Almost klarer und konsistenter wirkt.
+
+### AR (SA)
+- أصلحنا العديد من المشكلات في مختلف أجزاء التطبيق وحسّنا الاعتمادية العامة.
+- حسّنا الأداء وسلاسة التنقل والاستقرار في الاستخدام اليومي.
+- حسّنا المسارات الأساسية والتفاصيل المرئية واللمسات الصغيرة ليصبح Almost أوضح وأكثر اتساقاً.
+
+### AR (AE)
+- أصلحنا العديد من المشكلات في مختلف أجزاء التطبيق وحسّنا الاعتمادية العامة.
+- حسّنا الأداء وسلاسة التنقل والاستقرار في الاستخدام اليومي.
+- حسّنا المسارات الأساسية والتفاصيل المرئية واللمسات الصغيرة ليصبح Almost أوضح وأكثر اتساقاً.
+
+### ZH
+- 修复了应用中的大量问题，并提升了整体可靠性。
+- 改进了性能、导航流畅度和日常使用稳定性。
+- 打磨了关键流程、视觉细节和细微体验，让 Almost 更清晰、更一致。
+
 ## 6.1.0 (from 6.0.0)
 
 ### EN

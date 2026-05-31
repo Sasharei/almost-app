@@ -29,6 +29,9 @@ def facebookDisplayName = firstNonEmpty([
     System.getenv("FACEBOOK_DISPLAY_NAME"),
     "Almost",
 ]) ?: "Almost"
+def facebookSdkVersion = rootProject.ext.has("facebookSdkVersion")
+    ? rootProject.ext.get("facebookSdkVersion")
+    : "18.+"
 def nodeBinary = System.getenv("NODE_BINARY")
 if (nodeBinary == null || nodeBinary.trim().isEmpty()) {
     nodeBinary = new File("/usr/local/bin/node").exists() ? "/usr/local/bin/node" : "node"
@@ -133,8 +136,8 @@ android {
         applicationId "com.sasarei.almostclean"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 101
-        versionName "6.1.0"
+        versionCode 103
+        versionName "6.1.2"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
         resValue "string", "facebook_app_id", facebookAppId
@@ -214,6 +217,7 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    implementation("com.facebook.android:facebook-android-sdk:${facebookSdkVersion}")
     implementation(platform("com.google.firebase:firebase-bom:34.8.0"))
     implementation("com.google.firebase:firebase-crashlytics")
     implementation("com.google.firebase:firebase-analytics")

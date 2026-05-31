@@ -2091,7 +2091,7 @@ export const buildDefaultPlanCards = (currencyCode = "USD", language = "en") => 
       priceLabel: pricing.weekly.label,
       secondaryLabel: pricing.weekly.perMonth || pricing.weekly.perWeek,
       badge: localizeFallbackBadge(pricing.weekly.badge, lang),
-      recommended: true,
+      recommended: false,
     },
     {
       id: "monthly",
@@ -2099,7 +2099,7 @@ export const buildDefaultPlanCards = (currencyCode = "USD", language = "en") => 
       priceLabel: pricing.monthly.label,
       secondaryLabel: pricing.monthly.perWeek || pricing.monthly.perMonth,
       badge: localizeFallbackBadge(pricing.monthly.badge, lang),
-      recommended: false,
+      recommended: true,
     },
     {
       id: "yearly",

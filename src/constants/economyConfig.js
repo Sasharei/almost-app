@@ -2,11 +2,18 @@ export const ECONOMY_RULES = {
   saveRewardStepUSD: 5,
   minSaveReward: 1,
   maxSaveReward: 24,
-  baseAchievementReward: 60,
-  freeDayRescueCost: 60,
-  tamagotchiFeedCost: 2,
-  tamagotchiFeedBoost: 24,
-  tamagotchiPartyCost: 300,
+  baseAchievementReward: 20,
+  achievementRewardScale: 0.3,
+  freeDayLoginBaseBlueCoins: 1,
+  freeDayLoginMaxBlueCoins: 3,
+  freeDayRescueCost: 80,
+  levelShareRewardBlueCoins: 3,
+  streakRestoreBlueCoinsPerDay: 10,
+  streakPledgeBlueCoinsPerDay: 0.35,
+  usageStreakWeeklyBonusBlueCoins: 2,
+  tamagotchiFeedCost: 5,
+  tamagotchiFeedBoost: 20,
+  tamagotchiPartyCost: 400,
 };
 
 export const DEFAULT_REMOTE_IMAGE =
@@ -19,7 +26,6 @@ export const MINUTE_MS = 1000 * 60;
 
 export const CHALLENGE_REPEAT_COOLDOWN_MS = DAY_MS * 7;
 export const CHALLENGE_FAIL_COOLDOWN_MS = DAY_MS * 14;
-export const REWARD_RESET_INTERVAL_MS = DAY_MS * 14;
 export const REMINDER_MS = REMINDER_DAYS * DAY_MS;
 export const PENDING_EXTENSION_DAYS = 7;
 export const PENDING_EXTENSION_MS = PENDING_EXTENSION_DAYS * DAY_MS;

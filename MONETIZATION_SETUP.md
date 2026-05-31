@@ -22,6 +22,27 @@ Products:
 
 Offerings must include Monthly / Annual / Lifetime packages so client can map plans.
 
+### Android RevenueCat -> Meta Ads attribution
+
+- RevenueCat is the source of truth for subscription Meta events. Client-side Meta trial/revenue logging should stay disabled so `Trial Started` maps to Meta `StartTrial`, and purchase/conversion/renewal events map to Meta `Subscribe`, without duplicate app events.
+- Android calls `Purchases.collectDeviceIdentifiers()` immediately after `Purchases.configure(...)`, before any trial or purchase can start. When the Meta SDK exposes an anonymous app device ID, Android also passes it to RevenueCat with `Purchases.setFBAnonymousID(...)`.
+- Android declares `com.google.android.gms.permission.AD_ID` because the app targets API 33+ and uses Advertising ID for advertising/marketing/analytics attribution.
+- Google Play Console TODO: declare Advertising ID usage for advertising/marketing/analytics attribution.
+- AppsFlyer can continue to receive `premium_trial_started`. AppsFlyer dashboard should have Meta Ads integration active, in-app event postbacks ON, and `premium_trial_started` mapped to Meta `StartTrial` only if AppsFlyer is intentionally used as a fallback source. Avoid sending the same `StartTrial` to Meta from both RevenueCat and AppsFlyer unless deduplication is confirmed.
+
+Debug checklist:
+
+1. Install a fresh Android debug or release build on a real device with Google Play Services.
+2. Ensure the device has not deleted or disabled Advertising ID where possible.
+3. Create a new RevenueCat anonymous user, or log out/reset the app user.
+4. Open the app.
+5. Start a sandbox/test trial.
+6. In the RevenueCat Customer Profile, verify the Android user has `$gpsAdId` or another required Meta identifier.
+7. Verify Customer History shows `Trial Started`.
+8. Verify RevenueCat Meta integration delivery status is successful.
+9. Wait up to 24h for Meta Events Manager / Ads Manager visibility.
+10. Confirm no duplicate `StartTrial` or `Subscribe` events are created.
+
 ### 3-day free trial
 
 - Configure the free trial directly in App Store Connect / Google Play Console for the subscription you want (usually monthly).

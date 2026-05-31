@@ -15,6 +15,7 @@ import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.react.views.view.setEdgeToEdgeFeatureFlagOn
 import com.facebook.soloader.SoLoader
+import com.facebook.FacebookSdk
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 
 import expo.modules.ApplicationLifecycleDispatcher
@@ -70,8 +71,29 @@ class MainApplication : Application(), ReactApplication {
     }
   }
 
+  private fun initializeMetaAttribution() {
+    runCatching {
+      // RevenueCat sends subscription Trial Started -> StartTrial and purchase/renewal events -> Subscribe.
+      // Keep the Meta SDK available for attribution identifiers without client-side revenue auto logging.
+      FacebookSdk.setAutoLogAppEventsEnabled(false)
+      FacebookSdk.setAdvertiserIDCollectionEnabled(true)
+      FacebookSdk.fullyInitialize()
+      if (BuildConfig.DEBUG) {
+        Log.d(
+            "AttributionInit",
+            "Meta SDK initialized; autoLogAppEvents=false advertiserIDCollection=true"
+        )
+      }
+    }.onFailure { error ->
+      if (BuildConfig.DEBUG) {
+        Log.w("AttributionInit", "Meta SDK initialization failed.", error)
+      }
+    }
+  }
+
   override fun onCreate() {
     super.onCreate()
+    initializeMetaAttribution()
     setCrashlyticsBooleanKey("rn_new_arch_build_flag", BuildConfig.IS_NEW_ARCHITECTURE_ENABLED)
     setCrashlyticsBooleanKey("rn_new_arch_runtime_before_init", runtimeNewArchEnabled)
     setCrashlyticsBooleanKey("rn_new_arch_fallback_triggered", false)

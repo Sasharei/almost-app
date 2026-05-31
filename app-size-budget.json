@@ -1,5 +1,5 @@
 {
-  "maxBytes": 80000000,
+  "maxBytes": 100000000,
   "baselineBytes": 71259253,
-  "allowedGrowthBytes": 1000000
+  "allowedGrowthBytes": 28740747
 }

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Almost",
     "slug": "almost_clean",
-    "version": "6.1.0",
+    "version": "6.1.2",
     "orientation": "portrait",
     "icon": "./assets/Almost_icon.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,7 @@
       "bundleIdentifier": "com.sasarei.almostclean",
       "supportsTablet": true,
       "googleServicesFile": "./ios/GoogleService-Info.plist",
-      "buildNumber": "101",
+      "buildNumber": "103",
       "appStoreUrl": "https://apps.apple.com/app/id6756276744?action=write-review",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -64,7 +64,7 @@
     },
     "android": {
       "package": "com.sasarei.almostclean",
-      "versionCode": 101,
+      "versionCode": 103,
       "googleServicesFile": "./android/app/google-services.json",
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.sasarei.almostclean",
       "icon": "./assets/android/ic_launcher.png",
@@ -75,7 +75,8 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "com.google.android.gms.permission.AD_ID"
       ]
     },
     "web": {
@@ -89,7 +90,13 @@
           "cameraPermission": "Allow Almost to use the camera for quick profile snapshots."
         }
       ],
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#59C7F9"
+        }
+      ],
       "expo-font",
       [
         "expo-splash-screen",
@@ -107,7 +114,7 @@
           "displayName": "Almost",
           "scheme": "fb1653035139013896",
           "advertiserIDCollectionEnabled": true,
-          "autoLogAppEventsEnabled": true,
+          "autoLogAppEventsEnabled": false,
           "isAutoInitEnabled": true,
           "iosUserTrackingPermission": "Your data will be used to measure advertising efficiency."
         }
