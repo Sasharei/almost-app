@@ -124,7 +124,7 @@ class AlmostWidgetProvider : AppWidgetProvider() {
 
         views.setViewVisibility(R.id.widget_content, android.view.View.VISIBLE)
         views.setViewVisibility(R.id.widget_empty_state, android.view.View.GONE)
-        views.setTextViewText(R.id.widget_saved_label, widgetData.labelTotal)
+        views.setTextViewText(R.id.widget_saved_label, widgetData.labelBalance)
         views.setTextViewText(R.id.widget_saved_value, widgetData.savedTotalLabel)
         if (isMedium || isLarge) {
           views.setTextViewText(R.id.widget_saved_total_label, widgetData.labelToday)

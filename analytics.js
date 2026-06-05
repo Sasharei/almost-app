@@ -59,6 +59,15 @@ try {
   amplitudeAnalytics = null;
 }
 
+export const ANALYTICS_VALUE_UNKNOWN = "unknown";
+export const ANALYTICS_EVENTS = Object.freeze({
+  TRIAL_AVAILABLE: "trial_available",
+  TRIAL_SWITCH_ON: "trial_switch_on",
+});
+export const ANALYTICS_SOURCES = Object.freeze({
+  FREE_TRIAL_TOGGLE: "free_trial_toggle",
+});
+
 const EVENT_DEFINITIONS = {
   temptation_want: ["item_id", "price_usd", "categories", "persona", "currency"],
   temptation_save: [
@@ -111,6 +120,28 @@ const EVENT_DEFINITIONS = {
   onboarding_goal_chosen: ["goal_id", "target_usd"],
   onboarding_goal_skipped: ["method"],
   onboarding_goal_custom_created: ["title_hash", "target_usd", "currency"],
+  onboarding_length_experiment_assigned: [
+    "experiment_id",
+    "experiment_variant",
+    "assignment_source",
+    "is_new_install",
+    "enabled",
+    "force_variant",
+    "allocation_a",
+    "allocation_b",
+  ],
+  onboarding_length_experiment_remote_config_loaded: [
+    "experiment_id",
+    "result",
+    "source",
+    "enabled",
+    "new_install_only",
+    "force_variant",
+    "allocation_a",
+    "allocation_b",
+    "assigned_variant",
+    "assignment_source",
+  ],
   session_started: [],
   layout_guard_metrics: [
     "platform",
@@ -143,9 +174,12 @@ const EVENT_DEFINITIONS = {
   language_zh_selected: [],
   currency_usd_selected: [],
   currency_aed_selected: [],
+  currency_ars_selected: [],
   currency_aud_selected: [],
+  currency_brl_selected: [],
   currency_byn_selected: [],
   currency_cad_selected: [],
+  currency_cny_selected: [],
   currency_eur_selected: [],
   currency_gbp_selected: [],
   currency_jpy_selected: [],
@@ -159,9 +193,16 @@ const EVENT_DEFINITIONS = {
   gender_male_selected: [],
   gender_none_selected: [],
   onboarding_custom_spend: ["has_custom", "price_usd", "frequency_per_week"],
-  onboarding_completed: ["persona_id", "goal_id", "has_goal", "start_balance", "skipped"],
+  onboarding_completed: [
+    "persona_id",
+    "goal_id",
+    "has_goal",
+    "start_balance",
+    "skipped",
+    "onboarding_experiment_id",
+    "onboarding_flow_variant",
+  ],
   onboarding_terms_accepted: ["language"],
-  onboarding_skipped: ["from_step"],
   consent_terms_accepted: ["language"],
   consent_analytics_enabled: ["enabled", "source"],
   theme_selected: ["theme", "is_pro", "pro_color_id", "pro_color_hex", "source"],
@@ -233,7 +274,6 @@ const EVENT_DEFINITIONS = {
   daily_reward_collected_day_6: ["coins", "level"],
   daily_reward_collected_day_7: ["coins", "level"],
   push_notifications_enabled: [],
-  push_notification_open: [],
   savings_updated: ["saved_usd_total", "tier_level", "next_tier_saves", "profile_goal"],
   savings_level_up: ["level", "saved_usd_total"],
   hero_level_unlocked: ["level", "saved_usd_total"],
@@ -440,6 +480,31 @@ const EVENT_DEFINITIONS = {
     "product_id",
     "has_trial",
     "trial_days",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
+  trial_available: [
+    "kind",
+    "feature",
+    "trigger",
+    "plan",
+    "view_index",
+    "product_id",
+    "trial_days",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
+  trial_switch_on: [
+    "kind",
+    "feature",
+    "trigger",
+    "plan",
+    "view_index",
+    "product_id",
+    "trial_days",
+    "source",
     "experiment_id",
     "experiment_group",
     "experiment_new_install",
@@ -764,6 +829,8 @@ const FACEBOOK_MONETIZATION_EVENT_WHITELIST = new Set([
   "premium_paywall_feature_highlighted",
   "premium_paywall_plan_selected",
   "premium_paywall_primary_tapped",
+  "trial_available",
+  "trial_switch_on",
   "premium_transaction_abandoned_offer_shown",
   "premium_purchase_started",
   "premium_purchase_result",
@@ -1161,14 +1228,6 @@ const logAmplitudeEvent = async (eventName, params = {}) => {
   }
 };
 
-const logAmplitudeScreenView = async (screenName) => {
-  if (!screenName) return;
-  await logAmplitudeEvent("screen_view", {
-    screen_name: screenName,
-    screen_class: screenName,
-  });
-};
-
 const setAmplitudeUserProperties = async (properties = {}) => {
   if (!shouldUseAmplitude() || !isAnalyticsEnabled()) return;
   if (!hasAmplitude()) return;
@@ -1320,7 +1379,6 @@ export const logScreenView = async (screenName) => {
       console.warn("Failed to log screen view:", error?.message || error);
     }
   }
-  await logAmplitudeScreenView(screenName);
 };
 
 const logFacebookEvent = (eventName, params = {}) => {

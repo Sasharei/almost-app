@@ -82,10 +82,10 @@
 
           <TextView
             android:id="@+id/widget_saved_total_value"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:autoSizeTextType="uniform"
-            android:autoSizeMinTextSize="18sp"
+            android:autoSizeMinTextSize="12sp"
             android:autoSizeMaxTextSize="24sp"
             android:ellipsize="end"
             android:includeFontPadding="false"
@@ -125,10 +125,10 @@
 
               <TextView
                 android:id="@+id/widget_saved_value"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:autoSizeTextType="uniform"
-                android:autoSizeMinTextSize="12sp"
+                android:autoSizeMinTextSize="9sp"
                 android:autoSizeMaxTextSize="16sp"
                 android:ellipsize="end"
                 android:includeFontPadding="false"
@@ -167,10 +167,10 @@
 
               <TextView
                 android:id="@+id/widget_streak_value"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:autoSizeTextType="uniform"
-                android:autoSizeMinTextSize="12sp"
+                android:autoSizeMinTextSize="9sp"
                 android:autoSizeMaxTextSize="16sp"
                 android:ellipsize="end"
                 android:includeFontPadding="false"

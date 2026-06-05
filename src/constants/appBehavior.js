@@ -130,6 +130,7 @@ export const STORAGE_KEYS = {
   HERO_CAROUSEL_WIGGLE_SEEN: "@almost_hero_carousel_wiggle_seen",
   TEMPTATION_TUTORIAL: "@almost_temptation_cards_tutorial",
   COIN_VALUE_MODAL: "@almost_coin_value_modal",
+  FIRST_SAVE_GOAL_JAR_STATUS: "@almost_first_save_goal_jar_status",
   DAILY_CHALLENGE: "@almost_daily_challenge_state",
   DAILY_CHALLENGE_ACCEPTED_TOTAL: "@almost_daily_challenge_accepted_total",
   DAILY_CHALLENGE_COMPLETED_TOTAL: "@almost_daily_challenge_completed_total",
@@ -203,6 +204,8 @@ export const STORAGE_KEYS = {
   MONETIZATION_EXPERIMENT_INSTALL_LEGACY: "@almost_monetization_experiment_install_legacy",
   PAYWALL_DESIGN_EXPERIMENT_VARIANT: "@almost_paywall_design_experiment_variant",
   PAYWALL_DESIGN_EXPERIMENT_ASSIGNED_AT: "@almost_paywall_design_experiment_assigned_at",
+  ONBOARDING_LENGTH_EXPERIMENT_VARIANT: "@almost_onboarding_length_experiment_variant",
+  ONBOARDING_LENGTH_EXPERIMENT_ASSIGNED_AT: "@almost_onboarding_length_experiment_assigned_at",
   MONETIZATION_TRIAL_LOCKED: "@almost_monetization_trial_locked",
   MONETIZATION_FIRST_SESSION_ACTION_BASELINE:
     "@almost_monetization_first_session_action_baseline",

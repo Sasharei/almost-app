@@ -4,6 +4,8 @@ export const WEEKDAY_FULL_LABELS = {
   es: ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"],
   fr: ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"],
   de: ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"],
+  pt: ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"],
+  it: ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"],
   ar: ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"],
   zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
 };
@@ -44,6 +46,20 @@ export const HEALTH_COIN_LABELS = {
     blue: "blaue Münzen",
     green: "grüne Münzen",
   },
+  pt: {
+    pink: "moedas rosas",
+    red: "moedas vermelhas",
+    orange: "moedas laranja",
+    blue: "moedas azuis",
+    green: "moedas verdes",
+  },
+  it: {
+    pink: "monete rosa",
+    red: "monete rosse",
+    orange: "monete arancioni",
+    blue: "monete blu",
+    green: "monete verdi",
+  },
   ar: {
     pink: "عملات وردية",
     red: "عملات حمراء",
@@ -66,6 +82,8 @@ export const ZERO_HEALTH_REWARD_LABELS = {
   es: "0 monedas",
   fr: "0 pièce",
   de: "0 Münzen",
+  pt: "0 moedas",
+  it: "0 monete",
   ar: "0 عملات",
   zh: "0 个币",
 };
@@ -76,6 +94,8 @@ export const WEEKDAY_LABELS = {
   es: ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"],
   fr: ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"],
   de: ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"],
+  pt: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"],
+  it: ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"],
   ar: ["أحد", "اثن", "ثلا", "أرب", "خمي", "جمع", "سبت"],
   zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
 };
@@ -86,6 +106,8 @@ export const WEEKDAY_LABELS_MONDAY_FIRST = {
   es: ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
   fr: ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"],
   de: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
+  pt: ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"],
+  it: ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"],
   ar: ["اثن", "ثلا", "أرب", "خمي", "جمع", "سبت", "أحد"],
   zh: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
 };
@@ -108,6 +130,8 @@ export const FREQUENCY_COUNTDOWN_TOKENS = {
   es: { day: "d", hour: "h", minute: "m" },
   fr: { day: "j", hour: "h", minute: "m" },
   de: { day: "T", hour: "Std", minute: "Min" },
+  pt: { day: "d", hour: "h", minute: "min" },
+  it: { day: "g", hour: "h", minute: "min" },
   ar: { day: "ي", hour: "س", minute: "د" },
   zh: { day: "天", hour: "小时", minute: "分" },
 };
