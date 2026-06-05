@@ -5,6 +5,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useLayoutEffect,
   forwardRef,
   useImperativeHandle,
 } from "react";
@@ -116,6 +117,9 @@ import Sentry, { initSentry } from "./sentry";
 import { SafeAreaProvider, useSafeAreaInsets, initialWindowMetrics } from "react-native-safe-area-context";
 import ViewShot, { captureRef } from "react-native-view-shot";
 import {
+  ANALYTICS_EVENTS,
+  ANALYTICS_SOURCES,
+  ANALYTICS_VALUE_UNKNOWN,
   initAnalytics,
   initPerformanceMonitoring,
   logEvent,
@@ -573,6 +577,42 @@ const MODAL_CLOSE_SETTLE_TUTORIAL_MS = 140;
 const MODAL_HANDOFF_FRAME_SLACK_MS = 8;
 const STORE_REVIEW_MODAL_GUARD_MS = 900;
 const FREQUENCY_REMINDER_RETRY_MS = 24;
+const visibleModalHostIds = new Set();
+const visibleModalHostListeners = new Set();
+const getVisibleModalHostCount = () => visibleModalHostIds.size;
+const emitVisibleModalHostCountChange = () => {
+  visibleModalHostListeners.forEach((listener) => {
+    listener();
+  });
+};
+const setTrackedModalHostVisible = (id, visible) => {
+  if (!id) return;
+  const isVisible = visibleModalHostIds.has(id);
+  if (visible && !isVisible) {
+    visibleModalHostIds.add(id);
+    emitVisibleModalHostCountChange();
+    return;
+  }
+  if (!visible && isVisible) {
+    visibleModalHostIds.delete(id);
+    emitVisibleModalHostCountChange();
+  }
+};
+const subscribeVisibleModalHosts = (listener) => {
+  visibleModalHostListeners.add(listener);
+  return () => {
+    visibleModalHostListeners.delete(listener);
+  };
+};
+const useVisibleModalHostCount = () => {
+  const [count, setCount] = useState(getVisibleModalHostCount);
+  useEffect(() => {
+    const syncCount = () => setCount(getVisibleModalHostCount());
+    syncCount();
+    return subscribeVisibleModalHosts(syncCount);
+  }, []);
+  return count;
+};
 const InTreeTransparentModal = ({
   visible,
   animationType = "none",
@@ -679,6 +719,18 @@ const Modal = ({
   children,
   ...rest
 }) => {
+  const modalHostIdRef = useRef(null);
+  if (!modalHostIdRef.current) {
+    modalHostIdRef.current = {};
+  }
+  useLayoutEffect(() => {
+    const modalHostId = modalHostIdRef.current;
+    setTrackedModalHostVisible(modalHostId, !!visible);
+    return () => {
+      setTrackedModalHostVisible(modalHostId, false);
+    };
+  }, [visible]);
+
   const statusGlassConfig = useContext(StatusGlassContext);
   const statusGlassOverlay = statusGlassConfig ? <StatusGlass {...statusGlassConfig} /> : null;
   const modalChildren = statusGlassOverlay ? (
@@ -1140,6 +1192,8 @@ const stripEmojis = (text = "") =>
     .replace(createEmojiStripRegex(), "")
     .replace(/\s{2,}/g, " ")
     .trim();
+const preserveWholeWordsForTextWrap = (text = "") =>
+  String(text || "").replace(/\S+/g, (word) => Array.from(word).join("\u2060"));
 const keepEmojiWithText = (value = "") => {
   const trimmed = String(value || "").trim();
   if (!trimmed) return "";
@@ -1477,6 +1531,98 @@ const resolvePaywallDesignVariantFromSeed = (seed = "", config = null) => {
   const bucket = resolveMonetizationExperimentBucket(seed);
   const threshold = (allocation.A / total) * 100;
   return bucket < threshold ? PAYWALL_DESIGN_VARIANTS.A : PAYWALL_DESIGN_VARIANTS.B;
+};
+const ONBOARDING_LENGTH_EXPERIMENT_ID = "onboarding_length_v1";
+const ONBOARDING_LENGTH_EXPERIMENT_RC_KEY = "onboarding_length_v1_config";
+const ONBOARDING_LENGTH_VARIANTS = Object.freeze({
+  A: "A",
+  B: "B",
+});
+const ONBOARDING_LENGTH_VARIANT_VALUES = new Set(Object.values(ONBOARDING_LENGTH_VARIANTS));
+const ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG = Object.freeze({
+  enabled: false,
+  newInstallOnly: true,
+  forceVariant: "",
+  allocation: {
+    A: 100,
+    B: 0,
+  },
+});
+const normalizeOnboardingLengthVariant = (
+  value = "",
+  fallback = ONBOARDING_LENGTH_VARIANTS.A
+) => {
+  const normalized = resolveNonEmptyString(value).toUpperCase();
+  if (ONBOARDING_LENGTH_VARIANT_VALUES.has(normalized)) return normalized;
+  return fallback;
+};
+const normalizeOnboardingLengthAllocation = (input = null) => {
+  const raw = input && typeof input === "object" ? input : {};
+  const resolveAllocationValue = (key) => {
+    if (Object.prototype.hasOwnProperty.call(raw, key)) return raw[key];
+    const lower = key.toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(raw, lower)) return raw[lower];
+    return 0;
+  };
+  const allocation = {
+    A: clampMonetizationPercent(resolveAllocationValue("A")),
+    B: clampMonetizationPercent(resolveAllocationValue("B")),
+  };
+  const total = allocation.A + allocation.B;
+  if (total > 0) return allocation;
+  return { ...ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG.allocation };
+};
+const normalizeOnboardingLengthExperimentConfig = (input = null) => {
+  const raw = input && typeof input === "object" ? input : {};
+  const enabled = parseMonetizationBoolean(raw?.enabled);
+  const newInstallOnly = parseMonetizationBoolean(raw?.newInstallOnly ?? raw?.new_install_only);
+  const forceVariantRaw = resolveNonEmptyString(
+    raw?.forceVariant || raw?.force_variant || raw?.variant || ""
+  );
+  const forceVariant = normalizeOnboardingLengthVariant(forceVariantRaw, "");
+  return {
+    enabled:
+      enabled === null ? ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG.enabled : enabled === true,
+    newInstallOnly:
+      newInstallOnly === null
+        ? ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG.newInstallOnly
+        : newInstallOnly === true,
+    forceVariant,
+    allocation: normalizeOnboardingLengthAllocation(raw?.allocation),
+  };
+};
+const parseOnboardingLengthExperimentRemoteConfig = (rawValue = "") => {
+  const normalizedRaw = resolveNonEmptyString(rawValue);
+  if (!normalizedRaw) {
+    return { ...ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG };
+  }
+  try {
+    const parsed = JSON.parse(normalizedRaw);
+    return normalizeOnboardingLengthExperimentConfig(parsed);
+  } catch (error) {
+    return { ...ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG };
+  }
+};
+const resolveOnboardingLengthVariantFromSeed = (
+  seed = "",
+  config = null,
+  { isNewInstall = true } = {}
+) => {
+  const resolvedConfig = normalizeOnboardingLengthExperimentConfig(config);
+  if (resolvedConfig.enabled !== true) {
+    return ONBOARDING_LENGTH_VARIANTS.A;
+  }
+  if (resolvedConfig.newInstallOnly && !isNewInstall) {
+    return ONBOARDING_LENGTH_VARIANTS.A;
+  }
+  const forced = normalizeOnboardingLengthVariant(resolvedConfig.forceVariant, "");
+  if (forced) return forced;
+  const allocation = normalizeOnboardingLengthAllocation(resolvedConfig.allocation);
+  const total = allocation.A + allocation.B;
+  if (total <= 0) return ONBOARDING_LENGTH_VARIANTS.A;
+  const bucket = resolveMonetizationExperimentBucket(seed);
+  const threshold = (allocation.A / total) * 100;
+  return bucket < threshold ? ONBOARDING_LENGTH_VARIANTS.A : ONBOARDING_LENGTH_VARIANTS.B;
 };
 const isTruthyStorageValue = (value = "") => {
   const normalized = resolveNonEmptyString(value).toLowerCase();
@@ -1931,6 +2077,8 @@ const resolveMonetizationLanguage = (language = "en") => {
     base === "es" ||
     base === "fr" ||
     base === "de" ||
+    base === "pt" ||
+    base === "it" ||
     base === "ar" ||
     base === "zh"
   ) {
@@ -2081,8 +2229,11 @@ const PAYWALL_DAY_SUFFIX_BY_LANGUAGE = {
   zh: "/天",
 };
 const CURRENCY_DISPLAY_SYMBOLS = {
+  ARS: "$",
   AUD: "$",
+  BRL: "R$",
   CAD: "$",
+  CNY: "¥",
   EUR: "€",
   GBP: "£",
   JPY: "¥",
@@ -2099,6 +2250,7 @@ const CURRENCY_DISPLAY_ALIASES = {
 };
 const CURRENCY_SIMPLE_DOLLAR_PATTERNS = {
   USD: [/\b(?:USD|US)[\s\u00A0\u202F]*\$/gi, /\$[\s\u00A0\u202F]*(?:USD|US)(?=$|[^A-Za-z])/gi],
+  ARS: [/\b(?:ARS|AR)[\s\u00A0\u202F]*\$/gi, /\$[\s\u00A0\u202F]*(?:ARS|AR)(?=$|[^A-Za-z])/gi],
   CAD: [/\b(?:CAD|CA|C)[\s\u00A0\u202F]*\$/gi, /\$[\s\u00A0\u202F]*(?:CAD|CA|C)(?=$|[^A-Za-z])/gi],
   AUD: [/\b(?:AUD|AU|A)[\s\u00A0\u202F]*\$/gi, /\$[\s\u00A0\u202F]*(?:AUD|AU|A)(?=$|[^A-Za-z])/gi],
   MXN: [/\b(?:MXN|MX|MEX)[\s\u00A0\u202F]*\$/gi, /\$[\s\u00A0\u202F]*(?:MXN|MX|MEX)(?=$|[^A-Za-z])/gi],
@@ -3192,6 +3344,19 @@ const parseDayKey = (key) => {
   if (Number.isNaN(date.getTime())) return null;
   date.setHours(0, 0, 0, 0);
   return date;
+};
+
+const getTycoonAutosaveEventDayKey = (entry) => {
+  if (!entry || Object(entry) !== entry) return "";
+  const storedDayKey = resolveNonEmptyString(entry.dayKey);
+  if (storedDayKey && parseDayKey(storedDayKey)) return storedDayKey;
+  const timestamp =
+    Number(entry.timerWindowEnd) ||
+    Number(entry.confirmedAt) ||
+    Number(entry.skippedAt) ||
+    Number(entry.createdAt) ||
+    0;
+  return timestamp > 0 ? getDayKey(timestamp) : "";
 };
 
 const createDailySaveLimitState = (dayKey = getDayKey(Date.now()), count = 0) => {
@@ -5211,6 +5376,26 @@ const getTamagotchiMood = (
 	      needClean: "est sale et veut être lavé",
 	      needFood: "a faim",
 	    },
+      pt: {
+        happy: "está ótimo",
+        calm: "está bem, mas precisa de atenção",
+        sad: "está triste e quer brincar",
+        missed: "sentiu a tua falta e está triste",
+        urgent: "precisa de cuidados urgentes!",
+        needPlay: "quer brincar",
+        needClean: "está sujo e precisa de limpeza",
+        needFood: "está com fome",
+      },
+      it: {
+        happy: "sta benissimo",
+        calm: "sta bene, ma vuole attenzione",
+        sad: "è triste e vuole giocare",
+        missed: "gli sei mancato ed è triste",
+        urgent: "ha bisogno di cure urgenti!",
+        needPlay: "vuole giocare",
+        needClean: "è sporco e va pulito",
+        needFood: "ha fame",
+      },
       de: {
         happy: "ist in Topform",
         calm: "ist okay, braucht aber Aufmerksamkeit",
@@ -5641,6 +5826,7 @@ const normalizeImpulseAlertMap = (value) => {
 };
 
 const DEFAULT_INCOME_PAYDAY = 1;
+const CATEGORY_BUDGET_MONTH_PAYDAY = DEFAULT_INCOME_PAYDAY;
 const normalizeIncomePayday = (value, fallback = DEFAULT_INCOME_PAYDAY) => {
   const parsed = Number(value);
   if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 31) {
@@ -6455,7 +6641,8 @@ const SAVING_RATING_COPY = Object.freeze({
 const resolveSavingRatingCopy = (language = DEFAULT_LANGUAGE) => {
   const normalized = normalizeLanguage(language);
   const short = getShortLanguageKey(normalized);
-  return SAVING_RATING_COPY[normalized] || SAVING_RATING_COPY[short] || SAVING_RATING_COPY.en;
+  const source = SAVING_RATING_COPY[normalized] || SAVING_RATING_COPY[short] || SAVING_RATING_COPY.en;
+  return localizeFallbackCopyStructure(source, normalized);
 };
 
 const resolveSavingRatingLabel = (score = 0, language = DEFAULT_LANGUAGE) => {
@@ -8632,9 +8819,12 @@ const POTENTIAL_PUSH_STEP_EUR = 10;
 const POTENTIAL_PUSH_STEP_USD = convertFromCurrency(POTENTIAL_PUSH_STEP_EUR, "EUR");
 const POTENTIAL_PUSH_STEP_LOCAL_MAP = {
   AED: 10,
+  ARS: 10000,
   AUD: 10,
+  BRL: 50,
   BYN: 10,
   CAD: 10,
+  CNY: 50,
   EUR: 10,
   GBP: 10,
   JPY: 1000,
@@ -8700,8 +8890,10 @@ const getCurrencyPrecision = (currency = activeCurrency) => {
   if (
     currency === "AED" ||
     currency === "AUD" ||
+    currency === "BRL" ||
     currency === "BYN" ||
     currency === "CAD" ||
+    currency === "CNY" ||
     currency === "EUR" ||
     currency === "GBP" ||
     currency === "MXN" ||
@@ -10472,6 +10664,12 @@ const formatTemptationPauseFreezeLabel = (
     if (translationLanguage === "de") {
       return `${days} ${days === 1 ? "Tag" : "Tage"}`;
     }
+    if (translationLanguage === "pt") {
+      return `${days} ${days === 1 ? "dia" : "dias"}`;
+    }
+    if (translationLanguage === "it") {
+      return `${days} ${days === 1 ? "giorno" : "giorni"}`;
+    }
     if (translationLanguage === "ar") {
       return `${days} ${days === 1 ? "يوم" : "أيام"}`;
     }
@@ -10492,6 +10690,12 @@ const formatTemptationPauseFreezeLabel = (
   }
   if (translationLanguage === "de") {
     return `${hours} ${hours === 1 ? "Stunde" : "Stunden"}`;
+  }
+  if (translationLanguage === "pt") {
+    return `${hours} ${hours === 1 ? "hora" : "horas"}`;
+  }
+  if (translationLanguage === "it") {
+    return `${hours} ${hours === 1 ? "ora" : "ore"}`;
   }
   if (translationLanguage === "ar") {
     return `${hours} ${hours === 1 ? "ساعة" : "ساعات"}`;
@@ -11023,7 +11227,25 @@ const isKnownDailyNudgeNotification = (content = {}) => {
   );
 };
 
-const CURRENCIES = ["USD", "AED", "AUD", "BYN", "CAD", "EUR", "GBP", "JPY", "KZT", "KRW", "MXN", "PLN", "RUB", "SAR"];
+const CURRENCIES = [
+  "USD",
+  "AED",
+  "ARS",
+  "AUD",
+  "BRL",
+  "BYN",
+  "CAD",
+  "CNY",
+  "EUR",
+  "GBP",
+  "JPY",
+  "KZT",
+  "KRW",
+  "MXN",
+  "PLN",
+  "RUB",
+  "SAR",
+];
 const normalizeCurrencyCode = (value) => {
   const raw = typeof value === "string" ? value.trim().toUpperCase() : "";
   return CURRENCIES.includes(raw) ? raw : DEFAULT_PROFILE.currency;
@@ -11031,9 +11253,12 @@ const normalizeCurrencyCode = (value) => {
 
 const CURRENCY_LOCALES = {
   AED: "en-AE",
+  ARS: "es-AR",
   AUD: "en-AU",
+  BRL: "pt-BR",
   BYN: "be-BY",
   CAD: "en-CA",
+  CNY: "zh-CN",
   EUR: "de-DE",
   GBP: "en-GB",
   JPY: "ja-JP",
@@ -11045,7 +11270,7 @@ const CURRENCY_LOCALES = {
   SAR: "ar-SA",
   USD: "en-US",
 };
-const NARROW_DOLLAR_SYMBOL_CURRENCIES = new Set(["USD", "CAD", "AUD"]);
+const NARROW_DOLLAR_SYMBOL_CURRENCIES = new Set(["USD", "CAD", "AUD", "ARS"]);
 const resolveCurrencyLocale = (currency, language = activeLanguageForFormatting) => {
   const languageLocale = getFormatLocale(language);
   if (typeof languageLocale === "string" && languageLocale.trim().length > 0) {
@@ -11983,9 +12208,12 @@ const GENDER_SELECTED_EVENTS = {
 const CURRENCY_SELECTED_EVENTS = {
   USD: "currency_usd_selected",
   AED: "currency_aed_selected",
+  ARS: "currency_ars_selected",
   AUD: "currency_aud_selected",
+  BRL: "currency_brl_selected",
   BYN: "currency_byn_selected",
   CAD: "currency_cad_selected",
+  CNY: "currency_cny_selected",
   EUR: "currency_eur_selected",
   GBP: "currency_gbp_selected",
   JPY: "currency_jpy_selected",
@@ -12667,6 +12895,7 @@ const INITIAL_STREAK_PLEDGE = {
   lastPromptDayKey: null,
   introSeen: false,
 };
+const STREAK_PLEDGE_PROMPT_MIN_STREAK_DAYS = 2;
 const STREAK_PLEDGE_BLUE_COINS_PER_DAY = Math.max(
   0,
   Number(ECONOMY_RULES.streakPledgeBlueCoinsPerDay) || 0
@@ -16808,7 +17037,7 @@ const GoalJarDetailModal = React.memo(function GoalJarDetailModal({
   });
   if (!visible) return null;
   return (
-    <Modal visible transparent animationType="slide" statusBarTranslucent>
+    <Modal visible transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <ScrollView
         style={[styles.goalJarDetailScreen, { backgroundColor: modalBg }]}
         contentContainerStyle={[styles.goalJarDetailContent, { paddingTop: modalTopPadding }]}
@@ -17517,6 +17746,10 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const goalTitleParts = useMemo(() => splitLeadingEmojiToken(resolvedGoalTitle), [resolvedGoalTitle]);
   const goalEmoji = goalTitleParts.emoji || DEFAULT_GOAL_EMOJI;
   const goalTitleText = goalTitleParts.title || resolvedGoalTitle;
+  const goalTitleDisplayText = useMemo(
+    () => preserveWholeWordsForTextWrap(goalTitleText),
+    [goalTitleText]
+  );
   const resolvedGoalSavedLabel = useMemo(() => {
     const raw = typeof goalSavedLabel === "string" ? goalSavedLabel.trim() : "";
     return raw || resolvedTotalSavedLabel;
@@ -17914,6 +18147,23 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
     }),
     [expandedPotentialValueScale]
   );
+  const heroSavedValueScale = useMemo(
+    () =>
+      computeAdaptiveAmountScale(resolvedTotalSavedLabel, {
+        baseThreshold: 3,
+        shrinkStep: 0.074,
+        minScale: 0.48,
+        maxShrinkSteps: 12,
+      }),
+    [computeAdaptiveAmountScale, resolvedTotalSavedLabel]
+  );
+  const heroSavedValueStyle = useMemo(
+    () => ({
+      fontSize: Math.round((IS_SHORT_DEVICE ? 44 : 54) * heroSavedValueScale),
+      lineHeight: Math.round((IS_SHORT_DEVICE ? 47 : 57) * heroSavedValueScale),
+    }),
+    [heroSavedValueScale]
+  );
   const goalTitleFitConfig = useMemo(() => {
     const baseFontSize = IS_SHORT_DEVICE ? 16 : 18;
     const baseLineHeight = IS_SHORT_DEVICE ? 20 : 22;
@@ -17956,6 +18206,9 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
       style: { fontSize, lineHeight },
     };
   }, [goalTitleText, goalTitleTextBlockWidth]);
+  const resolvedGoalProgressMetaLabel = resolvedGoalTargetLabel
+    ? `${resolvedGoalSavedLabel} / ${resolvedGoalTargetLabel}`
+    : resolvedGoalSavedLabel;
   const coinEntries = useMemo(() => buildHealthCoinEntries(healthPoints), [healthPoints]);
   const hasCoinInventory = coinEntries.some((entry) => entry.count > 0);
   const aheadUSD = Math.max(0, actualSavedUSD - resolvedPotentialForecastUSD);
@@ -18459,11 +18712,12 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
               <Text
                 style={[
                   styles.goalJarHeroAmount,
+                  heroSavedValueStyle,
                   { color: SAVE_ACTION_COLOR },
                 ]}
                 numberOfLines={1}
                 adjustsFontSizeToFit
-                minimumFontScale={0.72}
+                minimumFontScale={0.48}
                 maxFontSizeMultiplier={1}
               >
                 {resolvedTotalSavedLabel}
@@ -18494,26 +18748,27 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
                   adjustsFontSizeToFit
                   minimumFontScale={goalTitleFitConfig.minimumFontScale}
                   maxFontSizeMultiplier={1}
+                  accessibilityLabel={goalTitleText}
                 >
-                  {goalTitleText}
-                </Text>
-                <Text
-                  style={[
-                    styles.goalJarHeroGoalMeta,
-                    isHeroRtlText && styles.goalJarHeroTextRtl,
-                    { color: goldPalette.subtext },
-                  ]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.86}
-                  maxFontSizeMultiplier={1}
-                >
-                  {resolvedGoalTargetLabel
-                    ? `${resolvedGoalSavedLabel} / ${resolvedGoalTargetLabel}`
-                    : resolvedGoalSavedLabel}
+                  {goalTitleDisplayText}
                 </Text>
               </View>
             </View>
+            {resolvedGoalProgressMetaLabel ? (
+              <Text
+                style={[
+                  styles.goalJarHeroGoalMeta,
+                  isHeroRtlText && styles.goalJarHeroTextRtl,
+                  { color: goldPalette.subtext },
+                ]}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.78}
+                maxFontSizeMultiplier={1}
+              >
+                {resolvedGoalProgressMetaLabel}
+              </Text>
+            ) : null}
             {isGoalComplete ? (
               <View
                 style={[
@@ -19599,7 +19854,12 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
                   onPress={handleDailyRewardCollect}
                   activeOpacity={0.9}
                 >
-                  <Text style={[styles.dailyRewardModalPrimaryText, { color: dailyRewardCtaTextColor }]}>
+                  <Text
+                    style={[styles.dailyRewardModalPrimaryText, { color: dailyRewardCtaTextColor }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.78}
+                  >
                     {t("dailyRewardModalCTA")}
                   </Text>
                 </TouchableOpacity>
@@ -22670,11 +22930,11 @@ const BUG_REPORT_COPY = {
 const resolveBugReportCopy = (language = DEFAULT_LANGUAGE) => {
   const normalizedLanguage = normalizeLanguage(language);
   const translationLanguage = resolveTranslationLanguage(normalizedLanguage);
-  return (
+  const source =
     BUG_REPORT_COPY[normalizedLanguage] ||
     BUG_REPORT_COPY[translationLanguage] ||
-    BUG_REPORT_COPY.en
-  );
+    BUG_REPORT_COPY.en;
+  return localizeFallbackCopyStructure(source, normalizedLanguage);
 };
 
 const BugReportIcon = React.memo(function BugReportIcon({ color = "#111827", size = 18 }) {
@@ -23470,11 +23730,11 @@ const resolveHelpGuideCopy = (language = DEFAULT_LANGUAGE, tab = "feed") => {
     HELP_GUIDE_COPY.en;
   const fallbackSource = HELP_GUIDE_COPY.en;
   const screenKey = source.screens?.[tab] ? tab : "feed";
-  return {
+  return localizeFallbackCopyStructure({
     buttonLabel: source.buttonLabel || fallbackSource.buttonLabel,
     close: source.close || fallbackSource.close,
     screen: source.screens?.[screenKey] || fallbackSource.screens.feed,
-  };
+  }, normalizedLanguage);
 };
 
 const HelpGuideIcon = React.memo(function HelpGuideIcon({ color = "#111827", size = 18 }) {
@@ -24636,6 +24896,9 @@ const FeedScreen = React.memo(
   onScrollActivityChange = null,
   contentBottomPadding = MAIN_SCREEN_CONTENT_BOTTOM_PADDING,
   topInset = 0,
+  goalJarAutoOpenRequestTick = 0,
+  onGoalJarDetailVisibilityChange = null,
+  onGoalJarDetailClose = null,
   },
     ref
   ) {
@@ -25577,10 +25840,26 @@ const FeedScreen = React.memo(
   }, []);
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
   const [goalJarDetailVisible, setGoalJarDetailVisible] = useState(false);
+  const goalJarAutoOpenRequestTickRef = useRef(0);
   const openHistoryModal = useCallback(() => setHistoryModalVisible(true), []);
   const closeHistoryModal = useCallback(() => setHistoryModalVisible(false), []);
   const openGoalJarDetail = useCallback(() => setGoalJarDetailVisible(true), []);
-  const closeGoalJarDetail = useCallback(() => setGoalJarDetailVisible(false), []);
+  const closeGoalJarDetail = useCallback(() => {
+    setGoalJarDetailVisible(false);
+    if (typeof onGoalJarDetailClose === "function") {
+      onGoalJarDetailClose();
+    }
+  }, [onGoalJarDetailClose]);
+  useEffect(() => {
+    const requestTick = Math.max(0, Number(goalJarAutoOpenRequestTick) || 0);
+    if (!requestTick || requestTick === goalJarAutoOpenRequestTickRef.current) return;
+    goalJarAutoOpenRequestTickRef.current = requestTick;
+    setGoalJarDetailVisible(true);
+  }, [goalJarAutoOpenRequestTick]);
+  useEffect(() => {
+    if (typeof onGoalJarDetailVisibilityChange !== "function") return;
+    onGoalJarDetailVisibilityChange(!!goalJarDetailVisible);
+  }, [goalJarDetailVisible, onGoalJarDetailVisibilityChange]);
   const heroNowTick = useMinuteTicker(true);
   const handleDayTwoIncomePromptPress = onDayTwoIncomePromptPress || (() => {});
   const handleDayTwoIncomePromptDismiss = onDayTwoIncomePromptDismiss || (() => {});
@@ -27253,8 +27532,8 @@ const FeedScreen = React.memo(
     () => formatLocalAmount(progressPotentialUSD),
     [formatLocalAmount, progressPotentialUSD]
   );
-  const budgetIncomePayday = normalizeIncomePayday(profile?.incomePayday);
-  const budgetMonthKey = getBudgetPeriodKey(todayTimestamp, budgetIncomePayday);
+  const budgetIncomePayday = CATEGORY_BUDGET_MONTH_PAYDAY;
+  const budgetMonthKey = getMonthKey(todayTimestamp);
   const monthlyIncomeUSD = useMemo(
     () => getBudgetIncomeForMonth(incomeEntries, budgetMonthKey, { payday: budgetIncomePayday }),
     [budgetIncomePayday, incomeEntries, budgetMonthKey]
@@ -29841,7 +30120,6 @@ const ProgressScreen = React.memo(function ProgressScreen({
   freeDayRescueCost = FREE_DAY_RESCUE_COST,
   historyEvents = [],
   incomeEntries = [],
-  incomePayday = DEFAULT_INCOME_PAYDAY,
   budgetOverrides = {},
   budgetAutoEnabled = true,
   isPremiumUser = false,
@@ -31816,8 +32094,8 @@ const ProgressScreen = React.memo(function ProgressScreen({
     if (!activeCategoryId) return "";
     return getImpulseCategoryLabel(activeCategoryId, language);
   }, [activeCategoryId, language]);
-  const budgetIncomePayday = normalizeIncomePayday(incomePayday);
-  const budgetMonthKey = getBudgetPeriodKey(todayTimestamp, budgetIncomePayday);
+  const budgetIncomePayday = CATEGORY_BUDGET_MONTH_PAYDAY;
+  const budgetMonthKey = getMonthKey(todayTimestamp);
   const resolvedBudgetRemainingOverrides = useMemo(
     () =>
       budgetRemainingOverrides && typeof budgetRemainingOverrides === "object"
@@ -32178,7 +32456,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
       if (!timestamp) return false;
       if (
         budgetWidgetActiveMonthKey &&
-        getBudgetPeriodKey(timestamp, budgetIncomePayday) !== budgetWidgetActiveMonthKey
+        getMonthKey(timestamp) !== budgetWidgetActiveMonthKey
       ) {
         return false;
       }
@@ -32190,7 +32468,6 @@ const ProgressScreen = React.memo(function ProgressScreen({
     );
   }, [
     activeCategoryId,
-    budgetIncomePayday,
     budgetWidgetActiveMonthKey,
     resolvedHistoryEvents,
     resolveHistoryCategoryId,
@@ -35846,7 +36123,10 @@ const resolveFirstVisitScreenIntroCopy = (language = DEFAULT_LANGUAGE, tab = "ca
     FIRST_VISIT_SCREEN_INTRO_COPY[translationLanguage] ||
     FIRST_VISIT_SCREEN_INTRO_COPY.en;
   const fallbackSource = FIRST_VISIT_SCREEN_INTRO_COPY.en;
-  return source?.[tab] || fallbackSource?.[tab] || fallbackSource.cart;
+  return localizeFallbackCopyStructure(
+    source?.[tab] || fallbackSource?.[tab] || fallbackSource.cart,
+    normalizedLanguage
+  );
 };
 const interpolateFridgeTemplate = (template = "", params = {}) =>
   String(template || "").replace(/{{\s*([^{}]+?)\s*}}/g, (_, token) => {
@@ -36614,17 +36894,21 @@ const PendingScreen = React.memo(function PendingScreen({
 
   const handleHint =
     resolveLanguageMapValue(FRIDGE_HANDLE_HINT, language) || FRIDGE_HANDLE_HINT.en;
-  const fridgeIntroCopy =
+  const fridgeIntroCopy = localizeFallbackCopyStructure(
     FRIDGE_INTRO_COPY[normalizeLanguage(language)] ||
-    FRIDGE_INTRO_COPY[resolveTranslationLanguage(language)] ||
-    FRIDGE_INTRO_COPY.en;
+      FRIDGE_INTRO_COPY[resolveTranslationLanguage(language)] ||
+      FRIDGE_INTRO_COPY.en,
+    language
+  );
   const fridgeIntroSteps = Array.isArray(fridgeIntroCopy?.steps)
     ? fridgeIntroCopy.steps
     : FRIDGE_INTRO_COPY.en.steps;
-  const fridgeExtendCopy =
+  const fridgeExtendCopy = localizeFallbackCopyStructure(
     FRIDGE_EXTEND_MODAL_COPY[normalizeLanguage(language)] ||
-    FRIDGE_EXTEND_MODAL_COPY[resolveTranslationLanguage(language)] ||
-    FRIDGE_EXTEND_MODAL_COPY.en;
+      FRIDGE_EXTEND_MODAL_COPY[resolveTranslationLanguage(language)] ||
+      FRIDGE_EXTEND_MODAL_COPY.en,
+    language
+  );
   const fridgeExtendSelectedOption =
     fridgeExtendOptions.find((entry) => entry.id === fridgeExtendModalState.optionId) ||
     fridgeExtendOptions.find(
@@ -42122,6 +42406,11 @@ function AppContent() {
   const [paywallDesignExperimentConfig, setPaywallDesignExperimentConfig] = useState(
     PAYWALL_DESIGN_EXPERIMENT_DEFAULT_CONFIG
   );
+  const [onboardingLengthExperimentVariant, setOnboardingLengthExperimentVariant] = useState("");
+  const [onboardingLengthExperimentAssignedAt, setOnboardingLengthExperimentAssignedAt] =
+    useState(0);
+  const [onboardingLengthExperimentHydrated, setOnboardingLengthExperimentHydrated] =
+    useState(false);
   const [monetizationTrialLocked, setMonetizationTrialLocked] = useState(false);
   const [monetizationTrialLockedHydrated, setMonetizationTrialLockedHydrated] = useState(false);
   const [monetizationFirstSessionActionBaseline, setMonetizationFirstSessionActionBaseline] =
@@ -42136,6 +42425,7 @@ function AppContent() {
   const monetizationExperimentAssigningRef = useRef(false);
   const monetizationExperimentBootstrappedRef = useRef(false);
   const paywallDesignExperimentBootstrappedRef = useRef(false);
+  const onboardingLengthExperimentBootstrappedRef = useRef(false);
   const monetizationTrialActionCountRef = useRef(0);
   const monetizationTrialLimitedActionCountRef = useRef(0);
   const monetizationFirstSessionActionBaselineRef = useRef(null);
@@ -42210,6 +42500,7 @@ function AppContent() {
   const premiumPaywallViewIndexRef = useRef(0);
   const premiumPaywallActiveViewRef = useRef(null);
   const premiumPaywallScrolledViewIndexRef = useRef(0);
+  const premiumTrialAvailableViewIndexRef = useRef(0);
   const premiumTransactionAbandonedOfferPendingSourceRef = useRef("");
   const [premiumPurchaseLoadingPlan, setPremiumPurchaseLoadingPlan] = useState(null);
   const [premiumRestoreLoading, setPremiumRestoreLoading] = useState(false);
@@ -42662,6 +42953,24 @@ function AppContent() {
   const [dailyRewardHydrated, setDailyRewardHydrated] = useState(false);
   const [dailyRewardModalVisible, setDailyRewardModalVisible] = useState(false);
   const [dailyRewardOpenRequestTick, setDailyRewardOpenRequestTick] = useState(0);
+  const [firstSaveGoalJarStatus, setFirstSaveGoalJarStatus] = useState("none");
+  const [firstSaveGoalJarHydrated, setFirstSaveGoalJarHydrated] = useState(false);
+  const [firstSaveGoalJarOpenRequestTick, setFirstSaveGoalJarOpenRequestTick] = useState(0);
+  const [firstSaveGoalJarVisible, setFirstSaveGoalJarVisible] = useState(false);
+  const firstSaveGoalJarStatusRef = useRef("none");
+  const firstSaveGoalJarOpenTimerRef = useRef(null);
+  useEffect(() => {
+    firstSaveGoalJarStatusRef.current = firstSaveGoalJarStatus;
+  }, [firstSaveGoalJarStatus]);
+  useEffect(
+    () => () => {
+      if (firstSaveGoalJarOpenTimerRef.current) {
+        clearTimeout(firstSaveGoalJarOpenTimerRef.current);
+        firstSaveGoalJarOpenTimerRef.current = null;
+      }
+    },
+    []
+  );
   const [currentDayKey, setCurrentDayKey] = useState(() => getDayKey(Date.now()));
   const [dailySaveLimitState, setDailySaveLimitState] = useState(() =>
     createDailySaveLimitState(getDayKey(Date.now()), 0)
@@ -43048,18 +43357,19 @@ function AppContent() {
     () => getBudgetPeriodKey(Date.now(), currentBudgetPayday),
     [currentBudgetPayday, currentDayKey]
   );
+  const currentBudgetCalendarMonthKey = currentMonthKey;
   useEffect(() => {
-    if (!budgetOverridesHydrated || !profileHydrated || !currentBudgetPeriodKey) return;
+    if (!budgetOverridesHydrated || !profileHydrated || !currentBudgetCalendarMonthKey) return;
     const normalized = normalizeBudgetOverrides(budgetOverrides);
     if (normalized.__periodOverrides === true) return;
     if (!Object.keys(normalized).length) return;
     setBudgetOverrides({
       __periodOverrides: true,
       periods: {
-        [currentBudgetPeriodKey]: normalized,
+        [currentBudgetCalendarMonthKey]: normalized,
       },
     });
-  }, [budgetOverrides, budgetOverridesHydrated, currentBudgetPeriodKey, profileHydrated]);
+  }, [budgetOverrides, budgetOverridesHydrated, currentBudgetCalendarMonthKey, profileHydrated]);
   const widgetSavedMonthUSD = useMemo(() => {
     let total = 0;
     resolvedHistoryEvents.forEach((entry) => {
@@ -43114,30 +43424,30 @@ function AppContent() {
       buildBudgetMonthlyStats({
         incomeEntries,
         historyEvents: resolvedHistoryEvents,
-        currentMonthKey: currentBudgetPeriodKey,
-        incomePayday: currentBudgetPayday,
+        currentMonthKey: currentBudgetCalendarMonthKey,
+        incomePayday: CATEGORY_BUDGET_MONTH_PAYDAY,
       }),
-    [currentBudgetPayday, currentBudgetPeriodKey, incomeEntries, resolvedHistoryEvents]
+    [currentBudgetCalendarMonthKey, incomeEntries, resolvedHistoryEvents]
   );
   const widgetBudgetCarryover = useMemo(
     () => buildBudgetCarryoverMap(widgetBudgetStats),
     [widgetBudgetStats]
   );
-  const widgetBudgetMonthStats = widgetBudgetStats[currentBudgetPeriodKey] || {
+  const widgetBudgetMonthStats = widgetBudgetStats[currentBudgetCalendarMonthKey] || {
     incomeUSD: 0,
     spendTotalUSD: 0,
   };
   const widgetBudgetTotalValue =
     (Number(widgetBudgetMonthStats.incomeUSD) || 0) +
-    (Number(widgetBudgetCarryover[currentBudgetPeriodKey]) || 0);
+    (Number(widgetBudgetCarryover[currentBudgetCalendarMonthKey]) || 0);
   const widgetBudgetTimeAdjustment = useMemo(
     () =>
       resolveBudgetTimeAdjustment({
         incomeEntries,
-        periodKey: currentBudgetPeriodKey,
-        payday: currentBudgetPayday,
+        periodKey: currentBudgetCalendarMonthKey,
+        payday: CATEGORY_BUDGET_MONTH_PAYDAY,
       }),
-    [currentBudgetPayday, currentBudgetPeriodKey, incomeEntries]
+    [currentBudgetCalendarMonthKey, incomeEntries]
   );
   const widgetBudgetRemainingValue =
     widgetBudgetTotalValue -
@@ -43146,11 +43456,20 @@ function AppContent() {
   const widgetBudgetRemainingLabel = formatWidgetAmount(Math.abs(widgetBudgetRemainingValue));
   useEffect(() => {
     if (!canUpdateWidgetStorage()) return;
-    if (!profileHydrated || !usageStreakHydrated || !historyHydrated || !savedTotalHydrated) {
+    if (
+      !profileHydrated ||
+      !usageStreakHydrated ||
+      !historyHydrated ||
+      !savedTotalHydrated ||
+      !budgetLedgerHydrated
+    ) {
       return;
     }
     const savedMonthValue = Math.max(0, Number(widgetSavedMonthUSD) || 0);
-    const savedTotalValue = Math.max(0, Number(savedTotalUSD) || 0);
+    const lifetimeSavedValue = Math.max(0, Number(savedTotalUSD) || 0);
+    const savedTotalValue = clampSavedBalanceUSD(
+      Math.max(0, Number(budgetLedgerTotals.availableToAllocateUSD) || 0)
+    );
     const monthlyTargetValue = Math.max(0, Number(widgetMonthlyTargetUSD) || 0);
     const savedTodayValue = Math.max(0, Number(widgetSavedTodayUSD) || 0);
     const dailyGoalValue = Math.max(0, Number(widgetDailyGoalUSD) || 0);
@@ -43159,6 +43478,7 @@ function AppContent() {
     const savedTodayLabel = formatWidgetAmount(savedTodayValue);
     const streakDays = Math.max(0, Number(widgetStreakDisplayCount) || 0);
     const hasData =
+      lifetimeSavedValue > 0 ||
       savedTotalValue > 0 ||
       (Array.isArray(resolvedHistoryEvents) && resolvedHistoryEvents.length > 0) ||
       streakDays > 0;
@@ -43209,6 +43529,8 @@ function AppContent() {
     });
   }, [
     formatWidgetAmount,
+    budgetLedgerHydrated,
+    budgetLedgerTotals.availableToAllocateUSD,
     historyHydrated,
     profileHydrated,
     widgetCurrencyCode,
@@ -44270,6 +44592,15 @@ function AppContent() {
         .filter((entry) => entry?.status === "pending" && entry?.cardId)
         .map((entry) => entry.cardId)
     );
+    const autosaveCardDayKeys = new Set();
+    ledgerEntries.forEach((entry) => {
+      if (entry?.source !== "autosave" || !entry?.cardId) return;
+      const cardKey = resolveNonEmptyString(entry.cardId);
+      const dayKey = getTycoonAutosaveEventDayKey(entry);
+      if (cardKey && dayKey) {
+        autosaveCardDayKeys.add(`${cardKey}:${dayKey}`);
+      }
+    });
     const nextEvents = [];
     let blockedEventCount = 0;
     let blockedAmountUSD = 0;
@@ -44318,11 +44649,16 @@ function AppContent() {
         windowEnd += intervalMs
       ) {
         if ((autosavePausedByHungryAlmi ? blockedEventCount : nextEvents.length) >= TYCOON_MAX_AUTOSAVE_EVENTS_TOTAL) break;
+        const windowDayKey = getDayKey(windowEnd);
+        if (!windowDayKey) continue;
+        const autosaveCardDayKey = `${templateId}:${windowDayKey}`;
+        if (autosaveCardDayKeys.has(autosaveCardDayKey)) continue;
         const id = `auto:${templateId}:${windowEnd}`;
         if (existingIds.has(id)) continue;
         const amountUSD = Math.min(amountBase, remainingCapUSD);
         if (amountUSD <= 0.01) break;
         if (autosavePausedByHungryAlmi) {
+          autosaveCardDayKeys.add(autosaveCardDayKey);
           blockedEventCount += 1;
           blockedAmountUSD += amountUSD;
           remainingCapUSD -= amountUSD;
@@ -44338,6 +44674,7 @@ function AppContent() {
         nextEvents.push({
           id,
           cardId: templateId,
+          dayKey: windowDayKey,
           timerWindowId: `${templateId}:${windowEnd}`,
           timerWindowStart: windowEnd - intervalMs,
           timerWindowEnd: windowEnd,
@@ -44350,6 +44687,7 @@ function AppContent() {
           title,
           emoji: card.emoji || DEFAULT_TEMPTATION_EMOJI,
         });
+        autosaveCardDayKeys.add(autosaveCardDayKey);
         remainingCapUSD -= amountUSD;
         producedForCard += 1;
         if (remainingCapUSD <= 0.01) break;
@@ -44631,6 +44969,7 @@ function AppContent() {
   const tutorialBlockingVisibleRef = useRef(false);
   const [queuedModalType, setQueuedModalType] = useState(null);
   const [queuedModalProcessTick, setQueuedModalProcessTick] = useState(0);
+  const visibleModalHostCount = useVisibleModalHostCount();
   const monetizationGroupForStartupModalGuard = normalizeMonetizationExperimentGroup(
     monetizationExperimentGroup
   );
@@ -48686,6 +49025,7 @@ function AppContent() {
     () => Math.max(0, (modalHandoffBlockUntilRef.current || 0) - Date.now()),
     []
   );
+  const visibleModalHostCountPrevRef = useRef(0);
   const blockingModalVisiblePrevRef = useRef(false);
   const tutorialBlockingVisiblePrevRef = useRef(false);
   const legacyFrequencyResetDoneRef = useRef(false);
@@ -50407,6 +50747,7 @@ function AppContent() {
       levelShareModal.visible ||
       levelShareFlowLocked ||
       coinEntryVisible ||
+      firstSaveGoalJarVisible ||
       showCustomSpend ||
       newPendingModal.visible ||
       showImageSourceSheet ||
@@ -50433,6 +50774,7 @@ function AppContent() {
       coinEntryVisible,
       dailySummaryVisible,
       editOverlayVisible,
+      firstSaveGoalJarVisible,
       feedFirstTutorialStage,
       fabMenuVisible,
       levelShareModal.visible,
@@ -50815,6 +51157,7 @@ function AppContent() {
       didYouKnowVisible ||
       noGoalSavePromptVisible ||
       coinEntryVisible ||
+      firstSaveGoalJarVisible ||
       showCustomSpend ||
       termsModalVisible ||
       customSpendSavingsModal.visible ||
@@ -50863,6 +51206,7 @@ function AppContent() {
       dailySummaryVisible,
       didYouKnowVisible,
       fabTutorialVisible,
+      firstSaveGoalJarVisible,
       levelShareFlowLocked,
       levelShareModal.visible,
       goalEditorPrompt.visible,
@@ -50911,6 +51255,18 @@ function AppContent() {
     blockingModalVisiblePrevRef.current = blockingModalVisible;
   }, [blockingModalVisible, queueModalCloseSettle, requestQueuedModalProcessAfterHandoff]);
   useEffect(() => {
+    const previousCount = visibleModalHostCountPrevRef.current;
+    if (previousCount > 0 && visibleModalHostCount <= 0) {
+      const resumeAt = queueModalCloseSettle();
+      requestQueuedModalProcessAfterHandoff(resumeAt);
+    }
+    visibleModalHostCountPrevRef.current = visibleModalHostCount;
+  }, [
+    queueModalCloseSettle,
+    requestQueuedModalProcessAfterHandoff,
+    visibleModalHostCount,
+  ]);
+  useEffect(() => {
     const wasVisible = tutorialBlockingVisiblePrevRef.current;
     if (wasVisible && !tutorialBlockingVisible) {
       const resumeAt = queueModalCloseSettle(MODAL_CLOSE_SETTLE_TUTORIAL_MS);
@@ -50948,6 +51304,7 @@ function AppContent() {
       if (isStoreReviewHandoffPending()) return false;
       if (tutorialOverlayVisible) return false;
       if (overlay) return false;
+      if (visibleModalHostCount > 0) return false;
       if (blockingModalVisible) return false;
       if (coinValueModalVisible) return false;
       if (tutorialBlockingVisible) return false;
@@ -51048,6 +51405,7 @@ function AppContent() {
       tutorialBlockingVisible,
       tutorialOverlayVisible,
       tutorialSeen,
+      visibleModalHostCount,
     ]
   );
   canShowQueuedModalRef.current = canShowQueuedModal;
@@ -51736,6 +52094,7 @@ function AppContent() {
     const baselineWeeklyRawPrice = resolvePackageRawPrice(baselineOfferingsByPlan?.weekly);
     const abandonedMonthlyRawPrice = resolvePackageRawPrice(abandonedOfferingsByPlan?.monthly);
     const abandonedYearlyRawPrice = resolvePackageRawPrice(abandonedOfferingsByPlan?.yearly);
+    const premiumTrialPlanId = Platform.OS === "android" ? "monthly" : "yearly";
     const baselineMonthlySavePercentFromOfferings = resolveRelativeDiscountPercent(
       Number.isFinite(baselineWeeklyRawPrice) && baselineWeeklyRawPrice > 0
         ? baselineWeeklyRawPrice * (52 / 12)
@@ -51805,7 +52164,7 @@ function AppContent() {
         !productIdentifier ||
         premiumState.trialEligibilityByProductId?.[productIdentifier] === true;
       const freeTrialDaysRaw =
-        card.id === "yearly" && trialEligibleForProduct
+        card.id === premiumTrialPlanId && trialEligibleForProduct
           ? resolveFreeTrialDaysFromPackage(pkg)
           : null;
       const freeTrialDays =
@@ -51814,6 +52173,7 @@ function AppContent() {
           : null;
       return {
         ...card,
+        planId: card.id,
         label: resolvePlanLabel(card.id, language),
         package: pkg,
         available: !!pkg || !premiumState.enabled,
@@ -51960,9 +52320,10 @@ function AppContent() {
         Number.isFinite(card.freeTrialDays) && card.freeTrialDays > 0
           ? Math.max(1, Math.round(card.freeTrialDays))
           : null;
-      const fallbackTrialDays = isYearly ? PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS : null;
+      const fallbackTrialDays =
+        card.id === premiumTrialPlanId && isYearly ? PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS : null;
       const resolvedTrialDays = freeTrialDays || fallbackTrialDays;
-      const hasFreeTrial = !!resolvedTrialDays && isYearly;
+      const hasFreeTrial = !!resolvedTrialDays && card.id === premiumTrialPlanId;
       const recurringChargePriceLabel =
         Number.isFinite(amountLocal) && amountLocal > 0
           ? normalizePaywallPriceLabel(
@@ -52615,6 +52976,16 @@ function AppContent() {
       PAYWALL_DESIGN_VARIANTS.A
     );
   }, [paywallDesignExperimentConfig, paywallDesignExperimentVariant]);
+  const onboardingLengthVariantNormalized = useMemo(
+    () =>
+      normalizeOnboardingLengthVariant(
+        onboardingLengthExperimentVariant,
+        ONBOARDING_LENGTH_VARIANTS.A
+      ),
+    [onboardingLengthExperimentVariant]
+  );
+  const isShortOnboardingFlow =
+    onboardingLengthVariantNormalized === ONBOARDING_LENGTH_VARIANTS.B;
   const ActivePremiumPaywallModal =
     paywallDesignVariantNormalized === PAYWALL_DESIGN_VARIANTS.B
       ? PremiumPaywallModalV2
@@ -52918,6 +53289,42 @@ function AppContent() {
       };
     }
   }, []);
+  const fetchOnboardingLengthExperimentConfig = useCallback(async () => {
+    const fallbackConfig = { ...ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG };
+    const client = getRemoteConfigClient();
+    if (!client) {
+      return {
+        config: fallbackConfig,
+        result: "module_unavailable",
+        source: "default",
+      };
+    }
+    try {
+      const defaultPayload = JSON.stringify(ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG);
+      await client.setDefaults({
+        [ONBOARDING_LENGTH_EXPERIMENT_RC_KEY]: defaultPayload,
+      });
+      await client.setConfigSettings({
+        minimumFetchIntervalMillis: __DEV__ ? 0 : 60 * 60 * 1000,
+        fetchTimeMillis: 10000,
+      });
+      const activated = await client.fetchAndActivate();
+      const rawConfig = resolveNonEmptyString(
+        client.getValue(ONBOARDING_LENGTH_EXPERIMENT_RC_KEY)?.asString?.() || ""
+      );
+      return {
+        config: parseOnboardingLengthExperimentRemoteConfig(rawConfig),
+        result: activated ? "activated" : "cached",
+        source: "remote_config",
+      };
+    } catch (error) {
+      return {
+        config: fallbackConfig,
+        result: "failed",
+        source: "default",
+      };
+    }
+  }, []);
   const fetchUiRefreshRolloutFlag = useCallback(async () => {
     const fallbackEnabled = UI_REFRESH_ROLLOUT_DEFAULT_ENABLED;
     const client = getRemoteConfigClient();
@@ -53153,6 +53560,106 @@ function AppContent() {
     premiumInstallIdHydrated,
     setUserProperties,
   ]);
+  useEffect(() => {
+    if (!premiumInstallIdHydrated) return;
+    if (!onboardingLengthExperimentHydrated) return;
+    if (onboardingLengthExperimentBootstrappedRef.current) return;
+    onboardingLengthExperimentBootstrappedRef.current = true;
+    let cancelled = false;
+    const bootstrapOnboardingLengthExperiment = async () => {
+      const remote = await fetchOnboardingLengthExperimentConfig();
+      if (cancelled) return;
+      const resolvedConfig = normalizeOnboardingLengthExperimentConfig(remote.config);
+
+      const storedVariant = normalizeOnboardingLengthVariant(
+        onboardingLengthExperimentVariant,
+        ""
+      );
+      const hasStoredVariant = !!storedVariant;
+      const hasAssignedAt =
+        Number.isFinite(Number(onboardingLengthExperimentAssignedAt)) &&
+        Number(onboardingLengthExperimentAssignedAt) > 0;
+      const seededVariant = resolveOnboardingLengthVariantFromSeed(
+        premiumInstallId || "",
+        resolvedConfig,
+        { isNewInstall: monetizationExperimentEligibleNewInstall }
+      );
+      const forcedVariant = normalizeOnboardingLengthVariant(resolvedConfig.forceVariant, "");
+      const shouldOverrideStoredVariant =
+        !!forcedVariant && (!hasStoredVariant || storedVariant !== forcedVariant);
+      const nextVariant = shouldOverrideStoredVariant
+        ? forcedVariant
+        : hasStoredVariant
+        ? storedVariant
+        : seededVariant;
+      const nextAssignedAt =
+        hasAssignedAt && !shouldOverrideStoredVariant
+          ? Math.round(Number(onboardingLengthExperimentAssignedAt))
+          : Date.now();
+      let assignmentSource = "stored_variant";
+      if (shouldOverrideStoredVariant) {
+        assignmentSource = "forced_variant";
+      } else if (!hasStoredVariant) {
+        assignmentSource = "seeded_bucket";
+      } else if (!hasAssignedAt) {
+        assignmentSource = "stored_without_timestamp";
+      }
+      if (!hasStoredVariant || !hasAssignedAt || shouldOverrideStoredVariant) {
+        setOnboardingLengthExperimentVariant(nextVariant);
+        setOnboardingLengthExperimentAssignedAt(nextAssignedAt);
+        logEvent("onboarding_length_experiment_assigned", {
+          experiment_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
+          experiment_variant: nextVariant,
+          assignment_source: assignmentSource,
+          is_new_install: monetizationExperimentEligibleNewInstall ? 1 : 0,
+          enabled: resolvedConfig.enabled ? 1 : 0,
+          force_variant: normalizeMonetizationToken(
+            resolveNonEmptyString(resolvedConfig.forceVariant || "").toLowerCase() || "none",
+            "none"
+          ),
+          allocation_a: resolvedConfig.allocation.A,
+          allocation_b: resolvedConfig.allocation.B,
+        });
+      }
+      logEvent("onboarding_length_experiment_remote_config_loaded", {
+        experiment_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
+        result: normalizeMonetizationToken(remote.result || "unknown", "unknown"),
+        source: normalizeMonetizationToken(remote.source || "unknown", "unknown"),
+        enabled: resolvedConfig.enabled ? 1 : 0,
+        new_install_only: resolvedConfig.newInstallOnly ? 1 : 0,
+        force_variant: normalizeMonetizationToken(
+          resolveNonEmptyString(resolvedConfig.forceVariant || "").toLowerCase() || "none",
+          "none"
+        ),
+        allocation_a: resolvedConfig.allocation.A,
+        allocation_b: resolvedConfig.allocation.B,
+        assigned_variant: nextVariant,
+        assignment_source: assignmentSource,
+      });
+      setUserProperties({
+        onboarding_length_exp_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
+        onboarding_length_variant: nextVariant,
+        onboarding_length_variant_a:
+          nextVariant === ONBOARDING_LENGTH_VARIANTS.A ? "1" : "0",
+        onboarding_length_variant_b:
+          nextVariant === ONBOARDING_LENGTH_VARIANTS.B ? "1" : "0",
+      });
+    };
+    bootstrapOnboardingLengthExperiment().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    fetchOnboardingLengthExperimentConfig,
+    logEvent,
+    monetizationExperimentEligibleNewInstall,
+    onboardingLengthExperimentAssignedAt,
+    onboardingLengthExperimentHydrated,
+    onboardingLengthExperimentVariant,
+    premiumInstallId,
+    premiumInstallIdHydrated,
+    setUserProperties,
+  ]);
   const premiumUnlockFeatureList = useMemo(
     () =>
       (Array.isArray(premiumCopy?.comparisonRows) ? premiumCopy.comparisonRows : [])
@@ -53185,6 +53692,56 @@ function AppContent() {
       trigger,
     };
   }, [premiumPaywallState.featureKey, premiumPaywallState.kind, premiumPaywallState.trigger]);
+  const resolvePremiumTrialPlanCard = useCallback(
+    (planId = "") => {
+      const normalizedPlanId = normalizeMonetizationToken(planId || "", "");
+      return (
+        premiumPlanCards.find((card) => {
+          if (card?.available === false || card?.hasTrial !== true) return false;
+          if (!normalizedPlanId) return true;
+          return normalizeMonetizationToken(card?.id || "", "") === normalizedPlanId;
+        }) || null
+      );
+    },
+    [premiumPlanCards]
+  );
+  const buildPremiumTrialEventPayload = useCallback(
+    ({
+      planId = "",
+      source = "",
+    } = {}) => {
+      const context = getPremiumPaywallContext();
+      const trialPlan = resolvePremiumTrialPlanCard(planId);
+      if (!trialPlan?.id) return null;
+      const payload = {
+        kind: context.kind,
+        feature: context.feature,
+        trigger: context.trigger,
+        plan: normalizeMonetizationToken(
+          trialPlan.id || ANALYTICS_VALUE_UNKNOWN,
+          ANALYTICS_VALUE_UNKNOWN
+        ),
+        view_index: Math.max(0, Number(context.viewIndex) || 0),
+        product_id:
+          normalizeProductIdentifier(
+            trialPlan.productIdentifier ||
+              trialPlan.package?.product?.identifier ||
+              trialPlan.package?.identifier ||
+              ""
+          ) || ANALYTICS_VALUE_UNKNOWN,
+      };
+      const trialDays = Number(trialPlan.trialDays);
+      if (Number.isFinite(trialDays) && trialDays > 0) {
+        payload.trial_days = Math.max(1, Math.round(trialDays));
+      }
+      const normalizedSource = normalizeMonetizationToken(source || "", "");
+      if (normalizedSource) {
+        payload.source = normalizedSource;
+      }
+      return payload;
+    },
+    [getPremiumPaywallContext, resolvePremiumTrialPlanCard]
+  );
   const trackPremiumTrialCancelled = useCallback(
     (customerInfo, source = "unknown") => {
       const trialCancellationMeta = resolveTrialCancellationMetaFromCustomerInfo(customerInfo);
@@ -53875,6 +54432,21 @@ function AppContent() {
     paywallDesignVariantNormalized,
     savedTotalUSD,
   ]);
+  useEffect(() => {
+    if (!premiumPaywallState.visible) return;
+    if (!premiumHasTrialOffer) return;
+    const payload = buildPremiumTrialEventPayload();
+    const resolvedViewIndex = Math.max(0, Number(payload?.view_index) || 0);
+    if (resolvedViewIndex <= 0) return;
+    if (premiumTrialAvailableViewIndexRef.current === resolvedViewIndex) return;
+    premiumTrialAvailableViewIndexRef.current = resolvedViewIndex;
+    logMonetizationEvent(ANALYTICS_EVENTS.TRIAL_AVAILABLE, payload);
+  }, [
+    buildPremiumTrialEventPayload,
+    logMonetizationEvent,
+    premiumHasTrialOffer,
+    premiumPaywallState.visible,
+  ]);
   const refreshPremiumState = useCallback(
     async (source = "manual") => {
       if (!isPurchasesAvailable()) {
@@ -54291,6 +54863,14 @@ function AppContent() {
       logMonetizationEvent("premium_paywall_plan_selected", eventMeta);
     },
     [getPremiumPaywallContext, logMonetizationEvent, premiumPlanCards]
+  );
+  const handlePremiumTrialSwitchOn = useCallback(
+    (planId, { source = ANALYTICS_SOURCES.FREE_TRIAL_TOGGLE } = {}) => {
+      const payload = buildPremiumTrialEventPayload({ planId, source });
+      if (!payload) return;
+      logMonetizationEvent(ANALYTICS_EVENTS.TRIAL_SWITCH_ON, payload);
+    },
+    [buildPremiumTrialEventPayload, logMonetizationEvent]
   );
   const handlePremiumPlanPress = useCallback(
     async (planId) => {
@@ -54801,6 +55381,14 @@ function AppContent() {
   );
   const canShowSoftPaywallNow = useCallback(() => {
     if (premiumState.isPremium || premiumPaywallState.visible) return false;
+    const firstSaveJarStatus = firstSaveGoalJarStatusRef.current;
+    if (
+      firstSaveGoalJarVisible ||
+      firstSaveJarStatus === "pending" ||
+      firstSaveJarStatus === "opening"
+    ) {
+      return false;
+    }
     if (isStoreReviewHandoffPending()) return false;
     if (onboardingStep !== "done" || !interfaceReady) return false;
     // If a modal just transitioned from visible -> hidden in this render pass,
@@ -54849,6 +55437,7 @@ function AppContent() {
   }, [
     blockingModalVisible,
     coinValueModalVisible,
+    firstSaveGoalJarVisible,
     getModalCloseSettleRemainingMs,
     isStoreReviewHandoffPending,
     interfaceReady,
@@ -54861,6 +55450,127 @@ function AppContent() {
     tutorialBlockingVisible,
     frequencyReminderPrompt.visible,
     pendingFrequencyReminderPrompt,
+  ]);
+  const canShowFirstSaveGoalJarNow = useCallback(() => {
+    if (appStateRef.current !== "active") return false;
+    if (!firstSaveGoalJarHydrated) return false;
+    if (firstSaveGoalJarStatusRef.current !== "pending") return false;
+    if (firstSaveGoalJarVisible) return false;
+    if (startupHardLockPendingBeforePaywall) return false;
+    if (onboardingStep !== "done" || !interfaceReady) return false;
+    if (activeTab !== "feed") return false;
+    if (premiumPaywallState.visible) return false;
+    if (isStoreReviewHandoffPending()) return false;
+    if (getModalCloseSettleRemainingMs() > 0) return false;
+    if (blockingModalVisible) return false;
+    if (tutorialBlockingVisible) return false;
+    if (frequencyReminderPrompt.visible || pendingFrequencyReminderPrompt) return false;
+    if (queuedModalType || queuedModalActiveRef.current) return false;
+    const hasQueuedModalReady = queuedModalQueueRef.current.some((candidate) =>
+      canShowQueuedModalRef.current(candidate)
+    );
+    if (hasQueuedModalReady) return false;
+    if (coinValueModalVisible) return false;
+    if (overlay || overlayActiveRef.current) return false;
+    if (pendingUsageStreakRef.current) return false;
+    if (pendingGoalCelebration) return false;
+    if (pendingLevelCelebrationRef.current) return false;
+    if (overlayQueueRef.current.length) return false;
+    if (celebrationQueueRef.current.length) return false;
+    if (celebrationGapTimerRef.current) return false;
+    return true;
+  }, [
+    activeTab,
+    blockingModalVisible,
+    coinValueModalVisible,
+    firstSaveGoalJarHydrated,
+    firstSaveGoalJarVisible,
+    frequencyReminderPrompt.visible,
+    getModalCloseSettleRemainingMs,
+    interfaceReady,
+    isStoreReviewHandoffPending,
+    onboardingStep,
+    overlay,
+    pendingFrequencyReminderPrompt,
+    pendingGoalCelebration,
+    premiumPaywallState.visible,
+    queuedModalType,
+    startupHardLockPendingBeforePaywall,
+    tutorialBlockingVisible,
+  ]);
+  useEffect(() => {
+    if (firstSaveGoalJarStatus !== "pending") {
+      if (firstSaveGoalJarOpenTimerRef.current) {
+        clearTimeout(firstSaveGoalJarOpenTimerRef.current);
+        firstSaveGoalJarOpenTimerRef.current = null;
+      }
+      if (firstSaveGoalJarStatus === "shown" && firstSaveGoalJarOpenRequestTick > 0) {
+        setFirstSaveGoalJarOpenRequestTick(0);
+      }
+      return undefined;
+    }
+    if (activeTab !== "feed") {
+      goToTab("feed");
+      return undefined;
+    }
+    const openWhenReady = () => {
+      if (firstSaveGoalJarStatusRef.current !== "pending") {
+        firstSaveGoalJarOpenTimerRef.current = null;
+        return;
+      }
+      if (!canShowFirstSaveGoalJarNow()) {
+        firstSaveGoalJarOpenTimerRef.current = setTimeout(openWhenReady, 250);
+        return;
+      }
+      firstSaveGoalJarStatusRef.current = "opening";
+      setFirstSaveGoalJarStatus("opening");
+      setFirstSaveGoalJarVisible(true);
+      setFirstSaveGoalJarOpenRequestTick((prev) => prev + 1);
+      firstSaveGoalJarOpenTimerRef.current = null;
+    };
+    openWhenReady();
+    return () => {
+      if (firstSaveGoalJarOpenTimerRef.current) {
+        clearTimeout(firstSaveGoalJarOpenTimerRef.current);
+        firstSaveGoalJarOpenTimerRef.current = null;
+      }
+    };
+  }, [
+    activeTab,
+    canShowFirstSaveGoalJarNow,
+    firstSaveGoalJarOpenRequestTick,
+    firstSaveGoalJarStatus,
+    goToTab,
+  ]);
+  const handleFirstSaveGoalJarVisibilityChange = useCallback((visible) => {
+    setFirstSaveGoalJarVisible(Boolean(visible));
+  }, []);
+  const handleFirstSaveGoalJarClose = useCallback(() => {
+    const status = firstSaveGoalJarStatusRef.current;
+    if (status !== "opening" && status !== "pending") return;
+    firstSaveGoalJarStatusRef.current = "shown";
+    setFirstSaveGoalJarStatus("shown");
+    setFirstSaveGoalJarVisible(false);
+    setFirstSaveGoalJarOpenRequestTick(0);
+    queuePersist(STORAGE_KEYS.FIRST_SAVE_GOAL_JAR_STATUS, "shown");
+    queueModalCloseSettle();
+    if (
+      !premiumState.isPremium &&
+      isMonetizationSoftPaywallExperimentGroup &&
+      !premiumSoftPaywallShown
+    ) {
+      premiumSoftPaywallTriggerRef.current = resolveGroupCSoftPaywallTrigger(
+        "first_save_after_onboarding"
+      );
+      setPremiumSoftPaywallPending(true);
+    }
+  }, [
+    isMonetizationSoftPaywallExperimentGroup,
+    premiumSoftPaywallShown,
+    premiumState.isPremium,
+    queueModalCloseSettle,
+    queuePersist,
+    resolveGroupCSoftPaywallTrigger,
   ]);
   const shouldShowPaywall = useCallback(() => {
     if (!isMonetizationExperimentControlGroup) return false;
@@ -56445,7 +57155,6 @@ function AppContent() {
         }
       }
       const reminderPayload = getReminderAnalyticsPayload(response.notification);
-      logEvent("push_notification_open");
       logEvent("reminder_clicked", reminderPayload);
     },
 	    [
@@ -57553,9 +58262,10 @@ function AppContent() {
       if (!streakPledgeHydrated) return false;
       if (snapshot.status !== STREAK_PLEDGE_STATUS.IDLE) return false;
       const streakCount = Math.max(
-        1,
-        Number(payload?.count) || Number(usageStreakRef.current?.current) || 1
+        0,
+        Number(payload?.count) || Number(usageStreakRef.current?.current) || 0
       );
+      if (streakCount < STREAK_PLEDGE_PROMPT_MIN_STREAK_DAYS) return false;
       trigger("streak_pledge", {
         streakCount,
         dayKey: typeof payload?.dayKey === "string" ? payload.dayKey : todayKey,
@@ -59941,6 +60651,7 @@ function AppContent() {
         STORAGE_KEYS.NORTH_STAR_METRIC,
         STORAGE_KEYS.PRIMARY_TEMPTATION_PROMPT,
         STORAGE_KEYS.COIN_VALUE_MODAL,
+        STORAGE_KEYS.FIRST_SAVE_GOAL_JAR_STATUS,
         STORAGE_KEYS.RATING_PROMPT,
         STORAGE_KEYS.REPORTS_BADGE,
         STORAGE_KEYS.REPORTS_LAST_AUTO_WEEK,
@@ -59962,6 +60673,8 @@ function AppContent() {
         STORAGE_KEYS.MONETIZATION_EXPERIMENT_INSTALL_LEGACY,
         STORAGE_KEYS.PAYWALL_DESIGN_EXPERIMENT_VARIANT,
         STORAGE_KEYS.PAYWALL_DESIGN_EXPERIMENT_ASSIGNED_AT,
+        STORAGE_KEYS.ONBOARDING_LENGTH_EXPERIMENT_VARIANT,
+        STORAGE_KEYS.ONBOARDING_LENGTH_EXPERIMENT_ASSIGNED_AT,
         STORAGE_KEYS.MONETIZATION_TRIAL_LOCKED,
         STORAGE_KEYS.MONETIZATION_FIRST_SESSION_ACTION_BASELINE,
         STORAGE_KEYS.MONETIZATION_ONBOARDING_LOCKED,
@@ -60074,6 +60787,8 @@ function AppContent() {
       const northStarMetricRaw = storedMap[STORAGE_KEYS.NORTH_STAR_METRIC] ?? null;
       const primaryTemptationPromptRaw = storedMap[STORAGE_KEYS.PRIMARY_TEMPTATION_PROMPT] ?? null;
       const coinValueModalRaw = storedMap[STORAGE_KEYS.COIN_VALUE_MODAL] ?? null;
+      const firstSaveGoalJarStatusRaw =
+        storedMap[STORAGE_KEYS.FIRST_SAVE_GOAL_JAR_STATUS] ?? null;
       const ratingPromptRaw = storedMap[STORAGE_KEYS.RATING_PROMPT] ?? null;
       const dayTwoIncomePromptDismissedRaw =
         storedMap[STORAGE_KEYS.DAY_TWO_INCOME_PROMPT_DISMISSED] ?? null;
@@ -60108,6 +60823,10 @@ function AppContent() {
         storedMap[STORAGE_KEYS.PAYWALL_DESIGN_EXPERIMENT_VARIANT] ?? null;
       const paywallDesignExperimentAssignedAtRaw =
         storedMap[STORAGE_KEYS.PAYWALL_DESIGN_EXPERIMENT_ASSIGNED_AT] ?? null;
+      const onboardingLengthExperimentVariantRaw =
+        storedMap[STORAGE_KEYS.ONBOARDING_LENGTH_EXPERIMENT_VARIANT] ?? null;
+      const onboardingLengthExperimentAssignedAtRaw =
+        storedMap[STORAGE_KEYS.ONBOARDING_LENGTH_EXPERIMENT_ASSIGNED_AT] ?? null;
       const monetizationTrialLockedRaw =
         storedMap[STORAGE_KEYS.MONETIZATION_TRIAL_LOCKED] ?? null;
       const monetizationOnboardingLockedRaw =
@@ -60643,6 +61362,13 @@ function AppContent() {
       setCoinValueModalStatus(normalizedCoinValueModal);
       coinValueModalStatusRef.current = normalizedCoinValueModal;
       setCoinValueModalHydrated(true);
+      const normalizedFirstSaveGoalJarStatus =
+        firstSaveGoalJarStatusRaw === "shown" || firstSaveGoalJarStatusRaw === "pending"
+          ? firstSaveGoalJarStatusRaw
+          : "none";
+      firstSaveGoalJarStatusRef.current = normalizedFirstSaveGoalJarStatus;
+      setFirstSaveGoalJarStatus(normalizedFirstSaveGoalJarStatus);
+      setFirstSaveGoalJarHydrated(true);
       setReportsBadgeVisible(reportsBadgeRaw === "1");
       setReportsBadgeHydrated(true);
       const normalizedReportsLastWeek =
@@ -60794,6 +61520,19 @@ function AppContent() {
           : 0
       );
       setPaywallDesignExperimentHydrated(true);
+      const parsedOnboardingLengthVariant = normalizeOnboardingLengthVariant(
+        onboardingLengthExperimentVariantRaw,
+        ""
+      );
+      const parsedOnboardingLengthAssignedAt = Number(onboardingLengthExperimentAssignedAtRaw);
+      setOnboardingLengthExperimentVariant(parsedOnboardingLengthVariant || "");
+      setOnboardingLengthExperimentAssignedAt(
+        Number.isFinite(parsedOnboardingLengthAssignedAt) &&
+          parsedOnboardingLengthAssignedAt > 0
+          ? parsedOnboardingLengthAssignedAt
+          : 0
+      );
+      setOnboardingLengthExperimentHydrated(true);
       const normalizedFirstSessionActionBaseline = 0;
       monetizationFirstSessionActionBaselineRef.current = normalizedFirstSessionActionBaseline;
       monetizationFirstSessionCompletedRef.current = true;
@@ -61776,6 +62515,8 @@ function AppContent() {
       setMonetizationExperimentEligibleNewInstall(false);
       setPaywallDesignExperimentVariant("");
       setPaywallDesignExperimentAssignedAt(0);
+      setOnboardingLengthExperimentVariant("");
+      setOnboardingLengthExperimentAssignedAt(0);
       setMonetizationTrialLocked(false);
       setMonetizationFirstSessionActionBaseline(0);
       monetizationFirstSessionActionBaselineRef.current = 0;
@@ -61799,6 +62540,7 @@ function AppContent() {
         return normalized.length >= 32 ? normalized : createMonetizationInstallSecret();
       });
       setPremiumInstallSecretHydrated(true);
+      setFirstSaveGoalJarHydrated(true);
       setPremiumGroupCSoftPaywallShownDayKeyHydrated(true);
       setPremiumSoftPaywallHydrated(true);
       setPremiumHardPaywallHydrated(true);
@@ -61807,6 +62549,7 @@ function AppContent() {
       setPremiumStateCacheHydrated(true);
       setMonetizationExperimentHydrated(true);
       setPaywallDesignExperimentHydrated(true);
+      setOnboardingLengthExperimentHydrated(true);
       setMonetizationTrialLockedHydrated(true);
       setMonetizationFirstSessionActionBaselineHydrated(true);
       setMonetizationOnboardingLockedHydrated(true);
@@ -63509,6 +64252,35 @@ function AppContent() {
     queuePersist,
   ]);
   useEffect(() => {
+    if (!onboardingLengthExperimentHydrated) return;
+    const normalizedVariant = normalizeOnboardingLengthVariant(
+      onboardingLengthExperimentVariant,
+      ""
+    );
+    if (!normalizedVariant) return;
+    queuePersist(STORAGE_KEYS.ONBOARDING_LENGTH_EXPERIMENT_VARIANT, normalizedVariant);
+  }, [
+    onboardingLengthExperimentHydrated,
+    onboardingLengthExperimentVariant,
+    queuePersist,
+  ]);
+  useEffect(() => {
+    if (!onboardingLengthExperimentHydrated) return;
+    const normalizedAssignedAt =
+      Number.isFinite(Number(onboardingLengthExperimentAssignedAt)) &&
+      Number(onboardingLengthExperimentAssignedAt) > 0
+        ? Math.round(Number(onboardingLengthExperimentAssignedAt))
+        : 0;
+    queuePersist(
+      STORAGE_KEYS.ONBOARDING_LENGTH_EXPERIMENT_ASSIGNED_AT,
+      normalizedAssignedAt > 0 ? String(normalizedAssignedAt) : "0"
+    );
+  }, [
+    onboardingLengthExperimentAssignedAt,
+    onboardingLengthExperimentHydrated,
+    queuePersist,
+  ]);
+  useEffect(() => {
     if (!monetizationTrialLockedHydrated) return;
     queuePersist(STORAGE_KEYS.MONETIZATION_TRIAL_LOCKED, monetizationTrialLocked ? "1" : "0");
   }, [monetizationTrialLocked, monetizationTrialLockedHydrated, queuePersist]);
@@ -64509,6 +65281,10 @@ useEffect(() => {
       paywallDesignVariantNormalized,
       PAYWALL_DESIGN_VARIANTS.A
     );
+    const onboardingLengthVariant = normalizeOnboardingLengthVariant(
+      onboardingLengthVariantNormalized,
+      ONBOARDING_LENGTH_VARIANTS.A
+    );
     setUserProperties({
       has_goal: !!hasGoalProperty,
       preferred_currency: currencyCode,
@@ -64535,6 +65311,12 @@ useEffect(() => {
         paywallDesignVariant === PAYWALL_DESIGN_VARIANTS.A ? "1" : "0",
       paywall_design_variant_b:
         paywallDesignVariant === PAYWALL_DESIGN_VARIANTS.B ? "1" : "0",
+      onboarding_length_exp_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
+      onboarding_length_variant: onboardingLengthVariant,
+      onboarding_length_variant_a:
+        onboardingLengthVariant === ONBOARDING_LENGTH_VARIANTS.A ? "1" : "0",
+      onboarding_length_variant_b:
+        onboardingLengthVariant === ONBOARDING_LENGTH_VARIANTS.B ? "1" : "0",
       ios_att_opt_in: iosAttOptIn ? "1" : "0",
       ios_att_status:
         Platform.OS === "ios" ? normalizedIosTrackingStatus || "unknown" : "non_ios",
@@ -64559,6 +65341,7 @@ useEffect(() => {
     monetizationExperimentEligibleNewInstall,
     monetizationExperimentGroup,
     notificationPermissionGranted,
+    onboardingLengthVariantNormalized,
     paywallDesignVariantNormalized,
     playerLevel,
     profile.currency,
@@ -65249,7 +66032,7 @@ useEffect(() => {
     if (!categoryId) return;
     const normalized = Number(valueUSD);
     if (!Number.isFinite(normalized) || normalized < 0) return;
-    const fallbackPeriodKey = getBudgetPeriodKey(Date.now(), profile?.incomePayday);
+    const fallbackPeriodKey = getMonthKey(Date.now());
     const targetPeriodKey =
       typeof periodKey === "string" && periodKey.trim()
         ? periodKey.trim()
@@ -65257,11 +66040,11 @@ useEffect(() => {
     setBudgetOverrides((prev) =>
       setBudgetOverrideForPeriod(prev, targetPeriodKey, categoryId, normalized)
     );
-  }, [profile?.incomePayday]);
+  }, []);
 
   const handleBudgetOverrideReset = useCallback((categoryId, periodKey = "") => {
     if (!categoryId) return;
-    const fallbackPeriodKey = getBudgetPeriodKey(Date.now(), profile?.incomePayday);
+    const fallbackPeriodKey = getMonthKey(Date.now());
     const targetPeriodKey =
       typeof periodKey === "string" && periodKey.trim()
         ? periodKey.trim()
@@ -65269,7 +66052,7 @@ useEffect(() => {
     setBudgetOverrides((prev) =>
       removeBudgetOverrideForPeriod(prev, targetPeriodKey, categoryId)
     );
-  }, [profile?.incomePayday]);
+  }, []);
 
   const handleBudgetRemainingOverrideChange = useCallback((monthKey, valueUSD) => {
     if (typeof monthKey !== "string" || !monthKey.trim()) return;
@@ -65388,7 +66171,7 @@ useEffect(() => {
     triggerHaptic();
     ensureTermsAccepted();
     await requestTrackingTransparencyIfNeeded();
-    goToOnboardingStep("guide");
+    goToOnboardingStep(isShortOnboardingFlow ? "persona" : "guide");
   };
 
   const handleGuideContinue = () => {
@@ -66549,7 +67332,7 @@ useEffect(() => {
       return;
     }
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-    goToOnboardingStep("habit");
+    goToOnboardingStep(isShortOnboardingFlow ? "goal" : "habit");
   };
 
   const handleCustomSpendSavingsContinue = useCallback(() => {
@@ -66824,20 +67607,27 @@ useEffect(() => {
 
   const handleGoalStageContinue = async () => {
     try {
+      const shouldCompleteShortOnboarding = isShortOnboardingFlow && onboardingStep !== "done";
       const selections = (registrationData.goalSelections || []).slice(0, ONBOARDING_GOAL_SELECTION_LIMIT);
       if (!selections.length) {
         triggerHaptic();
         logEvent("onboarding_goal_skipped", { method: "empty_selection" });
-        const preserveBackPath = onboardingStep === "goal";
-        goToOnboardingStep("push_optin", {
-          recordHistory: preserveBackPath,
-          resetHistory: !preserveBackPath,
-        });
-        setTimeout(() => {
+        if (shouldCompleteShortOnboarding) {
           handleGoalComplete(null).catch((error) => {
             console.warn("onboarding goal completion async", error);
           });
-        }, ONBOARDING_GOAL_COMPLETION_DEFER_MS);
+        } else {
+          const preserveBackPath = onboardingStep === "goal";
+          goToOnboardingStep("push_optin", {
+            recordHistory: preserveBackPath,
+            resetHistory: !preserveBackPath,
+          });
+          setTimeout(() => {
+            handleGoalComplete(null).catch((error) => {
+              console.warn("onboarding goal completion async", error);
+            });
+          }, ONBOARDING_GOAL_COMPLETION_DEFER_MS);
+        }
         return;
       }
       const currentMap = registrationData.goalTargetMap || {};
@@ -66881,21 +67671,33 @@ useEffect(() => {
         goalTargetConfirmed: selections.slice(),
       }));
       const preserveBackPath = onboardingStep === "goal";
-      goToOnboardingStep("push_optin", {
-        recordHistory: preserveBackPath,
-        resetHistory: !preserveBackPath,
-      });
-      setTimeout(() => {
+      if (shouldCompleteShortOnboarding) {
         handleGoalComplete(targets).catch((error) => {
           console.warn("onboarding goal completion async", error);
         });
-      }, ONBOARDING_GOAL_COMPLETION_DEFER_MS);
+      } else {
+        goToOnboardingStep("push_optin", {
+          recordHistory: preserveBackPath,
+          resetHistory: !preserveBackPath,
+        });
+        setTimeout(() => {
+          handleGoalComplete(targets).catch((error) => {
+            console.warn("onboarding goal completion async", error);
+          });
+        }, ONBOARDING_GOAL_COMPLETION_DEFER_MS);
+      }
     } catch (error) {
       console.warn("onboarding goal continue", error);
-      goToOnboardingStep("push_optin", {
-        recordHistory: onboardingStep === "goal",
-        resetHistory: onboardingStep !== "goal",
-      });
+      if (isShortOnboardingFlow) {
+        handleGoalComplete(null).catch((completionError) => {
+          console.warn("onboarding goal completion fallback", completionError);
+        });
+      } else {
+        goToOnboardingStep("push_optin", {
+          recordHistory: onboardingStep === "goal",
+          resetHistory: onboardingStep !== "goal",
+        });
+      }
     }
   };
   const handleGoalStageSkip = async () => {
@@ -66912,6 +67714,7 @@ useEffect(() => {
   };
 
   const handleGoalComplete = async (targetsOverride = null) => {
+    const shouldCompleteShortOnboarding = isShortOnboardingFlow && onboardingStep !== "done";
     const selections = (registrationData.goalSelections || []).slice(0, ONBOARDING_GOAL_SELECTION_LIMIT);
     const currencyCode = registrationData.currency || DEFAULT_PROFILE.currency;
     const isValidGoalSelection = (goalId) => {
@@ -67066,10 +67869,10 @@ useEffect(() => {
     setProfile(updatedProfile);
     setProfileDraft(updatedProfile);
     setActiveGoalId(updatedProfile.goal);
-    const preserveBackPath = onboardingStep === "goal";
-    goToOnboardingStep("push_optin", {
+    const preserveBackPath = !shouldCompleteShortOnboarding && onboardingStep === "goal";
+    goToOnboardingStep(shouldCompleteShortOnboarding ? "done" : "push_optin", {
       recordHistory: preserveBackPath,
-      resetHistory: !preserveBackPath,
+      resetHistory: shouldCompleteShortOnboarding || !preserveBackPath,
     });
     await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(updatedProfile)).catch(() => {});
     await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, "done").catch(() => {});
@@ -67160,6 +67963,45 @@ useEffect(() => {
       setAnalyticsOptOutFlag(false);
       AsyncStorage.setItem(STORAGE_KEYS.ANALYTICS_OPT_OUT, "0").catch(() => {});
     }
+    if (shouldCompleteShortOnboarding) {
+      if (!onboardingCompletionEventLoggedRef.current) {
+        const startBalanceLocal = convertToCurrency(
+          savedTotalUSD || 0,
+          updatedProfile.currency || DEFAULT_PROFILE.currency
+        );
+        logEvent("onboarding_completed", {
+          persona_id: updatedProfile.persona || DEFAULT_PERSONA_ID,
+          goal_id: primaryGoals[0]?.id || "none",
+          has_goal: hasPrimaryGoal,
+          start_balance: startBalanceLocal,
+          skipped: 0,
+          onboarding_experiment_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
+          onboarding_flow_variant: onboardingLengthVariantNormalized,
+        });
+        onboardingCompletionEventLoggedRef.current = true;
+      }
+      setUserProperties({
+        onboarding_complete: "1",
+        onboarding_skipped: "0",
+        onboarding_length_exp_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
+        onboarding_length_variant: onboardingLengthVariantNormalized,
+      });
+      if (isMonetizationExperimentControlGroup) {
+        onboardingSoftPaywallSaveBaselineRef.current = Math.max(
+          0,
+          Number(temptationSaveActionCountRef.current) || 0
+        );
+        pendingOnboardingSoftPaywallRef.current = true;
+      } else {
+        pendingOnboardingSoftPaywallRef.current = false;
+        setPremiumSoftPaywallPending(false);
+      }
+      setRegistrationData(INITIAL_REGISTRATION);
+      goalSelectionTouchedRef.current = false;
+      InteractionManager.runAfterInteractions(() => {
+        ensureNotificationPermission({ request: true }).catch(() => {});
+      });
+    }
   };
 
   const requestTrackingTransparencyIfNeeded = useCallback(async () => {
@@ -67203,12 +68045,16 @@ useEffect(() => {
         has_goal: hasPrimaryGoal,
         start_balance: startBalanceLocal,
         skipped: 0,
+        onboarding_experiment_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
+        onboarding_flow_variant: onboardingLengthVariantNormalized,
       });
       onboardingCompletionEventLoggedRef.current = true;
     }
     setUserProperties({
       onboarding_complete: "1",
       onboarding_skipped: "0",
+      onboarding_length_exp_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
+      onboarding_length_variant: onboardingLengthVariantNormalized,
     });
     await ensureNotificationPermission({ request: true });
     if (isMonetizationExperimentControlGroup) {
@@ -67681,6 +68527,15 @@ useEffect(() => {
     },
     [cancelSameDaySmartReminders, registerSmartReminder, setChallengesState]
   );
+
+  const markFirstSaveGoalJarPending = useCallback(() => {
+    if (!firstSaveGoalJarHydrated) return false;
+    if (firstSaveGoalJarStatusRef.current !== "none") return false;
+    firstSaveGoalJarStatusRef.current = "pending";
+    setFirstSaveGoalJarStatus("pending");
+    queuePersist(STORAGE_KEYS.FIRST_SAVE_GOAL_JAR_STATUS, "pending");
+    return true;
+  }, [firstSaveGoalJarHydrated, queuePersist]);
 
   const handleBudgetTransfer = useCallback(
     ({ type = "savings", amountUSD = 0, proofImageUri = "" } = {}) => {
@@ -68458,34 +69313,37 @@ useEffect(() => {
     const budgetMonthlyStats = buildBudgetMonthlyStats({
       incomeEntries,
       historyEvents: resolvedHistoryEvents,
-      currentMonthKey: currentBudgetPeriodKey,
+      currentMonthKey: currentBudgetCalendarMonthKey,
       resolveHistoryCategoryId: resolvePreviewHistoryCategoryId,
-      incomePayday: currentBudgetPayday,
+      incomePayday: CATEGORY_BUDGET_MONTH_PAYDAY,
     });
     const budgetCarryover = buildBudgetCarryoverMap(budgetMonthlyStats);
-    const monthStats = budgetMonthlyStats[currentBudgetPeriodKey] || {
-      incomeUSD: currentMonthIncomeUSD,
-      spendTotalUSD: currentMonthSpendUSD,
+    const previewIncomeUSD = getBudgetIncomeForMonth(incomeEntries, currentBudgetCalendarMonthKey, {
+      payday: CATEGORY_BUDGET_MONTH_PAYDAY,
+    });
+    const monthStats = budgetMonthlyStats[currentBudgetCalendarMonthKey] || {
+      incomeUSD: previewIncomeUSD,
+      spendTotalUSD: 0,
       spendByCategory: {},
     };
     const previewTimeAdjustment = resolveBudgetTimeAdjustment({
       incomeEntries,
-      periodKey: currentBudgetPeriodKey,
-      payday: currentBudgetPayday,
+      periodKey: currentBudgetCalendarMonthKey,
+      payday: CATEGORY_BUDGET_MONTH_PAYDAY,
     });
     const previewPlan = buildBudgetPlan({
-      incomeUSD: currentMonthIncomeUSD,
-      carryoverUSD: budgetCarryover[currentBudgetPeriodKey] || 0,
-      budgetOverrides: getBudgetOverridesForPeriod(budgetOverrides, currentBudgetPeriodKey),
+      incomeUSD: previewIncomeUSD,
+      carryoverUSD: budgetCarryover[currentBudgetCalendarMonthKey] || 0,
+      budgetOverrides: getBudgetOverridesForPeriod(budgetOverrides, currentBudgetCalendarMonthKey),
       timeAdjustmentUSD: previewTimeAdjustment.elapsedIncomeUSD,
       autoAllocationScale: previewTimeAdjustment.remainingRatio,
       spendDistribution: budgetSpendDistribution,
       spendToDateByCategory: monthStats.spendByCategory || {},
-      spendToDateTotalUSD: monthStats.spendTotalUSD || currentMonthSpendUSD,
+      spendToDateTotalUSD: monthStats.spendTotalUSD || 0,
       decisionStats,
       baselineMonthlyWasteUSD,
       language,
-      monthKey: currentBudgetPeriodKey,
+      monthKey: currentBudgetCalendarMonthKey,
       autoAllocationEnabled: budgetAutoEnabled,
     });
     const categoryEntry =
@@ -68579,10 +69437,7 @@ useEffect(() => {
     baselineMonthlyWasteUSD,
     budgetAutoEnabled,
     budgetOverrides,
-    currentBudgetPayday,
-    currentBudgetPeriodKey,
-    currentMonthIncomeUSD,
-    currentMonthSpendUSD,
+    currentBudgetCalendarMonthKey,
     decisionStats,
     incomeEntries,
     language,
@@ -69347,6 +70202,35 @@ useEffect(() => {
     );
   };
   const tamagotchiCleanTargetAccent = tamagotchiSelectedCleanTool?.type === "brush" ? "#99E18E" : "#7CC7FF";
+  const isAndroidTamagotchiSurface = Platform.OS === "android";
+  const tamagotchiPreviewSurfaceColor = lightenColor(colors.card, isDarkTheme ? 0.08 : 0.16);
+  const tamagotchiAndroidBlend = (baseColor, overlayColor, alpha) =>
+    isAndroidTamagotchiSurface
+      ? blendColors(baseColor || colors.card || "#FFFFFF", overlayColor, alpha)
+      : colorWithAlpha(overlayColor, alpha);
+  const tamagotchiPreviewAuraPrimaryColor = tamagotchiAndroidBlend(
+    tamagotchiPreviewSurfaceColor,
+    isDarkTheme ? "#5B8FFF" : "#8DD9FF",
+    isAndroidTamagotchiSurface ? (isDarkTheme ? 0.12 : 0.1) : isDarkTheme ? 0.22 : 0.26
+  );
+  const tamagotchiPreviewAuraSecondaryColor = tamagotchiAndroidBlend(
+    tamagotchiPreviewSurfaceColor,
+    isDarkTheme ? "#FF7AB0" : "#FFD6A5",
+    isAndroidTamagotchiSurface ? (isDarkTheme ? 0.08 : 0.1) : isDarkTheme ? 0.14 : 0.2
+  );
+  const tamagotchiSkinButtonSurfaceColor = isAndroidTamagotchiSurface
+    ? blendColors(tamagotchiPreviewSurfaceColor, colors.card || "#FFFFFF", isDarkTheme ? 0.62 : 0.84)
+    : colorWithAlpha(colors.card, isDarkTheme ? 0.92 : 0.98);
+  const tamagotchiCleanHighlightBackgroundColor = isAndroidTamagotchiSurface
+    ? blendColors(
+        tamagotchiPreviewSurfaceColor,
+        tamagotchiCleanTargetAccent,
+        isDarkTheme ? 0.18 : 0.16
+      )
+    : colorWithAlpha(tamagotchiCleanTargetAccent, isDarkTheme ? 0.16 : 0.22);
+  const tamagotchiCleanHintBackgroundColor = isAndroidTamagotchiSurface
+    ? blendColors(colors.card || "#FFFFFF", tamagotchiCleanTargetAccent, isDarkTheme ? 0.24 : 0.16)
+    : colorWithAlpha(tamagotchiCleanTargetAccent, isDarkTheme ? 0.24 : 0.2);
   const tamagotchiCleanTargetHighlightVisible =
     tamagotchiActiveTab === "clean" &&
     isTamagotchiCleanToolSelected &&
@@ -70317,7 +71201,7 @@ useEffect(() => {
         basisMissing: "Добавьте цену искушения, чтобы включить прогноз.",
       };
     }
-    return {
+    return localizeFallbackCopyStructure({
       title: "Potential savings over 30 days",
       fomo: "The more often you skip it, the more money stays with you.",
       checksSuffix: "check-ins over 30 days",
@@ -70325,7 +71209,7 @@ useEffect(() => {
       basisLast: "Last logged price",
       basisTemplate: "Temptation price",
       basisMissing: "Add a temptation price to unlock the forecast.",
-    };
+    }, normalizedLanguage);
   }, [language]);
   const formatFrequencyReminderForecastAmount = useCallback(
     (valueUSD) =>
@@ -72273,6 +73157,9 @@ useEffect(() => {
         if (!suppressSaveOverlay) {
           ensureOverlayEnvironmentReady();
           triggerOverlayState("save", saveOverlayPayloadWithReward);
+          if (Math.max(0, Number(temptationSaveActionCountRef.current) || 0) === 0) {
+            markFirstSaveGoalJarPending();
+          }
         }
         lastSaveOverlayDismissedAtRef.current = saveTimestamp;
         if (!isEssentialSaveCategory) {
@@ -72459,6 +73346,7 @@ useEffect(() => {
       thinkingUnlocked,
       schedulePendingReminder,
       logHistoryEvent,
+      markFirstSaveGoalJarPending,
       registerUsageStreakAction,
       triggerCardFeedback,
       triggerCoinHaptics,
@@ -72815,6 +73703,21 @@ useEffect(() => {
     const resolvedStatuses = {};
     const rewardByEventId = {};
     const resolvedAutosaveCountByCardId = {};
+    const confirmedAutosaveCardDayKeys = new Set();
+    (Array.isArray(tycoonLedger) ? tycoonLedger : []).forEach((entry) => {
+      if (
+        entry?.source !== "autosave" ||
+        !entry?.cardId ||
+        entry?.status === "pending"
+      ) {
+        return;
+      }
+      const cardKey = resolveNonEmptyString(entry.cardId);
+      const dayKey = getTycoonAutosaveEventDayKey(entry);
+      if (cardKey && dayKey) {
+        confirmedAutosaveCardDayKeys.add(`${cardKey}:${dayKey}`);
+      }
+    });
     for (const entry of pending) {
       const card = resolveTemplateCard(entry.cardId);
       if (!card) continue;
@@ -72822,6 +73725,14 @@ useEffect(() => {
         tycoonAutosaveAmountOverrides?.[entry.id] || entry.amountUSD
       );
       if (amountUSD <= 0) continue;
+      const cardKey = resolveNonEmptyString(entry.cardId);
+      const entryDayKey = getTycoonAutosaveEventDayKey(entry);
+      const autosaveCardDayKey =
+        cardKey && entryDayKey ? `${cardKey}:${entryDayKey}` : "";
+      if (autosaveCardDayKey && confirmedAutosaveCardDayKeys.has(autosaveCardDayKey)) {
+        resolvedStatuses[entry.id] = "skipped";
+        continue;
+      }
       const markedSpent = !!spentIds[entry.id];
       if (markedSpent) {
         await handleTemptationAction("spend", card, {
@@ -72854,6 +73765,9 @@ useEffect(() => {
         rewardTotal += entryReward;
       }
       resolvedStatuses[entry.id] = markedSpent ? "spent" : "saved";
+      if (autosaveCardDayKey) {
+        confirmedAutosaveCardDayKeys.add(autosaveCardDayKey);
+      }
       if (entry.cardId) {
         resolvedAutosaveCountByCardId[entry.cardId] =
           (resolvedAutosaveCountByCardId[entry.cardId] || 0) + 1;
@@ -72890,6 +73804,16 @@ useEffect(() => {
         const status = resolvedStatuses[entry?.id];
         const rewardAmount = Math.max(0, Number(rewardByEventId[entry?.id]) || 0);
         if (!status) return entry;
+        if (status === "skipped") {
+          return {
+            ...entry,
+            status: "skipped",
+            skippedAt: now,
+            skipReason: "autosave_day_duplicate",
+            rewardAmount: 0,
+            rewardClaimed: true,
+          };
+        }
         return {
           ...entry,
           amountUSD: clampTransactionAmountUSD(
@@ -72954,6 +73878,7 @@ useEffect(() => {
     resolveTemplateCard,
     tycoonAutosaveAmountOverrides,
     tycoonConfirmStats,
+    tycoonLedger,
     tycoonPendingEvents,
     tycoonReviewAcknowledged,
     tycoonSpentSelection,
@@ -77017,6 +77942,15 @@ useEffect(() => {
             setCoinValueModalVisible(false);
             setCoinValueModalStatus("none");
             coinValueModalStatusRef.current = "none";
+            setFirstSaveGoalJarStatus("none");
+            firstSaveGoalJarStatusRef.current = "none";
+            setFirstSaveGoalJarHydrated(true);
+            setFirstSaveGoalJarOpenRequestTick(0);
+            setFirstSaveGoalJarVisible(false);
+            if (firstSaveGoalJarOpenTimerRef.current) {
+              clearTimeout(firstSaveGoalJarOpenTimerRef.current);
+              firstSaveGoalJarOpenTimerRef.current = null;
+            }
             coinBalancePrevRef.current = 0;
             setCoinSliderMaxUSD(DEFAULT_COIN_SLIDER_MAX_USD);
             previousPlayerLevelRef.current = 1;
@@ -77970,6 +78904,13 @@ useEffect(() => {
             onDayTwoIncomePromptDismiss={dismissDayTwoIncomePrompt}
             contentBottomPadding={screenContentBottomPadding}
             topInset={topSafeInset}
+            goalJarAutoOpenRequestTick={
+              firstSaveGoalJarStatus === "pending" || firstSaveGoalJarStatus === "opening"
+                ? firstSaveGoalJarOpenRequestTick
+                : 0
+            }
+            onGoalJarDetailVisibilityChange={handleFirstSaveGoalJarVisibilityChange}
+            onGoalJarDetailClose={handleFirstSaveGoalJarClose}
           />
         );
     }
@@ -78136,7 +79077,9 @@ useEffect(() => {
         onboardingBackHandler ||
         (() => {
           triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-          goToOnboardingStep("save_demo", { recordHistory: false });
+          goToOnboardingStep(isShortOnboardingFlow ? "persona" : "save_demo", {
+            recordHistory: false,
+          });
         });
       onboardContent = (
         <GoalScreen
@@ -80892,7 +81835,7 @@ useEffect(() => {
                       tamagotchiClosing && styles.tamagotchiNoShadow,
                       {
                         borderColor: colors.border,
-                        backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.08 : 0.16),
+                        backgroundColor: tamagotchiPreviewSurfaceColor,
                       },
                     ]}
                   >
@@ -80900,8 +81843,9 @@ useEffect(() => {
                       pointerEvents="none"
                       style={[
                         styles.tamagotchiPreviewAura,
+                        isAndroidTamagotchiSurface && styles.tamagotchiPreviewAuraAndroid,
                         {
-                          backgroundColor: colorWithAlpha(isDarkTheme ? "#5B8FFF" : "#8DD9FF", isDarkTheme ? 0.22 : 0.26),
+                          backgroundColor: tamagotchiPreviewAuraPrimaryColor,
                         },
                       ]}
                     />
@@ -80909,8 +81853,9 @@ useEffect(() => {
                       pointerEvents="none"
                       style={[
                         styles.tamagotchiPreviewAuraSecondary,
+                        isAndroidTamagotchiSurface && styles.tamagotchiPreviewAuraSecondaryAndroid,
                         {
-                          backgroundColor: colorWithAlpha(isDarkTheme ? "#FF7AB0" : "#FFD6A5", isDarkTheme ? 0.14 : 0.2),
+                          backgroundColor: tamagotchiPreviewAuraSecondaryColor,
                         },
                       ]}
                     />
@@ -80920,8 +81865,9 @@ useEffect(() => {
 	                          styles.skinPickerButton,
 	                          {
 	                            borderColor: colors.border,
-	                            backgroundColor: colorWithAlpha(colors.card, isDarkTheme ? 0.92 : 0.98),
+	                            backgroundColor: tamagotchiSkinButtonSurfaceColor,
 	                          },
+                            isAndroidTamagotchiSurface && styles.skinPickerButtonAndroid,
 	                          !catCustomizationUnlocked && styles.skinPickerButtonLocked,
 	                        ]}
 	                        onPress={openSkinPicker}
@@ -81028,15 +81974,15 @@ useEffect(() => {
 	                        styles.tamagotchiMascotWrap,
 	                        tamagotchiCleanTargetHighlightVisible &&
 	                          styles.tamagotchiMascotWrapCleanHighlight,
+                          tamagotchiCleanTargetHighlightVisible &&
+                            isAndroidTamagotchiSurface &&
+                            styles.tamagotchiMascotWrapCleanHighlightAndroid,
 	                        tamagotchiCleanTargetHighlightVisible && {
 	                          borderColor: colorWithAlpha(
 	                            tamagotchiCleanTargetAccent,
 	                            isDarkTheme ? 0.9 : 0.86
 	                          ),
-	                          backgroundColor: colorWithAlpha(
-	                            tamagotchiCleanTargetAccent,
-	                            isDarkTheme ? 0.16 : 0.22
-	                          ),
+                            backgroundColor: tamagotchiCleanHighlightBackgroundColor,
 	                          shadowColor: colorWithAlpha(
 	                            tamagotchiCleanTargetAccent,
 	                            isDarkTheme ? 0.72 : 0.5
@@ -81364,11 +82310,13 @@ useEffect(() => {
                         tamagotchiClosing && styles.tamagotchiNoShadow,
                         {
                           borderColor: colorWithAlpha(tamagotchiCleanTargetAccent, isDarkTheme ? 0.88 : 0.82),
-                          backgroundColor: colorWithAlpha(
+                          backgroundColor: tamagotchiCleanHintBackgroundColor,
+                          shadowColor: colorWithAlpha(
                             tamagotchiCleanTargetAccent,
-                            isDarkTheme ? 0.24 : 0.2
+                            isDarkTheme ? 0.72 : 0.38
                           ),
                         },
+                        isAndroidTamagotchiSurface && styles.tamagotchiCleanSwipeHintBoxAndroid,
                       ]}
                     >
                       <Text style={[styles.tamagotchiCleanSwipeHintText, { color: colors.text }]}>
@@ -82904,6 +83852,7 @@ useEffect(() => {
           restoring={premiumRestoreLoading}
           onPlanSelect={handlePremiumPlanSelected}
           onPlanPress={handlePremiumPlanPress}
+          onTrialSwitchOn={handlePremiumTrialSwitchOn}
           onFeatureInsightPress={handlePremiumFeatureInsightPress}
           onScrollPastThreshold={handlePremiumPaywallScrolled}
           onRestorePress={handlePremiumRestore}
@@ -83205,7 +84154,12 @@ useEffect(() => {
                       style={[styles.goalRenewalSecondary, { borderColor: colors.border }]}
                       onPress={handleGoalRenewalLater}
                     >
-                      <Text style={[styles.goalRenewalSecondaryText, { color: colors.muted }]}>
+                      <Text
+                        style={[styles.goalRenewalSecondaryText, { color: colors.muted }]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.78}
+                      >
                         {t("goalRenewalLater")}
                       </Text>
                     </TouchableOpacity>
@@ -83213,7 +84167,12 @@ useEffect(() => {
                       style={[styles.goalRenewalPrimary, { backgroundColor: colors.text }]}
                       onPress={handleGoalRenewalStart}
                     >
-                      <Text style={[styles.goalRenewalPrimaryText, { color: colors.background }]}>
+                      <Text
+                        style={[styles.goalRenewalPrimaryText, { color: colors.background }]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.72}
+                      >
                         {t("goalRenewalCreate")}
                       </Text>
                     </TouchableOpacity>
@@ -85322,7 +86281,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 10,
     right: 10,
-    zIndex: 12,
+    zIndex: 28,
+    elevation: 28,
     alignItems: "flex-end",
     gap: 8,
   },
@@ -85338,6 +86298,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 4,
     elevation: 3,
+  },
+  skinPickerButtonAndroid: {
+    elevation: 8,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
   },
   skinPickerButtonLocked: {
     transform: [{ scale: 0.98 }],
@@ -86711,6 +87677,14 @@ const styles = StyleSheet.create({
     height: scaleTamagotchiMetric(138, 102),
     borderRadius: scaleTamagotchiMetric(96, 68),
   },
+  tamagotchiPreviewAuraAndroid: {
+    top: -scaleTamagotchiMetric(18, 12),
+    width: scaleTamagotchiMetric(150, 112),
+    height: scaleTamagotchiMetric(112, 84),
+    borderRadius: scaleTamagotchiMetric(76, 56),
+    left: "50%",
+    marginLeft: -scaleTamagotchiMetric(94, 70),
+  },
   tamagotchiPreviewAuraSecondary: {
     position: "absolute",
     bottom: -scaleTamagotchiMetric(28, 18),
@@ -86718,6 +87692,13 @@ const styles = StyleSheet.create({
     width: scaleTamagotchiMetric(128, 92),
     height: scaleTamagotchiMetric(96, 70),
     borderRadius: scaleTamagotchiMetric(80, 56),
+  },
+  tamagotchiPreviewAuraSecondaryAndroid: {
+    bottom: -scaleTamagotchiMetric(18, 12),
+    right: -scaleTamagotchiMetric(8, 4),
+    width: scaleTamagotchiMetric(92, 68),
+    height: scaleTamagotchiMetric(68, 50),
+    borderRadius: scaleTamagotchiMetric(46, 34),
   },
   tamagotchiMascotWrap: {
     position: "relative",
@@ -86734,6 +87715,12 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
     elevation: 7,
+  },
+  tamagotchiMascotWrapCleanHighlightAndroid: {
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
   },
   tamagotchiMascotLarge: {
     width: scaleTamagotchiMetric(110, 86),
@@ -86981,6 +87968,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
+  tamagotchiCleanSwipeHintBoxAndroid: {
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
   tamagotchiCleanSwipeHintText: {
     ...createCtaText({ fontSize: scaleTamagotchiMetric(11, 9.5), textAlign: "center" }),
     lineHeight: scaleTamagotchiMetric(14, 12),
@@ -87078,8 +88071,8 @@ const styles = StyleSheet.create({
     minHeight: IS_SHORT_DEVICE ? 88 : 98,
   },
   goalJarHeroTitleBlock: {
-    flexBasis: IS_SHORT_DEVICE ? "54%" : "56%",
-    maxWidth: IS_SHORT_DEVICE ? "56%" : "58%",
+    flexBasis: IS_SHORT_DEVICE ? "62%" : "66%",
+    maxWidth: IS_SHORT_DEVICE ? "66%" : "70%",
     minWidth: 0,
     justifyContent: "center",
     paddingTop: IS_SHORT_DEVICE ? 2 : 6,
@@ -87089,8 +88082,9 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   goalJarHeroAmountPressable: {
-    alignSelf: "flex-start",
+    alignSelf: "stretch",
     justifyContent: "center",
+    width: "100%",
     maxWidth: "100%",
     minHeight: IS_SHORT_DEVICE ? 48 : 58,
     marginTop: 4,
@@ -87103,6 +88097,7 @@ const styles = StyleSheet.create({
     lineHeight: IS_SHORT_DEVICE ? 47 : 57,
     letterSpacing: 0,
     includeFontPadding: false,
+    width: "100%",
     textShadowColor: "rgba(46,184,115,0.12)",
     textShadowOffset: { width: 0, height: 5 },
     textShadowRadius: 14,
@@ -87229,7 +88224,10 @@ const styles = StyleSheet.create({
   },
   goalJarHeroGoalMeta: {
     ...createSecondaryText({ fontSize: 13 }),
+    alignSelf: "stretch",
     lineHeight: 17,
+    marginTop: 2,
+    minWidth: 0,
   },
   goalJarHeroTextRtl: {
     writingDirection: "rtl",
@@ -98224,6 +99222,11 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginBottom: -6,
   },
+  languageMascotCompact: {
+    width: IS_SHORT_DEVICE ? 158 : 176,
+    height: IS_SHORT_DEVICE ? 150 : 166,
+    marginBottom: 0,
+  },
   languageSelectionMascot: {
     width: 184,
     height: 184,
@@ -101086,6 +102089,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderWidth: 1,
     borderRadius: 18,
+    paddingHorizontal: 10,
     paddingVertical: 12,
     alignItems: "center",
   },
@@ -101095,6 +102099,7 @@ const styles = StyleSheet.create({
   goalRenewalPrimary: {
     flex: 1,
     borderRadius: 18,
+    paddingHorizontal: 10,
     paddingVertical: 12,
     alignItems: "center",
   },
@@ -101161,6 +102166,10 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingBottom: 28,
   },
+  languageOnboardContent: {
+    gap: IS_SHORT_DEVICE ? 8 : 10,
+    paddingBottom: 12,
+  },
   onboardHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -101185,6 +102194,9 @@ const styles = StyleSheet.create({
   },
   onboardContentNoHeader: {
     paddingTop: 12,
+  },
+  languageContentNoHeader: {
+    paddingTop: IS_SHORT_DEVICE ? 6 : 8,
   },
   onboardHeroCard: {
     flexDirection: "row",
@@ -101219,6 +102231,10 @@ const styles = StyleSheet.create({
   onboardHeroBadge: {
     ...createCtaText({ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8 }),
   },
+  languageHeroBadge: {
+    fontSize: 11,
+    lineHeight: 14,
+  },
   onboardTitle: {
     ...TYPOGRAPHY.display,
   },
@@ -101227,6 +102243,10 @@ const styles = StyleSheet.create({
     fontSize: Math.max(TYPOGRAPHY.display.fontSize - 4, 26),
     lineHeight: Math.max(TYPOGRAPHY.display.fontSize - 2, 28),
   },
+  languageTitleCompact: {
+    fontSize: Math.max(TYPOGRAPHY.display.fontSize - 8, 22),
+    lineHeight: Math.max(TYPOGRAPHY.display.fontSize - 5, 25),
+  },
   personaTitleCompact: {
     ...TYPOGRAPHY.display,
     fontSize: Math.max(TYPOGRAPHY.display.fontSize - 10, 20),
@@ -101234,6 +102254,10 @@ const styles = StyleSheet.create({
   },
   onboardSubtitle: {
     ...createBodyText({ fontSize: 16, lineHeight: 22 }),
+  },
+  languageSubtitleCompact: {
+    fontSize: 14,
+    lineHeight: 18,
   },
   onboardGuideContent: {
     gap: 12,
@@ -101274,6 +102298,14 @@ const styles = StyleSheet.create({
   onboardChoiceGridDense: {
     gap: 8,
   },
+  languageChoiceGrid: {
+    justifyContent: "space-between",
+    rowGap: 8,
+    columnGap: 0,
+  },
+  languageChoiceItem: {
+    width: "48.6%",
+  },
   onboardChoiceChip: {
     width: "48%",
     borderWidth: 1,
@@ -101287,12 +102319,25 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 10,
   },
+  languageChoiceChip: {
+    width: "100%",
+    height: IS_SHORT_DEVICE ? 44 : 48,
+    borderRadius: 14,
+    paddingVertical: 0,
+    paddingHorizontal: 8,
+  },
   onboardPanel: {
     width: "100%",
     borderWidth: 1,
     borderRadius: 22,
     padding: 12,
     marginTop: 8,
+  },
+  languageCurrencyPanel: {
+    borderRadius: 18,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    marginTop: 2,
   },
   onboardSaveDemoLayout: {
     flexGrow: 1,
@@ -101400,12 +102445,12 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: BASE_HORIZONTAL_PADDING,
     right: BASE_HORIZONTAL_PADDING,
-    bottom: 0,
+    bottom: 24,
     paddingTop: 0,
     zIndex: 8,
   },
   onboardFloatingActionsTight: {
-    bottom: 0,
+    bottom: 18,
   },
   onboardFloatingPrimary: {
     shadowColor: ONBOARDING_GLASS_THEME.shadow,
@@ -101413,6 +102458,10 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
     elevation: 10,
+  },
+  onboardRaisedInlinePrimary: {
+    transform: [{ translateY: -24 }],
+    marginBottom: 28,
   },
   avatarPreview: {
     borderWidth: 1,
@@ -101480,7 +102529,10 @@ const styles = StyleSheet.create({
     marginRight: -32,
     paddingRight: 32,
   },
-    currencyScroll: {
+  languageCurrencyScrollWrapper: {
+    marginTop: 7,
+  },
+  currencyScroll: {
     marginTop: 0,
   },
   currencyScrollContent: {
@@ -101488,6 +102540,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     paddingRight: 12,
+  },
+  languageCurrencyScrollContent: {
+    gap: 8,
   },
   currencyScrollFadeWrapper: {
     position: "absolute",
@@ -101504,6 +102559,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 8,
     paddingHorizontal: 12,
+  },
+  languageCurrencyChip: {
+    borderRadius: 14,
+    paddingVertical: 7,
+    paddingHorizontal: 11,
   },
   goalGrid: {
     flexDirection: "row",
@@ -101689,11 +102749,11 @@ const styles = StyleSheet.create({
   },
   languageTermsBlock: {
     width: "100%",
-    marginTop: 12,
-    gap: 6,
+    marginTop: 2,
+    gap: 4,
   },
   languageTermsNote: {
-    ...createSecondaryText({ fontSize: 12, lineHeight: 16 }),
+    ...createSecondaryText({ fontSize: 11, lineHeight: 14 }),
   },
   languageTermsInlineLink: {
     textDecorationLine: "underline",
@@ -103133,7 +104193,11 @@ function GoalScreen({
   );
   const primaryAction = (
     <OnboardingScaleButton
-      style={[styles.primaryButton, { backgroundColor: ONBOARDING_GLASS_THEME.buttonPrimary }]}
+      style={[
+        styles.primaryButton,
+        styles.onboardRaisedInlinePrimary,
+        { backgroundColor: ONBOARDING_GLASS_THEME.buttonPrimary },
+      ]}
       onPress={handleSubmit}
     >
       <Text style={[styles.primaryButtonText, { color: "#FFFFFF" }]}>{t("nextButton")}</Text>
@@ -106302,6 +107366,8 @@ function ImpulseCategorySelector({
             { color: active ? colors.background : colors.text },
           ]}
           numberOfLines={2}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
         >
           {getImpulseCategoryLabel(categoryId, language)}
         </Text>
@@ -107430,7 +108496,7 @@ function SegmentedSlider({
               ]}
               numberOfLines={1}
               adjustsFontSizeToFit
-              minimumFontScale={0.75}
+              minimumFontScale={0.65}
             >
               {option.label}
             </Text>
@@ -109599,11 +110665,34 @@ const resolveOnboardingLanguageMapValue = (value, language, fallback = "") => {
   return localizeFallbackTextByLanguage(direct, normalized);
 };
 
-const resolveOnboardingCustomHabitCopy = (language = DEFAULT_LANGUAGE) =>
-  ONBOARDING_CUSTOM_HABIT_COPY[normalizeLanguage(language)] ||
-  ONBOARDING_CUSTOM_HABIT_COPY[resolveTranslationLanguage(normalizeLanguage(language))] ||
-  ONBOARDING_CUSTOM_HABIT_COPY[getShortLanguageKey(normalizeLanguage(language))] ||
-  ONBOARDING_CUSTOM_HABIT_COPY.en;
+const localizeFallbackCopyStructure = (value, language = DEFAULT_LANGUAGE) => {
+  const normalizedLanguage = normalizeLanguage(language);
+  if (typeof value === "string") {
+    return localizeFallbackTextByLanguage(value, normalizedLanguage);
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => localizeFallbackCopyStructure(entry, normalizedLanguage));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        localizeFallbackCopyStructure(entry, normalizedLanguage),
+      ])
+    );
+  }
+  return value;
+};
+
+const resolveOnboardingCustomHabitCopy = (language = DEFAULT_LANGUAGE) => {
+  const normalizedLanguage = normalizeLanguage(language);
+  const source =
+    ONBOARDING_CUSTOM_HABIT_COPY[normalizedLanguage] ||
+    ONBOARDING_CUSTOM_HABIT_COPY[resolveTranslationLanguage(normalizedLanguage)] ||
+    ONBOARDING_CUSTOM_HABIT_COPY[getShortLanguageKey(normalizedLanguage)] ||
+    ONBOARDING_CUSTOM_HABIT_COPY.en;
+  return localizeFallbackCopyStructure(source, normalizedLanguage);
+};
 
 const ONBOARDING_BADGE_COPY = {
   guide: {
@@ -111179,7 +112268,7 @@ function LanguageScreen({
   const isDenseLanguageGrid = SUPPORTED_LANGUAGES.length > 6;
   const wavingSource = mascotWaveSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.waving;
   const resolvedBottomInset = Math.max(Number(bottomInset) || 0, Number(safeAreaInsets.bottom) || 0);
-  const bottomInsetStyle = addBottomInsetStyle(styles.onboardContent, resolvedBottomInset);
+  const bottomInsetStyle = addBottomInsetStyle(styles.languageOnboardContent, resolvedBottomInset);
   const hasHeader = Boolean(onBack);
   const languageChipReveal = useOnboardingStaggerValues(SUPPORTED_LANGUAGES.length, { delay: 44 });
   const detailsReveal = useOnboardingStaggerValues(3, { delay: 120 });
@@ -111264,7 +112353,8 @@ function LanguageScreen({
       <OnboardingScrollView
         contentContainerStyle={[
           styles.onboardContent,
-          hasHeader ? styles.onboardContentWithFixedHeaderLifted : styles.onboardContentNoHeader,
+          styles.languageOnboardContent,
+          hasHeader ? styles.onboardContentWithFixedHeaderLifted : styles.languageContentNoHeader,
           bottomInsetStyle,
         ]}
       >
@@ -111274,18 +112364,46 @@ function LanguageScreen({
             transform: [{ translateY: mascotFloatIn }],
           }}
         >
-          <Image source={wavingSource} style={styles.languageMascot} resizeMode="contain" />
+          <Image
+            source={wavingSource}
+            style={[styles.languageMascot, styles.languageMascotCompact]}
+            resizeMode="contain"
+          />
         </Animated.View>
-        <Text style={[styles.onboardHeroBadge, { color: ONBOARDING_GLASS_THEME.textSecondary, textAlign: "center" }]}>
+        <Text
+          style={[
+            styles.onboardHeroBadge,
+            styles.languageHeroBadge,
+            { color: ONBOARDING_GLASS_THEME.textSecondary, textAlign: "center" },
+          ]}
+        >
           {languageBadgeLabel}
         </Text>
-        <Text style={[styles.onboardTitleCompact, { color: ONBOARDING_GLASS_THEME.textPrimary, textAlign: "center" }]}>
+        <Text
+          style={[
+            styles.onboardTitleCompact,
+            styles.languageTitleCompact,
+            { color: ONBOARDING_GLASS_THEME.textPrimary, textAlign: "center" },
+          ]}
+        >
           {t("languageTitle")}
         </Text>
-        <Text style={[styles.onboardSubtitle, { color: ONBOARDING_GLASS_THEME.textSecondary, textAlign: "center" }]}>
+        <Text
+          style={[
+            styles.onboardSubtitle,
+            styles.languageSubtitleCompact,
+            { color: ONBOARDING_GLASS_THEME.textSecondary, textAlign: "center" },
+          ]}
+        >
           {t("languageSubtitle")}
         </Text>
-        <View style={[styles.onboardChoiceGrid, isDenseLanguageGrid && styles.onboardChoiceGridDense]}>
+        <View
+          style={[
+            styles.onboardChoiceGrid,
+            isDenseLanguageGrid && styles.onboardChoiceGridDense,
+            styles.languageChoiceGrid,
+          ]}
+        >
           {SUPPORTED_LANGUAGES.map((langKey, index) => {
             const label = LANGUAGE_NATIVE_LABELS[langKey] || langKey.toUpperCase();
             const active = normalizeLanguage(selectedLanguage) === normalizeLanguage(langKey);
@@ -111297,18 +112415,20 @@ function LanguageScreen({
             return (
               <Animated.View
                 key={langKey}
-                style={{
-                  width: "48%",
-                  opacity: reveal,
-                  transform: [{ translateY: rise }],
-                }}
+                style={[
+                  styles.languageChoiceItem,
+                  {
+                    opacity: reveal,
+                    transform: [{ translateY: rise }],
+                  },
+                ]}
               >
                 <OnboardingScaleButton
                   style={[
                     styles.onboardChoiceChip,
                     isDenseLanguageGrid && styles.onboardChoiceChipDense,
+                    styles.languageChoiceChip,
                     {
-                      width: "100%",
                       borderColor: active
                         ? colorWithAlpha(ONBOARDING_GLASS_THEME.accent, 0.5)
                         : ONBOARDING_GLASS_THEME.borderStrong,
@@ -111351,6 +112471,7 @@ function LanguageScreen({
           <View
             style={[
               styles.onboardPanel,
+              styles.languageCurrencyPanel,
               {
                 borderColor: ONBOARDING_GLASS_THEME.border,
                 backgroundColor: ONBOARDING_GLASS_THEME.cardStrong,
@@ -111360,13 +112481,13 @@ function LanguageScreen({
             <Text style={[styles.currencyLabel, { color: ONBOARDING_GLASS_THEME.textSecondary, marginTop: 0 }]}>
               {t("currencyLabel")} <Text style={{ fontSize: 16 }}>{isRtl ? "←" : "→"}</Text>
             </Text>
-            <View style={styles.currencyScrollWrapper}>
+            <View style={[styles.currencyScrollWrapper, styles.languageCurrencyScrollWrapper]}>
               <ScrollView
                 ref={currencyScrollRef}
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 style={styles.currencyScroll}
-                contentContainerStyle={styles.currencyScrollContent}
+                contentContainerStyle={[styles.currencyScrollContent, styles.languageCurrencyScrollContent]}
                 onScroll={handleCurrencyScroll}
                 scrollEventThrottle={16}
               >
@@ -111377,6 +112498,7 @@ function LanguageScreen({
                       key={currency}
                       style={[
                         styles.currencyChipLarge,
+                        styles.languageCurrencyChip,
                         {
                           backgroundColor: active
                             ? ONBOARDING_GLASS_THEME.buttonPrimary
@@ -111437,7 +112559,7 @@ function LanguageScreen({
               styles.primaryButton,
               {
                 backgroundColor: ONBOARDING_GLASS_THEME.buttonPrimary,
-                marginTop: 14,
+                marginTop: 6,
                 shadowColor: ONBOARDING_GLASS_THEME.shadow,
               },
             ]}
@@ -111850,6 +112972,8 @@ const getSaveProgressCopy = (language) => {
     es: "Más cerca de la meta",
     fr: "Plus près de l'objectif",
     de: "Näher am Ziel",
+    pt: "Mais perto da meta",
+    it: "Più vicino all'obiettivo",
     ar: "أقرب إلى الهدف",
     zh: "更接近目标",
   };
@@ -111865,6 +112989,8 @@ const getSaveCountdownTitle = (language) => {
     es: "Lo que falta para llegar",
     fr: "Combien reste-t-il",
     de: "Was noch bis zum Ziel fehlt",
+    pt: "Passos até à meta",
+    it: "Passi fino all'obiettivo",
     ar: "كم تبقّى للوصول إلى الهدف",
     zh: "距离目标还差多少",
   };
@@ -111882,6 +113008,8 @@ const getSaveCountdownCopy = (language, count) => {
       es: "La meta está al alcance.",
       fr: "L'objectif est tout proche !",
       de: "Das Ziel ist in Reichweite!",
+      pt: "A meta está ao alcance!",
+      it: "L'obiettivo è a portata!",
       ar: "الهدف أصبح قريباً!",
       zh: "目标触手可及！",
     };
@@ -111901,6 +113029,8 @@ const getSaveCountdownCopy = (language, count) => {
     es: `Quedan ${safeCount} pasos como este hasta la meta`,
     fr: `Encore ${safeCount} actions comme celle-ci pour la cible`,
     de: `Noch ${safeCount} Aktionen wie diese bis zu deinem Ziel`,
+    pt: `Mais ${safeCount} ações assim até à meta`,
+    it: `Ancora ${safeCount} azioni così fino all'obiettivo`,
     ar: `تبقّى ${safeCount} خطوات مماثلة للوصول إلى هدفك`,
     zh: `再完成 ${safeCount} 次类似行动即可到达目标`,
   };

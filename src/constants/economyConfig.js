@@ -75,9 +75,12 @@ export const RTL_CURRENCIES = new Set(["SAR"]);
 
 export const CURRENCY_RATES = {
   AED: 3.6725,
+  ARS: 1438.8159,
   AUD: 1.414986,
+  BRL: 5.064065,
   BYN: 2.91473,
   CAD: 1.383101,
+  CNY: 6.788805,
   EUR: 0.853304,
   GBP: 0.743471,
   JPY: 159.248687,
@@ -92,9 +95,12 @@ export const CURRENCY_RATES = {
 
 export const CURRENCY_REWARD_STEPS = {
   AED: 20,
+  ARS: 7000,
   AUD: 5,
+  BRL: 25,
   BYN: 5,
   CAD: 5,
+  CNY: 35,
   EUR: 5,
   GBP: 5,
   JPY: 750,
@@ -120,9 +126,12 @@ export const COIN_FILL_MIN_HEIGHT = 12;
 
 export const CURRENCY_SIGNS = {
   AED: "AED ",
+  ARS: "$",
   AUD: "$",
+  BRL: "R$",
   BYN: "Br",
   CAD: "$",
+  CNY: "¥",
   EUR: "€",
   GBP: "£",
   JPY: "¥",
@@ -137,9 +146,12 @@ export const CURRENCY_SIGNS = {
 
 export const CURRENCY_FINE_STEPS = {
   AED: 0.5,
+  ARS: 50,
   AUD: 0.5,
+  BRL: 0.5,
   BYN: 0.5,
   CAD: 0.5,
+  CNY: 0.5,
   EUR: 0.5,
   GBP: 0.5,
   JPY: 10,
@@ -154,9 +166,12 @@ export const CURRENCY_FINE_STEPS = {
 
 export const CURRENCY_DISPLAY_PRECISION = {
   AED: 0,
+  ARS: 0,
   AUD: 0,
+  BRL: 0,
   BYN: 0,
   CAD: 0,
+  CNY: 0,
   EUR: 0,
   GBP: 0,
   MXN: 0,

@@ -1456,6 +1456,8 @@ const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
     es: "Semanal",
     fr: "Hebdomadaire",
     de: "Wöchentlich",
+    pt: "Semanal",
+    it: "Settimanale",
     ar: "أسبوعي",
     zh: "周付",
   },
@@ -1465,6 +1467,8 @@ const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
     es: "Anual",
     fr: "Annuel",
     de: "Jährlich",
+    pt: "Anual",
+    it: "Annuale",
     ar: "سنوي",
     zh: "年付",
   },
@@ -1474,6 +1478,8 @@ const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
     es: "Mensual",
     fr: "Mensuel",
     de: "Monatlich",
+    pt: "Mensal",
+    it: "Mensile",
     ar: "شهري",
     zh: "月付",
   },
@@ -1483,6 +1489,8 @@ const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
     es: "De por vida",
     fr: "À vie",
     de: "Lebenslang",
+    pt: "Vitalício",
+    it: "A vita",
     ar: "مدى الحياة",
     zh: "终身",
   },
@@ -1522,6 +1530,8 @@ const resolveLanguage = (language) => {
   if (normalized.startsWith("es")) return "es";
   if (normalized.startsWith("fr")) return "fr";
   if (normalized.startsWith("de")) return "de";
+  if (normalized.startsWith("pt")) return "pt";
+  if (normalized.startsWith("it")) return "it";
   if (normalized.startsWith("ar")) return "ar";
   if (normalized.startsWith("zh")) return "zh";
   if (normalized.startsWith("en")) return "en";

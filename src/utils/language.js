@@ -5,7 +5,7 @@ import { LANGUAGE_MAP_FALLBACK_TRANSLATIONS } from "../constants/languageMapFall
 export const DEFAULT_LANGUAGE = "en";
 export const FALLBACK_LANGUAGE = "en";
 const DEFAULT_ARABIC_LANGUAGE = "ar-sa";
-export const SUPPORTED_LANGUAGES = ["en", "es", "fr", "ru", "de", "ar-sa", "ar-ae", "zh"];
+export const SUPPORTED_LANGUAGES = ["en", "es", "fr", "ru", "de", "pt", "it", "ar-sa", "ar-ae", "zh"];
 const RTL_LANGUAGES = new Set(["ar-sa", "ar-ae"]);
 const LANGUAGE_ALIASES = {
   en: "en",
@@ -28,6 +28,15 @@ const LANGUAGE_ALIASES = {
   deu: "de",
   ger: "de",
   german: "de",
+  pt: "pt",
+  "pt-pt": "pt",
+  "pt-br": "pt",
+  por: "pt",
+  portuguese: "pt",
+  it: "it",
+  "it-it": "it",
+  ita: "it",
+  italian: "it",
   ar: DEFAULT_ARABIC_LANGUAGE,
   "ar-sa": "ar-sa",
   "ar-ae": "ar-ae",
@@ -54,6 +63,8 @@ const LANGUAGE_LABEL_KEYS = {
   es: "languageSpanish",
   fr: "languageFrench",
   de: "languageGerman",
+  pt: "languagePortuguese",
+  it: "languageItalian",
   "ar-sa": "languageArabicSaudi",
   "ar-ae": "languageArabicUAE",
   zh: "languageChinese",
@@ -64,6 +75,8 @@ export const LANGUAGE_NATIVE_LABELS = {
   es: "Español",
   fr: "Français",
   de: "Deutsch",
+  pt: "Português",
+  it: "Italiano",
   "ar-sa": "العربية (السعودية)",
   "ar-ae": "العربية (الإمارات)",
   zh: "中文",
@@ -74,6 +87,8 @@ const FORMAT_LOCALES = {
   es: "es-ES",
   fr: "fr-FR",
   de: "de-DE",
+  pt: "pt-PT",
+  it: "it-IT",
   "ar-sa": "ar-SA",
   "ar-ae": "ar-AE",
   zh: "zh-CN",
@@ -84,6 +99,8 @@ const SHORT_LANGUAGE_MAP = {
   es: "es",
   fr: "fr",
   de: "de",
+  pt: "pt",
+  it: "it",
   "ar-sa": "ar",
   "ar-ae": "ar",
   zh: "zh",
@@ -114,8 +131,11 @@ const ARABIC_DIGIT_TO_WESTERN = {
 };
 const LANGUAGE_DEFAULT_CURRENCY_BY_CODE = {
   de: "EUR",
+  pt: "EUR",
+  it: "EUR",
   "ar-sa": "SAR",
   "ar-ae": "AED",
+  zh: "CNY",
 };
 
 const canonicalizeLanguageCode = (value) =>

@@ -317,7 +317,7 @@ struct Almost_WidgetEntryView: View {
             case .systemSmall:
                 VStack(alignment: .leading, spacing: 6) {
                     headerRow
-                    metricBlock(title: entry.labelTotal, value: entry.savedTotalLabel, valueSize: 22, valueColor: palette.primary)
+                    metricBlock(title: entry.labelBalance, value: entry.savedTotalLabel, valueSize: 22, valueColor: palette.primary)
                     progressBlock(
                         title: primaryTitle,
                         progress: primaryProgress,
@@ -332,7 +332,7 @@ struct Almost_WidgetEntryView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     headerRow
                     HStack(alignment: .top, spacing: 10) {
-                        metricBlock(title: entry.labelTotal, value: entry.savedTotalLabel, valueSize: 26, valueColor: palette.primary)
+                        metricBlock(title: entry.labelBalance, value: entry.savedTotalLabel, valueSize: 26, valueColor: palette.primary)
                         VStack(alignment: .leading, spacing: 6) {
                             progressBlock(
                                 title: primaryTitle,
@@ -369,7 +369,7 @@ struct Almost_WidgetEntryView: View {
                             }
                             HStack(alignment: .top, spacing: 12) {
                                 metricBlock(
-                                    title: entry.labelTotal,
+                                    title: entry.labelBalance,
                                     value: entry.savedTotalLabel,
                                     valueSize: 18,
                                     valueColor: palette.primary
@@ -477,7 +477,9 @@ struct Almost_WidgetEntryView: View {
                 .font(.system(size: valueSize, weight: .bold))
                 .foregroundColor(valueColor)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.55)
+                .allowsTightening(true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -493,10 +495,16 @@ struct Almost_WidgetEntryView: View {
                 Text(title)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(palette.label)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .allowsTightening(true)
                 Spacer(minLength: 4)
                 Text(detail)
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(palette.detail)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                    .allowsTightening(true)
             }
             progressBar(progress: progress, color: color, height: barHeight)
         }

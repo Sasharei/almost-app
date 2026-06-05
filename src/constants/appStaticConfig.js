@@ -150,4 +150,22 @@ export const CELEBRATION_MESSAGES = {
     ],
     level: "¡Nivel {{level}}! Tu armadura de ahorro sube de rango ✨",
   },
+  pt: {
+    default: [
+      "Boom! Mais uma economia consciente",
+      "Menos impulso, mais plano",
+      "A carteira respirou aliviada",
+      "Troca inteligente garantida - a poupança está segura",
+    ],
+    level: "Nível {{level}}! A armadura de poupança subiu de nível ✨",
+  },
+  it: {
+    default: [
+      "Boom! Un altro risparmio consapevole",
+      "Meno impulso, più piano",
+      "Il portafoglio ha appena tirato un sospiro di sollievo",
+      "Scambio intelligente bloccato - i risparmi sono al sicuro",
+    ],
+    level: "Livello {{level}}! Armatura del risparmio potenziata ✨",
+  },
 };

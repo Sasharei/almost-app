@@ -23,6 +23,11 @@ const REQUIRED_TRANSLATION_EXPORTS = [
     names: ["PRO_THEME_ACCENT_COPY"],
   },
 ];
+const DIRECT_FALLBACK_TRANSLATION_LANGUAGES = new Set(["en", "es", "fr", "ru"]);
+const FALLBACK_TRANSLATION_EXPORT = {
+  file: "src/constants/languageMapFallback.generated.js",
+  name: "LANGUAGE_MAP_FALLBACK_TRANSLATIONS",
+};
 
 function parseFile(relativePath) {
   const fullPath = path.join(ROOT_DIR, relativePath);
@@ -237,6 +242,72 @@ function checkLocalizedExports(requiredLanguages, errors) {
   }
 }
 
+function checkLanguageMapFallbackTranslations(requiredLanguages, errors) {
+  const fallbackTranslations = readExportedConst(
+    FALLBACK_TRANSLATION_EXPORT.file,
+    FALLBACK_TRANSLATION_EXPORT.name
+  );
+  if (!fallbackTranslations || typeof fallbackTranslations !== "object") {
+    errors.push(`${FALLBACK_TRANSLATION_EXPORT.name} is missing or invalid.`);
+    return;
+  }
+
+  const requiredFallbackLanguages = [
+    ...new Set([
+      ...Object.keys(fallbackTranslations),
+      ...requiredLanguages.filter((language) => !DIRECT_FALLBACK_TRANSLATION_LANGUAGES.has(language)),
+    ]),
+  ].sort();
+  const referenceLanguage = fallbackTranslations.de
+    ? "de"
+    : requiredFallbackLanguages.find((language) => fallbackTranslations[language]);
+  const referenceDictionary = referenceLanguage ? fallbackTranslations[referenceLanguage] : null;
+  const referenceKeys =
+    referenceDictionary && typeof referenceDictionary === "object" && !Array.isArray(referenceDictionary)
+      ? Object.keys(referenceDictionary)
+      : [];
+  if (referenceKeys.length === 0) {
+    errors.push(`${FALLBACK_TRANSLATION_EXPORT.name} has no reference fallback keys.`);
+    return;
+  }
+
+  for (const language of requiredFallbackLanguages) {
+    const dictionary = fallbackTranslations[language];
+    if (!dictionary || typeof dictionary !== "object" || Array.isArray(dictionary)) {
+      errors.push(`${FALLBACK_TRANSLATION_EXPORT.name}.${language} is missing.`);
+      continue;
+    }
+  }
+
+  for (const language of requiredFallbackLanguages) {
+    const dictionary = fallbackTranslations[language];
+    if (!dictionary || typeof dictionary !== "object" || Array.isArray(dictionary)) continue;
+
+    for (const key of referenceKeys) {
+      if (!(key in dictionary)) {
+        errors.push(`${FALLBACK_TRANSLATION_EXPORT.name}.${language}["${key}"] is missing.`);
+        continue;
+      }
+    }
+
+    for (const key of Object.keys(dictionary)) {
+      if (typeof dictionary[key] !== "string") {
+        errors.push(`${FALLBACK_TRANSLATION_EXPORT.name}.${language}["${key}"] must be a string.`);
+        continue;
+      }
+
+      const expectedPlaceholders = collectPlaceholders(key);
+      const actualPlaceholders = collectPlaceholders(dictionary[key]);
+      if (!sameSet(expectedPlaceholders, actualPlaceholders)) {
+        errors.push(
+          `${FALLBACK_TRANSLATION_EXPORT.name}.${language}["${key}"] placeholders differ. ` +
+            `Expected [${[...expectedPlaceholders].join(", ")}], got [${[...actualPlaceholders].join(", ")}].`
+        );
+      }
+    }
+  }
+}
+
 function git(args) {
   try {
     return execFileSync("git", args, {
@@ -249,21 +320,197 @@ function git(args) {
   }
 }
 
-function collectChangedUiTextFiles() {
-  const diff = [git(["diff", "--unified=0", "--", "App.js", "src"]), git(["diff", "--cached", "--unified=0", "--", "App.js", "src"])].join("\n");
-  const files = new Set();
+const UI_TEXT_PATTERN = /[A-Za-zА-Яа-яЁё\u0600-\u06FF\u4E00-\u9FFF]/;
+const UI_PROP_NAMES = new Set([
+  "accessibilityHint",
+  "accessibilityLabel",
+  "actionLabel",
+  "body",
+  "buttonLabel",
+  "caption",
+  "description",
+  "emptyLabel",
+  "emptyMessage",
+  "error",
+  "helperText",
+  "hint",
+  "label",
+  "message",
+  "placeholder",
+  "subtitle",
+  "text",
+  "title",
+]);
+const UI_FUNCTION_NAMES = new Set(["alert", "prompt"]);
+const UI_OBJECT_KEYS = new Set([
+  "accessibilityHint",
+  "accessibilityLabel",
+  "body",
+  "buttonLabel",
+  "description",
+  "emptyLabel",
+  "emptyMessage",
+  "error",
+  "helperText",
+  "hint",
+  "label",
+  "message",
+  "placeholder",
+  "subtitle",
+  "text",
+  "title",
+]);
+const UI_COMPONENT_NAMES = new Set(["Text", "AppText", "AnimatedText"]);
+
+function collectAddedLines(diff) {
+  const files = new Map();
   let currentFile = null;
-  const stringPattern = /["'`][^"'`]*[A-Za-zА-Яа-яЁё\u0600-\u06FF\u4E00-\u9FFF][^"'`]*["'`]/;
+  let nextNewLine = null;
 
   for (const line of diff.split(/\r?\n/)) {
     if (line.startsWith("+++ b/")) {
       currentFile = line.slice("+++ b/".length);
+      if (!files.has(currentFile)) {
+        files.set(currentFile, new Set());
+      }
       continue;
     }
-    if (!currentFile || !line.startsWith("+") || line.startsWith("+++")) continue;
-    if (!stringPattern.test(line)) continue;
-    if (/^\+\s*(import|export)\s/.test(line)) continue;
-    files.add(currentFile);
+    const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunkMatch) {
+      nextNewLine = Number(hunkMatch[1]);
+      continue;
+    }
+    if (!currentFile || nextNewLine == null) continue;
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      files.get(currentFile).add(nextNewLine);
+      nextNewLine += 1;
+      continue;
+    }
+    if (line.startsWith("-") && !line.startsWith("---")) {
+      continue;
+    }
+    if (!line.startsWith("\\")) {
+      nextNewLine += 1;
+    }
+  }
+
+  return files;
+}
+
+function isNodeOnAddedLine(node, addedLines) {
+  if (!node?.loc) return false;
+  for (let line = node.loc.start.line; line <= node.loc.end.line; line += 1) {
+    if (addedLines.has(line)) return true;
+  }
+  return false;
+}
+
+function getTextLiteralValue(node) {
+  if (!node) return "";
+  if (node.type === "StringLiteral") return node.value || "";
+  if (node.type === "TemplateLiteral") {
+    return node.quasis.map((quasi) => quasi.value?.cooked || quasi.value?.raw || "").join("");
+  }
+  if (node.type === "JSXText") return node.value || "";
+  return "";
+}
+
+function hasTextContent(node) {
+  return UI_TEXT_PATTERN.test(getTextLiteralValue(node));
+}
+
+function jsxName(node) {
+  if (!node) return "";
+  if (node.type === "JSXIdentifier") return node.name || "";
+  if (node.type === "JSXMemberExpression") return jsxName(node.property);
+  return "";
+}
+
+function isInsideUiTextComponent(ancestors) {
+  return ancestors.some((ancestor) => {
+    if (ancestor?.type !== "JSXElement") return false;
+    return UI_COMPONENT_NAMES.has(jsxName(ancestor.openingElement?.name));
+  });
+}
+
+function isUiPropValue(node, parent) {
+  if (!parent || parent.type !== "JSXAttribute") return false;
+  const propName = jsxName(parent.name);
+  if (!UI_PROP_NAMES.has(propName)) return false;
+  return parent.value === node || parent.value?.expression === node;
+}
+
+function isUiObjectValue(parent) {
+  if (!parent || parent.type !== "ObjectProperty") return false;
+  return UI_OBJECT_KEYS.has(propertyKeyName(parent.key));
+}
+
+function isUiFunctionArgument(ancestors) {
+  for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+    const ancestor = ancestors[index];
+    if (ancestor?.type !== "CallExpression") continue;
+    const callee = ancestor.callee;
+    const calleeName =
+      callee?.type === "Identifier"
+        ? callee.name
+        : callee?.type === "MemberExpression"
+        ? callee.property?.name
+        : "";
+    if (UI_FUNCTION_NAMES.has(calleeName)) return true;
+  }
+  return false;
+}
+
+function isUiTextNode(node, parent, ancestors) {
+  if (!hasTextContent(node)) return false;
+  if (node.type === "JSXText") return true;
+  if (isUiPropValue(node, parent)) return true;
+  if (isInsideUiTextComponent(ancestors)) return true;
+  if (isUiFunctionArgument(ancestors)) return true;
+  if (isUiObjectValue(parent) && isUiFunctionArgument(ancestors)) return true;
+  return false;
+}
+
+function collectChangedUiTextFiles() {
+  const diff = [
+    git(["diff", "--unified=0", "--", "App.js", "src"]),
+    git(["diff", "--cached", "--unified=0", "--", "App.js", "src"]),
+  ].join("\n");
+  const addedLinesByFile = collectAddedLines(diff);
+  const files = new Set();
+
+  for (const [file, addedLines] of addedLinesByFile.entries()) {
+    if (!addedLines.size || !fs.existsSync(path.join(ROOT_DIR, file))) continue;
+    const ast = parseFile(file);
+    let hasUiText = false;
+    const visit = (node, parent = null, ancestors = []) => {
+      if (!node || hasUiText) return;
+      if (
+        ["StringLiteral", "TemplateLiteral", "JSXText"].includes(node.type) &&
+        isNodeOnAddedLine(node, addedLines) &&
+        isUiTextNode(node, parent, ancestors)
+      ) {
+        hasUiText = true;
+        return;
+      }
+      const nextAncestors = [...ancestors, node];
+      for (const value of Object.values(node)) {
+        if (!value || hasUiText) continue;
+        if (Array.isArray(value)) {
+          value.forEach((child) => {
+            if (child && typeof child.type === "string") {
+              visit(child, node, nextAncestors);
+            }
+          });
+        } else if (value && typeof value.type === "string") {
+          visit(value, node, nextAncestors);
+        }
+      }
+    };
+    visit(ast);
+    if (hasUiText) {
+      files.add(file);
+    }
   }
 
   return [...files].sort();
@@ -275,6 +522,7 @@ function main() {
 
   checkMainTranslations(requiredLanguages, errors);
   checkLocalizedExports(requiredLanguages, errors);
+  checkLanguageMapFallbackTranslations(requiredLanguages, errors);
 
   const changedUiTextFiles = collectChangedUiTextFiles();
   if (changedUiTextFiles.length > 0) {
@@ -283,6 +531,7 @@ function main() {
       [
         "src/constants/translations.js",
         "src/constants/translations.generated.js",
+        "src/constants/languageMapFallback.generated.js",
         "src/constants/localizedUiCopy.js",
         "src/constants/themeConfig.js",
       ].includes(file)

@@ -16,9 +16,13 @@ import {
 } from "react-native";
 import { initialWindowMetrics } from "react-native-safe-area-context";
 
-const PRIMARY_PLAN_IDS = ["monthly"];
-const SECONDARY_PLAN_IDS = ["yearly", "weekly", "lifetime"];
-const FREE_TRIAL_PLAN_ID = "yearly";
+const ANDROID_PRIMARY_PLAN_IDS = ["weekly"];
+const DEFAULT_PRIMARY_PLAN_IDS = ["monthly"];
+const PRIMARY_PLAN_IDS =
+  Platform.OS === "android" ? ANDROID_PRIMARY_PLAN_IDS : DEFAULT_PRIMARY_PLAN_IDS;
+const FREE_TRIAL_PLAN_ID = Platform.OS === "android" ? "monthly" : "yearly";
+const SECONDARY_PLAN_IDS =
+  Platform.OS === "android" ? ["monthly", "yearly", "lifetime"] : ["yearly", "weekly", "lifetime"];
 
 const normalizePlanId = (value = "") => String(value || "").trim().toLowerCase();
 const isFreeTrialPlan = (plan = null) =>
@@ -28,12 +32,14 @@ const isFreeTrialPlan = (plan = null) =>
 
 const pickDefaultPlanId = (planCards = []) => {
   const availableCards = planCards.filter((card) => card?.available !== false);
-  const monthly = availableCards.find((card) => normalizePlanId(card?.id) === "monthly");
-  if (monthly?.id) return monthly.id;
+  const primary = PRIMARY_PLAN_IDS
+    .map((id) => availableCards.find((card) => normalizePlanId(card?.id) === id))
+    .find(Boolean);
+  if (primary?.id) return primary.id;
   const preferred = availableCards.find((card) => card?.recommended);
   if (preferred?.id) return preferred.id;
   if (availableCards[0]?.id) return availableCards[0].id;
-  return planCards[0]?.id || "monthly";
+  return planCards[0]?.id || PRIMARY_PLAN_IDS[0] || "monthly";
 };
 
 const ARABIC_INDIC_DIGITS = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
@@ -73,6 +79,15 @@ const normalizeWesternDigits = (value) => {
   return value
     .replace(/[٠-٩۰-۹]/g, (digit) => ARABIC_INDIC_TO_WESTERN_DIGIT[digit] || digit)
     .replace(/٪/g, "%");
+};
+const computeProjectionAmountScale = (label = "") => {
+  const safeLabel = String(label || "");
+  const compactLength = safeLabel.replace(/\s/g, "").length + 1;
+  const digitCount = (safeLabel.match(/\d/g) || []).length;
+  const lengthScore = Math.max(compactLength, digitCount + 2);
+  if (lengthScore <= 5) return 1;
+  const shrinkSteps = Math.min(lengthScore - 5, 12);
+  return Math.max(0.44, 1 - shrinkSteps * 0.085);
 };
 const localizePaywallDigits = (value, language = "en") => {
   if (typeof value !== "string" || !value.length) return value;
@@ -213,6 +228,8 @@ const resolvePaywallCopyLanguage = (language = "en") => {
   if (normalized.startsWith("es")) return "es";
   if (normalized.startsWith("fr")) return "fr";
   if (normalized.startsWith("de")) return "de";
+  if (normalized.startsWith("pt")) return "pt";
+  if (normalized.startsWith("it")) return "it";
   if (normalized.startsWith("ar")) return "ar";
   if (normalized.startsWith("zh")) return "zh";
   if (normalized.startsWith("en")) return "en";
@@ -548,8 +565,170 @@ const MONTHLY_PLAN_TITLE_BY_LANGUAGE = {
   es: "Mensual",
   fr: "Mensuel",
   de: "Monatlich",
+  pt: "Mensal",
+  it: "Mensile",
   ar: "شهري",
   zh: "月付",
+};
+const PLAN_TITLE_BY_LANGUAGE = {
+  weekly: {
+    ru: "Неделя",
+    en: "Weekly",
+    es: "Semanal",
+    fr: "Hebdomadaire",
+    de: "Wöchentlich",
+    pt: "Semanal",
+    it: "Settimanale",
+    ar: "أسبوعي",
+    zh: "周付",
+  },
+  monthly: MONTHLY_PLAN_TITLE_BY_LANGUAGE,
+  yearly: {
+    ru: "Год",
+    en: "Annual",
+    es: "Anual",
+    fr: "Annuel",
+    de: "Jährlich",
+    pt: "Anual",
+    it: "Annuale",
+    ar: "سنوي",
+    zh: "年付",
+  },
+  lifetime: {
+    ru: "Навсегда",
+    en: "Lifetime",
+    es: "De por vida",
+    fr: "À vie",
+    de: "Lebenslang",
+    pt: "Vitalício",
+    it: "A vita",
+    ar: "مدى الحياة",
+    zh: "终身",
+  },
+  premium: {
+    ru: "Premium",
+    en: "Premium",
+    es: "Premium",
+    fr: "Premium",
+    de: "Premium",
+    pt: "Premium",
+    it: "Premium",
+    ar: "Premium",
+    zh: "Premium",
+  },
+};
+const KNOWN_PLAN_IDS = ["weekly", "monthly", "yearly", "lifetime"];
+const parsePlanPriceValue = (value = "") => {
+  const normalized = String(value || "").replace(/\s/g, "").replace(/[^\d,.-]/g, "");
+  if (!normalized) return null;
+  const hasDot = normalized.includes(".");
+  const hasComma = normalized.includes(",");
+  let decimal = normalized;
+  if (hasDot && hasComma) {
+    decimal =
+      normalized.lastIndexOf(",") > normalized.lastIndexOf(".")
+        ? normalized.replace(/\./g, "").replace(",", ".")
+        : normalized.replace(/,/g, "");
+  } else if (hasComma) {
+    decimal = normalized.replace(",", ".");
+  }
+  const parsed = Number.parseFloat(decimal);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+const resolvePlanKindFromToken = (value = "") => {
+  const normalized = normalizePlanId(value)
+    .replace(/[._-]+/g, " ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (!normalized) return "";
+  if (KNOWN_PLAN_IDS.includes(normalized)) return normalized;
+  if (normalized === "annual" || normalized === "annually" || normalized === "annuale") {
+    return "yearly";
+  }
+  if (normalized.includes("lifetime") || normalized.includes("life time")) return "lifetime";
+  if (normalized.includes("vitalicio") || normalized.includes("a vita")) return "lifetime";
+  if (normalized.includes("de por vida") || normalized.includes("lebenslang")) return "lifetime";
+  if (normalized.includes("annual") || normalized.includes("anual")) return "yearly";
+  if (normalized.includes("year") || normalized.includes("yearly")) return "yearly";
+  if (normalized.includes("annuale") || normalized.includes("jahr")) return "yearly";
+  if (normalized.includes("monthly") || normalized.includes("month")) return "monthly";
+  if (normalized.includes("mensal") || normalized.includes("mensile")) return "monthly";
+  if (normalized.includes("monat")) return "monthly";
+  if (normalized.includes("weekly") || normalized.includes("week")) return "weekly";
+  if (normalized.includes("semanal") || normalized.includes("settimanale")) return "weekly";
+  if (normalized.includes("woche")) return "weekly";
+  return "";
+};
+const resolvePlanKind = (plan = null, index = -1, plans = []) => {
+  const candidates = [
+    plan?.planId,
+    plan?.kind,
+    plan?.plan,
+    plan?.type,
+    plan?.id,
+    plan?.productIdentifier,
+    plan?.productId,
+    plan?.packageType,
+    plan?.package?.packageType,
+    plan?.package?.identifier,
+    plan?.package?.product?.identifier,
+  ];
+  for (const candidate of candidates) {
+    const resolved = resolvePlanKindFromToken(candidate);
+    if (resolved) return resolved;
+  }
+
+  const text = [
+    plan?.label,
+    plan?.badge,
+    plan?.topBadge,
+    plan?.billingLabel,
+    plan?.secondaryLabel,
+    plan?.secondarySubLabel,
+    plan?.priceLabel,
+    plan?.ctaPriceLabel,
+  ].join(" ");
+  const fromText = resolvePlanKindFromToken(text);
+  if (fromText) return fromText;
+
+  const normalizedBadgeKind = normalizePlanId(plan?.badgeKind || plan?.topBadgeKind || "");
+  if (
+    normalizedBadgeKind === "save" ||
+    Number(plan?.discountPercent || plan?.overallDiscountPercent || 0) > 0
+  ) {
+    return "yearly";
+  }
+
+  if (Array.isArray(plans) && plans.length >= 4 && index >= 0) {
+    if (index === 0) return "yearly";
+    if (index === plans.length - 1) return "lifetime";
+    const ownPrice = parsePlanPriceValue(plan?.priceLabel || plan?.ctaPriceLabel);
+    const siblingPrices = plans
+      .filter((entry, entryIndex) => entryIndex !== index)
+      .map((entry) => parsePlanPriceValue(entry?.priceLabel || entry?.ctaPriceLabel))
+      .filter((value) => Number.isFinite(value));
+    if (Number.isFinite(ownPrice) && siblingPrices.length) {
+      const lowerCount = siblingPrices.filter((value) => ownPrice > value).length;
+      if (lowerCount >= 1) return "monthly";
+      return "weekly";
+    }
+    if (index === 1) return "monthly";
+    if (index === 2) return "weekly";
+  }
+
+  return "";
+};
+const resolvePlanTitle = (plan = null, language = "en", planKind = "") => {
+  const copyLanguage = resolvePaywallCopyLanguage(language);
+  const planId = planKind || resolvePlanKind(plan) || normalizePlanId(plan?.id);
+  const bundle = PLAN_TITLE_BY_LANGUAGE[planId];
+  if (bundle) return bundle?.[copyLanguage] || bundle?.en || "Premium";
+
+  const fallbackLabel = typeof plan?.label === "string" ? plan.label.trim() : "";
+  if (fallbackLabel) return fallbackLabel;
+
+  const fallbackBundle = PLAN_TITLE_BY_LANGUAGE.premium;
+  return fallbackBundle?.[copyLanguage] || fallbackBundle?.en || "Premium";
 };
 const TRIAL_ONLY_EQUIVALENT_TEMPLATE_BY_LANGUAGE = {
   ru: "Только {{price}}",
@@ -581,31 +760,31 @@ const OTHER_PLANS_BUTTON_BY_LANGUAGE = {
 const FREE_TRIAL_TOGGLE_COPY_BY_LANGUAGE = {
   ru: {
     title: "Free Trial",
-    subtitle: "Включите, чтобы выбрать годовой план с пробным периодом.",
+    subtitle: "Включите, чтобы выбрать план с пробным периодом.",
   },
   en: {
     title: "Free Trial",
-    subtitle: "Turn on to select the yearly plan with a trial.",
+    subtitle: "Turn on to select the plan with a trial.",
   },
   es: {
     title: "Free Trial",
-    subtitle: "Actívalo para elegir el plan anual con prueba.",
+    subtitle: "Actívalo para elegir el plan con prueba.",
   },
   fr: {
     title: "Free Trial",
-    subtitle: "Active-le pour choisir l'offre annuelle avec essai.",
+    subtitle: "Active-le pour choisir l'offre avec essai.",
   },
   de: {
     title: "Free Trial",
-    subtitle: "Aktivieren, um den Jahresplan mit Testphase zu wählen.",
+    subtitle: "Aktivieren, um den Plan mit Testphase zu wählen.",
   },
   ar: {
     title: "Free Trial",
-    subtitle: "فعّله لاختيار الخطة السنوية مع الفترة التجريبية.",
+    subtitle: "فعّله لاختيار الخطة مع الفترة التجريبية.",
   },
   zh: {
     title: "Free Trial",
-    subtitle: "开启后选择带试用的年付方案。",
+    subtitle: "开启后选择带试用的方案。",
   },
 };
 const SAVINGS_FORECAST_DAYS_TEMPLATE_BY_LANGUAGE = {
@@ -614,6 +793,8 @@ const SAVINGS_FORECAST_DAYS_TEMPLATE_BY_LANGUAGE = {
   es: "{{days}} d",
   fr: "{{days}} j",
   de: "{{days}} T",
+  pt: "{{days}} d",
+  it: "{{days}} g",
   ar: "{{days}} يوم",
   zh: "{{days}}天",
 };
@@ -624,6 +805,8 @@ const SAVINGS_PROJECTION_HEADER_TITLE_BY_LANGUAGE = {
   es: "Esto es lo que puedes ahorrar con Premium",
   fr: "Voici combien vous pouvez économiser avec Premium",
   de: "So viel können Sie mit Premium sparen",
+  pt: "Quanto podes poupar com Premium",
+  it: "Quanto puoi risparmiare con Premium",
   ar: "هذا ما يمكنك توفيره مع Premium",
   zh: "这就是你使用 Premium 可省下的金额",
 };
@@ -633,6 +816,8 @@ const SAVINGS_PROJECTION_WINDOW_TEMPLATE_BY_LANGUAGE = {
   es: "",
   fr: "",
   de: "",
+  pt: "",
+  it: "",
   ar: "",
   zh: "",
 };
@@ -642,6 +827,8 @@ const SAVINGS_PROJECTION_CTA_TEMPLATE_BY_LANGUAGE = {
   es: "Pronóstico aproximado de {{days}} días basado en tu actividad",
   fr: "Prévision approximative sur {{days}} jours basée sur votre activité",
   de: "Ungefähre {{days}}-Tage-Prognose basierend auf Ihrer Aktivität",
+  pt: "Previsão aproximada de {{days}} dias com base na tua atividade",
+  it: "Previsione di {{days}} giorni basata sulla tua attività",
   ar: "توقع تقريبي لمدة {{days}} يوماً بناءً على نشاطك",
   zh: "基于你的活动的约 {{days}} 天预测",
 };
@@ -940,6 +1127,7 @@ const PremiumPaywallModal = ({
   restoring = false,
   onPlanSelect = () => {},
   onPlanPress = () => {},
+  onTrialSwitchOn = () => {},
   onFeatureInsightPress = () => {},
   onRestorePress = () => {},
   onManagePress = () => {},
@@ -1045,7 +1233,7 @@ const PremiumPaywallModal = ({
     const byId = new Map(
       planCards
         .filter((card) => card && typeof card === "object" && typeof card?.id === "string")
-        .map((card) => [card.id, card])
+        .map((card) => [normalizePlanId(card.id), card])
     );
     return PRIMARY_PLAN_IDS.map((planId) => byId.get(planId)).filter(Boolean);
   }, [planCards]);
@@ -1053,7 +1241,7 @@ const PremiumPaywallModal = ({
     const byId = new Map(
       planCards
         .filter((card) => card && typeof card === "object" && typeof card?.id === "string")
-        .map((card) => [card.id, card])
+        .map((card) => [normalizePlanId(card.id), card])
     );
     return SECONDARY_PLAN_IDS.map((planId) => byId.get(planId)).filter(Boolean);
   }, [planCards]);
@@ -1068,7 +1256,7 @@ const PremiumPaywallModal = ({
     const ordered = [...primaryPlanCards, ...secondaryPlanCards, ...planCards];
     const seen = new Set();
     return ordered.filter((card) => {
-      const planId = typeof card?.id === "string" ? card.id : "";
+      const planId = normalizePlanId(card?.id);
       if (!planId || seen.has(planId)) return false;
       seen.add(planId);
       return true;
@@ -1081,7 +1269,7 @@ const PremiumPaywallModal = ({
       const ordered = [...primaryPlanCards, freeTrialPlan];
       const seen = new Set();
       return ordered.filter((card) => {
-        const planId = typeof card?.id === "string" ? card.id : "";
+        const planId = normalizePlanId(card?.id);
         if (!planId || seen.has(planId)) return false;
         seen.add(planId);
         return true;
@@ -1200,8 +1388,7 @@ const PremiumPaywallModal = ({
       setFreeTrialEnabled(false);
       return;
     }
-    const normalizedSelectedPlanId =
-      typeof selectedPlanId === "string" ? selectedPlanId.trim().toLowerCase() : "";
+    const normalizedSelectedPlanId = normalizePlanId(selectedPlanId);
     if (SECONDARY_PLAN_IDS.includes(normalizedSelectedPlanId)) {
       if (freeTrialEnabled && normalizedSelectedPlanId === FREE_TRIAL_PLAN_ID) {
         return;
@@ -1580,6 +1767,52 @@ const PremiumPaywallModal = ({
     projectionTargetAmountLabel,
     projectionTargetAmountValue,
   ]);
+  const projectionAmountScale = useMemo(
+    () => computeProjectionAmountScale(projectionAnimatedAmountLabel),
+    [projectionAnimatedAmountLabel]
+  );
+  const projectionAmountBaseFontSize = isVeryCompactAndroid
+    ? 48
+    : isCompactAndroid
+    ? 56
+    : isNativeMobile
+    ? 62
+    : 68;
+  const projectionAmountBaseLineHeight = isVeryCompactAndroid
+    ? 52
+    : isCompactAndroid
+    ? 60
+    : isNativeMobile
+    ? 66
+    : 72;
+  const projectionPlusBaseFontSize = isVeryCompactAndroid
+    ? 46
+    : isCompactAndroid
+    ? 54
+    : isNativeMobile
+    ? 60
+    : 66;
+  const projectionPlusBaseLineHeight = isVeryCompactAndroid
+    ? 50
+    : isCompactAndroid
+    ? 58
+    : isNativeMobile
+    ? 64
+    : 70;
+  const projectionAmountFitStyle = useMemo(
+    () => ({
+      fontSize: Math.round(projectionAmountBaseFontSize * projectionAmountScale),
+      lineHeight: Math.round(projectionAmountBaseLineHeight * projectionAmountScale),
+    }),
+    [projectionAmountBaseFontSize, projectionAmountBaseLineHeight, projectionAmountScale]
+  );
+  const projectionPlusFitStyle = useMemo(
+    () => ({
+      fontSize: Math.round(projectionPlusBaseFontSize * projectionAmountScale),
+      lineHeight: Math.round(projectionPlusBaseLineHeight * projectionAmountScale),
+    }),
+    [projectionAmountScale, projectionPlusBaseFontSize, projectionPlusBaseLineHeight]
+  );
   const projectionWindowLine = useMemo(() => {
     const template =
       SAVINGS_PROJECTION_WINDOW_TEMPLATE_BY_LANGUAGE[copyLanguage] ||
@@ -1763,7 +1996,9 @@ const PremiumPaywallModal = ({
   }, [abandonedPopupProgress, showTransactionAbandonedPopup]);
 
   const selectedPlan = useMemo(
-    () => planCards.find((plan) => plan.id === selectedPlanId) || null,
+    () =>
+      planCards.find((plan) => normalizePlanId(plan?.id) === normalizePlanId(selectedPlanId)) ||
+      null,
     [planCards, selectedPlanId]
   );
 
@@ -1856,6 +2091,9 @@ const PremiumPaywallModal = ({
       const nextPlanId = next ? freeTrialPlan.id : pickDefaultPlanId(primaryPlanCards.length ? primaryPlanCards : planCards);
       if (nextPlanId) {
         setSelectedPlanId(nextPlanId);
+        if (next) {
+          onTrialSwitchOn(nextPlanId);
+        }
         onPlanSelect(nextPlanId, { source: "free_trial_toggle" });
       }
       if (!next) {
@@ -1863,7 +2101,7 @@ const PremiumPaywallModal = ({
       }
       return next;
     });
-  }, [freeTrialPlan, onPlanSelect, planCards, primaryPlanCards]);
+  }, [freeTrialPlan, onPlanSelect, onTrialSwitchOn, planCards, primaryPlanCards]);
 
   const backdropOpacity = openProgress.interpolate({
     inputRange: [0, 1],
@@ -2352,10 +2590,12 @@ const PremiumPaywallModal = ({
                 isNativeMobile ? styles.headerProjectionAmountAndroid : null,
                 isCompactAndroid ? styles.headerProjectionAmountCompactAndroid : null,
                 isVeryCompactAndroid ? styles.headerProjectionAmountVeryCompactAndroid : null,
+                projectionAmountFitStyle,
               ]}
               numberOfLines={1}
               adjustsFontSizeToFit
-              minimumFontScale={0.62}
+              minimumFontScale={0.46}
+              allowAndroidAutoFit
             >
               <Text
                 style={[
@@ -2363,6 +2603,7 @@ const PremiumPaywallModal = ({
                   isNativeMobile ? styles.headerProjectionPlusAndroid : null,
                   isCompactAndroid ? styles.headerProjectionPlusCompactAndroid : null,
                   isVeryCompactAndroid ? styles.headerProjectionPlusVeryCompactAndroid : null,
+                  projectionPlusFitStyle,
                 ]}
               >
                 +
@@ -2792,15 +3033,18 @@ const PremiumPaywallModal = ({
         )}
 
         <View style={[styles.planList, isCompactAndroid ? styles.planListCompactAndroid : null]}>
-          {visiblePlanCards.map((plan) => {
-            const selected = plan.id === selectedPlanId;
+          {visiblePlanCards.map((plan, planIndex) => {
+            const planId = normalizePlanId(plan?.id);
+            const planKind = resolvePlanKind(plan, planIndex, visiblePlanCards);
+            const resolvedPlanId = planKind || planId;
+            const selected = planId === normalizePlanId(selectedPlanId);
             const unavailable = plan.available === false;
             const loading = purchaseLoadingPlan === plan.id;
-            const isYearlyPlan = plan.id === "yearly";
-            const isMonthlyPlan = plan.id === "monthly";
-            const isPrimaryPlanCard = PRIMARY_PLAN_IDS.includes(plan.id);
-            const isSecondaryPlanCard = SECONDARY_PLAN_IDS.includes(plan.id);
-            const isFreeTrialPlanCard = freeTrialEnabled && isYearlyPlan;
+            const isYearlyPlan = resolvedPlanId === "yearly";
+            const isMonthlyPlan = resolvedPlanId === "monthly";
+            const isPrimaryPlanCard = PRIMARY_PLAN_IDS.includes(resolvedPlanId);
+            const isSecondaryPlanCard = SECONDARY_PLAN_IDS.includes(resolvedPlanId);
+            const isFreeTrialPlanCard = freeTrialEnabled && isFreeTrialPlan(plan);
             const isLargePlanCard =
               isPrimaryPlanCard ||
               ((showOtherPlans || isFreeTrialPlanCard) && isSecondaryPlanCard);
@@ -2891,7 +3135,7 @@ const PremiumPaywallModal = ({
               plan.billingLabel !== plan.secondarySubLabel;
             const isTrialPlanCard = isFreeTrialPlan(plan);
             const shouldShowYearlyTopBanner = isBannerPlan && isYearlyPlan;
-            const showFreeTrialTopBanner = freeTrialEnabled && isYearlyPlan;
+            const showFreeTrialTopBanner = freeTrialEnabled && isTrialPlanCard;
             const showTrialTopBanner =
               (shouldShowYearlyTopBanner && isTrialPlanCard) ||
               showFreeTrialTopBanner;
@@ -2905,8 +3149,12 @@ const PremiumPaywallModal = ({
                 MONTHLY_PLAN_TITLE_BY_LANGUAGE.en,
               normalizedLanguage
             );
+            const planTitle = localizePaywallDigits(
+              resolvePlanTitle(plan, normalizedLanguage, planKind),
+              normalizedLanguage
+            );
             const trialCardPrimaryLine = localizePaywallDigits(
-              isMonthlyPlan ? monthlyPlanTitle : plan.label || "",
+              isMonthlyPlan ? monthlyPlanTitle : planTitle,
               normalizedLanguage
             );
             const trialEquivalentPriceRaw = String(plan.periodEquivalentLabel || "")
@@ -3034,7 +3282,7 @@ const PremiumPaywallModal = ({
                   isLargePlanCard ? styles.planCardTrial : null,
                   isLargePlanCard && isCompactAndroid ? styles.planCardTrialCompactAndroid : null,
                   {
-                    borderColor: isYearlyPlan
+                    borderColor: isYearlyPlan || isTrialPlanCard
                       ? selected
                         ? "#18B45B"
                         : successBorderColor
@@ -3043,7 +3291,7 @@ const PremiumPaywallModal = ({
                       : borderColor,
                     borderWidth: 1,
                     backgroundColor: selected
-                      ? isYearlyPlan
+                      ? isYearlyPlan || isTrialPlanCard
                         ? successSurface
                         : accentSurface
                       : contentCardBg,
@@ -3134,7 +3382,7 @@ const PremiumPaywallModal = ({
                   <>
                     <View style={styles.planTopRow}>
                       <Text style={[styles.planTitle, isCompactAndroid ? styles.planTitleCompactAndroid : null, { color: textColor }]}>
-                        {plan.label}
+                        {planTitle}
                       </Text>
                       {!!(inlineTopBadgeLabel || primaryBadgeLabel) && (
                         <View

@@ -80,6 +80,9 @@ const PREMIUM_PRODUCT_IDENTIFIER_SET = new Set(
 );
 const PREMIUM_PRODUCT_IDENTIFIER_ALIASES = new Set(["weekly", "monthly", "yearly", "lifetime"]);
 const OFFLINE_ERROR_CODE_TOKENS = [
+  "10",
+  "32",
+  "35",
   "network_error",
   "network_request_failed",
   "offline",
