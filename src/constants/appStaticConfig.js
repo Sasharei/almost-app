@@ -168,4 +168,13 @@ export const CELEBRATION_MESSAGES = {
     ],
     level: "Livello {{level}}! Armatura del risparmio potenziata ✨",
   },
+  ko: {
+    default: [
+      "좋아요! 또 한 번 의식적으로 아꼈어요",
+      "충동은 줄이고 계획은 늘렸어요",
+      "지갑이 안도의 숨을 쉬었어요",
+      "똑똑한 선택 완료 - 저축은 안전해요",
+    ],
+    level: "레벨 {{level}}! 저축 방어력이 올라갔어요 ✨",
+  },
 };

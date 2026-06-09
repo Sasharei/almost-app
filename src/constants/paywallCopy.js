@@ -9,6 +9,7 @@ export const PAYWALL_PLAN_LABEL_BY_LANGUAGE = {
     it: "Settimanale",
     ar: "أسبوعي",
     zh: "周付",
+    ko: "주간",
   },
   yearly: {
     ru: "Год",
@@ -20,6 +21,7 @@ export const PAYWALL_PLAN_LABEL_BY_LANGUAGE = {
     it: "Annuale",
     ar: "سنوي",
     zh: "年付",
+    ko: "연간",
   },
   monthly: {
     ru: "Месяц",
@@ -31,6 +33,7 @@ export const PAYWALL_PLAN_LABEL_BY_LANGUAGE = {
     it: "Mensile",
     ar: "شهري",
     zh: "月付",
+    ko: "월간",
   },
   lifetime: {
     ru: "Навсегда",
@@ -42,6 +45,7 @@ export const PAYWALL_PLAN_LABEL_BY_LANGUAGE = {
     it: "A vita",
     ar: "مدى الحياة",
     zh: "终身",
+    ko: "평생",
   },
   premium: {
     ru: "Premium",
@@ -53,6 +57,7 @@ export const PAYWALL_PLAN_LABEL_BY_LANGUAGE = {
     it: "Premium",
     ar: "Premium",
     zh: "Premium",
+    ko: "Premium",
   },
 };
 
@@ -66,6 +71,7 @@ export const PAYWALL_SAVE_BADGE_TEMPLATE_BY_LANGUAGE = {
   it: "Risparmia {{percent}}%",
   ar: "وفّر {{percent}}%",
   zh: "省 {{percent}}%",
+  ko: "{{percent}}% 절약",
 };
 
 export const PAYWALL_TRIAL_BADGE_BY_LANGUAGE = {
@@ -78,6 +84,7 @@ export const PAYWALL_TRIAL_BADGE_BY_LANGUAGE = {
   it: "Prova gratis",
   ar: "تجربة مجانية",
   zh: "免费试用",
+  ko: "무료 체험",
 };
 
 export const PAYWALL_EQUIVALENT_SOURCE_IDS = [
@@ -105,6 +112,7 @@ export const PAYWALL_YEAR_SUFFIX_BY_LANGUAGE = {
   it: "/anno",
   ar: "/سنة",
   zh: "/年",
+  ko: "/년",
 };
 
 export const PAYWALL_MONTH_SUFFIX_BY_LANGUAGE = {
@@ -117,6 +125,7 @@ export const PAYWALL_MONTH_SUFFIX_BY_LANGUAGE = {
   it: "/mese",
   ar: "/شهر",
   zh: "/月",
+  ko: "/월",
 };
 
 export const PAYWALL_WEEK_SUFFIX_BY_LANGUAGE = {
@@ -129,6 +138,7 @@ export const PAYWALL_WEEK_SUFFIX_BY_LANGUAGE = {
   it: "/settimana",
   ar: "/أسبوع",
   zh: "/周",
+  ko: "/주",
 };
 
 export const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
@@ -142,6 +152,7 @@ export const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
     it: "Addebitato ogni settimana",
     ar: "يتم الفوترة أسبوعياً",
     zh: "按周计费",
+    ko: "매주 청구",
   },
   yearly: {
     ru: "Списание раз в год",
@@ -153,6 +164,7 @@ export const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
     it: "Addebitato ogni anno",
     ar: "يتم الفوترة سنوياً",
     zh: "按年计费",
+    ko: "매년 청구",
   },
   monthly: {
     ru: "Списание каждый месяц",
@@ -164,6 +176,7 @@ export const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
     it: "Addebitato ogni mese",
     ar: "يتم الفوترة شهرياً",
     zh: "按月计费",
+    ko: "매월 청구",
   },
   lifetime: {
     ru: "Разовый платеж",
@@ -175,6 +188,7 @@ export const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
     it: "Pagamento unico",
     ar: "شراء لمرة واحدة",
     zh: "一次性购买",
+    ko: "1회 결제",
   },
 };
 
@@ -233,6 +247,12 @@ export const PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE = {
     yearly: "≈ {{emoji}} {{count}} {{item}} / 年",
     lifetime: "≈ {{emoji}} {{count}} {{item}} 一次性",
   },
+  ko: {
+    weekly: "≈ {{emoji}} {{count}} {{item}} / 주",
+    monthly: "≈ {{emoji}} {{count}} {{item}} / 월",
+    yearly: "≈ {{emoji}} {{count}} {{item}} / 년",
+    lifetime: "≈ {{emoji}} {{count}} {{item}} 1회",
+  },
 };
 
 export const PAYWALL_PERIOD_UNIT_TO_DAYS = {
@@ -252,6 +272,7 @@ export const PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE = {
   it: "Inizia la prova gratis",
   ar: "ابدأ التجربة المجانية",
   zh: "开始免费试用",
+  ko: "무료 체험 시작",
 };
 
 export const PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE = {
@@ -264,6 +285,7 @@ export const PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE = {
   it: "Prova gratis, poi",
   ar: "جرّب مجاناً ثم",
   zh: "先免费试用，之后",
+  ko: "무료 체험 후",
 };
 
 export const PAYWALL_NOW_PREFIX_BY_LANGUAGE = {
@@ -276,10 +298,11 @@ export const PAYWALL_NOW_PREFIX_BY_LANGUAGE = {
   it: "Ora",
   ar: "الآن",
   zh: "现在",
+  ko: "지금",
 };
 
-export const PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS = null;
-export const PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS = null;
+export const PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS = 7;
+export const PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS = 7;
 
 export const PAYWALL_SAR_MARKERS_REGEX = /(﷼|sar|ر\.?\s*س\.?|ريال(?:ات)?)/gi;
 export const PAYWALL_BIDI_MARKS_REGEX = /[\u200e\u200f\u061c]/g;
@@ -293,6 +316,7 @@ export const PAYWALL_ALERT_COPY = {
     fr: "EXPO_PUBLIC_RC_ANDROID_API_KEY est manquante. Ajoutez-la dans Expo Environment Variables (preview/production), reconstruisez l'app puis réessayez.",
     pt: "Falta EXPO_PUBLIC_RC_ANDROID_API_KEY. Adiciona-a nas Expo Environment Variables (preview/production), recompila a app e tenta novamente.",
     it: "Manca EXPO_PUBLIC_RC_ANDROID_API_KEY. Aggiungila nelle Expo Environment Variables (preview/production), ricompila l'app e riprova.",
+    ko: "EXPO_PUBLIC_RC_ANDROID_API_KEY가 없습니다. Expo Environment Variables(preview/production)에 추가하고 앱을 다시 빌드한 뒤 다시 시도하세요.",
   },
   packageUnavailable: {
     ru: "Этот вариант подписки сейчас недоступен. Попробуйте ещё раз чуть позже.",
@@ -301,6 +325,7 @@ export const PAYWALL_ALERT_COPY = {
     fr: "Cette option d'abonnement est indisponible pour le moment. Réessayez dans un instant.",
     pt: "Esta opção de assinatura não está disponível agora. Tenta novamente daqui a pouco.",
     it: "Questa opzione di abbonamento non è disponibile ora. Riprova tra poco.",
+    ko: "지금은 이 구독 옵션을 사용할 수 없습니다. 잠시 후 다시 시도하세요.",
   },
   offline: {
     ru: "Нет интернета. Подключитесь к сети и попробуйте снова.",
@@ -309,6 +334,7 @@ export const PAYWALL_ALERT_COPY = {
     fr: "Pas de connexion internet. Connectez-vous puis réessayez.",
     pt: "Sem ligação à internet. Liga-te à internet e tenta novamente.",
     it: "Nessuna connessione internet. Connettiti e riprova.",
+    ko: "인터넷 연결이 없습니다. 연결한 뒤 다시 시도하세요.",
   },
   offeringsUnavailable: {
     ru: "Не удалось загрузить варианты подписки. Проверьте интернет и попробуйте снова.",
@@ -317,6 +343,7 @@ export const PAYWALL_ALERT_COPY = {
     fr: "Impossible de charger les options d'abonnement. Vérifiez votre connexion puis réessayez.",
     pt: "Não foi possível carregar as opções de assinatura. Verifica a ligação e tenta novamente.",
     it: "Impossibile caricare le opzioni di abbonamento. Controlla la connessione e riprova.",
+    ko: "구독 옵션을 불러오지 못했습니다. 연결을 확인하고 다시 시도하세요.",
   },
   purchaseOffline: {
     ru: "Вы офлайн. Подключитесь к интернету, чтобы завершить покупку.",
@@ -325,6 +352,7 @@ export const PAYWALL_ALERT_COPY = {
     fr: "Vous êtes hors ligne. Connectez-vous à internet pour finaliser l'achat.",
     pt: "Estás offline. Liga-te à internet para concluir a compra.",
     it: "Sei offline. Connettiti a internet per completare l'acquisto.",
+    ko: "오프라인 상태입니다. 구매를 완료하려면 인터넷에 연결하세요.",
   },
   restoreOffline: {
     ru: "Вы офлайн. Подключитесь к интернету, чтобы восстановить покупки.",
@@ -333,6 +361,7 @@ export const PAYWALL_ALERT_COPY = {
     fr: "Vous êtes hors ligne. Connectez-vous à internet pour restaurer les achats.",
     pt: "Estás offline. Liga-te à internet para restaurar as compras.",
     it: "Sei offline. Connettiti a internet per ripristinare gli acquisti.",
+    ko: "오프라인 상태입니다. 구매 복원을 하려면 인터넷에 연결하세요.",
   },
   purchaseFailed: {
     ru: "Не удалось завершить покупку. Попробуйте снова.",
@@ -341,6 +370,7 @@ export const PAYWALL_ALERT_COPY = {
     fr: "Impossible de finaliser l'achat. Réessayez.",
     pt: "Não foi possível concluir a compra. Tenta novamente.",
     it: "Impossibile completare l'acquisto. Riprova.",
+    ko: "구매를 완료하지 못했습니다. 다시 시도하세요.",
   },
   restoreFailed: {
     ru: "Не удалось восстановить покупки.",
@@ -349,6 +379,7 @@ export const PAYWALL_ALERT_COPY = {
     fr: "Impossible de restaurer les achats.",
     pt: "Não foi possível restaurar as compras.",
     it: "Impossibile ripristinare gli acquisti.",
+    ko: "구매를 복원하지 못했습니다.",
   },
   noActiveSubscriptionIos: {
     ru: "Активная подписка не найдена. Проверьте Apple ID в Sandbox и повторите попытку.",
@@ -357,6 +388,7 @@ export const PAYWALL_ALERT_COPY = {
     fr: "Aucun abonnement actif n'a été trouvé. Vérifiez votre identifiant Apple Sandbox puis réessayez.",
     pt: "Não foi encontrada uma assinatura ativa. Verifica o teu Apple ID Sandbox e tenta novamente.",
     it: "Non è stato trovato un abbonamento attivo. Verifica l'Apple ID Sandbox e riprova.",
+    ko: "활성 구독을 찾을 수 없습니다. Sandbox Apple ID를 확인하고 다시 시도하세요.",
   },
   noActiveSubscriptionAndroid: {
     ru: "Активная подписка не найдена. Проверьте Google Play тестовый аккаунт и повторите попытку.",
@@ -365,5 +397,6 @@ export const PAYWALL_ALERT_COPY = {
     fr: "Aucun abonnement actif n'a été trouvé. Vérifiez votre compte test Google Play puis réessayez.",
     pt: "Não foi encontrada uma assinatura ativa. Verifica a tua conta de teste do Google Play e tenta novamente.",
     it: "Non è stato trovato un abbonamento attivo. Verifica l'account di test Google Play e riprova.",
+    ko: "활성 구독을 찾을 수 없습니다. Google Play 테스트 계정을 확인하고 다시 시도하세요.",
   },
 };

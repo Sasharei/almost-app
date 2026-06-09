@@ -8,6 +8,7 @@ export const WEEKDAY_FULL_LABELS = {
   it: ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"],
   ar: ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"],
   zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
+  ko: ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"],
 };
 
 export const HEALTH_COIN_LABELS = {
@@ -74,6 +75,13 @@ export const HEALTH_COIN_LABELS = {
     blue: "蓝色币",
     green: "绿色币",
   },
+  ko: {
+    pink: "분홍 코인",
+    red: "빨간 코인",
+    orange: "주황 코인",
+    blue: "파란 코인",
+    green: "초록 코인",
+  },
 };
 
 export const ZERO_HEALTH_REWARD_LABELS = {
@@ -86,6 +94,7 @@ export const ZERO_HEALTH_REWARD_LABELS = {
   it: "0 monete",
   ar: "0 عملات",
   zh: "0 个币",
+  ko: "코인 0개",
 };
 
 export const WEEKDAY_LABELS = {
@@ -98,6 +107,7 @@ export const WEEKDAY_LABELS = {
   it: ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"],
   ar: ["أحد", "اثن", "ثلا", "أرب", "خمي", "جمع", "سبت"],
   zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
+  ko: ["일", "월", "화", "수", "목", "금", "토"],
 };
 
 export const WEEKDAY_LABELS_MONDAY_FIRST = {
@@ -110,6 +120,7 @@ export const WEEKDAY_LABELS_MONDAY_FIRST = {
   it: ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"],
   ar: ["اثن", "ثلا", "أرب", "خمي", "جمع", "سبت", "أحد"],
   zh: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
+  ko: ["월", "화", "수", "목", "금", "토", "일"],
 };
 
 export const WEEKDAY_SELECTOR_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -134,4 +145,5 @@ export const FREQUENCY_COUNTDOWN_TOKENS = {
   it: { day: "g", hour: "h", minute: "min" },
   ar: { day: "ي", hour: "س", minute: "د" },
   zh: { day: "天", hour: "小时", minute: "分" },
+  ko: { day: "일", hour: "시간", minute: "분" },
 };

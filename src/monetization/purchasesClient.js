@@ -54,16 +54,54 @@ const resolveApiKey = () => {
 };
 
 const findPlanByIdentifier = (productIdentifier = "") => {
-  const normalized = String(productIdentifier || "").toLowerCase();
+  const normalized = String(productIdentifier || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[._-]+/g, " ");
   if (!normalized) return null;
-  if (normalized.includes("lifetime") || normalized.includes("life_time")) return "lifetime";
-  if (normalized.includes("year") || normalized.includes("annual")) return "yearly";
-  if (normalized.includes("week")) return "weekly";
-  if (normalized.includes("month")) return "monthly";
   if (normalized === PREMIUM_PRODUCT_IDS.weekly) return "weekly";
   if (normalized === PREMIUM_PRODUCT_IDS.monthly) return "monthly";
   if (normalized === PREMIUM_PRODUCT_IDS.yearly) return "yearly";
   if (normalized === PREMIUM_PRODUCT_IDS.lifetime) return "lifetime";
+  if (
+    normalized.includes("lifetime") ||
+    normalized.includes("life time") ||
+    normalized.includes("vitalicio") ||
+    normalized.includes("a vita") ||
+    normalized.includes("de por vida") ||
+    normalized.includes("lebenslang")
+  ) {
+    return "lifetime";
+  }
+  if (
+    normalized.includes("year") ||
+    normalized.includes("annual") ||
+    normalized.includes("anual") ||
+    normalized.includes("annuale") ||
+    normalized.includes("annuel") ||
+    normalized.includes("jahr")
+  ) {
+    return "yearly";
+  }
+  if (
+    normalized.includes("week") ||
+    normalized.includes("semanal") ||
+    normalized.includes("settimanale") ||
+    normalized.includes("hebdomadaire") ||
+    normalized.includes("woche")
+  ) {
+    return "weekly";
+  }
+  if (
+    normalized.includes("month") ||
+    normalized.includes("mensal") ||
+    normalized.includes("mensile") ||
+    normalized.includes("mensuel") ||
+    normalized.includes("monat")
+  ) {
+    return "monthly";
+  }
   return null;
 };
 
@@ -528,18 +566,15 @@ export const mapOfferingPackagesByPlan = (offerings, { preferredOfferingIdentifi
     ? offerings.current
     : null;
   const offeringsToInspect = [];
-  if (preferredOffering) {
-    offeringsToInspect.push(preferredOffering);
-  }
-  if (currentOffering && currentOffering !== preferredOffering) {
-    offeringsToInspect.push(currentOffering);
-  }
-  if (!offeringsToInspect.length) {
-    const fallbackOffering = collectOfferings(offerings)[0] || null;
-    if (fallbackOffering) {
-      offeringsToInspect.push(fallbackOffering);
-    }
-  }
+  const seenOfferings = new Set();
+  const pushOffering = (offering = null) => {
+    if (!offering || typeof offering !== "object" || seenOfferings.has(offering)) return;
+    seenOfferings.add(offering);
+    offeringsToInspect.push(offering);
+  };
+  pushOffering(preferredOffering);
+  pushOffering(currentOffering);
+  collectOfferings(offerings).forEach(pushOffering);
   const byPlan = {};
   offeringsToInspect.forEach((offering) => {
     const packages = Array.isArray(offering?.availablePackages) ? offering.availablePackages : [];

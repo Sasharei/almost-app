@@ -204,7 +204,7 @@ const LiquidGlassTabBar = ({
   const rawBubbleWidth =
     activeSlotWidth > 0
       ? Math.max(
-          useAndroidLikeVisualStyle ? 82 : 88,
+          useAndroidLikeVisualStyle ? 58 : 88,
           activeSlotWidth - (isLiquidGlassStyle ? 8 : useAndroidLikeVisualStyle ? 10 : 14)
         )
       : 96;
@@ -329,6 +329,7 @@ const LiquidGlassTabBar = ({
     paddingTop: tabBarTopPadding,
     paddingHorizontal: 14,
     opacity: tutorialIsTemptation ? 0.35 : 1,
+    backgroundColor: "transparent",
   };
   const nativeOnlyRootStyle = {
     paddingBottom: barBottomInset,

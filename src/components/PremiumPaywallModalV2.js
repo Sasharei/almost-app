@@ -21,53 +21,71 @@ const BULLET_ICON_IMAGES = [
   require("../../assets/paywall/v2/bullet_icon_4.jpg"),
 ];
 
-const ANDROID_PRIMARY_PLAN_IDS = ["weekly"];
-const DEFAULT_PRIMARY_PLAN_IDS = ["monthly"];
+const ANDROID_PRIMARY_PLAN_IDS = ["monthly", "yearly", "weekly"];
+const DEFAULT_PRIMARY_PLAN_IDS = ["monthly", "yearly", "weekly"];
 const PRIMARY_PLAN_IDS =
   Platform.OS === "android" ? ANDROID_PRIMARY_PLAN_IDS : DEFAULT_PRIMARY_PLAN_IDS;
 const FREE_TRIAL_PLAN_ID = Platform.OS === "android" ? "monthly" : "yearly";
 const FALLBACK_FEATURES_BY_LANGUAGE = {
   ru: [
-    "Неограниченное использование",
-    "Неограниченные цели накоплений",
-    "Умный трекинг искушений",
-    "Глубокая аналитика прогресса",
+    "Неограниченные сохранения без дневного лимита",
+    "Больше целей, чтобы видеть реальный прогресс накоплений",
+    "Умный трекинг искушений показывает, где деньги утекают чаще всего",
+    "Глубокая аналитика помогает закреплять привычки и экономить осознаннее",
   ],
   en: [
-    "Unlimited usage",
-    "Unlimited savings goals",
-    "Smart temptation tracking",
-    "Deep progress insights",
+    "Unlimited saves without the daily free limit",
+    "More savings goals so every resisted purchase has a destination",
+    "Smart temptation tracking shows where money leaks most often",
+    "Deeper progress insights help turn saved impulses into better habits",
   ],
   es: [
-    "Uso ilimitado",
-    "Metas de ahorro ilimitadas",
-    "Seguimiento inteligente de tentaciones",
-    "Insights de progreso profundos",
+    "Ahorros ilimitados sin el límite diario gratis",
+    "Más metas para que cada compra resistida tenga destino",
+    "El seguimiento inteligente muestra dónde se escapa más dinero",
+    "Insights más profundos ayudan a convertir impulsos evitados en hábitos",
   ],
   fr: [
-    "Utilisation illimitée",
-    "Objectifs d'épargne illimités",
-    "Suivi intelligent des tentations",
-    "Analyse approfondie des progrès",
+    "Épargnes illimitées sans limite quotidienne gratuite",
+    "Plus d'objectifs pour donner une destination à chaque achat évité",
+    "Le suivi intelligent montre où l'argent s'échappe le plus",
+    "Des analyses plus profondes transforment les impulsions évitées en habitudes",
   ],
   de: [
-    "Unbegrenzte Nutzung",
-    "Unbegrenzte Sparziele",
-    "Smartes Versuchungs-Tracking",
-    "Tiefere Fortschrittsanalysen",
+    "Unbegrenztes Sparen ohne tägliches Gratislimit",
+    "Mehr Sparziele, damit jeder widerstandene Kauf ein Ziel hat",
+    "Smartes Tracking zeigt, wo Geld am häufigsten verloren geht",
+    "Tiefere Analysen machen aus widerstandenen Impulsen bessere Gewohnheiten",
+  ],
+  pt: [
+    "Poupanças ilimitadas sem o limite diário grátis",
+    "Mais metas para cada compra evitada ter destino",
+    "O acompanhamento inteligente mostra onde o dinheiro escapa mais",
+    "Insights mais profundos ajudam a transformar impulsos evitados em hábitos",
+  ],
+  it: [
+    "Risparmi illimitati senza il limite giornaliero gratuito",
+    "Più obiettivi così ogni acquisto evitato ha una destinazione",
+    "Il tracking intelligente mostra dove il denaro scappa più spesso",
+    "Insight più profondi aiutano a trasformare gli impulsi evitati in abitudini",
   ],
   ar: [
-    "استخدام غير محدود",
-    "أهداف ادخار غير محدودة",
-    "تتبع ذكي للإغراءات",
-    "تحليلات عميقة للتقدم",
+    "ادخار غير محدود بلا حد يومي مجاني",
+    "أهداف أكثر ليصبح لكل شراء تم مقاومته وجهة واضحة",
+    "التتبع الذكي يوضح أين يتسرّب المال غالباً",
+    "رؤى أعمق تساعد على تحويل مقاومة الاندفاعات إلى عادات أفضل",
   ],
   zh: [
-    "无限使用",
-    "无限储蓄目标",
-    "智能欲望追踪",
-    "深度进度分析",
+    "不受每日免费次数限制，持续记录省下的钱",
+    "更多储蓄目标，让每次克制消费都有去处",
+    "智能追踪帮你看清钱最常流失在哪里",
+    "更深入的进度洞察，把克制冲动变成稳定习惯",
+  ],
+  ko: [
+    "일일 무료 제한 없이 절약 기록을 계속 남기기",
+    "더 많은 목표로 참아낸 소비마다 목적지를 만들기",
+    "스마트 유혹 추적으로 돈이 새는 지점을 확인하기",
+    "깊은 진행 인사이트로 절약 행동을 습관으로 바꾸기",
   ],
 };
 
@@ -497,6 +515,8 @@ const pickDefaultPlanId = (planCards = []) => {
   const available = (Array.isArray(planCards) ? planCards : []).filter(
     (card) => card?.available !== false
   );
+  const preferred = available.find((card) => card?.recommended);
+  if (preferred?.id) return preferred.id;
   const primary = PRIMARY_PLAN_IDS
     .map((id) => available.find((card) => normalizePlanId(card?.id) === id))
     .find(Boolean);
@@ -909,6 +929,7 @@ const PremiumPaywallModalV2 = ({
   const selectedPlanTrialNotice = sanitizeLabel(
     isFreeTrialPlan(selectedPlan) ? selectedPlan?.trialNoticeLabel : ""
   );
+  const noCommitmentLine = sanitizeLabel(copy?.noCommitmentLine || "");
   const billingNotice = sanitizeLabel(copy?.billingNotice || "");
   const legalNotice = sanitizeLabel(copy?.legalNotice || "");
   const defaultTitle = sanitizeLabel(copy?.title || copy?.planSectionTitle || localizedUi.title);
@@ -958,9 +979,7 @@ const PremiumPaywallModalV2 = ({
     (plan) => {
       if (!plan?.id || plan?.available === false) return;
       setSelectedPlanId(plan.id);
-      setFreeTrialEnabled(
-        normalizePlanId(plan?.id) === FREE_TRIAL_PLAN_ID
-      );
+      setFreeTrialEnabled(isFreeTrialPlan(plan));
       onPlanSelect(plan.id, { source: "plan_card" });
     },
     [onPlanSelect]
@@ -1043,19 +1062,17 @@ const PremiumPaywallModalV2 = ({
           {dismissible ? (
             <View style={styles.headerRow}>
               <TouchableOpacity
-                style={styles.headerDismissTextButton}
+                style={[
+                  styles.headerDismissIconButton,
+                  { backgroundColor: palette.subtleButtonBg, borderColor: palette.cardBorder },
+                ]}
                 onPress={handleLimitedContinue}
                 activeOpacity={0.72}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={continueLimitedLabel}
               >
-                <AdaptivePaywallText
-                  style={[styles.headerDismissButtonText, { color: palette.text }, textAlignStyle]}
-                  numberOfLines={1}
-                  minFontSize={10}
-                  maxUnitsPerLine={28}
-                >
-                  {continueLimitedLabel}
-                </AdaptivePaywallText>
+                <Text style={[styles.headerDismissIconText, { color: palette.muted }]}>×</Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -1511,6 +1528,20 @@ const PremiumPaywallModalV2 = ({
               )}
             </TouchableOpacity>
 
+            {!!noCommitmentLine ? (
+              <View style={[styles.trustRow, rtl ? styles.trustRowRtl : null]}>
+                <View style={[styles.trustIcon, { backgroundColor: palette.chipBg }]}>
+                  <Text style={[styles.trustIconText, { color: palette.success }]}>✓</Text>
+                </View>
+                <Text
+                  style={[styles.trustText, { color: palette.text }, textAlignStyle]}
+                  numberOfLines={2}
+                >
+                  {noCommitmentLine}
+                </Text>
+              </View>
+            ) : null}
+
             <View style={styles.offerDisclosureBlock}>
               {!!billingNotice ? (
                 <Text
@@ -1627,21 +1658,20 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     marginBottom: 3,
   },
-  headerDismissTextButton: {
-    maxWidth: "72%",
-    minHeight: 20,
-    paddingHorizontal: 2,
-    paddingVertical: 1,
+  headerDismissIconButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
     justifyContent: "center",
-    alignItems: "flex-end",
+    alignItems: "center",
     alignSelf: "flex-end",
-    flexShrink: 1,
   },
-  headerDismissButtonText: {
-    textAlign: "right",
-    fontSize: 10,
-    lineHeight: 12,
+  headerDismissIconText: {
+    fontSize: 20,
+    lineHeight: 22,
     fontWeight: "700",
+    textAlign: "center",
   },
   hero: {
     borderRadius: 24,
@@ -1978,6 +2008,36 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     fontWeight: "900",
     letterSpacing: -0.2,
+    textAlign: "center",
+  },
+  trustRow: {
+    marginTop: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    columnGap: 7,
+  },
+  trustRowRtl: {
+    flexDirection: "row-reverse",
+  },
+  trustIcon: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  trustIconText: {
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: "900",
+  },
+  trustText: {
+    flexShrink: 1,
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "800",
     textAlign: "center",
   },
   offerDisclosureBlock: {
