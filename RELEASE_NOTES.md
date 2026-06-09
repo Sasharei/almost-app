@@ -1,5 +1,110 @@
 # Release Notes
 
+## 6.1.7 (from 6.1.6)
+
+### EN
+- Almost is now faster, more adaptive, and better at understanding your everyday saving flow.
+
+### RU
+- Almost стал быстрее, адаптивнее и лучше понимает ваш ежедневный ритм накоплений.
+
+### ES
+- Almost ahora es más rápido, más adaptable y entiende mejor tu ritmo diario de ahorro.
+
+### FR
+- Almost est maintenant plus rapide, plus adaptatif et comprend mieux votre rythme d'épargne quotidien.
+
+### DE
+- Almost ist jetzt schneller, anpassungsfähiger und versteht deinen täglichen Sparrhythmus besser.
+
+### PT
+- O Almost agora está mais rápido, mais adaptável e entende melhor seu ritmo diário de economia.
+
+### IT
+- Almost ora è più veloce, più adattivo e capisce meglio il tuo ritmo quotidiano di risparmio.
+
+### AR (SA)
+- أصبح Almost أسرع وأكثر تكيفاً ويفهم إيقاعك اليومي في الادخار بشكل أفضل.
+
+### AR (AE)
+- أصبح Almost أسرع وأكثر تكيفاً ويفهم إيقاعك اليومي في الادخار بشكل أفضل.
+
+### ZH
+- Almost 现在更快、更自适应，也更懂你的日常储蓄节奏。
+
+### KO
+- Almost가 더 빠르고 유연해졌으며, 일상적인 저축 흐름을 더 잘 이해합니다.
+
+## 6.1.6 (from 6.1.5)
+
+### EN
+- Minor fixes and improvements.
+
+### RU
+- Мелкие исправления и улучшения.
+
+### ES
+- Correcciones menores y mejoras.
+
+### FR
+- Corrections mineures et améliorations.
+
+### DE
+- Kleinere Fehlerbehebungen und Verbesserungen.
+
+### PT
+- Pequenas correções e melhorias.
+
+### IT
+- Piccole correzioni e miglioramenti.
+
+### AR (SA)
+- إصلاحات وتحسينات بسيطة.
+
+### AR (AE)
+- إصلاحات وتحسينات بسيطة.
+
+### ZH
+- 小幅修复和改进。
+
+### KO
+- 사소한 수정과 개선을 적용했습니다.
+
+## 6.1.5 (from 6.1.4)
+
+### EN
+- Minor fixes and improvements.
+
+### RU
+- Мелкие исправления и улучшения.
+
+### ES
+- Correcciones menores y mejoras.
+
+### FR
+- Corrections mineures et améliorations.
+
+### DE
+- Kleinere Fehlerbehebungen und Verbesserungen.
+
+### PT
+- Pequenas correções e melhorias.
+
+### IT
+- Piccole correzioni e miglioramenti.
+
+### AR (SA)
+- إصلاحات وتحسينات بسيطة.
+
+### AR (AE)
+- إصلاحات وتحسينات بسيطة.
+
+### ZH
+- 小幅修复和改进。
+
+### KO
+- 사소한 수정과 개선을 적용했습니다.
+
 ## 6.1.4 (from 6.1.2)
 
 ### EN
@@ -61,6 +166,12 @@
 - 让 Premium 和试用体验更清晰、更顺畅。
 - 打磨了应用文案、支持语言和视觉细节，让整体体验更一致。
 - 修复了应用中的问题，并提升了日常使用稳定性。
+
+### KO
+- 홈 화면 위젯을 개선해 저축, 연속 기록, 일일 진행 상황을 한눈에 더 쉽게 확인할 수 있게 했습니다.
+- Premium과 무료 체험 경험을 더 명확하고 부드럽게 다듬었습니다.
+- 앱 문구, 지원 언어, 시각적 디테일을 정리해 전체 경험이 더 일관되게 느껴지도록 했습니다.
+- 앱 전반의 문제를 수정하고 일상 사용 안정성을 높였습니다.
 
 ## 6.1.2 (from 6.1.1)
 

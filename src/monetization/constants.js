@@ -1179,6 +1179,8 @@ const PLAN_UNAVAILABLE_LABEL_BY_LANGUAGE = {
   es: "No disponible",
   fr: "Indisponible",
   de: "Nicht verfügbar",
+  pt: "Indisponível",
+  it: "Non disponibile",
   ar: "غير متاح",
   zh: "不可用",
 };
@@ -1460,6 +1462,7 @@ const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
     it: "Settimanale",
     ar: "أسبوعي",
     zh: "周付",
+    ko: "주간",
   },
   yearly: {
     ru: "Год",
@@ -1471,6 +1474,7 @@ const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
     it: "Annuale",
     ar: "سنوي",
     zh: "年付",
+    ko: "연간",
   },
   monthly: {
     ru: "Месяц",
@@ -1482,6 +1486,7 @@ const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
     it: "Mensile",
     ar: "شهري",
     zh: "月付",
+    ko: "월간",
   },
   lifetime: {
     ru: "Навсегда",
@@ -1493,6 +1498,7 @@ const DEFAULT_PLAN_LABELS_BY_LANGUAGE = {
     it: "A vita",
     ar: "مدى الحياة",
     zh: "终身",
+    ko: "평생",
   },
 };
 
@@ -1504,6 +1510,7 @@ const SAVE_BADGE_TEMPLATE_BY_LANGUAGE = {
   de: "Spare {{percent}}%",
   ar: "وفّر {{percent}}%",
   zh: "省 {{percent}}%",
+  ko: "{{percent}}% 절약",
 };
 
 const LIFETIME_BADGE_BY_LANGUAGE = {
@@ -1514,6 +1521,7 @@ const LIFETIME_BADGE_BY_LANGUAGE = {
   de: "Lebenslang",
   ar: "مدى الحياة",
   zh: "终身",
+  ko: "평생",
 };
 
 const PAYWALL_BADGE_BY_KIND = {
@@ -1534,6 +1542,7 @@ const resolveLanguage = (language) => {
   if (normalized.startsWith("it")) return "it";
   if (normalized.startsWith("ar")) return "ar";
   if (normalized.startsWith("zh")) return "zh";
+  if (normalized.startsWith("ko")) return "ko";
   if (normalized.startsWith("en")) return "en";
   return "en";
 };
@@ -2094,13 +2103,20 @@ export const buildDefaultPlanCards = (currencyCode = "USD", language = "en") => 
     DEFAULT_PLAN_LABELS_BY_LANGUAGE?.[planId]?.[lang] ||
     DEFAULT_PLAN_LABELS_BY_LANGUAGE?.[planId]?.en ||
     "Premium";
-  return localizeFallbackStructure([
+  const localizePlanCard = (card) => ({
+    ...card,
+    label: localizeFallbackString(card.label, lang),
+    priceLabel: localizeFallbackString(card.priceLabel, lang),
+    secondaryLabel: localizeFallbackString(card.secondaryLabel, lang),
+    badge: localizeFallbackBadge(card.badge, lang),
+  });
+  return [
     {
       id: "weekly",
       label: resolvePlanLabel("weekly"),
       priceLabel: pricing.weekly.label,
       secondaryLabel: pricing.weekly.perMonth || pricing.weekly.perWeek,
-      badge: localizeFallbackBadge(pricing.weekly.badge, lang),
+      badge: pricing.weekly.badge,
       recommended: false,
     },
     {
@@ -2108,7 +2124,7 @@ export const buildDefaultPlanCards = (currencyCode = "USD", language = "en") => 
       label: resolvePlanLabel("monthly"),
       priceLabel: pricing.monthly.label,
       secondaryLabel: pricing.monthly.perWeek || pricing.monthly.perMonth,
-      badge: localizeFallbackBadge(pricing.monthly.badge, lang),
+      badge: pricing.monthly.badge,
       recommended: true,
     },
     {
@@ -2116,7 +2132,7 @@ export const buildDefaultPlanCards = (currencyCode = "USD", language = "en") => 
       label: resolvePlanLabel("yearly"),
       priceLabel: pricing.yearly.label,
       secondaryLabel: pricing.yearly.perMonth,
-      badge: localizeFallbackBadge(pricing.yearly.badge, lang),
+      badge: pricing.yearly.badge,
       recommended: false,
     },
     {
@@ -2124,8 +2140,8 @@ export const buildDefaultPlanCards = (currencyCode = "USD", language = "en") => 
       label: resolvePlanLabel("lifetime"),
       priceLabel: pricing.lifetime.label,
       secondaryLabel: pricing.lifetime.perMonth,
-      badge: localizeFallbackBadge(pricing.lifetime.badge, lang),
+      badge: pricing.lifetime.badge,
       recommended: false,
     },
-  ], lang);
+  ].map(localizePlanCard);
 };

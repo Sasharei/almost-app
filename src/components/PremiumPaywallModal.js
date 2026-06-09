@@ -16,13 +16,12 @@ import {
 } from "react-native";
 import { initialWindowMetrics } from "react-native-safe-area-context";
 
-const ANDROID_PRIMARY_PLAN_IDS = ["weekly"];
-const DEFAULT_PRIMARY_PLAN_IDS = ["monthly"];
+const ANDROID_PRIMARY_PLAN_IDS = ["monthly", "yearly", "weekly"];
+const DEFAULT_PRIMARY_PLAN_IDS = ["monthly", "yearly", "weekly"];
 const PRIMARY_PLAN_IDS =
   Platform.OS === "android" ? ANDROID_PRIMARY_PLAN_IDS : DEFAULT_PRIMARY_PLAN_IDS;
 const FREE_TRIAL_PLAN_ID = Platform.OS === "android" ? "monthly" : "yearly";
-const SECONDARY_PLAN_IDS =
-  Platform.OS === "android" ? ["monthly", "yearly", "lifetime"] : ["yearly", "weekly", "lifetime"];
+const SECONDARY_PLAN_IDS = ["lifetime"];
 
 const normalizePlanId = (value = "") => String(value || "").trim().toLowerCase();
 const isFreeTrialPlan = (plan = null) =>
@@ -32,12 +31,12 @@ const isFreeTrialPlan = (plan = null) =>
 
 const pickDefaultPlanId = (planCards = []) => {
   const availableCards = planCards.filter((card) => card?.available !== false);
+  const preferred = availableCards.find((card) => card?.recommended);
+  if (preferred?.id) return preferred.id;
   const primary = PRIMARY_PLAN_IDS
     .map((id) => availableCards.find((card) => normalizePlanId(card?.id) === id))
     .find(Boolean);
   if (primary?.id) return primary.id;
-  const preferred = availableCards.find((card) => card?.recommended);
-  if (preferred?.id) return preferred.id;
   if (availableCards[0]?.id) return availableCards[0].id;
   return planCards[0]?.id || PRIMARY_PLAN_IDS[0] || "monthly";
 };
@@ -85,9 +84,9 @@ const computeProjectionAmountScale = (label = "") => {
   const compactLength = safeLabel.replace(/\s/g, "").length + 1;
   const digitCount = (safeLabel.match(/\d/g) || []).length;
   const lengthScore = Math.max(compactLength, digitCount + 2);
-  if (lengthScore <= 5) return 1;
-  const shrinkSteps = Math.min(lengthScore - 5, 12);
-  return Math.max(0.44, 1 - shrinkSteps * 0.085);
+  if (lengthScore <= 7) return 1;
+  const shrinkSteps = Math.min(lengthScore - 7, 6);
+  return Math.max(0.84, 1 - shrinkSteps * 0.03);
 };
 const localizePaywallDigits = (value, language = "en") => {
   if (typeof value !== "string" || !value.length) return value;
@@ -1354,7 +1353,7 @@ const PremiumPaywallModal = ({
           ? !!allowAndroidAutoFit && !!adjustsFontSizeToFit
           : !!adjustsFontSizeToFit;
       const resolvedMinimumFontScale = shouldAutoFit
-        ? Math.max(0.5, Math.min(1, Number(minimumFontScale) || 1))
+        ? Math.max(0.84, Math.min(1, Number(minimumFontScale) || 1))
         : minimumFontScale;
       return (
         <RNText
@@ -3270,9 +3269,7 @@ const PremiumPaywallModal = ({
                 activeOpacity={0.9}
                 onPress={() => {
                   setSelectedPlanId(plan.id);
-                  setFreeTrialEnabled(
-                    normalizePlanId(plan?.id) === FREE_TRIAL_PLAN_ID
-                  );
+                  setFreeTrialEnabled(isFreeTrialPlan(plan));
                   onPlanSelect(plan.id, { source: "plan_card" });
                 }}
                 disabled={!!purchaseLoadingPlan || restoring}

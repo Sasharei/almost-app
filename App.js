@@ -217,6 +217,7 @@ import {
   PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE,
   PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE,
   PAYWALL_NOW_PREFIX_BY_LANGUAGE,
+  PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS,
   PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS,
   PAYWALL_SAR_MARKERS_REGEX,
   PAYWALL_BIDI_MARKS_REGEX,
@@ -957,7 +958,7 @@ let AndroidBlurView = null;
 if (Platform.OS === "android") {
   try {
     AndroidBlurView = require("@react-native-community/blur")?.BlurView || null;
-  } catch (error) {
+  } catch (_error) {
     AndroidBlurView = null;
   }
 }
@@ -1162,6 +1163,7 @@ const FREE_GOAL_LIMIT = FREE_PLAN_LIMITS.activeGoals;
 const ONBOARDING_GOAL_SELECTION_LIMIT = 3;
 const FREE_PENDING_LIMIT = FREE_PLAN_LIMITS.activePendingCards || 2;
 const FREE_HISTORY_WINDOW_MS = FREE_PLAN_LIMITS.historyDays * 1000 * 60 * 60 * 24;
+const PROFILE_HISTORY_RENDER_LIMIT = Math.max(HISTORY_VIEWPORT_ROWS * 4, 40);
 const FREE_TEMPTATION_CARD_LIMIT = FREE_PLAN_LIMITS.customTemptationCards;
 const FREE_CHALLENGE_CLAIMS_LIMIT = FREE_PLAN_LIMITS.challengeClaims;
 const FREE_REPORTS_WEEK_COUNT = FREE_PLAN_LIMITS.reportsWeeks;
@@ -1194,6 +1196,97 @@ const stripEmojis = (text = "") =>
     .trim();
 const preserveWholeWordsForTextWrap = (text = "") =>
   String(text || "").replace(/\S+/g, (word) => Array.from(word).join("\u2060"));
+const isEstimatedWideGlyph = (char = "") => {
+  const code = char.codePointAt(0) || 0;
+  return (
+    (code >= 0x3400 && code <= 0x9fff) ||
+    (code >= 0x3040 && code <= 0x30ff) ||
+    (code >= 0xac00 && code <= 0xd7af)
+  );
+};
+const getEstimatedTextGlyphUnits = (text = "") =>
+  Array.from(String(text || "")).reduce((sum, char) => {
+    const code = char.codePointAt(0) || 0;
+    if (/[\s\u00A0\u202F]/.test(char)) return sum + 0.32;
+    if (isEstimatedWideGlyph(char)) return sum + 0.96;
+    if ((code >= 0x0600 && code <= 0x06ff) || (code >= 0x0750 && code <= 0x077f)) {
+      return sum + 0.72;
+    }
+    if (/\d/.test(char)) return sum + 0.56;
+    if (/[.,:;!?'"`’‘“”()[\]{}…-]/.test(char)) return sum + 0.28;
+    if (/[A-Z]/.test(char)) return sum + 0.66;
+    return sum + 0.56;
+  }, 0);
+const estimateTextWidthForFit = (text = "", fontSize = 14) =>
+  getEstimatedTextGlyphUnits(text) * Math.max(1, Number(fontSize) || 1);
+const resolveMeasuredTextScale = ({
+  text = "",
+  availableWidth = 0,
+  baseFontSize = 14,
+  minScale = MIN_READABLE_FONT_SCALE,
+  maxScale = 1,
+} = {}) => {
+  const safeWidth = Math.max(0, Number(availableWidth) || 0);
+  const normalizedMinScale = Math.max(0.72, Math.min(1, Number(minScale) || MIN_READABLE_FONT_SCALE));
+  const normalizedMaxScale = Math.max(normalizedMinScale, Math.min(1, Number(maxScale) || 1));
+  if (!safeWidth) return normalizedMaxScale;
+  const estimatedWidth = estimateTextWidthForFit(text, baseFontSize);
+  if (!estimatedWidth) return normalizedMaxScale;
+  const widthScale = Math.max(normalizedMinScale, Math.min(normalizedMaxScale, safeWidth / estimatedWidth));
+  return widthScale > 0.985 ? 1 : widthScale;
+};
+const packWordsForMeasuredLines = (words = [], availableWidth = 0, fontSize = 14) => {
+  const safeWords = Array.isArray(words) ? words.filter(Boolean) : [];
+  if (!safeWords.length) return [];
+  const safeWidth = Math.max(1, Number(availableWidth) || 1);
+  const lines = [];
+  safeWords.forEach((word) => {
+    if (!lines.length) {
+      lines.push(word);
+      return;
+    }
+    const current = lines[lines.length - 1] || "";
+    const candidate = current ? `${current} ${word}` : word;
+    if (estimateTextWidthForFit(candidate, fontSize) <= safeWidth) {
+      lines[lines.length - 1] = candidate;
+      return;
+    }
+    lines.push(word);
+  });
+  return lines;
+};
+const resolveWordLineFit = ({
+  text = "",
+  availableWidth = 0,
+  baseFontSize = 14,
+  minScale = MIN_READABLE_FONT_SCALE,
+  maxLines = 2,
+} = {}) => {
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return { lines: [], scale: 1 };
+  const safeMaxLines = Math.max(1, Math.floor(Number(maxLines) || 1));
+  const safeWidth = Math.max(1, Number(availableWidth) || 0);
+  const safeMinScale = Math.max(0.72, Math.min(1, Number(minScale) || MIN_READABLE_FONT_SCALE));
+  if (!safeWidth) {
+    return { lines: [words.join(" ")], scale: 1 };
+  }
+  for (let scale = 1; scale >= safeMinScale; scale -= 0.02) {
+    const fontSize = Math.max(1, baseFontSize * scale);
+    const lines = packWordsForMeasuredLines(words, safeWidth, fontSize);
+    if (lines.length <= safeMaxLines) {
+      return { lines, scale };
+    }
+  }
+  const minFontSize = Math.max(1, baseFontSize * safeMinScale);
+  const packedLines = packWordsForMeasuredLines(words, safeWidth, minFontSize);
+  if (packedLines.length <= safeMaxLines) {
+    return { lines: packedLines, scale: safeMinScale };
+  }
+  const visibleLines = packedLines.slice(0, safeMaxLines);
+  const remaining = packedLines.slice(safeMaxLines - 1).join(" ").trim();
+  visibleLines[safeMaxLines - 1] = remaining || visibleLines[safeMaxLines - 1] || "";
+  return { lines: visibleLines.filter(Boolean), scale: safeMinScale };
+};
 const keepEmojiWithText = (value = "") => {
   const trimmed = String(value || "").trim();
   if (!trimmed) return "";
@@ -1300,11 +1393,49 @@ const hashAnalyticsText = (value = "") => {
   return `h_${(hash >>> 0).toString(36)}`;
 };
 const resolvePlanIdFromProductIdentifier = (productIdentifier = "") => {
-  const identifier = String(productIdentifier || "").toLowerCase();
-  if (identifier.includes("lifetime") || identifier.includes("life_time")) return "lifetime";
-  if (identifier.includes("year") || identifier.includes("annual")) return "yearly";
-  if (identifier.includes("week")) return "weekly";
-  if (identifier.includes("month")) return "monthly";
+  const identifier = String(productIdentifier || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[._-]+/g, " ");
+  if (
+    identifier.includes("lifetime") ||
+    identifier.includes("life time") ||
+    identifier.includes("vitalicio") ||
+    identifier.includes("a vita") ||
+    identifier.includes("de por vida") ||
+    identifier.includes("lebenslang")
+  ) {
+    return "lifetime";
+  }
+  if (
+    identifier.includes("year") ||
+    identifier.includes("annual") ||
+    identifier.includes("anual") ||
+    identifier.includes("annuale") ||
+    identifier.includes("annuel") ||
+    identifier.includes("jahr")
+  ) {
+    return "yearly";
+  }
+  if (
+    identifier.includes("week") ||
+    identifier.includes("semanal") ||
+    identifier.includes("settimanale") ||
+    identifier.includes("hebdomadaire") ||
+    identifier.includes("woche")
+  ) {
+    return "weekly";
+  }
+  if (
+    identifier.includes("month") ||
+    identifier.includes("mensal") ||
+    identifier.includes("mensile") ||
+    identifier.includes("mensuel") ||
+    identifier.includes("monat")
+  ) {
+    return "monthly";
+  }
   return null;
 };
 const resolveEntitlementPeriodType = (entitlement = null) =>
@@ -2080,7 +2211,8 @@ const resolveMonetizationLanguage = (language = "en") => {
     base === "pt" ||
     base === "it" ||
     base === "ar" ||
-    base === "zh"
+    base === "zh" ||
+    base === "ko"
   ) {
     return base;
   }
@@ -2225,8 +2357,11 @@ const PAYWALL_DAY_SUFFIX_BY_LANGUAGE = {
   es: "/día",
   fr: "/jour",
   de: "/Tag",
+  pt: "/dia",
+  it: "/giorno",
   ar: "/يوم",
   zh: "/天",
+  ko: "/일",
 };
 const CURRENCY_DISPLAY_SYMBOLS = {
   ARS: "$",
@@ -2310,49 +2445,12 @@ const normalizeCurrencyDisplayLabel = (label, currencyCode = DEFAULT_PROFILE.cur
   normalized = normalized.replace(/\$\s+(?=[-0-9٠-٩۰-۹])/g, "$");
   return normalized.replace(/\s{2,}/g, " ").trim();
 };
-const resolveRussianDaysWord = (count = 0) => {
-  const absolute = Math.abs(Math.round(Number(count) || 0));
-  const mod10 = absolute % 10;
-  const mod100 = absolute % 100;
-  if (mod10 === 1 && mod100 !== 11) return "день";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "дня";
-  return "дней";
-};
-const resolveSpanishDaysWord = (count = 0) => {
-  const absolute = Math.abs(Math.round(Number(count) || 0));
-  return absolute === 1 ? "día" : "días";
-};
-const resolveFrenchDaysWord = (count = 0) => {
-  const absolute = Math.abs(Math.round(Number(count) || 0));
-  return absolute === 1 ? "jour" : "jours";
-};
-const resolveFrenchFreeWord = (count = 0) => {
-  const absolute = Math.abs(Math.round(Number(count) || 0));
-  return absolute === 1 ? "gratuit" : "gratuits";
-};
-const buildPaywallTrialLabel = ({ days = 0, language = "en" } = {}) => {
-  const normalizedDays = Math.max(0, Math.round(Number(days) || 0));
-  if (!normalizedDays) return "";
+const buildPaywallTrialLabel = ({ language = "en" } = {}) => {
   const lang = resolveMonetizationLanguage(language);
-  if (lang === "ru") {
-    return `${normalizedDays} ${resolveRussianDaysWord(normalizedDays)} бесплатно`;
-  }
-  if (lang === "es") {
-    return `${normalizedDays} ${resolveSpanishDaysWord(normalizedDays)} gratis`;
-  }
-  if (lang === "fr") {
-    return `${normalizedDays} ${resolveFrenchDaysWord(normalizedDays)} ${resolveFrenchFreeWord(normalizedDays)}`;
-  }
-  if (lang === "de") {
-    return `${normalizedDays} Tage kostenlos testen`;
-  }
-  if (lang === "ar") {
-    return `${normalizedDays} أيام تجربة مجانية`;
-  }
-  if (lang === "zh") {
-    return `${normalizedDays} 天免费试用`;
-  }
-  return localizeFallbackTextByLanguage(`${normalizedDays}-day free trial`, lang);
+  return localizeFallbackTextByLanguage(
+    PAYWALL_TRIAL_BADGE_BY_LANGUAGE[lang] || PAYWALL_TRIAL_BADGE_BY_LANGUAGE.en,
+    lang
+  );
 };
 const buildPaywallTrialCtaLabel = ({ language = "en" } = {}) => {
   const lang = resolveMonetizationLanguage(language);
@@ -2388,16 +2486,14 @@ const buildPaywallNowPriceLabel = ({
   return localizeFallbackTextByLanguage(`${prefix} ${zeroPriceLabel}`, lang);
 };
 const buildPaywallTrialNotice = ({
-  days = 0,
   postTrialPriceLabel = "",
   language = "en",
   platform = Platform.OS,
 } = {}) => {
-  const normalizedDays = Math.max(0, Math.round(Number(days) || 0));
   const normalizedPriceLabel = String(postTrialPriceLabel || "").trim();
-  if (!normalizedDays || !normalizedPriceLabel) return "";
+  if (!normalizedPriceLabel) return "";
   const lang = resolveMonetizationLanguage(language);
-  const trialLabel = buildPaywallTrialLabel({ days: normalizedDays, language: lang });
+  const trialLabel = buildPaywallTrialLabel({ language: lang });
   const storeLabel = platform === "ios" ? "App Store" : "Google Play";
   if (lang === "ru") {
     return `${trialLabel}. Затем автосписание ${normalizedPriceLabel}. Отмена в ${storeLabel}.`;
@@ -3136,6 +3232,7 @@ const resolveInterFontFamily = (fontWeight) => {
 };
 
 const FormattingLanguageContext = React.createContext(DEFAULT_LANGUAGE);
+const MIN_READABLE_FONT_SCALE = 0.84;
 
 const AppText = React.memo(
   forwardRef(function AppText({ style, ...props }, ref) {
@@ -3154,7 +3251,7 @@ const AppText = React.memo(
         ? !!allowAndroidAutoFit && !!adjustsFontSizeToFit
         : !!adjustsFontSizeToFit;
     const resolvedMinimumFontScale = shouldAutoFit
-      ? Math.max(0.8, Math.min(1, Number(minimumFontScale) || 1))
+      ? Math.max(MIN_READABLE_FONT_SCALE, Math.min(1, Number(minimumFontScale) || 1))
       : minimumFontScale;
     const textProps =
       localizedChildren === restProps.children
@@ -3872,7 +3969,7 @@ const DID_YOU_KNOW_TIPS = Object.freeze([
     titleKey: "dailyDidYouKnowTipSubscriptionsTitle",
     bodyKey: "dailyDidYouKnowTipSubscriptionsBody",
     whereKey: "dailyDidYouKnowTipSubscriptionsWhere",
-    emoji: "📺",
+    emoji: "💳",
   },
   {
     id: "fab_long_press_menu",
@@ -5842,6 +5939,7 @@ const createIncomeEntryInputState = (payday = DEFAULT_INCOME_PAYDAY) => ({
   amount: "",
   payday: normalizeIncomePayday(payday),
 });
+const INCOME_ENTRY_DAY_OPTIONS = Array.from({ length: 31 }, (_, index) => index + 1);
 const resolveIncomeEntryReceivedAt = (payday = DEFAULT_INCOME_PAYDAY, baseTimestamp = Date.now()) => {
   const baseDate = new Date(baseTimestamp);
   if (Number.isNaN(baseDate.getTime())) return Date.now();
@@ -9066,6 +9164,16 @@ const getManualInputPrecision = (value = "") => {
   return Math.max(0, Math.min(6, fractionDigits));
 };
 
+const hasMeaningfulTemptationName = (value = "") => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return false;
+  try {
+    return /\p{L}/u.test(normalized);
+  } catch (error) {
+    return /[A-Za-zА-Яа-яЁё\u0600-\u06ff\u4e00-\u9fff]/.test(normalized);
+  }
+};
+
 const normalizeTimestampMs = (value) => normalizeTemporalMs(value, 0);
 
 const formatLatestSavingTimestamp = (timestamp, language = DEFAULT_LANGUAGE) => {
@@ -12194,9 +12302,12 @@ const LANGUAGE_SELECTED_EVENTS = {
   es: "language_es_selected",
   fr: "language_fr_selected",
   de: "language_de_selected",
+  pt: "language_pt_selected",
+  it: "language_it_selected",
   "ar-sa": "language_ar_sa_selected",
   "ar-ae": "language_ar_ae_selected",
   zh: "language_zh_selected",
+  ko: "language_ko_selected",
 };
 
 const GENDER_SELECTED_EVENTS = {
@@ -13521,6 +13632,26 @@ function TemptationCardComponent({
 }) {
   const showMetaBadges = !hideMetaBadges;
   const title = resolveTemptationTitle(item, language, titleOverride);
+  const [titleTextWidth, setTitleTextWidth] = useState(0);
+  const handleTitleTextLayout = useCallback((event) => {
+    const width = Math.round(Number(event?.nativeEvent?.layout?.width) || 0);
+    if (!width) return;
+    setTitleTextWidth((prevWidth) => (Math.abs(prevWidth - width) > 1 ? width : prevWidth));
+  }, []);
+  const titleFitStyle = useMemo(() => {
+    const baseFontSize = 18;
+    const baseLineHeight = 22;
+    const scale = resolveMeasuredTextScale({
+      text: title,
+      availableWidth: Math.max(0, titleTextWidth - 2),
+      baseFontSize,
+      minScale: 0.84,
+    });
+    return {
+      fontSize: Math.round(baseFontSize * scale),
+      lineHeight: Math.max(18, Math.round(baseLineHeight * scale)),
+    };
+  }, [title, titleTextWidth]);
   const isCustomCard =
     Array.isArray(item?.categories) && item.categories.some((category) => category === "custom");
   const isSubscriptionCard =
@@ -14887,7 +15018,17 @@ function TemptationCardComponent({
             <View style={styles.emojiDisplayWrapper}>
               <Text style={[styles.temptationEmoji, { color: cardTextColor }]}>{item.emoji || "✨"}</Text>
             </View>
-            <Text style={[styles.temptationTitle, { color: cardTextColor }]}>{title}</Text>
+            <Text
+              style={[styles.temptationTitle, titleFitStyle, { color: cardTextColor }]}
+              onLayout={handleTitleTextLayout}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              allowAndroidAutoFit
+              minimumFontScale={0.84}
+              maxFontSizeMultiplier={1}
+            >
+              {title}
+            </Text>
           </>
         )}
       </View>
@@ -16208,7 +16349,7 @@ const DailyRewardButton = React.memo(
               ]}
               numberOfLines={1}
               adjustsFontSizeToFit
-              minimumFontScale={0.7}
+              minimumFontScale={0.9}
               ellipsizeMode="clip"
             >
               {label}
@@ -16219,7 +16360,7 @@ const DailyRewardButton = React.memo(
             style={[styles.dailyRewardLockedLabel, { color: lockedText }]}
             numberOfLines={1}
             adjustsFontSizeToFit
-            minimumFontScale={0.7}
+            minimumFontScale={0.9}
           >
             {label}
           </Text>
@@ -17276,6 +17417,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const [expanded, setExpanded] = useState(false);
   const [isSavingRatingModalVisible, setSavingRatingModalVisible] = useState(false);
   const [goalTitleTextBlockWidth, setGoalTitleTextBlockWidth] = useState(0);
+  const [heroAmountSafeWidth, setHeroAmountSafeWidth] = useState(0);
   const heroRecentNowTick = useMinuteTicker(true);
   const heroCardRef = useRef(null);
   const heroAnchorRef = useRef(null);
@@ -17346,6 +17488,11 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
     const width = Math.round(Number(event?.nativeEvent?.layout?.width) || 0);
     if (!width) return;
     setGoalTitleTextBlockWidth((prevWidth) => (Math.abs(prevWidth - width) > 1 ? width : prevWidth));
+  }, []);
+  const handleHeroAmountSafeLayout = useCallback((event) => {
+    const width = Math.round(Number(event?.nativeEvent?.layout?.width) || 0);
+    if (!width) return;
+    setHeroAmountSafeWidth((prevWidth) => (Math.abs(prevWidth - width) > 1 ? width : prevWidth));
   }, []);
   const setDailyRewardModalState = useCallback(
     (visible) => {
@@ -17746,10 +17893,6 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const goalTitleParts = useMemo(() => splitLeadingEmojiToken(resolvedGoalTitle), [resolvedGoalTitle]);
   const goalEmoji = goalTitleParts.emoji || DEFAULT_GOAL_EMOJI;
   const goalTitleText = goalTitleParts.title || resolvedGoalTitle;
-  const goalTitleDisplayText = useMemo(
-    () => preserveWholeWordsForTextWrap(goalTitleText),
-    [goalTitleText]
-  );
   const resolvedGoalSavedLabel = useMemo(() => {
     const raw = typeof goalSavedLabel === "string" ? goalSavedLabel.trim() : "";
     return raw || resolvedTotalSavedLabel;
@@ -18116,6 +18259,17 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
     },
     []
   );
+  const estimateHeroAmountWidth = useCallback((label, baseFontSize) => {
+    const safeLabel = label ? String(label) : "";
+    const units = Array.from(safeLabel).reduce((sum, char) => {
+      if (/\d/.test(char)) return sum + 0.74;
+      if (/[\s\u00A0\u202F]/.test(char)) return sum + 0.24;
+      if (/[.,،٬]/.test(char)) return sum + 0.34;
+      if (/[$€£¥₽₺₴₸₹₩₪₦₫₱₲₡฿]/.test(char)) return sum + 1.12;
+      return sum + 0.68;
+    }, 0);
+    return units * Math.max(1, Number(baseFontSize) || 1);
+  }, []);
   const expandedPotentialValueScale = useMemo(
     () =>
       computeAdaptiveAmountScale(potentialLocal, {
@@ -18148,14 +18302,22 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
     [expandedPotentialValueScale]
   );
   const heroSavedValueScale = useMemo(
-    () =>
-      computeAdaptiveAmountScale(resolvedTotalSavedLabel, {
-        baseThreshold: 3,
-        shrinkStep: 0.074,
-        minScale: 0.48,
-        maxShrinkSteps: 12,
-      }),
-    [computeAdaptiveAmountScale, resolvedTotalSavedLabel]
+    () => {
+      const baseFontSize = IS_SHORT_DEVICE ? 44 : 54;
+      const readableMinScale = (IS_SHORT_DEVICE ? 34 : 38) / baseFontSize;
+      const lengthScale = computeAdaptiveAmountScale(resolvedTotalSavedLabel, {
+        baseThreshold: 6,
+        shrinkStep: 0.028,
+        minScale: 0.86,
+        maxShrinkSteps: 5,
+      });
+      if (!heroAmountSafeWidth) return lengthScale;
+      const safeWidth = Math.max(0, heroAmountSafeWidth - (IS_SHORT_DEVICE ? 8 : 12));
+      const estimatedWidth = estimateHeroAmountWidth(resolvedTotalSavedLabel, baseFontSize);
+      const safeZoneScale = safeWidth > 0 ? Math.min(1, safeWidth / Math.max(1, estimatedWidth)) : 1;
+      return Math.max(readableMinScale, Math.min(lengthScale, safeZoneScale));
+    },
+    [computeAdaptiveAmountScale, estimateHeroAmountWidth, heroAmountSafeWidth, resolvedTotalSavedLabel]
   );
   const heroSavedValueStyle = useMemo(
     () => ({
@@ -18167,42 +18329,32 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const goalTitleFitConfig = useMemo(() => {
     const baseFontSize = IS_SHORT_DEVICE ? 16 : 18;
     const baseLineHeight = IS_SHORT_DEVICE ? 20 : 22;
-    const minFontSize = IS_SHORT_DEVICE ? 13 : 14;
+    const minScale = IS_SHORT_DEVICE ? 0.84 : 0.86;
     const rawTitle = String(goalTitleText || "").trim();
-    const titleWithoutEmoji = stripEmojis(rawTitle) || rawTitle;
-    const visibleLength = Array.from(titleWithoutEmoji).length;
     const availableWidth = Math.max(
       88,
       goalTitleTextBlockWidth || (IS_SHORT_DEVICE ? 116 : 136)
     );
-    if (!visibleLength) {
+    if (!rawTitle) {
       return {
-        numberOfLines: 1,
-        minimumFontScale: minFontSize / baseFontSize,
+        lines: [],
+        minimumFontScale: minScale,
         style: { fontSize: baseFontSize, lineHeight: baseLineHeight },
       };
     }
-    const hasWideGlyphs = /[\u3400-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/.test(titleWithoutEmoji);
-    const averageGlyphWidth = baseFontSize * (hasWideGlyphs ? 0.94 : 0.57);
-    const charsPerLine = Math.max(1, Math.floor(availableWidth / Math.max(1, averageGlyphWidth)));
-    const numberOfLines =
-      visibleLength > charsPerLine * 2.15 ? 3 : visibleLength > charsPerLine * 0.94 ? 2 : 1;
-    const tokens = titleWithoutEmoji.split(/\s+/).filter(Boolean);
-    const longestTokenLength = hasWideGlyphs
-      ? 1
-      : tokens.reduce((maxLength, token) => Math.max(maxLength, Array.from(token).length), 0);
-    const fullTextScale =
-      availableWidth * numberOfLines / Math.max(1, visibleLength * averageGlyphWidth);
-    const longestTokenScale = longestTokenLength
-      ? availableWidth / Math.max(1, longestTokenLength * averageGlyphWidth)
-      : 1;
-    const minScale = minFontSize / baseFontSize;
-    const resolvedScale = Math.max(minScale, Math.min(1, fullTextScale, longestTokenScale));
-    const fontSize = Math.max(minFontSize, Math.round(baseFontSize * resolvedScale));
+    const fit = resolveWordLineFit({
+      text: rawTitle,
+      availableWidth: Math.max(0, availableWidth - 2),
+      baseFontSize,
+      minScale,
+      maxLines: 2,
+    });
+    const resolvedScale = Math.max(minScale, Math.min(1, fit.scale));
+    const fontSize = Math.max(Math.round(baseFontSize * minScale), Math.round(baseFontSize * resolvedScale));
     const lineHeight = Math.max(fontSize + 4, Math.round(baseLineHeight * resolvedScale));
     return {
-      numberOfLines,
-      minimumFontScale: Math.max(minScale, minFontSize / fontSize),
+      lines: fit.lines.map((line) => preserveWholeWordsForTextWrap(line)),
+      minimumFontScale: 0.92,
       style: { fontSize, lineHeight },
     };
   }, [goalTitleText, goalTitleTextBlockWidth]);
@@ -18694,7 +18846,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
       </View>
       <View style={styles.savedHeroContent}>
         <View style={styles.goalJarHeroTopRow}>
-          <View style={styles.goalJarHeroTitleBlock}>
+          <View style={styles.goalJarHeroTitleBlock} onLayout={handleHeroAmountSafeLayout}>
             <Text
               style={[
                 styles.goalJarHeroEyebrow,
@@ -18717,7 +18869,8 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
                 ]}
                 numberOfLines={1}
                 adjustsFontSizeToFit
-                minimumFontScale={0.48}
+                allowAndroidAutoFit
+                minimumFontScale={0.9}
                 maxFontSizeMultiplier={1}
               >
                 {resolvedTotalSavedLabel}
@@ -18737,21 +18890,33 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
                 <Text style={styles.goalJarHeroGoalEmoji}>{goalEmoji}</Text>
               </View>
               <View style={styles.goalJarHeroGoalTextBlock} onLayout={handleGoalTitleTextBlockLayout}>
-                <Text
+                <View
                   style={[
-                    styles.goalJarHeroGoalTitle,
-                    goalTitleFitConfig.style,
-                    isHeroRtlText && styles.goalJarHeroTextRtl,
-                    { color: goldPalette.text },
+                    styles.goalJarHeroGoalTitleWrap,
+                    isHeroRtlText && styles.goalJarHeroGoalTitleWrapRtl,
                   ]}
-                  numberOfLines={goalTitleFitConfig.numberOfLines}
-                  adjustsFontSizeToFit
-                  minimumFontScale={goalTitleFitConfig.minimumFontScale}
-                  maxFontSizeMultiplier={1}
+                  accessible
                   accessibilityLabel={goalTitleText}
                 >
-                  {goalTitleDisplayText}
-                </Text>
+                  {goalTitleFitConfig.lines.map((line, index) => (
+                    <Text
+                      key={`${line}-${index}`}
+                      style={[
+                        styles.goalJarHeroGoalTitle,
+                        goalTitleFitConfig.style,
+                        isHeroRtlText && styles.goalJarHeroTextRtl,
+                        { color: goldPalette.text },
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      allowAndroidAutoFit
+                      minimumFontScale={goalTitleFitConfig.minimumFontScale}
+                      maxFontSizeMultiplier={1}
+                    >
+                      {line}
+                    </Text>
+                  ))}
+                </View>
               </View>
             </View>
             {resolvedGoalProgressMetaLabel ? (
@@ -18763,7 +18928,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
                 ]}
                 numberOfLines={2}
                 adjustsFontSizeToFit
-                minimumFontScale={0.78}
+                minimumFontScale={0.86}
                 maxFontSizeMultiplier={1}
               >
                 {resolvedGoalProgressMetaLabel}
@@ -19817,6 +19982,10 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
                             styles.dailyRewardCalendarSuperLabel,
                             { color: isActive ? dailyRewardActiveAccent : dailyRewardModalPalette.text },
                           ]}
+                          numberOfLines={2}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.86}
+                          maxFontSizeMultiplier={1}
                         >
                           {t("dailyRewardSuperLabel")}
                         </Text>
@@ -23834,7 +24003,9 @@ const HelpGuideVisual = React.memo(function HelpGuideVisual({ labels = [], color
               styles.helpGuideVisualChipText,
               { color: index === 0 ? accent : muted },
             ]}
-            numberOfLines={1}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.76}
           >
             {label}
           </Text>
@@ -24156,6 +24327,7 @@ const HelpGuideModal = React.memo(function HelpGuideModal({
 });
 
 const MENU_TOP_CONTENT_OFFSET = 24;
+const ANDROID_STATUS_GLASS_FADE_HEIGHT = 44;
 const MAIN_SCREEN_CONTENT_BOTTOM_PADDING = 160;
 
 function TycoonAutosaveModal({
@@ -25880,6 +26052,10 @@ const FeedScreen = React.memo(
     () => formatCurrency(convertToCurrency(displaySavedUSD || 0, currency), currency),
     [currency, displaySavedUSD]
   );
+  const formatHeroLocalAmount = useCallback(
+    (valueUSD = 0) => formatCurrency(convertToCurrency(valueUSD || 0, currency), currency),
+    [currency]
+  );
   const heroGoalSavedLabel = useMemo(
     () => formatCurrency(convertToCurrency(heroGoalSavedUSD || 0, currency), currency),
     [heroGoalSavedUSD, currency]
@@ -25962,11 +26138,7 @@ const FeedScreen = React.memo(
         const timestampLabel = formatLatestSavingTimestamp(entryTimestamp, language);
         const isSpend = entry.kind === "spend";
         const amountUSD = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
-        const amountLocal = formatCurrency(
-          convertToCurrency(amountUSD, currency),
-          currency,
-          { precisionOverride: getCurrencyPrecision(currency) }
-        );
+        const amountLocal = formatHeroLocalAmount(amountUSD);
         const prefix = isSpend ? "- " : "";
         return {
           id: entry.id,
@@ -25977,7 +26149,7 @@ const FeedScreen = React.memo(
           timestamp: entryTimestamp,
         };
       }),
-    [currency, heroRecentActivity, language, resolveTemplateTitle, t]
+    [formatHeroLocalAmount, heroRecentActivity, language, resolveTemplateTitle, t]
   );
   const heroSavingsTrendWeek = useMemo(
     () =>
@@ -35771,8 +35943,11 @@ const FRIDGE_HANDLE_HINT = {
   es: "Toca la manija",
   fr: "Touche la poignée",
   de: "Tippe auf den Griff",
+  pt: "Toca na pega",
+  it: "Tocca la maniglia",
   ar: "اضغط على المقبض",
   zh: "轻点把手",
+  ko: "손잡이를 탭하세요",
 };
 const FRIDGE_DOOR_COUNTER_LABELS = {
   ru: { items: "Хотелок", overdue: "Просрочено", total: "Сумма" },
@@ -35780,8 +35955,11 @@ const FRIDGE_DOOR_COUNTER_LABELS = {
   es: { items: "Tentaciones", overdue: "Atrasadas", total: "Total" },
   fr: { items: "Tentations", overdue: "Échéances", total: "Total" },
   de: { items: "Versuchungen", overdue: "Überfällig", total: "Gesamt" },
+  pt: { items: "Tentações", overdue: "Atrasadas", total: "Total" },
+  it: { items: "Tentazioni", overdue: "Scadute", total: "Totale" },
   ar: { items: "الإغراءات", overdue: "متأخر", total: "الإجمالي" },
   zh: { items: "诱惑", overdue: "逾期", total: "总计" },
+  ko: { items: "유혹", overdue: "기한 초과", total: "합계" },
 };
 const FRIDGE_INTRO_COPY = {
   ru: {
@@ -35839,6 +36017,28 @@ const FRIDGE_INTRO_COPY = {
     ],
     cta: "Verstanden",
   },
+  pt: {
+    title: "Porque o Frigorífico ajuda",
+    subtitle:
+      "Ele tira a compra por impulso da zona do “agora” para decidires mais tarde com a cabeça fria.",
+    howTitle: "Como funciona",
+    steps: [
+      "Envia uma tentação para o Frigorífico durante o período escolhido.",
+      "Quando o temporizador terminar, decide gastar, poupar ou prolongar a pausa.",
+    ],
+    cta: "Entendi",
+  },
+  it: {
+    title: "Perché il Frigo aiuta",
+    subtitle:
+      "Sposta gli acquisti d'impulso fuori dal “subito”, così puoi decidere più tardi con più lucidità.",
+    howTitle: "Come funziona",
+    steps: [
+      "Manda una tentazione nel Frigo per il periodo scelto.",
+      "Quando il timer finisce, decidi se spendere, risparmiare o prolungare la pausa.",
+    ],
+    cta: "Capito",
+  },
   ar: {
     title: "لماذا يفيدك الثلاجة",
     subtitle:
@@ -35860,6 +36060,17 @@ const FRIDGE_INTRO_COPY = {
       "计时结束后再决定：花掉、拒绝，或继续延长。",
     ],
     cta: "明白了",
+  },
+  ko: {
+    title: "냉장고가 도움이 되는 이유",
+    subtitle:
+      "충동구매를 ‘지금 당장’ 영역 밖으로 옮겨 나중에 더 차분하게 결정할 수 있게 합니다.",
+    howTitle: "작동 원리",
+    steps: [
+      "선택한 보류 기간 동안 유혹을 냉장고로 보냅니다.",
+      "타이머가 끝나면 지출, 저축 또는 보류 연장을 결정하세요.",
+    ],
+    cta: "알았어요",
   },
 };
 const FRIDGE_EXTEND_MODAL_COPY = {
@@ -36058,6 +36269,62 @@ const FIRST_VISIT_SCREEN_INTRO_COPY = {
       cta: "Verstanden",
     },
   },
+  pt: {
+    cart: {
+      badge: "Progresso",
+      emoji: "📈",
+      title: "Porque o Progresso ajuda",
+      subtitle:
+        "Mostra como as compras por impulso evitadas fazem avançar objetivos, orçamento e hábitos.",
+      howTitle: "Como funciona",
+      steps: [
+        "Acompanha objetivos, dinheiro poupado, dias livres e desafios num só lugar.",
+        "Abre insights e blocos de orçamento para ver que hábitos mais afetam o teu dinheiro.",
+      ],
+      cta: "Entendi",
+    },
+    purchases: {
+      badge: "Orçamento",
+      emoji: "💼",
+      title: "Porque o Orçamento ajuda",
+      subtitle:
+        "Transforma poupanças registadas em transferências reais para poupança ou pagamento de dívida.",
+      howTitle: "Como funciona",
+      steps: [
+        "Adiciona rendimento ou dinheiro disponível e depois aloca a poupança registada.",
+        "Anexa uma foto da transferência para confirmar que o dinheiro poupado chegou ao objetivo.",
+      ],
+      cta: "Entendi",
+    },
+  },
+  it: {
+    cart: {
+      badge: "Progressi",
+      emoji: "📈",
+      title: "Perché i Progressi aiutano",
+      subtitle:
+        "Mostra come gli acquisti d'impulso evitati fanno avanzare obiettivi, budget e abitudini.",
+      howTitle: "Come funziona",
+      steps: [
+        "Tieni obiettivi, denaro risparmiato, giorni liberi e sfide in un solo posto.",
+        "Apri insight e blocchi budget per vedere quali abitudini incidono di più sul denaro.",
+      ],
+      cta: "Capito",
+    },
+    purchases: {
+      badge: "Bilancio",
+      emoji: "💼",
+      title: "Perché il Bilancio aiuta",
+      subtitle:
+        "Trasforma i risparmi registrati in trasferimenti reali verso risparmi o rimborso del debito.",
+      howTitle: "Come funziona",
+      steps: [
+        "Aggiungi entrate o denaro disponibile, poi assegna i risparmi registrati.",
+        "Allega una foto del trasferimento per vedere che il denaro risparmiato sia arrivato all'obiettivo.",
+      ],
+      cta: "Capito",
+    },
+  },
   ar: {
     cart: {
       badge: "التقدم",
@@ -36112,6 +36379,34 @@ const FIRST_VISIT_SCREEN_INTRO_COPY = {
         "附上转账照片，确认省下的钱真的到达目标。",
       ],
       cta: "明白了",
+    },
+  },
+  ko: {
+    cart: {
+      badge: "진행",
+      emoji: "📈",
+      title: "진행이 도움이 되는 이유",
+      subtitle:
+        "참아낸 충동구매가 목표, 예산, 습관을 어떻게 앞으로 움직이는지 보여줍니다.",
+      howTitle: "작동 원리",
+      steps: [
+        "목표, 절약한 금액, 무지출일, 챌린지를 한곳에서 확인하세요.",
+        "인사이트와 예산 블록을 열어 어떤 습관이 돈에 가장 큰 영향을 주는지 보세요.",
+      ],
+      cta: "알았어요",
+    },
+    purchases: {
+      badge: "예산",
+      emoji: "💼",
+      title: "예산이 도움이 되는 이유",
+      subtitle:
+        "기록한 절약을 실제 저축 이체나 부채 상환으로 연결합니다.",
+      howTitle: "작동 원리",
+      steps: [
+        "소득이나 사용 가능한 돈을 추가한 뒤 기록한 절약액을 배분하세요.",
+        "이체 사진을 첨부해 절약한 돈이 실제로 목표에 도착했는지 확인하세요.",
+      ],
+      cta: "알았어요",
     },
   },
 };
@@ -37725,7 +38020,7 @@ const PendingScreen = React.memo(function PendingScreen({
                     🧊
                   </Animated.Text>
                   <Text style={[styles.fridgeIntroBadgeText, { color: fridgeIntroBadgeTextColor }]}>
-                    Fridge
+                    {t("pendingTitle")}
                   </Text>
                 </View>
                 <Text style={[styles.fridgeIntroTitle, { color: colors.text }]}>
@@ -40388,9 +40683,9 @@ const BudgetScreen = React.memo(function BudgetScreen({
     transferDraft.type,
     transferDraft.verifyingProof,
   ]);
-  const openDebtSettings = useCallback(() => {
-    setDebtDraft({
-      visible: true,
+  const createDebtSettingsDraft = useCallback(
+    (visible = false) => ({
+      visible,
       amount: initialDebtUSD > 0 ? formatNumberInputValue(convertToCurrency(initialDebtUSD, currency)) : "",
       apr:
         normalizedLedger.debt.aprPercent > 0
@@ -40400,14 +40695,21 @@ const BudgetScreen = React.memo(function BudgetScreen({
         normalizedLedger.debt.minMonthlyPaymentUSD > 0
           ? formatNumberInputValue(convertToCurrency(normalizedLedger.debt.minMonthlyPaymentUSD, currency))
           : "",
-    });
-  }, [
-    currency,
-    initialDebtUSD,
-    normalizedLedger.debt.aprPercent,
-    normalizedLedger.debt.minMonthlyPaymentUSD,
-  ]);
+    }),
+    [
+      currency,
+      initialDebtUSD,
+      normalizedLedger.debt.aprPercent,
+      normalizedLedger.debt.minMonthlyPaymentUSD,
+    ]
+  );
+  const openDebtSettings = useCallback(() => {
+    setDebtDraft(createDebtSettingsDraft(true));
+  }, [createDebtSettingsDraft]);
   const closeDebtSettings = useCallback(() => {
+    setDebtDraft(createDebtSettingsDraft(false));
+  }, [createDebtSettingsDraft]);
+  const hideDebtSettingsAfterSave = useCallback(() => {
     setDebtDraft((prev) => ({ ...prev, visible: false }));
   }, []);
   const submitDebtSettings = useCallback(() => {
@@ -40424,8 +40726,16 @@ const BudgetScreen = React.memo(function BudgetScreen({
         ? convertFromCurrency(minPaymentLocal, currency || DEFAULT_PROFILE.currency)
         : 0;
     onDebtSettingsSave?.({ initialDebtUSD: amountUSD, aprPercent, minMonthlyPaymentUSD });
-    closeDebtSettings();
-  }, [closeDebtSettings, copy, currency, debtDraft.amount, debtDraft.apr, debtDraft.minPayment, onDebtSettingsSave]);
+    hideDebtSettingsAfterSave();
+  }, [
+    copy,
+    currency,
+    debtDraft.amount,
+    debtDraft.apr,
+    debtDraft.minPayment,
+    hideDebtSettingsAfterSave,
+    onDebtSettingsSave,
+  ]);
   const paneItems = [
     { id: "savings", label: copy("budgetSavingsTab", "Savings") },
     { id: "debt", label: copy("budgetDebtTab", "Debt") },
@@ -40920,7 +41230,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
   }, [colors.card, isDarkTheme, reportsPremiumAccent]);
   const historyEntries = Array.isArray(history) ? history : [];
   const [historyVisibleWindowMs, setHistoryVisibleWindowMs] = useState(PROFILE_HISTORY_PAGE_WINDOW_MS);
-  const visibleHistoryEntries = useMemo(
+  const profileHistoryWindowEntries = useMemo(
     () => {
       const cutoffTimestamp = Date.now() - historyVisibleWindowMs;
       return historyEntries.filter((entry) => {
@@ -40931,15 +41241,20 @@ const ProfileScreen = React.memo(function ProfileScreen({
     },
     [historyEntries, historyVisibleWindowMs]
   );
+  const visibleHistoryEntries = useMemo(
+    () => profileHistoryWindowEntries.slice(0, PROFILE_HISTORY_RENDER_LIMIT),
+    [profileHistoryWindowEntries]
+  );
   const hasMoreHistoryEntries = useMemo(
     () => {
+      if (profileHistoryWindowEntries.length > visibleHistoryEntries.length) return true;
       const cutoffTimestamp = Date.now() - historyVisibleWindowMs;
       return historyEntries.some((entry) => {
         const timestamp = Number(entry?.timestamp) || 0;
         return timestamp > 0 && timestamp < cutoffTimestamp;
       });
     },
-    [historyEntries, historyVisibleWindowMs]
+    [historyEntries, historyVisibleWindowMs, profileHistoryWindowEntries.length, visibleHistoryEntries.length]
   );
   const historyLastIndex = visibleHistoryEntries.length - 1;
   const locale = getFormatLocale(language);
@@ -41503,6 +41818,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
           },
         ]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        removeClippedSubviews={Platform.OS === "android"}
+        scrollEventThrottle={32}
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.profileCard, { backgroundColor: colors.card }] }>
@@ -41554,30 +41872,37 @@ const ProfileScreen = React.memo(function ProfileScreen({
           </View>
           {isEditingIdentity ? (
             <>
-              <View style={styles.inputRow}>
-                <TextInput
-                  style={[
-                    styles.profileInput,
-                    styles.profileInputHalf,
-                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                  ]}
-                  value={profile.firstName || ""}
-                  onChangeText={(text) => onFieldChange("firstName", text)}
-                  placeholder={t("inputFirstName")}
-                  placeholderTextColor={colors.muted}
-                />
-                <TextInput
-                  style={[
-                    styles.profileInput,
-                    styles.profileInputHalf,
-                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                  ]}
-                  value={profile.lastName || ""}
-                  onChangeText={(text) => onFieldChange("lastName", text)}
-                  placeholder={t("inputLastName")}
-                  placeholderTextColor={colors.muted}
-                />
+              <View style={[styles.inputRow, IS_COMPACT_DEVICE && styles.inputRowStacked]}>
+                <View style={styles.profileInputField}>
+                  <Text style={[styles.profileInputLabel, { color: colors.muted }]}>{t("inputFirstName")}</Text>
+                  <TextInput
+                    style={[
+                      styles.profileInput,
+                      styles.profileInputHalf,
+                      { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                    ]}
+                    value={profile.firstName || ""}
+                    onChangeText={(text) => onFieldChange("firstName", text)}
+                    placeholder={t("inputFirstName")}
+                    placeholderTextColor={colors.muted}
+                  />
+                </View>
+                <View style={styles.profileInputField}>
+                  <Text style={[styles.profileInputLabel, { color: colors.muted }]}>{t("inputLastName")}</Text>
+                  <TextInput
+                    style={[
+                      styles.profileInput,
+                      styles.profileInputHalf,
+                      { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                    ]}
+                    value={profile.lastName || ""}
+                    onChangeText={(text) => onFieldChange("lastName", text)}
+                    placeholder={t("inputLastName")}
+                    placeholderTextColor={colors.muted}
+                  />
+                </View>
               </View>
+              <Text style={[styles.profileInputLabel, { color: colors.muted }]}>{t("inputMotto")}</Text>
               <TextInput
                 style={[
                   styles.profileInput,
@@ -42451,6 +42776,11 @@ function AppContent() {
   const [premiumSoftPaywallHydrated, setPremiumSoftPaywallHydrated] = useState(false);
   const [premiumHardPaywallShown, setPremiumHardPaywallShown] = useState(false);
   const [premiumHardPaywallHydrated, setPremiumHardPaywallHydrated] = useState(false);
+  const premiumSoftPaywallCheckTimerRef = useRef(null);
+  const premiumSoftPaywallTriggerRef = useRef("first_action_after_onboarding");
+  const pendingOnboardingSoftPaywallRef = useRef(false);
+  const onboardingSoftPaywallSaveBaselineRef = useRef(0);
+  const premiumPaywallShownThisSessionRef = useRef(false);
   const [
     premiumTransactionAbandonedOfferLastShownAt,
     setPremiumTransactionAbandonedOfferLastShownAt,
@@ -42479,13 +42809,6 @@ function AppContent() {
     customerInfo: null,
   });
   const premiumPaywallTimerRef = useRef(null);
-  const premiumSoftPaywallCheckTimerRef = useRef(null);
-  const premiumSoftPaywallTriggerRef = useRef("first_action_after_onboarding");
-  const pendingOnboardingSoftPaywallRef = useRef(false);
-  const onboardingSoftPaywallSaveBaselineRef = useRef(0);
-  const premiumPaywallShownThisSessionRef = useRef(false);
-  const premiumSoftPaywallSessionActionBaselineRef = useRef(0);
-  const premiumSoftPaywallSessionActionBaselineReadyRef = useRef(false);
   const [premiumPaywallState, setPremiumPaywallState] = useState({
     visible: false,
     kind: "soft",
@@ -43147,7 +43470,6 @@ function AppContent() {
   const [incomeEntryInput, setIncomeEntryInput] = useState(() =>
     createIncomeEntryInputState(DEFAULT_INCOME_PAYDAY)
   );
-  const incomeEntryDayOptions = useMemo(() => Array.from({ length: 31 }, (_, index) => index + 1), []);
   const incomeEntrySourceRef = useRef("manual");
   const incomeEntryModeRef = useRef(INCOME_ENTRY_TYPES.MONTHLY);
   const resolvedHistoryEvents = Array.isArray(historyEvents) ? historyEvents : [];
@@ -44917,6 +45239,7 @@ function AppContent() {
 
   const overlayQueueRef = useRef([]);
   const overlayActiveRef = useRef(false);
+  const dismissOverlayRef = useRef(null);
   const processOverlayQueueRef = useRef(() => {});
   const lastOverlayDismissedAtRef = useRef(0);
   const lastSaveOverlayDismissedAtRef = useRef(0);
@@ -47995,12 +48318,6 @@ function AppContent() {
       return sessionCount >= FAB_TUTORIAL_MIN_SESSIONS;
     });
     homeSessionRef.current.pendingIndex = homeSessionRef.current.sessionCount;
-    premiumPaywallShownThisSessionRef.current = !!premiumPaywallVisibilityRef.current;
-    premiumSoftPaywallSessionActionBaselineRef.current = Math.max(
-      0,
-      Number(temptationActionCountRef.current) || 0
-    );
-    premiumSoftPaywallSessionActionBaselineReadyRef.current = historyHydratedRef.current;
   }, []);
   useEffect(() => {
     if (!historyHydrated) return;
@@ -48017,15 +48334,6 @@ function AppContent() {
     logEvent("home_opened", { session_index: pendingIndex });
     homeSessionRef.current.pendingIndex = null;
   }, [activeTab, logEvent]);
-  useEffect(() => {
-    if (!historyHydrated) return;
-    if (premiumSoftPaywallSessionActionBaselineReadyRef.current) return;
-    premiumSoftPaywallSessionActionBaselineRef.current = Math.max(
-      0,
-      Number(temptationActionCount) || 0
-    );
-    premiumSoftPaywallSessionActionBaselineReadyRef.current = true;
-  }, [historyHydrated, temptationActionCount]);
   const isFabTutorialEnvironmentReady = useMemo(
     () =>
       onboardingStep === "done" &&
@@ -49255,7 +49563,11 @@ function AppContent() {
   }, [tabBarBottomInset]);
   const shouldRenderStatusGlass = topSafeInset > 0;
   const shouldRenderMainStatusGlass = shouldRenderStatusGlass;
-  const statusGlassFadeHeight = shouldRenderStatusGlass ? MENU_TOP_CONTENT_OFFSET : 0;
+  const statusGlassFadeHeight = shouldRenderStatusGlass
+    ? Platform.OS === "android"
+      ? ANDROID_STATUS_GLASS_FADE_HEIGHT
+      : MENU_TOP_CONTENT_OFFSET
+    : 0;
   const statusGlassHeight = topSafeInset + statusGlassFadeHeight;
   const statusBlurAvailable = useMemo(() => isBlurViewAvailable(), []);
   const screenKeyboardAdjustmentStyle = useMemo(() => {
@@ -52181,6 +52493,7 @@ function AppContent() {
         productIdentifier,
         rawPriceLocal: Number.isFinite(parsedPriceLocal) ? Math.max(0, parsedPriceLocal) : null,
         chargePriceLabel,
+        trialEligibleForProduct,
         freeTrialDays,
       };
     });
@@ -52321,7 +52634,13 @@ function AppContent() {
           ? Math.max(1, Math.round(card.freeTrialDays))
           : null;
       const fallbackTrialDays =
-        card.id === premiumTrialPlanId && isYearly ? PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS : null;
+        card.id === premiumTrialPlanId && card.trialEligibleForProduct !== false
+          ? isMonthly
+            ? PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS
+            : isYearly
+            ? PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS
+            : null
+          : null;
       const resolvedTrialDays = freeTrialDays || fallbackTrialDays;
       const hasFreeTrial = !!resolvedTrialDays && card.id === premiumTrialPlanId;
       const recurringChargePriceLabel =
@@ -52515,7 +52834,6 @@ function AppContent() {
       }
       const trialLabel = hasFreeTrial
         ? buildPaywallTrialLabel({
-            days: resolvedTrialDays,
             language: monetizationLanguage,
           })
         : "";
@@ -52600,7 +52918,6 @@ function AppContent() {
         displayAsEquivalent,
         trialNoticeLabel: hasTrial
           ? buildPaywallTrialNotice({
-              days: resolvedTrialDays,
               postTrialPriceLabel: postTrialPriceLabel || "",
               language: monetizationLanguage,
               platform: Platform.OS,
@@ -52911,14 +53228,6 @@ function AppContent() {
         premiumPaywallState.trigger || "manual",
         "manual"
       );
-      const paywallCopyTrigger =
-        isMonetizationExperimentGroupC &&
-        premiumPaywallState.kind === "soft" &&
-        (normalizedPaywallTrigger === "first_action_after_onboarding" ||
-          normalizedPaywallTrigger === "first_save_after_onboarding" ||
-          normalizedPaywallTrigger === MONETIZATION_DAILY_SOFT_PAYWALL_TRIGGER)
-          ? MONETIZATION_GROUP_C_DAILY_SOFT_PAYWALL_TRIGGER
-          : normalizedPaywallTrigger;
       const isGroupBTrialHardPaywall =
         normalizeMonetizationExperimentGroup(monetizationExperimentGroup) ===
           MONETIZATION_EXPERIMENT_GROUPS.B &&
@@ -52938,12 +53247,11 @@ function AppContent() {
         lossWindowDays: premiumLossPersonalization.lossWindowDays,
         freshStartGainPercent: premiumFreshStartGainPercent,
         featureKey: premiumPaywallState.featureKey,
-        trigger: paywallCopyTrigger,
+        trigger: normalizedPaywallTrigger,
         platform: Platform.OS,
       });
     },
     [
-      isMonetizationExperimentGroupC,
       language,
       monetizationExperimentGroup,
       premiumFreshStartGainPercent,
@@ -53016,14 +53324,19 @@ function AppContent() {
     return nextTotal;
   }, []);
   const enforceMonetizationTrialActionLimit = useCallback(
-    ({ savedAmountUSD = 0, actionCountOverride = null } = {}) => {
+    ({ savedAmountUSD = 0, actionCountIncrement = 1, actionCountOverride = null } = {}) => {
       if (!isMonetizationExperimentGroupB || premiumState.isPremium) return false;
       if (!monetizationFirstSessionActionBaselineHydrated) return false;
       if (!monetizationFirstSessionCompletedRef.current) return false;
       const parsedActionCountOverride = Number(actionCountOverride);
+      const parsedActionCountIncrement = Number(actionCountIncrement);
+      const normalizedActionCountIncrement = Number.isFinite(parsedActionCountIncrement)
+        ? Math.max(0, Math.floor(parsedActionCountIncrement))
+        : 1;
       const actionCountTotal = Number.isFinite(parsedActionCountOverride)
         ? Math.max(0, Math.floor(parsedActionCountOverride))
-        : Math.max(0, Number(monetizationTrialLimitedActionCountRef.current) || 0);
+        : Math.max(0, Number(monetizationTrialLimitedActionCountRef.current) || 0) +
+          normalizedActionCountIncrement;
       const shouldActivateTrialLockNow =
         !monetizationTrialLocked && actionCountTotal >= monetizationTrialSaveLimit;
       if (!shouldActivateTrialLockNow && !monetizationTrialLocked) return false;
@@ -53090,7 +53403,10 @@ function AppContent() {
   );
   const resolveGroupCSoftPaywallTrigger = useCallback(
     (trigger = "first_action_after_onboarding") => {
-      const normalized = normalizeMonetizationToken(trigger || "first_action_after_onboarding", "first_action_after_onboarding");
+      const normalized = normalizeMonetizationToken(
+        trigger || "first_action_after_onboarding",
+        "first_action_after_onboarding"
+      );
       if (!isMonetizationExperimentGroupC) return normalized;
       if (
         normalized === "first_action_after_onboarding" ||
@@ -54274,9 +54590,6 @@ function AppContent() {
         ? "hard"
         : "soft";
       const effectiveTrigger = forceSoftFeaturePaywallOnAndroid ? "feature_gate" : normalizedTrigger;
-      const isSaveLimitPaywallTrigger =
-        effectiveTrigger === "save_daily_limit_reached" ||
-        effectiveTrigger === "save_daily_limit_blocked";
       if (normalizedKind === "hard" && effectiveTrigger === "trial_10_saves_reached") {
         setStartupHardPaywallDismissed(false);
       }
@@ -54294,7 +54607,7 @@ function AppContent() {
         return true;
       }
       const bypassReopenGuard =
-        forceSoftFeaturePaywallOnAndroid || requestedKind === "hard" || isSaveLimitPaywallTrigger;
+        forceSoftFeaturePaywallOnAndroid || requestedKind === "hard";
       const now = Date.now();
       if (
         !bypassReopenGuard &&
@@ -55926,16 +56239,6 @@ function AppContent() {
     normalizedMonetizationFirstSessionActionBaseline,
     onboardingStep,
     premiumState.isPremium,
-  ]);
-  useEffect(() => {
-    if (!isMonetizationExperimentGroupC) return;
-    if (!monetizationOnboardingLockedHydrated) return;
-    if (!monetizationOnboardingLocked) return;
-    setMonetizationOnboardingLocked(false);
-  }, [
-    isMonetizationExperimentGroupC,
-    monetizationOnboardingLocked,
-    monetizationOnboardingLockedHydrated,
   ]);
   const monetizationStartupLockReason = useMemo(() => {
     if (premiumState.isPremium) return "";
@@ -63519,24 +63822,7 @@ function AppContent() {
       return;
     }
     if (feedFirstTutorialNeedSoftPaywall) {
-      if (!isMonetizationExperimentControlGroup) {
-        setFeedFirstTutorialNeedSoftPaywall(false);
-      } else if (premiumState.isPremium || premiumSoftPaywallShown) {
-        setFeedFirstTutorialNeedSoftPaywall(false);
-      } else {
-        if (premiumPaywallState.visible) {
-          feedFirstTutorialAddScrolledRef.current = false;
-          return;
-        }
-        if (!premiumSoftPaywallPending) {
-          premiumSoftPaywallTriggerRef.current = "first_save_after_onboarding";
-          setPremiumSoftPaywallPending(true);
-        }
-        feedFirstTutorialAddScrolledRef.current = false;
-        return;
-      }
-      feedFirstTutorialAddScrolledRef.current = false;
-      return;
+      setFeedFirstTutorialNeedSoftPaywall(false);
     }
     if (premiumPaywallState.visible) {
       feedFirstTutorialAddScrolledRef.current = false;
@@ -63585,10 +63871,6 @@ function AppContent() {
     pendingFrequencyReminderPrompt,
     pendingGoalCelebration,
     premiumPaywallState.visible,
-    premiumSoftPaywallPending,
-    premiumSoftPaywallShown,
-    premiumState.isPremium,
-    isMonetizationExperimentControlGroup,
     queueUsageStreakOverlay,
     queuedModalType,
     startupHardLockPendingBeforePaywall,
@@ -65795,10 +66077,46 @@ useEffect(() => {
       }
       return false;
     }
+    if (overlay) {
+      if (typeof dismissOverlayRef.current === "function") {
+        dismissOverlayRef.current({ analyticsSource: "back_gesture" });
+      } else {
+        setOverlay(null);
+        overlayActiveRef.current = false;
+      }
+      return true;
+    }
+    if (goalEditorPrompt.visible) {
+      setGoalEditorPrompt({
+        visible: false,
+        wish: null,
+        name: "",
+        target: "",
+        emoji: DEFAULT_GOAL_EMOJI,
+      });
+      return true;
+    }
+    if (activeTab === "cart" && progressHubPane === "rewards") {
+      setProgressHubPane("progress");
+      return true;
+    }
     return handleTabHistoryBack();
-  }, [canGoBackOnboarding, handleOnboardingBack, handleTabHistoryBack, onboardingStep]);
+  }, [
+    activeTab,
+    canGoBackOnboarding,
+    goalEditorPrompt.visible,
+    handleOnboardingBack,
+    handleTabHistoryBack,
+    onboardingStep,
+    overlay,
+    progressHubPane,
+  ]);
 
-  const canUseBackGesture = onboardingStep !== "done" ? canGoBackOnboarding : tabHistory.length > 0;
+  const hasInternalBackTarget =
+    onboardingStep === "done" &&
+    (!!overlay || goalEditorPrompt.visible || (activeTab === "cart" && progressHubPane === "rewards"));
+  const canUseBackGesture =
+    onboardingStep !== "done" ? canGoBackOnboarding : hasInternalBackTarget || tabHistory.length > 0;
 
   const backGestureResponder = useMemo(() => {
     if (!canUseBackGesture) return null;
@@ -66634,7 +66952,7 @@ useEffect(() => {
     }
     if (!ensureTemptationCapacity({ showSoft: false })) return;
     const currencyCode = widgetCurrencyCode;
-    if (!customData.title?.trim()) {
+    if (!hasMeaningfulTemptationName(customData.title)) {
       Alert.alert("Almost", t("quickCustomErrorName"));
       return;
     }
@@ -67986,16 +68304,7 @@ useEffect(() => {
         onboarding_length_exp_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
         onboarding_length_variant: onboardingLengthVariantNormalized,
       });
-      if (isMonetizationExperimentControlGroup) {
-        onboardingSoftPaywallSaveBaselineRef.current = Math.max(
-          0,
-          Number(temptationSaveActionCountRef.current) || 0
-        );
-        pendingOnboardingSoftPaywallRef.current = true;
-      } else {
-        pendingOnboardingSoftPaywallRef.current = false;
-        setPremiumSoftPaywallPending(false);
-      }
+      setPremiumSoftPaywallPending(false);
       setRegistrationData(INITIAL_REGISTRATION);
       goalSelectionTouchedRef.current = false;
       InteractionManager.runAfterInteractions(() => {
@@ -68057,16 +68366,7 @@ useEffect(() => {
       onboarding_length_variant: onboardingLengthVariantNormalized,
     });
     await ensureNotificationPermission({ request: true });
-    if (isMonetizationExperimentControlGroup) {
-      onboardingSoftPaywallSaveBaselineRef.current = Math.max(
-        0,
-        Number(temptationSaveActionCountRef.current) || 0
-      );
-      pendingOnboardingSoftPaywallRef.current = true;
-    } else {
-      pendingOnboardingSoftPaywallRef.current = false;
-      setPremiumSoftPaywallPending(false);
-    }
+    setPremiumSoftPaywallPending(false);
     goToOnboardingStep("done", { recordHistory: false, resetHistory: true });
     setRegistrationData(INITIAL_REGISTRATION);
     goalSelectionTouchedRef.current = false;
@@ -68788,10 +69088,10 @@ useEffect(() => {
     [formatLocalIncomeAmount, logEvent, logHistoryEvent, savedTotalUSD, setSavedTotalUSD, t]
   );
 
-  const handleIncomeEntrySubmit = useCallback(() => {
+  const handleIncomeEntrySubmit = useCallback((draftInput = incomeEntryInput) => {
     const entryType = incomeEntryModeRef.current || INCOME_ENTRY_TYPES.MONTHLY;
     const selectedPayday = normalizeIncomePayday(
-      incomeEntryInput.payday,
+      draftInput?.payday,
       profile?.incomePayday
     );
     const receivedAt =
@@ -68799,7 +69099,7 @@ useEffect(() => {
         ? resolveIncomeEntryReceivedAt(selectedPayday, Date.now())
         : Date.now();
     const amountUSD = addIncomeEntry({
-      amountText: incomeEntryInput.amount,
+      amountText: draftInput?.amount,
       receivedAt,
       entryType,
       payday: selectedPayday,
@@ -68825,8 +69125,7 @@ useEffect(() => {
     promptIncomeSavingsTransfer(amountUSD);
   }, [
     addIncomeEntry,
-    incomeEntryInput.amount,
-    incomeEntryInput.payday,
+    incomeEntryInput,
     clearQueuedModal,
     logEvent,
     profile.currency,
@@ -72381,7 +72680,6 @@ useEffect(() => {
         freezeDurationMs: overrideFreezeDurationMs = null,
         freezeOptionId: overrideFreezeOptionId = null,
         skipSaveSpamCheck = false,
-        skipDailySaveLimit = false,
         skipMonetizationTrialLimit = false,
         skipFrequencyReminderPrompt = false,
         preserveFrequencyTimer = false,
@@ -72569,31 +72867,6 @@ useEffect(() => {
         );
         const currentDaySaveCount =
           normalizedDailySaveLimit.dayKey === todaySaveDayKey ? normalizedDailySaveLimit.count : 0;
-        if (
-          !skipDailySaveLimit &&
-          (isMonetizationExperimentControlGroup || isMonetizationExperimentGroupC) &&
-          !premiumState.isPremium &&
-          currentDaySaveCount >= DAILY_SAVE_HARD_LIMIT
-        ) {
-          const saveLimitPaywallKind = isMonetizationExperimentGroupC ? "soft" : "hard";
-          const opened = showPremiumPaywallRef.current({
-            kind: saveLimitPaywallKind,
-            savedAmountUSD: safeSavedTotalUSD,
-            trigger: "save_daily_limit_reached",
-            dismissible: true,
-          });
-          logEvent("save_daily_limit_blocked", {
-            temptation_id: templateId || item?.id || null,
-            day_key: todaySaveDayKey,
-            save_count_day: currentDaySaveCount,
-            save_limit_day: DAILY_SAVE_HARD_LIMIT,
-            paywall_kind: saveLimitPaywallKind,
-            paywall_opened: opened ? 1 : 0,
-          });
-          triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-          playSound("tap", { skipCooldown: true });
-          return;
-        }
         const recentSaves = (Array.isArray(saveActionLogRef.current) ? saveActionLogRef.current : []).filter(
           (entry) => saveTimestamp - (Number(entry?.timestamp) || 0) <= SAVE_SPAM_WINDOW_MS
         );
@@ -73362,8 +73635,6 @@ useEffect(() => {
       dailySaveLimitState,
       enforceMonetizationTrialActionLimit,
       incrementMonetizationTrialActionCountRef,
-      isMonetizationExperimentControlGroup,
-      isMonetizationExperimentGroupC,
       canPersistTemptationGoalAssignments,
       resolveTemptationGoalId,
       assignableGoals.length,
@@ -73677,6 +73948,14 @@ useEffect(() => {
       (entry) => entry?.id
     );
     if (!pending.length) return;
+    if (
+      enforceMonetizationTrialActionLimit({
+        savedAmountUSD: savedTotalUSD,
+        actionCountIncrement: pending.length,
+      })
+    ) {
+      return;
+    }
     const spentIds = tycoonSpentSelection || {};
     const spentCount = pending.reduce((count, entry) => count + (spentIds[entry.id] ? 1 : 0), 0);
     const confirmAllStreak = Math.max(0, Number(tycoonConfirmStats?.confirmAllStreak) || 0);
@@ -73752,7 +74031,6 @@ useEffect(() => {
           skipPrompt: true,
           suppressSaveOverlay: true,
           skipSaveSpamCheck: true,
-          skipDailySaveLimit: true,
           skipMonetizationTrialLimit: true,
           skipCategoryPrompt: true,
           skipFrequencyReminderPrompt: true,
@@ -73872,10 +74150,12 @@ useEffect(() => {
   }, [
     clearQueuedModal,
     enqueueQueuedModal,
+    enforceMonetizationTrialActionLimit,
     handleTemptationAction,
     logEvent,
     profile.currency,
     resolveTemplateCard,
+    savedTotalUSD,
     tycoonAutosaveAmountOverrides,
     tycoonConfirmStats,
     tycoonLedger,
@@ -75665,20 +75945,25 @@ useEffect(() => {
 
   const savePriceEdit = () => {
     if (!priceEditor.item) return;
-    const parsed = parseFloat((priceEditor.value || "").replace(",", "."));
+    const parsed = parseNumberInputValue(priceEditor.value || "");
     if (!Number.isFinite(parsed) || parsed <= 0) {
       Alert.alert("Almost", t("priceEditError"));
       return;
     }
-    const usdValue = clampTransactionAmountUSD(parsed / (CURRENCY_RATES[activeCurrency] || 1));
+    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+    const usdValue = clampTransactionAmountUSD(convertFromCurrency(parsed, currencyCode));
     if (!usdValue) {
       Alert.alert("Almost", t("priceEditError"));
       return;
     }
     const previousPriceUSD = priceEditor.item.priceUSD || priceEditor.item.basePriceUSD || 0;
     const manualPrecision = getManualInputPrecision(priceEditor.value || "");
-    persistPriceOverride(usdValue, manualPrecision);
     const titleValue = (priceEditor.title || "").trim();
+    if (titleValue && !hasMeaningfulTemptationName(titleValue)) {
+      Alert.alert("Almost", t("quickCustomErrorName"));
+      return;
+    }
+    persistPriceOverride(usdValue, manualPrecision);
     persistTitleOverride(titleValue || null);
     const hasCustomEmoji = !!priceEditor.emoji?.trim();
     const resolvedEmoji = hasCustomEmoji
@@ -76669,6 +76954,7 @@ useEffect(() => {
     saveOverlayCounterVisible,
     trackModalAction,
   ]);
+  dismissOverlayRef.current = dismissOverlay;
   useEffect(() => {
     if (activeTab === "feed") return;
     if (overlay?.type && FEED_ONLY_OVERLAY_TYPES.has(overlay.type)) {
@@ -79232,24 +79518,6 @@ useEffect(() => {
   }
 
   const isExtraIncomeEntry = incomeEntryModeRef.current === INCOME_ENTRY_TYPES.EXTRA;
-  const incomeEntrySelectedPayday = normalizeIncomePayday(
-    incomeEntryInput?.payday,
-    profile?.incomePayday
-  );
-  const incomeEntryTitleKey = isExtraIncomeEntry ? "extraIncomeEntryTitle" : "incomeEntryTitle";
-  const incomeEntrySubtitleKey = isExtraIncomeEntry
-    ? "extraIncomeEntrySubtitle"
-    : "incomeEntrySubtitle";
-  const incomeEntryExplanationKey = isExtraIncomeEntry
-    ? "extraIncomeEntryExplanation"
-    : "incomeEntryExplanation";
-  const incomeEntryAmountLabelKey = isExtraIncomeEntry
-    ? "extraIncomeEntryAmountLabel"
-    : "incomeEntryAmountLabel";
-  const incomeEntryConfirmKey = isExtraIncomeEntry
-    ? "extraIncomeEntryConfirm"
-    : "incomeEntryConfirm";
-  const incomeEntrySkipKey = isExtraIncomeEntry ? "extraIncomeEntrySkip" : "incomeEntrySkip";
 
   return (
     <StatusGlassContext.Provider value={statusGlassModalOverlayConfig}>
@@ -80055,13 +80323,15 @@ useEffect(() => {
                         {t("dailyDidYouKnowBadge")}
                       </Text>
                     </View>
-                    <Text style={[styles.quickModalTitle, { color: colors.text }]}>
-                      {t("dailyDidYouKnowTitle")}
-                    </Text>
                     <Text style={[styles.didYouKnowTipTitle, { color: colors.text }]}>
                       {t(didYouKnowActiveTip.titleKey)}
                     </Text>
-                    <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>
+                    <Text
+                      style={[
+                        styles.quickModalSubtitle,
+                        { color: isDarkTheme ? colors.muted : colorWithAlpha(colors.text, 0.78) },
+                      ]}
+                    >
                       {t(didYouKnowActiveTip.bodyKey)}
                     </Text>
                     <View
@@ -80087,12 +80357,18 @@ useEffect(() => {
                     </View>
                     <View style={styles.quickModalActions}>
                       <TouchableOpacity
-                        style={[styles.quickModalSecondary, { borderColor: colors.border }]}
+                        style={[
+                          styles.quickModalSecondary,
+                          {
+                            borderColor: colorWithAlpha(colors.text, isDarkTheme ? 0.38 : 0.24),
+                            backgroundColor: colorWithAlpha(colors.text, isDarkTheme ? 0.1 : 0.06),
+                          },
+                        ]}
                         activeOpacity={0.85}
                         onPress={handleDidYouKnowMute}
                       >
                         <Text
-                          style={[styles.quickModalSecondaryText, { color: colors.muted }]}
+                          style={[styles.quickModalSecondaryText, { color: colors.text }]}
                           numberOfLines={1}
                           adjustsFontSizeToFit
                           minimumFontScale={0.82}
@@ -80803,6 +81079,7 @@ useEffect(() => {
         {barsThemeReady &&
           !startupHardLockPendingBeforePaywall &&
           !premiumPaywallState.visible &&
+          !didYouKnowVisible &&
           activeTab !== "profile" &&
           activeTab !== "purchases" &&
           !(activeTab === "cart" && progressHubPane === "rewards") &&
@@ -81708,7 +81985,7 @@ useEffect(() => {
                                   styles.tamagotchiStickyRewardTitle,
                                   { color: dailyRewardReady ? colors.text : colors.muted },
                                 ]}
-                                numberOfLines={1}
+                                numberOfLines={2}
                                 adjustsFontSizeToFit
                                 minimumFontScale={0.9}
                                 ellipsizeMode="tail"
@@ -81820,6 +82097,9 @@ useEffect(() => {
 	                              { color: tamagotchiActionSpeechVisible && !!tamagotchiActionSpeech ? colors.text : colors.muted },
 	                            ]}
 	                            numberOfLines={2}
+                              adjustsFontSizeToFit
+                              allowAndroidAutoFit
+                              minimumFontScale={0.9}
 	                          >
 	                            {tamagotchiActionSpeechVisible && !!tamagotchiActionSpeech
 	                              ? tamagotchiActionSpeech
@@ -84036,87 +84316,97 @@ useEffect(() => {
           visible={!startupHardLockPendingBeforePaywall && goalEditorPrompt.visible}
           transparent
           animationType="fade"
+          onRequestClose={closeGoalEditorPrompt}
           statusBarTranslucent
         >
           <TouchableWithoutFeedback onPress={() => dismissKeyboardOrRun(closeGoalEditorPrompt)}>
             <View style={[styles.priceModalBackdrop, modalKeyboardPaddingStyle]}>
               <TouchableWithoutFeedback onPress={() => {}}>
                 <View style={[styles.priceModalCard, { backgroundColor: colors.card }] }>
-                  <Text style={[styles.priceModalTitle, { color: colors.text }]}>
-                    {t("goalEditModalTitle")}
-                  </Text>
-                  <Text style={[styles.priceModalLabel, { color: colors.muted, marginTop: 0 }]}>
-                    {t("goalEditNameLabel")}
-                  </Text>
-                  <TextInput
-                    style={[
-                      styles.priceModalInput,
-                      {
-                        borderColor: colors.border,
-                        color: colors.text,
-                        backgroundColor: colors.card,
-                      },
-                    ]}
-                    value={goalEditorPrompt.name}
-                    onChangeText={handleGoalEditorNameChange}
-                    placeholder={t("goalEditNameLabel")}
-                    placeholderTextColor={colors.muted}
-                  />
-                  <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
-                    {t("goalEditTargetLabel")}
-                  </Text>
-                  <TextInput
-                    style={[
-                      styles.priceModalInput,
-                      {
-                        borderColor: colors.border,
-                        color: colors.text,
-                        backgroundColor: colors.card,
-                      },
-                    ]}
-                    value={goalEditorPrompt.target}
-                    onChangeText={handleGoalEditorTargetChange}
-                    placeholder={t("goalEditTargetLabel")}
-                    placeholderTextColor={colors.muted}
-                    keyboardType="numeric"
-                  />
-                  <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
-                    {t("goalEditEmojiLabel")}
-                  </Text>
-                  <TextInput
-                    style={[
-                      styles.priceModalInput,
-                      {
-                        borderColor: colors.border,
-                        color: colors.text,
-                        backgroundColor: colors.card,
-                      },
-                    ]}
-                    value={goalEditorPrompt.emoji}
-                    onChangeText={handleGoalEditorEmojiChange}
-                  placeholder={t("goalEditEmojiLabel")}
-                  placeholderTextColor={colors.muted}
-                  selectTextOnFocus
-                  maxLength={EMOJI_INPUT_MAX_LENGTH}
-                />
-                  <View style={styles.priceModalButtons}>
-                    <TouchableOpacity
-                      style={[styles.priceModalPrimary, { backgroundColor: colors.text }]}
-                      onPress={saveGoalEditorPrompt}
-                    >
-                      <Text style={[styles.priceModalPrimaryText, { color: colors.background }]}>
-                        {t("goalEditSave")}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.priceModalSecondary, { borderColor: colors.border }]}
-                      onPress={closeGoalEditorPrompt}
-                    >
-                      <Text style={[styles.priceModalSecondaryText, { color: colors.muted }]}>
-                        {t("goalEditCancel")}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                  <ScrollView
+                    style={styles.priceModalScroll}
+                    contentContainerStyle={styles.priceModalScrollContent}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+                    showsVerticalScrollIndicator={false}
+                    nestedScrollEnabled
+                  >
+                    <Text style={[styles.priceModalTitle, { color: colors.text }]}>
+                      {t("goalEditModalTitle")}
+                    </Text>
+                    <Text style={[styles.priceModalLabel, { color: colors.muted, marginTop: 0 }]}>
+                      {t("goalEditNameLabel")}
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.priceModalInput,
+                        {
+                          borderColor: colors.border,
+                          color: colors.text,
+                          backgroundColor: colors.card,
+                        },
+                      ]}
+                      value={goalEditorPrompt.name}
+                      onChangeText={handleGoalEditorNameChange}
+                      placeholder={t("goalEditNameLabel")}
+                      placeholderTextColor={colors.muted}
+                    />
+                    <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
+                      {t("goalEditTargetLabel")}
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.priceModalInput,
+                        {
+                          borderColor: colors.border,
+                          color: colors.text,
+                          backgroundColor: colors.card,
+                        },
+                      ]}
+                      value={goalEditorPrompt.target}
+                      onChangeText={handleGoalEditorTargetChange}
+                      placeholder={t("goalEditTargetLabel")}
+                      placeholderTextColor={colors.muted}
+                      keyboardType="numeric"
+                    />
+                    <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
+                      {t("goalEditEmojiLabel")}
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.priceModalInput,
+                        {
+                          borderColor: colors.border,
+                          color: colors.text,
+                          backgroundColor: colors.card,
+                        },
+                      ]}
+                      value={goalEditorPrompt.emoji}
+                      onChangeText={handleGoalEditorEmojiChange}
+                      placeholder={t("goalEditEmojiLabel")}
+                      placeholderTextColor={colors.muted}
+                      selectTextOnFocus
+                      maxLength={EMOJI_INPUT_MAX_LENGTH}
+                    />
+                    <View style={styles.priceModalButtons}>
+                      <TouchableOpacity
+                        style={[styles.priceModalPrimary, { backgroundColor: colors.text }]}
+                        onPress={saveGoalEditorPrompt}
+                      >
+                        <Text style={[styles.priceModalPrimaryText, { color: colors.background }]}>
+                          {t("goalEditSave")}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.priceModalSecondary, { borderColor: colors.border }]}
+                        onPress={closeGoalEditorPrompt}
+                      >
+                        <Text style={[styles.priceModalSecondaryText, { color: colors.muted }]}>
+                          {t("goalEditCancel")}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </ScrollView>
                 </View>
               </TouchableWithoutFeedback>
             </View>
@@ -84183,153 +84473,19 @@ useEffect(() => {
           </TouchableWithoutFeedback>
         </Modal>
 
-        <Modal
-          visible={!startupHardLockPendingBeforePaywall && incomeEntryModalVisible}
-          transparent
-          animationType="fade"
-          statusBarTranslucent
-        >
-          <TouchableWithoutFeedback onPress={() => dismissKeyboardOrRun(handleIncomeEntryDismiss)}>
-            <View style={[styles.priceModalBackdrop, modalKeyboardPaddingStyle]}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View style={[styles.priceModalCard, { backgroundColor: colors.card }]}>
-                  <Text style={[styles.priceModalTitle, { color: colors.text }]}>
-                    {t(incomeEntryTitleKey)}
-                  </Text>
-                  <Text style={[styles.priceModalLabel, { color: colors.muted, marginTop: 0 }]}>
-                    {t(incomeEntrySubtitleKey)}
-                  </Text>
-                  <View
-                    style={[
-                      styles.incomeEntryVisual,
-                      { backgroundColor: colors.background, borderColor: colors.border },
-                    ]}
-                  >
-                    <View style={styles.incomeEntryVisualRow}>
-                      <View
-                        style={[
-                          styles.incomeEntryVisualItem,
-                          { backgroundColor: colors.card, borderColor: colors.border },
-                        ]}
-                      >
-                        <Text style={styles.incomeEntryVisualIcon}>💸</Text>
-                        <Text style={[styles.incomeEntryVisualLabel, { color: colors.text }]}>
-                          {t("incomeEntryVisualIncome")}
-                        </Text>
-                      </View>
-                      <Text style={[styles.incomeEntryVisualArrow, { color: colors.muted }]}>→</Text>
-                      <View
-                        style={[
-                          styles.incomeEntryVisualItem,
-                          { backgroundColor: colors.card, borderColor: colors.border },
-                        ]}
-                      >
-                        <Text style={styles.incomeEntryVisualIcon}>📊</Text>
-                        <Text style={[styles.incomeEntryVisualLabel, { color: colors.text }]}>
-                          {t("incomeEntryVisualBudget")}
-                        </Text>
-                      </View>
-                      <Text style={[styles.incomeEntryVisualArrow, { color: colors.muted }]}>→</Text>
-                      <View
-                        style={[
-                          styles.incomeEntryVisualItem,
-                          { backgroundColor: colors.card, borderColor: colors.border },
-                        ]}
-                      >
-                        <Text style={styles.incomeEntryVisualIcon}>💎</Text>
-                        <Text style={[styles.incomeEntryVisualLabel, { color: colors.text }]}>
-                          {t("incomeEntryVisualSavings")}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                  <Text style={[styles.incomeEntryExplanation, { color: colors.muted }]}>
-                    {t(incomeEntryExplanationKey)}
-                  </Text>
-                  <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
-                    {t(incomeEntryAmountLabelKey)}
-                  </Text>
-                  <TextInput
-                    style={[
-                      styles.priceModalInput,
-                      {
-                        borderColor: colors.border,
-                        color: colors.text,
-                        backgroundColor: colors.card,
-                      },
-                    ]}
-                    value={incomeEntryInput.amount}
-                    onChangeText={(text) =>
-                      setIncomeEntryInput((prev) => ({ ...prev, amount: text }))
-                    }
-                    placeholder={t(incomeEntryAmountLabelKey)}
-                    placeholderTextColor={colors.muted}
-                    keyboardType="decimal-pad"
-                  />
-                  <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
-                    {t("incomePaydayLabel")}
-                  </Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.incomeEntryPaydayScroll}
-                    contentContainerStyle={styles.incomeEntryPaydayScrollContent}
-                  >
-                    {incomeEntryDayOptions.map((day) => {
-                      const active = incomeEntrySelectedPayday === day;
-                      return (
-                        <TouchableOpacity
-                          key={`income-entry-day-${day}`}
-                          style={[
-                            styles.incomeEntryPaydayChip,
-                            {
-                              backgroundColor: active ? colors.text : "transparent",
-                              borderColor: active ? colors.text : colors.border,
-                            },
-                          ]}
-                          activeOpacity={0.86}
-                          onPress={() =>
-                            setIncomeEntryInput((prev) => ({ ...prev, payday: day }))
-                          }
-                        >
-                          <Text
-                            style={[
-                              styles.incomeEntryPaydayChipText,
-                              { color: active ? colors.background : colors.muted },
-                            ]}
-                          >
-                            {day}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-                  <Text style={[styles.incomeEntryPaydayHint, { color: colors.muted }]}>
-                    {t("incomePaydayHint")}
-                  </Text>
-                  <View style={styles.priceModalButtons}>
-                    <TouchableOpacity
-                      style={[styles.priceModalPrimary, { backgroundColor: colors.text }]}
-                      onPress={handleIncomeEntrySubmit}
-                    >
-                      <Text style={[styles.priceModalPrimaryText, { color: colors.background }]}>
-                        {t(incomeEntryConfirmKey)}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.priceModalSecondary, { borderColor: colors.border }]}
-                      onPress={handleIncomeEntrySkip}
-                    >
-                      <Text style={[styles.priceModalSecondaryText, { color: colors.muted }]}>
-                        {t(incomeEntrySkipKey)}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
+        <IncomeEntryModal
+          visible={incomeEntryModalVisible}
+          startupHardLockPendingBeforePaywall={startupHardLockPendingBeforePaywall}
+          initialInput={incomeEntryInput}
+          isExtra={isExtraIncomeEntry}
+          profilePayday={profile?.incomePayday}
+          colors={colors}
+          t={t}
+          keyboardPaddingStyle={modalKeyboardPaddingStyle}
+          onDismiss={handleIncomeEntryDismiss}
+          onSubmit={handleIncomeEntrySubmit}
+          onSkip={handleIncomeEntrySkip}
+        />
 
         <ImageSourceSheet
           visible={!startupHardLockPendingBeforePaywall && showImageSourceSheet}
@@ -84733,7 +84889,7 @@ const StatusGlass = React.memo(
           // Android blur banding becomes visible under transparent dim layers when
           // multiple blur views overlap. Keep one continuous pass and let the SVG
           // fade handle the transition.
-          { progress: 1, intensity: 18, opacity: 0.16 },
+          { progress: 1, intensity: 20, opacity: 0.22 },
         ]
       : [
           { progress: 0.42, intensity: 14, opacity: 0.18 },
@@ -84763,16 +84919,16 @@ const StatusGlass = React.memo(
     const tailStopPercent = safeStopPercent + fadeRangePercent * 0.93;
     const nearClearStopPercent = safeStopPercent + fadeRangePercent * 0.985;
     const toPercent = (value) => `${Math.max(0, Math.min(100, value)).toFixed(2)}%`;
-    const overlayTopOpacity = isAndroidStatusGlass ? (solid ? 0.38 : 0.3) : 0.7;
-    const overlaySoftTopOpacity = isAndroidStatusGlass ? (solid ? 0.34 : 0.27) : 0.68;
-    const overlaySafeOpacity = isAndroidStatusGlass ? (solid ? 0.3 : 0.23) : solid ? 0.63 : 0.6;
-    const overlayUpperOpacity = isAndroidStatusGlass ? (solid ? 0.24 : 0.18) : solid ? 0.53 : 0.5;
-    const overlayUpperMidOpacity = isAndroidStatusGlass ? (solid ? 0.19 : 0.14) : solid ? 0.45 : 0.41;
-    const overlayMidOpacity = isAndroidStatusGlass ? (solid ? 0.14 : 0.1) : solid ? 0.35 : 0.31;
-    const overlayLowerMidOpacity = isAndroidStatusGlass ? (solid ? 0.1 : 0.07) : solid ? 0.26 : 0.23;
-    const overlayLowOpacity = isAndroidStatusGlass ? (solid ? 0.065 : 0.045) : solid ? 0.18 : 0.15;
-    const overlayTailOpacity = isAndroidStatusGlass ? (solid ? 0.035 : 0.025) : solid ? 0.1 : 0.08;
-    const overlayNearClearOpacity = isAndroidStatusGlass ? (solid ? 0.015 : 0.01) : solid ? 0.045 : 0.035;
+    const overlayTopOpacity = isAndroidStatusGlass ? (solid ? 0.92 : 0.86) : 0.7;
+    const overlaySoftTopOpacity = isAndroidStatusGlass ? (solid ? 0.88 : 0.8) : 0.68;
+    const overlaySafeOpacity = isAndroidStatusGlass ? (solid ? 0.82 : 0.72) : solid ? 0.63 : 0.6;
+    const overlayUpperOpacity = isAndroidStatusGlass ? (solid ? 0.58 : 0.48) : solid ? 0.53 : 0.5;
+    const overlayUpperMidOpacity = isAndroidStatusGlass ? (solid ? 0.43 : 0.34) : solid ? 0.45 : 0.41;
+    const overlayMidOpacity = isAndroidStatusGlass ? (solid ? 0.3 : 0.23) : solid ? 0.35 : 0.31;
+    const overlayLowerMidOpacity = isAndroidStatusGlass ? (solid ? 0.2 : 0.15) : solid ? 0.26 : 0.23;
+    const overlayLowOpacity = isAndroidStatusGlass ? (solid ? 0.12 : 0.09) : solid ? 0.18 : 0.15;
+    const overlayTailOpacity = isAndroidStatusGlass ? (solid ? 0.065 : 0.045) : solid ? 0.1 : 0.08;
+    const overlayNearClearOpacity = isAndroidStatusGlass ? (solid ? 0.025 : 0.018) : solid ? 0.045 : 0.035;
     const topOffset = -Math.max(0, Number(offsetY) || 0);
 
     const renderBlurBand = (bandHeight, bandOpacity, bandIntensity, key) => {
@@ -86613,7 +86769,7 @@ const styles = StyleSheet.create({
   },
   featureUnlockCardScroll: {
     flexGrow: 1,
-    paddingBottom: 8,
+    paddingBottom: 18,
   },
   featureUnlockHeader: {
     borderRadius: 24,
@@ -87422,7 +87578,7 @@ const styles = StyleSheet.create({
   },
   tamagotchiStickyRewardButton: {
     minWidth: scaleTamagotchiMetric(238, 196),
-    maxWidth: scaleTamagotchiMetric(300, 246),
+    maxWidth: scaleTamagotchiMetric(330, 282),
     minHeight: scaleTamagotchiMetric(66, 54),
     borderWidth: 1,
     borderRadius: scaleTamagotchiMetric(20, 16),
@@ -87471,7 +87627,7 @@ const styles = StyleSheet.create({
   },
   tamagotchiStickyRewardTitle: {
     ...createCtaText({ fontSize: scaleTamagotchiMetric(12.8, 11.2) }),
-    lineHeight: scaleTamagotchiMetric(16, 13.5),
+    lineHeight: scaleTamagotchiMetric(15.5, 13.5),
     letterSpacing: 0,
   },
   tamagotchiStickyRewardText: {
@@ -87529,6 +87685,7 @@ const styles = StyleSheet.create({
   },
   tamagotchiHeader: {
     minHeight: scaleTamagotchiMetric(34, 28),
+    width: "100%",
   },
   tamagotchiBackButton: {
     minWidth: scaleTamagotchiMetric(68, 58),
@@ -87561,15 +87718,17 @@ const styles = StyleSheet.create({
   },
   tamagotchiHeaderTextWrap: {
     flex: 1,
+    width: "100%",
     minHeight: scaleTamagotchiMetric(36, 28),
     justifyContent: "flex-start",
-    alignSelf: "flex-start",
+    alignSelf: "stretch",
   },
   tamagotchiHeaderLine: {
     flexDirection: "row",
     alignItems: "center",
     gap: scaleTamagotchiMetric(5, 3),
     minHeight: scaleTamagotchiMetric(34, 26),
+    width: "100%",
   },
   tamagotchiTitle: {
     ...TYPOGRAPHY.blockTitle,
@@ -87749,8 +87908,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: scaleTamagotchiMetric(8, 7),
     paddingVertical: scaleTamagotchiMetric(6, 4),
     minHeight: scaleTamagotchiMetric(34, 28),
-    maxWidth: "74%",
-    flexShrink: 1,
+    flex: 1,
+    minWidth: 0,
     marginLeft: scaleTamagotchiMetric(2, 1),
     alignItems: "center",
     justifyContent: "center",
@@ -87764,6 +87923,7 @@ const styles = StyleSheet.create({
     ...createCtaText({ fontSize: scaleTamagotchiMetric(11, 9.5), textAlign: "center" }),
     lineHeight: scaleTamagotchiMetric(14, 12),
     flexShrink: 1,
+    width: "100%",
     includeFontPadding: false,
     textAlignVertical: "center",
   },
@@ -88071,8 +88231,8 @@ const styles = StyleSheet.create({
     minHeight: IS_SHORT_DEVICE ? 88 : 98,
   },
   goalJarHeroTitleBlock: {
-    flexBasis: IS_SHORT_DEVICE ? "62%" : "66%",
-    maxWidth: IS_SHORT_DEVICE ? "66%" : "70%",
+    flexBasis: IS_SHORT_DEVICE ? "54%" : "57%",
+    maxWidth: IS_SHORT_DEVICE ? "56%" : "59%",
     minWidth: 0,
     justifyContent: "center",
     paddingTop: IS_SHORT_DEVICE ? 2 : 6,
@@ -88218,9 +88378,20 @@ const styles = StyleSheet.create({
     minWidth: 0,
     gap: 4,
   },
+  goalJarHeroGoalTitleWrap: {
+    alignItems: "flex-start",
+    justifyContent: "center",
+    maxWidth: "100%",
+    minWidth: 0,
+  },
+  goalJarHeroGoalTitleWrapRtl: {
+    alignItems: "flex-end",
+  },
   goalJarHeroGoalTitle: {
     ...createBodyText({ fontSize: IS_SHORT_DEVICE ? 16 : 18, fontWeight: "800" }),
     lineHeight: IS_SHORT_DEVICE ? 20 : 22,
+    maxWidth: "100%",
+    flexShrink: 1,
   },
   goalJarHeroGoalMeta: {
     ...createSecondaryText({ fontSize: 13 }),
@@ -89053,12 +89224,12 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   dailyRewardCaption: {
-    fontSize: 7,
+    fontSize: 8,
     fontWeight: "600",
     textTransform: "none",
     textAlign: "center",
     includeFontPadding: false,
-    lineHeight: 9,
+    lineHeight: 10,
   },
   dailyRewardLockedIcon: {
     fontSize: 12,
@@ -89227,8 +89398,11 @@ const styles = StyleSheet.create({
   dailyRewardCalendarSuperLabel: {
     fontSize: IS_SHORT_DEVICE ? 8 : 9,
     fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    lineHeight: IS_SHORT_DEVICE ? 9 : 10,
+    textAlign: "center",
+    includeFontPadding: false,
+    letterSpacing: 0,
+    maxWidth: "100%",
   },
   dailyRewardModalNoteWrap: {
     flexDirection: "row",
@@ -96797,6 +96971,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     marginBottom: 10,
+    minHeight: 46,
+    includeFontPadding: false,
+  },
+  profileInputField: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profileInputLabel: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 14 }),
+    fontWeight: "800",
+    textTransform: "uppercase",
+    marginBottom: 6,
+    alignSelf: "flex-start",
   },
   profileInputPlaceholder: {
     fontSize: IS_COMPACT_DEVICE ? 13 : 14,
@@ -96847,6 +97034,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
     width: "100%",
+  },
+  inputRowStacked: {
+    flexDirection: "column",
+    gap: 2,
   },
   settingsCard: {
     borderRadius: 26,
@@ -96902,7 +97093,7 @@ const styles = StyleSheet.create({
     position: "relative",
     marginTop: 4,
     marginRight: -32,
-    paddingRight: 32,
+    paddingRight: 40,
   },
   settingCurrencyScroll: {
     marginTop: 0,
@@ -96911,7 +97102,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingRight: 16,
+    paddingRight: 40,
   },
   incomeCalendarGrid: {
     flexDirection: "row",
@@ -97464,7 +97655,7 @@ const styles = StyleSheet.create({
     flexGrow: 0,
   },
   helpGuideScrollContent: {
-    paddingBottom: 12,
+    paddingBottom: 76,
     gap: 12,
   },
   helpGuideVisual: {
@@ -97485,6 +97676,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   helpGuideVisualChipText: {
     fontSize: 11,
@@ -98303,7 +98495,7 @@ const styles = StyleSheet.create({
   quickModalBodyScrollContent: {
     width: "100%",
     gap: 14,
-    paddingBottom: 2,
+    paddingBottom: 22,
   },
   coinValueHero: {
     height: 140,
@@ -98394,6 +98586,19 @@ const styles = StyleSheet.create({
     ...createCtaText({ fontSize: 12 }),
     textAlign: "center",
   },
+  quickModalFieldStack: {
+    gap: 10,
+    width: "100%",
+  },
+  quickModalField: {
+    width: "100%",
+    gap: 6,
+  },
+  quickModalFieldLabel: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 14 }),
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
   quickPendingFreezeSection: {
     gap: 8,
     width: "100%",
@@ -98416,9 +98621,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 9,
     paddingHorizontal: 10,
-    minWidth: 96,
-    flexGrow: 1,
-    flexBasis: "31%",
+    minWidth: 0,
+    flexGrow: 0,
+    flexBasis: "48%",
     justifyContent: "center",
   },
   quickPendingFreezeChipIcon: {
@@ -99703,6 +99908,24 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 18 },
     shadowRadius: 28,
     elevation: 12,
+  },
+  chestRewardCloseButton: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    zIndex: 4,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chestRewardCloseText: {
+    fontSize: 22,
+    lineHeight: 24,
+    fontWeight: "700",
+    includeFontPadding: false,
   },
   chestRewardGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -101654,6 +101877,14 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     padding: 20,
     gap: 16,
+    maxHeight: SCREEN_HEIGHT * 0.84,
+  },
+  priceModalScroll: {
+    width: "100%",
+  },
+  priceModalScrollContent: {
+    gap: 0,
+    paddingBottom: 8,
   },
   priceModalTitle: {
     ...TYPOGRAPHY.blockTitle,
@@ -102475,6 +102706,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
+    minHeight: 48,
+    includeFontPadding: false,
+  },
+  primaryInputCentered: {
+    textAlign: "center",
   },
   baselineInputGroup: {
     marginTop: 8,
@@ -108792,7 +109028,17 @@ const NumberWheelColumn = React.memo(function NumberWheelColumn({
   const lastCommittedBaseIndexRef = useRef(selectedBaseIndex);
   const lastHapticStepRef = useRef(resolveCenteredIndex(selectedBaseIndex));
   const suppressHapticTickRef = useRef(false);
+  const latestScrollEventRef = useRef(null);
+  const settleTimeoutRef = useRef(null);
   const displayHeight = TIME_WHEEL_VISIBLE_ITEMS * TIME_WHEEL_ITEM_HEIGHT;
+  useEffect(
+    () => () => {
+      if (settleTimeoutRef.current) {
+        clearTimeout(settleTimeoutRef.current);
+      }
+    },
+    []
+  );
   useEffect(() => {
     lastCommittedBaseIndexRef.current = selectedBaseIndex;
   }, [selectedBaseIndex]);
@@ -108832,6 +109078,7 @@ const NumberWheelColumn = React.memo(function NumberWheelColumn({
   }, [alignToBaseIndex]);
   const handleScroll = useCallback(
     (event) => {
+      latestScrollEventRef.current = event;
       const offsetY = Number(event?.nativeEvent?.contentOffset?.y) || 0;
       const rawIndex = Math.round(offsetY / TIME_WHEEL_ITEM_HEIGHT);
       const snappedIndex = Math.max(0, Math.min(wheelValues.length - 1, rawIndex));
@@ -108866,10 +109113,31 @@ const NumberWheelColumn = React.memo(function NumberWheelColumn({
   );
   const handleScrollEndDrag = useCallback(
     (event) => {
+      latestScrollEventRef.current = event;
+      if (settleTimeoutRef.current) {
+        clearTimeout(settleTimeoutRef.current);
+        settleTimeoutRef.current = null;
+      }
       const velocityY = Math.abs(Number(event?.nativeEvent?.velocity?.y) || 0);
       if (velocityY <= 0.01) {
         commitSettledValue(event);
+        return;
       }
+      settleTimeoutRef.current = setTimeout(() => {
+        settleTimeoutRef.current = null;
+        commitSettledValue(latestScrollEventRef.current || event);
+      }, 220);
+    },
+    [commitSettledValue]
+  );
+  const handleMomentumScrollEnd = useCallback(
+    (event) => {
+      latestScrollEventRef.current = event;
+      if (settleTimeoutRef.current) {
+        clearTimeout(settleTimeoutRef.current);
+        settleTimeoutRef.current = null;
+      }
+      commitSettledValue(event);
     },
     [commitSettledValue]
   );
@@ -108898,7 +109166,7 @@ const NumberWheelColumn = React.memo(function NumberWheelColumn({
           keyboardShouldPersistTaps="handled"
           scrollEventThrottle={16}
           onScroll={handleScroll}
-          onMomentumScrollEnd={commitSettledValue}
+          onMomentumScrollEnd={handleMomentumScrollEnd}
           onScrollEndDrag={handleScrollEndDrag}
           onContentSizeChange={handleContentSizeChange}
         >
@@ -109162,7 +109430,7 @@ function MonthlyDayPicker({
 
 function FrequencyTimeToggle({ expanded = false, onPress, colors, t }) {
   return (
-    <Pressable
+    <TouchableOpacity
       style={[
         styles.frequencyTimeToggleButton,
         {
@@ -109171,7 +109439,9 @@ function FrequencyTimeToggle({ expanded = false, onPress, colors, t }) {
         },
       ]}
       onPress={onPress}
+      activeOpacity={0.82}
       accessibilityRole="button"
+      accessibilityState={{ expanded }}
     >
       <Text style={[styles.frequencyTimeToggleButtonText, { color: colors.text }]}>
         {t("frequencyReminderTimeLabel")}
@@ -109179,7 +109449,7 @@ function FrequencyTimeToggle({ expanded = false, onPress, colors, t }) {
       <Text style={[styles.frequencyTimeToggleChevron, { color: colors.muted }]}>
         {expanded ? "▴" : "▾"}
       </Text>
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
@@ -109370,39 +109640,55 @@ function QuickCustomModal({
                       t={t}
                     />
                   )}
-                  <TextInput
-                    style={[
-                      styles.primaryInput,
-                      { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                    ]}
-                    placeholder={t("quickCustomNameLabel")}
-                    placeholderTextColor={colors.muted}
-                    value={data.title}
-                    onChangeText={(text) => onChange("title", text)}
-                  />
-                  <TextInput
-                    style={[
-                      styles.primaryInput,
-                      { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                    ]}
-                    placeholder={t("quickCustomAmountLabel", { currency: getCurrencyDisplayCode(currency) })}
-                    placeholderTextColor={colors.muted}
-                    keyboardType="decimal-pad"
-                    value={data.amount}
-                    onChangeText={(text) => onChange("amount", text)}
-                  />
-                  <TextInput
-                    style={[
-                      styles.primaryInput,
-                      { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                    ]}
-                    placeholder={t("quickCustomEmojiLabel")}
-                    placeholderTextColor={colors.muted}
-                    value={data.emoji || ""}
-                    onChangeText={(text) => onChange("emoji", text)}
-                    selectTextOnFocus
-                    maxLength={EMOJI_INPUT_MAX_LENGTH}
-                  />
+                  <View style={styles.quickModalField}>
+                    <Text style={[styles.quickModalFieldLabel, { color: colors.muted }]}>
+                      {t("quickCustomNameLabel")}
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.primaryInput,
+                        { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                      ]}
+                      placeholder={t("quickCustomNameLabel")}
+                      placeholderTextColor={colors.muted}
+                      value={data.title}
+                      onChangeText={(text) => onChange("title", text)}
+                    />
+                  </View>
+                  <View style={styles.quickModalField}>
+                    <Text style={[styles.quickModalFieldLabel, { color: colors.muted }]}>
+                      {t("quickCustomAmountLabel", { currency: getCurrencyDisplayCode(currency) })}
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.primaryInput,
+                        { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                      ]}
+                      placeholder={t("quickCustomAmountLabel", { currency: getCurrencyDisplayCode(currency) })}
+                      placeholderTextColor={colors.muted}
+                      keyboardType="decimal-pad"
+                      value={data.amount}
+                      onChangeText={(text) => onChange("amount", text)}
+                    />
+                  </View>
+                  <View style={styles.quickModalField}>
+                    <Text style={[styles.quickModalFieldLabel, { color: colors.muted }]}>
+                      {t("quickCustomEmojiLabel")}
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.primaryInput,
+                        styles.primaryInputCentered,
+                        { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                      ]}
+                      placeholder={t("quickCustomEmojiLabel")}
+                      placeholderTextColor={colors.muted}
+                      value={data.emoji || ""}
+                      onChangeText={(text) => onChange("emoji", limitEmojiInput(text))}
+                      selectTextOnFocus
+                      maxLength={EMOJI_INPUT_MAX_LENGTH}
+                    />
+                  </View>
                   <View
                     style={[
                       styles.quickCustomValidationWrap,
@@ -109481,6 +109767,184 @@ function QuickCustomModal({
   );
 }
 
+const IncomeEntryModal = React.memo(function IncomeEntryModal({
+  visible,
+  startupHardLockPendingBeforePaywall = false,
+  initialInput,
+  isExtra = false,
+  profilePayday = DEFAULT_INCOME_PAYDAY,
+  colors,
+  t,
+  keyboardPaddingStyle = null,
+  onDismiss,
+  onSubmit,
+  onSkip,
+}) {
+  const [draft, setDraft] = useState(() => createIncomeEntryInputState(profilePayday));
+  useEffect(() => {
+    if (!visible) return;
+    const nextPayday = normalizeIncomePayday(initialInput?.payday, profilePayday);
+    setDraft({
+      amount: typeof initialInput?.amount === "string" ? initialInput.amount : "",
+      payday: nextPayday,
+    });
+  }, [initialInput?.amount, initialInput?.payday, profilePayday, visible]);
+  const selectedPayday = normalizeIncomePayday(draft?.payday, profilePayday);
+  const titleKey = isExtra ? "extraIncomeEntryTitle" : "incomeEntryTitle";
+  const subtitleKey = isExtra ? "extraIncomeEntrySubtitle" : "incomeEntrySubtitle";
+  const explanationKey = isExtra ? "extraIncomeEntryExplanation" : "incomeEntryExplanation";
+  const amountLabelKey = isExtra ? "extraIncomeEntryAmountLabel" : "incomeEntryAmountLabel";
+  const confirmKey = isExtra ? "extraIncomeEntryConfirm" : "incomeEntryConfirm";
+  const skipKey = isExtra ? "extraIncomeEntrySkip" : "incomeEntrySkip";
+  return (
+    <Modal
+      visible={!startupHardLockPendingBeforePaywall && visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onDismiss}
+      statusBarTranslucent
+    >
+      <TouchableWithoutFeedback onPress={() => dismissKeyboardOrRun(onDismiss)}>
+        <View style={[styles.priceModalBackdrop, keyboardPaddingStyle]}>
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View style={[styles.priceModalCard, { backgroundColor: colors.card }]}>
+              <Text style={[styles.priceModalTitle, { color: colors.text }]}>
+                {t(titleKey)}
+              </Text>
+              <Text style={[styles.priceModalLabel, { color: colors.muted, marginTop: 0 }]}>
+                {t(subtitleKey)}
+              </Text>
+              <View
+                style={[
+                  styles.incomeEntryVisual,
+                  { backgroundColor: colors.background, borderColor: colors.border },
+                ]}
+              >
+                <View style={styles.incomeEntryVisualRow}>
+                  <View
+                    style={[
+                      styles.incomeEntryVisualItem,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={styles.incomeEntryVisualIcon}>💸</Text>
+                    <Text style={[styles.incomeEntryVisualLabel, { color: colors.text }]}>
+                      {t("incomeEntryVisualIncome")}
+                    </Text>
+                  </View>
+                  <Text style={[styles.incomeEntryVisualArrow, { color: colors.muted }]}>→</Text>
+                  <View
+                    style={[
+                      styles.incomeEntryVisualItem,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={styles.incomeEntryVisualIcon}>📊</Text>
+                    <Text style={[styles.incomeEntryVisualLabel, { color: colors.text }]}>
+                      {t("incomeEntryVisualBudget")}
+                    </Text>
+                  </View>
+                  <Text style={[styles.incomeEntryVisualArrow, { color: colors.muted }]}>→</Text>
+                  <View
+                    style={[
+                      styles.incomeEntryVisualItem,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={styles.incomeEntryVisualIcon}>💎</Text>
+                    <Text style={[styles.incomeEntryVisualLabel, { color: colors.text }]}>
+                      {t("incomeEntryVisualSavings")}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              <Text style={[styles.incomeEntryExplanation, { color: colors.muted }]}>
+                {t(explanationKey)}
+              </Text>
+              <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
+                {t(amountLabelKey)}
+              </Text>
+              <TextInput
+                style={[
+                  styles.priceModalInput,
+                  {
+                    borderColor: colors.border,
+                    color: colors.text,
+                    backgroundColor: colors.card,
+                  },
+                ]}
+                value={draft.amount}
+                onChangeText={(text) => setDraft((prev) => ({ ...prev, amount: text }))}
+                placeholder={t(amountLabelKey)}
+                placeholderTextColor={colors.muted}
+                keyboardType="decimal-pad"
+              />
+              <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
+                {t("incomePaydayLabel")}
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.incomeEntryPaydayScroll}
+                contentContainerStyle={styles.incomeEntryPaydayScrollContent}
+                keyboardShouldPersistTaps="always"
+              >
+                {INCOME_ENTRY_DAY_OPTIONS.map((day) => {
+                  const active = selectedPayday === day;
+                  return (
+                    <TouchableOpacity
+                      key={`income-entry-day-${day}`}
+                      style={[
+                        styles.incomeEntryPaydayChip,
+                        {
+                          backgroundColor: active ? colors.text : "transparent",
+                          borderColor: active ? colors.text : colors.border,
+                        },
+                      ]}
+                      activeOpacity={0.86}
+                      onPress={() => setDraft((prev) => ({ ...prev, payday: day }))}
+                    >
+                      <Text
+                        style={[
+                          styles.incomeEntryPaydayChipText,
+                          { color: active ? colors.background : colors.muted },
+                        ]}
+                      >
+                        {day}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              <Text style={[styles.incomeEntryPaydayHint, { color: colors.muted }]}>
+                {t("incomePaydayHint")}
+              </Text>
+              <View style={styles.priceModalButtons}>
+                <TouchableOpacity
+                  style={[styles.priceModalPrimary, { backgroundColor: colors.text }]}
+                  onPress={() => onSubmit?.(draft)}
+                >
+                  <Text style={[styles.priceModalPrimaryText, { color: colors.background }]}>
+                    {t(confirmKey)}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.priceModalSecondary, { borderColor: colors.border }]}
+                  onPress={onSkip}
+                >
+                  <Text style={[styles.priceModalSecondaryText, { color: colors.muted }]}>
+                    {t(skipKey)}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+});
+
 function NewGoalModal({
   visible,
   colors,
@@ -109514,40 +109978,56 @@ function NewGoalModal({
               >
                 <Text style={[styles.quickModalTitle, { color: colors.text }]}>{t("newGoalTitle")}</Text>
                 <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>{t("newGoalSubtitle")}</Text>
-                <View style={{ gap: 8, width: "100%" }}>
-                  <TextInput
-                    style={[
-                      styles.primaryInput,
-                      { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                    ]}
-                    placeholder={t("newGoalNameLabel")}
-                    placeholderTextColor={colors.muted}
-                    value={data.name}
-                    onChangeText={(text) => onChange("name", text)}
-                  />
-                  <TextInput
-                    style={[
-                      styles.primaryInput,
-                      { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                    ]}
-                    placeholder={t("newGoalTargetLabel", { currency: getCurrencyDisplayCode(currency) })}
-                    placeholderTextColor={colors.muted}
-                    keyboardType="decimal-pad"
-                    value={data.target}
-                    onChangeText={(text) => onChange("target", text)}
-                  />
-                  <TextInput
-                    style={[
-                      styles.primaryInput,
-                      { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                    ]}
-                    placeholder={t("newGoalEmojiLabel")}
-                    placeholderTextColor={colors.muted}
-                    value={data.emoji || ""}
-                    onChangeText={(text) => onChange("emoji", text)}
-                    selectTextOnFocus
-                    maxLength={EMOJI_INPUT_MAX_LENGTH}
-                  />
+                <View style={styles.quickModalFieldStack}>
+                  <View style={styles.quickModalField}>
+                    <Text style={[styles.quickModalFieldLabel, { color: colors.muted }]}>
+                      {t("newGoalNameLabel")}
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.primaryInput,
+                        { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                      ]}
+                      placeholder={t("newGoalNameLabel")}
+                      placeholderTextColor={colors.muted}
+                      value={data.name}
+                      onChangeText={(text) => onChange("name", text)}
+                    />
+                  </View>
+                  <View style={styles.quickModalField}>
+                    <Text style={[styles.quickModalFieldLabel, { color: colors.muted }]}>
+                      {t("newGoalTargetLabel", { currency: getCurrencyDisplayCode(currency) })}
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.primaryInput,
+                        { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                      ]}
+                      placeholder={t("newGoalTargetLabel", { currency: getCurrencyDisplayCode(currency) })}
+                      placeholderTextColor={colors.muted}
+                      keyboardType="decimal-pad"
+                      value={data.target}
+                      onChangeText={(text) => onChange("target", text)}
+                    />
+                  </View>
+                  <View style={styles.quickModalField}>
+                    <Text style={[styles.quickModalFieldLabel, { color: colors.muted }]}>
+                      {t("newGoalEmojiLabel")}
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.primaryInput,
+                        styles.primaryInputCentered,
+                        { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                      ]}
+                      placeholder={t("newGoalEmojiLabel")}
+                      placeholderTextColor={colors.muted}
+                      value={data.emoji || ""}
+                      onChangeText={(text) => onChange("emoji", limitEmojiInput(text))}
+                      selectTextOnFocus
+                      maxLength={EMOJI_INPUT_MAX_LENGTH}
+                    />
+                  </View>
                 </View>
                 <View style={styles.quickModalActions}>
                   <TouchableOpacity
@@ -109648,49 +110128,65 @@ function NewPendingModal({
                 {resolvedSubtitle ? (
                   <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>{resolvedSubtitle}</Text>
                 ) : null}
-                <View style={{ gap: 8, width: "100%" }}>
-                  <TextInput
-                    style={[
-                      styles.primaryInput,
-                      { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                    ]}
-                    placeholder={t("newPendingNameLabel")}
-                    placeholderTextColor={colors.muted}
-                    value={data.title}
-                    onChangeText={(text) => onChange("title", text)}
-                    returnKeyType="done"
-                    blurOnSubmit
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
-                  <TextInput
-                    style={[
-                      styles.primaryInput,
-                      { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                    ]}
-                    placeholder={t("newPendingAmountLabel", { currency: getCurrencyDisplayCode(currency) })}
-                    placeholderTextColor={colors.muted}
-                    keyboardType="decimal-pad"
-                    value={data.amount}
-                    onChangeText={(text) => onChange("amount", text)}
-                    returnKeyType="done"
-                    blurOnSubmit
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
-                  <TextInput
-                    style={[
-                      styles.primaryInput,
-                      { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                    ]}
-                    placeholder={t("newPendingEmojiLabel")}
-                    placeholderTextColor={colors.muted}
-                    value={data.emoji || ""}
-                    onChangeText={(text) => onChange("emoji", text)}
-                    selectTextOnFocus
-                    maxLength={EMOJI_INPUT_MAX_LENGTH}
-                    returnKeyType="done"
-                    blurOnSubmit
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
+                <View style={styles.quickModalFieldStack}>
+                  <View style={styles.quickModalField}>
+                    <Text style={[styles.quickModalFieldLabel, { color: colors.muted }]}>
+                      {t("newPendingNameLabel")}
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.primaryInput,
+                        { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                      ]}
+                      placeholder={t("newPendingNameLabel")}
+                      placeholderTextColor={colors.muted}
+                      value={data.title}
+                      onChangeText={(text) => onChange("title", text)}
+                      returnKeyType="done"
+                      blurOnSubmit
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
+                  <View style={styles.quickModalField}>
+                    <Text style={[styles.quickModalFieldLabel, { color: colors.muted }]}>
+                      {t("newPendingAmountLabel", { currency: getCurrencyDisplayCode(currency) })}
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.primaryInput,
+                        { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                      ]}
+                      placeholder={t("newPendingAmountLabel", { currency: getCurrencyDisplayCode(currency) })}
+                      placeholderTextColor={colors.muted}
+                      keyboardType="decimal-pad"
+                      value={data.amount}
+                      onChangeText={(text) => onChange("amount", text)}
+                      returnKeyType="done"
+                      blurOnSubmit
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
+                  <View style={styles.quickModalField}>
+                    <Text style={[styles.quickModalFieldLabel, { color: colors.muted }]}>
+                      {t("newPendingEmojiLabel")}
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.primaryInput,
+                        styles.primaryInputCentered,
+                        { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                      ]}
+                      placeholder={t("newPendingEmojiLabel")}
+                      placeholderTextColor={colors.muted}
+                      value={data.emoji || ""}
+                      onChangeText={(text) => onChange("emoji", limitEmojiInput(text))}
+                      selectTextOnFocus
+                      maxLength={EMOJI_INPUT_MAX_LENGTH}
+                      returnKeyType="done"
+                      blurOnSubmit
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
                 </View>
                 {!isEditingPending && (
                   <View style={styles.quickPendingFreezeSection}>
@@ -109814,49 +110310,65 @@ function OnboardingGoalModal({
               >
                 <Text style={[styles.quickModalTitle, { color: colors.text }]}>{t("newGoalTitle")}</Text>
                 <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>{t("newGoalSubtitle")}</Text>
-                <View style={{ gap: 8, width: "100%" }}>
-                  <TextInput
-                    style={[
-                      styles.primaryInput,
-                      { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                    ]}
-                    placeholder={t("newGoalNameLabel")}
-                    placeholderTextColor={colors.muted}
-                    value={data.name}
-                    onChangeText={(text) => onChange("name", text)}
-                    returnKeyType="done"
-                    blurOnSubmit
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
-                  <TextInput
-                    style={[
-                      styles.primaryInput,
-                      { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                    ]}
-                    placeholder={t("newGoalTargetLabel", { currency: getCurrencyDisplayCode(currency) })}
-                    placeholderTextColor={colors.muted}
-                    keyboardType="decimal-pad"
-                    value={data.target}
-                    onChangeText={(text) => onChange("target", text)}
-                    returnKeyType="done"
-                    blurOnSubmit
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
-                  <TextInput
-                    style={[
-                      styles.primaryInput,
-                      { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
-                    ]}
-                    placeholder={t("newGoalEmojiLabel")}
-                    placeholderTextColor={colors.muted}
-                    value={data.emoji || ""}
-                    onChangeText={(text) => onChange("emoji", text)}
-                    selectTextOnFocus
-                    maxLength={EMOJI_INPUT_MAX_LENGTH}
-                    returnKeyType="done"
-                    blurOnSubmit
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
+                <View style={styles.quickModalFieldStack}>
+                  <View style={styles.quickModalField}>
+                    <Text style={[styles.quickModalFieldLabel, { color: colors.muted }]}>
+                      {t("newGoalNameLabel")}
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.primaryInput,
+                        { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                      ]}
+                      placeholder={t("newGoalNameLabel")}
+                      placeholderTextColor={colors.muted}
+                      value={data.name}
+                      onChangeText={(text) => onChange("name", text)}
+                      returnKeyType="done"
+                      blurOnSubmit
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
+                  <View style={styles.quickModalField}>
+                    <Text style={[styles.quickModalFieldLabel, { color: colors.muted }]}>
+                      {t("newGoalTargetLabel", { currency: getCurrencyDisplayCode(currency) })}
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.primaryInput,
+                        { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                      ]}
+                      placeholder={t("newGoalTargetLabel", { currency: getCurrencyDisplayCode(currency) })}
+                      placeholderTextColor={colors.muted}
+                      keyboardType="decimal-pad"
+                      value={data.target}
+                      onChangeText={(text) => onChange("target", text)}
+                      returnKeyType="done"
+                      blurOnSubmit
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
+                  <View style={styles.quickModalField}>
+                    <Text style={[styles.quickModalFieldLabel, { color: colors.muted }]}>
+                      {t("newGoalEmojiLabel")}
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.primaryInput,
+                        styles.primaryInputCentered,
+                        { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                      ]}
+                      placeholder={t("newGoalEmojiLabel")}
+                      placeholderTextColor={colors.muted}
+                      value={data.emoji || ""}
+                      onChangeText={(text) => onChange("emoji", limitEmojiInput(text))}
+                      selectTextOnFocus
+                      maxLength={EMOJI_INPUT_MAX_LENGTH}
+                      returnKeyType="done"
+                      blurOnSubmit
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
                 </View>
                 <View style={styles.quickModalActions}>
                   <TouchableOpacity
@@ -111601,6 +112113,9 @@ const OnboardingScrollView = forwardRef(function OnboardingScrollView(
       automaticallyAdjustContentInsets={false}
       automaticallyAdjustsScrollIndicatorInsets={false}
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+      keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+      bounces={false}
+      overScrollMode="never"
       nestedScrollEnabled={Platform.OS === "android"}
       removeClippedSubviews={false}
       style={[{ overflow: "visible" }, style]}
@@ -114786,6 +115301,10 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     onClose?.();
   }, [onClose, opened]);
+  const handleDismiss = useCallback(() => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    onClose?.();
+  }, [onClose]);
 
   const haloRotation = haloSpin.interpolate({
     inputRange: [0, 1],
@@ -114836,6 +115355,21 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
           { transform: [{ translateY: entryTranslate }, { scale: cardScale }] },
         ]}
       >
+        <TouchableOpacity
+          style={[
+            styles.chestRewardCloseButton,
+            {
+              borderColor: cardBorder,
+              backgroundColor: colorWithAlpha(primaryTextColor, isDarkTheme ? 0.12 : 0.08),
+            },
+          ]}
+          onPress={handleDismiss}
+          activeOpacity={0.84}
+          accessibilityRole="button"
+          accessibilityLabel={t("profileCancel")}
+        >
+          <Text style={[styles.chestRewardCloseText, { color: primaryTextColor }]}>×</Text>
+        </TouchableOpacity>
         <Svg
           style={styles.chestRewardGradient}
           width="100%"
@@ -116478,7 +117012,10 @@ const UsageStreakCelebration = ({
       if (normalized === "es") return safeCount === 1 ? "día de racha" : "días de racha";
       if (normalized === "fr") return safeCount === 1 ? "jour de série" : "jours de série";
       if (normalized === "de") return safeCount === 1 ? "Tagesserie" : "Tage in Folge";
+      if (normalized === "pt") return safeCount === 1 ? "dia de sequência" : "dias de sequência";
+      if (normalized === "it") return safeCount === 1 ? "giorno di serie" : "giorni di serie";
       if (normalized === "zh") return "天连胜";
+      if (normalized === "ko") return "일 연속";
       if (normalized === "ar-sa" || normalized === "ar-ae") {
         return safeCount === 1 ? "يوم متتالٍ" : "أيام متتالية";
       }
@@ -116857,6 +117394,9 @@ const FeatureUnlockCelebration = ({
   const cardBg = isDarkTheme ? "rgba(10,17,32,0.94)" : "rgba(255,255,255,0.98)";
   const cardBorder = isDarkTheme ? "rgba(124,188,255,0.32)" : "rgba(73,141,248,0.26)";
   const sectionBg = isDarkTheme ? "rgba(255,255,255,0.04)" : "rgba(69,133,245,0.06)";
+  const unlockDescriptionColor = isDarkTheme
+    ? colorWithAlpha(colors.text, 0.86)
+    : colorWithAlpha(colors.text, 0.74);
   const isPremiumVariant = FEATURE_UNLOCK_PREMIUM_VARIANTS.has(variantKey);
   const unlockLevel = FEATURE_UNLOCK_LEVELS[variantKey] || null;
   const heroBadgeText = isPremiumReminder
@@ -116929,7 +117469,7 @@ const FeatureUnlockCelebration = ({
             </Text>
             {heroSubtitleText ? (
               <Text
-                style={[styles.featureUnlockMessageSub, { color: colors.muted }]}
+                style={[styles.featureUnlockMessageSub, { color: unlockDescriptionColor }]}
                 numberOfLines={compactLayout ? 2 : 3}
               >
                 {heroSubtitleText}
@@ -116943,7 +117483,7 @@ const FeatureUnlockCelebration = ({
           <Text style={[styles.featureUnlockSectionLabel, { color: colors.muted }]}>{whereLabel}</Text>
           <Text style={[styles.featureUnlockSectionTitle, { color: colors.text }]}>{sectionTitle}</Text>
           <Text
-            style={[styles.featureUnlockSectionDescription, { color: colors.muted }]}
+            style={[styles.featureUnlockSectionDescription, { color: unlockDescriptionColor }]}
             numberOfLines={compactLayout ? 3 : 5}
           >
             {compactSectionDescription}
@@ -116961,7 +117501,7 @@ const FeatureUnlockCelebration = ({
               <Text style={[styles.featureUnlockSectionTitle, { color: colors.text, marginTop: 0 }]}>
                 {previewBadgeLabel || sectionTitle}
               </Text>
-              <Text style={[styles.featureUnlockSectionDescription, { color: colors.muted, marginTop: 4 }]}>
+              <Text style={[styles.featureUnlockSectionDescription, { color: unlockDescriptionColor, marginTop: 4 }]}>
                 {compactSectionDescription || normalizedHeroCopy}
               </Text>
             </View>

@@ -516,6 +516,14 @@ function collectChangedUiTextFiles() {
   return [...files].sort();
 }
 
+function collectChangedFiles() {
+  const output = [
+    git(["diff", "--name-only"]),
+    git(["diff", "--cached", "--name-only"]),
+  ].join("\n");
+  return new Set(output.split(/\r?\n/).map((file) => file.trim()).filter(Boolean));
+}
+
 function main() {
   const requiredLanguages = getRequiredLanguages();
   const errors = [];
@@ -527,15 +535,14 @@ function main() {
   const changedUiTextFiles = collectChangedUiTextFiles();
   if (changedUiTextFiles.length > 0) {
     console.log(`[INFO] UI text-like changes detected in: ${changedUiTextFiles.join(", ")}`);
-    const localizationChanged = changedUiTextFiles.some((file) =>
-      [
-        "src/constants/translations.js",
-        "src/constants/translations.generated.js",
-        "src/constants/languageMapFallback.generated.js",
-        "src/constants/localizedUiCopy.js",
-        "src/constants/themeConfig.js",
-      ].includes(file)
-    );
+    const changedFiles = collectChangedFiles();
+    const localizationChanged = [
+      "src/constants/translations.js",
+      "src/constants/translations.generated.js",
+      "src/constants/languageMapFallback.generated.js",
+      "src/constants/localizedUiCopy.js",
+      "src/constants/themeConfig.js",
+    ].some((file) => changedFiles.has(file));
     if (!localizationChanged) {
       errors.push("UI text-like changes were detected, but no localization dictionary/config file changed.");
     }
