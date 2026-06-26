@@ -116,6 +116,7 @@ export const STORAGE_KEYS = {
   PUSH_NOTIFICATIONS_ENABLED_LOGGED: "@almost_push_notifications_enabled_logged",
   HOME_WIDGET_INSTALLED_LOGGED: "@almost_home_widget_installed_logged",
   PUSH_DAY_THREE_PROMPT: "@almost_push_day_three_prompt",
+  SUBSCRIPTION_AUTO_IMPORT_PROMPT: "@almost_subscription_auto_import_prompt",
   SPEND_LOGGING_REMINDER: "@almost_spend_logging_reminder",
   TUTORIAL: "@almost_tutorial_state",
   TUTORIAL_CARD_SHOWN: "tutorial_card_shown",

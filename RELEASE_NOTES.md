@@ -1,5 +1,40 @@
 # Release Notes
 
+## 6.1.9 (from 6.1.7)
+
+### EN
+- Almi is more rewarding and easier to care for, with clearer bonuses, smarter subscription help, and smoother everyday fixes.
+
+### RU
+- Алми стал щедрее и проще в уходе: бонусы понятнее, помощь с подписками умнее, а повседневные исправления делают Almost стабильнее.
+
+### ES
+- Almi ahora recompensa mejor y es más fácil de cuidar, con bonos más claros, ayuda más inteligente para suscripciones y mejoras diarias más fluidas.
+
+### FR
+- Almi récompense mieux et devient plus facile à suivre, avec des bonus plus clairs, une aide plus intelligente pour les abonnements et des corrections du quotidien.
+
+### DE
+- Almi belohnt dich besser und ist leichter zu pflegen, mit klareren Boni, smarterer Abo-Hilfe und runderen Alltagskorrekturen.
+
+### PT
+- Almi ficou mais recompensador e fácil de cuidar, com bônus mais claros, ajuda mais inteligente para assinaturas e correções do dia a dia.
+
+### IT
+- Almi è più gratificante e facile da seguire, con bonus più chiari, aiuto più intelligente per gli abbonamenti e correzioni quotidiane più fluide.
+
+### AR (SA)
+- أصبح Almi أكثر مكافأة وأسهل في العناية، مع مكافآت أوضح ومساعدة أذكى للاشتراكات وتحسينات يومية أكثر سلاسة.
+
+### AR (AE)
+- أصبح Almi أكثر مكافأة وأسهل في العناية، مع مكافآت أوضح ومساعدة أذكى للاشتراكات وتحسينات يومية أكثر سلاسة.
+
+### ZH
+- Almi 现在更会奖励你，也更容易照顾：奖励更清楚，订阅管理更智能，日常体验也更顺畅。
+
+### KO
+- Almi가 더 보람 있고 돌보기 쉬워졌으며, 보너스는 더 명확해지고 구독 도움과 일상적인 수정도 더 매끄러워졌습니다.
+
 ## 6.1.7 (from 6.1.6)
 
 ### EN

@@ -91,7 +91,7 @@ Default payload used by client:
   "newInstallOnly": false,
   "forceGroup": "B",
   "allocation": { "A": 0, "B": 100, "C": 0 },
-  "trialSaveLimit": 10
+  "trialSaveLimit": 5
 }
 ```
 

@@ -110,6 +110,7 @@ export const QUEUED_MODAL_TYPES = {
   FOCUS_DIGEST: "focus_digest",
   DAILY_SUMMARY: "daily_summary",
   INCOME_PROMPT: "income_prompt",
+  CYCLE_SAVINGS_REVOKED: "cycle_savings_revoked",
   NO_GOAL_SAVE_PROMPT: "no_goal_save_prompt",
   TYCOON_AUTOSAVE_HUNGRY: "tycoon_autosave_hungry",
   TYCOON_AUTOSAVE: "tycoon_autosave",

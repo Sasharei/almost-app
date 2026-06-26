@@ -82,6 +82,7 @@ export const TRANSLATIONS = {
     tamagotchiToolNeedRefillHint: "Средство закончилось. Купи пополнение и продолжай чистку.",
     tamagotchiCleanDoneHint: "Почистить котика",
     tamagotchiSkinTitle: "Образ Алми",
+    tamagotchiOutfitsLabel: "Образы",
     tamagotchiSkinSubtitle: "Новый стиль Алми мотивирует экономить по-новому",
     tamagotchiSkinCurrent: "Активно",
     tamagotchiSkinUnlockTitle: "Almost только запустился 🚀",
@@ -97,11 +98,37 @@ export const TRANSLATIONS = {
     tamagotchiAwaitingFirstCoin: "Алми ждёт первую монетку",
     tamagotchiFullMessage: "Алми сыт на 100%. Вернись позже, когда появится голод.",
     tamagotchiEarnCoinsHint: "Записывай сохранения, выполняй челленджи и забирай награды за монетки.",
+    tamagotchiHourlyRewardEyebrow: "Почасовой бонус",
+    tamagotchiHourlyRewardTitle: "Алми собирает монеты",
+    tamagotchiHourlyRewardReady: "Алми собрал {{amount}} зелёных монет. Забери их сейчас.",
+    tamagotchiHourlyRewardWaiting:
+      "Держи все статы выше {{threshold}}% ещё {{time}}, и Алми принесёт {{amount}} зелёных монет.",
+    tamagotchiHourlyRewardBlockedHungry:
+      "Алми был слишком голодный и не смог собрать монеты.",
+    tamagotchiHourlyRewardBlockedDirty:
+      "Алми был слишком грязный и не смог собрать монеты.",
+    tamagotchiHourlyRewardBlockedTired:
+      "Алми был слишком уставший и не смог собрать монеты.",
+    tamagotchiHourlyRewardBlockedBored:
+      "Алми скучал без игры и не смог собрать монеты.",
+    tamagotchiHourlyRewardClaim: "Забрать",
+    tamagotchiHourlyRewardAmount: "+{{amount}}",
+    tamagotchiHourlyRewardPushTitle: "Алми собрал монеты",
+    tamagotchiHourlyRewardPushBody:
+      "Алми нашёл {{amount}} зелёных монет. Открой Almost и забери награду.",
     insufficientCoinsTitle: "Недостаточно монет",
     insufficientCoinsNeed: "Нужно {{cost}}.",
     tamagotchiNeedCoinsMessage: "Нужно минимум {{cost}} монет на {{emoji}}.",
     tamagotchiMissYouNotificationTitle: "Алми соскучился 😿",
     tamagotchiMissYouNotificationBody: "Ты не заходил(а) больше 20 часов. Алми грустит и ждёт тебя.",
+    tamagotchiMissYouNotificationBodyHungry:
+      "Ты не заходил(а) больше 20 часов. Алми голодный и уже язвительно смотрит на пустую миску.",
+    tamagotchiMissYouNotificationBodyNeglected:
+      "Ты не заходил(а) больше 20 часов. Алми без игры, конечно, сам себя развлекал. Очень успешно. Почти.",
+    tamagotchiHungerNotificationLowBody:
+      "Алми проголодался. Миска пустая, а твоя дисциплина, видимо, на паузе.",
+    tamagotchiHungerNotificationStarvingBody:
+      "Алми совсем голодный. Отличный момент открыть Almost и вспомнить, что кот не питается обещаниями.",
     tamagotchiPartyNeedCoinsMessage: "Нужно {{amount}} синих монет на вечеринку.",
     tamagotchiPartyButtonLabel: "Вечеринка ×{{cost}}",
     tamagotchiImmunityHintTitle: "иммунитет",
@@ -155,6 +182,12 @@ export const TRANSLATIONS = {
       "Хочу {{food}}.",
       "Покормишь меня?",
     ],
+    tamagotchiSpeechHungrySnarky: [
+      "Я голодный. {{food}} или мне снова питаться надеждой?",
+      "Миска пустая. Смелая стратегия.",
+      "Хочу {{food}}. Да, это подсказка.",
+      "Покормишь меня? Или бюджет уже съел и это?",
+    ],
     tamagotchiSpeechHungrySoft: [
       "Чуть голодный.",
       "Можно перекус?",
@@ -173,6 +206,12 @@ export const TRANSLATIONS = {
       "Хочу играть. Давай {{toy}}!",
       "Я грущу без игр. Нужна {{toy}}.",
       "Поиграем? Я жду {{toy}}.",
+    ],
+    tamagotchiSpeechNeedPlaySnarky: [
+      "Со мной давно не играли. {{toy}} сам себя, конечно, не запустит.",
+      "Я скучаю. {{toy}} лежит без дела, как твой план зайти пораньше.",
+      "Поиграем в {{toy}}? Или мне назначить встречу в календаре?",
+      "Настроение падает. Удивительно, когда кота игнорируют.",
     ],
     tamagotchiSpeechNeedClean: [
       "Мне бы помыться. Я испачкался.",
@@ -253,6 +292,12 @@ export const TRANSLATIONS = {
       "Ничего. Продолжим.",
       "Я рядом. Идём дальше.",
     ],
+    cycleSavingsRevokedBadge: "Запись обновлена",
+    cycleSavingsRevokedTitle: "Упс, экономию убираем",
+    cycleSavingsRevokedBody:
+      "Сегодня ты отметил(а), что устоял(а) перед «{{title}}», но потом всё-таки потратил(а) на это деньги. Мы убрали запись об экономии, чтобы прогресс оставался честным.",
+    cycleSavingsRevokedAmountLabel: "Удалено из экономии",
+    cycleSavingsRevokedCta: "Понятно",
     tamagotchiSpeechGoalComplete: [
       "Цель закрыта! Что дальше?",
       "Цель готова. Новая мечта?",
@@ -612,14 +657,14 @@ export const TRANSLATIONS = {
     freeDayCoinReward: "Бесплатный день: +{{coins}} синие монеты.",
     freeDayCoinRewardStreak: "🔥 Серия {{days}} дня(ей): ещё +{{coins}} синие монеты.",
     dailyRewardReason: "Ежедневный бонус Алми · +{{amount}} монет. Возвращайся завтра за новой наградой!",
-    dailyRewardButtonLabel: "Ежедневная награда",
-    dailyRewardClaimHint: "Забрать",
-    dailyRewardCollectedLabel: "Завтра",
+    dailyRewardButtonLabel: "Награда дня",
+    dailyRewardClaimHint: "Собрать",
+    dailyRewardCollectedLabel: "Получено",
     dailyRewardCelebrateMessage: "+{{amount}}",
     dailyRewardModalTitle: "Ежедневная награда",
     dailyRewardModalDescription: "Забирай бонус и возвращайся завтра, каждый день награда чуть больше.",
     dailyRewardModalGrowthNote: "7 дней подряд = максимальная отдача.",
-    dailyRewardModalCTA: "Собрать награду",
+    dailyRewardModalCTA: "Собрать",
     dailyRewardModalLater: "Позже",
     dailyRewardModalDayLabel: "День {{day}}",
     dailyRewardSuperLabel: "Супер",
@@ -689,13 +734,44 @@ export const TRANSLATIONS = {
     featureUnlockPreviewLabel: "Как это выглядит",
     featureLockedLevelLabel: "Откроется на уровне {{level}}",
     featureLockedPremiumLabel: "Доступно в Premium",
+    premiumBudgetPreviewBody:
+      "Возможная утечка: «{{category}}». Открой авто-лимиты и прогноз расходов.",
+    premiumBudgetPreviewEmpty:
+      "Открой авто-лимиты и прогноз, чтобы видеть утечки до перерасхода.",
+    premiumImpulsePreviewTitle: "Превью карты импульсов",
+    premiumImpulsePreviewBody:
+      "Открой точные рискованные моменты и повторяющиеся паттерны из истории.",
+    premiumWeeklyPreviewTitle: "Недельная динамика уже собрана",
+    premiumWeeklyPreviewBody:
+      "Premium покажет дни, где сбережения росли, а траты выбивали темп.",
+    premiumBalancePreviewTitle: "Баланс и прогноз готовы",
+    premiumBalancePreviewBody:
+      "Открой 7-дневный прогноз, тренд баланса и категории, которые тормозят цель.",
+    premiumBudgetScreenTitle: "Бюджетный центр",
+    premiumBudgetScreenBody:
+      "Авто-лимиты, распределение денег, депозиты в цели и выплаты долга открываются в Premium.",
+    premiumBudgetScreenCta: "Открыть бюджет",
+    premiumBudgetPreviewTitle: "Превью бюджета",
+    premiumReportsPreviewTitle: "Превью отчёта",
+    premiumReportsPreviewAmount:
+      "В последних решениях движется {{amount}}. Полный отчёт покажет утечки и следующие шаги.",
+    premiumReportsPreviewBody:
+      "Проверено решений: {{count}}. Полный отчёт покажет утечки и следующие шаги.",
+    premiumReportsPreviewEmpty:
+      "Открой отчёты, чтобы видеть недельные утечки, победы и следующие шаги.",
+    premiumGoalsPreviewTitle: "Больше одной цели одновременно",
+    premiumGoalsPreviewBody:
+      "Одна копилка бесплатна. Premium позволяет вести несколько целей параллельно.",
+    premiumThinkingPreviewTitle: "Холодильник показывает замороженные решения",
+    premiumThinkingPreviewBody:
+      "Открой все полки, продления и точные суммы на паузе.",
     featureUnlockDidYouKnowBadge: "А вы знали что?",
-    featureUnlockRewardsDailyTitle: "Ежедневная награда",
+    featureUnlockRewardsDailyTitle: "Награда дня",
     featureUnlockRewardsDailyDescription:
       "На главном экране нажми на Алми: ежедневная награда теперь внутри его модалки.",
     featureUnlockRewardsDailyPremiumDescription:
       "На главном экране нажми на Алми: внутри модалки можно забрать ежедневную награду.",
-    featureUnlockRewardsDailyPreview: "Ежедневная награда",
+    featureUnlockRewardsDailyPreview: "Награда дня",
     featureUnlockFeedFocusTitle: "Лента + «Холодильник»",
     featureUnlockFeedFocusDescription:
       "Открой «Ленту»: сверху появились фокус-режим и вечерняя сводка. Вкладка «Холодильник» - для решений на потом.",
@@ -933,6 +1009,7 @@ export const TRANSLATIONS = {
     settingsTitle: "Настройки и персонализация",
     addCategoryLabel: "Категории",
     addCategoryHint: "Добавляй свои категории для аналитики и быстрых действий.",
+    addCategoryPlanHint: "Бесплатно доступна 1 custom-категория. Premium открывает безлимит.",
     addCategoryButton: "Добавить категорию",
     feedFilterAllCards: "Все",
     manageCategoriesButton: "Редактировать",
@@ -948,6 +1025,12 @@ export const TRANSLATIONS = {
     addCategorySave: "Сохранить",
     addCategoryCancel: "Отмена",
     addCategoryError: "Введи название категории",
+    manageCategoriesFreeLimitTitle: "Бесплатный лимит",
+    manageCategoriesFreeLimitBody: "Использовано {{count}} из {{limit}} custom-категорий. Premium открывает безлимитные категории.",
+    manageCategoriesPremiumLimitTitle: "Premium-категории",
+    manageCategoriesPremiumLimitBody: "Создавай сколько угодно custom-категорий для точной аналитики и быстрых действий.",
+    manageCategoriesPremiumBadge: "Безлимит",
+    manageCategoriesUpgradeButton: "Открыть безлимит",
     spendReductionLabel: "Уменьшать баланс при тратах",
     spendReductionHint: "Если выключить, покупки не будут снижать прогресс.",
     tycoonModeLabel: "Автосбор",
@@ -1101,6 +1184,7 @@ export const TRANSLATIONS = {
     subscriptionWidgetEyebrow: "Подписки",
     subscriptionWidgetTitle: "Контроль подписок",
     subscriptionWidgetTotal: "В месяц",
+    subscriptionWidgetAnnualSpend: "Уходит на подписки в год",
     subscriptionWidgetNext: "Следующая оплата",
     subscriptionWidgetDaysLeft: "{{days}} дн.",
     subscriptionWidgetDueToday: "Сегодня",
@@ -1125,6 +1209,21 @@ export const TRANSLATIONS = {
     subscriptionModalEmptySubtitle:
       "Создай искушение в категории «Подписки», укажи сумму и частоту - здесь появится таймер.",
     subscriptionModalClose: "Готово",
+    subscriptionAutoButton: "Авто",
+    subscriptionAutoPromptTitle: "Алми нашёл возможные подписки",
+    subscriptionAutoPromptBody:
+      "Almost может проверить твою историю расходов и собрать регулярные оплаты в виджет подписок.",
+    subscriptionAutoPromptStart: "Начать",
+    subscriptionAutoPromptLater: "Позже",
+    subscriptionAutoImportTitle: "Найдены регулярные оплаты",
+    subscriptionAutoImportBody:
+      "Можно импортировать {{count}} похожих платежей как подписки. Проверь суммы после импорта.",
+    subscriptionAutoImportCta: "Импортировать {{count}}",
+    subscriptionAutoImported: "Импортировано подписок: {{count}}",
+    subscriptionAutoImportNoneTitle: "Пока нечего импортировать",
+    subscriptionAutoImportNoneBody:
+      "Авто-импорт ищет повторяющиеся траты в истории Almost. Добавь или отметь несколько оплат, и он сможет предложить подписки.",
+    subscriptionAutoImportNoneAction: "Понятно",
     subscriptionNotificationTitleSingle: "Проверь подписку",
     subscriptionNotificationTitleMultiple: "{{count}} подписок скоро",
     subscriptionNotificationBodySingle:
@@ -2020,6 +2119,7 @@ export const TRANSLATIONS = {
     tamagotchiToolNeedRefillHint: "This tool is empty. Buy a refill to continue cleaning.",
     tamagotchiCleanDoneHint: "Clean kitty",
     tamagotchiSkinTitle: "Almi skins",
+    tamagotchiOutfitsLabel: "Outfits",
     tamagotchiSkinSubtitle: "A new vibe for Almi keeps your savings fresh",
     tamagotchiSkinCurrent: "Selected",
     tamagotchiSkinUnlockTitle: "Almost just launched 🚀",
@@ -2035,11 +2135,37 @@ export const TRANSLATIONS = {
     tamagotchiAwaitingFirstCoin: "Almi awaits the first coin",
     tamagotchiFullMessage: "Almi is already full. Come back later when she gets hungry.",
     tamagotchiEarnCoinsHint: "Log saves, complete challenges, and claim rewards to earn coins.",
+    tamagotchiHourlyRewardEyebrow: "Hourly bonus",
+    tamagotchiHourlyRewardTitle: "Almi collects coins",
+    tamagotchiHourlyRewardReady: "Almi collected {{amount}} green coins. Collect them now.",
+    tamagotchiHourlyRewardWaiting:
+      "Keep every stat above {{threshold}}% for {{time}} and Almi will bring {{amount}} green coins.",
+    tamagotchiHourlyRewardBlockedHungry:
+      "Almi was too hungry and could not collect coins.",
+    tamagotchiHourlyRewardBlockedDirty:
+      "Almi was too dirty and could not collect coins.",
+    tamagotchiHourlyRewardBlockedTired:
+      "Almi was too tired and could not collect coins.",
+    tamagotchiHourlyRewardBlockedBored:
+      "Almi was bored without playtime and could not collect coins.",
+    tamagotchiHourlyRewardClaim: "Collect",
+    tamagotchiHourlyRewardAmount: "+{{amount}}",
+    tamagotchiHourlyRewardPushTitle: "Almi collected coins",
+    tamagotchiHourlyRewardPushBody:
+      "Almi found {{amount}} green coins. Open Almost to collect the reward.",
     insufficientCoinsTitle: "Not enough coins",
     insufficientCoinsNeed: "You need {{cost}}.",
     tamagotchiNeedCoinsMessage: "You need at least {{cost}} coins for {{emoji}}.",
     tamagotchiMissYouNotificationTitle: "Almi misses you 😿",
     tamagotchiMissYouNotificationBody: "You have been away for over 20 hours. Almi feels sad and waits for you.",
+    tamagotchiMissYouNotificationBodyHungry:
+      "You have been away for over 20 hours. Almi is hungry and silently reviewing the empty bowl situation.",
+    tamagotchiMissYouNotificationBodyNeglected:
+      "You have been away for over 20 hours. Almi entertained himself. Brilliantly. Almost.",
+    tamagotchiHungerNotificationLowBody:
+      "Almi is hungry. The bowl is empty, and apparently so is the follow-through.",
+    tamagotchiHungerNotificationStarvingBody:
+      "Almi is starving. Great time to open Almost and remember cats do not run on promises.",
     tamagotchiPartyNeedCoinsMessage: "You need {{amount}} blue coins to start a party.",
     tamagotchiPartyButtonLabel: "Party ×{{cost}}",
     tamagotchiImmunityHintTitle: "immunity",
@@ -2093,6 +2219,12 @@ export const TRANSLATIONS = {
       "I want {{food}}.",
       "Feed me?",
     ],
+    tamagotchiSpeechHungrySnarky: [
+      "I'm hungry. {{food}}, or am I dining on hope again?",
+      "The bowl is empty. Bold strategy.",
+      "I want {{food}}. Yes, that was the hint.",
+      "Feed me? Or did the budget eat that too?",
+    ],
     tamagotchiSpeechHungrySoft: [
       "A little hungry.",
       "Can I snack?",
@@ -2111,6 +2243,12 @@ export const TRANSLATIONS = {
       "I want to play. Let's go with {{toy}}!",
       "I'm sad without games. Bring {{toy}}?",
       "Play with me? I'm waiting for {{toy}}.",
+    ],
+    tamagotchiSpeechNeedPlaySnarky: [
+      "Nobody played with me. {{toy}} will not launch itself, sadly.",
+      "I'm bored. {{toy}} is waiting, like your plan to check in earlier.",
+      "Can we play {{toy}}? Or should I book a calendar slot?",
+      "My mood is dropping. Shocking result of ignoring the cat.",
     ],
     tamagotchiSpeechNeedClean: [
       "I'm dirty. Bath time, please.",
@@ -2167,6 +2305,12 @@ export const TRANSLATIONS = {
       "Not ideal, but we continue.",
       "I'm here. Onward.",
     ],
+    cycleSavingsRevokedBadge: "Entry updated",
+    cycleSavingsRevokedTitle: "Oops, this save no longer counts",
+    cycleSavingsRevokedBody:
+      "You logged a save for “{{title}}” today, then spent on it anyway. We removed that savings entry so your progress stays honest.",
+    cycleSavingsRevokedAmountLabel: "Removed from savings",
+    cycleSavingsRevokedCta: "Got it",
     tamagotchiSpeechGoalComplete: [
       "Goal complete! What's next?",
       "You nailed it. New dream?",
@@ -2511,14 +2655,14 @@ export const TRANSLATIONS = {
     freeDayCoinReward: "Free day logged: +{{coins}} blue coins.",
     freeDayCoinRewardStreak: "🔥 {{days}}-day streak: +{{coins}} blue coins.",
     dailyRewardReason: "Daily Almi reward · +{{amount}} coins. Come back tomorrow for another reward!",
-    dailyRewardButtonLabel: "Daily reward",
-    dailyRewardClaimHint: "Tap to collect",
-    dailyRewardCollectedLabel: "Collected today",
+    dailyRewardButtonLabel: "Daily bonus",
+    dailyRewardClaimHint: "Collect",
+    dailyRewardCollectedLabel: "Collected",
     dailyRewardCelebrateMessage: "+{{amount}}",
     dailyRewardModalTitle: "Daily reward",
     dailyRewardModalDescription: "Collect now and come back tomorrow, each day gets a little bigger.",
     dailyRewardModalGrowthNote: "7 days in a row unlocks the best payout.",
-    dailyRewardModalCTA: "Collect reward",
+    dailyRewardModalCTA: "Collect",
     dailyRewardModalLater: "Later",
     dailyRewardModalDayLabel: "Day {{day}}",
     dailyRewardSuperLabel: "Super",
@@ -2587,13 +2731,44 @@ export const TRANSLATIONS = {
     featureUnlockPreviewLabel: "Looks like this",
     featureLockedLevelLabel: "Unlocks at level {{level}}",
     featureLockedPremiumLabel: "Available in Premium",
+    premiumBudgetPreviewBody:
+      "Possible leak: {{category}}. Unlock auto limits and a spending forecast.",
+    premiumBudgetPreviewEmpty:
+      "Unlock auto limits and forecasts to catch leaks before overspend.",
+    premiumImpulsePreviewTitle: "Impulse map preview",
+    premiumImpulsePreviewBody:
+      "Unlock exact high-risk moments and recurring patterns from your history.",
+    premiumWeeklyPreviewTitle: "Weekly money signals are ready",
+    premiumWeeklyPreviewBody:
+      "Premium shows the days where savings grew and spending broke the rhythm.",
+    premiumBalancePreviewTitle: "Balance and forecast are ready",
+    premiumBalancePreviewBody:
+      "Unlock the 7-day forecast, balance trend, and categories slowing your goal.",
+    premiumBudgetScreenTitle: "Budget workspace",
+    premiumBudgetScreenBody:
+      "Auto limits, money allocation, goal deposits, and debt payoff open in Premium.",
+    premiumBudgetScreenCta: "Unlock Budget",
+    premiumBudgetPreviewTitle: "Budget preview",
+    premiumReportsPreviewTitle: "Report preview",
+    premiumReportsPreviewAmount:
+      "{{amount}} moved through recent decisions. Open the full report for leaks and next steps.",
+    premiumReportsPreviewBody:
+      "{{count}} recent decisions scanned. Open the full report for leaks and next steps.",
+    premiumReportsPreviewEmpty:
+      "Open reports for weekly leaks, wins, and next steps.",
+    premiumGoalsPreviewTitle: "Run more than one goal",
+    premiumGoalsPreviewBody:
+      "One jar stays free. Premium lets every goal grow at the same time.",
+    premiumThinkingPreviewTitle: "Fridge shows frozen decisions",
+    premiumThinkingPreviewBody:
+      "Open every shelf, extension, and exact amount on pause.",
     featureUnlockDidYouKnowBadge: "Did you know?",
-    featureUnlockRewardsDailyTitle: "Daily reward",
+    featureUnlockRewardsDailyTitle: "Daily bonus",
     featureUnlockRewardsDailyDescription:
       "On Home, tap Almi: daily reward is now inside the modal.",
     featureUnlockRewardsDailyPremiumDescription:
       "On Home, tap Almi to collect your daily reward in the modal.",
-    featureUnlockRewardsDailyPreview: "Daily reward",
+    featureUnlockRewardsDailyPreview: "Daily bonus",
     featureUnlockFeedFocusTitle: "Feed + Fridge",
     featureUnlockFeedFocusDescription:
       "Open Feed: focus mode and evening summary are at the top. Use Fridge to decide later.",
@@ -2817,6 +2992,7 @@ export const TRANSLATIONS = {
     settingsTitle: "Settings & personalisation",
     addCategoryLabel: "Categories",
     addCategoryHint: "Add your own categories for analytics and quick actions.",
+    addCategoryPlanHint: "Free includes 1 custom category. Premium unlocks unlimited categories.",
     addCategoryButton: "Add category",
     feedFilterAllCards: "All",
     manageCategoriesButton: "Edit",
@@ -2832,6 +3008,12 @@ export const TRANSLATIONS = {
     addCategorySave: "Save",
     addCategoryCancel: "Cancel",
     addCategoryError: "Enter a category name",
+    manageCategoriesFreeLimitTitle: "Free limit",
+    manageCategoriesFreeLimitBody: "Used {{count}} of {{limit}} custom categories. Premium unlocks unlimited categories.",
+    manageCategoriesPremiumLimitTitle: "Premium categories",
+    manageCategoriesPremiumLimitBody: "Create unlimited custom categories for sharper analytics and quick actions.",
+    manageCategoriesPremiumBadge: "Unlimited",
+    manageCategoriesUpgradeButton: "Unlock unlimited",
     spendReductionLabel: "Reduce savings on spends",
     spendReductionHint: "Turn off to keep your balance and goal progress when you buy.",
     tycoonModeLabel: "Auto-save",
@@ -2985,6 +3167,7 @@ export const TRANSLATIONS = {
     subscriptionWidgetEyebrow: "Subscriptions",
     subscriptionWidgetTitle: "Subscription watch",
     subscriptionWidgetTotal: "Monthly",
+    subscriptionWidgetAnnualSpend: "Spent on subscriptions per year",
     subscriptionWidgetNext: "Next charge",
     subscriptionWidgetDaysLeft: "{{days}} days",
     subscriptionWidgetDueToday: "Today",
@@ -3009,6 +3192,21 @@ export const TRANSLATIONS = {
     subscriptionModalEmptySubtitle:
       "Create a temptation in the Subscriptions category, add amount and frequency, and the timer will appear here.",
     subscriptionModalClose: "Done",
+    subscriptionAutoButton: "Auto",
+    subscriptionAutoPromptTitle: "Almi found possible subscriptions",
+    subscriptionAutoPromptBody:
+      "Almost can review your spending history and turn recurring charges into the subscription widget.",
+    subscriptionAutoPromptStart: "Start",
+    subscriptionAutoPromptLater: "Later",
+    subscriptionAutoImportTitle: "Recurring charges found",
+    subscriptionAutoImportBody:
+      "You can import {{count}} similar payments as subscriptions. Review the amounts after import.",
+    subscriptionAutoImportCta: "Import {{count}}",
+    subscriptionAutoImported: "Subscriptions imported: {{count}}",
+    subscriptionAutoImportNoneTitle: "Nothing to import yet",
+    subscriptionAutoImportNoneBody:
+      "Auto import looks for repeated spending in your Almost history. Add or mark a few payments, and it can suggest subscriptions.",
+    subscriptionAutoImportNoneAction: "Got it",
     subscriptionNotificationTitleSingle: "Check a subscription",
     subscriptionNotificationTitleMultiple: "{{count}} subscriptions soon",
     subscriptionNotificationBodySingle:
@@ -3877,6 +4075,7 @@ export const TRANSLATIONS = {
     tamagotchiToolNeedRefillHint: "Cet outil est vide. Achète une recharge pour continuer le nettoyage.",
     tamagotchiCleanDoneHint: "Nettoyer le chat",
     tamagotchiSkinTitle: "Apparences d'Almi",
+    tamagotchiOutfitsLabel: "Tenues",
     tamagotchiSkinSubtitle: "Un nouveau style pour Almi ravive ta motivation d'épargner",
     tamagotchiSkinCurrent: "Actif",
     tamagotchiSkinUnlockTitle: "Almost vient d'arriver 🚀",
@@ -3893,12 +4092,38 @@ export const TRANSLATIONS = {
     tamagotchiFullMessage: "Almi est repue pour l'instant. Reviens quand elle aura faim.",
     tamagotchiEarnCoinsHint:
       "Enregistre tes économies, termine des défis et récupère des récompenses pour gagner des pièces.",
+    tamagotchiHourlyRewardEyebrow: "Bonus horaire",
+    tamagotchiHourlyRewardTitle: "Almi collecte des pièces",
+    tamagotchiHourlyRewardReady: "Almi a collecté {{amount}} pièces vertes. Récupère-les maintenant.",
+    tamagotchiHourlyRewardWaiting:
+      "Garde toutes ses stats au-dessus de {{threshold}}% pendant {{time}} et Almi rapportera {{amount}} pièces vertes.",
+    tamagotchiHourlyRewardBlockedHungry:
+      "Almi avait trop faim et n'a pas pu collecter de pièces.",
+    tamagotchiHourlyRewardBlockedDirty:
+      "Almi était trop sale et n'a pas pu collecter de pièces.",
+    tamagotchiHourlyRewardBlockedTired:
+      "Almi était trop fatiguée et n'a pas pu collecter de pièces.",
+    tamagotchiHourlyRewardBlockedBored:
+      "Almi s'ennuyait sans jeu et n'a pas pu collecter de pièces.",
+    tamagotchiHourlyRewardClaim: "Récupérer",
+    tamagotchiHourlyRewardAmount: "+{{amount}}",
+    tamagotchiHourlyRewardPushTitle: "Almi a collecté des pièces",
+    tamagotchiHourlyRewardPushBody:
+      "Almi a trouvé {{amount}} pièces vertes. Ouvre Almost pour récupérer la récompense.",
     insufficientCoinsTitle: "Pas assez de pièces",
     insufficientCoinsNeed: "Il te faut {{cost}}.",
     tamagotchiNeedCoinsMessage: "Il faut au moins {{cost}} pièces pour {{emoji}}.",
     tamagotchiMissYouNotificationTitle: "Almi s'ennuie de toi 😿",
     tamagotchiMissYouNotificationBody:
       "Tu n'as pas ouvert l'app depuis plus de 20 heures. Almi est triste et t'attend.",
+    tamagotchiMissYouNotificationBodyHungry:
+      "Tu n'as pas ouvert l'app depuis plus de 20 heures. Almi a faim et juge déjà la gamelle vide.",
+    tamagotchiMissYouNotificationBodyNeglected:
+      "Tu n'as pas ouvert l'app depuis plus de 20 heures. Almi s'est amusé tout seul. Brillamment. Presque.",
+    tamagotchiHungerNotificationLowBody:
+      "Almi a faim. La gamelle est vide, et le suivi aussi, apparemment.",
+    tamagotchiHungerNotificationStarvingBody:
+      "Almi meurt de faim. Bon moment pour ouvrir Almost et rappeler que les chats ne vivent pas de promesses.",
     tamagotchiPartyNeedCoinsMessage: "Il faut {{amount}} pièces bleues pour lancer la fête.",
     tamagotchiPartyButtonLabel: "Fête ×{{cost}}",
     tamagotchiImmunityHintTitle: "immunité",
@@ -3952,6 +4177,12 @@ export const TRANSLATIONS = {
       "Je veux {{food}}.",
       "Tu me nourris ?",
     ],
+    tamagotchiSpeechHungrySnarky: [
+      "J'ai faim. {{food}}, ou je dîne encore avec de l'espoir ?",
+      "La gamelle est vide. Stratégie audacieuse.",
+      "Je veux {{food}}. Oui, c'était l'indice.",
+      "Tu me nourris ? Ou le budget a mangé ça aussi ?",
+    ],
     tamagotchiSpeechHungrySoft: [
       "Un peu faim.",
       "Je peux grignoter ?",
@@ -3970,6 +4201,12 @@ export const TRANSLATIONS = {
       "J'ai envie de jouer. {{toy}} ?",
       "Je suis triste sans jeu. Prends {{toy}}.",
       "On joue ? J'attends {{toy}}.",
+    ],
+    tamagotchiSpeechNeedPlaySnarky: [
+      "Personne n'a joué avec moi. {{toy}} ne va pas se lancer tout seul.",
+      "Je m'ennuie. {{toy}} attend, comme ton plan de revenir plus tôt.",
+      "On joue avec {{toy}} ? Ou je réserve un créneau ?",
+      "Mon humeur baisse. Résultat surprenant quand on ignore le chat.",
     ],
     tamagotchiSpeechNeedClean: [
       "Je suis sale. Un bain, s'il te plaît.",
@@ -4026,6 +4263,12 @@ export const TRANSLATIONS = {
       "Pas idéal, mais on avance.",
       "Je suis là. En avant.",
     ],
+    cycleSavingsRevokedBadge: "Entrée mise à jour",
+    cycleSavingsRevokedTitle: "Oups, cette économie ne compte plus",
+    cycleSavingsRevokedBody:
+      "Aujourd’hui, tu as noté avoir résisté à « {{title}} », puis tu as quand même dépensé pour ça. Nous avons retiré cette économie pour que ta progression reste honnête.",
+    cycleSavingsRevokedAmountLabel: "Retiré de l’épargne",
+    cycleSavingsRevokedCta: "Compris",
     tamagotchiSpeechGoalComplete: [
       "Objectif atteint ! Et ensuite ?",
       "Objectif validé. Nouveau rêve ?",
@@ -4363,14 +4606,14 @@ export const TRANSLATIONS = {
     freeDayCoinReward: "Jour gratuit enregistré : +{{coins}} pièces bleues.",
     freeDayCoinRewardStreak: "🔥 Série de {{days}} jours : +{{coins}} pièces bleues.",
     dailyRewardReason: "Récompense Almi quotidienne · +{{amount}} pièces. Reviens demain pour en gagner une autre !",
-    dailyRewardButtonLabel: "Récompense du jour",
-    dailyRewardClaimHint: "Appuie pour l’obtenir",
-    dailyRewardCollectedLabel: "Déjà prise",
+    dailyRewardButtonLabel: "Bonus du jour",
+    dailyRewardClaimHint: "Réclamer",
+    dailyRewardCollectedLabel: "Pris",
     dailyRewardCelebrateMessage: "+{{amount}}",
     dailyRewardModalTitle: "Récompense du jour",
     dailyRewardModalDescription: "Récupère-la et reviens demain : chaque jour elle grandit un peu.",
     dailyRewardModalGrowthNote: "7 jours d’affilée pour un gain maximum.",
-    dailyRewardModalCTA: "Récupérer la récompense",
+    dailyRewardModalCTA: "Réclamer",
     dailyRewardModalLater: "Plus tard",
     dailyRewardModalDayLabel: "Jour {{day}}",
     dailyRewardSuperLabel: "Super",
@@ -4439,13 +4682,44 @@ export const TRANSLATIONS = {
     featureUnlockPreviewLabel: "Aperçu",
     featureLockedLevelLabel: "Se débloque au niveau {{level}}",
     featureLockedPremiumLabel: "Disponible en Premium",
+    premiumBudgetPreviewBody:
+      "Fuite possible : {{category}}. Débloque les limites auto et le forecast de dépenses.",
+    premiumBudgetPreviewEmpty:
+      "Débloque limites auto et forecasts pour repérer les fuites avant le dépassement.",
+    premiumImpulsePreviewTitle: "Aperçu carte des impulsions",
+    premiumImpulsePreviewBody:
+      "Débloque les moments à risque et les schémas récurrents de ton historique.",
+    premiumWeeklyPreviewTitle: "Les signaux de la semaine sont prêts",
+    premiumWeeklyPreviewBody:
+      "Premium montre les jours où l'épargne monte et où les dépenses cassent le rythme.",
+    premiumBalancePreviewTitle: "Solde et prévision prêts",
+    premiumBalancePreviewBody:
+      "Débloque la prévision 7 jours, la tendance du solde et les catégories qui freinent ton objectif.",
+    premiumBudgetScreenTitle: "Espace budget",
+    premiumBudgetScreenBody:
+      "Limites auto, allocation, dépôts vers les objectifs et remboursement de dette s'ouvrent avec Premium.",
+    premiumBudgetScreenCta: "Débloquer Budget",
+    premiumBudgetPreviewTitle: "Aperçu budget",
+    premiumReportsPreviewTitle: "Aperçu du rapport",
+    premiumReportsPreviewAmount:
+      "{{amount}} a circulé dans tes décisions récentes. Le rapport complet montre les fuites et prochaines étapes.",
+    premiumReportsPreviewBody:
+      "{{count}} décisions récentes analysées. Le rapport complet montre les fuites et prochaines étapes.",
+    premiumReportsPreviewEmpty:
+      "Ouvre les rapports pour voir fuites hebdo, victoires et prochaines étapes.",
+    premiumGoalsPreviewTitle: "Pilote plus d'un objectif",
+    premiumGoalsPreviewBody:
+      "Une tirelire reste gratuite. Premium fait avancer tous tes objectifs en même temps.",
+    premiumThinkingPreviewTitle: "Le Frigo montre les décisions gelées",
+    premiumThinkingPreviewBody:
+      "Ouvre toutes les étagères, prolongations et montants exacts en pause.",
     featureUnlockDidYouKnowBadge: "Le savais-tu ?",
-    featureUnlockRewardsDailyTitle: "Récompense du jour",
+    featureUnlockRewardsDailyTitle: "Bonus du jour",
     featureUnlockRewardsDailyDescription:
       "La récompense du jour est maintenant dans la modale d’Almi. Sur l’accueil, touche le chat, ouvre la modale et récupère le bonus une fois par jour ; elle revient demain.",
     featureUnlockRewardsDailyPremiumDescription:
       "Sur l’accueil, touche Almi pour ouvrir la modale et récupérer la récompense du jour.",
-    featureUnlockRewardsDailyPreview: "Récompense du jour",
+    featureUnlockRewardsDailyPreview: "Bonus du jour",
     featureUnlockFeedFocusTitle: "Flux + « Frigo »",
     featureUnlockFeedFocusDescription:
       "Au début du flux, le mode focus et le récap du soir t’attendent. L’onglet « Frigo » te permet de décider plus tard.",
@@ -4678,6 +4952,7 @@ export const TRANSLATIONS = {
     settingsTitle: "Réglages et personnalisation",
     addCategoryLabel: "Catégories",
     addCategoryHint: "Ajoute tes propres catégories pour les stats et les actions rapides.",
+    addCategoryPlanHint: "Le gratuit inclut 1 catégorie personnalisée. Premium débloque les catégories illimitées.",
     addCategoryButton: "Ajouter une catégorie",
     feedFilterAllCards: "Toutes",
     manageCategoriesButton: "Modifier",
@@ -4693,6 +4968,12 @@ export const TRANSLATIONS = {
     addCategorySave: "Enregistrer",
     addCategoryCancel: "Annuler",
     addCategoryError: "Renseigne un nom de catégorie",
+    manageCategoriesFreeLimitTitle: "Limite gratuite",
+    manageCategoriesFreeLimitBody: "{{count}} catégorie(s) personnalisée(s) utilisée(s) sur {{limit}}. Premium débloque les catégories illimitées.",
+    manageCategoriesPremiumLimitTitle: "Catégories Premium",
+    manageCategoriesPremiumLimitBody: "Crée autant de catégories personnalisées que nécessaire pour des analyses et actions plus précises.",
+    manageCategoriesPremiumBadge: "Illimité",
+    manageCategoriesUpgradeButton: "Débloquer l'illimité",
     spendReductionLabel: "Réduire l’épargne lors des dépenses",
     spendReductionHint: "Désactive pour garder le solde et les objectifs intacts quand tu achètes.",
     tycoonModeLabel: "Sauvegarde auto",
@@ -4849,6 +5130,7 @@ export const TRANSLATIONS = {
     subscriptionWidgetEyebrow: "Abonnements",
     subscriptionWidgetTitle: "Suivi des abonnements",
     subscriptionWidgetTotal: "Mensuel",
+    subscriptionWidgetAnnualSpend: "Dépensé en abonnements par an",
     subscriptionWidgetNext: "Prochain paiement",
     subscriptionWidgetDaysLeft: "{{days}} j",
     subscriptionWidgetDueToday: "Aujourd’hui",
@@ -4873,6 +5155,21 @@ export const TRANSLATIONS = {
     subscriptionModalEmptySubtitle:
       "Crée une tentation dans la catégorie Abonnements, ajoute le montant et la fréquence, et le minuteur apparaîtra ici.",
     subscriptionModalClose: "Terminé",
+    subscriptionAutoButton: "Auto",
+    subscriptionAutoPromptTitle: "Almi a trouvé des abonnements possibles",
+    subscriptionAutoPromptBody:
+      "Almost peut analyser ton historique de dépenses et transformer les paiements récurrents en abonnements.",
+    subscriptionAutoPromptStart: "Commencer",
+    subscriptionAutoPromptLater: "Plus tard",
+    subscriptionAutoImportTitle: "Paiements récurrents trouvés",
+    subscriptionAutoImportBody:
+      "Tu peux importer {{count}} paiements similaires comme abonnements. Vérifie les montants après l’import.",
+    subscriptionAutoImportCta: "Importer {{count}}",
+    subscriptionAutoImported: "Abonnements importés : {{count}}",
+    subscriptionAutoImportNoneTitle: "Rien à importer pour l’instant",
+    subscriptionAutoImportNoneBody:
+      "L’import auto cherche les dépenses répétées dans ton historique Almost. Ajoute ou marque quelques paiements, et il pourra proposer des abonnements.",
+    subscriptionAutoImportNoneAction: "Compris",
     subscriptionNotificationTitleSingle: "Vérifie un abonnement",
     subscriptionNotificationTitleMultiple: "{{count}} abonnements bientôt",
     subscriptionNotificationBodySingle:
@@ -5727,6 +6024,7 @@ export const TRANSLATIONS = {
     tamagotchiToolNeedRefillHint: "La herramienta se terminó. Compra recarga para seguir limpiando.",
     tamagotchiCleanDoneHint: "Limpiar al gatito",
     tamagotchiSkinTitle: "Aspectos de Almi",
+    tamagotchiOutfitsLabel: "Atuendos",
     tamagotchiSkinSubtitle: "Un nuevo estilo para Almi mantiene fresca la motivación de ahorro",
     tamagotchiSkinCurrent: "Seleccionado",
     tamagotchiSkinUnlockTitle: "Almost acaba de despegar 🚀",
@@ -5743,12 +6041,38 @@ export const TRANSLATIONS = {
     tamagotchiFullMessage: "Almi ya está llena. Vuelve cuando vuelva a tener hambre.",
     tamagotchiEarnCoinsHint:
       "Registra tus ahorros, completa retos y reclama recompensas para ganar monedas.",
+    tamagotchiHourlyRewardEyebrow: "Bono por hora",
+    tamagotchiHourlyRewardTitle: "Almi junta monedas",
+    tamagotchiHourlyRewardReady: "Almi juntó {{amount}} monedas verdes. Recógelas ahora.",
+    tamagotchiHourlyRewardWaiting:
+      "Mantén todas sus estadísticas por encima de {{threshold}}% durante {{time}} y Almi traerá {{amount}} monedas verdes.",
+    tamagotchiHourlyRewardBlockedHungry:
+      "Almi tenía demasiada hambre y no pudo juntar monedas.",
+    tamagotchiHourlyRewardBlockedDirty:
+      "Almi estaba demasiado sucia y no pudo juntar monedas.",
+    tamagotchiHourlyRewardBlockedTired:
+      "Almi estaba demasiado cansada y no pudo juntar monedas.",
+    tamagotchiHourlyRewardBlockedBored:
+      "Almi se aburrió sin jugar y no pudo juntar monedas.",
+    tamagotchiHourlyRewardClaim: "Recoger",
+    tamagotchiHourlyRewardAmount: "+{{amount}}",
+    tamagotchiHourlyRewardPushTitle: "Almi juntó monedas",
+    tamagotchiHourlyRewardPushBody:
+      "Almi encontró {{amount}} monedas verdes. Abre Almost para recoger la recompensa.",
     insufficientCoinsTitle: "No hay suficientes monedas",
     insufficientCoinsNeed: "Necesitas {{cost}}.",
     tamagotchiNeedCoinsMessage: "Necesitas al menos {{cost}} monedas para {{emoji}}.",
     tamagotchiMissYouNotificationTitle: "Almi te extraña 😿",
     tamagotchiMissYouNotificationBody:
       "No has entrado en más de 20 horas. Almi está triste y te está esperando.",
+    tamagotchiMissYouNotificationBodyHungry:
+      "No has entrado en más de 20 horas. Almi tiene hambre y ya está juzgando el cuenco vacío.",
+    tamagotchiMissYouNotificationBodyNeglected:
+      "No has entrado en más de 20 horas. Almi se entretuvo solo. De maravilla. Casi.",
+    tamagotchiHungerNotificationLowBody:
+      "Almi tiene hambre. El cuenco está vacío y, por lo visto, la constancia también.",
+    tamagotchiHungerNotificationStarvingBody:
+      "Almi se muere de hambre. Buen momento para abrir Almost y recordar que los gatos no viven de promesas.",
     tamagotchiPartyNeedCoinsMessage: "Necesitas {{amount}} monedas azules para iniciar una fiesta.",
     tamagotchiPartyButtonLabel: "Fiesta ×{{cost}}",
     tamagotchiImmunityHintTitle: "inmunidad",
@@ -5802,6 +6126,12 @@ export const TRANSLATIONS = {
       "Quiero {{food}}.",
       "¿Me das de comer?",
     ],
+    tamagotchiSpeechHungrySnarky: [
+      "Tengo hambre. ¿{{food}}, o vuelvo a cenar esperanza?",
+      "El cuenco está vacío. Estrategia valiente.",
+      "Quiero {{food}}. Sí, esa era la pista.",
+      "¿Me das de comer? ¿O el presupuesto también se comió eso?",
+    ],
     tamagotchiSpeechHungrySoft: [
       "Un poco de hambre.",
       "¿Puedo picar algo?",
@@ -5820,6 +6150,12 @@ export const TRANSLATIONS = {
       "Quiero jugar. ¡Saquemos {{toy}}!",
       "Estoy triste sin juegos. ¿{{toy}}?",
       "¿Jugamos? Estoy esperando {{toy}}.",
+    ],
+    tamagotchiSpeechNeedPlaySnarky: [
+      "Nadie jugó conmigo. {{toy}} no se mueve solo, lamentablemente.",
+      "Me aburro. {{toy}} espera, como tu plan de volver antes.",
+      "¿Jugamos con {{toy}}? ¿O reservo hora en el calendario?",
+      "Mi ánimo baja. Resultado sorprendente de ignorar al gato.",
     ],
     tamagotchiSpeechNeedClean: [
       "Estoy sucio. Hora de baño, por favor.",
@@ -5876,6 +6212,12 @@ export const TRANSLATIONS = {
       "No ideal, pero avanzamos.",
       "Estoy aquí. Adelante.",
     ],
+    cycleSavingsRevokedBadge: "Registro actualizado",
+    cycleSavingsRevokedTitle: "Ups, este ahorro ya no cuenta",
+    cycleSavingsRevokedBody:
+      "Hoy registraste que resististe «{{title}}», pero luego gastaste en eso. Quitamos ese ahorro para que tu progreso siga siendo honesto.",
+    cycleSavingsRevokedAmountLabel: "Quitado de ahorros",
+    cycleSavingsRevokedCta: "Entendido",
     tamagotchiSpeechGoalComplete: [
       "¡Meta cumplida! ¿Qué sigue?",
       "Meta lograda. ¿Nuevo sueño?",
@@ -6213,14 +6555,14 @@ export const TRANSLATIONS = {
     freeDayCoinReward: "Día gratis registrado: +{{coins}} monedas azules.",
     freeDayCoinRewardStreak: "🔥 Racha de {{days}} días: +{{coins}} monedas azules.",
     dailyRewardReason: "Recompensa diaria de Almi · +{{amount}} monedas. Vuelve mañana por otra recompensa.",
-    dailyRewardButtonLabel: "Recompensa diaria",
-    dailyRewardClaimHint: "Toca para cobrar",
-    dailyRewardCollectedLabel: "Ya cobrada hoy",
+    dailyRewardButtonLabel: "Bono diario",
+    dailyRewardClaimHint: "Cobrar",
+    dailyRewardCollectedLabel: "Cobrada",
     dailyRewardCelebrateMessage: "+{{amount}}",
     dailyRewardModalTitle: "Recompensa diaria",
     dailyRewardModalDescription: "Cóbala y vuelve mañana: cada día crece un poco más.",
     dailyRewardModalGrowthNote: "7 días seguidos dan el mejor premio.",
-    dailyRewardModalCTA: "Cobrar recompensa",
+    dailyRewardModalCTA: "Cobrar",
     dailyRewardModalLater: "Después",
     dailyRewardModalDayLabel: "Día {{day}}",
     dailyRewardSuperLabel: "Super",
@@ -6289,13 +6631,44 @@ export const TRANSLATIONS = {
     featureUnlockPreviewLabel: "Así se ve",
     featureLockedLevelLabel: "Se desbloquea en el nivel {{level}}",
     featureLockedPremiumLabel: "Disponible en Premium",
+    premiumBudgetPreviewBody:
+      "Posible fuga: {{category}}. Desbloquea límites automáticos y forecast de gasto.",
+    premiumBudgetPreviewEmpty:
+      "Desbloquea límites automáticos y forecasts para detectar fugas antes del exceso.",
+    premiumImpulsePreviewTitle: "Vista previa del mapa",
+    premiumImpulsePreviewBody:
+      "Desbloquea momentos de alto riesgo y patrones recurrentes de tu historial.",
+    premiumWeeklyPreviewTitle: "Las señales semanales están listas",
+    premiumWeeklyPreviewBody:
+      "Premium muestra los días donde el ahorro creció y el gasto rompió el ritmo.",
+    premiumBalancePreviewTitle: "Balance y previsión listos",
+    premiumBalancePreviewBody:
+      "Desbloquea la previsión de 7 días, la tendencia del balance y las categorías que frenan tu meta.",
+    premiumBudgetScreenTitle: "Espacio de presupuesto",
+    premiumBudgetScreenBody:
+      "Límites automáticos, asignación, depósitos a metas y pago de deuda se abren con Premium.",
+    premiumBudgetScreenCta: "Desbloquear Budget",
+    premiumBudgetPreviewTitle: "Vista previa del presupuesto",
+    premiumReportsPreviewTitle: "Vista previa del reporte",
+    premiumReportsPreviewAmount:
+      "{{amount}} pasó por decisiones recientes. El reporte completo muestra fugas y siguientes pasos.",
+    premiumReportsPreviewBody:
+      "{{count}} decisiones recientes analizadas. El reporte completo muestra fugas y siguientes pasos.",
+    premiumReportsPreviewEmpty:
+      "Abre reportes para ver fugas semanales, victorias y siguientes pasos.",
+    premiumGoalsPreviewTitle: "Lleva más de una meta",
+    premiumGoalsPreviewBody:
+      "Una alcancía sigue gratis. Premium permite que todas tus metas avancen a la vez.",
+    premiumThinkingPreviewTitle: "La Nevera muestra decisiones congeladas",
+    premiumThinkingPreviewBody:
+      "Abre todos los estantes, extensiones e importes exactos en pausa.",
     featureUnlockDidYouKnowBadge: "¿Sabías que?",
-    featureUnlockRewardsDailyTitle: "Recompensa diaria",
+    featureUnlockRewardsDailyTitle: "Bono diario",
     featureUnlockRewardsDailyDescription:
       "La recompensa diaria ahora está dentro de la modal de Almi. En Inicio, toca el gato, abre la modal y reclama el bonus una vez al día; se reinicia mañana.",
     featureUnlockRewardsDailyPremiumDescription:
       "En Inicio, toca a Almi para abrir la modal y recoger tu recompensa diaria.",
-    featureUnlockRewardsDailyPreview: "Recompensa diaria",
+    featureUnlockRewardsDailyPreview: "Bono diario",
     featureUnlockFeedFocusTitle: "Feed + Nevera",
     featureUnlockFeedFocusDescription:
       "Al inicio del feed verás el modo foco y el resumen nocturno. La pestaña «Nevera» te deja decidir más tarde.",
@@ -6528,6 +6901,7 @@ export const TRANSLATIONS = {
     settingsTitle: "Ajustes y personalización",
     addCategoryLabel: "Categorías",
     addCategoryHint: "Añade tus propias categorías para analíticas y acciones rápidas.",
+    addCategoryPlanHint: "Gratis incluye 1 categoría personalizada. Premium desbloquea categorías ilimitadas.",
     addCategoryButton: "Añadir categoría",
     feedFilterAllCards: "Todas",
     manageCategoriesButton: "Editar",
@@ -6543,6 +6917,12 @@ export const TRANSLATIONS = {
     addCategorySave: "Guardar",
     addCategoryCancel: "Cancelar",
     addCategoryError: "Introduce un nombre de categoría",
+    manageCategoriesFreeLimitTitle: "Límite gratis",
+    manageCategoriesFreeLimitBody: "Has usado {{count}} de {{limit}} categorías personalizadas. Premium desbloquea categorías ilimitadas.",
+    manageCategoriesPremiumLimitTitle: "Categorías Premium",
+    manageCategoriesPremiumLimitBody: "Crea categorías personalizadas ilimitadas para análisis y acciones rápidas más precisas.",
+    manageCategoriesPremiumBadge: "Ilimitado",
+    manageCategoriesUpgradeButton: "Desbloquear ilimitado",
     spendReductionLabel: "Restar ahorros al gastar",
     spendReductionHint: "Apágalo para no bajar saldo y progreso de objetivos al comprar.",
     tycoonModeLabel: "Autoguardado",
@@ -6697,6 +7077,7 @@ export const TRANSLATIONS = {
     subscriptionWidgetEyebrow: "Suscripciones",
     subscriptionWidgetTitle: "Control de suscripciones",
     subscriptionWidgetTotal: "Mensual",
+    subscriptionWidgetAnnualSpend: "Gasto anual en suscripciones",
     subscriptionWidgetNext: "Próximo pago",
     subscriptionWidgetDaysLeft: "{{days}} días",
     subscriptionWidgetDueToday: "Hoy",
@@ -6721,6 +7102,21 @@ export const TRANSLATIONS = {
     subscriptionModalEmptySubtitle:
       "Crea una tentación en la categoría Suscripciones, añade importe y frecuencia, y aquí aparecerá el temporizador.",
     subscriptionModalClose: "Listo",
+    subscriptionAutoButton: "Auto",
+    subscriptionAutoPromptTitle: "Almi encontró posibles suscripciones",
+    subscriptionAutoPromptBody:
+      "Almost puede revisar tu historial de gastos y convertir pagos recurrentes en el widget de suscripciones.",
+    subscriptionAutoPromptStart: "Empezar",
+    subscriptionAutoPromptLater: "Más tarde",
+    subscriptionAutoImportTitle: "Pagos recurrentes encontrados",
+    subscriptionAutoImportBody:
+      "Puedes importar {{count}} pagos similares como suscripciones. Revisa los importes después de importar.",
+    subscriptionAutoImportCta: "Importar {{count}}",
+    subscriptionAutoImported: "Suscripciones importadas: {{count}}",
+    subscriptionAutoImportNoneTitle: "Nada que importar todavía",
+    subscriptionAutoImportNoneBody:
+      "La importación automática busca gastos repetidos en tu historial de Almost. Añade o marca algunos pagos y podrá sugerir suscripciones.",
+    subscriptionAutoImportNoneAction: "Entendido",
     subscriptionNotificationTitleSingle: "Revisa una suscripción",
     subscriptionNotificationTitleMultiple: "{{count}} suscripciones pronto",
     subscriptionNotificationBodySingle:
