@@ -6,14 +6,14 @@ export const ECONOMY_RULES = {
   achievementRewardScale: 0.3,
   freeDayLoginBaseBlueCoins: 1,
   freeDayLoginMaxBlueCoins: 3,
-  freeDayRescueCost: 80,
+  freeDayRescueCost: 60,
   levelShareRewardBlueCoins: 3,
-  streakRestoreBlueCoinsPerDay: 10,
+  streakRestoreBlueCoinsPerDay: 8,
   streakPledgeBlueCoinsPerDay: 0.35,
   usageStreakWeeklyBonusBlueCoins: 2,
-  tamagotchiFeedCost: 5,
-  tamagotchiFeedBoost: 20,
-  tamagotchiPartyCost: 400,
+  tamagotchiFeedCost: 2,
+  tamagotchiFeedBoost: 24,
+  tamagotchiPartyCost: 250,
 };
 
 export const DEFAULT_REMOTE_IMAGE =
@@ -54,9 +54,9 @@ export const CUSTOM_SPEND_SAMPLE_USD = 7.5;
 export const CUSTOM_SPEND_SAVINGS_RANGE = { low: 0.7, high: 1.3 };
 export const CUSTOM_SPEND_MONTHLY_WEEKS = 4.33;
 
-export const RATING_PROMPT_DELAY_DAYS = 2;
-export const RATING_PROMPT_FOLLOWUP_DELAY_DAYS = 4;
-export const RATING_PROMPT_ACTION_THRESHOLD = 5;
+export const RATING_PROMPT_DAILY_START_DAYS = 3;
+export const RATING_PROMPT_RECURRING_INTERVAL_DAYS = 2;
+export const RATING_PROMPT_ACTION_THRESHOLD = 3;
 export const RATING_PROMPT_ACTION_TYPES = new Set(["save", "spend"]);
 
 export const ANDROID_REVIEW_URL = "market://details?id=com.sasarei.almostclean";

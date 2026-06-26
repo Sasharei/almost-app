@@ -14,7 +14,9 @@ export const PREMIUM_PLAN_ORDER = ["weekly", "monthly", "yearly", "lifetime"];
 export const FREE_PLAN_LIMITS = {
   activeGoals: 1,
   activePendingCards: 2,
-  customTemptationCards: 10,
+  defaultTemptationCards: 4,
+  customTemptationCards: 5,
+  customCategories: 1,
   historyDays: 7,
   challengeClaims: 3,
   reportsWeeks: 4,
@@ -824,6 +826,30 @@ const TRIAL_10_SAVES_SUBTITLE_BY_LANGUAGE = {
   de: "Du hast das kostenlose Speicherlimit erreicht. Um fortzufahren, wechsle zu Premium.",
   ar: "لقد وصلت إلى حد الحفظ المجاني. للمتابعة، انضم إلى Premium.",
   zh: "你已达到免费保存上限。要继续，请加入 Premium。",
+};
+const TEMPTATION_CARD_LIMIT_TITLE_BY_LANGUAGE = {
+  ru: "Нужен Premium для новых искушений.",
+  en: "Premium is needed for more temptations.",
+  es: "Necesitas Premium para más tentaciones.",
+  fr: "Premium est nécessaire pour plus de tentations.",
+  de: "Für mehr Versuchungen ist Premium nötig.",
+  pt: "É preciso Premium para mais tentações.",
+  it: "Serve Premium per altre tentazioni.",
+  ar: "تحتاج إلى Premium لمزيد من الإغراءات.",
+  zh: "需要 Premium 才能添加更多诱惑卡。",
+  ko: "더 많은 유혹에는 Premium이 필요합니다.",
+};
+const TEMPTATION_CARD_LIMIT_SUBTITLE_BY_LANGUAGE = {
+  ru: "В бесплатном плане доступно 4 стандартные карточки и 1 своя. Для дальнейшего бесконечного создания искушений нужна Premium-подписка.",
+  en: "The free plan includes 4 default cards and 1 custom card. To keep creating unlimited temptations, you need Premium.",
+  es: "El plan gratis incluye 4 tarjetas predeterminadas y 1 personalizada. Para seguir creando tentaciones ilimitadas necesitas Premium.",
+  fr: "Le plan gratuit inclut 4 cartes par défaut et 1 carte personnalisée. Pour créer des tentations en illimité, il faut Premium.",
+  de: "Der kostenlose Plan enthält 4 Standardkarten und 1 eigene Karte. Für unbegrenzt neue Versuchungen brauchst du Premium.",
+  pt: "O plano grátis inclui 4 cartões padrão e 1 cartão personalizado. Para criar tentações ilimitadas, precisas do Premium.",
+  it: "Il piano gratuito include 4 carte predefinite e 1 carta personalizzata. Per creare tentazioni illimitate serve Premium.",
+  ar: "تتضمن الخطة المجانية 4 بطاقات افتراضية وبطاقة مخصصة واحدة. ولإنشاء إغراءات بلا حدود تحتاج إلى Premium.",
+  zh: "免费计划包含 4 张默认卡和 1 张自定义卡。若要无限创建诱惑卡，需要 Premium。",
+  ko: "무료 플랜에는 기본 카드 4개와 맞춤 카드 1개가 포함됩니다. 유혹을 무제한으로 만들려면 Premium이 필요합니다.",
 };
 const GROUP_C_SUPPORT_INTRO_BADGE_BY_LANGUAGE = {
   ru: "ЛИЧНОЕ СООБЩЕНИЕ",
@@ -1886,6 +1912,7 @@ export const buildPaywallCopy = ({
     normalizedTrigger === "save_daily_limit_reached" ||
     normalizedTrigger === "save_daily_limit_blocked";
   const isTrialSavesHardTrigger = normalizedTrigger === "trial_10_saves_reached";
+  const isTemptationCardLimitTrigger = normalizedTrigger === "temptation_card_limit_reached";
   const isGroupCSupportSoftTrigger = GROUP_C_SUPPORT_SOFT_PAYWALL_TRIGGERS.has(normalizedTrigger);
   const isOnboardingHardGateTrigger = normalizedTrigger === "onboarding_completed_hard_gate";
   const isTransactionAbandonedTrigger = normalizedTrigger === "transaction_abandoned";
@@ -1930,6 +1957,10 @@ export const buildPaywallCopy = ({
   if (isTrialSavesHardTrigger) {
     title = template(resolveTemplateSource(TRIAL_10_SAVES_TITLE_BY_LANGUAGE, lang), copyTokens);
     subtitle = template(resolveTemplateSource(TRIAL_10_SAVES_SUBTITLE_BY_LANGUAGE, lang), copyTokens);
+  }
+  if (isTemptationCardLimitTrigger) {
+    title = template(resolveTemplateSource(TEMPTATION_CARD_LIMIT_TITLE_BY_LANGUAGE, lang), copyTokens);
+    subtitle = template(resolveTemplateSource(TEMPTATION_CARD_LIMIT_SUBTITLE_BY_LANGUAGE, lang), copyTokens);
   }
   if (isOnboardingHardGateTrigger) {
     title = template(resolveTemplateSource(ONBOARDING_HARD_GATE_TITLE_BY_LANGUAGE, lang), copyTokens);
