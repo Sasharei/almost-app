@@ -467,7 +467,6 @@ import {
   ANDROID_SOUND_MIN_GAP_MS,
   ANDROID_SOUND_KEY_GUARD_MS,
 } from "./src/constants/soundConfig";
-import PremiumPaywallModal from "./src/components/PremiumPaywallModal";
 import PremiumPaywallModalV2 from "./src/components/PremiumPaywallModalV2";
 import { PartyFireworksLayer, PartySparklesLayer } from "./src/components/PartyEffects";
 import LiquidGlassTabBar from "./src/components/LiquidGlassTabBar";
@@ -1166,10 +1165,6 @@ const PROFILE_HISTORY_RENDER_LIMIT = Math.max(HISTORY_VIEWPORT_ROWS * 4, 40);
 const FREE_TEMPTATION_CARD_LIMIT = FREE_PLAN_LIMITS.customTemptationCards;
 const FREE_DEFAULT_TEMPTATION_CARD_LIMIT =
   FREE_PLAN_LIMITS.defaultTemptationCards || Math.max(0, FREE_TEMPTATION_CARD_LIMIT - 1);
-const FREE_CUSTOM_TEMPTATION_CARD_CREATE_LIMIT = Math.max(
-  0,
-  FREE_TEMPTATION_CARD_LIMIT - FREE_DEFAULT_TEMPTATION_CARD_LIMIT
-);
 const FREE_CUSTOM_CATEGORY_LIMIT = FREE_PLAN_LIMITS.customCategories || 1;
 const FREE_CHALLENGE_CLAIMS_LIMIT = FREE_PLAN_LIMITS.challengeClaims;
 const FREE_REPORTS_WEEK_COUNT = FREE_PLAN_LIMITS.reportsWeeks;
@@ -1595,173 +1590,6 @@ const resolveMonetizationExperimentBucket = (seed = "") => {
   return Math.abs(hash) % 100;
 };
 const resolveMonetizationExperimentGroupFromSeed = () => MONETIZATION_FINAL_GROUP;
-const PAYWALL_DESIGN_EXPERIMENT_ID = "paywall_design_v1";
-const PAYWALL_DESIGN_EXPERIMENT_RC_KEY = "paywall_design_v1_config";
-const PAYWALL_DESIGN_VARIANTS = Object.freeze({
-  A: "A",
-  B: "B",
-});
-const PAYWALL_DESIGN_VARIANT_VALUES = new Set(Object.values(PAYWALL_DESIGN_VARIANTS));
-const PAYWALL_DESIGN_EXPERIMENT_DEFAULT_CONFIG = Object.freeze({
-  enabled: false,
-  forceVariant: "",
-  allocation: {
-    A: 100,
-    B: 0,
-  },
-});
-const normalizePaywallDesignVariant = (value = "", fallback = PAYWALL_DESIGN_VARIANTS.A) => {
-  const normalized = resolveNonEmptyString(value).toUpperCase();
-  if (PAYWALL_DESIGN_VARIANT_VALUES.has(normalized)) return normalized;
-  return fallback;
-};
-const normalizePaywallDesignAllocation = (input = null) => {
-  const raw = input && typeof input === "object" ? input : {};
-  const resolveAllocationValue = (key) => {
-    if (Object.prototype.hasOwnProperty.call(raw, key)) return raw[key];
-    const lower = key.toLowerCase();
-    if (Object.prototype.hasOwnProperty.call(raw, lower)) return raw[lower];
-    return 0;
-  };
-  const allocation = {
-    A: clampMonetizationPercent(resolveAllocationValue("A")),
-    B: clampMonetizationPercent(resolveAllocationValue("B")),
-  };
-  const total = allocation.A + allocation.B;
-  if (total > 0) return allocation;
-  return { ...PAYWALL_DESIGN_EXPERIMENT_DEFAULT_CONFIG.allocation };
-};
-const normalizePaywallDesignExperimentConfig = (input = null) => {
-  const raw = input && typeof input === "object" ? input : {};
-  const enabled = parseMonetizationBoolean(raw?.enabled);
-  const forceVariantRaw =
-    resolveNonEmptyString(raw?.forceVariant || raw?.force_variant || raw?.variant || "");
-  const forceVariant = normalizePaywallDesignVariant(forceVariantRaw, "");
-  return {
-    enabled:
-      enabled === null ? PAYWALL_DESIGN_EXPERIMENT_DEFAULT_CONFIG.enabled : enabled === true,
-    forceVariant,
-    allocation: normalizePaywallDesignAllocation(raw?.allocation),
-  };
-};
-const parsePaywallDesignExperimentRemoteConfig = (rawValue = "") => {
-  const normalizedRaw = resolveNonEmptyString(rawValue);
-  if (!normalizedRaw) {
-    return { ...PAYWALL_DESIGN_EXPERIMENT_DEFAULT_CONFIG };
-  }
-  try {
-    const parsed = JSON.parse(normalizedRaw);
-    return normalizePaywallDesignExperimentConfig(parsed);
-  } catch (error) {
-    return { ...PAYWALL_DESIGN_EXPERIMENT_DEFAULT_CONFIG };
-  }
-};
-const resolvePaywallDesignVariantFromSeed = (seed = "", config = null) => {
-  const resolvedConfig = normalizePaywallDesignExperimentConfig(config);
-  if (resolvedConfig.enabled !== true) {
-    return PAYWALL_DESIGN_VARIANTS.A;
-  }
-  const forced = normalizePaywallDesignVariant(resolvedConfig.forceVariant, "");
-  if (forced) return forced;
-  const allocation = normalizePaywallDesignAllocation(resolvedConfig.allocation);
-  const total = allocation.A + allocation.B;
-  if (total <= 0) return PAYWALL_DESIGN_VARIANTS.A;
-  const bucket = resolveMonetizationExperimentBucket(seed);
-  const threshold = (allocation.A / total) * 100;
-  return bucket < threshold ? PAYWALL_DESIGN_VARIANTS.A : PAYWALL_DESIGN_VARIANTS.B;
-};
-const ONBOARDING_LENGTH_EXPERIMENT_ID = "onboarding_length_v1";
-const ONBOARDING_LENGTH_EXPERIMENT_RC_KEY = "onboarding_length_v1_config";
-const ONBOARDING_LENGTH_VARIANTS = Object.freeze({
-  A: "A",
-  B: "B",
-});
-const ONBOARDING_LENGTH_VARIANT_VALUES = new Set(Object.values(ONBOARDING_LENGTH_VARIANTS));
-const ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG = Object.freeze({
-  enabled: false,
-  newInstallOnly: true,
-  forceVariant: "",
-  allocation: {
-    A: 100,
-    B: 0,
-  },
-});
-const normalizeOnboardingLengthVariant = (
-  value = "",
-  fallback = ONBOARDING_LENGTH_VARIANTS.A
-) => {
-  const normalized = resolveNonEmptyString(value).toUpperCase();
-  if (ONBOARDING_LENGTH_VARIANT_VALUES.has(normalized)) return normalized;
-  return fallback;
-};
-const normalizeOnboardingLengthAllocation = (input = null) => {
-  const raw = input && typeof input === "object" ? input : {};
-  const resolveAllocationValue = (key) => {
-    if (Object.prototype.hasOwnProperty.call(raw, key)) return raw[key];
-    const lower = key.toLowerCase();
-    if (Object.prototype.hasOwnProperty.call(raw, lower)) return raw[lower];
-    return 0;
-  };
-  const allocation = {
-    A: clampMonetizationPercent(resolveAllocationValue("A")),
-    B: clampMonetizationPercent(resolveAllocationValue("B")),
-  };
-  const total = allocation.A + allocation.B;
-  if (total > 0) return allocation;
-  return { ...ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG.allocation };
-};
-const normalizeOnboardingLengthExperimentConfig = (input = null) => {
-  const raw = input && typeof input === "object" ? input : {};
-  const enabled = parseMonetizationBoolean(raw?.enabled);
-  const newInstallOnly = parseMonetizationBoolean(raw?.newInstallOnly ?? raw?.new_install_only);
-  const forceVariantRaw = resolveNonEmptyString(
-    raw?.forceVariant || raw?.force_variant || raw?.variant || ""
-  );
-  const forceVariant = normalizeOnboardingLengthVariant(forceVariantRaw, "");
-  return {
-    enabled:
-      enabled === null ? ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG.enabled : enabled === true,
-    newInstallOnly:
-      newInstallOnly === null
-        ? ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG.newInstallOnly
-        : newInstallOnly === true,
-    forceVariant,
-    allocation: normalizeOnboardingLengthAllocation(raw?.allocation),
-  };
-};
-const parseOnboardingLengthExperimentRemoteConfig = (rawValue = "") => {
-  const normalizedRaw = resolveNonEmptyString(rawValue);
-  if (!normalizedRaw) {
-    return { ...ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG };
-  }
-  try {
-    const parsed = JSON.parse(normalizedRaw);
-    return normalizeOnboardingLengthExperimentConfig(parsed);
-  } catch (error) {
-    return { ...ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG };
-  }
-};
-const resolveOnboardingLengthVariantFromSeed = (
-  seed = "",
-  config = null,
-  { isNewInstall = true } = {}
-) => {
-  const resolvedConfig = normalizeOnboardingLengthExperimentConfig(config);
-  if (resolvedConfig.enabled !== true) {
-    return ONBOARDING_LENGTH_VARIANTS.A;
-  }
-  if (resolvedConfig.newInstallOnly && !isNewInstall) {
-    return ONBOARDING_LENGTH_VARIANTS.A;
-  }
-  const forced = normalizeOnboardingLengthVariant(resolvedConfig.forceVariant, "");
-  if (forced) return forced;
-  const allocation = normalizeOnboardingLengthAllocation(resolvedConfig.allocation);
-  const total = allocation.A + allocation.B;
-  if (total <= 0) return ONBOARDING_LENGTH_VARIANTS.A;
-  const bucket = resolveMonetizationExperimentBucket(seed);
-  const threshold = (allocation.A / total) * 100;
-  return bucket < threshold ? ONBOARDING_LENGTH_VARIANTS.A : ONBOARDING_LENGTH_VARIANTS.B;
-};
 const isTruthyStorageValue = (value = "") => {
   const normalized = resolveNonEmptyString(value).toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes";
@@ -2264,6 +2092,58 @@ const parseLocalizedPriceValue = (value) => {
   }
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+};
+const normalizeStoreCurrencyCode = (value = "", fallback = DEFAULT_PROFILE.currency) => {
+  const normalized = resolveNonEmptyString(value).toUpperCase();
+  if (/^[A-Z]{3}$/.test(normalized)) return normalized;
+  const fallbackNormalized = resolveNonEmptyString(fallback).toUpperCase();
+  return /^[A-Z]{3}$/.test(fallbackNormalized) ? fallbackNormalized : "USD";
+};
+const resolveStoreProductCurrencyCode = (product = null, fallback = DEFAULT_PROFILE.currency) =>
+  normalizeStoreCurrencyCode(
+    product?.currencyCode ||
+      product?.currency_code ||
+      product?.priceCurrencyCode ||
+      product?.price_currency_code ||
+      product?.isoCurrencyCode ||
+      product?.iso_currency_code ||
+      product?.currency ||
+      "",
+    fallback
+  );
+const resolveStoreProductPriceLocal = (product = null, fallback = null) => {
+  const numericCandidates = [
+    product?.price,
+    product?.priceAmount,
+    product?.price_amount,
+    product?.amount,
+  ];
+  for (const candidate of numericCandidates) {
+    const parsed =
+      typeof candidate === "number" || typeof candidate === "string" ? Number(candidate) : NaN;
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+  const microsCandidates = [
+    product?.priceAmountMicros,
+    product?.price_amount_micros,
+    product?.price?.amountMicros,
+    product?.price?.amount_micros,
+  ];
+  for (const candidate of microsCandidates) {
+    const parsed = Number(candidate);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed / 1000000;
+    }
+  }
+  const parsedLabelPrice =
+    parseLocalizedPriceValue(product?.priceString) ??
+    parseLocalizedPriceValue(product?.localizedPrice) ??
+    parseLocalizedPriceValue(product?.formattedPrice) ??
+    parseLocalizedPriceValue(product?.price?.formatted);
+  if (Number.isFinite(parsedLabelPrice) && parsedLabelPrice >= 0) return parsedLabelPrice;
+  return Number.isFinite(fallback) && Number(fallback) >= 0 ? Number(fallback) : null;
 };
 const normalizePaywallPeriodUnit = (value = "") => {
   const normalized = String(value || "").trim().toUpperCase();
@@ -5619,7 +5499,8 @@ const advanceTamagotchiHourlyRewardState = (
   if (blockReason) {
     return {
       ...source,
-      rewardWindowStartAt: pendingReward > 0 ? Math.max(0, Number(source.rewardWindowStartAt) || 0) : 0,
+      rewardWindowStartAt:
+        pendingReward > 0 ? Math.max(0, Number(source.rewardWindowStartAt) || 0) : now,
       pendingHourlyReward: pendingReward,
       pendingHourlyRewardHours: pendingHours,
       lastHourlyRewardCheckAt: now,
@@ -5629,11 +5510,16 @@ const advanceTamagotchiHourlyRewardState = (
     };
   }
 
+  const lastBlockedAt =
+    pendingReward > 0 ? 0 : Math.max(0, Number(source.lastHourlyRewardBlockedAt) || 0);
   const rawWindowStart =
-    Math.max(0, Number(source.rewardWindowStartAt) || 0) ||
-    Math.max(0, Number(source.lastHourlyRewardClaimedAt) || 0) ||
-    Math.max(0, Number(source.lastHourlyRewardCheckAt) || 0) ||
-    now;
+    Math.max(
+      lastBlockedAt,
+      Math.max(0, Number(source.rewardWindowStartAt) || 0) ||
+        Math.max(0, Number(source.lastHourlyRewardClaimedAt) || 0) ||
+        Math.max(0, Number(source.lastHourlyRewardCheckAt) || 0) ||
+        now
+    );
   const elapsed = Math.max(0, now - rawWindowStart);
   const earnedHours = Math.floor(elapsed / TAMAGOTCHI_HOURLY_REWARD_INTERVAL_MS);
   const remainingPendingHours = Math.max(0, TAMAGOTCHI_HOURLY_REWARD_MAX_PENDING_HOURS - pendingHours);
@@ -5655,6 +5541,14 @@ const advanceTamagotchiHourlyRewardState = (
     lastHourlyRewardBlockedAt: 0,
     lastHourlyRewardNotifiedAt: Math.max(0, Number(source.lastHourlyRewardNotifiedAt) || 0),
   };
+};
+
+const settleTamagotchiStateBeforeCareAction = (
+  state = TAMAGOTCHI_START_STATE,
+  timestamp = Date.now()
+) => {
+  const { state: decayedState } = computeTamagotchiDecay(state, timestamp);
+  return advanceTamagotchiHourlyRewardState(decayedState, timestamp);
 };
 
 const resolveTamagotchiHourlyRewardStatus = (
@@ -14149,6 +14043,8 @@ function TemptationCardComponent({
   onFocusBadgePress,
   budgetStatus = null,
   budgetAlertText = null,
+  categoryBudget = null,
+  onCategoryBudgetPress = null,
   showSavedCoachMark = false,
   onSavedCoachMarkAction = null,
   showAmountSliderConfirmCoach = false,
@@ -14165,6 +14061,7 @@ function TemptationCardComponent({
   hideMetaBadges = false,
 }) {
   const showMetaBadges = !hideMetaBadges;
+  const safeInsets = useSafeAreaInsets();
   const title = resolveTemptationTitle(item, language, titleOverride);
   const [titleTextWidth, setTitleTextWidth] = useState(0);
   const handleTitleTextLayout = useCallback((event) => {
@@ -14589,6 +14486,7 @@ function TemptationCardComponent({
   const [amountSliderAction, setAmountSliderAction] = useState(null);
   const [amountSliderValue, setAmountSliderValue] = useState(0.5);
   const [amountSliderInteracted, setAmountSliderInteracted] = useState(false);
+  const [amountSliderDragging, setAmountSliderDragging] = useState(false);
   const [amountSliderTrackWidth, setAmountSliderTrackWidth] = useState(0);
   const [amountSliderBaseOverrideUSD, setAmountSliderBaseOverrideUSD] = useState(null);
   const [amountManualVisible, setAmountManualVisible] = useState(false);
@@ -14761,7 +14659,7 @@ function TemptationCardComponent({
     Math.min(amountSliderTrackWidth, amountSliderTrackWidth * amountSliderValue)
   );
   const amountSliderThumbX = amountSliderTrackWidth * amountSliderValue;
-  const amountSliderThumbSize = 22;
+  const amountSliderThumbSize = 34;
   const amountSliderThumbRadius = amountSliderThumbSize / 2;
   const amountSliderThumbTranslate = amountSliderTrackWidth
     ? Math.max(
@@ -14772,10 +14670,12 @@ function TemptationCardComponent({
         )
       )
     : 0;
+  const amountSliderIsSpendMode = amountSliderAction === "spend";
   const amountSliderAccent =
-    amountSliderAction === "spend" ? SPEND_ACTION_COLOR : SAVE_ACTION_COLOR;
+    amountSliderIsSpendMode ? SPEND_ACTION_COLOR : SAVE_ACTION_COLOR;
   const amountSliderConfirmActionLabel =
-    amountSliderAction === "spend" ? t("spendAction") : t("saveAction");
+    amountSliderIsSpendMode ? t("spendAction") : t("saveAction");
+  const amountSliderGold = "#F7C45D";
   const amountSliderAccentSoft = colorWithAlpha(
     amountSliderAccent,
     isDarkTheme ? 0.28 : 0.22
@@ -14783,10 +14683,156 @@ function TemptationCardComponent({
   const amountSliderTrackBase = isDarkTheme
     ? "rgba(255,255,255,0.16)"
     : "rgba(0,0,0,0.08)";
-  const amountSliderSurface = isDarkTheme
-    ? colorWithAlpha("#101622", 0.92)
-    : colorWithAlpha("#FFFFFF", 0.95);
-  const amountSliderBorder = colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.4 : 0.25);
+  const amountSliderModalBackground = isDarkTheme
+    ? amountSliderIsSpendMode
+      ? "#1A0B12"
+      : "#07140F"
+    : amountSliderIsSpendMode
+    ? "#FFF5F7"
+    : "#F4FBF7";
+  const amountSliderModalCardBackground = isDarkTheme
+    ? amountSliderIsSpendMode
+      ? "#20101A"
+      : "#0E1726"
+    : "#FFFFFF";
+  const amountSliderModalPanelBackground = isDarkTheme
+    ? amountSliderIsSpendMode
+      ? "#2B1722"
+      : "#14233A"
+    : amountSliderIsSpendMode
+    ? "#FAE9EC"
+    : "#EAF2FF";
+  const amountSliderModalMutedPanelBackground = isDarkTheme
+    ? "rgba(255,255,255,0.06)"
+    : "#F6F8FC";
+  const amountSliderModalBorder = isDarkTheme
+    ? colorWithAlpha(amountSliderAccent, 0.24)
+    : "rgba(229,230,237,0.95)";
+  const amountSliderMonthlyChecks = effectiveIntervalMs
+    ? Math.max(1, Math.round((DAY_MS * 30) / Math.max(DAY_MS, effectiveIntervalMs)))
+    : Math.max(1, Math.round(CUSTOM_SPEND_MONTHLY_WEEKS * 5));
+  const amountSliderMonthlyRiskLabel = formatCurrency(
+    amountSliderLocalValue * amountSliderMonthlyChecks,
+    currency
+  );
+  const amountSliderCurrentLabel = amountSliderLabel;
+  const interactionSpendCount = Math.max(0, Number(interactionEntry?.spendCount) || 0);
+  const interactionAverageAmountUSD = Math.max(0, Number(interactionEntry?.averageAmountUSD) || 0);
+  const interactionSpendFallbackUSD =
+    interactionSpendCount *
+    Math.max(interactionAverageAmountUSD, lastAmountUSD, defaultBaseAmountUSD, 0);
+  const amountSliderTotalUSD = amountSliderIsSpendMode
+    ? Math.max(0, Number(stats?.spentUSD) || interactionSpendFallbackUSD || 0)
+    : Math.max(0, Number(stats?.totalUSD) || 0);
+  const amountSliderTotalLabel = formatCurrency(
+    convertToCurrency(amountSliderTotalUSD, currency),
+    currency
+  );
+  const amountSliderTotalActionLabel = `${t("totalLabel")} ${
+    amountSliderIsSpendMode ? t("spendAction") : t("saveAction")
+  }`;
+  const amountSliderImmediateStatLabel = amountSliderIsSpendMode
+    ? t("spendPreviewSpendNowLabel")
+    : t("temptationAmountSavedNowLabel");
+  const amountSliderProjectionStatLabel = amountSliderIsSpendMode
+    ? t("spendPreviewPotentialLabel")
+    : t("temptationAmountMonthlyProjectionLabel");
+  const hasCategoryBudget = Boolean(categoryBudget?.id);
+  const categoryBudgetLimitUSD = Math.max(0, Number(categoryBudget?.limitUSD) || 0);
+  const categoryBudgetSpentUSD = Math.max(0, Number(categoryBudget?.spentUSD) || 0);
+  const hasCategoryBudgetLimit = categoryBudgetLimitUSD > 0;
+  const categoryBudgetProjectedDeltaUSD =
+    amountSliderDisplayedAmount.amountUSD;
+  const categoryBudgetProjectedSpendUSD = amountSliderIsSpendMode
+    ? amountSliderDisplayedAmount.amountUSD
+    : 0;
+  const categoryBudgetSpentAfterUSD = categoryBudgetSpentUSD + categoryBudgetProjectedSpendUSD;
+  const categoryBudgetRemainingBeforeUSD = categoryBudgetLimitUSD - categoryBudgetSpentUSD;
+  const categoryBudgetRemainingAfterUSD = amountSliderIsSpendMode
+    ? categoryBudgetLimitUSD - categoryBudgetSpentAfterUSD
+    : categoryBudgetRemainingBeforeUSD + categoryBudgetProjectedDeltaUSD;
+  const categoryBudgetRemainingRatio = hasCategoryBudgetLimit
+    ? clampNumber(categoryBudgetRemainingAfterUSD / categoryBudgetLimitUSD, 0, 1)
+    : clampNumber(categoryBudgetProjectedDeltaUSD / Math.max(amountSliderMaxUSD, 1), 0, 1);
+  const categoryBudgetSpentRatio = hasCategoryBudgetLimit
+    ? categoryBudgetSpentAfterUSD / categoryBudgetLimitUSD
+    : 0;
+  const categoryBudgetStatus =
+    !hasCategoryBudgetLimit
+      ? "none"
+      : categoryBudgetSpentRatio >= 1
+      ? "over"
+      : categoryBudgetRemainingRatio <= BUDGET_CARD_LOW_THRESHOLD
+      ? "low"
+      : "safe";
+  const categoryBudgetAccent =
+    !amountSliderIsSpendMode || !hasCategoryBudgetLimit
+      ? amountSliderAccent
+      : categoryBudgetStatus === "over"
+      ? SPEND_ACTION_COLOR
+      : categoryBudgetStatus === "low"
+      ? "#F5A524"
+      : SAVE_ACTION_COLOR;
+  const formatCategoryBudgetAmount = useCallback(
+    (valueUSD = 0) => {
+      const numeric = Number(valueUSD) || 0;
+      const absoluteLabel = formatCurrency(
+        convertToCurrency(Math.abs(numeric), currency),
+        currency
+      );
+      return numeric < -0.01 ? `-${absoluteLabel}` : absoluteLabel;
+    },
+    [currency]
+  );
+  const categoryBudgetLimitLabel = formatCategoryBudgetAmount(categoryBudgetLimitUSD);
+  const categoryBudgetRemainingBeforeLabel = formatCategoryBudgetAmount(
+    categoryBudgetRemainingBeforeUSD
+  );
+  const categoryBudgetRemainingAfterLabel = formatCategoryBudgetAmount(
+    categoryBudgetRemainingAfterUSD
+  );
+  const categoryBudgetSpentAfterLabel = formatCategoryBudgetAmount(categoryBudgetSpentAfterUSD);
+  const categoryBudgetLabel = categoryBudget?.label || t("defaultSpendLabel");
+  const categoryBudgetTitle = hasCategoryBudgetLimit
+    ? `${t("spendPreviewCategoryRemainingLabel")}: ${categoryBudgetLabel}`
+    : `${categoryBudgetLabel} · ${t("spendPreviewNoLimitHint")}`;
+  const categoryBudgetHint = hasCategoryBudgetLimit
+    ? amountSliderIsSpendMode
+      ? `${categoryBudgetRemainingBeforeLabel} → ${categoryBudgetRemainingAfterLabel} · ${categoryBudgetSpentAfterLabel} / ${categoryBudgetLimitLabel}`
+      : `${t("budgetRemainingLabel")}: ${categoryBudgetRemainingBeforeLabel} → ${categoryBudgetRemainingAfterLabel}`
+    : amountSliderIsSpendMode
+    ? `${t("spendPreviewLimitDropLabel")}: -${amountSliderCurrentLabel}`
+    : `${t("homeWidgetSavedMonthLabel")}: +${amountSliderCurrentLabel}`;
+  const categoryBudgetImpactLabel = amountSliderIsSpendMode
+    ? `-${amountSliderCurrentLabel}`
+    : `+${amountSliderCurrentLabel}`;
+  const categoryBudgetFillWidth = `${Math.max(0, Math.min(100, categoryBudgetRemainingRatio * 100))}%`;
+  const amountSliderMoodIntensity = Math.max(0, Math.min(1, amountSliderValue));
+  const amountSliderProjectionColor = amountSliderIsSpendMode
+    ? blendColors(colors.text, SPEND_ACTION_COLOR, Math.min(0.82, 0.22 + amountSliderMoodIntensity * 0.68))
+    : blendColors(colors.text, SAVE_ACTION_COLOR, Math.min(0.78, 0.2 + amountSliderMoodIntensity * 0.62));
+  const amountSliderProjectionValueStyle = {
+    color: amountSliderProjectionColor,
+    fontSize: Math.round(27 + amountSliderMoodIntensity * 8),
+    lineHeight: Math.round(32 + amountSliderMoodIntensity * 8),
+  };
+  const amountSliderCatSource = amountSliderIsSpendMode
+    ? amountSliderMoodIntensity > 0.72
+      ? CLASSIC_TAMAGOTCHI_ANIMATIONS.cry
+      : CLASSIC_TAMAGOTCHI_ANIMATIONS.sad
+    : amountSliderMoodIntensity > 0.52
+    ? CLASSIC_TAMAGOTCHI_ANIMATIONS.happyHeadshake
+    : CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
+  const amountSliderCatMoodStyle = {
+    opacity: amountSliderIsSpendMode
+      ? Math.max(0.72, 1 - amountSliderMoodIntensity * 0.16)
+      : 1,
+    transform: [
+      { translateY: amountSliderIsSpendMode ? amountSliderMoodIntensity * 8 : -amountSliderMoodIntensity * 4 },
+      { scale: amountSliderIsSpendMode ? 1 - amountSliderMoodIntensity * 0.07 : 0.96 + amountSliderMoodIntensity * 0.08 },
+      { rotate: amountSliderIsSpendMode ? `${amountSliderMoodIntensity * -5}deg` : `${amountSliderMoodIntensity * 3}deg` },
+    ],
+  };
   const amountSliderStepCount = 24;
   const amountSliderHapticCooldownMs = 40;
 
@@ -14894,6 +14940,7 @@ function TemptationCardComponent({
     setAmountSliderAction(null);
     amountSliderInteractedRef.current = false;
     setAmountSliderInteracted(false);
+    setAmountSliderDragging(false);
     amountSliderBaseOverrideUSDRef.current = null;
     amountSliderManualUSDRef.current = null;
     setAmountSliderBaseOverrideUSD(null);
@@ -15168,6 +15215,7 @@ function TemptationCardComponent({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (event) => {
+          setAmountSliderDragging(true);
           notifyAmountSliderTouch(true);
           handleAmountSliderTouch(event);
         },
@@ -15176,10 +15224,12 @@ function TemptationCardComponent({
         },
         onPanResponderRelease: () => {
           updateAmountSliderValue(amountSliderValueRef.current, { force: true });
+          setAmountSliderDragging(false);
           notifyAmountSliderTouch(false);
         },
         onPanResponderTerminate: () => {
           updateAmountSliderValue(amountSliderValueRef.current, { force: true });
+          setAmountSliderDragging(false);
           notifyAmountSliderTouch(false);
         },
       }),
@@ -15228,6 +15278,29 @@ function TemptationCardComponent({
       playSound,
       resolveAmountSliderAmount,
     ]
+  );
+
+  const switchAmountSliderAction = useCallback(
+    (actionType) => {
+      if (actionType !== "save" && actionType !== "spend") return;
+      if (amountSliderAction === actionType) return;
+      setAmountSliderAction(actionType);
+      triggerSelectionHaptic();
+      playSound?.("tap", { skipCooldown: true });
+    },
+    [amountSliderAction, playSound]
+  );
+
+  const handleAmountModalActionPress = useCallback(
+    (actionType) => {
+      suppressCardPressUntilRef.current = Date.now() + 1200;
+      if (amountSliderAction !== actionType) {
+        switchAmountSliderAction(actionType);
+        return;
+      }
+      confirmAmountAction(actionType);
+    },
+    [amountSliderAction, confirmAmountAction, switchAmountSliderAction]
   );
 
   const handleSwipeRelease = useCallback(
@@ -15367,6 +15440,44 @@ function TemptationCardComponent({
     onLockedPress,
     onToggleEdit,
   ]);
+  const handleAmountCategoryBudgetPress = useCallback(() => {
+    if (!hasCategoryBudget || typeof onCategoryBudgetPress !== "function") return;
+    closeAmountSlider();
+    requestAnimationFrame(() => {
+      onCategoryBudgetPress({
+        item,
+        categoryId: categoryBudget?.id || null,
+        categoryLabel: categoryBudgetLabel,
+        hasLimit: hasCategoryBudgetLimit,
+        limitUSD: categoryBudgetLimitUSD,
+      });
+    });
+  }, [
+    categoryBudget?.id,
+    categoryBudgetLabel,
+    categoryBudgetLimitUSD,
+    closeAmountSlider,
+    hasCategoryBudget,
+    hasCategoryBudgetLimit,
+    item,
+    onCategoryBudgetPress,
+  ]);
+  const handleAmountTimerPress = useCallback(() => {
+    closeAmountSlider();
+    requestAnimationFrame(() => {
+      onToggleEdit?.(item);
+    });
+  }, [closeAmountSlider, item, onToggleEdit]);
+  const handleAmountGoalPress = useCallback(() => {
+    closeAmountSlider();
+    requestAnimationFrame(() => {
+      if (typeof onEditGoalSelect === "function") {
+        onEditGoalSelect(item);
+      } else {
+        onToggleEdit?.(item);
+      }
+    });
+  }, [closeAmountSlider, item, onEditGoalSelect, onToggleEdit]);
   const pauseButtonSurfaceColor = isDarkTheme ? "rgba(255,255,255,0.12)" : "#FFFFFF";
   const pauseButtonBorderColor = isDarkTheme
     ? "rgba(147,206,255,0.42)"
@@ -15768,107 +15879,462 @@ function TemptationCardComponent({
           </View>
         </TouchableWithoutFeedback>
       {!showEditorInline && amountSliderVisible && (
-        <View
-          style={[
-            styles.temptationAmountPanel,
-            { backgroundColor: amountSliderSurface, borderColor: amountSliderBorder },
-          ]}
+        <Modal
+          visible
+          transparent
+          forceNativeHost
+          animationType="fade"
+          statusBarTranslucent
+          navigationBarTranslucent
+          hardwareAccelerated
+          presentationStyle="overFullScreen"
+          onRequestClose={closeAmountSlider}
         >
-          <View style={styles.temptationAmountHeader}>
-            <View style={[styles.temptationAmountPill, { backgroundColor: amountSliderAccentSoft }]}>
-              <Text style={[styles.temptationAmountPillText, { color: amountSliderAccent }]}>
-                {amountSliderAction === "spend" ? t("spendAction") : t("saveAction")}
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.temptationAmountClose} onPress={closeAmountSlider}>
-              <Text style={[styles.temptationAmountCloseText, { color: colors.muted }]}>✕</Text>
-            </TouchableOpacity>
-          </View>
-          {allowAmountManualInput ? (
-            <TouchableOpacity
-              onPress={openAmountManual}
-              activeOpacity={0.8}
-              style={styles.temptationAmountValueTapZone}
-            >
-              <Text style={[styles.temptationAmountValue, { color: cardTextColor }]}>
-                {amountSliderLabel}
-              </Text>
-              <Text style={[styles.temptationAmountHint, { color: colors.muted }]}>
-                {t("amountSliderManualHint")}
-              </Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.temptationAmountValueTapZone}>
-              <Text style={[styles.temptationAmountValue, { color: cardTextColor }]}>
-                {amountSliderLabel}
-              </Text>
-            </View>
-          )}
-          <View style={styles.temptationAmountTrackWrap} {...amountSliderPanResponder.panHandlers}>
+          <View
+            style={[
+              styles.temptationAmountModalRoot,
+              {
+                backgroundColor: amountSliderModalBackground,
+                paddingTop: Math.max(18, safeInsets.top + 10),
+                paddingBottom: Math.max(18, safeInsets.bottom + 14),
+              },
+            ]}
+          >
             <View
-              style={[styles.temptationAmountTrack, { backgroundColor: amountSliderTrackBase }]}
-              onLayout={handleAmountSliderTrackLayout}
-              ref={amountSliderTrackRef}
-              collapsable={false}
-            >
-              <View
-                style={[
-                  styles.temptationAmountTrackFill,
-                  { width: amountSliderFillWidth, backgroundColor: amountSliderAccentSoft },
-                ]}
-              />
-            </View>
-            <View
+              pointerEvents="none"
               style={[
-                styles.temptationAmountTrackMid,
-                { backgroundColor: colorWithAlpha(amountSliderAccent, 0.4) },
+                styles.temptationAmountModalGlow,
+                { backgroundColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.24 : 0.18) },
               ]}
             />
-            <View
-              style={[
-                styles.temptationAmountThumb,
-                {
-                  width: amountSliderThumbSize,
-                  height: amountSliderThumbSize,
-                  borderRadius: amountSliderThumbRadius,
-                  borderColor: amountSliderAccent,
-                  backgroundColor: colors.card,
-                  transform: [{ translateX: amountSliderThumbTranslate }],
-                },
-              ]}
+            <View style={styles.temptationAmountModalTopbar}>
+              <View style={styles.temptationAmountModalIdentity}>
+                <View
+                  style={[
+                    styles.temptationAmountModalIcon,
+                    {
+                      backgroundColor: isDarkTheme ? "rgba(255,255,255,0.08)" : "#FAF0E6",
+                      borderColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.34 : 0.22),
+                    },
+                  ]}
+                >
+                  <Text style={styles.temptationAmountModalEmoji}>{item.emoji || "✨"}</Text>
+                </View>
+                <View style={styles.temptationAmountModalTitleBlock}>
+                  <Text
+                    style={[styles.temptationAmountModalTitle, { color: colors.text }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    allowAndroidAutoFit
+                    minimumFontScale={0.72}
+                  >
+                    {title}
+                  </Text>
+                  {!!desc && (
+                    <Text
+                      style={[styles.temptationAmountModalSubtitle, { color: colors.muted }]}
+                      numberOfLines={2}
+                    >
+                      {desc}
+                    </Text>
+                  )}
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.temptationAmountModalClose,
+                  { backgroundColor: amountSliderModalMutedPanelBackground },
+                ]}
+                onPress={closeAmountSlider}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[styles.temptationAmountCloseText, { color: colors.muted }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.temptationAmountModalScroll}
+              contentContainerStyle={styles.temptationAmountModalScrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              scrollEnabled={!amountSliderDragging}
             >
               <View
                 style={[
-                  styles.temptationAmountThumbInner,
-                  { backgroundColor: amountSliderAccent },
+                  styles.temptationAmountModalCard,
+                  {
+                    backgroundColor: amountSliderModalCardBackground,
+                    borderColor: amountSliderModalBorder,
+                  },
                 ]}
-              />
+              >
+                <View style={styles.temptationAmountModalHeroRow}>
+                  <View style={styles.temptationAmountModalHeroText}>
+                    <View style={[styles.temptationAmountPill, { backgroundColor: amountSliderAccentSoft }]}>
+                      <Text
+                        style={[styles.temptationAmountPillText, { color: amountSliderAccent }]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        allowAndroidAutoFit
+                        minimumFontScale={0.72}
+                      >
+                        {amountSliderTotalActionLabel}
+                      </Text>
+                    </View>
+                    <Text
+                      style={[styles.temptationAmountModalHeadline, { color: colors.text }]}
+                      numberOfLines={2}
+                      adjustsFontSizeToFit
+                      allowAndroidAutoFit
+                      minimumFontScale={0.68}
+                    >
+                      {title}
+                    </Text>
+                  </View>
+                  <View style={styles.temptationAmountModalBadge}>
+                    <Text
+                      style={styles.temptationAmountModalBadgeText}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      allowAndroidAutoFit
+                      minimumFontScale={0.64}
+                    >
+                      {amountSliderTotalLabel}
+                    </Text>
+                  </View>
+                </View>
+                <View
+                  style={[
+                    styles.temptationAmountMoodStage,
+                    {
+                      backgroundColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.18 : 0.1),
+                      borderColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.38 : 0.24),
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.temptationAmountMoodAura,
+                      {
+                        backgroundColor: colorWithAlpha(
+                          amountSliderIsSpendMode ? SPEND_ACTION_COLOR : SAVE_ACTION_COLOR,
+                          amountSliderIsSpendMode
+                            ? 0.12 + amountSliderMoodIntensity * 0.12
+                            : 0.18 + amountSliderMoodIntensity * 0.14
+                        ),
+                      },
+                    ]}
+                  />
+                  <Animated.Image
+                    key={`${amountSliderAction}-${amountSliderMoodIntensity > 0.72 ? "strong" : "soft"}`}
+                    source={amountSliderCatSource}
+                    style={[styles.temptationAmountMoodCat, amountSliderCatMoodStyle]}
+                    resizeMode="contain"
+                  />
+                </View>
+                <View style={styles.temptationAmountStats}>
+                  <View
+                    style={[
+                      styles.temptationAmountStatCard,
+                      {
+                        backgroundColor: amountSliderModalMutedPanelBackground,
+                        borderColor: amountSliderModalBorder,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.temptationAmountStatLabel, { color: colors.muted }]}>
+                      {amountSliderImmediateStatLabel}
+                    </Text>
+                    <Text
+                      style={[styles.temptationAmountStatValue, { color: colors.text }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      allowAndroidAutoFit
+                      minimumFontScale={0.62}
+                    >
+                      {amountSliderCurrentLabel}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.temptationAmountStatCard,
+                      {
+                        backgroundColor: colorWithAlpha(
+                          amountSliderAccent,
+                          isDarkTheme
+                            ? 0.12 + amountSliderMoodIntensity * 0.16
+                            : 0.07 + amountSliderMoodIntensity * 0.12
+                        ),
+                        borderColor: colorWithAlpha(
+                          amountSliderAccent,
+                          isDarkTheme
+                            ? 0.28 + amountSliderMoodIntensity * 0.32
+                            : 0.18 + amountSliderMoodIntensity * 0.28
+                        ),
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.temptationAmountStatLabel, { color: colors.muted }]}>
+                      {amountSliderProjectionStatLabel}
+                    </Text>
+                    <Text
+                      style={[styles.temptationAmountStatValue, amountSliderProjectionValueStyle]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      allowAndroidAutoFit
+                      minimumFontScale={0.62}
+                    >
+                      {amountSliderMonthlyRiskLabel}
+                    </Text>
+                  </View>
+                </View>
+                {hasCategoryBudget ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.temptationAmountBudgetPanel,
+                      {
+                        backgroundColor: colorWithAlpha(categoryBudgetAccent, isDarkTheme ? 0.14 : 0.08),
+                        borderColor: colorWithAlpha(categoryBudgetAccent, isDarkTheme ? 0.42 : 0.28),
+                      },
+                    ]}
+                    onPress={handleAmountCategoryBudgetPress}
+                    activeOpacity={0.84}
+                  >
+                    <View style={styles.temptationAmountBudgetHeader}>
+                      <Text
+                        style={[styles.temptationAmountBudgetTitle, { color: colors.text }]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        allowAndroidAutoFit
+                        minimumFontScale={0.72}
+                      >
+                        {categoryBudgetTitle}
+                      </Text>
+                      <Text
+                        style={[styles.temptationAmountBudgetImpact, { color: categoryBudgetAccent }]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        allowAndroidAutoFit
+                        minimumFontScale={0.72}
+                      >
+                        {categoryBudgetImpactLabel}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.temptationAmountProgressTrack,
+                        { backgroundColor: isDarkTheme ? "rgba(255,255,255,0.12)" : "rgba(28,26,42,0.08)" },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.temptationAmountProgressFill,
+                          {
+                            width: categoryBudgetFillWidth,
+                            backgroundColor: categoryBudgetAccent,
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text
+                      style={[styles.temptationAmountBudgetHint, { color: colors.muted }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      allowAndroidAutoFit
+                      minimumFontScale={0.72}
+                    >
+                      {categoryBudgetHint}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+                {hasGoalAssigned || timerLabel || refuseCount > 0 ? (
+                  <View
+                    style={[
+                      styles.temptationAmountInfoBox,
+                      {
+                        backgroundColor: amountSliderAction === "spend"
+                          ? colorWithAlpha(SPEND_ACTION_COLOR, isDarkTheme ? 0.18 : 0.1)
+                          : colorWithAlpha(SAVE_ACTION_COLOR, isDarkTheme ? 0.22 : 0.12),
+                        borderColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.5 : 0.26),
+                      },
+                    ]}
+                  >
+                    {hasGoalAssigned ? (
+                      <TouchableOpacity onPress={handleAmountGoalPress} activeOpacity={0.82}>
+                        <Text style={[styles.temptationAmountInfoTitle, { color: amountSliderAccent }]}>
+                          {t("goalDestinationLabel")}: {resolvedGoalLabel}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {timerLabel ? (
+                      <TouchableOpacity onPress={handleAmountTimerPress} activeOpacity={0.82}>
+                        <Text style={[styles.temptationAmountInfoBody, { color: colors.muted }]}>
+                          {timerLabel}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {refuseCount > 0 ? (
+                      <Text style={[styles.temptationAmountInfoBody, { color: colors.muted }]}>
+                        {t("tileRefuseCount", { count: refuseCount, amount: totalRefusedLabel })}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
+                {showAmountSliderConfirmCoach && (
+                  <View
+                    style={[
+                      styles.temptationAmountConfirmHint,
+                      {
+                        backgroundColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.2 : 0.1),
+                        borderColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.55 : 0.3),
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.temptationAmountConfirmHintText, { color: amountSliderAccent }]}>
+                      {t("amountSliderConfirmHint", { action: amountSliderConfirmActionLabel })}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+            <View style={styles.temptationAmountBottomDock}>
+              <View
+                style={[
+                  styles.temptationAmountSliderPanel,
+                  {
+                    backgroundColor: amountSliderModalPanelBackground,
+                    borderColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.32 : 0.24),
+                  },
+                ]}
+              >
+                <View style={styles.temptationAmountScale}>
+                  <Text style={[styles.temptationAmountScaleText, { color: colors.muted }]}>
+                    {amountSliderMinLabel}
+                  </Text>
+                  {allowAmountManualInput ? (
+                    <TouchableOpacity onPress={openAmountManual} activeOpacity={0.82}>
+                      <Text
+                        style={[styles.temptationAmountScaleText, { color: amountSliderAccent }]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        allowAndroidAutoFit
+                        minimumFontScale={0.7}
+                      >
+                        {amountSliderCurrentLabel}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text
+                      style={[styles.temptationAmountScaleText, { color: amountSliderAccent }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      allowAndroidAutoFit
+                      minimumFontScale={0.7}
+                    >
+                      {amountSliderCurrentLabel}
+                    </Text>
+                  )}
+                  <Text style={[styles.temptationAmountScaleText, { color: colors.muted }]}>
+                    {amountSliderMaxLabel}
+                  </Text>
+                </View>
+                <View style={styles.temptationAmountTrackWrap} {...amountSliderPanResponder.panHandlers}>
+                  <View
+                    style={[styles.temptationAmountTrack, { backgroundColor: amountSliderTrackBase }]}
+                    onLayout={handleAmountSliderTrackLayout}
+                    ref={amountSliderTrackRef}
+                    collapsable={false}
+                  >
+                    <View
+                      style={[
+                        styles.temptationAmountTrackFill,
+                        { width: amountSliderFillWidth, backgroundColor: amountSliderAccent },
+                      ]}
+                    />
+                  </View>
+                  <View
+                    style={[
+                      styles.temptationAmountThumb,
+                      {
+                        width: amountSliderThumbSize,
+                        height: amountSliderThumbSize,
+                        borderRadius: amountSliderThumbRadius,
+                        borderColor: "#FFFFFF",
+                        backgroundColor: amountSliderGold,
+                        transform: [{ translateX: amountSliderThumbTranslate }],
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+              <View style={styles.temptationAmountModalActions}>
+                <TouchableOpacity
+                  style={[
+                    styles.temptationAmountModalActionButton,
+                    amountSliderAction === "save"
+                      ? [
+                          styles.temptationAmountModalSaveButton,
+                          {
+                            borderColor: colorWithAlpha(SAVE_ACTION_COLOR, 0.48),
+                            backgroundColor: SAVE_ACTION_COLOR,
+                          },
+                        ]
+                      : [
+                          styles.temptationAmountModalActionInactive,
+                          {
+                            borderColor: colorWithAlpha(SAVE_ACTION_COLOR, 0.38),
+                            backgroundColor: SAVE_ACTION_COLOR,
+                          },
+                        ],
+                  ]}
+                  onPress={() => handleAmountModalActionPress("save")}
+                  activeOpacity={0.92}
+                >
+                  <Text
+                    style={[
+                      styles.temptationAmountModalActionText,
+                      { color: "#FFFFFF" },
+                    ]}
+                  >
+                    {t("saveAction")}
+                  </Text>
+                </TouchableOpacity>
+                {!saveOnlyMode && (
+                  <TouchableOpacity
+                    style={[
+                      styles.temptationAmountModalActionButton,
+                      amountSliderAction === "spend"
+                        ? [
+                            styles.temptationAmountModalSpendButton,
+                            {
+                              borderColor: colorWithAlpha(SPEND_ACTION_COLOR, 0.48),
+                              backgroundColor: SPEND_ACTION_COLOR,
+                            },
+                          ]
+                        : [
+                            styles.temptationAmountModalActionInactive,
+                            {
+                              borderColor: colorWithAlpha(SPEND_ACTION_COLOR, 0.38),
+                              backgroundColor: SPEND_ACTION_COLOR,
+                            },
+                          ],
+                    ]}
+                    onPress={() => handleAmountModalActionPress("spend")}
+                    activeOpacity={0.92}
+                  >
+                    <Text
+                      style={[
+                        styles.temptationAmountModalActionText,
+                        { color: "#FFFFFF" },
+                      ]}
+                    >
+                      {t("spendAction")}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           </View>
-          <View style={styles.temptationAmountScale}>
-            <Text style={[styles.temptationAmountScaleText, { color: colors.muted }]}>
-              {amountSliderMinLabel}
-            </Text>
-            <Text style={[styles.temptationAmountScaleText, { color: colors.muted }]}>
-              {amountSliderMaxLabel}
-            </Text>
-          </View>
-          {showAmountSliderConfirmCoach && (
-            <View
-              style={[
-                styles.temptationAmountConfirmHint,
-                {
-                  backgroundColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.2 : 0.1),
-                  borderColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.55 : 0.3),
-                },
-              ]}
-            >
-              <Text style={[styles.temptationAmountConfirmHintText, { color: amountSliderAccent }]}>
-                {t("amountSliderConfirmHint", { action: amountSliderConfirmActionLabel })}
-              </Text>
-            </View>
-          )}
-        </View>
+        </Modal>
       )}
       {allowAmountManualInput && amountManualVisible && (
         <Modal
@@ -16069,12 +16535,12 @@ function TemptationCardComponent({
                 return (
                   <TouchableOpacity
                     key={`${action.type}-${actionIndex}`}
-                    style={buttonStyle}
-                    onPress={handleActionPress}
-                    activeOpacity={1}
-                  >
-                    <Text style={textStyle}>{action.label}</Text>
-                  </TouchableOpacity>
+                  style={buttonStyle}
+                  onPress={handleActionPress}
+                  activeOpacity={1}
+                >
+                  <Text style={textStyle}>{action.label}</Text>
+                </TouchableOpacity>
                 );
               }
               return (
@@ -23106,13 +23572,18 @@ function BudgetLockedScreen({
   const premiumAccent = resolvePremiumUiAccent({ isDark: isDarkMode });
   const mutedLine = colorWithAlpha(colors?.text || "#111827", isDarkMode ? 0.24 : 0.14);
   const screenPaddingTop = Math.max(16, topInset + 10);
+  const screenMinHeight = Math.max(560, SCREEN_HEIGHT - Math.max(160, contentBottomPadding));
   return (
     <ScrollView
       ref={scrollRef}
       style={{ flex: 1, backgroundColor: colors.background }}
       contentContainerStyle={[
         styles.budgetLockedScreenContent,
-        { paddingTop: screenPaddingTop, paddingBottom: Math.max(32, contentBottomPadding) },
+        {
+          minHeight: screenMinHeight,
+          paddingTop: screenPaddingTop,
+          paddingBottom: Math.max(32, contentBottomPadding),
+        },
       ]}
       showsVerticalScrollIndicator={false}
     >
@@ -23153,6 +23624,46 @@ function BudgetLockedScreen({
             <Text style={[styles.budgetLockedScreenPillText, { color: premiumAccent }]}>PREMIUM</Text>
           </View>
         </View>
+        <View
+          style={[
+            styles.budgetLockedScreenPreviewPanel,
+            {
+              backgroundColor: colorWithAlpha(colors?.card || "#FFFFFF", isDarkMode ? 0.42 : 0.58),
+              borderColor: colorWithAlpha(premiumAccent, isDarkMode ? 0.46 : 0.26),
+            },
+          ]}
+          pointerEvents="none"
+        >
+          <View style={styles.budgetLockedPreviewCopy}>
+            <Text style={[styles.budgetLockedPreviewTitle, { color: colors.text }]}>
+              {t("premiumBudgetPreviewTitle")}
+            </Text>
+            <Text style={[styles.budgetLockedPreviewBody, { color: colors.muted }]}>
+              {t("premiumBudgetPreviewEmpty")}
+            </Text>
+          </View>
+          <View style={styles.budgetLockedPreviewRows}>
+            {[0.82, 0.64, 0.48].map((width, index) => (
+              <View key={`budget-screen-preview-${index}`} style={styles.budgetLockedPreviewRow}>
+                <View style={[styles.budgetLockedPreviewIcon, { backgroundColor: colorWithAlpha(premiumAccent, 0.2) }]} />
+                <View style={styles.budgetLockedPreviewRowBody}>
+                  <View style={[styles.premiumLockedLine, { width: `${46 + index * 10}%`, backgroundColor: mutedLine }]} />
+                  <View style={[styles.budgetLockedPreviewTrack, { backgroundColor: colorWithAlpha(colors?.text || "#111827", isDarkMode ? 0.18 : 0.08) }]}>
+                    <View
+                      style={[
+                        styles.budgetLockedPreviewFill,
+                        {
+                          width: `${Math.round(width * 100)}%`,
+                          backgroundColor: index === 0 ? colorWithAlpha(SPEND_ACTION_COLOR, 0.74) : colorWithAlpha(premiumAccent, 0.78),
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
         <TouchableOpacity
           activeOpacity={0.9}
           onPress={onPress}
@@ -23163,43 +23674,6 @@ function BudgetLockedScreen({
           </Text>
         </TouchableOpacity>
       </View>
-
-      <PremiumLockedInsightCard
-        colors={colors}
-        t={t}
-        titleKey="premiumBudgetPreviewTitle"
-        bodyKey="premiumBudgetPreviewEmpty"
-        onPress={onPress}
-        style={styles.budgetLockedScreenPreviewCard}
-        minHeight={IS_SHORT_DEVICE ? 210 : 238}
-        borderRadius={24}
-      >
-        <View style={styles.budgetLockedPreviewHeader}>
-          <View style={[styles.premiumLockedLine, styles.budgetLockedPreviewTitleLine, { backgroundColor: mutedLine }]} />
-          <View style={[styles.premiumLockedPill, { backgroundColor: colorWithAlpha(premiumAccent, 0.24) }]} />
-        </View>
-        <View style={styles.budgetLockedPreviewRows}>
-          {[0.82, 0.64, 0.48].map((width, index) => (
-            <View key={`budget-screen-preview-${index}`} style={styles.budgetLockedPreviewRow}>
-              <View style={[styles.budgetLockedPreviewIcon, { backgroundColor: colorWithAlpha(premiumAccent, 0.2) }]} />
-              <View style={styles.budgetLockedPreviewRowBody}>
-                <View style={[styles.premiumLockedLine, { width: `${46 + index * 10}%`, backgroundColor: mutedLine }]} />
-                <View style={[styles.budgetLockedPreviewTrack, { backgroundColor: colorWithAlpha(colors?.text || "#111827", isDarkMode ? 0.18 : 0.08) }]}>
-                  <View
-                    style={[
-                      styles.budgetLockedPreviewFill,
-                      {
-                        width: `${Math.round(width * 100)}%`,
-                        backgroundColor: index === 0 ? colorWithAlpha(SPEND_ACTION_COLOR, 0.74) : colorWithAlpha(premiumAccent, 0.78),
-                      },
-                    ]}
-                  />
-                </View>
-              </View>
-            </View>
-          ))}
-        </View>
-      </PremiumLockedInsightCard>
     </ScrollView>
   );
 }
@@ -25865,6 +26339,7 @@ const FeedScreen = React.memo(
   onTemptationEditDelete,
   onTemptationGoalSelect,
   onTemptationSwipeDelete,
+  onTemptationCategoryBudgetPress = null,
   onSavingsBreakdownPress = () => {},
   onBudgetHeroPress = null,
   onSubscriptionWidgetPress = null,
@@ -27113,6 +27588,30 @@ const FeedScreen = React.memo(
         map.set(key, {
           totalAmountUSD: previous.totalAmountUSD + amountUSD,
           sampleCount: previous.sampleCount + 1,
+        });
+      });
+    });
+    return map;
+  }, [getInteractionKey, resolvedHistoryEvents]);
+  const historySpendStatsByKey = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(resolvedHistoryEvents) ? resolvedHistoryEvents : []).forEach((entry) => {
+      if (!entry || typeof entry !== "object" || entry.kind !== "spend") return;
+      const amountUSD = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
+      if (amountUSD <= 0) return;
+      const meta = entry?.meta || {};
+      const keys = [
+        getInteractionKey(meta?.templateId),
+        getInteractionKey(meta?.template_id),
+        getInteractionKey(meta?.id),
+        getInteractionKey(meta?.template),
+      ].filter(Boolean);
+      if (!keys.length) return;
+      keys.forEach((key) => {
+        const previous = map.get(key) || { spentUSD: 0, spendCount: 0 };
+        map.set(key, {
+          spentUSD: previous.spentUSD + amountUSD,
+          spendCount: previous.spendCount + 1,
         });
       });
     });
@@ -28697,6 +29196,14 @@ const FeedScreen = React.memo(
     () => (budgetPlan?.categories || []).filter((entry) => entry.id !== "savings"),
     [budgetPlan?.categories]
   );
+  const budgetCategoryById = useMemo(() => {
+    const map = new Map();
+    budgetDisplayCategories.forEach((entry) => {
+      if (!entry?.id) return;
+      map.set(entry.id, entry);
+    });
+    return map;
+  }, [budgetDisplayCategories]);
   const budgetWidgetCategories = useMemo(() => {
     const list = [...budgetDisplayCategories];
     if (list.length < 2) return list;
@@ -29297,16 +29804,14 @@ const FeedScreen = React.memo(
   const feedEntries = useMemo(() => {
     return activeFeedProducts.map((item, index) => {
       const key = item?.id || item?.templateId || `item-${index}`;
-      const isLocked = !isPremiumUser && index >= FREE_TEMPTATION_CARD_LIMIT;
       return {
         type: "card",
         id: `card-${key}`,
         item,
         interaction: getInteractionEntry(item),
-        isLocked,
       };
     });
-  }, [activeFeedProducts, getInteractionEntry, isPremiumUser]);
+  }, [activeFeedProducts, getInteractionEntry]);
   const archiveEntries = useMemo(() => {
     const entries = Array.isArray(filteredArchivedItems) ? filteredArchivedItems : [];
     return entries
@@ -29443,13 +29948,38 @@ const FeedScreen = React.memo(
       const resolvedDescriptionOverride =
         overrideDescription ||
         (item.id === mainTemptationId ? primaryTemptationDescription : null);
-      const statsEntry = resolveCardRefuseStats(item);
+      const statsKey = getInteractionKey(item?.templateId) || getInteractionKey(item?.id);
+      const spendStatsEntry = statsKey ? historySpendStatsByKey.get(statsKey) : null;
+      const statsEntry = {
+        ...(resolveCardRefuseStats(item) || {}),
+        spentUSD: Math.max(0, Number(spendStatsEntry?.spentUSD) || 0),
+        spendCount: Math.max(0, Number(spendStatsEntry?.spendCount) || 0),
+      };
       const isTutorialHighlightTarget = !isLockedCard && tutorialHighlightTemptationId === item.id;
+      const categoryId =
+        typeof resolveTemptationCategory === "function"
+          ? resolveTemptationCategory(item)
+          : item?.impulseCategoryOverride || DEFAULT_IMPULSE_CATEGORY;
+      const budgetCategoryEntry = categoryId ? budgetCategoryById.get(categoryId) : null;
+      const categoryBudget = categoryId
+        ? {
+            id: budgetCategoryEntry?.id || categoryId,
+            label:
+              budgetCategoryEntry?.label ||
+              getBudgetCategoryLabel(categoryId || DEFAULT_IMPULSE_CATEGORY, language),
+            limitUSD: Math.max(0, Number(budgetCategoryEntry?.limitUSD) || 0),
+            spentUSD: Math.max(
+              0,
+              Number(budgetCategoryEntry?.spentUSD) ||
+                Number(budgetMonthSpend?.map?.[categoryId]) ||
+                0
+            ),
+          }
+        : null;
       let budgetStatus = null;
       let budgetAlertText = null;
       const budgetSpeechData = resolvedBudgetSpeechDataRef?.current;
       if (budgetSpeechData?.hasIncome && typeof resolveTemptationCategory === "function") {
-        const categoryId = resolveTemptationCategory(item);
         const overEntry = budgetSpeechData?.overCategories?.find((entry) => entry?.id === categoryId);
         const lowEntry = budgetSpeechData?.lowCategories?.find((entry) => entry?.id === categoryId);
         const categoryLabel =
@@ -29537,6 +30067,8 @@ const FeedScreen = React.memo(
             interactionRefreshKey={interactionRefreshKey}
             budgetStatus={budgetStatus}
             budgetAlertText={budgetAlertText}
+            categoryBudget={categoryBudget}
+            onCategoryBudgetPress={onTemptationCategoryBudgetPress}
           />
         </View>
       );
@@ -29560,6 +30092,9 @@ const FeedScreen = React.memo(
       getInteractionKey,
       goalAssignments,
       handleAmountSliderToggle,
+      historySpendStatsByKey,
+      budgetCategoryById,
+      budgetMonthSpend,
       language,
       mainTemptationId,
       onTemptationAction,
@@ -29572,6 +30107,7 @@ const FeedScreen = React.memo(
       onTemptationEditTitleChange,
       onTemptationEditToggle,
       onTemptationGoalSelect,
+      onTemptationCategoryBudgetPress,
       onTemptationArchiveToggle,
       onTemptationSwipeDelete,
       onFocusCancel,
@@ -31274,6 +31810,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
   scrollRef: externalScrollRef,
   onBudgetWidgetLayout = null,
   onBudgetWidgetOpen = null,
+  budgetLimitOpenRequest = null,
   onSubscriptionWidgetLayout = null,
   onSubscriptionWidgetOpen = null,
   onSubscriptionCreateTemptation = null,
@@ -34016,6 +34553,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
     value: "",
     error: false,
   });
+  const budgetLimitOpenRequestTickRef = useRef(0);
   const budgetDraftRef = useRef(budgetDraft);
   const budgetResetDraftRef = useRef(new Set());
   const budgetModalTopInset = useMemo(
@@ -34479,20 +35017,25 @@ const ProgressScreen = React.memo(function ProgressScreen({
       ? t("budgetRemainingPromptPlaceholder")
       : t("budgetLimitPromptPlaceholder");
   const openBudgetManualPrompt = useCallback(
-    (categoryId, currentUSD = 0) => {
-      if (!categoryId || budgetModalStatsOnly) return;
+    (categoryId, currentUSD = 0, monthKeyOverride = null) => {
+      const targetMonthKey =
+        typeof monthKeyOverride === "string" && monthKeyOverride.trim()
+          ? monthKeyOverride.trim()
+          : budgetModalActiveMonthKey;
+      const targetStatsOnly = targetMonthKey && targetMonthKey !== budgetMonthKey;
+      if (!categoryId || targetStatsOnly) return;
       const currencyCode = currency || DEFAULT_PROFILE.currency;
       const localValue = formatNumberInputValue(convertToCurrency(currentUSD || 0, currencyCode));
       setBudgetManualPrompt({
         visible: true,
         mode: "category",
         categoryId,
-        monthKey: budgetModalActiveMonthKey,
+        monthKey: targetMonthKey,
         value: localValue,
         error: false,
       });
     },
-    [budgetModalActiveMonthKey, budgetModalStatsOnly, currency]
+    [budgetModalActiveMonthKey, budgetMonthKey, currency]
   );
   const openBudgetRemainingPrompt = useCallback(
     (monthKey, currentUSD = 0) => {
@@ -34522,6 +35065,42 @@ const ProgressScreen = React.memo(function ProgressScreen({
     budgetModalPlan?.remainingUSD,
     budgetModalRemainingEditable,
     openBudgetRemainingPrompt,
+  ]);
+  useEffect(() => {
+    const requestTick = Math.max(0, Number(budgetLimitOpenRequest?.tick) || 0);
+    if (!requestTick || budgetLimitOpenRequestTickRef.current === requestTick) return;
+    budgetLimitOpenRequestTickRef.current = requestTick;
+    if (!isPremiumUser || !budgetAutoEnabled) {
+      onBudgetAutoLocked?.();
+      return;
+    }
+    const categoryId =
+      typeof budgetLimitOpenRequest?.categoryId === "string" &&
+      budgetLimitOpenRequest.categoryId.trim()
+        ? budgetLimitOpenRequest.categoryId.trim()
+        : null;
+    onBudgetWidgetOpen?.();
+    setBudgetModalMonthKey(budgetMonthKey);
+    setBudgetModalVisible(true);
+    if (!categoryId) return;
+    const currentLimitUSD = Math.max(
+      0,
+      Number(budgetModalPlanMap?.[categoryId]?.limitUSD) ||
+        Number(budgetDraftRef.current?.[categoryId]) ||
+        0
+    );
+    requestAnimationFrame(() => {
+      openBudgetManualPrompt(categoryId, currentLimitUSD, budgetMonthKey);
+    });
+  }, [
+    budgetAutoEnabled,
+    budgetLimitOpenRequest,
+    budgetModalPlanMap,
+    budgetMonthKey,
+    isPremiumUser,
+    onBudgetAutoLocked,
+    onBudgetWidgetOpen,
+    openBudgetManualPrompt,
   ]);
   const closeBudgetManualPrompt = useCallback(() => {
     setBudgetManualPrompt((prev) => ({ ...prev, visible: false, error: false }));
@@ -43717,6 +44296,10 @@ const ProfileScreen = React.memo(function ProfileScreen({
 });
 
 function AppContent() {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const viewportWidth = Math.max(1, Number(windowWidth) || SCREEN_WIDTH);
+  const viewportHeight = Math.max(1, Number(windowHeight) || SCREEN_HEIGHT);
+  const viewportLayoutKey = `${Math.round(viewportWidth)}x${Math.round(viewportHeight)}`;
   const [fontsLoaded, fontsError] = safeUseFonts({
     Inter_300Light,
     Inter_400Regular,
@@ -43957,17 +44540,6 @@ function AppContent() {
   const [monetizationExperimentConfig, setMonetizationExperimentConfig] = useState(
     MONETIZATION_EXPERIMENT_DEFAULT_CONFIG
   );
-  const [paywallDesignExperimentVariant, setPaywallDesignExperimentVariant] = useState("");
-  const [paywallDesignExperimentAssignedAt, setPaywallDesignExperimentAssignedAt] = useState(0);
-  const [paywallDesignExperimentHydrated, setPaywallDesignExperimentHydrated] = useState(false);
-  const [paywallDesignExperimentConfig, setPaywallDesignExperimentConfig] = useState(
-    PAYWALL_DESIGN_EXPERIMENT_DEFAULT_CONFIG
-  );
-  const [onboardingLengthExperimentVariant, setOnboardingLengthExperimentVariant] = useState("");
-  const [onboardingLengthExperimentAssignedAt, setOnboardingLengthExperimentAssignedAt] =
-    useState(0);
-  const [onboardingLengthExperimentHydrated, setOnboardingLengthExperimentHydrated] =
-    useState(false);
   const [monetizationTrialLocked, setMonetizationTrialLocked] = useState(false);
   const [monetizationTrialLockedHydrated, setMonetizationTrialLockedHydrated] = useState(false);
   const [monetizationFirstSessionActionBaseline, setMonetizationFirstSessionActionBaseline] =
@@ -43981,8 +44553,6 @@ function AppContent() {
     useState(false);
   const monetizationExperimentAssigningRef = useRef(false);
   const monetizationExperimentBootstrappedRef = useRef(false);
-  const paywallDesignExperimentBootstrappedRef = useRef(false);
-  const onboardingLengthExperimentBootstrappedRef = useRef(false);
   const monetizationTrialActionCountRef = useRef(0);
   const monetizationTrialLimitedActionCountRef = useRef(0);
   const monetizationFirstSessionActionBaselineRef = useRef(null);
@@ -44669,6 +45239,7 @@ function AppContent() {
   const [challengeBadgeStore, setChallengeBadgeStore] = useState([]);
   const [challengeBadgeStoreHydrated, setChallengeBadgeStoreHydrated] = useState(false);
   const [progressHubPane, setProgressHubPane] = useState("progress");
+  const [budgetLimitOpenRequest, setBudgetLimitOpenRequest] = useState(null);
   const [rewardsPane, setRewardsPane] = useState("rewards");
   useEffect(() => {
     if (challengesUnlocked) return;
@@ -45326,9 +45897,22 @@ function AppContent() {
   const [reportsTab, setReportsTab] = useState("weekly");
   const visibleTemptations = useMemo(() => {
     const pricedTemptations = filterTemptationsByPrice(temptations, priceLimitUSD);
+    const activeCustomTemptationCount = pricedTemptations.reduce((count, item) => {
+      if (!item || !(item.quickTemptation || isCustomTemptation(item))) return count;
+      const templateId = item?.id || item?.templateId;
+      if (templateId && archivedTemptationSet.has(templateId)) return count;
+      return count + 1;
+    }, 0);
     const defaultLimitForPlan = premiumState.isPremium
       ? defaultTemptationFeedLimit
-      : Math.min(defaultTemptationFeedLimit, FREE_DEFAULT_TEMPTATION_CARD_LIMIT);
+      : Math.max(
+          0,
+          Math.min(
+            defaultTemptationFeedLimit,
+            FREE_DEFAULT_TEMPTATION_CARD_LIMIT,
+            FREE_TEMPTATION_CARD_LIMIT - activeCustomTemptationCount
+          )
+        );
     let shownDefaultCount = 0;
     return pricedTemptations.filter((item) => {
       if (!item) return false;
@@ -45359,6 +45943,12 @@ function AppContent() {
       }),
     [visibleTemptations, archivedTemptationSet]
   );
+  const activeTemptationCardCount = Array.isArray(products) ? products.length : 0;
+  const freeTemptationCardSlotsRemaining = premiumState.isPremium
+    ? Number.POSITIVE_INFINITY
+    : Math.max(0, FREE_TEMPTATION_CARD_LIMIT - activeTemptationCardCount);
+  const hasFreeTemptationCardSlot =
+    premiumState.isPremium || freeTemptationCardSlotsRemaining > 0;
   const archivedProducts = useMemo(() => {
     if (!archivedTemptations.length) return [];
     const map = new Map();
@@ -46004,10 +46594,100 @@ function AppContent() {
     },
     [quickTemptations, temptations]
   );
-  const tycoonPendingEvents = useMemo(
-    () => (Array.isArray(tycoonLedger) ? tycoonLedger.filter((entry) => entry?.status === "pending") : []),
-    [tycoonLedger]
+  const resolveTycoonAutosaveEventSnapshot = useCallback(
+    (entry) => {
+      const templateId = resolveNonEmptyString(entry?.cardId || entry?.templateId);
+      if (!templateId) return null;
+      const card = resolveTemplateCard(templateId);
+      if (!card) return null;
+      const titleOverride =
+        typeof titleOverrides?.[templateId] === "string" && titleOverrides[templateId].trim()
+          ? titleOverrides[templateId].trim()
+          : null;
+      const title = resolveTemptationTitle(card, language, titleOverride) || entry?.title || "";
+      const emoji = normalizeEmojiValue(
+        emojiOverrides?.[templateId] || card.emoji || entry?.emoji,
+        DEFAULT_TEMPTATION_EMOJI
+      );
+      const cardAmountUSD = clampTransactionAmountUSD(
+        catalogOverrides?.[templateId] ?? getTemptationPrice(card)
+      );
+      const amountUSD = cardAmountUSD > 0
+        ? cardAmountUSD
+        : clampTransactionAmountUSD(entry?.amountUSD);
+      const currency = profile.currency || entry?.currency || DEFAULT_PROFILE.currency;
+      const pricePrecisionOverride = pricePrecisionOverrides?.[templateId];
+      const pricePrecision =
+        typeof pricePrecisionOverride === "number" && Number.isFinite(pricePrecisionOverride)
+          ? pricePrecisionOverride
+          : getTemptationPricePrecision(card);
+      return {
+        title,
+        emoji,
+        amountUSD,
+        currency,
+        pricePrecision,
+      };
+    },
+    [
+      catalogOverrides,
+      emojiOverrides,
+      language,
+      pricePrecisionOverrides,
+      profile.currency,
+      resolveTemplateCard,
+      titleOverrides,
+    ]
   );
+  const tycoonPendingEvents = useMemo(
+    () =>
+      (Array.isArray(tycoonLedger) ? tycoonLedger : [])
+        .filter((entry) => entry?.status === "pending")
+        .map((entry) => {
+          const snapshot = resolveTycoonAutosaveEventSnapshot(entry);
+          return snapshot ? { ...entry, ...snapshot } : entry;
+        }),
+    [resolveTycoonAutosaveEventSnapshot, tycoonLedger]
+  );
+  useEffect(() => {
+    if (!tycoonLedgerHydrated) return;
+    setTycoonLedger((prev) => {
+      const source = Array.isArray(prev) ? prev : [];
+      let changed = false;
+      const next = source.map((entry) => {
+        if (!entry || entry.status !== "pending") return entry;
+        const snapshot = resolveTycoonAutosaveEventSnapshot(entry);
+        if (!snapshot) return entry;
+        const updates = {};
+        if (snapshot.title && entry.title !== snapshot.title) {
+          updates.title = snapshot.title;
+        }
+        if (snapshot.emoji && entry.emoji !== snapshot.emoji) {
+          updates.emoji = snapshot.emoji;
+        }
+        if (
+          snapshot.amountUSD > 0 &&
+          Math.abs((Number(entry.amountUSD) || 0) - snapshot.amountUSD) > 0.0001
+        ) {
+          updates.amountUSD = snapshot.amountUSD;
+        }
+        if (snapshot.currency && entry.currency !== snapshot.currency) {
+          updates.currency = snapshot.currency;
+        }
+        if (entry.pricePrecision !== snapshot.pricePrecision) {
+          updates.pricePrecision = snapshot.pricePrecision;
+        }
+        if (!Object.keys(updates).length) return entry;
+        changed = true;
+        return { ...entry, ...updates };
+      });
+      return changed ? next : prev;
+    });
+  }, [
+    resolveTycoonAutosaveEventSnapshot,
+    tycoonLedgerHydrated,
+    tycoonPendingEvents.length,
+  ]);
   const tycoonPendingRewardEvents = useMemo(
     () =>
       (Array.isArray(tycoonLedger) ? tycoonLedger : []).filter(
@@ -47259,8 +47939,8 @@ function AppContent() {
   const [fabTutorialOverlayMetrics, setFabTutorialOverlayMetrics] = useState({
     x: 0,
     y: 0,
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
+    width: viewportWidth,
+    height: viewportHeight,
   });
   const [fabTutorialAnchor, setFabTutorialAnchor] = useState(null);
   const [savingsHeroAnchor, setSavingsHeroAnchor] = useState(null);
@@ -48913,31 +49593,29 @@ function AppContent() {
     resolvedTamagotchiSkinId,
     tamagotchiSkin,
   ]);
+  const showCatCustomizationPaywall = useCallback(() => {
+    const opened = showPremiumPaywallRef.current({
+      kind: "feature",
+      featureKey: PREMIUM_FEATURE_KEYS.catCustomization,
+    });
+    if (!opened) {
+      setPremiumPaywallState({
+        visible: true,
+        kind: "soft",
+        featureKey: PREMIUM_FEATURE_KEYS.catCustomization,
+        savedAmountLabel: "",
+        trigger: "feature_gate",
+        dismissible: true,
+      });
+    }
+  }, [setPremiumPaywallState]);
   const openSkinPicker = useCallback(() => {
     if (!catCustomizationUnlocked) {
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
       playSound("tap");
-      setTamagotchiClosing(true);
-      setTamagotchiVisible(false);
-      setTimeout(() => {
-        const opened = showPremiumPaywallRef.current({
-          kind: "feature",
-          featureKey: PREMIUM_FEATURE_KEYS.catCustomization,
-        });
-        if (!opened) {
-          setPremiumPaywallState({
-            visible: true,
-            kind: "soft",
-            featureKey: PREMIUM_FEATURE_KEYS.catCustomization,
-            savedAmountLabel: "",
-            trigger: "feature_gate",
-            dismissible: true,
-          });
-        }
-      }, 220);
-      return;
+    } else {
+      triggerHaptic();
     }
-    triggerHaptic();
     setTamagotchiClosing(true);
     setTamagotchiVisible(false);
     if (tamagotchiToyFlightTimerRef.current) {
@@ -48954,10 +49632,8 @@ function AppContent() {
     catCustomizationUnlocked,
     playSound,
     setTamagotchiClosing,
-    setPremiumPaywallState,
     tamagotchiHeartBurstAnim,
     tamagotchiToyFlightAnim,
-    triggerHaptic,
   ]);
   const closeSkinPicker = useCallback(() => setSkinPickerVisible(false), []);
   const showTamagotchiSkinDownloadAlert = useCallback(
@@ -48978,6 +49654,16 @@ function AppContent() {
   const handleSkinSelect = useCallback(
     (skinId) => {
       if (!skinId || !TAMAGOTCHI_SKINS[skinId]) return;
+      if (!catCustomizationUnlocked) {
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+        playSound("tap");
+        logEvent("tamagotchi_skin_preview_paywall", {
+          skin_id: skinId,
+        });
+        setSkinPickerVisible(false);
+        setTimeout(showCatCustomizationPaywall, 180);
+        return;
+      }
       const skin = TAMAGOTCHI_SKINS[skinId];
       if (skinId === tamagotchiSkinId && !tamagotchiPendingSkinId) {
         setSkinPickerVisible(false);
@@ -49018,10 +49704,12 @@ function AppContent() {
       setSkinPickerVisible(false);
     },
     [
+      catCustomizationUnlocked,
       ensureRemoteTamagotchiSkinAnimationsLoaded,
-      logEvent,
       premiumActive,
+      playSound,
       showTamagotchiSkinDownloadAlert,
+      showCatCustomizationPaywall,
       tamagotchiPendingSkinId,
       tamagotchiSkinAssetLoadStateBySkinId,
       tamagotchiSkinId,
@@ -50227,6 +50915,26 @@ function AppContent() {
     markDidYouKnowFeatureUsed,
     openFabMenu,
     triggerHaptic,
+  ]);
+  useEffect(() => {
+    setFabScrollHidden(false);
+    if (fabMenuVisible) {
+      closeFabMenu();
+    }
+    if (!fabTutorialVisible) return;
+    const frame = requestAnimationFrame(() => {
+      updateFabAnchor();
+      updateFabTutorialOverlayMetrics();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    closeFabMenu,
+    fabMenuVisible,
+    fabTutorialVisible,
+    setFabScrollHidden,
+    updateFabAnchor,
+    updateFabTutorialOverlayMetrics,
+    viewportLayoutKey,
   ]);
   const handleFeedScrollActivity = useCallback(
     (isScrolling) => {
@@ -53868,11 +54576,7 @@ function AppContent() {
     };
     const resolvePackageRawPrice = (pkg = null) => {
       const product = pkg?.product || null;
-      return (
-        parseLocalizedPriceValue(product?.price) ??
-        parseLocalizedPriceValue(product?.priceString) ??
-        null
-      );
+      return resolveStoreProductPriceLocal(product);
     };
     const resolveRelativeDiscountPercent = (fullPrice = 0, discountedPrice = 0) => {
       const normalizedFullPrice = Number(fullPrice);
@@ -53954,13 +54658,9 @@ function AppContent() {
     const preliminaryCards = baseCards.map((card) => {
       const pkg = offeringsByPlan?.[card.id] || null;
       const product = pkg?.product || null;
-      const currencyCode =
-        typeof product?.currencyCode === "string" && product.currencyCode.trim().length > 0
-          ? product.currencyCode.trim().toUpperCase()
-          : fallbackCurrency;
+      const currencyCode = resolveStoreProductCurrencyCode(product, fallbackCurrency);
       const parsedPriceLocal =
-        parseLocalizedPriceValue(product?.price) ??
-        parseLocalizedPriceValue(product?.priceString) ??
+        resolveStoreProductPriceLocal(product) ??
         parseLocalizedPriceValue(card.priceLabel);
       const chargePriceLabel =
         normalizePaywallPriceLabel(
@@ -54774,32 +55474,6 @@ function AppContent() {
     () => normalizeMonetizationExperimentGroup(monetizationExperimentGroup),
     [monetizationExperimentGroup]
   );
-  const paywallDesignVariantNormalized = useMemo(() => {
-    const resolvedConfig = normalizePaywallDesignExperimentConfig(paywallDesignExperimentConfig);
-    if (resolvedConfig.enabled !== true) {
-      return PAYWALL_DESIGN_VARIANTS.A;
-    }
-    const forcedVariant = normalizePaywallDesignVariant(resolvedConfig.forceVariant, "");
-    if (forcedVariant) return forcedVariant;
-    return normalizePaywallDesignVariant(
-      paywallDesignExperimentVariant,
-      PAYWALL_DESIGN_VARIANTS.A
-    );
-  }, [paywallDesignExperimentConfig, paywallDesignExperimentVariant]);
-  const onboardingLengthVariantNormalized = useMemo(
-    () =>
-      normalizeOnboardingLengthVariant(
-        onboardingLengthExperimentVariant,
-        ONBOARDING_LENGTH_VARIANTS.A
-      ),
-    [onboardingLengthExperimentVariant]
-  );
-  const isShortOnboardingFlow =
-    onboardingLengthVariantNormalized === ONBOARDING_LENGTH_VARIANTS.B;
-  const ActivePremiumPaywallModal =
-    paywallDesignVariantNormalized === PAYWALL_DESIGN_VARIANTS.B
-      ? PremiumPaywallModalV2
-      : PremiumPaywallModal;
   const monetizationTrialSaveLimit = useMemo(() => {
     const rawLimit = Number(monetizationExperimentConfig?.trialSaveLimit);
     if (!Number.isFinite(rawLimit) || rawLimit <= 0) {
@@ -55072,78 +55746,6 @@ function AppContent() {
       };
     }
   }, []);
-  const fetchPaywallDesignExperimentConfig = useCallback(async () => {
-    const fallbackConfig = { ...PAYWALL_DESIGN_EXPERIMENT_DEFAULT_CONFIG };
-    const client = getRemoteConfigClient();
-    if (!client) {
-      return {
-        config: fallbackConfig,
-        result: "module_unavailable",
-        source: "default",
-      };
-    }
-    try {
-      const defaultPayload = JSON.stringify(PAYWALL_DESIGN_EXPERIMENT_DEFAULT_CONFIG);
-      await client.setDefaults({
-        [PAYWALL_DESIGN_EXPERIMENT_RC_KEY]: defaultPayload,
-      });
-      await client.setConfigSettings({
-        minimumFetchIntervalMillis: __DEV__ ? 0 : 60 * 60 * 1000,
-        fetchTimeMillis: 10000,
-      });
-      const activated = await client.fetchAndActivate();
-      const rawConfig = resolveNonEmptyString(
-        client.getValue(PAYWALL_DESIGN_EXPERIMENT_RC_KEY)?.asString?.() || ""
-      );
-      return {
-        config: parsePaywallDesignExperimentRemoteConfig(rawConfig),
-        result: activated ? "activated" : "cached",
-        source: "remote_config",
-      };
-    } catch (error) {
-      return {
-        config: fallbackConfig,
-        result: "failed",
-        source: "default",
-      };
-    }
-  }, []);
-  const fetchOnboardingLengthExperimentConfig = useCallback(async () => {
-    const fallbackConfig = { ...ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG };
-    const client = getRemoteConfigClient();
-    if (!client) {
-      return {
-        config: fallbackConfig,
-        result: "module_unavailable",
-        source: "default",
-      };
-    }
-    try {
-      const defaultPayload = JSON.stringify(ONBOARDING_LENGTH_EXPERIMENT_DEFAULT_CONFIG);
-      await client.setDefaults({
-        [ONBOARDING_LENGTH_EXPERIMENT_RC_KEY]: defaultPayload,
-      });
-      await client.setConfigSettings({
-        minimumFetchIntervalMillis: __DEV__ ? 0 : 60 * 60 * 1000,
-        fetchTimeMillis: 10000,
-      });
-      const activated = await client.fetchAndActivate();
-      const rawConfig = resolveNonEmptyString(
-        client.getValue(ONBOARDING_LENGTH_EXPERIMENT_RC_KEY)?.asString?.() || ""
-      );
-      return {
-        config: parseOnboardingLengthExperimentRemoteConfig(rawConfig),
-        result: activated ? "activated" : "cached",
-        source: "remote_config",
-      };
-    } catch (error) {
-      return {
-        config: fallbackConfig,
-        result: "failed",
-        source: "default",
-      };
-    }
-  }, []);
   const fetchUiRefreshRolloutFlag = useCallback(async () => {
     const fallbackEnabled = UI_REFRESH_ROLLOUT_DEFAULT_ENABLED;
     const client = getRemoteConfigClient();
@@ -55279,203 +55881,6 @@ function AppContent() {
     monetizationExperimentEligibleNewInstall,
     monetizationExperimentGroup,
     monetizationExperimentHydrated,
-    premiumInstallIdHydrated,
-    setUserProperties,
-  ]);
-  useEffect(() => {
-    if (!premiumInstallIdHydrated) return;
-    if (!paywallDesignExperimentHydrated) return;
-    if (paywallDesignExperimentBootstrappedRef.current) return;
-    paywallDesignExperimentBootstrappedRef.current = true;
-    let cancelled = false;
-    const bootstrapPaywallDesignExperiment = async () => {
-      const remote = await fetchPaywallDesignExperimentConfig();
-      if (cancelled) return;
-      const resolvedConfig = normalizePaywallDesignExperimentConfig(remote.config);
-      setPaywallDesignExperimentConfig(resolvedConfig);
-
-      const storedVariant = normalizePaywallDesignVariant(paywallDesignExperimentVariant, "");
-      const hasStoredVariant = !!storedVariant;
-      const hasAssignedAt =
-        Number.isFinite(Number(paywallDesignExperimentAssignedAt)) &&
-        Number(paywallDesignExperimentAssignedAt) > 0;
-      const seededVariant = resolvePaywallDesignVariantFromSeed(
-        premiumInstallId || "",
-        resolvedConfig
-      );
-      const forcedVariant = normalizePaywallDesignVariant(resolvedConfig.forceVariant, "");
-      const shouldOverrideStoredVariant =
-        !!forcedVariant && (!hasStoredVariant || storedVariant !== forcedVariant);
-      const nextVariant = shouldOverrideStoredVariant
-        ? forcedVariant
-        : hasStoredVariant
-        ? storedVariant
-        : seededVariant;
-      const nextAssignedAt =
-        hasAssignedAt && !shouldOverrideStoredVariant
-          ? Math.round(Number(paywallDesignExperimentAssignedAt))
-          : Date.now();
-      let assignmentSource = "stored_variant";
-      if (shouldOverrideStoredVariant) {
-        assignmentSource = "forced_variant";
-      } else if (!hasStoredVariant) {
-        assignmentSource = "seeded_bucket";
-      } else if (!hasAssignedAt) {
-        assignmentSource = "stored_without_timestamp";
-      }
-
-      if (!hasStoredVariant || !hasAssignedAt || shouldOverrideStoredVariant) {
-        setPaywallDesignExperimentVariant(nextVariant);
-        setPaywallDesignExperimentAssignedAt(nextAssignedAt);
-      }
-      logEvent("paywall_design_experiment_remote_config_loaded", {
-        experiment_id: PAYWALL_DESIGN_EXPERIMENT_ID,
-        result: normalizeMonetizationToken(remote.result || "unknown", "unknown"),
-        source: normalizeMonetizationToken(remote.source || "unknown", "unknown"),
-        enabled: resolvedConfig.enabled ? 1 : 0,
-        force_variant: normalizeMonetizationToken(
-          resolveNonEmptyString(resolvedConfig.forceVariant || "").toLowerCase() || "none",
-          "none"
-        ),
-        allocation_a: resolvedConfig.allocation.A,
-        allocation_b: resolvedConfig.allocation.B,
-        assigned_variant: nextVariant,
-        assignment_source: assignmentSource,
-      });
-      if (__DEV__) {
-        console.log("[paywall-design-debug]", {
-          platform: Platform.OS,
-          result: remote.result,
-          source: remote.source,
-          enabled: resolvedConfig.enabled,
-          forceVariant: resolvedConfig.forceVariant || "",
-          allocation: resolvedConfig.allocation,
-          storedVariant,
-          hasStoredVariant,
-          hasAssignedAt,
-          seededVariant,
-          nextVariant,
-          assignmentSource,
-        });
-      }
-      setUserProperties({
-        paywall_design_exp_id: PAYWALL_DESIGN_EXPERIMENT_ID,
-        paywall_design_variant: nextVariant,
-        paywall_design_variant_a: nextVariant === PAYWALL_DESIGN_VARIANTS.A ? "1" : "0",
-        paywall_design_variant_b: nextVariant === PAYWALL_DESIGN_VARIANTS.B ? "1" : "0",
-      });
-    };
-    bootstrapPaywallDesignExperiment().catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    fetchPaywallDesignExperimentConfig,
-    logEvent,
-    paywallDesignExperimentAssignedAt,
-    paywallDesignExperimentHydrated,
-    paywallDesignExperimentVariant,
-    premiumInstallId,
-    premiumInstallIdHydrated,
-    setUserProperties,
-  ]);
-  useEffect(() => {
-    if (!premiumInstallIdHydrated) return;
-    if (!onboardingLengthExperimentHydrated) return;
-    if (onboardingLengthExperimentBootstrappedRef.current) return;
-    onboardingLengthExperimentBootstrappedRef.current = true;
-    let cancelled = false;
-    const bootstrapOnboardingLengthExperiment = async () => {
-      const remote = await fetchOnboardingLengthExperimentConfig();
-      if (cancelled) return;
-      const resolvedConfig = normalizeOnboardingLengthExperimentConfig(remote.config);
-
-      const storedVariant = normalizeOnboardingLengthVariant(
-        onboardingLengthExperimentVariant,
-        ""
-      );
-      const hasStoredVariant = !!storedVariant;
-      const hasAssignedAt =
-        Number.isFinite(Number(onboardingLengthExperimentAssignedAt)) &&
-        Number(onboardingLengthExperimentAssignedAt) > 0;
-      const seededVariant = resolveOnboardingLengthVariantFromSeed(
-        premiumInstallId || "",
-        resolvedConfig,
-        { isNewInstall: monetizationExperimentEligibleNewInstall }
-      );
-      const forcedVariant = normalizeOnboardingLengthVariant(resolvedConfig.forceVariant, "");
-      const shouldOverrideStoredVariant =
-        !!forcedVariant && (!hasStoredVariant || storedVariant !== forcedVariant);
-      const nextVariant = shouldOverrideStoredVariant
-        ? forcedVariant
-        : hasStoredVariant
-        ? storedVariant
-        : seededVariant;
-      const nextAssignedAt =
-        hasAssignedAt && !shouldOverrideStoredVariant
-          ? Math.round(Number(onboardingLengthExperimentAssignedAt))
-          : Date.now();
-      let assignmentSource = "stored_variant";
-      if (shouldOverrideStoredVariant) {
-        assignmentSource = "forced_variant";
-      } else if (!hasStoredVariant) {
-        assignmentSource = "seeded_bucket";
-      } else if (!hasAssignedAt) {
-        assignmentSource = "stored_without_timestamp";
-      }
-      if (!hasStoredVariant || !hasAssignedAt || shouldOverrideStoredVariant) {
-        setOnboardingLengthExperimentVariant(nextVariant);
-        setOnboardingLengthExperimentAssignedAt(nextAssignedAt);
-        logEvent("onboarding_length_experiment_assigned", {
-          experiment_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
-          experiment_variant: nextVariant,
-          assignment_source: assignmentSource,
-          is_new_install: monetizationExperimentEligibleNewInstall ? 1 : 0,
-          enabled: resolvedConfig.enabled ? 1 : 0,
-          force_variant: normalizeMonetizationToken(
-            resolveNonEmptyString(resolvedConfig.forceVariant || "").toLowerCase() || "none",
-            "none"
-          ),
-          allocation_a: resolvedConfig.allocation.A,
-          allocation_b: resolvedConfig.allocation.B,
-        });
-      }
-      logEvent("onboarding_length_experiment_remote_config_loaded", {
-        experiment_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
-        result: normalizeMonetizationToken(remote.result || "unknown", "unknown"),
-        source: normalizeMonetizationToken(remote.source || "unknown", "unknown"),
-        enabled: resolvedConfig.enabled ? 1 : 0,
-        new_install_only: resolvedConfig.newInstallOnly ? 1 : 0,
-        force_variant: normalizeMonetizationToken(
-          resolveNonEmptyString(resolvedConfig.forceVariant || "").toLowerCase() || "none",
-          "none"
-        ),
-        allocation_a: resolvedConfig.allocation.A,
-        allocation_b: resolvedConfig.allocation.B,
-        assigned_variant: nextVariant,
-        assignment_source: assignmentSource,
-      });
-      setUserProperties({
-        onboarding_length_exp_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
-        onboarding_length_variant: nextVariant,
-        onboarding_length_variant_a:
-          nextVariant === ONBOARDING_LENGTH_VARIANTS.A ? "1" : "0",
-        onboarding_length_variant_b:
-          nextVariant === ONBOARDING_LENGTH_VARIANTS.B ? "1" : "0",
-      });
-    };
-    bootstrapOnboardingLengthExperiment().catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    fetchOnboardingLengthExperimentConfig,
-    logEvent,
-    monetizationExperimentEligibleNewInstall,
-    onboardingLengthExperimentAssignedAt,
-    onboardingLengthExperimentHydrated,
-    onboardingLengthExperimentVariant,
-    premiumInstallId,
     premiumInstallIdHydrated,
     setUserProperties,
   ]);
@@ -56226,10 +56631,6 @@ function AppContent() {
         trigger: context.trigger,
         view_index: viewIndex,
         saved_total_usd: Math.max(0, Number(savedTotalUSD) || 0),
-        paywall_design_variant: normalizePaywallDesignVariant(
-          paywallDesignVariantNormalized,
-          PAYWALL_DESIGN_VARIANTS.A
-        ),
       });
     }
     if (!isVisible && wasVisible) {
@@ -56245,7 +56646,6 @@ function AppContent() {
     premiumPaywallState.kind,
     premiumPaywallState.trigger,
     premiumPaywallState.visible,
-    paywallDesignVariantNormalized,
     savedTotalUSD,
   ]);
   useEffect(() => {
@@ -56779,20 +57179,31 @@ function AppContent() {
         );
         return;
       }
+      const selectedStoreProduct = selectedPackage?.product || selectedCard?.package?.product || null;
+      const resolvedCurrencyCode = resolveStoreProductCurrencyCode(
+        selectedStoreProduct,
+        normalizedCurrencyCode
+      );
+      const resolvedPriceLocal = resolveStoreProductPriceLocal(selectedStoreProduct, priceLocal);
       if (inferredPlanFromPackage && inferredPlanFromPackage !== targetPlanId) {
         logMonetizationEvent("premium_purchase_result", {
           ...eventMeta,
+          currency: resolvedCurrencyCode,
           result: "failed",
           reason: "package_plan_mismatch",
           error_code: "none",
         });
         trackPremiumProductNotFound({
-          eventMeta,
+          eventMeta: { ...eventMeta, currency: resolvedCurrencyCode },
           reason: "package_plan_mismatch",
           errorCode: "none",
         });
         Alert.alert("Almost", resolvePaywallAlertCopy("packageUnavailable", language));
         return;
+      }
+      eventMeta.currency = resolvedCurrencyCode;
+      if (Number.isFinite(resolvedPriceLocal)) {
+        eventMeta.price_local = Math.max(0, Number(resolvedPriceLocal) || 0);
       }
       premiumUnlockIntentRef.current = {
         kind: "purchase",
@@ -56883,14 +57294,16 @@ function AppContent() {
         const parsedRevenueFromLabel = parseLocalizedPriceValue(
           selectedCard?.priceLabel || selectedCard?.ctaPriceLabel || ""
         );
-        const revenueLocal = Number.isFinite(priceLocal)
+        const revenueLocal = Number.isFinite(resolvedPriceLocal)
+          ? Math.max(0, Number(resolvedPriceLocal) || 0)
+          : Number.isFinite(priceLocal)
           ? Math.max(0, Number(priceLocal) || 0)
           : Number.isFinite(parsedRevenueFromLabel)
           ? Math.max(0, Number(parsedRevenueFromLabel) || 0)
           : 0;
         const revenueUSD = Math.max(
           0,
-          Number(convertFromCurrency(revenueLocal, normalizedCurrencyCode)) || 0
+          Number(convertFromCurrency(revenueLocal, resolvedCurrencyCode)) || 0
         );
         const resolvedTransactionId = resolveNonEmptyString(
           resolveStoreTransactionIdentifier({
@@ -56902,6 +57315,7 @@ function AppContent() {
         const revenueEventMeta = {
           ...eventMeta,
           has_trial: false,
+          currency: resolvedCurrencyCode,
           revenue_local: revenueLocal,
           revenue_usd: revenueUSD,
         };
@@ -62708,10 +63122,6 @@ function AppContent() {
         STORAGE_KEYS.MONETIZATION_EXPERIMENT_ASSIGNED_AT,
         STORAGE_KEYS.MONETIZATION_EXPERIMENT_NEW_INSTALL,
         STORAGE_KEYS.MONETIZATION_EXPERIMENT_INSTALL_LEGACY,
-        STORAGE_KEYS.PAYWALL_DESIGN_EXPERIMENT_VARIANT,
-        STORAGE_KEYS.PAYWALL_DESIGN_EXPERIMENT_ASSIGNED_AT,
-        STORAGE_KEYS.ONBOARDING_LENGTH_EXPERIMENT_VARIANT,
-        STORAGE_KEYS.ONBOARDING_LENGTH_EXPERIMENT_ASSIGNED_AT,
         STORAGE_KEYS.MONETIZATION_TRIAL_LOCKED,
         STORAGE_KEYS.MONETIZATION_FIRST_SESSION_ACTION_BASELINE,
         STORAGE_KEYS.MONETIZATION_ONBOARDING_LOCKED,
@@ -62856,14 +63266,6 @@ function AppContent() {
         storedMap[STORAGE_KEYS.MONETIZATION_EXPERIMENT_NEW_INSTALL] ?? null;
       const monetizationExperimentLegacyRaw =
         storedMap[STORAGE_KEYS.MONETIZATION_EXPERIMENT_INSTALL_LEGACY] ?? null;
-      const paywallDesignExperimentVariantRaw =
-        storedMap[STORAGE_KEYS.PAYWALL_DESIGN_EXPERIMENT_VARIANT] ?? null;
-      const paywallDesignExperimentAssignedAtRaw =
-        storedMap[STORAGE_KEYS.PAYWALL_DESIGN_EXPERIMENT_ASSIGNED_AT] ?? null;
-      const onboardingLengthExperimentVariantRaw =
-        storedMap[STORAGE_KEYS.ONBOARDING_LENGTH_EXPERIMENT_VARIANT] ?? null;
-      const onboardingLengthExperimentAssignedAtRaw =
-        storedMap[STORAGE_KEYS.ONBOARDING_LENGTH_EXPERIMENT_ASSIGNED_AT] ?? null;
       const monetizationTrialLockedRaw =
         storedMap[STORAGE_KEYS.MONETIZATION_TRIAL_LOCKED] ?? null;
       const monetizationOnboardingLockedRaw =
@@ -63546,31 +63948,6 @@ function AppContent() {
       );
       setMonetizationExperimentEligibleNewInstall(isEligibleNewInstall);
       setMonetizationExperimentHydrated(true);
-      const parsedPaywallDesignVariant = normalizePaywallDesignVariant(
-        paywallDesignExperimentVariantRaw,
-        ""
-      );
-      const parsedPaywallDesignAssignedAt = Number(paywallDesignExperimentAssignedAtRaw);
-      setPaywallDesignExperimentVariant(parsedPaywallDesignVariant);
-      setPaywallDesignExperimentAssignedAt(
-        Number.isFinite(parsedPaywallDesignAssignedAt) && parsedPaywallDesignAssignedAt > 0
-          ? parsedPaywallDesignAssignedAt
-          : 0
-      );
-      setPaywallDesignExperimentHydrated(true);
-      const parsedOnboardingLengthVariant = normalizeOnboardingLengthVariant(
-        onboardingLengthExperimentVariantRaw,
-        ""
-      );
-      const parsedOnboardingLengthAssignedAt = Number(onboardingLengthExperimentAssignedAtRaw);
-      setOnboardingLengthExperimentVariant(parsedOnboardingLengthVariant || "");
-      setOnboardingLengthExperimentAssignedAt(
-        Number.isFinite(parsedOnboardingLengthAssignedAt) &&
-          parsedOnboardingLengthAssignedAt > 0
-          ? parsedOnboardingLengthAssignedAt
-          : 0
-      );
-      setOnboardingLengthExperimentHydrated(true);
       const normalizedFirstSessionActionBaseline = 0;
       monetizationFirstSessionActionBaselineRef.current = normalizedFirstSessionActionBaseline;
       monetizationFirstSessionCompletedRef.current = true;
@@ -64551,10 +64928,6 @@ function AppContent() {
       setMonetizationExperimentGroup(MONETIZATION_FINAL_GROUP);
       setMonetizationExperimentAssignedAt(0);
       setMonetizationExperimentEligibleNewInstall(false);
-      setPaywallDesignExperimentVariant("");
-      setPaywallDesignExperimentAssignedAt(0);
-      setOnboardingLengthExperimentVariant("");
-      setOnboardingLengthExperimentAssignedAt(0);
       setMonetizationTrialLocked(false);
       setMonetizationFirstSessionActionBaseline(0);
       monetizationFirstSessionActionBaselineRef.current = 0;
@@ -64586,8 +64959,6 @@ function AppContent() {
       setPremiumChallengeClaimsHydrated(true);
       setPremiumStateCacheHydrated(true);
       setMonetizationExperimentHydrated(true);
-      setPaywallDesignExperimentHydrated(true);
-      setOnboardingLengthExperimentHydrated(true);
       setMonetizationTrialLockedHydrated(true);
       setMonetizationFirstSessionActionBaselineHydrated(true);
       setMonetizationOnboardingLockedHydrated(true);
@@ -66240,61 +66611,6 @@ function AppContent() {
     );
   }, [monetizationExperimentEligibleNewInstall, monetizationExperimentHydrated, queuePersist]);
   useEffect(() => {
-    if (!paywallDesignExperimentHydrated) return;
-    const normalizedVariant = normalizePaywallDesignVariant(paywallDesignExperimentVariant, "");
-    if (!normalizedVariant) return;
-    queuePersist(STORAGE_KEYS.PAYWALL_DESIGN_EXPERIMENT_VARIANT, normalizedVariant);
-  }, [
-    paywallDesignExperimentHydrated,
-    paywallDesignExperimentVariant,
-    queuePersist,
-  ]);
-  useEffect(() => {
-    if (!paywallDesignExperimentHydrated) return;
-    const normalizedAssignedAt =
-      Number.isFinite(Number(paywallDesignExperimentAssignedAt)) &&
-      Number(paywallDesignExperimentAssignedAt) > 0
-        ? Math.round(Number(paywallDesignExperimentAssignedAt))
-        : 0;
-    queuePersist(
-      STORAGE_KEYS.PAYWALL_DESIGN_EXPERIMENT_ASSIGNED_AT,
-      normalizedAssignedAt > 0 ? String(normalizedAssignedAt) : "0"
-    );
-  }, [
-    paywallDesignExperimentAssignedAt,
-    paywallDesignExperimentHydrated,
-    queuePersist,
-  ]);
-  useEffect(() => {
-    if (!onboardingLengthExperimentHydrated) return;
-    const normalizedVariant = normalizeOnboardingLengthVariant(
-      onboardingLengthExperimentVariant,
-      ""
-    );
-    if (!normalizedVariant) return;
-    queuePersist(STORAGE_KEYS.ONBOARDING_LENGTH_EXPERIMENT_VARIANT, normalizedVariant);
-  }, [
-    onboardingLengthExperimentHydrated,
-    onboardingLengthExperimentVariant,
-    queuePersist,
-  ]);
-  useEffect(() => {
-    if (!onboardingLengthExperimentHydrated) return;
-    const normalizedAssignedAt =
-      Number.isFinite(Number(onboardingLengthExperimentAssignedAt)) &&
-      Number(onboardingLengthExperimentAssignedAt) > 0
-        ? Math.round(Number(onboardingLengthExperimentAssignedAt))
-        : 0;
-    queuePersist(
-      STORAGE_KEYS.ONBOARDING_LENGTH_EXPERIMENT_ASSIGNED_AT,
-      normalizedAssignedAt > 0 ? String(normalizedAssignedAt) : "0"
-    );
-  }, [
-    onboardingLengthExperimentAssignedAt,
-    onboardingLengthExperimentHydrated,
-    queuePersist,
-  ]);
-  useEffect(() => {
     if (!monetizationTrialLockedHydrated) return;
     queuePersist(STORAGE_KEYS.MONETIZATION_TRIAL_LOCKED, monetizationTrialLocked ? "1" : "0");
   }, [monetizationTrialLocked, monetizationTrialLockedHydrated, queuePersist]);
@@ -67300,14 +67616,6 @@ useEffect(() => {
     const iosAttOptIn = Platform.OS === "ios" && isTrackingStatusGranted(normalizedIosTrackingStatus);
     const attUserClass =
       Platform.OS === "ios" ? (iosAttOptIn ? "ios_att_opt_in" : "ios_att_other") : "non_ios";
-    const paywallDesignVariant = normalizePaywallDesignVariant(
-      paywallDesignVariantNormalized,
-      PAYWALL_DESIGN_VARIANTS.A
-    );
-    const onboardingLengthVariant = normalizeOnboardingLengthVariant(
-      onboardingLengthVariantNormalized,
-      ONBOARDING_LENGTH_VARIANTS.A
-    );
     setUserProperties({
       has_goal: !!hasGoalProperty,
       preferred_currency: currencyCode,
@@ -67328,18 +67636,6 @@ useEffect(() => {
         monetizationGroup === MONETIZATION_EXPERIMENT_GROUPS.B ? "1" : "0",
       monetization_exp_group_c:
         monetizationGroup === MONETIZATION_EXPERIMENT_GROUPS.C ? "1" : "0",
-      paywall_design_exp_id: PAYWALL_DESIGN_EXPERIMENT_ID,
-      paywall_design_variant: paywallDesignVariant,
-      paywall_design_variant_a:
-        paywallDesignVariant === PAYWALL_DESIGN_VARIANTS.A ? "1" : "0",
-      paywall_design_variant_b:
-        paywallDesignVariant === PAYWALL_DESIGN_VARIANTS.B ? "1" : "0",
-      onboarding_length_exp_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
-      onboarding_length_variant: onboardingLengthVariant,
-      onboarding_length_variant_a:
-        onboardingLengthVariant === ONBOARDING_LENGTH_VARIANTS.A ? "1" : "0",
-      onboarding_length_variant_b:
-        onboardingLengthVariant === ONBOARDING_LENGTH_VARIANTS.B ? "1" : "0",
       ios_att_opt_in: iosAttOptIn ? "1" : "0",
       ios_att_status:
         Platform.OS === "ios" ? normalizedIosTrackingStatus || "unknown" : "non_ios",
@@ -67364,8 +67660,6 @@ useEffect(() => {
     monetizationExperimentEligibleNewInstall,
     monetizationExperimentGroup,
     notificationPermissionGranted,
-    onboardingLengthVariantNormalized,
-    paywallDesignVariantNormalized,
     playerLevel,
     profile.currency,
     profile.gender,
@@ -68230,7 +68524,7 @@ useEffect(() => {
     triggerHaptic();
     ensureTermsAccepted();
     await requestTrackingTransparencyIfNeeded();
-    goToOnboardingStep(isShortOnboardingFlow ? "persona" : "guide");
+    goToOnboardingStep("persona");
   };
 
   const handleGuideContinue = () => {
@@ -68776,7 +69070,7 @@ useEffect(() => {
     },
     [customTemptationCount, showTemptationHardLimit, showTemptationSoftLimit]
   );
-  const requestTemptationPremiumUnlock = useCallback(() => {
+  const openTemptationPremiumPaywall = useCallback(() => {
     const opened = openPremiumPaywall({
       kind: "hard",
       trigger: "temptation_card_limit_reached",
@@ -68792,12 +69086,25 @@ useEffect(() => {
       });
     }
   }, [logMonetizationEvent, openPremiumPaywall]);
+  const requestTemptationPremiumUnlock = useCallback(() => {
+    Alert.alert(
+      t("temptationPremiumLimitTitle"),
+      t("temptationPremiumLimitMessage", {
+        limit: String(FREE_TEMPTATION_CARD_LIMIT),
+      }),
+      [
+        { text: t("temptationPremiumLimitCancel"), style: "cancel" },
+        {
+          text: t("temptationPremiumLimitAction"),
+          style: "default",
+          onPress: openTemptationPremiumPaywall,
+        },
+      ]
+    );
+  }, [openTemptationPremiumPaywall, t]);
 
   const handleQuickCustomSubmit = (customData) => {
-    if (
-      !premiumState.isPremium &&
-      customTemptationCount >= FREE_CUSTOM_TEMPTATION_CARD_CREATE_LIMIT
-    ) {
+    if (!hasFreeTemptationCardSlot) {
       requestTemptationPremiumUnlock();
       return;
     }
@@ -69053,10 +69360,7 @@ useEffect(() => {
   }, []);
 
   const handleFabNewTemptation = useCallback(() => {
-    if (
-      !premiumState.isPremium &&
-      customTemptationCount >= FREE_CUSTOM_TEMPTATION_CARD_CREATE_LIMIT
-    ) {
+    if (!hasFreeTemptationCardSlot) {
       requestTemptationPremiumUnlock();
       return;
     }
@@ -69067,19 +69371,15 @@ useEffect(() => {
     openQuickCustomModal();
   }, [
     closeFabMenu,
-    customTemptationCount,
     ensureTemptationCapacity,
+    hasFreeTemptationCardSlot,
     markDidYouKnowFeatureUsed,
     openQuickCustomModal,
-    premiumState.isPremium,
     requestTemptationPremiumUnlock,
     triggerHaptic,
   ]);
   const handleSubscriptionQuickCustomCreate = useCallback(() => {
-    if (
-      !premiumState.isPremium &&
-      customTemptationCount >= FREE_CUSTOM_TEMPTATION_CARD_CREATE_LIMIT
-    ) {
+    if (!hasFreeTemptationCardSlot) {
       requestTemptationPremiumUnlock();
       return;
     }
@@ -69093,11 +69393,10 @@ useEffect(() => {
       scheduleConfigVisible: true,
     });
   }, [
-    customTemptationCount,
     ensureTemptationCapacity,
+    hasFreeTemptationCardSlot,
     markDidYouKnowFeatureUsed,
     openQuickCustomModal,
-    premiumState.isPremium,
     requestTemptationPremiumUnlock,
     triggerHaptic,
   ]);
@@ -69114,7 +69413,7 @@ useEffect(() => {
       }
       const freeSlots = premiumState.isPremium
         ? hardSlots
-        : Math.max(0, FREE_CUSTOM_TEMPTATION_CARD_CREATE_LIMIT - customTemptationCount);
+        : Math.min(hardSlots, freeTemptationCardSlotsRemaining);
       if (freeSlots <= 0) {
         requestTemptationPremiumUnlock();
         return 0;
@@ -69222,6 +69521,7 @@ useEffect(() => {
     [
       applyFrequencySelectionToTemplate,
       customTemptationCount,
+      freeTemptationCardSlotsRemaining,
       logEvent,
       markDidYouKnowFeatureUsed,
       premiumState.isPremium,
@@ -69643,7 +69943,7 @@ useEffect(() => {
       return;
     }
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-    goToOnboardingStep(isShortOnboardingFlow ? "goal" : "habit");
+    goToOnboardingStep("goal");
   };
 
   const handleCustomSpendSavingsContinue = useCallback(() => {
@@ -69913,32 +70213,15 @@ useEffect(() => {
     }));
   };
 
-  // Give the push_optin intro one frame budget before heavy onboarding finalization work.
-  const ONBOARDING_GOAL_COMPLETION_DEFER_MS = 320;
-
   const handleGoalStageContinue = async () => {
     try {
-      const shouldCompleteShortOnboarding = isShortOnboardingFlow && onboardingStep !== "done";
       const selections = (registrationData.goalSelections || []).slice(0, ONBOARDING_GOAL_SELECTION_LIMIT);
       if (!selections.length) {
         triggerHaptic();
         logEvent("onboarding_goal_skipped", { method: "empty_selection" });
-        if (shouldCompleteShortOnboarding) {
-          handleGoalComplete(null).catch((error) => {
-            console.warn("onboarding goal completion async", error);
-          });
-        } else {
-          const preserveBackPath = onboardingStep === "goal";
-          goToOnboardingStep("push_optin", {
-            recordHistory: preserveBackPath,
-            resetHistory: !preserveBackPath,
-          });
-          setTimeout(() => {
-            handleGoalComplete(null).catch((error) => {
-              console.warn("onboarding goal completion async", error);
-            });
-          }, ONBOARDING_GOAL_COMPLETION_DEFER_MS);
-        }
+        handleGoalComplete(null).catch((error) => {
+          console.warn("onboarding goal completion async", error);
+        });
         return;
       }
       const currentMap = registrationData.goalTargetMap || {};
@@ -69981,34 +70264,14 @@ useEffect(() => {
         goalTargetMap: prev.goalTargetMap || {},
         goalTargetConfirmed: selections.slice(),
       }));
-      const preserveBackPath = onboardingStep === "goal";
-      if (shouldCompleteShortOnboarding) {
-        handleGoalComplete(targets).catch((error) => {
-          console.warn("onboarding goal completion async", error);
-        });
-      } else {
-        goToOnboardingStep("push_optin", {
-          recordHistory: preserveBackPath,
-          resetHistory: !preserveBackPath,
-        });
-        setTimeout(() => {
-          handleGoalComplete(targets).catch((error) => {
-            console.warn("onboarding goal completion async", error);
-          });
-        }, ONBOARDING_GOAL_COMPLETION_DEFER_MS);
-      }
+      handleGoalComplete(targets).catch((error) => {
+        console.warn("onboarding goal completion async", error);
+      });
     } catch (error) {
       console.warn("onboarding goal continue", error);
-      if (isShortOnboardingFlow) {
-        handleGoalComplete(null).catch((completionError) => {
-          console.warn("onboarding goal completion fallback", completionError);
-        });
-      } else {
-        goToOnboardingStep("push_optin", {
-          recordHistory: onboardingStep === "goal",
-          resetHistory: onboardingStep !== "goal",
-        });
-      }
+      handleGoalComplete(null).catch((completionError) => {
+        console.warn("onboarding goal completion fallback", completionError);
+      });
     }
   };
   const handleGoalStageSkip = async () => {
@@ -70025,7 +70288,7 @@ useEffect(() => {
   };
 
   const handleGoalComplete = async (targetsOverride = null) => {
-    const shouldCompleteShortOnboarding = isShortOnboardingFlow && onboardingStep !== "done";
+    const shouldCompleteOnboardingAfterGoal = onboardingStep !== "done";
     const selections = (registrationData.goalSelections || []).slice(0, ONBOARDING_GOAL_SELECTION_LIMIT);
     const currencyCode = registrationData.currency || DEFAULT_PROFILE.currency;
     const isValidGoalSelection = (goalId) => {
@@ -70180,10 +70443,9 @@ useEffect(() => {
     setProfile(updatedProfile);
     setProfileDraft(updatedProfile);
     setActiveGoalId(updatedProfile.goal);
-    const preserveBackPath = !shouldCompleteShortOnboarding && onboardingStep === "goal";
-    goToOnboardingStep(shouldCompleteShortOnboarding ? "done" : "push_optin", {
-      recordHistory: preserveBackPath,
-      resetHistory: shouldCompleteShortOnboarding || !preserveBackPath,
+    goToOnboardingStep("done", {
+      recordHistory: false,
+      resetHistory: true,
     });
     await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(updatedProfile)).catch(() => {});
     await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, "done").catch(() => {});
@@ -70274,7 +70536,7 @@ useEffect(() => {
       setAnalyticsOptOutFlag(false);
       AsyncStorage.setItem(STORAGE_KEYS.ANALYTICS_OPT_OUT, "0").catch(() => {});
     }
-    if (shouldCompleteShortOnboarding) {
+    if (shouldCompleteOnboardingAfterGoal) {
       if (!onboardingCompletionEventLoggedRef.current) {
         const startBalanceLocal = convertToCurrency(
           savedTotalUSD || 0,
@@ -70286,16 +70548,12 @@ useEffect(() => {
           has_goal: hasPrimaryGoal,
           start_balance: startBalanceLocal,
           skipped: 0,
-          onboarding_experiment_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
-          onboarding_flow_variant: onboardingLengthVariantNormalized,
         });
         onboardingCompletionEventLoggedRef.current = true;
       }
       setUserProperties({
         onboarding_complete: "1",
         onboarding_skipped: "0",
-        onboarding_length_exp_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
-        onboarding_length_variant: onboardingLengthVariantNormalized,
       });
       setPremiumSoftPaywallPending(false);
       setRegistrationData(INITIAL_REGISTRATION);
@@ -70347,16 +70605,12 @@ useEffect(() => {
         has_goal: hasPrimaryGoal,
         start_balance: startBalanceLocal,
         skipped: 0,
-        onboarding_experiment_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
-        onboarding_flow_variant: onboardingLengthVariantNormalized,
       });
       onboardingCompletionEventLoggedRef.current = true;
     }
     setUserProperties({
       onboarding_complete: "1",
       onboarding_skipped: "0",
-      onboarding_length_exp_id: ONBOARDING_LENGTH_EXPERIMENT_ID,
-      onboarding_length_variant: onboardingLengthVariantNormalized,
     });
     await ensureNotificationPermission({ request: true });
     setPremiumSoftPaywallPending(false);
@@ -71845,18 +72099,22 @@ useEffect(() => {
       let hungerAfter = tamagotchiState.hunger;
       setTamagotchiState((prev) => {
         const now = Date.now();
-        const prevHunger = Math.max(0, Number(prev.hunger) || 0);
+        const settledPrev = settleTamagotchiStateBeforeCareAction(prev, now);
+        const prevHunger = Math.max(0, Number(settledPrev.hunger) || 0);
         const nextHunger = Math.min(TAMAGOTCHI_MAX_HUNGER, prevHunger + food.hungerBoost);
-        const prevMood = normalizeTamagotchiStateValue(prev.mood, TAMAGOTCHI_START_STATE.mood);
+        const prevMood = normalizeTamagotchiStateValue(
+          settledPrev.mood,
+          TAMAGOTCHI_START_STATE.mood
+        );
         const moodGain = Math.max(4, Math.round(food.hungerBoost * 0.18));
         const nextMood = Math.min(TAMAGOTCHI_MAX_STATE_VALUE, prevMood + moodGain);
         hungerBefore = prevHunger;
         hungerAfter = nextHunger;
         const nextFoodId = resolveNextTamagotchiFoodId(nextHunger, food.id, true);
         return advanceTamagotchiHourlyRewardState({
-          ...prev,
+          ...settledPrev,
           ...resolveTamagotchiCareCooldownUpdate(
-            prev,
+            settledPrev,
             "hunger",
             food.hungerCooldownMs,
             food.hungerDecayMultiplier,
@@ -71960,18 +72218,22 @@ useEffect(() => {
       const cleanPenalty = Math.max(1, toy.cleanPenalty + (isDesired ? 1 : 0));
       setTamagotchiState((prev) => {
         const now = Date.now();
-        const prevMood = normalizeTamagotchiStateValue(prev.mood, TAMAGOTCHI_START_STATE.mood);
+        const settledPrev = settleTamagotchiStateBeforeCareAction(prev, now);
+        const prevMood = normalizeTamagotchiStateValue(
+          settledPrev.mood,
+          TAMAGOTCHI_START_STATE.mood
+        );
         const prevClean = normalizeTamagotchiStateValue(
-          prev.cleanliness,
+          settledPrev.cleanliness,
           TAMAGOTCHI_START_STATE.cleanliness
         );
         const nextMood = Math.min(TAMAGOTCHI_MAX_STATE_VALUE, prevMood + moodBoost);
         const nextClean = Math.max(0, prevClean - cleanPenalty);
         const nextToyId = resolveNextTamagotchiToyId(nextMood, toy.id, true);
         return advanceTamagotchiHourlyRewardState({
-          ...prev,
+          ...settledPrev,
           ...resolveTamagotchiCareCooldownUpdate(
-            prev,
+            settledPrev,
             "mood",
             toy.moodCooldownMs,
             toy.moodDecayMultiplier,
@@ -72097,11 +72359,15 @@ useEffect(() => {
     );
     setTamagotchiState((prev) => {
       const now = Date.now();
+      const settledPrev = settleTamagotchiStateBeforeCareAction(prev, now);
       const prevClean = normalizeTamagotchiStateValue(
-        prev.cleanliness,
+        settledPrev.cleanliness,
         TAMAGOTCHI_START_STATE.cleanliness
       );
-      const prevMood = normalizeTamagotchiStateValue(prev.mood, TAMAGOTCHI_START_STATE.mood);
+      const prevMood = normalizeTamagotchiStateValue(
+        settledPrev.mood,
+        TAMAGOTCHI_START_STATE.mood
+      );
       const immediateCleanGain = Math.max(1, Number(tool.cleanBoost) || 0);
       const immediateMoodGain = Math.max(0, Number(tool.moodBoost) || 0);
       const completionCleanBonus = cycleCompleted
@@ -72116,14 +72382,14 @@ useEffect(() => {
       );
       const nextToyId = resolveNextTamagotchiToyId(
         nextMood,
-        prev?.desiredToyId || TAMAGOTCHI_DEFAULT_TOY_ID,
+        settledPrev?.desiredToyId || TAMAGOTCHI_DEFAULT_TOY_ID,
         cycleCompleted
       );
-      const supplies = normalizeTamagotchiToolSupplies(prev.cleanToolSupplies);
+      const supplies = normalizeTamagotchiToolSupplies(settledPrev.cleanToolSupplies);
       const prevSupply = Math.max(0, Number(supplies[tool.id]) || 0);
       const cooldownFields = cycleCompleted
         ? resolveTamagotchiCareCooldownUpdate(
-            prev,
+            settledPrev,
             "cleanliness",
             tool.cleanlinessCooldownMs,
             tool.cleanlinessDecayMultiplier,
@@ -72131,7 +72397,7 @@ useEffect(() => {
           )
         : {};
       return advanceTamagotchiHourlyRewardState({
-        ...prev,
+        ...settledPrev,
         ...cooldownFields,
         cleanliness: Math.round(
           Math.min(
@@ -72377,7 +72643,12 @@ useEffect(() => {
 
   const renderTamagotchiFoodList = () => {
     return (
-      <View style={styles.tamagotchiOptionGrid}>
+      <ScrollView
+        style={styles.tamagotchiOptionScroller}
+        contentContainerStyle={styles.tamagotchiOptionGrid}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+      >
         {TAMAGOTCHI_FOOD_OPTIONS.map((food) => {
           const label = resolveLanguageMapValue(food.label, language) || food.label.en;
           const coinTier = getHealthCoinTierForAmount(food.cost);
@@ -72413,21 +72684,23 @@ useEffect(() => {
             >
               <View style={styles.tamagotchiOptionCardTop}>
                 <Text style={styles.tamagotchiOptionEmoji}>{food.emoji}</Text>
-                <Text style={[styles.tamagotchiOptionLabel, { color: colors.text }]} numberOfLines={1}>
-                  {label}
-                </Text>
-                {isDesired && (
-                  <View
-                    style={[
-                      styles.tamagotchiOptionBadge,
-                      { backgroundColor: colorWithAlpha("#F6A553", isDarkTheme ? 0.32 : 0.24) },
-                    ]}
-                  >
-                    <Text style={[styles.tamagotchiOptionBadgeText, { color: colors.text }]} numberOfLines={1}>
-                      {t("tamagotchiFoodWantLabel")}
-                    </Text>
-                  </View>
-                )}
+                <View style={styles.tamagotchiOptionTitleStack}>
+                  <Text style={[styles.tamagotchiOptionLabel, { color: colors.text }]} numberOfLines={2}>
+                    {label}
+                  </Text>
+                  {isDesired && (
+                    <View
+                      style={[
+                        styles.tamagotchiOptionBadge,
+                        { backgroundColor: colorWithAlpha("#F6A553", isDarkTheme ? 0.32 : 0.24) },
+                      ]}
+                    >
+                      <Text style={[styles.tamagotchiOptionBadgeText, { color: colors.text }]} numberOfLines={1}>
+                        {t("tamagotchiFoodWantLabel")}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
               <Text style={[styles.tamagotchiOptionSub, { color: colors.muted }]} numberOfLines={1}>
                 {t("tamagotchiFoodBoostLabel", { percent: food.hungerBoost })}
@@ -72446,12 +72719,17 @@ useEffect(() => {
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
     );
   };
   const renderTamagotchiToyList = () => {
     return (
-      <View style={styles.tamagotchiOptionGrid}>
+      <ScrollView
+        style={styles.tamagotchiOptionScroller}
+        contentContainerStyle={styles.tamagotchiOptionGrid}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+      >
         {TAMAGOTCHI_TOY_OPTIONS.map((toy) => {
           const label = resolveLanguageMapValue(toy.label, language) || toy.label.en;
           const isDesired = tamagotchiDesiredToy?.id === toy.id;
@@ -72484,21 +72762,23 @@ useEffect(() => {
             >
               <View style={styles.tamagotchiOptionCardTop}>
                 <Text style={styles.tamagotchiOptionEmoji}>{toy.emoji}</Text>
-                <Text style={[styles.tamagotchiOptionLabel, { color: colors.text }]} numberOfLines={1}>
-                  {label}
-                </Text>
-                {isDesired && (
-                  <View
-                    style={[
-                      styles.tamagotchiOptionBadge,
-                      { backgroundColor: colorWithAlpha("#F472B6", isDarkTheme ? 0.32 : 0.24) },
-                    ]}
-                  >
-                    <Text style={[styles.tamagotchiOptionBadgeText, { color: colors.text }]} numberOfLines={1}>
-                      {t("tamagotchiPlayWantLabel")}
-                    </Text>
-                  </View>
-                )}
+                <View style={styles.tamagotchiOptionTitleStack}>
+                  <Text style={[styles.tamagotchiOptionLabel, { color: colors.text }]} numberOfLines={2}>
+                    {label}
+                  </Text>
+                  {isDesired && (
+                    <View
+                      style={[
+                        styles.tamagotchiOptionBadge,
+                        { backgroundColor: colorWithAlpha("#F472B6", isDarkTheme ? 0.32 : 0.24) },
+                      ]}
+                    >
+                      <Text style={[styles.tamagotchiOptionBadgeText, { color: colors.text }]} numberOfLines={1}>
+                        {t("tamagotchiPlayWantLabel")}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
               <Text style={[styles.tamagotchiOptionSub, { color: colors.muted }]} numberOfLines={1}>
                 {t("tamagotchiPlayBoostLabel", { percent: toy.moodBoost })}
@@ -72522,7 +72802,7 @@ useEffect(() => {
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
     );
   };
   const tamagotchiCleanTargetAccent = tamagotchiSelectedCleanTool?.type === "brush" ? "#99E18E" : "#7CC7FF";
@@ -72555,6 +72835,28 @@ useEffect(() => {
   const tamagotchiCleanHintBackgroundColor = isAndroidTamagotchiSurface
     ? blendColors(colors.card || "#FFFFFF", tamagotchiCleanTargetAccent, isDarkTheme ? 0.24 : 0.16)
     : colorWithAlpha(tamagotchiCleanTargetAccent, isDarkTheme ? 0.24 : 0.2);
+  const tamagotchiHourlyRewardAccent = "#20B486";
+  const tamagotchiHourlyRewardBorderColor = isAndroidTamagotchiSurface
+    ? blendColors(
+        colors.border || (isDarkTheme ? "#2D3748" : "#E5EAF1"),
+        tamagotchiHourlyRewardAccent,
+        tamagotchiHourlyRewardStatus.ready ? 0.46 : 0.3
+      )
+    : tamagotchiHourlyRewardStatus.ready
+    ? colorWithAlpha(tamagotchiHourlyRewardAccent, isDarkTheme ? 0.58 : 0.46)
+    : colorWithAlpha(tamagotchiHourlyRewardAccent, isDarkTheme ? 0.34 : 0.22);
+  const tamagotchiHourlyRewardSurfaceColor = isAndroidTamagotchiSurface
+    ? blendColors(
+        colors.card || "#FFFFFF",
+        tamagotchiHourlyRewardAccent,
+        tamagotchiHourlyRewardStatus.ready ? (isDarkTheme ? 0.2 : 0.1) : isDarkTheme ? 0.14 : 0.06
+      )
+    : tamagotchiHourlyRewardStatus.ready
+    ? colorWithAlpha(tamagotchiHourlyRewardAccent, isDarkTheme ? 0.16 : 0.1)
+    : colorWithAlpha(tamagotchiHourlyRewardAccent, isDarkTheme ? 0.08 : 0.06);
+  const tamagotchiHourlyRewardAmountSurfaceColor = isAndroidTamagotchiSurface
+    ? blendColors(colors.card || "#FFFFFF", tamagotchiHourlyRewardAccent, isDarkTheme ? 0.08 : 0.03)
+    : colorWithAlpha(colors.card, isDarkTheme ? 0.78 : 0.72);
   const tamagotchiCleanTargetHighlightVisible =
     tamagotchiActiveTab === "clean" &&
     isTamagotchiCleanToolSelected &&
@@ -72562,7 +72864,12 @@ useEffect(() => {
   const renderTamagotchiCleanPanel = () => {
     return (
       <View style={styles.tamagotchiCleanPanel}>
-        <View style={styles.tamagotchiOptionGrid}>
+        <ScrollView
+          style={styles.tamagotchiOptionScroller}
+          contentContainerStyle={styles.tamagotchiOptionGrid}
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
+        >
           {TAMAGOTCHI_CLEAN_TOOLS.map((tool) => {
             const label = resolveLanguageMapValue(tool.label, language) || tool.label.en;
             const selected = tamagotchiSelectedCleanTool?.id === tool.id;
@@ -72617,21 +72924,23 @@ useEffect(() => {
               >
                 <View style={styles.tamagotchiOptionCardTop}>
                   <Text style={styles.tamagotchiOptionEmoji}>{tool.emoji}</Text>
-                  <Text style={[styles.tamagotchiOptionLabel, { color: colors.text }]} numberOfLines={1}>
-                    {label}
-                  </Text>
-                  {isActiveSelection && (
-                    <View
-                      style={[
-                        styles.tamagotchiOptionBadge,
-                        { backgroundColor: colorWithAlpha(accent, isDarkTheme ? 0.32 : 0.24) },
-                      ]}
-                    >
-                      <Text style={[styles.tamagotchiOptionBadgeText, { color: colors.text }]} numberOfLines={1}>
-                        {t("tamagotchiToolSelectedLabel")}
-                      </Text>
-                    </View>
-                  )}
+                  <View style={styles.tamagotchiOptionTitleStack}>
+                    <Text style={[styles.tamagotchiOptionLabel, { color: colors.text }]} numberOfLines={2}>
+                      {label}
+                    </Text>
+                    {isActiveSelection && (
+                      <View
+                        style={[
+                          styles.tamagotchiOptionBadge,
+                          { backgroundColor: colorWithAlpha(accent, isDarkTheme ? 0.32 : 0.24) },
+                        ]}
+                      >
+                        <Text style={[styles.tamagotchiOptionBadgeText, { color: colors.text }]} numberOfLines={1}>
+                          {t("tamagotchiToolSelectedLabel")}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
                 <Text style={[styles.tamagotchiOptionSub, { color: colors.muted }]} numberOfLines={2}>
                   {boostText}
@@ -72655,7 +72964,7 @@ useEffect(() => {
               </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
         {!tamagotchiSelectedCleanToolRemaining && (
           <Text style={[styles.tamagotchiCleanSupplyHint, { color: colors.muted }]}>
             {t("tamagotchiToolNeedRefillHint")}
@@ -76157,6 +76466,7 @@ useEffect(() => {
       (entry) => entry?.id
     );
     if (!pending.length) return;
+    const pendingById = new Map(pending.map((entry) => [entry.id, entry]));
     if (
       enforceMonetizationTrialActionLimit({
         savedAmountUSD: savedTotalUSD,
@@ -76292,9 +76602,23 @@ useEffect(() => {
         const status = resolvedStatuses[entry?.id];
         const rewardAmount = Math.max(0, Number(rewardByEventId[entry?.id]) || 0);
         if (!status) return entry;
+        const resolvedPendingEntry = pendingById.get(entry?.id);
         if (status === "skipped") {
           return {
             ...entry,
+            ...(resolvedPendingEntry
+              ? {
+                  title: resolvedPendingEntry.title || entry.title,
+                  emoji: resolvedPendingEntry.emoji || entry.emoji,
+                  amountUSD: clampTransactionAmountUSD(
+                    tycoonAutosaveAmountOverrides?.[entry?.id] ||
+                      resolvedPendingEntry.amountUSD ||
+                      entry.amountUSD
+                  ),
+                  currency: resolvedPendingEntry.currency || entry.currency,
+                  pricePrecision: resolvedPendingEntry.pricePrecision,
+                }
+              : null),
             status: "skipped",
             skippedAt: now,
             skipReason: "autosave_day_duplicate",
@@ -76305,8 +76629,14 @@ useEffect(() => {
         return {
           ...entry,
           amountUSD: clampTransactionAmountUSD(
-            tycoonAutosaveAmountOverrides?.[entry?.id] || entry.amountUSD
+            tycoonAutosaveAmountOverrides?.[entry?.id] ||
+              resolvedPendingEntry?.amountUSD ||
+              entry.amountUSD
           ),
+          title: resolvedPendingEntry?.title || entry.title,
+          emoji: resolvedPendingEntry?.emoji || entry.emoji,
+          currency: resolvedPendingEntry?.currency || entry.currency,
+          pricePrecision: resolvedPendingEntry?.pricePrecision,
           status,
           confirmedAt: now,
           rewardAmount: status === "saved" ? rewardAmount : 0,
@@ -80729,6 +81059,44 @@ useEffect(() => {
     premiumState.isPremium,
     requestProgressBudgetFocus,
   ]);
+  const handleTemptationCategoryBudgetPress = useCallback(
+    (payload = {}) => {
+      const categoryId =
+        typeof payload?.categoryId === "string" && payload.categoryId.trim()
+          ? payload.categoryId.trim()
+          : null;
+      const openLimitEditor = () => {
+        const budgetLocked = !premiumState.isPremium || !budgetAutoEnabled;
+        if (budgetLocked) {
+          ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.budgetAuto);
+          return;
+        }
+        setBudgetLimitOpenRequest({
+          tick: Date.now(),
+          categoryId,
+        });
+        requestProgressBudgetFocus();
+      };
+      Alert.alert(
+        t("dailyDidYouKnowTipBudgetLimitsTitle"),
+        t("dailyDidYouKnowTipBudgetLimitsBody"),
+        [
+          { text: t("profileCancel"), style: "cancel" },
+          {
+            text: t("budgetLimitPromptTitle"),
+            onPress: openLimitEditor,
+          },
+        ]
+      );
+    },
+    [
+      budgetAutoEnabled,
+      ensurePremiumFeatureAccess,
+      premiumState.isPremium,
+      requestProgressBudgetFocus,
+      t,
+    ]
+  );
   const handleImpulseMapLockedPress = useCallback(() => {
     ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.impulseMap);
   }, [ensurePremiumFeatureAccess]);
@@ -81121,6 +81489,7 @@ useEffect(() => {
             budgetAutoEnabled={budgetAutoEnabled}
             isPremiumUser={premiumState.isPremium}
             onBudgetAutoLocked={handleBudgetAutoLocked}
+            budgetLimitOpenRequest={budgetLimitOpenRequest}
             savedTotalUSD={savedTotalUSD}
             decisionStats={decisionStats}
             baselineMonthlyWasteUSD={baselineMonthlyWasteUSD}
@@ -81362,6 +81731,7 @@ useEffect(() => {
             onTemptationEditDelete={handleTemptationDelete}
             onTemptationGoalSelect={openGoalLinkPrompt}
             onTemptationSwipeDelete={handleTemptationDelete}
+            onTemptationCategoryBudgetPress={handleTemptationCategoryBudgetPress}
             onSavingsBreakdownPress={openSavingsBreakdown}
             onBudgetHeroPress={handleBudgetHeroPress}
             onSubscriptionWidgetPress={requestProgressSubscriptionFocus}
@@ -81605,7 +81975,7 @@ useEffect(() => {
         onboardingBackHandler ||
         (() => {
           triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-          goToOnboardingStep(isShortOnboardingFlow ? "persona" : "save_demo", {
+          goToOnboardingStep("persona", {
             recordHistory: false,
           });
         });
@@ -84861,14 +85231,11 @@ useEffect(() => {
                   <View
                     style={[
                       styles.tamagotchiHourlyRewardCard,
+                      isAndroidTamagotchiSurface && styles.tamagotchiHourlyRewardCardAndroid,
                       tamagotchiClosing && styles.tamagotchiNoShadow,
                       {
-                        borderColor: tamagotchiHourlyRewardStatus.ready
-                          ? colorWithAlpha("#20B486", isDarkTheme ? 0.58 : 0.46)
-                          : colorWithAlpha("#20B486", isDarkTheme ? 0.34 : 0.22),
-                        backgroundColor: tamagotchiHourlyRewardStatus.ready
-                          ? colorWithAlpha("#20B486", isDarkTheme ? 0.16 : 0.1)
-                          : colorWithAlpha("#20B486", isDarkTheme ? 0.08 : 0.06),
+                        borderColor: tamagotchiHourlyRewardBorderColor,
+                        backgroundColor: tamagotchiHourlyRewardSurfaceColor,
                       },
                     ]}
                   >
@@ -84900,7 +85267,7 @@ useEffect(() => {
                       </Text>
                       <Text
                         style={[styles.tamagotchiHourlyRewardMessage, { color: colors.muted }]}
-                        numberOfLines={2}
+                        numberOfLines={3}
                       >
                         {tamagotchiHourlyRewardMessage}
                       </Text>
@@ -84935,7 +85302,7 @@ useEffect(() => {
                         styles.tamagotchiHourlyRewardAmountPanel,
                         {
                           borderColor: colorWithAlpha("#20B486", isDarkTheme ? 0.28 : 0.18),
-                          backgroundColor: colorWithAlpha(colors.card, isDarkTheme ? 0.78 : 0.72),
+                          backgroundColor: tamagotchiHourlyRewardAmountSurfaceColor,
                         },
                       ]}
                     >
@@ -85231,6 +85598,24 @@ useEffect(() => {
                           </View>
                           {skinLoading ? (
                             <ActivityIndicator size="small" color={colors.text} />
+                          ) : !catCustomizationUnlocked ? (
+                            <View
+                              style={[
+                                styles.skinPickerBadge,
+                                styles.skinPickerLockedBadge,
+                                { borderColor: colors.border, backgroundColor: colors.background },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.skinPickerBadgeText,
+                                  styles.skinPickerLockedBadgeText,
+                                  { color: colors.text },
+                                ]}
+                              >
+                                PRO
+                              </Text>
+                            </View>
                           ) : skinLoadFailed ? (
                             <View
                               style={[
@@ -86586,7 +86971,7 @@ useEffect(() => {
             )}
           </>
         )}
-        <ActivePremiumPaywallModal
+        <PremiumPaywallModalV2
           visible={premiumPaywallState.visible}
           dismissible={premiumPaywallState.dismissible !== false}
           copy={premiumCopy}
@@ -90324,31 +90709,37 @@ const styles = StyleSheet.create({
   tamagotchiHourlyRewardCard: {
     width: "100%",
     alignSelf: "stretch",
-    minHeight: scaleTamagotchiMetric(116, 94),
+    minHeight: scaleTamagotchiMetric(118, 98),
     borderWidth: 1,
     borderRadius: scaleTamagotchiMetric(20, 15),
-    paddingHorizontal: scaleTamagotchiMetric(12, 9),
+    paddingHorizontal: scaleTamagotchiMetric(10, 8),
     paddingVertical: scaleTamagotchiMetric(10, 8),
     flexDirection: "row",
     alignItems: "center",
-    gap: scaleTamagotchiMetric(10, 7),
+    gap: scaleTamagotchiMetric(8, 5),
     shadowColor: "#0A1324",
     shadowOpacity: 0.08,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   },
+  tamagotchiHourlyRewardCardAndroid: {
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
   tamagotchiHourlyRewardCoinWrap: {
-    width: scaleTamagotchiMetric(72, 54),
-    height: scaleTamagotchiMetric(72, 54),
+    width: scaleTamagotchiMetric(62, 48),
+    height: scaleTamagotchiMetric(62, 48),
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
   tamagotchiHourlyRewardCoin: {
-    width: scaleTamagotchiMetric(62, 46),
-    height: scaleTamagotchiMetric(62, 46),
+    width: scaleTamagotchiMetric(54, 40),
+    height: scaleTamagotchiMetric(54, 40),
     resizeMode: "contain",
   },
   tamagotchiHourlyRewardTopRow: {
@@ -90388,8 +90779,8 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   tamagotchiHourlyRewardAmountPanel: {
-    minWidth: scaleTamagotchiMetric(86, 70),
-    maxWidth: scaleTamagotchiMetric(104, 86),
+    minWidth: scaleTamagotchiMetric(80, 66),
+    maxWidth: scaleTamagotchiMetric(94, 78),
     minHeight: scaleTamagotchiMetric(76, 62),
     borderRadius: scaleTamagotchiMetric(16, 12),
     borderWidth: 1,
@@ -90401,8 +90792,8 @@ const styles = StyleSheet.create({
   },
   tamagotchiHourlyRewardMessage: {
     ...createBodyText({
-      fontSize: scaleTamagotchiMetric(11.3, 9.2),
-      lineHeight: scaleTamagotchiMetric(14.2, 11.4),
+      fontSize: scaleTamagotchiMetric(10.8, 9),
+      lineHeight: scaleTamagotchiMetric(13.6, 11.2),
     }),
   },
   tamagotchiHourlyRewardProgress: {
@@ -90735,7 +91126,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: scaleTamagotchiMetric(7, 5),
-    minHeight: scaleTamagotchiMetric(33, 29),
+    minHeight: scaleTamagotchiMetric(34, 30),
   },
   tamagotchiControlTitleWrap: {
     flex: 0.88,
@@ -90776,24 +91167,27 @@ const styles = StyleSheet.create({
     marginTop: 0,
     overflow: "hidden",
   },
-  tamagotchiOptionGrid: {
+  tamagotchiOptionScroller: {
     flex: 1,
     minHeight: 0,
+  },
+  tamagotchiOptionGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: scaleTamagotchiMetric(6, 4),
-    alignContent: "space-between",
+    rowGap: scaleTamagotchiMetric(5, 3),
+    columnGap: scaleTamagotchiMetric(6, 4),
     justifyContent: "space-between",
+    paddingBottom: scaleTamagotchiMetric(2, 2),
   },
   tamagotchiOptionCard: {
     width: "48.7%",
-    height: "48%",
+    minHeight: scaleTamagotchiMetric(76, 64),
     borderWidth: 1,
     borderRadius: scaleTamagotchiMetric(15, 12),
-    paddingHorizontal: scaleTamagotchiMetric(9, 7),
-    paddingVertical: scaleTamagotchiMetric(7, 5),
-    minHeight: 0,
-    gap: scaleTamagotchiMetric(4, 3),
+    paddingHorizontal: scaleTamagotchiMetric(8, 6),
+    paddingVertical: scaleTamagotchiMetric(6, 4),
+    gap: scaleTamagotchiMetric(3, 2),
+    overflow: "hidden",
     ...Platform.select({
       android: {
         elevation: 0,
@@ -90807,25 +91201,30 @@ const styles = StyleSheet.create({
   },
   tamagotchiOptionCardTop: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "flex-start",
     gap: scaleTamagotchiMetric(6, 4),
-    minHeight: scaleTamagotchiMetric(24, 19),
+    minHeight: scaleTamagotchiMetric(27, 22),
   },
   tamagotchiOptionEmoji: {
-    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 22 : 24, 18),
+    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 20 : 22, 16),
     flexShrink: 0,
   },
   tamagotchiOptionLabel: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: scaleTamagotchiMetric(14.6, 11.8),
-    lineHeight: scaleTamagotchiMetric(16.5, 13.5),
-    flex: 1,
+    fontSize: scaleTamagotchiMetric(12.8, 10.6),
+    lineHeight: scaleTamagotchiMetric(14.4, 12),
+    width: "100%",
     minWidth: 0,
   },
+  tamagotchiOptionTitleStack: {
+    flex: 1,
+    minWidth: 0,
+    gap: scaleTamagotchiMetric(2, 1),
+  },
   tamagotchiOptionSub: {
-    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(9.8, 8.2) }),
-    lineHeight: scaleTamagotchiMetric(12, 10),
+    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(9.2, 7.8) }),
+    lineHeight: scaleTamagotchiMetric(10.8, 9.2),
   },
   tamagotchiOptionMetaRow: {
     marginTop: "auto",
@@ -90833,19 +91232,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: scaleTamagotchiMetric(4, 3),
-    minHeight: scaleTamagotchiMetric(20, 16),
+    minHeight: scaleTamagotchiMetric(16, 14),
   },
   tamagotchiOptionBadge: {
+    alignSelf: "flex-start",
     borderRadius: 999,
-    paddingHorizontal: scaleTamagotchiMetric(5, 4),
-    paddingVertical: scaleTamagotchiMetric(1.5, 1),
-    maxWidth: "42%",
-    flexShrink: 0,
+    paddingHorizontal: scaleTamagotchiMetric(4.5, 3.5),
+    paddingVertical: scaleTamagotchiMetric(1, 0.5),
+    maxWidth: "100%",
   },
   tamagotchiOptionBadgeText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(7.4, 6.8), textTransform: "uppercase" }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(7, 6.4), textTransform: "uppercase" }),
     letterSpacing: 0.35,
-    lineHeight: scaleTamagotchiMetric(10, 9),
+    lineHeight: scaleTamagotchiMetric(9, 8),
   },
   tamagotchiFoodCost: {
     flexDirection: "row",
@@ -90853,18 +91252,18 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tamagotchiFoodCostIcon: {
-    width: scaleTamagotchiMetric(14, 12),
-    height: scaleTamagotchiMetric(14, 12),
+    width: scaleTamagotchiMetric(12, 10),
+    height: scaleTamagotchiMetric(12, 10),
   },
   tamagotchiFoodCostText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(11, 9.2) }),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(10, 8.6) }),
   },
   tamagotchiToyPenaltyText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(9.2, 8) }),
-    lineHeight: scaleTamagotchiMetric(10.5, 9.2),
+    ...createCtaText({ fontSize: scaleTamagotchiMetric(8.8, 7.6) }),
+    lineHeight: scaleTamagotchiMetric(10, 8.8),
   },
   tamagotchiSub: {
-    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(8.2, 7) }),
+    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(7.8, 6.8) }),
   },
   tamagotchiCleanPanel: {
     flex: 1,
@@ -94412,13 +94811,13 @@ const styles = StyleSheet.create({
   },
   budgetLockedScreenContent: {
     paddingHorizontal: BASE_HORIZONTAL_PADDING,
-    gap: 16,
+    justifyContent: "center",
   },
   budgetLockedScreenHero: {
     borderRadius: 28,
     borderWidth: 1.5,
-    padding: IS_SHORT_DEVICE ? 18 : 20,
-    gap: 16,
+    padding: IS_SHORT_DEVICE ? 18 : 22,
+    gap: IS_SHORT_DEVICE ? 14 : 18,
     overflow: "hidden",
   },
   budgetLockedScreenGlow: {
@@ -94432,6 +94831,7 @@ const styles = StyleSheet.create({
   budgetLockedScreenHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
+    justifyContent: "space-between",
     gap: 12,
   },
   budgetLockedScreenTitleBlock: {
@@ -94441,11 +94841,11 @@ const styles = StyleSheet.create({
   },
   budgetLockedScreenTitle: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: IS_SHORT_DEVICE ? 24 : 28,
-    lineHeight: IS_SHORT_DEVICE ? 28 : 32,
+    fontSize: IS_SHORT_DEVICE ? 24 : 26,
+    lineHeight: IS_SHORT_DEVICE ? 28 : 30,
   },
   budgetLockedScreenBody: {
-    ...createBodyText({ fontSize: 14, lineHeight: 20, fontWeight: "600" }),
+    ...createBodyText({ fontSize: 13, lineHeight: 19, fontWeight: "600" }),
   },
   budgetLockedScreenPill: {
     borderRadius: 999,
@@ -94472,8 +94872,20 @@ const styles = StyleSheet.create({
     ...createCtaText({ fontSize: 14 }),
     color: "#FFFFFF",
   },
-  budgetLockedScreenPreviewCard: {
-    marginTop: 0,
+  budgetLockedScreenPreviewPanel: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: IS_SHORT_DEVICE ? 14 : 16,
+    gap: IS_SHORT_DEVICE ? 12 : 14,
+  },
+  budgetLockedPreviewCopy: {
+    gap: 4,
+  },
+  budgetLockedPreviewTitle: {
+    ...createBodyText({ fontSize: 16, lineHeight: 20, fontWeight: "800" }),
+  },
+  budgetLockedPreviewBody: {
+    ...createBodyText({ fontSize: 12, lineHeight: 17, fontWeight: "600" }),
   },
   budgetLockedPreviewHeader: {
     flexDirection: "row",
@@ -96918,12 +97330,281 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
+  temptationAmountModalRoot: {
+    flex: 1,
+    paddingHorizontal: 18,
+  },
+  temptationAmountModalGlow: {
+    position: "absolute",
+    right: -58,
+    bottom: 128,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+  },
+  temptationAmountModalTopbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 14,
+  },
+  temptationAmountModalIdentity: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  temptationAmountModalIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  temptationAmountModalEmoji: {
+    fontSize: 28,
+    lineHeight: 34,
+    textAlign: "center",
+  },
+  temptationAmountModalTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  temptationAmountModalTitle: {
+    fontSize: 25,
+    lineHeight: 30,
+    fontWeight: "900",
+  },
+  temptationAmountModalSubtitle: {
+    ...createBodyText({ fontSize: 13, lineHeight: 18, fontWeight: "700" }),
+  },
+  temptationAmountModalClose: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  temptationAmountModalScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  temptationAmountModalScrollContent: {
+    flexGrow: 0,
+    justifyContent: "flex-start",
+    paddingTop: 2,
+    paddingBottom: 0,
+  },
+  temptationAmountModalCard: {
+    borderRadius: 28,
+    borderWidth: 1,
+    padding: 14,
+    gap: 12,
+    overflow: "hidden",
+    ...Platform.select({
+      android: {
+        elevation: 0,
+        shadowColor: "transparent",
+      },
+      default: {
+        shadowColor: "rgba(16,27,69,0.22)",
+        shadowOpacity: 0.2,
+        shadowRadius: 26,
+        shadowOffset: { width: 0, height: 14 },
+      },
+    }),
+  },
+  temptationAmountModalHeroRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  temptationAmountModalHeroText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 8,
+  },
+  temptationAmountModalHeadline: {
+    fontSize: 24,
+    lineHeight: 29,
+    fontWeight: "900",
+  },
+  temptationAmountModalBadge: {
+    minWidth: 82,
+    maxWidth: 116,
+    minHeight: 54,
+    paddingHorizontal: 10,
+    borderRadius: 18,
+    backgroundColor: "#101B45",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  temptationAmountModalBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 23,
+    lineHeight: 28,
+    fontWeight: "900",
+    textAlign: "center",
+    fontVariant: ["tabular-nums"],
+  },
+  temptationAmountSliderPanel: {
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 10,
+    gap: 6,
+  },
+  temptationAmountMoodStage: {
+    minHeight: 152,
+    borderRadius: 24,
+    borderWidth: 1,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  temptationAmountMoodAura: {
+    position: "absolute",
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+  },
+  temptationAmountMoodCat: {
+    width: 140,
+    height: 140,
+  },
+  temptationAmountStats: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  temptationAmountStatCard: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 4,
+  },
+  temptationAmountStatLabel: {
+    ...createCtaText({ fontSize: 11 }),
+    opacity: 0.9,
+  },
+  temptationAmountStatValue: {
+    fontSize: 27,
+    lineHeight: 32,
+    fontWeight: "900",
+    fontVariant: ["tabular-nums"],
+  },
+  temptationAmountProgressTrack: {
+    height: 10,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  temptationAmountProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  temptationAmountBudgetPanel: {
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  temptationAmountBudgetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  temptationAmountBudgetTitle: {
+    ...createBodyText({ fontSize: 13, lineHeight: 17, fontWeight: "800" }),
+    flex: 1,
+    minWidth: 0,
+  },
+  temptationAmountBudgetImpact: {
+    ...createCtaText({ fontSize: 11 }),
+    flexShrink: 0,
+    maxWidth: "42%",
+    textAlign: "right",
+  },
+  temptationAmountBudgetHint: {
+    ...createSecondaryText({ fontSize: 11 }),
+    lineHeight: 14,
+  },
+  temptationAmountInfoBox: {
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 4,
+  },
+  temptationAmountInfoTitle: {
+    ...createBodyText({ fontSize: 16, lineHeight: 20, fontWeight: "900" }),
+  },
+  temptationAmountInfoBody: {
+    ...createBodyText({ fontSize: 13, lineHeight: 18, fontWeight: "700" }),
+  },
+  temptationAmountModalActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  temptationAmountBottomDock: {
+    gap: 10,
+    paddingTop: 14,
+  },
+  temptationAmountModalActionButton: {
+    flex: 1,
+    minHeight: 62,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    ...Platform.select({
+      android: {
+        elevation: 0,
+        shadowColor: "transparent",
+      },
+      default: {
+        shadowColor: "rgba(16,27,69,0.18)",
+        shadowOpacity: 0.16,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 9 },
+      },
+    }),
+  },
+  temptationAmountModalSaveButton: {
+    backgroundColor: "rgba(46,184,115,0.22)",
+  },
+  temptationAmountModalSpendButton: {
+    backgroundColor: "rgba(217,72,98,0.2)",
+  },
+  temptationAmountModalActionInactive: {
+    borderWidth: 1,
+    opacity: 0.86,
+  },
+  temptationAmountModalActionText: {
+    color: "#FFFFFF",
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: "900",
+    textAlign: "center",
+  },
   temptationAmountHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   temptationAmountPill: {
+    alignSelf: "flex-start",
+    maxWidth: "100%",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
@@ -96968,10 +97649,10 @@ const styles = StyleSheet.create({
   },
   temptationAmountTrackWrap: {
     width: "100%",
-    height: 36,
+    height: 54,
     justifyContent: "center",
     position: "relative",
-    paddingVertical: 4,
+    paddingVertical: 9,
   },
   temptationAmountTrack: {
     height: 12,
@@ -96996,9 +97677,9 @@ const styles = StyleSheet.create({
   },
   temptationAmountThumb: {
     position: "absolute",
-    top: 7,
+    top: 10,
     left: 0,
-    borderWidth: 2,
+    borderWidth: 4,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "rgba(15,23,42,0.35)",
@@ -97016,6 +97697,8 @@ const styles = StyleSheet.create({
   temptationAmountScale: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
   },
   temptationAmountScaleText: {
     fontSize: 11,
@@ -97172,13 +97855,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "nowrap",
     alignItems: "stretch",
-    gap: 8,
-    marginTop: 8,
+    gap: 10,
+    marginTop: 10,
   },
   temptationActionsMain: {
     flex: 1,
     flexDirection: "row",
-    gap: 8,
+    gap: 10,
   },
   temptationActionsMainCentered: {
     justifyContent: "center",
@@ -97187,9 +97870,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   temptationPauseButton: {
-    width: 52,
-    minWidth: 52,
-    borderRadius: 14,
+    width: 58,
+    minWidth: 58,
+    borderRadius: 20,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -97396,7 +98079,7 @@ const styles = StyleSheet.create({
   },
   temptationCoachMarkGlow: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 16,
+    borderRadius: 22,
     borderWidth: 2,
   },
   temptationCoachMarkTooltipWrap: {
@@ -97444,10 +98127,24 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   temptationButtonPrimary: {
-    flexGrow: 1,
-    borderRadius: 16,
-    paddingVertical: 12,
+    flex: 1,
+    minHeight: 58,
+    borderRadius: 22,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     alignItems: "center",
+    justifyContent: "center",
+    ...Platform.select({
+      android: {
+        elevation: 3,
+      },
+      default: {
+        shadowColor: "rgba(16,27,69,0.22)",
+        shadowOpacity: 0.18,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 8 },
+      },
+    }),
   },
   temptationButtonSingleCentered: {
     flexGrow: 0,
@@ -97457,18 +98154,23 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   temptationButtonPrimaryText: {
-    fontWeight: "700",
-    fontSize: 14,
+    fontWeight: "900",
+    fontSize: 17,
+    lineHeight: 22,
+    textAlign: "center",
   },
   temptationButtonGhost: {
-    flexGrow: 1,
+    flex: 1,
+    minHeight: 58,
     borderWidth: 1,
-    borderRadius: 16,
-    paddingVertical: 10,
+    borderRadius: 22,
+    paddingVertical: 14,
     alignItems: "center",
+    justifyContent: "center",
   },
   temptationButtonGhostText: {
-    fontWeight: "600",
+    fontWeight: "800",
+    fontSize: 16,
   },
   temptationButtonSpendFilled: {
     backgroundColor: SPEND_ACTION_COLOR,
@@ -97478,14 +98180,17 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   temptationButtonOutline: {
-    flexGrow: 1,
-    borderRadius: 16,
-    paddingVertical: 10,
+    flex: 1,
+    minHeight: 58,
+    borderRadius: 22,
+    paddingVertical: 14,
     borderWidth: 1,
     alignItems: "center",
+    justifyContent: "center",
   },
   temptationButtonOutlineText: {
-    fontWeight: "600",
+    fontWeight: "800",
+    fontSize: 16,
   },
   temptationButtonConfirm: {
     ...Platform.select({
@@ -110910,6 +111615,8 @@ function ImpulseCategorySelector({
   tall = false,
   prioritizeSelected = false,
 }) {
+  const { width: windowWidth } = useWindowDimensions();
+  const viewportWidth = Math.max(1, Number(windowWidth) || SCREEN_WIDTH);
   const selected = value && IMPULSE_CATEGORY_DEFS[value] ? value : allowEmpty ? null : DEFAULT_IMPULSE_CATEGORY;
   const categoryOrder = useMemo(() => {
     const baseOrder = getBudgetCategoryOrder().filter((id) => id !== "savings");
@@ -110930,7 +111637,7 @@ function ImpulseCategorySelector({
     ? Math.max(
         minChipWidth,
         Math.floor(
-          (SCREEN_WIDTH - horizontalPadding * 2 - gap * Math.max(visibleCount - 1, 0)) /
+          (viewportWidth - horizontalPadding * 2 - gap * Math.max(visibleCount - 1, 0)) /
             Math.max(visibleCount, 1)
         )
       )
@@ -111010,6 +111717,10 @@ function CoinEntryModal({
   origin,
   saveTarget,
 }) {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const viewportWidth = Math.max(1, Number(windowWidth) || SCREEN_WIDTH);
+  const viewportHeight = Math.max(1, Number(windowHeight) || SCREEN_HEIGHT);
+  const viewportLayoutKey = `${Math.round(viewportWidth)}x${Math.round(viewportHeight)}`;
   const [sliderValue, setSliderValue] = useState(0.25);
   const [trackHeight, setTrackHeight] = useState(260);
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -111178,14 +111889,14 @@ function CoinEntryModal({
   });
   const coinTranslateX = directionAnim.interpolate({
     inputRange: [-3, -1, 0, 1, 3],
-    outputRange: [-SCREEN_WIDTH, -48, 0, 48, SCREEN_WIDTH],
+    outputRange: [-viewportWidth, -48, 0, 48, viewportWidth],
     extrapolate: "clamp",
   });
-  const originX = Number.isFinite(origin?.x) ? origin.x : SCREEN_WIDTH / 2;
-  const originY = Number.isFinite(origin?.y) ? origin.y : SCREEN_HEIGHT - 120;
+  const originX = Number.isFinite(origin?.x) ? origin.x : viewportWidth / 2;
+  const originY = Number.isFinite(origin?.y) ? origin.y : viewportHeight - 120;
   const maxRevealScale = useMemo(
-    () => Math.max(1, Math.hypot(SCREEN_WIDTH, SCREEN_HEIGHT) / (COIN_REVEAL_SIZE / 2)),
-    []
+    () => Math.max(1, Math.hypot(viewportWidth, viewportHeight) / (COIN_REVEAL_SIZE / 2)),
+    [viewportHeight, viewportWidth]
   );
   const revealScale = revealAnim.interpolate({
     inputRange: [0, 1],
@@ -111273,11 +111984,11 @@ function CoinEntryModal({
     if (saveTarget && Number.isFinite(saveTarget.x) && Number.isFinite(saveTarget.y)) {
       return { x: saveTarget.x, y: saveTarget.y };
     }
-    return { x: SCREEN_WIDTH / 2, y: Math.max(80, SCREEN_HEIGHT * 0.2) };
-  }, [saveTarget]);
+    return { x: viewportWidth / 2, y: Math.max(80, viewportHeight * 0.2) };
+  }, [saveTarget, viewportHeight, viewportWidth]);
   const resolveSpendTarget = useCallback(
-    () => ({ x: originX, y: SCREEN_HEIGHT + COIN_FLIGHT_SIZE * 0.8 }),
-    [originX]
+    () => ({ x: originX, y: viewportHeight + COIN_FLIGHT_SIZE * 0.8 }),
+    [originX, viewportHeight]
   );
   const measureCoinAnchor = useCallback(
     (callback) => {
@@ -111599,9 +112310,9 @@ function CoinEntryModal({
     const visibleCount = 3;
     const gap = 10;
     const horizontalPadding = 32;
-    const available = SCREEN_WIDTH - horizontalPadding * 2 - gap * (visibleCount - 1);
+    const available = viewportWidth - horizontalPadding * 2 - gap * (visibleCount - 1);
     return Math.max(96, Math.floor(available / visibleCount));
-  }, []);
+  }, [viewportWidth]);
   const manualTitle = manualIsAmountMode ? t("coinEntryManualAmountTitle") : t("coinEntryManualTitle");
   const manualPlaceholder = manualIsAmountMode
     ? t("coinEntryManualAmountPlaceholder", { amount: sliderAmountLocal })
@@ -111702,6 +112413,7 @@ function CoinEntryModal({
   const shouldHighlightCategoryError = categoryError && !selectedCategory;
   return (
     <Modal
+      key={`coin-entry-${viewportLayoutKey}`}
       visible={visible}
       transparent
       animationType="fade"

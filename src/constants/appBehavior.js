@@ -203,10 +203,6 @@ export const STORAGE_KEYS = {
   MONETIZATION_EXPERIMENT_ASSIGNED_AT: "@almost_monetization_experiment_assigned_at",
   MONETIZATION_EXPERIMENT_NEW_INSTALL: "@almost_monetization_experiment_new_install",
   MONETIZATION_EXPERIMENT_INSTALL_LEGACY: "@almost_monetization_experiment_install_legacy",
-  PAYWALL_DESIGN_EXPERIMENT_VARIANT: "@almost_paywall_design_experiment_variant",
-  PAYWALL_DESIGN_EXPERIMENT_ASSIGNED_AT: "@almost_paywall_design_experiment_assigned_at",
-  ONBOARDING_LENGTH_EXPERIMENT_VARIANT: "@almost_onboarding_length_experiment_variant",
-  ONBOARDING_LENGTH_EXPERIMENT_ASSIGNED_AT: "@almost_onboarding_length_experiment_assigned_at",
   MONETIZATION_TRIAL_LOCKED: "@almost_monetization_trial_locked",
   MONETIZATION_FIRST_SESSION_ACTION_BASELINE:
     "@almost_monetization_first_session_action_baseline",
