@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -25,7 +25,7 @@ const ANDROID_PRIMARY_PLAN_IDS = ["monthly", "yearly", "weekly"];
 const DEFAULT_PRIMARY_PLAN_IDS = ["monthly", "yearly", "weekly"];
 const PRIMARY_PLAN_IDS =
   Platform.OS === "android" ? ANDROID_PRIMARY_PLAN_IDS : DEFAULT_PRIMARY_PLAN_IDS;
-const FREE_TRIAL_PLAN_ID = Platform.OS === "android" ? "monthly" : "yearly";
+const FREE_TRIAL_DISPLAY_PLAN_ID = "yearly";
 const FALLBACK_FEATURES_BY_LANGUAGE = {
   ru: [
     "Неограниченные сохранения без дневного лимита",
@@ -163,8 +163,6 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     ctaPrimary: "Разблокировать Premium",
     freeTrialToggleTitle: "Free Trial",
     freeTrialToggleSubtitle: "Включите, чтобы выбрать план с пробным периодом.",
-    showAllPlans: "Показать все планы",
-    hideExtraPlans: "Скрыть дополнительные планы",
     brandBadge: "Almost Premium",
     bestValueBadge: "ЛУЧШАЯ ЦЕНА",
     freeTrialLabel: "Бесплатный пробный",
@@ -184,8 +182,6 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     ctaPrimary: "Unlock Premium",
     freeTrialToggleTitle: "Free Trial",
     freeTrialToggleSubtitle: "Turn on to select the plan with a trial.",
-    showAllPlans: "Show all plans",
-    hideExtraPlans: "Hide extra plans",
     brandBadge: "Almost Premium",
     bestValueBadge: "BEST VALUE",
     freeTrialLabel: "Free trial",
@@ -205,8 +201,6 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     ctaPrimary: "Desbloquear Premium",
     freeTrialToggleTitle: "Free Trial",
     freeTrialToggleSubtitle: "Actívalo para elegir el plan con prueba.",
-    showAllPlans: "Mostrar todos los planes",
-    hideExtraPlans: "Ocultar planes adicionales",
     brandBadge: "Almost Premium",
     bestValueBadge: "MEJOR VALOR",
     freeTrialLabel: "Prueba gratis",
@@ -226,8 +220,6 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     ctaPrimary: "Débloquer Premium",
     freeTrialToggleTitle: "Free Trial",
     freeTrialToggleSubtitle: "Active-le pour choisir l'offre avec essai.",
-    showAllPlans: "Afficher toutes les offres",
-    hideExtraPlans: "Masquer les offres supplémentaires",
     brandBadge: "Almost Premium",
     bestValueBadge: "MEILLEURE OFFRE",
     freeTrialLabel: "Essai gratuit",
@@ -247,8 +239,6 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     ctaPrimary: "Premium freischalten",
     freeTrialToggleTitle: "Free Trial",
     freeTrialToggleSubtitle: "Aktivieren, um den Plan mit Testphase zu wählen.",
-    showAllPlans: "Alle Pläne anzeigen",
-    hideExtraPlans: "Zusätzliche Pläne ausblenden",
     brandBadge: "Almost Premium",
     bestValueBadge: "BESTER PREIS",
     freeTrialLabel: "Kostenlos testen",
@@ -268,8 +258,6 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     ctaPrimary: "Desbloquear Premium",
     freeTrialToggleTitle: "Teste grátis",
     freeTrialToggleSubtitle: "Ativa para escolher um plano com teste.",
-    showAllPlans: "Mostrar todos os planos",
-    hideExtraPlans: "Ocultar planos extras",
     brandBadge: "Almost Premium",
     bestValueBadge: "MELHOR VALOR",
     freeTrialLabel: "Teste grátis",
@@ -289,8 +277,6 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     ctaPrimary: "Sblocca Premium",
     freeTrialToggleTitle: "Prova gratis",
     freeTrialToggleSubtitle: "Attiva per scegliere un piano con prova.",
-    showAllPlans: "Mostra tutti i piani",
-    hideExtraPlans: "Nascondi piani extra",
     brandBadge: "Almost Premium",
     bestValueBadge: "MIGLIOR VALORE",
     freeTrialLabel: "Prova gratis",
@@ -310,8 +296,6 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     ctaPrimary: "افتح Premium",
     freeTrialToggleTitle: "Free Trial",
     freeTrialToggleSubtitle: "فعّله لاختيار الخطة مع الفترة التجريبية.",
-    showAllPlans: "إظهار جميع الخطط",
-    hideExtraPlans: "إخفاء الخطط الإضافية",
     brandBadge: "Almost Premium",
     bestValueBadge: "أفضل قيمة",
     freeTrialLabel: "تجربة مجانية",
@@ -331,8 +315,6 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     ctaPrimary: "解锁 Premium",
     freeTrialToggleTitle: "Free Trial",
     freeTrialToggleSubtitle: "开启后选择带试用的方案。",
-    showAllPlans: "显示全部方案",
-    hideExtraPlans: "隐藏更多方案",
     brandBadge: "Almost Premium",
     bestValueBadge: "超值推荐",
     freeTrialLabel: "免费试用",
@@ -463,10 +445,10 @@ const resolvePlanKind = (plan = null, index = -1, plans = []) => {
 
   return "";
 };
-const isFreeTrialPlan = (plan = null) =>
-  (resolvePlanKind(plan) || normalizePlanId(plan?.id)) === FREE_TRIAL_PLAN_ID &&
-  plan?.available !== false &&
-  plan?.hasTrial === true;
+const isVisiblePaywallPlan = (plan = null) =>
+  (resolvePlanKind(plan) || normalizePlanId(plan?.id)) !== "lifetime";
+
+const isTrialOfferPlan = (plan = null) => plan?.available !== false && plan?.hasTrial === true;
 
 const isUnavailableLabel = (value = "") => {
   const normalized = normalizeText(value).toLowerCase();
@@ -552,7 +534,7 @@ const resolvePlanIcon = (plan = null, planKind = "") =>
   PLAN_ICONS_BY_ID[planKind || resolvePlanKind(plan) || normalizePlanId(plan?.id)] || "✨";
 
 const resolvePlanDisplay = (plan = null, thenPriceTemplate = "Then {{price}}") => {
-  const hasTrial = isFreeTrialPlan(plan);
+  const hasTrial = isTrialOfferPlan(plan);
   const recurringPrice = pickFirstLabel([
     plan?.postTrialPriceLabel,
     plan?.ctaPriceLabel,
@@ -731,8 +713,10 @@ const PremiumPaywallModalV2 = ({
 }) => {
   const { height: viewportHeight } = useWindowDimensions();
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCardsProp));
-  const [showAllPlans, setShowAllPlans] = useState(false);
   const [freeTrialEnabled, setFreeTrialEnabled] = useState(false);
+  const mainScrollRef = useRef(null);
+  const planListOffsetYRef = useRef(0);
+  const planCardOffsetsRef = useRef(new Map());
 
   const copy = useMemo(() => {
     if (copyProp && typeof copyProp === "object") return copyProp;
@@ -814,80 +798,53 @@ const PremiumPaywallModalV2 = ({
   );
 
   const sortedPlans = useMemo(() => sortPlanCards(planCardsProp), [planCardsProp]);
-
-  const primaryPlans = useMemo(() => {
-    const byId = new Map(sortedPlans.map((plan) => [normalizePlanId(plan?.id), plan]));
-    const primary = PRIMARY_PLAN_IDS.map((id) => byId.get(id)).filter(Boolean);
-    if (primary.length > 0) return primary;
-    return sortedPlans.slice(0, 1);
-  }, [sortedPlans]);
-
-  const additionalPlans = useMemo(() => {
-    const primaryIds = new Set(primaryPlans.map((plan) => normalizePlanId(plan?.id)));
-    return sortedPlans.filter((plan) => !primaryIds.has(normalizePlanId(plan?.id)));
-  }, [primaryPlans, sortedPlans]);
-  const freeTrialPlan = useMemo(
-    () =>
-      sortedPlans.find(
-        (plan) => isFreeTrialPlan(plan)
-      ) || null,
+  const displayedPlans = useMemo(
+    () => sortedPlans.filter((plan) => isVisiblePaywallPlan(plan)),
     [sortedPlans]
   );
 
-  const displayedPlans = useMemo(() => {
-    if (showAllPlans) return [...primaryPlans, ...additionalPlans];
-    if (freeTrialEnabled && freeTrialPlan?.id) {
-      const ordered = [...primaryPlans, freeTrialPlan];
-      const seen = new Set();
-      return ordered.filter((plan) => {
-        const planId = normalizePlanId(plan?.id);
-        if (!planId || seen.has(planId)) return false;
-        seen.add(planId);
-        return true;
-      });
-    }
-    return primaryPlans;
-  }, [additionalPlans, freeTrialEnabled, freeTrialPlan, primaryPlans, showAllPlans]);
+  const primaryPlans = useMemo(() => {
+    const byId = new Map(displayedPlans.map((plan) => [normalizePlanId(plan?.id), plan]));
+    const primary = PRIMARY_PLAN_IDS.map((id) => byId.get(id)).filter(Boolean);
+    if (primary.length > 0) return primary;
+    return displayedPlans.slice(0, 1);
+  }, [displayedPlans]);
+
+  const freeTrialDisplayPlan = useMemo(
+    () =>
+      displayedPlans.find(
+        (plan) =>
+          (resolvePlanKind(plan) || normalizePlanId(plan?.id)) === FREE_TRIAL_DISPLAY_PLAN_ID &&
+          plan?.available !== false
+      ) || null,
+    [displayedPlans]
+  );
 
   useEffect(() => {
     if (!visible) {
-      setSelectedPlanId(pickDefaultPlanId(sortedPlans));
-      setShowAllPlans(false);
+      setSelectedPlanId(pickDefaultPlanId(displayedPlans));
       setFreeTrialEnabled(false);
       return;
     }
     const normalizedSelectedPlanId = normalizePlanId(selectedPlanId);
-    const exists = sortedPlans.some((plan) => normalizePlanId(plan?.id) === normalizedSelectedPlanId);
+    const exists = displayedPlans.some((plan) => normalizePlanId(plan?.id) === normalizedSelectedPlanId);
     if (!exists) {
-      setSelectedPlanId(pickDefaultPlanId(sortedPlans));
+      setSelectedPlanId(pickDefaultPlanId(displayedPlans));
     }
-  }, [selectedPlanId, sortedPlans, visible]);
+  }, [displayedPlans, selectedPlanId, visible]);
   useEffect(() => {
-    if (!visible) return;
-    const additionalIds = new Set(
-      additionalPlans.map((plan) => normalizePlanId(plan?.id))
-    );
-    const normalizedSelectedPlanId = normalizePlanId(selectedPlanId);
-    if (
-      additionalIds.has(normalizedSelectedPlanId) &&
-      !(freeTrialEnabled && normalizedSelectedPlanId === FREE_TRIAL_PLAN_ID)
-    ) {
-      setShowAllPlans(true);
-    }
-  }, [additionalPlans, freeTrialEnabled, selectedPlanId, visible]);
-  useEffect(() => {
-    if (!visible || !freeTrialEnabled || freeTrialPlan?.id) return;
+    if (!visible || !freeTrialEnabled || freeTrialDisplayPlan?.id) return;
     setFreeTrialEnabled(false);
-    setSelectedPlanId(pickDefaultPlanId(sortedPlans));
-  }, [freeTrialEnabled, freeTrialPlan, sortedPlans, visible]);
+    setSelectedPlanId(pickDefaultPlanId(displayedPlans));
+  }, [displayedPlans, freeTrialDisplayPlan, freeTrialEnabled, visible]);
 
   const selectedPlan = useMemo(() => {
     const normalizedSelectedPlanId = normalizePlanId(selectedPlanId);
     const fromState =
-      sortedPlans.find((plan) => normalizePlanId(plan?.id) === normalizedSelectedPlanId) || null;
+      displayedPlans.find((plan) => normalizePlanId(plan?.id) === normalizedSelectedPlanId) || null;
     if (fromState) return fromState;
     return primaryPlans[0] || null;
-  }, [selectedPlanId, sortedPlans, primaryPlans]);
+  }, [displayedPlans, selectedPlanId, primaryPlans]);
 
   const languageKey = resolveLanguageKey(language);
   const localizedUi = useMemo(
@@ -923,18 +880,22 @@ const PremiumPaywallModalV2 = ({
 
   const hasAnyTrialOffer = useMemo(
     () =>
-      sortedPlans.some((plan) => isFreeTrialPlan(plan)),
+      sortedPlans.some((plan) => isTrialOfferPlan(plan)),
     [sortedPlans]
   );
+  const selectedPlanKind = resolvePlanKind(selectedPlan) || normalizePlanId(selectedPlan?.id);
+  const selectedPlanHasActiveTrial =
+    freeTrialEnabled && selectedPlanKind === FREE_TRIAL_DISPLAY_PLAN_ID;
   const selectedPlanTrialNotice = sanitizeLabel(
-    isFreeTrialPlan(selectedPlan) ? selectedPlan?.trialNoticeLabel : ""
+    selectedPlanHasActiveTrial ? selectedPlan?.trialNoticeLabel : ""
   );
   const noCommitmentLine = sanitizeLabel(copy?.noCommitmentLine || "");
   const billingNotice = sanitizeLabel(copy?.billingNotice || "");
   const legalNotice = sanitizeLabel(copy?.legalNotice || "");
   const defaultTitle = sanitizeLabel(copy?.title || copy?.planSectionTitle || localizedUi.title);
   const trialHeadline = sanitizeLabel(copy?.v2TrialHeadline || localizedUi.trialHeadline);
-  const title = hasAnyTrialOffer && trialHeadline ? trialHeadline : defaultTitle;
+  const contextTitle = sanitizeLabel(copy?.v2ContextTitle || "");
+  const title = contextTitle || (hasAnyTrialOffer && trialHeadline ? trialHeadline : defaultTitle);
   const titleNumberOfLines = hasAnyTrialOffer ? 3 : 2;
   const socialProof = sanitizeLabel(
     copy?.v2SocialProofLine || copy?.socialProofLine || localizedUi.socialProof
@@ -942,19 +903,17 @@ const PremiumPaywallModalV2 = ({
   const continueLimitedLabel = sanitizeLabel(
     copy?.v2ContinueLimitedLabel || localizedUi.continueLimited
   );
-  const showAllPlansLabel = sanitizeLabel(copy?.v2ShowAllPlansLabel || localizedUi.showAllPlans);
-  const hidePlansLabel = sanitizeLabel(copy?.v2HideExtraPlansLabel || localizedUi.hideExtraPlans);
   const freeTrialToggleTitle = sanitizeLabel(
     copy?.v2FreeTrialToggleTitle || localizedUi.freeTrialToggleTitle
   );
   const freeTrialToggleSubtitle = sanitizeLabel(
     copy?.v2FreeTrialToggleSubtitle || localizedUi.freeTrialToggleSubtitle
   );
-  const shouldShowFreeTrialToggle = !!freeTrialPlan?.id;
+  const shouldShowFreeTrialToggle = hasAnyTrialOffer && !!freeTrialDisplayPlan?.id;
 
   const primaryButtonLabel = useMemo(() => {
     if (!selectedPlan) return sanitizeLabel(copy?.ctaPrimary || localizedUi.ctaPrimary);
-    if (isFreeTrialPlan(selectedPlan)) {
+    if (selectedPlanHasActiveTrial) {
       return sanitizeLabel(
         copy?.ctaPrimaryTrial ||
           copy?.ctaPrimary ||
@@ -963,7 +922,14 @@ const PremiumPaywallModalV2 = ({
       );
     }
     return sanitizeLabel(copy?.ctaPrimaryRegular || copy?.ctaPrimary || localizedUi.ctaPrimary);
-  }, [copy?.ctaPrimary, copy?.ctaPrimaryRegular, copy?.ctaPrimaryTrial, localizedUi.ctaPrimary, selectedPlan]);
+  }, [
+    copy?.ctaPrimary,
+    copy?.ctaPrimaryRegular,
+    copy?.ctaPrimaryTrial,
+    localizedUi.ctaPrimary,
+    selectedPlan,
+    selectedPlanHasActiveTrial,
+  ]);
 
   const handleBackdropPress = useCallback(() => {
     if (!dismissible) return;
@@ -978,8 +944,9 @@ const PremiumPaywallModalV2 = ({
   const handlePlanSelect = useCallback(
     (plan) => {
       if (!plan?.id || plan?.available === false) return;
+      const planKind = resolvePlanKind(plan) || normalizePlanId(plan?.id);
       setSelectedPlanId(plan.id);
-      setFreeTrialEnabled(isFreeTrialPlan(plan));
+      setFreeTrialEnabled((prev) => prev && planKind === FREE_TRIAL_DISPLAY_PLAN_ID);
       onPlanSelect(plan.id, { source: "plan_card" });
     },
     [onPlanSelect]
@@ -990,45 +957,49 @@ const PremiumPaywallModalV2 = ({
     onClose("continue_limited");
   }, [dismissible, onClose]);
 
-  const handleTogglePlans = useCallback(() => {
-    setShowAllPlans((prev) => {
-      const next = !prev;
-      if (!next) {
-        const additionalIds = new Set(
-          additionalPlans.map((plan) => normalizePlanId(plan?.id))
-        );
-        const normalizedSelectedPlanId = normalizePlanId(selectedPlanId);
-        const keepFreeTrialPlanSelected =
-          freeTrialEnabled && normalizedSelectedPlanId === FREE_TRIAL_PLAN_ID;
-        if (additionalIds.has(normalizedSelectedPlanId) && !keepFreeTrialPlanSelected) {
-          const fallbackPlan = pickDefaultPlanId(primaryPlans);
-          setSelectedPlanId(fallbackPlan);
-          if (fallbackPlan) {
-            onPlanSelect(fallbackPlan, { source: "collapse_plans" });
-          }
-        }
-      }
-      return next;
-    });
-  }, [additionalPlans, freeTrialEnabled, onPlanSelect, primaryPlans, selectedPlanId]);
+  const scrollToPlanCard = useCallback((planId = "") => {
+    const normalizedPlanId = normalizePlanId(planId);
+    const scrollView = mainScrollRef.current;
+    if (!normalizedPlanId || !scrollView?.scrollTo) return;
+    const planOffsetY = planCardOffsetsRef.current.get(normalizedPlanId) || 0;
+    const targetY = Math.max(0, planListOffsetYRef.current + planOffsetY - 12);
+    const runScroll = () => {
+      scrollView.scrollTo({ y: targetY, animated: true });
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => {
+        setTimeout(runScroll, 40);
+      });
+      return;
+    }
+    setTimeout(runScroll, 60);
+  }, []);
+
   const handleFreeTrialToggle = useCallback(() => {
-    if (!freeTrialPlan?.id) return;
+    if (!freeTrialDisplayPlan?.id) return;
     setFreeTrialEnabled((prev) => {
       const next = !prev;
-      const nextPlanId = next ? freeTrialPlan.id : pickDefaultPlanId(primaryPlans.length ? primaryPlans : sortedPlans);
+      const nextPlanId = next
+        ? freeTrialDisplayPlan.id
+        : pickDefaultPlanId(primaryPlans.length ? primaryPlans : displayedPlans);
       if (nextPlanId) {
         setSelectedPlanId(nextPlanId);
         if (next) {
           onTrialSwitchOn(nextPlanId);
+          scrollToPlanCard(nextPlanId);
         }
         onPlanSelect(nextPlanId, { source: "free_trial_toggle" });
       }
-      if (!next) {
-        setShowAllPlans(false);
-      }
       return next;
     });
-  }, [freeTrialPlan, onPlanSelect, onTrialSwitchOn, primaryPlans, sortedPlans]);
+  }, [
+    displayedPlans,
+    freeTrialDisplayPlan,
+    onPlanSelect,
+    onTrialSwitchOn,
+    primaryPlans,
+    scrollToPlanCard,
+  ]);
 
   const textAlignStyle = rtl ? styles.textRtl : null;
 
@@ -1078,6 +1049,7 @@ const PremiumPaywallModalV2 = ({
           ) : null}
 
           <ScrollView
+            ref={mainScrollRef}
             style={styles.mainScroll}
             contentContainerStyle={styles.mainScrollContent}
             showsVerticalScrollIndicator={false}
@@ -1239,55 +1211,65 @@ const PremiumPaywallModalV2 = ({
               </TouchableOpacity>
             ) : null}
 
-            <View style={styles.planList}>
+            <View
+              style={styles.planList}
+              onLayout={(event) => {
+                planListOffsetYRef.current = event.nativeEvent.layout.y;
+              }}
+            >
               {displayedPlans.map((plan, planIndex) => {
-              const planId = normalizePlanId(plan?.id);
-              const planKind = resolvePlanKind(plan, planIndex, displayedPlans);
-              const resolvedPlanId = planKind || planId;
-              const isYearly = resolvedPlanId === "yearly";
-              const isMonthly = resolvedPlanId === "monthly";
-              const selected = planId === normalizePlanId(selectedPlan?.id);
-              const thenPriceTemplate = sanitizeLabel(
-                copy?.v2ThenPriceTemplate || localizedUi.thenPriceTemplate
-              );
-              const yearlyPerMonthTemplate = sanitizeLabel(
-                copy?.v2YearlyPerMonthTemplate || localizedUi.yearlyPerMonthTemplate
-              );
-              const display = resolvePlanDisplay(plan, thenPriceTemplate);
-              const titleLabel = resolvePlanTitle(plan, language, planKind);
-              const freeTrialLabel = sanitizeLabel(
-                plan?.trialDurationLabel ||
-                  copy?.v2FreeTrialLabel ||
-                  localizedUi.freeTrialLabel ||
-                  copy?.v2TryForFreeLabel ||
-                  localizedUi.tryForFree
-              );
-              const showFreeTrialBadge = freeTrialEnabled && isYearly && !!freeTrialLabel;
-              const showTrialBadge = isFreeTrialPlan(plan) && !!freeTrialLabel;
-              const yearlyPrice = pickFirstLabel([
-                plan?.postTrialPriceLabel,
-                plan?.ctaPriceLabel,
-                plan?.priceLabel,
-              ]);
-              const yearlyPrimaryLine = isFreeTrialPlan(plan)
-                ? freeTrialLabel
-                : titleLabel;
-              const yearlyThenLine = yearlyPrice
-                ? isFreeTrialPlan(plan)
-                  ? applyTemplate(thenPriceTemplate, { price: yearlyPrice })
-                  : yearlyPrice
-                : "";
-              const yearlyPerMonthPrice = stripLeadingApprox(
-                pickFirstLabel([plan?.periodEquivalentLabel])
-              );
-              const yearlyPerMonthLine = yearlyPerMonthPrice
-                ? applyTemplate(yearlyPerMonthTemplate, { price: yearlyPerMonthPrice })
-                : "";
-              const showStandardLayout = !isYearly;
+                const planId = normalizePlanId(plan?.id);
+                const planKind = resolvePlanKind(plan, planIndex, displayedPlans);
+                const resolvedPlanId = planKind || planId;
+                const isYearly = resolvedPlanId === "yearly";
+                const isMonthly = resolvedPlanId === "monthly";
+                const isBestValuePlan = isYearly;
+                const planHasActiveTrial = freeTrialEnabled && isYearly;
+                const selected = planId === normalizePlanId(selectedPlan?.id);
+                const thenPriceTemplate = sanitizeLabel(
+                  copy?.v2ThenPriceTemplate || localizedUi.thenPriceTemplate
+                );
+                const yearlyPerMonthTemplate = sanitizeLabel(
+                  copy?.v2YearlyPerMonthTemplate || localizedUi.yearlyPerMonthTemplate
+                );
+                const display = resolvePlanDisplay(plan, thenPriceTemplate);
+                const titleLabel = resolvePlanTitle(plan, language, planKind);
+                const freeTrialLabel = sanitizeLabel(
+                  plan?.trialDurationLabel ||
+                    copy?.v2FreeTrialLabel ||
+                    localizedUi.freeTrialLabel ||
+                    copy?.v2TryForFreeLabel ||
+                    localizedUi.tryForFree
+                );
+                const showFreeTrialBadge = planHasActiveTrial && !!freeTrialLabel;
+                const showTrialBadge = showFreeTrialBadge;
+                const yearlyPrice = pickFirstLabel([
+                  plan?.postTrialPriceLabel,
+                  plan?.ctaPriceLabel,
+                  plan?.priceLabel,
+                ]);
+                const yearlyPrimaryLine = planHasActiveTrial ? freeTrialLabel : titleLabel;
+                const yearlyThenLine = yearlyPrice
+                  ? planHasActiveTrial
+                    ? applyTemplate(thenPriceTemplate, { price: yearlyPrice })
+                    : yearlyPrice
+                  : "";
+                const yearlyPerMonthPrice = stripLeadingApprox(
+                  pickFirstLabel([plan?.periodEquivalentLabel])
+                );
+                const yearlyPerMonthLine = yearlyPerMonthPrice
+                  ? applyTemplate(yearlyPerMonthTemplate, { price: yearlyPerMonthPrice })
+                  : "";
+                const showStandardLayout = !isYearly;
 
-              return (
-                <TouchableOpacity
+                return (
+                  <TouchableOpacity
                   key={String(plan?.id || "")}
+                  onLayout={(event) => {
+                    if (planId) {
+                      planCardOffsetsRef.current.set(planId, event.nativeEvent.layout.y);
+                    }
+                  }}
                   style={[
                     styles.planCard,
                     {
@@ -1314,9 +1296,9 @@ const PremiumPaywallModalV2 = ({
                     </View>
 
                     <View style={[styles.planContent, rtl ? styles.planContentRtl : null]}>
-                      {isYearly || showTrialBadge ? (
+                      {isBestValuePlan || showTrialBadge ? (
                         <View style={[styles.planBadgeRow, rtl ? styles.planBadgeRowRtl : null]}>
-                          {isYearly ? (
+                          {isBestValuePlan ? (
                             <View style={[styles.bestValueBadge, { backgroundColor: palette.bestValueBg }]}>
                               <Text style={[styles.bestValueBadgeText, { color: palette.bestValueText }]}>
                                 {copy?.v2BestValueBadge || localizedUi.bestValueBadge}
@@ -1444,7 +1426,10 @@ const PremiumPaywallModalV2 = ({
                                 styles.planCurrentPrice,
                                 planTypography.planCurrentPrice,
                                 {
-                                  color: display.hasTrial ? palette.trialAccent : palette.accentText,
+                                  color:
+                                    display.hasTrial || planHasActiveTrial
+                                      ? palette.trialAccent
+                                      : palette.accentText,
                                 },
                                 textAlignStyle,
                               ]}
@@ -1492,20 +1477,6 @@ const PremiumPaywallModalV2 = ({
               })}
             </View>
 
-            {additionalPlans.length > 0 ? (
-              <TouchableOpacity
-                style={[
-                  styles.showAllPlansButton,
-                  { backgroundColor: palette.cardBg, borderColor: palette.cardBorder },
-                ]}
-                onPress={handleTogglePlans}
-                activeOpacity={0.86}
-              >
-                <Text style={[styles.showAllPlansText, { color: palette.text }, textAlignStyle]}>
-                  {showAllPlans ? hidePlansLabel : showAllPlansLabel}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
           </ScrollView>
 
           <View style={styles.footer}>
@@ -1975,20 +1946,6 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     fontWeight: "900",
     color: "#FFFFFF",
-  },
-  showAllPlansButton: {
-    borderWidth: 1,
-    borderRadius: 14,
-    minHeight: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 6,
-    paddingHorizontal: 12,
-  },
-  showAllPlansText: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "800",
   },
   footer: {
     paddingTop: 1,

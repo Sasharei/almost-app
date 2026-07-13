@@ -1,5 +1,51 @@
 # Release Notes
 
+## 7.0.0 (from 6.1.9)
+
+### EN
+- Save or spend from a temptation card with a clearer full-screen amount slider, monthly impact, and Almi reactions that make each choice easier to feel.
+- Budget and Premium screens now explain what is available more clearly, including the free card limit and trial plan choice.
+
+### RU
+- Сохраняй или трать из карточки искушения через более понятный полноэкранный слайдер суммы: теперь видно месячный эффект, а реакции Almi помогают почувствовать выбор.
+- Экраны Budget и Premium стали яснее: проще понять, что доступно, где лимит бесплатных карточек и как выбрать план с пробным периодом.
+
+### ES
+- Ahorra o gasta desde una tarjeta de tentación con un control de importe a pantalla completa, impacto mensual y reacciones de Almi que hacen cada decisión más clara.
+- Las pantallas de Budget y Premium ahora explican mejor qué está disponible, incluido el límite de tarjetas gratis y la elección del plan con prueba.
+
+### FR
+- Épargne ou dépense depuis une carte de tentation avec un curseur plein écran plus clair, l'impact mensuel et les réactions d'Almi pour mieux ressentir chaque choix.
+- Les écrans Budget et Premium expliquent plus clairement ce qui est disponible, avec la limite de cartes gratuites et le choix de l'offre d'essai.
+
+### DE
+- Spare oder gib direkt aus einer Versuchungskarte aus, mit einem klareren Vollbild-Regler, Monatswirkung und Almi-Reaktionen, die jede Entscheidung leichter einordnen.
+- Budget- und Premium-Bildschirme zeigen jetzt verständlicher, was verfügbar ist, einschließlich Gratis-Kartenlimit und Auswahl des Testplans.
+
+### PT
+- Poupe ou gaste a partir de uma carta de tentação com um seletor de valor em tela cheia, impacto mensal e reações do Almi que deixam cada escolha mais clara.
+- As telas de Budget e Premium agora explicam melhor o que está disponível, incluindo o limite de cartões grátis e a escolha do plano com teste.
+
+### IT
+- Risparmia o spendi da una carta tentazione con uno slider importo a schermo intero, impatto mensile e reazioni di Almi che rendono ogni scelta più chiara.
+- Le schermate Budget e Premium spiegano meglio cosa è disponibile, incluso il limite delle carte gratuite e la scelta del piano con prova.
+
+### AR (SA)
+- احفظ أو اصرف من بطاقة الإغراء عبر شريط مبلغ أوضح بملء الشاشة، مع تأثير شهري وردود فعل من Almi تجعل كل قرار أسهل في الفهم.
+- أصبحت شاشات Budget وPremium أوضح في شرح المتاح، بما في ذلك حد البطاقات المجانية واختيار الخطة مع التجربة.
+
+### AR (AE)
+- احفظ أو اصرف من بطاقة الإغراء عبر شريط مبلغ أوضح بملء الشاشة، مع تأثير شهري وردود فعل من Almi تجعل كل قرار أسهل في الفهم.
+- أصبحت شاشات Budget وPremium أوضح في شرح المتاح، بما في ذلك حد البطاقات المجانية واختيار الخطة مع التجربة.
+
+### ZH
+- 现在可以在诱惑卡片中用更清楚的全屏金额滑杆选择存下或花掉，还能看到月度影响和 Almi 的反应，让每次选择更直观。
+- Budget 和 Premium 页面现在更清楚地说明可用内容，包括免费卡片上限和试用方案选择。
+
+### KO
+- 유혹 카드에서 더 선명한 전체 화면 금액 슬라이더로 저축하거나 지출할 수 있고, 월간 영향과 Almi 반응까지 보여 선택이 더 쉽게 느껴집니다.
+- Budget과 Premium 화면이 무료 카드 한도와 체험 플랜 선택을 포함해 지금 사용할 수 있는 내용을 더 명확하게 보여줍니다.
+
 ## 6.1.9 (from 6.1.7)
 
 ### EN

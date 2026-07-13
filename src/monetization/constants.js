@@ -14,7 +14,7 @@ export const PREMIUM_PLAN_ORDER = ["weekly", "monthly", "yearly", "lifetime"];
 export const FREE_PLAN_LIMITS = {
   activeGoals: 1,
   activePendingCards: 2,
-  defaultTemptationCards: 4,
+  defaultTemptationCards: 5,
   customTemptationCards: 5,
   customCategories: 1,
   historyDays: 7,
@@ -840,16 +840,16 @@ const TEMPTATION_CARD_LIMIT_TITLE_BY_LANGUAGE = {
   ko: "더 많은 유혹에는 Premium이 필요합니다.",
 };
 const TEMPTATION_CARD_LIMIT_SUBTITLE_BY_LANGUAGE = {
-  ru: "В бесплатном плане доступно 4 стандартные карточки и 1 своя. Для дальнейшего бесконечного создания искушений нужна Premium-подписка.",
-  en: "The free plan includes 4 default cards and 1 custom card. To keep creating unlimited temptations, you need Premium.",
-  es: "El plan gratis incluye 4 tarjetas predeterminadas y 1 personalizada. Para seguir creando tentaciones ilimitadas necesitas Premium.",
-  fr: "Le plan gratuit inclut 4 cartes par défaut et 1 carte personnalisée. Pour créer des tentations en illimité, il faut Premium.",
-  de: "Der kostenlose Plan enthält 4 Standardkarten und 1 eigene Karte. Für unbegrenzt neue Versuchungen brauchst du Premium.",
-  pt: "O plano grátis inclui 4 cartões padrão e 1 cartão personalizado. Para criar tentações ilimitadas, precisas do Premium.",
-  it: "Il piano gratuito include 4 carte predefinite e 1 carta personalizzata. Per creare tentazioni illimitate serve Premium.",
-  ar: "تتضمن الخطة المجانية 4 بطاقات افتراضية وبطاقة مخصصة واحدة. ولإنشاء إغراءات بلا حدود تحتاج إلى Premium.",
-  zh: "免费计划包含 4 张默认卡和 1 张自定义卡。若要无限创建诱惑卡，需要 Premium。",
-  ko: "무료 플랜에는 기본 카드 4개와 맞춤 카드 1개가 포함됩니다. 유혹을 무제한으로 만들려면 Premium이 필요합니다.",
+  ru: "В бесплатном плане доступно 5 карточек в ленте. Для дальнейшего бесконечного создания искушений нужна Premium-подписка.",
+  en: "The free plan includes 5 feed cards. To keep creating unlimited temptations, you need Premium.",
+  es: "El plan gratis incluye 5 tarjetas en el feed. Para seguir creando tentaciones ilimitadas necesitas Premium.",
+  fr: "Le plan gratuit inclut 5 cartes dans le flux. Pour créer des tentations en illimité, il faut Premium.",
+  de: "Der kostenlose Plan enthält 5 Karten im Feed. Für unbegrenzt neue Versuchungen brauchst du Premium.",
+  pt: "O plano grátis inclui 5 cartões no feed. Para criar tentações ilimitadas, precisas do Premium.",
+  it: "Il piano gratuito include 5 carte nel feed. Per creare tentazioni illimitate serve Premium.",
+  ar: "تتضمن الخطة المجانية 5 بطاقات في الخلاصة. ولإنشاء إغراءات بلا حدود تحتاج إلى Premium.",
+  zh: "免费计划包含 5 张动态卡片。若要无限创建诱惑卡，需要 Premium。",
+  ko: "무료 플랜에는 피드 카드 5개가 포함됩니다. 유혹을 무제한으로 만들려면 Premium이 필요합니다.",
 };
 const GROUP_C_SUPPORT_INTRO_BADGE_BY_LANGUAGE = {
   ru: "ЛИЧНОЕ СООБЩЕНИЕ",
@@ -1119,26 +1119,6 @@ const PAYWALL_V2_CONTINUE_LIMITED_BY_LANGUAGE = {
   zh: "继续使用受限版本",
 };
 
-const PAYWALL_V2_SHOW_ALL_PLANS_BY_LANGUAGE = {
-  ru: "Показать все планы",
-  en: "Show all plans",
-  es: "Mostrar todos los planes",
-  fr: "Afficher toutes les offres",
-  de: "Alle Pläne anzeigen",
-  ar: "إظهار جميع الخطط",
-  zh: "显示全部方案",
-};
-
-const PAYWALL_V2_HIDE_EXTRA_PLANS_BY_LANGUAGE = {
-  ru: "Скрыть дополнительные планы",
-  en: "Hide extra plans",
-  es: "Ocultar planes adicionales",
-  fr: "Masquer les offres supplémentaires",
-  de: "Zusätzliche Pläne ausblenden",
-  ar: "إخفاء الخطط الإضافية",
-  zh: "隐藏更多方案",
-};
-
 const PAYWALL_V2_SOCIAL_PROOF_LINE_BY_LANGUAGE = {
   ru: "Более 5000 человек уже экономят с Almost",
   en: "More than 5000 people are already saving with Almost",
@@ -1167,6 +1147,19 @@ const PAYWALL_V2_FREE_TRIAL_BADGE_BY_LANGUAGE = {
   de: "Kostenlos testen",
   ar: "تجربة مجانية",
   zh: "免费试用",
+};
+
+const PAYWALL_V2_FEATURE_UNLOCK_TITLE_BY_LANGUAGE = {
+  ru: "Разблокируйте {{featureName}} с Premium",
+  en: "Unlock {{featureName}} with Premium",
+  es: "Desbloquea {{featureName}} con Premium",
+  fr: "Débloquez {{featureName}} avec Premium",
+  de: "{{featureName}} mit Premium freischalten",
+  pt: "Desbloqueia {{featureName}} com Premium",
+  it: "Sblocca {{featureName}} con Premium",
+  ar: "افتح {{featureName}} مع Premium",
+  zh: "使用 Premium 解锁{{featureName}}",
+  ko: "Premium으로 {{featureName}} 잠금 해제",
 };
 
 const FREE_LABEL_BY_LANGUAGE = {
@@ -2004,6 +1997,12 @@ export const buildPaywallCopy = ({
       percent: copyTokens.percent,
     }
   );
+  const v2ContextTitle =
+    normalizedFeatureKey && unifiedFeatureName
+      ? template(resolveTemplateSource(PAYWALL_V2_FEATURE_UNLOCK_TITLE_BY_LANGUAGE, lang), {
+          featureName: unifiedFeatureName,
+        })
+      : "";
   const ctaPrimaryUnified = normalizedHasTrialOffer
     ? CTA_START_JOURNEY_BY_LANGUAGE[lang] || CTA_START_JOURNEY_BY_LANGUAGE.en
     : CTA_PRIMARY_REGULAR_BY_LANGUAGE[lang] || CTA_PRIMARY_REGULAR_BY_LANGUAGE.en;
@@ -2089,16 +2088,13 @@ export const buildPaywallCopy = ({
       PAYWALL_V2_YEARLY_PER_MONTH_BY_LANGUAGE[lang] || PAYWALL_V2_YEARLY_PER_MONTH_BY_LANGUAGE.en,
     v2ContinueLimitedLabel:
       PAYWALL_V2_CONTINUE_LIMITED_BY_LANGUAGE[lang] || PAYWALL_V2_CONTINUE_LIMITED_BY_LANGUAGE.en,
-    v2ShowAllPlansLabel:
-      PAYWALL_V2_SHOW_ALL_PLANS_BY_LANGUAGE[lang] || PAYWALL_V2_SHOW_ALL_PLANS_BY_LANGUAGE.en,
-    v2HideExtraPlansLabel:
-      PAYWALL_V2_HIDE_EXTRA_PLANS_BY_LANGUAGE[lang] || PAYWALL_V2_HIDE_EXTRA_PLANS_BY_LANGUAGE.en,
     v2SocialProofLine:
       PAYWALL_V2_SOCIAL_PROOF_LINE_BY_LANGUAGE[lang] || PAYWALL_V2_SOCIAL_PROOF_LINE_BY_LANGUAGE.en,
     v2TrialHeadline:
       PAYWALL_V2_TRIAL_HEADLINE_BY_LANGUAGE[lang] || PAYWALL_V2_TRIAL_HEADLINE_BY_LANGUAGE.en,
     v2FreeTrialLabel:
       PAYWALL_V2_FREE_TRIAL_BADGE_BY_LANGUAGE[lang] || PAYWALL_V2_FREE_TRIAL_BADGE_BY_LANGUAGE.en,
+    v2ContextTitle,
     freeColumnLabel: FREE_LABEL_BY_LANGUAGE[lang] || FREE_LABEL_BY_LANGUAGE.en,
     proColumnLabel: PRO_LABEL_BY_LANGUAGE[lang] || PRO_LABEL_BY_LANGUAGE.en,
     comparisonTapHint: COMPARISON_TAP_HINT_BY_LANGUAGE[lang] || COMPARISON_TAP_HINT_BY_LANGUAGE.en,

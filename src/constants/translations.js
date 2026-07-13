@@ -586,6 +586,8 @@ export const TRANSLATIONS = {
     spendPreviewLimitUsedLabel: "Потрачено в категории",
     spendPreviewLimitDropLabel: "Съест из лимита",
     spendPreviewSpendNowLabel: "Эта трата",
+    temptationAmountSavedNowLabel: "Сохранено сейчас",
+    temptationAmountMonthlyProjectionLabel: "Прогноз месяца",
     spendPreviewChecksPerMonthLabel: "Проверок в месяц",
     spendPreviewChecksPerMonthCompact: "{{count}}×/мес",
     spendPreviewOfLimitLabel: "из лимита {{limit}}",
@@ -749,8 +751,8 @@ export const TRANSLATIONS = {
       "Открой 7-дневный прогноз, тренд баланса и категории, которые тормозят цель.",
     premiumBudgetScreenTitle: "Бюджетный центр",
     premiumBudgetScreenBody:
-      "Авто-лимиты, распределение денег, депозиты в цели и выплаты долга открываются в Premium.",
-    premiumBudgetScreenCta: "Открыть бюджет",
+      "Открой авто-лимиты, прогнозы, депозиты в цели и выплаты долга в одном центре.",
+    premiumBudgetScreenCta: "Открыть весь бюджет",
     premiumBudgetPreviewTitle: "Превью бюджета",
     premiumReportsPreviewTitle: "Превью отчёта",
     premiumReportsPreviewAmount:
@@ -1465,6 +1467,11 @@ export const TRANSLATIONS = {
     temptationLimitReachedMessage:
       "Можно создать не более {{limit}} своих искушений. Спрячь или удали лишние, чтобы добавить новые.",
     temptationLimitReachedAction: "Ок",
+    temptationPremiumLimitTitle: "Лимит бесплатных карточек",
+    temptationPremiumLimitMessage:
+      "В бесплатном плане доступно {{limit}} карточек в ленте. Premium откроет больше карточек, чтобы замечать мелкие траты, держать искушения под контролем и копить быстрее.",
+    temptationPremiumLimitAction: "Открыть Premium",
+    temptationPremiumLimitCancel: "Не сейчас",
     dailyChallengeOfferBadge: "ежедневный челлендж",
     dailyChallengeDrawTitle: "Вытяни карту дня",
     dailyChallengeDrawSubtitle: "Выбери карту - внутри одно из вчерашних искушений.",
@@ -2584,6 +2591,8 @@ export const TRANSLATIONS = {
     spendPreviewLimitUsedLabel: "Spent in category",
     spendPreviewLimitDropLabel: "Taken from limit",
     spendPreviewSpendNowLabel: "This spend",
+    temptationAmountSavedNowLabel: "Saved now",
+    temptationAmountMonthlyProjectionLabel: "Monthly projection",
     spendPreviewChecksPerMonthLabel: "Checks per month",
     spendPreviewChecksPerMonthCompact: "{{count}}×/mo",
     spendPreviewOfLimitLabel: "of {{limit}} limit",
@@ -2746,8 +2755,8 @@ export const TRANSLATIONS = {
       "Unlock the 7-day forecast, balance trend, and categories slowing your goal.",
     premiumBudgetScreenTitle: "Budget workspace",
     premiumBudgetScreenBody:
-      "Auto limits, money allocation, goal deposits, and debt payoff open in Premium.",
-    premiumBudgetScreenCta: "Unlock Budget",
+      "Unlock auto limits, forecasts, goal deposits, and debt payoff in one workspace.",
+    premiumBudgetScreenCta: "Unlock full Budget",
     premiumBudgetPreviewTitle: "Budget preview",
     premiumReportsPreviewTitle: "Report preview",
     premiumReportsPreviewAmount:
@@ -3432,6 +3441,11 @@ export const TRANSLATIONS = {
     temptationLimitReachedMessage:
       "You can create up to {{limit}} custom temptations. Hide or delete some to add a new one.",
     temptationLimitReachedAction: "OK",
+    temptationPremiumLimitTitle: "Free card limit reached",
+    temptationPremiumLimitMessage:
+      "The free plan includes {{limit}} feed cards. Premium unlocks more cards so you can track every impulse, catch small leaks, and save with a clearer plan.",
+    temptationPremiumLimitAction: "See Premium",
+    temptationPremiumLimitCancel: "Not now",
     dailyChallengeOfferBadge: "daily challenge",
     dailyChallengeDrawTitle: "Draw today’s card",
     dailyChallengeDrawSubtitle: "Pick a card - each one hides one of yesterday's temptations.",
@@ -4697,8 +4711,8 @@ export const TRANSLATIONS = {
       "Débloque la prévision 7 jours, la tendance du solde et les catégories qui freinent ton objectif.",
     premiumBudgetScreenTitle: "Espace budget",
     premiumBudgetScreenBody:
-      "Limites auto, allocation, dépôts vers les objectifs et remboursement de dette s'ouvrent avec Premium.",
-    premiumBudgetScreenCta: "Débloquer Budget",
+      "Débloque limites auto, forecasts, dépôts vers objectifs et remboursement de dette au même endroit.",
+    premiumBudgetScreenCta: "Débloquer tout Budget",
     premiumBudgetPreviewTitle: "Aperçu budget",
     premiumReportsPreviewTitle: "Aperçu du rapport",
     premiumReportsPreviewAmount:
@@ -5346,6 +5360,11 @@ export const TRANSLATIONS = {
     temptationLimitReachedMessage:
       "Tu peux créer au maximum {{limit}} tentations personnalisées. Masque ou supprime-en pour en ajouter de nouvelles.",
     temptationLimitReachedAction: "OK",
+    temptationPremiumLimitTitle: "Limite de cartes gratuites atteinte",
+    temptationPremiumLimitMessage:
+      "Le plan gratuit inclut {{limit}} cartes dans le flux. Premium débloque plus de cartes pour suivre chaque impulsion, repérer les petites fuites et épargner avec un plan plus clair.",
+    temptationPremiumLimitAction: "Voir Premium",
+    temptationPremiumLimitCancel: "Pas maintenant",
     dailyChallengeOfferBadge: "défi quotidien",
     dailyChallengeDrawTitle: "Tire la carte du jour",
     dailyChallengeDrawSubtitle: "Choisis une carte - chacune cache une tentation d'hier.",
@@ -5842,6 +5861,8 @@ export const TRANSLATIONS = {
     spendPreviewLimitUsedLabel: "Dépensé dans la catégorie",
     spendPreviewLimitDropLabel: "Pris sur la limite",
     spendPreviewSpendNowLabel: "Cette dépense",
+    temptationAmountSavedNowLabel: "Économisé maintenant",
+    temptationAmountMonthlyProjectionLabel: "Projection mensuelle",
     spendPreviewChecksPerMonthLabel: "Vérifications par mois",
     spendPreviewChecksPerMonthCompact: "{{count}}×/mois",
     spendPreviewOfLimitLabel: "sur limite {{limit}}",
@@ -6646,8 +6667,8 @@ export const TRANSLATIONS = {
       "Desbloquea la previsión de 7 días, la tendencia del balance y las categorías que frenan tu meta.",
     premiumBudgetScreenTitle: "Espacio de presupuesto",
     premiumBudgetScreenBody:
-      "Límites automáticos, asignación, depósitos a metas y pago de deuda se abren con Premium.",
-    premiumBudgetScreenCta: "Desbloquear Budget",
+      "Desbloquea límites, forecasts, depósitos a metas y pago de deuda en un solo espacio.",
+    premiumBudgetScreenCta: "Desbloquear todo Budget",
     premiumBudgetPreviewTitle: "Vista previa del presupuesto",
     premiumReportsPreviewTitle: "Vista previa del reporte",
     premiumReportsPreviewAmount:
@@ -7292,6 +7313,11 @@ export const TRANSLATIONS = {
     temptationLimitReachedMessage:
       "Puedes crear hasta {{limit}} tentaciones personalizadas. Oculta o elimina algunas para añadir nuevas.",
     temptationLimitReachedAction: "OK",
+    temptationPremiumLimitTitle: "Límite de tarjetas gratis alcanzado",
+    temptationPremiumLimitMessage:
+      "El plan gratis incluye {{limit}} tarjetas en el feed. Premium desbloquea más tarjetas para seguir cada impulso, detectar pequeñas fugas y ahorrar con un plan más claro.",
+    temptationPremiumLimitAction: "Ver Premium",
+    temptationPremiumLimitCancel: "Ahora no",
     dailyChallengeOfferBadge: "reto diario",
     dailyChallengeDrawTitle: "Saca la carta del día",
     dailyChallengeDrawSubtitle: "Elige una carta: cada una oculta una tentación de ayer.",
@@ -7837,6 +7863,8 @@ export const TRANSLATIONS = {
     spendPreviewLimitUsedLabel: "Gastado en categoría",
     spendPreviewLimitDropLabel: "Tomado del límite",
     spendPreviewSpendNowLabel: "Este gasto",
+    temptationAmountSavedNowLabel: "Ahorrado ahora",
+    temptationAmountMonthlyProjectionLabel: "Proyección mensual",
     spendPreviewChecksPerMonthLabel: "Revisiones al mes",
     spendPreviewChecksPerMonthCompact: "{{count}}×/mes",
     spendPreviewOfLimitLabel: "de límite {{limit}}",

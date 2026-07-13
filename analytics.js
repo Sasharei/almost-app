@@ -120,28 +120,6 @@ const EVENT_DEFINITIONS = {
   onboarding_goal_chosen: ["goal_id", "target_usd"],
   onboarding_goal_skipped: ["method"],
   onboarding_goal_custom_created: ["title_hash", "target_usd", "currency"],
-  onboarding_length_experiment_assigned: [
-    "experiment_id",
-    "experiment_variant",
-    "assignment_source",
-    "is_new_install",
-    "enabled",
-    "force_variant",
-    "allocation_a",
-    "allocation_b",
-  ],
-  onboarding_length_experiment_remote_config_loaded: [
-    "experiment_id",
-    "result",
-    "source",
-    "enabled",
-    "new_install_only",
-    "force_variant",
-    "allocation_a",
-    "allocation_b",
-    "assigned_variant",
-    "assignment_source",
-  ],
   session_started: [],
   layout_guard_metrics: [
     "platform",
@@ -199,8 +177,6 @@ const EVENT_DEFINITIONS = {
     "has_goal",
     "start_balance",
     "skipped",
-    "onboarding_experiment_id",
-    "onboarding_flow_variant",
   ],
   onboarding_terms_accepted: ["language"],
   consent_terms_accepted: ["language"],
@@ -342,17 +318,6 @@ const EVENT_DEFINITIONS = {
     "potential_before_usd",
     "potential_after_usd",
     "spend_usd",
-  ],
-  paywall_design_experiment_remote_config_loaded: [
-    "experiment_id",
-    "result",
-    "source",
-    "enabled",
-    "force_variant",
-    "allocation_a",
-    "allocation_b",
-    "assigned_variant",
-    "assignment_source",
   ],
   premium_backend_validation_result: ["source", "product_id", "result", "reason", "status"],
   screen_intro_shown: ["screen"],
@@ -1112,22 +1077,40 @@ const parsePositiveNumber = (value) => {
   return parsed > 0 ? parsed : 0;
 };
 
+const normalizeAppsFlyerCurrencyCode = (value) => {
+  const normalized = String(value || "").trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(normalized) ? normalized : "";
+};
+
+const normalizeAppsFlyerRevenue = (value) => {
+  const parsed = parsePositiveNumber(value);
+  if (!(parsed > 0)) return 0;
+  return Number(parsed.toFixed(6));
+};
+
 const buildAppsFlyerRoasEvent = (eventName, params = {}) => {
   if (eventName !== "premium_purchase_revenue") return null;
   if (parseAnalyticsBoolean(params?.has_trial) === true) return null;
-  const revenueLocal = parsePositiveNumber(params?.revenue_local);
-  const revenueUSD = parsePositiveNumber(params?.revenue_usd);
-  const afRevenue = revenueLocal > 0 ? revenueLocal : revenueUSD;
+  const revenueLocal = normalizeAppsFlyerRevenue(params?.revenue_local);
+  const revenueUSD = normalizeAppsFlyerRevenue(params?.revenue_usd);
+  const currencyCode = normalizeAppsFlyerCurrencyCode(params?.currency);
+  const hasLocalRevenue = revenueLocal > 0 && !!currencyCode;
+  const afRevenue = hasLocalRevenue ? revenueLocal : revenueUSD;
   if (!(afRevenue > 0)) return null;
-  const currencyCode = String(params?.currency || "").trim().toUpperCase() || "USD";
+  const afCurrency = hasLocalRevenue ? currencyCode : "USD";
   const productId = String(params?.product_id || "").trim();
   const transactionId = String(params?.transaction_id || "").trim();
+  const plan = String(params?.plan || "").trim();
   const afParams = {
     af_revenue: afRevenue,
-    af_currency: currencyCode,
+    af_currency: afCurrency,
+    af_quantity: 1,
   };
   if (productId) {
     afParams.af_content_id = productId;
+  }
+  if (plan) {
+    afParams.af_content_type = plan;
   }
   if (transactionId) {
     afParams.af_order_id = transactionId;
