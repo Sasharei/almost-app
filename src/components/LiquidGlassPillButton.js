@@ -11,6 +11,8 @@ import Svg, {
 } from "react-native-svg";
 import LiquidGlassNativeView, { canUseNativeLiquidGlassView } from "./LiquidGlassNativeView";
 import NativeLiquidGlassButton, { canUseNativeLiquidGlassButton } from "./NativeLiquidGlassButton";
+import { UI_TOUCH_TARGET } from "../constants/designSystem";
+import { resolveForegroundForColor } from "../utils/themeColors";
 const IOS_NATIVE_LIQUID_MIN_VERSION = 26;
 
 const colorWithAlpha = (hex, alpha = 1) => {
@@ -66,16 +68,16 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
     () => `liquid-pill-prism-${Math.random().toString(36).slice(2, 10)}`,
     []
   );
-  const accent = isProTheme ? proThemeAccentColor : "#8EC5FF";
+  const accent = isProTheme ? proThemeAccentColor : isDarkTheme ? "#82A8CE" : "#6F9BC7";
   const shellBorderColor = useAndroidLikeVisualStyle
     ? "rgba(14,23,40,0.16)"
     : isDarkTheme
-    ? "rgba(255,255,255,0.55)"
+    ? "rgba(255,255,255,0.3)"
     : isLiquidGlassStyle
     ? "rgba(255,255,255,0.92)"
     : "rgba(255,255,255,0.86)";
   const tintOverlayColor = isDarkTheme
-    ? "rgba(255,255,255,0.08)"
+    ? "rgba(255,255,255,0.045)"
     : isLiquidGlassStyle
     ? "rgba(255,255,255,0.18)"
     : useAndroidLikeVisualStyle
@@ -83,10 +85,10 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
     : "rgba(255,255,255,0.28)";
   const auraColor = useAndroidLikeVisualStyle
     ? isDarkTheme
-      ? "rgba(100,150,230,0.14)"
+      ? colorWithAlpha(accent, 0.1)
       : "rgba(150,190,255,0.12)"
     : isDarkTheme
-    ? "rgba(110,164,255,0.24)"
+    ? colorWithAlpha(accent, 0.14)
     : isProTheme
     ? colorWithAlpha(accent, 0.2)
     : "rgba(139,189,255,0.2)";
@@ -97,9 +99,13 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
     : isProTheme
     ? proThemeAccentColor
     : "#8EAEE0";
-  const labelColor = isDarkTheme ? "#FFFFFF" : isProTheme ? "#F8FBFF" : "#0B1630";
+  const labelColor = isDarkTheme
+    ? "#EEF1F6"
+    : isProTheme
+    ? resolveForegroundForColor(accent)
+    : "#0B1630";
   const androidLikeShellFillColor = isDarkTheme
-    ? "rgba(24,37,58,0.82)"
+    ? "rgba(20,25,35,0.9)"
     : isProTheme
     ? colorWithAlpha(accent, 0.24)
     : "rgba(236,243,253,0.9)";
@@ -171,6 +177,9 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
         onPress={onPress}
         activeOpacity={activeOpacity}
         disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={renderedLabel}
+        accessibilityState={{ disabled }}
       >
         {nativeLiquidGlassAvailable ? (
           <LiquidGlassNativeView
@@ -246,8 +255,8 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
             textStyle,
           ]}
           numberOfLines={1}
-          allowFontScaling={false}
-          maxFontSizeMultiplier={1}
+          allowFontScaling
+          maxFontSizeMultiplier={1.2}
           ellipsizeMode="tail"
         >
           {renderedLabel}
@@ -260,7 +269,8 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
 const styles = StyleSheet.create({
   wrapper: {
     minWidth: 106,
-    height: 42,
+    minHeight: UI_TOUCH_TARGET.current,
+    height: UI_TOUCH_TARGET.current,
     overflow: "visible",
   },
   aura: {

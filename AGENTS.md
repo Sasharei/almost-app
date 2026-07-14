@@ -19,7 +19,17 @@ These rules are mandatory for every Codex change in this repository.
 - The visual review must check readable contrast, missing backgrounds, clipped or overlapping text, disabled/active states, modal backdrops, borders, shadows, and icon visibility.
 - Prefer simulator or device screenshots for affected screens. If the app cannot be run locally, state the blocker and still run the static theme check.
 
+## Functional Parity Gate for Design Changes
+
+- Design work is behavior-preserving by default. Layout, styling, hierarchy, copy presentation, and motion may change; available actions, navigation destinations, gestures, handlers, validation, persistence, analytics, purchase/restore/manage flows, and accessibility actions must continue to work.
+- Before editing a screen or component for design, inventory its user-visible actions and add or confirm the corresponding invariants in `scripts/ui-functional-contracts.json`. Run `npm run check:functional-parity` before the edit to establish a passing baseline and again after the edit.
+- Never remove, hide, disable, replace with a no-op, or make unreachable an existing action or user flow merely to simplify the design.
+- If a design proposal genuinely requires removing or changing functionality, stop and ask the user for explicit permission. Name the exact behavior, why the design requires the change, and the user impact. Do not implement the removal until permission is given.
+- Updating or weakening `scripts/ui-functional-contracts.json` to permit removed behavior also requires that same explicit user permission. A visual refactor is not sufficient justification.
+- Preserve callback wiring when moving UI. For every changed interactive surface, compare the before/after handlers and verify the happy path plus cancel/back/retry paths where they exist.
+- After every code change, run `npm run check:functional-parity` in addition to the localization and theme gates.
+
 ## Final Verification
 
 - For non-trivial changes, run `npm run verify` after the targeted checks.
-- In the final response, mention the localization check, theme check, and any visual theme review that was run or could not be run.
+- In the final response, mention the functional parity check, localization check, theme check, and any visual theme review that was run or could not be run.

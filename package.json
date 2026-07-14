@@ -13,13 +13,14 @@
     "backend:test": "npm --prefix backend test",
     "backend:tunnel": "bash scripts/start-backend-tunnel.sh",
     "check:release": "bash scripts/verify-runtime-parity.sh && npm run size:check",
+    "check:functional-parity": "node scripts/check-ui-functional-parity.js",
     "check:localization": "node scripts/check-localization.js",
     "check:themes": "node scripts/check-themes.js",
     "lint": "eslint .",
     "postinstall": "node scripts/apply-patches.js",
     "size:check": "node scripts/check-app-size.js",
     "typecheck": "tsc --noEmit --pretty false",
-    "verify": "npm run typecheck && npm run lint && npm run check:localization && npm run check:themes && npm run backend:test && npm run check:release",
+    "verify": "npm run check:functional-parity && npm run typecheck && npm run lint && npm run check:localization && npm run check:themes && npm run backend:test && npm run check:release",
     "version:bump": "node scripts/bump-version.js"
   },
   "dependencies": {
@@ -42,6 +43,7 @@
     "expo-blur": "~15.0.8",
     "expo-file-system": "~17.0.1",
     "expo-font": "~14.0.9",
+    "expo-glass-effect": "~0.1.10",
     "expo-haptics": "^15.0.7",
     "expo-image-picker": "~17.0.8",
     "expo-navigation-bar": "^5.0.9",

@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { Animated, Easing, Platform, StyleSheet, Text, View } from "react-native";
-import { BlurView as ExpoBlurView } from "expo-blur";
 import Svg, {
   Circle as SvgCircle,
   Defs,
@@ -8,7 +7,12 @@ import Svg, {
   Rect as SvgRect,
   Stop as SvgStop,
 } from "react-native-svg";
-import LiquidGlassNativeView, { canUseNativeLiquidGlassView } from "./LiquidGlassNativeView";
+import PlatformGlassBackground, {
+  isNativeLiquidGlassAvailable,
+} from "./PlatformGlassBackground";
+import { useMotionPreferences } from "../hooks/useMotionPreferences";
+import { createMotionLoop } from "../utils/motion";
+import { UI_TOUCH_TARGET } from "../constants/designSystem";
 
 const colorWithAlpha = (hex, alpha = 1) => {
   const clamped = Math.max(0, Math.min(1, Number(alpha) || 0));
@@ -88,15 +92,14 @@ const LiquidGlassFabOrb = ({
   isProTheme = false,
   proThemeAccentColor = "#4E6BFF",
   highlighted = false,
-  disableArtificialHighlights = false,
 }) => {
-  const resolvedSize = Math.max(44, Number(size) || 64);
+  const { reduceMotion, reduceTransparency } = useMotionPreferences();
+  const resolvedSize = Math.max(UI_TOUCH_TARGET.current, Number(size) || 64);
   const radius = resolvedSize / 2;
   const isAndroid = Platform.OS === "android";
-  const suppressArtificialHighlights = disableArtificialHighlights && Platform.OS === "ios";
+  const nativeLiquidGlassAvailable = isNativeLiquidGlassAvailable();
+  const suppressArtificialHighlights = reduceTransparency || nativeLiquidGlassAvailable;
   const useMutedIosLightStyle = suppressArtificialHighlights && !isDarkTheme;
-  const [nativeProbeTick, setNativeProbeTick] = useState(0);
-  const nativeLiquidGlassAvailable = Platform.OS === "ios" && canUseNativeLiquidGlassView();
   const shouldUseNativeLiquidGlass = nativeLiquidGlassAvailable;
   const useTransparentIosNativeStyle = useMutedIosLightStyle && shouldUseNativeLiquidGlass;
   const shimmer = useRef(new Animated.Value(0)).current;
@@ -104,19 +107,17 @@ const LiquidGlassFabOrb = ({
   const prismId = useMemo(() => `fab-prism-${Math.random().toString(36).slice(2, 10)}`, []);
 
   useEffect(() => {
-    if (Platform.OS !== "ios") return undefined;
-    if (nativeLiquidGlassAvailable || nativeProbeTick >= 4) return undefined;
-    const timerId = setTimeout(() => {
-      setNativeProbeTick((prev) => prev + 1);
-    }, 160 + nativeProbeTick * 140);
-    return () => clearTimeout(timerId);
-  }, [nativeLiquidGlassAvailable, nativeProbeTick]);
-
-  useEffect(() => {
+    if (reduceMotion || !highlighted) {
+      shimmer.stopAnimation();
+      breathe.stopAnimation();
+      shimmer.setValue(0.5);
+      breathe.setValue(0);
+      return undefined;
+    }
     const shouldAnimateShimmer = !isAndroid;
     let shimmerLoop = null;
     if (shouldAnimateShimmer) {
-      shimmerLoop = Animated.loop(
+      shimmerLoop = createMotionLoop(
         Animated.sequence([
           Animated.timing(shimmer, {
             toValue: 1,
@@ -139,7 +140,7 @@ const LiquidGlassFabOrb = ({
       // Keep static specular alignment on Android while avoiding an extra perpetual loop.
       shimmer.setValue(0.5);
     }
-    const breatheLoop = Animated.loop(
+    const breatheLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(breathe, {
           toValue: 1,
@@ -162,7 +163,7 @@ const LiquidGlassFabOrb = ({
       shimmerLoop?.stop?.();
       breatheLoop.stop();
     };
-  }, [breathe, isAndroid, shimmer]);
+  }, [breathe, highlighted, isAndroid, reduceMotion, shimmer]);
 
   const shimmerX = shimmer.interpolate({
     inputRange: [0, 1],
@@ -184,38 +185,38 @@ const LiquidGlassFabOrb = ({
     inputRange: [0, 1],
     outputRange: [1, 0.987],
   });
-  const showOuterAura = !suppressArtificialHighlights;
-  const showPrismOrRim = !suppressArtificialHighlights;
+  const showOuterAura = highlighted && !suppressArtificialHighlights;
+  const showPrismOrRim = !shouldUseNativeLiquidGlass && !suppressArtificialHighlights;
   const renderSyntheticPrism = !shouldUseNativeLiquidGlass && !isAndroid && !suppressArtificialHighlights;
-  const showSpecularArtifacts = !isAndroid && !suppressArtificialHighlights;
+  const showSpecularArtifacts = !shouldUseNativeLiquidGlass && !isAndroid && !suppressArtificialHighlights;
   const ringOpacity = breathe.interpolate({
     inputRange: [0, 1],
-    outputRange: isAndroid ? [0.2, 0.34] : renderSyntheticPrism ? [0.62, 0.98] : [0.3, 0.54],
+    outputRange: isAndroid ? [0.16, 0.28] : renderSyntheticPrism ? [0.38, 0.64] : [0.24, 0.42],
   });
   const auraOpacity = breathe.interpolate({
     inputRange: [0, 1],
     outputRange: isAndroid
       ? [highlighted ? 0.24 : 0.06, highlighted ? 0.42 : 0.14]
-      : [highlighted ? 0.52 : 0.18, highlighted ? 0.82 : 0.34],
+      : [highlighted ? 0.3 : 0.12, highlighted ? 0.5 : 0.24],
   });
   const specularOpacity = breathe.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.56, 0.92],
+    outputRange: [0.4, 0.7],
   });
 
-  const accent = isProTheme ? proThemeAccentColor : "#8EC5FF";
+  const accent = isProTheme ? proThemeAccentColor : isDarkTheme ? "#82A8CE" : "#6F9BC7";
   const androidBorderColor = highlighted ? "rgba(14,23,40,0.22)" : "rgba(14,23,40,0.14)";
   const shellBorderColor = highlighted
     ? isAndroid
       ? androidBorderColor
       : isDarkTheme
-      ? "rgba(255,229,156,0.92)"
-      : colorWithAlpha(accent, 0.8)
+      ? colorWithAlpha(accent, 0.62)
+      : colorWithAlpha(accent, 0.68)
     : isAndroid
     ? androidBorderColor
     : isDarkTheme
-    ? "rgba(255,255,255,0.54)"
-    : "rgba(255,255,255,0.86)";
+    ? "rgba(255,255,255,0.3)"
+    : "rgba(255,255,255,0.72)";
   const tintOverlayColor = isAndroid
     ? isDarkTheme
       ? "rgba(9,13,22,0.14)"
@@ -248,7 +249,7 @@ const LiquidGlassFabOrb = ({
     ? isAndroid
       ? "rgba(255,255,255,0.22)"
       : isDarkTheme
-      ? "rgba(255,224,138,0.5)"
+      ? colorWithAlpha(accent, 0.28)
       : isProTheme
       ? colorWithAlpha(accent, 0.44)
       : "rgba(122,198,255,0.4)"
@@ -257,10 +258,10 @@ const LiquidGlassFabOrb = ({
     : isDarkTheme
     ? "rgba(110,164,255,0.2)"
     : "rgba(139,189,255,0.16)";
-  const topSpecularColor = isDarkTheme ? "rgba(255,255,255,0.42)" : "rgba(255,255,255,0.8)";
-  const bottomSpecularColor = isDarkTheme ? "rgba(173,229,255,0.24)" : "rgba(138,204,255,0.36)";
-  const sparkleColor = isDarkTheme ? "rgba(255,255,255,0.52)" : "rgba(255,255,255,0.88)";
-  const nativeRimColor = isDarkTheme ? "rgba(255,255,255,0.44)" : isAndroid ? "rgba(255,255,255,0.58)" : "rgba(255,255,255,0.76)";
+  const topSpecularColor = isDarkTheme ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.68)";
+  const bottomSpecularColor = isDarkTheme ? "rgba(173,229,255,0.14)" : "rgba(138,204,255,0.28)";
+  const sparkleColor = isDarkTheme ? "rgba(255,255,255,0.34)" : "rgba(255,255,255,0.7)";
+  const nativeRimColor = isDarkTheme ? "rgba(255,255,255,0.28)" : isAndroid ? "rgba(255,255,255,0.48)" : "rgba(255,255,255,0.64)";
   const iconLabel = useMemo(() => normalizeIconLabel(icon), [icon]);
   const iconKind = useMemo(() => getIconKind(iconLabel), [iconLabel]);
   const iconGlyphCount = getVisibleGlyphCount(iconLabel);
@@ -303,6 +304,26 @@ const LiquidGlassFabOrb = ({
         />
       )}
 
+      <View
+        pointerEvents="none"
+        style={[
+          styles.shadowPlate,
+          {
+            borderRadius: radius,
+            backgroundColor: isAndroid
+              ? isDarkTheme
+                ? "rgba(10,16,28,0.28)"
+                : "rgba(244,248,255,0.18)"
+              : "rgba(255,255,255,0.01)",
+            shadowColor: "#020713",
+            shadowOpacity: highlighted ? 0.34 : isDarkTheme ? 0.32 : 0.24,
+            shadowRadius: highlighted ? 10 : 8,
+            shadowOffset: { width: 0, height: highlighted ? 7 : 5 },
+            elevation: isAndroid ? (highlighted ? 12 : 10) : 0,
+          },
+        ]}
+      />
+
       <Animated.View
         style={[
           styles.shell,
@@ -310,89 +331,36 @@ const LiquidGlassFabOrb = ({
             borderRadius: radius,
             borderColor: shellBorderColor,
             transform: [{ scaleX: dropletScaleX }, { scaleY: dropletScaleY }],
-            shadowColor: suppressArtificialHighlights
-              ? "#0A1324"
-              : isDarkTheme
-              ? "#050A16"
-              : isAndroid
-              ? "#8A98AE"
-              : isProTheme
-              ? proThemeAccentColor
-              : "#8EAEE0",
-            shadowOpacity: suppressArtificialHighlights
-              ? isDarkTheme
-                ? 0.16
-                : 0.11
-              : isAndroid
-              ? highlighted
-                ? 0.2
-                : 0.14
-              : highlighted
-              ? 0.48
-              : isDarkTheme
-              ? 0.34
-              : 0.26,
-            shadowRadius: suppressArtificialHighlights
-              ? isDarkTheme
-                ? 8
-                : 10
-              : isAndroid
-              ? highlighted
-                ? 8
-                : 6
-              : highlighted
-              ? 16
-              : 10,
-            shadowOffset: suppressArtificialHighlights
-              ? { width: 0, height: 4 }
-              : undefined,
-            elevation: isAndroid ? (highlighted ? 6 : 4) : highlighted ? 12 : 8,
           },
         ]}
       >
-        {shouldUseNativeLiquidGlass ? (
-          <LiquidGlassNativeView
-            style={StyleSheet.absoluteFill}
-            cornerRadius={radius}
-            tintAlpha={
-              suppressArtificialHighlights
-                ? isDarkTheme
-                  ? 0.2
-                  : isProTheme
-                  ? 0.1
-                  : 0.08
-                : isDarkTheme
-                ? 0.26
+        <PlatformGlassBackground
+          style={{ borderRadius: radius }}
+          isDarkTheme={isDarkTheme}
+          glassEffectStyle="regular"
+          tintColor={
+            isProTheme
+              ? colorWithAlpha(accent, 0.14)
+              : isDarkTheme
+              ? "rgba(255,255,255,0.08)"
+              : "rgba(255,255,255,0.1)"
+          }
+          fallbackColor={
+            isAndroid
+              ? isDarkTheme
+                ? "rgba(9,13,22,0.42)"
                 : isProTheme
-                ? 0.22
-                : 0.18
-            }
-            strokeOpacity={
-              suppressArtificialHighlights
-                ? isDarkTheme
-                  ? 0.34
-                  : 0.18
-                : highlighted
-                ? 0.76
-                : isDarkTheme
-                ? 0.58
-                : 0.46
-            }
-          />
-        ) : isAndroid ? (
-          <View
-            pointerEvents="none"
-            style={[StyleSheet.absoluteFillObject, { backgroundColor: androidShellFillColor }]}
-          />
-        ) : (
-          <ExpoBlurView
-            tint={isDarkTheme ? "dark" : useMutedIosLightStyle ? "extraLight" : "light"}
-            intensity={isAndroid ? 32 : useMutedIosLightStyle ? 44 : 62}
-            blurReductionFactor={isAndroid ? 2 : undefined}
-            experimentalBlurMethod={isAndroid ? "dimezisBlurView" : undefined}
-            style={StyleSheet.absoluteFill}
-          />
-        )}
+                ? colorWithAlpha(accent, 0.14)
+                : "rgba(244,248,255,0.28)"
+              : useMutedIosLightStyle
+              ? "rgba(244,247,252,0.22)"
+              : tintOverlayColor
+          }
+          solidFallbackColor={androidShellFillColor}
+          borderColor="transparent"
+          androidIntensity={36}
+          iosFallbackIntensity={58}
+        />
 
         <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: tintOverlayColor }]} />
 
@@ -498,7 +466,7 @@ const LiquidGlassFabOrb = ({
                   right: resolvedSize * 0.18,
                   backgroundColor: sparkleColor,
                   opacity: specularOpacity.interpolate({
-                    inputRange: [0.56, 0.92],
+                    inputRange: [0.4, 0.7],
                     outputRange: [0.2, 0.44],
                   }),
                   transform: [{ translateX: sparkleX }],
@@ -518,11 +486,8 @@ const LiquidGlassFabOrb = ({
               width: resolvedSize + 4,
               height: resolvedSize + 4,
               borderRadius: radius + 2,
-              borderColor: isDarkTheme ? "rgba(255,224,138,0.94)" : colorWithAlpha(accent, 0.9),
-              opacity: auraOpacity.interpolate({
-                inputRange: [0.52, 0.82],
-                outputRange: [0.56, 0.94],
-              }),
+              borderColor: colorWithAlpha(accent, isDarkTheme ? 0.68 : 0.76),
+              opacity: auraOpacity,
             },
           ]}
         />
@@ -572,6 +537,9 @@ const styles = StyleSheet.create({
   aura: {
     position: "absolute",
   },
+  shadowPlate: {
+    ...StyleSheet.absoluteFillObject,
+  },
   shell: {
     ...StyleSheet.absoluteFillObject,
     borderWidth: 1,
@@ -613,6 +581,5 @@ export default React.memo(
     prevProps.isDarkTheme === nextProps.isDarkTheme &&
     prevProps.isProTheme === nextProps.isProTheme &&
     prevProps.proThemeAccentColor === nextProps.proThemeAccentColor &&
-    prevProps.highlighted === nextProps.highlighted &&
-    prevProps.disableArtificialHighlights === nextProps.disableArtificialHighlights
+    prevProps.highlighted === nextProps.highlighted
 );

@@ -118,7 +118,7 @@ export const QUEUED_MODAL_TYPES = {
 };
 
 export const CARD_TEXTURE_ACCENTS = ["#8AB9FF", "#FFA4C0", "#8CE7CF", "#FFD48A", "#BBA4FF", "#7FD8FF"];
-export const TEMPTATION_CARD_RADIUS = 28;
+export const TEMPTATION_CARD_RADIUS = 18;
 export const ANDROID_TUTORIAL_HIGHLIGHT_OFFSET = 6;
 export const TAB_BAR_BASE_HEIGHT = 64;
 export const TAB_BAR_BASE_HEIGHT_COMPACT = 56;
