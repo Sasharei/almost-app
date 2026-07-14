@@ -1,0 +1,387 @@
+{
+  "version": 1,
+  "policy": "These contracts may only be weakened or removed after explicit user approval for the corresponding behavior change.",
+  "contracts": [
+    {
+      "id": "main-tab-navigation",
+      "description": "The main tab bar keeps routing through the existing tab-change handler.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<LiquidGlassTabBar",
+        "onTabPress={handleTabChange}"
+      ]
+    },
+    {
+      "id": "global-fab-actions",
+      "description": "Short tap, long press, record decision, new temptation, new goal, and quick custom-spend submission remain wired.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={handleFabPress}",
+        "onLongPress={handleFabLongPress}",
+        "onPress={handleFabRecordDecision}",
+        "onPress={handleFabNewTemptation}",
+        "onPress={handleFabNewGoal}",
+        "onSubmit={handleQuickCustomSubmit}",
+        "onCancel={handleQuickCustomCancel}"
+      ],
+      "requiredPatterns": [
+        "const fabMainIcon = useMemo\\(\\(\\) => \\{\\s*if \\(activeTab === \"feed\"\\) \\{.*?return \"\\+\";\\s*\\}, \\[activeTab, widgetCurrencyCode\\]\\);",
+        "useEffect\\(\\(\\) => \\{\\s*setFabScrollHidden\\(false\\);\\s*fabMenuAnim\\.stopAnimation\\(\\);\\s*fabMenuAnim\\.setValue\\(0\\);\\s*setFabMenuVisible\\(false\\);\\s*\\}, \\[fabMenuAnim, setFabScrollHidden, viewportLayoutKey\\]\\);"
+      ]
+    },
+    {
+      "id": "feed-new-temptation-action",
+      "description": "The regular Feed add button stays rendered outside the optional coach-mark condition.",
+      "file": "App.js",
+      "requiredFragments": [
+        ": onNewTemptation",
+        "accessibilityLabel={t(\"fabNewTemptation\")}"
+      ],
+      "requiredPatterns": [
+        "\\{t\\(\"tutorialFeedTitle\"\\)\\}\\s*</Text>\\s*<View\\s*style=\\{\\[\\s*styles\\.feedTemptationAddWrap"
+      ]
+    },
+    {
+      "id": "onboarding-goal-actions",
+      "description": "Preset/custom goal selection, amount editing, custom-goal creation, and Continue remain available.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onToggle?.(goalId);",
+        "onAmountChange?.(goalId, text)",
+        "onPress={onCustomGoalCreate}",
+        "onPress={handleSubmit}"
+      ]
+    },
+    {
+      "id": "profile-edit-settings-actions",
+      "description": "Profile edit/save/cancel and Settings navigation remain wired.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const showProfileActions = isEditing || !!onReportsPress;",
+        "{ id: \"overview\", label: t(\"profileOverviewTab\") },",
+        "{ id: \"settings\", label: t(\"profileSettingsTab\") },",
+        "{ id: \"history\", label: t(\"profileHistoryTab\") },",
+        "onPress={() => setProfileSection(section.id)}",
+        "onPress={isEditing ? onSaveEdit : onEditPress}",
+        "onPress={onCancelEdit}",
+        "onPress={() => setProfileSection(\"settings\")}",
+        "onThemeToggle(option.id"
+      ]
+    },
+    {
+      "id": "temptation-card-actions",
+      "description": "Save, spend, pause, amount confirmation, edit tap, goal/budget links, and swipe actions remain reachable while the card is restyled.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={handleActionPress}",
+        "onPress={() => handleAmountModalActionPress(\"save\")}",
+        "onPress={() => handleAmountModalActionPress(\"spend\")}",
+        "onPress={openPauseFreezePicker}",
+        "onAction?.(actionType, item, { amountUSD: normalizedAmountUSD });",
+        "onAction?.(action.type, item, action.options || null);",
+        "onSwipeArchive(item);",
+        "onSwipeDelete(item);",
+        "onPress={handleAmountCategoryBudgetPress}",
+        "onPress={handleAmountGoalPress}",
+        "onPress={handleAmountTimerPress}"
+      ]
+    },
+    {
+      "id": "coin-entry-modal-actions",
+      "description": "Coin entry keeps dismiss, save, spend, manual amount, and slider behavior wired.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={() => handleAction(\"spend\")}",
+        "onPress={() => handleAction(\"save\")}",
+        "onPress={handleDismiss}",
+        "onPress={handleAmountDoubleTap}",
+        "onAccessibilityTap={() => openManual(\"amount\")}",
+        "onAccessibilityAction={handleCoinAccessibilityAction}",
+        "sinceLastTap <= COIN_ENTRY_MANUAL_DOUBLE_TAP_MS",
+        "setSelectedCategory(initialSelectedCategoryRef.current);",
+        "const cardExitAnim = useRef(new Animated.Value(0)).current;",
+        "Animated.timing(cardExitAnim, {",
+        "onPress={closeManual}",
+        "if (manualVisible) {",
+        "{...panResponder.panHandlers}"
+      ]
+    },
+    {
+      "id": "tamagotchi-menu-actions",
+      "description": "The Tamagotchi redesign preserves every care, reward, customization, navigation, gesture, and celebration action.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onRequestClose={closeTamagotchiOverlay}",
+        "onMascotPress={openTamagotchiOverlay}",
+        "onFeed={handleTycoonAutosaveHungryFeed}",
+        "onPress={closeTamagotchiOverlay}",
+        "{...tamagotchiCloseSwipeResponder.panHandlers}",
+        "onPress={handleTamagotchiDailyRewardPress}",
+        "onPress={handleTamagotchiDailySummaryPress}",
+        "onPress={openSkinPicker}",
+        "onPress={showTamagotchiImmunityHint}",
+        "tamagotchiCleanPanResponder.panHandlers",
+        "onPress={handleTamagotchiHourlyRewardClaim}",
+        "onPress={() => handleTamagotchiTabPress(tab.id)}",
+        "{renderTamagotchiTabContent()}",
+        "feedTamagotchi(food.id);",
+        "playWithTamagotchiToy(toy.id);",
+        "buyTamagotchiCleanTool(tool.id);",
+        "setTamagotchiCleanToolArmed(true);",
+        "handleTamagotchiCleanStroke();",
+        "disabled={tamagotchiIsFull}",
+        "onPress={startParty}",
+        "onRequestClose={closeSkinPicker}",
+        "<TouchableWithoutFeedback onPress={closeSkinPicker}>",
+        "onPress={() => handleSkinSelect(skin.id)}",
+        "const skinLoadFailed = pending && skin.isRemote && skinLoadState === \"error\";",
+        "showCatCustomizationPaywall"
+      ],
+      "requiredPatterns": [
+        "const openSkinPicker = useCallback\\(\\(\\) => \\{[\\s\\S]*?setTamagotchiVisible\\(false\\);[\\s\\S]*?setSkinPickerVisible\\(true\\);",
+        "const handleSkinSelect = useCallback\\([\\s\\S]*?if \\(!catCustomizationUnlocked\\) \\{[\\s\\S]*?logEvent\\(\"tamagotchi_skin_preview_paywall\"[\\s\\S]*?setSkinPickerVisible\\(false\\);[\\s\\S]*?setTimeout\\(showCatCustomizationPaywall, 180\\);"
+      ]
+    },
+    {
+      "id": "tamagotchi-menu-accessibility",
+      "description": "The redesigned Tamagotchi menu keeps native control semantics, selected and disabled states, and an accessible alternative to the clean swipe gesture.",
+      "file": "App.js",
+      "requiredFragments": [
+        "accessibilityLabel={t(\"tamagotchiOutfitsLabel\")}",
+        "accessibilityLabel={t(\"dailySummaryBadgeCTA\")}",
+        "accessibilityLabel={t(\"tamagotchiImmunityHintTitle\")}",
+        "accessibilityLabel={t(\"tamagotchiHourlyRewardClaim\")}",
+        "accessibilityRole=\"tab\"",
+        "accessibilityState={{ selected: active }}",
+        "accessibilityState={{ disabled: tamagotchiIsFull }}",
+        "accessible={isTamagotchiCleanToolSelected}",
+        "onAccessibilityTap={"
+      ]
+    },
+    {
+      "id": "tamagotchi-analytics",
+      "description": "The Tamagotchi redesign keeps the established open, care, reward, party, customization, and skin-download analytics events.",
+      "file": "App.js",
+      "requiredFragments": [
+        "logEvent(\"tamagotchi_pressed\")",
+        "logEvent(\"tamagotchi_opened\")",
+        "logEvent(\"tamagotchi_hourly_reward_claimed\"",
+        "logEvent(\"tamagotchi_feed\"",
+        "logEvent(\"tamagotchi_play\"",
+        "logEvent(\"tamagotchi_clean_tool_bought\"",
+        "logEvent(\"tamagotchi_clean\"",
+        "logEvent(\"tamagotchi_party_started\"",
+        "logEvent(\"tamagotchi_skin_preview_paywall\"",
+        "logEvent(\"tamagotchi_skin_selected\"",
+        "logEvent(\"tamagotchi_skin_assets_download_failed\""
+      ]
+    },
+    {
+      "id": "premium-commerce-actions",
+      "description": "Plan selection, purchase, restore, manage subscription, terms, privacy, and close remain connected end to end.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPlanSelect={handlePremiumPlanSelected}",
+        "onPlanPress={handlePremiumPlanPress}",
+        "onRestorePress={handlePremiumRestore}",
+        "onManagePress={handleManageSubscriptionsOpen}",
+        "onTermsPress={handleTermsLinkOpen}",
+        "onPrivacyPress={handlePrivacyPolicyOpen}",
+        "onClose={closePremiumPaywall}"
+      ]
+    },
+    {
+      "id": "premium-paywall-controls",
+      "description": "The paywall still invokes purchase, selection, restore, manage, and legal callbacks.",
+      "file": "src/components/PremiumPaywallModalV2.js",
+      "requiredFragments": [
+        "onPlanPress(selectedPlan.id, { source: \"primary_button\" })",
+        "onPlanSelect(plan.id, { source: \"plan_card\" })",
+        "onRestorePress({ source: \"restore_button\" })",
+        "onManagePress({ source: \"manage_button\" })",
+        "onTermsPress({ source: \"terms_link\" })",
+        "onPrivacyPress({ source: \"privacy_link\" })"
+      ]
+    },
+    {
+      "id": "budget-routing-and-persistence",
+      "description": "Budget premium access, transfer persistence, debt-plan persistence, proof picking, and analytics remain wired end to end.",
+      "file": "App.js",
+      "requiredFragments": [
+        "case \"purchases\":",
+        "onPress={handleBudgetAutoLocked}",
+        "onTransfer={handleBudgetTransfer}",
+        "onDebtSettingsSave={handleBudgetDebtSettingsSave}",
+        "onPickProof={pickBudgetProofImage}",
+        "debtPayments: [entry, ...normalized.debtPayments]",
+        "savingsDeposits: [entry, ...normalized.savingsDeposits]",
+        "logEvent(\"budget_transfer_confirmed\"",
+        "logEvent(\"budget_debt_plan_saved\""
+      ]
+    },
+    {
+      "id": "budget-screen-actions",
+      "description": "Savings/debt switching, transfer proof, setup/edit debt plan, submit, cancel, backdrop, and hardware-back actions remain reachable.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={() => setPane(item.id)}",
+        "onPress={openDebtSettings}",
+        "openTransfer(pane === \"debt\" ? \"debt\" : \"savings\");",
+        "onRequestClose={closeTransfer}",
+        "onPress={closeTransfer}",
+        "onPress={() => handlePickTransferProof(\"camera\")}",
+        "onPress={() => handlePickTransferProof(\"library\")}",
+        "onPress={submitTransfer}",
+        "onRequestClose={closeDebtSettings}",
+        "onPress={closeDebtSettings}",
+        "onPress={submitDebtSettings}"
+      ]
+    },
+    {
+      "id": "budget-transfer-validation",
+      "description": "Available-balance, debt-overpay, proof, OCR mismatch, APR, and persistence validation may not be weakened by visual work.",
+      "file": "App.js",
+      "requiredFragments": [
+        "if (amountUSD > availableUSD + 0.01) {",
+        "if (transferDraft.type === \"debt\" && debtRemainingUSD > 0 && amountUSD > debtRemainingUSD + 0.01) {",
+        "if (!transferDraft.proofImageUri) {",
+        "if (transferDraft.verifyingProof) {",
+        "const proofAmountMismatch =",
+        "proofImageUri: \"\"",
+        "proofMatchedAmount: null",
+        "Math.max(0, Math.min(99, parseNumberInputValue(debtDraft.apr) || 0))",
+        "onTransfer?.({",
+        "onDebtSettingsSave?.({ initialDebtUSD: amountUSD, aprPercent, minMonthlyPaymentUSD });"
+      ]
+    },
+    {
+      "id": "progress-navigation-and-notification-badges",
+      "description": "Progress destinations, internal Rewards navigation, system Back, actionable challenge/reward badge derivation, and the combined bottom-tab badge remain wired.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const handleProgressSectionChange = useCallback((nextSection) => {",
+        "onProgressSectionChange={handleProgressSectionChange}",
+        "rewardBadgeCount={rewardsBadgeCount}",
+        "challengeRewardBadgeCount={challengeRewardsBadgeCount}",
+        "challengeRewardsBadgeCount={challengeRewardsBadgeCount}",
+        "achievements.filter((reward) => reward.unlocked && !reward.claimed).length",
+        "challengeList.filter((challenge) => challenge.canClaim).length",
+        "if (activeTab === \"cart\" && progressHubPane === \"rewards\") {",
+        "setProgressHubPane(\"progress\");"
+      ]
+    },
+    {
+      "id": "progress-challenge-actions",
+      "description": "Challenge start, claim, cancel, confirmation, premium limits, reminders, persistence, analytics, and coin payout remain reachable after the Progress redesign.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onChallengeAccept={handleChallengeAccept}",
+        "onChallengeClaim={handleChallengeClaim}",
+        "onChallengeCancel={handleChallengeCancel}",
+        "onPress: () => onChallengeAccept?.(challenge.id)",
+        "onPress: () => onChallengeCancel?.(challenge.id)",
+        "onChallengeClaim?.(challenge.id);",
+        "scheduleChallengeReminders(challengeId, def, startedAt, expiresAt)",
+        "ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.unlimitedChallenges);",
+        "setHealthPoints((prev) => prev + rewardAmount);",
+        "logEvent(\"challenge_started\"",
+        "logEvent(\"challenge_claimed\"",
+        "logEvent(\"challenge_cancelled\""
+      ]
+    },
+    {
+      "id": "progress-reward-actions",
+      "description": "Unlocked rewards remain claimable from the Rewards destination and continue updating claim state, coins, history, sound, haptics, and analytics.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onRewardClaim={handleRewardClaim}",
+        "onRewardClaim?.(reward);",
+        "onPress={() => (isClaimable ? onRewardClaim?.(reward) : undefined)}",
+        "setClaimedRewards((prev) => {",
+        "setHealthPoints((prev) => prev + rewardAmount);",
+        "logEvent(\"reward_claimed\"",
+        "logHistoryEvent(\"reward_claimed\""
+      ]
+    },
+    {
+      "id": "progress-goal-actions",
+      "description": "Goal creation, editing, active-goal selection, long press, deletion, and repeat flow remain reachable when Goals moves behind the Overview destination.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onRemoveWish={handleRemoveWish}",
+        "onGoalLongPress={handleGoalLongPress}",
+        "onGoalEdit={openGoalEditorPrompt}",
+        "onSetActiveGoal={handleActiveGoalSelect}",
+        "onCreateGoal={handleProgressCreateGoal}",
+        "onDelete={() => onRemoveWish(wish.id)}",
+        "onPress={() => onCreateGoal?.()}",
+        "onLongPress={() => onSetActiveGoal?.(goalId)}"
+      ]
+    },
+    {
+      "id": "progress-insight-actions",
+      "description": "Budget, subscription, income, weekly spend, free-day, rescue, and impulse-insight actions remain reachable when Insights moves behind Overview.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onFreeDayLog={handleLogFreeDay}",
+        "onFreeDayRescue={handleFreeDayRescue}",
+        "onBudgetAutoLocked={handleBudgetAutoLocked}",
+        "onBudgetOverrideChange={handleBudgetOverrideChange}",
+        "onBudgetOverrideReset={handleBudgetOverrideReset}",
+        "onBudgetRemainingOverrideChange={handleBudgetRemainingOverrideChange}",
+        "onIncomeEntryOpen={openIncomeEntryModal}",
+        "onExtraIncomeEntryOpen={openExtraIncomeEntryModal}",
+        "onWeeklySpendPress={openSpendBreakdown}",
+        "onSubscriptionCreateTemptation={handleSubscriptionQuickCustomCreate}",
+        "onSubscriptionAutoImport={handleSubscriptionAutoImport}",
+        "onSubscriptionPaymentAction={handleSubscriptionPaymentAction}",
+        "onImpulseMapLockedPress={handleImpulseMapLockedPress}"
+      ]
+    },
+    {
+      "id": "progress-bottom-tab-action-badge",
+      "description": "The Progress bottom-tab badge remains the sum of actionable, unlocked challenge and reward notifications in native and fallback tab bars.",
+      "file": "src/components/LiquidGlassTabBar.js",
+      "requiredFragments": [
+        "const challengeCount = challengesUnlocked ? Math.max(0, Number(challengeRewardsBadgeCount) || 0) : 0;",
+        "const rewardCount = rewardsUnlocked ? Math.max(0, Number(rewardsBadgeCount) || 0) : 0;",
+        "return challengeCount + rewardCount;",
+        "badgeValue: badgeValue > 0 ? (badgeValue > 99 ? \"99+\" : String(badgeValue)) : null",
+        "{badgeValue > 0 && ("
+      ]
+    },
+    {
+      "id": "progress-challenge-reward-persistence",
+      "description": "Challenge and reward claims remain idempotent and persist challenge state, earned badges, claimed rewards, claim totals, and health coin balance.",
+      "file": "App.js",
+      "requiredFragments": [
+        "if (!reward?.id || !reward.unlocked || reward.claimed) return;",
+        "if (claimedRewardsRef.current?.[reward.id]) return;",
+        "status: CHALLENGE_STATUS.CLAIMED",
+        "claimedAt: Date.now()",
+        "reminderNotificationIds: []",
+        "queuePersist(STORAGE_KEYS.HEALTH, String(healthPoints));",
+        "queuePersist(STORAGE_KEYS.CLAIMED_REWARDS, JSON.stringify(claimedRewards));",
+        "queuePersist(STORAGE_KEYS.REWARD_TOTAL, String(Math.max(0, rewardClaimTotal)));",
+        "queuePersist(STORAGE_KEYS.CHALLENGES, JSON.stringify(challengesState));",
+        "queuePersist(STORAGE_KEYS.CHALLENGE_BADGES, JSON.stringify(challengeBadgeStore));"
+      ]
+    },
+    {
+      "id": "progress-overview-premium-insights-entry",
+      "description": "The prominent Overview Insights entry always remains visible and opens the full Insights destination, where the existing premium gates remain wired.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onBudgetAutoLocked={handleBudgetAutoLocked}",
+        "onProgressSectionChange={handleProgressSectionChange}",
+        "const handleOverviewInsightsPress = useCallback(() => {",
+        "onProgressSectionChange?.(\"insights\");",
+        "onPress={handleOverviewInsightsPress}",
+        "onPress={() => onProgressSectionChange?.(\"goals\")}",
+        "ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.budgetAuto);",
+        "ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.impulseMap);",
+        "onPress={() => {\n            if (!activeGoalWish || !onGoalEdit) return;\n            onGoalEdit(activeGoalWish);"
+      ]
+    }
+  ]
+}

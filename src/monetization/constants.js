@@ -1120,13 +1120,16 @@ const PAYWALL_V2_CONTINUE_LIMITED_BY_LANGUAGE = {
 };
 
 const PAYWALL_V2_SOCIAL_PROOF_LINE_BY_LANGUAGE = {
-  ru: "Более 5000 человек уже экономят с Almost",
-  en: "More than 5000 people are already saving with Almost",
-  es: "Más de 5000 personas ya ahorran con Almost",
-  fr: "Plus de 5000 personnes économisent déjà avec Almost",
-  de: "Mehr als 5000 Menschen sparen bereits mit Almost",
-  ar: "أكثر من 5000 شخص يدّخرون بالفعل مع Almost",
-  zh: "已有超过 5000 人在 Almost 上省钱",
+  ru: "Больше ясности, меньше импульсивных решений",
+  en: "More clarity, fewer impulsive decisions",
+  es: "Más claridad, menos decisiones impulsivas",
+  fr: "Plus de clarté, moins de décisions impulsives",
+  de: "Mehr Klarheit, weniger Impulskäufe",
+  pt: "Mais clareza, menos decisões por impulso",
+  it: "Più chiarezza, meno decisioni impulsive",
+  ar: "وضوح أكبر وقرارات اندفاعية أقل",
+  zh: "更清晰地掌控消费，减少冲动决定",
+  ko: "더 명확하게 보고, 충동적인 결정을 줄이세요",
 };
 
 const PAYWALL_V2_TRIAL_HEADLINE_BY_LANGUAGE = {
@@ -1916,7 +1919,7 @@ export const buildPaywallCopy = ({
     rows: comparisonRowsForPaywall,
     activeFeatureKey: normalizedFeatureKey,
     language: lang,
-    maxItems: 4,
+    maxItems: 6,
   });
   const isFreshStartSoftPaywall =
     effectiveKind === "soft" &&

@@ -131,7 +131,20 @@ import {
   setUserProperties,
 } from "./analytics";
 import { SavingsProvider, useRealSavedAmount } from "./src/hooks/useRealSavedAmount";
+import {
+  MotionPreferenceProvider,
+  useMotionPreferences,
+} from "./src/hooks/useMotionPreferences";
 import { calcPotentialSaved, calcSpentLossInCurrentMonth } from "./src/utils/savingsSimulation";
+import { createMotionLoop } from "./src/utils/motion";
+import {
+  UI_ELEVATION,
+  UI_MOTION,
+  UI_RADIUS,
+  UI_SPACING,
+  UI_TOUCH_TARGET,
+} from "./src/constants/designSystem";
+import { resolveForegroundForColor } from "./src/utils/themeColors";
 import { TRANSLATIONS } from "./src/constants/translations";
 import { DEFAULT_TEMPTATIONS } from "./src/constants/temptations";
 import { TAMAGOTCHI_CRY_ASSET } from "./src/constants/tamagotchiCryAsset";
@@ -430,8 +443,6 @@ import {
   CHALLENGE_DESC_FONT_SIZE,
   CHALLENGE_LINE_HEIGHT,
   CHALLENGE_META_FONT_SIZE,
-  COIN_SLIDER_SIZE,
-  COIN_REVEAL_SIZE,
   COIN_FLIGHT_SIZE,
 } from "./src/constants/layoutConfig";
 import { PURCHASE_GOAL, FALLBACK_SAVE_ACTION_USD, FINANCIAL_QUOTES } from "./src/constants/financialQuotes";
@@ -471,7 +482,7 @@ import PremiumPaywallModalV2 from "./src/components/PremiumPaywallModalV2";
 import { PartyFireworksLayer, PartySparklesLayer } from "./src/components/PartyEffects";
 import LiquidGlassTabBar from "./src/components/LiquidGlassTabBar";
 import LiquidGlassFabOrb from "./src/components/LiquidGlassFabOrb";
-import LiquidGlassPillButton from "./src/components/LiquidGlassPillButton";
+import PlatformGlassBackground from "./src/components/PlatformGlassBackground";
 import {
   buildDefaultPlanCards,
   buildPaywallCopy,
@@ -502,10 +513,10 @@ const applyTextScalingDefaults = (Component, componentLabel) => {
   try {
     if (!Component.defaultProps) Component.defaultProps = {};
     if (Component.defaultProps.allowFontScaling == null) {
-      Component.defaultProps.allowFontScaling = false;
+      Component.defaultProps.allowFontScaling = true;
     }
     if (Component.defaultProps.maxFontSizeMultiplier == null) {
-      Component.defaultProps.maxFontSizeMultiplier = 1;
+      Component.defaultProps.maxFontSizeMultiplier = 1.35;
     }
   } catch (error) {
     if (__DEV__) {
@@ -2560,11 +2571,18 @@ const resolveThemeColors = (themeId = DEFAULT_THEME, proAccentId = DEFAULT_PRO_T
   const accent = accentOption.accent;
   return {
     ...THEMES.pro,
-    background: blendHexColors(THEMES.pro.background, accent, 0.12),
-    text: blendHexColors(THEMES.pro.text, accent, 0.06),
-    muted: blendHexColors(THEMES.pro.muted, accent, 0.12),
-    border: blendHexColors(THEMES.pro.border, accent, 0.32),
+    background: blendHexColors(THEMES.pro.background, accent, 0.04),
+    text: blendHexColors(THEMES.pro.text, accent, 0.025),
+    muted: blendHexColors(THEMES.pro.muted, accent, 0.06),
+    border: blendHexColors(THEMES.pro.border, accent, 0.12),
+    surfaceMuted: blendHexColors(THEMES.pro.surfaceMuted, accent, 0.08),
+    separator: blendHexColors(THEMES.pro.separator, accent, 0.08),
+    disabled: blendHexColors(THEMES.pro.disabled, accent, 0.04),
     primary: accent,
+    onPrimary: accentOption.onAccent || THEMES.pro.onPrimary,
+    primarySurface: blendHexColors(THEMES.pro.background, accent, 0.1),
+    primarySurfaceStrong: blendHexColors(THEMES.pro.background, accent, 0.16),
+    primaryBorder: blendHexColors(THEMES.pro.border, accent, 0.3),
   };
 };
 const resolveThemePreviewPalette = (
@@ -3125,8 +3143,8 @@ const AppText = React.memo(
   forwardRef(function AppText({ style, ...props }, ref) {
     const formattingLanguage = useContext(FormattingLanguageContext);
     const {
-      allowFontScaling = false,
-      maxFontSizeMultiplier = 1,
+      allowFontScaling = true,
+      maxFontSizeMultiplier = 1.35,
       adjustsFontSizeToFit = false,
       minimumFontScale,
       allowAndroidAutoFit = false,
@@ -3199,8 +3217,8 @@ const AppTextInput = React.memo(
   forwardRef(function AppTextInput({ style, ...props }, ref) {
     const formattingLanguage = useContext(FormattingLanguageContext);
     const {
-      allowFontScaling = false,
-      maxFontSizeMultiplier = 1,
+      allowFontScaling = true,
+      maxFontSizeMultiplier = 1.25,
       ...restProps
     } = props || {};
     const rawPlaceholder = restProps.placeholder;
@@ -4701,16 +4719,16 @@ const applyThemeToMoodGradient = (palette, themeKey = "light") => {
   if (!palette) return getMoodGradient();
   if (themeKey === PRO_THEME_ID) {
     return {
-      start: lightenColor(palette.start, 0.24),
-      end: lightenColor(palette.end, 0.18),
-      accent: lightenColor(palette.accent, 0.32),
+      start: blendColors(THEMES.pro.background, palette.start, 0.24),
+      end: blendColors(THEMES.pro.background, palette.end, 0.16),
+      accent: blendColors(palette.accent, THEMES.pro.text, 0.12),
     };
   }
   if (themeKey !== "dark") return palette;
   return {
-    start: lightenColor(palette.start, -0.55),
-    end: lightenColor(palette.end, -0.65),
-    accent: lightenColor(palette.accent, 0.35),
+    start: blendColors(THEMES.dark.surface, palette.start, 0.14),
+    end: blendColors(THEMES.dark.background, palette.end, 0.08),
+    accent: blendColors(palette.accent, THEMES.dark.surface, 0.22),
   };
 };
 
@@ -9170,7 +9188,7 @@ const RainDrop = ({ left, delay, height, colors }) => {
   const translateY = useRef(new Animated.Value(-120)).current;
 
   useEffect(() => {
-    const loop = Animated.loop(
+    const loop = createMotionLoop(
       Animated.sequence([
         Animated.delay(delay),
         Animated.timing(translateY, {
@@ -14116,7 +14134,7 @@ function TemptationCardComponent({
       coachMarkPulse.setValue(0);
       return;
     }
-    const loop = Animated.loop(
+    const loop = createMotionLoop(
       Animated.sequence([
         Animated.timing(coachMarkPulse, {
           toValue: 1,
@@ -14222,14 +14240,14 @@ function TemptationCardComponent({
   const focusActive = showMetaBadges && isFocusTarget && !showEditorInline;
   const darkCardPalette = highlight
     ? {
-        background: blendColors(baseColor, "#2B1A00", 0.4),
-        border: "#F6C16B",
-        text: "#FFEED0",
-        muted: "rgba(255,238,208,0.75)",
-        badgeBg: "rgba(255,255,255,0.2)",
-        badgeBorder: "rgba(255,255,255,0.32)",
-        swipeBg: "rgba(255,255,255,0.08)",
-        swipeBorder: "rgba(255,255,255,0.18)",
+        background: blendColors(baseColor, THEMES.dark.primarySurface, 0.32),
+        border: THEMES.dark.primaryBorder,
+        text: "#E9DDC9",
+        muted: "rgba(233,221,201,0.72)",
+        badgeBg: "rgba(255,255,255,0.1)",
+        badgeBorder: "rgba(255,255,255,0.18)",
+        swipeBg: "rgba(255,255,255,0.05)",
+        swipeBorder: "rgba(255,255,255,0.1)",
       }
     : {
         background: "#101526",
@@ -14248,7 +14266,11 @@ function TemptationCardComponent({
   const cardSurfaceColor = isDarkTheme
     ? blendColors(cardBackground, "#FFFFFF", 0.08)
     : lightenColor(cardBackground, 0.18);
-  const primaryHighlightColor = Platform.OS === "ios" ? "#FF6F7D" : "#FF4D5A";
+  const primaryHighlightColor = isDarkTheme
+    ? THEMES.dark.error
+    : Platform.OS === "ios"
+    ? "#D95764"
+    : "#C94350";
   const cardTextColor = isDarkTheme ? darkCardPalette.text : colors.text;
   const cardMutedColor = isDarkTheme ? darkCardPalette.muted : colors.muted;
   const isBudgetOver = budgetStatus === "over";
@@ -14257,11 +14279,11 @@ function TemptationCardComponent({
     showMetaBadges && !showEditorInline && (isBudgetOver || isBudgetLow) && !!budgetAlertText;
   const budgetAccentColor = isBudgetOver
     ? isDarkTheme
-      ? "#FF9AA5"
+      ? THEMES.dark.error
       : "#E15555"
     : isBudgetLow
     ? isDarkTheme
-      ? "#FFD59A"
+      ? THEMES.dark.warning
       : "#F6C16B"
     : null;
   const budgetSurfaceTint = isBudgetOver
@@ -14271,35 +14293,35 @@ function TemptationCardComponent({
     : cardSurfaceColor;
   const budgetAlertBackground = isBudgetOver
     ? isDarkTheme
-      ? "rgba(255,92,92,0.2)"
+      ? colorWithAlpha(THEMES.dark.error, 0.14)
       : "rgba(255,92,92,0.12)"
     : isBudgetLow
     ? isDarkTheme
-      ? "rgba(246,193,107,0.2)"
+      ? colorWithAlpha(THEMES.dark.warning, 0.14)
       : "rgba(246,193,107,0.14)"
     : "transparent";
   const budgetAlertBorder = isBudgetOver
     ? isDarkTheme
-      ? "rgba(255,92,92,0.5)"
+      ? colorWithAlpha(THEMES.dark.error, 0.34)
       : "rgba(255,92,92,0.35)"
     : isBudgetLow
     ? isDarkTheme
-      ? "rgba(246,193,107,0.45)"
+      ? colorWithAlpha(THEMES.dark.warning, 0.32)
       : "rgba(246,193,107,0.35)"
     : "transparent";
   const budgetAlertTextColor = isBudgetOver
     ? isDarkTheme
-      ? "#FFC0C0"
+      ? "#EAB8B3"
       : "#C2153B"
     : isBudgetLow
     ? isDarkTheme
-      ? "#FFE6B3"
+      ? "#E5C892"
       : "#5C3A00"
     : cardTextColor;
   const budgetAlertIcon = isBudgetOver ? "⛔" : "⚠️";
   const resolvedGoalLabel =
     typeof goalLabel === "string" && goalLabel.trim().length ? goalLabel.trim() : "";
-  const coinBurstColor = isDarkTheme ? "#FFD78B" : "#FFF4B3";
+  const coinBurstColor = isDarkTheme ? THEMES.dark.warning : "#E5B954";
   const effectiveWishlistGoal = showMetaBadges && isWishlistGoal && !isPrimaryTemptation;
   const canAssignGoal = !isPrimaryTemptation;
   const highlightPinned = effectiveWishlistGoal && !showEditorInline;
@@ -14328,11 +14350,11 @@ function TemptationCardComponent({
     isDarkTheme ? 0.18 : 0.32
   );
   const showCardTexture = false;
-  const defaultShadowColor = isDarkTheme ? "rgba(255,255,255,0.55)" : "rgba(15,23,42,0.22)";
-  const redShadowColor = Platform.OS === "ios" ? "rgba(244,37,78,0.6)" : "rgba(244,37,78,0.88)";
-  const goldShadowColor = "rgba(255,198,110,0.75)";
-  const focusShadowColor = "rgba(255,92,92,0.85)";
-  const dailyChallengeShadowColor = isDarkTheme ? "rgba(255,82,106,0.95)" : "rgba(226,35,66,0.9)";
+  const defaultShadowColor = isDarkTheme ? "rgba(0,0,0,0.65)" : "rgba(15,23,42,0.18)";
+  const redShadowColor = "rgba(244,37,78,0.42)";
+  const goldShadowColor = "rgba(184,126,28,0.32)";
+  const focusShadowColor = "rgba(255,92,92,0.38)";
+  const dailyChallengeShadowColor = "rgba(226,35,66,0.4)";
   const shadowColor = isPrimaryTemptation
     ? redShadowColor
     : dailyChallengeActive
@@ -14342,50 +14364,24 @@ function TemptationCardComponent({
     : highlightPinned
     ? goldShadowColor
     : defaultShadowColor;
-  const shadowRadius = isPrimaryTemptation
-    ? Platform.OS === "ios" ? 28 : 36
-    : dailyChallengeActive
-    ? Platform.OS === "ios" ? 34 : 40
-    : focusActive
-    ? 34
-    : highlightPinned
-    ? 30
-    : isDarkTheme
-    ? 28
-    : 22;
-  const shadowOpacity = isPrimaryTemptation
-    ? Platform.OS === "ios" ? 0.6 : 0.8
-    : dailyChallengeActive
-    ? Platform.OS === "ios" ? 0.78 : 0.9
-    : focusActive
-    ? 0.75
-    : highlightPinned
-    ? 0.6
-    : isDarkTheme
-    ? 0.55
-    : 0.3;
-  const shadowElevation = isPrimaryTemptation
-    ? 16
-    : dailyChallengeActive
-    ? 22
-    : focusActive
-    ? 18
-    : highlightPinned
+  const shadowRadius = isPrimaryTemptation || dailyChallengeActive
     ? 14
-    : isDarkTheme
+    : focusActive || highlightPinned
     ? 12
     : 8;
-  const shadowOffsetHeight = isPrimaryTemptation
-    ? Platform.OS === "ios" ? 12 : 18
-    : dailyChallengeActive
-    ? Platform.OS === "ios" ? 18 : 24
-    : focusActive
-    ? 16
-    : highlightPinned
-    ? 16
+  const shadowOpacity = isPrimaryTemptation || dailyChallengeActive
+    ? 0.32
+    : focusActive || highlightPinned
+    ? 0.26
     : isDarkTheme
-    ? 14
-    : 12;
+    ? 0.24
+    : 0.16;
+  const shadowElevation = isPrimaryTemptation || dailyChallengeActive
+    ? 7
+    : focusActive || highlightPinned
+    ? 5
+    : 2;
+  const shadowOffsetHeight = isPrimaryTemptation || dailyChallengeActive ? 7 : 4;
   const baseCardShadowStyle = Platform.select({
     ios: {
       shadowColor,
@@ -14401,8 +14397,8 @@ function TemptationCardComponent({
   });
   const cardShadowStyle = tutorialHighlightActive ? null : baseCardShadowStyle;
   const defaultGoalBadgeBackground = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)";
-  const defaultGoalBadgeBorder = isDarkTheme ? "rgba(255,255,255,0.24)" : "rgba(0,0,0,0.08)";
-  const defaultGoalBadgeText = isDarkTheme ? "#FFF7E1" : colors.text;
+  const defaultGoalBadgeBorder = isDarkTheme ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)";
+  const defaultGoalBadgeText = isDarkTheme ? "#E9DDC9" : colors.text;
   const hasGoalAssigned = showMetaBadges && !!resolvedGoalLabel;
   const refuseCount = stats?.count || 0;
   const totalRefusedLabel = formatCurrency(
@@ -15994,9 +15990,8 @@ function TemptationCardComponent({
                     <Text
                       style={styles.temptationAmountModalBadgeText}
                       numberOfLines={1}
-                      adjustsFontSizeToFit
-                      allowAndroidAutoFit
-                      minimumFontScale={0.64}
+                      maxFontSizeMultiplier={1.15}
+                      ellipsizeMode="tail"
                     >
                       {amountSliderTotalLabel}
                     </Text>
@@ -16032,7 +16027,10 @@ function TemptationCardComponent({
                   />
                 </View>
                 <View style={styles.temptationAmountStats}>
-                  <View
+                  <TouchableOpacity
+                    onPress={openAmountManual}
+                    activeOpacity={0.86}
+                    disabled={!allowAmountManualInput}
                     style={[
                       styles.temptationAmountStatCard,
                       {
@@ -16053,7 +16051,7 @@ function TemptationCardComponent({
                     >
                       {amountSliderCurrentLabel}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                   <View
                     style={[
                       styles.temptationAmountStatCard,
@@ -16333,10 +16331,84 @@ function TemptationCardComponent({
                 )}
               </View>
             </View>
+            {allowAmountManualInput && amountManualVisible && (
+              <TouchableWithoutFeedback onPress={() => dismissKeyboardOrRun(closeAmountManual)}>
+                <View
+                  style={[
+                    styles.coinEntryManualBackdrop,
+                    styles.temptationAmountManualInlineBackdrop,
+                  ]}
+                >
+                  <KeyboardAvoidingView
+                    style={styles.coinEntryManualKeyboardAvoider}
+                    behavior={Platform.OS === "ios" ? "padding" : undefined}
+                    keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+                  >
+                    <TouchableWithoutFeedback onPress={() => {}}>
+                      <View
+                        style={[
+                          styles.coinEntryManualCard,
+                          { backgroundColor: colors.card, borderColor: colors.border },
+                        ]}
+                      >
+                        <Text style={[styles.coinEntryManualTitle, { color: colors.text }]}>
+                          {t("coinEntryManualAmountTitle")}
+                        </Text>
+                        <TextInput
+                          style={[
+                            styles.coinEntryManualInput,
+                            { color: colors.text, borderColor: colors.border },
+                          ]}
+                          placeholder={t("coinEntryManualAmountPlaceholder")}
+                          placeholderTextColor={colors.muted}
+                          keyboardType="decimal-pad"
+                          value={amountManualValue}
+                          onChangeText={(value) => {
+                            setAmountManualValue(value);
+                            if (amountManualError) setAmountManualError("");
+                          }}
+                          returnKeyType="done"
+                          onSubmitEditing={handleAmountManualSave}
+                          autoFocus
+                        />
+                        {!!amountManualError && (
+                          <Text style={[styles.coinEntryManualError, { color: SPEND_ACTION_COLOR }]}>
+                            {amountManualError}
+                          </Text>
+                        )}
+                        <View style={styles.coinEntryManualActions}>
+                          <TouchableOpacity
+                            style={[styles.coinEntryManualButtonGhost, { borderColor: colors.border }]}
+                            onPress={closeAmountManual}
+                          >
+                            <Text style={[styles.coinEntryManualButtonGhostText, { color: colors.muted }]}>
+                              {t("coinEntryManualCancel")}
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.coinEntryManualButtonPrimary, { backgroundColor: colors.text }]}
+                            onPress={handleAmountManualSave}
+                          >
+                            <Text
+                              style={[
+                                styles.coinEntryManualButtonPrimaryText,
+                                { color: colors.background },
+                              ]}
+                            >
+                              {t("coinEntryManualSave")}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </TouchableWithoutFeedback>
+                  </KeyboardAvoidingView>
+                </View>
+              </TouchableWithoutFeedback>
+            )}
           </View>
         </Modal>
       )}
-      {allowAmountManualInput && amountManualVisible && (
+      {allowAmountManualInput && amountManualVisible && !amountSliderVisible && (
         <Modal
           visible
           transparent
@@ -16441,10 +16513,20 @@ function TemptationCardComponent({
                 textStyle = [styles.temptationButtonPrimaryText, { color: "#FFFFFF" }];
               } else if (action.type === "spend") {
                 buttonStyle = [
-                  styles.temptationButtonPrimary,
-                  { backgroundColor: SPEND_ACTION_COLOR, opacity: action.disabled ? 0.4 : 1 },
+                  styles.temptationButtonSecondary,
+                  {
+                    backgroundColor: colorWithAlpha(
+                      SPEND_ACTION_COLOR,
+                      isDarkTheme ? 0.16 : 0.08
+                    ),
+                    borderColor: colorWithAlpha(SPEND_ACTION_COLOR, isDarkTheme ? 0.62 : 0.42),
+                    opacity: action.disabled ? 0.4 : 1,
+                  },
                 ];
-                textStyle = [styles.temptationButtonPrimaryText, { color: "#FFFFFF" }];
+                textStyle = [
+                  styles.temptationButtonSecondaryText,
+                  { color: isDarkTheme ? "#FFB8C4" : SPEND_ACTION_COLOR },
+                ];
               } else if (action.variant === "primary") {
                 buttonStyle = [
                   styles.temptationButtonPrimary,
@@ -16527,6 +16609,8 @@ function TemptationCardComponent({
                   style={buttonStyle}
                   onPress={handleActionPress}
                   activeOpacity={1}
+                  accessibilityRole="button"
+                  accessibilityLabel={action.label}
                 >
                   <Text style={textStyle}>{action.label}</Text>
                 </TouchableOpacity>
@@ -16535,12 +16619,14 @@ function TemptationCardComponent({
                 return (
                   <TouchableOpacity
                     key={`${action.type}-${actionIndex}`}
-                  style={buttonStyle}
-                  onPress={handleActionPress}
-                  activeOpacity={1}
-                >
-                  <Text style={textStyle}>{action.label}</Text>
-                </TouchableOpacity>
+                    style={buttonStyle}
+                    onPress={handleActionPress}
+                    activeOpacity={1}
+                    accessibilityRole="button"
+                    accessibilityLabel={action.label}
+                  >
+                    <Text style={textStyle}>{action.label}</Text>
+                  </TouchableOpacity>
                 );
               }
               return (
@@ -17368,6 +17454,7 @@ const GoalJarGraphic = React.memo(function GoalJarGraphic({
   glassTint = "#F8FDFF",
   stroke = "rgba(40,74,105,0.16)",
   shadow = "rgba(42,105,142,0.14)",
+  isDarkTheme = false,
   style = null,
 }) {
   const safeProgress = clampGoalJarProgress(progress);
@@ -17419,23 +17506,50 @@ const GoalJarGraphic = React.memo(function GoalJarGraphic({
     progressLabelPlacement === "center"
       ? jarY + jarH * 0.43
       : dynamicLabelY;
+  const glassPalette = isDarkTheme
+    ? {
+        top: "#49515D",
+        middle: "#2B323C",
+        bottom: "#171C24",
+        strokeTop: "#8C97A4",
+        strokeBottom: "#46515E",
+        highlight: "#DDE6EF",
+        highlightStrongOpacity: 0.18,
+        highlightSoftOpacity: 0.11,
+        lidTop: "#6B6249",
+        lidHighlightOpacity: 0.2,
+        coinHighlightOpacity: 0.26,
+      }
+    : {
+        top: "#FFFFFF",
+        middle: glassTint,
+        bottom: "#DFF3F8",
+        strokeTop: "#FFFFFF",
+        strokeBottom: "#8BBFD0",
+        highlight: "#FFFFFF",
+        highlightStrongOpacity: 0.48,
+        highlightSoftOpacity: 0.36,
+        lidTop: "#FFFFFF",
+        lidHighlightOpacity: 0.62,
+        coinHighlightOpacity: 0.45,
+      };
   return (
     <View style={[styles.goalJarGraphicWrap, { width, height }, style]} pointerEvents="none">
       <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
         <Defs>
           <SvgLinearGradient id={`jarGlass-${jarId}`} x1="0" y1="0" x2="1" y2="1">
-            <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity="0.96" />
-            <SvgStop offset="0.56" stopColor={glassTint} stopOpacity="0.72" />
-            <SvgStop offset="1" stopColor="#DFF3F8" stopOpacity="0.44" />
+            <SvgStop offset="0" stopColor={glassPalette.top} stopOpacity={isDarkTheme ? 0.78 : 0.96} />
+            <SvgStop offset="0.56" stopColor={glassPalette.middle} stopOpacity={isDarkTheme ? 0.82 : 0.72} />
+            <SvgStop offset="1" stopColor={glassPalette.bottom} stopOpacity={isDarkTheme ? 0.9 : 0.44} />
           </SvgLinearGradient>
           <SvgLinearGradient id={`jarStroke-${jarId}`} x1="0" y1="0" x2="1" y2="1">
-            <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity="0.95" />
-            <SvgStop offset="1" stopColor="#8BBFD0" stopOpacity="0.35" />
+            <SvgStop offset="0" stopColor={glassPalette.strokeTop} stopOpacity={isDarkTheme ? 0.52 : 0.95} />
+            <SvgStop offset="1" stopColor={glassPalette.strokeBottom} stopOpacity={isDarkTheme ? 0.64 : 0.35} />
           </SvgLinearGradient>
           <SvgLinearGradient id={`jarLid-${jarId}`} x1="0" y1="0" x2="1" y2="1">
-            <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity="0.96" />
-            <SvgStop offset="0.18" stopColor={lightenColor(accent, 0.34)} stopOpacity="0.82" />
-            <SvgStop offset="1" stopColor={colorWithAlpha(accent, 0.5)} stopOpacity="0.86" />
+            <SvgStop offset="0" stopColor={glassPalette.lidTop} stopOpacity={isDarkTheme ? 0.9 : 0.96} />
+            <SvgStop offset="0.18" stopColor={lightenColor(accent, isDarkTheme ? 0.12 : 0.34)} stopOpacity={isDarkTheme ? 0.58 : 0.82} />
+            <SvgStop offset="1" stopColor={colorWithAlpha(accent, isDarkTheme ? 0.34 : 0.5)} stopOpacity={isDarkTheme ? 0.72 : 0.86} />
           </SvgLinearGradient>
           {ballColors.map((entry, index) => (
             <SvgLinearGradient key={`ball-grad-${index}`} id={`jarBall-${jarId}-${index}`} x1="0" y1="0" x2="1" y2="1">
@@ -17463,8 +17577,8 @@ const GoalJarGraphic = React.memo(function GoalJarGraphic({
           width={jarW * 0.12}
           height={jarH * 0.56}
           rx={jarW * 0.06}
-          fill="#FFFFFF"
-          opacity="0.48"
+          fill={glassPalette.highlight}
+          opacity={glassPalette.highlightStrongOpacity}
         />
         <SvgRect
           x={jarX + jarW * 0.54}
@@ -17472,8 +17586,8 @@ const GoalJarGraphic = React.memo(function GoalJarGraphic({
           width={jarW * 0.22}
           height={jarH * 0.08}
           rx={jarW * 0.04}
-          fill="#FFFFFF"
-          opacity="0.36"
+          fill={glassPalette.highlight}
+          opacity={glassPalette.highlightSoftOpacity}
         />
         <SvgRect
           x={jarX + 3}
@@ -17498,8 +17612,8 @@ const GoalJarGraphic = React.memo(function GoalJarGraphic({
         <SvgPath
           d={`M ${lidX + lidW * 0.1} ${lidY + lidH * 0.35} C ${lidX + lidW * 0.28} ${lidY + lidH * 0.16}, ${lidX + lidW * 0.72} ${lidY + lidH * 0.16}, ${lidX + lidW * 0.9} ${lidY + lidH * 0.35}`}
           fill="none"
-          stroke="#FFFFFF"
-          strokeOpacity="0.62"
+          stroke={glassPalette.highlight}
+          strokeOpacity={glassPalette.lidHighlightOpacity}
           strokeWidth={Math.max(1, width * 0.008)}
           strokeLinecap="round"
         />
@@ -17537,8 +17651,8 @@ const GoalJarGraphic = React.memo(function GoalJarGraphic({
                 cx={cx - r * 0.28}
                 cy={cy - r * 0.34}
                 r={Math.max(1.2, r * 0.22)}
-                fill="#FFFFFF"
-                opacity="0.45"
+                fill={glassPalette.highlight}
+                opacity={glassPalette.coinHighlightOpacity}
                 clipPath={`url(#jarClip-${jarId})`}
               />
             </React.Fragment>
@@ -17593,10 +17707,10 @@ const GoalDepositCelebration = forwardRef(function GoalDepositCelebration(
   const [displayProgress, setDisplayProgress] = useState(clampGoalJarProgress(progressStart));
   const [jarFilled, setJarFilled] = useState(false);
   const isDarkTheme = colors.background === THEMES.dark.background;
-  const accent = isDarkTheme ? "#69E6A3" : SAVE_ACTION_COLOR;
-  const cardBg = isDarkTheme ? "#0D1714" : "#F8FFFB";
-  const cardBorder = isDarkTheme ? "rgba(105,230,163,0.28)" : "rgba(46,184,115,0.22)";
-  const subtext = isDarkTheme ? "rgba(230,255,240,0.72)" : "rgba(39,79,65,0.68)";
+  const accent = colors.success;
+  const cardBg = isDarkTheme ? colors.surfaceElevated : "#F3F8F5";
+  const cardBorder = colorWithAlpha(accent, isDarkTheme ? 0.26 : 0.2);
+  const subtext = colors.muted;
   const safeStart = clampGoalJarProgress(progressStart);
   const safeEnd = clampGoalJarProgress(progressEnd || progressStart);
   const goalTitle =
@@ -17819,6 +17933,7 @@ const GoalDepositCelebration = forwardRef(function GoalDepositCelebration(
               showProgressMarker
               progressLabel={`${percentLabel}%`}
               glassTint={isDarkTheme ? "#DFFEF0" : "#F7FFFB"}
+              isDarkTheme={isDarkTheme}
             />
           </Animated.View>
         </View>
@@ -18206,6 +18321,7 @@ const GoalJarDetailModal = React.memo(function GoalJarDetailModal({
               showProgressMarker
               progressLabel={`${progressPercentLabel}%`}
               glassTint={isDarkMode ? "#DFFEF0" : "#F7FFFB"}
+              isDarkTheme={isDarkMode}
             />
             <View pointerEvents="none" style={styles.goalJarDetailCoinLayer}>
               {physicsCoins.map((coin) => {
@@ -18329,6 +18445,7 @@ const GoalJarDetailModal = React.memo(function GoalJarDetailModal({
 
 const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   goldPalette,
+  colors,
   isDarkMode = false,
   heroSpendCopy,
   heroRecentEvents = [],
@@ -19442,10 +19559,10 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
     null;
   const dailyRewardModalPalette = isDarkMode
     ? {
-        background: "#3A2405",
-        border: "rgba(255,214,143,0.7)",
-        subtext: "rgba(255,238,208,0.92)",
-        text: "#FFEED0",
+        background: colors.primarySurfaceStrong,
+        border: colors.primaryBorder,
+        subtext: colors.muted,
+        text: colors.text,
       }
     : {
         background: goldPalette.background,
@@ -19453,9 +19570,9 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
         subtext: goldPalette.subtext,
         text: goldPalette.text,
       };
-  const dailyRewardActiveAccent = isDarkMode ? "#7BFFB8" : "#1F7A4F";
-  const dailyRewardActiveBorder = isDarkMode ? "rgba(123,255,184,0.85)" : "rgba(45,166,106,0.9)";
-  const dailyRewardActiveBg = isDarkMode ? "rgba(123,255,184,0.18)" : "rgba(45,166,106,0.14)";
+  const dailyRewardActiveAccent = colors.success;
+  const dailyRewardActiveBorder = colorWithAlpha(colors.success, isDarkMode ? 0.38 : 0.3);
+  const dailyRewardActiveBg = colorWithAlpha(colors.success, isDarkMode ? 0.1 : 0.08);
   const dailyRewardCtaTextColor = getReadableTextColor(goldPalette.accent, {
     dark: "#2A1A03",
   });
@@ -19591,7 +19708,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
         })
       );
     Animated.stagger(44, dayAnimations).start();
-    const coinPulseLoop = Animated.loop(
+    const coinPulseLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(dailyRewardCoinPulse, {
           toValue: 1,
@@ -19607,7 +19724,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
         }),
       ])
     );
-    const haloSpinLoop = Animated.loop(
+    const haloSpinLoop = createMotionLoop(
       Animated.timing(dailyRewardHaloSpin, {
         toValue: 1,
         duration: 5200,
@@ -19929,6 +20046,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
               coinColors={goalCoinColors}
               showProgressMarker
               progressLabel={`${Math.round(displayGoalProgress * 100)}%`}
+              isDarkTheme={isDarkMode}
             />
             {heroJarDropVisible ? (
               <Animated.View
@@ -21033,7 +21151,7 @@ const BudgetHeroCard = React.memo(function BudgetHeroCard({
   const subtitle = monthLabel
     ? t("budgetWidgetMonthLabel", { month: monthLabel })
     : t("budgetWidgetSubtitle");
-  const budgetLimitWarningColor = isDarkMode ? "#FFD59A" : "#F6C16B";
+  const budgetLimitWarningColor = colors.warning;
   const glowColor = colorWithAlpha(accent, isDarkMode ? 0.25 : 0.2);
   const budgetPremiumAccent = resolvePremiumUiAccent({ isDark: isDarkMode });
   const budgetPremiumBorder = colorWithAlpha(budgetPremiumAccent, isDarkMode ? 0.58 : 0.34);
@@ -22147,7 +22265,7 @@ function SpendConfirmSheet({
       mass: 0.8,
       useNativeDriver: true,
     }).start();
-    const pulseLoop = Animated.loop(
+    const pulseLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(previewPulse, {
           toValue: 1,
@@ -22433,7 +22551,7 @@ const LightningBolt = ({ active, delay = 0, style }) => {
       opacity.setValue(0);
       return;
     }
-    const loop = Animated.loop(
+    const loop = createMotionLoop(
       Animated.sequence([
         Animated.delay(delay),
         Animated.timing(opacity, { toValue: 1, duration: 120, useNativeDriver: true }),
@@ -22463,7 +22581,7 @@ function StormOverlay({ visible, t, catCrySource, colors, onDismiss }) {
       flash.setValue(0);
       return;
     }
-    const loop = Animated.loop(
+    const loop = createMotionLoop(
       Animated.sequence([
         Animated.delay(500),
         Animated.timing(flash, { toValue: 0.85, duration: 110, useNativeDriver: true }),
@@ -22480,7 +22598,7 @@ function StormOverlay({ visible, t, catCrySource, colors, onDismiss }) {
       catBounce.setValue(0);
       return;
     }
-    const loop = Animated.loop(
+    const loop = createMotionLoop(
       Animated.sequence([
         Animated.timing(catBounce, {
           toValue: 1,
@@ -22579,7 +22697,7 @@ const FridgeSnowflake = React.memo(function FridgeSnowflake({
     }
     progress.stopAnimation();
     progress.setValue(0);
-    const loop = Animated.loop(
+    const loop = createMotionLoop(
       Animated.sequence([
         Animated.delay(delay),
         Animated.timing(progress, {
@@ -23050,7 +23168,7 @@ function SaveSpamDisclaimerModal({
       catFloat.setValue(0);
       return;
     }
-    const loop = Animated.loop(
+    const loop = createMotionLoop(
       Animated.sequence([
         Animated.timing(catFloat, {
           toValue: 1,
@@ -23152,14 +23270,14 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
         })
       : null;
   const isDarkMode = colors.background === THEMES.dark.background;
-  const cardBackground = isDarkMode ? lightenColor(colors.card, 0.12) : colors.card;
-  const cardBorder = isDarkMode ? lightenColor(colors.border, 0.3) : colors.border;
-  const dangerBg = isDarkMode ? "rgba(255,108,108,0.2)" : "#FFE6E6";
-  const dangerBorder = isDarkMode ? "rgba(255,108,108,0.42)" : "rgba(255,108,108,0.35)";
-  const successBg = isDarkMode ? "rgba(33,209,160,0.2)" : "#E6FBF2";
-  const successBorder = isDarkMode ? "rgba(33,209,160,0.4)" : "rgba(33,209,160,0.32)";
-  const neutralBg = isDarkMode ? "rgba(250,204,21,0.18)" : "#FFF5D9";
-  const neutralBorder = isDarkMode ? "rgba(250,204,21,0.35)" : "rgba(250,204,21,0.3)";
+  const cardBackground = isDarkMode ? colors.surfaceElevated : colors.card;
+  const cardBorder = isDarkMode ? colors.separator : colors.border;
+  const dangerBg = colorWithAlpha(colors.error, isDarkMode ? 0.1 : 0.08);
+  const dangerBorder = colorWithAlpha(colors.error, isDarkMode ? 0.26 : 0.22);
+  const successBg = colorWithAlpha(colors.success, isDarkMode ? 0.1 : 0.08);
+  const successBorder = colorWithAlpha(colors.success, isDarkMode ? 0.24 : 0.2);
+  const neutralBg = colorWithAlpha(colors.warning, isDarkMode ? 0.1 : 0.08);
+  const neutralBorder = colorWithAlpha(colors.warning, isDarkMode ? 0.24 : 0.2);
   const toggleLabel = expanded ? t("impulseCollapse") : t("impulseExpand");
   const categories = IMPULSE_CATEGORY_ORDER.map((id, index) => {
     const entry = insights.categories?.[id] || { save: 0, spend: 0 };
@@ -23232,7 +23350,7 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
     <View style={[styles.impulseCard, { backgroundColor: cardBackground, borderColor: cardBorder }]}>
       <View
         pointerEvents="none"
-        style={[styles.impulseCardGlow, { backgroundColor: isDarkMode ? "#4A3A6E" : "#FFD8A9" }]}
+        style={[styles.impulseCardGlow, { backgroundColor: colors.primarySurface }]}
       />
       <View style={styles.impulseHeaderRow}>
         <View style={styles.impulseHeader}>
@@ -23245,7 +23363,7 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
           onPress={onToggle}
           style={[
             styles.impulseToggle,
-            { borderColor: cardBorder, backgroundColor: lightenColor(cardBackground, isDarkMode ? 0.08 : 0.2) },
+            { borderColor: cardBorder, backgroundColor: colors.surfaceMuted },
           ]}
         >
           <Text style={[styles.impulseToggleText, { color: colors.text }]}>{toggleLabel}</Text>
@@ -23289,7 +23407,7 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
                 const hasData = (category.save || 0) + (category.spend || 0) > 0;
                 const isRisk = hasData && category.spend > category.save;
                 const isWin = hasData && category.save > category.spend;
-                let categoryBg = colors.card;
+                let categoryBg = colors.surface;
                 let categoryBorder = colors.border;
                 if (isRisk) {
                   categoryBg = dangerBg;
@@ -23328,7 +23446,7 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
           <View
             style={[
               styles.impulseSequenceSection,
-              { borderColor: colors.border, backgroundColor: lightenColor(cardBackground, isDarkMode ? 0.08 : 0.16) },
+              { borderColor: colors.border, backgroundColor: colors.surfaceMuted },
             ]}
           >
             <Text style={[styles.impulseSequenceTitle, { color: colors.text }]}>{t("impulseSequenceTitle")}</Text>
@@ -23353,7 +23471,7 @@ function ImpulseMapCard({ insights, colors, t, language, expanded = false, onTog
 function LockedImpulseMapPreview({ insights, colors, t, language, onPress = null }) {
   const isDarkMode = colors.background === THEMES.dark.background;
   const premiumAccent = resolvePremiumUiAccent({ isDark: isDarkMode });
-  const cardBackground = isDarkMode ? lightenColor(colors.card, 0.1) : "#F3F8FF";
+  const cardBackground = isDarkMode ? colors.surfaceElevated : colors.surfaceMuted;
   const cardBorder = colorWithAlpha(premiumAccent, isDarkMode ? 0.5 : 0.28);
   const categoryLabel =
     insights?.hottestSpendCategory && insights.hottestSpendCategory.spendCount > 0
@@ -23563,6 +23681,9 @@ function PremiumBalancePreviewMock({ colors }) {
 function BudgetLockedScreen({
   colors,
   t,
+  currency = DEFAULT_PROFILE.currency,
+  availableToAllocateUSD = 0,
+  savedTotalUSD = 0,
   onPress = null,
   scrollRef = null,
   contentBottomPadding = 0,
@@ -23570,9 +23691,24 @@ function BudgetLockedScreen({
 }) {
   const isDarkMode = colors?.background === THEMES.dark.background;
   const premiumAccent = resolvePremiumUiAccent({ isDark: isDarkMode });
-  const mutedLine = colorWithAlpha(colors?.text || "#111827", isDarkMode ? 0.24 : 0.14);
   const screenPaddingTop = Math.max(16, topInset + 10);
   const screenMinHeight = Math.max(560, SCREEN_HEIGHT - Math.max(160, contentBottomPadding));
+  const formatPreviewAmount = (valueUSD) =>
+    formatCurrency(convertToCurrency(Math.max(0, Number(valueUSD) || 0), currency), currency);
+  const previewMetrics = [
+    {
+      id: "available",
+      label: t("budgetAvailableLabel"),
+      value: formatPreviewAmount(availableToAllocateUSD),
+      accent: premiumAccent,
+    },
+    {
+      id: "saved",
+      label: t("budgetSavedLoggedLabel"),
+      value: formatPreviewAmount(savedTotalUSD),
+      accent: SAVE_ACTION_COLOR,
+    },
+  ];
   return (
     <ScrollView
       ref={scrollRef}
@@ -23643,22 +23779,25 @@ function BudgetLockedScreen({
             </Text>
           </View>
           <View style={styles.budgetLockedPreviewRows}>
-            {[0.82, 0.64, 0.48].map((width, index) => (
-              <View key={`budget-screen-preview-${index}`} style={styles.budgetLockedPreviewRow}>
-                <View style={[styles.budgetLockedPreviewIcon, { backgroundColor: colorWithAlpha(premiumAccent, 0.2) }]} />
+            {previewMetrics.map((metric) => (
+              <View key={metric.id} style={styles.budgetLockedPreviewRow}>
+                <View
+                  style={[
+                    styles.budgetLockedPreviewIcon,
+                    { backgroundColor: colorWithAlpha(metric.accent, 0.18) },
+                  ]}
+                >
+                  <Text style={[styles.budgetLockedPreviewIconText, { color: metric.accent }]}>
+                    {String(currency || "").trim().toUpperCase().slice(0, 3)}
+                  </Text>
+                </View>
                 <View style={styles.budgetLockedPreviewRowBody}>
-                  <View style={[styles.premiumLockedLine, { width: `${46 + index * 10}%`, backgroundColor: mutedLine }]} />
-                  <View style={[styles.budgetLockedPreviewTrack, { backgroundColor: colorWithAlpha(colors?.text || "#111827", isDarkMode ? 0.18 : 0.08) }]}>
-                    <View
-                      style={[
-                        styles.budgetLockedPreviewFill,
-                        {
-                          width: `${Math.round(width * 100)}%`,
-                          backgroundColor: index === 0 ? colorWithAlpha(SPEND_ACTION_COLOR, 0.74) : colorWithAlpha(premiumAccent, 0.78),
-                        },
-                      ]}
-                    />
-                  </View>
+                  <Text style={[styles.budgetLockedPreviewMetricLabel, { color: colors.muted }]}>
+                    {metric.label}
+                  </Text>
+                  <Text style={[styles.budgetLockedPreviewMetricValue, { color: colors.text }]}>
+                    {metric.value}
+                  </Text>
                 </View>
               </View>
             ))}
@@ -23668,6 +23807,8 @@ function BudgetLockedScreen({
           activeOpacity={0.9}
           onPress={onPress}
           style={[styles.budgetLockedScreenCta, { backgroundColor: premiumAccent }]}
+          accessibilityRole="button"
+          accessibilityLabel={t("premiumBudgetScreenCta")}
         >
           <Text style={styles.budgetLockedScreenCtaText}>
             {t("premiumBudgetScreenCta")}
@@ -26062,7 +26203,7 @@ function TycoonAutosaveHungryModal({
       tension: 100,
       useNativeDriver: true,
     }).start();
-    const loop = Animated.loop(
+    const loop = createMotionLoop(
       Animated.sequence([
         Animated.timing(catPulse, {
           toValue: 1,
@@ -26417,6 +26558,7 @@ const FeedScreen = React.memo(
     ref
   ) {
   const safeAreaInsets = safeUseSafeAreaInsets();
+  const { reduceMotion } = useMotionPreferences();
   const resolvedBudgetSpeechDataRef =
     typeof budgetSpeechDataRef === "undefined" ? null : budgetSpeechDataRef;
   const resolvedProgressSavedTotalUSD = Number.isFinite(progressSavedTotalUSD)
@@ -26481,7 +26623,8 @@ const FeedScreen = React.memo(
   const heroMoodHaloPulse = useRef(new Animated.Value(0)).current;
   const heroMoodHaloDrift = useRef(new Animated.Value(0)).current;
   const isFeedAppActive = feedAppState !== "background" && feedAppState !== "inactive";
-  const shouldAnimateVisibleHero = isFeedAppActive && heroPotentialVisible && !feedScrolling;
+  const shouldAnimateVisibleHero =
+    !reduceMotion && isFeedAppActive && heroPotentialVisible && !feedScrolling;
   const notifyFeedScrollState = useCallback(
     (next) => {
       if (feedScrollingRef.current === next) return;
@@ -26586,7 +26729,7 @@ const FeedScreen = React.memo(
       tension: 120,
       useNativeDriver: true,
     });
-    const pulseLoop = Animated.loop(
+    const pulseLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(addCoachPulse, {
           toValue: 1,
@@ -26758,7 +26901,7 @@ const FeedScreen = React.memo(
     if (!heroCarouselHintAllowed) return;
     if (heroExpanded) return;
     if (heroCarouselWiggleCompletedRef.current || heroCarouselWiggleDisabledRef.current) return;
-    const loop = Animated.loop(
+    const loop = createMotionLoop(
       Animated.sequence([
         Animated.timing(heroCarouselHintAnim, {
           toValue: -18,
@@ -27743,7 +27886,7 @@ const FeedScreen = React.memo(
       heroMoodHaloDrift.setValue(0);
       return;
     }
-    const pulse = Animated.loop(
+    const pulse = createMotionLoop(
       Animated.sequence([
         Animated.timing(heroMoodHaloPulse, {
           toValue: 1,
@@ -27759,7 +27902,7 @@ const FeedScreen = React.memo(
         }),
       ])
     );
-    const drift = Animated.loop(
+    const drift = createMotionLoop(
       Animated.sequence([
         Animated.timing(heroMoodHaloDrift, {
           toValue: 1,
@@ -27935,19 +28078,19 @@ const FeedScreen = React.memo(
       isGoalComplete
         ? isDarkMode
           ? {
-              background: "#07281C",
-              border: "rgba(134,255,192,0.4)",
-              glow: "rgba(46,182,125,0.35)",
-              accent: "#7BFFB8",
-              text: "#E9FFF5",
-              subtext: "rgba(233,255,245,0.8)",
-              badgeBg: "rgba(0,0,0,0.45)",
-              badgeBorder: "rgba(123,255,184,0.5)",
-              badgeText: "#9FFFCF",
-              barBg: "rgba(0,0,0,0.3)",
-              shadow: "#032015",
-              danger: "#FF9C9C",
-              success: "#9FFFCF",
+              background: "#0F211B",
+              border: colorWithAlpha(THEMES.dark.success, 0.32),
+              glow: colorWithAlpha(THEMES.dark.success, 0.16),
+              accent: THEMES.dark.success,
+              text: "#E1EEE8",
+              subtext: "rgba(225,238,232,0.74)",
+              badgeBg: "rgba(0,0,0,0.28)",
+              badgeBorder: colorWithAlpha(THEMES.dark.success, 0.28),
+              badgeText: "#A9D5C0",
+              barBg: "rgba(0,0,0,0.22)",
+              shadow: THEMES.dark.shadow,
+              danger: THEMES.dark.error,
+              success: THEMES.dark.success,
             }
           : {
               background: "#E7FFE8",
@@ -27966,19 +28109,19 @@ const FeedScreen = React.memo(
             }
         : isDarkMode
         ? {
-            background: "#2B1A00",
-            border: "rgba(255,214,143,0.5)",
-            glow: "rgba(255,184,0,0.25)",
-            accent: "#FFCF6B",
-            text: "#FFEED0",
-            subtext: "rgba(255,238,208,0.8)",
-            badgeBg: "rgba(0,0,0,0.35)",
-            badgeBorder: "rgba(255,223,165,0.5)",
-            badgeText: "#FFEED0",
-            barBg: "rgba(0,0,0,0.3)",
-            shadow: "#1B1100",
-            danger: "#FF8F8F",
-            success: "#8CFFC2",
+            background: THEMES.dark.surface,
+            border: colorWithAlpha(THEMES.dark.primary, 0.24),
+            glow: colorWithAlpha(THEMES.dark.primary, 0.08),
+            accent: THEMES.dark.primary,
+            text: THEMES.dark.text,
+            subtext: THEMES.dark.muted,
+            badgeBg: THEMES.dark.surfaceElevated,
+            badgeBorder: colorWithAlpha(THEMES.dark.primary, 0.22),
+            badgeText: "#DCC28E",
+            barBg: THEMES.dark.surfaceMuted,
+            shadow: THEMES.dark.shadow,
+            danger: THEMES.dark.error,
+            success: THEMES.dark.success,
           }
         : {
             background: "#FFF6D5",
@@ -30651,13 +30794,15 @@ const FeedScreen = React.memo(
                     outputRange: [6, 0, 6],
                     extrapolate: "clamp",
                   });
-                  const wiggleStyle = {
-                    transform: [
-                      { translateY: wiggleTranslateY },
-                      { rotate: wiggleRotate },
-                      { scale: wiggleScale },
-                    ],
-                  };
+                  const wiggleStyle = reduceMotion
+                    ? null
+                    : {
+                        transform: [
+                          { translateY: wiggleTranslateY },
+                          { rotate: wiggleRotate },
+                          { scale: wiggleScale },
+                        ],
+                      };
                   if (renderedRealIndex === 0) {
                     const isPrimarySavingsLoop = heroCarouselPremiumLocked
                       ? loopIndex === heroCarouselLoopIndexForReal(0)
@@ -30675,6 +30820,7 @@ const FeedScreen = React.memo(
                           <SavingsHeroCard
                             ref={isClone ? null : savingsHeroRef}
                             goldPalette={goldPalette}
+                            colors={colors}
                             isDarkMode={isDarkMode}
                             heroSpendCopy={heroSpendCopy}
                             heroRecentEvents={heroRecentEvents}
@@ -30784,6 +30930,29 @@ const FeedScreen = React.memo(
               </ScrollView>
             </Animated.View>
           </View>
+          <View
+            style={styles.heroCarouselPageIndicator}
+            accessible
+            accessibilityRole="text"
+            accessibilityLabel={t("homeCarouselPageA11y", {
+              current: heroCarouselIndex + 1,
+              total: heroCarouselRealCount,
+            })}
+          >
+            {Array.from({ length: heroCarouselRealCount }, (_, index) => (
+              <View
+                key={`hero-page-${index}`}
+                style={[
+                  styles.heroCarouselPageDot,
+                  {
+                    backgroundColor:
+                      index === heroCarouselIndex ? colors.text : colors.border,
+                  },
+                  index === heroCarouselIndex && styles.heroCarouselPageDotActive,
+                ]}
+              />
+            ))}
+          </View>
           {showDayTwoIncomePrompt && (
             <View
               style={[
@@ -30848,8 +31017,16 @@ const FeedScreen = React.memo(
                 style={[
                   styles.feedTemptationAddButton,
                   {
-                    backgroundColor: showTemptationAddCoachMark ? "#F5C869" : colors.text,
-                    borderColor: showTemptationAddCoachMark ? "#F5C869" : colors.text,
+                    backgroundColor: showTemptationAddCoachMark
+                      ? "#F5C869"
+                      : isDarkMode
+                      ? colors.surfaceElevated
+                      : colors.text,
+                    borderColor: showTemptationAddCoachMark
+                      ? "#F5C869"
+                      : isDarkMode
+                      ? colors.separator
+                      : colors.text,
                   },
                   showTemptationAddCoachMark && styles.feedTemptationAddButtonFocused,
                 ]}
@@ -30859,11 +31036,19 @@ const FeedScreen = React.memo(
                     : onNewTemptation
                 }
                 activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={t("fabNewTemptation")}
               >
                 <Text
                   style={[
                     styles.feedTemptationAddIcon,
-                    { color: showTemptationAddCoachMark ? "#3B2A00" : colors.background },
+                    {
+                      color: showTemptationAddCoachMark
+                        ? "#3B2A00"
+                        : isDarkMode
+                        ? colors.text
+                        : colors.background,
+                    },
                   ]}
                 >
                   +
@@ -30957,6 +31142,9 @@ const FeedScreen = React.memo(
                     ]}
                     onPress={() => handleFeedCategoryFilterPress(option.id)}
                     activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel={option.label}
+                    accessibilityState={{ selected: isActive }}
                   >
                     {!!option.emoji && (
                       <Text
@@ -31181,43 +31369,6 @@ const selectMainGoalWish = (wishes = [], activeGoalId = null) => {
   return list.find((wish) => wish?.status !== "done") || null;
 };
 
-const ProgressRing = React.memo(function ProgressRing({
-  size = 76,
-  strokeWidth = 8,
-  progress = 0,
-  trackColor = "rgba(0,0,0,0.08)",
-  progressColor = "#111",
-}) {
-  const normalized = Math.min(Math.max(progress, 0), 1);
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference * (1 - normalized);
-  return (
-    <Svg width={size} height={size}>
-      <SvgCircle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        stroke={trackColor}
-        strokeWidth={strokeWidth}
-        fill="none"
-      />
-      <SvgCircle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        stroke={progressColor}
-        strokeWidth={strokeWidth}
-        fill="none"
-        strokeDasharray={`${circumference} ${circumference}`}
-        strokeDashoffset={dashOffset}
-        strokeLinecap="round"
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
-    </Svg>
-  );
-});
-
 const SavingRatingRings = React.memo(function SavingRatingRings({
   size = 116,
   strokeWidth = 10,
@@ -31304,14 +31455,14 @@ const BudgetWidgetTutorialModal = React.memo(function BudgetWidgetTutorialModal(
   if (!visible) return null;
   const isDarkTheme = theme === "dark";
   const isProTheme = theme === PRO_THEME_ID;
-  const accent = isDarkTheme ? "#FFD06A" : isProTheme ? colors.primary : "#FFB24A";
-  const accentSoft = colorWithAlpha(accent, isDarkTheme ? 0.18 : isProTheme ? 0.24 : 0.22);
-  const accentBorder = colorWithAlpha(accent, isDarkTheme ? 0.45 : isProTheme ? 0.5 : 0.35);
+  const accent = isDarkTheme ? colors.warning : isProTheme ? colors.primary : "#B46D24";
+  const accentSoft = colorWithAlpha(accent, isDarkTheme ? 0.12 : isProTheme ? 0.12 : 0.1);
+  const accentBorder = colorWithAlpha(accent, isDarkTheme ? 0.3 : isProTheme ? 0.28 : 0.24);
   const trackColor = colorWithAlpha(colors.text, isDarkTheme ? 0.2 : isProTheme ? 0.2 : 0.12);
   const bars = [
-    { id: "food", emoji: "🍲", width: "72%", color: SAVE_ACTION_COLOR },
-    { id: "move", emoji: "🚕", width: "48%", color: "#6BA9FF" },
-    { id: "fun", emoji: "🎉", width: "58%", color: "#FF9F6A" },
+    { id: "food", emoji: "🍲", width: "72%", color: colors.success },
+    { id: "move", emoji: "🚕", width: "48%", color: colors.info },
+    { id: "fun", emoji: "🎉", width: "58%", color: colors.warning },
   ];
   const cards = [
     {
@@ -31751,11 +31902,91 @@ const BudgetLimitSliderRow = React.memo(function BudgetLimitSliderRow({
   );
 });
 
+const ProgressDestinationTabs = React.memo(function ProgressDestinationTabs({
+  selectedId = "overview",
+  onSelect = null,
+  t,
+  colors,
+  language = DEFAULT_LANGUAGE,
+  rewardBadgeCount = 0,
+  challengeBadgeCount = 0,
+}) {
+  const isRtlLayout = isRtlLanguage(language);
+  const safeRewardBadgeCount = Math.max(0, Number(rewardBadgeCount) || 0);
+  const safeChallengeBadgeCount = Math.max(0, Number(challengeBadgeCount) || 0);
+  const selectedDestinationId = ["goals", "insights"].includes(selectedId)
+    ? "overview"
+    : selectedId;
+  const badgeBackground = colors.error || SPEND_ACTION_COLOR;
+  const badgeForeground = getReadableTextColor(badgeBackground);
+  const destinations = [
+    { id: "overview", label: t("progressOverviewTab"), badgeCount: 0 },
+    { id: "challenges", label: t("challengeTabTitle"), badgeCount: safeChallengeBadgeCount },
+    { id: "rewards", label: t("progressHubRewardsTab"), badgeCount: safeRewardBadgeCount },
+  ];
+  return (
+    <View
+      style={[
+        styles.progressDestinationTabs,
+        isRtlLayout && styles.progressDestinationTabsRtl,
+        { backgroundColor: colors.surfaceMuted || colors.card },
+      ]}
+      accessibilityRole="tablist"
+    >
+      {destinations.map((destination) => {
+        const selected = selectedDestinationId === destination.id;
+        const badgeLabel =
+          destination.badgeCount > 9 ? "9+" : String(destination.badgeCount || "");
+        return (
+          <Pressable
+            key={destination.id}
+            style={[
+              styles.progressDestinationTab,
+              selected && { backgroundColor: colors.card },
+            ]}
+            onPress={() => {
+              if (!selected) onSelect?.(destination.id);
+            }}
+            accessibilityRole="tab"
+            accessibilityLabel={destination.label}
+            accessibilityState={{ selected }}
+          >
+            <View style={styles.progressDestinationTabContent}>
+              <Text
+                style={[
+                  styles.progressDestinationTabText,
+                  { color: selected ? colors.text : colors.muted },
+                ]}
+              >
+                {destination.label}
+              </Text>
+              {destination.badgeCount > 0 ? (
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.progressDestinationBadge,
+                    { backgroundColor: badgeBackground },
+                  ]}
+                >
+                  <Text style={[styles.progressDestinationBadgeText, { color: badgeForeground }]}>
+                    {badgeLabel}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+});
+
 const ProgressScreen = React.memo(function ProgressScreen({
   wishes,
   currency = DEFAULT_PROFILE.currency,
   t,
   colors,
+  theme = DEFAULT_THEME,
   onRemoveWish,
   primaryGoals = [],
   onGoalLongPress = null,
@@ -31823,14 +32054,15 @@ const ProgressScreen = React.memo(function ProgressScreen({
   contentBottomPadding = 0,
   topInset = 0,
   keyboardOffset = 0,
-  progressHubPane = "progress",
-  onProgressHubPaneChange = null,
+  progressSection = "overview",
+  onProgressSectionChange = null,
   rewardBadgeCount = 0,
   challengeRewardBadgeCount = 0,
 }) {
   const isDarkTheme = colors.background === THEMES.dark.background;
+  const isRtlLayout = isRtlLanguage(language);
   const safeAreaInsets = safeUseSafeAreaInsets();
-  const budgetLimitWarningColor = isDarkTheme ? "#FFD59A" : "#F6C16B";
+  const budgetLimitWarningColor = colors.warning;
   const budgetLockedState = !isPremiumUser || !budgetAutoEnabled;
   const progressPremiumLocked = !isPremiumUser;
   const budgetPremiumAccent = resolvePremiumUiAccent({ isDark: isDarkTheme });
@@ -31841,12 +32073,6 @@ const ProgressScreen = React.memo(function ProgressScreen({
       : colorWithAlpha(budgetPremiumAccent, isDarkTheme ? 0.24 : 0.16);
   const resolvedBudgetSpeechDataRef =
     typeof budgetSpeechDataRef === "undefined" ? null : budgetSpeechDataRef;
-  const progressHubRewardBadgeCount = Math.max(0, Number(rewardBadgeCount) || 0);
-  const progressHubChallengeBadgeCount = Math.max(0, Number(challengeRewardBadgeCount) || 0);
-  const rewardTabBadgeLabel =
-    progressHubRewardBadgeCount > 99 ? "99+" : String(progressHubRewardBadgeCount);
-  const challengeTabBadgeLabel =
-    progressHubChallengeBadgeCount > 99 ? "99+" : String(progressHubChallengeBadgeCount);
   const [impulseExpanded, setImpulseExpanded] = useState(false);
   const handleImpulseToggle = useCallback(() => {
     runLayoutAnimation();
@@ -31931,14 +32157,6 @@ const ProgressScreen = React.memo(function ProgressScreen({
     convertToCurrency(Math.max(goalTargetUSD - goalSavedUSD, 0), currency),
     currency
   );
-  const goalTargetRingTypography = useMemo(() => {
-    const compact = String(goalTargetLabel || "").replace(/\s+/g, "");
-    const glyphCount = Array.from(compact).length;
-    if (glyphCount <= 5) return { fontSize: 14, lineHeight: 18 };
-    if (glyphCount <= 7) return { fontSize: 12, lineHeight: 16 };
-    if (glyphCount <= 9) return { fontSize: 11, lineHeight: 14 };
-    return { fontSize: 10, lineHeight: 13 };
-  }, [goalTargetLabel]);
   const coinEntries = useMemo(() => buildHealthCoinEntries(healthPoints), [healthPoints]);
   const hasCoinInventory = coinEntries.some((entry) => entry.count > 0);
   const activeChallenges = challenges.filter(
@@ -31960,6 +32178,27 @@ const ProgressScreen = React.memo(function ProgressScreen({
       : 0;
   const activeChallengeActionEnabled =
     activeChallenge?.canClaim || activeChallenge?.canStart || false;
+  const activeChallengeActionBackground = activeChallenge?.canClaim
+    ? SAVE_ACTION_COLOR
+    : colors.text;
+  const activeChallengeActionForeground = resolveForegroundForColor(
+    activeChallengeActionBackground
+  );
+  const claimableChallengeCount = Math.max(0, Number(challengeRewardBadgeCount) || 0);
+  const challengeAccent = colors.primary || colors.text;
+  const challengeAccentForeground =
+    colors.onPrimary || resolveForegroundForColor(challengeAccent);
+  const insightsAccent = resolvePremiumUiAccent({ isDark: isDarkTheme, themeId: theme });
+  const insightsAccentForeground = resolveForegroundForColor(insightsAccent);
+  const insightsTextAccent =
+    theme === PRO_THEME_ID && !isDarkTheme ? "#6B21A8" : insightsAccent;
+  const insightsSurface =
+    Platform.OS === "android"
+      ? blendColors(colors.card || "#FFFFFF", insightsAccent, isDarkTheme ? 0.3 : 0.16)
+      : colorWithAlpha(insightsAccent, isDarkTheme ? 0.2 : 0.1);
+  const handleOverviewInsightsPress = useCallback(() => {
+    onProgressSectionChange?.("insights");
+  }, [onProgressSectionChange]);
   const progressScreenMountedRef = useRef(false);
   useEffect(() => {
     if (!progressScreenMountedRef.current) {
@@ -33388,6 +33627,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
                     coinColors={primaryJarData.coinColors}
                     showProgressMarker
                     progressLabel={`${progressPercent}%`}
+                    isDarkTheme={isDarkTheme}
                     style={styles.primaryGoalJarGraphic}
                   />
                   <View
@@ -33571,9 +33811,12 @@ const ProgressScreen = React.memo(function ProgressScreen({
   const renderChallengeCard = useCallback(
     (challenge) => {
       const actionPalette = challenge.canClaim
-        ? { background: SAVE_ACTION_COLOR, text: "#fff" }
+        ? {
+            background: SAVE_ACTION_COLOR,
+            text: resolveForegroundForColor(SAVE_ACTION_COLOR),
+          }
         : challenge.canStart
-        ? { background: colors.text, text: colors.background }
+        ? { background: colors.text, text: resolveForegroundForColor(colors.text) }
         : { background: colors.border, text: colors.muted };
       const confirmAccept = () => {
         Alert.alert(
@@ -33634,16 +33877,13 @@ const ProgressScreen = React.memo(function ProgressScreen({
           </View>
           <View style={styles.challengeHeader}>
             <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
-            <View style={{ flex: 1, gap: 4 }}>
+            <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
               <Text
                 style={[styles.challengeTitle, { color: colors.text }]}
-                numberOfLines={2}
-                adjustsFontSizeToFit={Platform.OS !== "android"}
-                minimumFontScale={Platform.OS === "android" ? undefined : 0.9}
               >
                 {challenge.title}
               </Text>
-              <Text style={[styles.challengeDesc, { color: colors.muted }]} numberOfLines={3}>
+              <Text style={[styles.challengeDesc, { color: colors.muted }]}>
                 {challenge.description}
               </Text>
               {challenge.potentialSavingsLabel ? (
@@ -33682,12 +33922,28 @@ const ProgressScreen = React.memo(function ProgressScreen({
               activeOpacity={0.9}
               disabled={!isActionEnabled}
               onPress={handleActionPress}
+              accessibilityRole="button"
+              accessibilityLabel={challenge.actionLabel}
+              accessibilityState={{ disabled: !isActionEnabled }}
             >
               <Text style={[styles.challengeActionText, { color: actionPalette.text }]}>
                 {challenge.actionLabel}
               </Text>
             </TouchableOpacity>
           )}
+          {isSwipeEnabled ? (
+            <TouchableOpacity
+              style={[styles.challengeCancelButton, { borderColor: colors.border }]}
+              activeOpacity={0.82}
+              onPress={confirmCancel}
+              accessibilityRole="button"
+              accessibilityLabel={t("challengeCancelAction")}
+            >
+              <Text style={[styles.challengeCancelButtonText, { color: colors.muted }]}>
+                {t("challengeCancelAction")}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       );
       if (isSwipeEnabled) {
@@ -33763,7 +34019,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
           <View style={styles.dailyChallengeEmojiPill}>
             <Text style={styles.dailyChallengeEmojiText}>{dailyChallenge.emoji || "✨"}</Text>
           </View>
-          <View style={{ flex: 1, gap: 2 }}>
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <Text style={[styles.dailyChallengeWidgetTitle, { color: colors.text }]}>
               {t("dailyChallengeWidgetTitle")}
             </Text>
@@ -35255,51 +35511,50 @@ const ProgressScreen = React.memo(function ProgressScreen({
           {t("progressTabSubtitle")}
         </Text>
       </View>
-      <View style={styles.rewardsTabs}>
-        {[
-          { id: "progress", label: t("progressHubProgressTab") },
-          { id: "rewards", label: t("progressHubRewardsTab") },
-        ].map((tab) => {
-          const isActive = progressHubPane === tab.id;
-          const showChallengeTabBadge = tab.id === "progress" && progressHubChallengeBadgeCount > 0;
-          const showRewardTabBadge = tab.id === "rewards" && progressHubRewardBadgeCount > 0;
-          const showTabBadge = showChallengeTabBadge || showRewardTabBadge;
-          const tabBadgeLabel = showChallengeTabBadge ? challengeTabBadgeLabel : rewardTabBadgeLabel;
-          return (
-            <TouchableOpacity
-              key={tab.id}
-              style={[
-                styles.rewardsTabButton,
-                {
-                  backgroundColor: isActive ? colors.text : "transparent",
-                  borderColor: isActive ? colors.text : colors.border,
-                },
-              ]}
-              activeOpacity={0.85}
-              onPress={() => {
-                if (!isActive) {
-                  onProgressHubPaneChange?.(tab.id);
-                }
-              }}
-            >
-              <Text
-                style={[
-                  styles.rewardsTabText,
-                  { color: isActive ? colors.background : colors.text },
-                ]}
-              >
-                {tab.label}
-              </Text>
-              {showTabBadge ? (
-                <View style={styles.rewardsTabBadgeFloating}>
-                  <Text style={styles.rewardsTabBadgeText}>{tabBadgeLabel}</Text>
-                </View>
-              ) : null}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      <ProgressDestinationTabs
+        selectedId={progressSection}
+        onSelect={onProgressSectionChange}
+        t={t}
+        colors={colors}
+        language={language}
+        rewardBadgeCount={rewardBadgeCount}
+        challengeBadgeCount={challengeRewardBadgeCount}
+      />
+      {["goals", "insights"].includes(progressSection) ? (
+        <Pressable
+          style={styles.progressDetailHeader}
+          onPress={() => onProgressSectionChange?.("overview")}
+          accessibilityRole="button"
+          accessibilityLabel={t("onboardingBack")}
+        >
+          <View
+            style={[
+              styles.progressDetailBackIcon,
+              { backgroundColor: colors.surfaceMuted || colors.card },
+            ]}
+          >
+            <Text style={[styles.progressDetailBackGlyph, { color: colors.text }]}>‹</Text>
+          </View>
+          <View style={styles.progressDetailHeaderText}>
+            <Text style={[styles.progressDetailTitle, { color: colors.text }]}>
+              {progressSection === "goals" ? t("progressGoalsTitle") : t("progressInsightsTab")}
+            </Text>
+            <Text style={[styles.progressDetailSubtitle, { color: colors.muted }]}>
+              {progressSection === "goals"
+                ? t("wishlistSummary", { amount: totalTarget })
+                : t("progressOverviewInsightsHint")}
+            </Text>
+          </View>
+        </Pressable>
+      ) : null}
 
+      <View
+        style={
+          progressSection === "insights"
+            ? styles.progressSectionGroup
+            : styles.progressSectionHidden
+        }
+      >
       <TouchableOpacity
         style={[
           styles.subscriptionWidgetCard,
@@ -35426,10 +35681,102 @@ const ProgressScreen = React.memo(function ProgressScreen({
           </Text>
         </View>
       </TouchableOpacity>
+      </View>
 
-      <View style={styles.progressHeroGrid}>
+      <View
+        style={
+          progressSection === "overview"
+            ? styles.progressSectionGroup
+            : styles.progressSectionHidden
+        }
+      >
+      <TouchableOpacity
+        style={[
+          styles.progressInsightsSpotlight,
+          {
+            backgroundColor: insightsSurface,
+            borderColor: colorWithAlpha(insightsAccent, isDarkTheme ? 0.66 : 0.4),
+          },
+        ]}
+        activeOpacity={0.86}
+        onPress={handleOverviewInsightsPress}
+        accessibilityRole="button"
+        accessibilityLabel={t("progressInsightsTab")}
+        accessibilityHint={t("progressOverviewInsightsHint")}
+      >
+        <View style={styles.progressInsightsSpotlightHeader}>
+          <View
+            style={[
+              styles.progressInsightsSpotlightIcon,
+              { backgroundColor: insightsAccent },
+            ]}
+          >
+            <Text
+              style={[
+                styles.progressInsightsSpotlightIconGlyph,
+                { color: insightsAccentForeground },
+              ]}
+            >
+              ✦
+            </Text>
+          </View>
+          <View style={styles.progressInsightsSpotlightCopy}>
+            <View style={styles.progressInsightsSpotlightTitleRow}>
+              <Text style={[styles.progressInsightsSpotlightTitle, { color: colors.text }]}>
+                {t("progressInsightsTab")}
+              </Text>
+              <View
+                style={[
+                  styles.progressInsightsSpotlightBadge,
+                  { backgroundColor: colorWithAlpha(insightsAccent, isDarkTheme ? 0.28 : 0.14) },
+                ]}
+              >
+                <Text style={[styles.progressInsightsSpotlightBadgeText, { color: insightsTextAccent }]}>
+                  {t("themePro")}
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.progressInsightsSpotlightBody, { color: colors.text }]}>
+              {t("progressOverviewInsightsHint")}
+            </Text>
+          </View>
+          <Text style={[styles.progressInsightsSpotlightChevron, { color: insightsAccent }]}>
+            {isRtlLayout ? "‹" : "›"}
+          </Text>
+        </View>
+        <View style={styles.progressInsightsFeatureRow}>
+          {[
+            t("budgetWidgetTitle"),
+            t("subscriptionWidgetEyebrow"),
+            t("reportsInsightsTitle"),
+          ].map((label) => (
+            <View
+              key={label}
+              style={[
+                styles.progressInsightsFeatureChip,
+                { backgroundColor: colorWithAlpha(insightsAccent, isDarkTheme ? 0.24 : 0.12) },
+              ]}
+            >
+              <Text style={[styles.progressInsightsFeatureChipText, { color: insightsTextAccent }]}>
+                {label}
+              </Text>
+            </View>
+          ))}
+        </View>
+        <Text style={[styles.progressInsightsSpotlightStatus, { color: insightsTextAccent }]}>
+          {progressPremiumLocked
+            ? t("featureLockedPremiumLabel")
+            : t("premiumBalancePreviewTitle")}
+        </Text>
+      </TouchableOpacity>
+      <View
+        style={[
+          styles.progressOverviewSummary,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
         <TouchableOpacity
-          style={[styles.progressGoalCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          style={styles.progressOverviewGoalRow}
           activeOpacity={0.9}
           disabled={!activeGoalWish || !onGoalEdit}
           onPress={() => {
@@ -35437,89 +35784,188 @@ const ProgressScreen = React.memo(function ProgressScreen({
             onGoalEdit(activeGoalWish);
           }}
         >
-          <View style={styles.progressGoalHeader}>
-            <Text style={[styles.progressGoalTitle, { color: colors.text }]}>{t("progressGoalTitle")}</Text>
-            <Text style={styles.progressGoalEmoji}>{goalEmoji}</Text>
-          </View>
-          <Text style={[styles.progressGoalName, { color: colors.text }]} numberOfLines={2}>
-            {goalTitle}
-          </Text>
-          <Text
-            style={[styles.progressGoalMeta, { color: colors.muted }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit={Platform.OS !== "android"}
-            minimumFontScale={Platform.OS === "android" ? undefined : 0.85}
-            ellipsizeMode="tail"
-          >
-            {t("progressGoalRemaining", { amount: goalRemainingLabel })}
-          </Text>
-          <View style={styles.progressGoalRingRow}>
-            <View style={styles.progressGoalRingWrap}>
-              <ProgressRing
-                size={76}
-                progress={goalProgress}
-                trackColor={isDarkTheme ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)"}
-                progressColor={colors.text}
-              />
-              <View style={styles.progressGoalRingInner} pointerEvents="none">
-                <Text
-                  style={[
-                    styles.progressGoalTarget,
-                    goalTargetRingTypography,
-                    { color: colors.text },
-                  ]}
-                  numberOfLines={1}
-                  ellipsizeMode="clip"
-                >
-                  {goalTargetLabel}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.progressGoalRingText}>
-              <Text style={[styles.progressGoalPercent, { color: colors.text }]} numberOfLines={1}>
-                {`${Math.round(goalProgress * 100)}%`}
+          <View style={styles.progressOverviewGoalCopy}>
+            <View style={styles.progressOverviewGoalHeader}>
+              <Text style={[styles.progressOverviewSummaryLabel, { color: colors.muted }]}>
+                {t("progressGoalTitle")}
               </Text>
+              <Text style={styles.progressOverviewGoalEmoji}>{goalEmoji}</Text>
             </View>
+            <Text style={[styles.progressOverviewGoalName, { color: colors.text }]}>
+              {goalTitle}
+            </Text>
+            <Text style={[styles.progressOverviewGoalMeta, { color: colors.muted }]}>
+              {t("progressGoalRemaining", { amount: goalRemainingLabel })}
+            </Text>
+            <View
+              style={[
+                styles.progressOverviewGoalTrack,
+                { backgroundColor: colors.surfaceMuted || colors.border },
+              ]}
+            >
+              <View
+                style={[
+                  styles.progressOverviewGoalFill,
+                  { width: `${goalProgress * 100}%`, backgroundColor: insightsAccent },
+                ]}
+              />
+            </View>
+          </View>
+          <View style={styles.progressOverviewGoalProgress}>
+            <Text style={[styles.progressOverviewGoalPercent, { color: colors.text }]}>
+              {`${Math.round(goalProgress * 100)}%`}
+            </Text>
+            <Text style={[styles.progressOverviewGoalTarget, { color: colors.muted }]}>
+              {goalTargetLabel}
+            </Text>
           </View>
         </TouchableOpacity>
-        <View style={[styles.progressCoinCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.progressCoinHeader}>
-            <Text style={[styles.progressCoinTitle, { color: colors.text }]}>{t("freeDayHealthTitle")}</Text>
-            <Text style={styles.progressCoinEmoji}>🪙</Text>
+        <View style={[styles.progressOverviewDivider, { backgroundColor: colors.separator || colors.border }]} />
+        <View style={styles.progressOverviewCoinRow}>
+          <View
+            style={[
+              styles.progressOverviewCoinIcon,
+              { backgroundColor: colors.surfaceMuted || colors.background },
+            ]}
+          >
+            <Text style={styles.progressOverviewCoinGlyph}>🪙</Text>
           </View>
-          <Text style={[styles.progressCoinValue, { color: colors.text }]}>{healthPoints}</Text>
-          <Text style={[styles.progressCoinSubtitle, { color: colors.muted }]}>
-            {t("freeDayHealthSubtitle")}
-          </Text>
-          {hasCoinInventory ? (
-            <View style={styles.progressCoinRow}>
-              {coinEntries.map((entry) =>
-                entry.count ? (
-                  <View
-                    key={entry.id}
-                    style={[
-                      styles.progressCoinBadge,
-                      { borderColor: colors.border, backgroundColor: colors.background },
-                    ]}
-                  >
-                    {entry.asset ? (
-                      <Image source={entry.asset} style={styles.progressCoinImage} />
-                    ) : (
-                      <HealthCoinFallbackIcon
-                        tierId={entry.id}
-                        size={14}
-                        style={styles.progressCoinFallbackIcon}
-                      />
-                    )}
-                    <Text style={[styles.progressCoinCount, { color: colors.text }]}>×{entry.count}</Text>
-                  </View>
-                ) : null
-              )}
-            </View>
-          ) : null}
+          <View style={styles.progressOverviewCoinCopy}>
+            <Text style={[styles.progressOverviewSummaryLabel, { color: colors.muted }]}>
+              {t("freeDayHealthTitle")}
+            </Text>
+            <Text style={[styles.progressOverviewCoinSubtitle, { color: colors.text }]}>
+              {t("freeDayHealthSubtitle")}
+            </Text>
+            {hasCoinInventory ? (
+              <View style={styles.progressCoinRow}>
+                {coinEntries.map((entry) =>
+                  entry.count ? (
+                    <View
+                      key={entry.id}
+                      style={[
+                        styles.progressCoinBadge,
+                        { borderColor: colors.border, backgroundColor: colors.background },
+                      ]}
+                    >
+                      {entry.asset ? (
+                        <Image source={entry.asset} style={styles.progressCoinImage} />
+                      ) : (
+                        <HealthCoinFallbackIcon
+                          tierId={entry.id}
+                          size={14}
+                          style={styles.progressCoinFallbackIcon}
+                        />
+                      )}
+                      <Text style={[styles.progressCoinCount, { color: colors.text }]}>
+                        ×{entry.count}
+                      </Text>
+                    </View>
+                  ) : null
+                )}
+              </View>
+            ) : null}
+          </View>
+          <View style={styles.progressOverviewCoinValueWrap}>
+            <Text style={[styles.progressOverviewCoinValue, { color: colors.text }]}>
+              {healthPoints}
+            </Text>
+            <Text style={[styles.progressOverviewCoinValueLabel, { color: colors.muted }]}>
+              {t("freeDayHealthTitle")}
+            </Text>
+          </View>
         </View>
       </View>
+      <TouchableOpacity
+        style={[
+          styles.progressEarnCoinsPanel,
+          {
+            backgroundColor: colors.primarySurface || colors.card,
+            borderColor: colors.primaryBorder || colors.border,
+          },
+        ]}
+        activeOpacity={0.88}
+        onPress={() => onProgressSectionChange?.("challenges")}
+        accessibilityRole="button"
+        accessibilityLabel={t("progressEarnCoinsTitle")}
+      >
+        <View style={styles.progressEarnCoinsHeader}>
+          <View
+            style={[
+              styles.progressEarnCoinsIcon,
+              { backgroundColor: challengeAccent },
+            ]}
+          >
+            <Text style={styles.progressEarnCoinsIconGlyph}>🪙</Text>
+          </View>
+          <View style={styles.progressEarnCoinsCopy}>
+            <Text style={[styles.progressEarnCoinsTitle, { color: colors.text }]}>
+              {t("progressEarnCoinsTitle")}
+            </Text>
+            <Text style={[styles.progressEarnCoinsSubtitle, { color: colors.muted }]}>
+              {t("progressEarnCoinsSubtitle")}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.progressEarnCoinsFooter}>
+          <Text style={[styles.progressEarnCoinsStatus, { color: colors.text }]}>
+            {claimableChallengeCount > 0
+              ? t("progressEarnCoinsReady", { count: claimableChallengeCount })
+              : activeChallenge
+              ? activeChallenge.progressLabel
+              : t("progressEarnCoinsEmpty")}
+          </Text>
+          {claimableChallengeCount > 0 ? (
+            <View style={[styles.progressEarnCoinsBadge, { backgroundColor: colors.error }]}>
+              <Text
+                style={[
+                  styles.progressEarnCoinsBadgeText,
+                  { color: resolveForegroundForColor(colors.error) },
+                ]}
+              >
+                {claimableChallengeCount > 9 ? "9+" : claimableChallengeCount}
+              </Text>
+            </View>
+          ) : null}
+          <Text style={[styles.progressEarnCoinsChevron, { color: challengeAccent }]}>
+            {isRtlLayout ? "‹" : "›"}
+          </Text>
+        </View>
+      </TouchableOpacity>
+      <View
+        style={[
+          styles.progressOverviewLinks,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
+        <Pressable
+          style={styles.progressOverviewLink}
+          onPress={() => onProgressSectionChange?.("goals")}
+          accessibilityRole="button"
+          accessibilityLabel={t("progressGoalsTab")}
+        >
+          <View style={styles.progressOverviewLinkCopy}>
+            <Text style={[styles.progressOverviewLinkTitle, { color: colors.text }]}>
+              {t("progressGoalsTab")}
+            </Text>
+            <Text style={[styles.progressOverviewLinkSubtitle, { color: colors.muted }]}>
+              {t("wishlistSummary", { amount: totalTarget })}
+            </Text>
+          </View>
+          <Text style={[styles.progressOverviewLinkChevron, { color: colors.muted }]}>
+            {isRtlLayout ? "‹" : "›"}
+          </Text>
+        </Pressable>
+      </View>
+      </View>
 
+      <View
+        style={
+          progressSection === "insights"
+            ? styles.progressSectionGroup
+            : styles.progressSectionHidden
+        }
+      >
       <View
         style={[
           styles.budgetWidgetCard,
@@ -35832,7 +36278,15 @@ const ProgressScreen = React.memo(function ProgressScreen({
           </>
         )}
       </View>
+      </View>
 
+      <View
+        style={
+          progressSection === "insights"
+            ? styles.progressSectionGroup
+            : styles.progressSectionHidden
+        }
+      >
       {progressPremiumLocked ? (
         <PremiumLockedInsightCard
           colors={colors}
@@ -35965,7 +36419,50 @@ const ProgressScreen = React.memo(function ProgressScreen({
           )}
         </WeeklyCardWrap>
       )}
+      </View>
 
+      <View
+        style={
+          progressSection === "challenges"
+            ? styles.progressSectionGroup
+            : styles.progressSectionHidden
+        }
+      >
+      <View
+        style={[
+          styles.progressChallengesIntro,
+          {
+            backgroundColor: challengeAccent,
+          },
+        ]}
+      >
+        <View style={styles.progressChallengesIntroCopy}>
+          <Text style={[styles.progressChallengesIntroTitle, { color: challengeAccentForeground }]}>
+            {t("progressEarnCoinsTitle")}
+          </Text>
+          <Text
+            style={[
+              styles.progressChallengesIntroBody,
+              { color: colorWithAlpha(challengeAccentForeground, 0.82) },
+            ]}
+          >
+            {t("progressEarnCoinsSubtitle")}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.progressChallengesCoinBalance,
+            { backgroundColor: colorWithAlpha(challengeAccentForeground, 0.14) },
+          ]}
+        >
+          <Text style={[styles.progressChallengesCoinValue, { color: challengeAccentForeground }]}>
+            {healthPoints}
+          </Text>
+          <Text style={[styles.progressChallengesCoinLabel, { color: challengeAccentForeground }]}>
+            {t("freeDayHealthTitle")}
+          </Text>
+        </View>
+      </View>
       <View style={[styles.progressActiveChallenge, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.progressActiveChallengeHeader}>
           <Text style={[styles.progressActiveChallengeTitle, { color: colors.text }]}>
@@ -35982,10 +36479,10 @@ const ProgressScreen = React.memo(function ProgressScreen({
             <View style={styles.progressActiveChallengeRow}>
               <Text style={styles.challengeEmoji}>{activeChallenge.emoji}</Text>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.progressActiveChallengeName, { color: colors.text }]} numberOfLines={2}>
+                <Text style={[styles.progressActiveChallengeName, { color: colors.text }]}>
                   {activeChallenge.title}
                 </Text>
-                <Text style={[styles.progressActiveChallengeDesc, { color: colors.muted }]} numberOfLines={2}>
+                <Text style={[styles.progressActiveChallengeDesc, { color: colors.muted }]}>
                   {activeChallenge.description}
                 </Text>
                 {activeChallenge.potentialSavingsLabel ? (
@@ -36017,7 +36514,11 @@ const ProgressScreen = React.memo(function ProgressScreen({
             <TouchableOpacity
               style={[
                 styles.progressActiveChallengeButton,
-                { backgroundColor: activeChallengeActionEnabled ? colors.text : colors.border },
+                {
+                  backgroundColor: activeChallengeActionEnabled
+                    ? activeChallengeActionBackground
+                    : colors.border,
+                },
               ]}
               activeOpacity={0.9}
               disabled={!activeChallengeActionEnabled}
@@ -36043,10 +36544,38 @@ const ProgressScreen = React.memo(function ProgressScreen({
               <Text
                 style={[
                   styles.progressActiveChallengeButtonText,
-                  { color: activeChallengeActionEnabled ? colors.background : colors.muted },
+                  {
+                    color: activeChallengeActionEnabled
+                      ? activeChallengeActionForeground
+                      : colors.muted,
+                  },
                 ]}
               >
                 {activeChallenge.actionLabel}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.challengeCancelButton, { borderColor: colors.border }]}
+              activeOpacity={0.82}
+              onPress={() => {
+                Alert.alert(
+                  t("challengeCancelConfirmTitle"),
+                  t("challengeCancelConfirmMessage", { title: activeChallenge.title }),
+                  [
+                    { text: t("challengeCancelConfirmNo"), style: "cancel" },
+                    {
+                      text: t("challengeCancelConfirmYes"),
+                      style: "destructive",
+                      onPress: () => onChallengeCancel?.(activeChallenge.id),
+                    },
+                  ]
+                );
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={t("challengeCancelAction")}
+            >
+              <Text style={[styles.challengeCancelButtonText, { color: colors.muted }]}>
+                {t("challengeCancelAction")}
               </Text>
             </TouchableOpacity>
           </>
@@ -36056,7 +36585,15 @@ const ProgressScreen = React.memo(function ProgressScreen({
           </Text>
         )}
       </View>
+      </View>
 
+      <View
+        style={
+          progressSection === "insights"
+            ? styles.progressSectionGroup
+            : styles.progressSectionHidden
+        }
+      >
       {progressPremiumLocked ? (
         <PremiumLockedInsightCard
           colors={colors}
@@ -36315,7 +36852,15 @@ const ProgressScreen = React.memo(function ProgressScreen({
           onPress={onImpulseMapLockedPress}
         />
       )}
+      </View>
 
+      <View
+        style={
+          progressSection === "overview"
+            ? styles.progressSectionGroup
+            : styles.progressSectionHidden
+        }
+      >
       {showFreeDayCard ? (
         <FreeDayCard
           colors={colors}
@@ -36344,7 +36889,15 @@ const ProgressScreen = React.memo(function ProgressScreen({
           blurIntensity={5}
         />
       )}
+      </View>
 
+      <View
+        style={
+          progressSection === "goals"
+            ? styles.progressSectionGroup
+            : styles.progressSectionHidden
+        }
+      >
       <View style={styles.progressSectionHeader}>
         <Text style={[styles.progressSectionTitle, { color: colors.text }]}>{t("progressGoalsTitle")}</Text>
         <Text style={[styles.progressSectionSubtitle, { color: colors.muted }]}>
@@ -36462,6 +37015,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
                   progressLabel={miniGoalPercentLabel}
                   glassTint="#FFFFFF"
                   stroke={isDarkTheme ? "rgba(190,232,240,0.24)" : "rgba(72,120,145,0.24)"}
+                  isDarkTheme={isDarkTheme}
                   style={styles.progressGoalMiniJar}
                 />
                 <View
@@ -36486,14 +37040,11 @@ const ProgressScreen = React.memo(function ProgressScreen({
               <View style={styles.progressGoalMiniTextBlock}>
                 <View style={styles.progressGoalMiniTitleRow}>
                   <Text style={styles.progressGoalMiniEmoji}>{emoji}</Text>
-                  <Text
-                    style={[styles.progressGoalMiniTitle, { color: colors.text }]}
-                    numberOfLines={2}
-                  >
+                  <Text style={[styles.progressGoalMiniTitle, { color: colors.text }]}>
                     {title}
                   </Text>
                 </View>
-                <Text style={[styles.progressGoalMiniMeta, { color: colors.muted }]} numberOfLines={1}>
+                <Text style={[styles.progressGoalMiniMeta, { color: colors.muted }]}>
                   {miniGoalStatus}
                 </Text>
               </View>
@@ -36519,6 +37070,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
               forceCoinColors
               glassTint="#FFFFFF"
               stroke={isDarkTheme ? "rgba(190,232,240,0.22)" : "rgba(72,120,145,0.22)"}
+              isDarkTheme={isDarkTheme}
               style={styles.progressGoalMiniJar}
             />
             <View
@@ -36545,7 +37097,15 @@ const ProgressScreen = React.memo(function ProgressScreen({
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      </View>
 
+      <View
+        style={
+          progressSection === "challenges"
+            ? styles.progressSectionGroup
+            : styles.progressSectionHidden
+        }
+      >
       <View style={styles.progressSectionHeader}>
         <Text style={[styles.progressSectionTitle, { color: colors.text }]}>
           {t("challengeTabTitle")}
@@ -36563,6 +37123,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
             {t("rewardsEmpty")}
           </Text>
         )}
+      </View>
       </View>
       </ScrollView>
       <Modal
@@ -38278,7 +38839,7 @@ const FirstVisitScreenIntroModal = React.memo(function FirstVisitScreenIntroModa
       mass: 0.92,
       useNativeDriver: true,
     });
-    const glowLoop = Animated.loop(
+    const glowLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(introGlow, {
           toValue: 1,
@@ -38450,22 +39011,21 @@ const FeedSavingsIntroModal = React.memo(function FeedSavingsIntroModal({
   const introProgress = useRef(new Animated.Value(0)).current;
   const coinMotion = useRef(new Animated.Value(0)).current;
   const closingRef = useRef(false);
-  const isProTheme = theme === PRO_THEME_ID;
-  const isDarkSurface = colors.background === THEMES.dark.background || isProTheme;
-  const accent = colors.primary || (isDarkSurface ? "#8FC7FF" : "#3978C7");
-  const mintAccent = isDarkSurface ? "#7EF0C5" : "#0FA676";
-  const goldAccent = isDarkSurface ? "#FFD77A" : "#D28A1E";
+  const isDarkSurface = colors.appearance === "dark" || colors.background === THEMES.dark.background;
+  const accent = colors.primary || (isDarkSurface ? THEMES.dark.info : THEMES.light.info);
+  const mintAccent = colors.success || (isDarkSurface ? THEMES.dark.success : THEMES.light.success);
+  const goldAccent = colors.warning || (isDarkSurface ? THEMES.dark.warning : THEMES.light.warning);
   const cardBg = isDarkSurface
-    ? blendColors(colors.card || "#111827", accent, 0.08)
-    : "#F8FCFF";
-  const cardBorder = colorWithAlpha(accent, isDarkSurface ? 0.44 : 0.26);
+    ? blendColors(colors.card || THEMES.dark.card, accent, 0.05)
+    : colors.surface || colors.card;
+  const cardBorder = colorWithAlpha(accent, isDarkSurface ? 0.26 : 0.2);
   const visualBg = isDarkSurface
-    ? colorWithAlpha("#FFFFFF", 0.06)
-    : colorWithAlpha(accent, 0.08);
-  const visualBorder = colorWithAlpha(accent, isDarkSurface ? 0.28 : 0.16);
-  const decisionCardBg = isDarkSurface ? colorWithAlpha("#FFFFFF", 0.08) : "#FFFFFF";
+    ? colorWithAlpha("#FFFFFF", 0.045)
+    : colors.surfaceMuted || colorWithAlpha(accent, 0.06);
+  const visualBorder = colorWithAlpha(accent, isDarkSurface ? 0.18 : 0.14);
+  const decisionCardBg = isDarkSurface ? colorWithAlpha("#FFFFFF", 0.06) : colors.card;
   const decisionCardBorder = colorWithAlpha(colors.text, isDarkSurface ? 0.16 : 0.1);
-  const buttonTextColor = isDarkSurface ? "#08111F" : "#FFFFFF";
+  const buttonTextColor = colors.onPrimary || resolveForegroundForColor(accent);
   const steps = [
     {
       title: t("feedIntroStepBanksTitle"),
@@ -38485,7 +39045,7 @@ const FeedSavingsIntroModal = React.memo(function FeedSavingsIntroModal({
     {
       title: t("feedIntroStepBudgetTitle"),
       body: t("feedIntroStepBudgetBody"),
-      accent: isDarkSurface ? "#C4A5FF" : "#7957D5",
+      accent: colors.info || (isDarkSurface ? THEMES.dark.info : THEMES.light.info),
     },
   ];
   useEffect(() => {
@@ -38506,7 +39066,7 @@ const FeedSavingsIntroModal = React.memo(function FeedSavingsIntroModal({
       mass: 0.92,
       useNativeDriver: true,
     });
-    const coinLoop = Animated.loop(
+    const coinLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(coinMotion, {
           toValue: 1,
@@ -38623,13 +39183,13 @@ const FeedSavingsIntroModal = React.memo(function FeedSavingsIntroModal({
                     </View>
                     <Text style={[styles.feedIntroDecisionAmount, { color: colors.text }]}>$8</Text>
                     <View style={styles.feedIntroDecisionActions}>
-                      <View style={[styles.feedIntroDecisionButton, { backgroundColor: colorWithAlpha("#E75E57", 0.16), borderColor: colorWithAlpha("#E75E57", 0.38) }]}>
-                        <Text style={[styles.feedIntroDecisionButtonText, { color: isDarkSurface ? "#FFB2AD" : "#A82E28" }]} numberOfLines={1}>
+                      <View style={[styles.feedIntroDecisionButton, { backgroundColor: colorWithAlpha(colors.error, isDarkSurface ? 0.12 : 0.08), borderColor: colorWithAlpha(colors.error, 0.24) }]}>
+                        <Text style={[styles.feedIntroDecisionButtonText, { color: colors.error }]} numberOfLines={1}>
                           {t("feedIntroFlowSpend")}
                         </Text>
                       </View>
                       <View style={[styles.feedIntroDecisionButton, { backgroundColor: mintAccent, borderColor: mintAccent }]}>
-                        <Text style={[styles.feedIntroDecisionButtonText, { color: isDarkSurface ? "#062016" : "#FFFFFF" }]} numberOfLines={1}>
+                        <Text style={[styles.feedIntroDecisionButtonText, { color: resolveForegroundForColor(mintAccent) }]} numberOfLines={1}>
                           {t("feedIntroFlowSave")}
                         </Text>
                       </View>
@@ -38651,7 +39211,7 @@ const FeedSavingsIntroModal = React.memo(function FeedSavingsIntroModal({
                         style={[
                           styles.feedIntroCoin,
                           {
-                            backgroundColor: index === 1 ? goldAccent : "#FFD76A",
+                            backgroundColor: goldAccent,
                             left: index * 13,
                             top: index % 2 ? 12 : 0,
                           },
@@ -38660,8 +39220,8 @@ const FeedSavingsIntroModal = React.memo(function FeedSavingsIntroModal({
                     ))}
                   </Animated.View>
                   <View style={styles.feedIntroJarColumn}>
-                    <Animated.View style={[styles.feedIntroJarHalo, { backgroundColor: colorWithAlpha(mintAccent, 0.22), transform: [{ scale: pulseScale }] }]} />
-                    <View style={[styles.feedIntroJar, { borderColor: colorWithAlpha(mintAccent, 0.5) }]}>
+                    <Animated.View style={[styles.feedIntroJarHalo, { backgroundColor: colorWithAlpha(mintAccent, 0.14), transform: [{ scale: pulseScale }] }]} />
+                    <View style={[styles.feedIntroJar, { borderColor: colorWithAlpha(mintAccent, 0.32) }]}>
                       <View style={[styles.feedIntroJarFill, { backgroundColor: colorWithAlpha(mintAccent, 0.58), height: "64%" }]} />
                       <Text style={[styles.feedIntroJarText, { color: colors.text }]} numberOfLines={1}>
                         {t("feedIntroFlowJar")}
@@ -38673,7 +39233,7 @@ const FeedSavingsIntroModal = React.memo(function FeedSavingsIntroModal({
               <View style={styles.feedIntroStepList}>
                 {steps.map((step, index) => (
                   <View key={`feed_intro_step_${index}`} style={styles.feedIntroStepRow}>
-                    <View style={[styles.feedIntroStepMark, { backgroundColor: colorWithAlpha(step.accent, 0.18), borderColor: colorWithAlpha(step.accent, 0.44) }]}>
+                    <View style={[styles.feedIntroStepMark, { backgroundColor: colorWithAlpha(step.accent, 0.1), borderColor: colorWithAlpha(step.accent, 0.26) }]}>
                       <View style={[styles.feedIntroStepDot, { backgroundColor: step.accent }]} />
                     </View>
                     <View style={styles.feedIntroStepCopy}>
@@ -38731,6 +39291,7 @@ const PendingScreen = React.memo(function PendingScreen({
   topInset = 0,
 }) {
   const isDarkMode = colors.background === THEMES.dark.background;
+  const { reduceMotion } = useMotionPreferences();
   const curiousImage = catCuriousSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.curious;
   const [nowTick, setNowTick] = useState(Date.now());
   const [fridgeOpen, setFridgeOpen] = useState(false);
@@ -38842,6 +39403,11 @@ const PendingScreen = React.memo(function PendingScreen({
       fridgeIntroProgress.setValue(0);
       return undefined;
     }
+    if (reduceMotion) {
+      fridgeIntroProgress.setValue(1);
+      fridgeIntroGlow.setValue(0);
+      return undefined;
+    }
     fridgeIntroProgress.setValue(0);
     const entrance = Animated.spring(fridgeIntroProgress, {
       toValue: 1,
@@ -38850,7 +39416,7 @@ const PendingScreen = React.memo(function PendingScreen({
       mass: 0.92,
       useNativeDriver: true,
     });
-    const glowLoop = Animated.loop(
+    const glowLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(fridgeIntroGlow, {
           toValue: 1,
@@ -38872,13 +39438,18 @@ const PendingScreen = React.memo(function PendingScreen({
       entrance.stop();
       glowLoop.stop();
     };
-  }, [fridgeIntroGlow, fridgeIntroProgress, fridgeIntroVisible]);
+  }, [fridgeIntroGlow, fridgeIntroProgress, fridgeIntroVisible, reduceMotion]);
   useEffect(() => {
     if (!fridgeExtendModalState.visible) {
       fridgeExtendModalGlow.stopAnimation();
       fridgeExtendModalGlow.setValue(0);
       fridgeExtendModalProgress.stopAnimation();
       fridgeExtendModalProgress.setValue(0);
+      return undefined;
+    }
+    if (reduceMotion) {
+      fridgeExtendModalProgress.setValue(1);
+      fridgeExtendModalGlow.setValue(0);
       return undefined;
     }
     fridgeExtendModalProgress.setValue(0);
@@ -38889,7 +39460,7 @@ const PendingScreen = React.memo(function PendingScreen({
       mass: 0.9,
       useNativeDriver: true,
     });
-    const glowLoop = Animated.loop(
+    const glowLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(fridgeExtendModalGlow, {
           toValue: 1,
@@ -38915,22 +39486,28 @@ const PendingScreen = React.memo(function PendingScreen({
     fridgeExtendModalGlow,
     fridgeExtendModalProgress,
     fridgeExtendModalState.visible,
+    reduceMotion,
   ]);
   useEffect(() => {
+    if (reduceMotion) {
+      doorProgress.stopAnimation();
+      doorProgress.setValue(fridgeOpen ? 1 : 0);
+      return undefined;
+    }
     Animated.timing(doorProgress, {
       toValue: fridgeOpen ? 1 : 0,
       duration: fridgeOpen ? 640 : 520,
       easing: fridgeOpen ? Easing.out(Easing.cubic) : Easing.inOut(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [doorProgress, fridgeOpen]);
+  }, [doorProgress, fridgeOpen, reduceMotion]);
   useEffect(() => {
     if (fridgeOpen) {
       handlePulseAnim.stopAnimation();
       handlePulseAnim.setValue(0);
       return undefined;
     }
-    const loop = Animated.loop(
+    const loop = createMotionLoop(
       Animated.sequence([
         Animated.timing(handlePulseAnim, {
           toValue: 1,
@@ -38955,7 +39532,7 @@ const PendingScreen = React.memo(function PendingScreen({
       coldBreathAnim.setValue(0);
       return undefined;
     }
-    const loop = Animated.loop(
+    const loop = createMotionLoop(
       Animated.sequence([
         Animated.timing(coldBreathAnim, {
           toValue: 1,
@@ -39248,7 +39825,9 @@ const PendingScreen = React.memo(function PendingScreen({
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
     }
     playSound?.("tap");
-    Animated.sequence([
+    if (reduceMotion) {
+      handlePressAnim.setValue(0);
+    } else Animated.sequence([
       Animated.timing(handlePressAnim, {
         toValue: 1,
         duration: 90,
@@ -39265,7 +39844,7 @@ const PendingScreen = React.memo(function PendingScreen({
     if (nextOpen) {
       scrollRef?.current?.scrollTo?.({ y: 0, animated: true });
     }
-  }, [fridgeOpen, handlePressAnim, locked, logEvent, overdueCount, pendingCount, playSound, scrollRef]);
+  }, [fridgeOpen, handlePressAnim, locked, logEvent, overdueCount, pendingCount, playSound, reduceMotion, scrollRef]);
   const closeFridgeIntro = useCallback(
     (source = "cta") => {
       if (!fridgeIntroVisible || fridgeIntroClosingRef.current) return;
@@ -39488,6 +40067,8 @@ const PendingScreen = React.memo(function PendingScreen({
                   onPress={onExtend ? () => openFridgeExtendModal(item) : undefined}
                   disabled={!onExtend}
                   activeOpacity={onExtend ? 0.78 : 1}
+                  accessibilityRole={onExtend ? "button" : "text"}
+                  accessibilityLabel={`${t("pendingActionExtend")}: ${countdownLabel}`}
                 >
                   <Text style={[styles.fridgeCountdownText, { color: pillText }]}>{countdownLabel}</Text>
                 </TouchableOpacity>
@@ -39500,6 +40081,8 @@ const PendingScreen = React.memo(function PendingScreen({
               <TouchableOpacity
                 style={[styles.fridgeActionPrimary, { backgroundColor: SPEND_ACTION_COLOR }]}
                 onPress={() => onResolve(item, "spend")}
+                accessibilityRole="button"
+                accessibilityLabel={t("pendingActionWant")}
               >
                 <Text style={[styles.fridgeActionPrimaryText, { color: "#FFFFFF" }]}>
                   {t("pendingActionWant")}
@@ -39511,6 +40094,8 @@ const PendingScreen = React.memo(function PendingScreen({
                   { backgroundColor: SAVE_ACTION_COLOR },
                 ]}
                 onPress={() => onResolve(item, "decline")}
+                accessibilityRole="button"
+                accessibilityLabel={t("pendingActionDecline")}
               >
                 <Text style={[styles.fridgeActionPrimaryText, { color: "#FFFFFF" }]}>
                   {t("pendingActionDecline")}
@@ -39741,6 +40326,9 @@ const PendingScreen = React.memo(function PendingScreen({
               style={styles.fridgeHandleWrap}
               onPress={handleToggleFridge}
               hitSlop={{ top: 16, bottom: 16, left: 20, right: 44 }}
+              accessibilityRole="button"
+              accessibilityLabel={handleHint}
+              accessibilityState={{ expanded: fridgeOpen, disabled: locked }}
             >
               <Animated.View style={[styles.fridgeHandle, { backgroundColor: handleColor, transform: [{ scale: handleScale }] }]}>
                 <View style={[styles.fridgeHandleInner, { backgroundColor: handleInnerColor }]} />
@@ -41413,14 +42001,31 @@ const RewardsScreen = React.memo(function RewardsScreen({
   topInset = 0,
   titleKey = "purchasesTitle",
   subtitleKey = "purchasesSubtitle",
-  progressHubPane = null,
-  onProgressHubPaneChange = null,
+  onProgressSectionChange = null,
   rewardBadgeCount = 0,
   challengeRewardBadgeCount = 0,
 }) {
   const isRtlLayout = isRtlLanguage(language);
-  const rewardList = Array.isArray(achievements) ? achievements.filter(Boolean) : [];
-  const displayRewards = rewardsLocked ? rewardList.slice(0, 2) : rewardList;
+  const rewardList = useMemo(() => {
+    const getRewardPriority = (reward) => {
+      if (reward?.unlocked && !reward?.claimed) return 0;
+      if (reward?.unlocked) return 1;
+      return 2;
+    };
+    return (Array.isArray(achievements) ? achievements.filter(Boolean) : [])
+      .map((reward, index) => ({ reward, index }))
+      .sort((a, b) => {
+        const priorityDelta = getRewardPriority(a.reward) - getRewardPriority(b.reward);
+        if (priorityDelta !== 0) return priorityDelta;
+        const progressDelta = (Number(b.reward?.progress) || 0) - (Number(a.reward?.progress) || 0);
+        return progressDelta || a.index - b.index;
+      })
+      .map((entry) => entry.reward);
+  }, [achievements]);
+  const displayRewards = useMemo(
+    () => (rewardsLocked ? rewardList.slice(0, 2) : rewardList),
+    [rewardList, rewardsLocked]
+  );
   const challengeList = useMemo(() => {
     const list = Array.isArray(challenges) ? challenges.filter(Boolean) : [];
     return list
@@ -41434,12 +42039,6 @@ const RewardsScreen = React.memo(function RewardsScreen({
   }, [challenges]);
   const isDarkTheme = colors.background === THEMES.dark.background;
   const pane = activePane === "challenges" ? "challenges" : "rewards";
-  const progressHubRewardBadgeCount = Math.max(0, Number(rewardBadgeCount) || 0);
-  const progressHubChallengeBadgeCount = Math.max(0, Number(challengeRewardBadgeCount) || 0);
-  const rewardTabBadgeLabel =
-    progressHubRewardBadgeCount > 99 ? "99+" : String(progressHubRewardBadgeCount);
-  const challengeTabBadgeLabel =
-    progressHubChallengeBadgeCount > 99 ? "99+" : String(progressHubChallengeBadgeCount);
   const challengeSwipeCloserRef = useRef(null);
   const handleChallengeSwipeOpen = useCallback((closer) => {
     if (challengeSwipeCloserRef.current && challengeSwipeCloserRef.current !== closer) {
@@ -41466,9 +42065,12 @@ const RewardsScreen = React.memo(function RewardsScreen({
   const renderChallengeCard = (challenge) => {
     const isLocked = challenge.isLevelLocked;
     const actionPalette = challenge.canClaim && !isLocked
-      ? { background: SAVE_ACTION_COLOR, text: "#fff" }
+      ? {
+          background: SAVE_ACTION_COLOR,
+          text: resolveForegroundForColor(SAVE_ACTION_COLOR),
+        }
       : challenge.canStart && !isLocked
-      ? { background: colors.text, text: colors.background }
+      ? { background: colors.text, text: resolveForegroundForColor(colors.text) }
       : { background: colors.border, text: colors.muted };
     const confirmAccept = () => {
       Alert.alert(
@@ -41526,16 +42128,13 @@ const RewardsScreen = React.memo(function RewardsScreen({
         </View>
         <View style={styles.challengeHeader}>
           <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
-            <View style={{ flex: 1, gap: 4 }}>
+            <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
               <Text
                 style={[styles.challengeTitle, { color: colors.text }]}
-                numberOfLines={2}
-              adjustsFontSizeToFit
-              minimumFontScale={0.9}
-            >
-              {challenge.title}
+              >
+                {challenge.title}
               </Text>
-              <Text style={[styles.challengeDesc, { color: colors.muted }]} numberOfLines={3}>
+              <Text style={[styles.challengeDesc, { color: colors.muted }]}>
                 {challenge.description}
               </Text>
               {challenge.potentialSavingsLabel ? (
@@ -41574,12 +42173,28 @@ const RewardsScreen = React.memo(function RewardsScreen({
             activeOpacity={0.9}
             disabled={!isActionEnabled}
             onPress={handleActionPress}
+            accessibilityRole="button"
+            accessibilityLabel={challenge.actionLabel}
+            accessibilityState={{ disabled: !isActionEnabled }}
           >
             <Text style={[styles.challengeActionText, { color: actionPalette.text }]}>
               {challenge.actionLabel}
             </Text>
           </TouchableOpacity>
         )}
+        {isSwipeEnabled ? (
+          <TouchableOpacity
+            style={[styles.challengeCancelButton, { borderColor: colors.border }]}
+            activeOpacity={0.82}
+            onPress={confirmCancel}
+            accessibilityRole="button"
+            accessibilityLabel={t("challengeCancelAction")}
+          >
+            <Text style={[styles.challengeCancelButtonText, { color: colors.muted }]}>
+              {t("challengeCancelAction")}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     );
     if (isSwipeEnabled) {
@@ -41638,9 +42253,9 @@ const RewardsScreen = React.memo(function RewardsScreen({
             borderWidth: reward.unlocked ? 2 : 1,
             shadowOpacity: reward.unlocked ? 0.15 : 0,
             shadowColor: rewardPalette.border,
-            shadowOffset: { width: 0, height: reward.unlocked ? 6 : 0 },
-            shadowRadius: reward.unlocked ? 12 : 0,
-            elevation: reward.unlocked ? 4 : 0,
+            shadowOffset: { width: 0, height: reward.unlocked ? 3 : 0 },
+            shadowRadius: reward.unlocked ? 6 : 0,
+            elevation: reward.unlocked ? 2 : 0,
             paddingTop: reward.unlocked ? 34 : 20,
           },
         ]}
@@ -41774,7 +42389,7 @@ const RewardsScreen = React.memo(function RewardsScreen({
           <View style={styles.dailyChallengeEmojiPill}>
             <Text style={styles.dailyChallengeEmojiText}>{dailyChallenge.emoji || "✨"}</Text>
           </View>
-          <View style={{ flex: 1, gap: 2 }}>
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <Text style={[styles.dailyChallengeWidgetTitle, { color: colors.text }]}>
               {t("dailyChallengeWidgetTitle")}
             </Text>
@@ -41839,52 +42454,15 @@ const RewardsScreen = React.memo(function RewardsScreen({
           {t(subtitleKey)}
         </Text>
       </View>
-      {progressHubPane ? (
-        <View style={styles.rewardsTabs}>
-          {[
-            { id: "progress", label: t("progressHubProgressTab") },
-            { id: "rewards", label: t("progressHubRewardsTab") },
-          ].map((tab) => {
-            const isActive = progressHubPane === tab.id;
-            const showChallengeTabBadge = tab.id === "progress" && progressHubChallengeBadgeCount > 0;
-            const showRewardTabBadge = tab.id === "rewards" && progressHubRewardBadgeCount > 0;
-            const showTabBadge = showChallengeTabBadge || showRewardTabBadge;
-            const tabBadgeLabel = showChallengeTabBadge ? challengeTabBadgeLabel : rewardTabBadgeLabel;
-            return (
-              <TouchableOpacity
-                key={tab.id}
-                style={[
-                  styles.rewardsTabButton,
-                  {
-                    backgroundColor: isActive ? colors.text : "transparent",
-                    borderColor: isActive ? colors.text : colors.border,
-                  },
-                ]}
-                activeOpacity={0.85}
-                onPress={() => {
-                  if (!isActive) {
-                    onProgressHubPaneChange?.(tab.id);
-                  }
-                }}
-              >
-                <Text
-                  style={[
-                    styles.rewardsTabText,
-                    { color: isActive ? colors.background : colors.text },
-                  ]}
-                >
-                  {tab.label}
-                </Text>
-                {showTabBadge ? (
-                  <View style={styles.rewardsTabBadgeFloating}>
-                    <Text style={styles.rewardsTabBadgeText}>{tabBadgeLabel}</Text>
-                  </View>
-                ) : null}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      ) : null}
+      <ProgressDestinationTabs
+        selectedId="rewards"
+        onSelect={onProgressSectionChange}
+        t={t}
+        colors={colors}
+        language={language}
+        rewardBadgeCount={rewardBadgeCount}
+        challengeBadgeCount={challengeRewardBadgeCount}
+      />
       {tabItems.length > 1 && (
         <View style={styles.rewardsTabs}>
           {tabItems.map((tab) => {
@@ -41987,6 +42565,7 @@ const BudgetMoneyPile = React.memo(function BudgetMoneyPile({
   eventKey = "",
 }) {
   const isDebt = variant === "debt";
+  const { reduceMotion } = useMotionPreferences();
   const pulse = useRef(new Animated.Value(0)).current;
   const fallAnim = useRef(new Animated.Value(1)).current;
   const removeAnim = useRef(new Animated.Value(1)).current;
@@ -42066,6 +42645,16 @@ const BudgetMoneyPile = React.memo(function BudgetMoneyPile({
     previousAmountRef.current = normalizedAmount;
     previousEventKeyRef.current = nextEventKey;
     let active = true;
+    if (reduceMotion) {
+      pulse.setValue(1);
+      fallAnim.setValue(1);
+      removeAnim.setValue(1);
+      setVisualAmount(normalizedAmount);
+      setPileMotion(null);
+      return () => {
+        active = false;
+      };
+    }
     pulse.setValue(0);
     const pulseAnimation = Animated.spring(pulse, {
       toValue: 1,
@@ -42119,7 +42708,7 @@ const BudgetMoneyPile = React.memo(function BudgetMoneyPile({
     return () => {
       active = false;
     };
-  }, [eventKey, fallAnim, isDebt, normalizedAmount, pulse, removeAnim]);
+  }, [eventKey, fallAnim, isDebt, normalizedAmount, pulse, reduceMotion, removeAnim]);
 
   const pileScale = pulse.interpolate({
     inputRange: [0, 0.7, 1],
@@ -42299,6 +42888,17 @@ const BudgetScreen = React.memo(function BudgetScreen({
   const initialDebtUSD = Math.max(0, Number(normalizedLedger.debt.initialDebtUSD) || 0);
   const debtRemainingUSD = Math.max(0, initialDebtUSD - debtPaidUSD);
   const availableUSD = Math.max(0, Number(availableToAllocateUSD) || 0);
+  const isDarkTheme = colors.background === THEMES.dark.background;
+  const savingsAccent = colors.success || SAVE_ACTION_COLOR;
+  const debtAccent = colors.error || SPEND_ACTION_COLOR;
+  const paneAccent = pane === "debt" ? debtAccent : savingsAccent;
+  const paneActionForeground = resolveForegroundForColor(paneAccent);
+  const paneSoftSurface = colorWithAlpha(paneAccent, isDarkTheme ? 0.16 : 0.08);
+  const transferAccent = transferDraft.type === "debt" ? debtAccent : savingsAccent;
+  const transferActionForeground = resolveForegroundForColor(transferAccent);
+  const settingsAccent = colors.primary || colors.text;
+  const settingsActionForeground =
+    colors.onPrimary || resolveForegroundForColor(settingsAccent);
   const formatLocalAmount = useCallback(
     (valueUSD = 0) => formatCurrency(convertToCurrency(valueUSD || 0, currency), currency),
     [currency]
@@ -42560,7 +43160,9 @@ const BudgetScreen = React.memo(function BudgetScreen({
           },
           {
             label: copy("budgetDebtMonthlyLabel", "Monthly from refusals"),
-            value: recommendedMonthlyUSD ? formatLocalAmount(recommendedMonthlyUSD) : "—",
+            value: recommendedMonthlyUSD
+              ? formatLocalAmount(recommendedMonthlyUSD)
+              : copy("reportsEmptyShort", "No data"),
           },
           {
             label: copy("budgetDebtPayoffLabel", "Payoff"),
@@ -42569,7 +43171,7 @@ const BudgetScreen = React.memo(function BudgetScreen({
                 ? copy("budgetDebtPayoffBlocked", "increase payment")
                 : payoffProjection.months > 0
                 ? copy("budgetDebtPayoffMonths", "{{count}} mo", { count: String(payoffProjection.months) })
-                : "—",
+                : copy("reportsEmptyShort", "No data"),
           },
         ]
       : [
@@ -42583,7 +43185,9 @@ const BudgetScreen = React.memo(function BudgetScreen({
           },
           {
             label: copy("budgetLastTransferLabel", "Last transfer"),
-            value: latestTransfer ? formatLocalAmount(latestTransfer.amountUSD) : "—",
+            value: latestTransfer
+              ? formatLocalAmount(latestTransfer.amountUSD)
+              : copy("reportsEmptyShort", "No data"),
           },
         ];
 
@@ -42612,7 +43216,10 @@ const BudgetScreen = React.memo(function BudgetScreen({
             {t("purchasesSubtitle")}
           </Text>
         </View>
-        <View style={styles.rewardsTabs}>
+        <View
+          style={[styles.budgetPaneTabs, { backgroundColor: colors.surfaceMuted || colors.card }]}
+          accessibilityRole="tablist"
+        >
           {paneItems.map((item) => {
             const active = pane === item.id;
             return (
@@ -42621,14 +43228,22 @@ const BudgetScreen = React.memo(function BudgetScreen({
                 activeOpacity={0.86}
                 onPress={() => setPane(item.id)}
                 style={[
-                  styles.rewardsTabButton,
+                  styles.budgetPaneTabButton,
                   {
-                    backgroundColor: active ? colors.text : "transparent",
-                    borderColor: active ? colors.text : colors.border,
+                    backgroundColor: active ? paneAccent : "transparent",
+                    borderColor: active ? paneAccent : "transparent",
                   },
                 ]}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={item.label}
               >
-                <Text style={[styles.rewardsTabText, { color: active ? colors.background : colors.text }]}>
+                <Text
+                  style={[
+                    styles.budgetPaneTabText,
+                    { color: active ? paneActionForeground : colors.text },
+                  ]}
+                >
                   {item.label}
                 </Text>
               </TouchableOpacity>
@@ -42639,18 +43254,12 @@ const BudgetScreen = React.memo(function BudgetScreen({
           style={[
             styles.budgetVaultCard,
             {
-              backgroundColor:
-                pane === "debt"
-                  ? colorWithAlpha("#D73343", colors.background === THEMES.dark.background ? 0.18 : 0.08)
-                  : colors.card,
-              borderColor:
-                pane === "debt"
-                  ? colorWithAlpha("#D73343", colors.background === THEMES.dark.background ? 0.36 : 0.18)
-                  : colors.border,
+              backgroundColor: pane === "debt" ? paneSoftSurface : colors.card,
+              borderColor: colorWithAlpha(paneAccent, isDarkTheme ? 0.4 : 0.24),
             },
           ]}
         >
-          <Text style={[styles.budgetVaultKicker, { color: pane === "debt" ? "#D73343" : colors.muted }]}>
+          <Text style={[styles.budgetVaultKicker, { color: paneAccent }]}>
             {pane === "debt"
               ? copy("budgetDebtKicker", "Debt pressure")
               : copy("budgetSavingsKicker", "Real savings pile")}
@@ -42658,11 +43267,11 @@ const BudgetScreen = React.memo(function BudgetScreen({
           <Text
             style={[
               styles.budgetVaultAmount,
-              { color: pane === "debt" ? "#D73343" : colors.text },
+              { color: colors.text },
             ]}
             numberOfLines={1}
             adjustsFontSizeToFit
-            minimumFontScale={0.45}
+            minimumFontScale={0.72}
           >
             {formatLocalAmount(currentTotalUSD)}
           </Text>
@@ -42685,14 +43294,29 @@ const BudgetScreen = React.memo(function BudgetScreen({
                 )}
           </Text>
         </View>
-        <View style={styles.budgetStatGrid}>
-          {statusRows.map((row) => (
+        <View
+          style={[
+            styles.budgetSummaryPanel,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          {statusRows.map((row, index) => (
             <View
               key={row.label}
-              style={[styles.budgetStatCell, { backgroundColor: colors.card, borderColor: colors.border }]}
+              style={[
+                styles.budgetSummaryRow,
+                index < statusRows.length - 1
+                  ? { borderBottomColor: colors.separator || colors.border }
+                  : { borderBottomWidth: 0 },
+              ]}
             >
-              <Text style={[styles.budgetStatLabel, { color: colors.muted }]}>{row.label}</Text>
-              <Text style={[styles.budgetStatValue, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit>
+              <Text style={[styles.budgetSummaryLabel, { color: colors.muted }]}>{row.label}</Text>
+              <Text
+                style={[styles.budgetSummaryValue, { color: colors.text }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.78}
+              >
                 {row.value}
               </Text>
             </View>
@@ -42703,16 +43327,21 @@ const BudgetScreen = React.memo(function BudgetScreen({
             activeOpacity={0.88}
             onPress={openDebtSettings}
             style={[styles.budgetSetupCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            accessibilityRole="button"
+            accessibilityLabel={copy("budgetDebtSetupTitle", "Set your debt amount")}
           >
-            <Text style={[styles.budgetSetupTitle, { color: colors.text }]}>
-              {copy("budgetDebtSetupTitle", "Set your debt amount")}
-            </Text>
-            <Text style={[styles.budgetSetupText, { color: colors.muted }]}>
-              {copy(
-                "budgetDebtSetupBody",
-                "Add the current balance and optional APR. Almost will estimate a monthly payoff target from your resisted temptations."
-              )}
-            </Text>
+            <View style={styles.budgetSetupBody}>
+              <Text style={[styles.budgetSetupTitle, { color: colors.text }]}>
+                {copy("budgetDebtSetupTitle", "Set your debt amount")}
+              </Text>
+              <Text style={[styles.budgetSetupText, { color: colors.muted }]}>
+                {copy(
+                  "budgetDebtSetupBody",
+                  "Add the current balance and optional APR. Almost will estimate a monthly payoff target from your resisted temptations."
+                )}
+              </Text>
+            </View>
+            <Text style={[styles.budgetSetupChevron, { color: debtAccent }]}>›</Text>
           </TouchableOpacity>
         ) : null}
         <TouchableOpacity
@@ -42726,10 +43355,11 @@ const BudgetScreen = React.memo(function BudgetScreen({
           }}
           style={[
             styles.budgetPrimaryButton,
-            { backgroundColor: pane === "debt" ? "#D73343" : SAVE_ACTION_COLOR },
+            { backgroundColor: paneAccent },
           ]}
+          accessibilityRole="button"
         >
-          <Text style={styles.budgetPrimaryButtonText}>
+          <Text style={[styles.budgetPrimaryButtonText, { color: paneActionForeground }]}>
             {pane === "debt"
               ? copy("budgetDebtPayButton", "Pay down")
               : copy("budgetSavingsTopUpButton", "Top up")}
@@ -42740,6 +43370,8 @@ const BudgetScreen = React.memo(function BudgetScreen({
             activeOpacity={0.84}
             onPress={openDebtSettings}
             style={[styles.budgetSecondaryButton, { borderColor: colors.border }]}
+            accessibilityRole="button"
+            accessibilityLabel={copy("budgetDebtEditButton", "Edit debt plan")}
           >
             <Text style={[styles.budgetSecondaryButtonText, { color: colors.text }]}>
               {copy("budgetDebtEditButton", "Edit debt plan")}
@@ -42761,7 +43393,27 @@ const BudgetScreen = React.memo(function BudgetScreen({
           >
             <View pointerEvents="box-none" style={styles.budgetProofModalDock}>
               <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-                <View style={[styles.budgetProofModalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View
+                  style={[
+                    styles.budgetProofModalCard,
+                    {
+                      backgroundColor: colors.surfaceElevated || colors.card,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.budgetSheetHandle,
+                      { backgroundColor: colorWithAlpha(colors.muted, 0.42) },
+                    ]}
+                  />
+                  <ScrollView
+                    style={styles.budgetSheetScroll}
+                    contentContainerStyle={styles.budgetSheetContent}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                  >
                   <Text style={[styles.budgetProofModalTitle, { color: colors.text }]}>
                     {transferDraft.type === "debt"
                       ? copy("budgetDebtTransferTitle", "Confirm debt payment")
@@ -42773,24 +43425,34 @@ const BudgetScreen = React.memo(function BudgetScreen({
                       "Upload a bank transfer confirmation photo. You can hide sensitive details as long as the transfer details remain visible."
                     )}
                   </Text>
-                  <RNTextInput
-                    value={transferDraft.amount}
-                    onChangeText={(amount) =>
-                      setTransferDraft((prev) => ({
-                        ...prev,
-                        amount,
-                        proofImageUri: "",
-                        proofMatchedAmount: null,
-                      }))
-                    }
-                    placeholder={formatLocalAmount(Math.min(availableUSD, 100))}
-                    placeholderTextColor={colors.muted}
-                    keyboardType="decimal-pad"
-                    style={[
-                      styles.budgetAmountInput,
-                      { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
-                    ]}
-                  />
+                  <View style={styles.budgetFieldGroup}>
+                    <Text style={[styles.budgetFieldLabel, { color: colors.text }]}>
+                      {t("totalLabel")}
+                    </Text>
+                    <RNTextInput
+                      value={transferDraft.amount}
+                      onChangeText={(amount) =>
+                        setTransferDraft((prev) => ({
+                          ...prev,
+                          amount,
+                          proofImageUri: "",
+                          proofMatchedAmount: null,
+                        }))
+                      }
+                      placeholder={formatLocalAmount(Math.min(availableUSD, 100))}
+                      placeholderTextColor={colors.muted}
+                      keyboardType="decimal-pad"
+                      accessibilityLabel={t("totalLabel")}
+                      style={[
+                        styles.budgetAmountInput,
+                        {
+                          color: colors.text,
+                          borderColor: colors.border,
+                          backgroundColor: colors.surfaceMuted || colors.background,
+                        },
+                      ]}
+                    />
+                  </View>
                   <View style={styles.budgetProofButtons}>
                     <TouchableOpacity
                       activeOpacity={0.86}
@@ -42798,8 +43460,14 @@ const BudgetScreen = React.memo(function BudgetScreen({
                       onPress={() => handlePickTransferProof("camera")}
                       style={[
                         styles.budgetProofButton,
-                        { borderColor: colors.border, opacity: transferDraft.verifyingProof ? 0.55 : 1 },
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: colors.surfaceMuted || colors.background,
+                          opacity: transferDraft.verifyingProof ? 0.55 : 1,
+                        },
                       ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={copy("budgetProofCamera", "Camera")}
                     >
                       <Text style={[styles.budgetProofButtonText, { color: colors.text }]}>
                         {copy("budgetProofCamera", "Camera")}
@@ -42811,8 +43479,14 @@ const BudgetScreen = React.memo(function BudgetScreen({
                       onPress={() => handlePickTransferProof("library")}
                       style={[
                         styles.budgetProofButton,
-                        { borderColor: colors.border, opacity: transferDraft.verifyingProof ? 0.55 : 1 },
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: colors.surfaceMuted || colors.background,
+                          opacity: transferDraft.verifyingProof ? 0.55 : 1,
+                        },
                       ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={copy("budgetProofLibrary", "Gallery")}
                     >
                       <Text style={[styles.budgetProofButtonText, { color: colors.text }]}>
                         {copy("budgetProofLibrary", "Gallery")}
@@ -42827,7 +43501,7 @@ const BudgetScreen = React.memo(function BudgetScreen({
                       </Text>
                     </View>
                   ) : transferDraft.proofImageUri ? (
-                    <Text style={[styles.budgetProofStatusText, { color: SAVE_ACTION_COLOR }]}>
+                    <Text style={[styles.budgetProofStatusText, { color: savingsAccent }]}>
                       {copy("budgetProofMatched", "Confirmation accepted.")}
                     </Text>
                   ) : null}
@@ -42843,6 +43517,8 @@ const BudgetScreen = React.memo(function BudgetScreen({
                       activeOpacity={0.84}
                       onPress={closeTransfer}
                       style={[styles.budgetModalGhost, { borderColor: colors.border }]}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("profileCancel")}
                     >
                       <Text style={[styles.budgetModalGhostText, { color: colors.text }]}>
                         {t("profileCancel")}
@@ -42853,14 +43529,22 @@ const BudgetScreen = React.memo(function BudgetScreen({
                       onPress={submitTransfer}
                       style={[
                         styles.budgetModalSubmit,
-                        { backgroundColor: transferDraft.type === "debt" ? "#D73343" : SAVE_ACTION_COLOR },
+                        { backgroundColor: transferAccent },
                       ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={copy("budgetConfirmButton", "Confirm")}
                     >
-                      <Text style={styles.budgetModalSubmitText}>
+                      <Text
+                        style={[
+                          styles.budgetModalSubmitText,
+                          { color: transferActionForeground },
+                        ]}
+                      >
                         {copy("budgetConfirmButton", "Confirm")}
                       </Text>
                     </TouchableOpacity>
                   </View>
+                  </ScrollView>
                 </View>
               </TouchableWithoutFeedback>
             </View>
@@ -42881,48 +43565,103 @@ const BudgetScreen = React.memo(function BudgetScreen({
           >
             <View pointerEvents="box-none" style={styles.budgetProofModalDock}>
               <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-                <View style={[styles.budgetProofModalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View
+                  style={[
+                    styles.budgetProofModalCard,
+                    {
+                      backgroundColor: colors.surfaceElevated || colors.card,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.budgetSheetHandle,
+                      { backgroundColor: colorWithAlpha(colors.muted, 0.42) },
+                    ]}
+                  />
+                  <ScrollView
+                    style={styles.budgetSheetScroll}
+                    contentContainerStyle={styles.budgetSheetContent}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                  >
                   <Text style={[styles.budgetProofModalTitle, { color: colors.text }]}>
                     {copy("budgetDebtSettingsTitle", "Debt plan")}
                   </Text>
-                  <RNTextInput
-                    value={debtDraft.amount}
-                    onChangeText={(amount) => setDebtDraft((prev) => ({ ...prev, amount }))}
-                    placeholder={copy("budgetDebtAmountPlaceholder", "Debt amount")}
-                    placeholderTextColor={colors.muted}
-                    keyboardType="decimal-pad"
-                    style={[
-                      styles.budgetAmountInput,
-                      { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
-                    ]}
-                  />
-                  <RNTextInput
-                    value={debtDraft.apr}
-                    onChangeText={(apr) => setDebtDraft((prev) => ({ ...prev, apr }))}
-                    placeholder={copy("budgetDebtAprPlaceholder", "APR %, optional")}
-                    placeholderTextColor={colors.muted}
-                    keyboardType="decimal-pad"
-                    style={[
-                      styles.budgetAmountInput,
-                      { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
-                    ]}
-                  />
-                  <RNTextInput
-                    value={debtDraft.minPayment}
-                    onChangeText={(minPayment) => setDebtDraft((prev) => ({ ...prev, minPayment }))}
-                    placeholder={copy("budgetDebtMinPlaceholder", "Minimum monthly payment")}
-                    placeholderTextColor={colors.muted}
-                    keyboardType="decimal-pad"
-                    style={[
-                      styles.budgetAmountInput,
-                      { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
-                    ]}
-                  />
+                  <View style={styles.budgetFieldGroup}>
+                    <Text style={[styles.budgetFieldLabel, { color: colors.text }]}>
+                      {copy("budgetDebtAmountPlaceholder", "Debt amount")}
+                    </Text>
+                    <RNTextInput
+                      value={debtDraft.amount}
+                      onChangeText={(amount) => setDebtDraft((prev) => ({ ...prev, amount }))}
+                      placeholder={copy("budgetDebtAmountPlaceholder", "Debt amount")}
+                      placeholderTextColor={colors.muted}
+                      keyboardType="decimal-pad"
+                      accessibilityLabel={copy("budgetDebtAmountPlaceholder", "Debt amount")}
+                      style={[
+                        styles.budgetAmountInput,
+                        {
+                          color: colors.text,
+                          borderColor: colors.border,
+                          backgroundColor: colors.surfaceMuted || colors.background,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View style={styles.budgetFieldGroup}>
+                    <Text style={[styles.budgetFieldLabel, { color: colors.text }]}>
+                      {copy("budgetDebtAprPlaceholder", "APR %, optional")}
+                    </Text>
+                    <RNTextInput
+                      value={debtDraft.apr}
+                      onChangeText={(apr) => setDebtDraft((prev) => ({ ...prev, apr }))}
+                      placeholder={copy("budgetDebtAprPlaceholder", "APR %, optional")}
+                      placeholderTextColor={colors.muted}
+                      keyboardType="decimal-pad"
+                      accessibilityLabel={copy("budgetDebtAprPlaceholder", "APR %, optional")}
+                      style={[
+                        styles.budgetAmountInput,
+                        {
+                          color: colors.text,
+                          borderColor: colors.border,
+                          backgroundColor: colors.surfaceMuted || colors.background,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View style={styles.budgetFieldGroup}>
+                    <Text style={[styles.budgetFieldLabel, { color: colors.text }]}>
+                      {copy("budgetDebtMinPlaceholder", "Minimum monthly payment")}
+                    </Text>
+                    <RNTextInput
+                      value={debtDraft.minPayment}
+                      onChangeText={(minPayment) => setDebtDraft((prev) => ({ ...prev, minPayment }))}
+                      placeholder={copy("budgetDebtMinPlaceholder", "Minimum monthly payment")}
+                      placeholderTextColor={colors.muted}
+                      keyboardType="decimal-pad"
+                      accessibilityLabel={copy(
+                        "budgetDebtMinPlaceholder",
+                        "Minimum monthly payment"
+                      )}
+                      style={[
+                        styles.budgetAmountInput,
+                        {
+                          color: colors.text,
+                          borderColor: colors.border,
+                          backgroundColor: colors.surfaceMuted || colors.background,
+                        },
+                      ]}
+                    />
+                  </View>
                   <View style={styles.budgetProofModalActions}>
                     <TouchableOpacity
                       activeOpacity={0.84}
                       onPress={closeDebtSettings}
                       style={[styles.budgetModalGhost, { borderColor: colors.border }]}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("profileCancel")}
                     >
                       <Text style={[styles.budgetModalGhostText, { color: colors.text }]}>
                         {t("profileCancel")}
@@ -42931,13 +43670,21 @@ const BudgetScreen = React.memo(function BudgetScreen({
                     <TouchableOpacity
                       activeOpacity={0.9}
                       onPress={submitDebtSettings}
-                      style={[styles.budgetModalSubmit, { backgroundColor: "#D73343" }]}
+                      style={[styles.budgetModalSubmit, { backgroundColor: settingsAccent }]}
+                      accessibilityRole="button"
+                      accessibilityLabel={copy("budgetSavePlanButton", "Save plan")}
                     >
-                      <Text style={styles.budgetModalSubmitText}>
+                      <Text
+                        style={[
+                          styles.budgetModalSubmitText,
+                          { color: settingsActionForeground },
+                        ]}
+                      >
                         {copy("budgetSavePlanButton", "Save plan")}
                       </Text>
                     </TouchableOpacity>
                   </View>
+                  </ScrollView>
                 </View>
               </TouchableWithoutFeedback>
             </View>
@@ -43002,14 +43749,12 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const isEditing = editMode !== "none";
   const isEditingIdentity = isEditing;
   const isEditingSpend = isEditing;
+  const [profileSection, setProfileSection] = useState("overview");
   const isDarkTheme = theme === "dark";
   const isProTheme = theme === PRO_THEME_ID;
-  const safeAreaInsets = safeUseSafeAreaInsets();
-  const profileActionTopInset = useMemo(() => {
-    const safeTop = Math.max(Number(topInset) || 0, Number(safeAreaInsets.top) || 0);
-    return Math.max(0, safeTop - 4);
-  }, [safeAreaInsets.top, topInset]);
+  const { reduceMotion } = useMotionPreferences();
   const normalizedLanguageValue = normalizeLanguage(language || DEFAULT_LANGUAGE);
+  const isProfileRtlLayout = isRtlLanguage(normalizedLanguageValue);
   const isRomanceLocale = normalizedLanguageValue === "es" || normalizedLanguageValue === "fr";
   const reportsDisabled = !onReportsPress;
   const reportsLockedState = !!reportsLocked;
@@ -43097,6 +43842,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const profileCurrencyScrollRef = useRef(null);
   const profileCurrencyNudgeRan = useRef(false);
   useEffect(() => {
+    if (reduceMotion) return undefined;
     if (profileCurrencyNudgeRan.current) return undefined;
     profileCurrencyNudgeRan.current = true;
     let backTimeout;
@@ -43110,7 +43856,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
       clearTimeout(forwardTimeout);
       if (backTimeout) clearTimeout(backTimeout);
     };
-  }, []);
+  }, [reduceMotion]);
   useEffect(() => {
     const editingJustOpened = isEditingSpend && !profileEditingRef.current;
     const currencyChanged = isEditingSpend && profileCurrencyRef.current !== currentCurrency;
@@ -43318,6 +44064,18 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const profileNameText = profileNameDisplay || profileNamePlaceholder;
   const profileBioDisplay = profileBioText || profileBioPlaceholder;
   const profileBioColor = profileBioText ? colors.muted : colorWithAlpha(colors.muted, 0.7);
+  const profileIdentityReady = Boolean(profileNameDisplay && profileBioText);
+  const profileMoneyReady = Boolean(
+    monthlyIncomeDisplay || baselineLocalDisplay || customSpendAmountDisplay
+  );
+  const profileSetupVisible = !isEditing && (!profileIdentityReady || !profileMoneyReady);
+  const profileSetupCompletedCount = Number(profileIdentityReady) + Number(profileMoneyReady);
+  const profileSetupAccent = colors.primary || colors.text;
+  const profileSetupSurface = colorWithAlpha(
+    profileSetupAccent,
+    isDarkTheme ? 0.14 : isProTheme ? 0.1 : 0.055
+  );
+  const profileSetupBorder = colorWithAlpha(profileSetupAccent, isDarkTheme ? 0.34 : 0.18);
   const profileSubtitleAdjustments = useMemo(() => {
     if (!isRomanceLocale) return null;
     return {
@@ -43393,14 +44151,37 @@ const ProfileScreen = React.memo(function ProfileScreen({
     logEvent("profile_instagram_clicked");
     Linking.openURL(INSTAGRAM_URL).catch((error) => console.warn("instagram link", error));
   }, []);
+  const profileEditableAccent = colors.primary || colors.text;
+  const profileEditableIconSurface = colorWithAlpha(
+    profileEditableAccent,
+    isDarkTheme ? 0.2 : isProTheme ? 0.14 : 0.09
+  );
+  const customSpendSummary = [
+    customSpendAmountDisplay,
+    customSpendFrequency
+      ? `${t("customSpendFrequencyLabel")}: ${customSpendFrequency}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const customSpendSection = (
-    <View style={styles.profileSection}>
-      <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("customSpendTitle")}</Text>
-      {isEditingSpend ? (
-        <View style={{ gap: 10 }}>
+    isEditingSpend ? (
+      <View style={styles.profileEditableEditor}>
+        <View style={[styles.profileEditableHeader, isProfileRtlLayout && styles.profileRowRtl]}>
+          <View style={[styles.profileEditableIcon, { backgroundColor: profileEditableIconSurface }]}>
+            <Text style={styles.profileEditableIconText}>
+              {profile.customSpend?.emoji || "✦"}
+            </Text>
+          </View>
+          <Text style={[styles.profileEditableTitle, { color: colors.text }]}>
+            {t("customSpendTitle")}
+          </Text>
+        </View>
+        <View style={styles.profileEditableFields}>
           <TextInput
             style={[
               styles.profileInput,
+              styles.profileEditableInput,
               { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
             ]}
             value={customSpendInputs.title}
@@ -43411,6 +44192,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
           <TextInput
             style={[
               styles.profileInput,
+              styles.profileEditableInput,
               { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
             ]}
             value={customSpendInputs.amount}
@@ -43422,6 +44204,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
           <TextInput
             style={[
               styles.profileInput,
+              styles.profileEditableInput,
               { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
             ]}
             value={customSpendInputs.frequency}
@@ -43431,72 +44214,93 @@ const ProfileScreen = React.memo(function ProfileScreen({
             placeholderTextColor={colors.muted}
           />
         </View>
-      ) : profile.customSpend ? (
-        <View style={{ gap: 4 }}>
-          <Text style={[styles.profileSettingValue, { color: colors.text }]}>
-            {profile.customSpend.title}
+      </View>
+    ) : (
+      <TouchableOpacity
+        style={[styles.profileEditableRow, isProfileRtlLayout && styles.profileRowRtl]}
+        onPress={onEditPress}
+        disabled={!onEditPress}
+        activeOpacity={0.82}
+        accessibilityRole="button"
+        accessibilityLabel={t("customSpendTitle")}
+      >
+        <View style={[styles.profileEditableIcon, { backgroundColor: profileEditableIconSurface }]}>
+          <Text style={styles.profileEditableIconText}>{profile.customSpend?.emoji || "✦"}</Text>
+        </View>
+        <View style={styles.profileEditableBody}>
+          <Text style={[styles.profileEditableTitle, { color: colors.text }]}>
+            {t("customSpendTitle")}
           </Text>
-          {customSpendAmountDisplay && (
-            <Text style={[styles.profileHintText, { color: colors.muted }]}>
-              {t("customSpendAmountLabel")}: {customSpendAmountDisplay}
-            </Text>
-          )}
-          {customSpendFrequency ? (
-            <Text style={[styles.profileHintText, { color: colors.muted }]}>
-              {t("customSpendFrequencyLabel")}: {customSpendFrequency}
+          <Text
+            style={[
+              styles.profileEditableValue,
+              { color: profile.customSpend?.title ? colors.text : colors.muted },
+            ]}
+          >
+            {profile.customSpend?.title || t("customSpendHint")}
+          </Text>
+          {customSpendSummary ? (
+            <Text style={[styles.profileEditableMeta, { color: colors.muted }]}>
+              {customSpendSummary}
             </Text>
           ) : null}
         </View>
-      ) : (
-        <Text style={[styles.profileHintText, { color: colors.muted }]}>{t("customSpendHint")}</Text>
-      )}
-    </View>
+        <Text style={[styles.profileEditableChevron, { color: colors.muted }]}>
+          {isProfileRtlLayout ? "‹" : "›"}
+        </Text>
+      </TouchableOpacity>
+    )
   );
   const baselineSection = (
-    <View style={styles.profileSection}>
-      <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("baselineTitle")}</Text>
-      <View style={{ gap: 12 }}>
-        {isEditingSpend ? (
-          <Pressable onPress={() => onIncomeEntryOpen?.("profile")}>
-            <View style={{ gap: 4 }}>
-              <Text style={[styles.profileHintText, { color: colors.muted }]}>
+    isEditingSpend ? (
+      <View style={styles.profileEditableEditor}>
+        <View style={[styles.profileEditableHeader, isProfileRtlLayout && styles.profileRowRtl]}>
+          <View style={[styles.profileEditableIcon, { backgroundColor: profileEditableIconSurface }]}>
+            <Text style={[styles.profileEditableCurrencyIcon, { color: colors.text }]}>
+              {currentCurrency}
+            </Text>
+          </View>
+          <Text style={[styles.profileEditableTitle, { color: colors.text }]}>
+            {t("baselineTitle")}
+          </Text>
+        </View>
+        <View style={styles.profileEditableFields}>
+          <TouchableOpacity
+            style={[
+              styles.profileEditableFieldButton,
+              isProfileRtlLayout && styles.profileRowRtl,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+            onPress={() => onIncomeEntryOpen?.("profile")}
+            activeOpacity={0.82}
+            accessibilityRole="button"
+            accessibilityLabel={t("incomeEntryAmountLabel")}
+          >
+            <View style={styles.profileEditableBody}>
+              <Text style={[styles.profileEditableFieldLabel, { color: colors.muted }]}>
                 {t("incomeEntryAmountLabel")}
               </Text>
-              {monthlyIncomeDisplay ? (
-                <Text style={[styles.profileSettingValue, { color: colors.text }]}>
-                  {monthlyIncomeDisplay}
-                </Text>
-              ) : (
-                <Text style={[styles.profileHintText, { color: colors.muted }]}>
-                  {t("baselineIncomeHint")}
-                </Text>
-              )}
+              <Text
+                style={[
+                  styles.profileEditableFieldValue,
+                  { color: monthlyIncomeDisplay ? colors.text : colors.muted },
+                ]}
+              >
+                {monthlyIncomeDisplay || t("baselineIncomeHint")}
+              </Text>
             </View>
-          </Pressable>
-        ) : (
-          <View style={{ gap: 4 }}>
-            <Text style={[styles.profileHintText, { color: colors.muted }]}>
-              {t("incomeEntryAmountLabel")}
+            <Text style={[styles.profileEditableChevron, { color: colors.muted }]}>
+              {isProfileRtlLayout ? "‹" : "›"}
             </Text>
-            {monthlyIncomeDisplay ? (
-              <Text style={[styles.profileSettingValue, { color: colors.text }]}>
-                {monthlyIncomeDisplay}
-              </Text>
-            ) : (
-              <Text style={[styles.profileHintText, { color: colors.muted }]}>
-                {t("baselineIncomeHint")}
-              </Text>
-            )}
-          </View>
-        )}
-        {isEditingSpend ? (
-          <View style={{ gap: 6 }}>
-            <Text style={[styles.profileHintText, { color: colors.muted }]}>
+          </TouchableOpacity>
+          <View style={styles.profileEditableInputBlock}>
+            <Text style={[styles.profileEditableFieldLabel, { color: colors.muted }]}>
               {t("baselineSpendLabel")}
             </Text>
             <TextInput
               style={[
                 styles.profileInput,
+                styles.profileEditableInput,
                 { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
               ]}
               value={baselineInput}
@@ -43506,29 +44310,70 @@ const ProfileScreen = React.memo(function ProfileScreen({
               placeholderTextColor={colors.muted}
             />
           </View>
-        ) : (
-          <View style={{ gap: 4 }}>
-            <Text style={[styles.profileHintText, { color: colors.muted }]}>
-              {t("baselineSpendLabel")}
-            </Text>
-            {baselineLocalDisplay ? (
-              <Text style={[styles.profileSettingValue, { color: colors.text }]}>
-                {baselineLocalDisplay}
-              </Text>
-            ) : (
-              <Text style={[styles.profileHintText, { color: colors.muted }]}>
-                {t("baselineHint")}
-              </Text>
-            )}
-          </View>
-        )}
+        </View>
       </View>
-    </View>
+    ) : (
+      <TouchableOpacity
+        style={[styles.profileEditableRow, isProfileRtlLayout && styles.profileRowRtl]}
+        onPress={onEditPress}
+        disabled={!onEditPress}
+        activeOpacity={0.82}
+        accessibilityRole="button"
+        accessibilityLabel={t("baselineTitle")}
+      >
+        <View style={[styles.profileEditableIcon, { backgroundColor: profileEditableIconSurface }]}>
+          <Text style={[styles.profileEditableCurrencyIcon, { color: colors.text }]}>
+            {currentCurrency}
+          </Text>
+        </View>
+        <View style={styles.profileEditableBody}>
+          <Text style={[styles.profileEditableTitle, { color: colors.text }]}>{t("baselineTitle")}</Text>
+          <View style={styles.profileEditableMetrics}>
+            <View style={styles.profileEditableMetric}>
+              <Text style={[styles.profileEditableMetricLabel, { color: colors.muted }]}>
+                {t("incomeEntryAmountLabel")}
+              </Text>
+              <Text
+                style={[
+                  styles.profileEditableMetricValue,
+                  { color: monthlyIncomeDisplay ? colors.text : colors.muted },
+                ]}
+              >
+                {monthlyIncomeDisplay || t("baselineIncomeHint")}
+              </Text>
+            </View>
+            <View style={styles.profileEditableMetric}>
+              <Text style={[styles.profileEditableMetricLabel, { color: colors.muted }]}>
+                {t("baselineSpendLabel")}
+              </Text>
+              <Text
+                style={[
+                  styles.profileEditableMetricValue,
+                  { color: baselineLocalDisplay ? colors.text : colors.muted },
+                ]}
+              >
+                {baselineLocalDisplay || t("baselineHint")}
+              </Text>
+            </View>
+          </View>
+        </View>
+        <Text style={[styles.profileEditableChevron, { color: colors.muted }]}>
+          {isProfileRtlLayout ? "‹" : "›"}
+        </Text>
+      </TouchableOpacity>
+    )
   );
   const incomePaydaySection = (
-    <View style={styles.profileSection}>
-      <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("incomePaydayLabel")}</Text>
-      {isEditingSpend ? (
+    isEditingSpend ? (
+      <View style={styles.profileEditableEditor}>
+        <View style={[styles.profileEditableHeader, isProfileRtlLayout && styles.profileRowRtl]}>
+          <View style={[styles.profileEditableIcon, { backgroundColor: profileEditableIconSurface }]}>
+            <Text style={[styles.profileEditableDayIcon, { color: colors.text }]}>31</Text>
+          </View>
+          <Text style={[styles.profileEditableTitle, { color: colors.text }]}>
+            {t("incomePaydayLabel")}
+          </Text>
+        </View>
         <>
           <View style={styles.incomeCalendarGrid}>
             {incomeDayOptions.map((day) => {
@@ -43545,6 +44390,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
                   ]}
                   onPress={() => onFieldChange?.("incomePayday", day)}
                   activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${day}`}
+                  accessibilityState={{ selected: active }}
                 >
                   <Text
                     style={[
@@ -43562,12 +44410,32 @@ const ProfileScreen = React.memo(function ProfileScreen({
             {t("incomePaydayHint")}
           </Text>
         </>
-      ) : (
-        <Text style={[styles.profileSettingValue, { color: colors.text }]}>
-          {t("incomePaydayValue", { day: incomePayday })}
+      </View>
+    ) : (
+      <TouchableOpacity
+        style={[styles.profileEditableRow, isProfileRtlLayout && styles.profileRowRtl]}
+        onPress={onEditPress}
+        disabled={!onEditPress}
+        activeOpacity={0.82}
+        accessibilityRole="button"
+        accessibilityLabel={t("incomePaydayLabel")}
+      >
+        <View style={[styles.profileEditableIcon, { backgroundColor: profileEditableIconSurface }]}>
+          <Text style={[styles.profileEditableDayIcon, { color: colors.text }]}>31</Text>
+        </View>
+        <View style={styles.profileEditableBody}>
+          <Text style={[styles.profileEditableTitle, { color: colors.text }]}>
+            {t("incomePaydayLabel")}
+          </Text>
+          <Text style={[styles.profileEditableValue, { color: colors.text }]}>
+            {t("incomePaydayValue", { day: incomePayday })}
+          </Text>
+        </View>
+        <Text style={[styles.profileEditableChevron, { color: colors.muted }]}>
+          {isProfileRtlLayout ? "‹" : "›"}
         </Text>
-      )}
-    </View>
+      </TouchableOpacity>
+    )
   );
   const renderHistoryItem = useCallback(
     ({ item: entry, index }) => (
@@ -43621,6 +44489,14 @@ const ProfileScreen = React.memo(function ProfileScreen({
     setHistoryVisibleWindowMs((prev) => prev + PROFILE_HISTORY_PAGE_WINDOW_MS);
   }, []);
   const showProfileActions = isEditing || !!onReportsPress;
+  const profileSectionLabel =
+    profileSection === "settings"
+      ? t("profileSettingsTab")
+      : profileSection === "history"
+      ? t("profileHistoryTab")
+      : t("profileOverviewTab");
+  const profileSectionInactiveTextColor = blendColors(colors.muted, colors.text, 0.08);
+  const showProfileEditControl = isEditing || profileSection !== "history";
   return (
     <View
       style={[
@@ -43649,7 +44525,97 @@ const ProfileScreen = React.memo(function ProfileScreen({
         scrollEventThrottle={32}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.profileCard, { backgroundColor: colors.card }] }>
+        <View style={[styles.profileSectionToolbar, isProfileRtlLayout && styles.profileRowRtl]}>
+          <Text style={[styles.profileSectionToolbarTitle, { color: colors.text }]}>
+            {profileSectionLabel}
+          </Text>
+          {showProfileEditControl ? (
+            <View
+              style={[
+                styles.profileSectionToolbarActions,
+                isProfileRtlLayout && styles.profileRowRtl,
+              ]}
+            >
+              {isEditing && onCancelEdit ? (
+                <TouchableOpacity
+                  style={[styles.profileToolbarSecondary, { borderColor: colors.border }]}
+                  onPress={onCancelEdit}
+                  activeOpacity={0.82}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("profileCancel")}
+                >
+                  <Text style={[styles.profileToolbarSecondaryText, { color: colors.muted }]}>
+                    {t("profileCancel")}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity
+                style={[
+                  styles.profileToolbarPrimary,
+                  { backgroundColor: colors.text },
+                  (isEditing ? !onSaveEdit : !onEditPress) && styles.profileToolbarActionDisabled,
+                ]}
+                onPress={isEditing ? onSaveEdit : onEditPress}
+                disabled={isEditing ? !onSaveEdit : !onEditPress}
+                activeOpacity={0.86}
+                accessibilityRole="button"
+                accessibilityLabel={isEditing ? t("profileSave") : t("profileEdit")}
+              >
+                <Text style={[styles.profileToolbarPrimaryText, { color: colors.background }]}>
+                  {isEditing ? t("profileSave") : t("profileEdit")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
+        <View
+          style={[
+            styles.progressSectionTabs,
+            styles.profileSectionTabs,
+            isProfileRtlLayout && styles.profileSectionTabsRtl,
+            { backgroundColor: colors.surfaceMuted || colors.card },
+          ]}
+          accessibilityRole="tablist"
+        >
+          {[
+            { id: "overview", label: t("profileOverviewTab") },
+            { id: "settings", label: t("profileSettingsTab") },
+            { id: "history", label: t("profileHistoryTab") },
+          ].map((section) => {
+            const selected = profileSection === section.id;
+            return (
+              <Pressable
+                key={section.id}
+                style={[
+                  styles.progressSectionTab,
+                  styles.profileSectionTab,
+                  selected && { backgroundColor: colors.card },
+                ]}
+                onPress={() => setProfileSection(section.id)}
+                accessibilityRole="tab"
+                accessibilityLabel={section.label}
+                accessibilityState={{ selected }}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.progressSectionTabText,
+                    { color: selected ? colors.text : profileSectionInactiveTextColor },
+                  ]}
+                >
+                  {section.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <View
+          style={[
+            styles.profileCard,
+            { backgroundColor: colors.card },
+            profileSection !== "overview" && styles.progressSectionHidden,
+          ]}
+        >
           <View style={styles.profileMoodAura}>
             <MoodGradientBlock colors={profileMoodGradient} style={styles.profileMoodGradient}>
               <TouchableOpacity
@@ -43803,18 +44769,111 @@ const ProfileScreen = React.memo(function ProfileScreen({
             ))}
           </View>
 
+          {profileSetupVisible ? (
+            <View
+              style={[
+                styles.profileSetupPanel,
+                {
+                  backgroundColor: profileSetupSurface,
+                  borderColor: profileSetupBorder,
+                },
+              ]}
+            >
+              <View style={styles.profileSetupHeader}>
+                <View style={styles.profileSetupCopy}>
+                  <Text style={[styles.profileSetupTitle, { color: colors.text }]}>
+                    {t("profileSetupTitle")}
+                  </Text>
+                  <Text style={[styles.profileSetupBody, { color: colors.muted }]}>
+                    {t("profileSetupBody")}
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.profileSetupProgress,
+                    { backgroundColor: colors.card, borderColor: profileSetupBorder },
+                  ]}
+                >
+                  <Text style={[styles.profileSetupProgressText, { color: profileSetupAccent }]}>
+                    {profileSetupCompletedCount}/2
+                  </Text>
+                </View>
+              </View>
+
+              <View style={[styles.profileSetupSteps, { backgroundColor: colors.card }]}>
+                <TouchableOpacity
+                  style={[
+                    styles.profileSetupRow,
+                    styles.profileSetupRowDivider,
+                    { borderBottomColor: colors.border },
+                  ]}
+                  onPress={onEditPress}
+                  disabled={!onEditPress}
+                  activeOpacity={0.82}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("profileSetupIdentity")}
+                >
+                  <View
+                    style={[
+                      styles.profileSetupStepState,
+                      {
+                        backgroundColor: profileIdentityReady ? profileSetupAccent : profileSetupSurface,
+                        borderColor: profileSetupBorder,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.profileSetupStepStateText,
+                        { color: profileIdentityReady ? colors.onPrimary || colors.card : profileSetupAccent },
+                      ]}
+                    >
+                      {profileIdentityReady ? "✓" : "1"}
+                    </Text>
+                  </View>
+                  <Text style={[styles.profileSetupRowText, { color: colors.text }]} numberOfLines={2}>
+                    {t("profileSetupIdentity")}
+                  </Text>
+                  <Text style={[styles.profileSetupChevron, { color: colors.muted }]}>›</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.profileSetupRow}
+                  onPress={() => setProfileSection("settings")}
+                  activeOpacity={0.82}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("profileSetupMoney")}
+                >
+                  <View
+                    style={[
+                      styles.profileSetupStepState,
+                      {
+                        backgroundColor: profileMoneyReady ? profileSetupAccent : profileSetupSurface,
+                        borderColor: profileSetupBorder,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.profileSetupStepStateText,
+                        { color: profileMoneyReady ? colors.onPrimary || colors.card : profileSetupAccent },
+                      ]}
+                    >
+                      {profileMoneyReady ? "✓" : "2"}
+                    </Text>
+                  </View>
+                  <Text style={[styles.profileSetupRowText, { color: colors.text }]} numberOfLines={2}>
+                    {t("profileSetupMoney")}
+                  </Text>
+                  <Text style={[styles.profileSetupChevron, { color: colors.muted }]}>›</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
+
           {showProfileActions ? (
             <View style={styles.profileActions}>
-              {isEditing ? (
-                <TouchableOpacity
-                  style={[styles.profileActionSecondary, { borderColor: colors.border }]}
-                  onPress={onCancelEdit}
-                >
-                  <Text style={[styles.profileActionSecondaryText, { color: colors.muted }]}>
-                    {t("profileCancel")}
-                  </Text>
-                </TouchableOpacity>
-              ) : onReportsPress ? (
+              {onReportsPress ? (
                 <TouchableOpacity
                   style={[
                     styles.profileActionSecondary,
@@ -43903,10 +44962,29 @@ const ProfileScreen = React.memo(function ProfileScreen({
           ) : null}
         </View>
 
-        <View style={[styles.settingsCard, { backgroundColor: colors.card }] }>
-          {customSpendSection}
-          {baselineSection}
-          {incomePaydaySection}
+        <View
+          style={[
+            styles.settingsCard,
+            { backgroundColor: colors.card },
+            profileSection !== "settings" && styles.progressSectionHidden,
+          ]}
+        >
+          <View
+            style={[
+              styles.profileEditableGroup,
+              {
+                backgroundColor:
+                  colors.surfaceMuted || colorWithAlpha(colors.text, isDarkTheme ? 0.12 : 0.045),
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            {customSpendSection}
+            <View style={[styles.profileEditableDivider, { backgroundColor: colors.border }]} />
+            {baselineSection}
+            <View style={[styles.profileEditableDivider, { backgroundColor: colors.border }]} />
+            {incomePaydaySection}
+          </View>
 
           <View style={[styles.settingsDivider, { backgroundColor: colors.border }]} />
 
@@ -43946,6 +45024,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
                         })
                       }
                       activeOpacity={0.84}
+                      accessibilityRole="button"
+                      accessibilityLabel={option.label}
+                      accessibilityState={{ selected: active }}
                     >
                       <View style={[styles.themePreviewPair, { borderColor: previewBorder }]}>
                         <View
@@ -44001,6 +45082,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
                       },
                     ]}
                     onPress={() => onLanguageChange(lng)}
+                    accessibilityRole="button"
+                    accessibilityLabel={LANGUAGE_NATIVE_LABELS[lng] || t(getLanguageLabelKey(lng))}
+                    accessibilityState={{ selected: active }}
                   >
                     <Text
                       style={{
@@ -44039,6 +45123,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
                     },
                   ]}
                   onPress={() => onCurrencyChange?.(code)}
+                  accessibilityRole="button"
+                  accessibilityLabel={String(code || "").trim().toUpperCase()}
+                  accessibilityState={{ selected: currentCurrency === code }}
                 >
                   <Text
                     style={{
@@ -44082,6 +45169,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
             </View>
             <Pressable
               onPress={() => onSpendReductionToggle?.(!spendReducesSavings)}
+              accessibilityRole="switch"
+              accessibilityLabel={t("spendReductionLabel")}
+              accessibilityState={{ checked: spendReducesSavings }}
               style={[
                 styles.settingToggle,
                 {
@@ -44112,6 +45202,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
             </View>
             <Pressable
               onPress={() => onTycoonModeToggle?.(!tycoonModeEnabled)}
+              accessibilityRole="switch"
+              accessibilityLabel={t("tycoonModeLabel")}
+              accessibilityState={{ checked: tycoonModeEnabled }}
               style={[
                 styles.settingToggle,
                 {
@@ -44142,6 +45235,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
             </View>
             <Pressable
               onPress={() => onSoundToggle?.(!soundEnabled)}
+              accessibilityRole="switch"
+              accessibilityLabel={t("soundLabel")}
+              accessibilityState={{ checked: soundEnabled }}
               style={[
                 styles.settingToggle,
                 {
@@ -44167,13 +45263,16 @@ const ProfileScreen = React.memo(function ProfileScreen({
         {Platform.OS === "android" ? (
           <View style={styles.settingRow}>
             <View style={styles.settingRowContent}>
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={[styles.settingLabel, { color: colors.muted }]}>
                   {t("appsflyerAnalyticsLabel")}
                 </Text>
               </View>
               <Pressable
                 onPress={() => onAndroidAppsFlyerToggle?.(!androidAppsFlyerEnabled)}
+                accessibilityRole="switch"
+                accessibilityLabel={t("appsflyerAnalyticsLabel")}
+                accessibilityState={{ checked: androidAppsFlyerEnabled }}
                 style={[
                   styles.settingToggle,
                   {
@@ -44207,7 +45306,13 @@ const ProfileScreen = React.memo(function ProfileScreen({
         </TouchableOpacity>
         </View>
 
-        <View style={[styles.historyCard, { backgroundColor: colors.card }] }>
+        <View
+          style={[
+            styles.historyCard,
+            { backgroundColor: colors.card },
+            profileSection !== "history" && styles.progressSectionHidden,
+          ]}
+        >
           <Text style={[styles.historyTitle, { color: colors.text }]}>{t("historyTitle")}</Text>
           {visibleHistoryEntries.length === 0 ? (
             <Text style={[styles.historyEmpty, { color: colors.muted }]}>{t("historyEmpty")}</Text>
@@ -44248,6 +45353,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
           style={[
             styles.profileLinkButton,
             { borderColor: colors.border, backgroundColor: colors.card },
+            profileSection !== "settings" && styles.progressSectionHidden,
           ]}
           activeOpacity={0.85}
           onPress={handlePrivacyPolicyOpen}
@@ -44259,6 +45365,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
           style={[
             styles.profileLinkButton,
             { borderColor: colors.border, backgroundColor: colors.card },
+            profileSection !== "settings" && styles.progressSectionHidden,
           ]}
           activeOpacity={0.85}
           onPress={handleInstagramPress}
@@ -44270,6 +45377,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
           style={[
             styles.profileLinkButton,
             { borderColor: colors.border, backgroundColor: colors.card },
+            profileSection !== "settings" && styles.progressSectionHidden,
           ]}
           activeOpacity={0.85}
           onPress={handleSupportPress}
@@ -44278,24 +45386,12 @@ const ProfileScreen = React.memo(function ProfileScreen({
           <Text style={[styles.profileLinkHint, { color: colors.muted }]}>{t("supportHint")}</Text>
         </TouchableOpacity>
       </ScrollView>
-      <View pointerEvents="box-none" style={styles.profilePinnedActionLayer}>
-        {(isEditing ? !!onSaveEdit : !!onEditPress) ? (
-          <LiquidGlassPillButton
-            style={[styles.profileEditPinnedButton, { top: profileActionTopInset }]}
-            label={isEditing ? t("profileSave") : t("profileEdit")}
-            onPress={isEditing ? onSaveEdit : onEditPress}
-            disabled={isEditing ? !onSaveEdit : !onEditPress}
-            isDarkTheme={isDarkTheme}
-            isProTheme={isProTheme}
-            proThemeAccentColor={colors.primary || "#4E6BFF"}
-          />
-        ) : null}
-      </View>
     </View>
   );
 });
 
 function AppContent() {
+  const { reduceMotion } = useMotionPreferences();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const viewportWidth = Math.max(1, Number(windowWidth) || SCREEN_WIDTH);
   const viewportHeight = Math.max(1, Number(windowHeight) || SCREEN_HEIGHT);
@@ -44781,16 +45877,19 @@ function AppContent() {
   }, []);
   const requestProgressBudgetFocus = useCallback(() => {
     setProgressHubPane("progress");
+    setProgressSection("insights");
     setPendingProgressScrollTarget("budget");
     goToTab("cart");
   }, [goToTab]);
   const requestProgressSubscriptionFocus = useCallback(() => {
     setProgressHubPane("progress");
+    setProgressSection("insights");
     setPendingProgressScrollTarget("subscription");
     goToTab("cart", { recordHistory: false });
   }, [goToTab]);
   const requestProgressFreeDayFocus = useCallback(() => {
     setProgressHubPane("progress");
+    setProgressSection("overview");
     setPendingProgressScrollTarget("free_day");
     goToTab("cart", { recordHistory: false });
   }, [goToTab]);
@@ -44804,6 +45903,7 @@ function AppContent() {
         setProgressFocusChallengeId(challengeId);
       }
       setProgressHubPane("progress");
+      setProgressSection("challenges");
       goToTab("cart");
     },
     [goToTab]
@@ -45239,6 +46339,7 @@ function AppContent() {
   const [challengeBadgeStore, setChallengeBadgeStore] = useState([]);
   const [challengeBadgeStoreHydrated, setChallengeBadgeStoreHydrated] = useState(false);
   const [progressHubPane, setProgressHubPane] = useState("progress");
+  const [progressSection, setProgressSection] = useState("overview");
   const [budgetLimitOpenRequest, setBudgetLimitOpenRequest] = useState(null);
   const [rewardsPane, setRewardsPane] = useState("rewards");
   useEffect(() => {
@@ -47902,7 +49003,7 @@ function AppContent() {
       ratingPromptCatFloat.setValue(0);
       return;
     }
-    const loop = Animated.loop(
+    const loop = createMotionLoop(
       Animated.sequence([
         Animated.timing(ratingPromptCatFloat, {
           toValue: 1,
@@ -48051,7 +49152,7 @@ function AppContent() {
       tension: 120,
       useNativeDriver: true,
     });
-    const ambientLoop = Animated.loop(
+    const ambientLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(feedFirstTutorialAmbientAnim, {
           toValue: 1,
@@ -49341,27 +50442,6 @@ function AppContent() {
   const lastSaveActionAtRef = useRef(0);
   const cartBadgeScale = useRef(new Animated.Value(1)).current;
   useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.delay(4200),
-        Animated.timing(cartBadgeScale, {
-          toValue: 1.08,
-          duration: 400,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(cartBadgeScale, {
-          toValue: 1,
-          duration: 420,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [cartBadgeScale]);
-  useEffect(() => {
     let cancelled = false;
     const loadBaseUrl = async () => {
       const fallbackUrl = normalizeTamagotchiSkinAssetBaseUrl(TAMAGOTCHI_SKIN_ASSET_BASE_URL_ENV);
@@ -49638,18 +50718,13 @@ function AppContent() {
   const closeSkinPicker = useCallback(() => setSkinPickerVisible(false), []);
   const showTamagotchiSkinDownloadAlert = useCallback(
     (errorKind = "download") => {
-      const shortLanguage = getShortLanguageKey(normalizeLanguage(language));
       const message =
         errorKind === "offline"
-          ? shortLanguage === "ru"
-            ? "Подключитесь к интернету, чтобы скачать этот скин."
-            : "Connect to the internet to download this skin."
-          : shortLanguage === "ru"
-          ? "Не удалось скачать скин. Попробуйте ещё раз."
-          : "Could not download the skin. Try again.";
+          ? t("tamagotchiSkinDownloadOffline")
+          : t("tamagotchiSkinDownloadFailed");
       Alert.alert("Almost", message);
     },
-    [language]
+    [t]
   );
   const handleSkinSelect = useCallback(
     (skinId) => {
@@ -49772,6 +50847,12 @@ function AppContent() {
     },
     [formatTranslationText, resolveTranslationValue]
   );
+  const fabAccessibilityLabel =
+    activeTab === "cart"
+      ? t("newGoalTitle")
+      : activeTab === "pending"
+      ? t("newPendingTitle")
+      : t("coinEntryTitle");
 
   const tVariant = useCallback(
     (key, replacements = {}) => {
@@ -50856,24 +51937,38 @@ function AppContent() {
   const goalSelectionTouchedRef = useRef(false);
   const openFabMenu = useCallback(() => {
     if (fabMenuVisible) return;
+    fabMenuAnim.stopAnimation();
     setFabMenuVisible(true);
+    if (reduceMotion) {
+      fabMenuAnim.setValue(1);
+      return;
+    }
     Animated.spring(fabMenuAnim, {
       toValue: 1,
-      friction: 7,
-      tension: 120,
+      damping: 22,
+      stiffness: 260,
+      mass: 0.86,
       useNativeDriver: true,
     }).start();
-  }, [fabMenuAnim, fabMenuVisible]);
+  }, [fabMenuAnim, fabMenuVisible, reduceMotion]);
   const closeFabMenu = useCallback(() => {
+    fabMenuAnim.stopAnimation();
+    if (reduceMotion) {
+      fabMenuAnim.setValue(0);
+      setFabMenuVisible(false);
+      return;
+    }
     Animated.timing(fabMenuAnim, {
       toValue: 0,
-      duration: 160,
+      duration: 140,
       easing: Easing.out(Easing.quad),
       useNativeDriver: true,
-    }).start(() => {
-      setFabMenuVisible(false);
+    }).start(({ finished }) => {
+      if (finished) {
+        setFabMenuVisible(false);
+      }
     });
-  }, [fabMenuAnim]);
+  }, [fabMenuAnim, reduceMotion]);
   const handleFabPress = useCallback(() => {
     Keyboard.dismiss();
     handleFabTutorialDismiss("tap");
@@ -50898,6 +51993,32 @@ function AppContent() {
     openNewPendingModal,
     triggerHaptic,
   ]);
+  const handleFabPressIn = useCallback(() => {
+    cartBadgeScale.stopAnimation();
+    if (reduceMotion) {
+      cartBadgeScale.setValue(1);
+      return;
+    }
+    Animated.timing(cartBadgeScale, {
+      toValue: 0.96,
+      duration: UI_MOTION.press,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [cartBadgeScale, reduceMotion]);
+  const handleFabPressOut = useCallback(() => {
+    cartBadgeScale.stopAnimation();
+    if (reduceMotion) {
+      cartBadgeScale.setValue(1);
+      return;
+    }
+    Animated.timing(cartBadgeScale, {
+      toValue: 1,
+      duration: UI_MOTION.micro,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [cartBadgeScale, reduceMotion]);
   const handleFabLongPress = useCallback(() => {
     Keyboard.dismiss();
     handleFabTutorialDismiss("hold");
@@ -50905,9 +52026,9 @@ function AppContent() {
     markDidYouKnowFeatureUsed("fab_long_press_menu");
     if (fabMenuVisible) {
       closeFabMenu();
-    } else {
-      openFabMenu();
+      return;
     }
+    openFabMenu();
   }, [
     closeFabMenu,
     fabMenuVisible,
@@ -50918,9 +52039,11 @@ function AppContent() {
   ]);
   useEffect(() => {
     setFabScrollHidden(false);
-    if (fabMenuVisible) {
-      closeFabMenu();
-    }
+    fabMenuAnim.stopAnimation();
+    fabMenuAnim.setValue(0);
+    setFabMenuVisible(false);
+  }, [fabMenuAnim, setFabScrollHidden, viewportLayoutKey]);
+  useEffect(() => {
     if (!fabTutorialVisible) return;
     const frame = requestAnimationFrame(() => {
       updateFabAnchor();
@@ -50928,10 +52051,7 @@ function AppContent() {
     });
     return () => cancelAnimationFrame(frame);
   }, [
-    closeFabMenu,
-    fabMenuVisible,
     fabTutorialVisible,
-    setFabScrollHidden,
     updateFabAnchor,
     updateFabTutorialOverlayMetrics,
     viewportLayoutKey,
@@ -52848,7 +53968,7 @@ function AppContent() {
       tension: 84,
       useNativeDriver: true,
     }).start();
-    const pulseLoop = Animated.loop(
+    const pulseLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(noGoalSavePromptPulse, {
           toValue: 1,
@@ -52903,7 +54023,7 @@ function AppContent() {
       tension: 82,
       useNativeDriver: true,
     }).start();
-    const floatLoop = Animated.loop(
+    const floatLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(cycleSavingsRevokedCatFloat, {
           toValue: 1,
@@ -53034,7 +54154,7 @@ function AppContent() {
     dailyChallengeFloatLoopsRef.current.forEach((loop) => loop?.stop?.());
     dailyChallengeFloatLoopsRef.current = dailyChallengeCardFloatAnims.map((anim, index) => {
       const duration = 1700 + index * 140;
-      const loop = Animated.loop(
+      const loop = createMotionLoop(
         Animated.sequence([
           Animated.delay(180 + index * 120),
           Animated.timing(anim, {
@@ -54395,7 +55515,7 @@ function AppContent() {
     }
     tutorialAmbientMotion.setValue(0);
     tutorialPulseMotion.setValue(0);
-    const ambientLoop = Animated.loop(
+    const ambientLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(tutorialAmbientMotion, {
           toValue: 1,
@@ -54411,7 +55531,7 @@ function AppContent() {
         }),
       ])
     );
-    const pulseLoop = Animated.loop(
+    const pulseLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(tutorialPulseMotion, {
           toValue: 1,
@@ -60408,12 +61528,12 @@ function AppContent() {
     }, {});
   }, [registrationData.customGoals]);
 
-  const overlayDimColor = isDarkTheme ? "rgba(0,0,0,0.65)" : "rgba(5,6,15,0.2)";
-  const modalSystemDimColor = isDarkTheme ? "rgba(0,0,0,0.65)" : "rgba(0,0,0,0.35)";
+  const overlayDimColor = colorWithAlpha(colors.overlay || "#000000", isDarkTheme ? 0.72 : 0.2);
+  const modalSystemDimColor = colorWithAlpha(colors.overlay || "#000000", isDarkTheme ? 0.72 : 0.35);
   const fabSystemDimColor = "rgba(0,0,0,0.15)";
   const statusGlassBackgroundColor = colors.background;
-  const overlayCardBackground = isDarkTheme ? lightenColor(colors.card, 0.18) : colors.card;
-  const overlayBorderColor = isDarkTheme ? lightenColor(colors.border, 0.25) : colors.border;
+  const overlayCardBackground = colors.surfaceElevated || colors.card;
+  const overlayBorderColor = colors.separator || colors.border;
   const impulseAlertPayload = useMemo(() => {
     if (overlay?.type !== "impulse_alert") return null;
     if (overlay?.message && typeof overlay.message === "object") {
@@ -66273,7 +67393,7 @@ function AppContent() {
       tamagotchiRewardPulseAnim.setValue(1);
       return;
     }
-    const pulse = Animated.loop(
+    const pulse = createMotionLoop(
       Animated.sequence([
         Animated.timing(tamagotchiRewardPulseAnim, {
           toValue: 1.06,
@@ -66297,7 +67417,7 @@ function AppContent() {
       tamagotchiDailySummaryPulseAnim.setValue(1);
       return;
     }
-    const pulse = Animated.loop(
+    const pulse = createMotionLoop(
       Animated.sequence([
         Animated.timing(tamagotchiDailySummaryPulseAnim, {
           toValue: 1.05,
@@ -68074,13 +69194,20 @@ useEffect(() => {
     },
     [activeTab, goToTab, logEvent, scrollActiveTabToTop, triggerHaptic]
   );
-  const handleProgressHubPaneChange = useCallback((nextPane) => {
-    const normalizedPane = nextPane === "rewards" ? "rewards" : "progress";
-    setProgressHubPane(normalizedPane);
+  const handleProgressSectionChange = useCallback((nextSection) => {
+    const normalizedSection = ["goals", "insights", "challenges", "rewards"].includes(nextSection)
+      ? nextSection
+      : "overview";
+    const nextPane = normalizedSection === "rewards" ? "rewards" : "progress";
+    if (nextPane === "progress") {
+      setProgressSection(normalizedSection);
+    }
+    setProgressHubPane(nextPane);
     logEvent(
-      normalizedPane === "rewards"
+      nextPane === "rewards"
         ? "menu_progress_rewards_opened"
-        : "menu_progress_overview_opened"
+        : "menu_progress_overview_opened",
+      { section: normalizedSection }
     );
   }, []);
   const resolveMainTabLabel = useCallback(
@@ -69680,6 +70807,12 @@ useEffect(() => {
     closeFabMenu();
     openNewGoalModal(false, "fab_menu");
   }, [closeFabMenu, openNewGoalModal, triggerHaptic]);
+
+  const handleFabRecordDecision = useCallback(() => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    closeFabMenu();
+    openCoinEntry(activeTab || "fab_menu");
+  }, [activeTab, closeFabMenu, openCoinEntry, triggerHaptic]);
 
   const handleNewGoalChange = useCallback((field, value) => {
     setNewGoalModal((prev) => ({
@@ -72643,12 +73776,7 @@ useEffect(() => {
 
   const renderTamagotchiFoodList = () => {
     return (
-      <ScrollView
-        style={styles.tamagotchiOptionScroller}
-        contentContainerStyle={styles.tamagotchiOptionGrid}
-        showsVerticalScrollIndicator={false}
-        nestedScrollEnabled
-      >
+      <View style={styles.tamagotchiOptionGrid}>
         {TAMAGOTCHI_FOOD_OPTIONS.map((food) => {
           const label = resolveLanguageMapValue(food.label, language) || food.label.en;
           const coinTier = getHealthCoinTierForAmount(food.cost);
@@ -72676,6 +73804,9 @@ useEffect(() => {
                 },
               ]}
               activeOpacity={0.9}
+              accessibilityRole="button"
+              accessibilityLabel={label}
+              accessibilityState={{ disabled: tamagotchiIsFull }}
               onPress={() => {
                 playSound("tap");
                 feedTamagotchi(food.id);
@@ -72719,17 +73850,12 @@ useEffect(() => {
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
     );
   };
   const renderTamagotchiToyList = () => {
     return (
-      <ScrollView
-        style={styles.tamagotchiOptionScroller}
-        contentContainerStyle={styles.tamagotchiOptionGrid}
-        showsVerticalScrollIndicator={false}
-        nestedScrollEnabled
-      >
+      <View style={styles.tamagotchiOptionGrid}>
         {TAMAGOTCHI_TOY_OPTIONS.map((toy) => {
           const label = resolveLanguageMapValue(toy.label, language) || toy.label.en;
           const isDesired = tamagotchiDesiredToy?.id === toy.id;
@@ -72755,6 +73881,8 @@ useEffect(() => {
                 },
               ]}
               activeOpacity={0.9}
+              accessibilityRole="button"
+              accessibilityLabel={label}
               onPress={() => {
                 playSound("tap");
                 playWithTamagotchiToy(toy.id);
@@ -72802,12 +73930,14 @@ useEffect(() => {
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
     );
   };
   const tamagotchiCleanTargetAccent = tamagotchiSelectedCleanTool?.type === "brush" ? "#99E18E" : "#7CC7FF";
   const isAndroidTamagotchiSurface = Platform.OS === "android";
-  const tamagotchiPreviewSurfaceColor = lightenColor(colors.card, isDarkTheme ? 0.08 : 0.16);
+  const tamagotchiPreviewSurfaceColor = isDarkTheme
+    ? colors.surfaceElevated
+    : lightenColor(colors.card, 0.16);
   const tamagotchiAndroidBlend = (baseColor, overlayColor, alpha) =>
     isAndroidTamagotchiSurface
       ? blendColors(baseColor || colors.card || "#FFFFFF", overlayColor, alpha)
@@ -72835,7 +73965,7 @@ useEffect(() => {
   const tamagotchiCleanHintBackgroundColor = isAndroidTamagotchiSurface
     ? blendColors(colors.card || "#FFFFFF", tamagotchiCleanTargetAccent, isDarkTheme ? 0.24 : 0.16)
     : colorWithAlpha(tamagotchiCleanTargetAccent, isDarkTheme ? 0.24 : 0.2);
-  const tamagotchiHourlyRewardAccent = "#20B486";
+  const tamagotchiHourlyRewardAccent = colors.success || "#20B486";
   const tamagotchiHourlyRewardBorderColor = isAndroidTamagotchiSurface
     ? blendColors(
         colors.border || (isDarkTheme ? "#2D3748" : "#E5EAF1"),
@@ -72854,9 +73984,6 @@ useEffect(() => {
     : tamagotchiHourlyRewardStatus.ready
     ? colorWithAlpha(tamagotchiHourlyRewardAccent, isDarkTheme ? 0.16 : 0.1)
     : colorWithAlpha(tamagotchiHourlyRewardAccent, isDarkTheme ? 0.08 : 0.06);
-  const tamagotchiHourlyRewardAmountSurfaceColor = isAndroidTamagotchiSurface
-    ? blendColors(colors.card || "#FFFFFF", tamagotchiHourlyRewardAccent, isDarkTheme ? 0.08 : 0.03)
-    : colorWithAlpha(colors.card, isDarkTheme ? 0.78 : 0.72);
   const tamagotchiCleanTargetHighlightVisible =
     tamagotchiActiveTab === "clean" &&
     isTamagotchiCleanToolSelected &&
@@ -72864,12 +73991,7 @@ useEffect(() => {
   const renderTamagotchiCleanPanel = () => {
     return (
       <View style={styles.tamagotchiCleanPanel}>
-        <ScrollView
-          style={styles.tamagotchiOptionScroller}
-          contentContainerStyle={styles.tamagotchiOptionGrid}
-          showsVerticalScrollIndicator={false}
-          nestedScrollEnabled
-        >
+        <View style={styles.tamagotchiOptionGrid}>
           {TAMAGOTCHI_CLEAN_TOOLS.map((tool) => {
             const label = resolveLanguageMapValue(tool.label, language) || tool.label.en;
             const selected = tamagotchiSelectedCleanTool?.id === tool.id;
@@ -72908,6 +74030,9 @@ useEffect(() => {
                   },
                 ]}
                 activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel={label}
+                accessibilityState={{ selected: isActiveSelection }}
                 onPress={() => {
                   playSound("tap");
                   if (hasSupply) {
@@ -72964,7 +74089,7 @@ useEffect(() => {
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
         {!tamagotchiSelectedCleanToolRemaining && (
           <Text style={[styles.tamagotchiCleanSupplyHint, { color: colors.muted }]}>
             {t("tamagotchiToolNeedRefillHint")}
@@ -81456,8 +82581,7 @@ useEffect(() => {
               topInset={topSafeInset}
               titleKey="wishlistTitle"
               subtitleKey="progressTabSubtitle"
-              progressHubPane={progressHubPane}
-              onProgressHubPaneChange={handleProgressHubPaneChange}
+              onProgressSectionChange={handleProgressSectionChange}
               rewardBadgeCount={rewardsBadgeCount}
               challengeRewardBadgeCount={challengeRewardsBadgeCount}
             />
@@ -81470,6 +82594,7 @@ useEffect(() => {
             onRemoveWish={handleRemoveWish}
             t={t}
             colors={colors}
+            theme={theme}
             primaryGoals={profile.primaryGoals}
             onGoalLongPress={handleGoalLongPress}
             onGoalEdit={openGoalEditorPrompt}
@@ -81537,8 +82662,8 @@ useEffect(() => {
             contentBottomPadding={screenContentBottomPadding}
             topInset={topSafeInset}
             keyboardOffset={keyboardModalOffset}
-            progressHubPane={progressHubPane}
-            onProgressHubPaneChange={handleProgressHubPaneChange}
+            progressSection={progressSection}
+            onProgressSectionChange={handleProgressSectionChange}
             rewardBadgeCount={rewardsBadgeCount}
             challengeRewardBadgeCount={challengeRewardsBadgeCount}
           />
@@ -81572,6 +82697,9 @@ useEffect(() => {
             <BudgetLockedScreen
               t={t}
               colors={colors}
+              currency={profile.currency || DEFAULT_PROFILE.currency}
+              availableToAllocateUSD={budgetLedgerTotals.availableToAllocateUSD}
+              savedTotalUSD={savedTotalUSD}
               onPress={handleBudgetAutoLocked}
               scrollRef={budgetScrollRef}
               contentBottomPadding={screenContentBottomPadding}
@@ -83281,7 +84409,7 @@ useEffect(() => {
                     <View
                       style={[
                         styles.dailySummaryGlow,
-                        { backgroundColor: isDarkTheme ? "#FFC857" : "#111111" },
+                        { backgroundColor: colors.primary },
                       ]}
                     />
                     <View style={styles.dailySummaryCardContent}>
@@ -83822,12 +84950,12 @@ useEffect(() => {
                     styles.fabTutorialHalo,
                     {
                       backgroundColor: isDarkTheme
-                        ? "rgba(255,214,140,0.22)"
+                        ? colorWithAlpha(colors.primary, 0.14)
                         : isProTheme
-                        ? colorWithAlpha(proThemeAccentColor, 0.2)
-                        : "rgba(245,200,105,0.22)",
-                      borderColor: isDarkTheme ? "#FFE08A" : isProTheme ? proThemeAccentColor : "#F5C869",
-                      shadowColor: isDarkTheme ? "#FFE08A" : isProTheme ? proThemeAccentColor : "#F5C869",
+                        ? colorWithAlpha(proThemeAccentColor, 0.12)
+                        : colorWithAlpha(colors.primary, 0.1),
+                      borderColor: colors.primaryBorder || colors.primary,
+                      shadowColor: colors.primary,
                     },
                   ]}
                 />
@@ -83835,23 +84963,30 @@ useEffect(() => {
               <AnimatedTouchableOpacity
                 style={[
                   styles.cartBadge,
-                  { transform: [{ scale: cartBadgeScale }] },
+                  {
+                    transform: [{ scale: cartBadgeScale }],
+                  },
                   fabTutorialVisible && styles.cartBadgeHighlight,
                 ]}
                 onPress={handleFabPress}
+                onPressIn={handleFabPressIn}
+                onPressOut={handleFabPressOut}
                 onLongPress={handleFabLongPress}
                 delayLongPress={420}
-                activeOpacity={Platform.OS === "android" ? 1 : 0.85}
+                activeOpacity={1}
+                accessibilityRole="button"
+                accessibilityLabel={fabAccessibilityLabel}
+                accessibilityState={{ expanded: fabMenuVisible }}
+                hitSlop={4}
               >
                 <LiquidGlassFabOrb
                   size={FAB_BUTTON_SIZE}
                   icon={fabMainIcon}
-                  iconColor="#000000"
+                  iconColor={isDarkTheme ? colors.text : "#000000"}
                   isDarkTheme={isDarkTheme}
                   isProTheme={isProTheme}
                   proThemeAccentColor={proThemeAccentColor}
                   highlighted={fabTutorialVisible}
-                  disableArtificialHighlights={Platform.OS === "ios"}
                 />
               </AnimatedTouchableOpacity>
             </View>
@@ -84505,7 +85640,7 @@ useEffect(() => {
             pointerEvents={tamagotchiVisible ? "auto" : "none"}
             style={[
               styles.tamagotchiBackdrop,
-              { backgroundColor: isDarkTheme ? "#0D111A" : colors.background },
+              { backgroundColor: colors.background },
               {
                 opacity: tamagotchiModalAnim.interpolate({
                   inputRange: [0, 1],
@@ -84519,29 +85654,11 @@ useEffect(() => {
                 height={statusGlassHeight}
                 safeHeight={topSafeInset}
                 offsetY={0}
-                backgroundColor={isDarkTheme ? "#0D111A" : colors.background}
+                backgroundColor={colors.background}
                 theme={theme}
                 blurAvailable={statusBlurAvailable}
               />
             )}
-            <View
-              pointerEvents="none"
-              style={[
-                styles.tamagotchiBackdropDecor,
-                {
-                  backgroundColor: colorWithAlpha(isDarkTheme ? "#355DFF" : "#9EDAFF", isDarkTheme ? 0.2 : 0.26),
-                },
-              ]}
-            />
-            <View
-              pointerEvents="none"
-              style={[
-                styles.tamagotchiBackdropDecorSecondary,
-                {
-                  backgroundColor: colorWithAlpha(isDarkTheme ? "#FF6FA8" : "#FFD5A3", isDarkTheme ? 0.16 : 0.24),
-                },
-              ]}
-            />
             {partyActive &&
               (uiRefreshRolloutHydrated
                 ? uiRefreshRolloutEnabled
@@ -84569,7 +85686,7 @@ useEffect(() => {
 	              style={[
 	                styles.tamagotchiCard,
                 {
-                  backgroundColor: colors.card,
+                  backgroundColor: colors.background,
                   borderColor: colors.border,
                   marginTop: Math.max(
                     scaleTamagotchiMetric(IS_SHORT_DEVICE ? 6 : 8, 6),
@@ -84581,13 +85698,13 @@ useEffect(() => {
                     {
                       translateY: tamagotchiModalAnim.interpolate({
                         inputRange: [0, 1],
-                        outputRange: [34, 0],
+                        outputRange: [18, 0],
                       }),
                     },
                     {
                       scale: tamagotchiModalAnim.interpolate({
                         inputRange: [0, 1],
-                        outputRange: [0.92, 1],
+                        outputRange: [0.97, 1],
                       }),
                     },
                   ],
@@ -84596,18 +85713,22 @@ useEffect(() => {
                   tamagotchiClosing && styles.tamagotchiNoShadow,
 	              ]}
 	            >
-                  <View
-                    style={[
-                      styles.tamagotchiCardContent,
+	                  <ScrollView
+	                    style={styles.tamagotchiCardScroll}
+	                    contentContainerStyle={[
+	                      styles.tamagotchiCardContent,
                       {
                         paddingTop: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 10 : 12, 8),
                         paddingBottom: Math.max(
                           scaleTamagotchiMetric(8, 6),
                           (safeAreaInsets.bottom || 0) + scaleTamagotchiMetric(6, 4)
                         ),
-                      },
-                    ]}
-                  >
+	                      },
+	                    ]}
+	                    showsVerticalScrollIndicator={false}
+	                    bounces={false}
+	                    nestedScrollEnabled
+	                  >
                     <View style={styles.tamagotchiTopBar}>
                       <View style={styles.tamagotchiTopBarSide}>
                         <TouchableOpacity
@@ -84617,13 +85738,15 @@ useEffect(() => {
                             {
                               borderColor: colorWithAlpha(colors.border, 0.95),
                               backgroundColor: colorWithAlpha(
-                                lightenColor(colors.card, isDarkTheme ? 0.08 : 0.18),
+                                isDarkTheme ? colors.surfaceElevated : lightenColor(colors.card, 0.18),
                                 0.95
                               ),
                               shadowColor: colorWithAlpha("#0A1324", isDarkTheme ? 0.5 : 0.28),
                             },
                           ]}
                           onPress={closeTamagotchiOverlay}
+                          accessibilityRole="button"
+                          accessibilityLabel={t("onboardingBack")}
                           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                           activeOpacity={0.9}
                         >
@@ -84633,12 +85756,56 @@ useEffect(() => {
                           </Text>
                         </TouchableOpacity>
                       </View>
-                      <Animated.View
-                        style={[
-                          styles.tamagotchiTopBarCenter,
-                          { transform: [{ scale: tamagotchiRewardPulseAnim }] },
-                        ]}
-                      >
+                      <View style={styles.tamagotchiTopBarCenter}>
+                        <TouchableOpacity
+                          style={[
+                            styles.tamagotchiTopActionButton,
+                            {
+                              borderColor: colors.border,
+                              backgroundColor: tamagotchiSkinButtonSurfaceColor,
+                            },
+                            isAndroidTamagotchiSurface && styles.skinPickerButtonAndroid,
+                          ]}
+                          onPress={openSkinPicker}
+                          accessibilityRole="button"
+                          accessibilityLabel={t("tamagotchiOutfitsLabel")}
+                          activeOpacity={0.86}
+                        >
+                          <Image
+                            source={tamagotchiAvatarSource}
+                            style={[
+                              styles.tamagotchiTopActionIcon,
+                              !catCustomizationUnlocked && styles.skinPickerIconLocked,
+                            ]}
+                          />
+                          <Text
+                            style={[styles.tamagotchiTopActionLabel, { color: colors.text }]}
+                            numberOfLines={1}
+                          >
+                            {t("tamagotchiSkinsShortLabel")}
+                          </Text>
+                          {!catCustomizationUnlocked && (
+                            <View
+                              style={[
+                                styles.tamagotchiTopActionProBadge,
+                                {
+                                  backgroundColor: colorWithAlpha(
+                                    proThemeAccentColor || PREMIUM_UI_ACCENT_LIGHT,
+                                    isDarkTheme ? 0.72 : 0.86
+                                  ),
+                                },
+                              ]}
+                            >
+                              <Text style={styles.tamagotchiTopActionProText}>PRO</Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                        <Animated.View
+                          style={[
+                            styles.tamagotchiTopActionCell,
+                            { transform: [{ scale: tamagotchiRewardPulseAnim }] },
+                          ]}
+                        >
                           <TouchableOpacity
                             style={[
                               styles.tamagotchiStickyRewardButton,
@@ -84657,10 +85824,12 @@ useEffect(() => {
                                       : "#EAF8F1"
                                     : colorWithAlpha(dailyRewardButtonAccent, isDarkTheme ? 0.24 : 0.13)
                                   : colorWithAlpha(colors.card, isDarkTheme ? 0.9 : 0.95),
-                                opacity: dailyRewardReady ? 1 : 0.78,
+                                opacity: 1,
                               },
                             ]}
                             onPress={handleTamagotchiDailyRewardPress}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${dailyRewardButtonTitle}. ${dailyRewardButtonLabel}`}
                             activeOpacity={dailyRewardReady ? 0.86 : 0.94}
                           >
                             {dailyRewardReady && Platform.OS !== "android" && (
@@ -84704,7 +85873,7 @@ useEffect(() => {
                                   styles.tamagotchiStickyRewardTitle,
                                   { color: dailyRewardReady ? colors.text : colors.muted },
                                 ]}
-                                numberOfLines={1}
+                                numberOfLines={2}
                                 ellipsizeMode="tail"
                                 lineBreakStrategyIOS="standard"
                                 android_hyphenationFrequency="none"
@@ -84763,26 +85932,52 @@ useEffect(() => {
                               </View>
                             )}
                           </TouchableOpacity>
-                      </Animated.View>
+                        </Animated.View>
+                      </View>
                       <View style={[styles.tamagotchiTopBarSide, styles.tamagotchiTopBarSideRight]}>
-                        <View
-                          style={[
-                            styles.tamagotchiStickyCoinsPill,
-                            tamagotchiClosing && styles.tamagotchiNoShadow,
-                            {
-                              borderColor: colorWithAlpha(colors.border, 0.94),
-                              backgroundColor: colorWithAlpha(colors.card, isDarkTheme ? 0.94 : 0.98),
-                            },
-                          ]}
-                        >
-                          {tamagotchiStickyCoinTokens.map((token) => (
-                            <View key={token.id} style={styles.tamagotchiStickyCoinToken}>
-                              <Image source={token.asset} style={styles.tamagotchiStickyCoinsIcon} />
-                              <Text style={[styles.tamagotchiStickyCoinsValue, { color: colors.text }]}>
-                                ×{token.count}
-                              </Text>
-                            </View>
-                          ))}
+                        <View style={styles.tamagotchiHeaderActions}>
+                          {dailySummaryBadgeState.visible && (
+                            <Animated.View
+                              style={{ transform: [{ scale: tamagotchiDailySummaryPulseAnim }] }}
+                            >
+                              <TouchableOpacity
+                                style={[
+                                  styles.tamagotchiDailySummaryCompactButton,
+                                  {
+                                    borderColor: colorWithAlpha(colors.warning, isDarkTheme ? 0.38 : 0.3),
+                                    backgroundColor: isDarkTheme
+                                      ? colorWithAlpha(colors.warning, 0.12)
+                                      : colorWithAlpha(colors.warning, 0.08),
+                                  },
+                                ]}
+                                onPress={handleTamagotchiDailySummaryPress}
+                                accessibilityRole="button"
+                                accessibilityLabel={t("dailySummaryBadgeCTA")}
+                                activeOpacity={0.88}
+                              >
+                                <Text style={styles.tamagotchiDailySummaryIcon}>📊</Text>
+                              </TouchableOpacity>
+                            </Animated.View>
+                          )}
+                          <View
+                            style={[
+                              styles.tamagotchiStickyCoinsPill,
+                              tamagotchiClosing && styles.tamagotchiNoShadow,
+                              {
+                                borderColor: colorWithAlpha(colors.border, 0.94),
+                                backgroundColor: colorWithAlpha(colors.card, isDarkTheme ? 0.94 : 0.98),
+                              },
+                            ]}
+                          >
+                            {tamagotchiStickyCoinTokens.map((token) => (
+                              <View key={token.id} style={styles.tamagotchiStickyCoinToken}>
+                                <Image source={token.asset} style={styles.tamagotchiStickyCoinsIcon} />
+                                <Text style={[styles.tamagotchiStickyCoinsValue, { color: colors.text }]}>
+                                  ×{token.count}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
                         </View>
                       </View>
                     </View>
@@ -84825,7 +86020,7 @@ useEffect(() => {
                         tamagotchiClosing && styles.tamagotchiNoShadow,
                         {
                           backgroundColor: colorWithAlpha(
-                            lightenColor(colors.card, isDarkTheme ? 0.12 : 0.26),
+                            isDarkTheme ? colors.surfaceElevated : lightenColor(colors.card, 0.26),
                             isDarkTheme ? 0.94 : 0.98
                           ),
                           borderColor: colorWithAlpha(
@@ -84841,7 +86036,7 @@ useEffect(() => {
                           styles.tamagotchiHeroSpeechTail,
                           {
                             backgroundColor: colorWithAlpha(
-                              lightenColor(colors.card, isDarkTheme ? 0.12 : 0.26),
+                              isDarkTheme ? colors.surfaceElevated : lightenColor(colors.card, 0.26),
                               isDarkTheme ? 0.94 : 0.98
                             ),
                             borderColor: colorWithAlpha(
@@ -84883,6 +86078,8 @@ useEffect(() => {
 	                          !catCustomizationUnlocked && styles.skinPickerButtonLocked,
 	                        ]}
 	                        onPress={openSkinPicker}
+	                        accessibilityRole="button"
+	                        accessibilityLabel={t("tamagotchiOutfitsLabel")}
 	                        hitSlop={8}
 	                        activeOpacity={0.85}
 	                      >
@@ -84948,14 +86145,16 @@ useEffect(() => {
                             style={[
                               styles.tamagotchiDailySummaryButton,
                               {
-                                borderColor: colorWithAlpha("#FFC857", isDarkTheme ? 0.82 : 0.58),
+                                borderColor: colorWithAlpha(colors.warning, isDarkTheme ? 0.38 : 0.3),
                                 backgroundColor: isDarkTheme
-                                  ? "rgba(255,200,87,0.16)"
-                                  : "rgba(255,200,87,0.26)",
-                                shadowColor: colorWithAlpha("#FFC857", isDarkTheme ? 0.7 : 0.34),
+                                  ? colorWithAlpha(colors.warning, 0.1)
+                                  : colorWithAlpha(colors.warning, 0.08),
+                                shadowColor: colorWithAlpha(colors.warning, isDarkTheme ? 0.22 : 0.16),
                               },
                             ]}
                             onPress={handleTamagotchiDailySummaryPress}
+                            accessibilityRole="button"
+                            accessibilityLabel={t("dailySummaryBadgeCTA")}
                             activeOpacity={0.88}
                           >
                             <View
@@ -84964,8 +86163,8 @@ useEffect(() => {
                                 styles.tamagotchiDailySummaryGlow,
                                 {
                                   backgroundColor: colorWithAlpha(
-                                    isDarkTheme ? "#FFE29A" : "#FFC857",
-                                    isDarkTheme ? 0.22 : 0.18
+                                    colors.warning,
+                                    isDarkTheme ? 0.14 : 0.1
                                   ),
                                 },
                               ]}
@@ -85009,6 +86208,14 @@ useEffect(() => {
 	                      {...(tamagotchiActiveTab === "clean"
 	                        ? tamagotchiCleanPanResponder.panHandlers
 	                        : {})}
+	                      accessible={isTamagotchiCleanToolSelected}
+	                      accessibilityRole={isTamagotchiCleanToolSelected ? "button" : undefined}
+	                      accessibilityLabel={
+	                        isTamagotchiCleanToolSelected ? t("tamagotchiCleanSwipeHint") : undefined
+	                      }
+	                      onAccessibilityTap={
+	                        isTamagotchiCleanToolSelected ? handleTamagotchiCleanStroke : undefined
+	                      }
 	                    >
                       <AlmiTamagotchi
                         override={mascotOverride}
@@ -85110,6 +86317,8 @@ useEffect(() => {
                         <Pressable
                           style={styles.tamagotchiShieldOverlay}
                           onPress={showTamagotchiImmunityHint}
+                          accessibilityRole="button"
+                          accessibilityLabel={t("tamagotchiImmunityHintTitle")}
                           hitSlop={8}
                         >
                           <Text style={styles.tamagotchiShieldOverlayIcon}>🛡️</Text>
@@ -85172,7 +86381,7 @@ useEffect(() => {
                         styles.tamagotchiImmunityPill,
                         {
                           borderColor: colors.border,
-                          backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.08 : 0.2),
+                          backgroundColor: isDarkTheme ? colors.surfaceMuted : lightenColor(colors.card, 0.2),
                         },
                       ]}
                     >
@@ -85182,17 +86391,26 @@ useEffect(() => {
                       </Text>
                     </View>
                   )}
-                  <View style={styles.tamagotchiCareSummaryGrid}>
-                    {tamagotchiCareStatCards.map((stat) => (
+                  <View
+                    style={[
+                      styles.tamagotchiCareSummaryGrid,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: isDarkTheme ? colors.surface : lightenColor(colors.card, 0.13),
+                      },
+                    ]}
+                  >
+                    {tamagotchiCareStatCards.map((stat, index) => (
                       <View
                         key={stat.id}
+                        accessible
+                        accessibilityLabel={`${stat.label}, ${stat.value}%`}
                         style={[
                           styles.tamagotchiStatCard,
-                          stat.half ? styles.tamagotchiStatCardHalf : styles.tamagotchiStatCardFull,
-                          tamagotchiClosing && styles.tamagotchiNoShadow,
+                          index < tamagotchiCareStatCards.length - 1 &&
+                            styles.tamagotchiStatCardDivider,
                           {
                             borderColor: colors.border,
-                            backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.06 : 0.13),
                           },
                         ]}
                       >
@@ -85205,15 +86423,13 @@ useEffect(() => {
                           >
                             <Text style={styles.tamagotchiStatIcon}>{stat.icon}</Text>
                           </View>
-                          <View style={styles.tamagotchiStatCopy}>
-                            <Text style={[styles.tamagotchiStatLabel, { color: colors.muted }]} numberOfLines={1}>
-                              {stat.label}
-                            </Text>
-                            <Text style={[styles.tamagotchiStatValue, { color: colors.text }]}>
-                              {stat.value}%
-                            </Text>
-                          </View>
+                          <Text style={[styles.tamagotchiStatValue, { color: colors.text }]}>
+                            {stat.value}%
+                          </Text>
                         </View>
+                        <Text style={[styles.tamagotchiStatLabel, { color: colors.muted }]} numberOfLines={2}>
+                          {stat.label}
+                        </Text>
                         <View style={[styles.tamagotchiProgress, { backgroundColor: colors.border }]}>
                           <View
                             style={[
@@ -85247,27 +86463,14 @@ useEffect(() => {
                     </View>
                     <View style={styles.tamagotchiHourlyRewardBody}>
                       <Text
-                        style={[
-                          styles.tamagotchiHourlyRewardEyebrow,
-                          {
-                            color: tamagotchiHourlyRewardStatus.ready ? "#20B486" : colors.muted,
-                          },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {t("tamagotchiHourlyRewardEyebrow")}
-                      </Text>
-                      <Text
                         style={[styles.tamagotchiHourlyRewardTitle, { color: colors.text }]}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.78}
+                        numberOfLines={2}
                       >
                         {t("tamagotchiHourlyRewardTitle")}
                       </Text>
                       <Text
                         style={[styles.tamagotchiHourlyRewardMessage, { color: colors.muted }]}
-                        numberOfLines={3}
+                        numberOfLines={2}
                       >
                         {tamagotchiHourlyRewardMessage}
                       </Text>
@@ -85283,7 +86486,7 @@ useEffect(() => {
                               style={[
                                 styles.tamagotchiHourlyRewardProgressFill,
                                 {
-                                  backgroundColor: "#20B486",
+                                  backgroundColor: tamagotchiHourlyRewardAccent,
                                   width: `${Math.max(
                                     3,
                                     Math.min(
@@ -85301,8 +86504,10 @@ useEffect(() => {
                       style={[
                         styles.tamagotchiHourlyRewardAmountPanel,
                         {
-                          borderColor: colorWithAlpha("#20B486", isDarkTheme ? 0.28 : 0.18),
-                          backgroundColor: tamagotchiHourlyRewardAmountSurfaceColor,
+                          borderColor: colorWithAlpha(
+                            tamagotchiHourlyRewardAccent,
+                            isDarkTheme ? 0.28 : 0.18
+                          ),
                         },
                       ]}
                     >
@@ -85310,25 +86515,41 @@ useEffect(() => {
                         style={[
                           styles.tamagotchiHourlyRewardAmount,
                           {
-                            color: tamagotchiHourlyRewardStatus.ready ? "#20B486" : colors.text,
+                            color: tamagotchiHourlyRewardStatus.ready
+                              ? tamagotchiHourlyRewardAccent
+                              : colors.text,
                           },
                         ]}
                       >
                         {tamagotchiHourlyRewardAmountLabel}
                       </Text>
-                      <Text style={[styles.tamagotchiHourlyRewardAmountCaption, { color: "#20B486" }]}>
+                      <Text
+                        style={[
+                          styles.tamagotchiHourlyRewardAmountCaption,
+                          { color: tamagotchiHourlyRewardAccent },
+                        ]}
+                      >
                         {t("tamagotchiCoinsLabel")}
                       </Text>
                       {tamagotchiHourlyRewardStatus.ready && (
                         <TouchableOpacity
                           style={[
                             styles.tamagotchiHourlyRewardClaimButton,
-                            { backgroundColor: "#20B486" },
+                            { backgroundColor: tamagotchiHourlyRewardAccent },
                           ]}
                           onPress={handleTamagotchiHourlyRewardClaim}
+                          accessibilityRole="button"
+                          accessibilityLabel={t("tamagotchiHourlyRewardClaim")}
+                          hitSlop={8}
                           activeOpacity={0.88}
                         >
-                          <Text style={styles.tamagotchiHourlyRewardClaimText} numberOfLines={1}>
+                          <Text
+                            style={[
+                              styles.tamagotchiHourlyRewardClaimText,
+                              { color: resolveForegroundForColor(tamagotchiHourlyRewardAccent) },
+                            ]}
+                            numberOfLines={1}
+                          >
                             {t("tamagotchiHourlyRewardClaim")}
                           </Text>
                         </TouchableOpacity>
@@ -85357,11 +86578,18 @@ useEffect(() => {
                             : t("tamagotchiAwaitingFirstCoin")}
                         </Text>
                       </View>
-                      <View style={styles.tamagotchiTabsRow}>
+                      <View
+                        style={[
+                          styles.tamagotchiTabsRow,
+                          {
+                            borderColor: colors.border,
+                            backgroundColor: isDarkTheme ? colors.surfaceMuted : lightenColor(colors.card, 0.1),
+                          },
+                        ]}
+                      >
                         {tamagotchiTabItems.map((tab) => {
                           const active = tab.id === tamagotchiActiveTab;
-                          const accent =
-                            tab.id === "clean" ? "#6FCBFF" : tab.id === "games" ? "#F97AB2" : "#F6A553";
+                          const accent = colors.primary;
                           const activeTabBackground =
                             Platform.OS === "android"
                               ? blendColors(colors.card || "#FFFFFF", accent, isDarkTheme ? 0.28 : 0.22)
@@ -85378,6 +86606,9 @@ useEffect(() => {
                                 },
                               ]}
                               onPress={() => handleTamagotchiTabPress(tab.id)}
+                              accessibilityRole="tab"
+                              accessibilityLabel={tab.label}
+                              accessibilityState={{ selected: active }}
                               activeOpacity={0.9}
                             >
                               <Text
@@ -85385,9 +86616,7 @@ useEffect(() => {
                                   styles.tamagotchiTabButtonText,
                                   { color: colors.text, opacity: active ? 1 : 0.76 },
                                 ]}
-                                numberOfLines={1}
-                                adjustsFontSizeToFit
-                                minimumFontScale={0.78}
+                                numberOfLines={2}
                               >
                                 {tab.label}
                               </Text>
@@ -85432,9 +86661,7 @@ useEffect(() => {
                       >
                         <Text
                           style={[styles.tamagotchiCleanSwipeHintText, { color: colors.text }]}
-                          numberOfLines={1}
-                          adjustsFontSizeToFit
-                          minimumFontScale={0.82}
+                          numberOfLines={2}
                         >
                           {t("tamagotchiCleanSwipeHint")}
                         </Text>
@@ -85449,6 +86676,10 @@ useEffect(() => {
                           { backgroundColor: colors.card, borderColor: colors.border },
                         ]}
                         onPress={startParty}
+                        accessibilityRole="button"
+                        accessibilityLabel={t("tamagotchiPartyButtonLabel", {
+                          cost: TAMAGOTCHI_PARTY_BLUE_COST,
+                        })}
                       >
                         <View style={styles.tamagotchiButtonContent}>
                           <Image source={HEALTH_COIN_TIERS[1].asset} style={styles.tamagotchiButtonIcon} />
@@ -85458,13 +86689,13 @@ useEffect(() => {
                         </View>
                       </TouchableOpacity>
                     )}
-                  </View>
+	                  </View>
                   {tamagotchiIsFull && tamagotchiActiveTab === "food" && (
                     <Text style={[styles.tamagotchiHint, { color: colors.muted }]}>
                       {t("tamagotchiFullHint")}
                     </Text>
                   )}
-                  </View>
+	                  </ScrollView>
               {partyActive && (
                 <>
                   <ConfettiCannon
@@ -85524,9 +86755,25 @@ useEffect(() => {
                     { backgroundColor: colors.card, borderColor: colors.border },
                   ]}
                 >
-                  <Text style={[styles.skinPickerTitle, { color: colors.text, textAlign: "center" }]}>
-                    {t("tamagotchiSkinTitle")}
-                  </Text>
+                  <View style={styles.skinPickerHeader}>
+                    <Text style={[styles.skinPickerTitle, { color: colors.text }]}>
+                      {t("tamagotchiSkinTitle")}
+                    </Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.skinPickerCloseButton,
+                        { backgroundColor: colors.surfaceMuted || colors.background },
+                      ]}
+                      onPress={closeSkinPicker}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("budgetModalClose")}
+                      activeOpacity={0.86}
+                    >
+                      <Text style={[styles.skinPickerCloseButtonText, { color: colors.text }]}>
+                        {t("budgetModalClose")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                   <ScrollView
                     contentContainerStyle={styles.skinPickerList}
                     showsVerticalScrollIndicator={false}
@@ -85545,9 +86792,7 @@ useEffect(() => {
                       const description =
                         resolveLanguageMapValue(skin.description, language) || skin.description?.en || "";
                       const badgeText = skinLoadFailed
-                        ? getShortLanguageKey(normalizeLanguage(language)) === "ru"
-                          ? "Повторить"
-                          : "Retry"
+                        ? t("tamagotchiSkinRetry")
                         : t("tamagotchiSkinCurrent");
                       return (
                         <TouchableOpacity
@@ -85561,11 +86806,16 @@ useEffect(() => {
                                 ? colors.text
                                 : colors.border,
                               backgroundColor: pending || active
-                                ? lightenColor(colors.card, isDarkTheme ? 0.1 : 0.2)
+                                ? isDarkTheme
+                                  ? colors.primarySurface
+                                  : lightenColor(colors.card, 0.2)
                                 : "transparent",
                             },
                           ]}
                           onPress={() => handleSkinSelect(skin.id)}
+                          accessibilityRole="button"
+                          accessibilityLabel={label}
+                          accessibilityState={{ selected: active, busy: skinLoading }}
                         >
                           <Image source={skin.preview} style={styles.skinPickerAvatar} />
                           <View style={{ flex: 1 }}>
@@ -86234,40 +87484,60 @@ useEffect(() => {
             </TouchableWithoutFeedback>
             <Animated.View
               style={[
-                styles.fabOption,
-                styles.fabOptionRow,
+                styles.fabActionSheet,
+                { backgroundColor: colors.card, borderColor: colors.border },
                 {
                   opacity: fabMenuAnim,
                   transform: [
                     {
                       translateY: fabMenuAnim.interpolate({
                         inputRange: [0, 1],
-                        outputRange: [20, 0],
+                        outputRange: [12, 0],
                       }),
                     },
-                    { scale: fabMenuAnim },
+                    {
+                      scale: fabMenuAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.96, 1],
+                      }),
+                    },
                   ],
                 },
               ]}
             >
-              <View style={styles.fabOptionRowContent}>
-                <TouchableOpacity
-                  style={[styles.fabCircle, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={handleFabNewGoal}
-                >
-                  <Text style={[styles.fabOptionText, { color: colors.text }]} numberOfLines={2}>
-                    {t("fabNewGoal")}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.fabCircle, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={handleFabNewTemptation}
-                >
-                  <Text style={[styles.fabOptionText, { color: colors.text }]} numberOfLines={2}>
-                    {t("fabNewTemptation")}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                style={[styles.fabActionRow, { borderBottomColor: colors.border }]}
+                onPress={handleFabRecordDecision}
+                accessibilityRole="button"
+                accessibilityLabel={t("fabRecordDecision")}
+              >
+                <Text style={[styles.fabActionLabel, { color: colors.text }]}>
+                  {t("fabRecordDecision")}
+                </Text>
+                <Text style={[styles.fabActionChevron, { color: colors.muted }]}>›</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.fabActionRow, { borderBottomColor: colors.border }]}
+                onPress={handleFabNewTemptation}
+                accessibilityRole="button"
+                accessibilityLabel={t("fabNewTemptation")}
+              >
+                <Text style={[styles.fabActionLabel, { color: colors.text }]}>
+                  {t("fabNewTemptation")}
+                </Text>
+                <Text style={[styles.fabActionChevron, { color: colors.muted }]}>›</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.fabActionRow, styles.fabActionRowLast]}
+                onPress={handleFabNewGoal}
+                accessibilityRole="button"
+                accessibilityLabel={t("fabNewGoal")}
+              >
+                <Text style={[styles.fabActionLabel, { color: colors.text }]}>
+                  {t("fabNewGoal")}
+                </Text>
+                <Text style={[styles.fabActionChevron, { color: colors.muted }]}>›</Text>
+              </TouchableOpacity>
             </Animated.View>
           </View>
         )}
@@ -86376,7 +87646,7 @@ useEffect(() => {
                         styles.focusDigestStat,
                         {
                           borderColor: colors.border,
-                          backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.08 : 0.2),
+                          backgroundColor: isDarkTheme ? colors.surfaceMuted : lightenColor(colors.card, 0.2),
                         },
                       ]}
                     >
@@ -86397,7 +87667,7 @@ useEffect(() => {
                         styles.focusDigestStat,
                         {
                           borderColor: colors.border,
-                          backgroundColor: lightenColor(colors.card, isDarkTheme ? 0.04 : 0.12),
+                          backgroundColor: isDarkTheme ? colors.surface : lightenColor(colors.card, 0.12),
                         },
                       ]}
                     >
@@ -86886,7 +88156,7 @@ useEffect(() => {
                     <View
                       style={[
                         styles.impulseAlertGlow,
-                        { backgroundColor: isDarkTheme ? "#FFC857" : "#FF8F5A" },
+                        { backgroundColor: colors.warning },
                       ]}
                     />
                     <View style={styles.impulseAlertContent}>
@@ -87780,7 +89050,9 @@ useEffect(() => {
 function App() {
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics || undefined}>
-      <AppContent />
+      <MotionPreferenceProvider>
+        <AppContent />
+      </MotionPreferenceProvider>
     </SafeAreaProvider>
   );
 }
@@ -88158,7 +89430,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   container: {
     flex: 1,
@@ -88619,7 +89890,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 7,
-    minHeight: 32,
+    minHeight: Platform.OS === "ios" ? 44 : 48,
   },
   feedCategoryChipEmoji: {
     fontSize: 13,
@@ -88861,6 +90132,23 @@ const styles = StyleSheet.create({
   },
   heroCarousel: {
     marginTop: 12,
+  },
+  heroCarouselPageIndicator: {
+    minHeight: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  heroCarouselPageDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  heroCarouselPageDotActive: {
+    width: 18,
   },
   heroCarouselItem: {
     width: "100%",
@@ -89365,6 +90653,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   skinPickerControl: {
+    display: "none",
     position: "absolute",
     right: scaleTamagotchiMetric(10, 8),
     bottom: scaleTamagotchiMetric(12, 8),
@@ -89374,23 +90663,21 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   skinPickerButton: {
-    width: scaleTamagotchiMetric(94, 76),
-    minHeight: scaleTamagotchiMetric(104, 84),
-    borderRadius: scaleTamagotchiMetric(18, 14),
+    width: scaleTamagotchiMetric(118, 102),
+    minHeight: Math.max(52, UI_TOUCH_TARGET.current),
+    borderRadius: UI_RADIUS.control,
     borderWidth: 1,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     paddingHorizontal: scaleTamagotchiMetric(8, 6),
     paddingVertical: scaleTamagotchiMetric(8, 6),
     gap: scaleTamagotchiMetric(5, 4),
-    shadowColor: "rgba(0,0,0,0.25)",
-    shadowOpacity: 0.18,
-    shadowOffset: { width: 0, height: 7 },
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   skinPickerButtonAndroid: {
-    elevation: 8,
+    elevation: 0,
     shadowOpacity: 0,
     shadowRadius: 0,
     shadowOffset: { width: 0, height: 0 },
@@ -89402,24 +90689,25 @@ const styles = StyleSheet.create({
     opacity: 0.82,
   },
   skinPickerPreviewImage: {
-    width: scaleTamagotchiMetric(48, 38),
-    height: scaleTamagotchiMetric(48, 38),
+    width: scaleTamagotchiMetric(34, 30),
+    height: scaleTamagotchiMetric(34, 30),
     resizeMode: "contain",
   },
   skinPickerLabelRow: {
-    width: "100%",
+    flex: 1,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     gap: scaleTamagotchiMetric(3, 2),
   },
   skinPickerLabelText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(11, 9.4) }),
+    ...createCtaText({ fontSize: 14 }),
     flexShrink: 1,
   },
   skinPickerChevron: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(17, 13) }),
-    lineHeight: scaleTamagotchiMetric(17, 13),
+    ...createCtaText({ fontSize: 18 }),
+    lineHeight: 20,
   },
   skinPickerLockBadge: {
     position: "absolute",
@@ -89438,7 +90726,7 @@ const styles = StyleSheet.create({
     elevation: 7,
   },
   skinPickerLockText: {
-    ...createCtaText({ fontSize: 9, textTransform: "uppercase" }),
+    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
     fontWeight: "800",
     letterSpacing: 0.45,
     lineHeight: 12,
@@ -89640,30 +90928,52 @@ const styles = StyleSheet.create({
   skinPickerBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.55)",
-    justifyContent: "center",
+    justifyContent: "flex-end",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 20,
   },
   skinPickerCard: {
     width: "100%",
-    maxWidth: 380,
-    borderRadius: 28,
+    maxWidth: 540,
+    maxHeight: "78%",
+    borderTopLeftRadius: UI_RADIUS.sheet,
+    borderTopRightRadius: UI_RADIUS.sheet,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
     paddingVertical: 16,
-    paddingHorizontal: 18,
-    borderWidth: 1,
-    gap: 8,
+    paddingHorizontal: UI_SPACING.md,
+    paddingBottom: UI_SPACING.lg,
+    borderWidth: 0,
+    gap: UI_SPACING.sm,
+  },
+  skinPickerHeader: {
+    minHeight: UI_TOUCH_TARGET.current,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: UI_SPACING.sm,
   },
   skinPickerTitle: {
     ...TYPOGRAPHY.blockTitle,
     fontSize: 20,
+    flex: 1,
+    minWidth: 0,
+  },
+  skinPickerCloseButton: {
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
+    paddingHorizontal: UI_SPACING.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  skinPickerCloseButtonText: {
+    ...createCtaText({ fontSize: 13, textTransform: "none" }),
   },
   skinPickerSubtitle: {
     ...createBodyText({ fontSize: 15 }),
   },
   skinPickerList: {
-    paddingVertical: 6,
-    paddingHorizontal: 4,
+    paddingVertical: UI_SPACING.xxs,
+    paddingBottom: UI_SPACING.md,
   },
   skinUnlockCard: {
     borderWidth: 1,
@@ -90423,25 +91733,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "flex-start",
     alignItems: "stretch",
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
     overflow: "hidden",
-  },
-  tamagotchiBackdropDecor: {
-    position: "absolute",
-    top: -110,
-    left: -70,
-    width: 280,
-    height: 280,
-    borderRadius: 999,
-  },
-  tamagotchiBackdropDecorSecondary: {
-    position: "absolute",
-    bottom: 60,
-    right: -90,
-    width: 250,
-    height: 250,
-    borderRadius: 999,
   },
   partyGlowOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -90469,14 +91763,14 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "100%",
     maxWidth: "100%",
-    borderRadius: 28,
-    borderWidth: 1,
+    borderTopLeftRadius: UI_RADIUS.sheet,
+    borderTopRightRadius: UI_RADIUS.sheet,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderWidth: 0,
     overflow: "hidden",
-    shadowColor: "#0A1324",
-    shadowOpacity: 0.2,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 12,
+    shadowOpacity: 0,
+    elevation: UI_ELEVATION.content,
   },
   tamagotchiNoShadow: {
     shadowOpacity: 0,
@@ -90497,31 +91791,93 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   tamagotchiCardContent: {
+    flexGrow: 1,
+    paddingHorizontal: UI_SPACING.md,
+    gap: UI_SPACING.xs,
+  },
+  tamagotchiCardScroll: {
     flex: 1,
-    paddingHorizontal: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 12 : 14, 9),
-    gap: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 4 : 5, 3),
   },
   tamagotchiTopBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: scaleTamagotchiMetric(4, 3),
-    minHeight: scaleTamagotchiMetric(46, 38),
+    position: "relative",
+    minHeight: UI_TOUCH_TARGET.current + 58,
+    width: "100%",
   },
   tamagotchiTopBarSide: {
-    flex: 1,
-    minWidth: 0,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    minHeight: UI_TOUCH_TARGET.current,
     alignItems: "flex-start",
     justifyContent: "center",
+    zIndex: 3,
   },
   tamagotchiTopBarSideRight: {
+    left: undefined,
+    right: 0,
     alignItems: "flex-end",
   },
   tamagotchiTopBarCenter: {
-    width: scaleTamagotchiMetric(210, 176),
+    width: "100%",
+    marginTop: UI_TOUCH_TARGET.current + UI_SPACING.xxs,
+    flexDirection: "row",
+    alignItems: "stretch",
+    justifyContent: "space-between",
+    gap: UI_SPACING.xs,
+    zIndex: 2,
+  },
+  tamagotchiTopActionCell: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tamagotchiTopActionButton: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 54,
+    borderWidth: 1,
+    borderRadius: UI_RADIUS.control,
+    paddingHorizontal: UI_SPACING.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: UI_SPACING.xs,
+    overflow: "hidden",
+  },
+  tamagotchiTopActionIcon: {
+    width: 32,
+    height: 32,
+    resizeMode: "contain",
+    flexShrink: 0,
+  },
+  tamagotchiTopActionLabel: {
+    ...createCtaText({ fontSize: 14 }),
+    lineHeight: 17,
+    flex: 1,
+    minWidth: 0,
+  },
+  tamagotchiTopActionProBadge: {
+    borderRadius: UI_RADIUS.pill,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    flexShrink: 0,
+  },
+  tamagotchiTopActionProText: {
+    ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
+    lineHeight: 12,
+    color: "#FFFFFF",
+  },
+  tamagotchiHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: UI_SPACING.xxs,
+  },
+  tamagotchiDailySummaryCompactButton: {
+    width: UI_TOUCH_TARGET.current,
+    height: UI_TOUCH_TARGET.current,
+    borderWidth: 1,
+    borderRadius: UI_RADIUS.control,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 2,
   },
   tamagotchiStickyRewardWrap: {
     position: "absolute",
@@ -90539,29 +91895,23 @@ const styles = StyleSheet.create({
   },
   tamagotchiStickyRewardButton: {
     width: "100%",
-    minHeight: scaleTamagotchiMetric(52, 42),
+    minHeight: 54,
     borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(17, 13),
-    paddingLeft: scaleTamagotchiMetric(8, 6),
-    paddingRight: scaleTamagotchiMetric(4, 3),
-    paddingVertical: scaleTamagotchiMetric(6, 5),
+    borderRadius: UI_RADIUS.control,
+    paddingHorizontal: UI_SPACING.xs,
+    paddingVertical: UI_SPACING.xxs,
     flexDirection: "row",
     alignItems: "center",
     gap: scaleTamagotchiMetric(6, 4),
-    overflow: "visible",
-    shadowColor: "#0A1324",
+    overflow: "hidden",
   },
   tamagotchiStickyRewardButtonReady: {
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 7,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   tamagotchiStickyRewardButtonResting: {
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   tamagotchiStickyRewardGlow: {
     position: "absolute",
@@ -90572,9 +91922,9 @@ const styles = StyleSheet.create({
     borderRadius: scaleTamagotchiMetric(45, 34),
   },
   tamagotchiStickyRewardIconWrap: {
-    width: scaleTamagotchiMetric(36, 29),
-    height: scaleTamagotchiMetric(36, 29),
-    borderRadius: scaleTamagotchiMetric(13, 10),
+    width: 30,
+    height: 30,
+    borderRadius: UI_RADIUS.control,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -90583,30 +91933,29 @@ const styles = StyleSheet.create({
   tamagotchiStickyRewardCopy: {
     flex: 1,
     flexBasis: 0,
-    minWidth: scaleTamagotchiMetric(78, 62),
+    minWidth: 0,
     justifyContent: "center",
     gap: 0,
   },
   tamagotchiStickyRewardTitle: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(13, 10.8) }),
-    lineHeight: scaleTamagotchiMetric(15, 12.5),
+    ...createCtaText({ fontSize: 13 }),
+    lineHeight: 16,
     letterSpacing: 0,
     flexShrink: 1,
     width: "100%",
     includeFontPadding: false,
   },
   tamagotchiStickyRewardText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(10.4, 8.8) }),
-    lineHeight: scaleTamagotchiMetric(12, 10.5),
+    ...createBodyText({ fontSize: 11, lineHeight: 14 }),
     letterSpacing: 0,
     flexShrink: 1,
     width: "100%",
     includeFontPadding: false,
   },
   tamagotchiStickyRewardAmountPill: {
-    minWidth: scaleTamagotchiMetric(42, 34),
-    maxWidth: scaleTamagotchiMetric(54, 44),
-    height: scaleTamagotchiMetric(30, 25),
+    minWidth: 30,
+    maxWidth: 38,
+    height: 26,
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: scaleTamagotchiMetric(4, 3),
@@ -90615,7 +91964,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: scaleTamagotchiMetric(4, 3),
     flexShrink: 1,
-    marginRight: scaleTamagotchiMetric(5, 3),
+    marginRight: 0,
     overflow: "visible",
   },
   tamagotchiStickyRewardAmountBadge: {
@@ -90624,28 +91973,26 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   tamagotchiStickyRewardCoin: {
-    width: scaleTamagotchiMetric(19, 15),
-    height: scaleTamagotchiMetric(19, 15),
+    width: 17,
+    height: 17,
     resizeMode: "contain",
   },
   tamagotchiStickyRewardAmount: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(11.2, 9.4) }),
-    lineHeight: scaleTamagotchiMetric(13, 11),
+    ...createCtaText({ fontSize: 11 }),
+    lineHeight: 13,
   },
   tamagotchiStickyCoinsPill: {
     borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: scaleTamagotchiMetric(6, 5),
-    paddingVertical: scaleTamagotchiMetric(2, 1.5),
+    minHeight: 32,
+    paddingHorizontal: UI_SPACING.xs,
+    paddingVertical: UI_SPACING.xxs,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-start",
     gap: scaleTamagotchiMetric(6, 4),
-    shadowColor: "#0A1324",
-    shadowOpacity: 0.16,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   tamagotchiStickyCoinToken: {
     flexDirection: "row",
@@ -90657,23 +92004,21 @@ const styles = StyleSheet.create({
     height: scaleTamagotchiMetric(12, 10),
   },
   tamagotchiStickyCoinsValue: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(9.2, 8) }),
+    ...createCtaText({ fontSize: 13 }),
   },
   tamagotchiBackButton: {
     minWidth: scaleTamagotchiMetric(68, 58),
-    height: scaleTamagotchiMetric(34, 30),
-    borderRadius: scaleTamagotchiMetric(11, 9),
-    borderWidth: 1,
-    paddingHorizontal: scaleTamagotchiMetric(8, 6),
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
+    borderWidth: 0,
+    paddingHorizontal: UI_SPACING.sm,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: scaleTamagotchiMetric(4, 3),
     marginTop: 0,
-    shadowOpacity: 0.16,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   tamagotchiBackButtonFloating: {
     minWidth: 70,
@@ -90682,20 +92027,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   tamagotchiBackButtonArrow: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(14, 12) }),
-    lineHeight: scaleTamagotchiMetric(14, 12),
+    ...createCtaText({ fontSize: 16 }),
+    lineHeight: 18,
   },
   tamagotchiBackButtonText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(10.5, 9.5) }),
+    ...createCtaText({ fontSize: 15 }),
   },
   tamagotchiStatLabel: {
-    ...createBodyText({ fontSize: scaleTamagotchiMetric(10.6, 8.8) }),
-    flex: 1,
+    ...createBodyText({ fontSize: 12, lineHeight: 15 }),
+    fontWeight: "600",
     minWidth: 0,
   },
   tamagotchiStatValue: {
-    ...createBodyText({ fontSize: scaleTamagotchiMetric(20, 16), fontWeight: "800" }),
-    lineHeight: scaleTamagotchiMetric(23, 18),
+    ...createBodyText({ fontSize: 22, lineHeight: 25, fontWeight: "800" }),
+    flexShrink: 1,
   },
   tamagotchiProgress: {
     height: scaleTamagotchiMetric(5, 4),
@@ -90707,21 +92052,18 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   tamagotchiHourlyRewardCard: {
-    width: "100%",
-    alignSelf: "stretch",
-    minHeight: scaleTamagotchiMetric(118, 98),
+    width: "96%",
+    alignSelf: "center",
+    minHeight: 80,
     borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(20, 15),
-    paddingHorizontal: scaleTamagotchiMetric(10, 8),
-    paddingVertical: scaleTamagotchiMetric(10, 8),
+    borderRadius: UI_RADIUS.card,
+    paddingHorizontal: UI_SPACING.sm,
+    paddingVertical: UI_SPACING.xxs,
     flexDirection: "row",
-    alignItems: "center",
-    gap: scaleTamagotchiMetric(8, 5),
-    shadowColor: "#0A1324",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    alignItems: "flex-start",
+    gap: UI_SPACING.xs,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   tamagotchiHourlyRewardCardAndroid: {
     shadowOpacity: 0,
@@ -90730,16 +92072,17 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   tamagotchiHourlyRewardCoinWrap: {
-    width: scaleTamagotchiMetric(62, 48),
-    height: scaleTamagotchiMetric(62, 48),
+    width: 38,
+    height: 38,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+    alignSelf: "center",
   },
   tamagotchiHourlyRewardCoin: {
-    width: scaleTamagotchiMetric(54, 40),
-    height: scaleTamagotchiMetric(54, 40),
+    width: 34,
+    height: 34,
     resizeMode: "contain",
   },
   tamagotchiHourlyRewardTopRow: {
@@ -90751,11 +92094,13 @@ const styles = StyleSheet.create({
   tamagotchiHourlyRewardBody: {
     flex: 1,
     minWidth: 0,
-    gap: scaleTamagotchiMetric(4, 2),
+    gap: 2,
+    justifyContent: "center",
   },
   tamagotchiHourlyRewardEyebrow: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(13, 10) }),
-    flex: 1,
+    ...createCtaText({ fontSize: 12 }),
+    lineHeight: 15,
+    flexShrink: 1,
     minWidth: 0,
   },
   tamagotchiHourlyRewardTitleRow: {
@@ -90765,25 +92110,27 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   tamagotchiHourlyRewardTitle: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(15.5, 12.4) }),
+    ...createCtaText({ fontSize: 15 }),
+    lineHeight: 18,
     flex: 1,
     minWidth: 0,
   },
   tamagotchiHourlyRewardAmount: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(24, 18) }),
-    lineHeight: scaleTamagotchiMetric(27, 21),
+    ...createCtaText({ fontSize: 24 }),
+    lineHeight: 27,
     flexShrink: 0,
   },
   tamagotchiHourlyRewardAmountCaption: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(10.5, 8.8) }),
+    ...createCtaText({ fontSize: 12 }),
     textAlign: "center",
   },
   tamagotchiHourlyRewardAmountPanel: {
-    minWidth: scaleTamagotchiMetric(80, 66),
-    maxWidth: scaleTamagotchiMetric(94, 78),
-    minHeight: scaleTamagotchiMetric(76, 62),
-    borderRadius: scaleTamagotchiMetric(16, 12),
-    borderWidth: 1,
+    minWidth: 68,
+    maxWidth: 80,
+    minHeight: 70,
+    borderRadius: 0,
+    borderWidth: 0,
+    borderLeftWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: scaleTamagotchiMetric(8, 6),
@@ -90792,8 +92139,8 @@ const styles = StyleSheet.create({
   },
   tamagotchiHourlyRewardMessage: {
     ...createBodyText({
-      fontSize: scaleTamagotchiMetric(10.8, 9),
-      lineHeight: scaleTamagotchiMetric(13.6, 11.2),
+      fontSize: 12,
+      lineHeight: 15,
     }),
   },
   tamagotchiHourlyRewardProgress: {
@@ -90808,20 +92155,17 @@ const styles = StyleSheet.create({
   },
   tamagotchiHourlyRewardClaimButton: {
     minWidth: 0,
-    height: scaleTamagotchiMetric(25, 22),
-    borderRadius: scaleTamagotchiMetric(9, 8),
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: scaleTamagotchiMetric(7, 6),
     flexShrink: 0,
-    shadowColor: "#0A1324",
-    shadowOpacity: 0.14,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   tamagotchiHourlyRewardClaimText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(9.2, 8) }),
+    ...createCtaText({ fontSize: 15 }),
     color: "#FFFFFF",
   },
   tamagotchiActions: {
@@ -90835,19 +92179,16 @@ const styles = StyleSheet.create({
   },
   tamagotchiButton: {
     paddingVertical: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 7 : 8, 6),
-    borderRadius: scaleTamagotchiMetric(12, 10),
+    borderRadius: UI_RADIUS.control,
     borderWidth: 1,
     alignItems: "center",
-    shadowColor: "#0A1324",
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   tamagotchiPartyButton: {
     flex: 0,
-    minHeight: scaleTamagotchiMetric(34, 30),
-    borderRadius: scaleTamagotchiMetric(14, 11),
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
     justifyContent: "center",
   },
   tamagotchiButtonContent: {
@@ -90866,18 +92207,15 @@ const styles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
     justifyContent: "flex-end",
-    borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(24, 18),
-    minHeight: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 214 : 246, 172),
-    paddingTop: scaleTamagotchiMetric(70, 56),
-    paddingBottom: scaleTamagotchiMetric(8, 6),
+    borderWidth: 0,
+    borderRadius: UI_RADIUS.card,
+    minHeight: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 136 : 148, 132),
+    paddingTop: scaleTamagotchiMetric(42, 36),
+    paddingBottom: scaleTamagotchiMetric(5, 4),
     marginBottom: 0,
     overflow: "hidden",
-    shadowColor: "#0A1324",
-    shadowOpacity: 0.14,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 7,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   tamagotchiPreviewAura: {
     position: "absolute",
@@ -90913,9 +92251,9 @@ const styles = StyleSheet.create({
     position: "relative",
     alignItems: "center",
     justifyContent: "center",
-    width: "72%",
+    width: "62%",
     alignSelf: "center",
-    minHeight: scaleTamagotchiMetric(150, 112),
+    minHeight: scaleTamagotchiMetric(102, 92),
   },
   tamagotchiMascotWrapCleanHighlight: {
     borderWidth: 2,
@@ -90932,35 +92270,32 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   tamagotchiMascotLarge: {
-    width: scaleTamagotchiMetric(156, 116),
-    height: scaleTamagotchiMetric(156, 116),
+    width: scaleTamagotchiMetric(108, 96),
+    height: scaleTamagotchiMetric(108, 96),
   },
   tamagotchiHeroLogo: {
     position: "absolute",
     top: scaleTamagotchiMetric(14, 10),
     left: scaleTamagotchiMetric(26, 18),
     ...TYPOGRAPHY.blockTitle,
-    fontSize: scaleTamagotchiMetric(48, 34),
-    lineHeight: scaleTamagotchiMetric(52, 38),
+    fontSize: 28,
+    lineHeight: 32,
     zIndex: 12,
   },
   tamagotchiHeroSpeechBubble: {
     position: "absolute",
     left: scaleTamagotchiMetric(16, 10),
-    top: scaleTamagotchiMetric(76, 58),
+    top: scaleTamagotchiMetric(48, 42),
     width: scaleTamagotchiMetric(132, 108),
-    minHeight: scaleTamagotchiMetric(82, 66),
-    borderRadius: scaleTamagotchiMetric(26, 20),
-    borderWidth: 1,
+    minHeight: scaleTamagotchiMetric(66, 58),
+    borderRadius: UI_RADIUS.card,
+    borderWidth: 0,
     paddingHorizontal: scaleTamagotchiMetric(13, 10),
     paddingVertical: scaleTamagotchiMetric(10, 8),
     justifyContent: "center",
     zIndex: 16,
-    shadowColor: "#0A1324",
-    shadowOpacity: 0.08,
-    shadowRadius: 9,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   tamagotchiHeroSpeechTail: {
     position: "absolute",
@@ -90972,10 +92307,11 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderRadius: scaleTamagotchiMetric(5, 4),
     transform: [{ rotate: "45deg" }],
+    opacity: 0,
   },
   tamagotchiHeroSpeechText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(16, 12), textAlign: "left" }),
-    lineHeight: scaleTamagotchiMetric(21, 16),
+    ...createCtaText({ fontSize: 15, textAlign: "left" }),
+    lineHeight: 20,
     width: "100%",
   },
   tamagotchiToyOrbit: {
@@ -91046,19 +92382,19 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   tamagotchiImmunityPillIcon: {
-    fontSize: scaleTamagotchiMetric(13, 10),
+    fontSize: 14,
   },
   tamagotchiImmunityPillText: {
-    ...createBodyText({ fontSize: scaleTamagotchiMetric(11, 9) }),
+    ...createBodyText({ fontSize: 12, lineHeight: 16 }),
     fontWeight: "700",
   },
   tamagotchiButtonText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(11.4, 9.6) }),
+    ...createCtaText({ fontSize: 15 }),
   },
   tamagotchiFoodTitle: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: scaleTamagotchiMetric(13.4, 11.2),
-    lineHeight: scaleTamagotchiMetric(15.5, 13),
+    fontSize: 18,
+    lineHeight: 21,
     marginTop: 0,
     marginBottom: 0,
     position: "relative",
@@ -91067,21 +92403,26 @@ const styles = StyleSheet.create({
   tamagotchiCareSummaryGrid: {
     width: "100%",
     flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    gap: scaleTamagotchiMetric(6, 4),
+    flexWrap: "nowrap",
+    borderWidth: 1,
+    borderRadius: UI_RADIUS.card,
+    overflow: "hidden",
+    minHeight: 72,
   },
   tamagotchiStatCard: {
-    borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(16, 12),
-    paddingHorizontal: scaleTamagotchiMetric(9, 7),
-    paddingVertical: scaleTamagotchiMetric(7, 5),
-    gap: scaleTamagotchiMetric(5, 4),
-    shadowColor: "#0A1324",
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 3,
+    flex: 1,
+    minWidth: 0,
+    borderWidth: 0,
+    borderRadius: 0,
+    paddingHorizontal: scaleTamagotchiMetric(8, 6),
+    paddingVertical: UI_SPACING.xxs,
+    gap: 2,
+    minHeight: 72,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  tamagotchiStatCardDivider: {
+    borderRightWidth: 1,
   },
   tamagotchiStatCardHalf: {
     width: "48.8%",
@@ -91094,126 +92435,106 @@ const styles = StyleSheet.create({
   tamagotchiStatCardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: scaleTamagotchiMetric(7, 5),
+    gap: UI_SPACING.xs,
     minWidth: 0,
   },
   tamagotchiStatIconWrap: {
-    width: scaleTamagotchiMetric(40, 32),
-    height: scaleTamagotchiMetric(40, 32),
-    borderRadius: scaleTamagotchiMetric(14, 10),
+    width: 28,
+    height: 28,
+    borderRadius: UI_RADIUS.control,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
   tamagotchiStatIcon: {
-    fontSize: scaleTamagotchiMetric(23, 18),
+    fontSize: 19,
   },
   tamagotchiStatCopy: {
     flex: 1,
     minWidth: 0,
   },
   tamagotchiControlPanel: {
-    flex: 1,
-    minHeight: 0,
+    flexGrow: 0,
     borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(16, 12),
-    paddingHorizontal: scaleTamagotchiMetric(8, 6),
-    paddingVertical: scaleTamagotchiMetric(7, 5),
-    gap: scaleTamagotchiMetric(7, 5),
+    borderRadius: UI_RADIUS.card,
+    padding: UI_SPACING.xs,
+    gap: UI_SPACING.xxs,
     overflow: "hidden",
   },
   tamagotchiControlHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: scaleTamagotchiMetric(7, 5),
-    minHeight: scaleTamagotchiMetric(34, 30),
+    gap: UI_SPACING.xxs,
   },
   tamagotchiControlTitleWrap: {
-    flex: 0.88,
     minWidth: 0,
   },
   tamagotchiTabsRow: {
     flexDirection: "row",
-    flex: 1.35,
-    gap: scaleTamagotchiMetric(4, 3),
+    gap: UI_SPACING.xxs,
     marginTop: 0,
     minWidth: 0,
+    borderWidth: 1,
+    borderRadius: UI_RADIUS.control,
+    padding: 2,
   },
   tamagotchiTabButton: {
     flex: 1,
-    borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(9, 8),
-    paddingVertical: scaleTamagotchiMetric(4.5, 3.5),
+    minHeight: UI_TOUCH_TARGET.current,
+    borderWidth: 0,
+    borderRadius: UI_RADIUS.control,
+    paddingVertical: UI_SPACING.xxs,
     paddingHorizontal: scaleTamagotchiMetric(4, 3),
     alignItems: "center",
     justifyContent: "center",
-    ...Platform.select({
-      android: {
-        elevation: 0,
-      },
-      default: {
-        shadowOpacity: 0.12,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 4 },
-      },
-    }),
+    shadowOpacity: 0,
+    elevation: 0,
   },
   tamagotchiTabButtonText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(9.4, 8) }),
+    ...createCtaText({ fontSize: 15 }),
+    lineHeight: 18,
   },
   tamagotchiTabContentWrap: {
-    flex: 1,
-    minHeight: 0,
+    flexGrow: 0,
     marginTop: 0,
-    overflow: "hidden",
+    overflow: "visible",
   },
   tamagotchiOptionScroller: {
-    flex: 1,
-    minHeight: 0,
+    flexGrow: 0,
   },
   tamagotchiOptionGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    rowGap: scaleTamagotchiMetric(5, 3),
-    columnGap: scaleTamagotchiMetric(6, 4),
+    gap: UI_SPACING.xxs,
     justifyContent: "space-between",
+    alignItems: "stretch",
     paddingBottom: scaleTamagotchiMetric(2, 2),
   },
   tamagotchiOptionCard: {
-    width: "48.7%",
-    minHeight: scaleTamagotchiMetric(76, 64),
+    width: "49.2%",
+    minHeight: 78,
     borderWidth: 1,
-    borderRadius: scaleTamagotchiMetric(15, 12),
-    paddingHorizontal: scaleTamagotchiMetric(8, 6),
-    paddingVertical: scaleTamagotchiMetric(6, 4),
-    gap: scaleTamagotchiMetric(3, 2),
+    borderRadius: UI_RADIUS.card,
+    paddingHorizontal: UI_SPACING.xs,
+    paddingVertical: 6,
+    gap: 1,
     overflow: "hidden",
-    ...Platform.select({
-      android: {
-        elevation: 0,
-      },
-      default: {
-        shadowOpacity: 0.12,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 4 },
-      },
-    }),
+    shadowOpacity: 0,
+    elevation: 0,
   },
   tamagotchiOptionCardTop: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "flex-start",
     gap: scaleTamagotchiMetric(6, 4),
-    minHeight: scaleTamagotchiMetric(27, 22),
+    minHeight: 22,
   },
   tamagotchiOptionEmoji: {
-    fontSize: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 20 : 22, 16),
+    fontSize: 19,
     flexShrink: 0,
   },
   tamagotchiOptionLabel: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: scaleTamagotchiMetric(12.8, 10.6),
-    lineHeight: scaleTamagotchiMetric(14.4, 12),
+    fontSize: 14,
+    lineHeight: 17,
     width: "100%",
     minWidth: 0,
   },
@@ -91223,8 +92544,7 @@ const styles = StyleSheet.create({
     gap: scaleTamagotchiMetric(2, 1),
   },
   tamagotchiOptionSub: {
-    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(9.2, 7.8) }),
-    lineHeight: scaleTamagotchiMetric(10.8, 9.2),
+    ...createBodyText({ fontSize: 12, lineHeight: 15 }),
   },
   tamagotchiOptionMetaRow: {
     marginTop: "auto",
@@ -91242,9 +92562,9 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
   },
   tamagotchiOptionBadgeText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(7, 6.4), textTransform: "uppercase" }),
+    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
     letterSpacing: 0.35,
-    lineHeight: scaleTamagotchiMetric(9, 8),
+    lineHeight: 13,
   },
   tamagotchiFoodCost: {
     flexDirection: "row",
@@ -91252,28 +92572,26 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tamagotchiFoodCostIcon: {
-    width: scaleTamagotchiMetric(12, 10),
-    height: scaleTamagotchiMetric(12, 10),
+    width: 14,
+    height: 14,
   },
   tamagotchiFoodCostText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(10, 8.6) }),
+    ...createCtaText({ fontSize: 13 }),
   },
   tamagotchiToyPenaltyText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(8.8, 7.6) }),
-    lineHeight: scaleTamagotchiMetric(10, 8.8),
+    ...createCtaText({ fontSize: 12 }),
+    lineHeight: 15,
   },
   tamagotchiSub: {
-    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(7.8, 6.8) }),
+    ...createBodyText({ fontSize: 12, lineHeight: 16 }),
   },
   tamagotchiCleanPanel: {
-    flex: 1,
-    minHeight: 0,
+    flexGrow: 0,
     marginTop: 0,
     gap: scaleTamagotchiMetric(1, 0),
   },
   tamagotchiCleanSupplyHint: {
-    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(7.8, 6.8), textAlign: "center" }),
-    lineHeight: scaleTamagotchiMetric(9, 8),
+    ...createBodyText({ fontSize: 12, lineHeight: 16, textAlign: "center" }),
     marginTop: 0,
   },
   tamagotchiCleanSwipeHintBox: {
@@ -91295,11 +92613,11 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   tamagotchiCleanSwipeHintText: {
-    ...createCtaText({ fontSize: scaleTamagotchiMetric(9.8, 8.4), textAlign: "center" }),
-    lineHeight: scaleTamagotchiMetric(12, 10),
+    ...createCtaText({ fontSize: 13, textAlign: "center" }),
+    lineHeight: 17,
   },
   tamagotchiHint: {
-    ...createSecondaryText({ fontSize: scaleTamagotchiMetric(10.5, 9), textAlign: "center" }),
+    ...createBodyText({ fontSize: 12, lineHeight: 16, textAlign: "center" }),
     marginTop: scaleTamagotchiMetric(1, 1),
   },
   tamagotchiClose: {
@@ -94909,11 +96227,22 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  budgetLockedPreviewIconText: {
+    ...createCtaText({ fontSize: 9, lineHeight: 12 }),
   },
   budgetLockedPreviewRowBody: {
     flex: 1,
     minWidth: 0,
-    gap: 7,
+    gap: 2,
+  },
+  budgetLockedPreviewMetricLabel: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "600" }),
+  },
+  budgetLockedPreviewMetricValue: {
+    ...createBodyText({ fontSize: 18, lineHeight: 22, fontWeight: "800" }),
   },
   budgetLockedPreviewTrack: {
     height: 10,
@@ -95155,28 +96484,21 @@ const styles = StyleSheet.create({
     borderColor: "#1EB25F",
     borderWidth: 2,
   },
-  progressHeroGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-  },
   progressWeeklyCard: {
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
     padding: 14,
     gap: 10,
   },
   subscriptionWidgetCard: {
-    borderRadius: 24,
+    borderRadius: 16,
     borderWidth: 1,
     padding: 16,
     gap: 14,
     overflow: "hidden",
     position: "relative",
-    shadowOpacity: 0.16,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   subscriptionWidgetGlowLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -95377,7 +96699,7 @@ const styles = StyleSheet.create({
     ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
   },
   budgetWidgetCard: {
-    borderRadius: 22,
+    borderRadius: 16,
     borderWidth: 1,
     padding: 14,
     gap: 10,
@@ -95869,98 +97191,343 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
   },
-  progressGoalCard: {
-    flex: 1,
-    borderRadius: 22,
-    padding: 16,
-    borderWidth: 1,
-    gap: 8,
-  },
-  progressGoalHeader: {
+  progressDetailHeader: {
+    minHeight: UI_TOUCH_TARGET.current,
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  progressGoalTitle: {
-    fontFamily: INTER_FONTS.semiBold,
-    fontSize: 12,
-    letterSpacing: CTA_LETTER_SPACING,
-    textTransform: "uppercase",
-  },
-  progressGoalEmoji: {
-    fontSize: 20,
-  },
-  progressGoalName: {
-    fontFamily: INTER_FONTS.bold,
-    fontSize: 18,
-    lineHeight: 22,
-  },
-  progressGoalMeta: {
-    fontFamily: INTER_FONTS.light,
-    fontSize: 13,
-    lineHeight: 17,
-  },
-  progressGoalRingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    gap: 14,
-    marginTop: 6,
-  },
-  progressGoalRingWrap: {
-    width: 76,
-    height: 76,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  progressGoalRingInner: {
-    position: "absolute",
-    width: "100%",
-    height: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-  },
-  progressGoalRingText: {
-    minHeight: 76,
-    justifyContent: "center",
     alignItems: "flex-start",
+    gap: 12,
   },
-  progressGoalPercent: {
-    fontSize: 24,
-    lineHeight: 28,
+  progressDetailBackIcon: {
+    width: UI_TOUCH_TARGET.current,
+    height: UI_TOUCH_TARGET.current,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  progressDetailBackGlyph: {
+    fontSize: 30,
+    lineHeight: 32,
+    fontWeight: "500",
+    marginTop: -2,
+  },
+  progressDetailHeaderText: {
+    flex: 1,
+    minWidth: 0,
+    paddingTop: 1,
+    gap: 2,
+  },
+  progressDetailTitle: {
+    ...createBodyText({ fontSize: 20, lineHeight: 25, fontWeight: "800" }),
+  },
+  progressDetailSubtitle: {
+    ...createSecondaryText({ fontSize: 13, lineHeight: 18 }),
+  },
+  progressInsightsSpotlight: {
+    borderRadius: UI_RADIUS.card,
+    borderWidth: 1,
+    padding: UI_SPACING.md,
+    gap: UI_SPACING.sm,
+  },
+  progressInsightsSpotlightHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: UI_SPACING.sm,
+  },
+  progressInsightsSpotlightIcon: {
+    width: UI_TOUCH_TARGET.current,
+    height: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  progressInsightsSpotlightIconGlyph: {
+    fontSize: 22,
+    lineHeight: 24,
     fontWeight: "800",
   },
-  progressGoalTarget: {
-    fontFamily: INTER_FONTS.medium,
-    fontSize: 14,
-    lineHeight: 18,
-    textAlign: "center",
-  },
-  progressCoinCard: {
+  progressInsightsSpotlightCopy: {
     flex: 1,
-    borderRadius: 22,
-    padding: 16,
-    borderWidth: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  progressInsightsSpotlightTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
     gap: 8,
   },
-  progressCoinHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  progressInsightsSpotlightTitle: {
+    ...createBodyText({ fontSize: 20, lineHeight: 25, fontWeight: "800" }),
+    flexShrink: 1,
+  },
+  progressInsightsSpotlightBadge: {
+    minHeight: 24,
+    borderRadius: UI_RADIUS.pill,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
-  progressCoinTitle: {
-    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+  progressInsightsSpotlightBadgeText: {
+    ...createCtaText({ fontSize: 11, lineHeight: 14 }),
   },
-  progressCoinEmoji: {
+  progressInsightsSpotlightBody: {
+    ...createBodyText({ fontSize: 13, lineHeight: 18 }),
+    opacity: 0.78,
+  },
+  progressInsightsSpotlightChevron: {
+    fontSize: 28,
+    lineHeight: 30,
+    flexShrink: 0,
+  },
+  progressInsightsFeatureRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  progressInsightsFeatureChip: {
+    minHeight: 30,
+    borderRadius: UI_RADIUS.control,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 1,
+  },
+  progressInsightsFeatureChipText: {
+    ...createBodyText({ fontSize: 12, lineHeight: 16, fontWeight: "700", textAlign: "center" }),
+  },
+  progressInsightsSpotlightStatus: {
+    ...createBodyText({ fontSize: 12, lineHeight: 17, fontWeight: "700" }),
+  },
+  progressOverviewSummary: {
+    borderRadius: UI_RADIUS.card,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  progressOverviewGoalRow: {
+    minHeight: UI_TOUCH_TARGET.current,
+    padding: UI_SPACING.md,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: UI_SPACING.md,
+  },
+  progressOverviewGoalCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  progressOverviewGoalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  progressOverviewSummaryLabel: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "700" }),
+  },
+  progressOverviewGoalEmoji: {
     fontSize: 20,
+    lineHeight: 24,
+    flexShrink: 0,
   },
-  progressCoinValue: {
-    fontSize: 26,
-    fontWeight: "800",
+  progressOverviewGoalName: {
+    ...createBodyText({ fontSize: 18, lineHeight: 23, fontWeight: "800" }),
   },
-  progressCoinSubtitle: {
-    ...createSecondaryText({ fontSize: 12 }),
+  progressOverviewGoalMeta: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 17 }),
+  },
+  progressOverviewGoalTrack: {
+    height: 6,
+    borderRadius: UI_RADIUS.pill,
+    overflow: "hidden",
+    marginTop: 4,
+  },
+  progressOverviewGoalFill: {
+    height: "100%",
+    borderRadius: UI_RADIUS.pill,
+  },
+  progressOverviewGoalProgress: {
+    minWidth: 64,
+    maxWidth: 104,
+    alignItems: "flex-end",
+    gap: 2,
+    flexShrink: 0,
+  },
+  progressOverviewGoalPercent: {
+    ...createBodyText({ fontSize: 24, lineHeight: 28, fontWeight: "800" }),
+  },
+  progressOverviewGoalTarget: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 15, textAlign: "right" }),
+  },
+  progressOverviewDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: UI_SPACING.md,
+  },
+  progressOverviewCoinRow: {
+    minHeight: UI_TOUCH_TARGET.current,
+    padding: UI_SPACING.md,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: UI_SPACING.sm,
+  },
+  progressOverviewCoinIcon: {
+    width: UI_TOUCH_TARGET.current,
+    height: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  progressOverviewCoinGlyph: {
+    fontSize: 22,
+  },
+  progressOverviewCoinCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  progressOverviewCoinSubtitle: {
+    ...createBodyText({ fontSize: 13, lineHeight: 18 }),
+    opacity: 0.76,
+  },
+  progressOverviewCoinValueWrap: {
+    minWidth: 54,
+    maxWidth: 88,
+    alignItems: "flex-end",
+    flexShrink: 0,
+  },
+  progressOverviewCoinValue: {
+    ...createBodyText({ fontSize: 24, lineHeight: 28, fontWeight: "800" }),
+  },
+  progressOverviewCoinValueLabel: {
+    ...createSecondaryText({ fontSize: 10, lineHeight: 13, textAlign: "right" }),
+  },
+  progressEarnCoinsPanel: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 16,
+    gap: 14,
+  },
+  progressEarnCoinsHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  progressEarnCoinsIcon: {
+    width: UI_TOUCH_TARGET.current,
+    height: UI_TOUCH_TARGET.current,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  progressEarnCoinsIconGlyph: {
+    fontSize: 23,
+  },
+  progressEarnCoinsCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  progressEarnCoinsTitle: {
+    ...createBodyText({ fontSize: 17, lineHeight: 22, fontWeight: "800" }),
+  },
+  progressEarnCoinsSubtitle: {
+    ...createSecondaryText({ fontSize: 13, lineHeight: 18 }),
+  },
+  progressEarnCoinsFooter: {
+    minHeight: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  progressEarnCoinsStatus: {
+    ...createBodyText({ fontSize: 13, lineHeight: 18, fontWeight: "700" }),
+    flex: 1,
+    minWidth: 0,
+  },
+  progressEarnCoinsBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  progressEarnCoinsBadgeText: {
+    ...createCtaText({ fontSize: 10, lineHeight: 12 }),
+  },
+  progressEarnCoinsChevron: {
+    fontSize: 24,
+    lineHeight: 24,
+    flexShrink: 0,
+  },
+  progressOverviewLinks: {
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  progressOverviewLink: {
+    minHeight: UI_TOUCH_TARGET.current,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  progressOverviewLinkCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  progressOverviewLinkTitle: {
+    ...createBodyText({ fontSize: 15, lineHeight: 20, fontWeight: "700" }),
+  },
+  progressOverviewLinkSubtitle: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 17 }),
+  },
+  progressOverviewLinkChevron: {
+    fontSize: 24,
+    lineHeight: 24,
+    flexShrink: 0,
+  },
+  progressChallengesIntro: {
+    borderRadius: 18,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 14,
+  },
+  progressChallengesIntroCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  progressChallengesIntroTitle: {
+    ...createBodyText({ fontSize: 20, lineHeight: 25, fontWeight: "800" }),
+  },
+  progressChallengesIntroBody: {
+    ...createBodyText({ fontSize: 13, lineHeight: 18 }),
+  },
+  progressChallengesCoinBalance: {
+    minWidth: 68,
+    maxWidth: 96,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  progressChallengesCoinValue: {
+    ...createBodyText({ fontSize: 20, lineHeight: 24, fontWeight: "800" }),
+  },
+  progressChallengesCoinLabel: {
+    ...createSecondaryText({ fontSize: 10, lineHeight: 13, textAlign: "center" }),
   },
   progressCoinRow: {
     flexDirection: "row",
@@ -95990,7 +97557,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   progressActiveChallenge: {
-    borderRadius: 22,
+    borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     gap: 10,
@@ -95998,13 +97565,16 @@ const styles = StyleSheet.create({
   progressActiveChallengeHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
+    flexWrap: "wrap",
+    gap: 6,
   },
   progressActiveChallengeTitle: {
-    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+    ...createBodyText({ fontSize: 14, lineHeight: 19, fontWeight: "700" }),
   },
   progressActiveChallengeMeta: {
     ...createSecondaryText({ fontSize: 11 }),
+    flexShrink: 1,
   },
   progressActiveChallengeRow: {
     flexDirection: "row",
@@ -96019,8 +97589,10 @@ const styles = StyleSheet.create({
   },
   progressActiveChallengeButton: {
     borderRadius: 14,
-    paddingVertical: 10,
+    minHeight: UI_TOUCH_TARGET.current,
+    paddingHorizontal: 14,
     alignItems: "center",
+    justifyContent: "center",
     marginTop: 4,
   },
   progressActiveChallengeButtonText: {
@@ -96030,7 +97602,7 @@ const styles = StyleSheet.create({
     ...createSecondaryText({ fontSize: 13 }),
   },
   progressAnalyticsCard: {
-    borderRadius: 22,
+    borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     gap: 10,
@@ -97093,8 +98665,8 @@ const styles = StyleSheet.create({
   },
   temptationCard: {
     borderRadius: TEMPTATION_CARD_RADIUS,
-    padding: 20,
-    gap: 12,
+    padding: 18,
+    gap: 10,
     position: "relative",
     overflow: "visible",
   },
@@ -97218,8 +98790,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   temptationTitle: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: "800",
     flex: 1,
     flexWrap: "wrap",
   },
@@ -97279,9 +98852,10 @@ const styles = StyleSheet.create({
     paddingRight: 14,
   },
   temptationDesc: {
-    lineHeight: 20,
-    marginTop: 4,
-    marginBottom: 8,
+    fontSize: 14,
+    lineHeight: 19,
+    marginTop: 2,
+    marginBottom: 6,
   },
   temptationPriceRow: {
     flexDirection: "row",
@@ -97313,8 +98887,9 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   temptationPrice: {
-    fontSize: 20,
-    fontWeight: "700",
+    fontSize: 22,
+    lineHeight: 27,
+    fontWeight: "800",
   },
   temptationAmountPanel: {
     borderRadius: 18,
@@ -97347,7 +98922,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-    marginBottom: 14,
+    marginBottom: 12,
   },
   temptationAmountModalIdentity: {
     flex: 1,
@@ -97357,16 +98932,16 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   temptationAmountModalIcon: {
-    width: 58,
-    height: 58,
-    borderRadius: 18,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
   temptationAmountModalEmoji: {
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: 26,
+    lineHeight: 32,
     textAlign: "center",
   },
   temptationAmountModalTitleBlock: {
@@ -97375,8 +98950,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   temptationAmountModalTitle: {
-    fontSize: 25,
-    lineHeight: 30,
+    fontSize: 23,
+    lineHeight: 28,
     fontWeight: "900",
   },
   temptationAmountModalSubtitle: {
@@ -97401,7 +98976,7 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
   },
   temptationAmountModalCard: {
-    borderRadius: 28,
+    borderRadius: 24,
     borderWidth: 1,
     padding: 14,
     gap: 12,
@@ -97435,22 +99010,25 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   temptationAmountModalBadge: {
-    minWidth: 82,
-    maxWidth: 116,
-    minHeight: 54,
-    paddingHorizontal: 10,
-    borderRadius: 18,
+    minWidth: 104,
+    maxWidth: 156,
+    minHeight: 56,
+    paddingHorizontal: 12,
+    borderRadius: 15,
     backgroundColor: "#101B45",
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
   temptationAmountModalBadgeText: {
     color: "#FFFFFF",
-    fontSize: 23,
-    lineHeight: 28,
+    width: "100%",
+    fontSize: 21,
+    lineHeight: 26,
     fontWeight: "900",
     textAlign: "center",
     fontVariant: ["tabular-nums"],
+    includeFontPadding: false,
   },
   temptationAmountSliderPanel: {
     borderWidth: 1,
@@ -97485,14 +99063,14 @@ const styles = StyleSheet.create({
   temptationAmountStatCard: {
     flex: 1,
     minWidth: 0,
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 11,
     gap: 4,
   },
   temptationAmountStatLabel: {
-    ...createCtaText({ fontSize: 11 }),
+    ...createCtaText({ fontSize: 12 }),
     opacity: 0.9,
   },
   temptationAmountStatValue: {
@@ -97553,16 +99131,16 @@ const styles = StyleSheet.create({
   },
   temptationAmountModalActions: {
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
   },
   temptationAmountBottomDock: {
     gap: 10,
-    paddingTop: 14,
+    paddingTop: 12,
   },
   temptationAmountModalActionButton: {
     flex: 1,
-    minHeight: 62,
-    borderRadius: 22,
+    minHeight: Platform.OS === "ios" ? 54 : 56,
+    borderRadius: 16,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -97574,9 +99152,9 @@ const styles = StyleSheet.create({
       },
       default: {
         shadowColor: "rgba(16,27,69,0.18)",
-        shadowOpacity: 0.16,
-        shadowRadius: 14,
-        shadowOffset: { width: 0, height: 9 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 4 },
       },
     }),
   },
@@ -97592,8 +99170,8 @@ const styles = StyleSheet.create({
   },
   temptationAmountModalActionText: {
     color: "#FFFFFF",
-    fontSize: 20,
-    lineHeight: 24,
+    fontSize: 18,
+    lineHeight: 22,
     fontWeight: "900",
     textAlign: "center",
   },
@@ -97855,13 +99433,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "nowrap",
     alignItems: "stretch",
-    gap: 10,
-    marginTop: 10,
+    gap: 8,
+    marginTop: 12,
   },
   temptationActionsMain: {
     flex: 1,
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
   },
   temptationActionsMainCentered: {
     justifyContent: "center",
@@ -97870,25 +99448,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   temptationPauseButton: {
-    width: 58,
-    minWidth: 58,
-    borderRadius: 20,
+    width: Platform.OS === "ios" ? 48 : 52,
+    minWidth: Platform.OS === "ios" ? 48 : 52,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 2,
-    overflow: "visible",
-    ...Platform.select({
-      android: {
-        elevation: 1,
-      },
-      default: {
-        shadowColor: "#0C2045",
-        shadowOpacity: 0.16,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 5 },
-      },
-    }),
+    overflow: "hidden",
   },
   temptationPauseButtonIcon: {
     fontSize: 20,
@@ -98128,21 +99695,21 @@ const styles = StyleSheet.create({
   },
   temptationButtonPrimary: {
     flex: 1,
-    minHeight: 58,
-    borderRadius: 22,
-    paddingVertical: 14,
+    minHeight: Platform.OS === "ios" ? 48 : 52,
+    borderRadius: 14,
+    paddingVertical: 12,
     paddingHorizontal: 14,
     alignItems: "center",
     justifyContent: "center",
     ...Platform.select({
       android: {
-        elevation: 3,
+        elevation: 1,
       },
       default: {
         shadowColor: "rgba(16,27,69,0.22)",
-        shadowOpacity: 0.18,
-        shadowRadius: 14,
-        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.12,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 3 },
       },
     }),
   },
@@ -98159,12 +99726,28 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     textAlign: "center",
   },
+  temptationButtonSecondary: {
+    flex: 1,
+    minHeight: Platform.OS === "ios" ? 48 : 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  temptationButtonSecondaryText: {
+    fontWeight: "800",
+    fontSize: 16,
+    lineHeight: 21,
+    textAlign: "center",
+  },
   temptationButtonGhost: {
     flex: 1,
-    minHeight: 58,
+    minHeight: Platform.OS === "ios" ? 48 : 52,
     borderWidth: 1,
-    borderRadius: 22,
-    paddingVertical: 14,
+    borderRadius: 14,
+    paddingVertical: 12,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -98181,9 +99764,9 @@ const styles = StyleSheet.create({
   },
   temptationButtonOutline: {
     flex: 1,
-    minHeight: 58,
-    borderRadius: 22,
-    paddingVertical: 14,
+    minHeight: Platform.OS === "ios" ? 48 : 52,
+    borderRadius: 14,
+    paddingVertical: 12,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -100072,9 +101655,9 @@ const styles = StyleSheet.create({
     ...createSecondaryText({ fontSize: 13 }),
   },
   goalCard: {
-    borderRadius: 24,
-    padding: 20,
-    marginBottom: 12,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 0,
     gap: 12,
     position: "relative",
   },
@@ -100156,6 +101739,130 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 4,
   },
+  progressSectionTabs: {
+    flexDirection: "row",
+    minHeight: 48,
+    borderRadius: 14,
+    padding: 4,
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  progressSectionTab: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  progressSectionTabText: {
+    ...createCtaText({ fontSize: 13, lineHeight: 17, textAlign: "center" }),
+  },
+  progressSectionGroup: {
+    gap: 16,
+  },
+  progressSectionHidden: {
+    display: "none",
+  },
+  progressDestinationTabs: {
+    minHeight: 60,
+    borderRadius: 14,
+    padding: 4,
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 2,
+  },
+  progressDestinationTabsRtl: {
+    flexDirection: "row-reverse",
+  },
+  progressDestinationTab: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: 11,
+    paddingHorizontal: 5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  progressDestinationTabContent: {
+    maxWidth: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  progressDestinationTabText: {
+    ...createCtaText({ fontSize: 12, lineHeight: 16, textAlign: "center" }),
+    flexShrink: 1,
+  },
+  progressDestinationBadge: {
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  progressDestinationBadgeText: {
+    ...createCtaText({ fontSize: 9, lineHeight: 11, textAlign: "center" }),
+  },
+  profileSectionTabs: {
+    marginTop: 0,
+    marginBottom: UI_SPACING.sm,
+  },
+  profileSectionTab: {
+    minHeight: UI_TOUCH_TARGET.current,
+    paddingHorizontal: UI_SPACING.xxs,
+  },
+  profileSectionTabsRtl: {
+    flexDirection: "row-reverse",
+  },
+  profileRowRtl: {
+    flexDirection: "row-reverse",
+  },
+  profileSectionToolbar: {
+    minHeight: 56,
+    paddingHorizontal: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  profileSectionToolbarTitle: {
+    ...createBodyText({ fontSize: 22, lineHeight: 27, fontWeight: "800" }),
+    flex: 1,
+  },
+  profileSectionToolbarActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  profileToolbarSecondary: {
+    minHeight: UI_TOUCH_TARGET.current,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: UI_SPACING.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileToolbarSecondaryText: {
+    ...createCtaText({ fontSize: 14, lineHeight: 18 }),
+  },
+  profileToolbarPrimary: {
+    minHeight: UI_TOUCH_TARGET.current,
+    minWidth: 82,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileToolbarPrimaryText: {
+    ...createCtaText({ fontSize: 15, lineHeight: 19 }),
+  },
+  profileToolbarActionDisabled: {
+    opacity: 0.5,
+  },
   rewardsTabButton: {
     flex: 1,
     borderWidth: 1,
@@ -100190,15 +101897,15 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
   challengeCard: {
-    borderRadius: 22,
-    padding: 18,
+    borderRadius: 16,
+    padding: 16,
     gap: 12,
     borderWidth: 1,
     position: "relative",
   },
   challengeHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 12,
   },
   challengeEmoji: {
@@ -100213,14 +101920,18 @@ const styles = StyleSheet.create({
   challengeMetaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
+    flexWrap: "wrap",
+    gap: 6,
   },
   challengeStatus: {
     ...createCtaText({ fontSize: CHALLENGE_META_FONT_SIZE, textTransform: "uppercase" }),
+    flexShrink: 1,
   },
   challengeTimer: {
     ...createSecondaryText({ fontSize: CHALLENGE_META_FONT_SIZE }),
     textAlign: "right",
+    flexShrink: 1,
   },
   challengeProgressBar: {
     height: 8,
@@ -100271,15 +101982,29 @@ const styles = StyleSheet.create({
   },
   challengeActionButton: {
     borderRadius: 16,
-    paddingVertical: 12,
+    minHeight: UI_TOUCH_TARGET.current,
+    paddingHorizontal: 14,
     alignItems: "center",
+    justifyContent: "center",
   },
   challengeActionText: {
     ...createCtaText(),
+    textAlign: "center",
+  },
+  challengeCancelButton: {
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  challengeCancelButtonText: {
+    ...createCtaText({ fontSize: 13, lineHeight: 17, textAlign: "center" }),
   },
   dailyChallengeWidget: {
-    borderRadius: 24,
-    padding: 18,
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
     gap: 16,
   },
@@ -100338,8 +102063,10 @@ const styles = StyleSheet.create({
   },
   dailyChallengeWidgetFooter: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 6,
   },
   dailyChallengeProgressLabel: {
     ...createSecondaryText({ fontSize: 13 }),
@@ -100403,17 +102130,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
     position: "relative",
-  },
-  profilePinnedActionLayer: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 120,
-    elevation: 120,
-  },
-  profileEditPinnedButton: {
-    position: "absolute",
-    right: 12,
-    zIndex: 121,
-    elevation: 0,
   },
   profileMoodAura: {
     alignItems: "center",
@@ -100503,6 +102219,78 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     width: "100%",
     marginTop: 20,
+  },
+  profileSetupPanel: {
+    width: "100%",
+    marginTop: 20,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+  },
+  profileSetupHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  profileSetupCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profileSetupTitle: {
+    ...createBodyText({ fontSize: 17, lineHeight: 21, fontWeight: "800" }),
+  },
+  profileSetupBody: {
+    ...createSecondaryText({ fontSize: 13, lineHeight: 18 }),
+    marginTop: 3,
+  },
+  profileSetupProgress: {
+    minWidth: 42,
+    height: 28,
+    paddingHorizontal: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileSetupProgressText: {
+    ...createCtaText({ fontSize: 12 }),
+    fontVariant: ["tabular-nums"],
+  },
+  profileSetupSteps: {
+    marginTop: 12,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  profileSetupRow: {
+    minHeight: UI_TOUCH_TARGET.current + 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  profileSetupRowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  profileSetupStepState: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileSetupStepStateText: {
+    ...createCtaText({ fontSize: 12, textAlign: "center" }),
+  },
+  profileSetupRowText: {
+    ...createBodyText({ fontSize: 14, lineHeight: 18, fontWeight: "700" }),
+    flex: 1,
+  },
+  profileSetupChevron: {
+    fontSize: 24,
+    lineHeight: 26,
+    fontWeight: "500",
   },
   profileStat: {
     alignItems: "center",
@@ -100625,33 +102413,53 @@ const styles = StyleSheet.create({
   reportsBadgeText: {
     ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
   },
+  budgetPaneTabs: {
+    flexDirection: "row",
+    gap: 4,
+    padding: 4,
+    borderRadius: UI_RADIUS.card,
+  },
+  budgetPaneTabButton: {
+    flex: 1,
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  budgetPaneTabText: {
+    ...createCtaText({ fontSize: 14 }),
+    textAlign: "center",
+  },
   budgetVaultCard: {
     borderWidth: 1,
-    borderRadius: 22,
-    padding: IS_SHORT_DEVICE ? 12 : 14,
+    borderRadius: UI_RADIUS.card,
+    padding: IS_SHORT_DEVICE ? 12 : 16,
     overflow: "hidden",
-    gap: IS_SHORT_DEVICE ? 6 : 8,
+    gap: IS_SHORT_DEVICE ? 6 : 10,
   },
   budgetVaultKicker: {
-    fontSize: IS_SHORT_DEVICE ? 10.5 : 11,
+    fontSize: IS_SHORT_DEVICE ? 12 : 13,
+    lineHeight: IS_SHORT_DEVICE ? 16 : 18,
     fontWeight: "800",
     letterSpacing: 0,
-    textTransform: "uppercase",
   },
   budgetVaultAmount: {
-    fontSize: IS_COMPACT_DEVICE || IS_SHORT_DEVICE ? 36 : 44,
-    lineHeight: IS_COMPACT_DEVICE || IS_SHORT_DEVICE ? 40 : 48,
+    fontSize: IS_COMPACT_DEVICE || IS_SHORT_DEVICE ? 34 : 38,
+    lineHeight: IS_COMPACT_DEVICE || IS_SHORT_DEVICE ? 39 : 44,
     fontWeight: "900",
     letterSpacing: 0,
+    fontVariant: ["tabular-nums"],
   },
   budgetVaultCaption: {
-    fontSize: IS_SHORT_DEVICE ? 11.5 : 12,
-    lineHeight: IS_SHORT_DEVICE ? 16 : 17,
-    fontWeight: "600",
+    fontSize: IS_SHORT_DEVICE ? 12.5 : 13,
+    lineHeight: IS_SHORT_DEVICE ? 18 : 19,
+    fontWeight: "500",
   },
   budgetPileFrame: {
-    height: IS_SHORT_DEVICE ? 154 : 178,
-    marginVertical: IS_SHORT_DEVICE ? 0 : 2,
+    height: IS_SHORT_DEVICE ? 104 : 118,
+    marginVertical: 0,
     justifyContent: "flex-end",
     overflow: "hidden",
   },
@@ -100659,13 +102467,13 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: "7%",
     right: "7%",
-    bottom: IS_SHORT_DEVICE ? 10 : 12,
-    height: IS_SHORT_DEVICE ? 112 : 132,
-    borderRadius: IS_SHORT_DEVICE ? 56 : 66,
+    bottom: IS_SHORT_DEVICE ? 6 : 8,
+    height: IS_SHORT_DEVICE ? 82 : 94,
+    borderRadius: IS_SHORT_DEVICE ? 41 : 47,
     borderWidth: 1,
   },
   budgetPileStage: {
-    height: IS_SHORT_DEVICE ? 146 : 168,
+    height: IS_SHORT_DEVICE ? 98 : 112,
     justifyContent: "flex-end",
   },
   budgetPileGround: {
@@ -100673,7 +102481,7 @@ const styles = StyleSheet.create({
     left: "8%",
     right: "8%",
     bottom: 6,
-    height: IS_SHORT_DEVICE ? 28 : 32,
+    height: IS_SHORT_DEVICE ? 22 : 26,
     borderRadius: 999,
     transform: [{ scaleX: 1.08 }],
   },
@@ -100712,34 +102520,49 @@ const styles = StyleSheet.create({
     height: IS_SHORT_DEVICE ? 30 : 34,
     borderRadius: 999,
   },
-  budgetStatGrid: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  budgetStatCell: {
-    flex: 1,
-    minHeight: IS_SHORT_DEVICE ? 70 : 76,
+  budgetSummaryPanel: {
     borderWidth: 1,
-    borderRadius: 16,
-    padding: IS_SHORT_DEVICE ? 9 : 10,
+    borderRadius: UI_RADIUS.card,
+    paddingHorizontal: 14,
+  },
+  budgetSummaryRow: {
+    minHeight: UI_TOUCH_TARGET.current,
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
+    gap: 16,
+    paddingVertical: IS_SHORT_DEVICE ? 10 : 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  budgetStatLabel: {
-    fontSize: IS_SHORT_DEVICE ? 10 : 10.5,
-    lineHeight: IS_SHORT_DEVICE ? 13 : 14,
-    fontWeight: "700",
+  budgetSummaryLabel: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
   },
-  budgetStatValue: {
-    fontSize: IS_SHORT_DEVICE ? 15 : 16,
-    lineHeight: IS_SHORT_DEVICE ? 19 : 20,
-    fontWeight: "900",
+  budgetSummaryValue: {
+    maxWidth: "48%",
+    fontSize: IS_SHORT_DEVICE ? 16 : 17,
+    lineHeight: IS_SHORT_DEVICE ? 20 : 22,
+    fontWeight: "800",
+    textAlign: "right",
     letterSpacing: 0,
+    fontVariant: ["tabular-nums"],
   },
   budgetSetupCard: {
     borderWidth: 1,
-    borderRadius: 18,
+    borderRadius: UI_RADIUS.card,
     padding: IS_SHORT_DEVICE ? 12 : 14,
-    gap: 6,
+    minHeight: UI_TOUCH_TARGET.current,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  budgetSetupBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 5,
   },
   budgetSetupTitle: {
     fontSize: IS_SHORT_DEVICE ? 16 : 17,
@@ -100747,26 +102570,30 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   budgetSetupText: {
-    fontSize: IS_SHORT_DEVICE ? 12 : 12.5,
-    lineHeight: IS_SHORT_DEVICE ? 17 : 18,
-    fontWeight: "600",
+    fontSize: IS_SHORT_DEVICE ? 12.5 : 13,
+    lineHeight: IS_SHORT_DEVICE ? 18 : 19,
+    fontWeight: "500",
+  },
+  budgetSetupChevron: {
+    fontSize: 28,
+    lineHeight: 30,
+    fontWeight: "500",
   },
   budgetPrimaryButton: {
-    minHeight: IS_SHORT_DEVICE ? 48 : 52,
-    borderRadius: 16,
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 16,
   },
   budgetPrimaryButtonText: {
-    color: "#FFFFFF",
     fontSize: IS_SHORT_DEVICE ? 15 : 16,
     lineHeight: IS_SHORT_DEVICE ? 19 : 20,
     fontWeight: "900",
   },
   budgetSecondaryButton: {
-    minHeight: IS_SHORT_DEVICE ? 42 : 46,
-    borderRadius: 14,
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -100790,32 +102617,58 @@ const styles = StyleSheet.create({
   budgetProofModalDock: {
     flex: 1,
     justifyContent: "flex-end",
-    padding: 16,
+    paddingHorizontal: 12,
+    paddingTop: 24,
+    paddingBottom: 12,
   },
   budgetProofModalCard: {
     borderWidth: 1,
-    borderRadius: 24,
-    padding: 18,
-    gap: 12,
+    borderRadius: UI_RADIUS.sheet,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 12,
     maxHeight: "92%",
   },
+  budgetSheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 999,
+    alignSelf: "center",
+    marginBottom: 8,
+  },
+  budgetSheetScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  budgetSheetContent: {
+    gap: 12,
+    paddingBottom: 2,
+  },
   budgetProofModalTitle: {
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 21,
+    lineHeight: 26,
     fontWeight: "900",
   },
   budgetModalText: {
     fontSize: 13,
     lineHeight: 19,
-    fontWeight: "600",
+    fontWeight: "500",
+  },
+  budgetFieldGroup: {
+    gap: 7,
+  },
+  budgetFieldLabel: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: "700",
   },
   budgetAmountInput: {
     borderWidth: 1,
-    borderRadius: 16,
-    minHeight: 52,
+    borderRadius: UI_RADIUS.control,
+    minHeight: UI_TOUCH_TARGET.current,
     paddingHorizontal: 14,
-    fontSize: 18,
-    fontWeight: "800",
+    fontSize: 17,
+    fontWeight: "700",
   },
   budgetProofButtons: {
     flexDirection: "row",
@@ -100824,8 +102677,8 @@ const styles = StyleSheet.create({
   budgetProofButton: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 14,
-    minHeight: 46,
+    borderRadius: UI_RADIUS.control,
+    minHeight: UI_TOUCH_TARGET.current,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -100847,8 +102700,8 @@ const styles = StyleSheet.create({
   },
   budgetProofPreview: {
     width: "100%",
-    height: 150,
-    borderRadius: 16,
+    height: IS_SHORT_DEVICE ? 112 : 132,
+    borderRadius: UI_RADIUS.control,
   },
   budgetProofModalActions: {
     flexDirection: "row",
@@ -100856,9 +102709,9 @@ const styles = StyleSheet.create({
   },
   budgetModalGhost: {
     flex: 1,
-    minHeight: 50,
+    minHeight: UI_TOUCH_TARGET.current,
     borderWidth: 1,
-    borderRadius: 15,
+    borderRadius: UI_RADIUS.control,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -100869,13 +102722,12 @@ const styles = StyleSheet.create({
   },
   budgetModalSubmit: {
     flex: 1,
-    minHeight: 50,
-    borderRadius: 15,
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
     alignItems: "center",
     justifyContent: "center",
   },
   budgetModalSubmitText: {
-    color: "#FFFFFF",
     fontSize: 14,
     lineHeight: 18,
     fontWeight: "900",
@@ -100925,11 +102777,12 @@ const styles = StyleSheet.create({
   profileInput: {
     width: "100%",
     borderWidth: 1,
-    borderRadius: 18,
+    borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 10,
     marginBottom: 10,
-    minHeight: 46,
+    minHeight: 50,
+    fontSize: 16,
     includeFontPadding: false,
   },
   profileInputField: {
@@ -100977,12 +102830,13 @@ const styles = StyleSheet.create({
     width: "auto",
   },
   profileHintText: {
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 14,
+    lineHeight: 20,
   },
   profileSettingValue: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "700",
   },
   profileBioInput: {
     height: 90,
@@ -100998,13 +102852,129 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   settingsCard: {
-    borderRadius: 26,
-    padding: 20,
+    borderRadius: 16,
+    padding: 16,
     marginBottom: 40,
   },
-  profileSection: {
-    marginBottom: 16,
+  profileEditableGroup: {
+    borderWidth: 1,
+    borderRadius: 16,
+    overflow: "hidden",
+    marginBottom: 8,
+  },
+  profileEditableDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: 16,
+  },
+  profileEditableRow: {
+    minHeight: 82,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
+  },
+  profileEditableEditor: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 14,
+  },
+  profileEditableHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  profileEditableIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  profileEditableIconText: {
+    fontSize: 21,
+    lineHeight: 25,
+    textAlign: "center",
+  },
+  profileEditableCurrencyIcon: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    letterSpacing: 0.1,
+    textAlign: "center",
+    writingDirection: "ltr",
+  },
+  profileEditableDayIcon: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  profileEditableBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profileEditableTitle: {
+    ...createBodyText({ fontSize: 17, lineHeight: 22, fontWeight: "800" }),
+    flexShrink: 1,
+  },
+  profileEditableValue: {
+    ...createBodyText({ fontSize: 15, lineHeight: 20, fontWeight: "600" }),
+    marginTop: 3,
+  },
+  profileEditableMeta: {
+    ...createSecondaryText({ fontSize: 14, lineHeight: 19, fontWeight: "600" }),
+    marginTop: 3,
+  },
+  profileEditableChevron: {
+    width: 18,
+    fontSize: 25,
+    lineHeight: 28,
+    fontWeight: "500",
+    textAlign: "center",
+    flexShrink: 0,
+  },
+  profileEditableFields: {
+    gap: 10,
+  },
+  profileEditableInput: {
+    marginBottom: 0,
+    minHeight: 52,
+    borderRadius: 13,
+  },
+  profileEditableFieldButton: {
+    minHeight: 64,
+    borderWidth: 1,
+    borderRadius: 13,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  profileEditableInputBlock: {
+    gap: 6,
+  },
+  profileEditableFieldLabel: {
+    ...createSecondaryText({ fontSize: 13, lineHeight: 17, fontWeight: "700" }),
+  },
+  profileEditableFieldValue: {
+    ...createBodyText({ fontSize: 16, lineHeight: 21, fontWeight: "700" }),
+    marginTop: 2,
+  },
+  profileEditableMetrics: {
+    gap: 8,
+    marginTop: 8,
+  },
+  profileEditableMetric: {
+    gap: 2,
+  },
+  profileEditableMetricLabel: {
+    ...createSecondaryText({ fontSize: 13, lineHeight: 17, fontWeight: "700" }),
+  },
+  profileEditableMetricValue: {
+    ...createBodyText({ fontSize: 15, lineHeight: 20, fontWeight: "600" }),
   },
   settingsDivider: {
     height: 1,
@@ -101013,8 +102983,9 @@ const styles = StyleSheet.create({
     marginVertical: 8,
   },
   settingsTitle: {
-    fontSize: 20,
-    fontWeight: "700",
+    fontSize: 22,
+    lineHeight: 27,
+    fontWeight: "800",
     marginBottom: 16,
   },
   settingRow: {
@@ -101033,7 +103004,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   settingLabel: {
-    marginBottom: 8,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "700",
+    marginBottom: 10,
   },
   settingValue: {
     fontSize: 16,
@@ -101077,8 +103051,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   incomeCalendarDayText: {
-    fontSize: IS_COMPACT_DEVICE ? 11 : 12,
-    fontWeight: "600",
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "700",
   },
   profileGoalGrid: {
     flexDirection: "row",
@@ -101214,8 +103189,11 @@ const styles = StyleSheet.create({
   settingChip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 18,
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: 14,
     borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   themeSettingChip: {
     minHeight: 48,
@@ -102105,6 +104083,8 @@ const styles = StyleSheet.create({
     right: FAB_CONTAINER_SIDE,
     alignItems: "flex-end",
     justifyContent: "center",
+    zIndex: UI_ELEVATION.sticky,
+    elevation: UI_ELEVATION.sticky,
   },
   fabButtonWrapper: {
     width: FAB_BUTTON_SIZE,
@@ -102141,7 +104121,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: "flex-end",
     alignItems: "flex-end",
-    paddingBottom: 180,
+    paddingBottom: 176,
     paddingHorizontal: 24,
     zIndex: 40,
     elevation: 40,
@@ -102150,31 +104130,40 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.15)",
   },
-  fabOption: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  fabOptionRow: {
+  fabActionSheet: {
     alignSelf: "flex-end",
-  },
-  fabOptionRowContent: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  fabCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    justifyContent: "center",
-    alignItems: "center",
+    width: 252,
+    borderRadius: 16,
     borderWidth: 1,
-    paddingHorizontal: 8,
+    overflow: "hidden",
+    shadowColor: "#0E1728",
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
   },
-  fabOptionText: {
-    fontSize: 13,
-    fontWeight: "700",
-    textAlign: "center",
-    lineHeight: 16,
+  fabActionRow: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  fabActionRowLast: {
+    borderBottomWidth: 0,
+  },
+  fabActionLabel: {
+    flex: 1,
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "600",
+  },
+  fabActionChevron: {
+    marginLeft: 12,
+    fontSize: 24,
+    lineHeight: 24,
+    fontWeight: "400",
   },
   fabTutorialBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -103130,11 +105119,11 @@ const styles = StyleSheet.create({
   coinEntryOverlayRoot: {
     flex: 1,
   },
-  coinEntryRevealCircle: {
-    position: "absolute",
-    width: COIN_REVEAL_SIZE,
-    height: COIN_REVEAL_SIZE,
-    borderRadius: COIN_REVEAL_SIZE / 2,
+  coinEntryBackdropVisual: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  coinEntryBackdropPressArea: {
+    ...StyleSheet.absoluteFillObject,
   },
   coinEntryCloseTint: {
     ...StyleSheet.absoluteFillObject,
@@ -103153,173 +105142,147 @@ const styles = StyleSheet.create({
     height: COIN_FLIGHT_SIZE,
     resizeMode: "contain",
   },
-  coinEntryBackdrop: {
+  coinEntrySheetLayer: {
     flex: 1,
-    backgroundColor: "transparent",
-    paddingHorizontal: 24,
-    paddingVertical: IS_SHORT_DEVICE ? 12 : 24,
-    justifyContent: "center",
+    justifyContent: "flex-end",
     alignItems: "center",
   },
   coinEntryCard: {
     width: "100%",
-    maxWidth: 420,
-    borderRadius: 32,
-    paddingHorizontal: 22,
-    paddingVertical: IS_SHORT_DEVICE ? 14 : 22,
-    borderWidth: 1,
-    gap: IS_SHORT_DEVICE ? 10 : 16,
+    maxWidth: 520,
+    borderTopLeftRadius: UI_RADIUS.sheet,
+    borderTopRightRadius: UI_RADIUS.sheet,
+    overflow: "hidden",
+  },
+  coinEntryUpperContent: {
+    paddingTop: UI_SPACING.xs,
+    paddingHorizontal: UI_SPACING.md,
+    gap: UI_SPACING.sm,
+    paddingBottom: UI_SPACING.sm,
+  },
+  coinEntryDragIndicator: {
+    width: 36,
+    height: 5,
+    borderRadius: 3,
+    alignSelf: "center",
+    marginVertical: 4,
   },
   coinEntryHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
+    alignItems: "center",
+    gap: UI_SPACING.sm,
   },
   coinEntryTitle: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: 24,
+    fontSize: 22,
+    lineHeight: 28,
   },
   coinEntrySubtitle: {
-    ...createBodyText({ fontSize: 15, lineHeight: 20 }),
+    ...createBodyText({ fontSize: 14, lineHeight: 19 }),
   },
   coinEntryClose: {
-    padding: 4,
+    width: UI_TOUCH_TARGET.current,
+    height: UI_TOUCH_TARGET.current,
+    borderRadius: UI_TOUCH_TARGET.current / 2,
+    alignItems: "center",
+    justifyContent: "center",
   },
   coinEntryCloseText: {
-    fontSize: 20,
+    fontSize: 21,
+    lineHeight: 24,
     fontWeight: "700",
   },
-  coinEntryAmountRow: {
-    flexDirection: "row",
+  coinEntryBodyScroll: {
+    flexShrink: 1,
+    width: "100%",
+  },
+  coinEntryBodyContent: {
+    paddingBottom: 0,
+  },
+  coinEntryAmountButton: {
+    minHeight: UI_TOUCH_TARGET.current,
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
   },
   coinEntryAmount: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: 28,
+    fontSize: 38,
+    lineHeight: 43,
+    fontVariant: ["tabular-nums"],
   },
   coinEntryManualTapHint: {
     ...createBodyText({ fontSize: 12, lineHeight: 16 }),
     textAlign: "center",
-    marginTop: IS_SHORT_DEVICE ? 3 : 6,
   },
   coinSliderWrapper: {
-    marginTop: IS_SHORT_DEVICE ? 12 : 20,
     alignItems: "center",
     justifyContent: "center",
-    minHeight: COIN_SLIDER_SIZE + (IS_SHORT_DEVICE ? 22 : 40),
     width: "100%",
+    paddingVertical: UI_SPACING.xs,
   },
-  coinSliderBackdrop: {
-    position: "absolute",
-    width: "100%",
-    height: "100%",
-    borderRadius: 24,
+  coinGlassShadow: {
+    alignItems: "center",
+    justifyContent: "center",
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 9,
   },
   coinCircle: {
-    width: COIN_SLIDER_SIZE,
-    height: COIN_SLIDER_SIZE,
-    borderRadius: COIN_SLIDER_SIZE / 2,
-    borderWidth: 3,
-    backgroundColor: "#F6F8FC",
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
-    shadowOpacity: 0.25,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 12,
-  },
-  coinInnerSurface: {
-    width: COIN_SLIDER_SIZE - 24,
-    height: COIN_SLIDER_SIZE - 24,
-    borderRadius: (COIN_SLIDER_SIZE - 24) / 2,
-    backgroundColor: "#ECEFF5",
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.8)",
-    justifyContent: "center",
-    alignItems: "center",
     overflow: "hidden",
   },
   coinFillTrack: {
     position: "absolute",
-    bottom: 0,
-    width: "100%",
-    alignItems: "center",
+    overflow: "hidden",
+    alignItems: "stretch",
+    justifyContent: "flex-end",
   },
   coinFill: {
     width: "100%",
-    borderTopLeftRadius: (COIN_SLIDER_SIZE - 24) / 2,
-    borderTopRightRadius: (COIN_SLIDER_SIZE - 24) / 2,
-  },
-  coinShine: {
-    position: "absolute",
-    top: 18,
-    left: 26,
-    width: 86,
-    height: 14,
-    borderRadius: 14,
-    opacity: 0.6,
   },
   coinCurrencySymbol: {
-    fontSize: 48,
     fontWeight: "800",
-    opacity: 0.2,
-  },
-  coinDirectionLabels: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    width: "100%",
-    paddingHorizontal: 16,
-    marginTop: IS_SHORT_DEVICE ? 6 : 12,
-  },
-  coinDirectionLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    textTransform: "uppercase",
+    zIndex: 2,
   },
   coinEntryActions: {
     flexDirection: "row",
-    gap: 12,
-    marginTop: IS_SHORT_DEVICE ? 10 : 16,
+    gap: UI_SPACING.sm,
+    paddingHorizontal: UI_SPACING.md,
+    paddingTop: UI_SPACING.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   coinEntryActionButton: {
     flex: 1,
-    borderRadius: 20,
-    paddingVertical: IS_SHORT_DEVICE ? 10 : 14,
+    minHeight: Math.max(52, UI_TOUCH_TARGET.current),
+    borderRadius: UI_RADIUS.control,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  coinEntryActionButtonSpend: {
-    backgroundColor: COIN_ENTRY_SPEND_BACKGROUND,
-  },
-  coinEntryActionButtonSave: {
-    backgroundColor: COIN_ENTRY_SAVE_BACKGROUND,
   },
   coinEntryActionButtonText: {
     fontSize: 16,
     fontWeight: "700",
+    lineHeight: 21,
   },
-  coinEntryActionButtonTextSpend: {
-    color: "#FFFFFF",
+  coinEntryCategorySection: {
+    gap: UI_SPACING.xs,
+    paddingHorizontal: UI_SPACING.md,
+    paddingTop: UI_SPACING.sm,
+    paddingBottom: UI_SPACING.sm,
   },
-  coinEntryActionButtonTextSave: {
-    color: "#FFFFFF",
-  },
-  coinEntryHint: {
-    ...createBodyText({ fontSize: IS_SHORT_DEVICE ? 12 : 13 }),
+  coinEntryCategoryHeader: {
+    gap: 2,
   },
   coinEntryCategoryLabel: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: IS_SHORT_DEVICE ? 15 : 18,
+    fontSize: 16,
+    lineHeight: 21,
   },
   coinEntryError: {
     fontSize: 12,
+    lineHeight: 17,
     fontWeight: "600",
   },
   coinEntryCategoryScroll: {
@@ -103327,22 +105290,26 @@ const styles = StyleSheet.create({
   },
   coinEntryCategoryRow: {
     flexDirection: "row",
-    gap: 10,
+    gap: UI_SPACING.xs,
     paddingHorizontal: 4,
+    paddingVertical: 2,
   },
   coinEntryCategoryButton: {
     borderWidth: 1,
-    borderRadius: 16,
-    paddingVertical: IS_SHORT_DEVICE ? 8 : 14,
-    paddingHorizontal: 8,
+    minHeight: 64,
+    borderRadius: UI_RADIUS.card,
+    paddingVertical: UI_SPACING.xs,
+    paddingHorizontal: UI_SPACING.xs,
     alignItems: "center",
-    gap: 6,
+    justifyContent: "center",
+    gap: 3,
   },
   coinEntryCategoryEmoji: {
-    fontSize: 28,
+    fontSize: 22,
   },
   coinEntryCategoryText: {
-    fontSize: 10,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: "700",
     textAlign: "center",
   },
@@ -103357,6 +105324,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 24,
   },
+  temptationAmountManualInlineBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 30,
+    elevation: 30,
+  },
   coinEntryManualKeyboardAvoider: {
     width: "100%",
     alignItems: "center",
@@ -103364,10 +105336,10 @@ const styles = StyleSheet.create({
   coinEntryManualCard: {
     width: "100%",
     maxWidth: 360,
-    borderRadius: 28,
-    padding: 20,
-    borderWidth: 1,
-    gap: 12,
+    borderRadius: UI_RADIUS.sheet,
+    padding: UI_SPACING.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: UI_SPACING.sm,
   },
   coinEntryManualTitle: {
     ...TYPOGRAPHY.blockTitle,
@@ -103375,9 +105347,9 @@ const styles = StyleSheet.create({
   },
   coinEntryManualInput: {
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: UI_RADIUS.control,
+    minHeight: UI_TOUCH_TARGET.current,
     paddingHorizontal: 14,
-    paddingVertical: 10,
     fontSize: 18,
     fontWeight: "600",
   },
@@ -103387,23 +105359,25 @@ const styles = StyleSheet.create({
   },
   coinEntryManualActions: {
     flexDirection: "row",
-    gap: 12,
+    gap: UI_SPACING.sm,
   },
   coinEntryManualButtonGhost: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 16,
-    paddingVertical: 12,
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
     alignItems: "center",
+    justifyContent: "center",
   },
   coinEntryManualButtonGhostText: {
     fontWeight: "600",
   },
   coinEntryManualButtonPrimary: {
     flex: 1,
-    borderRadius: 16,
-    paddingVertical: 12,
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
     alignItems: "center",
+    justifyContent: "center",
   },
   coinEntryManualButtonPrimaryText: {
     ...createCtaText(),
@@ -106456,6 +108430,29 @@ const styles = StyleSheet.create({
   onboardContentWithFooter: {
     paddingBottom: 156,
   },
+  onboardContentWithGoalFooter: {
+    paddingBottom: 116,
+  },
+  onboardGoalContent: {
+    gap: 12,
+  },
+  onboardGoalIntro: {
+    paddingHorizontal: 4,
+    gap: 3,
+  },
+  onboardGoalIntroBadge: {
+    ...createCtaText({ fontSize: 11, lineHeight: 15, textTransform: "uppercase", letterSpacing: 0.7 }),
+  },
+  onboardGoalIntroTitle: {
+    ...TYPOGRAPHY.display,
+    fontSize: IS_SHORT_DEVICE ? 28 : 32,
+    lineHeight: IS_SHORT_DEVICE ? 32 : 36,
+    letterSpacing: -0.6,
+  },
+  onboardGoalIntroSubtitle: {
+    ...createBodyText({ fontSize: 15, lineHeight: 20 }),
+    maxWidth: 560,
+  },
   onboardContentCompact: {
     gap: 14,
     paddingBottom: 28,
@@ -106746,6 +108743,23 @@ const styles = StyleSheet.create({
   onboardFloatingActionsTight: {
     bottom: 18,
   },
+  onboardGoalActionDock: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: UI_ELEVATION.sticky,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: BASE_HORIZONTAL_PADDING,
+    paddingTop: 12,
+  },
+  onboardGoalDockPrimary: {
+    minHeight: 54,
+    borderRadius: 16,
+    justifyContent: "center",
+    marginTop: 0,
+    marginHorizontal: 0,
+  },
   onboardFloatingPrimary: {
     shadowColor: ONBOARDING_GLASS_THEME.shadow,
     shadowOpacity: 0.26,
@@ -106867,45 +108881,66 @@ const styles = StyleSheet.create({
   goalGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 12,
+    justifyContent: "space-between",
+    rowGap: 10,
     width: "100%",
     alignSelf: "stretch",
   },
   goalCustomSectionTitle: {
-    ...createCtaText({ fontSize: 14, textTransform: "uppercase", marginTop: 16 }),
+    ...createCtaText({ fontSize: 13, textTransform: "uppercase", marginTop: 8 }),
   },
   goalCustomButton: {
     borderWidth: 1,
-    borderRadius: 22,
-    paddingVertical: 14,
+    borderRadius: 16,
+    minHeight: 54,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    flexDirection: "row",
     alignItems: "center",
-    marginTop: 16,
+    gap: 10,
+  },
+  goalCustomButtonRtl: {
+    flexDirection: "row-reverse",
+  },
+  goalCustomButtonIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  goalCustomButtonIconText: {
+    ...createBodyText({ fontSize: 24, lineHeight: 27, fontWeight: "500", textAlign: "center" }),
   },
   goalCustomButtonText: {
-    ...createCtaText({ fontSize: 14 }),
+    ...createCtaText({ fontSize: 15, lineHeight: 20 }),
+    flex: 1,
+  },
+  goalCustomButtonChevron: {
+    ...createBodyText({ fontSize: 25, lineHeight: 28, fontWeight: "500", textAlign: "center" }),
+    width: 22,
   },
   goalOptionWrap: {
-    width: "48%",
-    gap: 8,
+    width: "48.6%",
   },
   goalOptionModern: {
     borderWidth: 1,
-    borderRadius: 22,
-    padding: 14,
+    borderRadius: 16,
+    padding: 10,
     alignItems: "center",
-    gap: 10,
+    gap: 6,
     minHeight: 142,
     justifyContent: "flex-start",
   },
   goalJarOptionModern: {
-    minHeight: IS_SHORT_DEVICE ? 224 : 236,
-    paddingHorizontal: 10,
-    paddingTop: 12,
-    paddingBottom: 12,
+    minHeight: IS_SHORT_DEVICE ? 182 : 188,
+    paddingHorizontal: 9,
+    paddingTop: 8,
+    paddingBottom: 8,
     overflow: "hidden",
   },
   goalJarOptionStage: {
-    height: 108,
+    height: 86,
     width: "100%",
     alignItems: "center",
     justifyContent: "center",
@@ -106913,33 +108948,34 @@ const styles = StyleSheet.create({
   },
   goalJarOptionEmojiBadge: {
     position: "absolute",
-    right: 12,
-    top: 10,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    right: 8,
+    top: 6,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: ONBOARDING_GLASS_THEME.shadow,
     shadowOpacity: Platform.OS === "ios" ? 0.12 : 0,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: Platform.OS === "android" ? 2 : 0,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: Platform.OS === "android" ? 1 : 0,
   },
   goalJarOptionEmojiText: {
-    fontSize: 20,
-    lineHeight: 24,
+    fontSize: 18,
+    lineHeight: 22,
     textAlign: "center",
   },
   goalJarOptionTitle: {
-    minHeight: 42,
-    lineHeight: 20,
+    minHeight: 36,
+    fontSize: 15,
+    lineHeight: 18,
     paddingHorizontal: 2,
   },
   goalJarAmountWrap: {
     marginTop: "auto",
-    minHeight: 38,
+    minHeight: 36,
     paddingHorizontal: 8,
   },
   goalOption: {
@@ -106991,12 +109027,24 @@ const styles = StyleSheet.create({
   },
   personaCardModern: {
     borderWidth: 1,
-    borderRadius: 24,
-    padding: 16,
-    gap: 10,
-    height: 214,
+    borderRadius: 16,
+    padding: 14,
+    gap: 8,
+    minHeight: 188,
     justifyContent: "flex-start",
     overflow: "hidden",
+  },
+  personaMoreButton: {
+    minHeight: Platform.OS === "ios" ? 44 : 48,
+    borderWidth: 1,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+    marginTop: 2,
+  },
+  personaMoreButtonText: {
+    ...createCtaText({ fontSize: 14, lineHeight: 18 }),
   },
   personaCardModernAndroid: {
     shadowOpacity: 0,
@@ -108250,12 +110298,15 @@ function OnboardingGoalJarOption({
           },
         ]}
         onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ selected: active }}
       >
         <View style={styles.goalJarOptionStage}>
           <GoalJarGraphic
             progress={jarProgress}
-            width={102}
-            height={106}
+            width={82}
+            height={86}
             accent={jarVisual.accent}
             secondaryAccent={jarVisual.secondary}
             coinColors={jarVisual.coinColors}
@@ -108372,6 +110423,7 @@ function GoalScreen({
   );
   const safeAreaInsets = safeUseSafeAreaInsets();
   const resolvedBottomInset = Math.max(Number(bottomInset) || 0, Number(safeAreaInsets.bottom) || 0);
+  const isGoalRtlLayout = isRtlLanguage(language);
   const optionRefs = useRef({});
   const inputRefs = useRef({});
   const scrollRef = useRef(null);
@@ -108387,9 +110439,12 @@ function GoalScreen({
       )
     : 0;
   const bottomInsetStyle = addBottomInsetStyle(
-    styles.onboardContent,
+    [styles.onboardContent, styles.onboardContentWithGoalFooter],
     resolvedBottomInset + keyboardBottomInset
   );
+  const goalActionDockInsetStyle = {
+    paddingBottom: Math.max(12, resolvedBottomInset + 8),
+  };
   const swapActions = false;
   const handleSubmit = useCallback(() => {
     onSubmit?.();
@@ -108490,18 +110545,6 @@ function GoalScreen({
     },
     [focusGoalTarget, onToggle, selection]
   );
-  const primaryAction = (
-    <OnboardingScaleButton
-      style={[
-        styles.primaryButton,
-        styles.onboardRaisedInlinePrimary,
-        { backgroundColor: ONBOARDING_GLASS_THEME.buttonPrimary },
-      ]}
-      onPress={handleSubmit}
-    >
-      <Text style={[styles.primaryButtonText, { color: "#FFFFFF" }]}>{t("nextButton")}</Text>
-    </OnboardingScaleButton>
-  );
   useEffect(() => {
     onRegisterGoalTargetFocus?.(focusGoalTarget);
     return () => {
@@ -108564,32 +110607,30 @@ function GoalScreen({
         />
       </OnboardingFixedHeader>
       <OnboardingScrollView
-        contentContainerStyle={[styles.onboardContent, styles.onboardContentWithFixedHeaderLifted, bottomInsetStyle]}
+        contentContainerStyle={[
+          styles.onboardContent,
+          styles.onboardContentWithFixedHeaderLifted,
+          styles.onboardGoalContent,
+          styles.onboardContentWithGoalFooter,
+          bottomInsetStyle,
+        ]}
         ref={scrollRef}
         onScroll={(event) => {
           scrollYRef.current = event.nativeEvent.contentOffset?.y || 0;
         }}
         scrollEventThrottle={16}
       >
-        <View
-          style={[
-            styles.onboardHeroCard,
-            {
-              borderColor: ONBOARDING_GLASS_THEME.border,
-              backgroundColor: ONBOARDING_GLASS_THEME.cardStrong,
-            },
-          ]}
-        >
-          <View style={styles.onboardHeroCopy}>
-            <Text style={[styles.onboardHeroBadge, { color: ONBOARDING_GLASS_THEME.textSecondary }]}>
-              {goalBadgeLabel}
-            </Text>
-            <Text style={[styles.onboardTitle, { color: ONBOARDING_GLASS_THEME.textPrimary }]}>{t("goalTitle")}</Text>
-          </View>
+        <View style={styles.onboardGoalIntro}>
+          <Text style={[styles.onboardGoalIntroBadge, { color: ONBOARDING_GLASS_THEME.textSecondary }]}>
+            {goalBadgeLabel}
+          </Text>
+          <Text style={[styles.onboardGoalIntroTitle, { color: ONBOARDING_GLASS_THEME.textPrimary }]}>
+            {t("goalTitle")}
+          </Text>
+          <Text style={[styles.onboardGoalIntroSubtitle, { color: ONBOARDING_GLASS_THEME.textSecondary }]}>
+            {t("goalSubtitle")}
+          </Text>
         </View>
-        <Text style={[styles.onboardSubtitle, { color: ONBOARDING_GLASS_THEME.textSecondary }]}>
-          {t("goalSubtitle")}
-        </Text>
 
         <View style={styles.goalGrid}>
           {GOAL_PRESETS.map((goal) => (
@@ -108670,17 +110711,64 @@ function GoalScreen({
 
         {onCustomGoalCreate && (
           <OnboardingScaleButton
-            style={[styles.goalCustomButton, { borderColor: ONBOARDING_GLASS_THEME.borderStrong }]}
+            style={[
+              styles.goalCustomButton,
+              isGoalRtlLayout && styles.goalCustomButtonRtl,
+              {
+                borderColor: ONBOARDING_GLASS_THEME.borderStrong,
+                backgroundColor: ONBOARDING_GLASS_THEME.cardStrong,
+              },
+            ]}
             onPress={onCustomGoalCreate}
+            accessibilityRole="button"
+            accessibilityLabel={t("goalCustomCreate")}
           >
+            <View
+              style={[
+                styles.goalCustomButtonIcon,
+                { backgroundColor: colorWithAlpha(ONBOARDING_GLASS_THEME.accent, 0.12) },
+              ]}
+              pointerEvents="none"
+            >
+              <Text style={[styles.goalCustomButtonIconText, { color: ONBOARDING_GLASS_THEME.accent }]}>+</Text>
+            </View>
             <Text style={[styles.goalCustomButtonText, { color: ONBOARDING_GLASS_THEME.textPrimary }]}>
               {t("goalCustomCreate")}
             </Text>
+            <Text
+              style={[styles.goalCustomButtonChevron, { color: ONBOARDING_GLASS_THEME.textSecondary }]}
+              pointerEvents="none"
+            >
+              {isGoalRtlLayout ? "‹" : "›"}
+            </Text>
           </OnboardingScaleButton>
         )}
-
-        {!swapActions && primaryAction}
       </OnboardingScrollView>
+      {!swapActions && keyboardMetrics.height === 0 ? (
+        <View
+          style={[
+            styles.onboardGoalActionDock,
+            {
+              backgroundColor: colorWithAlpha(ONBOARDING_GLASS_THEME.backgroundBlue, 0.98),
+              borderTopColor: ONBOARDING_GLASS_THEME.borderStrong,
+            },
+            goalActionDockInsetStyle,
+          ]}
+        >
+          <OnboardingScaleButton
+            style={[
+              styles.primaryButton,
+              styles.onboardGoalDockPrimary,
+              { backgroundColor: ONBOARDING_GLASS_THEME.buttonPrimary },
+            ]}
+            onPress={handleSubmit}
+            accessibilityRole="button"
+            accessibilityLabel={t("nextButton")}
+          >
+            <Text style={[styles.primaryButtonText, { color: "#FFFFFF" }]}>{t("nextButton")}</Text>
+          </OnboardingScaleButton>
+        </View>
+      ) : null}
     </OnboardingScreenShell>
   );
 }
@@ -109162,7 +111250,7 @@ function OnboardingNotificationsScreen({
       calculationAmbient.setValue(0);
       return undefined;
     }
-    const loop = Animated.loop(
+    const loop = createMotionLoop(
       Animated.sequence([
         Animated.timing(calculationAmbient, {
           toValue: 1,
@@ -109242,7 +111330,7 @@ function OnboardingNotificationsScreen({
       return undefined;
     }
     goalPulse.setValue(0);
-    const pulse = Animated.loop(
+    const pulse = createMotionLoop(
       Animated.sequence([
         Animated.timing(goalPulse, {
           toValue: 1,
@@ -109268,7 +111356,7 @@ function OnboardingNotificationsScreen({
     }
     const loops = coinProgress.map((progress, index) => {
       progress.setValue(0);
-      return Animated.loop(
+      return createMotionLoop(
         Animated.sequence([
           Animated.delay(Math.round(coinStreams[index]?.delay || 0)),
           Animated.timing(progress, {
@@ -110404,6 +112492,11 @@ function SpendingBaselineScreen({
 function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, onSkip, bottomInset = 0 }) {
   const fade = useFadeIn();
   const personaList = Object.values(PERSONA_PRESETS);
+  const [showAllPersonas, setShowAllPersonas] = useState(() => {
+    const selectedIndex = personaList.findIndex((persona) => persona.id === data.persona);
+    return selectedIndex >= 4;
+  });
+  const visiblePersonaList = showAllPersonas ? personaList : personaList.slice(0, 4);
   const isAndroid = Platform.OS === "android";
   const personaBadgeLabel = resolveOnboardingLanguageMapValue(
     ONBOARDING_BADGE_COPY.persona,
@@ -110597,6 +112690,9 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, 
                         },
                       ]}
                       onPress={() => onChange("gender", option.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={genderLabel}
+                      accessibilityState={{ selected: active }}
                     >
                       <View style={styles.genderEmojiWrap}>
                         <Text style={styles.genderEmoji}>{option.emoji}</Text>
@@ -110619,7 +112715,7 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, 
             </View>
           </View>
           <View style={[styles.personaGridModern, isAndroid ? styles.personaGridModernAndroid : null]}>
-            {personaList.map((persona, index) => {
+            {visiblePersonaList.map((persona, index) => {
               const active = data.persona === persona.id;
               const reveal = personaReveal[index] || fade;
               return (
@@ -110649,6 +112745,11 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, 
                       },
                     ]}
                     onPress={() => onChange("persona", persona.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      resolveLanguageMapValue(persona.title, language) || persona.title.en
+                    }
+                    accessibilityState={{ selected: active }}
                   >
                     <View
                       style={[
@@ -110677,6 +112778,24 @@ function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, 
               );
             })}
           </View>
+          {personaList.length > 4 ? (
+            <OnboardingScaleButton
+              style={[
+                styles.personaMoreButton,
+                {
+                  borderColor: ONBOARDING_GLASS_THEME.borderStrong,
+                  backgroundColor: ONBOARDING_GLASS_THEME.cardStrong,
+                },
+              ]}
+              onPress={() => setShowAllPersonas((current) => !current)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showAllPersonas }}
+            >
+              <Text style={[styles.personaMoreButtonText, { color: selectedMood.button }]}>
+                {t(showAllPersonas ? "personaShowLess" : "personaShowMore")}
+              </Text>
+            </OnboardingScaleButton>
+          ) : null}
         </View>
       </OnboardingScrollView>
       <View
@@ -111718,12 +113837,59 @@ function CoinEntryModal({
   saveTarget,
 }) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const safeInsets = safeUseSafeAreaInsets();
+  const { reduceMotion, reduceTransparency } = useMotionPreferences();
   const viewportWidth = Math.max(1, Number(windowWidth) || SCREEN_WIDTH);
   const viewportHeight = Math.max(1, Number(windowHeight) || SCREEN_HEIGHT);
   const viewportLayoutKey = `${Math.round(viewportWidth)}x${Math.round(viewportHeight)}`;
+  const compactLayout = viewportHeight < 740 || viewportWidth < 360;
+  const coinSize = Math.round(
+    Math.max(144, Math.min(compactLayout ? 152 : 176, viewportWidth * 0.44))
+  );
+  const coinInnerSize = coinSize - (compactLayout ? 12 : 14);
+  const categoryOrder = useMemo(() => {
+    const baseOrder = [...IMPULSE_CATEGORY_ORDER];
+    if (customCategories.length) {
+      customCategories.forEach((entry) => {
+        const id = entry?.id;
+        if (id && !baseOrder.includes(id)) {
+          baseOrder.push(id);
+        }
+      });
+    }
+    const baseIndex = new Map(baseOrder.map((id, index) => [id, index]));
+    const recencyMap = categoryRecency instanceof Map ? categoryRecency : null;
+    const hasRecency = recencyMap && recencyMap.size > 0;
+    const hasStats = !!categoryStats;
+    if (!hasRecency && !hasStats) return baseOrder;
+    return baseOrder.sort((a, b) => {
+      if (hasRecency) {
+        const aRecent = recencyMap.get(a) || 0;
+        const bRecent = recencyMap.get(b) || 0;
+        if (bRecent !== aRecent) return bRecent - aRecent;
+      }
+      if (hasStats) {
+        const aStats = categoryStats[a] || {};
+        const bStats = categoryStats[b] || {};
+        const aSpend = Number(aStats.spend) || 0;
+        const bSpend = Number(bStats.spend) || 0;
+        if (bSpend !== aSpend) return bSpend - aSpend;
+        const aTotal = aSpend + (Number(aStats.save) || 0);
+        const bTotal = bSpend + (Number(bStats.save) || 0);
+        if (bTotal !== aTotal) return bTotal - aTotal;
+      }
+      return (baseIndex.get(a) ?? 0) - (baseIndex.get(b) ?? 0);
+    });
+  }, [categoryRecency, categoryStats, customCategories]);
+  const initialSelectedCategory = useMemo(() => {
+    if (!(categoryRecency instanceof Map)) return null;
+    return categoryOrder.find((categoryId) => categoryRecency.has(categoryId)) || null;
+  }, [categoryOrder, categoryRecency]);
+  const initialSelectedCategoryRef = useRef(initialSelectedCategory);
+  initialSelectedCategoryRef.current = initialSelectedCategory;
   const [sliderValue, setSliderValue] = useState(0.25);
-  const [trackHeight, setTrackHeight] = useState(260);
-  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [trackHeight, setTrackHeight] = useState(coinSize);
+  const [selectedCategory, setSelectedCategory] = useState(() => initialSelectedCategory);
   const [categoryError, setCategoryError] = useState(false);
   const [manualMode, setManualMode] = useState(null);
   const [manualValue, setManualValue] = useState("");
@@ -111736,6 +113902,7 @@ function CoinEntryModal({
   const [closeTintColor, setCloseTintColor] = useState("transparent");
   const revealAnim = useRef(new Animated.Value(0)).current;
   const cardAnim = useRef(new Animated.Value(0)).current;
+  const cardExitAnim = useRef(new Animated.Value(0)).current;
   const closeTintOpacity = useRef(new Animated.Value(0)).current;
   const flightPosition = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const flightScale = useRef(new Animated.Value(0.4)).current;
@@ -111755,6 +113922,7 @@ function CoinEntryModal({
   const sliderTickCooldownRef = useRef(0);
   const tossingRef = useRef(false);
   const lastCoinTapRef = useRef(0);
+  const lastAmountTapRef = useRef(0);
   const touchStartValueRef = useRef(0.25);
   const touchStartPageYRef = useRef(0);
   const sliderGestureRef = useRef({
@@ -111763,6 +113931,39 @@ function CoinEntryModal({
   const touchStartRef = useRef(0);
   const manualVisible = manualMode !== null;
   const manualIsAmountMode = manualMode === "amount";
+  const updateSliderValue = useCallback(
+    (value, { force = false, manualOverride = false } = {}) => {
+      if (!manualOverride) {
+        setManualExactLocal(null);
+      }
+      const clamped = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+      sliderValueRef.current = clamped;
+      if (force) {
+        if (sliderRafRef.current) {
+          cancelAnimationFrame(sliderRafRef.current);
+          sliderRafRef.current = null;
+        }
+        pendingSliderValueRef.current = null;
+        sliderValueCommitRef.current = clamped;
+        setSliderValue(clamped);
+        return clamped;
+      }
+      pendingSliderValueRef.current = clamped;
+      if (sliderRafRef.current) {
+        return clamped;
+      }
+      sliderRafRef.current = requestAnimationFrame(() => {
+        sliderRafRef.current = null;
+        const pending = pendingSliderValueRef.current;
+        if (pending === null || pending === undefined) return;
+        pendingSliderValueRef.current = null;
+        sliderValueCommitRef.current = pending;
+        setSliderValue(pending);
+      });
+      return clamped;
+    },
+    []
+  );
   useEffect(() => {
     return () => {
       if (sliderRafRef.current) {
@@ -111772,6 +113973,9 @@ function CoinEntryModal({
     };
   }, []);
   useEffect(() => {
+    setTrackHeight(coinSize);
+  }, [coinSize]);
+  useLayoutEffect(() => {
     if (!visible) return;
     updateSliderValue(0.25, { force: true });
     hapticStepRef.current = Math.round(0.25 * 20);
@@ -111779,7 +113983,7 @@ function CoinEntryModal({
     sliderGestureRef.current = {
       axis: "pending",
     };
-    setSelectedCategory(null);
+    setSelectedCategory(initialSelectedCategoryRef.current);
     setCategoryError(false);
     setManualMode(null);
     setManualValue("");
@@ -111790,11 +113994,15 @@ function CoinEntryModal({
     sliderTickCooldownRef.current = 0;
     tossingRef.current = false;
     lastCoinTapRef.current = 0;
+    lastAmountTapRef.current = 0;
     touchStartRef.current = 0;
     touchStartValueRef.current = 0.25;
     touchStartPageYRef.current = 0;
   }, [directionAnim, updateSliderValue, visible]);
   useEffect(() => {
+    revealAnim.stopAnimation();
+    cardAnim.stopAnimation();
+    cardExitAnim.stopAnimation();
     if (!visible) {
       setManualMode(null);
       setManualValue("");
@@ -111803,6 +114011,7 @@ function CoinEntryModal({
       setCloseTintColor("transparent");
       revealAnim.setValue(0);
       cardAnim.setValue(0);
+      cardExitAnim.setValue(0);
       closeTintOpacity.setValue(0);
       flightOpacity.setValue(0);
       flightScale.setValue(0.4);
@@ -111810,32 +114019,49 @@ function CoinEntryModal({
       closingRef.current = false;
       dismissingRef.current = false;
       lastCoinTapRef.current = 0;
+      lastAmountTapRef.current = 0;
       return;
     }
     setCloseTintColor("transparent");
     revealAnim.setValue(0);
     cardAnim.setValue(0);
+    cardExitAnim.setValue(0);
     closeTintOpacity.setValue(0);
     flightOpacity.setValue(0);
     flightScale.setValue(0.4);
     flightSpin.setValue(0);
     closingRef.current = false;
     dismissingRef.current = false;
+    if (reduceMotion) {
+      revealAnim.setValue(1);
+      cardAnim.setValue(1);
+      return;
+    }
     Animated.parallel([
       Animated.timing(revealAnim, {
         toValue: 1,
-        duration: 420,
-        easing: Easing.out(Easing.cubic),
+        duration: 190,
+        easing: Easing.bezier(0.22, 1, 0.36, 1),
         useNativeDriver: true,
       }),
-      Animated.spring(cardAnim, {
+      Animated.timing(cardAnim, {
         toValue: 1,
-        friction: 7,
-        tension: 110,
+        duration: 260,
+        easing: Easing.bezier(0.32, 0.72, 0, 1),
         useNativeDriver: true,
       }),
     ]).start();
-  }, [cardAnim, closeTintOpacity, flightOpacity, flightScale, flightSpin, revealAnim, visible]);
+  }, [
+    cardAnim,
+    cardExitAnim,
+    closeTintOpacity,
+    flightOpacity,
+    flightScale,
+    flightSpin,
+    reduceMotion,
+    revealAnim,
+    visible,
+  ]);
   const currencySymbol =
     CURRENCY_SIGNS[currency] ||
     CURRENCY_SIGNS[DEFAULT_PROFILE.currency] ||
@@ -111872,21 +114098,43 @@ function CoinEntryModal({
     [currency, resolvedMaxAmountUSD]
   );
   const sliderMaxLocal = formatCurrencyWhole(sliderMaxLocalValue, currency);
-  const sliderFillHeight = Math.max(COIN_FILL_MIN_HEIGHT, Math.min(trackHeight, trackHeight * sliderValue));
+  const sliderFillHeight = Math.max(
+    COIN_FILL_MIN_HEIGHT,
+    Math.min(coinInnerSize, coinInnerSize * sliderValue)
+  );
   const coinHasValue = sliderValue > 0.02;
-  const coinFillColor = coinHasValue ? "#F7C45D" : "#DADDE3";
-  const coinShineColor = coinHasValue ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.25)";
+  const coinFillColor = coinHasValue ? "rgba(247,196,93,0.76)" : "rgba(146,152,168,0.28)";
   const isDarkTheme = colors.background === THEMES.dark.background;
-  const coinSurfaceOuter = isDarkTheme ? "#111525" : "#F6F8FC";
-  const coinSurfaceInner = isDarkTheme ? "#181D31" : "#ECEFF5";
-  const coinSurfaceBorder = isDarkTheme ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.8)";
-  const coinSymbolColor = isDarkTheme ? "rgba(245,248,255,0.78)" : "rgba(5,7,13,0.25)";
-  const coinSymbolOpacity = isDarkTheme ? 0.85 : 0.2;
-  const sliderBackground = directionAnim.interpolate({
-    inputRange: [-1, 0, 1],
-    outputRange: ["rgba(217,72,98,0.18)", "rgba(0,0,0,0)", "rgba(46,184,115,0.18)"],
-    extrapolate: "clamp",
-  });
+  const isProTheme = colors.primary !== THEMES.light.primary && !isDarkTheme;
+  const coinSymbolColor = isDarkTheme ? "rgba(247,249,255,0.84)" : "rgba(16,27,69,0.5)";
+  const coinGlassTint = isProTheme
+    ? colorWithAlpha(colors.primary, 0.12)
+    : coinHasValue
+    ? "rgba(247,196,93,0.08)"
+    : "rgba(255,255,255,0.08)";
+  const coinFallbackColor = isDarkTheme
+    ? "rgba(9,15,28,0.3)"
+    : isProTheme
+    ? colorWithAlpha(colors.primary, 0.07)
+    : "rgba(236,244,255,0.16)";
+  const coinSolidFallback = colors.surfaceMuted || colors.card;
+  const coinBorderColor = isDarkTheme
+    ? "rgba(255,255,255,0.22)"
+    : isProTheme
+    ? colorWithAlpha(colors.primary, 0.24)
+    : "rgba(255,255,255,0.78)";
+  const sheetMaxHeight = Math.max(360, viewportHeight - Math.max(safeInsets.top, 8) - 8);
+  const sheetBottomPadding = Math.max(UI_SPACING.sm, safeInsets.bottom + UI_SPACING.xs);
+  const errorColor = colors.error || SPEND_ACTION_COLOR;
+  const spendButtonColor = colors.error || COIN_ENTRY_SPEND_BACKGROUND;
+  const saveButtonColor = colors.success || COIN_ENTRY_SAVE_BACKGROUND;
+  const spendButtonTextColor = resolveForegroundForColor(spendButtonColor);
+  const saveButtonTextColor = resolveForegroundForColor(saveButtonColor);
+  const categoryActiveBackground = isProTheme ? colors.primary : colors.text;
+  const categoryActiveForeground = isProTheme
+    ? colors.onPrimary || resolveForegroundForColor(colors.primary)
+    : colors.background;
+  const sheetSurfaceColor = colors.surfaceElevated || colors.card;
   const coinTranslateX = directionAnim.interpolate({
     inputRange: [-3, -1, 0, 1, 3],
     outputRange: [-viewportWidth, -48, 0, 48, viewportWidth],
@@ -111894,30 +114142,22 @@ function CoinEntryModal({
   });
   const originX = Number.isFinite(origin?.x) ? origin.x : viewportWidth / 2;
   const originY = Number.isFinite(origin?.y) ? origin.y : viewportHeight - 120;
-  const maxRevealScale = useMemo(
-    () => Math.max(1, Math.hypot(viewportWidth, viewportHeight) / (COIN_REVEAL_SIZE / 2)),
-    [viewportHeight, viewportWidth]
-  );
-  const revealScale = revealAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.15, maxRevealScale],
-    extrapolate: "clamp",
-  });
   const backdropOpacity = revealAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 1],
     extrapolate: "clamp",
   });
-  const cardScale = cardAnim.interpolate({
+  const cardEnterTranslateY = cardAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.4, 1],
+    outputRange: [compactLayout ? 24 : 32, 0],
     extrapolate: "clamp",
   });
-  const cardOpacity = cardAnim.interpolate({
+  const cardExitTranslateY = cardExitAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 1],
+    outputRange: [0, sheetMaxHeight + Math.max(24, safeInsets.bottom)],
     extrapolate: "clamp",
   });
+  const cardTranslateY = Animated.add(cardEnterTranslateY, cardExitTranslateY);
   const currencyFineStep = useMemo(() => getCurrencyFineStep(currency), [currency]);
   const computeTickIndex = useCallback(
     (value) => {
@@ -112014,38 +114254,57 @@ function CoinEntryModal({
   const runDismissAnimation = useCallback(
     (onComplete) => {
       if (dismissingRef.current || closingRef.current) return;
+      if (reduceMotion) {
+        revealAnim.setValue(0);
+        cardExitAnim.setValue(1);
+        onComplete?.();
+        return;
+      }
       dismissingRef.current = true;
+      cardAnim.stopAnimation();
+      cardExitAnim.stopAnimation();
+      revealAnim.stopAnimation();
       Animated.parallel([
-        Animated.timing(cardAnim, {
-          toValue: 0,
-          duration: 160,
-          easing: Easing.in(Easing.quad),
+        Animated.timing(cardExitAnim, {
+          toValue: 1,
+          duration: 220,
+          easing: Easing.bezier(0.32, 0.72, 0, 1),
           useNativeDriver: true,
         }),
         Animated.timing(revealAnim, {
           toValue: 0,
-          duration: 200,
-          easing: Easing.in(Easing.cubic),
+          duration: 180,
+          easing: Easing.bezier(0.22, 1, 0.36, 1),
           useNativeDriver: true,
         }),
-      ]).start(() => {
+      ]).start(({ finished }) => {
         dismissingRef.current = false;
-        onComplete?.();
+        if (finished) {
+          onComplete?.();
+        }
       });
     },
-    [cardAnim, revealAnim]
+    [cardAnim, cardExitAnim, reduceMotion, revealAnim]
   );
   const runSubmitAnimation = useCallback(
     (direction, payload) => {
       if (closingRef.current) return;
+      if (reduceMotion) {
+        closingRef.current = true;
+        onSubmit?.(payload);
+        closingRef.current = false;
+        return;
+      }
       const isSaveAction = direction === "save";
       const tintFadeDuration = isSaveAction ? 120 : 180;
-      const cardHideDuration = isSaveAction ? 120 : 180;
+      const cardHideDuration = isSaveAction ? 210 : 220;
       const flightFadeInDuration = isSaveAction ? 90 : 160;
       const flightPeakScaleDuration = isSaveAction ? 120 : 160;
-      const flightSettleScaleDuration = isSaveAction ? 180 : 320;
-      const flightTravelDuration = isSaveAction ? 300 : 520;
+      const flightSettleScaleDuration = isSaveAction ? 150 : 180;
+      const flightTravelDuration = isSaveAction ? 260 : 300;
       closingRef.current = true;
+      cardAnim.stopAnimation();
+      cardExitAnim.stopAnimation();
       setFlightDirection(direction);
       setCloseTintColor(
         direction === "save" ? "rgba(46,184,115,0.35)" : "rgba(217,72,98,0.35)"
@@ -112072,10 +114331,10 @@ function CoinEntryModal({
             easing: Easing.out(Easing.quad),
             useNativeDriver: true,
           }),
-          Animated.timing(cardAnim, {
-            toValue: 0,
+          Animated.timing(cardExitAnim, {
+            toValue: 1,
             duration: cardHideDuration,
-            easing: Easing.in(Easing.quad),
+            easing: Easing.bezier(0.32, 0.72, 0, 1),
             useNativeDriver: true,
           }),
           Animated.timing(flightOpacity, {
@@ -112087,7 +114346,7 @@ function CoinEntryModal({
             Animated.timing(flightScale, {
               toValue: 1.05,
               duration: flightPeakScaleDuration,
-              easing: Easing.out(Easing.back(1.1)),
+              easing: Easing.out(Easing.cubic),
               useNativeDriver: true,
             }),
             Animated.timing(flightScale, {
@@ -112117,6 +114376,7 @@ function CoinEntryModal({
     },
     [
       cardAnim,
+      cardExitAnim,
       closeTintOpacity,
       flightOpacity,
       flightPosition,
@@ -112124,42 +114384,10 @@ function CoinEntryModal({
       flightSpin,
       measureCoinAnchor,
       onSubmit,
+      reduceMotion,
       resolveSaveTarget,
       resolveSpendTarget,
     ]
-  );
-  const updateSliderValue = useCallback(
-    (value, { force = false, fromUser = false, manualOverride = false } = {}) => {
-      if (!manualOverride) {
-        setManualExactLocal(null);
-      }
-      const clamped = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
-      sliderValueRef.current = clamped;
-      if (force) {
-        if (sliderRafRef.current) {
-          cancelAnimationFrame(sliderRafRef.current);
-          sliderRafRef.current = null;
-        }
-        pendingSliderValueRef.current = null;
-        sliderValueCommitRef.current = clamped;
-        setSliderValue(clamped);
-        return clamped;
-      }
-      pendingSliderValueRef.current = clamped;
-      if (sliderRafRef.current) {
-        return clamped;
-      }
-      sliderRafRef.current = requestAnimationFrame(() => {
-        sliderRafRef.current = null;
-        const pending = pendingSliderValueRef.current;
-        if (pending === null || pending === undefined) return;
-        pendingSliderValueRef.current = null;
-        sliderValueCommitRef.current = pending;
-        setSliderValue(pending);
-      });
-      return clamped;
-    },
-    [setManualExactLocal]
   );
   const openManual = useCallback(
     (mode) => {
@@ -112174,6 +114402,16 @@ function CoinEntryModal({
     },
     [sliderLocalValue]
   );
+  const handleAmountDoubleTap = useCallback(() => {
+    const now = Date.now();
+    const sinceLastTap = now - lastAmountTapRef.current;
+    if (sinceLastTap > 0 && sinceLastTap <= COIN_ENTRY_MANUAL_DOUBLE_TAP_MS) {
+      lastAmountTapRef.current = 0;
+      openManual("amount");
+      return;
+    }
+    lastAmountTapRef.current = now;
+  }, [openManual]);
   const closeManual = useCallback(() => {
     setManualMode(null);
     setManualError("");
@@ -112183,6 +114421,33 @@ function CoinEntryModal({
     sliderValueRef.current = snapped;
     updateSliderValue(snapped, { force: true });
   }, [computeSteppedValue, updateSliderValue]);
+  const adjustSliderForAccessibility = useCallback(
+    (delta) => {
+      const next = computeSteppedValue(sliderValueRef.current + delta);
+      updateSliderValue(next, { force: true, fromUser: true });
+      hapticStepRef.current = Math.round(next * 20);
+      triggerSliderTick(computeTickIndex(next));
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    },
+    [computeSteppedValue, computeTickIndex, triggerSliderTick, updateSliderValue]
+  );
+  const handleCoinAccessibilityAction = useCallback(
+    (event) => {
+      const actionName = event?.nativeEvent?.actionName;
+      if (actionName === "increment") {
+        adjustSliderForAccessibility(0.05);
+        return;
+      }
+      if (actionName === "decrement") {
+        adjustSliderForAccessibility(-0.05);
+        return;
+      }
+      if (actionName === "activate") {
+        openManual("amount");
+      }
+    },
+    [adjustSliderForAccessibility, openManual]
+  );
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -112263,11 +114528,14 @@ function CoinEntryModal({
       }),
     [
       computeSteppedValue,
+      computeTickIndex,
       computeValueFromTouch,
       directionAnim,
       finalizeSliderValue,
       openManual,
       trackHeight,
+      triggerSliderTick,
+      updateSliderValue,
     ]
   );
   const handleManualSave = () => {
@@ -112308,10 +114576,10 @@ function CoinEntryModal({
   };
   const categoryChipWidth = useMemo(() => {
     const visibleCount = 3;
-    const gap = 10;
-    const horizontalPadding = 32;
-    const available = viewportWidth - horizontalPadding * 2 - gap * (visibleCount - 1);
-    return Math.max(96, Math.floor(available / visibleCount));
+    const gap = UI_SPACING.xs;
+    const sheetWidth = Math.min(viewportWidth, 520);
+    const available = sheetWidth - UI_SPACING.lg * 2 - UI_SPACING.xs - gap * (visibleCount - 1);
+    return Math.max(82, Math.min(104, Math.floor(available / visibleCount)));
   }, [viewportWidth]);
   const manualTitle = manualIsAmountMode ? t("coinEntryManualAmountTitle") : t("coinEntryManualTitle");
   const manualPlaceholder = manualIsAmountMode
@@ -112326,40 +114594,6 @@ function CoinEntryModal({
     });
     return map;
   }, [customCategories]);
-  const categoryOrder = useMemo(() => {
-    const baseOrder = [...IMPULSE_CATEGORY_ORDER];
-    if (customCategories.length) {
-      customCategories.forEach((entry) => {
-        const id = entry?.id;
-        if (id && !baseOrder.includes(id)) {
-          baseOrder.push(id);
-        }
-      });
-    }
-    const baseIndex = new Map(baseOrder.map((id, index) => [id, index]));
-    const recencyMap = categoryRecency instanceof Map ? categoryRecency : null;
-    const hasRecency = recencyMap && recencyMap.size > 0;
-    const hasStats = !!categoryStats;
-    if (!hasRecency && !hasStats) return baseOrder;
-    return baseOrder.sort((a, b) => {
-      if (hasRecency) {
-        const aRecent = recencyMap.get(a) || 0;
-        const bRecent = recencyMap.get(b) || 0;
-        if (bRecent !== aRecent) return bRecent - aRecent;
-      }
-      if (hasStats) {
-        const aStats = categoryStats[a] || {};
-        const bStats = categoryStats[b] || {};
-        const aSpend = Number(aStats.spend) || 0;
-        const bSpend = Number(bStats.spend) || 0;
-        if (bSpend !== aSpend) return bSpend - aSpend;
-        const aTotal = aSpend + (Number(aStats.save) || 0);
-        const bTotal = bSpend + (Number(bStats.save) || 0);
-        if (bTotal !== aTotal) return bTotal - aTotal;
-      }
-      return (baseIndex.get(a) ?? 0) - (baseIndex.get(b) ?? 0);
-    });
-  }, [categoryRecency, categoryStats, customCategories]);
   const handleAction = useCallback(
     (direction) => {
       if (tossingRef.current || closingRef.current || dismissingRef.current) return;
@@ -112379,6 +114613,14 @@ function CoinEntryModal({
         return;
       }
       playSound?.("coin");
+      if (reduceMotion) {
+        runSubmitAnimation(direction, {
+          amountUSD: computedAmountUSD,
+          category: selectedCategory,
+          direction,
+        });
+        return;
+      }
       tossingRef.current = true;
       Animated.timing(directionAnim, {
         toValue: direction === "save" ? 3.2 : -3.2,
@@ -112401,6 +114643,7 @@ function CoinEntryModal({
       directionAnim,
       manualExactLocal,
       playSound,
+      reduceMotion,
       runSubmitAnimation,
       selectedCategory,
     ]
@@ -112409,14 +114652,14 @@ function CoinEntryModal({
     if (closingRef.current) return;
     runDismissAnimation(onCancel);
   }, [onCancel, runDismissAnimation]);
-  const showActionButtons = true;
   const shouldHighlightCategoryError = categoryError && !selectedCategory;
   return (
     <Modal
       key={`coin-entry-${viewportLayoutKey}`}
       visible={visible}
       transparent
-      animationType="fade"
+      forceNativeHost
+      animationType="none"
       onRequestClose={() => {
         if (manualVisible) {
           closeManual();
@@ -112425,20 +114668,33 @@ function CoinEntryModal({
         handleDismiss();
       }}
       statusBarTranslucent
+      navigationBarTranslucent
+      hardwareAccelerated
     >
-      <View style={styles.coinEntryOverlayRoot}>
+      <View
+        style={styles.coinEntryOverlayRoot}
+        accessibilityViewIsModal
+        importantForAccessibility="yes"
+      >
         <Animated.View
           pointerEvents="none"
           style={[
-            styles.coinEntryRevealCircle,
+            styles.coinEntryBackdropVisual,
             {
-              left: originX - COIN_REVEAL_SIZE / 2,
-              top: originY - COIN_REVEAL_SIZE / 2,
-              backgroundColor: "rgba(0,0,0,0.55)",
-              transform: [{ scale: revealScale }],
+              backgroundColor: reduceTransparency
+                ? isDarkTheme
+                  ? "rgba(2,6,14,0.88)"
+                  : "rgba(9,15,29,0.72)"
+                : isDarkTheme
+                ? "rgba(2,6,14,0.48)"
+                : "rgba(9,15,29,0.34)",
+              opacity: backdropOpacity,
             },
           ]}
         />
+        <TouchableWithoutFeedback onPress={() => dismissKeyboardOrRun(handleDismiss)}>
+          <View style={styles.coinEntryBackdropPressArea} />
+        </TouchableWithoutFeedback>
         <Animated.View
           pointerEvents="none"
           style={[
@@ -112472,47 +114728,83 @@ function CoinEntryModal({
             <Image source={flightCoinAsset} style={styles.coinEntryFlightCoinImage} />
           )}
         </Animated.View>
-        <TouchableWithoutFeedback onPress={() => dismissKeyboardOrRun(handleDismiss)}>
-          <Animated.View style={[styles.coinEntryBackdrop, { opacity: backdropOpacity }]}>
-            <TouchableWithoutFeedback onPress={() => {}}>
-              <Animated.View
+        <View style={styles.coinEntrySheetLayer} pointerEvents="box-none">
+          <Animated.View
+            style={[
+              styles.coinEntryCard,
+              {
+                maxHeight: sheetMaxHeight,
+                backgroundColor: sheetSurfaceColor,
+                borderBottomLeftRadius: viewportWidth > 540 ? UI_RADIUS.sheet : 0,
+                borderBottomRightRadius: viewportWidth > 540 ? UI_RADIUS.sheet : 0,
+                transform: [{ translateY: cardTranslateY }],
+              },
+            ]}
+          >
+            <View style={styles.coinEntryUpperContent}>
+                <View
+                  style={[
+                    styles.coinEntryDragIndicator,
+                    { backgroundColor: colorWithAlpha(colors.muted, 0.42) },
+                  ]}
+                >
+                </View>
+                <View style={styles.coinEntryHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.coinEntryTitle, { color: colors.text }]}>
+                      {t("coinEntryTitle")}
+                    </Text>
+                    <Text style={[styles.coinEntrySubtitle, { color: colors.muted }]}>
+                      {t("coinEntrySubtitle")}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={handleDismiss}
+                    style={styles.coinEntryClose}
+                    activeOpacity={0.72}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("coinEntryManualCancel")}
+                  >
+                    <Text style={[styles.coinEntryCloseText, { color: colors.muted }]}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+                <Pressable
+                  style={styles.coinEntryAmountButton}
+                  onPress={handleAmountDoubleTap}
+                  onAccessibilityTap={() => openManual("amount")}
+                  accessibilityRole="button"
+                  accessibilityLabel={sliderAmountLocal}
+                  accessibilityHint={t("amountSliderManualHint")}
+                >
+                  <Text style={[styles.coinEntryAmount, { color: colors.text }]}>{sliderAmountLocal}</Text>
+                  <Text style={[styles.coinEntryManualTapHint, { color: colors.muted }]}>
+                    {t("amountSliderManualHint")}
+                  </Text>
+                </Pressable>
+            </View>
+            <ScrollView
+              style={styles.coinEntryBodyScroll}
+              contentContainerStyle={styles.coinEntryBodyContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              bounces={false}
+            >
+              <View
                 style={[
-                  styles.coinEntryCard,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                    opacity: cardOpacity,
-                    transform: [{ scale: cardScale }],
-                  },
+                  styles.coinSliderWrapper,
+                  { minHeight: coinSize + (compactLayout ? 20 : 30) },
                 ]}
               >
-              <View style={styles.coinEntryHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.coinEntryTitle, { color: colors.text }]}>{t("coinEntryTitle")}</Text>
-                  <Text style={[styles.coinEntrySubtitle, { color: colors.muted }]}>
-                    {t("coinEntrySubtitle")}
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={handleDismiss} style={styles.coinEntryClose}>
-                  <Text style={[styles.coinEntryCloseText, { color: colors.muted }]}>✕</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.coinEntryAmountRow}>
-                <Text style={[styles.coinEntryAmount, { color: colors.text }]}>{sliderAmountLocal}</Text>
-              </View>
-              <Text style={[styles.coinEntryManualTapHint, { color: colors.muted }]}>
-                {t("coinEntryManualTapHint")}
-              </Text>
-              <View style={styles.coinSliderWrapper}>
-                <Animated.View style={[styles.coinSliderBackdrop, { backgroundColor: sliderBackground }]} />
                 <Animated.View
                   ref={coinCircleRef}
                   style={[
-                    styles.coinCircle,
+                    styles.coinGlassShadow,
                     {
-                      borderColor: coinHasValue ? "rgba(247,196,93,0.5)" : colors.border,
-                      backgroundColor: coinSurfaceOuter,
-                      shadowColor: coinHasValue ? "#F7C45D" : "#A0A5B6",
+                      width: coinSize,
+                      height: coinSize,
+                      borderRadius: coinSize / 2,
+                      shadowColor: isDarkTheme ? "#000000" : "#071225",
+                      shadowOpacity: isDarkTheme ? 0.42 : 0.28,
                       transform: [{ translateX: coinTranslateX }],
                     },
                   ]}
@@ -112520,30 +114812,69 @@ function CoinEntryModal({
                     const { height } = event.nativeEvent.layout;
                     if (height) setTrackHeight(height);
                   }}
+                  accessible
+                  accessibilityRole="adjustable"
+                  accessibilityLabel={t("coinEntrySubtitle")}
+                  accessibilityValue={{ text: sliderAmountLocal }}
+                  accessibilityActions={[
+                    { name: "increment" },
+                    { name: "decrement" },
+                    { name: "activate", label: t("amountSliderManualHint") },
+                  ]}
+                  onAccessibilityAction={handleCoinAccessibilityAction}
                   {...panResponder.panHandlers}
                 >
                   <View
                     style={[
-                      styles.coinInnerSurface,
-                      { backgroundColor: coinSurfaceInner, borderColor: coinSurfaceBorder },
+                      styles.coinCircle,
+                      {
+                        width: coinSize,
+                        height: coinSize,
+                        borderRadius: coinSize / 2,
+                        borderColor: coinBorderColor,
+                      },
                     ]}
                   >
-                    <View style={styles.coinFillTrack}>
+                    <View
+                      style={[
+                        styles.coinFillTrack,
+                        {
+                          width: coinInnerSize,
+                          height: coinInnerSize,
+                          borderRadius: coinInnerSize / 2,
+                        },
+                      ]}
+                    >
                       <View
                         style={[
                           styles.coinFill,
                           {
                             height: sliderFillHeight,
                             backgroundColor: coinFillColor,
+                            borderTopLeftRadius: coinInnerSize / 2,
+                            borderTopRightRadius: coinInnerSize / 2,
                           },
                         ]}
                       />
                     </View>
-                    <View style={[styles.coinShine, { backgroundColor: coinShineColor }]} />
+                    <PlatformGlassBackground
+                      style={StyleSheet.absoluteFillObject}
+                      isDarkTheme={isDarkTheme}
+                      glassEffectStyle="clear"
+                      tintColor={coinGlassTint}
+                      fallbackColor={coinFallbackColor}
+                      solidFallbackColor={coinSolidFallback}
+                      borderColor="transparent"
+                      androidIntensity={36}
+                      iosFallbackIntensity={58}
+                    />
                     <Text
                       style={[
                         styles.coinCurrencySymbol,
-                        { color: coinSymbolColor, opacity: coinSymbolOpacity },
+                        {
+                          color: coinSymbolColor,
+                          fontSize: compactLayout ? 40 : 46,
+                        },
                       ]}
                     >
                       {currencySymbol}
@@ -112551,120 +114882,144 @@ function CoinEntryModal({
                   </View>
                 </Animated.View>
               </View>
-              {showActionButtons && (
-                <View style={styles.coinEntryActions}>
-                  <TouchableOpacity
-                    style={[
-                      styles.coinEntryActionButton,
-                      styles.coinEntryActionButtonSpend,
-                      preferredAction === "spend"
-                        ? { borderWidth: 2, borderColor: colors.text }
-                        : null,
-                    ]}
-                    onPress={() => handleAction("spend")}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={[styles.coinEntryActionButtonText, styles.coinEntryActionButtonTextSpend]}>
-                      {t("spendAction")}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.coinEntryActionButton,
-                      styles.coinEntryActionButtonSave,
-                      preferredAction === "save"
-                        ? { borderWidth: 2, borderColor: colors.text }
-                        : null,
-                    ]}
-                    onPress={() => handleAction("save")}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={[styles.coinEntryActionButtonText, styles.coinEntryActionButtonTextSave]}>
-                      {t("saveAction")}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-              <Text style={[styles.coinEntryHint, { color: colors.muted }]}>{t("coinEntryHint")}</Text>
-              <Text
-                style={[
-                  styles.coinEntryCategoryLabel,
-                  { color: shouldHighlightCategoryError ? SPEND_ACTION_COLOR : colors.text },
-                ]}
-              >
-                {t("coinEntryCategoryLabel")}
-              </Text>
-              {categoryError && (
-                <Text style={[styles.coinEntryError, { color: SPEND_ACTION_COLOR }]}>
-                  {t("coinEntryCategoryError")}
-                </Text>
-              )}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.coinEntryCategoryScroll}
-                contentContainerStyle={styles.coinEntryCategoryRow}
-              >
-                {categoryOrder.map((categoryId) => {
-                  const def = IMPULSE_CATEGORY_DEFS[categoryId] || customCategoryMap.get(categoryId);
-                  if (!def) return null;
-                  const active = selectedCategory === categoryId;
-                  const emoji = def.emoji || "✨";
-                  const label =
-                    resolveLanguageMapValue(def, language) ||
-                    def.en ||
-                    def.ru ||
-                    def.es ||
-                    def.fr ||
-                    categoryId;
-                  return (
-                    <TouchableOpacity
-	                      key={categoryId}
-	                      style={[
-	                        styles.coinEntryCategoryButton,
-	                        {
-	                          width: categoryChipWidth,
-	                          borderColor: active
-	                            ? colors.text
-	                            : shouldHighlightCategoryError
-	                            ? SPEND_ACTION_COLOR
-	                            : colors.border,
-	                          backgroundColor: active
-	                            ? colors.text
-	                            : shouldHighlightCategoryError
-	                            ? colorWithAlpha(SPEND_ACTION_COLOR, 0.08)
-	                            : "transparent",
-	                        },
-	                      ]}
-                      onPress={() => {
-                        setSelectedCategory(categoryId);
-                        setCategoryError(false);
-                      }}
+              <View style={styles.coinEntryCategorySection}>
+                  <View style={styles.coinEntryCategoryHeader}>
+                    <Text
+                      style={[
+                        styles.coinEntryCategoryLabel,
+                        { color: shouldHighlightCategoryError ? errorColor : colors.text },
+                      ]}
                     >
-                      <Text style={styles.coinEntryCategoryEmoji}>{emoji}</Text>
+                      {t("coinEntryCategoryLabel")}
+                    </Text>
+                    {categoryError && (
                       <Text
-                        style={[
-                          styles.coinEntryCategoryText,
-                          {
-                            color: active
-                              ? colors.background
-                              : shouldHighlightCategoryError
-                              ? SPEND_ACTION_COLOR
-                              : colors.text,
-                          },
-                        ]}
-                        numberOfLines={2}
+                        style={[styles.coinEntryError, { color: errorColor }]}
+                        accessibilityLiveRegion="polite"
                       >
-                        {label}
+                        {t("coinEntryCategoryError")}
                       </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-              </Animated.View>
-            </TouchableWithoutFeedback>
+                    )}
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.coinEntryCategoryScroll}
+                    contentContainerStyle={styles.coinEntryCategoryRow}
+                  >
+                    {categoryOrder.map((categoryId) => {
+                      const def =
+                        IMPULSE_CATEGORY_DEFS[categoryId] || customCategoryMap.get(categoryId);
+                      if (!def) return null;
+                      const active = selectedCategory === categoryId;
+                      const emoji = def.emoji || "✨";
+                      const label =
+                        resolveLanguageMapValue(def, language) ||
+                        def.en ||
+                        def.ru ||
+                        def.es ||
+                        def.fr ||
+                        categoryId;
+                      return (
+                        <TouchableOpacity
+                          key={categoryId}
+                          style={[
+                            styles.coinEntryCategoryButton,
+                            {
+                              width: categoryChipWidth,
+                              borderColor: active
+                                ? categoryActiveBackground
+                                : shouldHighlightCategoryError
+                                ? errorColor
+                                : colors.border,
+                              backgroundColor: active
+                                ? categoryActiveBackground
+                                : shouldHighlightCategoryError
+                                ? colorWithAlpha(errorColor, 0.08)
+                                : colorWithAlpha(colors.text, 0.055),
+                            },
+                          ]}
+                          onPress={() => {
+                            setSelectedCategory(categoryId);
+                            setCategoryError(false);
+                          }}
+                          activeOpacity={0.72}
+                          accessibilityRole="radio"
+                          accessibilityLabel={label}
+                          accessibilityState={{ selected: active }}
+                        >
+                          <Text style={styles.coinEntryCategoryEmoji}>{emoji}</Text>
+                          <Text
+                            style={[
+                              styles.coinEntryCategoryText,
+                              {
+                                color: active
+                                  ? categoryActiveForeground
+                                  : shouldHighlightCategoryError
+                                  ? errorColor
+                                  : colors.text,
+                              },
+                            ]}
+                            numberOfLines={2}
+                          >
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+              </View>
+            </ScrollView>
+            <View
+              style={[
+                styles.coinEntryActions,
+                {
+                  paddingBottom: sheetBottomPadding,
+                  borderTopColor: colors.separator || colors.border,
+                },
+              ]}
+            >
+                <TouchableOpacity
+                  style={[
+                    styles.coinEntryActionButton,
+                    {
+                      backgroundColor: spendButtonColor,
+                      borderColor:
+                        preferredAction === "spend"
+                          ? colors.text
+                          : colorWithAlpha(colors.text, 0.06),
+                    },
+                  ]}
+                  onPress={() => handleAction("spend")}
+                  activeOpacity={0.82}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.coinEntryActionButtonText, { color: spendButtonTextColor }]}>
+                    {t("spendAction")}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.coinEntryActionButton,
+                    {
+                      backgroundColor: saveButtonColor,
+                      borderColor:
+                        preferredAction === "save"
+                          ? colors.text
+                          : colorWithAlpha(colors.text, 0.06),
+                    },
+                  ]}
+                  onPress={() => handleAction("save")}
+                  activeOpacity={0.82}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.coinEntryActionButtonText, { color: saveButtonTextColor }]}>
+                    {t("saveAction")}
+                  </Text>
+                </TouchableOpacity>
+            </View>
           </Animated.View>
-        </TouchableWithoutFeedback>
+        </View>
       </View>
       {manualVisible && (
         <View style={StyleSheet.absoluteFillObject}>
@@ -112679,14 +115034,27 @@ function CoinEntryModal({
                   <View
                     style={[
                       styles.coinEntryManualCard,
-                      { backgroundColor: colors.card, borderColor: colors.border },
+                      {
+                        backgroundColor: colors.surfaceElevated || colors.card,
+                        borderColor: colors.border,
+                      },
                     ]}
                   >
-                    <Text style={[styles.coinEntryManualTitle, { color: colors.text }]}>
+                    <Text
+                      style={[styles.coinEntryManualTitle, { color: colors.text }]}
+                      accessibilityRole="header"
+                    >
                       {manualTitle}
                     </Text>
                     <TextInput
-                      style={[styles.coinEntryManualInput, { color: colors.text, borderColor: colors.border }]}
+                      style={[
+                        styles.coinEntryManualInput,
+                        {
+                          color: colors.text,
+                          borderColor: colors.border,
+                          backgroundColor: colorWithAlpha(colors.text, 0.04),
+                        },
+                      ]}
                       placeholder={manualPlaceholder}
                       placeholderTextColor={colors.muted}
                       keyboardType="numeric"
@@ -112694,22 +115062,37 @@ function CoinEntryModal({
                       onChangeText={setManualValue}
                     />
                     {!!manualError && (
-                      <Text style={[styles.coinEntryManualError, { color: SPEND_ACTION_COLOR }]}>{manualError}</Text>
+                      <Text
+                        style={[styles.coinEntryManualError, { color: errorColor }]}
+                        accessibilityLiveRegion="polite"
+                      >
+                        {manualError}
+                      </Text>
                     )}
                     <View style={styles.coinEntryManualActions}>
                       <TouchableOpacity
                         style={[styles.coinEntryManualButtonGhost, { borderColor: colors.border }]}
                         onPress={closeManual}
+                        accessibilityRole="button"
                       >
                         <Text style={[styles.coinEntryManualButtonGhostText, { color: colors.muted }]}>
                           {t("coinEntryManualCancel")}
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.coinEntryManualButtonPrimary, { backgroundColor: colors.text }]}
+                        style={[
+                          styles.coinEntryManualButtonPrimary,
+                          { backgroundColor: categoryActiveBackground },
+                        ]}
                         onPress={handleManualSave}
+                        accessibilityRole="button"
                       >
-                        <Text style={[styles.coinEntryManualButtonPrimaryText, { color: colors.background }]}>
+                        <Text
+                          style={[
+                            styles.coinEntryManualButtonPrimaryText,
+                            { color: categoryActiveForeground },
+                          ]}
+                        >
                           {t("coinEntryManualSave")}
                         </Text>
                       </TouchableOpacity>
@@ -114607,7 +116990,7 @@ function PotentialLossModal({
         useNativeDriver: false,
       }),
     ]).start();
-    const pulseLoop = Animated.loop(
+    const pulseLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(pulse, {
           toValue: 1,
@@ -116041,7 +118424,7 @@ function OnboardingScreenShell({
   const ambient = useRef(new Animated.Value(0)).current;
   const shellGradientIdRef = useRef(`onboard_shell_gradient_${Math.random().toString(36).slice(2, 9)}`);
   useEffect(() => {
-    const loop = Animated.loop(
+    const loop = createMotionLoop(
       Animated.sequence([
         Animated.timing(ambient, {
           toValue: 1,
@@ -116211,17 +118594,18 @@ function OnboardingScaleButton({
   ...touchableProps
 }) {
   const onboardingPlaySound = useContext(OnboardingSoundContext);
+  const { reduceMotion } = useMotionPreferences();
   const scale = useRef(new Animated.Value(1)).current;
   const animateScale = useCallback(
     (nextScale) => {
       Animated.timing(scale, {
-        toValue: nextScale,
-        duration: 110,
+        toValue: reduceMotion ? 1 : nextScale,
+        duration: reduceMotion ? 0 : 110,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
       }).start();
     },
-    [scale]
+    [reduceMotion, scale]
   );
   const handlePressIn = useCallback(
     (event) => {
@@ -116392,7 +118776,7 @@ function OnboardingSaveDemoScreen({
       mass: 0.92,
       useNativeDriver: true,
     });
-    const pulse = Animated.loop(
+    const pulse = createMotionLoop(
       Animated.sequence([
         Animated.timing(resultPulseAnim, {
           toValue: 1,
@@ -116847,6 +119231,7 @@ function LanguageScreen({
   bottomInset = 0,
 }) {
   const fade = useFadeIn();
+  const { reduceMotion } = useMotionPreferences();
   const safeAreaInsets = safeUseSafeAreaInsets();
   const normalizedSelectedLanguage = normalizeLanguage(selectedLanguage);
   const isRtl = isRtlLanguage(normalizedSelectedLanguage);
@@ -116904,7 +119289,7 @@ function LanguageScreen({
     };
   }, []);
   useEffect(() => {
-    if (isRtl) return undefined;
+    if (isRtl || reduceMotion) return undefined;
     if (!shouldAnimateCurrencyNudge || currencyNudgeRan.current) return undefined;
     currencyNudgeRan.current = true;
     let backTimeout;
@@ -116919,7 +119304,7 @@ function LanguageScreen({
       clearTimeout(forwardTimeout);
       if (backTimeout) clearTimeout(backTimeout);
     };
-  }, [isRtl, shouldAnimateCurrencyNudge]);
+  }, [isRtl, reduceMotion, shouldAnimateCurrencyNudge]);
   return (
     <OnboardingScreenShell
       colors={colors}
@@ -117023,6 +119408,9 @@ function LanguageScreen({
                     },
                   ]}
                   onPress={() => onLanguageChange?.(langKey)}
+                  accessibilityRole="button"
+                  accessibilityLabel={label}
+                  accessibilityState={{ selected: active }}
                 >
                   <Text
                     style={[
@@ -117094,6 +119482,9 @@ function LanguageScreen({
                         },
                       ]}
                       onPress={() => onCurrencyChange?.(currency)}
+                      accessibilityRole="button"
+                      accessibilityLabel={String(currency || "").trim().toUpperCase()}
+                      accessibilityState={{ selected: active }}
                     >
                       <Text
                         style={{
@@ -117248,7 +119639,7 @@ const LevelUpCelebration = ({ colors, message, t, onSharePress }) => {
       mass: 0.95,
       useNativeDriver: true,
     });
-    const auraPulse = Animated.loop(
+    const auraPulse = createMotionLoop(
       Animated.sequence([
         Animated.timing(auraAnim, {
           toValue: 1,
@@ -117264,7 +119655,7 @@ const LevelUpCelebration = ({ colors, message, t, onSharePress }) => {
         }),
       ])
     );
-    const badgeFloat = Animated.loop(
+    const badgeFloat = createMotionLoop(
       Animated.sequence([
         Animated.timing(badgeFloatAnim, {
           toValue: 1,
@@ -117735,14 +120126,14 @@ const SaveCelebration = forwardRef(function SaveCelebration(
     );
     const celebrationQuote = useMemo(() => getRandomFinancialQuote(language), [language]);
     const isDarkTheme = colors.background === THEMES.dark.background;
-    const primaryCardBg = isDarkTheme ? lightenColor(colors.card, 0.12) : colors.card;
-    const primaryCardBorder = isDarkTheme ? lightenColor(colors.border, 0.25) : "rgba(255,181,115,0.7)";
-    const countdownCardBg = isDarkTheme ? lightenColor(colors.card, 0.1) : lightenColor(colors.card, 0.04);
-    const countdownCardBorder = isDarkTheme ? lightenColor(colors.border, 0.3) : "rgba(255,180,126,0.65)";
-    const progressAccent = isDarkTheme ? "#FFD06A" : "#FF8C3B";
+    const primaryCardBg = isDarkTheme ? colors.surfaceElevated : colors.card;
+    const primaryCardBorder = isDarkTheme ? colors.separator : "rgba(180,109,36,0.36)";
+    const countdownCardBg = isDarkTheme ? colors.surfaceMuted : lightenColor(colors.card, 0.04);
+    const countdownCardBorder = isDarkTheme ? colors.separator : "rgba(180,109,36,0.32)";
+    const progressAccent = isDarkTheme ? colors.warning : "#B46D24";
     const progressTrack = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(17,7,0,0.08)";
     const counterDigitBackground = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.92)";
-    const glowColor = isDarkTheme ? "rgba(255,214,165,0.35)" : "rgba(255,178,120,0.35)";
+    const glowColor = colorWithAlpha(progressAccent, isDarkTheme ? 0.16 : 0.2);
     const mascotWrapBg = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.96)";
     const mascotWrapBorder = colorWithAlpha(progressAccent, isDarkTheme ? 0.45 : 0.25);
     const statBaseBg = isDarkTheme ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.92)";
@@ -117750,8 +120141,8 @@ const SaveCelebration = forwardRef(function SaveCelebration(
     const statShadowColor = isDarkTheme ? "rgba(0,0,0,0.5)" : "rgba(31,24,59,0.12)";
     const quoteBg = isDarkTheme ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.9)";
     const quoteBorder = isDarkTheme ? "rgba(255,255,255,0.14)" : "rgba(28,26,42,0.08)";
-    const coinsAccent = isDarkTheme ? "#63D0FF" : "#4DA3FF";
-    const skipsAccent = isDarkTheme ? "#FFB278" : "#FF8D54";
+    const coinsAccent = colors.info;
+    const skipsAccent = colors.warning;
     const progressValue = useRef(new Animated.Value(progressStart)).current;
     const progressPulse = useRef(new Animated.Value(1)).current;
     const progressHapticTimersRef = useRef([]);
@@ -117811,7 +120202,7 @@ const SaveCelebration = forwardRef(function SaveCelebration(
       return () => introEntrance.stop();
     }, [introScale]);
     useEffect(() => {
-      const floatAnim = Animated.loop(
+      const floatAnim = createMotionLoop(
         Animated.sequence([
           Animated.timing(mascotFloat, {
             toValue: 1,
@@ -118911,7 +121302,7 @@ const PremiumUnlockCelebration = ({ payload, onClose, playSound }) => {
       tension: 92,
       useNativeDriver: true,
     });
-    const badgeLoop = Animated.loop(
+    const badgeLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(badgePulseAnim, {
           toValue: 1,
@@ -118927,7 +121318,7 @@ const PremiumUnlockCelebration = ({ payload, onClose, playSound }) => {
         }),
       ])
     );
-    const emojiLoop = Animated.loop(
+    const emojiLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(emojiFloatAnim, {
           toValue: 1,
@@ -119122,8 +121513,8 @@ const RewardCelebration = ({ colors, message, t, mascotHappySource }) => {
   );
   const isDarkTheme = colors.background === THEMES.dark.background;
   const rewardBackdropColor = isDarkTheme ? "rgba(0,0,0,0.85)" : "rgba(255,241,225,0.92)";
-  const rewardCardBg = isDarkTheme ? lightenColor(colors.card, 0.12) : colors.card;
-  const rewardCardBorder = isDarkTheme ? lightenColor(colors.border, 0.25) : "rgba(255,181,115,0.7)";
+  const rewardCardBg = isDarkTheme ? colors.surfaceElevated : colors.card;
+  const rewardCardBorder = isDarkTheme ? colors.separator : "rgba(180,109,36,0.36)";
   return (
     <View style={styles.rewardOverlay}>
       <View style={[styles.rewardBackdrop, { backgroundColor: rewardBackdropColor }]} />
@@ -119249,7 +121640,7 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
       }),
     ]).start();
 
-    const pulse = Animated.loop(
+    const pulse = createMotionLoop(
       Animated.sequence([
         Animated.timing(chestScale, {
           toValue: 1.02,
@@ -119265,7 +121656,7 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
         }),
       ])
     );
-    const tilt = Animated.loop(
+    const tilt = createMotionLoop(
       Animated.sequence([
         Animated.timing(chestTilt, {
           toValue: 1,
@@ -119281,7 +121672,7 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
         }),
       ])
     );
-    const spin = Animated.loop(
+    const spin = createMotionLoop(
       Animated.timing(haloSpin, {
         toValue: 1,
         duration: 7600,
@@ -119289,7 +121680,7 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
         useNativeDriver: true,
       })
     );
-    const glowAnim = Animated.loop(
+    const glowAnim = createMotionLoop(
       Animated.sequence([
         Animated.timing(auraPulse, {
           toValue: 1,
@@ -119706,7 +122097,7 @@ const FallingHeart = ({ left, delay, duration, size, sway, rotate }) => {
         }),
       ]),
     ]);
-    const anim = Animated.loop(Animated.sequence([Animated.delay(delay), drop]), {
+    const anim = createMotionLoop(Animated.sequence([Animated.delay(delay), drop]), {
       resetBeforeIteration: true,
     });
     anim.start();
@@ -119796,9 +122187,9 @@ const GoalCelebration = ({ colors, payload, t, mascotHappySource, onClose }) => 
   const maxWeekSaved = summary?.maxWeekSavedUSD || 0;
   const isDarkTheme = colors.background === THEMES.dark.background;
   const backdropColor = isDarkTheme ? "rgba(0,0,0,0.85)" : "rgba(7,44,23,0.85)";
-  const cardBg = isDarkTheme ? lightenColor(colors.card, 0.15) : "#E7FFE9";
-  const cardBorder = isDarkTheme ? lightenColor(colors.border, 0.25) : "#8FD7AE";
-  const accent = isDarkTheme ? "#7CFFB0" : "#18B86A";
+  const cardBg = isDarkTheme ? colors.surfaceElevated : "#E7F5EC";
+  const cardBorder = isDarkTheme ? colorWithAlpha(colors.success, 0.28) : "#8FC2A5";
+  const accent = colors.success;
   return (
     <View style={styles.goalCelebrateOverlay}>
       <View style={[styles.goalCelebrateBackdrop, { backgroundColor: backdropColor }]} />
@@ -119965,10 +122356,10 @@ const DailyRewardCelebration = ({ colors, payload, t, language }) => {
   const reason = rewardLabel ? t("dailyRewardReason", { amount: rewardLabel }) : payload?.reason || "";
   const coinTier = getHealthCoinTierForAmount(amountValue) || HEALTH_COIN_TIERS[0];
   const isDarkTheme = colors.background === THEMES.dark.background;
-  const cardBg = isDarkTheme ? lightenColor(colors.card, 0.12) : "#FFF7EC";
-  const cardBorder = isDarkTheme ? lightenColor(colors.border, 0.3) : "#FFD0A6";
-  const badgeBg = isDarkTheme ? "rgba(255,210,140,0.2)" : "rgba(255,170,90,0.2)";
-  const accent = isDarkTheme ? "#FFD06A" : "#FF9B4A";
+  const cardBg = isDarkTheme ? colors.surfaceElevated : "#F8F2E9";
+  const cardBorder = isDarkTheme ? colorWithAlpha(colors.warning, 0.28) : "#D7B487";
+  const badgeBg = colorWithAlpha(colors.warning, isDarkTheme ? 0.1 : 0.08);
+  const accent = colors.warning;
   return (
     <View style={styles.dailyRewardOverlay} pointerEvents="none">
       <View style={[styles.dailyRewardBackdrop, { backgroundColor: isDarkTheme ? "rgba(0,0,0,0.82)" : "rgba(255,241,225,0.92)" }]} />
@@ -120069,7 +122460,7 @@ const UsageStreakWeeklyRewardCelebration = ({
       }),
     ]).start();
 
-    const coinPulse = Animated.loop(
+    const coinPulse = createMotionLoop(
       Animated.sequence([
         Animated.timing(coinScale, {
           toValue: 1.02,
@@ -120086,7 +122477,7 @@ const UsageStreakWeeklyRewardCelebration = ({
       ]),
       { iterations: loopIterations }
     );
-    const tilt = Animated.loop(
+    const tilt = createMotionLoop(
       Animated.sequence([
         Animated.timing(coinTilt, {
           toValue: 1,
@@ -120103,7 +122494,7 @@ const UsageStreakWeeklyRewardCelebration = ({
       ]),
       { iterations: loopIterations }
     );
-    const spin = Animated.loop(
+    const spin = createMotionLoop(
       Animated.timing(haloSpin, {
         toValue: 1,
         duration: 7200,
@@ -120112,7 +122503,7 @@ const UsageStreakWeeklyRewardCelebration = ({
       }),
       { iterations: spinIterations }
     );
-    const glow = Animated.loop(
+    const glow = createMotionLoop(
       Animated.sequence([
         Animated.timing(glowPulse, {
           toValue: 1,
@@ -120129,7 +122520,7 @@ const UsageStreakWeeklyRewardCelebration = ({
       ]),
       { iterations: loopIterations }
     );
-    const float = Animated.loop(
+    const float = createMotionLoop(
       Animated.sequence([
         Animated.timing(catFloat, {
           toValue: -6,
@@ -120146,7 +122537,7 @@ const UsageStreakWeeklyRewardCelebration = ({
       ]),
       { iterations: loopIterations }
     );
-    const shine = Animated.loop(
+    const shine = createMotionLoop(
       Animated.sequence([
         Animated.delay(420),
         Animated.timing(shineSweep, {
@@ -120428,7 +122819,7 @@ const StreakPledgeRewardCelebration = ({ colors, payload, t, language, onClose }
       }),
     ]).start();
 
-    const coinPulse = Animated.loop(
+    const coinPulse = createMotionLoop(
       Animated.sequence([
         Animated.timing(coinScale, {
           toValue: 1.02,
@@ -120444,7 +122835,7 @@ const StreakPledgeRewardCelebration = ({ colors, payload, t, language, onClose }
         }),
       ])
     );
-    const tilt = Animated.loop(
+    const tilt = createMotionLoop(
       Animated.sequence([
         Animated.timing(coinTilt, {
           toValue: 1,
@@ -120460,7 +122851,7 @@ const StreakPledgeRewardCelebration = ({ colors, payload, t, language, onClose }
         }),
       ])
     );
-    const spin = Animated.loop(
+    const spin = createMotionLoop(
       Animated.timing(haloSpin, {
         toValue: 1,
         duration: 7400,
@@ -120468,7 +122859,7 @@ const StreakPledgeRewardCelebration = ({ colors, payload, t, language, onClose }
         useNativeDriver: true,
       })
     );
-    const glow = Animated.loop(
+    const glow = createMotionLoop(
       Animated.sequence([
         Animated.timing(glowPulse, {
           toValue: 1,
@@ -120484,7 +122875,7 @@ const StreakPledgeRewardCelebration = ({ colors, payload, t, language, onClose }
         }),
       ])
     );
-    const shine = Animated.loop(
+    const shine = createMotionLoop(
       Animated.sequence([
         Animated.delay(420),
         Animated.timing(shineSweep, {
@@ -120692,8 +123083,8 @@ const StreakPledgePrompt = ({
     HEALTH_COIN_LABELS[normalizeLanguage(language)] ||
     HEALTH_COIN_LABELS.en;
   const isDarkTheme = colors.background === THEMES.dark.background;
-  const cardBg = isDarkTheme ? lightenColor(colors.card, 0.08) : colors.card;
-  const cardBorder = isDarkTheme ? lightenColor(colors.border, 0.25) : colors.border;
+  const cardBg = isDarkTheme ? colors.surfaceElevated : colors.card;
+  const cardBorder = isDarkTheme ? colors.separator : colors.border;
   const bubbleBg = isDarkTheme ? "rgba(9,12,18,0.95)" : "#FFFFFF";
   const bubbleBorder = isDarkTheme ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.08)";
   const bubbleText = isDarkTheme ? "#F6EBDD" : "#2B1C0D";
@@ -120997,7 +123388,7 @@ const UsageStreakCelebration = ({
         extinguish.stop();
       };
     }
-    const flameLoop = Animated.loop(
+    const flameLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(flameScale, {
           toValue: 1.08,
@@ -121011,7 +123402,7 @@ const UsageStreakCelebration = ({
         }),
       ])
     );
-    const glowLoop = Animated.loop(
+    const glowLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(flameGlow, {
           toValue: 1,
@@ -121025,7 +123416,7 @@ const UsageStreakCelebration = ({
         }),
       ])
     );
-    const dayLoop = Animated.loop(
+    const dayLoop = createMotionLoop(
       Animated.sequence([
         Animated.timing(dayGlow, {
           toValue: 1,
@@ -121236,7 +123627,7 @@ const UsageStreakRestorePrompt = ({
   const restorePulseIterations = 10;
   useEffect(() => {
     if (!shouldOfferRestore) return undefined;
-    const pulse = Animated.loop(
+    const pulse = createMotionLoop(
       Animated.sequence([
         Animated.timing(restorePulse, {
           toValue: 1.1,
@@ -121419,7 +123810,7 @@ const FeatureUnlockCelebration = ({
       mass: 0.95,
       useNativeDriver: true,
     });
-    const glow = Animated.loop(
+    const glow = createMotionLoop(
       Animated.sequence([
         Animated.timing(glowAnim, {
           toValue: 1,
@@ -121435,7 +123826,7 @@ const FeatureUnlockCelebration = ({
         }),
       ])
     );
-    const catFloat = Animated.loop(
+    const catFloat = createMotionLoop(
       Animated.sequence([
         Animated.timing(catFloatAnim, {
           toValue: 1,
@@ -121622,7 +124013,7 @@ const FeatureUnlockIllustration = ({ variantKey, colors, label, actionLabel, t }
   const pulseAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     pulseAnim.setValue(0);
-    const pulse = Animated.loop(
+    const pulse = createMotionLoop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 1,

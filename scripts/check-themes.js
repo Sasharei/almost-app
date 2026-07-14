@@ -5,9 +5,31 @@ const path = require("path");
 const parser = require("@babel/parser");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
-const REQUIRED_THEME_TOKENS = ["background", "card", "text", "muted", "border", "primary"];
+const REQUIRED_THEME_TOKENS = [
+  "background",
+  "card",
+  "text",
+  "muted",
+  "border",
+  "primary",
+  "onPrimary",
+  "surface",
+  "surfaceMuted",
+  "surfaceElevated",
+  "separator",
+  "disabled",
+  "success",
+  "warning",
+  "error",
+  "info",
+  "primarySurface",
+  "primarySurfaceStrong",
+  "primaryBorder",
+  "overlay",
+  "shadow",
+];
 const MIN_TEXT_CONTRAST = 4.5;
-const MIN_MUTED_CONTRAST = 3;
+const MIN_UI_CONTRAST = 3;
 
 function parseFile(relativePath) {
   const source = fs.readFileSync(path.join(ROOT_DIR, relativePath), "utf8");
@@ -82,6 +104,15 @@ function readExportedConst(exportName) {
   throw new Error(`Unable to find export ${exportName} in src/constants/themeConfig.js`);
 }
 
+function requireSourceFragments(errors, relativePath, label, fragments) {
+  const source = fs.readFileSync(path.join(ROOT_DIR, relativePath), "utf8");
+  for (const fragment of fragments) {
+    if (!source.includes(fragment)) {
+      errors.push(`${label} is missing theme-aware source fragment: ${fragment}`);
+    }
+  }
+}
+
 function parseHexColor(value) {
   if (typeof value !== "string") return null;
   const match = value.trim().match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
@@ -117,6 +148,15 @@ function contrast(left, right) {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+function mixColors(left, right, ratio) {
+  const amount = Math.max(0, Math.min(1, Number(ratio) || 0));
+  return {
+    r: left.r * (1 - amount) + right.r * amount,
+    g: left.g * (1 - amount) + right.g * amount,
+    b: left.b * (1 - amount) + right.b * amount,
+  };
+}
+
 function requireContrast(errors, label, foreground, background, minimum) {
   const ratio = contrast(foreground, background);
   if (ratio < minimum) {
@@ -149,11 +189,24 @@ function main() {
     }
 
     if (Object.keys(colors).length !== REQUIRED_THEME_TOKENS.length) continue;
+    if (theme.appearance !== "light" && theme.appearance !== "dark") {
+      errors.push(`THEMES.${themeId}.appearance must be light or dark.`);
+    }
     requireContrast(errors, `${themeId} text on background`, colors.text, colors.background, MIN_TEXT_CONTRAST);
     requireContrast(errors, `${themeId} text on card`, colors.text, colors.card, MIN_TEXT_CONTRAST);
-    requireContrast(errors, `${themeId} muted on background`, colors.muted, colors.background, MIN_MUTED_CONTRAST);
-    requireContrast(errors, `${themeId} muted on card`, colors.muted, colors.card, MIN_MUTED_CONTRAST);
-    requireContrast(errors, `${themeId} primary on background`, colors.primary, colors.background, MIN_MUTED_CONTRAST);
+    requireContrast(errors, `${themeId} muted on background`, colors.muted, colors.background, MIN_TEXT_CONTRAST);
+    requireContrast(errors, `${themeId} muted on card`, colors.muted, colors.card, MIN_TEXT_CONTRAST);
+    requireContrast(errors, `${themeId} primary on background`, colors.primary, colors.background, MIN_UI_CONTRAST);
+    requireContrast(errors, `${themeId} onPrimary on primary`, colors.onPrimary, colors.primary, MIN_TEXT_CONTRAST);
+    ["success", "warning", "error", "info"].forEach((token) => {
+      requireContrast(
+        errors,
+        `${themeId} ${token} on background`,
+        colors[token],
+        colors.background,
+        MIN_UI_CONTRAST
+      );
+    });
   }
 
   if (!themeIds.includes(proThemeId)) {
@@ -161,6 +214,11 @@ function main() {
   }
 
   const accentIds = new Set();
+  const proTheme = themes[proThemeId];
+  const proBackground = parseHexColor(proTheme?.background);
+  const proCard = parseHexColor(proTheme?.card);
+  const proText = parseHexColor(proTheme?.text);
+  const proMuted = parseHexColor(proTheme?.muted);
   for (const option of accentOptions) {
     if (!option.id) {
       errors.push("A PRO theme accent option is missing id.");
@@ -170,10 +228,69 @@ function main() {
       errors.push(`Duplicate PRO theme accent id: ${option.id}.`);
     }
     accentIds.add(option.id);
-    if (!parseHexColor(option.accent)) {
+    const accentColor = parseHexColor(option.accent);
+    const onAccentColor = parseHexColor(option.onAccent);
+    if (!accentColor) {
       errors.push(`PRO_THEME_ACCENT_OPTIONS.${option.id}.accent must be a #RGB or #RRGGBB color.`);
     }
+    if (!onAccentColor) {
+      errors.push(`PRO_THEME_ACCENT_OPTIONS.${option.id}.onAccent must be a #RGB or #RRGGBB color.`);
+    }
+    if (accentColor && onAccentColor) {
+      requireContrast(
+        errors,
+        `PRO_THEME_ACCENT_OPTIONS.${option.id} onAccent on accent`,
+        onAccentColor,
+        accentColor,
+        MIN_TEXT_CONTRAST
+      );
+      if (proBackground && proCard && proText && proMuted) {
+        const resolvedBackground = mixColors(proBackground, accentColor, 0.04);
+        const resolvedText = mixColors(proText, accentColor, 0.025);
+        const resolvedMuted = mixColors(proMuted, accentColor, 0.06);
+        requireContrast(
+          errors,
+          `PRO ${option.id} text on background`,
+          resolvedText,
+          resolvedBackground,
+          MIN_TEXT_CONTRAST
+        );
+        requireContrast(
+          errors,
+          `PRO ${option.id} text on card`,
+          resolvedText,
+          proCard,
+          MIN_TEXT_CONTRAST
+        );
+        requireContrast(
+          errors,
+          `PRO ${option.id} muted on background`,
+          resolvedMuted,
+          resolvedBackground,
+          MIN_TEXT_CONTRAST
+        );
+        requireContrast(
+          errors,
+          `PRO ${option.id} accent on background`,
+          accentColor,
+          resolvedBackground,
+          MIN_UI_CONTRAST
+        );
+      }
+    }
   }
+
+  requireSourceFragments(errors, "App.js", "Goal jar", [
+    "const glassPalette = isDarkTheme",
+    "isDarkTheme={isDarkMode}",
+  ]);
+  requireSourceFragments(errors, "src/components/LiquidGlassTabBar.js", "Liquid tab bar", [
+    "isDarkTheme={isDarkTheme}",
+  ]);
+  requireSourceFragments(errors, "ios/Almost/NativeLiquidTabBarManager.swift", "Native liquid tab bar", [
+    "@objc var isDarkTheme: Bool",
+    ".systemChromeMaterialDark",
+  ]);
 
   if (errors.length > 0) {
     console.error("[FAIL] Theme check failed:");

@@ -14,12 +14,6 @@ import {
 } from "react-native";
 
 const HERO_REFERENCE_VISUAL = require("../../assets/paywall/v2/hero_reference.jpg");
-const BULLET_ICON_IMAGES = [
-  require("../../assets/paywall/v2/bullet_icon_1.jpg"),
-  require("../../assets/paywall/v2/bullet_icon_2.jpg"),
-  require("../../assets/paywall/v2/bullet_icon_3.jpg"),
-  require("../../assets/paywall/v2/bullet_icon_4.jpg"),
-];
 
 const ANDROID_PRIMARY_PLAN_IDS = ["monthly", "yearly", "weekly"];
 const DEFAULT_PRIMARY_PLAN_IDS = ["monthly", "yearly", "weekly"];
@@ -100,6 +94,7 @@ const PLAN_TITLES_BY_LANGUAGE = {
     it: "Annuale",
     ar: "سنوي",
     zh: "年付",
+    ko: "연간",
   },
   monthly: {
     ru: "Ежемесячный",
@@ -111,6 +106,7 @@ const PLAN_TITLES_BY_LANGUAGE = {
     it: "Mensile",
     ar: "شهري",
     zh: "月付",
+    ko: "월간",
   },
   weekly: {
     ru: "Еженедельный",
@@ -122,6 +118,7 @@ const PLAN_TITLES_BY_LANGUAGE = {
     it: "Settimanale",
     ar: "أسبوعي",
     zh: "周付",
+    ko: "주간",
   },
   lifetime: {
     ru: "Навсегда",
@@ -133,6 +130,7 @@ const PLAN_TITLES_BY_LANGUAGE = {
     it: "A vita",
     ar: "مدى الحياة",
     zh: "终身",
+    ko: "평생",
   },
   premium: {
     ru: "Premium",
@@ -144,24 +142,19 @@ const PLAN_TITLES_BY_LANGUAGE = {
     it: "Premium",
     ar: "Premium",
     zh: "Premium",
+    ko: "Premium",
   },
 };
 
-const PLAN_ICONS_BY_ID = {
-  weekly: "⚡",
-  monthly: "📅",
-  yearly: "👑",
-  lifetime: "💎",
-};
 const KNOWN_PLAN_IDS = ["weekly", "monthly", "yearly", "lifetime"];
 
 const FALLBACK_UI_COPY_BY_LANGUAGE = {
   ru: {
     title: "Выберите план Premium",
     trialHeadline: "Мы хотим, чтобы вы попробовали Almost бесплатно",
-    socialProof: "Более 5000 человек уже экономят с Almost",
+    socialProof: "Больше ясности, меньше импульсивных решений",
     ctaPrimary: "Разблокировать Premium",
-    freeTrialToggleTitle: "Free Trial",
+    freeTrialToggleTitle: "Бесплатный пробный период",
     freeTrialToggleSubtitle: "Включите, чтобы выбрать план с пробным периодом.",
     brandBadge: "Almost Premium",
     bestValueBadge: "ЛУЧШАЯ ЦЕНА",
@@ -178,7 +171,7 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
   en: {
     title: "Choose your Premium plan",
     trialHeadline: "We want you to try almost for free",
-    socialProof: "More than 5000 people are already saving with Almost",
+    socialProof: "More clarity, fewer impulsive decisions",
     ctaPrimary: "Unlock Premium",
     freeTrialToggleTitle: "Free Trial",
     freeTrialToggleSubtitle: "Turn on to select the plan with a trial.",
@@ -197,9 +190,9 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
   es: {
     title: "Elige tu plan Premium",
     trialHeadline: "Queremos que pruebes Almost gratis",
-    socialProof: "Más de 5000 personas ya ahorran con Almost",
+    socialProof: "Más claridad, menos decisiones impulsivas",
     ctaPrimary: "Desbloquear Premium",
-    freeTrialToggleTitle: "Free Trial",
+    freeTrialToggleTitle: "Prueba gratis",
     freeTrialToggleSubtitle: "Actívalo para elegir el plan con prueba.",
     brandBadge: "Almost Premium",
     bestValueBadge: "MEJOR VALOR",
@@ -216,9 +209,9 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
   fr: {
     title: "Choisis ton plan Premium",
     trialHeadline: "Nous voulons que vous essayiez Almost gratuitement",
-    socialProof: "Plus de 5000 personnes économisent déjà avec Almost",
+    socialProof: "Plus de clarté, moins de décisions impulsives",
     ctaPrimary: "Débloquer Premium",
-    freeTrialToggleTitle: "Free Trial",
+    freeTrialToggleTitle: "Essai gratuit",
     freeTrialToggleSubtitle: "Active-le pour choisir l'offre avec essai.",
     brandBadge: "Almost Premium",
     bestValueBadge: "MEILLEURE OFFRE",
@@ -235,9 +228,9 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
   de: {
     title: "Wähle deinen Premium-Plan",
     trialHeadline: "Wir möchten, dass du Almost kostenlos ausprobierst",
-    socialProof: "Mehr als 5000 Menschen sparen bereits mit Almost",
+    socialProof: "Mehr Klarheit, weniger Impulskäufe",
     ctaPrimary: "Premium freischalten",
-    freeTrialToggleTitle: "Free Trial",
+    freeTrialToggleTitle: "Kostenlose Testphase",
     freeTrialToggleSubtitle: "Aktivieren, um den Plan mit Testphase zu wählen.",
     brandBadge: "Almost Premium",
     bestValueBadge: "BESTER PREIS",
@@ -254,7 +247,7 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
   pt: {
     title: "Escolhe o teu plano Premium",
     trialHeadline: "Experimenta Almost grátis",
-    socialProof: "Mais de 5000 pessoas já poupam com Almost",
+    socialProof: "Mais clareza, menos decisões por impulso",
     ctaPrimary: "Desbloquear Premium",
     freeTrialToggleTitle: "Teste grátis",
     freeTrialToggleSubtitle: "Ativa para escolher um plano com teste.",
@@ -273,7 +266,7 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
   it: {
     title: "Scegli il piano Premium",
     trialHeadline: "Prova Almost gratis",
-    socialProof: "Oltre 5000 persone risparmiano con Almost",
+    socialProof: "Più chiarezza, meno decisioni impulsive",
     ctaPrimary: "Sblocca Premium",
     freeTrialToggleTitle: "Prova gratis",
     freeTrialToggleSubtitle: "Attiva per scegliere un piano con prova.",
@@ -292,9 +285,9 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
   ar: {
     title: "اختر خطة Premium الخاصة بك",
     trialHeadline: "نريدك أن تجرّب Almost مجاناً",
-    socialProof: "أكثر من 5000 شخص يدّخرون بالفعل مع Almost",
+    socialProof: "وضوح أكبر وقرارات اندفاعية أقل",
     ctaPrimary: "افتح Premium",
-    freeTrialToggleTitle: "Free Trial",
+    freeTrialToggleTitle: "تجربة مجانية",
     freeTrialToggleSubtitle: "فعّله لاختيار الخطة مع الفترة التجريبية.",
     brandBadge: "Almost Premium",
     bestValueBadge: "أفضل قيمة",
@@ -311,9 +304,9 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
   zh: {
     title: "选择你的 Premium 方案",
     trialHeadline: "我们希望你免费试用 Almost",
-    socialProof: "已有超过 5000 人在 Almost 上省钱",
+    socialProof: "更清晰地掌控消费，减少冲动决定",
     ctaPrimary: "解锁 Premium",
-    freeTrialToggleTitle: "Free Trial",
+    freeTrialToggleTitle: "免费试用",
     freeTrialToggleSubtitle: "开启后选择带试用的方案。",
     brandBadge: "Almost Premium",
     bestValueBadge: "超值推荐",
@@ -326,6 +319,25 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     manage: "管理订阅",
     terms: "条款",
     privacy: "隐私",
+  },
+  ko: {
+    title: "Premium 플랜 선택",
+    trialHeadline: "Almost를 무료로 체험해 보세요",
+    socialProof: "더 명확하게 보고, 충동적인 결정을 줄이세요",
+    ctaPrimary: "Premium 잠금 해제",
+    freeTrialToggleTitle: "무료 체험",
+    freeTrialToggleSubtitle: "체험 기간이 포함된 플랜을 선택하려면 켜세요.",
+    brandBadge: "Almost Premium",
+    bestValueBadge: "최고의 가치",
+    freeTrialLabel: "무료 체험",
+    tryForFree: "무료로 체험하기",
+    thenPriceTemplate: "이후 {{price}}",
+    yearlyPerMonthTemplate: "월 {{price}}",
+    continueLimited: "제한 버전으로 계속",
+    restore: "구매 복원",
+    manage: "구독 관리",
+    terms: "이용 약관",
+    privacy: "개인정보 처리방침",
   },
 };
 
@@ -530,53 +542,13 @@ const resolvePlanTitle = (plan = null, language = "en", planKind = "") => {
   return fallbackBundle?.[lang] || fallbackBundle?.en || "Premium";
 };
 
-const resolvePlanIcon = (plan = null, planKind = "") =>
-  PLAN_ICONS_BY_ID[planKind || resolvePlanKind(plan) || normalizePlanId(plan?.id)] || "✨";
-
-const resolvePlanDisplay = (plan = null, thenPriceTemplate = "Then {{price}}") => {
-  const hasTrial = isTrialOfferPlan(plan);
-  const recurringPrice = pickFirstLabel([
-    plan?.postTrialPriceLabel,
-    plan?.ctaPriceLabel,
-    plan?.priceLabel,
-  ]);
-
+const resolvePlanDisplay = (plan = null) => {
   const currentPrice = pickFirstLabel([
     plan?.ctaPriceLabel,
     plan?.priceLabel,
     plan?.postTrialPriceLabel,
   ]);
-
-  let oldPrice = pickFirstLabel([
-    plan?.secondaryKind === "strike" ? plan?.secondaryLabel : "",
-    plan?.trialOriginalPriceLabel,
-  ]);
-
-  if (oldPrice && currentPrice && oldPrice === currentPrice) oldPrice = "";
-
-  const helperCandidates = [];
-  if (hasTrial && recurringPrice) {
-    helperCandidates.push(applyTemplate(thenPriceTemplate, { price: recurringPrice }));
-  }
-  helperCandidates.push(plan?.periodEquivalentLabel, plan?.billingLabel, plan?.secondarySubLabel);
-  if (plan?.secondaryKind !== "strike") {
-    helperCandidates.push(plan?.secondaryLabel);
-  }
-  const helper = pickFirstLabel(helperCandidates);
-
-  const savingsBadge = pickFirstLabel([
-    plan?.topBadge,
-    plan?.badge,
-    plan?.trialDiscountLabel,
-  ]);
-
-  return {
-    hasTrial,
-    currentPrice,
-    oldPrice,
-    helper: helper && helper !== currentPrice && helper !== oldPrice ? helper : "",
-    savingsBadge,
-  };
+  return { currentPrice };
 };
 
 const resolveFeatureBullets = (copy = null, language = "en", maxItems = 4) => {
@@ -602,7 +574,7 @@ const resolveFeatureBullets = (copy = null, language = "en", maxItems = 4) => {
     unique.push(entry);
   });
 
-  const safeMax = Math.max(4, Math.round(Number(maxItems) || 4));
+  const safeMax = Math.max(3, Math.round(Number(maxItems) || 3));
   const fallbackQueue = fallbackRows.filter(
     (entry) => !unique.some((item) => item.toLowerCase() === entry.toLowerCase())
   );
@@ -732,7 +704,7 @@ const PremiumPaywallModalV2 = ({
     if (viewportHeight <= 730) {
       return {
         heroHeight: 132,
-        featureCount: 4,
+        featureCount: 5,
         featureVerticalPad: 5,
         planVerticalPad: 5,
         ctaHeight: 46,
@@ -741,7 +713,7 @@ const PremiumPaywallModalV2 = ({
     if (viewportHeight <= 820) {
       return {
         heroHeight: 144,
-        featureCount: 4,
+        featureCount: 6,
         featureVerticalPad: 6,
         planVerticalPad: 6,
         ctaHeight: 48,
@@ -750,7 +722,7 @@ const PremiumPaywallModalV2 = ({
     if (viewportHeight <= 900) {
       return {
         heroHeight: 154,
-        featureCount: 4,
+        featureCount: 6,
         featureVerticalPad: 7,
         planVerticalPad: 7,
         ctaHeight: 50,
@@ -758,43 +730,43 @@ const PremiumPaywallModalV2 = ({
     }
     return {
       heroHeight: 166,
-      featureCount: 4,
+      featureCount: 6,
       featureVerticalPad: 8,
       planVerticalPad: 8,
       ctaHeight: 52,
     };
   }, [viewportHeight]);
 
-  const isDarkMode = String(colors?.background || "")
-    .trim()
-    .toLowerCase() === "#05070d";
+  const isDarkMode =
+    colors?.appearance === "dark" ||
+    String(colors?.background || "")
+      .trim()
+      .toLowerCase() === "#05070d";
 
   const palette = useMemo(
     () => ({
       backdrop: "rgba(12,12,16,0.58)",
-      sheetBg: isDarkMode ? "#11141C" : "#F7F3EC",
-      heroBg: isDarkMode ? "#1A2030" : "#F3E8D5",
-      cardBg: isDarkMode ? "#1A2030" : "#FFFFFF",
-      cardBorder: isDarkMode ? "rgba(255,255,255,0.12)" : "rgba(16,24,40,0.11)",
-      cardSelectedBg: isDarkMode ? "#222C40" : "#FFF5E9",
-      cardSelectedBorder: "#F3983F",
-      text: isDarkMode ? "#F2F5FF" : "#183733",
-      muted: isDarkMode ? "#B2BCD8" : "#5F6E66",
-      accent: "#F3983F",
-      accentText: "#B56C1D",
-      success: "#1FA561",
-      ctaBg: "#F88D39",
-      ctaText: "#FFFFFF",
-      subtleButtonBg: isDarkMode ? "#1C2436" : "#FFFFFF",
-      subtleButtonText: isDarkMode ? "#E7EDFF" : "#1D322E",
-      divider: isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(23,50,45,0.12)",
-      chipBg: isDarkMode ? "rgba(255,176,76,0.2)" : "#FDE8CC",
-      chipText: isDarkMode ? "#9B5B11" : "#9B5B11",
-      bestValueBg: "#F3983F",
-      bestValueText: "#FFF7EC",
-      trialAccent: "#F07D1F",
+      sheetBg: colors?.background || (isDarkMode ? "#11141C" : "#F7F8FC"),
+      heroBg: colors?.surfaceMuted || colors?.card || (isDarkMode ? "#1A2030" : "#EEF1F8"),
+      cardBg: colors?.card || (isDarkMode ? "#1A2030" : "#FFFFFF"),
+      cardBorder: colors?.border || (isDarkMode ? "rgba(255,255,255,0.12)" : "rgba(16,24,40,0.11)"),
+      cardSelectedBg: colors?.primarySurface || colors?.surfaceElevated || colors?.card || (isDarkMode ? "#222C40" : "#F1F3F8"),
+      cardSelectedBorder: colors?.primary || "#536DFE",
+      text: colors?.text || (isDarkMode ? "#F2F5FF" : "#18203A"),
+      muted: colors?.muted || (isDarkMode ? "#B2BCD8" : "#62697C"),
+      accent: colors?.primary || "#536DFE",
+      accentText: colors?.primary || "#536DFE",
+      success: colors?.success || "#1FA561",
+      ctaBg: colors?.primary || "#536DFE",
+      ctaText: colors?.onPrimary || "#FFFFFF",
+      subtleButtonBg: colors?.surfaceMuted || colors?.card || (isDarkMode ? "#1C2436" : "#F3F5FA"),
+      subtleButtonText: colors?.text || (isDarkMode ? "#E7EDFF" : "#1D2742"),
+      divider: colors?.separator || colors?.border || (isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(23,50,45,0.12)"),
+      chipBg: colors?.surfaceMuted || (isDarkMode ? "#1C2436" : "#EEF1F8"),
+      bestValueBg: colors?.primary || "#536DFE",
+      bestValueText: colors?.onPrimary || "#FFFFFF",
     }),
-    [isDarkMode]
+    [colors, isDarkMode]
   );
 
   const sortedPlans = useMemo(() => sortPlanCards(planCardsProp), [planCardsProp]);
@@ -858,12 +830,9 @@ const PremiumPaywallModalV2 = ({
       lineHeight: Math.round(lineHeight * planTextScale),
     });
     return {
-      yearlyPrimary: calc(22, 26),
-      yearlyThen: calc(15, 18),
-      yearlyPerMonth: calc(15, 18),
-      planTitle: calc(14, 17),
-      planCurrentPrice: calc(15, 18),
-      planOldPrice: calc(11, 13),
+      planTitle: calc(15, 18),
+      planPrice: calc(16, 20),
+      planDetail: calc(11, 14),
     };
   }, [planTextScale]);
 
@@ -871,6 +840,7 @@ const PremiumPaywallModalV2 = ({
     () => resolveFeatureBullets(copy, language, compactTier.featureCount),
     [compactTier.featureCount, copy, language]
   );
+  const benefitsTitle = sanitizeLabel(copy?.benefitsTitle || "");
 
   const purchaseDisabled =
     restoring ||
@@ -1118,6 +1088,11 @@ const PremiumPaywallModalV2 = ({
               ) : null}
             </View>
 
+            {!!benefitsTitle ? (
+              <Text style={[styles.featuresTitle, { color: palette.text }, textAlignStyle]}>
+                {benefitsTitle}
+              </Text>
+            ) : null}
             <View style={styles.featuresWrap}>
               {features.map((label, index) => {
                 const sourceRow = Array.isArray(copy?.benefitBullets) ? copy.benefitBullets[index] : null;
@@ -1131,9 +1106,9 @@ const PremiumPaywallModalV2 = ({
                     key={`${label}_${index}`}
                     style={[
                       styles.featureRow,
+                      rtl ? styles.featureRowRtl : null,
                       {
-                        backgroundColor: palette.cardBg,
-                        borderColor: palette.cardBorder,
+                        backgroundColor: "transparent",
                         paddingVertical: compactTier.featureVerticalPad,
                       },
                     ]}
@@ -1147,14 +1122,14 @@ const PremiumPaywallModalV2 = ({
                     <View
                       style={[
                         styles.featureToken,
-                        { borderColor: palette.cardBorder },
+                        rtl ? styles.featureTokenRtl : null,
+                        {
+                          borderColor: palette.accent,
+                          backgroundColor: palette.cardBg,
+                        },
                       ]}
                     >
-                      <Image
-                        source={BULLET_ICON_IMAGES[index % BULLET_ICON_IMAGES.length]}
-                        style={styles.featureTokenImage}
-                        resizeMode="cover"
-                      />
+                      <Text style={[styles.featureTokenCheck, { color: palette.accent }]}>✓</Text>
                     </View>
 
                     <Text style={[styles.featureLabel, { color: palette.text }, textAlignStyle]} numberOfLines={2}>
@@ -1177,6 +1152,9 @@ const PremiumPaywallModalV2 = ({
                 onPress={handleFreeTrialToggle}
                 disabled={restoring || !!purchaseLoadingPlan}
                 activeOpacity={0.88}
+                accessibilityRole="switch"
+                accessibilityLabel={freeTrialToggleTitle}
+                accessibilityState={{ checked: freeTrialEnabled, disabled: restoring || !!purchaseLoadingPlan }}
               >
                 <View style={[styles.freeTrialToggleTextBlock, rtl ? styles.freeTrialToggleTextBlockRtl : null]}>
                   <Text
@@ -1222,7 +1200,6 @@ const PremiumPaywallModalV2 = ({
                 const planKind = resolvePlanKind(plan, planIndex, displayedPlans);
                 const resolvedPlanId = planKind || planId;
                 const isYearly = resolvedPlanId === "yearly";
-                const isMonthly = resolvedPlanId === "monthly";
                 const isBestValuePlan = isYearly;
                 const planHasActiveTrial = freeTrialEnabled && isYearly;
                 const selected = planId === normalizePlanId(selectedPlan?.id);
@@ -1232,7 +1209,7 @@ const PremiumPaywallModalV2 = ({
                 const yearlyPerMonthTemplate = sanitizeLabel(
                   copy?.v2YearlyPerMonthTemplate || localizedUi.yearlyPerMonthTemplate
                 );
-                const display = resolvePlanDisplay(plan, thenPriceTemplate);
+                const display = resolvePlanDisplay(plan);
                 const titleLabel = resolvePlanTitle(plan, language, planKind);
                 const freeTrialLabel = sanitizeLabel(
                   plan?.trialDurationLabel ||
@@ -1241,15 +1218,12 @@ const PremiumPaywallModalV2 = ({
                     copy?.v2TryForFreeLabel ||
                     localizedUi.tryForFree
                 );
-                const showFreeTrialBadge = planHasActiveTrial && !!freeTrialLabel;
-                const showTrialBadge = showFreeTrialBadge;
                 const yearlyPrice = pickFirstLabel([
                   plan?.postTrialPriceLabel,
                   plan?.ctaPriceLabel,
                   plan?.priceLabel,
                 ]);
-                const yearlyPrimaryLine = planHasActiveTrial ? freeTrialLabel : titleLabel;
-                const yearlyThenLine = yearlyPrice
+                const postTrialPriceLine = yearlyPrice
                   ? planHasActiveTrial
                     ? applyTemplate(thenPriceTemplate, { price: yearlyPrice })
                     : yearlyPrice
@@ -1260,205 +1234,43 @@ const PremiumPaywallModalV2 = ({
                 const yearlyPerMonthLine = yearlyPerMonthPrice
                   ? applyTemplate(yearlyPerMonthTemplate, { price: yearlyPerMonthPrice })
                   : "";
-                const showStandardLayout = !isYearly;
+                const planPriceLine = planHasActiveTrial
+                  ? freeTrialLabel
+                  : display.currentPrice || postTrialPriceLine;
+                const planDetailLine = planHasActiveTrial
+                  ? postTrialPriceLine
+                  : isYearly
+                  ? yearlyPerMonthLine
+                  : "";
+                const planBadgeLabel = isBestValuePlan
+                  ? copy?.v2BestValueBadge || localizedUi.bestValueBadge
+                  : "";
 
                 return (
                   <TouchableOpacity
-                  key={String(plan?.id || "")}
-                  onLayout={(event) => {
-                    if (planId) {
-                      planCardOffsetsRef.current.set(planId, event.nativeEvent.layout.y);
-                    }
-                  }}
-                  style={[
-                    styles.planCard,
-                    {
-                      backgroundColor: selected ? palette.cardSelectedBg : palette.cardBg,
-                      borderColor: selected ? palette.cardSelectedBorder : palette.cardBorder,
-                      paddingVertical: compactTier.planVerticalPad,
-                    },
-                  ]}
-                  activeOpacity={0.9}
-                  onPress={() => handlePlanSelect(plan)}
-                  disabled={plan?.available === false}
-                >
-                  <View style={[styles.planMainRow, rtl ? styles.planMainRowRtl : null]}>
-                    <View
-                      style={[
-                        styles.planIconWrap,
-                        rtl ? styles.planIconWrapRtl : null,
-                        isYearly ? styles.planIconWrapYearly : null,
-                        isMonthly ? styles.planIconWrapMonthly : null,
-                        { borderColor: palette.cardBorder },
-                      ]}
-                    >
-                      <Text style={styles.planIconText}>{resolvePlanIcon(plan, planKind)}</Text>
-                    </View>
-
-                    <View style={[styles.planContent, rtl ? styles.planContentRtl : null]}>
-                      {isBestValuePlan || showTrialBadge ? (
-                        <View style={[styles.planBadgeRow, rtl ? styles.planBadgeRowRtl : null]}>
-                          {isBestValuePlan ? (
-                            <View style={[styles.bestValueBadge, { backgroundColor: palette.bestValueBg }]}>
-                              <Text style={[styles.bestValueBadgeText, { color: palette.bestValueText }]}>
-                                {copy?.v2BestValueBadge || localizedUi.bestValueBadge}
-                              </Text>
-                            </View>
-                          ) : null}
-                          {showTrialBadge ? (
-                            <View
-                              style={[
-                                styles.trialBadge,
-                                isYearly ? styles.trialBadgeWithBestValue : null,
-                                {
-                                  backgroundColor: showFreeTrialBadge
-                                    ? palette.success
-                                    : palette.accent,
-                                },
-                              ]}
-                            >
-                              <AdaptivePaywallText
-                                style={styles.trialBadgeText}
-                                numberOfLines={1}
-                                minFontSize={10}
-                                maxUnitsPerLine={18}
-                              >
-                                {freeTrialLabel}
-                              </AdaptivePaywallText>
-                            </View>
-                          ) : null}
-                        </View>
-                      ) : null}
-
-                      {showStandardLayout && display.savingsBadge ? (
-                        <View style={styles.planBadgeRow}>
-                          <View style={[styles.secondaryBadge, { backgroundColor: palette.chipBg }]}>
-                            <Text style={[styles.secondaryBadgeText, { color: palette.chipText }]} numberOfLines={1}>
-                              {display.savingsBadge}
-                            </Text>
-                          </View>
-                        </View>
-                      ) : null}
-
-                      {isYearly ? (
-                        <>
-                          {!!yearlyPrimaryLine ? (
-                            <AdaptivePaywallText
-                              style={[
-                                styles.planYearlyPrimaryLine,
-                                planTypography.yearlyPrimary,
-                                { color: palette.text },
-                                textAlignStyle,
-                              ]}
-                              numberOfLines={1}
-                              minFontSize={16}
-                              maxUnitsPerLine={18}
-                            >
-                              {yearlyPrimaryLine}
-                            </AdaptivePaywallText>
-                          ) : null}
-                          {!!yearlyThenLine ? (
-                            <AdaptivePaywallText
-                              style={[
-                                styles.planYearlyThenLine,
-                                planTypography.yearlyThen,
-                                { color: palette.text },
-                                textAlignStyle,
-                              ]}
-                              numberOfLines={1}
-                              minFontSize={12}
-                              maxUnitsPerLine={24}
-                            >
-                              {yearlyThenLine}
-                            </AdaptivePaywallText>
-                          ) : null}
-                          {!!yearlyPerMonthLine ? (
-                            <AdaptivePaywallText
-                              style={[
-                                styles.planYearlyPerMonthLine,
-                                planTypography.yearlyPerMonth,
-                                { color: palette.trialAccent },
-                                textAlignStyle,
-                              ]}
-                              numberOfLines={1}
-                              minFontSize={12}
-                              maxUnitsPerLine={24}
-                            >
-                              {yearlyPerMonthLine}
-                            </AdaptivePaywallText>
-                          ) : null}
-                        </>
-                      ) : null}
-
-                      {showStandardLayout ? (
-                        <>
-                          <AdaptivePaywallText
-                            style={[
-                              styles.planTitle,
-                              planTypography.planTitle,
-                              { color: palette.text },
-                              textAlignStyle,
-                            ]}
-                            numberOfLines={1}
-                            minFontSize={12}
-                            maxUnitsPerLine={18}
-                          >
-                            {titleLabel}
-                          </AdaptivePaywallText>
-                          {!!display.oldPrice ? (
-                            <AdaptivePaywallText
-                              style={[
-                                styles.planOldPrice,
-                                planTypography.planOldPrice,
-                                { color: palette.muted },
-                                textAlignStyle,
-                              ]}
-                              numberOfLines={1}
-                              minFontSize={10}
-                              maxUnitsPerLine={18}
-                            >
-                              {display.oldPrice}
-                            </AdaptivePaywallText>
-                          ) : null}
-                          {!!display.currentPrice ? (
-                            <AdaptivePaywallText
-                              style={[
-                                styles.planCurrentPrice,
-                                planTypography.planCurrentPrice,
-                                {
-                                  color:
-                                    display.hasTrial || planHasActiveTrial
-                                      ? palette.trialAccent
-                                      : palette.accentText,
-                                },
-                                textAlignStyle,
-                              ]}
-                              numberOfLines={1}
-                              minFontSize={12}
-                              maxUnitsPerLine={18}
-                            >
-                              {display.currentPrice}
-                            </AdaptivePaywallText>
-                          ) : null}
-                          {!!display.helper ? (
-                            <AdaptivePaywallText
-                              style={[
-                                styles.planHelperText,
-                                { color: palette.muted },
-                                textAlignStyle,
-                              ]}
-                              numberOfLines={1}
-                              minFontSize={10}
-                              maxUnitsPerLine={24}
-                            >
-                              {display.helper}
-                            </AdaptivePaywallText>
-                          ) : null}
-                        </>
-                      ) : null}
-                    </View>
-
-                    <View style={styles.planRightSide}>
+                    key={String(plan?.id || "")}
+                    onLayout={(event) => {
+                      if (planId) {
+                        planCardOffsetsRef.current.set(planId, event.nativeEvent.layout.y);
+                      }
+                    }}
+                    style={[
+                      styles.planCard,
+                      {
+                        backgroundColor: selected ? palette.cardSelectedBg : palette.cardBg,
+                        borderColor: selected ? palette.cardSelectedBorder : palette.cardBorder,
+                        paddingVertical: compactTier.planVerticalPad + 5,
+                      },
+                      plan?.available === false ? styles.planCardDisabled : null,
+                    ]}
+                    activeOpacity={0.86}
+                    onPress={() => handlePlanSelect(plan)}
+                    disabled={plan?.available === false}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`${titleLabel} ${planPriceLine || ""} ${planDetailLine || ""}`.trim()}
+                    accessibilityState={{ selected, disabled: plan?.available === false }}
+                  >
+                    <View style={[styles.planMainRow, rtl ? styles.planMainRowRtl : null]}>
                       <View
                         style={[
                           styles.planSelector,
@@ -1468,12 +1280,85 @@ const PremiumPaywallModalV2 = ({
                           },
                         ]}
                       >
-                        {selected ? <Text style={styles.planSelectorTick}>✓</Text> : null}
+                        {selected ? (
+                          <Text style={[styles.planSelectorTick, { color: palette.bestValueText }]}>✓</Text>
+                        ) : null}
                       </View>
+
+                      <View style={[styles.planContent, rtl ? styles.planContentRtl : null]}>
+                        <View style={[styles.planTitleRow, rtl ? styles.planTitleRowRtl : null]}>
+                          <AdaptivePaywallText
+                            style={[
+                              styles.planTitle,
+                              planTypography.planTitle,
+                              { color: palette.text },
+                              textAlignStyle,
+                            ]}
+                            numberOfLines={1}
+                            minFontSize={12}
+                            maxUnitsPerLine={16}
+                          >
+                            {titleLabel}
+                          </AdaptivePaywallText>
+                          {!!planBadgeLabel ? (
+                            <View
+                              style={[
+                                styles.planValueBadge,
+                                {
+                                  backgroundColor: palette.bestValueBg,
+                                },
+                              ]}
+                            >
+                              <AdaptivePaywallText
+                                style={[styles.planValueBadgeText, { color: palette.bestValueText }]}
+                                numberOfLines={1}
+                                minFontSize={8}
+                                maxUnitsPerLine={16}
+                              >
+                                {planBadgeLabel}
+                              </AdaptivePaywallText>
+                            </View>
+                          ) : null}
+                        </View>
+                        {!!planDetailLine ? (
+                          <AdaptivePaywallText
+                            style={[
+                              styles.planDetail,
+                              planTypography.planDetail,
+                              { color: palette.muted },
+                              textAlignStyle,
+                            ]}
+                            numberOfLines={1}
+                            minFontSize={10}
+                            maxUnitsPerLine={24}
+                          >
+                            {planDetailLine}
+                          </AdaptivePaywallText>
+                        ) : null}
+                      </View>
+
+                      {!!planPriceLine ? (
+                        <View style={[styles.planPriceBlock, rtl ? styles.planPriceBlockRtl : null]}>
+                          <AdaptivePaywallText
+                            style={[
+                              styles.planPrice,
+                              planTypography.planPrice,
+                              {
+                                color: selected ? palette.accentText : palette.text,
+                                textAlign: rtl ? "left" : "right",
+                              },
+                            ]}
+                            numberOfLines={1}
+                            minFontSize={12}
+                            maxUnitsPerLine={18}
+                          >
+                            {planPriceLine}
+                          </AdaptivePaywallText>
+                        </View>
+                      ) : null}
                     </View>
-                  </View>
-                </TouchableOpacity>
-              );
+                  </TouchableOpacity>
+                );
               })}
             </View>
 
@@ -1491,6 +1376,9 @@ const PremiumPaywallModalV2 = ({
               onPress={handlePrimaryPress}
               disabled={purchaseDisabled}
               activeOpacity={0.9}
+              accessibilityRole="button"
+              accessibilityLabel={primaryButtonLabel}
+              accessibilityState={{ disabled: purchaseDisabled }}
             >
               {purchaseLoadingPlan ? (
                 <ActivityIndicator color={palette.ctaText} size="small" />
@@ -1611,8 +1499,8 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   sheet: {
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     height: "95%",
     paddingHorizontal: 16,
   },
@@ -1630,8 +1518,8 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   headerDismissIconButton: {
-    width: 28,
-    height: 28,
+    width: Platform.OS === "ios" ? 44 : 48,
+    height: Platform.OS === "ios" ? 44 : 48,
     borderRadius: 14,
     borderWidth: 1,
     justifyContent: "center",
@@ -1645,7 +1533,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   hero: {
-    borderRadius: 24,
+    borderRadius: 16,
     overflow: "hidden",
     borderWidth: 1,
     marginBottom: 6,
@@ -1668,7 +1556,7 @@ const styles = StyleSheet.create({
   socialProofPill: {
     marginTop: 6,
     borderWidth: 1,
-    borderRadius: 999,
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
@@ -1689,40 +1577,52 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: "700",
   },
-  featuresWrap: {
+  featuresTitle: {
     marginBottom: 6,
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: "900",
+  },
+  featuresWrap: {
+    marginBottom: 8,
+    gap: 2,
   },
   featureRow: {
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 10,
-    marginBottom: 4,
+    minHeight: 34,
+    paddingHorizontal: 2,
     flexDirection: "row",
     alignItems: "center",
   },
+  featureRowRtl: {
+    flexDirection: "row-reverse",
+  },
   featureToken: {
-    width: 28,
-    height: 28,
-    borderRadius: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 1,
-    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 8,
+    marginRight: 7,
   },
-  featureTokenImage: {
-    width: "100%",
-    height: "100%",
+  featureTokenRtl: {
+    marginRight: 0,
+    marginLeft: 7,
+  },
+  featureTokenCheck: {
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: "900",
   },
   featureLabel: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 16,
     fontWeight: "700",
   },
   freeTrialToggleCard: {
-    borderWidth: 2,
-    borderRadius: 18,
+    borderWidth: 1,
+    borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 8,
@@ -1771,188 +1671,101 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
   },
   planList: {
-    marginBottom: 6,
+    marginBottom: 8,
   },
   planCard: {
-    borderWidth: 2,
-    borderRadius: 20,
-    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 12,
     marginBottom: 6,
+    minHeight: 68,
+    justifyContent: "center",
+  },
+  planCardDisabled: {
+    opacity: 0.55,
   },
   planMainRow: {
     flexDirection: "row",
     alignItems: "center",
     width: "100%",
+    gap: 10,
   },
   planMainRowRtl: {
     flexDirection: "row-reverse",
   },
-  planIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 8,
-    backgroundColor: "#F7F1E5",
-  },
-  planIconWrapRtl: {
-    marginRight: 0,
-    marginLeft: 10,
-  },
-  planIconWrapYearly: {
-    borderRadius: 22,
-  },
-  planIconWrapMonthly: {
-    borderRadius: 12,
-  },
-  planIconText: {
-    fontSize: 21,
-    lineHeight: 23,
-  },
   planContent: {
     flex: 1,
     minWidth: 0,
-    paddingRight: 6,
   },
   planContentRtl: {
-    paddingRight: 0,
-    paddingLeft: 8,
     alignItems: "flex-end",
   },
-  planLeading: {
-    flex: 1,
-    minWidth: 0,
-    paddingRight: 8,
-  },
-  planBadgeRow: {
-    minHeight: 18,
+  planTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-start",
-    marginBottom: 1,
+    gap: 6,
+    maxWidth: "100%",
   },
-  planBadgeRowRtl: {
+  planTitleRowRtl: {
     flexDirection: "row-reverse",
   },
-  bestValueBadge: {
-    alignSelf: "flex-start",
+  planValueBadge: {
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    maxWidth: "52%",
   },
-  bestValueBadgeText: {
-    fontSize: 9,
-    lineHeight: 11,
+  planValueBadgeText: {
+    fontSize: 8,
+    lineHeight: 10,
     fontWeight: "900",
-    letterSpacing: 0.2,
-  },
-  trialBadge: {
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    maxWidth: "92%",
-  },
-  trialBadgeWithBestValue: {
-    marginStart: 6,
-  },
-  trialBadgeText: {
-    color: "#FFFFFF",
-    fontSize: 9,
-    lineHeight: 11,
-    fontWeight: "900",
-    letterSpacing: 0.2,
-  },
-  secondaryBadge: {
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    maxWidth: "90%",
-  },
-  secondaryBadgeText: {
-    fontSize: 9,
-    lineHeight: 11,
-    fontWeight: "800",
+    letterSpacing: 0.15,
   },
   planTitle: {
+    flexShrink: 1,
     fontSize: 14,
     lineHeight: 17,
     fontWeight: "900",
   },
-  planYearlyPrimaryLine: {
-    fontSize: 22,
-    lineHeight: 26,
-    fontWeight: "900",
-    letterSpacing: -0.3,
-  },
-  planYearlyThenLine: {
-    marginTop: 0,
-    fontSize: 15,
-    lineHeight: 18,
-    fontWeight: "600",
-  },
-  planYearlyPerMonthLine: {
-    marginTop: 1,
-    fontSize: 15,
-    lineHeight: 18,
-    fontWeight: "800",
-  },
-  planMonthlySingleLine: {
-    fontSize: 20,
-    lineHeight: 24,
+  planDetail: {
+    marginTop: 3,
+    fontSize: 11,
+    lineHeight: 14,
     fontWeight: "700",
-    letterSpacing: -0.2,
   },
-  planPriceGroup: {
-    minWidth: 112,
-    alignItems: "flex-start",
-    paddingRight: 8,
-  },
-  planOldPrice: {
-    fontSize: 11,
-    lineHeight: 13,
-    fontWeight: "600",
-    textDecorationLine: "line-through",
-  },
-  planCurrentPrice: {
-    fontSize: 15,
-    lineHeight: 18,
-    fontWeight: "900",
-  },
-  planHelperText: {
-    marginTop: 1,
-    fontSize: 11,
-    lineHeight: 13,
-    fontWeight: "600",
-  },
-  planRightSide: {
-    minWidth: 46,
+  planPriceBlock: {
+    minWidth: 88,
+    maxWidth: 138,
     alignItems: "flex-end",
-    justifyContent: "center",
+  },
+  planPriceBlockRtl: {
+    alignItems: "flex-start",
+  },
+  planPrice: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: "900",
   },
   planSelector: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     borderWidth: 2,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
   planSelectorTick: {
-    fontSize: 13,
-    lineHeight: 15,
+    fontSize: 12,
+    lineHeight: 14,
     fontWeight: "900",
-    color: "#FFFFFF",
   },
   footer: {
     paddingTop: 1,
     alignItems: "stretch",
   },
   primaryButton: {
-    borderRadius: 20,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 12,
@@ -2015,8 +1828,8 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     flex: 1,
-    minHeight: 38,
-    borderRadius: 13,
+    minHeight: Platform.OS === "ios" ? 44 : 48,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",

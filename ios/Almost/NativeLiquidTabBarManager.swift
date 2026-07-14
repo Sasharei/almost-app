@@ -58,6 +58,12 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
     }
   }
 
+  @objc var isDarkTheme: Bool = false {
+    didSet {
+      applyPresentationMode()
+    }
+  }
+
   @objc var onTabPress: RCTBubblingEventBlock?
 
   override init(frame: CGRect) {
@@ -184,6 +190,10 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
   }
 
   private func applyPresentationMode() {
+    let interfaceStyle: UIUserInterfaceStyle = isDarkTheme ? .dark : .light
+    overrideUserInterfaceStyle = interfaceStyle
+    tabBar.overrideUserInterfaceStyle = interfaceStyle
+    tabBar.barStyle = isDarkTheme ? .black : .default
     tabBar.backgroundColor = .clear
     tabBar.barTintColor = .clear
     tabBar.backgroundImage = UIImage()
@@ -238,14 +248,24 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
       return
     }
 
-    let activeColor = UIColor(red: 14.0 / 255.0, green: 23.0 / 255.0, blue: 40.0 / 255.0, alpha: 1)
-    let inactiveColor = UIColor(red: 100.0 / 255.0, green: 109.0 / 255.0, blue: 128.0 / 255.0, alpha: 1)
+    let activeColor = isDarkTheme
+      ? UIColor(red: 238.0 / 255.0, green: 241.0 / 255.0, blue: 246.0 / 255.0, alpha: 1)
+      : UIColor(red: 14.0 / 255.0, green: 23.0 / 255.0, blue: 40.0 / 255.0, alpha: 1)
+    let inactiveColor = isDarkTheme
+      ? UIColor(red: 158.0 / 255.0, green: 168.0 / 255.0, blue: 186.0 / 255.0, alpha: 1)
+      : UIColor(red: 100.0 / 255.0, green: 109.0 / 255.0, blue: 128.0 / 255.0, alpha: 1)
 
     let appearance = UITabBarAppearance()
     appearance.configureWithTransparentBackground()
-    appearance.backgroundEffect = nil
-    appearance.backgroundColor = .clear
-    appearance.shadowColor = .clear
+    appearance.backgroundEffect = UIBlurEffect(
+      style: isDarkTheme ? .systemChromeMaterialDark : .systemChromeMaterialLight
+    )
+    appearance.backgroundColor = isDarkTheme
+      ? UIColor(red: 13.0 / 255.0, green: 17.0 / 255.0, blue: 24.0 / 255.0, alpha: 0.72)
+      : UIColor(white: 1, alpha: 0.46)
+    appearance.shadowColor = isDarkTheme
+      ? UIColor(white: 1, alpha: 0.12)
+      : UIColor(red: 14.0 / 255.0, green: 23.0 / 255.0, blue: 40.0 / 255.0, alpha: 0.1)
 
     let setColors: (UITabBarItemAppearance) -> Void = { itemAppearance in
       itemAppearance.normal.iconColor = inactiveColor

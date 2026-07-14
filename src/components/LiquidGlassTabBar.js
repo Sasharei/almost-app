@@ -12,6 +12,7 @@ import Svg, {
 } from "react-native-svg";
 import LiquidGlassNativeView, { canUseNativeLiquidGlassView } from "./LiquidGlassNativeView";
 import NativeLiquidTabBar, { canUseNativeLiquidTabBar } from "./NativeLiquidTabBar";
+import { useMotionPreferences } from "../hooks/useMotionPreferences";
 const TAB_ROW_HORIZONTAL_PADDING = 8;
 const TAB_ROW_VERTICAL_PADDING = 6;
 const IOS_NATIVE_LIQUID_MIN_VERSION = 26;
@@ -161,6 +162,7 @@ const LiquidGlassTabBar = ({
   reportsBadgeVisible = false,
   reportsUnlocked = true,
 }) => {
+  const { reduceMotion } = useMotionPreferences();
   const isIos = Platform.OS === "ios";
   const isAndroid = Platform.OS === "android";
   const iosMajorVersion = getIosMajorVersion();
@@ -237,6 +239,13 @@ const LiquidGlassTabBar = ({
 
   useEffect(() => {
     if (!Number.isFinite(bubbleTargetX)) return;
+    if (reduceMotion) {
+      bubbleTranslate.stopAnimation();
+      bubbleScale.stopAnimation();
+      bubbleTranslate.setValue(bubbleTargetX);
+      bubbleScale.setValue(1);
+      return;
+    }
     Animated.spring(bubbleTranslate, {
       toValue: bubbleTargetX,
       damping: useAndroidLikeVisualStyle ? 24 : 17,
@@ -256,7 +265,14 @@ const LiquidGlassTabBar = ({
         useNativeDriver: true,
       }),
     ]).start();
-  }, [activeIndex, bubbleScale, bubbleTargetX, bubbleTranslate, useAndroidLikeVisualStyle]);
+  }, [
+    activeIndex,
+    bubbleScale,
+    bubbleTargetX,
+    bubbleTranslate,
+    reduceMotion,
+    useAndroidLikeVisualStyle,
+  ]);
 
   const handleTrackLayout = useCallback((event) => {
     const nextWidth = Number(event?.nativeEvent?.layout?.width) || 0;
@@ -305,11 +321,11 @@ const LiquidGlassTabBar = ({
     [onLayout]
   );
 
-  const activeColor = isDarkTheme ? "#FFFFFF" : isProTheme ? "#142564" : "#0E1728";
-  const mutedColor = isDarkTheme ? "rgba(255,255,255,0.78)" : "rgba(12,20,36,0.62)";
-  const highlightColor = isDarkTheme ? "#FFFFFF" : isProTheme ? proThemeAccentColor : "#1C2F86";
-  const badgeBackground = isDarkTheme ? "#FEE5A8" : isProTheme ? proThemeAccentColor : "#0E1728";
-  const badgeText = isDarkTheme ? "#05070D" : "#FFFFFF";
+  const activeColor = isDarkTheme ? "#EEF1F6" : isProTheme ? "#18213D" : "#202129";
+  const mutedColor = isDarkTheme ? "rgba(238,241,246,0.68)" : "rgba(32,33,41,0.64)";
+  const highlightColor = isDarkTheme ? "#D7A84F" : isProTheme ? proThemeAccentColor : "#356A9A";
+  const badgeBackground = isDarkTheme ? "#D7A84F" : isProTheme ? proThemeAccentColor : "#24262D";
+  const badgeText = isDarkTheme ? "#211A0B" : "#FFFFFF";
   const resolvedTabLabelTextTransform =
     useAndroidLikeVisualStyle ? "none" : isLiquidGlassStyle ? "none" : tabLabelTextTransform;
   const resolvedTabLabelFontSize = useAndroidLikeVisualStyle
@@ -371,27 +387,27 @@ const LiquidGlassTabBar = ({
   );
 
   const trackBaseColor = isDarkTheme
-    ? "rgba(33,36,44,0.72)"
+    ? "rgba(20,25,35,0.84)"
     : isLiquidGlassStyle
     ? "rgba(244,247,252,0.84)"
     : isProTheme
-    ? colorWithAlpha(proThemeAccentColor, 0.16)
+    ? colorWithAlpha(proThemeAccentColor, 0.1)
     : "rgba(225,231,241,0.72)";
   const trackBorderColor = isDarkTheme
-    ? "rgba(255,255,255,0.24)"
+    ? "rgba(255,255,255,0.14)"
     : isLiquidGlassStyle
     ? "rgba(255,255,255,0.78)"
     : isProTheme
-    ? colorWithAlpha(proThemeAccentColor, 0.34)
+    ? colorWithAlpha(proThemeAccentColor, 0.24)
     : "rgba(14,23,40,0.14)";
   const bubbleBorderColor = isDarkTheme
-    ? "rgba(255,255,255,0.55)"
+    ? "rgba(255,255,255,0.28)"
     : isLiquidGlassStyle
     ? "rgba(255,255,255,0.92)"
     : "rgba(255,255,255,0.86)";
   const androidTrackBlurIntensity = isCompactAndroid ? 10 : 12;
   const androidTrackBlurReductionFactor = isCompactAndroid ? 4 : 3;
-  const androidBubbleTintBase = isDarkTheme ? "rgba(32,38,52,0.55)" : "rgba(255,255,255,0.74)";
+  const androidBubbleTintBase = isDarkTheme ? "rgba(30,37,50,0.64)" : "rgba(255,255,255,0.68)";
   const shouldUseAndroidBubbleTintFallback = useAndroidLikeVisualStyle && !useNativeLiquidBackground;
   const shouldUseNativeOnly = nativeTabBarAvailable;
   const shouldRenderInnerBubble = availableTabs.length > 0;
@@ -404,6 +420,7 @@ const LiquidGlassTabBar = ({
             style={StyleSheet.absoluteFill}
             items={tabPayload}
             selectedKey={activeTab}
+            isDarkTheme={isDarkTheme}
             onTabPress={onTabPress}
           />
         </View>
@@ -421,8 +438,8 @@ const LiquidGlassTabBar = ({
           <LiquidGlassNativeView
             style={StyleSheet.absoluteFill}
             cornerRadius={999}
-            tintAlpha={isDarkTheme ? 0.22 : 0.14}
-            strokeOpacity={isDarkTheme ? 0.36 : 0.24}
+            tintAlpha={isDarkTheme ? 0.16 : 0.12}
+            strokeOpacity={isDarkTheme ? 0.24 : 0.2}
           />
         ) : (
           <ExpoBlurView
@@ -468,8 +485,8 @@ const LiquidGlassTabBar = ({
               <LiquidGlassNativeView
                 style={StyleSheet.absoluteFill}
                 cornerRadius={bubbleHeight / 2}
-                tintAlpha={isDarkTheme ? 0.32 : 0.2}
-                strokeOpacity={isDarkTheme ? 0.65 : 0.46}
+                tintAlpha={isDarkTheme ? 0.22 : 0.16}
+                strokeOpacity={isDarkTheme ? 0.34 : 0.36}
               />
             ) : shouldUseAndroidBubbleTintFallback ? (
               <View
@@ -496,7 +513,7 @@ const LiquidGlassTabBar = ({
                 styles.activeBubbleOverlay,
                 {
                   backgroundColor: isDarkTheme
-                    ? "rgba(255,255,255,0.08)"
+                    ? "rgba(255,255,255,0.045)"
                     : isLiquidGlassStyle
                     ? "rgba(255,255,255,0.18)"
                     : useAndroidLikeVisualStyle
@@ -511,15 +528,15 @@ const LiquidGlassTabBar = ({
                   <SvgRadialGradient id={prismRingId} cx="50%" cy="50%" r="50%">
                     <SvgStop offset="0%" stopColor="rgba(255,255,255,0)" />
                     <SvgStop offset="64%" stopColor="rgba(255,255,255,0)" />
-                    <SvgStop offset="74%" stopColor="rgba(123,219,255,0.55)" />
-                    <SvgStop offset="83%" stopColor="rgba(126,255,198,0.5)" />
-                    <SvgStop offset="90%" stopColor="rgba(255,183,112,0.5)" />
-                    <SvgStop offset="100%" stopColor="rgba(255,255,255,0.18)" />
+                    <SvgStop offset="74%" stopColor={isDarkTheme ? "rgba(123,180,218,0.24)" : "rgba(123,199,235,0.4)"} />
+                    <SvgStop offset="83%" stopColor={isDarkTheme ? "rgba(126,205,177,0.2)" : "rgba(126,220,190,0.36)"} />
+                    <SvgStop offset="90%" stopColor={isDarkTheme ? "rgba(211,159,108,0.2)" : "rgba(228,169,112,0.34)"} />
+                    <SvgStop offset="100%" stopColor={isDarkTheme ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.16)"} />
                   </SvgRadialGradient>
                   <SvgLinearGradient id={`${prismRingId}_shine`} x1="0" y1="0" x2="1" y2="1">
-                    <SvgStop offset="0%" stopColor="rgba(255,255,255,0.48)" />
+                    <SvgStop offset="0%" stopColor={isDarkTheme ? "rgba(255,255,255,0.24)" : "rgba(255,255,255,0.4)"} />
                     <SvgStop offset="40%" stopColor="rgba(255,255,255,0.08)" />
-                    <SvgStop offset="100%" stopColor="rgba(255,255,255,0.34)" />
+                    <SvgStop offset="100%" stopColor={isDarkTheme ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.28)"} />
                   </SvgLinearGradient>
                 </Defs>
                 <SvgRect x="4" y="4" width="92" height="92" rx="46" fill={`url(#${prismRingId}_shine)`} opacity="0.32" />
@@ -530,7 +547,7 @@ const LiquidGlassTabBar = ({
                   fill="none"
                   stroke={`url(#${prismRingId})`}
                   strokeWidth="2.8"
-                  opacity="0.95"
+                  opacity={isDarkTheme ? 0.62 : 0.82}
                 />
               </Svg>
             )}
@@ -562,6 +579,11 @@ const LiquidGlassTabBar = ({
                 style={[styles.tabButton, isCompactAndroid && styles.tabButtonCompact]}
                 onPress={() => onTabPress?.(tab)}
                 onLayout={(event) => handleTabLayout(tab, event)}
+                accessibilityRole="tab"
+                accessibilityLabel={tabLabel}
+                accessibilityState={{ selected: isActive }}
+                accessibilityHint={isActive ? undefined : tabLabel}
+                hitSlop={4}
               >
                 {isHighlighted && !isActive && (
                   <View
@@ -570,12 +592,12 @@ const LiquidGlassTabBar = ({
                       styles.highlightHalo,
                       {
                         backgroundColor: isDarkTheme
-                          ? "rgba(255,255,255,0.12)"
+                          ? "rgba(255,255,255,0.07)"
                           : isProTheme
                           ? colorWithAlpha(proThemeAccentColor, 0.2)
                           : "rgba(255,255,255,0.34)",
                         borderColor: isDarkTheme
-                          ? "rgba(255,255,255,0.28)"
+                          ? "rgba(255,255,255,0.18)"
                           : isProTheme
                           ? colorWithAlpha(proThemeAccentColor, 0.4)
                           : "rgba(0,0,0,0.1)",
@@ -587,8 +609,8 @@ const LiquidGlassTabBar = ({
                 <TabGlyph tab={tab} color={tabTextColor} />
                 <Text
                   numberOfLines={1}
-                  allowFontScaling={false}
-                  maxFontSizeMultiplier={1}
+                  allowFontScaling
+                  maxFontSizeMultiplier={1.2}
                   ellipsizeMode="tail"
                   style={[
                     styles.tabLabel,
@@ -607,7 +629,13 @@ const LiquidGlassTabBar = ({
 
                 {badgeValue > 0 && (
                   <View style={[styles.badge, { backgroundColor: badgeBackground }]}>
-                    <Text allowFontScaling={false} maxFontSizeMultiplier={1} style={[styles.badgeText, { color: badgeText }]}>
+                    <Text
+                      allowFontScaling
+                      maxFontSizeMultiplier={1.2}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no"
+                      style={[styles.badgeText, { color: badgeText }]}
+                    >
                       {badgeValue > 99 ? "99+" : `${badgeValue}`}
                     </Text>
                   </View>

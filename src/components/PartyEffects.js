@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { Animated, Easing, View } from "react-native";
+import { createMotionLoop } from "../utils/motion";
 
 const PartyFirework = ({
   color,
@@ -15,7 +16,7 @@ const PartyFirework = ({
   useEffect(() => {
     scale.setValue(0.2);
     opacity.setValue(0);
-    const animation = Animated.loop(
+    const animation = createMotionLoop(
       Animated.sequence([
         Animated.delay(delay),
         Animated.parallel([
@@ -137,7 +138,7 @@ export const PartySparklesLayer = React.memo(function PartySparklesLayer({
 
   useEffect(() => {
     const loops = sparkles.map(({ anim, duration, delay }) => {
-      const animation = Animated.loop(
+      const animation = createMotionLoop(
         Animated.sequence([
           Animated.delay(delay),
           Animated.timing(anim, {
