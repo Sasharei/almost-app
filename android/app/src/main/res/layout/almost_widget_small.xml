@@ -5,8 +5,8 @@
   android:layout_height="match_parent"
   android:orientation="vertical"
   android:background="@drawable/widget_bg"
-  android:padding="6dp"
-  android:paddingBottom="6dp">
+  android:padding="7dp"
+  android:paddingBottom="7dp">
 
   <LinearLayout
     android:id="@+id/widget_content"
@@ -24,9 +24,9 @@
 
       <ImageView
         android:id="@+id/widget_cat"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:padding="2dp"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:padding="3dp"
         android:scaleType="centerInside"
         android:src="@drawable/almi_widget"
         android:background="@drawable/widget_cat_bg" />
@@ -41,9 +41,17 @@
         android:maxLines="1"
         android:text="@string/widget_title_default"
         android:textColor="#111111"
-        android:textSize="10sp"
+        android:textSize="11sp"
         android:textStyle="bold" />
     </LinearLayout>
+
+    <LinearLayout
+      android:id="@+id/widget_metric_column"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:orientation="vertical"
+      android:background="@drawable/widget_panel_hero"
+      android:padding="6dp">
 
     <TextView
       android:id="@+id/widget_saved_label"
@@ -51,13 +59,13 @@
       android:layout_height="wrap_content"
       android:autoSizeTextType="uniform"
       android:autoSizeMinTextSize="7sp"
-      android:autoSizeMaxTextSize="9sp"
+      android:autoSizeMaxTextSize="10sp"
       android:ellipsize="end"
       android:includeFontPadding="false"
       android:maxLines="1"
       android:text="@string/widget_label_total_default"
       android:textColor="#4B4B4B"
-      android:textSize="9sp"
+      android:textSize="10sp"
       android:textStyle="bold" />
 
     <TextView
@@ -66,13 +74,13 @@
       android:layout_height="wrap_content"
       android:autoSizeTextType="uniform"
       android:autoSizeMinTextSize="10sp"
-      android:autoSizeMaxTextSize="18sp"
+      android:autoSizeMaxTextSize="20sp"
       android:ellipsize="end"
       android:includeFontPadding="false"
       android:maxLines="1"
       android:text="--"
       android:textColor="#2EB873"
-      android:textSize="18sp"
+      android:textSize="20sp"
       android:textStyle="bold" />
 
     <LinearLayout
@@ -121,7 +129,7 @@
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
         android:layout_height="4dp"
-        android:layout_marginTop="2dp"
+        android:layout_marginTop="1dp"
         android:indeterminate="false"
         android:max="100"
         android:progress="0"
@@ -129,6 +137,7 @@
         android:progressTint="#2EB873"
         android:minHeight="4dp"
         android:maxHeight="4dp" />
+    </LinearLayout>
     </LinearLayout>
 
     <TextView
@@ -142,7 +151,7 @@
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
       android:orientation="horizontal"
-      android:layout_marginTop="6dp"
+      android:layout_marginTop="5dp"
       android:layout_marginBottom="0dp">
 
       <TextView
@@ -159,7 +168,7 @@
         android:textStyle="bold"
         android:gravity="center"
         android:background="@drawable/widget_button_save_bg"
-        android:minHeight="26dp"
+        android:minHeight="28dp"
         android:paddingLeft="8dp"
         android:paddingRight="8dp"
         android:paddingTop="4dp"
@@ -184,7 +193,7 @@
         android:textStyle="bold"
         android:gravity="center"
         android:background="@drawable/widget_button_spend_bg"
-        android:minHeight="26dp"
+        android:minHeight="28dp"
         android:paddingLeft="8dp"
         android:paddingRight="8dp"
         android:paddingTop="4dp"
@@ -192,15 +201,36 @@
     </LinearLayout>
   </LinearLayout>
 
-  <TextView
+  <LinearLayout
     android:id="@+id/widget_empty_state"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:layout_gravity="center"
     android:gravity="center"
+    android:orientation="vertical"
+    android:background="@drawable/widget_panel_hero"
+    android:padding="12dp"
+    android:visibility="gone">
+
+  <ImageView
+    android:id="@+id/widget_empty_cat"
+    android:layout_width="38dp"
+    android:layout_height="38dp"
+    android:padding="5dp"
+    android:scaleType="centerInside"
+    android:src="@drawable/almi_widget"
+    android:background="@drawable/widget_cat_bg" />
+
+  <TextView
+    android:id="@+id/widget_empty_state_label"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="8dp"
+    android:gravity="center"
+    android:maxLines="2"
+    android:ellipsize="end"
     android:text="@string/widget_empty_state_default"
     android:textColor="#1C1C1C"
-    android:textSize="14sp"
-    android:textStyle="bold"
-    android:visibility="gone" />
+    android:textSize="12sp"
+    android:textStyle="bold" />
+  </LinearLayout>
 </LinearLayout>

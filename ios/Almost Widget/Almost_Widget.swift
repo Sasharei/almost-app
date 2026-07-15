@@ -48,19 +48,25 @@ private let keyWidgetDailySummaryExpiresAt = "widget_daily_summary_expires_at"
 private let keyWidgetDailySummaryLabel = "widget_daily_summary_label"
 
 private struct WidgetThemePalette {
-    let background: Color
+    let backgroundTop: Color
+    let backgroundBottom: Color
+    let backgroundAccent: Color
     let title: Color
     let label: Color
     let primary: Color
     let secondaryValue: Color
     let detail: Color
     let progressTrack: Color
+    let heroSurface: Color
+    let supportingSurface: Color
+    let surfaceBorder: Color
     let catBackground: Color
     let badgeBackground: Color
     let badgeBorder: Color
     let saveButtonBackground: Color
     let spendButtonBackground: Color
-    let buttonText: Color
+    let saveButtonText: Color
+    let spendButtonText: Color
     let budgetDefault: Color
     let budgetSecondary: Color
     let budgetNegative: Color
@@ -254,8 +260,7 @@ struct Almost_WidgetEntryView: View {
     }
 
     var body: some View {
-        let background = palette.background
-        let edgePadding: CGFloat = 8
+        let edgePadding: CGFloat = family == .systemSmall ? 7 : (family == .systemLarge ? 12 : 8)
         let content = ZStack(alignment: .topTrailing) {
             contentView
             if dailySummaryReady {
@@ -267,9 +272,31 @@ struct Almost_WidgetEntryView: View {
             .widgetURL(URL(string: "com.sasarei.almostclean://home"))
 
         if #available(iOS 17.0, *) {
-            content.containerBackground(background, for: .widget)
+            content.containerBackground(for: .widget) {
+                widgetBackground
+            }
         } else {
-            content.background(background)
+            content.background(widgetBackground)
+        }
+    }
+
+    private var widgetBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: [palette.backgroundTop, palette.backgroundBottom],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Circle()
+                .fill(palette.backgroundAccent.opacity(0.2))
+                .frame(width: family == .systemSmall ? 104 : 180)
+                .blur(radius: family == .systemSmall ? 2 : 8)
+                .offset(x: family == .systemSmall ? 58 : 130, y: -58)
+            Circle()
+                .fill(palette.spendButtonBackground.opacity(0.1))
+                .frame(width: family == .systemLarge ? 180 : 120)
+                .blur(radius: 10)
+                .offset(x: family == .systemSmall ? -72 : -150, y: family == .systemLarge ? 150 : 86)
         }
     }
 
@@ -300,45 +327,66 @@ struct Almost_WidgetEntryView: View {
         let recentEvents = entry.recentEvents
 
         if !entry.hasData {
-            VStack(spacing: 6) {
+            VStack(spacing: 8) {
                 Spacer(minLength: 0)
+                catImage
                 Text("Almost")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(palette.title)
                 Text(entry.labelEmptyState)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(palette.emptyState)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .multilineTextAlignment(.center)
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(palette.heroSurface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(palette.surfaceBorder, lineWidth: 1)
+            )
         } else {
             switch family {
             case .systemSmall:
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 7) {
                     headerRow
-                    metricBlock(title: entry.labelBalance, value: entry.savedTotalLabel, valueSize: 22, valueColor: palette.primary)
-                    progressBlock(
-                        title: primaryTitle,
+                    heroMetricPanel(
+                        title: entry.labelBalance,
+                        value: entry.savedTotalLabel,
+                        valueSize: 25,
+                        progressTitle: primaryTitle,
                         progress: primaryProgress,
                         detail: primaryDetail,
-                        color: palette.primary,
-                        barHeight: 6
+                        compact: true
                     )
-                    Spacer(minLength: 2)
-                    actionRow(buttonFontSize: 10, verticalPadding: 6)
+                    actionRow(buttonFontSize: 12, verticalPadding: 6)
                 }
             case .systemMedium:
                 VStack(alignment: .leading, spacing: 8) {
                     headerRow
-                    HStack(alignment: .top, spacing: 10) {
-                        metricBlock(title: entry.labelBalance, value: entry.savedTotalLabel, valueSize: 26, valueColor: palette.primary)
+                    HStack(alignment: .top, spacing: 8) {
+                        heroMetricPanel(
+                            title: entry.labelBalance,
+                            value: entry.savedTotalLabel,
+                            valueSize: 28,
+                            progressTitle: primaryTitle,
+                            progress: primaryProgress,
+                            detail: primaryDetail,
+                            compact: false
+                        )
+                        .frame(maxWidth: .infinity)
                         VStack(alignment: .leading, spacing: 6) {
                             progressBlock(
-                                title: primaryTitle,
-                                progress: primaryProgress,
-                                detail: primaryDetail,
-                                color: palette.primary,
+                                title: entry.labelToday,
+                                progress: todayProgress,
+                                detail: entry.savedTodayLabel,
+                                color: palette.detail,
                                 barHeight: 6
                             )
                             progressBlock(
@@ -349,50 +397,53 @@ struct Almost_WidgetEntryView: View {
                                 barHeight: 6
                             )
                         }
+                        .padding(8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .fill(palette.supportingSurface)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .stroke(palette.surfaceBorder, lineWidth: 1)
+                        )
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    Spacer(minLength: 2)
-                    actionRow(buttonFontSize: 12, verticalPadding: 7)
+                    Spacer(minLength: 0)
+                    actionRow(buttonFontSize: 12, verticalPadding: 6)
                 }
             default:
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 9) {
                     headerRow
-                    HStack(alignment: .top, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(entry.labelToday)
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(palette.label)
-                                Text(entry.savedTodayLabel)
-                                    .font(.system(size: 28, weight: .bold))
-                                    .foregroundColor(palette.secondaryValue)
-                            }
-                            HStack(alignment: .top, spacing: 12) {
-                                metricBlock(
-                                    title: entry.labelBalance,
-                                    value: entry.savedTotalLabel,
-                                    valueSize: 18,
-                                    valueColor: palette.primary
-                                )
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                metricBlock(
-                                    title: entry.labelBudgetRemaining,
-                                    value: budgetRemainingText,
-                                    valueSize: 18,
-                                    valueColor: budgetMetricColor
-                                )
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 8) {
-                            progressBlock(
-                                title: primaryTitle,
-                                progress: primaryProgress,
-                                detail: primaryDetail,
-                                color: palette.primary,
-                                barHeight: 7
+                    HStack(alignment: .top, spacing: 9) {
+                        heroMetricPanel(
+                            title: entry.labelBalance,
+                            value: entry.savedTotalLabel,
+                            valueSize: 30,
+                            progressTitle: primaryTitle,
+                            progress: primaryProgress,
+                            detail: primaryDetail,
+                            compact: false,
+                            panelHeight: 124
+                        )
+                        .frame(maxWidth: .infinity)
+                        VStack(spacing: 8) {
+                            compactMetricTile(
+                                title: entry.labelToday,
+                                value: entry.savedTodayLabel,
+                                valueColor: palette.secondaryValue,
+                                panelHeight: 58
                             )
+                            compactMetricTile(
+                                title: entry.labelBudgetRemaining,
+                                value: budgetRemainingText,
+                                valueColor: budgetMetricColor,
+                                panelHeight: 58
+                            )
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    HStack(alignment: .top, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 7) {
                             progressBlock(
                                 title: entry.labelToday,
                                 progress: todayProgress,
@@ -408,12 +459,31 @@ struct Almost_WidgetEntryView: View {
                                 barHeight: 7
                             )
                         }
+                        .padding(8)
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: 84,
+                            maxHeight: 84,
+                            alignment: .topLeading
+                        )
+                        .background(
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .fill(palette.supportingSurface)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .stroke(palette.surfaceBorder, lineWidth: 1)
+                        )
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        recentEventsBlock(
+                            title: entry.labelRecent,
+                            events: recentEvents,
+                            emptyLabel: entry.labelRecentEmpty,
+                            panelHeight: 84
+                        )
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if !recentEvents.isEmpty {
-                        recentEventsBlock(title: entry.labelRecent, events: recentEvents)
-                    }
-                    Spacer(minLength: 4)
+                    Spacer(minLength: 0)
                     actionRow(buttonFontSize: 13, verticalPadding: 9)
                 }
             }
@@ -424,7 +494,7 @@ struct Almost_WidgetEntryView: View {
         HStack(spacing: 8) {
             catImage
             Text("Almost")
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: family == .systemSmall ? 15 : 13, weight: .bold, design: .rounded))
                 .foregroundColor(palette.title)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -438,11 +508,12 @@ struct Almost_WidgetEntryView: View {
     }
 
     private var dailySummaryBadge: some View {
-        let summaryBadgeSize: CGFloat = family == .systemSmall ? 24 : 26
-        let summaryEmojiSize: CGFloat = family == .systemSmall ? 12 : 13
+        let summaryBadgeSize: CGFloat = family == .systemSmall ? 26 : 28
+        let summaryIconSize: CGFloat = family == .systemSmall ? 11 : 12
         return Link(destination: URL(string: "com.sasarei.almostclean://daily-summary")!) {
-            Text("📊")
-                .font(.system(size: summaryEmojiSize))
+            Image(systemName: "chart.bar.fill")
+                .font(.system(size: summaryIconSize, weight: .bold))
+                .foregroundColor(palette.primary)
                 .frame(width: summaryBadgeSize, height: summaryBadgeSize)
                 .background(palette.badgeBackground)
                 .overlay(
@@ -460,27 +531,106 @@ struct Almost_WidgetEntryView: View {
         Image("AlmiWidget")
             .resizable()
             .scaledToFit()
-            .frame(width: 30, height: 30)
+            .frame(width: family == .systemSmall ? 27 : 28, height: family == .systemSmall ? 27 : 28)
             .padding(4)
             .background(palette.catBackground)
+            .overlay(
+                Circle()
+                    .stroke(palette.surfaceBorder, lineWidth: 1)
+            )
             .clipShape(Circle())
     }
 
-    private func metricBlock(title: String, value: String, valueSize: CGFloat, valueColor: Color) -> some View {
+    private func heroMetricPanel(
+        title: String,
+        value: String,
+        valueSize: CGFloat,
+        progressTitle: String,
+        progress: Double,
+        detail: String,
+        compact: Bool,
+        panelHeight: CGFloat? = nil
+    ) -> some View {
+        VStack(alignment: .leading, spacing: compact ? 3 : 4) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: compact ? 12 : 11, weight: .semibold))
+                    .foregroundColor(palette.label)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Spacer(minLength: 4)
+                Text(detail)
+                    .font(.system(size: compact ? 12 : 11, weight: .bold))
+                    .foregroundColor(palette.primary)
+                    .lineLimit(1)
+            }
+            Text(value)
+                .font(.system(size: valueSize, weight: .bold, design: .rounded))
+                .foregroundColor(palette.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .allowsTightening(true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 6) {
+                Text(progressTitle)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(palette.label)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                progressBar(progress: progress, color: palette.primary, height: 6)
+            }
+        }
+        .padding(8)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: panelHeight,
+            maxHeight: panelHeight,
+            alignment: .topLeading
+        )
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(palette.heroSurface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(palette.surfaceBorder, lineWidth: 1)
+        )
+    }
+
+    private func compactMetricTile(
+        title: String,
+        value: String,
+        valueColor: Color,
+        panelHeight: CGFloat? = nil
+    ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(palette.label)
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(0.72)
             Text(value)
-                .font(.system(size: valueSize, weight: .bold))
+                .font(.system(size: 17, weight: .bold, design: .rounded))
                 .foregroundColor(valueColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.55)
                 .allowsTightening(true)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(10)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: panelHeight,
+            maxHeight: panelHeight,
+            alignment: .topLeading
+        )
+        .background(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(palette.supportingSurface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(palette.surfaceBorder, lineWidth: 1)
+        )
     }
 
     private func progressBlock(
@@ -501,7 +651,7 @@ struct Almost_WidgetEntryView: View {
                 Spacer(minLength: 4)
                 Text(detail)
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(palette.detail)
+                    .foregroundColor(color)
                     .lineLimit(1)
                     .minimumScaleFactor(0.65)
                     .allowsTightening(true)
@@ -525,15 +675,44 @@ struct Almost_WidgetEntryView: View {
         .frame(height: height)
     }
 
-    private func recentEventsBlock(title: String, events: [String]) -> some View {
+    private func recentEventsBlock(
+        title: String,
+        events: [String],
+        emptyLabel: String,
+        panelHeight: CGFloat? = nil
+    ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(palette.label)
-            ForEach(Array(events.prefix(3).enumerated()), id: \.offset) { _, label in
-                recentEventRow(label)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            if events.isEmpty {
+                Text(emptyLabel)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(palette.label)
+                    .lineLimit(1)
+            } else {
+                ForEach(Array(events.prefix(3).enumerated()), id: \.offset) { _, label in
+                    recentEventRow(label)
+                }
             }
         }
+        .padding(10)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: panelHeight,
+            maxHeight: panelHeight,
+            alignment: .topLeading
+        )
+        .background(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(palette.supportingSurface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(palette.surfaceBorder, lineWidth: 1)
+        )
     }
 
     private func recentEventRow(_ label: String) -> some View {
@@ -560,22 +739,42 @@ struct Almost_WidgetEntryView: View {
     private func actionRow(buttonFontSize: CGFloat, verticalPadding: CGFloat) -> some View {
         HStack(spacing: 8) {
             Link(destination: URL(string: "com.sasarei.almostclean://quick-entry?type=save")!) {
-                Text(entry.actionSaveLabel)
-                    .font(.system(size: buttonFontSize, weight: .bold))
+                HStack(spacing: 5) {
+                    Image(systemName: "plus")
+                        .font(.system(size: max(9, buttonFontSize - 1), weight: .heavy))
+                    Text(entry.actionSaveLabel)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
+                    .font(.system(size: buttonFontSize, weight: .bold, design: .rounded))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, verticalPadding)
                     .background(palette.saveButtonBackground)
-                    .foregroundColor(palette.buttonText)
-                    .cornerRadius(10)
+                    .foregroundColor(palette.saveButtonText)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.white.opacity(0.24), lineWidth: 1)
+                    )
             }
             Link(destination: URL(string: "com.sasarei.almostclean://quick-entry?type=spend")!) {
-                Text(entry.actionSpendLabel)
-                    .font(.system(size: buttonFontSize, weight: .bold))
+                HStack(spacing: 5) {
+                    Image(systemName: "minus")
+                        .font(.system(size: max(9, buttonFontSize - 1), weight: .heavy))
+                    Text(entry.actionSpendLabel)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
+                    .font(.system(size: buttonFontSize, weight: .bold, design: .rounded))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, verticalPadding)
                     .background(palette.spendButtonBackground)
-                    .foregroundColor(palette.buttonText)
-                    .cornerRadius(10)
+                    .foregroundColor(palette.spendButtonText)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    )
             }
         }
     }
@@ -589,20 +788,31 @@ struct Almost_WidgetEntryView: View {
         let normalizedTheme = normalizeThemeId(themeId)
         switch normalizedTheme {
         case "dark":
+            let background = colorFromHex(
+                backgroundHex,
+                fallback: UIColor(red: 0.035, green: 0.075, blue: 0.15, alpha: 1)
+            )
+            let accent = UIColor(red: 0.2, green: 0.92, blue: 0.62, alpha: 1)
             return WidgetThemePalette(
-                background: Color(uiColor: colorFromHex(backgroundHex, fallback: UIColor(red: 0.04, green: 0.08, blue: 0.16, alpha: 1))),
+                backgroundTop: Color(uiColor: blend(background, accent, ratio: 0.06)),
+                backgroundBottom: Color(uiColor: blend(background, UIColor.black, ratio: 0.2)),
+                backgroundAccent: Color(uiColor: accent),
                 title: Color(uiColor: UIColor(red: 0.97, green: 0.98, blue: 1.0, alpha: 1)),
                 label: Color(uiColor: UIColor(red: 0.65, green: 0.69, blue: 0.8, alpha: 1)),
-                primary: Color(uiColor: UIColor(red: 0.39, green: 0.95, blue: 0.71, alpha: 1)),
+                primary: Color(uiColor: accent),
                 secondaryValue: Color(uiColor: UIColor(red: 0.97, green: 0.98, blue: 1.0, alpha: 1)),
                 detail: Color(uiColor: UIColor(red: 0.84, green: 0.89, blue: 1.0, alpha: 1)),
                 progressTrack: Color(uiColor: UIColor(red: 0.18, green: 0.24, blue: 0.37, alpha: 1)),
+                heroSurface: Color.white.opacity(0.105),
+                supportingSurface: Color.white.opacity(0.07),
+                surfaceBorder: Color.white.opacity(0.12),
                 catBackground: Color(uiColor: UIColor(red: 0.13, green: 0.19, blue: 0.31, alpha: 1)),
                 badgeBackground: Color(uiColor: UIColor(red: 0.16, green: 0.22, blue: 0.36, alpha: 1)),
                 badgeBorder: Color(uiColor: UIColor(red: 0.28, green: 0.37, blue: 0.57, alpha: 1)),
-                saveButtonBackground: Color(uiColor: UIColor(red: 0.2, green: 0.7, blue: 0.45, alpha: 1)),
-                spendButtonBackground: Color(uiColor: UIColor(red: 0.85, green: 0.32, blue: 0.38, alpha: 1)),
-                buttonText: .white,
+                saveButtonBackground: Color(uiColor: UIColor(red: 0.02, green: 0.48, blue: 0.27, alpha: 1)),
+                spendButtonBackground: Color(uiColor: UIColor(red: 0.75, green: 0.18, blue: 0.25, alpha: 1)),
+                saveButtonText: .white,
+                spendButtonText: .white,
                 budgetDefault: Color(uiColor: UIColor(red: 0.97, green: 0.98, blue: 1.0, alpha: 1)),
                 budgetSecondary: Color(uiColor: UIColor(red: 0.77, green: 0.81, blue: 0.91, alpha: 1)),
                 budgetNegative: Color(uiColor: UIColor(red: 1.0, green: 0.56, blue: 0.62, alpha: 1)),
@@ -622,19 +832,25 @@ struct Almost_WidgetEntryView: View {
             let titleBase = UIColor(red: 0.06, green: 0.11, blue: 0.27, alpha: 1)
             let labelBase = UIColor(red: 0.37, green: 0.42, blue: 0.6, alpha: 1)
             return WidgetThemePalette(
-                background: Color(uiColor: background),
+                backgroundTop: Color(uiColor: blend(background, UIColor.white, ratio: 0.16)),
+                backgroundBottom: Color(uiColor: blend(background, accent, ratio: 0.16)),
+                backgroundAccent: Color(uiColor: accent),
                 title: Color(uiColor: blend(titleBase, accent, ratio: 0.12)),
                 label: Color(uiColor: blend(labelBase, accent, ratio: 0.2)),
                 primary: Color(uiColor: accent),
                 secondaryValue: Color(uiColor: blend(titleBase, accent, ratio: 0.08)),
                 detail: Color(uiColor: blend(labelBase, accent, ratio: 0.28)),
                 progressTrack: Color(uiColor: UIColor(red: 0.74, green: 0.79, blue: 0.93, alpha: 1)),
+                heroSurface: Color.white.opacity(0.62),
+                supportingSurface: Color.white.opacity(0.42),
+                surfaceBorder: Color.white.opacity(0.68),
                 catBackground: Color(uiColor: blend(UIColor(red: 0.88, green: 0.91, blue: 1.0, alpha: 1), accent, ratio: 0.2)),
                 badgeBackground: Color(uiColor: blend(UIColor(red: 0.88, green: 0.91, blue: 1.0, alpha: 1), accent, ratio: 0.24)),
                 badgeBorder: Color(uiColor: blend(UIColor(red: 0.78, green: 0.83, blue: 0.97, alpha: 1), accent, ratio: 0.32)),
                 saveButtonBackground: Color(uiColor: accent),
-                spendButtonBackground: Color(uiColor: UIColor(red: 0.85, green: 0.32, blue: 0.38, alpha: 1)),
-                buttonText: .white,
+                spendButtonBackground: Color(uiColor: UIColor(red: 0.75, green: 0.18, blue: 0.25, alpha: 1)),
+                saveButtonText: Color(uiColor: contrastingTextColor(for: accent)),
+                spendButtonText: .white,
                 budgetDefault: Color(uiColor: blend(titleBase, accent, ratio: 0.1)),
                 budgetSecondary: Color(uiColor: blend(labelBase, accent, ratio: 0.2)),
                 budgetNegative: Color(uiColor: UIColor(red: 0.85, green: 0.32, blue: 0.38, alpha: 1)),
@@ -643,28 +859,52 @@ struct Almost_WidgetEntryView: View {
                 emptyState: Color(uiColor: blend(titleBase, accent, ratio: 0.1))
             )
         default:
+            let emerald = UIColor(red: 0.03, green: 0.48, blue: 0.26, alpha: 1)
             return WidgetThemePalette(
-                background: Color(uiColor: UIColor(red: 0.97, green: 0.95, blue: 0.92, alpha: 1)),
-                title: .black,
-                label: Color.black.opacity(0.6),
-                primary: Color(uiColor: UIColor(red: 0.18, green: 0.72, blue: 0.45, alpha: 1)),
-                secondaryValue: .black,
-                detail: Color.black.opacity(0.75),
-                progressTrack: Color.black.opacity(0.08),
-                catBackground: Color.black.opacity(0.08),
-                badgeBackground: Color.black.opacity(0.08),
-                badgeBorder: Color.black.opacity(0.12),
-                saveButtonBackground: Color(uiColor: UIColor(red: 0.2, green: 0.7, blue: 0.45, alpha: 1)),
-                spendButtonBackground: Color(uiColor: UIColor(red: 0.85, green: 0.32, blue: 0.38, alpha: 1)),
-                buttonText: .white,
-                budgetDefault: .black,
-                budgetSecondary: Color.black.opacity(0.65),
-                budgetNegative: Color(uiColor: UIColor(red: 0.85, green: 0.32, blue: 0.38, alpha: 1)),
-                recentEvent: Color.black.opacity(0.75),
-                recentSpend: Color(uiColor: UIColor(red: 0.85, green: 0.32, blue: 0.38, alpha: 1)),
-                emptyState: Color.black.opacity(0.7)
+                backgroundTop: Color(uiColor: UIColor(red: 0.88, green: 1.0, blue: 0.94, alpha: 1)),
+                backgroundBottom: Color(uiColor: UIColor(red: 0.82, green: 0.93, blue: 1.0, alpha: 1)),
+                backgroundAccent: Color(uiColor: emerald),
+                title: Color(uiColor: UIColor(red: 0.04, green: 0.14, blue: 0.11, alpha: 1)),
+                label: Color(uiColor: UIColor(red: 0.23, green: 0.36, blue: 0.31, alpha: 1)),
+                primary: Color(uiColor: emerald),
+                secondaryValue: Color(uiColor: UIColor(red: 0.04, green: 0.14, blue: 0.11, alpha: 1)),
+                detail: Color(uiColor: UIColor(red: 0.16, green: 0.35, blue: 0.42, alpha: 1)),
+                progressTrack: Color(uiColor: UIColor(red: 0.62, green: 0.78, blue: 0.72, alpha: 0.5)),
+                heroSurface: Color.white.opacity(0.7),
+                supportingSurface: Color.white.opacity(0.48),
+                surfaceBorder: Color.white.opacity(0.72),
+                catBackground: Color.white.opacity(0.62),
+                badgeBackground: Color.white.opacity(0.62),
+                badgeBorder: Color.white.opacity(0.78),
+                saveButtonBackground: Color(uiColor: emerald),
+                spendButtonBackground: Color(uiColor: UIColor(red: 0.75, green: 0.18, blue: 0.25, alpha: 1)),
+                saveButtonText: .white,
+                spendButtonText: .white,
+                budgetDefault: Color(uiColor: UIColor(red: 0.04, green: 0.14, blue: 0.11, alpha: 1)),
+                budgetSecondary: Color(uiColor: UIColor(red: 0.18, green: 0.37, blue: 0.33, alpha: 1)),
+                budgetNegative: Color(uiColor: UIColor(red: 0.75, green: 0.18, blue: 0.25, alpha: 1)),
+                recentEvent: Color(uiColor: UIColor(red: 0.1, green: 0.27, blue: 0.22, alpha: 1)),
+                recentSpend: Color(uiColor: UIColor(red: 0.75, green: 0.18, blue: 0.25, alpha: 1)),
+                emptyState: Color(uiColor: UIColor(red: 0.16, green: 0.3, blue: 0.25, alpha: 1))
             )
         }
+    }
+
+    private func contrastingTextColor(for background: UIColor) -> UIColor {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard background.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            return .white
+        }
+        let linearRed = red <= 0.04045 ? red / 12.92 : pow((red + 0.055) / 1.055, 2.4)
+        let linearGreen = green <= 0.04045 ? green / 12.92 : pow((green + 0.055) / 1.055, 2.4)
+        let linearBlue = blue <= 0.04045 ? blue / 12.92 : pow((blue + 0.055) / 1.055, 2.4)
+        let luminance = 0.2126 * linearRed + 0.7152 * linearGreen + 0.0722 * linearBlue
+        return luminance > 0.2
+            ? UIColor(red: 0.04, green: 0.08, blue: 0.18, alpha: 1)
+            : .white
     }
 
     private func normalizeThemeId(_ raw: String) -> String {
@@ -751,6 +991,7 @@ struct Almost_Widget: Widget {
         .configurationDisplayName("Almost")
         .description("Сбережения и быстрые действия.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .contentMarginsDisabled()
     }
 }
 

@@ -11,6 +11,7 @@ import android.net.Uri
 import android.widget.RemoteViews
 import com.sasarei.almostclean.R
 import java.util.Locale
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 enum class WidgetSize {
@@ -22,8 +23,12 @@ enum class WidgetSize {
 private data class WidgetPalette(
   val backgroundRes: Int,
   val catBackgroundRes: Int,
+  val heroPanelRes: Int,
+  val supportingPanelRes: Int,
   val saveButtonRes: Int,
   val spendButtonRes: Int,
+  val saveButtonTextColor: Int,
+  val spendButtonTextColor: Int,
   val titleColor: Int,
   val labelColor: Int,
   val valueColor: Int,
@@ -144,8 +149,8 @@ class AlmostWidgetProvider : AppWidgetProvider() {
         views.setViewVisibility(R.id.widget_actions_row, android.view.View.VISIBLE)
         views.setViewVisibility(R.id.widget_saved_label, android.view.View.VISIBLE)
         views.setViewVisibility(R.id.widget_saved_value, android.view.View.VISIBLE)
-        views.setTextViewText(R.id.widget_save_button, widgetData.labelActionSave)
-        views.setTextViewText(R.id.widget_spend_button, widgetData.labelActionSpend)
+        views.setTextViewText(R.id.widget_save_button, "+  ${widgetData.labelActionSave}")
+        views.setTextViewText(R.id.widget_spend_button, "−  ${widgetData.labelActionSpend}")
 
         if (isMedium || isLarge) {
           views.setViewVisibility(R.id.widget_progress_streak_group, android.view.View.VISIBLE)
@@ -218,7 +223,7 @@ class AlmostWidgetProvider : AppWidgetProvider() {
         views.setViewVisibility(R.id.widget_content, android.view.View.GONE)
         views.setViewVisibility(R.id.widget_empty_state, android.view.View.VISIBLE)
         views.setViewVisibility(R.id.widget_actions_row, android.view.View.GONE)
-        views.setTextViewText(R.id.widget_empty_state, widgetData.labelEmptyState)
+        views.setTextViewText(R.id.widget_empty_state_label, widgetData.labelEmptyState)
       }
 
       val homeIntent = Intent(Intent.ACTION_VIEW).apply {
@@ -269,6 +274,8 @@ class AlmostWidgetProvider : AppWidgetProvider() {
 
       views.setInt(R.id.widget_root, "setBackgroundResource", palette.backgroundRes)
       views.setInt(R.id.widget_cat, "setBackgroundResource", palette.catBackgroundRes)
+      views.setInt(R.id.widget_empty_cat, "setBackgroundResource", palette.catBackgroundRes)
+      views.setInt(R.id.widget_metric_column, "setBackgroundResource", palette.heroPanelRes)
       views.setInt(R.id.widget_save_button, "setBackgroundResource", palette.saveButtonRes)
       views.setInt(R.id.widget_spend_button, "setBackgroundResource", palette.spendButtonRes)
 
@@ -277,9 +284,12 @@ class AlmostWidgetProvider : AppWidgetProvider() {
       views.setTextColor(R.id.widget_saved_value, palette.valueColor)
       views.setTextColor(R.id.widget_progress_month_label, palette.labelColor)
       views.setTextColor(R.id.widget_progress_month_value, palette.detailColor)
-      views.setTextColor(R.id.widget_empty_state, palette.emptyStateColor)
+      views.setTextColor(R.id.widget_empty_state_label, palette.emptyStateColor)
+      views.setTextColor(R.id.widget_save_button, palette.saveButtonTextColor)
+      views.setTextColor(R.id.widget_spend_button, palette.spendButtonTextColor)
 
       if (isMedium || isLarge) {
+        views.setInt(R.id.widget_progress_column, "setBackgroundResource", palette.supportingPanelRes)
         views.setTextColor(R.id.widget_saved_total_label, palette.labelColor)
         views.setTextColor(R.id.widget_saved_total_value, palette.secondaryValueColor)
         views.setTextColor(R.id.widget_progress_streak_label, palette.labelColor)
@@ -287,6 +297,7 @@ class AlmostWidgetProvider : AppWidgetProvider() {
       }
 
       if (isLarge) {
+        views.setInt(R.id.widget_recent_group, "setBackgroundResource", palette.supportingPanelRes)
         views.setTextColor(R.id.widget_streak_label, palette.labelColor)
         views.setTextColor(R.id.widget_streak_value, palette.budgetDefaultColor)
         views.setTextColor(R.id.widget_progress_today_label, palette.labelColor)
@@ -303,8 +314,12 @@ class AlmostWidgetProvider : AppWidgetProvider() {
         "dark" -> WidgetPalette(
           backgroundRes = R.drawable.widget_bg_dark,
           catBackgroundRes = R.drawable.widget_cat_bg_dark,
+          heroPanelRes = R.drawable.widget_panel_hero_dark,
+          supportingPanelRes = R.drawable.widget_panel_support_dark,
           saveButtonRes = R.drawable.widget_button_save_bg,
           spendButtonRes = R.drawable.widget_button_spend_bg,
+          saveButtonTextColor = Color.WHITE,
+          spendButtonTextColor = Color.WHITE,
           titleColor = Color.parseColor("#F7F9FF"),
           labelColor = Color.parseColor("#A5B1CC"),
           valueColor = Color.parseColor("#64F2B5"),
@@ -327,8 +342,12 @@ class AlmostWidgetProvider : AppWidgetProvider() {
           WidgetPalette(
             backgroundRes = proBackgroundResForAccent(accentId),
             catBackgroundRes = R.drawable.widget_cat_bg_pro,
+            heroPanelRes = R.drawable.widget_panel_hero_pro,
+            supportingPanelRes = R.drawable.widget_panel_support_pro,
             saveButtonRes = proSaveButtonResForAccent(accentId),
             spendButtonRes = R.drawable.widget_button_spend_bg,
+            saveButtonTextColor = contrastingTextColor(accentColor),
+            spendButtonTextColor = Color.WHITE,
             titleColor = blendColors(titleBase, accentColor, 0.12f),
             labelColor = blendColors(labelBase, accentColor, 0.18f),
             valueColor = accentColor,
@@ -346,21 +365,37 @@ class AlmostWidgetProvider : AppWidgetProvider() {
         else -> WidgetPalette(
           backgroundRes = R.drawable.widget_bg,
           catBackgroundRes = R.drawable.widget_cat_bg,
+          heroPanelRes = R.drawable.widget_panel_hero,
+          supportingPanelRes = R.drawable.widget_panel_support,
           saveButtonRes = R.drawable.widget_button_save_bg,
           spendButtonRes = R.drawable.widget_button_spend_bg,
-          titleColor = Color.parseColor("#111111"),
-          labelColor = Color.parseColor("#4B4B4B"),
-          valueColor = Color.parseColor("#2EB873"),
-          secondaryValueColor = Color.parseColor("#111111"),
-          detailColor = Color.parseColor("#555555"),
-          emptyStateColor = Color.parseColor("#1C1C1C"),
-          recentEventColor = Color.parseColor("#2B2B2B"),
-          spendEventColor = Color.parseColor("#D84F61"),
-          budgetDefaultColor = Color.parseColor("#111111"),
-          budgetSecondaryColor = Color.parseColor("#555555"),
-          budgetNegativeColor = Color.parseColor("#D84F61")
+          saveButtonTextColor = Color.WHITE,
+          spendButtonTextColor = Color.WHITE,
+          titleColor = Color.parseColor("#0A241C"),
+          labelColor = Color.parseColor("#3B5C50"),
+          valueColor = Color.parseColor("#087A43"),
+          secondaryValueColor = Color.parseColor("#0A241C"),
+          detailColor = Color.parseColor("#28586A"),
+          emptyStateColor = Color.parseColor("#294C40"),
+          recentEventColor = Color.parseColor("#1B493A"),
+          spendEventColor = Color.parseColor("#C02E40"),
+          budgetDefaultColor = Color.parseColor("#0A241C"),
+          budgetSecondaryColor = Color.parseColor("#2E5E51"),
+          budgetNegativeColor = Color.parseColor("#C02E40")
         )
       }
+    }
+
+    private fun contrastingTextColor(backgroundColor: Int): Int {
+      fun linearChannel(channel: Int): Double {
+        val value = channel / 255.0
+        return if (value <= 0.04045) value / 12.92 else ((value + 0.055) / 1.055).pow(2.4)
+      }
+      val luminance =
+        0.2126 * linearChannel(Color.red(backgroundColor)) +
+          0.7152 * linearChannel(Color.green(backgroundColor)) +
+          0.0722 * linearChannel(Color.blue(backgroundColor))
+      return if (luminance > 0.2) Color.parseColor("#0A142E") else Color.WHITE
     }
 
     private fun normalizeThemeId(themeId: String?): String {

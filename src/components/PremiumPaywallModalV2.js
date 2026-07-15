@@ -20,6 +20,7 @@ const DEFAULT_PRIMARY_PLAN_IDS = ["monthly", "yearly", "weekly"];
 const PRIMARY_PLAN_IDS =
   Platform.OS === "android" ? ANDROID_PRIMARY_PLAN_IDS : DEFAULT_PRIMARY_PLAN_IDS;
 const FREE_TRIAL_DISPLAY_PLAN_ID = "yearly";
+const PAYWALL_DISMISS_COOLDOWN_MS = 5000;
 const FALLBACK_FEATURES_BY_LANGUAGE = {
   ru: [
     "Неограниченные сохранения без дневного лимита",
@@ -681,11 +682,13 @@ const PremiumPaywallModalV2 = ({
   safeAreaTopInset = 0,
   safeAreaBottomInset = 0,
   colors,
+  premiumAccent = null,
   statusBarOverlay = null,
 }) => {
   const { height: viewportHeight } = useWindowDimensions();
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCardsProp));
   const [freeTrialEnabled, setFreeTrialEnabled] = useState(false);
+  const [dismissCooldownComplete, setDismissCooldownComplete] = useState(false);
   const mainScrollRef = useRef(null);
   const planListOffsetYRef = useRef(0);
   const planCardOffsetsRef = useRef(new Map());
@@ -756,6 +759,7 @@ const PremiumPaywallModalV2 = ({
       muted: colors?.muted || (isDarkMode ? "#B2BCD8" : "#62697C"),
       accent: colors?.primary || "#536DFE",
       accentText: colors?.primary || "#536DFE",
+      featureAccent: premiumAccent || (isDarkMode ? "#C084FC" : "#7C3AED"),
       success: colors?.success || "#1FA561",
       ctaBg: colors?.primary || "#536DFE",
       ctaText: colors?.onPrimary || "#FFFFFF",
@@ -766,7 +770,7 @@ const PremiumPaywallModalV2 = ({
       bestValueBg: colors?.primary || "#536DFE",
       bestValueText: colors?.onPrimary || "#FFFFFF",
     }),
-    [colors, isDarkMode]
+    [colors, isDarkMode, premiumAccent]
   );
 
   const sortedPlans = useMemo(() => sortPlanCards(planCardsProp), [planCardsProp]);
@@ -809,6 +813,18 @@ const PremiumPaywallModalV2 = ({
     setFreeTrialEnabled(false);
     setSelectedPlanId(pickDefaultPlanId(displayedPlans));
   }, [displayedPlans, freeTrialDisplayPlan, freeTrialEnabled, visible]);
+  useEffect(() => {
+    if (!visible || !dismissible) {
+      setDismissCooldownComplete(false);
+      return undefined;
+    }
+    setDismissCooldownComplete(false);
+    const dismissCooldownTimer = setTimeout(
+      () => setDismissCooldownComplete(true),
+      PAYWALL_DISMISS_COOLDOWN_MS
+    );
+    return () => clearTimeout(dismissCooldownTimer);
+  }, [dismissible, visible]);
 
   const selectedPlan = useMemo(() => {
     const normalizedSelectedPlanId = normalizePlanId(selectedPlanId);
@@ -880,6 +896,7 @@ const PremiumPaywallModalV2 = ({
     copy?.v2FreeTrialToggleSubtitle || localizedUi.freeTrialToggleSubtitle
   );
   const shouldShowFreeTrialToggle = hasAnyTrialOffer && !!freeTrialDisplayPlan?.id;
+  const canDismiss = dismissible && dismissCooldownComplete;
 
   const primaryButtonLabel = useMemo(() => {
     if (!selectedPlan) return sanitizeLabel(copy?.ctaPrimary || localizedUi.ctaPrimary);
@@ -902,9 +919,9 @@ const PremiumPaywallModalV2 = ({
   ]);
 
   const handleBackdropPress = useCallback(() => {
-    if (!dismissible) return;
+    if (!canDismiss) return;
     onClose("backdrop");
-  }, [dismissible, onClose]);
+  }, [canDismiss, onClose]);
 
   const handlePrimaryPress = useCallback(() => {
     if (!selectedPlan?.id || purchaseDisabled) return;
@@ -923,9 +940,9 @@ const PremiumPaywallModalV2 = ({
   );
 
   const handleLimitedContinue = useCallback(() => {
-    if (!dismissible) return;
+    if (!canDismiss) return;
     onClose("continue_limited");
-  }, [dismissible, onClose]);
+  }, [canDismiss, onClose]);
 
   const scrollToPlanCard = useCallback((planId = "") => {
     const normalizedPlanId = normalizePlanId(planId);
@@ -982,7 +999,7 @@ const PremiumPaywallModalV2 = ({
       animationType="slide"
       statusBarTranslucent
       onRequestClose={() => {
-        if (!dismissible) return;
+        if (!canDismiss) return;
         onClose("system_back");
       }}
     >
@@ -1002,19 +1019,25 @@ const PremiumPaywallModalV2 = ({
         >
           {dismissible ? (
             <View style={styles.headerRow}>
-              <TouchableOpacity
-                style={[
-                  styles.headerDismissIconButton,
-                  { backgroundColor: palette.subtleButtonBg, borderColor: palette.cardBorder },
-                ]}
-                onPress={handleLimitedContinue}
-                activeOpacity={0.72}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel={continueLimitedLabel}
-              >
-                <Text style={[styles.headerDismissIconText, { color: palette.muted }]}>×</Text>
-              </TouchableOpacity>
+              {canDismiss ? (
+                <TouchableOpacity
+                  style={styles.headerDismissTouchTarget}
+                  onPress={handleLimitedContinue}
+                  activeOpacity={0.68}
+                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={continueLimitedLabel}
+                >
+                  <View
+                    style={[
+                      styles.headerDismissIconButton,
+                      { backgroundColor: palette.subtleButtonBg },
+                    ]}
+                  >
+                    <Text style={[styles.headerDismissIconText, { color: palette.muted }]}>×</Text>
+                  </View>
+                </TouchableOpacity>
+              ) : null}
             </View>
           ) : null}
 
@@ -1040,7 +1063,11 @@ const PremiumPaywallModalV2 = ({
 
             <View style={styles.copyBlock}>
               <AdaptivePaywallText
-                style={[styles.title, { color: palette.text }, textAlignStyle]}
+                style={[
+                  styles.title,
+                  { color: contextTitle ? palette.featureAccent : palette.text },
+                  textAlignStyle,
+                ]}
                 numberOfLines={titleNumberOfLines}
                 minFontSize={14}
                 maxUnitsPerLine={22}
@@ -1515,21 +1542,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    marginBottom: 3,
+    height: 40,
+    marginBottom: 2,
   },
-  headerDismissIconButton: {
-    width: Platform.OS === "ios" ? 44 : 48,
-    height: Platform.OS === "ios" ? 44 : 48,
-    borderRadius: 14,
-    borderWidth: 1,
+  headerDismissTouchTarget: {
+    width: 40,
+    height: 40,
     justifyContent: "center",
     alignItems: "center",
-    alignSelf: "flex-end",
+  },
+  headerDismissIconButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
   },
   headerDismissIconText: {
-    fontSize: 20,
-    lineHeight: 22,
-    fontWeight: "700",
+    fontSize: 16,
+    lineHeight: 18,
+    fontWeight: "600",
     textAlign: "center",
   },
   hero: {
