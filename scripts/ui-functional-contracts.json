@@ -31,14 +31,52 @@
     },
     {
       "id": "feed-new-temptation-action",
-      "description": "The regular Feed add button stays rendered outside the optional coach-mark condition.",
+      "description": "The regular Feed add button stays rendered beside the scrollable category rail and outside the optional coach-mark condition.",
       "file": "App.js",
       "requiredFragments": [
         ": onNewTemptation",
         "accessibilityLabel={t(\"fabNewTemptation\")}"
       ],
       "requiredPatterns": [
-        "\\{t\\(\"tutorialFeedTitle\"\\)\\}\\s*</Text>\\s*<View\\s*style=\\{\\[\\s*styles\\.feedTemptationAddWrap"
+        "<View\\s*style=\\{\\[\\s*styles\\.feedCategoryToolbar[\\s\\S]*?<ScrollView[\\s\\S]*?<View\\s*style=\\{\\[\\s*styles\\.feedTemptationAddWrap"
+      ]
+    },
+    {
+      "id": "feed-home-hero-actions",
+      "description": "The Home hierarchy redesign preserves Almi, level, streak, saving rating, Today tabs and swipe navigation, history, goal, daily reward, challenge, Budget, Subscriptions, category filters, and income-prompt actions.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={onMascotPress}",
+        "idleAnimationsEnabled={shouldAnimateVisibleHero}",
+        "const shouldUseStaticPreview = !idleAnimationsEnabled;",
+        "onPress={toggleHeroLevelExpanded}",
+        "onPress={handleUsageStreakPress}",
+        "onPress={() => savingsHeroRef?.current?.openSavingRatingModal?.()}",
+        "onRecentEventsPress={openHistoryModal}",
+        "onGoalJarPress={openGoalJarDetail}",
+        "onDailyRewardClaim={onDailyRewardClaim}",
+        "onActiveChallengePress={onActiveChallengePress}",
+        "onPress={isBudgetPressable ? onBudgetHeroPress : undefined}",
+        "onPress={isClone ? null : handleHomeSubscriptionPress}",
+        "const handleHeroCarouselTabPress = useCallback(",
+        "onPress={() => handleHeroCarouselTabPress(index)}",
+        "onScrollBeginDrag={handleHeroCarouselScrollBegin}",
+        "onMomentumScrollEnd={handleHeroCarouselScrollEnd}",
+        "onPress={() => handleFeedCategoryFilterPress(option.id)}",
+        "onPress={handleDayTwoIncomePromptPress}",
+        "onPress={handleDayTwoIncomePromptDismiss}"
+      ]
+    },
+    {
+      "id": "goal-jar-fullscreen-physics",
+      "description": "The fullscreen Goal Jar keeps its coins visible and starts sensor-driven physics only after the modal is presented while the app is active.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onShow={onShow}",
+        "onShow={() => setFullscreenPresented(true)}",
+        "const fullscreenPhysicsActive = visible && fullscreenPresented && fullscreenAppActive;",
+        "const restingCoins = visible ? buildGoalJarPhysicsCoins(visualCoinItems) : [];",
+        "if (!fullscreenPhysicsActive || !Accelerometer?.addListener) return undefined;"
       ]
     },
     {
@@ -65,6 +103,8 @@
         "onPress={isEditing ? onSaveEdit : onEditPress}",
         "onPress={onCancelEdit}",
         "onPress={() => setProfileSection(\"settings\")}",
+        "onPress={() => onFieldChange?.(\"incomePayday\", day)}",
+        "{t(\"incomePaydayValue\", { day: incomePayday })}",
         "onThemeToggle(option.id"
       ]
     },
@@ -84,6 +124,47 @@
         "onPress={handleAmountCategoryBudgetPress}",
         "onPress={handleAmountGoalPress}",
         "onPress={handleAmountTimerPress}"
+      ]
+    },
+    {
+      "id": "temptation-card-editor-actions",
+      "description": "The temptation editor keeps every editable field, schedule control, save, cancel, delete, and goal-selection action wired through the existing handlers.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<TemptationEditSheet",
+        "onChangeText={onEditEmojiChange}",
+        "onChangeText={onEditTitleChange}",
+        "onChangeText={onEditPriceChange}",
+        "onChangeText={onEditDescriptionChange}",
+        "onChange={onEditCategoryChange}",
+        "onValueChange={onEditFrequencyChange}",
+        "onCustomChange={onEditFrequencyCustomChange}",
+        "onReminderTimeChange={onEditReminderTimeChange}",
+        "onWeeklyDayChange={onEditWeeklyDayChange}",
+        "onMonthlyDayChange={onEditMonthlyDayChange}",
+        "onPress={onEditGoalSelect}",
+        "onPress={onEditSave}",
+        "onPress={onEditCancel}",
+        "onPress={onEditDelete}"
+      ]
+    },
+    {
+      "id": "temptation-card-create-actions",
+      "description": "The temptation creation modal keeps title, amount, emoji, category, frequency, schedule, add, and cancel behavior wired while its layout and keyboard handling are redesigned.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<QuickCustomModal",
+        "onChangeText={(text) => onChange(\"title\", text)}",
+        "onChangeText={(text) => onChange(\"amount\", text)}",
+        "onChangeText={(text) => onChange(\"emoji\", limitEmojiInput(text))}",
+        "onChange={(cat) => onChange(\"category\", cat)}",
+        "onValueChange={(next) => onChange(\"frequency\", next)}",
+        "onCustomChange={(next) => onChange(\"customFrequency\", next)}",
+        "onReminderTimeChange={(next) => onChange(\"reminderTime\", next)}",
+        "onWeeklyDayChange={(next) => onChange(\"frequencyWeeklyDays\", next)}",
+        "onMonthlyDayChange={(next) => onChange(\"frequencyMonthlyDays\", next)}",
+        "onPress={onCancel}",
+        "onPress={() => onSubmit(data)}"
       ]
     },
     {
@@ -195,12 +276,44 @@
       "description": "The paywall still invokes purchase, selection, restore, manage, and legal callbacks.",
       "file": "src/components/PremiumPaywallModalV2.js",
       "requiredFragments": [
+        "const PAYWALL_DISMISS_COOLDOWN_MS = 5000;",
+        "const canDismiss = dismissible && dismissCooldownComplete;",
+        "if (!canDismiss) return;",
         "onPlanPress(selectedPlan.id, { source: \"primary_button\" })",
         "onPlanSelect(plan.id, { source: \"plan_card\" })",
         "onRestorePress({ source: \"restore_button\" })",
         "onManagePress({ source: \"manage_button\" })",
         "onTermsPress({ source: \"terms_link\" })",
         "onPrivacyPress({ source: \"privacy_link\" })"
+      ]
+    },
+    {
+      "id": "premium-unlock-stories-entry",
+      "description": "The post-purchase Premium overview stays dismissible from the final action, close control, and the native system-back path.",
+      "file": "App.js",
+      "requiredFragments": [
+        "overlay?.type === \"premium_unlock\"",
+        "onRequestClose={dismissOverlay}",
+        "<PremiumUnlockStories",
+        "t={t}",
+        "language={language}",
+        "playSound={playSound}",
+        "onClose={dismissOverlay}"
+      ]
+    },
+    {
+      "id": "premium-unlock-stories-controls",
+      "description": "Premium Stories preserve close and completion while adding reachable previous, next, tap, swipe, reduced-motion, and screen-reader behavior.",
+      "file": "src/components/PremiumUnlockStories.js",
+      "requiredFragments": [
+        "onPress={handleClose}",
+        "onPress={handlePrimaryAction}",
+        "onPress={isRtl ? handleNext : handlePrevious}",
+        "onPress={isRtl ? handlePrevious : handleNext}",
+        "PanResponder.create({",
+        "if (activeIndexRef.current === STORY_DEFINITIONS.length - 1)",
+        "isLastStory || reduceMotion || screenReaderEnabled",
+        "accessibilityRole=\"progressbar\""
       ]
     },
     {
@@ -332,10 +445,104 @@
         "onIncomeEntryOpen={openIncomeEntryModal}",
         "onExtraIncomeEntryOpen={openExtraIncomeEntryModal}",
         "onWeeklySpendPress={openSpendBreakdown}",
+        "const WeeklyCardWrap = onWeeklySpendPress ? Pressable : View;",
+        "onPress: onWeeklySpendPress",
+        "onPress={onBudgetAutoLocked}",
         "onSubscriptionCreateTemptation={handleSubscriptionQuickCustomCreate}",
         "onSubscriptionAutoImport={handleSubscriptionAutoImport}",
         "onSubscriptionPaymentAction={handleSubscriptionPaymentAction}",
         "onImpulseMapLockedPress={handleImpulseMapLockedPress}"
+      ]
+    },
+    {
+      "id": "progress-monthly-limits-actions",
+      "description": "The Monthly limits redesign preserves editor entry, month selection, category history, slider and accessibility adjustment, exact input, reset, remaining edit, income entry, save, cancel, backdrop, and hardware-back behavior.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={handleBudgetWidgetPress}",
+        "openCategoryHistory(entry.id);",
+        "onRequestClose={closeBudgetModal}",
+        "onPress={() => dismissKeyboardOrRun(closeBudgetModal)}",
+        "onPress={() => setBudgetModalMonthKey(monthKey)}",
+        "onPress={handleBudgetModalRemainingPress}",
+        "accessibilityRole=\"adjustable\"",
+        "const absoluteX = Number.isFinite(pageX) ? pageX : moveX;",
+        "activeTrackGeometryRef.current = grantGeometry;",
+        "latestLimitValueRef.current = normalized;",
+        "budgetDraftSessionMonthRef.current === budgetModalActiveMonthKey",
+        "onAccessibilityAction={(event) => {",
+        "onManualEdit={openBudgetManualPrompt}",
+        "onResetLimit={handleBudgetCategoryReset}",
+        "onValueChange={handleBudgetSliderDraftChange}",
+        "onInteractionChange={handleBudgetSliderInteractionChange}",
+        "onExtraIncomeEntryOpen?.(\"budget_modal\")",
+        "onPress={confirmBudgetModal}",
+        "onSubmitEditing={handleBudgetManualSubmit}",
+        "onPress={handleBudgetManualSubmit}",
+        "onPress={closeBudgetManualPrompt}"
+      ]
+    },
+    {
+      "id": "progress-balance-potential-actions",
+      "description": "The Balance and potential redesign preserves disclosure, balance and forecast trends, category history, analytics, modal dismissal, and accessibility semantics.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={toggleProgressAnalytics}",
+        "onPress={openBalanceTrendModal}",
+        "onPress={openPotentialTrendModal}",
+        "logEvent(\"progress_analytics_opened\", { category_id: entry.id });",
+        "openCategoryHistory(entry.id);",
+        "onRequestClose={closePotentialTrendModal}",
+        "onRequestClose={closeCategoryHistory}",
+        "accessibilityState={{ expanded: progressAnalyticsExpanded }}"
+      ]
+    },
+    {
+      "id": "weekly-breakdown-modal-actions",
+      "description": "The weekly savings and spending breakdown redesign preserves dismissal, range switching, period navigation, mode switching, and horizontally scrollable long ranges.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onRequestClose={closeBreakdown}",
+        "<Pressable style={StyleSheet.absoluteFillObject} onPress={closeBreakdown} />",
+        "onPress={closeBreakdown}",
+        "onPress={() => setBreakdownRangeMode(tab.id)}",
+        "onPress={handleBreakdownPrev}",
+        "onPress={handleBreakdownNext}",
+        "disabled={activeBreakdownOffset === 0}",
+        "onPress={entry.onPress}",
+        "disabled={isActive}",
+        "ref={spendStatsScrollRef}"
+      ]
+    },
+    {
+      "id": "impulse-map-actions",
+      "description": "The Impulse Map redesign preserves the Premium lock entry and the existing expand/collapse path while adding calendar drill-down interactions.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<ImpulseMapCard",
+        "expanded={impulseExpanded}",
+        "onToggle={handleImpulseToggle}",
+        "onPress={() => setHeatMetric(option.id)}",
+        "onPress={() => handleDayPress(day)}",
+        "if (!expanded && typeof onToggle === \"function\") onToggle();",
+        "<LockedImpulseMapPreview",
+        "onPress={onImpulseMapLockedPress}"
+      ]
+    },
+    {
+      "id": "subscription-watch-actions",
+      "description": "The Subscription Watch redesign keeps home and Insights entry points, automatic discovery, manual creation, modal dismissal, import confirmation, and open analytics wired to the existing behavior.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<HomeSubscriptionWidgetCard",
+        "onPress={isClone ? null : handleHomeSubscriptionPress}",
+        "onPress={openSubscriptionModal}",
+        "onPress={() => handleSubscriptionAutoImportOpen(\"modal_button\")}",
+        "onPress={handleSubscriptionCreateTemptation}",
+        "onPress={handleSubscriptionAutoImportConfirm}",
+        "onRequestClose={closeSubscriptionModal}",
+        "onPress={closeSubscriptionModal}",
+        "logEvent(\"subscription_watch_opened\""
       ]
     },
     {
@@ -381,6 +588,88 @@
         "ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.budgetAuto);",
         "ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.impulseMap);",
         "onPress={() => {\n            if (!activeGoalWish || !onGoalEdit) return;\n            onGoalEdit(activeGoalWish);"
+      ]
+    },
+    {
+      "id": "fridge-menu-actions",
+      "description": "The Fridge redesign preserves open and close, edit, timer extension, spend, decline, overdue extension, swipe delete, Premium shelves, intro dismissal, and extension-modal actions.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={handleToggleFridge}",
+        "onOpenChange?.(false)",
+        "onOpenChange?.(true)",
+        "!(activeTab === \"pending\" && (!thinkingUnlocked || !fridgeDoorOpen))",
+        "onPress={onEdit ? () => onEdit(item) : undefined}",
+        "onPress={onExtend ? () => openFridgeExtendModal(item) : undefined}",
+        "onPress={() => onResolve(item, \"spend\")}",
+        "onPress={() => onResolve(item, \"decline\")}",
+        "onPress={() => onExtend(item)}",
+        "onDelete={onDelete ? () => onDelete(item) : undefined}",
+        "onPress={onPremiumShelvesPress}",
+        "onRequestClose={() => closeFridgeIntro(\"system_back\")}",
+        "onPress={() => closeFridgeIntro(\"backdrop\")}",
+        "onPress={() => closeFridgeIntro(\"cta\")}",
+        "onRequestClose={() => closeFridgeExtendModal({ source: \"system_back\" })}",
+        "onPress={() => closeFridgeExtendModal({ source: \"backdrop\" })}",
+        "onPress={() => handleFridgeExtendOptionPress(option)}",
+        "onPress={() => closeFridgeExtendModal({ source: \"cancel\" })}",
+        "onPress={handleFridgeExtendConfirm}"
+      ]
+    },
+    {
+      "id": "fridge-item-create-actions",
+      "description": "The Fridge item modal keeps dismiss, name, amount, emoji, freeze-duration, create, and edit-mode behavior wired to the existing callbacks.",
+      "file": "App.js",
+      "requiredFragments": [
+        "function NewPendingModal({",
+        "onRequestClose={onCancel}",
+        "onPress={() => dismissKeyboardOrRun(onCancel)}",
+        "onChangeText={(text) => onChange(\"title\", text)}",
+        "onChangeText={(text) => onChange(\"amount\", text)}",
+        "onChangeText={(text) => onChange(\"emoji\", limitEmojiInput(text))}",
+        "!isEditingPending && (",
+        "onChange(\"freezeOptionId\", option.id);",
+        "onChange(\"freezeDurationMs\", option.durationMs);",
+        "onPress={onCancel}",
+        "onPress={onSubmit}"
+      ]
+    },
+    {
+      "id": "rating-prompt-actions",
+      "description": "The localized store-rating prompt keeps backdrop/later dismissal and the native store-review confirmation action wired.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={handleRatingPromptLater}",
+        "onPress={handleRatingPromptConfirm}",
+        "{t(\"ratingPromptLater\")}",
+        "{t(\"ratingPromptAction\")}"
+      ]
+    },
+    {
+      "id": "ios-home-widget-actions-and-families",
+      "description": "The iOS home widget redesign keeps all three WidgetKit families, the home destination, quick save and spend deep links, and the daily-summary action.",
+      "file": "ios/Almost Widget/Almost_Widget.swift",
+      "requiredFragments": [
+        ".widgetURL(URL(string: \"com.sasarei.almostclean://home\"))",
+        "Link(destination: URL(string: \"com.sasarei.almostclean://quick-entry?type=save\")!)",
+        "Link(destination: URL(string: \"com.sasarei.almostclean://quick-entry?type=spend\")!)",
+        "Link(destination: URL(string: \"com.sasarei.almostclean://daily-summary\")!)",
+        ".supportedFamilies([.systemSmall, .systemMedium, .systemLarge])"
+      ]
+    },
+    {
+      "id": "android-home-widget-actions-and-sizes",
+      "description": "The Android home widget redesign keeps small, medium, and large providers plus the existing home, quick-save, and quick-spend destinations.",
+      "file": "android/app/src/main/java/com/sasarei/almostclean/widget/AlmostWidgetProvider.kt",
+      "requiredFragments": [
+        "ProviderEntry(AlmostWidgetSmallProvider::class.java, WidgetSize.SMALL)",
+        "ProviderEntry(AlmostWidgetProvider::class.java, WidgetSize.MEDIUM)",
+        "ProviderEntry(AlmostWidgetLargeProvider::class.java, WidgetSize.LARGE)",
+        "Uri.parse(\"com.sasarei.almostclean://home\")",
+        "Uri.parse(\"com.sasarei.almostclean://quick-entry?type=save\")",
+        "Uri.parse(\"com.sasarei.almostclean://quick-entry?type=spend\")",
+        "class AlmostWidgetSmallProvider : AppWidgetProvider()",
+        "class AlmostWidgetLargeProvider : AppWidgetProvider()"
       ]
     }
   ]

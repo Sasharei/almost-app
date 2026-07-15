@@ -120,7 +120,7 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
     .filter(Boolean)
     .reduce((max, word) => Math.max(max, Array.from(word).length), 0);
   const effectiveWordLength = Math.max(labelLength, longestWordLength);
-  // On Android, avoid shrinking typography aggressively; prefer wider pills.
+  // Keep compact localized actions on one line; width still grows within a controlled range.
   const adaptiveButtonMinWidth = Math.max(106, Math.min(160, 106 + Math.max(0, effectiveWordLength - 6) * 4));
   const adaptiveHorizontalPadding =
     effectiveWordLength >= 12 ? 11 : effectiveWordLength >= 10 ? 13 : effectiveWordLength >= 8 ? 15 : 18;
@@ -255,6 +255,8 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
             textStyle,
           ]}
           numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.84}
           allowFontScaling
           maxFontSizeMultiplier={1.2}
           ellipsizeMode="tail"

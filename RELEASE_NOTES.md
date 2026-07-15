@@ -1,5 +1,40 @@
 # Release Notes
 
+## 7.0.1 (from 7.0.0)
+
+### EN
+- Almost is now easier and more enjoyable to use, with a refreshed design across the app, clearer navigation, and polished screens, cards, and controls.
+
+### RU
+- Almost стал удобнее и приятнее: мы обновили дизайн всего приложения, сделали навигацию понятнее, а экраны, карточки и элементы управления — аккуратнее.
+
+### ES
+- Almost ahora es más fácil y agradable de usar, con un diseño renovado en toda la app, una navegación más clara y pantallas, tarjetas y controles más cuidados.
+
+### FR
+- Almost est désormais plus simple et plus agréable à utiliser, avec un design repensé dans toute l’app, une navigation plus claire et des écrans, cartes et commandes plus soignés.
+
+### DE
+- Almost ist jetzt einfacher und angenehmer zu bedienen – mit einem überarbeiteten Design in der gesamten App, klarerer Navigation und optimierten Bildschirmen, Karten und Bedienelementen.
+
+### PT
+- O Almost agora está mais fácil e agradável de usar, com um design renovado em todo o app, navegação mais clara e telas, cartões e controles mais bem acabados.
+
+### IT
+- Almost è ora più semplice e piacevole da usare, con un design rinnovato in tutta l’app, una navigazione più chiara e schermate, schede e controlli più curati.
+
+### AR (SA)
+- أصبح استخدام Almost أسهل وأكثر متعة، بتصميم محدّث في جميع أنحاء التطبيق وتنقّل أوضح وشاشات وبطاقات وعناصر تحكم أكثر أناقة.
+
+### AR (AE)
+- أصبح استخدام Almost أسهل وأكثر متعة، بتصميم محدّث في جميع أنحاء التطبيق وتنقّل أوضح وشاشات وبطاقات وعناصر تحكم أكثر أناقة.
+
+### ZH
+- Almost 现在更易用、更愉悦：全新的应用设计、更清晰的导航，以及更精致的页面、卡片和控件，让日常使用更加顺畅。
+
+### KO
+- Almost가 앱 전반의 새로워진 디자인과 더 명확한 탐색, 한층 세련된 화면·카드·조작 요소로 더욱 쉽고 즐겁게 사용할 수 있게 되었습니다.
+
 ## 7.0.0 (from 6.1.9)
 
 ### EN
