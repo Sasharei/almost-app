@@ -7,6 +7,7 @@ let PurchasesIntroEligibilityStatus = null;
 let FacebookAppEventsLogger = null;
 let revenueCatDeviceIdentifiersCollected = false;
 let revenueCatFacebookAnonymousIdSet = false;
+let revenueCatAppsFlyerSharingAllowed = false;
 
 try {
   // Optional in old builds; keep app alive if native module is not linked yet.
@@ -32,6 +33,73 @@ const PACKAGE_TYPE_TO_PLAN = {
   MONTHLY: "monthly",
   ANNUAL: "yearly",
   LIFETIME: "lifetime",
+};
+
+const normalizeAttributionIdentifier = (value) => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return null;
+  const lowered = normalized.toLowerCase();
+  if (
+    lowered === "unknown" ||
+    lowered === "organic" ||
+    lowered === "null" ||
+    lowered === "undefined"
+  ) {
+    return null;
+  }
+  if (/^0+$/.test(normalized.replaceAll("-", ""))) return null;
+  return normalized;
+};
+
+export const syncRevenueCatDeviceIdentifiersSafe = async ({
+  includeFacebookAnonymousId = true,
+} = {}) => {
+  if (!isPurchasesAvailable()) {
+    return {
+      ok: false,
+      reason: "module_unavailable",
+      deviceIdentifiersCollected: false,
+      facebookAnonymousIdSet: false,
+    };
+  }
+  let deviceIdentifiersCollected = false;
+  let facebookAnonymousIdSet = revenueCatFacebookAnonymousIdSet;
+  if (typeof Purchases.collectDeviceIdentifiers === "function") {
+    try {
+      await Purchases.collectDeviceIdentifiers();
+      revenueCatDeviceIdentifiersCollected = true;
+      deviceIdentifiersCollected = true;
+    } catch (error) {
+      console.warn("purchases collect device identifiers", error);
+    }
+  }
+  if (
+    includeFacebookAnonymousId &&
+    typeof Purchases.setFBAnonymousID === "function" &&
+    typeof FacebookAppEventsLogger?.getAnonymousID === "function"
+  ) {
+    try {
+      const fbAnonymousId = normalizeAttributionIdentifier(
+        await FacebookAppEventsLogger.getAnonymousID()
+      );
+      if (fbAnonymousId) {
+        await Purchases.setFBAnonymousID(fbAnonymousId);
+        revenueCatFacebookAnonymousIdSet = true;
+        facebookAnonymousIdSet = true;
+      }
+    } catch (error) {
+      console.warn("purchases set Facebook anonymous ID", error);
+    }
+  }
+  return {
+    ok: deviceIdentifiersCollected || facebookAnonymousIdSet,
+    reason:
+      deviceIdentifiersCollected || facebookAnonymousIdSet
+        ? null
+        : "identifiers_unavailable",
+    deviceIdentifiersCollected,
+    facebookAnonymousIdSet,
+  };
 };
 
 export const INTRO_ELIGIBILITY_STATUS = Object.freeze({
@@ -331,6 +399,51 @@ export const isPurchasesAvailable = () => {
   );
 };
 
+export const setRevenueCatAppsFlyerSharingAllowedSafe = async (allowed = true) => {
+  revenueCatAppsFlyerSharingAllowed = allowed !== false;
+  if (!isPurchasesAvailable()) {
+    return {
+      ok: false,
+      reason: "module_unavailable",
+      allowed: revenueCatAppsFlyerSharingAllowed,
+      attributesSynced: false,
+    };
+  }
+  if (typeof Purchases.setAttributes !== "function") {
+    return {
+      ok: false,
+      reason: "set_attributes_unavailable",
+      allowed: revenueCatAppsFlyerSharingAllowed,
+      attributesSynced: false,
+    };
+  }
+  try {
+    await Purchases.setAttributes({
+      "$appsflyerSharingFilter": revenueCatAppsFlyerSharingAllowed ? "" : "all",
+    });
+    let attributesSynced = false;
+    if (typeof Purchases.syncAttributesAndOfferingsIfNeeded === "function") {
+      await Purchases.syncAttributesAndOfferingsIfNeeded();
+      attributesSynced = true;
+    }
+    return {
+      ok: true,
+      reason: null,
+      allowed: revenueCatAppsFlyerSharingAllowed,
+      attributesSynced,
+    };
+  } catch (error) {
+    console.warn("purchases AppsFlyer sharing filter", error);
+    return {
+      ok: false,
+      reason: "sync_failed",
+      allowed: revenueCatAppsFlyerSharingAllowed,
+      attributesSynced: false,
+      error,
+    };
+  }
+};
+
 export const isPremiumFromCustomerInfo = (customerInfo) => {
   const entitlement = getActivePremiumEntitlement(customerInfo);
   if (!entitlement) return false;
@@ -420,58 +533,30 @@ export const configurePurchases = async ({ appUserId = null } = {}) => {
   try {
     const payload = appUserId ? { apiKey, appUserID: appUserId } : { apiKey };
     await Purchases.configure(payload);
-    if (__DEV__ && Platform.OS === "android") {
+    const appsFlyerSharingSync = await setRevenueCatAppsFlyerSharingAllowedSafe(
+      revenueCatAppsFlyerSharingAllowed
+    );
+    if (__DEV__) {
       console.info("[attribution-debug] RevenueCat configured", {
         platform: Platform.OS,
         hasAppUserId: !!appUserId,
+        appsFlyerSharingAllowed: revenueCatAppsFlyerSharingAllowed,
+        appsFlyerSharingFilterSynced: appsFlyerSharingSync.ok,
       });
     }
-    if (Platform.OS === "android" && typeof Purchases.collectDeviceIdentifiers === "function") {
-      try {
-        await Purchases.collectDeviceIdentifiers();
-        revenueCatDeviceIdentifiersCollected = true;
-        if (__DEV__) {
-          console.info("[attribution-debug] RevenueCat collectDeviceIdentifiers called", {
-            platform: Platform.OS,
-          });
-        }
-      } catch (identifierError) {
-        console.warn("purchases collect device identifiers", identifierError);
-      }
-    } else if (__DEV__ && Platform.OS === "android") {
-      console.info("[attribution-debug] RevenueCat collectDeviceIdentifiers unavailable", {
+    const identifierSync = await syncRevenueCatDeviceIdentifiersSafe();
+    if (__DEV__) {
+      console.info("[attribution-debug] RevenueCat identifier sync", {
         platform: Platform.OS,
+        deviceIdentifiersCollected: identifierSync.deviceIdentifiersCollected,
+        facebookAnonymousIdSet: identifierSync.facebookAnonymousIdSet,
       });
-    }
-    if (
-      Platform.OS === "android" &&
-      typeof Purchases.setFBAnonymousID === "function" &&
-      typeof FacebookAppEventsLogger?.getAnonymousID === "function"
-    ) {
-      try {
-        const fbAnonymousId = await FacebookAppEventsLogger.getAnonymousID();
-        const hasFbAnonymousId =
-          typeof fbAnonymousId === "string" && fbAnonymousId.trim().length > 0;
-        if (hasFbAnonymousId) {
-          await Purchases.setFBAnonymousID(fbAnonymousId);
-          revenueCatFacebookAnonymousIdSet = true;
-        }
-        if (__DEV__) {
-          console.info("[attribution-debug] RevenueCat Facebook anonymous ID sync", {
-            platform: Platform.OS,
-            hasFbAnonymousId,
-          });
-        }
-      } catch (fbAnonymousIdError) {
-        console.warn("purchases set Facebook anonymous ID", fbAnonymousIdError);
-      }
     }
     return {
       ok: true,
-      deviceIdentifiersCollected:
-        Platform.OS === "android" ? revenueCatDeviceIdentifiersCollected : null,
-      facebookAnonymousIdSet:
-        Platform.OS === "android" ? revenueCatFacebookAnonymousIdSet : null,
+      deviceIdentifiersCollected: revenueCatDeviceIdentifiersCollected,
+      facebookAnonymousIdSet: revenueCatFacebookAnonymousIdSet,
+      appsFlyerSharingFilterSynced: appsFlyerSharingSync.ok,
     };
   } catch (error) {
     console.warn("purchases configure", error);
@@ -623,12 +708,45 @@ export const addCustomerInfoUpdateListener = (handler) => {
   }
 };
 
-export const purchasePlanPackage = async (pkg) => {
+const resolveAndroidSubscriptionOption = (pkg, { trialEnabled = false } = {}) => {
+  if (Platform.OS !== "android") return null;
+  const subscriptionOptions = Array.isArray(pkg?.product?.subscriptionOptions)
+    ? pkg.product.subscriptionOptions
+    : [];
+  if (!subscriptionOptions.length) return null;
+  if (trialEnabled) {
+    return (
+      subscriptionOptions.find(
+        (option) => option?.isBasePlan !== true && option?.freePhase
+      ) || null
+    );
+  }
+  return (
+    subscriptionOptions.find(
+      (option) => option?.isBasePlan === true && !option?.freePhase
+    ) || null
+  );
+};
+
+export const purchasePlanPackage = async (pkg, { trialEnabled = false } = {}) => {
   if (!isPurchasesAvailable() || !pkg) {
     return { ok: false, reason: "package_unavailable" };
   }
   try {
-    const result = await Purchases.purchasePackage(pkg);
+    const androidSubscriptionOptions = Array.isArray(pkg?.product?.subscriptionOptions)
+      ? pkg.product.subscriptionOptions
+      : [];
+    const androidSubscriptionOption = resolveAndroidSubscriptionOption(pkg, { trialEnabled });
+    if (
+      Platform.OS === "android" &&
+      androidSubscriptionOptions.length > 0 &&
+      !androidSubscriptionOption
+    ) {
+      return { ok: false, reason: "subscription_option_unavailable" };
+    }
+    const result = androidSubscriptionOption
+      ? await Purchases.purchaseSubscriptionOption(androidSubscriptionOption)
+      : await Purchases.purchasePackage(pkg);
     return { ok: true, result };
   } catch (error) {
     const cancelled = !!(
@@ -684,4 +802,54 @@ export const setPurchasesAttributesSafe = async (attributes = {}) => {
     console.warn("purchases set attributes", error);
     return false;
   }
+};
+
+const REVENUECAT_ATTRIBUTION_SETTERS = [
+  ["appsFlyerId", "setAppsflyerID"],
+  ["mediaSource", "setMediaSource"],
+  ["campaign", "setCampaign"],
+  ["adGroup", "setAdGroup"],
+  ["ad", "setAd"],
+  ["keyword", "setKeyword"],
+  ["creative", "setCreative"],
+];
+
+export const syncPurchasesAttributionSafe = async (attribution = {}) => {
+  if (!isPurchasesAvailable()) {
+    return { ok: false, reason: "module_unavailable", appsFlyerIdSet: false, fieldsSet: [] };
+  }
+  if (!attribution || typeof attribution !== "object") {
+    return { ok: false, reason: "invalid_attribution", appsFlyerIdSet: false, fieldsSet: [] };
+  }
+  const fieldsSet = [];
+  const failedFields = [];
+  for (const [field, methodName] of REVENUECAT_ATTRIBUTION_SETTERS) {
+    const value = normalizeAttributionIdentifier(attribution?.[field]);
+    if (!value || typeof Purchases?.[methodName] !== "function") continue;
+    try {
+      await Purchases[methodName](value);
+      fieldsSet.push(field);
+    } catch (error) {
+      failedFields.push(field);
+      console.warn(`purchases attribution ${field}`, error);
+    }
+  }
+  let attributesSynced = false;
+  if (fieldsSet.length && typeof Purchases.syncAttributesAndOfferingsIfNeeded === "function") {
+    try {
+      await Purchases.syncAttributesAndOfferingsIfNeeded();
+      attributesSynced = true;
+    } catch (error) {
+      console.warn("purchases attribution explicit sync", error);
+    }
+  }
+  const appsFlyerIdSet = fieldsSet.includes("appsFlyerId");
+  return {
+    ok: appsFlyerIdSet,
+    reason: appsFlyerIdSet ? null : "missing_appsflyer_id",
+    appsFlyerIdSet,
+    fieldsSet,
+    failedFields,
+    attributesSynced,
+  };
 };

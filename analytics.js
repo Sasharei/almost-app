@@ -3,6 +3,37 @@
  * The module guards against missing dependencies and never emits events in dev.
  */
 import { Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  syncPurchasesAttributionSafe,
+} from "./src/monetization/purchasesClient";
+
+// These CommonJS policy modules are shared with the Node-based release checks.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  ANALYTICS_SCHEMA_VERSION,
+  DESTINATIONS,
+  assertDefaultDenyRouting,
+  buildEventContract,
+  filterContractParams,
+  filterDestinationParams,
+  validateEventAgainstContract,
+} = require("./src/analytics/contractPolicy");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  getElapsedBucket,
+  hasCampaignFields,
+  mergeWriteOnceAttribution,
+  normalizeAppsFlyerInstallAttribution,
+  normalizeAttributionValue,
+} = require("./src/analytics/attributionPolicy");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  ALMOST_RELEASE_SCOPE,
+  assertAlmostReleaseScope,
+} = require("./src/analytics/releaseScope");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const APP_CONFIG = require("./app.json");
 
 let analytics = null;
 try {
@@ -31,25 +62,6 @@ try {
   appsFlyer = null;
 }
 
-let FacebookAppEvents = null;
-try {
-  // Optional dependency – only available on native builds.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  FacebookAppEvents = require("react-native-fbsdk-next").AppEventsLogger;
-} catch (_error) {
-  FacebookAppEvents = null;
-}
-
-let TikTokBusiness = null;
-try {
-  // Optional dependency – only available on native builds.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const TikTokModule = require("react-native-tiktok-business-sdk");
-  TikTokBusiness = TikTokModule?.TikTokBusiness || TikTokModule?.default || null;
-} catch (_error) {
-  TikTokBusiness = null;
-}
-
 let amplitudeAnalytics = null;
 try {
   // Optional dependency – only available on native builds.
@@ -69,6 +81,16 @@ export const ANALYTICS_SOURCES = Object.freeze({
 });
 
 const EVENT_DEFINITIONS = {
+  analytics_contract_error: ["error_type", "count_bucket"],
+  attribution_sync_result: [
+    "provider",
+    "result",
+    "elapsed_bucket",
+    "has_provider_id",
+    "has_campaign_fields",
+    "attempt",
+    "app_version",
+  ],
   temptation_want: ["item_id", "price_usd", "categories", "persona", "currency"],
   temptation_save: [
     "item_id",
@@ -120,7 +142,6 @@ const EVENT_DEFINITIONS = {
   onboarding_goal_chosen: ["goal_id", "target_usd"],
   onboarding_goal_skipped: ["method"],
   onboarding_goal_custom_created: ["title_hash", "target_usd", "currency"],
-  session_started: [],
   layout_guard_metrics: [
     "platform",
     "android_version",
@@ -131,45 +152,10 @@ const EVENT_DEFINITIONS = {
     "screen_width",
     "screen_height",
   ],
-  persona_coffee_selected: [],
-  persona_smoking_selected: [],
-  persona_beauty_selected: [],
-  persona_gaming_selected: [],
-  persona_delivery_selected: [],
-  persona_shopping_selected: [],
-  persona_home_selected: [],
-  persona_anime_selected: [],
-  persona_subscriptions_selected: [],
-  persona_fashion_selected: [],
-  persona_custom_selected: [],
-  language_ru_selected: [],
-  language_en_selected: [],
-  language_es_selected: [],
-  language_fr_selected: [],
-  language_de_selected: [],
-  language_ar_sa_selected: [],
-  language_ar_ae_selected: [],
-  language_zh_selected: [],
-  currency_usd_selected: [],
-  currency_aed_selected: [],
-  currency_ars_selected: [],
-  currency_aud_selected: [],
-  currency_brl_selected: [],
-  currency_byn_selected: [],
-  currency_cad_selected: [],
-  currency_cny_selected: [],
-  currency_eur_selected: [],
-  currency_gbp_selected: [],
-  currency_jpy_selected: [],
-  currency_kzt_selected: [],
-  currency_krw_selected: [],
-  currency_mxn_selected: [],
-  currency_pln_selected: [],
-  currency_rub_selected: [],
-  currency_sar_selected: [],
-  gender_female_selected: [],
-  gender_male_selected: [],
-  gender_none_selected: [],
+  persona_selected: ["persona_id"],
+  language_selected: ["language"],
+  currency_selected: ["currency"],
+  gender_selected: ["gender"],
   onboarding_completed: [
     "persona_id",
     "goal_id",
@@ -231,7 +217,7 @@ const EVENT_DEFINITIONS = {
   daily_challenge_completed: ["template_id", "reward_bonus"],
   daily_challenge_failed: ["template_id"],
   stats_screen_viewed: ["tab"],
-  menu_progress_opened: [],
+  menu_progress_opened: ["section"],
   menu_budget_opened: [],
   profile_terms_clicked: [],
   profile_instagram_clicked: [],
@@ -241,13 +227,6 @@ const EVENT_DEFINITIONS = {
   reminder_clicked: ["reminder_type", "target_screen"],
   daily_reward_opened: ["coins", "day", "level"],
   daily_reward_claimed: ["coins", "level", "day"],
-  daily_reward_collected_day_1: ["coins", "level"],
-  daily_reward_collected_day_2: ["coins", "level"],
-  daily_reward_collected_day_3: ["coins", "level"],
-  daily_reward_collected_day_4: ["coins", "level"],
-  daily_reward_collected_day_5: ["coins", "level"],
-  daily_reward_collected_day_6: ["coins", "level"],
-  daily_reward_collected_day_7: ["coins", "level"],
   push_notifications_enabled: [],
   savings_updated: ["saved_usd_total", "tier_level", "next_tier_saves", "profile_goal"],
   savings_level_up: ["level", "saved_usd_total"],
@@ -319,8 +298,6 @@ const EVENT_DEFINITIONS = {
   bug_report_form_filled: ["screen"],
   bug_report_form_submitted: ["screen", "has_steps", "description_length"],
   bug_report_mail_opened: ["screen"],
-  day_2: [],
-  day_3: [],
   retention_day_active: ["lifetime_day", "active_days_total", "active_streak", "missed_days"],
   retention_day_milestone: ["day", "active_days_total", "active_streak"],
   retention_3_sessions_7_days: ["sessions_in_7_days", "lifetime_day", "active_days_total"],
@@ -341,8 +318,7 @@ const EVENT_DEFINITIONS = {
   ],
   tycoon_rewards_collect_all: ["count", "reward"],
   tycoon_rewards_open_chests: ["count", "reward"],
-  sound_setting_enabled: [],
-  sound_setting_disabled: [],
+  setting_changed: ["setting", "enabled", "source"],
   focus_target_set: ["template_id", "source"],
   focus_digest_later: ["date_key"],
   focus_digest_focus: ["date_key"],
@@ -366,8 +342,7 @@ const EVENT_DEFINITIONS = {
   tamagotchi_hourly_reward_push_sent: ["coins", "hours"],
   tamagotchi_party_started: ["party_cost", "coins_before", "coins_after"],
   tamagotchi_skin_assets_download_failed: ["skin_id", "reason", "source"],
-  tamagotchi_opened: [],
-  tamagotchi_pressed: [],
+  tamagotchi_opened: ["source"],
   goal_creator_opened: ["source", "make_primary"],
   goal_creator_cancelled: ["source", "make_primary"],
   coin_entry_opened: ["source", "preset_action"],
@@ -483,6 +458,18 @@ const EVENT_DEFINITIONS = {
     "experiment_group",
     "experiment_new_install",
   ],
+  premium_transaction_abandoned_wheel_action: [
+    "action",
+    "kind",
+    "feature",
+    "view_index",
+    "plan",
+    "discount_percent",
+    "source",
+    "experiment_id",
+    "experiment_group",
+    "experiment_new_install",
+  ],
   premium_purchase_started: [
     "kind",
     "feature",
@@ -503,6 +490,10 @@ const EVENT_DEFINITIONS = {
     "plan",
     "view_index",
     "result",
+    "period_type",
+    "offering_id",
+    "error_category",
+    "is_restore",
     "reason",
     "error_code",
     "has_trial",
@@ -511,32 +502,16 @@ const EVENT_DEFINITIONS = {
     "experiment_group",
     "experiment_new_install",
   ],
-  premium_purchase_success: [
+  premium_entitlement_activated: [
+    "billing_state",
+    "period_type",
+    "offering_id",
+    "is_restore",
     "plan",
     "kind",
     "feature",
     "view_index",
-    "price_local",
-    "currency",
     "product_id",
-    "has_trial",
-    "trial_days",
-    "experiment_id",
-    "experiment_group",
-    "experiment_new_install",
-  ],
-  premium_purchase_revenue: [
-    "plan",
-    "kind",
-    "feature",
-    "view_index",
-    "currency",
-    "product_id",
-    "revenue_local",
-    "revenue_usd",
-    "transaction_id",
-    "has_trial",
-    "trial_days",
     "experiment_id",
     "experiment_group",
     "experiment_new_install",
@@ -776,95 +751,53 @@ const EVENT_DEFINITIONS = {
   modal_action_tapped: ["modal_id", "action", "value", "source"],
 };
 
-for (let day = 2; day <= 30; day += 1) {
-  const eventName = `day_${day}`;
-  if (!EVENT_DEFINITIONS[eventName]) {
-    EVENT_DEFINITIONS[eventName] = [];
-  }
-}
-
-const FACEBOOK_MONETIZATION_EVENT_WHITELIST = new Set([
-  "premium_paywall_shown",
-  "premium_paywall_closed",
-  "premium_paywall_scrolled",
-  "premium_paywall_feature_highlighted",
-  "premium_paywall_plan_selected",
-  "premium_paywall_primary_tapped",
-  "trial_available",
-  "trial_switch_on",
-  "premium_transaction_abandoned_offer_shown",
-  "premium_purchase_started",
-  "premium_purchase_result",
-  "premium_product_not_found",
-  "trial_qualifier_3",
-  "premium_restore_started",
-  "premium_restore_result",
-  "premium_unlock_shown",
-  "premium_gate_blocked",
-  "premium_soft_paywall_shown",
-  "premium_hard_paywall_shown",
-]);
-const FACEBOOK_EVENT_NAME_ALIASES = {
-  premium_transaction_abandoned_offer_shown: "premium_abandoned_offer_shown",
-};
-const FACEBOOK_EVENT_WHITELIST = new Set([
-  "onboarding_completed",
-  "north_star_two_saves",
-  "north_star2",
-  "temptation_action",
-  "retention_3_sessions_7_days",
-  ...FACEBOOK_MONETIZATION_EVENT_WHITELIST,
-]);
-const FACEBOOK_REVENUECAT_SUBSCRIPTION_EVENT_BLOCKLIST = new Set([
-  // RevenueCat sends Trial Started -> StartTrial and purchase/trial conversion/renewal -> Subscribe.
-  // Do not log these client-side to Meta, or Ads Manager can double-count subscription events.
-  "premium_trial_started",
-  "premium_purchase_success",
-  "premium_purchase_revenue",
-  "premium_trial_cancelled",
-  "premium_trial_converted",
-  "premium_renewal",
-  "premium_cancellation",
-  "premium_non_subscription_purchase",
-  "premium_expiration",
-  "premium_billing_issue",
-  "premium_product_change",
-  "premium_conversion",
-]);
-const TIKTOK_EVENT_WHITELIST = new Set([
-  "onboarding_completed",
-  "north_star_two_saves",
-  "north_star2",
-  "temptation_action",
-]);
-
 const APPSFLYER_DEV_KEY = process.env.APPSFLYER_DEV_KEY || "hccSDBqWuZXfQCRbRQbqBR";
-const APPSFLYER_APP_ID = process.env.APPSFLYER_APP_ID || "6756276744";
-const TIKTOK_APP_ID_IOS =
-  process.env.TIKTOK_APP_ID_IOS || process.env.TIKTOK_APP_ID || process.env.APPSFLYER_APP_ID || "";
-const TIKTOK_APP_ID_ANDROID =
-  process.env.TIKTOK_APP_ID_ANDROID || process.env.TIKTOK_APP_ID || "com.sasarei.almostclean";
-const TIKTOK_TT_APP_ID = process.env.TIKTOK_TT_APP_ID || "";
-const TIKTOK_ACCESS_TOKEN = process.env.TIKTOK_ACCESS_TOKEN || "";
-const TIKTOK_DEBUG = process.env.TIKTOK_DEBUG === "1" || process.env.TIKTOK_DEBUG === "true";
+const APPSFLYER_APP_ID =
+  process.env.APPSFLYER_APP_ID || ALMOST_RELEASE_SCOPE.iosAppStoreId;
 const AMPLITUDE_API_KEY =
   process.env.AMPLITUDE_API_KEY || "df42f60f7c184d85c3406cb63d49f066";
+const GA4_PURCHASE_DEDUP_STORAGE_KEY = "@almost/analytics/ga4-purchase-transaction-ids-v1";
+const GA4_PURCHASE_DEDUP_MAX_IDS = 200;
+const APPSFLYER_FIRST_TOUCH_STORAGE_KEY =
+  "@almost/analytics/appsflyer-first-touch-v1";
+const APPSFLYER_REVENUECAT_CONFIRMED_STORAGE_KEY =
+  "@almost/analytics/appsflyer-revenuecat-confirmed-v1";
+const ATTRIBUTION_SYNC_START_MS = Date.now();
+const IOS_ATT_WAIT_SECONDS = 60;
+const EVENT_CONTRACT = buildEventContract(EVENT_DEFINITIONS);
+
+assertDefaultDenyRouting(EVENT_CONTRACT);
+assertAlmostReleaseScope({
+  iosBundleId: APP_CONFIG?.expo?.ios?.bundleIdentifier,
+  iosAppStoreId: APPSFLYER_APP_ID,
+  androidPackage: APP_CONFIG?.expo?.android?.package,
+  tiktokAndroidAppId:
+    process.env.TIKTOK_APP_ID_ANDROID || ALMOST_RELEASE_SCOPE.tiktokAndroidAppId,
+  tiktokIosAppId:
+    process.env.TIKTOK_APP_ID_IOS || ALMOST_RELEASE_SCOPE.tiktokIosAppId,
+});
 
 const baseEnabled = !__DEV__;
 let analyticsOptedOut = false;
 let analyticsConsentGranted = false;
-let analyticsConsentKnown = false;
 let performanceUnavailableLogged = false;
 let appsFlyerInitialized = false;
 let appsFlyerInitPromise = null;
-let appsFlyerEnabled = true;
-let facebookSdkReady = Platform.OS === "android";
-let tiktokInitialized = false;
-let tiktokInitPromise = null;
+let appsFlyerCustomerUserId = null;
+let appsFlyerAttWaitSeconds = 0;
+let appsFlyerPartnerSharingAllowed = true;
+let appsFlyerAdvertisingIdEnabled = null;
+let appsFlyerInstallAttribution = {};
+let appsFlyerConversionDataListener = null;
+let appsFlyerConversionDataPromise = null;
+let resolveAppsFlyerConversionData = null;
 let amplitudeInitialized = false;
 let amplitudeInitPromise = null;
-const MAX_FACEBOOK_EVENT_QUEUE = 25;
-const pendingFacebookEvents = [];
+let ga4PurchaseLogQueue = Promise.resolve();
+let analyticsInstallIdentity = null;
+let revenueCatAppsFlyerIdConfirmed = false;
+let revenueCatAttributionSyncAttempt = 0;
+const analyticsContractErrorCounts = new Map();
 
 const isAnalyticsEnabled = () => baseEnabled && analyticsConsentGranted && !analyticsOptedOut;
 const isAppsFlyerConfigured = () => {
@@ -876,14 +809,7 @@ const isAppsFlyerConfigured = () => {
 };
 const hasAppsFlyer = () => !!appsFlyer && typeof appsFlyer.initSdk === "function";
 const shouldUseAppsFlyer = () =>
-  baseEnabled && appsFlyerEnabled && isAppsFlyerConfigured() && hasAppsFlyer();
-const getTikTokAppId = () => (Platform.OS === "ios" ? TIKTOK_APP_ID_IOS : TIKTOK_APP_ID_ANDROID);
-const hasTikTok = () =>
-  !!TikTokBusiness &&
-  typeof TikTokBusiness.initializeSdk === "function" &&
-  typeof TikTokBusiness.trackCustomEvent === "function";
-const isTikTokConfigured = () => !!getTikTokAppId() && !!TIKTOK_TT_APP_ID && !!TIKTOK_ACCESS_TOKEN;
-const shouldUseTikTok = () => baseEnabled && hasTikTok() && isTikTokConfigured();
+  baseEnabled && isAppsFlyerConfigured() && hasAppsFlyer();
 const hasAmplitude = () =>
   !!amplitudeAnalytics &&
   typeof amplitudeAnalytics.init === "function" &&
@@ -924,6 +850,31 @@ const syncAnalyticsCollection = async () => {
   }
 };
 
+const syncProductAnalyticsInstallIdentity = async () => {
+  if (!analyticsInstallIdentity || !isAnalyticsEnabled()) return;
+  const client = getAnalyticsClient();
+  if (client && typeof client.setUserId === "function") {
+    try {
+      await client.setUserId(analyticsInstallIdentity);
+    } catch (error) {
+      console.warn("GA4 anonymous identity sync failed:", error?.message || error);
+    }
+  }
+  if (
+    amplitudeInitialized &&
+    amplitudeAnalytics &&
+    typeof amplitudeAnalytics.setUserId === "function"
+  ) {
+    try {
+      await waitForAmplitudeResult(
+        amplitudeAnalytics.setUserId(analyticsInstallIdentity)
+      );
+    } catch (error) {
+      console.warn("Amplitude anonymous identity sync failed:", error?.message || error);
+    }
+  }
+};
+
 const syncPerformanceCollection = async () => {
   const perfClient = getPerformanceClient();
   if (!perfClient) return;
@@ -952,6 +903,7 @@ const initAmplitudeSdk = async () => {
           amplitudeAnalytics.setOptOut(false);
         }
         amplitudeInitialized = true;
+        await syncProductAnalyticsInstallIdentity();
         return true;
       } catch (error) {
         console.warn("Amplitude init failed:", error?.message || error);
@@ -983,19 +935,102 @@ const syncAmplitudeCollection = async () => {
   }
 };
 
+const readStoredAppsFlyerFirstTouch = async () => {
+  try {
+    const raw = await AsyncStorage.getItem(APPSFLYER_FIRST_TOUCH_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    console.warn("AppsFlyer first-touch read failed:", error?.message || error);
+    return {};
+  }
+};
+
+const persistAppsFlyerFirstTouch = async (incoming = {}) => {
+  const existing = await readStoredAppsFlyerFirstTouch();
+  const merged = mergeWriteOnceAttribution(existing, incoming);
+  appsFlyerInstallAttribution = merged;
+  if (JSON.stringify(existing) === JSON.stringify(merged)) return merged;
+  try {
+    await AsyncStorage.setItem(
+      APPSFLYER_FIRST_TOUCH_STORAGE_KEY,
+      JSON.stringify(merged)
+    );
+  } catch (error) {
+    console.warn("AppsFlyer first-touch write failed:", error?.message || error);
+  }
+  return merged;
+};
+
+const ensureAppsFlyerConversionDataListener = () => {
+  if (appsFlyerConversionDataListener) return;
+  if (!hasAppsFlyer() || typeof appsFlyer.onInstallConversionData !== "function") return;
+  if (!appsFlyerConversionDataPromise) {
+    appsFlyerConversionDataPromise = new Promise((resolve) => {
+      resolveAppsFlyerConversionData = resolve;
+    });
+  }
+  try {
+    appsFlyerConversionDataListener = appsFlyer.onInstallConversionData((payload) => {
+      const normalized = normalizeAppsFlyerInstallAttribution(payload);
+      persistAppsFlyerFirstTouch(normalized)
+        .then((firstTouch) => {
+          if (resolveAppsFlyerConversionData) {
+            resolveAppsFlyerConversionData(firstTouch);
+            resolveAppsFlyerConversionData = null;
+          }
+          return syncAppsFlyerAttributionToRevenueCat({
+            reason: "conversion_callback",
+            attributionOverride: firstTouch,
+          });
+        })
+        .catch((error) => {
+          console.warn("AppsFlyer conversion handling failed:", error?.message || error);
+        });
+    });
+  } catch (error) {
+    console.warn("AppsFlyer conversion listener failed:", error?.message || error);
+  }
+};
+
+const syncAppsFlyerCustomerUserId = async () => {
+  const customerUserId = normalizeAttributionValue(appsFlyerCustomerUserId);
+  if (!customerUserId) return false;
+  if (!hasAppsFlyer() || typeof appsFlyer.setCustomerUserId !== "function") return false;
+  return new Promise((resolve) => {
+    try {
+      appsFlyer.setCustomerUserId(customerUserId, () => resolve(true));
+      setTimeout(() => resolve(true), 250);
+    } catch (error) {
+      console.warn("AppsFlyer customer user ID sync failed:", error?.message || error);
+      resolve(false);
+    }
+  });
+};
+
 const initAppsFlyerSdk = async () => {
-  if (!shouldUseAppsFlyer() || !isAnalyticsEnabled()) return false;
+  if (!shouldUseAppsFlyer()) return false;
   if (!hasAppsFlyer()) return false;
+  if (!normalizeAttributionValue(appsFlyerCustomerUserId)) {
+    console.warn("AppsFlyer init blocked: app-scoped customer user ID is missing");
+    return false;
+  }
   if (appsFlyerInitialized) return true;
   if (!appsFlyerInitPromise) {
+    ensureAppsFlyerConversionDataListener();
+    await syncAppsFlyerCustomerUserId();
     const options = {
       devKey: APPSFLYER_DEV_KEY,
       isDebug: __DEV__,
-      onInstallConversionDataListener: false,
+      onInstallConversionDataListener: true,
       onDeepLinkListener: false,
     };
     if (Platform.OS === "ios" && APPSFLYER_APP_ID) {
       options.appId = APPSFLYER_APP_ID;
+      if (appsFlyerAttWaitSeconds > 0) {
+        options.timeToWaitForATTUserAuthorization = appsFlyerAttWaitSeconds;
+      }
     }
     appsFlyerInitPromise = new Promise((resolve) => {
       try {
@@ -1027,87 +1062,31 @@ const initAppsFlyerSdk = async () => {
   return appsFlyerInitPromise;
 };
 
-const syncAppsFlyerCollection = async () => {
-  if (!hasAppsFlyer()) return;
-  if (!shouldUseAppsFlyer() || !isAnalyticsEnabled()) {
-    if (appsFlyerInitialized) {
-      try {
-        appsFlyer.stop(true);
-      } catch (error) {
-        console.warn("AppsFlyer stop failed:", error?.message || error);
-      }
-    }
-    return;
-  }
-  const initialized = await initAppsFlyerSdk();
-  if (!initialized) return;
+const syncAppsFlyerPartnerSharing = () => {
+  if (!hasAppsFlyer() || typeof appsFlyer.setSharingFilterForPartners !== "function") return;
   try {
-    appsFlyer.stop(false);
+    appsFlyer.setSharingFilterForPartners(appsFlyerPartnerSharingAllowed ? [] : ["all"]);
   } catch (error) {
-    console.warn("AppsFlyer resume failed:", error?.message || error);
+    console.warn("AppsFlyer partner sharing toggle failed:", error?.message || error);
   }
 };
 
-const parseAnalyticsBoolean = (value) => {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (!normalized) return null;
-    if (normalized === "true" || normalized === "1" || normalized === "yes") return true;
-    if (normalized === "false" || normalized === "0" || normalized === "no") return false;
+const syncAppsFlyerAdvertisingIdCollection = () => {
+  if (Platform.OS !== "ios") return;
+  if (typeof appsFlyerAdvertisingIdEnabled !== "boolean") return;
+  if (!hasAppsFlyer() || typeof appsFlyer.disableAdvertisingIdentifier !== "function") return;
+  try {
+    appsFlyer.disableAdvertisingIdentifier(!appsFlyerAdvertisingIdEnabled);
+  } catch (error) {
+    console.warn("AppsFlyer advertising ID toggle failed:", error?.message || error);
   }
-  return null;
 };
 
-const parsePositiveNumber = (value) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 0;
-  return parsed > 0 ? parsed : 0;
-};
-
-const normalizeAppsFlyerCurrencyCode = (value) => {
-  const normalized = String(value || "").trim().toUpperCase();
-  return /^[A-Z]{3}$/.test(normalized) ? normalized : "";
-};
-
-const normalizeAppsFlyerRevenue = (value) => {
-  const parsed = parsePositiveNumber(value);
-  if (!(parsed > 0)) return 0;
-  return Number(parsed.toFixed(6));
-};
-
-const buildAppsFlyerRoasEvent = (eventName, params = {}) => {
-  if (eventName !== "premium_purchase_revenue") return null;
-  if (parseAnalyticsBoolean(params?.has_trial) === true) return null;
-  const revenueLocal = normalizeAppsFlyerRevenue(params?.revenue_local);
-  const revenueUSD = normalizeAppsFlyerRevenue(params?.revenue_usd);
-  const currencyCode = normalizeAppsFlyerCurrencyCode(params?.currency);
-  const hasLocalRevenue = revenueLocal > 0 && !!currencyCode;
-  const afRevenue = hasLocalRevenue ? revenueLocal : revenueUSD;
-  if (!(afRevenue > 0)) return null;
-  const afCurrency = hasLocalRevenue ? currencyCode : "USD";
-  const productId = String(params?.product_id || "").trim();
-  const transactionId = String(params?.transaction_id || "").trim();
-  const plan = String(params?.plan || "").trim();
-  const afParams = {
-    af_revenue: afRevenue,
-    af_currency: afCurrency,
-    af_quantity: 1,
-  };
-  if (productId) {
-    afParams.af_content_id = productId;
-  }
-  if (plan) {
-    afParams.af_content_type = plan;
-  }
-  if (transactionId) {
-    afParams.af_order_id = transactionId;
-  }
-  return {
-    eventName: "af_purchase",
-    params: afParams,
-  };
+const syncAppsFlyerAttribution = async () => {
+  if (!shouldUseAppsFlyer()) return false;
+  syncAppsFlyerPartnerSharing();
+  syncAppsFlyerAdvertisingIdCollection();
+  return initAppsFlyerSdk();
 };
 
 const logAppsFlyerEventRaw = (eventName, params = {}) =>
@@ -1131,68 +1110,11 @@ const logAppsFlyerEventRaw = (eventName, params = {}) =>
 const logAppsFlyerEvent = async (eventName, params = {}) => {
   if (!shouldUseAppsFlyer() || !isAnalyticsEnabled()) return;
   if (!hasAppsFlyer() || typeof appsFlyer.logEvent !== "function") return;
-  const initialized = await initAppsFlyerSdk();
+  const initialized = await syncAppsFlyerAttribution();
   if (!initialized) return;
-  const primaryLogged = await logAppsFlyerEventRaw(eventName, params);
-  const roasEvent = buildAppsFlyerRoasEvent(eventName, params);
-  if (!roasEvent) return primaryLogged;
-  await logAppsFlyerEventRaw(roasEvent.eventName, roasEvent.params);
-  return primaryLogged;
-};
-
-const initTikTokSdk = async () => {
-  if (!shouldUseTikTok() || !isAnalyticsEnabled()) return false;
-  if (!hasTikTok()) return false;
-  if (tiktokInitialized) return true;
-  if (!tiktokInitPromise) {
-    const appId = getTikTokAppId();
-    tiktokInitPromise = new Promise((resolve) => {
-      try {
-        Promise.resolve(
-          TikTokBusiness.initializeSdk(appId, TIKTOK_TT_APP_ID, TIKTOK_ACCESS_TOKEN, TIKTOK_DEBUG)
-        )
-          .then(() => {
-            tiktokInitialized = true;
-            resolve(true);
-          })
-          .catch((error) => {
-            console.warn("TikTok init failed:", error?.message || error);
-            tiktokInitPromise = null;
-            resolve(false);
-          });
-      } catch (error) {
-        console.warn("TikTok init threw:", error?.message || error);
-        tiktokInitPromise = null;
-        resolve(false);
-      }
-    });
-  }
-  return tiktokInitPromise;
-};
-
-const sanitizeTikTokParams = (params = {}) =>
-  Object.entries(params).reduce((acc, [key, value]) => {
-    if (value === undefined || value === null) return acc;
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      acc[key] = value;
-      return acc;
-    }
-    acc[key] = JSON.stringify(value);
-    return acc;
-  }, {});
-
-const logTikTokEvent = async (eventName, params = {}) => {
-  if (!TIKTOK_EVENT_WHITELIST.has(eventName)) return;
-  if (!shouldUseTikTok() || !isAnalyticsEnabled()) return;
-  if (!hasTikTok() || typeof TikTokBusiness.trackCustomEvent !== "function") return;
-  const initialized = await initTikTokSdk();
-  if (!initialized) return;
-  const normalizedParams = sanitizeTikTokParams(params);
-  try {
-    await TikTokBusiness.trackCustomEvent(eventName, normalizedParams);
-  } catch (error) {
-    console.warn("TikTok event exception:", eventName, error?.message || error);
-  }
+  // RevenueCat is the sole AppsFlyer revenue owner. Emitting af_purchase here as
+  // well would double-count the same store transaction after S2S delivery.
+  return logAppsFlyerEventRaw(eventName, params);
 };
 
 const logAmplitudeEvent = async (eventName, params = {}) => {
@@ -1233,70 +1155,224 @@ const setAmplitudeUserProperties = async (properties = {}) => {
   }
 };
 
-const enqueueFacebookEvent = (eventName, params) => {
-  pendingFacebookEvents.push({ eventName, params });
-  if (pendingFacebookEvents.length > MAX_FACEBOOK_EVENT_QUEUE) {
-    pendingFacebookEvents.shift();
-  }
+const APP_VERSION = String(APP_CONFIG?.expo?.version || "unknown");
+const BUILD_NUMBER = String(
+  Platform.OS === "ios"
+    ? APP_CONFIG?.expo?.ios?.buildNumber || "unknown"
+    : APP_CONFIG?.expo?.android?.versionCode || "unknown"
+);
+
+const buildGlobalAnalyticsParams = (params = {}) => ({
+  analytics_schema_version: ANALYTICS_SCHEMA_VERSION,
+  app_version: APP_VERSION,
+  build_number: BUILD_NUMBER,
+  platform: Platform.OS,
+  experiment_id: String(params?.experiment_id || "none"),
+  experiment_variant: String(
+    params?.experiment_variant || params?.experiment_group || "none"
+  ),
+  install_id_present: !!normalizeAttributionValue(analyticsInstallIdentity),
+});
+
+const getContractErrorCountBucket = (count) => {
+  if (count <= 1) return "1";
+  if (count < 10) return "2_9";
+  return "10_plus";
 };
 
-const resolveFacebookEventName = (eventName) => FACEBOOK_EVENT_NAME_ALIASES[eventName] || eventName;
-
-const dispatchFacebookEvent = (eventName, params = {}) => {
-  const facebookEventName = resolveFacebookEventName(eventName);
-  FacebookAppEvents.logEvent(facebookEventName, params);
-};
-
-const flushFacebookEventQueue = () => {
-  if (!facebookSdkReady) return;
-  if (!FacebookAppEvents || typeof FacebookAppEvents.logEvent !== "function") return;
-  if (!isAnalyticsEnabled()) return;
-  while (pendingFacebookEvents.length) {
-    const { eventName, params } = pendingFacebookEvents.shift();
+const recordAnalyticsContractError = async (errorType) => {
+  const normalizedErrorType = String(errorType || "unknown_error");
+  const nextCount = (analyticsContractErrorCounts.get(normalizedErrorType) || 0) + 1;
+  analyticsContractErrorCounts.set(normalizedErrorType, nextCount);
+  if (nextCount !== 1 && nextCount !== 10) return;
+  const contract = EVENT_CONTRACT.analytics_contract_error;
+  const payload = {
+    ...buildGlobalAnalyticsParams(),
+    error_type: normalizedErrorType,
+    count_bucket: getContractErrorCountBucket(nextCount),
+  };
+  const filtered = filterContractParams(payload, contract);
+  const client = getAnalyticsClient();
+  if (client && contract.destinations.includes(DESTINATIONS.GA4)) {
     try {
-      dispatchFacebookEvent(eventName, params);
+      await client.logEvent("analytics_contract_error", filtered);
+    } catch (_error) {}
+  }
+  if (contract.destinations.includes(DESTINATIONS.AMPLITUDE)) {
+    await logAmplitudeEvent("analytics_contract_error", filtered);
+  }
+};
+
+const handleContractViolation = async (eventName, validation) => {
+  if (__DEV__ || process.env.NODE_ENV === "test") {
+    const paramSuffix = validation?.paramName ? `:${validation.paramName}` : "";
+    throw new Error(
+      `[analytics-contract] ${validation?.errorType || "invalid_event"}:${eventName}${paramSuffix}`
+    );
+  }
+  await recordAnalyticsContractError(validation?.errorType || "invalid_event");
+};
+
+export const getAnalyticsEventContract = (eventName) =>
+  EVENT_CONTRACT[String(eventName || "")] || null;
+
+export const setAppScopedInstallIdentity = async (installId) => {
+  const normalized = normalizeAttributionValue(installId);
+  if (!normalized) {
+    throw new Error("App-scoped install identity is required");
+  }
+  analyticsInstallIdentity = normalized;
+  appsFlyerCustomerUserId = normalized;
+  await syncAppsFlyerCustomerUserId();
+  await syncProductAnalyticsInstallIdentity();
+  return true;
+};
+
+export const initAttribution = async ({
+  timeToWaitForATTUserAuthorization = 0,
+} = {}) => {
+  const requestedWait = Math.max(
+    0,
+    Math.min(
+      IOS_ATT_WAIT_SECONDS,
+      Math.floor(Number(timeToWaitForATTUserAuthorization) || 0)
+    )
+  );
+  if (!appsFlyerInitialized && !appsFlyerInitPromise) {
+    appsFlyerAttWaitSeconds = Platform.OS === "ios" ? requestedWait : 0;
+  }
+  return syncAppsFlyerAttribution();
+};
+
+const getAppsFlyerUIDSafe = () =>
+  new Promise((resolve) => {
+    if (!hasAppsFlyer() || typeof appsFlyer.getAppsFlyerUID !== "function") {
+      resolve(null);
+      return;
+    }
+    let settled = false;
+    const settle = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(normalizeAttributionValue(value));
+    };
+    const timeout = setTimeout(() => settle(null), 3000);
+    try {
+      appsFlyer.getAppsFlyerUID((error, uid) => {
+        clearTimeout(timeout);
+        if (error) {
+          console.warn("AppsFlyer UID unavailable:", error?.message || error);
+          settle(null);
+          return;
+        }
+        settle(uid);
+      });
     } catch (error) {
-      const facebookEventName = resolveFacebookEventName(eventName);
-      console.warn("Failed to log Facebook event:", facebookEventName, error?.message || error);
+      clearTimeout(timeout);
+      console.warn("AppsFlyer UID exception:", error?.message || error);
+      settle(null);
     }
+  });
+
+export const getAppsFlyerAttributionIdentity = async () => {
+  const initialized = await initAttribution();
+  if (!initialized) {
+    return { appsFlyerId: null };
   }
+  const appsFlyerId = await getAppsFlyerUIDSafe();
+  if (!hasCampaignFields(appsFlyerInstallAttribution)) {
+    appsFlyerInstallAttribution = await readStoredAppsFlyerFirstTouch();
+  }
+  if (!hasCampaignFields(appsFlyerInstallAttribution) && appsFlyerConversionDataPromise) {
+    await Promise.race([
+      appsFlyerConversionDataPromise,
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]);
+  }
+  return {
+    appsFlyerId,
+    ...(appsFlyerInstallAttribution || {}),
+  };
 };
 
-const filterParams = (eventName, params = {}) => {
-  const allowedKeys = EVENT_DEFINITIONS[eventName] || [];
-  return allowedKeys.reduce((acc, key) => {
-    if (params[key] !== undefined && params[key] !== null) {
-      acc[key] = params[key];
-    }
-    return acc;
-  }, {});
-};
-
-export const registerLevelEvents = (maxLevel) => {
-  const upper = Math.floor(Number(maxLevel));
-  if (!Number.isFinite(upper) || upper < 1) return;
-  for (let level = 1; level <= upper; level += 1) {
-    const eventName = `level_reached_${level}`;
-    if (!EVENT_DEFINITIONS[eventName]) {
-      EVENT_DEFINITIONS[eventName] = ["level"];
-    }
+export const syncAppsFlyerAttributionToRevenueCat = async ({
+  reason = "manual",
+  attributionOverride = null,
+} = {}) => {
+  revenueCatAttributionSyncAttempt += 1;
+  const attempt = revenueCatAttributionSyncAttempt;
+  if (!revenueCatAppsFlyerIdConfirmed) {
+    try {
+      const confirmed = await AsyncStorage.getItem(
+        APPSFLYER_REVENUECAT_CONFIRMED_STORAGE_KEY
+      );
+      revenueCatAppsFlyerIdConfirmed = confirmed === "1";
+    } catch (_error) {}
   }
+  const initialized = await initAttribution();
+  let appsFlyerId = null;
+  if (initialized) {
+    appsFlyerId = await getAppsFlyerUIDSafe();
+  }
+  const storedFirstTouch = await readStoredAppsFlyerFirstTouch();
+  const firstTouch = await persistAppsFlyerFirstTouch({
+    ...storedFirstTouch,
+    ...(attributionOverride || {}),
+  });
+  const attribution = {
+    appsFlyerId: normalizeAttributionValue(appsFlyerId),
+    ...firstTouch,
+  };
+  const syncResult = await syncPurchasesAttributionSafe(attribution);
+  if (syncResult?.appsFlyerIdSet) {
+    revenueCatAppsFlyerIdConfirmed = true;
+    AsyncStorage.setItem(
+      APPSFLYER_REVENUECAT_CONFIRMED_STORAGE_KEY,
+      "1"
+    ).catch(() => {});
+  }
+  const hasProviderId = !!attribution.appsFlyerId;
+  const hasCampaign = hasCampaignFields(firstTouch);
+  const result = syncResult?.appsFlyerIdSet
+    ? syncResult?.failedFields?.length
+      ? "partial"
+      : "success"
+    : hasProviderId
+    ? "failed"
+    : "missing_provider_id";
+  logEvent("attribution_sync_result", {
+    provider: "appsflyer",
+    result,
+    elapsed_bucket: getElapsedBucket(Date.now() - ATTRIBUTION_SYNC_START_MS),
+    has_provider_id: hasProviderId,
+    has_campaign_fields: hasCampaign,
+    attempt,
+    app_version: APP_VERSION,
+  }).catch(() => {});
+  return {
+    ...syncResult,
+    reason: syncResult?.reason || String(reason || "manual"),
+    hasProviderId,
+    hasCampaignFields: hasCampaign,
+    confirmed: revenueCatAppsFlyerIdConfirmed,
+  };
 };
 
 export const initAnalytics = async () => {
   await syncAnalyticsCollection();
   await syncAmplitudeCollection();
-  await syncAppsFlyerCollection();
+  await syncProductAnalyticsInstallIdentity();
+  await initAttribution();
   if (__DEV__ && Platform.OS === "android") {
     console.info("[attribution-debug] AppsFlyer status", {
       platform: Platform.OS,
       present: hasAppsFlyer(),
       initialized: appsFlyerInitialized,
       enabled: shouldUseAppsFlyer(),
+      partnerSharingAllowed: appsFlyerPartnerSharingAllowed,
       analyticsEnabled: isAnalyticsEnabled(),
     });
   }
-  await initTikTokSdk();
 };
 
 export const initPerformanceMonitoring = async () => {
@@ -1308,41 +1384,150 @@ export const setAnalyticsOptOut = async (optOut) => {
   if (optOut === null || optOut === undefined) return;
   analyticsOptedOut = !!optOut;
   analyticsConsentGranted = !analyticsOptedOut || analyticsConsentGranted;
-  analyticsConsentKnown = true;
   await syncAnalyticsCollection();
   await syncAmplitudeCollection();
   await syncPerformanceCollection();
-  await syncAppsFlyerCollection();
-  if (!analyticsOptedOut) {
-    await initTikTokSdk();
-  }
-  if (analyticsOptedOut) {
-    pendingFacebookEvents.length = 0;
-  } else {
-    flushFacebookEventQueue();
-  }
+  if (!analyticsOptedOut) await syncProductAnalyticsInstallIdentity();
 };
 
-export const setAppsFlyerEnabled = async (enabled = true) => {
-  appsFlyerEnabled = enabled !== false;
-  await syncAppsFlyerCollection();
+export const setAppsFlyerPartnerSharingAllowed = async (allowed = true) => {
+  appsFlyerPartnerSharingAllowed = allowed !== false;
+  syncAppsFlyerPartnerSharing();
+};
+
+export const setAppsFlyerAdvertisingIdEnabled = async (enabled = false) => {
+  appsFlyerAdvertisingIdEnabled = enabled === true;
+  syncAppsFlyerAdvertisingIdCollection();
 };
 
 export const logEvent = async (eventName, params = {}) => {
-  if (!EVENT_DEFINITIONS[eventName]) return;
+  const payload = {
+    ...(params || {}),
+    ...buildGlobalAnalyticsParams(params),
+  };
+  const validation = validateEventAgainstContract(eventName, payload, EVENT_CONTRACT);
+  if (!validation.ok) {
+    await handleContractViolation(eventName, validation);
+    return { ok: false, reason: validation.errorType };
+  }
+  const { contract } = validation;
   const client = getAnalyticsClient();
-  const filteredParams = filterParams(eventName, params);
-  if (client) {
+  const filteredParams = filterContractParams(payload, contract);
+  if (client && contract.destinations.includes(DESTINATIONS.GA4)) {
     try {
       await client.logEvent(eventName, filteredParams);
     } catch (error) {
       console.warn("Failed to log analytics event:", eventName, error?.message || error);
     }
   }
-  await logAmplitudeEvent(eventName, filteredParams);
-  await logAppsFlyerEvent(eventName, filteredParams);
-  await logTikTokEvent(eventName, filteredParams);
-  logFacebookEvent(eventName, filteredParams);
+  if (contract.destinations.includes(DESTINATIONS.AMPLITUDE)) {
+    await logAmplitudeEvent(eventName, filteredParams);
+  }
+  if (contract.destinations.includes(DESTINATIONS.APPSFLYER)) {
+    await logAppsFlyerEvent(
+      eventName,
+      filterDestinationParams(filteredParams, contract, DESTINATIONS.APPSFLYER)
+    );
+  }
+  return { ok: true, destinations: contract.destinations };
+};
+
+const readLoggedGa4PurchaseIds = async () => {
+  try {
+    const raw = await AsyncStorage.getItem(GA4_PURCHASE_DEDUP_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((value) => String(value || "").trim()).filter(Boolean);
+  } catch (error) {
+    console.warn("GA4 purchase dedup read failed:", error?.message || error);
+    return [];
+  }
+};
+
+const rememberLoggedGa4PurchaseId = async (transactionId, previousIds = []) => {
+  const nextIds = [
+    ...previousIds.filter((value) => value !== transactionId),
+    transactionId,
+  ].slice(-GA4_PURCHASE_DEDUP_MAX_IDS);
+  try {
+    await AsyncStorage.setItem(GA4_PURCHASE_DEDUP_STORAGE_KEY, JSON.stringify(nextIds));
+    return true;
+  } catch (error) {
+    console.warn("GA4 purchase dedup write failed:", error?.message || error);
+    return false;
+  }
+};
+
+const logCommercePurchaseInternal = async ({
+  transactionId,
+  value,
+  currency,
+  productId,
+  itemName,
+  plan,
+} = {}) => {
+  const normalizedTransactionId = String(transactionId || "").trim();
+  const normalizedValue = Number(value);
+  const normalizedCurrency = String(currency || "").trim().toUpperCase();
+  const normalizedProductId = String(productId || "").trim();
+  if (!normalizedTransactionId) return { ok: false, reason: "missing_transaction_id" };
+  if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
+    return { ok: false, reason: "invalid_value" };
+  }
+  if (!/^[A-Z]{3}$/.test(normalizedCurrency)) {
+    return { ok: false, reason: "invalid_currency" };
+  }
+  if (!normalizedProductId) return { ok: false, reason: "missing_product_id" };
+
+  const previousIds = await readLoggedGa4PurchaseIds();
+  if (previousIds.includes(normalizedTransactionId)) {
+    return { ok: true, duplicate: true, transactionId: normalizedTransactionId };
+  }
+  const client = getAnalyticsClient();
+  if (!client || typeof client.logPurchase !== "function") {
+    return { ok: false, reason: "analytics_unavailable" };
+  }
+  const normalizedPlan = String(plan || "").trim();
+  const normalizedItemName = String(itemName || normalizedPlan || normalizedProductId).trim();
+  const item = {
+    item_id: normalizedProductId,
+    item_name: normalizedItemName || normalizedProductId,
+    price: normalizedValue,
+    quantity: 1,
+  };
+  if (normalizedPlan) {
+    item.item_category = normalizedPlan;
+  }
+  try {
+    await client.logPurchase({
+      transaction_id: normalizedTransactionId,
+      value: normalizedValue,
+      currency: normalizedCurrency,
+      items: [item],
+    });
+    const dedupPersisted = await rememberLoggedGa4PurchaseId(
+      normalizedTransactionId,
+      previousIds
+    );
+    return {
+      ok: true,
+      duplicate: false,
+      dedupPersisted,
+      transactionId: normalizedTransactionId,
+    };
+  } catch (error) {
+    console.warn("Failed to log GA4 purchase:", error?.message || error);
+    return { ok: false, reason: "log_failed", error };
+  }
+};
+
+export const logCommercePurchase = (params = {}) => {
+  const task = ga4PurchaseLogQueue
+    .catch(() => {})
+    .then(() => logCommercePurchaseInternal(params));
+  ga4PurchaseLogQueue = task.catch(() => {});
+  return task;
 };
 
 export const logScreenView = async (screenName) => {
@@ -1357,34 +1542,6 @@ export const logScreenView = async (screenName) => {
     } catch (error) {
       console.warn("Failed to log screen view:", error?.message || error);
     }
-  }
-};
-
-const logFacebookEvent = (eventName, params = {}) => {
-  if (FACEBOOK_REVENUECAT_SUBSCRIPTION_EVENT_BLOCKLIST.has(eventName)) return;
-  if (!FACEBOOK_EVENT_WHITELIST.has(eventName)) return;
-  const facebookEventName = resolveFacebookEventName(eventName);
-  if (!analyticsConsentKnown) {
-    enqueueFacebookEvent(eventName, params);
-    return;
-  }
-  if (!isAnalyticsEnabled()) return;
-  if (!FacebookAppEvents || typeof FacebookAppEvents.logEvent !== "function") return;
-  if (!facebookSdkReady) {
-    enqueueFacebookEvent(eventName, params);
-    return;
-  }
-  try {
-    dispatchFacebookEvent(eventName, params);
-  } catch (error) {
-    console.warn("Failed to log Facebook event:", facebookEventName, error?.message || error);
-  }
-};
-
-export const setFacebookSdkReady = (ready = true) => {
-  facebookSdkReady = !!ready;
-  if (facebookSdkReady) {
-    flushFacebookEventQueue();
   }
 };
 

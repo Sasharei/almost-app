@@ -2,6 +2,12 @@
 
 These rules are mandatory for every Codex change in this repository.
 
+## Simulator and Emulator Gate
+
+- Never start, boot, open, or otherwise launch an iOS Simulator, Android Emulator, or connected-device app session without the user's explicit approval in the current conversation.
+- Do not run commands that implicitly launch a simulator or emulator, including `npm run ios`, `npm run android`, `expo run:ios`, `expo run:android`, `react-native run-ios`, or `react-native run-android`, unless the user has explicitly asked for that launch.
+- Static checks, dependency installation, CocoaPods installation, and non-launching build commands remain allowed when they are needed for the requested work.
+
 ## Localization Gate
 
 - After every code change, run `npm run check:localization`.

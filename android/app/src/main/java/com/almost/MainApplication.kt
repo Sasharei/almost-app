@@ -71,17 +71,16 @@ class MainApplication : Application(), ReactApplication {
     }
   }
 
-  private fun initializeMetaAttribution() {
+  private fun enforceMetaLoggingPolicy() {
     runCatching {
       // RevenueCat sends subscription Trial Started -> StartTrial and purchase/renewal events -> Subscribe.
-      // Keep the Meta SDK available for attribution identifiers without client-side revenue auto logging.
+      // Native auto-init owns SDK startup; keep all automatic client event logging disabled.
       FacebookSdk.setAutoLogAppEventsEnabled(false)
       FacebookSdk.setAdvertiserIDCollectionEnabled(true)
-      FacebookSdk.fullyInitialize()
       if (BuildConfig.DEBUG) {
         Log.d(
             "AttributionInit",
-            "Meta SDK initialized; autoLogAppEvents=false advertiserIDCollection=true"
+            "Meta SDK policy applied; autoLogAppEvents=false advertiserIDCollection=true"
         )
       }
     }.onFailure { error ->
@@ -93,7 +92,7 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
-    initializeMetaAttribution()
+    enforceMetaLoggingPolicy()
     setCrashlyticsBooleanKey("rn_new_arch_build_flag", BuildConfig.IS_NEW_ARCHITECTURE_ENABLED)
     setCrashlyticsBooleanKey("rn_new_arch_runtime_before_init", runtimeNewArchEnabled)
     setCrashlyticsBooleanKey("rn_new_arch_fallback_triggered", false)

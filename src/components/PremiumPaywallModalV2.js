@@ -12,6 +12,7 @@ import {
   Platform,
   useWindowDimensions,
 } from "react-native";
+import AbandonedOfferWheel from "./AbandonedOfferWheel";
 
 const HERO_REFERENCE_VISUAL = require("../../assets/paywall/v2/hero_reference.jpg");
 
@@ -20,6 +21,7 @@ const DEFAULT_PRIMARY_PLAN_IDS = ["monthly", "yearly", "weekly"];
 const PRIMARY_PLAN_IDS =
   Platform.OS === "android" ? ANDROID_PRIMARY_PLAN_IDS : DEFAULT_PRIMARY_PLAN_IDS;
 const FREE_TRIAL_DISPLAY_PLAN_ID = "yearly";
+const TRANSACTION_ABANDONED_TRIGGER = "transaction_abandoned";
 const PAYWALL_DISMISS_COOLDOWN_MS = 5000;
 const FALLBACK_FEATURES_BY_LANGUAGE = {
   ru: [
@@ -677,6 +679,7 @@ const PremiumPaywallModalV2 = ({
   onManagePress = () => {},
   onTermsPress = () => {},
   onPrivacyPress = () => {},
+  onAbandonedOfferWheelEvent = () => {},
   onClose = () => {},
   language = "en",
   safeAreaTopInset = 0,
@@ -689,6 +692,8 @@ const PremiumPaywallModalV2 = ({
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCardsProp));
   const [freeTrialEnabled, setFreeTrialEnabled] = useState(false);
   const [dismissCooldownComplete, setDismissCooldownComplete] = useState(false);
+  const [abandonedWheelClaimed, setAbandonedWheelClaimed] = useState(false);
+  const [abandonedWheelStage, setAbandonedWheelStage] = useState("idle");
   const mainScrollRef = useRef(null);
   const planListOffsetYRef = useRef(0);
   const planCardOffsetsRef = useRef(new Map());
@@ -769,6 +774,7 @@ const PremiumPaywallModalV2 = ({
       chipBg: colors?.surfaceMuted || (isDarkMode ? "#1C2436" : "#EEF1F8"),
       bestValueBg: colors?.primary || "#536DFE",
       bestValueText: colors?.onPrimary || "#FFFFFF",
+      disabled: colors?.disabled || (isDarkMode ? "#4B5563" : "#A8AFBF"),
     }),
     [colors, isDarkMode, premiumAccent]
   );
@@ -778,6 +784,47 @@ const PremiumPaywallModalV2 = ({
     () => sortedPlans.filter((plan) => isVisiblePaywallPlan(plan)),
     [sortedPlans]
   );
+  const isTransactionAbandonedOffer =
+    normalizePlanId(copy?.trigger) === TRANSACTION_ABANDONED_TRIGGER;
+  const abandonedOfferPlan = useMemo(() => {
+    const discountedPlans = displayedPlans
+      .filter(
+        (plan) =>
+          plan?.available !== false &&
+          Number.isFinite(Number(plan?.abandonedDiscountPercent)) &&
+          Number(plan?.abandonedDiscountPercent) > 0
+      )
+      .sort((left, right) => {
+        const discountDifference =
+          Number(right?.abandonedDiscountPercent || 0) -
+          Number(left?.abandonedDiscountPercent || 0);
+        if (discountDifference !== 0) return discountDifference;
+        const leftKind = resolvePlanKind(left) || normalizePlanId(left?.id);
+        const rightKind = resolvePlanKind(right) || normalizePlanId(right?.id);
+        if (leftKind === "yearly" && rightKind !== "yearly") return -1;
+        if (rightKind === "yearly" && leftKind !== "yearly") return 1;
+        return 0;
+      });
+    if (discountedPlans[0]) return discountedPlans[0];
+    return (
+      displayedPlans.find((plan) => plan?.available !== false && plan?.recommended) ||
+      displayedPlans.find(
+        (plan) =>
+          plan?.available !== false && Number(plan?.overallDiscountPercent || 0) > 0
+      ) ||
+      displayedPlans.find((plan) => plan?.available !== false) ||
+      null
+    );
+  }, [displayedPlans]);
+  const abandonedWinningDiscountPercent = useMemo(() => {
+    const abandonedPercent = Math.round(Number(abandonedOfferPlan?.abandonedDiscountPercent) || 0);
+    if (abandonedPercent > 0) return Math.min(99, abandonedPercent);
+    const displayedPercent = Math.round(Number(abandonedOfferPlan?.overallDiscountPercent) || 0);
+    if (displayedPercent > 0) return Math.min(99, displayedPercent);
+    return 35;
+  }, [abandonedOfferPlan]);
+  const abandonedWheelActive =
+    visible && isTransactionAbandonedOffer && !abandonedWheelClaimed;
 
   const primaryPlans = useMemo(() => {
     const byId = new Map(displayedPlans.map((plan) => [normalizePlanId(plan?.id), plan]));
@@ -791,6 +838,7 @@ const PremiumPaywallModalV2 = ({
       displayedPlans.find(
         (plan) =>
           (resolvePlanKind(plan) || normalizePlanId(plan?.id)) === FREE_TRIAL_DISPLAY_PLAN_ID &&
+          plan?.hasTrial === true &&
           plan?.available !== false
       ) || null,
     [displayedPlans]
@@ -813,6 +861,17 @@ const PremiumPaywallModalV2 = ({
     setFreeTrialEnabled(false);
     setSelectedPlanId(pickDefaultPlanId(displayedPlans));
   }, [displayedPlans, freeTrialDisplayPlan, freeTrialEnabled, visible]);
+  useEffect(() => {
+    if (!visible || !isTransactionAbandonedOffer) {
+      setAbandonedWheelClaimed(false);
+      setAbandonedWheelStage("idle");
+    }
+  }, [isTransactionAbandonedOffer, visible]);
+  useEffect(() => {
+    if (!abandonedWheelActive || !abandonedOfferPlan?.id) return;
+    setSelectedPlanId(abandonedOfferPlan.id);
+    setFreeTrialEnabled(false);
+  }, [abandonedOfferPlan?.id, abandonedWheelActive]);
   useEffect(() => {
     if (!visible || !dismissible) {
       setDismissCooldownComplete(false);
@@ -871,7 +930,9 @@ const PremiumPaywallModalV2 = ({
   );
   const selectedPlanKind = resolvePlanKind(selectedPlan) || normalizePlanId(selectedPlan?.id);
   const selectedPlanHasActiveTrial =
-    freeTrialEnabled && selectedPlanKind === FREE_TRIAL_DISPLAY_PLAN_ID;
+    freeTrialEnabled &&
+    selectedPlanKind === FREE_TRIAL_DISPLAY_PLAN_ID &&
+    selectedPlan?.hasTrial === true;
   const selectedPlanTrialNotice = sanitizeLabel(
     selectedPlanHasActiveTrial ? selectedPlan?.trialNoticeLabel : ""
   );
@@ -881,8 +942,10 @@ const PremiumPaywallModalV2 = ({
   const defaultTitle = sanitizeLabel(copy?.title || copy?.planSectionTitle || localizedUi.title);
   const trialHeadline = sanitizeLabel(copy?.v2TrialHeadline || localizedUi.trialHeadline);
   const contextTitle = sanitizeLabel(copy?.v2ContextTitle || "");
-  const title = contextTitle || (hasAnyTrialOffer && trialHeadline ? trialHeadline : defaultTitle);
-  const titleNumberOfLines = hasAnyTrialOffer ? 3 : 2;
+  const title =
+    contextTitle ||
+    (selectedPlanHasActiveTrial && trialHeadline ? trialHeadline : defaultTitle);
+  const titleNumberOfLines = selectedPlanHasActiveTrial ? 3 : 2;
   const socialProof = sanitizeLabel(
     copy?.v2SocialProofLine || copy?.socialProofLine || localizedUi.socialProof
   );
@@ -902,9 +965,9 @@ const PremiumPaywallModalV2 = ({
     if (!selectedPlan) return sanitizeLabel(copy?.ctaPrimary || localizedUi.ctaPrimary);
     if (selectedPlanHasActiveTrial) {
       return sanitizeLabel(
-        copy?.ctaPrimaryTrial ||
+        selectedPlan?.ctaTrialLabel ||
+          copy?.ctaPrimaryTrial ||
           copy?.ctaPrimary ||
-          selectedPlan?.ctaTrialLabel ||
           localizedUi.ctaPrimary
       );
     }
@@ -925,18 +988,49 @@ const PremiumPaywallModalV2 = ({
 
   const handlePrimaryPress = useCallback(() => {
     if (!selectedPlan?.id || purchaseDisabled) return;
-    onPlanPress(selectedPlan.id, { source: "primary_button" });
-  }, [onPlanPress, purchaseDisabled, selectedPlan]);
+    onPlanPress(selectedPlan.id, {
+      source: "primary_button",
+      trialEnabled: selectedPlanHasActiveTrial,
+    });
+  }, [onPlanPress, purchaseDisabled, selectedPlan, selectedPlanHasActiveTrial]);
+
+  const emitAbandonedWheelEvent = useCallback(
+    (eventName, payload = {}) => {
+      onAbandonedOfferWheelEvent(eventName, {
+        ...payload,
+        planId: abandonedOfferPlan?.id || selectedPlan?.id || "",
+      });
+    },
+    [abandonedOfferPlan?.id, onAbandonedOfferWheelEvent, selectedPlan?.id]
+  );
+
+  const handleAbandonedWheelClaim = useCallback(() => {
+    const winningPlanId = abandonedOfferPlan?.id || selectedPlan?.id;
+    if (winningPlanId) {
+      setSelectedPlanId(winningPlanId);
+      setFreeTrialEnabled(false);
+      onPlanSelect(winningPlanId, {
+        source: "abandoned_wheel_claim",
+        trialEnabled: false,
+      });
+    }
+    setAbandonedWheelClaimed(true);
+  }, [abandonedOfferPlan?.id, onPlanSelect, selectedPlan?.id]);
+
+  const handleAbandonedWheelDismiss = useCallback(() => {
+    onClose("abandoned_wheel_declined");
+  }, [onClose]);
 
   const handlePlanSelect = useCallback(
     (plan) => {
       if (!plan?.id || plan?.available === false) return;
       const planKind = resolvePlanKind(plan) || normalizePlanId(plan?.id);
+      const trialEnabled = freeTrialEnabled && planKind === FREE_TRIAL_DISPLAY_PLAN_ID;
       setSelectedPlanId(plan.id);
-      setFreeTrialEnabled((prev) => prev && planKind === FREE_TRIAL_DISPLAY_PLAN_ID);
-      onPlanSelect(plan.id, { source: "plan_card" });
+      setFreeTrialEnabled(trialEnabled);
+      onPlanSelect(plan.id, { source: "plan_card", trialEnabled });
     },
-    [onPlanSelect]
+    [freeTrialEnabled, onPlanSelect]
   );
 
   const handleLimitedContinue = useCallback(() => {
@@ -966,25 +1060,24 @@ const PremiumPaywallModalV2 = ({
     if (!freeTrialDisplayPlan?.id) return;
     setFreeTrialEnabled((prev) => {
       const next = !prev;
-      const nextPlanId = next
-        ? freeTrialDisplayPlan.id
-        : pickDefaultPlanId(primaryPlans.length ? primaryPlans : displayedPlans);
+      const nextPlanId = freeTrialDisplayPlan.id;
       if (nextPlanId) {
         setSelectedPlanId(nextPlanId);
         if (next) {
           onTrialSwitchOn(nextPlanId);
           scrollToPlanCard(nextPlanId);
         }
-        onPlanSelect(nextPlanId, { source: "free_trial_toggle" });
+        onPlanSelect(nextPlanId, {
+          source: "free_trial_toggle",
+          trialEnabled: next,
+        });
       }
       return next;
     });
   }, [
-    displayedPlans,
     freeTrialDisplayPlan,
     onPlanSelect,
     onTrialSwitchOn,
-    primaryPlans,
     scrollToPlanCard,
   ]);
 
@@ -999,6 +1092,15 @@ const PremiumPaywallModalV2 = ({
       animationType="slide"
       statusBarTranslucent
       onRequestClose={() => {
+        if (abandonedWheelActive) {
+          if (abandonedWheelStage !== "result") return;
+          emitAbandonedWheelEvent("decline", {
+            discountPercent: abandonedWinningDiscountPercent,
+            source: "system_back",
+          });
+          onClose("abandoned_wheel_system_back");
+          return;
+        }
         if (!canDismiss) return;
         onClose("system_back");
       }}
@@ -1228,7 +1330,8 @@ const PremiumPaywallModalV2 = ({
                 const resolvedPlanId = planKind || planId;
                 const isYearly = resolvedPlanId === "yearly";
                 const isBestValuePlan = isYearly;
-                const planHasActiveTrial = freeTrialEnabled && isYearly;
+                const planHasActiveTrial =
+                  freeTrialEnabled && isYearly && plan?.hasTrial === true;
                 const selected = planId === normalizePlanId(selectedPlan?.id);
                 const thenPriceTemplate = sanitizeLabel(
                   copy?.v2ThenPriceTemplate || localizedUi.thenPriceTemplate
@@ -1392,6 +1495,17 @@ const PremiumPaywallModalV2 = ({
           </ScrollView>
 
           <View style={styles.footer}>
+            {!!selectedPlanTrialNotice ? (
+              <View style={[styles.trialDisclosureBlock, { backgroundColor: palette.chipBg }]}>
+                <Text
+                  style={[styles.trialDisclosureText, { color: palette.text }, textAlignStyle]}
+                  numberOfLines={4}
+                >
+                  {selectedPlanTrialNotice}
+                </Text>
+              </View>
+            ) : null}
+
             <TouchableOpacity
               style={[
                 styles.primaryButton,
@@ -1429,20 +1543,12 @@ const PremiumPaywallModalV2 = ({
             ) : null}
 
             <View style={styles.offerDisclosureBlock}>
-              {!!billingNotice ? (
+              {!!billingNotice && !selectedPlanHasActiveTrial ? (
                 <Text
                   style={[styles.offerDisclosureText, { color: palette.muted }, textAlignStyle]}
                   numberOfLines={2}
                 >
                   {billingNotice}
-                </Text>
-              ) : null}
-              {!!selectedPlanTrialNotice ? (
-                <Text
-                  style={[styles.offerDisclosureText, { color: palette.muted }, textAlignStyle]}
-                  numberOfLines={3}
-                >
-                  {selectedPlanTrialNotice}
                 </Text>
               ) : null}
               {!!legalNotice ? (
@@ -1511,6 +1617,38 @@ const PremiumPaywallModalV2 = ({
               </TouchableOpacity>
             </View>
           </View>
+          {abandonedWheelActive ? (
+            <View
+              style={[
+                styles.abandonedWheelOverlay,
+                { backgroundColor: palette.backdrop },
+              ]}
+              onStartShouldSetResponder={() => true}
+            >
+              <View
+                style={[
+                  styles.abandonedWheelSheet,
+                  {
+                    backgroundColor: palette.sheetBg,
+                  },
+                ]}
+              >
+                <AbandonedOfferWheel
+                  active={abandonedWheelActive}
+                  copy={copy}
+                  winningDiscountPercent={abandonedWinningDiscountPercent}
+                  palette={palette}
+                  safeAreaTopInset={8}
+                  safeAreaBottomInset={resolvedSafeBottomInset}
+                  rtl={rtl}
+                  onClaim={handleAbandonedWheelClaim}
+                  onDismiss={handleAbandonedWheelDismiss}
+                  onEvent={emitAbandonedWheelEvent}
+                  onStageChange={setAbandonedWheelStage}
+                />
+              </View>
+            </View>
+          ) : null}
         </View>
       </View>
     </Modal>
@@ -1530,6 +1668,18 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     height: "95%",
     paddingHorizontal: 16,
+  },
+  abandonedWheelOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "flex-end",
+    zIndex: 30,
+  },
+  abandonedWheelSheet: {
+    width: "100%",
+    height: "100%",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: "hidden",
   },
   mainScroll: {
     flex: 1,
@@ -1851,6 +2001,18 @@ const styles = StyleSheet.create({
     fontSize: 10,
     lineHeight: 13,
     fontWeight: "600",
+  },
+  trialDisclosureBlock: {
+    marginBottom: 8,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  trialDisclosureText: {
+    textAlign: "center",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700",
   },
   secondaryButtonsRow: {
     marginTop: 2,

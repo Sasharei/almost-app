@@ -51,4 +51,14 @@ module.exports = defineConfig([
       sourceType: "commonjs",
     },
   },
+  {
+    files: ["src/analytics/*Policy.js", "src/analytics/releaseScope.js"],
+    languageOptions: {
+      globals: {
+        module: "readonly",
+        require: "readonly",
+      },
+      sourceType: "commonjs",
+    },
+  },
 ]);

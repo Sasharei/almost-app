@@ -54,6 +54,9 @@
         "onPress={() => savingsHeroRef?.current?.openSavingRatingModal?.()}",
         "onRecentEventsPress={openHistoryModal}",
         "onGoalJarPress={openGoalJarDetail}",
+        "visible={dailyRewardModalVisible}",
+        "onDailyRewardOpen={",
+        "onDailyRewardClose={",
         "onDailyRewardClaim={onDailyRewardClaim}",
         "onActiveChallengePress={onActiveChallengePress}",
         "onPress={isBudgetPressable ? onBudgetHeroPress : undefined}",
@@ -91,6 +94,20 @@
       ]
     },
     {
+      "id": "onboarding-analytics-consent-actions",
+      "description": "First-run analytics consent offers equally reachable accept and decline actions, persists either choice, and continues onboarding.",
+      "file": "App.js",
+      "requiredFragments": [
+        "goToOnboardingStep(\"analyticsConsent\");",
+        "onboardingStep === \"analyticsConsent\"",
+        "<AnalyticsConsentScreen",
+        "onAgree={() => handleAnalyticsConsentChoice(true)}",
+        "onSkip={() => handleAnalyticsConsentChoice(false)}",
+        "setAnalyticsOptOutState(!nextEnabled);",
+        "goToOnboardingStep(\"persona\");"
+      ]
+    },
+    {
       "id": "profile-edit-settings-actions",
       "description": "Profile edit/save/cancel and Settings navigation remain wired.",
       "file": "App.js",
@@ -105,6 +122,10 @@
         "onPress={() => setProfileSection(\"settings\")}",
         "onPress={() => onFieldChange?.(\"incomePayday\", day)}",
         "{t(\"incomePaydayValue\", { day: incomePayday })}",
+        "{t(\"appsflyerPartnerSharingLabel\")}",
+        "{t(\"appsflyerPartnerSharingHint\")}",
+        "onAppsFlyerPartnerSharingToggle?.(!appsFlyerPartnerSharingAllowed)",
+        "accessibilityState={{ checked: appsFlyerPartnerSharingAllowed }}",
         "onThemeToggle(option.id"
       ]
     },
@@ -119,11 +140,58 @@
         "onPress={openPauseFreezePicker}",
         "onAction?.(actionType, item, { amountUSD: normalizedAmountUSD });",
         "onAction?.(action.type, item, action.options || null);",
+        "<GestureDetector gesture={cardSwipeGesture}>",
+        ".activeOffsetX([-8, 8])",
+        ".failOffsetY([-12, 12])",
+        "swipeGestureActiveRef.current ||",
         "onSwipeArchive(item);",
         "onSwipeDelete(item);",
         "onPress={handleAmountCategoryBudgetPress}",
         "onPress={handleAmountGoalPress}",
         "onPress={handleAmountTimerPress}"
+      ]
+    },
+    {
+      "id": "fabric-text-autofit-readable-floor",
+      "description": "Auto-fit text keeps an absolute readable minimum under Fabric instead of falling through to the native 4-point fallback.",
+      "file": "App.js",
+      "requiredFragments": [
+        "import { resolveFabricAutoFitMinimumFontSize } from \"./src/utils/textAutoFit\";",
+        "const fabricMinimumFontSize = shouldAutoFit",
+        "minimumFontSize: fabricMinimumFontSize",
+        "const Text = AppText;"
+      ]
+    },
+    {
+      "id": "fabric-text-autofit-platform-units",
+      "description": "The Fabric auto-fit floor accounts for accessibility scaling and converts Android points to native pixels.",
+      "file": "src/utils/textAutoFit.js",
+      "requiredFragments": [
+        "if (!globalThis?.nativeFabricUIManager) return undefined;",
+        "PixelRatio.getFontScale()",
+        "minimumPointSize * Math.max(1, Number(PixelRatio.get()) || 1)"
+      ]
+    },
+    {
+      "id": "temptation-feed-manual-order",
+      "description": "Feed cards keep all existing actions and native vertical scrolling while long-press drag reordering uses stable keys, persists the user order, and honors reduced motion.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const FEED_CARD_ORDER_STORAGE_KEY = \"@almost_feed_card_order\";",
+        "const filteredProducts = useMemo(",
+        "const orderedProducts = useMemo(() => {",
+        "const syncFeedScrollOffsetFromEvent = useCallback(",
+        "<DraggableFlatList",
+        "activationDistance={12}",
+        "onLongPress={handleCardLongPress}",
+        "onLongPress={canDragCard ? drag : null}",
+        "onDragEnd={handleFeedDragEnd}",
+        "notifyFeedScrollState(true, { notifyExternal: false });",
+        "notifyFeedScrollState(false, { notifyExternal: false });",
+        "const useAndroidStableLayer = Platform.OS === \"android\";",
+        "onScrollEndDrag={handleFeedScrollEnd}",
+        "FEED_CARD_ORDER_STORAGE_KEY,\n      JSON.stringify(feedCardOrder)",
+        "const progress = reduceMotion ? (isActive ? 1 : 0) : onActiveAnim.value;"
       ]
     },
     {
@@ -179,12 +247,32 @@
         "onAccessibilityTap={() => openManual(\"amount\")}",
         "onAccessibilityAction={handleCoinAccessibilityAction}",
         "sinceLastTap <= COIN_ENTRY_MANUAL_DOUBLE_TAP_MS",
+        "forceNativeHost",
         "setSelectedCategory(initialSelectedCategoryRef.current);",
         "const cardExitAnim = useRef(new Animated.Value(0)).current;",
         "Animated.timing(cardExitAnim, {",
+        "visible={Platform.OS === \"android\" ? androidHostVisible : visible}",
+        "onShow={startRevealAnimation}",
+        "setAndroidHostVisible(true);",
         "onPress={closeManual}",
         "if (manualVisible) {",
         "{...panResponder.panHandlers}"
+      ]
+    },
+    {
+      "id": "android-native-modal-host-stability",
+      "description": "Repeated Fabric prop commits do not recreate an unchanged Android native modal dialog.",
+      "file": "android/app/build.gradle",
+      "requiredFragments": [
+        "class ReactModalHostStabilityVisitorFactory",
+        "setStatusBarTranslucent:",
+        "setNavigationBarTranslucent:",
+        "setAnimationType:",
+        "setHardwareAccelerated:",
+        "mv.visitJumpInsn(Opcodes.IF_ICMPNE, valueChanged)",
+        "mv.visitMethodInsn(",
+        "InstrumentationScope.ALL",
+        "FramesComputationMode.COMPUTE_FRAMES_FOR_INSTRUMENTED_METHODS"
       ]
     },
     {
@@ -220,7 +308,7 @@
       ],
       "requiredPatterns": [
         "const openSkinPicker = useCallback\\(\\(\\) => \\{[\\s\\S]*?setTamagotchiVisible\\(false\\);[\\s\\S]*?setSkinPickerVisible\\(true\\);",
-        "const handleSkinSelect = useCallback\\([\\s\\S]*?if \\(!catCustomizationUnlocked\\) \\{[\\s\\S]*?logEvent\\(\"tamagotchi_skin_preview_paywall\"[\\s\\S]*?setSkinPickerVisible\\(false\\);[\\s\\S]*?setTimeout\\(showCatCustomizationPaywall, 180\\);"
+        "const handleSkinSelect = useCallback\\([\\s\\S]*?if \\(!catCustomizationUnlocked\\) \\{[\\s\\S]*?logEvent\\(\"premium_gate_blocked\"[\\s\\S]*?setSkinPickerVisible\\(false\\);[\\s\\S]*?setTimeout\\(showCatCustomizationPaywall, 180\\);"
       ]
     },
     {
@@ -241,18 +329,17 @@
     },
     {
       "id": "tamagotchi-analytics",
-      "description": "The Tamagotchi redesign keeps the established open, care, reward, party, customization, and skin-download analytics events.",
+      "description": "The Tamagotchi redesign keeps one canonical open event plus the established care, reward, party, customization, and skin-download analytics events.",
       "file": "App.js",
       "requiredFragments": [
-        "logEvent(\"tamagotchi_pressed\")",
-        "logEvent(\"tamagotchi_opened\")",
+        "logEvent(\"tamagotchi_opened\", { source: \"home_companion\" })",
         "logEvent(\"tamagotchi_hourly_reward_claimed\"",
         "logEvent(\"tamagotchi_feed\"",
         "logEvent(\"tamagotchi_play\"",
         "logEvent(\"tamagotchi_clean_tool_bought\"",
         "logEvent(\"tamagotchi_clean\"",
         "logEvent(\"tamagotchi_party_started\"",
-        "logEvent(\"tamagotchi_skin_preview_paywall\"",
+        "logEvent(\"premium_gate_blocked\"",
         "logEvent(\"tamagotchi_skin_selected\"",
         "logEvent(\"tamagotchi_skin_assets_download_failed\""
       ]
@@ -264,11 +351,26 @@
       "requiredFragments": [
         "onPlanSelect={handlePremiumPlanSelected}",
         "onPlanPress={handlePremiumPlanPress}",
+        "purchasePlanPackage(selectedPackage, {",
+        "trialEnabled: selectedTrialEnabled",
         "onRestorePress={handlePremiumRestore}",
         "onManagePress={handleManageSubscriptionsOpen}",
         "onTermsPress={handleTermsLinkOpen}",
         "onPrivacyPress={handlePrivacyPolicyOpen}",
+        "onAbandonedOfferWheelEvent={handlePremiumAbandonedOfferWheelEvent}",
         "onClose={closePremiumPaywall}"
+      ]
+    },
+    {
+      "id": "premium-android-subscription-option-routing",
+      "description": "Android purchases explicitly route the trial toggle to either the free-trial offer or the paid base plan.",
+      "file": "src/monetization/purchasesClient.js",
+      "requiredFragments": [
+        "const resolveAndroidSubscriptionOption = (pkg, { trialEnabled = false } = {}) => {",
+        "option?.isBasePlan !== true && option?.freePhase",
+        "option?.isBasePlan === true && !option?.freePhase",
+        "Purchases.purchaseSubscriptionOption(androidSubscriptionOption)",
+        "Purchases.purchasePackage(pkg)"
       ]
     },
     {
@@ -279,12 +381,53 @@
         "const PAYWALL_DISMISS_COOLDOWN_MS = 5000;",
         "const canDismiss = dismissible && dismissCooldownComplete;",
         "if (!canDismiss) return;",
-        "onPlanPress(selectedPlan.id, { source: \"primary_button\" })",
-        "onPlanSelect(plan.id, { source: \"plan_card\" })",
+        "onPlanPress(selectedPlan.id, {",
+        "trialEnabled: selectedPlanHasActiveTrial",
+        "onPlanSelect(plan.id, { source: \"plan_card\", trialEnabled })",
+        "const nextPlanId = freeTrialDisplayPlan.id;",
+        "trialEnabled: next",
         "onRestorePress({ source: \"restore_button\" })",
         "onManagePress({ source: \"manage_button\" })",
         "onTermsPress({ source: \"terms_link\" })",
-        "onPrivacyPress({ source: \"privacy_link\" })"
+        "onPrivacyPress({ source: \"privacy_link\" })",
+        "<AbandonedOfferWheel",
+        "source: \"abandoned_wheel_claim\"",
+        "onClose(\"abandoned_wheel_declined\")"
+      ]
+    },
+    {
+      "id": "premium-abandoned-offer-wheel",
+      "description": "The abandoned-offer wheel is deterministic, lands on the real offer slot beside the free near-miss, honors reduced motion, and restores claim and decline paths after the result.",
+      "file": "src/components/AbandonedOfferWheel.js",
+      "requiredFragments": [
+        "const WINNING_SEGMENT_INDEX = 2;",
+        "const FREE_SEGMENT_INDEX = 3;",
+        "const SPIN_TURN_COUNT = 8;",
+        "const FINAL_ROTATION_DEGREES =",
+        "const FULL_SPIN_DURATION_MS = 5200;",
+        "fills[WINNING_SEGMENT_INDEX] = palette.cardBg;",
+        "CLASSIC_TAMAGOTCHI_ANIMATIONS.happyHeadshake",
+        "reduceMotion\n    ? CAT_STATIC_ASSET",
+        "if (stage !== \"idle\") return;",
+        "if (reduceMotion) {",
+        "toValue: 1",
+        "setStage(\"result\")",
+        "if (stage !== \"result\") return;",
+        "onClaim({ discountPercent: normalizedWinningPercent });",
+        "onDismiss({ discountPercent: normalizedWinningPercent });"
+      ]
+    },
+    {
+      "id": "premium-trial-terms-visibility",
+      "description": "The active yearly trial keeps its exact duration on the yearly plan card, uses generic trial copy on the toggle and CTA, and preserves post-trial price, renewal, cancellation, and charge-avoidance terms next to the purchase action.",
+      "file": "src/components/PremiumPaywallModalV2.js",
+      "requiredFragments": [
+        "copy?.v2FreeTrialToggleTitle || localizedUi.freeTrialToggleTitle",
+        "plan?.trialDurationLabel ||",
+        "selectedPlan?.ctaTrialLabel ||",
+        "styles.trialDisclosureBlock",
+        "{selectedPlanTrialNotice}",
+        "!!billingNotice && !selectedPlanHasActiveTrial"
       ]
     },
     {
@@ -636,13 +779,25 @@
     },
     {
       "id": "rating-prompt-actions",
-      "description": "The localized store-rating prompt keeps backdrop/later dismissal and the native store-review confirmation action wired.",
+      "description": "The localized store-rating prompt stays limited to the second save/spend action of the first post-onboarding session and keeps dismissal and store-review actions wired.",
       "file": "App.js",
       "requiredFragments": [
+        "ratingPromptState.firstSessionStatus === \"active\"",
+        "ratingPromptActionCount >= RATING_PROMPT_ACTION_THRESHOLD",
+        "queueRatingPrompt(\"actions\")",
         "onPress={handleRatingPromptLater}",
         "onPress={handleRatingPromptConfirm}",
         "{t(\"ratingPromptLater\")}",
         "{t(\"ratingPromptAction\")}"
+      ]
+    },
+    {
+      "id": "rating-prompt-second-action-threshold",
+      "description": "The store-rating action trigger remains the second save or spend decision.",
+      "file": "src/constants/economyConfig.js",
+      "requiredFragments": [
+        "export const RATING_PROMPT_ACTION_THRESHOLD = 2;",
+        "export const RATING_PROMPT_ACTION_TYPES = new Set([\"save\", \"spend\"]);"
       ]
     },
     {
@@ -670,6 +825,61 @@
         "Uri.parse(\"com.sasarei.almostclean://quick-entry?type=spend\")",
         "class AlmostWidgetSmallProvider : AppWidgetProvider()",
         "class AlmostWidgetLargeProvider : AppWidgetProvider()"
+      ]
+    },
+    {
+      "id": "ios-attribution-starts-before-att",
+      "description": "The app-scoped install identity and AppsFlyer privacy state hydrate before the React root; fresh iOS installs start the SDK immediately with a finite ATT wait window.",
+      "file": "index.js",
+      "requiredFragments": [
+        "const premiumInstallId = await ensurePremiumInstallId();",
+        "await setAppScopedInstallIdentity(premiumInstallId);",
+        "const attWaitSeconds = shouldWaitForAttPrompt({",
+        "void initAttribution({",
+        "timeToWaitForATTUserAuthorization: attWaitSeconds"
+      ],
+      "requiredPatterns": [
+        "bootstrapAttribution\\(\\)[\\s\\S]*registerRootComponent\\(App\\)"
+      ]
+    },
+    {
+      "id": "appsflyer-independent-privacy-controls",
+      "description": "AppsFlyer launch attribution, ATT-controlled advertising ID access, and partner postback sharing remain independently controlled.",
+      "file": "analytics.js",
+      "requiredFragments": [
+        "export const initAttribution = async ({",
+        "timeToWaitForATTUserAuthorization = 0,",
+        "if (!normalizeAttributionValue(appsFlyerCustomerUserId)) {",
+        "appsFlyer.setSharingFilterForPartners(appsFlyerPartnerSharingAllowed ? [] : [\"all\"]);",
+        "appsFlyer.disableAdvertisingIdentifier(!appsFlyerAdvertisingIdEnabled);",
+        "export const setAppsFlyerPartnerSharingAllowed = async (allowed = true) => {",
+        "export const setAppsFlyerAdvertisingIdEnabled = async (enabled = false) => {"
+      ]
+    },
+    {
+      "id": "revenuecat-appsflyer-sharing-filter",
+      "description": "The partner-sharing preference also controls RevenueCat AppsFlyer S2S postbacks and explicitly synchronizes the subscriber attribute.",
+      "file": "src/monetization/purchasesClient.js",
+      "requiredFragments": [
+        "let revenueCatAppsFlyerSharingAllowed = false;",
+        "export const setRevenueCatAppsFlyerSharingAllowedSafe = async (allowed = true) => {",
+        "\"$appsflyerSharingFilter\": revenueCatAppsFlyerSharingAllowed ? \"\" : \"all\"",
+        "await Purchases.syncAttributesAndOfferingsIfNeeded();",
+        "await setRevenueCatAppsFlyerSharingAllowedSafe("
+      ]
+    },
+    {
+      "id": "ios-consent-state-separation",
+      "description": "Analytics consent is persisted directly, ATT only updates IDFA access, and partner sharing uses its own stored preference.",
+      "file": "App.js",
+      "requiredFragments": [
+        "setAnalyticsOptOutFlag(analyticsOptOut).catch(() => {});",
+        "STORAGE_KEYS.APPSFLYER_PARTNER_SHARING_ALLOWED",
+        "setAppsFlyerAdvertisingIdEnabledFlag(isTrackingStatusGranted(iosTrackingStatus))",
+        "setAppsFlyerPartnerSharingAllowedFlag(appsFlyerPartnerSharingAllowed)",
+        "setRevenueCatAppsFlyerSharingAllowedSafe(appsFlyerPartnerSharingAllowed)",
+        "setAnalyticsOptOutState(",
+        ": null"
       ]
     }
   ]

@@ -1,6 +1,6 @@
 {
   "name": "almost_clean",
-  "version": "7.0.1",
+  "version": "7.0.4",
   "main": "index.js",
   "scripts": {
     "start": "EXPO_NO_TYPESCRIPT_SETUP=1 expo start --dev-client",
@@ -14,13 +14,16 @@
     "backend:tunnel": "bash scripts/start-backend-tunnel.sh",
     "check:release": "bash scripts/verify-runtime-parity.sh && npm run size:check",
     "check:functional-parity": "node scripts/check-ui-functional-parity.js",
+    "check:analytics-contract": "node scripts/check-analytics-contract.js",
+    "check:native-analytics-config": "node scripts/check-native-analytics-config.js",
+    "check:applovin-cost": "node scripts/check-applovin-cost-import.js",
     "check:localization": "node scripts/check-localization.js",
     "check:themes": "node scripts/check-themes.js",
     "lint": "eslint .",
     "postinstall": "node scripts/apply-patches.js",
     "size:check": "node scripts/check-app-size.js",
     "typecheck": "tsc --noEmit --pretty false",
-    "verify": "npm run check:functional-parity && npm run typecheck && npm run lint && npm run check:localization && npm run check:themes && npm run backend:test && npm run check:release",
+    "verify": "npm run check:functional-parity && npm run check:analytics-contract && npm run check:native-analytics-config && npm run typecheck && npm run lint && npm run check:localization && npm run check:themes && npm run backend:test && npm run check:release",
     "version:bump": "node scripts/bump-version.js"
   },
   "dependencies": {
@@ -60,12 +63,13 @@
     "react-native": "0.81.4",
     "react-native-appsflyer": "^6.17.8",
     "react-native-confetti-cannon": "^1.5.2",
+    "react-native-draggable-flatlist": "4.0.3",
     "react-native-fbsdk-next": "^13.4.1",
+    "react-native-gesture-handler": "~2.28.0",
     "react-native-purchases": "^9.12.0",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "^5.6.2",
     "react-native-svg": "^15.15.1",
-    "react-native-tiktok-business-sdk": "^1.6.0",
     "react-native-view-shot": "^3.8.0"
   },
   "devDependencies": {

@@ -117,7 +117,7 @@ export const TRANSLATIONS = {
       "Алми скучал без игры и не смог собрать монеты.",
     tamagotchiHourlyRewardClaim: "Забрать",
     tamagotchiHourlyRewardAmount: "+{{amount}}",
-    tamagotchiHourlyRewardPushTitle: "Алми собрал монеты",
+    tamagotchiHourlyRewardPushTitle: "🪙 Алми собрал монеты",
     tamagotchiHourlyRewardPushBody:
       "Алми нашёл {{amount}} зелёных монет. Открой Almost и забери награду.",
     insufficientCoinsTitle: "Недостаточно монет",
@@ -1120,6 +1120,9 @@ export const TRANSLATIONS = {
     soundHint: "Полностью отключить звуковые эффекты.",
     appsflyerAnalyticsLabel: "Делиться аналитикой",
     appsflyerAnalyticsHint: "Помогает улучшать приложение.",
+    appsflyerPartnerSharingLabel: "Передача атрибуции партнёрам",
+    appsflyerPartnerSharingHint:
+      "Разрешает AppsFlyer передавать рекламным партнёрам данные атрибуции.",
     themeLabel: "Тема",
     themeLight: "Светлая",
     themeDark: "Тёмная",
@@ -2221,7 +2224,7 @@ export const TRANSLATIONS = {
       "Almi was bored without playtime and could not collect coins.",
     tamagotchiHourlyRewardClaim: "Collect",
     tamagotchiHourlyRewardAmount: "+{{amount}}",
-    tamagotchiHourlyRewardPushTitle: "Almi collected coins",
+    tamagotchiHourlyRewardPushTitle: "🪙 Almi collected coins",
     tamagotchiHourlyRewardPushBody:
       "Almi found {{amount}} green coins. Open Almost to collect the reward.",
     insufficientCoinsTitle: "Not enough coins",
@@ -3170,6 +3173,9 @@ export const TRANSLATIONS = {
     soundHint: "Disable all sound effects.",
     appsflyerAnalyticsLabel: "Share analytics",
     appsflyerAnalyticsHint: "Helps improve the app.",
+    appsflyerPartnerSharingLabel: "Partner attribution sharing",
+    appsflyerPartnerSharingHint:
+      "Allows AppsFlyer to send attribution data to advertising partners.",
     themeLabel: "Theme",
     themeLight: "Light",
     themeDark: "Dark",
@@ -4245,7 +4251,7 @@ export const TRANSLATIONS = {
       "Almi s'ennuyait sans jeu et n'a pas pu collecter de pièces.",
     tamagotchiHourlyRewardClaim: "Récupérer",
     tamagotchiHourlyRewardAmount: "+{{amount}}",
-    tamagotchiHourlyRewardPushTitle: "Almi a collecté des pièces",
+    tamagotchiHourlyRewardPushTitle: "🪙 Almi a collecté des pièces",
     tamagotchiHourlyRewardPushBody:
       "Almi a trouvé {{amount}} pièces vertes. Ouvre Almost pour récupérer la récompense.",
     insufficientCoinsTitle: "Pas assez de pièces",
@@ -5195,6 +5201,9 @@ export const TRANSLATIONS = {
     soundHint: "Couper tous les effets sonores.",
     appsflyerAnalyticsLabel: "Partager les analytics",
     appsflyerAnalyticsHint: "Aide à améliorer l’application.",
+    appsflyerPartnerSharingLabel: "Partage d’attribution avec les partenaires",
+    appsflyerPartnerSharingHint:
+      "Autorise AppsFlyer à transmettre les données d’attribution aux partenaires publicitaires.",
     themeLabel: "Thème",
     themeLight: "Clair",
     themeDark: "Sombre",
@@ -6262,7 +6271,7 @@ export const TRANSLATIONS = {
       "Almi se aburrió sin jugar y no pudo juntar monedas.",
     tamagotchiHourlyRewardClaim: "Recoger",
     tamagotchiHourlyRewardAmount: "+{{amount}}",
-    tamagotchiHourlyRewardPushTitle: "Almi juntó monedas",
+    tamagotchiHourlyRewardPushTitle: "🪙 Almi juntó monedas",
     tamagotchiHourlyRewardPushBody:
       "Almi encontró {{amount}} monedas verdes. Abre Almost para recoger la recompensa.",
     insufficientCoinsTitle: "No hay suficientes monedas",
@@ -7212,6 +7221,9 @@ export const TRANSLATIONS = {
     soundHint: "Desactiva todos los efectos de sonido.",
     appsflyerAnalyticsLabel: "Compartir analíticas",
     appsflyerAnalyticsHint: "Ayuda a mejorar la app.",
+    appsflyerPartnerSharingLabel: "Compartir atribución con partners",
+    appsflyerPartnerSharingHint:
+      "Permite que AppsFlyer envíe datos de atribución a partners publicitarios.",
     themeLabel: "Tema",
     themeLight: "Claro",
     themeDark: "Oscuro",
