@@ -1,0 +1,189 @@
+{
+  "en": {
+    "app_store": {
+      "name": "Almost - Stop Impulse Buying",
+      "subtitle": "Stop Impulse Buys & Save",
+      "promotional_text": "A refreshed Almost makes mindful saving clearer: smarter monthly limits, weekly reports, an impulse map, goals, streaks, and a more rewarding Almi.",
+      "keywords": "impulse buying,savings tracker,no spend,budget,goals,overspending,money habits",
+      "description": "Stop impulse buying before it becomes regret. Almost helps you pause in the moment, record what you nearly bought, and turn every intentional decision into visible progress.\n\nMAKE THE PAUSE USEFUL\n• Save or spend from a temptation card and see the monthly impact first\n• Put a purchase in Think Later and return with a clearer head\n• Build no-spend streaks without shame or rigid rules\n\nSEE YOUR MONEY PATTERNS\n• Get adaptive monthly limits based on your habits\n• Review weekly and monthly reports\n• Use the impulse map to spot risky days, categories, and triggers\n• Track subscriptions, upcoming charges, and recurring pressure\n\nKEEP A GOAL IN SIGHT\n• Create savings goals and follow progress over time\n• Complete challenges, earn rewards, and care for Almi\n• Use home-screen widgets for quick daily context\n\nAlmost is a personal decision and planning tool. It is not a bank, does not provide financial advice, and does not move money or confirm transfers.",
+      "whats_new": "Almost is now easier and more enjoyable to use, with a refreshed design across the app, clearer navigation, and polished screens, cards, and controls."
+    },
+    "google_play": {
+      "title": "Almost - Stop Impulse Buying",
+      "short_description": "Pause impulse buys, track money kept, and build smarter saving habits",
+      "full_description": "Stop impulse buying before it becomes regret. Almost helps you pause in the moment, record what you nearly bought, and turn every intentional decision into visible progress.\n\nMAKE THE PAUSE USEFUL\n• Save or spend from a temptation card and see the monthly impact first\n• Put a purchase in Think Later and return with a clearer head\n• Build no-spend streaks without shame or rigid rules\n\nSEE YOUR MONEY PATTERNS\n• Get adaptive monthly limits based on your habits\n• Review weekly and monthly reports\n• Use the impulse map to spot risky days, categories, and triggers\n• Track subscriptions, upcoming charges, and recurring pressure\n\nKEEP A GOAL IN SIGHT\n• Create savings goals and follow progress over time\n• Complete challenges, earn rewards, and care for Almi\n• Use home-screen widgets for quick daily context\n\nAlmost is a personal decision and planning tool. It is not a bank, does not provide financial advice, and does not move money or confirm transfers.",
+      "release_notes": "Almost is now easier and more enjoyable to use, with a refreshed design across the app, clearer navigation, and polished screens, cards, and controls.",
+      "feature_graphic_alt": "Almi beside clear budget, calendar, savings goal, and progress cards in the refreshed Almost visual style."
+    }
+  },
+  "es": {
+    "app_store": {
+      "name": "Almost: frena compras impulso",
+      "subtitle": "Frena impulsos y ahorra",
+      "promotional_text": "El nuevo diseño de Almost hace más claro el ahorro consciente: límites mensuales, informes, mapa de impulsos, metas, rachas y un Almi más motivador.",
+      "keywords": "compras impulsivas,ahorro,sin gastos,presupuesto,metas,gastos,hábitos",
+      "description": "Frena una compra impulsiva antes de que se convierta en arrepentimiento. Almost te ayuda a pausar, registrar lo que casi compraste y convertir cada decisión consciente en progreso visible.\n\nHAZ QUE LA PAUSA CUENTE\n• Ahorra o gasta desde una tarjeta de tentación y mira antes el impacto mensual\n• Envía una compra a Pensar después y vuelve con la mente más clara\n• Crea rachas sin gasto sin culpa ni reglas rígidas\n\nENTIENDE TUS PATRONES\n• Recibe límites mensuales que se adaptan a tus hábitos\n• Consulta informes semanales y mensuales\n• Usa el mapa de impulsos para detectar días, categorías y detonantes de riesgo\n• Controla suscripciones y próximos cobros\n\nMANTÉN TUS METAS A LA VISTA\n• Crea metas de ahorro y sigue su avance\n• Completa retos, gana recompensas y cuida de Almi\n• Consulta el contexto diario desde los widgets\n\nAlmost es una herramienta personal de decisión y planificación. No es un banco, no ofrece asesoramiento financiero y no mueve dinero ni confirma transferencias.",
+      "whats_new": "Almost ahora es más fácil y agradable de usar, con un diseño renovado en toda la app, una navegación más clara y pantallas, tarjetas y controles más cuidados."
+    },
+    "google_play": {
+      "title": "Almost: frena compras impulso",
+      "short_description": "Pausa compras impulsivas, registra lo ahorrado y crea mejores hábitos",
+      "full_description": "Frena una compra impulsiva antes de que se convierta en arrepentimiento. Almost te ayuda a pausar, registrar lo que casi compraste y convertir cada decisión consciente en progreso visible.\n\nHAZ QUE LA PAUSA CUENTE\n• Ahorra o gasta desde una tarjeta de tentación y mira antes el impacto mensual\n• Envía una compra a Pensar después y vuelve con la mente más clara\n• Crea rachas sin gasto sin culpa ni reglas rígidas\n\nENTIENDE TUS PATRONES\n• Recibe límites mensuales que se adaptan a tus hábitos\n• Consulta informes semanales y mensuales\n• Usa el mapa de impulsos para detectar días, categorías y detonantes de riesgo\n• Controla suscripciones y próximos cobros\n\nMANTÉN TUS METAS A LA VISTA\n• Crea metas de ahorro y sigue su avance\n• Completa retos, gana recompensas y cuida de Almi\n• Consulta el contexto diario desde los widgets\n\nAlmost es una herramienta personal de decisión y planificación. No es un banco, no ofrece asesoramiento financiero y no mueve dinero ni confirma transferencias.",
+      "release_notes": "Almost ahora es más fácil y agradable de usar, con un diseño renovado en toda la app, una navegación más clara y pantallas, tarjetas y controles más cuidados.",
+      "feature_graphic_alt": "Almi junto a tarjetas claras de presupuesto, calendario, meta de ahorro y progreso con el nuevo estilo visual de Almost."
+    }
+  },
+  "fr": {
+    "app_store": {
+      "name": "Almost : achats impulsifs",
+      "subtitle": "Freine les achats impulsifs",
+      "promotional_text": "Le nouveau design d’Almost rend l’épargne consciente plus claire : limites mensuelles, rapports, carte des impulsions, objectifs, séries et Almi.",
+      "keywords": "achat impulsif,épargne,défi sans dépense,budget,objectifs,dépenses,habitudes",
+      "description": "Freine un achat impulsif avant qu’il ne devienne un regret. Almost t’aide à faire une pause, noter ce que tu as failli acheter et transformer chaque décision consciente en progrès visible.\n\nUNE PAUSE QUI COMPTE\n• Épargne ou dépense depuis une carte de tentation et vois d’abord l’impact mensuel\n• Place un achat dans À revoir plus tard et reviens avec les idées plus claires\n• Construis des séries sans dépense, sans culpabilité ni règles rigides\n\nCOMPRENDS TES HABITUDES\n• Obtiens des limites mensuelles adaptées à ton comportement\n• Consulte les rapports hebdomadaires et mensuels\n• Utilise la carte des impulsions pour repérer les jours, catégories et déclencheurs à risque\n• Suis les abonnements et les prochains prélèvements\n\nGARDE TON OBJECTIF EN VUE\n• Crée des objectifs d’épargne et suis leur progression\n• Relève des défis, gagne des récompenses et prends soin d’Almi\n• Consulte le contexte du jour depuis les widgets\n\nAlmost est un outil personnel de décision et de planification. Ce n’est pas une banque, il ne fournit pas de conseil financier et ne déplace ni ne confirme aucun transfert d’argent.",
+      "whats_new": "Almost est désormais plus simple et plus agréable à utiliser, avec un design repensé dans toute l’app, une navigation plus claire et des écrans, cartes et commandes plus soignées."
+    },
+    "google_play": {
+      "title": "Almost : achats impulsifs",
+      "short_description": "Freine les achats impulsifs et construis de meilleures habitudes d’épargne",
+      "full_description": "Freine un achat impulsif avant qu’il ne devienne un regret. Almost t’aide à faire une pause, noter ce que tu as failli acheter et transformer chaque décision consciente en progrès visible.\n\nUNE PAUSE QUI COMPTE\n• Épargne ou dépense depuis une carte de tentation et vois d’abord l’impact mensuel\n• Place un achat dans À revoir plus tard et reviens avec les idées plus claires\n• Construis des séries sans dépense, sans culpabilité ni règles rigides\n\nCOMPRENDS TES HABITUDES\n• Obtiens des limites mensuelles adaptées à ton comportement\n• Consulte les rapports hebdomadaires et mensuels\n• Utilise la carte des impulsions pour repérer les jours, catégories et déclencheurs à risque\n• Suis les abonnements et les prochains prélèvements\n\nGARDE TON OBJECTIF EN VUE\n• Crée des objectifs d’épargne et suis leur progression\n• Relève des défis, gagne des récompenses et prends soin d’Almi\n• Consulte le contexte du jour depuis les widgets\n\nAlmost est un outil personnel de décision et de planification. Ce n’est pas une banque, il ne fournit pas de conseil financier et ne déplace ni ne confirme aucun transfert d’argent.",
+      "release_notes": "Almost est désormais plus simple et plus agréable à utiliser, avec un design repensé dans toute l’app, une navigation plus claire et des écrans, cartes et commandes plus soignées.",
+      "feature_graphic_alt": "Almi près de cartes claires de budget, calendrier, objectif d’épargne et progression dans le nouveau style visuel d’Almost."
+    }
+  },
+  "ru": {
+    "app_store": {
+      "name": "Almost: стоп импульс-покупкам",
+      "subtitle": "Меньше импульсов, больше цели",
+      "promotional_text": "Обновлённый Almost делает осознанные накопления понятнее: умные лимиты, отчёты, карта импульсов, цели, серии и более мотивирующий Алми.",
+      "keywords": "импульсные покупки,копилка,без трат,бюджет,цели",
+      "description": "Останови импульсную покупку до того, как она превратится в сожаление. Almost помогает сделать паузу, записать то, что ты чуть не купил, и превратить осознанное решение в заметный прогресс.\n\nПАУЗА С ПОЛЬЗОЙ\n• Сохраняй или трать из карточки искушения и заранее смотри месячный эффект\n• Отправляй покупку в «Подумать позже» и возвращайся к ней с ясной головой\n• Собирай серии дней без трат без стыда и жёстких правил\n\nПОНИМАЙ СВОИ ПАТТЕРНЫ\n• Получай месячные лимиты, которые адаптируются к привычкам\n• Смотри недельные и месячные отчёты\n• Находи рискованные дни, категории и триггеры на карте импульсов\n• Следи за подписками и ближайшими списаниями\n\nДЕРЖИ ЦЕЛЬ ПЕРЕД ГЛАЗАМИ\n• Создавай цели накоплений и следи за прогрессом\n• Выполняй челленджи, получай награды и заботься об Алми\n• Быстро проверяй день через виджеты\n\nAlmost — личный инструмент для решений и планирования. Это не банк: приложение не даёт финансовых советов, не перемещает деньги и не подтверждает переводы.",
+      "whats_new": "Almost стал удобнее и приятнее: мы обновили дизайн всего приложения, сделали навигацию понятнее, а экраны, карточки и элементы управления — аккуратнее."
+    },
+    "google_play": {
+      "title": "Almost: стоп импульс-покупкам",
+      "short_description": "Останавливай импульсные покупки и формируй привычку копить осознанно",
+      "full_description": "Останови импульсную покупку до того, как она превратится в сожаление. Almost помогает сделать паузу, записать то, что ты чуть не купил, и превратить осознанное решение в заметный прогресс.\n\nПАУЗА С ПОЛЬЗОЙ\n• Сохраняй или трать из карточки искушения и заранее смотри месячный эффект\n• Отправляй покупку в «Подумать позже» и возвращайся к ней с ясной головой\n• Собирай серии дней без трат без стыда и жёстких правил\n\nПОНИМАЙ СВОИ ПАТТЕРНЫ\n• Получай месячные лимиты, которые адаптируются к привычкам\n• Смотри недельные и месячные отчёты\n• Находи рискованные дни, категории и триггеры на карте импульсов\n• Следи за подписками и ближайшими списаниями\n\nДЕРЖИ ЦЕЛЬ ПЕРЕД ГЛАЗАМИ\n• Создавай цели накоплений и следи за прогрессом\n• Выполняй челленджи, получай награды и заботься об Алми\n• Быстро проверяй день через виджеты\n\nAlmost — личный инструмент для решений и планирования. Это не банк: приложение не даёт финансовых советов, не перемещает деньги и не подтверждает переводы.",
+      "release_notes": "Almost стал удобнее и приятнее: мы обновили дизайн всего приложения, сделали навигацию понятнее, а экраны, карточки и элементы управления — аккуратнее.",
+      "feature_graphic_alt": "Алми рядом с понятными карточками бюджета, календаря, цели накоплений и прогресса в обновлённом стиле Almost."
+    }
+  },
+  "de": {
+    "app_store": {
+      "name": "Almost: Impulskäufe stoppen",
+      "subtitle": "Impulskäufe stoppen & sparen",
+      "promotional_text": "Das neue Almost macht bewusstes Sparen klarer: smarte Monatslimits, Berichte, Impulskarte, Ziele, Serien und ein motivierenderer Almi.",
+      "keywords": "Impulskauf,Spartracker,kauffrei,Budget,Ziele,Ausgaben,Geldgewohnheiten",
+      "description": "Stoppe Impulskäufe, bevor sie zu Reue werden. Almost hilft dir, im richtigen Moment innezuhalten, Beinahe-Käufe festzuhalten und bewusste Entscheidungen als sichtbaren Fortschritt zu erleben.\n\nMACH DIE PAUSE WERTVOLL\n• Spare oder gib über eine Versuchungskarte aus und sieh vorher die Monatswirkung\n• Lege einen Kauf in Später überlegen und kehre mit klarem Kopf zurück\n• Baue kaufreie Serien ohne Schuldgefühl oder starre Regeln auf\n\nERKENNE DEINE MUSTER\n• Nutze monatliche Limits, die sich an deine Gewohnheiten anpassen\n• Prüfe Wochen- und Monatsberichte\n• Erkenne riskante Tage, Kategorien und Auslöser auf der Impulskarte\n• Behalte Abos und kommende Abbuchungen im Blick\n\nBEHALTE DEIN ZIEL VOR AUGEN\n• Erstelle Sparziele und verfolge den Fortschritt\n• Schließe Challenges ab, verdiene Belohnungen und kümmere dich um Almi\n• Nutze Widgets für schnellen Tageskontext\n\nAlmost ist ein persönliches Entscheidungs- und Planungstool. Es ist keine Bank, bietet keine Finanzberatung und bewegt oder bestätigt keine Geldtransfers.",
+      "whats_new": "Almost ist jetzt einfacher und angenehmer zu bedienen – mit einem überarbeiteten Design in der gesamten App, klarerer Navigation und optimierten Bildschirmen, Karten und Bedienelementen."
+    },
+    "google_play": {
+      "title": "Almost: Impulskäufe stoppen",
+      "short_description": "Stoppe Impulskäufe und entwickle bewusstere Spargewohnheiten",
+      "full_description": "Stoppe Impulskäufe, bevor sie zu Reue werden. Almost hilft dir, im richtigen Moment innezuhalten, Beinahe-Käufe festzuhalten und bewusste Entscheidungen als sichtbaren Fortschritt zu erleben.\n\nMACH DIE PAUSE WERTVOLL\n• Spare oder gib über eine Versuchungskarte aus und sieh vorher die Monatswirkung\n• Lege einen Kauf in Später überlegen und kehre mit klarem Kopf zurück\n• Baue kaufreie Serien ohne Schuldgefühl oder starre Regeln auf\n\nERKENNE DEINE MUSTER\n• Nutze monatliche Limits, die sich an deine Gewohnheiten anpassen\n• Prüfe Wochen- und Monatsberichte\n• Erkenne riskante Tage, Kategorien und Auslöser auf der Impulskarte\n• Behalte Abos und kommende Abbuchungen im Blick\n\nBEHALTE DEIN ZIEL VOR AUGEN\n• Erstelle Sparziele und verfolge den Fortschritt\n• Schließe Challenges ab, verdiene Belohnungen und kümmere dich um Almi\n• Nutze Widgets für schnellen Tageskontext\n\nAlmost ist ein persönliches Entscheidungs- und Planungstool. Es ist keine Bank, bietet keine Finanzberatung und bewegt oder bestätigt keine Geldtransfers.",
+      "release_notes": "Almost ist jetzt einfacher und angenehmer zu bedienen – mit einem überarbeiteten Design in der gesamten App, klarerer Navigation und optimierten Bildschirmen, Karten und Bedienelementen.",
+      "feature_graphic_alt": "Almi neben klaren Karten für Budget, Kalender, Sparziel und Fortschritt im überarbeiteten visuellen Stil von Almost."
+    }
+  },
+  "pt": {
+    "app_store": {
+      "name": "Almost: controlar impulsos",
+      "subtitle": "Controle impulsos e poupe",
+      "promotional_text": "O novo visual do Almost torna a poupança consciente mais clara: limites mensais, relatórios, mapa de impulsos, metas, sequências e Almi.",
+      "keywords": "compras impulsivas,poupança,sem gastos,orçamento,metas,despesas,hábitos",
+      "description": "Trave uma compra por impulso antes que vire arrependimento. O Almost ajuda a fazer uma pausa, registar o que quase comprou e transformar cada decisão consciente em progresso visível.\n\nFAÇA A PAUSA CONTAR\n• Poupe ou gaste a partir de uma carta de tentação e veja primeiro o impacto mensal\n• Envie uma compra para Pensar depois e volte com a cabeça mais clara\n• Crie sequências sem gastos, sem culpa nem regras rígidas\n\nENTENDA OS SEUS PADRÕES\n• Receba limites mensais que se adaptam aos seus hábitos\n• Consulte relatórios semanais e mensais\n• Use o mapa de impulsos para encontrar dias, categorias e gatilhos de risco\n• Acompanhe subscrições e próximas cobranças\n\nMANTENHA A META À VISTA\n• Crie metas de poupança e acompanhe o progresso\n• Complete desafios, ganhe recompensas e cuide do Almi\n• Veja rapidamente o contexto do dia nos widgets\n\nO Almost é uma ferramenta pessoal de decisão e planeamento. Não é um banco, não presta aconselhamento financeiro e não movimenta dinheiro nem confirma transferências.",
+      "whats_new": "O Almost agora está mais fácil e agradável de usar, com um design renovado em todo o app, navegação mais clara e telas, cartões e controles mais bem acabados."
+    },
+    "google_play": {
+      "title": "Almost: controlar impulsos",
+      "short_description": "Trave compras impulsivas e crie hábitos de poupança mais conscientes",
+      "full_description": "Trave uma compra por impulso antes que vire arrependimento. O Almost ajuda a fazer uma pausa, registar o que quase comprou e transformar cada decisão consciente em progresso visível.\n\nFAÇA A PAUSA CONTAR\n• Poupe ou gaste a partir de uma carta de tentação e veja primeiro o impacto mensal\n• Envie uma compra para Pensar depois e volte com a cabeça mais clara\n• Crie sequências sem gastos, sem culpa nem regras rígidas\n\nENTENDA OS SEUS PADRÕES\n• Receba limites mensais que se adaptam aos seus hábitos\n• Consulte relatórios semanais e mensais\n• Use o mapa de impulsos para encontrar dias, categorias e gatilhos de risco\n• Acompanhe subscrições e próximas cobranças\n\nMANTENHA A META À VISTA\n• Crie metas de poupança e acompanhe o progresso\n• Complete desafios, ganhe recompensas e cuide do Almi\n• Veja rapidamente o contexto do dia nos widgets\n\nO Almost é uma ferramenta pessoal de decisão e planeamento. Não é um banco, não presta aconselhamento financeiro e não movimenta dinheiro nem confirma transferências.",
+      "release_notes": "O Almost agora está mais fácil e agradável de usar, com um design renovado em todo o app, navegação mais clara e telas, cartões e controles mais bem acabados.",
+      "feature_graphic_alt": "Almi junto a cartões claros de orçamento, calendário, meta de poupança e progresso no novo estilo visual do Almost."
+    }
+  },
+  "it": {
+    "app_store": {
+      "name": "Almost: acquisti d'impulso",
+      "subtitle": "Meno impulsi, più risparmi",
+      "promotional_text": "Il nuovo Almost rende più chiaro il risparmio consapevole: limiti mensili, report, mappa degli impulsi, obiettivi, serie e un Almi più motivante.",
+      "keywords": "acquisti impulsivi,risparmio,senza spese,budget,obiettivi,spese,abitudini",
+      "description": "Ferma un acquisto impulsivo prima che diventi un rimpianto. Almost ti aiuta a fare una pausa, registrare ciò che stavi per comprare e trasformare ogni scelta consapevole in un progresso visibile.\n\nRENDI UTILE LA PAUSA\n• Risparmia o spendi da una carta tentazione e guarda prima l'impatto mensile\n• Metti un acquisto in Pensaci dopo e torna con la mente più lucida\n• Costruisci serie senza spese, senza sensi di colpa o regole rigide\n\nRICONOSCI I TUOI SCHEMI\n• Usa limiti mensili che si adattano alle tue abitudini\n• Consulta report settimanali e mensili\n• Trova giorni, categorie e trigger a rischio sulla mappa degli impulsi\n• Tieni sotto controllo abbonamenti e prossimi addebiti\n\nTIENI L'OBIETTIVO IN VISTA\n• Crea obiettivi di risparmio e segui i progressi\n• Completa sfide, ottieni ricompense e prenditi cura di Almi\n• Controlla il contesto del giorno dai widget\n\nAlmost è uno strumento personale di decisione e pianificazione. Non è una banca, non offre consulenza finanziaria e non sposta denaro né conferma trasferimenti.",
+      "whats_new": "Almost è ora più semplice e piacevole da usare, con un design rinnovato in tutta l’app, una navigazione più chiara e schermate, schede e controlli più curati."
+    },
+    "google_play": {
+      "title": "Almost: acquisti d'impulso",
+      "short_description": "Ferma gli acquisti impulsivi e crea abitudini di risparmio più consapevoli",
+      "full_description": "Ferma un acquisto impulsivo prima che diventi un rimpianto. Almost ti aiuta a fare una pausa, registrare ciò che stavi per comprare e trasformare ogni scelta consapevole in un progresso visibile.\n\nRENDI UTILE LA PAUSA\n• Risparmia o spendi da una carta tentazione e guarda prima l'impatto mensile\n• Metti un acquisto in Pensaci dopo e torna con la mente più lucida\n• Costruisci serie senza spese, senza sensi di colpa o regole rigide\n\nRICONOSCI I TUOI SCHEMI\n• Usa limiti mensili che si adattano alle tue abitudini\n• Consulta report settimanali e mensili\n• Trova giorni, categorie e trigger a rischio sulla mappa degli impulsi\n• Tieni sotto controllo abbonamenti e prossimi addebiti\n\nTIENI L'OBIETTIVO IN VISTA\n• Crea obiettivi di risparmio e segui i progressi\n• Completa sfide, ottieni ricompense e prenditi cura di Almi\n• Controlla il contesto del giorno dai widget\n\nAlmost è uno strumento personale di decisione e pianificazione. Non è una banca, non offre consulenza finanziaria e non sposta denaro né conferma trasferimenti.",
+      "release_notes": "Almost è ora più semplice e piacevole da usare, con un design rinnovato in tutta l’app, una navigazione più chiara e schermate, schede e controlli più curati.",
+      "feature_graphic_alt": "Almi accanto a chiare schede di budget, calendario, obiettivo di risparmio e progresso nel nuovo stile visivo di Almost."
+    }
+  },
+  "ar-sa": {
+    "app_store": {
+      "name": "Almost: أوقف الشراء الاندفاعي",
+      "subtitle": "قلّل الاندفاع وادخر أكثر",
+      "promotional_text": "يجعل تصميم Almost المحدّث الادخار الواعي أوضح: حدود شهرية ذكية وتقارير وخريطة للاندفاع وأهداف وسلاسل وتجربة أكثر تحفيزًا مع Almi.",
+      "keywords": "شراء اندفاعي,ادخار,ميزانية,أهداف,عادات مالية",
+      "description": "أوقف الشراء الاندفاعي قبل أن يتحول إلى ندم. يساعدك Almost على التوقف للحظة وتسجيل ما كدت تشتريه وتحويل كل قرار واعٍ إلى تقدم واضح.\n\nاجعل التوقف مفيدًا\n• اختر الادخار أو الصرف من بطاقة الإغراء وشاهد الأثر الشهري أولًا\n• ضع عملية الشراء في «فكّر لاحقًا» وعد إليها بذهن أصفى\n• ابنِ سلاسل أيام بلا إنفاق من دون لوم أو قواعد قاسية\n\nافهم أنماطك المالية\n• استخدم حدودًا شهرية تتكيف مع عاداتك\n• راجع التقارير الأسبوعية والشهرية\n• اكتشف الأيام والفئات والمحفزات الخطرة في خريطة الاندفاع\n• تابع الاشتراكات والرسوم القادمة\n\nأبقِ هدفك أمامك\n• أنشئ أهداف ادخار وتابع التقدم\n• أكمل التحديات واكسب المكافآت واعتنِ بـ Almi\n• اطّلع بسرعة على يومك من الأدوات المصغرة\n\nAlmost أداة شخصية لاتخاذ القرار والتخطيط. ليست بنكًا، ولا تقدم نصائح مالية، ولا تنقل الأموال أو تؤكد التحويلات.",
+      "whats_new": "أصبح استخدام Almost أسهل وأكثر متعة، بتصميم محدّث في جميع أنحاء التطبيق وتنقّل أوضح وشاشات وبطاقات وعناصر تحكم أكثر أناقة."
+    },
+    "google_play": {
+      "title": "Almost: أوقف الشراء الاندفاعي",
+      "short_description": "توقف قبل الشراء الاندفاعي وابنِ عادات ادخار أكثر وعيًا",
+      "full_description": "أوقف الشراء الاندفاعي قبل أن يتحول إلى ندم. يساعدك Almost على التوقف للحظة وتسجيل ما كدت تشتريه وتحويل كل قرار واعٍ إلى تقدم واضح.\n\nاجعل التوقف مفيدًا\n• اختر الادخار أو الصرف من بطاقة الإغراء وشاهد الأثر الشهري أولًا\n• ضع عملية الشراء في «فكّر لاحقًا» وعد إليها بذهن أصفى\n• ابنِ سلاسل أيام بلا إنفاق من دون لوم أو قواعد قاسية\n\nافهم أنماطك المالية\n• استخدم حدودًا شهرية تتكيف مع عاداتك\n• راجع التقارير الأسبوعية والشهرية\n• اكتشف الأيام والفئات والمحفزات الخطرة في خريطة الاندفاع\n• تابع الاشتراكات والرسوم القادمة\n\nأبقِ هدفك أمامك\n• أنشئ أهداف ادخار وتابع التقدم\n• أكمل التحديات واكسب المكافآت واعتنِ بـ Almi\n• اطّلع بسرعة على يومك من الأدوات المصغرة\n\nAlmost أداة شخصية لاتخاذ القرار والتخطيط. ليست بنكًا، ولا تقدم نصائح مالية، ولا تنقل الأموال أو تؤكد التحويلات.",
+      "release_notes": "أصبح استخدام Almost أسهل وأكثر متعة، بتصميم محدّث في جميع أنحاء التطبيق وتنقّل أوضح وشاشات وبطاقات وعناصر تحكم أكثر أناقة.",
+      "feature_graphic_alt": "Almi بجوار بطاقات واضحة للميزانية والتقويم وهدف الادخار والتقدم ضمن الأسلوب المرئي المحدّث لتطبيق Almost."
+    }
+  },
+  "ar-ae": {
+    "app_store": {
+      "name": "Almost: أوقف الشراء الاندفاعي",
+      "subtitle": "قلّل الاندفاع ووفّر أكثر",
+      "promotional_text": "يجعل تصميم Almost المحدّث التوفير الواعي أوضح: حدود شهرية ذكية وتقارير وخريطة للاندفاع وأهداف وسلاسل وتجربة أكثر تحفيزًا مع Almi.",
+      "keywords": "شراء اندفاعي,توفير,ميزانية,أهداف,عادات مالية",
+      "description": "أوقف الشراء الاندفاعي قبل أن يتحول إلى ندم. يساعدك Almost على التوقف للحظة وتسجيل ما كدت تشتريه وتحويل كل قرار واعٍ إلى تقدم واضح.\n\nاجعل التوقف مفيدًا\n• اختر التوفير أو الصرف من بطاقة الإغراء وشاهد الأثر الشهري أولًا\n• ضع عملية الشراء في «فكّر لاحقًا» وعد إليها بذهن أصفى\n• ابنِ سلاسل أيام بلا إنفاق من دون لوم أو قواعد قاسية\n\nافهم أنماطك المالية\n• استخدم حدودًا شهرية تتكيف مع عاداتك\n• راجع التقارير الأسبوعية والشهرية\n• اكتشف الأيام والفئات والمحفزات الخطرة في خريطة الاندفاع\n• تابع الاشتراكات والرسوم القادمة\n\nأبقِ هدفك أمامك\n• أنشئ أهداف توفير وتابع التقدم\n• أكمل التحديات واكسب المكافآت واعتنِ بـ Almi\n• اطّلع بسرعة على يومك من الأدوات المصغرة\n\nAlmost أداة شخصية لاتخاذ القرار والتخطيط. ليست بنكًا، ولا تقدم نصائح مالية، ولا تنقل الأموال أو تؤكد التحويلات.",
+      "whats_new": "أصبح استخدام Almost أسهل وأكثر متعة، بتصميم محدّث في جميع أنحاء التطبيق وتنقّل أوضح وشاشات وبطاقات وعناصر تحكم أكثر أناقة."
+    },
+    "google_play": {
+      "title": "Almost: أوقف الشراء الاندفاعي",
+      "short_description": "توقف قبل الشراء الاندفاعي وابنِ عادات توفير أكثر وعيًا",
+      "full_description": "أوقف الشراء الاندفاعي قبل أن يتحول إلى ندم. يساعدك Almost على التوقف للحظة وتسجيل ما كدت تشتريه وتحويل كل قرار واعٍ إلى تقدم واضح.\n\nاجعل التوقف مفيدًا\n• اختر التوفير أو الصرف من بطاقة الإغراء وشاهد الأثر الشهري أولًا\n• ضع عملية الشراء في «فكّر لاحقًا» وعد إليها بذهن أصفى\n• ابنِ سلاسل أيام بلا إنفاق من دون لوم أو قواعد قاسية\n\nافهم أنماطك المالية\n• استخدم حدودًا شهرية تتكيف مع عاداتك\n• راجع التقارير الأسبوعية والشهرية\n• اكتشف الأيام والفئات والمحفزات الخطرة في خريطة الاندفاع\n• تابع الاشتراكات والرسوم القادمة\n\nأبقِ هدفك أمامك\n• أنشئ أهداف توفير وتابع التقدم\n• أكمل التحديات واكسب المكافآت واعتنِ بـ Almi\n• اطّلع بسرعة على يومك من الأدوات المصغرة\n\nAlmost أداة شخصية لاتخاذ القرار والتخطيط. ليست بنكًا، ولا تقدم نصائح مالية، ولا تنقل الأموال أو تؤكد التحويلات.",
+      "release_notes": "أصبح استخدام Almost أسهل وأكثر متعة، بتصميم محدّث في جميع أنحاء التطبيق وتنقّل أوضح وشاشات وبطاقات وعناصر تحكم أكثر أناقة.",
+      "feature_graphic_alt": "Almi بجوار بطاقات واضحة للميزانية والتقويم وهدف التوفير والتقدم ضمن الأسلوب المرئي المحدّث لتطبيق Almost."
+    }
+  },
+  "zh": {
+    "app_store": {
+      "name": "Almost：停止冲动消费",
+      "subtitle": "少冲动消费，多实现目标",
+      "promotional_text": "焕新的 Almost 让理性储蓄更清晰：智能月度限额、周月报告、冲动地图、储蓄目标、连续记录，以及更有陪伴感的 Almi。",
+      "keywords": "冲动消费,储蓄记录,无消费挑战,预算,储蓄目标,支出,理财习惯",
+      "description": "在冲动消费变成后悔之前先停一下。Almost 帮你记录差点买下的东西，把每一次有意识的决定变成看得见的进步。\n\n让暂停真正有用\n• 在诱惑卡片中选择存下或花掉，并先查看月度影响\n• 把想买的东西放入“稍后再想”，冷静后再决定\n• 轻松建立无消费连续记录，不羞辱，也不靠僵硬规则\n\n看清自己的消费模式\n• 使用会根据习惯调整的月度限额\n• 查看周报和月报\n• 通过冲动地图发现高风险日期、类别和触发因素\n• 跟踪订阅与即将发生的扣费\n\n始终看见自己的目标\n• 创建储蓄目标并持续查看进度\n• 完成挑战、领取奖励并照顾 Almi\n• 通过桌面小组件快速了解当天状态\n\nAlmost 是个人决策与规划工具，不是银行，不提供金融建议，也不会移动资金或确认转账。",
+      "whats_new": "Almost 现在更易用、更愉悦：全新的应用设计、更清晰的导航，以及更精致的页面、卡片和控件，让日常使用更加顺畅。"
+    },
+    "google_play": {
+      "title": "Almost：停止冲动消费",
+      "short_description": "暂停冲动消费，记录省下的钱，养成更理性的储蓄习惯",
+      "full_description": "在冲动消费变成后悔之前先停一下。Almost 帮你记录差点买下的东西，把每一次有意识的决定变成看得见的进步。\n\n让暂停真正有用\n• 在诱惑卡片中选择存下或花掉，并先查看月度影响\n• 把想买的东西放入“稍后再想”，冷静后再决定\n• 轻松建立无消费连续记录，不羞辱，也不靠僵硬规则\n\n看清自己的消费模式\n• 使用会根据习惯调整的月度限额\n• 查看周报和月报\n• 通过冲动地图发现高风险日期、类别和触发因素\n• 跟踪订阅与即将发生的扣费\n\n始终看见自己的目标\n• 创建储蓄目标并持续查看进度\n• 完成挑战、领取奖励并照顾 Almi\n• 通过桌面小组件快速了解当天状态\n\nAlmost 是个人决策与规划工具，不是银行，不提供金融建议，也不会移动资金或确认转账。",
+      "release_notes": "Almost 现在更易用、更愉悦：全新的应用设计、更清晰的导航，以及更精致的页面、卡片和控件，让日常使用更加顺畅。",
+      "feature_graphic_alt": "Almi 与清晰的预算、日历、储蓄目标和进度卡片，呈现 Almost 焕新的视觉风格。"
+    }
+  },
+  "ko": {
+    "app_store": {
+      "name": "Almost: 충동구매 멈추기",
+      "subtitle": "충동구매를 줄이고 더 저축하기",
+      "promotional_text": "새로워진 Almost에서 더 똑똑한 월별 한도, 주간·월간 리포트, 충동 지도, 저축 목표, 연속 기록, Almi의 보상으로 지출 습관을 바꿔 보세요.",
+      "keywords": "충동구매,저축기록,무지출챌린지,예산,저축목표,지출,돈습관",
+      "description": "충동구매가 후회가 되기 전에 잠시 멈춰 보세요. Almost는 살 뻔한 물건을 기록하고, 의식적인 선택을 눈에 보이는 진전으로 바꾸도록 도와줍니다.\n\n멈춤을 의미 있게\n• 유혹 카드에서 저축 또는 지출을 선택하고 월간 영향을 먼저 확인하세요\n• 구매를 나중에 생각하기에 보관한 뒤 더 차분하게 다시 결정하세요\n• 죄책감이나 엄격한 규칙 없이 무지출 연속 기록을 쌓으세요\n\n나의 소비 패턴 이해하기\n• 습관에 맞춰 조정되는 월별 한도를 사용하세요\n• 주간 및 월간 리포트를 확인하세요\n• 충동 지도에서 위험한 날, 카테고리, 계기를 찾아보세요\n• 구독과 예정 결제를 관리하세요\n\n목표를 계속 눈앞에\n• 저축 목표를 만들고 진행 상황을 추적하세요\n• 챌린지를 완료하고 보상을 받으며 Almi를 돌보세요\n• 홈 화면 위젯에서 오늘의 흐름을 빠르게 확인하세요\n\nAlmost는 개인적인 의사결정과 계획을 돕는 도구입니다. 은행이나 금융 자문 서비스가 아니며, 돈을 이동하거나 이체를 확인하지 않습니다.",
+      "whats_new": "Almost가 앱 전반의 새로워진 디자인과 더 명확한 탐색, 한층 세련된 화면·카드·조작 요소로 더욱 쉽고 즐겁게 사용할 수 있게 되었습니다."
+    },
+    "google_play": {
+      "title": "Almost: 충동구매 멈추기",
+      "short_description": "충동구매를 멈추고, 아낀 돈을 기록하며 더 나은 저축 습관을 만드세요",
+      "full_description": "충동구매가 후회가 되기 전에 잠시 멈춰 보세요. Almost는 살 뻔한 물건을 기록하고, 의식적인 선택을 눈에 보이는 진전으로 바꾸도록 도와줍니다.\n\n멈춤을 의미 있게\n• 유혹 카드에서 저축 또는 지출을 선택하고 월간 영향을 먼저 확인하세요\n• 구매를 나중에 생각하기에 보관한 뒤 더 차분하게 다시 결정하세요\n• 죄책감이나 엄격한 규칙 없이 무지출 연속 기록을 쌓으세요\n\n나의 소비 패턴 이해하기\n• 습관에 맞춰 조정되는 월별 한도를 사용하세요\n• 주간 및 월간 리포트를 확인하세요\n• 충동 지도에서 위험한 날, 카테고리, 계기를 찾아보세요\n• 구독과 예정 결제를 관리하세요\n\n목표를 계속 눈앞에\n• 저축 목표를 만들고 진행 상황을 추적하세요\n• 챌린지를 완료하고 보상을 받으며 Almi를 돌보세요\n• 홈 화면 위젯에서 오늘의 흐름을 빠르게 확인하세요\n\nAlmost는 개인적인 의사결정과 계획을 돕는 도구입니다. 은행이나 금융 자문 서비스가 아니며, 돈을 이동하거나 이체를 확인하지 않습니다.",
+      "release_notes": "Almost가 앱 전반의 새로워진 디자인과 더 명확한 탐색, 한층 세련된 화면·카드·조작 요소로 더욱 쉽고 즐겁게 사용할 수 있게 되었습니다.",
+      "feature_graphic_alt": "새로워진 Almost 비주얼 스타일 속에서 Almi가 예산, 달력, 저축 목표, 진행 상황 카드 옆에 있습니다."
+    }
+  }
+}

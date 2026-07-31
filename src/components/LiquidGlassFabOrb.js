@@ -12,6 +12,7 @@ import PlatformGlassBackground, {
 } from "./PlatformGlassBackground";
 import { useMotionPreferences } from "../hooks/useMotionPreferences";
 import { createMotionLoop } from "../utils/motion";
+import { resolveFabricAutoFitMinimumFontSize } from "../utils/textAutoFit";
 import { UI_TOUCH_TARGET } from "../constants/designSystem";
 
 const colorWithAlpha = (hex, alpha = 1) => {
@@ -517,6 +518,15 @@ const LiquidGlassFabOrb = ({
           ]}
           adjustsFontSizeToFit={Platform.OS !== "android" && shouldAutoFitIcon}
           minimumFontScale={Platform.OS === "android" ? undefined : iconMinimumScale}
+          minimumFontSize={
+            Platform.OS !== "android" && shouldAutoFitIcon
+              ? resolveFabricAutoFitMinimumFontSize({
+                  fontSize: iconSize,
+                  minimumFontScale: iconMinimumScale,
+                  allowFontScaling: false,
+                })
+              : undefined
+          }
           allowFontScaling={false}
           ellipsizeMode="clip"
           numberOfLines={1}

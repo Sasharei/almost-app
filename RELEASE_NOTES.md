@@ -1,5 +1,62 @@
 # Release Notes
 
+## 7.0.4 (from 7.0.3)
+
+### EN
+- Reorder temptation cards with a simple drag and drop — Almost now remembers the order you choose.
+- Premium plans and free trials are clearer and more reliable, with smoother purchase and restore flows.
+- We also polished the interface and fixed issues for a more stable everyday experience.
+
+### RU
+- Меняйте порядок карточек искушений простым перетаскиванием — Almost запомнит выбранный порядок.
+- Premium-планы и пробные периоды стали понятнее и надежнее, а покупка и восстановление подписки — удобнее.
+- Мы также доработали интерфейс и исправили ошибки, чтобы приложение работало стабильнее каждый день.
+
+### ES
+- Reordena las tarjetas de tentación con solo arrastrarlas y soltarlas; Almost recordará el orden que elijas.
+- Los planes Premium y las pruebas gratuitas ahora son más claros y fiables, con compras y restauraciones más fluidas.
+- También pulimos la interfaz y corregimos errores para ofrecer una experiencia diaria más estable.
+
+### FR
+- Réorganisez les cartes de tentation par simple glisser-déposer : Almost mémorise désormais l’ordre choisi.
+- Les offres Premium et les essais gratuits sont plus clairs et plus fiables, avec des achats et restaurations plus fluides.
+- Nous avons également peaufiné l’interface et corrigé des problèmes pour une expérience quotidienne plus stable.
+
+### DE
+- Ordne Versuchungskarten einfach per Drag-and-drop neu – Almost merkt sich jetzt deine gewählte Reihenfolge.
+- Premium-Tarife und kostenlose Testzeiträume sind klarer und zuverlässiger, mit reibungsloseren Käufen und Wiederherstellungen.
+- Außerdem haben wir die Oberfläche verfeinert und Fehler behoben, damit die App im Alltag stabiler läuft.
+
+### PT
+- Reordene os cartões de tentação arrastando e soltando — o Almost agora guarda a ordem escolhida.
+- Os planos Premium e os testes gratuitos estão mais claros e confiáveis, com compras e restaurações mais fluidas.
+- Também refinamos a interface e corrigimos problemas para uma experiência diária mais estável.
+
+### IT
+- Riordina le carte tentazione con un semplice trascinamento: Almost ora ricorda l’ordine scelto.
+- I piani Premium e le prove gratuite sono più chiari e affidabili, con acquisti e ripristini più fluidi.
+- Abbiamo inoltre perfezionato l’interfaccia e risolto alcuni problemi per un’esperienza quotidiana più stabile.
+
+### AR (SA)
+- أعد ترتيب بطاقات الإغراء بسهولة عبر السحب والإفلات — وسيتذكر Almost الترتيب الذي اخترته.
+- أصبحت خطط Premium والتجارب المجانية أوضح وأكثر موثوقية، مع عمليات شراء واستعادة أكثر سلاسة.
+- كما حسّنا الواجهة وأصلحنا بعض المشكلات لتجربة يومية أكثر استقرارًا.
+
+### AR (AE)
+- أعد ترتيب بطاقات الإغراء بسهولة عبر السحب والإفلات — وسيتذكر Almost الترتيب الذي اخترته.
+- أصبحت خطط Premium والتجارب المجانية أوضح وأكثر موثوقية، مع عمليات شراء واستعادة أكثر سلاسة.
+- كما حسّنا الواجهة وأصلحنا بعض المشكلات لتجربة يومية أكثر استقرارًا.
+
+### ZH
+- 现在可以通过拖放轻松调整诱惑卡片的顺序，Almost 会记住你的选择。
+- Premium 方案和免费试用更加清晰可靠，购买与恢复流程也更顺畅。
+- 我们还优化了界面并修复了一些问题，让日常使用更加稳定。
+
+### KO
+- 유혹 카드를 간단히 끌어다 놓아 순서를 바꿀 수 있으며, Almost가 선택한 순서를 기억합니다.
+- Premium 플랜과 무료 체험이 더 명확하고 안정적으로 개선되었고, 구매 및 복원 과정도 한층 매끄러워졌습니다.
+- 인터페이스를 다듬고 여러 문제를 해결해 일상적인 사용 안정성도 높였습니다.
+
 ## 7.0.1 (from 7.0.0)
 
 ### EN

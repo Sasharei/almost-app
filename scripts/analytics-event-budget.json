@@ -1,0 +1,5 @@
+{
+  "maxEventNames": 216,
+  "schemaVersion": "2",
+  "reviewNote": "Increase maxEventNames only with an explicit analytics-contract review."
+}

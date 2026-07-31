@@ -1,3 +1,116 @@
+import com.android.build.api.instrumentation.AsmClassVisitorFactory
+import com.android.build.api.instrumentation.ClassContext
+import com.android.build.api.instrumentation.ClassData
+import com.android.build.api.instrumentation.FramesComputationMode
+import com.android.build.api.instrumentation.InstrumentationParameters
+import com.android.build.api.instrumentation.InstrumentationScope
+import org.objectweb.asm.ClassVisitor
+import org.objectweb.asm.Label
+import org.objectweb.asm.MethodVisitor
+import org.objectweb.asm.Opcodes
+
+abstract class ReactModalHostStabilityVisitorFactory
+        implements AsmClassVisitorFactory<InstrumentationParameters.None> {
+    private static final String TARGET_CLASS =
+        "com.facebook.react.views.modal.ReactModalHostView"
+    private static final String TARGET_INTERNAL_NAME =
+        "com/facebook/react/views/modal/ReactModalHostView"
+    private static final Map<String, Map<String, String>> GUARDED_SETTERS = [
+        setStatusBarTranslucent: [
+            field: "statusBarTranslucent",
+            argument: "Z",
+        ],
+        setNavigationBarTranslucent: [
+            field: "navigationBarTranslucent",
+            argument: "Z",
+        ],
+        setAnimationType: [
+            field: "animationType",
+            argument: "Ljava/lang/String;",
+        ],
+        setHardwareAccelerated: [
+            field: "hardwareAccelerated",
+            argument: "Z",
+        ],
+    ]
+
+    @Override
+    boolean isInstrumentable(ClassData classData) {
+        return classData.className == TARGET_CLASS
+    }
+
+    @Override
+    ClassVisitor createClassVisitor(
+            ClassContext classContext,
+            ClassVisitor nextClassVisitor
+    ) {
+        return new ClassVisitor(Opcodes.ASM9, nextClassVisitor) {
+            @Override
+            MethodVisitor visitMethod(
+                    int access,
+                    String name,
+                    String descriptor,
+                    String signature,
+                    String[] exceptions
+            ) {
+                MethodVisitor nextMethodVisitor = super.visitMethod(
+                    access,
+                    name,
+                    descriptor,
+                    signature,
+                    exceptions
+                )
+                Map<String, String> guardedSetter = GUARDED_SETTERS[name]
+                if (
+                    guardedSetter == null ||
+                    descriptor != "(${guardedSetter.argument})V"
+                ) {
+                    return nextMethodVisitor
+                }
+                String fieldName = guardedSetter.field
+                String argumentDescriptor = guardedSetter.argument
+                return new MethodVisitor(Opcodes.ASM9, nextMethodVisitor) {
+                    @Override
+                    void visitCode() {
+                        super.visitCode()
+                        Label valueChanged = new Label()
+                        if (argumentDescriptor == "Z") {
+                            mv.visitVarInsn(Opcodes.ALOAD, 0)
+                            mv.visitFieldInsn(
+                                Opcodes.GETFIELD,
+                                TARGET_INTERNAL_NAME,
+                                fieldName,
+                                argumentDescriptor
+                            )
+                            mv.visitVarInsn(Opcodes.ILOAD, 1)
+                            mv.visitJumpInsn(Opcodes.IF_ICMPNE, valueChanged)
+                        } else {
+                            mv.visitVarInsn(Opcodes.ALOAD, 0)
+                            mv.visitFieldInsn(
+                                Opcodes.GETFIELD,
+                                TARGET_INTERNAL_NAME,
+                                fieldName,
+                                argumentDescriptor
+                            )
+                            mv.visitVarInsn(Opcodes.ALOAD, 1)
+                            mv.visitMethodInsn(
+                                Opcodes.INVOKESTATIC,
+                                "java/util/Objects",
+                                "equals",
+                                "(Ljava/lang/Object;Ljava/lang/Object;)Z",
+                                false
+                            )
+                            mv.visitJumpInsn(Opcodes.IFEQ, valueChanged)
+                        }
+                        mv.visitInsn(Opcodes.RETURN)
+                        mv.visitLabel(valueChanged)
+                    }
+                }
+            }
+        }
+    }
+}
+
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
@@ -136,8 +249,8 @@ android {
         applicationId "com.sasarei.almostclean"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 112
-        versionName "7.0.1"
+        versionCode 116
+        versionName "7.0.4"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
         resValue "string", "facebook_app_id", facebookAppId
@@ -191,6 +304,18 @@ android {
     }
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.instrumentation.transformClassesWith(
+            ReactModalHostStabilityVisitorFactory.class,
+            InstrumentationScope.ALL
+        ) {}
+        variant.instrumentation.setAsmFramesComputationMode(
+            FramesComputationMode.COMPUTE_FRAMES_FOR_INSTRUMENTED_METHODS
+        )
     }
 }
 

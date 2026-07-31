@@ -87,6 +87,32 @@ export const PAYWALL_TRIAL_BADGE_BY_LANGUAGE = {
   ko: "무료 체험",
 };
 
+export const PAYWALL_TRIAL_DURATION_TEMPLATE_BY_LANGUAGE = {
+  ru: "Бесплатно {{count}} дн.",
+  en: "{{count}}-day free trial",
+  es: "{{count}} días gratis",
+  fr: "{{count}} jours gratuits",
+  de: "{{count}} Tage gratis",
+  pt: "{{count}} dias grátis",
+  it: "{{count}} giorni gratis",
+  ar: "{{count}} أيام مجاناً",
+  zh: "{{count}} 天免费试用",
+  ko: "{{count}}일 무료 체험",
+};
+
+export const PAYWALL_TRIAL_NOTICE_TEMPLATE_BY_LANGUAGE = {
+  ru: "{{trial}}, затем {{price}}. Ежегодное автопродление. Отмените в {{store}} до окончания пробного периода, чтобы избежать списания.",
+  en: "{{trial}}, then {{price}}. Automatically renews annually. Cancel in {{store}} before the trial ends to avoid being charged.",
+  es: "{{trial}}, después {{price}}. Se renueva automáticamente cada año. Cancela en {{store}} antes de que termine la prueba para evitar el cobro.",
+  fr: "{{trial}}, puis {{price}}. Renouvellement automatique annuel. Annulez via {{store}} avant la fin de l’essai pour éviter tout prélèvement.",
+  de: "{{trial}}, danach {{price}}. Verlängert sich automatisch jährlich. Vor Ablauf der Testphase in {{store}} kündigen, um eine Abbuchung zu vermeiden.",
+  pt: "{{trial}}, depois {{price}}. Renovação automática anual. Cancele em {{store}} antes do fim do teste para evitar a cobrança.",
+  it: "{{trial}}, poi {{price}}. Rinnovo automatico annuale. Annulla su {{store}} prima della fine della prova per evitare l’addebito.",
+  ar: "{{trial}}، ثم {{price}}. يتجدد الاشتراك تلقائياً كل سنة. ألغِ عبر {{store}} قبل انتهاء التجربة لتجنب تحصيل الرسوم.",
+  zh: "{{trial}}，之后收费 {{price}}。此后每年自动续订。请在试用结束前通过 {{store}} 取消，以免被扣费。",
+  ko: "{{trial}} 후 {{price}}이 청구되며 매년 자동 갱신됩니다. 요금이 청구되지 않도록 체험 종료 전에 {{store}}에서 취소하세요.",
+};
+
 export const PAYWALL_EQUIVALENT_SOURCE_IDS = [
   "coffee_to_go",
   "netflix_subscription",
@@ -264,15 +290,15 @@ export const PAYWALL_PERIOD_UNIT_TO_DAYS = {
 
 export const PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE = {
   ru: "Начать бесплатный пробный период",
-  en: "Start Free Trial",
-  es: "Comenzar prueba gratis",
-  fr: "Commencer l'essai gratuit",
-  de: "Kostenlose Testversion starten",
-  pt: "Iniciar teste grátis",
-  it: "Inizia la prova gratis",
-  ar: "ابدأ التجربة المجانية",
-  zh: "开始免费试用",
-  ko: "무료 체험 시작",
+  en: "Start my free trial",
+  es: "Iniciar mi prueba gratis",
+  fr: "Commencer mon essai gratuit",
+  de: "Meine kostenlose Testphase starten",
+  pt: "Iniciar o meu teste grátis",
+  it: "Inizia la mia prova gratuita",
+  ar: "ابدأ تجربتي المجانية",
+  zh: "开始我的免费试用",
+  ko: "내 무료 체험 시작",
 };
 
 export const PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE = {
@@ -301,8 +327,8 @@ export const PAYWALL_NOW_PREFIX_BY_LANGUAGE = {
   ko: "지금",
 };
 
-export const PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS = 7;
-export const PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS = 7;
+export const PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS = 3;
+export const PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS = 3;
 
 export const PAYWALL_SAR_MARKERS_REGEX = /(﷼|sar|ر\.?\s*س\.?|ريال(?:ات)?)/gi;
 export const PAYWALL_BIDI_MARKS_REGEX = /[\u200e\u200f\u061c]/g;

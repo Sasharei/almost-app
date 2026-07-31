@@ -22,4 +22,7 @@ assert_contains "$ROOT_DIR/ios/Podfile.properties.json" '"newArchEnabled": "true
 assert_contains "$ROOT_DIR/App.js" 'UI_REFRESH_ROLLOUT_RC_KEY = "ui_refresh_v1_enabled"' "UI refresh rollout flag is defined"
 assert_contains "$ROOT_DIR/App.js" "setUiRefreshRolloutEnabled" "UI refresh rollout flag is wired"
 
+node "$ROOT_DIR/scripts/check-analytics-contract.js"
+node "$ROOT_DIR/scripts/check-native-analytics-config.js"
+
 echo "Runtime parity checks passed."

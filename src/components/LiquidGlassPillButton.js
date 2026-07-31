@@ -13,6 +13,7 @@ import LiquidGlassNativeView, { canUseNativeLiquidGlassView } from "./LiquidGlas
 import NativeLiquidGlassButton, { canUseNativeLiquidGlassButton } from "./NativeLiquidGlassButton";
 import { UI_TOUCH_TARGET } from "../constants/designSystem";
 import { resolveForegroundForColor } from "../utils/themeColors";
+import { resolveFabricAutoFitMinimumFontSize } from "../utils/textAutoFit";
 const IOS_NATIVE_LIQUID_MIN_VERSION = 26;
 
 const colorWithAlpha = (hex, alpha = 1) => {
@@ -257,6 +258,11 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.84}
+          minimumFontSize={resolveFabricAutoFitMinimumFontSize({
+            fontSize: adaptiveLabelFontSize,
+            minimumFontScale: 0.84,
+            maxFontSizeMultiplier: 1.2,
+          })}
           allowFontScaling
           maxFontSizeMultiplier={1.2}
           ellipsizeMode="tail"

@@ -24,7 +24,6 @@ import {
 import { useMotionPreferences } from "../hooks/useMotionPreferences";
 import { isRtlLanguage } from "../utils/language";
 
-const PREMIUM_VIOLET = "#7C3AED";
 const STORY_DURATION_MS = 6800;
 const SWIPE_DISTANCE = 52;
 const ARTWORK_FRAME_PADDING = 6;
@@ -71,7 +70,7 @@ const STORY_DEFINITIONS = Object.freeze([
   },
 ]);
 
-const PremiumUnlockStories = ({ language, onClose, playSound, t }) => {
+const PremiumUnlockStories = ({ colors, language, onClose, playSound, t }) => {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const { reduceMotion } = useMotionPreferences();
@@ -107,6 +106,21 @@ const PremiumUnlockStories = ({ language, onClose, playSound, t }) => {
   const artworkHeight =
     (artworkWidth - ARTWORK_FRAME_PADDING * 2) / 0.75 +
     ARTWORK_FRAME_PADDING * 2;
+  const palette = useMemo(
+    () => ({
+      background: colors?.background || "#F5F6F8",
+      card: colors?.card || "#FFFFFF",
+      text: colors?.text || "#202129",
+      muted: colors?.muted || "#626774",
+      border: colors?.border || "#D8DCE3",
+      surfaceMuted: colors?.surfaceMuted || colors?.background || "#ECEEF2",
+      shadow: colors?.shadow || "#191B22",
+      accent: colors?.text || "#202129",
+      onAccent: colors?.background || "#F5F6F8",
+      statusBarStyle: colors?.appearance === "dark" ? "light" : "dark",
+    }),
+    [colors]
+  );
 
   useEffect(() => {
     activeIndexRef.current = activeIndex;
@@ -271,8 +285,12 @@ const PremiumUnlockStories = ({ language, onClose, playSound, t }) => {
   };
 
   return (
-    <View style={styles.root} accessibilityViewIsModal {...panResponder.panHandlers}>
-      <StatusBar style="dark" backgroundColor="#FFFFFF" />
+    <View
+      style={[styles.root, { backgroundColor: palette.background }]}
+      accessibilityViewIsModal
+      {...panResponder.panHandlers}
+    >
+      <StatusBar style={palette.statusBarStyle} backgroundColor={palette.background} />
 
       <View
         style={[
@@ -297,12 +315,24 @@ const PremiumUnlockStories = ({ language, onClose, playSound, t }) => {
           }}
         >
           {STORY_DEFINITIONS.map((item, index) => (
-            <View key={item.id} style={styles.progressTrack}>
-              {index < activeIndex && <View style={[styles.progressFill, styles.progressComplete]} />}
+            <View
+              key={item.id}
+              style={[styles.progressTrack, { backgroundColor: palette.surfaceMuted }]}
+            >
+              {index < activeIndex && (
+                <View
+                  style={[
+                    styles.progressFill,
+                    styles.progressComplete,
+                    { backgroundColor: palette.accent },
+                  ]}
+                />
+              )}
               {index === activeIndex && (
                 <Animated.View
                   style={[
                     styles.progressFill,
+                    { backgroundColor: palette.accent },
                     {
                       width: isLastStory
                         ? "100%"
@@ -319,20 +349,34 @@ const PremiumUnlockStories = ({ language, onClose, playSound, t }) => {
         </View>
 
         <View style={[styles.brandRow, isRtl && styles.rowReverse]}>
-          <View style={styles.brandBadge}>
-            <View style={styles.brandMark} />
-            <Text style={styles.brandText} maxFontSizeMultiplier={1.2}>
+          <View
+            style={[
+              styles.brandBadge,
+              { backgroundColor: palette.card, borderColor: palette.border },
+            ]}
+          >
+            <View style={[styles.brandMark, { backgroundColor: palette.accent }]} />
+            <Text
+              style={[styles.brandText, { color: palette.text }]}
+              maxFontSizeMultiplier={1.2}
+            >
               {t("premiumStoryBadge")}
             </Text>
           </View>
           <Pressable
             onPress={handleClose}
             hitSlop={8}
-            style={({ pressed }) => [styles.closeButton, pressed && styles.controlPressed]}
+            style={({ pressed }) => [
+              styles.closeButton,
+              { backgroundColor: palette.card, borderColor: palette.border },
+              pressed && styles.controlPressed,
+            ]}
             accessibilityRole="button"
             accessibilityLabel={t("premiumStoryCloseA11y")}
           >
-            <Text style={styles.closeGlyph} maxFontSizeMultiplier={1}>×</Text>
+            <Text style={[styles.closeGlyph, { color: palette.text }]} maxFontSizeMultiplier={1}>
+              ×
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -352,10 +396,14 @@ const PremiumUnlockStories = ({ language, onClose, playSound, t }) => {
               style={[
                 styles.artworkFrame,
                 { width: artworkWidth, height: artworkHeight },
+                { backgroundColor: palette.card, shadowColor: palette.shadow },
                 artworkAnimatedStyle,
               ]}
             >
-              <View style={styles.artworkClip} pointerEvents="none">
+              <View
+                style={[styles.artworkClip, { backgroundColor: palette.surfaceMuted }]}
+                pointerEvents="none"
+              >
                 <Image source={STORY_ART[story.id]} resizeMode="cover" style={styles.artworkImage} />
               </View>
 
@@ -396,13 +444,23 @@ const PremiumUnlockStories = ({ language, onClose, playSound, t }) => {
             ]}
           >
             <Text
-              style={[styles.title, compactHeight && styles.titleCompact, isRtl && styles.rtlText]}
+              style={[
+                styles.title,
+                compactHeight && styles.titleCompact,
+                isRtl && styles.rtlText,
+                { color: palette.text },
+              ]}
               maxFontSizeMultiplier={1.35}
             >
               {t(story.titleKey)}
             </Text>
             <Text
-              style={[styles.body, compactHeight && styles.bodyCompact, isRtl && styles.rtlText]}
+              style={[
+                styles.body,
+                compactHeight && styles.bodyCompact,
+                isRtl && styles.rtlText,
+                { color: palette.muted },
+              ]}
               maxFontSizeMultiplier={1.35}
             >
               {t(story.bodyKey)}
@@ -427,14 +485,24 @@ const PremiumUnlockStories = ({ language, onClose, playSound, t }) => {
               onPress={handlePrimaryAction}
               onPressIn={() => animateButton(UI_MOTION.pressScale)}
               onPressOut={() => animateButton(1)}
-              style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryPressed]}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                { backgroundColor: palette.accent, shadowColor: palette.shadow },
+                pressed && styles.primaryPressed,
+              ]}
               accessibilityRole="button"
               accessibilityLabel={t("premiumStoryStart")}
             >
-              <Text style={styles.primaryButtonText} maxFontSizeMultiplier={1.25}>
+              <Text
+                style={[styles.primaryButtonText, { color: palette.onAccent }]}
+                maxFontSizeMultiplier={1.25}
+              >
                 {t("premiumStoryStart")}
               </Text>
-              <Text style={styles.primaryArrow} maxFontSizeMultiplier={1}>
+              <Text
+                style={[styles.primaryArrow, { color: palette.onAccent }]}
+                maxFontSizeMultiplier={1}
+              >
                 {isRtl ? "←" : "→"}
               </Text>
             </Pressable>
@@ -444,12 +512,19 @@ const PremiumUnlockStories = ({ language, onClose, playSound, t }) => {
             onPress={handlePrimaryAction}
             onPressIn={() => animateButton(UI_MOTION.pressScale)}
             onPressOut={() => animateButton(1)}
-            style={({ pressed }) => [styles.nextButton, pressed && styles.controlPressed]}
+            style={({ pressed }) => [
+              styles.nextButton,
+              { backgroundColor: palette.accent, shadowColor: palette.shadow },
+              pressed && styles.controlPressed,
+            ]}
             accessibilityRole="button"
             accessibilityLabel={t("premiumStoryNextA11y")}
           >
             <Animated.Text
-              style={[styles.nextGlyph, { transform: [{ scale: buttonScale }] }]}
+              style={[
+                styles.nextGlyph,
+                { color: palette.onAccent, transform: [{ scale: buttonScale }] },
+              ]}
               maxFontSizeMultiplier={1}
             >
               {isRtl ? "←" : "→"}
@@ -465,7 +540,6 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     overflow: "hidden",
-    backgroundColor: "#FFFFFF",
   },
   topBar: {
     zIndex: 10,
@@ -484,12 +558,10 @@ const styles = StyleSheet.create({
     height: 3,
     borderRadius: UI_RADIUS.pill,
     overflow: "hidden",
-    backgroundColor: "rgba(42,35,57,0.13)",
   },
   progressFill: {
     height: "100%",
     borderRadius: UI_RADIUS.pill,
-    backgroundColor: PREMIUM_VIOLET,
   },
   progressComplete: {
     width: "100%",
@@ -508,17 +580,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: UI_SPACING.sm,
     borderRadius: UI_RADIUS.pill,
     borderWidth: 1,
-    borderColor: "rgba(124,58,237,0.16)",
-    backgroundColor: "rgba(255,255,255,0.74)",
   },
   brandMark: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: PREMIUM_VIOLET,
   },
   brandText: {
-    color: "#5F35A8",
     fontFamily: "Inter_700Bold",
     fontSize: 11,
     letterSpacing: 0.55,
@@ -530,12 +598,9 @@ const styles = StyleSheet.create({
     borderRadius: UI_RADIUS.pill,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.72)",
     borderWidth: 1,
-    borderColor: "rgba(42,35,57,0.08)",
   },
   closeGlyph: {
-    color: "#3D354A",
     fontFamily: "Inter_400Regular",
     fontSize: 28,
     lineHeight: 31,
@@ -564,8 +629,6 @@ const styles = StyleSheet.create({
   artworkFrame: {
     padding: ARTWORK_FRAME_PADDING,
     borderRadius: 16,
-    backgroundColor: "#FFFFFF",
-    shadowColor: "#2B2138",
     shadowOpacity: 0.13,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
@@ -575,7 +638,6 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 11,
     overflow: "hidden",
-    backgroundColor: "#F5F1FA",
   },
   artworkImage: {
     width: "100%",
@@ -596,7 +658,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: UI_SPACING.xs,
   },
   title: {
-    color: "#272230",
     fontFamily: "Inter_800ExtraBold",
     fontSize: 31,
     lineHeight: 37,
@@ -610,7 +671,6 @@ const styles = StyleSheet.create({
   body: {
     maxWidth: 480,
     marginTop: UI_SPACING.sm,
-    color: "#686271",
     fontFamily: "Inter_500Medium",
     fontSize: 16,
     lineHeight: 23,
@@ -635,15 +695,12 @@ const styles = StyleSheet.create({
     borderRadius: UI_RADIUS.pill,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: PREMIUM_VIOLET,
-    shadowColor: PREMIUM_VIOLET,
     shadowOpacity: 0.2,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 7 },
     elevation: 5,
   },
   nextGlyph: {
-    color: "#FFFFFF",
     fontFamily: "Inter_600SemiBold",
     fontSize: 24,
     lineHeight: 28,
@@ -657,8 +714,6 @@ const styles = StyleSheet.create({
     gap: UI_SPACING.sm,
     paddingHorizontal: UI_SPACING.lg,
     borderRadius: UI_RADIUS.card,
-    backgroundColor: PREMIUM_VIOLET,
-    shadowColor: PREMIUM_VIOLET,
     shadowOpacity: 0.24,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 9 },
@@ -668,16 +723,14 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   primaryPressed: {
-    backgroundColor: "#6D28D9",
+    opacity: 0.82,
   },
   primaryButtonText: {
-    color: "#FFFFFF",
     fontFamily: "Inter_700Bold",
     fontSize: 16,
     lineHeight: 22,
   },
   primaryArrow: {
-    color: "#FFFFFF",
     fontFamily: "Inter_600SemiBold",
     fontSize: 21,
     lineHeight: 24,

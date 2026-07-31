@@ -1,0 +1,38 @@
+{
+  "app": {
+    "name": "Almost",
+    "version": "7.0.1",
+    "build": 112,
+    "bundle_id": "com.sasarei.almostclean",
+    "apple_id": "6756276744"
+  },
+  "source_locales": ["en", "es", "fr", "ru", "de", "pt", "it", "ar-sa", "ar-ae", "zh", "ko"],
+  "store_locale_mapping": {
+    "en": { "app_store": "en-US", "google_play": "en-US" },
+    "es": { "app_store": "es-ES", "google_play": "es-ES" },
+    "fr": { "app_store": "fr-FR", "google_play": "fr-FR" },
+    "ru": { "app_store": "ru", "google_play": "ru-RU" },
+    "de": { "app_store": "de-DE", "google_play": "de-DE" },
+    "pt": { "app_store": "pt-PT", "google_play": "pt-PT" },
+    "it": { "app_store": "it", "google_play": "it-IT" },
+    "ar-sa": { "app_store": "ar", "google_play": "ar" },
+    "ar-ae": { "app_store": "ar", "google_play": "ar" },
+    "zh": { "app_store": "zh-Hans", "google_play": "zh-CN" },
+    "ko": { "app_store": "ko", "google_play": "ko-KR" }
+  },
+  "screenshots": [
+    { "id": "01-welcome", "story": "welcome", "art": "assets/premium_stories/premium-welcome-scene-v2.webp" },
+    { "id": "02-budget", "story": "budget", "art": "assets/premium_stories/premium-budget-scene-v2.webp" },
+    { "id": "03-insights", "story": "insights", "art": "assets/premium_stories/premium-insights-scene-v2.webp" },
+    { "id": "04-impulse", "story": "impulse", "art": "assets/premium_stories/premium-impulse-scene-v2.webp" },
+    { "id": "05-unlimited", "story": "unlimited", "art": "assets/premium_stories/premium-unlimited-scene-v2.webp" },
+    { "id": "06-ready", "story": "ready", "art": "assets/premium_stories/premium-ready-scene-v2.webp" }
+  ],
+  "formats": {
+    "app_store_iphone_6_9": { "width": 1290, "height": 2796, "format": "JPEG" },
+    "app_store_ipad_13": { "width": 2048, "height": 2732, "format": "JPEG" },
+    "google_play_phone": { "width": 1080, "height": 1920, "format": "JPEG" },
+    "google_play_feature_graphic": { "width": 1024, "height": 500, "format": "JPEG" },
+    "google_play_icon": { "width": 512, "height": 512, "format": "PNG" }
+  }
+}

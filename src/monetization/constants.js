@@ -1009,6 +1009,127 @@ const TRANSACTION_ABANDONED_POPUP_SECONDARY_CTA_BY_LANGUAGE = {
   zh: "暂不",
 };
 
+const TRANSACTION_ABANDONED_WHEEL_TITLE_BY_LANGUAGE = {
+  ru: "Крутите колесо — один шанс на Premium",
+  en: "Spin once for your Premium offer",
+  es: "Gira una vez por tu oferta Premium",
+  fr: "Tourne une fois pour ton offre Premium",
+  de: "Ein Dreh für dein Premium-Angebot",
+  pt: "Gira uma vez para a tua oferta Premium",
+  it: "Un giro per la tua offerta Premium",
+  ar: "أدر العجلة مرة واحدة لعرض Premium",
+  zh: "转动一次，解锁你的 Premium 优惠",
+  ko: "한 번 돌려 Premium 혜택을 확인하세요",
+};
+const TRANSACTION_ABANDONED_WHEEL_SUBTITLE_BY_LANGUAGE = {
+  ru: "На колесе — бесплатный Premium и скидки до 90%. Результат закрепится после этого вращения.",
+  en: "Free Premium and discounts up to 90% are on the wheel. Your result locks after this spin.",
+  es: "En la rueda hay Premium gratis y descuentos de hasta el 90 %. El resultado queda fijado tras este giro.",
+  fr: "La roue offre Premium gratuit et jusqu’à 90 % de remise. Le résultat est fixé après ce tour.",
+  de: "Auf dem Rad warten kostenloses Premium und bis zu 90 % Rabatt. Das Ergebnis wird nach diesem Dreh fixiert.",
+  pt: "A roda tem Premium grátis e descontos até 90%. O resultado fica fixo depois deste giro.",
+  it: "Sulla ruota ci sono Premium gratis e sconti fino al 90%. Il risultato viene fissato dopo questo giro.",
+  ar: "تتضمن العجلة Premium مجاناً وخصومات تصل إلى 90٪. تُثبَّت النتيجة بعد هذه اللفة.",
+  zh: "转盘包含免费 Premium 和最高 90% 的折扣。转动结束后，结果将被锁定。",
+  ko: "휠에는 무료 Premium과 최대 90% 할인이 있습니다. 이번 회전 후 결과가 확정됩니다.",
+};
+const TRANSACTION_ABANDONED_WHEEL_SPIN_CTA_BY_LANGUAGE = {
+  ru: "Крутить колесо",
+  en: "Spin the wheel",
+  es: "Girar la rueda",
+  fr: "Tourner la roue",
+  de: "Rad drehen",
+  pt: "Girar a roda",
+  it: "Gira la ruota",
+  ar: "أدر العجلة",
+  zh: "转动转盘",
+  ko: "휠 돌리기",
+};
+const TRANSACTION_ABANDONED_WHEEL_SPINNING_BY_LANGUAGE = {
+  ru: "Колесо замедляется…",
+  en: "The wheel is slowing down…",
+  es: "La rueda está frenando…",
+  fr: "La roue ralentit…",
+  de: "Das Rad wird langsamer…",
+  pt: "A roda está a abrandar…",
+  it: "La ruota sta rallentando…",
+  ar: "العجلة تتباطأ…",
+  zh: "转盘正在减速…",
+  ko: "휠이 천천히 멈추고 있어요…",
+};
+const TRANSACTION_ABANDONED_WHEEL_RESULT_BADGE_BY_LANGUAGE = {
+  ru: "РЕЗУЛЬТАТ ЗАФИКСИРОВАН",
+  en: "RESULT LOCKED",
+  es: "RESULTADO FIJADO",
+  fr: "RÉSULTAT FIXÉ",
+  de: "ERGEBNIS FIXIERT",
+  pt: "RESULTADO FIXADO",
+  it: "RISULTATO FISSATO",
+  ar: "تم تثبيت النتيجة",
+  zh: "结果已锁定",
+  ko: "결과 확정",
+};
+const TRANSACTION_ABANDONED_WHEEL_RESULT_TITLE_BY_LANGUAGE = {
+  ru: "Скидка {{percent}}% — ваша",
+  en: "Your {{percent}}% discount is locked",
+  es: "Tu descuento del {{percent}} % está fijado",
+  fr: "Ta remise de {{percent}} % est fixée",
+  de: "Dein Rabatt von {{percent}} % ist fixiert",
+  pt: "O teu desconto de {{percent}}% está fixado",
+  it: "Il tuo sconto del {{percent}}% è fissato",
+  ar: "تم تثبيت خصمك بنسبة {{percent}}٪",
+  zh: "你的 {{percent}}% 折扣已锁定",
+  ko: "{{percent}}% 할인이 확정됐어요",
+};
+const TRANSACTION_ABANDONED_WHEEL_RESULT_SUBTITLE_BY_LANGUAGE = {
+  ru: "До бесплатного Premium не хватило одного сектора. Но скидка {{percent}}% уже закреплена за вами — откройте предложение, пока оно активно.",
+  en: "Free Premium was only one segment away. Your {{percent}}% discount is already reserved—open the offer while it is active.",
+  es: "Premium gratis quedó a un solo segmento. Tu descuento del {{percent}} % ya está reservado: abre la oferta mientras siga activa.",
+  fr: "Premium gratuit était à un seul segment. Ta remise de {{percent}} % est déjà réservée : ouvre l’offre tant qu’elle est active.",
+  de: "Kostenloses Premium war nur ein Feld entfernt. Dein Rabatt von {{percent}} % ist reserviert – öffne das Angebot, solange es aktiv ist.",
+  pt: "O Premium grátis ficou a apenas um segmento. O teu desconto de {{percent}}% já está reservado — abre a oferta enquanto está ativa.",
+  it: "Premium gratis era a un solo settore. Il tuo sconto del {{percent}}% è già riservato: apri l’offerta finché è attiva.",
+  ar: "كان Premium المجاني على بُعد خانة واحدة فقط. تم حجز خصمك بنسبة {{percent}}٪ — افتح العرض ما دام متاحاً.",
+  zh: "距离免费 Premium 只差一个格子。你的 {{percent}}% 折扣已为你保留，请趁优惠有效时查看。",
+  ko: "무료 Premium까지 한 칸 차이였어요. {{percent}}% 할인은 이미 예약됐으니 혜택이 유효할 때 확인하세요.",
+};
+const TRANSACTION_ABANDONED_WHEEL_FREE_SEGMENT_BY_LANGUAGE = {
+  ru: "PREMIUM\nБЕСПЛ.",
+  en: "FREE\nPREMIUM",
+  es: "PREMIUM\nGRATIS",
+  fr: "PREMIUM\nGRATUIT",
+  de: "PREMIUM\nGRATIS",
+  pt: "PREMIUM\nGRÁTIS",
+  it: "PREMIUM\nGRATIS",
+  ar: "PREMIUM\nمجاناً",
+  zh: "免费\nPREMIUM",
+  ko: "PREMIUM\n무료",
+};
+const TRANSACTION_ABANDONED_WHEEL_PERCENT_TEMPLATE_BY_LANGUAGE = {
+  ru: "{{percent}}%",
+  en: "{{percent}}%",
+  es: "{{percent}}%",
+  fr: "{{percent}}%",
+  de: "{{percent}}%",
+  pt: "{{percent}}%",
+  it: "{{percent}}%",
+  ar: "{{percent}}٪",
+  zh: "{{percent}}%",
+  ko: "{{percent}}%",
+};
+const TRANSACTION_ABANDONED_WHEEL_ACCESSIBILITY_LABEL_BY_LANGUAGE = {
+  ru: "Колесо предложений Premium: бесплатный Premium и скидки от 3% до 90%.",
+  en: "Premium offer wheel with free Premium and discounts from 3% to 90%.",
+  es: "Rueda de ofertas Premium con Premium gratis y descuentos del 3 % al 90 %.",
+  fr: "Roue d’offres Premium avec Premium gratuit et des remises de 3 % à 90 %.",
+  de: "Premium-Angebotsrad mit kostenlosem Premium und Rabatten von 3 % bis 90 %.",
+  pt: "Roda de ofertas Premium com Premium grátis e descontos de 3% a 90%.",
+  it: "Ruota delle offerte Premium con Premium gratis e sconti dal 3% al 90%.",
+  ar: "عجلة عروض Premium تتضمن Premium مجاناً وخصومات من 3٪ إلى 90٪.",
+  zh: "Premium 优惠转盘，包含免费 Premium 和 3% 至 90% 的折扣。",
+  ko: "무료 Premium과 3%부터 90%까지의 할인이 있는 Premium 혜택 휠입니다.",
+};
+
 const FEATURE_MARKETING_LINE_BY_LANGUAGE = {
   ru: "Открой Premium, чтобы получить полный набор инструментов и сохранять больше каждый месяц.",
   en: "Unlock Premium for the full toolkit and keep more money every month.",
@@ -2059,6 +2180,36 @@ export const buildPaywallCopy = ({
     transactionAbandonedPopupSecondaryCta:
       TRANSACTION_ABANDONED_POPUP_SECONDARY_CTA_BY_LANGUAGE[lang] ||
       TRANSACTION_ABANDONED_POPUP_SECONDARY_CTA_BY_LANGUAGE.en,
+    wheelTitle:
+      TRANSACTION_ABANDONED_WHEEL_TITLE_BY_LANGUAGE[lang] ||
+      TRANSACTION_ABANDONED_WHEEL_TITLE_BY_LANGUAGE.en,
+    wheelSubtitle:
+      TRANSACTION_ABANDONED_WHEEL_SUBTITLE_BY_LANGUAGE[lang] ||
+      TRANSACTION_ABANDONED_WHEEL_SUBTITLE_BY_LANGUAGE.en,
+    wheelSpinCta:
+      TRANSACTION_ABANDONED_WHEEL_SPIN_CTA_BY_LANGUAGE[lang] ||
+      TRANSACTION_ABANDONED_WHEEL_SPIN_CTA_BY_LANGUAGE.en,
+    wheelSpinningLabel:
+      TRANSACTION_ABANDONED_WHEEL_SPINNING_BY_LANGUAGE[lang] ||
+      TRANSACTION_ABANDONED_WHEEL_SPINNING_BY_LANGUAGE.en,
+    wheelResultBadge:
+      TRANSACTION_ABANDONED_WHEEL_RESULT_BADGE_BY_LANGUAGE[lang] ||
+      TRANSACTION_ABANDONED_WHEEL_RESULT_BADGE_BY_LANGUAGE.en,
+    wheelResultTitleTemplate:
+      TRANSACTION_ABANDONED_WHEEL_RESULT_TITLE_BY_LANGUAGE[lang] ||
+      TRANSACTION_ABANDONED_WHEEL_RESULT_TITLE_BY_LANGUAGE.en,
+    wheelResultSubtitleTemplate:
+      TRANSACTION_ABANDONED_WHEEL_RESULT_SUBTITLE_BY_LANGUAGE[lang] ||
+      TRANSACTION_ABANDONED_WHEEL_RESULT_SUBTITLE_BY_LANGUAGE.en,
+    wheelFreeSegment:
+      TRANSACTION_ABANDONED_WHEEL_FREE_SEGMENT_BY_LANGUAGE[lang] ||
+      TRANSACTION_ABANDONED_WHEEL_FREE_SEGMENT_BY_LANGUAGE.en,
+    wheelPercentTemplate:
+      TRANSACTION_ABANDONED_WHEEL_PERCENT_TEMPLATE_BY_LANGUAGE[lang] ||
+      TRANSACTION_ABANDONED_WHEEL_PERCENT_TEMPLATE_BY_LANGUAGE.en,
+    wheelAccessibilityLabel:
+      TRANSACTION_ABANDONED_WHEEL_ACCESSIBILITY_LABEL_BY_LANGUAGE[lang] ||
+      TRANSACTION_ABANDONED_WHEEL_ACCESSIBILITY_LABEL_BY_LANGUAGE.en,
     psychologyLine: psychologyLineForPaywall,
     activeFeatureKey: normalizedFeatureKey,
     savedAmountLabel: savedAmountLabel || "$0",

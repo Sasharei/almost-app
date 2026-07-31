@@ -88,6 +88,7 @@ export const STORAGE_KEYS = {
   REWARD_TOTAL: "@almost_reward_total",
   ANALYTICS_OPT_OUT: "@almost_analytics_opt_out",
   FIRST_SESSION_DURATION_BUCKET: "@almost_first_session_duration_bucket",
+  APPSFLYER_PARTNER_SHARING_ALLOWED: "@almost_appsflyer_partner_sharing_allowed",
   ANDROID_APPSFLYER_ENABLED: "@almost_android_appsflyer_enabled",
   TEMPTATION_GOALS: "@almost_temptation_goals",
   TEMPTATION_INTERACTIONS: "@almost_temptation_interactions",
@@ -206,4 +207,5 @@ export const STORAGE_KEYS = {
   TYCOON_LEDGER: "@almost_tycoon_ledger",
   TYCOON_CONFIRM_STATS: "@almost_tycoon_confirm_stats",
   TYCOON_AUTOSAVE_SNOOZED_UNTIL: "@almost_tycoon_autosave_snoozed_until",
+  TYCOON_AUTOSAVE_HUNGRY_LAST_SHOWN_AT: "@almost_tycoon_autosave_hungry_last_shown_at",
 };

@@ -55,6 +55,18 @@ import Svg, {
 } from "react-native-svg";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import ConfettiCannon from "react-native-confetti-cannon";
+import {
+  Gesture,
+  GestureDetector,
+  GestureHandlerRootView,
+} from "react-native-gesture-handler";
+import Reanimated, {
+  interpolate as interpolateReanimated,
+  useAnimatedStyle,
+} from "react-native-reanimated";
+import DraggableFlatList, {
+  useOnCellActiveAnimation,
+} from "react-native-draggable-flatlist";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
@@ -117,17 +129,18 @@ import Sentry, { initSentry } from "./sentry";
 import { SafeAreaProvider, useSafeAreaInsets, initialWindowMetrics } from "react-native-safe-area-context";
 import ViewShot, { captureRef } from "react-native-view-shot";
 import {
-  ANALYTICS_EVENTS,
   ANALYTICS_SOURCES,
   ANALYTICS_VALUE_UNKNOWN,
+  initAttribution,
   initAnalytics,
   initPerformanceMonitoring,
+  logCommercePurchase,
   logEvent,
   logScreenView,
-  registerLevelEvents,
   setAnalyticsOptOut as setAnalyticsOptOutFlag,
-  setAppsFlyerEnabled as setAppsFlyerEnabledFlag,
-  setFacebookSdkReady,
+  setAppsFlyerAdvertisingIdEnabled as setAppsFlyerAdvertisingIdEnabledFlag,
+  setAppsFlyerPartnerSharingAllowed as setAppsFlyerPartnerSharingAllowedFlag,
+  syncAppsFlyerAttributionToRevenueCat,
   setUserProperties,
 } from "./analytics";
 import { SavingsProvider, useRealSavedAmount } from "./src/hooks/useRealSavedAmount";
@@ -161,7 +174,6 @@ import {
   ANDROID_EXPO_BLUR_ENABLED,
   ANDROID_EXPO_BLUR_REDUCTION_FACTOR,
   BLUR_VIEW_MANAGER_NAMES,
-  IOS_TRACKING_BLOCKED_STATUSES,
   HARD_PAYWALL_DELAY_MS,
   PREMIUM_PAYWALL_REOPEN_GUARD_MS,
   PENDING_COUNTDOWN_FAST_MS,
@@ -197,7 +209,6 @@ import {
 import {
   SUPPORT_EMAIL,
   INSTAGRAM_URL,
-  FACEBOOK_APP_ID,
   HEALTH_COIN_TIERS,
   BLUE_HEALTH_COIN_TIER,
   GREEN_HEALTH_COIN_TIER,
@@ -219,6 +230,8 @@ import {
   PAYWALL_PLAN_LABEL_BY_LANGUAGE,
   PAYWALL_SAVE_BADGE_TEMPLATE_BY_LANGUAGE,
   PAYWALL_TRIAL_BADGE_BY_LANGUAGE,
+  PAYWALL_TRIAL_DURATION_TEMPLATE_BY_LANGUAGE,
+  PAYWALL_TRIAL_NOTICE_TEMPLATE_BY_LANGUAGE,
   PAYWALL_EQUIVALENT_SOURCE_IDS,
   PAYWALL_YEAR_SUFFIX_BY_LANGUAGE,
   PAYWALL_MONTH_SUFFIX_BY_LANGUAGE,
@@ -229,7 +242,6 @@ import {
   PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE,
   PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE,
   PAYWALL_NOW_PREFIX_BY_LANGUAGE,
-  PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS,
   PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS,
   PAYWALL_SAR_MARKERS_REGEX,
   PAYWALL_BIDI_MARKS_REGEX,
@@ -369,8 +381,6 @@ import {
   DELETE_SWIPE_THRESHOLD,
   CHALLENGE_SWIPE_ACTION_WIDTH,
   CUSTOM_TEMPTATION_SAMPLE_USD,
-  RATING_PROMPT_DAILY_START_DAYS,
-  RATING_PROMPT_RECURRING_INTERVAL_DAYS,
   RATING_PROMPT_ACTION_THRESHOLD,
   RATING_PROMPT_ACTION_TYPES,
   ANDROID_REVIEW_URL,
@@ -467,6 +477,7 @@ import {
   getDefaultCurrencyForLanguage,
   getPreferredDeviceLanguage,
 } from "./src/utils/language";
+import { resolveFabricAutoFitMinimumFontSize } from "./src/utils/textAutoFit";
 import {
   SOUND_FILES,
   SOUND_COOLDOWNS,
@@ -502,6 +513,8 @@ import {
   resolveOfferingByIdentifiers,
   restorePurchasesSafe,
   setPurchasesAttributesSafe,
+  setRevenueCatAppsFlyerSharingAllowedSafe,
+  syncRevenueCatDeviceIdentifiersSafe,
 } from "./src/monetization/purchasesClient";
 import { syncEntitlementSnapshot, validateStorePurchase } from "./src/monetization/backendSync";
 
@@ -578,6 +591,11 @@ try {
 } catch (error) {
   console.warn("Tracking transparency unavailable", error);
 }
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  canEnableMetaAdvertiserTracking,
+  isTrackingStatusGranted,
+} = require("./src/analytics/consentPolicy");
 const IOS_DEFAULT_MODAL_PRESENTATION = "overFullScreen";
 const ANDROID_STABLE_ALPHA_PROPS =
   Platform.OS === "android"
@@ -637,65 +655,97 @@ const InTreeTransparentModal = ({
 }) => {
   const shouldFade = animationType === "fade";
   const [isMounted, setIsMounted] = useState(Boolean(visible));
-  const opacity = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const opacity = useRef(new Animated.Value(visible && !shouldFade ? 1 : 0)).current;
+  const animationRef = useRef(null);
+  const animationFrameRef = useRef(null);
+  const animatedVisibleRef = useRef(false);
+  const onDismissRef = useRef(onDismiss);
+  const onRequestCloseRef = useRef(onRequestClose);
   const onShowRef = useRef(onShow);
   const showNotifiedRef = useRef(false);
   const dismissNotifiedRef = useRef(false);
+  onDismissRef.current = onDismiss;
+  onRequestCloseRef.current = onRequestClose;
   onShowRef.current = onShow;
 
   useEffect(() => {
-    let animation = null;
+    if (!visible || isMounted) return;
+    animatedVisibleRef.current = false;
+    opacity.setValue(shouldFade ? 0 : 1);
+    setIsMounted(true);
+  }, [isMounted, opacity, shouldFade, visible]);
+
+  useEffect(() => {
+    if (!isMounted) return undefined;
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    animationRef.current?.stop?.();
+    animationRef.current = null;
+
     if (visible) {
       dismissNotifiedRef.current = false;
-      if (!isMounted) {
-        setIsMounted(true);
-      }
       if (!shouldFade) {
+        animatedVisibleRef.current = true;
         opacity.setValue(1);
         return undefined;
       }
-      if (!isMounted) {
-        opacity.setValue(0);
-      }
-      animation = Animated.timing(opacity, {
-        toValue: 1,
-        duration: 180,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
+      if (animatedVisibleRef.current) return undefined;
+      animatedVisibleRef.current = true;
+      opacity.setValue(0);
+      animationFrameRef.current = requestAnimationFrame(() => {
+        animationFrameRef.current = null;
+        animationRef.current = Animated.timing(opacity, {
+          toValue: 1,
+          duration: 180,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        });
+        animationRef.current.start(() => {
+          animationRef.current = null;
+        });
       });
-      animation.start();
       return () => {
-        animation?.stop?.();
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
+        animationRef.current?.stop?.();
+        animationRef.current = null;
       };
     }
+
     showNotifiedRef.current = false;
-    if (!isMounted) return undefined;
+    animatedVisibleRef.current = false;
     if (!shouldFade) {
       setIsMounted(false);
       if (!dismissNotifiedRef.current) {
         dismissNotifiedRef.current = true;
-        onDismiss?.();
+        onDismissRef.current?.();
       }
       return undefined;
     }
-    animation = Animated.timing(opacity, {
+    animationRef.current = Animated.timing(opacity, {
       toValue: 0,
       duration: 150,
       easing: Easing.in(Easing.quad),
       useNativeDriver: true,
     });
-    animation.start(({ finished }) => {
+    animationRef.current.start(({ finished }) => {
+      animationRef.current = null;
       if (!finished) return;
       setIsMounted(false);
       if (!dismissNotifiedRef.current) {
         dismissNotifiedRef.current = true;
-        onDismiss?.();
+        onDismissRef.current?.();
       }
     });
     return () => {
-      animation?.stop?.();
+      animationRef.current?.stop?.();
+      animationRef.current = null;
     };
-  }, [isMounted, onDismiss, opacity, shouldFade, visible]);
+  }, [isMounted, opacity, shouldFade, visible]);
 
   useEffect(() => {
     if (!visible || !isMounted || showNotifiedRef.current) return undefined;
@@ -707,14 +757,14 @@ const InTreeTransparentModal = ({
   useEffect(() => {
     if (Platform.OS !== "android" || !visible) return undefined;
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (typeof onRequestClose === "function") {
-        onRequestClose();
+      if (typeof onRequestCloseRef.current === "function") {
+        onRequestCloseRef.current();
       }
       // Keep back press scoped to the visible in-tree modal.
       return true;
     });
     return () => subscription.remove();
-  }, [onRequestClose, visible]);
+  }, [visible]);
 
   if (!isMounted) return null;
 
@@ -776,6 +826,8 @@ const Modal = ({
     : navigationBarTranslucent;
   const resolvedHardwareAccelerated =
     Platform.OS === "android" ? hardwareAccelerated ?? true : hardwareAccelerated;
+  const resolvedNativeAnimationType =
+    Platform.OS === "android" && transparent === true ? "none" : animationType;
   const resolvedPresentationStyle =
     Platform.OS === "ios"
       ? presentationStyle || IOS_DEFAULT_MODAL_PRESENTATION
@@ -796,30 +848,13 @@ const Modal = ({
       </InTreeTransparentModal>
     );
   }
-  if (!forceNativeHost && transparent === true && Platform.OS === "android") {
-    // Android dialog-hosted modals can produce a one-frame window inset mismatch
-    // (content appears slightly lifted with a bottom strip, then snaps).
-    // Render transparent modals in-tree to keep a single root layout and stable insets.
-    return (
-      <InTreeTransparentModal
-        visible={visible}
-        animationType={animationType}
-        onRequestClose={onRequestClose}
-        onShow={onShow}
-        onDismiss={onDismiss}
-      >
-        {statusGlassOverlay}
-        {modalChildren}
-      </InTreeTransparentModal>
-    );
-  }
   return (
     <RNModal
       {...rest}
       presentationStyle={resolvedPresentationStyle}
       transparent={transparent}
       visible={visible}
-      animationType={animationType}
+      animationType={resolvedNativeAnimationType}
       statusBarTranslucent={resolvedStatusBarTranslucent}
       navigationBarTranslucent={resolvedNavigationBarTranslucent}
       hardwareAccelerated={resolvedHardwareAccelerated}
@@ -1145,16 +1180,6 @@ const runLayoutAnimation = (preset = LayoutAnimation.Presets.easeInEaseOut) => {
   LayoutAnimation.configureNext(preset);
 };
 
-const isTrackingStatusBlocked = (status) => {
-  if (!status || typeof status !== "string") return false;
-  return IOS_TRACKING_BLOCKED_STATUSES.has(status.trim().toLowerCase());
-};
-const isTrackingStatusGranted = (status) => {
-  if (!status || typeof status !== "string") return false;
-  const normalized = status.trim().toLowerCase();
-  return normalized === "granted" || normalized === "authorized";
-};
-
 const bootstrapMonitoring = (() => {
   let initialized = false;
   return (enabled = false) => {
@@ -1465,6 +1490,42 @@ const isTrialPeriodType = (periodType = "") => {
   if (!normalized) return false;
   return normalized.includes("trial") || normalized.includes("intro");
 };
+const normalizePurchasePeriodType = (
+  periodType = "",
+  { plan = "", trialEnabled = false } = {}
+) => {
+  if (plan === "lifetime") return "lifetime";
+  const normalized = normalizeMonetizationToken(periodType, "");
+  if (normalized.includes("trial")) return "trial";
+  if (normalized.includes("intro")) return "intro";
+  if (normalized.includes("normal")) return "normal";
+  if (trialEnabled) return "trial";
+  if (plan) return "normal";
+  return "unknown";
+};
+const resolveRevenueCatOfferingIdentifier = (pkg = null) =>
+  resolveNonEmptyString(
+    pkg?.presentedOfferingContext?.offeringIdentifier ||
+      pkg?.presentedOfferingContext?.offering_identifier ||
+      pkg?.offeringIdentifier ||
+      pkg?.offering_id ||
+      ""
+  ) || "unavailable";
+const classifyPremiumPurchaseErrorCategory = (reason = "") => {
+  const normalized = normalizeMonetizationToken(reason, "store");
+  if (normalized === "none") return "none";
+  if (normalized === "cancelled") return "user_cancelled";
+  if (normalized === "offline") return "network";
+  if (
+    normalized.includes("package") ||
+    normalized.includes("offering") ||
+    normalized.includes("product")
+  ) {
+    return "configuration";
+  }
+  if (normalized.includes("activation")) return "activation";
+  return "store";
+};
 const parseMonetizationBoolean = (value) => {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value !== 0;
@@ -1538,6 +1599,11 @@ const PREMIUM_TRANSACTION_ABANDONED_OFFERING_IDENTIFIERS = Object.freeze([
   "abandoned_transaction",
   "abandoned_offer",
   "winback",
+]);
+const PREMIUM_YEARLY_TRIAL_OFFERING_IDENTIFIERS = Object.freeze([
+  "yearly_trial",
+  "annual_trial",
+  "free_trial_yearly",
 ]);
 const MONETIZATION_EXPERIMENT_GROUP_VALUES = new Set(
   Object.values(MONETIZATION_EXPERIMENT_GROUPS)
@@ -2229,15 +2295,8 @@ const resolveFreeTrialDaysFromPackage = (pkg) => {
   const subscriptionOptions = Array.isArray(product?.subscriptionOptions)
     ? product.subscriptionOptions
     : [];
-  if (Platform.OS === "android") {
-    // purchasePackage() follows the product default option on Android.
-    // If multiple options exist (e.g. test + prod offers), inferring trial from "any option"
-    // can overpromise a free trial in UI while checkout opens a non-trial option.
-    if (subscriptionOptions.length === 1) {
-      return resolveTrialDaysFromSubscriptionOption(subscriptionOptions[0]);
-    }
-    return null;
-  }
+  // Android checkout explicitly selects either the base plan or the free-trial option,
+  // so the paywall may safely advertise the matching free option here.
   const fromOptions = subscriptionOptions
     .map((option) => resolveTrialDaysFromSubscriptionOption(option))
     .find((days) => Number.isFinite(days) && days > 0);
@@ -2345,8 +2404,24 @@ const normalizeCurrencyDisplayLabel = (label, currencyCode = DEFAULT_PROFILE.cur
   normalized = normalized.replace(/\$\s+(?=[-0-9٠-٩۰-۹])/g, "$");
   return normalized.replace(/\s{2,}/g, " ").trim();
 };
-const buildPaywallTrialLabel = ({ language = "en" } = {}) => {
+const formatPaywallTrialTemplate = (template = "", replacements = {}) =>
+  Object.entries(replacements).reduce(
+    (value, [key, replacement]) =>
+      value.replaceAll(`{{${key}}}`, String(replacement ?? "")),
+    String(template || "")
+  );
+const buildPaywallTrialLabel = ({ trialDays = null, language = "en" } = {}) => {
   const lang = resolveMonetizationLanguage(language);
+  const normalizedTrialDays = toPositiveInteger(trialDays);
+  if (normalizedTrialDays) {
+    const template =
+      PAYWALL_TRIAL_DURATION_TEMPLATE_BY_LANGUAGE[lang] ||
+      PAYWALL_TRIAL_DURATION_TEMPLATE_BY_LANGUAGE.en;
+    return localizeFallbackTextByLanguage(
+      formatPaywallTrialTemplate(template, { count: normalizedTrialDays }),
+      lang
+    );
+  }
   return localizeFallbackTextByLanguage(
     PAYWALL_TRIAL_BADGE_BY_LANGUAGE[lang] || PAYWALL_TRIAL_BADGE_BY_LANGUAGE.en,
     lang
@@ -2395,26 +2470,15 @@ const buildPaywallTrialNotice = ({
   const lang = resolveMonetizationLanguage(language);
   const trialLabel = buildPaywallTrialLabel({ language: lang });
   const storeLabel = platform === "ios" ? "App Store" : "Google Play";
-  if (lang === "ru") {
-    return `${trialLabel}. Затем автосписание ${normalizedPriceLabel}. Отмена в ${storeLabel}.`;
-  }
-  if (lang === "es") {
-    return `${trialLabel}. Después se renueva automáticamente por ${normalizedPriceLabel}. Cancela cuando quieras en ${storeLabel}.`;
-  }
-  if (lang === "fr") {
-    return `${trialLabel}. Ensuite, renouvellement automatique à ${normalizedPriceLabel}. Annulez à tout moment dans ${storeLabel}.`;
-  }
-  if (lang === "de") {
-    return `${trialLabel}. Danach automatische Verlängerung für ${normalizedPriceLabel}. Jederzeit im ${storeLabel} kündbar.`;
-  }
-  if (lang === "ar") {
-    return `${trialLabel}. ثم يتجدد الاشتراك تلقائياً بسعر ${normalizedPriceLabel}. يمكنك الإلغاء في أي وقت من ${storeLabel}.`;
-  }
-  if (lang === "zh") {
-    return `${trialLabel}。之后将按 ${normalizedPriceLabel} 自动续订。可随时在 ${storeLabel} 取消。`;
-  }
+  const template =
+    PAYWALL_TRIAL_NOTICE_TEMPLATE_BY_LANGUAGE[lang] ||
+    PAYWALL_TRIAL_NOTICE_TEMPLATE_BY_LANGUAGE.en;
   return localizeFallbackTextByLanguage(
-    `${trialLabel}. Then auto-renews at ${normalizedPriceLabel}. Cancel anytime in ${storeLabel}.`,
+    formatPaywallTrialTemplate(template, {
+      trial: trialLabel,
+      price: normalizedPriceLabel,
+      store: storeLabel,
+    }),
     lang
   );
 };
@@ -3173,21 +3237,31 @@ const AppText = React.memo(
           )
         )
       : minimumFontScale;
+    const baseStyles = Array.isArray(style) ? style.filter(Boolean) : style ? [style] : [];
+    const flattened = baseStyles.length ? StyleSheet.flatten(baseStyles) || {} : {};
+    const fabricMinimumFontSize = shouldAutoFit
+      ? resolveFabricAutoFitMinimumFontSize({
+          fontSize: flattened.fontSize,
+          minimumFontScale: resolvedMinimumFontScale,
+          allowFontScaling,
+          maxFontSizeMultiplier,
+        })
+      : undefined;
     const textProps =
       localizedChildren === restProps.children
         ? {
             ...restProps,
             adjustsFontSizeToFit: shouldAutoFit,
             minimumFontScale: resolvedMinimumFontScale,
+            minimumFontSize: fabricMinimumFontSize,
           }
         : {
             ...restProps,
             children: localizedChildren,
             adjustsFontSizeToFit: shouldAutoFit,
             minimumFontScale: resolvedMinimumFontScale,
+            minimumFontSize: fabricMinimumFontSize,
           };
-    const baseStyles = Array.isArray(style) ? style.filter(Boolean) : style ? [style] : [];
-    const flattened = baseStyles.length ? StyleSheet.flatten(baseStyles) || {} : {};
     const isRtlLayout = isRtlLanguage(formattingLanguage);
     const directionStyle = isRtlLayout ? { writingDirection: "rtl", textAlign: "right" } : null;
     const styleWithDirection = directionStyle ? [directionStyle, ...baseStyles] : baseStyles;
@@ -3304,7 +3378,9 @@ const getCelebrationMessages = (language, gender = "none") => {
     Object.values(entry)[0];
   return Array.isArray(variant) ? variant : [];
 };
-const createInitialRatingPromptState = () => ({
+const RATING_PROMPT_SESSION_ID = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+const RATING_PROMPT_FIRST_SESSION_STATUSES = new Set(["pending", "active", "ended"]);
+const createInitialRatingPromptState = ({ firstSessionStatus = "pending" } = {}) => ({
   firstOpenAt: new Date().toISOString(),
   completed: false,
   lastShownAt: null,
@@ -3313,6 +3389,8 @@ const createInitialRatingPromptState = () => ({
   actionCount: 0,
   actionCountStart: null,
   actionPrompted: false,
+  firstSessionStatus,
+  firstSessionId: null,
 });
 
 const normalizeRetentionDayKeys = (value) => {
@@ -4941,17 +5019,19 @@ const TAMAGOTCHI_HUNGER_NOTIFICATION_DAILY_LIMIT = 3;
 const TAMAGOTCHI_HUNGER_NOTIFICATION_WINDOW_MS = 1000 * 60 * 60 * 6;
 const TAMAGOTCHI_CARE_COOLDOWN_MULTIPLIER_MIN = 0.35;
 const TAMAGOTCHI_CARE_COOLDOWN_MULTIPLIER_MAX = 0.96;
-const TAMAGOTCHI_HOURLY_REWARD_THRESHOLD = 70;
+const TAMAGOTCHI_HOURLY_REWARD_THRESHOLD = 50;
 const TAMAGOTCHI_HOURLY_REWARD_INTERVAL_MS = HOUR_MS;
 const TAMAGOTCHI_HOURLY_REWARD_AMOUNT = 5;
 const TAMAGOTCHI_HOURLY_REWARD_MAX_PENDING_HOURS = 6;
 const TAMAGOTCHI_HOURLY_REWARD_NOTIFICATION_COOLDOWN_MS = HOUR_MS;
 const TAMAGOTCHI_HOURLY_REWARD_NOTIFICATION_MIN_DELAY_MS = 5000;
+const TAMAGOTCHI_HOURLY_REWARD_NOTIFICATION_RETRY_MS = MINUTE_MS;
 const TAMAGOTCHI_FEED_COST = ECONOMY_RULES.tamagotchiFeedCost;
 const TAMAGOTCHI_PARTY_COST = ECONOMY_RULES.tamagotchiPartyCost;
 const TAMAGOTCHI_PARTY_IMMUNITY_MS = DAY_MS * 2;
 const TYCOON_AUTOSAVE_HUNGER_PAUSE_THRESHOLD = 20;
 const TYCOON_AUTOSAVE_HUNGRY_NOTIFICATION_KIND = "tycoon_autosave_hungry";
+const TYCOON_AUTOSAVE_HUNGRY_MODAL_COOLDOWN_MS = DAY_MS;
 const PARTY_FIREWORK_CONFIGS = [
   { top: "12%", left: "18%", size: 150, delay: 0 },
   { top: "18%", right: "16%", size: 120, delay: 180 },
@@ -6146,9 +6226,91 @@ const IMPULSE_CATEGORY_ORDER = [
 ];
 const DEFAULT_IMPULSE_CATEGORY = "vices";
 const FEED_CATEGORY_FILTER_USAGE_STORAGE_KEY = "@almost_feed_category_filter_usage";
+const FEED_CARD_ORDER_STORAGE_KEY = "@almost_feed_card_order";
+const FEED_CARD_ORDER_MAX_ITEMS = 500;
 const INITIAL_IMPULSE_TRACKER = {
   events: [],
   lastAlerts: {},
+};
+
+const getFeedCardOrderKey = (item) => {
+  if (!item || typeof item !== "object") return "";
+  const id = item.id;
+  if (typeof id === "string" && id.trim()) return `id:${id.trim()}`;
+  if (typeof id === "number" && Number.isFinite(id)) return `id:${id}`;
+  const templateId = item.templateId;
+  if (typeof templateId === "string" && templateId.trim()) {
+    return `template:${templateId.trim()}`;
+  }
+  if (typeof templateId === "number" && Number.isFinite(templateId)) {
+    return `template:${templateId}`;
+  }
+  return "";
+};
+
+const normalizeFeedCardOrder = (value) => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const normalized = [];
+  for (const entry of value) {
+    if (normalized.length >= FEED_CARD_ORDER_MAX_ITEMS) break;
+    const key =
+      typeof entry === "string"
+        ? entry.trim()
+        : typeof entry === "number" && Number.isFinite(entry)
+        ? String(entry)
+        : "";
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(key);
+  }
+  return normalized;
+};
+
+const areFeedCardOrdersEqual = (left, right) => {
+  if (left === right) return true;
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+    return false;
+  }
+  return left.every((entry, index) => entry === right[index]);
+};
+
+const mergeFeedCardOrder = (storedOrder, products) => {
+  const sourceKeys = [];
+  const sourceKeySet = new Set();
+  (Array.isArray(products) ? products : []).forEach((item) => {
+    const key = getFeedCardOrderKey(item);
+    if (!key || sourceKeySet.has(key)) return;
+    sourceKeySet.add(key);
+    sourceKeys.push(key);
+  });
+  const merged = normalizeFeedCardOrder(storedOrder).filter((key) => sourceKeySet.has(key));
+  const mergedSet = new Set(merged);
+  sourceKeys.forEach((key) => {
+    if (mergedSet.has(key)) return;
+    mergedSet.add(key);
+    merged.push(key);
+  });
+  return merged;
+};
+
+const applyVisibleFeedCardOrder = (fullOrder, visibleOrder) => {
+  const normalizedFullOrder = normalizeFeedCardOrder(fullOrder);
+  const normalizedVisibleOrder = normalizeFeedCardOrder(visibleOrder);
+  if (!normalizedVisibleOrder.length) return normalizedFullOrder;
+  const visibleSet = new Set(normalizedVisibleOrder);
+  let visibleIndex = 0;
+  const reordered = normalizedFullOrder.map((key) => {
+    if (!visibleSet.has(key)) return key;
+    const nextKey = normalizedVisibleOrder[visibleIndex];
+    visibleIndex += 1;
+    return nextKey || key;
+  });
+  while (visibleIndex < normalizedVisibleOrder.length) {
+    reordered.push(normalizedVisibleOrder[visibleIndex]);
+    visibleIndex += 1;
+  }
+  return normalizeFeedCardOrder(reordered);
 };
 
 const normalizeImpulseAlertRecord = (value) => {
@@ -12746,93 +12908,6 @@ const PERSONA_TEMPTATION_LOOKUP = Object.values(PERSONA_TEMPTATION_PRESETS).redu
   []
 );
 
-const PERSONA_HABIT_TYPES = {
-  mindful_coffee: "coffee",
-  habit_smoking: "smoking",
-  glam_beauty: "beauty",
-  gamer_loot: "gaming",
-  foodie_delivery: "delivery",
-  online_impulse: "shopping",
-  home_picks: "home",
-  anime_fan: "anime",
-  sub_lover: "subscriptions",
-  fashion_fan: "fashion",
-};
-
-const PERSONA_SELECTED_EVENTS = {
-  coffee: "persona_coffee_selected",
-  smoking: "persona_smoking_selected",
-  beauty: "persona_beauty_selected",
-  gaming: "persona_gaming_selected",
-  delivery: "persona_delivery_selected",
-  shopping: "persona_shopping_selected",
-  home: "persona_home_selected",
-  anime: "persona_anime_selected",
-  subscriptions: "persona_subscriptions_selected",
-  fashion: "persona_fashion_selected",
-  custom: "persona_custom_selected",
-};
-
-const LANGUAGE_SELECTED_EVENTS = {
-  ru: "language_ru_selected",
-  en: "language_en_selected",
-  es: "language_es_selected",
-  fr: "language_fr_selected",
-  de: "language_de_selected",
-  pt: "language_pt_selected",
-  it: "language_it_selected",
-  "ar-sa": "language_ar_sa_selected",
-  "ar-ae": "language_ar_ae_selected",
-  zh: "language_zh_selected",
-  ko: "language_ko_selected",
-};
-
-const GENDER_SELECTED_EVENTS = {
-  female: "gender_female_selected",
-  male: "gender_male_selected",
-  none: "gender_none_selected",
-};
-
-const CURRENCY_SELECTED_EVENTS = {
-  USD: "currency_usd_selected",
-  AED: "currency_aed_selected",
-  ARS: "currency_ars_selected",
-  AUD: "currency_aud_selected",
-  BRL: "currency_brl_selected",
-  BYN: "currency_byn_selected",
-  CAD: "currency_cad_selected",
-  CNY: "currency_cny_selected",
-  EUR: "currency_eur_selected",
-  GBP: "currency_gbp_selected",
-  JPY: "currency_jpy_selected",
-  KZT: "currency_kzt_selected",
-  KRW: "currency_krw_selected",
-  MXN: "currency_mxn_selected",
-  PLN: "currency_pln_selected",
-  RUB: "currency_rub_selected",
-  SAR: "currency_sar_selected",
-};
-
-const getPersonaSelectedEvent = (personaId) => {
-  const habitType = PERSONA_HABIT_TYPES[personaId] || "custom";
-  return PERSONA_SELECTED_EVENTS[habitType] || null;
-};
-
-const getLanguageSelectedEvent = (language) => {
-  const normalized = normalizeLanguage(language);
-  return LANGUAGE_SELECTED_EVENTS[normalized] || null;
-};
-
-const getGenderSelectedEvent = (gender) => {
-  const normalized = gender || "none";
-  return GENDER_SELECTED_EVENTS[normalized] || null;
-};
-
-const getCurrencySelectedEvent = (code) => {
-  const normalized = (code || "").toUpperCase();
-  return CURRENCY_SELECTED_EVENTS[normalized] || null;
-};
-
 const DEFAULT_PERSONA_ID = "mindful_coffee";
 
 const GENDER_OPTIONS = [
@@ -13587,7 +13662,6 @@ const LEVEL_SAVE_GROWTH_PAIR_SIZE = 2;
 const MAX_LEVEL = 30;
 const USER_LEVEL_GATES_ENABLED = false;
 const USER_LEVEL_UNLOCK_OVERLAYS_ENABLED = false;
-registerLevelEvents(MAX_LEVEL);
 const getLevelProgressOffsetCount = (offsetUSD = 0) => {
   const normalized = Number(offsetUSD);
   return Number.isFinite(normalized) && normalized > 0 ? 1 : 0;
@@ -14093,6 +14167,8 @@ function TemptationCardComponent({
   allowSwipeGestures = true,
   allowCardTapToEdit = true,
   hideMetaBadges = false,
+  onLongPress = null,
+  isDragActive = false,
 }) {
   const showMetaBadges = !hideMetaBadges;
   const safeInsets = useSafeAreaInsets();
@@ -14478,6 +14554,9 @@ function TemptationCardComponent({
   const swipeSettlingRef = useRef(false);
   const swipeThresholdReachedRef = useRef(false);
   const swipeActionRef = useRef(false);
+  const swipeGestureActiveRef = useRef(false);
+  const swipeTouchStartRef = useRef(null);
+  const swipeHorizontalIntentRef = useRef(false);
   const suppressCardPressUntilRef = useRef(0);
   const [amountSliderVisible, setAmountSliderVisible] = useState(false);
   const [amountSliderAction, setAmountSliderAction] = useState(null);
@@ -15469,39 +15548,43 @@ function TemptationCardComponent({
     ]
   );
 
-  const shouldStartCardSwipe = useCallback(
-    (gestureState = {}) => {
-      if (!canSwipeCard || amountSliderVisible || swipeSettlingRef.current) return false;
-      const dx = Number.isFinite(gestureState.dx) ? gestureState.dx : 0;
-      const dy = Number.isFinite(gestureState.dy) ? gestureState.dy : 0;
-      const absDx = Math.abs(dx);
-      const absDy = Math.abs(dy);
-      if (absDx < 12 || absDx < absDy * 1.45) return false;
-      if (dx > 0) return typeof onSwipeArchive === "function";
-      if (dx < 0) return typeof onSwipeDelete === "function";
-      return false;
-    },
-    [amountSliderVisible, canSwipeCard, onSwipeArchive, onSwipeDelete]
-  );
-
-  const panResponder = useMemo(
+  const cardSwipeGesture = useMemo(
     () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (_, gestureState) => shouldStartCardSwipe(gestureState),
-        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
-          shouldStartCardSwipe(gestureState),
-        onPanResponderGrant: () => {
+      Gesture.Pan()
+        .enabled(canSwipeCard && !amountSliderVisible)
+        .activeOffsetX([-8, 8])
+        .failOffsetY([-12, 12])
+        .runOnJS(true)
+        .onTouchesDown((event) => {
+          const touch = event.changedTouches?.[0] || event.allTouches?.[0];
+          swipeTouchStartRef.current = touch
+            ? { x: touch.absoluteX, y: touch.absoluteY }
+            : null;
+          swipeHorizontalIntentRef.current = false;
+        })
+        .onTouchesMove((event) => {
+          const start = swipeTouchStartRef.current;
+          const touch = event.allTouches?.[0] || event.changedTouches?.[0];
+          if (!start || !touch) return;
+          const dx = touch.absoluteX - start.x;
+          const dy = touch.absoluteY - start.y;
+          if (Math.abs(dx) >= 4 && Math.abs(dx) > Math.abs(dy) * 1.1) {
+            swipeHorizontalIntentRef.current = true;
+            suppressCardPressUntilRef.current = Date.now() + 300;
+          }
+        })
+        .onStart(() => {
+          swipeGestureActiveRef.current = true;
           suppressCardPressUntilRef.current = Date.now() + 300;
           swipeActionRef.current = true;
           swipeThresholdReachedRef.current = false;
           swipeLastTranslateRef.current = 0;
           translateX.stopAnimation();
           translateX.setValue(0);
-        },
-        onPanResponderMove: (_, gestureState) => {
+        })
+        .onUpdate((event) => {
           if (!canSwipeCard) return;
-          const gestureDx = Number.isFinite(gestureState.dx) ? gestureState.dx : 0;
+          const gestureDx = Number.isFinite(event.translationX) ? event.translationX : 0;
           const offset = setSwipeTranslate(gestureDx);
           const threshold =
             offset > 0 ? archiveSwipeDistanceThreshold : deleteSwipeDistanceThreshold;
@@ -15512,21 +15595,28 @@ function TemptationCardComponent({
               triggerSelectionHaptic();
             }
           }
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          handleSwipeRelease(gestureState);
-        },
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderTerminate: (_, gestureState) => handleSwipeRelease(gestureState, { commit: false }),
-        onShouldBlockNativeResponder: () => true,
-      }),
+        })
+        .onEnd((event) => {
+          swipeGestureActiveRef.current = false;
+          handleSwipeRelease({
+            vx: Number.isFinite(event.velocityX) ? event.velocityX / 1000 : 0,
+          });
+        })
+        .onFinalize(() => {
+          const wasSwipeActive = swipeGestureActiveRef.current;
+          swipeGestureActiveRef.current = false;
+          swipeHorizontalIntentRef.current = false;
+          swipeTouchStartRef.current = null;
+          if (!wasSwipeActive) return;
+          handleSwipeRelease({}, { commit: false });
+        }),
     [
       archiveSwipeDistanceThreshold,
+      amountSliderVisible,
       canSwipeCard,
       deleteSwipeDistanceThreshold,
       handleSwipeRelease,
       setSwipeTranslate,
-      shouldStartCardSwipe,
       translateX,
     ]
   );
@@ -15583,6 +15673,32 @@ function TemptationCardComponent({
     item,
     onLockedPress,
     onToggleEdit,
+  ]);
+  const handleCardLongPress = useCallback(() => {
+    if (
+      typeof onLongPress !== "function" ||
+      cardLocked ||
+      isArchived ||
+      showEditorInline ||
+      isEditing ||
+      amountSliderVisible ||
+      pauseFreezeVisible ||
+      swipeHorizontalIntentRef.current ||
+      swipeGestureActiveRef.current ||
+      Math.abs(swipeLastTranslateRef.current) >= 8
+    ) {
+      return;
+    }
+    suppressCardPressUntilRef.current = Date.now() + 1200;
+    onLongPress();
+  }, [
+    amountSliderVisible,
+    cardLocked,
+    isArchived,
+    isEditing,
+    onLongPress,
+    pauseFreezeVisible,
+    showEditorInline,
   ]);
   const handleAmountCategoryBudgetPress = useCallback(() => {
     if (!hasCategoryBudget || typeof onCategoryBudgetPress !== "function") return;
@@ -15695,7 +15811,9 @@ function TemptationCardComponent({
           </Animated.View>
         </View>
       )}
+    <GestureDetector gesture={cardSwipeGesture}>
     <Animated.View
+      collapsable={false}
       ref={tutorialHighlightCardRef}
       onLayout={(event) => {
         const measuredWidth = Number(event?.nativeEvent?.layout?.width);
@@ -15704,7 +15822,6 @@ function TemptationCardComponent({
         }
         handleTutorialCardLayout();
       }}
-      {...(canSwipeCard ? panResponder.panHandlers : null)}
       style={[styles.temptationSwipeContent, { transform: [{ translateX }] }]}
     >
       <View
@@ -15719,7 +15836,12 @@ function TemptationCardComponent({
         },
         ]}
       >
-        <TouchableWithoutFeedback onPress={handleCardPress}>
+        <TouchableWithoutFeedback
+          onPress={handleCardPress}
+          onLongPress={handleCardLongPress}
+          delayLongPress={340}
+          disabled={isDragActive}
+        >
           <View>
             {showCardTexture && (
               <View pointerEvents="none" style={styles.temptationTextureContainer}>
@@ -17136,11 +17258,63 @@ function TemptationCardComponent({
       )}
       </View>
       </Animated.View>
+      </GestureDetector>
     </View>
   );
 }
 
 const TemptationCard = React.memo(TemptationCardComponent);
+
+const FeedDragLiftDecorator = React.memo(function FeedDragLiftDecorator({
+  children,
+  reduceMotion = false,
+  shadowColor = "#000000",
+  tiltDirection = 1,
+}) {
+  const { isActive, onActiveAnim } = useOnCellActiveAnimation({
+    animationConfig: {
+      damping: 24,
+      mass: 0.2,
+      stiffness: 250,
+      overshootClamping: true,
+      restDisplacementThreshold: 0.001,
+      restSpeedThreshold: 0.001,
+    },
+  });
+  const animatedStyle = useAnimatedStyle(() => {
+    const progress = reduceMotion ? (isActive ? 1 : 0) : onActiveAnim.value;
+    const tilt = interpolateReanimated(progress, [0, 1], [0, 0.34 * tiltDirection]);
+    const useAndroidStableLayer = Platform.OS === "android";
+    return {
+      // The draggable list already promotes its active Android cell. A second
+      // animated elevation layer flashes when Fabric tears it down on drop.
+      zIndex: useAndroidStableLayer ? 0 : isActive ? 4 : 0,
+      elevation: useAndroidStableLayer
+        ? 0
+        : interpolateReanimated(progress, [0, 1], [0, 7]),
+      shadowColor: useAndroidStableLayer ? "transparent" : shadowColor,
+      shadowOpacity: useAndroidStableLayer
+        ? 0
+        : interpolateReanimated(progress, [0, 1], [0, 0.2]),
+      shadowRadius: useAndroidStableLayer
+        ? 0
+        : interpolateReanimated(progress, [0, 1], [0, 8]),
+      transform: reduceMotion
+        ? [{ scale: 1 }]
+        : [
+            { translateY: interpolateReanimated(progress, [0, 1], [0, -4]) },
+            { rotateZ: `${tilt}deg` },
+            { scale: interpolateReanimated(progress, [0, 1], [1, 1.018]) },
+          ],
+    };
+  }, [isActive, reduceMotion, shadowColor, tiltDirection]);
+
+  return (
+    <Reanimated.View style={[styles.feedDragLift, animatedStyle]}>
+      {children}
+    </Reanimated.View>
+  );
+});
 
 const TemptationEditSheet = React.memo(function TemptationEditSheet({
   item,
@@ -18721,6 +18895,710 @@ const GoalJarDetailModal = React.memo(function GoalJarDetailModal({
   );
 });
 
+const DailyRewardModal = React.memo(
+  forwardRef(function DailyRewardModal(
+    {
+      visible,
+      goldPalette,
+      colors,
+      isDarkMode = false,
+      t,
+      language = DEFAULT_LANGUAGE,
+      playerLevel = 1,
+      dailyRewardReady = false,
+      dailyRewardAmount = 0,
+      dailyRewardBaseAmount = 0,
+      dailyRewardDay = 1,
+      onDailyRewardClaim = () => {},
+      onClose = () => {},
+      playSound = () => {},
+    },
+    ref
+  ) {
+    const dailyRewardClaimPendingRef = useRef(false);
+    const dailyRewardClaimRunningRef = useRef(false);
+    const dailyRewardClosePendingRef = useRef(false);
+    const dailyRewardModalReveal = useRef(new Animated.Value(0)).current;
+    const dailyRewardBackdropReveal = useRef(new Animated.Value(0)).current;
+    const dailyRewardCoinPulse = useRef(new Animated.Value(0)).current;
+    const dailyRewardHaloSpin = useRef(new Animated.Value(0)).current;
+    const dailyRewardCollectFlash = useRef(new Animated.Value(0)).current;
+    const dailyRewardDayAnimRefs = useRef(
+      Array.from({ length: DAILY_REWARD_STREAK_LENGTH }, () => new Animated.Value(0))
+    );
+    const dailyRewardCoinPulseLoopRef = useRef(null);
+    const dailyRewardHaloSpinLoopRef = useRef(null);
+    const dailyRewardSfxTimersRef = useRef([]);
+    const dailyRewardPreview = useMemo(
+      () => buildDailyRewardChestSchedule(dailyRewardBaseAmount || dailyRewardAmount),
+      [dailyRewardAmount, dailyRewardBaseAmount]
+    );
+    const currentDailyRewardEntry =
+      getDailyRewardChestEntryForDay(
+        dailyRewardBaseAmount || dailyRewardAmount,
+        dailyRewardDay
+      ) ||
+      dailyRewardPreview[0] ||
+      null;
+    const dailyRewardModalPalette = isDarkMode
+      ? {
+          background: colors.primarySurfaceStrong,
+          border: colors.primaryBorder,
+          subtext: colors.muted,
+          text: colors.text,
+        }
+      : {
+          background: goldPalette.background,
+          border: goldPalette.border,
+          subtext: goldPalette.subtext,
+          text: goldPalette.text,
+        };
+    const dailyRewardActiveAccent = colors.success;
+    const dailyRewardActiveBorder = colorWithAlpha(
+      colors.success,
+      isDarkMode ? 0.38 : 0.3
+    );
+    const dailyRewardActiveBg = colorWithAlpha(
+      colors.success,
+      isDarkMode ? 0.1 : 0.08
+    );
+    const dailyRewardCtaTextColor = getReadableTextColor(goldPalette.accent, {
+      dark: "#2A1A03",
+    });
+    const activeDailyRewardDay = dailyRewardReady
+      ? Math.min(
+          DAILY_REWARD_STREAK_LENGTH,
+          Math.max(1, dailyRewardDay || 1)
+        )
+      : null;
+    const dailyRewardModalCardOpacity = dailyRewardModalReveal.interpolate({
+      inputRange: [0, 0.6, 1],
+      outputRange: [0, 0.88, 1],
+    });
+    const dailyRewardModalCardScale = dailyRewardModalReveal.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.9, 1],
+    });
+    const dailyRewardModalCardTranslateY = dailyRewardModalReveal.interpolate({
+      inputRange: [0, 1],
+      outputRange: [34, 0],
+    });
+    const dailyRewardModalCoinScale = dailyRewardCoinPulse.interpolate({
+      inputRange: [0, 1],
+      outputRange: [1, 1.08],
+    });
+    const dailyRewardModalHaloRotate = dailyRewardHaloSpin.interpolate({
+      inputRange: [0, 1],
+      outputRange: ["0deg", "360deg"],
+    });
+    const dailyRewardModalFlashOpacity = dailyRewardCollectFlash.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 0.3],
+    });
+    const clearDailyRewardSfxTimers = useCallback(() => {
+      if (!dailyRewardSfxTimersRef.current.length) return;
+      dailyRewardSfxTimersRef.current.forEach((timerId) => clearTimeout(timerId));
+      dailyRewardSfxTimersRef.current = [];
+    }, []);
+    const stopDailyRewardModalLoops = useCallback(() => {
+      dailyRewardCoinPulseLoopRef.current?.stop?.();
+      dailyRewardHaloSpinLoopRef.current?.stop?.();
+      dailyRewardCoinPulseLoopRef.current = null;
+      dailyRewardHaloSpinLoopRef.current = null;
+    }, []);
+    const resetDailyRewardModalAnimation = useCallback(() => {
+      dailyRewardModalReveal.setValue(0);
+      dailyRewardBackdropReveal.setValue(0);
+      dailyRewardCoinPulse.setValue(0);
+      dailyRewardHaloSpin.setValue(0);
+      dailyRewardCollectFlash.setValue(0);
+      dailyRewardDayAnimRefs.current.forEach((anim) => anim.setValue(0));
+    }, [
+      dailyRewardBackdropReveal,
+      dailyRewardCollectFlash,
+      dailyRewardCoinPulse,
+      dailyRewardHaloSpin,
+      dailyRewardModalReveal,
+    ]);
+    const handleDailyRewardModalShow = useCallback(() => {
+      if (!visible) return;
+      dailyRewardClosePendingRef.current = false;
+      stopDailyRewardModalLoops();
+      clearDailyRewardSfxTimers();
+      resetDailyRewardModalAnimation();
+      Animated.parallel([
+        Animated.timing(dailyRewardBackdropReveal, {
+          toValue: 1,
+          duration: 220,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.spring(dailyRewardModalReveal, {
+          toValue: 1,
+          tension: 170,
+          friction: 18,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      const dayAnimations = dailyRewardDayAnimRefs.current
+        .slice(0, dailyRewardPreview.length)
+        .map((anim) =>
+          Animated.timing(anim, {
+            toValue: 1,
+            duration: 240,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          })
+        );
+      Animated.stagger(44, dayAnimations).start();
+      const coinPulseLoop = createMotionLoop(
+        Animated.sequence([
+          Animated.timing(dailyRewardCoinPulse, {
+            toValue: 1,
+            duration: 780,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(dailyRewardCoinPulse, {
+            toValue: 0,
+            duration: 760,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      const haloSpinLoop = createMotionLoop(
+        Animated.timing(dailyRewardHaloSpin, {
+          toValue: 1,
+          duration: 5200,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      );
+      dailyRewardCoinPulseLoopRef.current = coinPulseLoop;
+      dailyRewardHaloSpinLoopRef.current = haloSpinLoop;
+      coinPulseLoop.start();
+      haloSpinLoop.start();
+    }, [
+      clearDailyRewardSfxTimers,
+      dailyRewardBackdropReveal,
+      dailyRewardCoinPulse,
+      dailyRewardHaloSpin,
+      dailyRewardModalReveal,
+      dailyRewardPreview.length,
+      resetDailyRewardModalAnimation,
+      stopDailyRewardModalLoops,
+      visible,
+    ]);
+    const closeDailyRewardModalAnimated = useCallback(() => {
+      if (dailyRewardClosePendingRef.current) return;
+      if (!visible) {
+        onClose?.();
+        return;
+      }
+      dailyRewardClosePendingRef.current = true;
+      stopDailyRewardModalLoops();
+      clearDailyRewardSfxTimers();
+      Animated.parallel([
+        Animated.timing(dailyRewardModalReveal, {
+          toValue: 0,
+          duration: 220,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(dailyRewardBackdropReveal, {
+          toValue: 0,
+          duration: 180,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(dailyRewardCollectFlash, {
+          toValue: 0,
+          duration: 140,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        dailyRewardClosePendingRef.current = false;
+        onClose?.();
+      });
+    }, [
+      clearDailyRewardSfxTimers,
+      dailyRewardBackdropReveal,
+      dailyRewardCollectFlash,
+      dailyRewardModalReveal,
+      onClose,
+      stopDailyRewardModalLoops,
+      visible,
+    ]);
+    const handleDailyRewardClosePress = useCallback(() => {
+      playSound?.("tap", { skipCooldown: true });
+      closeDailyRewardModalAnimated();
+    }, [closeDailyRewardModalAnimated, playSound]);
+    const runDailyRewardClaim = useCallback(() => {
+      if (dailyRewardClaimRunningRef.current) return;
+      dailyRewardClaimRunningRef.current = true;
+      try {
+        const result = onDailyRewardClaim?.();
+        Promise.resolve(result)
+          .catch(() => {})
+          .finally(() => {
+            dailyRewardClaimRunningRef.current = false;
+            dailyRewardClaimPendingRef.current = false;
+          });
+      } catch (_error) {
+        dailyRewardClaimRunningRef.current = false;
+        dailyRewardClaimPendingRef.current = false;
+      }
+    }, [onDailyRewardClaim]);
+    const handleDailyRewardModalDismiss = useCallback(() => {
+      clearDailyRewardSfxTimers();
+      if (!dailyRewardClaimPendingRef.current) return;
+      runDailyRewardClaim();
+    }, [clearDailyRewardSfxTimers, runDailyRewardClaim]);
+    const handleDailyRewardCollect = useCallback(() => {
+      if (dailyRewardClosePendingRef.current) return;
+      if (!dailyRewardReady) {
+        closeDailyRewardModalAnimated();
+        return;
+      }
+      if (dailyRewardClaimPendingRef.current) {
+        closeDailyRewardModalAnimated();
+        return;
+      }
+      triggerSuccessHaptic();
+      dailyRewardClaimPendingRef.current = true;
+      clearDailyRewardSfxTimers();
+      playSound?.("counter", { skipCooldown: true });
+      dailyRewardSfxTimersRef.current.push(
+        setTimeout(() => playSound?.("coin", { skipCooldown: true }), 120)
+      );
+      dailyRewardSfxTimersRef.current.push(
+        setTimeout(() => playSound?.("reward", { skipCooldown: true }), 250)
+      );
+      Animated.sequence([
+        Animated.timing(dailyRewardCollectFlash, {
+          toValue: 1,
+          duration: 140,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(dailyRewardCollectFlash, {
+          toValue: 0,
+          duration: 260,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]).start();
+      closeDailyRewardModalAnimated();
+      runDailyRewardClaim();
+    }, [
+      clearDailyRewardSfxTimers,
+      closeDailyRewardModalAnimated,
+      dailyRewardCollectFlash,
+      dailyRewardReady,
+      playSound,
+      runDailyRewardClaim,
+    ]);
+    useImperativeHandle(
+      ref,
+      () => ({
+        close: closeDailyRewardModalAnimated,
+      }),
+      [closeDailyRewardModalAnimated]
+    );
+    useEffect(() => {
+      if (visible) return undefined;
+      dailyRewardClosePendingRef.current = false;
+      stopDailyRewardModalLoops();
+      clearDailyRewardSfxTimers();
+      resetDailyRewardModalAnimation();
+      return undefined;
+    }, [
+      clearDailyRewardSfxTimers,
+      resetDailyRewardModalAnimation,
+      stopDailyRewardModalLoops,
+      visible,
+    ]);
+    useEffect(
+      () => () => {
+        stopDailyRewardModalLoops();
+        clearDailyRewardSfxTimers();
+      },
+      [clearDailyRewardSfxTimers, stopDailyRewardModalLoops]
+    );
+
+    return (
+      <Modal
+        visible={visible}
+        transparent
+        forceNativeHost={Platform.OS === "ios"}
+        animationType="none"
+        statusBarTranslucent
+        navigationBarTranslucent
+        hardwareAccelerated
+        presentationStyle={
+          Platform.OS === "ios" ? IOS_DEFAULT_MODAL_PRESENTATION : undefined
+        }
+        onShow={handleDailyRewardModalShow}
+        onRequestClose={handleDailyRewardClosePress}
+        onDismiss={handleDailyRewardModalDismiss}
+      >
+        <View style={styles.dailyRewardModalLayer}>
+          <TouchableWithoutFeedback onPress={handleDailyRewardClosePress}>
+            <Animated.View
+              style={[
+                styles.dailyRewardModalBackdrop,
+                {
+                  backgroundColor: isDarkMode
+                    ? "rgba(0,0,0,0.72)"
+                    : "rgba(11,16,30,0.42)",
+                  opacity: dailyRewardBackdropReveal,
+                },
+              ]}
+            />
+          </TouchableWithoutFeedback>
+          <View style={styles.dailyRewardModalWrap} pointerEvents="box-none">
+            <Animated.View
+              {...ANDROID_STABLE_ALPHA_PROPS}
+              style={[
+                styles.dailyRewardModalCard,
+                {
+                  backgroundColor: dailyRewardModalPalette.background,
+                  borderColor: dailyRewardModalPalette.border,
+                  opacity: dailyRewardModalCardOpacity,
+                  transform: [
+                    { translateY: dailyRewardModalCardTranslateY },
+                    { scale: dailyRewardModalCardScale },
+                  ],
+                },
+              ]}
+            >
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.dailyRewardModalFlash,
+                  {
+                    backgroundColor: isDarkMode
+                      ? "rgba(255,255,255,0.28)"
+                      : "rgba(255,255,255,0.36)",
+                    opacity: dailyRewardModalFlashOpacity,
+                  },
+                ]}
+              />
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.dailyRewardModalHalo,
+                  {
+                    borderColor: colorWithAlpha(
+                      goldPalette.accent,
+                      isDarkMode ? 0.54 : 0.3
+                    ),
+                    transform: [{ rotate: dailyRewardModalHaloRotate }],
+                  },
+                ]}
+              />
+              <View style={styles.dailyRewardModalHeaderRow}>
+                <View
+                  style={[
+                    styles.dailyRewardModalPill,
+                    {
+                      borderColor: colorWithAlpha(
+                        dailyRewardModalPalette.text,
+                        isDarkMode ? 0.36 : 0.24
+                      ),
+                      backgroundColor: colorWithAlpha(
+                        goldPalette.accent,
+                        isDarkMode ? 0.24 : 0.12
+                      ),
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.dailyRewardModalPillText,
+                      { color: dailyRewardModalPalette.text },
+                    ]}
+                  >
+                    {t("dailyRewardModalDayLabel", {
+                      day:
+                        activeDailyRewardDay ||
+                        Math.max(1, Number(dailyRewardDay) || 1),
+                    })}
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.dailyRewardModalTitle,
+                    { color: dailyRewardModalPalette.text },
+                  ]}
+                >
+                  {t("dailyRewardModalTitle")}
+                </Text>
+              </View>
+              <View style={styles.dailyRewardModalHero}>
+                <Animated.View
+                  style={[
+                    styles.dailyRewardModalCoinOrbit,
+                    {
+                      backgroundColor: colorWithAlpha(
+                        goldPalette.accent,
+                        isDarkMode ? 0.3 : 0.2
+                      ),
+                      borderColor: colorWithAlpha(
+                        goldPalette.accent,
+                        isDarkMode ? 0.62 : 0.34
+                      ),
+                      transform: [{ scale: dailyRewardModalCoinScale }],
+                    },
+                  ]}
+                >
+                  <Image
+                    source={
+                      getChestRewardTierById(
+                        currentDailyRewardEntry?.tierId || null
+                      )?.assets?.closed ||
+                      (
+                        getChestRewardTierForAmount(dailyRewardAmount) ||
+                        DEFAULT_CHEST_REWARD_TIER
+                      )?.assets?.closed
+                    }
+                    style={styles.dailyRewardModalCoinIcon}
+                  />
+                </Animated.View>
+                {Number(currentDailyRewardEntry?.chestCount) > 1 ? (
+                  <View
+                    style={[
+                      styles.dailyRewardModalHeroCountPill,
+                      {
+                        backgroundColor: colorWithAlpha(
+                          goldPalette.accent,
+                          isDarkMode ? 0.24 : 0.14
+                        ),
+                        borderColor: colorWithAlpha(
+                          goldPalette.accent,
+                          isDarkMode ? 0.46 : 0.24
+                        ),
+                      },
+                    ]}
+                  >
+                    <ChestRewardBadge
+                      amount={
+                        currentDailyRewardEntry?.amount || dailyRewardAmount
+                      }
+                      count={currentDailyRewardEntry?.chestCount}
+                      tierId={currentDailyRewardEntry?.tierId}
+                      language={language}
+                      iconSize={18}
+                      compact
+                      textColor={dailyRewardModalPalette.text}
+                      mystery
+                    />
+                  </View>
+                ) : null}
+                <Text
+                  style={[
+                    styles.dailyRewardModalSubtitle,
+                    { color: dailyRewardModalPalette.subtext },
+                  ]}
+                >
+                  {t("dailyRewardChestHint")}
+                </Text>
+              </View>
+              <View style={styles.dailyRewardCalendar}>
+                {dailyRewardPreview.map((entry, index) => {
+                  const isActive = entry.day === activeDailyRewardDay;
+                  const isSuper = entry.isSuper;
+                  const dayBg = isSuper
+                    ? "rgba(255,214,143,0.2)"
+                    : goldPalette.badgeBg;
+                  const dayBorder = isSuper
+                    ? "rgba(255,171,64,0.85)"
+                    : goldPalette.border;
+                  const superDayStyle = isSuper
+                    ? { minWidth: 84, maxWidth: 102, width: 92 }
+                    : null;
+                  const dayAnim =
+                    dailyRewardDayAnimRefs.current[index] ||
+                    dailyRewardModalReveal;
+                  const dayOpacity = dayAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 1],
+                  });
+                  const dayTranslateY = dayAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [10, 0],
+                  });
+                  const dayScale = dayAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.92, 1],
+                  });
+                  return (
+                    <Animated.View
+                      key={entry.day}
+                      style={[
+                        styles.dailyRewardCalendarDay,
+                        superDayStyle,
+                        {
+                          backgroundColor: isActive
+                            ? dailyRewardActiveBg
+                            : dayBg,
+                          borderWidth: isActive ? 1.5 : 1,
+                          borderColor: isActive
+                            ? dailyRewardActiveBorder
+                            : dayBorder,
+                          opacity: dayOpacity,
+                          transform: [
+                            { translateY: dayTranslateY },
+                            { scale: dayScale },
+                          ],
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.dailyRewardCalendarDayLabel,
+                          {
+                            color: isActive
+                              ? dailyRewardActiveAccent
+                              : dailyRewardModalPalette.subtext,
+                          },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {t("dailyRewardModalDayLabel", { day: entry.day })}
+                      </Text>
+                      {entry.amount > 0 && Number(entry.chestCount) > 1 ? (
+                        <ChestRewardBadge
+                          amount={entry.amount}
+                          count={entry.chestCount}
+                          tierId={entry.tierId}
+                          language={language}
+                          iconSize={18}
+                          compact
+                          mystery
+                          textColor={
+                            isActive
+                              ? dailyRewardActiveAccent
+                              : dailyRewardModalPalette.text
+                          }
+                          style={styles.dailyRewardCalendarChestBadge}
+                        />
+                      ) : entry.amount > 0 ? (
+                        <Image
+                          source={
+                            getChestRewardTierById(entry.tierId)?.assets
+                              ?.closed ||
+                            (
+                              getChestRewardTierForAmount(entry.amount) ||
+                              DEFAULT_CHEST_REWARD_TIER
+                            )?.assets?.closed
+                          }
+                          style={styles.dailyRewardCalendarChestIcon}
+                        />
+                      ) : null}
+                      {isSuper && (
+                        <Text
+                          style={[
+                            styles.dailyRewardCalendarSuperLabel,
+                            {
+                              color: isActive
+                                ? dailyRewardActiveAccent
+                                : dailyRewardModalPalette.text,
+                            },
+                          ]}
+                          numberOfLines={2}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.86}
+                          maxFontSizeMultiplier={1}
+                        >
+                          {t("dailyRewardSuperLabel")}
+                        </Text>
+                      )}
+                    </Animated.View>
+                  );
+                })}
+              </View>
+              <View
+                style={[
+                  styles.dailyRewardModalNoteWrap,
+                  {
+                    borderColor: colorWithAlpha(
+                      dailyRewardModalPalette.text,
+                      isDarkMode ? 0.26 : 0.2
+                    ),
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.dailyRewardModalNoteIcon,
+                    { color: dailyRewardModalPalette.text },
+                  ]}
+                >
+                  ⚡
+                </Text>
+                <Text
+                  style={[
+                    styles.dailyRewardModalNote,
+                    { color: dailyRewardModalPalette.subtext },
+                  ]}
+                >
+                  {t("dailyRewardModalGrowthNote")}
+                </Text>
+              </View>
+              <View style={styles.dailyRewardModalActions}>
+                <TouchableOpacity
+                  style={[
+                    styles.dailyRewardModalSecondary,
+                    {
+                      borderColor: colorWithAlpha(
+                        dailyRewardModalPalette.text,
+                        0.3
+                      ),
+                    },
+                  ]}
+                  onPress={handleDailyRewardClosePress}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={[
+                      styles.dailyRewardModalSecondaryText,
+                      { color: dailyRewardModalPalette.text },
+                    ]}
+                  >
+                    {t("dailyRewardModalLater")}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.dailyRewardModalPrimary,
+                    { backgroundColor: goldPalette.accent },
+                  ]}
+                  onPress={handleDailyRewardCollect}
+                  activeOpacity={0.9}
+                >
+                  <Text
+                    style={[
+                      styles.dailyRewardModalPrimaryText,
+                      { color: dailyRewardCtaTextColor },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.78}
+                  >
+                    {t("dailyRewardModalCTA")}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          </View>
+        </View>
+      </Modal>
+    );
+  })
+);
+
 const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   goldPalette,
   colors,
@@ -18761,14 +19639,8 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   onBreakdownPress = () => {},
   playSound = () => {},
   onAnchorChange = null,
-  dailyRewardUnlocked = false,
-  dailyRewardReady = false,
-  dailyRewardAmount = 0,
-  dailyRewardBaseAmount = 0,
-  dailyRewardDay = 1,
-  onDailyRewardClaim = () => {},
-  onDailyRewardModalVisibilityChange = null,
-  openDailyRewardRequestTick = 0,
+  onDailyRewardOpen = () => {},
+  onDailyRewardClose = () => {},
   activeChallenge = null,
   onActiveChallengePress = () => {},
   onExpandedChange = null,
@@ -18781,23 +19653,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const heroRecentNowTick = useMinuteTicker(true);
   const heroCardRef = useRef(null);
   const heroAnchorRef = useRef(null);
-  const dailyRewardOpenRequestSeenRef = useRef(0);
-  const dailyRewardClaimPendingRef = useRef(false);
-  const dailyRewardClaimRunningRef = useRef(false);
-  const dailyRewardClosePendingRef = useRef(false);
-  const [isDailyRewardModalVisible, setDailyRewardModalVisible] = useState(false);
-  const dailyRewardModalReveal = useRef(new Animated.Value(0)).current;
-  const dailyRewardBackdropReveal = useRef(new Animated.Value(0)).current;
-  const dailyRewardCoinPulse = useRef(new Animated.Value(0)).current;
-  const dailyRewardHaloSpin = useRef(new Animated.Value(0)).current;
-  const dailyRewardCollectFlash = useRef(new Animated.Value(0)).current;
-  const dailyRewardDayAnimRefs = useRef(
-    Array.from({ length: DAILY_REWARD_STREAK_LENGTH }, () => new Animated.Value(0))
-  );
   const savingRatingModalScrollLoggedRef = useRef(false);
-  const dailyRewardCoinPulseLoopRef = useRef(null);
-  const dailyRewardHaloSpinLoopRef = useRef(null);
-  const dailyRewardSfxTimersRef = useRef([]);
   const [isSavingsTrendModalVisible, setSavingsTrendModalVisible] = useState(false);
   const savingsTrendModalReveal = useRef(new Animated.Value(0)).current;
   const savingsTrendBackdropReveal = useRef(new Animated.Value(0)).current;
@@ -18849,15 +19705,6 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
     if (!width) return;
     setHeroAmountSafeWidth((prevWidth) => (Math.abs(prevWidth - width) > 1 ? width : prevWidth));
   }, []);
-  const setDailyRewardModalState = useCallback(
-    (visible) => {
-      setDailyRewardModalVisible(visible);
-      if (typeof onDailyRewardModalVisibilityChange === "function") {
-        onDailyRewardModalVisibilityChange(visible);
-      }
-    },
-    [onDailyRewardModalVisibilityChange]
-  );
   const resolvedTotalSavedUSD = Math.max(0, Number(totalSavedUSD) || 0);
   const resolvedPotentialForecastPeriod =
     HERO_POTENTIAL_PERIOD_FACTORS[potentialForecastPeriod] != null
@@ -19738,281 +20585,14 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
       }
     };
   }, [measureHeroAnchor, onAnchorChange]);
-  const dailyRewardPreview = useMemo(() => {
-    return buildDailyRewardChestSchedule(dailyRewardBaseAmount || dailyRewardAmount);
-  }, [dailyRewardAmount, dailyRewardBaseAmount]);
-  const currentDailyRewardEntry =
-    getDailyRewardChestEntryForDay(dailyRewardBaseAmount || dailyRewardAmount, dailyRewardDay) ||
-    dailyRewardPreview[0] ||
-    null;
-  const dailyRewardModalPalette = isDarkMode
-    ? {
-        background: colors.primarySurfaceStrong,
-        border: colors.primaryBorder,
-        subtext: colors.muted,
-        text: colors.text,
-      }
-    : {
-        background: goldPalette.background,
-        border: goldPalette.border,
-        subtext: goldPalette.subtext,
-        text: goldPalette.text,
-      };
-  const dailyRewardActiveAccent = colors.success;
-  const dailyRewardActiveBorder = colorWithAlpha(colors.success, isDarkMode ? 0.38 : 0.3);
-  const dailyRewardActiveBg = colorWithAlpha(colors.success, isDarkMode ? 0.1 : 0.08);
-  const dailyRewardCtaTextColor = getReadableTextColor(goldPalette.accent, {
-    dark: "#2A1A03",
-  });
-  const clearDailyRewardSfxTimers = useCallback(() => {
-    if (!dailyRewardSfxTimersRef.current.length) return;
-    dailyRewardSfxTimersRef.current.forEach((timerId) => clearTimeout(timerId));
-    dailyRewardSfxTimersRef.current = [];
-  }, []);
-  const stopDailyRewardModalLoops = useCallback(() => {
-    dailyRewardCoinPulseLoopRef.current?.stop?.();
-    dailyRewardHaloSpinLoopRef.current?.stop?.();
-    dailyRewardCoinPulseLoopRef.current = null;
-    dailyRewardHaloSpinLoopRef.current = null;
-  }, []);
-  const closeDailyRewardModalAnimated = useCallback(() => {
-    if (dailyRewardClosePendingRef.current) return;
-    if (!isDailyRewardModalVisible) {
-      setDailyRewardModalState(false);
-      return;
-    }
-    dailyRewardClosePendingRef.current = true;
-    stopDailyRewardModalLoops();
-    clearDailyRewardSfxTimers();
-    Animated.parallel([
-      Animated.timing(dailyRewardModalReveal, {
-        toValue: 0,
-        duration: 220,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(dailyRewardBackdropReveal, {
-        toValue: 0,
-        duration: 180,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }),
-      Animated.timing(dailyRewardCollectFlash, {
-        toValue: 0,
-        duration: 140,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      dailyRewardClosePendingRef.current = false;
-      setDailyRewardModalState(false);
-    });
-  }, [
-    clearDailyRewardSfxTimers,
-    dailyRewardBackdropReveal,
-    dailyRewardCollectFlash,
-    dailyRewardModalReveal,
-    isDailyRewardModalVisible,
-    setDailyRewardModalState,
-    stopDailyRewardModalLoops,
-  ]);
-  const handleDailyRewardClosePress = useCallback(() => {
-    playSound?.("tap", { skipCooldown: true });
-    closeDailyRewardModalAnimated();
-  }, [closeDailyRewardModalAnimated, playSound]);
-  const handleDailyRewardPress = useCallback(() => {
-    if (!dailyRewardReady) return;
-    if (dailyRewardClosePendingRef.current) return;
-    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    const day = Math.min(DAILY_REWARD_STREAK_LENGTH, Math.max(1, dailyRewardDay || 1));
-    logEvent("daily_reward_opened", {
-      coins: dailyRewardAmount,
-      day,
-      level: playerLevel,
-    });
-    setDailyRewardModalState(true);
-  }, [
-    dailyRewardAmount,
-    dailyRewardDay,
-    dailyRewardReady,
-    playerLevel,
-    setDailyRewardModalState,
-    triggerHaptic,
-  ]);
-  useEffect(() => {
-    if (!openDailyRewardRequestTick) return;
-    if (openDailyRewardRequestTick === dailyRewardOpenRequestSeenRef.current) return;
-    if (!dailyRewardReady) return;
-    if (isDailyRewardModalVisible) return;
-    if (dailyRewardClosePendingRef.current) return;
-    dailyRewardOpenRequestSeenRef.current = openDailyRewardRequestTick;
-    handleDailyRewardPress();
-  }, [
-    dailyRewardReady,
-    handleDailyRewardPress,
-    isDailyRewardModalVisible,
-    openDailyRewardRequestTick,
-  ]);
-  useEffect(() => {
-    if (!isDailyRewardModalVisible) {
-      stopDailyRewardModalLoops();
-      clearDailyRewardSfxTimers();
-      dailyRewardModalReveal.setValue(0);
-      dailyRewardBackdropReveal.setValue(0);
-      dailyRewardCoinPulse.setValue(0);
-      dailyRewardHaloSpin.setValue(0);
-      dailyRewardCollectFlash.setValue(0);
-      dailyRewardDayAnimRefs.current.forEach((anim) => anim.setValue(0));
-      return;
-    }
-    dailyRewardClosePendingRef.current = false;
-    dailyRewardModalReveal.setValue(0);
-    dailyRewardBackdropReveal.setValue(0);
-    dailyRewardCoinPulse.setValue(0);
-    dailyRewardHaloSpin.setValue(0);
-    dailyRewardCollectFlash.setValue(0);
-    dailyRewardDayAnimRefs.current.forEach((anim) => anim.setValue(0));
-    Animated.parallel([
-      Animated.timing(dailyRewardBackdropReveal, {
-        toValue: 1,
-        duration: 220,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }),
-      Animated.spring(dailyRewardModalReveal, {
-        toValue: 1,
-        tension: 170,
-        friction: 18,
-        useNativeDriver: true,
-      }),
-    ]).start();
-    const dayAnimations = dailyRewardDayAnimRefs.current
-      .slice(0, dailyRewardPreview.length)
-      .map((anim) =>
-        Animated.timing(anim, {
-          toValue: 1,
-          duration: 240,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        })
-      );
-    Animated.stagger(44, dayAnimations).start();
-    const coinPulseLoop = createMotionLoop(
-      Animated.sequence([
-        Animated.timing(dailyRewardCoinPulse, {
-          toValue: 1,
-          duration: 780,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(dailyRewardCoinPulse, {
-          toValue: 0,
-          duration: 760,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    const haloSpinLoop = createMotionLoop(
-      Animated.timing(dailyRewardHaloSpin, {
-        toValue: 1,
-        duration: 5200,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
-    dailyRewardCoinPulseLoopRef.current = coinPulseLoop;
-    dailyRewardHaloSpinLoopRef.current = haloSpinLoop;
-    coinPulseLoop.start();
-    haloSpinLoop.start();
-    return () => {
-      stopDailyRewardModalLoops();
-      clearDailyRewardSfxTimers();
-    };
-  }, [
-    clearDailyRewardSfxTimers,
-    dailyRewardBackdropReveal,
-    dailyRewardCollectFlash,
-    dailyRewardCoinPulse,
-    dailyRewardHaloSpin,
-    dailyRewardModalReveal,
-    dailyRewardPreview.length,
-    isDailyRewardModalVisible,
-    stopDailyRewardModalLoops,
-  ]);
-  const runDailyRewardClaim = useCallback(() => {
-    if (dailyRewardClaimRunningRef.current) return;
-    dailyRewardClaimRunningRef.current = true;
-    try {
-      const result = onDailyRewardClaim?.();
-      Promise.resolve(result)
-        .catch(() => {})
-        .finally(() => {
-          dailyRewardClaimRunningRef.current = false;
-          dailyRewardClaimPendingRef.current = false;
-        });
-    } catch (error) {
-      dailyRewardClaimRunningRef.current = false;
-      dailyRewardClaimPendingRef.current = false;
-    }
-  }, [onDailyRewardClaim]);
-  const handleDailyRewardModalDismiss = useCallback(() => {
-    clearDailyRewardSfxTimers();
-    if (!dailyRewardClaimPendingRef.current) return;
-    runDailyRewardClaim();
-  }, [clearDailyRewardSfxTimers, runDailyRewardClaim]);
-  const handleDailyRewardCollect = useCallback(() => {
-    if (dailyRewardClosePendingRef.current) return;
-    if (!dailyRewardReady) {
-      closeDailyRewardModalAnimated();
-      return;
-    }
-    if (dailyRewardClaimPendingRef.current) {
-      closeDailyRewardModalAnimated();
-      return;
-    }
-    triggerSuccessHaptic();
-    dailyRewardClaimPendingRef.current = true;
-    clearDailyRewardSfxTimers();
-    playSound?.("counter", { skipCooldown: true });
-    dailyRewardSfxTimersRef.current.push(
-      setTimeout(() => playSound?.("coin", { skipCooldown: true }), 120)
-    );
-    dailyRewardSfxTimersRef.current.push(
-      setTimeout(() => playSound?.("reward", { skipCooldown: true }), 250)
-    );
-    Animated.sequence([
-      Animated.timing(dailyRewardCollectFlash, {
-        toValue: 1,
-        duration: 140,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }),
-      Animated.timing(dailyRewardCollectFlash, {
-        toValue: 0,
-        duration: 260,
-        easing: Easing.in(Easing.quad),
-        useNativeDriver: true,
-      }),
-    ]).start();
-    closeDailyRewardModalAnimated();
-    runDailyRewardClaim();
-  }, [
-    clearDailyRewardSfxTimers,
-    closeDailyRewardModalAnimated,
-    dailyRewardCollectFlash,
-    dailyRewardReady,
-    playSound,
-    runDailyRewardClaim,
-    triggerSuccessHaptic,
-  ]);
   useImperativeHandle(
     ref,
     () => ({
       openDailyRewardModal: () => {
-        handleDailyRewardPress();
+        onDailyRewardOpen?.();
       },
       closeDailyRewardModal: () => {
-        closeDailyRewardModalAnimated();
+        onDailyRewardClose?.();
       },
       openSavingRatingModal: () => {
         handleSavingRatingOpen();
@@ -20022,39 +20602,12 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
       },
     }),
     [
-      closeDailyRewardModalAnimated,
-      handleDailyRewardPress,
       handleSavingRatingClose,
       handleSavingRatingOpen,
+      onDailyRewardClose,
+      onDailyRewardOpen,
     ]
   );
-  const activeDailyRewardDay = dailyRewardReady
-    ? Math.min(DAILY_REWARD_STREAK_LENGTH, Math.max(1, dailyRewardDay || 1))
-    : null;
-  const dailyRewardModalCardOpacity = dailyRewardModalReveal.interpolate({
-    inputRange: [0, 0.6, 1],
-    outputRange: [0, 0.88, 1],
-  });
-  const dailyRewardModalCardScale = dailyRewardModalReveal.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.9, 1],
-  });
-  const dailyRewardModalCardTranslateY = dailyRewardModalReveal.interpolate({
-    inputRange: [0, 1],
-    outputRange: [34, 0],
-  });
-  const dailyRewardModalCoinScale = dailyRewardCoinPulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.08],
-  });
-  const dailyRewardModalHaloRotate = dailyRewardHaloSpin.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "360deg"],
-  });
-  const dailyRewardModalFlashOpacity = dailyRewardCollectFlash.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 0.3],
-  });
   const activeChallengeCount = activeChallenge?.targetValue || 0;
   const activeChallengeProgress = activeChallenge?.progressValue || 0;
   const showActiveChallenge =
@@ -20376,6 +20929,7 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
                     { color: entry.isSpend ? goldPalette.danger : SAVE_ACTION_COLOR },
                   ]}
                   numberOfLines={1}
+                  adjustsFontSizeToFit={false}
                 >
                   {entry.amountLabel || (entry.isSpend ? "-" : "+")}
                 </Text>
@@ -21077,259 +21631,6 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
                     },
                   ]}
                 />
-              </View>
-            </Animated.View>
-          </View>
-        </View>
-      </Modal>
-      <Modal
-        visible={isDailyRewardModalVisible}
-        transparent
-        forceNativeHost
-        animationType="none"
-        statusBarTranslucent
-        navigationBarTranslucent
-        hardwareAccelerated
-        presentationStyle={Platform.OS === "ios" ? IOS_DEFAULT_MODAL_PRESENTATION : undefined}
-        onRequestClose={handleDailyRewardClosePress}
-        onDismiss={handleDailyRewardModalDismiss}
-      >
-        <View style={styles.dailyRewardModalLayer}>
-          <TouchableWithoutFeedback onPress={handleDailyRewardClosePress}>
-            <Animated.View
-              style={[
-                styles.dailyRewardModalBackdrop,
-                {
-                  backgroundColor: isDarkMode ? "rgba(0,0,0,0.72)" : "rgba(11,16,30,0.42)",
-                  opacity: dailyRewardBackdropReveal,
-                },
-              ]}
-            />
-          </TouchableWithoutFeedback>
-          <View style={styles.dailyRewardModalWrap} pointerEvents="box-none">
-            <Animated.View
-              {...ANDROID_STABLE_ALPHA_PROPS}
-              style={[
-                styles.dailyRewardModalCard,
-                {
-                  backgroundColor: dailyRewardModalPalette.background,
-                  borderColor: dailyRewardModalPalette.border,
-                  opacity: dailyRewardModalCardOpacity,
-                  transform: [
-                    { translateY: dailyRewardModalCardTranslateY },
-                    { scale: dailyRewardModalCardScale },
-                  ],
-                },
-              ]}
-            >
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  styles.dailyRewardModalFlash,
-                  {
-                    backgroundColor: isDarkMode ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.36)",
-                    opacity: dailyRewardModalFlashOpacity,
-                  },
-                ]}
-              />
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  styles.dailyRewardModalHalo,
-                  {
-                    borderColor: colorWithAlpha(goldPalette.accent, isDarkMode ? 0.54 : 0.3),
-                    transform: [{ rotate: dailyRewardModalHaloRotate }],
-                  },
-                ]}
-              />
-              <View style={styles.dailyRewardModalHeaderRow}>
-                <View
-                  style={[
-                    styles.dailyRewardModalPill,
-                    {
-                      borderColor: colorWithAlpha(dailyRewardModalPalette.text, isDarkMode ? 0.36 : 0.24),
-                      backgroundColor: colorWithAlpha(goldPalette.accent, isDarkMode ? 0.24 : 0.12),
-                    },
-                  ]}
-                >
-                  <Text style={[styles.dailyRewardModalPillText, { color: dailyRewardModalPalette.text }]}>
-                    {t("dailyRewardModalDayLabel", {
-                      day: activeDailyRewardDay || Math.max(1, Number(dailyRewardDay) || 1),
-                    })}
-                  </Text>
-                </View>
-                <Text style={[styles.dailyRewardModalTitle, { color: dailyRewardModalPalette.text }]}>
-                  {t("dailyRewardModalTitle")}
-                </Text>
-              </View>
-              <View style={styles.dailyRewardModalHero}>
-                <Animated.View
-                  style={[
-                    styles.dailyRewardModalCoinOrbit,
-                    {
-                      backgroundColor: colorWithAlpha(goldPalette.accent, isDarkMode ? 0.3 : 0.2),
-                      borderColor: colorWithAlpha(goldPalette.accent, isDarkMode ? 0.62 : 0.34),
-                      transform: [{ scale: dailyRewardModalCoinScale }],
-                    },
-                  ]}
-                >
-                  <Image
-                    source={
-                      getChestRewardTierById(currentDailyRewardEntry?.tierId || null)?.assets?.closed ||
-                      (getChestRewardTierForAmount(dailyRewardAmount) || DEFAULT_CHEST_REWARD_TIER)
-                        ?.assets?.closed
-                    }
-                    style={styles.dailyRewardModalCoinIcon}
-                  />
-                </Animated.View>
-                {Number(currentDailyRewardEntry?.chestCount) > 1 ? (
-                  <View
-                    style={[
-                      styles.dailyRewardModalHeroCountPill,
-                      {
-                        backgroundColor: colorWithAlpha(goldPalette.accent, isDarkMode ? 0.24 : 0.14),
-                        borderColor: colorWithAlpha(goldPalette.accent, isDarkMode ? 0.46 : 0.24),
-                      },
-                    ]}
-                  >
-                    <ChestRewardBadge
-                      amount={currentDailyRewardEntry?.amount || dailyRewardAmount}
-                      count={currentDailyRewardEntry?.chestCount}
-                      tierId={currentDailyRewardEntry?.tierId}
-                      language={language}
-                      iconSize={18}
-                      compact
-                      textColor={dailyRewardModalPalette.text}
-                      mystery
-                    />
-                  </View>
-                ) : null}
-                <Text style={[styles.dailyRewardModalSubtitle, { color: dailyRewardModalPalette.subtext }]}>
-                  {t("dailyRewardChestHint")}
-                </Text>
-              </View>
-              <View style={styles.dailyRewardCalendar}>
-                {dailyRewardPreview.map((entry, index) => {
-                  const isActive = entry.day === activeDailyRewardDay;
-                  const isSuper = entry.isSuper;
-                  const dayBg = isSuper ? "rgba(255,214,143,0.2)" : goldPalette.badgeBg;
-                  const dayBorder = isSuper ? "rgba(255,171,64,0.85)" : goldPalette.border;
-                  const superDayStyle = isSuper ? { minWidth: 84, maxWidth: 102, width: 92 } : null;
-                  const dayAnim = dailyRewardDayAnimRefs.current[index] || dailyRewardModalReveal;
-                  const dayOpacity = dayAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 1],
-                  });
-                  const dayTranslateY = dayAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [10, 0],
-                  });
-                  const dayScale = dayAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.92, 1],
-                  });
-                  return (
-                    <Animated.View
-                      key={entry.day}
-                      style={[
-                        styles.dailyRewardCalendarDay,
-                        superDayStyle,
-                        {
-                          backgroundColor: isActive ? dailyRewardActiveBg : dayBg,
-                          borderWidth: isActive ? 1.5 : 1,
-                          borderColor: isActive ? dailyRewardActiveBorder : dayBorder,
-                          opacity: dayOpacity,
-                          transform: [{ translateY: dayTranslateY }, { scale: dayScale }],
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.dailyRewardCalendarDayLabel,
-                          { color: isActive ? dailyRewardActiveAccent : dailyRewardModalPalette.subtext },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {t("dailyRewardModalDayLabel", { day: entry.day })}
-                      </Text>
-                      {entry.amount > 0 && Number(entry.chestCount) > 1 ? (
-                        <ChestRewardBadge
-                          amount={entry.amount}
-                          count={entry.chestCount}
-                          tierId={entry.tierId}
-                          language={language}
-                          iconSize={18}
-                          compact
-                          mystery
-                          textColor={isActive ? dailyRewardActiveAccent : dailyRewardModalPalette.text}
-                          style={styles.dailyRewardCalendarChestBadge}
-                        />
-                      ) : entry.amount > 0 ? (
-                        <Image
-                          source={
-                            getChestRewardTierById(entry.tierId)?.assets?.closed ||
-                            (getChestRewardTierForAmount(entry.amount) || DEFAULT_CHEST_REWARD_TIER)
-                              ?.assets?.closed
-                          }
-                          style={styles.dailyRewardCalendarChestIcon}
-                        />
-                      ) : null}
-                      {isSuper && (
-                        <Text
-                          style={[
-                            styles.dailyRewardCalendarSuperLabel,
-                            { color: isActive ? dailyRewardActiveAccent : dailyRewardModalPalette.text },
-                          ]}
-                          numberOfLines={2}
-                          adjustsFontSizeToFit
-                          minimumFontScale={0.86}
-                          maxFontSizeMultiplier={1}
-                        >
-                          {t("dailyRewardSuperLabel")}
-                        </Text>
-                      )}
-                    </Animated.View>
-                  );
-                })}
-              </View>
-              <View
-                style={[
-                  styles.dailyRewardModalNoteWrap,
-                  { borderColor: colorWithAlpha(dailyRewardModalPalette.text, isDarkMode ? 0.26 : 0.2) },
-                ]}
-              >
-                <Text style={[styles.dailyRewardModalNoteIcon, { color: dailyRewardModalPalette.text }]}>⚡</Text>
-                <Text style={[styles.dailyRewardModalNote, { color: dailyRewardModalPalette.subtext }]}>
-                  {t("dailyRewardModalGrowthNote")}
-                </Text>
-              </View>
-              <View style={styles.dailyRewardModalActions}>
-                <TouchableOpacity
-                  style={[
-                    styles.dailyRewardModalSecondary,
-                    { borderColor: colorWithAlpha(dailyRewardModalPalette.text, 0.3) },
-                  ]}
-                  onPress={handleDailyRewardClosePress}
-                  activeOpacity={0.85}
-                >
-                  <Text style={[styles.dailyRewardModalSecondaryText, { color: dailyRewardModalPalette.text }]}>
-                    {t("dailyRewardModalLater")}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.dailyRewardModalPrimary, { backgroundColor: goldPalette.accent }]}
-                  onPress={handleDailyRewardCollect}
-                  activeOpacity={0.9}
-                >
-                  <Text
-                    style={[styles.dailyRewardModalPrimaryText, { color: dailyRewardCtaTextColor }]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.78}
-                  >
-                    {t("dailyRewardModalCTA")}
-                  </Text>
-                </TouchableOpacity>
               </View>
             </Animated.View>
           </View>
@@ -27193,6 +27494,75 @@ const FeedScreen = React.memo(
   ) {
   const safeAreaInsets = safeUseSafeAreaInsets();
   const { reduceMotion } = useMotionPreferences();
+  const dailyRewardModalRef = useRef(null);
+  const dailyRewardOpenRequestSeenRef = useRef(0);
+  const dailyRewardModalVisibleRef = useRef(false);
+  const [dailyRewardModalVisible, setDailyRewardModalVisible] = useState(false);
+  const dailyRewardVisibilityChangeRef = useRef(
+    onDailyRewardModalVisibilityChange
+  );
+  dailyRewardVisibilityChangeRef.current =
+    onDailyRewardModalVisibilityChange;
+  const setDailyRewardModalState = useCallback((nextVisible) => {
+    const normalizedVisible = !!nextVisible;
+    if (dailyRewardModalVisibleRef.current === normalizedVisible) return;
+    dailyRewardModalVisibleRef.current = normalizedVisible;
+    setDailyRewardModalVisible(normalizedVisible);
+    dailyRewardVisibilityChangeRef.current?.(normalizedVisible);
+  }, []);
+  const openDailyRewardModal = useCallback(() => {
+    if (!dailyRewardReady || dailyRewardModalVisibleRef.current) return;
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    const day = Math.min(
+      DAILY_REWARD_STREAK_LENGTH,
+      Math.max(1, dailyRewardDay || 1)
+    );
+    logEvent("daily_reward_opened", {
+      coins: dailyRewardAmount,
+      day,
+      level: playerLevel,
+    });
+    setDailyRewardModalState(true);
+  }, [
+    dailyRewardAmount,
+    dailyRewardDay,
+    dailyRewardReady,
+    playerLevel,
+    setDailyRewardModalState,
+  ]);
+  const closeDailyRewardModal = useCallback(() => {
+    const modal = dailyRewardModalRef.current;
+    if (modal?.close) {
+      modal.close();
+      return;
+    }
+    setDailyRewardModalState(false);
+  }, [setDailyRewardModalState]);
+  const handleDailyRewardModalClosed = useCallback(() => {
+    setDailyRewardModalState(false);
+  }, [setDailyRewardModalState]);
+  useEffect(() => {
+    if (!dailyRewardOpenRequestTick) return;
+    if (
+      dailyRewardOpenRequestTick === dailyRewardOpenRequestSeenRef.current
+    ) {
+      return;
+    }
+    if (!dailyRewardReady || dailyRewardModalVisibleRef.current) return;
+    dailyRewardOpenRequestSeenRef.current = dailyRewardOpenRequestTick;
+    openDailyRewardModal();
+  }, [
+    dailyRewardOpenRequestTick,
+    dailyRewardReady,
+    openDailyRewardModal,
+  ]);
+  useEffect(
+    () => () => {
+      dailyRewardModalVisibleRef.current = false;
+      dailyRewardVisibilityChangeRef.current?.(false);
+    },
+    []
+  );
   const resolvedBudgetSpeechDataRef =
     typeof budgetSpeechDataRef === "undefined" ? null : budgetSpeechDataRef;
   const resolvedProgressSavedTotalUSD = Number.isFinite(progressSavedTotalUSD)
@@ -27258,11 +27628,11 @@ const FeedScreen = React.memo(
   const shouldAnimateVisibleHero =
     !reduceMotion && isFeedAppActive && heroPotentialVisible && !feedScrolling;
   const notifyFeedScrollState = useCallback(
-    (next) => {
+    (next, { notifyExternal = true } = {}) => {
       if (feedScrollingRef.current === next) return;
       feedScrollingRef.current = next;
       setFeedScrolling(next);
-      if (typeof onScrollActivityChange === "function") {
+      if (notifyExternal && typeof onScrollActivityChange === "function") {
         onScrollActivityChange(next);
       }
     },
@@ -27280,39 +27650,6 @@ const FeedScreen = React.memo(
     feedTopReplayCooldownRef.current = now;
     setSavedCounterReplayToken((prev) => prev + 1);
   }, []);
-  const handleFeedScrollBegin = useCallback(() => {
-    if (feedScrollTimerRef.current) {
-      clearTimeout(feedScrollTimerRef.current);
-      feedScrollTimerRef.current = null;
-    }
-    feedScrollMomentumRef.current = false;
-    notifyFeedScrollState(true);
-  }, [notifyFeedScrollState]);
-  const handleFeedScrollEnd = useCallback(() => {
-    if (feedScrollMomentumRef.current) return;
-    if (feedScrollTimerRef.current) {
-      clearTimeout(feedScrollTimerRef.current);
-    }
-    feedScrollTimerRef.current = setTimeout(() => {
-      notifyFeedScrollState(false);
-    }, 140);
-  }, [notifyFeedScrollState]);
-  const handleFeedMomentumBegin = useCallback(() => {
-    if (feedScrollTimerRef.current) {
-      clearTimeout(feedScrollTimerRef.current);
-      feedScrollTimerRef.current = null;
-    }
-    feedScrollMomentumRef.current = true;
-    notifyFeedScrollState(true);
-  }, [notifyFeedScrollState]);
-  const handleFeedMomentumEnd = useCallback(() => {
-    feedScrollMomentumRef.current = false;
-    if (feedScrollTimerRef.current) {
-      clearTimeout(feedScrollTimerRef.current);
-      feedScrollTimerRef.current = null;
-    }
-    notifyFeedScrollState(false);
-  }, [notifyFeedScrollState]);
   const updateHeroPotentialVisibility = useCallback((offsetY = 0) => {
     const resolvedOffset = Math.max(0, Number(offsetY) || 0);
     const heroHeight = Math.max(0, Number(heroSectionHeightRef.current) || 0);
@@ -27322,9 +27659,10 @@ const FeedScreen = React.memo(
     heroPotentialVisibleRef.current = nextVisible;
     setHeroPotentialVisible(nextVisible);
   }, []);
-  const handleFeedScroll = useCallback(
-    (event) => {
-      const offsetY = Math.max(0, Number(event?.nativeEvent?.contentOffset?.y) || 0);
+  const handleFeedScrollOffsetChange = useCallback(
+    (nextOffsetY) => {
+      const offsetY = Math.max(0, Number(nextOffsetY) || 0);
+      if (Math.abs(offsetY - feedScrollOffsetRef.current) < 0.25) return;
       feedScrollOffsetRef.current = offsetY;
       if (offsetY >= HERO_COUNTER_REPLAY_AWAY_OFFSET) {
         feedWasAwayFromTopRef.current = true;
@@ -27335,6 +27673,64 @@ const FeedScreen = React.memo(
       updateHeroPotentialVisibility(offsetY);
     },
     [triggerSavedCounterReplay, updateHeroPotentialVisibility]
+  );
+  const syncFeedScrollOffsetFromEvent = useCallback(
+    (event) => {
+      const offsetY = event?.nativeEvent?.contentOffset?.y;
+      if (Number.isFinite(offsetY)) {
+        handleFeedScrollOffsetChange(offsetY);
+      }
+    },
+    [handleFeedScrollOffsetChange]
+  );
+  const handleFeedScrollBegin = useCallback(
+    (event) => {
+      syncFeedScrollOffsetFromEvent(event);
+      if (feedScrollTimerRef.current) {
+        clearTimeout(feedScrollTimerRef.current);
+        feedScrollTimerRef.current = null;
+      }
+      feedScrollMomentumRef.current = false;
+      notifyFeedScrollState(true);
+    },
+    [notifyFeedScrollState, syncFeedScrollOffsetFromEvent]
+  );
+  const handleFeedScrollEnd = useCallback(
+    (event) => {
+      syncFeedScrollOffsetFromEvent(event);
+      if (feedScrollMomentumRef.current) return;
+      if (feedScrollTimerRef.current) {
+        clearTimeout(feedScrollTimerRef.current);
+      }
+      feedScrollTimerRef.current = setTimeout(() => {
+        notifyFeedScrollState(false);
+      }, 140);
+    },
+    [notifyFeedScrollState, syncFeedScrollOffsetFromEvent]
+  );
+  const handleFeedMomentumBegin = useCallback(
+    (event) => {
+      syncFeedScrollOffsetFromEvent(event);
+      if (feedScrollTimerRef.current) {
+        clearTimeout(feedScrollTimerRef.current);
+        feedScrollTimerRef.current = null;
+      }
+      feedScrollMomentumRef.current = true;
+      notifyFeedScrollState(true);
+    },
+    [notifyFeedScrollState, syncFeedScrollOffsetFromEvent]
+  );
+  const handleFeedMomentumEnd = useCallback(
+    (event) => {
+      syncFeedScrollOffsetFromEvent(event);
+      feedScrollMomentumRef.current = false;
+      if (feedScrollTimerRef.current) {
+        clearTimeout(feedScrollTimerRef.current);
+        feedScrollTimerRef.current = null;
+      }
+      notifyFeedScrollState(false);
+    },
+    [notifyFeedScrollState, syncFeedScrollOffsetFromEvent]
   );
   const handleHeroPotentialPeriodChange = useCallback((nextPeriod) => {
     if (HERO_POTENTIAL_PERIOD_FACTORS[nextPeriod] == null) return;
@@ -30133,38 +30529,79 @@ const FeedScreen = React.memo(
     };
   }, [budgetHasIncome, budgetPlan, formatLocalAmount, language, resolvedBudgetSpeechDataRef]);
 
-  const orderedProducts = useMemo(() => {
-    const entries = Array.isArray(products) ? [...products] : [];
-    if (!entries.length) return entries;
-    const enrichedEntries = entries.map((item, index) => {
-      const stats = getInteractionEntry(item);
-      const saveCount = Math.max(0, Number(stats?.saveCount) || 0);
-      const spendCount = Math.max(0, Number(stats?.spendCount) || 0);
-      const lastInteractionAt = Math.max(0, Number(stats?.lastInteractionAt) || 0);
-      const createdAt = Math.max(0, Number(item?.createdAt) || 0);
-      const total = saveCount + spendCount;
-      return {
-        item,
-        total,
-        freshCreated: createdAt > 0 && total <= 0 && lastInteractionAt <= 0 &&
-          (item?.quickTemptation || isCustomTemptation(item)),
-        createdAt,
-        index,
-      };
-    });
-    return enrichedEntries
-      .sort((a, b) => {
-        if (a.freshCreated !== b.freshCreated) return a.freshCreated ? -1 : 1;
-        if (a.freshCreated && b.freshCreated && b.createdAt !== a.createdAt) {
-          return b.createdAt - a.createdAt;
+  const filteredProducts = useMemo(
+    () => (Array.isArray(products) ? products : []),
+    [products]
+  );
+  const [feedCardOrder, setFeedCardOrder] = useState([]);
+  const [feedCardOrderHydrated, setFeedCardOrderHydrated] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(FEED_CARD_ORDER_STORAGE_KEY)
+      .then((raw) => {
+        if (cancelled) return;
+        if (!raw) {
+          setFeedCardOrder([]);
+          return;
         }
-        if (b.total !== a.total) return b.total - a.total;
-        return a.index - b.index;
+        try {
+          setFeedCardOrder(normalizeFeedCardOrder(JSON.parse(raw)));
+        } catch (error) {
+          console.warn("feed card order parse", error);
+          setFeedCardOrder([]);
+        }
+      })
+      .catch((error) => {
+        console.warn("feed card order hydrate", error);
+        if (!cancelled) {
+          setFeedCardOrder([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setFeedCardOrderHydrated(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (!feedCardOrderHydrated) return;
+    setFeedCardOrder((previousOrder) => {
+      const nextOrder = mergeFeedCardOrder(previousOrder, filteredProducts);
+      return areFeedCardOrdersEqual(previousOrder, nextOrder) ? previousOrder : nextOrder;
+    });
+  }, [feedCardOrderHydrated, filteredProducts]);
+  useEffect(() => {
+    if (!feedCardOrderHydrated) return;
+    AsyncStorage.setItem(
+      FEED_CARD_ORDER_STORAGE_KEY,
+      JSON.stringify(feedCardOrder)
+    ).catch((error) => console.warn("feed card order persist", error));
+  }, [feedCardOrder, feedCardOrderHydrated]);
+  const orderedProducts = useMemo(() => {
+    const entries = Array.isArray(filteredProducts) ? filteredProducts : [];
+    if (!feedCardOrderHydrated || entries.length < 2) return entries;
+    const resolvedOrder = mergeFeedCardOrder(feedCardOrder, entries);
+    const orderIndex = new Map(resolvedOrder.map((key, index) => [key, index]));
+    return entries
+      .map((item, sourceIndex) => ({
+        item,
+        sourceIndex,
+        orderIndex: orderIndex.get(getFeedCardOrderKey(item)),
+      }))
+      .sort((left, right) => {
+        const leftOrder = Number.isFinite(left.orderIndex)
+          ? left.orderIndex
+          : Number.MAX_SAFE_INTEGER;
+        const rightOrder = Number.isFinite(right.orderIndex)
+          ? right.orderIndex
+          : Number.MAX_SAFE_INTEGER;
+        return leftOrder - rightOrder || left.sourceIndex - right.sourceIndex;
       })
       .map((entry) => entry.item);
-  }, [products, getInteractionEntry]);
-
-  const filteredProducts = orderedProducts;
+  }, [feedCardOrder, feedCardOrderHydrated, filteredProducts]);
   const [selectedFeedCategoryId, setSelectedFeedCategoryId] = useState("all");
   const [feedCategoryFilterUsage, setFeedCategoryFilterUsage] = useState({});
   const [feedCategoryFilterUsageHydrated, setFeedCategoryFilterUsageHydrated] = useState(false);
@@ -30288,12 +30725,12 @@ const FeedScreen = React.memo(
   }, []);
   const activeFeedProducts = useMemo(() => {
     if (selectedFeedCategoryId === "all" || typeof resolveTemptationCategory !== "function") {
-      return filteredProducts;
+      return orderedProducts;
     }
-    return filteredProducts.filter(
+    return orderedProducts.filter(
       (item) => resolveTemptationCategory(item) === selectedFeedCategoryId
     );
-  }, [filteredProducts, resolveTemptationCategory, selectedFeedCategoryId]);
+  }, [orderedProducts, resolveTemptationCategory, selectedFeedCategoryId]);
   const filteredArchivedItems = useMemo(() => {
     const entries = Array.isArray(archivedItems) ? archivedItems : [];
     if (selectedFeedCategoryId === "all" || typeof resolveTemptationCategory !== "function") {
@@ -30514,7 +30951,7 @@ const FeedScreen = React.memo(
     ? firstVisibleTemptationId || activeFeedProducts[0]?.id || orderedProducts[0]?.id || null
     : null;
   const feedKeyExtractor = useCallback(
-    (entry, index) => `${entry?.id || entry?.type || "feed-entry"}-${index}`,
+    (entry, index) => String(entry?.id || `${entry?.type || "feed-entry"}-${index}`),
     []
   );
   const [archiveExpanded, setArchiveExpanded] = useState(false);
@@ -30592,9 +31029,15 @@ const FeedScreen = React.memo(
     [language, profile.primaryGoals]
   );
   const renderTemptationCard = useCallback(
-    (entry, { archived = false } = {}) => {
+    (entry, { archived = false, drag = null, isDragActive = false } = {}) => {
       const item = entry.item;
       const isLockedCard = !archived && !!entry?.isLocked;
+      const canDragCard =
+        !archived &&
+        !isLockedCard &&
+        typeof drag === "function" &&
+        editingTemptationId !== item?.id &&
+        !tutorialTemptationStepId;
       const interactionEntry = entry.interaction;
       const interactionRefreshKey = interactionEntry
         ? `${interactionEntry.lastInteractionAt || 0}:${interactionEntry.lastTimerResetAt || 0}:${interactionEntry.nextCheckAt || 0}`
@@ -30719,6 +31162,9 @@ const FeedScreen = React.memo(
             onEditGoalSelect={() => onTemptationGoalSelect?.(item)}
             onSwipeDelete={() => onTemptationSwipeDelete?.(item)}
             onSwipeArchive={() => onTemptationArchiveToggle?.(item)}
+            allowSwipeGestures={!isDragActive}
+            onLongPress={canDragCard ? drag : null}
+            isDragActive={isDragActive}
             onAction={async (type, _, actionOptions) => {
               await onTemptationAction(type, item, actionOptions);
             }}
@@ -30868,10 +31314,81 @@ const FeedScreen = React.memo(
     ),
     [colors.muted, colors.text, feedTailPalette, nextFeedOfferLevel, t]
   );
-  const renderFeedItem = useCallback(
+  const handleFeedDragBegin = useCallback(() => {
+    // Pause feed-only motion without sliding the global FAB away. Restoring
+    // the glass FAB on the same frame as the drop caused a full-screen flash.
+    notifyFeedScrollState(true, { notifyExternal: false });
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+  }, [notifyFeedScrollState]);
+  const handleFeedDragEnd = useCallback(
+    ({ data, from, to }) => {
+      notifyFeedScrollState(false, { notifyExternal: false });
+      triggerSelectionHaptic();
+      if (from === to) return;
+      const reorderedVisibleKeys = (Array.isArray(data) ? data : [])
+        .filter((entry) => entry?.type === "card")
+        .map((entry) => getFeedCardOrderKey(entry?.item))
+        .filter(Boolean);
+      if (reorderedVisibleKeys.length < 2) return;
+      setFeedCardOrder((previousOrder) => {
+        const completeOrder = mergeFeedCardOrder(previousOrder, filteredProducts);
+        const nextOrder = applyVisibleFeedCardOrder(completeOrder, reorderedVisibleKeys);
+        return areFeedCardOrdersEqual(previousOrder, nextOrder) ? previousOrder : nextOrder;
+      });
+    },
+    [filteredProducts, notifyFeedScrollState]
+  );
+  const renderFeedPlaceholder = useCallback(
     ({ item: entry }) => {
+      if (entry?.type !== "card") return <View />;
+      return (
+        <View
+          style={[
+            styles.feedDragPlaceholder,
+            {
+              backgroundColor: colorWithAlpha(colors.text, isDarkMode ? 0.055 : 0.035),
+              borderColor: colorWithAlpha(colors.text, isDarkMode ? 0.2 : 0.13),
+            },
+          ]}
+        />
+      );
+    },
+    [colors.text, isDarkMode]
+  );
+  const feedDragAnimationConfig = useMemo(
+    () =>
+      reduceMotion
+        ? {
+            damping: 100,
+            mass: 0.01,
+            stiffness: 1000,
+            overshootClamping: true,
+          }
+        : {
+            damping: 26,
+            mass: 0.3,
+            stiffness: 240,
+            overshootClamping: true,
+            restDisplacementThreshold: 0.1,
+            restSpeedThreshold: 0.1,
+          },
+    [reduceMotion]
+  );
+  const renderFeedItem = useCallback(
+    ({ item: entry, drag, isActive }) => {
       if (entry.type === "card") {
-        return renderTemptationCard(entry);
+        const orderKey = getFeedCardOrderKey(entry.item);
+        const tiltDirection =
+          orderKey && orderKey.charCodeAt(orderKey.length - 1) % 2 === 0 ? -1 : 1;
+        return (
+          <FeedDragLiftDecorator
+            reduceMotion={reduceMotion}
+            shadowColor={isDarkMode ? "#000000" : "#17213B"}
+            tiltDirection={tiltDirection}
+          >
+            {renderTemptationCard(entry, { drag, isDragActive: isActive })}
+          </FeedDragLiftDecorator>
+        );
       }
       if (entry.type === "archive") {
         return renderTemptationCard(entry, { archived: true });
@@ -30917,8 +31434,8 @@ const FeedScreen = React.memo(
       archiveExpanded,
       colors,
       feedTailPlaceholder,
-      language,
-      currency,
+      isDarkMode,
+      reduceMotion,
       renderTemptationCard,
       t,
       toggleArchiveExpanded,
@@ -30974,8 +31491,9 @@ const FeedScreen = React.memo(
         },
       ]}
     >
-      <FlatList
+      <DraggableFlatList
         ref={listRef}
+        containerStyle={styles.feedListContainer}
         style={styles.feedList}
         contentInsetAdjustmentBehavior="never"
         automaticallyAdjustContentInsets={false}
@@ -30990,6 +31508,14 @@ const FeedScreen = React.memo(
           { paddingBottom: Math.max(0, Number(contentBottomPadding) || 0) },
         ]}
         renderItem={renderFeedItem}
+        renderPlaceholder={renderFeedPlaceholder}
+        onDragBegin={handleFeedDragBegin}
+        onDragEnd={handleFeedDragEnd}
+        activationDistance={12}
+        animationConfig={feedDragAnimationConfig}
+        autoscrollThreshold={88}
+        autoscrollSpeed={170}
+        dragItemOverflow={false}
         onScrollToIndexFailed={handleFeedScrollToIndexFailed}
         initialNumToRender={6}
         maxToRenderPerBatch={6}
@@ -30997,7 +31523,6 @@ const FeedScreen = React.memo(
         updateCellsBatchingPeriod={50}
         removeClippedSubviews={false}
         scrollEventThrottle={16}
-        onScroll={handleFeedScroll}
         onScrollBeginDrag={handleFeedScrollBegin}
         onScrollEndDrag={handleFeedScrollEnd}
         onMomentumScrollBegin={handleFeedMomentumBegin}
@@ -31394,16 +31919,16 @@ const FeedScreen = React.memo(
                           savingRating={savingRating}
                           onBreakdownPress={onSavingsBreakdownPress}
                           playSound={playSound}
-                          dailyRewardUnlocked={dailyRewardUnlocked}
-                          dailyRewardReady={dailyRewardReady}
-                          dailyRewardAmount={dailyRewardAmount}
-                          dailyRewardBaseAmount={dailyRewardBaseAmount}
-                          dailyRewardDay={dailyRewardDay}
-                          openDailyRewardRequestTick={
-                            shouldHandleDailyRewardOpenRequest ? dailyRewardOpenRequestTick : 0
-                          }
-                            onDailyRewardClaim={onDailyRewardClaim}
-                            onDailyRewardModalVisibilityChange={onDailyRewardModalVisibilityChange}
+                            onDailyRewardOpen={
+                              shouldHandleDailyRewardOpenRequest
+                                ? openDailyRewardModal
+                                : undefined
+                            }
+                            onDailyRewardClose={
+                              shouldHandleDailyRewardOpenRequest
+                                ? closeDailyRewardModal
+                                : undefined
+                            }
                             activeChallenge={activeChallenge}
                             onActiveChallengePress={onActiveChallengePress}
                             onAnchorChange={isClone ? null : onSavingsHeroAnchorChange}
@@ -31719,6 +32244,23 @@ const FeedScreen = React.memo(
         currency={currency}
         t={t}
         language={language}
+      />
+      <DailyRewardModal
+        ref={dailyRewardModalRef}
+        visible={dailyRewardModalVisible}
+        goldPalette={goldPalette}
+        colors={colors}
+        isDarkMode={isDarkMode}
+        t={t}
+        language={language}
+        playerLevel={playerLevel}
+        dailyRewardReady={dailyRewardReady}
+        dailyRewardAmount={dailyRewardAmount}
+        dailyRewardBaseAmount={dailyRewardBaseAmount}
+        dailyRewardDay={dailyRewardDay}
+        onDailyRewardClaim={onDailyRewardClaim}
+        onClose={handleDailyRewardModalClosed}
+        playSound={playSound}
       />
       <HistoryModal
         visible={historyModalVisible}
@@ -32777,20 +33319,26 @@ const ProgressScreen = React.memo(function ProgressScreen({
     colors.onPrimary || resolveForegroundForColor(challengeAccent);
   const insightsAccent = progressPremiumLocked
     ? resolvePremiumUiAccent({ isDark: isDarkTheme, themeId: theme })
-    : colors.primary || colors.text;
-  const insightsAccentForeground = progressPremiumLocked
-    ? resolveForegroundForColor(insightsAccent)
-    : colors.onPrimary || resolveForegroundForColor(insightsAccent);
+    : colors.text;
+  const insightsAccentForeground = resolveForegroundForColor(insightsAccent);
   const insightsTextAccent = progressPremiumLocked
     ? theme === PRO_THEME_ID && !isDarkTheme
       ? "#6B21A8"
       : insightsAccent
     : colors.text;
   const insightsStatusColor = progressPremiumLocked ? insightsTextAccent : colors.muted;
-  const insightsSurface =
-    Platform.OS === "android"
+  const insightsSurface = progressPremiumLocked
+    ? Platform.OS === "android"
       ? blendColors(colors.card || "#FFFFFF", insightsAccent, isDarkTheme ? 0.3 : 0.16)
-      : colorWithAlpha(insightsAccent, isDarkTheme ? 0.2 : 0.1);
+      : colorWithAlpha(insightsAccent, isDarkTheme ? 0.2 : 0.1)
+    : colors.card;
+  const insightsBorderColor = progressPremiumLocked
+    ? colorWithAlpha(insightsAccent, isDarkTheme ? 0.66 : 0.4)
+    : colors.border;
+  const insightsChipBackground = progressPremiumLocked
+    ? colorWithAlpha(insightsAccent, isDarkTheme ? 0.24 : 0.12)
+    : colors.surfaceMuted || colors.background;
+  const insightsChevronColor = progressPremiumLocked ? insightsAccent : colors.muted;
   const handleOverviewInsightsPress = useCallback(() => {
     onProgressSectionChange?.("insights");
   }, [onProgressSectionChange]);
@@ -35848,10 +36396,14 @@ const ProgressScreen = React.memo(function ProgressScreen({
         return next;
       });
       onBudgetOverrideReset?.(categoryId, budgetModalActiveMonthKey);
-      logEvent("budget_category_limit_reset", {
+      logEvent("budget_category_limit_updated", {
         category_id: categoryId,
-        month_key: budgetModalActiveMonthKey,
         limit_usd: autoLimitUSD,
+        previous_limit_usd: Math.max(
+          0,
+          Number(budgetDraftRef.current?.[categoryId]) || 0
+        ),
+        source: "reset_to_adaptive",
       });
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
     },
@@ -36234,7 +36786,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
           styles.progressInsightsSpotlight,
           {
             backgroundColor: insightsSurface,
-            borderColor: colorWithAlpha(insightsAccent, isDarkTheme ? 0.66 : 0.4),
+            borderColor: insightsBorderColor,
           },
         ]}
         activeOpacity={0.86}
@@ -36286,7 +36838,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
               {t("progressOverviewInsightsHint")}
             </Text>
           </View>
-          <Text style={[styles.progressInsightsSpotlightChevron, { color: insightsAccent }]}>
+          <Text style={[styles.progressInsightsSpotlightChevron, { color: insightsChevronColor }]}>
             {isRtlLayout ? "‹" : "›"}
           </Text>
         </View>
@@ -36300,7 +36852,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
               key={label}
               style={[
                 styles.progressInsightsFeatureChip,
-                { backgroundColor: colorWithAlpha(insightsAccent, isDarkTheme ? 0.24 : 0.12) },
+                { backgroundColor: insightsChipBackground },
               ]}
             >
               <Text style={[styles.progressInsightsFeatureChipText, { color: insightsTextAccent }]}>
@@ -44790,8 +45342,8 @@ const ProfileScreen = React.memo(function ProfileScreen({
   onIncomeEntryOpen,
   soundEnabled = true,
   onSoundToggle,
-  androidAppsFlyerEnabled = true,
-  onAndroidAppsFlyerToggle,
+  appsFlyerPartnerSharingAllowed = true,
+  onAppsFlyerPartnerSharingToggle,
   spendReducesSavings = false,
   onSpendReductionToggle,
   tycoonModeEnabled = TYCOON_MODE_DEFAULT_ENABLED,
@@ -46094,23 +46646,28 @@ const ProfileScreen = React.memo(function ProfileScreen({
             </Pressable>
           </View>
         </View>
-        {Platform.OS === "android" ? (
+        {Platform.OS === "android" || Platform.OS === "ios" ? (
           <View style={styles.settingRow}>
             <View style={styles.settingRowContent}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={[styles.settingLabel, { color: colors.muted }]}>
-                  {t("appsflyerAnalyticsLabel")}
+                  {t("appsflyerPartnerSharingLabel")}
+                </Text>
+                <Text style={[styles.profileHintText, { color: colors.muted }]}>
+                  {t("appsflyerPartnerSharingHint")}
                 </Text>
               </View>
               <Pressable
-                onPress={() => onAndroidAppsFlyerToggle?.(!androidAppsFlyerEnabled)}
+                onPress={() =>
+                  onAppsFlyerPartnerSharingToggle?.(!appsFlyerPartnerSharingAllowed)
+                }
                 accessibilityRole="switch"
-                accessibilityLabel={t("appsflyerAnalyticsLabel")}
-                accessibilityState={{ checked: androidAppsFlyerEnabled }}
+                accessibilityLabel={t("appsflyerPartnerSharingLabel")}
+                accessibilityState={{ checked: appsFlyerPartnerSharingAllowed }}
                 style={[
                   styles.settingToggle,
                   {
-                    backgroundColor: androidAppsFlyerEnabled
+                    backgroundColor: appsFlyerPartnerSharingAllowed
                       ? colors.text
                       : colorWithAlpha(colors.text, 0.15),
                     borderColor: colors.border,
@@ -46121,8 +46678,10 @@ const ProfileScreen = React.memo(function ProfileScreen({
                   style={[
                     styles.settingToggleHandle,
                     {
-                      backgroundColor: androidAppsFlyerEnabled ? colors.background : colors.card,
-                      transform: [{ translateX: androidAppsFlyerEnabled ? 20 : 0 }],
+                      backgroundColor: appsFlyerPartnerSharingAllowed
+                        ? colors.background
+                        : colors.card,
+                      transform: [{ translateX: appsFlyerPartnerSharingAllowed ? 20 : 0 }],
                     },
                   ]}
                 />
@@ -46880,6 +47439,22 @@ function AppContent() {
     amountUSD: 0,
     blockedAt: 0,
   });
+  const tycoonAutosaveHungryLastShownAtRef = useRef(0);
+  const [
+    tycoonAutosaveHungryLastShownAtHydrated,
+    setTycoonAutosaveHungryLastShownAtHydrated,
+  ] = useState(false);
+  const isTycoonAutosaveHungryAutoPromptReady = useCallback(() => {
+    if (!tycoonAutosaveHungryLastShownAtHydrated) return false;
+    const lastShownAt = Math.max(
+      0,
+      Number(tycoonAutosaveHungryLastShownAtRef.current) || 0
+    );
+    return (
+      lastShownAt <= 0 ||
+      Date.now() - lastShownAt >= TYCOON_AUTOSAVE_HUNGRY_MODAL_COOLDOWN_MS
+    );
+  }, [tycoonAutosaveHungryLastShownAtHydrated]);
   const tycoonAutosaveHungryNotifiedRef = useRef({ dayKey: null, count: 0 });
   const [tycoonRewardModal, setTycoonRewardModal] = useState({
     visible: false,
@@ -47756,12 +48331,6 @@ function AppContent() {
       level: playerLevel,
       day: nextStreak,
     });
-    if (nextStreak >= 1 && nextStreak <= DAILY_REWARD_STREAK_LENGTH) {
-      logEvent(`daily_reward_collected_day_${nextStreak}`, {
-        coins: dailyRewardAmount,
-        level: playerLevel,
-      });
-    }
   }, [
     dailyRewardAmount,
     dailyRewardCurrentEntry,
@@ -48061,11 +48630,25 @@ function AppContent() {
       if (ordinalDay === 2 && !dayMilestonesLoggedRef.current.day2) {
         dayMilestonesLoggedRef.current = { ...dayMilestonesLoggedRef.current, day2: true };
         AsyncStorage.setItem(STORAGE_KEYS.DAY_TWO_ACTIVITY, "1").catch(() => {});
-        logEvent("day_2");
+        logEvent("retention_day_milestone", {
+          day: 2,
+          active_days_total: retentionActiveDaysRef.current.length,
+          active_streak: Math.max(
+            1,
+            getConsecutiveActiveDays(retentionActiveDaysRef.current)
+          ),
+        });
       } else if (ordinalDay === 3 && !dayMilestonesLoggedRef.current.day3) {
         dayMilestonesLoggedRef.current = { ...dayMilestonesLoggedRef.current, day3: true };
         AsyncStorage.setItem(STORAGE_KEYS.DAY_THREE_ACTIVITY, "1").catch(() => {});
-        logEvent("day_3");
+        logEvent("retention_day_milestone", {
+          day: 3,
+          active_days_total: retentionActiveDaysRef.current.length,
+          active_streak: Math.max(
+            1,
+            getConsecutiveActiveDays(retentionActiveDaysRef.current)
+          ),
+        });
       }
     },
     [profileJoinedAt, logEvent]
@@ -49283,7 +49866,10 @@ function AppContent() {
   );
   const refreshQueuedModalsOnResume = useCallback(() => {
     const isFirstSessionToday = (homeSessionRef.current?.sessionCount || 0) <= 1;
-    if (tycoonAutosaveHungryBlock.active) {
+    if (
+      tycoonAutosaveHungryBlock.active &&
+      isTycoonAutosaveHungryAutoPromptReady()
+    ) {
       enqueueQueuedModal(QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY, { priority: true });
     }
     if (dailySummaryUnlocked && pendingDailySummaryData) {
@@ -49326,6 +49912,7 @@ function AppContent() {
     focusModeUnlocked,
     homeLayoutReady,
     incomePromptPending,
+    isTycoonAutosaveHungryAutoPromptReady,
     isDailyChallengePromptPending,
     isDailyChallengeCompletePending,
     onboardingStep,
@@ -49358,9 +49945,11 @@ function AppContent() {
     if (onboardingStep !== "done") return;
     if (premiumPaywallState.visible) return;
     if (!tycoonAutosaveHungryBlock.active) return;
+    if (!isTycoonAutosaveHungryAutoPromptReady()) return;
     enqueueQueuedModal(QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY, { priority: true });
   }, [
     enqueueQueuedModal,
+    isTycoonAutosaveHungryAutoPromptReady,
     onboardingStep,
     premiumPaywallState.visible,
     tycoonAutosaveHungryBlock.active,
@@ -49571,7 +50160,6 @@ function AppContent() {
   const [ratingPromptVisible, setRatingPromptVisible] = useState(false);
   const ratingPromptCompleted =
     ratingPromptState.completed || ratingPromptState.lastAction === "rate";
-  const ratingPromptFirstOpenAt = ratingPromptState.firstOpenAt;
   const ratingPromptActionBase = ratingPromptState.actionCountStart;
   const ratingPromptActionCount = Math.max(
     0,
@@ -49579,13 +50167,9 @@ function AppContent() {
       (Number.isFinite(ratingPromptActionBase) ? ratingPromptActionBase : 0)
   );
   const ratingPromptActionPrompted = ratingPromptState.actionPrompted;
-  const ratingPromptLastShownAt = ratingPromptState.lastShownAt;
-  const ratingPromptShownToday = useMemo(() => {
-    if (!ratingPromptLastShownAt) return false;
-    const lastShownAtDate = new Date(ratingPromptLastShownAt);
-    if (Number.isNaN(lastShownAtDate.getTime())) return false;
-    return getDayKey(lastShownAtDate) === getDayKey(Date.now());
-  }, [ratingPromptLastShownAt]);
+  const ratingPromptFirstSessionEligible =
+    ratingPromptState.firstSessionStatus === "active" &&
+    ratingPromptState.firstSessionId === RATING_PROMPT_SESSION_ID;
   const ratingPromptCatFloat = useRef(new Animated.Value(0)).current;
   const ratingPromptCatBob = ratingPromptCatFloat.interpolate({
     inputRange: [0, 1],
@@ -50111,7 +50695,7 @@ function AppContent() {
     }
   }, []);
   const showRatingPrompt = useCallback(
-    (source = "time") => {
+    (source = "actions") => {
       if (ratingPromptVisible) return;
       setRatingPromptVisible(true);
       updateRatingPromptState((prev) => ({
@@ -50123,7 +50707,7 @@ function AppContent() {
     [ratingPromptVisible, updateRatingPromptState]
   );
   const queueRatingPrompt = useCallback(
-    (source = "time") => {
+    (source = "actions") => {
       if (ratingPromptQueuedRef.current) {
         if (!ratingPromptSourceRef.current || source === "actions") {
           ratingPromptSourceRef.current = source;
@@ -50998,6 +51582,7 @@ function AppContent() {
   const tamagotchiMissYouNotificationIdRef = useRef(null);
   const tamagotchiHungerNotificationIdsRef = useRef([]);
   const tamagotchiHourlyRewardScheduleInFlightRef = useRef(0);
+  const tamagotchiHourlyRewardNotificationAttemptRef = useRef(0);
   const tamagotchiHungerDailyCountRef = useRef({
     dayKey: getDayKey(Date.now()),
     count: 0,
@@ -51333,8 +51918,9 @@ function AppContent() {
       if (!catCustomizationUnlocked) {
         triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
         playSound("tap");
-        logEvent("tamagotchi_skin_preview_paywall", {
-          skin_id: skinId,
+        logEvent("premium_gate_blocked", {
+          feature: "cat_customization",
+          kind: "tamagotchi_skin_picker",
         });
         setSkinPickerVisible(false);
         setTimeout(showCatCustomizationPaywall, 180);
@@ -51500,8 +52086,7 @@ function AppContent() {
     if (onboardingStep !== "language") return;
     if (onboardingSessionStartedLoggedRef.current) return;
     onboardingSessionStartedLoggedRef.current = true;
-    logEvent("session_started");
-  }, [logEvent, onboardingStep]);
+  }, [onboardingStep]);
   useEffect(() => {
     if (onboardingStep === "done") {
       if (!onboardingCompletedRef.current) {
@@ -51657,6 +52242,25 @@ function AppContent() {
             : FIRST_SESSION_DURATION_BUCKETS.GT_15_SEC;
         persistFirstSessionDurationBucket(resolvedBucket);
       }
+      if (
+        nextState === "background" &&
+        onboardingStep === "done" &&
+        ratingPromptHydrated
+      ) {
+        updateRatingPromptState((prev) => {
+          if (
+            prev.firstSessionStatus !== "active" ||
+            prev.firstSessionId !== RATING_PROMPT_SESSION_ID
+          ) {
+            return prev;
+          }
+          return {
+            ...prev,
+            firstSessionStatus: "ended",
+            firstSessionId: null,
+          };
+        });
+      }
       if (nextState !== "active") {
         flushPersistQueue(true);
         Keyboard.dismiss();
@@ -51715,6 +52319,8 @@ function AppContent() {
     flushPersistQueue,
     monetizationExperimentEligibleNewInstall,
     monetizationExperimentHydrated,
+    onboardingStep,
+    ratingPromptHydrated,
     setDailyChallengePromptGate,
     pendingFocusDigest,
     persistFirstSessionDurationBucket,
@@ -51726,63 +52332,42 @@ function AppContent() {
     setKeyboardInset,
     setKeyboardVisible,
     triggerWidgetRefresh,
+    updateRatingPromptState,
   ]);
   const ratingPromptActionGateReady =
     onboardingStep === "done" && tutorialSeen && temptationTutorialCompleted;
   const ratingPromptActionBaseReady =
-    ratingPromptActionGateReady && Number.isFinite(ratingPromptActionBase);
+    ratingPromptActionGateReady &&
+    ratingPromptFirstSessionEligible &&
+    Number.isFinite(ratingPromptActionBase);
   useEffect(() => {
     if (!ratingPromptHydrated) return;
     if (!ratingPromptActionGateReady) return;
-    if (Number.isFinite(ratingPromptActionBase)) return;
     updateRatingPromptState((prev) => {
       if (prev.completed || prev.actionPrompted) return prev;
+      if (prev.firstSessionStatus === "pending") {
+        const baseline = Math.max(0, Number(prev.actionCount) || 0);
+        return {
+          ...prev,
+          actionCountStart: baseline,
+          firstSessionStatus: "active",
+          firstSessionId: RATING_PROMPT_SESSION_ID,
+        };
+      }
+      if (
+        prev.firstSessionStatus !== "active" ||
+        prev.firstSessionId !== RATING_PROMPT_SESSION_ID ||
+        Number.isFinite(prev.actionCountStart)
+      ) {
+        return prev;
+      }
       const baseline = Math.max(0, Number(prev.actionCount) || 0);
       return { ...prev, actionCountStart: baseline };
     });
   }, [
-    ratingPromptActionBase,
     ratingPromptActionGateReady,
     ratingPromptHydrated,
     updateRatingPromptState,
-  ]);
-  useEffect(() => {
-    if (!ratingPromptHydrated) return;
-    if (ratingPromptCompleted) return;
-    if (ratingPromptVisible) return;
-    if (onboardingStep !== "done") return;
-    if (!ratingPromptActionGateReady) return;
-    const firstOpenDate = new Date(ratingPromptFirstOpenAt || "");
-    if (Number.isNaN(firstOpenDate.getTime())) return;
-    if (ratingPromptShownToday) return;
-    const firstOpenDay = parseDayKey(getDayKey(firstOpenDate));
-    const todayDay = parseDayKey(getDayKey(Date.now()));
-    if (!firstOpenDay || !todayDay) return;
-    const daysSinceFirstOpen = Math.floor((todayDay.getTime() - firstOpenDay.getTime()) / DAY_MS);
-    if (daysSinceFirstOpen < 0) return;
-    const shouldPromptDaily =
-      daysSinceFirstOpen < RATING_PROMPT_DAILY_START_DAYS;
-    if (!shouldPromptDaily) {
-      const lastShownDate = new Date(ratingPromptLastShownAt || "");
-      if (!Number.isNaN(lastShownDate.getTime())) {
-        const lastShownDay = parseDayKey(getDayKey(lastShownDate));
-        if (lastShownDay) {
-          const daysSinceLastShown = Math.floor((todayDay.getTime() - lastShownDay.getTime()) / DAY_MS);
-          if (daysSinceLastShown < RATING_PROMPT_RECURRING_INTERVAL_DAYS) return;
-        }
-      }
-    }
-    queueRatingPrompt("time");
-  }, [
-    onboardingStep,
-    ratingPromptHydrated,
-    ratingPromptCompleted,
-    ratingPromptFirstOpenAt,
-    ratingPromptLastShownAt,
-    ratingPromptShownToday,
-    ratingPromptVisible,
-    ratingPromptActionGateReady,
-    queueRatingPrompt,
   ]);
   const ratingPromptActionEligible =
     ratingPromptHydrated &&
@@ -51790,12 +52375,20 @@ function AppContent() {
     !ratingPromptCompleted &&
     !ratingPromptVisible &&
     !ratingPromptActionPrompted &&
-    !ratingPromptShownToday &&
     ratingPromptActionCount >= RATING_PROMPT_ACTION_THRESHOLD;
   useEffect(() => {
     if (!ratingPromptActionEligible) return;
     queueRatingPrompt("actions");
   }, [queueRatingPrompt, ratingPromptActionEligible]);
+  useEffect(() => {
+    if (ratingPromptFirstSessionEligible || ratingPromptVisible) return;
+    ratingPromptQueuedRef.current = false;
+    ratingPromptSourceRef.current = null;
+    if (ratingPromptCheckTimerRef.current) {
+      clearTimeout(ratingPromptCheckTimerRef.current);
+      ratingPromptCheckTimerRef.current = null;
+    }
+  }, [ratingPromptFirstSessionEligible, ratingPromptVisible]);
   useEffect(() => {
     if (!ratingPromptVisible) return;
     if (!ratingPromptQueuedRef.current) return;
@@ -51848,8 +52441,7 @@ function AppContent() {
     setTamagotchiModalMounted(true);
     setTamagotchiVisible((prev) => {
       if (!prev) {
-        logEvent("tamagotchi_pressed");
-        logEvent("tamagotchi_opened");
+        logEvent("tamagotchi_opened", { source: "home_companion" });
       }
       return true;
     });
@@ -53571,17 +54163,11 @@ function AppContent() {
     ].join(" ");
   }, [fabTutorialCutout]);
   const [analyticsOptOut, setAnalyticsOptOutState] = useState(null);
-  const [androidAppsFlyerEnabled, setAndroidAppsFlyerEnabled] = useState(true);
-  const [androidAppsFlyerPrefHydrated, setAndroidAppsFlyerPrefHydrated] = useState(
-    Platform.OS !== "android"
-  );
+  const [appsFlyerPartnerSharingAllowed, setAppsFlyerPartnerSharingAllowed] = useState(false);
+  const [appsFlyerPartnerSharingHydrated, setAppsFlyerPartnerSharingHydrated] = useState(false);
+  const appsFlyerPartnerSharingPreferencePresentRef = useRef(false);
   const [iosTrackingStatus, setIosTrackingStatus] = useState(null);
   const [iosTrackingResolved, setIosTrackingResolved] = useState(Platform.OS !== "ios");
-  const iosTrackingBlocked = useMemo(
-    () => isTrackingStatusBlocked(iosTrackingStatus),
-    [iosTrackingStatus]
-  );
-  const facebookInitRef = useRef(false);
   const profileSelectionRef = useRef({ gender: null, persona: null });
   useEffect(() => {
     let cancelled = false;
@@ -53616,51 +54202,26 @@ function AppContent() {
   }, []);
   useEffect(() => {
     if (analyticsOptOut === null) return;
-    if (Platform.OS === "ios" && !iosTrackingResolved) return;
-    bootstrapMonitoring(analyticsOptOut === false && !iosTrackingBlocked);
-  }, [analyticsOptOut, iosTrackingBlocked, iosTrackingResolved]);
+    bootstrapMonitoring(analyticsOptOut === false);
+  }, [analyticsOptOut]);
   useEffect(() => {
-    if (Platform.OS !== "ios") return;
-    if (!iosTrackingResolved || !iosTrackingBlocked) return;
-    if (analyticsOptOut !== false) return;
-    setAnalyticsOptOutState(true);
-  }, [analyticsOptOut, iosTrackingBlocked, iosTrackingResolved]);
-  useEffect(() => {
-    if (facebookInitRef.current) return;
-    if (__DEV__) return;
-    if (analyticsOptOut !== false) return;
-    if (Platform.OS === "ios" && !iosTrackingResolved) return;
-    if (Platform.OS === "ios" && iosTrackingBlocked) return;
-    if (!FacebookSettings || typeof FacebookSettings.initializeSDK !== "function") return;
-    facebookInitRef.current = true;
-    try {
-      if (typeof FacebookSettings.setAppID === "function") {
-        FacebookSettings.setAppID(FACEBOOK_APP_ID);
+    if (Platform.OS !== "ios" || !iosTrackingResolved) return;
+    const advertiserTrackingAllowed =
+      canEnableMetaAdvertiserTracking(iosTrackingStatus);
+    if (
+      FacebookSettings &&
+      typeof FacebookSettings.setAdvertiserTrackingEnabled === "function"
+    ) {
+      const trackingPromise =
+        FacebookSettings.setAdvertiserTrackingEnabled(advertiserTrackingAllowed);
+      if (trackingPromise?.catch) {
+        trackingPromise.catch(() => {});
       }
-      if (
-        Platform.OS === "android" &&
-        typeof FacebookSettings.setAutoLogAppEventsEnabled === "function"
-      ) {
-        FacebookSettings.setAutoLogAppEventsEnabled(false);
-      }
-      if (
-        Platform.OS === "android" &&
-        typeof FacebookSettings.setAdvertiserIDCollectionEnabled === "function"
-      ) {
-        FacebookSettings.setAdvertiserIDCollectionEnabled(true);
-      }
-      FacebookSettings.initializeSDK();
-      setFacebookSdkReady(true);
-      if (typeof FacebookSettings.setAdvertiserTrackingEnabled === "function") {
-        const trackingPromise = FacebookSettings.setAdvertiserTrackingEnabled(true);
-        if (trackingPromise?.catch) {
-          trackingPromise.catch(() => {});
-        }
-      }
-    } catch (error) {
-      console.warn("facebook sdk init", error);
     }
-  }, [analyticsOptOut, iosTrackingBlocked, iosTrackingResolved]);
+    if (advertiserTrackingAllowed) {
+      syncRevenueCatDeviceIdentifiersSafe().catch(() => {});
+    }
+  }, [iosTrackingResolved, iosTrackingStatus]);
   const [startupLogoDismissed, setStartupLogoDismissed] = useState(false);
   const markStartupLogoDismissed = useCallback(() => {
     setStartupLogoDismissed(true);
@@ -54399,6 +54960,19 @@ function AppContent() {
     onboardingStep === "done" &&
     !premiumPaywallState.visible &&
     tycoonAutosaveHungryBlock.active;
+  useEffect(() => {
+    if (!tycoonAutosaveHungryModalVisible) return;
+    if (!tycoonAutosaveHungryLastShownAtHydrated) return;
+    const shownAt = Date.now();
+    tycoonAutosaveHungryLastShownAtRef.current = shownAt;
+    AsyncStorage.setItem(
+      STORAGE_KEYS.TYCOON_AUTOSAVE_HUNGRY_LAST_SHOWN_AT,
+      String(shownAt)
+    ).catch(() => {});
+  }, [
+    tycoonAutosaveHungryLastShownAtHydrated,
+    tycoonAutosaveHungryModalVisible,
+  ]);
   const tycoonAutosaveModalVisible =
     !levelShareFlowLocked &&
     queuedModalType === QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE &&
@@ -56155,6 +56729,13 @@ function AppContent() {
     const abandonedOfferingsByPlan = mapOfferingPackagesByPlan(premiumState.offerings || null, {
       preferredOfferingIdentifiers: PREMIUM_TRANSACTION_ABANDONED_OFFERING_IDENTIFIERS,
     });
+    const yearlyTrialOffering = resolveOfferingByIdentifiers(
+      premiumState.offerings || null,
+      PREMIUM_YEARLY_TRIAL_OFFERING_IDENTIFIERS
+    );
+    const yearlyTrialOfferingsByPlan = yearlyTrialOffering
+      ? mapOfferingPackagesByPlan({ current: yearlyTrialOffering })
+      : {};
     const normalizePlanDiscountPercent = (value = 0) => {
       const parsed = Math.round(Number(value) || 0);
       if (!Number.isFinite(parsed) || parsed <= 0) return null;
@@ -56198,7 +56779,7 @@ function AppContent() {
     const baselineWeeklyRawPrice = resolvePackageRawPrice(baselineOfferingsByPlan?.weekly);
     const abandonedMonthlyRawPrice = resolvePackageRawPrice(abandonedOfferingsByPlan?.monthly);
     const abandonedYearlyRawPrice = resolvePackageRawPrice(abandonedOfferingsByPlan?.yearly);
-    const premiumTrialPlanId = Platform.OS === "android" ? "monthly" : "yearly";
+    const premiumTrialPlanId = "yearly";
     const baselineMonthlySavePercentFromOfferings = resolveRelativeDiscountPercent(
       Number.isFinite(baselineWeeklyRawPrice) && baselineWeeklyRawPrice > 0
         ? baselineWeeklyRawPrice * (52 / 12)
@@ -56244,6 +56825,11 @@ function AppContent() {
     const preliminaryCards = baseCards.map((card) => {
       const pkg = offeringsByPlan?.[card.id] || null;
       const product = pkg?.product || null;
+      const trialPackage =
+        card.id === premiumTrialPlanId
+          ? yearlyTrialOfferingsByPlan?.[premiumTrialPlanId] || null
+          : null;
+      const trialProduct = trialPackage?.product || null;
       const currencyCode = resolveStoreProductCurrencyCode(product, fallbackCurrency);
       const parsedPriceLocal =
         resolveStoreProductPriceLocal(product) ??
@@ -56259,13 +56845,29 @@ function AppContent() {
       const productIdentifier = normalizeProductIdentifier(
         product?.identifier || pkg?.identifier || ""
       );
+      const trialCurrencyCode = resolveStoreProductCurrencyCode(trialProduct, currencyCode);
+      const parsedTrialPriceLocal = trialProduct
+        ? resolveStoreProductPriceLocal(trialProduct) ?? parsedPriceLocal
+        : null;
+      const trialChargePriceLabel = trialProduct
+        ? normalizePaywallPriceLabel(
+            trialProduct?.priceString ||
+              (Number.isFinite(parsedTrialPriceLocal)
+                ? formatPaywallPrice(parsedTrialPriceLocal, trialCurrencyCode)
+                : chargePriceLabel),
+            trialCurrencyCode
+          )
+        : null;
+      const trialProductIdentifier = normalizeProductIdentifier(
+        trialProduct?.identifier || trialPackage?.identifier || ""
+      );
       const trialEligibleForProduct =
         Platform.OS !== "ios" ||
-        !productIdentifier ||
-        premiumState.trialEligibilityByProductId?.[productIdentifier] === true;
+        !trialProductIdentifier ||
+        premiumState.trialEligibilityByProductId?.[trialProductIdentifier] === true;
       const freeTrialDaysRaw =
-        card.id === premiumTrialPlanId && trialEligibleForProduct
-          ? resolveFreeTrialDaysFromPackage(pkg)
+        trialPackage && trialEligibleForProduct
+          ? resolveFreeTrialDaysFromPackage(trialPackage)
           : null;
       const freeTrialDays =
         Number.isFinite(freeTrialDaysRaw) && freeTrialDaysRaw > 0
@@ -56276,11 +56878,18 @@ function AppContent() {
         planId: card.id,
         label: resolvePlanLabel(card.id, language),
         package: pkg,
+        trialPackage,
         available: !!pkg || !premiumState.enabled,
         currencyCode,
         productIdentifier,
+        trialCurrencyCode,
+        trialProductIdentifier,
         rawPriceLocal: Number.isFinite(parsedPriceLocal) ? Math.max(0, parsedPriceLocal) : null,
+        trialRawPriceLocal: Number.isFinite(parsedTrialPriceLocal)
+          ? Math.max(0, parsedTrialPriceLocal)
+          : null,
         chargePriceLabel,
+        trialChargePriceLabel,
         trialEligibleForProduct,
         freeTrialDays,
       };
@@ -56422,15 +57031,14 @@ function AppContent() {
           ? Math.max(1, Math.round(card.freeTrialDays))
           : null;
       const fallbackTrialDays =
-        card.id === premiumTrialPlanId && card.trialEligibleForProduct !== false
-          ? isMonthly
-            ? PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS
-            : isYearly
-            ? PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS
-            : null
+        card.id === premiumTrialPlanId &&
+        card.trialPackage &&
+        card.trialEligibleForProduct !== false
+          ? PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS
           : null;
       const resolvedTrialDays = freeTrialDays || fallbackTrialDays;
-      const hasFreeTrial = !!resolvedTrialDays && card.id === premiumTrialPlanId;
+      const hasFreeTrial =
+        !!resolvedTrialDays && !!card.trialPackage && card.id === premiumTrialPlanId;
       const recurringChargePriceLabel =
         Number.isFinite(amountLocal) && amountLocal > 0
           ? normalizePaywallPriceLabel(
@@ -56460,6 +57068,23 @@ function AppContent() {
                 ? appendPaywallSuffixIfMissing(card.chargePriceLabel, monthSuffix)
                 : card.chargePriceLabel,
               currencyCode
+            );
+      const trialCurrencyCode = card.trialCurrencyCode || currencyCode;
+      const trialCurrencyPrecision = getCurrencyPrecision(trialCurrencyCode);
+      const trialAmountLocal = Number.isFinite(card.trialRawPriceLocal)
+        ? Math.max(0, card.trialRawPriceLocal)
+        : null;
+      const trialRecurringChargePriceLabel =
+        Number.isFinite(trialAmountLocal) && trialAmountLocal > 0
+          ? normalizePaywallPriceLabel(
+              `${formatCurrency(trialAmountLocal, trialCurrencyCode, {
+                precisionOverride: trialCurrencyPrecision,
+              })}${yearSuffix}`,
+              trialCurrencyCode
+            )
+          : normalizePaywallPriceLabel(
+              appendPaywallSuffixIfMissing(card.trialChargePriceLabel, yearSuffix),
+              trialCurrencyCode
             );
 
       if (isYearly && Number.isFinite(amountLocal) && amountLocal > 0) {
@@ -56622,6 +57247,7 @@ function AppContent() {
       }
       const trialLabel = hasFreeTrial
         ? buildPaywallTrialLabel({
+            trialDays: resolvedTrialDays,
             language: monetizationLanguage,
           })
         : "";
@@ -56638,7 +57264,8 @@ function AppContent() {
         : null;
       if (hasTrial) {
         equivalentLabel = null;
-        postTrialPriceLabel = recurringChargePriceLabel || null;
+        postTrialPriceLabel =
+          trialRecurringChargePriceLabel || recurringChargePriceLabel || null;
         secondaryKind = "muted";
         if (postTrialPriceLabel) {
           secondaryLabel = buildPaywallPostTrialLabel({
@@ -57145,7 +57772,23 @@ function AppContent() {
   );
   const logMonetizationEvent = useCallback(
     (eventName, payload = {}) => {
-      logEvent(eventName, withMonetizationExperimentMeta(payload));
+      const normalizedPayload =
+        eventName === "premium_purchase_result"
+          ? {
+              ...payload,
+              period_type: normalizePurchasePeriodType(payload?.period_type, {
+                plan: payload?.plan,
+                trialEnabled: payload?.has_trial === true,
+              }),
+              product_id: resolveNonEmptyString(payload?.product_id) || "unavailable",
+              offering_id: resolveNonEmptyString(payload?.offering_id) || "unavailable",
+              error_category:
+                resolveNonEmptyString(payload?.error_category) ||
+                classifyPremiumPurchaseErrorCategory(payload?.reason),
+              is_restore: payload?.is_restore === true,
+            }
+          : payload;
+      logEvent(eventName, withMonetizationExperimentMeta(normalizedPayload));
     },
     [logEvent, withMonetizationExperimentMeta]
   );
@@ -57487,9 +58130,9 @@ function AppContent() {
         view_index: Math.max(0, Number(context.viewIndex) || 0),
         product_id:
           normalizeProductIdentifier(
-            trialPlan.productIdentifier ||
-              trialPlan.package?.product?.identifier ||
-              trialPlan.package?.identifier ||
+            trialPlan.trialProductIdentifier ||
+              trialPlan.trialPackage?.product?.identifier ||
+              trialPlan.trialPackage?.identifier ||
               ""
           ) || ANALYTICS_VALUE_UNKNOWN,
       };
@@ -57944,6 +58587,31 @@ function AppContent() {
     },
     [getPremiumPaywallContext, logMonetizationEvent]
   );
+  const handlePremiumAbandonedOfferWheelEvent = useCallback(
+    (eventName, { discountPercent = null, planId = "", source = "wheel" } = {}) => {
+      const normalizedEventName = normalizeMonetizationToken(eventName, "unknown");
+      if (
+        !["spin_started", "result_shown", "claim", "decline"].includes(normalizedEventName)
+      ) {
+        return;
+      }
+      const context = getPremiumPaywallContext();
+      const normalizedDiscountPercent = Math.max(
+        0,
+        Math.min(99, Math.round(Number(discountPercent) || 0))
+      );
+      logMonetizationEvent("premium_transaction_abandoned_wheel_action", {
+        action: normalizedEventName,
+        kind: context.kind,
+        feature: context.feature,
+        view_index: context.viewIndex,
+        plan: normalizeMonetizationToken(planId || "unknown", "unknown"),
+        discount_percent: normalizedDiscountPercent,
+        source: normalizeMonetizationToken(source || "wheel", "wheel"),
+      });
+    },
+    [getPremiumPaywallContext, logMonetizationEvent]
+  );
   const closePremiumPaywall = useCallback((closeAction = "unknown") => {
     const normalizedCloseAction = normalizeMonetizationToken(closeAction, "unknown");
     const canClose =
@@ -58195,7 +58863,7 @@ function AppContent() {
     if (resolvedViewIndex <= 0) return;
     if (premiumTrialAvailableViewIndexRef.current === resolvedViewIndex) return;
     premiumTrialAvailableViewIndexRef.current = resolvedViewIndex;
-    logMonetizationEvent(ANALYTICS_EVENTS.TRIAL_AVAILABLE, payload);
+    logMonetizationEvent("trial_available", payload);
   }, [
     buildPremiumTrialEventPayload,
     logMonetizationEvent,
@@ -58229,6 +58897,7 @@ function AppContent() {
           offeringsErrorReason: null,
           customerInfoErrorReason: null,
           offeringsByPlan: {},
+          yearlyTrialOfferingsByPlan: {},
         };
       }
       const [customerInfoResult, offeringsResult] = await Promise.all([
@@ -58241,9 +58910,19 @@ function AppContent() {
       const customerInfoErrorReason =
         resolveNonEmptyString(customerInfoResult?.reason || "") || null;
       const offeringsByPlan = mapOfferingPackagesByPlan(offerings || null);
+      const yearlyTrialOffering = resolveOfferingByIdentifiers(
+        offerings || null,
+        PREMIUM_YEARLY_TRIAL_OFFERING_IDENTIFIERS
+      );
+      const yearlyTrialOfferingsByPlan = yearlyTrialOffering
+        ? mapOfferingPackagesByPlan({ current: yearlyTrialOffering })
+        : {};
       let trialEligibilityByProductId = {};
       if (Platform.OS === "ios") {
-        const offeringProductIds = Object.values(offeringsByPlan)
+        const offeringProductIds = Object.values({
+          ...offeringsByPlan,
+          yearlyTrial: yearlyTrialOfferingsByPlan?.yearly,
+        })
           .map((pkg) => normalizeProductIdentifier(pkg?.product?.identifier || pkg?.identifier || ""))
           .filter(Boolean);
         if (offeringProductIds.length) {
@@ -58274,6 +58953,7 @@ function AppContent() {
           offeringsErrorReason,
           customerInfoErrorReason,
           offeringsByPlan,
+          yearlyTrialOfferingsByPlan,
         };
       }
       trackPremiumLifecycleEvents(customerInfo, source);
@@ -58328,6 +59008,7 @@ function AppContent() {
         entitlement,
         customerInfo,
         offeringsByPlan,
+        yearlyTrialOfferingsByPlan,
         offeringsErrorReason,
         customerInfoErrorReason,
       };
@@ -58481,8 +59162,18 @@ function AppContent() {
         }));
         return;
       }
+      const attributionSync = await syncAppsFlyerAttributionToRevenueCat({
+        reason: "revenuecat_bootstrap",
+      });
+      if (!active) return;
+      if (__DEV__) {
+        console.info("[attribution-debug] RevenueCat AppsFlyer identity sync", {
+          appsFlyerIdSet: attributionSync?.appsFlyerIdSet === true,
+          fieldsSet: attributionSync?.fieldsSet || [],
+          failedFields: attributionSync?.failedFields || [],
+        });
+      }
       setPurchasesAttributesSafe({
-        install_id: premiumInstallId || "",
         app_platform: Platform.OS,
       }).catch(() => {});
       await refreshPremiumState("bootstrap");
@@ -58555,6 +59246,9 @@ function AppContent() {
     if (!premiumInstallIdHydrated || !premiumInstallSecretHydrated) return;
     const subscription = AppState.addEventListener("change", (nextState) => {
       if (nextState !== "active") return;
+      syncAppsFlyerAttributionToRevenueCat({
+        reason: "app_foreground",
+      }).catch(() => {});
       refreshPremiumState("app_resume")
         .then((result) => {
           maybeTrackTrialQualifier3({
@@ -58597,11 +59291,15 @@ function AppContent() {
     Alert.alert("Almost", resolvePaywallAlertCopy("missingAndroidApiKey", language));
   }, [language, premiumState.error]);
   const handlePremiumPlanSelected = useCallback(
-    (planId) => {
+    (planId, { trialEnabled = false } = {}) => {
       const targetPlanId = PREMIUM_PLAN_ORDER.includes(planId) ? planId : "monthly";
       const selectedCard = premiumPlanCards.find((entry) => entry.id === targetPlanId) || null;
+      const selectedTrialEnabled =
+        trialEnabled === true && targetPlanId === "yearly" && selectedCard?.hasTrial === true;
       const trialDays =
-        Number.isFinite(selectedCard?.trialDays) && selectedCard.trialDays > 0
+        selectedTrialEnabled &&
+        Number.isFinite(selectedCard?.trialDays) &&
+        selectedCard.trialDays > 0
           ? Math.max(1, Math.round(selectedCard.trialDays))
           : null;
       const context = getPremiumPaywallContext();
@@ -58623,24 +59321,36 @@ function AppContent() {
     (planId, { source = ANALYTICS_SOURCES.FREE_TRIAL_TOGGLE } = {}) => {
       const payload = buildPremiumTrialEventPayload({ planId, source });
       if (!payload) return;
-      logMonetizationEvent(ANALYTICS_EVENTS.TRIAL_SWITCH_ON, payload);
+      logMonetizationEvent("trial_switch_on", payload);
     },
     [buildPremiumTrialEventPayload, logMonetizationEvent]
   );
   const handlePremiumPlanPress = useCallback(
-    async (planId) => {
+    async (planId, { trialEnabled = false } = {}) => {
       if (premiumPurchaseLoadingPlan || premiumRestoreLoading) return;
       const targetPlanId = PREMIUM_PLAN_ORDER.includes(planId) ? planId : "monthly";
       const selectedCard = premiumPlanCards.find((entry) => entry.id === targetPlanId) || null;
+      const selectedTrialEnabled =
+        trialEnabled === true && targetPlanId === "yearly" && selectedCard?.hasTrial === true;
+      let selectedPackage = selectedTrialEnabled
+        ? selectedCard?.trialPackage || null
+        : selectedCard?.package || null;
+      const selectedProduct = selectedPackage?.product || null;
       const currencyCode = String(
-        selectedCard?.currencyCode || profile.currency || DEFAULT_PROFILE.currency || ""
+        resolveStoreProductCurrencyCode(
+          selectedProduct,
+          selectedTrialEnabled ? selectedCard?.trialCurrencyCode : selectedCard?.currencyCode
+        ) || profile.currency || DEFAULT_PROFILE.currency || ""
       ).trim();
       const normalizedCurrencyCode = currencyCode || "USD";
-      const priceLocal = Number.isFinite(selectedCard?.rawPriceLocal)
-        ? Math.max(0, Number(selectedCard.rawPriceLocal) || 0)
-        : null;
+      const selectedCardPrice = selectedTrialEnabled
+        ? selectedCard?.trialRawPriceLocal
+        : selectedCard?.rawPriceLocal;
+      const priceLocal = resolveStoreProductPriceLocal(selectedProduct, selectedCardPrice);
       const trialDays =
-        Number.isFinite(selectedCard?.trialDays) && selectedCard.trialDays > 0
+        selectedTrialEnabled &&
+        Number.isFinite(selectedCard?.trialDays) &&
+        selectedCard.trialDays > 0
           ? Math.max(1, Math.round(selectedCard.trialDays))
           : null;
       const context = getPremiumPaywallContext();
@@ -58651,9 +59361,13 @@ function AppContent() {
         view_index: context.viewIndex,
         currency: normalizedCurrencyCode,
         product_id: normalizeProductIdentifier(
-          selectedCard?.productIdentifier || selectedCard?.package?.product?.identifier || ""
+          selectedProduct?.identifier ||
+            (selectedTrialEnabled
+              ? selectedCard?.trialProductIdentifier
+              : selectedCard?.productIdentifier) ||
+            ""
         ) || "unknown",
-        has_trial: !!trialDays,
+        has_trial: selectedTrialEnabled,
       };
       if (Number.isFinite(priceLocal)) {
         tappedEventMeta.price_local = priceLocal;
@@ -58662,7 +59376,6 @@ function AppContent() {
         tappedEventMeta.trial_days = trialDays;
       }
       logMonetizationEvent("premium_paywall_primary_tapped", tappedEventMeta);
-      let selectedPackage = selectedCard?.package || null;
       let preflightResult = null;
       const shouldRunPurchasePreflight = premiumHasOfflineSignal || !selectedPackage;
       if (shouldRunPurchasePreflight) {
@@ -58670,7 +59383,9 @@ function AppContent() {
         preflightResult = await refreshPremiumState("purchase_preflight");
         setPremiumPurchaseLoadingPlan(null);
         if (!selectedPackage) {
-          selectedPackage = preflightResult?.offeringsByPlan?.[targetPlanId] || null;
+          selectedPackage = selectedTrialEnabled
+            ? preflightResult?.yearlyTrialOfferingsByPlan?.[targetPlanId] || null
+            : preflightResult?.offeringsByPlan?.[targetPlanId] || null;
         }
       }
       const packageIdentifier = resolveNonEmptyString(selectedPackage?.identifier || "");
@@ -58685,6 +59400,12 @@ function AppContent() {
       const eventMeta = {
         ...tappedEventMeta,
         product_id: normalizedProductId,
+        offering_id: resolveRevenueCatOfferingIdentifier(selectedPackage),
+        period_type: normalizePurchasePeriodType("", {
+          plan: targetPlanId,
+          trialEnabled: selectedTrialEnabled,
+        }),
+        is_restore: false,
       };
       const preflightOffline =
         isOfflineMonetizationReason(preflightResult?.offeringsErrorReason) ||
@@ -58754,7 +59475,15 @@ function AppContent() {
       };
       logMonetizationEvent("premium_purchase_started", eventMeta);
       setPremiumPurchaseLoadingPlan(targetPlanId);
-      const result = await purchasePlanPackage(selectedPackage);
+      await Promise.all([
+        syncAppsFlyerAttributionToRevenueCat({
+          reason: "purchase_preflight",
+        }),
+        syncRevenueCatDeviceIdentifiersSafe(),
+      ]);
+      const result = await purchasePlanPackage(selectedPackage, {
+        trialEnabled: selectedTrialEnabled,
+      });
       setPremiumPurchaseLoadingPlan(null);
       if (!result.ok) {
         const reason = result.cancelled
@@ -58817,18 +59546,37 @@ function AppContent() {
         Alert.alert("Almost", t("premiumPurchasePendingActivation"));
         return;
       }
+      const resolvedEntitlement =
+        refreshed?.entitlement || getActivePremiumEntitlement(purchaseResult?.customerInfo || null);
+      const entitlementPeriodType = resolveEntitlementPeriodType(resolvedEntitlement);
+      const normalizedPeriodType = normalizePurchasePeriodType(entitlementPeriodType, {
+        plan: targetPlanId,
+        trialEnabled: selectedTrialEnabled,
+      });
+      const entitlementEventMeta = {
+        ...eventMeta,
+        product_id: purchasedProductId || normalizedProductId,
+        period_type: normalizedPeriodType,
+        billing_state:
+          normalizedPeriodType === "trial" || normalizedPeriodType === "intro"
+            ? "trial"
+            : normalizedPeriodType === "lifetime"
+            ? "lifetime"
+            : "paid",
+      };
       closePremiumPaywall("purchase_success");
       logMonetizationEvent("premium_purchase_result", {
-        ...eventMeta,
+        ...entitlementEventMeta,
         result: "success",
         reason: "none",
         error_code: "none",
       });
-      logMonetizationEvent("premium_purchase_success", eventMeta);
-      const resolvedEntitlement =
-        refreshed?.entitlement || getActivePremiumEntitlement(purchaseResult?.customerInfo || null);
-      const entitlementPeriodType = resolveEntitlementPeriodType(resolvedEntitlement);
-      const isPaidTransaction = !isTrialPeriodType(entitlementPeriodType);
+      logMonetizationEvent(
+        "premium_entitlement_activated",
+        entitlementEventMeta
+      );
+      const isPaidTransaction =
+        normalizedPeriodType === "normal" || normalizedPeriodType === "lifetime";
       if (isPaidTransaction) {
         const parsedRevenueFromLabel = parseLocalizedPriceValue(
           selectedCard?.priceLabel || selectedCard?.ctaPriceLabel || ""
@@ -58840,10 +59588,6 @@ function AppContent() {
           : Number.isFinite(parsedRevenueFromLabel)
           ? Math.max(0, Number(parsedRevenueFromLabel) || 0)
           : 0;
-        const revenueUSD = Math.max(
-          0,
-          Number(convertFromCurrency(revenueLocal, resolvedCurrencyCode)) || 0
-        );
         const resolvedTransactionId = resolveNonEmptyString(
           resolveStoreTransactionIdentifier({
             purchaseResult,
@@ -58851,18 +59595,16 @@ function AppContent() {
             productId: purchasedProductId || normalizedProductId,
           })
         );
-        const revenueEventMeta = {
-          ...eventMeta,
-          has_trial: false,
-          currency: resolvedCurrencyCode,
-          revenue_local: revenueLocal,
-          revenue_usd: revenueUSD,
-        };
-        delete revenueEventMeta.trial_days;
-        if (resolvedTransactionId) {
-          revenueEventMeta.transaction_id = resolvedTransactionId;
+        if (resolvedTransactionId && revenueLocal > 0) {
+          logCommercePurchase({
+            transactionId: resolvedTransactionId,
+            value: revenueLocal,
+            currency: resolvedCurrencyCode,
+            productId: purchasedProductId || normalizedProductId,
+            itemName: `Almost Premium ${targetPlanId}`,
+            plan: targetPlanId,
+          }).catch(() => {});
         }
-        logMonetizationEvent("premium_purchase_revenue", revenueEventMeta);
       }
     },
     [
@@ -58964,6 +59706,33 @@ function AppContent() {
       result: "success",
       reason: "none",
       error_code: "none",
+    });
+    const restoredEntitlement = refreshed?.entitlement || null;
+    const activatedProductId =
+      resolveNonEmptyString(
+        restoredEntitlement?.productIdentifier ||
+          restoredEntitlement?.productId ||
+          restoredEntitlement?.product_id
+      ) || "unavailable";
+    const restoredPlan =
+      resolvePlanIdFromProductIdentifier(activatedProductId) || "unknown";
+    const restoredPeriodType = normalizePurchasePeriodType(
+      resolveEntitlementPeriodType(restoredEntitlement),
+      { plan: restoredPlan }
+    );
+    logMonetizationEvent("premium_entitlement_activated", {
+      ...restoreEventMeta,
+      plan: restoredPlan,
+      product_id: activatedProductId,
+      offering_id: "restore",
+      period_type: restoredPeriodType,
+      billing_state:
+        restoredPeriodType === "trial" || restoredPeriodType === "intro"
+          ? "trial"
+          : restoredPeriodType === "lifetime"
+          ? "lifetime"
+          : "paid",
+      is_restore: true,
     });
   }, [
     closePremiumPaywall,
@@ -61157,6 +61926,10 @@ function AppContent() {
       const now = Date.now();
       const dedupeKey = options?.dedupeKey || content?.data?.dedupeKey || null;
       const dedupeWindowMs = Number(options?.dedupeWindowMs) || PUSH_DEDUPE_WINDOW_MS;
+      const androidChannelId =
+        Platform.OS === "android" && typeof options?.channelId === "string"
+          ? options.channelId.trim()
+          : "";
       const contentSignature = buildNotificationContentSignature(content);
       if (dedupeKey) {
         const lastSent = Number(notificationDedupeRef.current.get(dedupeKey)) || 0;
@@ -61179,10 +61952,16 @@ function AppContent() {
         return false;
       }
       try {
-        await safeNotifications.scheduleNotificationAsync({
+        const notificationId = await safeNotifications.scheduleNotificationAsync({
           content,
-          trigger: null,
+          trigger: androidChannelId
+            ? {
+                date: new Date(now + 1000),
+                channelId: androidChannelId,
+              }
+            : null,
         });
+        if (!notificationId) return false;
         lastInstantNotificationRef.current = now;
         if (dedupeKey) {
           notificationDedupeRef.current.set(dedupeKey, now);
@@ -61209,9 +61988,33 @@ function AppContent() {
     if (amount <= 0) return;
     const now = Date.now();
     const lastNotifiedAt = Math.max(0, Number(tamagotchiState.lastHourlyRewardNotifiedAt) || 0);
+    const scheduledNotificationId =
+      typeof tamagotchiState.scheduledHourlyRewardNotificationId === "string"
+        ? tamagotchiState.scheduledHourlyRewardNotificationId
+        : null;
+    const scheduledNotificationAt = Math.max(
+      0,
+      Number(tamagotchiState.scheduledHourlyRewardNotificationAt) || 0
+    );
+    const scheduledNotificationIsDue =
+      !!scheduledNotificationId &&
+      scheduledNotificationAt > 0 &&
+      scheduledNotificationAt <= now &&
+      now - scheduledNotificationAt < TAMAGOTCHI_HOURLY_REWARD_NOTIFICATION_COOLDOWN_MS;
+    if (scheduledNotificationIsDue) return;
     if (
       lastNotifiedAt > 0 &&
       now - lastNotifiedAt < TAMAGOTCHI_HOURLY_REWARD_NOTIFICATION_COOLDOWN_MS
+    ) {
+      return;
+    }
+    const lastAttemptAt = Math.max(
+      0,
+      Number(tamagotchiHourlyRewardNotificationAttemptRef.current) || 0
+    );
+    if (
+      lastAttemptAt > 0 &&
+      now - lastAttemptAt < TAMAGOTCHI_HOURLY_REWARD_NOTIFICATION_RETRY_MS
     ) {
       return;
     }
@@ -61220,6 +62023,20 @@ function AppContent() {
         TAMAGOTCHI_HOURLY_REWARD_INTERVAL_MS
     );
     const dedupeKey = `tamagotchi_hourly_reward:${notificationSlot}:${amount}`;
+    tamagotchiHourlyRewardNotificationAttemptRef.current = now;
+    const restoreNotificationMarker = () => {
+      setTamagotchiState((prev) => {
+        const currentLastNotifiedAt = Math.max(
+          0,
+          Number(prev.lastHourlyRewardNotifiedAt) || 0
+        );
+        if (currentLastNotifiedAt !== now) return prev;
+        return {
+          ...prev,
+          lastHourlyRewardNotifiedAt: lastNotifiedAt,
+        };
+      });
+    };
     setTamagotchiState((prev) => {
       const prevAmount = Math.max(0, Math.floor(Number(prev.pendingHourlyReward) || 0));
       const prevLastNotifiedAt = Math.max(0, Number(prev.lastHourlyRewardNotifiedAt) || 0);
@@ -61245,21 +62062,25 @@ function AppContent() {
           amount,
           dedupeKey,
         },
-        ...(Platform.OS === "android" ? { channelId: ANDROID_TAMAGOTCHI_CHANNEL_ID } : null),
       },
       {
         dedupeKey,
         dedupeWindowMs: TAMAGOTCHI_HOURLY_REWARD_NOTIFICATION_COOLDOWN_MS,
+        channelId: ANDROID_TAMAGOTCHI_CHANNEL_ID,
       }
     )
       .then((sent) => {
-        if (!sent) return;
+        if (!sent) {
+          restoreNotificationMarker();
+          return;
+        }
         logEvent("tamagotchi_hourly_reward_push_sent", {
           coins: amount,
           hours: Math.max(1, hours),
         });
       })
       .catch((error) => {
+        restoreNotificationMarker();
         console.warn("tamagotchi hourly reward notification", error);
       });
   }, [
@@ -61272,6 +62093,8 @@ function AppContent() {
     tamagotchiState.lastHourlyRewardNotifiedAt,
     tamagotchiState.pendingHourlyReward,
     tamagotchiState.pendingHourlyRewardHours,
+    tamagotchiState.scheduledHourlyRewardNotificationAt,
+    tamagotchiState.scheduledHourlyRewardNotificationId,
   ]);
 
   useEffect(() => {
@@ -61284,7 +62107,7 @@ function AppContent() {
         ? tamagotchiState.scheduledHourlyRewardNotificationId
         : null;
     const scheduledAt = Math.max(0, Number(tamagotchiState.scheduledHourlyRewardNotificationAt) || 0);
-    const clearScheduledNotification = ({ preserveNotifiedAt = false } = {}) => {
+    const clearScheduledNotification = () => {
       if (scheduledId) {
         safeNotifications.cancelScheduledNotificationAsync(scheduledId).catch(() => {});
         setTamagotchiState((prev) => {
@@ -61293,15 +62116,32 @@ function AppContent() {
             ...prev,
             scheduledHourlyRewardNotificationId: null,
             scheduledHourlyRewardNotificationAt: 0,
-            lastHourlyRewardNotifiedAt: preserveNotifiedAt
-              ? prev.lastHourlyRewardNotifiedAt
-              : 0,
+            lastHourlyRewardNotifiedAt: 0,
           };
         });
       }
     };
-    if (tamagotchiHourlyRewardStatus.ready || !tamagotchiHourlyRewardStatus.eligible) {
-      clearScheduledNotification({ preserveNotifiedAt: tamagotchiHourlyRewardStatus.ready });
+    if (tamagotchiHourlyRewardStatus.ready) {
+      if (scheduledId && scheduledAt > 0 && scheduledAt <= now) {
+        setTamagotchiState((prev) => {
+          if (prev.scheduledHourlyRewardNotificationId !== scheduledId) return prev;
+          return {
+            ...prev,
+            scheduledHourlyRewardNotificationId: null,
+            scheduledHourlyRewardNotificationAt: 0,
+            lastHourlyRewardNotifiedAt: Math.max(
+              Math.max(0, Number(prev.lastHourlyRewardNotifiedAt) || 0),
+              scheduledAt
+            ),
+          };
+        });
+      } else {
+        clearScheduledNotification();
+      }
+      return;
+    }
+    if (!tamagotchiHourlyRewardStatus.eligible) {
+      clearScheduledNotification();
       return;
     }
     const triggerAt = Math.max(0, Number(tamagotchiHourlyRewardStatus.nextReadyAt) || 0);
@@ -61349,9 +62189,14 @@ function AppContent() {
             amount: projectedReward,
             dedupeKey,
           },
-          ...(Platform.OS === "android" ? { channelId: ANDROID_TAMAGOTCHI_CHANNEL_ID } : null),
         },
-        trigger: new Date(triggerAt),
+        trigger:
+          Platform.OS === "android"
+            ? {
+                date: new Date(triggerAt),
+                channelId: ANDROID_TAMAGOTCHI_CHANNEL_ID,
+              }
+            : new Date(triggerAt),
       });
       if (!notificationId) return;
       setTamagotchiState((prev) => {
@@ -61369,7 +62214,6 @@ function AppContent() {
           ...prev,
           scheduledHourlyRewardNotificationId: notificationId,
           scheduledHourlyRewardNotificationAt: triggerAt,
-          lastHourlyRewardNotifiedAt: triggerAt,
         };
       });
       logEvent("tamagotchi_hourly_reward_push_scheduled", {
@@ -63020,7 +63864,7 @@ function AppContent() {
       tycoon_pending_count: tycoonPendingEvents.length,
       level: Math.max(1, Number(playerLevel) || 1),
     };
-    const snapshotKey = `${currentDayKey || "unknown"}:${JSON.stringify(payload)}`;
+    const snapshotKey = currentDayKey || "unknown";
     if (featureMetricsSnapshotKeyRef.current === snapshotKey) return;
     featureMetricsSnapshotKeyRef.current = snapshotKey;
     logEvent("feature_metrics_snapshot", payload);
@@ -64269,6 +65113,7 @@ function AppContent() {
         STORAGE_KEYS.TEMPTATION_INTERACTIONS,
         STORAGE_KEYS.REWARDS_CELEBRATED,
         STORAGE_KEYS.ANALYTICS_OPT_OUT,
+        STORAGE_KEYS.APPSFLYER_PARTNER_SHARING_ALLOWED,
         STORAGE_KEYS.ANDROID_APPSFLYER_ENABLED,
         STORAGE_KEYS.TEMPTATION_GOALS,
         STORAGE_KEYS.CUSTOM_TEMPTATIONS,
@@ -64350,6 +65195,7 @@ function AppContent() {
 	        STORAGE_KEYS.TYCOON_LEDGER,
 	        STORAGE_KEYS.TYCOON_CONFIRM_STATS,
 	        STORAGE_KEYS.TYCOON_AUTOSAVE_SNOOZED_UNTIL,
+	        STORAGE_KEYS.TYCOON_AUTOSAVE_HUNGRY_LAST_SHOWN_AT,
 	      ];
       const storedPairs = await AsyncStorage.multiGet(hydrationKeys);
       const storedMap = Object.fromEntries(storedPairs || []);
@@ -64385,7 +65231,10 @@ function AppContent() {
       const temptationInteractionsRaw = storedMap[STORAGE_KEYS.TEMPTATION_INTERACTIONS] ?? null;
       const rewardsCelebratedRaw = storedMap[STORAGE_KEYS.REWARDS_CELEBRATED] ?? null;
       const analyticsOptOutRaw = storedMap[STORAGE_KEYS.ANALYTICS_OPT_OUT] ?? null;
-      const androidAppsFlyerEnabledRaw = storedMap[STORAGE_KEYS.ANDROID_APPSFLYER_ENABLED] ?? null;
+      const appsFlyerPartnerSharingRaw =
+        storedMap[STORAGE_KEYS.APPSFLYER_PARTNER_SHARING_ALLOWED] ??
+        storedMap[STORAGE_KEYS.ANDROID_APPSFLYER_ENABLED] ??
+        null;
       const goalMapRaw = storedMap[STORAGE_KEYS.TEMPTATION_GOALS] ?? null;
       const customTemptationsRaw = storedMap[STORAGE_KEYS.CUSTOM_TEMPTATIONS] ?? null;
       const customTemptationsCreatedRaw =
@@ -64395,6 +65244,8 @@ function AppContent() {
       const tycoonConfirmStatsRaw = storedMap[STORAGE_KEYS.TYCOON_CONFIRM_STATS] ?? null;
       const tycoonAutosaveSnoozedUntilRaw =
         storedMap[STORAGE_KEYS.TYCOON_AUTOSAVE_SNOOZED_UNTIL] ?? null;
+      const tycoonAutosaveHungryLastShownAtRaw =
+        storedMap[STORAGE_KEYS.TYCOON_AUTOSAVE_HUNGRY_LAST_SHOWN_AT] ?? null;
       const hiddenTemptationsRaw = storedMap[STORAGE_KEYS.HIDDEN_TEMPTATIONS] ?? null;
       const archivedTemptationsRaw = storedMap[STORAGE_KEYS.ARCHIVED_TEMPTATIONS] ?? null;
       const defaultTemptationGrowthLockLevelRaw =
@@ -65108,12 +65959,18 @@ function AppContent() {
       setMonetizationTrialLockedHydrated(true);
       setMonetizationOnboardingLocked(isTruthyStorageValue(monetizationOnboardingLockedRaw));
       setMonetizationOnboardingLockedHydrated(true);
-      let normalizedRatingPrompt = createInitialRatingPromptState();
+      const freshRatingPromptFirstSessionStatus =
+        onboardingRaw === "done" ? "ended" : "pending";
+      let normalizedRatingPrompt = createInitialRatingPromptState({
+        firstSessionStatus: freshRatingPromptFirstSessionStatus,
+      });
       let ratingPromptNeedsRewrite = false;
       if (ratingPromptRaw) {
         try {
           const parsed = JSON.parse(ratingPromptRaw);
-          const fallback = createInitialRatingPromptState();
+          const fallback = createInitialRatingPromptState({
+            firstSessionStatus: freshRatingPromptFirstSessionStatus,
+          });
           const parsedLastAction = typeof parsed?.lastAction === "string" ? parsed.lastAction : null;
           const normalizedCompleted = parsedLastAction
             ? parsedLastAction === "rate"
@@ -65129,6 +65986,23 @@ function AppContent() {
             parsedActionCountStart >= 0
               ? parsedActionCountStart
               : null;
+          const rawFirstSessionStatus = parsed?.firstSessionStatus;
+          const rawFirstSessionId =
+            typeof parsed?.firstSessionId === "string" ? parsed.firstSessionId : null;
+          let normalizedFirstSessionStatus = RATING_PROMPT_FIRST_SESSION_STATUSES.has(
+            rawFirstSessionStatus
+          )
+            ? rawFirstSessionStatus
+            : "ended";
+          if (
+            (normalizedFirstSessionStatus === "pending" && onboardingRaw === "done") ||
+            (normalizedFirstSessionStatus === "active" &&
+              rawFirstSessionId !== RATING_PROMPT_SESSION_ID)
+          ) {
+            normalizedFirstSessionStatus = "ended";
+          }
+          const normalizedFirstSessionId =
+            normalizedFirstSessionStatus === "active" ? rawFirstSessionId : null;
           normalizedRatingPrompt = {
             firstOpenAt:
               typeof parsed?.firstOpenAt === "string" ? parsed.firstOpenAt : fallback.firstOpenAt,
@@ -65139,6 +66013,8 @@ function AppContent() {
             actionCount: Math.max(0, Number(parsed?.actionCount) || 0),
             actionCountStart: normalizedActionCountStart,
             actionPrompted: Boolean(parsed?.actionPrompted),
+            firstSessionStatus: normalizedFirstSessionStatus,
+            firstSessionId: normalizedFirstSessionId,
           };
           ratingPromptNeedsRewrite =
             normalizedRatingPrompt.firstOpenAt !== parsed?.firstOpenAt ||
@@ -65148,10 +66024,14 @@ function AppContent() {
             normalizedRatingPrompt.completed !== Boolean(parsed?.completed) ||
             normalizedRatingPrompt.actionCount !== Math.max(0, Number(parsed?.actionCount) || 0) ||
             normalizedRatingPrompt.actionCountStart !== rawActionCountStart ||
-            normalizedRatingPrompt.actionPrompted !== Boolean(parsed?.actionPrompted);
+            normalizedRatingPrompt.actionPrompted !== Boolean(parsed?.actionPrompted) ||
+            normalizedRatingPrompt.firstSessionStatus !== rawFirstSessionStatus ||
+            normalizedRatingPrompt.firstSessionId !== rawFirstSessionId;
         } catch (error) {
           console.warn("rating prompt hydrate", error);
-          normalizedRatingPrompt = createInitialRatingPromptState();
+          normalizedRatingPrompt = createInitialRatingPromptState({
+            firstSessionStatus: freshRatingPromptFirstSessionStatus,
+          });
           ratingPromptNeedsRewrite = true;
         }
       } else {
@@ -65656,28 +66536,23 @@ function AppContent() {
         analyticsOptOutRaw === "0" ||
         analyticsOptOutRaw === "true" ||
         analyticsOptOutRaw === "false";
-      if (Platform.OS === "android") {
-        setAnalyticsOptOutState(false);
-      } else if (hasAnalyticsConsent) {
-        setAnalyticsOptOutState(analyticsOptOutRaw === "1" || analyticsOptOutRaw === "true");
-      } else {
-        setAnalyticsOptOutState(false);
-      }
+      setAnalyticsOptOutState(
+        hasAnalyticsConsent
+          ? analyticsOptOutRaw === "1" || analyticsOptOutRaw === "true"
+          : null
+      );
       const hasAppsFlyerPreference =
-        androidAppsFlyerEnabledRaw === "1" ||
-        androidAppsFlyerEnabledRaw === "0" ||
-        androidAppsFlyerEnabledRaw === "true" ||
-        androidAppsFlyerEnabledRaw === "false";
-      if (Platform.OS === "android") {
-        if (hasAppsFlyerPreference) {
-          setAndroidAppsFlyerEnabled(
-            androidAppsFlyerEnabledRaw === "1" || androidAppsFlyerEnabledRaw === "true"
-          );
-        } else {
-          setAndroidAppsFlyerEnabled(true);
-        }
-      }
-      setAndroidAppsFlyerPrefHydrated(true);
+        appsFlyerPartnerSharingRaw === "1" ||
+        appsFlyerPartnerSharingRaw === "0" ||
+        appsFlyerPartnerSharingRaw === "true" ||
+        appsFlyerPartnerSharingRaw === "false";
+      appsFlyerPartnerSharingPreferencePresentRef.current = hasAppsFlyerPreference;
+      setAppsFlyerPartnerSharingAllowed(
+        hasAppsFlyerPreference
+          ? appsFlyerPartnerSharingRaw === "1" || appsFlyerPartnerSharingRaw === "true"
+          : false
+      );
+      setAppsFlyerPartnerSharingHydrated(true);
       if (goalMapRaw) {
         try {
           setTemptationGoalMap(JSON.parse(goalMapRaw));
@@ -65764,6 +66639,15 @@ function AppContent() {
           ? Math.max(0, parsedTycoonAutosaveSnoozedUntil)
           : 0
       );
+      const parsedTycoonAutosaveHungryLastShownAt = Number(
+        tycoonAutosaveHungryLastShownAtRaw
+      );
+      tycoonAutosaveHungryLastShownAtRef.current =
+        Number.isFinite(parsedTycoonAutosaveHungryLastShownAt) &&
+        parsedTycoonAutosaveHungryLastShownAt > 0
+          ? Math.min(Date.now(), parsedTycoonAutosaveHungryLastShownAt)
+          : 0;
+      setTycoonAutosaveHungryLastShownAtHydrated(true);
       const deferHiddenHydration = shouldDeferLargeParse(hiddenTemptationsRaw);
       const hydrateHiddenTemptations = () => {
         if (hiddenTemptationsRaw) {
@@ -66041,13 +66925,11 @@ function AppContent() {
       setProfileHydrated(true);
     } catch (error) {
       console.warn("load error", error);
-      setAnalyticsOptOutState((prev) => {
-        if (Platform.OS === "android") return false;
-        return prev === null ? null : prev;
-      });
-      setAndroidAppsFlyerEnabled(true);
-      setAndroidAppsFlyerPrefHydrated(true);
-      setRatingPromptState(createInitialRatingPromptState());
+      setAnalyticsOptOutState((prev) => prev);
+      appsFlyerPartnerSharingPreferencePresentRef.current = false;
+      setAppsFlyerPartnerSharingAllowed(false);
+      setAppsFlyerPartnerSharingHydrated(true);
+      setRatingPromptState(createInitialRatingPromptState({ firstSessionStatus: "ended" }));
       setTamagotchiGreetingDayKey(null);
       setTutorialHydrated(true);
       setClaimedRewardsHydrated(true);
@@ -66119,7 +67001,6 @@ function AppContent() {
       );
       setInstallDateHydrated(true);
       setFirstSessionDurationBucketHydrated(true);
-      setAndroidAppsFlyerPrefHydrated(true);
       const safeHealthPoints =
         typeof resolvedHealthPoints === "number" && !Number.isNaN(resolvedHealthPoints)
           ? resolvedHealthPoints
@@ -68595,25 +69476,26 @@ useEffect(() => {
 
   useEffect(() => {
     if (analyticsOptOut === null) return;
-    if (Platform.OS === "ios" && !iosTrackingResolved) return;
-    const effectiveOptOut =
-      Platform.OS === "android"
-        ? false
-        : Platform.OS === "ios" && iosTrackingBlocked
-        ? true
-        : analyticsOptOut;
-    setAnalyticsOptOutFlag(effectiveOptOut);
-    queuePersist(STORAGE_KEYS.ANALYTICS_OPT_OUT, effectiveOptOut ? "1" : "0");
-  }, [queuePersist, analyticsOptOut, iosTrackingBlocked, iosTrackingResolved]);
+    setAnalyticsOptOutFlag(analyticsOptOut).catch(() => {});
+    queuePersist(STORAGE_KEYS.ANALYTICS_OPT_OUT, analyticsOptOut ? "1" : "0");
+  }, [queuePersist, analyticsOptOut]);
   useEffect(() => {
-    if (Platform.OS !== "android") return;
-    if (!androidAppsFlyerPrefHydrated) return;
-    setAppsFlyerEnabledFlag(androidAppsFlyerEnabled).catch(() => {});
+    if (!appsFlyerPartnerSharingHydrated) return;
+    Promise.all([
+      setAppsFlyerPartnerSharingAllowedFlag(appsFlyerPartnerSharingAllowed),
+      setRevenueCatAppsFlyerSharingAllowedSafe(appsFlyerPartnerSharingAllowed),
+    ]).catch(() => {});
     queuePersist(
-      STORAGE_KEYS.ANDROID_APPSFLYER_ENABLED,
-      androidAppsFlyerEnabled ? "1" : "0"
+      STORAGE_KEYS.APPSFLYER_PARTNER_SHARING_ALLOWED,
+      appsFlyerPartnerSharingAllowed ? "1" : "0"
     );
-  }, [androidAppsFlyerEnabled, androidAppsFlyerPrefHydrated, queuePersist]);
+  }, [appsFlyerPartnerSharingAllowed, appsFlyerPartnerSharingHydrated, queuePersist]);
+  useEffect(() => {
+    if (Platform.OS !== "ios" || !iosTrackingResolved) return;
+    setAppsFlyerAdvertisingIdEnabledFlag(isTrackingStatusGranted(iosTrackingStatus)).catch(
+      () => {}
+    );
+  }, [iosTrackingResolved, iosTrackingStatus]);
 
   useEffect(() => {
     if (!rewardCelebratedHydrated) return;
@@ -68768,7 +69650,11 @@ useEffect(() => {
         shouldLogDayEvent = false;
       }
       if (shouldLogDayEvent) {
-        logEvent(`day_${lifetimeDay}`);
+        logEvent("retention_day_milestone", {
+          day: lifetimeDay,
+          active_days_total: activeDaysTotal,
+          active_streak: activeStreak,
+        });
       }
     }
     if (!RETENTION_MILESTONE_DAYS.has(lifetimeDay)) return;
@@ -68779,11 +69665,6 @@ useEffect(() => {
       Object.keys(nextMilestones).map((key) => Number(key))
     );
     AsyncStorage.setItem(STORAGE_KEYS.RETENTION_MILESTONES, JSON.stringify(persistedMilestones)).catch(() => {});
-    logEvent("retention_day_milestone", {
-      day: lifetimeDay,
-      active_days_total: activeDaysTotal,
-      active_streak: activeStreak,
-    });
   }, [
     analyticsOptOut,
     currentDayKey,
@@ -68796,11 +69677,6 @@ useEffect(() => {
   useEffect(() => {
     trackRetentionActivityForToday();
   }, [trackRetentionActivityForToday]);
-  useEffect(() => {
-    if (analyticsOptOut !== false) return;
-    if (!soundEnabledHydrated) return;
-    logEvent(soundEnabled ? "sound_setting_enabled" : "sound_setting_disabled");
-  }, [analyticsOptOut, logEvent, soundEnabled, soundEnabledHydrated]);
   useEffect(() => {
     if (!profileHydrated) return;
     const nextGender = profile.gender || "none";
@@ -68816,16 +69692,10 @@ useEffect(() => {
       return;
     }
     if (previousSelection.gender !== nextGender) {
-      const genderEvent = getGenderSelectedEvent(nextGender);
-      if (genderEvent) {
-        logEvent(genderEvent);
-      }
+      logEvent("gender_selected", { gender: nextGender });
     }
     if (previousSelection.persona !== nextPersona) {
-      const personaEvent = getPersonaSelectedEvent(nextPersona);
-      if (personaEvent) {
-        logEvent(personaEvent);
-      }
+      logEvent("persona_selected", { persona_id: nextPersona });
     }
     profileSelectionRef.current = { gender: nextGender, persona: nextPersona };
   }, [onboardingStep, profile.gender, profile.persona, profileHydrated, logEvent]);
@@ -69109,12 +69979,9 @@ useEffect(() => {
       setProgressSection(normalizedSection);
     }
     setProgressHubPane(nextPane);
-    logEvent(
-      nextPane === "rewards"
-        ? "menu_progress_rewards_opened"
-        : "menu_progress_overview_opened",
-      { section: normalizedSection }
-    );
+    logEvent("menu_progress_opened", {
+      section: nextPane === "rewards" ? "rewards" : normalizedSection,
+    });
   }, []);
   const resolveMainTabLabel = useCallback(
     (tabKey) => {
@@ -69281,10 +70148,7 @@ useEffect(() => {
       setLanguage(nextLanguage);
       triggerWidgetRefresh();
     }
-    const languageEvent = getLanguageSelectedEvent(nextLanguage);
-    if (languageEvent) {
-      logEvent(languageEvent);
-    }
+    logEvent("language_selected", { language: nextLanguage });
   };
 
   const handleTermsOpen = () => {
@@ -69346,10 +70210,7 @@ useEffect(() => {
     setRegistrationData((prev) => ({ ...prev, currency: code }));
     setActiveCurrency(code);
     triggerWidgetRefresh();
-    const currencyEvent = getCurrencySelectedEvent(code);
-    if (currencyEvent) {
-      logEvent(currencyEvent);
-    }
+    logEvent("currency_selected", { currency: String(code || "").toUpperCase() });
   };
 
   const openIncomeEntryModal = useCallback(
@@ -69553,11 +70414,53 @@ useEffect(() => {
     ]
   );
 
-  const handleLanguageContinue = async () => {
+  const handleLanguageContinue = () => {
     triggerHaptic();
     ensureTermsAccepted();
-    await requestTrackingTransparencyIfNeeded();
-    goToOnboardingStep("persona");
+    goToOnboardingStep("analyticsConsent");
+  };
+
+  const handleAnalyticsConsentChoice = async (enabled) => {
+    const nextEnabled = enabled === true;
+    const consentSource =
+      onboardingStep === "analyticsConsent" ? "onboarding" : "existing_user_prompt";
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    setAnalyticsOptOutState(!nextEnabled);
+    await setAnalyticsOptOutFlag(!nextEnabled);
+    await AsyncStorage.setItem(
+      STORAGE_KEYS.ANALYTICS_OPT_OUT,
+      nextEnabled ? "0" : "1"
+    ).catch(() => {});
+    if (nextEnabled) {
+      if (!appsFlyerPartnerSharingPreferencePresentRef.current) {
+        appsFlyerPartnerSharingPreferencePresentRef.current = true;
+        setAppsFlyerPartnerSharingAllowed(true);
+        setAppsFlyerPartnerSharingHydrated(true);
+        void Promise.all([
+          setAppsFlyerPartnerSharingAllowedFlag(true),
+          setRevenueCatAppsFlyerSharingAllowedSafe(true),
+          AsyncStorage.setItem(STORAGE_KEYS.APPSFLYER_PARTNER_SHARING_ALLOWED, "1"),
+        ]).catch(() => {});
+      }
+      await logEvent("consent_analytics_enabled", {
+        enabled: true,
+        source: consentSource,
+      });
+      await requestTrackingTransparencyIfNeeded();
+    } else {
+      appsFlyerPartnerSharingPreferencePresentRef.current = true;
+      setAppsFlyerPartnerSharingAllowed(false);
+      setAppsFlyerPartnerSharingHydrated(true);
+      void Promise.all([
+        setAppsFlyerPartnerSharingAllowedFlag(false),
+        setRevenueCatAppsFlyerSharingAllowedSafe(false),
+        setAppsFlyerAdvertisingIdEnabledFlag(false),
+        AsyncStorage.setItem(STORAGE_KEYS.APPSFLYER_PARTNER_SHARING_ALLOWED, "0"),
+      ]).catch(() => {});
+    }
+    if (onboardingStep === "analyticsConsent") {
+      goToOnboardingStep("persona");
+    }
   };
 
   const updateRegistrationData = (field, value) => {
@@ -69572,25 +70475,16 @@ useEffect(() => {
         prev?.currency === normalized ? prev : { ...prev, currency: normalized }
       );
       triggerWidgetRefresh();
-      const currencyEvent = getCurrencySelectedEvent(normalized);
-      if (currencyEvent) {
-        logEvent(currencyEvent);
-      }
+      logEvent("currency_selected", { currency: normalized });
       setRegistrationData((prev) => ({ ...prev, [field]: normalized }));
       return;
     }
     if (field === "gender" && onboardingStep !== "done") {
       const genderValue = value || "none";
-      const genderEvent = getGenderSelectedEvent(genderValue);
-      if (genderEvent) {
-        logEvent(genderEvent);
-      }
+      logEvent("gender_selected", { gender: genderValue });
     }
     if (field === "persona" && onboardingStep !== "done") {
-      const personaEvent = getPersonaSelectedEvent(value);
-      if (personaEvent) {
-        logEvent(personaEvent);
-      }
+      logEvent("persona_selected", { persona_id: value || DEFAULT_PERSONA_ID });
     }
     setRegistrationData((prev) => ({ ...prev, [field]: value }));
   };
@@ -71275,9 +72169,9 @@ useEffect(() => {
     }
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     if (analyticsOptOut === null) {
-      setAnalyticsOptOutState(false);
-      setAnalyticsOptOutFlag(false);
-      AsyncStorage.setItem(STORAGE_KEYS.ANALYTICS_OPT_OUT, "0").catch(() => {});
+      setAnalyticsOptOutState(true);
+      setAnalyticsOptOutFlag(true);
+      AsyncStorage.setItem(STORAGE_KEYS.ANALYTICS_OPT_OUT, "1").catch(() => {});
     }
     if (shouldCompleteOnboardingAfterGoal) {
       if (!onboardingCompletionEventLoggedRef.current) {
@@ -71319,12 +72213,23 @@ useEffect(() => {
       if (status && status !== "undetermined" && status !== "not-determined") {
         setIosTrackingStatus(status || null);
         setIosTrackingResolved(true);
+        const granted = isTrackingStatusGranted(status);
+        await setAppsFlyerAdvertisingIdEnabledFlag(granted);
+        if (granted) {
+          await syncRevenueCatDeviceIdentifiersSafe();
+        }
         return status;
       }
+      void initAttribution({ timeToWaitForATTUserAuthorization: 60 }).catch(() => {});
       const result = await requester();
       const nextStatus = result?.status || status || null;
       setIosTrackingStatus(nextStatus);
       setIosTrackingResolved(true);
+      const granted = isTrackingStatusGranted(nextStatus);
+      await setAppsFlyerAdvertisingIdEnabledFlag(granted);
+      if (granted) {
+        await syncRevenueCatDeviceIdentifiersSafe();
+      }
       return nextStatus;
     } catch (error) {
       console.warn("tracking transparency", error);
@@ -72239,14 +73144,19 @@ useEffect(() => {
         stopAllSounds();
       }
       AsyncStorage.setItem(STORAGE_KEYS.SOUND_ENABLED, nextValue ? "1" : "0").catch(() => {});
+      logEvent("setting_changed", {
+        setting: "sound",
+        enabled: nextValue,
+        source: "user",
+      });
     },
-    [stopAllSounds, triggerHaptic]
+    [logEvent, stopAllSounds, triggerHaptic]
   );
-  const handleAndroidAppsFlyerToggle = useCallback(
+  const handleAppsFlyerPartnerSharingToggle = useCallback(
     (enabled) => {
       const nextValue = !!enabled;
       triggerHaptic();
-      setAndroidAppsFlyerEnabled(nextValue);
+      setAppsFlyerPartnerSharingAllowed(nextValue);
     },
     [triggerHaptic]
   );
@@ -75131,10 +76041,10 @@ useEffect(() => {
       setChallengesState((prevState) => rebuildChallengeProgressFromHistory(nextHistory, prevState));
       recomputeHistoryAggregates(nextHistory);
       rebuildSavingsFromHistory(nextHistory);
-      logEvent("cycle_save_revoked_by_spend", {
+      logEvent("temptation_decision", {
         temptation_id: candidateKeys[0] || null,
-        removed_count: savingsToRemove.length,
-        removed_amount_usd: removedAmountUSD,
+        decision: "spend_revoked_same_day_save",
+        price: removedAmountUSD,
       });
       return {
         removedCount: savingsToRemove.length,
@@ -75365,14 +76275,23 @@ useEffect(() => {
       if (!RATING_PROMPT_ACTION_TYPES.has(action)) return;
       updateRatingPromptState((prev) => {
         if (prev.completed || prev.actionPrompted) return prev;
-        const nextCount = Math.max(0, Number(prev.actionCount) || 0) + 1;
+        const canActivateFirstSession =
+          prev.firstSessionStatus === "pending" && ratingPromptActionGateReady;
+        const isActiveFirstSession =
+          prev.firstSessionStatus === "active" &&
+          prev.firstSessionId === RATING_PROMPT_SESSION_ID;
+        if (!canActivateFirstSession && !isActiveFirstSession) return prev;
+        const currentCount = Math.max(0, Number(prev.actionCount) || 0);
+        const nextCount = currentCount + 1;
         const hasBase = Number.isFinite(prev.actionCountStart);
-        const nextBase = hasBase
-          ? prev.actionCountStart
-          : ratingPromptActionGateReady
-          ? Math.max(0, Number(prev.actionCount) || 0)
-          : prev.actionCountStart;
-        return { ...prev, actionCount: nextCount, actionCountStart: nextBase };
+        const nextBase = hasBase ? prev.actionCountStart : currentCount;
+        return {
+          ...prev,
+          actionCount: nextCount,
+          actionCountStart: nextBase,
+          firstSessionStatus: "active",
+          firstSessionId: RATING_PROMPT_SESSION_ID,
+        };
       });
     },
     [ratingPromptActionGateReady, ratingPromptHydrated, updateRatingPromptState]
@@ -80773,7 +81692,6 @@ useEffect(() => {
       const end = Math.max(start, Math.floor(Number(toLevel) || start));
       for (let level = start; level <= end; level += 1) {
         logEvent("level_reached", { level });
-        logEvent(`level_reached_${level}`, { level });
       }
       levelReachedLoggedRef.current = end;
       AsyncStorage.setItem(STORAGE_KEYS.LEVEL_REACHED_LOGGED, String(end)).catch(() => {});
@@ -81757,7 +82675,7 @@ useEffect(() => {
     (source = "cta") => {
       setFeedIntroVisible(false);
       feedIntroStatusRef.current = "done";
-      logEvent("feed_intro_closed", { source });
+      logEvent("screen_intro_closed", { screen: "feed", source });
     },
     [logEvent]
   );
@@ -81779,7 +82697,7 @@ useEffect(() => {
       feedIntroStatusRef.current = "shown";
       setFeedIntroVisible(true);
       AsyncStorage.setItem(STORAGE_KEYS.FEED_INTRO_SHOWN, "1").catch(() => {});
-      logEvent("feed_intro_shown");
+      logEvent("screen_intro_shown", { screen: "feed" });
     };
     AsyncStorage.getItem(STORAGE_KEYS.FEED_INTRO_SHOWN)
       .then((rawValue) => {
@@ -82150,8 +83068,8 @@ useEffect(() => {
             currencyValue={profile.currency || DEFAULT_PROFILE.currency}
             soundEnabled={soundEnabled}
             onSoundToggle={handleSoundToggle}
-            androidAppsFlyerEnabled={androidAppsFlyerEnabled}
-            onAndroidAppsFlyerToggle={handleAndroidAppsFlyerToggle}
+            appsFlyerPartnerSharingAllowed={appsFlyerPartnerSharingAllowed}
+            onAppsFlyerPartnerSharingToggle={handleAppsFlyerPartnerSharingToggle}
             spendReducesSavings={spendReducesSavings}
             onSpendReductionToggle={handleSpendImpactToggle}
             tycoonModeEnabled={tycoonSettings?.enabled !== false}
@@ -82350,12 +83268,20 @@ useEffect(() => {
   }, [activeTab, progressHubPane]);
   const languageDirection = getLanguageDirection(language);
   const appLayoutDirection = Platform.OS === "ios" ? "ltr" : languageDirection;
-  if (onboardingStep !== "done") {
-    const onboardingBackHandler = canGoBackOnboarding ? handleOnboardingBack : undefined;
+  const needsExistingUserAnalyticsConsent =
+    onboardingStep === "done" && startupHydrated && analyticsOptOut === null;
+  if (onboardingStep !== "done" || needsExistingUserAnalyticsConsent) {
+    const onboardingDisplayStep = needsExistingUserAnalyticsConsent
+      ? "analyticsConsent"
+      : onboardingStep;
+    const onboardingBackHandler =
+      !needsExistingUserAnalyticsConsent && canGoBackOnboarding
+        ? handleOnboardingBack
+        : undefined;
     let onboardContent = null;
-    if (onboardingStep === "logo") {
+    if (onboardingDisplayStep === "logo") {
       onboardContent = <LogoSplash onDone={handleOnboardingLogoComplete} />;
-    } else if (onboardingStep === "language") {
+    } else if (onboardingDisplayStep === "language") {
       onboardContent = (
         <LanguageScreen
           colors={colors}
@@ -82371,7 +83297,17 @@ useEffect(() => {
           bottomInset={androidNavInset}
         />
       );
-    } else if (onboardingStep === "persona") {
+    } else if (onboardingDisplayStep === "analyticsConsent") {
+      onboardContent = (
+        <AnalyticsConsentScreen
+          t={t}
+          onAgree={() => handleAnalyticsConsentChoice(true)}
+          onSkip={() => handleAnalyticsConsentChoice(false)}
+          onBack={onboardingBackHandler}
+          bottomInset={androidNavInset}
+        />
+      );
+    } else if (onboardingDisplayStep === "persona") {
       onboardContent = (
         <PersonaScreen
           data={registrationData}
@@ -82385,7 +83321,7 @@ useEffect(() => {
           bottomInset={androidNavInset}
         />
       );
-    } else if (onboardingStep === "goal") {
+    } else if (onboardingDisplayStep === "goal") {
       const goalBackHandler =
         onboardingBackHandler ||
         (() => {
@@ -82417,7 +83353,10 @@ useEffect(() => {
         />
       );
     }
-    const onboardingBackground = resolveOnboardingStatusBackground(onboardingStep, registrationData);
+    const onboardingBackground = resolveOnboardingStatusBackground(
+      onboardingDisplayStep,
+      registrationData
+    );
     const onboardingStatusDimActive =
       systemBarsDimActive ||
       showImageSourceSheet ||
@@ -87265,6 +88204,7 @@ useEffect(() => {
             onRequestClose={dismissOverlay}
           >
             <PremiumUnlockStories
+              colors={colors}
               t={t}
               language={language}
               playSound={playSound}
@@ -87505,6 +88445,7 @@ useEffect(() => {
           onManagePress={handleManageSubscriptionsOpen}
           onTermsPress={handleTermsLinkOpen}
           onPrivacyPress={handlePrivacyPolicyOpen}
+          onAbandonedOfferWheelEvent={handlePremiumAbandonedOfferWheelEvent}
           onClose={closePremiumPaywall}
           colors={colors}
           premiumAccent={resolvePremiumUiAccent({ isDark: isDarkTheme, themeId: theme })}
@@ -87936,11 +88877,9 @@ useEffect(() => {
                   style={[
                     styles.categoryManagerLimitCard,
                     {
-                      borderColor: premiumState.isPremium
-                        ? colorWithAlpha(colors.primary, 0.42)
-                        : colors.border,
+                      borderColor: colors.border,
                       backgroundColor: premiumState.isPremium
-                        ? colorWithAlpha(colors.primary, 0.1)
+                        ? colors.card
                         : colorWithAlpha(colors.text, 0.05),
                     },
                   ]}
@@ -87955,19 +88894,15 @@ useEffect(() => {
                       style={[
                         styles.categoryManagerLimitBadge,
                         {
-                          borderColor: premiumState.isPremium
-                            ? colorWithAlpha(colors.primary, 0.52)
-                            : colors.border,
-                          backgroundColor: premiumState.isPremium
-                            ? colorWithAlpha(colors.primary, 0.16)
-                            : colors.card,
+                          borderColor: colors.border,
+                          backgroundColor: colors.card,
                         },
                       ]}
                     >
                       <Text
                         style={[
                           styles.categoryManagerLimitBadgeText,
-                          { color: premiumState.isPremium ? colors.primary : colors.muted },
+                          { color: colors.muted },
                         ]}
                       >
                         {premiumState.isPremium
@@ -88293,11 +89228,13 @@ useEffect(() => {
 
 function App() {
   return (
-    <SafeAreaProvider initialMetrics={initialWindowMetrics || undefined}>
-      <MotionPreferenceProvider>
-        <AppContent />
-      </MotionPreferenceProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={styles.appGestureRoot}>
+      <SafeAreaProvider initialMetrics={initialWindowMetrics || undefined}>
+        <MotionPreferenceProvider>
+          <AppContent />
+        </MotionPreferenceProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -88587,6 +89524,8 @@ const resolveOnboardingStatusBackground = (step, registrationData = {}) => {
   switch (step) {
     case "language":
       return ONBOARDING_GLASS_THEME.backgroundLavender;
+    case "analyticsConsent":
+      return ONBOARDING_GLASS_THEME.backgroundMint;
     case "persona":
       return (
         ONBOARDING_PERSONA_BACKGROUNDS[registrationData?.persona] ||
@@ -88600,6 +89539,9 @@ const resolveOnboardingStatusBackground = (step, registrationData = {}) => {
 };
 
 const styles = StyleSheet.create({
+  appGestureRoot: {
+    flex: 1,
+  },
   appBackground: {
     flex: 1,
   },
@@ -88679,10 +89621,25 @@ const styles = StyleSheet.create({
     marginHorizontal: -BASE_HORIZONTAL_PADDING,
     overflow: "visible",
   },
+  feedListContainer: {
+    flex: 1,
+  },
   feedListContent: {
     paddingTop: 4,
     paddingBottom: 160,
     paddingHorizontal: BASE_HORIZONTAL_PADDING,
+  },
+  feedDragLift: {
+    width: "100%",
+    borderRadius: TEMPTATION_CARD_RADIUS,
+    overflow: "visible",
+    shadowOffset: { width: 0, height: 5 },
+  },
+  feedDragPlaceholder: {
+    flex: 1,
+    marginBottom: 16,
+    borderRadius: TEMPTATION_CARD_RADIUS,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   frequencySectionHeader: {
     marginTop: 16,
@@ -110764,7 +111721,6 @@ function CoinEntryModal({
   const { reduceMotion, reduceTransparency } = useMotionPreferences();
   const viewportWidth = Math.max(1, Number(windowWidth) || SCREEN_WIDTH);
   const viewportHeight = Math.max(1, Number(windowHeight) || SCREEN_HEIGHT);
-  const viewportLayoutKey = `${Math.round(viewportWidth)}x${Math.round(viewportHeight)}`;
   const compactLayout = viewportHeight < 740 || viewportWidth < 360;
   const coinSize = Math.round(
     Math.max(144, Math.min(compactLayout ? 152 : 176, viewportWidth * 0.44))
@@ -110823,6 +111779,7 @@ function CoinEntryModal({
   const preferredAction =
     presetAction === "save" || presetAction === "spend" ? presetAction : null;
   const [closeTintColor, setCloseTintColor] = useState("transparent");
+  const [androidHostVisible, setAndroidHostVisible] = useState(false);
   const revealAnim = useRef(new Animated.Value(0)).current;
   const cardAnim = useRef(new Animated.Value(0)).current;
   const cardExitAnim = useRef(new Animated.Value(0)).current;
@@ -110834,6 +111791,8 @@ function CoinEntryModal({
   const coinCircleRef = useRef(null);
   const closingRef = useRef(false);
   const dismissingRef = useRef(false);
+  const dismissFrameRef = useRef(null);
+  const revealStartedRef = useRef(false);
   const directionAnim = useRef(new Animated.Value(0)).current;
   const sliderValueRef = useRef(0.25);
   const sliderValueCommitRef = useRef(0.25);
@@ -110887,11 +111846,38 @@ function CoinEntryModal({
     },
     []
   );
+  const startRevealAnimation = useCallback(() => {
+    if (!visible || revealStartedRef.current) return;
+    revealStartedRef.current = true;
+    if (reduceMotion) {
+      revealAnim.setValue(1);
+      cardAnim.setValue(1);
+      return;
+    }
+    Animated.parallel([
+      Animated.timing(revealAnim, {
+        toValue: 1,
+        duration: 190,
+        easing: Easing.bezier(0.22, 1, 0.36, 1),
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardAnim, {
+        toValue: 1,
+        duration: 260,
+        easing: Easing.bezier(0.32, 0.72, 0, 1),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [cardAnim, reduceMotion, revealAnim, visible]);
   useEffect(() => {
     return () => {
       if (sliderRafRef.current) {
         cancelAnimationFrame(sliderRafRef.current);
         sliderRafRef.current = null;
+      }
+      if (dismissFrameRef.current) {
+        cancelAnimationFrame(dismissFrameRef.current);
+        dismissFrameRef.current = null;
       }
     };
   }, []);
@@ -110900,6 +111886,17 @@ function CoinEntryModal({
   }, [coinSize]);
   useLayoutEffect(() => {
     if (!visible) return;
+    revealAnim.stopAnimation();
+    cardAnim.stopAnimation();
+    cardExitAnim.stopAnimation();
+    revealAnim.setValue(0);
+    cardAnim.setValue(0);
+    cardExitAnim.setValue(0);
+    closeTintOpacity.setValue(0);
+    flightOpacity.setValue(0);
+    flightScale.setValue(0.4);
+    flightSpin.setValue(0);
+    revealStartedRef.current = false;
     updateSliderValue(0.25, { force: true });
     hapticStepRef.current = Math.round(0.25 * 20);
     sliderHapticCooldownRef.current = 0;
@@ -110921,24 +111918,35 @@ function CoinEntryModal({
     touchStartRef.current = 0;
     touchStartValueRef.current = 0.25;
     touchStartPageYRef.current = 0;
-  }, [directionAnim, updateSliderValue, visible]);
+    if (Platform.OS === "android") {
+      setAndroidHostVisible(true);
+    }
+  }, [
+    cardAnim,
+    cardExitAnim,
+    closeTintOpacity,
+    directionAnim,
+    flightOpacity,
+    flightScale,
+    flightSpin,
+    revealAnim,
+    updateSliderValue,
+    visible,
+  ]);
   useEffect(() => {
-    revealAnim.stopAnimation();
-    cardAnim.stopAnimation();
-    cardExitAnim.stopAnimation();
     if (!visible) {
+      revealAnim.stopAnimation();
+      cardAnim.stopAnimation();
+      cardExitAnim.stopAnimation();
+      revealStartedRef.current = false;
+      if (Platform.OS === "android") {
+        setAndroidHostVisible(false);
+      }
       setManualMode(null);
       setManualValue("");
       setManualError("");
       setManualExactLocal(null);
       setCloseTintColor("transparent");
-      revealAnim.setValue(0);
-      cardAnim.setValue(0);
-      cardExitAnim.setValue(0);
-      closeTintOpacity.setValue(0);
-      flightOpacity.setValue(0);
-      flightScale.setValue(0.4);
-      flightSpin.setValue(0);
       closingRef.current = false;
       dismissingRef.current = false;
       lastCoinTapRef.current = 0;
@@ -110946,43 +111954,16 @@ function CoinEntryModal({
       return;
     }
     setCloseTintColor("transparent");
-    revealAnim.setValue(0);
-    cardAnim.setValue(0);
-    cardExitAnim.setValue(0);
-    closeTintOpacity.setValue(0);
-    flightOpacity.setValue(0);
-    flightScale.setValue(0.4);
-    flightSpin.setValue(0);
     closingRef.current = false;
     dismissingRef.current = false;
-    if (reduceMotion) {
-      revealAnim.setValue(1);
-      cardAnim.setValue(1);
-      return;
+    if (Platform.OS !== "android") {
+      startRevealAnimation();
     }
-    Animated.parallel([
-      Animated.timing(revealAnim, {
-        toValue: 1,
-        duration: 190,
-        easing: Easing.bezier(0.22, 1, 0.36, 1),
-        useNativeDriver: true,
-      }),
-      Animated.timing(cardAnim, {
-        toValue: 1,
-        duration: 260,
-        easing: Easing.bezier(0.32, 0.72, 0, 1),
-        useNativeDriver: true,
-      }),
-    ]).start();
   }, [
     cardAnim,
     cardExitAnim,
-    closeTintOpacity,
-    flightOpacity,
-    flightScale,
-    flightSpin,
-    reduceMotion,
     revealAnim,
+    startRevealAnimation,
     visible,
   ]);
   const currencySymbol =
@@ -111072,7 +112053,7 @@ function CoinEntryModal({
   });
   const cardEnterTranslateY = cardAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [compactLayout ? 24 : 32, 0],
+    outputRange: [sheetMaxHeight + Math.max(24, safeInsets.bottom), 0],
     extrapolate: "clamp",
   });
   const cardExitTranslateY = cardExitAnim.interpolate({
@@ -111177,10 +112158,23 @@ function CoinEntryModal({
   const runDismissAnimation = useCallback(
     (onComplete) => {
       if (dismissingRef.current || closingRef.current) return;
+      const completeAfterFinalPaint = () => {
+        if (dismissFrameRef.current) {
+          cancelAnimationFrame(dismissFrameRef.current);
+        }
+        dismissFrameRef.current = requestAnimationFrame(() => {
+          dismissFrameRef.current = requestAnimationFrame(() => {
+            dismissFrameRef.current = null;
+            dismissingRef.current = false;
+            onComplete?.();
+          });
+        });
+      };
       if (reduceMotion) {
+        dismissingRef.current = true;
         revealAnim.setValue(0);
         cardExitAnim.setValue(1);
-        onComplete?.();
+        completeAfterFinalPaint();
         return;
       }
       dismissingRef.current = true;
@@ -111201,10 +112195,11 @@ function CoinEntryModal({
           useNativeDriver: true,
         }),
       ]).start(({ finished }) => {
-        dismissingRef.current = false;
         if (finished) {
-          onComplete?.();
+          completeAfterFinalPaint();
+          return;
         }
+        dismissingRef.current = false;
       });
     },
     [cardAnim, cardExitAnim, reduceMotion, revealAnim]
@@ -111578,11 +112573,11 @@ function CoinEntryModal({
   const shouldHighlightCategoryError = categoryError && !selectedCategory;
   return (
     <Modal
-      key={`coin-entry-${viewportLayoutKey}`}
-      visible={visible}
+      visible={Platform.OS === "android" ? androidHostVisible : visible}
       transparent
       forceNativeHost
       animationType="none"
+      onShow={startRevealAnimation}
       onRequestClose={() => {
         if (manualVisible) {
           closeManual();
@@ -114632,6 +115627,108 @@ function OnboardingFixedHeader({ children }) {
   const topInset = Math.max(Number(safeInsets.top) || 0, fallbackTopInset);
   const topOffset = topInset > 0 ? topInset + 10 : 16;
   return <View style={[styles.onboardFixedHeader, { top: topOffset }]}>{children}</View>;
+}
+
+function AnalyticsConsentScreen({
+  t,
+  onAgree,
+  onSkip,
+  onBack,
+  bottomInset = 0,
+}) {
+  const fade = useFadeIn();
+  const safeAreaInsets = safeUseSafeAreaInsets();
+  const resolvedBottomInset = Math.max(
+    Number(bottomInset) || 0,
+    Number(safeAreaInsets.bottom) || 0
+  );
+  const bottomInsetStyle = addBottomInsetStyle(
+    styles.analyticsConsentScreen,
+    resolvedBottomInset
+  );
+  return (
+    <OnboardingScreenShell
+      fade={fade}
+      backgroundColor={ONBOARDING_GLASS_THEME.backgroundMint}
+      orbPrimaryColor={colorWithAlpha(ONBOARDING_GLASS_THEME.accentMint, 0.22)}
+      orbSecondaryColor={colorWithAlpha(ONBOARDING_GLASS_THEME.accent, 0.18)}
+      gradientStartColor="#ECFAF5"
+      gradientEndColor="#ECF4FF"
+    >
+      {onBack ? (
+        <OnboardingFixedHeader>
+          <OnboardingHeader onBack={onBack} t={t} />
+        </OnboardingFixedHeader>
+      ) : null}
+      <OnboardingScrollView
+        contentContainerStyle={[
+          styles.analyticsConsentScreen,
+          onBack ? styles.onboardContentWithFixedHeader : styles.onboardContentNoHeader,
+          bottomInsetStyle,
+        ]}
+      >
+        <Animated.View style={[styles.analyticsConsentContent, { opacity: fade }]}>
+          <View
+            style={[
+              styles.analyticsConsentCard,
+              {
+                backgroundColor: ONBOARDING_GLASS_THEME.cardStrong,
+                borderColor: ONBOARDING_GLASS_THEME.borderStrong,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.analyticsConsentTitle,
+                { color: ONBOARDING_GLASS_THEME.textPrimary },
+              ]}
+            >
+              {t("analyticsConsentTitle")}
+            </Text>
+            <Text
+              style={[
+                styles.analyticsConsentBody,
+                { color: ONBOARDING_GLASS_THEME.textSecondary },
+              ]}
+            >
+              {t("analyticsConsentBody")}
+            </Text>
+            <OnboardingScaleButton
+              style={[
+                styles.analyticsConsentPrimary,
+                { backgroundColor: ONBOARDING_GLASS_THEME.buttonPrimary },
+              ]}
+              onPress={onAgree}
+              accessibilityRole="button"
+              accessibilityLabel={t("analyticsConsentAgree")}
+            >
+              <Text style={[styles.analyticsConsentPrimaryText, { color: "#FFFFFF" }]}>
+                {t("analyticsConsentAgree")}
+              </Text>
+            </OnboardingScaleButton>
+            <OnboardingScaleButton
+              style={[
+                styles.analyticsConsentSecondary,
+                { borderColor: ONBOARDING_GLASS_THEME.borderStrong },
+              ]}
+              onPress={onSkip}
+              accessibilityRole="button"
+              accessibilityLabel={t("analyticsConsentSkip")}
+            >
+              <Text
+                style={[
+                  styles.analyticsConsentSecondaryText,
+                  { color: ONBOARDING_GLASS_THEME.textSecondary },
+                ]}
+              >
+                {t("analyticsConsentSkip")}
+              </Text>
+            </OnboardingScaleButton>
+          </View>
+        </Animated.View>
+      </OnboardingScrollView>
+    </OnboardingScreenShell>
+  );
 }
 
 function LanguageScreen({

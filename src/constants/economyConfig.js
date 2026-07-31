@@ -51,9 +51,7 @@ export const CHALLENGE_SWIPE_ACTION_WIDTH = 120;
 
 export const CUSTOM_TEMPTATION_SAMPLE_USD = 7.5;
 
-export const RATING_PROMPT_DAILY_START_DAYS = 3;
-export const RATING_PROMPT_RECURRING_INTERVAL_DAYS = 2;
-export const RATING_PROMPT_ACTION_THRESHOLD = 3;
+export const RATING_PROMPT_ACTION_THRESHOLD = 2;
 export const RATING_PROMPT_ACTION_TYPES = new Set(["save", "spend"]);
 
 export const ANDROID_REVIEW_URL = "market://details?id=com.sasarei.almostclean";

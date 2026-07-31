@@ -2815,6 +2815,34 @@ PODS:
     - Firebase/RemoteConfig (= 12.4.0)
     - React-Core
     - RNFBApp
+  - RNGestureHandler (2.28.0):
+    - boost
+    - DoubleConversion
+    - fast_float
+    - fmt
+    - glog
+    - hermes-engine
+    - RCT-Folly
+    - RCT-Folly/Fabric
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - SocketRocket
+    - Yoga
   - RNMLKitTextRecognition (2.0.0):
     - GoogleMLKit/TextRecognition (= 8.0.0)
     - GoogleMLKit/TextRecognitionChinese (= 8.0.0)
@@ -3095,36 +3123,6 @@ PODS:
     - Yoga
   - Sentry/HybridSDK (8.41.0)
   - SocketRocket (0.7.1)
-  - TikTokBusiness (1.6.0):
-    - boost
-    - DoubleConversion
-    - fast_float
-    - fmt
-    - glog
-    - hermes-engine
-    - RCT-Folly
-    - RCT-Folly/Fabric
-    - RCTRequired
-    - RCTTypeSafety
-    - React-Core
-    - React-debug
-    - React-Fabric
-    - React-featureflags
-    - React-graphics
-    - React-ImageManager
-    - React-jsi
-    - React-NativeModulesApple
-    - React-RCTFabric
-    - React-renderercss
-    - React-rendererdebug
-    - React-utils
-    - ReactCodegen
-    - ReactCommon/turbomodule/bridging
-    - ReactCommon/turbomodule/core
-    - SocketRocket
-    - TikTokBusinessSDK (= 1.6.0)
-    - Yoga
-  - TikTokBusinessSDK (1.6.0)
   - Yoga (0.0.0)
 
 DEPENDENCIES:
@@ -3234,6 +3232,7 @@ DEPENDENCIES:
   - "RNFBCrashlytics (from `../node_modules/@react-native-firebase/crashlytics`)"
   - "RNFBPerf (from `../node_modules/@react-native-firebase/perf`)"
   - "RNFBRemoteConfig (from `../node_modules/@react-native-firebase/remote-config`)"
+  - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - "RNMLKitTextRecognition (from `../node_modules/@react-native-ml-kit/text-recognition`)"
   - RNPurchases (from `../node_modules/react-native-purchases`)
   - RNReanimated (from `../node_modules/react-native-reanimated`)
@@ -3241,7 +3240,6 @@ DEPENDENCIES:
   - RNSVG (from `../node_modules/react-native-svg`)
   - RNWorklets (from `../node_modules/react-native-worklets`)
   - SocketRocket (~> 0.7.1)
-  - TikTokBusiness (from `../node_modules/react-native-tiktok-business-sdk`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
 SPEC REPOS:
@@ -3290,7 +3288,6 @@ SPEC REPOS:
     - RevenueCat
     - Sentry
     - SocketRocket
-    - TikTokBusinessSDK
 
 EXTERNAL SOURCES:
   amplitude-plugin-session-replay-react-native:
@@ -3504,6 +3501,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/@react-native-firebase/perf"
   RNFBRemoteConfig:
     :path: "../node_modules/@react-native-firebase/remote-config"
+  RNGestureHandler:
+    :path: "../node_modules/react-native-gesture-handler"
   RNMLKitTextRecognition:
     :path: "../node_modules/@react-native-ml-kit/text-recognition"
   RNPurchases:
@@ -3516,8 +3515,6 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-svg"
   RNWorklets:
     :path: "../node_modules/react-native-worklets"
-  TikTokBusiness:
-    :path: "../node_modules/react-native-tiktok-business-sdk"
   Yoga:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
@@ -3669,6 +3666,7 @@ SPEC CHECKSUMS:
   RNFBCrashlytics: ab632410ce1383051ac26ef44c966da651b7cf91
   RNFBPerf: 66843b59e5b078a5d5494b57ddf5858aff56cdbd
   RNFBRemoteConfig: fd01bfffca19f0ac1f4f0b4391dfb04d80a84e0b
+  RNGestureHandler: 3a73f098d74712952870e948b3d9cf7b6cae9961
   RNMLKitTextRecognition: 2d7c3481b9dabc72f7e31c67025c28b2c8d653b0
   RNPurchases: 1f7952aadbf745361711070e06286b9496628692
   RNReanimated: d60fc0b1c70e8413d16e506897ca7f2a27f697be
@@ -3677,8 +3675,6 @@ SPEC CHECKSUMS:
   RNWorklets: 68ab13976d7eba39fb2f0844994a51380e76046d
   Sentry: 54d0fe6c0df448497c8ed4cce66ccf7027e1823e
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
-  TikTokBusiness: c6236bf5a5d4c97ab6f16bb7c65be8e4e8ee871f
-  TikTokBusinessSDK: 6fe49b5b06a24cfe6bf42da789e2f3c6ba39c0e3
   Yoga: a3ed390a19db0459bd6839823a6ac6d9c6db198d
 
 PODFILE CHECKSUM: af945c929781d66a39f3e17bbaf19a0ea92d755d
